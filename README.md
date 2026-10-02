@@ -52,14 +52,6 @@ Each built file starts with its settings header, e.g. `<!-- settings: target=ci 
 
 ## Use
 
-On a machine (or in a workflow step before the agent runs), install from the built file:
+See [SETUP.md](SETUP.md): one prompt each to install, update or uninstall it with an agent. Installed sessions update themselves from this repo once a day.
 
-```sh
-mechanisms/install-methodology dist/methodology-prompt.md
-# without this repo, from the file alone:
-F=methodology-ci.md; awk '/^### `install-methodology`/{f=1;next} f&&/^````/{if(g)exit;g=1;next} g' "$F" | python3 - "$F"
-```
-
-It writes the scripts to `~/.claude/mechanisms` (commands linked into `~/.local/bin`), merges the hooks into `~/.claude/settings.json`, writes the Always-on rules and a pointer to the file into `~/.claude/CLAUDE.md`, and writes the settings header to `~/.claude/mechanisms/settings.env`, which `post-lint`, `gate-pass` and `pre-bash-guard` read (an environment variable of the same name wins). A repo that runs the agent in CI commits the built file it needs (e.g. `dist/methodology-ci.md`) and runs that install command on it in a step before claude-code-action.
-
-Change a rule by editing the existing line where it applies (Part 1, section 1.9); don't append.
+By hand: `./build.sh [profile…]`, then `mechanisms/install-methodology dist/<built file>`; `methodology-update`; `uninstall-methodology`.

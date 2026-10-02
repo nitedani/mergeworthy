@@ -1,0 +1,23 @@
+#!/usr/bin/env python3
+"""uninstall-methodology: removes what install-methodology added: its hooks from ~/.claude/settings.json, its block from
+~/.claude/CLAUDE.md, ~/.claude/mechanisms/ and the command links in ~/.local/bin (and the local-model command links).
+Kept: the methodology repo, your artifacts, ~/.claude/gated-posts.txt and ~/.claude/pr-steps/, the local model's files."""
+import json, os, re, shutil
+home = os.path.expanduser('~'); mech = f'{home}/.claude/mechanisms'; ours = re.compile(r'\.claude/mechanisms/|\.local/bin/claude-swap|methodology-update')
+sp = f'{home}/.claude/settings.json'
+if os.path.exists(sp):
+    s = json.load(open(sp))
+    for event, entries in list(s.get('hooks', {}).items()):
+        kept = [e for e in entries if not any(ours.search(h.get('command', '')) for h in e.get('hooks', []))]
+        if kept: s['hooks'][event] = kept
+        else: del s['hooks'][event]
+    json.dump(s, open(sp, 'w'), indent=2); print('hooks removed from', sp)
+cp = f'{home}/.claude/CLAUDE.md'
+if os.path.exists(cp):
+    t = open(cp).read(); n = re.sub(r'\n*<!-- methodology:begin.*?<!-- methodology:end -->\n?', '\n', t, flags=re.S).strip()
+    open(cp, 'w').write(n + '\n' if n else ''); print('always-on block removed from', cp)
+bin_ = f'{home}/.local/bin'
+for f in os.listdir(bin_) if os.path.isdir(bin_) else ():
+    p = os.path.join(bin_, f)
+    if os.path.islink(p) and re.search(r'/\.claude/mechanisms/|/local-llm/', os.readlink(p)): os.remove(p); print('removed link', p)
+shutil.rmtree(mech, ignore_errors=True); print('removed', mech)

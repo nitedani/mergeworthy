@@ -912,6 +912,8 @@ These scripts enforce the rules that failed as text alone. This file is the only
 | `codex-review-model` (`~/.local/bin`) | TASK review model. Prints Codex's top-ranked model from `codex debug models`, skipping the premium tier ("the most demanding work") and older generations, so reviews move to newer models without editing any prompt. | `codex exec -m "$(codex-review-model)" …`; `--all` lists the ranked models for a fallback. |
 | `pr-steps` + posting hook | Part 2 steps 6–7 (Part 3 sections 6–7 in Tier ≥ M), 1.7. | `gh pr create` (unless `--draft`) and `gh pr ready` are blocked until HEAD has a `review` and a `refactor` record: run `pr-steps review <reviewer output>` and `pr-steps refactor <rating output>` on the final HEAD after the fixes. |
 | `install-methodology` | 1.1.12: this file travels; the machine's copies follow it. | Writes Part 5's scripts to `~/.claude/mechanisms/` (commands linked into `~/.local/bin`), merges the hook config into `~/.claude/settings.json`, and writes the Always-on rules into `~/.claude/CLAUDE.md` between markers, leaving the rest of that file alone. The file's first line, the settings header `build.sh` writes, goes to `~/.claude/mechanisms/settings.env` as `METHODOLOGY_<KEY>=<value>` lines, read by `post-lint` (badge, review records; `gate-pass` runs it) and `pre-bash-guard` (merge); an environment variable of the same name wins. |
+| `methodology-update` (`~/.local/bin`; SessionStart hook with `--auto`) | 1.1.12: every machine follows the repo. | Pulls the repo the installed file came from (`METHODOLOGY_SOURCE` in `settings.env`), rebuilds the same profiles, reinstalls, and the local-model tooling when installed. `--auto`: at most once a day, detached, logged to `~/.claude/mechanisms/update.log`; the new version applies from the next session. |
+| `uninstall-methodology` (`~/.local/bin`) | | Removes the hooks, the `CLAUDE.md` block, `~/.claude/mechanisms/` and the command links; keeps the repo, artifacts, `gated-posts.txt`, `pr-steps/` and the local model's files. |
 | `ready-check` (manual) | 1.7. | Before saying "ready", check every item of 1.7's Ready list against the head (`gh pr checks` for CI; the guardian verdict per Part 3 §11.1, mechanism census included, run after the last fix round; the body re-read against the head) and paste the result. |
 
 Hook config for `~/.claude/settings.json`:
@@ -921,6 +923,7 @@ Hook config for `~/.claude/settings.json`:
   "hooks": {
     "PreToolUse": [{ "matcher": "Bash", "hooks": [{ "type": "command", "command": "python3 ~/.claude/mechanisms/pre-bash-guard.py" }] }, { "matcher": "Agent", "hooks": [{ "type": "command", "command": "python3 ~/.claude/mechanisms/pre-agent-guard.py" }] }],
     "PostToolUse": [{ "matcher": "Bash", "hooks": [{ "type": "command", "command": "python3 ~/.claude/mechanisms/post-bash-register.py" }] }],
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "python3 ~/.claude/mechanisms/methodology-update --auto" }] }],
     "Stop": [{ "hooks": [{ "type": "command", "command": "python3 ~/.claude/mechanisms/stop-lint.py" }] }],
     "StopFailure": [{ "matcher": "rate_limit", "hooks": [{ "type": "command", "command": "~/.local/bin/claude-swap on-limit" }] }]
   }
@@ -2223,7 +2226,8 @@ print('\n'.join(m['slug'] for m in models) if '--all' in sys.argv else models[0]
 #!/usr/bin/env python3
 r"""install-methodology <methodology.md>: installs the methodology on this machine from the file alone.
 - Every script in Part 5 (a `### \`name\`` heading followed by a fenced block) goes to ~/.claude/mechanisms/, executable;
-  the commands (gate-pass, gh-watch-start, pr-steps, codex-review-model, claude-swap, install-methodology) are linked into ~/.local/bin.
+  the commands (gate-pass, gh-watch-start, pr-steps, codex-review-model, claude-swap, install-methodology,
+  methodology-update, uninstall-methodology) are linked into ~/.local/bin.
 - The hook config in Part 5 is merged into ~/.claude/settings.json (entries already there are kept, none duplicated).
 - The "Always-on rules" section is written into ~/.claude/CLAUDE.md between markers, with a pointer to the file;
   the rest of CLAUDE.md is left as it is. Re-running replaces the block, so the file stays the only source.
@@ -2255,7 +2259,7 @@ print(f'{len(scripts)} scripts -> {mech}')
 # Settings
 m = re.match(r'<!-- settings: (.*?) -->', md)
 pairs = (kv.split('=', 1) for kv in m.group(1).split()) if m else ()
-open(f'{mech}/settings.env', 'w').write(''.join(f'METHODOLOGY_{k.upper()}={v}\n' for k, v in pairs))
+open(f'{mech}/settings.env', 'w').write(''.join(f'METHODOLOGY_{k.upper()}={v}\n' for k, v in pairs) + f'METHODOLOGY_SOURCE={src}\n')  # SOURCE: what methodology-update rebuilds
 print(f'settings -> {mech}/settings.env')
 
 # Hooks
@@ -2285,4 +2289,67 @@ if m:
         if '<!-- methodology:begin' in old else (old.rstrip('\n') + '\n\n' if old.strip() else '') + block
     open(cp, 'w').write(new)
     print(f'always-on rules -> {cp}')
+````
+
+### `methodology-update`
+
+````bash
+#!/usr/bin/env python3
+"""methodology-update [--auto]: pulls the methodology repo the installed file came from, rebuilds the same profiles, and
+reinstalls (the local-model tooling too, when it's installed). --auto (the SessionStart hook): at most once a day, in the
+background, quiet; the new version applies from the next session. Log: ~/.claude/mechanisms/update.log."""
+import os, re, subprocess, sys, time
+home = os.path.expanduser('~'); mech = f'{home}/.claude/mechanisms'; log = f'{mech}/update.log'; stamp = f'{mech}/.updated'
+env = dict(l.strip().split('=', 1) for l in open(f'{mech}/settings.env') if '=' in l) if os.path.exists(f'{mech}/settings.env') else {}
+src = env.get('METHODOLOGY_SOURCE', '')
+repo = os.path.dirname(os.path.dirname(src)) if src else ''
+if not repo or not os.path.isdir(os.path.join(repo, '.git')):
+    if '--auto' in sys.argv: sys.exit(0)
+    sys.exit(f'methodology-update: no repo behind {src or "the installed file"}; install from a clone of the repo first')
+if '--auto' in sys.argv:
+    if os.path.exists(stamp) and time.time() - os.path.getmtime(stamp) < 86400: sys.exit(0)
+    open(stamp, 'w').close()
+    if os.fork(): sys.exit(0)  # the session starts right away; the update runs detached
+    os.setsid(); fd = os.open(log, os.O_WRONLY | os.O_CREAT | os.O_APPEND); os.dup2(fd, 1); os.dup2(fd, 2)
+def run(*a, **k): return subprocess.run(a, cwd=repo, check=True, **k)
+print(time.strftime('%F %T'), 'updating', repo, flush=True)
+before = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=repo, capture_output=True, text=True).stdout.strip()
+run('git', 'pull', '-q', '--ff-only')
+after = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=repo, capture_output=True, text=True).stdout.strip()
+if before == after and '--auto' in sys.argv: print('up to date', after[:10]); sys.exit(0)
+m = re.match(r'methodology-(.+)\.md$', os.path.basename(src))
+profiles = [] if not m or m.group(1) == 'prompt' else m.group(1).split('-')
+run('./build.sh', *profiles, stdout=subprocess.DEVNULL)
+run(sys.executable, os.path.join(repo, 'mechanisms', 'install-methodology'), src)
+if os.path.exists(f'{home}/local-llm/.installed') and os.path.exists(os.path.join(repo, 'local-model', 'install.sh')):
+    run(os.path.join(repo, 'local-model', 'install.sh'))
+print('updated', before[:10], '->', after[:10], flush=True)
+````
+
+### `uninstall-methodology`
+
+````bash
+#!/usr/bin/env python3
+"""uninstall-methodology: removes what install-methodology added: its hooks from ~/.claude/settings.json, its block from
+~/.claude/CLAUDE.md, ~/.claude/mechanisms/ and the command links in ~/.local/bin (and the local-model command links).
+Kept: the methodology repo, your artifacts, ~/.claude/gated-posts.txt and ~/.claude/pr-steps/, the local model's files."""
+import json, os, re, shutil
+home = os.path.expanduser('~'); mech = f'{home}/.claude/mechanisms'; ours = re.compile(r'\.claude/mechanisms/|\.local/bin/claude-swap|methodology-update')
+sp = f'{home}/.claude/settings.json'
+if os.path.exists(sp):
+    s = json.load(open(sp))
+    for event, entries in list(s.get('hooks', {}).items()):
+        kept = [e for e in entries if not any(ours.search(h.get('command', '')) for h in e.get('hooks', []))]
+        if kept: s['hooks'][event] = kept
+        else: del s['hooks'][event]
+    json.dump(s, open(sp, 'w'), indent=2); print('hooks removed from', sp)
+cp = f'{home}/.claude/CLAUDE.md'
+if os.path.exists(cp):
+    t = open(cp).read(); n = re.sub(r'\n*<!-- methodology:begin.*?<!-- methodology:end -->\n?', '\n', t, flags=re.S).strip()
+    open(cp, 'w').write(n + '\n' if n else ''); print('always-on block removed from', cp)
+bin_ = f'{home}/.local/bin'
+for f in os.listdir(bin_) if os.path.isdir(bin_) else ():
+    p = os.path.join(bin_, f)
+    if os.path.islink(p) and re.search(r'/\.claude/mechanisms/|/local-llm/', os.readlink(p)): os.remove(p); print('removed link', p)
+shutil.rmtree(mech, ignore_errors=True); print('removed', mech)
 ````

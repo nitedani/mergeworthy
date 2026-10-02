@@ -18,7 +18,7 @@ mkdir -p dist
     echo; cat src/part4-failures.md; echo; cat src/part2-implement-issue.md; echo; cat src/part3-convergence.md
     echo; echo '---'; echo; cat src/part5-mechanisms.md; echo
   } | python3 filter.py $settings
-  for f in gh-watch.py gh-watch-daemon.sh gh-watch-start post-bash-register.py pre-agent-guard.py tracker-check.sh post-lint.py gate-pass pre-bash-guard.py stop-lint.py pr-steps claude-swap codex-review-model install-methodology; do
+  for f in gh-watch.py gh-watch-daemon.sh gh-watch-start post-bash-register.py pre-agent-guard.py tracker-check.sh post-lint.py gate-pass pre-bash-guard.py stop-lint.py pr-steps claude-swap codex-review-model install-methodology methodology-update uninstall-methodology; do
     case "$watcher:$target:$reviewer:$f" in off:*:gh-watch*|off:*:post-bash-register.py|*:ci:*:claude-swap|*:claude:codex-review-model) continue;; esac
     lang=bash; case $f in *.py|claude-swap|codex-review-model|install-methodology) lang=python;; esac
     echo; echo "### \`$f\`"; echo; echo "\`\`\`\`$lang"; cat "mechanisms/$f"; echo '````'
