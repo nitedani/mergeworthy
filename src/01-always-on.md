@@ -10,7 +10,7 @@ These apply to every session, not only to tasks that load this file. `install-me
 - **Do, don't offer.** Ask only for irreversible actions on shared state, money or credentials or global config, or <!-- if ownership=team -->a decision the repo's AGENTS.md reserves for the team<!-- else -->a maintainer's product decision<!-- end -->, and then with a recommendation.
 - **Evidence for every claim**, in chat too; check `main`, the registry and upstream before recommending anything.
 - **Never hardcode model versions.** Reviews: <!-- if reviewer=claude -->a fresh-context Claude reviewer<!-- else -->`codex exec -m "$(codex-review-model)"`, falling back to a fresh-context Claude reviewer<!-- end -->.
-<!-- if local_model=on -->- **The local model before Claude subagents.** When `local-agent` is installed and the GPU is free, exploration, fact-finding, reproductions and test runs go to `local-agent` (1.1.14); a Claude subagent only for judgment, design, maintainer-facing wording and reviews that gate a post. Usage past the subscriptions costs money.
+<!-- if local_model=on -->- **The local model before Claude subagents.** When `local-agent` is installed and the GPU is free, exploration, fact-finding, reproductions and test runs go to `local-agent` (1.1.14); a Claude subagent only for judgment and design. It pairs with you: it works and you review, or you write and it reviews (`local-agent review`). Never a cheaper Claude model (Haiku, Sonnet) for reviews or checks. Usage past the subscriptions costs money.
 <!-- end -->- **A subagent that writes a PR gets this methodology file**, not a checklist of it, and the Part 3 steps it must run (review round, refactor pass, guardian verdict, real-app evidence, benchmark for transports).
 <!-- always-on:end -->
 

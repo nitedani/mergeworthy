@@ -8,8 +8,9 @@ no pairing.
 
 **When.** Only bounded work: Claude can define it precisely, and the local model finishes it in minutes (limit 15 by
 default). Not for what Claude does in about a minute itself (writing the ticket and checking the result would cost
-more), not for open-ended work, and never for: the approach (Part 2 step 3), reviews that gate a post or a PR (1.6, Part
-2 step 6, guardian ratings), anything posted or pushed, maintainer-facing wording.
+more), not for open-ended work, and never for: the approach (Part 2 step 3), anything posted or pushed, maintainer-facing wording. It pairs with Claude:
+it works and Claude reviews, or Claude writes and it reviews (`review` mode: the gate review of a draft, `verdict` CLEAN or
+FINDINGS; Claude checks every finding). Never a cheaper Claude model in its place.
 
 **How.** `local-agent <mode> <ticket.md> [--cwd <dir>] [--write]`, through Bash with `run_in_background`; one runs at a
 time (one GPU). It works offline in a sandbox, read-only unless `--write`, and even then only in `<dir>` (use a worktree
@@ -22,6 +23,8 @@ you created for it). It returns one JSON result: claims with `path:line` sources
 - `run`: run gates, tests, benchmarks or re-runs of failures on `main` vs head, and table the results.
 - `implement` (`--write`): execute **your `## Plan`**, a few key points in order (which function, what rule, what not to
   touch), commit, and run the `## Acceptance` checks. It reports deviations instead of choosing another approach.
+- `review` (`## File` = the draft): check every claim, example and diff in it against the code; `verdict` is `CLEAN`
+  only with no findings. Copy that verdict to the review output for `gate-pass`.
 - `cold-read`: a newcomer's read of a doc or rules file (1.3, 1.9): every sentence it can't act on. A weaker model as the
   reader is a stricter test.
 

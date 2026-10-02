@@ -44,6 +44,10 @@ MODES = {
   'cold-read': ('Read the File as a newcomer would. Explain each section back in one line, and list every sentence you '
                 'could not act on or understand, quoting it.',
             obj({'summary_back': arr(S), 'unclear': arr(obj({'quote': S, 'why': S}))})),
+  'review': ('Check the File (a draft to be posted) against the code and commands: every factual claim, code example and '
+             'diff must hold. List each finding with its evidence. The verdict is exactly CLEAN only when there are none.',
+            obj({'verdict': {'type': 'string', 'enum': ['CLEAN', 'FINDINGS']}, 'findings': arr(obj({'quote': S, 'problem': S, 'evidence': S})),
+                 'not_checked': NOT_CHECKED})),
   'implement': ('Implement the Plan, step by step, then commit on the current branch and run every Acceptance check. '
                 'The approach is the Plan\'s: if a step turns out wrong or impossible, stop and report it in deviations '
                 'instead of choosing another approach.',
@@ -101,7 +105,7 @@ def main():
     if mode == 'implement' and 'plan' not in sec: fail('implement needs a "## Plan": your key points, in order')
     if mode == 'implement' and not write: fail('implement needs --write')
     if mode == 'evidence' and 'position' not in sec: fail('evidence needs a "## Position"')
-    if mode == 'cold-read' and 'file' not in sec: fail('cold-read needs a "## File"')
+    if mode in ('cold-read', 'review') and 'file' not in sec: fail(f'{mode} needs a "## File"')
     m = OPINION.search(sec.get('facts', ''))
     if m: fail(f'opinion in Facts ("{m.group(0)}"): facts only, each with its source; put a hypothesis under "## To check" as a question')
     cwd = os.path.realpath(opts['--cwd']); rid = f'{mode}-{uuid.uuid4().hex[:8]}'; run_dir = os.path.join(RUNS, rid)
