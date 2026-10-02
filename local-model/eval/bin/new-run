@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# new-run <task> <arm> [timeout seconds]: a fresh copy of the task, then the agent runs on it.
+# A task is templates/<task>/ with ws/ (a git checkout), prompt.md and, optionally, gh-snapshot/ (what the fake gh answers).
+# An arm is the methodology the agent gets: methodology-<arm>.md here, or by default (arm `current`) the installed one.
+set -euo pipefail
+E="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+T="${1:?usage: new-run <task> <arm> [timeout]}"; ARM="${2:-current}"
+[ -d "$E/templates/$T/ws" ] && [ -f "$E/templates/$T/prompt.md" ] || { echo "no task $E/templates/$T (needs ws/ and prompt.md)" >&2; exit 1; }
+METH="$E/methodology-$ARM.md"
+if [ ! -f "$METH" ] && [ "$ARM" = current ]; then METH="$(grep -o '/[^` ]*methodology[^` ]*\.md' ~/.claude/CLAUDE.md | head -1)"; fi
+[ -f "$METH" ] || { echo "no methodology for arm $ARM ($E/methodology-$ARM.md)" >&2; exit 1; }
+R="$E/runs/$T-$ARM-${LLM_PROFILE:-$(cat ~/local-llm/profile)}-$(date +%H%M%S)"
+mkdir -p "$R"; cp -a "$E/templates/$T/ws" "$R/ws"; cp -a "$E/templates/$T/gh-snapshot" "$R/gh-snapshot" 2>/dev/null || mkdir -p "$R/gh-snapshot"
+git clone -q --bare "$R/ws" "$R/fork.git"; git -C "$R/ws" remote add fork "$R/fork.git"
+git -C "$R/ws" rev-parse HEAD >"$R/start-commit"
+echo "$R"
+"$E/bin/run-agent" "$R" "$METH" "$E/templates/$T/prompt.md" "${3:-3600}" || echo "agent exit code $?" >>"$R/stderr.log"
+date +%T >"$R/finished"

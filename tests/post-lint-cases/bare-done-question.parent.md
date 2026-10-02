@@ -1,0 +1,1 @@
+How about we remove this line? Docs shouldn't be bloated with very seldom edge cases?

@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# run-agent <run dir> <methodology file> <prompt file> [timeout seconds]: the local agent, headless, in the sandbox.
+# Permissions are bypassed on purpose: the sandbox is the safety boundary, and real long-running sessions run unattended.
+set -euo pipefail
+D="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+"$D/sandbox" "$1" "$2" "${4:-2700}" -- claude -p "$(cat "$3")" --append-system-prompt "$(cat ~/local-llm/local-model-prompt.md)" --permission-mode bypassPermissions --strict-mcp-config \
+  --output-format stream-json --verbose >"$1/transcript.jsonl" 2>"$1/stderr.log" </dev/null

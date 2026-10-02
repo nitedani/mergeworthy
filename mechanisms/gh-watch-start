@@ -1,0 +1,31 @@
+#!/bin/bash
+# gh-watch-start <dir> [owner/repo [N]]...: the one way to start watching (methodology 1.5). Idempotent.
+# - <dir> is the session's artifact root; it gets links to gh-watch.py and gh-watch-daemon.sh, threads.txt and repos.txt.
+# - "owner/repo N" goes to threads.txt; a bare "owner/repo" goes to repos.txt (the repo is covered, e.g. before `gh issue create`).
+# - Starts the daemon unless its PID is alive, with GH_WATCH_EYES from the environment, else from <dir>/eyes, else your gh login.
+# - Registers <dir> in ~/.claude/gh-watch-dirs.txt, which pre-bash-guard and post-bash-register read.
+# - Prints the Monitor command to arm (re-arm it on every expiry).
+set -e
+[ -n "$1" ] || { sed -n '2,7p' "$0"; exit 1; }
+dir=$(realpath -m "$1"); shift
+mech=$(dirname "$(realpath "$0")")
+mkdir -p "$dir"; touch "$dir/threads.txt" "$dir/repos.txt" "$dir/events.log"
+for f in gh-watch.py gh-watch-daemon.sh; do ln -sfn "$mech/$f" "$dir/$f"; done
+while [ $# -gt 0 ]; do
+  repo=$1; shift
+  [[ $repo == */* ]] || { echo "not owner/repo: $repo"; exit 1; }
+  if [[ ${1:-} =~ ^[0-9]+$ ]]; then line="$repo $1"; file=threads.txt; shift; else line=$repo; file=repos.txt; fi
+  grep -qxF "$line" "$dir/$file" || echo "$line" >> "$dir/$file"
+done
+reg=~/.claude/gh-watch-dirs.txt
+grep -qxF "$dir" "$reg" 2>/dev/null || echo "$dir" >> "$reg"
+if [ -n "$GH_WATCH_EYES" ]; then echo "$GH_WATCH_EYES" > "$dir/eyes"; fi
+[ -s "$dir/eyes" ] || gh api user --jq .login > "$dir/eyes"
+pid=$(cat "$dir/gh-watch.pid" 2>/dev/null || true)
+if [ -n "$pid" ] && grep -q gh-watch-daemon "/proc/$pid/cmdline" 2>/dev/null; then
+  echo "watcher running (PID $pid)"
+else
+  (cd "$dir" && GH_WATCH_EYES=$(cat eyes) nohup setsid ./gh-watch-daemon.sh >/dev/null 2>&1 &)
+  sleep 1; echo "watcher started (PID $(cat "$dir/gh-watch.pid"), eyes: $(cat "$dir/eyes"))"
+fi
+echo "Monitor (timeout_ms 1800000, re-arm on every expiry): tail -n 0 -F $dir/events.log ~/.claude/profiles/swap-events.log 2>/dev/null | grep --line-buffered -E '^###|WATCH ERROR|STALE|^[^ =]'"

@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# Run a command (normally the local-model Claude Code) inside a bubblewrap sandbox.
+#   sandbox <run dir> <methodology file> <timeout seconds> -- <command...>
+# <run dir> holds ws/ (the repo, working directory), gh-snapshot/ (answers for read-only gh calls) and gets cfg/
+# (Claude Code config) and outbox/ (what the agent tried to post).
+# Optional: SANDBOX_WS=<dir> works in that directory instead of <run dir>/ws (read-only with SANDBOX_WS_RO=1);
+# SANDBOX_CLAUDE_MD=<file> replaces the CLAUDE.md, and SANDBOX_NO_HOOKS=1 leaves out settings.json (hooks).
+# Guarantees, enforced by the kernel, not by the model:
+#   - no network: own network namespace; the only way out is a bridge to the model server
+#   - read-only filesystem except the run dir; home directory replaced by an empty one with only the toolchain,
+#     your CLAUDE.md, hooks and skills mounted read-only; no GitHub/SSH/Claude/Codex credentials anywhere
+#   - /usr/bin/gh replaced by a fake that records writes; own PID/IPC namespaces; no host sockets (/run, /tmp hidden)
+set -euo pipefail
+RUN="$(readlink -f "$1")"; METH="$(readlink -f "$2")"; TIMEOUT="$3"; shift 3; [ "$1" = "--" ] && shift
+D="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"  # gh, bridge.py
+LLM="$HOME/local-llm"; source "$LLM/profile.sh"
+H="$HOME"; PORT="${LLM_PORT:-8080}"
+
+"$LLM/serve.sh" start >&2
+# keep the server up while this runs (claude-local stops it when its last session exits)
+mkdir -p "$LLM/.sessions"; touch "$LLM/.sessions/$$"; trap 'rm -f "$LLM/.sessions/$$"; kill $BR 2>/dev/null' EXIT
+
+mkdir -p "$RUN/cfg" "$RUN/outbox" "$RUN/home" "$RUN/pr-steps"
+rm -f "$RUN/llm.sock"
+python3 "$D/bridge.py" outer "$RUN/llm.sock" "$PORT" & BR=$!
+for _ in $(seq 50); do [ -S "$RUN/llm.sock" ] && break; sleep 0.1; done
+
+# Claude Code config for the run: your settings (hooks), CLAUDE.md and skills; no plugins, no MCP servers.
+for f in settings.json skills; do [ "$f" = settings.json ] && [ -n "${SANDBOX_NO_HOOKS:-}" ] && continue; ln -sfn "$H/.claude/$f" "$RUN/cfg/$f"; done
+rm -f "$RUN/cfg/CLAUDE.md"
+if [ -n "${SANDBOX_CLAUDE_MD:-}" ]; then cp "$SANDBOX_CLAUDE_MD" "$RUN/cfg/CLAUDE.md"
+else cat "$H/.claude/CLAUDE.md" "$LLM/local-model-overrides.md" >"$RUN/cfg/CLAUDE.md"; fi
+# The methodology is mounted where the run's CLAUDE.md points to it (the home folder is replaced below)
+MPATH="$(grep -o '/[^` ]*methodology[^` ]*\.md' "$RUN/cfg/CLAUDE.md" | head -1 || true)"
+WS="${SANDBOX_WS:-$RUN/ws}"; WS="$(readlink -f "$WS")"
+wsbind=(); [ "$WS" != "$RUN/ws" ] && wsbind=($([ -n "${SANDBOX_WS_RO:-}" ] && echo --ro-bind || echo --bind) "$WS" "$WS")
+python3 - "$H/.claude.json" "$RUN/cfg/.claude.json" "$WS" <<'EOF'
+import json, sys
+s = json.load(open(sys.argv[1]))
+d = {k: s[k] for k in ('theme', 'hasCompletedOnboarding', 'lastOnboardingVersion') if k in s}
+d['projects'] = {sys.argv[3]: {'hasTrustDialogAccepted': True}}  # the working directory
+json.dump(d, open(sys.argv[2], 'w'))
+EOF
+# git identity without credential helpers
+printf '[user]\n\tname = %s\n\temail = %s\n[safe]\n\tdirectory = *\n' "$(git config --global user.name)" "$(git config --global user.email)" >"$RUN/home/.gitconfig"
+
+# The toolchain, from where the tools resolve: each one's directory goes on PATH, and its install root is mounted
+# read-only when it lives under the replaced home: the Node package around it, else the parent of a bin/, else itself.
+root() {
+  local r="$1"; while [[ "$r" = "$H"/*/* && ! -e "$r/package.json" ]]; do r="${r%/*}"; done
+  if [ -e "$r/package.json" ]; then echo "$r"
+  elif [ "${1##*/}" = bin ] && [ "${1%/bin}" != "$H" ] && [ "${1%/bin}" != "$H/.local" ]; then echo "${1%/bin}"
+  else echo "$1"; fi
+}
+ro=() path=()
+for t in claude node pnpm python3; do
+  p="$(command -v "$t")" || continue
+  [ "$t" = python3 ] && p="$(python3 -c 'import sys; print(sys.executable)')"  # past version-manager shims
+  for d in "$(dirname "$p")" "$(dirname "$(readlink -f "$p")")"; do
+    if [ "$d" = "$(dirname "$p")" ] || [ "${d##*/}" = bin ]; then [[ " ${path[*]} " = *" $d "* ]] || path+=("$d"); fi
+    if [[ "$d" = "$H"/* ]]; then ro+=(--ro-bind "$(root "$d")" "$(root "$d")"); fi
+  done
+done
+for p in .cache/node/corepack .claude/CLAUDE.md .claude/settings.json .claude/mechanisms .claude/skills; do
+  [ -e "$H/$p" ] && ro+=(--ro-bind "$H/$p" "$H/$p")
+done
+
+timeout --kill-after=30 "$TIMEOUT" bwrap \
+  --ro-bind / / --dev /dev --proc /proc \
+  --tmpfs /tmp --tmpfs /run --tmpfs /mnt --tmpfs "$H" \
+  "${ro[@]}" \
+  --ro-bind "$METH" "${MPATH:-$H/.claude/methodology.md}" \
+  --ro-bind "$RUN/home/.gitconfig" "$H/.gitconfig" \
+  --ro-bind "$D/gh" /usr/bin/gh \
+  --bind "$RUN/pr-steps" "$H/.claude/pr-steps" \
+  --ro-bind "$D/bridge.py" /tmp/.bridge.py \
+  --bind "$RUN" "$RUN" "${wsbind[@]}" \
+  --unshare-net --unshare-pid --unshare-ipc --unshare-uts --die-with-parent --new-session \
+  --clearenv \
+  --setenv HOME "$H" --setenv USER "$USER" --setenv TERM xterm-256color --setenv LANG C.UTF-8 \
+  --setenv PATH "$(IFS=:; echo "${path[*]}"):/usr/local/bin:/usr/bin:/bin" \
+  --setenv CLAUDE_CONFIG_DIR "$RUN/cfg" \
+  --setenv ANTHROPIC_BASE_URL "http://127.0.0.1:$PORT" \
+  --setenv ANTHROPIC_AUTH_TOKEN "$(cat "$LLM/.api-key")" \
+  --setenv ANTHROPIC_MODEL local --setenv ANTHROPIC_DEFAULT_OPUS_MODEL local --setenv ANTHROPIC_DEFAULT_SONNET_MODEL local \
+  --setenv ANTHROPIC_DEFAULT_HAIKU_MODEL local --setenv CLAUDE_CODE_SUBAGENT_MODEL local \
+  --setenv CLAUDE_CODE_MAX_CONTEXT_TOKENS "$LLM_CTX" --setenv CLAUDE_CODE_AUTO_COMPACT_WINDOW "$LLM_CTX" \
+  --setenv CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC 1 \
+  --setenv GH_SNAPSHOT "$RUN/gh-snapshot" --setenv GH_OUTBOX "$RUN/outbox" \
+  --setenv GATED_POSTS "$RUN/gated-posts.txt" \
+  --chdir "$WS" \
+  bash -c 'python3 /tmp/.bridge.py inner "$0" "$1" & sleep 0.3; shift; "$@"' "$RUN/llm.sock" "$PORT" "$@"

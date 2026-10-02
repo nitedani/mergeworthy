@@ -1,0 +1,17 @@
+00-intro.md
+01-always-on.md
+02-task.md
+03-part1-heading.md
+part1/00-triage.md
+part1/01-principles.md
+part1/02-tracking.md
+part1/03-discovery.md
+part1/04-design-loop.md
+part1/05-the-live-github-loop.md
+part1/06-posting-gate.md
+part1/07-pushing-ready-and-merge.md
+part1/08-safety-on-the-user-s-machine.md
+part1/09-writing-rules-prompts-and-docs.md
+part1/10-integrating-agents-work.md
+part1/11-reporting-to-the-user.md
+part1/12-pre-flight.md

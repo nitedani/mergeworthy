@@ -1,0 +1,14 @@
+#!/usr/bin/env python3
+"""Prints the review model, derived from `codex debug models`, never hardcoded:
+Codex's top-ranked listed model (lowest `priority`), i.e. its recommended cost-effective frontier workhorse.
+Premium models (described as for "the most demanding work" / "frontier intelligence" / "maximum") are skipped:
+too expensive for routine reviews. `--all` lists the remaining ranked models, for a fallback when the
+account refuses the first."""
+import json, re, subprocess, sys
+PREMIUM = re.compile(r'most demanding|frontier intelligence|maximum intelligence|highest intelligence', re.I)
+OLD = re.compile(r'\b(previous|older|legacy)\b', re.I)
+out = subprocess.run(['codex', 'debug', 'models'], capture_output=True, text=True).stdout
+models = [m for m in json.loads(out)['models'] if m.get('visibility') == 'list' and not PREMIUM.search(m.get('description', ''))]
+models.sort(key=lambda m: (bool(OLD.search(m.get('description', ''))), m.get('priority', 999)))
+if not models: sys.exit('no suitable codex model')
+print('\n'.join(m['slug'] for m in models) if '--all' in sys.argv else models[0]['slug'])

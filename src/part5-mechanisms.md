@@ -1,0 +1,41 @@
+# Part 5: Mechanisms
+
+These scripts enforce the rules that failed as text alone. This file is the only source: `install-methodology` (below) installs the scripts, the hooks and the always-on rules on any machine from this file alone. First install: `F=<this file>; awk '/^### \`install-methodology\`/{f=1;next} f&&/^\`\`\`\`/{if(g)exit;g=1;next} g' "$F" | python3 - "$F"`. Re-run it after every change to this file; never edit the installed copies.
+
+| Mechanism | Enforces | How to use it |
+|---|---|---|
+<!-- if watcher=on -->
+| `gh-watch.py` + `gh-watch-daemon.sh` | 1.5. Reports comments, review comments and reviews by others; PR pushes, merges and closes; CI red and green. Adds 👀 within ~10 s for the logins in `GH_WATCH_EYES`, held back while every `claude-swap` account is limited, and reports their 👍 or 👎 on the agent's comments as `### THUMBS UP` / `### THUMBS DOWN`. Prints `### REFACTOR STALE` when your PR's code (test files excluded) changed by more than ~80 lines since its last `pr-steps refactor` record. | Start with `gh-watch-start <artifact root> <owner/repo> [N]…` (below), never by hand. One `owner/repo number` per line in `threads.txt` next to it. When posting from the user's account, the user's own comments are told apart through `~/.claude/gated-posts.txt` (filled by `gate-pass`). Tail `events.log` and `~/.claude/profiles/swap-events.log` with the Monitor tool, re-armed on every expiry. Position and seen events persist in `gh-watch-state.json`, so restarts lose nothing. |
+<!-- end -->
+| `tracker-check.sh` | 1.2. Umbrella drift (checkbox vs PR state), and a Decisions comment last edited before a tracked PR merged or closed. | `TRACKER_REPO=o/r TRACKER_ISSUE=N TRACKER_DECISIONS=<comment id> ./tracker-check.sh`.<!-- if watcher=on --> The watcher calls it when the variables are set.<!-- end --> Run it before every report. |
+| `post-lint.py` | 1.6. Banned phrases, em dashes, "stacked on", bare `#N`, budgets (reply 80 words, PR 150, issue 400 characters, inline 2 sentences; tables, code, images and URLs not counted), unclassified notes, process in the thread, questions without a recommendation, a bare "Done" to a question or soft suggestion, a notes-table Next of "recommend", "follow-up" or "later". | `post-lint.py drafts/x.md --kind reply\|pr\|issue\|inline<!-- if review_trace=comment -->\|review-record<!-- end --> [--repo o/r]` (default `reply`). A reply or inline comment reads its parent from `drafts/x.parent.md` (or `--parent <file>`; `--parent none` when it answers nobody). Tests: `tests/test_post_lint.py`. |
+| `gate-pass` | 1.6. Records that a draft passed: `post-lint` clean and the review's final message (<!-- if reviewer=claude -->saved as `drafts/x.review.out`<!-- else -->`codex exec -o drafts/x.review.out`<!-- end -->) exactly `CLEAN`; stores the draft's sha256 in `<draft>.gate`. A draft that promises work ("I'll", "follow-up PR") first needs a `PROMISED … (<draft name>)` line in `proposals-open.md`. | `gate-pass drafts/x.md drafts/x.review.out` (set `POST_LINT_ARGS` for `--repo`/`--kind`). |
+| `pre-bash-guard.py` (PreToolUse hook on Bash) | 1.6, 1.7, 1.8. Blocks: `gh` posts and edits whose body isn't a gated draft or changed after its gate; <!-- if watcher=on -->a new issue, PR or comment in a repo no running watcher covers (`gh-watch-start`);<!-- end --> posting the same gated draft as a new comment, issue or PR twice (`<draft>.posted`; edits may repeat); <!-- if merge=reviewer -->every `gh pr merge` (the reviewer merges)<!-- else -->`gh pr merge` without `--squash --subject "<title> (#N)" --body ""`<!-- end -->; `pkill -f`/`killall`; bare `git stash`; force-push without a pinned lease. Reactions pass. | Hook config below. Use absolute draft paths. |
+| `stop-lint.py` (Stop hook) | 1.1.3, 1.5. Blocks ending a turn with "want me to / should I / your call / when you say go…" unless the message has a `GENUINE-FORK:` line, and after a GitHub post in the session while no Monitor tails a watcher's `events.log` (none armed, or the last one expired or stopped). | Hook config below. |
+<!-- if watcher=on -->
+| `gh-watch-start` (`~/.local/bin`) | 1.5. The one way to start watching; idempotent. | `gh-watch-start <dir> [owner/repo [N]]…`: links the watcher into `<dir>`, adds `owner/repo N` to `threads.txt` (a bare `owner/repo` to `repos.txt`, covering the repo before an issue exists), starts the daemon unless it runs (eyes from `GH_WATCH_EYES`, else `<dir>/eyes`, else your login), registers `<dir>` in `~/.claude/gh-watch-dirs.txt`, and prints the Monitor command. `pre-bash-guard` blocks a post to a repo no running watcher covers and adds the thread a comment goes to; `post-bash-register.py` (PostToolUse hook) adds a thread you just created. |
+<!-- end -->
+<!-- if target=local -->
+| `claude-swap` (`~/.local/bin/claude-swap`, source below) | 1.1.13. Keeps several subscriptions logged in, so a usage limit doesn't stop the work. | After `/login` to each account: `claude-swap save <name>`. Then automatic: on a usage limit the `StopFailure` hook (config below) runs `claude-swap on-limit`, which switches every session on the machine to the next unlimited account and writes a line to `~/.claude/profiles/swap-events.log`; the Monitor tailing it wakes the session. `claude-swap list` shows the saved accounts. Alternative with a dashboard: [realiti4/claude-swap](https://github.com/realiti4/claude-swap) (different tool, same name). |
+<!-- end -->
+<!-- if reviewer=codex-then-claude -->
+| `codex-review-model` (`~/.local/bin`) | TASK review model. Prints Codex's top-ranked model from `codex debug models`, skipping the premium tier ("the most demanding work") and older generations, so reviews move to newer models without editing any prompt. | `codex exec -m "$(codex-review-model)" …`; `--all` lists the ranked models for a fallback. |
+<!-- end -->
+| `pr-steps` + posting hook | Part 2 steps 6–7 (Part 3 sections 6–7 in Tier ≥ M), 1.7. | `gh pr create` (unless `--draft`) and `gh pr ready` are blocked until HEAD has a `review` and a `refactor` record: run `pr-steps review <reviewer output>` and `pr-steps refactor <rating output>` on the final HEAD after the fixes. |
+| `install-methodology` | 1.1.12: this file travels; the machine's copies follow it. | Writes Part 5's scripts to `~/.claude/mechanisms/` (commands linked into `~/.local/bin`), merges the hook config into `~/.claude/settings.json`, and writes the Always-on rules into `~/.claude/CLAUDE.md` between markers, leaving the rest of that file alone. The file's first line, the settings header `build.sh` writes, goes to `~/.claude/mechanisms/settings.env` as `METHODOLOGY_<KEY>=<value>` lines, read by `post-lint` (badge, review records; `gate-pass` runs it) and `pre-bash-guard` (merge); an environment variable of the same name wins. |
+| `ready-check` (manual) | 1.7. | Before saying "ready", check every item of 1.7's Ready list against the head (`gh pr checks` for CI; the guardian verdict per Part 3 §11.1, mechanism census included, run after the last fix round; the body re-read against the head) and paste the result. |
+
+Hook config for `~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [{ "matcher": "Bash", "hooks": [{ "type": "command", "command": "python3 ~/.claude/mechanisms/pre-bash-guard.py" }] }],<!-- if watcher=on -->
+    "PostToolUse": [{ "matcher": "Bash", "hooks": [{ "type": "command", "command": "python3 ~/.claude/mechanisms/post-bash-register.py" }] }],<!-- end -->
+    "Stop": [{ "hooks": [{ "type": "command", "command": "python3 ~/.claude/mechanisms/stop-lint.py" }] }]<!-- if target=local -->,
+    "StopFailure": [{ "matcher": "rate_limit", "hooks": [{ "type": "command", "command": "~/.local/bin/claude-swap on-limit" }] }]<!-- end -->
+  }
+}
+```
+
+

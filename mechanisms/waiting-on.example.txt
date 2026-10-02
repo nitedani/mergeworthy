@@ -1,0 +1,3 @@
+upstream/lib#12 -> your-org/app#34: drop the workaround and update the PR body
+your-org/app#35 -> you/plugin feature PR: rebase on the merged change
+your-org/app#36 -> you/plugin#7: bump the dependency to the release with the fix

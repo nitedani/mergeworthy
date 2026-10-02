@@ -1,0 +1,1 @@
+<img src="https://github.com/claude.png" width="20" height="20" align="left" alt="Claude"> **Claude:** Removed the paragraph above instead, in b4c4ebd6ed: "seldom edge cases" fits it, while the `Content-Type` line is needed by every non-HTML page.

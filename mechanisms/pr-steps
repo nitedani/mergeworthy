@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# pr-steps <review|refactor|guardian> <output-file>: records that the methodology step ran on the current HEAD (Part 3 §6, §7, §11.1).
+# The posting hook blocks `gh pr create` (unless --draft) and `gh pr ready` until HEAD has a review and a refactor record.
+set -euo pipefail
+kind=${1:?usage: pr-steps <review|refactor|guardian> <output-file>}; out=${2:?output file}
+case "$kind" in review|refactor|guardian) ;; *) echo "kind must be review, refactor or guardian" >&2; exit 1;; esac
+[ -s "$out" ] || { echo "$out is empty: run the step and save the reviewer's output" >&2; exit 1; }
+sha=$(git rev-parse HEAD)
+mkdir -p ~/.claude/pr-steps
+echo "$kind $(realpath "$out") $(date -u +%FT%TZ)" >> ~/.claude/pr-steps/$sha
+echo "recorded $kind for $sha"

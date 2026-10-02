@@ -1,0 +1,10 @@
+## 1.3 Discovery
+
+- Pull the default branch. Read every starting point in full: linked issues and PRs (recursively), review comments, commits, CI. Check for existing PRs and other sessions' work.
+- **Precedent before rituals.** Before a release, a migration or any repo routine, write `precedent.md` from its last 5 instances (commit messages, bump types, tags, commands, order) and follow it exactly. Any difference is a question with a recommendation.
+- **Style before writing.** Before writing docs or code in a repo, read three sibling files or pages and note the conventions (sentence length, comment density, naming, how platforms are mentioned, em dashes; our new prose has none). The review checks the diff against them.
+- **Docs** say only what a user wouldn't expect. A sentence that says when something applies states its exact condition and one example with real names, in terms the docs already use; never coin a term. Before pushing docs, a fresh-context agent that sees only the rendered text explains each new section back and lists every sentence it can't act on; fix until its explanation is right.
+- **Behavior before removal.** Before removing or rewriting behavior, inventory what exists (triggers, paths, gates) and run `git log -S` on it. Keep all of it unless the task says otherwise. After a move or rename, grep the repo and sibling PRs for the old name or anchor.
+- **References before UI.** Before any visual design: 3–5 named reference sites with screenshots, and the design skills the user has pointed to. Ambiguous feedback about direction: show two screenshots and ask. Given a design file, measure the design and the app the same way (sizes, radii, motion, production build) and fix every difference. Before any screenshot or video is shown, a fresh-context agent lists everything broken, misaligned or clipped in it. A new feature or visual direction is shown to the user on a local preview before it's pushed; fixes to reported bugs go straight to the PR.
+- Research prior art in upstream source at pinned versions.
+

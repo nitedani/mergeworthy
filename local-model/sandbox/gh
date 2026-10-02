@@ -1,0 +1,117 @@
+#!/usr/bin/env python3
+"""Fake gh for the offline sandbox.
+Reads are answered from $GH_SNAPSHOT/<owner>_<repo>_<number>.json ({number, title, body, state, author, isPR,
+headRefName, baseRefName, comments: [{author, body, createdAt}]}) and optional <owner>_<repo>_<number>.diff.
+Anything that would change GitHub is written to $GH_OUTBOX/post-N.json and never sent. Every call is logged."""
+import json, os, re, subprocess, sys, time
+
+a = sys.argv[1:]
+SNAP, OUT = os.environ['GH_SNAPSHOT'], os.environ['GH_OUTBOX']
+os.makedirs(OUT, exist_ok=True)
+open(os.path.join(OUT, 'calls.log'), 'a').write(json.dumps(a) + '\n')
+
+def opt(*names):
+    for i, x in enumerate(a):
+        for n in names:
+            if x == n and i + 1 < len(a): return a[i + 1]
+            if x.startswith(n + '='): return x.split('=', 1)[1]
+    return None
+
+def default_repo():
+    for remote in ('upstream', 'origin'):
+        try:
+            u = subprocess.run(['git', 'remote', 'get-url', remote], capture_output=True, text=True).stdout.strip()
+        except Exception: u = ''
+        m = re.search(r'github\.com[:/]([^/]+)/([^/.]+)', u)
+        if m: return f'{m.group(1)}/{m.group(2)}'
+    return os.environ.get('SANDBOX_GH_REPO', 'owner/repo')  # no GitHub remote: set it to the snapshot's repo
+
+def load(repo, n):
+    p = os.path.join(SNAP, f"{repo.replace('/', '_')}_{n}.json")
+    return json.load(open(p)) if os.path.exists(p) else None
+
+def fail(msg):
+    print(f'gh (offline sandbox): {msg}', file=sys.stderr); sys.exit(1)
+
+def body_of():
+    f = opt('--body-file', '-F')
+    if f:
+        f = f.split('=', 1)[1] if f.startswith('body=') else f
+        f = f[1:] if f.startswith('@') else f
+        try: return open(f).read()
+        except Exception: return f'<could not read {f}>'
+    b = opt('--body', '-b')
+    if b is not None: return b
+    for i, x in enumerate(a):
+        if x in ('-f', '--raw-field') and i + 1 < len(a) and a[i + 1].startswith('body='): return a[i + 1][5:]
+    return None
+
+def record():
+    n = len([f for f in os.listdir(OUT) if f.startswith('post-')]) + 1
+    json.dump({'args': a, 'body': body_of(), 'time': time.strftime('%H:%M:%S')}, open(os.path.join(OUT, f'post-{n}.json'), 'w'), indent=1)
+    print(f'https://github.com/{opt("-R", "--repo") or default_repo()}/issues/0#issuecomment-{9000000000 + n}')
+    sys.exit(0)
+
+WRITES = {('pr', 'comment'), ('issue', 'comment'), ('pr', 'create'), ('pr', 'edit'), ('issue', 'edit'), ('issue', 'create'),
+          ('pr', 'review'), ('pr', 'merge'), ('pr', 'close'), ('issue', 'close'), ('pr', 'ready'), ('repo', 'fork'),
+          ('issue', 'reopen'), ('pr', 'reopen'), ('label', 'create'), ('release', 'create')}
+if tuple(a[:2]) in WRITES: record()
+
+def render_text(t, comments):
+    s = f"title:\t{t['title']}\nstate:\t{t.get('state', 'OPEN')}\nauthor:\t{t['author']}\nnumber:\t{t['number']}\n"
+    if t.get('isPR'): s += f"head:\t{t.get('headRefName', '')}\nbase:\t{t.get('baseRefName', 'main')}\n"
+    s += f"--\n{t['body']}\n"
+    if comments:
+        for c in t['comments']: s += f"\n--\nauthor:\t{c['author']}\ndate:\t{c['createdAt']}\n--\n{c['body']}\n"
+    return s
+
+def as_json(t, fields):
+    full = {**t, 'author': {'login': t['author']}, 'comments': [{**c, 'author': {'login': c['author']}} for c in t['comments']]}
+    return {k: full.get(k) for k in fields.split(',')} if fields else full
+
+if a[:1] in (['pr'], ['issue']) and len(a) > 1 and a[1] in ('view', 'diff'):
+    nums = [x for x in a[2:] if re.fullmatch(r'#?\d+', x)]
+    url = next((x for x in a[2:] if 'github.com' in x), None)
+    repo = opt('-R', '--repo') or default_repo()
+    if url:
+        m = re.search(r'github\.com/([^/]+/[^/]+)/(?:pull|issues)/(\d+)', url)
+        if m: repo, nums = m.group(1), [m.group(2)]
+    if not nums: fail('pass the number explicitly in this sandbox')
+    t = load(repo, nums[0].lstrip('#'))
+    if not t: fail(f'no offline copy of {repo}#{nums[0]}')
+    if a[1] == 'diff':
+        p = os.path.join(SNAP, f"{repo.replace('/', '_')}_{t['number']}.diff")
+        if not os.path.exists(p): fail('no offline diff; use git in the checkout')
+        print(open(p).read()); sys.exit(0)
+    if '--json' in ' '.join(a):
+        if opt('--jq', '-q'): print('gh (offline sandbox): --jq is not supported here; printing the full JSON', file=sys.stderr)
+        print(json.dumps(as_json(t, opt('--json')), indent=1)); sys.exit(0)
+    print(render_text(t, '--comments' in a or '-c' in a)); sys.exit(0)
+
+if a[:1] == ['api']:
+    method = (opt('-X', '--method') or ('POST' if any(x in a for x in ('-f', '-F', '--field', '--raw-field', '--input')) else 'GET')).upper()
+    if method != 'GET': record()
+    path = next((x for x in a[1:] if not x.startswith('-') and '/' in x), '')
+    m = re.match(r'/?repos/([^/]+/[^/]+)/(issues|pulls)/(\d+)(/comments)?', path)
+    if m:
+        t = load(m.group(1), m.group(3))
+        if m.group(4):
+            if not t: fail(f'no offline copy of {m.group(1)}#{m.group(3)}')
+            out = [] if m.group(2) == 'pulls' else [{'user': {'login': c['author']}, 'body': c['body'], 'created_at': c['createdAt']} for c in t['comments']]
+        else:
+            # existence checks (post-lint) succeed for any number; details only for the offline copies
+            out = {'number': int(m.group(3)), 'title': t['title'], 'body': t['body'], 'state': t.get('state', 'open').lower(),
+                   'user': {'login': t['author']}} if t else {'number': int(m.group(3))}
+        if '--silent' not in a: print(json.dumps(out, indent=1))
+        sys.exit(0)
+    fail(f'no offline data for gh api {path}')
+
+if a[:2] in (['pr', 'list'], ['issue', 'list']):
+    for f in sorted(os.listdir(SNAP)):
+        if f.endswith('.json'):
+            t = json.load(open(os.path.join(SNAP, f)))
+            if bool(t.get('isPR')) == (a[0] == 'pr'): print(f"{t['number']}\t{t['title']}\t{t.get('headRefName', '')}")
+    sys.exit(0)
+if a[:2] == ['auth', 'status']:
+    print('github.com\n  ✓ Logged in to github.com (offline sandbox: reads come from saved copies, posts are recorded, not sent)'); sys.exit(0)
+fail(f'"gh {" ".join(a)}" is not available offline. Reads: gh pr/issue view, gh api repos/O/R/issues/N[/comments]')

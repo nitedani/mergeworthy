@@ -1,0 +1,65 @@
+#!/usr/bin/env python3
+r"""install-methodology <methodology.md>: installs the methodology on this machine from the file alone.
+- Every script in Part 5 (a `### \`name\`` heading followed by a fenced block) goes to ~/.claude/mechanisms/, executable;
+  the commands (gate-pass, gh-watch-start, pr-steps, codex-review-model, claude-swap, install-methodology) are linked into ~/.local/bin.
+- The hook config in Part 5 is merged into ~/.claude/settings.json (entries already there are kept, none duplicated).
+- The "Always-on rules" section is written into ~/.claude/CLAUDE.md between markers, with a pointer to the file;
+  the rest of CLAUDE.md is left as it is. Re-running replaces the block, so the file stays the only source.
+- The settings header build.sh writes as the file's first line goes to ~/.claude/mechanisms/settings.env as
+  METHODOLOGY_<KEY>=<value> lines, which post-lint and pre-bash-guard read.
+First install, from the file itself:
+  F=methodology.md; awk '/^### `install-methodology`/{f=1;next} f&&/^````/{if(g)exit;g=1;next} g' "$F" | python3 - "$F"
+"""
+import json, os, re, sys
+
+src = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else sys.exit(__doc__))
+md = open(src).read()
+home = os.path.expanduser('~')
+mech, bin_ = f'{home}/.claude/mechanisms', f'{home}/.local/bin'
+os.makedirs(mech, exist_ok=True); os.makedirs(bin_, exist_ok=True)
+
+# Scripts
+scripts = re.findall(r'^### `([\w.-]+)`\n\n````\w*\n(.*?)\n````$', md, re.S | re.M)
+for name, body in scripts:
+    p = f'{mech}/{name}'
+    open(p, 'w').write(body + '\n'); os.chmod(p, 0o755)
+    if '.' not in name:  # commands; .py and .sh files are run by path
+        link = f'{bin_}/{name}'
+        if os.path.islink(link) or not os.path.exists(link):
+            if os.path.islink(link): os.remove(link)
+            os.symlink(p, link)
+print(f'{len(scripts)} scripts -> {mech}')
+
+# Settings
+m = re.match(r'<!-- settings: (.*?) -->', md)
+pairs = (kv.split('=', 1) for kv in m.group(1).split()) if m else ()
+open(f'{mech}/settings.env', 'w').write(''.join(f'METHODOLOGY_{k.upper()}={v}\n' for k, v in pairs))
+print(f'settings -> {mech}/settings.env')
+
+# Hooks
+m = re.search(r'Hook config for `~/.claude/settings.json`:\n\n```json\n(.*?)\n```', md, re.S)
+if m:
+    want = json.loads(m.group(1))['hooks']
+    sp = f'{home}/.claude/settings.json'
+    settings = json.load(open(sp)) if os.path.exists(sp) else {}
+    hooks = settings.setdefault('hooks', {})
+    have = json.dumps(hooks).replace(home, '~')
+    for event, entries in want.items():
+        for e in entries:
+            if all(h['command'].replace(home, '~') in have for h in e['hooks']): continue
+            hooks.setdefault(event, []).append(e)
+    json.dump(settings, open(sp, 'w'), indent=2)
+    print(f'hooks merged -> {sp}')
+
+# Always-on rules
+m = re.search(r'<!-- always-on:begin -->\n(.*?)<!-- always-on:end -->', md, re.S)
+if m:
+    cp = f'{home}/.claude/CLAUDE.md'
+    old = open(cp).read() if os.path.exists(cp) else ''
+    block = (f'<!-- methodology:begin (written by install-methodology; edit the source next to it ({os.path.dirname(os.path.dirname(src))}/src) and rebuild, not this block) -->\n'
+             f'The full methodology is `{src}`; follow it for any multi-step or GitHub work.\n\n'
+             f'{m.group(1)}<!-- methodology:end -->\n')
+    new = re.sub(r'<!-- methodology:begin.*?<!-- methodology:end -->\n', lambda _: block, old, flags=re.S) \
+        if '<!-- methodology:begin' in old else (old.rstrip('\n') + '\n\n' if old.strip() else '') + block
+    open(cp, 'w').write(new)
+    print(f'always-on rules -> {cp}')
