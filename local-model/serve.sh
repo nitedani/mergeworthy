@@ -76,8 +76,8 @@ def cmdline(pid):
     try: return open(f'/proc/{pid}/cmdline', 'rb').read()
     except OSError: return b''
 sess = os.path.join(d, '.sessions')
-for f in os.listdir(sess) if os.path.isdir(sess) else ():  # claude-local wrappers
-    if b'claude-local' in cmdline(f): sys.exit(0)
+for f in os.listdir(sess) if os.path.isdir(sess) else ():  # claude-local wrappers and local-agent sandboxes
+    if b'claude-local' in cmdline(f) or b'/sandbox/sandbox' in cmdline(f): sys.exit(0)
 try: workers = json.load(open(os.path.join(cfg, 'daemon/roster.json'))).get('workers', {})  # /bg sessions
 except Exception: workers = {}
 if any(cmdline(w.get('pid', 0)) for w in workers.values()): sys.exit(0)
