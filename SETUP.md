@@ -11,7 +11,7 @@ Install the work methodology from https://github.com/nitedani/work-methodology o
    them as a short list with the default first, and take my answers. If they match an existing profile in profiles/, use
    it; otherwise write profiles/local.env with only the changed keys (it stays untracked).
 3. Run ./build.sh with those profiles (none for the defaults), then
-   python3 mechanisms/install-methodology dist/<the built file>.
+   python3 claude/bin/install-methodology dist/<the built file>.
 4. Optional parts, each only if I say yes:
    - GitHub watcher: nothing to install; `gh-watch-start` starts it on first use.
    - claude-swap: for each extra Claude subscription, `/login` to it, then `claude-swap save <name>`.

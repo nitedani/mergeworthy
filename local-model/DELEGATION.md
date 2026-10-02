@@ -15,18 +15,18 @@ FINDINGS; Claude checks every finding). Never a cheaper Claude model in its plac
 **How.** `local-agent <mode> <ticket.md> [--cwd <dir>] [--write]`, through Bash with `run_in_background`; one runs at a
 time (one GPU). It works in a sandbox with network access (docs, registries, upstream source) but no credentials, read-only unless `--write`, and even then only in `<dir>` (use a worktree
 you created for it). It returns one JSON result: claims with `path:line` sources, commands with exit codes, and a
-`not_checked` list. Modes:
-- `facts`: answer a question from the code ("every caller of X and when it runs").
-- `evidence`: the strongest evidence-backed case for one `## Position` (one side of 1.5's mini debate; each side gets
-  the same neutral ticket, never the other side's argument). You argue and decide.
-- `reproduce`: follow a report exactly and show whether it happens; no fixing.
-- `run`: run gates, tests, benchmarks or re-runs of failures on `main` vs head, and table the results.
-- `implement` (`--write`): execute **your `## Plan`**, a few key points in order (which function, what rule, what not to
-  touch), commit, and run the `## Acceptance` checks. It reports deviations instead of choosing another approach.
-- `review` (`## File` = the draft): check every claim, example and diff in it against the code; `verdict` is `CLEAN`
-  only with no findings. Copy that verdict to the review output for `gate-pass`.
-- `cold-read`: a newcomer's read of a doc or rules file (1.3, 1.9): every sentence it can't act on. A weaker model as the
-  reader is a stricter test.
+`not_checked` list. Each mode is a skill in `skills/<mode>.md`: what it's for, the agent's instructions, and the ticket
+sections it needs (`local-agent` refuses a ticket without them):
+
+| Mode | For |
+| --- | --- |
+| [`facts`](skills/facts.md) | A question answered from the code |
+| [`evidence`](skills/evidence.md) | One side of the mini debate |
+| [`reproduce`](skills/reproduce.md) | A report followed exactly, no fixing |
+| [`run`](skills/run.md) | Gates, tests, benchmarks, re-runs, tabled |
+| [`implement`](skills/implement.md) | Your plan executed and committed (`--write`) |
+| [`review`](skills/review.md) | The gate review of a draft; its verdict is the `CLEAN` |
+| [`cold-read`](skills/cold-read.md) | A newcomer's read of a doc |
 
 **The ticket** (markdown, `## ` headings): `Goal` (one observable outcome), `Facts` (verified, each with its source),
 `To check` (hypotheses, as questions), `Scope` (paths, commands), `Acceptance` (commands or observations that define

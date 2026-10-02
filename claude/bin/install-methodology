@@ -57,7 +57,7 @@ m = re.search(r'<!-- always-on:begin -->\n(.*?)<!-- always-on:end -->', md, re.S
 if m:
     cp = f'{home}/.claude/CLAUDE.md'
     old = open(cp).read() if os.path.exists(cp) else ''
-    block = (f'<!-- methodology:begin (written by install-methodology; edit the source next to it ({os.path.dirname(os.path.dirname(src))}/src) and rebuild, not this block) -->\n'
+    block = (f'<!-- methodology:begin (written by install-methodology; edit the source next to it ({os.path.dirname(os.path.dirname(src))}/methodology) and rebuild, not this block) -->\n'
              f'The full methodology is `{src}`; follow it for any multi-step or GitHub work.\n\n'
              f'{m.group(1)}<!-- methodology:end -->\n')
     new = re.sub(r'<!-- methodology:begin.*?<!-- methodology:end -->\n', lambda _: block, old, flags=re.S) \

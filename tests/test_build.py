@@ -4,7 +4,7 @@ Builds in ./build-check/ (never /tmp): a copy of the sources, so dist/ is only c
 import importlib.util, os, re, shutil, subprocess, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-spec = importlib.util.spec_from_file_location('filter', os.path.join(ROOT, 'filter.py'))
+spec = importlib.util.spec_from_file_location('filter', os.path.join(ROOT, 'claude', 'tools', 'filter.py'))
 flt = importlib.util.module_from_spec(spec); spec.loader.exec_module(flt)
 DEFAULTS = {k: v[0] for k, v in flt.SCHEMA.items()}
 fails = []
@@ -27,8 +27,8 @@ for bad in ('<!-- if nope=x -->a<!-- end -->', '<!-- if target=nope -->a<!-- end
             'a<!-- end -->', '<!-- if target=ci -->a<!-- else -->b<!-- else -->c<!-- end -->'):
     expect(f'rejects {bad!r}', render(bad).startswith('ERROR'))
 
-# every marker in src/ parses, with known keys and values (each file balanced on its own)
-for d, _, files in os.walk(os.path.join(ROOT, 'src')):
+# every marker in methodology/ parses, with known keys and values (each file balanced on its own)
+for d, _, files in os.walk(os.path.join(ROOT, 'methodology')):
     for f in files:
         out = render(open(os.path.join(d, f)).read())
         expect(f'{f}: {out}', not out.startswith('ERROR'))
@@ -41,8 +41,8 @@ for f in os.listdir(os.path.join(ROOT, 'profiles')):
 # the committed dist/ files are what build.sh makes; the no-profile build differs from them at most in the settings header
 B = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'build-check')
 shutil.rmtree(B, ignore_errors=True)
-for x in ('src', 'mechanisms', 'profiles'): shutil.copytree(os.path.join(ROOT, x), os.path.join(B, x))
-for x in ('build.sh', 'filter.py'): shutil.copy2(os.path.join(ROOT, x), B)
+for x in ('methodology', 'claude', 'profiles'): shutil.copytree(os.path.join(ROOT, x), os.path.join(B, x))
+shutil.copy2(os.path.join(ROOT, 'build.sh'), B)
 r = subprocess.run(['./build.sh', '--all'], cwd=B, capture_output=True, text=True)
 expect(f'build.sh --all: {r.stderr}', r.returncode == 0)
 body = lambda p: re.sub(r'\A<!-- settings: .* -->\n', '', open(p).read()) if os.path.exists(p) else None

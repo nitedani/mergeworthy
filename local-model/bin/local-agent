@@ -6,7 +6,8 @@
 For bounded work only: tasks Claude can define precisely and the local model finishes in minutes. Not for what Claude
 does in a minute itself (the ticket and the check would cost more), and not for open-ended work.
 
-Modes: facts, evidence, reproduce, run, implement, cold-read. The result is one JSON object (schema per mode) on
+Modes: one per skills/<mode>.md (facts, evidence, reproduce, run, implement, review, cold-read): its role and the
+ticket sections it needs. The result is one JSON object (schema per mode) on
 stdout, plus an `id` and a `logs` folder; full output stays in the logs. Runs in the sandbox: network for reading, no
 credentials, everything read-only except --cwd with --write (implement needs --write). It can't push or post; you
 check the result and act.
@@ -30,30 +31,25 @@ CLAIM = obj({'claim': S, 'source': S, 'quote': S})          # source: path:line,
 CMD = obj({'command': S, 'exit_code': N, 'result': S})
 NOT_CHECKED = arr(S)
 
-MODES = {
-  'facts': ('Answer the Goal with facts from the code and commands only.',
-            obj({'answer': S, 'claims': arr(CLAIM), 'not_checked': NOT_CHECKED})),
-  'evidence': ('Build the strongest evidence-backed case for the Position: what the code does (path:line), what main does '
-               'for the analogous case, a measurement where one is possible. Also list the weakest points of this side.',
-            obj({'position': S, 'case': S, 'evidence': arr(CLAIM), 'measurements': arr(CMD), 'weakest_points': arr(S),
-                 'not_checked': NOT_CHECKED})),
-  'reproduce': ('Reproduce what the Goal describes, exactly as written. Do not fix anything.',
-            obj({'reproduced': B, 'steps': arr(CMD), 'expected_vs_actual': S, 'artifacts': arr(S), 'not_checked': NOT_CHECKED})),
-  'run': ('Run what the Scope lists and report each result. Do not change files.',
-            obj({'results': arr(CMD), 'not_checked': NOT_CHECKED})),
-  'cold-read': ('Read the File as a newcomer would. Explain each section back in one line, and list every sentence you '
-                'could not act on or understand, quoting it.',
-            obj({'summary_back': arr(S), 'unclear': arr(obj({'quote': S, 'why': S}))})),
-  'review': ('Check the File (a draft to be posted) against the code and commands: every factual claim, code example and '
-             'diff must hold. List each finding with its evidence. The verdict is exactly CLEAN only when there are none.',
-            obj({'verdict': {'type': 'string', 'enum': ['CLEAN', 'FINDINGS']}, 'findings': arr(obj({'quote': S, 'problem': S, 'evidence': S})),
-                 'not_checked': NOT_CHECKED})),
-  'implement': ('Implement the Plan, step by step, then commit on the current branch and run every Acceptance check. '
-                'The approach is the Plan\'s: if a step turns out wrong or impossible, stop and report it in deviations '
-                'instead of choosing another approach.',
-            obj({'commits': arr(obj({'sha': S, 'title': S})), 'diff_stat': S, 'acceptance': arr(CMD), 'deviations': arr(S),
-                 'not_checked': NOT_CHECKED})),
+# Each mode's role and required ticket sections live in skills/<mode>.md; only the result schemas are here
+SCHEMAS = {
+  'facts': obj({'answer': S, 'claims': arr(CLAIM), 'not_checked': NOT_CHECKED}),
+  'evidence': obj({'position': S, 'case': S, 'evidence': arr(CLAIM), 'measurements': arr(CMD), 'weakest_points': arr(S), 'not_checked': NOT_CHECKED}),
+  'reproduce': obj({'reproduced': B, 'steps': arr(CMD), 'expected_vs_actual': S, 'artifacts': arr(S), 'not_checked': NOT_CHECKED}),
+  'run': obj({'results': arr(CMD), 'not_checked': NOT_CHECKED}),
+  'cold-read': obj({'summary_back': arr(S), 'unclear': arr(obj({'quote': S, 'why': S}))}),
+  'review': obj({'verdict': {'type': 'string', 'enum': ['CLEAN', 'FINDINGS']}, 'findings': arr(obj({'quote': S, 'problem': S, 'evidence': S})), 'not_checked': NOT_CHECKED}),
+  'implement': obj({'commits': arr(obj({'sha': S, 'title': S})), 'diff_stat': S, 'acceptance': arr(CMD), 'deviations': arr(S), 'not_checked': NOT_CHECKED}),
 }
+SKILLS = os.path.join(DIR, 'skills')
+def skill(mode):
+    t = open(os.path.join(SKILLS, f'{mode}.md')).read()
+    head = re.match(r'---\n(.*?)\n---\n', t, re.S).group(1)
+    meta = dict(l.split(':', 1) for l in head.splitlines() if ':' in l)
+    role = re.search(r'^## Instructions\n(.*?)(?=^## |\Z)', t, re.S | re.M).group(1).strip()
+    requires = [x.strip().lower() for x in meta.get('requires', '').split(',') if x.strip()]
+    return role, requires, meta.get('write', '').strip() == 'true'
+MODES = sorted(SCHEMAS)
 OPINION = re.compile(r"\b(I think|I believe|probably|likely|I guess|my guess|seems to|should be|the fix is|the cause is|"
                      r"the bug is|obviously|clearly)\b", re.I)
 
@@ -69,7 +65,7 @@ def fail(msg): print(f'local-agent: {msg}', file=sys.stderr); sys.exit(2)
 
 def run(run_dir, cwd, write, timeout, prompt, role, schema):
     os.makedirs(os.path.join(run_dir, 'gh-snapshot'), exist_ok=True)
-    env = dict(os.environ, SANDBOX_WS=cwd, SANDBOX_CLAUDE_MD=os.path.join(DIR, 'delegate-instructions.md'), SANDBOX_NO_HOOKS='1')
+    env = dict(os.environ, SANDBOX_WS=cwd, SANDBOX_CLAUDE_MD=os.path.join(DIR, 'ticket-agent.md'), SANDBOX_NO_HOOKS='1')
     if not write: env['SANDBOX_WS_RO'] = '1'
     else: env.pop('SANDBOX_WS_RO', None)
     sid = str(uuid.uuid4())
@@ -78,7 +74,7 @@ def run(run_dir, cwd, write, timeout, prompt, role, schema):
             '--disallowedTools', 'Agent', 'Task']  # a ticket's agent is a subagent: it never starts its own
     args += ['--session-id', sid]
     with open(os.path.join(run_dir, 'stderr.log'), 'a') as err:
-        p = subprocess.run([os.path.join(DIR, 'sandbox', 'sandbox'), run_dir, os.path.join(DIR, 'delegate-instructions.md'),
+        p = subprocess.run([os.path.join(DIR, 'sandbox', 'sandbox'), run_dir, os.path.join(DIR, 'ticket-agent.md'),
                             str(timeout), '--'] + args, env=env, stdout=subprocess.PIPE, stderr=err, stdin=subprocess.DEVNULL, text=True)
     open(os.path.join(run_dir, 'result.json'), 'w').write(p.stdout)
     try: d = json.loads(p.stdout)
@@ -100,22 +96,20 @@ def main():
     for i, x in enumerate(a):
         if x in opts and i + 1 < len(a): opts[x] = a[i + 1]
     sec = sections(ticket)
-    if 'goal' not in sec: fail('the ticket needs a "## Goal"')
-    if mode in ('implement', 'reproduce') and 'acceptance' not in sec: fail(f'{mode} needs a "## Acceptance"')
-    if mode == 'implement' and 'plan' not in sec: fail('implement needs a "## Plan": your key points, in order')
-    if mode == 'implement' and not write: fail('implement needs --write')
-    if mode == 'evidence' and 'position' not in sec: fail('evidence needs a "## Position"')
-    if mode in ('cold-read', 'review') and 'file' not in sec: fail(f'{mode} needs a "## File"')
+    role, requires, needs_write = skill(mode)
+    missing = [r for r in requires if r not in sec]
+    if missing: fail(f'{mode} needs ' + ', '.join(f'"## {r.title()}"' for r in missing) + f' (see {SKILLS}/{mode}.md)')
+    if needs_write and not write: fail(f'{mode} needs --write')
     m = OPINION.search(sec.get('facts', ''))
     if m: fail(f'opinion in Facts ("{m.group(0)}"): facts only, each with its source; put a hypothesis under "## To check" as a question')
     cwd = os.path.realpath(opts['--cwd']); rid = f'{mode}-{uuid.uuid4().hex[:8]}'; run_dir = os.path.join(RUNS, rid)
     os.makedirs(run_dir, exist_ok=True)
     json.dump({'mode': mode, 'cwd': cwd, 'write': write, 'timeout': int(opts['--timeout'])}, open(os.path.join(run_dir, 'meta.json'), 'w'))
     open(os.path.join(run_dir, 'ticket.md'), 'w').write(ticket)
-    role, schema = MODES[mode]
+    schema = SCHEMAS[mode]
     access = 'read-write' if write else 'read-only'
     mins = int(opts['--timeout']) // 60
-    prompt = f'{ticket}\n\n(You work in {cwd}, {access}. Offline: no internet; gh cannot reach GitHub. Time limit: {mins} minutes.)'
+    prompt = f'{ticket}\n\n(You work in {cwd}, {access}. You can read the web; gh only answers from saved snapshots. Time limit: {mins} minutes.)'
     res = run(run_dir, cwd, write, int(opts['--timeout']), prompt, role, schema)
     print(json.dumps({'id': rid, 'logs': run_dir, **res}, indent=1))
 

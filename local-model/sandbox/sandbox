@@ -26,7 +26,7 @@ mkdir -p "$RUN/cfg" "$RUN/outbox" "$RUN/home" "$RUN/pr-steps"
 for f in settings.json skills; do [ "$f" = settings.json ] && [ -n "${SANDBOX_NO_HOOKS:-}" ] && continue; ln -sfn "$H/.claude/$f" "$RUN/cfg/$f"; done
 rm -f "$RUN/cfg/CLAUDE.md"
 if [ -n "${SANDBOX_CLAUDE_MD:-}" ]; then cp "$SANDBOX_CLAUDE_MD" "$RUN/cfg/CLAUDE.md"
-else cat "$H/.claude/CLAUDE.md" "$LLM/local-model-overrides.md" >"$RUN/cfg/CLAUDE.md"; fi
+else cat "$H/.claude/CLAUDE.md" "$LLM/claude-local-overrides.md" >"$RUN/cfg/CLAUDE.md"; fi
 # The methodology is mounted where the run's CLAUDE.md points to it (the home folder is replaced below)
 MPATH="$(grep -o '/[^` ]*methodology[^` ]*\.md' "$RUN/cfg/CLAUDE.md" | head -1 || true)"
 WS="${SANDBOX_WS:-$RUN/ws}"; WS="$(readlink -f "$WS")"

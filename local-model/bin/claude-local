@@ -15,16 +15,16 @@ esac
 [ -n "$NO_MODEL" ] || "$DIR/serve.sh" start >&2
 
 # Own config folder: Claude Code runs /background sessions in a shared host process started by whichever `claude` came
-# first, and that host doesn't pass on ANTHROPIC_BASE_URL, so a local session sent there asked Anthropic for "bonsai"
+# first, and that host doesn't pass on ANTHROPIC_BASE_URL, so a local session sent there asked Anthropic for the local model
 # (404). A separate folder gets a separate host, started from here with the variables below. Your settings, hooks,
-# skills and plugins are linked in, your CLAUDE.md is copied with local-model-overrides.md added; history stays separate.
+# skills and plugins are linked in, your CLAUDE.md is copied with claude-local-overrides.md added; history stays separate.
 CFG="$DIR/claude-config"
 mkdir -p "$CFG"
 for f in settings.json skills plugins; do
   [ -e "$HOME/.claude/$f" ] && [ ! -e "$CFG/$f" ] && ln -s "$HOME/.claude/$f" "$CFG/$f"
 done
 # Your CLAUDE.md plus the local-model environment notes (no usage limits, one model, one GPU), rebuilt every start.
-# Methodology: rebuilt from your methodology's src/ on every start, word for word, minus the scripts' source code
+# Methodology: rebuilt from your methodology's text on every start, word for word, minus the scripts' source code
 # that its build.sh appends (build-local-methodology.sh); ~30% fewer words, never stale.
 FULL="$(grep -o '/[^` ]*methodology[^` ]*\.md' "$HOME/.claude/CLAUDE.md" | head -1)"
 METH="$FULL"
@@ -32,7 +32,7 @@ if [ -n "$FULL" ] && "$DIR/build-local-methodology.sh" "$FULL" "$CFG/methodology
   METH="$CFG/methodology-local.md"
 fi
 rm -f "$CFG/CLAUDE.md"
-{ sed "s#${FULL:-/nonexistent}#$METH#g" "$HOME/.claude/CLAUDE.md"; cat "$DIR/local-model-overrides.md"; echo; cat "$DIR/local-model-prompt.md"; } >"$CFG/CLAUDE.md" 2>/dev/null || true
+{ sed "s#${FULL:-/nonexistent}#$METH#g" "$HOME/.claude/CLAUDE.md"; cat "$DIR/claude-local-overrides.md"; echo; cat "$DIR/claude-local-prompt.md"; } >"$CFG/CLAUDE.md" 2>/dev/null || true
 # Copy what lives in ~/.claude.json: theme and first-run state, MCP servers, folders you trusted.
 python3 - "$HOME/.claude.json" "$CFG/.claude.json" <<'EOF'
 import json, os, sys
@@ -59,7 +59,7 @@ export CLAUDE_CODE_MAX_CONTEXT_TOKENS="$LLM_CTX" CLAUDE_CODE_AUTO_COMPACT_WINDOW
 export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
 [ -n "$NO_MODEL" ] && exec claude "$@"
 SESSIONS="$DIR/.sessions"; mkdir -p "$SESSIONS"; touch "$SESSIONS/$$"
-# Built-in prompt: steps against the mistakes this model made in tested work (local-model-prompt.md)
+# Built-in prompt: steps against the mistakes this model made in tested work (claude-local-prompt.md)
 # setpriv --pdeathsig: Claude stops when this wrapper is stopped (t3's stop button ends the wrapper, not its child)
 # Fast path when the wrapper ends normally or is hung up; serve.sh's reaper covers a killed wrapper (t3's stop button)
 cleanup() {
@@ -67,4 +67,4 @@ rm -f "$SESSIONS/$$"
 "$DIR/serve.sh" in-use || "$DIR/serve.sh" stop >/dev/null
 }
 trap 'trap - EXIT; cleanup; exit $code' EXIT HUP TERM INT
-code=0; setpriv --pdeathsig TERM claude --append-system-prompt "$(cat "$DIR/local-model-prompt.md")" "$@" || code=$?
+code=0; setpriv --pdeathsig TERM claude --append-system-prompt "$(cat "$DIR/claude-local-prompt.md")" "$@" || code=$?

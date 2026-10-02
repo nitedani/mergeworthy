@@ -965,7 +965,7 @@ if review:
     print("Gate reviews go to the local model while it's available: a ticket with `## File` = the draft (plus Facts and Scope), "
           "`local-agent review <ticket.md> --cwd <repo>` with run_in_background; check each finding yourself, and copy its "
           "`verdict` (CLEAN) to the review output for gate-pass.", file=sys.stderr); sys.exit(2)
-print("Read-only exploration goes to the local model while it's available (1.1.14, ~/local-llm/methodology-local-delegation.md): "
+print("Read-only exploration goes to the local model while it's available (1.1.14, ~/local-llm/DELEGATION.md): "
       "write a ticket (Goal, verified Facts, To check, Scope, Acceptance) and run `local-agent facts <ticket.md> --cwd <dir>` "
       "with run_in_background, then check two or three of its path:line citations. If this needs Claude (judgment, design, "
       "maintainer-facing wording), add a line `NEEDS-CLAUDE: <why>` to the prompt.", file=sys.stderr)
@@ -1532,7 +1532,7 @@ m = re.search(r'<!-- always-on:begin -->\n(.*?)<!-- always-on:end -->', md, re.S
 if m:
     cp = f'{home}/.claude/CLAUDE.md'
     old = open(cp).read() if os.path.exists(cp) else ''
-    block = (f'<!-- methodology:begin (written by install-methodology; edit the source next to it ({os.path.dirname(os.path.dirname(src))}/src) and rebuild, not this block) -->\n'
+    block = (f'<!-- methodology:begin (written by install-methodology; edit the source next to it ({os.path.dirname(os.path.dirname(src))}/methodology) and rebuild, not this block) -->\n'
              f'The full methodology is `{src}`; follow it for any multi-step or GitHub work.\n\n'
              f'{m.group(1)}<!-- methodology:end -->\n')
     new = re.sub(r'<!-- methodology:begin.*?<!-- methodology:end -->\n', lambda _: block, old, flags=re.S) \
@@ -1570,7 +1570,7 @@ if before == after and '--auto' in sys.argv: print('up to date', after[:10]); sy
 m = re.match(r'methodology-(.+)\.md$', os.path.basename(src))
 profiles = [] if not m or m.group(1) == 'prompt' else m.group(1).split('-')
 run('./build.sh', *profiles, stdout=subprocess.DEVNULL)
-run(sys.executable, os.path.join(repo, 'mechanisms', 'install-methodology'), src)
+run(sys.executable, os.path.join(repo, 'claude', 'bin', 'install-methodology'), src)
 if os.path.exists(f'{home}/local-llm/.installed') and os.path.exists(os.path.join(repo, 'local-model', 'install.sh')):
     run(os.path.join(repo, 'local-model', 'install.sh'))
 print('updated', before[:10], '->', after[:10], flush=True)

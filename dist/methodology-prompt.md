@@ -80,7 +80,7 @@ Read the task and every link in it. Write `Tier: <X>, because <signals>` and put
     - Match the check to the risk: a short reply gets the fast gate (1.6), a PR body or a proposal the full review, a full convergence loop only where the tier (1.0) requires it.
     - Re-run only the tests a change can affect (a docs change doesn't need the e2e matrix).
     - Model per task (Agent tool's model parameter): `sonnet` for running tests and gates, mining logs, fact checks of short texts, mechanical edits and relaying status; the session's default model (Opus family) for design, hard debugging, charter-driven reviews and anything posted to a maintainer.
-    - **The local model (`local-agent`, when installed)** costs no subscription usage. It executes well and judges poorly, so you keep every decision and hand it bounded steps whose result you can check cheaply: `local-agent <mode> <ticket.md> [--cwd <worktree>] [--write]` through Bash with `run_in_background`, one at a time (one GPU); it can't start agents, so give it work one agent finishes. Run `claude-usage --mode` at the start of each task and at every wakeup. At `routine` it gets the `sonnet` work above (modes `facts`, `run`, `reproduce`, `cold-read`); at `execute` also implementation from your own plan (`implement`: approach, files and acceptance checks are yours) and each side's evidence for 1.5's mini debate (`evidence`; you argue and decide). Pair it with yourself, never with a cheaper Claude model: it does the work and you review it, or you write and it reviews (`local-agent review`, a gate review whose `verdict` is the `CLEAN`; you check each finding and its `not_checked`). Never hand it the approach (Part 2 step 3) or anything posted. Check its result before using it: two or three of its cited `path:line`s, one re-run command, or the diff against your plan. Tickets and modes: `~/local-llm/methodology-local-delegation.md`.
+    - **The local model (`local-agent`, when installed)** costs no subscription usage. It executes well and judges poorly, so you keep every decision and hand it bounded steps whose result you can check cheaply: `local-agent <mode> <ticket.md> [--cwd <worktree>] [--write]` through Bash with `run_in_background`, one at a time (one GPU); it can't start agents, so give it work one agent finishes. Run `claude-usage --mode` at the start of each task and at every wakeup. At `routine` it gets the `sonnet` work above (modes `facts`, `run`, `reproduce`, `cold-read`); at `execute` also implementation from your own plan (`implement`: approach, files and acceptance checks are yours) and each side's evidence for 1.5's mini debate (`evidence`; you argue and decide). Pair it with yourself, never with a cheaper Claude model: it does the work and you review it, or you write and it reviews (`local-agent review`, a gate review whose `verdict` is the `CLEAN`; you check each finding and its `not_checked`). Never hand it the approach (Part 2 step 3) or anything posted. Check its result before using it: two or three of its cited `path:line`s, one re-run command, or the diff against your plan. Tickets and modes: `~/local-llm/DELEGATION.md`.
     - Never trim a charter or skip a pass it requires to save tokens.
 15. **Earn every line.** A reviewer's, verifier's or guardian's finding is a candidate, not a mandate. Before it becomes code, a test, a doc or an option:
     - How likely does a real user hit it, and what happens then? A rare case whose failure is mild, or arguably what the user asked for, gets no code. Wrong data returned silently (a misattribution, a lenient parse that hides the cause) is never mild: fix it at the root (1.1.6).
@@ -1458,7 +1458,7 @@ if review:
     print("Gate reviews go to the local model while it's available: a ticket with `## File` = the draft (plus Facts and Scope), "
           "`local-agent review <ticket.md> --cwd <repo>` with run_in_background; check each finding yourself, and copy its "
           "`verdict` (CLEAN) to the review output for gate-pass.", file=sys.stderr); sys.exit(2)
-print("Read-only exploration goes to the local model while it's available (1.1.14, ~/local-llm/methodology-local-delegation.md): "
+print("Read-only exploration goes to the local model while it's available (1.1.14, ~/local-llm/DELEGATION.md): "
       "write a ticket (Goal, verified Facts, To check, Scope, Acceptance) and run `local-agent facts <ticket.md> --cwd <dir>` "
       "with run_in_background, then check two or three of its path:line citations. If this needs Claude (judgment, design, "
       "maintainer-facing wording), add a line `NEEDS-CLAUDE: <why>` to the prompt.", file=sys.stderr)
@@ -2295,7 +2295,7 @@ m = re.search(r'<!-- always-on:begin -->\n(.*?)<!-- always-on:end -->', md, re.S
 if m:
     cp = f'{home}/.claude/CLAUDE.md'
     old = open(cp).read() if os.path.exists(cp) else ''
-    block = (f'<!-- methodology:begin (written by install-methodology; edit the source next to it ({os.path.dirname(os.path.dirname(src))}/src) and rebuild, not this block) -->\n'
+    block = (f'<!-- methodology:begin (written by install-methodology; edit the source next to it ({os.path.dirname(os.path.dirname(src))}/methodology) and rebuild, not this block) -->\n'
              f'The full methodology is `{src}`; follow it for any multi-step or GitHub work.\n\n'
              f'{m.group(1)}<!-- methodology:end -->\n')
     new = re.sub(r'<!-- methodology:begin.*?<!-- methodology:end -->\n', lambda _: block, old, flags=re.S) \
@@ -2333,7 +2333,7 @@ if before == after and '--auto' in sys.argv: print('up to date', after[:10]); sy
 m = re.match(r'methodology-(.+)\.md$', os.path.basename(src))
 profiles = [] if not m or m.group(1) == 'prompt' else m.group(1).split('-')
 run('./build.sh', *profiles, stdout=subprocess.DEVNULL)
-run(sys.executable, os.path.join(repo, 'mechanisms', 'install-methodology'), src)
+run(sys.executable, os.path.join(repo, 'claude', 'bin', 'install-methodology'), src)
 if os.path.exists(f'{home}/local-llm/.installed') and os.path.exists(os.path.join(repo, 'local-model', 'install.sh')):
     run(os.path.join(repo, 'local-model', 'install.sh'))
 print('updated', before[:10], '->', after[:10], flush=True)

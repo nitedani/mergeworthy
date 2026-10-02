@@ -4,7 +4,7 @@
 Keys and values are those of profiles/defaults.env."""
 import os, re, sys
 
-DEFAULTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'profiles', 'defaults.env')
+DEFAULTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'profiles', 'defaults.env')
 SCHEMA = {k: [v, *[x.strip() for x in vals.split('|') if x.strip() != v]]  # key: values, default first
           for k, v, vals in re.findall(r'^(\w+)=(\S+)\s*# (.*)$', open(DEFAULTS).read(), re.M)}
 MARKER = re.compile(r'(?P<line>^[ \t]*)?<!-- (?:if (?P<key>\w+)(?P<op>!?=)(?P<val>[\w-]+)|(?P<kw>else|end)) -->(?(line)[ \t]*\n|)', re.M)

@@ -9,7 +9,7 @@ T="${1:?usage: new-run <task> <arm> [timeout]}"; ARM="${2:-current}"
 METH="$E/methodology-$ARM.md"
 if [ ! -f "$METH" ] && [ "$ARM" = current ]; then METH="$(grep -o '/[^` ]*methodology[^` ]*\.md' ~/.claude/CLAUDE.md | head -1)"; fi
 [ -f "$METH" ] || { echo "no methodology for arm $ARM ($E/methodology-$ARM.md)" >&2; exit 1; }
-R="$E/runs/$T-$ARM-${LLM_PROFILE:-$(cat ~/local-llm/profile)}-$(date +%H%M%S)"
+R="$E/runs/$T-$ARM-${LLM_PROFILE:-gsq}-$(date +%H%M%S)"
 mkdir -p "$R"; cp -a "$E/templates/$T/ws" "$R/ws"; cp -a "$E/templates/$T/gh-snapshot" "$R/gh-snapshot" 2>/dev/null || mkdir -p "$R/gh-snapshot"
 git clone -q --bare "$R/ws" "$R/fork.git"; git -C "$R/ws" remote add fork "$R/fork.git"
 git -C "$R/ws" rev-parse HEAD >"$R/start-commit"

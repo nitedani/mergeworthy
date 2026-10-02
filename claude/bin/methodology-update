@@ -24,7 +24,7 @@ if before == after and '--auto' in sys.argv: print('up to date', after[:10]); sy
 m = re.match(r'methodology-(.+)\.md$', os.path.basename(src))
 profiles = [] if not m or m.group(1) == 'prompt' else m.group(1).split('-')
 run('./build.sh', *profiles, stdout=subprocess.DEVNULL)
-run(sys.executable, os.path.join(repo, 'mechanisms', 'install-methodology'), src)
+run(sys.executable, os.path.join(repo, 'claude', 'bin', 'install-methodology'), src)
 if os.path.exists(f'{home}/local-llm/.installed') and os.path.exists(os.path.join(repo, 'local-model', 'install.sh')):
     run(os.path.join(repo, 'local-model', 'install.sh'))
 print('updated', before[:10], '->', after[:10], flush=True)

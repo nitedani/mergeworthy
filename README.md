@@ -4,16 +4,21 @@ How the agent works: triage, principles, the live GitHub loop, the posting gate,
 
 ## Layout
 
-- `src/`: the methodology text, one file per section. `src/ORDER` lists Part 1's files in order.
-  - `00-intro.md`, `01-always-on.md` (copied into `~/.claude/CLAUDE.md` by `install-methodology`), `02-task.md`
-  - `part1/`: How to work, one file per section (1.0–1.12)
-  - `part2-implement-issue.md`, `part3-convergence.md`, `part4-failures.md`, `part5-mechanisms.md`
-- `mechanisms/`: the scripts and hooks (watcher, post-lint, gate-pass, pre-bash guard, stop lint, pr-steps, claude-swap, codex-review-model, install-methodology).
-- `profiles/`: `defaults.env` (every setting, its default and its values) and one file per profile.
-- `local-model/`: tooling to run Claude Code on a local model and hand it bounded tasks (`claude-local`, `local-agent`, `claude-usage`, the sandbox, server scripts, prompts; `eval/` is a test harness). See `local-model/README.md`; `local-model/install.sh` installs it into `~/local-llm` and `~/local-llm-eval`.
-- `filter.py`: resolves the settings markers in `src/`; `build.sh` runs it.
-- `tests/`: `python3 tests/test_build.py`; `python3 tests/test_post_lint.py`; `cd tests && bash run-guard-cases.sh ../mechanisms/pre-bash-guard.py`.
-- `dist/`: the built files an agent is given. Don't edit them; edit `src/` and run `./build.sh --all`.
+| Path | What's in it |
+| --- | --- |
+| `SETUP.md` | Prompts to install, update or uninstall it with an agent |
+| `methodology/` | The text, one file per section (`ORDER` lists Part 1's files); `01-always-on.md` goes into `~/.claude/CLAUDE.md` |
+| `profiles/` | `defaults.env` (every setting, its default and its values) and one file per profile |
+| `build.sh` | Builds `dist/methodology-<profiles>.md`: the text with the settings applied, plus every script it installs |
+| `dist/` | The built files an agent is given. Don't edit them: edit `methodology/` and run `./build.sh --all` |
+| `claude/hooks/` | Claude Code hooks: the posting and safety guard (Bash), the local-model guard (Agent), the thread register, the Stop check |
+| `claude/bin/` | Commands: `gate-pass`, `post-lint`, `pr-steps`, `install-methodology`, `methodology-update`, `uninstall-methodology`, `claude-swap`, `codex-review-model`, `tracker-check` |
+| `claude/watcher/` | The GitHub watcher (`gh-watch-start`, `gh-watch.py`, its daemon) |
+| `claude/tools/` | `filter.py`, which applies the settings markers for `build.sh` |
+| `local-model/` | Claude Code on a local model, and `local-agent` with one skill per task mode; see `local-model/README.md` |
+| `tests/` | `python3 tests/test_build.py`; `python3 tests/test_post_lint.py`; `bash tests/run-guard-cases.sh claude/hooks/pre-bash-guard.py` |
+
+Everything under `claude/` installs flat into `~/.claude/mechanisms/` (commands linked into `~/.local/bin`).
 
 ## Settings
 

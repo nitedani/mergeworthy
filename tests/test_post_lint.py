@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Tests for mechanisms/post-lint.py. Run: python3 test_post_lint.py (exit 0 = all pass).
+"""Tests for claude/bin/post-lint.py. Run: python3 test_post_lint.py (exit 0 = all pass).
 Fixtures are written under ./post-lint-cases/ (never /tmp). Cases marked (real) are replies posted to a maintainer."""
 import os, subprocess, sys, shutil
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-LINT = os.path.join(HERE, '..', 'mechanisms', 'post-lint.py')
+LINT = os.path.join(HERE, '..', 'claude', 'bin', 'post-lint.py')
 CASES = os.path.join(HERE, 'post-lint-cases')
 shutil.rmtree(CASES, ignore_errors=True); os.makedirs(CASES)
 

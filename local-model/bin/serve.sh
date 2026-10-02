@@ -48,10 +48,10 @@ case "${1:-start}" in
     # Sampling: Qwen3.8's thinking-mode values (both profiles' GGUFs carry temp 1.0). --jinja: chat templates, needed for tool calls; the template is the
     # model's own, changed to accept the system message Claude Code sends mid-conversation.
     nohup "$DIR/build/bin/llama-server" \
-      -m "$DIR/weights/$LLM_MODEL" --alias local,bonsai,gsq \
+      -m "$DIR/weights/$LLM_MODEL" --alias local \
       --host 127.0.0.1 --port "$PORT" \
       -ngl 99 -fa on -c "$CTX" -np 1 "${LLM_ARGS[@]}" --jinja \
-      --chat-template-file "$DIR/templates/bonsai-claude-code.jinja" \
+      --chat-template-file "$DIR/chat-template.jinja" \
       --api-key-file "$KEYFILE" --sleep-idle-seconds "$IDLE" --no-webui \
       --temp 1.0 --top-p 0.95 --top-k 20 --min-p 0.05 \
       >"$LOG" 2>&1 &
