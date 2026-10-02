@@ -32,5 +32,5 @@ echo "$pairs" | while read -r f dst; do
 done
 mv "$STAMP.new" "$STAMP"
 for c in claude-local local-agent claude-usage; do ln -sfn ~/local-llm/$c ~/.local/bin/$c; done
-for s in sandbox gh bridge.py; do ln -sfn ~/local-llm/sandbox/$s ~/local-llm-eval/bin/$s; done
+for s in sandbox gh; do ln -sfn ~/local-llm/sandbox/$s ~/local-llm-eval/bin/$s; done
 echo "installed $(echo "$pairs" | wc -l) files from $SRC"

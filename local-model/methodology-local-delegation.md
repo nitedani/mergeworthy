@@ -13,7 +13,7 @@ it works and Claude reviews, or Claude writes and it reviews (`review` mode: the
 FINDINGS; Claude checks every finding). Never a cheaper Claude model in its place.
 
 **How.** `local-agent <mode> <ticket.md> [--cwd <dir>] [--write]`, through Bash with `run_in_background`; one runs at a
-time (one GPU). It works offline in a sandbox, read-only unless `--write`, and even then only in `<dir>` (use a worktree
+time (one GPU). It works in a sandbox with network access (docs, registries, upstream source) but no credentials, read-only unless `--write`, and even then only in `<dir>` (use a worktree
 you created for it). It returns one JSON result: claims with `path:line` sources, commands with exit codes, and a
 `not_checked` list. Modes:
 - `facts`: answer a question from the code ("every caller of X and when it runs").

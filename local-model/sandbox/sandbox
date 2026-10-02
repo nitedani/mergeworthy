@@ -6,24 +6,21 @@
 # Optional: SANDBOX_WS=<dir> works in that directory instead of <run dir>/ws (read-only with SANDBOX_WS_RO=1);
 # SANDBOX_CLAUDE_MD=<file> replaces the CLAUDE.md, and SANDBOX_NO_HOOKS=1 leaves out settings.json (hooks).
 # Guarantees, enforced by the kernel, not by the model:
-#   - no network: own network namespace; the only way out is a bridge to the model server
+#   - network access (docs, registries, upstream source); no credentials, so it can't post or push as you
 #   - read-only filesystem except the run dir; home directory replaced by an empty one with only the toolchain,
 #     your CLAUDE.md, hooks and skills mounted read-only; no GitHub/SSH/Claude/Codex credentials anywhere
 #   - /usr/bin/gh replaced by a fake that records writes; own PID/IPC namespaces; no host sockets (/run, /tmp hidden)
 set -euo pipefail
 RUN="$(readlink -f "$1")"; METH="$(readlink -f "$2")"; TIMEOUT="$3"; shift 3; [ "$1" = "--" ] && shift
-D="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"  # gh, bridge.py
+D="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"  # gh
 LLM="$HOME/local-llm"; source "$LLM/profile.sh"
 H="$HOME"; PORT="${LLM_PORT:-8080}"
 
 "$LLM/serve.sh" start >&2
 # keep the server up while this runs (claude-local stops it when its last session exits)
-mkdir -p "$LLM/.sessions"; touch "$LLM/.sessions/$$"; trap 'rm -f "$LLM/.sessions/$$"; kill $BR 2>/dev/null' EXIT
+mkdir -p "$LLM/.sessions"; touch "$LLM/.sessions/$$"; trap 'rm -f "$LLM/.sessions/$$"' EXIT
 
 mkdir -p "$RUN/cfg" "$RUN/outbox" "$RUN/home" "$RUN/pr-steps"
-rm -f "$RUN/llm.sock"
-python3 "$D/bridge.py" outer "$RUN/llm.sock" "$PORT" & BR=$!
-for _ in $(seq 50); do [ -S "$RUN/llm.sock" ] && break; sleep 0.1; done
 
 # Claude Code config for the run: your settings (hooks), CLAUDE.md and skills; no plugins, no MCP servers.
 for f in settings.json skills; do [ "$f" = settings.json ] && [ -n "${SANDBOX_NO_HOOKS:-}" ] && continue; ln -sfn "$H/.claude/$f" "$RUN/cfg/$f"; done
@@ -76,9 +73,8 @@ timeout --kill-after=30 "$TIMEOUT" bwrap \
   --ro-bind "$RUN/home/.gitconfig" "$H/.gitconfig" \
   --ro-bind "$D/gh" /usr/bin/gh \
   --bind "$RUN/pr-steps" "$H/.claude/pr-steps" \
-  --ro-bind "$D/bridge.py" /tmp/.bridge.py \
   --bind "$RUN" "$RUN" "${wsbind[@]}" \
-  --unshare-net --unshare-pid --unshare-ipc --unshare-uts --die-with-parent --new-session \
+  --unshare-pid --unshare-ipc --unshare-uts --die-with-parent --new-session \
   --clearenv \
   --setenv HOME "$H" --setenv USER "$USER" --setenv TERM xterm-256color --setenv LANG C.UTF-8 \
   --setenv PATH "$(IFS=:; echo "${path[*]}"):/usr/local/bin:/usr/bin:/bin" \
@@ -92,4 +88,4 @@ timeout --kill-after=30 "$TIMEOUT" bwrap \
   --setenv GH_SNAPSHOT "$RUN/gh-snapshot" --setenv GH_OUTBOX "$RUN/outbox" \
   --setenv GATED_POSTS "$RUN/gated-posts.txt" \
   --chdir "$WS" \
-  bash -c 'python3 /tmp/.bridge.py inner "$0" "$1" & sleep 0.3; shift; "$@"' "$RUN/llm.sock" "$PORT" "$@"
+  "$@"

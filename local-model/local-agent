@@ -7,7 +7,7 @@ For bounded work only: tasks Claude can define precisely and the local model fin
 does in a minute itself (the ticket and the check would cost more), and not for open-ended work.
 
 Modes: facts, evidence, reproduce, run, implement, cold-read. The result is one JSON object (schema per mode) on
-stdout, plus an `id` and a `logs` folder; full output stays in the logs. Runs offline in the sandbox: no network, no
+stdout, plus an `id` and a `logs` folder; full output stays in the logs. Runs in the sandbox: network for reading, no
 credentials, everything read-only except --cwd with --write (implement needs --write). It can't push or post; you
 check the result and act.
 

@@ -200,7 +200,19 @@ def check(t, has_cd):
         for f in bodies + inputs: gated_file(f, has_cd, create=method == 'POST')
 
 # 1.1.13: a long job started with a plain `&` sends no completion notice, so the turn ends waiting on nothing
-if re.search(r'\blocal-agent\b', cmd) and re.search(r'(?<![&|>])&(?![&>])', cmd) and not d.get('tool_input', {}).get('run_in_background'):
+# (a line that runs local-agent and ends in a background `&`, heredoc bodies and quoted text aside)
+def _code_lines(c):
+    lines, term = [], None
+    for l in c.split('\n'):
+        if term is not None:
+            if l.strip() == term: term = None
+            continue
+        h = re.search(r"<<-?\s*['\"]?(\w+)['\"]?", l)
+        if h: term = h.group(1)
+        lines.append(re.sub(r"'[^']*'|\"[^\"]*\"", "''", l))
+    return lines
+if not d.get('tool_input', {}).get('run_in_background') and any(
+        re.search(r'(^|[\s;(&|])local-agent\s', l) and re.search(r'(?<![&|>])&(?![&>])\s*\)?\s*(;|$)', l) for l in _code_lines(cmd)):
     block("start local-agent through the Bash tool's run_in_background (not a plain `&`), so its completion wakes you")
 
 try:
