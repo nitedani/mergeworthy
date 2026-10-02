@@ -34,6 +34,9 @@ else cat "$H/.claude/CLAUDE.md" "$LLM/local-model-overrides.md" >"$RUN/cfg/CLAUD
 MPATH="$(grep -o '/[^` ]*methodology[^` ]*\.md' "$RUN/cfg/CLAUDE.md" | head -1 || true)"
 WS="${SANDBOX_WS:-$RUN/ws}"; WS="$(readlink -f "$WS")"
 wsbind=(); [ "$WS" != "$RUN/ws" ] && wsbind=($([ -n "${SANDBOX_WS_RO:-}" ] && echo --ro-bind || echo --bind) "$WS" "$WS")
+# A git worktree keeps its repository outside the folder: mount that too, with the folder's access
+GITDIR="$(git -C "$WS" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+case "$GITDIR" in ""|"$WS"/*) ;; *) wsbind+=($([ -n "${SANDBOX_WS_RO:-}" ] && echo --ro-bind || echo --bind) "$GITDIR" "$GITDIR") ;; esac
 python3 - "$H/.claude.json" "$RUN/cfg/.claude.json" "$WS" <<'EOF'
 import json, sys
 s = json.load(open(sys.argv[1]))

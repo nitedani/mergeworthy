@@ -1852,6 +1852,10 @@ def check(t, has_cd):
         if m and method == 'POST': need_watch(m.group(1), m.group(2))
         for f in bodies + inputs: gated_file(f, has_cd, create=method == 'POST')
 
+# 1.1.13: a long job started with a plain `&` sends no completion notice, so the turn ends waiting on nothing
+if re.search(r'\blocal-agent\b', cmd) and re.search(r'(?<![&|>])&(?![&>])', cmd) and not d.get('tool_input', {}).get('run_in_background'):
+    block("start local-agent through the Bash tool's run_in_background (not a plain `&`), so its completion wakes you")
+
 try:
     segs = segments(cmd)
 except ValueError:

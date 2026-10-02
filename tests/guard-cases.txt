@@ -102,3 +102,5 @@
 2 METHODOLOGY_WATCHER=on|gh pr comment https://github.com/unwatched-owner/unwatched-repo/pull/3 --body-file $D
 0 METHODOLOGY_WATCHER=on|gh api -X PATCH repos/unwatched-owner/unwatched-repo/issues/comments/1 -F body=@$D
 0 METHODOLOGY_WATCHER=on METHODOLOGY_TARGET=ci|gh api repos/unwatched-owner/unwatched-repo/issues/9/comments -F body=@$D
+2|(cd x && local-agent facts t.md > o.json 2>&1 &)
+0|local-agent facts t.md --cwd x
