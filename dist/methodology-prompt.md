@@ -24,6 +24,7 @@ These apply to every session, not only to tasks that load this file. `install-me
 - **Do, don't offer.** Ask only for irreversible actions on shared state, money or credentials or global config, or a maintainer's product decision, and then with a recommendation.
 - **Evidence for every claim**, in chat too; check `main`, the registry and upstream before recommending anything.
 - **Never hardcode model versions.** Reviews: `codex exec -m "$(codex-review-model)"`, falling back to a fresh-context Claude reviewer.
+- **The local model before Claude subagents.** When `local-agent` is installed and the GPU is free, exploration, fact-finding, reproductions and test runs go to `local-agent` (1.1.14); a Claude subagent only for judgment, design, maintainer-facing wording and reviews that gate a post. Usage past the subscriptions costs money.
 - **A subagent that writes a PR gets this methodology file**, not a checklist of it, and the Part 3 steps it must run (review round, refactor pass, guardian verdict, real-app evidence, benchmark for transports).
 <!-- always-on:end -->
 
@@ -904,6 +905,7 @@ These scripts enforce the rules that failed as text alone. This file is the only
 | `post-lint.py` | 1.6. Banned phrases, em dashes, "stacked on", bare `#N`, budgets (reply 80 words, PR 150, issue 400 characters, inline 2 sentences; tables, code, images and URLs not counted), unclassified notes, process in the thread, questions without a recommendation, a bare "Done" to a question or soft suggestion, a notes-table Next of "recommend", "follow-up" or "later". | `post-lint.py drafts/x.md --kind reply\|pr\|issue\|inline [--repo o/r]` (default `reply`). A reply or inline comment reads its parent from `drafts/x.parent.md` (or `--parent <file>`; `--parent none` when it answers nobody). Tests: `tests/test_post_lint.py`. |
 | `gate-pass` | 1.6. Records that a draft passed: `post-lint` clean and the review's final message (`codex exec -o drafts/x.review.out`) exactly `CLEAN`; stores the draft's sha256 in `<draft>.gate`. A draft that promises work ("I'll", "follow-up PR") first needs a `PROMISED … (<draft name>)` line in `proposals-open.md`. | `gate-pass drafts/x.md drafts/x.review.out` (set `POST_LINT_ARGS` for `--repo`/`--kind`). |
 | `pre-bash-guard.py` (PreToolUse hook on Bash) | 1.6, 1.7, 1.8. Blocks: `gh` posts and edits whose body isn't a gated draft or changed after its gate; a new issue, PR or comment in a repo no running watcher covers (`gh-watch-start`); posting the same gated draft as a new comment, issue or PR twice (`<draft>.posted`; edits may repeat); `gh pr merge` without `--squash --subject "<title> (#N)" --body ""`; `pkill -f`/`killall`; bare `git stash`; force-push without a pinned lease. Reactions pass. | Hook config below. Use absolute draft paths. |
+| `pre-agent-guard.py` (PreToolUse hook on Agent) | 1.1.14. Blocks a Claude subagent for read-only exploration (an Explore agent, or a prompt that says read-only / find every / where is…) while the local model is available: `local-agent` installed, `claude-usage --mode` not `off`, the GPU not taken. Reviews that gate a post (the prompt asks for `CLEAN`) pass, and so does a prompt with a `NEEDS-CLAUDE: <why>` line. | Hook config below. |
 | `stop-lint.py` (Stop hook) | 1.1.3, 1.5. Blocks ending a turn with "want me to / should I / your call / when you say go…" unless the message has a `GENUINE-FORK:` line, and after a GitHub post in the session while no Monitor tails a watcher's `events.log` (none armed, or the last one expired or stopped). | Hook config below. |
 | `gh-watch-start` (`~/.local/bin`) | 1.5. The one way to start watching; idempotent. | `gh-watch-start <dir> [owner/repo [N]]…`: links the watcher into `<dir>`, adds `owner/repo N` to `threads.txt` (a bare `owner/repo` to `repos.txt`, covering the repo before an issue exists), starts the daemon unless it runs (eyes from `GH_WATCH_EYES`, else `<dir>/eyes`, else your login), registers `<dir>` in `~/.claude/gh-watch-dirs.txt`, and prints the Monitor command. `pre-bash-guard` blocks a post to a repo no running watcher covers and adds the thread a comment goes to; `post-bash-register.py` (PostToolUse hook) adds a thread you just created. |
 | `claude-swap` (`~/.local/bin/claude-swap`, source below) | 1.1.13. Keeps several subscriptions logged in, so a usage limit doesn't stop the work. | After `/login` to each account: `claude-swap save <name>`. Then automatic: on a usage limit the `StopFailure` hook (config below) runs `claude-swap on-limit`, which switches every session on the machine to the next unlimited account and writes a line to `~/.claude/profiles/swap-events.log`; the Monitor tailing it wakes the session. `claude-swap list` shows the saved accounts. Alternative with a dashboard: [realiti4/claude-swap](https://github.com/realiti4/claude-swap) (different tool, same name). |
@@ -917,7 +919,7 @@ Hook config for `~/.claude/settings.json`:
 ```json
 {
   "hooks": {
-    "PreToolUse": [{ "matcher": "Bash", "hooks": [{ "type": "command", "command": "python3 ~/.claude/mechanisms/pre-bash-guard.py" }] }],
+    "PreToolUse": [{ "matcher": "Bash", "hooks": [{ "type": "command", "command": "python3 ~/.claude/mechanisms/pre-bash-guard.py" }] }, { "matcher": "Agent", "hooks": [{ "type": "command", "command": "python3 ~/.claude/mechanisms/pre-agent-guard.py" }] }],
     "PostToolUse": [{ "matcher": "Bash", "hooks": [{ "type": "command", "command": "python3 ~/.claude/mechanisms/post-bash-register.py" }] }],
     "Stop": [{ "hooks": [{ "type": "command", "command": "python3 ~/.claude/mechanisms/stop-lint.py" }] }],
     "StopFailure": [{ "matcher": "rate_limit", "hooks": [{ "type": "command", "command": "~/.local/bin/claude-swap on-limit" }] }]
@@ -1410,6 +1412,45 @@ for repo, num in set(re.findall(r'github\.com/([\w.-]+/[\w.-]+)/(?:issues|pull)/
     if covering and not any(line in lines(dr, 'threads.txt') for dr in covering):
         open(os.path.join(covering[0], 'threads.txt'), 'a').write(line + '\n')
 sys.exit(0)
+````
+
+### `pre-agent-guard.py`
+
+````python
+#!/usr/bin/env python3
+"""Claude Code PreToolUse hook (matcher: Agent). 1.1.14: while the local model is available, read-only exploration goes to
+`local-agent facts`, not to a Claude subagent. Exit 2 blocks; stderr goes to the agent.
+Blocks an Agent call that explores read-only (an Explore agent, or a prompt that says read-only / find / list every / where…)
+when: local_model=on, `local-agent` is installed, `claude-usage --mode` isn't `off`, and `serve.sh` doesn't see the GPU taken.
+Not blocked: reviews that gate a post or PR (the prompt asks for a final `CLEAN`), and prompts with a `NEEDS-CLAUDE:` line
+saying why the local model can't do it (judgment, design, wording for a maintainer, or the GPU is needed elsewhere)."""
+import json, os, re, shutil, subprocess, sys
+
+d = json.load(sys.stdin)
+i = d.get('tool_input') or {}
+prompt = i.get('prompt') or ''
+f = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'settings.env')
+saved = dict(l.strip().split('=', 1) for l in open(f) if '=' in l) if os.path.exists(f) else {}
+if (os.environ.get('METHODOLOGY_LOCAL_MODEL') or saved.get('METHODOLOGY_LOCAL_MODEL', 'off')) != 'on': sys.exit(0)
+if not shutil.which('local-agent') or 'NEEDS-CLAUDE:' in prompt or re.search(r'\bCLEAN\b', prompt): sys.exit(0)
+explore = i.get('subagent_type') == 'Explore' or re.search(
+    r'\bread-only\b|\b(find|list) (every|all)\b|\bwhere (is|are|does)\b|\bwhich files\b|\bexplore\b|\bmap (the|every)\b', prompt, re.I)
+if not explore: sys.exit(0)
+def run(*a):
+    try: return subprocess.run(a, capture_output=True, text=True, timeout=20)
+    except Exception: return None
+mode = run('claude-usage', '--mode')
+if mode is None or mode.returncode != 0 or mode.stdout.strip() == 'off': sys.exit(0)
+serve = os.path.expanduser('~/local-llm/serve.sh')
+if os.path.exists(os.path.expanduser('~/local-llm/.disabled')): sys.exit(0)
+# the server already up is ours (the model is loaded); otherwise ask serve.sh whether another program has the GPU
+busy = run('bash', '-c', f'source <(sed -n "/^up()/,/^processing()/p" {serve}); DIR=~/local-llm; URL=http://127.0.0.1:${{LLM_PORT:-8080}}; ! up && gpu_taken')
+if busy is not None and busy.returncode == 0: sys.exit(0)  # a game or another program has the GPU: Claude does it
+print("Read-only exploration goes to the local model while it's available (1.1.14, ~/local-llm/methodology-local-delegation.md): "
+      "write a ticket (Goal, verified Facts, To check, Scope, Acceptance) and run `local-agent facts <ticket.md> --cwd <dir>` "
+      "with run_in_background, then check two or three of its path:line citations. If this needs Claude (judgment, design, "
+      "maintainer-facing wording), add a line `NEEDS-CLAUDE: <why>` to the prompt.", file=sys.stderr)
+sys.exit(2)
 ````
 
 ### `tracker-check.sh`
