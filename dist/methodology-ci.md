@@ -1446,7 +1446,9 @@ if re.search(OFFER, tail, re.I) and 'GENUINE-FORK' not in last:
           "include a line starting 'GENUINE-FORK:' with your recommended default.", file=sys.stderr)
     sys.exit(2)
 watcher_on = 'METHODOLOGY_WATCHER=off' not in (open(os.path.expanduser('~/.claude/mechanisms/settings.env')).read() if os.path.exists(os.path.expanduser('~/.claude/mechanisms/settings.env')) else '')
-if posted and watcher_on and not (monitors - dead):
+# A headless run (`claude -p`, entrypoint sdk-cli) has no Monitor tool: its caller watches, so don't ask it for one
+headless = any('"entrypoint":"sdk-cli"' in l for l in lines[-20:])
+if posted and watcher_on and not headless and not (monitors - dead):
     print("You posted on GitHub in this session and no Monitor tails a watcher's events.log, so replies go unseen. "
           "Run `gh-watch-start <your artifact root> <owner/repo> <N>` for each thread, arm the Monitor command it prints "
           "(timeout_ms 1800000), handle events.log from your cursor, and re-arm on every expiry (methodology 1.5).", file=sys.stderr)
