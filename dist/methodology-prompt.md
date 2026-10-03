@@ -151,7 +151,7 @@ A maintainer's comment is handled like the user typing in this chat: highest pri
 4. **Then reply** with the result as a new comment (edits don't notify). Beyond this result (and the wait ping below), a question gets no further comments from you; later changes to your reply are edits.
 5. **Book-keeping, in the same step:** decision packet, umbrella body, Decisions comment, ledger.
 
-**The watcher and the owed lists.** Before your first post in any tier (an audit report or a single issue included), run `gh-watch-start <artifact root> <owner/repo> [N]` (Part 5) and arm the Monitor command it prints; never poll GitHub in a loop in the conversation. Every thread you open or comment on joins its list in the same step: the posting guard adds it, refuses to post to a repo no running watcher covers, and the Stop hook refuses to end a turn after a post with no Monitor on `events.log`. Keep it alive, re-arm the Monitor tailing its log on every expiry, and arm a recurring heartbeat (`CronCreate`, every 10 minutes) that re-arms the Monitor, checks the daemon, and handles `events.log` from a cursor you store in `events.cursor` (advance it as you handle events); after any resume, handle `events.log` from the cursor before anything else. Each list item is cleared only by the thing named:
+**The watcher and the owed lists.** Before your first post in any tier (an audit report or a single issue included), run `gh-watch-start <artifact root> <owner/repo> [N]` (Part 5) and arm the tail it prints — the Monitor tool, or a background task where there is no Monitor tool; never poll GitHub in a loop in the conversation. Every thread you open or comment on joins its list in the same step: the posting guard adds it, refuses to post to a repo no running watcher covers, and the Stop hook refuses to end a turn after a post with no armed tail on `events.log`. Keep it alive, re-arm the tail of its log on every expiry, and arm a recurring heartbeat (`CronCreate`, every 10 minutes) that re-arms the tail, checks the daemon, and handles `events.log` from a cursor you store in `events.cursor` (advance it as you handle events); after any resume, handle `events.log` from the cursor before anything else. Each list item is cleared only by the thing named:
 - `replies-owed.md`: every maintainer comment with a question or request, and every comment the user posts in a thread (back it with evidence or add what it's missing). Checked at every wakeup; cleared by the posted reply's URL.
 - `proposals-open.md`: every "OK?" you ask, and every promise you post ("I'll…") as `PROMISED <thread>: <what>`. Each new maintainer comment is checked against it first. Cleared by the commit or link that delivers it. Do work you can finish in minutes before posting, so the post says "Done in <link>", never "fixing it now".
 - `waiting-on.txt`, next to the watcher's `threads.txt`: each thing a PR of yours waits on (`<owner/repo#N> -> <dependent>: <what to do>`), also in that PR's notes table; the watcher prints `DEPENDENT of merged …` when it lands. A merge or release you depend on is handled like a maintainer comment: in the same step, apply what waited on it and post the progress on the dependent PR.
@@ -233,7 +233,7 @@ When editing a skill, prompt, rules file or AGENTS.md:
 Before the first change:
 1. Write `scope.md`.
 2. Write the critical path.
-3. Check that the Part 5 hooks are in `~/.claude/settings.json`; this file names that file, so add them if missing. Start the watcher with `GH_WATCH_EYES=<maintainers>,<user> gh-watch-start <artifact root> <owner/repo> <N>…`, arm the Monitor it prints, and register every open PR and issue the account has in the scope repos (`gh search prs --author <login> --state open`, and issues), not only this session's; answer any maintainer comment still without a reply first.
+3. Check that the Part 5 hooks are in `~/.claude/settings.json`; this file names that file, so add them if missing. Start the watcher with `GH_WATCH_EYES=<maintainers>,<user> gh-watch-start <artifact root> <owner/repo> <N>…`, arm the tail it prints (the Monitor tool, or a background task where there is no Monitor tool), and register every open PR and issue the account has in the scope repos (`gh search prs --author <login> --state open`, and issues), not only this session's; answer any maintainer comment still without a reply first.
 4. Confirm browser control (for UI work), and that `claude-swap list` shows the spare subscriptions.
 5. Note the precedents and style (1.3).
 
@@ -834,7 +834,7 @@ Refactor this PR:
 - End with a summary of what you worked on: print the lists again with old rating ⇒ new
   rating with link to commit(s).
 
-Running it: the rater is not the author, and not in the author's context. It rates read-only; the author implements commit by commit; a fresh rater re-rates old ⇒ new. Scope: everything the diff touches, at 100% coverage; code outside the diff is context. Re-run the gates after every commit; a red gate means revert that commit, not patch over it. Refactor commits are separate from behavior commits. If the pass changed nothing, say that and why. The final lists (old ⇒ new, reason, commit links, and the ✅ lists) go in the PR description's `## Ratings` section, as tables; working notes stay in the artifact root. The pass belongs to the PR as it is now, not to the head it first ran on: when later commits (maintainer requests included) change more than ~80 lines, re-run it on the whole PR diff before the next "Done" reply and replace the lists; the watcher prints `### REFACTOR STALE` when that happens.
+Running it: the rater is not the author, and not in the author's context. It rates read-only; the author implements commit by commit; a fresh rater re-rates old ⇒ new. It works small: findings go into the report file incrementally as it works, reads stay narrow (diff hunks, `sed -n`), and it loads few images — the report is the artifact a compaction or a fresh context resumes from. Scope: everything the diff touches, at 100% coverage; code outside the diff is context. Re-run the gates after every commit; a red gate means revert that commit, not patch over it. Refactor commits are separate from behavior commits. If the pass changed nothing, say that and why. The final lists (old ⇒ new, reason, commit links, and the ✅ lists) go in the PR description's `## Ratings` section, as tables; working notes stay in the artifact root. The pass belongs to the PR as it is now, not to the head it first ran on: when later commits (maintainer requests included) change more than ~80 lines, re-run it on the whole PR diff before the next "Done" reply and replace the lists; the watcher prints `### REFACTOR STALE` when that happens.
 
 ### 12. Templates
 
@@ -901,14 +901,14 @@ These scripts enforce the rules that failed as text alone. This file is the only
 
 | Mechanism | Enforces | How to use it |
 |---|---|---|
-| `gh-watch.py` + `gh-watch-daemon.sh` | 1.5. Reports comments, review comments and reviews by others; PR pushes, merges and closes; CI red and green. Adds 👀 within ~10 s for the logins in `GH_WATCH_EYES`, held back while every `claude-swap` account is limited, and reports their 👍 or 👎 on the agent's comments as `### THUMBS UP` / `### THUMBS DOWN`. Prints `### REFACTOR STALE` when your PR's code (test files excluded) changed by more than ~80 lines since its last `pr-steps refactor` record. | Start with `gh-watch-start <artifact root> <owner/repo> [N]…` (below), never by hand. One `owner/repo number` per line in `threads.txt` next to it. When posting from the user's account, the user's own comments are told apart through `~/.claude/gated-posts.txt` (filled by `gate-pass`). Tail `events.log` and `~/.claude/profiles/swap-events.log` with the Monitor tool, re-armed on every expiry. Position and seen events persist in `gh-watch-state.json`, so restarts lose nothing. |
+| `gh-watch.py` + `gh-watch-daemon.sh` | 1.5. Reports comments, review comments and reviews by others; PR pushes, merges and closes; CI red and green. Adds 👀 within ~10 s for the logins in `GH_WATCH_EYES`, held back while every `claude-swap` account is limited, and reports their 👍 or 👎 on the agent's comments as `### THUMBS UP` / `### THUMBS DOWN`. Prints `### REFACTOR STALE` when your PR's code (test files excluded) changed by more than ~80 lines since its last `pr-steps refactor` record. | Start with `gh-watch-start <artifact root> <owner/repo> [N]…` (below), never by hand. One `owner/repo number` per line in `threads.txt` next to it. When posting from the user's account, the user's own comments are told apart through `~/.claude/gated-posts.txt` (filled by `gate-pass`). Tail `events.log` and `~/.claude/profiles/swap-events.log` — the Monitor tool, or a background task of the printed tail where there is no Monitor tool — re-armed on every expiry. Position and seen events persist in `gh-watch-state.json`, so restarts lose nothing. |
 | `tracker-check.sh` | 1.2. Umbrella drift (checkbox vs PR state), and a Decisions comment last edited before a tracked PR merged or closed. | `TRACKER_REPO=o/r TRACKER_ISSUE=N TRACKER_DECISIONS=<comment id> ./tracker-check.sh`. The watcher calls it when the variables are set. Run it before every report. |
 | `post-lint.py` | 1.6. Banned phrases, em dashes, "stacked on", bare `#N`, budgets (reply 80 words, PR 150, issue 400 characters, inline 2 sentences; tables, code, images and URLs not counted), unclassified notes, process in the thread, questions without a recommendation, a bare "Done" to a question or soft suggestion, a notes-table Next of "recommend", "follow-up" or "later". | `post-lint.py drafts/x.md --kind reply\|pr\|issue\|inline [--repo o/r]` (default `reply`). A reply or inline comment reads its parent from `drafts/x.parent.md` (or `--parent <file>`; `--parent none` when it answers nobody). Tests: `tests/test_post_lint.py`. |
 | `gate-pass` | 1.6. Records that a draft passed: `post-lint` clean and the review's final message (`codex exec -o drafts/x.review.out`) exactly `CLEAN`; stores the draft's sha256 in `<draft>.gate`. A draft that promises work ("I'll", "follow-up PR") first needs a `PROMISED … (<draft name>)` line in `proposals-open.md`. | `gate-pass drafts/x.md drafts/x.review.out` (set `POST_LINT_ARGS` for `--repo`/`--kind`). |
 | `pre-bash-guard.py` (PreToolUse hook on Bash) | 1.6, 1.7, 1.8. Blocks: `gh` posts and edits whose body isn't a gated draft or changed after its gate; a new issue, PR or comment in a repo no running watcher covers (`gh-watch-start`); posting the same gated draft as a new comment, issue or PR twice (`<draft>.posted`; edits may repeat); `gh pr merge` without `--squash --subject "<title> (#N)" --body ""`; `pkill -f`/`killall`; bare `git stash`; force-push without a pinned lease. Reactions pass. | Hook config below. Use absolute draft paths. |
 | `pre-agent-guard.py` (PreToolUse hook on Agent) | 1.1.14. Blocks a Claude subagent for read-only exploration (an Explore agent, or a prompt that says read-only / find every / where is…) while the local model is available: `local-agent` installed, `claude-usage --mode` not `off`, the GPU not taken. Reviews that gate a post (the prompt asks for `CLEAN`) go to `local-agent review` the same way; a prompt with a `NEEDS-CLAUDE: <why>` line passes; a Haiku subagent is always blocked. | Hook config below. |
-| `stop-lint.py` (Stop hook) | 1.1.3, 1.5. Blocks ending a turn with "want me to / should I / your call / when you say go…" unless the message has a `GENUINE-FORK:` line, and after a GitHub post in the session while no Monitor tails a watcher's `events.log` (none armed, or the last one expired or stopped). | Hook config below. |
-| `gh-watch-start` (`~/.local/bin`) | 1.5. The one way to start watching; idempotent. | `gh-watch-start <dir> [owner/repo [N]]…`: links the watcher into `<dir>`, adds `owner/repo N` to `threads.txt` (a bare `owner/repo` to `repos.txt`, covering the repo before an issue exists), starts the daemon unless it runs (eyes from `GH_WATCH_EYES`, else `<dir>/eyes`, else your login), registers `<dir>` in `~/.claude/gh-watch-dirs.txt`, and prints the Monitor command. `pre-bash-guard` blocks a post to a repo no running watcher covers and adds the thread a comment goes to; `post-bash-register.py` (PostToolUse hook) adds a thread you just created. |
+| `stop-lint.py` (Stop hook) | 1.1.3, 1.5. Blocks ending a turn with "want me to / should I / your call / when you say go…" unless the message has a `GENUINE-FORK:` line, and after a GitHub post in the session while no armed tail (a Monitor, or a live `tail` process where there is no Monitor tool) watches a watcher's `events.log` (none armed, or the last one expired or stopped). | Hook config below. |
+| `gh-watch-start` (`~/.local/bin`) | 1.5. The one way to start watching; idempotent. | `gh-watch-start <dir> [owner/repo [N]]…`: links the watcher into `<dir>`, adds `owner/repo N` to `threads.txt` (a bare `owner/repo` to `repos.txt`, covering the repo before an issue exists), starts the daemon unless it runs (eyes from `GH_WATCH_EYES`, else `<dir>/eyes`, else your login), registers `<dir>` in `~/.claude/gh-watch-dirs.txt`, and prints the tail command to arm (the Monitor tool, or a background task where there is no Monitor tool). `pre-bash-guard` blocks a post to a repo no running watcher covers and adds the thread a comment goes to; `post-bash-register.py` (PostToolUse hook) adds a thread you just created. |
 | `claude-swap` (`~/.local/bin/claude-swap`, source below) | 1.1.13. Keeps several subscriptions logged in, so a usage limit doesn't stop the work. | After `/login` to each account: `claude-swap save <name>`. Then automatic: on a usage limit the `StopFailure` hook (config below) runs `claude-swap on-limit`, which switches every session on the machine to the next unlimited account and writes a line to `~/.claude/profiles/swap-events.log`; the Monitor tailing it wakes the session. `claude-swap list` shows the saved accounts. Alternative with a dashboard: [realiti4/claude-swap](https://github.com/realiti4/claude-swap) (different tool, same name). |
 | `codex-review-model` (`~/.local/bin`) | TASK review model. Prints Codex's top-ranked model from `codex debug models`, skipping the premium tier ("the most demanding work") and older generations, so reviews move to newer models without editing any prompt. | `codex exec -m "$(codex-review-model)" …`; `--all` lists the ranked models for a fallback. |
 | `pr-steps` + posting hook | Part 2 steps 6–7 (Part 3 sections 6–7 in Tier ≥ M), 1.7. | `gh pr create` (unless `--draft`) and `gh pr ready` are blocked until HEAD has a `review` and a `refactor` record: run `pr-steps review <reviewer output>` and `pr-steps refactor <rating output>` on the final HEAD after the fixes. |
@@ -1365,7 +1365,7 @@ done
 # - "owner/repo N" goes to threads.txt; a bare "owner/repo" goes to repos.txt (the repo is covered, e.g. before `gh issue create`).
 # - Starts the daemon unless its PID is alive, with GH_WATCH_EYES from the environment, else from <dir>/eyes, else your gh login.
 # - Registers <dir> in ~/.claude/gh-watch-dirs.txt, which pre-bash-guard and post-bash-register read.
-# - Prints the Monitor command to arm (re-arm it on every expiry).
+# - Prints the tail command to arm — the Monitor tool, or a background task where there is no Monitor (re-arm on every expiry).
 set -e
 [ -n "$1" ] || { sed -n '2,7p' "$0"; exit 1; }
 dir=$(realpath -m "$1"); shift
@@ -1389,7 +1389,9 @@ else
   (cd "$dir" && GH_WATCH_EYES=$(cat eyes) nohup setsid ./gh-watch-daemon.sh >/dev/null 2>&1 &)
   sleep 1; echo "watcher started (PID $(cat "$dir/gh-watch.pid"), eyes: $(cat "$dir/eyes"))"
 fi
-echo "Monitor (timeout_ms 1800000, re-arm on every expiry): tail -n 0 -F $dir/events.log ~/.claude/profiles/swap-events.log 2>/dev/null | grep --line-buffered -E '^###|WATCH ERROR|STALE|^[^ =]'"
+echo "Arm this tail (re-arm on every expiry):"
+echo "  tail -n 0 -F $dir/events.log ~/.claude/profiles/swap-events.log 2>/dev/null | grep --line-buffered -E '^###|WATCH ERROR|STALE|^[^ =]'"
+echo "With the Monitor tool, arm it as Monitor (timeout_ms 1800000). Without one (a local claude), run it as a background task (timeout 1800)."
 ````
 
 ### `post-bash-register.py`
@@ -1764,7 +1766,7 @@ def need_watch(repo, num=None):
         return [l.strip() for l in open(os.path.join(d, f))] if os.path.exists(os.path.join(d, f)) else []
     covering = [d for d in watch_dirs() if repo in lines(d, 'repos.txt') or any(l.split()[:1] == [repo] for l in lines(d, 'threads.txt'))]
     if not covering:
-        block(f"no running watcher covers {repo}: `gh-watch-start <your artifact root> {repo}{' ' + num if num else ''}`, arm the Monitor it prints, then post")
+        block(f"no running watcher covers {repo}: `gh-watch-start <your artifact root> {repo}{' ' + num if num else ''}`, arm the tail it prints, then post")
     if num and not any(f"{repo} {num}" in lines(d, 'threads.txt') for d in covering):
         open(os.path.join(covering[0], 'threads.txt'), 'a').write(f"{repo} {num}\n")
 
@@ -1891,8 +1893,9 @@ sys.exit(0)
 ````python
 #!/usr/bin/env python3
 """Claude Code Stop hook. Blocks ending a turn with an offer or permission question the agent should just act on,
-or after posting on GitHub with no Monitor tailing a watcher's events.log (1.5)."""
-import json, os, re, sys
+or after posting on GitHub with no armed tail of a watcher's events.log — a Monitor, or a live `tail` process
+where the harness has no Monitor tool (1.5)."""
+import glob, json, os, re, sys
 d = json.load(sys.stdin)
 if d.get('stop_hook_active'):
     sys.exit(0)
@@ -1938,13 +1941,26 @@ if re.search(OFFER, tail, re.I) and 'GENUINE-FORK' not in last:
           "or the user's global config, (c) an external maintainer's product decision or a fork you can't rank; then "
           "include a line starting 'GENUINE-FORK:' with your recommended default.", file=sys.stderr)
     sys.exit(2)
+# A live `tail` of a watcher's events.log arms the watch too: harnesses without a Monitor tool (a local claude) run
+# the printed tail as a background task, whose expiry the transcript doesn't report — the process is the monitor.
+def armed_tail():
+    for proc in glob.glob('/proc/[0-9]*'):
+        try:
+            cmd = open(proc + '/cmdline', 'rb').read().split(b'\0')
+        except OSError:
+            continue
+        if b'tail' in cmd and any(b'events.log' in c for c in cmd):
+            return True
+    return False
+
 watcher_on = 'METHODOLOGY_WATCHER=off' not in (open(os.path.expanduser('~/.claude/mechanisms/settings.env')).read() if os.path.exists(os.path.expanduser('~/.claude/mechanisms/settings.env')) else '')
 # A headless run (`claude -p`, entrypoint sdk-cli) has no Monitor tool: its caller watches, so don't ask it for one
 headless = any('"entrypoint":"sdk-cli"' in l for l in lines[-20:])
-if posted and watcher_on and not headless and not (monitors - dead):
-    print("You posted on GitHub in this session and no Monitor tails a watcher's events.log, so replies go unseen. "
-          "Run `gh-watch-start <your artifact root> <owner/repo> <N>` for each thread, arm the Monitor command it prints "
-          "(timeout_ms 1800000), handle events.log from your cursor, and re-arm on every expiry (methodology 1.5).", file=sys.stderr)
+if posted and watcher_on and not headless and not (monitors - dead or armed_tail()):
+    print("You posted on GitHub in this session and no armed tail watches a watcher's events.log, so replies go unseen. "
+          "Run `gh-watch-start <your artifact root> <owner/repo> <N>` for each thread, arm the tail it prints — the "
+          "Monitor command (timeout_ms 1800000), or a background task where there is no Monitor tool — handle events.log "
+          "from your cursor, and re-arm on every expiry (methodology 1.5).", file=sys.stderr)
     sys.exit(2)
 sys.exit(0)
 ````

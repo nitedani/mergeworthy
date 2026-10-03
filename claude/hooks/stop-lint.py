@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Claude Code Stop hook. Blocks ending a turn with an offer or permission question the agent should just act on,
-or after posting on GitHub with no Monitor tailing a watcher's events.log (1.5)."""
-import json, os, re, sys
+or after posting on GitHub with no armed tail of a watcher's events.log — a Monitor, or a live `tail` process
+where the harness has no Monitor tool (1.5)."""
+import glob, json, os, re, sys
 d = json.load(sys.stdin)
 if d.get('stop_hook_active'):
     sys.exit(0)
@@ -47,12 +48,25 @@ if re.search(OFFER, tail, re.I) and 'GENUINE-FORK' not in last:
           "or the user's global config, (c) an external maintainer's product decision or a fork you can't rank; then "
           "include a line starting 'GENUINE-FORK:' with your recommended default.", file=sys.stderr)
     sys.exit(2)
+# A live `tail` of a watcher's events.log arms the watch too: harnesses without a Monitor tool (a local claude) run
+# the printed tail as a background task, whose expiry the transcript doesn't report — the process is the monitor.
+def armed_tail():
+    for proc in glob.glob('/proc/[0-9]*'):
+        try:
+            cmd = open(proc + '/cmdline', 'rb').read().split(b'\0')
+        except OSError:
+            continue
+        if b'tail' in cmd and any(b'events.log' in c for c in cmd):
+            return True
+    return False
+
 watcher_on = 'METHODOLOGY_WATCHER=off' not in (open(os.path.expanduser('~/.claude/mechanisms/settings.env')).read() if os.path.exists(os.path.expanduser('~/.claude/mechanisms/settings.env')) else '')
 # A headless run (`claude -p`, entrypoint sdk-cli) has no Monitor tool: its caller watches, so don't ask it for one
 headless = any('"entrypoint":"sdk-cli"' in l for l in lines[-20:])
-if posted and watcher_on and not headless and not (monitors - dead):
-    print("You posted on GitHub in this session and no Monitor tails a watcher's events.log, so replies go unseen. "
-          "Run `gh-watch-start <your artifact root> <owner/repo> <N>` for each thread, arm the Monitor command it prints "
-          "(timeout_ms 1800000), handle events.log from your cursor, and re-arm on every expiry (methodology 1.5).", file=sys.stderr)
+if posted and watcher_on and not headless and not (monitors - dead or armed_tail()):
+    print("You posted on GitHub in this session and no armed tail watches a watcher's events.log, so replies go unseen. "
+          "Run `gh-watch-start <your artifact root> <owner/repo> <N>` for each thread, arm the tail it prints — the "
+          "Monitor command (timeout_ms 1800000), or a background task where there is no Monitor tool — handle events.log "
+          "from your cursor, and re-arm on every expiry (methodology 1.5).", file=sys.stderr)
     sys.exit(2)
 sys.exit(0)

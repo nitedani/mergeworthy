@@ -93,7 +93,7 @@ timeout --kill-after=30 "$TIMEOUT" bwrap \
   --setenv ANTHROPIC_AUTH_TOKEN "$(cat "$LLM/.api-key")" \
   --setenv ANTHROPIC_MODEL local --setenv ANTHROPIC_DEFAULT_OPUS_MODEL local --setenv ANTHROPIC_DEFAULT_SONNET_MODEL local \
   --setenv ANTHROPIC_DEFAULT_HAIKU_MODEL local --setenv CLAUDE_CODE_SUBAGENT_MODEL local \
-  --setenv CLAUDE_CODE_MAX_CONTEXT_TOKENS "$LLM_CTX" --setenv CLAUDE_CODE_AUTO_COMPACT_WINDOW "$LLM_CTX" \
+  --setenv CLAUDE_CODE_MAX_CONTEXT_TOKENS "$LLM_CTX" --setenv CLAUDE_CODE_AUTO_COMPACT_WINDOW "$LLM_COMPACT" \
   --setenv CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC 1 \
   --setenv GH_SNAPSHOT "$RUN/gh-snapshot" --setenv GH_OUTBOX "$RUN/outbox" \
   --setenv GATED_POSTS "$RUN/gated-posts.txt" \

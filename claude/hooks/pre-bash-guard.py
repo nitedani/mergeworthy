@@ -107,7 +107,7 @@ def need_watch(repo, num=None):
         return [l.strip() for l in open(os.path.join(d, f))] if os.path.exists(os.path.join(d, f)) else []
     covering = [d for d in watch_dirs() if repo in lines(d, 'repos.txt') or any(l.split()[:1] == [repo] for l in lines(d, 'threads.txt'))]
     if not covering:
-        block(f"no running watcher covers {repo}: `gh-watch-start <your artifact root> {repo}{' ' + num if num else ''}`, arm the Monitor it prints, then post")
+        block(f"no running watcher covers {repo}: `gh-watch-start <your artifact root> {repo}{' ' + num if num else ''}`, arm the tail it prints, then post")
     if num and not any(f"{repo} {num}" in lines(d, 'threads.txt') for d in covering):
         open(os.path.join(covering[0], 'threads.txt'), 'a').write(f"{repo} {num}\n")
 

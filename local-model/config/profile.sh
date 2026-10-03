@@ -12,4 +12,8 @@ LLM_ARGS=(-ctk q4_0 -ctv q4_0 --spec-type draft-mtp --mmproj "$_dir/weights/mmpr
 LLM_ARGS+=(--reasoning-budget "${LLM_THINK_BUDGET:-1024}" --reasoning-budget-message "Thinking budget reached. Stop thinking and act now with what you have.")
 # Vision (screenshots the agent takes and reads): the projector runs on the CPU, so it costs no VRAM.
 LLM_ARGS+=(--no-mmproj-offload)
-LLM_CTX="${LLM_CTX:-131072}"  # 128K; claude-local compacts at this same size, so the server never holds unused context
+# Server context window. claude-local compacts at LLM_COMPACT, below it: the compaction request itself (the whole
+# conversation plus the summarizer's prompt and summary) must fit in the window, so the trigger can't sit at its
+# edge — at the edge it overflows and the session dies with "Prompt is too long · automatic compaction failed".
+LLM_CTX="${LLM_CTX:-131072}"  # 128K
+LLM_COMPACT=$(( LLM_CTX * 3 / 4 ))  # 96K: the compaction request (~96K in + prompt + summary) fits with headroom

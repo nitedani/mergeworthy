@@ -54,9 +54,10 @@ unset ANTHROPIC_API_KEY
 for v in ANTHROPIC_MODEL ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL CLAUDE_CODE_SUBAGENT_MODEL; do
   export "$v"=local
 done
-# The server's context, which is also where Claude Code compacts: one number (LLM_CTX in profile.sh), so the server never
-# holds context the session can't use. (Claude Code assumes 200K for a model it doesn't know and would compact too late.)
-export CLAUDE_CODE_MAX_CONTEXT_TOKENS="$LLM_CTX" CLAUDE_CODE_AUTO_COMPACT_WINDOW="$LLM_CTX"
+# Claude Code compacts at LLM_COMPACT (3/4 of the server's window, profile.sh), because the compaction request
+# itself — conversation + summarizer prompt + summary — must fit in the window; at the window's edge it overflows
+# and the session dies. (Claude Code assumes 200K for a model it doesn't know and would compact too late.)
+export CLAUDE_CODE_MAX_CONTEXT_TOKENS="$LLM_CTX" CLAUDE_CODE_AUTO_COMPACT_WINDOW="$LLM_COMPACT"
 export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
 [ -n "$NO_MODEL" ] && exec claude "$@"
 SESSIONS="$DIR/.sessions"; mkdir -p "$SESSIONS"; touch "$SESSIONS/$$"

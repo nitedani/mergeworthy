@@ -832,7 +832,7 @@ Refactor this PR:
 - End with a summary of what you worked on: print the lists again with old rating ⇒ new
   rating with link to commit(s).
 
-Running it: the rater is not the author, and not in the author's context. It rates read-only; the author implements commit by commit; a fresh rater re-rates old ⇒ new. Scope: everything the diff touches, at 100% coverage; code outside the diff is context. Re-run the gates after every commit; a red gate means revert that commit, not patch over it. Refactor commits are separate from behavior commits. If the pass changed nothing, say that and why. The final lists (old ⇒ new, reason, commit links, and the ✅ lists) go in the PR description's `## Ratings` section, as tables; working notes stay in the artifact root. The pass belongs to the PR as it is now, not to the head it first ran on: when later commits (maintainer requests included) change more than ~80 lines, re-run it on the whole PR diff before the next "Done" reply and replace the lists; the watcher prints `### REFACTOR STALE` when that happens.
+Running it: the rater is not the author, and not in the author's context. It rates read-only; the author implements commit by commit; a fresh rater re-rates old ⇒ new. It works small: findings go into the report file incrementally as it works, reads stay narrow (diff hunks, `sed -n`), and it loads few images — the report is the artifact a compaction or a fresh context resumes from. Scope: everything the diff touches, at 100% coverage; code outside the diff is context. Re-run the gates after every commit; a red gate means revert that commit, not patch over it. Refactor commits are separate from behavior commits. If the pass changed nothing, say that and why. The final lists (old ⇒ new, reason, commit links, and the ✅ lists) go in the PR description's `## Ratings` section, as tables; working notes stay in the artifact root. The pass belongs to the PR as it is now, not to the head it first ran on: when later commits (maintainer requests included) change more than ~80 lines, re-run it on the whole PR diff before the next "Done" reply and replace the lists; the watcher prints `### REFACTOR STALE` when that happens.
 
 ### 12. Templates
 
@@ -903,7 +903,7 @@ These scripts enforce the rules that failed as text alone. This file is the only
 | `post-lint.py` | 1.6. Banned phrases, em dashes, "stacked on", bare `#N`, budgets (reply 80 words, PR 150, issue 400 characters, inline 2 sentences; tables, code, images and URLs not counted), unclassified notes, process in the thread, questions without a recommendation, a bare "Done" to a question or soft suggestion, a notes-table Next of "recommend", "follow-up" or "later". | `post-lint.py drafts/x.md --kind reply\|pr\|issue\|inline [--repo o/r]` (default `reply`). A reply or inline comment reads its parent from `drafts/x.parent.md` (or `--parent <file>`; `--parent none` when it answers nobody). Tests: `tests/test_post_lint.py`. |
 | `gate-pass` | 1.6. Records that a draft passed: `post-lint` clean and the review's final message (saved as `drafts/x.review.out`) exactly `CLEAN`; stores the draft's sha256 in `<draft>.gate`. A draft that promises work ("I'll", "follow-up PR") first needs a `PROMISED … (<draft name>)` line in `proposals-open.md`. | `gate-pass drafts/x.md drafts/x.review.out` (set `POST_LINT_ARGS` for `--repo`/`--kind`). |
 | `pre-bash-guard.py` (PreToolUse hook on Bash) | 1.6, 1.7, 1.8. Blocks: `gh` posts and edits whose body isn't a gated draft or changed after its gate;  posting the same gated draft as a new comment, issue or PR twice (`<draft>.posted`; edits may repeat); `gh pr merge` without `--squash --subject "<title> (#N)" --body ""`; `pkill -f`/`killall`; bare `git stash`; force-push without a pinned lease. Reactions pass. | Hook config below. Use absolute draft paths. |
-| `stop-lint.py` (Stop hook) | 1.1.3, 1.5. Blocks ending a turn with "want me to / should I / your call / when you say go…" unless the message has a `GENUINE-FORK:` line, and after a GitHub post in the session while no Monitor tails a watcher's `events.log` (none armed, or the last one expired or stopped). | Hook config below. |
+| `stop-lint.py` (Stop hook) | 1.1.3, 1.5. Blocks ending a turn with "want me to / should I / your call / when you say go…" unless the message has a `GENUINE-FORK:` line, and after a GitHub post in the session while no armed tail (a Monitor, or a live `tail` process where there is no Monitor tool) watches a watcher's `events.log` (none armed, or the last one expired or stopped). | Hook config below. |
 | `pr-steps` + posting hook | Part 2 steps 6–7 (Part 3 sections 6–7 in Tier ≥ M), 1.7. | `gh pr create` (unless `--draft`) and `gh pr ready` are blocked until HEAD has a `review` and a `refactor` record: run `pr-steps review <reviewer output>` and `pr-steps refactor <rating output>` on the final HEAD after the fixes. |
 | `install-methodology` | 1.1.12: this file travels; the machine's copies follow it. | Writes Part 5's scripts to `~/.claude/mechanisms/` (commands linked into `~/.local/bin`), merges the hook config into `~/.claude/settings.json`, and writes the Always-on rules into `~/.claude/CLAUDE.md` between markers, leaving the rest of that file alone. The file's first line, the settings header `build.sh` writes, goes to `~/.claude/mechanisms/settings.env` as `METHODOLOGY_<KEY>=<value>` lines, read by `post-lint` (badge, review records; `gate-pass` runs it) and `pre-bash-guard` (merge); an environment variable of the same name wins. |
 | `methodology-update` (`~/.local/bin`; SessionStart hook with `--auto`) | 1.1.12: every machine follows the repo. | Pulls the repo the installed file came from (`METHODOLOGY_SOURCE` in `settings.env`), rebuilds the same profiles, reinstalls, and the local-model tooling when installed. `--auto`: at most once a day, detached, logged to `~/.claude/mechanisms/update.log`; the new version applies from the next session. |
@@ -1271,7 +1271,7 @@ def need_watch(repo, num=None):
         return [l.strip() for l in open(os.path.join(d, f))] if os.path.exists(os.path.join(d, f)) else []
     covering = [d for d in watch_dirs() if repo in lines(d, 'repos.txt') or any(l.split()[:1] == [repo] for l in lines(d, 'threads.txt'))]
     if not covering:
-        block(f"no running watcher covers {repo}: `gh-watch-start <your artifact root> {repo}{' ' + num if num else ''}`, arm the Monitor it prints, then post")
+        block(f"no running watcher covers {repo}: `gh-watch-start <your artifact root> {repo}{' ' + num if num else ''}`, arm the tail it prints, then post")
     if num and not any(f"{repo} {num}" in lines(d, 'threads.txt') for d in covering):
         open(os.path.join(covering[0], 'threads.txt'), 'a').write(f"{repo} {num}\n")
 
@@ -1398,8 +1398,9 @@ sys.exit(0)
 ````python
 #!/usr/bin/env python3
 """Claude Code Stop hook. Blocks ending a turn with an offer or permission question the agent should just act on,
-or after posting on GitHub with no Monitor tailing a watcher's events.log (1.5)."""
-import json, os, re, sys
+or after posting on GitHub with no armed tail of a watcher's events.log — a Monitor, or a live `tail` process
+where the harness has no Monitor tool (1.5)."""
+import glob, json, os, re, sys
 d = json.load(sys.stdin)
 if d.get('stop_hook_active'):
     sys.exit(0)
@@ -1445,13 +1446,26 @@ if re.search(OFFER, tail, re.I) and 'GENUINE-FORK' not in last:
           "or the user's global config, (c) an external maintainer's product decision or a fork you can't rank; then "
           "include a line starting 'GENUINE-FORK:' with your recommended default.", file=sys.stderr)
     sys.exit(2)
+# A live `tail` of a watcher's events.log arms the watch too: harnesses without a Monitor tool (a local claude) run
+# the printed tail as a background task, whose expiry the transcript doesn't report — the process is the monitor.
+def armed_tail():
+    for proc in glob.glob('/proc/[0-9]*'):
+        try:
+            cmd = open(proc + '/cmdline', 'rb').read().split(b'\0')
+        except OSError:
+            continue
+        if b'tail' in cmd and any(b'events.log' in c for c in cmd):
+            return True
+    return False
+
 watcher_on = 'METHODOLOGY_WATCHER=off' not in (open(os.path.expanduser('~/.claude/mechanisms/settings.env')).read() if os.path.exists(os.path.expanduser('~/.claude/mechanisms/settings.env')) else '')
 # A headless run (`claude -p`, entrypoint sdk-cli) has no Monitor tool: its caller watches, so don't ask it for one
 headless = any('"entrypoint":"sdk-cli"' in l for l in lines[-20:])
-if posted and watcher_on and not headless and not (monitors - dead):
-    print("You posted on GitHub in this session and no Monitor tails a watcher's events.log, so replies go unseen. "
-          "Run `gh-watch-start <your artifact root> <owner/repo> <N>` for each thread, arm the Monitor command it prints "
-          "(timeout_ms 1800000), handle events.log from your cursor, and re-arm on every expiry (methodology 1.5).", file=sys.stderr)
+if posted and watcher_on and not headless and not (monitors - dead or armed_tail()):
+    print("You posted on GitHub in this session and no armed tail watches a watcher's events.log, so replies go unseen. "
+          "Run `gh-watch-start <your artifact root> <owner/repo> <N>` for each thread, arm the tail it prints — the "
+          "Monitor command (timeout_ms 1800000), or a background task where there is no Monitor tool — handle events.log "
+          "from your cursor, and re-arm on every expiry (methodology 1.5).", file=sys.stderr)
     sys.exit(2)
 sys.exit(0)
 ````

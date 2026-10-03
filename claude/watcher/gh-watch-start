@@ -4,7 +4,7 @@
 # - "owner/repo N" goes to threads.txt; a bare "owner/repo" goes to repos.txt (the repo is covered, e.g. before `gh issue create`).
 # - Starts the daemon unless its PID is alive, with GH_WATCH_EYES from the environment, else from <dir>/eyes, else your gh login.
 # - Registers <dir> in ~/.claude/gh-watch-dirs.txt, which pre-bash-guard and post-bash-register read.
-# - Prints the Monitor command to arm (re-arm it on every expiry).
+# - Prints the tail command to arm — the Monitor tool, or a background task where there is no Monitor (re-arm on every expiry).
 set -e
 [ -n "$1" ] || { sed -n '2,7p' "$0"; exit 1; }
 dir=$(realpath -m "$1"); shift
@@ -28,4 +28,6 @@ else
   (cd "$dir" && GH_WATCH_EYES=$(cat eyes) nohup setsid ./gh-watch-daemon.sh >/dev/null 2>&1 &)
   sleep 1; echo "watcher started (PID $(cat "$dir/gh-watch.pid"), eyes: $(cat "$dir/eyes"))"
 fi
-echo "Monitor (timeout_ms 1800000, re-arm on every expiry): tail -n 0 -F $dir/events.log ~/.claude/profiles/swap-events.log 2>/dev/null | grep --line-buffered -E '^###|WATCH ERROR|STALE|^[^ =]'"
+echo "Arm this tail (re-arm on every expiry):"
+echo "  tail -n 0 -F $dir/events.log ~/.claude/profiles/swap-events.log 2>/dev/null | grep --line-buffered -E '^###|WATCH ERROR|STALE|^[^ =]'"
+echo "With the Monitor tool, arm it as Monitor (timeout_ms 1800000). Without one (a local claude), run it as a background task (timeout 1800)."
