@@ -72,6 +72,7 @@ timeout --kill-after=30 "$TIMEOUT" bwrap \
   --ro-bind "$METH" "${MPATH:-$H/.claude/methodology.md}" \
   --ro-bind "$RUN/home/.gitconfig" "$H/.gitconfig" \
   --ro-bind "$D/gh" /usr/bin/gh \
+  --ro-bind "$LLM/web-search-mcp" /usr/local/bin/web-search-mcp \
   --bind "$RUN/pr-steps" "$H/.claude/pr-steps" \
   --bind "$RUN" "$RUN" "${wsbind[@]}" \
   --unshare-pid --unshare-ipc --unshare-uts --die-with-parent --new-session \

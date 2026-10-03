@@ -98,14 +98,17 @@ sys.exit(1)
 PY
     ;;
   reap)
-    exec 9>"$DIR/.reaper.lock"; flock -n 9 || exit 0; idle=0; gone=0
+    exec 9>"$DIR/.reaper.lock"; flock -n 9 || exit 0; idle=0; gone=0; busy=0
     while :; do
       if [ -z "$(server_pid)" ]; then gone=$((gone + 1)); [ "$gone" -ge 12 ] && break; sleep 15; continue; fi
       gone=0
       if "$0" in-use; then idle=0; else idle=$((idle + 1)); fi
       [ "$idle" -ge 2 ] && { "$0" stop >/dev/null; break; }
       # the GPU is busy while the model isn't working: another program needs it
-      if ! processing && gpu_taken; then echo "$(date +%T) unloaded: another program is using the GPU" >>"$LOG"; "$0" stop >/dev/null; break; fi
+      # Another program on the GPU: busy while our server is up and idle, on two readings in a row (30 s). One reading isn't
+      # enough: right after a request the GPU still shows our own work, and that stopped a session between two requests.
+      if up && ! processing && gpu_taken; then busy=$((busy + 1)); else busy=0; fi
+      [ "$busy" -ge 2 ] && { echo "$(date +%T) unloaded: another program is using the GPU" >>"$LOG"; "$0" stop >/dev/null; break; }
       sleep 15
     done ;;
   *) sed -n 2,6p "$0"; exit 2 ;;

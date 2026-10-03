@@ -40,6 +40,8 @@ src = json.load(open(sys.argv[1]))
 dst = json.load(open(sys.argv[2])) if os.path.exists(sys.argv[2]) else {}
 for k in ('theme', 'hasCompletedOnboarding', 'lastOnboardingVersion', 'lastReleaseNotesSeen', 'mcpServers'):
     if k in src: dst[k] = src[k]
+# WebSearch runs on Anthropic's servers; the local model gets web_search from web-search-mcp instead
+dst.setdefault('mcpServers', {})['web-search'] = {'type': 'stdio', 'command': os.path.normpath(os.path.join(os.path.dirname(sys.argv[2]), '..', 'web-search-mcp'))}
 for path, p in src.get('projects', {}).items():
     if p.get('hasTrustDialogAccepted'): dst.setdefault('projects', {}).setdefault(path, {})['hasTrustDialogAccepted'] = True
 tmp = sys.argv[2] + '.tmp'; json.dump(dst, open(tmp, 'w'), indent=2); os.replace(tmp, sys.argv[2])
@@ -66,4 +68,4 @@ rm -f "$SESSIONS/$$"
 "$DIR/serve.sh" in-use || "$DIR/serve.sh" stop >/dev/null
 }
 trap 'trap - EXIT; cleanup; exit $code' EXIT HUP TERM INT
-code=0; setpriv --pdeathsig TERM claude --append-system-prompt "$(cat "$DIR/claude-local-prompt.md")" "$@" || code=$?
+code=0; setpriv --pdeathsig TERM claude --disallowedTools WebSearch --append-system-prompt "$(cat "$DIR/claude-local-prompt.md")" "$@" || code=$?
