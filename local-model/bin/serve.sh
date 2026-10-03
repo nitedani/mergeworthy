@@ -70,14 +70,15 @@ case "${1:-start}" in
     up && echo "running at $URL" || echo "not running" ;;
   in-use)
     exec python3 - "$DIR" <<'PY'
-import json, os, sys
+import json, os, re, sys
 d = sys.argv[1]; cfg = os.path.join(d, 'claude-config')
 def cmdline(pid):
     try: return open(f'/proc/{pid}/cmdline', 'rb').read()
     except OSError: return b''
 sess = os.path.join(d, '.sessions')
 for f in os.listdir(sess) if os.path.isdir(sess) else ():  # claude-local wrappers and local-agent sandboxes
-    if b'claude-local' in cmdline(f) or b'/sandbox/sandbox' in cmdline(f): sys.exit(0)
+    c = cmdline(f)  # a sandbox runs as .../sandbox/sandbox, or through the eval harness's bin/sandbox link
+    if b'claude-local' in c or re.search(rb'/sandbox\0', c): sys.exit(0)
 try: workers = json.load(open(os.path.join(cfg, 'daemon/roster.json'))).get('workers', {})  # /bg sessions
 except Exception: workers = {}
 if any(cmdline(w.get('pid', 0)) for w in workers.values()): sys.exit(0)
