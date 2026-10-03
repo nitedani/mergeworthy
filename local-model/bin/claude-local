@@ -52,10 +52,9 @@ unset ANTHROPIC_API_KEY
 for v in ANTHROPIC_MODEL ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL CLAUDE_CODE_SUBAGENT_MODEL; do
   export "$v"=local
 done
-# The server's context; Claude Code assumes 200K for a model it doesn't know and compacts too late.
-# Compact at 64K (LLM_COMPACT): a thread resumed after the model unloads is read again in full at ~1,000 tok/s, so a
-# 130K thread took ~140 s before its first token (a "hi" waited minutes); 64K is ~55 s, and decoding stays faster.
-export CLAUDE_CODE_MAX_CONTEXT_TOKENS="$LLM_CTX" CLAUDE_CODE_AUTO_COMPACT_WINDOW="${LLM_COMPACT:-65536}"
+# The server's context, which is also where Claude Code compacts: one number (LLM_CTX in profile.sh), so the server never
+# holds context the session can't use. (Claude Code assumes 200K for a model it doesn't know and would compact too late.)
+export CLAUDE_CODE_MAX_CONTEXT_TOKENS="$LLM_CTX" CLAUDE_CODE_AUTO_COMPACT_WINDOW="$LLM_CTX"
 export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
 [ -n "$NO_MODEL" ] && exec claude "$@"
 SESSIONS="$DIR/.sessions"; mkdir -p "$SESSIONS"; touch "$SESSIONS/$$"
