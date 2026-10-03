@@ -3,5 +3,5 @@
 # Permissions are bypassed on purpose: the sandbox is the safety boundary, and real long-running sessions run unattended.
 set -euo pipefail
 D="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
-"$D/sandbox" "$1" "$2" "${4:-2700}" -- claude -p "$(cat "$3")" --append-system-prompt "$(cat "${EVAL_PROMPT:-$HOME/local-llm/claude-local-prompt.md}")" --permission-mode bypassPermissions --strict-mcp-config \
+SANDBOX_OFFLINE=1 "$D/sandbox" "$1" "$2" "${4:-2700}" -- claude -p "$(cat "$3")" --append-system-prompt "$(cat "${EVAL_PROMPT:-$HOME/local-llm/claude-local-prompt.md}")" --permission-mode bypassPermissions --strict-mcp-config \
   --output-format stream-json --verbose >"$1/transcript.jsonl" 2>"$1/stderr.log" </dev/null

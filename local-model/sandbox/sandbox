@@ -18,7 +18,16 @@ H="$HOME"; PORT="${LLM_PORT:-8080}"
 
 "$LLM/serve.sh" start >&2
 # keep the server up while this runs (claude-local stops it when its last session exits)
-mkdir -p "$LLM/.sessions"; touch "$LLM/.sessions/$$"; trap 'rm -f "$LLM/.sessions/$$"' EXIT
+mkdir -p "$LLM/.sessions"; touch "$LLM/.sessions/$$"; trap 'rm -f "$LLM/.sessions/$$"; [ -n "${BR:-}" ] && kill $BR 2>/dev/null' EXIT
+# SANDBOX_OFFLINE=1 (the eval harness: a replayed task must not find its own merged fix online): no network; the model
+# server is reached through a bridge (a unix socket the sandbox can see)
+net=(); inner=()
+if [ -n "${SANDBOX_OFFLINE:-}" ]; then
+  rm -f "$RUN/llm.sock"; python3 "$D/bridge.py" outer "$RUN/llm.sock" "$PORT" & BR=$!
+  for _ in $(seq 50); do [ -S "$RUN/llm.sock" ] && break; sleep 0.1; done
+  net=(--unshare-net --ro-bind "$D/bridge.py" /tmp/.bridge.py)
+  inner=(bash -c 'python3 /tmp/.bridge.py inner "$0" "$1" & sleep 0.3; shift; "$@"' "$RUN/llm.sock" "$PORT")
+fi
 
 mkdir -p "$RUN/cfg" "$RUN/outbox" "$RUN/home" "$RUN/pr-steps"
 
@@ -75,7 +84,7 @@ timeout --kill-after=30 "$TIMEOUT" bwrap \
   --ro-bind "$LLM/web-search-mcp" /tmp/.web-search-mcp \
   --bind "$RUN/pr-steps" "$H/.claude/pr-steps" \
   --bind "$RUN" "$RUN" "${wsbind[@]}" \
-  --unshare-pid --unshare-ipc --unshare-uts --die-with-parent --new-session \
+  "${net[@]}" --unshare-pid --unshare-ipc --unshare-uts --die-with-parent --new-session \
   --clearenv \
   --setenv HOME "$H" --setenv USER "$USER" --setenv TERM xterm-256color --setenv LANG C.UTF-8 \
   --setenv PATH "$(IFS=:; echo "${path[*]}"):/usr/local/bin:/usr/bin:/bin" \
@@ -89,4 +98,4 @@ timeout --kill-after=30 "$TIMEOUT" bwrap \
   --setenv GH_SNAPSHOT "$RUN/gh-snapshot" --setenv GH_OUTBOX "$RUN/outbox" \
   --setenv GATED_POSTS "$RUN/gated-posts.txt" \
   --chdir "$WS" \
-  "$@"
+  "${inner[@]}" "$@"
