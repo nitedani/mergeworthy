@@ -46,7 +46,7 @@ shutil.copy2(os.path.join(ROOT, 'build.sh'), B)
 r = subprocess.run(['./build.sh', '--all'], cwd=B, capture_output=True, text=True)
 expect(f'build.sh --all: {r.stderr}', r.returncode == 0)
 body = lambda p: re.sub(r'\A<!-- settings: .* -->\n', '', open(p).read()) if os.path.exists(p) else None
-for name in ('prompt', 'ci'):
+for name in ('prompt', 'ci', 'local'):
     built, committed = (os.path.join(b, 'dist', f'methodology-{name}.md') for b in (B, ROOT))
     if name == 'prompt':
         expect('no-profile build equals dist/methodology-prompt.md, header aside', body(built) == body(committed))

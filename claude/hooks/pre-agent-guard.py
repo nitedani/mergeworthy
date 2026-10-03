@@ -4,7 +4,9 @@
 Blocks an Agent call that explores read-only (an Explore agent, or a prompt that says read-only / find / list every / where…)
 when: local_model=on, `local-agent` is installed, `claude-usage --mode` isn't `off`, and `serve.sh` doesn't see the GPU taken.
 Reviews that gate a post (the prompt asks for a final `CLEAN`) go to `local-agent review` the same way. A prompt with a
-`NEEDS-CLAUDE:` line saying why the local model can't do it (judgment, design) passes. A Haiku subagent is always blocked."""
+`NEEDS-CLAUDE:` line saying why the local model can't do it (judgment, design) passes. A Haiku subagent is always blocked.
+Inert in a session that runs on the local model itself (CLAUDE_CODE_SUBAGENT_MODEL=local): its subagents are already
+the local model, so there is nothing to delegate to."""
 import json, os, re, shutil, subprocess, sys
 
 d = json.load(sys.stdin)
@@ -13,6 +15,7 @@ prompt = i.get('prompt') or ''
 f = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'settings.env')
 saved = dict(l.strip().split('=', 1) for l in open(f) if '=' in l) if os.path.exists(f) else {}
 if (os.environ.get('METHODOLOGY_LOCAL_MODEL') or saved.get('METHODOLOGY_LOCAL_MODEL', 'off')) != 'on': sys.exit(0)
+if (os.environ.get('CLAUDE_CODE_SUBAGENT_MODEL') or '').lower() == 'local': sys.exit(0)  # the session is the local model; its subagents already are
 if (i.get('model') or '').lower() == 'haiku':
     print("No Haiku subagents: pair with the local model instead (it works and you review, or you write and it reviews: "
           "`local-agent review`), or use the session's own model.", file=sys.stderr); sys.exit(2)

@@ -15,7 +15,9 @@ Defaults (the user can override):
 <!-- else -->
 - **Review model**: the model from `codex-review-model` (Part 5), run with stdin closed: `codex exec -m "$(codex-review-model)" --sandbox danger-full-access --skip-git-repo-check -o <file> "<prompt>" < /dev/null`. If the account refuses it, take the next from `codex-review-model --all`. Record the model from the `model:` line the command prints, never from the model's self-description. When Codex fails (an error, a hang, "out of credits"; none of these is a review), a fresh-context Claude subagent on the session's default model runs the same charter; record which reviewer ran, and re-review on Codex once it's back. Try Codex again at every review.
 <!-- end -->
-- **Other models**: judgment work runs on the session's default model; routine agent work on the `sonnet` alias (1.1.14). Never a model above the default's tier unless the user names it, and never one the user has excluded. Never write a model version into a prompt, skill or memory.
+<!-- if session_model=claude -->- **Other models**: judgment work runs on the session's default model; routine agent work on the `sonnet` alias (1.1.14). Never a model above the default's tier unless the user names it, and never one the user has excluded. Never write a model version into a prompt, skill or memory.
+<!-- else -->- **One model**: every agent you start runs on the session's model; there is no model parameter to set.
+<!-- end -->
 <!-- if target=ci -->
 - **Artifact root**: `$RUNNER_TEMP/claude-work/` for notes, logs, probes, agent outputs and scratch worktrees, uploaded by the workflow as an artifact after the run; never `/tmp`.
 <!-- else -->

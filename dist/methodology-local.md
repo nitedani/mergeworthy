@@ -1,4 +1,4 @@
-<!-- settings: target=ci ownership=external tests=remove-before-merge merge=on-request-squash pr_open=ready review_trace=hidden badge=auto post_lang=en reviewer=claude watcher=off commit_identity=noreply local_model=off session_model=claude -->
+<!-- settings: target=local ownership=external tests=remove-before-merge merge=on-request-squash pr_open=ready review_trace=hidden badge=on post_lang=en reviewer=codex-then-claude watcher=on commit_identity=noreply local_model=on session_model=local -->
 # Work automation methodology (v3)
 
 Give this whole file to an agent, followed by the task. The agent sizes the work first (1.0), then applies only what that size requires.
@@ -24,8 +24,8 @@ These apply to every session, not only to tasks that load this file. `install-me
 - **Every post to GitHub passes the gate:** a draft file, `post-lint`, an independent review ending in exactly `CLEAN`, then `gate-pass`. Edit in place; never post correction comments. When posting from the user's account, start every post with `<img src="https://github.com/claude.png" width="20" height="20" align="left" alt="Claude"> **Claude:**`.
 - **Do, don't offer.** Ask only for irreversible actions on shared state, money or credentials or global config, or a maintainer's product decision, and then with a recommendation.
 - **Evidence for every claim**, in chat too; check `main`, the registry and upstream before recommending anything.
-- **Never hardcode model versions.** Reviews: a fresh-context Claude reviewer.
-- **The local model before Claude subagents.** When `local-agent` is installed and the GPU is free, exploration, fact-finding, reproductions and test runs go to `local-agent` (1.1.14); a Claude subagent only for judgment and design. It pairs with you: it works and you review, or you write and it reviews (`local-agent review`). Never a cheaper Claude model (Haiku, Sonnet) for reviews or checks. Usage past the subscriptions costs money.
+- **Never hardcode model versions.** Reviews: `codex exec -m "$(codex-review-model)"`, falling back to a fresh-context Claude reviewer.
+- **You are the local model.** Your subagents run on the same model, so the delegation rules don't apply to them, and you don't call `local-agent` or `claude-usage` yourself (they are for Claude sessions, 1.1.14).
 - **A subagent that writes a PR gets this methodology file**, not a checklist of it, and the Part 3 steps it must run (review round, refactor pass, guardian verdict, real-app evidence, benchmark for transports).
 <!-- always-on:end -->
 
@@ -36,9 +36,9 @@ These apply to every session, not only to tasks that load this file. `install-me
 Defaults (the user can override):
 - **The user** owns the goal. Code in the user's own repos, and beta, experimental or pre-1.0 features, is theirs, and yours to change for the goal: decide, act, and report afterwards.
 - **External maintainers**: whoever merges in a repo you don't own (CODEOWNERS, recent mergers). Their requests are settled decisions, and changes to their code's behavior or public surface are their call (Part 3 section 2).
-- **Review model**: a fresh-context Claude subagent on the session's default model, with the charter as its whole prompt; record which reviewer ran.
-- **Other models**: judgment work runs on the session's default model; routine agent work on the `sonnet` alias (1.1.14). Never a model above the default's tier unless the user names it, and never one the user has excluded. Never write a model version into a prompt, skill or memory.
-- **Artifact root**: `$RUNNER_TEMP/claude-work/` for notes, logs, probes, agent outputs and scratch worktrees, uploaded by the workflow as an artifact after the run; never `/tmp`.
+- **Review model**: the model from `codex-review-model` (Part 5), run with stdin closed: `codex exec -m "$(codex-review-model)" --sandbox danger-full-access --skip-git-repo-check -o <file> "<prompt>" < /dev/null`. If the account refuses it, take the next from `codex-review-model --all`. Record the model from the `model:` line the command prints, never from the model's self-description. When Codex fails (an error, a hang, "out of credits"; none of these is a review), a fresh-context Claude subagent on the session's default model runs the same charter; record which reviewer ran, and re-review on Codex once it's back. Try Codex again at every review.
+- **One model**: every agent you start runs on the session's model; there is no model parameter to set.
+- **Artifact root**: a persistent `<task>-work/` directory next to the worktree for notes, logs, probes, agent outputs and scratch worktrees; never `/tmp`.
 - **Publishing authority**: what the task allows you to open, comment and file. A reviewed draft isn't permission to publish.
 
 ---
@@ -60,7 +60,7 @@ Read the task and every link in it. Write `Tier: <X>, because <signals>` and put
 
 1. **Critical path first.** Keep an ordered `critical-path` list at the top of the ledger (Tier S: in `scope.md`). Before starting any agent, PR or investigation, write which item it unblocks. Work that unblocks none gets one review round, then is finished or set aside. At every wakeup, the next critical-path item is in flight before any side work.
 2. **Invariants first (Tier ≥ M), design second, code third.** List what any acceptable design must keep (the project file or the user names them) and put the list at the top of every agent and reviewer prompt. Each design option gets a table with one row per invariant, filled with measured evidence. Reject any option that breaks one, even "for now". Cleanest design from day one; no patchwork, no speculative capability.
-3. **Do, don't offer.** An offer is a to-do: do it now. Ask only when the action is (a) irreversible on shared state you didn't create, (b) money, credentials, or the user's global config (`~/.claude`, `~/.codex`, shell rc files), or (c) a product or public-API decision of an external maintainer, or a genuine fork you can't rank. Then: take your recommendation and list it in the run's final comment (1.12) as one line starting `GENUINE-FORK:` with the options, so the next `@claude` comment can reverse it.
+3. **Do, don't offer.** An offer is a to-do: do it now. Ask only when the action is (a) irreversible on shared state you didn't create, (b) money, credentials, or the user's global config (`~/.claude`, `~/.codex`, shell rc files), or (c) a product or public-API decision of an external maintainer, or a genuine fork you can't rank. Then: one line starting `GENUINE-FORK:`, the options and your recommendation; continue with everything else, and if nobody answers by the time you need it, take the recommendation and say so. Ask in plain text, never in a modal pop-up, and only after re-reading every message the user sent since your last reply: if they already answered, don't ask.
 4. **Every user message gets answered, first.** At each turn, list the user's messages since your last reply, including ones typed while you worked, and handle every one before ending the turn. Answer each question in the first lines, before any status or tool work; one that needs investigation goes on `questions-owed.md` with an ETA. An instruction about how to do something is done as given; try another way only after it fails, and quote the failure. An instruction whose premise doesn't hold (e.g. "one PR per item" when the items depend on each other): say so with a recommendation before acting.
 5. **Evidence for every claim, in chat too.** Each factual sentence about code, a package, a release or runtime behavior carries its source (`file:line`, `npm view`, command output) or is marked `guess:`; say what you could not verify. Check `main`, the registry and the upstream source before recommending to close, remove, replace or switch anything. A "can't" needs the failed attempt quoted plus one alternative tried. If you contradict something you said earlier, say so. A job you report as running is one you saw make progress (its log, its output file, the GPU busy), not one you only started. Measure through the exact path the real work takes (the same client, API and settings the user runs), never a convenient substitute; a result from another path is not evidence. A CI workflow change works only once a real run on the branch shows it.
 6. **Fix at the root; never document around a defect.** A sentence telling users to work around the product ("order by seq when order matters", "may miss for 60 s") is a bug to fix, upstream included, unless the user explicitly accepts it. These need the user's OK with a written reason the root fix is impossible: parsing twice, encoding to dodge a transport, retry or reload loops, a second code path for old runtimes, silent fallbacks. Unreleased, experimental or pre-1.0 code gets no compatibility code or shims (check `npm view <pkg> versions`); losing something users can do on `main` is still a regression (1.1.11). Before an upstream PR, find which side relies on behavior the other doesn't promise (hook order, file layout) and fix that side first, ours included.
@@ -72,14 +72,14 @@ Read the task and every link in it. Write `Tier: <X>, because <signals>` and put
     - **UI**, before anyone sees it: each touched page at widths 360, 768, 1280 and 1920 plus 1 px either side of every breakpoint, zoom 90–150 %, light and dark, hover, focus and open states, and a cold first load. Any console error fails. List the checked cells in the report. Use it like a person: real mouse, wheel, keyboard and touch (Playwright's `page.mouse`/`keyboard`/`touchscreen` when the DevTools browser can't send it), a screenshot looked at after each action, a recording for anything that moves. Scripted events, emulated hover and computed-style diffs don't count.
     - **Runtime fixes** (a stream, a cancel, a cache): shown in the real app through a real browser, `main` against the head, with the server's logs. Unit scripts alone don't count.
 12. **Fix the mistake and the rule that allowed it.** When the user names a failure: stop, re-read, and fix the whole class in the same turn: the artifact (PR, comment, code), and the rule source that allowed it (this file, the installed skill, the project file, or a Part 5 mechanism), by editing the existing rule (1.9). Then show the correction holds. Behavioral lessons go into this file, never only into one project's memory or a machine's global config.
-13. **Never stall.** Nothing wakes you once the run ends: finish every scope item you can, and end with the final comment (1.12) listing what's left, why, and what unblocks it. While any wait exceeds 10 minutes, at least one independent item is in flight; if none exists, say why. When a context nears its limit, hand off at a clean boundary to a fresh agent with the ledger.
+13. **Never stall.** Never end a turn with work pending unless something running will notify you, or you say what you're waiting for. A long job gets a Monitor on its failure signals (its process or server exiting, errors, no progress), not only a completion notice: a run that dies silently must wake you. While any wait exceeds 10 minutes, at least one independent item is in flight; if none exists, say why. When the user says they're leaving, send every open question in one message within 5 minutes, then continue on your recommended defaults. When a context nears its limit, hand off at a clean boundary to a fresh agent with the ledger.
 14. **Spend tokens like money.**
     - Do small steps yourself: one command, one file read, a short edit, a "Done in <sha>" reply.
     - Start an agent only for long, independent work, at most 3 at a time without asking, and only from the main session: a subagent never starts agents of its own (1.7); queue the rest. Continue an agent that already has the context (send it a message) instead of starting a new one, and stop an agent as soon as its question is settled.
     - Give agents paths and the question, never pasted files or long histories; ask for a short report. Each role gets only what it uses: a PR writer or orchestrator gets this file (1.7); an executor (the routine work below) a ticket with `Goal`, verified `Facts`, `To check`, `Scope` and `Acceptance`, and none of your conclusions; a reviewer its charter and the artifact.
     - Match the check to the risk: a short reply gets the fast gate (1.6), a PR body or a proposal the full review, a full convergence loop only where the tier (1.0) requires it.
     - Re-run only the tests a change can affect (a docs change doesn't need the e2e matrix).
-    - Model per task (Agent tool's model parameter): `sonnet` for running tests and gates, mining logs, fact checks of short texts, mechanical edits and relaying status; the session's default model (Opus family) for design, hard debugging, charter-driven reviews and anything posted to a maintainer.
+    - One model: every agent you start runs on the session's model; there is no model parameter to set.
     - Never trim a charter or skip a pass it requires to save tokens.
 15. **Earn every line.** A reviewer's, verifier's or guardian's finding is a candidate, not a mandate. Before it becomes code, a test, a doc or an option:
     - How likely does a real user hit it, and what happens then? A rare case whose failure is mild, or arguably what the user asked for, gets no code. Wrong data returned silently (a misattribution, a lenient parse that hides the cause) is never mild: fix it at the root (1.1.6).
@@ -100,7 +100,7 @@ Read the task and every link in it. Write `Tier: <X>, because <signals>` and put
 
 ## 1.2 Tracking
 
-- **Every tier:** drafts and their reviews under `drafts/`; evidence under the artifact root; exit codes recorded (`EXIT=$?`) and quoted, never a log tail. Log and artifact names include a unique pass ID; never overwrite another pass's file. The owed lists of 1.5 (`replies-owed.md`, `questions-owed.md`, `proposals-open.md`) live in the tracking comment (1.12).
+- **Every tier:** drafts and their reviews under `drafts/`; evidence under the artifact root; exit codes recorded (`EXIT=$?`) and quoted, never a log tail. Log and artifact names include a unique pass ID; never overwrite another pass's file. The owed lists of 1.5 (`replies-owed.md`, `questions-owed.md`, `proposals-open.md`) live in the artifact root.
 - **Tier S:** the PR body is the reader's record, true of the final head, plus `scope.md` and a short `ledger.md` for process records (review, refactor, ready-check).
 - **Tier M:** `ledger.md`, one row per event (time | unit | event | head SHA | result: each pass, round, fix with its commits, gate or lane run with its exit status, push, CI result), headed by `critical-path` and the passes still owed. Answer every status and convergence question from it, skipped steps included. `decision-packet.md`: only people's picks (decision | who | date | link | what it was picked over). `scope.md`, `acceptance.md`, and `corrections.md` (quote | instance fix | generator fix).
 - **Tier L:** an umbrella issue listing every PR and issue with its state, plus one live **Decisions comment** on it (Requirements, Agreed, Proposed and waiting, Open, PRs), edited in place through the gate. Every line has a source link.
@@ -139,7 +139,7 @@ Read the task and every link in it. Write `Tier: <X>, because <signals>` and put
 
 A maintainer's comment is handled like the user typing in this chat: highest priority, full effort.
 
-1. **First:** a 👀 reaction on each comment you'll answer that doesn't have yours yet.
+1. **Within 10 seconds:** 👀 reaction. The watcher does this (Part 5).
 2. **Within about a minute:** a short reply through the fast gate (1.6). Before acting on any comment, check that its reason fits the line it's anchored to; if it fits another line better, ask before changing anything.
    - An instruction ("Let's…", "Remove…", "Merge origin/main") or a suggestion block: do it, then reply "Done in <sha>."
    - A question or soft suggestion ("Overkill?", "How about…?", "why…?", "I think we can…") gets an answer, never a code change until they answer it. "How about X?" or "Is X possible?" starts with yes or no and the one real obstacle; when their idea is simpler than yours, recommend it. If the answer needs work, say what you're checking ("Measuring the calls"); never agree with a premise or promise a change you haven't measured.
@@ -150,10 +150,10 @@ A maintainer's comment is handled like the user typing in this chat: highest pri
 4. **Then reply** with the result as a new comment (edits don't notify). Beyond this result (and the wait ping below), a question gets no further comments from you; later changes to your reply are edits.
 5. **Book-keeping, in the same step:** decision packet, umbrella body, Decisions comment, ledger.
 
-**The owed lists.** Each list item is cleared only by the thing named:
+**The watcher and the owed lists.** Before your first post in any tier (an audit report or a single issue included), run `gh-watch-start <artifact root> <owner/repo> [N]` (Part 5) and arm the tail it prints — the Monitor tool, or a background task where there is no Monitor tool; never poll GitHub in a loop in the conversation. Every thread you open or comment on joins its list in the same step: the posting guard adds it, refuses to post to a repo no running watcher covers, and the Stop hook refuses to end a turn after a post with no armed tail on `events.log`. Keep it alive, re-arm the tail of its log on every expiry, and arm a recurring heartbeat (`CronCreate`, every 10 minutes) that re-arms the tail, checks the daemon, and handles `events.log` from a cursor you store in `events.cursor` (advance it as you handle events); after any resume, handle `events.log` from the cursor before anything else. Each list item is cleared only by the thing named:
 - `replies-owed.md`: every maintainer comment with a question or request, and every comment the user posts in a thread (back it with evidence or add what it's missing). Checked at every wakeup; cleared by the posted reply's URL.
 - `proposals-open.md`: every "OK?" you ask, and every promise you post ("I'll…") as `PROMISED <thread>: <what>`. Each new maintainer comment is checked against it first. Cleared by the commit or link that delivers it. Do work you can finish in minutes before posting, so the post says "Done in <link>", never "fixing it now".
-- `waiting-on.txt`: each thing a PR of yours waits on (`<owner/repo#N> -> <dependent>: <what to do>`), also in that PR's notes table; check each at the start of every run. A merge or release you depend on is handled like a maintainer comment: in the same step, apply what waited on it and post the progress on the dependent PR.
+- `waiting-on.txt`, next to the watcher's `threads.txt`: each thing a PR of yours waits on (`<owner/repo#N> -> <dependent>: <what to do>`), also in that PR's notes table; the watcher prints `DEPENDENT of merged …` when it lands. A merge or release you depend on is handled like a maintainer comment: in the same step, apply what waited on it and post the progress on the dependent PR.
 - A pending task whose condition is met is done now.
 
 When a burst of maintainer comments ends, check the PR: none is the last word without a change, an answer or a reaction. When a proposal or question has waited a few hours and the wait isn't obvious to them (buried in a thread, several open at once), post one @-mention on that PR with the decisions you need, each with your recommendation and link; once per thread per wait, never while they're mid-review.
@@ -166,7 +166,7 @@ It covers everything that reaches an external service, with no lighter category:
 
 1. Write the draft to `drafts/<name>.md` (never straight into a `gh` command), and the comment it answers to `drafts/<name>.parent.md`.
 2. Run `post-lint` (Part 5). It must pass.
-3. Run the review model with a prompt file. It checks facts and noise, never wording: every claim against the code (`file:line` or a command and its output), the thread and the evidence; every con or risk names who hits it today (a caller, repo or user), or is cut; every sentence the reader could delete; every question answered; every absolute word ("every", "unchanged", "always", "only") quoting what proves it, or cut; maintainer requests followed; links correct. It also reads cold: "you have not seen this thread; list every term or sentence you can't understand". Capture only its final message (saved as `drafts/<name>.review.out`). Fix every finding and re-review until that message is exactly `CLEAN`. Never paste the reviewer's rewritten wording; write the fix in your own plain words.
+3. Run the review model with a prompt file. It checks facts and noise, never wording: every claim against the code (`file:line` or a command and its output), the thread and the evidence; every con or risk names who hits it today (a caller, repo or user), or is cut; every sentence the reader could delete; every question answered; every absolute word ("every", "unchanged", "always", "only") quoting what proves it, or cut; maintainer requests followed; links correct. It also reads cold: "you have not seen this thread; list every term or sentence you can't understand". Capture only its final message (`-o drafts/<name>.review.out`). Fix every finding and re-review until that message is exactly `CLEAN`. Never paste the reviewer's rewritten wording; write the fix in your own plain words.
 4. Right before posting, re-read every claim against the current head (`git fetch` first; read a PR's state before describing it). Every referenced commit is pushed (`git ls-remote`). Run `gate-pass <abs path>/drafts/<name>.md <review output>` and post with `--body-file` on that absolute path (`gh api … -F body=@<file>` for API posts).
 5. Post in the thread where the person wrote. Log it.
 
@@ -179,7 +179,7 @@ It covers everything that reaches an external service, with no lighter category:
 - Short, plain words. No jargon, abstractions or AI phrasing ("in this run", "doesn't establish", "worth noting", "happy to", "let me know"), and never solicit ("pushback welcome").
 - Say only what they don't know yet. Don't recite their comment or your earlier replies, don't thank them for an approval, and don't promise how you'll behave next time. When answering several questions, quote each in one line. If all there is to say is "done", say "Done in <sha>".
 - Several comments from one person get one reply. Never post a comment that corrects or adds to your own earlier one: edit it in place, through the gate. (The 1.5 result, wait-ping and dependency-progress comments are new comments.)
-- Keep the process invisible: reviewers, models, gates, rounds, working ratings and pass reports stay in the artifact root; the ledger in the tracking comment (1.12) sits in a collapsed `<details>` block. The thread gets the result, with evidence only where a reader needs it to judge.
+- Keep the process invisible: reviewers, models, gates, rounds, working ratings and pass reports stay in the artifact root. The thread gets the result, with evidence only where a reader needs it to judge.
 - Decide what you can decide or measure. A question carries your recommendation and its reason; a change you'd recommend within scope is made, not listed.
 - Credit a design or statement to someone only with a link to where they said it.
 - Links to another repo use `owner/repo#N`. Write "depends on #N", never "stacked on", unless `gh stack` links them.
@@ -191,7 +191,7 @@ It covers everything that reaches an external service, with no lighter category:
 
 - Commit as the GitHub account you push with, by login and noreply email (`git -c user.name=<login> -c user.email=<id>+<login>@users.noreply.github.com commit`), never the user's real name or another address. Maintainers may push to your branches and may merge. Before any push: fetch, fast-forward onto their commits, check `git merge-base --is-ancestor <remote> HEAD`, then push. Never force-push, except on your own unmerged branch with `--force-with-lease=<branch>:<sha you last pushed>`; never push to a merged branch.
 - Each maintainer instruction is a checkbox for its PR. Before saying ready and before merging, re-read the whole thread, inline comments included, and tick or do each one.
-- **A subagent that writes a PR follows this file, not a summary of it.** Its prompt hands over this file and names the steps it runs (Part 2's review round, the refactor pass, Part 3's guardian verdict, evidence in the real app, the benchmark for transports); its report lists each step with its output file. It starts no agents of its own: a step that needs one (a Claude reviewer when Codex is unavailable, mappers) goes back in its report, and the main session runs it. The `pr-steps` hook (Part 5) blocks a ready PR without the review and refactor records.
+- **A subagent that writes a PR follows this file, not a summary of it.** Its prompt hands over this file and names the steps it runs (Part 2's review round on another company's model, the refactor pass, Part 3's guardian verdict, evidence in the real app, the benchmark for transports); its report lists each step with its output file. It starts no agents of its own: a step that needs one (a Claude reviewer when Codex is unavailable, mappers) goes back in its report, and the main session runs it. The `pr-steps` hook (Part 5) blocks a ready PR without the review and refactor records.
 - **Ready** means every item below holds (`ready-check`, Part 5): every slice dry after its last fix, a guardian verdict covering the head, every instruction box ticked, every `acceptance.md` claim holding on the head, the body true of the head, CI green, the review covering the head SHA, `replies-owed.md` empty for the PR, and a screenshot in the body for UI changes. Then say once, "Ready for review" or "Ready to merge from my side", with the head SHA and the CI link, and end with "Reply `merge` and I'll squash-merge it." The checklist output stays in the ledger; "converged" and "dry" never appear in the thread.
 - CI: `gh run rerun` on an upstream repo needs admin rights, so ask a maintainer; fork PRs get no CI secrets (e.g. a Vercel token), so those jobs fail on forks.
 - Merge only after a maintainer asks: `gh pr merge <N> --squash --subject "<PR title> (#<N>)" --body ""`, unless the repo's `AGENTS.md`, re-read right before merging, says otherwise.
@@ -204,7 +204,7 @@ It covers everything that reaches an external service, with no lighter category:
 - Never restart or reconfigure a container someone else's work depends on; start your own alongside.
 - Never modify the package store or a shared `node_modules`; scratch installs use `--package-import-method=copy`. After any install, check `git status` for unexpected changes.
 - Browser work uses the DevTools MCP. On "profile in use", retry after 30 s, then ask. Never fall back to scripted browsers silently, never open windows on the user's desktop, never kill another session's browser.
-- Isolate worktrees: their own ports, databases and generated clients. Work in the checkout the workflow made, on its branch; to read another branch, `git worktree add --detach <artifact root>/<name> <ref>`.
+- Isolate worktrees: their own ports, databases and generated clients. Never touch the user's own checkouts (the clones the user works in), including their git config, which their worktrees share: no edits, commits, checkouts, resets or branch switches; work in worktrees you create, and to read another branch, `git worktree add --detach <artifact root>/<name> <ref>`.
 
 ## 1.9 Writing rules, prompts and docs
 
@@ -229,12 +229,10 @@ When editing a skill, prompt, rules file or AGENTS.md:
 
 ## 1.12 Pre-flight (steps 3 and 4 in every tier; the rest in Tier ≥ M)
 
-At the start of every run, in every tier: read the whole thread since the bot's last comment (comments, review comments, reviews, pushes) and the bot's earlier tracking comment, and rebuild `scope.md` from them. Keep the scope, the ledger and the owed lists (1.5) in this run's tracking comment (the one the action posts and updates), updated as they change, through the gate as a tracker post (`post-lint --kind tracker`); its last edit is the run's final comment.
-
 Before the first change:
 1. Write `scope.md`.
 2. Write the critical path.
-3. Check that the Part 5 hooks are in `~/.claude/settings.json`; this file names that file, so add them if missing. Answer any maintainer comment still without a reply first.
+3. Check that the Part 5 hooks are in `~/.claude/settings.json`; this file names that file, so add them if missing. Start the watcher with `GH_WATCH_EYES=<maintainers>,<user> gh-watch-start <artifact root> <owner/repo> <N>…`, arm the tail it prints (the Monitor tool, or a background task where there is no Monitor tool), and register every open PR and issue the account has in the scope repos (`gh search prs --author <login> --state open`, and issues), not only this session's; answer any maintainer comment still without a reply first.
 4. Confirm browser control (for UI work).
 5. Note the precedents and style (1.3).
 
@@ -247,8 +245,10 @@ Each happened, most more than once. Read them before starting.
 | What happened | Rule |
 |---|---|
 | Replies posted unreviewed; correction comments stacked on top; one draft posted twice. | 1.6, `pre-bash-guard` |
+| Maintainer comments unanswered for hours: watcher gaps, unregistered PRs, a watch expired during a usage limit, 👀 then silence, an issue opened by a "Tier 0" audit and never watched. Asked "why didn't you?", the agent explained and waited for a go. | 1.5 watcher and heartbeat, 1.1.13, always-on (named failure), `gh-watch-start`, `pre-bash-guard`, `stop-lint` |
 | "Good!" read as closing an old point, left 45 minutes. | 1.5 acknowledgements, `proposals-open.md` |
 | Stale tracker lines and Decisions comment, hours and many merges behind. | 1.2, `tracker-check` |
+| Red CI noticed by the user. | `gh-watch` CI events |
 | An LGTM'd item still "waiting"; a superseded statement cited. | 1.1.9 |
 | Maintainer instructions ignored ("remove the test right before merging", twice). | 1.7 checkboxes, `ready-check` |
 | "Ready" on green CI alone, or without review, refactor or guardian verdict; a subagent ran a hand-written checklist. | 1.7, `ready-check`, `pr-steps` |
@@ -285,7 +285,7 @@ Each happened, most more than once. Read them before starting.
 | Five new core hooks where an existing extension point sufficed. | 1.4 step 0 |
 | Instruction files bloated with rationale and opt-outs. | 1.9 |
 | A lesson from one repo repeated in another. | 1.1.12 |
-| 170 headless browsers; a preview left running 4.5 hours. | 1.1.13, 1.8 |
+| Work stopped at every rate limit; 170 headless browsers; a preview left running 4.5 hours. | 1.1.13, 1.8 |
 | Shared pnpm store modified, logs overwritten, backups lost in `/tmp`, a colleague's commits force-pushed over. | 1.8, 1.2, TASK, 1.7 |
 | A model above the default's tier used for subagents; global config edited instead of the skill. | TASK, 1.1.3 |
 | A subagent's design merged without understanding it. | 1.10 |
@@ -301,7 +301,7 @@ From an issue or a problem to one merge-ready PR. Tier S follows it as written; 
 
 The repo's `AGENTS.md` / `CLAUDE.md` governs how the code is written. Everything particular to a repo (base branch, gates, existing guarantees, security surfaces, tracker, labels, how to run the app) lives in its **project file**: `.claude/skills/implement-issue/references/project.md`, else `.claude/implement-issue.md`. If the repo has none, derive it (base branch from `gh repo view --json defaultBranchRef`, gates from CI config and package scripts, how to run the app from the README) under the headings of the project template at the end of this part, write it to `.claude/implement-issue.md`, tell the user it is a draft, and use it. If the repo has `.claude/skills/implement-issue/SKILL.md`, read it on `origin/<base>` first: where it differs from this part, it wins, except where Part 1 says otherwise (review records go to the ledger, found defects per 1.1.7, process stays out of the thread).
 
-`<base>` below is the base branch it names. Work in the checkout, on the branch it has checked out. Read the project file's CI section first, if it has one.
+`<base>` below is the base branch it names. Work in a worktree off it: `git fetch origin && git worktree add -b <branch> <artifact root>/<branch> origin/<base>`. In CI (e.g. `$GITHUB_ACTIONS` is `true`) read the project file's CI section first, if it has one.
 
 **Check you can finish before you start**, both halves up front:
 - **Browser control**: a [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) or anything that opens a page and screenshots it. Try it; nothing in a shell can test it. Configure the MCP with `--isolated` (e.g. `npx -y chrome-devtools-mcp@latest --headless --isolated`) so parallel sessions don't share one profile; isolated profiles are temporary, so set the cookies and storage the test needs in the page.
@@ -377,10 +377,10 @@ The review model (TASK) reviews the diff with the reviewer charter (below):
 git merge-base HEAD origin/<base>                      # note the sha
 ## write the reviewer charter (end of this part) to <artifact root>/review.md
 ## append: the diff command with that sha, and one sentence on what it claims to do
-## start a fresh-context Claude subagent with review.md as its whole prompt; save its final message to <artifact root>/review.out
+codex exec -m "$(codex-review-model)" --sandbox read-only -o <artifact root>/review.out "$(cat <artifact root>/review.md)" < /dev/null
 ```
 
-It says UNKNOWN for anything it could not observe. If no reviewer at all is available, review it yourself with the charter.
+Its sandbox usually cannot run the gates (no Docker socket, no network): paste your commands, exit codes and output for it to grade, or give it `--sandbox danger-full-access`. It says UNKNOWN for anything it could not observe. If no reviewer at all is available, review it yourself with the charter.
 
 One round: fix real defects, decline the rest with a line of reasoning (1.1.15), no second round. Record who reviewed (or that it was a self-review) and what they found, including nothing, in the ledger, and run `pr-steps review <output>`.
 
@@ -900,13 +900,16 @@ These scripts enforce the rules that failed as text alone. This file is the only
 
 | Mechanism | Enforces | How to use it |
 |---|---|---|
-| `tracker-check.sh` | 1.2. Umbrella drift (checkbox vs PR state), and a Decisions comment last edited before a tracked PR merged or closed. | `TRACKER_REPO=o/r TRACKER_ISSUE=N TRACKER_DECISIONS=<comment id> ./tracker-check.sh`. Run it before every report. |
+| `gh-watch.py` + `gh-watch-daemon.sh` | 1.5. Reports comments, review comments and reviews by others; PR pushes, merges and closes; CI red and green. Adds 👀 within ~10 s for the logins in `GH_WATCH_EYES`, and reports their 👍 or 👎 on the agent's comments as `### THUMBS UP` / `### THUMBS DOWN`. Prints `### REFACTOR STALE` when your PR's code (test files excluded) changed by more than ~80 lines since its last `pr-steps refactor` record. | Start with `gh-watch-start <artifact root> <owner/repo> [N]…` (below), never by hand. One `owner/repo number` per line in `threads.txt` next to it. When posting from the user's account, the user's own comments are told apart through `~/.claude/gated-posts.txt` (filled by `gate-pass`). Tail `events.log` — the Monitor tool, or a background task of the printed tail where there is no Monitor tool — re-armed on every expiry. Position and seen events persist in `gh-watch-state.json`, so restarts lose nothing. |
+| `tracker-check.sh` | 1.2. Umbrella drift (checkbox vs PR state), and a Decisions comment last edited before a tracked PR merged or closed. | `TRACKER_REPO=o/r TRACKER_ISSUE=N TRACKER_DECISIONS=<comment id> ./tracker-check.sh`. The watcher calls it when the variables are set. Run it before every report. |
 | `post-lint.py` | 1.6. Banned phrases, em dashes, "stacked on", bare `#N`, budgets (reply 80 words, PR 150, issue 400 characters, inline 2 sentences; tables, code, images and URLs not counted), unclassified notes, process in the thread, questions without a recommendation, a bare "Done" to a question or soft suggestion, a notes-table Next of "recommend", "follow-up" or "later". | `post-lint.py drafts/x.md --kind reply\|pr\|issue\|inline [--repo o/r]` (default `reply`). A reply or inline comment reads its parent from `drafts/x.parent.md` (or `--parent <file>`; `--parent none` when it answers nobody). Tests: `tests/test_post_lint.py`. |
-| `gate-pass` | 1.6. Records that a draft passed: `post-lint` clean and the review's final message (saved as `drafts/x.review.out`) exactly `CLEAN`; stores the draft's sha256 in `<draft>.gate`. A draft that promises work ("I'll", "follow-up PR") first needs a `PROMISED … (<draft name>)` line in `proposals-open.md`. | `gate-pass drafts/x.md drafts/x.review.out` (set `POST_LINT_ARGS` for `--repo`/`--kind`). |
-| `pre-bash-guard.py` (PreToolUse hook on Bash) | 1.6, 1.7, 1.8. Blocks: `gh` posts and edits whose body isn't a gated draft or changed after its gate;  posting the same gated draft as a new comment, issue or PR twice (`<draft>.posted`; edits may repeat); `gh pr merge` without `--squash --subject "<title> (#N)" --body ""`; `pkill -f`/`killall`; bare `git stash`; force-push without a pinned lease. Reactions pass. | Hook config below. Use absolute draft paths. |
+| `gate-pass` | 1.6. Records that a draft passed: `post-lint` clean and the review's final message (`codex exec -o drafts/x.review.out`) exactly `CLEAN`; stores the draft's sha256 in `<draft>.gate`. A draft that promises work ("I'll", "follow-up PR") first needs a `PROMISED … (<draft name>)` line in `proposals-open.md`. | `gate-pass drafts/x.md drafts/x.review.out` (set `POST_LINT_ARGS` for `--repo`/`--kind`). |
+| `pre-bash-guard.py` (PreToolUse hook on Bash) | 1.6, 1.7, 1.8. Blocks: `gh` posts and edits whose body isn't a gated draft or changed after its gate; a new issue, PR or comment in a repo no running watcher covers (`gh-watch-start`); posting the same gated draft as a new comment, issue or PR twice (`<draft>.posted`; edits may repeat); `gh pr merge` without `--squash --subject "<title> (#N)" --body ""`; `pkill -f`/`killall`; bare `git stash`; force-push without a pinned lease. Reactions pass. | Hook config below. Use absolute draft paths. |
 
 | `stop-lint.py` (Stop hook) | 1.1.3, 1.5. Blocks ending a turn with "want me to / should I / your call / when you say go…" unless the message has a `GENUINE-FORK:` line, and after a GitHub post in the session while no armed tail (a Monitor, or a live `tail` process where there is no Monitor tool) watches a watcher's `events.log` (none armed, or the last one expired or stopped). | Hook config below. |
+| `gh-watch-start` (`~/.local/bin`) | 1.5. The one way to start watching; idempotent. | `gh-watch-start <dir> [owner/repo [N]]…`: links the watcher into `<dir>`, adds `owner/repo N` to `threads.txt` (a bare `owner/repo` to `repos.txt`, covering the repo before an issue exists), starts the daemon unless it runs (eyes from `GH_WATCH_EYES`, else `<dir>/eyes`, else your login), registers `<dir>` in `~/.claude/gh-watch-dirs.txt`, and prints the tail command to arm (the Monitor tool, or a background task where there is no Monitor tool). `pre-bash-guard` blocks a post to a repo no running watcher covers and adds the thread a comment goes to; `post-bash-register.py` (PostToolUse hook) adds a thread you just created. |
 
+| `codex-review-model` (`~/.local/bin`) | TASK review model. Prints Codex's top-ranked model from `codex debug models`, skipping the premium tier ("the most demanding work") and older generations, so reviews move to newer models without editing any prompt. | `codex exec -m "$(codex-review-model)" …`; `--all` lists the ranked models for a fallback. |
 | `pr-steps` + posting hook | Part 2 steps 6–7 (Part 3 sections 6–7 in Tier ≥ M), 1.7. | `gh pr create` (unless `--draft`) and `gh pr ready` are blocked until HEAD has a `review` and a `refactor` record: run `pr-steps review <reviewer output>` and `pr-steps refactor <rating output>` on the final HEAD after the fixes. |
 | `install-methodology` | 1.1.12: this file travels; the machine's copies follow it. | Writes Part 5's scripts to `~/.claude/mechanisms/` (commands linked into `~/.local/bin`), merges the hook config into `~/.claude/settings.json`, and writes the Always-on rules into `~/.claude/CLAUDE.md` between markers, leaving the rest of that file alone. The file's first line, the settings header `build.sh` writes, goes to `~/.claude/mechanisms/settings.env` as `METHODOLOGY_<KEY>=<value>` lines, read by `post-lint` (badge, review records; `gate-pass` runs it) and `pre-bash-guard` (merge); an environment variable of the same name wins. |
 | `methodology-update` (`~/.local/bin`; SessionStart hook with `--auto`) | 1.1.12: every machine follows the repo. | Pulls the repo the installed file came from (`METHODOLOGY_SOURCE` in `settings.env`), rebuilds the same profiles, reinstalls, and the local-model tooling when installed. `--auto`: at most once a day, detached, logged to `~/.claude/mechanisms/update.log`; the new version applies from the next session. |
@@ -918,7 +921,8 @@ Hook config for `~/.claude/settings.json`:
 ```json
 {
   "hooks": {
-    "PreToolUse": [{ "matcher": "Bash", "hooks": [{ "type": "command", "command": "python3 ~/.claude/mechanisms/pre-bash-guard.py" }] }],
+    "PreToolUse": [{ "matcher": "Bash", "hooks": [{ "type": "command", "command": "python3 ~/.claude/mechanisms/pre-bash-guard.py" }] }, { "matcher": "Agent", "hooks": [{ "type": "command", "command": "python3 ~/.claude/mechanisms/pre-agent-guard.py" }] }],
+    "PostToolUse": [{ "matcher": "Bash", "hooks": [{ "type": "command", "command": "python3 ~/.claude/mechanisms/post-bash-register.py" }] }],
     "SessionStart": [{ "hooks": [{ "type": "command", "command": "python3 ~/.claude/mechanisms/methodology-update --auto" }] }],
     "Stop": [{ "hooks": [{ "type": "command", "command": "python3 ~/.claude/mechanisms/stop-lint.py" }] }]
   }
@@ -927,6 +931,492 @@ Hook config for `~/.claude/settings.json`:
 
 
 
+
+### `gh-watch.py`
+
+````python
+#!/usr/bin/env python3
+"""Robust GitHub watch for the tracked threads. One line on stdout per event.
+
+- Comments, review comments and reviews by anyone except you (GH_WATCH_ME) and bots (new or edited).
+- Comments by the logins in GH_WATCH_EYES get an :eyes: reaction (held while every subscription is used up).
+- Maintainers' commits pushed to a tracked PR, and 👍/👎 from GH_WATCH_EYES on the agent's comments.
+- PR head/state changes (pushes, merges, closes), CI turning red or green on open PRs, and your PR's code (tests excluded) changing by more than ~80 lines since its last refactor pass (REFACTOR STALE).
+- Tracker drift (tracker-check.sh).
+State lives in gh-watch-state.json: every seen (id, updated_at) pair, so nothing is skipped or repeated,
+and scans overlap by 10 minutes. A failed API call prints WATCH ERROR and that thread's scan position isn't advanced.
+"""
+import json, os, re, subprocess, sys, time, datetime, fcntl
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+STATE = os.path.join(HERE, 'gh-watch-state.json')
+THREADS = os.path.join(HERE, 'threads.txt')  # one "owner/repo number" per line
+ME = os.environ.get('GH_WATCH_ME') or subprocess.run(['gh', 'api', 'user', '--jq', '.login'], capture_output=True, text=True).stdout.strip()
+if not ME:
+    sys.exit("WATCH ERROR could not read your login (gh api user); set GH_WATCH_ME")  # else your own comments become events
+ONCE = '--once' in sys.argv  # a manual check: prints events but doesn't consume them or react, so the daemon still logs them
+EYES_FOR = set(filter(None, os.environ.get('GH_WATCH_EYES', '').split(',')))  # maintainers whose comments get :eyes:
+
+
+def gh(args):
+    r = subprocess.run(['gh'] + args, capture_output=True, text=True)
+    if r.returncode != 0:
+        raise RuntimeError(f"gh {' '.join(args)}: {r.stderr.strip()[:200]}")
+    return r.stdout
+
+
+def gh_json(path):
+    out = gh(['api', '--paginate', '--slurp', path])
+    pages = json.loads(out)
+    items = []
+    for p in pages:
+        items.extend(p if isinstance(p, list) else [p])
+    return items
+
+
+def load_state():
+    try:
+        s = json.load(open(STATE))
+        s.setdefault('since_by', {}); s.setdefault('stale', [])
+        return s
+    except Exception:
+        now = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=1)
+        return {'since': now.strftime('%Y-%m-%dT%H:%M:%SZ'), 'seen': {}, 'prs': {}, 'ci': {}, 'is_pr': {}, 'since_by': {}, 'stale': []}
+
+
+def save_state(s):
+    if ONCE:
+        return
+    tmp = STATE + '.tmp'
+    json.dump(s, open(tmp, 'w'))
+    os.replace(tmp, STATE)
+
+
+# The agent and the user may post as the same account (ME). The agent posts only gated drafts
+# (gate-pass registers each one's hash), so a comment by ME whose text matches no gated post is the user's.
+GATED_POSTS = os.path.expanduser(os.environ.get('GATED_POSTS', '~/.claude/gated-posts.txt'))  # written by gate-pass
+
+
+def _norm(text):
+    import hashlib
+    return hashlib.sha256((text or '').replace('\r\n', '\n').strip().encode()).hexdigest()
+
+
+def agent_post_hashes():
+    try:
+        return set(open(GATED_POSTS).read().split())
+    except OSError:
+        return set()
+
+
+def is_human(u, body=None, agent_hashes=frozenset()):
+    if not u or u.get('type') == 'Bot' or u.get('login', '').endswith('[bot]'):
+        return False
+    if u.get('login') != ME:
+        return True
+    return _norm(body) not in agent_hashes  # ME: the user's own comment unless it's an agent post
+
+
+def emit(line):
+    print(line, flush=True)
+
+
+def emit_dependents(key):
+    # waiting-on.txt: "<owner/repo#N> -> <dependent thread>: <what to do>", one per line
+    path = os.path.join(HERE, 'waiting-on.txt')
+    lines = [l.strip() for l in open(path)] if os.path.exists(path) else []
+    for l in lines:
+        if l.split(' -> ')[0].strip() == key:
+            emit(f"### DEPENDENT of merged {key}: {l.split(' -> ', 1)[1]}: do it now and post the progress on that PR (1.5)")
+
+
+PROFILES = os.path.expanduser('~/.claude/profiles')  # claude-swap's accounts and limited.json
+
+
+def all_limited():
+    """True when every claude-swap account is used up: then no agent can reply, so the :eyes: would promise nothing."""
+    try:
+        names = [n for n in os.listdir(PROFILES) if os.path.exists(os.path.join(PROFILES, n, 'credentials.json'))]
+        lim = json.load(open(os.path.join(PROFILES, 'limited.json')))
+    except Exception:
+        return False
+    until = lambda v: v.get('until', 0) if isinstance(v, dict) else v + 5 * 3600
+    return bool(names) and all(until(lim[n]) > time.time() for n in names if n in lim) and all(n in lim for n in names)
+
+
+def emit_maintainer_commits(repo, key, old, new):
+    """A maintainer's commits pushed to a tracked PR: reviewing them was requested ("Review each of my commit as I push them")."""
+    try:
+        commits = json.loads(gh(['api', f"repos/{repo}/compare/{old}...{new}", '--jq', '[.commits[] | {sha: .sha[0:10], login: (.author.login // "")}]']))
+    except Exception as e:
+        emit(f"WATCH ERROR compare {key} {old}...{new}: {e}")
+        return
+    try:  # commits that came from merging the base branch aren't the PR's
+        base = gh(['api', f"repos/{repo}/pulls/{key.split('#')[1]}", '--jq', '.base.ref']).strip()
+        on_pr = set(json.loads(gh(['api', f"repos/{repo}/compare/{base}...{new}", '--jq', '[.commits[].sha[0:10]]'])))
+    except Exception as e:
+        emit(f"WATCH ERROR compare {key} base...{new}: {e}")
+        return
+    theirs = [c['sha'] for c in commits if c['login'] in EYES_FOR and c['login'] != ME and c['sha'] in on_pr]
+    if theirs:
+        emit(f"### MAINTAINER COMMITS {key}: {' '.join(theirs)}: review each one in a table (| Commit | What it does, and the idea behind it | Rating |, one short sentence each; rated N/10 with a short reason next to anything below 10, e.g. 9/10 (Vite's built-ins differ); an emoji only where it's funny; 10/10 only when nothing could be better), as requested (1.5)")
+
+
+def emit_refactor_stale(repo, key, new):
+    """Your PR changed by more than ~80 lines since its last refactor pass (`pr-steps refactor`): the ratings describe old code."""
+    num = key.split('#')[1]
+    try:
+        pr = json.loads(gh(['api', f"repos/{repo}/pulls/{num}", '--jq', '{author: .user.login, base: .base.ref}']))
+        if pr['author'] != ME: return
+        shas = json.loads(gh(['api', f"repos/{repo}/compare/{pr['base']}...{new}", '--jq', '[.commits[].sha]']))
+        rec = os.path.expanduser('~/.claude/pr-steps')
+        last = next((s for s in reversed(shas) if os.path.exists(f'{rec}/{s}') and any(l.startswith('refactor ') for l in open(f'{rec}/{s}'))), None)
+        if last == new: return
+        lines = int(gh(['api', f"repos/{repo}/compare/{last or pr['base']}...{new}", '--jq', '[.files[] | select(.filename | test("\\\\.(spec|test)\\\\.|(^|/)tests?/") | not) | .additions + .deletions] | add // 0']))  # tests aren't refactored
+    except Exception as e:
+        emit(f"WATCH ERROR refactor check {key}: {e}")
+        return
+    if lines > 80:
+        emit(f"### REFACTOR STALE {key}: {lines} changed lines since the last refactor pass ({last[:10] if last else 'never'}): re-run Part 3 §11.2 on the whole PR diff, then `pr-steps refactor` and replace the PR's Ratings")
+
+
+def read_threads():
+    threads = []
+    for l in open(THREADS):
+        w = l.split('#', 1)[0].split() if not l.lstrip().startswith('#') else []
+        if len(w) == 2 and w[1].isdigit():
+            threads.append(w)
+        elif w:
+            emit(f"WATCH ERROR threads.txt: bad line {l.strip()!r} (want 'owner/repo number')")
+    return threads
+
+
+def scan_reactions(state, threads):
+    """A 👍 or 👎 from GH_WATCH_EYES on one of the agent's comments is feedback on that comment (methodology 1.5)."""
+    agent_hashes = agent_post_hashes()
+    seen = state.setdefault('reactions', {})  # "<kind>:<id>" -> ["<login>:<content>", ...]
+    for repo, num in threads:
+        for kind, path in (('comment', 'issues'), ('review-comment', 'pulls')):
+            try:
+                comments = gh_json(f"repos/{repo}/{path}/{num}/comments?per_page=100")
+            except Exception as e:
+                if path == 'issues':
+                    emit(f"WATCH ERROR reactions {repo}#{num}: {e}")
+                continue  # an issue has no review comments
+            for c in comments:
+                counts = c.get('reactions') or {}
+                if c['user'].get('login') != ME or _norm(c.get('body')) not in agent_hashes or not (counts.get('+1') or counts.get('-1')):
+                    continue
+                sk = f"{kind}:{c['id']}"
+                try:
+                    reactions = gh_json(f"repos/{repo}/{path}/comments/{c['id']}/reactions?per_page=100")
+                except Exception as e:
+                    emit(f"WATCH ERROR reactions {sk}: {e}")
+                    continue
+                for r in reactions:
+                    who, content = r['user']['login'], r['content']
+                    if content not in ('+1', '-1') or who not in EYES_FOR or f"{who}:{content}" in seen.get(sk, []):
+                        continue
+                    seen.setdefault(sk, []).append(f"{who}:{content}")
+                    if content == '-1':
+                        emit(f"### THUMBS DOWN {repo}#{num} by {who} on {c['html_url']} (reaction {r['id']}): work out why and fix the rule behind it; if the thread is still on that point, post a new reply with the fix that @-mentions {who}; if it has moved past it or it's resolved, instead edit that comment to add how you'll do better. Leave the 👎 (1.5)")
+                    else:
+                        emit(f"### THUMBS UP {repo}#{num} by {who} on {c['html_url']}: note what they liked and reinforce the rule that produced it (1.5)")
+
+
+def react_eyes(repo, kind, cid, state):
+    if all_limited():
+        state.setdefault('eyes_pending', []).append([repo, kind, cid])  # flush_eyes adds it once an account is free
+        return
+    path = f"repos/{repo}/issues/comments/{cid}/reactions" if kind == 'comment' else f"repos/{repo}/pulls/comments/{cid}/reactions"
+    try:
+        gh(['api', '-X', 'POST', path, '-f', 'content=eyes'])
+    except Exception as e:
+        emit(f"WATCH ERROR eyes {repo} {kind} {cid}: {e}")
+
+
+def flush_eyes(state):
+    pending = state.pop('eyes_pending', [])
+    for repo, kind, cid in pending:
+        react_eyes(repo, kind, cid, state)  # re-queues itself if the limit is still on
+
+
+def fetch_thread(repo, num, since, is_pr_known):
+    """Network only (runs in a worker thread). Returns (is_pr, events, pr_state, red_checks)."""
+    is_pr = is_pr_known
+    if is_pr is None:
+        is_pr = 'pull_request' in json.loads(gh(['api', f"repos/{repo}/issues/{num}"]))
+    events = []
+    for c in gh_json(f"repos/{repo}/issues/{num}/comments?since={since}&per_page=100"):
+        events.append(('comment', c['id'], c['updated_at'], c['user'], c['html_url'], c.get('body') or '', ''))
+    pr_state = red = None
+    if is_pr:
+        for c in gh_json(f"repos/{repo}/pulls/{num}/comments?since={since}&per_page=100"):
+            events.append(('review-comment', c['id'], c['updated_at'], c['user'], c['html_url'], c.get('body') or '', f"{c.get('path')}:{c.get('line') or c.get('original_line')}"))
+        for r in gh_json(f"repos/{repo}/pulls/{num}/reviews?per_page=100"):
+            if (r.get('submitted_at') or '') >= since and (r.get('body') or r.get('state') in ('APPROVED', 'CHANGES_REQUESTED')):
+                events.append(('review', r['id'], r['submitted_at'], r['user'], r['html_url'], r.get('body') or '', r.get('state')))
+        pr = json.loads(gh(['api', f"repos/{repo}/pulls/{num}"]))
+        # 'conflict': GitHub runs no CI on a PR that conflicts with its base, so a conflict must be reported like red CI
+        pr_state = {'head': pr['head']['sha'][:10], 'state': 'merged' if pr.get('merged') else pr['state'], 'conflict': pr.get('mergeable_state') == 'dirty'}
+        if pr_state['state'] == 'open':
+            r = subprocess.run(['gh', 'pr', 'checks', num, '-R', repo], capture_output=True, text=True)
+            if r.returncode not in (0, 1, 8) and 'no checks reported' not in r.stderr:  # 1 = some failed, 8 = some pending
+                raise RuntimeError(f"gh pr checks {num} -R {repo}: {r.stderr.strip()[:200]}")
+            checks = r.stdout
+            red = sorted(l.split('\t')[0] for l in checks.splitlines() if '\tfail\t' in l)
+    return is_pr, events, pr_state, red
+
+
+def scan(state, only=None):
+    """Scan all tracked threads (or only the given keys) in parallel; apply results in this thread."""
+    from concurrent.futures import ThreadPoolExecutor
+    def since(key):  # each thread keeps its own position, so one failing thread doesn't hold back the others
+        dt = datetime.datetime.strptime(state['since_by'].get(key, state['since']), '%Y-%m-%dT%H:%M:%SZ') - datetime.timedelta(minutes=10)
+        return dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+    started = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    threads = read_threads()
+    if only is not None:
+        threads = [t for t in threads if f"{t[0]}#{t[1]}" in only]
+    ok = True
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        futs = {ex.submit(fetch_thread, repo, num, since(f"{repo}#{num}"), state['is_pr'].get(f"{repo}#{num}")): (repo, num) for repo, num in threads}
+        for fut, (repo, num) in futs.items():
+            key = f"{repo}#{num}"
+            try:
+                is_pr, events, pr_state, red = fut.result()
+            except Exception as e:
+                ok = False
+                emit(f"WATCH ERROR {key}: {e}")
+                continue
+            state['is_pr'][key] = is_pr
+            state['since_by'][key] = started
+            if pr_state:
+                prev = state['prs'].get(key)
+                if prev and prev != pr_state:
+                    emit(f"### PR CHANGED {key}: {prev} -> {pr_state}")
+                    if pr_state['state'] == 'merged' and prev.get('state') != 'merged':
+                        emit_dependents(key)
+                    if prev.get('head') != pr_state['head']:
+                        emit_maintainer_commits(repo, key, prev['head'], pr_state['head'])
+                        emit_refactor_stale(repo, key, pr_state['head'])
+                state['prs'][key] = pr_state
+            if red is not None:
+                if red != state['ci'].get(key, []):
+                    emit(f"### CI {key}: red={red}" if red else f"### CI {key}: no longer red")
+                state['ci'][key] = red
+            agent_hashes = agent_post_hashes()  # read after the fetch: a post gated while it ran is the agent's
+            for kind, cid, upd, user, url, body, extra in events:
+                if not is_human(user, body, agent_hashes):
+                    continue
+                sk = f"{kind}:{cid}"
+                if state['seen'].get(sk) == upd:
+                    continue
+                edited = sk in state['seen']
+                state['seen'][sk] = upd
+                emit(f"### {key} {kind}{' (edited)' if edited else ''} {cid} by {user['login']} {upd} {extra} {url}\n{body}\n")
+                if re.fullmatch(r"\W*(ok(ay)?|good|great|lgtm|yes|sure|agreed|sounds good|👍|nice)\W*", body.strip().lower()):
+                    emit(f"### ACK {key} {cid}: an acknowledgement answers your last open proposal in that thread or PR; apply it now (1.5)")
+                if user['login'] in EYES_FOR and not edited and not ONCE and kind in ('comment', 'review-comment'):
+                    react_eyes(repo, kind, cid, state)
+    if only is None:
+        state['since'] = started  # only the default for threads added to threads.txt later
+    return ok
+
+
+def notifications_changed(state):
+    """Cheap fast path: a conditional request GitHub answers with 304 (not rate-limited) until something changes.
+    Returns None (no change) or the set of changed thread keys ("owner/repo#N")."""
+    lm = state.get('notif_lm')
+    args = ['gh', 'api', '-i', 'notifications?all=true&per_page=50']
+    if lm:
+        args[2:2] = ['-H', f'If-Modified-Since: {lm}']
+    r = subprocess.run(args, capture_output=True, text=True)
+    head = r.stdout.split('\n', 1)[0]
+    if ' 304 ' in head or not head.startswith('HTTP/'):
+        return None
+    headers, _, body = r.stdout.partition('\r\n\r\n') if '\r\n\r\n' in r.stdout else r.stdout.partition('\n\n')
+    for l in headers.splitlines():
+        if l.lower().startswith('last-modified:'):
+            state['notif_lm'] = l.split(':', 1)[1].strip()
+    keys = set()
+    prev = state.get('notif_upd', '')
+    try:
+        for n in json.loads(body):
+            if n.get('updated_at', '') <= prev:
+                continue
+            state['notif_upd'] = max(state.get('notif_upd', ''), n.get('updated_at', ''))
+            url = (n.get('subject') or {}).get('url') or ''
+            parts = url.split('/repos/')[-1].split('/')
+            if len(parts) >= 4:
+                keys.add(f"{parts[0]}/{parts[1]}#{parts[3]}")
+    except Exception:
+        pass
+    return keys
+
+
+def own_events_changed(state):
+    """GitHub doesn't notify you of your own comments, so the notifications fast path misses the user's (same account).
+    Their public events feed, polled with If-None-Match (a 304 isn't rate-limited), catches them.
+    Returns the set of thread keys ("owner/repo#N") with new comments or reviews."""
+    etag = state.get('events_etag')
+    args = ['gh', 'api', '-i', f'users/{ME}/events?per_page=30']
+    if etag:
+        args[2:2] = ['-H', f'If-None-Match: {etag}']
+    r = subprocess.run(args, capture_output=True, text=True)
+    head = r.stdout.split('\n', 1)[0]
+    if ' 304 ' in head or not head.startswith('HTTP/'):
+        return set()
+    headers, _, body = r.stdout.partition('\r\n\r\n') if '\r\n\r\n' in r.stdout else r.stdout.partition('\n\n')
+    for l in headers.splitlines():
+        if l.lower().startswith('etag:'):
+            state['events_etag'] = l.split(':', 1)[1].strip()
+    keys = set()
+    prev = state.get('events_seen', '')
+    try:
+        for e in json.loads(body):
+            if e.get('created_at', '') <= prev or e.get('type') not in ('IssueCommentEvent', 'PullRequestReviewCommentEvent', 'PullRequestReviewEvent'):
+                continue
+            p = e.get('payload') or {}
+            num = (p.get('issue') or p.get('pull_request') or {}).get('number')
+            if num:
+                keys.add(f"{e['repo']['name']}#{num}")
+        state['events_seen'] = max([prev] + [e.get('created_at', '') for e in json.loads(body)])
+    except Exception:
+        pass
+    return keys
+
+
+def locked():
+    """One scan at a time across processes (daemon and manual runs), so state updates aren't lost."""
+    f = open(STATE + '.lock', 'w')
+    fcntl.flock(f, fcntl.LOCK_EX)
+    return f
+
+
+def run_scan():
+    with locked():
+        state = load_state()
+        scan(state)
+        save_state(state)
+    with locked():
+        state = load_state()
+        scan_reactions(state, read_threads())
+        save_state(state)
+    r = subprocess.run(['bash', os.path.join(HERE, 'tracker-check.sh')], capture_output=True, text=True)
+    stale = [l for l in r.stdout.splitlines() if 'STALE' in l]
+    with locked():
+        state = load_state()
+        for l in stale:
+            if l not in state['stale']:  # report each drift once, not every scan
+                emit(l)
+        state['stale'] = stale
+        save_state(state)
+
+
+def main():
+    if ONCE:
+        run_scan()
+        return
+    last_full = 0
+    while True:
+        with locked():
+            state = load_state()
+            changed = (notifications_changed(state) or set()) | own_events_changed(state)
+            if changed:
+                scan(state, only=changed)
+            if state.get('eyes_pending'):
+                flush_eyes(state)
+            save_state(state)
+        if time.time() - last_full > 180:
+            run_scan()
+            last_full = time.time()
+        time.sleep(10)
+
+
+if __name__ == '__main__':
+    main()
+````
+
+### `gh-watch-daemon.sh`
+
+````bash
+#!/bin/bash
+# Keeps gh-watch.py running (restarts it if it dies); events go to events.log. PID in gh-watch.pid.
+cd "$(dirname "$0")"
+echo $$ > gh-watch.pid
+trap 'kill $child 2>/dev/null; exit 0' TERM INT HUP  # killing the daemon's PID also stops the watcher
+while true; do
+  python3 -u gh-watch.py >> events.log 2>&1 & child=$!
+  wait $child
+  echo "WATCH ERROR gh-watch.py exited ($?) at $(date -u +%FT%TZ), restarting" >> events.log
+  sleep 5
+done
+````
+
+### `gh-watch-start`
+
+````bash
+#!/bin/bash
+# gh-watch-start <dir> [owner/repo [N]]...: the one way to start watching (methodology 1.5). Idempotent.
+# - <dir> is the session's artifact root; it gets links to gh-watch.py and gh-watch-daemon.sh, threads.txt and repos.txt.
+# - "owner/repo N" goes to threads.txt; a bare "owner/repo" goes to repos.txt (the repo is covered, e.g. before `gh issue create`).
+# - Starts the daemon unless its PID is alive, with GH_WATCH_EYES from the environment, else from <dir>/eyes, else your gh login.
+# - Registers <dir> in ~/.claude/gh-watch-dirs.txt, which pre-bash-guard and post-bash-register read.
+# - Prints the tail command to arm — the Monitor tool, or a background task where there is no Monitor (re-arm on every expiry).
+set -e
+[ -n "$1" ] || { sed -n '2,7p' "$0"; exit 1; }
+dir=$(realpath -m "$1"); shift
+mech=$(dirname "$(realpath "$0")")
+mkdir -p "$dir"; touch "$dir/threads.txt" "$dir/repos.txt" "$dir/events.log"
+for f in gh-watch.py gh-watch-daemon.sh; do ln -sfn "$mech/$f" "$dir/$f"; done
+while [ $# -gt 0 ]; do
+  repo=$1; shift
+  [[ $repo == */* ]] || { echo "not owner/repo: $repo"; exit 1; }
+  if [[ ${1:-} =~ ^[0-9]+$ ]]; then line="$repo $1"; file=threads.txt; shift; else line=$repo; file=repos.txt; fi
+  grep -qxF "$line" "$dir/$file" || echo "$line" >> "$dir/$file"
+done
+reg=~/.claude/gh-watch-dirs.txt
+grep -qxF "$dir" "$reg" 2>/dev/null || echo "$dir" >> "$reg"
+if [ -n "$GH_WATCH_EYES" ]; then echo "$GH_WATCH_EYES" > "$dir/eyes"; fi
+[ -s "$dir/eyes" ] || gh api user --jq .login > "$dir/eyes"
+pid=$(cat "$dir/gh-watch.pid" 2>/dev/null || true)
+if [ -n "$pid" ] && grep -q gh-watch-daemon "/proc/$pid/cmdline" 2>/dev/null; then
+  echo "watcher running (PID $pid)"
+else
+  (cd "$dir" && GH_WATCH_EYES=$(cat eyes) nohup setsid ./gh-watch-daemon.sh >/dev/null 2>&1 &)
+  sleep 1; echo "watcher started (PID $(cat "$dir/gh-watch.pid"), eyes: $(cat "$dir/eyes"))"
+fi
+echo "Arm this tail (re-arm on every expiry):"
+echo "  tail -n 0 -F $dir/events.log ~/.claude/profiles/swap-events.log 2>/dev/null | grep --line-buffered -E '^###|WATCH ERROR|STALE|^[^ =]'"
+echo "With the Monitor tool, arm it as Monitor (timeout_ms 1800000). Without one (a local claude), run it as a background task (timeout 1800)."
+````
+
+### `post-bash-register.py`
+
+````python
+#!/usr/bin/env python3
+"""Claude Code PostToolUse hook (matcher: Bash). A thread you just created (`gh issue create`, `gh pr create`, `gh api` POST)
+joins the threads.txt of the running watcher that covers its repo (gh-watch-start), so its replies are seen."""
+import json, os, re, sys
+d = json.load(sys.stdin)
+cmd = d.get('tool_input', {}).get('command', '')
+r = d.get('tool_response') or {}
+out = r.get('stdout', '') if isinstance(r, dict) else str(r)
+if not re.search(r'\bgh\b.*\b(create|POST)\b|\bgh api\b.*\b(issues|pulls)\b', cmd):
+    sys.exit(0)
+reg = os.path.expanduser('~/.claude/gh-watch-dirs.txt')
+dirs = [l.strip() for l in open(reg)] if os.path.exists(reg) else []
+def lines(dr, f):
+    p = os.path.join(dr, f)
+    return [l.strip() for l in open(p)] if os.path.exists(p) else []
+for repo, num in set(re.findall(r'github\.com/([\w.-]+/[\w.-]+)/(?:issues|pull)/(\d+)', out)):
+    line = f'{repo} {num}'
+    covering = [dr for dr in dirs if repo in lines(dr, 'repos.txt') or any(l.split()[:1] == [repo] for l in lines(dr, 'threads.txt'))]
+    if covering and not any(line in lines(dr, 'threads.txt') for dr in covering):
+        open(os.path.join(covering[0], 'threads.txt'), 'a').write(line + '\n')
+sys.exit(0)
+````
 
 ### `pre-agent-guard.py`
 
@@ -1490,6 +1980,25 @@ sha=$(git rev-parse HEAD)
 mkdir -p ~/.claude/pr-steps
 echo "$kind $(realpath "$out") $(date -u +%FT%TZ)" >> ~/.claude/pr-steps/$sha
 echo "recorded $kind for $sha"
+````
+
+### `codex-review-model`
+
+````python
+#!/usr/bin/env python3
+"""Prints the review model, derived from `codex debug models`, never hardcoded:
+Codex's top-ranked listed model (lowest `priority`), i.e. its recommended cost-effective frontier workhorse.
+Premium models (described as for "the most demanding work" / "frontier intelligence" / "maximum") are skipped:
+too expensive for routine reviews. `--all` lists the remaining ranked models, for a fallback when the
+account refuses the first."""
+import json, re, subprocess, sys
+PREMIUM = re.compile(r'most demanding|frontier intelligence|maximum intelligence|highest intelligence', re.I)
+OLD = re.compile(r'\b(previous|older|legacy)\b', re.I)
+out = subprocess.run(['codex', 'debug', 'models'], capture_output=True, text=True).stdout
+models = [m for m in json.loads(out)['models'] if m.get('visibility') == 'list' and not PREMIUM.search(m.get('description', ''))]
+models.sort(key=lambda m: (bool(OLD.search(m.get('description', ''))), m.get('priority', 999)))
+if not models: sys.exit('no suitable codex model')
+print('\n'.join(m['slug'] for m in models) if '--all' in sys.argv else models[0]['slug'])
 ````
 
 ### `install-methodology`

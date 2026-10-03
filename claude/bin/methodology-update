@@ -26,5 +26,6 @@ profiles = [] if not m or m.group(1) == 'prompt' else m.group(1).split('-')
 run('./build.sh', *profiles, stdout=subprocess.DEVNULL)
 run(sys.executable, os.path.join(repo, 'claude', 'bin', 'install-methodology'), src)
 if os.path.exists(f'{home}/local-llm/.installed') and os.path.exists(os.path.join(repo, 'local-model', 'install.sh')):
+    run('./build.sh', 'local', stdout=subprocess.DEVNULL)  # the local-model sessions read dist/methodology-local.md
     run(os.path.join(repo, 'local-model', 'install.sh'))
 print('updated', before[:10], '->', after[:10], flush=True)

@@ -1,4 +1,4 @@
-<!-- settings: target=local ownership=external tests=remove-before-merge merge=on-request-squash pr_open=ready review_trace=hidden badge=on post_lang=en reviewer=codex-then-claude watcher=on commit_identity=noreply local_model=on -->
+<!-- settings: target=local ownership=external tests=remove-before-merge merge=on-request-squash pr_open=ready review_trace=hidden badge=on post_lang=en reviewer=codex-then-claude watcher=on commit_identity=noreply local_model=on session_model=claude -->
 # Work automation methodology (v3)
 
 Give this whole file to an agent, followed by the task. The agent sizes the work first (1.0), then applies only what that size requires.
@@ -76,11 +76,11 @@ Read the task and every link in it. Write `Tier: <X>, because <signals>` and put
 14. **Spend tokens like money.**
     - Do small steps yourself: one command, one file read, a short edit, a "Done in <sha>" reply.
     - Start an agent only for long, independent work, at most 3 at a time without asking, and only from the main session: a subagent never starts agents of its own (1.7); queue the rest. Continue an agent that already has the context (send it a message) instead of starting a new one, and stop an agent as soon as its question is settled.
-    - Give agents paths and the question, never pasted files or long histories; ask for a short report. Each role gets only what it uses: a PR writer or orchestrator gets this file (1.7); an executor (the `sonnet` work below) a ticket with `Goal`, verified `Facts`, `To check`, `Scope` and `Acceptance`, and none of your conclusions; a reviewer its charter and the artifact.
+    - Give agents paths and the question, never pasted files or long histories; ask for a short report. Each role gets only what it uses: a PR writer or orchestrator gets this file (1.7); an executor (the routine work below) a ticket with `Goal`, verified `Facts`, `To check`, `Scope` and `Acceptance`, and none of your conclusions; a reviewer its charter and the artifact.
     - Match the check to the risk: a short reply gets the fast gate (1.6), a PR body or a proposal the full review, a full convergence loop only where the tier (1.0) requires it.
     - Re-run only the tests a change can affect (a docs change doesn't need the e2e matrix).
     - Model per task (Agent tool's model parameter): `sonnet` for running tests and gates, mining logs, fact checks of short texts, mechanical edits and relaying status; the session's default model (Opus family) for design, hard debugging, charter-driven reviews and anything posted to a maintainer.
-    - **The local model (`local-agent`, when installed)** costs no subscription usage. It executes well and judges poorly, so you keep every decision and hand it bounded steps whose result you can check cheaply: `local-agent <mode> <ticket.md> [--cwd <worktree>] [--write]` through Bash with `run_in_background`, one at a time (one GPU); it can't start agents, so give it work one agent finishes. Run `claude-usage --mode` at the start of each task and at every wakeup. At `routine` it gets the `sonnet` work above (modes `facts`, `run`, `reproduce`, `cold-read`); at `execute` also implementation from your own plan (`implement`: approach, files and acceptance checks are yours) and each side's evidence for 1.5's mini debate (`evidence`; you argue and decide). Pair it with yourself, never with a cheaper Claude model: it does the work and you review it, or you write and it reviews (`local-agent review`, a gate review whose `verdict` is the `CLEAN`; you check each finding and its `not_checked`). Never hand it the approach (Part 2 step 3) or anything posted. Check its result before using it: two or three of its cited `path:line`s, one re-run command, or the diff against your plan. Tickets and modes: `~/local-llm/DELEGATION.md`.
+    - **The local model (`local-agent`, when installed)** costs no subscription usage. It executes well and judges poorly, so you keep every decision and hand it bounded steps whose result you can check cheaply: `local-agent <mode> <ticket.md> [--cwd <worktree>] [--write]` through Bash with `run_in_background`, one at a time (one GPU); it can't start agents, so give it work one agent finishes. Run `claude-usage --mode` at the start of each task and at every wakeup. At `routine` it gets the routine work above (modes `facts`, `run`, `reproduce`, `cold-read`); at `execute` also implementation from your own plan (`implement`: approach, files and acceptance checks are yours) and each side's evidence for 1.5's mini debate (`evidence`; you argue and decide). Pair it with yourself, never with a cheaper Claude model: it does the work and you review it, or you write and it reviews (`local-agent review`, a gate review whose `verdict` is the `CLEAN`; you check each finding and its `not_checked`). Never hand it the approach (Part 2 step 3) or anything posted. Check its result before using it: two or three of its cited `path:line`s, one re-run command, or the diff against your plan. Tickets and modes: `~/local-llm/DELEGATION.md`.
     - Never trim a charter or skip a pass it requires to save tokens.
 15. **Earn every line.** A reviewer's, verifier's or guardian's finding is a candidate, not a mandate. Before it becomes code, a test, a doc or an option:
     - How likely does a real user hit it, and what happens then? A rare case whose failure is mild, or arguably what the user asked for, gets no code. Wrong data returned silently (a misattribution, a lenient parse that hides the cause) is never mild: fix it at the root (1.1.6).
@@ -140,7 +140,7 @@ Read the task and every link in it. Write `Tier: <X>, because <signals>` and put
 
 A maintainer's comment is handled like the user typing in this chat: highest priority, full effort.
 
-1. **Within 10 seconds:** 👀 reaction. The watcher does this (Part 5), and holds it back while every subscription is used up.
+1. **Within 10 seconds:** 👀 reaction. The watcher does this (Part 5).
 2. **Within about a minute:** a short reply through the fast gate (1.6). Before acting on any comment, check that its reason fits the line it's anchored to; if it fits another line better, ask before changing anything.
    - An instruction ("Let's…", "Remove…", "Merge origin/main") or a suggestion block: do it, then reply "Done in <sha>."
    - A question or soft suggestion ("Overkill?", "How about…?", "why…?", "I think we can…") gets an answer, never a code change until they answer it. "How about X?" or "Is X possible?" starts with yes or no and the one real obstacle; when their idea is simpler than yours, recommend it. If the answer needs work, say what you're checking ("Measuring the calls"); never agree with a premise or promise a change you haven't measured.
@@ -901,15 +901,19 @@ These scripts enforce the rules that failed as text alone. This file is the only
 
 | Mechanism | Enforces | How to use it |
 |---|---|---|
-| `gh-watch.py` + `gh-watch-daemon.sh` | 1.5. Reports comments, review comments and reviews by others; PR pushes, merges and closes; CI red and green. Adds 👀 within ~10 s for the logins in `GH_WATCH_EYES`, held back while every `claude-swap` account is limited, and reports their 👍 or 👎 on the agent's comments as `### THUMBS UP` / `### THUMBS DOWN`. Prints `### REFACTOR STALE` when your PR's code (test files excluded) changed by more than ~80 lines since its last `pr-steps refactor` record. | Start with `gh-watch-start <artifact root> <owner/repo> [N]…` (below), never by hand. One `owner/repo number` per line in `threads.txt` next to it. When posting from the user's account, the user's own comments are told apart through `~/.claude/gated-posts.txt` (filled by `gate-pass`). Tail `events.log` and `~/.claude/profiles/swap-events.log` — the Monitor tool, or a background task of the printed tail where there is no Monitor tool — re-armed on every expiry. Position and seen events persist in `gh-watch-state.json`, so restarts lose nothing. |
+| `gh-watch.py` + `gh-watch-daemon.sh` | 1.5. Reports comments, review comments and reviews by others; PR pushes, merges and closes; CI red and green. Adds 👀 within ~10 s for the logins in `GH_WATCH_EYES`, and reports their 👍 or 👎 on the agent's comments as `### THUMBS UP` / `### THUMBS DOWN`. Prints `### REFACTOR STALE` when your PR's code (test files excluded) changed by more than ~80 lines since its last `pr-steps refactor` record. | Start with `gh-watch-start <artifact root> <owner/repo> [N]…` (below), never by hand. One `owner/repo number` per line in `threads.txt` next to it. When posting from the user's account, the user's own comments are told apart through `~/.claude/gated-posts.txt` (filled by `gate-pass`). Tail `events.log` — the Monitor tool, or a background task of the printed tail where there is no Monitor tool — re-armed on every expiry. Position and seen events persist in `gh-watch-state.json`, so restarts lose nothing. |
 | `tracker-check.sh` | 1.2. Umbrella drift (checkbox vs PR state), and a Decisions comment last edited before a tracked PR merged or closed. | `TRACKER_REPO=o/r TRACKER_ISSUE=N TRACKER_DECISIONS=<comment id> ./tracker-check.sh`. The watcher calls it when the variables are set. Run it before every report. |
 | `post-lint.py` | 1.6. Banned phrases, em dashes, "stacked on", bare `#N`, budgets (reply 80 words, PR 150, issue 400 characters, inline 2 sentences; tables, code, images and URLs not counted), unclassified notes, process in the thread, questions without a recommendation, a bare "Done" to a question or soft suggestion, a notes-table Next of "recommend", "follow-up" or "later". | `post-lint.py drafts/x.md --kind reply\|pr\|issue\|inline [--repo o/r]` (default `reply`). A reply or inline comment reads its parent from `drafts/x.parent.md` (or `--parent <file>`; `--parent none` when it answers nobody). Tests: `tests/test_post_lint.py`. |
 | `gate-pass` | 1.6. Records that a draft passed: `post-lint` clean and the review's final message (`codex exec -o drafts/x.review.out`) exactly `CLEAN`; stores the draft's sha256 in `<draft>.gate`. A draft that promises work ("I'll", "follow-up PR") first needs a `PROMISED … (<draft name>)` line in `proposals-open.md`. | `gate-pass drafts/x.md drafts/x.review.out` (set `POST_LINT_ARGS` for `--repo`/`--kind`). |
 | `pre-bash-guard.py` (PreToolUse hook on Bash) | 1.6, 1.7, 1.8. Blocks: `gh` posts and edits whose body isn't a gated draft or changed after its gate; a new issue, PR or comment in a repo no running watcher covers (`gh-watch-start`); posting the same gated draft as a new comment, issue or PR twice (`<draft>.posted`; edits may repeat); `gh pr merge` without `--squash --subject "<title> (#N)" --body ""`; `pkill -f`/`killall`; bare `git stash`; force-push without a pinned lease. Reactions pass. | Hook config below. Use absolute draft paths. |
-| `pre-agent-guard.py` (PreToolUse hook on Agent) | 1.1.14. Blocks a Claude subagent for read-only exploration (an Explore agent, or a prompt that says read-only / find every / where is…) while the local model is available: `local-agent` installed, `claude-usage --mode` not `off`, the GPU not taken. Reviews that gate a post (the prompt asks for `CLEAN`) go to `local-agent review` the same way; a prompt with a `NEEDS-CLAUDE: <why>` line passes; a Haiku subagent is always blocked. | Hook config below. |
+
+| `pre-agent-guard.py` (PreToolUse hook on Agent) | 1.1.14. Blocks a Claude subagent for read-only exploration (an Explore agent, or a prompt that says read-only / find every / where is…) while the local model is available: `local-agent` installed, `claude-usage --mode` not `off`, the GPU not taken. Reviews that gate a post (the prompt asks for `CLEAN`) go to `local-agent review` the same way; a prompt with a `NEEDS-CLAUDE: <why>` line passes; a Haiku subagent is always blocked. It is inert in a session that runs on the local model (its subagents are already the local model). | Hook config below. |
+
 | `stop-lint.py` (Stop hook) | 1.1.3, 1.5. Blocks ending a turn with "want me to / should I / your call / when you say go…" unless the message has a `GENUINE-FORK:` line, and after a GitHub post in the session while no armed tail (a Monitor, or a live `tail` process where there is no Monitor tool) watches a watcher's `events.log` (none armed, or the last one expired or stopped). | Hook config below. |
 | `gh-watch-start` (`~/.local/bin`) | 1.5. The one way to start watching; idempotent. | `gh-watch-start <dir> [owner/repo [N]]…`: links the watcher into `<dir>`, adds `owner/repo N` to `threads.txt` (a bare `owner/repo` to `repos.txt`, covering the repo before an issue exists), starts the daemon unless it runs (eyes from `GH_WATCH_EYES`, else `<dir>/eyes`, else your login), registers `<dir>` in `~/.claude/gh-watch-dirs.txt`, and prints the tail command to arm (the Monitor tool, or a background task where there is no Monitor tool). `pre-bash-guard` blocks a post to a repo no running watcher covers and adds the thread a comment goes to; `post-bash-register.py` (PostToolUse hook) adds a thread you just created. |
+
 | `claude-swap` (`~/.local/bin/claude-swap`, source below) | 1.1.13. Keeps several subscriptions logged in, so a usage limit doesn't stop the work. | After `/login` to each account: `claude-swap save <name>`. Then automatic: on a usage limit the `StopFailure` hook (config below) runs `claude-swap on-limit`, which switches every session on the machine to the next unlimited account and writes a line to `~/.claude/profiles/swap-events.log`; the Monitor tailing it wakes the session. `claude-swap list` shows the saved accounts. Alternative with a dashboard: [realiti4/claude-swap](https://github.com/realiti4/claude-swap) (different tool, same name). |
+
 | `codex-review-model` (`~/.local/bin`) | TASK review model. Prints Codex's top-ranked model from `codex debug models`, skipping the premium tier ("the most demanding work") and older generations, so reviews move to newer models without editing any prompt. | `codex exec -m "$(codex-review-model)" …`; `--all` lists the ranked models for a fallback. |
 | `pr-steps` + posting hook | Part 2 steps 6–7 (Part 3 sections 6–7 in Tier ≥ M), 1.7. | `gh pr create` (unless `--draft`) and `gh pr ready` are blocked until HEAD has a `review` and a `refactor` record: run `pr-steps review <reviewer output>` and `pr-steps refactor <rating output>` on the final HEAD after the fixes. |
 | `install-methodology` | 1.1.12: this file travels; the machine's copies follow it. | Writes Part 5's scripts to `~/.claude/mechanisms/` (commands linked into `~/.local/bin`), merges the hook config into `~/.claude/settings.json`, and writes the Always-on rules into `~/.claude/CLAUDE.md` between markers, leaving the rest of that file alone. The file's first line, the settings header `build.sh` writes, goes to `~/.claude/mechanisms/settings.env` as `METHODOLOGY_<KEY>=<value>` lines, read by `post-lint` (badge, review records; `gate-pass` runs it) and `pre-bash-guard` (merge); an environment variable of the same name wins. |
@@ -1429,7 +1433,9 @@ sys.exit(0)
 Blocks an Agent call that explores read-only (an Explore agent, or a prompt that says read-only / find / list every / where…)
 when: local_model=on, `local-agent` is installed, `claude-usage --mode` isn't `off`, and `serve.sh` doesn't see the GPU taken.
 Reviews that gate a post (the prompt asks for a final `CLEAN`) go to `local-agent review` the same way. A prompt with a
-`NEEDS-CLAUDE:` line saying why the local model can't do it (judgment, design) passes. A Haiku subagent is always blocked."""
+`NEEDS-CLAUDE:` line saying why the local model can't do it (judgment, design) passes. A Haiku subagent is always blocked.
+Inert in a session that runs on the local model itself (CLAUDE_CODE_SUBAGENT_MODEL=local): its subagents are already
+the local model, so there is nothing to delegate to."""
 import json, os, re, shutil, subprocess, sys
 
 d = json.load(sys.stdin)
@@ -1438,6 +1444,7 @@ prompt = i.get('prompt') or ''
 f = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'settings.env')
 saved = dict(l.strip().split('=', 1) for l in open(f) if '=' in l) if os.path.exists(f) else {}
 if (os.environ.get('METHODOLOGY_LOCAL_MODEL') or saved.get('METHODOLOGY_LOCAL_MODEL', 'off')) != 'on': sys.exit(0)
+if (os.environ.get('CLAUDE_CODE_SUBAGENT_MODEL') or '').lower() == 'local': sys.exit(0)  # the session is the local model; its subagents already are
 if (i.get('model') or '').lower() == 'haiku':
     print("No Haiku subagents: pair with the local model instead (it works and you review, or you write and it reviews: "
           "`local-agent review`), or use the session's own model.", file=sys.stderr); sys.exit(2)
@@ -1981,257 +1988,6 @@ echo "$kind $(realpath "$out") $(date -u +%FT%TZ)" >> ~/.claude/pr-steps/$sha
 echo "recorded $kind for $sha"
 ````
 
-### `claude-swap`
-
-````python
-#!/usr/bin/env python3
-"""claude-swap: keep several Claude subscriptions logged in and switch between them without logging in again.
-
-  claude-swap save <name>   save the account you're logged in to now as <name> (do once per account, right after /login)
-  claude-swap use <name>    switch every Claude Code session on this machine to <name>
-  claude-swap next          switch to the next saved account
-  claude-swap list          show saved accounts and which one is active
-  claude-swap on-limit      for a StopFailure hook: mark the active account as limited and switch to the next
-                            account that isn't; writes one line to ~/.claude/profiles/swap-events.log
-
-Before switching, the active account's current login is saved back first: Claude Code refreshes its tokens while
-it runs, and an old saved copy would stop working. CLAUDE_DIR (default ~/.claude) and CLAUDE_JSON
-(default ~/.claude.json) let you point it elsewhere (for testing).
-"""
-import json, os, re, shutil, sys, tempfile
-HOME = os.path.expanduser('~')
-CDIR = os.environ.get('CLAUDE_DIR', os.path.join(HOME, '.claude'))
-CJSON = os.environ.get('CLAUDE_JSON', os.path.join(HOME, '.claude.json'))
-CREDS = os.path.join(CDIR, '.credentials.json')
-PROFILES = os.path.join(CDIR, 'profiles')
-ACTIVE = os.path.join(PROFILES, 'active')
-
-def atomic_write(path, data, mode=0o600):
-    d = os.path.dirname(path); os.makedirs(d, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=d)
-    with os.fdopen(fd, 'w') as f: f.write(data)
-    os.chmod(tmp, mode); os.replace(tmp, path)
-
-import contextlib, time as _time
-LOCK = os.path.join(PROFILES, '.lock')  # the same lock directory the app's TypeScript port takes (src/core/fsx.ts withLock)
-
-@contextlib.contextmanager
-def locked(timeout=10.0, stale=30.0):
-    """One writer at a time. Several sessions can hit a limit in the same second; without this, one could save the other's fresh
-    credentials as the account it is leaving, and an account's saved login would be replaced by another's."""
-    os.makedirs(PROFILES, exist_ok=True)
-    start = _time.time()
-    while True:
-        try:
-            os.mkdir(LOCK)
-            with open(os.path.join(LOCK, 'pid'), 'w') as f: f.write(str(os.getpid()))
-            break
-        except FileExistsError:
-            try:
-                pid = int(open(os.path.join(LOCK, 'pid')).read().strip() or 0)
-                dead = False
-                if pid:
-                    try: os.kill(pid, 0)
-                    except ProcessLookupError: dead = True
-                    except PermissionError: pass
-                if dead or _time.time() - os.stat(LOCK).st_mtime > stale:
-                    shutil.rmtree(LOCK, ignore_errors=True); continue
-            except Exception: pass
-            if _time.time() - start > timeout: sys.exit('claude-swap: another switch is running and did not finish; try again')
-            _time.sleep(0.05)
-    try: yield
-    finally: shutil.rmtree(LOCK, ignore_errors=True)
-
-def read_json(p, default=None):
-    try: return json.load(open(p))
-    except FileNotFoundError: return default
-
-def active(): 
-    try: return open(ACTIVE).read().strip() or None
-    except FileNotFoundError: return None
-
-LIMITED = os.path.join(PROFILES, 'limited.json')   # {name: {"until": epoch}}
-EVENTS = os.path.join(PROFILES, 'swap-events.log')
-STATE = os.path.join(PROFILES, 'swap-state.json')  # {"last_try": epoch, "last_line": str}
-FALLBACK_HOURS = float(os.environ.get('CLAUDE_SWAP_LIMIT_HOURS', '5'))  # when the message has no reset time
-RETRY_MINUTES = float(os.environ.get('CLAUDE_SWAP_RETRY_MINUTES', '10'))  # all limited: try the soonest one this often
-
-def read_limits():
-    raw = read_json(LIMITED, {}) or {}
-    # older format: {name: epoch when limited}
-    return {n: (v if isinstance(v, dict) else {'until': v + FALLBACK_HOURS * 3600}) for n, v in raw.items()}
-
-def reset_time(text, now):
-    """When the limit ends, from Claude Code's message: "resets 5:20pm (Europe/Budapest)", "resets at 17:20", "resets Oct 3, 9am",
-    "resets Mon 9am", "resets in 3h 20m". The zone in brackets is honoured; None when the message names no time."""
-    import datetime
-    text = text or ''
-    m = re.search(r'resets?\s+in\s+(?:(\d+)\s*h\w*)?\s*(?:(\d+)\s*m\w*)?', text, re.I)
-    if m and (m.group(1) or m.group(2)): return now + int(m.group(1) or 0) * 3600 + int(m.group(2) or 0) * 60
-    mons = 'jan feb mar apr may jun jul aug sep oct nov dec'.split(); wds = 'mon tue wed thu fri sat sun'.split()
-    m = re.search(r'resets?\s+(?:at\s+)?(?:(?P<mon>jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(?P<day>\d{1,2})(?:st|nd|rd|th)?,?\s*(?:at\s+)?|(?P<wd>mon|tue|wed|thu|fri|sat|sun)[a-z]*,?\s*(?:at\s+)?)?(?P<h>\d{1,2})(?::(?P<m>\d{2}))?\s*(?P<ap>am|pm)?(?![\w:])', text, re.I)
-    if not m or not (m.group('m') or m.group('ap') or m.group('mon') or m.group('wd')): return None
-    h, mi, ap = int(m.group('h')), int(m.group('m') or 0), (m.group('ap') or '').lower()
-    if ap == 'pm' and h != 12: h += 12
-    if ap == 'am' and h == 12: h = 0
-    if h > 23 or mi > 59: return None
-    tz = None
-    z = re.search(r'\(((?:[A-Za-z_]+/[A-Za-z_/+-]+)|UTC|GMT)\)', text)
-    if z:
-        try:
-            import zoneinfo; tz = zoneinfo.ZoneInfo(z.group(1))
-        except Exception: tz = None
-    base = datetime.datetime.fromtimestamp(now, tz)
-    t = base.replace(hour=h, minute=mi, second=0, microsecond=0)
-    if m.group('mon'):
-        t = t.replace(month=mons.index(m.group('mon').lower()) + 1, day=int(m.group('day')))
-        if t.timestamp() <= now: t = t.replace(year=t.year + 1)
-    elif m.group('wd'):
-        t += datetime.timedelta(days=(wds.index(m.group('wd').lower()) - t.weekday()) % 7)
-        if t.timestamp() <= now: t += datetime.timedelta(days=7)
-    elif t.timestamp() <= now: t += datetime.timedelta(days=1)
-    return t.timestamp()
-
-def log(line):
-    import time
-    st = read_json(STATE, {}) or {}
-    if st.get('last_line') == line: return  # no repeats: one line per change
-    st['last_line'] = line; atomic_write(STATE, json.dumps(st), 0o644)
-    with open(EVENTS, 'a') as f: f.write(f"### {line} ({time.strftime('%Y-%m-%dT%H:%M:%S')})\n")
-    print(line)
-
-def quota_info(name, creds=None):
-    """The account's live usage (what /usage shows): {'room': True} when no window is used up, {'room': False, 'until': epoch}
-    when one is (until = when the last used-up window resets), None when it can't be read (login expired while the account
-    was inactive, offline): then only the recorded limit time is known."""
-    import time, datetime, urllib.request
-    try:
-        tok = read_json(creds or os.path.join(PROFILES, name, 'credentials.json'))['claudeAiOauth']['accessToken']
-        req = urllib.request.Request('https://api.anthropic.com/api/oauth/usage', headers={'Authorization': 'Bearer ' + tok, 'anthropic-beta': 'oauth-2025-04-20', 'User-Agent': 'claude-swap'})
-        d = json.load(urllib.request.urlopen(req, timeout=5))
-    except Exception: return None
-    until = 0
-    for k in ('five_hour', 'seven_day'):
-        w = d.get(k) or {}
-        if w.get('utilization', 0) >= 99.5:
-            try: r = datetime.datetime.fromisoformat(str(w.get('resets_at')).replace('Z', '+00:00')).timestamp()
-            except Exception: r = time.time() + 3600  # used up with no reset time given: look again in an hour
-            if r > time.time(): until = max(until, r)  # a window that has already reset does not count
-    return {'room': False, 'until': until} if until else {'room': True}
-
-def on_limit():
-    import time
-    try: info = json.load(sys.stdin) if not sys.stdin.isatty() else {}
-    except Exception: info = {}
-    text = ' '.join(str(info.get(k) or '') for k in ('error', 'error_details', 'last_assistant_message'))
-    # the real quota of the other accounts decides where it can be read (a reset can come before the recorded time); read it
-    # before the lock is taken, it only reads saved logins and may take seconds
-    cur0 = active()
-    live = {n: quota_info(n) for n in names() if n != cur0}
-    with locked():
-        now = time.time()
-        st0 = read_json(STATE, {}) or {}
-        cur = active()
-        # Several sessions fail at the same moment on the same account. The first one switches; the others report a failure of
-        # the account that was just left, not of the one we are on now. Marking the new account limited would switch straight
-        # back to the exhausted one. A failure right after a switch is stale.
-        if cur != cur0 or now - st0.get('last_swap', 0) < 120:
-            log(f"SUBSCRIPTION STALE: a limit failure from before the switch to {cur}; nothing to do")
-            return
-        lim = read_limits()
-        if cur:
-            r = reset_time(text, now)
-            # A time read from Claude Code's message is trusted; the fallback is a guess that may be retried early
-            lim[cur] = {'until': r} if r else {'until': now + FALLBACK_HOURS * 3600, 'guessed': True}
-        atomic_write(LIMITED, json.dumps(lim), 0o644)
-        others = [n for n in names() if n != cur]
-        # What the usage numbers say is believed over a guess: an account they show with room is free, one they show used up stays
-        # out until the reset time they give (and that time replaces the recorded one), and only an account whose usage cannot be
-        # read is judged by the recorded time.
-        for n in others:
-            if live.get(n) and not live[n]['room']: lim[n] = {'until': live[n]['until']}
-        atomic_write(LIMITED, json.dumps(lim), 0o644)
-        known_free = [n for n in others if live.get(n) and live[n]['room']]
-        unknown_free = [n for n in others if live.get(n) is None and lim.get(n, {}).get('until', 0) <= now]
-        free = known_free + unknown_free
-        if free:
-            use(free[0]); log(f"SUBSCRIPTION SWAPPED: {cur} -> {free[0]} after a usage limit. Resume the stopped work.")
-            return
-        # Nothing is known to be free. An account whose usage cannot be read may still have reset (its login can be stale): try
-        # such an account now and then, at most every RETRY_MINUTES. Accounts whose usage shows them used up are never tried.
-        # Only an account whose recorded reset time is a guess: one whose time came from a limit message (e.g. a weekly
-        # limit until Oct 4) isn't tried before that time
-        unreadable = [n for n in others if live.get(n) is None and lim.get(n, {}).get('guessed')]
-        st = read_json(STATE, {}) or {}
-        if unreadable and now - st.get('last_try', 0) >= RETRY_MINUTES * 60:
-            nxt = min(unreadable, key=lambda n: lim.get(n, {}).get('until', 0))
-            st['last_try'] = now; atomic_write(STATE, json.dumps(st), 0o644)
-            use(nxt); log(f"SUBSCRIPTION SWAPPED: {cur} -> {nxt} (its usage cannot be read, so it is tried; every other account is used up). Resume the stopped work.")
-            return
-        soonest = min((lim.get(n, {}).get('until', 0) for n in names()), default=0)
-        soonest = round(soonest / 60) * 60  # the usage API says 00:39:59, the message 00:40: the same reset
-        line = f"SUBSCRIPTION LIMIT: every saved account is used up; the soonest reset is at {time.strftime('%H:%M', time.localtime(soonest))}."
-        # Every failing request of every session runs this hook: report a given reset once, not once per request
-        st = read_json(STATE, {}) or {}
-        if st.get('last_limit_line') == line: return
-        st['last_limit_line'] = line; atomic_write(STATE, json.dumps(st), 0o644)
-        log(line)
-
-def clear_limit(name):
-    lim = read_limits()
-    if name in lim: del lim[name]; atomic_write(LIMITED, json.dumps(lim), 0o644)
-
-def names(): return sorted(n for n in os.listdir(PROFILES) if os.path.isdir(os.path.join(PROFILES, n)) and os.path.exists(os.path.join(PROFILES, n, 'credentials.json'))) if os.path.isdir(PROFILES) else []
-
-def save(name):
-    creds = open(CREDS).read()
-    account = (read_json(CJSON, {}) or {}).get('oauthAccount')
-    atomic_write(os.path.join(PROFILES, name, 'credentials.json'), creds)
-    atomic_write(os.path.join(PROFILES, name, 'oauthAccount.json'), json.dumps(account))
-    atomic_write(ACTIVE, name, 0o644)
-    who = (account or {}).get('emailAddress', '?')
-    print(f"saved {name} ({who})")
-
-def use(name):
-    p = os.path.join(PROFILES, name)
-    if not os.path.isdir(p): sys.exit(f"no saved account {name!r}; saved: {', '.join(names()) or 'none'}")
-    cur = active()
-    if cur and cur != name and os.path.isdir(os.path.join(PROFILES, cur)):
-        save(cur)  # keep the refreshed tokens of the account we leave
-    atomic_write(CREDS, open(os.path.join(p, 'credentials.json')).read())
-    cj = read_json(CJSON, {}) or {}
-    cj['oauthAccount'] = read_json(os.path.join(p, 'oauthAccount.json'))
-    atomic_write(CJSON, json.dumps(cj, indent=2), 0o600)
-    atomic_write(ACTIVE, name, 0o644)
-    st = read_json(STATE, {}) or {}; st['last_swap'] = _time.time(); st.pop('last_limit_line', None); atomic_write(STATE, json.dumps(st), 0o644)
-    print(f"now using {name} ({(cj['oauthAccount'] or {}).get('emailAddress', '?')})")
-
-def main():
-    a = sys.argv[1:]
-    if not a or a[0] in ('-h', '--help'): print(__doc__); return
-    if a[0] == 'save' and len(a) == 2:
-        with locked(): save(a[1])
-    elif a[0] == 'use' and len(a) == 2:
-        with locked(): clear_limit(a[1]); use(a[1])
-    elif a[0] == 'next':
-      with locked():
-        ns = names(); cur = active()
-        if not ns: sys.exit('no saved accounts')
-        nxt = ns[(ns.index(cur) + 1) % len(ns)] if cur in ns else ns[0]
-        clear_limit(nxt); use(nxt)
-    elif a[0] == 'on-limit': on_limit()
-    elif a[0] == 'list':
-        import time
-        lim = read_limits()
-        for n in names():
-            u = lim.get(n, {}).get('until', 0)
-            note = f"  limited until {time.strftime('%H:%M', time.localtime(u))}" if u > time.time() else ''
-            print(('* ' if n == active() else '  ') + n + note)
-    else: print(__doc__); sys.exit(2)
-
-if __name__ == '__main__': main()
-````
-
 ### `codex-review-model`
 
 ````python
@@ -2353,6 +2109,7 @@ profiles = [] if not m or m.group(1) == 'prompt' else m.group(1).split('-')
 run('./build.sh', *profiles, stdout=subprocess.DEVNULL)
 run(sys.executable, os.path.join(repo, 'claude', 'bin', 'install-methodology'), src)
 if os.path.exists(f'{home}/local-llm/.installed') and os.path.exists(os.path.join(repo, 'local-model', 'install.sh')):
+    run('./build.sh', 'local', stdout=subprocess.DEVNULL)  # the local-model sessions read dist/methodology-local.md
     run(os.path.join(repo, 'local-model', 'install.sh'))
 print('updated', before[:10], '->', after[:10], flush=True)
 ````

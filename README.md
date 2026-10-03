@@ -38,10 +38,12 @@ One source, several variants. Text that differs per setting sits between markers
 | `watcher` | `on`, `off` | `off`: no `gh-watch`, heartbeat or Monitor; owed lists are checked at each start. |
 | `commit_identity` | `noreply`, `git-config` | `git-config`: commit with the checkout's git identity. |
 | `local_model` | `on`, `off` | Whether 1.1.14's local-agent delegation is included. |
+| `session_model` | `claude`, `local` | The model the session itself runs on. `local`: the subscription rules (usage limits, model tiers, `claude-swap`) drop out and the "you are the local model" rules take their place. |
 
 Profiles:
 - The defaults: an open-source repo where an external maintainer decides (`external`, `remove-before-merge`, `on-request-squash`).
 - `ci`: GitHub Actions (`target=ci`, `watcher=off`, `reviewer=claude`, `badge=auto`).
+- `local`: the pseudo-profile — no env file; a session that runs on the local model itself (`session_model=local`). It combines with others (`team local`).
 - Your own: a `profiles/<name>.env` that sets only what differs, e.g. a team repo where teammates review and merge (`ownership=team`, `tests=keep`, `merge=reviewer`, `pr_open=draft`).
 
 ## Build
@@ -49,8 +51,9 @@ Profiles:
 ```sh
 ./build.sh                  # dist/methodology-prompt.md (defaults)
 ./build.sh ci               # dist/methodology-ci.md
+./build.sh local            # dist/methodology-local.md (a session that runs on the local model)
 ./build.sh team ci          # profiles apply in order, later ones winning
-./build.sh --all            # the defaults and ci
+./build.sh --all            # the defaults, ci and local
 ```
 
 Each built file starts with its settings header, e.g. `<!-- settings: target=ci ownership=team … -->`.

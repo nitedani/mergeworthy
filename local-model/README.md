@@ -4,7 +4,7 @@ Run Claude Code on a local model, and let Claude sessions hand it bounded tasks.
 
 | Folder | What's in it |
 | --- | --- |
-| `bin/` | `serve.sh` (start, stop and watch the llama.cpp server), `claude-local` (Claude Code on the local model), `local-agent` (hand it a ticket), `claude-usage` (subscription usage and the delegation level), `build-local-methodology.sh` |
+| `bin/` | `serve.sh` (start, stop and watch the llama.cpp server), `claude-local` (Claude Code on the local model), `local-agent` (hand it a ticket), `claude-usage` (subscription usage and the delegation level) |
 | `config/` | `profile.sh` (the model, context size, KV cache), `delegation.conf` (when to delegate more), `chat-template.jinja` (the model's template, changed to accept the system message Claude Code sends mid-conversation) |
 | `prompts/` | `claude-local-overrides.md` and `claude-local-prompt.md` (what a `claude-local` session gets on top of the methodology), `ticket-agent.md` (a ticket agent's whole instructions) |
 | `skills/` | One file per `local-agent` mode: what it's for, the agent's instructions, the ticket sections it needs |
