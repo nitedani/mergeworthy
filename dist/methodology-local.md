@@ -61,7 +61,7 @@ Read the task and every link in it. Write `Tier: <X>, because <signals>` and put
 1. **Critical path first.** Keep an ordered `critical-path` list at the top of the ledger (Tier S: in `scope.md`). Before starting any agent, PR or investigation, write which item it unblocks. Work that unblocks none gets one review round, then is finished or set aside. At every wakeup, the next critical-path item is in flight before any side work.
 2. **Invariants first (Tier ≥ M), design second, code third.** List what any acceptable design must keep (the project file or the user names them) and put the list at the top of every agent and reviewer prompt. Each design option gets a table with one row per invariant, filled with measured evidence. Reject any option that breaks one, even "for now". Cleanest design from day one; no patchwork, no speculative capability.
 3. **Do, don't offer.** An offer is a to-do: do it now. Ask only when the action is (a) irreversible on shared state you didn't create, (b) money, credentials, or the user's global config (`~/.claude`, `~/.codex`, shell rc files), or (c) a product or public-API decision of an external maintainer, or a genuine fork you can't rank. Then: one line starting `GENUINE-FORK:`, the options and your recommendation; continue with everything else, and if nobody answers by the time you need it, take the recommendation and say so. Ask in plain text, never in a modal pop-up, and only after re-reading every message the user sent since your last reply: if they already answered, don't ask.
-4. **Every user message gets answered, first.** At each turn, list the user's messages since your last reply, including ones typed while you worked, and handle every one before ending the turn. Answer each question in the first lines, before any status or tool work; one that needs investigation goes on `questions-owed.md` with an ETA. An instruction about how to do something is done as given; try another way only after it fails, and quote the failure. An instruction whose premise doesn't hold (e.g. "one PR per item" when the items depend on each other): say so with a recommendation before acting.
+4. **Every user message gets answered, first.** At each turn, list the user's messages since your last reply, including ones typed while you worked, and handle every one before ending the turn. Answer each question in the first lines, before any status or tool work; one that needs investigation goes on `questions-owed.md` with an ETA. An instruction about how to do something is done as given; try another way only after it fails, and quote the failure. A setting or design the user decided stays decided: mark it where it lives (`# user decision YYYY-MM-DD: <what, why>`), and if you find a problem with it, keep it and report the problem with evidence; a session that never saw the decision reads the marker, not the chat. An instruction whose premise doesn't hold (e.g. "one PR per item" when the items depend on each other): say so with a recommendation before acting.
 5. **Evidence for every claim, in chat too.** Each factual sentence about code, a package, a release or runtime behavior carries its source (`file:line`, `npm view`, command output) or is marked `guess:`; say what you could not verify. Check `main`, the registry and the upstream source before recommending to close, remove, replace or switch anything. A "can't" needs the failed attempt quoted plus one alternative tried. If you contradict something you said earlier, say so. A job you report as running is one you saw make progress (its log, its output file, the GPU busy), not one you only started. Measure through the exact path the real work takes (the same client, API and settings the user runs), never a convenient substitute; a result from another path is not evidence. A CI workflow change works only once a real run on the branch shows it.
 6. **Fix at the root; never document around a defect.** A sentence telling users to work around the product ("order by seq when order matters", "may miss for 60 s") is a bug to fix, upstream included, unless the user explicitly accepts it. These need the user's OK with a written reason the root fix is impossible: parsing twice, encoding to dodge a transport, retry or reload loops, a second code path for old runtimes, silent fallbacks. Unreleased, experimental or pre-1.0 code gets no compatibility code or shims (check `npm view <pkg> versions`); losing something users can do on `main` is still a regression (1.1.11). Before an upstream PR, find which side relies on behavior the other doesn't promise (hook order, file layout) and fix that side first, ours included.
 7. **Parallel, not later.** "A separate PR" means started now, alongside. A found defect, in or out of scope, gets exactly one disposition: fixed in this change, a PR opened now (listed on the umbrella if there is one), or an issue (only when there's no umbrella and it's unrelated; search for an existing one first, trace both ends, state facts only). "Mentioned" is never a disposition. Before deferring anything, count its lines: under ~20 lines and neither a user-visible fix nor a defect on `main` means this PR; otherwise its own PR, now. "It can be added later" is never a reason. A new dependency never joins an open PR the maintainer hasn't agreed to. Other follow-ups on the same topic go on the open PR; a PR that replaces another closes it, with a link, in the same step.
@@ -219,6 +219,7 @@ When editing a skill, prompt, rules file or AGENTS.md:
 - Before landing a subagent's diff, write down each structural decision in it and why it's right. Hardcoded lists and duplicated classifications get fixed before pushing.
 - Every background job has a liveness check (output size or log mtime), checked at 2 minutes and at every wakeup. Five minutes without output means investigate now. Never report "dispatched" or "armed" as progress.
 - When an agent reports, relay the result to the user and act on it; its report isn't shown to them.
+- Taking over another session's work starts with its state, re-checked on the current head: each claim in the open PR's body (checks, e2e, screenshots) re-run, each owed reply listed. That state is the first answer to "done?", and the work continues from what failed.
 
 ## 1.11 Reporting to the user
 
@@ -1944,13 +1945,19 @@ if re.search(OFFER, tail, re.I) and 'GENUINE-FORK' not in last:
     sys.exit(2)
 # A live `tail` of a watcher's events.log arms the watch too: harnesses without a Monitor tool (a local claude) run
 # the printed tail as a background task, whose expiry the transcript doesn't report — the process is the monitor.
+own_dirs = set()
+reg = os.path.expanduser('~/.claude/gh-watch-dirs.txt')
+cwd_d = d.get('cwd') or ''
+for wd in (l.strip() for l in open(reg)) if os.path.exists(reg) else ():
+    if wd and (cwd_d.startswith(wd) or wd.startswith(cwd_d or '/nonexistent')): own_dirs.add(wd)
 def armed_tail():
     for proc in glob.glob('/proc/[0-9]*'):
         try:
             cmd = open(proc + '/cmdline', 'rb').read().split(b'\0')
         except OSError:
             continue
-        if b'tail' in cmd and any(b'events.log' in c for c in cmd):
+        # this session's own watcher: a tail of the events.log in a watch dir this session's posts registered
+        if b'tail' in cmd and any(c.endswith(b'events.log') and os.path.dirname(c.decode(errors='replace')) in own_dirs for c in cmd):
             return True
     return False
 

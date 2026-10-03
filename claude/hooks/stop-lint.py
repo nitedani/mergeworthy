@@ -50,13 +50,19 @@ if re.search(OFFER, tail, re.I) and 'GENUINE-FORK' not in last:
     sys.exit(2)
 # A live `tail` of a watcher's events.log arms the watch too: harnesses without a Monitor tool (a local claude) run
 # the printed tail as a background task, whose expiry the transcript doesn't report — the process is the monitor.
+own_dirs = set()
+reg = os.path.expanduser('~/.claude/gh-watch-dirs.txt')
+cwd_d = d.get('cwd') or ''
+for wd in (l.strip() for l in open(reg)) if os.path.exists(reg) else ():
+    if wd and (cwd_d.startswith(wd) or wd.startswith(cwd_d or '/nonexistent')): own_dirs.add(wd)
 def armed_tail():
     for proc in glob.glob('/proc/[0-9]*'):
         try:
             cmd = open(proc + '/cmdline', 'rb').read().split(b'\0')
         except OSError:
             continue
-        if b'tail' in cmd and any(b'events.log' in c for c in cmd):
+        # this session's own watcher: a tail of the events.log in a watch dir this session's posts registered
+        if b'tail' in cmd and any(c.endswith(b'events.log') and os.path.dirname(c.decode(errors='replace')) in own_dirs for c in cmd):
             return True
     return False
 

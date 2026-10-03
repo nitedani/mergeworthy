@@ -2,7 +2,7 @@
 # desktop using ~1.2 GB, leaving 1 GB of VRAM free at peak (prompt processing included); re-measure for yours.
 _dir="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 LLM_PROFILE=gsq  # the name serve.sh uses to notice a changed setup
-# Qwen3.8-27B, GSQ-RCO IQ3_XXS (ISTA-DASLab) with its MTP head, 4-bit KV (160K peaks at 15.05 GB on this 16 GB GPU — the accepted peak).
+# Qwen3.8-27B, GSQ-RCO IQ3_XXS (ISTA-DASLab) with its MTP head, 4-bit KV (128K loads at 14.8 GB).
 # K and V must have the same type: mixed types lose the fast kernels (68 tok/s decode, ~40 tok/s prompt).
 LLM_MODEL="Qwen3.8-27B-GSQ-RCO-IQ3_XXS-mtp.gguf"
 LLM_ARGS=(-ctk q4_0 -ctv q4_0 --spec-type draft-mtp --mmproj "$_dir/weights/mmproj-gsq-Qwen3.8-27B-BF16.gguf")
@@ -15,5 +15,5 @@ LLM_ARGS+=(--no-mmproj-offload)
 # Server context window. claude-local compacts at LLM_COMPACT, below it: the compaction request itself (the whole
 # conversation plus the summarizer's prompt and summary) must fit in the window, so the trigger can't sit at its
 # edge — at the edge it overflows and the session dies with "Prompt is too long · automatic compaction failed".
-LLM_CTX="${LLM_CTX:-163840}"  # 160K
-LLM_COMPACT=$(( LLM_CTX * 3 / 4 ))  # 120K: the compaction request (~120K in + prompt + summary) fits with headroom
+LLM_CTX="${LLM_CTX:-131072}"  # user decision 2026-10-03: 128K, so the GPU holds only what sessions use
+LLM_COMPACT=$(( LLM_CTX * 3 / 4 ))  # 96K: the compaction request (~96K in + prompt + summary) must fit in the window
