@@ -72,7 +72,7 @@ def run(run_dir, cwd, write, timeout, prompt, role, schema):
     args = ['claude', '-p', prompt, '--permission-mode', 'bypassPermissions', '--strict-mcp-config', '--output-format', 'json',
             '--json-schema', json.dumps(schema), '--append-system-prompt', role,
             '--disallowedTools', 'Agent', 'Task', '--allowedTools', 'mcp__web-search__web_search',  # WebSearch needs Anthropic's servers
-            '--mcp-config', json.dumps({'mcpServers': {'web-search': {'type': 'stdio', 'command': 'web-search-mcp'}}})]  # a ticket's agent is a subagent: it never starts its own
+            '--mcp-config', json.dumps({'mcpServers': {'web-search': {'type': 'stdio', 'command': '/tmp/.web-search-mcp'}}})]  # a ticket's agent is a subagent: it never starts its own
     args += ['--session-id', sid]
     with open(os.path.join(run_dir, 'stderr.log'), 'a') as err:
         p = subprocess.run([os.path.join(DIR, 'sandbox', 'sandbox'), run_dir, os.path.join(DIR, 'ticket-agent.md'),
