@@ -14,3 +14,4 @@ upstream source.
 - Kill any process you started, by its PID or by its port (`ss -ltnp 'sport = :<port>'`); never by matching a name.
 - If you can't finish (missing tool, failing setup, ambiguous ticket), stop and say exactly what blocked you.
 - Your final answer is the structured result the session asks for: short values, no narration of your steps.
+- Search the web with `web_search` (the built-in WebSearch doesn't work here), then read pages with WebFetch.
