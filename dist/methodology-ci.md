@@ -1,4 +1,5 @@
-<!-- settings: target=ci ownership=external tests=remove-before-merge merge=on-request-squash pr_open=ready review_trace=hidden badge=auto post_lang=en reviewer=claude watcher=off commit_identity=noreply local_model=off session_model=claude -->
+<!-- settings: target=ci ownership=external tests=remove-before-merge merge=on-request-squash pr_open=ready review_trace=comment badge=auto post_lang=en reviewer=claude watcher=off commit_identity=noreply local_model=off session_model=claude -->
+<!-- skill: core | Load first for any multi-step or GitHub task: the task, triage and tiers, principles, tracking, discovery, safety on the user's machine, reporting, pre-flight. -->
 # Work automation methodology (v3)
 
 Give this whole file to an agent, followed by the task. The agent sizes the work first (1.0), then applies only what that size requires.
@@ -119,6 +120,37 @@ Read the task and every link in it. Write `Tier: <X>, because <signals>` and put
 - **References before UI.** Before any visual design: 3–5 named reference sites with screenshots, and the design skills the user has pointed to. Ambiguous feedback about direction: show two screenshots and ask. Given a design file, measure the design and the app the same way (sizes, radii, motion, production build) and fix every difference. Before any screenshot or video is shown, a fresh-context agent lists everything broken, misaligned or clipped in it. Matching a design file is not the bar: before a screen is shown, name its surface archetype, score it on the slop tells (wrong surface, center stack, equal-weight tile grids, decoration in place of hierarchy, rainbow color), repair by that diagnosis, and remove every element nobody asked for. A new feature or visual direction is shown to the user on a local preview before it's pushed; fixes to reported bugs go straight to the PR.
 - Research prior art in upstream source at pinned versions.
 
+## 1.8 Safety on the user's machine
+
+- Kill only your own processes, by PID or port; never `pkill -f`.
+- Whatever you start, you stop: dev servers, builds, preview servers, proxies. A subagent records the PIDs it starts and kills them before handing back; check with `ps` that none are left. Find a server by the PID you started (and its children, `pgrep -P <pid>`) or by its port (`ss -ltnp 'sport = :<port>'`); never grep `ps` output for a port number, and never `pgrep -f <pattern>`. Check each PID's command and directory before killing it.
+- At most 4 browsers and 4 dev servers of your own at once; stop each when its work ends.
+- Never restart or reconfigure a container someone else's work depends on; start your own alongside.
+- Anything that listens on a port (e2e tests, dev and preview servers) runs through `isolated-run <command>`, yours and every subagent's: its own network namespace with a private loopback (outside network through a proxy it sets up), so fixed ports never collide and parallel runs never test each other's servers. Never kill or wait out another run's server.
+- Never modify the package store or a shared `node_modules`; scratch installs use `--package-import-method=copy`. After any install, check `git status` for unexpected changes.
+- Browser work uses the DevTools MCP. On "profile in use", retry after 30 s, then ask. Never fall back to scripted browsers silently, never open windows on the user's desktop, never kill another session's browser.
+- Isolate worktrees: their own ports, databases and generated clients. Work in the checkout the workflow made, on its branch; to read another branch, `git worktree add --detach <artifact root>/<name> <ref>`.
+
+## 1.11 Reporting to the user
+
+- **First lines:** answers to the user's questions, then the outcome or the action needed from them.
+- **Then:** each PR's state and what was found and fixed since the last report, with links; what's still running, what's waiting on whom, what's theirs to decide, and the critical path with an ETA per step.
+- About 12 lines unless asked for more. Local files as absolute paths; every PR or issue with its title and link, including every issue you filed. The 1.6 writing rules apply. Don't restate their instructions; no step-by-step narration.
+- Before reporting status, run `tracker-check` and check `ready-check` where they apply. Never claim a pass went dry for a slice that hasn't had it. State unfavorable facts, mistakes and skipped steps plainly.
+
+## 1.12 Pre-flight (steps 3 and 4 in every tier; the rest in Tier ≥ M)
+
+At the start of every run, in every tier: read the whole thread since the bot's last comment (comments, review comments, reviews, pushes) and the bot's earlier tracking comment, and rebuild `scope.md` from them. Keep the scope, the ledger and the owed lists (1.5) in this run's tracking comment (the one the action posts and updates), updated as they change, through the gate as a tracker post (`post-lint --kind tracker`); its last edit is the run's final comment.
+
+Before the first change:
+1. Write `scope.md`.
+2. Write the critical path.
+3. Check that the Part 5 hooks are in `~/.claude/settings.json`; this file names that file, so add them if missing. Answer any maintainer comment still without a reply first.
+4. Confirm browser control (for UI work).
+5. Note the precedents and style (1.3).
+
+---
+<!-- skill: design | Designing an API, protocol or module, or restructuring code: the design loop, prototypes, walkthroughs, deep modules (1.4.1), design it twice. -->
 ## 1.4 Design loop (Tier ≥ M, any API or protocol)
 
 0. Before any new core API, prototype the solution that uses only existing extension points (e.g. an existing middleware, render hook or plugin hook). It is the first candidate; a core change needs a named requirement it fails.
@@ -135,6 +167,37 @@ Read the task and every link in it. Write `Tier: <X>, because <signals>` and put
    Nothing that changes existing behavior the feature doesn't strictly need. Every term explained in plain words.
 5. Post the walkthrough as soon as the prototype holds the invariants. Part 3's loops run only on a shape the maintainer has OK'd; until then, one pass. After a PR opens, each commit answers a user or maintainer request, a red CI, a found bug, or a rule in this file.
 
+
+### 1.4.1 Codebase design: deep modules
+
+Wherever code is written, designed or restructured (from its first line, not only when a guardian reviews it: the design loop, Part 2 steps 3 and 4, the finality pass, Part 3's refactor pass), aim for deep modules: a lot of behaviour behind a small interface, placed at a clean seam, testable through that interface. Use these terms exactly, in code reviews and PR text too; don't substitute component, service, API or boundary:
+
+- **Module**: anything with an interface and an implementation, at any scale (a function, a class, a package, a slice across tiers).
+- **Interface**: everything a caller must know to use the module correctly: the types, and also invariants, ordering, error modes, required configuration and performance characteristics. Not only a TypeScript `interface` or a class's public methods.
+- **Implementation**: the code inside a module.
+- **Depth**: leverage at the interface, the behaviour a caller or test can exercise per unit of interface it has to learn. Deep: a lot behind a small interface. Shallow: an interface nearly as complex as what it hides (a pass-through). Not a ratio of lines, which would reward padding.
+- **Seam** (Feathers): where behaviour can change without editing in that place; where a module's interface lives. Where to put it is a decision of its own, apart from what goes behind it. Not "boundary".
+- **Adapter**: a concrete thing that satisfies an interface at a seam; a role, not a size.
+- **Leverage** (what callers get) and **locality** (what maintainers get: a change, a bug, a fix in one place).
+
+Principles:
+- Depth belongs to the interface. A deep module may be built from small parts with internal seams that its own tests use; they're not part of its interface.
+- **The deletion test**: imagine deleting the module. If complexity vanishes, it was a pass-through; if it reappears across its callers, it earns its keep.
+- **The interface is the test surface**: callers and tests cross the same seam. Needing to test past the interface means the module has the wrong shape.
+- **One adapter is a hypothetical seam, two are a real one**: don't add a seam until something varies across it.
+- When shaping an interface, ask: fewer methods? simpler parameters? more hidden inside?
+- For testability: accept dependencies rather than create them (`processOrder(order, gateway)`, not a `new StripeGateway()` inside); return results rather than produce side effects (`calculateDiscount(cart): Discount`, not `applyDiscount(cart): void`); a small surface means fewer tests and simpler setup.
+
+Deepening a cluster of shallow modules: classify each dependency first, since its category decides how the deep module is tested at its seam:
+- **In-process** (pure computation, in-memory state): merge the modules and test through the new interface; no adapter.
+- **Local-substitutable** (a local stand-in exists, e.g. PGLite for Postgres, an in-memory filesystem): test with the stand-in in the suite; the seam stays internal.
+- **Remote but owned** (your own services over a network): a port at the seam; the deep module owns the logic, the transport is an injected adapter (in-memory in tests, HTTP or a queue in production).
+- **True external** (a third party you don't control): an injected port, a mock adapter in tests.
+
+A deep module may keep internal seams for its own tests; don't expose them through its interface because tests use them. Replace, don't layer: once tests at the deepened interface exist, delete the old tests on the shallow parts. Tests assert observable outcomes through the interface, so they survive internal refactors; a test that changes with the implementation tests past the interface.
+
+**Design it twice** (your first interface is unlikely to be the best): frame the problem for the user (the constraints any interface must meet, the dependencies and their categories, a rough code sketch that makes the constraints concrete, not a proposal), then have 3+ fresh-context agents design it in parallel, each under a different constraint: minimize the interface (1–3 entry points), maximize flexibility, make the most common caller trivial, and (where dependencies cross a seam) ports and adapters. Each returns the interface (types, invariants, ordering, error modes), a usage example, what hides behind the seam, its dependency strategy and adapters, and where its leverage is high or thin. Compare them on depth, locality and seam placement, then recommend one (or a hybrid) and say why: a strong read, not a menu. These are the candidates of step 1.
+<!-- skill: github | Any GitHub thread you're in: the live loop (watcher, 👀, replies, which threads are yours) and the posting gate every post, edit and PR body passes. -->
 ## 1.5 The live GitHub loop (every tier, from your first post until every thread you're in is merged or closed)
 
 A maintainer's comment is handled like the user typing in this chat: highest priority, full effort.
@@ -183,7 +246,7 @@ It covers everything that reaches an external service, with no lighter category:
 - Short, plain words. No jargon, abstractions or AI phrasing ("in this run", "doesn't establish", "worth noting", "happy to", "let me know"), and never solicit ("pushback welcome").
 - Say only what they don't know yet. Don't recite their comment or your earlier replies, don't thank them for an approval, and don't promise how you'll behave next time. When answering several questions, quote each in one line. If all there is to say is "done", say "Done in <sha>".
 - Several comments from one person get one reply. Never post a comment that corrects or adds to your own earlier one: edit it in place, through the gate. (The 1.5 result, wait-ping and dependency-progress comments are new comments.)
-- Keep the process invisible: reviewers, models, gates, rounds, working ratings and pass reports stay in the artifact root; the ledger in the tracking comment (1.12) sits in a collapsed `<details>` block. The thread gets the result, with evidence only where a reader needs it to judge.
+- Keep the process invisible: reviewers, models, gates, rounds, working ratings and pass reports stay in the artifact root, except the review record: one comment per PR (`post-lint --kind review-record`), edited in place as rounds land; the ledger in the tracking comment (1.12) sits in a collapsed `<details>` block. The thread gets the result, with evidence only where a reader needs it to judge.
 - Decide what you can decide or measure. A question carries your recommendation and its reason; a change you'd recommend within scope is made, not listed.
 - Credit a design or statement to someone only with a link to where they said it.
 - Links to another repo use `owner/repo#N`. Write "depends on #N", never "stacked on", unless `gh stack` links them.
@@ -191,6 +254,7 @@ It covers everything that reaches an external service, with no lighter category:
 - Budgets: reply ≤ 80 words; PR body about 150 words plus evidence, up to 250 when it lists decisions for the maintainer; issue: one finding, ≤ 400 characters plus a screenshot; inline review comments ≤ 2 sentences, only where the reader must judge. Tables, code and images don't count.
 - Notes for a maintainer go in one table: `| Note | Kind | Blocks merge | Next |`. Kind is bug, limitation, not a regression, or decision needed; Next is fixed in <sha>, PR <url>, or nothing, because Y. A follow-up is opened before the post, never listed as "recommend" or "follow-up"; in the user's own repos, just do it. A note that blocks the goal and can be fixed anywhere, upstream included, is fixed instead of listed.
 
+<!-- skill: merge | Pushing, saying a PR is ready, merging, stacked PRs. -->
 ## 1.7 Pushing, ready and merge
 
 - Commit as the GitHub account you push with, by login and noreply email (`git -c user.name=<login> -c user.email=<id>+<login>@users.noreply.github.com commit`), never the user's real name or another address. Maintainers may push to your branches and may merge. Before any push: fetch, fast-forward onto their commits, check `git merge-base --is-ancestor <remote> HEAD`, then push. Never force-push, except on your own unmerged branch with `--force-with-lease=<branch>:<sha you last pushed>`; never push to a merged branch.
@@ -200,17 +264,7 @@ It covers everything that reaches an external service, with no lighter category:
 - CI: `gh run rerun` on an upstream repo needs admin rights, so ask a maintainer; fork PRs get no CI secrets (e.g. a Vercel token), so those jobs fail on forks.
 - Merge only after a maintainer asks: `gh pr merge <N> --squash --subject "<PR title> (#<N>)" --body ""`, unless the repo's `AGENTS.md`, re-read right before merging, says otherwise.
 - Before merging a PR that other open PRs are based on, retarget them (`gh pr edit <N> --base <its base>`): deleting its branch closes them instead (`pre-bash-guard` blocks `--delete-branch` while any are left). After a squash-merge, merge the new base into each of them, so their diff shows only their own change.
-## 1.8 Safety on the user's machine
-
-- Kill only your own processes, by PID or port; never `pkill -f`.
-- Whatever you start, you stop: dev servers, builds, preview servers, proxies. A subagent records the PIDs it starts and kills them before handing back; check with `ps` that none are left. Find a server by the PID you started (and its children, `pgrep -P <pid>`) or by its port (`ss -ltnp 'sport = :<port>'`); never grep `ps` output for a port number, and never `pgrep -f <pattern>`. Check each PID's command and directory before killing it.
-- At most 4 browsers and 4 dev servers of your own at once; stop each when its work ends.
-- Never restart or reconfigure a container someone else's work depends on; start your own alongside.
-- Anything that listens on a port (e2e tests, dev and preview servers) runs through `isolated-run <command>`, yours and every subagent's: its own network namespace with a private loopback (outside network through a proxy it sets up), so fixed ports never collide and parallel runs never test each other's servers. Never kill or wait out another run's server.
-- Never modify the package store or a shared `node_modules`; scratch installs use `--package-import-method=copy`. After any install, check `git status` for unexpected changes.
-- Browser work uses the DevTools MCP. On "profile in use", retry after 30 s, then ask. Never fall back to scripted browsers silently, never open windows on the user's desktop, never kill another session's browser.
-- Isolate worktrees: their own ports, databases and generated clients. Work in the checkout the workflow made, on its branch; to read another branch, `git worktree add --detach <artifact root>/<name> <ref>`.
-
+<!-- skill: agents | Writing rules, prompts or docs, and starting, briefing or integrating subagents and the local model. -->
 ## 1.9 Writing rules, prompts and docs
 
 When editing a skill, prompt, rules file or AGENTS.md:
@@ -226,26 +280,8 @@ When editing a skill, prompt, rules file or AGENTS.md:
 - When an agent reports, relay the result to the user and act on it; its report isn't shown to them.
 - Taking over another session's work starts with its state, re-checked on the current head: each claim in the open PR's body (checks, e2e, screenshots) re-run, each owed reply listed. That state is the first answer to "done?", and the work continues from what failed.
 
-## 1.11 Reporting to the user
 
-- **First lines:** answers to the user's questions, then the outcome or the action needed from them.
-- **Then:** each PR's state and what was found and fixed since the last report, with links; what's still running, what's waiting on whom, what's theirs to decide, and the critical path with an ETA per step.
-- About 12 lines unless asked for more. Local files as absolute paths; every PR or issue with its title and link, including every issue you filed. The 1.6 writing rules apply. Don't restate their instructions; no step-by-step narration.
-- Before reporting status, run `tracker-check` and check `ready-check` where they apply. Never claim a pass went dry for a slice that hasn't had it. State unfavorable facts, mistakes and skipped steps plainly.
-
-## 1.12 Pre-flight (steps 3 and 4 in every tier; the rest in Tier ≥ M)
-
-At the start of every run, in every tier: read the whole thread since the bot's last comment (comments, review comments, reviews, pushes) and the bot's earlier tracking comment, and rebuild `scope.md` from them. Keep the scope, the ledger and the owed lists (1.5) in this run's tracking comment (the one the action posts and updates), updated as they change, through the gate as a tracker post (`post-lint --kind tracker`); its last edit is the run's final comment.
-
-Before the first change:
-1. Write `scope.md`.
-2. Write the critical path.
-3. Check that the Part 5 hooks are in `~/.claude/settings.json`; this file names that file, so add them if missing. Answer any maintainer comment still without a reply first.
-4. Confirm browser control (for UI work).
-5. Note the precedents and style (1.3).
-
----
-
+<!-- skill: failures | When a rule failed or the user names a failure: the table of past failures and the rule that covers each. -->
 # Part 4: Failures that already happened
 
 Each happened, most more than once. Read them before starting.
@@ -301,11 +337,12 @@ Each happened, most more than once. Read them before starting.
 
 ---
 
+<!-- skill: implement | Implementing an issue or opening a PR: already fixed?, reproduce, approach rating, build and gate, browser evidence, review round, refactor pass, PR body. -->
 # Part 2: Implementing a change
 
 From an issue or a problem to one merge-ready PR. Tier S follows it as written; Tier ≥ M runs it once per PR, with Part 3's loops in place of steps 6 and 7's single rounds (Part 3 section 7 says what feeds `pr-steps`).
 
-The repo's `AGENTS.md` / `CLAUDE.md` governs how the code is written. Everything particular to a repo (base branch, gates, existing guarantees, security surfaces, tracker, labels, how to run the app) lives in its **project file**: `.claude/skills/implement-issue/references/project.md`, else `.claude/implement-issue.md`. If the repo has none, derive it (base branch from `gh repo view --json defaultBranchRef`, gates from CI config and package scripts, how to run the app from the README) under the headings of the project template at the end of this part, write it to `.claude/implement-issue.md`, tell the user it is a draft, and use it. If the repo has `.claude/skills/implement-issue/SKILL.md`, read it on `origin/<base>` first: where it differs from this part, it wins, except where Part 1 says otherwise (review records go to the ledger, found defects per 1.1.7, process stays out of the thread).
+The repo's `AGENTS.md` / `CLAUDE.md` governs how the code is written. Everything particular to a repo (base branch, gates, existing guarantees, security surfaces, tracker, labels, how to run the app) lives in its **project file**: `.claude/skills/implement-issue/references/project.md`, else `.claude/implement-issue.md`. If the repo has none, derive it (base branch from `gh repo view --json defaultBranchRef`, gates from CI config and package scripts, how to run the app from the README) under the headings of the project template at the end of this part, write it to `.claude/implement-issue.md`, tell the user it is a draft, and use it. If the repo has `.claude/skills/implement-issue/SKILL.md`, read it on `origin/<base>` first: where it differs from this part, it wins, except where Part 1 says otherwise (found defects per 1.1.7, process stays out of the thread).
 
 `<base>` below is the base branch it names. Work in the checkout, on the branch it has checked out. Read the project file's CI section first, if it has one.
 
@@ -355,6 +392,8 @@ If nothing rates high, abort: comment what you tried and why each falls short, t
 
 The smallest diff that finishes the job: schema, API, every call site, every locale. The gates are in the project file; the exit code is the verdict, not your reading of the output. At most one regression test, in an existing suite.
 
+Write it with the guardian's lenses from the first line (the charter in Part 3 section 11.1, and 1.4.1): deep modules, no speculative surface or defensive branch for an unreachable state, no duplicate intent, terse comments that are literally true, names that don't confess mixed responsibility. Before the review round, read your own diff through those lenses and fix what they catch. The guardian checks; it isn't where the code gets its shape, so a guardian round that finds design work means this step was skipped.
+
 **Build the whole interaction, not the happy path.** Someone will finish the task, change their mind, go back, reload, mistype, use the keyboard, leave halfway. Anything that would make them wonder what happened is a defect, whether or not the ticket mentioned it.
 
 Converging a subsystem is built as the finality pass's Phase C: behavior-preserving commits, gates after each.
@@ -388,7 +427,7 @@ git merge-base HEAD origin/<base>                      # note the sha
 
 It says UNKNOWN for anything it could not observe. If no reviewer at all is available, review it yourself with the charter.
 
-One round: fix real defects, decline the rest with a line of reasoning (1.1.15), no second round. Record who reviewed (or that it was a self-review) and what they found, including nothing, in the ledger, and run `pr-steps review <output>`.
+One round: fix real defects, decline the rest with a line of reasoning (1.1.15), no second round. Record who reviewed (or that it was a self-review) and what they found, including nothing, in the ledger and the PR's review-record comment (1.6), and run `pr-steps review <output>`.
 
 ### 7. Refactor pass
 
@@ -573,6 +612,7 @@ Everything this part needs to know about one repo; the method itself stays here.
 - **Feature-scale precedent:** how bigger changes have landed before, with an example.
 - **Running the app:** *Preflight*: one command that checks everything the app needs and prints every failure together, plus install commands for what doesn't need root. *Start*: an isolated copy that disturbs nobody, and how to tell it is ready (the HTTP status, not just the exit code). *Drive it*: URLs, test accounts, seed data, how to reach the screen an issue is about. *Stop*: how to tear it all down, including after an abort.
 
+<!-- skill: convergence | Running convergence on a PR (the owner asks, or Tier >= M before ready): bug verification loop, guardian and refactor rounds, final verification, the charters and templates. -->
 # Part 3: Convergence
 
 Tier S runs it condensed (1.0); Tier ≥ M runs it in full, for every PR. A new API or protocol gets it only once the maintainer has OK'd its shape (1.4 step 5).
@@ -768,8 +808,8 @@ the failure text recorded — the confirmed-kept column equals the deleted colum
 (6) ESSENTIAL vs ACCIDENTAL complexity — keep hard-problem complexity (readability notes only),
 cut solution-generality bloat. (7) INVISIBLE OPTIMIZATIONS — cut scale-only machinery; SURFACE
 (don't cut) optimizations with a real viability cost. (8) NO introspection/noise surface.
-(9) DEEP-MODULE DESIGN — flag SHALLOW modules; the deletion test; "the interface is the test
-surface". (10) FOWLER SMELLS — Mysterious Name, Duplicated Code, Feature Envy, Data Clumps,
+(9) DEEP-MODULE DESIGN (1.4.1 terms) — flag SHALLOW modules; the deletion test; "the interface is the test
+surface"; seam placement; a seam with one adapter is hypothetical. (10) FOWLER SMELLS — Mysterious Name, Duplicated Code, Feature Envy, Data Clumps,
 Primitive Obsession, Repeated Switches, Shotgun Surgery, Divergent Change, Speculative
 Generality, Message Chains, Middle Man, Refused Bequest. (11) THE 10-SECOND PASS — the
 instant-wince lens: names confessing mixed responsibility, queries that write, import aliases
@@ -839,7 +879,7 @@ Refactor this PR:
 - End with a summary of what you worked on: print the lists again with old rating ⇒ new
   rating with link to commit(s).
 
-Running it: the rater is not the author, and not in the author's context. It rates read-only; the author implements commit by commit; a fresh rater re-rates old ⇒ new. Scope: everything the diff touches, at 100% coverage; code outside the diff is context. Re-run the gates after every commit; a red gate means revert that commit, not patch over it. Refactor commits are separate from behavior commits. If the pass changed nothing, say that and why. The final lists (old ⇒ new, reason, commit links, and the ✅ lists) go in the PR description's `## Ratings` section, as tables; working notes stay in the artifact root. The pass belongs to the PR as it is now, not to the head it first ran on: when later commits (maintainer requests included) change more than ~80 lines, re-run it on the whole PR diff before the next "Done" reply and replace the lists; the watcher prints `### REFACTOR STALE` when that happens.
+Running it: the rater is not the author, and not in the author's context. It rates read-only; the author implements commit by commit; a fresh rater re-rates old ⇒ new. Scope: everything the diff touches, at 100% coverage; code outside the diff is context. Re-run the gates after every commit; a red gate means revert that commit, not patch over it. Refactor commits are separate from behavior commits. If the pass changed nothing, say that and why. The final lists (old ⇒ new, reason, commit links, and the ✅ lists) go in the review-record comment; working notes stay in the artifact root. The pass belongs to the PR as it is now, not to the head it first ran on: when later commits (maintainer requests included) change more than ~80 lines, re-run it on the whole PR diff before the next "Done" reply and replace the lists; the watcher prints `### REFACTOR STALE` when that happens.
 
 ### 12. Templates
 
@@ -887,7 +927,7 @@ Setup: git worktree add -b impl/<scope> <dir> <head SHA>; install; build the pac
 
 Implement exactly these finding IDs from <report>: <list>. Not these: <owner decisions and exclusions>.
 
-For every item: read the code end to end and check the finding is true at <head>; skip it with a reason if it's false, changes behavior or a public surface, or removes owner code without leave. Make the smallest change. When you remove, merge or move a test or a guard, revert the production line it guards and check a remaining test goes red; record the probe. Gates after every commit: <quick gates>, plus <lanes for touched areas>; a red gate means fix that commit, not a patch on top. One commit per finding or class, message: <style>, trailer: <trailer>.
+Write every change with the charter's lenses (11.1) and 1.4.1's terms, so the next guardian round has nothing to add. For every item: read the code end to end and check the finding is true at <head>; skip it with a reason if it's false, changes behavior or a public surface, or removes owner code without leave. Make the smallest change. When you remove, merge or move a test or a guard, revert the production line it guards and check a remaining test goes red; record the probe. Gates after every commit: <quick gates>, plus <lanes for touched areas>; a red gate means fix that commit, not a patch on top. One commit per finding or class, message: <style>, trailer: <trailer>.
 
 Final message: commits (sha, subject, IDs), skipped items with reasons, probes and results, final gate output.
 ```
@@ -900,6 +940,7 @@ Keep the body current by condensing history, never by dropping current facts. Wh
 
 ---
 
+<!-- skill: mechanisms | Using, fixing or installing the mechanisms: the watcher, hooks, gate-pass, post-lint, pr-steps, isolated-run, install-methodology. -->
 # Part 5: Mechanisms
 
 These scripts enforce the rules that failed as text alone. This file is the only source: `install-methodology` (below) installs the scripts, the hooks and the always-on rules on any machine from this file alone. First install: `F=<this file>; awk '/^### \`install-methodology\`/{f=1;next} f&&/^\`\`\`\`/{if(g)exit;g=1;next} g' "$F" | python3 - "$F"`. Re-run it after every change to this file; never edit the installed copies.
@@ -907,7 +948,7 @@ These scripts enforce the rules that failed as text alone. This file is the only
 | Mechanism | Enforces | How to use it |
 |---|---|---|
 | `tracker-check.sh` | 1.2. Umbrella drift (checkbox vs PR state), and a Decisions comment last edited before a tracked PR merged or closed. | `TRACKER_REPO=o/r TRACKER_ISSUE=N TRACKER_DECISIONS=<comment id> ./tracker-check.sh`. Run it before every report. |
-| `post-lint.py` | 1.6. Banned phrases, em dashes, "stacked on", bare `#N`, budgets (reply 80 words, PR 150, issue 400 characters, inline 2 sentences; tables, code, images and URLs not counted), unclassified notes, process in the thread, questions without a recommendation, a bare "Done" to a question or soft suggestion, a notes-table Next of "recommend", "follow-up" or "later". | `post-lint.py drafts/x.md --kind reply\|pr\|issue\|inline [--repo o/r]` (default `reply`). A reply or inline comment reads its parent from `drafts/x.parent.md` (or `--parent <file>`; `--parent none` when it answers nobody). Tests: `tests/test_post_lint.py`. |
+| `post-lint.py` | 1.6. Banned phrases, em dashes, "stacked on", bare `#N`, budgets (reply 80 words, PR 150, issue 400 characters, inline 2 sentences; tables, code, images and URLs not counted), unclassified notes, process in the thread, questions without a recommendation, a bare "Done" to a question or soft suggestion, a notes-table Next of "recommend", "follow-up" or "later". | `post-lint.py drafts/x.md --kind reply\|pr\|issue\|inline\|review-record [--repo o/r]` (default `reply`). A reply or inline comment reads its parent from `drafts/x.parent.md` (or `--parent <file>`; `--parent none` when it answers nobody). Tests: `tests/test_post_lint.py`. |
 | `gate-pass` | 1.6. Records that a draft passed: `post-lint` clean and the review's final message (saved as `drafts/x.review.out`) exactly `CLEAN`; stores the draft's sha256 in `<draft>.gate`. A draft that promises work ("I'll", "follow-up PR") first needs a `PROMISED … (<draft name>)` line in `proposals-open.md`. | `gate-pass drafts/x.md drafts/x.review.out` (set `POST_LINT_ARGS` for `--repo`/`--kind`). |
 | `pre-bash-guard.py` (PreToolUse hook on Bash) | 1.6, 1.7, 1.8. Blocks: `gh` posts and edits whose body isn't a gated draft or changed after its gate;  posting the same gated draft as a new comment, issue or PR twice (`<draft>.posted`; edits may repeat); `gh pr merge` without `--squash --subject "<title> (#N)" --body ""`; `pkill -f`/`killall`; bare `git stash`; force-push without a pinned lease. Reactions pass. | Hook config below. Use absolute draft paths. |
 
@@ -1559,7 +1600,7 @@ r"""install-methodology <methodology.md>: installs the methodology on this machi
 First install, from the file itself:
   F=methodology.md; awk '/^### `install-methodology`/{f=1;next} f&&/^````/{if(g)exit;g=1;next} g' "$F" | python3 - "$F"
 """
-import json, os, re, sys
+import json, os, re, shutil, sys
 
 src = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else sys.exit(__doc__))
 md = open(src).read()
@@ -1600,13 +1641,31 @@ if m:
     json.dump(settings, open(sp, 'w'), indent=2)
     print(f'hooks merged -> {sp}')
 
+# Skills: the file is split at its <!-- skill: name | when --> markers into ~/.claude/skills/methodology-<name>, so a
+# step loads only its sections. The always-on block (in CLAUDE.md) and the scripts (installed above) are left out.
+skills_dir = f'{home}/.claude/skills'
+parts = re.split(r'^<!-- skill: ([\w-]+) \| (.*?) -->\n', md, flags=re.M)
+skill_names = []
+for name, when, body in zip(parts[1::3], parts[2::3], parts[3::3]):
+    body = re.sub(r'<!-- always-on:begin -->\n.*?<!-- always-on:end -->\n?', '', body, flags=re.S)
+    body = re.sub(r'^### `[\w.-]+`\n\n````\w*\n.*?\n````\n?', '', body, flags=re.S | re.M)
+    d = f'{skills_dir}/methodology-{name}'
+    os.makedirs(d, exist_ok=True)
+    open(f'{d}/SKILL.md', 'w').write(f'---\nname: methodology-{name}\ndescription: {when}\n---\n\n{body.strip()}\n')
+    skill_names.append(name)
+if skill_names:
+    for old in os.listdir(skills_dir):  # a skill this version no longer has
+        if old.startswith('methodology-') and old[len('methodology-'):] not in skill_names:
+            shutil.rmtree(f'{skills_dir}/{old}')
+    print(f'skills -> {skills_dir}/methodology-{{{",".join(skill_names)}}}')
+
 # Always-on rules
 m = re.search(r'<!-- always-on:begin -->\n(.*?)<!-- always-on:end -->', md, re.S)
 if m:
     cp = f'{home}/.claude/CLAUDE.md'
     old = open(cp).read() if os.path.exists(cp) else ''
     block = (f'<!-- methodology:begin (written by install-methodology; edit the source next to it ({os.path.dirname(os.path.dirname(src))}/methodology) and rebuild, not this block) -->\n'
-             f'The full methodology is `{src}`; follow it for any multi-step or GitHub work.\n\n'
+             f'The methodology is installed as skills: load `methodology-core` first for any multi-step or GitHub work, and the others as their step comes ({", ".join("methodology-" + n for n in skill_names)}). Source: `{src}`.\n\n'
              f'{m.group(1)}<!-- methodology:end -->\n')
     new = re.sub(r'<!-- methodology:begin.*?<!-- methodology:end -->\n', lambda _: block, old, flags=re.S) \
         if '<!-- methodology:begin' in old else (old.rstrip('\n') + '\n\n' if old.strip() else '') + block
