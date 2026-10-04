@@ -20,6 +20,16 @@ while [ $# -gt 0 ]; do
   repo=$1; shift
   [[ $repo == */* ]] || { echo "not owner/repo: $repo"; exit 1; }
   if [[ ${1:-} =~ ^[0-9]+$ ]]; then line="$repo $1"; file=threads.txt; shift; else line=$repo; file=repos.txt; fi
+  # One watcher per thread: a second would wake a second agent on the same comment
+  if [ "$file" = threads.txt ]; then
+    while read -r other; do
+      [ "$other" != "$dir" ] && [ -f "$other/threads.txt" ] && grep -qxF "$line" "$other/threads.txt" || continue
+      opid=$(cat "$other/gh-watch.pid" 2>/dev/null || true)
+      if [ -n "$opid" ] && ps -p "$opid" -o command= 2>/dev/null | grep -q gh-watch-daemon; then
+        echo "$line is already watched by $other: use that watch dir, or remove the line there first" >&2; exit 1
+      fi
+    done < <(cat ~/.claude/gh-watch-dirs.txt 2>/dev/null)
+  fi
   grep -qxF "$line" "$dir/$file" || echo "$line" >> "$dir/$file"
 done
 reg=~/.claude/gh-watch-dirs.txt
@@ -33,9 +43,11 @@ elif command -v claude >/dev/null; then agent="env -u CLAUDE_CONFIG_DIR claude -
 elif command -v codex >/dev/null; then agent="codex exec"
 else agent=""; fi
 [ -n "$agent" ] && printf '%s\n' "$agent" > "$dir/agent"
-# A systemd user service where there is one: restarted on failure and started at boot, independent of any session.
-# Elsewhere, a detached daemon.
-if systemctl --user is-system-running >/dev/null 2>&1 || [ "$(systemctl --user is-system-running 2>/dev/null)" = degraded ]; then
+# Supervision, so the watcher restarts on failure and after a reboot, with no session alive:
+# systemd user service (Linux), launchd agent (macOS), else a detached daemon that cron revives.
+printf 'PATH=%s\nHOME=%s\n' "$PATH" "$HOME" > "$dir/env"
+daemon_alive() { local p; p=$(cat "$dir/gh-watch.pid" 2>/dev/null || true); [ -n "$p" ] && ps -p "$p" -o command= 2>/dev/null | grep -q gh-watch-daemon; }
+if [ "$(uname)" = Linux ] && systemctl --user show-environment >/dev/null 2>&1; then
   unit=~/.config/systemd/user/gh-watch@.service
   mkdir -p "$(dirname "$unit")"
   cat > "$unit.new" <<'UNIT'
@@ -46,6 +58,7 @@ StartLimitIntervalSec=0
 [Service]
 WorkingDirectory=/%I
 EnvironmentFile=/%I/env
+Environment=GH_WATCH_SUPERVISOR=systemd
 ExecStart=/bin/bash -c 'GH_WATCH_EYES=$(cat eyes) exec ./gh-watch-daemon.sh'
 Restart=always
 RestartSec=5
@@ -53,23 +66,53 @@ RestartSec=5
 [Install]
 WantedBy=default.target
 UNIT
-  cmp -s "$unit.new" "$unit" 2>/dev/null && rm "$unit.new" || { mv "$unit.new" "$unit"; systemctl --user daemon-reload; }
-  printf 'PATH=%s\nHOME=%s\n' "$PATH" "$HOME" > "$dir/env"
+  if cmp -s "$unit.new" "$unit"; then rm "$unit.new"; else mv "$unit.new" "$unit"; systemctl --user daemon-reload; fi
   inst="gh-watch@$(systemd-escape --path "$dir").service"
-  pid=$(cat "$dir/gh-watch.pid" 2>/dev/null || true)
-  if ! systemctl --user is-active --quiet "$inst" && [ -n "$pid" ] && grep -q gh-watch-daemon "/proc/$pid/cmdline" 2>/dev/null; then
-    kill "$pid"; sleep 1  # a detached daemon from before: the service replaces it
-  fi
+  # a detached daemon from an older start: the service replaces it
+  if ! systemctl --user is-active --quiet "$inst" && daemon_alive; then kill "$(cat "$dir/gh-watch.pid")"; sleep 1; fi
   systemctl --user enable --now "$inst" >/dev/null 2>&1
-  sleep 1; echo "watcher service $inst: $(systemctl --user is-active "$inst") (PID $(cat "$dir/gh-watch.pid" 2>/dev/null), eyes: $(cat "$dir/eyes"))"
-else
-  pid=$(cat "$dir/gh-watch.pid" 2>/dev/null || true)
-  if [ -n "$pid" ] && grep -q gh-watch-daemon "/proc/$pid/cmdline" 2>/dev/null; then
-    echo "watcher running (PID $pid)"
-  else
-    (cd "$dir" && GH_WATCH_EYES=$(cat eyes) nohup setsid ./gh-watch-daemon.sh >/dev/null 2>&1 &)
-    sleep 1; echo "watcher started (PID $(cat "$dir/gh-watch.pid"), eyes: $(cat "$dir/eyes"))"
+  loginctl show-user "$USER" 2>/dev/null | grep -q '^Linger=yes' || echo "note: without 'loginctl enable-linger $USER' the service starts at login, not at boot" >&2
+  sleep 1; echo "watcher: systemd service $inst $(systemctl --user is-active "$inst") (PID $(cat "$dir/gh-watch.pid" 2>/dev/null), eyes: $(cat "$dir/eyes"))"
+elif [ "$(uname)" = Darwin ]; then
+  label="com.methodology.gh-watch.$(printf %s "$dir" | shasum | cut -c1-12)"
+  plist=~/Library/LaunchAgents/$label.plist
+  mkdir -p ~/Library/LaunchAgents
+  cat > "$plist.new" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>$label</string>
+  <key>WorkingDirectory</key><string>$dir</string>
+  <key>ProgramArguments</key><array><string>/bin/bash</string><string>-c</string><string>GH_WATCH_EYES=\$(cat eyes) exec ./gh-watch-daemon.sh</string></array>
+  <key>EnvironmentVariables</key><dict><key>PATH</key><string>$PATH</string><key>HOME</key><string>$HOME</string><key>GH_WATCH_SUPERVISOR</key><string>launchd</string></dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+</dict></plist>
+PLIST
+  if ! cmp -s "$plist.new" "$plist"; then
+    mv "$plist.new" "$plist"; launchctl bootout "gui/$(id -u)/$label" 2>/dev/null || true
+  else rm "$plist.new"; fi
+  if ! launchctl print "gui/$(id -u)/$label" >/dev/null 2>&1; then
+    daemon_alive && { kill "$(cat "$dir/gh-watch.pid")"; sleep 1; }
+    launchctl bootstrap "gui/$(id -u)" "$plist"
   fi
+  sleep 1; echo "watcher: launchd agent $label (PID $(cat "$dir/gh-watch.pid" 2>/dev/null), eyes: $(cat "$dir/eyes"))"
+else
+  if ! daemon_alive; then
+    # fully detached: with `nohup setsid … &` the daemon stayed this script's child and the script never returned
+    if command -v setsid >/dev/null; then (cd "$dir" && GH_WATCH_EYES=$(cat eyes) setsid -f ./gh-watch-daemon.sh </dev/null >/dev/null 2>&1)
+    else (cd "$dir" && GH_WATCH_EYES=$(cat eyes) nohup ./gh-watch-daemon.sh </dev/null >/dev/null 2>&1 & disown); fi
+    sleep 1
+  fi
+  # cron revives it after a crash or a reboot (gh-watch-start is idempotent)
+  if command -v crontab >/dev/null; then
+    job="*/5 * * * * $(realpath "$0") $dir >/dev/null 2>&1 # gh-watch $dir"
+    # `|| true`: grep finds nothing to keep in an empty crontab, and set -e would then install an empty one
+    { crontab -l 2>/dev/null | grep -vF "# gh-watch $dir" || true; echo "$job"; echo "@reboot $(realpath "$0") $dir >/dev/null 2>&1 # gh-watch $dir"; } | crontab -
+  else
+    echo "note: no systemd, launchd or cron: the watcher won't restart after a reboot" >&2
+  fi
+  echo "watcher: daemon PID $(cat "$dir/gh-watch.pid"), revived by cron (eyes: $(cat "$dir/eyes"))"
 fi
 if [ -n "$agent" ]; then
   echo "The daemon wakes the agent itself on each event: $agent (command in $dir/agent, log in $dir/wake.log, cursor in $dir/events.cursor)."

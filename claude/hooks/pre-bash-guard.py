@@ -95,7 +95,7 @@ def watch_dirs():
     for d in (l.strip() for l in open(reg)) if os.path.exists(reg) else ():
         try:
             pid = open(os.path.join(d, 'gh-watch.pid')).read().strip()
-            if b'gh-watch-daemon' in open(f'/proc/{pid}/cmdline', 'rb').read(): live.append(d)
+            if 'gh-watch-daemon' in subprocess.run(['ps', '-p', pid, '-o', 'command='], capture_output=True, text=True).stdout: live.append(d)
         except (OSError, ValueError):
             pass
     return live

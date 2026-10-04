@@ -435,6 +435,51 @@ def run_scan():
         save_state(state)
 
 
+def retire_if_done():
+    """A watcher whose every thread is merged or closed (and that covers no whole repo) has nothing left to watch: it
+    disables its service, so it doesn't come back after a reboot, or stops its daemon."""
+    repos = os.path.join(HERE, 'repos.txt')
+    if os.path.exists(repos) and open(repos).read().strip():
+        return
+    threads = read_threads()
+    if not threads:
+        return
+    with locked():
+        prs = load_state()['prs']
+    for repo, num in threads:
+        key = f"{repo}#{num}"
+        if key in prs:
+            done = prs[key].get('state') in ('merged', 'closed')
+        else:
+            try:
+                done = json.loads(gh(['api', f"repos/{repo}/issues/{num}", '--jq', '{state}']))['state'] == 'closed'
+            except Exception:
+                return  # unknown: keep watching
+        if not done:
+            return
+    # plain print, not emit: a ### line would wake the agent
+    print(f"WATCHER RETIRED at {datetime.datetime.now(datetime.timezone.utc):%Y-%m-%dT%H:%M:%SZ}: every watched thread is merged or closed", flush=True)
+    # each supervisor gh-watch-start may have used, so the watcher doesn't come back after a reboot
+    supervisor = os.environ.get('GH_WATCH_SUPERVISOR', '')  # set by the unit or the launchd agent gh-watch-start wrote
+    if supervisor == 'systemd':
+        unit = 'gh-watch@' + subprocess.run(['systemd-escape', '--path', HERE], capture_output=True, text=True).stdout.strip() + '.service'
+        subprocess.run(['systemctl', '--user', 'disable', '--now', unit])
+        return
+    label = os.environ.get('XPC_SERVICE_NAME', '')
+    if supervisor == 'launchd':
+        subprocess.run(['rm', '-f', os.path.expanduser(f'~/Library/LaunchAgents/{label}.plist')])
+        subprocess.run(['launchctl', 'bootout', f'gui/{os.getuid()}/{label}'])
+        return
+    tab = subprocess.run(['crontab', '-l'], capture_output=True, text=True)
+    if tab.returncode == 0 and f'# gh-watch {HERE}' in tab.stdout:  # cron
+        kept = ''.join(l + '\n' for l in tab.stdout.splitlines() if not l.endswith(f'# gh-watch {HERE}'))
+        subprocess.run(['crontab', '-'], input=kept, text=True)
+    try:
+        os.kill(int(open(os.path.join(HERE, 'gh-watch.pid')).read().strip()), 15)  # the daemon's trap stops this watcher too
+    except (OSError, ValueError):
+        sys.exit(0)
+
+
 def main():
     if ONCE:
         run_scan()
@@ -451,6 +496,7 @@ def main():
             save_state(state)
         if time.time() - last_full > 180:
             run_scan()
+            retire_if_done()
             last_full = time.time()
         time.sleep(10)
 

@@ -2,7 +2,7 @@
 """Claude Code Stop hook. Blocks ending a turn with an offer or permission question the agent should just act on,
 or after posting on GitHub with no armed tail of a watcher's events.log — a Monitor, or a live `tail` process
 where the harness has no Monitor tool (1.5), or with a line still owed in a live watcher's replies-owed.md (1.5)."""
-import glob, json, os, re, sys
+import glob, json, os, re, subprocess, sys
 d = json.load(sys.stdin)
 if d.get('stop_hook_active'):
     sys.exit(0)
@@ -60,7 +60,8 @@ def watched_by_service():
     for wd in own_dirs:
         try:
             pid = open(os.path.join(wd, 'gh-watch.pid')).read().strip()
-            if b'gh-watch-daemon' in open(f'/proc/{pid}/cmdline', 'rb').read() and open(os.path.join(wd, 'agent')).read().strip() not in ('', 'true'):
+            if 'gh-watch-daemon' in subprocess.run(['ps', '-p', pid, '-o', 'command='], capture_output=True, text=True).stdout \
+                    and open(os.path.join(wd, 'agent')).read().strip() not in ('', 'true'):
                 return True
         except OSError:
             continue

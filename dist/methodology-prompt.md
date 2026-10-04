@@ -270,6 +270,7 @@ It covers everything that reaches an external service, with no lighter category:
 When editing a skill, prompt, rules file or AGENTS.md:
 - Make exactly the requested operation on exactly the named text; anything extra gets one line in your reply, not an edit. Text the user supplied verbatim stays verbatim.
 - Add the minimal delta, usually one sentence, placed at the step where it bites. No rationale, no incident stories, nothing a competent model does anyway. Repo facts go only in the project file. Grep first and edit the existing line instead of adding another. Prefer a mechanism to a sentence.
+- A mechanism ships whole, the first time: it starts, restarts after a crash and a reboot, retires when its job is done, runs one instance per job, and works on every OS the methodology runs on (Linux, macOS; a fallback elsewhere). Test it by killing it, rebooting its supervisor and finishing its job, before calling it done.
 - State the behavior you want ("write one-line comments"), not only the one you don't; keep a "never" for hard guardrails, and pair it with what to do instead.
 - No self-assessed opt-outs ("skip on small fixes"). A missing precondition is a hard stop.
 - After any cut, a fresh-context agent reads the file cold and lists every sentence it can't act on. Fix those. Every change to the methodology or a mechanism is committed and pushed to its repo in the same step, then installed (`install-methodology`); never edit an installed or running copy.
@@ -952,7 +953,7 @@ These scripts enforce the rules that failed as text alone. This file is the only
 
 | Mechanism | Enforces | How to use it |
 |---|---|---|
-| `gh-watch.py` + `gh-watch-daemon.sh` | 1.5. Reports comments, review comments and reviews by others; PR pushes, merges and closes; CI red and green. Adds 👀 within ~10 s for the logins in `GH_WATCH_EYES`, and reports their 👍 or 👎 on the agent's comments as `### THUMBS UP` / `### THUMBS DOWN`. Prints `### REFACTOR STALE` when your PR's code (test files excluded) changed by more than ~80 lines since its last `pr-steps refactor` record. Wakes the agent itself on every new event: it launches the command in `<dir>/agent` (written by `gh-watch-start`) with a prompt that handles `events.log` from `events.cursor`, one agent per dir at a time, log in `<dir>/wake.log` — so an event is handled even when no interactive session is watching. It records each new comment in `<dir>/replies-owed.md`; the agent clears the line when it is answered, and the Stop hook blocks a turn while a line is still owed. The wake is the only event handler: a live session checks `events.cursor` and `wake.pid` before acting on an event, so it never races a woken agent. | Start with `gh-watch-start <artifact root> <owner/repo> [N]…` (below), never by hand: it runs the daemon as the systemd user service `gh-watch@<dir>` (`Restart=always`, started at boot, PATH from the starter in `<dir>/env`; a detached daemon where there is no user systemd), and the Stop hook accepts that service as the watch. One `owner/repo number` per line in `threads.txt` next to it. When posting from the user's account, the user's own comments are told apart through `~/.claude/gated-posts.txt` (filled by `gate-pass`). The printed tail is a persistent detached (nohup) tail: it never expires, wakes nothing and needs no re-arm; it archives event lines in `<dir>/tail-events.log` and satisfies the Stop hook's armed-monitor check. Position and seen events persist in `gh-watch-state.json`, so restarts lose nothing.|
+| `gh-watch.py` + `gh-watch-daemon.sh` | 1.5. Reports comments, review comments and reviews by others; PR pushes, merges and closes; CI red and green. Adds 👀 within ~10 s for the logins in `GH_WATCH_EYES`, and reports their 👍 or 👎 on the agent's comments as `### THUMBS UP` / `### THUMBS DOWN`. Prints `### REFACTOR STALE` when your PR's code (test files excluded) changed by more than ~80 lines since its last `pr-steps refactor` record. Wakes the agent itself on every new event: it launches the command in `<dir>/agent` (written by `gh-watch-start`) with a prompt that handles `events.log` from `events.cursor`, one agent per dir at a time, log in `<dir>/wake.log` — so an event is handled even when no interactive session is watching. It records each new comment in `<dir>/replies-owed.md`; the agent clears the line when it is answered, and the Stop hook blocks a turn while a line is still owed. The wake is the only event handler: a live session checks `events.cursor` and `wake.pid` before acting on an event, so it never races a woken agent. | Start with `gh-watch-start <artifact root> <owner/repo> [N]…` (below), never by hand: it supervises the daemon: the systemd user service `gh-watch@<dir>` on Linux (`Restart=always`, started at boot), a launchd agent on macOS (`KeepAlive`, `RunAtLoad`), else a fully detached daemon that cron revives every 5 minutes and at boot; PATH comes from the starter (`<dir>/env`). It refuses a thread another live watch dir already watches (one watcher, one agent per thread). The watcher retires itself when every thread is merged or closed and `repos.txt` is empty: it disables its service, removes its launchd agent or cron lines, and stops. The Stop hook accepts a running watcher with a real agent as the watch. One `owner/repo number` per line in `threads.txt` next to it. When posting from the user's account, the user's own comments are told apart through `~/.claude/gated-posts.txt` (filled by `gate-pass`). The printed tail is a persistent detached (nohup) tail: it never expires, wakes nothing and needs no re-arm; it archives event lines in `<dir>/tail-events.log` and satisfies the Stop hook's armed-monitor check. Position and seen events persist in `gh-watch-state.json`, so restarts lose nothing.|
 | `tracker-check.sh` | 1.2. Umbrella drift (checkbox vs PR state), and a Decisions comment last edited before a tracked PR merged or closed. | `TRACKER_REPO=o/r TRACKER_ISSUE=N TRACKER_DECISIONS=<comment id> ./tracker-check.sh`. The watcher calls it when the variables are set. Run it before every report. |
 | `post-lint.py` | 1.6. Banned phrases, em dashes, "stacked on", bare `#N`, budgets (reply 80 words, PR 150, issue 400 characters, inline 2 sentences; tables, code, images and URLs not counted), unclassified notes, process in the thread, questions without a recommendation, a bare "Done" to a question or soft suggestion, a notes-table Next of "recommend", "follow-up" or "later". | `post-lint.py drafts/x.md --kind reply\|pr\|issue\|inline\|review-record [--repo o/r]` (default `reply`). A reply or inline comment reads its parent from `drafts/x.parent.md` (or `--parent <file>`; `--parent none` when it answers nobody). Tests: `tests/test_post_lint.py`. |
 | `gate-pass` | 1.6. Records that a draft passed: `post-lint` clean and the review's final message (`codex exec -o drafts/x.review.out`) exactly `CLEAN`; stores the draft's sha256 in `<draft>.gate`. A draft that promises work ("I'll", "follow-up PR") first needs a `PROMISED … (<draft name>)` line in `proposals-open.md`. | `gate-pass drafts/x.md drafts/x.review.out` (set `POST_LINT_ARGS` for `--repo`/`--kind`). |
@@ -1430,6 +1431,51 @@ def run_scan():
         save_state(state)
 
 
+def retire_if_done():
+    """A watcher whose every thread is merged or closed (and that covers no whole repo) has nothing left to watch: it
+    disables its service, so it doesn't come back after a reboot, or stops its daemon."""
+    repos = os.path.join(HERE, 'repos.txt')
+    if os.path.exists(repos) and open(repos).read().strip():
+        return
+    threads = read_threads()
+    if not threads:
+        return
+    with locked():
+        prs = load_state()['prs']
+    for repo, num in threads:
+        key = f"{repo}#{num}"
+        if key in prs:
+            done = prs[key].get('state') in ('merged', 'closed')
+        else:
+            try:
+                done = json.loads(gh(['api', f"repos/{repo}/issues/{num}", '--jq', '{state}']))['state'] == 'closed'
+            except Exception:
+                return  # unknown: keep watching
+        if not done:
+            return
+    # plain print, not emit: a ### line would wake the agent
+    print(f"WATCHER RETIRED at {datetime.datetime.now(datetime.timezone.utc):%Y-%m-%dT%H:%M:%SZ}: every watched thread is merged or closed", flush=True)
+    # each supervisor gh-watch-start may have used, so the watcher doesn't come back after a reboot
+    supervisor = os.environ.get('GH_WATCH_SUPERVISOR', '')  # set by the unit or the launchd agent gh-watch-start wrote
+    if supervisor == 'systemd':
+        unit = 'gh-watch@' + subprocess.run(['systemd-escape', '--path', HERE], capture_output=True, text=True).stdout.strip() + '.service'
+        subprocess.run(['systemctl', '--user', 'disable', '--now', unit])
+        return
+    label = os.environ.get('XPC_SERVICE_NAME', '')
+    if supervisor == 'launchd':
+        subprocess.run(['rm', '-f', os.path.expanduser(f'~/Library/LaunchAgents/{label}.plist')])
+        subprocess.run(['launchctl', 'bootout', f'gui/{os.getuid()}/{label}'])
+        return
+    tab = subprocess.run(['crontab', '-l'], capture_output=True, text=True)
+    if tab.returncode == 0 and f'# gh-watch {HERE}' in tab.stdout:  # cron
+        kept = ''.join(l + '\n' for l in tab.stdout.splitlines() if not l.endswith(f'# gh-watch {HERE}'))
+        subprocess.run(['crontab', '-'], input=kept, text=True)
+    try:
+        os.kill(int(open(os.path.join(HERE, 'gh-watch.pid')).read().strip()), 15)  # the daemon's trap stops this watcher too
+    except (OSError, ValueError):
+        sys.exit(0)
+
+
 def main():
     if ONCE:
         run_scan()
@@ -1446,6 +1492,7 @@ def main():
             save_state(state)
         if time.time() - last_full > 180:
             run_scan()
+            retire_if_done()
             last_full = time.time()
         time.sleep(10)
 
@@ -1495,6 +1542,16 @@ while [ $# -gt 0 ]; do
   repo=$1; shift
   [[ $repo == */* ]] || { echo "not owner/repo: $repo"; exit 1; }
   if [[ ${1:-} =~ ^[0-9]+$ ]]; then line="$repo $1"; file=threads.txt; shift; else line=$repo; file=repos.txt; fi
+  # One watcher per thread: a second would wake a second agent on the same comment
+  if [ "$file" = threads.txt ]; then
+    while read -r other; do
+      [ "$other" != "$dir" ] && [ -f "$other/threads.txt" ] && grep -qxF "$line" "$other/threads.txt" || continue
+      opid=$(cat "$other/gh-watch.pid" 2>/dev/null || true)
+      if [ -n "$opid" ] && ps -p "$opid" -o command= 2>/dev/null | grep -q gh-watch-daemon; then
+        echo "$line is already watched by $other: use that watch dir, or remove the line there first" >&2; exit 1
+      fi
+    done < <(cat ~/.claude/gh-watch-dirs.txt 2>/dev/null)
+  fi
   grep -qxF "$line" "$dir/$file" || echo "$line" >> "$dir/$file"
 done
 reg=~/.claude/gh-watch-dirs.txt
@@ -1508,9 +1565,11 @@ elif command -v claude >/dev/null; then agent="env -u CLAUDE_CONFIG_DIR claude -
 elif command -v codex >/dev/null; then agent="codex exec"
 else agent=""; fi
 [ -n "$agent" ] && printf '%s\n' "$agent" > "$dir/agent"
-# A systemd user service where there is one: restarted on failure and started at boot, independent of any session.
-# Elsewhere, a detached daemon.
-if systemctl --user is-system-running >/dev/null 2>&1 || [ "$(systemctl --user is-system-running 2>/dev/null)" = degraded ]; then
+# Supervision, so the watcher restarts on failure and after a reboot, with no session alive:
+# systemd user service (Linux), launchd agent (macOS), else a detached daemon that cron revives.
+printf 'PATH=%s\nHOME=%s\n' "$PATH" "$HOME" > "$dir/env"
+daemon_alive() { local p; p=$(cat "$dir/gh-watch.pid" 2>/dev/null || true); [ -n "$p" ] && ps -p "$p" -o command= 2>/dev/null | grep -q gh-watch-daemon; }
+if [ "$(uname)" = Linux ] && systemctl --user show-environment >/dev/null 2>&1; then
   unit=~/.config/systemd/user/gh-watch@.service
   mkdir -p "$(dirname "$unit")"
   cat > "$unit.new" <<'UNIT'
@@ -1521,6 +1580,7 @@ StartLimitIntervalSec=0
 [Service]
 WorkingDirectory=/%I
 EnvironmentFile=/%I/env
+Environment=GH_WATCH_SUPERVISOR=systemd
 ExecStart=/bin/bash -c 'GH_WATCH_EYES=$(cat eyes) exec ./gh-watch-daemon.sh'
 Restart=always
 RestartSec=5
@@ -1528,23 +1588,53 @@ RestartSec=5
 [Install]
 WantedBy=default.target
 UNIT
-  cmp -s "$unit.new" "$unit" 2>/dev/null && rm "$unit.new" || { mv "$unit.new" "$unit"; systemctl --user daemon-reload; }
-  printf 'PATH=%s\nHOME=%s\n' "$PATH" "$HOME" > "$dir/env"
+  if cmp -s "$unit.new" "$unit"; then rm "$unit.new"; else mv "$unit.new" "$unit"; systemctl --user daemon-reload; fi
   inst="gh-watch@$(systemd-escape --path "$dir").service"
-  pid=$(cat "$dir/gh-watch.pid" 2>/dev/null || true)
-  if ! systemctl --user is-active --quiet "$inst" && [ -n "$pid" ] && grep -q gh-watch-daemon "/proc/$pid/cmdline" 2>/dev/null; then
-    kill "$pid"; sleep 1  # a detached daemon from before: the service replaces it
-  fi
+  # a detached daemon from an older start: the service replaces it
+  if ! systemctl --user is-active --quiet "$inst" && daemon_alive; then kill "$(cat "$dir/gh-watch.pid")"; sleep 1; fi
   systemctl --user enable --now "$inst" >/dev/null 2>&1
-  sleep 1; echo "watcher service $inst: $(systemctl --user is-active "$inst") (PID $(cat "$dir/gh-watch.pid" 2>/dev/null), eyes: $(cat "$dir/eyes"))"
-else
-  pid=$(cat "$dir/gh-watch.pid" 2>/dev/null || true)
-  if [ -n "$pid" ] && grep -q gh-watch-daemon "/proc/$pid/cmdline" 2>/dev/null; then
-    echo "watcher running (PID $pid)"
-  else
-    (cd "$dir" && GH_WATCH_EYES=$(cat eyes) nohup setsid ./gh-watch-daemon.sh >/dev/null 2>&1 &)
-    sleep 1; echo "watcher started (PID $(cat "$dir/gh-watch.pid"), eyes: $(cat "$dir/eyes"))"
+  loginctl show-user "$USER" 2>/dev/null | grep -q '^Linger=yes' || echo "note: without 'loginctl enable-linger $USER' the service starts at login, not at boot" >&2
+  sleep 1; echo "watcher: systemd service $inst $(systemctl --user is-active "$inst") (PID $(cat "$dir/gh-watch.pid" 2>/dev/null), eyes: $(cat "$dir/eyes"))"
+elif [ "$(uname)" = Darwin ]; then
+  label="com.methodology.gh-watch.$(printf %s "$dir" | shasum | cut -c1-12)"
+  plist=~/Library/LaunchAgents/$label.plist
+  mkdir -p ~/Library/LaunchAgents
+  cat > "$plist.new" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>$label</string>
+  <key>WorkingDirectory</key><string>$dir</string>
+  <key>ProgramArguments</key><array><string>/bin/bash</string><string>-c</string><string>GH_WATCH_EYES=\$(cat eyes) exec ./gh-watch-daemon.sh</string></array>
+  <key>EnvironmentVariables</key><dict><key>PATH</key><string>$PATH</string><key>HOME</key><string>$HOME</string><key>GH_WATCH_SUPERVISOR</key><string>launchd</string></dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+</dict></plist>
+PLIST
+  if ! cmp -s "$plist.new" "$plist"; then
+    mv "$plist.new" "$plist"; launchctl bootout "gui/$(id -u)/$label" 2>/dev/null || true
+  else rm "$plist.new"; fi
+  if ! launchctl print "gui/$(id -u)/$label" >/dev/null 2>&1; then
+    daemon_alive && { kill "$(cat "$dir/gh-watch.pid")"; sleep 1; }
+    launchctl bootstrap "gui/$(id -u)" "$plist"
   fi
+  sleep 1; echo "watcher: launchd agent $label (PID $(cat "$dir/gh-watch.pid" 2>/dev/null), eyes: $(cat "$dir/eyes"))"
+else
+  if ! daemon_alive; then
+    # fully detached: with `nohup setsid … &` the daemon stayed this script's child and the script never returned
+    if command -v setsid >/dev/null; then (cd "$dir" && GH_WATCH_EYES=$(cat eyes) setsid -f ./gh-watch-daemon.sh </dev/null >/dev/null 2>&1)
+    else (cd "$dir" && GH_WATCH_EYES=$(cat eyes) nohup ./gh-watch-daemon.sh </dev/null >/dev/null 2>&1 & disown); fi
+    sleep 1
+  fi
+  # cron revives it after a crash or a reboot (gh-watch-start is idempotent)
+  if command -v crontab >/dev/null; then
+    job="*/5 * * * * $(realpath "$0") $dir >/dev/null 2>&1 # gh-watch $dir"
+    # `|| true`: grep finds nothing to keep in an empty crontab, and set -e would then install an empty one
+    { crontab -l 2>/dev/null | grep -vF "# gh-watch $dir" || true; echo "$job"; echo "@reboot $(realpath "$0") $dir >/dev/null 2>&1 # gh-watch $dir"; } | crontab -
+  else
+    echo "note: no systemd, launchd or cron: the watcher won't restart after a reboot" >&2
+  fi
+  echo "watcher: daemon PID $(cat "$dir/gh-watch.pid"), revived by cron (eyes: $(cat "$dir/eyes"))"
 fi
 if [ -n "$agent" ]; then
   echo "The daemon wakes the agent itself on each event: $agent (command in $dir/agent, log in $dir/wake.log, cursor in $dir/events.cursor)."
@@ -1929,7 +2019,7 @@ def watch_dirs():
     for d in (l.strip() for l in open(reg)) if os.path.exists(reg) else ():
         try:
             pid = open(os.path.join(d, 'gh-watch.pid')).read().strip()
-            if b'gh-watch-daemon' in open(f'/proc/{pid}/cmdline', 'rb').read(): live.append(d)
+            if 'gh-watch-daemon' in subprocess.run(['ps', '-p', pid, '-o', 'command='], capture_output=True, text=True).stdout: live.append(d)
         except (OSError, ValueError):
             pass
     return live
@@ -2086,7 +2176,7 @@ sys.exit(0)
 """Claude Code Stop hook. Blocks ending a turn with an offer or permission question the agent should just act on,
 or after posting on GitHub with no armed tail of a watcher's events.log — a Monitor, or a live `tail` process
 where the harness has no Monitor tool (1.5), or with a line still owed in a live watcher's replies-owed.md (1.5)."""
-import glob, json, os, re, sys
+import glob, json, os, re, subprocess, sys
 d = json.load(sys.stdin)
 if d.get('stop_hook_active'):
     sys.exit(0)
@@ -2144,7 +2234,8 @@ def watched_by_service():
     for wd in own_dirs:
         try:
             pid = open(os.path.join(wd, 'gh-watch.pid')).read().strip()
-            if b'gh-watch-daemon' in open(f'/proc/{pid}/cmdline', 'rb').read() and open(os.path.join(wd, 'agent')).read().strip() not in ('', 'true'):
+            if 'gh-watch-daemon' in subprocess.run(['ps', '-p', pid, '-o', 'command='], capture_output=True, text=True).stdout \
+                    and open(os.path.join(wd, 'agent')).read().strip() not in ('', 'true'):
                 return True
         except OSError:
             continue
