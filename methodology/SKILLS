@@ -1,0 +1,11 @@
+# Each line: skill name | the first file of its sections (they run until the next skill's first file) | when to use it.
+# build.sh marks each skill in the built file; install-methodology writes one ~/.claude/skills/methodology-<name> per line.
+core | 00-intro.md | Load first for any multi-step or GitHub task: the task, triage and tiers, principles, tracking, discovery, safety on the user's machine, reporting, pre-flight.
+design | part1/04-design-loop.md | Designing an API, protocol or module, or restructuring code: the design loop, prototypes, walkthroughs, deep modules (1.4.1), design it twice.
+github | part1/05-the-live-github-loop.md | Any GitHub thread you're in: the live loop (watcher, 👀, replies, which threads are yours) and the posting gate every post, edit and PR body passes.
+merge | part1/07-pushing-ready-and-merge.md | Pushing, saying a PR is ready, merging, stacked PRs.
+agents | part1/09-writing-rules-prompts-and-docs.md | Writing rules, prompts or docs, and starting, briefing or integrating subagents and the local model.
+failures | part4-failures.md | When a rule failed or the user names a failure: the table of past failures and the rule that covers each.
+implement | part2-implement-issue.md | Implementing an issue or opening a PR: already fixed?, reproduce, approach rating, build and gate, browser evidence, review round, refactor pass, PR body.
+convergence | part3-convergence.md | Running convergence on a PR (the owner asks, or Tier >= M before ready): bug verification loop, guardian and refactor rounds, final verification, the charters and templates.
+mechanisms | part5-mechanisms.md | Using, fixing or installing the mechanisms: the watcher, hooks, gate-pass, post-lint, pr-steps, isolated-run, install-methodology.

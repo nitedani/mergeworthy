@@ -31,9 +31,14 @@ out=dist/methodology-${names:-prompt}.md
 mkdir -p dist
 {
   {
-    while read -r f; do cat "methodology/$f"; done < methodology/ORDER
-    echo; cat methodology/part4-failures.md; echo; cat methodology/part2-implement-issue.md; echo; cat methodology/part3-convergence.md
-    echo; echo '---'; echo; cat methodology/part5-mechanisms.md; echo
+    # Each skill in methodology/SKILLS starts with a marker install-methodology splits on
+    section() {
+      grep -v '^#' methodology/SKILLS | awk -F' [|] ' -v f="$1" '$2 == f {printf "<!-- skill: %s | %s -->\n", $1, $3}'
+      cat "methodology/$1"
+    }
+    while read -r f; do section "$f"; done < methodology/ORDER
+    echo; section part4-failures.md; echo; section part2-implement-issue.md; echo; section part3-convergence.md
+    echo; echo '---'; echo; section part5-mechanisms.md; echo
   } | python3 claude/tools/filter.py $settings
   for f in gh-watch.py gh-watch-daemon.sh gh-watch-start post-bash-register.py pre-agent-guard.py tracker-check.sh post-lint.py gate-pass pre-bash-guard.py stop-lint.py pr-steps claude-swap codex-review-model install-methodology methodology-update uninstall-methodology isolated-run; do
     case "$watcher:$target:$reviewer:$f" in off:*:gh-watch*|off:*:post-bash-register.py|*:ci:*:claude-swap|*:local:*:claude-swap|*:claude:codex-review-model) continue;; esac

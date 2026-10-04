@@ -1,4 +1,5 @@
 <!-- settings: target=local ownership=external tests=remove-before-merge merge=on-request-squash pr_open=ready review_trace=comment badge=on post_lang=en reviewer=codex-then-claude watcher=on commit_identity=noreply local_model=on session_model=claude -->
+<!-- skill: core | Load first for any multi-step or GitHub task: the task, triage and tiers, principles, tracking, discovery, safety on the user's machine, reporting, pre-flight. -->
 # Work automation methodology (v3)
 
 Give this whole file to an agent, followed by the task. The agent sizes the work first (1.0), then applies only what that size requires.
@@ -120,6 +121,35 @@ Read the task and every link in it. Write `Tier: <X>, because <signals>` and put
 - **References before UI.** Before any visual design: 3–5 named reference sites with screenshots, and the design skills the user has pointed to. Ambiguous feedback about direction: show two screenshots and ask. Given a design file, measure the design and the app the same way (sizes, radii, motion, production build) and fix every difference. Before any screenshot or video is shown, a fresh-context agent lists everything broken, misaligned or clipped in it. Matching a design file is not the bar: before a screen is shown, name its surface archetype, score it on the slop tells (wrong surface, center stack, equal-weight tile grids, decoration in place of hierarchy, rainbow color), repair by that diagnosis, and remove every element nobody asked for. A new feature or visual direction is shown to the user on a local preview before it's pushed; fixes to reported bugs go straight to the PR.
 - Research prior art in upstream source at pinned versions.
 
+## 1.8 Safety on the user's machine
+
+- Kill only your own processes, by PID or port; never `pkill -f`.
+- Whatever you start, you stop: dev servers, builds, preview servers, proxies. A subagent records the PIDs it starts and kills them before handing back; check with `ps` that none are left. Find a server by the PID you started (and its children, `pgrep -P <pid>`) or by its port (`ss -ltnp 'sport = :<port>'`); never grep `ps` output for a port number, and never `pgrep -f <pattern>`. Check each PID's command and directory before killing it.
+- At most 4 browsers and 4 dev servers of your own at once; stop each when its work ends.
+- Never restart or reconfigure a container someone else's work depends on; start your own alongside.
+- Anything that listens on a port (e2e tests, dev and preview servers) runs through `isolated-run <command>`, yours and every subagent's: its own network namespace with a private loopback (outside network through a proxy it sets up), so fixed ports never collide and parallel runs never test each other's servers. Never kill or wait out another run's server.
+- Never modify the package store or a shared `node_modules`; scratch installs use `--package-import-method=copy`. After any install, check `git status` for unexpected changes.
+- Browser work uses the DevTools MCP. On "profile in use", retry after 30 s, then ask. Never fall back to scripted browsers silently, never open windows on the user's desktop, never kill another session's browser.
+- Isolate worktrees: their own ports, databases and generated clients. Never touch the user's own checkouts (the clones the user works in), including their git config, which their worktrees share: no edits, commits, checkouts, resets or branch switches; work in worktrees you create, and to read another branch, `git worktree add --detach <artifact root>/<name> <ref>`.
+
+## 1.11 Reporting to the user
+
+- **First lines:** answers to the user's questions, then the outcome or the action needed from them.
+- **Then:** each PR's state and what was found and fixed since the last report, with links; what's still running, what's waiting on whom, what's theirs to decide, and the critical path with an ETA per step.
+- About 12 lines unless asked for more. Local files as absolute paths; every PR or issue with its title and link, including every issue you filed. The 1.6 writing rules apply. Don't restate their instructions; no step-by-step narration.
+- Before reporting status, run `tracker-check` and check `ready-check` where they apply. Never claim a pass went dry for a slice that hasn't had it. State unfavorable facts, mistakes and skipped steps plainly.
+
+## 1.12 Pre-flight (steps 3 and 4 in every tier; the rest in Tier ≥ M)
+
+Before the first change:
+1. Write `scope.md`.
+2. Write the critical path.
+3. Check that the Part 5 hooks are in `~/.claude/settings.json`; this file names that file, so add them if missing. Start the watcher with `GH_WATCH_EYES=<maintainers>,<user> gh-watch-start <artifact root> <owner/repo> <N>…` (the daemon wakes the agent on each event; arm the tail it prints as belt-and-braces for this session: the Monitor tool, or a background task where there is no Monitor tool), and register every open PR and issue the account has in the scope repos (`gh search prs --author <login> --state open`, and issues), not only this session's; answer any maintainer comment still without a reply first.
+4. Confirm browser control (for UI work), and that `claude-swap list` shows the spare subscriptions.
+5. Note the precedents and style (1.3).
+
+---
+<!-- skill: design | Designing an API, protocol or module, or restructuring code: the design loop, prototypes, walkthroughs, deep modules (1.4.1), design it twice. -->
 ## 1.4 Design loop (Tier ≥ M, any API or protocol)
 
 0. Before any new core API, prototype the solution that uses only existing extension points (e.g. an existing middleware, render hook or plugin hook). It is the first candidate; a core change needs a named requirement it fails.
@@ -166,6 +196,7 @@ Deepening a cluster of shallow modules: classify each dependency first, since it
 A deep module may keep internal seams for its own tests; don't expose them through its interface because tests use them. Replace, don't layer: once tests at the deepened interface exist, delete the old tests on the shallow parts. Tests assert observable outcomes through the interface, so they survive internal refactors; a test that changes with the implementation tests past the interface.
 
 **Design it twice** (your first interface is unlikely to be the best): frame the problem for the user (the constraints any interface must meet, the dependencies and their categories, a rough code sketch that makes the constraints concrete, not a proposal), then have 3+ fresh-context agents design it in parallel, each under a different constraint: minimize the interface (1–3 entry points), maximize flexibility, make the most common caller trivial, and (where dependencies cross a seam) ports and adapters. Each returns the interface (types, invariants, ordering, error modes), a usage example, what hides behind the seam, its dependency strategy and adapters, and where its leverage is high or thin. Compare them on depth, locality and seam placement, then recommend one (or a hybrid) and say why: a strong read, not a menu. These are the candidates of step 1.
+<!-- skill: github | Any GitHub thread you're in: the live loop (watcher, 👀, replies, which threads are yours) and the posting gate every post, edit and PR body passes. -->
 ## 1.5 The live GitHub loop (every tier, from your first post until every thread you're in is merged or closed)
 
 A maintainer's comment is handled like the user typing in this chat: highest priority, full effort.
@@ -222,6 +253,7 @@ It covers everything that reaches an external service, with no lighter category:
 - Budgets: reply ≤ 80 words; PR body about 150 words plus evidence, up to 250 when it lists decisions for the maintainer; issue: one finding, ≤ 400 characters plus a screenshot; inline review comments ≤ 2 sentences, only where the reader must judge. Tables, code and images don't count.
 - Notes for a maintainer go in one table: `| Note | Kind | Blocks merge | Next |`. Kind is bug, limitation, not a regression, or decision needed; Next is fixed in <sha>, PR <url>, or nothing, because Y. A follow-up is opened before the post, never listed as "recommend" or "follow-up"; in the user's own repos, just do it. A note that blocks the goal and can be fixed anywhere, upstream included, is fixed instead of listed.
 
+<!-- skill: merge | Pushing, saying a PR is ready, merging, stacked PRs. -->
 ## 1.7 Pushing, ready and merge
 
 - Commit as the GitHub account you push with, by login and noreply email (`git -c user.name=<login> -c user.email=<id>+<login>@users.noreply.github.com commit`), never the user's real name or another address. Maintainers may push to your branches and may merge. Before any push: fetch, fast-forward onto their commits, check `git merge-base --is-ancestor <remote> HEAD`, then push. Never force-push, except on your own unmerged branch with `--force-with-lease=<branch>:<sha you last pushed>`; never push to a merged branch.
@@ -231,17 +263,7 @@ It covers everything that reaches an external service, with no lighter category:
 - CI: `gh run rerun` on an upstream repo needs admin rights, so ask a maintainer; fork PRs get no CI secrets (e.g. a Vercel token), so those jobs fail on forks.
 - Merge only after a maintainer asks: `gh pr merge <N> --squash --subject "<PR title> (#<N>)" --body ""`, unless the repo's `AGENTS.md`, re-read right before merging, says otherwise.
 - Before merging a PR that other open PRs are based on, retarget them (`gh pr edit <N> --base <its base>`): deleting its branch closes them instead (`pre-bash-guard` blocks `--delete-branch` while any are left). After a squash-merge, merge the new base into each of them, so their diff shows only their own change.
-## 1.8 Safety on the user's machine
-
-- Kill only your own processes, by PID or port; never `pkill -f`.
-- Whatever you start, you stop: dev servers, builds, preview servers, proxies. A subagent records the PIDs it starts and kills them before handing back; check with `ps` that none are left. Find a server by the PID you started (and its children, `pgrep -P <pid>`) or by its port (`ss -ltnp 'sport = :<port>'`); never grep `ps` output for a port number, and never `pgrep -f <pattern>`. Check each PID's command and directory before killing it.
-- At most 4 browsers and 4 dev servers of your own at once; stop each when its work ends.
-- Never restart or reconfigure a container someone else's work depends on; start your own alongside.
-- Anything that listens on a port (e2e tests, dev and preview servers) runs through `isolated-run <command>`, yours and every subagent's: its own network namespace with a private loopback (outside network through a proxy it sets up), so fixed ports never collide and parallel runs never test each other's servers. Never kill or wait out another run's server.
-- Never modify the package store or a shared `node_modules`; scratch installs use `--package-import-method=copy`. After any install, check `git status` for unexpected changes.
-- Browser work uses the DevTools MCP. On "profile in use", retry after 30 s, then ask. Never fall back to scripted browsers silently, never open windows on the user's desktop, never kill another session's browser.
-- Isolate worktrees: their own ports, databases and generated clients. Never touch the user's own checkouts (the clones the user works in), including their git config, which their worktrees share: no edits, commits, checkouts, resets or branch switches; work in worktrees you create, and to read another branch, `git worktree add --detach <artifact root>/<name> <ref>`.
-
+<!-- skill: agents | Writing rules, prompts or docs, and starting, briefing or integrating subagents and the local model. -->
 ## 1.9 Writing rules, prompts and docs
 
 When editing a skill, prompt, rules file or AGENTS.md:
@@ -257,24 +279,8 @@ When editing a skill, prompt, rules file or AGENTS.md:
 - When an agent reports, relay the result to the user and act on it; its report isn't shown to them.
 - Taking over another session's work starts with its state, re-checked on the current head: each claim in the open PR's body (checks, e2e, screenshots) re-run, each owed reply listed. That state is the first answer to "done?", and the work continues from what failed.
 
-## 1.11 Reporting to the user
 
-- **First lines:** answers to the user's questions, then the outcome or the action needed from them.
-- **Then:** each PR's state and what was found and fixed since the last report, with links; what's still running, what's waiting on whom, what's theirs to decide, and the critical path with an ETA per step.
-- About 12 lines unless asked for more. Local files as absolute paths; every PR or issue with its title and link, including every issue you filed. The 1.6 writing rules apply. Don't restate their instructions; no step-by-step narration.
-- Before reporting status, run `tracker-check` and check `ready-check` where they apply. Never claim a pass went dry for a slice that hasn't had it. State unfavorable facts, mistakes and skipped steps plainly.
-
-## 1.12 Pre-flight (steps 3 and 4 in every tier; the rest in Tier ≥ M)
-
-Before the first change:
-1. Write `scope.md`.
-2. Write the critical path.
-3. Check that the Part 5 hooks are in `~/.claude/settings.json`; this file names that file, so add them if missing. Start the watcher with `GH_WATCH_EYES=<maintainers>,<user> gh-watch-start <artifact root> <owner/repo> <N>…` (the daemon wakes the agent on each event; arm the tail it prints as belt-and-braces for this session: the Monitor tool, or a background task where there is no Monitor tool), and register every open PR and issue the account has in the scope repos (`gh search prs --author <login> --state open`, and issues), not only this session's; answer any maintainer comment still without a reply first.
-4. Confirm browser control (for UI work), and that `claude-swap list` shows the spare subscriptions.
-5. Note the precedents and style (1.3).
-
----
-
+<!-- skill: failures | When a rule failed or the user names a failure: the table of past failures and the rule that covers each. -->
 # Part 4: Failures that already happened
 
 Each happened, most more than once. Read them before starting.
@@ -332,6 +338,7 @@ Each happened, most more than once. Read them before starting.
 
 ---
 
+<!-- skill: implement | Implementing an issue or opening a PR: already fixed?, reproduce, approach rating, build and gate, browser evidence, review round, refactor pass, PR body. -->
 # Part 2: Implementing a change
 
 From an issue or a problem to one merge-ready PR. Tier S follows it as written; Tier ≥ M runs it once per PR, with Part 3's loops in place of steps 6 and 7's single rounds (Part 3 section 7 says what feeds `pr-steps`).
@@ -606,6 +613,7 @@ Everything this part needs to know about one repo; the method itself stays here.
 - **Feature-scale precedent:** how bigger changes have landed before, with an example.
 - **Running the app:** *Preflight*: one command that checks everything the app needs and prints every failure together, plus install commands for what doesn't need root. *Start*: an isolated copy that disturbs nobody, and how to tell it is ready (the HTTP status, not just the exit code). *Drive it*: URLs, test accounts, seed data, how to reach the screen an issue is about. *Stop*: how to tear it all down, including after an abort.
 
+<!-- skill: convergence | Running convergence on a PR (the owner asks, or Tier >= M before ready): bug verification loop, guardian and refactor rounds, final verification, the charters and templates. -->
 # Part 3: Convergence
 
 Tier S runs it condensed (1.0); Tier ≥ M runs it in full, for every PR. A new API or protocol gets it only once the maintainer has OK'd its shape (1.4 step 5).
@@ -933,6 +941,7 @@ Keep the body current by condensing history, never by dropping current facts. Wh
 
 ---
 
+<!-- skill: mechanisms | Using, fixing or installing the mechanisms: the watcher, hooks, gate-pass, post-lint, pr-steps, isolated-run, install-methodology. -->
 # Part 5: Mechanisms
 
 These scripts enforce the rules that failed as text alone. This file is the only source: `install-methodology` (below) installs the scripts, the hooks and the always-on rules on any machine from this file alone. First install: `F=<this file>; awk '/^### \`install-methodology\`/{f=1;next} f&&/^\`\`\`\`/{if(g)exit;g=1;next} g' "$F" | python3 - "$F"`. Re-run it after every change to this file; never edit the installed copies.
@@ -2192,7 +2201,7 @@ r"""install-methodology <methodology.md>: installs the methodology on this machi
 First install, from the file itself:
   F=methodology.md; awk '/^### `install-methodology`/{f=1;next} f&&/^````/{if(g)exit;g=1;next} g' "$F" | python3 - "$F"
 """
-import json, os, re, sys
+import json, os, re, shutil, sys
 
 src = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else sys.exit(__doc__))
 md = open(src).read()
@@ -2233,13 +2242,31 @@ if m:
     json.dump(settings, open(sp, 'w'), indent=2)
     print(f'hooks merged -> {sp}')
 
+# Skills: the file is split at its <!-- skill: name | when --> markers into ~/.claude/skills/methodology-<name>, so a
+# step loads only its sections. The always-on block (in CLAUDE.md) and the scripts (installed above) are left out.
+skills_dir = f'{home}/.claude/skills'
+parts = re.split(r'^<!-- skill: ([\w-]+) \| (.*?) -->\n', md, flags=re.M)
+skill_names = []
+for name, when, body in zip(parts[1::3], parts[2::3], parts[3::3]):
+    body = re.sub(r'<!-- always-on:begin -->\n.*?<!-- always-on:end -->\n?', '', body, flags=re.S)
+    body = re.sub(r'^### `[\w.-]+`\n\n````\w*\n.*?\n````\n?', '', body, flags=re.S | re.M)
+    d = f'{skills_dir}/methodology-{name}'
+    os.makedirs(d, exist_ok=True)
+    open(f'{d}/SKILL.md', 'w').write(f'---\nname: methodology-{name}\ndescription: {when}\n---\n\n{body.strip()}\n')
+    skill_names.append(name)
+if skill_names:
+    for old in os.listdir(skills_dir):  # a skill this version no longer has
+        if old.startswith('methodology-') and old[len('methodology-'):] not in skill_names:
+            shutil.rmtree(f'{skills_dir}/{old}')
+    print(f'skills -> {skills_dir}/methodology-{{{",".join(skill_names)}}}')
+
 # Always-on rules
 m = re.search(r'<!-- always-on:begin -->\n(.*?)<!-- always-on:end -->', md, re.S)
 if m:
     cp = f'{home}/.claude/CLAUDE.md'
     old = open(cp).read() if os.path.exists(cp) else ''
     block = (f'<!-- methodology:begin (written by install-methodology; edit the source next to it ({os.path.dirname(os.path.dirname(src))}/methodology) and rebuild, not this block) -->\n'
-             f'The full methodology is `{src}`; follow it for any multi-step or GitHub work.\n\n'
+             f'The methodology is installed as skills: load `methodology-core` first for any multi-step or GitHub work, and the others as their step comes ({", ".join("methodology-" + n for n in skill_names)}). Source: `{src}`.\n\n'
              f'{m.group(1)}<!-- methodology:end -->\n')
     new = re.sub(r'<!-- methodology:begin.*?<!-- methodology:end -->\n', lambda _: block, old, flags=re.S) \
         if '<!-- methodology:begin' in old else (old.rstrip('\n') + '\n\n' if old.strip() else '') + block
