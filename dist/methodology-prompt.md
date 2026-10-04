@@ -139,7 +139,7 @@ Read the task and every link in it. Write `Tier: <X>, because <signals>` and put
 
 ### 1.4.1 Codebase design: deep modules
 
-Wherever code is designed or restructured (the design loop, Part 2 step 3, the finality pass, Part 3's refactor pass), aim for deep modules: a lot of behaviour behind a small interface, placed at a clean seam, testable through that interface. Use these terms exactly, in code reviews and PR text too; don't substitute component, service, API or boundary:
+Wherever code is written, designed or restructured (from its first line, not only when a guardian reviews it: the design loop, Part 2 steps 3 and 4, the finality pass, Part 3's refactor pass), aim for deep modules: a lot of behaviour behind a small interface, placed at a clean seam, testable through that interface. Use these terms exactly, in code reviews and PR text too; don't substitute component, service, API or boundary:
 
 - **Module**: anything with an interface and an implementation, at any scale (a function, a class, a package, a slice across tiers).
 - **Interface**: everything a caller must know to use the module correctly: the types, and also invariants, ordering, error modes, required configuration and performance characteristics. Not only a TypeScript `interface` or a class's public methods.
@@ -377,6 +377,8 @@ If nothing rates high, abort: comment what you tried and why each falls short, t
 ### 4. Build and gate
 
 The smallest diff that finishes the job: schema, API, every call site, every locale. The gates are in the project file; the exit code is the verdict, not your reading of the output. At most one regression test, in an existing suite.
+
+Write it with the guardian's lenses from the first line (the charter in Part 3 section 11.1, and 1.4.1): deep modules, no speculative surface or defensive branch for an unreachable state, no duplicate intent, terse comments that are literally true, names that don't confess mixed responsibility. Before the review round, read your own diff through those lenses and fix what they catch. The guardian checks; it isn't where the code gets its shape, so a guardian round that finds design work means this step was skipped.
 
 **Build the whole interaction, not the happy path.** Someone will finish the task, change their mind, go back, reload, mistype, use the keyboard, leave halfway. Anything that would make them wonder what happened is a defect, whether or not the ticket mentioned it.
 
@@ -910,7 +912,7 @@ Setup: git worktree add -b impl/<scope> <dir> <head SHA>; install; build the pac
 
 Implement exactly these finding IDs from <report>: <list>. Not these: <owner decisions and exclusions>.
 
-For every item: read the code end to end and check the finding is true at <head>; skip it with a reason if it's false, changes behavior or a public surface, or removes owner code without leave. Make the smallest change. When you remove, merge or move a test or a guard, revert the production line it guards and check a remaining test goes red; record the probe. Gates after every commit: <quick gates>, plus <lanes for touched areas>; a red gate means fix that commit, not a patch on top. One commit per finding or class, message: <style>, trailer: <trailer>.
+Write every change with the charter's lenses (11.1) and 1.4.1's terms, so the next guardian round has nothing to add. For every item: read the code end to end and check the finding is true at <head>; skip it with a reason if it's false, changes behavior or a public surface, or removes owner code without leave. Make the smallest change. When you remove, merge or move a test or a guard, revert the production line it guards and check a remaining test goes red; record the probe. Gates after every commit: <quick gates>, plus <lanes for touched areas>; a red gate means fix that commit, not a patch on top. One commit per finding or class, message: <style>, trailer: <trailer>.
 
 Final message: commits (sha, subject, IDs), skipped items with reasons, probes and results, final gate output.
 ```

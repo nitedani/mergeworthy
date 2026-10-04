@@ -17,7 +17,7 @@
 
 ### 1.4.1 Codebase design: deep modules
 
-Wherever code is designed or restructured (the design loop, Part 2 step 3, the finality pass, Part 3's refactor pass), aim for deep modules: a lot of behaviour behind a small interface, placed at a clean seam, testable through that interface. Use these terms exactly, in code reviews and PR text too; don't substitute component, service, API or boundary:
+Wherever code is written, designed or restructured (from its first line, not only when a guardian reviews it: the design loop, Part 2 steps 3 and 4, the finality pass, Part 3's refactor pass), aim for deep modules: a lot of behaviour behind a small interface, placed at a clean seam, testable through that interface. Use these terms exactly, in code reviews and PR text too; don't substitute component, service, API or boundary:
 
 - **Module**: anything with an interface and an implementation, at any scale (a function, a class, a package, a slice across tiers).
 - **Interface**: everything a caller must know to use the module correctly: the types, and also invariants, ordering, error modes, required configuration and performance characteristics. Not only a TypeScript `interface` or a class's public methods.

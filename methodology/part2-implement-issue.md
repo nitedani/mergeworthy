@@ -52,6 +52,8 @@ If nothing rates high, abort: comment what you tried and why each falls short, t
 
 The smallest diff that finishes the job: schema, API, every call site, every locale. The gates are in the project file; the exit code is the verdict, not your reading of the output. At most one regression test, in an existing suite.
 
+Write it with the guardian's lenses from the first line (the charter in Part 3 section 11.1, and 1.4.1): deep modules, no speculative surface or defensive branch for an unreachable state, no duplicate intent, terse comments that are literally true, names that don't confess mixed responsibility. Before the review round, read your own diff through those lenses and fix what they catch. The guardian checks; it isn't where the code gets its shape, so a guardian round that finds design work means this step was skipped.
+
 **Build the whole interaction, not the happy path.** Someone will finish the task, change their mind, go back, reload, mistype, use the keyboard, leave halfway. Anything that would make them wonder what happened is a defect, whether or not the ticket mentioned it.
 
 Converging a subsystem is built as the finality pass's Phase C: behavior-preserving commits, gates after each.

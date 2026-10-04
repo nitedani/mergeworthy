@@ -312,7 +312,7 @@ Setup: git worktree add -b impl/<scope> <dir> <head SHA>; install; build the pac
 
 Implement exactly these finding IDs from <report>: <list>. Not these: <owner decisions and exclusions>.
 
-For every item: read the code end to end and check the finding is true at <head>; skip it with a reason if it's false, changes behavior or a public surface, or removes owner code without leave. Make the smallest change. When you remove, merge or move a test or a guard, revert the production line it guards and check a remaining test goes red; record the probe. Gates after every commit: <quick gates>, plus <lanes for touched areas>; a red gate means fix that commit, not a patch on top. One commit per finding or class, message: <style>, trailer: <trailer>.
+Write every change with the charter's lenses (11.1) and 1.4.1's terms, so the next guardian round has nothing to add. For every item: read the code end to end and check the finding is true at <head>; skip it with a reason if it's false, changes behavior or a public surface, or removes owner code without leave. Make the smallest change. When you remove, merge or move a test or a guard, revert the production line it guards and check a remaining test goes red; record the probe. Gates after every commit: <quick gates>, plus <lanes for touched areas>; a red gate means fix that commit, not a patch on top. One commit per finding or class, message: <style>, trailer: <trailer>.
 
 Final message: commits (sha, subject, IDs), skipped items with reasons, probes and results, final gate output.
 ```
