@@ -114,7 +114,8 @@ handled: skip it."""
     proc = subprocess.Popen(shlex.split(open(agent).read().strip()) + [prompt], stdin=subprocess.DEVNULL, stdout=log,
                             stderr=subprocess.STDOUT, cwd=HERE, start_new_session=True)
     open(pid_file, 'w').write(str(proc.pid))
-    open(os.path.join(HERE, 'wake.launch'), 'w').write(str(os.path.getsize(os.path.join(HERE, 'events.log'))))
+    if open(agent).read().strip() != 'true':  # `true`: a live session claimed the dir and handles the events itself
+        open(os.path.join(HERE, 'wake.launch'), 'w').write(str(os.path.getsize(os.path.join(HERE, 'events.log'))))
 
 
 def check_wake():
