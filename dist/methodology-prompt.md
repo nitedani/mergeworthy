@@ -907,7 +907,7 @@ These scripts enforce the rules that failed as text alone. This file is the only
 
 | Mechanism | Enforces | How to use it |
 |---|---|---|
-| `gh-watch.py` + `gh-watch-daemon.sh` | 1.5. Reports comments, review comments and reviews by others; PR pushes, merges and closes; CI red and green. Adds 👀 within ~10 s for the logins in `GH_WATCH_EYES`, and reports their 👍 or 👎 on the agent's comments as `### THUMBS UP` / `### THUMBS DOWN`. Prints `### REFACTOR STALE` when your PR's code (test files excluded) changed by more than ~80 lines since its last `pr-steps refactor` record. Wakes the agent itself on every new event: it launches the command in `<dir>/agent` (written by `gh-watch-start`) with a prompt that handles `events.log` from `events.cursor`, one agent per dir at a time, log in `<dir>/wake.log` — so an event is handled even when no interactive session is watching. It records each new comment in `<dir>/replies-owed.md`; the agent clears the line when it is answered, and the Stop hook blocks a turn while a line is still owed. | Start with `gh-watch-start <artifact root> <owner/repo> [N]…` (below), never by hand. One `owner/repo number` per line in `threads.txt` next to it. When posting from the user's account, the user's own comments are told apart through `~/.claude/gated-posts.txt` (filled by `gate-pass`). The printed tail is belt-and-braces for the interactive session (the Monitor tool, or a background task of the printed tail where there is no Monitor tool, re-armed on every expiry). Position and seen events persist in `gh-watch-state.json`, so restarts lose nothing. |
+| `gh-watch.py` + `gh-watch-daemon.sh` | 1.5. Reports comments, review comments and reviews by others; PR pushes, merges and closes; CI red and green. Adds 👀 within ~10 s for the logins in `GH_WATCH_EYES`, and reports their 👍 or 👎 on the agent's comments as `### THUMBS UP` / `### THUMBS DOWN`. Prints `### REFACTOR STALE` when your PR's code (test files excluded) changed by more than ~80 lines since its last `pr-steps refactor` record. Wakes the agent itself on every new event: it launches the command in `<dir>/agent` (written by `gh-watch-start`) with a prompt that handles `events.log` from `events.cursor`, one agent per dir at a time, log in `<dir>/wake.log` — so an event is handled even when no interactive session is watching. It records each new comment in `<dir>/replies-owed.md`; the agent clears the line when it is answered, and the Stop hook blocks a turn while a line is still owed. | Start with `gh-watch-start <artifact root> <owner/repo> [N]…` (below), never by hand. One `owner/repo number` per line in `threads.txt` next to it. When posting from the user's account, the user's own comments are told apart through `~/.claude/gated-posts.txt` (filled by `gate-pass`). The printed tail is belt-and-braces for the interactive session (the Monitor tool, or a background task of the printed tail where there is no Monitor tool, re-armed on every expiry). Position and seen events persist in `gh-watch-state.json`, so restarts lose nothing.  It wakes no agent while a live session tails the directory's `events.log`: that session handles the events, and a second agent would race it on the same threads.|
 | `tracker-check.sh` | 1.2. Umbrella drift (checkbox vs PR state), and a Decisions comment last edited before a tracked PR merged or closed. | `TRACKER_REPO=o/r TRACKER_ISSUE=N TRACKER_DECISIONS=<comment id> ./tracker-check.sh`. The watcher calls it when the variables are set. Run it before every report. |
 | `post-lint.py` | 1.6. Banned phrases, em dashes, "stacked on", bare `#N`, budgets (reply 80 words, PR 150, issue 400 characters, inline 2 sentences; tables, code, images and URLs not counted), unclassified notes, process in the thread, questions without a recommendation, a bare "Done" to a question or soft suggestion, a notes-table Next of "recommend", "follow-up" or "later". | `post-lint.py drafts/x.md --kind reply\|pr\|issue\|inline [--repo o/r]` (default `reply`). A reply or inline comment reads its parent from `drafts/x.parent.md` (or `--parent <file>`; `--parent none` when it answers nobody). Tests: `tests/test_post_lint.py`. |
 | `gate-pass` | 1.6. Records that a draft passed: `post-lint` clean and the review's final message (`codex exec -o drafts/x.review.out`) exactly `CLEAN`; stores the draft's sha256 in `<draft>.gate`. A draft that promises work ("I'll", "follow-up PR") first needs a `PROMISED … (<draft name>)` line in `proposals-open.md`. | `gate-pass drafts/x.md drafts/x.review.out` (set `POST_LINT_ARGS` for `--repo`/`--kind`). |
@@ -1030,14 +1030,29 @@ def is_human(u, body=None, agent_hashes=frozenset()):
     return _norm(body) not in agent_hashes  # ME: the user's own comment unless it's an agent post
 
 
+def session_watching():
+    """True while a live session tails this dir's events.log (its Monitor or background tail, 1.5)."""
+    log = os.path.join(HERE, 'events.log')
+    for pid in os.listdir('/proc'):
+        if not pid.isdigit():
+            continue
+        try:
+            argv = open(f'/proc/{pid}/cmdline', 'rb').read().split(b'\0')
+        except OSError:
+            continue
+        if argv and os.path.basename(argv[0].decode(errors='replace')) == 'tail' and log.encode() in argv:
+            return True
+    return False
+
+
 def wake_agent(event):
     """The wake layer, harness-independent: launch the configured agent (command from <dir>/agent, e.g.
     `claude -p` or `codex exec`) to handle the new event from events.cursor, so the event is answered
     even when no interactive session is watching. One wake agent per dir at a time; the next event
     re-launches it once the previous one exits. Deduplication is the shared cursor: an event already
     handled (cursor past it) is skipped."""
-    if ONCE:
-        return
+    if ONCE or session_watching():
+        return  # a live session tails events.log and handles this event itself; a second agent would race it
     agent = os.path.join(HERE, 'agent')
     if not os.path.exists(agent):
         # plain print, not emit: the line starts with ###, so emit would re-trigger wake_agent
