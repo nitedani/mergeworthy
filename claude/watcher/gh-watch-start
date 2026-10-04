@@ -38,9 +38,11 @@ if [ -n "$GH_WATCH_EYES" ]; then echo "$GH_WATCH_EYES" > "$dir/eyes"; fi
 [ -s "$dir/eyes" ] || gh api user --jq .login > "$dir/eyes"
 # The agent names its Claude config: the daemon's environment is systemd's, not this session's
 if [ -n "$GH_WATCH_AGENT" ]; then agent="$GH_WATCH_AGENT"
-elif command -v claude >/dev/null && [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then agent="env CLAUDE_CONFIG_DIR=$CLAUDE_CONFIG_DIR claude -p"
-elif command -v claude >/dev/null; then agent="env -u CLAUDE_CONFIG_DIR claude -p"
-elif command -v codex >/dev/null; then agent="codex exec"
+# Unattended, so no permission prompts: without them every gh call and write was refused and the comment went
+# unanswered (the posting gate and the hooks still apply)
+elif command -v claude >/dev/null && [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then agent="env CLAUDE_CONFIG_DIR=$CLAUDE_CONFIG_DIR claude -p --dangerously-skip-permissions"
+elif command -v claude >/dev/null; then agent="env -u CLAUDE_CONFIG_DIR claude -p --dangerously-skip-permissions"
+elif command -v codex >/dev/null; then agent="codex exec --dangerously-bypass-approvals-and-sandbox"
 else agent=""; fi
 [ -n "$agent" ] && printf '%s\n' "$agent" > "$dir/agent"
 # Supervision, so the watcher restarts on failure and after a reboot, with no session alive:

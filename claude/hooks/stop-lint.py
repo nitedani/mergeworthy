@@ -7,7 +7,7 @@ d = json.load(sys.stdin)
 if d.get('stop_hook_active'):
     sys.exit(0)
 last = ''
-posted, monitor_ids, monitors, dead = False, {}, set(), set()
+posted, monitor_ids, monitors, dead, commands = False, {}, set(), set(), []
 POST = re.compile(r'\bgh\b[^\n]*(body-file|body=@|--input|\s-F\s)')
 try:
     lines = open(d['transcript_path']).readlines()
@@ -33,6 +33,7 @@ for line in lines:
             if not isinstance(x, dict) or x.get('type') != 'tool_use': continue
             i = x.get('input') or {}
             if x.get('name') == 'Bash' and POST.search(i.get('command', '')): posted = True
+            if x.get('name') == 'Bash': commands.append(i.get('command', ''))
             if x.get('name') == 'Monitor' and 'events.log' in i.get('command', ''): monitor_ids[x.get('id')] = 1
             if x.get('name') == 'TaskStop': dead.add(i.get('task_id') or i.get('shell_id') or '')
         if isinstance(c, list):
@@ -54,7 +55,11 @@ own_dirs = set()
 reg = os.path.expanduser('~/.claude/gh-watch-dirs.txt')
 cwd_d = d.get('cwd') or ''
 for wd in (l.strip() for l in open(reg)) if os.path.exists(reg) else ():
-    if wd and (cwd_d.startswith(wd) or wd.startswith(cwd_d or '/nonexistent')): own_dirs.add(wd)
+    # or a watch dir this session worked in from elsewhere (its cwd is a repo, the watch dir an artifact root):
+    # by cwd alone, an owed reply in it never held the session's turn
+    home_wd = wd.replace(os.path.expanduser('~'), '~', 1)
+    if wd and (cwd_d.startswith(wd) or wd.startswith(cwd_d or '/nonexistent')
+               or any(wd in c or home_wd in c for c in commands)): own_dirs.add(wd)
 def watched_by_service():
     """A watch dir whose daemon runs and whose agent the daemon wakes (the systemd service, 1.5): it handles the events."""
     for wd in own_dirs:

@@ -114,6 +114,29 @@ handled: skip it."""
     proc = subprocess.Popen(shlex.split(open(agent).read().strip()) + [prompt], stdin=subprocess.DEVNULL, stdout=log,
                             stderr=subprocess.STDOUT, cwd=HERE, start_new_session=True)
     open(pid_file, 'w').write(str(proc.pid))
+    open(os.path.join(HERE, 'wake.launch'), 'w').write(str(os.path.getsize(os.path.join(HERE, 'events.log'))))
+
+
+def check_wake():
+    """A wake agent that exits with the cursor short of where events.log ended at its launch left events unhandled
+    (refused permissions, a crash, a usage limit): say so once, with no ###, so it doesn't wake a second agent
+    into the same failure. The owed lines stay in replies-owed.md, where the Stop hook holds every live session."""
+    launch = os.path.join(HERE, 'wake.launch')
+    try:
+        target = int(open(launch).read())
+        os.kill(int(open(os.path.join(HERE, 'wake.pid')).read().strip()), 0)
+        return  # still running
+    except (OSError, ValueError):
+        if not os.path.exists(launch):
+            return
+    try:
+        cursor = int(open(os.path.join(HERE, 'events.cursor')).read().strip() or 0)
+    except (OSError, ValueError):
+        cursor = 0
+    os.remove(launch)
+    if cursor < target:
+        print(f"WAKE FAILED at {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}: the agent exited at cursor {cursor} "
+              f"of {target}; see {HERE}/wake.log. A live session handles the events from the cursor (1.5).", flush=True)
 
 
 def append_owed(entry):
@@ -496,6 +519,7 @@ def main():
             save_state(state)
         if time.time() - last_full > 180:
             run_scan()
+            check_wake()
             retire_if_done()
             last_full = time.time()
         time.sleep(10)

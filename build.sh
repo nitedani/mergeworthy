@@ -8,7 +8,8 @@ set -e
 cd "$(dirname "$0")"
 # Builds from the index (what is staged), not the working tree: another session's uncommitted edits stay out of dist.
 # Stage your source changes before building.
-if [ -z "$BUILD_FROM_INDEX" ]; then
+# A copy outside the repo's index (tests/build-check) builds from its own files.
+if [ -z "$BUILD_FROM_INDEX" ] && [ "$(git rev-parse --show-toplevel 2>/dev/null)" = "$(pwd -P)" ]; then
   tmp=$(mktemp -d "${XDG_RUNTIME_DIR:-$HOME/.cache}/methodology-build.XXXXXX")
   trap 'rm -rf "$tmp"' EXIT
   git checkout-index -a --prefix="$tmp/"
