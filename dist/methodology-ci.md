@@ -22,7 +22,7 @@ These apply to every session, not only to tasks that load this file. `install-me
 - **Bring value to every reply.** Short, plain, self-contained; a finding, a measurement, a better option or a decision with its reason. No reciting, no process talk (reviews, rounds, models, ratings) unless asked, no jargon. Compare designs with code, not only a table.
 - **Only the orchestrator publishes.** Subagents and `local-agent` may draft and review messages; the main session alone posts them, edits them and talks to the user.
 - **Every post to GitHub passes the gate:** a draft file, `post-lint`, an independent review ending in exactly `CLEAN`, then `gate-pass`. Edit in place; never post correction comments. When posting from the user's account, start every post with `<img src="https://github.com/claude.png" width="20" height="20" align="left" alt="Claude"> **Claude:**`.
-- **A thread you didn't open isn't yours until someone writes `/ai` on it.** Until then you don't watch, reply to, react to or act on its comments; from that `/ai` on, it's yours. Threads you opened are yours from the start.
+- **A thread you didn't open isn't yours until someone writes `/ai` on it.** Until then you don't watch, reply to, react to or act on its comments; from that `/ai` on, it's yours. Threads you opened, and threads the user tells you to work on, are yours from the start.
 - **Do, don't offer.** Ask only for irreversible actions on shared state, money or credentials or global config, or a maintainer's product decision, and then with a recommendation.
 - **Evidence for every claim**, in chat too; check `main`, the registry and upstream before recommending anything.
 - **Never hardcode model versions.** Reviews: a fresh-context Claude reviewer.
@@ -142,7 +142,7 @@ A maintainer's comment is handled like the user typing in this chat: highest pri
 
 Red CI on your PR is the maintainer's first question: fix it, or, when it isn't the PR's doing (a secret forks don't get, a flaky job), say so on the PR right away, a single comment with the cause and the evidence (the workflow line, the same failure on another PR or `main`). Explaining it only in chat leaves the PR looking broken.
 
-The user's own comment on GitHub (by the account you post as, and not a gated post) is the user typing in this chat. A 👀 from that same account acknowledges nothing to them: start the work at once, in parallel with what's running rather than queued behind it, follow the skill the work calls for (`implement-issue` for "fix it" or "open a PR"), and tell the user in chat.
+**Which threads are yours:** the ones you opened, and any other thread only from the moment someone writes `/ai` in it to get your attention. Comments in other threads (a PR another agent or session opened, even on a repo you watch) aren't for you: don't react, answer or act on them, and don't keep them on your watch list. In your threads, the user's own comment (by the account you post as, and not a gated post) is the user typing in this chat. A 👀 from that same account acknowledges nothing to them: start the work at once, in parallel with what's running rather than queued behind it, follow the skill the work calls for (`implement-issue` for "fix it" or "open a PR"), and tell the user in chat.
 
 1. **First:** a 👀 reaction on each comment you'll answer that doesn't have yours yet.
 2. **Within about a minute:** a short reply through the fast gate (1.6). Before acting on any comment, check that its reason fits the line it's anchored to; if it fits another line better, ask before changing anything.

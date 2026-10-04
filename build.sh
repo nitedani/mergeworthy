@@ -25,7 +25,7 @@ mkdir -p dist
     echo; cat methodology/part4-failures.md; echo; cat methodology/part2-implement-issue.md; echo; cat methodology/part3-convergence.md
     echo; echo '---'; echo; cat methodology/part5-mechanisms.md; echo
   } | python3 claude/tools/filter.py $settings
-  for f in gh-watch.py gh-watch-daemon.sh gh-watch-start post-bash-register.py pre-agent-guard.py tracker-check.sh post-lint.py gate-pass pre-bash-guard.py stop-lint.py pr-steps claude-swap codex-review-model install-methodology methodology-update uninstall-methodology; do
+  for f in gh-watch.py gh-watch-daemon.sh gh-watch-start post-bash-register.py pre-agent-guard.py tracker-check.sh post-lint.py gate-pass pre-bash-guard.py stop-lint.py pr-steps claude-swap codex-review-model install-methodology methodology-update uninstall-methodology isolated-run; do
     case "$watcher:$target:$reviewer:$f" in off:*:gh-watch*|off:*:post-bash-register.py|*:ci:*:claude-swap|*:local:*:claude-swap|*:claude:codex-review-model) continue;; esac
     lang=bash; case $f in *.py|claude-swap|codex-review-model|install-methodology) lang=python;; esac
     echo; echo "### \`$f\`"; echo; echo "\`\`\`\`$lang"; cat "$(ls claude/hooks/$f claude/bin/$f claude/watcher/$f 2>/dev/null | head -1)"; echo '````'

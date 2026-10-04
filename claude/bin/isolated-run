@@ -1,0 +1,6 @@
+#!/bin/bash
+# isolated-run <command...>: runs a command that starts servers (e2e tests, dev or preview servers) in its own network
+# namespace with a private loopback, so a fixed port such as 3000 never collides with another run, agent or session.
+# No outside network inside: install dependencies before, not through it.
+[ $# -gt 0 ] || { echo "usage: isolated-run <command...>" >&2; exit 2; }
+exec unshare -rn sh -c 'ip link set lo up 2>/dev/null; exec "$@"' isolated-run "$@"

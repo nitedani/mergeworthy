@@ -215,6 +215,10 @@ if not d.get('tool_input', {}).get('run_in_background') and any(
         re.search(r'(^|[\s;(&|])local-agent\s', l) and re.search(r'(?<![&|>])&(?![&>])\s*\)?\s*(;|$)', l) for l in _code_lines(cmd)):
     block("start local-agent through the Bash tool's run_in_background (not a plain `&`), so its completion wakes you")
 
+# Servers on fixed ports (3000) collide across parallel runs, agents and sessions: each run gets its own network namespace
+if any(re.search(r'(^|[\s;(&|])(test-e2e|vike (dev|preview)|pnpm (run )?(dev|preview)\b|npm run (dev|preview)\b)', l) and not re.search(r'(^|[\s;(&|])isolated-run\s', l) for l in _code_lines(cmd)):
+    block("start e2e tests and dev/preview servers through `isolated-run <command>` (own network namespace), so their fixed ports never collide with another run or agent")
+
 try:
     segs = segments(cmd)
 except ValueError:

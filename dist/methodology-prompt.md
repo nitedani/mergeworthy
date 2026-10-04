@@ -22,7 +22,7 @@ These apply to every session, not only to tasks that load this file. `install-me
 - **Bring value to every reply.** Short, plain, self-contained; a finding, a measurement, a better option or a decision with its reason. No reciting, no process talk (reviews, rounds, models, ratings) unless asked, no jargon. Compare designs with code, not only a table.
 - **Only the orchestrator publishes.** Subagents and `local-agent` may draft and review messages; the main session alone posts them, edits them and talks to the user.
 - **Every post to GitHub passes the gate:** a draft file, `post-lint`, an independent review ending in exactly `CLEAN`, then `gate-pass`. Edit in place; never post correction comments. When posting from the user's account, start every post with `<img src="https://github.com/claude.png" width="20" height="20" align="left" alt="Claude"> **Claude:**`.
-- **A thread you didn't open isn't yours until someone writes `/ai` on it.** Until then you don't watch, reply to, react to or act on its comments; from that `/ai` on, it's yours. Threads you opened are yours from the start.
+- **A thread you didn't open isn't yours until someone writes `/ai` on it.** Until then you don't watch, reply to, react to or act on its comments; from that `/ai` on, it's yours. Threads you opened, and threads the user tells you to work on, are yours from the start.
 - **Do, don't offer.** Ask only for irreversible actions on shared state, money or credentials or global config, or a maintainer's product decision, and then with a recommendation.
 - **Evidence for every claim**, in chat too; check `main`, the registry and upstream before recommending anything.
 - **Never hardcode model versions.** Reviews: `codex exec -m "$(codex-review-model)"`, falling back to a fresh-context Claude reviewer.
@@ -208,6 +208,7 @@ It covers everything that reaches an external service, with no lighter category:
 - Whatever you start, you stop: dev servers, builds, preview servers, proxies. A subagent records the PIDs it starts and kills them before handing back; check with `ps` that none are left. Find a server by the PID you started (and its children, `pgrep -P <pid>`) or by its port (`ss -ltnp 'sport = :<port>'`); never grep `ps` output for a port number, and never `pgrep -f <pattern>`. Check each PID's command and directory before killing it.
 - At most 4 browsers and 4 dev servers of your own at once; stop each when its work ends.
 - Never restart or reconfigure a container someone else's work depends on; start your own alongside.
+- Anything that listens on a port (e2e tests, dev and preview servers) runs through `isolated-run <command>`, yours and every subagent's: its own network namespace, so fixed ports never collide and parallel runs never test each other's servers. Install dependencies outside it (no network inside). Never kill or wait out another run's server.
 - Never modify the package store or a shared `node_modules`; scratch installs use `--package-import-method=copy`. After any install, check `git status` for unexpected changes.
 - Browser work uses the DevTools MCP. On "profile in use", retry after 30 s, then ask. Never fall back to scripted browsers silently, never open windows on the user's desktop, never kill another session's browser.
 - Isolate worktrees: their own ports, databases and generated clients. Never touch the user's own checkouts (the clones the user works in), including their git config, which their worktrees share: no edits, commits, checkouts, resets or branch switches; work in worktrees you create, and to read another branch, `git worktree add --detach <artifact root>/<name> <ref>`.
@@ -924,6 +925,7 @@ These scripts enforce the rules that failed as text alone. This file is the only
 | `pr-steps` + posting hook | Part 2 steps 6–7 (Part 3 sections 6–7 in Tier ≥ M), 1.7. | `gh pr create` (unless `--draft`) and `gh pr ready` are blocked until HEAD has a `review` and a `refactor` record: run `pr-steps review <reviewer output>` and `pr-steps refactor <rating output>` on the final HEAD after the fixes. |
 | `install-methodology` | 1.1.12: this file travels; the machine's copies follow it. | Writes Part 5's scripts to `~/.claude/mechanisms/` (commands linked into `~/.local/bin`), merges the hook config into `~/.claude/settings.json`, and writes the Always-on rules into `~/.claude/CLAUDE.md` between markers, leaving the rest of that file alone. The file's first line, the settings header `build.sh` writes, goes to `~/.claude/mechanisms/settings.env` as `METHODOLOGY_<KEY>=<value>` lines, read by `post-lint` (badge, review records; `gate-pass` runs it) and `pre-bash-guard` (merge); an environment variable of the same name wins. |
 | `methodology-update` (`~/.local/bin`; SessionStart hook with `--auto`) | 1.1.12: every machine follows the repo. | Pulls the repo the installed file came from (`METHODOLOGY_SOURCE` in `settings.env`), rebuilds the same profiles, reinstalls, and the local-model tooling when installed. `--auto`: at most once a day, detached, logged to `~/.claude/mechanisms/update.log`; the new version applies from the next session. |
+| `isolated-run` (`~/.local/bin`) | 1.8: two agents' e2e runs shared port 3000 and tested each other's servers. | `isolated-run <command>` runs it in a private network namespace (`unshare -rn`, loopback only). `pre-bash-guard` blocks `test-e2e`, `vike dev/preview` and `pnpm run dev/preview` that don't start with it. |
 | `uninstall-methodology` (`~/.local/bin`) | | Removes the hooks, the `CLAUDE.md` block, `~/.claude/mechanisms/` and the command links; keeps the repo, artifacts, `gated-posts.txt`, `pr-steps/` and the local model's files. |
 | `ready-check` (manual) | 1.7. | Before saying "ready", check every item of 1.7's Ready list against the head (`gh pr checks` for CI; the guardian verdict per Part 3 §11.1, mechanism census included, run after the last fix round; the body re-read against the head) and paste the result. |
 
@@ -1543,12 +1545,13 @@ record = kind in ('tracker', 'review-record')  # records carry the process, with
 text = open(path).read()
 # An issue draft's first line may be its title ("Title: …"): the budget is for the body
 text = re.sub(r'\ATitle:[^\n]*\n', '', text)
-# Posts by the agent share the user's account: each starts with the Claude badge, so readers see who wrote it.
+# Posts by the agent share the user's account: each starts with a badge naming the agent that wrote it
+# (the agent's icon plus "Agent:", or the legacy Claude badge), so readers see who wrote it.
 # The other checks run on the text after the badge.
-BADGE = '<img src="https://github.com/claude.png" width="20" height="20" align="left" alt="Claude"> **Claude:**'
-has_badge = text.lstrip().startswith(BADGE)
-if has_badge:
-    text = text.lstrip()[len(BADGE):].lstrip()
+BADGE = re.compile(r'^<img src="[^"]+"[^>]*>\s+\*\*(?:Claude|Agent):\*\*')
+_m = BADGE.match(text.lstrip())
+if _m:
+    text = text.lstrip()[_m.end():].lstrip()
 # What GitHub renders as the author's prose. Code (fenced, inline), quotes of others and
 # HTML comments are neither linted nor counted; tables, images and URLs are evidence: linted, not counted.
 prose = re.sub(r'^(```|~~~).*?^\1[^\n]*$', '', text, flags=re.S | re.M)
@@ -1605,10 +1608,11 @@ for row in re.findall(r'^\|(?:[^|\n]*\|){3}([^|\n]*)\|\s*$', text, flags=re.M):
 # a found defect is fixed in this change, not parked in prose (methodology 1.1.7): the same bug elsewhere is related
 for m in re.finditer(r"[^.\n]*\b(separate issue|separate PR|out of scope|left for later|for later|a later PR|follow-up issue|another PR)\b[^.\n]*", prose, re.I):
     findings.append(f"deferral {m.group(0).strip()[:70]!r}: fix it in this change, open the PR now and link it, or quote the user's OK (1.1.7)")
+has_badge = _m is not None
 badge = setting('BADGE', 'on')  # auto: only a human account (`gh api user` type User, not Bot) needs it
 if kind != 'tracker' and not has_badge and (badge == 'on' or badge == 'auto' and
         subprocess.run(['gh', 'api', 'user', '--jq', '.type'], capture_output=True, text=True).stdout.strip() == 'User'):
-    findings.append(f"missing badge: start the post with {BADGE}")
+    findings.append("missing badge: start the post with the agent's icon and an **Agent:** label (the legacy Claude badge also passes)")
 # the process stays in the artifact root: the reader gets results, not how the agent produced them
 if not record:
     PROCESS = [r'\breview rounds?\b', r'\b(refactor|verification|dry) pass(es)?\b', r'\bcharter\b', r'\bgpt-\d[\w.-]*',
@@ -1894,6 +1898,10 @@ if not d.get('tool_input', {}).get('run_in_background') and any(
         re.search(r'(^|[\s;(&|])local-agent\s', l) and re.search(r'(?<![&|>])&(?![&>])\s*\)?\s*(;|$)', l) for l in _code_lines(cmd)):
     block("start local-agent through the Bash tool's run_in_background (not a plain `&`), so its completion wakes you")
 
+# Servers on fixed ports (3000) collide across parallel runs, agents and sessions: each run gets its own network namespace
+if any(re.search(r'(^|[\s;(&|])(test-e2e|vike (dev|preview)|pnpm (run )?(dev|preview)\b|npm run (dev|preview)\b)', l) and not re.search(r'(^|[\s;(&|])isolated-run\s', l) for l in _code_lines(cmd)):
+    block("start e2e tests and dev/preview servers through `isolated-run <command>` (own network namespace), so their fixed ports never collide with another run or agent")
+
 try:
     segs = segments(cmd)
 except ValueError:
@@ -2159,4 +2167,15 @@ for f in os.listdir(bin_) if os.path.isdir(bin_) else ():
     p = os.path.join(bin_, f)
     if os.path.islink(p) and re.search(r'/\.claude/mechanisms/|/local-llm/', os.readlink(p)): os.remove(p); print('removed link', p)
 shutil.rmtree(mech, ignore_errors=True); print('removed', mech)
+````
+
+### `isolated-run`
+
+````bash
+#!/bin/bash
+# isolated-run <command...>: runs a command that starts servers (e2e tests, dev or preview servers) in its own network
+# namespace with a private loopback, so a fixed port such as 3000 never collides with another run, agent or session.
+# No outside network inside: install dependencies before, not through it.
+[ $# -gt 0 ] || { echo "usage: isolated-run <command...>" >&2; exit 2; }
+exec unshare -rn sh -c 'ip link set lo up 2>/dev/null; exec "$@"' isolated-run "$@"
 ````
