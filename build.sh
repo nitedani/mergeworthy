@@ -6,6 +6,16 @@
 # Settings start from profiles/defaults.env; each profiles/<name>.env is sourced in order, later ones winning.
 set -e
 cd "$(dirname "$0")"
+# Builds from the index (what is staged), not the working tree: another session's uncommitted edits stay out of dist.
+# Stage your source changes before building.
+if [ -z "$BUILD_FROM_INDEX" ]; then
+  tmp=$(mktemp -d "${XDG_RUNTIME_DIR:-$HOME/.cache}/methodology-build.XXXXXX")
+  trap 'rm -rf "$tmp"' EXIT
+  git checkout-index -a --prefix="$tmp/"
+  (cd "$tmp" && BUILD_FROM_INDEX=1 bash ./build.sh "$@")
+  mkdir -p dist && cp "$tmp"/dist/*.md dist/
+  exit
+fi
 if [ "$1" = --all ]; then
   ./build.sh; ./build.sh ci; ./build.sh local; exit
 fi
