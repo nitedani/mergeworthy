@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Claude Code Stop hook. Blocks ending a turn with an offer or permission question the agent should just act on,
 or after posting on GitHub with no armed tail of a watcher's events.log — a Monitor, or a live `tail` process
-where the harness has no Monitor tool (1.5)."""
+where the harness has no Monitor tool (1.5), or with a line still owed in a live watcher's replies-owed.md (1.5)."""
 import glob, json, os, re, sys
 d = json.load(sys.stdin)
 if d.get('stop_hook_active'):
@@ -75,4 +75,21 @@ if posted and watcher_on and not headless and not (monitors - dead or armed_tail
           "Monitor command (timeout_ms 1800000), or a background task where there is no Monitor tool — handle events.log "
           "from your cursor, and re-arm on every expiry (methodology 1.5).", file=sys.stderr)
     sys.exit(2)
+# 1.5's owed-debt list: the daemon records each human comment in the live watcher's replies-owed.md; a turn
+# cannot end with a line still owed.
+if watcher_on:
+    for wd in sorted(own_dirs):
+        try:
+            os.kill(int(open(os.path.join(wd, 'gh-watch.pid')).read().strip()), 0)
+        except (OSError, ValueError):
+            continue  # no live daemon in this dir
+        f = os.path.join(wd, 'replies-owed.md')
+        owed = [l.strip() for l in open(f) if l.strip() and not l.startswith('#')] if os.path.exists(f) else []
+        open_owed = [l for l in owed if not l.lower().startswith('done:')]
+        if not os.path.exists(f) or open_owed:
+            item = open_owed[0][:120] if open_owed else 'missing file'
+            print(f"replies-owed.md in {wd} still has an owed reply ({item}). Answer it through the gate and clear the "
+                  "line with 'done: <reply url> <what changed>' (1.5), or clear it with the reason no reply is owed.",
+                  file=sys.stderr)
+            sys.exit(2)
 sys.exit(0)

@@ -155,8 +155,8 @@ Red CI on your PR is the maintainer's first question: fix it, or, when it isn't 
 4. **Then reply** with the result as a new comment (edits don't notify). Beyond this result (and the wait ping below), a question gets no further comments from you; later changes to your reply are edits.
 5. **Book-keeping, in the same step:** decision packet, umbrella body, Decisions comment, ledger.
 
-**The watcher and the owed lists.** Before your first post in any tier (an audit report or a single issue included), run `gh-watch-start <artifact root> <owner/repo> [N]` (Part 5). It starts the daemon, and the daemon wakes the agent itself: on every new event it launches the agent command it wrote to `<dir>/agent` (`GH_WATCH_AGENT`, else the first of `claude`, `codex`) with a prompt that handles `events.log` from `events.cursor`, one agent per dir at a time — so a comment is answered even when no interactive session is watching. Never poll GitHub in a loop in the conversation. Every thread you open or comment on joins its list in the same step: the posting guard adds it, refuses to post to a repo no running watcher covers, and the Stop hook refuses to end a turn after a post with no armed tail on `events.log`. The tail the starter prints is belt-and-braces for the interactive session (the Monitor tool, or a background task where there is no Monitor tool, re-armed on every expiry): handle `events.log` from `events.cursor` (advance it as you handle events), so an event the woken agent already handled is not handled twice. After any resume, handle `events.log` from the cursor before anything else. Each list item is cleared only by the thing named:
-- `replies-owed.md`: every maintainer comment with a question or request, and every comment the user posts in a thread (back it with evidence or add what it's missing). Checked at every wakeup; cleared by the posted reply's URL.
+**The watcher and the owed lists.** Before your first post in any tier (an audit report or a single issue included), run `gh-watch-start <artifact root> <owner/repo> [N]` (Part 5). It starts the daemon, and the daemon wakes the agent itself: on every new event it launches the agent command it wrote to `<dir>/agent` (`GH_WATCH_AGENT`, else the first of `claude`, `codex`) with a prompt that handles `events.log` from `events.cursor`, one agent per dir at a time — so a comment is answered even when no interactive session is watching. It also records each new comment in `replies-owed.md` (below), and the Stop hook refuses to end a turn while a line is still owed. Never poll GitHub in a loop in the conversation. Every thread you open or comment on joins its list in the same step: the posting guard adds it, refuses to post to a repo no running watcher covers, and the Stop hook refuses to end a turn after a post with no armed tail on `events.log`. The tail the starter prints is belt-and-braces for the interactive session (the Monitor tool, or a background task where there is no Monitor tool, re-armed on every expiry): handle `events.log` from `events.cursor` (advance it as you handle events), so an event the woken agent already handled is not handled twice. After any resume, handle `events.log` from the cursor before anything else. Each list item is cleared only by the thing named:
+- `replies-owed.md`: every maintainer comment with a question or request, and every comment the user posts in a thread (back it with evidence or add what it's missing). The daemon appends each comment line; the Stop hook blocks a turn while a line is still owed; cleared by the posted reply's URL.
 - `proposals-open.md`: every "OK?" you ask, and every promise you post ("I'll…") as `PROMISED <thread>: <what>`. Each new maintainer comment is checked against it first. Cleared by the commit or link that delivers it. Do work you can finish in minutes before posting, so the post says "Done in <link>", never "fixing it now".
 - `waiting-on.txt`, next to the watcher's `threads.txt`: each thing a PR of yours waits on (`<owner/repo#N> -> <dependent>: <what to do>`), also in that PR's notes table; the watcher prints `DEPENDENT of merged …` when it lands. A merge or release you depend on is handled like a maintainer comment: in the same step, apply what waited on it and post the progress on the dependent PR.
 - A pending task whose condition is met is done now.
@@ -907,7 +907,7 @@ These scripts enforce the rules that failed as text alone. This file is the only
 
 | Mechanism | Enforces | How to use it |
 |---|---|---|
-| `gh-watch.py` + `gh-watch-daemon.sh` | 1.5. Reports comments, review comments and reviews by others; PR pushes, merges and closes; CI red and green. Adds 👀 within ~10 s for the logins in `GH_WATCH_EYES`, and reports their 👍 or 👎 on the agent's comments as `### THUMBS UP` / `### THUMBS DOWN`. Prints `### REFACTOR STALE` when your PR's code (test files excluded) changed by more than ~80 lines since its last `pr-steps refactor` record. Wakes the agent itself on every new event: it launches the command in `<dir>/agent` (written by `gh-watch-start`) with a prompt that handles `events.log` from `events.cursor`, one agent per dir at a time, log in `<dir>/wake.log` — so an event is handled even when no interactive session is watching. | Start with `gh-watch-start <artifact root> <owner/repo> [N]…` (below), never by hand. One `owner/repo number` per line in `threads.txt` next to it. When posting from the user's account, the user's own comments are told apart through `~/.claude/gated-posts.txt` (filled by `gate-pass`). The printed tail is belt-and-braces for the interactive session (the Monitor tool, or a background task of the printed tail where there is no Monitor tool, re-armed on every expiry). Position and seen events persist in `gh-watch-state.json`, so restarts lose nothing. |
+| `gh-watch.py` + `gh-watch-daemon.sh` | 1.5. Reports comments, review comments and reviews by others; PR pushes, merges and closes; CI red and green. Adds 👀 within ~10 s for the logins in `GH_WATCH_EYES`, and reports their 👍 or 👎 on the agent's comments as `### THUMBS UP` / `### THUMBS DOWN`. Prints `### REFACTOR STALE` when your PR's code (test files excluded) changed by more than ~80 lines since its last `pr-steps refactor` record. Wakes the agent itself on every new event: it launches the command in `<dir>/agent` (written by `gh-watch-start`) with a prompt that handles `events.log` from `events.cursor`, one agent per dir at a time, log in `<dir>/wake.log` — so an event is handled even when no interactive session is watching. It records each new comment in `<dir>/replies-owed.md`; the agent clears the line when it is answered, and the Stop hook blocks a turn while a line is still owed. | Start with `gh-watch-start <artifact root> <owner/repo> [N]…` (below), never by hand. One `owner/repo number` per line in `threads.txt` next to it. When posting from the user's account, the user's own comments are told apart through `~/.claude/gated-posts.txt` (filled by `gate-pass`). The printed tail is belt-and-braces for the interactive session (the Monitor tool, or a background task of the printed tail where there is no Monitor tool, re-armed on every expiry). Position and seen events persist in `gh-watch-state.json`, so restarts lose nothing. |
 | `tracker-check.sh` | 1.2. Umbrella drift (checkbox vs PR state), and a Decisions comment last edited before a tracked PR merged or closed. | `TRACKER_REPO=o/r TRACKER_ISSUE=N TRACKER_DECISIONS=<comment id> ./tracker-check.sh`. The watcher calls it when the variables are set. Run it before every report. |
 | `post-lint.py` | 1.6. Banned phrases, em dashes, "stacked on", bare `#N`, budgets (reply 80 words, PR 150, issue 400 characters, inline 2 sentences; tables, code, images and URLs not counted), unclassified notes, process in the thread, questions without a recommendation, a bare "Done" to a question or soft suggestion, a notes-table Next of "recommend", "follow-up" or "later". | `post-lint.py drafts/x.md --kind reply\|pr\|issue\|inline [--repo o/r]` (default `reply`). A reply or inline comment reads its parent from `drafts/x.parent.md` (or `--parent <file>`; `--parent none` when it answers nobody). Tests: `tests/test_post_lint.py`. |
 | `gate-pass` | 1.6. Records that a draft passed: `post-lint` clean and the review's final message (`codex exec -o drafts/x.review.out`) exactly `CLEAN`; stores the draft's sha256 in `<draft>.gate`. A draft that promises work ("I'll", "follow-up PR") first needs a `PROMISED … (<draft name>)` line in `proposals-open.md`. | `gate-pass drafts/x.md drafts/x.review.out` (set `POST_LINT_ARGS` for `--repo`/`--kind`). |
@@ -915,7 +915,7 @@ These scripts enforce the rules that failed as text alone. This file is the only
 
 | `pre-agent-guard.py` (PreToolUse hook on Agent) | 1.1.14. Blocks a Claude subagent for read-only exploration (an Explore agent, or a prompt that says read-only / find every / where is…) while the local model is available: `local-agent` installed, `claude-usage --mode` not `off`, the GPU not taken. Reviews that gate a post (the prompt asks for `CLEAN`) go to `local-agent review` the same way; a prompt with a `NEEDS-CLAUDE: <why>` line passes; a Haiku subagent is always blocked. It is inert in a session that runs on the local model (its subagents are already the local model). | Hook config below. |
 
-| `stop-lint.py` (Stop hook) | 1.1.3, 1.5. Blocks ending a turn with "want me to / should I / your call / when you say go…" unless the message has a `GENUINE-FORK:` line, and after a GitHub post in the session while no armed tail (a Monitor, or a live `tail` process where there is no Monitor tool) watches a watcher's `events.log` (none armed, or the last one expired or stopped). | Hook config below. |
+| `stop-lint.py` (Stop hook) | 1.1.3, 1.5. Blocks ending a turn with "want me to / should I / your call / when you say go…" unless the message has a `GENUINE-FORK:` line, after a GitHub post in the session while no armed tail (a Monitor, or a live `tail` process where there is no Monitor tool) watches a watcher's `events.log` (none armed, or the last one expired or stopped), and while any live watcher's `replies-owed.md` has a line still owed. | Hook config below. |
 | `gh-watch-start` (`~/.local/bin`) | 1.5. The one way to start watching; idempotent. | `gh-watch-start <dir> [owner/repo [N]]…`: links the watcher into `<dir>`, adds `owner/repo N` to `threads.txt` (a bare `owner/repo` to `repos.txt`, covering the repo before an issue exists), starts the daemon unless it runs (eyes from `GH_WATCH_EYES`, else `<dir>/eyes`, else your login), writes `<dir>/agent`, the command the daemon launches on each event (`GH_WATCH_AGENT`, else the first of `claude`, `codex` on PATH), registers `<dir>` in `~/.claude/gh-watch-dirs.txt`, and prints the tail command to arm (belt-and-braces for the interactive session: the Monitor tool, or a background task where there is no Monitor tool). `pre-bash-guard` blocks a post to a repo no running watcher covers and adds the thread a comment goes to; `post-bash-register.py` (PostToolUse hook) adds a thread you just created. |
 
 | `claude-swap` (`~/.local/bin/claude-swap`, source below) | 1.1.13. Keeps several subscriptions logged in, so a usage limit doesn't stop the work. | After `/login` to each account: `claude-swap save <name>`. Then automatic: on a usage limit the `StopFailure` hook (config below) runs `claude-swap on-limit`, which switches every session on the machine to the next unlimited account and writes a line to `~/.claude/profiles/swap-events.log`; the Monitor tailing it wakes the session. `claude-swap list` shows the saved accounts. Alternative with a dashboard: [realiti4/claude-swap](https://github.com/realiti4/claude-swap) (different tool, same name). |
@@ -1055,13 +1055,28 @@ def wake_agent(event):
     prompt = f"""New GitHub watch event for this directory. Work in {HERE}.
 Read {HERE}/events.log from the byte offset in {HERE}/events.cursor (from the start if it is missing).
 Handle each new '###' event per methodology 1.5 (a comment by the account owner is the owner in chat: answer it
-at once, every post through the gate). After each batch, re-read the rest of events.log and repeat until caught up.
+at once, every post through the gate); clear each comment line you answered in {HERE}/replies-owed.md with
+'done: <reply url> <what changed>'. After each batch, re-read the rest of events.log and repeat until caught up.
 Advance {HERE}/events.cursor to the end of what you handled; an event whose offset is already before the cursor is
 handled: skip it."""
     log = open(os.path.join(HERE, 'wake.log'), 'a')
-    proc = subprocess.Popen(shlex.split(open(agent).read().strip()), stdin=subprocess.DEVNULL, stdout=log,
+    proc = subprocess.Popen(shlex.split(open(agent).read().strip()) + [prompt], stdin=subprocess.DEVNULL, stdout=log,
                             stderr=subprocess.STDOUT, cwd=HERE, start_new_session=True)
     open(pid_file, 'w').write(str(proc.pid))
+
+
+def append_owed(entry):
+    """1.5's replies-owed.md: the daemon records each human comment as an owed reply; the agent
+    clears the line with "done: <reply url> <what changed>" when it is answered. The Stop hook
+    blocks a turn while a line is still owed, so an unposted reply cannot end the session unseen."""
+    path = os.path.join(HERE, 'replies-owed.md')
+    owed = open(path).read().splitlines() if os.path.exists(path) else []
+    if any(f' {entry.split()[2]} ' in l for l in owed):
+        return  # already recorded
+    with open(path, 'a') as f:
+        if not owed:
+            f.write('# replies owed (1.5): clear each line with "done: <reply url> <what changed>"\n')
+        f.write(entry + '\n')
 
 
 def emit(line):
@@ -1268,6 +1283,8 @@ def scan(state, only=None):
                 edited = sk in state['seen']
                 state['seen'][sk] = upd
                 emit(f"### {key} {kind}{' (edited)' if edited else ''} {cid} by {user['login']} {upd} {extra} {url}\n{body}\n")
+                if not edited and kind in ('comment', 'review-comment'):
+                    append_owed(f"{key} {kind} {cid} by {user['login']} {url} — {body.strip().splitlines()[0][:80]}" if body.strip() else f"{key} {kind} {cid} by {user['login']} {url}")
                 if re.fullmatch(r"\W*(ok(ay)?|good|great|lgtm|yes|sure|agreed|sounds good|👍|nice)\W*", body.strip().lower()):
                     emit(f"### ACK {key} {cid}: an acknowledgement answers your last open proposal in that thread or PR; apply it now (1.5)")
                 if user['login'] in EYES_FOR and not edited and not ONCE and kind in ('comment', 'review-comment'):
@@ -1983,7 +2000,7 @@ sys.exit(0)
 #!/usr/bin/env python3
 """Claude Code Stop hook. Blocks ending a turn with an offer or permission question the agent should just act on,
 or after posting on GitHub with no armed tail of a watcher's events.log — a Monitor, or a live `tail` process
-where the harness has no Monitor tool (1.5)."""
+where the harness has no Monitor tool (1.5), or with a line still owed in a live watcher's replies-owed.md (1.5)."""
 import glob, json, os, re, sys
 d = json.load(sys.stdin)
 if d.get('stop_hook_active'):
@@ -2057,6 +2074,23 @@ if posted and watcher_on and not headless and not (monitors - dead or armed_tail
           "Monitor command (timeout_ms 1800000), or a background task where there is no Monitor tool — handle events.log "
           "from your cursor, and re-arm on every expiry (methodology 1.5).", file=sys.stderr)
     sys.exit(2)
+# 1.5's owed-debt list: the daemon records each human comment in the live watcher's replies-owed.md; a turn
+# cannot end with a line still owed.
+if watcher_on:
+    for wd in sorted(own_dirs):
+        try:
+            os.kill(int(open(os.path.join(wd, 'gh-watch.pid')).read().strip()), 0)
+        except (OSError, ValueError):
+            continue  # no live daemon in this dir
+        f = os.path.join(wd, 'replies-owed.md')
+        owed = [l.strip() for l in open(f) if l.strip() and not l.startswith('#')] if os.path.exists(f) else []
+        open_owed = [l for l in owed if not l.lower().startswith('done:')]
+        if not os.path.exists(f) or open_owed:
+            item = open_owed[0][:120] if open_owed else 'missing file'
+            print(f"replies-owed.md in {wd} still has an owed reply ({item}). Answer it through the gate and clear the "
+                  "line with 'done: <reply url> <what changed>' (1.5), or clear it with the reason no reply is owed.",
+                  file=sys.stderr)
+            sys.exit(2)
 sys.exit(0)
 ````
 

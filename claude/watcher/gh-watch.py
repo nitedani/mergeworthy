@@ -105,13 +105,28 @@ def wake_agent(event):
     prompt = f"""New GitHub watch event for this directory. Work in {HERE}.
 Read {HERE}/events.log from the byte offset in {HERE}/events.cursor (from the start if it is missing).
 Handle each new '###' event per methodology 1.5 (a comment by the account owner is the owner in chat: answer it
-at once, every post through the gate). After each batch, re-read the rest of events.log and repeat until caught up.
+at once, every post through the gate); clear each comment line you answered in {HERE}/replies-owed.md with
+'done: <reply url> <what changed>'. After each batch, re-read the rest of events.log and repeat until caught up.
 Advance {HERE}/events.cursor to the end of what you handled; an event whose offset is already before the cursor is
 handled: skip it."""
     log = open(os.path.join(HERE, 'wake.log'), 'a')
-    proc = subprocess.Popen(shlex.split(open(agent).read().strip()), stdin=subprocess.DEVNULL, stdout=log,
+    proc = subprocess.Popen(shlex.split(open(agent).read().strip()) + [prompt], stdin=subprocess.DEVNULL, stdout=log,
                             stderr=subprocess.STDOUT, cwd=HERE, start_new_session=True)
     open(pid_file, 'w').write(str(proc.pid))
+
+
+def append_owed(entry):
+    """1.5's replies-owed.md: the daemon records each human comment as an owed reply; the agent
+    clears the line with "done: <reply url> <what changed>" when it is answered. The Stop hook
+    blocks a turn while a line is still owed, so an unposted reply cannot end the session unseen."""
+    path = os.path.join(HERE, 'replies-owed.md')
+    owed = open(path).read().splitlines() if os.path.exists(path) else []
+    if any(f' {entry.split()[2]} ' in l for l in owed):
+        return  # already recorded
+    with open(path, 'a') as f:
+        if not owed:
+            f.write('# replies owed (1.5): clear each line with "done: <reply url> <what changed>"\n')
+        f.write(entry + '\n')
 
 
 def emit(line):
@@ -318,6 +333,8 @@ def scan(state, only=None):
                 edited = sk in state['seen']
                 state['seen'][sk] = upd
                 emit(f"### {key} {kind}{' (edited)' if edited else ''} {cid} by {user['login']} {upd} {extra} {url}\n{body}\n")
+                if not edited and kind in ('comment', 'review-comment'):
+                    append_owed(f"{key} {kind} {cid} by {user['login']} {url} — {body.strip().splitlines()[0][:80]}" if body.strip() else f"{key} {kind} {cid} by {user['login']} {url}")
                 if re.fullmatch(r"\W*(ok(ay)?|good|great|lgtm|yes|sure|agreed|sounds good|👍|nice)\W*", body.strip().lower()):
                     emit(f"### ACK {key} {cid}: an acknowledgement answers your last open proposal in that thread or PR; apply it now (1.5)")
                 if user['login'] in EYES_FOR and not edited and not ONCE and kind in ('comment', 'review-comment'):
