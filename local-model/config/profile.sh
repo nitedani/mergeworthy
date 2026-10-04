@@ -15,5 +15,5 @@ LLM_ARGS+=(--no-mmproj-offload)
 # Server context window. claude-local compacts at LLM_COMPACT, below it: the compaction request itself (the whole
 # conversation plus the summarizer's prompt and summary) must fit in the window, so the trigger can't sit at its
 # edge — at the edge it overflows and the session dies with "Prompt is too long · automatic compaction failed".
-LLM_CTX="${LLM_CTX:-131072}"  # user decision 2026-10-03: 128K, so the GPU holds only what sessions use
-LLM_COMPACT=$(( LLM_CTX * 3 / 4 ))  # 96K: the compaction request (~96K in + prompt + summary) must fit in the window
+LLM_CTX="${LLM_CTX:-163840}"  # user decision 2026-10-04: 160K, so compaction can trigger at 128K and still fit
+LLM_COMPACT="${LLM_COMPACT:-122880}"  # user decision 2026-10-04: 120K; the request (~122.9K in + prompt + summary) fits in the 160K window

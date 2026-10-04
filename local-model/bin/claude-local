@@ -55,10 +55,13 @@ unset ANTHROPIC_API_KEY
 for v in ANTHROPIC_MODEL ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL CLAUDE_CODE_SUBAGENT_MODEL; do
   export "$v"=local
 done
-# Claude Code compacts at LLM_COMPACT (3/4 of the server's window, profile.sh), because the compaction request
-# itself — conversation + summarizer prompt + summary — must fit in the window; at the window's edge it overflows
-# and the session dies. (Claude Code assumes 200K for a model it doesn't know and would compact too late.)
-export CLAUDE_CODE_MAX_CONTEXT_TOKENS="$LLM_CTX" CLAUDE_CODE_AUTO_COMPACT_WINDOW="$LLM_COMPACT"
+# Claude Code's auto-compact threshold (read from the CLI 2.1.288 source): trigger = min(MAX_CONTEXT_TOKENS,
+# max(100000, AUTO_COMPACT_WINDOW)) - min(maxOutputTokens, 20000) - 13000; unknown models take maxOutputTokens
+# 32000, so the deduction is a flat 33000 and there is no 3/4 factor. To trigger at LLM_COMPACT (120K, 122880),
+# AUTO_COMPACT_WINDOW must be LLM_COMPACT + 33000 = 155880, and MAX_CONTEXT_TOKENS (163840) must not clip it:
+# trigger = 155880 - 33000 = 122880. The compaction request (conversation + prompt + summary)
+# fits in the server's 160K window. (Claude Code assumes 200K for a model it doesn't know and would compact too late.)
+export CLAUDE_CODE_MAX_CONTEXT_TOKENS="$LLM_CTX" CLAUDE_CODE_AUTO_COMPACT_WINDOW="$(( LLM_COMPACT + 33000 ))"
 export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
 [ -n "$NO_MODEL" ] && exec claude "$@"
 SESSIONS="$DIR/.sessions"; mkdir -p "$SESSIONS"; touch "$SESSIONS/$$"
