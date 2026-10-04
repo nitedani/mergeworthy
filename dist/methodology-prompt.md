@@ -157,7 +157,15 @@ Principles:
 - When shaping an interface, ask: fewer methods? simpler parameters? more hidden inside?
 - For testability: accept dependencies rather than create them (`processOrder(order, gateway)`, not a `new StripeGateway()` inside); return results rather than produce side effects (`calculateDiscount(cart): Discount`, not `applyDiscount(cart): void`); a small surface means fewer tests and simpler setup.
 
-**Design it twice**: for a new interface, have parallel fresh-context agents design it in radically different ways, then compare the candidates on depth, locality and seam placement (the candidates of step 1).
+Deepening a cluster of shallow modules: classify each dependency first, since its category decides how the deep module is tested at its seam:
+- **In-process** (pure computation, in-memory state): merge the modules and test through the new interface; no adapter.
+- **Local-substitutable** (a local stand-in exists, e.g. PGLite for Postgres, an in-memory filesystem): test with the stand-in in the suite; the seam stays internal.
+- **Remote but owned** (your own services over a network): a port at the seam; the deep module owns the logic, the transport is an injected adapter (in-memory in tests, HTTP or a queue in production).
+- **True external** (a third party you don't control): an injected port, a mock adapter in tests.
+
+A deep module may keep internal seams for its own tests; don't expose them through its interface because tests use them. Replace, don't layer: once tests at the deepened interface exist, delete the old tests on the shallow parts. Tests assert observable outcomes through the interface, so they survive internal refactors; a test that changes with the implementation tests past the interface.
+
+**Design it twice** (your first interface is unlikely to be the best): frame the problem for the user (the constraints any interface must meet, the dependencies and their categories, a rough code sketch that makes the constraints concrete, not a proposal), then have 3+ fresh-context agents design it in parallel, each under a different constraint: minimize the interface (1–3 entry points), maximize flexibility, make the most common caller trivial, and (where dependencies cross a seam) ports and adapters. Each returns the interface (types, invariants, ordering, error modes), a usage example, what hides behind the seam, its dependency strategy and adapters, and where its leverage is high or thin. Compare them on depth, locality and seam placement, then recommend one (or a hybrid) and say why: a strong read, not a menu. These are the candidates of step 1.
 ## 1.5 The live GitHub loop (every tier, from your first post until every thread you're in is merged or closed)
 
 A maintainer's comment is handled like the user typing in this chat: highest priority, full effort.
