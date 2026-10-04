@@ -80,29 +80,15 @@ def is_human(u, body=None, agent_hashes=frozenset()):
     return _norm(body) not in agent_hashes  # ME: the user's own comment unless it's an agent post
 
 
-def session_watching():
-    """True while a live session tails this dir's events.log (its Monitor or background tail, 1.5)."""
-    log = os.path.join(HERE, 'events.log')
-    for pid in os.listdir('/proc'):
-        if not pid.isdigit():
-            continue
-        try:
-            argv = open(f'/proc/{pid}/cmdline', 'rb').read().split(b'\0')
-        except OSError:
-            continue
-        if argv and os.path.basename(argv[0].decode(errors='replace')) == 'tail' and log.encode() in argv:
-            return True
-    return False
-
-
 def wake_agent(event):
     """The wake layer, harness-independent: launch the configured agent (command from <dir>/agent, e.g.
-    `claude -p` or `codex exec`) to handle the new event from events.cursor, so the event is answered
-    even when no interactive session is watching. One wake agent per dir at a time; the next event
-    re-launches it once the previous one exits. Deduplication is the shared cursor: an event already
-    handled (cursor past it) is skipped."""
-    if ONCE or session_watching():
-        return  # a live session tails events.log and handles this event itself; a second agent would race it
+    `claude -p` or `codex exec`) to handle the new event from events.cursor. It is the only handler:
+    a live session never acts on an event it hasn't checked against events.cursor and wake.pid (1.5),
+    so the woken agent is never raced. One wake agent per dir at a time; the next event re-launches it
+    once the previous one exits. Deduplication is the shared cursor: an event already handled
+    (cursor past it) is skipped."""
+    if ONCE:
+        return
     agent = os.path.join(HERE, 'agent')
     if not os.path.exists(agent):
         # plain print, not emit: the line starts with ###, so emit would re-trigger wake_agent

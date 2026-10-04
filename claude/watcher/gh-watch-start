@@ -7,8 +7,9 @@
 # - Writes <dir>/agent, the command the daemon launches to wake an agent on each event (GH_WATCH_AGENT,
 #   else the first of claude, codex on PATH). The daemon does the waking: it runs that command with a
 #   prompt that handles events.log from events.cursor, one agent per dir at a time, log in <dir>/wake.log.
-# - Prints the tail command to arm — belt-and-braces for an interactive session (the Monitor tool, or a
-#   background task where there is no Monitor, re-armed on every expiry).
+# - Prints the persistent-tail command to arm: a detached (nohup) tail that never expires, so it wakes
+#   nothing and needs no re-arm; it archives event lines in <dir>/tail-events.log and satisfies the
+#   Stop hook's armed-monitor check. The daemon's wake is the only event handler (1.5).
 set -e
 [ -n "$1" ] || { sed -n '2,7p' "$0"; exit 1; }
 dir=$(realpath -m "$1"); shift
@@ -42,6 +43,5 @@ if [ -n "$agent" ]; then
 else
   echo "No agent CLI found (claude/codex): the daemon will not wake an agent. Set GH_WATCH_AGENT or write $dir/agent."
 fi
-echo "Belt-and-braces for this interactive session, arm this tail (re-arm on every expiry):"
-echo "  tail -n 0 -F $dir/events.log ~/.claude/profiles/swap-events.log 2>/dev/null | grep --line-buffered -E '^###|WATCH ERROR|STALE|^[^ =]'"
-echo "With the Monitor tool, arm it as Monitor (timeout_ms 1800000). Without one (a local claude), run it as a background task (timeout 1800)."
+echo "Arm the persistent tail (idempotent via $dir/tail.pid; it never expires, wakes nothing, and needs no re-arm):"
+echo "  if [ -s $dir/tail.pid ] && kill -0 \$(cat $dir/tail.pid) 2>/dev/null; then echo tail already running; else nohup sh -c 'tail -n 0 -F $dir/events.log ~/.claude/profiles/swap-events.log 2>/dev/null | grep --line-buffered -E \"^###|WATCH ERROR|STALE|^[^ =]\" >> $dir/tail-events.log' >/dev/null 2>&1 & echo \$! > $dir/tail.pid; fi"
