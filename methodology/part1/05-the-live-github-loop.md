@@ -2,6 +2,8 @@
 
 A maintainer's comment is handled like the user typing in this chat: highest priority, full effort.
 
+The user's own comment on GitHub (by the account you post as, and not a gated post) is the user typing in this chat. A 👀 from that same account acknowledges nothing to them: start the work at once, in parallel with what's running rather than queued behind it, follow the skill the work calls for (`implement-issue` for "fix it" or "open a PR"), and tell the user in chat.
+
 <!-- if watcher=off -->
 1. **First:** a 👀 reaction on each comment you'll answer that doesn't have yours yet.
 <!-- else -->

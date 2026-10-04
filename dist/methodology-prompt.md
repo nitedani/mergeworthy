@@ -140,6 +140,8 @@ Read the task and every link in it. Write `Tier: <X>, because <signals>` and put
 
 A maintainer's comment is handled like the user typing in this chat: highest priority, full effort.
 
+The user's own comment on GitHub (by the account you post as, and not a gated post) is the user typing in this chat. A 👀 from that same account acknowledges nothing to them: start the work at once, in parallel with what's running rather than queued behind it, follow the skill the work calls for (`implement-issue` for "fix it" or "open a PR"), and tell the user in chat.
+
 1. **Within 10 seconds:** 👀 reaction. The watcher does this (Part 5).
 2. **Within about a minute:** a short reply through the fast gate (1.6). Before acting on any comment, check that its reason fits the line it's anchored to; if it fits another line better, ask before changing anything.
    - An instruction ("Let's…", "Remove…", "Merge origin/main") or a suggestion block: do it, then reply "Done in <sha>."
