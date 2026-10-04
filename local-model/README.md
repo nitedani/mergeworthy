@@ -11,7 +11,7 @@ Run Claude Code on a local model, and let Claude sessions hand it bounded tasks.
 | `sandbox/` | The sandbox every ticket runs in: network for reading docs and source, no credentials, a fake `gh` |
 | `eval/bin/` | Replay a real task in the sandbox to compare models or methodology versions (`new-run <task> [arm]`, `queue`, `show-run`); the tasks are your own |
 
-The model: Qwen3.8-27B GSQ-RCO IQ3_XXS with its MTP head, 160K context at 4-bit KV (Claude Code compacts at about 120K), on one 16 GB NVIDIA GPU.
+The model: Qwen3.8-27B GSQ-RCO IQ3_XXS with its MTP head, 160K context at 4-bit KV (Claude Code compacts at about 113K), on one 16 GB NVIDIA GPU.
 
 Setup:
 1. Build [PrismML-Eng/llama.cpp](https://github.com/PrismML-Eng/llama.cpp) (branch `prism`) with CUDA into `~/local-llm/build`, so `build/bin/llama-server` exists. Upstream llama.cpp supports the same flags, but on this setup its prebuilt Linux binary needs glibc 2.38 and its Docker image ran 25× slower (1.9 vs 49.6 tok/s, the VRAM didn't fit through Docker Desktop).

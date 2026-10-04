@@ -16,4 +16,4 @@ LLM_ARGS+=(--no-mmproj-offload)
 # conversation plus the summarizer's prompt and summary) must fit in the window, so the trigger can't sit at its
 # edge — at the edge it overflows and the session dies with "Prompt is too long · automatic compaction failed".
 LLM_CTX="${LLM_CTX:-163840}"  # user decision 2026-10-04: 160K, so compaction can trigger at 128K and still fit
-LLM_COMPACT="${LLM_COMPACT:-122880}"  # user decision 2026-10-04: 120K; the request (~122.9K in + prompt + summary) fits in the 160K window
+LLM_COMPACT="${LLM_COMPACT:-115480}"  # user decision 2026-10-04: AUTO_COMPACT_WINDOW 145K (148480), so compaction triggers at 148480 - 33000 = 115480
