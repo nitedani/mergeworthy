@@ -73,8 +73,10 @@ else:
         url = f'http://127.0.0.1:{PROXY_PORT}'
         env = dict(os.environ, HTTP_PROXY=url, HTTPS_PROXY=url, http_proxy=url, https_proxy=url,
                    NO_PROXY='localhost,127.0.0.1,::1', no_proxy='localhost,127.0.0.1,::1', NODE_USE_ENV_PROXY='1')
-        inner = f'ip link set lo up 2>/dev/null; "{sys.executable}" "{me}" --bridge "{sock}" & sleep 0.3; exec "$@"'
-        sys.exit(subprocess.call(['unshare', '-rn', 'sh', '-c', inner, 'isolated-run', *sys.argv[1:]], env=env))
+        # The bridge dies with the command: left running, it would keep the namespace alive
+        inner = (f'ip link set lo up 2>/dev/null; "{sys.executable}" "{me}" --bridge "{sock}" & b=$!; '
+                 'trap \'kill $b 2>/dev/null\' EXIT INT TERM; sleep 0.3; "$@"')
+        sys.exit(subprocess.call(['unshare', '-rn', '--pid', '--fork', '--kill-child', '--mount-proc', 'sh', '-c', inner, 'isolated-run', *sys.argv[1:]], env=env))
     finally:
         proxy.terminate()
         shutil.rmtree(run_dir, ignore_errors=True)
