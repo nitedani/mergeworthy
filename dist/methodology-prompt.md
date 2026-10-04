@@ -208,7 +208,7 @@ It covers everything that reaches an external service, with no lighter category:
 - Whatever you start, you stop: dev servers, builds, preview servers, proxies. A subagent records the PIDs it starts and kills them before handing back; check with `ps` that none are left. Find a server by the PID you started (and its children, `pgrep -P <pid>`) or by its port (`ss -ltnp 'sport = :<port>'`); never grep `ps` output for a port number, and never `pgrep -f <pattern>`. Check each PID's command and directory before killing it.
 - At most 4 browsers and 4 dev servers of your own at once; stop each when its work ends.
 - Never restart or reconfigure a container someone else's work depends on; start your own alongside.
-- Anything that listens on a port (e2e tests, dev and preview servers) runs through `isolated-run <command>`, yours and every subagent's: its own network namespace, so fixed ports never collide and parallel runs never test each other's servers. Install dependencies outside it (no network inside). Never kill or wait out another run's server.
+- Anything that listens on a port (e2e tests, dev and preview servers) runs through `isolated-run <command>`, yours and every subagent's: its own network namespace with a private loopback (outside network through a proxy it sets up), so fixed ports never collide and parallel runs never test each other's servers. Never kill or wait out another run's server.
 - Never modify the package store or a shared `node_modules`; scratch installs use `--package-import-method=copy`. After any install, check `git status` for unexpected changes.
 - Browser work uses the DevTools MCP. On "profile in use", retry after 30 s, then ask. Never fall back to scripted browsers silently, never open windows on the user's desktop, never kill another session's browser.
 - Isolate worktrees: their own ports, databases and generated clients. Never touch the user's own checkouts (the clones the user works in), including their git config, which their worktrees share: no edits, commits, checkouts, resets or branch switches; work in worktrees you create, and to read another branch, `git worktree add --detach <artifact root>/<name> <ref>`.
@@ -925,7 +925,7 @@ These scripts enforce the rules that failed as text alone. This file is the only
 | `pr-steps` + posting hook | Part 2 steps 6–7 (Part 3 sections 6–7 in Tier ≥ M), 1.7. | `gh pr create` (unless `--draft`) and `gh pr ready` are blocked until HEAD has a `review` and a `refactor` record: run `pr-steps review <reviewer output>` and `pr-steps refactor <rating output>` on the final HEAD after the fixes. |
 | `install-methodology` | 1.1.12: this file travels; the machine's copies follow it. | Writes Part 5's scripts to `~/.claude/mechanisms/` (commands linked into `~/.local/bin`), merges the hook config into `~/.claude/settings.json`, and writes the Always-on rules into `~/.claude/CLAUDE.md` between markers, leaving the rest of that file alone. The file's first line, the settings header `build.sh` writes, goes to `~/.claude/mechanisms/settings.env` as `METHODOLOGY_<KEY>=<value>` lines, read by `post-lint` (badge, review records; `gate-pass` runs it) and `pre-bash-guard` (merge); an environment variable of the same name wins. |
 | `methodology-update` (`~/.local/bin`; SessionStart hook with `--auto`) | 1.1.12: every machine follows the repo. | Pulls the repo the installed file came from (`METHODOLOGY_SOURCE` in `settings.env`), rebuilds the same profiles, reinstalls, and the local-model tooling when installed. `--auto`: at most once a day, detached, logged to `~/.claude/mechanisms/update.log`; the new version applies from the next session. |
-| `isolated-run` (`~/.local/bin`) | 1.8: two agents' e2e runs shared port 3000 and tested each other's servers. | `isolated-run <command>` runs it in a private network namespace (`unshare -rn`, loopback only). `pre-bash-guard` blocks `test-e2e`, `vike dev/preview` and `pnpm run dev/preview` that don't start with it. |
+| `isolated-run` (`~/.local/bin`) | 1.8: two agents' e2e runs shared port 3000 and tested each other's servers. | `isolated-run <command>` runs it in a private network namespace (`unshare -rn`): its own loopback, and outside network through an HTTP proxy it serves on a unix socket (`HTTP(S)_PROXY`, `NODE_USE_ENV_PROXY=1`). `pre-bash-guard` blocks `test-e2e`, `vike dev/preview` and `pnpm run dev/preview` that don't start with it. |
 | `uninstall-methodology` (`~/.local/bin`) | | Removes the hooks, the `CLAUDE.md` block, `~/.claude/mechanisms/` and the command links; keeps the repo, artifacts, `gated-posts.txt`, `pr-steps/` and the local model's files. |
 | `ready-check` (manual) | 1.7. | Before saying "ready", check every item of 1.7's Ready list against the head (`gh pr checks` for CI; the guardian verdict per Part 3 §11.1, mechanism census included, run after the last fix round; the body re-read against the head) and paste the result. |
 
@@ -2172,10 +2172,84 @@ shutil.rmtree(mech, ignore_errors=True); print('removed', mech)
 ### `isolated-run`
 
 ````bash
-#!/bin/bash
-# isolated-run <command...>: runs a command that starts servers (e2e tests, dev or preview servers) in its own network
-# namespace with a private loopback, so a fixed port such as 3000 never collides with another run, agent or session.
-# No outside network inside: install dependencies before, not through it.
-[ $# -gt 0 ] || { echo "usage: isolated-run <command...>" >&2; exit 2; }
-exec unshare -rn sh -c 'ip link set lo up 2>/dev/null; exec "$@"' isolated-run "$@"
+#!/usr/bin/env python3
+"""isolated-run <command...>: runs a command that starts servers (e2e tests, dev or preview servers) in its own network
+namespace with a private loopback, so a fixed port such as 3000 never collides with another run, agent or session.
+Outside network goes through an HTTP proxy (HTTP_PROXY/HTTPS_PROXY inside; Node's fetch with NODE_USE_ENV_PROXY,
+Chromium from the environment), served outside the namespace on a unix socket."""
+import asyncio, os, shutil, subprocess, sys, tempfile
+
+PROXY_PORT = 3128
+
+
+async def pipe(r, w):
+    try:
+        while (b := await r.read(65536)):
+            w.write(b)
+            await w.drain()
+    except Exception:
+        pass
+    finally:
+        w.close()
+
+
+async def proxy_client(r, w):  # outside: an HTTP proxy request from the namespace
+    try:
+        head = await r.readuntil(b'\r\n\r\n')
+        method, target = head.split(b' ', 2)[:2]
+        if method == b'CONNECT':
+            host, port = target.decode().rsplit(':', 1)
+            r2, w2 = await asyncio.open_connection(host, int(port))
+            w.write(b'HTTP/1.1 200 Connection established\r\n\r\n')
+            await w.drain()
+        else:  # plain http, absolute URL
+            from urllib.parse import urlsplit
+            u = urlsplit(target.decode())
+            r2, w2 = await asyncio.open_connection(u.hostname, u.port or 80)
+            path = (u.path or '/') + (f'?{u.query}' if u.query else '')
+            w2.write(head.replace(target, path.encode(), 1))
+    except Exception:
+        w.close()
+        return
+    await asyncio.gather(pipe(r, w2), pipe(r2, w))
+
+
+async def bridge_client(r, w, sock):  # inside: 127.0.0.1:PROXY_PORT -> the unix socket
+    try:
+        r2, w2 = await asyncio.open_unix_connection(sock)
+    except Exception:
+        w.close()
+        return
+    await asyncio.gather(pipe(r, w2), pipe(r2, w))
+
+
+def serve(coro):
+    async def main():
+        server = await coro
+        async with server:
+            await server.serve_forever()
+    asyncio.run(main())
+
+
+if len(sys.argv) > 2 and sys.argv[1] == '--proxy':
+    serve(asyncio.start_unix_server(proxy_client, sys.argv[2]))
+elif len(sys.argv) > 2 and sys.argv[1] == '--bridge':
+    sock = sys.argv[2]
+    serve(asyncio.start_server(lambda r, w: bridge_client(r, w, sock), '127.0.0.1', PROXY_PORT))
+else:
+    if len(sys.argv) < 2:
+        sys.exit('usage: isolated-run <command...>')
+    run_dir = tempfile.mkdtemp(prefix='isolated-run-', dir=os.environ.get('XDG_RUNTIME_DIR') or os.path.expanduser('~/.cache'))
+    sock = os.path.join(run_dir, 'proxy.sock')
+    me = os.path.abspath(__file__)
+    proxy = subprocess.Popen([sys.executable, me, '--proxy', sock])
+    try:
+        url = f'http://127.0.0.1:{PROXY_PORT}'
+        env = dict(os.environ, HTTP_PROXY=url, HTTPS_PROXY=url, http_proxy=url, https_proxy=url,
+                   NO_PROXY='localhost,127.0.0.1,::1', no_proxy='localhost,127.0.0.1,::1', NODE_USE_ENV_PROXY='1')
+        inner = f'ip link set lo up 2>/dev/null; "{sys.executable}" "{me}" --bridge "{sock}" & sleep 0.3; exec "$@"'
+        sys.exit(subprocess.call(['unshare', '-rn', 'sh', '-c', inner, 'isolated-run', *sys.argv[1:]], env=env))
+    finally:
+        proxy.terminate()
+        shutil.rmtree(run_dir, ignore_errors=True)
 ````
