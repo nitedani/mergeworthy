@@ -2,7 +2,7 @@
 """Claude Code PreToolUse hook (matcher: Bash). Exit 2 blocks the command; stderr goes to the agent.
 Checks each simple command separately (split at ; && || | & and newlines, heredoc bodies and quoted text ignored).
 METHODOLOGY_MERGE=reviewer blocks every `gh pr merge`."""
-import json, re, sys, os, hashlib, shlex
+import json, re, sys, os, hashlib, shlex, subprocess
 def setting(name, default):
     """METHODOLOGY_<name> from the environment, else from settings.env next to this script (written by install-methodology)."""
     f = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'settings.env')
@@ -148,7 +148,6 @@ def check(t, has_cd):
             if force or any(not re.match(r'^--force-with-lease=\S+:\S+$', x) for x in leases):
                 block("force-push only with --force-with-lease=<branch>:<sha you last pushed>, after checking others' commits")
     if p == 'gh' and len(a) >= 2 and a[0] == 'pr' and ((a[1] == 'create' and '--draft' not in a and '-d' not in a) or (a[1] == 'ready' and '--undo' not in a)):
-        import subprocess
         head = subprocess.run(['git', '-C', run_dir, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
         rec = os.path.expanduser(f'~/.claude/pr-steps/{head}')
         kinds = {l.split()[0] for l in open(rec)} if head and os.path.exists(rec) else set()
@@ -163,6 +162,19 @@ def check(t, has_cd):
         num = next((x for i, x in enumerate(rest) if re.fullmatch(r'\d+', x) and (i == 0 or not rest[i - 1].startswith('-'))), '')
         if not ('--squash' in rest or '-s' in rest) or not subj or not re.search(r' \(#' + (num or r'\d+') + r'\)$', subj[-1]) or body != ['']:
             block('squash-merge as the repo asks, by default `gh pr merge <N> --squash --subject "<exact PR title> (#<N>)" --body ""`; re-read the repo\'s AGENTS.md first')
+        # Deleting a branch other open PRs are based on closes them (GitHub doesn't retarget them)
+        if num and ('--delete-branch' in rest or '-d' in rest):
+            repo = opt(rest, ['-R', '--repo'])
+            rargs = ['-R', repo[-1]] if repo else []
+            try:
+                head = subprocess.run(['gh', 'pr', 'view', num, *rargs, '--json', 'headRefName', '-q', '.headRefName'],
+                                      capture_output=True, text=True, timeout=20).stdout.strip()
+                deps = subprocess.run(['gh', 'pr', 'list', *rargs, '--base', head, '--json', 'number', '-q', '[.[].number] | join(",")'],
+                                      capture_output=True, text=True, timeout=20).stdout.strip() if head else ''
+            except Exception:
+                deps = ''
+            if deps:
+                block(f"open PRs #{deps} are based on {head}: retarget them first (`gh pr edit <N> --base <new base>`), or merge without --delete-branch; deleting it closes them")
     if p == 'gh' and len(a) >= 2 and a[0] in ('issue', 'pr'):
         sub, rest = a[1], a[2:]
         files = opt(rest, ['--body-file', '-F'])
