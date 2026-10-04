@@ -136,6 +136,28 @@ Read the task and every link in it. Write `Tier: <X>, because <signals>` and put
    Nothing that changes existing behavior the feature doesn't strictly need. Every term explained in plain words.
 5. Post the walkthrough as soon as the prototype holds the invariants. Part 3's loops run only on a shape the maintainer has OK'd; until then, one pass. After a PR opens, each commit answers a user or maintainer request, a red CI, a found bug, or a rule in this file.
 
+
+### 1.4.1 Codebase design: deep modules
+
+Wherever code is designed or restructured (the design loop, Part 2 step 3, the finality pass, Part 3's refactor pass), aim for deep modules: a lot of behaviour behind a small interface, placed at a clean seam, testable through that interface. Use these terms exactly, in code reviews and PR text too; don't substitute component, service, API or boundary:
+
+- **Module**: anything with an interface and an implementation, at any scale (a function, a class, a package, a slice across tiers).
+- **Interface**: everything a caller must know to use the module correctly: the types, and also invariants, ordering, error modes, required configuration and performance characteristics. Not only a TypeScript `interface` or a class's public methods.
+- **Implementation**: the code inside a module.
+- **Depth**: leverage at the interface, the behaviour a caller or test can exercise per unit of interface it has to learn. Deep: a lot behind a small interface. Shallow: an interface nearly as complex as what it hides (a pass-through). Not a ratio of lines, which would reward padding.
+- **Seam** (Feathers): where behaviour can change without editing in that place; where a module's interface lives. Where to put it is a decision of its own, apart from what goes behind it. Not "boundary".
+- **Adapter**: a concrete thing that satisfies an interface at a seam; a role, not a size.
+- **Leverage** (what callers get) and **locality** (what maintainers get: a change, a bug, a fix in one place).
+
+Principles:
+- Depth belongs to the interface. A deep module may be built from small parts with internal seams that its own tests use; they're not part of its interface.
+- **The deletion test**: imagine deleting the module. If complexity vanishes, it was a pass-through; if it reappears across its callers, it earns its keep.
+- **The interface is the test surface**: callers and tests cross the same seam. Needing to test past the interface means the module has the wrong shape.
+- **One adapter is a hypothetical seam, two are a real one**: don't add a seam until something varies across it.
+- When shaping an interface, ask: fewer methods? simpler parameters? more hidden inside?
+- For testability: accept dependencies rather than create them (`processOrder(order, gateway)`, not a `new StripeGateway()` inside); return results rather than produce side effects (`calculateDiscount(cart): Discount`, not `applyDiscount(cart): void`); a small surface means fewer tests and simpler setup.
+
+**Design it twice**: for a new interface, have parallel fresh-context agents design it in radically different ways, then compare the candidates on depth, locality and seam placement (the candidates of step 1).
 ## 1.5 The live GitHub loop (every tier, from your first post until every thread you're in is merged or closed)
 
 A maintainer's comment is handled like the user typing in this chat: highest priority, full effort.
@@ -769,8 +791,8 @@ the failure text recorded — the confirmed-kept column equals the deleted colum
 (6) ESSENTIAL vs ACCIDENTAL complexity — keep hard-problem complexity (readability notes only),
 cut solution-generality bloat. (7) INVISIBLE OPTIMIZATIONS — cut scale-only machinery; SURFACE
 (don't cut) optimizations with a real viability cost. (8) NO introspection/noise surface.
-(9) DEEP-MODULE DESIGN — flag SHALLOW modules; the deletion test; "the interface is the test
-surface". (10) FOWLER SMELLS — Mysterious Name, Duplicated Code, Feature Envy, Data Clumps,
+(9) DEEP-MODULE DESIGN (1.4.1 terms) — flag SHALLOW modules; the deletion test; "the interface is the test
+surface"; seam placement; a seam with one adapter is hypothetical. (10) FOWLER SMELLS — Mysterious Name, Duplicated Code, Feature Envy, Data Clumps,
 Primitive Obsession, Repeated Switches, Shotgun Surgery, Divergent Change, Speculative
 Generality, Message Chains, Middle Man, Refused Bequest. (11) THE 10-SECOND PASS — the
 instant-wince lens: names confessing mixed responsibility, queries that write, import aliases

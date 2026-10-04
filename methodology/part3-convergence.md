@@ -193,8 +193,8 @@ the failure text recorded — the confirmed-kept column equals the deleted colum
 (6) ESSENTIAL vs ACCIDENTAL complexity — keep hard-problem complexity (readability notes only),
 cut solution-generality bloat. (7) INVISIBLE OPTIMIZATIONS — cut scale-only machinery; SURFACE
 (don't cut) optimizations with a real viability cost. (8) NO introspection/noise surface.
-(9) DEEP-MODULE DESIGN — flag SHALLOW modules; the deletion test; "the interface is the test
-surface". (10) FOWLER SMELLS — Mysterious Name, Duplicated Code, Feature Envy, Data Clumps,
+(9) DEEP-MODULE DESIGN (1.4.1 terms) — flag SHALLOW modules; the deletion test; "the interface is the test
+surface"; seam placement; a seam with one adapter is hypothetical. (10) FOWLER SMELLS — Mysterious Name, Duplicated Code, Feature Envy, Data Clumps,
 Primitive Obsession, Repeated Switches, Shotgun Surgery, Divergent Change, Speculative
 Generality, Message Chains, Middle Man, Refused Bequest. (11) THE 10-SECOND PASS — the
 instant-wince lens: names confessing mixed responsibility, queries that write, import aliases
