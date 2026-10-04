@@ -159,9 +159,12 @@ def scan_reactions(state, threads):
     agent_hashes = agent_post_hashes()
     seen = state.setdefault('reactions', {})  # "<kind>:<id>" -> ["<login>:<content>", ...]
     for repo, num in threads:
-        for kind, path in (('comment', 'issues'), ('review-comment', 'pulls')):
+        for kind, path in (('body', 'issues'), ('comment', 'issues'), ('review-comment', 'pulls')):
             try:
-                comments = gh_json(f"repos/{repo}/{path}/{num}/comments?per_page=100")
+                if kind == 'body':  # the PR or issue description itself
+                    comments = gh_json(f"repos/{repo}/issues/{num}")
+                else:
+                    comments = gh_json(f"repos/{repo}/{path}/{num}/comments?per_page=100")
             except Exception as e:
                 if path == 'issues':
                     emit(f"WATCH ERROR reactions {repo}#{num}: {e}")
@@ -172,7 +175,8 @@ def scan_reactions(state, threads):
                     continue
                 sk = f"{kind}:{c['id']}"
                 try:
-                    reactions = gh_json(f"repos/{repo}/{path}/comments/{c['id']}/reactions?per_page=100")
+                    url = f"repos/{repo}/issues/{num}/reactions" if kind == 'body' else f"repos/{repo}/{path}/comments/{c['id']}/reactions"
+                    reactions = gh_json(f"{url}?per_page=100")
                 except Exception as e:
                     emit(f"WATCH ERROR reactions {sk}: {e}")
                     continue

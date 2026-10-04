@@ -64,7 +64,7 @@ Read the task and every link in it. Write `Tier: <X>, because <signals>` and put
 4. **Every user message gets answered, first.** At each turn, list the user's messages since your last reply, including ones typed while you worked, and handle every one before ending the turn. Answer each question in the first lines, before any status or tool work; one that needs investigation goes on `questions-owed.md` with an ETA. An instruction about how to do something is done as given; try another way only after it fails, and quote the failure. A setting or design the user decided stays decided: mark it where it lives (`# user decision YYYY-MM-DD: <what, why>`), and if you find a problem with it, keep it and report the problem with evidence; a session that never saw the decision reads the marker, not the chat. An instruction whose premise doesn't hold (e.g. "one PR per item" when the items depend on each other): say so with a recommendation before acting.
 5. **Evidence for every claim, in chat too.** Each factual sentence about code, a package, a release or runtime behavior carries its source (`file:line`, `npm view`, command output) or is marked `guess:`; say what you could not verify. Check `main`, the registry and the upstream source before recommending to close, remove, replace or switch anything. A "can't" needs the failed attempt quoted plus one alternative tried. If you contradict something you said earlier, say so. A job you report as running is one you saw make progress (its log, its output file, the GPU busy), not one you only started. Measure through the exact path the real work takes (the same client, API and settings the user runs), never a convenient substitute; a result from another path is not evidence. A CI workflow change works only once a real run on the branch shows it.
 6. **Fix at the root; never document around a defect.** A sentence telling users to work around the product ("order by seq when order matters", "may miss for 60 s") is a bug to fix, upstream included, unless the user explicitly accepts it. These need the user's OK with a written reason the root fix is impossible: parsing twice, encoding to dodge a transport, retry or reload loops, a second code path for old runtimes, silent fallbacks. Unreleased, experimental or pre-1.0 code gets no compatibility code or shims (check `npm view <pkg> versions`); losing something users can do on `main` is still a regression (1.1.11). Before an upstream PR, find which side relies on behavior the other doesn't promise (hook order, file layout) and fix that side first, ours included.
-7. **Parallel, not later.** "A separate PR" means started now, alongside. A found defect, in or out of scope, gets exactly one disposition: fixed in this change, a PR opened now (listed on the umbrella if there is one), or an issue (only when there's no umbrella and it's unrelated; search for an existing one first, trace both ends, state facts only). "Mentioned" is never a disposition. Before deferring anything, count its lines: under ~20 lines and neither a user-visible fix nor a defect on `main` means this PR; otherwise its own PR, now. "It can be added later" is never a reason. A new dependency never joins an open PR the maintainer hasn't agreed to. Other follow-ups on the same topic go on the open PR; a PR that replaces another closes it, with a link, in the same step.
+7. **Parallel, not later.** "A separate PR" means started now, alongside. A found defect, in or out of scope, gets exactly one disposition: fixed in this change, a PR opened now (listed on the umbrella if there is one), or an issue (only when there's no umbrella and it's unrelated; search for an existing one first, trace both ends, state facts only). "Mentioned" is never a disposition. The same defect in a sibling (another adapter, another call site) is related: it is fixed in this change, a public API change included, which the PR then states. Before deferring anything, count its lines: under ~20 lines and neither a user-visible fix nor a defect on `main` means this PR; otherwise its own PR, now. "It can be added later" is never a reason. A new dependency never joins an open PR the maintainer hasn't agreed to. Other follow-ups on the same topic go on the open PR; a PR that replaces another closes it, with a link, in the same step.
 8. **Never drop scope silently.** Copy every ask and link of the task into `scope.md` as checkboxes, at the start and whenever the user adds one; the final report walks that list. Copy each claim of an accepted proposal into `acceptance.md`. Dropping or deferring any item needs the user's OK first, never after. If a recorded decision or an accepted claim turns out not to work, ask with the blocker's evidence and your recommendation before building the alternative.
 9. **Respect decision authority.** Record each maintainer request with its link and date, and do it as asked, or ask back with a recommendation; never decide otherwise and inform. The newest statement on a subject wins; re-read the thread before citing anyone. "The rest LGTM" agrees to every unquestioned proposal in the comment it answers: record them as agreed and start. A question is never a decision.
 10. **Names match behavior; no invented options.** Every new public name gets a one-line "name → what it does in every case" check. A new option needs a named user scenario that can't be served without it.
@@ -1107,9 +1107,12 @@ def scan_reactions(state, threads):
     agent_hashes = agent_post_hashes()
     seen = state.setdefault('reactions', {})  # "<kind>:<id>" -> ["<login>:<content>", ...]
     for repo, num in threads:
-        for kind, path in (('comment', 'issues'), ('review-comment', 'pulls')):
+        for kind, path in (('body', 'issues'), ('comment', 'issues'), ('review-comment', 'pulls')):
             try:
-                comments = gh_json(f"repos/{repo}/{path}/{num}/comments?per_page=100")
+                if kind == 'body':  # the PR or issue description itself
+                    comments = gh_json(f"repos/{repo}/issues/{num}")
+                else:
+                    comments = gh_json(f"repos/{repo}/{path}/{num}/comments?per_page=100")
             except Exception as e:
                 if path == 'issues':
                     emit(f"WATCH ERROR reactions {repo}#{num}: {e}")
@@ -1120,7 +1123,8 @@ def scan_reactions(state, threads):
                     continue
                 sk = f"{kind}:{c['id']}"
                 try:
-                    reactions = gh_json(f"repos/{repo}/{path}/comments/{c['id']}/reactions?per_page=100")
+                    url = f"repos/{repo}/issues/{num}/reactions" if kind == 'body' else f"repos/{repo}/{path}/comments/{c['id']}/reactions"
+                    reactions = gh_json(f"{url}?per_page=100")
                 except Exception as e:
                     emit(f"WATCH ERROR reactions {sk}: {e}")
                     continue
@@ -1597,6 +1601,9 @@ if len(re.findall(r'^\s*(?:[-*]|\d+\.)\s+[^\n|]*·\s*blocks', text, flags=re.M |
 for row in re.findall(r'^\|(?:[^|\n]*\|){3}([^|\n]*)\|\s*$', text, flags=re.M):
     if re.search(r'\b(recommend|follow-up|follow up|later)\b', row, re.I):
         findings.append(f"notes table Next {row.strip()[:50]!r}: open the follow-up first and link it (PR <url>), fix it (fixed in <sha>), or write 'nothing, because …'")
+# a found defect is fixed in this change, not parked in prose (methodology 1.1.7): the same bug elsewhere is related
+for m in re.finditer(r"[^.\n]*\b(separate issue|separate PR|out of scope|left for later|for later|a later PR|follow-up issue|another PR)\b[^.\n]*", prose, re.I):
+    findings.append(f"deferral {m.group(0).strip()[:70]!r}: fix it in this change, open the PR now and link it, or quote the user's OK (1.1.7)")
 badge = setting('BADGE', 'on')  # auto: only a human account (`gh api user` type User, not Bot) needs it
 if kind != 'tracker' and not has_badge and (badge == 'on' or badge == 'auto' and
         subprocess.run(['gh', 'api', 'user', '--jq', '.type'], capture_output=True, text=True).stdout.strip() == 'User'):

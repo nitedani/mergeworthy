@@ -89,6 +89,9 @@ if len(re.findall(r'^\s*(?:[-*]|\d+\.)\s+[^\n|]*·\s*blocks', text, flags=re.M |
 for row in re.findall(r'^\|(?:[^|\n]*\|){3}([^|\n]*)\|\s*$', text, flags=re.M):
     if re.search(r'\b(recommend|follow-up|follow up|later)\b', row, re.I):
         findings.append(f"notes table Next {row.strip()[:50]!r}: open the follow-up first and link it (PR <url>), fix it (fixed in <sha>), or write 'nothing, because …'")
+# a found defect is fixed in this change, not parked in prose (methodology 1.1.7): the same bug elsewhere is related
+for m in re.finditer(r"[^.\n]*\b(separate issue|separate PR|out of scope|left for later|for later|a later PR|follow-up issue|another PR)\b[^.\n]*", prose, re.I):
+    findings.append(f"deferral {m.group(0).strip()[:70]!r}: fix it in this change, open the PR now and link it, or quote the user's OK (1.1.7)")
 badge = setting('BADGE', 'on')  # auto: only a human account (`gh api user` type User, not Bot) needs it
 if kind != 'tracker' and not has_badge and (badge == 'on' or badge == 'auto' and
         subprocess.run(['gh', 'api', 'user', '--jq', '.type'], capture_output=True, text=True).stdout.strip() == 'User'):
