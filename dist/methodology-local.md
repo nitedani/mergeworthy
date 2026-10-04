@@ -215,7 +215,7 @@ Red CI on your PR is the maintainer's first question: fix it, or, when it isn't 
 4. **Then reply** with the result as a new comment (edits don't notify). Beyond this result (and the wait ping below), a question gets no further comments from you; later changes to your reply are edits.
 5. **Book-keeping, in the same step:** decision packet, umbrella body, Decisions comment, ledger.
 
-**The watcher and the owed lists.** Before your first post in any tier (an audit report or a single issue included), run `gh-watch-start <artifact root> <owner/repo> [N]` (Part 5). It starts the daemon, and the daemon wakes the agent itself: on every new event it launches the agent command it wrote to `<dir>/agent` (`GH_WATCH_AGENT`, else the first of `claude`, `codex`) with a prompt that handles `events.log` from `events.cursor`, one agent per dir at a time — so a comment is answered even when no interactive session is watching. It also records each new comment in `replies-owed.md` (below), and the Stop hook refuses to end a turn while a line is still owed. Never poll GitHub in a loop in the conversation. Every thread you open or comment on joins its list in the same step: the posting guard adds it, refuses to post to a repo no running watcher covers, and the Stop hook refuses to end a turn after a post with no armed tail on `events.log`. The tail the starter prints is a persistent detached tail: it never expires, wakes nothing and needs no re-arm; it archives event lines in `<dir>/tail-events.log` and satisfies the Stop hook's armed-tail check. The daemon's wake is the only event handler: check `events.cursor` and `wake.pid` before acting on an event (advance the cursor as you handle events), so an event the woken agent already handled is not handled twice. A live session that answers a directory's events itself writes `true` to `<dir>/agent` while it does, so no woken agent works the same threads in parallel, and restores the agent command when it stops. After any resume, handle `events.log` from the cursor before anything else. Each list item is cleared only by the thing named:
+**The watcher and the owed lists.** Before your first post in any tier (an audit report or a single issue included), run `gh-watch-start <artifact root> <owner/repo> [N]` (Part 5). It runs the watcher as a systemd user service where there is one (`gh-watch@<dir>`: restarted on failure, started at boot, independent of any session; elsewhere a detached daemon), and the daemon wakes the agent itself: on every new event it launches the agent command it wrote to `<dir>/agent` (`GH_WATCH_AGENT`, else the first of `claude`, `codex`) with a prompt that handles `events.log` from `events.cursor`, one agent per dir at a time — so a comment is answered even when no interactive session is watching. It also records each new comment in `replies-owed.md` (below), and the Stop hook refuses to end a turn while a line is still owed. Never poll GitHub in a loop in the conversation. Every thread you open or comment on joins its list in the same step: the posting guard adds it, refuses to post to a repo no running watcher covers, and the Stop hook refuses to end a turn after a post with no armed tail on `events.log`. Don't keep a session watch that expires and re-arms (a 30-minute Monitor): the service and its woken agent handle the events, and the Stop hook accepts them. The agent command names its Claude config (`env -u CLAUDE_CONFIG_DIR claude -p`, or the local model's config), never the daemon's inherited one. The tail the starter prints is a persistent detached tail: it never expires, wakes nothing and needs no re-arm; it archives event lines in `<dir>/tail-events.log` and satisfies the Stop hook's armed-tail check. The daemon's wake is the only event handler: check `events.cursor` and `wake.pid` before acting on an event (advance the cursor as you handle events), so an event the woken agent already handled is not handled twice. A live session that answers a directory's events itself writes `true` to `<dir>/agent` while it does, so no woken agent works the same threads in parallel, and restores the agent command when it stops. After any resume, handle `events.log` from the cursor before anything else. Each list item is cleared only by the thing named:
 - `replies-owed.md`: every maintainer comment with a question or request, and every comment the user posts in a thread (back it with evidence or add what it's missing). The daemon appends each comment line; the Stop hook blocks a turn while a line is still owed; cleared by the posted reply's URL.
 - `proposals-open.md`: every "OK?" you ask, and every promise you post ("I'll…") as `PROMISED <thread>: <what>`. Each new maintainer comment is checked against it first. Cleared by the commit or link that delivers it. Do work you can finish in minutes before posting, so the post says "Done in <link>", never "fixing it now".
 - `waiting-on.txt`, next to the watcher's `threads.txt`: each thing a PR of yours waits on (`<owner/repo#N> -> <dependent>: <what to do>`), also in that PR's notes table; the watcher prints `DEPENDENT of merged …` when it lands. A merge or release you depend on is handled like a maintainer comment: in the same step, apply what waited on it and post the progress on the dependent PR.
@@ -951,7 +951,7 @@ These scripts enforce the rules that failed as text alone. This file is the only
 
 | Mechanism | Enforces | How to use it |
 |---|---|---|
-| `gh-watch.py` + `gh-watch-daemon.sh` | 1.5. Reports comments, review comments and reviews by others; PR pushes, merges and closes; CI red and green. Adds 👀 within ~10 s for the logins in `GH_WATCH_EYES`, and reports their 👍 or 👎 on the agent's comments as `### THUMBS UP` / `### THUMBS DOWN`. Prints `### REFACTOR STALE` when your PR's code (test files excluded) changed by more than ~80 lines since its last `pr-steps refactor` record. Wakes the agent itself on every new event: it launches the command in `<dir>/agent` (written by `gh-watch-start`) with a prompt that handles `events.log` from `events.cursor`, one agent per dir at a time, log in `<dir>/wake.log` — so an event is handled even when no interactive session is watching. It records each new comment in `<dir>/replies-owed.md`; the agent clears the line when it is answered, and the Stop hook blocks a turn while a line is still owed. The wake is the only event handler: a live session checks `events.cursor` and `wake.pid` before acting on an event, so it never races a woken agent. | Start with `gh-watch-start <artifact root> <owner/repo> [N]…` (below), never by hand. One `owner/repo number` per line in `threads.txt` next to it. When posting from the user's account, the user's own comments are told apart through `~/.claude/gated-posts.txt` (filled by `gate-pass`). The printed tail is a persistent detached (nohup) tail: it never expires, wakes nothing and needs no re-arm; it archives event lines in `<dir>/tail-events.log` and satisfies the Stop hook's armed-monitor check. Position and seen events persist in `gh-watch-state.json`, so restarts lose nothing.|
+| `gh-watch.py` + `gh-watch-daemon.sh` | 1.5. Reports comments, review comments and reviews by others; PR pushes, merges and closes; CI red and green. Adds 👀 within ~10 s for the logins in `GH_WATCH_EYES`, and reports their 👍 or 👎 on the agent's comments as `### THUMBS UP` / `### THUMBS DOWN`. Prints `### REFACTOR STALE` when your PR's code (test files excluded) changed by more than ~80 lines since its last `pr-steps refactor` record. Wakes the agent itself on every new event: it launches the command in `<dir>/agent` (written by `gh-watch-start`) with a prompt that handles `events.log` from `events.cursor`, one agent per dir at a time, log in `<dir>/wake.log` — so an event is handled even when no interactive session is watching. It records each new comment in `<dir>/replies-owed.md`; the agent clears the line when it is answered, and the Stop hook blocks a turn while a line is still owed. The wake is the only event handler: a live session checks `events.cursor` and `wake.pid` before acting on an event, so it never races a woken agent. | Start with `gh-watch-start <artifact root> <owner/repo> [N]…` (below), never by hand: it runs the daemon as the systemd user service `gh-watch@<dir>` (`Restart=always`, started at boot, PATH from the starter in `<dir>/env`; a detached daemon where there is no user systemd), and the Stop hook accepts that service as the watch. One `owner/repo number` per line in `threads.txt` next to it. When posting from the user's account, the user's own comments are told apart through `~/.claude/gated-posts.txt` (filled by `gate-pass`). The printed tail is a persistent detached (nohup) tail: it never expires, wakes nothing and needs no re-arm; it archives event lines in `<dir>/tail-events.log` and satisfies the Stop hook's armed-monitor check. Position and seen events persist in `gh-watch-state.json`, so restarts lose nothing.|
 | `tracker-check.sh` | 1.2. Umbrella drift (checkbox vs PR state), and a Decisions comment last edited before a tracked PR merged or closed. | `TRACKER_REPO=o/r TRACKER_ISSUE=N TRACKER_DECISIONS=<comment id> ./tracker-check.sh`. The watcher calls it when the variables are set. Run it before every report. |
 | `post-lint.py` | 1.6. Banned phrases, em dashes, "stacked on", bare `#N`, budgets (reply 80 words, PR 150, issue 400 characters, inline 2 sentences; tables, code, images and URLs not counted), unclassified notes, process in the thread, questions without a recommendation, a bare "Done" to a question or soft suggestion, a notes-table Next of "recommend", "follow-up" or "later". | `post-lint.py drafts/x.md --kind reply\|pr\|issue\|inline\|review-record [--repo o/r]` (default `reply`). A reply or inline comment reads its parent from `drafts/x.parent.md` (or `--parent <file>`; `--parent none` when it answers nobody). Tests: `tests/test_post_lint.py`. |
 | `gate-pass` | 1.6. Records that a draft passed: `post-lint` clean and the review's final message (`codex exec -o drafts/x.review.out`) exactly `CLEAN`; stores the draft's sha256 in `<draft>.gate`. A draft that promises work ("I'll", "follow-up PR") first needs a `PROMISED … (<draft name>)` line in `proposals-open.md`. | `gate-pass drafts/x.md drafts/x.review.out` (set `POST_LINT_ARGS` for `--repo`/`--kind`). |
@@ -1495,17 +1495,50 @@ reg=~/.claude/gh-watch-dirs.txt
 grep -qxF "$dir" "$reg" 2>/dev/null || echo "$dir" >> "$reg"
 if [ -n "$GH_WATCH_EYES" ]; then echo "$GH_WATCH_EYES" > "$dir/eyes"; fi
 [ -s "$dir/eyes" ] || gh api user --jq .login > "$dir/eyes"
+# The agent names its Claude config: the daemon's environment is systemd's, not this session's
 if [ -n "$GH_WATCH_AGENT" ]; then agent="$GH_WATCH_AGENT"
-elif command -v claude >/dev/null; then agent="claude -p"
+elif command -v claude >/dev/null && [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then agent="env CLAUDE_CONFIG_DIR=$CLAUDE_CONFIG_DIR claude -p"
+elif command -v claude >/dev/null; then agent="env -u CLAUDE_CONFIG_DIR claude -p"
 elif command -v codex >/dev/null; then agent="codex exec"
 else agent=""; fi
 [ -n "$agent" ] && printf '%s\n' "$agent" > "$dir/agent"
-pid=$(cat "$dir/gh-watch.pid" 2>/dev/null || true)
-if [ -n "$pid" ] && grep -q gh-watch-daemon "/proc/$pid/cmdline" 2>/dev/null; then
-  echo "watcher running (PID $pid)"
+# A systemd user service where there is one: restarted on failure and started at boot, independent of any session.
+# Elsewhere, a detached daemon.
+if systemctl --user is-system-running >/dev/null 2>&1 || [ "$(systemctl --user is-system-running 2>/dev/null)" = degraded ]; then
+  unit=~/.config/systemd/user/gh-watch@.service
+  mkdir -p "$(dirname "$unit")"
+  cat > "$unit.new" <<'UNIT'
+[Unit]
+Description=GitHub watcher for /%I
+StartLimitIntervalSec=0
+
+[Service]
+WorkingDirectory=/%I
+EnvironmentFile=/%I/env
+ExecStart=/bin/bash -c 'GH_WATCH_EYES=$(cat eyes) exec ./gh-watch-daemon.sh'
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+UNIT
+  cmp -s "$unit.new" "$unit" 2>/dev/null && rm "$unit.new" || { mv "$unit.new" "$unit"; systemctl --user daemon-reload; }
+  printf 'PATH=%s\nHOME=%s\n' "$PATH" "$HOME" > "$dir/env"
+  inst="gh-watch@$(systemd-escape --path "$dir").service"
+  pid=$(cat "$dir/gh-watch.pid" 2>/dev/null || true)
+  if ! systemctl --user is-active --quiet "$inst" && [ -n "$pid" ] && grep -q gh-watch-daemon "/proc/$pid/cmdline" 2>/dev/null; then
+    kill "$pid"; sleep 1  # a detached daemon from before: the service replaces it
+  fi
+  systemctl --user enable --now "$inst" >/dev/null 2>&1
+  sleep 1; echo "watcher service $inst: $(systemctl --user is-active "$inst") (PID $(cat "$dir/gh-watch.pid" 2>/dev/null), eyes: $(cat "$dir/eyes"))"
 else
-  (cd "$dir" && GH_WATCH_EYES=$(cat eyes) nohup setsid ./gh-watch-daemon.sh >/dev/null 2>&1 &)
-  sleep 1; echo "watcher started (PID $(cat "$dir/gh-watch.pid"), eyes: $(cat "$dir/eyes"))"
+  pid=$(cat "$dir/gh-watch.pid" 2>/dev/null || true)
+  if [ -n "$pid" ] && grep -q gh-watch-daemon "/proc/$pid/cmdline" 2>/dev/null; then
+    echo "watcher running (PID $pid)"
+  else
+    (cd "$dir" && GH_WATCH_EYES=$(cat eyes) nohup setsid ./gh-watch-daemon.sh >/dev/null 2>&1 &)
+    sleep 1; echo "watcher started (PID $(cat "$dir/gh-watch.pid"), eyes: $(cat "$dir/eyes"))"
+  fi
 fi
 if [ -n "$agent" ]; then
   echo "The daemon wakes the agent itself on each event: $agent (command in $dir/agent, log in $dir/wake.log, cursor in $dir/events.cursor)."
@@ -2100,6 +2133,17 @@ reg = os.path.expanduser('~/.claude/gh-watch-dirs.txt')
 cwd_d = d.get('cwd') or ''
 for wd in (l.strip() for l in open(reg)) if os.path.exists(reg) else ():
     if wd and (cwd_d.startswith(wd) or wd.startswith(cwd_d or '/nonexistent')): own_dirs.add(wd)
+def watched_by_service():
+    """A watch dir whose daemon runs and whose agent the daemon wakes (the systemd service, 1.5): it handles the events."""
+    for wd in own_dirs:
+        try:
+            pid = open(os.path.join(wd, 'gh-watch.pid')).read().strip()
+            if b'gh-watch-daemon' in open(f'/proc/{pid}/cmdline', 'rb').read() and open(os.path.join(wd, 'agent')).read().strip() not in ('', 'true'):
+                return True
+        except OSError:
+            continue
+    return False
+
 def armed_tail():
     for proc in glob.glob('/proc/[0-9]*'):
         try:
@@ -2114,11 +2158,10 @@ def armed_tail():
 watcher_on = 'METHODOLOGY_WATCHER=off' not in (open(os.path.expanduser('~/.claude/mechanisms/settings.env')).read() if os.path.exists(os.path.expanduser('~/.claude/mechanisms/settings.env')) else '')
 # A headless run (`claude -p`, entrypoint sdk-cli) has no Monitor tool: its caller watches, so don't ask it for one
 headless = any('"entrypoint":"sdk-cli"' in l for l in lines[-20:])
-if posted and watcher_on and not headless and not (monitors - dead or armed_tail()):
+if posted and watcher_on and not headless and not (monitors - dead or armed_tail() or watched_by_service()):
     print("You posted on GitHub in this session and no armed tail watches a watcher's events.log, so replies go unseen. "
-          "Run `gh-watch-start <your artifact root> <owner/repo> <N>` for each thread, arm the tail it prints — the "
-          "Monitor command (timeout_ms 1800000), or a background task where there is no Monitor tool — handle events.log "
-          "from your cursor, and re-arm on every expiry (methodology 1.5).", file=sys.stderr)
+          "Run `gh-watch-start <your artifact root> <owner/repo> <N>` for each thread: it runs the watcher as a service "
+          "that wakes the agent on each event (methodology 1.5).", file=sys.stderr)
     sys.exit(2)
 # 1.5's owed-debt list: the daemon records each human comment in the live watcher's replies-owed.md; a turn
 # cannot end with a line still owed.

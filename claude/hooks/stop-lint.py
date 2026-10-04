@@ -55,6 +55,17 @@ reg = os.path.expanduser('~/.claude/gh-watch-dirs.txt')
 cwd_d = d.get('cwd') or ''
 for wd in (l.strip() for l in open(reg)) if os.path.exists(reg) else ():
     if wd and (cwd_d.startswith(wd) or wd.startswith(cwd_d or '/nonexistent')): own_dirs.add(wd)
+def watched_by_service():
+    """A watch dir whose daemon runs and whose agent the daemon wakes (the systemd service, 1.5): it handles the events."""
+    for wd in own_dirs:
+        try:
+            pid = open(os.path.join(wd, 'gh-watch.pid')).read().strip()
+            if b'gh-watch-daemon' in open(f'/proc/{pid}/cmdline', 'rb').read() and open(os.path.join(wd, 'agent')).read().strip() not in ('', 'true'):
+                return True
+        except OSError:
+            continue
+    return False
+
 def armed_tail():
     for proc in glob.glob('/proc/[0-9]*'):
         try:
@@ -69,11 +80,10 @@ def armed_tail():
 watcher_on = 'METHODOLOGY_WATCHER=off' not in (open(os.path.expanduser('~/.claude/mechanisms/settings.env')).read() if os.path.exists(os.path.expanduser('~/.claude/mechanisms/settings.env')) else '')
 # A headless run (`claude -p`, entrypoint sdk-cli) has no Monitor tool: its caller watches, so don't ask it for one
 headless = any('"entrypoint":"sdk-cli"' in l for l in lines[-20:])
-if posted and watcher_on and not headless and not (monitors - dead or armed_tail()):
+if posted and watcher_on and not headless and not (monitors - dead or armed_tail() or watched_by_service()):
     print("You posted on GitHub in this session and no armed tail watches a watcher's events.log, so replies go unseen. "
-          "Run `gh-watch-start <your artifact root> <owner/repo> <N>` for each thread, arm the tail it prints — the "
-          "Monitor command (timeout_ms 1800000), or a background task where there is no Monitor tool — handle events.log "
-          "from your cursor, and re-arm on every expiry (methodology 1.5).", file=sys.stderr)
+          "Run `gh-watch-start <your artifact root> <owner/repo> <N>` for each thread: it runs the watcher as a service "
+          "that wakes the agent on each event (methodology 1.5).", file=sys.stderr)
     sys.exit(2)
 # 1.5's owed-debt list: the daemon records each human comment in the live watcher's replies-owed.md; a turn
 # cannot end with a line still owed.
