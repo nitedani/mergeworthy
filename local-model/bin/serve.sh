@@ -107,7 +107,8 @@ PY
       # the GPU is busy while the model isn't working: another program needs it
       # Another program on the GPU: busy while our server is up and idle, on two readings in a row (30 s). One reading isn't
       # enough: right after a request the GPU still shows our own work, and that stopped a session between two requests.
-      if up && ! processing && gpu_taken; then busy=$((busy + 1)); else busy=0; fi
+      # gpu_taken first: /slots counts as a request, and polling it every 15 s kept the server from ever sleeping
+      if gpu_taken && up && ! processing; then busy=$((busy + 1)); else busy=0; fi
       [ "$busy" -ge 2 ] && { echo "$(date +%T) unloaded: another program is using the GPU" >>"$LOG"; "$0" stop >/dev/null; break; }
       sleep 15
     done ;;
