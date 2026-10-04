@@ -4,7 +4,7 @@ A maintainer's comment is handled like the user typing in this chat: highest pri
 
 Red CI on your PR is the maintainer's first question: fix it, or, when it isn't the PR's doing (a secret forks don't get, a flaky job), say so on the PR right away, a single comment with the cause and the evidence (the workflow line, the same failure on another PR or `main`). Explaining it only in chat leaves the PR looking broken.
 
-The user's own comment on GitHub (by the account you post as, and not a gated post) is the user typing in this chat. A 👀 from that same account acknowledges nothing to them: start the work at once, in parallel with what's running rather than queued behind it, follow the skill the work calls for (`implement-issue` for "fix it" or "open a PR"), and tell the user in chat.
+**Which threads are yours:** the ones you opened, and any other thread only from the moment someone writes `/ai` in it to get your attention. Comments in other threads (a PR another agent or session opened, even on a repo you watch) aren't for you: don't react, answer or act on them, and don't keep them on your watch list. In your threads, the user's own comment (by the account you post as, and not a gated post) is the user typing in this chat. A 👀 from that same account acknowledges nothing to them: start the work at once, in parallel with what's running rather than queued behind it, follow the skill the work calls for (`implement-issue` for "fix it" or "open a PR"), and tell the user in chat.
 
 <!-- if watcher=off -->
 1. **First:** a 👀 reaction on each comment you'll answer that doesn't have yours yet.
