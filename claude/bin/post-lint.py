@@ -86,6 +86,12 @@ for m in re.finditer(r'^\s*(?:[-*]|\d+\.)?\s*\*\*(Left to you|For you to decide|
         findings.append(f"unclassified note: {line.strip()[:70]!r} needs <bug|limitation|not a regression|decision needed> · blocks …: yes/no · next: …")
 if len(re.findall(r'^\s*(?:[-*]|\d+\.)\s+[^\n|]*·\s*blocks', text, flags=re.M | re.I)) >= 2:
     findings.append("notes as a list of 'kind · blocks · next' lines: put them in one table | Note | Kind | Blocks merge | Next |")
+# evidence carries no secret (1.6): checked on the whole text, code blocks included, where logs usually sit
+SECRET = re.compile(r'ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|\bsk-[A-Za-z0-9_-]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}'
+                    r'|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|^\s*(?:authorization|cookie|set-cookie)\s*:\s*(?:bearer\s+|basic\s+)?(?!<REDACTED>)\S{12,}',
+                    re.I | re.M)
+for m in SECRET.finditer(text):
+    findings.append(f"secret-shaped text {m.group(0)[:12]!r}...: write <REDACTED> in its place")
 # a follow-up is opened before the post, never parked as advice (methodology 1.6 notes, 1.1.7)
 for row in re.findall(r'^\|(?:[^|\n]*\|){3}([^|\n]*)\|\s*$', text, flags=re.M):
     if re.search(r'\b(recommend|follow-up|follow up|later)\b', row, re.I):

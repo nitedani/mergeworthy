@@ -117,7 +117,7 @@ Read the task and every link in it. Write `Tier: <X>, because <signals>` and put
 - **Style before writing.** Before writing docs or code in a repo, read three sibling files or pages and note the conventions (sentence length, comment density, naming, how platforms are mentioned, em dashes; our new prose has none). The review checks the diff against them.
 - **Docs** say only what a user wouldn't expect. A sentence that says when something applies states its exact condition and one example with real names, in terms the docs already use; never coin a term. Before pushing docs, a fresh-context agent that sees only the rendered text explains each new section back and lists every sentence it can't act on; fix until its explanation is right.
 - **Behavior before removal.** Before removing or rewriting behavior, inventory what exists (triggers, paths, gates) and run `git log -S` on it. Keep all of it unless the task says otherwise. After a move or rename, grep the repo and sibling PRs for the old name or anchor.
-- **References before UI.** Before any visual design: 3–5 named reference sites with screenshots, and the design skills the user has pointed to. Ambiguous feedback about direction: show two screenshots and ask. Given a design file, measure the design and the app the same way (sizes, radii, motion, production build) and fix every difference. Before any screenshot or video is shown, a fresh-context agent lists everything broken, misaligned or clipped in it. Matching a design file is not the bar: before a screen is shown, name its surface archetype, score it on the slop tells (wrong surface, center stack, equal-weight tile grids, decoration in place of hierarchy, rainbow color), repair by that diagnosis, and remove every element nobody asked for. A new feature or visual direction is shown to the user on a local preview before it's pushed; fixes to reported bugs go straight to the PR.
+- **References before UI.** Before any visual design: 3–5 named reference sites with screenshots, and the design skills the user has pointed to. Ambiguous feedback about direction: build two or three variants that differ in layout, hierarchy or main action (not color or copy), inside the real page with real data, switchable by a `?variant=` parameter, and ask which. Given a design file, measure the design and the app the same way (sizes, radii, motion, production build) and fix every difference. Before any screenshot or video is shown, a fresh-context agent lists everything broken, misaligned or clipped in it. Matching a design file is not the bar: before a screen is shown, name its surface archetype, score it on the slop tells (wrong surface, center stack, equal-weight tile grids, decoration in place of hierarchy, rainbow color), repair by that diagnosis, and remove every element nobody asked for. A new feature or visual direction is shown to the user on a local preview before it's pushed; fixes to reported bugs go straight to the PR.
 - Research prior art in upstream source at pinned versions.
 
 ## 1.8 Safety on the user's machine
@@ -240,6 +240,7 @@ It covers everything that reaches an external service, with no lighter category:
 **Reviewing a maintainer's commits** (when asked): fetch and fast-forward, then build, lint, format-check and test the head. Reply once per push with a table, one row per commit: what it does, the idea behind it, whether that idea holds, and a rating out of 10 with its reason. Findings come with the exact fix. Where the change is big enough, apply the reviewer charter (Part 2) and the refactor prompt (Part 3 section 11.2) to it. Never just "looks good". Don't push onto the branch while the maintainer is committing unless asked.
 
 **Writing.** Every post (and every report, 1.11) brings the reader something they didn't have: a finding, a measurement, a better option, a risk, or a decision with its reason; if it wouldn't, think more first. Engage as a peer: agree or disagree, and say why.
+- Evidence carries no secret: in logs, requests, payloads and screenshots, write `<REDACTED>` in place of every token, cookie, auth header and key, and quote only the lines that show the point (`post-lint` fails on common token shapes).
 - Self-contained for anyone who finds the thread later. A comparison of designs or behavior shows each option as code: what the user or extension writes, and what changes as a short ```diff block (removed lines `-`, added `+`, so GitHub shows them red and green). A table may summarize them; it never replaces the code.
 - Short, plain words. No jargon, abstractions or AI phrasing ("in this run", "doesn't establish", "worth noting", "happy to", "let me know"), and never solicit ("pushback welcome").
 - Say only what they don't know yet. Don't recite their comment or your earlier replies, don't thank them for an approval, and don't promise how you'll behave next time. When answering several questions, quote each in one line. If all there is to say is "done", say "Done in <sha>".
@@ -268,6 +269,7 @@ It covers everything that reaches an external service, with no lighter category:
 When editing a skill, prompt, rules file or AGENTS.md:
 - Make exactly the requested operation on exactly the named text; anything extra gets one line in your reply, not an edit. Text the user supplied verbatim stays verbatim.
 - Add the minimal delta, usually one sentence, placed at the step where it bites. No rationale, no incident stories, nothing a competent model does anyway. Repo facts go only in the project file. Grep first and edit the existing line instead of adding another. Prefer a mechanism to a sentence.
+- State the behavior you want ("write one-line comments"), not only the one you don't; keep a "never" for hard guardrails, and pair it with what to do instead.
 - No self-assessed opt-outs ("skip on small fixes"). A missing precondition is a hard stop.
 - After any cut, a fresh-context agent reads the file cold and lists every sentence it can't act on. Fix those. Every change to the methodology or a mechanism is committed and pushed to its repo in the same step, then installed (`install-methodology`); never edit an installed or running copy.
 
@@ -378,6 +380,8 @@ gh issue comment <N> --body-file repro.md --attach '/abs/path/repro.png#alt text
 
 Dev data is often a restored snapshot: if it predates a fix that step 1 turned up, rows written the old way still make the bug look alive. Compare the age of the data with the date of the fix. If you cannot reproduce it, comment what you tried and what happened, and stop.
 
+When the cause isn't obvious at a first look, write one command that goes red on the reported symptom before reading code for a theory: a failing test, a curl, a script that drives the browser. Make it fast and give the same result every run; for a flaky bug, loop the trigger and add load until it fails often enough to work with. Cut inputs, steps and config one at a time while it stays red. If it worked at an earlier commit or version, `git bisect run` it. With the loop red, write three to five possible causes, each with what it predicts ("if X, changing Y makes it pass"), before testing any. Each probe tests one prediction and changes one thing. Temporary logs share one unique prefix (`[DBG-a4f2]`) so one grep removes them before the commit.
+
 For a feature, capture the current state as the before shot and settle what "done" means. For a restructure, capture what the code does now: the behavior you must preserve.
 
 ### 3. Find an approach that rates high, or stop
@@ -390,7 +394,7 @@ If nothing rates high, abort: comment what you tried and why each falls short, t
 
 ### 4. Build and gate
 
-The smallest diff that finishes the job: schema, API, every call site, every locale. The gates are in the project file; the exit code is the verdict, not your reading of the output. At most one regression test, in an existing suite.
+The smallest diff that finishes the job: schema, API, every call site, every locale. The gates are in the project file; the exit code is the verdict, not your reading of the output. At most one regression test, in an existing suite. Its expected value comes from outside the code: a literal, the issue, a worked example; never recomputed the way the code computes it, and never a snapshot taken from the code's own output.
 
 Write it with the guardian's lenses from the first line (the charter in Part 3 section 11.1, and 1.4.1): deep modules, no speculative surface or defensive branch for an unreachable state, no duplicate intent, terse comments that are literally true, names that don't confess mixed responsibility. Before the review round, read your own diff through those lenses and fix what they catch. The guardian checks; it isn't where the code gets its shape, so a guardian round that finds design work means this step was skipped.
 
@@ -421,7 +425,7 @@ The review model (TASK) reviews the diff with the reviewer charter (below):
 ```bash
 git merge-base HEAD origin/<base>                      # note the sha
 ## write the reviewer charter (end of this part) to <artifact root>/review.md
-## append: the diff command with that sha, and one sentence on what it claims to do
+## append: the diff command with that sha, the issue link (Tier ≥ M: also acceptance.md), and one sentence on what it claims to do
 codex exec -m "$(codex-review-model)" --sandbox read-only -o <artifact root>/review.out "$(cat <artifact root>/review.md)" < /dev/null
 ```
 
@@ -449,7 +453,7 @@ Closes #N
 
 `Closes #N` only if the change fixes what the issue reported; otherwise `Refs #N`, leave it open, and comment your findings there.
 
-**Write it to be scanned.** The first sentence says what was wrong in a user's words, not the mechanism. One idea per sentence, one line per caption. The implementation belongs in the diff. Evidence in a skimmable shape: a two-column before/after beats a transcript. At most one closing caveat, last, for the reviewer's decision.
+**Write it to be scanned.** The first sentence says what was wrong in a user's words, not the mechanism. One idea per sentence, one line per caption. The implementation belongs in the diff. Evidence in a skimmable shape: a two-column before/after beats a transcript. At most one closing caveat, last, for the reviewer's decision. When a revert wouldn't undo the merge (a stored or wire format, a migration, a published name), that is the caveat.
 
 #### The walkthrough
 
@@ -588,7 +592,7 @@ Tag every material claim OBSERVED (path:line, or command + exit code + output), 
 
 Three lenses, one pass:
 
-**Correctness.** Revert the fix and confirm the failure returns, then restore. A check that also passes without the change proves nothing. Look for the behaviour the issue actually reported, not the behaviour the diff implements.
+**Correctness.** Revert the fix and confirm the failure returns, then restore. A check that also passes without the change proves nothing. Look for the behaviour the issue actually reported, not the behaviour the diff implements. List each asked-for behavior that is missing or only partly there, quoting the line that asks for it.
 
 **Security.** You know what to look for; this repo's surfaces are in the project file. The part you cannot infer from a diff: a change to what the API returns, or to what a filter matches, breaks consumers silently and is a team decision, not a reviewer's.
 
@@ -1717,6 +1721,12 @@ for m in re.finditer(r'^\s*(?:[-*]|\d+\.)?\s*\*\*(Left to you|For you to decide|
         findings.append(f"unclassified note: {line.strip()[:70]!r} needs <bug|limitation|not a regression|decision needed> · blocks …: yes/no · next: …")
 if len(re.findall(r'^\s*(?:[-*]|\d+\.)\s+[^\n|]*·\s*blocks', text, flags=re.M | re.I)) >= 2:
     findings.append("notes as a list of 'kind · blocks · next' lines: put them in one table | Note | Kind | Blocks merge | Next |")
+# evidence carries no secret (1.6): checked on the whole text, code blocks included, where logs usually sit
+SECRET = re.compile(r'ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|\bsk-[A-Za-z0-9_-]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}'
+                    r'|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|^\s*(?:authorization|cookie|set-cookie)\s*:\s*(?:bearer\s+|basic\s+)?(?!<REDACTED>)\S{12,}',
+                    re.I | re.M)
+for m in SECRET.finditer(text):
+    findings.append(f"secret-shaped text {m.group(0)[:12]!r}...: write <REDACTED> in its place")
 # a follow-up is opened before the post, never parked as advice (methodology 1.6 notes, 1.1.7)
 for row in re.findall(r'^\|(?:[^|\n]*\|){3}([^|\n]*)\|\s*$', text, flags=re.M):
     if re.search(r'\b(recommend|follow-up|follow up|later)\b', row, re.I):

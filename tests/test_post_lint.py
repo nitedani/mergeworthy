@@ -32,6 +32,9 @@ def run(name, draft, parent=None, extra=(), env=None):
 
 # (name, draft, parent, extra args, expected substring or None for a clean pass[, env])
 T = [
+    ('secret-token', 'The request:\n```\nAuthorization: Bearer abcdef0123456789abcdef\n```\n', None, ('--parent', 'none'), 'secret-shaped'),
+    ('secret-ghp', 'Used ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123 to call it.\n', None, ('--parent', 'none'), 'secret-shaped'),
+    ('secret-redacted', 'The request:\n```\nAuthorization: <REDACTED>\n```\n', None, ('--parent', 'none'), None),
     ('no-badge', 'Done in abc1234.\n', None, ('--parent', 'none'), 'missing badge'),
     # bare Done to a question-shaped comment (real)
     ('bare-done-question', 'Done in 25f2aa02e6 (also removed from `llms.txt`).\n', HOW_ABOUT, (), "bare 'Done'"),

@@ -38,6 +38,8 @@ gh issue comment <N> --body-file repro.md --attach '/abs/path/repro.png#alt text
 
 Dev data is often a restored snapshot: if it predates a fix that step 1 turned up, rows written the old way still make the bug look alive. Compare the age of the data with the date of the fix. If you cannot reproduce it, comment what you tried and what happened, and stop.
 
+When the cause isn't obvious at a first look, write one command that goes red on the reported symptom before reading code for a theory: a failing test, a curl, a script that drives the browser. Make it fast and give the same result every run; for a flaky bug, loop the trigger and add load until it fails often enough to work with. Cut inputs, steps and config one at a time while it stays red. If it worked at an earlier commit or version, `git bisect run` it. With the loop red, write three to five possible causes, each with what it predicts ("if X, changing Y makes it pass"), before testing any. Each probe tests one prediction and changes one thing. Temporary logs share one unique prefix (`[DBG-a4f2]`) so one grep removes them before the commit.
+
 For a feature, capture the current state as the before shot and settle what "done" means. For a restructure, capture what the code does now: the behavior you must preserve.
 
 ### 3. Find an approach that rates high, or stop
@@ -50,7 +52,7 @@ If nothing rates high, abort: comment what you tried and why each falls short, t
 
 ### 4. Build and gate
 
-The smallest diff that finishes the job: schema, API, every call site, every locale. The gates are in the project file; the exit code is the verdict, not your reading of the output. At most one regression test, in an existing suite.
+The smallest diff that finishes the job: schema, API, every call site, every locale. The gates are in the project file; the exit code is the verdict, not your reading of the output. At most one regression test, in an existing suite. Its expected value comes from outside the code: a literal, the issue, a worked example; never recomputed the way the code computes it, and never a snapshot taken from the code's own output.
 
 Write it with the guardian's lenses from the first line (the charter in Part 3 section 11.1, and 1.4.1): deep modules, no speculative surface or defensive branch for an unreachable state, no duplicate intent, terse comments that are literally true, names that don't confess mixed responsibility. Before the review round, read your own diff through those lenses and fix what they catch. The guardian checks; it isn't where the code gets its shape, so a guardian round that finds design work means this step was skipped.
 
@@ -81,7 +83,7 @@ The review model (TASK) reviews the diff with the reviewer charter (below):
 ```bash
 git merge-base HEAD origin/<base>                      # note the sha
 ## write the reviewer charter (end of this part) to <artifact root>/review.md
-## append: the diff command with that sha, and one sentence on what it claims to do
+## append: the diff command with that sha, the issue link (Tier ≥ M: also acceptance.md), and one sentence on what it claims to do
 <!-- if reviewer=claude -->
 ## start a fresh-context Claude subagent with review.md as its whole prompt; save its final message to <artifact root>/review.out
 <!-- else -->
@@ -113,7 +115,7 @@ Closes #N
 
 `Closes #N` only if the change fixes what the issue reported; otherwise `Refs #N`, leave it open, and comment your findings there.
 
-**Write it to be scanned.** The first sentence says what was wrong in a user's words, not the mechanism. One idea per sentence, one line per caption. The implementation belongs in the diff. Evidence in a skimmable shape: a two-column before/after beats a transcript. At most one closing caveat, last, for the reviewer's decision.
+**Write it to be scanned.** The first sentence says what was wrong in a user's words, not the mechanism. One idea per sentence, one line per caption. The implementation belongs in the diff. Evidence in a skimmable shape: a two-column before/after beats a transcript. At most one closing caveat, last, for the reviewer's decision. When a revert wouldn't undo the merge (a stored or wire format, a migration, a published name), that is the caveat.
 
 #### The walkthrough
 
@@ -252,7 +254,7 @@ Tag every material claim OBSERVED (path:line, or command + exit code + output), 
 
 Three lenses, one pass:
 
-**Correctness.** Revert the fix and confirm the failure returns, then restore. A check that also passes without the change proves nothing. Look for the behaviour the issue actually reported, not the behaviour the diff implements.
+**Correctness.** Revert the fix and confirm the failure returns, then restore. A check that also passes without the change proves nothing. Look for the behaviour the issue actually reported, not the behaviour the diff implements. List each asked-for behavior that is missing or only partly there, quoting the line that asks for it.
 
 **Security.** You know what to look for; this repo's surfaces are in the project file. The part you cannot infer from a diff: a change to what the API returns, or to what a filter matches, breaks consumers silently and is a team decision, not a reviewer's.
 
