@@ -4,7 +4,11 @@
 # - "owner/repo N" goes to threads.txt; a bare "owner/repo" goes to repos.txt (the repo is covered, e.g. before `gh issue create`).
 # - Starts the daemon unless its PID is alive, with GH_WATCH_EYES from the environment, else from <dir>/eyes, else your gh login.
 # - Registers <dir> in ~/.claude/gh-watch-dirs.txt, which pre-bash-guard and post-bash-register read.
-# - Prints the tail command to arm — the Monitor tool, or a background task where there is no Monitor (re-arm on every expiry).
+# - Writes <dir>/agent, the command the daemon launches to wake an agent on each event (GH_WATCH_AGENT,
+#   else the first of claude, codex on PATH). The daemon does the waking: it runs that command with a
+#   prompt that handles events.log from events.cursor, one agent per dir at a time, log in <dir>/wake.log.
+# - Prints the tail command to arm — belt-and-braces for an interactive session (the Monitor tool, or a
+#   background task where there is no Monitor, re-armed on every expiry).
 set -e
 [ -n "$1" ] || { sed -n '2,7p' "$0"; exit 1; }
 dir=$(realpath -m "$1"); shift
@@ -21,6 +25,11 @@ reg=~/.claude/gh-watch-dirs.txt
 grep -qxF "$dir" "$reg" 2>/dev/null || echo "$dir" >> "$reg"
 if [ -n "$GH_WATCH_EYES" ]; then echo "$GH_WATCH_EYES" > "$dir/eyes"; fi
 [ -s "$dir/eyes" ] || gh api user --jq .login > "$dir/eyes"
+if [ -n "$GH_WATCH_AGENT" ]; then agent="$GH_WATCH_AGENT"
+elif command -v claude >/dev/null; then agent="claude -p"
+elif command -v codex >/dev/null; then agent="codex exec"
+else agent=""; fi
+[ -n "$agent" ] && printf '%s\n' "$agent" > "$dir/agent"
 pid=$(cat "$dir/gh-watch.pid" 2>/dev/null || true)
 if [ -n "$pid" ] && grep -q gh-watch-daemon "/proc/$pid/cmdline" 2>/dev/null; then
   echo "watcher running (PID $pid)"
@@ -28,6 +37,11 @@ else
   (cd "$dir" && GH_WATCH_EYES=$(cat eyes) nohup setsid ./gh-watch-daemon.sh >/dev/null 2>&1 &)
   sleep 1; echo "watcher started (PID $(cat "$dir/gh-watch.pid"), eyes: $(cat "$dir/eyes"))"
 fi
-echo "Arm this tail (re-arm on every expiry):"
+if [ -n "$agent" ]; then
+  echo "The daemon wakes the agent itself on each event: $agent (command in $dir/agent, log in $dir/wake.log, cursor in $dir/events.cursor)."
+else
+  echo "No agent CLI found (claude/codex): the daemon will not wake an agent. Set GH_WATCH_AGENT or write $dir/agent."
+fi
+echo "Belt-and-braces for this interactive session, arm this tail (re-arm on every expiry):"
 echo "  tail -n 0 -F $dir/events.log ~/.claude/profiles/swap-events.log 2>/dev/null | grep --line-buffered -E '^###|WATCH ERROR|STALE|^[^ =]'"
 echo "With the Monitor tool, arm it as Monitor (timeout_ms 1800000). Without one (a local claude), run it as a background task (timeout 1800)."

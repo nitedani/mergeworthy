@@ -25,7 +25,7 @@ It covers everything that reaches an external service, with no lighter category:
 - Credit a design or statement to someone only with a link to where they said it.
 - Links to another repo use `owner/repo#N`. Write "depends on #N", never "stacked on", unless `gh stack` links them.
 <!-- if badge!=off -->
-- When posting from the user's account, start with the Claude badge `<img src="https://github.com/claude.png" width="20" height="20" align="left" alt="Claude"> **Claude:**`.
+- When posting from the user's account, start with the icon of the agent that did the work and an `**Agent:**` label (e.g. `<img src="https://github.com/QwenLM.png" width="20" height="20" align="left" alt="Agent"> **Agent:**`; the legacy Claude badge also passes).
 <!-- end -->
 - Budgets: reply ≤ 80 words; PR body about 150 words plus evidence, up to 250 when it lists decisions for the maintainer; issue: one finding, ≤ 400 characters plus a screenshot; inline review comments ≤ 2 sentences, only where the reader must judge. Tables, code and images don't count.
 - Notes for a maintainer go in one table: `| Note | Kind | Blocks merge | Next |`. Kind is bug, limitation, not a regression, or decision needed; Next is fixed in <sha>, PR <url>, or nothing, because Y. A follow-up is opened before the post, never listed as "recommend" or "follow-up"; in the user's own repos, just do it. A note that blocks the goal and can be fixed anywhere, upstream included, is fixed instead of listed.

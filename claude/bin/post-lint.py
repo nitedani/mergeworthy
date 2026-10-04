@@ -30,12 +30,13 @@ record = kind in ('tracker', 'review-record')  # records carry the process, with
 text = open(path).read()
 # An issue draft's first line may be its title ("Title: …"): the budget is for the body
 text = re.sub(r'\ATitle:[^\n]*\n', '', text)
-# Posts by the agent share the user's account: each starts with the Claude badge, so readers see who wrote it.
+# Posts by the agent share the user's account: each starts with a badge naming the agent that wrote it
+# (the agent's icon plus "Agent:", or the legacy Claude badge), so readers see who wrote it.
 # The other checks run on the text after the badge.
-BADGE = '<img src="https://github.com/claude.png" width="20" height="20" align="left" alt="Claude"> **Claude:**'
-has_badge = text.lstrip().startswith(BADGE)
-if has_badge:
-    text = text.lstrip()[len(BADGE):].lstrip()
+BADGE = re.compile(r'^<img src="[^"]+"[^>]*>\s+\*\*(?:Claude|Agent):\*\*')
+_m = BADGE.match(text.lstrip())
+if _m:
+    text = text.lstrip()[_m.end():].lstrip()
 # What GitHub renders as the author's prose. Code (fenced, inline), quotes of others and
 # HTML comments are neither linted nor counted; tables, images and URLs are evidence: linted, not counted.
 prose = re.sub(r'^(```|~~~).*?^\1[^\n]*$', '', text, flags=re.S | re.M)
@@ -92,10 +93,11 @@ for row in re.findall(r'^\|(?:[^|\n]*\|){3}([^|\n]*)\|\s*$', text, flags=re.M):
 # a found defect is fixed in this change, not parked in prose (methodology 1.1.7): the same bug elsewhere is related
 for m in re.finditer(r"[^.\n]*\b(separate issue|separate PR|out of scope|left for later|for later|a later PR|follow-up issue|another PR)\b[^.\n]*", prose, re.I):
     findings.append(f"deferral {m.group(0).strip()[:70]!r}: fix it in this change, open the PR now and link it, or quote the user's OK (1.1.7)")
+has_badge = _m is not None
 badge = setting('BADGE', 'on')  # auto: only a human account (`gh api user` type User, not Bot) needs it
 if kind != 'tracker' and not has_badge and (badge == 'on' or badge == 'auto' and
         subprocess.run(['gh', 'api', 'user', '--jq', '.type'], capture_output=True, text=True).stdout.strip() == 'User'):
-    findings.append(f"missing badge: start the post with {BADGE}")
+    findings.append("missing badge: start the post with the agent's icon and an **Agent:** label (the legacy Claude badge also passes)")
 # the process stays in the artifact root: the reader gets results, not how the agent produced them
 if not record:
     PROCESS = [r'\breview rounds?\b', r'\b(refactor|verification|dry) pass(es)?\b', r'\bcharter\b', r'\bgpt-\d[\w.-]*',

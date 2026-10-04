@@ -21,8 +21,7 @@ These apply to every session, not only to tasks that load this file. `install-me
 - **A question gets an answer, never a change.** "Overkill?", "How about…?", "why…?": argue it both ways first (one agent for their view, one against, each with evidence and what `main` does), then reply with the decision and why the other side lost. Agreeing is a conclusion, never the default. Change code only after they answer. Explicit instructions are done right away, and so is a named failure: "why didn't you…?" or "why are you not…?" about something the methodology or the user already required gets one line of why, then the fix of the instance and of the rule in the same turn (1.1.12), never an explanation that waits for a go.
 - **Bring value to every reply.** Short, plain, self-contained; a finding, a measurement, a better option or a decision with its reason. No reciting, no process talk (reviews, rounds, models, ratings) unless asked, no jargon. Compare designs with code, not only a table.
 - **Only the orchestrator publishes.** Subagents and `local-agent` may draft and review messages; the main session alone posts them, edits them and talks to the user.
-- **Every post to GitHub passes the gate:** a draft file, `post-lint`, an independent review ending in exactly `CLEAN`, then `gate-pass`. Edit in place; never post correction comments. When posting from the user's account, start every post with `<img src="https://github.com/claude.png" width="20" height="20" align="left" alt="Claude"> **Claude:**`.
-- **A thread you didn't open isn't yours until someone writes `/ai` on it.** Until then you don't watch, reply to, react to or act on its comments; from that `/ai` on, it's yours. Threads you opened, and threads the user tells you to work on, are yours from the start.
+- **Every post to GitHub passes the gate:** a draft file, `post-lint`, an independent review ending in exactly `CLEAN`, then `gate-pass`. Edit in place; never post correction comments. When posting from the user's account, start every post with the icon of the agent that did the work and an `**Agent:**` label (e.g. `<img src="https://github.com/QwenLM.png" width="20" height="20" align="left" alt="Agent"> **Agent:**`; the legacy Claude badge also passes).
 - **Do, don't offer.** Ask only for irreversible actions on shared state, money or credentials or global config, or a maintainer's product decision, and then with a recommendation.
 - **Evidence for every claim**, in chat too; check `main`, the registry and upstream before recommending anything.
 - **Never hardcode model versions.** Reviews: a fresh-context Claude reviewer.
@@ -188,7 +187,7 @@ It covers everything that reaches an external service, with no lighter category:
 - Decide what you can decide or measure. A question carries your recommendation and its reason; a change you'd recommend within scope is made, not listed.
 - Credit a design or statement to someone only with a link to where they said it.
 - Links to another repo use `owner/repo#N`. Write "depends on #N", never "stacked on", unless `gh stack` links them.
-- When posting from the user's account, start with the Claude badge `<img src="https://github.com/claude.png" width="20" height="20" align="left" alt="Claude"> **Claude:**`.
+- When posting from the user's account, start with the icon of the agent that did the work and an `**Agent:**` label (e.g. `<img src="https://github.com/QwenLM.png" width="20" height="20" align="left" alt="Agent"> **Agent:**`; the legacy Claude badge also passes).
 - Budgets: reply ≤ 80 words; PR body about 150 words plus evidence, up to 250 when it lists decisions for the maintainer; issue: one finding, ≤ 400 characters plus a screenshot; inline review comments ≤ 2 sentences, only where the reader must judge. Tables, code and images don't count.
 - Notes for a maintainer go in one table: `| Note | Kind | Blocks merge | Next |`. Kind is bug, limitation, not a regression, or decision needed; Next is fixed in <sha>, PR <url>, or nothing, because Y. A follow-up is opened before the post, never listed as "recommend" or "follow-up"; in the user's own repos, just do it. A note that blocks the goal and can be fixed anywhere, upstream included, is fixed instead of listed.
 
@@ -207,6 +206,7 @@ It covers everything that reaches an external service, with no lighter category:
 - Whatever you start, you stop: dev servers, builds, preview servers, proxies. A subagent records the PIDs it starts and kills them before handing back; check with `ps` that none are left. Find a server by the PID you started (and its children, `pgrep -P <pid>`) or by its port (`ss -ltnp 'sport = :<port>'`); never grep `ps` output for a port number, and never `pgrep -f <pattern>`. Check each PID's command and directory before killing it.
 - At most 4 browsers and 4 dev servers of your own at once; stop each when its work ends.
 - Never restart or reconfigure a container someone else's work depends on; start your own alongside.
+- Anything that listens on a port (e2e tests, dev and preview servers) runs through `isolated-run <command>`, yours and every subagent's: its own network namespace with a private loopback (outside network through a proxy it sets up), so fixed ports never collide and parallel runs never test each other's servers. Never kill or wait out another run's server.
 - Never modify the package store or a shared `node_modules`; scratch installs use `--package-import-method=copy`. After any install, check `git status` for unexpected changes.
 - Browser work uses the DevTools MCP. On "profile in use", retry after 30 s, then ask. Never fall back to scripted browsers silently, never open windows on the user's desktop, never kill another session's browser.
 - Isolate worktrees: their own ports, databases and generated clients. Work in the checkout the workflow made, on its branch; to read another branch, `git worktree add --detach <artifact root>/<name> <ref>`.
@@ -916,6 +916,7 @@ These scripts enforce the rules that failed as text alone. This file is the only
 | `pr-steps` + posting hook | Part 2 steps 6–7 (Part 3 sections 6–7 in Tier ≥ M), 1.7. | `gh pr create` (unless `--draft`) and `gh pr ready` are blocked until HEAD has a `review` and a `refactor` record: run `pr-steps review <reviewer output>` and `pr-steps refactor <rating output>` on the final HEAD after the fixes. |
 | `install-methodology` | 1.1.12: this file travels; the machine's copies follow it. | Writes Part 5's scripts to `~/.claude/mechanisms/` (commands linked into `~/.local/bin`), merges the hook config into `~/.claude/settings.json`, and writes the Always-on rules into `~/.claude/CLAUDE.md` between markers, leaving the rest of that file alone. The file's first line, the settings header `build.sh` writes, goes to `~/.claude/mechanisms/settings.env` as `METHODOLOGY_<KEY>=<value>` lines, read by `post-lint` (badge, review records; `gate-pass` runs it) and `pre-bash-guard` (merge); an environment variable of the same name wins. |
 | `methodology-update` (`~/.local/bin`; SessionStart hook with `--auto`) | 1.1.12: every machine follows the repo. | Pulls the repo the installed file came from (`METHODOLOGY_SOURCE` in `settings.env`), rebuilds the same profiles, reinstalls, and the local-model tooling when installed. `--auto`: at most once a day, detached, logged to `~/.claude/mechanisms/update.log`; the new version applies from the next session. |
+| `isolated-run` (`~/.local/bin`) | 1.8: two agents' e2e runs shared port 3000 and tested each other's servers. | `isolated-run <command>` runs it in a private network namespace (`unshare -rn`): its own loopback, and outside network through an HTTP proxy it serves on a unix socket (`HTTP(S)_PROXY`, `NODE_USE_ENV_PROXY=1`). `pre-bash-guard` blocks `test-e2e`, `vike dev/preview` and `pnpm run dev/preview` that don't start with it. |
 | `uninstall-methodology` (`~/.local/bin`) | | Removes the hooks, the `CLAUDE.md` block, `~/.claude/mechanisms/` and the command links; keeps the repo, artifacts, `gated-posts.txt`, `pr-steps/` and the local model's files. |
 | `ready-check` (manual) | 1.7. | Before saying "ready", check every item of 1.7's Ready list against the head (`gh pr checks` for CI; the guardian verdict per Part 3 §11.1, mechanism census included, run after the last fix round; the body re-read against the head) and paste the result. |
 
@@ -1043,12 +1044,13 @@ record = kind in ('tracker', 'review-record')  # records carry the process, with
 text = open(path).read()
 # An issue draft's first line may be its title ("Title: …"): the budget is for the body
 text = re.sub(r'\ATitle:[^\n]*\n', '', text)
-# Posts by the agent share the user's account: each starts with the Claude badge, so readers see who wrote it.
+# Posts by the agent share the user's account: each starts with a badge naming the agent that wrote it
+# (the agent's icon plus "Agent:", or the legacy Claude badge), so readers see who wrote it.
 # The other checks run on the text after the badge.
-BADGE = '<img src="https://github.com/claude.png" width="20" height="20" align="left" alt="Claude"> **Claude:**'
-has_badge = text.lstrip().startswith(BADGE)
-if has_badge:
-    text = text.lstrip()[len(BADGE):].lstrip()
+BADGE = re.compile(r'^<img src="[^"]+"[^>]*>\s+\*\*(?:Claude|Agent):\*\*')
+_m = BADGE.match(text.lstrip())
+if _m:
+    text = text.lstrip()[_m.end():].lstrip()
 # What GitHub renders as the author's prose. Code (fenced, inline), quotes of others and
 # HTML comments are neither linted nor counted; tables, images and URLs are evidence: linted, not counted.
 prose = re.sub(r'^(```|~~~).*?^\1[^\n]*$', '', text, flags=re.S | re.M)
@@ -1105,10 +1107,11 @@ for row in re.findall(r'^\|(?:[^|\n]*\|){3}([^|\n]*)\|\s*$', text, flags=re.M):
 # a found defect is fixed in this change, not parked in prose (methodology 1.1.7): the same bug elsewhere is related
 for m in re.finditer(r"[^.\n]*\b(separate issue|separate PR|out of scope|left for later|for later|a later PR|follow-up issue|another PR)\b[^.\n]*", prose, re.I):
     findings.append(f"deferral {m.group(0).strip()[:70]!r}: fix it in this change, open the PR now and link it, or quote the user's OK (1.1.7)")
+has_badge = _m is not None
 badge = setting('BADGE', 'on')  # auto: only a human account (`gh api user` type User, not Bot) needs it
 if kind != 'tracker' and not has_badge and (badge == 'on' or badge == 'auto' and
         subprocess.run(['gh', 'api', 'user', '--jq', '.type'], capture_output=True, text=True).stdout.strip() == 'User'):
-    findings.append(f"missing badge: start the post with {BADGE}")
+    findings.append("missing badge: start the post with the agent's icon and an **Agent:** label (the legacy Claude badge also passes)")
 # the process stays in the artifact root: the reader gets results, not how the agent produced them
 if not record:
     PROCESS = [r'\breview rounds?\b', r'\b(refactor|verification|dry) pass(es)?\b', r'\bcharter\b', r'\bgpt-\d[\w.-]*',
@@ -1394,6 +1397,10 @@ if not d.get('tool_input', {}).get('run_in_background') and any(
         re.search(r'(^|[\s;(&|])local-agent\s', l) and re.search(r'(?<![&|>])&(?![&>])\s*\)?\s*(;|$)', l) for l in _code_lines(cmd)):
     block("start local-agent through the Bash tool's run_in_background (not a plain `&`), so its completion wakes you")
 
+# Servers on fixed ports (3000) collide across parallel runs, agents and sessions: each run gets its own network namespace
+if any(re.search(r'(^|[\s;(&|])(test-e2e|vike (dev|preview)|pnpm (run )?(dev|preview)\b|npm run (dev|preview)\b)', l) and not re.search(r'(^|[\s;(&|])isolated-run\s', l) for l in _code_lines(cmd)):
+    block("start e2e tests and dev/preview servers through `isolated-run <command>` (own network namespace), so their fixed ports never collide with another run or agent")
+
 try:
     segs = segments(cmd)
 except ValueError:
@@ -1640,4 +1647,89 @@ for f in os.listdir(bin_) if os.path.isdir(bin_) else ():
     p = os.path.join(bin_, f)
     if os.path.islink(p) and re.search(r'/\.claude/mechanisms/|/local-llm/', os.readlink(p)): os.remove(p); print('removed link', p)
 shutil.rmtree(mech, ignore_errors=True); print('removed', mech)
+````
+
+### `isolated-run`
+
+````bash
+#!/usr/bin/env python3
+"""isolated-run <command...>: runs a command that starts servers (e2e tests, dev or preview servers) in its own network
+namespace with a private loopback, so a fixed port such as 3000 never collides with another run, agent or session.
+Outside network goes through an HTTP proxy (HTTP_PROXY/HTTPS_PROXY inside; Node's fetch with NODE_USE_ENV_PROXY,
+Chromium from the environment), served outside the namespace on a unix socket."""
+import asyncio, os, shutil, subprocess, sys, tempfile
+
+PROXY_PORT = 3128
+
+
+async def pipe(r, w):
+    try:
+        while (b := await r.read(65536)):
+            w.write(b)
+            await w.drain()
+    except Exception:
+        pass
+    finally:
+        w.close()
+
+
+async def proxy_client(r, w):  # outside: an HTTP proxy request from the namespace
+    try:
+        head = await r.readuntil(b'\r\n\r\n')
+        method, target = head.split(b' ', 2)[:2]
+        if method == b'CONNECT':
+            host, port = target.decode().rsplit(':', 1)
+            r2, w2 = await asyncio.open_connection(host, int(port))
+            w.write(b'HTTP/1.1 200 Connection established\r\n\r\n')
+            await w.drain()
+        else:  # plain http, absolute URL
+            from urllib.parse import urlsplit
+            u = urlsplit(target.decode())
+            r2, w2 = await asyncio.open_connection(u.hostname, u.port or 80)
+            path = (u.path or '/') + (f'?{u.query}' if u.query else '')
+            w2.write(head.replace(target, path.encode(), 1))
+    except Exception:
+        w.close()
+        return
+    await asyncio.gather(pipe(r, w2), pipe(r2, w))
+
+
+async def bridge_client(r, w, sock):  # inside: 127.0.0.1:PROXY_PORT -> the unix socket
+    try:
+        r2, w2 = await asyncio.open_unix_connection(sock)
+    except Exception:
+        w.close()
+        return
+    await asyncio.gather(pipe(r, w2), pipe(r2, w))
+
+
+def serve(coro):
+    async def main():
+        server = await coro
+        async with server:
+            await server.serve_forever()
+    asyncio.run(main())
+
+
+if len(sys.argv) > 2 and sys.argv[1] == '--proxy':
+    serve(asyncio.start_unix_server(proxy_client, sys.argv[2]))
+elif len(sys.argv) > 2 and sys.argv[1] == '--bridge':
+    sock = sys.argv[2]
+    serve(asyncio.start_server(lambda r, w: bridge_client(r, w, sock), '127.0.0.1', PROXY_PORT))
+else:
+    if len(sys.argv) < 2:
+        sys.exit('usage: isolated-run <command...>')
+    run_dir = tempfile.mkdtemp(prefix='isolated-run-', dir=os.environ.get('XDG_RUNTIME_DIR') or os.path.expanduser('~/.cache'))
+    sock = os.path.join(run_dir, 'proxy.sock')
+    me = os.path.abspath(__file__)
+    proxy = subprocess.Popen([sys.executable, me, '--proxy', sock])
+    try:
+        url = f'http://127.0.0.1:{PROXY_PORT}'
+        env = dict(os.environ, HTTP_PROXY=url, HTTPS_PROXY=url, http_proxy=url, https_proxy=url,
+                   NO_PROXY='localhost,127.0.0.1,::1', no_proxy='localhost,127.0.0.1,::1', NODE_USE_ENV_PROXY='1')
+        inner = f'ip link set lo up 2>/dev/null; "{sys.executable}" "{me}" --bridge "{sock}" & sleep 0.3; exec "$@"'
+        sys.exit(subprocess.call(['unshare', '-rn', 'sh', '-c', inner, 'isolated-run', *sys.argv[1:]], env=env))
+    finally:
+        proxy.terminate()
+        shutil.rmtree(run_dir, ignore_errors=True)
 ````

@@ -80,8 +80,44 @@ def is_human(u, body=None, agent_hashes=frozenset()):
     return _norm(body) not in agent_hashes  # ME: the user's own comment unless it's an agent post
 
 
+def wake_agent(event):
+    """The wake layer, harness-independent: launch the configured agent (command from <dir>/agent, e.g.
+    `claude -p` or `codex exec`) to handle the new event from events.cursor, so the event is answered
+    even when no interactive session is watching. One wake agent per dir at a time; the next event
+    re-launches it once the previous one exits. Deduplication is the shared cursor: an event already
+    handled (cursor past it) is skipped."""
+    if ONCE:
+        return
+    agent = os.path.join(HERE, 'agent')
+    if not os.path.exists(agent):
+        # plain print, not emit: the line starts with ###, so emit would re-trigger wake_agent
+        print(f"### WAKE: no agent configured for {HERE}: write the agent command (e.g. claude -p) to {agent}", flush=True)
+        return
+    pid_file = os.path.join(HERE, 'wake.pid')
+    try:
+        if int(open(pid_file).read().strip()) > 1:
+            os.kill(int(open(pid_file).read().strip()), 0)
+            return  # a wake agent is already running and will catch this event from events.log
+    except (OSError, ValueError):
+        pass
+    import shlex
+    cursor = os.path.join(HERE, 'events.cursor')
+    prompt = f"""New GitHub watch event for this directory. Work in {HERE}.
+Read {HERE}/events.log from the byte offset in {HERE}/events.cursor (from the start if it is missing).
+Handle each new '###' event per methodology 1.5 (a comment by the account owner is the owner in chat: answer it
+at once, every post through the gate). After each batch, re-read the rest of events.log and repeat until caught up.
+Advance {HERE}/events.cursor to the end of what you handled; an event whose offset is already before the cursor is
+handled: skip it."""
+    log = open(os.path.join(HERE, 'wake.log'), 'a')
+    proc = subprocess.Popen(shlex.split(open(agent).read().strip()), stdin=subprocess.DEVNULL, stdout=log,
+                            stderr=subprocess.STDOUT, cwd=HERE, start_new_session=True)
+    open(pid_file, 'w').write(str(proc.pid))
+
+
 def emit(line):
     print(line, flush=True)
+    if line.startswith('###') and not ONCE:
+        wake_agent(line)
 
 
 def emit_dependents(key):
