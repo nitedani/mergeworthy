@@ -140,6 +140,8 @@ Read the task and every link in it. Write `Tier: <X>, because <signals>` and put
 
 A maintainer's comment is handled like the user typing in this chat: highest priority, full effort.
 
+Red CI on your PR is the maintainer's first question: fix it, or, when it isn't the PR's doing (a secret forks don't get, a flaky job), say so on the PR right away, a single comment with the cause and the evidence (the workflow line, the same failure on another PR or `main`). Explaining it only in chat leaves the PR looking broken.
+
 The user's own comment on GitHub (by the account you post as, and not a gated post) is the user typing in this chat. A 👀 from that same account acknowledges nothing to them: start the work at once, in parallel with what's running rather than queued behind it, follow the skill the work calls for (`implement-issue` for "fix it" or "open a PR"), and tell the user in chat.
 
 1. **Within 10 seconds:** 👀 reaction. The watcher does this (Part 5).
@@ -1212,7 +1214,7 @@ def scan(state, only=None):
                 state['prs'][key] = pr_state
             if red is not None:
                 if red != state['ci'].get(key, []):
-                    emit(f"### CI {key}: red={red}" if red else f"### CI {key}: no longer red")
+                    emit(f"### CI {key}: red={red}: fix it, or if it is not this PR's doing, say why on the PR now with the evidence (1.5)" if red else f"### CI {key}: no longer red")
                 state['ci'][key] = red
             agent_hashes = agent_post_hashes()  # read after the fetch: a post gated while it ran is the agent's
             for kind, cid, upd, user, url, body, extra in events:

@@ -266,7 +266,7 @@ def scan(state, only=None):
                 state['prs'][key] = pr_state
             if red is not None:
                 if red != state['ci'].get(key, []):
-                    emit(f"### CI {key}: red={red}" if red else f"### CI {key}: no longer red")
+                    emit(f"### CI {key}: red={red}: fix it, or if it is not this PR's doing, say why on the PR now with the evidence (1.5)" if red else f"### CI {key}: no longer red")
                 state['ci'][key] = red
             agent_hashes = agent_post_hashes()  # read after the fetch: a post gated while it ran is the agent's
             for kind, cid, upd, user, url, body, extra in events:
