@@ -68,10 +68,13 @@ for m in re.finditer(r'(?<![\w/.-])#(\d+)\b', prose):
         findings.append(f"bare #{m.group(1)} doesn't exist in {repo}: another repo's item? write owner/repo#{m.group(1)}")
 # the umbrella issue's format (methodology 1.2, Tier L; reference nitedani/vike-react-rsc#9)
 if kind == 'tracker':
-    if text.startswith('## Decisions'):
+    head = re.sub(r'^\s*<img [^>]*>\s*\*\*[^*\n]+\*\*\s*', '', text)  # after the agent badge
+    if head.startswith('## Decisions'):
         for h in ('Process and requirements', 'Agreed', 'Open'):  # '### PRs' only when the body doesn't carry each PR's state
             if not re.search(rf'^### [^\n]*{h}', text, flags=re.M):
                 findings.append(f"tracker: the Decisions comment needs a '### {h}' section (1.2)")
+    elif head.startswith('## '):
+        pass  # a long record the body links to (e.g. an audit's findings): no list format
     else:
         if title is not None and not title.startswith('Tracking: '):
             findings.append(f"tracker: the title starts 'Tracking: ' and names the goal, not {title[:50]!r} (1.2)")
