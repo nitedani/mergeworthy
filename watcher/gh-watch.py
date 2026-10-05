@@ -77,10 +77,11 @@ AI_CALL = re.compile(r'(^|\s)/(ai|agent)\b', re.I)
 
 
 def answerable(u, body, agent_hashes):
-    """mergeworthy:github-threads: a maintainer on a thread the agent opened or posted in, or the user anywhere with /ai or /agent; nothing else."""
+    """mergeworthy:github-threads, for a thread the agent opened or posted in: a maintainer's comment or the user's.
+    The user's /ai calls on other threads go through ai_call_elsewhere."""
     if not is_human(u, body, agent_hashes):
         return False
-    return bool(AI_CALL.search(body or '')) if u.get('login') == ME else u.get('assoc') in MAINTAINER
+    return u.get('login') == ME or u.get('assoc') in MAINTAINER
 
 
 def is_human(u, body=None, agent_hashes=frozenset()):
