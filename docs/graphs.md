@@ -6,14 +6,14 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 
 | Skill | Hands over to |
 |---|---|
-| `converge` | `finality`, `implement-issue`, `verify`, `guardian`, `refactor` |
+| `converge` | `finality`, `implement-issue`, `verify`, `review`, `guardian`, `refactor`, `merging`, `github-threads` |
 | `core` | `implement-issue`, `delegating`, `merging`, `github-threads`, `converge` |
 | `delegating` | nothing |
 | `design-loop` | `implement-issue`, `core`, `review`, `github-threads`, `converge` |
 | `finality` | nothing |
 | `github-threads` | `review`, `refactor`, `core`, `implement-issue` |
-| `guardian` | `delegating`, `review`, `design-loop` |
-| `implement-issue` | `finality`, `guardian`, `design-loop`, `converge`, `core`, `verify`, `review`, `refactor` |
+| `guardian` | `delegating`, `converge`, `design-loop` |
+| `implement-issue` | `finality`, `guardian`, `design-loop`, `converge`, `core` |
 | `mechanisms` | nothing |
 | `merging` | nothing |
 | `past-failures` | nothing |
@@ -100,7 +100,7 @@ flowchart TB
   start(["Any GitHub thread you're<br/>in, and anything you<br/>post"])
   subgraph g0["1.5 The live GitHub loop"]
     s0["1. Within 10 seconds"]
-    s1["2. Within about a minute"]
+    s1["2. The answer"]
     s0 --> s1
     s2["3. Then think"]
     s1 --> s2
@@ -180,12 +180,10 @@ flowchart TB
     s2 --> s3
     s4["5. See it in the browser"]
     s3 --> s4
-    s5["6. Review round"]
+    s5["6. Converge"]
     s4 --> s5
-    s6["7. Refactor pass"]
+    s6["7. The PR"]
     s5 --> s6
-    s7["8. The PR"]
-    s6 --> s7
   end
   s2 -.-> r1[["finality"]]
   s3 -.-> r2[["guardian"]]
@@ -194,31 +192,25 @@ flowchart TB
   s3 -.-> r5[["core"]]
   s4 -.-> r6[["core"]]
   s5 -.-> r7[["converge"]]
-  s5 -.-> r8[["verify"]]
-  s5 -.-> r9[["review"]]
-  s5 -.-> r10[["guardian"]]
-  s5 -.-> r11[["refactor"]]
-  s6 -.-> r12[["guardian"]]
-  s6 -.-> r13[["converge"]]
   start --> g0
 ```
 
-## Converging a PR (Tier S condensed, Tier ≥ M in full before ready, or the owner asks)
+## Converging a PR, before it's ready (every tier)
 
-Opens `mergeworthy:converge` (what converged means, through the passes below).
+Opens `mergeworthy:converge` (the pipeline every PR runs: finality, Loop A, Loop B, the fresh reader, gates).
 
 ```mermaid
 flowchart TB
-  start(["Converging a PR (Tier S<br/>condensed, Tier ≥ M in<br/>full before ready, or …"])
-  subgraph g0["converge"]
+  start(["Converging a PR, before<br/>it's ready (every tier)"])
+  subgraph g0["The pipeline"]
     s0["1. Finality"]
-    s1["2. Bug verification"]
+    s1["2. Loop A"]
     s0 --> s1
-    s2["3. Code review"]
+    s2["3. Loop B"]
     s1 --> s2
-    s3["4. Guardian"]
+    s3["4. Loop A again"]
     s2 --> s3
-    s4["5. Refactor pass"]
+    s4["5. The fresh reader"]
     s3 --> s4
     s5["6. Gates"]
     s4 --> s5
@@ -226,8 +218,13 @@ flowchart TB
   s0 -.-> r1[["finality"]]
   s0 -.-> r2[["implement-issue"]]
   s1 -.-> r3[["verify"]]
-  s3 -.-> r4[["guardian"]]
-  s4 -.-> r5[["refactor"]]
+  s2 -.-> r4[["review"]]
+  s2 -.-> r5[["guardian"]]
+  s2 -.-> r6[["refactor"]]
+  s3 -.-> r7[["verify"]]
+  s4 -.-> r8[["review"]]
+  s4 -.-> r9[["merging"]]
+  s4 -.-> r10[["github-threads"]]
   start --> g0
 ```
 
@@ -266,11 +263,11 @@ flowchart TB
     s0 --> s1
     s2["3. Run the product lanes<br/>the changes touch"]
     s1 --> s2
-    s3["4. After the last landing"]
+    s3["4. Continue the Loop A<br/>agent with the landed …"]
     s2 --> s3
   end
   s0 -.-> r1[["delegating"]]
-  s3 -.-> r2[["review"]]
+  s3 -.-> r2[["converge"]]
   s3 -.-> r3[["delegating"]]
   subgraph g1["Guardian"]
     s4["12 rules: BLOAT, CODE QUALITY, PROBLEM VARIABILITY…"]
@@ -315,8 +312,8 @@ Opens `mergeworthy:review` (who reviews, the reviewer charter).
 flowchart TB
   start(["Any independent review"])
   subgraph g0["review"]
-    s0["1. Codex"]
-    s1["2. A fresh-context Claude<br/>subagent"]
+    s0["1. A model from another<br/>company than the<br/>session's"]
+    s1["2. A fresh-context subagent<br/>on the session's default<br/>model"]
     s0 --> s1
   end
   s1 -.-> r1[["delegating"]]

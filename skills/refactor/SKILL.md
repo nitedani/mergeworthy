@@ -1,16 +1,11 @@
 ---
 name: refactor
-description: "The refactor pass on a PR's diff: the pinnacle-split-and-simplify prompt, who rates, how it's implemented and recorded, and when it goes stale."
+description: "The refactor pass on a PR's diff: the pinnacle-split-and-simplify prompt, how it's run and implemented, and when it goes stale. Part of Loop B in converge."
 ---
 
 # Refactor pass
 
-**Who rates, and when.** The agent that ran `review`'s PR review round rates the diff with the prompt below, right after the review, in the same prompt (one run, `delegating`; `implement-issue` steps 6 and 7). With no reviewer available, run the prompt yourself in two separate passes (rate, then edit), and record that.
-
-**How it is recorded.** On the final head, run `pr-steps refactor <output>` with the rater's last re-rating. Refactor commits change the head, so before ready, continue the same agent (`delegating`, one run) with the commits:
-- it re-rates them;
-- it confirms its review on the final head (fix the real defects it finds, and have it confirm again);
-- record that confirmation with `pr-steps review` (1.7).
+**Who rates, and when:** the Loop B agent, right after its review, in the same prompt (`converge`, pipeline step 3). Its last re-rating on the final head is what `pr-steps refactor` records. With no reviewer available at all, run the prompt yourself in two separate passes (rate, then edit), and record that.
 
 ## The prompt
 

@@ -1,13 +1,11 @@
 ---
 name: verify
-description: "Bug verification of a PR (reproduce-only): slicing, the verifier brief, the counting and dry rules, and the final verification after refactors."
+description: "Bug verification of a PR (reproduce-only, Loop A in converge): slicing, the verifier brief, the counting and dry rules, and the final verification after refactors."
 ---
 
 # Bug verification
 
-**Split each PR's code into slices one verifier can hold** (e.g. core feature, backend and storage, runtime adapter, wire and client). The Loop A agent runs the verifier brief below for all slices, with one report section per slice, and the fresh reader runs it again on the final head (open `converge`, who reads).
-
-This pass is Loop A in `converge`: the bug-verification loop that repeats until every slice is dry.
+**Split each PR's code into slices one verifier can hold** (e.g. core feature, backend and storage, runtime adapter, wire and client). This is Loop A of `converge`'s pipeline (steps 2 and 4): one agent runs the verifier brief below for all slices, one report section per slice, and the fresh reader runs it again on the final head (step 5). This skill holds what counts and when a slice is dry; open `converge` for when the loop runs.
 
 **Counting rule:**
 - **A candidate counts only with a reproduction:** a spec or script that fails on the head and passes on the base (main, or the bottom PR for the top).
@@ -33,7 +31,7 @@ Bugs outside the task's scope get a disposition (1.1.7).
 
 ### Final bug verification after the refactors
 
-Once every scope converged, send the refactor commits to the verifier from the bug-verification pass, since it knows the slices. It compares the pre-refactor tree with the head, reproduce-only:
+This is pipeline step 4: continue the Loop A agent with Loop B's commits, since it knows the slices. It compares the pre-refactor tree with the head, reproduce-only:
 - The old specs run on the new code, adapting only renames. Every failure must be an intended change.
 - Side-by-side scripts run the same scenarios on both trees and diff the output.
 - Randomized or fuzz comparisons are included where the logic is combinatorial.

@@ -1,13 +1,11 @@
 ---
 name: implement-issue
-description: "Implementing an issue or opening a PR: already fixed?, reproduce, approach rating, build and gate, browser evidence, review round, refactor pass, PR body."
+description: "Implementing an issue or opening a PR: already fixed?, reproduce, approach rating, build and gate, browser evidence, converging it, the PR body."
 ---
 
 # Implementing a change
 
-From an issue or a problem to one merge-ready PR. The tiers come from `core` (1.0 Triage):
-- **Tier S** (one bounded fix) follows this skill as written.
-- **Tier ≥ M** runs it once per PR, and replaces the single rounds of steps 6 and 7 with `converge`'s loops. `guardian` (landing) says what feeds `pr-steps`.
+From an issue or a problem to one merge-ready PR: steps 1 to 5 build the change, step 6 converges it with `converge`'s pipeline, and step 7 opens the PR. A Tier ≥ M change (`core` 1.0) runs this once per PR.
 
 **The repo's `AGENTS.md` / `CLAUDE.md` governs how the code is written;** everything else particular to the repo is in its project file (`core` 1.3).
 
@@ -136,19 +134,11 @@ Any console error fails.
 
 **Runtime fixes** (a stream, a cancel, a cache) are shown in the real app through a real browser, `main` against the head, with the server's logs. Unit scripts alone don't count.
 
-### 6. Review round
+### 6. Converge
 
-Each loop gets one agent (open `converge`, who reads, for how they and the fresh reader are set up). Each brief lives in the skill named next to it; open that skill when you write the agent's prompt.
-- **The Loop A agent** runs the verifier brief (`verify`) on the diff, and after each fix re-verifies until a pass is dry.
-- **The Loop B agent** then runs, in one prompt and each into its own output file, the reviewer charter (`review`), then the guardian verdict (`guardian`) and the refactor ratings (`refactor`). The context it filled reviewing is the context it rates with.
+Run `converge`'s pipeline on the diff (open `converge`): Loop A until dry, Loop B until it leaves nothing worth doing, Loop A again on Loop B's commits, then the fresh reader on the final head and the PR body. Its `CLEAN` is both the body's posting-gate review and the `pr-steps review` record; Loop B's last re-rating is the `pr-steps refactor` record.
 
-### 7. Refactor pass
-
-- **Fix the real defects.** Send the Loop A agent the commits; it re-verifies until dry.
-- **Implement the ratings commit by commit**, with the gates after each (in a guardian round, `guardian`'s implementer does). The Loop B agent re-rates old ⇒ new; record it with `pr-steps refactor`.
-- **Last, the fresh reader reads the final head and the PR body** (`converge`, who reads). Its `CLEAN` is both the body's posting-gate review and the `pr-steps review` record on that head.
-
-### 8. The PR
+### 7. The PR
 
 ```markdown
 <Two or three plain sentences: what was wrong, what changed.>

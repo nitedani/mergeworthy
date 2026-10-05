@@ -12,9 +12,9 @@ description: "Pushing, saying a PR is ready, merging, stacked PRs."
     - Never push to a merged branch.
 - **Each maintainer instruction is a checkbox for its PR.** Before saying ready and before merging, re-read the whole thread, inline comments included. Tick or do each instruction.
 - **A subagent that writes a PR follows the mergeworthy skills, not a summary of them.**
-    - Its prompt tells it to load the skills and names the steps it runs: `review`'s PR review round, the refactor pass, `guardian`'s verdict, evidence in the real app, and the benchmark for transports.
+    - Its prompt tells it to load the skills and names the steps it runs: `implement-issue` steps 1 to 5, evidence in the real app, and the benchmark for transports.
     - Its report lists each step with its output file.
-    - It starts no agents of its own. A step that needs one (a fallback reviewer, mappers) goes back in its report, and the main session runs it.
+    - It starts no agents of its own, so the main session runs `converge`'s pipeline on its branch: the loops, the fresh reader and the mappers all need agents.
     - `pre-bash-guard` blocks a ready PR without the `pr-steps` review and refactor records.
 - **Ready** means every item of the Ready list holds on the head. Paste this list, checked against the head, into the ledger:
     - every slice dry after its last fix (a pass that finds no bug that counts, `verify`);

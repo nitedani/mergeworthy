@@ -27,13 +27,11 @@ Read the task and every link in it. Then write `Tier: <X>, because <signals>` as
 | Tier | Signals | Process |
 |---|---|---|
 | **0: Answer** | An answer, research or a review; nothing to change. | Principles, evidence, reporting; the posting gate if published. |
-| **S: Single fix** | One bounded fix in one repo, expected behavior already clear. | `implement-issue` per change, and `converge` condensed (below). The project file's gates green, the body true to the head. |
-| **M: Feature or set** | A new capability, a changed public contract, several change units, or open behavior questions. | `implement-issue` per unit, with full `converge` in place of its single rounds; invariants, ledger, decision packet, design loop (1.4). |
+| **S: Single fix** | One bounded fix in one repo, expected behavior already clear. | `implement-issue` per change, which runs `converge`'s pipeline. The project file's gates green, the body true to the head. |
+| **M: Feature or set** | A new capability, a changed public contract, several change units, or open behavior questions. | `implement-issue` per unit; invariants, ledger, decision packet, design loop (1.4). |
 | **L: Program** | Changes across two or more independently maintained repos, or two or more decision makers. | Tier M everywhere, plus the umbrella issue (1.2). |
 
-`converge` gives each loop one agent for its whole life, and a fresh reader reads the final head once (`converge`, who reads): the Loop A agent hunts bugs, the Loop B agent reviews, guards and rates, and the fresh reader checks the result cold.
-- **Tier S, condensed `converge`:** `implement-issue`'s review round and refactor pass feed `pr-steps` (the record that a step ran on the head). All of `converge`'s rules apply: git, authority, the phantom and removal gates, stacked PRs, gates and evidence. Of its loops, Tier S runs one dry verification pass after the last fix (the Loop A agent) and one guardian verdict (the Loop B agent). Then the fresh reader checks the final head.
-- **Tier M, full `converge`:** each loop agent continues across its rounds, and the fresh reader checks the final head.
+Every PR, whatever its tier, goes through `converge`'s pipeline: a Loop A agent hunts bugs, a Loop B agent reviews, guards and rates, and a fresh reader checks the final head cold. The tier decides the records (1.2), not the loops; on a small fix each loop ends after one pass.
 
 ## 1.1 Principles
 
@@ -99,7 +97,7 @@ Read the task and every link in it. Then write `Tier: <X>, because <signals>` as
 14. **Spend tokens like money.**
     - **Do small steps yourself:** one command, one file read, a short edit, a "Done in <sha>" reply.
     - **Start an agent only for long, independent work,** at most 3 at a time without asking, and only from the main session; queue the rest. A subagent never starts agents of its own (1.7). Continue an agent that already has the context (send it a message) instead of starting a new one. Stop an agent as soon as its question is settled.
-    - **One agent per context, not per role.** Roles that read the same artifact at the same head run in one agent, each written to its own output file. Examples: review, refactor ratings, the PR body's claims and the screenshots; the verifier's slices; a guardian's scopes. Split only when the material doesn't fit one context, or when independence is the point (the author never reviews itself).
+    - **One agent per loop, not per role.** Roles that read the same artifact for the same loop run in one agent, each written to its own output file: a review and its guardian and refactor ratings; the verifier's slices; a guardian's scopes. Split only when the material doesn't fit one context, or when independence is the point (the author never reviews itself, and the fresh reader hasn't seen the fixes).
     - **Give agents paths and the question,** never pasted files or long histories, and ask for a short report. Each role gets only what it uses: a PR writer gets the mergeworthy skills (1.7), an executor a brief (1.10), a reviewer its charter and the artifact.
     - **Match the check to the risk.** A short reply gets the fast gate (1.6); a PR body or a proposal gets the full review. A full convergence loop runs only where the tier (1.0) requires it.
     - **Re-run only the tests a change can affect** (a docs change doesn't need the e2e matrix).

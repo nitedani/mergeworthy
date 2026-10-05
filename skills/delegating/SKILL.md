@@ -34,7 +34,8 @@ These rules hold when you edit a skill, prompt, rules file or AGENTS.md. Rules f
     - `Scope`: the paths and commands it may use.
     - `Acceptance`: the commands or observations that define done.
 
-  Never put in your opinion or the answer you expect: a guess goes under `To check`.
+  Never put in your opinion, the answer you expect, or earlier agents' conclusions: a guess goes under `To check`. The one exception is a previous round's report, given to an agent that re-rates it.
+- **A brief from a skill** has its `<...>` placeholders filled with the specifics, and points the agent at pinned SHAs, never a moving branch.
 - **A charter or prompt from a skill is pasted from the installed skill** each time you write the brief (in Claude Code, `~/.mergeworthy/current/skills/`). A copy saved earlier in your work folder drifts from it.
 - **What the agent returns:** the result with evidence (`path:line`, or the command and its exit code), and a `not_checked` list. An unchecked item or a deviation is yours to decide; never send the same brief again.
 - **What the agent must not do:**
@@ -43,7 +44,7 @@ These rules hold when you edit a skill, prompt, rules file or AGENTS.md. Rules f
     - call something unused before finding every caller (`grep -rn`) and reading the comment above it;
     - say a step ran when it couldn't (it stops and says what blocked it).
     - start agents of its own (it does the work itself), or end its turn while work it started is still running.
-- **One run is one agent with one prompt.** Briefs that share a context (review, then refactor ratings) go in that prompt, in order. Later work on the same thing (confirming fixes, re-rating) continues that agent: in Claude Code, `SendMessage` to its agent id; for Codex, `codex exec resume <session id> "<what changed>"` (the id `codex exec` printed, never `--last`). A new agent re-reads everything.
+- **One run is one agent with one prompt.** Briefs that share a context (review, then refactor ratings) go in that prompt, in order. Later work on the same thing (confirming fixes, re-rating) continues that agent: in Claude Code, `SendMessage` to its agent id; for Codex, `codex exec resume -c sandbox_mode=danger-full-access <session id> "<what changed>"` (the id `codex exec` printed, never `--last`; resume has no `--sandbox` flag). A new agent re-reads everything.
 - **Before using its result,** open two or three of its cited `path:line`s, re-run one command, or diff the result against your plan.
 - **A long job gets a time budget in its brief, and an early check.** Read its first output within half an hour. Confirm the numbers can be used (a benchmark alone on the machine, warmed up, comparing like with like) before it runs the rest. Past its budget, stop it or extend it deliberately.
 - **A subagent that writes a PR** follows the mergeworthy skills, not a summary of them: open `merging` (1.7) for what its prompt must name and what its report lists.

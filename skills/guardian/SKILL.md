@@ -1,18 +1,18 @@
 ---
 name: guardian
-description: "Guardian rounds on a PR (bloat and quality): the LeanKeeper charter, the guardian and implementer briefs, landing, and when a scope has converged."
+description: "Guardian rounds on a PR (bloat and quality, part of Loop B in converge): the LeanKeeper charter, the guardian and implementer briefs, landing, and when a scope has converged."
 ---
 
 # Guardian rounds
 
-Guardian rounds are Loop B of `converge`: repeated rounds that find bloat and quality problems and land their fixes. Open `converge` for how the rounds fit with the other passes.
+Guardian rounds are the quality half of Loop B in `converge`'s pipeline (step 3): repeated rounds that find bloat and quality problems and land their fixes. This skill holds the charter, the briefs and how findings are judged and landed; open `converge` for when the loop runs and what it records.
 
-- **When:** run them late, after correctness is proven, with the gates as the safety net.
+- **When:** after Loop A is dry, with the gates as the safety net (`converge`, step 3).
 - **Judging findings:** each finding is judged per 1.1.15 (earn every line), as in Loop A (`verify`'s reproduce-only bug hunt).
-- **Scopes:** split the diff into scopes (e.g. core feature, backend, everything else). The bottom PR of a stack is its own scope.
+- **Scopes** are Loop A's slices; the guardian brief calls them scopes. The bottom PR of a stack is its own.
 
 **Round 1:**
-- The Loop B agent runs the guardian brief below after its review (`converge`, who reads), for every scope, one report section per scope.
+- The Loop B agent runs the guardian brief below after its review, for every scope, one report section per scope.
 - Each scope's section reports:
   - findings by disposition, with prices;
   - the mechanism census;
@@ -21,7 +21,7 @@ Guardian rounds are Loop B of `converge`: repeated rounds that find bloat and qu
   - an honest-positive statement (a plain "nothing worth changing" where that is the result).
 
 **Implementation:**
-- **One implementer,** in its own worktree off the current head, with the implementer brief below, takes the scopes one after the other. Use one implementer per scope only when the scopes are too big for one context.
+- **You land the findings,** commit by commit. For a long list, one implementer in its own worktree off the current head, with the implementer brief below, takes the scopes one after the other; one implementer per scope only when the scopes are too big for one context.
 - **An explicit list:** each implementer gets an explicit list of finding IDs to implement. Owner decisions, and anything touching owner code without explicit leave, are excluded.
 - **Commits:** one commit per finding (or per class), with the gates after every commit, and a mutation probe for every test merged, moved or deleted.
 - **Declines:** an implementer may decline a finding with a reason: when the finding is false, not behavior-preserving, or touches owner code.
@@ -30,10 +30,10 @@ Guardian rounds are Loop B of `converge`: repeated rounds that find bloat and qu
 1. Review each implementer's diff yourself before cherry-picking (1.10).
 2. Cherry-pick onto the PR branch, resolve conflicts, and run the full gates.
 3. Run the product lanes the changes touch.
-4. After the last landing, run `review`'s PR review round on the final head (open `review` for the round's steps) and record it with `pr-steps review <output>`. Record the last guardian report with `pr-steps refactor <report>`.
+4. Continue the Loop A agent with the landed commits (`converge`, step 4).
 
 **Round N+1:**
-- **The same guardian continues (`delegating`, one run):** send it the implemented commits and the declined items with reasons. Start a fresh guardian only when the scope changed beyond its findings.
+- **The Loop B agent continues (`delegating`, one run):** send it the implemented commits and the declined items with reasons. Start a new one only when the scope changed beyond its findings.
 - **It audits fresh,** not only the old list. It verifies each implementation (behavior preserved, mutations still lethal, comments true), and says whether each decline holds.
 - **It re-rates** every row old ⇒ new with commits, and states plainly whether the scope converged.
 - **Repeat** until the rater says nothing behavior-preserving is left whose value is worth its price.
@@ -141,6 +141,8 @@ Final message: path, counts per disposition, the three highest-value findings, o
 **Custom test scripts** (charter lens 1) are throwaway probes left in the repo. Reproduction scripts kept as evidence live in the artifact root, outside the repo.
 
 ## Implementer brief
+
+In the brief, the "fresh one" that re-rates is the Loop B agent: it didn't write the change, so it sees the result fresh.
 
 ```
 You implement a guardian's findings on <PR>.

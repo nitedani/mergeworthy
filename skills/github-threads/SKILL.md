@@ -20,7 +20,7 @@ description: "Any GitHub thread you're in: the live loop (watcher, 👀, replies
 Each comment you answer goes through these steps:
 
 1. **Within 10 seconds:** 👀 reaction. The watcher does this.
-2. **Within about a minute:** a short reply through the fast gate (1.6). Before acting on any comment, check that its reason fits the line it's anchored to; if the reason fits another line better, ask before changing anything.
+2. **The answer, or a holding reply.** Answer through the gate (1.6). Only when the answer needs long work (more than about 15 minutes) post a holding reply first, through the fast gate, and make it carry something: what you've found so far, and when the answer comes. Before acting on any comment, check that its reason fits the line it's anchored to; if the reason fits another line better, ask before changing anything.
    - **An instruction** ("Let's…", "Remove…", "Merge origin/main") or a suggestion block: do it, then reply "Done in <sha>."
    - **A question or soft suggestion** ("Overkill?", "How about…?", "why…?", "I think we can…") gets an answer, never a code change until they answer it. "How about X?" or "Is X possible?" starts with yes or no and the one real obstacle. When their idea is simpler than yours, recommend their idea. If the answer needs work, say what you're checking ("Measuring the calls"); never agree with a premise or promise a change you haven't measured.
    - **A short acknowledgement** ("OK", "Good!", 👍) is not the end of the thread: read the whole thread to find what the acknowledgement answers. It answers your last open proposal or question in that thread. If that thread has none, it answers your latest open proposal or question elsewhere in the same PR, posted just before the acknowledgement. That proposal is now an instruction. If the acknowledgement could answer two, do both if they don't conflict; otherwise ask which in one line. Only an acknowledgement of a finished change needs nothing but a 👍.
@@ -98,7 +98,7 @@ The watcher runs independently of any session and only records events (and adds 
 4. **Right before posting, re-read every claim against the current head** (`git fetch` first; read a PR's state before describing it). Every referenced commit is pushed (`git ls-remote`). Run `gate-pass <abs path>/drafts/<name>.md <review output>` and post with `--body-file` on that absolute path (`gh api … -F body=@<file>` for API posts).
 5. **Post in the thread where the person wrote.** Log it.
 
-**Fast gate** (the 1-minute reply in 1.5). It is only for a reply of a few claims: an acknowledgment, a "Done in <sha>", what you're checking. It runs the same steps, with the reviewer asked only about those claims. The reviewer still has to answer exactly `CLEAN`.
+**Fast gate,** for a reply of a few claims: a "Done in <sha>", or the holding reply of 1.5 with what you found so far. It runs the same steps, with the reviewer asked only about those claims. The reviewer still has to answer exactly `CLEAN`.
 
 ### Writing
 

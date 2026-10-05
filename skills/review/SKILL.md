@@ -7,17 +7,17 @@ description: "Any independent review: who reviews (Codex, else a fresh Claude), 
 
 **Every independent review picks its reviewer in this order.** That covers the posting gate (1.6), the PR review round below, a standalone review, and the fresh reader of a PR's final head (`converge`). The loop agents run on the session's model.
 
-1. **Codex**, another company's model:
+1. **A model from another company than the session's,** since a model misses the bugs it tends to write: Codex for a Claude session, a Claude subagent for a Codex session. Codex:
    ```bash
    codex exec --sandbox danger-full-access --skip-git-repo-check -o <out> "$(cat <prompt file>)" < /dev/null
    ```
    Codex runs the model configured in `~/.codex/config.toml`. If Codex fails (out of credits, a rate limit, an error), go to the next reviewer; that failure takes seconds.
-2. **A fresh-context Claude subagent** on the session's default model, with the same prompt. Never a cheaper model.
+2. **A fresh-context subagent on the session's default model,** with the same prompt, when no other company's model is available. Never a cheaper model.
 
 After the review:
 - **Confirm fixes with the same reviewer.** After you fix its findings, continue that reviewer (`delegating`, one run) and send it what changed. Start a fresh reviewer only when the artifact changed beyond those findings, or for the final read of a long artifact.
 - **A failure is not a review.** An error, a hang or "out of credits" counts as no review.
-- **Record which reviewer ran.** On Tier ≥ M work, re-review on Codex once Codex is back.
+- **Record which reviewer ran.** On Tier ≥ M work, re-review on the other company's model once it's back.
 
 **The prompt is a file.** It holds the charter: the gate's checks in 1.6, the reviewer charter below, `guardian`'s charter or `refactor`'s prompt. It also holds the artifact's paths at pinned SHAs, and one sentence on what the artifact claims to do. It never holds your conclusions or the verdict you want.
 
@@ -34,13 +34,13 @@ A reviewer, picked in the order above, reviews the diff with the reviewer charte
 3. Where the reviewer can't run your gates, paste the gate commands, exit codes and output; it says UNKNOWN for anything it could not observe.
 4. If no reviewer at all is available, review the diff yourself with the charter.
 
-In a PR's pipeline, the Loop B agent runs this round on the diff, before its guardian and refactor ratings, and the fresh reader runs it again on the final head (`converge`, who reads).
+In a PR, this round is part of `converge`'s pipeline: the Loop B agent runs it before its guardian and refactor ratings (step 3), and the fresh reader runs it on the final head, which is what `pr-steps review` records (step 5).
 
-**One round.** Fix real defects, and decline the rest as above, with the run's output or a one-line reason (1.1.15). The same reviewer then confirms the fixes (above), with no fresh audit. Record who reviewed (or that it was a self-review) and what they found, including nothing, in the ledger (1.2). Then run `pr-steps review <output>`.
+**Outside a PR's pipeline, one round.** Fix real defects, and decline the rest as above, with the run's output or a one-line reason (1.1.15). The same reviewer then confirms the fixes (above), with no fresh audit. Record who reviewed (or that it was a self-review) and what they found, including nothing, in the ledger (1.2).
 
 ## Reviewer charter
 
-Hand this to the reviewer (`implement-issue` step 6): not the author, not in the author's context.
+Hand this to the reviewer (`converge`, pipeline steps 3 and 5): not the author, not in the author's context.
 
 ---
 
