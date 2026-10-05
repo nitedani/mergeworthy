@@ -88,7 +88,14 @@ if watcher_on and not paused:
             continue  # no live daemon in this dir
         f = os.path.join(wd, 'replies-owed.md')
         owed = [l.strip() for l in open(f) if l.strip() and not l.startswith('#')] if os.path.exists(f) else []
-        open_owed = [l for l in owed if not l.lower().startswith('done:')]
+        import datetime
+        def holding(l):  # `holding: <reply url> <ETA as ISO time>`: a holding reply was posted and its answer isn't due yet
+            m = re.match(r'holding:\s+\S+\s+(\S+)', l, re.I)
+            try:
+                return bool(m) and datetime.datetime.fromisoformat(m.group(1).replace('Z', '+00:00')) > datetime.datetime.now(datetime.timezone.utc)
+            except ValueError:
+                return False
+        open_owed = [l for l in owed if not l.lower().startswith('done:') and not holding(l)]
         if open_owed:
             print(f"replies-owed.md in {wd} still has an owed reply ({open_owed[0][:120]}). Answer it through the gate and clear the "
                   "line with 'done: <reply url> <what changed>' (mergeworthy:github-threads), or clear it with the reason no reply is owed.",

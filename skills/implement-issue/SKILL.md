@@ -5,7 +5,7 @@ description: "Implementing an issue or opening a PR: already fixed?, reproduce, 
 
 # Implementing a change
 
-From an issue or a problem to one merge-ready PR: steps 1 to 5 build the change, step 6 converges it with `converge`'s pipeline, and step 7 opens the PR. A Tier ≥ M change (`core` 1.0) runs this once per PR.
+From an issue or a problem to one merge-ready PR: steps 1 to 5 build the change, step 6 converges it with `converge`'s pipeline, and step 7 is the PR. Open it as a draft (`gh pr create --draft`) once step 5 holds, with step 7's body through the fast gate, so CI runs while it converges; the fresh reader's `CLEAN` gates the final body. A Tier ≥ M change (`core` 1.0) runs this once per PR.
 
 **The repo's `AGENTS.md` / `CLAUDE.md` governs how the code is written;** everything else particular to the repo is in its project file (`core` 1.3).
 
@@ -14,7 +14,7 @@ From an issue or a problem to one merge-ready PR: steps 1 to 5 build the change,
 **Work in a worktree off `<base>`**, the base branch the project file names: `git fetch origin && git worktree add -b <branch> <artifact root>/<branch> origin/<base>`. In CI (e.g. `$GITHUB_ACTIONS` is `true`), read the project file's CI section first, if it has one.
 
 **Check you can finish before you start**, both halves up front:
-- **Browser control**: a [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) or anything that opens a page and screenshots it. Try it; nothing in a shell can test it. Configure the MCP with `--isolated` (e.g. `npx -y chrome-devtools-mcp@latest --headless --isolated`), so parallel sessions don't share one profile. Isolated profiles are temporary: set the cookies and storage the test needs in the page.
+- **Browser control** (UI or runtime work): a [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) or anything that opens a page and screenshots it. Try it; nothing in a shell can test it. Configure the MCP with `--isolated` (e.g. `npx -y chrome-devtools-mcp@latest --headless --isolated`), so parallel sessions don't share one profile. Isolated profiles are temporary: set the cookies and storage the test needs in the page.
 - **The rest of the machine**: `gh` and its login, and whatever the app needs (containers, the hostname, the secrets, the data). The project file's preflight checks all of it in one pass and prints every failure together.
 
 **Install whatever doesn't need root** (a browser, the MCP server, the stack, the data; the project file has the commands). For anything that needs root, stop: the first thing in your reply is the exact steps, in order, with the commands to run.
@@ -33,11 +33,11 @@ gh pr list --state all --search "<keyword>"        # an open or merged PR
 
 If the tracker was migrated, commits cite the old number, which the issue body names (the project file has this repo's form). Then ask what already owns this: a framework, validation layer or type boundary may guarantee the thing you are about to guard.
 
-**A hit is not proof.** Read the commit and confirm the behavior is in today's code. If it is already fixed, comment on the issue with the commit and the current `file:line`, recommend closing, and stop. Otherwise claim the issue before you start: `gh issue edit <N> --add-assignee @me`.
+**A hit is not proof.** Read the commit and confirm the behavior is in today's code. If it is already fixed, comment on the issue with the commit and the current `file:line`, recommend closing, and stop. Otherwise claim the issue before you start: `gh issue edit <N> --add-assignee @me` where you have triage rights; otherwise the repro comment (step 2) is the claim.
 
 ### 2. Prove the problem exists
 
-Reproduce it in the running app (step 5 starts one), then comment the reproduction on the issue with screenshots: what you did, what you saw.
+Reproduce it in the running app (step 5 starts one), or for a non-UI fix with the command a user runs, then comment the reproduction on the issue with screenshots: what you did, what you saw.
 
 ```bash
 gh issue comment <N> --body-file repro.md --attach '/abs/path/repro.png#alt text'
@@ -45,14 +45,7 @@ gh issue comment <N> --body-file repro.md --attach '/abs/path/repro.png#alt text
 
 **Check the age of the data.** Dev data is often a restored snapshot. If it predates a fix that step 1 turned up, rows written the old way still make the bug look alive: compare the age of the data with the date of the fix. If you cannot reproduce the problem, comment what you tried and what happened, and stop.
 
-**When the cause isn't obvious at a first look, build a red loop before a theory:**
-- **One command that goes red on the reported symptom**, written before reading code for a theory: a failing test, a curl, a script that drives the browser.
-- **Fast and repeatable.** It gives the same result every run. For a flaky bug, loop the trigger and add load until it fails often enough to work with.
-- **Minimize.** Cut inputs, steps and config one at a time while it stays red.
-- **Bisect.** If it worked at an earlier commit or version, `git bisect run` it.
-- **Hypotheses before probes.** With the loop red, write three to five possible causes, each with what it predicts ("if X, changing Y makes it pass"), before testing any.
-- **One change per probe.** Each probe tests one prediction and changes one thing.
-- **Tag temporary logs** with one unique prefix (`[DBG-a4f2]`), so one grep removes them before the commit.
+**When the cause isn't obvious, build a red loop before a theory:** one fast, repeatable command that goes red on the reported symptom (a failing test, a curl, a script that drives the browser), then probe one change at a time.
 
 For a feature, capture the current state as the before shot and settle what "done" means. For a restructure, capture what the code does now: the behavior you must preserve.
 
@@ -100,43 +93,17 @@ The project file's preflight starts what is missing, isolated from everyone else
 **An issue you file holds one finding:** what breaks, where, and how to see it.
 - Attach the screenshot of the screen the finding sits behind (or a recording when reaching it takes clicks) with `--attach`.
 - Leave out how you came across it and what the team already knows.
-- `raw.githubusercontent.com` links 404 for a private repo.
 
 Tear the stack down when you finish, including when you abort.
 
-#### UI work
+#### UI and runtime work
 
-- **References before UI.** Before any visual design, collect 3–5 named reference sites with screenshots, and the design skills the user has pointed to.
-- **Ambiguous feedback about direction gets variants.** Build two or three variants that differ in layout, hierarchy or main action (not color or copy). Put them inside the real page with real data, switchable by a `?variant=` parameter, and ask which.
-- **A design file is measured, not eyeballed.** Measure the design and the app the same way (sizes, radii, motion, production build), and fix every difference.
-- **A fresh eye before any screenshot or video is shown.** A fresh-context agent (the review round's reviewer, when one runs) lists everything broken, misaligned or clipped in it.
-- **Matching a design file is not the bar.** Before a screen is shown:
-  - name its surface archetype (the kind of screen it is, e.g. a dashboard, a form, a settings page, a landing page);
-  - score it on the slop tells (the marks of generic, generated-looking UI): wrong surface, center stack, equal-weight tile grids, decoration in place of hierarchy, rainbow color;
-  - repair by that diagnosis;
-  - remove every element nobody asked for.
-- **"Feel at home" means the familiar features are there.** When the user wants people used to a named product to feel at home, first list that product's everyday features and buttons for the surface. Then build each one (better, not copied), or write down why it is absent.
-- **New directions are previewed locally.** A new feature or visual direction is shown to the user on a local preview before it's pushed; fixes to reported bugs go straight to the PR.
-
-**Before anyone sees a UI change**, check each touched page across this matrix, and list the checked cells in the report:
-- widths 360, 768, 1280 and 1920, plus 1 px either side of every breakpoint;
-- zoom 90–150 %;
-- light and dark;
-- hover, focus and open states;
-- a cold first load.
-
-Any console error fails.
-
-**Use it like a person.**
-- Use a real mouse, wheel, keyboard and touch (Playwright's `page.mouse`/`keyboard`/`touchscreen` when the DevTools browser can't send it).
-- Look at a screenshot after each action, and record anything that moves.
-- Scripted events, emulated hover and computed-style diffs don't count.
-
-**Runtime fixes** (a stream, a cancel, a cache) are shown in the real app through a real browser, `main` against the head, with the server's logs. Unit scripts alone don't count.
+- **Show it in the real app, used like a person:** real mouse, keyboard and touch, a screenshot after each action. Scripted events, emulated hover and computed-style diffs don't count. A runtime fix (a stream, a cancel, a cache) is shown through a real browser, `main` against the head, with the server's logs.
+- **Before anyone sees a UI change,** check each touched page at a phone, a tablet and a desktop width, in light and dark, with its hover, focus and open states. Any console error fails.
 
 ### 6. Converge
 
-Run `converge`'s pipeline on the diff (open `converge`): Loop A until dry, Loop B until it leaves nothing worth doing, Loop A again on Loop B's commits, then the fresh reader on the final head and the PR body. Its `CLEAN` is both the body's posting-gate review and the `pr-steps review` record; Loop B's last re-rating is the `pr-steps refactor` record.
+Run `converge`'s pipeline on the diff (open `converge`): Loop A until dry, Loop B until it leaves nothing worth doing, Loop A again on Loop B's commits, then the fresh reader on the final head. Before the fresh reader, update the PR body draft per step 7 (`drafts/pr-body.md`) and pass `post-lint --kind pr`, since the fresh reader reviews it. The pipeline's last step records `pr-steps review` and `pr-steps refactor` on the final head.
 
 ### 7. The PR
 
@@ -173,7 +140,8 @@ The images are the review: a sequence, not a before/after pair.
 #### Publishing
 
 ```bash
-gh pr create --base <base> ...        # + --label effort/<level> if the repo uses them
+gh pr create --draft --base <base> ...   # + labels per the project file, where you can label
+gh pr ready <N>                         # once the pipeline's records are on the final head
 gh pr edit <N> --body-file body.md --attach '/abs/path/01-name.png#alt text'
 ```
 
@@ -181,11 +149,7 @@ gh pr edit <N> --body-file body.md --attach '/abs/path/01-name.png#alt text'
 
 **Video works the same**, with an `.mp4` from whatever records your browser. Put it in the body as `![](<path>)`, alone in its paragraph, and GitHub renders a player.
 
-**If the repo labels PRs by review effort** (`gh label list | grep effort/`, or the project file), apply the label that rates the reviewer's work, not yours. Don't copy the issue's label.
-- `quick-win`: read it.
-- `easy`: one behavior, settled by the screenshots.
-- `medium`: check the walkthrough against the diff.
-- `hard`: a shared contract, or correctness needing a run.
+**Labels and conventions** follow the project file.
 
 #### Inline comments
 

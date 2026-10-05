@@ -31,7 +31,7 @@ Read the task and every link in it. Then write `Tier: <X>, because <signals>` as
 | **M: Feature or set** | A new capability, a changed public contract, several change units, or open behavior questions. | `implement-issue` per unit; invariants, ledger, decision packet, design loop (1.4). |
 | **L: Program** | Changes across two or more independently maintained repos, or two or more decision makers. | Tier M everywhere, plus the umbrella issue (1.2). |
 
-Every PR, whatever its tier, goes through `converge`'s pipeline: a Loop A agent hunts bugs, a Loop B agent reviews, guards and rates, and a fresh reader checks the final head cold. The tier decides the records (1.2), not the loops; on a small fix each loop ends after one pass.
+Every PR, whatever its tier, goes through `converge`'s pipeline: a Loop A agent hunts bugs, a Loop B agent reviews, guards and rates, and a fresh reader checks the final head cold. The tier decides the records (1.2), not the loops; on a small fix each loop usually ends after its first dry pass.
 
 ## 1.1 Principles
 
@@ -82,7 +82,7 @@ Every PR, whatever its tier, goes through `converge`'s pipeline: a Loop A agent 
 11. **No regressions.** Anything that works on `main` and fails on the head is a regression, experimental features included: fix it, never list it as a limitation.
     - So is every row of your own comparison where the head is worse than the run-to-run spread.
     - Hot paths, transports and flow control get a benchmark of `main` against the head before the PR opens: all scenarios, alternating runs, N ≥ 3, measuring throughput, p50/p99, request count and reconnects. A cell worse than the spread is fixed or reverted, never called a trade-off without the user's OK.
-    - **UI and runtime fixes** are shown working in the real app, per `implement-issue` (UI work, step 5). Scripted events, computed styles and unit scripts alone don't count.
+    - **UI and runtime fixes** are shown working in the real app, per `implement-issue` (UI and runtime work, step 5). Scripted events, computed styles and unit scripts alone don't count.
 12. **Fix the mistake and the rule that allowed it.** When the user names a failure, stop, re-read, and fix the whole class in the same turn:
     - the artifact (PR, comment, code);
     - the rule that allowed it (a mergeworthy skill, the project file, or a mechanism), by editing the existing rule in the mergeworthy repo (1.9).

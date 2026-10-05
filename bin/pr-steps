@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# pr-steps <review|refactor|guardian> <output-file>: records that the methodology step ran on the current HEAD (mergeworthy `review`, `refactor`, `guardian`).
+# pr-steps <review|refactor> <output-file>: records that the methodology step ran on the current HEAD (mergeworthy `converge`, the pipeline's last step).
 # The posting hook blocks `gh pr create` (unless --draft) and `gh pr ready` until HEAD has a review and a refactor record.
 set -euo pipefail
-kind=${1:?usage: pr-steps <review|refactor|guardian> <output-file>}; out=${2:?output file}
-case "$kind" in review|refactor|guardian) ;; *) echo "kind must be review, refactor or guardian" >&2; exit 1;; esac
+kind=${1:?usage: pr-steps <review|refactor> <output-file>}; out=${2:?output file}
+case "$kind" in review|refactor) ;; *) echo "kind must be review or refactor" >&2; exit 1;; esac
 [ -s "$out" ] || { echo "$out is empty: run the step and save the reviewer's output" >&2; exit 1; }
 sha=$(git rev-parse HEAD)
 mkdir -p ~/.claude/pr-steps

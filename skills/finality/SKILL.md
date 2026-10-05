@@ -16,7 +16,7 @@ description: "The finality pass, for code that has drifted through many patches:
 
 **"Fan out parallel mapper agents"** means the main session starts one mapper for all subsystems when they fit one context. Otherwise use one mapper per subsystem, at most 3 at once (1.1.14).
 
-**The deliverable is the short design doc** at the end. The graph is working material.
+**The deliverable is the short design doc** at the end. The graph is working material. The doc goes in a gist linked from the PR body, unless the repo keeps design docs.
 
 **Owner-Safe closure** is the reconciliation that ends the pass, defined in the prompt's last paragraph. It needs the reviewer's and the guardian's evidence, so it runs last in `converge`.
 

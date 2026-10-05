@@ -46,7 +46,6 @@ These scripts enforce the rules that failed as text alone.
 
 `pr-steps review <reviewer output>` and `pr-steps refactor <rating output>` record, on the final head, that the step ran.
 - `gh pr create` (unless `--draft`) and `gh pr ready` are blocked until HEAD has a `review` and a `refactor` record.
-- `pr-steps guardian <report>` also records a guardian report on HEAD; no hook checks that record.
 
 ## The watcher daemon: `watcher/gh-watch.py` (enforces 1.5)
 

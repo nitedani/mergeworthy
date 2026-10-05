@@ -36,6 +36,11 @@ check "no replies-owed.md, cwd=watch dir" 0 "$(stop "$WD")"
 echo "o/r 1 comment 42 by someone" > "$WD/replies-owed.md"
 check "control: open owed line, cwd=watch dir" 2 "$(stop "$WD")"
 check "control: open owed line, cwd=inside watch dir" 2 "$(stop "$WD/sub")"
+echo "holding: https://github.com/o/r/issues/1#issuecomment-9 $(date -u -d '+1 hour' +%FT%TZ)" > "$WD/replies-owed.md"
+check "a holding line whose ETA is ahead passes" 0 "$(stop "$WD")"
+echo "holding: https://github.com/o/r/issues/1#issuecomment-9 $(date -u -d '-1 hour' +%FT%TZ)" > "$WD/replies-owed.md"
+check "BLOCK: a holding line past its ETA is owed again" 2 "$(stop "$WD")"
+echo "o/r 1 comment 42 by someone" > "$WD/replies-owed.md"
 tr_file "README tidied."
 check "open owed line, cwd=parent of watch dir" 0 "$(stop "$T/work")"
 check "open owed line, cwd=prefix sibling x-2" 0 "$(stop "$T/work/x-2/sub")"
@@ -75,6 +80,12 @@ comments "$A1" "$A2" "$hour"
 check "BLOCK: last two are the agent's, last is 1 hour old" 2 "$(guard)"
 comments "$A1" "$A2" "$now"
 check "BLOCK: last two are the agent's gated posts, recent, no review (issue 404)" 2 "$(guard)"
+echo nitedani > "$FX/user"
+date -u -d '+1 minute' +'maint %Y-%m-%dT%H:%M:%SZ' > "$FX/repos_o_r_pulls_5_commits_per_page_100"
+check "a maintainer's push after the last two comments counts as a reply" 0 "$(guard)"
+date -u -d '+1 minute' +'nitedani %Y-%m-%dT%H:%M:%SZ' > "$FX/repos_o_r_pulls_5_commits_per_page_100"
+check "BLOCK: your own push is not a reply" 2 "$(guard)"
+rm -f "$FX/repos_o_r_pulls_5_commits_per_page_100" "$FX/user"
 grep -o 'your last two comments.*' "$T/err" | sed 's#https\?://[^ )]*#<url>#'
 
 # ---------- post-bash-register: only a real gh post registers, and only the thread it posted to ----------
@@ -88,6 +99,10 @@ register() { # command stdout -> the watch dir's threads.txt, space-joined
     | python3 "$R/hooks/post-bash-register.py"
   [ -f "$WD/threads.txt" ] && paste -sd' ' "$WD/threads.txt" || echo none
 }
+printf 'The posted body, with ![shot](https://user-images.example/1.png)' > "$FX/repos_o_r_issues_comments_77"
+register "gh issue comment 5 --repo o/r --body-file /x/d.md --attach /x/1.png" 'https://github.com/o/r/issues/5#issuecomment-77' >/dev/null
+want=$(python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1]).read().strip().encode()).hexdigest())' "$FX/repos_o_r_issues_comments_77")
+check "the body actually posted (after --attach) is registered as the agent's" 1 "$(grep -c "$want" "$HOME/.claude/gated-posts.txt")"
 check "printf that mentions a comment command, URL in output" none \
   "$(register "printf '%s' 'gh issue comment 5 --repo o/r' > in.json; python3 hook.py < in.json" "$U5")"
 check "grep for a comment command, URL in output" none \

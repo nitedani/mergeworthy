@@ -6,12 +6,12 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 
 | Skill | Hands over to |
 |---|---|
-| `converge` | `finality`, `implement-issue`, `verify`, `review`, `guardian`, `refactor`, `merging`, `github-threads` |
+| `converge` | `finality`, `implement-issue`, `verify`, `review`, `guardian`, `refactor`, `merging`, `github-threads`, `core` |
 | `core` | `implement-issue`, `delegating`, `merging`, `github-threads`, `converge` |
 | `delegating` | nothing |
 | `design-loop` | `implement-issue`, `core`, `review`, `github-threads`, `converge` |
 | `finality` | nothing |
-| `github-threads` | `review`, `refactor`, `core`, `implement-issue` |
+| `github-threads` | `converge`, `review`, `refactor`, `core`, `implement-issue` |
 | `guardian` | `delegating`, `converge`, `design-loop` |
 | `implement-issue` | `finality`, `guardian`, `design-loop`, `converge`, `core` |
 | `mechanisms` | nothing |
@@ -109,10 +109,11 @@ flowchart TB
     s4["5. Book-keeping"]
     s3 --> s4
   end
-  s1 -.-> r1[["review"]]
-  s1 -.-> r2[["refactor"]]
-  s1 -.-> r3[["core"]]
-  s2 -.-> r4[["implement-issue"]]
+  s1 -.-> r1[["converge"]]
+  s1 -.-> r2[["review"]]
+  s1 -.-> r3[["refactor"]]
+  s1 -.-> r4[["core"]]
+  s2 -.-> r5[["implement-issue"]]
   subgraph g1["1.6 Posting gate"]
     s5["1. Write it the way it<br/>should end up"]
     s6["2. Run post-lint"]
@@ -124,7 +125,7 @@ flowchart TB
     s9["5. Post in the thread where<br/>the person wrote"]
     s8 --> s9
   end
-  s7 -.-> r5[["review"]]
+  s7 -.-> r6[["review"]]
   start --> g0
   g0 ~~~ g1
 ```
@@ -225,6 +226,7 @@ flowchart TB
   s4 -.-> r8[["review"]]
   s4 -.-> r9[["merging"]]
   s4 -.-> r10[["github-threads"]]
+  s5 -.-> r11[["core"]]
   start --> g0
 ```
 

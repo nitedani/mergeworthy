@@ -71,6 +71,23 @@ if not targets:
     sys.exit(0)
 def posted(repo, num):  # a URL in stdout counts only when it is the thread a posting segment wrote to
     return any((tr is None or tr == repo) and (tn is None or tn == num) for tr, tn in targets)
+# The agent and the user may share one login, so the watcher knows a comment is the agent's by its body's hash.
+# `gh --attach` rewrites the body as it posts, so register the body that was actually posted, not only the draft's.
+import hashlib, subprocess
+def register_posted(out):
+    gated = os.path.expanduser(os.environ.get('GATED_POSTS', '~/.claude/gated-posts.txt'))
+    for repo, num, kind, cid in re.findall(r'github\.com/([\w.-]+/[\w.-]+)/(?:issues|pull)/(\d+)(?:#(issuecomment|discussion_r)-?(\d+))?', out):
+        if not posted(repo, num):
+            continue
+        path = {'issuecomment': f'repos/{repo}/issues/comments/{cid}', 'discussion_r': f'repos/{repo}/pulls/comments/{cid}'}.get(kind, f'repos/{repo}/issues/{num}')
+        try:
+            r = subprocess.run(['gh', 'api', path, '--jq', '.body'], capture_output=True, text=True, timeout=20)
+        except Exception:
+            continue
+        if r.returncode == 0 and r.stdout.strip():
+            body = r.stdout[:-1] if r.stdout.endswith('\n') else r.stdout
+            open(gated, 'a').write(hashlib.sha256(body.replace('\r\n', '\n').strip().encode()).hexdigest() + '\n')
+register_posted(out)
 reg = os.path.expanduser('~/.claude/gh-watch-dirs.txt')
 dirs = [l.strip() for l in open(reg)] if os.path.exists(reg) else []
 def lines(dr, f):

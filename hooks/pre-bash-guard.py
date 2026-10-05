@@ -128,6 +128,10 @@ def check_turn(repo, num, args=()):
         if len(last) < 2 and p > 1: last = page(p - 1) + last
         last = last[-2:]
         reviews = api(f'repos/{repo}/pulls/{num}/reviews?per_page=100', '.[].submitted_at').split()  # 404 on an issue: none
+        me = api('user', '.login').strip()
+        # a maintainer's push after your comments answers them too (their commits deserve a review comment)
+        reviews += [d for l in api(f'repos/{repo}/pulls/{num}/commits?per_page=100', '.[] | "\\(.author.login) \\(.commit.committer.date)"').splitlines()
+                    for who, d in [l.split(' ', 1)] if who != me and who != 'null']
     except Exception:
         return
     f = os.path.expanduser(os.environ.get('GATED_POSTS', '~/.claude/gated-posts.txt'))
@@ -185,7 +189,7 @@ def check(t, has_cd):
         kinds = {l.split()[0] for l in open(rec)} if head and os.path.exists(rec) else set()
         missing = [k for k in ('review', 'refactor') if k not in kinds]
         if missing:
-            block(f"HEAD {head[:10] or '(no git repo in cwd)'} has no {' and no '.join(missing)} record: run the review round (mergeworthy:review) and the refactor pass (mergeworthy:refactor), then `pr-steps review <output>` and `pr-steps refactor <output>` on the final HEAD; or open it with --draft")
+            block(f"HEAD {head[:10] or '(no git repo in cwd)'} has no {' and no '.join(missing)} record: finish mergeworthy:converge's pipeline, then run `pr-steps review <fresh reader's output>` and `pr-steps refactor <Loop B's last re-rating>` on the final HEAD (again after a base merge); or open it with --draft")
     if p == 'gh' and len(a) >= 2 and a[0] == 'pr' and a[1] == 'merge':
         if setting('MERGE', 'on-request-squash') == 'reviewer':
             block('never merge: the reviewer merges this repo\'s PRs (MERGEWORTHY_MERGE=reviewer)')

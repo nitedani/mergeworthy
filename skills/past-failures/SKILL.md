@@ -36,8 +36,8 @@ Each failure below happened, most more than once. When a rule fails or the user 
 | Parts of the task and of an accepted design silently dropped. | 1.1.8 |
 | Throughput losses and reconnects called trade-offs. | 1.1.11 benchmark |
 | A regression for users of an existing feature called "limitation: experimental". | 1.1.11 |
-| UI bugs found by the user; UI "verified" by computed styles and scripted events. | `implement-issue` (UI work) |
-| A transport fix opened with Node-script evidence only. | `implement-issue` (UI work: runtime fixes) |
+| UI bugs found by the user; UI "verified" by computed styles and scripted events. | `implement-issue` (UI and runtime work) |
+| A transport fix opened with Node-script evidence only. | `implement-issue` (UI and runtime work) |
 | A release unlike the maintainer's past releases. | 1.3 precedent |
 | Docs in the agent's voice; repeated "I don't understand"; a coined term. | 1.3, 1.5 |
 | Jargon, AI phrasing, out-of-context replies; replies that only complied or restated. | 1.6 writing, `post-lint` |
