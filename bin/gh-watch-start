@@ -110,4 +110,5 @@ else
 fi
 rm -f "$dir/agent" "$dir/wake.pid" "$dir/wake.launch"  # from the watcher that started a headless agent per event
 echo "Arm a Monitor in this session on (max timeout; re-arm it when it expires, since the expiry notice wakes the session):"
-echo "  tail -n 0 -F $dir/events.log 2>/dev/null | grep --line-buffered -E '^(###|WATCH ERROR|WATCHER RETIRED)'"
+# awk, not grep: in an agent's shell grep can be a wrapper that holds matched lines for minutes
+echo "  tail -n 0 -F $dir/events.log 2>/dev/null | awk '/^(###|WATCH ERROR|WATCHER RETIRED)/ { print; fflush() }'"
