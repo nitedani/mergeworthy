@@ -55,6 +55,7 @@ Read the task and every link in it. Write `Tier: <X>, because <signals>` as the 
 14. **Spend tokens like money.**
     - Do small steps yourself: one command, one file read, a short edit, a "Done in <sha>" reply.
     - Start an agent only for long, independent work, at most 3 at a time without asking, and only from the main session: a subagent never starts agents of its own (1.7); queue the rest. Continue an agent that already has the context (send it a message) instead of starting a new one, and stop an agent as soon as its question is settled.
+    - One agent per context, not per role: roles that read the same artifact at the same head (review, refactor ratings, the PR body's claims, the screenshots; the verifier's slices; a guardian's scopes) run in one agent, each written to its own output file. Split only when the material doesn't fit one context, or when independence is the point (the author never reviews itself).
     - Give agents paths and the question, never pasted files or long histories; ask for a short report. Each role gets only what it uses: a PR writer gets the mergeworthy skills (1.7); an executor a brief (1.10); a reviewer its charter and the artifact.
     - Match the check to the risk: a short reply gets the fast gate (1.6), a PR body or a proposal the full review, a full convergence loop only where the tier (1.0) requires it.
     - Re-run only the tests a change can affect (a docs change doesn't need the e2e matrix).

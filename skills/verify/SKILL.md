@@ -5,7 +5,7 @@ description: "Bug verification of a PR (reproduce-only): slicing, the verifier b
 
 # Bug verification
 
-Split the code into slices one verifier can hold (e.g. core feature, backend and storage, runtime adapter, wire and client), per PR. For each slice, run a fresh-context verifier with the verifier brief below.
+Split the code into slices one verifier can hold (e.g. core feature, backend and storage, runtime adapter, wire and client), per PR. Run one fresh-context verifier with the verifier brief below for all slices when the diff fits one context (a few thousand lines), one report section per slice; otherwise one verifier per slice.
 
 Counting rule:
 - A candidate counts only with a spec or script that fails on the head and passes on the base (main, or the bottom PR for the top).

@@ -70,3 +70,4 @@ Each happened, most more than once. When a rule fails or the user names a failur
 | "Docker Desktop is the one thing blocking": the check was hours old and Docker was running. | 1.1.5 (re-check a blocker before reporting it) |
 | A spec took eleven review rounds, each finding a new case of the same rule (when `renderPage()` runs `+middleware`); restating it as one rule ended the churn. | 1.4 step 3 |
 | With the local model moved out of the plugin, nothing told sessions to use it: about 20 Claude reviewer subagents ran while `claude-usage` said `execute`. | the environment's own instructions (agent-tools' session-start hook and agent guard) |
+| A PR's review used one agent per role (review, refactor ratings, body check), every maintainer question two debaters, and design-it-twice three designers: most read the same head, multiplying the cost. | 1.1.14 (one agent per context, not per role), 1.5 step 3 (one divergent agent), 1.4 (design it three times in one agent) |

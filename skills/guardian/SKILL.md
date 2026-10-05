@@ -10,11 +10,11 @@ Run late, after correctness is proven, with the gates as the safety net. Finding
 Split the diff into scopes (e.g. core feature, backend, everything else; the bottom PR is its own scope).
 
 Round 1:
-- One fresh guardian per scope, read-only, with the guardian brief below.
+- One fresh guardian, read-only, with the guardian brief below, covering every scope (one report section each) when the diff fits one context; otherwise one per scope.
 - Each writes a report: findings by disposition with prices, the mechanism census, the 10-second pass as classes, ratings of every file, function and piece of logic with the ✅ tick list, and an honest-positive statement.
 
 Implementation:
-- One implementer per scope, in its own worktree off the current head, with the implementer brief below.
+- One implementer, in its own worktree off the current head, with the implementer brief below, taking the scopes one after the other; one per scope only when they're too big for one context.
 - Each gets an explicit list of finding IDs to implement. Owner decisions, and anything touching owner code without explicit leave, are excluded.
 - One commit per finding (or per class), with the gates after every commit, and a mutation probe for every test merged, moved or deleted.
 - Implementers may decline a finding with a reason: when it's false, not behavior-preserving, or touches owner code.

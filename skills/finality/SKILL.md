@@ -11,7 +11,7 @@ description: "The finality pass, for code that has drifted through many patches:
 
 **"Bring me the decision"** in Phase C: in an external maintainer's code, stop and ask the person who owns it; in the user's own repos and beta features, decide, act, and report (`core`, the task). Convergence itself is behavior-preserving.
 
-"Fan out parallel mapper agents" means one subagent per subsystem (at most 3 at once, 1.1.14). The graph is working material; the short design doc at the end is the deliverable.
+"Fan out parallel mapper agents" means one mapper for all subsystems when they fit one context, else one per subsystem (at most 3 at once, 1.1.14). The graph is working material; the short design doc at the end is the deliverable.
 
 Run the prompt as written:
 
