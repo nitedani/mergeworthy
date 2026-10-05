@@ -186,7 +186,7 @@ def emit_tracker_stale(key, ended):
     items = [l for l in body.splitlines() if re.match(r'\s*- \[[ x]\] ', l) and ref.search(l)]
     if not items:
         emit(f"### TRACKER STALE {w[0]}#{w[1]}: {key} {ended} and has no checkbox there: add it with its state, through the gate (mergeworthy:core 1.2)")
-    elif not any(l.lstrip().startswith('- [x]') and re.search(rf'{num}(~~)? \((merged|closed|released)', l) for l in items):
+    elif not any(l.lstrip().startswith('- [x]') and re.search(r'\((merged|closed|released)', l) for l in items):
         emit(f"### TRACKER STALE {w[0]}#{w[1]}: {key} {ended}: tick its checkbox and write '({ended}…)' after it, through the gate (mergeworthy:core 1.2)")
 
 
