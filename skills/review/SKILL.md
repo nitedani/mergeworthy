@@ -17,6 +17,7 @@ description: "Any independent review: who reviews (Codex, else a fresh Claude), 
 
 After the review:
 - **Confirm fixes with the same reviewer.** After you fix its findings, continue that reviewer and send it what changed. Start a fresh reviewer only when the artifact changed beyond those findings, or for the final read of a long artifact.
+- **A behavior closed by reasoning is reopened.** Read the review's correctness part before accepting it. A case it calls correct with an INFERRED tag, or with no tag, goes back to the same reviewer for a probe that could fail. A `CLEAN` that rests on one is not yet a review.
 - **A failure is not a review.** An error, a hang or "out of credits" counts as no review.
 - **Record which reviewer ran.** On Tier ≥ M work, re-review on Codex once Codex is back.
 
