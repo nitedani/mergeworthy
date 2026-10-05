@@ -110,6 +110,7 @@ The watcher runs independently of any session and only records events (and adds 
   - A concrete example in their words, not a case matrix; an edge case only when it would change their decision.
   - Long material (a spec, a report, every case) goes in a linked document (a gist). The comment carries the two sentences that matter and the decision; never a spec inline.
   - When you change your mind, say so in one line ("I was wrong about X: Y").
+- **Write like a colleague talking.** Full sentences with a subject, and your own voice: "I agree, it's the wrong word", not "The wrong word." Answer their tone in kind: a question gets an answer, a fair point gets "you're right", their effort gets a thank-you. When a post runs over its budget, cut a point or link it; never cut the grammar.
 - **Write for how people read.** Readers scan: they read the first words of each line and what's bold, and they hold about four things at once.
   - The answer or the ask comes first, in the post and in each paragraph; the rest can be cut at any point and the point survives.
   - Each sentence starts from what the reader already has (their words, your previous sentence) and ends on the new point.
