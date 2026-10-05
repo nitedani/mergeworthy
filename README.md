@@ -43,6 +43,10 @@ This is the work automation methodology (v3), split into skills along its own pa
 | `past-failures` | Part 4 |
 | `mechanisms` | Part 5 (the code itself lives in `hooks/`, `bin/` and `watcher/`) |
 
+## How the passes connect
+
+`docs/execution-graph.md` is the decision record (invariants, candidates, why two readers per PR), and `docs/graphs/` has one graph per entry point: the entry router, the Tier S and Tier M PR pipelines, the Tier L program, a comment, the other watcher events, and the posting gate (`.mmd` sources, rendered `.png`).
+
 ## Layout
 
 ```
@@ -52,6 +56,7 @@ hooks/              hooks.json and the scripts it runs
 bin/                commands on the Bash PATH: gate-pass, post-lint, pr-steps, gh-watch-start
 watcher/            the GitHub watcher daemon gh-watch-start runs
 cli/                the npx mergeworthy installer
+docs/               the execution graph and its rendered graphs
 .claude-plugin/     the plugin manifest (options) and its marketplace
 ```
 

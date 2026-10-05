@@ -1,0 +1,30 @@
+flowchart TB
+  T[Tier M task]:::main --> Q{New API or protocol, or reshaping drifted code?}:::main
+  Q -->|new surface| DL1[Invariant table]:::main --> DD[Divergent agent D: 3 designs, then compare]:::diverge --> PROTO[Prototype holds invariants]:::main --> ADV[Adversarial read: review, Codex else fresh Claude]:::fresh --> WALK[Walkthrough to maintainer, posting gate]:::gate --> OK{Maintainer OK?}:::ext
+  Q -->|reshaping| MAP[Finality A: mapper X, map.md]:::reader --> IMG[Finality B: pinnacle shape, X continued]:::reader --> PH[Finality B and a half: phantom-fix hunt, X continued]:::reader --> RATE
+  Q -->|neither| RATE[Rate approaches]:::main
+  OK -->|yes| RATE
+  OK -->|no| DL1
+  RATE --> STK{Feature also fixes base bugs?}:::main
+  STK -->|yes| BOT[Bottom PR: the fixes, own pipeline; top merges it in]:::main --> BUILD
+  STK -->|no| BUILD[Build in behavior-preserving commits, gates, evidence, product lanes]:::main
+  BUILD -.->|repro, tests, benchmarks with a time budget| LX[Local model, max 2]:::local
+  BUILD --> A1
+  subgraph A1[Reader A1 per slice set: map.md as index only, fresh when its context passes half the window]
+    V[Verifier brief: Loop A, all slices]:::reader --> RV[Reviewer charter, all three lenses]:::reader --> GR[Guardian charter + refactor prompt: Loop B]:::reader
+  end
+  A1 -->|no bug| IMPL
+  A1 -->|bugs| FIXB[Fix at root, phantom gate]:::main --> A1B[A1: re-verify touched slices]:::reader
+  A1B -->|new bug| FIXB
+  A1B -->|dry| IMPL[Land refactor findings, one commit each]:::main --> A1C[A1: re-rate, compare pre-refactor tree vs head]:::reader
+  A1C -->|regression| REV[Revert that commit, fresh verify of the slice]:::main --> A1C
+  A1C -->|converged| FR[Fresh reader F per slice set, Codex first: verifier brief + reviewer charter on final head + body claims]:::fresh
+  FR -->|findings| FIXB
+  FR -->|CLEAN| CLOSE[Owner-Safe closure checklist, pr-steps, ready]:::main
+  classDef main fill:#dbeafe,stroke:#1d4ed8,color:#0b1b3f
+  classDef reader fill:#dcfce7,stroke:#15803d,color:#052e16
+  classDef fresh fill:#fef3c7,stroke:#b45309,color:#3b1d02
+  classDef diverge fill:#f3e8ff,stroke:#7e22ce,color:#2e1065
+  classDef local fill:#ffe4e6,stroke:#be123c,color:#4c0519
+  classDef gate fill:#f1f5f9,stroke:#334155,color:#0f172a,stroke-dasharray:4 3
+  classDef ext fill:#ffffff,stroke:#64748b,color:#334155

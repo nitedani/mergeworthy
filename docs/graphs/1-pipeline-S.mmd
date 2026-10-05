@@ -1,0 +1,24 @@
+flowchart TB
+  subgraph PRE[Before code: main session]
+    F1[1 Already fixed?]:::main --> F2[2 Reproduce: one red command]:::main --> F3[3 Rate 2-3 approaches incl. not building it]:::main
+  end
+  F3 --> B4[4 Build smallest diff, gates]:::main --> E5[5 Real-app evidence before/after]:::main
+  E5 -.->|repro loops, test runs| LX[Local model, max 2]:::local
+  E5 --> A1
+  subgraph A1[Reader A1: one agent, one run]
+    R1[Verifier brief: bugs fail-on-head pass-on-base]:::reader --> R2[Reviewer charter: correctness, security, bloat]:::reader --> R3[Guardian verdict + refactor ratings]:::reader
+  end
+  A1 --> FB[Fix bugs at root]:::main --> A1B[A1 continued: re-verify touched slices]:::reader
+  A1B -->|new bug| FB
+  A1B -->|dry| RF[Land refactor findings, one commit each, gates]:::main --> A1C[A1 continued: re-rate old to new]:::reader
+  A1C -->|regression| RV[Revert that commit, fresh verify of the slice]:::main --> A1C
+  A1C -->|done| F[Fresh reader F, Codex first: verifier brief + reviewer charter on final head + PR body claims and screenshots = the body's gate review]:::fresh
+  F -->|findings| FB
+  F -->|CLEAN| REC[pr-steps review + refactor on final head, open PR]:::gate
+  classDef main fill:#dbeafe,stroke:#1d4ed8,color:#0b1b3f
+  classDef reader fill:#dcfce7,stroke:#15803d,color:#052e16
+  classDef fresh fill:#fef3c7,stroke:#b45309,color:#3b1d02
+  classDef diverge fill:#f3e8ff,stroke:#7e22ce,color:#2e1065
+  classDef local fill:#ffe4e6,stroke:#be123c,color:#4c0519
+  classDef gate fill:#f1f5f9,stroke:#334155,color:#0f172a,stroke-dasharray:4 3
+  classDef ext fill:#ffffff,stroke:#64748b,color:#334155

@@ -89,11 +89,11 @@ Tear the stack down when you finish, including when you abort.
 
 ### 6. Review round
 
-One agent, one run, on the diff (`review`): first the PR review round, then the refactor ratings (`refactor`'s prompt), then the PR body's claims, each into its own output file. The context it filled reviewing is the context it rates with.
+A1 (`converge`, who reads): one agent, one run, on the diff: the verifier brief, the reviewer charter, then the guardian verdict and the refactor ratings, each into its own output file. The context it filled reviewing is the context it rates with.
 
 ### 7. Refactor pass
 
-Fix the review's real defects, then implement the ratings commit by commit, gates after each. Send the same agent the new commits: it re-rates old ⇒ new and confirms the review on the final head (`pr-steps review` and `pr-steps refactor` on that head).
+Fix the real defects; A1, sent the commits, re-verifies until dry. Then implement the ratings commit by commit, gates after each; A1 re-rates old ⇒ new (`pr-steps refactor`). Last, F reads the final head and the PR body (`converge`, who reads): its CLEAN is both the body's gate review and `pr-steps review` on that head.
 
 ### 8. The PR
 

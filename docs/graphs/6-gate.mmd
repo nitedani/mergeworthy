@@ -1,0 +1,20 @@
+flowchart LR
+  D[Draft in drafts/, absolute path]:::main --> L[post-lint with --kind, records .lint]:::gate
+  L -->|findings| D
+  L --> R{Reviewer}:::main
+  R -->|1| CX[Codex]:::fresh
+  R -->|2 if Codex fails| LM[Local model, the machine rule; main session checks each finding]:::local
+  R -->|3 if neither| CL[Fresh Claude]:::fresh
+  CX --> V{Verdict}:::main
+  LM --> V
+  CL --> V
+  V -->|findings| FX[Fix in your words]:::main --> SAME[Same reviewer confirms the fixes]:::fresh --> V
+  V -->|exactly CLEAN| GP[gate-pass: sha recorded]:::gate --> POST[Post or edit in place]:::main
+  PRB[A PR body]:::ext -.->|its gate review is F's run| V
+  classDef main fill:#dbeafe,stroke:#1d4ed8,color:#0b1b3f
+  classDef reader fill:#dcfce7,stroke:#15803d,color:#052e16
+  classDef fresh fill:#fef3c7,stroke:#b45309,color:#3b1d02
+  classDef diverge fill:#f3e8ff,stroke:#7e22ce,color:#2e1065
+  classDef local fill:#ffe4e6,stroke:#be123c,color:#4c0519
+  classDef gate fill:#f1f5f9,stroke:#334155,color:#0f172a,stroke-dasharray:4 3
+  classDef ext fill:#ffffff,stroke:#64748b,color:#334155

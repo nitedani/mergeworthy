@@ -11,13 +11,20 @@ You are the orchestrator of a pull request (or a stack of them) that has to reac
 
 Converged means every one of these has converged:
 1. Bug verification (Loop A): every slice of every PR has a dry, reproduce-only pass after its last fix (`verify`).
-2. Guardian (Loop B, bloat and quality): a fresh guardian per scope finds nothing behavior-preserving worth its price, and says so in an honest-positive verdict (`guardian`).
+2. Guardian (Loop B, bloat and quality): A1's guardian verdict per scope finds nothing behavior-preserving worth its price and says so in an honest-positive verdict, and F's Bloat lens on the final head is clean (`guardian`).
 3. Refactor pass: every file, function and piece of logic is rated, the ratings are high and justified, and the rater's last round leaves nothing worth doing (`refactor`).
 4. Finality and Owner-Safe closure, where the area has drifted through many patches (`finality`).
-5. Code review against the repo's standards and the spec, with `review`'s PR review round on the final head.
+5. Code review against the repo's standards and the spec: F on the final head (who reads, below).
 6. Every gate and product lane green on each PR's final head, CI green, and the PR bodies true to the final head.
 
 Owner decisions, and changes to code the owner wrote, don't block convergence: they are listed for the owner with a recommendation.
+
+### Who reads: two agents per PR
+
+Every pass above runs in one of two readers, each per context-sized slice set (one of each under about 1500 diff lines, and per PR in a stack). The briefs and charters run as written, each into its own output file.
+- **A1, the continued reader** (a Claude agent: it judges). One run, in this order, because rating code a bug fix will change is waste: the verifier brief (`verify`), the reviewer charter with all three lenses (`review`), the guardian charter and the refactor prompt (`guardian`, `refactor`). It reads the head's code in full; a finality `map.md` is a navigation index only. After fixes, send it the new commits: it re-verifies the touched slices until dry, then re-rates old ⇒ new after the refactor commits. A regression means revert that commit and verify that slice fresh. Start a fresh A1 with the last report when its context passes about half the window or the decision packet changes.
+- **F, the fresh reader of the final head** (`review`'s order: Codex first). One run: the verifier brief on the final head, the reviewer charter, and the PR body's claims and screenshots. It is the PR body's posting-gate review. Its findings go back to the fixes; F continues only when the head changed by exactly its own findings' fixes, else a fresh F.
+- Execution (repro loops, tests, benchmarks with a time budget) is the main session's, on the local model where the machine provides one; never A1's or F's judgment.
 
 ### Git and files
 

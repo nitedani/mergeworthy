@@ -1,0 +1,15 @@
+flowchart TB
+  T[Tier L: 2+ repos or 2+ decision makers]:::main --> UMB[Umbrella issue + Decisions comment, umbrella.txt, before first PR]:::gate
+  UMB --> SPLIT[Critical path: order PRs by what blocks the goal]:::main
+  SPLIT --> P1[[PR pipeline M per PR]]:::main
+  SPLIT --> P2[[Upstream fix PRs, one per bug]]:::main
+  P1 & P2 --> EV([Every event: merge, decision, new PR]):::ext --> UPD[Same step: tick checkbox with state, edit Decisions comment, waiting-on.txt dependents]:::main
+  UPD -->|watcher: TRACKER STALE if missed| UPD
+  UPD --> SPLIT
+  classDef main fill:#dbeafe,stroke:#1d4ed8,color:#0b1b3f
+  classDef reader fill:#dcfce7,stroke:#15803d,color:#052e16
+  classDef fresh fill:#fef3c7,stroke:#b45309,color:#3b1d02
+  classDef diverge fill:#f3e8ff,stroke:#7e22ce,color:#2e1065
+  classDef local fill:#ffe4e6,stroke:#be123c,color:#4c0519
+  classDef gate fill:#f1f5f9,stroke:#334155,color:#0f172a,stroke-dasharray:4 3
+  classDef ext fill:#ffffff,stroke:#64748b,color:#334155

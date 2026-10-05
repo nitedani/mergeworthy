@@ -32,8 +32,8 @@ Read the task and every link in it. Write `Tier: <X>, because <signals>` as the 
 | Tier | Signals | Process |
 |---|---|---|
 | **0: Answer** | An answer, research or a review; nothing to change. | Principles, evidence, reporting; the posting gate if published. |
-| **S: Single fix** | One bounded fix in one repo, expected behavior already clear. | `implement-issue` per change; its review round and refactor pass feed `pr-steps`. `converge`'s rules (git, authority, the phantom and removal gates, stacked PRs, gates and evidence); of its loops, one dry verification pass after the last fix and one guardian verdict, both by the agent of `implement-issue` steps 6 and 7 in the same run (verification, review, refactor ratings, guardian charter, body claims, each into its own file), and confirmed by that agent on the final head. The project file's gates green, body true to the head. |
-| **M: Feature or set** | A new capability, a changed public contract, several change units, or open behavior questions. | `implement-issue` per unit, full `converge` in place of its single rounds, invariants, ledger, decision packet, design loop (1.4). |
+| **S: Single fix** | One bounded fix in one repo, expected behavior already clear. | `implement-issue` per change; its review round and refactor pass feed `pr-steps`. `converge`'s rules (git, authority, the phantom and removal gates, stacked PRs, gates and evidence); of its loops, one dry verification pass after the last fix and one guardian verdict, both in A1's run, then F on the final head (`converge`, who reads: two agents per PR). The project file's gates green, body true to the head. |
+| **M: Feature or set** | A new capability, a changed public contract, several change units, or open behavior questions. | `implement-issue` per unit, full `converge` in place of its single rounds (A1 continued across rounds, F on the final head, per slice set), invariants, ledger, decision packet, design loop (1.4). |
 | **L: Program** | Changes across two or more independently maintained repos, or two or more decision makers. | Tier M everywhere, plus the umbrella issue (1.2). |
 
 ## 1.1 Principles

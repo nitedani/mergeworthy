@@ -10,7 +10,7 @@ Run late, after correctness is proven, with the gates as the safety net. Finding
 Split the diff into scopes (e.g. core feature, backend, everything else; the bottom PR is its own scope).
 
 Round 1:
-- One fresh guardian, read-only, with the guardian brief below, covering every scope (one report section each) when the diff fits one context; otherwise one per scope.
+- The guardian brief below runs inside A1 (`converge`, who reads), every scope in its slice set, one report section each.
 - Each writes a report: findings by disposition with prices, the mechanism census, the 10-second pass as classes, ratings of every file, function and piece of logic with the ✅ tick list, and an honest-positive statement.
 
 Implementation:

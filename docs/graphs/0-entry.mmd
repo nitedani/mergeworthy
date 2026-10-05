@@ -1,0 +1,26 @@
+flowchart LR
+  U([User gives a task]):::ext --> T[Triage: Tier line heads scope.md, critical path]:::main
+  AI([User writes /ai on GitHub]):::ext --> T
+  W([Watcher event in events.log]):::ext --> MON[Monitor wakes the session]:::main
+  EXP([Monitor expired]):::ext --> REARM[Re-arm it at once]:::main
+  MON --> K{Kind}:::main
+  K -->|comment or review| C[[Comment flow]]:::main
+  K -->|CI red, conflict| CI[[Event flows]]:::main
+  K -->|merge, release, DEPENDENT| CI
+  K -->|maintainer commits, thumbs| CI
+  K -->|REFACTOR or TRACKER STALE| CI
+  T -->|Tier 0| A0[[Answer]]:::main
+  T -->|Tier S| S[[PR pipeline S]]:::main
+  T -->|Tier M| M[[PR pipeline M]]:::main
+  T -->|Tier L| L[[Program L]]:::main
+  P([About to write to GitHub]):::ext --> G[[Posting gate]]:::gate
+  R([Session resumes]):::ext --> RS[events.log past events.cursor, replies-owed.md, scope.md Tier line, ledger: passes owed]:::main
+  RS --> K
+  RS -->|a pass is owed| M
+  classDef main fill:#dbeafe,stroke:#1d4ed8,color:#0b1b3f
+  classDef reader fill:#dcfce7,stroke:#15803d,color:#052e16
+  classDef fresh fill:#fef3c7,stroke:#b45309,color:#3b1d02
+  classDef diverge fill:#f3e8ff,stroke:#7e22ce,color:#2e1065
+  classDef local fill:#ffe4e6,stroke:#be123c,color:#4c0519
+  classDef gate fill:#f1f5f9,stroke:#334155,color:#0f172a,stroke-dasharray:4 3
+  classDef ext fill:#ffffff,stroke:#64748b,color:#334155

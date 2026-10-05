@@ -1,0 +1,17 @@
+flowchart LR
+  CI[CI red or conflict on your PR]:::ext --> W{Caused by this PR?}:::main
+  W -->|yes| FIX[Fix, push, gates]:::main
+  W -->|no| NOTE[One comment with cause + evidence, posting gate]:::gate
+  MG[Your PR merged]:::ext --> DEP[waiting-on.txt dependents: apply now, post progress]:::main --> TR[Tick umbrella checkbox with its state]:::main
+  REL[Upstream release or DEPENDENT event]:::ext --> DEP
+  RS[REFACTOR STALE: over 80 lines since last rating]:::ext --> RR[Re-open Loop A for changed slices; A1 if alive, else a fresh A1 with the last report]:::reader
+  TS[TRACKER STALE]:::ext --> TR
+  MC[Maintainer commits on your PR]:::ext --> TBL[Review each commit in a table]:::main
+  TH[Thumbs on your comment]:::ext --> ACK[Up: proceed. Down: the comment missed, rethink it]:::main
+  classDef main fill:#dbeafe,stroke:#1d4ed8,color:#0b1b3f
+  classDef reader fill:#dcfce7,stroke:#15803d,color:#052e16
+  classDef fresh fill:#fef3c7,stroke:#b45309,color:#3b1d02
+  classDef diverge fill:#f3e8ff,stroke:#7e22ce,color:#2e1065
+  classDef local fill:#ffe4e6,stroke:#be123c,color:#4c0519
+  classDef gate fill:#f1f5f9,stroke:#334155,color:#0f172a,stroke-dasharray:4 3
+  classDef ext fill:#ffffff,stroke:#64748b,color:#334155
