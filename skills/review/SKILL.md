@@ -14,7 +14,7 @@ Every independent review uses this order: the posting gate (1.6), `review`'s PR 
    It runs the model configured in `~/.codex/config.toml`. If it fails (out of credits, a rate limit, an error), go to step 2; that failure takes seconds.
 2. **A fresh-context Claude subagent** on the session's default model, the same prompt. Never a cheaper model. When your environment's own instructions name a reviewer to use first (a local model on this machine), it goes before this step.
 
-An error, a hang or "out of credits" is not a review. Record which reviewer ran; on Tier ≥ M work, re-review on Codex once it's back.
+After you fix its findings, continue the same reviewer (send it what changed) to confirm them; a fresh reviewer only when the artifact changed beyond its findings, or for the final read of a long one. An error, a hang or "out of credits" is not a review. Record which reviewer ran; on Tier ≥ M work, re-review on Codex once it's back.
 
 **The prompt** is a file: the charter (the gate's checks in 1.6, `review`'s reviewer charter, `guardian`'s charter or `refactor`'s prompt), the artifact's paths at pinned SHAs, and one sentence on what it claims to do. Never your conclusions or the verdict you want. Its final message is exactly `CLEAN`, or the findings.
 
