@@ -94,8 +94,8 @@ if kind == 'reply' and words > 80:
 pr_budget = 250 if re.search(r'^#+ .*\b(notes|decisions)\b|^Decisions\b', text, re.I | re.M) else 150  # a PR with decisions for the maintainer may run longer
 if kind == 'pr' and words > pr_budget:
     findings.append(f"{words} words > {pr_budget} for a PR body (tables, code, images and URLs not counted): cut what the reader doesn't need")
-if kind == 'proposal' and words > 600:  # a design walkthrough (methodology 1.4 step 4)
-    findings.append(f"{words} words > 600 for a proposal: cut what the reader doesn't need")
+if kind == 'proposal' and words > 250:  # a design walkthrough (methodology 1.4 step 4)
+    findings.append(f"{words} words > 250 for a design answer or walkthrough: one decision per comment, recommendation and code first (1.6 budgets)")
 if kind == 'issue' and chars > 400:
     findings.append(f"{chars} characters > 400 for an issue (tables, code, images and URLs not counted): keep one finding")
 if kind == 'inline' and sentences > 2:

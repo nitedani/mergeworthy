@@ -6,14 +6,14 @@ description: "Designing an API, protocol or module, or restructuring code: the d
 ## 1.4 Design loop (Tier ≥ M, any API or protocol)
 
 0. Before any new core API, prototype the solution that uses only existing extension points (e.g. an existing middleware, render hook or plugin hook). It is the first candidate; a core change needs a named requirement it fails.
-1. Draft `decisions/<name>.md`: the invariant table (1.1.2), and the candidates rated as in `implement-issue` step 3.
+1. Draft `decisions/<name>.md`: the invariant table (1.1.2), and the candidates rated as in `implement-issue` step 3. Rank them by interface size; recommend the smallest that keeps every invariant, and a larger one only with the requirement the smaller one fails, shown as code.
 2. **Prototype** to prove the invariants end to end: a real browser, request counts, timing, byte comparisons, dev, prod and static hosting.
 3. **Adversarial review** of the prototype (`review`): how does it fail?
 4. Propose to maintainers only when no invariant is broken, as a **walkthrough**:
    1. the one new concept, in one sentence;
    2. what the user or extension writes, as code;
    3. what happens on each path a user can take;
-   4. why this format, each alternative shown the same way (1.6 comparisons);
+   4. why this format, each alternative shown the same way (1.6 comparisons), and the recommended one's downsides against `main`, found by arguing against it before posting;
    5. numbered questions.
 
    Nothing that changes existing behavior the feature doesn't strictly need. Every term explained in plain words.
