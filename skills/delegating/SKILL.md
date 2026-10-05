@@ -35,6 +35,7 @@ These rules hold when you edit a skill, prompt, rules file or AGENTS.md. Rules f
     - `Acceptance`: the commands or observations that define done.
 
   Never put in your opinion or the answer you expect: a guess goes under `To check`.
+- **A charter or prompt from a skill is pasted from the installed skill** each time you write the brief (`~/.mergeworthy/current/skills/`). A copy saved earlier in your work folder drifts from it.
 - **What the agent returns:** the result with evidence (`path:line`, or the command and its exit code), and a `not_checked` list. An unchecked item or a deviation is yours to decide; never send the same brief again.
 - **What the agent must not do:**
     - widen the brief;

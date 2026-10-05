@@ -113,7 +113,7 @@ The watcher runs independently of any session and only records events (and adds 
 - **Write for how people read.** Readers scan: they read the first words of each line and what's bold, and they hold about four things at once.
   - The answer or the ask comes first, in the post and in each paragraph; the rest can be cut at any point and the point survives.
   - Each sentence starts from what the reader already has (their words, your previous sentence) and ends on the new point.
-  - The people and things act: "Vike warns", not "a warning is issued". Their words, not yours; a term they haven't seen is explained where it first appears.
+  - The people and things act: "Vike warns", not "a warning is issued". Their words, not yours; a term they haven't seen is explained where it first appears. A word that ranks difficulty ("fundamental", "impossible") says what it's hard for.
   - Sentences of 15 to 20 words, none over 30; paragraphs of at most three sentences; at most about four items to hold at once, grouped or linked beyond that.
   - Hierarchy carries the structure: a bullet per parallel item with its point in a bold lead-in, prose for reasoning, one level of nesting, headings only for a long post. Bold marks the lead-ins and the decision, nothing else; a table only for a real comparison of a few columns.
 - **At most two comments in a row.** The second is only the 1.5 result after its holding reply, a wait ping, a dependency's progress or a 👎 fix; anything else edits your last comment. `pre-bash-guard` blocks a third within 3 hours of your last; after that, the third may be the wait ping.

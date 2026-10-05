@@ -114,5 +114,9 @@ printf '%s A list of short items follows here:\n%s\n' "$B" "$items" > "$T/list.m
 check "a list of short items: no long sentence" 0 "$(lint "$T/list.md")"
 printf '%s A list follows:\n- %s\n' "$B" "$(printf 'word %.0s' $(seq 35))" > "$T/long.md"
 check "one list item over 30 words is flagged" 1 "$(lint "$T/long.md")"
+printf '%s Two fundamental issues remain.\n' "$B" > "$T/fund.md"
+check "a difficulty word without its scope is flagged" 1 "$(python3 "$R/bin/post-lint" "$T/fund.md" --kind issue --parent none 2>&1 | grep -c 'what it.s hard for')"
+printf '%s A problem fundamental to one injection point; "fundamental" was the wrong word.\n' "$B" > "$T/fund2.md"
+check "a scoped or quoted difficulty word passes" 0 "$(python3 "$R/bin/post-lint" "$T/fund2.md" --kind issue --parent none 2>&1 | grep -c 'what it.s hard for')"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]
