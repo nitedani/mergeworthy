@@ -38,13 +38,23 @@ def rule_owners(rows):
     return owners
 
 
-def label(text):
+def label(text, width=24, words_max=8, whole=False):
+    """A node label: the step's bold title, else its first clause, at most 8 words, wrapped into short lines
+    (GitHub's Mermaid measures text in one font and draws it in another, so a long line gets cut off)."""
     text = re.sub(r'^\*\*(.+?)\*\*.*', r'\1', text.strip()) if text.strip().startswith('**') else text.strip()
     text = re.sub(r'`([^`]*)`', r'\1', text)
-    text = re.split(r'(?<=[.:;])\s|\s\(', text, maxsplit=1)[0].rstrip('.:;')
+    if not whole:
+        text = re.split(r'(?<=[.:;,])\s|\s\(|\s[–-]\s', text, maxsplit=1)[0].rstrip('.:;,')
     words = text.split()
-    text = ' '.join(words[:9]) + ('…' if len(words) > 9 else '')
-    return text.replace('"', "'").replace('<', '‹').replace('>', '›')
+    words = words[:words_max] + (['…'] if len(words) > words_max else [])
+    lines, line = [], ''
+    for w in words:
+        if line and len(line) + 1 + len(w) > width:
+            lines.append(line); line = w
+        else:
+            line = f'{line} {w}'.strip()
+    lines.append(line)
+    return '<br/>'.join(x.replace('"', "'").replace('<', '‹').replace('>', '›') for x in lines)
 
 
 def steps(skill):
@@ -100,7 +110,7 @@ def build():
     out += ['']
     for when, skill, holds in rows:
         out += [f'## {when}', '', f'Opens `mergeworthy:{skill}` ({holds}).', '', '```mermaid', 'flowchart TB',
-                f'  start(["{label(when)}"])']
+                f'  start(["{label(when, words_max=14, whole=True)}"])']
         groups = []  # [(section, [(name, text)])], in reading order
         for section, name, text in steps(skill):
             if not groups or groups[-1][0] != section:
