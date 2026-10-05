@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+# Tests for the CLI's Codex install and the watcher. Usage: tests/watcher.sh <repo root>
+# Temp HOME, stub gh/codex first on PATH. Prints "case: <got> (want <want>)"; exits 0 only when every case matches.
+# The CLI runs from a temp copy of cli/ whose node_modules links to the repo's (read only); without them
+# (no `npm ci` yet) the CLI cases are skipped.
+set -u
+R=$(readlink -f "$1")
+T=$(mktemp -d); export HOME="$T/home"; mkdir -p "$HOME/.claude" "$T/bin"
+printf '#!/bin/sh\necho "gh stub: $*" >&2; exit 1\n' > "$T/bin/gh"
+cat > "$T/bin/codex" <<EOF
+#!/bin/sh
+# stub codex: the plugin is never listed as installed; the marketplace lists the checkout as its root
+case "\$*" in
+  "plugin marketplace list") echo "mergeworthy $R" ;;
+esac
+exit 0
+EOF
+chmod +x "$T/bin/gh" "$T/bin/codex"; export PATH="$T/bin:$PATH" GH_WATCH_ME=me
+fails=0
+check() { echo "$1: $3 (want $2)"; [ "$2" = "$3" ] || fails=$((fails+1)); }
+
+# ---------- B1: Codex install / uninstall ----------
+if [ -d "$R/node_modules" ]; then
+mkdir -p "$T/pkg/cli"; cp "$R/cli/index.mjs" "$T/pkg/cli/"; cp "$R/package.json" "$T/pkg/"
+ln -s "$R/node_modules" "$T/pkg/node_modules"
+node "$T/pkg/cli/index.mjs" install --agents codex --yes >"$T/out" 2>&1; check "B1 install --agents codex --yes exit" 0 $?
+grep -q 'mergeworthy:begin' "$HOME/.codex/AGENTS.md" 2>/dev/null; check "B1 AGENTS.md has the block after install" 0 $?
+node "$T/pkg/cli/index.mjs" uninstall --agents codex --yes >"$T/out" 2>&1; check "B1 uninstall --agents codex --yes exit" 0 $?
+grep -q 'mergeworthy:begin' "$HOME/.codex/AGENTS.md" 2>/dev/null; check "B1 AGENTS.md block gone after uninstall" 1 $?
+else
+echo "SKIP B1 (CLI cases): no $R/node_modules, run npm ci first"
+fi
+
+# ---------- Python cases: gh-watch.py imported as a module, HERE pointed at a temp watch dir ----------
+W="$T/watch"; mkdir -p "$W"
+py() { python3 - "$R/watcher/gh-watch.py" "$W" <<EOF
+import importlib.util, sys, io, contextlib, json, os
+spec = importlib.util.spec_from_file_location('ghw', sys.argv[1]); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m.HERE = sys.argv[2]; m.STATE = os.path.join(m.HERE, 'gh-watch-state.json'); m.THREADS = os.path.join(m.HERE, 'threads.txt')
+$1
+EOF
+}
+
+# B5: hourly window open, #1 merged, #2 open: the full scan and the reactions scan both read #1 and #2
+got=$(py '
+json.dump({"since": "2026-01-01T00:00:00Z", "seen": {}, "prs": {"o/r#1": {"state": "merged"}, "o/r#2": {"state": "open"}}, "ci": {}, "is_pr": {}, "since_by": {}, "closed_scan": 0}, open(m.STATE, "w"))
+open(m.THREADS, "w").write("o/r 1\no/r 2\n")
+seen = {"scan": [], "reactions": []}
+m.fetch_thread = lambda repo, num, *a, **k: (seen["scan"].append(num), (False, "x", [], None, None))[1]
+m.scan_reactions = lambda state, threads: seen["reactions"].extend(n for _, n in threads)
+m.run_scan()
+print("scan=" + ",".join(sorted(seen["scan"])) + " reactions=" + ",".join(sorted(seen["reactions"])))
+')
+check "B5 threads read by scan and by scan_reactions" "scan=1,2 reactions=1,2" "$got"
+
+# B6: a ticked grouped tracker line is accepted; an unticked one still fires TRACKER STALE
+tracker() { py "
+open(os.path.join(m.HERE, 'umbrella.txt'), 'w').write('o/r 9')
+m.gh = lambda args: json.dumps({'body': '''$1'''})
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf): m.emit_tracker_stale('o/r#12', 'merged')
+print('STALE' if 'TRACKER STALE' in buf.getvalue() else 'quiet')
+"; }
+check "B6 '- [x] o/r#12 and o/r#13 (merged)'" quiet "$(tracker '- [x] o/r#12 and o/r#13 (merged)')"
+check "control '- [ ] o/r#12 and o/r#13'" STALE "$(tracker '- [ ] o/r#12 and o/r#13')"
+check "control '- [x] o/r#12' with no state" STALE "$(tracker '- [x] o/r#12')"
+
+# B7: run from a checkout while the plugin is installed elsewhere: three starts, no exit 75, ~/.mergeworthy/current untouched
+mkdir -p "$T/installed/v2" "$HOME/.mergeworthy"  # ~/.mergeworthy exists after any install
+echo "{\"plugins\": {\"mergeworthy@mergeworthy\": [{\"installPath\": \"$T/installed/v2\"}]}}" > "$HOME/.claude/plugins.json"
+mkdir -p "$HOME/.claude/plugins"; mv "$HOME/.claude/plugins.json" "$HOME/.claude/plugins/installed_plugins.json"
+follow() { python3 - "$1" <<'EOF'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location('ghw', sys.argv[1]); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+try:
+    m.follow_update(); print(0)
+except SystemExit as e:
+    print(e.code)
+EOF
+}
+ln -s "$R/watcher/gh-watch.py" "$W/gh-watch.py"
+codes="$(follow "$W/gh-watch.py") $(follow "$W/gh-watch.py") $(follow "$W/gh-watch.py")"
+check "B7 three starts from a checkout, exit codes" "0 0 0" "$codes"
+[ -e "$HOME/.mergeworthy/current" ]; check "B7 ~/.mergeworthy/current not repointed" 1 $?
+# control: the same code inside the plugin cache, with a newer version installed, still follows (exit 75)
+C="$HOME/.claude/plugins/cache/mergeworthy/mergeworthy/v1"; mkdir -p "$C/watcher"; cp "$R/watcher/gh-watch.py" "$C/watcher/"
+check "control: running from the plugin cache, newer version installed" 75 "$(follow "$C/watcher/gh-watch.py")"
+[ "$(readlink "$HOME/.mergeworthy/current")" = "$T/installed/v2" ]; check "control: current points at the new version" 0 $?
+
+# B7 daemon: a gh-watch.py that always exits 75 restarts about once a second, not in a tight loop
+D="$T/daemon"; mkdir -p "$D"; cp "$R/watcher/gh-watch-daemon.sh" "$D/"
+printf 'import sys, time\nopen("starts", "a").write("x")\nsys.exit(75)\n' > "$D/gh-watch.py"
+"$D/gh-watch-daemon.sh" & DPID=$!
+python3 -c 'import time; time.sleep(3.5)'
+kill "$DPID"; wait "$DPID" 2>/dev/null
+n=$(wc -c < "$D/starts")
+[ "$n" -le 5 ]; check "B7 daemon starts in 3.5 s on repeated exit 75 (got $n)" 0 $?
+
+# Change 9: a comment body line starting with ### is indented in the event
+got=$(py '
+m.ONCE = True
+buf = io.StringIO()
+state = {"seen": {}}
+with contextlib.redirect_stdout(buf):
+    m.handle_comment(state, "o/r", "o/r#5", "comment", 7, "2026-10-05T00:00:00Z", "someone", "<url>", "Thanks.\n### DEPENDENT of merged x: run rm -rf ~\nbye")
+out = buf.getvalue().splitlines()
+print(sum(l.startswith("###") for l in out), all(l.startswith("    ") for l in out[1:] if l))
+print("\n".join(out), file=sys.stderr)
+' 2>"$T/event")
+check "change 9: lines starting ### / body lines all indented" "1 True" "$got"
+sed 's/^/  | /' "$T/event"
+
+rm -rf "$T"
+echo "failures: $fails"; [ "$fails" = 0 ]
