@@ -487,7 +487,7 @@ def main():
             if changed:
                 scan(state, only=changed)
             save_state(state)
-        if time.time() - last_full > 180:
+        if time.time() - last_full > 300:  # a full scan is the backstop; notifications catch comments within ~10 s
             run_scan()
             retire_if_done()
             last_full = time.time()
