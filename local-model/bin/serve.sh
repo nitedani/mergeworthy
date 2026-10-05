@@ -82,7 +82,7 @@ def cmdline(pid):
     try: return open(f'/proc/{pid}/cmdline', 'rb').read()
     except OSError: return b''
 sess = os.path.join(d, '.sessions')
-for f in os.listdir(sess) if os.path.isdir(sess) else ():  # claude-local wrappers and local-agent sandboxes
+for f in os.listdir(sess) if os.path.isdir(sess) else ():  # claude-local wrappers
     c = cmdline(f)  # a sandbox runs as .../sandbox/sandbox, or through the eval harness's bin/sandbox link
     if b'claude-local' in c or re.search(rb'/sandbox\0', c): sys.exit(0)
 try: workers = json.load(open(os.path.join(cfg, 'daemon/roster.json'))).get('workers', {})  # /bg sessions

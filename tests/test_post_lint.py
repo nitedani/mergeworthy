@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Tests for claude/bin/post-lint.py. Run: python3 test_post_lint.py (exit 0 = all pass).
+"""Tests for bin/post-lint. Run: python3 test_post_lint.py (exit 0 = all pass).
 Fixtures are written under ./post-lint-cases/ (never /tmp). Cases marked (real) are replies posted to a maintainer."""
 import os, subprocess, sys, shutil
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-LINT = os.path.join(HERE, '..', 'claude', 'bin', 'post-lint.py')
+LINT = os.path.join(HERE, '..', 'bin', 'post-lint')
 CASES = os.path.join(HERE, 'post-lint-cases')
 shutil.rmtree(CASES, ignore_errors=True); os.makedirs(CASES)
 
@@ -13,7 +13,7 @@ SUGGESTION = "How about more future proof:\n```suggestion\nThe content of a non-
 
 BADGE = '<img src="https://github.com/claude.png" width="20" height="20" align="left" alt="Claude"> **Claude:**'
 
-# `gh api user --jq .type` for METHODOLOGY_BADGE=auto prints $FAKE_GH_TYPE
+# `gh api user --jq .type` for MERGEWORTHY_BADGE=auto prints $FAKE_GH_TYPE
 FAKE_BIN = os.path.join(CASES, 'bin'); os.makedirs(FAKE_BIN)
 open(os.path.join(FAKE_BIN, 'gh'), 'w').write('#!/bin/sh\necho "$FAKE_GH_TYPE"\n'); os.chmod(os.path.join(FAKE_BIN, 'gh'), 0o755)
 
@@ -25,7 +25,7 @@ def run(name, draft, parent=None, extra=(), env=None):
     open(d, 'w').write(draft)
     if parent is not None:
         open(os.path.join(CASES, name + '.parent.md'), 'w').write(parent)
-    base = {k: v for k, v in os.environ.items() if not k.startswith('METHODOLOGY_')}
+    base = {k: v for k, v in os.environ.items() if not k.startswith('MERGEWORTHY_')}
     base['PATH'] = FAKE_BIN + os.pathsep + base['PATH']
     r = subprocess.run([sys.executable, LINT, d, *extra], capture_output=True, text=True, env={**base, **(env or {})})
     return r.returncode, r.stdout + r.stderr
@@ -66,12 +66,12 @@ T = [
     # existing checks still work
     ('emdash', 'Fixed in abc1234 — the header is sent.\n', 'Let\'s fix it', (), 'em dash'),
     ('too-long', ' '.join(['word'] * 81) + '\n', 'Let\'s fix it', (), 'words > 80'),
-    # METHODOLOGY_BADGE: off never needs the badge; auto needs it only for a human account
-    ('badge-off', 'Done in abc1234.\n', None, ('--parent', 'none'), None, {'METHODOLOGY_BADGE': 'off'}),
-    ('badge-auto-bot', 'Done in abc1234.\n', None, ('--parent', 'none'), None, {'METHODOLOGY_BADGE': 'auto', 'FAKE_GH_TYPE': 'Bot'}),
-    ('badge-auto-user', 'Done in abc1234.\n', None, ('--parent', 'none'), 'missing badge', {'METHODOLOGY_BADGE': 'auto', 'FAKE_GH_TYPE': 'User'}),
-    # METHODOLOGY_REVIEW_TRACE: a review record may carry the process only when it goes in a PR comment
-    ('review-record', 'Review round 1: the charter found 2 issues, both fixed in abc1234.\n', None, ('--kind', 'review-record'), None, {'METHODOLOGY_REVIEW_TRACE': 'comment'}),
+    # MERGEWORTHY_BADGE: off never needs the badge; auto needs it only for a human account
+    ('badge-off', 'Done in abc1234.\n', None, ('--parent', 'none'), None, {'MERGEWORTHY_BADGE': 'off'}),
+    ('badge-auto-bot', 'Done in abc1234.\n', None, ('--parent', 'none'), None, {'MERGEWORTHY_BADGE': 'auto', 'FAKE_GH_TYPE': 'Bot'}),
+    ('badge-auto-user', 'Done in abc1234.\n', None, ('--parent', 'none'), 'missing badge', {'MERGEWORTHY_BADGE': 'auto', 'FAKE_GH_TYPE': 'User'}),
+    # MERGEWORTHY_REVIEW_TRACE: a review record may carry the process only when it goes in a PR comment
+    ('review-record', 'Review round 1: the charter found 2 issues, both fixed in abc1234.\n', None, ('--kind', 'review-record'), None, {'MERGEWORTHY_REVIEW_TRACE': 'comment'}),
     ('review-record-hidden', 'Review round 1: clean.\n', None, ('--kind', 'review-record'), 'stay in the artifact root'),
 ]
 

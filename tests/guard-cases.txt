@@ -73,7 +73,7 @@
 0|git stash push -u -m t && git stash list --format='%H %gs'
 0|git stash drop stash@{2}
 2|git -C /x stash
-0 METHODOLOGY_COMMIT_IDENTITY=git-config|git commit -m 'use git stash pop carefully'
+0 MERGEWORTHY_COMMIT_IDENTITY=git-config|git commit -m 'use git stash pop carefully'
 2|git -c user.name=someone-else commit -m x
 0|git -c user.name=test-login commit -m x
 2|pkill -f vite
@@ -85,7 +85,7 @@
 0|kill $(pgrep -f vite)
 0|echo 'never pkill -f'
 0|grep -n 'pkill -f' notes.md
-0 METHODOLOGY_COMMIT_IDENTITY=git-config|git commit -m 'guard: block killall'
+0 MERGEWORTHY_COMMIT_IDENTITY=git-config|git commit -m 'guard: block killall'
 0|grep killall pre-bash-guard.py
 2|killall node
 2|sudo pkill -f x
@@ -94,13 +94,11 @@
 2|gh pr merge 12 -R o/r --squash
 2|gh pr merge 12 --squash --subject "fix: x (#13)" --body ""
 2|gh pr merge 12 --merge --subject "fix: x (#12)" --body ""
-2 METHODOLOGY_MERGE=reviewer|gh pr merge 12 -R o/r --squash --subject "fix: x (#12)" --body ""
-0 METHODOLOGY_MERGE=on-request-squash|gh pr merge 12 -R o/r --squash --subject "fix: x (#12)" --body ""
-0 METHODOLOGY_MERGE=reviewer|gh pr view 12
-2 METHODOLOGY_WATCHER=on|gh api repos/unwatched-owner/unwatched-repo/issues/9/comments -F body=@$D
-2 METHODOLOGY_WATCHER=on|gh issue create -R unwatched-owner/unwatched-repo -t x -F $D
-2 METHODOLOGY_WATCHER=on|gh pr comment https://github.com/unwatched-owner/unwatched-repo/pull/3 --body-file $D
-0 METHODOLOGY_WATCHER=on|gh api -X PATCH repos/unwatched-owner/unwatched-repo/issues/comments/1 -F body=@$D
-0 METHODOLOGY_WATCHER=on METHODOLOGY_TARGET=ci|gh api repos/unwatched-owner/unwatched-repo/issues/9/comments -F body=@$D
-2|(cd x && local-agent facts t.md > o.json 2>&1 &)
-0|local-agent facts t.md --cwd x
+2 MERGEWORTHY_MERGE=reviewer|gh pr merge 12 -R o/r --squash --subject "fix: x (#12)" --body ""
+0 MERGEWORTHY_MERGE=on-request-squash|gh pr merge 12 -R o/r --squash --subject "fix: x (#12)" --body ""
+0 MERGEWORTHY_MERGE=reviewer|gh pr view 12
+2 MERGEWORTHY_WATCHER=on|gh api repos/unwatched-owner/unwatched-repo/issues/9/comments -F body=@$D
+2 MERGEWORTHY_WATCHER=on|gh issue create -R unwatched-owner/unwatched-repo -t x -F $D
+2 MERGEWORTHY_WATCHER=on|gh pr comment https://github.com/unwatched-owner/unwatched-repo/pull/3 --body-file $D
+0 MERGEWORTHY_WATCHER=on|gh api -X PATCH repos/unwatched-owner/unwatched-repo/issues/comments/1 -F body=@$D
+0 MERGEWORTHY_WATCHER=on MERGEWORTHY_TARGET=ci|gh api repos/unwatched-owner/unwatched-repo/issues/9/comments -F body=@$D

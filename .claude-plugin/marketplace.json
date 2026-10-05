@@ -1,0 +1,14 @@
+{
+  "name": "mergeworthy",
+  "owner": {
+    "name": "nitedani"
+  },
+  "plugins": [
+    {
+      "name": "mergeworthy",
+      "source": "./",
+      "description": "Methodology, hooks and commands for AI agents doing GitHub work"
+    }
+  ],
+  "description": "mergeworthy: a working methodology for AI coding agents on GitHub"
+}

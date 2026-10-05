@@ -2,7 +2,7 @@
 # local-model/install.sh [--force]: installs the local-model tooling from this folder, the only source.
 # - Everything except eval/ goes to ~/local-llm (the llama.cpp build, weights, .api-key, usage/ and claude-config/ live
 #   there and are never touched); eval/ goes to ~/local-llm-eval (workspaces and runs stay there).
-# - Links claude-local, local-agent and claude-usage into ~/.local/bin, and the sandbox into ~/local-llm-eval/bin.
+# - Links claude-local and claude-usage into ~/.local/bin, and the sandbox into ~/local-llm-eval/bin.
 # - Refuses to overwrite an installed file that differs from the last install (edited in place): copy the change here,
 #   commit, and re-run; --force overwrites anyway.
 # Edit here, commit, push and run this in the same step.
@@ -12,7 +12,7 @@ STAMP=~/local-llm/.installed  # sha256 of each file as last installed
 force=; [ "${1:-}" = --force ] && force=1
 cd "$SRC/.."
 # Repo layout -> installed layout: bin/, config/ and prompts/ go flat into ~/local-llm (the scripts find each other
-# there); skills/ and sandbox/ keep their folder; eval/ goes to ~/local-llm-eval.
+# there); sandbox/ keeps its folder; eval/ goes to ~/local-llm-eval.
 pairs=$(git ls-files local-model | grep -v '/install.sh$' | while read -r f; do
   r=${f#local-model/}
   case $r in
@@ -42,6 +42,6 @@ echo "$pairs" | while read -r f dst; do
   echo "$(sha256sum "$dst" | cut -d' ' -f1) $dst" >>"$STAMP.new"
 done
 mv "$STAMP.new" "$STAMP"
-for c in claude-local local-agent claude-usage; do ln -sfn ~/local-llm/$c ~/.local/bin/$c; done
+for c in claude-local claude-usage; do ln -sfn ~/local-llm/$c ~/.local/bin/$c; done
 for s in sandbox gh; do ln -sfn ~/local-llm/sandbox/$s ~/local-llm-eval/bin/$s; done
 echo "installed $(echo "$pairs" | wc -l) files from $SRC"

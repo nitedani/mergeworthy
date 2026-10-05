@@ -23,17 +23,10 @@ mkdir -p "$CFG"
 for f in settings.json skills plugins; do
   [ -e "$HOME/.claude/$f" ] && [ ! -e "$CFG/$f" ] && ln -s "$HOME/.claude/$f" "$CFG/$f"
 done
-# Your CLAUDE.md plus the local-model environment notes (one GPU, one model, no Monitor tool, no internet), rebuilt every start.
-# Methodology: dist/methodology-local.md, the build profile for a session that runs on the local model itself;
-# it already drops the subscription rules and the scripts' source code, so it is read as is.
-FULL="$(grep -o '/[^` ]*methodology[^` ]*\.md' "$HOME/.claude/CLAUDE.md" | head -1)"
-METH="$FULL"
-if [ -n "$FULL" ]; then
-  LOCAL="$(dirname "$FULL")/methodology-local.md"
-  [ -f "$LOCAL" ] && METH="$LOCAL"
-fi
+# Your CLAUDE.md plus the local-model notes (claude-local-overrides.md), rebuilt every start. The methodology itself comes
+# from the mergeworthy plugin, which this config shares through the linked plugins folder and settings.
 rm -f "$CFG/CLAUDE.md"
-{ sed "s#${FULL:-/nonexistent}#$METH#g" "$HOME/.claude/CLAUDE.md"; cat "$DIR/claude-local-overrides.md"; echo; cat "$DIR/claude-local-prompt.md"; } >"$CFG/CLAUDE.md" 2>/dev/null || true
+{ cat "$HOME/.claude/CLAUDE.md"; echo; cat "$DIR/claude-local-overrides.md"; } >"$CFG/CLAUDE.md" 2>/dev/null || true
 # Copy what lives in ~/.claude.json: theme and first-run state, MCP servers, folders you trusted.
 python3 - "$HOME/.claude.json" "$CFG/.claude.json" <<'EOF'
 import json, os, sys

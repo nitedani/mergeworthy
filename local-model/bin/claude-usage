@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """claude-usage [--json | --mode]: how much Claude subscription budget is left across your claude-swap accounts, and how hard to
-lean on the local model (local-agent) to make it last.
+lean on the local model to make it last.
 
 Reads every claude-swap account's live usage (the numbers /usage shows): the active one with Claude Code's own login,
 the others with their saved claude-swap logins. An inactive account's expired access token is refreshed the way Claude
@@ -188,9 +188,9 @@ else:
            f'next weekly reset in {next_reset_h:.0f} h')
 if five is not None and five >= 80 and level == 'green': level, why = 'yellow', f'5-hour window at {five:.0f}%'
 
-advice = {'unknown': 'no prediction yet: use the configured mode', 'green': 'delegate routine work (gates, fact mining, mechanical edits) to local-agent',
-          'yellow': 'also delegate first drafts and first-pass fact checks to local-agent; Claude verifies; fewer cloud subagents',
-          'red': 'local-agent does the execution; Claude only decides, reviews what gates a post, and posts'}[level]
+advice = {'unknown': 'no prediction yet: use the configured mode', 'green': 'delegate routine work (gates, fact mining, mechanical edits) to the local model',
+          'yellow': 'also delegate first drafts and first-pass fact checks to the local model; Claude verifies; fewer cloud subagents',
+          'red': 'the local model does the execution; Claude only decides, reviews what gates a post, and posts'}[level]
 res = {'level': level, 'why': why, 'advice': advice, 'active': active, 'five_hour': five,
        'weekly': {a: known[a] for a in accounts}, 'unknown_accounts': unknown, 'rate_pct_per_h': rate, 'note': err}
 if '--mode' in sys.argv:

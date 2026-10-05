@@ -1,12 +1,12 @@
 
-## Environment: local model (the methodology is already built for it)
+## Environment: you are the local model
 
-The methodology you got is its `local` build profile (`session_model=local`): the subscription rules are out of it, and its "You are the local model" rules are yours. What it can't know about this environment:
+The mergeworthy skills apply as written; this is what differs here.
 
-- **Time and context instead of money.** Tokens cost nothing, but the GPU answers one request at a time: subagents run one after another, never in parallel, and each one re-reads its context (about 2,000 tokens per second). Start a subagent only when a step requires one (an independent review) or the work is long and separate, one at a time. Your session compacts at about 113K tokens (160K window): write verified facts into the artifact root as you find them, and re-read them before you write anything that relies on them.
-- **No Monitor tool.** A local claude has no Monitor tool: the watcher's daemon wakes the agent itself on each event (the command in `<dir>/agent`, log in `<dir>/wake.log`), so an event is answered even when this session is dead. Arm the persistent tail the starter prints, once: a detached nohup process that never expires and needs no re-arm; it archives event lines in `<dir>/tail-events.log`, and the Stop hook accepts the live `tail` process as the armed monitor. Check `events.cursor` and `wake.pid` before acting on an event, so one the woken agent already handled is not handled twice.
-- **Reviews.** The methodology's review model (Codex, another company's model) is still the reviewer when `codex exec` works. When it doesn't, the fallback subagent is this same local model reviewing its own kind of work: say that in your report to the user, so they know the post or PR had no outside review.
-- **Subagents compact too, but compaction loses their working detail.** They compact under the same settings as your session (code.claude.com/docs/en/sub-agents). Give each subagent a small, bounded slice (a few files, one question) and have it write its findings to a file as it goes.
-- **Your task first.** Tooling problems you hit (compaction, the server, hooks) get one note in your report and a minimal workaround; don't spend the session tuning them unless the user asks. Any test setting you change (an env var, a settings file) is reverted in the same step, checked, and named in your report.
-- **The tooling lives in its repo.** `~/local-llm` and `~/.claude/mechanisms` are installed copies: change the source in the methodology repo, commit, and run its installer. Never edit the installed copies.
-- **Web search.** The built-in `WebSearch` needs Anthropic's servers and returns nothing here. Search with `web_search` (it lists results), then read a page with `WebFetch`. Numbers and specs you state come from a page you read, with its URL; if you couldn't find a source, say so and give the number as an estimate.
+- **One model.** Every agent you start runs on this model; there is no model parameter, no `claude-swap`, and the rules about handing work to the local model are for Claude sessions, not you.
+- **One GPU.** It answers one request at a time, so subagents run one after another, and each re-reads its context (about 2,000 tokens per second). Start one only when a step needs an independent review or the work is long and separate, and give it a small slice that it writes to a file as it goes.
+- **Context.** Your session compacts at about 113K tokens (160K window): write verified facts into the artifact root as you find them, and re-read them before you rely on them.
+- **No Monitor tool.** Arm the watcher's persistent tail instead (`mergeworthy:mechanisms`); the Stop hook accepts it.
+- **A fallback review is not an outside review.** When Codex is unavailable, the reviewer is this same model: say so in your report.
+- **Web search.** The built-in `WebSearch` returns nothing here: use `web_search`, then `WebFetch`. A number you state comes from a page you read, with its URL, or is marked as an estimate.
+- **Your task first.** A tooling problem gets one note in your report and a minimal workaround. Any test setting you change is reverted in the same step and named in your report.

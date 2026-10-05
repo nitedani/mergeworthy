@@ -1,0 +1,7 @@
+#!/bin/bash
+# SessionStart hook: puts the always-on rules into the session's context, and points ~/.mergeworthy/current at this
+# installed version, the stable path that watchers and cron use (the plugin's own folder changes with every update).
+mkdir -p ~/.mergeworthy && ln -sfn "$CLAUDE_PLUGIN_ROOT" ~/.mergeworthy/current
+cat "$CLAUDE_PLUGIN_ROOT/always-on.md"
+# The plugin's options reach hooks as CLAUDE_PLUGIN_OPTION_<KEY>; scripts run from Bash read this file instead
+env | sed -n 's/^CLAUDE_PLUGIN_OPTION_\([A-Z_]*\)=/MERGEWORTHY_\1=/p' > ~/.mergeworthy/settings.env

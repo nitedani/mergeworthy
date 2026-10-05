@@ -1,0 +1,58 @@
+{
+  "name": "mergeworthy",
+  "description": "How an AI coding agent works on GitHub so its PRs and replies are worth merging: triage, review, the posting gate, the live thread loop, convergence, and the hooks that enforce them.",
+  "author": {
+    "name": "nitedani"
+  },
+  "repository": "https://github.com/nitedani/mergeworthy",
+  "keywords": [
+    "github",
+    "code-review",
+    "pull-requests",
+    "methodology",
+    "agents"
+  ],
+  "userConfig": {
+    "badge": {
+      "type": "string",
+      "title": "Agent badge on posts",
+      "description": "on: every post starts with the agent's icon and label; off: never; auto: only when posting from a human account",
+      "options": [
+        "on",
+        "off",
+        "auto"
+      ],
+      "default": "on"
+    },
+    "merge": {
+      "type": "string",
+      "title": "Who merges",
+      "description": "on-request-squash: the agent squash-merges when asked; reviewer: the agent never merges",
+      "options": [
+        "on-request-squash",
+        "reviewer"
+      ],
+      "default": "on-request-squash"
+    },
+    "watcher": {
+      "type": "string",
+      "title": "GitHub watcher",
+      "description": "on: threads you work in are watched and new comments wake the agent; off: no watcher",
+      "options": [
+        "on",
+        "off"
+      ],
+      "default": "on"
+    },
+    "local_model": {
+      "type": "string",
+      "title": "Local model",
+      "description": "on: exploration and gate reviews go to a local model (claude-local) while it's available",
+      "options": [
+        "on",
+        "off"
+      ],
+      "default": "off"
+    }
+  }
+}
