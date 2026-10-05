@@ -63,7 +63,7 @@ Read the task and every link in it. Then write `Tier: <X>, because <signals>` as
     - Measure through the exact path the real work takes: the same client, API and settings the user runs, never a convenient substitute. A result from any other path is not evidence.
     - A CI workflow change works only once a real run on the branch shows it.
 6. **Fix at the root; never document around a defect.** A sentence telling users to work around the product is a bug to fix, upstream included, unless the user explicitly accepts it. Examples: "order by seq when order matters", "may miss for 60 s".
-    - These workarounds need the user's OK with a written reason the root fix is impossible: parsing twice, encoding to dodge a transport, retry or reload loops, a second code path for old runtimes, silent fallbacks.
+    - Some workarounds need the user's OK, with a written reason the root fix is impossible. They are: parsing twice, encoding to dodge a transport, retry or reload loops, a second code path for old runtimes, and silent fallbacks.
     - Unreleased, experimental or pre-1.0 code gets no compatibility code or shims (check `npm view <pkg> versions`). Losing something users can do on `main` is still a regression (1.1.11).
     - Before an upstream PR, find which side relies on behavior the other side doesn't promise (hook order, file layout). Fix that side first, ours included.
 7. **Parallel, not later.** "A separate PR" means started now, alongside.
@@ -123,7 +123,7 @@ Read the task and every link in it. Then write `Tier: <X>, because <signals>` as
     - **Deletions:** every comment, guard or workaround the diff deletes gets one line in the body with the evidence that it's obsolete; otherwise it stays.
     - **A test app imports the package by its name,** never by a source path.
     - **Draft, then ready.** Open the PR as a draft until its tier's steps hold on the head; `pre-bash-guard` blocks marking it ready until `pr-steps` has recorded its review and refactor pass. Then mark it ready and say "ready" once (1.7).
-17. **Quality is made, checks confirm.** Every check (a review, a guardian, the posting gate, the fresh reader) has a step before it that is responsible for what it checks: the build for the code, the writing for a post, the design for its shape.
+17. **Quality is made, checks confirm.** Every check (a review, a guardian, the posting gate, the fresh reader) has a step before it. That step is responsible for what the check checks: the build for the code, the writing for a post, the design for its shape.
     - Do that producing step to the check's standard, so the check comes back quickly with nothing.
     - A check's finding is a miss of its producing step: fix the instance, and note in the ledger what the producing step missed.
     - When designing a flow, say for each check which step produces its quality. A check with no such step means the check is doing the work.
@@ -155,7 +155,7 @@ Read the task and every link in it. Then write `Tier: <X>, because <signals>` as
 
 - **Read everything first.** Pull the default branch. Read every starting point in full: linked issues and PRs (recursively), review comments, commits, CI. Check for existing PRs and other sessions' work.
 - **Precedent before rituals.** Before a release, a migration or any repo routine, write `precedent.md` from its last 5 instances (commit messages, bump types, tags, commands, order). Follow it exactly; any difference is a question with a recommendation.
-- **Style before writing.** Before writing docs or code in a repo, read three sibling files or pages and note the conventions: sentence length, comment density, naming, how platforms are mentioned, em dashes (our new prose has none). The review checks the diff against them.
+- **Style before writing.** Before writing docs or code in a repo, read three sibling files or pages and note the conventions. Note sentence length, comment density, naming, how platforms are mentioned, and em dashes (our new prose has none). The review checks the diff against them.
 - **Docs** say only what a user wouldn't expect.
     - A sentence that says when something applies states its exact condition and one example with real names, in terms the docs already use. Never coin a term.
     - Before pushing docs, a fresh-context agent that sees only the rendered text explains each new section back and lists every sentence it can't act on. Fix the text until that explanation is right.

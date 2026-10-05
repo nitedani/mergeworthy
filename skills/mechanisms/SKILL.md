@@ -28,7 +28,11 @@ These scripts enforce the rules that failed as text alone.
 `post-lint drafts/x.md --kind reply|pr|issue|inline|tracker|proposal [--repo o/r]` checks a draft before it is posted.
 - **A reply** reads its parent comment from `drafts/x.parent.md`. Use `--parent none` when it answers nobody.
 - **`tracker`** checks the umbrella issue's format: a `Title: Tracking: …` line, `##` sections of checkboxes, no table, the Decisions comment linked, a ticked item's end state, and the Decisions comment's sections. A tracker post needs no badge.
-- **The checks** (each where it applies to the kind): banned phrases; sentences over 30 words or averaging over 20 and more than 30% bold (not for `pr`); em dashes; "stacked on"; bare `#N`; budgets; unclassified notes; process in the thread; questions without a recommendation; a bare "Done" to a question (`reply`, `inline`); deferrals in the notes table; secrets; and, unless the `badge` option says otherwise, a missing badge (not for `tracker`).
+- **The checks**, each where it applies to the kind:
+  - **Writing:** banned phrases; sentences over 30 words or averaging over 20, and more than 30% bold (not for `pr`); em dashes.
+  - **References:** "stacked on"; bare `#N`.
+  - **Content:** budgets; unclassified notes; process in the thread; questions without a recommendation; a bare "Done" to a question (`reply`, `inline`); deferrals in the notes table.
+  - **Safety and form:** secrets; a missing badge, unless the `badge` option says otherwise (not for `tracker`).
 
 ### `gate-pass` (enforces 1.6)
 

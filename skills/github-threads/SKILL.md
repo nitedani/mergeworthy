@@ -7,7 +7,7 @@ description: "Any GitHub thread you're in: the live loop (watcher, 👀, replies
 
 **A maintainer's comment is handled like the user typing in this chat:** highest priority, full effort.
 
-**Red CI on your PR is the maintainer's first question.** Fix it. When the red isn't the PR's doing (a secret forks don't get, a flaky job), say so on the PR right away, in one comment with the cause and the evidence (the workflow line, the same failure on another PR or `main`). Explaining it only in chat leaves the PR looking broken.
+**Red CI on your PR is the maintainer's first question.** Fix it. When the red isn't the PR's doing (a secret forks don't get, a flaky job), say so on the PR right away. One comment gives the cause and the evidence: the workflow line, or the same failure on another PR or `main`. Explaining it only in chat leaves the PR looking broken.
 
 **Which comments you answer.** Answer these, and nothing else:
 - **On a thread you opened:** everything a person would answer on their own PR. That is every human's comment (maintainer, contributor, the user) and every inline finding of a review bot (CodeRabbit and the like; a bot's summary comments ask nothing).
@@ -36,7 +36,7 @@ Each comment you answer goes through these steps:
 3. **Then think, as a mini debate.** Instructions and acknowledgements skip this step. Agreeing is a conclusion, never the default.
    - **The whole picture first:** what does the maintainer want overall? Trace the actual flow in code (caller → callee, which object each side sees, in each environment). Check that every path to the same thing behaves consistently, and name any gap you find with `file:line` and the next check.
    - **Then one fresh-context agent argues it divergently,** with that evidence, what `main` does, and a measurement where one is possible. Is "over-engineering" the right call, or is there a small, cleaner fix?
-   - **The agent first only generates, no judging:** the strongest case for the maintainer's view and the strongest case against. Each case comes from at least three frames, past the obvious first answers: the user who hits it, the maintainer who keeps the code, the smallest diff, the version with no new code, the design from scratch.
+   - **The agent first only generates, no judging:** the strongest case for the maintainer's view and the strongest case against. Each case comes from at least three frames, past the obvious first answers. Frames include the user who hits it, the maintainer who keeps the code, and the smallest diff. Others are the version with no new code, and the design from scratch.
    - **Only then does the agent judge:** it scores both sides, names each side's weakest point and the traps (hidden cost, a fix for a case nobody hits), and recommends.
    - **You decide.** Rate the agent's recommendation as in `implement-issue` step 3 and decide.
    - **Before answering "keep",** build the simpler version (theirs, or the simplest row of your own comparison) and name what breaks in it. If nothing breaks, recommend the simpler version.
@@ -86,14 +86,19 @@ The watcher runs independently of any session and only records events (and adds 
 2. **Run `post-lint`** with the draft's `--kind` (and `--repo`). It must pass; `gate-pass` re-runs it with the same flags.
 3. **Run the review** (`review`: open it for who reviews) with a prompt file. The review should come back quickly with nothing. A finding means step 1 missed something: fix the draft, and add one line to the ledger saying what the writing missed, so the writing improves and the gate stays quiet. The review checks facts and noise, never wording:
    - **Claims:** every claim against the code (`file:line` or a command and its output), the thread and the evidence.
-   - **Noise:** every con or risk names who hits it today (a caller, repo or user), or is cut; every sentence the reader could delete; every question answered; every absolute word ("every", "unchanged", "always", "only") quotes what proves it, or is cut; maintainer requests followed; links correct.
+   - **Noise:**
+     - every con or risk names who hits it today (a caller, repo or user), or is cut;
+     - every sentence the reader could delete is cut;
+     - every question is answered;
+     - every absolute word ("every", "unchanged", "always", "only") quotes what proves it, or is cut;
+     - maintainer requests are followed, and links are correct.
    - **A cold read:** "you have not seen this thread; list every term or sentence you can't understand", and "say in one line what the reader is asked to decide". If the reviewer can't say, or names two decisions, that's a finding; so is any pronoun with two possible meanings.
    - **Reader load:** does someone who reads only the first words of each line and the bold text get the point and the ask? Is there a sentence they must read twice, or a term they haven't seen? Must they hold more than about four things at once?
    - **The result:** capture only the reviewer's final message (`drafts/<name>.review.out`). Fix every finding and re-review until that message is exactly `CLEAN`. Never paste the reviewer's rewritten wording; write the fix in your own plain words.
 4. **Right before posting, re-read every claim against the current head** (`git fetch` first; read a PR's state before describing it). Every referenced commit is pushed (`git ls-remote`). Run `gate-pass <abs path>/drafts/<name>.md <review output>` and post with `--body-file` on that absolute path (`gh api … -F body=@<file>` for API posts).
 5. **Post in the thread where the person wrote.** Log it.
 
-**Fast gate** (the 1-minute reply in 1.5), only for a reply of a few claims (an acknowledgment, a "Done in <sha>", what you're checking): the same steps, with the reviewer asked only about those claims. The reviewer still has to answer exactly `CLEAN`.
+**Fast gate** (the 1-minute reply in 1.5). It is only for a reply of a few claims: an acknowledgment, a "Done in <sha>", what you're checking. It runs the same steps, with the reviewer asked only about those claims. The reviewer still has to answer exactly `CLEAN`.
 
 ### Writing
 

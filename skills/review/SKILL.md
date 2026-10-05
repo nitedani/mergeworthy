@@ -20,7 +20,7 @@ After the review:
 - **A failure is not a review.** An error, a hang or "out of credits" counts as no review.
 - **Record which reviewer ran.** On Tier ≥ M work, re-review on Codex once Codex is back.
 
-**The prompt is a file.** It holds the charter (the gate's checks in 1.6, the reviewer charter below, `guardian`'s charter or `refactor`'s prompt), the artifact's paths at pinned SHAs, and one sentence on what the artifact claims to do. It never holds your conclusions or the verdict you want.
+**The prompt is a file.** It holds the charter: the gate's checks in 1.6, the reviewer charter below, `guardian`'s charter or `refactor`'s prompt. It also holds the artifact's paths at pinned SHAs, and one sentence on what the artifact claims to do. It never holds your conclusions or the verdict you want.
 
 **The reviewer's final message is exactly `CLEAN`, or the findings.** One run may follow several briefs that have their own output (the reviewer charter's verdict, the verifier's count). Then each brief writes to its own output file, and the final message is exactly `CLEAN` only when none of them has a finding.
 

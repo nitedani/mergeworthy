@@ -13,7 +13,12 @@ Guardian rounds are Loop B of `converge`: repeated rounds that find bloat and qu
 
 **Round 1:**
 - The guardian brief below runs inside the reader (`converge`, who reads), every scope in the reader's slice set, one report section per scope.
-- Each scope's section reports: findings by disposition with prices, the mechanism census, the 10-second pass as classes, ratings of every file, function and piece of logic with the ✅ tick list, and an honest-positive statement (a plain "nothing worth changing" where that is the result).
+- Each scope's section reports:
+  - findings by disposition, with prices;
+  - the mechanism census;
+  - the 10-second pass, as classes;
+  - ratings of every file, function and piece of logic, with the ✅ tick list;
+  - an honest-positive statement (a plain "nothing worth changing" where that is the result).
 
 **Implementation:**
 - **One implementer,** in its own worktree off the current head, with the implementer brief below, takes the scopes one after the other. Use one implementer per scope only when the scopes are too big for one context.
