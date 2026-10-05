@@ -85,7 +85,10 @@ function removeOldInstall() {
   for (const [event, entries] of Object.entries(s.hooks || {})) {
     s.hooks[event] = entries.filter((e) => !e.hooks.some((h) => /\.claude\/mechanisms\//.test(h.command)))
     // claude-swap moved into the plugin's bin/: point the usage-limit hook at the stable path
-    for (const e of s.hooks[event]) for (const h of e.hooks) h.command = h.command.replace(/^~\/\.local\/bin\/claude-swap\b/, '~/.mergeworthy/current/bin/claude-swap')
+    for (const e of s.hooks[event]) for (const h of e.hooks) {
+      for (const old of ['~', '$HOME', HOME].map((h) => `${h}/.local/bin/claude-swap`))
+        if (h.command.startsWith(old)) h.command = '~/.mergeworthy/current/bin/claude-swap' + h.command.slice(old.length)
+    }
     if (!s.hooks[event].length) delete s.hooks[event]
   }
   writeJson(SETTINGS, s)
@@ -104,16 +107,17 @@ function removeOldInstall() {
   }
   // Running watchers link their scripts from the old copies: point them at the stable path, then stop the daemon by its
   // PID so its supervisor (systemd, launchd, cron) restarts it on the new code. Stopped watchers stay stopped.
+  // only a real PID: 0 or -1 would signal this process's group, or every process
+  const pidOf = (d) => { const n = Number(readText(path.join(d, 'gh-watch.pid')).trim()); return Number.isInteger(n) && n > 1 ? n : null }
   const alive = (pid) => { try { process.kill(pid, 0); return true } catch { return false } }
-  const dirs = readText(path.join(CLAUDE_DIR, 'gh-watch-dirs.txt')).split('\n')
-    .filter((d) => d && alive(Number(readText(path.join(d, 'gh-watch.pid')).trim()) || -1))
+  const dirs = readText(path.join(CLAUDE_DIR, 'gh-watch-dirs.txt')).split('\n').filter((d) => d && pidOf(d) && alive(pidOf(d)))
   for (const d of dirs) {
     for (const f of ['gh-watch.py', 'gh-watch-daemon.sh']) {
       const l = path.join(d, f)
       try { if (fs.readlinkSync(l).startsWith(MECH)) { fs.rmSync(l); fs.symlinkSync(path.join(CURRENT, 'bin', f), l) } } catch {}
     }
     for (const f of ['agent', 'wake.pid', 'wake.launch']) fs.rmSync(path.join(d, f), { force: true })
-    process.kill(Number(readText(path.join(d, 'gh-watch.pid')).trim()), 'SIGTERM')
+    process.kill(pidOf(d), 'SIGTERM')
   }
   return dirs.length
 }
