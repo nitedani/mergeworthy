@@ -313,18 +313,19 @@ def fetch_thread(repo, num, since, is_pr_known, author_known=None):
     return is_pr, author, events, pr_state, red
 
 
-def scan(state, only=None):
-    """Scan all tracked threads (or only the given keys) in parallel; apply results in this thread."""
+def scan(state, only=None, threads=None):
+    """Scan all tracked threads (or only the given keys, or the given threads) in parallel; apply results in this thread."""
     from concurrent.futures import ThreadPoolExecutor
     def since(key):  # each thread keeps its own position, so one failing thread doesn't hold back the others
         dt = datetime.datetime.strptime(state['since_by'].get(key, state['since']), '%Y-%m-%dT%H:%M:%SZ') - datetime.timedelta(minutes=10)
         return dt.strftime('%Y-%m-%dT%H:%M:%SZ')
     started = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-    threads = read_threads()
-    if only is not None:
-        threads = [t for t in threads if f"{t[0]}#{t[1]}" in only]
-    else:
-        threads = scan_set(state, threads)
+    if threads is None:
+        threads = read_threads()
+        if only is not None:
+            threads = [t for t in threads if f"{t[0]}#{t[1]}" in only]
+        else:
+            threads = scan_set(state, threads)
     ok = True
     with ThreadPoolExecutor(max_workers=8) as ex:
         futs = {ex.submit(fetch_thread, repo, num, since(f"{repo}#{num}"), state['is_pr'].get(f"{repo}#{num}"), state.setdefault('author', {}).get(f"{repo}#{num}")): (repo, num) for repo, num in threads}
@@ -507,11 +508,12 @@ def locked():
 def run_scan():
     with locked():
         state = load_state()
-        scan(state)
+        threads = scan_set(state, read_threads())  # once: it opens the hourly closed-thread window for both scans
+        scan(state, threads=threads)
         save_state(state)
     with locked():
         state = load_state()
-        scan_reactions(state, scan_set(state, read_threads()))
+        scan_reactions(state, threads)
         save_state(state)
 
 
