@@ -107,7 +107,7 @@ out = buf.getvalue().splitlines()
 print(sum(l.startswith("###") for l in out), all(l.startswith("    ") for l in out[1:] if l))
 print("\n".join(out), file=sys.stderr)
 ' 2>"$T/event")
-check "change 9: lines starting ### / body lines all indented" "1 True" "$got"
+check "comment bodies: lines starting ### / body lines all indented" "1 True" "$got"
 sed 's/^/  | /' "$T/event"
 
 # The Monitor command gh-watch-start prints delivers an event within 2 s, and only lines that start an event
