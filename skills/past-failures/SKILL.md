@@ -17,7 +17,7 @@ Each failure below happened, most more than once. When a rule fails or the user 
 | An LGTM'd item still "waiting"; a superseded statement cited. | 1.1.9 |
 | Maintainer instructions ignored ("remove the test right before merging"). | 1.7 checkboxes, 1.7 Ready list |
 | A subagent started six agents of its own, then ended its turn while they ran; its report never came. | `delegating` (what the agent must not do) |
-| A reviewer called a case correct by reasoning, without a probe; a bot reviewer later showed it was the bug. A Tier S review round ran without the verifier's bug hunt. | `review` (after the review), `implement-issue` step 6 |
+| Behavior verdicts taken without a run: a reviewer called a case correct by reasoning; a bot then called the same case a bug, and its "fix" went in within seconds, against the reviewer's verdict; a probe later showed the reviewer was right. A Tier S review round ran without the verifier's bug hunt. | `review` (a verdict is a run), `implement-issue` step 6 |
 | "Ready" on green CI alone, or without review, refactor or guardian verdict; a subagent ran a hand-written checklist. | 1.7 Ready list, `pr-steps` |
 | "Stacked on #N" without `gh stack`. | 1.6 links, `post-lint` |
 | "Should I…? / your call" on our own recommendation. | 1.1.3, `stop-lint` |

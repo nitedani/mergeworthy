@@ -11,7 +11,7 @@ description: "Any GitHub thread you're in: the live loop (watcher, 👀, replies
 
 **Which comments you answer.** Answer these, and nothing else:
 - **On a thread you opened:** everything a person would answer on their own PR. That is every human's comment (maintainer, contributor, the user) and every inline finding of a review bot (CodeRabbit and the like; a bot's summary comments ask nothing).
-- **A bot's finding is a reviewer's finding** (`mergeworthy:review`): fix it and reply with the commit, or decline in a reply with the reason.
+- **A bot's finding is a reviewer's finding:** run its case first (`review`), then reply with the fix's commit or the output that declines it.
 - **On a thread you only posted in:** a maintainer's comment (write access to the repo) or the user's.
 - **On any other thread:** the user's comment, when it contains `/ai` or `/agent`.
 - **What the watcher does with them:** it reports exactly these comments and adds 👀 to each (GitHub has no reactions on reviews). It records each comment and review in `replies-owed.md`.

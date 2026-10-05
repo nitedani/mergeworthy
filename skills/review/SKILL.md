@@ -17,7 +17,6 @@ description: "Any independent review: who reviews (Codex, else a fresh Claude), 
 
 After the review:
 - **Confirm fixes with the same reviewer.** After you fix its findings, continue that reviewer and send it what changed. Start a fresh reviewer only when the artifact changed beyond those findings, or for the final read of a long artifact.
-- **A behavior closed by reasoning is reopened.** Read the review's correctness part before accepting it. A case it calls correct with an INFERRED tag, or with no tag, goes back to the same reviewer for a probe that could fail. A `CLEAN` that rests on one is not yet a review.
 - **A failure is not a review.** An error, a hang or "out of credits" counts as no review.
 - **Record which reviewer ran.** On Tier ≥ M work, re-review on Codex once Codex is back.
 
@@ -25,7 +24,7 @@ After the review:
 
 **The reviewer's final message is exactly `CLEAN`, or the findings.** One run may follow several briefs that have their own output (the reviewer charter's verdict, the verifier's count). Then each brief writes to its own output file, and the final message is exactly `CLEAN` only when none of them has a finding.
 
-**The result is candidates** (1.1.15). Check each finding against the code before acting. Fix the real ones in your own words, and decline the rest with a one-line reason. Never write `CLEAN` yourself.
+**A verdict on behavior is settled by a run, not a reading** (1.1.15). A finding from anyone (a reviewer, a bot, a maintainer's review) is a candidate, and so is a reviewer's "this case is correct". Before acting on either, run the case on the head. A case that doesn't reproduce is declined with the output. One that does is checked against earlier verdicts on it, in the reviews and the ledger; if one says the opposite, argue it both ways first. Fix the real ones in your own words. Never write `CLEAN` yourself.
 
 ## The PR review round: correctness, security, bloat
 

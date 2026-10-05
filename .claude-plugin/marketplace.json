@@ -7,8 +7,8 @@
     {
       "name": "mergeworthy",
       "source": "./",
-      "description": "A working method for AI coding agents on GitHub: skills, hooks and commands"
+      "description": "Work with an AI coding agent through GitHub like a coworker"
     }
   ],
-  "description": "mergeworthy: a working method for AI coding agents on GitHub"
+  "description": "mergeworthy: work with an AI coding agent through GitHub like a coworker"
 }

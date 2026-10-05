@@ -1,6 +1,14 @@
+<p align="center"><img src="docs/icon.svg" width="96" height="96" alt="mergeworthy"></p>
+
 # mergeworthy
 
-A working method for an AI coding agent on GitHub. The agent acts as your second brain across your tasks and the threads it opens. It gates every post through an independent review before the post goes out. It converges each PR through bug verification, guardian, refactor and finality passes until nothing worth changing is left. Hooks enforce the parts that text alone didn't.
+Work with an AI coding agent through GitHub, the way you work with a coworker. You give it an issue or a request, then review its PR and answer its questions on the thread. You don't prompt it step by step or babysit a chat.
+
+- **It ships merge-ready PRs.** Before you see a PR, the agent has hunted for bugs, reviewed the change and simplified it. A UI or runtime change is also checked in the real app.
+- **It keeps its threads moving.** It watches its PRs and issues, and answers every review comment, bot finding and red CI run. When a PR it depends on lands, it updates its own.
+- **It writes for busy reviewers.** A post leads with what the agent needs from you, gives one decision with its pick, and links the long material. An independent review checks every post before it goes out.
+- **It asks only what is yours to decide.** That means product decisions, irreversible actions and credentials. Everything else it decides, does and reports.
+- **Hooks hold the line.** Hooks block an unreviewed post, a PR marked ready without its review, and a third unanswered comment in a row.
 
 ## Install
 
@@ -26,22 +34,22 @@ Run `npx mergeworthy` again to change the options or add an agent; `npx mergewor
 | `merge` | `on-request-squash`, `reviewer` | `reviewer`: the agent never merges. |
 | `watcher` | `on`, `off` | `off`: no GitHub watcher. |
 
-## How it reads
+## What's inside
 
-This is the work automation methodology, split into skills along its own parts and sections. The split keeps the methodology's substance, and its prompts and charters word for word. `always-on.md` is loaded in every session: it holds the always-on rules and an index of which skill to open when, and which rule numbers each skill holds. Rule numbers (1.6, 1.1.15) work across skills.
+`always-on.md` is loaded in every session: the rules that always apply, and when to open each skill.
 
-| Skill | Holds |
+| Skill | What it covers |
 |---|---|
-| `core` | the task, 1.0 triage, 1.1 principles, 1.2 tracking, 1.3 discovery, 1.8 safety, 1.11 reporting, 1.12 pre-flight |
-| `design-loop` | 1.4 the design loop |
-| `github-threads` | 1.5 the live GitHub loop, 1.6 the posting gate |
-| `merging` | 1.7 pushing, ready and merge |
-| `delegating` | 1.9 writing rules and prompts, 1.10 integrating agents' work |
-| `implement-issue` | the steps from an issue to a merge-ready PR |
-| `converge` | what a converged PR is, and the order of the passes |
-| `verify`, `guardian`, `refactor`, `finality`, `review` | the passes and their prompts: bug verification, bloat and quality, the refactor pass, the finality pass, the reviewer charter |
-| `past-failures` | the table of past failures and the rule that covers each |
-| `mechanisms` | the scripts and hooks that enforce the rules (the code itself lives in `hooks/`, `bin/` and `watcher/`) |
+| `core` | triage, principles, tracking, discovery, safety, reporting |
+| `implement-issue` | from an issue to a merge-ready PR |
+| `github-threads` | watching threads, answering, and the review every post passes |
+| `merging` | pushing, ready, merge |
+| `design-loop` | designing an API, protocol or module |
+| `converge` | the passes a larger PR runs until nothing worth changing is left |
+| `verify`, `review`, `refactor`, `guardian`, `finality` | the passes: bug hunt, review, refactor, bloat and quality, rework of drifted code |
+| `delegating` | briefing subagents and checking their work |
+| `past-failures` | failures that happened, and the rule that now covers each |
+| `mechanisms` | the watcher, hooks and commands that enforce the rules |
 
 ## How the skills connect
 

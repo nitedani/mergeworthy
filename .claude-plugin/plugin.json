@@ -1,6 +1,6 @@
 {
   "name": "mergeworthy",
-  "description": "How an AI coding agent works on GitHub so its PRs and replies are worth merging: triage, review, the posting gate, the live thread loop, convergence, and the hooks that enforce them.",
+  "description": "Work with an AI coding agent through GitHub like a coworker: merge-ready PRs, every thread answered, every post reviewed, minimal supervision.",
   "author": {
     "name": "nitedani"
   },
