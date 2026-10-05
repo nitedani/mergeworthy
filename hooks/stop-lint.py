@@ -8,6 +8,7 @@ if d.get('stop_hook_active'):
     sys.exit(0)
 last = ''
 posted, monitor_ids, monitors, dead, commands, monitor_cmds = False, {}, set(), set(), [], []
+last_user = ''  # the user's own last message (not a tool result or a hook's feedback)
 POST = re.compile(r'\bgh\b[^\n]*(body-file|body=@|--input|\s-F\s)')
 try:
     lines = open(d['transcript_path']).readlines()
@@ -26,6 +27,9 @@ for line in lines:
             if isinstance(x, dict) and x.get('tool_use_id') in monitor_ids:
                 m = re.search(r'Monitor started \(task (\w+)', json.dumps(x.get('content')))
                 if m: monitors.add(m.group(1))
+        typed = c if isinstance(c, str) else ' '.join(x.get('text', '') for x in c or [] if isinstance(x, dict) and x.get('type') == 'text')
+        if typed.strip() and not typed.lstrip().startswith(('<', 'Stop hook feedback')):
+            last_user = typed
         for t in texts:
             for tid in re.findall(r'<task-id>(\w+)</task-id>[\s\S]*?Monitor expired', t or ''): dead.add(tid)
     if e.get('type') == 'assistant':
@@ -67,14 +71,16 @@ _env = os.path.expanduser('~/.mergeworthy/settings.env')
 watcher_on = (os.environ.get('MERGEWORTHY_WATCHER') or ('off' if 'MERGEWORTHY_WATCHER=off' in (open(_env).read() if os.path.exists(_env) else '') else 'on')) != 'off'
 # A headless run (`claude -p`, entrypoint sdk-cli) has no Monitor tool: its caller watches
 headless = any('"entrypoint":"sdk-cli"' in l for l in lines[-20:])
-if posted and watcher_on and not headless and not (monitors - dead):
+# The user paused the work: nothing is to be watched or answered until they resume
+paused = re.search(r'\bpause\b', last_user, re.I) is not None
+if posted and watcher_on and not headless and not paused and not (monitors - dead):
     print("You posted on GitHub in this session and no Monitor in it watches a watcher's events.log, so replies go unseen: "
           "nothing else answers them. Run `gh-watch-start <your artifact root> <owner/repo> <N>` and arm the Monitor it "
           "prints, with the longest timeout; re-arm it whenever it expires (mergeworthy:github-threads).", file=sys.stderr)
     sys.exit(2)
 # The owed-reply list: the daemon records each human comment in the live watcher's replies-owed.md; a turn
 # cannot end with a line still owed.
-if watcher_on:
+if watcher_on and not paused:
     for wd in sorted(own_dirs):
         try:
             os.kill(int(open(os.path.join(wd, 'gh-watch.pid')).read().strip()), 0)
