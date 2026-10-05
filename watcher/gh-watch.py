@@ -121,7 +121,8 @@ def handle_comment(state, repo, key, kind, cid, upd, login, url, body, extra='')
         return
     edited = sk in state['seen']
     state['seen'][sk] = upd
-    emit(f"### {key} {kind}{' (edited)' if edited else ''} {cid} by {login} {upd} {extra} {url}\n{body}\n")
+    indented = '\n'.join('    ' + l for l in body.splitlines())  # no body line can start with ### and pass as an event
+    emit(f"### {key} {kind}{' (edited)' if edited else ''} {cid} by {login} {upd} {extra} {url}\n{indented}\n")
     if edited:
         return
     append_owed(f"{key} {kind} {cid} by {login} {url} — {body.strip().splitlines()[0][:80]}" if body.strip() else f"{key} {kind} {cid} by {login} {url}")
