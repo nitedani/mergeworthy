@@ -8,13 +8,13 @@ description: "The finality pass, for code that has drifted through many patches:
 **When to run it.** The work reshapes existing code rather than changing what it does. Or a change you meant to make small cannot be made cleanly, because the area has taken too many patches.
 
 **Who runs each phase:**
-- **Phases A and B are analysis.** The reviewer (`review`) or a fresh-context subagent runs them, never the author's context. Phase B's single agent (the prompt's "strongest-model agent") runs on the session's own model, never one above the default tier (`core`, the task).
+- **Phases A and B are analysis.** The main session starts their agents: the mappers, then Phase B's single agent. Each is the reviewer (`review`) or a fresh-context subagent, never the author's context, and does its share itself. Phase B's single agent (the prompt's "strongest-model agent") runs on the session's own model, never one above the default tier (`core`, the task).
 - **Phase B½ is split.** Its graph queries are analysis, run by the Phase B agent. Instrumenting guards, running the full suite and e2e, and the removals are execution: the author runs them, as in Phase C.
 - **Phase C is the author's**, implementing commit by commit with the gates green underneath.
 
 **"Bring me the decision"** in Phase C depends on whose code it is. In an external maintainer's code, stop and ask the person who owns it. In the user's own repos and beta features, decide, act, and report (`core`, the task). Convergence itself is behavior-preserving.
 
-**"Fan out parallel mapper agents"** means one mapper for all subsystems when they fit one context. Otherwise use one mapper per subsystem, at most 3 at once (1.1.14).
+**"Fan out parallel mapper agents"** means the main session starts one mapper for all subsystems when they fit one context. Otherwise use one mapper per subsystem, at most 3 at once (1.1.14).
 
 **The deliverable is the short design doc** at the end. The graph is working material.
 
