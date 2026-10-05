@@ -209,6 +209,8 @@ def check(t, has_cd):
                 block(f"open PRs #{deps} are based on {head}: retarget them first (`gh pr edit <N> --base <new base>`), or merge without --delete-branch; deleting it closes them")
     if p == 'gh' and len(a) >= 2 and a[0] in ('issue', 'pr'):
         sub, rest = a[1], a[2:]
+        if '--help' in rest or '-h' in rest:
+            return  # reading gh's help posts nothing
         files = opt(rest, ['--body-file', '-F'])
         texts = [v for v in opt(rest, ['--body', '-b']) + (opt(rest, ['--comment', '-c']) if sub == 'close' else []) if v.strip()]
         if sub in ('comment', 'create', 'review') or (sub in ('edit', 'close', 'merge') and (files or texts)):
