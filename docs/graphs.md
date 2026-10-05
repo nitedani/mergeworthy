@@ -11,19 +11,19 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 | `delegating` | nothing |
 | `design-loop` | `implement-issue`, `core`, `review`, `github-threads`, `converge` |
 | `finality` | nothing |
-| `github-threads` | `review`, `refactor`, `core`, `implement-issue`, `mechanisms` |
-| `guardian` | `design-loop` |
-| `implement-issue` | `finality`, `guardian`, `converge`, `design-loop`, `core` |
+| `github-threads` | `review`, `refactor`, `core`, `implement-issue` |
+| `guardian` | `delegating`, `review`, `design-loop` |
+| `implement-issue` | `finality`, `guardian`, `design-loop`, `converge`, `core`, `verify`, `review`, `refactor` |
 | `mechanisms` | nothing |
 | `merging` | nothing |
 | `past-failures` | nothing |
 | `refactor` | nothing |
-| `review` | `guardian`, `refactor`, `github-threads`, `core` |
+| `review` | `guardian`, `refactor`, `github-threads`, `core`, `converge` |
 | `verify` | `converge`, `core` |
 
 ## Any multi-step or GitHub task, first
 
-Opens `mergeworthy:core` (the task, triage 1.0, principles 1.1, tracking 1.2, discovery 1.3, safety 1.8, reporting 1.11, pre-flight 1.12).
+Opens `mergeworthy:core` (the task, triage 1.0, principles 1.1, tracking 1.2, discovery 1.3 (docs, style), safety 1.8, reporting 1.11, pre-flight 1.12).
 
 ```mermaid
 flowchart TB
@@ -60,16 +60,16 @@ Opens `mergeworthy:design-loop` (1.4).
 flowchart TB
   start(["Designing an API,<br/>protocol or module, or<br/>restructuring code"])
   subgraph g0["1.4 Design loop"]
-    s0["0. Before any new core API"]
+    s0["0. Prototype on existing<br/>extension points first"]
     s1["1. Draft<br/>decisions/‹name›.md"]
     s0 --> s1
     s2["2. Prototype"]
     s1 --> s2
     s3["3. Adversarial review"]
     s2 --> s3
-    s4["4. Propose to maintainers<br/>only when no invariant<br/>is …"]
+    s4["4. Propose to maintainers"]
     s3 --> s4
-    s5["5. Post the walkthrough as<br/>soon as the prototype …"]
+    s5["5. Post the walkthrough"]
     s4 --> s5
   end
   s1 -.-> r1[["implement-issue"]]
@@ -77,7 +77,18 @@ flowchart TB
   s3 -.-> r3[["review"]]
   s4 -.-> r4[["github-threads"]]
   s5 -.-> r5[["converge"]]
+  subgraph g1["1.4.1 Codebase design"]
+    s6["1. Frame the problem for<br/>the user"]
+    s7["2. Have one fresh-context<br/>agent design it three<br/>times"]
+    s6 --> s7
+    s8["3. Each design returns"]
+    s7 --> s8
+    s9["4. Compare and recommend"]
+    s8 --> s9
+  end
+  s7 -.-> r6[["core"]]
   start --> g0
+  g0 ~~~ g1
 ```
 
 ## Any GitHub thread you're in, and anything you post
@@ -102,10 +113,9 @@ flowchart TB
   s1 -.-> r2[["refactor"]]
   s1 -.-> r3[["core"]]
   s2 -.-> r4[["implement-issue"]]
-  s4 -.-> r5[["mechanisms"]]
   subgraph g1["1.6 Posting gate"]
     s5["1. Write it the way it<br/>should end up"]
-    s6["2. Run post-lint with the<br/>draft's --kind"]
+    s6["2. Run post-lint"]
     s5 --> s6
     s7["3. Run the review"]
     s6 --> s7
@@ -114,8 +124,7 @@ flowchart TB
     s9["5. Post in the thread where<br/>the person wrote"]
     s8 --> s9
   end
-  s7 -.-> r6[["review"]]
-  s9 -.-> r7[["core"]]
+  s7 -.-> r5[["review"]]
   start --> g0
   g0 ~~~ g1
 ```
@@ -133,13 +142,13 @@ flowchart TB
   start --> g0
 ```
 
-## Writing rules, prompts or docs; starting or briefing subagents
+## Writing skills, rules or prompts; starting or briefing subagents
 
 Opens `mergeworthy:delegating` (1.9, 1.10).
 
 ```mermaid
 flowchart TB
-  start(["Writing rules, prompts<br/>or docs; starting or<br/>briefing subagents"])
+  start(["Writing skills, rules or<br/>prompts; starting or<br/>briefing subagents"])
   subgraph g0["1.9 Writing rules"]
     s0["1.9 Writing rules"]
   end
@@ -156,7 +165,7 @@ flowchart TB
 
 ## Implementing an issue or opening a PR
 
-Opens `mergeworthy:implement-issue` (Part 2).
+Opens `mergeworthy:implement-issue` (the steps from an issue to a merge-ready PR).
 
 ```mermaid
 flowchart TB
@@ -180,22 +189,27 @@ flowchart TB
   end
   s2 -.-> r1[["finality"]]
   s3 -.-> r2[["guardian"]]
-  s3 -.-> r3[["converge"]]
-  s3 -.-> r4[["design-loop"]]
+  s3 -.-> r3[["design-loop"]]
+  s3 -.-> r4[["converge"]]
   s3 -.-> r5[["core"]]
   s4 -.-> r6[["core"]]
   s5 -.-> r7[["converge"]]
-  s6 -.-> r8[["converge"]]
+  s5 -.-> r8[["verify"]]
+  s5 -.-> r9[["review"]]
+  s5 -.-> r10[["guardian"]]
+  s5 -.-> r11[["refactor"]]
+  s6 -.-> r12[["guardian"]]
+  s6 -.-> r13[["converge"]]
   start --> g0
 ```
 
-## Converging a PR (the owner asks, or Tier ≥ M before ready)
+## Converging a PR (Tier S condensed, Tier ≥ M in full before ready, or the owner asks)
 
-Opens `mergeworthy:converge` (Part 3, through the passes below).
+Opens `mergeworthy:converge` (what converged means, through the passes below).
 
 ```mermaid
 flowchart TB
-  start(["Converging a PR (the<br/>owner asks, or Tier ≥ M<br/>before ready)"])
+  start(["Converging a PR (Tier S<br/>condensed, Tier ≥ M in<br/>full before ready, or …"])
   subgraph g0["converge"]
     s0["1. Bug verification"]
     s1["2. Guardian"]
@@ -204,9 +218,9 @@ flowchart TB
     s1 --> s2
     s3["4. Finality and Owner-Safe<br/>closure"]
     s2 --> s3
-    s4["5. Code review against the<br/>repo's standards and the<br/>…"]
+    s4["5. Code review"]
     s3 --> s4
-    s5["6. Every gate and product<br/>lane green on each …"]
+    s5["6. Gates and body"]
     s4 --> s5
   end
   s0 -.-> r1[["verify"]]
@@ -218,13 +232,13 @@ flowchart TB
 
 ## Bug verification, reproduce-only
 
-Opens `mergeworthy:verify` (Loop A).
+Opens `mergeworthy:verify` (Loop A (bug verification)).
 
 ```mermaid
 flowchart TB
   start(["Bug verification,<br/>reproduce-only"])
   subgraph g0["verify"]
-    s0["1. Fix each at its root<br/>cause"]
+    s0["1. Fix each bug at its root<br/>cause"]
     s1["2. If the area has already<br/>had two corrective …"]
     s0 --> s1
     s2["3. Put fixes to base code<br/>in the bottom …"]
@@ -232,23 +246,36 @@ flowchart TB
     s3["4. Queue another pass on<br/>that slice"]
     s2 --> s3
   end
-  s2 -.-> r1[["converge"]]
-  s3 -.-> r2[["core"]]
+  s0 -.-> r1[["converge"]]
+  s2 -.-> r2[["converge"]]
+  s3 -.-> r3[["core"]]
   start --> g0
 ```
 
 ## Bloat and quality rounds
 
-Opens `mergeworthy:guardian` (the LeanKeeper charter, Loop B).
+Opens `mergeworthy:guardian` (the LeanKeeper charter (the guardian's audit rules), Loop B (bloat and quality)).
 
 ```mermaid
 flowchart TB
   start(["Bloat and quality rounds"])
-  subgraph g0["The twelve lenses"]
-    s0["12 rules: Bloat, Code quality, Problem variability…"]
+  subgraph g0["guardian"]
+    s0["1. Review each<br/>implementer's diff<br/>yourself before<br/>cherry-picking"]
+    s1["2. Cherry-pick onto the PR<br/>branch"]
+    s0 --> s1
+    s2["3. Run the product lanes<br/>the changes touch"]
+    s1 --> s2
+    s3["4. After the last landing"]
+    s2 --> s3
   end
-  s0 -.-> r1[["design-loop"]]
+  s0 -.-> r1[["delegating"]]
+  s3 -.-> r2[["review"]]
+  subgraph g1["Guardian"]
+    s4["12 rules: BLOAT, CODE QUALITY, PROBLEM VARIABILITY…"]
+  end
+  s4 -.-> r3[["design-loop"]]
   start --> g0
+  g0 ~~~ g1
 ```
 
 ## The refactor pass
@@ -287,19 +314,33 @@ flowchart TB
   start(["Any independent review"])
   subgraph g0["review"]
     s0["1. Codex"]
-    s1["2. A fresh-context Claude<br/>subagent"]
+    s1["2. The reviewer your<br/>environment's<br/>instructions name"]
     s0 --> s1
+    s2["3. A fresh-context Claude<br/>subagent"]
+    s1 --> s2
   end
-  s1 -.-> r1[["guardian"]]
-  s1 -.-> r2[["refactor"]]
-  s1 -.-> r3[["github-threads"]]
-  s1 -.-> r4[["core"]]
+  s2 -.-> r1[["guardian"]]
+  s2 -.-> r2[["refactor"]]
+  s2 -.-> r3[["github-threads"]]
+  s2 -.-> r4[["core"]]
+  subgraph g1["The PR review round"]
+    s3["1. Write the charter to<br/>‹artifact<br/>root›/review-‹pass<br/>id›.md"]
+    s4["2. Append the diff command<br/>against git merge-base<br/>HEAD …"]
+    s3 --> s4
+    s5["3. Where the reviewer can't<br/>run your gates"]
+    s4 --> s5
+    s6["4. If no reviewer at all is<br/>available"]
+    s5 --> s6
+  end
+  s6 -.-> r5[["converge"]]
+  s6 -.-> r6[["core"]]
   start --> g0
+  g0 ~~~ g1
 ```
 
 ## A rule failed, or the user names a failure
 
-Opens `mergeworthy:past-failures` (Part 4).
+Opens `mergeworthy:past-failures` (the table of past failures and the rule for each).
 
 ```mermaid
 flowchart TB
@@ -309,10 +350,53 @@ flowchart TB
 
 ## Using or fixing the scripts and hooks
 
-Opens `mergeworthy:mechanisms` (Part 5).
+Opens `mergeworthy:mechanisms` (the watcher, the hooks, `gate-pass`, `post-lint`, `pr-steps`).
 
 ```mermaid
 flowchart TB
   start(["Using or fixing the<br/>scripts and hooks"])
+  subgraph g0["Commands"]
+    s0["Commands"]
+  end
+  subgraph g1["gh-watch-start"]
+    s1["gh-watch-start"]
+  end
+  subgraph g2["post-lint"]
+    s2["post-lint"]
+  end
+  subgraph g3["gate-pass"]
+    s3["gate-pass"]
+  end
+  subgraph g4["pr-steps"]
+    s4["pr-steps"]
+  end
+  subgraph g5["The watcher daemon"]
+    s5["The watcher daemon"]
+  end
+  subgraph g6["Hooks"]
+    s6["Hooks"]
+  end
+  subgraph g7["pre-bash-guard.py"]
+    s7["pre-bash-guard.py"]
+  end
+  subgraph g8["post-bash-register.py"]
+    s8["post-bash-register.py"]
+  end
+  subgraph g9["stop-lint.py"]
+    s9["stop-lint.py"]
+  end
+  subgraph g10["session-start"]
+    s10["session-start"]
+  end
   start --> g0
+  g0 ~~~ g1
+  g1 ~~~ g2
+  g2 ~~~ g3
+  g3 ~~~ g4
+  g4 ~~~ g5
+  g5 ~~~ g6
+  g6 ~~~ g7
+  g7 ~~~ g8
+  g8 ~~~ g9
+  g9 ~~~ g10
 ```

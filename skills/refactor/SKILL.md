@@ -5,7 +5,12 @@ description: "The refactor pass on a PR's diff: the pinnacle-split-and-simplify 
 
 # Refactor pass
 
-It runs in the same agent and the same run as `review`'s PR review round, right after the review (`implement-issue` steps 6 and 7): that agent rates the diff with the prompt below; with no reviewer available, run it yourself in two separate passes (rate, then edit) and record that. Mostly 10s means it was lazy. On the final head, run `pr-steps refactor <output>` (the rater's last re-rating). Refactor commits change the head: before ready, send the same agent the commits; it re-rates and confirms its review on the final head (fix real defects it finds and confirm again), recorded with `pr-steps review` (1.7).
+**Who rates, and when.** The agent that ran `review`'s PR review round rates the diff with the prompt below, in the same run, right after the review (`implement-issue` steps 6 and 7). With no reviewer available, run the prompt yourself in two separate passes (rate, then edit), and record that.
+
+**How it is recorded.** On the final head, run `pr-steps refactor <output>` with the rater's last re-rating. Refactor commits change the head, so before ready, send the same agent the commits:
+- it re-rates them;
+- it confirms its review on the final head (fix the real defects it finds, and have it confirm again);
+- record that confirmation with `pr-steps review` (1.7).
 
 ## The prompt
 
@@ -56,4 +61,11 @@ Refactor this PR:
 
 ## Running it
 
-The rater is not the author, and not in the author's context. It rates read-only; the author implements commit by commit; the same rater, sent the commits, re-rates old ⇒ new. Scope: everything the diff touches, at 100% coverage; code outside the diff is context. Re-run the gates after every commit; a red gate means revert that commit, not patch over it. Refactor commits are separate from behavior commits. If the pass changed nothing, say that and why. The final lists (old ⇒ new, reason, commit links, and the ✅ lists) go in the ledger with the working notes, in the artifact root; the PR shows the result, not the ratings (1.6). The pass belongs to the PR as it is now, not to the head it first ran on: when later commits (maintainer requests included) change more than ~80 lines, re-run it on the whole PR diff before the next "Done" reply and replace the lists; the watcher prints `### REFACTOR STALE` when that happens.
+- **The rater is not the author**, and not in the author's context. The rater rates read-only.
+- **The author implements commit by commit** (in a guardian round, `guardian`'s implementer does). Then the same rater, sent the commits, re-rates old ⇒ new.
+- **Scope:** everything the diff touches, at 100% coverage. Code outside the diff is context.
+- **Gates after every commit.** A red gate means fix that commit (amend it while unpushed) or revert it, never a patch on top.
+- **Refactor commits are separate from behavior commits.**
+- **A pass that changed nothing** says so, and why.
+- **The final lists go in the ledger** (1.2) with the working notes, in the artifact root: old ⇒ new, the reason, commit links, and the ✅ lists. The PR shows the result, not the ratings (1.6).
+- **The pass goes stale.** The pass belongs to the PR as it is now, not to the head it first ran on. When later commits (maintainer requests included) change more than ~80 lines, re-run it on the whole PR diff before the next "Done" reply, and replace the lists. The watcher prints `### REFACTOR STALE` when that happens.

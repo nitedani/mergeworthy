@@ -1,32 +1,39 @@
 ## Always-on rules (mergeworthy)
 
-These apply in every session. Open a skill when its moment comes, not before; the rule numbers below (1.1.15, Part 3) point into them.
+These rules apply in every session. Open a skill when its moment comes, not before. The rule numbers below (1.1.17, 1.6) point into the skills.
 
 | When | Open | Holds |
 |---|---|---|
-| Any multi-step or GitHub task, first | `mergeworthy:core` | the task, triage 1.0, principles 1.1, tracking 1.2, discovery 1.3, safety 1.8, reporting 1.11, pre-flight 1.12 |
+| Any multi-step or GitHub task, first | `mergeworthy:core` | the task, triage 1.0, principles 1.1, tracking 1.2, discovery 1.3 (docs, style), safety 1.8, reporting 1.11, pre-flight 1.12 |
 | Designing an API, protocol or module, or restructuring code | `mergeworthy:design-loop` | 1.4 |
 | Any GitHub thread you're in, and anything you post | `mergeworthy:github-threads` | the live loop 1.5, the posting gate 1.6 |
 | Pushing, saying a PR is ready, merging | `mergeworthy:merging` | 1.7 |
-| Writing rules, prompts or docs; starting or briefing subagents | `mergeworthy:delegating` | 1.9, 1.10 |
-| Implementing an issue or opening a PR | `mergeworthy:implement-issue` | Part 2 |
-| Converging a PR (the owner asks, or Tier ≥ M before ready) | `mergeworthy:converge` | Part 3, through the passes below |
-| Bug verification, reproduce-only | `mergeworthy:verify` | Loop A |
-| Bloat and quality rounds | `mergeworthy:guardian` | the LeanKeeper charter, Loop B |
+| Writing skills, rules or prompts; starting or briefing subagents | `mergeworthy:delegating` | 1.9, 1.10 |
+| Implementing an issue or opening a PR | `mergeworthy:implement-issue` | the steps from an issue to a merge-ready PR |
+| Converging a PR (Tier S condensed, Tier ≥ M in full before ready, or the owner asks) | `mergeworthy:converge` | what converged means, through the passes below |
+| Bug verification, reproduce-only | `mergeworthy:verify` | Loop A (bug verification) |
+| Bloat and quality rounds | `mergeworthy:guardian` | the LeanKeeper charter (the guardian's audit rules), Loop B (bloat and quality) |
 | The refactor pass | `mergeworthy:refactor` | the pinnacle split + simplify prompt |
 | Code drifted through many patches | `mergeworthy:finality` | the finality pass |
 | Any independent review | `mergeworthy:review` | who reviews, the reviewer charter |
-| A rule failed, or the user names a failure | `mergeworthy:past-failures` | Part 4 |
-| Using or fixing the scripts and hooks | `mergeworthy:mechanisms` | Part 5 |
+| A rule failed, or the user names a failure | `mergeworthy:past-failures` | the table of past failures and the rule for each |
+| Using or fixing the scripts and hooks | `mergeworthy:mechanisms` | the watcher, the hooks, `gate-pass`, `post-lint`, `pr-steps` |
 
-- **Quality is made, checks confirm.** Write the post, the code and the design to the standard their check applies, so the check finds nothing; a finding is a miss of the step that made the thing, and gets noted (1.1.17).
-- **Earn every line.** A finding (review, verifier, your own idea) is a candidate, not a mandate. Before code, tests, docs or options: how likely is it for a real user, what does `main` do for the analogous case, how many lines and how much new state does it cost, would the maintainer write it? A rare case with a mild failure: accept it, say why in one line. The smallest clean diff wins; a value, cast or comment that exists only to satisfy the type system is a smell to fix.
-- **A question gets an answer, never a change.** "Overkill?", "How about…?", "why…?": argue it both ways first (one agent that makes the case for their view and against it from several frames before judging either, with evidence and what `main` does), then reply with the decision and why the other side lost. Agreeing is a conclusion, never the default. Change code only after they answer. Explicit instructions are done right away, and so is a named failure: "why didn't you…?" or "why are you not…?" about something the methodology or the user already required gets one line of why, then the fix of the instance and of the rule in the same turn (1.1.12), never an explanation that waits for a go.
-- **Bring value to every reply.** Short, plain, self-contained; a finding, a measurement, a better option or a decision with its reason. No reciting, no process talk (reviews, rounds, models, ratings) unless asked, no jargon. Compare designs with code, not only a table.
-- **Only the orchestrator publishes.** Subagents may draft and review messages; the main session alone posts them, edits them and talks to the user.
-- **Every post to GitHub passes the gate:** a draft file, `post-lint`, an independent review ending in exactly `CLEAN`, then `gate-pass`. Edit in place; never post correction comments. Unless the plugin's `badge` option says otherwise, start every post with the icon of the agent that did the work and its name, or `**Agent:**`, as the label (e.g. `<img src="https://github.com/claude.png" width="20" height="20" align="left" alt="Claude"> **Claude:**`).
-- **Work like a colleague, not a tool.** On your own PRs and issues notice everything without being asked (every review, a bot's included; red CI; a conflict; a dependency that landed) and act within your authority. Every message, to a maintainer or the user, takes load off its reader: the ask first, one decision with your pick, details linked, the engine room (agents, rounds, gates) left out.
-- **Do, don't offer.** Ask only for irreversible actions on shared state, money or credentials or global config, or a maintainer's product decision, and then with a recommendation.
-- **Evidence for every claim**, in chat too; check `main`, the registry and upstream before recommending anything.
-- **Never hardcode model versions.** Reviews per `mergeworthy:review`: Codex first; if it fails, the reviewer your environment's instructions name (a local model), else a fresh-context Claude reviewer on the session's default model. Never a cheaper Claude model (Haiku, Sonnet) for reviews or fact checks.
-- **A subagent that writes a PR gets these skills**, not a checklist of them, and the Part 3 steps it must run (review round, refactor pass, guardian verdict, real-app evidence, benchmark for transports).
+- **Quality is made, checks confirm.** Write the post, the code and the design to the standard their check applies, so the check finds nothing. A finding is a miss of the step that made the thing, and that miss gets noted (1.1.17).
+- **Earn every line.** A finding (from a review, a verifier or your own idea) is a candidate, not a mandate. Before it becomes code, tests, docs or options, ask:
+  - How likely is it for a real user?
+  - What does `main` do for the analogous case?
+  - How many lines and how much new state does it cost?
+  - Would the maintainer write it?
+
+  A rare case with a mild failure: accept it, and say why in one line. The smallest clean diff wins. A value, cast or comment that exists only to satisfy the type system is a smell to fix.
+- **A question gets an answer, never a change.** A question ("Overkill?", "How about…?", "why…?") is first argued both ways: one agent makes the case for their view and against it, from several frames, with evidence and what `main` does, before judging either side. Then reply with the decision and why the other side lost; agreeing is a conclusion, never the default. Change code only after they answer.
+- **Explicit instructions and named failures are done right away.** A named failure is "why didn't you…?" or "why are you not…?" about something the methodology or the user already required. It gets one line of why, then the fix of the instance and of the rule in the same turn (1.1.12). Never send an explanation that waits for a go.
+- **Bring value to every reply.** Keep it short, plain and self-contained: a finding, a measurement, a better option, or a decision with its reason. No reciting, no jargon, and no process talk (reviews, rounds, models, ratings) unless asked. Compare designs with code, not only a table.
+- **Only the orchestrator publishes.** Subagents may draft and review messages. The main session alone posts them, edits them and talks to the user.
+- **Every post to GitHub passes the gate.** The gate is a draft file, `post-lint`, an independent review ending in exactly `CLEAN`, then `gate-pass`. Edit a post in place; never post correction comments. The agent's badge (icon and name) starts each post as 1.6 and the plugin's `badge` option say.
+- **Work like a colleague, not a tool.** On your own PRs and issues, notice everything without being asked: every review (a bot's included), red CI, a conflict, a dependency that landed. Act on it within your authority. Every message, to a maintainer or the user, takes load off its reader: the ask first, one decision with your pick, details linked, and the engine room (agents, rounds, gates) left out.
+- **Do, don't offer.** Ask only for irreversible actions on shared state, money, credentials or global config, a maintainer's product decision, or a fork you can't rank. Then ask in a `GENUINE-FORK:` line with your recommendation (1.1.3).
+- **Evidence for every claim**, in chat too. Before recommending anything, check `main`, the registry and upstream.
+- **Never hardcode model versions.** Reviews follow `mergeworthy:review`: Codex first. If Codex fails, the reviewer your environment's instructions name (a local model) reviews; else a fresh-context Claude reviewer on the session's default model. Never use a cheaper Claude model (Haiku, Sonnet) for reviews or fact checks.
+- **A subagent that writes a PR gets these skills**, not a checklist of them, and the steps it must run (`merging` 1.7).

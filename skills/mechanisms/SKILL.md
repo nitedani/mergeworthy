@@ -5,17 +5,88 @@ description: "Using or fixing the mechanisms that enforce the rules: the watcher
 
 # Mechanisms
 
-These scripts enforce the rules that failed as text alone. They ship in the mergeworthy plugin: its `bin/` is on the Bash `PATH`, its `hooks/hooks.json` is active while it's enabled, and it updates with the plugin. Change them in the mergeworthy repo, commit and push (1.9); never edit an installed copy. The plugin's options (`badge`, `merge`, `watcher`; `/plugin` → mergeworthy → Configure options) reach the scripts through `~/.mergeworthy/settings.env`, rewritten at every session start; an environment variable `MERGEWORTHY_<KEY>` wins.
+These scripts enforce the rules that failed as text alone.
 
-| Mechanism | Enforces | How to use it |
-|---|---|---|
-| `gh-watch-start` | 1.5 | `gh-watch-start [--main] <dir> [owner/repo [N]]…`, the one way to start watching; idempotent. `--main`: this dir gets the user's `/ai` calls on threads no watcher watches (default: the first live dir). Adds `owner/repo N` to `<dir>/threads.txt` (a bare `owner/repo` to `repos.txt`, covering a repo before an issue exists), and starts the daemon under a supervisor: the systemd user service `gh-watch@<dir>` on Linux, a launchd agent on macOS, else a detached daemon that cron revives. `GH_WATCH_EYES` (else `<dir>/eyes`, else your login) names the maintainers whose commits and 👍/👎 are reported. It refuses a thread another live watch dir already watches, and prints the Monitor to arm in the session: the session is what answers events, and nothing else wakes it. |
-| `watcher/gh-watch.py` (the daemon) | 1.5 | Reports to `<dir>/events.log`, with 👀 within ~10 s, the comments the agent answers (1.5): on a thread it opened, every human's comment and every inline review-bot finding; on a thread it only posted in, a maintainer's or the user's; the user's `/ai` or `/agent` anywhere(from their events feed); and, on those threads, pushes, merges, closes, CI results and 👍/👎 on the agent's comments; prints `### TRACKER STALE` when a PR merges or closes and the umbrella issue named in `<dir>/umbrella.txt` doesn't show it ticked with that state, `### REFACTOR STALE` when a PR's code changed by more than ~80 lines since its last `pr-steps refactor`, and `DEPENDENT of merged …` for `waiting-on.txt`. It records each comment in `replies-owed.md`; it never starts an agent. It retires itself (service, launchd agent or cron lines included) once every thread is merged or closed and `repos.txt` is empty. State lives in `gh-watch-state.json`, so restarts lose nothing. |
-| `post-lint` | 1.6 | `post-lint drafts/x.md --kind reply\|pr\|issue\|inline\|tracker\|proposal [--repo o/r]`: the umbrella issue's format (`tracker`: a `Title: Tracking: …` line, `##` sections of checkboxes, no table, the Decisions comment linked, a ticked item's end state; the Decisions comment's sections), banned phrases, sentences over 30 words or averaging over 20, more than 30% bold, em dashes, "stacked on", bare `#N`, budgets, unclassified notes, process in the thread, questions without a recommendation, a bare "Done" to a question, deferrals in the notes table, secrets. A reply reads its parent from `drafts/x.parent.md` (`--parent none` when it answers nobody). |
-| `gate-pass` | 1.6 | `gate-pass <abs>/drafts/x.md <review output> [post-lint flags]`: re-runs `post-lint` with the flags the draft last passed with (`<draft>.lint`) and records that it passed and the review's final message is exactly `CLEAN` (the draft's sha256 in `<draft>.gate`). A draft that promises work ("I'll", "follow-up PR") first needs a `PROMISED … (<draft name>)` line in `proposals-open.md`. |
-| `pre-bash-guard.py` (hook) | 1.6, 1.7, 1.8 | Blocks: a `gh` post or edit whose body isn't a gated draft, or changed since its gate; opening an issue or PR in a repo no running watcher covers; the same gated draft posted twice as new; `gh pr merge` without `--squash --subject "<title> (#N)" --body ""` (with `merge=reviewer`, every merge), and `--delete-branch` while PRs are based on it; a `git commit` whose author isn't the pushing GitHub account (1.7); `pkill -f`/`killall`; a bare `git stash`; a force-push without a pinned lease. Use absolute draft paths. |
-| `post-bash-register.py` (hook) | 1.5 | Adds a thread you just posted in (a new issue or PR, a comment, a review) to the watch list; a read that only prints URLs adds nothing. |
-| `stop-lint.py` (hook) | 1.1.3, 1.5 | Blocks ending a turn with "want me to / should I / your call…" (unless there's a `GENUINE-FORK:` line), after a GitHub post while no live Monitor in the session watches a watcher's `events.log` (a `claude -p` run is exempt: its caller watches), and while any watch dir the session worked in has a reply owed. |
-| `session-start` (hook) | always-on | Puts the always-on rules into context, points `~/.mergeworthy/current` at the installed version (the stable path watchers use), and writes `settings.env`. |
-| `pr-steps` | 1.7 | `gh pr create` (unless `--draft`) and `gh pr ready` are blocked until HEAD has a `review` and a `refactor` record: `pr-steps review <reviewer output>` and `pr-steps refactor <rating output>` on the final head. |
-| `ready-check` (manual) | 1.7 | Before saying "ready", check every item of 1.7's Ready list against the head (`gh pr checks`, the guardian verdict after the last fix round, the body re-read) and paste the result. |
+- **Where they live.** The scripts ship in the mergeworthy plugin: its `bin/` is on the Bash `PATH`, and its `hooks/hooks.json` is active while the plugin is enabled. They update with the plugin.
+- **Changing them.** Change them in the mergeworthy repo, then commit and push (1.9). Never edit an installed copy.
+- **Options.** The plugin's options are `badge`, `merge` and `watcher` (`/plugin` → mergeworthy → Configure options). They reach the scripts through `~/.mergeworthy/settings.env`, rewritten at every session start. An environment variable `MERGEWORTHY_<KEY>` wins over the option.
+
+## Commands
+
+### `gh-watch-start` (enforces 1.5)
+
+`gh-watch-start [--main] <dir> [owner/repo [N]]…` is the one way to start watching; running it again is harmless.
+- **What it adds.** It adds `owner/repo N` to `<dir>/threads.txt`. A bare `owner/repo` goes to `repos.txt`, which covers a repo before an issue exists.
+- **`--main`:** this dir gets the user's `/ai` calls on threads no watcher watches. The default is the first live dir.
+- **The supervisor.** It starts the daemon under a supervisor: the systemd user service `gh-watch@<dir>` on Linux, a launchd agent on macOS, else a detached daemon that cron revives.
+- **Maintainers.** `GH_WATCH_EYES` names the maintainers whose commits and 👍/👎 are reported; without it, `<dir>/eyes`, else your own login.
+- **One watcher per thread.** It refuses a thread another live watch dir already watches.
+- **The Monitor.** It prints the Monitor to arm in the session. The session is what answers events, and nothing else wakes it.
+
+### `post-lint` (enforces 1.6)
+
+`post-lint drafts/x.md --kind reply|pr|issue|inline|tracker|proposal [--repo o/r]` checks a draft before it is posted.
+- **A reply** reads its parent comment from `drafts/x.parent.md`. Use `--parent none` when it answers nobody.
+- **`tracker`** checks the umbrella issue's format: a `Title: Tracking: …` line, `##` sections of checkboxes, no table, the Decisions comment linked, a ticked item's end state, and the Decisions comment's sections. A tracker post needs no badge.
+- **The checks** (each where it applies to the kind): banned phrases; sentences over 30 words or averaging over 20 and more than 30% bold (not for `pr`); em dashes; "stacked on"; bare `#N`; budgets; unclassified notes; process in the thread; questions without a recommendation; a bare "Done" to a question (`reply`, `inline`); deferrals in the notes table; secrets; and, unless the `badge` option says otherwise, a missing badge (not for `tracker`).
+
+### `gate-pass` (enforces 1.6)
+
+`gate-pass <abs>/drafts/x.md <review output> [post-lint flags]` records that a draft passed the gate.
+- It re-runs `post-lint` with the flags the draft last passed with (stored in `<draft>.lint`).
+- It checks that the review's final message is exactly `CLEAN`.
+- It records the pass as the draft's sha256 in `<draft>.gate`.
+- A draft that promises work ("I'll", "follow-up PR") first needs a `PROMISED … (<draft name>)` line in `proposals-open.md`.
+
+### `pr-steps` (enforces 1.7)
+
+`pr-steps review <reviewer output>` and `pr-steps refactor <rating output>` record, on the final head, that the step ran.
+- `gh pr create` (unless `--draft`) and `gh pr ready` are blocked until HEAD has a `review` and a `refactor` record.
+- `pr-steps guardian <report>` also records a guardian report on HEAD; no hook checks that record.
+
+## The watcher daemon: `watcher/gh-watch.py` (enforces 1.5)
+
+The daemon reports to `<dir>/events.log` and adds 👀 within about 10 seconds. It never starts an agent.
+- **Comments.** It reports exactly the comments 1.5 says you answer, and records each in `replies-owed.md`.
+- **Thread events.** On watched threads it reports pushes, merges and closes (`### PR CHANGED`), CI results (`### CI`), and 👍/👎 on the agent's comments (`### THUMBS UP` / `### THUMBS DOWN`).
+- **Other events:**
+    - `### ACK`: an acknowledgement that answers your last open proposal;
+    - `### MAINTAINER COMMITS`: commits a maintainer pushed to your PR;
+    - `### TRACKER STALE`: a PR merged or closed, and the umbrella issue named in `<dir>/umbrella.txt` doesn't show it ticked with that state;
+    - `### REFACTOR STALE`: a PR's code changed by more than ~80 lines since its last `pr-steps refactor`;
+    - `### DEPENDENT of merged …`: a PR listed in `waiting-on.txt` merged.
+- **Retiring.** It retires itself, service, launchd agent and cron lines included, once every thread is merged or closed and `repos.txt` is empty.
+- **State.** State lives in `gh-watch-state.json`, so restarts lose nothing.
+
+## Hooks
+
+### `pre-bash-guard.py` (enforces 1.6, 1.7, 1.8)
+
+It blocks:
+- a `gh` post or edit whose body isn't a gated draft, or changed since its gate (use absolute draft paths);
+- opening an issue or PR in a repo no running watcher covers;
+- the same gated draft posted twice as new;
+- a third comment while your last two on that thread have no reply and the last is under 3 days old (1.6);
+- `gh pr merge` without `--squash --subject "<title> (#N)" --body ""`, and with `merge=reviewer`, every merge;
+- `--delete-branch` while PRs are based on the branch;
+- a `git commit` whose author isn't the pushing GitHub account (1.7);
+- `pkill -f` and `killall`;
+- a bare `git stash`;
+- a force-push without a pinned lease.
+
+### `post-bash-register.py` (enforces 1.5)
+
+It adds a thread you just posted in (a new issue or PR, a comment, a review) to the watch list. A read that only prints URLs adds nothing.
+
+### `stop-lint.py` (enforces 1.1.3, 1.5)
+
+It blocks ending a turn in three cases:
+- the turn ends with "want me to / should I / your call…" and has no `GENUINE-FORK:` line;
+- you posted on GitHub and no live Monitor in the session watches a watcher's `events.log` (a `claude -p` run is exempt: its caller watches);
+- a watch dir the session worked in has a reply owed.
+
+It skips its watcher checks while the user's last message contains "pause".
+
+### `session-start` (enforces the always-on rules)
+
+It puts the always-on rules into context and writes `settings.env`. It also points `~/.mergeworthy/current` at the installed version, the stable path watchers use.
