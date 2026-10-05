@@ -12,7 +12,7 @@ Every independent review uses this order: the posting gate (1.6), `review`'s PR 
    codex exec --sandbox danger-full-access --skip-git-repo-check -o <out> "$(cat <prompt file>)" < /dev/null
    ```
    It runs the model configured in `~/.codex/config.toml`. If it fails (out of credits, a rate limit, an error), go to step 2; that failure takes seconds.
-2. **A fresh-context Claude subagent** on the session's default model, the same prompt. Never a cheaper model.
+2. **A fresh-context Claude subagent** on the session's default model, the same prompt. Never a cheaper model. When your environment's own instructions name a reviewer to use first (a local model on this machine), it goes before this step.
 
 An error, a hang or "out of credits" is not a review. Record which reviewer ran; on Tier ≥ M work, re-review on Codex once it's back.
 
