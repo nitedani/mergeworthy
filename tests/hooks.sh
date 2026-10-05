@@ -116,6 +116,14 @@ printf '%s A list follows:\n- %s\n' "$B" "$(printf 'word %.0s' $(seq 35))" > "$T
 check "one list item over 30 words is flagged" 1 "$(lint "$T/long.md")"
 printf '%s Two fundamental issues remain.\n' "$B" > "$T/fund.md"
 check "a difficulty word without its scope is flagged" 1 "$(python3 "$R/bin/post-lint" "$T/fund.md" --kind issue --parent none 2>&1 | grep -c 'what it.s hard for')"
+for s in 'Fundamental problems remain in this design.' 'It is impossible to fix this.' 'The fix is impossible.'; do
+  printf '%s %s\n' "$B" "$s" > "$T/fund3.md"
+  check "flagged: $s" 1 "$(python3 "$R/bin/post-lint" "$T/fund3.md" --kind issue --parent none 2>&1 | grep -c 'what it.s hard for')"
+done
+for s in 'This fundamentally changes the public API.' 'The guard covers an impossible state.' 'A fundamental issue for the adapter remains.'; do
+  printf '%s %s\n' "$B" "$s" > "$T/fund3.md"
+  check "passes: $s" 0 "$(python3 "$R/bin/post-lint" "$T/fund3.md" --kind issue --parent none 2>&1 | grep -c 'what it.s hard for')"
+done
 printf '%s A problem fundamental to one injection point; "fundamental" was the wrong word.\n' "$B" > "$T/fund2.md"
 check "a scoped or quoted difficulty word passes" 0 "$(python3 "$R/bin/post-lint" "$T/fund2.md" --kind issue --parent none 2>&1 | grep -c 'what it.s hard for')"
 rm -rf "$T"
