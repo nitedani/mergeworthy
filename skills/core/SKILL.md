@@ -119,6 +119,6 @@ Read the task and every link in it. Write `Tier: <X>, because <signals>` and put
 Before the first change:
 1. Write `scope.md`.
 2. Write the critical path.
-3. Before your first post, start the watcher (1.5): `GH_WATCH_EYES=<maintainers>,<user> gh-watch-start <artifact root> <owner/repo> <N>…`, and register every open PR and issue the account has in the scope repos (`gh search prs --author <login> --state open`, and issues), not only this session's. Answer any maintainer comment still without a reply first.
+3. Before you open an issue or PR, start the watcher and arm its Monitor (1.5): `gh-watch-start <artifact root> <owner/repo>`. Answer what's owed in `replies-owed.md` first.
 4. Confirm browser control (for UI work), and that `claude-swap list` shows the spare subscriptions.
 5. Note the precedents and style (1.3).

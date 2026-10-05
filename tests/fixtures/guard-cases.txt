@@ -97,8 +97,10 @@
 2 MERGEWORTHY_MERGE=reviewer|gh pr merge 12 -R o/r --squash --subject "fix: x (#12)" --body ""
 0 MERGEWORTHY_MERGE=on-request-squash|gh pr merge 12 -R o/r --squash --subject "fix: x (#12)" --body ""
 0 MERGEWORTHY_MERGE=reviewer|gh pr view 12
-2 MERGEWORTHY_WATCHER=on|gh api repos/unwatched-owner/unwatched-repo/issues/9/comments -F body=@$D
+0 MERGEWORTHY_WATCHER=on|gh api repos/unwatched-owner/unwatched-repo/issues/9/comments -F body=@$D
 2 MERGEWORTHY_WATCHER=on|gh issue create -R unwatched-owner/unwatched-repo -t x -F $D
-2 MERGEWORTHY_WATCHER=on|gh pr comment https://github.com/unwatched-owner/unwatched-repo/pull/3 --body-file $D
+0 MERGEWORTHY_WATCHER=on|gh pr comment https://github.com/unwatched-owner/unwatched-repo/pull/3 --body-file $D
 0 MERGEWORTHY_WATCHER=on|gh api -X PATCH repos/unwatched-owner/unwatched-repo/issues/comments/1 -F body=@$D
 0 MERGEWORTHY_WATCHER=on MERGEWORTHY_TARGET=ci|gh api repos/unwatched-owner/unwatched-repo/issues/9/comments -F body=@$D
+2 MERGEWORTHY_WATCHER=on|gh pr create -R unwatched-owner/unwatched-repo -t x --body-file $D
+2 MERGEWORTHY_WATCHER=on|gh api repos/unwatched-owner/unwatched-repo/issues -f title=x -F body=@$D

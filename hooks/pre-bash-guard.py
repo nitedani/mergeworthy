@@ -100,16 +100,15 @@ def watch_dirs():
             pass
     return live
 
-def need_watch(repo, num=None):
-    """Posting on GitHub starts the live loop (1.5): a running watcher must cover the repo; the thread joins its list now."""
+def need_watch(repo):
+    """Opening an issue or PR starts the live loop (1.5): a running watcher must cover the repo (post-bash-register adds
+    the new thread). A comment on an existing thread needs none: the agent answers only threads it opened, and /ai calls."""
     if setting('WATCHER', 'on') != 'on' or setting('TARGET', 'local') != 'local' or not repo: return
     def lines(d, f):
         return [l.strip() for l in open(os.path.join(d, f))] if os.path.exists(os.path.join(d, f)) else []
     covering = [d for d in watch_dirs() if repo in lines(d, 'repos.txt') or any(l.split()[:1] == [repo] for l in lines(d, 'threads.txt'))]
     if not covering:
-        block(f"no running watcher covers {repo}: `gh-watch-start <your artifact root> {repo}{' ' + num if num else ''}`, arm the tail it prints, then post")
-    if num and not any(f"{repo} {num}" in lines(d, 'threads.txt') for d in covering):
-        open(os.path.join(covering[0], 'threads.txt'), 'a').write(f"{repo} {num}\n")
+        block(f"no running watcher covers {repo}: `gh-watch-start <your artifact root> {repo}`, arm the Monitor it prints, then open it")
 
 def cwd_repo(run_dir):
     import subprocess
@@ -184,11 +183,8 @@ def check(t, has_cd):
                 if sub == 'review' and not texts and not files and '--approve' in rest:
                     return  # an approval without a body posts no text
                 block(NEED_DRAFT)
-            if sub in ('comment', 'create', 'review'):
-                target = next((x for i, x in enumerate(rest) if not x.startswith('-') and (i == 0 or not rest[i - 1].startswith('-'))), '')
-                m = re.search(r'github\.com/([\w.-]+/[\w.-]+)/(?:issues|pull)/(\d+)', target)
-                repo = m.group(1) if m else ((opt(rest, ['--repo', '-R']) or [None])[-1] or cwd_repo(run_dir))
-                need_watch(repo, m.group(2) if m else (target if target.isdigit() else None))
+            if sub == 'create':
+                need_watch((opt(rest, ['--repo', '-R']) or [None])[-1] or cwd_repo(run_dir))
             for f in files: gated_file(f, has_cd, create=sub in ('comment', 'create', 'review'))
     if p == 'gh' and a and a[0] == 'api':
         rest = a[1:]
@@ -207,8 +203,8 @@ def check(t, has_cd):
         literal = [v for v in fields if re.match(r'^(body|query)=', v) and not v.startswith('body=@') and not (ep == 'graphql' and v.startswith('query='))]
         if literal or not (bodies or inputs):
             block(NEED_DRAFT)
-        m = re.match(r'/?repos/([\w.-]+/[\w.-]+)/(?:issues|pulls)(?:/(\d+))?', ep)
-        if m and method == 'POST': need_watch(m.group(1), m.group(2))
+        m = re.fullmatch(r'/?repos/([\w.-]+/[\w.-]+)/(?:issues|pulls)', ep)
+        if m and method == 'POST': need_watch(m.group(1))
         for f in bodies + inputs: gated_file(f, has_cd, create=method == 'POST')
 
 # Command lines with heredoc bodies and quoted text blanked out

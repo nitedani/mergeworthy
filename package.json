@@ -10,7 +10,7 @@
     "cli/"
   ],
   "scripts": {
-    "test": "python3 tests/test_layout.py && python3 tests/test_post_lint.py && python3 tests/test_stop_lint.py && bash tests/test_pre_bash_guard.sh"
+    "test": "python3 tests/test_layout.py && python3 tests/test_post_lint.py && python3 tests/test_stop_lint.py && python3 tests/test_watcher.py && bash tests/test_pre_bash_guard.sh"
   },
   "repository": {
     "type": "git",

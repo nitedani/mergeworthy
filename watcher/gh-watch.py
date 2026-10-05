@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Robust GitHub watch for the tracked threads. One line on stdout per event.
 
-- Comments, review comments and reviews by anyone except you (GH_WATCH_ME) and bots (new or edited).
-- Comments by the logins in GH_WATCH_EYES get an :eyes: reaction (held while every subscription is used up).
+- The comments the agent answers (1.5), new or edited, each with an :eyes: reaction (held while every subscription is
+  used up): a maintainer's (write access) on a thread in threads.txt, the threads the agent opened; and yours with
+  /ai or /agent, on any thread (your events feed; one watch dir gets each, see main_dir). Nothing else.
 - Maintainers' commits pushed to a tracked PR, and 👍/👎 from GH_WATCH_EYES on the agent's comments.
 - PR head/state changes (pushes, merges, closes), CI turning red or green on open PRs, and your PR's code (tests excluded) changing by more than ~80 lines since its last refactor pass (REFACTOR STALE).
 - Tracker drift (../bin/tracker-check).
@@ -18,7 +19,7 @@ ME = os.environ.get('GH_WATCH_ME') or subprocess.run(['gh', 'api', 'user', '--jq
 if not ME:
     sys.exit("WATCH ERROR could not read your login (gh api user); set GH_WATCH_ME")  # else your own comments become events
 ONCE = '--once' in sys.argv  # a manual check: prints events but doesn't consume them or react, so the daemon still logs them
-EYES_FOR = set(filter(None, os.environ.get('GH_WATCH_EYES', '').split(',')))  # maintainers whose comments get :eyes:
+EYES_FOR = set(filter(None, os.environ.get('GH_WATCH_EYES', '').split(',')))  # maintainers: their commits on your PRs and 👍/👎 are reported
 
 
 def gh(args):
@@ -72,6 +73,17 @@ def agent_post_hashes():
         return set()
 
 
+MAINTAINER = ('OWNER', 'MEMBER', 'COLLABORATOR')
+AI_CALL = re.compile(r'(^|\s)/(ai|agent)\b', re.I)
+
+
+def answerable(u, body, agent_hashes):
+    """1.5: a maintainer on a thread the agent opened, or the user anywhere with /ai or /agent; nothing else."""
+    if not is_human(u, body, agent_hashes):
+        return False
+    return bool(AI_CALL.search(body or '')) if u.get('login') == ME else u.get('assoc') in MAINTAINER
+
+
 def is_human(u, body=None, agent_hashes=frozenset()):
     if not u or u.get('type') == 'Bot' or u.get('login', '').endswith('[bot]'):
         return False
@@ -92,6 +104,48 @@ def append_owed(entry):
         if not owed:
             f.write('# replies owed (1.5): clear each line with "done: <reply url> <what changed>"\n')
         f.write(entry + '\n')
+
+
+def handle_comment(state, repo, key, kind, cid, upd, login, url, body, extra=''):
+    """An answerable comment (1.5): an event, an owed reply and an :eyes: reaction, each once."""
+    sk = f"{kind}:{cid}"
+    if state['seen'].get(sk) == upd:
+        return
+    edited = sk in state['seen']
+    state['seen'][sk] = upd
+    emit(f"### {key} {kind}{' (edited)' if edited else ''} {cid} by {login} {upd} {extra} {url}\n{body}\n")
+    if edited or kind not in ('comment', 'review-comment'):
+        return
+    append_owed(f"{key} {kind} {cid} by {login} {url} — {body.strip().splitlines()[0][:80]}" if body.strip() else f"{key} {kind} {cid} by {login} {url}")
+    if re.fullmatch(r"\W*(ok(ay)?|good|great|lgtm|yes|sure|agreed|sounds good|👍|nice)\W*", body.strip().lower()):
+        emit(f"### ACK {key} {cid}: an acknowledgement answers your last open proposal in that thread or PR; apply it now (1.5)")
+    if not ONCE:
+        react_eyes(repo, kind, cid, state)
+
+
+def watch_dirs():
+    reg = os.path.expanduser('~/.claude/gh-watch-dirs.txt')
+    return [l.strip() for l in open(reg)] if os.path.exists(reg) else []
+
+
+def live(d):
+    try:
+        os.kill(int(open(os.path.join(d, 'gh-watch.pid')).read().strip()), 0)
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def main_dir():
+    """The watch dir that gets /ai calls on threads no live watcher watches: ~/.mergeworthy/main-watch
+    (gh-watch-start --main) while its watcher runs, else the first live dir in gh-watch-dirs.txt."""
+    try:
+        m = open(os.path.expanduser('~/.mergeworthy/main-watch')).read().strip()
+    except OSError:
+        m = ''
+    if m and live(m):
+        return m
+    return next((d for d in watch_dirs() if live(d)), None)
 
 
 def emit(line):
@@ -229,14 +283,14 @@ def fetch_thread(repo, num, since, is_pr_known):
         is_pr = 'pull_request' in json.loads(gh(['api', f"repos/{repo}/issues/{num}"]))
     events = []
     for c in gh_json(f"repos/{repo}/issues/{num}/comments?since={since}&per_page=100"):
-        events.append(('comment', c['id'], c['updated_at'], c['user'], c['html_url'], c.get('body') or '', ''))
+        events.append(('comment', c['id'], c['updated_at'], {**c['user'], 'assoc': c.get('author_association')}, c['html_url'], c.get('body') or '', ''))
     pr_state = red = None
     if is_pr:
         for c in gh_json(f"repos/{repo}/pulls/{num}/comments?since={since}&per_page=100"):
-            events.append(('review-comment', c['id'], c['updated_at'], c['user'], c['html_url'], c.get('body') or '', f"{c.get('path')}:{c.get('line') or c.get('original_line')}"))
+            events.append(('review-comment', c['id'], c['updated_at'], {**c['user'], 'assoc': c.get('author_association')}, c['html_url'], c.get('body') or '', f"{c.get('path')}:{c.get('line') or c.get('original_line')}"))
         for r in gh_json(f"repos/{repo}/pulls/{num}/reviews?per_page=100"):
             if (r.get('submitted_at') or '') >= since and (r.get('body') or r.get('state') in ('APPROVED', 'CHANGES_REQUESTED')):
-                events.append(('review', r['id'], r['submitted_at'], r['user'], r['html_url'], r.get('body') or '', r.get('state')))
+                events.append(('review', r['id'], r['submitted_at'], {**r['user'], 'assoc': r.get('author_association')}, r['html_url'], r.get('body') or '', r.get('state')))
         pr = json.loads(gh(['api', f"repos/{repo}/pulls/{num}"]))
         # 'conflict': GitHub runs no CI on a PR that conflicts with its base, so a conflict must be reported like red CI
         pr_state = {'head': pr['head']['sha'][:10], 'state': 'merged' if pr.get('merged') else pr['state'], 'conflict': pr.get('mergeable_state') == 'dirty'}
@@ -288,20 +342,8 @@ def scan(state, only=None):
                 state['ci'][key] = red
             agent_hashes = agent_post_hashes()  # read after the fetch: a post gated while it ran is the agent's
             for kind, cid, upd, user, url, body, extra in events:
-                if not is_human(user, body, agent_hashes):
-                    continue
-                sk = f"{kind}:{cid}"
-                if state['seen'].get(sk) == upd:
-                    continue
-                edited = sk in state['seen']
-                state['seen'][sk] = upd
-                emit(f"### {key} {kind}{' (edited)' if edited else ''} {cid} by {user['login']} {upd} {extra} {url}\n{body}\n")
-                if not edited and kind in ('comment', 'review-comment'):
-                    append_owed(f"{key} {kind} {cid} by {user['login']} {url} — {body.strip().splitlines()[0][:80]}" if body.strip() else f"{key} {kind} {cid} by {user['login']} {url}")
-                if re.fullmatch(r"\W*(ok(ay)?|good|great|lgtm|yes|sure|agreed|sounds good|👍|nice)\W*", body.strip().lower()):
-                    emit(f"### ACK {key} {cid}: an acknowledgement answers your last open proposal in that thread or PR; apply it now (1.5)")
-                if user['login'] in EYES_FOR and not edited and not ONCE and kind in ('comment', 'review-comment'):
-                    react_eyes(repo, kind, cid, state)
+                if answerable(user, body, agent_hashes):
+                    handle_comment(state, repo, key, kind, cid, upd, user['login'], url, body, extra)
     if only is None:
         state['since'] = started  # only the default for threads added to threads.txt later
     return ok
@@ -338,6 +380,18 @@ def notifications_changed(state):
     return keys
 
 
+def ai_call_elsewhere(state, repo, num, etype, c):
+    """Your /ai or /agent comment on a thread no live watcher watches goes to main_dir's watcher, so one session gets it."""
+    key, body = f"{repo}#{num}", c.get('body') or ''
+    if not c.get('id') or not AI_CALL.search(body) or _norm(body) in agent_post_hashes() or main_dir() != HERE:
+        return
+    watched = any(f"{repo} {num}" in (l.strip() for l in open(os.path.join(d, 'threads.txt')))
+                  for d in watch_dirs() if live(d) and os.path.exists(os.path.join(d, 'threads.txt')))
+    if not watched:  # a watched thread's own scan handles it
+        kind = 'review-comment' if etype == 'PullRequestReviewCommentEvent' else 'comment'
+        handle_comment(state, repo, key, kind, c['id'], c.get('updated_at') or c.get('created_at', ''), ME, c.get('html_url', ''), body)
+
+
 def own_events_changed(state):
     """GitHub doesn't notify you of your own comments, so the notifications fast path misses the user's (same account).
     Their public events feed, polled with If-None-Match (a 304 isn't rate-limited), catches them.
@@ -364,6 +418,7 @@ def own_events_changed(state):
             num = (p.get('issue') or p.get('pull_request') or {}).get('number')
             if num:
                 keys.add(f"{e['repo']['name']}#{num}")
+                ai_call_elsewhere(state, e['repo']['name'], num, e['type'], p.get('comment') or {})
         state['events_seen'] = max([prev] + [e.get('created_at', '') for e in json.loads(body)])
     except Exception:
         pass
