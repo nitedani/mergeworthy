@@ -41,6 +41,7 @@ These rules hold when you edit a skill, prompt, rules file or AGENTS.md. Rules f
     - pick a different approach than the plan (it stops and reports why the plan is wrong instead);
     - call something unused before finding every caller (`grep -rn`) and reading the comment above it;
     - say a step ran when it couldn't (it stops and says what blocked it).
+    - start agents of its own (it does the work itself), or end its turn while work it started is still running.
 - **Before using its result,** open two or three of its cited `path:line`s, re-run one command, or diff the result against your plan.
 - **A long job gets a time budget in its brief, and an early check.** Read its first output within half an hour. Confirm the numbers can be used (a benchmark alone on the machine, warmed up, comparing like with like) before it runs the rest. Past its budget, stop it or extend it deliberately.
 - **A subagent that writes a PR** follows the mergeworthy skills, not a summary of them: open `merging` (1.7) for what its prompt must name and what its report lists.

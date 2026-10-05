@@ -16,6 +16,7 @@ Each failure below happened, most more than once. When a rule fails or the user 
 | Red CI noticed by the user. | the watcher's `### CI` events |
 | An LGTM'd item still "waiting"; a superseded statement cited. | 1.1.9 |
 | Maintainer instructions ignored ("remove the test right before merging"). | 1.7 checkboxes, 1.7 Ready list |
+| A subagent started six agents of its own, then ended its turn while they ran; its report never came. | `delegating` (what the agent must not do) |
 | A reviewer called a case correct by reasoning, without a probe; a bot reviewer later showed it was the bug. A Tier S review round ran without the verifier's bug hunt. | `review` (after the review), `implement-issue` step 6 |
 | "Ready" on green CI alone, or without review, refactor or guardian verdict; a subagent ran a hand-written checklist. | 1.7 Ready list, `pr-steps` |
 | "Stacked on #N" without `gh stack`. | 1.6 links, `post-lint` |
