@@ -1,4 +1,4 @@
-# The model, sourced by serve.sh, claude-local and the sandbox. Sizes and speeds were measured on one 16 GB GPU with the
+# The model, sourced by serve.sh, claude-local and the eval's sandbox. Sizes and speeds were measured on one 16 GB GPU with the
 # desktop using ~1.2 GB, leaving 1 GB of VRAM free at peak (prompt processing included); re-measure for yours.
 _dir="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 LLM_PROFILE=gsq  # the name serve.sh uses to notice a changed setup
