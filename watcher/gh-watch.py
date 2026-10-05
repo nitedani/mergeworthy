@@ -550,12 +550,40 @@ def retire_if_done():
         sys.exit(0)
 
 
+# the version this process runs, resolved at start: ~/.mergeworthy/current may be repointed while it runs
+RUNNING_ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+
+
+def installed_root():
+    """The plugin version Claude Code has installed now (it changes on every update), or None outside the plugin."""
+    try:
+        with open(os.path.expanduser('~/.claude/plugins/installed_plugins.json')) as f:
+            root = json.load(f)['plugins']['mergeworthy@mergeworthy'][0]['installPath']
+        return root if os.path.isdir(root) else None
+    except Exception:
+        return None
+
+
+def follow_update():
+    """After a plugin update, point ~/.mergeworthy/current at the new version and exit 75: the daemon restarts this
+    script on the new code. Without it a watcher ran the version it started on until someone restarted it."""
+    root = installed_root()
+    if root and os.path.realpath(root) != RUNNING_ROOT:
+        cur = os.path.expanduser('~/.mergeworthy/current')
+        tmp = cur + '.tmp'
+        if os.path.lexists(tmp): os.remove(tmp)
+        os.symlink(root, tmp)
+        os.replace(tmp, cur)
+        sys.exit(75)
+
+
 def main():
     if ONCE:
         run_scan()
         return
     last_full = 0
     while True:
+        follow_update()
         with locked():
             state = load_state()
             changed = (notifications_changed(state) or set()) | own_events_changed(state) | repo_comments_changed(state)

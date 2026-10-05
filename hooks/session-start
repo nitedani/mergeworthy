@@ -1,7 +1,10 @@
 #!/bin/bash
-# SessionStart hook: puts the always-on rules into the session's context, and points ~/.mergeworthy/current at this
+# SessionStart hook: puts the always-on rules into the session's context, and points ~/.mergeworthy/current at the
 # installed version, the stable path that watchers and cron use (the plugin's own folder changes with every update).
-mkdir -p ~/.mergeworthy && ln -sfn "$CLAUDE_PLUGIN_ROOT" ~/.mergeworthy/current
+# The installed version, not this session's: a session started before an update would point watchers back to old code.
+root=$(python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json')))['plugins']['mergeworthy@mergeworthy'][0]['installPath'])" 2>/dev/null)
+[ -d "$root" ] || root=$CLAUDE_PLUGIN_ROOT
+mkdir -p ~/.mergeworthy && ln -sfn "$root" ~/.mergeworthy/current
 cat "$CLAUDE_PLUGIN_ROOT/always-on.md"
 # The plugin's options reach hooks as CLAUDE_PLUGIN_OPTION_<KEY>; scripts run from Bash read this file instead
 env | sed -n 's/^CLAUDE_PLUGIN_OPTION_\([A-Z_]*\)=/MERGEWORTHY_\1=/p' > ~/.mergeworthy/settings.env
