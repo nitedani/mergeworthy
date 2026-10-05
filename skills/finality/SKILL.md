@@ -8,7 +8,7 @@ description: "The finality pass, for code that has drifted through many patches:
 **When to run it.** The work reshapes existing code rather than changing what it does. Or a change you meant to make small cannot be made cleanly, because the area has taken too many patches.
 
 **Who runs each phase:**
-- **Phases A and B are analysis.** The reviewer (`review`) or a fresh-context subagent runs them, never the author's context. Phase B's single agent runs on the session's own model, never one above the default tier (`core`, the task).
+- **Phases A and B are analysis.** The reviewer (`review`) or a fresh-context subagent runs them, never the author's context. Phase B's single agent (the prompt's "strongest-model agent") runs on the session's own model, never one above the default tier (`core`, the task).
 - **Phase B½ is split.** Its graph queries are analysis, run by the Phase B agent. Instrumenting guards, running the full suite and e2e, and the removals are execution: the author runs them, as in Phase C.
 - **Phase C is the author's**, implementing commit by commit with the gates green underneath.
 
