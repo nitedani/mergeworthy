@@ -31,4 +31,4 @@ Nothing: this is judgment.
 
 ## Next
 
-Back to the page you came from.
+Nothing.

@@ -9,7 +9,7 @@ You are about to say a PR is ready, the user asks to converge a PR, or `mergewor
 
 ## Steps
 
-1. Pick who reads, in this order (Who reads):
+1. Pick who reads, in this order:
    - **Codex:** `codex exec --sandbox danger-full-access --skip-git-repo-check -o <out> "$(cat <brief>)" < /dev/null`, with the model configured in `~/.codex/config.toml`. If it fails, which takes seconds when it's out of credits, go on.
    - **A fresh Claude subagent:** on the session's default model, never a cheaper one.
 2. Write each brief from [questions.md](questions.md): the artifact at pinned SHAs, the decisions, exactly one question, and that question's evidence rule. Never your conclusions.

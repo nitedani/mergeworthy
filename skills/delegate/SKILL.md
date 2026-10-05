@@ -12,8 +12,8 @@ You are about to start a subagent.
 1. Do small steps yourself: one command, one file, a short edit. Start an agent only for long, independent work, at most three at a time; continue an agent that already has the context instead of starting a new one.
 2. Pick the model:
    - **Judgment:** design, hard debugging and anything posted run on the session's default model.
-   - **Routine work:** exploration, test runs, log mining and mechanical edits can run on a cheaper model, such as the `sonnet` alias.
-   - **Reviews:** follow `mergeworthy:ready`, Who reads.
+   - **Routine work:** exploration, test runs, log mining and mechanical edits can run on a cheaper model.
+   - **Reviews:** follow `mergeworthy:ready` step 1.
 3. Write the brief, with paths rather than pasted files, and none of your conclusions:
    - **Goal:** one observable outcome.
    - **Facts:** only what you verified, each with its source.

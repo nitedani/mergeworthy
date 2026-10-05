@@ -5,7 +5,7 @@ description: "When you are about to end a turn or report to the user: answer fir
 
 ## When
 
-You are about to end a turn, or send the user a report.
+You are about to end a turn or report to the user.
 
 ## Steps
 
