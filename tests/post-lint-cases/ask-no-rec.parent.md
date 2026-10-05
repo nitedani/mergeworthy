@@ -1,1 +1,0 @@
-As a user I would rather see an error.

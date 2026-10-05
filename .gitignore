@@ -1,6 +1,6 @@
 __pycache__/
 *.pyc
 .pytest_cache/
-tests/drafts/*.posted
-tests/guard-stderr.txt
+tests/fixtures/drafts/*.posted
+tests/post-lint-cases/
 node_modules/

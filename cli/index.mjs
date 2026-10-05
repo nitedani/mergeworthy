@@ -100,7 +100,7 @@ function removeOldInstall() {
   // the old files become links to the new version, so those sessions keep working, on the new code
   const NEW = { 'post-lint.py': 'bin/post-lint', 'tracker-check.sh': 'bin/tracker-check' }
   for (const f of fs.existsSync(MECH) ? fs.readdirSync(MECH) : []) {
-    const rel = NEW[f] || (fs.existsSync(path.join(CURRENT, 'hooks', f)) ? `hooks/${f}` : fs.existsSync(path.join(CURRENT, 'bin', f)) ? `bin/${f}` : null)
+    const rel = NEW[f] || (['hooks', 'bin', 'watcher'].map((d) => `${d}/${f}`).find((r) => fs.existsSync(path.join(CURRENT, r))) || null)
     if (!rel) continue
     fs.rmSync(path.join(MECH, f), { force: true })
     fs.symlinkSync(path.join(CURRENT, rel), path.join(MECH, f))
@@ -114,7 +114,7 @@ function removeOldInstall() {
   for (const d of dirs) {
     for (const f of ['gh-watch.py', 'gh-watch-daemon.sh']) {
       const l = path.join(d, f)
-      try { if (fs.readlinkSync(l).startsWith(MECH)) { fs.rmSync(l); fs.symlinkSync(path.join(CURRENT, 'bin', f), l) } } catch {}
+      try { if (fs.readlinkSync(l).startsWith(MECH)) { fs.rmSync(l); fs.symlinkSync(path.join(CURRENT, 'watcher', f), l) } } catch {}
     }
     for (const f of ['agent', 'wake.pid', 'wake.launch']) fs.rmSync(path.join(d, f), { force: true })
     process.kill(pidOf(d), 'SIGTERM')

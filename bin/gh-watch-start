@@ -1,6 +1,6 @@
 #!/bin/bash
 # gh-watch-start <dir> [owner/repo [N]]...: the one way to start watching (methodology 1.5). Idempotent.
-# - <dir> is the session's artifact root; it gets links to gh-watch.py and gh-watch-daemon.sh, threads.txt and repos.txt.
+# - <dir> is the session's artifact root; it gets links to the daemon (../watcher/), threads.txt and repos.txt.
 # - "owner/repo N" goes to threads.txt; a bare "owner/repo" goes to repos.txt (the repo is covered, e.g. before `gh issue create`).
 # - Starts the daemon unless its PID is alive, with GH_WATCH_EYES from the environment, else from <dir>/eyes, else your gh login.
 # - Registers <dir> in ~/.claude/gh-watch-dirs.txt, which pre-bash-guard and post-bash-register read.
@@ -10,9 +10,9 @@ set -e
 [ -n "$1" ] || { sed -n '2,7p' "$0"; exit 1; }
 dir=$(realpath -m "$1"); shift
 # link through the stable path when installed as a plugin (its own folder changes with every update)
-mech=$(dirname "$(realpath "$0")"); [ -d ~/.mergeworthy/current/bin ] && [ "$(realpath ~/.mergeworthy/current/bin)" = "$mech" ] && mech=~/.mergeworthy/current/bin
+root=$(dirname "$(dirname "$(realpath "$0")")"); [ -d ~/.mergeworthy/current ] && [ "$(realpath ~/.mergeworthy/current)" = "$root" ] && root=~/.mergeworthy/current
 mkdir -p "$dir"; touch "$dir/threads.txt" "$dir/repos.txt" "$dir/events.log"
-for f in gh-watch.py gh-watch-daemon.sh; do ln -sfn "$mech/$f" "$dir/$f"; done
+for f in gh-watch.py gh-watch-daemon.sh; do ln -sfn "$root/watcher/$f" "$dir/$f"; done
 while [ $# -gt 0 ]; do
   repo=$1; shift
   [[ $repo == */* ]] || { echo "not owner/repo: $repo"; exit 1; }
@@ -96,9 +96,9 @@ else
   fi
   # cron revives it after a crash or a reboot (gh-watch-start is idempotent)
   if command -v crontab >/dev/null; then
-    job="*/5 * * * * $mech/gh-watch-start $dir >/dev/null 2>&1 # gh-watch $dir"
+    job="*/5 * * * * $root/bin/gh-watch-start $dir >/dev/null 2>&1 # gh-watch $dir"
     # `|| true`: grep finds nothing to keep in an empty crontab, and set -e would then install an empty one
-    { crontab -l 2>/dev/null | grep -vF "# gh-watch $dir" || true; echo "$job"; echo "@reboot $mech/gh-watch-start $dir >/dev/null 2>&1 # gh-watch $dir"; } | crontab -
+    { crontab -l 2>/dev/null | grep -vF "# gh-watch $dir" || true; echo "$job"; echo "@reboot $root/bin/gh-watch-start $dir >/dev/null 2>&1 # gh-watch $dir"; } | crontab -
   else
     echo "note: no systemd, launchd or cron: the watcher won't restart after a reboot" >&2
   fi

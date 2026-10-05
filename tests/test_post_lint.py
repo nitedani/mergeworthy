@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Tests for bin/post-lint. Run: python3 test_post_lint.py (exit 0 = all pass).
-Fixtures are written under ./post-lint-cases/ (never /tmp). Cases marked (real) are replies posted to a maintainer."""
+Its drafts are generated into ./post-lint-cases/ on every run (ignored by git). Cases marked (real) are replies posted to a maintainer."""
 import os, subprocess, sys, shutil
 
 HERE = os.path.dirname(os.path.abspath(__file__))
