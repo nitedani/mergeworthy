@@ -2,16 +2,75 @@
 """Claude Code PostToolUse hook (matcher: Bash). A thread you just posted in (a new issue or PR, a comment, a review)
 joins the threads.txt of the watcher that covers its repo, else of the first live watcher, so maintainer comments on
 it are answered (mergeworthy:github-threads)."""
-import json, os, re, sys
+import json, os, re, shlex, sys
 d = json.load(sys.stdin)
 cmd = d.get('tool_input', {}).get('command', '')
 r = d.get('tool_response') or {}
 out = r.get('stdout', '') if isinstance(r, dict) else str(r)
-# only a write: a read (`gh api …/issues/N/comments`) prints other threads' URLs, which aren't threads you posted in
-api_write = re.search(r'\bgh\s+api\b.*\brepos/[\w.-]+/[\w.-]+/(issues|pulls)\b', cmd) and \
-    re.search(r'(^|\s)(-X\s*POST|--method\s+POST|-f|-F|--field|--raw-field|--input)\b', cmd)
-if not (re.search(r'\bgh\s+(issue|pr)\s+(create|comment|review)\b', cmd) or api_write):
+
+def segments(cmd):  # copied from pre-bash-guard.py, which can't be imported (it reads stdin at import)
+    """Token lists of the simple commands in cmd. Heredoc bodies are dropped; quotes are resolved by shlex."""
+    cmd = re.sub(r'\\\n', ' ', cmd)
+    lines, out, term = cmd.split('\n'), [], None
+    for l in lines:
+        if term is not None:
+            if l.strip() == term: term = None
+            continue
+        h = re.search(r"<<-?\s*['\"]?(\w+)['\"]?", l)
+        if h: term = h.group(1)
+        out.append(l)
+    segs = []
+    for l in out:
+        lx = shlex.shlex(l, posix=True, punctuation_chars=';&|<>()')
+        lx.whitespace_split = True
+        cur = []
+        for tok in lx:  # raises ValueError on unbalanced quotes
+            if tok and set(tok) <= set(';&|()'):
+                if cur: segs.append(cur)
+                cur = []
+            else:
+                cur.append(tok)
+        if cur: segs.append(cur)
+    return segs
+
+def prog(t):  # copied from pre-bash-guard.py
+    """Drop env assignments and wrappers; return the command's argv."""
+    while t and (re.match(r'^\w+=', t[0]) or t[0] in ('sudo', 'env', 'command', 'time', 'exec', 'nohup')):
+        t = t[1:]
+    return t
+
+def target(t):
+    """(repo or None, number or None) a posting gh argv writes to; None when the argv doesn't post.
+    Only a real `gh` argv counts: text that merely mentions one (an echo, a grep, a fixture) posts nothing."""
+    t = prog(t)
+    if not t or os.path.basename(t[0]) != 'gh' or len(t) < 2 or '--help' in t or '-h' in t:
+        return None
+    a = t[1:]
+    if a[0] in ('issue', 'pr') and a[1:2] and a[1] in ('create', 'comment', 'review'):
+        repo = next((x.split('=', 1)[1] for x in a if x.startswith('--repo=')), None) or \
+            next((a[i + 1] for i in range(len(a) - 1) if a[i] in ('--repo', '-R')), None)
+        arg = a[2] if a[2:3] and not a[2].startswith('-') else ''
+        m = re.search(r'github\.com/([\w.-]+/[\w.-]+)/(?:issues|pull)/(\d+)', arg)
+        if m: return m.group(1), m.group(2)
+        return repo, (arg if arg.isdigit() else None)
+    if a[0] == 'api':
+        m = next((re.match(r'/?repos/([\w.-]+/[\w.-]+)/(?:issues|pulls)\b(?:/(\d+))?', x) for x in a[1:]
+                  if re.match(r'/?repos/[\w.-]+/[\w.-]+/(issues|pulls)\b', x)), None)
+        method = next((x[2:] for x in a if x.startswith('-X') and len(x) > 2), None) or \
+            next((a[i + 1] for i in range(len(a) - 1) if a[i] in ('-X', '--method')), None)
+        body = any(x in ('-f', '-F', '--field', '--raw-field', '--input') or re.match(r'^--(field|raw-field|input)=', x) for x in a)
+        if m and (method.upper() == 'POST' if method else body):
+            return m.group(1), m.group(2)
+    return None
+
+try:
+    targets = [x for x in (target(s) for s in segments(cmd)) if x]
+except ValueError:
     sys.exit(0)
+if not targets:
+    sys.exit(0)
+def posted(repo, num):  # a URL in stdout counts only when it is the thread a posting segment wrote to
+    return any((tr is None or tr == repo) and (tn is None or tn == num) for tr, tn in targets)
 reg = os.path.expanduser('~/.claude/gh-watch-dirs.txt')
 dirs = [l.strip() for l in open(reg)] if os.path.exists(reg) else []
 def lines(dr, f):
@@ -25,6 +84,8 @@ def live(dr):
         return False
 live_dirs = [dr for dr in dirs if live(dr)]
 for repo, num in set(re.findall(r'github\.com/([\w.-]+/[\w.-]+)/(?:issues|pull)/(\d+)', out)):
+    if not posted(repo, num):
+        continue
     line = f'{repo} {num}'
     if any(line in lines(dr, 'threads.txt') for dr in live_dirs):
         continue

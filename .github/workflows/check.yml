@@ -6,3 +6,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: python3 docs/build-graphs.py --check
+      - run: bash tests/hooks.sh .
+      - run: bash tests/watcher.sh .
