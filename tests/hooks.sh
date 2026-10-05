@@ -19,7 +19,7 @@ check() { # name want got
   echo "$1: $3 (want $2)"; [ "$2" = "$3" ] || fails=$((fails+1))
 }
 
-# ---------- stop-lint (B2, B4) ----------
+# ---------- stop-lint ----------
 sleep 600 & SPID=$!
 WD="$T/work/x"; mkdir -p "$WD" "$T/work/x-2/sub" "$WD/sub"
 echo "$SPID" > "$WD/gh-watch.pid"
@@ -32,23 +32,23 @@ stop() { # cwd
     | python3 "$R/hooks/stop-lint.py" 2>"$T/err"; echo $?
 }
 tr_file "The watcher runs and the Monitor is armed."
-check "B2 no replies-owed.md, cwd=watch dir" 0 "$(stop "$WD")"
+check "no replies-owed.md, cwd=watch dir" 0 "$(stop "$WD")"
 echo "o/r 1 comment 42 by someone" > "$WD/replies-owed.md"
 check "control: open owed line, cwd=watch dir" 2 "$(stop "$WD")"
 check "control: open owed line, cwd=inside watch dir" 2 "$(stop "$WD/sub")"
 tr_file "README tidied."
-check "B4 open owed line, cwd=parent of watch dir" 0 "$(stop "$T/work")"
-check "B4 open owed line, cwd=prefix sibling x-2" 0 "$(stop "$T/work/x-2/sub")"
+check "open owed line, cwd=parent of watch dir" 0 "$(stop "$T/work")"
+check "open owed line, cwd=prefix sibling x-2" 0 "$(stop "$T/work/x-2/sub")"
 kill "$SPID"; wait "$SPID" 2>/dev/null
 
-# ---------- pre-bash-guard check_turn (B3) ----------
+# ---------- pre-bash-guard check_turn ----------
 D="$T/drafts"; mkdir -p "$D"
 gate() { printf '%s\n' "$2" > "$D/$1.md"; sha256sum "$D/$1.md" | cut -d' ' -f1 > "$D/$1.md.gate"
          python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1]).read().replace("\r\n","\n").strip().encode()).hexdigest())' "$D/$1.md" >> "$HOME/.claude/gated-posts.txt"; }
 gate a1 "Agent comment one."
 gate a2 "Agent comment two."
 gate new "Agent answer."
-now=$(date -u +%Y-%m-%dT%H:%M:%SZ); old=$(date -u -d '-4 days' +%Y-%m-%dT%H:%M:%SZ)
+now=$(date -u +%Y-%m-%dT%H:%M:%SZ); old=$(date -u -d '-4 hours' +%Y-%m-%dT%H:%M:%SZ); hour=$(date -u -d '-1 hour' +%Y-%m-%dT%H:%M:%SZ)
 comments() { # body1 body2 created2
   echo 2 > "$FX/repos_o_r_issues_5"
   python3 -c 'import json,sys; print(json.dumps([{"body":sys.argv[1],"created":sys.argv[3],"url":"https://example.invalid/c1"},{"body":sys.argv[2],"created":sys.argv[3],"url":"https://example.invalid/c2"}]))' \
@@ -61,21 +61,23 @@ guard() { # extra args
 }
 A1="Agent comment one."; A2="Agent comment two."
 comments "$A1" "/ai please also cover the edge case" "$now"
-check "B3 last comment is the user's own (same login, not gated)" 0 "$(guard)"
+check "last comment is the user's own (same login, not gated)" 0 "$(guard)"
 comments "Maintainer question" "$A2" "$now"
-check "B3 only the last comment is the agent's" 0 "$(guard)"
+check "only the last comment is the agent's" 0 "$(guard)"
 comments "$A1" "$A2" "$now"
 date -u -d '+1 minute' +%Y-%m-%dT%H:%M:%SZ > "$FX/repos_o_r_pulls_5_reviews_per_page_100"
-check "B3 last two are the agent's but a review came after" 0 "$(guard)"
+check "last two are the agent's but a review came after" 0 "$(guard)"
 rm "$FX/repos_o_r_pulls_5_reviews_per_page_100"
 check "--help on a comment command" 0 "$(guard --help)"
 comments "$A1" "$A2" "$old"
-check "last two are the agent's, last is 4 days old (wait ping)" 0 "$(guard)"
+check "last two are the agent's, last is 4 hours old (wait ping)" 0 "$(guard)"
+comments "$A1" "$A2" "$hour"
+check "BLOCK: last two are the agent's, last is 1 hour old" 2 "$(guard)"
 comments "$A1" "$A2" "$now"
 check "BLOCK: last two are the agent's gated posts, recent, no review (issue 404)" 2 "$(guard)"
 grep -o 'your last two comments.*' "$T/err" | sed 's#https\?://[^ )]*#<url>#'
 
-# ---------- post-bash-register (B8): only a real gh post registers, and only the thread it posted to ----------
+# ---------- post-bash-register: only a real gh post registers, and only the thread it posted to ----------
 sleep 600 & SPID=$!
 WD="$T/reg"; mkdir -p "$WD"; echo "$SPID" > "$WD/gh-watch.pid"
 echo "$WD" > "$HOME/.claude/gh-watch-dirs.txt"
@@ -86,9 +88,9 @@ register() { # command stdout -> the watch dir's threads.txt, space-joined
     | python3 "$R/hooks/post-bash-register.py"
   [ -f "$WD/threads.txt" ] && paste -sd' ' "$WD/threads.txt" || echo none
 }
-check "B8 printf that mentions a comment command, URL in output" none \
+check "printf that mentions a comment command, URL in output" none \
   "$(register "printf '%s' 'gh issue comment 5 --repo o/r' > in.json; python3 hook.py < in.json" "$U5")"
-check "B8 grep for a comment command, URL in output" none \
+check "grep for a comment command, URL in output" none \
   "$(register "grep -rn 'gh issue comment 5 --repo o/r' ." "x.md: $U5")"
 check "real gh issue comment" "o/r 5" \
   "$(register "gh issue comment 5 --repo o/r --body-file x" "$U5")"

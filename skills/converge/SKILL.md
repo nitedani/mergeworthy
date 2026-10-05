@@ -71,10 +71,10 @@ The decision packet (1.2) is the list of people's picks. Keep it current and giv
 ### The phantom gate (every fix must pass it)
 
 A phantom fix must not ship. A fix is phantom if any of these holds:
-- **P1, no real, documented usage reaches it.** Name the documented scenario, and trace it on both ends: client and server, caller and callee, sender and receiver. A bug that one layer "has" is not a bug if another layer already owns that behavior.
-- **P2, it changes a deliberate behavior,** such as a usage error the code raises on purpose, a documented limit, or an owner's design.
-- **P3, its comments aren't literally true.**
-- **P4, it is a mechanism for a case that can't occur,** such as a defensive branch for an unreachable state. Use an assertion instead, or nothing.
+- **No real, documented usage reaches it.** Name the documented scenario, and trace it on both ends: client and server, caller and callee, sender and receiver. A bug that one layer "has" is not a bug if another layer already owns that behavior.
+- **It changes a deliberate behavior,** such as a usage error the code raises on purpose, a documented limit, or an owner's design.
+- **Its comments aren't literally true.**
+- **It is a mechanism for a case that can't occur,** such as a defensive branch for an unreachable state. Use an assertion instead, or nothing.
 
 Every fix also follows these:
 - **No silent fallbacks:** a usage error stays a usage error.
@@ -86,7 +86,7 @@ Every fix also follows these:
 "No test fails without it" doesn't prove a mechanism is phantom. Before removing a guard, a dedup, a retry or a memo:
 - **Probe the symptom.** Name the symptom the mechanism prevents. Probe that symptom through documented usage against the real threshold: listener counts and MaxListeners warnings, timers, memory, ordering, duplicate delivery.
 - **In the owning lane.** Run the probe in the product lane that owns the mechanism (the real transport, backend and runtime), not only in unit tests.
-- **A product-shaped failure keeps it.** The mechanism stays as GENUINE-CONFIRMED, with the failure text recorded.
+- **A product-shaped failure keeps it.** The mechanism stays, recorded as GENUINE-CONFIRMED (the guardian charter's mark for a mechanism a probe proved necessary) with the failure text.
 - **Repaired twice is suspect.** Re-probe whether a mechanism repaired twice needs to exist at all.
 - **The backstop:** the final bug verification after the refactors (`verify`) compares the pre-refactor tree with the head.
 

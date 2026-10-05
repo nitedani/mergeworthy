@@ -5,7 +5,7 @@ description: "Any independent review: who reviews (Codex, else a fresh Claude), 
 
 # Review
 
-**Every independent review picks its reviewer in this order.** That covers the posting gate (1.6), the PR review round below, `refactor`'s refactor pass, and `converge`'s passes.
+**Every independent review picks its reviewer in this order.** That covers the posting gate (1.6), the PR review round below, a standalone review, and the reader of a PR's final head (`converge`). The reader that runs `converge`'s passes on each slice set is a Claude agent, as `converge` says.
 
 1. **Codex**, another company's model:
    ```bash
@@ -85,5 +85,3 @@ Output:
 - then what you searched and did not find.
 
 No style preferences.
-
-Your final message is exactly `CLEAN` when the verdict is PASS with no findings, else the findings.

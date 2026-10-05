@@ -61,10 +61,10 @@ Refactor this PR:
 
 ## Running it
 
-- **The rater is not the author**, and not in the author's context. The rater rates read-only.
+- **The rater is not the author**, and not in the author's context; the one exception is having no reviewer at all (above). The rater rates read-only.
 - **The author implements commit by commit** (in a guardian round, `guardian`'s implementer does). Then the same rater, sent the commits, re-rates old ⇒ new.
 - **Scope:** everything the diff touches, at 100% coverage. Code outside the diff is context.
-- **Gates after every commit.** A red gate means revert that commit, never a patch on top.
+- **Gates after every commit.** A red gate means revert that commit, never a patch on top. In a guardian round, the implementer brief's rule applies instead: fix that commit.
 - **Refactor commits are separate from behavior commits.**
 - **A pass that changed nothing** says so, and why.
 - **The final lists go in the ledger** (1.2) with the working notes, in the artifact root: old ⇒ new, the reason, commit links, and the ✅ lists. The PR shows the result, not the ratings (1.6).

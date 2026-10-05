@@ -66,7 +66,7 @@ It blocks:
 - a `gh` post or edit whose body isn't a gated draft, or changed since its gate (use absolute draft paths);
 - opening an issue or PR in a repo no running watcher covers;
 - the same gated draft posted twice as new;
-- a third comment while your last two on that thread have no reply and the last is under 3 days old (1.6);
+- a third comment while your last two on that thread have no reply and the last is under 3 hours old (1.6);
 - `gh pr merge` without `--squash --subject "<title> (#N)" --body ""`, and with `merge=reviewer`, every merge;
 - `--delete-branch` while PRs are based on the branch;
 - a `git commit` whose author isn't the pushing GitHub account (1.7);

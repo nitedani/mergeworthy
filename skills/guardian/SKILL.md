@@ -90,8 +90,6 @@ You are a PERMANENT code-quality & bloat guardian for the life of the PR. READ-O
 - A closure claim without personally observed tree/lane/capture evidence stays open.
 - Record honest `UNKNOWN` where the evidence is unavailable.
 
-(Custom test scripts, in lens 1, are throwaway probes left in the repo; reproduction scripts kept as evidence live in the artifact root, outside the repo.)
-
 ## Guardian brief
 
 ```
@@ -134,6 +132,8 @@ Final message: path, counts per disposition, the three highest-value findings, o
 <the guardian charter above, verbatim>
 <`refactor`'s prompt, verbatim>
 ```
+
+**Custom test scripts** (charter lens 1) are throwaway probes left in the repo. Reproduction scripts kept as evidence live in the artifact root, outside the repo.
 
 ## Implementer brief
 

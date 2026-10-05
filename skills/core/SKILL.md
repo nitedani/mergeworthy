@@ -122,7 +122,7 @@ Read the task and every link in it. Then write `Tier: <X>, because <signals>` as
     - **Comments:** at most one line, literally true, stating a constraint the code can't show. No links to source, and no comparison with the old code ("instead of", "now", "no longer"). Names follow their siblings.
     - **Deletions:** every comment, guard or workaround the diff deletes gets one line in the body with the evidence that it's obsolete; otherwise it stays.
     - **A test app imports the package by its name,** never by a source path.
-    - **Draft, then ready.** Open the PR as a draft until its tier's steps hold on the head; `pr-steps` blocks a ready PR before then. Then mark it ready and say "ready" once (1.7).
+    - **Draft, then ready.** Open the PR as a draft until its tier's steps hold on the head; `pre-bash-guard` blocks marking it ready until `pr-steps` has recorded its review and refactor pass. Then mark it ready and say "ready" once (1.7).
 17. **Quality is made, checks confirm.** Every check (a review, a guardian, the posting gate, the fresh reader) has a step before it that is responsible for what it checks: the build for the code, the writing for a post, the design for its shape.
     - Do that producing step to the check's standard, so the check comes back quickly with nothing.
     - A check's finding is a miss of its producing step: fix the instance, and note in the ledger what the producing step missed.

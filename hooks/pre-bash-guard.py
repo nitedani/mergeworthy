@@ -111,8 +111,8 @@ def need_watch(repo):
         block(f"no running watcher covers {repo}: `gh-watch-start <your artifact root> {repo}`, arm the Monitor it prints, then open it")
 
 def check_turn(repo, num, args=()):
-    """1.6 one comment per turn: while your last two comments on a thread have no reply after them (and the last is
-    under 3 days old, the wait ping), a third stacks on them: edit the last one instead. The agent and the user may
+    """1.6 at most two comments in a row: while your last two comments on a thread have no reply after them and the last
+    is under 3 hours old, a third stacks on them: edit the last one instead. After 3 hours, the third is the wait ping. The agent and the user may
     share one login, so a comment is the agent's only when its body was gated (gate-pass writes ~/.claude/gated-posts.txt)."""
     if '--help' in args or '-h' in args or not repo or not str(num).isdigit():
         return
@@ -130,17 +130,17 @@ def check_turn(repo, num, args=()):
         reviews = api(f'repos/{repo}/pulls/{num}/reviews?per_page=100', '.[].submitted_at').split()  # 404 on an issue: none
     except Exception:
         return
-    f = os.path.expanduser('~/.claude/gated-posts.txt')
+    f = os.path.expanduser(os.environ.get('GATED_POSTS', '~/.claude/gated-posts.txt'))
     gated = set(open(f).read().split()) if os.path.exists(f) else set()
     norm = lambda b: hashlib.sha256((b or '').replace('\r\n', '\n').strip().encode()).hexdigest()
     if len(last) < 2 or not all(norm(c['body']) in gated for c in last):
         return
     import datetime
     when = lambda t: datetime.datetime.fromisoformat(t.replace('Z', '+00:00'))
-    if (datetime.datetime.now(datetime.timezone.utc) - when(last[-1]['created'])).days >= 3 or any(when(r) > when(last[-1]['created']) for r in reviews if r != 'null'):
+    if (datetime.datetime.now(datetime.timezone.utc) - when(last[-1]['created'])).total_seconds() >= 3 * 3600 or any(when(r) > when(last[-1]['created']) for r in reviews if r != 'null'):
         return
     block(f"your last two comments on {repo}#{num} have no reply yet ({last[-1]['url']}): edit the last one instead of posting a third; "
-          "one comment per turn (mergeworthy:github-threads 1.6)")
+          "at most two comments in a row; after 3 hours without a reply, the wait ping may follow (mergeworthy:github-threads 1.6)")
 
 
 def cwd_repo(run_dir):

@@ -28,7 +28,7 @@ Run `npx mergeworthy` again to change the options or add an agent; `npx mergewor
 
 ## How it reads
 
-This is the work automation methodology (v3), split into skills along its own parts and sections. The split keeps the methodology's substance and its four prompts word for word. `always-on.md` is loaded in every session: it holds the always-on rules and an index of which skill to open when, and which rule numbers each skill holds. Rule numbers (1.6, 1.1.15) work across skills.
+This is the work automation methodology, split into skills along its own parts and sections. The split keeps the methodology's substance, and its prompts and charters word for word. `always-on.md` is loaded in every session: it holds the always-on rules and an index of which skill to open when, and which rule numbers each skill holds. Rule numbers (1.6, 1.1.15) work across skills.
 
 | Skill | Holds |
 |---|---|

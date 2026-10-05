@@ -1,6 +1,6 @@
 ---
 name: delegating
-description: "Writing rules, prompts or docs, and starting, briefing or integrating subagents."
+description: "Writing skills, rules or prompts, and starting, briefing or integrating subagents."
 ---
 
 ## 1.9 Writing rules, prompts and docs

@@ -54,7 +54,7 @@ Fan out parallel mapper agents over the subsystems, one shared node schema.
 Mappers are read-only; graphs are artifacts.
 
 PHASE B — IMAGINE.
-Give the assembled graph to ONE agent on the session's own model (one at a time, always on the
+Give the assembled graph to ONE strongest-model agent (one at a time, always on the
 hardest task) and have it derive the PINNACLE design — the shape this feature would have if
 designed today, from scratch, knowing everything the graph knows, with NO obligation to the
 current file layout.
