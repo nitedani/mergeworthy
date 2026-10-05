@@ -64,7 +64,7 @@ for wd in (l.strip() for l in open(reg)) if os.path.exists(reg) else ():
     # (its state, its log) doesn't make that session's owed replies this one's.
     home_wd = wd.replace(os.path.expanduser('~'), '~', 1)
     def mentions(c): return wd in c or home_wd in c
-    if wd and (cwd_d.startswith(wd) or wd.startswith(cwd_d or '/nonexistent') or any(map(mentions, monitor_cmds))
+    if wd and (cwd_d == wd or cwd_d.startswith(wd.rstrip('/') + '/') or any(map(mentions, monitor_cmds))
                or any(mentions(c) and re.search(r'\b(gh-watch-start|gate-pass)\b', c) for c in commands)): own_dirs.add(wd)
 _env = os.path.expanduser('~/.mergeworthy/settings.env')
 # MERGEWORTHY_WATCHER in the environment wins over the plugin option, as for every script
