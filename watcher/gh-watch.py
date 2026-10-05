@@ -6,7 +6,6 @@
   /ai or /agent, on any thread (your events feed; one watch dir gets each, see main_dir). Nothing else.
 - Maintainers' commits pushed to a tracked PR, and 👍/👎 from GH_WATCH_EYES on the agent's comments.
 - PR head/state changes (pushes, merges, closes), CI turning red or green on open PRs, and your PR's code (tests excluded) changing by more than ~80 lines since its last refactor pass (REFACTOR STALE).
-- Tracker drift (../bin/tracker-check).
 State lives in gh-watch-state.json: every seen (id, updated_at) pair, so nothing is skipped or repeated,
 and scans overlap by 10 minutes. A failed API call prints WATCH ERROR and that thread's scan position isn't advanced.
 """
@@ -41,11 +40,11 @@ def gh_json(path):
 def load_state():
     try:
         s = json.load(open(STATE))
-        s.setdefault('since_by', {}); s.setdefault('stale', [])
+        s.setdefault('since_by', {})
         return s
     except Exception:
         now = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=1)
-        return {'since': now.strftime('%Y-%m-%dT%H:%M:%SZ'), 'seen': {}, 'prs': {}, 'ci': {}, 'is_pr': {}, 'since_by': {}, 'stale': []}
+        return {'since': now.strftime('%Y-%m-%dT%H:%M:%SZ'), 'seen': {}, 'prs': {}, 'ci': {}, 'is_pr': {}, 'since_by': {}}
 
 
 def save_state(s):
@@ -452,15 +451,6 @@ def run_scan():
     with locked():
         state = load_state()
         scan_reactions(state, scan_set(state, read_threads()))
-        save_state(state)
-    r = subprocess.run(['bash', os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'bin', 'tracker-check')], capture_output=True, text=True)
-    stale = [l for l in r.stdout.splitlines() if 'STALE' in l]
-    with locked():
-        state = load_state()
-        for l in stale:
-            if l not in state['stale']:  # report each drift once, not every scan
-                emit(l)
-        state['stale'] = stale
         save_state(state)
 
 

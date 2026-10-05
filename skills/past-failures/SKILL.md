@@ -12,7 +12,7 @@ Each happened, most more than once. When a rule fails or the user names a failur
 | Replies posted unreviewed; correction comments stacked on top; one draft posted twice. | 1.6, `pre-bash-guard` |
 | Maintainer comments unanswered for hours: watcher gaps, unregistered PRs, a watch expired during a usage limit, 👀 then silence, an issue opened by a "Tier 0" audit and never watched. Asked "why didn't you?", the agent explained and waited for a go. | 1.5 watcher, 1.1.13, always-on (named failure), `gh-watch-start`, `pre-bash-guard`, `stop-lint` |
 | "Good!" read as closing an old point, left 45 minutes. | 1.5 acknowledgements, `proposals-open.md` |
-| Stale tracker lines and Decisions comment, hours and many merges behind. | 1.2, `tracker-check` |
+| Stale tracker lines and Decisions comment, hours and many merges behind. | 1.2 |
 | Red CI noticed by the user. | `gh-watch` CI events |
 | An LGTM'd item still "waiting"; a superseded statement cited. | 1.1.9 |
 | Maintainer instructions ignored ("remove the test right before merging", twice). | 1.7 checkboxes, `ready-check` |
@@ -57,6 +57,6 @@ Each happened, most more than once. When a rule fails or the user names a failur
 | Squash merges carrying full PR history. | 1.7, `pre-bash-guard` |
 | `ps \| awk '/<port>/'` matched and killed another session's server. | 1.8 |
 | Posting with inline bodies; `gh run rerun` on upstream (needs admin: ask a maintainer); fork PRs lack CI secrets, so those jobs fail. | 1.6 step 4, 1.7 CI |
-| A Claude reviewer started while Codex was out of credits and the local model was free; the CLI local agent timed out with no result. | `review`, `codex-review-model` |
+| A Claude reviewer started while Codex was out of credits and the local model was free; the CLI local agent timed out with no result. | `review` |
 | The watcher started a separate headless agent per event; it ran without context or permissions, the user saw 👀 and no answer, and the session that owned the thread never heard of it. | 1.5 (the session is the agent, woken by its Monitor), `stop-lint` |
 | The agent was told to register every open PR and issue in the scope repos and answer every maintainer comment, and every thread it commented on joined its watch list; the user wants answers only on threads the agent opened and to their own `/ai` calls. | 1.5 (which comments you answer), `gh-watch`, `post-bash-register` |

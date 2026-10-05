@@ -207,22 +207,6 @@ def check(t, has_cd):
         if m and method == 'POST': need_watch(m.group(1))
         for f in bodies + inputs: gated_file(f, has_cd, create=method == 'POST')
 
-# Command lines with heredoc bodies and quoted text blanked out
-def _code_lines(c):
-    lines, term = [], None
-    for l in c.split('\n'):
-        if term is not None:
-            if l.strip() == term: term = None
-            continue
-        h = re.search(r"<<-?\s*['\"]?(\w+)['\"]?", l)
-        if h: term = h.group(1)
-        lines.append(re.sub(r"'[^']*'|\"[^\"]*\"", "''", l))
-    return lines
-
-# Servers on fixed ports (3000) collide across parallel runs, agents and sessions: each run gets its own network namespace
-if any(re.search(r'(^|[\s;(&|])(test-e2e|vike (dev|preview)|pnpm (run )?(dev|preview)\b|npm run (dev|preview)\b)', l) and not re.search(r'(^|[\s;(&|])isolated-run\s', l) for l in _code_lines(cmd)):
-    block("start e2e tests and dev/preview servers through `isolated-run <command>` (own network namespace), so their fixed ports never collide with another run or agent")
-
 try:
     segs = segments(cmd)
 except ValueError:

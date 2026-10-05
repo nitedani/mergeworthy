@@ -86,7 +86,6 @@ Read the task and every link in it. Write `Tier: <X>, because <signals>` and put
   - Update the body **and** the Decisions comment in the same step as every event.
   - A forward-looking line ("working on X", "waiting on Y") names the event that removes it; when that event fires, remove the line.
   - Program-wide status lives only on the umbrella; a PR body keeps only its own notes table. When a decision replaces a design, update every surface that still describes the old one (code, tests, types, docs, open PR bodies) in the same step.
-  - `tracker-check` flags drift; no report to the user while it's red.
 
 ## 1.3 Discovery
 
@@ -103,7 +102,7 @@ Read the task and every link in it. Write `Tier: <X>, because <signals>` and put
 - Whatever you start, you stop: dev servers, builds, preview servers, proxies. A subagent records the PIDs it starts and kills them before handing back; check with `ps` that none are left. Find a server by the PID you started (and its children, `pgrep -P <pid>`) or by its port (`ss -ltnp 'sport = :<port>'`); never grep `ps` output for a port number, and never `pgrep -f <pattern>`. Check each PID's command and directory before killing it.
 - At most 4 browsers and 4 dev servers of your own at once; stop each when its work ends.
 - Never restart or reconfigure a container someone else's work depends on; start your own alongside.
-- Anything that listens on a port (e2e tests, dev and preview servers) runs through `isolated-run <command>`, yours and every subagent's: its own network namespace with a private loopback (outside network through a proxy it sets up), so fixed ports never collide and parallel runs never test each other's servers. Never kill or wait out another run's server.
+- Each dev server, preview server or e2e run you start gets its own free port (`--port`, `PORT=`); never use a port another run holds, and never kill or wait out another run's server.
 - Never modify the package store or a shared `node_modules`; scratch installs use `--package-import-method=copy`. After any install, check `git status` for unexpected changes.
 - Browser work uses the DevTools MCP, started with `--isolated` (`implement-issue`). Never fall back to scripted browsers silently, never open windows on the user's desktop, never kill another session's browser.
 - Isolate worktrees: their own ports, databases and generated clients. Never touch the user's own checkouts (the clones the user works in), including their git config, which their worktrees share: no edits, commits, checkouts, resets or branch switches; work in worktrees you create, and to read another branch, `git worktree add --detach <artifact root>/<name> <ref>`.
@@ -113,7 +112,7 @@ Read the task and every link in it. Write `Tier: <X>, because <signals>` and put
 - **First lines:** answers to the user's questions, then the outcome or the action needed from them.
 - **Then:** each PR's state and what was found and fixed since the last report, with links; what's still running, what's waiting on whom, what's theirs to decide, and the critical path with an ETA per step.
 - About 12 lines unless asked for more. Local files as absolute paths; every PR or issue with its title and link, including every issue you filed. The 1.6 writing rules apply. Don't restate their instructions; no step-by-step narration.
-- Before reporting status, run `tracker-check` and check `ready-check` where they apply (`mechanisms`). Never claim a pass went dry for a slice that hasn't had it. State unfavorable facts, mistakes and skipped steps plainly.
+- Before reporting status, re-read the umbrella issue against the PRs' states (Tier L) and check `ready-check` where it applies (`mechanisms`). Never claim a pass went dry for a slice that hasn't had it. State unfavorable facts, mistakes and skipped steps plainly.
 
 ## 1.12 Pre-flight (steps 3 and 4 in every tier; the rest in Tier ≥ M)
 

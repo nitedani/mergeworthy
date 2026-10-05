@@ -98,7 +98,7 @@ function removeOldInstall() {
   for (const d of fs.existsSync(skills) ? fs.readdirSync(skills) : []) if (d.startsWith('methodology-')) fs.rmSync(path.join(skills, d), { recursive: true })
   // Sessions started before this keep their hooks and PATH from the old install (hooks are read at session start):
   // the old files become links to the new version, so those sessions keep working, on the new code
-  const NEW = { 'post-lint.py': 'bin/post-lint', 'tracker-check.sh': 'bin/tracker-check' }
+  const NEW = { 'post-lint.py': 'bin/post-lint' }
   for (const f of fs.existsSync(MECH) ? fs.readdirSync(MECH) : []) {
     const rel = NEW[f] || (['hooks', 'bin', 'watcher'].map((d) => `${d}/${f}`).find((r) => fs.existsSync(path.join(CURRENT, r))) || null)
     if (!rel) continue
