@@ -5,9 +5,9 @@ description: "The refactor pass on a PR's diff: the pinnacle-split-and-simplify 
 
 # Refactor pass
 
-**Who rates, and when.** The agent that ran `review`'s PR review round rates the diff with the prompt below, in the same run, right after the review (`implement-issue` steps 6 and 7). With no reviewer available, run the prompt yourself in two separate passes (rate, then edit), and record that.
+**Who rates, and when.** The agent that ran `review`'s PR review round rates the diff with the prompt below, right after the review, in the same prompt (one run, `delegating`; `implement-issue` steps 6 and 7). With no reviewer available, run the prompt yourself in two separate passes (rate, then edit), and record that.
 
-**How it is recorded.** On the final head, run `pr-steps refactor <output>` with the rater's last re-rating. Refactor commits change the head, so before ready, send the same agent the commits:
+**How it is recorded.** On the final head, run `pr-steps refactor <output>` with the rater's last re-rating. Refactor commits change the head, so before ready, continue the same agent (`delegating`, one run) with the commits:
 - it re-rates them;
 - it confirms its review on the final head (fix the real defects it finds, and have it confirm again);
 - record that confirmation with `pr-steps review` (1.7).

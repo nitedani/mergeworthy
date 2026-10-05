@@ -18,7 +18,7 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 | `merging` | nothing |
 | `past-failures` | nothing |
 | `refactor` | nothing |
-| `review` | `guardian`, `refactor`, `github-threads`, `core`, `converge` |
+| `review` | `delegating`, `guardian`, `refactor`, `github-threads`, `core`, `converge` |
 | `verify` | `converge`, `core` |
 
 ## Any multi-step or GitHub task, first
@@ -319,10 +319,11 @@ flowchart TB
     s2["3. A fresh-context Claude<br/>subagent"]
     s1 --> s2
   end
-  s2 -.-> r1[["guardian"]]
-  s2 -.-> r2[["refactor"]]
-  s2 -.-> r3[["github-threads"]]
-  s2 -.-> r4[["core"]]
+  s2 -.-> r1[["delegating"]]
+  s2 -.-> r2[["guardian"]]
+  s2 -.-> r3[["refactor"]]
+  s2 -.-> r4[["github-threads"]]
+  s2 -.-> r5[["core"]]
   subgraph g1["The PR review round"]
     s3["1. Write the charter to<br/>‹artifact<br/>root›/review-‹pass<br/>id›.md"]
     s4["2. Append the diff command<br/>against git merge-base<br/>HEAD …"]
@@ -332,9 +333,9 @@ flowchart TB
     s6["4. If no reviewer at all is<br/>available"]
     s5 --> s6
   end
-  s4 -.-> r5[["core"]]
-  s6 -.-> r6[["converge"]]
-  s6 -.-> r7[["core"]]
+  s4 -.-> r6[["core"]]
+  s6 -.-> r7[["converge"]]
+  s6 -.-> r8[["core"]]
   start --> g0
   g0 ~~~ g1
 ```

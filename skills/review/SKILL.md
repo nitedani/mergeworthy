@@ -16,7 +16,7 @@ description: "Any independent review: who reviews (Codex, else a fresh Claude), 
 3. **A fresh-context Claude subagent** on the session's default model, with the same prompt. Never a cheaper model.
 
 After the review:
-- **Confirm fixes with the same reviewer.** After you fix its findings, continue that reviewer and send it what changed. Start a fresh reviewer only when the artifact changed beyond those findings, or for the final read of a long artifact.
+- **Confirm fixes with the same reviewer.** After you fix its findings, continue that reviewer (`delegating`, one run) and send it what changed. Start a fresh reviewer only when the artifact changed beyond those findings, or for the final read of a long artifact.
 - **A failure is not a review.** An error, a hang or "out of credits" counts as no review.
 - **Record which reviewer ran.** On Tier ≥ M work, re-review on Codex once Codex is back.
 
