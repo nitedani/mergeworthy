@@ -270,10 +270,11 @@ flowchart TB
   end
   s0 -.-> r1[["delegating"]]
   s3 -.-> r2[["review"]]
+  s3 -.-> r3[["delegating"]]
   subgraph g1["Guardian"]
     s4["12 rules: BLOAT, CODE QUALITY, PROBLEM VARIABILITY…"]
   end
-  s4 -.-> r3[["design-loop"]]
+  s4 -.-> r4[["design-loop"]]
   start --> g0
   g0 ~~~ g1
 ```
