@@ -105,5 +105,12 @@ check "gh api read (-X GET with fields)" none \
 check "gh --help on a comment command" none \
   "$(register "gh issue comment 5 --repo o/r --help" "$U5")"
 kill "$SPID"; wait "$SPID" 2>/dev/null
+
+# ---------- post-lint: each list item is its own sentence ----------
+items=$(for i in 1 2 3 4 5 6 7; do echo "  - item number $i with a few short words;"; done)
+printf 'A list of short items follows here:\n%s\n' "$items" > "$T/list.md"
+check "a list of short items passes" 0 "$(python3 "$R/bin/post-lint" "$T/list.md" --kind tracker --parent none >/dev/null 2>&1; echo $?)"
+printf 'A list follows:\n- %s\n' "$(printf 'word %.0s' $(seq 35))" > "$T/long.md"
+check "BLOCK: one list item over 30 words" 1 "$(python3 "$R/bin/post-lint" "$T/long.md" --kind tracker --parent none >/dev/null 2>&1; echo $?)"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]
