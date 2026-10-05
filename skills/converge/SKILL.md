@@ -11,12 +11,12 @@ Converging a pull request means working it to a final state: no reviewer, agent 
 - **New API or protocol:** converge runs on it only once the maintainer has OK'd its shape (`design-loop`, 1.4 step 5).
 - **Your role:** you are the orchestrator, and the only writer of the PR branches' git history. Subagents work read-only or in their own worktrees; you review what they produce and land it.
 
-Converged means every one of these has converged:
-1. **Bug verification (Loop A).** Loop A is the reproduce-only bug hunt in `verify`; open `verify` to run it. Every slice of every PR has a dry pass after its last fix: a reproduce-only pass that finds no bug that counts.
-2. **Guardian (Loop B, bloat and quality).** Loop B is the guardian rounds in `guardian`; open `guardian` to run them. The reader's guardian verdict for each scope finds nothing behavior-preserving worth its price. It says so in an honest-positive verdict: a plain "nothing worth changing", given as a real result. The fresh reader's Bloat lens on the final head is clean too.
-3. **Refactor pass.** Every file, function and piece of logic is rated, the ratings are high and justified, and the rater's last round leaves nothing worth doing. Open `refactor` for the prompt and how to run it.
-4. **Finality and Owner-Safe closure,** where the area has drifted through many patches. Open `finality` when the work reshapes existing code, or when a small change can't be made cleanly because of past patches.
-5. **Code review** against the repo's standards and the spec: the fresh reader on the final head (who reads, below).
+Converged means every one of these has converged. They're listed in the order they run:
+1. **Finality and Owner-Safe closure,** where the area has drifted through many patches. Open `finality` when the work reshapes existing code, or when a small change can't be made cleanly because of past patches. Its Phases A and B are the analysis while planning (`implement-issue` step 3), its Phase C is the build itself, and Owner-Safe closure ends Phase C.
+2. **Bug verification (Loop A).** Loop A is the reproduce-only bug hunt in `verify`; open `verify` to run it. Every slice of every PR has a dry pass after its last fix: a reproduce-only pass that finds no bug that counts.
+3. **Code review** against the repo's standards and the spec. The reader runs the reviewer charter right after the bug hunt, and the fresh reader runs it again on the final head (who reads, below).
+4. **Guardian (Loop B, bloat and quality).** Loop B is the guardian rounds in `guardian`; open `guardian` to run them. The reader's guardian verdict for each scope finds nothing behavior-preserving worth its price. It says so in an honest-positive verdict: a plain "nothing worth changing", given as a real result. The fresh reader's Bloat lens on the final head is clean too.
+5. **Refactor pass.** Every file, function and piece of logic is rated, the ratings are high and justified, and the rater's last round leaves nothing worth doing. Open `refactor` for the prompt and how to run it.
 6. **Gates and body.** Every gate and product lane is green on each PR's final head, CI is green, and the PR bodies are true to the final head.
 
 Owner decisions don't block convergence, and neither do changes to code the owner wrote. They go on the owner's list with a recommendation.

@@ -6,7 +6,7 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 
 | Skill | Hands over to |
 |---|---|
-| `converge` | `verify`, `guardian`, `refactor`, `finality` |
+| `converge` | `finality`, `implement-issue`, `verify`, `guardian`, `refactor` |
 | `core` | `implement-issue`, `delegating`, `merging`, `github-threads`, `converge` |
 | `delegating` | nothing |
 | `design-loop` | `implement-issue`, `core`, `review`, `github-threads`, `converge` |
@@ -211,22 +211,23 @@ Opens `mergeworthy:converge` (what converged means, through the passes below).
 flowchart TB
   start(["Converging a PR (Tier S<br/>condensed, Tier ≥ M in<br/>full before ready, or …"])
   subgraph g0["converge"]
-    s0["1. Bug verification"]
-    s1["2. Guardian"]
+    s0["1. Finality and Owner-Safe<br/>closure"]
+    s1["2. Bug verification"]
     s0 --> s1
-    s2["3. Refactor pass"]
+    s2["3. Code review"]
     s1 --> s2
-    s3["4. Finality and Owner-Safe<br/>closure"]
+    s3["4. Guardian"]
     s2 --> s3
-    s4["5. Code review"]
+    s4["5. Refactor pass"]
     s3 --> s4
     s5["6. Gates and body"]
     s4 --> s5
   end
-  s0 -.-> r1[["verify"]]
-  s1 -.-> r2[["guardian"]]
-  s2 -.-> r3[["refactor"]]
-  s3 -.-> r4[["finality"]]
+  s0 -.-> r1[["finality"]]
+  s0 -.-> r2[["implement-issue"]]
+  s1 -.-> r3[["verify"]]
+  s3 -.-> r4[["guardian"]]
+  s4 -.-> r5[["refactor"]]
   start --> g0
 ```
 
