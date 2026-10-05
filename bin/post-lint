@@ -87,7 +87,7 @@ if kind == 'tracker':
         for m in re.finditer(rf'^\s*- \[x\] (~~)?({ref})(?:(?:,| and) {ref})*(?!(?:~~)? \()(?!(?:,| and) {ref})', text, flags=re.M):  # a ticked item (or a group of them) says how it ended
             findings.append(f"tracker: say how {m.group(2)} ended, in parentheses right after it, e.g. '{m.group(2)} (merged)' (1.2)")
 # Reading cost (1.6 budgets): outside a PR body's evidence, tables, code and collapsed sections cost the reader as much
-# as prose; when they didn't count, a spec moved its prose into tables to pass
+# as prose, so they count
 if kind != 'pr':
     counted = re.sub(r'<!--.*?-->', '', text, flags=re.S)
     counted = re.sub(r'^\s*(?:[-*]\s+)?>.*$', '', counted, flags=re.M)              # quotes of others

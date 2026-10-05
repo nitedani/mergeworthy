@@ -3,8 +3,8 @@ flowchart TB
   EYES --> K{What is it?}:::main
   K -->|instruction| FIT{Fits the line it is anchored to?}:::main
   FIT -->|no| ASK[Ask with a recommendation]:::main --> GATE
-  FIT -->|yes| DO[Do it now in the PR]:::main --> RE[[Back into the PR pipeline: A1 re-reads the change, F the final head]]:::reader --> DONE[Reply: Done in sha, what changed]:::main
-  K -->|question / how about / overkill?| PIC[Whole picture: trace the flow in code]:::main --> D[Divergent agent D: both sides from 3+ frames, then score, traps, recommend]:::diverge --> SIMP{Answer is keep?}:::main
+  FIT -->|yes| DO[Do it now in the PR]:::main --> RE[[Back into the PR pipeline: the reader re-reads the change, the fresh reader the final head]]:::reader --> DONE[Reply: Done in sha, what changed]:::main
+  K -->|question / how about / overkill?| PIC[Whole picture: trace the flow in code]:::main --> D[Thinking agent: both sides from 3+ frames, then score and recommend]:::diverge --> SIMP{Answer is keep?}:::main
   SIMP -->|yes| BLD[Build the simpler version, name what breaks]:::main --> ANS
   SIMP -->|no| ANS[Answer: decision, code at both ends, why the other side lost]:::main
   K -->|ack: ok, lgtm| APPLY[Apply the open proposal from proposals-open.md]:::main --> DO

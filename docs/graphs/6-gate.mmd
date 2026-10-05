@@ -10,7 +10,7 @@ flowchart LR
   CL --> V
   V -->|findings| FX[Fix in your words]:::main --> SAME[Same reviewer confirms the fixes]:::fresh --> V
   V -->|exactly CLEAN| GP[gate-pass: sha recorded]:::gate --> POST[Post or edit in place]:::main
-  PRB[A PR body]:::ext -.->|its gate review is F's run| V
+  PRB[A PR body]:::ext -.->|its gate review is the fresh reader| V
   classDef main fill:#dbeafe,stroke:#1d4ed8,color:#0b1b3f
   classDef reader fill:#dcfce7,stroke:#15803d,color:#052e16
   classDef fresh fill:#fef3c7,stroke:#b45309,color:#3b1d02

@@ -171,7 +171,7 @@ def emit_dependents(key):
 
 def emit_tracker_stale(key, ended):
     """umbrella.txt ("owner/repo N"): the program's umbrella issue (methodology 1.2). When a PR merges or closes, its
-    checkbox there must be ticked and say how it ended; a tracker updated "in the same step" from memory went stale for days."""
+    checkbox there must be ticked and say how it ended."""
     path = os.path.join(HERE, 'umbrella.txt')
     w = open(path).read().split() if os.path.exists(path) else []
     if len(w) < 2 or f"{w[0]}#{w[1]}" == key:
@@ -405,7 +405,7 @@ def notifications_changed(state):
     return keys
 
 
-# kept across rounds: a new TLS connection per request made a round of ~22 polls take ~7 s instead of ~2
+# kept across rounds: a new TLS connection per request makes a round several times slower
 _pool, _conn = ThreadPoolExecutor(8), threading.local()
 
 
@@ -575,7 +575,7 @@ def installed_root():
 
 def follow_update():
     """After a plugin update, point ~/.mergeworthy/current at the new version and exit 75: the daemon restarts this
-    script on the new code. Without it a watcher ran the version it started on until someone restarted it."""
+    script on the new code."""
     root = installed_root()
     link = os.path.join(HERE, 'gh-watch.py')
     if root and os.path.islink(link) and '/plugins/cache/' in os.readlink(link):  # pinned to one version by an old gh-watch-start

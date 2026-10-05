@@ -4,7 +4,7 @@ flowchart LR
   W -->|no| NOTE[One comment with cause + evidence, posting gate]:::gate
   MG[Your PR merged]:::ext --> DEP[waiting-on.txt dependents: apply now, post progress]:::main --> TR[Tick umbrella checkbox with its state]:::main
   REL[Upstream release or DEPENDENT event]:::ext --> DEP
-  RS[REFACTOR STALE: over 80 lines since last rating]:::ext --> RR[Re-open Loop A for changed slices; A1 if alive, else a fresh A1 with the last report]:::reader
+  RS[REFACTOR STALE: over 80 lines since last rating]:::ext --> RR[Re-open Loop A for changed slices; the reader if still running, else a new one with the last report]:::reader
   TS[TRACKER STALE]:::ext --> TR
   MC[Maintainer commits on your PR]:::ext --> TBL[Review each commit in a table]:::main
   TH[Thumbs on your comment]:::ext --> ACK[Up: proceed. Down: the comment missed, rethink it]:::main
