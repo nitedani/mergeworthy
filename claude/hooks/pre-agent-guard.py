@@ -36,10 +36,12 @@ busy = run('bash', '-c', f'source <(sed -n "/^up()/,/^processing()/p" {serve}); 
 if busy is not None and busy.returncode == 0: sys.exit(0)  # a game or another program has the GPU: Claude does it
 if review:
     print("Gate reviews go to the local model while it's available: a ticket with `## File` = the draft (plus Facts and Scope), "
+          "in T3 Code a `delegate_task` child on the Local Claude instance (model `local`, runtimeMode full-access), elsewhere "
           "`local-agent review <ticket.md> --cwd <repo>` with run_in_background; check each finding yourself, and copy its "
           "`verdict` (CLEAN) to the review output for gate-pass.", file=sys.stderr); sys.exit(2)
 print("Read-only exploration goes to the local model while it's available (1.1.14, ~/local-llm/DELEGATION.md): "
-      "write a ticket (Goal, verified Facts, To check, Scope, Acceptance) and run `local-agent facts <ticket.md> --cwd <dir>` "
+      "write a ticket (Goal, verified Facts, To check, Scope, Acceptance) and, in T3 Code, give it to a `delegate_task` child on "
+      "the Local Claude instance (model `local`, runtimeMode full-access); elsewhere run `local-agent facts <ticket.md> --cwd <dir>` "
       "with run_in_background, then check two or three of its path:line citations. If this needs Claude (judgment, design, "
       "maintainer-facing wording), add a line `NEEDS-CLAUDE: <why>` to the prompt.", file=sys.stderr)
 sys.exit(2)

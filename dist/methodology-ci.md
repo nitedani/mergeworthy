@@ -26,7 +26,7 @@ These apply to every session, not only to tasks that load this file. `install-me
 - **Do, don't offer.** Ask only for irreversible actions on shared state, money or credentials or global config, or a maintainer's product decision, and then with a recommendation.
 - **Evidence for every claim**, in chat too; check `main`, the registry and upstream before recommending anything.
 - **Never hardcode model versions.** Reviews: a fresh-context Claude reviewer.
-- **The local model before Claude subagents.** When `local-agent` is installed and the GPU is free, exploration, fact-finding, reproductions and test runs go to `local-agent` (1.1.14); a Claude subagent only for judgment and design. It pairs with you: it works and you review, or you write and it reviews (`local-agent review`). Never a cheaper Claude model (Haiku, Sonnet) for reviews or checks. Usage past the subscriptions costs money.
+- **The local model before Claude subagents.** When `local-agent` is installed and the GPU is free, exploration, fact-finding, reproductions and test runs go to the local model (1.1.14: in T3 Code a `delegate_task` child on Local Claude / `local` with full access, elsewhere `local-agent`); a Claude subagent only for judgment and design. It pairs with you: it works and you review, or you write and it reviews (`local-agent review`). Never a cheaper Claude model (Haiku, Sonnet) for reviews or checks. Usage past the subscriptions costs money.
 - **A subagent that writes a PR gets this methodology file**, not a checklist of it, and the Part 3 steps it must run (review round, refactor pass, guardian verdict, real-app evidence, benchmark for transports).
 <!-- always-on:end -->
 
@@ -1022,10 +1022,12 @@ busy = run('bash', '-c', f'source <(sed -n "/^up()/,/^processing()/p" {serve}); 
 if busy is not None and busy.returncode == 0: sys.exit(0)  # a game or another program has the GPU: Claude does it
 if review:
     print("Gate reviews go to the local model while it's available: a ticket with `## File` = the draft (plus Facts and Scope), "
+          "in T3 Code a `delegate_task` child on the Local Claude instance (model `local`, runtimeMode full-access), elsewhere "
           "`local-agent review <ticket.md> --cwd <repo>` with run_in_background; check each finding yourself, and copy its "
           "`verdict` (CLEAN) to the review output for gate-pass.", file=sys.stderr); sys.exit(2)
 print("Read-only exploration goes to the local model while it's available (1.1.14, ~/local-llm/DELEGATION.md): "
-      "write a ticket (Goal, verified Facts, To check, Scope, Acceptance) and run `local-agent facts <ticket.md> --cwd <dir>` "
+      "write a ticket (Goal, verified Facts, To check, Scope, Acceptance) and, in T3 Code, give it to a `delegate_task` child on "
+      "the Local Claude instance (model `local`, runtimeMode full-access); elsewhere run `local-agent facts <ticket.md> --cwd <dir>` "
       "with run_in_background, then check two or three of its path:line citations. If this needs Claude (judgment, design, "
       "maintainer-facing wording), add a line `NEEDS-CLAUDE: <why>` to the prompt.", file=sys.stderr)
 sys.exit(2)

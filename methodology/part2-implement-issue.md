@@ -87,7 +87,8 @@ git merge-base HEAD origin/<base>                      # note the sha
 <!-- if reviewer=claude -->
 ## start a fresh-context Claude subagent with review.md as its whole prompt; save its final message to <artifact root>/review.out
 <!-- else -->
-codex exec -m "$(codex-review-model)" --sandbox read-only -o <artifact root>/review.out "$(cat <artifact root>/review.md)" < /dev/null
+m=$(codex-review-model) && codex exec -m "$m" --sandbox read-only -o <artifact root>/review.out "$(cat <artifact root>/review.md)" < /dev/null
+## exit 3 = Codex out of credits or rate-limited: the local model runs review.md instead (02 Review model)
 <!-- end -->
 ```
 

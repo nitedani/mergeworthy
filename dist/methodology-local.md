@@ -25,7 +25,7 @@ These apply to every session, not only to tasks that load this file. `install-me
 - **Every post to GitHub passes the gate:** a draft file, `post-lint`, an independent review ending in exactly `CLEAN`, then `gate-pass`. Edit in place; never post correction comments. When posting from the user's account, start every post with the icon of the agent that did the work and an `**Agent:**` label (e.g. `<img src="https://github.com/QwenLM.png" width="20" height="20" align="left" alt="Agent"> **Agent:**`; the legacy Claude badge also passes).
 - **Do, don't offer.** Ask only for irreversible actions on shared state, money or credentials or global config, or a maintainer's product decision, and then with a recommendation.
 - **Evidence for every claim**, in chat too; check `main`, the registry and upstream before recommending anything.
-- **Never hardcode model versions.** Reviews: `codex exec -m "$(codex-review-model)"`, falling back to a fresh-context Claude reviewer.
+- **Never hardcode model versions.** Reviews: `m=$(codex-review-model) && codex exec -m "$m"` (it exits 3 while Codex is out of credits), falling back to the local model, then a fresh-context Claude reviewer.
 - **You are the local model.** Your subagents run on the same model, so the delegation rules don't apply to them, and you don't call `local-agent` or `claude-usage` yourself (they are for Claude sessions, 1.1.14).
 - **A subagent that writes a PR gets this methodology file**, not a checklist of it, and the Part 3 steps it must run (review round, refactor pass, guardian verdict, real-app evidence, benchmark for transports).
 <!-- always-on:end -->
@@ -37,7 +37,7 @@ These apply to every session, not only to tasks that load this file. `install-me
 Defaults (the user can override):
 - **The user** owns the goal. Code in the user's own repos, and beta, experimental or pre-1.0 features, is theirs, and yours to change for the goal: decide, act, and report afterwards.
 - **External maintainers**: whoever merges in a repo you don't own (CODEOWNERS, recent mergers). Their requests are settled decisions, and changes to their code's behavior or public surface are their call (Part 3 section 2).
-- **Review model**: the model from `codex-review-model` (Part 5), run with stdin closed: `codex exec -m "$(codex-review-model)" --sandbox danger-full-access --skip-git-repo-check -o <file> "<prompt>" < /dev/null`. If the account refuses it, take the next from `codex-review-model --all`. Record the model from the `model:` line the command prints, never from the model's self-description. When Codex fails (an error, a hang, "out of credits"; none of these is a review), a fresh-context Claude subagent on the session's default model runs the same charter; record which reviewer ran, and re-review on Codex once it's back. Try Codex again at every review.
+- **Review model**: the model from `codex-review-model` (Part 5), run with stdin closed: `m=$(codex-review-model) && codex exec -m "$m" --sandbox danger-full-access --skip-git-repo-check -o <file> "<prompt>" < /dev/null`. `codex-review-model` exits 3 without calling anything when Codex's last usage snapshot says it is out of credits or rate-limited; then don't call Codex. If the account refuses the model, take the next from `codex-review-model --all`. Record the model from the `model:` line the command prints, never from the model's self-description. When Codex is unavailable or fails (an error, a hang, "out of credits"; none of these is a review), the local model runs the same charter (1.1.14); a fresh-context Claude subagent only when the local model is busy or not installed. Record which reviewer ran, and re-review on Codex once it's back.
 - **One model**: every agent you start runs on the session's model; there is no model parameter to set.
 - **Artifact root**: a persistent `<task>-work/` directory next to the worktree for notes, logs, probes, agent outputs and scratch worktrees; never `/tmp`.
 - **Publishing authority**: what the task allows you to open, comment and file. A reviewed draft isn't permission to publish.
@@ -427,7 +427,8 @@ The review model (TASK) reviews the diff with the reviewer charter (below):
 git merge-base HEAD origin/<base>                      # note the sha
 ## write the reviewer charter (end of this part) to <artifact root>/review.md
 ## append: the diff command with that sha, the issue link (Tier ≥ M: also acceptance.md), and one sentence on what it claims to do
-codex exec -m "$(codex-review-model)" --sandbox read-only -o <artifact root>/review.out "$(cat <artifact root>/review.md)" < /dev/null
+m=$(codex-review-model) && codex exec -m "$m" --sandbox read-only -o <artifact root>/review.out "$(cat <artifact root>/review.md)" < /dev/null
+## exit 3 = Codex out of credits or rate-limited: the local model runs review.md instead (02 Review model)
 ```
 
 Its sandbox usually cannot run the gates (no Docker socket, no network): paste your commands, exit codes and output for it to grade, or give it `--sandbox danger-full-access`. It says UNKNOWN for anything it could not observe. If no reviewer at all is available, review it yourself with the charter.
@@ -961,7 +962,7 @@ These scripts enforce the rules that failed as text alone. This file is the only
 | `stop-lint.py` (Stop hook) | 1.1.3, 1.5. Blocks ending a turn with "want me to / should I / your call / when you say go…" unless the message has a `GENUINE-FORK:` line, after a GitHub post in the session while no armed tail (a Monitor, or a live `tail` process where there is no Monitor tool) watches a watcher's `events.log` (none armed, or its process is dead), and while any live watcher's `replies-owed.md` has a line still owed. | Hook config below. |
 | `gh-watch-start` (`~/.local/bin`) | 1.5. The one way to start watching; idempotent. | `gh-watch-start <dir> [owner/repo [N]]…`: links the watcher into `<dir>`, adds `owner/repo N` to `threads.txt` (a bare `owner/repo` to `repos.txt`, covering the repo before an issue exists), starts the daemon unless it runs (eyes from `GH_WATCH_EYES`, else `<dir>/eyes`, else your login), writes `<dir>/agent`, the command the daemon launches on each event (`GH_WATCH_AGENT`, else the first of `claude`, `codex` on PATH), registers `<dir>` in `~/.claude/gh-watch-dirs.txt`, and prints the persistent-tail command to arm: a detached (nohup) tail that never expires, wakes nothing and needs no re-arm; it archives event lines in `<dir>/tail-events.log` and satisfies the Stop hook's armed-monitor check. `pre-bash-guard` blocks a post to a repo no running watcher covers and adds the thread a comment goes to; `post-bash-register.py` (PostToolUse hook) adds a thread you just created. |
 
-| `codex-review-model` (`~/.local/bin`) | TASK review model. Prints Codex's top-ranked model from `codex debug models`, skipping the premium tier ("the most demanding work") and older generations, so reviews move to newer models without editing any prompt. | `codex exec -m "$(codex-review-model)" …`; `--all` lists the ranked models for a fallback. |
+| `codex-review-model` (`~/.local/bin`) | TASK review model. Prints Codex's top-ranked model from `codex debug models`, skipping the premium tier ("the most demanding work") and older generations, so reviews move to newer models without editing any prompt. Exits 3, calling nothing, while Codex's last usage snapshot (`~/.codex/sessions`) says out of credits (6 h) or rate-limited (until reset). | `m=$(codex-review-model) && codex exec -m "$m" …`; `--all` lists the ranked models for a fallback; `--force` skips the usage check. |
 | `pr-steps` + posting hook | Part 2 steps 6–7 (Part 3 sections 6–7 in Tier ≥ M), 1.7. | `gh pr create` (unless `--draft`) and `gh pr ready` are blocked until HEAD has a `review` and a `refactor` record: run `pr-steps review <reviewer output>` and `pr-steps refactor <rating output>` on the final HEAD after the fixes. |
 | `install-methodology` | 1.1.12: this file travels; the machine's copies follow it. | Writes Part 5's scripts to `~/.claude/mechanisms/` (commands linked into `~/.local/bin`), merges the hook config into `~/.claude/settings.json`, and writes the Always-on rules into `~/.claude/CLAUDE.md` between markers, leaving the rest of that file alone. The file's first line, the settings header `build.sh` writes, goes to `~/.claude/mechanisms/settings.env` as `METHODOLOGY_<KEY>=<value>` lines, read by `post-lint` (badge, review records; `gate-pass` runs it) and `pre-bash-guard` (merge); an environment variable of the same name wins. |
 | `methodology-update` (`~/.local/bin`; SessionStart hook with `--auto`) | 1.1.12: every machine follows the repo. | Pulls the repo the installed file came from (`METHODOLOGY_SOURCE` in `settings.env`), rebuilds the same profiles, reinstalls, and the local-model tooling when installed. `--auto`: at most once a day, detached, logged to `~/.claude/mechanisms/update.log`; the new version applies from the next session. |
@@ -1733,10 +1734,12 @@ busy = run('bash', '-c', f'source <(sed -n "/^up()/,/^processing()/p" {serve}); 
 if busy is not None and busy.returncode == 0: sys.exit(0)  # a game or another program has the GPU: Claude does it
 if review:
     print("Gate reviews go to the local model while it's available: a ticket with `## File` = the draft (plus Facts and Scope), "
+          "in T3 Code a `delegate_task` child on the Local Claude instance (model `local`, runtimeMode full-access), elsewhere "
           "`local-agent review <ticket.md> --cwd <repo>` with run_in_background; check each finding yourself, and copy its "
           "`verdict` (CLEAN) to the review output for gate-pass.", file=sys.stderr); sys.exit(2)
 print("Read-only exploration goes to the local model while it's available (1.1.14, ~/local-llm/DELEGATION.md): "
-      "write a ticket (Goal, verified Facts, To check, Scope, Acceptance) and run `local-agent facts <ticket.md> --cwd <dir>` "
+      "write a ticket (Goal, verified Facts, To check, Scope, Acceptance) and, in T3 Code, give it to a `delegate_task` child on "
+      "the Local Claude instance (model `local`, runtimeMode full-access); elsewhere run `local-agent facts <ticket.md> --cwd <dir>` "
       "with run_in_background, then check two or three of its path:line citations. If this needs Claude (judgment, design, "
       "maintainer-facing wording), add a line `NEEDS-CLAUDE: <why>` to the prompt.", file=sys.stderr)
 sys.exit(2)
@@ -2330,8 +2333,31 @@ echo "recorded $kind for $sha"
 Codex's top-ranked listed model (lowest `priority`), i.e. its recommended cost-effective frontier workhorse.
 Premium models (described as for "the most demanding work" / "frontier intelligence" / "maximum") are skipped:
 too expensive for routine reviews. `--all` lists the remaining ranked models, for a fallback when the
-account refuses the first."""
-import json, re, subprocess, sys
+account refuses the first.
+Exits 3 without calling any model when Codex's own last usage snapshot (the newest `rate_limits` event in
+~/.codex/sessions, written by every run) says a limit is reached: out of credits for 6 hours after that snapshot,
+a rate limit until its `resets_at`. `--force` skips this check."""
+import glob, json, os, re, subprocess, sys, time
+from datetime import datetime
+
+def blocked():
+    files = sorted(glob.glob(os.path.expanduser('~/.codex/sessions/**/*.jsonl'), recursive=True), key=os.path.getmtime)[-5:]
+    for f in reversed(files):
+        snap = None
+        for line in open(f, errors='replace'):
+            if '"rate_limits"' in line:
+                try: snap = json.loads(line)
+                except ValueError: pass
+        if not snap: continue
+        rl, ts = snap['payload']['rate_limits'], snap['timestamp']
+        if not rl or not rl.get('rate_limit_reached_type'): return None
+        resets = [w['resets_at'] for w in (rl.get('primary'), rl.get('secondary')) if w and w.get('resets_at')]
+        until = max(resets) if resets else datetime.fromisoformat(ts.replace('Z', '+00:00')).timestamp() + 6 * 3600
+        return f"{rl['rate_limit_reached_type']} (Codex run at {ts})" if time.time() < until else None
+    return None
+
+if '--force' not in sys.argv and (why := blocked()):
+    print(f"codex unavailable: {why}; review on the local model instead (--force to try Codex anyway)", file=sys.stderr); sys.exit(3)
 PREMIUM = re.compile(r'most demanding|frontier intelligence|maximum intelligence|highest intelligence', re.I)
 OLD = re.compile(r'\b(previous|older|legacy)\b', re.I)
 out = subprocess.run(['codex', 'debug', 'models'], capture_output=True, text=True).stdout

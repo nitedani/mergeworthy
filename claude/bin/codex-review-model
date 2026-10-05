@@ -3,8 +3,31 @@
 Codex's top-ranked listed model (lowest `priority`), i.e. its recommended cost-effective frontier workhorse.
 Premium models (described as for "the most demanding work" / "frontier intelligence" / "maximum") are skipped:
 too expensive for routine reviews. `--all` lists the remaining ranked models, for a fallback when the
-account refuses the first."""
-import json, re, subprocess, sys
+account refuses the first.
+Exits 3 without calling any model when Codex's own last usage snapshot (the newest `rate_limits` event in
+~/.codex/sessions, written by every run) says a limit is reached: out of credits for 6 hours after that snapshot,
+a rate limit until its `resets_at`. `--force` skips this check."""
+import glob, json, os, re, subprocess, sys, time
+from datetime import datetime
+
+def blocked():
+    files = sorted(glob.glob(os.path.expanduser('~/.codex/sessions/**/*.jsonl'), recursive=True), key=os.path.getmtime)[-5:]
+    for f in reversed(files):
+        snap = None
+        for line in open(f, errors='replace'):
+            if '"rate_limits"' in line:
+                try: snap = json.loads(line)
+                except ValueError: pass
+        if not snap: continue
+        rl, ts = snap['payload']['rate_limits'], snap['timestamp']
+        if not rl or not rl.get('rate_limit_reached_type'): return None
+        resets = [w['resets_at'] for w in (rl.get('primary'), rl.get('secondary')) if w and w.get('resets_at')]
+        until = max(resets) if resets else datetime.fromisoformat(ts.replace('Z', '+00:00')).timestamp() + 6 * 3600
+        return f"{rl['rate_limit_reached_type']} (Codex run at {ts})" if time.time() < until else None
+    return None
+
+if '--force' not in sys.argv and (why := blocked()):
+    print(f"codex unavailable: {why}; review on the local model instead (--force to try Codex anyway)", file=sys.stderr); sys.exit(3)
 PREMIUM = re.compile(r'most demanding|frontier intelligence|maximum intelligence|highest intelligence', re.I)
 OLD = re.compile(r'\b(previous|older|legacy)\b', re.I)
 out = subprocess.run(['codex', 'debug', 'models'], capture_output=True, text=True).stdout
