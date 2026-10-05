@@ -9,7 +9,8 @@
 State lives in gh-watch-state.json: every seen (id, updated_at) pair, so nothing is skipped or repeated,
 and scans overlap by 10 minutes. A failed API call prints WATCH ERROR and that thread's scan position isn't advanced.
 """
-import json, os, re, subprocess, sys, time, datetime, fcntl
+import json, os, re, subprocess, sys, time, datetime, fcntl, http.client, threading
+from concurrent.futures import ThreadPoolExecutor
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE = os.path.join(HERE, 'gh-watch-state.json')
@@ -372,6 +373,53 @@ def notifications_changed(state):
     return keys
 
 
+# kept across rounds: a new TLS connection per request made a round of ~22 polls take ~7 s instead of ~2
+_pool, _conn = ThreadPoolExecutor(8), threading.local()
+
+
+def repo_comments_changed(state):
+    """The notifications fast path lags GitHub by 20-30 s. Each watched repo's newest issue and review comments, polled
+    with If-None-Match (a 304 isn't rate-limited), catch a comment within one loop. Returns the changed thread keys."""
+    threads = read_threads()
+    watched = {f"{r}#{n}" for r, n in threads}
+    etags, seen = state.setdefault('rc_etag', {}), state.setdefault('rc_seen', {})
+    token = subprocess.run(['gh', 'auth', 'token'], capture_output=True, text=True).stdout.strip()
+    def poll(url):
+        headers = {'Authorization': f'Bearer {token}', 'User-Agent': 'gh-watch', 'Accept': 'application/vnd.github+json'}
+        if etags.get(url):
+            headers['If-None-Match'] = etags[url]
+        try:
+            _conn.c = getattr(_conn, 'c', None) or http.client.HTTPSConnection('api.github.com', timeout=20)
+            _conn.c.request('GET', '/' + url, headers=headers)
+            r = _conn.c.getresponse()
+            body = r.read()
+            return url, r.headers.get('ETag'), body if r.status == 200 else None
+        except Exception:  # a dropped connection: reconnect next round
+            _conn.c = None
+            return url, None, None
+    urls = [f"repos/{r}/{k}/comments?sort=created&direction=desc&per_page=20" for r in sorted({r for r, _ in threads}) for k in ('issues', 'pulls')]
+    keys = set()
+    for url, etag, body in _pool.map(poll, urls):
+        if body is None:
+            continue
+        if etag:
+            etags[url] = etag
+        try:
+            comments = json.loads(body)
+        except ValueError:
+            continue
+        prev = seen.get(url)
+        seen[url] = max([prev or ''] + [c.get('created_at', '') for c in comments])
+        if prev is None:  # the first poll only records where the feed stands
+            continue
+        for c in comments:
+            num = (c.get('issue_url') or c.get('pull_request_url') or '').rsplit('/', 1)[-1]
+            key = f"{url.split('/')[1]}/{url.split('/')[2]}#{num}"
+            if c.get('created_at', '') > prev and key in watched:
+                keys.add(key)
+    return keys
+
+
 def ai_call_elsewhere(state, repo, num, etype, c):
     """Your /ai or /agent comment on a thread no live watcher watches goes to main_dir's watcher, so one session gets it."""
     key, body = f"{repo}#{num}", c.get('body') or ''
@@ -487,11 +535,11 @@ def main():
     while True:
         with locked():
             state = load_state()
-            changed = (notifications_changed(state) or set()) | own_events_changed(state)
+            changed = (notifications_changed(state) or set()) | own_events_changed(state) | repo_comments_changed(state)
             if changed:
                 scan(state, only=changed)
             save_state(state)
-        if time.time() - last_full > 300:  # a full scan is the backstop; notifications catch comments within ~10 s
+        if time.time() - last_full > 300:  # a full scan is the backstop; the repo comment feeds catch comments within ~10 s
             run_scan()
             retire_if_done()
             last_full = time.time()
