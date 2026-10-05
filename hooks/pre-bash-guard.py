@@ -110,25 +110,37 @@ def need_watch(repo):
     if not covering:
         block(f"no running watcher covers {repo}: `gh-watch-start <your artifact root> {repo}`, arm the Monitor it prints, then open it")
 
-def check_turn(repo, num):
-    """1.6 one comment per turn: while your last comment on a thread has no reply after it (and is under 3 days old, the
-    wait ping), a new comment stacks on it: edit that one instead."""
-    if not repo or not str(num).isdigit():
+def check_turn(repo, num, args=()):
+    """1.6 one comment per turn: while your last two comments on a thread have no reply after them (and the last is
+    under 3 days old, the wait ping), a third stacks on them: edit the last one instead. The agent and the user may
+    share one login, so a comment is the agent's only when its body was gated (gate-pass writes ~/.claude/gated-posts.txt)."""
+    if '--help' in args or '-h' in args or not repo or not str(num).isdigit():
         return
+    def api(path, jq):
+        r = subprocess.run(['gh', 'api', path, '--jq', jq], capture_output=True, text=True, timeout=20)
+        return r.stdout if r.returncode == 0 else ''
     try:
-        n = int(subprocess.run(['gh', 'api', f'repos/{repo}/issues/{num}', '--jq', '.comments'], capture_output=True, text=True, timeout=20).stdout.strip() or 0)
-        if not n: return
-        last = json.loads(subprocess.run(['gh', 'api', f'repos/{repo}/issues/{num}/comments?per_page=100&page={(n - 1) // 100 + 1}', '--jq', '.[-1] | {login: .user.login, created: .created_at, url: .html_url}'],
-                                         capture_output=True, text=True, timeout=20).stdout or 'null')
-        me = subprocess.run(['gh', 'api', 'user', '--jq', '.login'], capture_output=True, text=True, timeout=20).stdout.strip()
+        n = int(api(f'repos/{repo}/issues/{num}', '.comments').strip() or 0)
+        if n < 2: return
+        page = lambda p: json.loads(api(f'repos/{repo}/issues/{num}/comments?per_page=100&page={p}', '[.[] | {body, created: .created_at, url: .html_url}]') or '[]')
+        p = (n - 1) // 100 + 1
+        last = page(p)
+        if len(last) < 2 and p > 1: last = page(p - 1) + last
+        last = last[-2:]
+        reviews = api(f'repos/{repo}/pulls/{num}/reviews?per_page=100', '.[].submitted_at').split()  # 404 on an issue: none
     except Exception:
         return
-    if last and last['login'] == me:
-        import datetime
-        age = datetime.datetime.now(datetime.timezone.utc) - datetime.datetime.fromisoformat(last['created'].replace('Z', '+00:00'))
-        if age.days < 3:
-            block(f"your last comment on {repo}#{num} has no reply yet ({last['url']}): edit it instead of posting another; "
-                  "one comment per turn (mergeworthy:github-threads 1.6). A wait ping is fine after 3 days.")
+    f = os.path.expanduser('~/.claude/gated-posts.txt')
+    gated = set(open(f).read().split()) if os.path.exists(f) else set()
+    norm = lambda b: hashlib.sha256((b or '').replace('\r\n', '\n').strip().encode()).hexdigest()
+    if len(last) < 2 or not all(norm(c['body']) in gated for c in last):
+        return
+    import datetime
+    when = lambda t: datetime.datetime.fromisoformat(t.replace('Z', '+00:00'))
+    if (datetime.datetime.now(datetime.timezone.utc) - when(last[-1]['created'])).days >= 3 or any(when(r) > when(last[-1]['created']) for r in reviews if r != 'null'):
+        return
+    block(f"your last two comments on {repo}#{num} have no reply yet ({last[-1]['url']}): edit the last one instead of posting a third; "
+          "one comment per turn (mergeworthy:github-threads 1.6)")
 
 
 def cwd_repo(run_dir):
@@ -208,7 +220,7 @@ def check(t, has_cd):
                 need_watch((opt(rest, ['--repo', '-R']) or [None])[-1] or cwd_repo(run_dir))
             if sub == 'comment' and '--edit-last' not in rest:
                 num = next((x for x in rest if x.isdigit()), None)
-                check_turn((opt(rest, ['--repo', '-R']) or [None])[-1] or cwd_repo(run_dir), num)
+                check_turn((opt(rest, ['--repo', '-R']) or [None])[-1] or cwd_repo(run_dir), num, rest)
             for f in files: gated_file(f, has_cd, create=sub in ('comment', 'create', 'review'))
     if p == 'gh' and a and a[0] == 'api':
         rest = a[1:]
@@ -230,7 +242,7 @@ def check(t, has_cd):
         m = re.fullmatch(r'/?repos/([\w.-]+/[\w.-]+)/(?:issues|pulls)', ep)
         if m and method == 'POST': need_watch(m.group(1))
         c = re.fullmatch(r'/?repos/([\w.-]+/[\w.-]+)/issues/(\d+)/comments', ep)
-        if c and method == 'POST': check_turn(c.group(1), c.group(2))
+        if c and method == 'POST': check_turn(c.group(1), c.group(2), rest)
         for f in bodies + inputs: gated_file(f, has_cd, create=method == 'POST')
 
 try:
