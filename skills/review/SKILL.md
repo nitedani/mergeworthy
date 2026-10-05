@@ -5,7 +5,7 @@ description: "Any independent review: who reviews (Codex, else a fresh Claude), 
 
 # Review
 
-**Every independent review picks its reviewer in this order.** That covers the posting gate (1.6), the PR review round below, a standalone review, and the reader of a PR's final head (`converge`). The reader that runs `converge`'s passes on each slice set is a Claude agent, as `converge` says.
+**Every independent review picks its reviewer in this order.** That covers the posting gate (1.6), the PR review round below, a standalone review, and the fresh reader of a PR's final head (`converge`). The loop agents run on the session's model.
 
 1. **Codex**, another company's model:
    ```bash
@@ -34,7 +34,7 @@ A reviewer, picked in the order above, reviews the diff with the reviewer charte
 3. Where the reviewer can't run your gates, paste the gate commands, exit codes and output; it says UNKNOWN for anything it could not observe.
 4. If no reviewer at all is available, review the diff yourself with the charter.
 
-In a PR's pipeline, this round runs inside two agents that `converge` defines under "who reads". The reader runs it once on the diff, together with the other passes. The fresh reader runs it again on the final head.
+In a PR's pipeline, the Loop B agent runs this round on the diff, before its guardian and refactor ratings, and the fresh reader runs it again on the final head (`converge`, who reads).
 
 **One round.** Fix real defects, and decline the rest as above, with the run's output or a one-line reason (1.1.15). The same reviewer then confirms the fixes (above), with no fresh audit. Record who reviewed (or that it was a self-review) and what they found, including nothing, in the ledger (1.2). Then run `pr-steps review <output>`.
 

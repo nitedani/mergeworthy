@@ -18,7 +18,7 @@ description: "The finality pass, for code that has drifted through many patches:
 
 **The deliverable is the short design doc** at the end. The graph is working material.
 
-**Owner-Safe closure** is the reconciliation at the end of Phase C, defined in the prompt's last paragraph.
+**Owner-Safe closure** is the reconciliation that ends the pass, defined in the prompt's last paragraph. It needs the reviewer's and the guardian's evidence, so it runs last in `converge`.
 
 Run the prompt as written:
 

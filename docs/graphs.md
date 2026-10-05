@@ -211,7 +211,7 @@ Opens `mergeworthy:converge` (what converged means, through the passes below).
 flowchart TB
   start(["Converging a PR (Tier S<br/>condensed, Tier ≥ M in<br/>full before ready, or …"])
   subgraph g0["converge"]
-    s0["1. Finality and Owner-Safe<br/>closure"]
+    s0["1. Finality"]
     s1["2. Bug verification"]
     s0 --> s1
     s2["3. Code review"]
@@ -220,7 +220,7 @@ flowchart TB
     s2 --> s3
     s4["5. Refactor pass"]
     s3 --> s4
-    s5["6. Gates and body"]
+    s5["6. Gates"]
     s4 --> s5
   end
   s0 -.-> r1[["finality"]]

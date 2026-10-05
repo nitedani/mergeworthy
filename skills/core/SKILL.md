@@ -31,9 +31,9 @@ Read the task and every link in it. Then write `Tier: <X>, because <signals>` as
 | **M: Feature or set** | A new capability, a changed public contract, several change units, or open behavior questions. | `implement-issue` per unit, with full `converge` in place of its single rounds; invariants, ledger, decision packet, design loop (1.4). |
 | **L: Program** | Changes across two or more independently maintained repos, or two or more decision makers. | Tier M everywhere, plus the umbrella issue (1.2). |
 
-`converge` runs two readers per slice set (`converge`, who reads); under about 1500 diff lines that is two per PR. The reader is one agent that verifies, reviews, guards and rates the PR. The fresh reader is a new agent that reviews the final head.
-- **Tier S, condensed `converge`:** `implement-issue`'s review round and refactor pass feed `pr-steps` (the record that a step ran on the head). All of `converge`'s rules apply: git, authority, the phantom and removal gates, stacked PRs, gates and evidence. Of its loops, Tier S runs one dry verification pass after the last fix and one guardian verdict, both in the reader's run. Then the fresh reader checks the final head.
-- **Tier M, full `converge`:** the reader continues across rounds, and the fresh reader checks the final head, per slice set (the slices that fit one context).
+`converge` gives each loop one agent for its whole life, and a fresh reader reads the final head once (`converge`, who reads): the Loop A agent hunts bugs, the Loop B agent reviews, guards and rates, and the fresh reader checks the result cold.
+- **Tier S, condensed `converge`:** `implement-issue`'s review round and refactor pass feed `pr-steps` (the record that a step ran on the head). All of `converge`'s rules apply: git, authority, the phantom and removal gates, stacked PRs, gates and evidence. Of its loops, Tier S runs one dry verification pass after the last fix (the Loop A agent) and one guardian verdict (the Loop B agent). Then the fresh reader checks the final head.
+- **Tier M, full `converge`:** each loop agent continues across its rounds, and the fresh reader checks the final head.
 
 ## 1.1 Principles
 
@@ -134,7 +134,7 @@ Read the task and every link in it. Then write `Tier: <X>, because <signals>` as
     - Record exit codes (`EXIT=$?`) and quote them, never a log tail.
     - Log and artifact names include a unique pass ID; never overwrite another pass's file.
     - The owed lists (`replies-owed.md` and `proposals-open.md` of 1.5, `questions-owed.md` of 1.1.4) live in the artifact root, which is also the watch dir.
-- **Tier S:** the PR body is the reader's record, true of the final head. Add `scope.md` and a short `ledger.md` for process records (review, refactor, the 1.7 Ready list).
+- **Tier S:** the PR body is the record of what the loops found, true of the final head. Add `scope.md` and a short `ledger.md` for process records (review, refactor, the 1.7 Ready list).
 - **Tier M:** keep these files:
     - `ledger.md`: one row per event (time | unit | event | head SHA | result). Events are each pass, round, fix with its commits, gate or lane run with its exit status, push, and CI result. Head it with `critical-path` and the passes still owed. Answer every status and convergence question from the ledger, skipped steps included.
     - `decision-packet.md`: only people's picks (decision | who | date | link | what it was picked over).

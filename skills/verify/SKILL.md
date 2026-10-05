@@ -5,7 +5,7 @@ description: "Bug verification of a PR (reproduce-only): slicing, the verifier b
 
 # Bug verification
 
-**Split each PR's code into slices one verifier can hold** (e.g. core feature, backend and storage, runtime adapter, wire and client). The verifier brief below runs inside the reader, for all slices of its slice set, with one report section per slice. It runs again inside the fresh reader on the final head. Open `converge` (who reads) for what the reader and the fresh reader are.
+**Split each PR's code into slices one verifier can hold** (e.g. core feature, backend and storage, runtime adapter, wire and client). The Loop A agent runs the verifier brief below for all slices, with one report section per slice, and the fresh reader runs it again on the final head (open `converge`, who reads).
 
 This pass is Loop A in `converge`: the bug-verification loop that repeats until every slice is dry.
 

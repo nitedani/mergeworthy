@@ -145,17 +145,14 @@ Any console error fails.
 
 ### 6. Review round
 
-The review round runs in the reader. The reader is one agent, in one run, on the diff (open `converge`, who reads, for how the reader and the fresh reader are set up). The reader runs these in order, each into its own output file. Each brief lives in the skill named next to it; open that skill when you write the reader's prompt:
-- the verifier brief (`verify`);
-- the reviewer charter (`review`);
-- the guardian verdict (`guardian`) and the refactor ratings (`refactor`).
-
-The context the reader filled reviewing is the context it rates with.
+Each loop gets one agent (open `converge`, who reads, for how they and the fresh reader are set up). Each brief lives in the skill named next to it; open that skill when you write the agent's prompt.
+- **The Loop A agent** runs the verifier brief (`verify`) on the diff, and after each fix re-verifies until a pass is dry.
+- **The Loop B agent** then runs, in one prompt and each into its own output file, the reviewer charter (`review`), then the guardian verdict (`guardian`) and the refactor ratings (`refactor`). The context it filled reviewing is the context it rates with.
 
 ### 7. Refactor pass
 
-- **Fix the real defects.** Send the reader the commits; it re-verifies until dry.
-- **Implement the ratings commit by commit**, with the gates after each (in a guardian round, `guardian`'s implementer does). The reader re-rates old ⇒ new; record it with `pr-steps refactor`.
+- **Fix the real defects.** Send the Loop A agent the commits; it re-verifies until dry.
+- **Implement the ratings commit by commit**, with the gates after each (in a guardian round, `guardian`'s implementer does). The Loop B agent re-rates old ⇒ new; record it with `pr-steps refactor`.
 - **Last, the fresh reader reads the final head and the PR body** (`converge`, who reads). Its `CLEAN` is both the body's posting-gate review and the `pr-steps review` record on that head.
 
 ### 8. The PR

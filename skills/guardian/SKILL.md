@@ -12,7 +12,7 @@ Guardian rounds are Loop B of `converge`: repeated rounds that find bloat and qu
 - **Scopes:** split the diff into scopes (e.g. core feature, backend, everything else). The bottom PR of a stack is its own scope.
 
 **Round 1:**
-- The guardian brief below runs inside the reader (`converge`, who reads), every scope in the reader's slice set, one report section per scope.
+- The Loop B agent runs the guardian brief below after its review (`converge`, who reads), for every scope, one report section per scope.
 - Each scope's section reports:
   - findings by disposition, with prices;
   - the mechanism census;
