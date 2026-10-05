@@ -43,9 +43,9 @@ This is the work automation methodology (v3), split into skills along its own pa
 | `past-failures` | Part 4 |
 | `mechanisms` | Part 5 (the code itself lives in `hooks/`, `bin/` and `watcher/`) |
 
-## How the passes connect
+## How the skills connect
 
-`docs/graphs/` has one graph per entry point: the entry router, the Tier S and Tier M PR pipelines, the Tier L program, a comment, the other watcher events, and the posting gate (`.mmd` sources, rendered `.png`).
+`docs/graphs.md` has one graph per entry point of `always-on.md`, generated from the skills by `docs/build-graphs.py`: each section is a box, its numbered steps run top to bottom, and a dashed arrow marks where a step hands over to another skill. After editing a skill, run `python3 docs/build-graphs.py`; CI fails while the graphs don't match the skills.
 
 ## Layout
 
@@ -56,7 +56,7 @@ hooks/              hooks.json and the scripts it runs
 bin/                commands on the Bash PATH: gate-pass, post-lint, pr-steps, gh-watch-start
 watcher/            the GitHub watcher daemon gh-watch-start runs
 cli/                the npx mergeworthy installer
-docs/graphs/        one graph per entry point (.mmd source, rendered .png)
+docs/               graphs.md (generated from the skills) and build-graphs.py
 .claude-plugin/     the plugin manifest (options) and its marketplace
 ```
 
