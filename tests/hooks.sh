@@ -116,6 +116,12 @@ printf '%s A list follows:\n- %s\n' "$B" "$(printf 'word %.0s' $(seq 35))" > "$T
 check "one list item over 30 words is flagged" 1 "$(lint "$T/long.md")"
 printf '%s Two fundamental issues remain.\n' "$B" > "$T/fund.md"
 check "a difficulty word without its scope is flagged" 1 "$(python3 "$R/bin/post-lint" "$T/fund.md" --kind issue --parent none 2>&1 | grep -c 'what it.s hard for')"
+# the budget grows with the questions in the comment answered
+printf 'One? Two? Three?\n' > "$T/q.parent.md"
+printf '%s %s\n' "$B" "$(printf 'word %.0s' $(seq 150))" > "$T/q.md"
+check "a reply of 150 words to three questions passes" 0 "$(python3 "$R/bin/post-lint" "$T/q.md" --parent "$T/q.parent.md" 2>&1 | grep -c 'for a reply')"
+printf 'One?\n' > "$T/q1.parent.md"
+check "the same reply to one question is over budget" 1 "$(python3 "$R/bin/post-lint" "$T/q.md" --parent "$T/q1.parent.md" 2>&1 | grep -c 'for a reply')"
 for s in 'Fundamental problems remain in this design.' 'It is impossible to fix this.' 'The fix is impossible.'; do
   printf '%s %s\n' "$B" "$s" > "$T/fund3.md"
   check "flagged: $s" 1 "$(python3 "$R/bin/post-lint" "$T/fund3.md" --kind issue --parent none 2>&1 | grep -c 'what it.s hard for')"

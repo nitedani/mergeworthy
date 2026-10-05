@@ -121,13 +121,18 @@ if kind != 'pr':
     if words_all := len(re.findall(r"[A-Za-z0-9][\w'’-]*", prose)):
         if bold / words_all > 0.3:
             findings.append(f"{bold / words_all:.0%} of the text is bold: bold only a bullet's lead-in or the decision")
-if kind == 'reply' and words > 80:
-    findings.append(f"{words} words > 80 for a reply (tables and code count): cut what the reader doesn't need, link long material")
+# Answering several questions takes room: each question in the comment answered (beyond the first) adds 60 words
+_pp = arg('--parent', None)
+_pp = _pp if _pp not in (None, 'none') else re.sub(r'\.md$', '', path) + '.parent.md'
+_asked = len(re.findall(r'\?', '\n'.join(l for l in open(_pp).read().splitlines() if not l.lstrip().startswith('>')))) if os.path.exists(_pp) else 0
+extra = 60 * max(0, _asked - 1)
+if kind == 'reply' and words > 80 + extra:
+    findings.append(f"{words} words > {80 + extra} for a reply answering {max(_asked, 1)} question(s) (tables and code count): cut what the reader doesn't need, link long material")
 pr_budget = 250 if re.search(r'^#+ .*\b(notes|decisions)\b|^Decisions\b', text, re.I | re.M) else 150  # a PR with decisions for the maintainer may run longer
 if kind == 'pr' and words > pr_budget:
     findings.append(f"{words} words > {pr_budget} for a PR body (tables, code, images and URLs not counted): cut what the reader doesn't need")
-if kind == 'proposal' and words > 250:  # a design walkthrough (methodology 1.4 step 4)
-    findings.append(f"{words} words > 250 for a design answer or walkthrough (tables and code count): one decision per comment, recommendation first, the full material in a linked document (1.6)")
+if kind == 'proposal' and words > 250 + extra:  # a design walkthrough (methodology 1.4 step 4)
+    findings.append(f"{words} words > {250 + extra} for a design answer or walkthrough (tables and code count): one decision per comment, recommendation first, the full material in a linked document (1.6)")
 if kind == 'issue' and chars > 400:
     findings.append(f"{chars} characters > 400 for an issue (tables, code, images and URLs not counted): keep one finding")
 if kind == 'inline' and sentences > 2:
