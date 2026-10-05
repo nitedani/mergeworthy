@@ -2,7 +2,7 @@
 """Robust GitHub watch for the tracked threads. One line on stdout per event.
 
 - The comments the agent answers (mergeworthy:github-event), new or edited, each with an :eyes: reaction: a maintainer's
-  (write access) on a thread in threads.txt, the threads the agent opened; and yours with /ai or /agent, on any thread
+  (write access) on a thread in threads.txt, the threads the agent opened or posted in; and yours with /ai or /agent, on any thread
   (your events feed; one watch dir gets each, see main_dir). Nothing else.
 - Maintainers' commits pushed to a tracked PR, and 👍/👎 from GH_WATCH_EYES on the agent's comments.
 - PR head/state changes (pushes, merges, closes), CI turning red or green on open PRs, and your PR's code (tests excluded) changing by more than ~80 lines since its last read question (READ STALE).
@@ -77,7 +77,7 @@ AI_CALL = re.compile(r'(^|\s)/(ai|agent)\b', re.I)
 
 
 def answerable(u, body, agent_hashes):
-    """mergeworthy:github-event: a maintainer on a thread the agent opened, or the user anywhere with /ai or /agent; nothing else."""
+    """mergeworthy:github-event: a maintainer on a thread the agent opened or posted in, or the user anywhere with /ai or /agent; nothing else."""
     if not is_human(u, body, agent_hashes):
         return False
     return bool(AI_CALL.search(body or '')) if u.get('login') == ME else u.get('assoc') in MAINTAINER

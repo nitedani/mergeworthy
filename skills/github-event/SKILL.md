@@ -5,11 +5,11 @@ description: "When the watcher reports a GitHub event: decide whether it's yours
 
 ## When
 
-Your Monitor delivers a line from `<artifact root>/events.log`: a maintainer's comment on a thread you opened, the user's `/ai` or `/agent` comment, pushed commits, red CI, or a merge you were waiting on.
+Your Monitor delivers a line from `<artifact root>/events.log`: a maintainer's comment on a thread you opened or posted in, the user's `/ai` or `/agent` comment, pushed commits, red CI, or a merge you were waiting on.
 
 ## Steps
 
-1. Check it is yours: a maintainer's comment on a thread you opened, or the user's comment with `/ai` or `/agent`. The watcher reports only these; ignore anything else.
+1. Check it is yours: a maintainer's comment on a thread you opened or posted in, or the user's comment with `/ai` or `/agent`. The watcher reports only these; ignore anything else.
 2. Reply within a minute through `mergeworthy:post`: "Done in <sha>" for a finished instruction, or what you are checking.
 3. Check the comment's reason fits the line it is anchored to; if it fits another line better, ask before changing anything.
 4. Act on it by kind:
