@@ -89,9 +89,8 @@ if watcher_on and not paused:
         f = os.path.join(wd, 'replies-owed.md')
         owed = [l.strip() for l in open(f) if l.strip() and not l.startswith('#')] if os.path.exists(f) else []
         open_owed = [l for l in owed if not l.lower().startswith('done:')]
-        if not os.path.exists(f) or open_owed:
-            item = open_owed[0][:120] if open_owed else 'missing file'
-            print(f"replies-owed.md in {wd} still has an owed reply ({item}). Answer it through the gate and clear the "
+        if open_owed:
+            print(f"replies-owed.md in {wd} still has an owed reply ({open_owed[0][:120]}). Answer it through the gate and clear the "
                   "line with 'done: <reply url> <what changed>' (mergeworthy:github-threads), or clear it with the reason no reply is owed.",
                   file=sys.stderr)
             sys.exit(2)
