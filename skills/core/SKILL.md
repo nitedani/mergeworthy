@@ -103,7 +103,7 @@ Read the task and every link in it. Then write `Tier: <X>, because <signals>` as
     - **Give agents paths and the question,** never pasted files or long histories, and ask for a short report. Each role gets only what it uses: a PR writer gets the mergeworthy skills (1.7), an executor a brief (1.10), a reviewer its charter and the artifact.
     - **Match the check to the risk.** A short reply gets the fast gate (1.6); a PR body or a proposal gets the full review. A full convergence loop runs only where the tier (1.0) requires it.
     - **Re-run only the tests a change can affect** (a docs change doesn't need the e2e matrix).
-    - **Routine work** (running tests and gates, mining logs, mechanical edits, relaying status) goes to a `sonnet` subagent. Design, hard debugging, reviews, fact checks and anything posted to a maintainer stay on the session's default model.
+    - **Routine work that is more than a small step** (running tests and gates, mining logs, mechanical edits, relaying status) goes to a `sonnet` subagent. Design, hard debugging, reviews, fact checks and anything posted to a maintainer stay on the session's default model.
     - **Never trim a charter or skip a pass it requires** to save tokens.
 15. **Earn every line.** A reviewer's, verifier's or guardian's finding is a candidate, not a mandate. Before it becomes code, a test, a doc or an option, ask:
     - **How likely does a real user hit it, and what happens then?** A rare case whose failure is mild, or arguably what the user asked for, gets no code. Wrong data returned silently (a misattribution, a lenient parse that hides the cause) is never mild: fix it at the root (1.1.6).
