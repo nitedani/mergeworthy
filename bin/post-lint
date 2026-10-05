@@ -99,6 +99,22 @@ if kind != 'pr':
 words = len(re.findall(r"[A-Za-z0-9][\w'’-]*", counted))
 chars = len(re.sub(r'\s+', ' ', counted).strip())
 sentences = len(re.findall(r'[.!?](?=\s|$)', re.sub(r'\b(e\.g|i\.e|etc|vs)\.', '', counted).strip())) or 1
+# Reader load (1.6): comprehension falls sharply past about 20 words a sentence; bold loses its signal past ~30% of the text
+if kind != 'pr':
+    plain = re.sub(r'^\s*\|.*$', '', prose, flags=re.M)                     # tables aren't sentences
+    plain = re.sub(r'^\s*(?:[-*]|\d+\.)\s+', '', plain, flags=re.M)
+    plain = re.sub(r'https?://\S+', 'URL', re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', plain))
+    sents = [x for x in re.split(r'(?<=[.!?:])\s+|\n{2,}|\n(?=\s*(?:[-*]|\d+\.)\s)', plain) if re.search(r'[A-Za-z]', x)]
+    lens = [len(re.findall(r"[A-Za-z0-9][\w'’-]*", x)) for x in sents]
+    for x, n in zip(sents, lens):
+        if n > 30:
+            findings.append(f"a {n}-word sentence: split it, one idea each ({x.strip()[:60]!r}…)")
+    if lens and sum(lens) / len(lens) > 20:
+        findings.append(f"sentences average {sum(lens) / len(lens):.0f} words: aim for 15-20")
+    bold = sum(len(re.findall(r"[A-Za-z0-9][\w'’-]*", b)) for b in re.findall(r'\*\*(.+?)\*\*', prose))
+    if words_all := len(re.findall(r"[A-Za-z0-9][\w'’-]*", prose)):
+        if bold / words_all > 0.3:
+            findings.append(f"{bold / words_all:.0%} of the text is bold: bold only a bullet's lead-in or the decision")
 if kind == 'reply' and words > 80:
     findings.append(f"{words} words > 80 for a reply (tables and code count): cut what the reader doesn't need, link long material")
 pr_budget = 250 if re.search(r'^#+ .*\b(notes|decisions)\b|^Decisions\b', text, re.I | re.M) else 150  # a PR with decisions for the maintainer may run longer
