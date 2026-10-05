@@ -568,6 +568,10 @@ def follow_update():
     """After a plugin update, point ~/.mergeworthy/current at the new version and exit 75: the daemon restarts this
     script on the new code. Without it a watcher ran the version it started on until someone restarted it."""
     root = installed_root()
+    link = os.path.join(HERE, 'gh-watch.py')
+    if root and os.path.islink(link) and '/plugins/cache/' in os.readlink(link):  # pinned to one version by an old gh-watch-start
+        os.remove(link)
+        os.symlink(os.path.expanduser('~/.mergeworthy/current/watcher/gh-watch.py'), link)
     if root and os.path.realpath(root) != RUNNING_ROOT:
         cur = os.path.expanduser('~/.mergeworthy/current')
         tmp = cur + '.tmp'

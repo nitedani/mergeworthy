@@ -12,8 +12,9 @@ main=; [ "${1:-}" = --main ] && { main=1; shift; }
 [ -n "$1" ] || { sed -n '2,8p' "$0"; exit 1; }
 dir=$(realpath -m "$1"); shift
 [ -n "$main" ] && { mkdir -p ~/.mergeworthy; echo "$dir" > ~/.mergeworthy/main-watch; }
-# link through the stable path when installed as a plugin (its own folder changes with every update)
-root=$(dirname "$(dirname "$(realpath "$0")")"); [ -d ~/.mergeworthy/current ] && [ "$(realpath ~/.mergeworthy/current)" = "$root" ] && root=~/.mergeworthy/current
+# link through the stable path when installed as a plugin (its own folder changes with every update), even when this
+# copy is an older version on a session's PATH: a watcher linked to a version folder never moved to the next one
+root=$(dirname "$(dirname "$(realpath "$0")")"); case "$root" in */plugins/cache/*) [ -d ~/.mergeworthy/current ] && root=~/.mergeworthy/current;; esac
 mkdir -p "$dir"; touch "$dir/threads.txt" "$dir/repos.txt" "$dir/events.log"
 for f in gh-watch.py gh-watch-daemon.sh; do ln -sfn "$root/watcher/$f" "$dir/$f"; done
 while [ $# -gt 0 ]; do
