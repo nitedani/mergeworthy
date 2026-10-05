@@ -8,7 +8,7 @@ d="$1"; r="$2"
 "$(dirname "$(readlink -f "$0")")/post-lint" "$d" ${POST_LINT_ARGS:-} || { echo "post-lint failed"; exit 1; }
 out=$(tr -d '\r' < "$r" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -v '^$' || true)
 [ "$out" = "CLEAN" ] || { echo "review is not exactly CLEAN (it has $(printf '%s\n' "$out" | wc -l) non-empty lines; last: $(printf '%s\n' "$out" | tail -1)). Capture only the final message: codex exec -o <review-output>"; exit 1; }
-# a posted promise is a task opened (methodology 1.5): it needs a PROMISED line naming this draft in proposals-open.md
+# a posted promise is a task opened (mergeworthy:post): it needs a PROMISED line naming this draft in proposals-open.md
 if grep -qiE "\b(I'll|I will)\b|follow-up PR|subsequent PR|separate PR" "$d" && ! grep -qiE "\b(and|then) I'll (squash-)?merge" "$d"; then
   po="$(dirname "$(readlink -f "$d")")/../proposals-open.md"
   grep -q "^PROMISED .*$(basename "$d")" "$po" 2>/dev/null || { echo "the draft promises work: add 'PROMISED <thread>: <what> ($(basename "$d"))' to $po first, or do it now and write 'Done in <link>'"; exit 1; }

@@ -1,12 +1,12 @@
 #!/bin/bash
-# gh-watch-start [--main] <dir> [owner/repo [N]]...: the one way to start watching (methodology 1.5). Idempotent.
+# gh-watch-start [--main] <dir> [owner/repo [N]]...: the one way to start watching (mergeworthy:github-event). Idempotent.
 # - --main: this dir gets your /ai and /agent calls on threads no watcher watches (default: the first live dir).
 # - <dir> is the session's artifact root; it gets links to the daemon (../watcher/), threads.txt and repos.txt.
 # - "owner/repo N" goes to threads.txt; a bare "owner/repo" goes to repos.txt (the repo is covered, e.g. before `gh issue create`).
 # - Starts the daemon unless its PID is alive, with GH_WATCH_EYES from the environment, else from <dir>/eyes, else your gh login.
 # - Registers <dir> in ~/.claude/gh-watch-dirs.txt, which pre-bash-guard and post-bash-register read.
 # - Prints the Monitor to arm in the session: the daemon only records events in <dir>/events.log; the session that
-#   owns the threads is the one that answers them, woken by that Monitor (1.5).
+#   owns the threads is the one that answers them, woken by that Monitor (mergeworthy:github-event).
 set -e
 main=; [ "${1:-}" = --main ] && { main=1; shift; }
 [ -n "$1" ] || { sed -n '2,8p' "$0"; exit 1; }

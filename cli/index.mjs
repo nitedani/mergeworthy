@@ -72,56 +72,6 @@ function uninstallClaude() {
   fs.rmSync(path.join(HOME, '.mergeworthy'), { recursive: true, force: true })
 }
 
-// ---------- The install this replaced (install-methodology): hooks in settings.json, a CLAUDE.md block, copies ----------
-const MECH = path.join(CLAUDE_DIR, 'mechanisms')
-const CURRENT = path.join(HOME, '.mergeworthy', 'current')
-function oldInstallFound() {
-  const hooks = JSON.stringify(readJson(SETTINGS, {}).hooks || {})
-  return hooks.includes('.claude/mechanisms/') || readText(path.join(CLAUDE_DIR, 'CLAUDE.md')).includes('<!-- methodology:begin')
-}
-function readText(f) { return fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : '' }
-function removeOldInstall() {
-  const s = readJson(SETTINGS, {})
-  for (const [event, entries] of Object.entries(s.hooks || {})) {
-    s.hooks[event] = entries.filter((e) => !e.hooks.some((h) => /\.claude\/mechanisms\//.test(h.command)))
-    // claude-swap moved into the plugin's bin/: point the usage-limit hook at the stable path
-    for (const e of s.hooks[event]) for (const h of e.hooks) {
-      for (const old of ['~', '$HOME', HOME].map((h) => `${h}/.local/bin/claude-swap`))
-        if (h.command.startsWith(old)) h.command = '~/.mergeworthy/current/bin/claude-swap' + h.command.slice(old.length)
-    }
-    if (!s.hooks[event].length) delete s.hooks[event]
-  }
-  writeJson(SETTINGS, s)
-  const md = path.join(CLAUDE_DIR, 'CLAUDE.md')
-  fs.writeFileSync(md, readText(md).replace(/\n*<!-- methodology:begin[\s\S]*?<!-- methodology:end -->\n?/, '\n'))
-  const skills = path.join(CLAUDE_DIR, 'skills')
-  for (const d of fs.existsSync(skills) ? fs.readdirSync(skills) : []) if (d.startsWith('methodology-')) fs.rmSync(path.join(skills, d), { recursive: true })
-  // Sessions started before this keep their hooks and PATH from the old install (hooks are read at session start):
-  // the old files become links to the new version, so those sessions keep working, on the new code
-  const NEW = { 'post-lint.py': 'bin/post-lint' }
-  for (const f of fs.existsSync(MECH) ? fs.readdirSync(MECH) : []) {
-    const rel = NEW[f] || (['hooks', 'bin', 'watcher'].map((d) => `${d}/${f}`).find((r) => fs.existsSync(path.join(CURRENT, r))) || null)
-    if (!rel) continue
-    fs.rmSync(path.join(MECH, f), { force: true })
-    fs.symlinkSync(path.join(CURRENT, rel), path.join(MECH, f))
-  }
-  // Running watchers link their scripts from the old copies: point them at the stable path, then stop the daemon by its
-  // PID so its supervisor (systemd, launchd, cron) restarts it on the new code. Stopped watchers stay stopped.
-  // only a real PID: 0 or -1 would signal this process's group, or every process
-  const pidOf = (d) => { const n = Number(readText(path.join(d, 'gh-watch.pid')).trim()); return Number.isInteger(n) && n > 1 ? n : null }
-  const alive = (pid) => { try { process.kill(pid, 0); return true } catch { return false } }
-  const dirs = readText(path.join(CLAUDE_DIR, 'gh-watch-dirs.txt')).split('\n').filter((d) => d && pidOf(d) && alive(pidOf(d)))
-  for (const d of dirs) {
-    for (const f of ['gh-watch.py', 'gh-watch-daemon.sh']) {
-      const l = path.join(d, f)
-      try { if (fs.readlinkSync(l).startsWith(MECH)) { fs.rmSync(l); fs.symlinkSync(path.join(CURRENT, 'watcher', f), l) } } catch {}
-    }
-    for (const f of ['agent', 'wake.pid', 'wake.launch']) fs.rmSync(path.join(d, f), { force: true })
-    process.kill(pidOf(d), 'SIGTERM')
-  }
-  return dirs.length
-}
-
 // ---------- Codex ----------
 function codexHasPlugin() {
   try { return run('codex', ['plugin', 'list']).split('\n').some((l) => l.startsWith(`${ID} `) && !l.includes('not installed')) } catch { return false }
@@ -183,13 +133,10 @@ async function main() {
       values[key] = YES ? initial : bail(await p.select({ message: o.label, options: o.choices.map((c) => ({ value: c, label: c })), initialValue: initial }))
     }
   }
-  const migrate = targets.includes('claude') && oldInstallFound() &&
-    (YES || bail(await p.confirm({ message: 'An older install (install-methodology) is here: replace it? Its hooks, CLAUDE.md block and copies go; watchers are moved over.' })))
 
   const s = p.spinner()
   if (targets.includes('claude')) {
     s.start('Claude Code'); installClaude(values); s.stop('Claude Code: installed, auto-update on')
-    if (migrate) { s.start('Older install'); const n = removeOldInstall(); s.stop(`Older install removed; ${n} watcher(s) moved over`) }
   }
   if (targets.includes('codex')) { s.start('Codex'); installCodex(); s.stop('Codex: installed, always-on rules in ~/.codex/AGENTS.md') }
   if (targets.includes('other')) skillsSh('add')

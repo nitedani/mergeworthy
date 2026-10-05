@@ -101,7 +101,7 @@ def watch_dirs():
     return live
 
 def need_watch(repo):
-    """Opening an issue or PR starts the live loop (1.5): a running watcher must cover the repo (post-bash-register adds
+    """Opening an issue or PR starts the live loop (mergeworthy:github-event): a running watcher must cover the repo (post-bash-register adds
     the new thread). A comment on an existing thread needs none: the agent answers only threads it opened, and /ai calls."""
     if setting('WATCHER', 'on') != 'on' or setting('TARGET', 'local') != 'local' or not repo: return
     def lines(d, f):
@@ -150,9 +150,9 @@ def check(t, has_cd):
         head = subprocess.run(['git', '-C', run_dir, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
         rec = os.path.expanduser(f'~/.claude/pr-steps/{head}')
         kinds = {l.split()[0] for l in open(rec)} if head and os.path.exists(rec) else set()
-        missing = [k for k in ('review', 'refactor') if k not in kinds]
+        missing = [k for k in ('read', 'review') if k not in kinds]
         if missing:
-            block(f"HEAD {head[:10] or '(no git repo in cwd)'} has no {' and no '.join(missing)} record: run the review round (charter) and the refactor pass (mergeworthy `review` and `refactor`), fix, then `pr-steps review <output>` and `pr-steps refactor <output>` on the final HEAD; or open it with --draft")
+            block(f"HEAD {head[:10] or '(no git repo in cwd)'} has no {' and no '.join(missing)} record: ask a fresh reader the read and review questions (mergeworthy:ready), then `pr-steps read <output>` and `pr-steps review <output>` on the final HEAD; or open it with --draft")
     if p == 'gh' and len(a) >= 2 and a[0] == 'pr' and a[1] == 'merge':
         if setting('MERGE', 'on-request-squash') == 'reviewer':
             block('never merge: the reviewer merges this repo\'s PRs (MERGEWORTHY_MERGE=reviewer)')

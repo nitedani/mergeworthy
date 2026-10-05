@@ -73,7 +73,7 @@ if kind == 'reply' and words > 80:
 pr_budget = 250 if re.search(r'^#+ .*\b(notes|decisions)\b|^Decisions\b', text, re.I | re.M) else 150  # a PR with decisions for the maintainer may run longer
 if kind == 'pr' and words > pr_budget:
     findings.append(f"{words} words > {pr_budget} for a PR body (tables, code, images and URLs not counted): cut what the reader doesn't need")
-if kind == 'proposal' and words > 600:  # a design walkthrough (methodology 1.4 step 4)
+if kind == 'proposal' and words > 600:  # a design walkthrough (mergeworthy:design)
     findings.append(f"{words} words > 600 for a proposal: cut what the reader doesn't need")
 if kind == 'issue' and chars > 400:
     findings.append(f"{chars} characters > 400 for an issue (tables, code, images and URLs not counted): keep one finding")
@@ -86,19 +86,19 @@ for m in re.finditer(r'^\s*(?:[-*]|\d+\.)?\s*\*\*(Left to you|For you to decide|
         findings.append(f"unclassified note: {line.strip()[:70]!r} needs <bug|limitation|not a regression|decision needed> · blocks …: yes/no · next: …")
 if len(re.findall(r'^\s*(?:[-*]|\d+\.)\s+[^\n|]*·\s*blocks', text, flags=re.M | re.I)) >= 2:
     findings.append("notes as a list of 'kind · blocks · next' lines: put them in one table | Note | Kind | Blocks merge | Next |")
-# evidence carries no secret (1.6): checked on the whole text, code blocks included, where logs usually sit
+# evidence carries no secret (mergeworthy:post): checked on the whole text, code blocks included, where logs usually sit
 SECRET = re.compile(r'ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|\bsk-[A-Za-z0-9_-]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}'
                     r'|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|^\s*(?:authorization|cookie|set-cookie)\s*:\s*(?:bearer\s+|basic\s+)?(?!<REDACTED>)\S{12,}',
                     re.I | re.M)
 for m in SECRET.finditer(text):
     findings.append(f"secret-shaped text {m.group(0)[:12]!r}...: write <REDACTED> in its place")
-# a follow-up is opened before the post, never parked as advice (methodology 1.6 notes, 1.1.7)
+# a follow-up is opened before the post, never parked as advice (mergeworthy:post)
 for row in re.findall(r'^\|(?:[^|\n]*\|){3}([^|\n]*)\|\s*$', text, flags=re.M):
     if re.search(r'\b(recommend|follow-up|follow up|later)\b', row, re.I):
         findings.append(f"notes table Next {row.strip()[:50]!r}: open the follow-up first and link it (PR <url>), fix it (fixed in <sha>), or write 'nothing, because …'")
-# a found defect is fixed in this change, not parked in prose (methodology 1.1.7): the same bug elsewhere is related
+# a found defect is fixed in this change, not parked in prose (mergeworthy:pr): the same bug elsewhere is related
 for m in re.finditer(r"[^.\n]*\b(separate issue|separate PR|out of scope|left for later|for later|a later PR|follow-up issue|another PR)\b[^.\n]*", prose, re.I):
-    findings.append(f"deferral {m.group(0).strip()[:70]!r}: fix it in this change, open the PR now and link it, or quote the user's OK (1.1.7)")
+    findings.append(f"deferral {m.group(0).strip()[:70]!r}: fix it in this change, open the PR now and link it, or quote the user's OK (mergeworthy:pr)")
 has_badge = _m is not None
 badge = setting('BADGE', 'on')  # auto: only a human account (`gh api user` type User, not Bot) needs it
 if kind != 'tracker' and not has_badge and (badge == 'on' or badge == 'auto' and

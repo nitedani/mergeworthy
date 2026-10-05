@@ -1,6 +1,6 @@
 {
   "name": "mergeworthy",
-  "description": "How an AI coding agent works on GitHub so its PRs and replies are worth merging: triage, review, the posting gate, the live thread loop, convergence, and the hooks that enforce them.",
+  "description": "A working method for an AI coding agent on GitHub: one page per moment, a fresh reader before every post, and hooks that enforce it.",
   "author": {
     "name": "nitedani"
   },
@@ -47,7 +47,7 @@
     "local_model": {
       "type": "string",
       "title": "Local model",
-      "description": "on: exploration and gate reviews go to a local model (claude-local) while it's available",
+      "description": "on: routine work and reviews go to a local model (claude-local) while it's available",
       "options": [
         "on",
         "off"

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Claude Code PostToolUse hook (matcher: Bash). A thread you just opened (`gh issue create`, `gh pr create`, a `gh api`
 POST to repos/<o>/<r>/issues or /pulls) joins the threads.txt of the running watcher that covers its repo, so maintainer
-comments on it are answered (1.5). A comment on an existing thread registers nothing."""
+comments on it are answered (mergeworthy:github-event). A comment on an existing thread registers nothing."""
 import json, os, re, sys
 d = json.load(sys.stdin)
 cmd = d.get('tool_input', {}).get('command', '')

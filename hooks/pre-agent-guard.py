@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Claude Code PreToolUse hook (matcher: Agent). 1.1.14: while the local model is available, read-only exploration goes to
+"""Claude Code PreToolUse hook (matcher: Agent). mergeworthy:delegate: while the local model is available, read-only exploration goes to
 the local model (a T3 Code child on Local Claude), not to a Claude subagent. Exit 2 blocks; stderr goes to the agent.
 Blocks an Agent call that explores read-only (an Explore agent, or a prompt that says read-only / find / list every / where…)
 when: local_model=on, `claude-local` is installed, `claude-usage --mode` isn't `off`, and `serve.sh` doesn't see the GPU taken.
@@ -38,7 +38,7 @@ if review:
     print("Gate reviews go to the local model while it's available: a ticket with `## File` = the draft (plus Facts and Scope), "
           "a T3 Code `delegate_task` child on the Local Claude instance (model `local`, runtimeMode full-access); "
           "check each finding yourself, and write its final CLEAN to the review output for gate-pass.", file=sys.stderr); sys.exit(2)
-print("Read-only exploration goes to the local model while it's available (1.1.14): "
+print("Read-only exploration goes to the local model while it's available (mergeworthy:delegate): "
       "give the brief to a T3 Code `delegate_task` child on the Local Claude instance (model `local`, "
       "runtimeMode full-access), then check two or three of its path:line citations. If this needs Claude (judgment, design, "
       "maintainer-facing wording), add a line `NEEDS-CLAUDE: <why>` to the prompt.", file=sys.stderr)

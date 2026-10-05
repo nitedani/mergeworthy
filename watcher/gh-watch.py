@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Robust GitHub watch for the tracked threads. One line on stdout per event.
 
-- The comments the agent answers (1.5), new or edited, each with an :eyes: reaction (held while every subscription is
+- The comments the agent answers (mergeworthy:github-event), new or edited, each with an :eyes: reaction (held while every subscription is
   used up): a maintainer's (write access) on a thread in threads.txt, the threads the agent opened; and yours with
   /ai or /agent, on any thread (your events feed; one watch dir gets each, see main_dir). Nothing else.
 - Maintainers' commits pushed to a tracked PR, and 👍/👎 from GH_WATCH_EYES on the agent's comments.
-- PR head/state changes (pushes, merges, closes), CI turning red or green on open PRs, and your PR's code (tests excluded) changing by more than ~80 lines since its last refactor pass (REFACTOR STALE).
+- PR head/state changes (pushes, merges, closes), CI turning red or green on open PRs, and your PR's code (tests excluded) changing by more than ~80 lines since its last read record pass (REFACTOR STALE).
 State lives in gh-watch-state.json: every seen (id, updated_at) pair, so nothing is skipped or repeated,
 and scans overlap by 10 minutes. A failed API call prints WATCH ERROR and that thread's scan position isn't advanced.
 """
@@ -77,7 +77,7 @@ AI_CALL = re.compile(r'(^|\s)/(ai|agent)\b', re.I)
 
 
 def answerable(u, body, agent_hashes):
-    """1.5: a maintainer on a thread the agent opened, or the user anywhere with /ai or /agent; nothing else."""
+    """mergeworthy:github-event: a maintainer on a thread the agent opened, or the user anywhere with /ai or /agent; nothing else."""
     if not is_human(u, body, agent_hashes):
         return False
     return bool(AI_CALL.search(body or '')) if u.get('login') == ME else u.get('assoc') in MAINTAINER
@@ -92,7 +92,7 @@ def is_human(u, body=None, agent_hashes=frozenset()):
 
 
 def append_owed(entry):
-    """1.5's replies-owed.md: the daemon records each human comment as an owed reply; the session
+    """replies-owed.md (mergeworthy:github-event): the daemon records each human comment as an owed reply; the session
     clears the line with "done: <reply url> <what changed>" when it is answered. The Stop hook
     blocks a turn while a line is still owed, so an unposted reply cannot end the session unseen."""
     path = os.path.join(HERE, 'replies-owed.md')
@@ -101,12 +101,12 @@ def append_owed(entry):
         return  # already recorded
     with open(path, 'a') as f:
         if not owed:
-            f.write('# replies owed (1.5): clear each line with "done: <reply url> <what changed>"\n')
+            f.write('# replies owed (mergeworthy:github-event): clear each line with "done: <reply url> <what changed>"\n')
         f.write(entry + '\n')
 
 
 def handle_comment(state, repo, key, kind, cid, upd, login, url, body, extra=''):
-    """An answerable comment (1.5): an event, an owed reply and an :eyes: reaction, each once."""
+    """An answerable comment (mergeworthy:github-event): an event, an owed reply and an :eyes: reaction, each once."""
     sk = f"{kind}:{cid}"
     if state['seen'].get(sk) == upd:
         return
@@ -117,7 +117,7 @@ def handle_comment(state, repo, key, kind, cid, upd, login, url, body, extra='')
         return
     append_owed(f"{key} {kind} {cid} by {login} {url} — {body.strip().splitlines()[0][:80]}" if body.strip() else f"{key} {kind} {cid} by {login} {url}")
     if re.fullmatch(r"\W*(ok(ay)?|good|great|lgtm|yes|sure|agreed|sounds good|👍|nice)\W*", body.strip().lower()):
-        emit(f"### ACK {key} {cid}: an acknowledgement answers your last open proposal in that thread or PR; apply it now (1.5)")
+        emit(f"### ACK {key} {cid}: an acknowledgement answers your last open proposal in that thread or PR; apply it now (mergeworthy:github-event)")
     if not ONCE:
         react_eyes(repo, kind, cid, state)
 
@@ -148,7 +148,7 @@ def main_dir():
 
 
 def emit(line):
-    print(line, flush=True)  # into events.log, where the session's Monitor delivers it (1.5)
+    print(line, flush=True)  # into events.log, where the session's Monitor delivers it (mergeworthy:github-event)
 
 
 def emit_dependents(key):
@@ -157,7 +157,7 @@ def emit_dependents(key):
     lines = [l.strip() for l in open(path)] if os.path.exists(path) else []
     for l in lines:
         if l.split(' -> ')[0].strip() == key:
-            emit(f"### DEPENDENT of merged {key}: {l.split(' -> ', 1)[1]}: do it now and post the progress on that PR (1.5)")
+            emit(f"### DEPENDENT of merged {key}: {l.split(' -> ', 1)[1]}: do it now and post the progress on that PR (mergeworthy:github-event)")
 
 
 PROFILES = os.path.expanduser('~/.claude/profiles')  # claude-swap's accounts and limited.json
@@ -189,25 +189,25 @@ def emit_maintainer_commits(repo, key, old, new):
         return
     theirs = [c['sha'] for c in commits if c['login'] in EYES_FOR and c['login'] != ME and c['sha'] in on_pr]
     if theirs:
-        emit(f"### MAINTAINER COMMITS {key}: {' '.join(theirs)}: review each one in a table (| Commit | What it does, and the idea behind it | Rating |, one short sentence each; rated N/10 with a short reason next to anything below 10, e.g. 9/10 (Vite's built-ins differ); an emoji only where it's funny; 10/10 only when nothing could be better), as requested (1.5)")
+        emit(f"### MAINTAINER COMMITS {key}: {' '.join(theirs)}: review each one in a table (| Commit | What it does, and the idea behind it | Rating |, one short sentence each; rated N/10 with a short reason next to anything below 10, e.g. 9/10 (Vite's built-ins differ); an emoji only where it's funny; 10/10 only when nothing could be better), as requested (mergeworthy:github-event)")
 
 
-def emit_refactor_stale(repo, key, new):
-    """Your PR changed by more than ~80 lines since its last refactor pass (`pr-steps refactor`): the ratings describe old code."""
+def emit_read_stale(repo, key, new):
+    """Your PR changed by more than ~80 lines since its last read question (`pr-steps read`): the ratings describe old code."""
     num = key.split('#')[1]
     try:
         pr = json.loads(gh(['api', f"repos/{repo}/pulls/{num}", '--jq', '{author: .user.login, base: .base.ref}']))
         if pr['author'] != ME: return
         shas = json.loads(gh(['api', f"repos/{repo}/compare/{pr['base']}...{new}", '--jq', '[.commits[].sha]']))
         rec = os.path.expanduser('~/.claude/pr-steps')
-        last = next((s for s in reversed(shas) if os.path.exists(f'{rec}/{s}') and any(l.startswith('refactor ') for l in open(f'{rec}/{s}'))), None)
+        last = next((s for s in reversed(shas) if os.path.exists(f'{rec}/{s}') and any(l.startswith('read ') for l in open(f'{rec}/{s}'))), None)
         if last == new: return
         lines = int(gh(['api', f"repos/{repo}/compare/{last or pr['base']}...{new}", '--jq', '[.files[] | select(.filename | test("\\\\.(spec|test)\\\\.|(^|/)tests?/") | not) | .additions + .deletions] | add // 0']))  # tests aren't refactored
     except Exception as e:
-        emit(f"WATCH ERROR refactor check {key}: {e}")
+        emit(f"WATCH ERROR read check {key}: {e}")
         return
     if lines > 80:
-        emit(f"### REFACTOR STALE {key}: {lines} changed lines since the last refactor pass ({last[:10] if last else 'never'}): re-run `refactor` on the whole PR diff, then `pr-steps refactor` and replace the PR's Ratings")
+        emit(f"### READ STALE {key}: {lines} changed lines since the last read question ({last[:10] if last else 'never'}): ask it again on the whole PR diff (mergeworthy:ready), then `pr-steps read`")
 
 
 def read_threads():
@@ -222,7 +222,7 @@ def read_threads():
 
 
 def scan_reactions(state, threads):
-    """A 👍 or 👎 from GH_WATCH_EYES on one of the agent's comments is feedback on that comment (methodology 1.5)."""
+    """A 👍 or 👎 from GH_WATCH_EYES on one of the agent's comments is feedback on that comment (mergeworthy:github-event)."""
     agent_hashes = agent_post_hashes()
     seen = state.setdefault('reactions', {})  # "<kind>:<id>" -> ["<login>:<content>", ...]
     for repo, num in threads:
@@ -253,9 +253,9 @@ def scan_reactions(state, threads):
                         continue
                     seen.setdefault(sk, []).append(f"{who}:{content}")
                     if content == '-1':
-                        emit(f"### THUMBS DOWN {repo}#{num} by {who} on {c['html_url']} (reaction {r['id']}): work out why and fix the rule behind it; if the thread is still on that point, post a new reply with the fix that @-mentions {who}; if it has moved past it or it's resolved, instead edit that comment to add how you'll do better. Leave the 👎 (1.5)")
+                        emit(f"### THUMBS DOWN {repo}#{num} by {who} on {c['html_url']} (reaction {r['id']}): work out why and fix the rule behind it; if the thread is still on that point, post a new reply with the fix that @-mentions {who}; if it has moved past it or it's resolved, instead edit that comment to add how you'll do better. Leave the 👎 (mergeworthy:github-event)")
                     else:
-                        emit(f"### THUMBS UP {repo}#{num} by {who} on {c['html_url']}: note what they liked and reinforce the rule that produced it (1.5)")
+                        emit(f"### THUMBS UP {repo}#{num} by {who} on {c['html_url']}: note what they liked and reinforce the rule that produced it (mergeworthy:github-event)")
 
 
 def react_eyes(repo, kind, cid, state):
@@ -335,11 +335,11 @@ def scan(state, only=None):
                         emit_dependents(key)
                     if prev.get('head') != pr_state['head']:
                         emit_maintainer_commits(repo, key, prev['head'], pr_state['head'])
-                        emit_refactor_stale(repo, key, pr_state['head'])
+                        emit_read_stale(repo, key, pr_state['head'])
                 state['prs'][key] = pr_state
             if red is not None:
                 if red != state['ci'].get(key, []):
-                    emit(f"### CI {key}: red={red}: fix it, or if it is not this PR's doing, say why on the PR now with the evidence (1.5)" if red else f"### CI {key}: no longer red")
+                    emit(f"### CI {key}: red={red}: fix it, or if it is not this PR's doing, say why on the PR now with the evidence (mergeworthy:github-event)" if red else f"### CI {key}: no longer red")
                 state['ci'][key] = red
             agent_hashes = agent_post_hashes()  # read after the fetch: a post gated while it ran is the agent's
             for kind, cid, upd, user, url, body, extra in events:
