@@ -12,7 +12,7 @@ It finds the coding agents on this machine, asks which to install into and how t
 
 | Agent | Gets | Updates |
 |---|---|---|
-| Claude Code | the skills, the hooks, the commands and the always-on rules | automatically |
+| Claude Code | the skills, the hooks, the `bin/` commands and the always-on rules | automatically |
 | Codex | the skills, and the always-on rules in `~/.codex/AGENTS.md` | re-run `npx mergeworthy` |
 | Others, through [skills.sh](https://skills.sh) | the skills | `npx skills update` |
 

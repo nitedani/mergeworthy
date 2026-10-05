@@ -5,7 +5,7 @@ description: "Implementing an issue or opening a PR: already fixed?, reproduce, 
 
 # Implementing a change
 
-From an issue or a problem to one merge-ready PR. Tier S follows it as written; Tier ≥ M runs it once per PR, with `converge`'s loops in place of steps 6 and 7's single rounds (`converge` says what feeds `pr-steps`).
+From an issue or a problem to one merge-ready PR. Tier S follows it as written; Tier ≥ M runs it once per PR, with `converge`'s loops in place of steps 6 and 7's single rounds (`guardian` (landing) says what feeds `pr-steps`).
 
 The repo's `AGENTS.md` / `CLAUDE.md` governs how the code is written. Everything particular to a repo (base branch, gates, existing guarantees, security surfaces, tracker, labels, how to run the app) lives in its **project file**: `.claude/skills/implement-issue/references/project.md`, else `.claude/implement-issue.md`. If the repo has none, derive it (base branch from `gh repo view --json defaultBranchRef`, gates from CI config and package scripts, how to run the app from the README) under the headings of the project template at the end of this skill, write it to `.claude/implement-issue.md`, tell the user it is a draft, and use it. If the repo has `.claude/skills/implement-issue/SKILL.md`, read it on `origin/<base>` first: where it differs from this skill, it wins, except where `core`, `github-threads` or `merging` say otherwise (usage limits per 1.1.13, found defects per 1.1.7, process stays out of the thread).
 
@@ -51,7 +51,7 @@ For a feature, capture the current state as the before shot and settle what "don
 
 List the distinct problems the change must solve. Rate each candidate 0–10 on how confident you are that it is the obviously right approach (not on implementation quality). Generate two or three before rating any, and include *not building it*; for a guard it often wins. To leave the frame, invert it (how would you guarantee this bug?) or delete what everyone treats as immovable. Candidates resting on the same unspoken assumption count as one.
 
-**6 or below is not ready to build.** If the work adds a surface, rate the **contract** (the surface, its invariants, its counterexamples) before writing a line. If it reshapes existing code, run Phases A and B of the finality pass (below) and rate the shape they derive.
+**6 or below is not ready to build.** If the work adds a surface, rate the **contract** (the surface, its invariants, its counterexamples) before writing a line. If it reshapes existing code, run Phases A and B of the finality pass (`finality`) and rate the shape they derive.
 
 If nothing rates high, abort: comment what you tried and why each falls short, then stop. An open product question hiding in the issue is asked before building.
 

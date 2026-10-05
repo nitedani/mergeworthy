@@ -161,4 +161,6 @@ if kind in ('reply', 'inline'):
                 and len(re.findall(r"[A-Za-z][\w'-]*", bare)) <= 4:
             findings.append("bare 'Done' answering a question or a soft suggestion: say what you checked and why you agree, or push back")
 for f in findings: print(f)
+if not findings:  # gate-pass re-runs post-lint with the flags this draft passed with
+    with open(path + '.lint', 'w') as f: f.write(' '.join(args[1:]))
 sys.exit(1 if findings else 0)

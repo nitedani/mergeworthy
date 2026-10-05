@@ -22,13 +22,13 @@ An error, a hang or "out of credits" is not a review. Record which reviewer ran;
 
 ## The PR review round: correctness, security, bloat
 
-The reviewer (`review`) reviews the diff with the reviewer charter at the end of this skill. Write the charter to `<artifact root>/review.md` and append: the diff command against `git merge-base HEAD origin/<base>`, the issue link (Tier ≥ M: also `acceptance.md`), and one sentence on what the change claims to do. It says UNKNOWN for anything it could not observe; paste your gate commands, exit codes and output where it can't run them. If no reviewer at all is available, review it yourself with the charter.
+The reviewer (`review`) reviews the diff with the reviewer charter at the end of this skill. Write the charter to `<artifact root>/review-<pass id>.md` and append: the diff command against `git merge-base HEAD origin/<base>`, the issue link (Tier ≥ M: also `acceptance.md`), and one sentence on what the change claims to do. It says UNKNOWN for anything it could not observe; paste your gate commands, exit codes and output where it can't run them. If no reviewer at all is available, review it yourself with the charter.
 
 One round: fix real defects, decline the rest with a line of reasoning (1.1.15), no second round. Record who reviewed (or that it was a self-review) and what they found, including nothing, in the ledger (1.2), and run `pr-steps review <output>`.
 
 ## Reviewer charter
 
-Hand this to the reviewer (step 6): not the author, not in the author's context.
+Hand this to the reviewer (`implement-issue` step 6): not the author, not in the author's context.
 
 ---
 

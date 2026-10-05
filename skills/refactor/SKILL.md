@@ -5,7 +5,7 @@ description: "The refactor pass on a PR's diff: the pinnacle-split-and-simplify 
 
 # Refactor pass
 
-Run it after `review`'s PR review round, on the diff you just wrote, with correctness proven and the gates green. The reviewer (`review`) rates it with the prompt below; with no reviewer available, run it yourself in two separate passes (rate, then edit) and record that. Mostly 10s means it was lazy. Then `pr-steps refactor <output>`. Refactor commits change the head: before ready, re-run `review`'s charter on the final head to confirm (fix real defects it finds and confirm again) and record it with `pr-steps review` (1.7).
+Run it after `review`'s PR review round, on the diff you just wrote, with correctness proven and the gates green. The reviewer (`review`) rates it with the prompt below; with no reviewer available, run it yourself in two separate passes (rate, then edit) and record that. Mostly 10s means it was lazy. On the final head, run `pr-steps refactor <output>` (the rater's last re-rating). Refactor commits change the head: before ready, re-run `review`'s charter on the final head to confirm (fix real defects it finds and confirm again) and record it with `pr-steps review` (1.7).
 
 ## The prompt
 

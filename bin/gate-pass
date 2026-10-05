@@ -1,11 +1,13 @@
 #!/bin/bash
-# gate-pass <draft.md> <review-output-file>: records that <draft.md> passed the posting gate.
+# gate-pass <draft.md> <review-output-file> [post-lint flags]: records that <draft.md> passed the posting gate.
 # Requires post-lint to pass and the review's final message to be exactly CLEAN (write it with `codex exec -o <review-output>`).
 # Writes <draft.md>.gate with the draft's sha256; the posting hook checks it, so any later edit needs a new review.
 set -e
 d="$1"; r="$2"
-[ -f "$d" ] && [ -f "$r" ] || { echo "usage: gate-pass <draft.md> <review-output>"; exit 2; }
-"$(dirname "$(readlink -f "$0")")/post-lint" "$d" ${POST_LINT_ARGS:-} || { echo "post-lint failed"; exit 1; }
+[ -f "$d" ] && [ -f "$r" ] || { echo "usage: gate-pass <draft.md> <review-output> [post-lint flags]"; exit 2; }
+# the flags given here, else those the draft last passed post-lint with (<draft>.lint), else a reply's
+shift 2; flags=("$@"); [ ${#flags[@]} -gt 0 ] || { [ -f "$d.lint" ] && read -ra flags < "$d.lint"; } || true
+"$(dirname "$(readlink -f "$0")")/post-lint" "$d" "${flags[@]}" || { echo "post-lint failed"; exit 1; }
 out=$(tr -d '\r' < "$r" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -v '^$' || true)
 [ "$out" = "CLEAN" ] || { echo "review is not exactly CLEAN (it has $(printf '%s\n' "$out" | wc -l) non-empty lines; last: $(printf '%s\n' "$out" | tail -1)). Capture only the final message: codex exec -o <review-output>"; exit 1; }
 # a posted promise is a task opened (mergeworthy:github-threads): it needs a PROMISED line naming this draft in proposals-open.md

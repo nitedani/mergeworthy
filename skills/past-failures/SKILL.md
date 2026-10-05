@@ -44,7 +44,7 @@ Each happened, most more than once. When a rule fails or the user names a failur
 | Choices handed back that we could settle. | 1.6, `post-lint` |
 | A design credited to the maintainer who couldn't recall it. | 1.6 credit |
 | Review reports and raw rater output posted on PRs. | 1.6 process invisible, `post-lint` |
-| "They look good" as a review of the maintainer's commits. | 1.6 reviewing commits |
+| "They look good" as a review of the maintainer's commits. | 1.5 step 2 (maintainer commits) |
 | Over-engineering the maintainer cut (long collision checks, a tiny cache, rare-case docs, lookup tests); the maintainer cut most submitted test lines. | 1.1.15, 1.1.16 |
 | A 100-line feature with no user. | 1.1.16 feature list |
 | Five new core hooks where an existing extension point sufficed. | 1.4 step 0 |

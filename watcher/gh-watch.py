@@ -115,12 +115,12 @@ def handle_comment(state, repo, key, kind, cid, upd, login, url, body, extra='')
     edited = sk in state['seen']
     state['seen'][sk] = upd
     emit(f"### {key} {kind}{' (edited)' if edited else ''} {cid} by {login} {upd} {extra} {url}\n{body}\n")
-    if edited or kind not in ('comment', 'review-comment'):
+    if edited:
         return
     append_owed(f"{key} {kind} {cid} by {login} {url} — {body.strip().splitlines()[0][:80]}" if body.strip() else f"{key} {kind} {cid} by {login} {url}")
     if re.fullmatch(r"\W*(ok(ay)?|good|great|lgtm|yes|sure|agreed|sounds good|👍|nice)\W*", body.strip().lower()):
         emit(f"### ACK {key} {cid}: an acknowledgement answers your last open proposal in that thread or PR; apply it now (mergeworthy:github-threads)")
-    if not ONCE:
+    if not ONCE and kind != 'review':  # GitHub has no reactions on a review
         react_eyes(repo, kind, cid)
 
 

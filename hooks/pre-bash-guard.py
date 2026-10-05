@@ -102,7 +102,7 @@ def watch_dirs():
 
 def need_watch(repo):
     """Opening an issue or PR starts the live loop (mergeworthy:github-threads): a running watcher must cover the repo (post-bash-register adds
-    the new thread). A comment on an existing thread needs none: the agent answers only threads it opened, and /ai calls."""
+    the new thread). A comment on an existing thread isn't blocked here: post-bash-register adds that thread, and stop-lint requires a watcher's Monitor after any post."""
     if setting('WATCHER', 'on') != 'on' or not repo: return
     def lines(d, f):
         return [l.strip() for l in open(os.path.join(d, f))] if os.path.exists(os.path.join(d, f)) else []

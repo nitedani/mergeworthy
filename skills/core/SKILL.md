@@ -121,7 +121,7 @@ Read the task and every link in it. Write `Tier: <X>, because <signals>` as the 
 Before the first change:
 1. Write `scope.md`.
 2. Write the critical path.
-3. Before you open an issue or PR, start the watcher and arm its Monitor (1.5): `gh-watch-start <artifact root> <owner/repo>`. Answer what's owed in `replies-owed.md` first.
+3. Before you open an issue or PR, start the watcher and arm its Monitor (1.5; unless the plugin's `watcher` option is `off`): `gh-watch-start <artifact root> <owner/repo>`. Answer what's owed in `replies-owed.md` first.
    Tier L: the umbrella issue and its Decisions comment exist in 1.2's shape before the first PR, and every PR opened after it is on it in the same step.
 4. Confirm browser control (for UI work).
 5. Note the precedents and style (1.3).

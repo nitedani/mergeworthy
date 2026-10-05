@@ -62,7 +62,9 @@ for wd in (l.strip() for l in open(reg)) if os.path.exists(reg) else ():
     def mentions(c): return wd in c or home_wd in c
     if wd and (cwd_d.startswith(wd) or wd.startswith(cwd_d or '/nonexistent') or any(map(mentions, monitor_cmds))
                or any(mentions(c) and re.search(r'\b(gh-watch-start|gate-pass)\b', c) for c in commands)): own_dirs.add(wd)
-watcher_on = 'MERGEWORTHY_WATCHER=off' not in (open(os.path.expanduser('~/.mergeworthy/settings.env')).read() if os.path.exists(os.path.expanduser('~/.mergeworthy/settings.env')) else '')
+_env = os.path.expanduser('~/.mergeworthy/settings.env')
+# MERGEWORTHY_WATCHER in the environment wins over the plugin option, as for every script
+watcher_on = (os.environ.get('MERGEWORTHY_WATCHER') or ('off' if 'MERGEWORTHY_WATCHER=off' in (open(_env).read() if os.path.exists(_env) else '') else 'on')) != 'off'
 # A headless run (`claude -p`, entrypoint sdk-cli) has no Monitor tool: its caller watches
 headless = any('"entrypoint":"sdk-cli"' in l for l in lines[-20:])
 if posted and watcher_on and not headless and not (monitors - dead):

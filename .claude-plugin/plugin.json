@@ -1,6 +1,6 @@
 {
   "name": "mergeworthy",
-  "description": "A working method for an AI coding agent on GitHub: one page per moment, a fresh reader before every post, and hooks that enforce it.",
+  "description": "How an AI coding agent works on GitHub so its PRs and replies are worth merging: triage, review, the posting gate, the live thread loop, convergence, and the hooks that enforce them.",
   "author": {
     "name": "nitedani"
   },
