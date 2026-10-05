@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// npx mergeworthy [install|uninstall] [--yes] [--source <owner/repo or path>]
+// npx mergeworthy [install|uninstall] [--yes] [--agents claude,codex,other] [--source <owner/repo or path>]
 // Installs mergeworthy into the coding agents on this machine through each agent's own plugin system, so updates come
 // from that system: Claude Code (skills, hooks, commands, options; auto-update on), Codex (skills, and the always-on
 // rules in ~/.codex/AGENTS.md), and any other agent through skills.sh (skills only).
@@ -74,8 +74,10 @@ function uninstallClaude() {
 
 // ---------- The install this replaced (install-methodology): hooks in settings.json, a CLAUDE.md block, copies ----------
 const MECH = path.join(CLAUDE_DIR, 'mechanisms')
+const CURRENT = path.join(HOME, '.mergeworthy', 'current')
 function oldInstallFound() {
-  return fs.existsSync(MECH) || readText(path.join(CLAUDE_DIR, 'CLAUDE.md')).includes('<!-- methodology:begin')
+  const hooks = JSON.stringify(readJson(SETTINGS, {}).hooks || {})
+  return hooks.includes('.claude/mechanisms/') || readText(path.join(CLAUDE_DIR, 'CLAUDE.md')).includes('<!-- methodology:begin')
 }
 function readText(f) { return fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : '' }
 function removeOldInstall() {
@@ -91,21 +93,28 @@ function removeOldInstall() {
   fs.writeFileSync(md, readText(md).replace(/\n*<!-- methodology:begin[\s\S]*?<!-- methodology:end -->\n?/, '\n'))
   const skills = path.join(CLAUDE_DIR, 'skills')
   for (const d of fs.existsSync(skills) ? fs.readdirSync(skills) : []) if (d.startsWith('methodology-')) fs.rmSync(path.join(skills, d), { recursive: true })
-  const bin = path.join(HOME, '.local', 'bin')
-  for (const f of fs.existsSync(bin) ? fs.readdirSync(bin) : []) {
-    const l = path.join(bin, f)
-    try { if (fs.readlinkSync(l).startsWith(MECH)) fs.rmSync(l) } catch {}
+  // Sessions started before this keep their hooks and PATH from the old install (hooks are read at session start):
+  // the old files become links to the new version, so those sessions keep working, on the new code
+  const NEW = { 'post-lint.py': 'bin/post-lint', 'tracker-check.sh': 'bin/tracker-check' }
+  for (const f of fs.existsSync(MECH) ? fs.readdirSync(MECH) : []) {
+    const rel = NEW[f] || (fs.existsSync(path.join(CURRENT, 'hooks', f)) ? `hooks/${f}` : fs.existsSync(path.join(CURRENT, 'bin', f)) ? `bin/${f}` : null)
+    if (!rel) continue
+    fs.rmSync(path.join(MECH, f), { force: true })
+    fs.symlinkSync(path.join(CURRENT, rel), path.join(MECH, f))
   }
-  // Running watchers link their scripts from the old copies: point them at the stable path, then restart them
-  const dirs = readText(path.join(CLAUDE_DIR, 'gh-watch-dirs.txt')).split('\n').filter((d) => d && fs.existsSync(d))
+  // Running watchers link their scripts from the old copies: point them at the stable path, then stop the daemon by its
+  // PID so its supervisor (systemd, launchd, cron) restarts it on the new code. Stopped watchers stay stopped.
+  const alive = (pid) => { try { process.kill(pid, 0); return true } catch { return false } }
+  const dirs = readText(path.join(CLAUDE_DIR, 'gh-watch-dirs.txt')).split('\n')
+    .filter((d) => d && alive(Number(readText(path.join(d, 'gh-watch.pid')).trim()) || -1))
   for (const d of dirs) {
     for (const f of ['gh-watch.py', 'gh-watch-daemon.sh']) {
       const l = path.join(d, f)
-      try { if (fs.readlinkSync(l).startsWith(MECH)) { fs.rmSync(l); fs.symlinkSync(path.join(HOME, '.mergeworthy', 'current', 'bin', f), l) } } catch {}
+      try { if (fs.readlinkSync(l).startsWith(MECH)) { fs.rmSync(l); fs.symlinkSync(path.join(CURRENT, 'bin', f), l) } } catch {}
     }
-    spawnSync(path.join(HOME, '.mergeworthy', 'current', 'bin', 'gh-watch-start'), [d], { stdio: 'ignore' })
+    for (const f of ['agent', 'wake.pid', 'wake.launch']) fs.rmSync(path.join(d, f), { force: true })
+    process.kill(Number(readText(path.join(d, 'gh-watch.pid')).trim()), 'SIGTERM')
   }
-  fs.rmSync(MECH, { recursive: true, force: true })
   return dirs.length
 }
 
@@ -148,7 +157,8 @@ async function main() {
     has('codex') && { value: 'codex', label: 'Codex', hint: 'skills and the always-on rules; re-run to update' },
     { value: 'other', label: 'Other agents (skills.sh)', hint: 'skills only; you pick the agents next' },
   ].filter(Boolean)
-  const targets = YES ? agents.filter((a) => a.value !== 'other').map((a) => a.value)
+  const only = args.includes('--agents') ? args[args.indexOf('--agents') + 1].split(',') : null
+  const targets = only ? only : YES ? agents.filter((a) => a.value !== 'other').map((a) => a.value)
     : bail(await p.multiselect({ message: uninstall ? 'Remove it from' : 'Install it into', options: agents, initialValues: agents.filter((a) => a.value !== 'other').map((a) => a.value), required: true }))
 
   if (uninstall) {
