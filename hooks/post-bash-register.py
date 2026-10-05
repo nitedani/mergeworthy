@@ -7,7 +7,10 @@ d = json.load(sys.stdin)
 cmd = d.get('tool_input', {}).get('command', '')
 r = d.get('tool_response') or {}
 out = r.get('stdout', '') if isinstance(r, dict) else str(r)
-if not re.search(r'\bgh\s+(issue|pr)\s+(create|comment|review)\b|\bgh\s+api\b.*\brepos/[\w.-]+/[\w.-]+/(issues|pulls)\b', cmd):
+# only a write: a read (`gh api …/issues/N/comments`) prints other threads' URLs, which aren't threads you posted in
+api_write = re.search(r'\bgh\s+api\b.*\brepos/[\w.-]+/[\w.-]+/(issues|pulls)\b', cmd) and \
+    re.search(r'(^|\s)(-X\s*POST|--method\s+POST|-f|-F|--field|--raw-field|--input)\b', cmd)
+if not (re.search(r'\bgh\s+(issue|pr)\s+(create|comment|review)\b', cmd) or api_write):
     sys.exit(0)
 reg = os.path.expanduser('~/.claude/gh-watch-dirs.txt')
 dirs = [l.strip() for l in open(reg)] if os.path.exists(reg) else []
