@@ -110,5 +110,12 @@ print("\n".join(out), file=sys.stderr)
 check "change 9: lines starting ### / body lines all indented" "1 True" "$got"
 sed 's/^/  | /' "$T/event"
 
+# The Monitor command gh-watch-start prints delivers an event within 2 s, and only lines that start an event
+M="$T/mon"; mkdir -p "$M"; : > "$M/events.log"
+cmd=$(dir="$M"; eval "$(grep -m1 "tail -n 0 -F" "$R/bin/gh-watch-start")" | sed 's/^ *//')
+( timeout 4 bash -c "$cmd" > "$M/out" 2>&1 & ); sleep 1
+printf '### ev1\n    ### a body line\nWATCH ERROR x\n' >> "$M/events.log"; sleep 2
+check "Monitor command: events within 2 s, body lines dropped" "### ev1|WATCH ERROR x|" "$(tr '\n' '|' < "$M/out")"
+
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]
