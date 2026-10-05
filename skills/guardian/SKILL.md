@@ -30,7 +30,7 @@ Guardian rounds are Loop B of `converge`: repeated rounds that find bloat and qu
 1. Review each implementer's diff yourself before cherry-picking (1.10).
 2. Cherry-pick onto the PR branch, resolve conflicts, and run the full gates.
 3. Run the product lanes the changes touch.
-4. After the last landing, run `review`'s PR review round on the final head and record it with `pr-steps review <output>`. Record the last guardian report with `pr-steps refactor <report>`.
+4. After the last landing, run `review`'s PR review round on the final head (open `review` for the round's steps) and record it with `pr-steps review <output>`. Record the last guardian report with `pr-steps refactor <report>`.
 
 **Round N+1:**
 - **The same guardian continues:** send it the implemented commits and the declined items with reasons. Start a fresh guardian only when the scope changed beyond its findings.

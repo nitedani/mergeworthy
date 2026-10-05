@@ -8,7 +8,7 @@ description: "Designing an API, protocol or module, or restructuring code: the d
 The design loop takes a new API or protocol from candidates to a shape the maintainer has agreed to, before any PR converges.
 
 0. **Prototype on existing extension points first.** Before any new core API, prototype the solution that uses only existing extension points (e.g. an existing middleware, render hook or plugin hook). That prototype is the first candidate; a core change needs a named requirement the prototype fails.
-1. **Draft `decisions/<name>.md`:** the invariant table (1.1.2), and the candidates rated as in `implement-issue` step 3. Rank the candidates by interface size. Recommend the smallest that keeps every invariant; recommend a larger one only with the requirement the smaller one fails, shown as code.
+1. **Draft `decisions/<name>.md`:** the invariant table (1.1.2), and the candidates rated as in `implement-issue` step 3 (open `implement-issue` for the rating steps). Rank the candidates by interface size. Recommend the smallest that keeps every invariant; recommend a larger one only with the requirement the smaller one fails, shown as code.
 2. **Prototype** to prove the invariants end to end: a real browser, request counts, timing, byte comparisons, dev, prod and static hosting.
 3. **Adversarial review** of the prototype (`review`: open it for who reviews): how does the prototype fail? When two review rounds each find a new case breaking the same rule, stop patching cases. Restate the cases as one rule, walk every setup through that rule yourself, then ask again.
 4. **Propose to maintainers** only when no invariant is broken, as a **walkthrough**:

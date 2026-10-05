@@ -145,7 +145,7 @@ Any console error fails.
 
 ### 6. Review round
 
-The review round runs in the reader. The reader is one agent, in one run, on the diff (open `converge`, who reads, for how the reader and the fresh reader are set up). The reader runs these in order, each into its own output file:
+The review round runs in the reader. The reader is one agent, in one run, on the diff (open `converge`, who reads, for how the reader and the fresh reader are set up). The reader runs these in order, each into its own output file. Each brief lives in the skill named next to it; open that skill when you write the reader's prompt:
 - the verifier brief (`verify`);
 - the reviewer charter (`review`);
 - the guardian verdict (`guardian`) and the refactor ratings (`refactor`).

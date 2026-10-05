@@ -14,7 +14,7 @@ How an AI agent works so that what it posts and the PRs it opens are worth mergi
 These defaults hold unless the user overrides them:
 - **The user** owns the goal. Code in the user's own repos is theirs, and so are beta, experimental or pre-1.0 features. That code is yours to change for the goal: decide, act, and report afterwards.
 - **External maintainers** are whoever merges in a repo you don't own (CODEOWNERS, recent mergers). Their requests are settled decisions. Changes to their code's behavior or public surface are their call (`converge`, authority).
-- **Models.** Reviews follow `review`. Judgment work runs on the session's default model; routine work follows 1.1.14. Never use a model above the default's tier unless the user names it, and never one the user has excluded. Never write a model version into a prompt, skill or memory.
+- **Models.** Reviews follow `review`: open it before any independent review, for who reviews. Judgment work runs on the session's default model; routine work follows 1.1.14. Never use a model above the default's tier unless the user names it, and never one the user has excluded. Never write a model version into a prompt, skill or memory.
 - **Artifact root:** a persistent `<task>-work/` directory next to the worktree. It holds notes, logs, probes, agent outputs and scratch worktrees; never use `/tmp`.
 - **Publishing authority:** what the task allows you to open, comment and file. A reviewed draft isn't permission to publish.
 

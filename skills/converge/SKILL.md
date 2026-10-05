@@ -25,7 +25,7 @@ Owner decisions don't block convergence, and neither do changes to code the owne
 
 Every pass above runs in one of two readers. Each reader covers one slice set: the slices that fit one context. Under about 1500 diff lines, one of each reader is enough; in a stack, each PR gets its own pair. The briefs and charters run as written, each into its own output file.
 
-- **The reader** is a Claude agent, because it judges. One run, in this order, since rating code that a bug fix will change is waste:
+- **The reader** is a Claude agent, because it judges. One run, in this order, since rating code that a bug fix will change is waste. Each brief lives in the skill named next to it; open that skill when you write the reader's prompt:
   1. the verifier brief (`verify`);
   2. the reviewer charter with all three lenses (`review`);
   3. the guardian charter and the refactor prompt (`guardian`, `refactor`).
