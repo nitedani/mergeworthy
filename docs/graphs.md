@@ -29,7 +29,7 @@ Opens `mergeworthy:core` (the task, triage 1.0, principles 1.1, tracking 1.2, di
 flowchart TB
   start(["Any multi-step or GitHub task, first"])
   subgraph g0["1.1 Principles"]
-    s0["16 rules: Critical path first, Invariants first, Do, don't offer…"]
+    s0["17 rules: Critical path first, Invariants first, Do, don't offer…"]
   end
   s0 -.-> r1[["implement-issue"]]
   s0 -.-> r2[["converge"]]

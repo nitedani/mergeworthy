@@ -77,6 +77,7 @@ Read the task and every link in it. Write `Tier: <X>, because <signals>` as the 
     - Comments: at most one line, literally true, stating a constraint the code can't show; no links to source, no comparison with the old code ("instead of", "now", "no longer"). Names follow their siblings. Every comment, guard or workaround the diff deletes gets one line in the body with the evidence that it's obsolete; otherwise it stays.
     - A test app imports the package by its name, never by a source path.
     - Open the PR ready and say "ready" once (1.7).
+17. **Quality is made, checks confirm.** Every check (a review, a guardian, the posting gate, the fresh reader) has a step before it that is responsible for what it checks: the build for the code, the writing for a post, the design for its shape. Do that step to the check's standard, so the check comes back quickly with nothing. A check's finding is a miss of its producing step: fix the instance, and note in the ledger what the producing step missed. When designing a flow, say for each check which step produces its quality; a check with no such step means the check is doing the work.
 
 ## 1.2 Tracking
 
