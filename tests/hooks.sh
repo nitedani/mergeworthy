@@ -112,8 +112,12 @@ lint() { python3 "$R/bin/post-lint" "$1" --kind issue --parent none 2>&1 | grep 
 items=$(for i in 1 2 3 4 5 6 7; do echo "  - item number $i with a few short words;"; done)
 printf '%s A list of short items follows here:\n%s\n' "$B" "$items" > "$T/list.md"
 check "a list of short items: no long sentence" 0 "$(lint "$T/list.md")"
-printf '%s A list follows:\n- %s\n' "$B" "$(printf 'word %.0s' $(seq 35))" > "$T/long.md"
-check "one list item over 30 words is flagged" 1 "$(lint "$T/long.md")"
+printf '%s A list follows:\n- %s\n' "$B" "$(printf 'word %.0s' $(seq 45))" > "$T/long.md"
+check "one list item over 40 words is flagged" 1 "$(lint "$T/long.md")"
+printf '%s The spec now warns for W2 and W5.\n' "$B" > "$T/lab.md"
+check "an internal label is flagged" 2 "$(python3 "$R/bin/post-lint" "$T/lab.md" --kind issue --parent none 2>&1 | grep -c 'internal label')"
+printf '%s Two answers follow.\n\n- **Fetch pipeline:** not needed.\n- **The option:** it stays private, as you asked, under its current name.\n' "$B" > "$T/frag.md"
+check "a bold label with a fragment is flagged, a full sentence is not" 1 "$(python3 "$R/bin/post-lint" "$T/frag.md" --kind issue --parent none 2>&1 | grep -c 'bold label with a fragment')"
 printf '%s Two fundamental issues remain.\n' "$B" > "$T/fund.md"
 check "a difficulty word without its scope is flagged" 1 "$(python3 "$R/bin/post-lint" "$T/fund.md" --kind issue --parent none 2>&1 | grep -c 'what it.s hard for')"
 # the budget grows with the questions in the comment answered

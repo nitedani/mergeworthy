@@ -80,20 +80,20 @@ The watcher runs independently of any session and only records events (and adds 
 **Everything that reaches an external service passes this gate,** with no lighter category: comments, review replies, inline comments, PR and issue bodies, filed issues, and edits of any of these. Reactions are exempt. Subagents never post; they hand you drafts.
 
 1. **Write it the way it should end up;** the gate checks, it doesn't edit. Write in `drafts/<name>.md` (never straight into a `gh` command), with the comment it answers in `drafts/<name>.parent.md`.
-   - Before the first sentence, write the one line the reader needs: the verdict or the ask. Then list what the reader already has (their words, the thread) and the new things you'll tell them, at most four; the rest goes in a linked document or nowhere.
-   - Write from that list, by the Writing rules below.
-   - Read the draft as a scanner would, only the first words of each line and the bold text: the point and the ask must come through. Then read every sentence once: none you'd have to read twice, no "it" with two meanings.
+   - Before the first sentence, write the one line the reader needs (the verdict or the ask), and what they already said or guessed.
+   - Write by the Writing rules below.
+   - Read the draft top to bottom as a newcomer to the thread would: every term named where it first appears, every link between two sentences written out, nothing you'd have to read twice.
 2. **Run `post-lint`** with the draft's `--kind` (and `--repo`). It must pass; `gate-pass` re-runs it with the same flags.
 3. **Run the review** (`review`: open it for who reviews) with a prompt file. The review should come back quickly with nothing. A finding means step 1 missed something: fix the draft, and add one line to the ledger saying what the writing missed, so the writing improves and the gate stays quiet. The review checks facts and noise, never wording:
    - **Claims:** every claim against the code (`file:line` or a command and its output), the thread and the evidence.
    - **Noise:**
      - every con or risk names who hits it today (a caller, repo or user), or is cut;
-     - every sentence the reader could delete is cut;
+     - every sentence that adds nothing is cut, but a sentence that links two points ("because", "so", "but") stays;
      - every question is answered;
      - every absolute word ("every", "unchanged", "always", "only") quotes what proves it, or is cut;
      - maintainer requests are followed, and links are correct.
    - **A cold read:** "you have not seen this thread; list every term or sentence you can't understand", and "say in one line what the reader is asked to decide". If the reviewer can't say, or names two decisions, that's a finding; so is any pronoun with two possible meanings.
-   - **Reader load:** does someone who reads only the first words of each line and the bold text get the point and the ask? Is there a sentence they must read twice, or a term they haven't seen? Must they hold more than about four things at once? Does any sentence lack its subject, or read as a fragment squeezed under the budget? Does it sound like a colleague, answering them in kind?
+   - **Reader load:** can a newcomer who reads it top to bottom follow it? Is there a term or label they haven't seen, a sentence they must read twice, or a bold label or fragment standing in for a sentence? Does it sound like the owner (`voice.md`) talking to a colleague, answering them in kind?
    - **The result:** capture only the reviewer's final message (`drafts/<name>.review.out`). Fix every finding and re-review until that message is exactly `CLEAN`. Never paste the reviewer's rewritten wording; write the fix in your own plain words.
 4. **Right before posting, re-read every claim against the current head** (`git fetch` first; read a PR's state before describing it). Every referenced commit is pushed (`git ls-remote`). Run `gate-pass <abs path>/drafts/<name>.md <review output>` and post with `--body-file` on that absolute path (`gh api … -F body=@<file>` for API posts).
 5. **Post in the thread where the person wrote.** Log it.
@@ -104,34 +104,27 @@ The watcher runs independently of any session and only records events (and adds 
 
 **Every post brings the reader something they didn't have** (every report too, 1.11): a finding, a measurement, a better option, a risk, or a decision with its reason. If it wouldn't, think more first. Engage as a peer: agree or disagree, and say why.
 
-- **Take load off the reader.** A post exists to leave the maintainer with less to hold in their head, not more.
-  - The first line is the verdict or the ask.
-  - One decision per comment, with your pick, answerable in a word.
-  - A concrete example in their words, not a case matrix; an edge case only when it would change their decision.
-  - Long material (a spec, a report, every case) goes in a linked document (a gist). The comment carries the two sentences that matter and the decision; never a spec inline.
-  - When you change your mind, say so in one line ("I was wrong about X: Y").
 - **Write in the owner's voice:** read `~/.mergeworthy/voice.md` before writing any post, else `voice.md` next to this skill (its author's voice).
-- **Write like a colleague talking.** Full sentences with a subject, and your own voice: "I agree, it's the wrong word", not "The wrong word." Answer their tone in kind: a question gets an answer, and a fair point gets "you're right". Real work they did for you (a repro, a fix, a long explanation) gets a thank-you; an approval or a review gets none (below). Keep them engaged: open with what's new for them, the verdict or the ask (above). Then answer a comment of several points the way they wrote it, quoting each point (`> their words`) above your answer. The quote only shows what you answer: the answer names its subject and reads alone, for someone who finds the thread later ("Sounds good" under a quote doesn't). "Done in <sha>.", bold lead-ins and table cells stay short. When a post runs over its budget, cut a point or link it; never cut the grammar.
-- **Write for how people read.** Readers scan: they read the first words of each line and what's bold, and they hold about four things at once.
-  - The answer or the ask comes first, in the post and in each paragraph; the rest can be cut at any point and the point survives.
-  - Each sentence starts from what the reader already has (their words, your previous sentence) and ends on the new point.
-  - The people and things act: "Vike warns", not "a warning is issued". Their words, not yours; a term they haven't seen is explained where it first appears. A word that ranks difficulty ("fundamental", "impossible") says what it's hard for.
-  - Sentences of 15 to 20 words, none over 30; paragraphs of at most three sentences; at most about four items to hold at once, grouped or linked beyond that.
-  - Hierarchy carries the structure: a bullet per parallel item with its point in a bold lead-in, prose for reasoning, one level of nesting, headings only for a long post. Bold marks the lead-ins and the decision, nothing else; a table only for a real comparison of a few columns.
+- **Answer the person, in their order and from their words.** Quote each point you answer (`> their words`) and start from what they said or guessed: "Almost. Your reasoning holds once the request reaches Vike, but two cases slip through." A fair point gets "you're right"; real work they did for you gets a thank-you, an approval doesn't.
+- **The verdict first, then the reasoning in the order the reader would think it:** what we expected, what we found, what follows from it.
+- **Join sentences with bridges that show how they connect:** "because", "so", "but", "which means". Never stack points with "also".
+- **Full sentences, as a colleague talking:** "I agree, it's the wrong word", never a bold label and a fragment ("**Fundamental:** the wrong word.").
+- **Write for a newcomer who finds the thread later.** Name each thing plainly where it first appears; no internal labels (W2, R*), no "it" with two meanings, no AI phrasing ("worth noting", "happy to", "let me know"). An answer under a quote still names its subject. A word that ranks difficulty ("fundamental", "impossible") says what it's hard for.
+- **Make every claim concrete** with an example from the project: a URL, a call, a plugin. Compare designs or behavior with code: what the user writes, and what changes as a short ```diff block. A table may summarize; it never replaces the code.
+- **Prose for reasoning, lists only for parallel items of the same kind.** Vary sentence length; split a sentence only when it carries two separate news points, never between a cause and its effect.
+- **Complete before short.** Answer every question fully in the comment, end with one decision and your pick, and send only reference material (a spec, a case table) to a gist. Over budget, cut a point or link it, never the grammar or a bridge. When all there is to say is "done", say "Done in <sha>".
+- **When you change your mind,** say so in one line ("I was wrong about X: Y").
 - **At most two comments in a row.** The second is only the 1.5 result after its holding reply, a wait ping, a dependency's progress or a 👎 fix; anything else edits your last comment. `pre-bash-guard` blocks a third within 3 hours of your last; after that, the third may be the wait ping.
 - **Evidence carries no secret.** In logs, requests, payloads and screenshots, write `<REDACTED>` in place of every token, cookie, auth header and key. Quote only the lines that show the point (`post-lint` fails on common token shapes).
-- **Self-contained** for anyone who finds the thread later. A comparison of designs or behavior shows each option as code: what the user or extension writes, and what changes as a short ```diff block (removed lines `-`, added `+`, so GitHub shows them red and green). A table may summarize the options; it never replaces the code.
-- **Short, plain words,** one idea per sentence. Name the thing again instead of "it", "them" or "this" whenever two things could be meant ("Vike can't tell these two apps apart, so Vike warns", not "so it warns"). No jargon, abstractions or AI phrasing ("in this run", "doesn't establish", "worth noting", "happy to", "let me know"), and never solicit ("pushback welcome").
-- **Say only what they don't know yet.** Don't recite their comment or your earlier replies, don't thank them for an approval, and don't promise how you'll behave next time. When answering several questions, quote each in one line. If all there is to say is "done", say "Done in <sha>".
 - **One reply per person, edits for corrections.** Several comments from one person get one reply. Never post a comment that corrects or adds to your own earlier one: edit it in place, through the gate.
 - **Keep the process invisible.** Reviewers, models, gates, rounds, working ratings and pass reports stay in the artifact root (`ledger.md`). The thread gets the result, with evidence only where a reader needs it to judge.
-- **Decide what you can decide or measure.** A question carries your recommendation and its reason; a change you'd recommend within scope is made, not listed.
+- **Decide what you can decide or measure.** A question carries your recommendation and its reason; a change you'd recommend within scope is made, not listed. Never solicit ("pushback welcome"), and don't promise how you'll behave next time.
 - **Credit** a design or statement to someone only with a link to where they said it.
 - **Links** to another repo use `owner/repo#N`. Write "depends on #N", never "stacked on", unless `gh stack` links them.
 - **The badge.** Unless the plugin's `badge` option says otherwise (`auto`: only from a human account), start with the icon of the agent that did the work and its name as the label (e.g. `<img src="https://github.com/claude.png" width="20" height="20" align="left" alt="Claude"> **Claude:**`, or `**Agent:**` for any agent).
 - **Budgets:**
   - reply ≤ 80 words;
-  - a design answer or walkthrough ≤ 250 words, code included; one decision per comment, its recommendation and code first;
+  - a design answer or walkthrough ≤ 400 words, code included; one decision per comment, its recommendation and code first;
   - a reply or design answer gets 60 more words for each question beyond the first in the comment it answers (quoted lines don't count);
   - PR body about 150 words plus evidence, up to 250 when it lists decisions for the maintainer;
   - issue: one finding, ≤ 400 characters plus a screenshot;

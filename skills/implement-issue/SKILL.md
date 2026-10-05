@@ -176,7 +176,7 @@ Closes #N
 
 **Write it to be scanned.**
 - **The first sentence says what was wrong** in a user's words, not the mechanism.
-- **One idea per sentence**, one line per caption. The implementation belongs in the diff.
+- **Plain sentences that say why, not only what**; one line per caption. The implementation belongs in the diff.
 - **Evidence in a skimmable shape:** a two-column before/after beats a transcript.
 - **At most one closing caveat**, last, for the reviewer's decision. When a revert wouldn't undo the merge (a stored or wire format, a migration, a published name), that is the caveat.
 
