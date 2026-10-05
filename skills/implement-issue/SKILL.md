@@ -9,14 +9,7 @@ From an issue or a problem to one merge-ready PR. The tiers come from `core` (1.
 - **Tier S** (one bounded fix) follows this skill as written.
 - **Tier ≥ M** runs it once per PR, and replaces the single rounds of steps 6 and 7 with `converge`'s loops. `guardian` (landing) says what feeds `pr-steps`.
 
-**The repo's `AGENTS.md` / `CLAUDE.md` governs how the code is written.** Everything else particular to a repo lives in its **project file**: the base branch, gates, existing guarantees, security surfaces, tracker, labels, and how to run the app. The project file is `.claude/skills/implement-issue/references/project.md`, else `.claude/implement-issue.md`.
-
-**If the repo has no project file, derive one** under the headings of the project template at the end of this skill:
-- the base branch from `gh repo view --json defaultBranchRef`;
-- the gates from the CI config and package scripts;
-- how to run the app from the README.
-
-Write it to `.claude/implement-issue.md`, tell the user it is a draft, and use it.
+**The repo's `AGENTS.md` / `CLAUDE.md` governs how the code is written;** everything else particular to the repo is in its project file (`core` 1.3).
 
 **A repo's own `.claude/skills/implement-issue/SKILL.md` wins over this skill.** Read it on `origin/<base>` first. The exceptions are where `core`, `github-threads` or `merging` say otherwise: usage limits (1.1.13), found defects (1.1.7), and process staying out of the thread.
 
@@ -220,15 +213,3 @@ gh api repos/<owner>/<repo>/pulls/<N>/comments -F body=@<abs>/drafts/<name>.md -
 ```
 
 **Every sentence in the body is a claim.** "Unchanged", "every call site", "all locales" need a diff behind them, and a later push can turn a caption into a lie: re-check the body after every push.
-
-## Reference: project template
-
-Everything this skill needs to know about one repo; the method itself stays here. Default branch: `<base>`. Keep each section to what an agent would otherwise get wrong, and delete a section that has nothing to say.
-
-- **Gates:** the commands that must exit 0 before a PR (typecheck, lint/format check, unit tests), where to run them (host, container) and how long they take. Locales, if any: which ones and where their files live.
-- **What already guarantees things:** validation layers, generated type shields, authorizers, schema constraints, each with its file and function.
-- **Security surfaces:** what is publicly reachable, how auth is checked per call, rate limiting, where admin actions and secrets live, and which changes are a team decision.
-- **Issue tracker:** anything that makes `git log --grep <issue>` miss (a migrated tracker, different numbering in commits).
-- **PR conventions:** labels (e.g. `effort/*`), title format, required reviewers, changeset or changelog expectations.
-- **Feature-scale precedent:** how bigger changes have landed before, with an example.
-- **Running the app:** *Preflight*: one command that checks everything the app needs and prints every failure together, plus install commands for what doesn't need root. *Start*: an isolated copy that disturbs nobody, and how to tell it is ready (the HTTP status, not just the exit code). *Drive it*: URLs, test accounts, seed data, how to reach the screen an issue is about. *Stop*: how to tear it all down, including after an abort.

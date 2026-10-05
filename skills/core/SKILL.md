@@ -161,6 +161,25 @@ Read the task and every link in it. Then write `Tier: <X>, because <signals>` as
     - Before pushing docs, a fresh-context agent that sees only the rendered text explains each new section back and lists every sentence it can't act on. Fix the text until that explanation is right.
 - **Behavior before removal.** Before removing or rewriting behavior, inventory what exists (triggers, paths, gates) and run `git log -S` on it. Keep all of it unless the task says otherwise. After a move or rename, grep the repo and sibling PRs for the old name or anchor.
 - **Prior art:** research it in upstream source at pinned versions.
+- **The project file** holds what is particular to a repo beyond its `AGENTS.md` / `CLAUDE.md`: the base branch, gates, existing guarantees, security surfaces, tracker, labels, and how to run the app. Every skill reads it. Use the repo's own if it ships one; otherwise derive it once into `<artifact root>/project.md`, outside the repo, under the headings of the template below:
+    - the base branch from `gh repo view --json defaultBranchRef`;
+    - the gates from the CI config and package scripts;
+    - how to run the app from the README.
+
+  Mention in your report that you derived it, and correct it as you learn.
+
+
+### The project template
+
+Everything the skills need to know about one repo; the method itself stays in the skills. Default branch: `<base>`. Keep each section to what an agent would otherwise get wrong, and delete a section that has nothing to say.
+
+- **Gates:** the commands that must exit 0 before a PR (typecheck, lint/format check, unit tests), where to run them (host, container) and how long they take. Locales, if any: which ones and where their files live.
+- **What already guarantees things:** validation layers, generated type shields, authorizers, schema constraints, each with its file and function.
+- **Security surfaces:** what is publicly reachable, how auth is checked per call, rate limiting, where admin actions and secrets live, and which changes are a team decision.
+- **Issue tracker:** anything that makes `git log --grep <issue>` miss (a migrated tracker, different numbering in commits).
+- **PR conventions:** labels (e.g. `effort/*`), title format, required reviewers, changeset or changelog expectations.
+- **Feature-scale precedent:** how bigger changes have landed before, with an example.
+- **Running the app:** *Preflight*: one command that checks everything the app needs and prints every failure together, plus install commands for what doesn't need root. *Start*: an isolated copy that disturbs nobody, and how to tell it is ready (the HTTP status, not just the exit code). *Drive it*: URLs, test accounts, seed data, how to reach the screen an issue is about. *Stop*: how to tear it all down, including after an abort.
 
 ## 1.8 Safety on the user's machine
 
