@@ -107,10 +107,12 @@ check "gh --help on a comment command" none \
 kill "$SPID"; wait "$SPID" 2>/dev/null
 
 # ---------- post-lint: each list item is its own sentence ----------
+B='<img src="https://github.com/claude.png" width="20" height="20" align="left" alt="Claude"> **Claude:**'
+lint() { python3 "$R/bin/post-lint" "$1" --kind issue --parent none 2>&1 | grep -c 'word sentence'; }
 items=$(for i in 1 2 3 4 5 6 7; do echo "  - item number $i with a few short words;"; done)
-printf 'A list of short items follows here:\n%s\n' "$items" > "$T/list.md"
-check "a list of short items passes" 0 "$(python3 "$R/bin/post-lint" "$T/list.md" --kind tracker --parent none >/dev/null 2>&1; echo $?)"
-printf 'A list follows:\n- %s\n' "$(printf 'word %.0s' $(seq 35))" > "$T/long.md"
-check "BLOCK: one list item over 30 words" 1 "$(python3 "$R/bin/post-lint" "$T/long.md" --kind tracker --parent none >/dev/null 2>&1; echo $?)"
+printf '%s A list of short items follows here:\n%s\n' "$B" "$items" > "$T/list.md"
+check "a list of short items: no long sentence" 0 "$(lint "$T/list.md")"
+printf '%s A list follows:\n- %s\n' "$B" "$(printf 'word %.0s' $(seq 35))" > "$T/long.md"
+check "one list item over 30 words is flagged" 1 "$(lint "$T/long.md")"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]
