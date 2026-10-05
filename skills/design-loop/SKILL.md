@@ -8,7 +8,7 @@ description: "Designing an API, protocol or module, or restructuring code: the d
 0. Before any new core API, prototype the solution that uses only existing extension points (e.g. an existing middleware, render hook or plugin hook). It is the first candidate; a core change needs a named requirement it fails.
 1. Draft `decisions/<name>.md`: the invariant table (1.1.2), and the candidates rated as in `implement-issue` step 3.
 2. **Prototype** to prove the invariants end to end: a real browser, request counts, timing, byte comparisons, dev, prod and static hosting.
-3. **Adversarial review** of the prototype (`reviewer`): how does it fail?
+3. **Adversarial review** of the prototype (`review`): how does it fail?
 4. Propose to maintainers only when no invariant is broken, as a **walkthrough**:
    1. the one new concept, in one sentence;
    2. what the user or extension writes, as code;
@@ -17,12 +17,12 @@ description: "Designing an API, protocol or module, or restructuring code: the d
    5. numbered questions.
 
    Nothing that changes existing behavior the feature doesn't strictly need. Every term explained in plain words.
-5. Post the walkthrough as soon as the prototype holds the invariants. `convergence`'s loops run only on a shape the maintainer has OK'd; until then, one pass. After a PR opens, each commit answers a user or maintainer request, a red CI, a found bug, or a mergeworthy rule.
+5. Post the walkthrough as soon as the prototype holds the invariants. `converge`'s loops run only on a shape the maintainer has OK'd; until then, one pass. After a PR opens, each commit answers a user or maintainer request, a red CI, a found bug, or a mergeworthy rule.
 
 
 ### 1.4.1 Codebase design: deep modules
 
-Wherever code is written, designed or restructured (from its first line, not only when a guardian reviews it: the design loop, `implement-issue` steps 3 and 4, the finality pass, `convergence`'s refactor pass), aim for deep modules: a lot of behaviour behind a small interface, placed at a clean seam, testable through that interface. Use these terms exactly, in code reviews and PR text too; don't substitute component, service, API or boundary:
+Wherever code is written, designed or restructured (from its first line, not only when a guardian reviews it: the design loop, `implement-issue` steps 3 and 4, the finality pass, `refactor`), aim for deep modules: a lot of behaviour behind a small interface, placed at a clean seam, testable through that interface. Use these terms exactly, in code reviews and PR text too; don't substitute component, service, API or boundary:
 
 - **Module**: anything with an interface and an implementation, at any scale (a function, a class, a package, a slice across tiers).
 - **Interface**: everything a caller must know to use the module correctly: the types, and also invariants, ordering, error modes, required configuration and performance characteristics. Not only a TypeScript `interface` or a class's public methods.

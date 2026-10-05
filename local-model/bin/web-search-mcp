@@ -1,0 +1,65 @@
+#!/usr/bin/env python3
+"""web-search-mcp: an MCP server (stdio) with one tool, web_search, for claude-local sessions. Claude Code's own
+WebSearch runs on Anthropic's servers, so it returns nothing on a local model. This asks a local SearXNG (several
+engines, http://127.0.0.1:8888, see README) and falls back to DuckDuckGo's HTML page. Pages are read with WebFetch."""
+import html, json, re, sys, time, urllib.parse, urllib.request
+
+TOOL = {
+    'name': 'web_search',
+    'description': 'Search the web. Returns up to 8 results (title, URL, snippet). Read a result with WebFetch.',
+    'inputSchema': {'type': 'object', 'properties': {'query': {'type': 'string', 'description': 'The search query'}},
+                    'required': ['query']},
+}
+
+def searxng(query):
+    url = 'http://127.0.0.1:8888/search?' + urllib.parse.urlencode({'q': query, 'format': 'json'})
+    results = json.load(urllib.request.urlopen(url, timeout=25)).get('results', [])[:8]
+    return '\n\n'.join(f"{r.get('title', '')}\n{r.get('url', '')}\n{r.get('content', '')}" for r in results)
+
+def search(query):
+    try:
+        text = searxng(query)
+        if text: return text
+    except Exception:
+        pass  # SearXNG not running: DuckDuckGo directly
+    # A form POST with a browser's headers; a plain GET often gets DuckDuckGo's anti-bot page instead
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36',
+               'Accept': 'text/html,application/xhtml+xml', 'Accept-Language': 'en-US,en;q=0.9',
+               'Content-Type': 'application/x-www-form-urlencoded', 'Referer': 'https://html.duckduckgo.com/'}
+    for attempt in range(2):
+        req = urllib.request.Request('https://html.duckduckgo.com/html/', data=urllib.parse.urlencode({'q': query}).encode(), headers=headers)
+        page = urllib.request.urlopen(req, timeout=20).read().decode('utf-8', 'replace')
+        if 'result__a' in page: break
+        time.sleep(2)
+    out = []
+    for m in re.finditer(r'class="result__a" href="([^"]+)"[^>]*>(.*?)</a>.*?class="result__snippet"[^>]*>(.*?)</a>', page, re.S):
+        href = m.group(1)
+        q = urllib.parse.parse_qs(urllib.parse.urlparse(href).query).get('uddg')
+        link = q[0] if q else href
+        if 'duckduckgo.com/y.js' in link: continue  # ads
+        text = lambda s: html.unescape(re.sub(r'<[^>]+>', '', s)).strip()
+        out.append(f'{text(m.group(2))}\n{link}\n{text(m.group(3))}')
+        if len(out) == 8: break
+    return '\n\n'.join(out) or 'No results.'
+
+def reply(id_, result=None, error=None):
+    msg = {'jsonrpc': '2.0', 'id': id_}
+    msg['error' if error else 'result'] = error or result
+    sys.stdout.write(json.dumps(msg) + '\n'); sys.stdout.flush()
+
+for line in sys.stdin:
+    try: req = json.loads(line)
+    except ValueError: continue
+    method, id_ = req.get('method'), req.get('id')
+    if id_ is None: continue  # notifications
+    if method == 'initialize':
+        reply(id_, {'protocolVersion': req.get('params', {}).get('protocolVersion', '2024-11-05'),
+                    'capabilities': {'tools': {}}, 'serverInfo': {'name': 'web-search', 'version': '1'}})
+    elif method == 'tools/list':
+        reply(id_, {'tools': [TOOL]})
+    elif method == 'tools/call':
+        try: text = search(req['params']['arguments']['query'])
+        except Exception as e: reply(id_, {'content': [{'type': 'text', 'text': f'search failed: {e}'}], 'isError': True}); continue
+        reply(id_, {'content': [{'type': 'text', 'text': text}]})
+    else:
+        reply(id_, error={'code': -32601, 'message': f'unknown method {method}'})

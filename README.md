@@ -27,25 +27,25 @@ Set by the installer, or later under `/plugin` → mergeworthy → Configure opt
 | Option | Values (default first) | What changes |
 |---|---|---|
 | `badge` | `on`, `off`, `auto` | The agent's icon and label at the start of every post; `auto`: only when posting from a human account. |
-| `merge` | `on-request-squash`, `reviewer` | `reviewer`: the agent never merges; the guard blocks `gh pr merge`. |
+| `merge` | `on-request-squash`, `review` | `review`: the agent never merges; the guard blocks `gh pr merge`. |
 | `watcher` | `on`, `off` | `off`: no GitHub watcher; owed replies are checked at each start. |
-| `local_model` | `off`, `on` | `on`: exploration and gate reviews go to a local model (`claude-local`, a Local Claude provider in T3 Code) while it's available. |
+| `local_model` | `off`, `on` | `on`: exploration and gate reviews go to a local model (`local-model/`) while it's available. |
 
 ## Layout
 
 ```
-skills/<name>/SKILL.md   the methodology, one skill per step; core is loaded first
+skills/<name>/SKILL.md   the methodology: core (load first), github-threads, merging, design-loop, delegating,
+                         implement-issue, converge and its passes (verify, guardian, refactor, finality, review),
+                         past-failures, mechanisms
 always-on.md             the rules every session gets (the session-start hook prints it)
-hooks/                   hooks.json and the scripts it runs: posting and safety guard, local-model guard,
-                         thread register, Stop check, session start
-bin/                     commands, on the Bash PATH while the plugin is enabled: gate-pass, post-lint, pr-steps,
-                         gh-watch-start, tracker-check, codex-review-model, isolated-run, claude-swap
+hooks/                   hooks.json and the scripts it runs
+bin/                     commands, on the Bash PATH while the plugin is enabled
 watcher/                 the GitHub watcher daemon gh-watch-start runs
+local-model/             Claude Code on a local model (claude-local, the llama.cpp server, usage); install.sh
 cli/                     the npx mergeworthy installer
-.claude-plugin/          the plugin manifest (options) and the marketplace that lists it; Codex reads them too
-tests/                   npm test; fixtures/ holds the drafts and cases they use
+.claude-plugin/          the plugin manifest (options) and the marketplace that lists it
 ```
 
 ## Changing it
 
-Edit the skill or script here, run `npm test`, commit and push. Installed copies update through the plugin; never edit them. To try a change before pushing: `claude --plugin-dir .`.
+Edit the skill or script here, commit and push. Installed copies update through the plugin; never edit them. To try a change before pushing: `claude --plugin-dir .`.

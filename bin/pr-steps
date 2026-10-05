@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# pr-steps <review|refactor|guardian> <output-file>: records that the methodology step ran on the current HEAD (`convergence` §6, §7, §11.1).
+# pr-steps <review|refactor|guardian> <output-file>: records that the methodology step ran on the current HEAD (mergeworthy `review`, `refactor`, `guardian`).
 # The posting hook blocks `gh pr create` (unless --draft) and `gh pr ready` until HEAD has a review and a refactor record.
 set -euo pipefail
 kind=${1:?usage: pr-steps <review|refactor|guardian> <output-file>}; out=${2:?output file}

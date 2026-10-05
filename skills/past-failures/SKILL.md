@@ -22,7 +22,7 @@ Each happened, most more than once. When a rule fails or the user names a failur
 | A modal question answered by accident. | 1.1.3 |
 | User questions absorbed into work and never answered. | 1.1.4 |
 | Claims from memory, false "can't"s, a reversed close-the-PR advice. | 1.1.5 |
-| Workarounds shipped as fixes; defects documented as caveats. | 1.1.6, `convergence` §3–4 |
+| Workarounds shipped as fixes; defects documented as caveats. | 1.1.6, `converge` (phantom and removal gates) |
 | Upstream PR for a problem our own hook choice caused. | 1.1.6 |
 | A design that sent the payload three times "for now". | 1.1.2 |
 | Hooks named against their behavior; options nobody asked for. | 1.1.10 |
@@ -57,6 +57,6 @@ Each happened, most more than once. When a rule fails or the user names a failur
 | Squash merges carrying full PR history. | 1.7, `pre-bash-guard` |
 | `ps \| awk '/<port>/'` matched and killed another session's server. | 1.8 |
 | Posting with inline bodies; `gh run rerun` on upstream (needs admin: ask a maintainer); fork PRs lack CI secrets, so those jobs fail. | 1.6 step 4, 1.7 CI |
-| A Claude reviewer started while Codex was out of credits and the local model was free; the CLI local agent timed out with no result. | `reviewer`, `codex-review-model` |
+| A Claude reviewer started while Codex was out of credits and the local model was free; the CLI local agent timed out with no result. | `review`, `codex-review-model` |
 | The watcher started a separate headless agent per event; it ran without context or permissions, the user saw 👀 and no answer, and the session that owned the thread never heard of it. | 1.5 (the session is the agent, woken by its Monitor), `stop-lint` |
 | The agent was told to register every open PR and issue in the scope repos and answer every maintainer comment, and every thread it commented on joined its watch list; the user wants answers only on threads the agent opened and to their own `/ai` calls. | 1.5 (which comments you answer), `gh-watch`, `post-bash-register` |

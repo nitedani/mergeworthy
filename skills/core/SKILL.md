@@ -10,16 +10,17 @@ How an AI agent works so that what it posts and the PRs it opens are worth mergi
 The skills, and the rule numbers each holds:
 - `core` (this one): the task, triage 1.0, principles 1.1, tracking 1.2, discovery 1.3, safety 1.8, reporting 1.11, pre-flight 1.12.
 - `design-loop`: 1.4. `github-threads`: the live loop 1.5 and the posting gate 1.6. `merging`: 1.7. `delegating`: 1.9 and 1.10.
-- `reviewer`: who reviews and how. `implement-issue`: one change to a merge-ready PR. `convergence`: how changes reach their final state. `past-failures`: what already went wrong, and the rule for each. `mechanisms`: the scripts and hooks that enforce the rules; where one exists, use it.
+- `implement-issue`: one change to a merge-ready PR. `converge`: a PR to its final state, through the passes `verify` (bugs), `guardian` (bloat and quality), `refactor`, `finality` (drifted code) and `review` (who reviews, and the PR review round).
+- `past-failures`: what already went wrong, and the rule for each. `mechanisms`: the scripts and hooks that enforce the rules; where one exists, use it.
 
-**Precedence:** the environment's instructions and the user's scope come first; `core`, `github-threads` and `merging` override `implement-issue` and `convergence` where they conflict. When two rules seem to collide, check their scope (who owns the code, which tier, whether an umbrella issue exists) before choosing.
+**Precedence:** the environment's instructions and the user's scope come first; `core`, `github-threads` and `merging` override `implement-issue` and `converge` where they conflict. When two rules seem to collide, check their scope (who owns the code, which tier, whether an umbrella issue exists) before choosing.
 
 ## The task
 
 Defaults (the user can override):
 - **The user** owns the goal. Code in the user's own repos, and beta, experimental or pre-1.0 features, is theirs, and yours to change for the goal: decide, act, and report afterwards.
-- **External maintainers**: whoever merges in a repo you don't own (CODEOWNERS, recent mergers). Their requests are settled decisions, and changes to their code's behavior or public surface are their call (`convergence` §2).
-- **Models**: reviews per `reviewer`; judgment work on the session's default model; routine work per 1.1.14. Never a model above the default's tier unless the user names it, never one the user has excluded, and never a model version written into a prompt, skill or memory.
+- **External maintainers**: whoever merges in a repo you don't own (CODEOWNERS, recent mergers). Their requests are settled decisions, and changes to their code's behavior or public surface are their call (`converge` (authority)).
+- **Models**: reviews per `review`; judgment work on the session's default model; routine work per 1.1.14. Never a model above the default's tier unless the user names it, never one the user has excluded, and never a model version written into a prompt, skill or memory.
 - **Artifact root**: a persistent `<task>-work/` directory next to the worktree for notes, logs, probes, agent outputs and scratch worktrees; never `/tmp`.
 - **Publishing authority**: what the task allows you to open, comment and file. A reviewed draft isn't permission to publish.
 
@@ -31,8 +32,8 @@ Read the task and every link in it. Write `Tier: <X>, because <signals>` and put
 | Tier | Signals | Process |
 |---|---|---|
 | **0: Answer** | An answer, research or a review; nothing to change. | Principles, evidence, reporting; the posting gate if published. |
-| **S: Single fix** | One bounded fix in one repo, expected behavior already clear. | `implement-issue` per change; its review round and refactor pass feed `pr-steps`. `convergence` §1–5 and §10's failure and evidence rules; of its loops, one dry verification pass per slice after its last fix and one guardian round for the closing verdict (re-run on the head if its findings land). The project file's gates green, body true to the head. |
-| **M: Feature or set** | A new capability, a changed public contract, several change units, or open behavior questions. | `implement-issue` per unit, full `convergence` in place of its single rounds, invariants, ledger, decision packet, design loop (1.4). |
+| **S: Single fix** | One bounded fix in one repo, expected behavior already clear. | `implement-issue` per change; its review round and refactor pass feed `pr-steps`. `converge`'s rules (git, authority, the phantom and removal gates, stacked PRs, gates and evidence); of its loops, one dry verification pass per slice after its last fix and one guardian round for the closing verdict (re-run on the head if its findings land). The project file's gates green, body true to the head. |
+| **M: Feature or set** | A new capability, a changed public contract, several change units, or open behavior questions. | `implement-issue` per unit, full `converge` in place of its single rounds, invariants, ledger, decision packet, design loop (1.4). |
 | **L: Program** | Changes across two or more independently maintained repos, or two or more decision makers. | Tier M everywhere, plus the umbrella issue (1.2). |
 
 ## 1.1 Principles
@@ -64,7 +65,7 @@ Read the task and every link in it. Write `Tier: <X>, because <signals>` and put
     - What does `main` do for the analogous case? Guards, asserts and caches only where `main` has an analogous one.
     - What does it cost in lines, new state (maps, globals, build tracking) and tests? More than a few lines for a rare case is overkill.
     - Would the maintainer write it? Lean code, no special-casing, no caches that save milliseconds, tests and docs per 1.1.16.
-    Record the judgment in one line ("accepted, not worth code: rare, and the page winning is what the user asked for"); that is the finding's disposition in `convergence`'s loops. When unsure, don't add; ask with a recommendation. A converged PR is the smallest clean diff that does the job and reads as obviously right to its maintainers.
+    Record the judgment in one line ("accepted, not worth code: rare, and the page winning is what the user asked for"); that is the finding's disposition in `converge`'s loops. When unsure, don't add; ask with a recommendation. A converged PR is the smallest clean diff that does the job and reads as obviously right to its maintainers.
 16. **Submit the shape that gets merged.** Before opening a PR, look at the maintainer's recent merged PRs (and ours in that repo): what they keep and what they cut. Defaults:
     - One purpose, small: under ~50 lines of code when possible. Each user-visible fix is its own PR; internal cleanups go together in one refactor PR, titled per the repo's convention.
     - The body's first sentence names the problem a user hits on today's `main`. Say a dependent project needs this PR only if it's still broken without it; if readers might assume it does, say "not required by X".

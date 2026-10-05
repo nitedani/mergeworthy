@@ -31,6 +31,6 @@ When editing a skill, prompt, rules file or AGENTS.md:
 
 When the local model is on (the plugin's `local_model` option, `claude-local` installed, `claude-usage --mode` not `off`, the GPU free), it costs no subscription usage. It executes well and judges poorly, so you keep every decision and hand it bounded steps you can check cheaply, one at a time (one GPU). Not for work you'd finish in about a minute yourself.
 - **How**: a T3 Code `delegate_task` child on the Local Claude instance (`orchestrator_capabilities`), model `local`, `runtimeMode: "full-access"` (anything stricter asks the user for every read), `mode: "async"`, the brief as the task. Its completion wakes you.
-- **What**: at `claude-usage --mode` `routine`, exploration, fact-finding, reproductions, test runs and cold reads; at `execute`, also implementation from your own plan and each side of a mini debate (1.5). Gate reviews per `reviewer`. Never the approach (`implement-issue` step 3) or anything posted.
+- **What**: at `claude-usage --mode` `routine`, exploration, fact-finding, reproductions, test runs and cold reads; at `execute`, also implementation from your own plan and each side of a mini debate (1.5). Gate reviews per `review`. Never the approach (`implement-issue` step 3) or anything posted.
 - Run `claude-usage --mode` at the start of each task and at every wakeup.
 

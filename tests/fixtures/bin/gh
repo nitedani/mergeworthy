@@ -1,3 +1,0 @@
-#!/bin/sh
-# gh stub for the guard cases: `gh api user` answers as the account test-login
-echo "test-login 1"
