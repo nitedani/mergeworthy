@@ -25,7 +25,6 @@ Run it again to change the options or add an agent; `npx mergeworthy uninstall` 
 | `badge` | `on`, `off`, `auto` | The agent's icon and label at the start of every post; `auto`: only when posting from a human account. |
 | `merge` | `on-request-squash`, `reviewer` | `reviewer`: the agent never merges. |
 | `watcher` | `on`, `off` | `off`: no GitHub watcher. |
-| `local_model` | `off`, `on` | `on`: routine work and reviews go to a local model (`local-model/`) while it's available. |
 
 ## How it reads
 
@@ -37,9 +36,8 @@ Run it again to change the options or add an agent; `npx mergeworthy uninstall` 
 always-on.md        principles and the index, in every session
 skills/<page>/      one page per moment: SKILL.md, plus the reference files it links
 hooks/              hooks.json and the scripts it runs
-bin/                commands on the Bash PATH: gate-pass, post-lint, pr-steps, gh-watch-start, claude-swap
+bin/                commands on the Bash PATH: gate-pass, post-lint, pr-steps, gh-watch-start
 watcher/            the GitHub watcher daemon gh-watch-start runs
-local-model/        Claude Code on a local model, and its install.sh
 cli/                the npx mergeworthy installer
 .claude-plugin/     the plugin manifest (options) and its marketplace
 ```

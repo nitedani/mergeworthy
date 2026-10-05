@@ -59,8 +59,8 @@ for wd in (l.strip() for l in open(reg)) if os.path.exists(reg) else ():
     if wd and (cwd_d.startswith(wd) or wd.startswith(cwd_d or '/nonexistent')
                or any(wd in c or home_wd in c for c in commands)): own_dirs.add(wd)
 watcher_on = 'MERGEWORTHY_WATCHER=off' not in (open(os.path.expanduser('~/.mergeworthy/settings.env')).read() if os.path.exists(os.path.expanduser('~/.mergeworthy/settings.env')) else '')
-# A headless run (`claude -p`, entrypoint sdk-cli) and a local-model session have no Monitor tool: their caller watches
-headless = any('"entrypoint":"sdk-cli"' in l for l in lines[-20:]) or os.environ.get('CLAUDE_CODE_SUBAGENT_MODEL') == 'local'
+# A headless run (`claude -p`, entrypoint sdk-cli) has no Monitor tool: its caller watches
+headless = any('"entrypoint":"sdk-cli"' in l for l in lines[-20:])
 if posted and watcher_on and not headless and not (monitors - dead):
     print("You posted on GitHub in this session and no Monitor in it watches a watcher's events.log, so replies go unseen: "
           "nothing else answers them. Run `gh-watch-start <your artifact root> <owner/repo> <N>` and arm the Monitor it "

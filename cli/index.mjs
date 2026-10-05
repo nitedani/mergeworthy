@@ -40,7 +40,6 @@ const OPTIONS = {
   badge: { label: 'Agent badge on posts', choices: ['on', 'off', 'auto'] },
   merge: { label: 'Who merges', choices: ['on-request-squash', 'reviewer'] },
   watcher: { label: 'GitHub watcher', choices: ['on', 'off'] },
-  local_model: { label: 'Local model for routine work', choices: ['off', 'on'] },
 }
 
 // ---------- Claude Code ----------

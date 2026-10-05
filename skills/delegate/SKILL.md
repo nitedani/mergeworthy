@@ -1,18 +1,18 @@
 ---
 name: delegate
-description: "When you are about to start a subagent or hand work to the local model: whether it's worth it, which model, the brief, and checking what comes back."
+description: "When you are about to start a subagent: whether it's worth it, which model, the brief, and checking what comes back."
 ---
 
 ## When
 
-You are about to start a subagent, or hand a step to the local model.
+You are about to start a subagent.
 
 ## Steps
 
 1. Do small steps yourself: one command, one file, a short edit. Start an agent only for long, independent work, at most three at a time; continue an agent that already has the context instead of starting a new one.
 2. Pick the model:
    - **Judgment:** design, hard debugging and anything posted run on the session's default model.
-   - **Routine work:** exploration, test runs, log mining and mechanical edits go to the local model when the `local_model` option is on (a T3 Code `delegate_task` child on Local Claude, model `local`, `runtimeMode: "full-access"`), otherwise to the `sonnet` alias.
+   - **Routine work:** exploration, test runs, log mining and mechanical edits can run on a cheaper model, such as the `sonnet` alias.
    - **Reviews:** follow `mergeworthy:ready`, Who reads.
 3. Write the brief, with paths rather than pasted files, and none of your conclusions:
    - **Goal:** one observable outcome.
@@ -36,7 +36,7 @@ The agent's result is checked, and the user knows it.
 
 ## Enforced by
 
-`pre-agent-guard` (with `local_model` on, sends read-only exploration and reviews to the local model; blocks Haiku).
+Nothing: this is judgment.
 
 ## Next
 

@@ -103,7 +103,7 @@ def watch_dirs():
 def need_watch(repo):
     """Opening an issue or PR starts the live loop (mergeworthy:github-event): a running watcher must cover the repo (post-bash-register adds
     the new thread). A comment on an existing thread needs none: the agent answers only threads it opened, and /ai calls."""
-    if setting('WATCHER', 'on') != 'on' or setting('TARGET', 'local') != 'local' or not repo: return
+    if setting('WATCHER', 'on') != 'on' or not repo: return
     def lines(d, f):
         return [l.strip() for l in open(os.path.join(d, f))] if os.path.exists(os.path.join(d, f)) else []
     covering = [d for d in watch_dirs() if repo in lines(d, 'repos.txt') or any(l.split()[:1] == [repo] for l in lines(d, 'threads.txt'))]
@@ -131,7 +131,7 @@ def check(t, has_cd):
             a = a[2:] if a[0] in ('-C', '-c') else a[1:]
         if not a: return
         sub, rest = a[0], a[1:]
-        if sub == 'commit' and setting('TARGET', 'local') == 'local' and setting('COMMIT_IDENTITY', 'noreply') == 'noreply':
+        if sub == 'commit':
             check_commit_identity(overrides, os.path.join(run_dir, os.path.expanduser(git_dir)))
         if sub == 'stash':
             first = rest[0] if rest else ''

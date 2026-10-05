@@ -43,16 +43,6 @@
         "off"
       ],
       "default": "on"
-    },
-    "local_model": {
-      "type": "string",
-      "title": "Local model",
-      "description": "on: routine work and reviews go to a local model (claude-local) while it's available",
-      "options": [
-        "on",
-        "off"
-      ],
-      "default": "off"
     }
   }
 }

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Robust GitHub watch for the tracked threads. One line on stdout per event.
 
-- The comments the agent answers (mergeworthy:github-event), new or edited, each with an :eyes: reaction (held while every subscription is
-  used up): a maintainer's (write access) on a thread in threads.txt, the threads the agent opened; and yours with
-  /ai or /agent, on any thread (your events feed; one watch dir gets each, see main_dir). Nothing else.
+- The comments the agent answers (mergeworthy:github-event), new or edited, each with an :eyes: reaction: a maintainer's
+  (write access) on a thread in threads.txt, the threads the agent opened; and yours with /ai or /agent, on any thread
+  (your events feed; one watch dir gets each, see main_dir). Nothing else.
 - Maintainers' commits pushed to a tracked PR, and 👍/👎 from GH_WATCH_EYES on the agent's comments.
-- PR head/state changes (pushes, merges, closes), CI turning red or green on open PRs, and your PR's code (tests excluded) changing by more than ~80 lines since its last read record pass (REFACTOR STALE).
+- PR head/state changes (pushes, merges, closes), CI turning red or green on open PRs, and your PR's code (tests excluded) changing by more than ~80 lines since its last read question (READ STALE).
 State lives in gh-watch-state.json: every seen (id, updated_at) pair, so nothing is skipped or repeated,
 and scans overlap by 10 minutes. A failed API call prints WATCH ERROR and that thread's scan position isn't advanced.
 """
@@ -119,7 +119,7 @@ def handle_comment(state, repo, key, kind, cid, upd, login, url, body, extra='')
     if re.fullmatch(r"\W*(ok(ay)?|good|great|lgtm|yes|sure|agreed|sounds good|👍|nice)\W*", body.strip().lower()):
         emit(f"### ACK {key} {cid}: an acknowledgement answers your last open proposal in that thread or PR; apply it now (mergeworthy:github-event)")
     if not ONCE:
-        react_eyes(repo, kind, cid, state)
+        react_eyes(repo, kind, cid)
 
 
 def watch_dirs():
@@ -158,20 +158,6 @@ def emit_dependents(key):
     for l in lines:
         if l.split(' -> ')[0].strip() == key:
             emit(f"### DEPENDENT of merged {key}: {l.split(' -> ', 1)[1]}: do it now and post the progress on that PR (mergeworthy:github-event)")
-
-
-PROFILES = os.path.expanduser('~/.claude/profiles')  # claude-swap's accounts and limited.json
-
-
-def all_limited():
-    """True when every claude-swap account is used up: then no agent can reply, so the :eyes: would promise nothing."""
-    try:
-        names = [n for n in os.listdir(PROFILES) if os.path.exists(os.path.join(PROFILES, n, 'credentials.json'))]
-        lim = json.load(open(os.path.join(PROFILES, 'limited.json')))
-    except Exception:
-        return False
-    until = lambda v: v.get('until', 0) if isinstance(v, dict) else v + 5 * 3600
-    return bool(names) and all(until(lim[n]) > time.time() for n in names if n in lim) and all(n in lim for n in names)
 
 
 def emit_maintainer_commits(repo, key, old, new):
@@ -258,21 +244,12 @@ def scan_reactions(state, threads):
                         emit(f"### THUMBS UP {repo}#{num} by {who} on {c['html_url']}: note what they liked and reinforce the rule that produced it (mergeworthy:github-event)")
 
 
-def react_eyes(repo, kind, cid, state):
-    if all_limited():
-        state.setdefault('eyes_pending', []).append([repo, kind, cid])  # flush_eyes adds it once an account is free
-        return
+def react_eyes(repo, kind, cid):
     path = f"repos/{repo}/issues/comments/{cid}/reactions" if kind == 'comment' else f"repos/{repo}/pulls/comments/{cid}/reactions"
     try:
         gh(['api', '-X', 'POST', path, '-f', 'content=eyes'])
     except Exception as e:
         emit(f"WATCH ERROR eyes {repo} {kind} {cid}: {e}")
-
-
-def flush_eyes(state):
-    pending = state.pop('eyes_pending', [])
-    for repo, kind, cid in pending:
-        react_eyes(repo, kind, cid, state)  # re-queues itself if the limit is still on
 
 
 def fetch_thread(repo, num, since, is_pr_known):
@@ -509,8 +486,6 @@ def main():
             changed = (notifications_changed(state) or set()) | own_events_changed(state)
             if changed:
                 scan(state, only=changed)
-            if state.get('eyes_pending'):
-                flush_eyes(state)
             save_state(state)
         if time.time() - last_full > 180:
             run_scan()

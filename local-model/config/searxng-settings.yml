@@ -1,7 +1,0 @@
-use_default_settings: true
-server:
-  secret_key: "local-only-not-exposed"
-  limiter: false
-  bind_address: "0.0.0.0"
-search:
-  formats: [html, json]

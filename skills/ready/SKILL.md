@@ -11,7 +11,6 @@ You are about to say a PR is ready, the user asks to converge a PR, or `mergewor
 
 1. Pick who reads, in this order (Who reads):
    - **Codex:** `codex exec --sandbox danger-full-access --skip-git-repo-check -o <out> "$(cat <brief>)" < /dev/null`, with the model configured in `~/.codex/config.toml`. If it fails, which takes seconds when it's out of credits, go on.
-   - **The local model:** when the `local_model` option is on and the GPU is free, a T3 Code `delegate_task` child on the Local Claude provider, model `local`, `runtimeMode: "full-access"`.
    - **A fresh Claude subagent:** on the session's default model, never a cheaper one.
 2. Write each brief from [questions.md](questions.md): the artifact at pinned SHAs, the decisions, exactly one question, and that question's evidence rule. Never your conclusions.
 3. Ask the questions in order; the task's size decides which run:
