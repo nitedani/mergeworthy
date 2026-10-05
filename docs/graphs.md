@@ -332,8 +332,9 @@ flowchart TB
     s6["4. If no reviewer at all is<br/>available"]
     s5 --> s6
   end
-  s6 -.-> r5[["converge"]]
-  s6 -.-> r6[["core"]]
+  s4 -.-> r5[["core"]]
+  s6 -.-> r6[["converge"]]
+  s6 -.-> r7[["core"]]
   start --> g0
   g0 ~~~ g1
 ```

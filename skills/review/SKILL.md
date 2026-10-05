@@ -30,9 +30,9 @@ After the review:
 
 A reviewer, picked in the order above, reviews the diff with the reviewer charter at the end of this skill.
 
-1. Write the charter to `<artifact root>/review-<pass id>.md`. Name an output file in it for the full verdict and findings; the final message is only `CLEAN` or the findings.
-2. Append the diff command against `git merge-base HEAD origin/<base>`, the issue link (Tier ≥ M: also `acceptance.md`), and one sentence on what the change claims to do.
-3. Where the reviewer can't run your gates, paste the gate commands, exit codes and output; it says UNKNOWN for anything it could not observe.
+1. Write the charter to `<artifact root>/review-<pass id>.md`. Name an output file in it for the full verdict and findings; the final message is only `CLEAN` or the findings. A finding about a comment, a test or naming names its lines, not a trigger.
+2. Append the diff command against `git merge-base HEAD origin/<base>`, the issue link (Tier ≥ M: also `acceptance.md`), and one sentence on what the change claims to do. Name the defect it fixes and that defect's sibling sites (1.1.7): one still failing on the head is the change's own, not the base's.
+3. Where the reviewer can't run your gates, paste the gate commands, exit codes and output; it says UNKNOWN for anything it could not observe. A red gate is a finding with its exit code; "nothing a linter catches" is about style.
 4. If no reviewer at all is available, review the diff yourself with the charter.
 
 In a PR's pipeline, this round runs inside two agents that `converge` defines under "who reads". The reader runs it once on the diff, together with the other passes. The fresh reader runs it again on the final head.
