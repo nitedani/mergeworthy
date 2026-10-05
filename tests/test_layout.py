@@ -22,6 +22,8 @@ for e in json.load(open('hooks/hooks.json'))['hooks'].values():
         script = re.search(r'\}"?/([\w./-]+)', h['command']).group(1)
         if not os.path.isfile(script): fails.append(f'hooks.json runs {script}, which does not exist')
         elif not script.endswith('.py') and not os.access(script, os.X_OK): fails.append(f'{script} is not executable')
+if shutil.which('node') and subprocess.run(['node', '--check', 'cli/index.mjs']).returncode != 0:
+    fails.append('cli/index.mjs does not parse')
 if shutil.which('claude'):
     r = subprocess.run(['claude', 'plugin', 'validate', '.'], capture_output=True, text=True)
     if r.returncode != 0: fails.append('claude plugin validate failed:\n' + r.stdout + r.stderr)

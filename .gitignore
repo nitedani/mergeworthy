@@ -3,3 +3,4 @@ __pycache__/
 .pytest_cache/
 tests/drafts/*.posted
 tests/guard-stderr.txt
+node_modules/
