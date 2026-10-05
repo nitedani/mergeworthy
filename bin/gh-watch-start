@@ -4,12 +4,8 @@
 # - "owner/repo N" goes to threads.txt; a bare "owner/repo" goes to repos.txt (the repo is covered, e.g. before `gh issue create`).
 # - Starts the daemon unless its PID is alive, with GH_WATCH_EYES from the environment, else from <dir>/eyes, else your gh login.
 # - Registers <dir> in ~/.claude/gh-watch-dirs.txt, which pre-bash-guard and post-bash-register read.
-# - Writes <dir>/agent, the command the daemon launches to wake an agent on each event (GH_WATCH_AGENT,
-#   else the first of claude, codex on PATH). The daemon does the waking: it runs that command with a
-#   prompt that handles events.log from events.cursor, one agent per dir at a time, log in <dir>/wake.log.
-# - Prints the persistent-tail command to arm: a detached (nohup) tail that never expires, so it wakes
-#   nothing and needs no re-arm; it archives event lines in <dir>/tail-events.log and satisfies the
-#   Stop hook's armed-monitor check. The daemon's wake is the only event handler (1.5).
+# - Prints the Monitor to arm in the session: the daemon only records events in <dir>/events.log; the session that
+#   owns the threads is the one that answers them, woken by that Monitor (1.5).
 set -e
 [ -n "$1" ] || { sed -n '2,7p' "$0"; exit 1; }
 dir=$(realpath -m "$1"); shift
@@ -21,7 +17,7 @@ while [ $# -gt 0 ]; do
   repo=$1; shift
   [[ $repo == */* ]] || { echo "not owner/repo: $repo"; exit 1; }
   if [[ ${1:-} =~ ^[0-9]+$ ]]; then line="$repo $1"; file=threads.txt; shift; else line=$repo; file=repos.txt; fi
-  # One watcher per thread: a second would wake a second agent on the same comment
+  # One watcher per thread: a second would report the same comment to a second session
   if [ "$file" = threads.txt ]; then
     while read -r other; do
       [ "$other" != "$dir" ] && [ -f "$other/threads.txt" ] && grep -qxF "$line" "$other/threads.txt" || continue
@@ -37,15 +33,6 @@ reg=~/.claude/gh-watch-dirs.txt
 grep -qxF "$dir" "$reg" 2>/dev/null || echo "$dir" >> "$reg"
 if [ -n "$GH_WATCH_EYES" ]; then echo "$GH_WATCH_EYES" > "$dir/eyes"; fi
 [ -s "$dir/eyes" ] || gh api user --jq .login > "$dir/eyes"
-# The agent names its Claude config: the daemon's environment is systemd's, not this session's
-if [ -n "$GH_WATCH_AGENT" ]; then agent="$GH_WATCH_AGENT"
-# Unattended, so no permission prompts: without them every gh call and write was refused and the comment went
-# unanswered (the posting gate and the hooks still apply)
-elif command -v claude >/dev/null && [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then agent="env CLAUDE_CONFIG_DIR=$CLAUDE_CONFIG_DIR claude -p --dangerously-skip-permissions"
-elif command -v claude >/dev/null; then agent="env -u CLAUDE_CONFIG_DIR claude -p --dangerously-skip-permissions"
-elif command -v codex >/dev/null; then agent="codex exec --dangerously-bypass-approvals-and-sandbox"
-else agent=""; fi
-[ -n "$agent" ] && printf '%s\n' "$agent" > "$dir/agent"
 # Supervision, so the watcher restarts on failure and after a reboot, with no session alive:
 # systemd user service (Linux), launchd agent (macOS), else a detached daemon that cron revives.
 printf 'PATH=%s\nHOME=%s\n' "$PATH" "$HOME" > "$dir/env"
@@ -117,10 +104,6 @@ else
   fi
   echo "watcher: daemon PID $(cat "$dir/gh-watch.pid"), revived by cron (eyes: $(cat "$dir/eyes"))"
 fi
-if [ -n "$agent" ]; then
-  echo "The daemon wakes the agent itself on each event: $agent (command in $dir/agent, log in $dir/wake.log, cursor in $dir/events.cursor)."
-else
-  echo "No agent CLI found (claude/codex): the daemon will not wake an agent. Set GH_WATCH_AGENT or write $dir/agent."
-fi
-echo "Arm the persistent tail (idempotent via $dir/tail.pid; it never expires, wakes nothing, and needs no re-arm):"
-echo "  if [ -s $dir/tail.pid ] && kill -0 \$(cat $dir/tail.pid) 2>/dev/null; then echo tail already running; else nohup sh -c 'tail -n 0 -F $dir/events.log ~/.claude/profiles/swap-events.log 2>/dev/null | grep --line-buffered -E \"^###|WATCH ERROR|STALE|^[^ =]\" >> $dir/tail-events.log' >/dev/null 2>&1 & echo \$! > $dir/tail.pid; fi"
+rm -f "$dir/agent" "$dir/wake.pid" "$dir/wake.launch"  # from the watcher that started a headless agent per event
+echo "Arm a Monitor in this session on (max timeout; re-arm it when it expires, since the expiry notice wakes the session):"
+echo "  tail -n 0 -F $dir/events.log ~/.claude/profiles/swap-events.log 2>/dev/null | grep --line-buffered -E '^###|WATCH ERROR|STALE|RETIRED'"

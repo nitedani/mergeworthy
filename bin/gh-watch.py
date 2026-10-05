@@ -80,68 +80,8 @@ def is_human(u, body=None, agent_hashes=frozenset()):
     return _norm(body) not in agent_hashes  # ME: the user's own comment unless it's an agent post
 
 
-def wake_agent(event):
-    """The wake layer, harness-independent: launch the configured agent (command from <dir>/agent, e.g.
-    `claude -p` or `codex exec`) to handle the new event from events.cursor. It is the only handler:
-    a live session never acts on an event it hasn't checked against events.cursor and wake.pid (1.5),
-    so the woken agent is never raced. One wake agent per dir at a time; the next event re-launches it
-    once the previous one exits. Deduplication is the shared cursor: an event already handled
-    (cursor past it) is skipped."""
-    if ONCE:
-        return
-    agent = os.path.join(HERE, 'agent')
-    if not os.path.exists(agent):
-        # plain print, not emit: the line starts with ###, so emit would re-trigger wake_agent
-        print(f"### WAKE: no agent configured for {HERE}: write the agent command (e.g. claude -p) to {agent}", flush=True)
-        return
-    pid_file = os.path.join(HERE, 'wake.pid')
-    try:
-        if int(open(pid_file).read().strip()) > 1:
-            os.kill(int(open(pid_file).read().strip()), 0)
-            return  # a wake agent is already running and will catch this event from events.log
-    except (OSError, ValueError):
-        pass
-    import shlex
-    cursor = os.path.join(HERE, 'events.cursor')
-    prompt = f"""New GitHub watch event for this directory. Work in {HERE}.
-Read {HERE}/events.log from the byte offset in {HERE}/events.cursor (from the start if it is missing).
-Handle each new '###' event per methodology 1.5 (a comment by the account owner is the owner in chat: answer it
-at once, every post through the gate); clear each comment line you answered in {HERE}/replies-owed.md with
-'done: <reply url> <what changed>'. After each batch, re-read the rest of events.log and repeat until caught up.
-Advance {HERE}/events.cursor to the end of what you handled; an event whose offset is already before the cursor is
-handled: skip it."""
-    log = open(os.path.join(HERE, 'wake.log'), 'a')
-    proc = subprocess.Popen(shlex.split(open(agent).read().strip()) + [prompt], stdin=subprocess.DEVNULL, stdout=log,
-                            stderr=subprocess.STDOUT, cwd=HERE, start_new_session=True)
-    open(pid_file, 'w').write(str(proc.pid))
-    if open(agent).read().strip() != 'true':  # `true`: a live session claimed the dir and handles the events itself
-        open(os.path.join(HERE, 'wake.launch'), 'w').write(str(os.path.getsize(os.path.join(HERE, 'events.log'))))
-
-
-def check_wake():
-    """A wake agent that exits with the cursor short of where events.log ended at its launch left events unhandled
-    (refused permissions, a crash, a usage limit): say so once, with no ###, so it doesn't wake a second agent
-    into the same failure. The owed lines stay in replies-owed.md, where the Stop hook holds every live session."""
-    launch = os.path.join(HERE, 'wake.launch')
-    try:
-        target = int(open(launch).read())
-        os.kill(int(open(os.path.join(HERE, 'wake.pid')).read().strip()), 0)
-        return  # still running
-    except (OSError, ValueError):
-        if not os.path.exists(launch):
-            return
-    try:
-        cursor = int(open(os.path.join(HERE, 'events.cursor')).read().strip() or 0)
-    except (OSError, ValueError):
-        cursor = 0
-    os.remove(launch)
-    if cursor < target:
-        print(f"WAKE FAILED at {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}: the agent exited at cursor {cursor} "
-              f"of {target}; see {HERE}/wake.log. A live session handles the events from the cursor (1.5).", flush=True)
-
-
 def append_owed(entry):
-    """1.5's replies-owed.md: the daemon records each human comment as an owed reply; the agent
+    """1.5's replies-owed.md: the daemon records each human comment as an owed reply; the session
     clears the line with "done: <reply url> <what changed>" when it is answered. The Stop hook
     blocks a turn while a line is still owed, so an unposted reply cannot end the session unseen."""
     path = os.path.join(HERE, 'replies-owed.md')
@@ -155,9 +95,7 @@ def append_owed(entry):
 
 
 def emit(line):
-    print(line, flush=True)
-    if line.startswith('###') and not ONCE:
-        wake_agent(line)
+    print(line, flush=True)  # into events.log, where the session's Monitor delivers it (1.5)
 
 
 def emit_dependents(key):
@@ -481,7 +419,6 @@ def retire_if_done():
                 return  # unknown: keep watching
         if not done:
             return
-    # plain print, not emit: a ### line would wake the agent
     print(f"WATCHER RETIRED at {datetime.datetime.now(datetime.timezone.utc):%Y-%m-%dT%H:%M:%SZ}: every watched thread is merged or closed", flush=True)
     # each supervisor gh-watch-start may have used, so the watcher doesn't come back after a reboot
     supervisor = os.environ.get('GH_WATCH_SUPERVISOR', '')  # set by the unit or the launchd agent gh-watch-start wrote
@@ -520,7 +457,6 @@ def main():
             save_state(state)
         if time.time() - last_full > 180:
             run_scan()
-            check_wake()
             retire_if_done()
             last_full = time.time()
         time.sleep(10)

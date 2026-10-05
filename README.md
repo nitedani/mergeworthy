@@ -42,7 +42,7 @@ Set by the installer, or later under `/plugin` → mergeworthy → Configure opt
 | `.claude-plugin/` | The plugin manifest (options) and the marketplace that lists it; Codex reads the same files |
 | `cli/` | The `npx mergeworthy` installer |
 | `local-model/` | Claude Code on a local model (`claude-local`, the llama.cpp server, usage tracking); see its README |
-| `tests/` | `python3 tests/test_layout.py`, `python3 tests/test_post_lint.py`, `bash tests/run-guard-cases.sh hooks/pre-bash-guard.py` |
+| `tests/` | `python3 tests/test_layout.py`, `python3 tests/test_post_lint.py`, `python3 tests/test_stop_lint.py`, `bash tests/run-guard-cases.sh hooks/pre-bash-guard.py` |
 
 ## Changing it
 

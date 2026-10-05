@@ -58,3 +58,4 @@ Each happened, most more than once. When a rule fails or the user names a failur
 | `ps \| awk '/<port>/'` matched and killed another session's server. | 1.8 |
 | Posting with inline bodies; `gh run rerun` on upstream (needs admin: ask a maintainer); fork PRs lack CI secrets, so those jobs fail. | 1.6 step 4, 1.7 CI |
 | A Claude reviewer started while Codex was out of credits and the local model was free; the CLI local agent timed out with no result. | `reviewer`, `codex-review-model` |
+| The watcher started a separate headless agent per event; it ran without context or permissions, the user saw 👀 and no answer, and the session that owned the thread never heard of it. | 1.5 (the session is the agent, woken by its Monitor), `stop-lint` |
