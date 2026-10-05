@@ -26,7 +26,7 @@ Landing:
 - After the last landing, run `review`'s PR review round on the final head and record it with `pr-steps review <output>`; record the last guardian report with `pr-steps refactor <report>`.
 
 Round N+1:
-- A fresh guardian per scope gets the previous report, the implemented commits, and the declined items with reasons.
+- The same guardian continues (send it the implemented commits and the declined items with reasons); a fresh one only when the scope changed beyond its findings.
 - It audits fresh (not only the old list), verifies each implementation (behavior preserved, mutations still lethal, comments true), and says whether each decline holds.
 - It re-rates every row old ⇒ new with commits, and states plainly whether the scope converged.
 - Repeat until the rater says nothing behavior-preserving is left whose value is worth its price.

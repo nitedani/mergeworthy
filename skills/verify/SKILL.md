@@ -30,7 +30,7 @@ Bugs outside the task's scope get a disposition (1.1.7).
 
 ### Final bug verification after the refactors
 
-Once every scope converged, run one reproduce-only verifier per slice that compares the pre-refactor tree with the head:
+Once every scope converged, send the verifier from the bug-verification pass (it knows the slices) the refactor commits; it compares the pre-refactor tree with the head, reproduce-only:
 - The old specs run on the new code, adapting only renames. Every failure must be an intended change.
 - Side-by-side scripts run the same scenarios on both trees and diff the output.
 - Include randomized or fuzz comparisons where the logic is combinatorial.

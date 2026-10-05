@@ -89,11 +89,11 @@ Tear the stack down when you finish, including when you abort.
 
 ### 6. Review round
 
-Run `review`'s PR review round on the diff.
+One agent, one run, on the diff (`review`): first the PR review round, then the refactor ratings (`refactor`'s prompt), then the PR body's claims, each into its own output file. The context it filled reviewing is the context it rates with.
 
 ### 7. Refactor pass
 
-After the review round, with correctness proven and gates green, run `refactor` on the diff you just wrote.
+Fix the review's real defects, then implement the ratings commit by commit, gates after each. Send the same agent the new commits: it re-rates old ⇒ new and confirms the review on the final head (`pr-steps review` and `pr-steps refactor` on that head).
 
 ### 8. The PR
 
