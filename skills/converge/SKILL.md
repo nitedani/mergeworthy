@@ -34,7 +34,7 @@ Every pass above runs in one of two readers. Each reader covers one slice set: t
 - **A new reader** starts, with the last report, when the reader's context passes about half the window or the decision packet changes.
 - **The fresh reader of the final head** is picked in `review`'s order, Codex first. One run: the verifier brief on the final head, the reviewer charter, and the PR body's claims and screenshots. That run is also the PR body's posting-gate review (1.6).
 - **The fresh reader's findings** go back to the fixes. If the head then changed only by those fixes, the same fresh reader confirms them (`delegating`, one run); otherwise start a new fresh reader.
-- **Execution is yours, not the readers'.** Repro loops, tests and benchmarks with a time budget run in the main session, on the local model your environment names, else the `sonnet` alias (1.1.14). Judgment stays with the readers.
+- **Execution is yours, not the readers'.** Repro loops, tests and benchmarks with a time budget run in the main session, on the model your environment names for it, else the `sonnet` alias (1.1.14). Judgment stays with the readers.
 
 **Briefing a subagent.** Replace `<...>` in its brief with the specifics. Give each subagent only what it needs: the charter, the decision packet, the scope and the evidence rules.
 - Never give it the verdict you want, or earlier agents' conclusions. The one exception is a previous round's report, when the subagent is explicitly re-rating.
