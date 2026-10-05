@@ -179,21 +179,24 @@ def emit_maintainer_commits(repo, key, old, new):
 
 
 def emit_read_stale(repo, key, new):
-    """Your PR changed by more than ~80 lines since its last read question (`pr-steps read`): the ratings describe old code."""
+    """Your PR's own commits changed more than ~80 lines since its last read question (`pr-steps read`): the ratings
+    describe old code. Merges of the base branch, tests and lockfiles don't count: they aren't the PR's code to rate."""
     num = key.split('#')[1]
     try:
         pr = json.loads(gh(['api', f"repos/{repo}/pulls/{num}", '--jq', '{author: .user.login, base: .base.ref}']))
         if pr['author'] != ME: return
-        shas = json.loads(gh(['api', f"repos/{repo}/compare/{pr['base']}...{new}", '--jq', '[.commits[].sha]']))
+        commits = json.loads(gh(['api', f"repos/{repo}/compare/{pr['base']}...{new}", '--jq', '[.commits[] | {sha, merge: (.parents | length > 1)}]']))
         rec = os.path.expanduser('~/.claude/pr-steps')
-        last = next((s for s in reversed(shas) if os.path.exists(f'{rec}/{s}') and any(l.startswith('read ') for l in open(f'{rec}/{s}'))), None)
-        if last == new: return
-        lines = int(gh(['api', f"repos/{repo}/compare/{last or pr['base']}...{new}", '--jq', '[.files[] | select(.filename | test("\\\\.(spec|test)\\\\.|(^|/)tests?/") | not) | .additions + .deletions] | add // 0']))  # tests aren't refactored
+        idx = max((i for i, c in enumerate(commits) if os.path.exists(f"{rec}/{c['sha']}") and any(l.startswith('read ') for l in open(f"{rec}/{c['sha']}"))), default=-1)
+        since = [c['sha'] for c in commits[idx + 1:] if not c['merge']]
+        skip = re.compile(r'\.(spec|test)\.|(^|/)tests?/|(^|/)(pnpm-lock\.yaml|package-lock\.json|yarn\.lock)$')
+        lines = sum(f['n'] for sha in since for f in json.loads(gh(['api', f"repos/{repo}/commits/{sha}", '--jq', '[.files[] | {filename, n: (.additions + .deletions)}]'])) if not skip.search(f['filename']))
     except Exception as e:
         emit(f"WATCH ERROR read check {key}: {e}")
         return
     if lines > 80:
-        emit(f"### READ STALE {key}: {lines} changed lines since the last read question ({last[:10] if last else 'never'}): ask it again on the whole PR diff (mergeworthy:ready), then `pr-steps read`")
+        last = commits[idx]['sha'][:10] if idx >= 0 else 'never'
+        emit(f"### READ STALE {key}: {lines} changed lines since the last read question ({last}): ask it again on the whole PR diff (mergeworthy:ready), then `pr-steps read`")
 
 
 def read_threads():
