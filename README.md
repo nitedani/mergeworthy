@@ -7,8 +7,8 @@ Work with an AI coding agent through GitHub, the way you work with a coworker. Y
 - **It ships merge-ready PRs.** Before you see a PR, the agent has hunted for bugs, reviewed the change and simplified it. A UI or runtime change is also checked in the real app.
 - **It keeps its threads moving.** It watches its PRs and issues, and answers every review comment, bot finding and red CI run. When a PR it depends on lands, it updates its own.
 - **It writes for busy reviewers.** A post leads with what the agent needs from you, gives one decision with its pick, and links the long material. An independent review checks every post before it goes out.
-- **It asks only what is yours to decide.** That means product decisions, irreversible actions and credentials. Everything else it decides, does and reports.
-- **Hooks hold the line.** Hooks block an unreviewed post, a PR marked ready without its review, and a third unanswered comment in a row.
+- **It asks only what isn't its to decide.** That means irreversible actions on shared state, money, credentials or your global config, a maintainer's product decision, and a fork it can't rank. Everything else it decides, does and reports.
+- **Hooks hold the line.** Hooks block an unreviewed post, a PR marked ready without its review, and a third comment in a row within three hours.
 
 ## Install
 
@@ -45,7 +45,7 @@ Run `npx mergeworthy` again to change the options or add an agent; `npx mergewor
 | `github-threads` | watching threads, answering, and the review every post passes |
 | `merging` | pushing, ready, merge |
 | `design-loop` | designing an API, protocol or module |
-| `converge` | the passes a larger PR runs until nothing worth changing is left |
+| `converge` | the passes a PR runs until nothing worth changing is left |
 | `verify`, `review`, `refactor`, `guardian`, `finality` | the passes: bug hunt, review, refactor, bloat and quality, rework of drifted code |
 | `delegating` | briefing subagents and checking their work |
 | `past-failures` | failures that happened, and the rule that now covers each |

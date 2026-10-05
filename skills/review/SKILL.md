@@ -24,7 +24,7 @@ After the review:
 
 **The reviewer's final message is exactly `CLEAN`, or the findings.** One run may follow several briefs that have their own output (the reviewer charter's verdict, the verifier's count). Then each brief writes to its own output file, and the final message is exactly `CLEAN` only when none of them has a finding.
 
-**A verdict on behavior is settled by a run, not a reading** (1.1.15). A finding from anyone (a reviewer, a bot, a maintainer's review) is a candidate, and so is a reviewer's "this case is correct". Before acting on either, run the case on the head. A case that doesn't reproduce is declined with the output. One that does is checked against earlier verdicts on it, in the reviews and the ledger; if one says the opposite, argue it both ways first. Fix the real ones in your own words. Never write `CLEAN` yourself.
+**Behavior is settled by a run, not a reading.** A behavior finding from a reviewer, a bot or a maintainer is a candidate, and so is a reviewer's "this case is correct". Run the case on the head first. If it doesn't reproduce, reply with the output; to a maintainer, add your recommendation (1.1.9). If an earlier verdict says the opposite, argue both ways first. Judge the rest per 1.1.15, and fix the real ones in your own words. Never write `CLEAN` yourself.
 
 ## The PR review round: correctness, security, bloat
 
@@ -37,7 +37,7 @@ A reviewer, picked in the order above, reviews the diff with the reviewer charte
 
 In a PR's pipeline, this round runs inside two agents that `converge` defines under "who reads". The reader runs it once on the diff, together with the other passes. The fresh reader runs it again on the final head.
 
-**One round.** Fix real defects, and decline the rest with a line of reasoning (1.1.15). The same reviewer then confirms the fixes (above), with no fresh audit. Record who reviewed (or that it was a self-review) and what they found, including nothing, in the ledger (1.2). Then run `pr-steps review <output>`.
+**One round.** Fix real defects, and decline the rest with the run's output, or a one-line reason for a finding that isn't about behavior (1.1.15). The same reviewer then confirms the fixes (above), with no fresh audit. Record who reviewed (or that it was a self-review) and what they found, including nothing, in the ledger (1.2). Then run `pr-steps review <output>`.
 
 ## Reviewer charter
 
