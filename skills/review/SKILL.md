@@ -37,7 +37,7 @@ A reviewer, picked in the order above, reviews the diff with the reviewer charte
 
 In a PR's pipeline, this round runs inside two agents that `converge` defines under "who reads". The reader runs it once on the diff, together with the other passes. The fresh reader runs it again on the final head.
 
-**One round.** Fix real defects, and decline the rest with the run's output, or a one-line reason for a finding that isn't about behavior (1.1.15). The same reviewer then confirms the fixes (above), with no fresh audit. Record who reviewed (or that it was a self-review) and what they found, including nothing, in the ledger (1.2). Then run `pr-steps review <output>`.
+**One round.** Fix real defects, and decline the rest as above, with the run's output or a one-line reason (1.1.15). The same reviewer then confirms the fixes (above), with no fresh audit. Record who reviewed (or that it was a self-review) and what they found, including nothing, in the ledger (1.2). Then run `pr-steps review <output>`.
 
 ## Reviewer charter
 
