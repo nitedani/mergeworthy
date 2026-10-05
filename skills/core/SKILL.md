@@ -27,7 +27,7 @@ Defaults (the user can override):
 
 ## 1.0 Triage
 
-Read the task and every link in it. Write `Tier: <X>, because <signals>` and put it in the first report. Re-triage when the deliverables or open decisions change, and say so.
+Read the task and every link in it. Write `Tier: <X>, because <signals>` as the first line of `scope.md` and in the first report. On every resume, read that line before any other step; if it's missing, triage first, counting every PR and decision maker the work has had so far, not only today's ask. Re-triage when the deliverables or open decisions change, and say so.
 
 | Tier | Signals | Process |
 |---|---|---|
