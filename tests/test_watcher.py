@@ -22,5 +22,11 @@ cases = [
     ('agent post quoting /ai', u('me'), '/ai posted by the agent itself', False),
 ]
 fails = [n for n, user, body, want in cases if w.answerable(user, body, gated) != want]
+import time
+th = [['o/r', '1'], ['o/r', '2'], ['o/r', '3']]
+st = {'prs': {'o/r#1': {'state': 'open'}, 'o/r#2': {'state': 'merged'}, 'o/r#3': {'state': 'closed'}}, 'closed_scan': time.time()}
+if w.scan_set(st, th) != [['o/r', '1']]: fails.append('full scan skips merged and closed threads')
+st['closed_scan'] = time.time() - 3601
+if w.scan_set(st, th) != th: fails.append('hourly full scan includes merged and closed threads')
 for n in fails: print('FAIL', n)
-print(f'{len(cases) - len(fails)}/{len(cases)} passed'); sys.exit(1 if fails else 0)
+print(f'{len(cases) + 2 - len(fails)}/{len(cases) + 2} passed'); sys.exit(1 if fails else 0)

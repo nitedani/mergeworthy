@@ -313,6 +313,8 @@ def scan(state, only=None):
     threads = read_threads()
     if only is not None:
         threads = [t for t in threads if f"{t[0]}#{t[1]}" in only]
+    else:
+        threads = scan_set(state, threads)
     ok = True
     with ThreadPoolExecutor(max_workers=8) as ex:
         futs = {ex.submit(fetch_thread, repo, num, since(f"{repo}#{num}"), state['is_pr'].get(f"{repo}#{num}")): (repo, num) for repo, num in threads}
@@ -347,6 +349,16 @@ def scan(state, only=None):
     if only is None:
         state['since'] = started  # only the default for threads added to threads.txt later
     return ok
+
+
+def scan_set(state, threads):
+    """The threads a full scan reads: the open ones, and once an hour the merged and closed ones too. A full scan costs
+    about 7 API calls a thread; reading every closed thread every 3 minutes ran through GitHub's 5,000 calls an hour.
+    A comment on a closed thread still arrives sooner through the notifications fast path (your own threads notify you)."""
+    if time.time() - state.get('closed_scan', 0) > 3600:
+        state['closed_scan'] = time.time()
+        return threads
+    return [t for t in threads if state['prs'].get(f"{t[0]}#{t[1]}", {}).get('state') not in ('merged', 'closed')]
 
 
 def notifications_changed(state):
@@ -439,7 +451,7 @@ def run_scan():
         save_state(state)
     with locked():
         state = load_state()
-        scan_reactions(state, read_threads())
+        scan_reactions(state, scan_set(state, read_threads()))
         save_state(state)
     r = subprocess.run(['bash', os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'bin', 'tracker-check')], capture_output=True, text=True)
     stale = [l for l in r.stdout.splitlines() if 'STALE' in l]
