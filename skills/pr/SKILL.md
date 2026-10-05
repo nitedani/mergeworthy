@@ -12,7 +12,7 @@ You are about to run `gh pr create`.
 1. Look at the maintainer's recent merged PRs: what they keep, what they cut, how they title and describe them.
 2. Keep it to one purpose and small. Each user-visible fix is its own PR; internal cleanups go together in one.
 3. Remove every feature in the diff that no current need asks for, and every comment, guard or test the repo's habits wouldn't keep.
-4. Ask the `read` question, then the `review` question, from `mergeworthy:ready`, so the review sees the final head; record them with `pr-steps read <read output>` and `pr-steps review <review output>`.
+4. Ask the questions `mergeworthy:ready` lists for the task's size, `review` last so it sees the final head; record them with `pr-steps read <read output>` and `pr-steps review <review output>`.
 5. Write the body through `mergeworthy:post`:
    - **First sentence:** the problem a user hits on today's base branch.
    - **Link:** `Closes #N` only if the change fixes what the issue reports; otherwise `Refs #N`.
@@ -23,7 +23,7 @@ You are about to run `gh pr create`.
 
 ## Done when
 
-The PR is open, its body is true of the head, and it is on the watcher's list.
+The PR is open, its body is true of the head, and it is in the watcher's `threads.txt`.
 
 ## Never
 

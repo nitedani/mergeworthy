@@ -30,7 +30,7 @@ The gates pass, the before and after are captured, and nothing you started is st
 
 ## Enforced by
 
-`pre-bash-guard` (blocks `pkill -f`, `killall`, a bare `git stash`, and a force-push without a pinned lease).
+`pre-bash-guard` (blocks `pkill -f`, `killall`, a bare `git stash`, and a force-push without `--force-with-lease=<branch>:<sha>`).
 
 ## Next
 
