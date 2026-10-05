@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""post-lint <draft.md> [--kind reply|pr|issue|inline|tracker|proposal] [--parent <file>|none]: checks a draft before it is posted to GitHub.
+"""post-lint <draft.md> [--kind reply|pr|issue|inline|tracker|proposal|review-record] [--parent <file>|none]: checks a draft before it is posted to GitHub.
 Exit 1 with one line per finding. Checks: banned phrases, "stacked on" without gh stack, bare #N refs
 (must be owner/repo#N unless --repo matches), length budgets, unclassified maintainer notes, em dashes,
 process machinery in the thread, questions without a recommendation, and a bare "Done" answering a question.
 A reply or inline comment needs the comment it answers: <draft stem>.parent.md next to it, or --parent <file>;
 --parent none for a comment that answers nobody.
-Settings: MERGEWORTHY_BADGE on|off|auto requires the badge always, never, or for a human account."""
+Settings: MERGEWORTHY_BADGE on|off|auto requires the badge always, never, or for a human account;
+MERGEWORTHY_REVIEW_TRACE=comment allows --kind review-record."""
 import os, re, sys, subprocess
 def setting(name, default):
     """MERGEWORTHY_<name> from the environment, else from ~/.mergeworthy/settings.env (written at session start from the plugin's options)."""
@@ -13,7 +14,7 @@ def setting(name, default):
     saved = dict(l.strip().split('=', 1) for l in open(f) if '=' in l) if os.path.exists(f) else {}
     return os.environ.get(f'MERGEWORTHY_{name}') or saved.get(f'MERGEWORTHY_{name}', default)
 args = sys.argv[1:]
-USAGE = "usage: post-lint <draft.md> [--kind reply|pr|issue|inline|tracker|proposal] [--repo owner/repo] [--parent <file>|none]"
+USAGE = "usage: post-lint <draft.md> [--kind reply|pr|issue|inline|tracker|proposal|review-record] [--repo owner/repo] [--parent <file>|none]"
 def arg(name, default):
     if name not in args: return default
     i = args.index(name)
@@ -22,10 +23,13 @@ def arg(name, default):
 if not args: sys.exit(USAGE)
 path = args[0]; kind = arg('--kind', 'reply'); repo = arg('--repo', None)
 kind = {'comment': 'reply'}.get(kind, kind)
-if kind not in ('reply', 'pr', 'issue', 'inline', 'tracker', 'proposal'): sys.exit(USAGE)  # tracker: umbrella body or decisions comment, a growing list with no word budget
-record = kind == 'tracker'  # the umbrella issue: a growing list with no word budget
+if kind not in ('reply', 'pr', 'issue', 'inline', 'tracker', 'proposal', 'review-record'): sys.exit(USAGE)  # tracker: umbrella body or decisions comment, a growing list with no word budget
+if kind == 'review-record' and setting('REVIEW_TRACE', 'hidden') != 'comment':
+    sys.exit('review records stay in the artifact root (MERGEWORTHY_REVIEW_TRACE=hidden)')
+record = kind in ('tracker', 'review-record')  # records carry the process, with no word budget
 text = open(path).read()
 # An issue draft's first line may be its title ("Title: …"): the budget is for the body
+title = (re.match(r'\ATitle:\s*([^\n]*)\n', text) or [None, None])[1]
 text = re.sub(r'\ATitle:[^\n]*\n', '', text)
 # Posts by the agent share the user's account: each starts with a badge naming the agent that wrote it
 # (the agent's icon plus "Agent:", or the legacy Claude badge), so readers see who wrote it.
@@ -62,6 +66,23 @@ for m in re.finditer(r'(?<![\w/.-])#(\d+)\b', prose):
         findings.append(f"bare #{m.group(1)}: write owner/repo#{m.group(1)} (or pass --repo when it's the same repo)")
     elif subprocess.run(['gh', 'api', f'repos/{repo}/issues/{m.group(1)}', '--silent'], capture_output=True).returncode != 0:
         findings.append(f"bare #{m.group(1)} doesn't exist in {repo}: another repo's item? write owner/repo#{m.group(1)}")
+# the umbrella issue's format (methodology 1.2, Tier L; reference nitedani/vike-react-rsc#9)
+if kind == 'tracker':
+    if text.startswith('## Decisions'):
+        for h in ('Agreed', 'Open', 'PRs'):
+            if not re.search(rf'^### [^\n]*{h}', text, flags=re.M):
+                findings.append(f"tracker: the Decisions comment needs a '### {h}' section (1.2)")
+    else:
+        if title is not None and not title.startswith('Tracking: '):
+            findings.append(f"tracker: the title starts 'Tracking: ' and names the goal, not {title[:50]!r} (1.2)")
+        if re.search(r'^\s*\|.*\|\s*$', prose, flags=re.M):
+            findings.append("tracker: items are checkboxes under '##' sections, not a table (1.2)")
+        if not re.search(r'^## ', text, flags=re.M) or not re.search(r'^\s*- \[[ x]\] ', text, flags=re.M):
+            findings.append("tracker: one '##' section per group of work, each item a '- [ ]' / '- [x]' checkbox (1.2)")
+        if 'issuecomment-' not in text:
+            findings.append("tracker: link the Decisions comment ('All decisions made so far: <link> (kept up to date).') (1.2)")
+        for m in re.finditer(r'^\s*- \[x\] (~~)?((?:[\w.-]+/[\w.-]+)?#\d+)(?!\d)(?!(?:~~)? \()', text, flags=re.M):  # a ticked item says how it ended
+            findings.append(f"tracker: say how {m.group(2)} ended, in parentheses right after it, e.g. '{m.group(2)} (merged)' (1.2)")
 words = len(re.findall(r"[A-Za-z0-9][\w'’-]*", counted))
 chars = len(re.sub(r'\s+', ' ', counted).strip())
 sentences = len(re.findall(r'[.!?](?=\s|$)', re.sub(r'\b(e\.g|i\.e|etc|vs)\.', '', counted).strip())) or 1
@@ -70,7 +91,7 @@ if kind == 'reply' and words > 80:
 pr_budget = 250 if re.search(r'^#+ .*\b(notes|decisions)\b|^Decisions\b', text, re.I | re.M) else 150  # a PR with decisions for the maintainer may run longer
 if kind == 'pr' and words > pr_budget:
     findings.append(f"{words} words > {pr_budget} for a PR body (tables, code, images and URLs not counted): cut what the reader doesn't need")
-if kind == 'proposal' and words > 600:  # a design walkthrough (mergeworthy:design-loop)
+if kind == 'proposal' and words > 600:  # a design walkthrough (methodology 1.4 step 4)
     findings.append(f"{words} words > 600 for a proposal: cut what the reader doesn't need")
 if kind == 'issue' and chars > 400:
     findings.append(f"{chars} characters > 400 for an issue (tables, code, images and URLs not counted): keep one finding")
@@ -83,19 +104,19 @@ for m in re.finditer(r'^\s*(?:[-*]|\d+\.)?\s*\*\*(Left to you|For you to decide|
         findings.append(f"unclassified note: {line.strip()[:70]!r} needs <bug|limitation|not a regression|decision needed> · blocks …: yes/no · next: …")
 if len(re.findall(r'^\s*(?:[-*]|\d+\.)\s+[^\n|]*·\s*blocks', text, flags=re.M | re.I)) >= 2:
     findings.append("notes as a list of 'kind · blocks · next' lines: put them in one table | Note | Kind | Blocks merge | Next |")
-# evidence carries no secret (mergeworthy:github-threads): checked on the whole text, code blocks included, where logs usually sit
+# evidence carries no secret (1.6): checked on the whole text, code blocks included, where logs usually sit
 SECRET = re.compile(r'ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|\bsk-[A-Za-z0-9_-]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}'
                     r'|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|^\s*(?:authorization|cookie|set-cookie)\s*:\s*(?:bearer\s+|basic\s+)?(?!<REDACTED>)\S{12,}',
                     re.I | re.M)
 for m in SECRET.finditer(text):
     findings.append(f"secret-shaped text {m.group(0)[:12]!r}...: write <REDACTED> in its place")
-# a follow-up is opened before the post, never parked as advice (mergeworthy:github-threads)
+# a follow-up is opened before the post, never parked as advice (methodology 1.6 notes, 1.1.7)
 for row in re.findall(r'^\|(?:[^|\n]*\|){3}([^|\n]*)\|\s*$', text, flags=re.M):
     if re.search(r'\b(recommend|follow-up|follow up|later)\b', row, re.I):
         findings.append(f"notes table Next {row.strip()[:50]!r}: open the follow-up first and link it (PR <url>), fix it (fixed in <sha>), or write 'nothing, because …'")
-# a found defect is fixed in this change, not parked in prose (mergeworthy:implement-issue): the same bug elsewhere is related
+# a found defect is fixed in this change, not parked in prose (methodology 1.1.7): the same bug elsewhere is related
 for m in re.finditer(r"[^.\n]*\b(separate issue|separate PR|out of scope|left for later|for later|a later PR|follow-up issue|another PR)\b[^.\n]*", prose, re.I):
-    findings.append(f"deferral {m.group(0).strip()[:70]!r}: fix it in this change, open the PR now and link it, or quote the user's OK (mergeworthy:implement-issue)")
+    findings.append(f"deferral {m.group(0).strip()[:70]!r}: fix it in this change, open the PR now and link it, or quote the user's OK (1.1.7)")
 has_badge = _m is not None
 badge = setting('BADGE', 'on')  # auto: only a human account (`gh api user` type User, not Bot) needs it
 if kind != 'tracker' and not has_badge and (badge == 'on' or badge == 'auto' and
