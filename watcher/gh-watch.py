@@ -77,16 +77,23 @@ MAINTAINER = ('OWNER', 'MEMBER', 'COLLABORATOR')
 AI_CALL = re.compile(r'(^|\s)/(ai|agent)\b', re.I)
 
 
-def answerable(u, body, agent_hashes):
-    """mergeworthy:github-threads, for a thread the agent opened or posted in: a maintainer's comment or the user's.
-    The user's /ai calls on other threads go through ai_call_elsewhere."""
+def answerable(u, body, agent_hashes, kind='comment', own=False):
+    """mergeworthy:github-threads. On a thread the agent opened (own), what a person would answer on their own PR:
+    every human's comment, and a review bot's inline finding (its summaries ask nothing). On a thread it only posted
+    in: a maintainer's comment or the user's. The user's /ai calls elsewhere go through ai_call_elsewhere."""
+    if own and kind == 'review-comment' and is_bot(u):
+        return True
     if not is_human(u, body, agent_hashes):
         return False
-    return u.get('login') == ME or u.get('assoc') in MAINTAINER
+    return own or u.get('login') == ME or u.get('assoc') in MAINTAINER
+
+
+def is_bot(u):
+    return bool(u) and (u.get('type') == 'Bot' or u.get('login', '').endswith('[bot]'))
 
 
 def is_human(u, body=None, agent_hashes=frozenset()):
-    if not u or u.get('type') == 'Bot' or u.get('login', '').endswith('[bot]'):
+    if not u or is_bot(u):
         return False
     if u.get('login') != ME:
         return True
@@ -278,11 +285,12 @@ def react_eyes(repo, kind, cid):
         emit(f"WATCH ERROR eyes {repo} {kind} {cid}: {e}")
 
 
-def fetch_thread(repo, num, since, is_pr_known):
-    """Network only (runs in a worker thread). Returns (is_pr, events, pr_state, red_checks)."""
-    is_pr = is_pr_known
-    if is_pr is None:
-        is_pr = 'pull_request' in json.loads(gh(['api', f"repos/{repo}/issues/{num}"]))
+def fetch_thread(repo, num, since, is_pr_known, author_known=None):
+    """Network only (runs in a worker thread). Returns (is_pr, author, events, pr_state, red_checks)."""
+    is_pr, author = is_pr_known, author_known
+    if is_pr is None or author is None:
+        issue = json.loads(gh(['api', f"repos/{repo}/issues/{num}"]))
+        is_pr, author = 'pull_request' in issue, (issue.get('user') or {}).get('login')
     events = []
     for c in gh_json(f"repos/{repo}/issues/{num}/comments?since={since}&per_page=100"):
         events.append(('comment', c['id'], c['updated_at'], {**c['user'], 'assoc': c.get('author_association')}, c['html_url'], c.get('body') or '', ''))
@@ -302,7 +310,7 @@ def fetch_thread(repo, num, since, is_pr_known):
                 raise RuntimeError(f"gh pr checks {num} -R {repo}: {r.stderr.strip()[:200]}")
             checks = r.stdout
             red = sorted(l.split('\t')[0] for l in checks.splitlines() if '\tfail\t' in l)
-    return is_pr, events, pr_state, red
+    return is_pr, author, events, pr_state, red
 
 
 def scan(state, only=None):
@@ -319,16 +327,17 @@ def scan(state, only=None):
         threads = scan_set(state, threads)
     ok = True
     with ThreadPoolExecutor(max_workers=8) as ex:
-        futs = {ex.submit(fetch_thread, repo, num, since(f"{repo}#{num}"), state['is_pr'].get(f"{repo}#{num}")): (repo, num) for repo, num in threads}
+        futs = {ex.submit(fetch_thread, repo, num, since(f"{repo}#{num}"), state['is_pr'].get(f"{repo}#{num}"), state.setdefault('author', {}).get(f"{repo}#{num}")): (repo, num) for repo, num in threads}
         for fut, (repo, num) in futs.items():
             key = f"{repo}#{num}"
             try:
-                is_pr, events, pr_state, red = fut.result()
+                is_pr, author, events, pr_state, red = fut.result()
             except Exception as e:
                 ok = False
                 emit(f"WATCH ERROR {key}: {e}")
                 continue
             state['is_pr'][key] = is_pr
+            state['author'][key] = author
             state['since_by'][key] = started
             if pr_state:
                 prev = state['prs'].get(key)
@@ -348,7 +357,7 @@ def scan(state, only=None):
                 state['ci'][key] = red
             agent_hashes = agent_post_hashes()  # read after the fetch: a post gated while it ran is the agent's
             for kind, cid, upd, user, url, body, extra in events:
-                if answerable(user, body, agent_hashes):
+                if answerable(user, body, agent_hashes, kind, own=author == ME):
                     handle_comment(state, repo, key, kind, cid, upd, user['login'], url, body, extra)
     if only is None:
         state['since'] = started  # only the default for threads added to threads.txt later
