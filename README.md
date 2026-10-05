@@ -1,65 +1,46 @@
-# Work methodology
+# mergeworthy
 
-How the agent works: triage, principles, the live GitHub loop, the posting gate, safety, the implement-issue skill, the Convergence Protocol, past failures, and the scripts and hooks that enforce the rules.
+How an AI coding agent works on GitHub so that its replies and PRs are worth merging: sizing the work, evidence for every claim, an independent review before anything is posted, answering maintainers within minutes, and converging each PR until no reviewer finds anything worth changing. Hooks and scripts enforce the rules that text alone didn't.
+
+## Install
+
+In Claude Code:
+
+```
+/plugin install mergeworthy --marketplace nitedani/mergeworthy
+```
+
+That installs the skills, the hooks, the commands (on the Bash `PATH`) and the always-on rules (loaded at every session start). To get new versions automatically, turn on auto-update once: `/plugin` → Marketplaces → mergeworthy → Enable auto-update.
+
+Other agents (Codex, Cursor and [the rest skills.sh supports](https://skills.sh)) get the skills, without the hooks and commands:
+
+```sh
+npx skills add nitedani/mergeworthy
+```
+
+## Options
+
+Set at install, or later under `/plugin` → mergeworthy → Configure options.
+
+| Option | Values (default first) | What changes |
+|---|---|---|
+| `badge` | `on`, `off`, `auto` | The agent's icon and label at the start of every post; `auto`: only when posting from a human account. |
+| `merge` | `on-request-squash`, `reviewer` | `reviewer`: the agent never merges; the guard blocks `gh pr merge`. |
+| `watcher` | `on`, `off` | `off`: no GitHub watcher; owed replies are checked at each start. |
+| `local_model` | `off`, `on` | `on`: exploration and gate reviews go to a local model (`local-model/`) while it's available. |
 
 ## Layout
 
 | Path | What's in it |
-| --- | --- |
-| `SETUP.md` | Prompts to install, update or uninstall it with an agent |
-| `methodology/` | The text, one file per section (`ORDER` lists Part 1's files); `01-always-on.md` goes into `~/.claude/CLAUDE.md` |
-| `profiles/` | `defaults.env` (every setting, its default and its values) and one file per profile |
-| `build.sh` | Builds `dist/methodology-<profiles>.md`: the text with the settings applied, plus every script it installs |
-| `dist/` | The built files an agent is given. Don't edit them: edit `methodology/` and run `./build.sh --all` |
-| `claude/hooks/` | Claude Code hooks: the posting and safety guard (Bash), the local-model guard (Agent), the thread register, the Stop check |
-| `claude/bin/` | Commands: `gate-pass`, `post-lint`, `pr-steps`, `install-methodology`, `methodology-update`, `uninstall-methodology`, `claude-swap`, `codex-review-model`, `tracker-check` |
-| `claude/watcher/` | The GitHub watcher (`gh-watch-start`, `gh-watch.py`, its daemon) |
-| `claude/tools/` | `filter.py`, which applies the settings markers for `build.sh` |
-| `local-model/` | Claude Code on a local model, and `local-agent` with one skill per task mode; see `local-model/README.md` |
-| `tests/` | `python3 tests/test_build.py`; `python3 tests/test_post_lint.py`; `bash tests/run-guard-cases.sh claude/hooks/pre-bash-guard.py` |
+|---|---|
+| `skills/<name>/SKILL.md` | The methodology, one skill per step: `core` (load first), `github-threads`, `reviewer`, `implement-issue`, `convergence`, `merging`, `design-loop`, `delegating`, `past-failures`, `mechanisms` |
+| `always-on.md` | The rules every session gets, put into context by the session-start hook |
+| `hooks/` | `hooks.json` and the hook scripts: the posting and safety guard, the local-model guard, the thread register, the Stop check, session start |
+| `bin/` | Commands: `gate-pass`, `post-lint`, `pr-steps`, `gh-watch-start` and the watcher, `tracker-check`, `codex-review-model`, `isolated-run`, `claude-swap` |
+| `.claude-plugin/` | The plugin manifest (options) and the marketplace that lists it |
+| `local-model/` | Claude Code on a local model (`claude-local`, the llama.cpp server, usage tracking); see its README |
+| `tests/` | `python3 tests/test_layout.py`, `python3 tests/test_post_lint.py`, `bash tests/run-guard-cases.sh hooks/pre-bash-guard.py` |
 
-Everything under `claude/` installs flat into `~/.claude/mechanisms/` (commands linked into `~/.local/bin`).
+## Changing it
 
-## Settings
-
-One source, several variants. Text that differs per setting sits between markers at the place it applies: `<!-- if KEY=VALUE -->…<!-- else -->…<!-- end -->` (`KEY!=VALUE` negates; `else` is optional). With no profile, every setting has its default, which is the local setup for contributing to repos you don't own.
-
-| Setting | Values (default first) | What changes |
-|---|---|---|
-| `target` | `local`, `ci` | `ci`: a claude-code-action run per `@claude` comment. The run rebuilds its scope from the thread and keeps scope, ledger and owed lists in its tracking comment; artifacts go to `$RUNNER_TEMP/claude-work`; it works on the checkout's branch; a `GENUINE-FORK` takes the recommendation and is listed in the final comment; no `claude-swap`. |
-| `ownership` | `external`, `team`, `own` | `team`: our code, teammates review; ask only for paths the repo's `AGENTS.md` reserves for team decisions. `own`: the user's repo, no external maintainer. |
-| `tests` | `remove-before-merge`, `keep` | Whether PR-proving tests are removed once the PR is approved. |
-| `merge` | `on-request-squash`, `reviewer` | `reviewer`: never merge or offer to; `pre-bash-guard` blocks `gh pr merge`. |
-| `pr_open` | `ready`, `draft` | `draft`: open with `--draft`, mark ready when the Ready list holds. |
-| `review_trace` | `hidden`, `comment` | `comment`: the review record goes in one PR comment (`post-lint --kind review-record`). |
-| `badge` | `on`, `off`, `auto` | The Claude badge on posts; `auto` requires it only when `gh api user` is a human account. |
-| `post_lang` | `en`, `thread` | `thread`: answer an issue in its language; PRs in English. |
-| `reviewer` | `codex-then-claude`, `claude` | `claude`: a fresh-context Claude subagent reviews; no Codex. |
-| `watcher` | `on`, `off` | `off`: no `gh-watch`, heartbeat or Monitor; owed lists are checked at each start. |
-| `commit_identity` | `noreply`, `git-config` | `git-config`: commit with the checkout's git identity. |
-| `local_model` | `on`, `off` | Whether 1.1.14's local-agent delegation is included. |
-| `session_model` | `claude`, `local` | The model the session itself runs on. `local`: the subscription rules (usage limits, model tiers, `claude-swap`) drop out and the "you are the local model" rules take their place. |
-
-Profiles:
-- The defaults: an open-source repo where an external maintainer decides (`external`, `remove-before-merge`, `on-request-squash`).
-- `ci`: GitHub Actions (`target=ci`, `watcher=off`, `reviewer=claude`, `badge=auto`).
-- `local`: the pseudo-profile — no env file; a session that runs on the local model itself (`session_model=local`). It combines with others (`team local`).
-- Your own: a `profiles/<name>.env` that sets only what differs, e.g. a team repo where teammates review and merge (`ownership=team`, `tests=keep`, `merge=reviewer`, `pr_open=draft`).
-
-## Build
-
-```sh
-./build.sh                  # dist/methodology-prompt.md (defaults)
-./build.sh ci               # dist/methodology-ci.md
-./build.sh local            # dist/methodology-local.md (a session that runs on the local model)
-./build.sh team ci          # profiles apply in order, later ones winning
-./build.sh --all            # the defaults, ci and local
-```
-
-Each built file starts with its settings header, e.g. `<!-- settings: target=ci ownership=team … -->`.
-
-## Use
-
-See [SETUP.md](SETUP.md): one prompt each to install, update or uninstall it with an agent. Installed sessions update themselves from this repo once a day.
-
-By hand: `./build.sh [profile…]`, then `mechanisms/install-methodology dist/<built file>`; `methodology-update`; `uninstall-methodology`.
+Edit the skill or script here, run the tests, commit and push. Installed copies update through the plugin; never edit them. To try a change before pushing: `claude --plugin-dir .`.

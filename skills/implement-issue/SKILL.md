@@ -3,11 +3,11 @@ name: implement-issue
 description: "Implementing an issue or opening a PR: already fixed?, reproduce, approach rating, build and gate, browser evidence, review round, refactor pass, PR body."
 ---
 
-# Part 2: Implementing a change
+# Implementing a change
 
-From an issue or a problem to one merge-ready PR. Tier S follows it as written; Tier ≥ M runs it once per PR, with Part 3's loops in place of steps 6 and 7's single rounds (Part 3 section 7 says what feeds `pr-steps`).
+From an issue or a problem to one merge-ready PR. Tier S follows it as written; Tier ≥ M runs it once per PR, with `convergence`'s loops in place of steps 6 and 7's single rounds (`convergence` §7 says what feeds `pr-steps`).
 
-The repo's `AGENTS.md` / `CLAUDE.md` governs how the code is written. Everything particular to a repo (base branch, gates, existing guarantees, security surfaces, tracker, labels, how to run the app) lives in its **project file**: `.claude/skills/implement-issue/references/project.md`, else `.claude/implement-issue.md`. If the repo has none, derive it (base branch from `gh repo view --json defaultBranchRef`, gates from CI config and package scripts, how to run the app from the README) under the headings of the project template at the end of this part, write it to `.claude/implement-issue.md`, tell the user it is a draft, and use it. If the repo has `.claude/skills/implement-issue/SKILL.md`, read it on `origin/<base>` first: where it differs from this part, it wins, except where Part 1 says otherwise (usage limits per 1.1.13, found defects per 1.1.7, process stays out of the thread).
+The repo's `AGENTS.md` / `CLAUDE.md` governs how the code is written. Everything particular to a repo (base branch, gates, existing guarantees, security surfaces, tracker, labels, how to run the app) lives in its **project file**: `.claude/skills/implement-issue/references/project.md`, else `.claude/implement-issue.md`. If the repo has none, derive it (base branch from `gh repo view --json defaultBranchRef`, gates from CI config and package scripts, how to run the app from the README) under the headings of the project template at the end of this skill, write it to `.claude/implement-issue.md`, tell the user it is a draft, and use it. If the repo has `.claude/skills/implement-issue/SKILL.md`, read it on `origin/<base>` first: where it differs from this skill, it wins, except where `core`, `github-threads` or `merging` say otherwise (usage limits per 1.1.13, found defects per 1.1.7, process stays out of the thread).
 
 `<base>` below is the base branch it names. Work in a worktree off it: `git fetch origin && git worktree add -b <branch> <artifact root>/<branch> origin/<base>`. In CI (e.g. `$GITHUB_ACTIONS` is `true`) read the project file's CI section first, if it has one.
 
@@ -17,7 +17,7 @@ The repo's `AGENTS.md` / `CLAUDE.md` governs how the code is written. Everything
 
 Install whatever doesn't need root (a browser, the MCP server, the stack, the data; the project file has the commands). For the rest, stop: the first thing in your reply is the exact steps, in order, with the commands to run.
 
-Everything this part posts (issue comments, the PR body, inline comments, filed issues) passes the posting gate (1.6).
+Everything this skill posts (issue comments, the PR body, inline comments, filed issues) passes the posting gate (1.6).
 
 ### 1. Check it is not already fixed
 
@@ -59,15 +59,13 @@ If nothing rates high, abort: comment what you tried and why each falls short, t
 
 The smallest diff that finishes the job: schema, API, every call site, every locale. The gates are in the project file; the exit code is the verdict, not your reading of the output. At most one regression test, in an existing suite. Its expected value comes from outside the code: a literal, the issue, a worked example; never recomputed the way the code computes it, and never a snapshot taken from the code's own output.
 
-Write it with the guardian's lenses from the first line (the charter in Part 3 section 11.1, and 1.4.1): deep modules, no speculative surface or defensive branch for an unreachable state, no duplicate intent, terse comments that are literally true, names that don't confess mixed responsibility. Before the review round, read your own diff through those lenses and fix what they catch. The guardian checks; it isn't where the code gets its shape, so a guardian round that finds design work means this step was skipped.
+Write it with the guardian's lenses from the first line (`convergence` §11.1, and 1.4.1): deep modules, no speculative surface or defensive branch for an unreachable state, no duplicate intent, terse comments that are literally true, names that don't confess mixed responsibility. Before the review round, read your own diff through those lenses and fix what they catch. The guardian checks; it isn't where the code gets its shape, so a guardian round that finds design work means this step was skipped.
 
 **Build the whole interaction, not the happy path.** Someone will finish the task, change their mind, go back, reload, mistype, use the keyboard, leave halfway. Anything that would make them wonder what happened is a defect, whether or not the ticket mentioned it.
 
 Converging a subsystem is built as the finality pass's Phase C: behavior-preserving commits, gates after each.
 
-Independent user-visible fixes are separate PRs (1.1.16). A larger change whose pieces depend on each other becomes a stack of small PRs only when the bottom PR builds and makes sense alone on `main` and `gh stack` can link them (Part 3 section 5); otherwise one PR with a commit per item.
-
-In Claude Code, a command substitution inside `docker run`, or nested inside `git rev-parse`, can be refused by the permission checks; paste literals.
+Independent user-visible fixes are separate PRs (1.1.16). A larger change whose pieces depend on each other becomes a stack of small PRs only when the bottom PR builds and makes sense alone on `main` and `gh stack` can link them (`convergence` §5); otherwise one PR with a commit per item.
 
 ### 5. See it in the browser
 
@@ -81,25 +79,23 @@ An issue you file holds one finding: what breaks, where, and how to see it, with
 
 Tear the stack down when you finish, including when you abort.
 
+#### UI work
+
+**References before UI.** Before any visual design: 3–5 named reference sites with screenshots, and the design skills the user has pointed to. Ambiguous feedback about direction: build two or three variants that differ in layout, hierarchy or main action (not color or copy), inside the real page with real data, switchable by a `?variant=` parameter, and ask which. Given a design file, measure the design and the app the same way (sizes, radii, motion, production build) and fix every difference. Before any screenshot or video is shown, a fresh-context agent lists everything broken, misaligned or clipped in it. Matching a design file is not the bar: before a screen is shown, name its surface archetype, score it on the slop tells (wrong surface, center stack, equal-weight tile grids, decoration in place of hierarchy, rainbow color), repair by that diagnosis, and remove every element nobody asked for. When the user wants people used to a named product to feel at home, first list that product's everyday features and buttons for the surface, then build each one (better, not copied) or write down why it is absent. A new feature or visual direction is shown to the user on a local preview before it's pushed; fixes to reported bugs go straight to the PR.
+
+**Before anyone sees a UI change:** each touched page at widths 360, 768, 1280 and 1920 plus 1 px either side of every breakpoint, zoom 90–150 %, light and dark, hover, focus and open states, and a cold first load. Any console error fails. List the checked cells in the report. Use it like a person: real mouse, wheel, keyboard and touch (Playwright's `page.mouse`/`keyboard`/`touchscreen` when the DevTools browser can't send it), a screenshot looked at after each action, a recording for anything that moves. Scripted events, emulated hover and computed-style diffs don't count.
+
+**Runtime fixes** (a stream, a cancel, a cache) are shown in the real app through a real browser, `main` against the head, with the server's logs. Unit scripts alone don't count.
+
 ### 6. One review round: correctness, security, bloat
 
-The review model (TASK) reviews the diff with the reviewer charter (below):
-
-```bash
-git merge-base HEAD origin/<base>                      # note the sha
-## write the reviewer charter (end of this part) to <artifact root>/review.md
-## append: the diff command with that sha, the issue link (Tier ≥ M: also acceptance.md), and one sentence on what it claims to do
-m=$(codex-review-model) && codex exec -m "$m" --sandbox read-only -o <artifact root>/review.out "$(cat <artifact root>/review.md)" < /dev/null
-## exit 3 = Codex out of credits or rate-limited: the local model runs review.md instead (02 Review model)
-```
-
-Its sandbox usually cannot run the gates (no Docker socket, no network): paste your commands, exit codes and output for it to grade, or give it `--sandbox danger-full-access`. It says UNKNOWN for anything it could not observe. If no reviewer at all is available, review it yourself with the charter.
+The reviewer (`reviewer`) reviews the diff with the reviewer charter at the end of this skill. Write the charter to `<artifact root>/review.md` and append: the diff command against `git merge-base HEAD origin/<base>`, the issue link (Tier ≥ M: also `acceptance.md`), and one sentence on what the change claims to do. It says UNKNOWN for anything it could not observe; paste your gate commands, exit codes and output where it can't run them. If no reviewer at all is available, review it yourself with the charter.
 
 One round: fix real defects, decline the rest with a line of reasoning (1.1.15), no second round. Record who reviewed (or that it was a self-review) and what they found, including nothing, in the ledger and the PR's review-record comment (1.6), and run `pr-steps review <output>`.
 
 ### 7. Refactor pass
 
-After the review round, with correctness proven and gates green: the review model rates **the diff you just wrote** with the refactor prompt (Part 3 section 11.2), read-only; you implement commit by commit; it re-rates old ⇒ new. With no reviewer available, run it yourself in two separate passes (rate, then edit) and record that. Mostly-10s means it was lazy. Then `pr-steps refactor <output>`, and put the final lists in the PR (Part 3 section 11.2). Re-run it whenever the watcher prints `### REFACTOR STALE` for your PR. Refactor commits change the head: before ready, re-run the charter review on the final head (to confirm, not as a new round: fix real defects it finds and confirm again) and record it with `pr-steps review` on that head (1.7).
+After the review round, with correctness proven and gates green: the reviewer (`reviewer`) rates **the diff you just wrote** with the refactor prompt (`convergence` §11.2), read-only; you implement commit by commit; it re-rates old ⇒ new. With no reviewer available, run it yourself in two separate passes (rate, then edit) and record that. Mostly-10s means it was lazy. Then `pr-steps refactor <output>`, and put the final lists in the PR (`convergence` §11.2). Re-run it whenever the watcher prints `### REFACTOR STALE` for your PR. Refactor commits change the head: before ready, re-run the charter review on the final head (to confirm, not as a new round: fix real defects it finds and confirm again) and record it with `pr-steps review` on that head (1.7).
 
 ### 8. The PR
 
@@ -138,14 +134,7 @@ gh pr edit <N> --body-file body.md --attach '/abs/path/01-name.png#alt text'
 
 `gh` uploads attachments and rewrites matching local paths: reference each file by the exact path you pass to `--attach`, then confirm with `gh pr view <N> --json body` that none survived. Video works the same: in T3 Code, `preview_open` with `open:false` → `preview_recording_start` → drive → `preview_recording_stop` returns an `.mp4`; put it in the body as `![](<path>)` alone in its paragraph and GitHub renders a player.
 
-**If the repo labels PRs by review effort** (`gh label list | grep effort/`, or the project file), apply one, rating the reviewer's work, not yours; don't copy the issue's label.
-
-| | the reviewer has to |
-|---|---|
-| `effort/quick-win` | read it; nothing to judge |
-| `effort/easy` | follow one behavior in one area; the screenshots settle it |
-| `effort/medium` | check the walkthrough against the diff and think about what else moved |
-| `effort/hard` | form an opinion the diff cannot give them: a shared contract, or correctness needing a run |
+**If the repo labels PRs by review effort** (`gh label list | grep effort/`, or the project file), apply the one that rates the reviewer's work, not yours: `quick-win` (read it), `easy` (one behavior, settled by the screenshots), `medium` (check the walkthrough against the diff), `hard` (a shared contract, or correctness needing a run). Don't copy the issue's label.
 
 #### Inline comments
 
@@ -163,9 +152,9 @@ gh api repos/<owner>/<repo>/pulls/<N>/reviews --method POST --input review.json
 
 **When to run it.** The work reshapes existing code rather than changing what it does, or a change you meant to make small cannot be made cleanly because the area has taken too many patches.
 
-**Who runs it.** Phases A and B are analysis by the review model or a fresh-context subagent, never the author's context; the prompt's "strongest-model agent" is one of these, never above the default tier (TASK). Phase C is the author implementing commit by commit, with the gates green underneath.
+**Who runs it.** Phases A and B are analysis by the reviewer (`reviewer`) or a fresh-context subagent, never the author's context; the prompt's "strongest-model agent" is one of these, never above the default tier (`core`, the task). Phase C is the author implementing commit by commit, with the gates green underneath.
 
-**"Bring me the decision"** in Phase C: in an external maintainer's code, stop and ask the person who owns it; in the user's own repos and beta features, decide, act, and report (TASK). Convergence itself is behavior-preserving.
+**"Bring me the decision"** in Phase C: in an external maintainer's code, stop and ask the person who owns it; in the user's own repos and beta features, decide, act, and report (`core`, the task). Convergence itself is behavior-preserving.
 
 "Fan out parallel mapper agents" means one subagent per subsystem (at most 3 at once, 1.1.14). The graph is working material; the short design doc at the end is the deliverable.
 
@@ -270,7 +259,7 @@ Output: a verdict — PASS / CHANGES-REQUESTED / FAIL — then findings as `path
 
 ## Reference: project template
 
-Everything this part needs to know about one repo; the method itself stays here. Default branch: `<base>`. Keep each section to what an agent would otherwise get wrong; delete a section that has nothing to say.
+Everything this skill needs to know about one repo; the method itself stays here. Default branch: `<base>`. Keep each section to what an agent would otherwise get wrong; delete a section that has nothing to say.
 
 - **Gates:** the commands that must exit 0 before a PR (typecheck, lint/format check, unit tests), where to run them (host, container) and how long they take. Locales, if any: which ones and where their files live.
 - **What already guarantees things:** validation layers, generated type shields, authorizers, schema constraints, each with its file and function.

@@ -153,7 +153,7 @@ def check(t, has_cd):
         kinds = {l.split()[0] for l in open(rec)} if head and os.path.exists(rec) else set()
         missing = [k for k in ('review', 'refactor') if k not in kinds]
         if missing:
-            block(f"HEAD {head[:10] or '(no git repo in cwd)'} has no {' and no '.join(missing)} record: run the review round (charter) and the refactor pass (methodology Part 3 §6-7), fix, then `pr-steps review <output>` and `pr-steps refactor <output>` on the final HEAD; or open it with --draft")
+            block(f"HEAD {head[:10] or '(no git repo in cwd)'} has no {' and no '.join(missing)} record: run the review round (charter) and the refactor pass (methodology `convergence` §6–7), fix, then `pr-steps review <output>` and `pr-steps refactor <output>` on the final HEAD; or open it with --draft")
     if p == 'gh' and len(a) >= 2 and a[0] == 'pr' and a[1] == 'merge':
         if setting('MERGE', 'on-request-squash') == 'reviewer':
             block('never merge: the reviewer merges this repo\'s PRs (MERGEWORTHY_MERGE=reviewer)')

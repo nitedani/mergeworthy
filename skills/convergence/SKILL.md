@@ -3,7 +3,7 @@ name: convergence
 description: "Running convergence on a PR (the owner asks, or Tier >= M before ready): bug verification loop, guardian and refactor rounds, final verification, the charters and templates."
 ---
 
-# Part 3: Convergence
+# Convergence
 
 Tier S runs it condensed (1.0); Tier ≥ M runs it in full, for every PR. A new API or protocol gets it only once the maintainer has OK'd its shape (1.4 step 5).
 
@@ -14,21 +14,17 @@ Converged means every one of these has converged:
 2. Guardian (bloat and quality): a fresh guardian per scope finds nothing behavior-preserving worth its price, and says so in an honest-positive verdict (section 7).
 3. Refactor pass: every file, function and piece of logic is rated, the ratings are high and justified, and the rater's last round leaves nothing worth doing (section 7).
 4. Finality and Owner-Safe closure, where the area has drifted through many patches (section 9).
-5. Code review against the repo's standards and the spec, with the reviewer charter (Part 2).
+5. Code review against the repo's standards and the spec, with `implement-issue`'s reviewer charter, run per `reviewer`.
 6. Every gate and product lane green on each PR's final head, CI green, and the PR bodies true to the final head.
 
 Owner decisions, and changes to code the owner wrote, don't block convergence: they are listed for the owner with a recommendation.
 
 ### 1. Git and files
 
-- Use the repo's package manager (e.g. `pnpm`, never `npx`).
-- Stage files by name; never `git add -A` on a tree you share.
-- Never use a bare `git stash`: the stack is shared across worktrees and sessions. If you must, stash with a unique message and apply by SHA.
-- Rewrite only local, unpushed commits, and only to fix that same commit (a red gate on it, a comment that isn't true). Pushing follows 1.7.
-- Never propose mutative git operations to the user.
+- Stage files by name; never `git add -A` on a tree you share. Never a bare `git stash`: the stack is shared across worktrees and sessions; stash with a unique message and apply by SHA.
+- Rewrite only local, unpushed commits, and only to fix that same commit (a red gate on it, a comment that isn't true). Pushing follows 1.7. Never propose mutative git operations to the user.
 - Write prompt and text files with a quoted heredoc (`<<'EOF'`); an unquoted one runs backticked commands inside the text.
-- After editing a file, check `git status` and grep that the edit is there before running tests or committing.
-- Every commit ends with the attribution trailer the environment gives you; PR bodies end with the generated-by line and stay under the platform's size limit (GitHub: 65,536 characters).
+- Every commit ends with the attribution trailer the environment gives you; PR bodies end with the generated-by line and stay under 65,536 characters.
 
 ### 2. Authority: what's settled, what's the owner's
 
@@ -38,9 +34,9 @@ The owner's code is deliberate, in the user's repos too:
 - A commit without an agent's co-author trailer is owner code.
 - Owner code is never removed or rewritten on an agent's reading alone, including trimming it, "simplifying" it, or deleting a mechanism in it as phantom or overbuilt. Such findings go on the owner's list with a recommendation.
 - An agent's own earlier code can be changed freely. If an agent removed an owner line, restore it.
-- In the user's own repos, changing the user's code as the task needs is yours to decide (TASK); removing or rewriting it on an agent's reading alone (a finding, a cleanup on your own initiative) goes to the user's list with a recommendation.
+- In the user's own repos, changing the user's code as the task needs is yours to decide (`core`, the task); removing or rewriting it on an agent's reading alone (a finding, a cleanup on your own initiative) goes to the user's list with a recommendation.
 
-In an external maintainer's repo, anything that changes behavior or a public surface is the owner's call: error messages users see, wire formats, option semantics, exported names. In the user's own repos and in beta or pre-1.0 features, decide, act, and report afterwards (TASK). Refactors are behavior-preserving only.
+In an external maintainer's repo, anything that changes behavior or a public surface is the owner's call: error messages users see, wire formats, option semantics, exported names. In the user's own repos and in beta or pre-1.0 features, decide, act, and report afterwards (`core`, the task). Refactors are behavior-preserving only.
 
 Docs are the contract. When code and docs disagree, the code is the suspect; never change docs to match code. If the fix is straightforward and the docs' promise is clearly intended, fix the code; otherwise ask the owner (doc line, observed behavior, question) on the open PR, or in an issue where 1.1.7 allows one.
 
@@ -70,7 +66,7 @@ Also:
 
 ### 5. Stacked PRs (when a feature PR also fixes the base code)
 
-If the verification of a feature turns up bugs in the code it builds on, those the feature doesn't need fixed are their own PRs (1.1.16). Those it needs go into a stack, but only when the bottom PR builds alone on `main` and `gh stack` can link the two (Part 2 step 4); otherwise they stay in the feature PR, one commit per bug:
+If the verification of a feature turns up bugs in the code it builds on, those the feature doesn't need fixed are their own PRs (1.1.16). Those it needs go into a stack, but only when the bottom PR builds alone on `main` and `gh stack` can link the two (`implement-issue` step 4); otherwise they stay in the feature PR, one commit per bug:
 - **Bottom PR (base main):** those fixes, one bug per commit, each with a regression spec that fails on main and passes with the fix, in final form. Where the feature PR fixed a bug in several steps, the bottom PR carries only what they amount to.
 - **Top PR (base = the bottom PR's branch):** the feature. It contains the bottom PR through merge commits, never a rebase, so it never needs a force-push.
 - **Link them:** `gh stack link <bottom> <top>`.
@@ -127,7 +123,7 @@ Landing:
 - Review each implementer's diff yourself before cherry-picking (1.10).
 - Cherry-pick onto the PR branch, resolve conflicts, and run the full gates.
 - Run the product lanes the changes touch.
-- After the last landing, run the reviewer charter (Part 2) on the final head and record it with `pr-steps review <output>`; record the last guardian report with `pr-steps refactor <report>`.
+- After the last landing, run `implement-issue`'s reviewer charter (per `reviewer`) on the final head and record it with `pr-steps review <output>`; record the last guardian report with `pr-steps refactor <report>`.
 
 Round N+1:
 - A fresh guardian per scope gets the previous report, the implemented commits, and the declined items with reasons.
@@ -147,7 +143,7 @@ A regression found here means the refactor wasn't behavior-preserving: revert it
 
 ### 9. Finality pass
 
-Run Part 2's finality pass where the work reshapes existing code, or where a small change can't be made cleanly because the area has taken too many patches. It ends with Owner-Safe closure, which is part of convergence: every settled decision propagated to its surfaces, every finding closed or held with a reason, and code, tests, docs, types and PR state agreeing, with observed evidence attached.
+Run `implement-issue`'s finality pass where the work reshapes existing code, or where a small change can't be made cleanly because the area has taken too many patches. It ends with Owner-Safe closure, which is part of convergence: every settled decision propagated to its surfaces, every finding closed or held with a reason, and code, tests, docs, types and PR state agreeing, with observed evidence attached.
 
 ### 10. Gates, lanes, flakes, evidence
 
@@ -324,8 +320,6 @@ Final message: commits (sha, subject, IDs), skipped items with reasons, probes a
 
 ### 13. PR bodies
 
-Each PR body is part of the deliverable, true of the final head, and within 1.1.16 and the 1.6 budget. Beyond Part 2 step 8's template it carries, as needed: how it works (for a feature, with a code sample); the fixes, one line per user-visible bug; the owner's decisions it carries ("decided by the owner", "left to my judgment, and kept") as a short list; the notes table (1.6), with every rater proposal left to the owner as "decision needed" with a recommendation; and evidence (CI, gates, lanes, verification) naming the head it ran on. The refactor pass's final lists go where section 11 says; working ratings, guardian reports and per-scope lists stay in the artifact root.
+Each PR body is part of the deliverable, true of the final head, and within 1.1.16 and the 1.6 budget. Beyond `implement-issue` step 8's template it carries, as needed: how it works (for a feature, with a code sample); the fixes, one line per user-visible bug; the owner's decisions it carries ("decided by the owner", "left to my judgment, and kept") as a short list; the notes table (1.6), with every rater proposal left to the owner as "decision needed" with a recommendation; and evidence (CI, gates, lanes, verification) naming the head it ran on. The refactor pass's final lists go where section 11 says; working ratings, guardian reports and per-scope lists stay in the artifact root.
 
 Keep the body current by condensing history, never by dropping current facts. When the stack moves a fix from one PR to another, move its mention too. Register every PR with the host's linking tool if one exists, and report it if linking fails.
-
----

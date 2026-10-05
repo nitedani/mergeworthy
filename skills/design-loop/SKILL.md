@@ -6,9 +6,9 @@ description: "Designing an API, protocol or module, or restructuring code: the d
 ## 1.4 Design loop (Tier ≥ M, any API or protocol)
 
 0. Before any new core API, prototype the solution that uses only existing extension points (e.g. an existing middleware, render hook or plugin hook). It is the first candidate; a core change needs a named requirement it fails.
-1. Draft `decisions/<name>.md`: the invariant table (1.1.2), and the candidates rated per Part 2 step 3.
+1. Draft `decisions/<name>.md`: the invariant table (1.1.2), and the candidates rated as in `implement-issue` step 3.
 2. **Prototype** to prove the invariants end to end: a real browser, request counts, timing, byte comparisons, dev, prod and static hosting.
-3. **Adversarial review** of the prototype with the review model: how does it fail?
+3. **Adversarial review** of the prototype (`reviewer`): how does it fail?
 4. Propose to maintainers only when no invariant is broken, as a **walkthrough**:
    1. the one new concept, in one sentence;
    2. what the user or extension writes, as code;
@@ -17,12 +17,12 @@ description: "Designing an API, protocol or module, or restructuring code: the d
    5. numbered questions.
 
    Nothing that changes existing behavior the feature doesn't strictly need. Every term explained in plain words.
-5. Post the walkthrough as soon as the prototype holds the invariants. Part 3's loops run only on a shape the maintainer has OK'd; until then, one pass. After a PR opens, each commit answers a user or maintainer request, a red CI, a found bug, or a rule in this file.
+5. Post the walkthrough as soon as the prototype holds the invariants. `convergence`'s loops run only on a shape the maintainer has OK'd; until then, one pass. After a PR opens, each commit answers a user or maintainer request, a red CI, a found bug, or a mergeworthy rule.
 
 
 ### 1.4.1 Codebase design: deep modules
 
-Wherever code is written, designed or restructured (from its first line, not only when a guardian reviews it: the design loop, Part 2 steps 3 and 4, the finality pass, Part 3's refactor pass), aim for deep modules: a lot of behaviour behind a small interface, placed at a clean seam, testable through that interface. Use these terms exactly, in code reviews and PR text too; don't substitute component, service, API or boundary:
+Wherever code is written, designed or restructured (from its first line, not only when a guardian reviews it: the design loop, `implement-issue` steps 3 and 4, the finality pass, `convergence`'s refactor pass), aim for deep modules: a lot of behaviour behind a small interface, placed at a clean seam, testable through that interface. Use these terms exactly, in code reviews and PR text too; don't substitute component, service, API or boundary:
 
 - **Module**: anything with an interface and an implementation, at any scale (a function, a class, a package, a slice across tiers).
 - **Interface**: everything a caller must know to use the module correctly: the types, and also invariants, ordering, error modes, required configuration and performance characteristics. Not only a TypeScript `interface` or a class's public methods.
@@ -48,4 +48,4 @@ Deepening a cluster of shallow modules: classify each dependency first, since it
 
 A deep module may keep internal seams for its own tests; don't expose them through its interface because tests use them. Replace, don't layer: once tests at the deepened interface exist, delete the old tests on the shallow parts. Tests assert observable outcomes through the interface, so they survive internal refactors; a test that changes with the implementation tests past the interface.
 
-**Design it twice** (your first interface is unlikely to be the best): frame the problem for the user (the constraints any interface must meet, the dependencies and their categories, a rough code sketch that makes the constraints concrete, not a proposal), then have 3+ fresh-context agents design it in parallel, each under a different constraint: minimize the interface (1–3 entry points), maximize flexibility, make the most common caller trivial, and (where dependencies cross a seam) ports and adapters. Each returns the interface (types, invariants, ordering, error modes), a usage example, what hides behind the seam, its dependency strategy and adapters, and where its leverage is high or thin. Compare them on depth, locality and seam placement, then recommend one (or a hybrid) and say why: a strong read, not a menu. These are the candidates of step 1.
+**Design it twice** (your first interface is unlikely to be the best): frame the problem for the user (the constraints any interface must meet, the dependencies and their categories, a rough code sketch that makes the constraints concrete, not a proposal), then have three fresh-context agents design it in parallel (1.1.14), each under a different one of these constraints: minimize the interface (1–3 entry points), maximize flexibility, make the most common caller trivial, and (where dependencies cross a seam) ports and adapters. Each returns the interface (types, invariants, ordering, error modes), a usage example, what hides behind the seam, its dependency strategy and adapters, and where its leverage is high or thin. Compare them on depth, locality and seam placement, then recommend one (or a hybrid) and say why: a strong read, not a menu. These are the candidates of step 1.

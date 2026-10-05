@@ -11,7 +11,7 @@ When editing a skill, prompt, rules file or AGENTS.md:
 - A mechanism ships whole, the first time: it starts, restarts after a crash and a reboot, retires when its job is done, runs one instance per job, and works on every OS the methodology runs on (Linux, macOS; a fallback elsewhere). Test it by killing it, rebooting its supervisor and finishing its job, before calling it done.
 - State the behavior you want ("write one-line comments"), not only the one you don't; keep a "never" for hard guardrails, and pair it with what to do instead.
 - No self-assessed opt-outs ("skip on small fixes"). A missing precondition is a hard stop.
-- After any cut, a fresh-context agent reads the file cold and lists every sentence it can't act on. Fix those. Every change to the methodology or a mechanism is committed and pushed to its repo in the same step, then installed (`install-methodology`); never edit an installed or running copy.
+- After any cut, a fresh-context agent reads the file cold and lists every sentence it can't act on. Fix those. Every change to a mergeworthy skill or mechanism is committed and pushed to its repo in the same step (the plugin's auto-update brings it to every machine); never edit an installed or running copy.
 
 ## 1.10 Integrating agents' work
 
@@ -19,3 +19,18 @@ When editing a skill, prompt, rules file or AGENTS.md:
 - Every background job has a liveness check (output size or log mtime), checked at 2 minutes and at every wakeup. Five minutes without output means investigate now. Never report "dispatched" or "armed" as progress.
 - When an agent reports, relay the result to the user and act on it; its report isn't shown to them.
 - Taking over another session's work starts with its state, re-checked on the current head: each claim in the open PR's body (checks, e2e, screenshots) re-run, each owed reply listed. That state is the first answer to "done?", and the work continues from what failed.
+
+### Briefing an agent
+
+- **The brief**: `Goal` (one observable outcome), `Facts` (only what you verified, each with its source), `To check` (your guesses, as questions), `Scope` (paths and commands it may use), `Acceptance` (the commands or observations that define done). Never your opinion or the answer you expect: a guess goes under `To check`.
+- **What it returns**: the result with evidence (`path:line`, or the command and its exit code), and a `not_checked` list. An unchecked item or a deviation is yours to decide; never send the same brief again.
+- **What it must not do**: widen the brief, pick a different approach than the plan (it stops and reports why the plan is wrong instead), call something unused before finding every caller (`grep -rn`) and reading the comment above it, or say a step ran when it couldn't (it stops and says what blocked it).
+- **Before using its result**: open two or three of its cited `path:line`s, re-run one command, or diff it against your plan.
+
+### The local model
+
+When the local model is on (the plugin's `local_model` option, `claude-local` installed, `claude-usage --mode` not `off`, the GPU free), it costs no subscription usage. It executes well and judges poorly, so you keep every decision and hand it bounded steps you can check cheaply, one at a time (one GPU). Not for work you'd finish in about a minute yourself.
+- **How**: a T3 Code `delegate_task` child on the Local Claude instance (`orchestrator_capabilities`), model `local`, `runtimeMode: "full-access"` (anything stricter asks the user for every read), `mode: "async"`, the brief as the task. Its completion wakes you.
+- **What**: at `claude-usage --mode` `routine`, exploration, fact-finding, reproductions, test runs and cold reads; at `execute`, also implementation from your own plan and each side of a mini debate (1.5). Gate reviews per `reviewer`. Never the approach (`implement-issue` step 3) or anything posted.
+- Run `claude-usage --mode` at the start of each task and at every wakeup.
+

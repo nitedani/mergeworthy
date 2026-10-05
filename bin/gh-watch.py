@@ -216,7 +216,7 @@ def emit_refactor_stale(repo, key, new):
         emit(f"WATCH ERROR refactor check {key}: {e}")
         return
     if lines > 80:
-        emit(f"### REFACTOR STALE {key}: {lines} changed lines since the last refactor pass ({last[:10] if last else 'never'}): re-run Part 3 §11.2 on the whole PR diff, then `pr-steps refactor` and replace the PR's Ratings")
+        emit(f"### REFACTOR STALE {key}: {lines} changed lines since the last refactor pass ({last[:10] if last else 'never'}): re-run `convergence` §11.2 on the whole PR diff, then `pr-steps refactor` and replace the PR's Ratings")
 
 
 def read_threads():
