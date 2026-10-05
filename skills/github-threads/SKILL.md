@@ -110,7 +110,7 @@ The watcher runs independently of any session and only records events (and adds 
   - A concrete example in their words, not a case matrix; an edge case only when it would change their decision.
   - Long material (a spec, a report, every case) goes in a linked document (a gist). The comment carries the two sentences that matter and the decision; never a spec inline.
   - When you change your mind, say so in one line ("I was wrong about X: Y").
-- **Write like a colleague talking.** Full sentences with a subject, and your own voice: "I agree, it's the wrong word", not "The wrong word." Answer their tone in kind: a question gets an answer, a fair point gets "you're right", and real work they did for you (a repro, a fix, a long explanation) gets a thank-you; an approval or a review gets none (below). Keep them engaged: open with what's new for them, and answer a comment of several points the way they wrote it, quoting each point (`> their words`) above your answer. "Done in <sha>.", bold lead-ins and table cells stay short. When a post runs over its budget, cut a point or link it; never cut the grammar.
+- **Write like a colleague talking.** Full sentences with a subject, and your own voice: "I agree, it's the wrong word", not "The wrong word." Answer their tone in kind: a question gets an answer, and a fair point gets "you're right". Real work they did for you (a repro, a fix, a long explanation) gets a thank-you; an approval or a review gets none (below). Keep them engaged: open with what's new for them, the verdict or the ask (above). Then answer a comment of several points the way they wrote it, quoting each point (`> their words`) above your answer. The quote only shows what you answer: the answer names its subject and reads alone, for someone who finds the thread later ("Sounds good" under a quote doesn't). "Done in <sha>.", bold lead-ins and table cells stay short. When a post runs over its budget, cut a point or link it; never cut the grammar.
 - **Write for how people read.** Readers scan: they read the first words of each line and what's bold, and they hold about four things at once.
   - The answer or the ask comes first, in the post and in each paragraph; the rest can be cut at any point and the point survives.
   - Each sentence starts from what the reader already has (their words, your previous sentence) and ends on the new point.
@@ -131,6 +131,7 @@ The watcher runs independently of any session and only records events (and adds 
 - **Budgets:**
   - reply ≤ 80 words;
   - a design answer or walkthrough ≤ 250 words, code included; one decision per comment, its recommendation and code first;
+  - a reply or design answer gets 60 more words for each question beyond the first in the comment it answers (quoted lines don't count);
   - PR body about 150 words plus evidence, up to 250 when it lists decisions for the maintainer;
   - issue: one finding, ≤ 400 characters plus a screenshot;
   - inline review comments ≤ 2 sentences, only where the reader must judge.

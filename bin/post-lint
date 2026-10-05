@@ -122,9 +122,14 @@ if kind != 'pr':
         if bold / words_all > 0.3:
             findings.append(f"{bold / words_all:.0%} of the text is bold: bold only a bullet's lead-in or the decision")
 # Answering several questions takes room: each question in the comment answered (beyond the first) adds 60 words
-_pp = arg('--parent', None)
-_pp = _pp if _pp not in (None, 'none') else re.sub(r'\.md$', '', path) + '.parent.md'
-_asked = len(re.findall(r'\?', '\n'.join(l for l in open(_pp).read().splitlines() if not l.lstrip().startswith('>')))) if os.path.exists(_pp) else 0
+_pa = arg('--parent', None)
+_pp = (re.sub(r'\.md$', '', path) + '.parent.md') if _pa is None else (None if _pa == 'none' else _pa)
+_asked = 0
+if _pp and os.path.exists(_pp):
+    _q = re.sub(r'^(```|~~~).*?^\1[^\n]*$', '', open(_pp).read(), flags=re.S | re.M)           # code blocks
+    _q = '\n'.join(l for l in _q.splitlines() if not l.lstrip().startswith('>'))          # quotes of others
+    _q = re.sub(r'`[^`]*`|https?://\S+', '', _q)                                         # inline code, URLs
+    _asked = len(re.findall(r'\?+', _q))
 extra = 60 * max(0, _asked - 1)
 if kind == 'reply' and words > 80 + extra:
     findings.append(f"{words} words > {80 + extra} for a reply answering {max(_asked, 1)} question(s) (tables and code count): cut what the reader doesn't need, link long material")
