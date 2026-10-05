@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Claude Code Stop hook. Blocks ending a turn with an offer or permission question the agent should just act on,
 or after posting on GitHub with no live Monitor on a watcher's events.log in this session (the session is what answers
-the events; nothing else wakes it), or with a line still owed in a live watcher's replies-owed.md (mergeworthy:github-event)."""
+the events; nothing else wakes it), or with a line still owed in a live watcher's replies-owed.md (mergeworthy:github-threads)."""
 import json, os, re, sys
 d = json.load(sys.stdin)
 if d.get('stop_hook_active'):
@@ -64,7 +64,7 @@ headless = any('"entrypoint":"sdk-cli"' in l for l in lines[-20:])
 if posted and watcher_on and not headless and not (monitors - dead):
     print("You posted on GitHub in this session and no Monitor in it watches a watcher's events.log, so replies go unseen: "
           "nothing else answers them. Run `gh-watch-start <your artifact root> <owner/repo> <N>` and arm the Monitor it "
-          "prints, with the longest timeout; re-arm it whenever it expires (mergeworthy:github-event).", file=sys.stderr)
+          "prints, with the longest timeout; re-arm it whenever it expires (mergeworthy:github-threads).", file=sys.stderr)
     sys.exit(2)
 # The owed-reply list: the daemon records each human comment in the live watcher's replies-owed.md; a turn
 # cannot end with a line still owed.
@@ -80,7 +80,7 @@ if watcher_on:
         if not os.path.exists(f) or open_owed:
             item = open_owed[0][:120] if open_owed else 'missing file'
             print(f"replies-owed.md in {wd} still has an owed reply ({item}). Answer it through the gate and clear the "
-                  "line with 'done: <reply url> <what changed>' (mergeworthy:github-event), or clear it with the reason no reply is owed.",
+                  "line with 'done: <reply url> <what changed>' (mergeworthy:github-threads), or clear it with the reason no reply is owed.",
                   file=sys.stderr)
             sys.exit(2)
 sys.exit(0)

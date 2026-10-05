@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# pr-steps <read|review> <output-file>: records that a fresh reader answered that question (mergeworthy:ready) on the current HEAD.
-# pre-bash-guard blocks `gh pr create` (unless --draft) and `gh pr ready` until HEAD has a read and a review record.
+# pr-steps <review|refactor|guardian> <output-file>: records that the methodology step ran on the current HEAD (mergeworthy `review`, `refactor`, `guardian`).
+# The posting hook blocks `gh pr create` (unless --draft) and `gh pr ready` until HEAD has a review and a refactor record.
 set -euo pipefail
-kind=${1:?usage: pr-steps <read|review> <output-file>}; out=${2:?output file}
-case "$kind" in read|review) ;; *) echo "kind must be read or review" >&2; exit 1;; esac
-[ -s "$out" ] || { echo "$out is empty: save the reader's final message there" >&2; exit 1; }
+kind=${1:?usage: pr-steps <review|refactor|guardian> <output-file>}; out=${2:?output file}
+case "$kind" in review|refactor|guardian) ;; *) echo "kind must be review, refactor or guardian" >&2; exit 1;; esac
+[ -s "$out" ] || { echo "$out is empty: run the step and save the reviewer's output" >&2; exit 1; }
 sha=$(git rev-parse HEAD)
 mkdir -p ~/.claude/pr-steps
 echo "$kind $(realpath "$out") $(date -u +%FT%TZ)" >> ~/.claude/pr-steps/$sha

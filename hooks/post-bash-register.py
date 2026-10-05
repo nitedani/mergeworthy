@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Claude Code PostToolUse hook (matcher: Bash). A thread you just posted in (a new issue or PR, a comment, a review)
 joins the threads.txt of the watcher that covers its repo, else of the first live watcher, so maintainer comments on
-it are answered (mergeworthy:github-event)."""
+it are answered (mergeworthy:github-threads)."""
 import json, os, re, sys
 d = json.load(sys.stdin)
 cmd = d.get('tool_input', {}).get('command', '')
