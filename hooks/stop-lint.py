@@ -7,7 +7,7 @@ d = json.load(sys.stdin)
 if d.get('stop_hook_active'):
     sys.exit(0)
 last = ''
-posted, monitor_ids, monitors, dead, commands = False, {}, set(), set(), []
+posted, monitor_ids, monitors, dead, commands, monitor_cmds = False, {}, set(), set(), [], []
 POST = re.compile(r'\bgh\b[^\n]*(body-file|body=@|--input|\s-F\s)')
 try:
     lines = open(d['transcript_path']).readlines()
@@ -34,7 +34,9 @@ for line in lines:
             i = x.get('input') or {}
             if x.get('name') == 'Bash' and POST.search(i.get('command', '')): posted = True
             if x.get('name') == 'Bash': commands.append(i.get('command', ''))
-            if x.get('name') == 'Monitor' and 'events.log' in i.get('command', ''): monitor_ids[x.get('id')] = 1
+            if x.get('name') == 'Monitor' and 'events.log' in i.get('command', ''):
+                monitor_ids[x.get('id')] = 1
+                monitor_cmds.append(i.get('command', ''))
             if x.get('name') == 'TaskStop': dead.add(i.get('task_id') or i.get('shell_id') or '')
         if isinstance(c, list):
             t = ''.join(x.get('text', '') for x in c if isinstance(x, dict) and x.get('type') == 'text')
@@ -53,11 +55,13 @@ own_dirs = set()
 reg = os.path.expanduser('~/.claude/gh-watch-dirs.txt')
 cwd_d = d.get('cwd') or ''
 for wd in (l.strip() for l in open(reg)) if os.path.exists(reg) else ():
-    # or a watch dir this session worked in from elsewhere (its cwd is a repo, the watch dir an artifact root):
-    # by cwd alone, an owed reply in it never held the session's turn
+    # or a watch dir this session works through from elsewhere (its cwd is a repo, the watch dir an artifact root):
+    # it watches its events.log, starts its watcher or gates a draft in it. Only reading another session's files
+    # (its state, its log) doesn't make that session's owed replies this one's.
     home_wd = wd.replace(os.path.expanduser('~'), '~', 1)
-    if wd and (cwd_d.startswith(wd) or wd.startswith(cwd_d or '/nonexistent')
-               or any(wd in c or home_wd in c for c in commands)): own_dirs.add(wd)
+    def mentions(c): return wd in c or home_wd in c
+    if wd and (cwd_d.startswith(wd) or wd.startswith(cwd_d or '/nonexistent') or any(map(mentions, monitor_cmds))
+               or any(mentions(c) and re.search(r'\b(gh-watch-start|gate-pass)\b', c) for c in commands)): own_dirs.add(wd)
 watcher_on = 'MERGEWORTHY_WATCHER=off' not in (open(os.path.expanduser('~/.mergeworthy/settings.env')).read() if os.path.exists(os.path.expanduser('~/.mergeworthy/settings.env')) else '')
 # A headless run (`claude -p`, entrypoint sdk-cli) has no Monitor tool: its caller watches
 headless = any('"entrypoint":"sdk-cli"' in l for l in lines[-20:])
