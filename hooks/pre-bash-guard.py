@@ -110,6 +110,27 @@ def need_watch(repo):
     if not covering:
         block(f"no running watcher covers {repo}: `gh-watch-start <your artifact root> {repo}`, arm the Monitor it prints, then open it")
 
+def check_turn(repo, num):
+    """1.6 one comment per turn: while your last comment on a thread has no reply after it (and is under 3 days old, the
+    wait ping), a new comment stacks on it: edit that one instead."""
+    if not repo or not str(num).isdigit():
+        return
+    try:
+        n = int(subprocess.run(['gh', 'api', f'repos/{repo}/issues/{num}', '--jq', '.comments'], capture_output=True, text=True, timeout=20).stdout.strip() or 0)
+        if not n: return
+        last = json.loads(subprocess.run(['gh', 'api', f'repos/{repo}/issues/{num}/comments?per_page=100&page={(n - 1) // 100 + 1}', '--jq', '.[-1] | {login: .user.login, created: .created_at, url: .html_url}'],
+                                         capture_output=True, text=True, timeout=20).stdout or 'null')
+        me = subprocess.run(['gh', 'api', 'user', '--jq', '.login'], capture_output=True, text=True, timeout=20).stdout.strip()
+    except Exception:
+        return
+    if last and last['login'] == me:
+        import datetime
+        age = datetime.datetime.now(datetime.timezone.utc) - datetime.datetime.fromisoformat(last['created'].replace('Z', '+00:00'))
+        if age.days < 3:
+            block(f"your last comment on {repo}#{num} has no reply yet ({last['url']}): edit it instead of posting another; "
+                  "one comment per turn (mergeworthy:github-threads 1.6). A wait ping is fine after 3 days.")
+
+
 def cwd_repo(run_dir):
     import subprocess
     url = subprocess.run(['git', '-C', run_dir, 'remote', 'get-url', 'origin'], capture_output=True, text=True).stdout.strip()
@@ -185,6 +206,9 @@ def check(t, has_cd):
                 block(NEED_DRAFT)
             if sub == 'create':
                 need_watch((opt(rest, ['--repo', '-R']) or [None])[-1] or cwd_repo(run_dir))
+            if sub == 'comment' and '--edit-last' not in rest:
+                num = next((x for x in rest if x.isdigit()), None)
+                check_turn((opt(rest, ['--repo', '-R']) or [None])[-1] or cwd_repo(run_dir), num)
             for f in files: gated_file(f, has_cd, create=sub in ('comment', 'create', 'review'))
     if p == 'gh' and a and a[0] == 'api':
         rest = a[1:]
@@ -205,6 +229,8 @@ def check(t, has_cd):
             block(NEED_DRAFT)
         m = re.fullmatch(r'/?repos/([\w.-]+/[\w.-]+)/(?:issues|pulls)', ep)
         if m and method == 'POST': need_watch(m.group(1))
+        c = re.fullmatch(r'/?repos/([\w.-]+/[\w.-]+)/issues/(\d+)/comments', ep)
+        if c and method == 'POST': check_turn(c.group(1), c.group(2))
         for f in bodies + inputs: gated_file(f, has_cd, create=method == 'POST')
 
 try:

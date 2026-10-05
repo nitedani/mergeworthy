@@ -86,16 +86,26 @@ if kind == 'tracker':
         ref = r'(?:[\w.-]+/[\w.-]+)?#\d+(?!\d)'
         for m in re.finditer(rf'^\s*- \[x\] (~~)?({ref})(?:(?:,| and) {ref})*(?!(?:~~)? \()(?!(?:,| and) {ref})', text, flags=re.M):  # a ticked item (or a group of them) says how it ended
             findings.append(f"tracker: say how {m.group(2)} ended, in parentheses right after it, e.g. '{m.group(2)} (merged)' (1.2)")
+# Reading cost (1.6 budgets): outside a PR body's evidence, tables, code and collapsed sections cost the reader as much
+# as prose; when they didn't count, a spec moved its prose into tables to pass
+if kind != 'pr':
+    counted = re.sub(r'<!--.*?-->', '', text, flags=re.S)
+    counted = re.sub(r'^\s*(?:[-*]\s+)?>.*$', '', counted, flags=re.M)              # quotes of others
+    counted = re.sub(r'^\s*\|[\s:|-]+\|\s*$', '', counted, flags=re.M)            # table separator rows
+    counted = re.sub(r'!\[[^\]]*\]\([^)]*\)', '', counted)
+    counted = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', counted)
+    counted = re.sub(r'https?://\S+', 'URL', counted)
+    counted = re.sub(r'<img [^>]*>\s*\*\*[^*\n]+\*\*', '', counted)            # the badge
 words = len(re.findall(r"[A-Za-z0-9][\w'’-]*", counted))
 chars = len(re.sub(r'\s+', ' ', counted).strip())
 sentences = len(re.findall(r'[.!?](?=\s|$)', re.sub(r'\b(e\.g|i\.e|etc|vs)\.', '', counted).strip())) or 1
 if kind == 'reply' and words > 80:
-    findings.append(f"{words} words > 80 for a reply: cut what the reader doesn't need")
+    findings.append(f"{words} words > 80 for a reply (tables and code count): cut what the reader doesn't need, link long material")
 pr_budget = 250 if re.search(r'^#+ .*\b(notes|decisions)\b|^Decisions\b', text, re.I | re.M) else 150  # a PR with decisions for the maintainer may run longer
 if kind == 'pr' and words > pr_budget:
     findings.append(f"{words} words > {pr_budget} for a PR body (tables, code, images and URLs not counted): cut what the reader doesn't need")
 if kind == 'proposal' and words > 250:  # a design walkthrough (methodology 1.4 step 4)
-    findings.append(f"{words} words > 250 for a design answer or walkthrough: one decision per comment, recommendation and code first (1.6 budgets)")
+    findings.append(f"{words} words > 250 for a design answer or walkthrough (tables and code count): one decision per comment, recommendation first, the full material in a linked document (1.6)")
 if kind == 'issue' and chars > 400:
     findings.append(f"{chars} characters > 400 for an issue (tables, code, images and URLs not counted): keep one finding")
 if kind == 'inline' and sentences > 2:

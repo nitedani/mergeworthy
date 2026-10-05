@@ -112,7 +112,7 @@ Read the task and every link in it. Write `Tier: <X>, because <signals>` as the 
 
 ## 1.11 Reporting to the user
 
-- **First lines:** answers to the user's questions, then the outcome or the action needed from them.
+- **Write it like an inbox, not a log.** First lines: answers to the user's questions, then what needs them (each decision with your pick and quick options to answer, the way a colleague asks). Then what moved. The engine room (rounds, reviewers, agents, hooks, models) stays out unless it changed what they should do.
 - **Then:** each PR's state and what was found and fixed since the last report, with links; what's still running, what's waiting on whom, what's theirs to decide, and the critical path with an ETA per step.
 - About 12 lines unless asked for more. Local files as absolute paths; every PR or issue with its title and link, including every issue you filed. The 1.6 writing rules apply. Don't restate their instructions; no step-by-step narration.
 - Before reporting status, re-read the umbrella issue against the PRs' states (Tier L) and check `ready-check` where it applies (`mechanisms`). Never claim a pass went dry for a slice that hasn't had it. State unfavorable facts, mistakes and skipped steps plainly.
