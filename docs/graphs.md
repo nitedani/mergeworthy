@@ -104,7 +104,7 @@ flowchart TB
   s2 -.-> r4[["implement-issue"]]
   s4 -.-> r5[["mechanisms"]]
   subgraph g1["1.6 Posting gate"]
-    s5["1. Write the draft to drafts/‹name›.md"]
+    s5["1. Write it the way it should end up"]
     s6["2. Run post-lint with the draft's --kind"]
     s5 --> s6
     s7["3. Run the review"]
