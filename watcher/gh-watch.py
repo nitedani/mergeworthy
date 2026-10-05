@@ -121,7 +121,8 @@ def handle_comment(state, repo, key, kind, cid, upd, login, url, body, extra='')
         return
     edited = sk in state['seen']
     state['seen'][sk] = upd
-    emit(f"### {key} {kind}{' (edited)' if edited else ''} {cid} by {login} {upd} {extra} {url}\n{body}\n")
+    indented = '\n'.join('    ' + l for l in body.splitlines())  # no body line can start with ### and pass as an event
+    emit(f"### {key} {kind}{' (edited)' if edited else ''} {cid} by {login} {upd} {extra} {url}\n{indented}\n")
     if edited:
         return
     append_owed(f"{key} {kind} {cid} by {login} {url} — {body.strip().splitlines()[0][:80]}" if body.strip() else f"{key} {kind} {cid} by {login} {url}")
@@ -186,7 +187,7 @@ def emit_tracker_stale(key, ended):
     items = [l for l in body.splitlines() if re.match(r'\s*- \[[ x]\] ', l) and ref.search(l)]
     if not items:
         emit(f"### TRACKER STALE {w[0]}#{w[1]}: {key} {ended} and has no checkbox there: add it with its state, through the gate (mergeworthy:core 1.2)")
-    elif not any(l.lstrip().startswith('- [x]') and re.search(rf'{num}(~~)? \((merged|closed|released)', l) for l in items):
+    elif not any(l.lstrip().startswith('- [x]') and re.search(r'\((merged|closed|released)', l) for l in items):
         emit(f"### TRACKER STALE {w[0]}#{w[1]}: {key} {ended}: tick its checkbox and write '({ended}…)' after it, through the gate (mergeworthy:core 1.2)")
 
 
@@ -313,18 +314,19 @@ def fetch_thread(repo, num, since, is_pr_known, author_known=None):
     return is_pr, author, events, pr_state, red
 
 
-def scan(state, only=None):
-    """Scan all tracked threads (or only the given keys) in parallel; apply results in this thread."""
+def scan(state, only=None, threads=None):
+    """Scan all tracked threads (or only the given keys, or the given threads) in parallel; apply results in this thread."""
     from concurrent.futures import ThreadPoolExecutor
     def since(key):  # each thread keeps its own position, so one failing thread doesn't hold back the others
         dt = datetime.datetime.strptime(state['since_by'].get(key, state['since']), '%Y-%m-%dT%H:%M:%SZ') - datetime.timedelta(minutes=10)
         return dt.strftime('%Y-%m-%dT%H:%M:%SZ')
     started = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-    threads = read_threads()
-    if only is not None:
-        threads = [t for t in threads if f"{t[0]}#{t[1]}" in only]
-    else:
-        threads = scan_set(state, threads)
+    if threads is None:
+        threads = read_threads()
+        if only is not None:
+            threads = [t for t in threads if f"{t[0]}#{t[1]}" in only]
+        else:
+            threads = scan_set(state, threads)
     ok = True
     with ThreadPoolExecutor(max_workers=8) as ex:
         futs = {ex.submit(fetch_thread, repo, num, since(f"{repo}#{num}"), state['is_pr'].get(f"{repo}#{num}"), state.setdefault('author', {}).get(f"{repo}#{num}")): (repo, num) for repo, num in threads}
@@ -507,11 +509,12 @@ def locked():
 def run_scan():
     with locked():
         state = load_state()
-        scan(state)
+        threads = scan_set(state, read_threads())  # once: it opens the hourly closed-thread window for both scans
+        scan(state, threads=threads)
         save_state(state)
     with locked():
         state = load_state()
-        scan_reactions(state, scan_set(state, read_threads()))
+        scan_reactions(state, threads)
         save_state(state)
 
 
@@ -575,7 +578,9 @@ def installed_root():
 
 def follow_update():
     """After a plugin update, point ~/.mergeworthy/current at the new version and exit 75: the daemon restarts this
-    script on the new code."""
+    script on the new code. A watcher run from a checkout (not the plugin's cache) never follows."""
+    if '/plugins/cache/' not in RUNNING_ROOT:
+        return
     root = installed_root()
     link = os.path.join(HERE, 'gh-watch.py')
     if root and os.path.islink(link) and '/plugins/cache/' in os.readlink(link):  # pinned to one version by an old gh-watch-start

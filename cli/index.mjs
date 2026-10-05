@@ -28,6 +28,7 @@ const run = (cmd, argv, opts = {}) => {
   if (r.status !== 0) throw new Error(`${cmd} ${argv.join(' ')} failed:\n${r.stderr || r.stdout || ''}`)
   return r.stdout
 }
+const readText = (f) => (fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : '')
 const readJson = (f, d) => (fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : d)
 const writeJson = (f, v) => fs.writeFileSync(f, JSON.stringify(v, null, 2) + '\n')
 const bail = (v) => {

@@ -100,9 +100,9 @@ else
   fi
   # cron revives it after a crash or a reboot (gh-watch-start is idempotent)
   if command -v crontab >/dev/null; then
-    job="*/5 * * * * $root/bin/gh-watch-start $dir >/dev/null 2>&1 # gh-watch $dir"
+    job="*/5 * * * * \"$root/bin/gh-watch-start\" \"$dir\" >/dev/null 2>&1 # gh-watch $dir"
     # `|| true`: grep finds nothing to keep in an empty crontab, and set -e would then install an empty one
-    { crontab -l 2>/dev/null | grep -vF "# gh-watch $dir" || true; echo "$job"; echo "@reboot $root/bin/gh-watch-start $dir >/dev/null 2>&1 # gh-watch $dir"; } | crontab -
+    { crontab -l 2>/dev/null | grep -vF "# gh-watch $dir" || true; echo "$job"; echo "@reboot \"$root/bin/gh-watch-start\" \"$dir\" >/dev/null 2>&1 # gh-watch $dir"; } | crontab -
   else
     echo "note: no systemd, launchd or cron: the watcher won't restart after a reboot" >&2
   fi

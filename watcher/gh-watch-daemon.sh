@@ -7,7 +7,7 @@ while true; do
   python3 -u gh-watch.py >> events.log 2>&1 & child=$!
   wait $child; code=$?
   # 75: gh-watch.py moved to a newly installed plugin version; restart it there at once
-  [ $code = 75 ] && continue
+  [ $code = 75 ] && { sleep 1; continue; }
   echo "WATCH ERROR gh-watch.py exited ($code) at $(date -u +%FT%TZ), restarting" >> events.log
   sleep 5
 done
