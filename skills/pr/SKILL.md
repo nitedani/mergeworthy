@@ -12,11 +12,11 @@ You are about to run `gh pr create`.
 1. Look at the maintainer's recent merged PRs: what they keep, what they cut, how they title and describe them.
 2. Keep it to one purpose and small. Each user-visible fix is its own PR; internal cleanups go together in one.
 3. Remove every feature in the diff that no current need asks for, and every comment, guard or test the repo's habits wouldn't keep.
-4. Ask the `read` question, then the `review` question, from `mergeworthy:ready`, so the review sees the final head; record them with `pr-steps refactor <read output>` and `pr-steps review <review output>`.
+4. Ask the `read` question, then the `review` question, from `mergeworthy:ready`, so the review sees the final head; record them with `pr-steps read <read output>` and `pr-steps review <review output>`.
 5. Write the body through `mergeworthy:post`:
    - **First sentence:** the problem a user hits on today's base branch.
    - **Link:** `Closes #N` only if the change fixes what the issue reports; otherwise `Refs #N`.
-   - **What you should see:** a numbered sequence of screenshots or a recording that opens on the defect and closes on the fix, one line each on what it proves.
+   - **What you should see:** a numbered sequence of screenshots or a recording, captured per `mergeworthy:change` step 7, that opens on the defect and closes on the fix, one line each on what it proves.
    - **Notes:** the notes table, if there are any.
 6. Add an inline review comment only where a reviewer must judge something the diff can't show.
 7. Open it ready, not as a draft.
@@ -33,7 +33,7 @@ The PR is open, its body is true of the head, and it is on the watcher's list.
 
 ## Enforced by
 
-`pr-steps` (blocks `gh pr create` and `gh pr ready` without the review and refactor records), `post-bash-register` (puts the new PR on the watcher's list).
+`pr-steps` (blocks `gh pr create` and `gh pr ready` without the read and review records), `post-bash-register` (puts the new PR on the watcher's list).
 
 ## Next
 

@@ -33,7 +33,7 @@ Every question that applies answered "nothing worth changing" on the final head.
 
 ## Enforced by
 
-`pr-steps` (blocks `gh pr ready` without the review and refactor records on the head).
+`pr-steps` (blocks `gh pr ready` without the read and review records on the head).
 
 ## Next
 

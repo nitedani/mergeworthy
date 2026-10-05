@@ -5,7 +5,7 @@ description: "When the user gives a task or writes /ai or /agent on GitHub: size
 
 ## When
 
-The user gives you a task, writes `/ai` or `/agent` on a GitHub thread, or you resume a session whose task is still open.
+The user gives you a task, writes `/ai` or `/agent` on a GitHub thread, or you resume a session whose `scope.md` still has unchecked boxes.
 
 ## Steps
 
