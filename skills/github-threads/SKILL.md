@@ -50,7 +50,7 @@ It covers everything that reaches an external service, with no lighter category:
 - Short, plain words. No jargon, abstractions or AI phrasing ("in this run", "doesn't establish", "worth noting", "happy to", "let me know"), and never solicit ("pushback welcome").
 - Say only what they don't know yet. Don't recite their comment or your earlier replies, don't thank them for an approval, and don't promise how you'll behave next time. When answering several questions, quote each in one line. If all there is to say is "done", say "Done in <sha>".
 - Several comments from one person get one reply. Never post a comment that corrects or adds to your own earlier one: edit it in place, through the gate. (The 1.5 result, wait-ping and dependency-progress comments are new comments.)
-- Keep the process invisible: reviewers, models, gates, rounds, working ratings and pass reports stay in the artifact root, except the review record: one comment per PR (`post-lint --kind review-record`), edited in place as rounds land. The thread gets the result, with evidence only where a reader needs it to judge.
+- Keep the process invisible: reviewers, models, gates, rounds, working ratings and pass reports stay in the artifact root (`ledger.md`). The thread gets the result, with evidence only where a reader needs it to judge.
 - Decide what you can decide or measure. A question carries your recommendation and its reason; a change you'd recommend within scope is made, not listed.
 - Credit a design or statement to someone only with a link to where they said it.
 - Links to another repo use `owner/repo#N`. Write "depends on #N", never "stacked on", unless `gh stack` links them.

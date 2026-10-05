@@ -162,6 +162,27 @@ def emit_dependents(key):
             emit(f"### DEPENDENT of merged {key}: {l.split(' -> ', 1)[1]}: do it now and post the progress on that PR (mergeworthy:github-threads)")
 
 
+def emit_tracker_stale(key, ended):
+    """umbrella.txt ("owner/repo N"): the program's umbrella issue (methodology 1.2). When a PR merges or closes, its
+    checkbox there must be ticked and say how it ended; a tracker updated "in the same step" from memory went stale for days."""
+    path = os.path.join(HERE, 'umbrella.txt')
+    w = open(path).read().split() if os.path.exists(path) else []
+    if len(w) < 2 or f"{w[0]}#{w[1]}" == key:
+        return
+    try:
+        body = json.loads(gh(['api', f"repos/{w[0]}/issues/{w[1]}"]))['body'] or ''
+    except Exception as e:
+        emit(f"WATCH ERROR tracker check {key}: {e}")
+        return
+    repo, num = key.split('#')
+    ref = re.compile(rf'(?<![\w/.-])(?:{re.escape(repo)}#|{"#" if repo == w[0] else "(?!)"}){num}(?!\d)')
+    items = [l for l in body.splitlines() if re.match(r'\s*- \[[ x]\] ', l) and ref.search(l)]
+    if not items:
+        emit(f"### TRACKER STALE {w[0]}#{w[1]}: {key} {ended} and has no checkbox there: add it with its state, through the gate (mergeworthy:core 1.2)")
+    elif not any(l.lstrip().startswith('- [x]') and re.search(rf'{num}(~~)? \((merged|closed|released)', l) for l in items):
+        emit(f"### TRACKER STALE {w[0]}#{w[1]}: {key} {ended}: tick its checkbox and write '({ended}…)' after it, through the gate (mergeworthy:core 1.2)")
+
+
 def emit_maintainer_commits(repo, key, old, new):
     """A maintainer's commits pushed to a tracked PR: reviewing them was requested ("Review each of my commit as I push them")."""
     try:
@@ -315,6 +336,8 @@ def scan(state, only=None):
                     emit(f"### PR CHANGED {key}: {prev} -> {pr_state}")
                     if pr_state['state'] == 'merged' and prev.get('state') != 'merged':
                         emit_dependents(key)
+                    if pr_state['state'] in ('merged', 'closed') and prev.get('state') != pr_state['state']:
+                        emit_tracker_stale(key, pr_state['state'])
                     if prev.get('head') != pr_state['head']:
                         emit_maintainer_commits(repo, key, prev['head'], pr_state['head'])
                         emit_refactor_stale(repo, key, pr_state['head'])

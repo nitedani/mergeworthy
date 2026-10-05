@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""post-lint <draft.md> [--kind reply|pr|issue|inline|tracker|proposal|review-record] [--parent <file>|none]: checks a draft before it is posted to GitHub.
+"""post-lint <draft.md> [--kind reply|pr|issue|inline|tracker|proposal] [--parent <file>|none]: checks a draft before it is posted to GitHub.
 Exit 1 with one line per finding. Checks: banned phrases, "stacked on" without gh stack, bare #N refs
 (must be owner/repo#N unless --repo matches), length budgets, unclassified maintainer notes, em dashes,
 process machinery in the thread, questions without a recommendation, and a bare "Done" answering a question.
 A reply or inline comment needs the comment it answers: <draft stem>.parent.md next to it, or --parent <file>;
 --parent none for a comment that answers nobody.
-Settings: MERGEWORTHY_BADGE on|off|auto requires the badge always, never, or for a human account;
-MERGEWORTHY_REVIEW_TRACE=comment allows --kind review-record."""
+Settings: MERGEWORTHY_BADGE on|off|auto requires the badge always, never, or for a human account."""
 import os, re, sys, subprocess
 def setting(name, default):
     """MERGEWORTHY_<name> from the environment, else from ~/.mergeworthy/settings.env (written at session start from the plugin's options)."""
@@ -14,7 +13,7 @@ def setting(name, default):
     saved = dict(l.strip().split('=', 1) for l in open(f) if '=' in l) if os.path.exists(f) else {}
     return os.environ.get(f'MERGEWORTHY_{name}') or saved.get(f'MERGEWORTHY_{name}', default)
 args = sys.argv[1:]
-USAGE = "usage: post-lint <draft.md> [--kind reply|pr|issue|inline|tracker|proposal|review-record] [--repo owner/repo] [--parent <file>|none]"
+USAGE = "usage: post-lint <draft.md> [--kind reply|pr|issue|inline|tracker|proposal] [--repo owner/repo] [--parent <file>|none]"
 def arg(name, default):
     if name not in args: return default
     i = args.index(name)
@@ -23,10 +22,8 @@ def arg(name, default):
 if not args: sys.exit(USAGE)
 path = args[0]; kind = arg('--kind', 'reply'); repo = arg('--repo', None)
 kind = {'comment': 'reply'}.get(kind, kind)
-if kind not in ('reply', 'pr', 'issue', 'inline', 'tracker', 'proposal', 'review-record'): sys.exit(USAGE)  # tracker: umbrella body or decisions comment, a growing list with no word budget
-if kind == 'review-record' and setting('REVIEW_TRACE', 'hidden') != 'comment':
-    sys.exit('review records stay in the artifact root (MERGEWORTHY_REVIEW_TRACE=hidden)')
-record = kind in ('tracker', 'review-record')  # records carry the process, with no word budget
+if kind not in ('reply', 'pr', 'issue', 'inline', 'tracker', 'proposal'): sys.exit(USAGE)  # tracker: umbrella body or decisions comment, a growing list with no word budget
+record = kind == 'tracker'  # the umbrella issue: a growing list with no word budget
 text = open(path).read()
 # An issue draft's first line may be its title ("Title: …"): the budget is for the body
 title = (re.match(r'\ATitle:\s*([^\n]*)\n', text) or [None, None])[1]
@@ -70,9 +67,11 @@ for m in re.finditer(r'(?<![\w/.-])#(\d+)\b', prose):
 if kind == 'tracker':
     head = re.sub(r'^\s*<img [^>]*>\s*\*\*[^*\n]+\*\*\s*', '', text)  # after the agent badge
     if head.startswith('## Decisions'):
-        for h in ('Process and requirements', 'Agreed', 'Open'):  # '### PRs' only when the body doesn't carry each PR's state
+        for h in ('Process and requirements', 'Agreed', 'Open'):
             if not re.search(rf'^### [^\n]*{h}', text, flags=re.M):
                 findings.append(f"tracker: the Decisions comment needs a '### {h}' section (1.2)")
+        if re.search(r'^### [^\n]*\bPRs\b', text, flags=re.M):
+            findings.append("tracker: no '### PRs' in the Decisions comment: PR states live only in the body (1.2)")
     elif head.startswith('## '):
         pass  # a long record the body links to (e.g. an audit's findings): no list format
     else:
