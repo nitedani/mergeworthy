@@ -69,7 +69,7 @@ for m in re.finditer(r'(?<![\w/.-])#(\d+)\b', prose):
 # the umbrella issue's format (methodology 1.2, Tier L; reference nitedani/vike-react-rsc#9)
 if kind == 'tracker':
     if text.startswith('## Decisions'):
-        for h in ('Agreed', 'Open', 'PRs'):
+        for h in ('Process and requirements', 'Agreed', 'Open'):  # '### PRs' only when the body doesn't carry each PR's state
             if not re.search(rf'^### [^\n]*{h}', text, flags=re.M):
                 findings.append(f"tracker: the Decisions comment needs a '### {h}' section (1.2)")
     else:
