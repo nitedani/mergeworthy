@@ -61,8 +61,13 @@ for m in re.finditer(r'\b(fundamental|impossible(?! states?\b)|unsolvable|insurm
         continue  # quoted, or scoped: "fundamental to X", "impossible for X"
     findings.append(f"{m.group(0)!r}: say what it's hard for (\"a problem for one injection point\"), or the reader takes it as unsolvable")
 # A newcomer can't decode an internal label, and a bold label with a fragment isn't a sentence (1.6)
-for m in re.finditer(r'(?<![\w`/#.-])([A-Z]\d{1,2}|R\*)(?![\w`])', prose):
-    findings.append(f"internal label {m.group(1)!r}: say what it is in plain words")
+_labels = re.findall(r'(?<![\w`/#.-])([A-Z])(\d{1,2})(?![\w`])', prose)
+_series = {a for a in {a for a, _ in _labels} if len({n for b, n in _labels if b == a}) > 1}  # W2 and W5: a numbered series, not S3 or R2
+for a, n in _labels:
+    if a in _series:
+        findings.append(f"internal label {a + n!r}: say what it is in plain words")
+for m in re.finditer(r'(?<![\w`/#.-])R\*(?![\w`])', prose):
+    findings.append("internal label 'R*': say what it is in plain words")
 for m in re.finditer(r'^\s*[-*]\s+\*\*[^*\n]+\*\*:?\s+([^\n]*)$', prose, flags=re.M):
     if len(m.group(1).split()) < 6 and m.group(1).rstrip().endswith('.'):
         findings.append(f"a bold label with a fragment ({m.group(0).strip()[:60]!r}): write it as a full sentence")
@@ -143,7 +148,7 @@ pr_budget = 250 if re.search(r'^#+ .*\b(notes|decisions)\b|^Decisions\b', text, 
 if kind == 'pr' and words > pr_budget:
     findings.append(f"{words} words > {pr_budget} for a PR body (tables, code, images and URLs not counted): cut what the reader doesn't need")
 if kind == 'proposal' and words > 400 + extra:  # a design walkthrough (methodology 1.4 step 4)
-    findings.append(f"{words} words > {400 + extra} for a design answer or walkthrough (tables and code count): one decision per comment, recommendation first, the full material in a linked document (1.6)")
+    findings.append(f"{words} words > {400 + extra} for a design answer or walkthrough (tables and code count): one decision per comment, verdict first, the full material in a linked document (1.6)")
 if kind == 'issue' and chars > 400:
     findings.append(f"{chars} characters > 400 for an issue (tables, code, images and URLs not counted): keep one finding")
 if kind == 'inline' and sentences > 2:

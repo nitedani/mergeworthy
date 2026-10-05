@@ -108,7 +108,7 @@ The watcher runs independently of any session and only records events (and adds 
 - **Answer the person, in their order and from their words.** Quote each point you answer (`> their words`) and start from what they said or guessed: "Almost. Your reasoning holds once the request reaches Vike, but two cases slip through." A fair point gets "you're right"; real work they did for you gets a thank-you, an approval doesn't.
 - **The verdict first, then the reasoning in the order the reader would think it:** what we expected, what we found, what follows from it.
 - **Join sentences with bridges that show how they connect:** "because", "so", "but", "which means". Never stack points with "also".
-- **Full sentences, as a colleague talking:** "I agree, it's the wrong word", never a bold label and a fragment ("**Fundamental:** the wrong word.").
+- **Full sentences, as a colleague talking:** "I agree, it's the wrong word", never a bold label and a fragment ("**Fundamental:** the wrong word."). Table cells stay short.
 - **Write for a newcomer who finds the thread later.** Name each thing plainly where it first appears; no internal labels (W2, R*), no "it" with two meanings, no AI phrasing ("worth noting", "happy to", "let me know"). An answer under a quote still names its subject. A word that ranks difficulty ("fundamental", "impossible") says what it's hard for.
 - **Make every claim concrete** with an example from the project: a URL, a call, a plugin. Compare designs or behavior with code: what the user writes, and what changes as a short ```diff block. A table may summarize; it never replaces the code.
 - **Prose for reasoning, lists only for parallel items of the same kind.** Vary sentence length; split a sentence only when it carries two separate news points, never between a cause and its effect.
@@ -124,7 +124,7 @@ The watcher runs independently of any session and only records events (and adds 
 - **The badge.** Unless the plugin's `badge` option says otherwise (`auto`: only from a human account), start with the icon of the agent that did the work and its name as the label (e.g. `<img src="https://github.com/claude.png" width="20" height="20" align="left" alt="Claude"> **Claude:**`, or `**Agent:**` for any agent).
 - **Budgets:**
   - reply ≤ 80 words;
-  - a design answer or walkthrough ≤ 400 words, code included; one decision per comment, its recommendation and code first;
+  - a design answer or walkthrough ≤ 400 words, code included; one decision per comment, with your pick;
   - a reply or design answer gets 60 more words for each question beyond the first in the comment it answers (quoted lines don't count);
   - PR body about 150 words plus evidence, up to 250 when it lists decisions for the maintainer;
   - issue: one finding, ≤ 400 characters plus a screenshot;

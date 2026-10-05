@@ -6,7 +6,7 @@ Work with an AI coding agent through GitHub, the way you work with a coworker. Y
 
 - **It ships merge-ready PRs.** Before you see a PR, the agent has hunted for bugs, reviewed the change and simplified it. A UI or runtime change is also checked in the real app.
 - **It keeps its threads moving.** It watches its PRs and issues, and answers every review comment, bot finding and red CI run. When a PR it depends on lands, it updates its own.
-- **It writes for busy reviewers.** A post leads with what the agent needs from you, gives one decision with its pick, and links the long material. An independent review checks every post before it goes out.
+- **It writes for busy reviewers.** A post leads with its verdict, ends with one decision and its pick, and links the long material. An independent review checks every post before it goes out.
 - **It asks only what isn't its to decide.** That means irreversible actions on shared state, money, credentials or your global config, a maintainer's product decision, and a fork it can't rank. Everything else it decides, does and reports.
 - **Hooks hold the line.** Hooks block an unreviewed post, a PR marked ready without its review, and a third comment in a row within three hours.
 

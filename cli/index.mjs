@@ -69,7 +69,8 @@ function installClaude(values) {
 function uninstallClaude() {
   if (claudeInstalled()) run('claude', ['plugin', 'uninstall', ID])
   try { run('claude', ['plugin', 'marketplace', 'remove', NAME]) } catch {}
-  fs.rmSync(path.join(HOME, '.mergeworthy'), { recursive: true, force: true })
+  // what the plugin created; ~/.mergeworthy/voice.md is the user's and stays
+  for (const f of ['current', 'settings.env']) fs.rmSync(path.join(HOME, '.mergeworthy', f), { recursive: true, force: true })
 }
 
 // ---------- Codex ----------
