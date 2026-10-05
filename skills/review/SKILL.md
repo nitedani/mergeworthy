@@ -12,8 +12,7 @@ description: "Any independent review: who reviews (Codex, else a fresh Claude), 
    codex exec --sandbox danger-full-access --skip-git-repo-check -o <out> "$(cat <prompt file>)" < /dev/null
    ```
    Codex runs the model configured in `~/.codex/config.toml`. If Codex fails (out of credits, a rate limit, an error), go to the next reviewer; that failure takes seconds.
-2. **The reviewer your environment's instructions name**, if they name one.
-3. **A fresh-context Claude subagent** on the session's default model, with the same prompt. Never a cheaper model.
+2. **A fresh-context Claude subagent** on the session's default model, with the same prompt. Never a cheaper model.
 
 After the review:
 - **Confirm fixes with the same reviewer.** After you fix its findings, continue that reviewer (`delegating`, one run) and send it what changed. Start a fresh reviewer only when the artifact changed beyond those findings, or for the final read of a long artifact.

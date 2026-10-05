@@ -315,28 +315,26 @@ flowchart TB
   start(["Any independent review"])
   subgraph g0["review"]
     s0["1. Codex"]
-    s1["2. The reviewer your<br/>environment's<br/>instructions name"]
+    s1["2. A fresh-context Claude<br/>subagent"]
     s0 --> s1
-    s2["3. A fresh-context Claude<br/>subagent"]
-    s1 --> s2
   end
-  s2 -.-> r1[["delegating"]]
-  s2 -.-> r2[["guardian"]]
-  s2 -.-> r3[["refactor"]]
-  s2 -.-> r4[["github-threads"]]
-  s2 -.-> r5[["core"]]
+  s1 -.-> r1[["delegating"]]
+  s1 -.-> r2[["guardian"]]
+  s1 -.-> r3[["refactor"]]
+  s1 -.-> r4[["github-threads"]]
+  s1 -.-> r5[["core"]]
   subgraph g1["The PR review round"]
-    s3["1. Write the charter to<br/>‹artifact<br/>root›/review-‹pass<br/>id›.md"]
-    s4["2. Append the diff command<br/>against git merge-base<br/>HEAD …"]
+    s2["1. Write the charter to<br/>‹artifact<br/>root›/review-‹pass<br/>id›.md"]
+    s3["2. Append the diff command<br/>against git merge-base<br/>HEAD …"]
+    s2 --> s3
+    s4["3. Where the reviewer can't<br/>run your gates"]
     s3 --> s4
-    s5["3. Where the reviewer can't<br/>run your gates"]
+    s5["4. If no reviewer at all is<br/>available"]
     s4 --> s5
-    s6["4. If no reviewer at all is<br/>available"]
-    s5 --> s6
   end
-  s4 -.-> r6[["core"]]
-  s6 -.-> r7[["converge"]]
-  s6 -.-> r8[["core"]]
+  s3 -.-> r6[["core"]]
+  s5 -.-> r7[["converge"]]
+  s5 -.-> r8[["core"]]
   start --> g0
   g0 ~~~ g1
 ```
