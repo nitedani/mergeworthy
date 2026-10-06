@@ -18,7 +18,7 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 | `merging` | nothing |
 | `open-issue` | `evidence`, `github-threads` |
 | `past-failures` | nothing |
-| `pull-request` | `evidence`, `finality`, `guardian`, `design-loop`, `converge`, `core`, `open-issue` |
+| `pull-request` | `evidence`, `finality`, `guardian`, `design-loop`, `converge`, `core`, `open-issue`, `github-threads` |
 | `refactor` | nothing |
 | `review` | `delegating`, `guardian`, `refactor`, `github-threads`, `core`, `converge` |
 | `verify` | `converge`, `core` |
@@ -201,7 +201,8 @@ flowchart TB
   s4 -.-> r8[["evidence"]]
   s4 -.-> r9[["core"]]
   s5 -.-> r10[["converge"]]
-  s6 -.-> r11[["evidence"]]
+  s6 -.-> r11[["github-threads"]]
+  s6 -.-> r12[["evidence"]]
   start --> g0
 ```
 

@@ -1,11 +1,11 @@
 # Writing to people
 
-Read this before drafting any comment, reply or message. A comment is a conversation with a colleague, not a document: write it the way you'd say it across the desk. (PR bodies, reports and specs are documents; they may use structure.)
+Read this before drafting anything posted to GitHub (comments, replies, PR and issue bodies) or sent to the user. Write it the way you'd say it to a colleague across the desk. A PR or issue body may use structure, and where `pull-request` or `open-issue` sets its form, that wins.
 
 ## Draft by talking
 
 1. Before writing, say to yourself what you'd tell this person if they were sitting next to you: what you found, what you think, what you need from them. Write that down.
-2. Read the draft out loud. Anything you wouldn't say to a colleague goes, and gets replaced with what you would say.
+2. Read the draft out loud, as the person you're writing to. Anything you wouldn't say to a colleague goes, and gets replaced with what you would say; a newcomer who finds it later must still follow it.
 3. If a passage can't be fixed sentence by sentence, explain it out loud to an imagined friend and replace the passage with what you said.
 
 ## How a good colleague writes
@@ -50,7 +50,3 @@ Why it works: the verdict comes first. The design's limits are a linked short li
 | Every paragraph the same shape and length, each ending on a neat summary | Let length follow the content; stop when the point is made |
 | Bold on concepts, inline headers, bullet points for reasoning | Plain prose for reasoning; bullets only for parallel items |
 | Fancy verbs ("leverage", "utilize", "facilitate", "delve") | use, help, look at |
-
-## Before posting
-
-Read it as the person you're writing to: would they feel spoken to by a colleague who did the work and thought about it, or handed a report? Would a newcomer who finds the thread later follow it? Rewrite until both answers are yes.
