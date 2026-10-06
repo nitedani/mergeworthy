@@ -5,7 +5,10 @@ description: "The finality pass, for code that has drifted through many patches:
 
 # Finality pass
 
-**When to run it.** The work reshapes existing code rather than changing what it does. Or a change you meant to make small cannot be made cleanly, because the area has taken too many patches.
+**When to run it,** on your own, without being asked:
+- The work reshapes existing code rather than changing what it does, or a change you meant to make small cannot be made cleanly because the area has taken too many patches.
+- You're stuck: every option you have costs something the user ruled out (a regression, a hack), or two fixes in the same area haven't held. Run it before bringing options to the user.
+- Someone asks for the ideal design: brainstorming, "in a perfect world", the pinnacle or optimal shape.
 
 **Who runs each phase:**
 - **Phases A and B are analysis.** The main session starts their agents: the mappers, then Phase B's branch agents and its converging agent. Each is the reviewer (`review`) or a fresh-context subagent, never the author's context, and does its share itself. Phase B's agents (the prompt's branches and its "strongest-model agent") run on the session's own model, never one above the default tier (`core`, the task).
@@ -54,9 +57,9 @@ Fan out parallel mapper agents over the subsystems, one shared node schema.
 Mappers are read-only; graphs are artifacts.
 
 PHASE B — IMAGINE.
-Diverge first, then converge. DIVERGE: start 5 isolated agents in parallel, each with the graph
-summary, the problem and ONE different frame (e.g. hardware engineer, remove the load-bearing
-assumption, competitor breaking it, logistics, 3am on-call). Each first writes its 3 obvious
+Diverge first, then converge. DIVERGE: start 3 isolated agents in parallel, each with the graph
+summary, the problem and ONE different frame (e.g. remove the load-bearing assumption,
+competitor breaking it, 3am on-call). Each first writes its 3 obvious
 designs, marked obvious, then 6 more beyond them, with no evaluation; no branch sees another's
 output. CONVERGE: give the assembled graph AND every branch's lists to ONE strongest-model agent
 (one at a time, always on the hardest task): the obvious designs are its baseline; it ranks every
