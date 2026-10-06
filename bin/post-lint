@@ -113,6 +113,8 @@ if kind != 'pr':
     counted = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', counted)
     counted = re.sub(r'https?://\S+', 'URL', counted)
     counted = re.sub(r'<img [^>]*>\s*\*\*[^*\n]+\*\*', '', counted)            # the badge
+    if kind == 'issue':  # the reproduction steps a newcomer needs are required, not part of the budget
+        counted = re.sub(r'^#+\s*How to reproduce\b.*?(?=^#+ |\Z)', '', counted, flags=re.S | re.M | re.I)
 words = len(re.findall(r"[A-Za-z0-9][\w'’-]*", counted))
 chars = len(re.sub(r'\s+', ' ', counted).strip())
 sentences = len(re.findall(r'[.!?](?=\s|$)', re.sub(r'\b(e\.g|i\.e|etc|vs)\.', '', counted).strip())) or 1
