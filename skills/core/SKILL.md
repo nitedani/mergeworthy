@@ -42,7 +42,7 @@ Every PR, whatever its tier, goes through `converge`'s pipeline: a Loop A agent 
 2. **Invariants first (Tier ≥ M), design second, code third.** Invariants are what any acceptable design must keep; the project file or the user names them. List them, and put the list at the top of every agent and reviewer prompt.
     - Each design option gets a table with one row per invariant, filled with measured evidence. Reject any option that breaks one, even "for now".
     - Use the cleanest design from day one: no patchwork, no speculative capability.
-3. **Do, don't offer.** An offer is a to-do: do it now. Ask only when the action is one of these:
+3. **Do, don't offer.** An offer is a to-do: do it now. Read the state before asking: a mode, a setting or a budget that already decides the question is the answer. Ask only when the action is one of these:
     - (a) irreversible on shared state you didn't create;
     - (b) money, credentials, or the user's global config (`~/.claude`, `~/.codex`, shell rc files);
     - (c) a product or public-API decision of an external maintainer, or a genuine fork you can't rank.
@@ -59,11 +59,15 @@ Every PR, whatever its tier, goes through `converge`'s pipeline: a Loop A agent 
     - If you contradict something you said earlier, say so.
     - A job you report as running is one you saw make progress (its log, its output file, the GPU busy), not one you only started.
     - Measure through the exact path the real work takes: the same client, API and settings the user runs, never a convenient substitute. A result from any other path is not evidence.
+    - A check covers only what it exercised. "Works", "fixed" or "converged" names what ran and what didn't: a stand-in instead of the real thing, a subset of a list, a unit test instead of the real entry, the source instead of the installed copy.
     - A CI workflow change works only once a real run on the branch shows it.
 6. **Fix at the root; never document around a defect.** A sentence telling users to work around the product is a bug to fix, upstream included, unless the user explicitly accepts it. Examples: "order by seq when order matters", "may miss for 60 s".
     - Some workarounds need the user's OK, with a written reason the root fix is impossible. They are: parsing twice, encoding to dodge a transport, retry or reload loops, a second code path for old runtimes, and silent fallbacks.
     - Unreleased, experimental or pre-1.0 code gets no compatibility code or shims (check `npm view <pkg> versions`). Losing something users can do on `main` is still a regression (1.1.11).
     - Before an upstream PR, find which side relies on behavior the other side doesn't promise (hook order, file layout). Fix that side first, ours included.
+    - Before changing a mechanism (a hook, a scheduler, an agent's lifecycle), state how it starts and what running and finished look like, checked against one real observation of it.
+    - Before removing, moving or rewriting, list what depends on it and what its owner wrote: change what depends on it, keep the owner's words unless they asked for new ones.
+
 7. **Parallel, not later.** "A separate PR" means started now, alongside.
     - **Exactly one disposition per found defect,** in or out of scope: fixed in this change, a PR opened now (listed on the umbrella if there is one), or an issue. An issue (`open-issue`) only when there's no umbrella and the defect is unrelated. "Mentioned" is never a disposition.
     - **The same defect in a sibling** (another adapter, another call site) is related. Fix it in this change, a public API change included, and the PR states that change.
@@ -74,6 +78,8 @@ Every PR, whatever its tier, goes through `converge`'s pipeline: a Loop A agent 
     - Copy each claim of an accepted proposal into `acceptance.md`.
     - Dropping or deferring any item needs the user's OK first, never after.
     - If a recorded decision or an accepted claim turns out not to work, ask with the blocker's evidence and your recommendation before building the alternative.
+    - Read an instruction for its purpose, not its letter: restate what it covers and the nearest thing it leaves out, and ask only when that edge isn't clear.
+
 9. **Respect decision authority.** Record each maintainer request with its link and date. Do it as asked, or ask back with a recommendation; never decide otherwise and inform. A security or bug fix closes only the hole: a change to what a legitimate user sees or can do (a field made read-only, a value now rejected that the UI sends) is the owner's product decision, so it goes to its own decision issue (`open-issue`), not into the fix.
     - The newest statement on a subject wins. Re-read the thread before citing anyone.
     - "The rest LGTM" agrees to every unquestioned proposal in the comment it answers: record those proposals as agreed and start.
@@ -86,6 +92,8 @@ Every PR, whatever its tier, goes through `converge`'s pipeline: a Loop A agent 
 12. **Fix the mistake and the rule that allowed it.** When the user names a failure, stop, re-read, and fix the whole class in the same turn:
     - the artifact (PR, comment, code);
     - the rule that allowed it (a mergeworthy skill, the project file, or a mechanism), by editing the existing rule in the mergeworthy repo (1.9).
+
+    The fix counts only with all three parts: the instance, the running system (the installed copy where it failed, probed again there, not only the source), and a mechanism (a hook, a script, a lint) when the failure has a detectable trigger or came back after its rule existed. A sentence alone fixes nothing that recurred.
 
     Then show the correction holds. Behavioral lessons go into the mergeworthy skills, never only into one project's memory or a machine's global config.
 13. **Never stall.** Never end a turn with work pending, unless something running will notify you or you say what you're waiting for.
@@ -187,7 +195,7 @@ Everything the skills need to know about one repo; the method itself stays in th
 - **Whatever you start, you stop:** dev servers, builds, preview servers, proxies.
     - A subagent records the PIDs it starts and kills them before handing back; check with `ps` that none are left.
     - Find a server by the PID you started (and its children, `pgrep -P <pid>`) or by its port (`ss -ltnp 'sport = :<port>'`). Never grep `ps` output for a port number, and never `pgrep -f <pattern>`.
-    - Check each PID's command and directory before killing it.
+    - Check each PID's command, directory and parent chain before killing it: the chain must lead to something you started. Other sessions run browsers, servers and agents on the same machine.
 - **At most 4 browsers and 4 dev servers** of your own at once; stop each when its work ends.
 - **Compute memory before you allocate it,** never probe for a limit by loading more. Size a model, cache or buffer from its numbers first, keep it under the device's free memory with headroom, and check `free -g` for the host. On WSL, CUDA spills VRAM overflow into Windows RAM without an error, so "it loaded" proves nothing.
 - **Never restart or reconfigure a container** someone else's work depends on; start your own alongside.
@@ -201,6 +209,7 @@ Everything the skills need to know about one repo; the method itself stays in th
 
 - **Write it like an inbox, not a log.** The first lines answer the user's questions. Next comes what needs them: each decision with your pick and quick options to answer, the way a colleague asks. Then what moved. The engine room (rounds, reviewers, agents, hooks, models) stays out unless it changed what they should do.
 - **Then the state:** each PR's state and what was found and fixed since the last report, with links. Add what's still running, what's waiting on whom, what's theirs to decide, and the critical path with an ETA per step.
+- **Every reply carries thought.** When something went wrong, say why it happened, what you judge, and what changes, in your own reasoning. Restating their instruction and your next command is not a reply.
 - **About 12 lines** unless asked for more. Write local files as absolute paths. Give every PR or issue with its title and link, including every issue you filed. The 1.6 writing rules apply. Don't restate their instructions, and don't narrate step by step.
 - **Check before reporting status.** Re-read the umbrella issue against the PRs' states (Tier L), and check 1.7's Ready list where it applies. Never claim a pass went dry for a slice that hasn't had it. State unfavorable facts, mistakes and skipped steps plainly.
 
