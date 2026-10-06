@@ -119,6 +119,8 @@ Every PR, whatever its tier, goes through `converge`'s pipeline: a Loop A agent 
     - **What does it cost** in lines, new state (maps, globals, build tracking) and tests? More than a few lines for a rare case is overkill.
     - **Would the maintainer write it?** Lean code, no special-casing, no caches that save milliseconds, tests and docs per 1.1.16.
 
+    It judges findings and patches, never the shape of a design: there the cleanest end state from first principles wins, and effort, release count and diff size belong to the plan that builds it (`design-loop`).
+
     Record the judgment in one line ("accepted, not worth code: rare, and the page winning is what the user asked for"); that line is the finding's disposition in `converge`'s loops. When unsure, don't add; ask with a recommendation. A converged PR is the smallest clean diff that does the job and reads as obviously right to its maintainers.
 16. **Submit the shape that gets merged.** Before opening a PR, look at the maintainer's recent merged PRs (and ours in that repo): what they keep and what they cut. Defaults:
     - **One purpose, small:** under ~50 lines of code when possible. Each user-visible fix is its own PR. Internal cleanups go together in one refactor PR, titled per the repo's convention.
