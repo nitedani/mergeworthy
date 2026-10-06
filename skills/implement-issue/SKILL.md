@@ -1,6 +1,6 @@
 ---
 name: implement-issue
-description: "Implementing an issue or opening a PR: already fixed?, reproduce, approach rating, build and gate, browser evidence, converging it, the PR body."
+description: "Implementing an issue or opening a PR: already fixed?, reproduce, approach rating, build and gate, seeing it in the app, converging it, the PR body."
 ---
 
 # Implementing a change
@@ -14,7 +14,7 @@ From an issue or a problem to one merge-ready PR: steps 1 to 5 build the change,
 **Work in a worktree off `<base>`**, the base branch the project file names: `git fetch origin && git worktree add -b <branch> <artifact root>/<branch> origin/<base>`. In CI (e.g. `$GITHUB_ACTIONS` is `true`), read the project file's CI section first, if it has one.
 
 **Check you can finish before you start**, both halves up front:
-- **Browser control** (UI or runtime work): a [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) or anything that opens a page and screenshots it. Try it; nothing in a shell can test it. Configure the MCP with `--isolated` (e.g. `npx -y chrome-devtools-mcp@latest --headless --isolated`), so parallel sessions don't share one profile. Isolated profiles are temporary: set the cookies and storage the test needs in the page.
+- **Browser control** (UI or runtime work), set up and tried per `evidence`.
 - **The rest of the machine**: `gh` and its login, and whatever the app needs (containers, the hostname, the secrets, the data). The project file's preflight checks all of it in one pass and prints every failure together.
 
 **Install whatever doesn't need root** (a browser, the MCP server, the stack, the data; the project file has the commands). For anything that needs root, stop: the first thing in your reply is the exact steps, in order, with the commands to run.
@@ -37,13 +37,7 @@ If the tracker was migrated, commits cite the old number, which the issue body n
 
 ### 2. Prove the problem exists
 
-Reproduce it in the running app (step 5 starts one), or for a non-UI fix with the command a user runs, then comment the reproduction on the issue with screenshots: what you did, what you saw.
-
-```bash
-gh issue comment <N> --body-file repro.md --attach '/abs/path/repro.png#alt text'
-```
-
-**Check the age of the data.** Dev data is often a restored snapshot. If it predates a fix that step 1 turned up, rows written the old way still make the bug look alive: compare the age of the data with the date of the fix. If you cannot reproduce the problem, comment what you tried and what happened, and stop.
+Reproduce it per `evidence` in the running app (step 5 starts one), then comment it on the issue: what you did and what you saw, with its screenshot or video. If you cannot reproduce it, comment what you tried and what happened, and stop.
 
 **When the cause isn't obvious, build a red loop before a theory:** one fast, repeatable command that goes red on the reported symptom (a failing test, a curl, a script that drives the browser), then probe one change at a time.
 
@@ -88,17 +82,13 @@ The project file's preflight starts what is missing, isolated from everyone else
 
 **Capture "before" by reverting only your own files** (`git checkout origin/<base> -- <files>`), letting HMR reload, then restoring them (`git checkout HEAD -- <files>`). Leave `git status` clean; never amend or force-push to fake it.
 
-**Then use it as a user for five minutes.** Look at the screen around your change, not the path you fixed. If the screen renders by role, walk it as each role. Fix what your change caused; anything else you trip over gets a disposition (1.1.7).
-
-**An issue you file holds one finding:** what breaks, where, and how to see it.
-- Attach the screenshot of the screen the finding sits behind (or a recording when reaching it takes clicks) with `--attach`.
-- Leave out how you came across it and what the team already knows.
+**Then use it as a user for five minutes.** Look at the screen around your change, not the path you fixed. If the screen renders by role, walk it as each role. Fix what your change caused; anything else you trip over gets a disposition (1.1.7), and an issue is opened per `open-issue`.
 
 Tear the stack down when you finish, including when you abort.
 
 #### UI and runtime work
 
-- **Show it in the real app, used like a person:** real mouse, keyboard and touch, a screenshot after each action. Scripted events, emulated hover and computed-style diffs don't count. A runtime fix (a stream, a cancel, a cache) is shown through a real browser, `main` against the head, with the server's logs.
+- **Show it in the real app, used like a person,** per `evidence`.
 - **Before anyone sees a UI change,** check each touched page at a phone, a tablet and a desktop width, in light and dark, with its hover, focus and open states. Any console error fails.
 
 ### 6. Converge
@@ -129,13 +119,7 @@ Closes #N
 
 #### The walkthrough
 
-The images are the review: a sequence, not a before/after pair.
-- **Open on the defect, close on the fix**, in the real app with real data, and in between show what your change could have broken and did not.
-- **Show it where a user meets it, not where you edited it.** A fix to a form is not proven until the thing it configures is on screen behaving differently.
-- **If the change is about what happens when you do something, record it.** Stills hide layout shift, a flash of stale data, a step that runs twice, a control that enables late. Stills alone are for what is static: formatting, labels, a column's contents.
-- **One line per image**: what to look at, what it proves. Name the setup (page, date, filter) when the default view does not show it. Crop so the changed pixels are findable.
-- **Disclose anything you did to the page** to get the shot, and whether it reproduces on `<base>`.
-- **When the change is not visual**, show the evidence that is: the payload the service received, the request that was rejected. Label it, keep it in sequence.
+The images are the review: a sequence, not a before/after pair, each captured per `evidence`. Open on the defect and close on the fix, in the real app with real data, and in between show what your change could have broken and did not.
 
 #### Publishing
 
@@ -145,9 +129,7 @@ gh pr ready <N>                         # once the pipeline's records are on the
 gh pr edit <N> --body-file body.md --attach '/abs/path/01-name.png#alt text'
 ```
 
-**`gh` uploads attachments and rewrites matching local paths.** Reference each file by the exact path you pass to `--attach`, then confirm with `gh pr view <N> --json body` that no local path survived.
-
-**Video works the same**, with an `.mp4` from whatever records your browser. Put it in the body as `![](<path>)`, alone in its paragraph, and GitHub renders a player.
+Images and video upload per `evidence`.
 
 **Labels and conventions** follow the project file.
 

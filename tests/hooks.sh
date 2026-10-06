@@ -51,6 +51,12 @@ tr_cmd "ls $WD && grep -n gate-pass notes.md"
 check "a session that only mentioned the watch dir doesn't own its owed replies" 0 "$(stop "$T/work")"
 tr_cmd "gate-pass $WD/drafts/r.md $WD/drafts/r.review.out"
 check "BLOCK: a session that gate-passed a draft there owns them" 2 "$(stop "$T/work")"
+tr_cmd "gh api graphql -f query='query(\$n:Int!){repository(owner:\"o\",name:\"r\"){issue(number:\$n){body}}}' -F n=49"
+check "a GraphQL query is a read, not a post" 0 "$(stop "$T/work")"
+tr_cmd "gh api repos/o/r/issues -X GET -F per_page=100"
+check "an explicit GET with fields is a read" 0 "$(stop "$T/work")"
+tr_cmd "gh issue comment 5 --repo o/r --body-file $WD/drafts/r.md"
+check "BLOCK: a post with no Monitor on the watcher" 2 "$(stop "$T/work")"
 kill "$SPID"; wait "$SPID" 2>/dev/null
 
 # ---------- pre-bash-guard check_turn ----------
@@ -164,5 +170,20 @@ for s in 'This fundamentally changes the public API.' 'The guard covers an impos
 done
 printf '%s A problem fundamental to one injection point; "fundamental" was the wrong word.\n' "$B" > "$T/fund2.md"
 check "a scoped or quoted difficulty word passes" 0 "$(python3 "$R/bin/post-lint" "$T/fund2.md" --kind issue --parent none 2>&1 | grep -c 'what it.s hard for')"
+# ---------- post-lint: an issue a newcomer can find (open-issue, evidence) ----------
+ilint() { python3 "$R/bin/post-lint" "$1" --kind issue --parent none 2>&1 | grep -c "$2"; }
+printf '%s The invoice keeps the winning account, not the typed one.\n' "$B" > "$T/i0.md"
+check "a badge alone is no evidence" 1 "$(ilint "$T/i0.md" 'no evidence')"
+check "an issue needs How to reproduce" 1 "$(ilint "$T/i0.md" 'no .### How to reproduce')"
+printf '%s The list shows the winning account.\n\n### How to reproduce\n\n1. Log in as a manager, open /invoices\n2. See the account column\n\n![list](/abs/list.png)\n' "$B" > "$T/i1.md"
+check "one screen in a screenshot passes" 0 "$(python3 "$R/bin/post-lint" "$T/i1.md" --kind issue --parent none 2>&1 | grep -c 'evidence\|How to reproduce\|video')"
+printf '%s The saved invoice drops the typed account.\n\n### How to reproduce\n\n1. Log in as a manager\n2. Open a won job\n3. Create an invoice with another account\n4. Save, then see the list\n\n![list](/abs/list.png)\n' "$B" > "$T/i2.md"
+check "a multi-step flow in stills needs a video" 1 "$(ilint "$T/i2.md" 'record a video')"
+sed 's#/abs/list.png#/abs/flow.mp4#' "$T/i2.md" > "$T/i3.md"
+check "the flow as a video passes" 0 "$(ilint "$T/i3.md" 'video\|evidence')"
+printf '%s CI runs no tests.\n\n### How to reproduce\n\n1. Run the backend tests\n\n```\n$ pnpm test\nUnknown option --threads\n```\n' "$B" > "$T/i4.md"
+check "no screen: the command and output pass" 0 "$(ilint "$T/i4.md" 'evidence')"
+{ printf '%s Who picks the payout account?\n\n### How to reproduce\n\n1. Open /invoices\n\n![list](/abs/list.png)\n\n### Options\n\n' "$B"; printf 'word %.0s' $(seq 120); echo; } > "$T/i5.md"
+check "a decision issue gets a word budget, not 400 characters" 0 "$(ilint "$T/i5.md" 'for an issue\|decision issue')"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]

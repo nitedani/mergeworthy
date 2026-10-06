@@ -126,7 +126,7 @@ The watcher runs independently of any session and only records events (and adds 
   - a design answer or walkthrough ≤ 400 words, code included; one decision per comment, with your pick;
   - a reply or design answer gets 60 more words for each question beyond the first in the comment it answers (quoted lines don't count);
   - PR body about 150 words plus evidence, up to 250 when it lists decisions for the maintainer;
-  - issue: one finding, ≤ 400 characters plus a screenshot of it in the app, or a video of the whole flow when reaching the symptom takes more than one action (recorded with real clicks, uploaded with `gh --attach`, alone in its paragraph under `### How to reproduce`); for what has no screen, `### How to reproduce` steps a newcomer can follow; a decision issue (options and a recommendation) lints as `--kind proposal` and still carries them;
+  - issue (`open-issue`): ≤ 400 characters besides `### How to reproduce` and its evidence; a decision issue ≤ 400 words;
   - inline review comments ≤ 2 sentences, only where the reader must judge.
 
   Tables, code and collapsed sections count toward every budget except a PR body's, where tables, code, images and links don't count. Moving prose into a table to fit is the loophole the budget exists to close.

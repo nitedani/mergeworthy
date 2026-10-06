@@ -65,7 +65,7 @@ Every PR, whatever its tier, goes through `converge`'s pipeline: a Loop A agent 
     - Unreleased, experimental or pre-1.0 code gets no compatibility code or shims (check `npm view <pkg> versions`). Losing something users can do on `main` is still a regression (1.1.11).
     - Before an upstream PR, find which side relies on behavior the other side doesn't promise (hook order, file layout). Fix that side first, ours included.
 7. **Parallel, not later.** "A separate PR" means started now, alongside.
-    - **Exactly one disposition per found defect,** in or out of scope: fixed in this change, a PR opened now (listed on the umbrella if there is one), or an issue. An issue only when there's no umbrella and the defect is unrelated; search for an existing issue first, trace both ends, and state facts only. "Mentioned" is never a disposition.
+    - **Exactly one disposition per found defect,** in or out of scope: fixed in this change, a PR opened now (listed on the umbrella if there is one), or an issue. An issue (`open-issue`) only when there's no umbrella and the defect is unrelated. "Mentioned" is never a disposition.
     - **The same defect in a sibling** (another adapter, another call site) is related. Fix it in this change, a public API change included, and the PR states that change.
     - **Count lines before deferring anything.** An item under ~20 lines that is neither a user-visible fix nor a defect on `main` goes in this PR; otherwise it gets its own PR, now. "It can be added later" is never a reason.
     - A new dependency never joins an open PR the maintainer hasn't agreed to.
@@ -74,7 +74,7 @@ Every PR, whatever its tier, goes through `converge`'s pipeline: a Loop A agent 
     - Copy each claim of an accepted proposal into `acceptance.md`.
     - Dropping or deferring any item needs the user's OK first, never after.
     - If a recorded decision or an accepted claim turns out not to work, ask with the blocker's evidence and your recommendation before building the alternative.
-9. **Respect decision authority.** Record each maintainer request with its link and date. Do it as asked, or ask back with a recommendation; never decide otherwise and inform. A security or bug fix closes only the hole: a change to what a legitimate user sees or can do (a field made read-only, a value now rejected that the UI sends) is the owner's product decision, so it goes to its own issue with options and a recommendation, not into the fix.
+9. **Respect decision authority.** Record each maintainer request with its link and date. Do it as asked, or ask back with a recommendation; never decide otherwise and inform. A security or bug fix closes only the hole: a change to what a legitimate user sees or can do (a field made read-only, a value now rejected that the UI sends) is the owner's product decision, so it goes to its own decision issue (`open-issue`), not into the fix.
     - The newest statement on a subject wins. Re-read the thread before citing anyone.
     - "The rest LGTM" agrees to every unquestioned proposal in the comment it answers: record those proposals as agreed and start.
     - A question is never a decision.
@@ -82,7 +82,7 @@ Every PR, whatever its tier, goes through `converge`'s pipeline: a Loop A agent 
 11. **No regressions.** Anything that works on `main` and fails on the head is a regression, experimental features included: fix it, never list it as a limitation.
     - So is every row of your own comparison where the head is worse than the run-to-run spread.
     - Hot paths, transports and flow control get a benchmark of `main` against the head before the PR opens: all scenarios, alternating runs, N ≥ 3, measuring throughput, p50/p99, request count and reconnects. A cell worse than the spread is fixed or reverted, never called a trade-off without the user's OK.
-    - **UI and runtime fixes** are shown working in the real app, per `implement-issue` (UI and runtime work, step 5). Scripted events, computed styles and unit scripts alone don't count.
+    - **UI and runtime fixes** are shown working in the real app, per `evidence`; unit scripts alone don't count.
 12. **Fix the mistake and the rule that allowed it.** When the user names a failure, stop, re-read, and fix the whole class in the same turn:
     - the artifact (PR, comment, code);
     - the rule that allowed it (a mergeworthy skill, the project file, or a mechanism), by editing the existing rule in the mergeworthy repo (1.9).
@@ -121,7 +121,7 @@ Every PR, whatever its tier, goes through `converge`'s pipeline: a Loop A agent 
     - **Comments:** at most one line, literally true, stating a constraint the code can't show. No links to source, and no comparison with the old code ("instead of", "now", "no longer"). Names follow their siblings.
     - **Deletions:** every comment, guard or workaround the diff deletes gets one line in the body with the evidence that it's obsolete; otherwise it stays.
     - **A test app imports the package by its name,** never by a source path.
-    - **Draft, then ready.** Open the PR as a draft until its tier's steps hold on the head; `pre-bash-guard` blocks marking it ready until `pr-steps` has recorded its review and refactor pass. Then mark it ready and say "ready" once (1.7). A merged PR's branch is deleted in the same step (`--delete-branch`).
+    - **Draft, then ready.** Open the PR as a draft until its tier's steps hold on the head; `pre-bash-guard` blocks marking it ready until `pr-steps` has recorded its review and refactor pass. Then mark it ready and say "ready" once (1.7).
 17. **Quality is made, checks confirm.** Every check (a review, a guardian, the posting gate, the fresh reader) has a step before it. That step is responsible for what the check checks: the build for the code, the writing for a post, the design for its shape.
     - Do that producing step to the check's standard, so the check comes back quickly with nothing.
     - A check's finding is a miss of its producing step: fix the instance, and note in the ledger what the producing step missed.

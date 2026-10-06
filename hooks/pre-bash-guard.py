@@ -197,7 +197,7 @@ def check(t, has_cd):
         subj, body = opt(rest, ['--subject', '-t']), opt(rest, ['--body', '-b'])
         num = next((x for i, x in enumerate(rest) if re.fullmatch(r'\d+', x) and (i == 0 or not rest[i - 1].startswith('-'))), '')
         if not ('--squash' in rest or '-s' in rest) or not subj or not re.search(r' \(#' + (num or r'\d+') + r'\)$', subj[-1]) or body != ['']:
-            block('squash-merge as the repo asks, by default `gh pr merge <N> --squash --subject "<exact PR title> (#<N>)" --body ""`; re-read the repo\'s AGENTS.md first')
+            block('squash-merge as the repo asks, by default `gh pr merge <N> --squash --delete-branch --subject "<exact PR title> (#<N>)" --body ""`; re-read the repo\'s AGENTS.md first')
         # Deleting a branch other open PRs are based on closes them (GitHub doesn't retarget them)
         if num and ('--delete-branch' in rest or '-d' in rest):
             repo = opt(rest, ['-R', '--repo'])

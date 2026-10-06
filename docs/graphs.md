@@ -7,15 +7,17 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 | Skill | Hands over to |
 |---|---|
 | `converge` | `finality`, `implement-issue`, `verify`, `review`, `guardian`, `refactor`, `merging`, `github-threads`, `core` |
-| `core` | `implement-issue`, `delegating`, `merging`, `github-threads`, `converge` |
+| `core` | `open-issue`, `evidence`, `delegating`, `merging`, `github-threads`, `converge` |
 | `delegating` | nothing |
 | `design-loop` | `implement-issue`, `core`, `review`, `github-threads`, `converge` |
+| `evidence` | nothing |
 | `finality` | nothing |
 | `github-threads` | `converge`, `review`, `refactor`, `core`, `implement-issue` |
 | `guardian` | `delegating`, `converge`, `design-loop` |
-| `implement-issue` | `finality`, `guardian`, `design-loop`, `converge`, `core` |
+| `implement-issue` | `evidence`, `finality`, `guardian`, `design-loop`, `converge`, `core`, `open-issue` |
 | `mechanisms` | nothing |
 | `merging` | nothing |
+| `open-issue` | `evidence`, `github-threads` |
 | `past-failures` | nothing |
 | `refactor` | nothing |
 | `review` | `delegating`, `guardian`, `refactor`, `github-threads`, `core`, `converge` |
@@ -31,11 +33,12 @@ flowchart TB
   subgraph g0["1.1 Principles"]
     s0["17 rules: Critical path first, Invariants first, Do…"]
   end
-  s0 -.-> r1[["implement-issue"]]
-  s0 -.-> r2[["converge"]]
-  s0 -.-> r3[["delegating"]]
-  s0 -.-> r4[["merging"]]
-  s0 -.-> r5[["github-threads"]]
+  s0 -.-> r1[["open-issue"]]
+  s0 -.-> r2[["evidence"]]
+  s0 -.-> r3[["converge"]]
+  s0 -.-> r4[["delegating"]]
+  s0 -.-> r5[["merging"]]
+  s0 -.-> r6[["github-threads"]]
   subgraph g1["1.12 Pre-flight"]
     s1["1. Write scope.md"]
     s2["2. Write the critical path"]
@@ -47,7 +50,7 @@ flowchart TB
     s5["5. Note the precedents and<br/>style"]
     s4 --> s5
   end
-  s3 -.-> r6[["github-threads"]]
+  s3 -.-> r7[["github-threads"]]
   start --> g0
   g0 ~~~ g1
 ```
@@ -186,14 +189,61 @@ flowchart TB
     s6["7. The PR"]
     s5 --> s6
   end
-  s2 -.-> r1[["finality"]]
-  s3 -.-> r2[["guardian"]]
-  s3 -.-> r3[["design-loop"]]
-  s3 -.-> r4[["converge"]]
-  s3 -.-> r5[["core"]]
-  s4 -.-> r6[["core"]]
-  s5 -.-> r7[["converge"]]
+  s1 -.-> r1[["evidence"]]
+  s2 -.-> r2[["finality"]]
+  s3 -.-> r3[["guardian"]]
+  s3 -.-> r4[["design-loop"]]
+  s3 -.-> r5[["converge"]]
+  s3 -.-> r6[["core"]]
+  s4 -.-> r7[["open-issue"]]
+  s4 -.-> r8[["evidence"]]
+  s4 -.-> r9[["core"]]
+  s5 -.-> r10[["converge"]]
+  s6 -.-> r11[["evidence"]]
   start --> g0
+```
+
+## Opening an issue
+
+Opens `mergeworthy:open-issue` (one finding a newcomer can find, reproduce and judge).
+
+```mermaid
+flowchart TB
+  start(["Opening an issue"])
+  subgraph g0["open-issue"]
+    s0["1. Already filed or fixed?"]
+    s1["2. Reproduce it on today's<br/>‹base›"]
+    s0 --> s1
+    s2["3. Write the body"]
+    s1 --> s2
+    s3["4. Post it through the gate"]
+    s2 --> s3
+  end
+  s1 -.-> r1[["evidence"]]
+  s2 -.-> r2[["evidence"]]
+  s3 -.-> r3[["github-threads"]]
+  start --> g0
+```
+
+## Showing a behavior: a reproduction, a screenshot, a video
+
+Opens `mergeworthy:evidence` (reproducing it as a person would, capturing it, uploading it).
+
+```mermaid
+flowchart TB
+  start(["Showing a behavior: a<br/>reproduction, a<br/>screenshot, a video"])
+  subgraph g0["Reproduce it as a person<br/>would"]
+    s0["Reproduce it as a person<br/>would"]
+  end
+  subgraph g1["Capture it"]
+    s1["Capture it"]
+  end
+  subgraph g2["Upload it"]
+    s2["Upload it"]
+  end
+  start --> g0
+  g0 ~~~ g1
+  g1 ~~~ g2
 ```
 
 ## Converging a PR, before it's ready (every tier)
@@ -296,13 +346,13 @@ flowchart TB
   g0 ~~~ g1
 ```
 
-## Code drifted through many patches
+## Code drifted through many patches; stuck with every option costing something ruled out; asked for the ideal design (brainstorm, perfect world, pinnacle)
 
 Opens `mergeworthy:finality` (the finality pass).
 
 ```mermaid
 flowchart TB
-  start(["Code drifted through<br/>many patches"])
+  start(["Code drifted through<br/>many patches; stuck with<br/>every option costing<br/>something ruled out;<br/>asked …"])
   start --> g0
 ```
 

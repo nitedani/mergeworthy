@@ -151,11 +151,24 @@ if kind == 'pr' and words > pr_budget:
     findings.append(f"{words} words > {pr_budget} for a PR body (tables, code, images and URLs not counted): cut what the reader doesn't need")
 if kind == 'proposal' and words > 400 + extra:  # a design walkthrough (methodology 1.4 step 4)
     findings.append(f"{words} words > {400 + extra} for a design answer or walkthrough (tables and code count): one decision per comment, verdict first, the full material in a linked document (1.6)")
-if kind == 'issue' and chars > 400:
+decision = kind == 'issue' and re.search(r'^#+\s*Options\b', text, re.I | re.M)  # a decision issue (open-issue)
+if decision and words > 400 + extra:
+    findings.append(f"{words} words > {400 + extra} for a decision issue (tables and code count): the options a user would see and your pick, the rest linked")
+if kind == 'issue' and not decision and chars > 400:
     findings.append(f"{chars} characters > 400 for an issue (tables, code, images and URLs not counted): keep one finding")
 # a newcomer must see where it is and how to reproduce it (lexunit-ai/atotal_vagyon_borze#49 comment 6017184273)
-if kind == 'issue' and not re.search(r'!\[[^\]]*\]\(|<img(?![^>]*alt="(?:Claude|Agent)")[^>]*src=|<video|\.(?:png|jpe?g|gif|mp4|webm)\b', text, re.I) and not re.search(r'^#+\s*(how to (see|reproduce)|steps|reproduce)\b', text, re.I | re.M):
-    findings.append("an issue with no screenshot or video and no '### How to reproduce' steps: add what a newcomer needs to see where it is and reproduce it")
+if kind == 'issue':
+    shown = re.sub(r'<img [^>]*>\s*\*\*[^*\n]+\*\*', '', text)  # the badge is no evidence
+    repro = re.search(r'^#+\s*(?:how to (?:see|reproduce)|steps to reproduce)\b.*?(?=^#+ |\Z)', shown, re.I | re.M | re.S)
+    video = re.search(r'<video|\.(?:mp4|webm|mov)\b', shown, re.I)
+    still = re.search(r'<img|\.(?:png|jpe?g|gif|webp)\b', shown, re.I)
+    steps = len(re.findall(r'^\s*\d+\.\s', repro.group(0), re.M)) if repro else 0
+    if not repro:
+        findings.append("an issue with no '### How to reproduce': the role or URL, each action, what you see, so a newcomer reaches it (open-issue)")
+    if not (video or still or '```' in shown):
+        findings.append("an issue with no evidence: a screenshot, a video of the flow, or the request and response in a code block when no screen shows it (evidence)")
+    elif still and not video and steps > 3:
+        findings.append(f"{steps} steps to reach it, shown only in stills: record a video of the whole flow (evidence)")
 if kind == 'inline' and sentences > 2:
     findings.append(f"{sentences} sentences > 2 for an inline comment")
 # maintainer notes must be classified

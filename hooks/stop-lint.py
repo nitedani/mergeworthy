@@ -10,6 +10,9 @@ last = ''
 posted, monitor_ids, monitors, dead, commands, monitor_cmds = False, {}, set(), set(), [], []
 last_user = ''  # the user's own last message (not a tool result or a hook's feedback)
 POST = re.compile(r'\bgh\b[^\n]*(body-file|body=@|--input|\s-F\s)')
+READ = re.compile(r'\bgh\s+api\s+graphql\b|\bgh\s+api\b[^\n]*\s(?:-X\s*|--method[\s=])GET\b')  # a field makes `gh api` a POST, but these read
+def posts(cmd):
+    return any(POST.search(l) and not (READ.search(l) and 'mutation' not in cmd) for l in cmd.split('\n'))
 try:
     lines = open(d['transcript_path']).readlines()
 except Exception:
@@ -36,7 +39,7 @@ for line in lines:
         for x in c if isinstance(c, list) else []:
             if not isinstance(x, dict) or x.get('type') != 'tool_use': continue
             i = x.get('input') or {}
-            if x.get('name') == 'Bash' and POST.search(i.get('command', '')): posted = True
+            if x.get('name') == 'Bash' and posts(i.get('command', '')): posted = True
             if x.get('name') == 'Bash': commands.append(i.get('command', ''))
             if x.get('name') == 'Monitor' and 'events.log' in i.get('command', ''):
                 monitor_ids[x.get('id')] = 1
