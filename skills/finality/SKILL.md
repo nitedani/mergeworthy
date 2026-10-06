@@ -8,7 +8,7 @@ description: "The finality pass, for code that has drifted through many patches:
 **When to run it.** The work reshapes existing code rather than changing what it does. Or a change you meant to make small cannot be made cleanly, because the area has taken too many patches.
 
 **Who runs each phase:**
-- **Phases A and B are analysis.** The main session starts their agents: the mappers, then Phase B's single agent. Each is the reviewer (`review`) or a fresh-context subagent, never the author's context, and does its share itself. Phase B's single agent (the prompt's "strongest-model agent") runs on the session's own model, never one above the default tier (`core`, the task).
+- **Phases A and B are analysis.** The main session starts their agents: the mappers, then Phase B's branch agents and its converging agent. Each is the reviewer (`review`) or a fresh-context subagent, never the author's context, and does its share itself. Phase B's agents (the prompt's branches and its "strongest-model agent") run on the session's own model, never one above the default tier (`core`, the task).
 - **Phase B½ is split.** Its graph queries are analysis, run by the Phase B agent. Instrumenting guards, running the full suite and e2e, and the removals are execution: the author runs them, as in Phase C.
 - **Phase C is the author's**, implementing commit by commit with the gates green underneath.
 
@@ -54,8 +54,15 @@ Fan out parallel mapper agents over the subsystems, one shared node schema.
 Mappers are read-only; graphs are artifacts.
 
 PHASE B — IMAGINE.
-Give the assembled graph to ONE strongest-model agent (one at a time, always on the
-hardest task) and have it derive the PINNACLE design — the shape this feature would have if
+Diverge first, then converge. DIVERGE: start 5 isolated agents in parallel, each with the graph
+summary, the problem and ONE different frame (e.g. hardware engineer, remove the load-bearing
+assumption, competitor breaking it, logistics, 3am on-call). Each first writes its 3 obvious
+designs, marked obvious, then 6 more beyond them, with no evaluation; no branch sees another's
+output. CONVERGE: give the assembled graph AND every branch's lists to ONE strongest-model agent
+(one at a time, always on the hardest task): the obvious designs are its baseline; it ranks every
+design on merit only (correctness, cost on the fast path, behavior at the edges, simplicity;
+novelty earns nothing), flags the traps, and a non-obvious design wins only by beating the best
+obvious one. From that it derives the PINNACLE design — the shape this feature would have if
 designed today, from scratch, knowing everything the graph knows, with NO obligation to the
 current file layout.
 Design pressures:
