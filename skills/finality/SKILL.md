@@ -57,9 +57,10 @@ Fan out parallel mapper agents over the subsystems, one shared node schema.
 Mappers are read-only; graphs are artifacts.
 
 PHASE B — IMAGINE.
-Diverge first, then converge. DIVERGE: start 3 isolated agents in parallel, each with the graph
-summary, the problem and ONE different frame (e.g. remove the load-bearing assumption,
-competitor breaking it, 3am on-call). Each first writes its 3 obvious
+Diverge first, then converge. DIVERGE: pick 6 to 9 frames that fit THIS problem (the
+assumptions it rests on, the ways it fails, the people it serves, fields that solved its like),
+never a fixed list; start 3 isolated agents in parallel, each with the graph summary, the problem
+and 2 or 3 of those frames, no frame given twice. Each first writes its 3 obvious
 designs, marked obvious, then 6 more beyond them, with no evaluation; no branch sees another's
 output. CONVERGE: give the assembled graph AND every branch's lists to ONE strongest-model agent
 (one at a time, always on the hardest task): the obvious designs are its baseline; it ranks every
