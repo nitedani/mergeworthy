@@ -17,6 +17,18 @@ Read this before drafting any comment, reply or message. A comment is a conversa
 - **Courtesy that's real:** thank them for a real catch, say sorry when you got something wrong ("I was wrong about X: Y"), never "obviously" or "clearly".
 - **Concrete over abstract.** Name the file, the call, the number, the framework. Show a design choice as the code the user writes under each option.
 
+## A reply that carries the load
+
+A maintainer asked whether a design has holes. This answer gives them the result and nothing they don't need:
+
+> I dug in with real apps on Hono, Express, Fastify, Elysia and H3, and `vike(app)` as the one injection point holds up. Its few real limits are in a short [list](…); the main one is that a route placed before `vike(app)` is only reported on Express and Hono.
+>
+> I also found a few bugs that would stop it from working, but they look simple to fix and I'm on them: the Vike side is already pushed to #3557, and the rest goes to Universal Middleware. I weighed a second Vike line to avoid some Hono workarounds and dropped it, because it's the second injection point you didn't want.
+>
+> I'll come back when the fixes are in.
+
+Why it works: the verdict comes first, in one sentence. A design's limits (what it can't do) are linked as a short list; the bugs you'll fix are one line, and their details stay in your own tracking, because a maintainer doesn't need your backlog. A rejected alternative gets one line with its reason, so they see the thinking without having to weigh it. It asks nothing that isn't theirs to decide, and it says when you'll be back.
+
 ## What reads as machine-written, and the fix
 
 | Pattern | Instead |
