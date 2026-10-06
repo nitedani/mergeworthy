@@ -47,7 +47,7 @@ Every PR, whatever its tier, goes through `converge`'s pipeline: a Loop A agent 
     - (b) money, credentials, or the user's global config (`~/.claude`, `~/.codex`, shell rc files);
     - (c) a product or public-API decision of an external maintainer, or a genuine fork you can't rank.
 
-    Then write one line starting `GENUINE-FORK:` with the options and your recommendation, and continue with everything else. If nobody answers by the time you need the answer, take your recommendation and say so. Ask in plain text, never in a modal pop-up, and only after re-reading every message the user sent since your last reply; if they already answered, don't ask.
+    Then write one line starting `GENUINE-FORK:` with the options and your recommendation, and continue with everything else. If nobody answers by the time you need the answer, take your recommendation and say so, unless an option regresses against `main` (a slower or costlier benchmark cell, a lost behavior): that is not a fork to default on but a design that isn't done, so keep looking for the option without the regression. Ask in plain text, never in a modal pop-up, and only after re-reading every message the user sent since your last reply; if they already answered, don't ask.
 4. **Every user message gets answered, first.** At each turn, list the user's messages since your last reply, including ones typed while you worked. Handle every one before ending the turn.
     - **Questions:** answer each in the first lines, before any status or tool work. A question that needs investigation goes on `questions-owed.md` with an ETA.
     - **How-to instructions** are done as given. Try another way only after the given way fails, and quote the failure.
