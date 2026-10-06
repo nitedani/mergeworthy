@@ -151,6 +151,11 @@ if kind == 'pr' and words > pr_budget:
     findings.append(f"{words} words > {pr_budget} for a PR body (tables, code, images and URLs not counted): cut what the reader doesn't need")
 if kind == 'proposal' and words > 400 + extra:  # a design walkthrough (methodology 1.4 step 4)
     findings.append(f"{words} words > {400 + extra} for a design answer or walkthrough (tables and code count): one decision per comment, verdict first, the full material in a linked document (1.6)")
+# A design answer that opens by agreeing must still carry the author's own view: a counterpoint, a cost or the weak spot.
+_opening = re.sub(r'^\W*(\*\*[^*]+\*\*:?\s*)?', '', prose.strip())
+if kind == 'proposal' and re.match(r"(you'?re right|agreed\b|yes\b|good (point|idea)|that makes sense|makes sense)", _opening, re.I) \
+        and not re.search(r"\b(but|however|though|disagree|push back|weak(est)?|unsure|instead|the cost|trade-?off|I'd keep|I would keep)\b", prose, re.I):
+    findings.append("opens by agreeing and never says where you disagree, what it costs or what's weakest: converge with your own position, not the last comment's (github-threads, head the thread to a converged design)")
 decision = kind == 'issue' and re.search(r'^#+\s*Options\b', text, re.I | re.M)  # a decision issue (open-issue)
 if decision and words > 400 + extra:
     findings.append(f"{words} words > {400 + extra} for a decision issue (tables and code count): the options a user would see and your pick, the rest linked")

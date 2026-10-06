@@ -154,6 +154,10 @@ printf '%s Two answers follow.\n\n- **Fetch pipeline:** not needed.\n- **The opt
 check "a bold label with a fragment is flagged, a full sentence is not" 1 "$(python3 "$R/bin/post-lint" "$T/frag.md" --kind issue --parent none 2>&1 | grep -c 'bold label with a fragment')"
 printf '%s Two fundamental issues remain.\n' "$B" > "$T/fund.md"
 check "a difficulty word without its scope is flagged" 1 "$(python3 "$R/bin/post-lint" "$T/fund.md" --kind issue --parent none 2>&1 | grep -c 'what it.s hard for')"
+printf '%s You\x27re right on all three, and I\x27m going back to it.\n' "$B" > "$T/agree1.md"
+check "a design answer that only agrees is flagged" 1 "$(python3 "$R/bin/post-lint" "$T/agree1.md" --kind proposal --repo o/r --parent none 2>&1 | grep -c 'opens by agreeing')"
+printf '%s You\x27re right on the single point, but the weakest part is putting pages last.\n' "$B" > "$T/agree2.md"
+check "agreeing with a counterpoint passes" 0 "$(python3 "$R/bin/post-lint" "$T/agree2.md" --kind proposal --repo o/r --parent none 2>&1 | grep -c 'opens by agreeing')"
 # the budget grows with the questions in the comment answered
 printf 'One? Two? Three?\n' > "$T/q.parent.md"
 printf '%s %s\n' "$B" "$(printf 'word %.0s' $(seq 150))" > "$T/q.md"
