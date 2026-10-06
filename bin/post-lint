@@ -6,7 +6,7 @@ process machinery in the thread, questions without a recommendation, and a bare 
 A reply or inline comment needs the comment it answers: <draft stem>.parent.md next to it, or --parent <file>;
 --parent none for a comment that answers nobody.
 Settings: MERGEWORTHY_BADGE on|off|auto requires the badge always, never, or for a human account."""
-import os, re, sys, subprocess
+import hashlib, os, re, sys, subprocess
 def setting(name, default):
     """MERGEWORTHY_<name> from the environment, else from ~/.mergeworthy/settings.env (written at session start from the plugin's options)."""
     f = os.path.expanduser('~/.mergeworthy/settings.env')
@@ -235,4 +235,5 @@ if kind in ('reply', 'inline'):
 for f in findings: print(f)
 if not findings:  # gate-pass re-runs post-lint with the flags this draft passed with
     with open(path + '.lint', 'w') as f: f.write(' '.join(args[1:]))
+    with open(path + '.lint.sha', 'w') as f: f.write(hashlib.sha256(open(path, 'rb').read()).hexdigest())  # pre-agent-dedupe: no review of an unlinted draft
 sys.exit(1 if findings else 0)

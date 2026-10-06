@@ -229,6 +229,17 @@ check "BLOCK: a second launch of the same ticket" 2 "$(launch 'Retry: execute /t
 check "another ticket passes" 0 "$(launch 'Execute /tmp/x/other.md')"
 python3 "$R/bin/agent-job" done /tmp/x/ticket-check.md >/dev/null
 check "after agent-job done the ticket launches again" 0 "$(launch 'Execute /tmp/x/ticket-check.md')"
+# a gate review starts only on a draft that passed post-lint in its current form
+mkdir -p "$T/drafts/lf"; printf 'Fixed in abc1234.\n' > "$T/drafts/lf/reply.md"
+printf 'Review %s and write the verdict to %s/drafts/lf/r.out; the last message is exactly CLEAN.\n' "$T/drafts/lf/reply.md" "$T" > "$T/drafts/lf/review-ticket.md"
+check "BLOCK: a review of a draft with no post-lint record" 2 "$(launch "Execute $T/drafts/lf/review-ticket.md")"
+printf 'x' > "$T/drafts/lf/reply.md.lint.sha"
+check "BLOCK: a review of a draft with a stale post-lint record" 2 "$(launch "Execute $T/drafts/lf/review-ticket.md")"
+python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest(), end="")' "$T/drafts/lf/reply.md" > "$T/drafts/lf/reply.md.lint.sha"
+check "a review of a draft with a current post-lint record launches" 0 "$(launch "Execute $T/drafts/lf/review-ticket.md")"
+python3 "$R/bin/agent-job" done "$T/drafts/lf/review-ticket.md" >/dev/null
+echo 'edited' >> "$T/drafts/lf/reply.md"
+check "BLOCK: the same review after the draft was edited" 2 "$(launch "Execute $T/drafts/lf/review-ticket.md")"
 # ---------- pre-bash-guard: never kill a running agent ----------
 printf '#!/bin/sh\nsleep 600\n' > "$T/claude"; chmod +x "$T/claude"
 "$T/claude" --output-format stream-json >/dev/null 2>&1 & APID=$!

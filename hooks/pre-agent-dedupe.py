@@ -8,6 +8,18 @@ d = json.load(sys.stdin)
 ti = d.get('tool_input', {}) or {}
 text = ' '.join(str(ti.get(k) or '') for k in ('prompt', 'task', 'description', 'title'))
 tickets = sorted(set(re.findall(r'(/[^\s`\'"]+\.md)\b', text)))
+# A gate review (names a review output `.out` and CLEAN) starts only on drafts that passed post-lint in their current form.
+gate_text = text + ' ' + ' '.join(open(t).read() for t in tickets if os.path.isfile(t))
+if re.search(r'\.out\b', gate_text) and 'CLEAN' in gate_text:
+    for draft in sorted(set(re.findall(r'(/[^\s`\'"()]*/drafts/[^\s`\'"()]+\.md)\b', gate_text))):
+        base = os.path.basename(draft)
+        if base.endswith('.parent.md') or 'ticket' in base or re.search(r'\.v\d+\.md$', base) or not os.path.isfile(draft):
+            continue
+        try: ok = open(draft + '.lint.sha').read().strip() == hashlib.sha256(open(draft, 'rb').read()).hexdigest()
+        except OSError: ok = False
+        if not ok:
+            sys.stderr.write(f"BLOCKED: {draft} has no passing post-lint for its current text: run post-lint first, then the review.\n")
+            sys.exit(2)
 key = ' '.join(tickets) or (str(ti.get('title') or ti.get('description') or '').strip())
 if not key:
     sys.exit(0)
