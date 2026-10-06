@@ -189,6 +189,7 @@ Everything the skills need to know about one repo; the method itself stays in th
     - Find a server by the PID you started (and its children, `pgrep -P <pid>`) or by its port (`ss -ltnp 'sport = :<port>'`). Never grep `ps` output for a port number, and never `pgrep -f <pattern>`.
     - Check each PID's command and directory before killing it.
 - **At most 4 browsers and 4 dev servers** of your own at once; stop each when its work ends.
+- **Compute memory before you allocate it,** never probe for a limit by loading more. Size a model, cache or buffer from its numbers first, keep it under the device's free memory with headroom, and check `free -g` for the host. On WSL, CUDA spills VRAM overflow into Windows RAM without an error, so "it loaded" proves nothing.
 - **Never restart or reconfigure a container** someone else's work depends on; start your own alongside.
 - **Own ports.** Each dev server, preview server or e2e run you start gets its own free port (`--port`, `PORT=`). Never use a port another run holds, and never kill or wait out another run's server.
 - **Never modify the package store or a shared `node_modules`.** Scratch installs use `--package-import-method=copy`. After any install, check `git status` for unexpected changes.
