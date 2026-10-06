@@ -7,7 +7,7 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 | Skill | Hands over to |
 |---|---|
 | `converge` | `finality`, `implement-issue`, `verify`, `review`, `guardian`, `refactor`, `merging`, `github-threads`, `core` |
-| `core` | `open-issue`, `evidence`, `delegating`, `merging`, `github-threads`, `converge` |
+| `core` | `open-issue`, `evidence`, `delegating`, `merging`, `github-threads`, `design-loop`, `converge` |
 | `delegating` | nothing |
 | `design-loop` | `implement-issue`, `core`, `review`, `github-threads`, `converge` |
 | `evidence` | nothing |
@@ -35,10 +35,11 @@ flowchart TB
   end
   s0 -.-> r1[["open-issue"]]
   s0 -.-> r2[["evidence"]]
-  s0 -.-> r3[["converge"]]
-  s0 -.-> r4[["delegating"]]
-  s0 -.-> r5[["merging"]]
-  s0 -.-> r6[["github-threads"]]
+  s0 -.-> r3[["design-loop"]]
+  s0 -.-> r4[["converge"]]
+  s0 -.-> r5[["delegating"]]
+  s0 -.-> r6[["merging"]]
+  s0 -.-> r7[["github-threads"]]
   subgraph g1["1.12 Pre-flight"]
     s1["1. Write scope.md"]
     s2["2. Write the critical path"]
@@ -50,7 +51,7 @@ flowchart TB
     s5["5. Note the precedents and<br/>style"]
     s4 --> s5
   end
-  s3 -.-> r7[["github-threads"]]
+  s3 -.-> r8[["github-threads"]]
   start --> g0
   g0 ~~~ g1
 ```
