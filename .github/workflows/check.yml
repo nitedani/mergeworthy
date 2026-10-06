@@ -11,4 +11,5 @@ jobs:
       - run: npm ci
       - run: python3 docs/build-graphs.py --check
       - run: bash tests/hooks.sh .
+      - run: bash tests/word-budget .
       - run: bash tests/watcher.sh .

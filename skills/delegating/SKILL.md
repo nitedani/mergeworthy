@@ -10,7 +10,7 @@ These rules hold when you edit a skill, prompt, rules file or AGENTS.md. Rules f
 - **The minimal delta,** usually one sentence, placed at the step where it bites.
     - No rationale, no incident stories, nothing a competent model does anyway.
     - Repo facts go only in the project file.
-    - Grep first, and edit the existing line instead of adding another.
+    - Grep first and change the text that already covers it, never add beside it; merge any overlap you find. Keep the word count flat or lower; `tests/word-budget` fails when the skills grow, and raising its budget needs the reason nothing existing could carry the change.
     - Prefer a mechanism to a sentence.
 - **A mechanism ships whole, the first time.** It starts, restarts after a crash and a reboot, retires when its job is done, and runs one instance per job. It works on every OS the methodology runs on (Linux, macOS; a fallback elsewhere). Before calling it done, test it by killing it, rebooting its supervisor and finishing its job.
 - **State the behavior you want** ("write one-line comments"), not only the one you don't. Keep a "never" for hard guardrails, and pair it with what to do instead.

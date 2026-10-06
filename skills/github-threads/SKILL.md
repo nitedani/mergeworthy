@@ -83,7 +83,7 @@ The watcher runs independently of any session and only records events (and adds 
 
 1. **Write it the way it should end up;** the gate checks, it doesn't edit. Write in `drafts/<name>.md` (never straight into a `gh` command), with the comment it answers in `drafts/<name>.parent.md`.
    - Before the first sentence, write the one line the reader needs (the verdict or the ask), and what they already said or guessed.
-   - Write by the Writing rules below.
+   - Write it as `writing.md` says (and by the Thread rules below).
    - Read the draft top to bottom as a newcomer to the thread would: every term named where it first appears, every link between two sentences written out, nothing you'd have to read twice.
 2. **Run `post-lint`** with the draft's `--kind` (and `--repo`). It must pass; `gate-pass` re-runs it with the same flags.
 3. **Run the review** (`review`: open it for who reviews) with a prompt file. The review should come back quickly with nothing. A finding means step 1 missed something: fix the draft, and add one line to the ledger saying what the writing missed, so the writing improves and the gate stays quiet. The review checks facts and noise, never wording:
@@ -104,20 +104,10 @@ The watcher runs independently of any session and only records events (and adds 
 
 **Fast gate,** for a reply of a few claims: a "Done in <sha>", or the holding reply of 1.5 with what you found so far. It runs the same steps, with the reviewer asked only about those claims. The reviewer still has to answer exactly `CLEAN`.
 
-### Writing
+### Thread rules
 
-**Every post brings the reader something they didn't have** (every report too, 1.11): a finding, a measurement, a better option, a risk, or a decision with its reason. If it wouldn't, think more first. Engage as a peer: agree or disagree, and say why.
+**How to write** a post (voice, drafting by talking, what reads as machine-written, the reply that carries the load) is in `writing.md` next to this skill, with `~/.mergeworthy/voice.md` (else `voice.md` here): read both before drafting any post. The rules below are about the thread, not the prose.
 
-- **Write in the owner's voice, as a person talking to a colleague:** before drafting any post, read `writing.md` next to this skill (how to draft by talking, and what reads as machine-written) and `~/.mergeworthy/voice.md`, else `voice.md` next to this skill (its author's voice).
-- **Answer the person, in their order and from their words.** Quote each point you answer (`> their words`) and start from what they said or guessed: "Almost. Your reasoning holds once the request reaches Vike, but two cases slip through." A fair point gets "you're right"; real work they did for you gets a thank-you, an approval doesn't.
-- **The verdict first, then the reasoning in the order the reader would think it:** what we expected, what we found, what follows from it.
-- **Join sentences with bridges that show how they connect:** "because", "so", "but", "which means". Never stack points with "also".
-- **Full sentences, as a colleague talking:** "I agree, it's the wrong word", never a bold label and a fragment ("**Fundamental:** the wrong word."). Table cells stay short.
-- **Write for a newcomer who finds the thread later.** Name each thing plainly where it first appears; no internal labels (W2, R*), no "it" with two meanings, no AI phrasing ("worth noting", "happy to", "let me know"). An answer under a quote still names its subject. A word that ranks difficulty ("fundamental", "impossible") says what it's hard for.
-- **Make every claim concrete** with an example from the project: a URL, a call, a plugin. Compare designs or behavior with code: what the user writes, and what changes as a short ```diff block. A table may summarize; it never replaces the code.
-- **Prose for reasoning, lists only for parallel items of the same kind.** Vary sentence length; split a sentence only when it carries two separate news points, never between a cause and its effect.
-- **Every question answered, each as short as a newcomer can still follow.** Clarity comes from one example and the word that links two points, not from more words. End with one decision and your pick, and send only reference material (a spec, a case table) to a gist. Over budget, cut a point or link it, never the grammar or a bridge. When all there is to say is "done", say "Done in <sha>".
-- **When you change your mind,** say so in one line ("I was wrong about X: Y").
 - **At most two comments in a row.** The second is only the 1.5 result after its holding reply, a wait ping, a dependency's progress, a 👎 fix, or the review of commits a maintainer pushed after your last comment; anything else edits your last comment. `pre-bash-guard` blocks a third within 3 hours of your last; after that, the third may be the wait ping.
 - **Evidence carries no secret.** In logs, requests, payloads and screenshots, write `<REDACTED>` in place of every token, cookie, auth header and key. Quote only the lines that show the point (`post-lint` fails on common token shapes).
 - **One reply per person, edits for corrections.** Several comments from one person get one reply. Never post a comment that corrects or adds to your own earlier one: edit it in place, through the gate.

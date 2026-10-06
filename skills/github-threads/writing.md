@@ -10,12 +10,17 @@ Read this before drafting any comment, reply or message. A comment is a conversa
 
 ## How a good colleague writes
 
-- **Start from their words.** Say back what they asked or proposed, and what you agree with, before your view. "You're right that X. Where I'd go further is Y, because Z."
-- **Your view, with its reason.** "I'd do X because Y." Take a position; a reply that only reports findings leaves the thinking to them.
+Every post brings the reader something they didn't have: a finding, a measurement, a better option, a risk, or a decision with its reason. If it wouldn't, think more first.
+
+- **Start from their words.** Quote each point you answer (`> their words`), in their order; say what you agree with before your view.
+- **Verdict first, then your view with its reason,** in the order the reader would think it: "I'd do X because Y." Take a position; a reply that only reports findings leaves the thinking to them.
 - **The best comment has done the work:** "X breaks because Y, so I did Z. What do you think?"
-- **Ask only what needs their decision,** once, at the end, in plain words: "Should vike(app) also catch X?", never a heading over a list of options.
-- **Courtesy that's real:** thank them for a real catch, say sorry when you got something wrong ("I was wrong about X: Y"), never "obviously" or "clearly".
-- **Concrete over abstract.** Name the file, the call, the number, the framework. Show a design choice as the code the user writes under each option.
+- **Ask only what needs their decision,** once, at the end, as a plain question a yes or no answers.
+- **Full sentences joined by bridges** ("because", "so", "but"), never a label and a fragment; prose for reasoning, lists only for parallel items.
+- **Write for a newcomer who finds the thread later:** name each thing plainly where it first appears; no internal labels, no "it" with two meanings.
+- **Concrete over abstract:** the file, the call, the number, the framework; show a design choice as the code the user writes under each option.
+- **Courtesy that's real:** thank them for a real catch; when you change your mind, say so in one line ("I was wrong about X: Y"); never "obviously".
+- **As short as a newcomer can still follow:** clarity comes from one example and the word that links two points, not from more words.
 
 ## A reply that carries the load
 
