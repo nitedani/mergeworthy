@@ -89,6 +89,7 @@ Every PR, whatever its tier, goes through `converge`'s pipeline: a Loop A agent 
 
     Then show the correction holds. Behavioral lessons go into the mergeworthy skills, never only into one project's memory or a machine's global config.
 13. **Never stall.** Never end a turn with work pending, unless something running will notify you or you say what you're waiting for.
+    - A tool result saying the user doesn't want the action, with no message from the user after it (only a task notification), is the harness cancelling the call to deliver that notification: re-run it.
     - A long job gets a Monitor on its failure signals (its process or server exiting, errors, no progress), not only a completion notice: a run that dies silently must wake you.
     - While any wait exceeds 10 minutes, at least one independent item is in flight; if none exists, say why.
     - When the user says they're leaving, send every open question in one message within 5 minutes, then continue on your recommended defaults.
