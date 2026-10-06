@@ -61,3 +61,4 @@ Each failure below happened, most more than once. When a rule fails or the user 
 | Posting with inline bodies; `gh run rerun` on upstream (needs admin: ask a maintainer); fork PRs lack CI secrets, so those jobs fail. | 1.6 step 4, 1.7 CI |
 | The watcher started a headless agent per event instead of waking the session that owned the thread; the user saw 👀 and no answer. | 1.5 (the session is the agent, woken by its Monitor), `stop-lint` |
 | The agent watched and answered every thread in the scope repos, not only threads it opened or posted in and the user's `/ai` calls. | 1.5 (which comments you answer), the watcher (`watcher/gh-watch.py`), `post-bash-register` |
+| Held new work while the budget was red, with nothing watching the budget; it turned green and the session spent hours only re-arming the GitHub watcher until the user asked why it stopped. | 1.1.13 (a budget hold has a Monitor on the signal that lifts it) |
