@@ -57,12 +57,15 @@ Fan out parallel mapper agents over the subsystems, one shared node schema.
 Mappers are read-only; graphs are artifacts.
 
 PHASE B — IMAGINE.
-Diverge first, then converge. DIVERGE: pick 6 to 9 frames that fit THIS problem (the
-assumptions it rests on, the ways it fails, the people it serves, fields that solved its like),
-never a fixed list; start 3 isolated agents in parallel, each with the graph summary, the problem
-and 2 or 3 of those frames, no frame given twice. Each first writes its 3 obvious
+Diverge first, then converge. DIVERGE: write the problem clean, as its users would state it: what
+must happen, what it may never cost, and the facts of the outside world it lives in (platform
+APIs, runtimes, networks). No current design, no file or function names, no project terms, no
+hint of how it is solved today: those anchor the branches on what exists. Pick 6 to 9 frames
+from that clean problem (the ways it fails, the people it serves, fields that solved its like),
+never from the current solution and never a fixed list; start 3 isolated agents in parallel, each
+with the clean problem and 2 or 3 of those frames, no frame given twice. Each first writes its 3 obvious
 designs, marked obvious, then 6 more beyond them, with no evaluation; no branch sees another's
-output. CONVERGE: give the assembled graph AND every branch's lists to ONE strongest-model agent
+output. CONVERGE: only now does the graph come in: give the assembled graph AND every branch's lists to ONE strongest-model agent
 (one at a time, always on the hardest task): the obvious designs are its baseline; it ranks every
 design on merit only (correctness, cost on the fast path, behavior at the edges, simplicity;
 novelty earns nothing), flags the traps, and a non-obvious design wins only by beating the best

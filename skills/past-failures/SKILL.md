@@ -69,3 +69,4 @@ Each failure below happened, most more than once. When a rule fails or the user 
 | Two issues whose symptom takes several clicks to reach (create an invoice, bid at the job limit) got two still screenshots; the owner wanted a video of the whole flow. | 1.6 budgets: a symptom behind more than one action gets a video of the flow. |
 | A fix that cost a benchmark cell against `main` went to the user as a GENUINE-FORK; with no answer the agent took its own "keep it" recommendation and started the final benchmark on the regressing head. | 1.1.3 (no default on a regression), 1.1.11 |
 | Stuck on a fix whose every option regressed, the agent asked the user to pick instead of running the finality pass; the user had to name it. | finality (when to run it), 1.1.3 |
+| Phase B branches were about to get the code map and angles phrased in the current design's terms, anchoring them on what exists; the user named it. | finality (Phase B: the clean problem) |
