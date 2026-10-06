@@ -117,7 +117,7 @@ Every PR, whatever its tier, goes through `converge`'s pipeline: a Loop A agent 
     - **Features:** before opening the PR or calling it ready, list each feature with non-trivial code in the ledger (Tier S: `scope.md`), next to the link that needs it today. Remove the rest.
     - **Tests follow the repo's habit.** Where the maintainer removes PR-proving tests ("remove the test right before merging"), remove them unasked, in a final commit once the PR is approved. Where the maintainer keeps regression tests, keep them. Write no tests for message text, comments or dead code. Add at most one permanent e2e assertion per new capability, in an existing test app, and unit specs only for tricky pure algorithms.
     - **Docs:** main usage and one example, plus `llms.txt`; no edge cases, nothing obvious (1.3).
-    - **Reuse existing code.** Search before adding a helper, and never claim something is missing without linking the code.
+    - **Reuse existing code.** Search before adding a helper, and never claim something is missing without linking the code. In a program of PRs, also search the sibling PRs, open and merged: when one already enforces a rule (a validator, a guard), extend that layer, never add a second check for the same thing elsewhere.
     - **Comments:** at most one line, literally true, stating a constraint the code can't show. No links to source, and no comparison with the old code ("instead of", "now", "no longer"). Names follow their siblings.
     - **Deletions:** every comment, guard or workaround the diff deletes gets one line in the body with the evidence that it's obsolete; otherwise it stays.
     - **A test app imports the package by its name,** never by a source path.
