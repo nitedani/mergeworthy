@@ -184,6 +184,10 @@ printf '%s Do you accept the second line to drop the tricks? I would.\n' "$B" > 
 check "a design question without code is flagged" 1 "$(python3 "$R/bin/post-lint" "$T/nocode.md" --kind proposal --repo o/r --parent none 2>&1 | grep -c 'with no code')"
 printf '%s Do you accept the second line?\n\n```ts\nvike(app)\n```\n' "$B" > "$T/code.md"
 check "a design question with code passes" 0 "$(python3 "$R/bin/post-lint" "$T/code.md" --kind proposal --repo o/r --parent none 2>&1 | grep -c 'with no code')"
+printf '%s I checked it on five frameworks.\n\nTwo decisions:\n\n- first\n' "$B" > "$T/label.md"
+check "a label line is flagged" 1 "$(python3 "$R/bin/post-lint" "$T/label.md" --kind proposal --repo o/r --parent none 2>&1 | grep -c 'a label line')"
+printf '%s I checked it on five frameworks, and two things came out of it.\n' "$B" > "$T/nolabel.md"
+check "a sentence with a colon-free lead passes" 0 "$(python3 "$R/bin/post-lint" "$T/nolabel.md" --kind proposal --repo o/r --parent none 2>&1 | grep -c 'a label line')"
 # the budget grows with the questions in the comment answered
 printf 'One? Two? Three?\n' > "$T/q.parent.md"
 printf '%s %s\n' "$B" "$(printf 'word %.0s' $(seq 150))" > "$T/q.md"

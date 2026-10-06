@@ -156,6 +156,13 @@ _opening = re.sub(r'^\W*(\*\*[^*]+\*\*:?\s*)?', '', prose.strip())
 if kind == 'proposal' and re.match(r"(you'?re right|agreed\b|yes\b|good (point|idea)|that makes sense|makes sense)", _opening, re.I) \
         and not re.search(r"\b(but|however|though|disagree|push back|weak(est)?|unsure|instead|the cost|trade-?off|I'd keep|I would keep)\b", prose, re.I):
     findings.append("opens by agreeing and never says where you disagree, what it costs or what's weakest: converge with your own position, not the last comment's (github-threads, head the thread to a converged design)")
+# A label line ("Two decisions:", "The question.") is a report heading, not how a person talks to a coworker.
+if kind in ('reply', 'proposal', 'issue', 'pr'):
+    for _l in prose.split('\n'):
+        _t = re.sub(r'^\s*(\*\*)?|(\*\*)?\s*$', '', _l.strip())
+        if re.fullmatch(r"[A-Z][\w'`, ()-]{0,45}[:.]", _t) and len(_t.split()) <= 6 and not _t.lower().startswith(('done', 'thanks', 'agreed', 'yes', 'no')):
+            findings.append(f"a label line ({_t!r}): say it in a sentence, as you would to a coworker")
+            break
 # A design question is answered by code, not adjectives: show what the user writes under each option.
 if kind == 'proposal' and '?' in prose and not re.search(r'^(```|~~~)', text, re.M):
     findings.append("asks a design question with no code: show what the user writes under each option (github-threads 1.6: compare designs with code)")
