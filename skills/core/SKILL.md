@@ -7,7 +7,7 @@ description: "Load first for any multi-step or GitHub task: the task, triage and
 
 How an AI agent works so that what it posts and the PRs it opens are worth merging. Size the work first (1.0), then apply only what that size requires. The always-on index says which skill to open when. Where a mechanism enforces a rule, use it: open `mechanisms` for the scripts and hooks that exist and how to run them.
 
-**Precedence.** The environment's instructions and the user's scope come first. Where these skills conflict, `core`, `github-threads` and `merging` override `implement-issue` and `converge`. When two rules seem to collide, check their scope (who owns the code, which tier, whether an umbrella issue exists) before choosing.
+**Precedence.** The environment's instructions and the user's scope come first. Where these skills conflict, `core`, `github-threads` and `merging` override `pull-request` and `converge`. When two rules seem to collide, check their scope (who owns the code, which tier, whether an umbrella issue exists) before choosing.
 
 ## The task
 
@@ -27,8 +27,8 @@ Read the task and every link in it. Then write `Tier: <X>, because <signals>` as
 | Tier | Signals | Process |
 |---|---|---|
 | **0: Answer** | An answer, research or a review; nothing to change. | Principles, evidence, reporting; the posting gate if published. |
-| **S: Single fix** | One bounded fix in one repo, expected behavior already clear. | `implement-issue` per change, which runs `converge`'s pipeline. The project file's gates green, the body true to the head. |
-| **M: Feature or set** | A new capability, a changed public contract, several change units, or open behavior questions. | `implement-issue` per unit; invariants, ledger, decision packet, design loop (1.4). |
+| **S: Single fix** | One bounded fix in one repo, expected behavior already clear. | `pull-request` per change, which runs `converge`'s pipeline. The project file's gates green, the body true to the head. |
+| **M: Feature or set** | A new capability, a changed public contract, several change units, or open behavior questions. | `pull-request` per unit; invariants, ledger, decision packet, design loop (1.4). |
 | **L: Program** | Changes across two or more independently maintained repos, or two or more decision makers. | Tier M everywhere, plus the umbrella issue (1.2). |
 
 Every PR, whatever its tier, goes through `converge`'s pipeline: a Loop A agent hunts bugs, a Loop B agent reviews, guards and rates, and a fresh reader checks the final head cold. The tier decides the records (1.2), not the loops; on a small fix each loop usually ends after its first dry pass.
@@ -204,7 +204,7 @@ Everything the skills need to know about one repo; the method itself stays in th
 - **Never restart or reconfigure a container** someone else's work depends on; start your own alongside.
 - **Own ports.** Each dev server, preview server or e2e run you start gets its own free port (`--port`, `PORT=`). Never use a port another run holds, and never kill or wait out another run's server.
 - **Never modify the package store or a shared `node_modules`.** Scratch installs use `--package-import-method=copy`. After any install, check `git status` for unexpected changes.
-- **Browser work uses the DevTools MCP,** started with `--isolated` (`implement-issue`). Never fall back to scripted browsers silently, never open windows on the user's desktop, and never kill another session's browser.
+- **Browser work uses the DevTools MCP,** started with `--isolated` (`pull-request`). Never fall back to scripted browsers silently, never open windows on the user's desktop, and never kill another session's browser.
 - **Isolate worktrees:** their own ports, databases and generated clients.
 - **Never touch the user's own checkouts** (the clones the user works in), including their git config, which their worktrees share. That means no edits, commits, checkouts, resets or branch switches there. Work in worktrees you create. To read another branch, run `git worktree add --detach <artifact root>/<name> <ref>`.
 

@@ -9,7 +9,7 @@ These rules apply in every session. Open a skill when its moment comes, not befo
 | Any GitHub thread you're in, and anything you post | `mergeworthy:github-threads` | the live loop 1.5, the posting gate 1.6 |
 | Pushing, saying a PR is ready, merging | `mergeworthy:merging` | 1.7 |
 | Writing skills, rules or prompts; starting or briefing subagents | `mergeworthy:delegating` | 1.9, 1.10 |
-| Implementing an issue or opening a PR | `mergeworthy:implement-issue` | the steps from an issue to a merge-ready PR |
+| Any change you'll open a PR for, from an issue or not | `mergeworthy:pull-request` | the steps to a merge-ready PR |
 | Opening an issue | `mergeworthy:open-issue` | one finding a newcomer can find, reproduce and judge |
 | Showing a behavior: a reproduction, a screenshot, a video | `mergeworthy:evidence` | reproducing it as a person would, capturing it, uploading it |
 | Converging a PR, before it's ready (every tier) | `mergeworthy:converge` | the pipeline every PR runs: finality, Loop A, Loop B, the fresh reader, gates |

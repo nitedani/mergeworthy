@@ -36,8 +36,8 @@ Each failure below happened, most more than once. When a rule fails or the user 
 | Parts of the task and of an accepted design silently dropped. | 1.1.8 |
 | Throughput losses and reconnects called trade-offs. | 1.1.11 benchmark |
 | A regression for users of an existing feature called "limitation: experimental". | 1.1.11 |
-| UI bugs found by the user; UI "verified" by computed styles and scripted events. | `implement-issue` (UI and runtime work) |
-| A transport fix opened with Node-script evidence only. | `implement-issue` (UI and runtime work) |
+| UI bugs found by the user; UI "verified" by computed styles and scripted events. | `pull-request` (UI and runtime work) |
+| A transport fix opened with Node-script evidence only. | `pull-request` (UI and runtime work) |
 | A release unlike the maintainer's past releases. | 1.3 precedent |
 | Docs in the agent's voice; repeated "I don't understand"; a coined term. | 1.3, 1.5 |
 | Jargon, AI phrasing, out-of-context replies; replies that only complied or restated. | 1.6 writing, `post-lint` |
@@ -63,9 +63,9 @@ Each failure below happened, most more than once. When a rule fails or the user 
 | The agent watched and answered every thread in the scope repos, not only threads it opened or posted in and the user's `/ai` calls. | 1.5 (which comments you answer), the watcher (`watcher/gh-watch.py`), `post-bash-register` |
 | Held new work while the budget was red, with nothing watching the budget; it turned green and the session spent hours only re-arming the GitHub watcher until the user asked why it stopped. | 1.1.13 (a budget hold has a Monitor on the signal that lifts it) |
 | A quick-win PR added a controller type check for a field that a sibling PR's DTO validators already covered (only the optional case was missing); the owner called it bloat. | 1.1.16 (reuse the sibling PR's layer) |
-| Two decision issues were filed with text and code references only; the owner couldn't see where in the app the problem was. The 1.6 issue budget said "plus a screenshot", but nothing checked it. | `open-issue`, with `evidence` shared by `implement-issue`; `post-lint --kind issue` fails without `### How to reproduce` and its evidence. |
+| Two decision issues were filed with text and code references only; the owner couldn't see where in the app the problem was. The 1.6 issue budget said "plus a screenshot", but nothing checked it. | `open-issue`, with `evidence` shared by `pull-request`; `post-lint --kind issue` fails without `### How to reproduce` and its evidence. |
 | A PR fixing a security bug also changed how a legitimate user's flow behaves (invoice account read-only, totals rejected); the owner said behavior changes need the business's decision first. | 1.1.9 and the project file: a fix closes only the hole; any change to what a legitimate user sees or can do goes to its own issue with options and a recommendation. |
-| Branches were pushed and worked on for hours with no PR; GitHub showed them as "no pull request yet", and merged PRs' branches were left behind. | `implement-issue` (draft PR with the first push), 1.7 (`--delete-branch` at merge). |
+| Branches were pushed and worked on for hours with no PR; GitHub showed them as "no pull request yet", and merged PRs' branches were left behind. | `pull-request` (draft PR with the first push), 1.7 (`--delete-branch` at merge). |
 | Two issues whose symptom takes several clicks to reach (create an invoice, bid at the job limit) got two still screenshots; the owner wanted a video of the whole flow. | `evidence` (a symptom behind more than one action gets a video of the flow); `post-lint --kind issue` fails on steps shown only in stills. |
 | A pending `gh issue edit` came back "the user doesn't want to take this action" because T3 Code delivered a task notification mid-turn; the session took it as a stop and went idle until the user asked why. | 1.1.13 (a cancellation with no user message after it is re-run) |
 | Probing a local model's largest context, the agent loaded KV caches up to 1M tokens on a 16 GB GPU; WSL's CUDA spilled ~18 GB into Windows RAM without an error, each probe read "loaded", and the next one OOM'd the user's computer. | 1.8 (compute memory before allocating it; on WSL "it loaded" proves nothing) |

@@ -41,7 +41,7 @@ Run `npx mergeworthy` again to change the options or add an agent; `npx mergewor
 | Skill | What it covers |
 |---|---|
 | `core` | triage, principles, tracking, discovery, safety, reporting |
-| `implement-issue` | from an issue to a merge-ready PR |
+| `pull-request` | any change, from an issue or not, to a merge-ready PR |
 | `open-issue` | one finding a newcomer can find, reproduce and judge |
 | `evidence` | reproducing a behavior as a person would, a screenshot or video of it, uploading it |
 | `github-threads` | watching threads, answering, and the review every post passes; `voice.md` is how posts sound (yours wins from `~/.mergeworthy/voice.md`) |

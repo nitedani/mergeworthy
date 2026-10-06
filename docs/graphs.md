@@ -6,19 +6,19 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 
 | Skill | Hands over to |
 |---|---|
-| `converge` | `finality`, `implement-issue`, `verify`, `review`, `guardian`, `refactor`, `merging`, `github-threads`, `core` |
+| `converge` | `finality`, `pull-request`, `verify`, `review`, `guardian`, `refactor`, `merging`, `github-threads`, `core` |
 | `core` | `open-issue`, `evidence`, `delegating`, `merging`, `github-threads`, `design-loop`, `converge` |
 | `delegating` | nothing |
-| `design-loop` | `implement-issue`, `core`, `review`, `github-threads`, `converge` |
+| `design-loop` | `pull-request`, `core`, `review`, `github-threads`, `converge` |
 | `evidence` | nothing |
 | `finality` | nothing |
-| `github-threads` | `converge`, `review`, `refactor`, `core`, `implement-issue`, `finality` |
+| `github-threads` | `converge`, `review`, `refactor`, `core`, `pull-request`, `finality` |
 | `guardian` | `delegating`, `converge`, `design-loop` |
-| `implement-issue` | `evidence`, `finality`, `guardian`, `design-loop`, `converge`, `core`, `open-issue` |
 | `mechanisms` | nothing |
 | `merging` | nothing |
 | `open-issue` | `evidence`, `github-threads` |
 | `past-failures` | nothing |
+| `pull-request` | `evidence`, `finality`, `guardian`, `design-loop`, `converge`, `core`, `open-issue` |
 | `refactor` | nothing |
 | `review` | `delegating`, `guardian`, `refactor`, `github-threads`, `core`, `converge` |
 | `verify` | `converge`, `core` |
@@ -76,7 +76,7 @@ flowchart TB
     s5["5. Post the walkthrough"]
     s4 --> s5
   end
-  s1 -.-> r1[["implement-issue"]]
+  s1 -.-> r1[["pull-request"]]
   s1 -.-> r2[["core"]]
   s3 -.-> r3[["review"]]
   s4 -.-> r4[["github-threads"]]
@@ -117,7 +117,7 @@ flowchart TB
   s1 -.-> r2[["review"]]
   s1 -.-> r3[["refactor"]]
   s1 -.-> r4[["core"]]
-  s2 -.-> r5[["implement-issue"]]
+  s2 -.-> r5[["pull-request"]]
   s2 -.-> r6[["finality"]]
   subgraph g1["1.6 Posting gate"]
     s5["1. Write it the way it<br/>should end up"]
@@ -169,14 +169,14 @@ flowchart TB
   g1 ~~~ g2
 ```
 
-## Implementing an issue or opening a PR
+## Any change you'll open a PR for, from an issue or not
 
-Opens `mergeworthy:implement-issue` (the steps from an issue to a merge-ready PR).
+Opens `mergeworthy:pull-request` (the steps to a merge-ready PR).
 
 ```mermaid
 flowchart TB
-  start(["Implementing an issue or<br/>opening a PR"])
-  subgraph g0["implement-issue"]
+  start(["Any change you'll open a<br/>PR for, from an issue or<br/>not"])
+  subgraph g0["pull-request"]
     s0["1. Check it is not already<br/>fixed"]
     s1["2. Prove the problem exists"]
     s0 --> s1
@@ -269,7 +269,7 @@ flowchart TB
     s4 --> s5
   end
   s0 -.-> r1[["finality"]]
-  s0 -.-> r2[["implement-issue"]]
+  s0 -.-> r2[["pull-request"]]
   s1 -.-> r3[["verify"]]
   s2 -.-> r4[["review"]]
   s2 -.-> r5[["guardian"]]

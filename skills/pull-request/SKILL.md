@@ -1,17 +1,17 @@
 ---
-name: implement-issue
-description: "Implementing an issue or opening a PR: already fixed?, reproduce, approach rating, build and gate, seeing it in the app, converging it, the PR body."
+name: pull-request
+description: "Any change you'll open a PR for, from an issue or not: already fixed?, reproduce, approach rating, build and gate, seeing it in the app, converging it, the PR body."
 ---
 
 # Implementing a change
 
-From an issue or a problem to one merge-ready PR: steps 1 to 5 build the change, step 6 converges it with `converge`'s pipeline, and step 7 is the PR. Open it as a draft (`gh pr create --draft`) with the first push of the branch, its body the problem on `main` through the fast gate, so no pushed branch sits without a PR and CI runs while it converges; once step 5 holds, the body becomes step 7's; the fresh reader's `CLEAN` gates the final body. A Tier ≥ M change (`core` 1.0) runs this once per PR.
+From an issue or a problem to one merge-ready PR. Open one only when the change blocks something you ship, and say what in its first lines. Steps 1 to 5 build the change, step 6 converges it with `converge`'s pipeline, and step 7 is the PR. Open it as a draft (`gh pr create --draft`) with the branch's first push, its body the problem on `main` through the fast gate, so CI runs while it converges; the fresh reader's `CLEAN` gates step 7's final body. A Tier ≥ M change (`core` 1.0) runs this once per PR.
 
 **The repo's `AGENTS.md` / `CLAUDE.md` governs how the code is written;** everything else particular to the repo is in its project file (`core` 1.3).
 
-**A repo's own `.claude/skills/implement-issue/SKILL.md` wins over this skill.** Read it on `origin/<base>` first. The exceptions are where `core`, `github-threads` or `merging` say otherwise: usage limits (1.1.13), found defects (1.1.7), and process staying out of the thread.
+**A repo's own `.claude/skills/pull-request/SKILL.md` wins over this skill.** Read it on `origin/<base>` first. The exceptions are where `core`, `github-threads` or `merging` say otherwise: usage limits (1.1.13), found defects (1.1.7), and process staying out of the thread.
 
-**Work in a worktree off `<base>`**, the base branch the project file names: `git fetch origin && git worktree add -b <branch> <artifact root>/<branch> origin/<base>`. In CI (e.g. `$GITHUB_ACTIONS` is `true`), read the project file's CI section first, if it has one.
+**Work in a worktree off `<base>`** (the project file names it): `git fetch origin && git worktree add -b <branch> <artifact root>/<branch> origin/<base>`. In CI, read the project file's CI section first.
 
 **Check you can finish before you start**, both halves up front:
 - **Browser control** (UI or runtime work), set up and tried per `evidence`.

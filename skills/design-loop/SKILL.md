@@ -10,7 +10,7 @@ The design loop takes a new API or protocol from candidates to a shape the maint
 - **Design the end state first, then plan the way there.** Judge a design on its correctness, its invariants and how simple the final shape is. The work to get there (releases, migrations, how many PRs) is planning, never an argument for a weaker shape, and "later" or "until someone needs it" is not a design decision. Do the work the design needs now, and defer nothing that the design depends on.
 
 0. **Prototype on existing extension points first.** Before any new core API, prototype the solution that uses only existing extension points (e.g. an existing middleware, render hook or plugin hook). That prototype is the first candidate; a core change needs a named requirement the prototype fails.
-1. **Draft `decisions/<name>.md`:** the invariant table (1.1.2), and the candidates rated as in `implement-issue` step 3 (open `implement-issue` for the rating steps). Rank the candidates by interface size. Recommend the smallest that keeps every invariant; recommend a larger one only with the requirement the smaller one fails, shown as code.
+1. **Draft `decisions/<name>.md`:** the invariant table (1.1.2), and the candidates rated as in `pull-request` step 3 (open `pull-request` for the rating steps). Rank the candidates by interface size. Recommend the smallest that keeps every invariant; recommend a larger one only with the requirement the smaller one fails, shown as code.
 2. **Prototype** to prove the invariants end to end: a real browser, request counts, timing, byte comparisons, dev, prod and static hosting.
 3. **Adversarial review** of the prototype (`review`: open it for who reviews): how does the prototype fail? When two review rounds each find a new case breaking the same rule, stop patching cases. Restate the cases as one rule, walk every setup through that rule yourself, then ask again.
 4. **Propose to maintainers** only when no invariant is broken, as a **walkthrough**:
@@ -28,7 +28,7 @@ The design loop takes a new API or protocol from candidates to a shape the maint
 
 ### 1.4.1 Codebase design: deep modules
 
-**Aim for deep modules wherever code is written, designed or restructured,** from its first line, not only when a guardian reviews it. That covers the design loop, `implement-issue` steps 3 and 4, the finality pass and `refactor`. A deep module has a lot of behaviour behind a small interface, sits at a clean seam, and is testable through that interface.
+**Aim for deep modules wherever code is written, designed or restructured,** from its first line, not only when a guardian reviews it. That covers the design loop, `pull-request` steps 3 and 4, the finality pass and `refactor`. A deep module has a lot of behaviour behind a small interface, sits at a clean seam, and is testable through that interface.
 
 **Use these terms exactly,** in code reviews and PR text too; don't substitute component, service, API or boundary:
 

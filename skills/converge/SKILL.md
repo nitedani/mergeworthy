@@ -15,7 +15,7 @@ Converging a pull request means working it to a final state: no reviewer, agent 
 
 In the order it runs. Converged means every step's done condition holds on the final head.
 
-1. **Finality,** where the area has drifted through many patches: open `finality` when the work reshapes existing code, or when a small change can't be made cleanly because of past patches. Its Phases A and B are the analysis while planning (`implement-issue` step 3), and its Phase C is the build itself.
+1. **Finality,** where the area has drifted through many patches: open `finality` when the work reshapes existing code, or when a small change can't be made cleanly because of past patches. Its Phases A and B are the analysis while planning (`pull-request` step 3), and its Phase C is the build itself.
 2. **Loop A, bug verification.** One agent runs the verifier brief (`verify`) on the diff. Fix what it reproduces, then continue the same agent with the commits. Done when every slice has a dry pass after its last fix: a pass that finds no bug that counts.
 3. **Loop B, review and quality.** Once Loop A is dry, one agent runs, in one prompt and each into its own output file, the reviewer charter (`review`), then the guardian brief, which carries the refactor prompt (`guardian`, `refactor`). Reviewing first fills the context it rates with. Land its findings commit by commit with the gates after each, then continue the same agent with the commits. A bug its review finds is fixed, and Loop A re-verifies that slice. Done when it finds nothing behavior-preserving worth its price, said as an honest-positive verdict ("nothing worth changing"), and its ratings are high and justified. Keep its last re-rating's output file; step 6 records it.
 4. **Loop A again, on Loop B's commits.** They re-open the slices they touch, so continue the Loop A agent with them: it compares the pre-refactor tree with the head (`verify`, after the refactors). Done when those slices are dry again.
@@ -88,7 +88,7 @@ Every fix also follows these:
 
 Verifying a feature can turn up bugs in the code the feature builds on.
 - **Bugs the feature doesn't need fixed** become their own PRs (1.1.16).
-- **Bugs the feature needs fixed** go into a stack, but only when the bottom PR builds alone on `main` and `gh stack` can link the two (`implement-issue` step 4).
+- **Bugs the feature needs fixed** go into a stack, but only when the bottom PR builds alone on `main` and `gh stack` can link the two (`pull-request` step 4).
 - **Otherwise** they stay in the feature PR, one commit per bug.
 - **Finality's refactor commits of base code** go in the bottom PR, before its fixes, when the fixes need the new shape; otherwise they're one refactor PR of their own (1.1.16) that the bottom PR depends on.
 
@@ -125,7 +125,7 @@ Evidence:
 
 Each PR body is part of the deliverable. It is true of the final head, and within 1.1.16 and the 1.6 budget.
 
-Beyond `implement-issue` step 7's template, a PR body carries, as needed:
+Beyond `pull-request` step 7's template, a PR body carries, as needed:
 - **How it works:** for a feature, with a code sample.
 - **The fixes:** one line per user-visible bug.
 - **The owner's decisions** it carries, as a short list ("decided by the owner", "left to my judgment, and kept").

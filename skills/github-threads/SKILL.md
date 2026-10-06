@@ -15,7 +15,7 @@ description: "Any GitHub thread you're in: the live loop (watcher, 👀, replies
 - **On a thread you only posted in:** a maintainer's comment (write access to the repo) or the user's.
 - **On any other thread:** the user's comment, when it contains `/ai` or `/agent`.
 - **What the watcher does with them:** it reports exactly these comments and adds 👀 to each (GitHub has no reactions on reviews). It records each comment and review in `replies-owed.md`.
-- **A `/ai` comment is the user typing in this chat.** Start the work at once, in parallel with what's running rather than queued behind it. Follow the skill the comment calls for (`implement-issue` for "fix it" or "open a PR"), and tell the user in chat.
+- **A `/ai` comment is the user typing in this chat.** Start the work at once, in parallel with what's running rather than queued behind it. Follow the skill the comment calls for (`pull-request` for "fix it" or "open a PR"), and tell the user in chat.
 
 Each comment you answer goes through these steps:
 
@@ -37,7 +37,7 @@ Each comment you answer goes through these steps:
    - **Then one fresh-context agent argues it divergently,** with that evidence, what `main` does, and a measurement where one is possible. Is "over-engineering" the right call, or is there a small, cleaner fix?
    - **The agent first only generates, no judging:** the strongest case for the maintainer's view and the strongest case against. Each case comes from at least three frames, past the obvious first answers. Frames include the user who hits it, the maintainer who keeps the code, and the smallest diff. Others are the version with no new code, and the design from scratch.
    - **Only then does the agent judge:** it scores both sides, names each side's weakest point and the traps (hidden cost, a fix for a case nobody hits), and recommends.
-   - **You decide.** Rate the agent's recommendation as in `implement-issue` step 3 (open `implement-issue` for the rating steps), and decide.
+   - **You decide.** Rate the agent's recommendation as in `pull-request` step 3 (open `pull-request` for the rating steps), and decide.
    - **Before answering "keep",** build the simpler version (theirs, or the simplest row of your own comparison) and name what breaks in it. If nothing breaks, recommend the simpler version.
    - **The reply reads as one person thinking:** your view, the reason, and in a sentence why the other side lost. Where the question is about code behavior, show your view as code at both ends (caller and callee). Never a bare yes, and plain even when it disagrees.
    - **Head the thread to a converged design, through the other side, not around them, and carry its load.** Keep a map of the whole thread in the artifact root: the linked threads and PRs, every invariant agreed (with the link) or open, and where it is heading. The thread has converged when every invariant is agreed. Each design reply moves the open ones by number: decide what evidence or a measurement settles and state it as the plan you'll follow unless they object, and ask only what is truly theirs to decide, each a question a yes or no answers. A decision blocks only the part it decides: start everything else now, and say in the reply what is already moving, so progress never waits on a reply. Then come back when it's sorted, not with progress. When the design has drifted over several rounds, run the finality pass first (`finality`, when to run it), then restate the design as those invariants.
