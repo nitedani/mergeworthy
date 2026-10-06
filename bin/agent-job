@@ -1,0 +1,18 @@
+#!/usr/bin/env python3
+"""agent-job list | done <key or ticket path>: the jobs pre-agent-dedupe registered. `done` releases a job after its agent's task
+is terminal and its result is read, so the same job can be launched again."""
+import hashlib, json, os, sys, time
+jobs = os.path.expanduser('~/.claude/agent-jobs'); os.makedirs(jobs, exist_ok=True)
+if len(sys.argv) < 2 or sys.argv[1] not in ('list', 'done'):
+    sys.exit('usage: agent-job list | done <key or ticket path>')
+entries = [(f, json.load(open(os.path.join(jobs, f)))) for f in os.listdir(jobs)]
+if sys.argv[1] == 'list':
+    for f, j in sorted(entries, key=lambda e: e[1]['started']):
+        print(f"{int((time.time() - j['started']) / 60):>5} min  {j['key']}")
+    sys.exit(0)
+want = ' '.join(sys.argv[2:]).strip()
+hit = [f for f, j in entries if j['key'] == want or want in j['key'].split()]
+if not hit:
+    sys.exit(f'agent-job: no registered job for {want!r} (agent-job list)')
+for f in hit:
+    os.remove(os.path.join(jobs, f)); print('released', want)

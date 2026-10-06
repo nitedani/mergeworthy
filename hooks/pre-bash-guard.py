@@ -161,6 +161,15 @@ def check(t, has_cd):
     p, a = os.path.basename(t[0]), t[1:]
     if p == 'killall' or (p == 'pkill' and any(x == '--full' or (not x.startswith('--') and short_has(x, 'f')) for x in a)):
         block("never pkill -f / killall: kill your own processes by PID or port")
+    if p == 'kill':
+        for x in a:
+            if x.isdigit():
+                try: argv = open(f'/proc/{x}/cmdline', 'rb').read().split(b'\0')
+                except OSError: continue
+                if any(os.path.basename(v.decode(errors='replace')) == 'claude' for v in argv[:2]) and b'stream-json' in b' '.join(argv):
+                    block(f"PID {x} is a running agent (a claude session), not a command: never kill it. Read its task status and latest runs; "
+                          "a turn that ended or 'waiting_for_children' is alive. Stop it through its task (interrupt) only after that, "
+                          "and when two run the same job keep the one with the most progress")
     if p == 'git':
         overrides = dict(a[i + 1].split('=', 1) for i in range(len(a) - 1) if a[i] == '-c' and '=' in a[i + 1])
         git_dir = next((a[i + 1] for i in range(len(a) - 1) if a[i] == '-C'), run_dir)

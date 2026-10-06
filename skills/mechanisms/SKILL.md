@@ -74,6 +74,7 @@ It blocks:
 - `--delete-branch` while PRs are based on the branch;
 - a `git commit` whose author isn't the pushing GitHub account (1.7);
 - `pkill -f` and `killall`;
+- `kill` of a running agent's process (a `claude … stream-json` session): stop an agent through its task, after reading its status;
 - a foreground wait loop (`until`/`while` with `sleep`); run it with `run_in_background` or rely on the completion notification;
 - a bare `git stash`;
 - a force-push without a pinned lease.
@@ -94,3 +95,5 @@ It skips its watcher checks while the user's last message contains "pause".
 ### `session-start` (enforces the always-on rules)
 
 It puts the always-on rules into context and writes `settings.env`. It also points `~/.mergeworthy/current` at the installed version, the stable path watchers use.
+
+**`pre-agent-dedupe`** (every `Agent` and `delegate_task` launch) registers the job under the ticket files its prompt names and blocks a second launch of the same job. `agent-job list` shows the registered jobs; `agent-job done <ticket>` releases one, only once its agent's task is terminal and its result is read.

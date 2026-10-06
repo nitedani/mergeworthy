@@ -197,5 +197,24 @@ wait_guard() { # command background(true|false)
 check "BLOCK: a foreground until-sleep loop" 2 "$(wait_guard 'until [ -s out.md ]; do sleep 20; done; cat out.md' false)"
 check "the same loop in the background passes" 0 "$(wait_guard 'until [ -s out.md ]; do sleep 20; done; cat out.md' true)"
 check "a plain sleep passes" 0 "$(wait_guard 'sleep 2; ls' false)"
+# ---------- pre-agent-dedupe: one agent per job ----------
+launch() { # task text
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":sys.argv[1],"title":"t"}}))' "$1" \
+    | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; echo $?
+}
+check "first launch of a ticket passes" 0 "$(launch 'Execute the ticket at /tmp/x/ticket-check.md exactly')"
+check "BLOCK: a second launch of the same ticket" 2 "$(launch 'Retry: execute /tmp/x/ticket-check.md')"
+check "another ticket passes" 0 "$(launch 'Execute /tmp/x/other.md')"
+python3 "$R/bin/agent-job" done /tmp/x/ticket-check.md >/dev/null
+check "after agent-job done the ticket launches again" 0 "$(launch 'Execute /tmp/x/ticket-check.md')"
+# ---------- pre-bash-guard: never kill a running agent ----------
+printf '#!/bin/sh\nsleep 600\n' > "$T/claude"; chmod +x "$T/claude"
+"$T/claude" --output-format stream-json >/dev/null 2>&1 & APID=$!
+sleep 600 >/dev/null 2>&1 & OPID=$!
+sleep 0.3
+kill_guard() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"kill "+sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$T" | python3 "$R/hooks/pre-bash-guard.py" 2>/dev/null; echo $?; }
+check "BLOCK: kill of an agent's claude process" 2 "$(kill_guard $APID)"
+check "kill of an ordinary process passes" 0 "$(kill_guard $OPID)"
+kill $(ps -o pid= --ppid $APID) $APID $OPID 2>/dev/null
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]
