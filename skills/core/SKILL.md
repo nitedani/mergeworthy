@@ -74,7 +74,7 @@ Every PR, whatever its tier, goes through `converge`'s pipeline: a Loop A agent 
     - Copy each claim of an accepted proposal into `acceptance.md`.
     - Dropping or deferring any item needs the user's OK first, never after.
     - If a recorded decision or an accepted claim turns out not to work, ask with the blocker's evidence and your recommendation before building the alternative.
-9. **Respect decision authority.** Record each maintainer request with its link and date. Do it as asked, or ask back with a recommendation; never decide otherwise and inform.
+9. **Respect decision authority.** Record each maintainer request with its link and date. Do it as asked, or ask back with a recommendation; never decide otherwise and inform. A security or bug fix closes only the hole: a change to what a legitimate user sees or can do (a field made read-only, a value now rejected that the UI sends) is the owner's product decision, so it goes to its own issue with options and a recommendation, not into the fix.
     - The newest statement on a subject wins. Re-read the thread before citing anyone.
     - "The rest LGTM" agrees to every unquestioned proposal in the comment it answers: record those proposals as agreed and start.
     - A question is never a decision.
@@ -121,7 +121,7 @@ Every PR, whatever its tier, goes through `converge`'s pipeline: a Loop A agent 
     - **Comments:** at most one line, literally true, stating a constraint the code can't show. No links to source, and no comparison with the old code ("instead of", "now", "no longer"). Names follow their siblings.
     - **Deletions:** every comment, guard or workaround the diff deletes gets one line in the body with the evidence that it's obsolete; otherwise it stays.
     - **A test app imports the package by its name,** never by a source path.
-    - **Draft, then ready.** Open the PR as a draft until its tier's steps hold on the head; `pre-bash-guard` blocks marking it ready until `pr-steps` has recorded its review and refactor pass. Then mark it ready and say "ready" once (1.7).
+    - **Draft, then ready.** Open the PR as a draft until its tier's steps hold on the head; `pre-bash-guard` blocks marking it ready until `pr-steps` has recorded its review and refactor pass. Then mark it ready and say "ready" once (1.7). A merged PR's branch is deleted in the same step (`--delete-branch`).
 17. **Quality is made, checks confirm.** Every check (a review, a guardian, the posting gate, the fresh reader) has a step before it. That step is responsible for what the check checks: the build for the code, the writing for a post, the design for its shape.
     - Do that producing step to the check's standard, so the check comes back quickly with nothing.
     - A check's finding is a miss of its producing step: fix the instance, and note in the ledger what the producing step missed.

@@ -151,6 +151,9 @@ if kind == 'proposal' and words > 400 + extra:  # a design walkthrough (methodol
     findings.append(f"{words} words > {400 + extra} for a design answer or walkthrough (tables and code count): one decision per comment, verdict first, the full material in a linked document (1.6)")
 if kind == 'issue' and chars > 400:
     findings.append(f"{chars} characters > 400 for an issue (tables, code, images and URLs not counted): keep one finding")
+# a newcomer must see where it is and how to reproduce it (lexunit-ai/atotal_vagyon_borze#49 comment 6017184273)
+if kind == 'issue' and not re.search(r'!\[[^\]]*\]\(|<img(?![^>]*alt="(?:Claude|Agent)")[^>]*src=|<video|\.(?:png|jpe?g|gif|mp4|webm)\b', text, re.I) and not re.search(r'^#+\s*(how to (see|reproduce)|steps|reproduce)\b', text, re.I | re.M):
+    findings.append("an issue with no screenshot or video and no '### How to reproduce' steps: add what a newcomer needs to see where it is and reproduce it")
 if kind == 'inline' and sentences > 2:
     findings.append(f"{sentences} sentences > 2 for an inline comment")
 # maintainer notes must be classified

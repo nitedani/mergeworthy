@@ -5,7 +5,7 @@ description: "Implementing an issue or opening a PR: already fixed?, reproduce, 
 
 # Implementing a change
 
-From an issue or a problem to one merge-ready PR: steps 1 to 5 build the change, step 6 converges it with `converge`'s pipeline, and step 7 is the PR. Open it as a draft (`gh pr create --draft`) once step 5 holds, with step 7's body through the fast gate, so CI runs while it converges; the fresh reader's `CLEAN` gates the final body. A Tier ≥ M change (`core` 1.0) runs this once per PR.
+From an issue or a problem to one merge-ready PR: steps 1 to 5 build the change, step 6 converges it with `converge`'s pipeline, and step 7 is the PR. Open it as a draft (`gh pr create --draft`) with the first push of the branch, its body the problem on `main` through the fast gate, so no pushed branch sits without a PR and CI runs while it converges; once step 5 holds, the body becomes step 7's; the fresh reader's `CLEAN` gates the final body. A Tier ≥ M change (`core` 1.0) runs this once per PR.
 
 **The repo's `AGENTS.md` / `CLAUDE.md` governs how the code is written;** everything else particular to the repo is in its project file (`core` 1.3).
 
