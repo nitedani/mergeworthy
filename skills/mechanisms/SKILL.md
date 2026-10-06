@@ -74,6 +74,7 @@ It blocks:
 - `--delete-branch` while PRs are based on the branch;
 - a `git commit` whose author isn't the pushing GitHub account (1.7);
 - `pkill -f` and `killall`;
+- a foreground wait loop (`until`/`while` with `sleep`); run it with `run_in_background` or rely on the completion notification;
 - a bare `git stash`;
 - a force-push without a pinned lease.
 

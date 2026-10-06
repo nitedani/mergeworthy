@@ -40,6 +40,10 @@ echo "holding: https://github.com/o/r/issues/1#issuecomment-9 $(date -u -d '+1 h
 check "a holding line whose ETA is ahead passes" 0 "$(stop "$WD")"
 echo "holding: https://github.com/o/r/issues/1#issuecomment-9 $(date -u -d '-1 hour' +%FT%TZ)" > "$WD/replies-owed.md"
 check "BLOCK: a holding line past its ETA is owed again" 2 "$(stop "$WD")"
+echo "drafting: https://github.com/o/r/issues/1#issuecomment-9 $(date -u -d '+1 hour' +%FT%TZ)" > "$WD/replies-owed.md"
+check "a drafting line whose ETA is ahead passes" 0 "$(stop "$WD")"
+echo "drafting: https://github.com/o/r/issues/1#issuecomment-9 $(date -u -d '-1 hour' +%FT%TZ)" > "$WD/replies-owed.md"
+check "BLOCK: a drafting line past its ETA is owed again" 2 "$(stop "$WD")"
 echo "o/r 1 comment 42 by someone" > "$WD/replies-owed.md"
 tr_file "README tidied."
 check "open owed line, cwd=parent of watch dir" 0 "$(stop "$T/work")"
@@ -185,5 +189,13 @@ printf '%s CI runs no tests.\n\n### How to reproduce\n\n1. Run the backend tests
 check "no screen: the command and output pass" 0 "$(ilint "$T/i4.md" 'evidence')"
 { printf '%s Who picks the payout account?\n\n### How to reproduce\n\n1. Open /invoices\n\n![list](/abs/list.png)\n\n### Options\n\n' "$B"; printf 'word %.0s' $(seq 120); echo; } > "$T/i5.md"
 check "a decision issue gets a word budget, not 400 characters" 0 "$(ilint "$T/i5.md" 'for an issue\|decision issue')"
+# ---------- pre-bash-guard: no foreground waits ----------
+wait_guard() { # command background(true|false)
+  python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1],"run_in_background":sys.argv[2]=="true"},"cwd":sys.argv[3]}))' "$1" "$2" "$T" \
+    | python3 "$R/hooks/pre-bash-guard.py" 2>/dev/null; echo $?
+}
+check "BLOCK: a foreground until-sleep loop" 2 "$(wait_guard 'until [ -s out.md ]; do sleep 20; done; cat out.md' false)"
+check "the same loop in the background passes" 0 "$(wait_guard 'until [ -s out.md ]; do sleep 20; done; cat out.md' true)"
+check "a plain sleep passes" 0 "$(wait_guard 'sleep 2; ls' false)"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]

@@ -255,6 +255,9 @@ try:
     segs = segments(cmd)
 except ValueError:
     segs = [cmd.split()]  # unbalanced quotes: check the raw words
+if re.search(r'\b(until|while)\b[^\n]*\bsleep\b', cmd) and not d.get('tool_input', {}).get('run_in_background'):
+    block('never wait in the foreground: the orchestrator keeps working while agents and builds run. Rely on the task-completion notification, '
+          'or run the wait with run_in_background (one notification when it ends)')
 has_cd = False
 run_dir = cwd  # where the command's git calls run: follows `cd <dir>` within the command
 for s in segs:

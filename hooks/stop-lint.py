@@ -92,8 +92,8 @@ if watcher_on and not paused:
         f = os.path.join(wd, 'replies-owed.md')
         owed = [l.strip() for l in open(f) if l.strip() and not l.startswith('#')] if os.path.exists(f) else []
         import datetime
-        def holding(l):  # `holding: <reply url> <ETA as ISO time>`: a holding reply was posted and its answer isn't due yet
-            m = re.match(r'holding:\s+\S+\s+(\S+)', l, re.I)
+        def holding(l):  # `holding: <reply url> <ETA>`: a holding reply was posted; `drafting: <comment url> <ETA>`: an agent drafts the answer; ETA is an ISO time
+            m = re.match(r'(?:holding|drafting):\s+\S+\s+(\S+)', l, re.I)
             try:
                 return bool(m) and datetime.datetime.fromisoformat(m.group(1).replace('Z', '+00:00')) > datetime.datetime.now(datetime.timezone.utc)
             except ValueError:
