@@ -44,6 +44,13 @@ echo "o/r 1 comment 42 by someone" > "$WD/replies-owed.md"
 tr_file "README tidied."
 check "open owed line, cwd=parent of watch dir" 0 "$(stop "$T/work")"
 check "open owed line, cwd=prefix sibling x-2" 0 "$(stop "$T/work/x-2/sub")"
+tr_cmd() { # a Bash command the session ran, then the final text
+  python3 -c 'import json,sys; print(json.dumps({"type":"user","message":{"content":"go"}})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","id":"t1","input":{"command":sys.argv[1]}}]}})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":"Done."}]}}))' "$1" > "$T/tr.jsonl"
+}
+tr_cmd "ls $WD && grep -n gate-pass notes.md"
+check "a session that only mentioned the watch dir doesn't own its owed replies" 0 "$(stop "$T/work")"
+tr_cmd "gate-pass $WD/drafts/r.md $WD/drafts/r.review.out"
+check "BLOCK: a session that gate-passed a draft there owns them" 2 "$(stop "$T/work")"
 kill "$SPID"; wait "$SPID" 2>/dev/null
 
 # ---------- pre-bash-guard check_turn ----------

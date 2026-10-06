@@ -65,7 +65,7 @@ for wd in (l.strip() for l in open(reg)) if os.path.exists(reg) else ():
     home_wd = wd.replace(os.path.expanduser('~'), '~', 1)
     def mentions(c): return wd in c or home_wd in c
     if wd and (cwd_d == wd or cwd_d.startswith(wd.rstrip('/') + '/') or any(map(mentions, monitor_cmds))
-               or any(mentions(c) and re.search(r'\b(gh-watch-start|gate-pass)\b', c) for c in commands)): own_dirs.add(wd)
+               or any(re.search(r'\b(gh-watch-start|gate-pass)\s+(--main\s+)?(\S*/)?(' + re.escape(wd) + '|' + re.escape(home_wd) + r')(/\S*)?(\s|$)', c) for c in commands)): own_dirs.add(wd)  # started or posted from there, not merely mentioned
 _env = os.path.expanduser('~/.mergeworthy/settings.env')
 # MERGEWORTHY_WATCHER in the environment wins over the plugin option, as for every script
 watcher_on = (os.environ.get('MERGEWORTHY_WATCHER') or ('off' if 'MERGEWORTHY_WATCHER=off' in (open(_env).read() if os.path.exists(_env) else '') else 'on')) != 'off'
