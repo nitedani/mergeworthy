@@ -32,7 +32,7 @@ A maintainer asked whether a design has holes. This answer gives them the result
 >
 > I'll come back when the fixes are in.
 
-Why it works: the verdict comes first, in one sentence. A design's limits (what it can't do) are linked as a short list; the bugs you'll fix are one line, and their details stay in your own tracking, because a maintainer doesn't need your backlog. A rejected alternative gets one line with its reason, so they see the thinking without having to weigh it. It asks nothing that isn't theirs to decide, and it says when you'll be back.
+Why it works: the verdict comes first. The design's limits are a linked short list; the bugs you'll fix are one line, because a maintainer doesn't need your backlog. A rejected alternative gets one line with its reason. It asks nothing that isn't theirs to decide, and says when you'll be back.
 
 ## What reads as machine-written, and the fix
 

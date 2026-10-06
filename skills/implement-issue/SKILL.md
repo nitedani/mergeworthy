@@ -114,7 +114,7 @@ Closes #N
 **Write it to be scanned.**
 - **The first sentence says what was wrong** in a user's words, not the mechanism.
 - **Plain sentences that say why, not only what**; one line per caption. The implementation belongs in the diff.
-- **Evidence in a skimmable shape:** a two-column before/after beats a transcript.
+- **Evidence in a skimmable shape:** a before/after table beats a transcript (for code with no UI, the request and the response, from a real run), with a permalink to the line that caused it.
 - **At most one closing caveat**, last, for the reviewer's decision. When a revert wouldn't undo the merge (a stored or wire format, a migration, a published name), that is the caveat.
 
 #### The walkthrough
