@@ -37,6 +37,7 @@ These rules hold when you edit a skill, prompt, rules file or AGENTS.md. Rules f
     - `Acceptance`: the commands or observations that define done.
 
   Never put in your opinion, the answer you expect, or earlier agents' conclusions: a guess goes under `To check`. The one exception is a previous round's report, given to an agent that re-rates it.
+- **An agent ends its turn only with its result.** A turn ended while its own install or test still runs never reports back, and a process it finds later is its own leftover: it checks with `ps` and kills it by PID, never waits on it. Long installs skip postinstall downloads (`--ignore-scripts`) when the browsers or binaries are already cached.
 - **A brief from a skill** has its `<...>` placeholders filled with the specifics, and points the agent at pinned SHAs, never a moving branch.
 - **A charter or prompt from a skill is pasted from the installed skill** each time you write the brief (in Claude Code, `~/.mergeworthy/current/skills/`). A copy saved earlier in your work folder drifts from it.
 - **What the agent returns:** the result with evidence (`path:line`, or the command and its exit code), and a `not_checked` list. An unchecked item or a deviation is yours to decide; never send the same brief again.
