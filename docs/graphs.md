@@ -12,7 +12,7 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 | `design-loop` | `implement-issue`, `core`, `review`, `github-threads`, `converge` |
 | `evidence` | nothing |
 | `finality` | nothing |
-| `github-threads` | `converge`, `review`, `refactor`, `core`, `implement-issue` |
+| `github-threads` | `converge`, `review`, `refactor`, `core`, `implement-issue`, `finality` |
 | `guardian` | `delegating`, `converge`, `design-loop` |
 | `implement-issue` | `evidence`, `finality`, `guardian`, `design-loop`, `converge`, `core`, `open-issue` |
 | `mechanisms` | nothing |
@@ -117,6 +117,7 @@ flowchart TB
   s1 -.-> r3[["refactor"]]
   s1 -.-> r4[["core"]]
   s2 -.-> r5[["implement-issue"]]
+  s2 -.-> r6[["finality"]]
   subgraph g1["1.6 Posting gate"]
     s5["1. Write it the way it<br/>should end up"]
     s6["2. Run post-lint"]
@@ -128,7 +129,7 @@ flowchart TB
     s9["5. Post in the thread where<br/>the person wrote"]
     s8 --> s9
   end
-  s7 -.-> r6[["review"]]
+  s7 -.-> r7[["review"]]
   start --> g0
   g0 ~~~ g1
 ```
@@ -346,13 +347,13 @@ flowchart TB
   g0 ~~~ g1
 ```
 
-## Code drifted through many patches; stuck with every option costing something ruled out; asked for the ideal design (brainstorm, perfect world, pinnacle)
+## Code drifted through many patches; a design thread drifted over many rounds; stuck with every option costing something ruled out; asked for the ideal design (brainstorm, perfect world, pinnacle)
 
 Opens `mergeworthy:finality` (the finality pass).
 
 ```mermaid
 flowchart TB
-  start(["Code drifted through<br/>many patches; stuck with<br/>every option costing<br/>something ruled out;<br/>asked …"])
+  start(["Code drifted through<br/>many patches; a design<br/>thread drifted over many<br/>rounds; stuck with …"])
   start --> g0
 ```
 

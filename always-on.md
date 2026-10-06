@@ -16,7 +16,7 @@ These rules apply in every session. Open a skill when its moment comes, not befo
 | Bug verification, reproduce-only | `mergeworthy:verify` | Loop A (bug verification) |
 | Bloat and quality rounds | `mergeworthy:guardian` | the LeanKeeper charter (the guardian's audit rules), Loop B (bloat and quality) |
 | The refactor pass | `mergeworthy:refactor` | the pinnacle split + simplify prompt |
-| Code drifted through many patches; stuck with every option costing something ruled out; asked for the ideal design (brainstorm, perfect world, pinnacle) | `mergeworthy:finality` | the finality pass |
+| Code drifted through many patches; a design thread drifted over many rounds; stuck with every option costing something ruled out; asked for the ideal design (brainstorm, perfect world, pinnacle) | `mergeworthy:finality` | the finality pass |
 | Any independent review | `mergeworthy:review` | who reviews, the reviewer charter |
 | A rule failed, or the user names a failure | `mergeworthy:past-failures` | the table of past failures and the rule for each |
 | Using or fixing the scripts and hooks | `mergeworthy:mechanisms` | the watcher, the hooks, `gate-pass`, `post-lint`, `pr-steps` |
