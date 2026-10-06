@@ -420,26 +420,29 @@ flowchart TB
   subgraph g3["gate-pass"]
     s3["gate-pass"]
   end
-  subgraph g4["pr-steps"]
-    s4["pr-steps"]
+  subgraph g4["The finality trigger"]
+    s4["The finality trigger"]
   end
-  subgraph g5["The watcher daemon"]
-    s5["The watcher daemon"]
+  subgraph g5["pr-steps"]
+    s5["pr-steps"]
   end
-  subgraph g6["Hooks"]
-    s6["Hooks"]
+  subgraph g6["The watcher daemon"]
+    s6["The watcher daemon"]
   end
-  subgraph g7["pre-bash-guard.py"]
-    s7["pre-bash-guard.py"]
+  subgraph g7["Hooks"]
+    s7["Hooks"]
   end
-  subgraph g8["post-bash-register.py"]
-    s8["post-bash-register.py"]
+  subgraph g8["pre-bash-guard.py"]
+    s8["pre-bash-guard.py"]
   end
-  subgraph g9["stop-lint.py"]
-    s9["stop-lint.py"]
+  subgraph g9["post-bash-register.py"]
+    s9["post-bash-register.py"]
   end
-  subgraph g10["session-start"]
-    s10["session-start"]
+  subgraph g10["stop-lint.py"]
+    s10["stop-lint.py"]
+  end
+  subgraph g11["session-start"]
+    s11["session-start"]
   end
   start --> g0
   g0 ~~~ g1
@@ -452,4 +455,5 @@ flowchart TB
   g7 ~~~ g8
   g8 ~~~ g9
   g9 ~~~ g10
+  g10 ~~~ g11
 ```

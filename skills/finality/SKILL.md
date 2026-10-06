@@ -9,7 +9,7 @@ description: "The finality pass, for code that has drifted through many patches,
 - The work reshapes existing code rather than changing what it does, or a change you meant to make small cannot be made cleanly because the area has taken too many patches.
 - You're stuck: every option you have costs something the user ruled out (a regression, a hack), or two fixes in the same area haven't held. Run it before bringing options to the user.
 - Someone asks for the ideal design: brainstorming, "in a perfect world", the pinnacle or optimal shape.
-- A design discussion has drifted: three or more rounds of proposals, or each reply answers only the latest idea. Run it before the next reply, which then states the whole design as its invariants and asks the other side to confirm each one, so both converge on one design instead of trading ideas.
+- A design discussion has drifted: three or more rounds of proposals, or each reply answers only the latest idea. Run it before the next reply, which then states the whole design as its invariants and asks the other side to confirm each one, so both converge on one design instead of trading ideas. The third proposal on a thread is enforced: `pre-bash-guard` blocks it until the thread map `<artifact root>/maps/<owner>-<repo>-<number>.md` is newer than the last proposal.
 
 **Who runs each phase:**
 - **Phases A and B are analysis.** The main session starts their agents: the mappers, then Phase B's branch agents and its converging agent. Each is the reviewer (`review`) or a fresh-context subagent, never the author's context, and does its share itself. Phase B's agents (the prompt's branches and its "strongest-model agent") run on the session's own model, never one above the default tier (`core`, the task).

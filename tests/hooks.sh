@@ -138,6 +138,28 @@ check "gh --help on a comment command" none \
   "$(register "gh issue comment 5 --repo o/r --help" "$U5")"
 kill "$SPID"; wait "$SPID" 2>/dev/null
 
+# ---------- finality trigger: the third proposal on a thread needs a thread map ----------
+AR="$T/art"; mkdir -p "$AR/drafts/r1" "$AR/maps"
+rm -f "$HOME/.claude/proposal-rounds.txt"
+prop() { # n: a gated proposal draft, as gate-pass leaves it
+  printf 'Proposal %s\n' "$1" > "$AR/drafts/r1/p$1.md"; sha256sum "$AR/drafts/r1/p$1.md" | cut -d' ' -f1 > "$AR/drafts/r1/p$1.md.gate"
+  echo "--kind proposal --repo o/r --parent none" > "$AR/drafts/r1/p$1.md.lint"
+}
+pguard() { # n -> exit code of the pre-bash-guard on posting proposal n to o/r#9
+  python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh issue comment 9 --repo o/r --body-file "+sys.argv[1]},"cwd":sys.argv[2]}))' "$AR/drafts/r1/p$1.md" "$T" \
+    | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?
+}
+pposted() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh issue comment 9 --repo o/r --body-file "+sys.argv[1]},"tool_response":{"stdout":"https://example.invalid/x"}}))' "$AR/drafts/r1/p$1.md" \
+    | python3 "$R/hooks/post-bash-register.py"; }
+for n in 1 2 3; do prop $n; done
+check "the 1st proposal passes" 0 "$(pguard 1)"; pposted 1
+check "the 2nd proposal passes" 0 "$(pguard 2)"; pposted 2
+check "BLOCK: the 3rd proposal without a thread map" 2 "$(pguard 3)"
+grep -o 'maps/[^ ]*' "$T/err" | head -1
+touch -d '+1 minute' "$AR/maps/o-r-9.md"
+check "the 3rd proposal with a fresh map passes" 0 "$(pguard 3)"
+touch -d '-1 hour' "$AR/maps/o-r-9.md"
+check "BLOCK: a map older than the last proposal" 2 "$(pguard 3)"
 # ---------- post-lint: each list item is its own sentence ----------
 B='<img src="https://github.com/claude.png" width="20" height="20" align="left" alt="Claude"> **Claude:**'
 lint() { python3 "$R/bin/post-lint" "$1" --kind issue --parent none 2>&1 | grep -c 'word sentence'; }

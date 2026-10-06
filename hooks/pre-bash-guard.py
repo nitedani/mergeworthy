@@ -147,6 +147,28 @@ def check_turn(repo, num, args=()):
           "at most two comments in a row; after 3 hours without a reply, the wait ping may follow (mergeworthy:github-threads 1.6)")
 
 
+def check_finality(repo, num, files):
+    """A design thread that has had two proposal rounds needs the finality pass's thread map before the third (mergeworthy:finality).
+    post-bash-register counts posted `--kind proposal` drafts per thread in ~/.claude/proposal-rounds.txt; the map is
+    <artifact root>/maps/<owner>-<repo>-<number>.md (the root holds drafts/), and must be newer than the last proposal."""
+    if not repo or not str(num).isdigit(): return
+    log = os.path.expanduser('~/.claude/proposal-rounds.txt')
+    rounds = [int(l.split()[1]) for l in open(log) if l.split()[:1] == [f'{repo}#{num}']] if os.path.exists(log) else []
+    if len(rounds) < 2: return
+    for f in files:
+        f = os.path.expandvars(os.path.expanduser(f[5:] if f.startswith('body=') else f)).lstrip('@')
+        f = f if os.path.isabs(f) else os.path.join(cwd, f)
+        try: flags = open(f + '.lint').read().split()
+        except OSError: continue
+        if flags[flags.index('--kind') + 1:][:1] != ['proposal']: continue
+        root = f
+        while root != '/' and os.path.basename(root) != 'drafts': root = os.path.dirname(root)
+        root = os.path.dirname(root) if root != '/' else os.path.dirname(os.path.dirname(f))
+        m = os.path.join(root, 'maps', f"{repo.replace('/', '-')}-{num}.md")
+        if os.path.exists(m) and os.path.getmtime(m) > rounds[-1]: continue
+        block(f"{repo}#{num} has had {len(rounds)} proposal rounds: run the finality pass (mergeworthy:finality, 'a design discussion has drifted') before this reply, "
+              f"write its thread map with the invariants list to {m} (newer than your last proposal), and let this reply state the whole design as those invariants")
+
 def cwd_repo(run_dir):
     import subprocess
     url = subprocess.run(['git', '-C', run_dir, 'remote', 'get-url', 'origin'], capture_output=True, text=True).stdout.strip()
@@ -236,6 +258,8 @@ def check(t, has_cd):
             if sub == 'comment' and '--edit-last' not in rest:
                 num = next((x for x in rest if x.isdigit()), None)
                 check_turn((opt(rest, ['--repo', '-R']) or [None])[-1] or cwd_repo(run_dir), num, rest)
+            if sub in ('comment', 'review'):
+                check_finality((opt(rest, ['--repo', '-R']) or [None])[-1] or cwd_repo(run_dir), next((x for x in rest if x.isdigit()), None), files)
             for f in files: gated_file(f, has_cd, create=sub in ('comment', 'create', 'review'))
     if p == 'gh' and a and a[0] == 'api':
         rest = a[1:]
@@ -257,7 +281,7 @@ def check(t, has_cd):
         m = re.fullmatch(r'/?repos/([\w.-]+/[\w.-]+)/(?:issues|pulls)', ep)
         if m and method == 'POST': need_watch(m.group(1))
         c = re.fullmatch(r'/?repos/([\w.-]+/[\w.-]+)/issues/(\d+)/comments', ep)
-        if c and method == 'POST': check_turn(c.group(1), c.group(2), rest)
+        if c and method == 'POST': check_turn(c.group(1), c.group(2), rest); check_finality(c.group(1), c.group(2), bodies + inputs)
         for f in bodies + inputs: gated_file(f, has_cd, create=method == 'POST')
 
 try:

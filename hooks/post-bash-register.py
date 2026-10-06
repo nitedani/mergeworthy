@@ -2,7 +2,7 @@
 """Claude Code PostToolUse hook (matcher: Bash). A thread you just posted in (a new issue or PR, a comment, a review)
 joins the threads.txt of the watcher that covers its repo, else of the first live watcher, so maintainer comments on
 it are answered (mergeworthy:github-threads)."""
-import json, os, re, shlex, sys
+import json, os, re, shlex, sys, time
 d = json.load(sys.stdin)
 cmd = d.get('tool_input', {}).get('command', '')
 r = d.get('tool_response') or {}
@@ -88,6 +88,24 @@ def register_posted(out):
             body = r.stdout[:-1] if r.stdout.endswith('\n') else r.stdout
             open(gated, 'a').write(hashlib.sha256(body.replace('\r\n', '\n').strip().encode()).hexdigest() + '\n')
 register_posted(out)
+# Count a posted design proposal per thread (pre-bash-guard asks for a finality map from the third on)
+def body_files(t):
+    a = prog(t)
+    return [a[i + 1] for i in range(len(a) - 1) if a[i] in ('--body-file', '-F', '--field', '--input')] + \
+        [x.split('=', 1)[1] for x in a if x.startswith('--body-file=')]
+for s in segments(cmd):
+    tg = target(s)
+    if not tg or not tg[0] or not tg[1]:
+        continue
+    for f in body_files(s):
+        f = os.path.expanduser(f[len('body='):] if f.startswith('body=') else f)
+        f = f[1:] if f.startswith('@') else f
+        try:
+            flags = open(f + '.lint').read().split()
+        except OSError:
+            continue
+        if flags[flags.index('--kind') + 1:][:1] == ['proposal'] and os.path.exists(f + '.posted'):
+            open(os.path.expanduser('~/.claude/proposal-rounds.txt'), 'a').write(f'{tg[0]}#{tg[1]} {int(time.time())}\n')
 reg = os.path.expanduser('~/.claude/gh-watch-dirs.txt')
 dirs = [l.strip() for l in open(reg)] if os.path.exists(reg) else []
 def lines(dr, f):

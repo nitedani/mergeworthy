@@ -42,6 +42,10 @@ These scripts enforce the rules that failed as text alone.
 - It records the pass as the draft's sha256 in `<draft>.gate`.
 - A draft that promises work ("I'll", "follow-up PR") first needs a `PROMISED … (<draft name>)` line in `proposals-open.md`.
 
+### The finality trigger (`pre-bash-guard`, `post-bash-register`)
+
+`post-bash-register` counts each posted `--kind proposal` draft per thread in `~/.claude/proposal-rounds.txt`. From the third proposal on a thread, `pre-bash-guard` blocks the post until `<artifact root>/maps/<owner>-<repo>-<number>.md`, the finality pass's thread map with its invariants, is newer than the last proposal.
+
 ### `pr-steps` (enforces 1.7)
 
 `pr-steps review <reviewer output>` and `pr-steps refactor <rating output>` record, on the final head, that the step ran.
