@@ -5,7 +5,7 @@ description: "The refactor pass on a PR's diff: the pinnacle-split-and-simplify 
 
 # Refactor pass
 
-**Who rates, and when:** the Loop B agent, right after its review, in the same prompt (`converge`, pipeline step 2). Its last re-rating on the final head is what `pr-steps refactor` records. With no reviewer available at all, run the prompt yourself in two separate passes (rate, then edit), and record that.
+Have the Loop B agent rate after its review and record its final re-rating (`converge`, step 2). If no independent rater is available, keep the PR draft and record the block (`review`).
 
 ## The prompt
 
@@ -56,11 +56,11 @@ Refactor this PR:
 
 ## Running it
 
-- **The rater is not the author**, and not in the author's context; the one exception is having no reviewer at all (above). The rater rates read-only.
+- **Keep the rater independent of the author** (`review`, Reviewer charter); it rates read-only.
 - **The author implements commit by commit** (in a guardian round, `guardian`'s implementer does). Then the same rater, sent the commits, re-rates old ⇒ new.
 - **Scope:** everything the diff touches, at 100% coverage. Code outside the diff is context.
-- **Gates after every commit.** A red gate means fix that commit, never a patch on top.
+- **Run quick gates after every commit** (`converge`, Gates, lanes, flakes, evidence). A red gate means fix that commit, never a patch on top.
 - **Refactor commits are separate from behavior commits.**
 - **A pass that changed nothing** says so, and why.
 - **Each run's proof goes in the PR body, its full lists in a gist** (`converge` step 5, the evidence).
-- **The pass goes stale.** The pass belongs to the PR as it is now, not to the head it first ran on. When later commits (maintainer requests included) change more than ~80 lines, re-run it on the whole PR diff before the next "Done" reply, and replace the lists. The watcher prints `### REFACTOR STALE` when that happens.
+- **The pass goes stale.** The pass belongs to the PR as it is now, not to the head it first ran on. When net additions plus deletions since the last full rating pass exceed 80 lines, including tests and lockfiles, re-run it on the whole PR diff before the next "Done" reply, and write new lists under a unique pass ID, updating the ledger’s active link. Check the whole-tree count before carrying a pass; the watcher’s `### REFACTOR STALE` counts production lines per commit.

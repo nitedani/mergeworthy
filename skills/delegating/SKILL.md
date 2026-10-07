@@ -16,7 +16,7 @@ These rules hold when you edit a skill, prompt, rules file or AGENTS.md. Rules f
 - **State the behavior you want** ("write one-line comments"), not only the one you don't. Keep a "never" for hard guardrails, and pair it with what to do instead.
 - **No self-assessed opt-outs** ("skip on small fixes"). A missing precondition is a hard stop.
 - **A cold read after any cut.** A fresh-context agent reads the file cold and lists every sentence it can't act on. Fix those sentences.
-- **Commit and push every change** to a mergeworthy skill or mechanism, to its repo, in the same step. The plugin's auto-update brings the change to every machine. Never edit an installed or running copy.
+- **Commit and push every change** to a mergeworthy skill or mechanism, to its repo, in the same step. Update each installed agent through its installation mechanism and verify the installed version before claiming the rule is fixed there (README, Install). Never edit an installed or running copy.
 
 ## 1.10 Integrating agents' work
 
@@ -46,8 +46,8 @@ These rules hold when you edit a skill, prompt, rules file or AGENTS.md. Rules f
     - pick a different approach than the plan (it stops and reports why the plan is wrong instead);
     - call something unused before finding every caller (`grep -rn`) and reading the comment above it;
     - say a step ran when it couldn't (it stops and says what blocked it).
-    - start agents of its own (it does the work itself), or end its turn while work it started is still running.
-- **One run is one agent with one prompt.** Briefs that share a context (review, then refactor ratings) go in that prompt, in order. Later work on the same thing (confirming fixes, re-rating) continues that agent: in Claude Code, `SendMessage` to its agent id; for Codex, `codex exec resume -c sandbox_mode=danger-full-access <session id> "<what changed>"` (the id `codex exec` printed, never `--last`; resume has no `--sandbox` flag). A new agent re-reads everything.
+    - start agents of its own (it does the work itself).
+- **One run is one agent with one prompt.** Group roles reading one artifact in one loop, in order, each writing its own output file. Split only for context limits or independence: authors never review themselves, and fresh readers haven't seen the fixes. Later work on the same thing (confirming fixes, re-rating) continues that agent: in Claude Code, `SendMessage` to its agent id; for Codex, `codex exec resume -c sandbox_mode=danger-full-access <session id> "<what changed>"` (the id `codex exec` printed, never `--last`; resume has no `--sandbox` flag). A new agent re-reads everything.
 - **Before using its result,** open two or three of its cited `path:line`s, re-run one command, or diff the result against your plan.
 - **A long job gets a time budget in its brief, and an early check.** Read its first output within half an hour. Confirm the numbers can be used (a benchmark alone on the machine, warmed up, comparing like with like) before it runs the rest. Past its budget, stop it or extend it deliberately.
-- **A subagent that writes a PR** follows the mergeworthy skills, not a summary of them: open `merging` (1.7) for what its prompt must name and what its report lists.
+- Have a PR implementer run the full assigned skills and return each step’s evidence (`merging` 1.7).

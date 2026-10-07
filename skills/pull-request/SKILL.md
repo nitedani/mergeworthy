@@ -5,13 +5,13 @@ description: "Any change you'll open a PR for, from an issue or not: already fix
 
 # Implementing a change
 
-From an issue or a problem to one merge-ready PR. Open one only when the change blocks something you ship, and say what in its first lines. Steps 1 to 5 build the change, step 6 converges it with `converge`'s pipeline, and step 7 is the PR. Open it as a draft (`gh pr create --draft`) with the branch's first push after step 3 passes, its body the problem on `main` through the fast gate, so CI runs while it converges; the fresh reader's `CLEAN` gates step 7's final body. A Tier ≥ M change (`core` 1.0) runs this once per PR.
+From an issue or a problem to one merge-ready PR. Open PRs within the task’s publishing authority and give every found defect a disposition (`core` 1.1.7); start the body with the user’s problem (`writing`). Steps 1 to 5 build the change, step 6 converges it with `converge`'s pipeline, and step 7 is the PR. Open it as a draft (`gh pr create --draft`) with the branch's first push after step 3 passes, its body the problem on `main` through the fast gate, so CI runs while it converges; the fresh reader's `CLEAN` gates step 7's final body. A Tier ≥ M change (`core` 1.0) runs this once per PR.
 
 **The repo's `AGENTS.md` / `CLAUDE.md` governs how the code is written;** everything else particular to the repo is in its project file (`core` 1.3).
 
-**A repo's own `.claude/skills/pull-request/SKILL.md` wins over this skill.** Read it on `origin/<base>` first. The exceptions are where `core`, `github-threads` or `merging` say otherwise: usage limits (1.1.13), found defects (1.1.7), and process staying out of the thread.
+**A repo’s own `.claude/skills/pull-request/SKILL.md` governs implementation steps.** Read it on `origin/<base>` first; `core`, `github-threads`, `merging`, `converge`, `review`, and `writing` retain ownership of their rules.
 
-**Work in a worktree off `<base>`** (the project file names it): `git fetch origin && git worktree add -b <branch> <artifact root>/<branch> origin/<base>`. In CI, read the project file's CI section first.
+**Work in a worktree off `<base>`** (the project file names it): `git fetch origin && git worktree add -b <branch> <artifact root>/<branch> origin/<base>`. In CI, read the project file’s Gates section and the repository’s CI configuration first.
 
 **Check you can finish before you start**, both halves up front:
 - **Browser control** (UI or runtime work), set up and tried per `evidence`.
@@ -19,7 +19,7 @@ From an issue or a problem to one merge-ready PR. Open one only when the change 
 
 **Install whatever doesn't need root** (a browser, the MCP server, the stack, the data; the project file has the commands). For anything that needs root, stop: the first thing in your reply is the exact steps, in order, with the commands to run.
 
-**Everything this skill posts passes the posting gate** (1.6): everything it posts (1.6 lists them).
+**Gate every post and edit from this procedure** (`github-threads` 1.6).
 
 ### 1. Check it is not already fixed
 
@@ -37,7 +37,7 @@ If the tracker was migrated, commits cite the old number, which the issue body n
 
 ### 2. Prove the problem exists
 
-Reproduce it per `evidence` in the running app (step 5 starts one), then comment it on the issue: what you did and what you saw, with its screenshot or video. If you cannot reproduce it, comment what you tried and what happened, and stop.
+Reproduce it per `evidence` in the running app (use the project file’s Running the app → Preflight and Start before reproducing), then comment it on the issue: what you did and what you saw, with its screenshot or video. If you cannot reproduce it, comment what you tried and what happened, and stop.
 
 **When the cause isn't obvious, build a red loop before a theory:** one fast, repeatable command that goes red on the reported symptom (a failing test, a curl, a script that drives the browser), then probe one change at a time.
 
@@ -46,7 +46,7 @@ For a feature, capture the current state as the before shot and settle what "don
 ### 3. Find an approach that rates high, or stop
 
 List the distinct problems the change must solve. Then rate each candidate approach 0–10 on how confident you are that it is the obviously right approach (not on implementation quality):
-- **Generate two or three before rating any**, peers read first (1.1.5), including *not building it*, from a brief naming no preferred answer (for someone else's library or API, from finality's Phase B branches).
+- **Generate two or three before rating any**, peers read first (1.1.5), including *not building it*, from a neutral brief (`delegating` 1.10); for someone else's library or API, use finality's Phase B branches.
 - **Rate as the code's owner, for all its users:** fixing a bug they all share is not a cost.
 - **Leave the frame:** invert it, or delete what everyone treats as immovable.
 - **Shared assumptions count once.** Candidates resting on the same unspoken assumption count as one.
@@ -61,11 +61,11 @@ List the distinct problems the change must solve. Then rate each candidate appro
 
 **The smallest diff that finishes the job:** schema, API, every call site, every locale.
 - **The gates are in the project file.** The exit code is the verdict, not your reading of the output.
-- **At most one regression test**, in an existing suite. Its expected value comes from outside the code: a literal, the issue, a worked example. Never recompute it the way the code computes it, and never take a snapshot of the code's own output.
+- Keep permanent tests in existing suites within the repo’s habit and the per-capability limit, including deterministic stream-health probes (`core` 1.1.11 and 1.1.16). Expected values come from outside the implementation: a literal, the issue, or a worked example; never recompute them with the same algorithm or snapshot the code’s own output.
 
-**Write it with the guardian's lenses from the first line.** Before writing, open `guardian` for its charter and `design-loop` for 1.4.1. The code has deep modules, no speculative surface, no defensive branch for an unreachable state, and no duplicate intent. Its comments are terse and literally true, and its names don't confess mixed responsibility. Before the review round, read your own diff through those lenses and fix what they catch.
+**Write it with the guardian's lenses from the first line.** Before writing, open `guardian` for its charter and `design-loop` for 1.4.1. Build deep modules with clean seams (`design-loop` 1.4.1). Keep speculative surface, unreachable defenses and duplicate intent out (`guardian`, BLOAT). Write terse, literally true comments (`writing`), and give each thing a name that reflects one responsibility. Before the review round, read your own diff through those lenses and fix what they catch.
 
-The guardian checks; it isn't where the code gets its shape. A guardian round that finds design work means this step was skipped.
+Write the code to the guardian’s standard before its review (`core` 1.1.17).
 
 **Build the whole interaction, not the happy path.** Someone will finish the task, change their mind, go back, reload, mistype, use the keyboard, leave halfway. Anything that would make them wonder what happened is a defect, whether or not the ticket mentioned it.
 
@@ -75,13 +75,13 @@ The guardian checks; it isn't where the code gets its shape. A guardian round th
 
 ### 5. See it in the browser
 
-The project file's preflight starts what is missing, isolated from everyone else's.
+Run the project file’s Preflight, then its isolated Start command.
 
 **Capture "before" by reverting only your own files** (`git checkout origin/<base> -- <files>`), then restore them (`git checkout HEAD -- <files>`); never amend or force-push to fake it.
 
 **Then use it as a user for five minutes,** around your change, not only the path you fixed, as each role it renders for. Fix what your change caused; anything else you trip over gets a disposition (1.1.7), and an issue is opened per `open-issue`.
 
-Tear the stack down when done or aborted.
+Stop the stack’s processes when done or aborted (`core` 1.8).
 
 #### UI and runtime work
 
@@ -108,7 +108,7 @@ Closes #N
 
 `Closes #N` only if the change fixes what the issue reported; otherwise `Refs #N`, leave it open, and comment your findings there.
 
-**Write it by `mergeworthy:writing`** (open it), with this template's form winning where they differ. The implementation belongs in the diff; with no UI, the evidence is the request and response from a real run; a hot path, transport or stream change shows the 1.1.11 benchmark (the repo's own if any). When a revert wouldn't undo the merge (a stored or wire format, a migration, a published name), that is the one caveat.
+**Write its prose by `writing` and keep the body’s template form** (`writing`, opening precedence). Show real requests and responses for non-UI changes (`evidence`) and benchmarks for hot paths, transports and streams (`writing`). Close with the caveat when a revert cannot undo the merge (`writing`).
 
 #### The walkthrough
 
@@ -141,4 +141,4 @@ One gated draft per comment (`post-lint --kind inline`):
 gh api repos/<owner>/<repo>/pulls/<N>/comments -F body=@<abs>/drafts/<name>.md -f commit_id=<head sha> -f path=<path> -F line=42 -f side=RIGHT
 ```
 
-**Every sentence in the body is a claim.** "Unchanged", "every call site", "all locales" need a diff behind them, and a later push can turn a caption into a lie: re-check the body after every push.
+Re-check every body claim and caption against its evidence after each push (`writing`).

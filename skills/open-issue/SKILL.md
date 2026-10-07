@@ -5,7 +5,7 @@ description: "Opening an issue: already filed?, reproduced first, one finding a 
 
 # Opening an issue
 
-One finding that a newcomer can find, reproduce and judge without asking you. When a defect becomes an issue is 1.1.7's call; a change to what a legitimate user sees or can do becomes a decision issue (1.1.9); an umbrella (`Tracking: <goal>`) follows 1.2, Tier L.
+Show one finding a newcomer can find, reproduce and judge (`writing`). When a defect becomes an issue is 1.1.7's call; a change to what a legitimate user sees or can do becomes a decision issue (1.1.9); an umbrella (`Tracking: <goal>`) follows 1.2, Tier L.
 
 1. **Already filed or fixed?** `gh issue list --state all --search "<keyword>"` and `git log --oneline origin/<base> -- <the files>`. An existing issue gets your finding as a comment, not a twin; a fix already on `<base>` gets no issue.
 2. **Reproduce it on today's `<base>`** per `evidence`, from a clean start. Trace both ends: where it starts in the code, and where a user meets it. What you can't reproduce isn't filed.
@@ -23,6 +23,6 @@ One finding that a newcomer can find, reproduce and judge without asking you. Wh
    ![](/abs/path/flow.mp4)
    ```
 
-   - **The evidence, per `evidence`:** a screenshot when one screen shows it, a video of the whole flow when reaching it takes more than one action, the request and the response when no screen does.
+   - Capture the evidence as a screenshot, a video of the flow, or the request and response, according to what shows the behavior (`evidence`, Capture it).
    - **A decision issue** adds `### Options`: what a user sees under each, then your recommendation and its reason. It keeps How to reproduce and the evidence, because the reader decides on a behavior they must see.
 4. **Post it through the gate** (1.6, `post-lint --kind issue`), with a watcher covering the repo (1.5). Say it's filed only once the evidence shows in the posted body.

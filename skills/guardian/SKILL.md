@@ -5,26 +5,26 @@ description: "Guardian rounds on a PR (bloat and quality, part of Loop B in conv
 
 # Guardian rounds
 
-Guardian rounds are the quality half of Loop B in `converge`'s pipeline (step 2): repeated rounds that find bloat and quality problems and land their fixes. This skill holds the charter, the briefs and how findings are judged and landed; open `converge` for when the loop runs and what it records.
+Run guardian rounds to find bloat and quality problems and land their fixes (`converge`, step 2). This skill holds the charter, briefs and how findings are judged and landed.
 
 - **When:** after Loop A is dry, with the gates as the safety net (`converge`, step 2).
 - **Judging findings:** each finding is judged per 1.1.15 (earn every line), as in Loop A (`verify`'s reproduce-only bug hunt).
 - **Scopes** are Loop A's slices; the guardian brief calls them scopes. The bottom PR of a stack is its own.
 
 **Round 1:**
-- The Loop B agent runs the guardian brief below after its review, for every scope, one report section per scope.
+- Have the Loop B agent audit each scope with the brief below, one report section per scope (`converge`, step 2).
 - Each scope's section reports:
   - findings by disposition, with prices;
   - the mechanism census;
   - the 10-second pass, as classes;
-  - ratings of every file, function and piece of logic, with the ✅ tick list;
+  - rate all files/functions/logic and tick coverage (`refactor`);
   - an honest-positive statement (a plain "nothing worth changing" where that is the result).
 
 **Implementation:**
 - **You land the findings,** commit by commit. For a long list, one implementer in its own worktree off the current head, with the implementer brief below, takes the scopes one after the other; one implementer per scope only when the scopes are too big for one context.
-- **An explicit list:** each implementer gets an explicit list of finding IDs to implement. Owner decisions, and anything touching owner code without explicit leave, are excluded.
+- **An explicit list:** each implementer gets an explicit list of finding IDs to implement. Exclude owner decisions and owner-code changes without task authority or removal evidence (`converge`, Authority).
 - **Commits:** one commit per finding (or per class), with the gates after every commit, and a mutation probe for every test merged, moved or deleted.
-- **Declines:** an implementer may decline a finding with a reason: when the finding is false, not behavior-preserving, or touches owner code.
+- **Declines:** decline with a reason when a finding is false or cannot be an authorized, behavior-preserving refactor (`core`, The task; `converge`, Authority).
 
 **Landing:**
 1. Review each implementer's diff yourself before cherry-picking (1.10).
@@ -33,11 +33,11 @@ Guardian rounds are the quality half of Loop B in `converge`'s pipeline (step 2)
 4. Continue the Loop A agent with the landed commits (`converge`, step 3).
 
 **Round N+1:**
-- **The Loop B agent continues (`delegating`, one run):** send it the implemented commits and the declined items with reasons. Start a new one only when the scope changed beyond its findings.
+- Send implemented commits and declined items with reasons to the same Loop B agent (`delegating`, One run).
 - **It audits fresh,** not only the old list. It verifies each implementation (behavior preserved, mutations still lethal, comments true), and says whether each decline holds.
-- **It re-rates** every row old ⇒ new with commits, and states plainly whether the scope converged.
+- **Re-rate** every row old ⇒ new with commits (`refactor`, The prompt), and state whether the scope converged.
 - **Repeat** until the rater says nothing behavior-preserving is left whose value is worth its price.
-- **Closing a scope:** the rater's own "converges once these land" items, landed exactly as prescribed, close the scope.
+- **Closing a scope:** close it only after the rater observes the landed head, re-rates it under `refactor`, and confirms that nothing worth changing remains.
 
 ## Guardian (LeanKeeper) charter
 
@@ -48,7 +48,7 @@ You are a PERMANENT code-quality & bloat guardian for the life of the PR. READ-O
 **Lenses, applied every pass:**
 
 1. **BLOAT** — dead code, speculative surface, duplicate intent, defensive branches for unreachable states (→ assertions), custom test scripts (→ delete).
-2. **CODE QUALITY** — rate ALL files/functions/logic 0–10 with reasons, 100% coverage, plus a separate ✅ tick list to catch anything unrated; mostly-10s = you were lazy.
+2. **CODE QUALITY** — rate all files/functions/logic and tick coverage (`refactor`).
 3. **PROBLEM VARIABILITY** — list all flows, rate each 0–10 on solution optimality, sketch better alternatives for low scores.
 4. **FILE PLACEMENT** per the repo's established structure.
 5. **MECHANISM CENSUS** — every corrective mechanism:
@@ -59,11 +59,11 @@ You are a PERMANENT code-quality & bloat guardian for the life of the PR. READ-O
    - honest weaker alternative;
    - verdict GENUINE / OVERBUILT / SUSPECTED-PHANTOM with the lines it would save.
 
-   Repaired-twice mechanisms get existence re-probes. Removals only via probes that can fail, run in the OWNING product lane; a product-shaped red keeps the mechanism as GENUINE-CONFIRMED with the failure text recorded — the confirmed-kept column equals the deleted column in status.
+   Before deletion, probe the symptom in the owning lane; a failure keeps the mechanism (`converge`, The removal gate).
 6. **ESSENTIAL vs ACCIDENTAL complexity** — keep hard-problem complexity (readability notes only), cut solution-generality bloat.
 7. **INVISIBLE OPTIMIZATIONS** — cut scale-only machinery; SURFACE (don't cut) optimizations with a real viability cost.
 8. **NO introspection/noise surface.**
-9. **DEEP-MODULE DESIGN** (1.4.1 terms) — flag SHALLOW modules; the deletion test; "the interface is the test surface"; seam placement; a seam with one adapter is hypothetical.
+9. **DEEP-MODULE DESIGN** — find shallow modules and misplaced seams (`design-loop` 1.4.1).
 10. **FOWLER SMELLS** — Mysterious Name, Duplicated Code, Feature Envy, Data Clumps, Primitive Obsession, Repeated Switches, Shotgun Surgery, Divergent Change, Speculative Generality, Message Chains, Middle Man, Refused Bequest.
 11. **THE 10-SECOND PASS** — the instant-wince lens:
     - names confessing mixed responsibility;
@@ -76,7 +76,7 @@ You are a PERMANENT code-quality & bloat guardian for the life of the PR. READ-O
     fix as CLASSES, one commit per class.
 12. **TEST & COMMENT MASS** — all priced and dispositioned like code bloat:
     - test redundancy (multiple tests proving the IDENTICAL behavior);
-    - fix-batteries where one regression test would do;
+    - excess permanent tests beyond the repo’s habit and per-capability limit (`core` 1.1.16);
     - harnesses/scaffolds that should have been transient probes;
     - narration/justification/audit-trail comments and JSDoc walls.
 
@@ -88,12 +88,12 @@ You are a PERMANENT code-quality & bloat guardian for the life of the PR. READ-O
 
 **Your function is permanent; your task context is fresh.**
 
-- Receive the invariant charter, current decision packet, accepted contract, current diff and evidence — not desired verdicts, pre-baked file targets, prior agents' persuasive narration, or commit-specific conclusions.
+- Receive the invariant charter, current decision packet, accepted contract, current diff and evidence — never a desired verdict (`delegating` 1.10).
 - Audit whether settled directions propagated across every affected surface and whether each unit's progress reports contain material outputs.
 - For reference-driven work, independently run the full-surface visual/interaction drift sweep.
 - For methodology/bootstrap changes, check that every named mechanism survived, and fail any compressed into generic prose.
 - A closure claim without personally observed tree/lane/capture evidence stays open.
-- Record honest `UNKNOWN` where the evidence is unavailable.
+- Mark unavailable evidence UNKNOWN (`writing`).
 
 ## Guardian brief
 
@@ -105,31 +105,31 @@ You are read-only on code.
 Scope: `git diff <base> <head>` restricted to <scope file list>.
 Ratings and findings cover everything in scope at 100% coverage, tests included.
 
-Decision and Constraint Packet (settled; don't reopen): <decisions>.
-- Docs are the contract.
-- Owner-authored code (no agent co-author trailer) isn't removed on your reading: flag it as OWNER-DECISION.
-- Behavior or public-surface changes are OWNER-DECISION.
-- Comments terse and literally true.
-- Low diff wins.
+Keep the settled decision packet’s picks intact (`core` 1.1.4 and 1.1.9): <decisions>.
+- Judge code/doc disagreements against the documented contract and ask the owner when the intended fix is unclear (`converge`, Docs are the contract).
+- Flag human commits or commits without the environment’s agent trailer as OWNER-DECISION before removing or rewriting their code on your reading alone (`converge`, Authority).
+- Ask external maintainers about behavior or public-surface changes; decide changes authorized by the user’s task, and keep refactors behavior-preserving (`core`, The task and 1.1.9).
+- Keep comments to one literally true line about a constraint the code cannot show (`writing`).
+- Judge whether each finding earns its diff (`core` 1.1.15).
 
 Evidence:
 - read with git at the pinned SHAs;
 - run specs only in your own worktree under <dir>, removed when done;
 - don't build or run <shared apps>;
-- stop every process you start.
+- stop every process you start (`core` 1.8).
 
 <Round N only: the previous report is <path>; its findings were implemented in <commits>; declined, with reasons: <list>.
 - Audit fresh;
 - verify each implementation (behavior preserved, mutations still lethal, comments true);
 - say whether each decline holds;
-- re-rate every row old ⇒ new with commits;
+- re-rate every row old ⇒ new with commits (`refactor`, The prompt);
 - state whether the scope converged.>
 
 Write <report path>:
 - DELETE-NOW, FIX, FILL, DELETE-CAREFULLY, OWNER-DECISION (each: path:line, lens, price, exact change for behavior-preserving ones);
 - the mechanism census;
 - the 10-second pass as classes;
-- ratings of every file, function and piece of logic, then the ✅ tick list;
+- rate all files/functions/logic and tick coverage (`refactor`);
 - an honest-positive statement.
 
 Final message: path, counts per disposition, the three highest-value findings, overall rating.
@@ -142,11 +142,9 @@ Final message: path, counts per disposition, the three highest-value findings, o
 
 ## Implementer brief
 
-In the brief, the "fresh one" that re-rates is the Loop B agent: it didn't write the change, so it sees the result fresh.
-
 ```
 You implement a guardian's findings on <PR>.
-The guardian was a separate, read-only rater; a fresh one re-rates your result.
+The guardian rates read-only; the Loop B agent re-rates your result independently (`review`, Reviewer charter).
 
 Setup: git worktree add -b impl/<scope> <dir> <head SHA>; install; build the packages once.
 Work only there; don't push, never stash, stage files by name.
@@ -158,11 +156,11 @@ Write every change with the guardian charter's lenses and 1.4.1's terms, so the 
 
 For every item:
 - read the code end to end and check the finding is true at <head>;
-- skip it with a reason if it's false, changes behavior or a public surface, or removes owner code without leave.
+- skip it with a reason if it is false or cannot be an authorized, behavior-preserving refactor (`core`, The task; `converge`, Authority).
 - Make the smallest change.
 - When you remove, merge or move a test or a guard, revert the production line it guards and check a remaining test goes red; record the probe.
 
-Gates after every commit: <quick gates>, plus <lanes for touched areas>; a red gate means fix that commit, not a patch on top.
+Run <quick gates> and <lanes for touched areas> after every commit (`converge`, Gates, lanes, flakes, evidence); fix a red refactor commit rather than adding a patch on top (`refactor`, Running it).
 
 One commit per finding or class, message: <style>, trailer: <trailer>.
 

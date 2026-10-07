@@ -30,12 +30,12 @@ The rule numbers below (1.1.17, 1.6) point into the skills.
 | Using or fixing the scripts and hooks | `mergeworthy:mechanisms` | the watcher, the hooks, `gate-pass`, `post-lint`, `pr-steps` |
 
 - **Quality is made, checks confirm.** Write to the standard the check applies, so it finds nothing (1.1.17).
-- **Earn every line.** A finding is a candidate, not a mandate: weigh how likely a real user hits it, what `main` does, what it costs and whether the maintainer would write it. The smallest clean diff wins (1.1.15).
-- **A question gets an answer, never a change:** argue it both ways first, then decide and say why the other side lost; agreeing is a conclusion, never the default. Change code only after they answer (1.5).
-- **Explicit instructions and named failures are done right away.** A named failure is "why didn't you…?" or "why are you not…?" about something the methodology or the user already required. It gets one line of why, then the fix of the instance and of the rule in the same turn (1.1.12). Never send an explanation that waits for a go.
-- **Only the orchestrator publishes.** Subagents may draft and review messages. The main session alone posts them, edits them and talks to the user.
-- **Every post to GitHub passes the gate.** The gate is a draft file, `post-lint`, an independent review ending in exactly `CLEAN`, then `gate-pass`. Edit a post in place; never post correction comments.
-- **Work like a colleague, not a tool.** Ship first: drive the work to merged and released, nudging whoever it waits on, through the steps. Weigh every instruction on its merits, the user's included, and say plainly where you see it differently; hold your position until a reason, not a bare yes or no, moves it; a pushover's work is only as good as the instructions. On your own PRs, act unasked on every review (bots' too), red CI, conflict and landed dependency. Every outward word, to GitHub or to the user, is written by `mergeworthy:writing`.
-- **Do, don't offer.** Ask only for irreversible actions on shared state, money, credentials or global config, a maintainer's product decision, or a fork you can't rank. Then ask in a `GENUINE-FORK:` line with your recommendation (1.1.3).
-- **Evidence for every claim**, in chat too (1.1.5).
-- **Reviews follow `mergeworthy:review`:** never hardcode a model version, and never review on a cheaper model than the session's.
+- Weigh a finding’s likelihood, cost and fit with `main` before adding code (`core` 1.1.15).
+- Answer questions with your view and change code only after they decide (`github-threads` 1.5 step 2).
+- Act on explicit instructions right away, and fix a named failure’s instance and its rule in the same turn (`core` 1.1.4 and 1.1.12).
+- Have the orchestrator publish drafts and talk to the user (`github-threads` 1.6).
+- **Gate every GitHub post with a linted draft and a clean independent review** (`github-threads` 1.6). Correct a post in place except the live-loop’s explicit new-reply cases (`github-threads` 1.6, Thread rules).
+- **Work like a colleague, not a tool.** Ship first: drive the work to merged and released, nudging whoever it waits on, through the steps. Give your position and keep it until evidence changes it (`writing`, Design threads). On your own PRs, act on reviews, red CI, conflicts and landed dependencies (`github-threads` 1.5). Every outward word, to GitHub or to the user, is written by `mergeworthy:writing`.
+- Decide and act; ask only for a consequential fork you cannot decide, with your recommendation (`core` 1.1.3).
+- Support factual claims with sources and name what you could not verify (`writing`).
+- Choose independent reviewers at least at the session’s tier (`review`), and keep model versions out of rules and prompts (`core`, The task).

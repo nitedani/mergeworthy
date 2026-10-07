@@ -8,7 +8,7 @@ description: "Using or fixing the mechanisms that enforce the rules: the watcher
 These scripts enforce the rules that failed as text alone.
 
 - **Where they live.** The scripts ship in the mergeworthy plugin: its `bin/` is on the Bash `PATH`, and its `hooks/hooks.json` is active while the plugin is enabled. They update with the plugin.
-- **Changing them.** Change them in the mergeworthy repo, then commit and push (1.9). Never edit an installed copy.
+- **Changing them.** Edit and propagate from the source repo, leaving installed copies untouched (`delegating` 1.9).
 - **Options.** The plugin's options are `badge`, `merge` and `watcher` (`/plugin` → mergeworthy → Configure options). They reach the scripts through `~/.mergeworthy/settings.env`, rewritten at every session start. An environment variable `MERGEWORTHY_<KEY>` wins over the option.
 
 ## Commands
@@ -21,13 +21,13 @@ These scripts enforce the rules that failed as text alone.
 - **The supervisor.** It starts the daemon under a supervisor: the systemd user service `gh-watch@<dir>` on Linux, a launchd agent on macOS, else a detached daemon that cron revives.
 - **Maintainers.** `GH_WATCH_EYES` names the maintainers whose commits and 👍/👎 are reported; without it, `<dir>/eyes`, else your own login.
 - **One watcher per thread.** It refuses a thread another live watch dir already watches.
-- **The Monitor.** It prints the Monitor to arm in the session. The session is what answers events, and nothing else wakes it.
+- **The Monitor.** Arm the printed Monitor so the session wakes and answers events (`github-threads` 1.5).
 
 ### `post-lint` (enforces 1.6 and writing 1.11)
 
 `post-lint drafts/x.md --kind reply|pr|issue|inline|tracker|proposal [--repo o/r]` checks a draft before it is posted.
 - **A reply** reads its parent comment from `drafts/x.parent.md`. Use `--parent none` when it answers nobody.
-- **`tracker`** checks the umbrella issue's format: a `Title: Tracking: …` line, `##` sections of checkboxes, no table, the Decisions comment linked, a ticked item's end state, and the Decisions comment's sections. A tracker post needs no badge.
+- **`tracker`** checks the umbrella issue's format: a `Title: Tracking: …` line, `##` sections of checkboxes, no table, the Decisions comment linked, a ticked item's end state, and the Decisions comment's sections. Leave tracker posts badge-free (`writing`).
 - **The checks**, each where it applies to the kind:
   - **Writing:** banned phrases; sentences over 40 words or averaging over 25, and more than 30% bold (not for `pr`); internal labels like W2; a bold label followed by a fragment; em dashes.
   - **References:** "stacked on"; bare `#N`.
@@ -44,17 +44,23 @@ These scripts enforce the rules that failed as text alone.
 
 ### The finality trigger (`pre-bash-guard`, `post-bash-register`)
 
-`post-bash-register` counts each posted `--kind proposal` draft per thread in `~/.claude/proposal-rounds.txt`. From the third proposal on a thread, `pre-bash-guard` blocks the post until `<artifact root>/maps/<owner>-<repo>-<number>.md`, the finality pass's thread map with its invariants, is newer than the last proposal.
+`post-bash-register` counts each posted `--kind proposal` draft per thread in `~/.claude/proposal-rounds.txt`. Before the third proposal, refresh the thread map with its invariants (`finality`, When to run it).
 
 ### `pr-steps` (enforces 1.7)
 
-`pr-steps <step> <output>` records a `converge` step on the head, after checking the output proves it: `verify` and `reverify` end `DRY`, `loopb` and `fresh` end `CLEAN`, `refactor` has its ✅ list and ratings (or `carries the pass of <sha>`, ≤ 80 lines since), `gates` lists `<command> -> exit 0` lines. One file records one step.
+`pr-steps <step> <output>` checks and records one `converge` step on HEAD, one file per step:
+- `verify`: trailing `DRY`.
+- `reverify`: trailing `DRY`, or `NO LOOP B COMMITS` when none landed (`converge`, step 3).
+- `loopb`: captured final message `CLEAN` (`review`).
+- `fresh`: `MERGE AS IS: yes` and trailing `CLEAN`; keep the posting verdict in a separate file (`converge`, step 4).
+- `refactor`: ✅ list and ratings, or `carries the pass of <sha>` with ≤ 80 changed lines.
+- `gates`: `<command> -> exit 0` lines.
 - `gh pr create` (unless `--draft`), `gh pr ready` and a push to a ready PR are blocked until HEAD has all six.
 
 ## The watcher daemon: `watcher/gh-watch.py` (enforces 1.5)
 
-The daemon reports to `<dir>/events.log` and adds 👀 within about 10 seconds. It never starts an agent.
-- **Comments.** It reports exactly the comments 1.5 says you answer, and records each in `replies-owed.md`.
+The daemon reports to `<dir>/events.log` and never starts an agent.
+- **Comments.** Answer reported comments from the owed list; reactions follow the detection schedule (`github-threads` 1.5).
 - **Thread events.** On watched threads it reports pushes, merges and closes (`### PR CHANGED`), CI results (`### CI`), and 👍/👎 on the agent's comments (`### THUMBS UP` / `### THUMBS DOWN`).
 - **Other events:**
     - `### ACK`: an acknowledgement that answers your last open proposal;
@@ -100,4 +106,4 @@ It skips its watcher checks while the user's last message contains "pause".
 
 It puts the always-on rules into context and writes `settings.env`. It also points `~/.mergeworthy/current` at the installed version, the stable path watchers use.
 
-**`pre-agent-dedupe`** (every agent launch) registers the job under the ticket files its prompt names and blocks a second launch of the same job, and a reused `clientRequestId` (T3 replays its old result). `agent-job done <ticket>` releases a job once its task ended and its result was read.
+**`pre-agent-dedupe`** registers launches by ticket and blocks duplicate jobs (`delegating` 1.10). A `clientRequestId` may retry within ten minutes; later reuse is blocked. Read a terminal task’s result, then release it with `agent-job done <ticket>` (`delegating` 1.10).

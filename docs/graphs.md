@@ -7,20 +7,20 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 | Skill | Hands over to |
 |---|---|
 | `converge` | nothing |
-| `core` | `open-issue`, `evidence`, `delegating`, `merging`, `github-threads`, `design-loop`, `converge`, `pull-request` |
+| `core` | `writing`, `open-issue`, `github-threads`, `evidence`, `delegating`, `design-loop`, `converge`, `pull-request`, `merging` |
 | `delegating` | nothing |
 | `design-loop` | `pull-request`, `core`, `review`, `writing`, `converge` |
 | `evidence` | nothing |
 | `finality` | nothing |
-| `github-threads` | `converge`, `review`, `refactor`, `core`, `pull-request`, `writing`, `finality` |
-| `guardian` | `delegating`, `converge`, `design-loop` |
+| `github-threads` | `converge`, `review`, `refactor`, `core`, `writing`, `pull-request`, `finality` |
+| `guardian` | `delegating`, `converge`, `refactor`, `design-loop`, `core`, `writing` |
 | `mechanisms` | nothing |
 | `merging` | nothing |
 | `open-issue` | `evidence`, `writing`, `github-threads` |
 | `past-failures` | nothing |
-| `pull-request` | `evidence`, `finality`, `core`, `guardian`, `design-loop`, `converge`, `open-issue`, `writing` |
+| `pull-request` | `evidence`, `delegating`, `finality`, `core`, `guardian`, `design-loop`, `writing`, `converge`, `open-issue` |
 | `refactor` | nothing |
-| `review` | `delegating`, `guardian`, `refactor`, `github-threads`, `core`, `converge` |
+| `review` | `core`, `delegating`, `guardian`, `refactor`, `writing`, `github-threads`, `converge` |
 | `verify` | `core`, `converge` |
 | `writing` | `github-threads` |
 
@@ -34,26 +34,27 @@ flowchart TB
   subgraph g0["1.1 Principles"]
     s0["17 rules: Critical path first, Invariants first, Do…"]
   end
-  s0 -.-> r1[["open-issue"]]
-  s0 -.-> r2[["evidence"]]
-  s0 -.-> r3[["design-loop"]]
-  s0 -.-> r4[["converge"]]
-  s0 -.-> r5[["pull-request"]]
-  s0 -.-> r6[["delegating"]]
-  s0 -.-> r7[["merging"]]
-  s0 -.-> r8[["github-threads"]]
+  s0 -.-> r1[["writing"]]
+  s0 -.-> r2[["open-issue"]]
+  s0 -.-> r3[["github-threads"]]
+  s0 -.-> r4[["evidence"]]
+  s0 -.-> r5[["delegating"]]
+  s0 -.-> r6[["design-loop"]]
+  s0 -.-> r7[["converge"]]
+  s0 -.-> r8[["pull-request"]]
+  s0 -.-> r9[["merging"]]
   subgraph g1["1.12 Pre-flight"]
-    s1["1. Write scope.md"]
-    s2["2. Write the critical path"]
+    s1["1. Write every task ask and<br/>link as checkboxes …"]
+    s2["2. Write the ordered<br/>critical-path list"]
     s1 --> s2
-    s3["3. Before you open an issue<br/>or PR"]
+    s3["3. Before opening an issue<br/>or PR"]
     s2 --> s3
     s4["4. Confirm browser control"]
     s3 --> s4
     s5["5. Note the precedents and<br/>style"]
     s4 --> s5
   end
-  s3 -.-> r9[["github-threads"]]
+  s3 -.-> r10[["github-threads"]]
   start --> g0
   g0 ~~~ g1
 ```
@@ -127,7 +128,7 @@ Opens `mergeworthy:github-threads` (the live loop 1.5 (with its convergence step
 flowchart TB
   start(["Any GitHub thread you're<br/>in, and anything you<br/>post"])
   subgraph g0["1.5 The live GitHub loop"]
-    s0["1. Within 10 seconds"]
+    s0["1. On detection"]
     s1["2. The answer"]
     s0 --> s1
     s2["3. Then think"]
@@ -141,11 +142,11 @@ flowchart TB
   s1 -.-> r2[["review"]]
   s1 -.-> r3[["refactor"]]
   s1 -.-> r4[["core"]]
-  s2 -.-> r5[["pull-request"]]
-  s2 -.-> r6[["writing"]]
+  s2 -.-> r5[["writing"]]
+  s2 -.-> r6[["pull-request"]]
   s2 -.-> r7[["finality"]]
   subgraph g1["1.6 Posting gate"]
-    s5["1. Write it the way it<br/>should end up"]
+    s5["1. Write the draft to the<br/>gate’s standard before …"]
     s6["2. Run post-lint"]
     s5 --> s6
     s7["3. Run the review"]
@@ -155,9 +156,11 @@ flowchart TB
     s9["5. Post in the thread where<br/>the person wrote"]
     s8 --> s9
   end
-  s5 -.-> r8[["writing"]]
-  s7 -.-> r9[["review"]]
-  s7 -.-> r10[["writing"]]
+  s5 -.-> r8[["core"]]
+  s5 -.-> r9[["writing"]]
+  s7 -.-> r10[["review"]]
+  s7 -.-> r11[["core"]]
+  s7 -.-> r12[["writing"]]
   start --> g0
   g0 ~~~ g1
 ```
@@ -219,19 +222,20 @@ flowchart TB
     s5 --> s6
   end
   s1 -.-> r1[["evidence"]]
-  s2 -.-> r2[["finality"]]
-  s2 -.-> r3[["core"]]
-  s3 -.-> r4[["guardian"]]
-  s3 -.-> r5[["design-loop"]]
-  s3 -.-> r6[["converge"]]
-  s3 -.-> r7[["core"]]
-  s4 -.-> r8[["open-issue"]]
-  s4 -.-> r9[["evidence"]]
-  s4 -.-> r10[["core"]]
-  s5 -.-> r11[["converge"]]
-  s6 -.-> r12[["writing"]]
-  s6 -.-> r13[["evidence"]]
-  s6 -.-> r14[["core"]]
+  s2 -.-> r2[["delegating"]]
+  s2 -.-> r3[["finality"]]
+  s2 -.-> r4[["core"]]
+  s3 -.-> r5[["core"]]
+  s3 -.-> r6[["guardian"]]
+  s3 -.-> r7[["design-loop"]]
+  s3 -.-> r8[["writing"]]
+  s3 -.-> r9[["converge"]]
+  s4 -.-> r10[["open-issue"]]
+  s4 -.-> r11[["core"]]
+  s4 -.-> r12[["evidence"]]
+  s5 -.-> r13[["converge"]]
+  s6 -.-> r14[["writing"]]
+  s6 -.-> r15[["evidence"]]
   start --> g0
 ```
 
@@ -332,7 +336,7 @@ Opens `mergeworthy:verify` (Loop A (bug verification)).
 flowchart TB
   start(["Bug verification,<br/>reproduce-only"])
   subgraph g0["verify"]
-    s0["1. Fix each bug at its root<br/>cause"]
+    s0["1. Fix the root cause with<br/>the smallest diff"]
     s1["2. If the area has already<br/>had two corrective …"]
     s0 --> s1
     s2["3. Put fixes to base code<br/>in the bottom …"]
@@ -366,10 +370,16 @@ flowchart TB
   s0 -.-> r1[["delegating"]]
   s3 -.-> r2[["converge"]]
   s3 -.-> r3[["delegating"]]
+  s3 -.-> r4[["refactor"]]
   subgraph g1["Guardian"]
     s4["12 rules: BLOAT, CODE QUALITY, PROBLEM VARIABILITY…"]
   end
-  s4 -.-> r4[["design-loop"]]
+  s4 -.-> r5[["refactor"]]
+  s4 -.-> r6[["converge"]]
+  s4 -.-> r7[["design-loop"]]
+  s4 -.-> r8[["core"]]
+  s4 -.-> r9[["delegating"]]
+  s4 -.-> r10[["writing"]]
   start --> g0
   g0 ~~~ g1
 ```
@@ -413,23 +423,25 @@ flowchart TB
     s1["2. A fresh-context subagent<br/>on the session's default<br/>model"]
     s0 --> s1
   end
-  s1 -.-> r1[["delegating"]]
-  s1 -.-> r2[["guardian"]]
-  s1 -.-> r3[["refactor"]]
-  s1 -.-> r4[["github-threads"]]
-  s1 -.-> r5[["core"]]
+  s0 -.-> r1[["core"]]
+  s1 -.-> r2[["delegating"]]
+  s1 -.-> r3[["guardian"]]
+  s1 -.-> r4[["refactor"]]
+  s1 -.-> r5[["writing"]]
+  s1 -.-> r6[["github-threads"]]
+  s1 -.-> r7[["core"]]
   subgraph g1["The PR review round"]
-    s2["1. Write the charter to<br/>‹artifact<br/>root›/review-‹pass<br/>id›.md"]
+    s2["1. Write the charter below<br/>to ‹artifact<br/>root›/review-‹pass<br/>id›.md"]
     s3["2. Append the diff command<br/>against git merge-base<br/>HEAD …"]
     s2 --> s3
     s4["3. Where the reviewer can't<br/>run your gates"]
     s3 --> s4
-    s5["4. If no reviewer at all is<br/>available"]
+    s5["4. If no independent<br/>reviewer is available"]
     s4 --> s5
   end
-  s3 -.-> r6[["core"]]
-  s5 -.-> r7[["converge"]]
-  s5 -.-> r8[["core"]]
+  s3 -.-> r8[["core"]]
+  s5 -.-> r9[["converge"]]
+  s5 -.-> r10[["core"]]
   start --> g0
   g0 ~~~ g1
 ```

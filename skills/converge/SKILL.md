@@ -33,7 +33,7 @@ When the work reshapes existing code, or a small change can't be made cleanly be
 - **Who:** one agent, after Loop A is dry. In one prompt, each into its own output file: first `review`'s reviewer charter, then `guardian`'s brief with `refactor`'s prompt. Reviewing first fills the context it rates with.
 - **You:** land its findings commit by commit, gates after each, and send the same agent the commits. A bug its review finds is fixed, and Loop A re-verifies that slice.
 - **Done when** its review ends `CLEAN` ("nothing worth changing" is an honest result) and its last re-rating lists every file, function and piece of logic with old ⇒ new ratings and the ✅ lists, high and justified.
-- **Record:** `pr-steps loopb <its review output>` and `pr-steps refactor <its last re-rating>`
+- **Record:** `pr-steps loopb <its captured final-message file>` and `pr-steps refactor <its last re-rating>`; keep the reviewer charter’s full report separately.
 
 #### 3. Loop A again, on Loop B's commits
 
@@ -43,32 +43,33 @@ When the work reshapes existing code, or a small change can't be made cleanly be
 
 #### 4. The fresh reader
 
-- **Who:** a new agent that hasn't seen the fixes, in `review`'s order (another company's model first), after you merge the base into the branch (1.7). The loop agents judge their own suggestions; a cold reader catches what that hides.
+- **Who:** a new agent that hasn't seen the fixes, in `review`'s order (another company's model first), after `git fetch origin` and `git merge origin/<base>` on the PR branch, with conflicts resolved and gates rerun. The loop agents judge their own suggestions; a cold reader catches what that hides.
 - **Before it:** write the PR body draft (`pull-request` step 7, `drafts/pr-body.md`) and pass `post-lint --kind pr`.
 - **What it runs:** the verifier brief, the reviewer charter, and the posting gate's review (`github-threads` 1.6 step 3) of that draft, checked against the head. Where finality ran, also the guardian brief: only DELETE-NOW, FIX, FILL or DELETE-CAREFULLY items worth their price count, and OWNER-DECISION rows go on the owner's list.
 - **You:** its findings go back to step 1 or 2. If the head then changed only by those fixes, continue the same reader; otherwise start a new one.
 - **Its first question:** "As this repo's maintainer, would you merge this exactly as it is?" Its output says `MERGE AS IS: yes`, or `no` with everything between the PR and a yes, each a finding.
-- **Done when** its output has `MERGE AS IS: yes` and its final message is exactly `CLEAN`. That is also the PR body's posting-gate review.
-- **Record:** `pr-steps fresh <its output>`
+- **Done when** its output has `MERGE AS IS: yes` and its final message is exactly `CLEAN`. That reviews the body draft as it stands; step 5 reviews it again after the evidence is added.
+- **Record:** have the reader write its merge-as-is report ending `CLEAN` to `drafts/fresh.report.md`, and capture only its final message in `drafts/pr-body.review.out`. Run `pr-steps fresh <abs>/drafts/fresh.report.md`; the posting gate uses `<abs>/drafts/pr-body.review.out`.
 
 #### 5. Gates, body and closure
 
-- **You:** run every gate and product lane on the final head; CI is green; the PR bodies are true to that head (`mergeworthy:writing`). Where finality ran, its Owner-Safe closure comes last, with the review and guardian evidence attached.
+- **You:** run every gate and product lane on the final head; CI is green, or only workflow approval is pending (ready for review, never merge, per `merging`’s CI-limits exception); the PR bodies are true to that head (`mergeworthy:writing`). Where finality ran, its Owner-Safe closure comes last, with the review and guardian evidence attached.
 - **The evidence goes in the PR body,** just enough to prove each step ran: one collapsed block per run of each step above, summary `<step>, run N (head <sha>)`, newest first. It says in a few plain sentences what ran and what came of it ("I rated every file and function with its reason and re-rated until nothing worth changing was left"), names a finding that changed the PR, and links the full output in a gist a person can read: first how many passes ran and what each found, then the commits, what stays below the bar and why, then one line per item, grouped by area. Claim only what ran on that head.
+- **After adding the completed runs’ evidence, run `github-threads` 1.6 on the final body draft again.** This posting-only review is separate from the recorded fresh-reader step; capture its verdict for the updated draft.
 - **Done when** every gate exits 0. Write each as `<command> -> exit <code>`, one per line, into a gates log.
 - **Record:** `pr-steps gates <the gates log>`
 
-Owner decisions don't block convergence, and neither do changes to code the owner wrote. They go on the owner's list with a recommendation: the PR body's notes table for an external maintainer, the decisions in your report (1.11) for the user.
+Optional owner recommendations do not block convergence; approval required by the pipeline’s entry conditions does. Present unresolved recommendations with your pick in the PR’s notes table or your report (`writing`).
 
 ### Running the agents
 
-- **Continue, don't restart.** After every fix, continue the loop's agent (`delegating`, one run), so it re-checks only what changed. Loop A runs repros and Loop B rates code, so they get separate agents, except on a small diff (Tier S, under about 300 lines), where one agent runs both.
+- **Continue, don't restart.** After every fix, continue the loop's agent (`delegating`, one run), so it re-checks changed slices in Loop A and audits the whole scope in Loop B (`verify`, `guardian`). Loop A runs repros and Loop B rates code, so they get separate agents, except on a small diff (Tier S, under about 300 lines), where one agent runs both.
 - **A long list of Loop B findings** goes to one implementer agent in its own worktree (`guardian`'s implementer brief); you review its diff before landing (1.10).
 - **Slices.** A diff over about 1500 lines is split into slices that each fit (`verify`), with their own loop agents; in a stack, each PR has its own.
-- **What they read.** The head's code in full, at pinned SHAs. A finality graph (Phase A) is only a navigation index.
+- **What they read.** Read the head’s code in full at the brief’s pinned SHAs (`delegating` 1.10). A finality graph (Phase A) is only a navigation index.
 - **A new loop agent** starts, given the last report, past about half its context window. A changed decision packet goes to the running agent.
 - **Commits others push** (a maintainer's) re-open the slices they touch: send them to the loop agents. They are owner code (Authority, below).
-- **Execution is yours:** repro loops, tests and timed benchmarks run in the main session or a smaller subagent (1.1.14).
+- **Execution:** run routine supporting work yourself or on a smaller subagent (1.1.14); verifiers, reviewers and guardians still run the checks their charters require them to observe personally.
 
 ### Git and files
 
@@ -80,9 +81,7 @@ Owner decisions don't block convergence, and neither do changes to code the owne
 
 ### Authority: what's settled, what's the owner's
 
-The decision packet (1.2) is the list of people's picks. Keep it current and give it to every subagent.
-- Nobody re-asks or re-opens a settled decision; the newest owner decision wins.
-- When the owner changes direction, update the packet, then every surface the change touches (1.2).
+Keep the decision packet current and give it to each subagent; preserve settled picks and propagate the newest owner decision (`core` 1.1.4, 1.1.9 and 1.2).
 
 **The owner's code is deliberate,** in the user's repos too:
 - **Owner code:** a commit authored by a human account, or without the agent trailer the environment gave you.
@@ -90,25 +89,25 @@ The decision packet (1.2) is the list of people's picks. Keep it current and giv
 - **Agent code:** an agent's own earlier code can be changed freely. If an agent removed an owner line, restore that line.
 - **The user's own repos:** changing the user's code as the task needs is yours to decide (`core`, the task). Removing or rewriting it on an agent's reading alone (a finding, a cleanup on your own initiative) goes on the user's list with a recommendation. A removal that passed the removal gate (a probe that could fail, run in the owning lane, stayed green) is not a reading alone: make it, and report it with the probe.
 
-**Behavior and public surfaces.** In an external maintainer's repo, anything that changes behavior or a public surface is the owner's call: error messages users see, wire formats, option semantics, exported names. In the user's own repos and in beta or pre-1.0 features, decide, act, and report afterwards (`core`, the task). Refactors are behavior-preserving only.
+**Behavior and public surfaces.** Ask external maintainers before changing their behavior or public surface, and decide changes authorized by the user’s task (`core`, The task and 1.1.9); refactors preserve behavior.
 
 **Docs are the contract.** When code and docs disagree, the code is the suspect; never change docs to match code.
 - If the fix is straightforward and the docs' promise is clearly intended, fix the code.
 - Otherwise ask the owner on the open PR, or in an issue where 1.1.7 allows one: the doc line, the observed behavior, the question.
 
-**Ask the owner little.** Ask only questions that are genuinely the owner's, genuinely uncertain, and about consequential forks. Decide the rest, and say in the PR body what you decided and why.
+**Ask the owner little.** Ask only for decisions you cannot make, with your recommendation (`core` 1.1.3). Decide the rest, and say in the PR body what you decided and why.
 
 ### The phantom gate (every fix must pass it)
 
 A phantom fix must not ship. A fix is phantom if any of these holds:
 - **No real, documented usage reaches it.** Name the documented scenario, and trace it on both ends: client and server, caller and callee, sender and receiver. A bug that one layer "has" is not a bug if another layer already owns that behavior.
 - **It changes a deliberate behavior,** such as a usage error the code raises on purpose, a documented limit, or an owner's design.
-- **Its code comments aren't literally true.**
-- **It is a mechanism for a case that can't occur,** such as a defensive branch for an unreachable state. Use an assertion instead, or nothing.
+- **Reject comments that are not literally true** (`writing`).
+- **Reject a mechanism for an unreachable state;** assert the invariant or add nothing (`guardian`, BLOAT).
 
 Every fix also follows these:
-- **No silent fallbacks:** a usage error stays a usage error.
-- **Root cause, minimum diff.** Fix the actual root cause with the smallest diff. Don't bundle new protocol concepts, handshakes or probes unless asked.
+- Keep usage errors visible; use a silent fallback only with explicit approval and a written reason the root fix is impossible (`core` 1.1.6).
+- **Fix the root cause with the smallest diff** (`core` 1.1.6 and 1.1.15). Don't bundle new protocol concepts, handshakes or probes unless asked.
 - **Call site, not default.** The fix goes at the call site, not into a changed default that other callers depend on.
 
 ### The removal gate (every deletion of a mechanism must pass it)
@@ -116,7 +115,7 @@ Every fix also follows these:
 "No test fails without it" doesn't prove a mechanism is phantom. Before removing a guard, a dedup, a retry or a memo:
 - **Probe the symptom.** Name the symptom the mechanism prevents. Probe that symptom through documented usage against the real threshold: listener counts and MaxListeners warnings, timers, memory, ordering, duplicate delivery.
 - **In the owning lane.** Run the probe in the product lane that owns the mechanism (the real transport, backend and runtime), not only in unit tests.
-- **A product-shaped failure keeps it.** The mechanism stays, recorded as GENUINE-CONFIRMED (the guardian charter's mark for a mechanism a probe proved necessary) with the failure text.
+- **A product-shaped failure keeps it.** The mechanism stays, recorded as GENUINE-CONFIRMED (the guardian charter's mark for a mechanism a probe proved necessary) with the failure text; count confirmed-kept mechanisms alongside deleted ones in status.
 - **Repaired twice is suspect.** Re-probe whether a mechanism repaired twice needs to exist at all.
 - **The backstop:** the final bug verification after the refactors (`verify`) compares the pre-refactor tree with the head.
 
@@ -154,19 +153,14 @@ Failures:
 Evidence:
 - **Name the head.** Every claim names the head it ran on, and which gates ran on which head.
 - **Base bugs:** a known base bug that a lane shows is recorded as the base's, with the evidence that the base fails it too.
-- **UNKNOWN:** tag anything you couldn't observe as UNKNOWN.
+- Mark unobserved claims UNKNOWN (`writing`).
 
 ### PR bodies
 
 Each PR body is part of the deliverable. It is true of the final head, within 1.1.16, and written by `mergeworthy:writing`.
 
-Beyond `pull-request` step 7's template, a PR body carries, as needed:
-- **How it works:** for a feature, with a code sample.
-- **The fixes:** one line per user-visible bug.
-- **The owner's decisions** it carries, as a short list ("decided by the owner", "left to my judgment, and kept").
-- **The notes table (`writing`):** every rater proposal left to the owner is a "decision needed" row with a recommendation.
-- **Evidence** (CI, gates, lanes, verification), naming the head it ran on.
+Explain the feature with a code sample, list its user-visible fixes and owner decisions, and include the notes and head-specific evidence (`writing`).
 
-**What stays out.** The refactor pass's final lists go where `refactor` says. Working ratings, guardian reports and per-scope lists stay in the artifact root.
+Keep process reports outside outward prose, except the requested PR evidence (`writing`); save working reports in the artifact root.
 
 **Keeping it current.** Condense history; never drop current facts. When the stack moves a fix from one PR to another, move the fix's mention too.

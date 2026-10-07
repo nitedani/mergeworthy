@@ -32,11 +32,27 @@ Every post brings something the reader didn't have: a finding, a measurement, a 
 - **Decision first,** then your view and its reason, in the order the reader would think it: "I'd do X because Y."
 - **Never invent a term.** A word the reader hasn't used and the code doesn't name makes them guess between meanings ("the runner", "the marker", "fall-through"): say what the thing does instead, and use their names ("the proxy"). Never list internals to sound complete. A word that means something else in their project is out ("guard" to a Vike maintainer, who has `+guard`).
 - **Only what you measured is fact.** Reasoning is "I think", with why. A wrong claim costs the reader's trust, so check before you assert; when you do change your mind, say it once, in one line ("You're right on both: …"), and move on.
-- **Decide what you can decide or measure.** A question carries your pick and its reason; recommend what serves the people who use it, with each option's cost beside it, never the smallest change because it is small. Ask only what is theirs, once, at the end, as a yes-or-no question. No "pushback welcome", no promises about how you'll behave.
+- **Decide what you can decide or measure** (`core` 1.1.3). A question carries your pick and its reason; recommend what serves the people who use it, with each option's cost beside it, never the smallest change because it is small. Ask only what is theirs, once, at the end, as a yes-or-no question. No "pushback welcome", no promises about how you'll behave.
 - **Full sentences joined by bridges** ("because", "so", "but"); prose for reasoning, lists only for parallel items or a plan.
 - **For a newcomer:** name each thing where it first appears; no internal labels, no "it" with two meanings. Concrete over abstract: the file, the call, the number; a design choice as the code the user writes under each option.
 - **Credit** a design or statement to someone only with a link to where they said it. Links to another repo use `owner/repo#N`; write "depends on #N", never "stacked on", unless `gh stack` links them.
 - **Keep the process out of the prose.** Reviewers, models, gates and rounds don't appear in what you write; a PR body's evidence of each converge step goes in its collapsed blocks (`converge` step 5).
+
+## Evidence for claims
+
+**Evidence for every claim, in chat too.** Each factual sentence about code, a package, a release or runtime behavior carries its source (`file:line`, `npm view`, command output), or is marked `guess:`. Say what you could not verify.
+
+- A "can't" needs the failed attempt quoted plus one alternative tried. Check a blocker you report ("X isn't running") again right before you report it.
+- If you contradict something you said earlier, say so.
+- A job you report as running is one you saw make progress (its log, its output file, its CPU or GPU busy), not one you only started.
+- A check covers only what it exercised. "Works", "fixed" or "converged" names what ran and what didn't: a stand-in instead of the real thing, a subset of a list, a unit test instead of the real entry, the source instead of the installed copy.
+
+Tag every material claim:
+- OBSERVED (path:line, or command + exit code + output),
+- INFERRED (say the premises), or
+- UNKNOWN (say what is missing).
+
+Only OBSERVED closes anything.
 
 ## Design threads: converge before you build
 
@@ -47,8 +63,8 @@ A design reply comes out of `github-threads` step 3 (the mini debate, the diverg
 - **Every disagreement keeps its argument, every agreement its consequence.** The maintainer wants one of two outcomes: you push back with arguments, or you agree and say what it changes in the code. Agree before hundreds of lines get written: end with that change list and ask them to confirm it.
 - **Name the invariants in plain words.** The design has converged only when every invariant is agreed ("a `+middleware` runs on every request, before the app's routes"). Each reply says which open ones it settles, and asks only what is truly theirs, as a yes or no.
 - **Answer every question,** quoting each so they find its answer. They would rather read a long reply than a cryptic one: cut jargon and repeats, never substance.
-- **A question is a real question.** "How about…?" invites you to push back: answer with your view, and change code only after they decide.
-- **A proposal is a walkthrough:** what the user writes, what happens on each path (first load, navigation, pre-render), why this shape, then the questions. Only the minimal new concept; no options you invented, nothing existing touched that the feature doesn't need.
+- Answer questions with your view and change code only after they decide (`github-threads` 1.5 step 2).
+- **A proposal is a walkthrough:** what the user writes, what happens on each path (first load, navigation, pre-render), why this shape, then numbered questions. Show each alternative the same way, as code, and the recommended one’s downsides against `main`, found by arguing against it before posting. Only the minimal new concept; no options you invented, nothing existing touched that the feature doesn't need.
 - **Carry the load and push forward.** Decide what evidence settles, and state it as your plan unless they object. Say what's already moving, end with the next step and who takes it, then do it and come back with the result.
 
 ## Model replies
@@ -82,10 +98,13 @@ A maintainer argued that some of the proxy's jobs belong to the server; he wante
 
 ## Budgets and form
 
-- **Lengths,** code included: a reply ≤ 300 words; a design answer as long as its questions and disagreements need, up to 900; a PR body up to 300 words plus its evidence, never shortened by cutting what's broken or why; an issue ≤ 400 characters besides `### How to reproduce` and its evidence, a decision issue ≤ 400 words; an inline review comment ≤ 2 sentences, only where the reader must judge. Tables, code and collapsed sections count, except in a PR body, where tables, code, images and links don't; moving prose into a table to fit is the loophole the budget closes. A ceiling is not a target.
-- **The badge.** Unless the `badge` option says otherwise (`auto`: only from a human account), a post starts with the icon of every agent that worked on it, researchers and reviewers too, then a line break, no label: `<img src="https://github.com/claude.png" width="20" height="20" alt="Claude">`, Codex `<img src="https://github.com/openai.png" width="20" height="20" alt="Codex">`.
-- **Notes for a maintainer go in one table:** `| Note | Kind | Blocks merge | Next |`. Kind is bug, limitation, not a regression, or decision needed; Next is fixed in <sha>, PR <url>, or nothing, because Y. A follow-up is opened before the post, never listed as "recommend"; in the user's own repos, just do it. A note that blocks the goal and can be fixed anywhere, upstream included, is fixed instead.
-- **A PR body is written to be scanned.** Its first paragraph says what was wrong, in a user's words, and what this PR changes; status (draft, dependencies) comes after; plain sentences say why, not only what; evidence comes in a skimmable shape (a before/after table, a permalink to the line at fault, a `main`/head benchmark table for a hot path, transport or stream change unless CI reports it); at most one closing caveat, last.
+- **Code comments:** at most one line, literally true, stating a constraint the code can't show. No links to source, and no comparison with the old code ("instead of", "now", "no longer"). Names follow their siblings.
+- **One line per image or video:** what to look at and what it proves. Name the setup (page, date, filter) when the default view doesn't show it, and crop so the pixels that matter are findable.
+
+- **Lengths,** code included: a reply ≤ 300 words; a design answer as long as its questions and disagreements need, up to 900; a PR body up to 300 words plus its evidence, never shortened by cutting what's broken or why; an issue ≤ 400 characters, or a decision issue ≤ 400 words, besides `### How to reproduce` and its evidence; an inline review comment ≤ 2 sentences, only where the reader must judge. Tables, code and collapsed sections count, except in a PR body, where tables, code, images and links don't; moving prose into a table to fit is the loophole the budget closes. A ceiling is not a target.
+- **The badge.** Tracker posts are exempt; otherwise, unless the `badge` option says otherwise (`auto`: only from a human account), a post starts with the icon of every agent that worked on it, researchers and reviewers too, then a line break, no label: `<img src="https://github.com/claude.png" width="20" height="20" alt="Claude">`, Codex `<img src="https://github.com/openai.png" width="20" height="20" alt="Codex">`.
+- **Notes for a maintainer go in one table:** `| Note | Kind | Blocks merge | Next |`. Kind is bug, limitation, not a regression, or decision needed; Next is fixed in <sha>, PR <url>, issue <url> where `core` 1.1.7 permits it, or nothing, because Y. A follow-up is opened before the post, never listed as "recommend"; in the user's own repos, just do it. A note that blocks the goal and can be fixed anywhere, upstream included, is fixed instead.
+- **A PR body is written to be scanned.** Its first paragraph says what was wrong, in a user's words, and what this PR changes; status (draft, dependencies) comes after; plain sentences say why, not only what; evidence comes in a skimmable shape (a before/after table, a permalink to the line at fault, a `main`/head benchmark table for a hot path, transport or stream change unless CI reports it); for a feature, explain how it works with a code sample; give one line per user-visible bug and a short list of owner decisions; every rater proposal left to the owner is a decision-needed note with a recommendation; name the head for the evidence. Say a dependent project needs this PR only if it is still broken without it; clarify when readers might assume otherwise. When a revert would not undo the merge, that is the closing caveat; at most one caveat, last.
 - **An issue body:** one finding, without how you came across it; the title is the symptom as a user meets it; `file:line` last, for whoever fixes it.
 
 ## Reports to the user

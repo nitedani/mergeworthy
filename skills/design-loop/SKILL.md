@@ -13,14 +13,7 @@ The design loop takes a new API or protocol from candidates to a shape the maint
 1. **Draft `decisions/<name>.md`:** the invariant table (1.1.2), and the candidates rated as in `pull-request` step 3 (open `pull-request` for the rating steps). Rank the candidates by interface size. Recommend the smallest that keeps every invariant; recommend a larger one only with the requirement the smaller one fails, shown as code.
 2. **Prototype** to prove the invariants end to end: a real browser, request counts, timing, byte comparisons, dev, prod and static hosting.
 3. **Adversarial review** of the prototype (`review`: open it for who reviews): how does the prototype fail? When two review rounds each find a new case breaking the same rule, stop patching cases. Restate the cases as one rule, walk every setup through that rule yourself, then ask again.
-4. **Propose to maintainers** only when no invariant is broken, as a **walkthrough**:
-   1. the one new concept, in one sentence;
-   2. what the user or extension writes, as code;
-   3. what happens on each path a user can take;
-   4. why this format, each alternative shown the same way (as `writing` says, as code), and the recommended one's downsides against `main`, found by arguing against it before posting;
-   5. numbered questions.
-
-   The walkthrough holds nothing that changes existing behavior the feature doesn't strictly need. Every term is explained in plain words.
+4. **Propose to maintainers** only when no invariant is broken: show the user’s code, each path, alternatives, reasons and numbered questions (`writing`, Design threads).
 5. **Post the walkthrough** as soon as the prototype holds the invariants.
    - **Before the maintainer OKs the shape,** one pass: `converge`'s loops (open `converge` to work a PR to its final state) run only on a shape the maintainer has OK'd (the user's own repos: `converge`).
    - **After a PR opens,** each commit answers a user or maintainer request, a red CI, a found bug, or a mergeworthy rule.
@@ -30,7 +23,7 @@ The design loop takes a new API or protocol from candidates to a shape the maint
 
 **Aim for deep modules wherever code is written, designed or restructured,** from its first line, not only when a guardian reviews it. That covers the design loop, `pull-request` steps 3 and 4, the finality pass and `refactor`. A deep module has a lot of behaviour behind a small interface, sits at a clean seam, and is testable through that interface.
 
-**Use these terms exactly,** in code reviews and PR text too; don't substitute component, service, API or boundary:
+**Use these terms in internal design analysis.** Explain outward prose in the reader’s words (`writing`):
 
 - **Module**: anything with an interface and an implementation, at any scale (a function, a class, a package, a slice across tiers).
 - **Interface**: everything a caller must know to use the module correctly: the types, and also invariants, ordering, error modes, required configuration and performance characteristics. Not only a TypeScript `interface` or a class's public methods.
@@ -44,7 +37,7 @@ Principles:
 - **Depth belongs to the interface.** A deep module may be built from small parts with internal seams that its own tests use; those seams are not part of its interface.
 - **The deletion test:** imagine deleting the module. If complexity vanishes, the module was a pass-through; if complexity reappears across its callers, the module earns its keep.
 - **The interface is the test surface:** callers and tests cross the same seam. Needing to test past the interface means the module has the wrong shape.
-- **One adapter is a hypothetical seam, two are a real one:** don't add a seam until something varies across it.
+- **One adapter alone does not justify extensibility.** Add a seam only for present variation or a named unstable dependency that needs quarantine; never for a hypothetical second consumer.
 - **Shaping an interface,** ask: fewer methods? simpler parameters? more hidden inside?
 - **For testability:**
   - accept dependencies rather than create them (`processOrder(order, gateway)`, not a `new StripeGateway()` inside);

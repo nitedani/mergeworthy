@@ -19,7 +19,7 @@ description: "Any GitHub thread you're in: the live loop (watcher, 👀, replies
 
 Each comment you answer goes through these steps:
 
-1. **Within 10 seconds:** 👀 reaction. The watcher does this.
+1. **On detection:** the watcher adds 👀 to new answerable comments; reviews cannot receive reactions. New comments usually arrive on the ten-second polling path; edits and missed fast-path events may wait for the five-minute backstop.
 2. **The answer, or a holding reply.** Answer through the gate (1.6). Only when the answer needs long work (more than about 15 minutes) post a holding reply first, through the fast gate, and make it carry something: what you've found so far, and when the answer comes. Before acting on any comment, check that its reason fits the line it's anchored to; if the reason fits another line better, ask before changing anything.
    - **An instruction** ("Let's…", "Remove…", "Merge origin/main") or a suggestion block: do it, then reply "Done in <sha>."
    - **A question or soft suggestion** ("Overkill?", "How about…?", "why…?", "I think we can…") gets an answer, never a code change until they answer it. "How about X?" or "Is X possible?" starts with yes or no and the one real obstacle. When their idea is simpler than yours, recommend their idea. If the answer needs work, say what you're checking ("Measuring the calls"); never agree with a premise or promise a change you haven't measured. Hold any loop finding on the questioned lines until they answer.
@@ -32,7 +32,7 @@ Each comment you answer goes through these steps:
      - findings come with the exact fix; where the change is big, send the commits to the PR's Loop B agent (`converge`) and use its review and re-rating; with no loop running, apply `review`'s reviewer charter and `refactor`'s prompt to it;
      - never just "looks good", and don't push onto the branch while they're committing unless asked.
    - **"I don't understand this"** on a docs or code-comment line reports a bug in that text. Push clearer wording and reply "Done in <sha>: <new sentence>"; ask "OK?" only if the meaning changes.
-3. **Then think, as a mini debate.** Instructions and acknowledgements skip this step. Agreeing is a conclusion, never the default.
+3. **Then think, as a mini debate.** Instructions and acknowledgements skip this step. Keep your argued position until evidence changes it (`writing`, Design threads).
    - **The whole picture first:** what does the maintainer want overall? Trace the actual flow in code (caller → callee, which object each side sees, in each environment). Check that every path to the same thing behaves consistently, and name any gap you find with `file:line` and the next check.
    - **Then one fresh-context agent argues it divergently,** with that evidence, what `main` does, and a measurement where one is possible. Is "over-engineering" the right call, or is there a small, cleaner fix?
    - **The agent first only generates, no judging:** the strongest case for the maintainer's view and the strongest case against. Each case comes from at least three frames, past the obvious first answers. Frames include the user who hits it, the maintainer who keeps the code, and the smallest diff. Others are the version with no new code, and the design from scratch.
@@ -74,14 +74,14 @@ The watcher runs independently of any session and only records events (and adds 
 
 ## 1.6 Posting gate (every tier, no exceptions)
 
-**Everything that reaches an external service passes this gate,** with no lighter category: comments, review replies, inline comments, PR and issue bodies, filed issues, and edits of any of these. Reactions are exempt. Subagents never post; they hand you drafts.
+**Everything that reaches an external service passes this gate,** with no lighter category: comments, review replies, inline comments, PR and issue bodies, filed issues, and edits of any of these. Reactions are exempt. Only the orchestrator posts, edits posts, and talks to the user; subagents hand it drafts.
 
-1. **Write it the way it should end up;** the gate checks, it doesn't edit. Write in `drafts/<name>.md` (never straight into a `gh` command), with the comment it answers in `drafts/<name>.parent.md`.
+1. **Write the draft to the gate’s standard before review** (`core` 1.1.17). Write in `drafts/<name>.md` (never straight into a `gh` command), with the comment it answers in `drafts/<name>.parent.md`.
    - First write the reader's one line (the verdict or the ask) and what they already said.
    - Write it by `mergeworthy:writing` (open it): its three drafts, voice, budgets and badge.
-   - Read it as a newcomer would: every term named where it first appears, nothing to read twice.
+   - Read as a newcomer and explain every term on first use (`writing`, How a good colleague writes).
 2. **Run `post-lint`** with the draft's `--kind` (and `--repo`). It must pass; `gate-pass` re-runs it with the same flags.
-3. **Run the review** (`review`: open it for who reviews) with a prompt file. A finding means step 1 missed something: fix the draft and log in the ledger what the writing missed. The review checks facts and noise, not word choice:
+3. **Run the review** (`review`: open it for who reviews) with a prompt file. Fix the draft and log what its writing step missed (`core` 1.1.17). The review checks facts and noise, not word choice:
    - **Claims:** every claim against the code (`file:line` or a command and its output), the thread and the evidence.
    - **Noise:**
      - every con or risk names who hits it today (a caller, repo or user), or is cut;
@@ -90,9 +90,9 @@ The watcher runs independently of any session and only records events (and adds 
      - every absolute word ("every", "unchanged", "always", "only") quotes what proves it, or is cut;
      - maintainer requests are followed, and links are correct.
    - **Convergence** (design threads): the reply states its author's own position and the design's weakest part; a change of position names the new evidence; every open invariant is either a stated default or a question that only the other side can answer, and the questions are as few as that allows.
-   - **Opening** (a PR or issue body): "from its first paragraph alone, say what is broken and what this changes"; if the reviewer can't, that's a finding.
-   - **Reader:** "you have not seen this thread; list every term or sentence you can't understand", and "say in one line what the reader is asked to decide". If the reviewer can't say, names two decisions, or finds a pronoun with two meanings, a term or label not yet seen, a sentence to read twice, or a bold label or fragment standing in for a sentence, that's a finding. It must also read as `mergeworthy:writing` says; a finding there means the draft wasn't written that way, so rewrite it, never patch the wording.
-   - **The result:** capture only the reviewer's final message (`drafts/<name>.review.out`). Fix every finding and re-review until that message is exactly `CLEAN`. Never paste the reviewer's rewritten wording; write the fix in your own plain words.
+   - **Opening:** from the opening alone, state the problem and, for a PR, the change (`writing`); inability to do so is a finding.
+   - **Reader:** "you have not seen this thread; list every term or sentence you can't understand", and "say in one line what the reader is asked to decide". If the reviewer cannot identify the decision or decisions the reply requires, or finds a pronoun with two meanings, a term or label not yet seen, a sentence to read twice, or a bold label or fragment standing in for a sentence, that's a finding. It must also read as `mergeworthy:writing` says; a finding there means the draft wasn't written that way, so rewrite it, never patch the wording.
+   - **The result:** capture only the reviewer's final message (`drafts/<name>.review.out`). Fix every finding and re-review until that message is exactly `CLEAN`. Rewrite a finding’s substance in your own plain words (`writing`, Draft by talking).
 4. **Right before posting, re-read every claim against the current head** (`git fetch` first; read a PR's state before describing it). Every referenced commit is pushed (`git ls-remote`). Run `gate-pass <abs path>/drafts/<name>.md <review output>` and post with `--body-file` on that absolute path (`gh api … -F body=@<file>` for API posts).
 5. **Post in the thread where the person wrote.** Log it.
 
@@ -104,4 +104,4 @@ The watcher runs independently of any session and only records events (and adds 
 
 - **At most two comments in a row.** The second is only the 1.5 result after its holding reply, a wait ping, a dependency's progress, a 👎 fix, or the review of commits a maintainer pushed after your last comment; anything else edits your last comment. `pre-bash-guard` blocks a third while your last two have no reply from anyone else and the last is under 3 hours old; after that, the third may be the wait ping.
 - **Evidence carries no secret.** In logs, requests, payloads and screenshots, write `<REDACTED>` in place of every token, cookie, auth header and key. Quote only the lines that show the point (`post-lint` fails on common token shapes).
-- **One reply per person, edits for corrections.** Several comments from one person get one reply. Never post a comment that corrects or adds to your own earlier one: edit it in place, through the gate.
+- **One reply per person, edits for corrections.** Several comments from one person get one reply. Correct your earlier post in place through the gate, except the explicit new-reply cases in 1.5 and the second-comment exceptions above.

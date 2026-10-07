@@ -4,10 +4,10 @@
 
 Work with an AI coding agent through GitHub, the way you work with a coworker. You give it an issue or a request, then review its PR and answer its questions on the thread. You don't prompt it step by step or babysit a chat.
 
-- **It ships merge-ready PRs.** Before you see a PR, the agent has hunted for bugs, reviewed the change and simplified it. A UI or runtime change is also checked in the real app.
+- **It ships merge-ready PRs.** It opens a draft with the first push, then verifies bugs, reviews and simplifies the change before marking it ready (`converge`). A UI or runtime change is also checked in the real app.
 - **It keeps its threads moving.** It watches its PRs and issues, and answers every review comment, bot finding and red CI run. When a PR it depends on lands, it updates its own.
 - **It writes for busy reviewers.** A post leads with its verdict, ends with one decision and its pick, and links the long material. An independent review checks every post before it goes out.
-- **It asks only what isn't its to decide.** That means irreversible actions on shared state, money, credentials or your global config, a maintainer's product decision, and a fork it can't rank. Everything else it decides, does and reports.
+- **It asks only what isn’t its to decide.** The agent decides, acts and reports, asking for permission or an unrankable fork with its recommendation (`core` 1.1.3).
 - **Hooks hold the line.** Hooks block an unreviewed post, a PR marked ready without its review, and a third comment in a row within three hours.
 
 ## Install
@@ -40,7 +40,7 @@ Run `npx mergeworthy` again to change the options or add an agent; `npx mergewor
 
 | Skill | What it covers |
 |---|---|
-| `core` | triage, principles, tracking, discovery, safety, reporting |
+| `core` | triage, principles, tracking, discovery, safety, pre-flight |
 | `pull-request` | any change, from an issue or not, to a merge-ready PR |
 | `open-issue` | one finding a newcomer can find, reproduce and judge |
 | `evidence` | reproducing a behavior as a person would, a screenshot or video of it, uploading it |
@@ -73,4 +73,4 @@ docs/               graphs.md (generated from the skills) and build-graphs.py
 
 ## Changing it
 
-Edit here, commit and push; installed copies update through the plugin. To try a change before pushing, run `claude --plugin-dir .`.
+Edit here, commit and push; update each installed agent as listed in Install. To try a change before pushing, run `claude --plugin-dir .`.
