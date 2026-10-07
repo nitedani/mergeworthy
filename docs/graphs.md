@@ -7,9 +7,9 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 | Skill | Hands over to |
 |---|---|
 | `converge` | `finality`, `pull-request`, `verify`, `review`, `guardian`, `refactor`, `merging`, `github-threads`, `core` |
-| `core` | `open-issue`, `evidence`, `delegating`, `merging`, `github-threads`, `design-loop`, `converge` |
+| `core` | `open-issue`, `evidence`, `delegating`, `merging`, `github-threads`, `design-loop`, `converge`, `pull-request` |
 | `delegating` | nothing |
-| `design-loop` | `pull-request`, `core`, `review`, `github-threads`, `converge` |
+| `design-loop` | `pull-request`, `core`, `review`, `converge` |
 | `evidence` | nothing |
 | `finality` | nothing |
 | `github-threads` | `converge`, `review`, `refactor`, `core`, `pull-request`, `finality` |
@@ -21,7 +21,7 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 | `pull-request` | `evidence`, `finality`, `guardian`, `design-loop`, `converge`, `core`, `open-issue`, `github-threads` |
 | `refactor` | nothing |
 | `review` | `delegating`, `guardian`, `refactor`, `github-threads`, `core`, `converge` |
-| `verify` | `converge`, `core` |
+| `verify` | `core`, `converge` |
 
 ## Any multi-step or GitHub task, first
 
@@ -37,9 +37,10 @@ flowchart TB
   s0 -.-> r2[["evidence"]]
   s0 -.-> r3[["design-loop"]]
   s0 -.-> r4[["converge"]]
-  s0 -.-> r5[["delegating"]]
-  s0 -.-> r6[["merging"]]
-  s0 -.-> r7[["github-threads"]]
+  s0 -.-> r5[["pull-request"]]
+  s0 -.-> r6[["delegating"]]
+  s0 -.-> r7[["merging"]]
+  s0 -.-> r8[["github-threads"]]
   subgraph g1["1.12 Pre-flight"]
     s1["1. Write scope.md"]
     s2["2. Write the critical path"]
@@ -51,7 +52,7 @@ flowchart TB
     s5["5. Note the precedents and<br/>style"]
     s4 --> s5
   end
-  s3 -.-> r8[["github-threads"]]
+  s3 -.-> r9[["github-threads"]]
   start --> g0
   g0 ~~~ g1
 ```
@@ -79,8 +80,7 @@ flowchart TB
   s1 -.-> r1[["pull-request"]]
   s1 -.-> r2[["core"]]
   s3 -.-> r3[["review"]]
-  s4 -.-> r4[["github-threads"]]
-  s5 -.-> r5[["converge"]]
+  s5 -.-> r4[["converge"]]
   subgraph g1["1.4.1 Codebase design"]
     s6["1. Frame the problem for<br/>the user"]
     s7["2. Have one fresh-context<br/>agent design it three<br/>times"]
@@ -90,7 +90,7 @@ flowchart TB
     s9["4. Compare and recommend"]
     s8 --> s9
   end
-  s7 -.-> r6[["core"]]
+  s7 -.-> r5[["core"]]
   start --> g0
   g0 ~~~ g1
 ```
@@ -148,13 +148,13 @@ flowchart TB
   start --> g0
 ```
 
-## Writing skills, rules or prompts; starting or briefing subagents
+## Writing skills, rules or prompts; starting or briefing subagents; taking over another session's work
 
 Opens `mergeworthy:delegating` (1.9, 1.10).
 
 ```mermaid
 flowchart TB
-  start(["Writing skills, rules or<br/>prompts; starting or<br/>briefing subagents"])
+  start(["Writing skills, rules or<br/>prompts; starting or<br/>briefing subagents;<br/>taking over another<br/>session's work"])
   subgraph g0["1.9 Writing rules"]
     s0["1.9 Writing rules"]
   end
@@ -224,7 +224,8 @@ flowchart TB
   end
   s1 -.-> r1[["evidence"]]
   s2 -.-> r2[["evidence"]]
-  s3 -.-> r3[["github-threads"]]
+  s2 -.-> r3[["github-threads"]]
+  s3 -.-> r4[["github-threads"]]
   start --> g0
 ```
 
@@ -299,15 +300,16 @@ flowchart TB
     s3["4. Queue another pass on<br/>that slice"]
     s2 --> s3
   end
-  s0 -.-> r1[["converge"]]
-  s2 -.-> r2[["converge"]]
-  s3 -.-> r3[["core"]]
+  s0 -.-> r1[["core"]]
+  s0 -.-> r2[["converge"]]
+  s2 -.-> r3[["converge"]]
+  s3 -.-> r4[["core"]]
   start --> g0
 ```
 
 ## Bloat and quality rounds
 
-Opens `mergeworthy:guardian` (the LeanKeeper charter (the guardian's audit rules), Loop B (bloat and quality)).
+Opens `mergeworthy:guardian` (the guardian charter, Loop B (bloat and quality)).
 
 ```mermaid
 flowchart TB

@@ -26,9 +26,9 @@ Every post brings the reader something they didn't have: a finding, a measuremen
 
 A maintainer asked whether a design has holes. This answer gives them the result and nothing they don't need:
 
-> I dug in with real apps on Hono, Express, Fastify, Elysia and H3, and `vike(app)` as the one injection point holds up. Its few real limits are in a short [list](…); the main one is that a route placed before `vike(app)` is only reported on Express and Hono.
+> I dug in with real apps on three frameworks, and `app.use(handler)` as the one injection point holds up. Its few real limits are in a short [list](…); the main one is that a route placed before the handler is only reported on two of them.
 >
-> I also found a few bugs that would stop it from working, but they look simple to fix and I'm on them: the Vike side is already pushed to #3557, and the rest goes to Universal Middleware. I weighed a second Vike line to avoid some Hono workarounds and dropped it, because it's the second injection point you didn't want.
+> I also found a few bugs that would stop it from working, but they look simple to fix and I'm on them: the first is already pushed to #12, and the rest goes to the adapter library. I weighed a second entry point to avoid some workarounds and dropped it, because it's the second injection point you didn't want.
 >
 > I'll come back when the fixes are in.
 

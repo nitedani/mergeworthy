@@ -15,13 +15,12 @@ description: "Bug verification of a PR (reproduce-only, Loop A in converge): sli
 - **Dropped candidates are listed.** The verifier lists every candidate it dropped, one line each with the reason.
 
 **When a pass finds bugs:**
-1. Fix each bug at its root cause, with a spec that fails first (show it failing on the parent), the minimum diff, and the phantom gate passed (`converge`). Re-run the verifier's own repro on the fixed build, and compare its output with the base's.
+1. Fix each bug at its root cause, with a failing repro first (show it failing on the parent; it becomes a test only under `core` 1.1.16's test rule), the minimum diff, and the phantom gate passed (`converge`). Re-run the verifier's own repro on the fixed build, and compare its output with the base's.
 2. If the area has already had two corrective edits, stop patching. Rethink it as one rule that covers every case found so far, then implement that rule.
 3. Put fixes to base code in the bottom PR (when there is a stack, `converge`), then merge up.
 4. Queue another pass on that slice, and record it in the ledger. A merge-up re-opens the top PR's slices that call the changed base code, and the top's base SHA for counting moves to the bottom's new head.
 
 **Dry criteria** (a dry pass finds no bug that counts):
-- **One dry pass is a strong signal, and two in a row are enough.**
 - **Every slice needs a dry pass after its last fix.**
 - **A change re-opens a slice.** A fix, a refactor or a revert in a slice's code re-opens it.
 - **Don't rerun a dry, unchanged slice.** A slice that is dry, and whose code hasn't changed since, isn't run again.

@@ -5,7 +5,7 @@ description: "When a rule failed or the user names a failure: the table of past 
 
 # Failures that already happened
 
-Each failure below happened, most more than once. When a rule fails or the user names a failure, find its row. A new failure gets a new row and a fixed rule (1.1.12).
+Each failure below happened, most more than once. When a rule fails or the user names a failure, find its row. A new failure goes in an existing row when one covers its rule; otherwise a new row of at most one line. Either way the rule is fixed (1.1.12).
 
 | What happened | Rule |
 |---|---|
@@ -30,17 +30,17 @@ Each failure below happened, most more than once. When a rule fails or the user 
 | A design that sent the payload three times "for now". | 1.1.2 |
 | Hooks named against their behavior; options nobody asked for. | 1.1.10 |
 | A proposal that pulled in unrelated behavior, with unexplained shorthand. | 1.4 walkthrough |
-| A design comparison sent as a table; the user needed code. | 1.6 comparisons, 1.4 |
+| A design comparison sent as a table; the user needed code. | `writing.md`, 1.4 |
 | Side-PR review rounds while the critical-path feature stayed a prototype. | 1.1.1 |
 | "Separate PR" meaning "later"; a 5-minute item deferred twice; a promised PR never opened. | 1.1.7, 1.5 `PROMISED`, `gate-pass` |
 | Parts of the task and of an accepted design silently dropped. | 1.1.8 |
 | Throughput losses and reconnects called trade-offs. | 1.1.11 benchmark |
 | A regression for users of an existing feature called "limitation: experimental". | 1.1.11 |
-| UI bugs found by the user; UI "verified" by computed styles and scripted events. | `pull-request` (UI and runtime work) |
-| A transport fix opened with Node-script evidence only. | `pull-request` (UI and runtime work) |
+| UI bugs found by the user; UI "verified" by computed styles and scripted events. | `evidence` (reproduce it as a person would) |
+| A transport fix opened with Node-script evidence only. | `evidence` (reproduce it as a person would) |
 | A release unlike the maintainer's past releases. | 1.3 precedent |
 | Docs in the agent's voice; repeated "I don't understand"; a coined term. | 1.3, 1.5 |
-| Jargon, AI phrasing, out-of-context replies; replies that only complied or restated. | 1.6 writing, `post-lint` |
+| Jargon, AI phrasing, out-of-context replies; replies that only complied or restated. | `writing.md`, `post-lint` |
 | A reply showed a hole was class-wide (a query-parser default) but recommended only the PR's narrow fix; the user had to propose the global one, and 👎'd it. | 1.5 step 3 (question behind the literal one) |
 | A reply claim no longer true after a revert. | 1.6 step 4 |
 | Soft suggestions answered "Done"; the wrong paragraph removed. | 1.5 step 2, `post-lint` |
@@ -63,16 +63,14 @@ Each failure below happened, most more than once. When a rule fails or the user 
 | The agent watched and answered every thread in the scope repos, not only threads it opened or posted in and the user's `/ai` calls. | 1.5 (which comments you answer), the watcher (`watcher/gh-watch.py`), `post-bash-register` |
 | Held new work while the budget was red, with nothing watching the budget; it turned green and the session spent hours only re-arming the GitHub watcher until the user asked why it stopped. | 1.1.13 (a budget hold has a Monitor on the signal that lifts it) |
 | A quick-win PR added a controller type check for a field that a sibling PR's DTO validators already covered (only the optional case was missing); the owner called it bloat. | 1.1.16 (reuse the sibling PR's layer) |
-| Two decision issues were filed with text and code references only; the owner couldn't see where in the app the problem was. The 1.6 issue budget said "plus a screenshot", but nothing checked it. | `open-issue`, with `evidence` shared by `pull-request`; `post-lint --kind issue` fails without `### How to reproduce` and its evidence. |
+| Two decision issues were filed with text and code references only; the owner couldn't see where in the app the problem was. | `open-issue`, with `evidence` shared by `pull-request`; `post-lint --kind issue` fails without `### How to reproduce` and its evidence. |
 | A PR fixing a security bug also changed how a legitimate user's flow behaves (invoice account read-only, totals rejected); the owner said behavior changes need the business's decision first. | 1.1.9 and the project file: a fix closes only the hole; any change to what a legitimate user sees or can do goes to its own issue with options and a recommendation. |
 | Branches were pushed and worked on for hours with no PR; GitHub showed them as "no pull request yet", and merged PRs' branches were left behind. | `pull-request` (draft PR with the first push), 1.7 (`--delete-branch` at merge). |
 | Two issues whose symptom takes several clicks to reach (create an invoice, bid at the job limit) got two still screenshots; the owner wanted a video of the whole flow. | `evidence` (a symptom behind more than one action gets a video of the flow); `post-lint --kind issue` fails on steps shown only in stills. |
-| A pending `gh issue edit` came back "the user doesn't want to take this action" because T3 Code delivered a task notification mid-turn; the session took it as a stop and went idle until the user asked why. | 1.1.13 (a cancellation with no user message after it is re-run) |
-| Probing a local model's largest context, the agent loaded KV caches up to 1M tokens on a 16 GB GPU; WSL's CUDA spilled ~18 GB into Windows RAM without an error, each probe read "loaded", and the next one OOM'd the user's computer. | 1.8 (compute memory before allocating it; on WSL "it loaded" proves nothing) |
+| A tool result saying the user doesn't want the action, with no user message after it, was a harness cancellation; the session went idle. | 1.1.13 (a cancellation with no user message after it is re-run) |
 | A fix that cost a benchmark cell against `main` went to the user as a GENUINE-FORK; with no answer the agent took its own "keep it" recommendation and started the final benchmark on the regressing head. | 1.1.3 (no default on a regression), 1.1.11 |
 | Stuck on a fix whose every option regressed, the agent asked the user to pick instead of running the finality pass; the user had to name it. | finality (when to run it), 1.1.3 |
 | Phase B branches were about to get the code map and angles phrased in the current design's terms, anchoring them on what exists; the user named it. | finality (Phase B: the clean problem) |
-| A tool result "The user doesn't want to take this action right now" arrived 24 ms before a task notification, in a bypass-permissions session; it was the harness cancelling the waiting call, but the session stopped and waited for the user. | When that result is followed by no message from the user, only a task notification, it is a cancellation: re-check the action is still true of the head and re-run it. |
 | A decision issue recommended the smallest change (logout ends every device's session) over the option users want (logout ends only that device), and the owner asked why the worse one was recommended. | `github-threads` 1.6: recommend what is best for the people who use it; cost is stated beside each option, never the deciding reason. |
 | Agents treated as dead when their turn ended (T3 wakes them when their background commands finish), retried and killed, so two ran one job; the orchestrator meanwhile blocked on foreground wait loops. | 1.10 (never block; one agent per job), `pre-agent-dedupe`, `agent-job`, `pre-bash-guard` |
 | On a long design thread each reply chased the latest comment, flipped position without evidence, argued from execution cost ("needs a release of every adapter") and left invariants unconfirmed. | github-threads (converge through the other side), `finality` (a drifted thread; the map gate), `design-loop` (end state first) |

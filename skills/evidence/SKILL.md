@@ -7,7 +7,7 @@ description: "Showing a behavior to a reader who wasn't there: browser control, 
 
 What lets a newcomer see a behavior for themselves: where it is, what triggers it and what happens. An issue (`open-issue`), a reproduction comment and a PR's walkthrough (`pull-request`) all show it this way.
 
-**Browser control** (UI or runtime work): a [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp), T3 Code's preview tools, or anything that opens a page, clicks, screenshots and records it. Try it before you start; nothing in a shell can test it. Configure the MCP with `--isolated` (e.g. `npx -y chrome-devtools-mcp@latest --headless --isolated`), so parallel sessions don't share one profile. Isolated profiles are temporary: set the cookies and storage the test needs in the page.
+**Browser control** (UI or runtime work): a [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp), or anything that opens a page, clicks, screenshots and records it. Try it before you start; nothing in a shell can test it. Configure the MCP with `--isolated` (e.g. `npx -y chrome-devtools-mcp@latest --headless --isolated`), so parallel sessions don't share one profile. Isolated profiles are temporary: set the cookies and storage the test needs in the page.
 
 ### Reproduce it as a person would
 
@@ -18,7 +18,7 @@ What lets a newcomer see a behavior for themselves: where it is, what triggers i
 ### Capture it
 
 - **One screen shows it:** a screenshot of that screen, where a user meets it, not where the code is. A fix to a form is proven only when the thing it configures is on screen behaving differently.
-- **Reaching it takes more than one action, or the point is what happens as you act:** a video of the whole flow from the clean start, recorded with real clicks (e.g. T3 Code's `preview_recording_start` and `preview_recording_stop`, which return an `.mp4`). Stills hide layout shift, a flash of stale data, a step that runs twice, a control that enables late. Stills alone are for what is static: formatting, labels, a column's contents.
+- **Reaching it takes more than one action, or the point is what happens as you act:** a video of the whole flow from the clean start, recorded with real clicks by any tool that records a video. Stills hide layout shift, a flash of stale data, a step that runs twice, a control that enables late. Stills alone are for what is static: formatting, labels, a column's contents.
 - **Nothing on a screen shows it:** the evidence that does, in a code block: the request and the response, the command and its output, the payload the service received.
 - **One line per image or video:** what to look at and what it proves. Name the setup (page, date, filter) when the default view doesn't show it, and crop so the pixels that matter are findable.
 - **Disclose anything you did to the page** to get the shot, and whether it reproduces on `<base>`. Redact secrets (1.6).
@@ -29,4 +29,4 @@ What lets a newcomer see a behavior for themselves: where it is, what triggers i
 gh issue comment <N> --body-file body.md --attach '/abs/path/01-name.png#alt text'   # gh issue create, gh pr edit take it too
 ```
 
-**`gh` uploads attachments and rewrites matching local paths.** Reference each file by the exact path you pass to `--attach`, then confirm with `gh issue view <N> --json body` (or `gh pr view`) that no local path survived. A video goes in the same way, as `![](<path>.mp4)` alone in its paragraph, and GitHub renders a player.
+**`gh` uploads attachments and rewrites matching local paths.** Reference each file by the exact path you pass to `--attach`, then confirm with `gh issue view <N> --json body` (or `gh pr view`) that no local path survived. A video goes in the same way, as `![](<path>.mp4)` alone in its paragraph, and GitHub renders a player. If `gh` lacks `--attach`, upload by hand and link.

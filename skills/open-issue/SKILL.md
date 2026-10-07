@@ -9,7 +9,7 @@ One finding that a newcomer can find, reproduce and judge without asking you. Wh
 
 1. **Already filed or fixed?** `gh issue list --state all --search "<keyword>"` and `git log --oneline origin/<base> -- <the files>`. An existing issue gets your finding as a comment, not a twin; a fix already on `<base>` gets no issue.
 2. **Reproduce it on today's `<base>`** per `evidence`, from a clean start. Trace both ends: where it starts in the code, and where a user meets it. What you can't reproduce isn't filed.
-3. **Write the body:**
+3. **Write the body** (budget in 1.6):
 
    ```markdown
    <What breaks and where, in a user's words, one or two sentences of fact.>

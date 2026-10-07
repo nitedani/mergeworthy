@@ -16,7 +16,7 @@ These scripts enforce the rules that failed as text alone.
 ### `gh-watch-start` (enforces 1.5)
 
 `gh-watch-start [--main] <dir> [owner/repo [N]]…` is the one way to start watching; running it again is harmless.
-- **What it adds.** It adds `owner/repo N` to `<dir>/threads.txt`. A bare `owner/repo` goes to `repos.txt`, which covers a repo before an issue exists.
+- **What it adds.** It adds `owner/repo N` to `<dir>/threads.txt`. A bare `owner/repo` goes to `repos.txt`, which covers a repo before an issue exists; delete that line once the thread exists, or the watcher never retires.
 - **`--main`:** this dir gets the user's `/ai` calls on threads no watcher watches. The default is the first live dir.
 - **The supervisor.** It starts the daemon under a supervisor: the systemd user service `gh-watch@<dir>` on Linux, a launchd agent on macOS, else a detached daemon that cron revives.
 - **Maintainers.** `GH_WATCH_EYES` names the maintainers whose commits and 👍/👎 are reported; without it, `<dir>/eyes`, else your own login.
@@ -73,7 +73,7 @@ It blocks:
 - a `gh` post or edit whose body isn't a gated draft, or changed since its gate (use absolute draft paths);
 - opening an issue or PR in a repo no running watcher covers;
 - the same gated draft posted twice as new;
-- a third comment while your last two on that thread have no reply and the last is under 3 hours old (1.6);
+- a third comment on a thread (1.6 states the condition);
 - `gh pr merge` without `--squash --subject "<title> (#N)" --body ""`, and with `merge=reviewer`, every merge;
 - `--delete-branch` while PRs are based on the branch;
 - a `git commit` whose author isn't the pushing GitHub account (1.7);

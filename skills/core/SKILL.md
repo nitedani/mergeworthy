@@ -12,7 +12,7 @@ How an AI agent works so that what it posts and the PRs it opens are worth mergi
 ## The task
 
 These defaults hold unless the user overrides them:
-- **The user** owns the goal. Code in the user's own repos is theirs, and so are beta, experimental or pre-1.0 features. That code is yours to change for the goal: decide, act, and report afterwards.
+- **The user** owns the goal. Code in the user's own repos is theirs, and so are beta, experimental or pre-1.0 features. That code is yours to change for the goal: decide, act, and report afterwards. Removing or rewriting an owner's code on an agent's reading alone is `converge`'s owner-code rule.
 - **External maintainers** are whoever merges in a repo you don't own (CODEOWNERS, recent mergers). Their requests are settled decisions. Changes to their code's behavior or public surface are their call (`converge`, authority).
 - **Models.** Reviews follow `review`: open it before any independent review, for who reviews. Judgment work runs on the session's default model; routine work follows 1.1.14. Never use a model above the default's tier unless the user names it, and never one the user has excluded. Never write a model version into a prompt, skill or memory.
 - **Artifact root:** a persistent `<task>-work/` directory next to the worktree. It holds notes, logs, probes, agent outputs and scratch worktrees; never use `/tmp`.
@@ -26,7 +26,7 @@ Read the task and every link in it. Then write `Tier: <X>, because <signals>` as
 
 | Tier | Signals | Process |
 |---|---|---|
-| **0: Answer** | An answer, research or a review; nothing to change. | Principles, evidence, reporting; the posting gate if published. |
+| **0: Answer** | An answer, research or a review; nothing to change. A review of someone else's PR posts findings through the gate (1.6) and never approves unless the user asked. | Principles, evidence, reporting; the posting gate if published. |
 | **S: Single fix** | One bounded fix in one repo, expected behavior already clear. | `pull-request` per change, which runs `converge`'s pipeline. The project file's gates green, the body true to the head. |
 | **M: Feature or set** | A new capability, a changed public contract, several change units, or open behavior questions. | `pull-request` per unit; invariants, ledger, decision packet, design loop (1.4). |
 | **L: Program** | Changes across two or more independently maintained repos, or two or more decision makers. | Tier M everywhere, plus the umbrella issue (1.2). |
@@ -58,8 +58,8 @@ Every PR, whatever its tier, goes through `converge`'s pipeline: a Loop A agent 
     - Check `main`, the registry and the upstream source before recommending to close, remove, replace or switch anything.
     - A "can't" needs the failed attempt quoted plus one alternative tried. Check a blocker you report ("X isn't running") again right before you report it.
     - If you contradict something you said earlier, say so.
-    - A job you report as running is one you saw make progress (its log, its output file, the GPU busy), not one you only started.
-    - Measure through the exact path the real work takes: the same client, API and settings the user runs, never a convenient substitute. A result from any other path is not evidence.
+    - A job you report as running is one you saw make progress (its log, its output file, its CPU or GPU busy), not one you only started.
+    - When you report a measurement, take it through the exact path the real work takes: the same client, API and settings the user runs, never a convenient substitute. A result from any other path is not evidence.
     - A check covers only what it exercised. "Works", "fixed" or "converged" names what ran and what didn't: a stand-in instead of the real thing, a subset of a list, a unit test instead of the real entry, the source instead of the installed copy.
     - A CI workflow change works only once a real run on the branch shows it.
 6. **Fix at the root; never document around a defect.** A sentence telling users to work around the product is a bug to fix, upstream included, unless the user explicitly accepts it. Examples: "order by seq when order matters", "may miss for 60 s".
@@ -103,16 +103,16 @@ Every PR, whatever its tier, goes through `converge`'s pipeline: a Loop A agent 
     - While any wait exceeds 10 minutes, at least one independent item is in flight; if none exists, say why.
     - When the user says they're leaving, send every open question in one message within 5 minutes, then continue on your recommended defaults.
     - Work held for budget names the signal that lifts the hold (e.g. `claude-usage --mode` leaving `execute`) and a Monitor on it that wakes you; when it fires, resume without asking. Re-arming a GitHub watcher is not work.
-    - After a usage limit, resume every agent the limit stopped through its own thread, never a new one. Never auto-resume parallel agents on a non-default model. Schedule one wakeup at the reset time.
+    - After a usage limit, resume every agent the limit stopped through its own thread, never a new one. Never auto-resume parallel agents on a non-default model without asking the user first. Schedule one wakeup at the reset time.
     - When a context nears its limit, hand off at a clean boundary to a fresh agent with the ledger.
 14. **Spend tokens like money.**
     - **Do small steps yourself:** one command, one file read, a short edit, a "Done in <sha>" reply.
-    - **Start an agent only for long, independent work,** at most 3 at a time without asking, and only from the main session; queue the rest. A subagent never starts agents of its own (1.7). Continue an agent that already has the context (send it a message) instead of starting a new one. Stop an agent as soon as its question is settled.
+    - **Start an agent only for long, independent work,** at most 3 running at a time (mappers and loop agents together) without asking, and only from the main session; queue the rest. A subagent never starts agents of its own (1.7). Continue an agent that already has the context (send it a message) instead of starting a new one. Stop an agent as soon as its question is settled.
     - **One agent per loop, not per role.** Roles that read the same artifact for the same loop run in one agent, each written to its own output file: a review and its guardian and refactor ratings; the verifier's slices; a guardian's scopes. Split only when the material doesn't fit one context, or when independence is the point (the author never reviews itself, and the fresh reader hasn't seen the fixes).
-    - **Give agents paths and the question,** never pasted files or long histories, and ask for a short report. Each role gets only what it uses: a PR writer gets the mergeworthy skills (1.7), an executor a brief (1.10), a reviewer its charter and the artifact.
-    - **Match the check to the risk.** A short reply gets the fast gate (1.6); a PR body or a proposal gets the full review. A full convergence loop runs only where the tier (1.0) requires it.
+    - **Give agents paths and the question,** never pasted files or long histories, and ask for a short report. Each role gets only what it uses: an executor a brief (1.10), a reviewer its charter and the artifact.
+    - **Match the check to the risk.** A short reply gets the fast gate (1.6); a PR body or a proposal gets the full review.
     - **Re-run only the tests a change can affect** (a docs change doesn't need the e2e matrix).
-    - **Routine work that is more than a small step** (running tests and gates, mining logs, mechanical edits, relaying status) goes to a `sonnet` subagent. Design, hard debugging, reviews, fact checks and anything posted to a maintainer stay on the session's default model.
+    - **Routine work that is more than a small step** (running tests and gates, mining logs, mechanical edits, relaying status) goes to a smaller-tier subagent. Design, hard debugging, reviews, fact checks and anything posted to a maintainer stay on the session's default model.
     - **Never trim a charter or skip a pass it requires** to save tokens.
 15. **Earn every line.** A reviewer's, verifier's or guardian's finding is a candidate, not a mandate. Before it becomes code, a test, a doc or an option, ask:
     - **How likely does a real user hit it, and what happens then?** A rare case whose failure is mild, or arguably what the user asked for, gets no code. Wrong data returned silently (a misattribution, a lenient parse that hides the cause) is never mild: fix it at the root (1.1.6).
@@ -120,7 +120,7 @@ Every PR, whatever its tier, goes through `converge`'s pipeline: a Loop A agent 
     - **What does it cost** in lines, new state (maps, globals, build tracking) and tests? More than a few lines for a rare case is overkill.
     - **Would the maintainer write it?** Lean code, no special-casing, no caches that save milliseconds, tests and docs per 1.1.16.
 
-    It judges findings and patches, never the shape of a design: there the cleanest end state from first principles wins, and effort, release count and diff size belong to the plan that builds it (`design-loop`).
+    It judges findings and patches, never the shape of a design (`design-loop`).
 
     Record the judgment in one line ("accepted, not worth code: rare, and the page winning is what the user asked for"); that line is the finding's disposition in `converge`'s loops. When unsure, don't add; ask with a recommendation. A converged PR is the smallest clean diff that does the job and reads as obviously right to its maintainers.
 16. **Submit the shape that gets merged.** Before opening a PR, look at the maintainer's recent merged PRs (and ours in that repo): what they keep and what they cut. Defaults:
@@ -130,10 +130,10 @@ Every PR, whatever its tier, goes through `converge`'s pipeline: a Loop A agent 
     - **Tests follow the repo's habit.** Where the maintainer removes PR-proving tests ("remove the test right before merging"), remove them unasked, in a final commit once the PR is approved. Where the maintainer keeps regression tests, keep them. Write no tests for message text, comments or dead code. Add at most one permanent e2e assertion per new capability, in an existing test app, and unit specs only for tricky pure algorithms.
     - **Docs:** main usage and one example, plus `llms.txt`; no edge cases, nothing obvious (1.3).
     - **Reuse existing code.** Search before adding a helper, and never claim something is missing without linking the code. In a program of PRs, also search the sibling PRs, open and merged: when one already enforces a rule (a validator, a guard), extend that layer, never add a second check for the same thing elsewhere.
-    - **Comments:** at most one line, literally true, stating a constraint the code can't show. No links to source, and no comparison with the old code ("instead of", "now", "no longer"). Names follow their siblings.
+    - **Code comments:** at most one line, literally true, stating a constraint the code can't show. No links to source, and no comparison with the old code ("instead of", "now", "no longer"). Names follow their siblings.
     - **Deletions:** every comment, guard or workaround the diff deletes gets one line in the body with the evidence that it's obsolete; otherwise it stays.
     - **A test app imports the package by its name,** never by a source path.
-    - **Draft, then ready.** Open the PR as a draft until its tier's steps hold on the head; `pre-bash-guard` blocks marking it ready until `pr-steps` has recorded its review and refactor pass. Then mark it ready and say "ready" once (1.7).
+    - **Draft, then ready:** `pull-request` says when; say "ready" once (1.7).
 17. **Quality is made, checks confirm.** Every check (a review, a guardian, the posting gate, the fresh reader) has a step before it. That step is responsible for what the check checks: the build for the code, the writing for a post, the design for its shape.
     - Do that producing step to the check's standard, so the check comes back quickly with nothing.
     - A check's finding is a miss of its producing step: fix the instance, and note in the ledger what the producing step missed.
@@ -145,7 +145,7 @@ Every PR, whatever its tier, goes through `converge`'s pipeline: a Loop A agent 
     - Record exit codes (`EXIT=$?`) and quote them, never a log tail.
     - Log and artifact names include a unique pass ID; never overwrite another pass's file.
     - The owed lists (`replies-owed.md` and `proposals-open.md` of 1.5, `questions-owed.md` of 1.1.4) live in the artifact root, which is also the watch dir.
-- **Tier S:** the PR body is the record of what the loops found, true of the final head. Add `scope.md` and a short `ledger.md` for process records (review, refactor, the 1.7 Ready list).
+- **Tier S:** the PR body is the record of what the loops found, true of the final head. Add `scope.md` (with the critical-path and feature list) and a short `ledger.md` for process records (review, refactor, the 1.7 Ready list).
 - **Tier M:** keep these files:
     - `ledger.md`: one row per event (time | unit | event | head SHA | result). Events are each pass, round, fix with its commits, gate or lane run with its exit status, push, and CI result. Head it with `critical-path` and the passes still owed. Answer every status and convergence question from the ledger, skipped steps included.
     - `decision-packet.md`: only people's picks (decision | who | date | link | what it was picked over).
@@ -200,11 +200,11 @@ Everything the skills need to know about one repo; the method itself stays in th
     - Find a server by the PID you started (and its children, `pgrep -P <pid>`) or by its port (`ss -ltnp 'sport = :<port>'`). Never grep `ps` output for a port number, and never `pgrep -f <pattern>`.
     - Check each PID's command, directory and parent chain before killing it: the chain must lead to something you started. Other sessions run browsers, servers and agents on the same machine.
 - **At most 4 browsers and 4 dev servers** of your own at once; stop each when its work ends.
-- **Compute memory before you allocate it,** never probe for a limit by loading more. Size a model, cache or buffer from its numbers first, keep it under the device's free memory with headroom, and check `free -g` for the host. On WSL, CUDA spills VRAM overflow into Windows RAM without an error, so "it loaded" proves nothing.
+- **Compute memory before you allocate it,** never probe for a limit by loading more. Size a model, cache or buffer from its numbers first, keep it under the device's free memory with headroom, and check `free -g` for the host.
 - **Never restart or reconfigure a container** someone else's work depends on; start your own alongside.
 - **Own ports.** Each dev server, preview server or e2e run you start gets its own free port (`--port`, `PORT=`). Never use a port another run holds, and never kill or wait out another run's server.
 - **Never modify the package store or a shared `node_modules`.** Scratch installs use `--package-import-method=copy`. After any install, check `git status` for unexpected changes.
-- **Browser work uses the DevTools MCP,** started with `--isolated` (`pull-request`). Never fall back to scripted browsers silently, never open windows on the user's desktop, and never kill another session's browser.
+- **Browser work uses the DevTools MCP,** started with `--isolated` (`evidence`). Never fall back to scripted browsers silently, never open windows on the user's desktop, and never kill another session's browser.
 - **Isolate worktrees:** their own ports, databases and generated clients.
 - **Never touch the user's own checkouts** (the clones the user works in), including their git config, which their worktrees share. That means no edits, commits, checkouts, resets or branch switches there. Work in worktrees you create. To read another branch, run `git worktree add --detach <artifact root>/<name> <ref>`.
 
@@ -213,7 +213,7 @@ Everything the skills need to know about one repo; the method itself stays in th
 - **Write it like an inbox, not a log.** The first lines answer the user's questions. Next comes what needs them: each decision with your pick and quick options to answer, the way a colleague asks. Then what moved. The engine room (rounds, reviewers, agents, hooks, models) stays out unless it changed what they should do.
 - **Then the state:** each PR's state and what was found and fixed since the last report, with links. Add what's still running, what's waiting on whom, what's theirs to decide, and the critical path with an ETA per step.
 - **Every reply carries thought.** When something went wrong, say why it happened, what you judge, and what changes, in your own reasoning. Restating their instruction and your next command is not a reply.
-- **About 12 lines** unless asked for more. Write local files as absolute paths. Give every PR or issue with its title and link, including every issue you filed. The 1.6 writing rules apply. Don't restate their instructions, and don't narrate step by step.
+- **About 12 lines** unless asked for more. Write local files as absolute paths. Give every PR or issue with its title and link, including every issue you filed. `writing.md` applies. Don't restate their instructions, and don't narrate step by step.
 - **Check before reporting status.** Re-read the umbrella issue against the PRs' states (Tier L), and check 1.7's Ready list where it applies. Never claim a pass went dry for a slice that hasn't had it. State unfavorable facts, mistakes and skipped steps plainly.
 
 ## 1.12 Pre-flight (every tier; step 4 for UI work)

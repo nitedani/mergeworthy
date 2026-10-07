@@ -7,7 +7,7 @@ description: "Designing an API, protocol or module, or restructuring code: the d
 
 The design loop takes a new API or protocol from candidates to a shape the maintainer has agreed to, before any PR converges.
 
-- **Design the end state first, then plan the way there.** Judge a design on its correctness, its invariants and how simple the final shape is. The work to get there (releases, migrations, how many PRs) is planning, never an argument for a weaker shape, and "later" or "until someone needs it" is not a design decision. Do the work the design needs now, and defer nothing that the design depends on.
+- **Design the end state first, then plan the way there.** The cleanest end state from first principles wins; effort, release count and diff size belong to the plan that builds it, and 1.1.15 judges findings, never a design's shape. Judge a design on its correctness, its invariants and how simple the final shape is. The work to get there (releases, migrations, how many PRs) is planning, never an argument for a weaker shape, and "later" or "until someone needs it" is not a design decision. Do the work the design needs now, and defer nothing that the design depends on.
 
 0. **Prototype on existing extension points first.** Before any new core API, prototype the solution that uses only existing extension points (e.g. an existing middleware, render hook or plugin hook). That prototype is the first candidate; a core change needs a named requirement the prototype fails.
 1. **Draft `decisions/<name>.md`:** the invariant table (1.1.2), and the candidates rated as in `pull-request` step 3 (open `pull-request` for the rating steps). Rank the candidates by interface size. Recommend the smallest that keeps every invariant; recommend a larger one only with the requirement the smaller one fails, shown as code.
@@ -17,12 +17,12 @@ The design loop takes a new API or protocol from candidates to a shape the maint
    1. the one new concept, in one sentence;
    2. what the user or extension writes, as code;
    3. what happens on each path a user can take;
-   4. why this format, each alternative shown the same way (1.6 comparisons), and the recommended one's downsides against `main`, found by arguing against it before posting;
+   4. why this format, each alternative shown the same way (as `writing.md` says, as code), and the recommended one's downsides against `main`, found by arguing against it before posting;
    5. numbered questions.
 
    The walkthrough holds nothing that changes existing behavior the feature doesn't strictly need. Every term is explained in plain words.
 5. **Post the walkthrough** as soon as the prototype holds the invariants.
-   - **Before the maintainer OKs the shape,** one pass: `converge`'s loops (open `converge` to work a PR to its final state) run only on a shape the maintainer has OK'd.
+   - **Before the maintainer OKs the shape,** one pass: `converge`'s loops (open `converge` to work a PR to its final state) run only on a shape the maintainer has OK'd (the user's own repos: `converge`).
    - **After a PR opens,** each commit answers a user or maintainer request, a red CI, a found bug, or a mergeworthy rule.
 
 

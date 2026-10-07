@@ -5,7 +5,7 @@ description: "Any change you'll open a PR for, from an issue or not: already fix
 
 # Implementing a change
 
-From an issue or a problem to one merge-ready PR. Open one only when the change blocks something you ship, and say what in its first lines. Steps 1 to 5 build the change, step 6 converges it with `converge`'s pipeline, and step 7 is the PR. Open it as a draft (`gh pr create --draft`) with the branch's first push, its body the problem on `main` through the fast gate, so CI runs while it converges; the fresh reader's `CLEAN` gates step 7's final body. A Tier ≥ M change (`core` 1.0) runs this once per PR.
+From an issue or a problem to one merge-ready PR. Steps 1 to 5 build the change, step 6 converges it with `converge`'s pipeline, and step 7 is the PR. Open it as a draft (`gh pr create --draft`) with the branch's first push after step 3 passes, its body the problem on `main` through the fast gate, so CI runs while it converges; the fresh reader's `CLEAN` gates step 7's final body. A Tier ≥ M change (`core` 1.0) runs this once per PR.
 
 **The repo's `AGENTS.md` / `CLAUDE.md` governs how the code is written;** everything else particular to the repo is in its project file (`core` 1.3).
 
@@ -19,7 +19,7 @@ From an issue or a problem to one merge-ready PR. Open one only when the change 
 
 **Install whatever doesn't need root** (a browser, the MCP server, the stack, the data; the project file has the commands). For anything that needs root, stop: the first thing in your reply is the exact steps, in order, with the commands to run.
 
-**Everything this skill posts passes the posting gate** (1.6): issue comments, the PR body, inline comments, filed issues.
+**Everything this skill posts passes the posting gate** (1.6): everything it posts (1.6 lists them).
 
 ### 1. Check it is not already fixed
 
@@ -70,11 +70,7 @@ The guardian checks; it isn't where the code gets its shape. A guardian round th
 
 **Converging a subsystem** is built as the finality pass's Phase C: behavior-preserving commits, with the gates after each.
 
-**Independent user-visible fixes are separate PRs** (1.1.16). A larger change whose pieces depend on each other becomes a stack of small PRs only when both hold:
-- the bottom PR builds and makes sense alone on `main`;
-- `gh stack` can link them (`converge` (stacked PRs)).
-
-Otherwise it is one PR with a commit per item.
+**Independent user-visible fixes are separate PRs** (1.1.16). A larger change whose pieces depend on each other becomes a stack of small PRs only as `converge` (stacked PRs) says; otherwise it is one PR with a commit per item.
 
 ### 5. See it in the browser
 
@@ -125,7 +121,7 @@ The images are the review: a sequence, not a before/after pair, each captured pe
 
 ```bash
 gh pr create --draft --base <base> ...   # + labels per the project file, where you can label
-gh pr ready <N>                         # once the pipeline's records are on the final head
+gh pr ready <N>                         # once `merging`'s Ready list holds on the final head
 gh pr edit <N> --body-file body.md --attach '/abs/path/01-name.png#alt text'
 ```
 

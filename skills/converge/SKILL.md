@@ -28,11 +28,11 @@ Owner decisions don't block convergence, and neither do changes to code the owne
 
 - **One agent per loop, for the loop's whole life.** After every fix, continue that agent (`delegating`, one run) instead of starting a new one, so it re-checks only what changed. The loops get separate agents because their work fills different contexts: Loop A runs repros, Loop B reads and rates code. On a small diff (a Tier S fix, under about 300 lines) both fit one context, so one agent runs Loop A, then Loop B. The fresh reader is always separate, because not having seen the fixes is its point.
 - **Who lands Loop B's findings:** you, commit by commit. For a long list, one implementer agent in its own worktree does it with `guardian`'s implementer brief, and you review its diff before landing (1.10).
-- **Slices.** A diff too big for one agent's context (roughly over 1500 lines) is split into slices that each fit (`verify`; the guardian brief calls them scopes), with their own loop agents; in a stack, each PR has its own.
+- **Slices.** A diff too big for one agent's context (roughly over 1500 lines) is split into slices that each fit (`verify`), with their own loop agents; in a stack, each PR has its own.
 - **What they read.** The head's code in full, at pinned SHAs. A finality graph (Phase A) is only a navigation index.
 - **A new loop agent** starts, given the last report, when its context passes about half the window. A changed decision packet is sent to the running agent, with what it re-opens.
 - **Commits others push** (a maintainer's) re-open the slices they touch, like your own fixes: send them to the running loop agents. They are owner code (Authority, below).
-- **Execution is yours.** Repro loops, tests and benchmarks with a time budget run in the main session or a `sonnet` subagent (1.1.14); judgment stays with the loop agents.
+- **Execution is yours.** Repro loops, tests and benchmarks with a time budget run in the main session or a smaller-tier subagent (1.1.14); judgment stays with the loop agents.
 
 ### Git and files
 
@@ -49,7 +49,7 @@ The decision packet (1.2) is the list of people's picks. Keep it current and giv
 - When the owner changes direction, update the packet, then every surface the change touches (1.2).
 
 **The owner's code is deliberate,** in the user's repos too:
-- **Owner code:** a commit without an agent's co-author trailer.
+- **Owner code:** a commit authored by a human account, or without the agent trailer the environment gave you.
 - **Never on an agent's reading alone:** owner code is never removed or rewritten on an agent's reading alone. That includes trimming it, "simplifying" it, or deleting a mechanism in it as phantom or overbuilt. Such findings go on the owner's list with a recommendation.
 - **Agent code:** an agent's own earlier code can be changed freely. If an agent removed an owner line, restore that line.
 - **The user's own repos:** changing the user's code as the task needs is yours to decide (`core`, the task). Removing or rewriting it on an agent's reading alone (a finding, a cleanup on your own initiative) goes on the user's list with a recommendation. A removal that passed the removal gate (a probe that could fail, run in the owning lane, stayed green) is not a reading alone: make it, and report it with the probe.
@@ -67,7 +67,7 @@ The decision packet (1.2) is the list of people's picks. Keep it current and giv
 A phantom fix must not ship. A fix is phantom if any of these holds:
 - **No real, documented usage reaches it.** Name the documented scenario, and trace it on both ends: client and server, caller and callee, sender and receiver. A bug that one layer "has" is not a bug if another layer already owns that behavior.
 - **It changes a deliberate behavior,** such as a usage error the code raises on purpose, a documented limit, or an owner's design.
-- **Its comments aren't literally true.**
+- **Its code comments aren't literally true.**
 - **It is a mechanism for a case that can't occur,** such as a defensive branch for an unreachable state. Use an assertion instead, or nothing.
 
 Every fix also follows these:
@@ -93,7 +93,7 @@ Verifying a feature can turn up bugs in the code the feature builds on.
 - **Finality's refactor commits of base code** go in the bottom PR, before its fixes, when the fixes need the new shape; otherwise they're one refactor PR of their own (1.1.16) that the bottom PR depends on.
 
 A stack has two PRs:
-- **Bottom PR (base main):** those fixes, one bug per commit, each with a regression spec that fails on main and passes with the fix, in final form. Where the feature PR fixed a bug in several steps, the bottom PR carries only what those steps amount to.
+- **Bottom PR (base main):** those fixes, one bug per commit, each proven by a repro that fails on main (kept as a test per 1.1.16). Where the feature PR fixed a bug in several steps, the bottom PR carries only what those steps amount to.
 - **Top PR (base = the bottom PR's branch):** the feature. The top PR contains the bottom PR through merge commits, never a rebase, so it never needs a force-push.
 - **Link them:** `gh stack link <bottom> <top>`.
 
@@ -113,7 +113,6 @@ After every merge of the bottom into the top:
 Failures:
 - **Gates fail closed:** a gate that errors or can't run is red.
 - **A failure that doesn't repeat is still a finding.** Find its cause, or file it with the logs, before calling anything green.
-- **A regression** is a failure across variants, or one that reproduces.
 - **Exit codes:** "N passed" with a non-zero exit code is red.
 
 Evidence:
@@ -134,4 +133,4 @@ Beyond `pull-request` step 7's template, a PR body carries, as needed:
 
 **What stays out.** The refactor pass's final lists go where `refactor` says. Working ratings, guardian reports and per-scope lists stay in the artifact root.
 
-**Keeping it current.** Condense history; never drop current facts. When the stack moves a fix from one PR to another, move the fix's mention too. Register every PR with the host's linking tool if one exists, and report it if linking fails.
+**Keeping it current.** Condense history; never drop current facts. When the stack moves a fix from one PR to another, move the fix's mention too.
