@@ -15,7 +15,9 @@ Converging a pull request means working it to a final state: no reviewer, agent 
 
 Converged means every step below is done **on the final head**. A step that leaves no record can't be told from a skipped one, so each ends with its `pr-steps` line; the hooks refuse `gh pr create` (unless `--draft`), `gh pr ready` and a push to a ready PR until the final head has all six. A head that changes afterwards re-runs and re-records the steps it re-opens.
 
-#### 0. Finality, only where the area has drifted
+#### 0. The design is agreed, and the area is clean
+
+A new API, protocol or behavior is built only once the thread has agreed its shape (`design-loop`; in the user's own repos, the walkthrough is posted). Building first ships a PR the design will reshape.
 
 When the work reshapes existing code, or a small change can't be made cleanly because of past patches, open `finality`. Its Phases A and B are the analysis while planning (`pull-request` step 3), and Phase C is the build. Skip it otherwise.
 
@@ -42,14 +44,17 @@ When the work reshapes existing code, or a small change can't be made cleanly be
 #### 4. The fresh reader
 
 - **Who:** a new agent that hasn't seen the fixes, in `review`'s order (another company's model first), after you merge the base into the branch (1.7). The loop agents judge their own suggestions; a cold reader catches what that hides.
-- **What it runs:** the verifier brief, the reviewer charter, and the posting gate's review (`github-threads` 1.6 step 3) of the PR body draft, checked against the head. Where finality ran, also the guardian brief: only DELETE-NOW, FIX, FILL or DELETE-CAREFULLY items worth their price count, and OWNER-DECISION rows go on the owner's list.
+- **Before it:** write the PR body draft (`pull-request` step 7, `drafts/pr-body.md`) and pass `post-lint --kind pr`.
+- **What it runs:** the verifier brief, the reviewer charter, and the posting gate's review (`github-threads` 1.6 step 3) of that draft, checked against the head. Where finality ran, also the guardian brief: only DELETE-NOW, FIX, FILL or DELETE-CAREFULLY items worth their price count, and OWNER-DECISION rows go on the owner's list.
 - **You:** its findings go back to step 1 or 2. If the head then changed only by those fixes, continue the same reader; otherwise start a new one.
-- **Done when** its final message is exactly `CLEAN`. That is also the PR body's posting-gate review.
+- **Its first question:** "As this repo's maintainer, would you merge this exactly as it is?" Its output says `MERGE AS IS: yes`, or `no` with everything between the PR and a yes, each a finding.
+- **Done when** its output has `MERGE AS IS: yes` and its final message is exactly `CLEAN`. That is also the PR body's posting-gate review.
 - **Record:** `pr-steps fresh <its output>`
 
 #### 5. Gates, body and closure
 
 - **You:** run every gate and product lane on the final head; CI is green; the PR bodies are true to that head (`mergeworthy:writing`). Where finality ran, its Owner-Safe closure comes last, with the review and guardian evidence attached.
+- **The evidence goes in the PR body,** just enough to prove each step ran: one collapsed block per run of each step above, summary `<step>, run N (head <sha>)`, newest first. It says in a few plain sentences what ran and what came of it ("I rated every file and function with its reason and re-rated until nothing worth changing was left"), names a finding that changed the PR, and links the full output in a gist a person can read: first how many passes ran and what each found, then the commits, what stays below the bar and why, then one line per item, grouped by area. Claim only what ran on that head.
 - **Done when** every gate exits 0. Write each as `<command> -> exit <code>`, one per line, into a gates log.
 - **Record:** `pr-steps gates <the gates log>`
 

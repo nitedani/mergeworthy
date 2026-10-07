@@ -90,7 +90,7 @@ Tear the stack down when done or aborted.
 
 ### 6. Converge
 
-Run `converge`'s pipeline on the diff (open `converge`); each of its steps ends with its `pr-steps` record. Before the fresh reader, update the PR body draft per step 7 (`drafts/pr-body.md`) and pass `post-lint --kind pr`, since the fresh reader reviews it.
+Open `converge` and run its pipeline on the diff.
 
 ### 7. The PR
 

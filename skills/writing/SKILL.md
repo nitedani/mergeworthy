@@ -36,7 +36,7 @@ Every post brings something the reader didn't have: a finding, a measurement, a 
 - **Full sentences joined by bridges** ("because", "so", "but"); prose for reasoning, lists only for parallel items or a plan.
 - **For a newcomer:** name each thing where it first appears; no internal labels, no "it" with two meanings. Concrete over abstract: the file, the call, the number; a design choice as the code the user writes under each option.
 - **Credit** a design or statement to someone only with a link to where they said it. Links to another repo use `owner/repo#N`; write "depends on #N", never "stacked on", unless `gh stack` links them.
-- **Keep the process invisible.** Reviewers, models, gates, rounds, ratings and pass reports stay in the artifact root (`ledger.md`), unless the maintainer asked for them (then a `<details>` block).
+- **Keep the process out of the prose.** Reviewers, models, gates and rounds don't appear in what you write; a PR body's evidence of each converge step goes in its collapsed blocks (`converge` step 5).
 
 ## Design threads: converge before you build
 
@@ -82,10 +82,10 @@ A maintainer argued that some of the proxy's jobs belong to the server; he wante
 
 ## Budgets and form
 
-- **Lengths,** code included: a reply ≤ 300 words; a design answer as long as its questions and disagreements need, up to 900; a PR body about 150 words plus evidence, up to 250 when it lists decisions for the maintainer; an issue ≤ 400 characters besides `### How to reproduce` and its evidence, a decision issue ≤ 400 words; an inline review comment ≤ 2 sentences, only where the reader must judge. Tables, code and collapsed sections count, except in a PR body, where tables, code, images and links don't; moving prose into a table to fit is the loophole the budget closes. A ceiling is not a target.
+- **Lengths,** code included: a reply ≤ 300 words; a design answer as long as its questions and disagreements need, up to 900; a PR body up to 300 words plus its evidence, never shortened by cutting what's broken or why; an issue ≤ 400 characters besides `### How to reproduce` and its evidence, a decision issue ≤ 400 words; an inline review comment ≤ 2 sentences, only where the reader must judge. Tables, code and collapsed sections count, except in a PR body, where tables, code, images and links don't; moving prose into a table to fit is the loophole the budget closes. A ceiling is not a target.
 - **The badge.** Unless the `badge` option says otherwise (`auto`: only from a human account), a post starts with the icon of every agent that worked on it, researchers and reviewers too, then a line break, no label: `<img src="https://github.com/claude.png" width="20" height="20" alt="Claude">`, Codex `<img src="https://github.com/openai.png" width="20" height="20" alt="Codex">`.
 - **Notes for a maintainer go in one table:** `| Note | Kind | Blocks merge | Next |`. Kind is bug, limitation, not a regression, or decision needed; Next is fixed in <sha>, PR <url>, or nothing, because Y. A follow-up is opened before the post, never listed as "recommend"; in the user's own repos, just do it. A note that blocks the goal and can be fixed anywhere, upstream included, is fixed instead.
-- **A PR body is written to be scanned.** Its first sentence says what was wrong in a user's words; plain sentences say why, not only what; evidence comes in a skimmable shape (a before/after table, a permalink to the line at fault, a `main`/head benchmark table for a hot path, transport or stream change unless CI reports it); at most one closing caveat, last.
+- **A PR body is written to be scanned.** Its first paragraph says what was wrong, in a user's words, and what this PR changes; status (draft, dependencies) comes after; plain sentences say why, not only what; evidence comes in a skimmable shape (a before/after table, a permalink to the line at fault, a `main`/head benchmark table for a hot path, transport or stream change unless CI reports it); at most one closing caveat, last.
 - **An issue body:** one finding, without how you came across it; the title is the symptom as a user meets it; `file:line` last, for whoever fixes it.
 
 ## Reports to the user

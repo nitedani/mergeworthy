@@ -15,7 +15,10 @@ is_pass() { grep -q '✅' "$1" && grep -Eq '[0-9]+ *(⇒|=>) *([0-9]+|removed|ne
 case "$step" in
   verify|reverify)
     [ "$last" = DRY ] || [ "$step" = reverify -a "$last" = "NO LOOP B COMMITS" ] || { echo "$out does not end with a line DRY: Loop A is done only when every slice has a dry pass after its last fix" >&2; exit 1; } ;;
-  loopb|fresh)
+  loopb)
+    [ "$last" = CLEAN ] || { echo "$out does not end with a line CLEAN: fix its findings and continue the same agent" >&2; exit 1; } ;;
+  fresh)
+    grep -qx 'MERGE AS IS: yes' "$out" || { echo "$out has no line 'MERGE AS IS: yes': the fresh reader, as this repo's maintainer, would not merge it exactly as it is; what it lists stands between the PR and a yes" >&2; exit 1; }
     [ "$last" = CLEAN ] || { echo "$out does not end with a line CLEAN: fix its findings and continue the same agent" >&2; exit 1; } ;;
   refactor)
     if ! is_pass "$out"; then

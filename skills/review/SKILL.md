@@ -7,11 +7,11 @@ description: "Any independent review: who reviews (Codex, else a fresh Claude), 
 
 **Every independent review picks its reviewer in this order.** That covers the posting gate (1.6), the PR review round below, a standalone review, and the fresh reader of a PR's final head (`converge`). The loop agents run on the session's model.
 
-1. **A model from another company than the session's,** since a model misses the bugs it tends to write: Codex for a Claude session, a Claude subagent for a Codex session. Codex:
+1. **A model from another company than the session's,** since a model misses the bugs it tends to write: Codex for a Claude session, a Claude subagent for a Codex session. Under an orchestrator that spawns other providers' agents (T3 Code's `delegate_task`), start it there, on the top model its catalog lists for that provider, so the run is tracked, notifies you and can be cancelled; the prompt names the output file. Elsewhere:
    ```bash
-   codex exec --sandbox danger-full-access --skip-git-repo-check -o <out> "$(cat <prompt file>)" < /dev/null
+   codex exec -m "$(codex-review-model)" --sandbox danger-full-access --skip-git-repo-check -o <out> "$(cat <prompt file>)" < /dev/null
    ```
-   Codex runs the model configured in `~/.codex/config.toml`. If Codex fails (out of credits, a rate limit, an error), go to the next reviewer; that failure takes seconds.
+   If it fails (out of credits, a rate limit, an error), go to the next reviewer; that failure takes seconds.
 2. **A fresh-context subagent on the session's default model,** with the same prompt, when no other company's model is available. Never a cheaper model.
 
 After the review:

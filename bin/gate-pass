@@ -1,6 +1,6 @@
 #!/bin/bash
 # gate-pass <draft.md> <review-output-file> [post-lint flags]: records that <draft.md> passed the posting gate.
-# Requires post-lint to pass and the review's final message to be exactly CLEAN (write it with `codex exec -o <review-output>`).
+# Requires post-lint to pass and the review's final message to be exactly CLEAN (the reviewer writes only its verdict to that file).
 # Writes <draft.md>.gate with the draft's sha256; the posting hook checks it, so any later edit needs a new review.
 set -e
 d="$1"; r="$2"
@@ -9,7 +9,7 @@ d="$1"; r="$2"
 shift 2; flags=("$@"); [ ${#flags[@]} -gt 0 ] || { [ -f "$d.lint" ] && read -ra flags < "$d.lint"; } || true
 "$(dirname "$(readlink -f "$0")")/post-lint" "$d" "${flags[@]}" || { echo "post-lint failed"; exit 1; }
 out=$(tr -d '\r' < "$r" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -v '^$' || true)
-[ "$out" = "CLEAN" ] || { echo "review is not exactly CLEAN (it has $(printf '%s\n' "$out" | wc -l) non-empty lines; last: $(printf '%s\n' "$out" | tail -1)). Capture only the final message: codex exec -o <review-output>"; exit 1; }
+[ "$out" = "CLEAN" ] || { echo "review is not exactly CLEAN (it has $(printf '%s\n' "$out" | wc -l) non-empty lines; last: $(printf '%s\n' "$out" | tail -1)). The reviewer's final message, alone, is the review output"; exit 1; }
 # a posted promise is a task opened (mergeworthy:github-threads): it needs a PROMISED line naming this draft in proposals-open.md
 if grep -qiE "\b(I'll|I will)\b|follow-up PR|subsequent PR|separate PR" "$d" && ! grep -qiE "\b(and|then) I'll (squash-)?merge" "$d"; then
   po="$(dirname "$(readlink -f "$d")")/../proposals-open.md"

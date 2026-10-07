@@ -45,6 +45,8 @@ prose = re.sub(r'`[^`\n]*`', 'CODE', prose)
 _rp = arg('--parent', None); _rp = (re.sub(r'\.md$', '', path) + '.parent.md') if _rp is None else (None if _rp == 'none' else _rp)
 if _rp and os.path.exists(_rp) and re.search(r'\brefactor this pr\b|\bold rating\b|\bratings?\b.*\blists?\b', open(_rp).read(), re.I | re.S):
     prose = re.sub(r'<details>.*?</details>', '', prose, flags=re.S)
+# The converge steps' runs, collapsed in a PR body (converge step 5), are evidence: not linted or counted
+prose = re.sub(r'<details>\s*<summary>(?:Loop A|Loop B|Refactor pass|Fresh read|Gates)[^<]*</summary>.*?</details>', '', prose, flags=re.S)
 counted = re.sub(r'^\s*\|.*$', '', prose, flags=re.M)                 # table rows
 counted = re.sub(r'!\[[^\]]*\]\([^)]*\)', '', counted)                  # images
 counted = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', counted)              # links: keep the text
@@ -77,6 +79,11 @@ for m in re.finditer(r'(?<![\w`/#.-])R\*(?![\w`])', prose):
 for m in re.finditer(r'^\s*[-*]\s+\*\*[^*\n]+\*\*:?\s+([^\n]*)$', prose, flags=re.M):
     if len(m.group(1).split()) < 6 and m.group(1).rstrip().endswith('.'):
         findings.append(f"a bold label with a fragment ({m.group(0).strip()[:60]!r}): write it as a full sentence")
+# A label and a colon opening a sentence ("Done: …", "One change I didn't make: …") reads as a report line, not a person (writing 1.11)
+if kind in ('reply', 'inline', 'proposal', 'issue'):
+    for m in re.finditer(r"(?:^|(?<=[.!?]\s))([A-Z][^:\n.!?`|*]{0,50}?):[ \t]+(?=\S)", prose, flags=re.M):
+        if 1 <= len(m.group(1).split()) <= 6 and not re.search(r'\d$', m.group(1)):
+            findings.append(f"a label opening a sentence ({m.group(0).strip()[:40]!r}): say it the way you would to a colleague")
 if '—' in prose:
     findings.append("em dash (—): rewrite the sentence")
 for m in re.finditer(r'\bstacked on\b[^\n]*|\bstack(s|ed)? on (top of )?([\w.-]+/[\w.-]+)?#\d+[^\n]*', prose, flags=re.I):
@@ -152,9 +159,13 @@ if _pp and os.path.exists(_pp):
 extra = 0  # however many questions: one plan, the rest linked
 if kind == 'reply' and words > 300 + extra:
     findings.append(f"{words} words > {300 + extra} for a reply: a dump, not a reply; move the long material into a gist and link it")
-pr_budget = 250 if re.search(r'^#+ .*\b(notes|decisions)\b|^Decisions\b', text, re.I | re.M) else 150  # a PR with decisions for the maintainer may run longer
+pr_budget = 300  # what's broken and what the PR changes need room; tables, code and the collapsed evidence don't count
 if kind == 'pr' and words > pr_budget:
-    findings.append(f"{words} words > {pr_budget} for a PR body (tables, code, images and URLs not counted): cut what the reader doesn't need")
+    findings.append(f"{words} words > {pr_budget} for a PR body (tables, code, images and URLs not counted): cut what the reader doesn't need, never what's broken or why")
+# A PR body opens with what's broken and what the PR changes, never with its status (writing 1.11)
+_first = next((l for l in prose.split('\n') if l.strip() and not l.lstrip().startswith(('#', '|', '<', '!['))), '')
+if kind == 'pr' and re.match(r'\s*(Draft|Depends|Blocked|Waiting|Stacked|WIP|Status|Note)\b', _first, re.I):
+    findings.append(f"the PR body opens with its status ({_first.strip()[:40]!r}): open with what's broken and what this PR changes, in a user's words; status goes after")
 if kind == 'proposal' and words > 900 + extra:  # a design walkthrough (methodology 1.4 step 4)
     findings.append(f"{words} words > {900 + extra} for a design answer or walkthrough (tables and code count): one decision per comment, verdict first, the full material in a linked document (writing 1.11)")
 decision = kind == 'issue' and re.search(r'^#+\s*Options\b', text, re.I | re.M)  # a decision issue (open-issue)
