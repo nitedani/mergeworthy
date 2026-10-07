@@ -66,7 +66,7 @@ for m in re.finditer(r'\b(fundamental|impossible(?! states?\b)|unsolvable|insurm
     if (m.start() and prose[m.start() - 1] in '"“\'') or (n and (n.group(2) == 'for' or m.group(1).lower() == 'fundamental')):
         continue  # quoted, or scoped: "fundamental to X", "impossible for X"
     findings.append(f"{m.group(0)!r}: say what it's hard for (\"a problem for one injection point\"), or the reader takes it as unsolvable")
-# A newcomer can't decode an internal label, and a bold label with a fragment isn't a sentence (1.6)
+# A newcomer can't decode an internal label, and a bold label with a fragment isn't a sentence (writing 1.11)
 _labels = re.findall(r'(?<![\w`/#.-])([A-Z])(\d{1,2})(?![\w`])', prose)
 _series = {a for a in {a for a, _ in _labels} if len({n for b, n in _labels if b == a}) > 1}  # W2 and W5: a numbered series, not S3 or R2
 for a, n in _labels:
@@ -109,7 +109,7 @@ if kind == 'tracker':
         ref = r'(?:[\w.-]+/[\w.-]+)?#\d+(?!\d)'
         for m in re.finditer(rf'^\s*- \[x\] (~~)?({ref})(?:(?:,| and) {ref})*(?!(?:~~)? \()(?!(?:,| and) {ref})', text, flags=re.M):  # a ticked item (or a group of them) says how it ended
             findings.append(f"tracker: say how {m.group(2)} ended, in parentheses right after it, e.g. '{m.group(2)} (merged)' (1.2)")
-# Reading cost (1.6 budgets): outside a PR body's evidence, tables, code and collapsed sections cost the reader as much
+# Reading cost (writing 1.11 budgets): outside a PR body's evidence, tables, code and collapsed sections cost the reader as much
 # as prose, so they count
 if kind != 'pr':
     counted = re.sub(r'<!--.*?-->', '', text, flags=re.S)
@@ -124,7 +124,7 @@ if kind != 'pr':
 words = len(re.findall(r"[A-Za-z0-9][\w'’-]*", counted))
 chars = len(re.sub(r'\s+', ' ', counted).strip())
 sentences = len(re.findall(r'[.!?](?=\s|$)', re.sub(r'\b(e\.g|i\.e|etc|vs)\.', '', counted).strip())) or 1
-# Reader load (1.6): comprehension falls sharply past about 20 words a sentence; bold loses its signal past ~30% of the text
+# Reader load (writing 1.11): comprehension falls sharply past about 20 words a sentence; bold loses its signal past ~30% of the text
 if kind != 'pr':
     plain = re.sub(r'^\s*\|.*$', '', prose, flags=re.M)                     # tables aren't sentences
     plain = re.sub(r'^\s*(?:[-*]|\d+\.)\s+', '\n', plain, flags=re.M)        # a list item is its own sentence
@@ -155,8 +155,8 @@ if kind == 'reply' and words > 300 + extra:
 pr_budget = 250 if re.search(r'^#+ .*\b(notes|decisions)\b|^Decisions\b', text, re.I | re.M) else 150  # a PR with decisions for the maintainer may run longer
 if kind == 'pr' and words > pr_budget:
     findings.append(f"{words} words > {pr_budget} for a PR body (tables, code, images and URLs not counted): cut what the reader doesn't need")
-if kind == 'proposal' and words > 300 + extra:  # a design walkthrough (methodology 1.4 step 4)
-    findings.append(f"{words} words > {300 + extra} for a design answer or walkthrough (tables and code count): one decision per comment, verdict first, the full material in a linked document (1.6)")
+if kind == 'proposal' and words > 900 + extra:  # a design walkthrough (methodology 1.4 step 4)
+    findings.append(f"{words} words > {900 + extra} for a design answer or walkthrough (tables and code count): one decision per comment, verdict first, the full material in a linked document (writing 1.11)")
 decision = kind == 'issue' and re.search(r'^#+\s*Options\b', text, re.I | re.M)  # a decision issue (open-issue)
 if decision and words > 400 + extra:
     findings.append(f"{words} words > {400 + extra} for a decision issue (tables and code count): the options a user would see and your pick, the rest linked")
@@ -190,7 +190,7 @@ SECRET = re.compile(r'ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|\bsk-[A-
                     re.I | re.M)
 for m in SECRET.finditer(text):
     findings.append(f"secret-shaped text {m.group(0)[:12]!r}...: write <REDACTED> in its place")
-# a follow-up is opened before the post, never parked as advice (methodology 1.6 notes, 1.1.7)
+# a follow-up is opened before the post, never parked as advice (writing 1.11 notes, 1.1.7)
 for row in re.findall(r'^\|(?:[^|\n]*\|){3}([^|\n]*)\|\s*$', text, flags=re.M):
     if re.search(r'\b(recommend|follow-up|follow up|later)\b', row, re.I):
         findings.append(f"notes table Next {row.strip()[:50]!r}: open the follow-up first and link it (PR <url>), fix it (fixed in <sha>), or write 'nothing, because …'")

@@ -122,13 +122,13 @@ Evidence:
 
 ### PR bodies
 
-Each PR body is part of the deliverable. It is true of the final head, and within 1.1.16 and the 1.6 budget.
+Each PR body is part of the deliverable. It is true of the final head, within 1.1.16, and written by `mergeworthy:writing`.
 
 Beyond `pull-request` step 7's template, a PR body carries, as needed:
 - **How it works:** for a feature, with a code sample.
 - **The fixes:** one line per user-visible bug.
 - **The owner's decisions** it carries, as a short list ("decided by the owner", "left to my judgment, and kept").
-- **The notes table (1.6):** every rater proposal left to the owner is a "decision needed" row with a recommendation.
+- **The notes table (`writing`):** every rater proposal left to the owner is a "decision needed" row with a recommendation.
 - **Evidence** (CI, gates, lanes, verification), naming the head it ran on.
 
 **What stays out.** The refactor pass's final lists go where `refactor` says. Working ratings, guardian reports and per-scope lists stay in the artifact root.

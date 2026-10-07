@@ -108,11 +108,7 @@ Closes #N
 
 `Closes #N` only if the change fixes what the issue reported; otherwise `Refs #N`, leave it open, and comment your findings there.
 
-**Write it to be scanned,** by `writing.md` (`github-threads`), with this template's form winning where they differ.
-- **The first sentence says what was wrong** in a user's words, not the mechanism.
-- **Plain sentences that say why, not only what**; one line per caption. The implementation belongs in the diff.
-- **Evidence in a skimmable shape:** a before/after table, not a transcript (with no UI, the request and response from a real run), and a permalink to the line at fault. A hot path, transport or stream change shows the 1.1.11 benchmark (the repo's own if any) as a `main`/head table, so the maintainer sees performance kept, unless CI reports it.
-- **At most one closing caveat**, last, for the reviewer's decision. When a revert wouldn't undo the merge (a stored or wire format, a migration, a published name), that is the caveat.
+**Write it by `mergeworthy:writing`** (open it), with this template's form winning where they differ. The implementation belongs in the diff; with no UI, the evidence is the request and response from a real run; a hot path, transport or stream change shows the 1.1.11 benchmark (the repo's own if any). When a revert wouldn't undo the merge (a stored or wire format, a migration, a published name), that is the one caveat.
 
 #### The walkthrough
 

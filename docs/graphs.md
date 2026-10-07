@@ -6,26 +6,27 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 
 | Skill | Hands over to |
 |---|---|
-| `converge` | `finality`, `pull-request`, `verify`, `review`, `guardian`, `refactor`, `merging`, `github-threads`, `core` |
+| `converge` | `finality`, `pull-request`, `verify`, `review`, `guardian`, `refactor`, `merging`, `github-threads`, `writing` |
 | `core` | `open-issue`, `evidence`, `delegating`, `merging`, `github-threads`, `design-loop`, `converge`, `pull-request` |
 | `delegating` | nothing |
-| `design-loop` | `pull-request`, `core`, `review`, `converge` |
+| `design-loop` | `pull-request`, `core`, `review`, `writing`, `converge` |
 | `evidence` | nothing |
 | `finality` | nothing |
-| `github-threads` | `converge`, `review`, `refactor`, `core`, `pull-request`, `finality` |
+| `github-threads` | `converge`, `review`, `refactor`, `core`, `pull-request`, `writing`, `finality` |
 | `guardian` | `delegating`, `converge`, `design-loop` |
 | `mechanisms` | nothing |
 | `merging` | nothing |
-| `open-issue` | `evidence`, `github-threads` |
+| `open-issue` | `evidence`, `writing`, `github-threads` |
 | `past-failures` | nothing |
-| `pull-request` | `evidence`, `finality`, `core`, `guardian`, `design-loop`, `converge`, `open-issue`, `github-threads` |
+| `pull-request` | `evidence`, `finality`, `core`, `guardian`, `design-loop`, `converge`, `open-issue`, `writing` |
 | `refactor` | nothing |
 | `review` | `delegating`, `guardian`, `refactor`, `github-threads`, `core`, `converge` |
 | `verify` | `core`, `converge` |
+| `writing` | nothing |
 
 ## Any multi-step or GitHub task, first
 
-Opens `mergeworthy:core` (the task, triage 1.0, principles 1.1, tracking 1.2, discovery 1.3 (docs, style), safety 1.8, reporting 1.11, pre-flight 1.12).
+Opens `mergeworthy:core` (the task, triage 1.0, principles 1.1, tracking 1.2, discovery 1.3 (docs, style), safety 1.8, pre-flight 1.12).
 
 ```mermaid
 flowchart TB
@@ -57,6 +58,25 @@ flowchart TB
   g0 ~~~ g1
 ```
 
+## Writing anything a person reads: a comment, reply or edit, a PR or issue body, a design answer, a report to the user
+
+Opens `mergeworthy:writing` (every writing rule 1.11: voice, model replies, budgets, the badge).
+
+```mermaid
+flowchart TB
+  start(["Writing anything a<br/>person reads: a comment,<br/>reply or edit, a PR or<br/>issue …"])
+  subgraph g0["Draft by talking"]
+    s0["1. Before writing"]
+    s1["2. Read it out loud as them"]
+    s0 --> s1
+    s2["3. A passage that can't be<br/>fixed sentence by …"]
+    s1 --> s2
+    s3["4. A design reply to a<br/>maintainer"]
+    s2 --> s3
+  end
+  start --> g0
+```
+
 ## Designing an API, protocol or module, or restructuring code
 
 Opens `mergeworthy:design-loop` (1.4).
@@ -80,7 +100,8 @@ flowchart TB
   s1 -.-> r1[["pull-request"]]
   s1 -.-> r2[["core"]]
   s3 -.-> r3[["review"]]
-  s5 -.-> r4[["converge"]]
+  s4 -.-> r4[["writing"]]
+  s5 -.-> r5[["converge"]]
   subgraph g1["1.4.1 Codebase design"]
     s6["1. Frame the problem for<br/>the user"]
     s7["2. Have one fresh-context<br/>agent design it three<br/>times"]
@@ -90,7 +111,7 @@ flowchart TB
     s9["4. Compare and recommend"]
     s8 --> s9
   end
-  s7 -.-> r5[["core"]]
+  s7 -.-> r6[["core"]]
   start --> g0
   g0 ~~~ g1
 ```
@@ -118,7 +139,8 @@ flowchart TB
   s1 -.-> r3[["refactor"]]
   s1 -.-> r4[["core"]]
   s2 -.-> r5[["pull-request"]]
-  s2 -.-> r6[["finality"]]
+  s2 -.-> r6[["writing"]]
+  s2 -.-> r7[["finality"]]
   subgraph g1["1.6 Posting gate"]
     s5["1. Write it the way it<br/>should end up"]
     s6["2. Run post-lint"]
@@ -130,7 +152,9 @@ flowchart TB
     s9["5. Post in the thread where<br/>the person wrote"]
     s8 --> s9
   end
-  s7 -.-> r7[["review"]]
+  s5 -.-> r8[["writing"]]
+  s7 -.-> r9[["review"]]
+  s7 -.-> r10[["writing"]]
   start --> g0
   g0 ~~~ g1
 ```
@@ -202,7 +226,7 @@ flowchart TB
   s4 -.-> r9[["evidence"]]
   s4 -.-> r10[["core"]]
   s5 -.-> r11[["converge"]]
-  s6 -.-> r12[["github-threads"]]
+  s6 -.-> r12[["writing"]]
   s6 -.-> r13[["evidence"]]
   s6 -.-> r14[["core"]]
   start --> g0
@@ -225,8 +249,8 @@ flowchart TB
     s2 --> s3
   end
   s1 -.-> r1[["evidence"]]
-  s2 -.-> r2[["evidence"]]
-  s2 -.-> r3[["github-threads"]]
+  s2 -.-> r2[["writing"]]
+  s2 -.-> r3[["evidence"]]
   s3 -.-> r4[["github-threads"]]
   start --> g0
 ```
@@ -282,7 +306,7 @@ flowchart TB
   s4 -.-> r8[["review"]]
   s4 -.-> r9[["merging"]]
   s4 -.-> r10[["github-threads"]]
-  s5 -.-> r11[["core"]]
+  s5 -.-> r11[["writing"]]
   start --> g0
 ```
 

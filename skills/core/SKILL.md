@@ -1,6 +1,6 @@
 ---
 name: core
-description: "Load first for any multi-step or GitHub task: the task, triage and tiers, principles, tracking, discovery, safety on the user's machine, reporting, pre-flight."
+description: "Load first for any multi-step or GitHub task: the task, triage and tiers, principles, tracking, discovery, safety on the user's machine, pre-flight."
 ---
 
 # mergeworthy
@@ -213,14 +213,6 @@ Everything the skills need to know about one repo; the method itself stays in th
 - **Browser work uses the DevTools MCP,** started with `--isolated` (`evidence`). Never fall back to scripted browsers silently, never open windows on the user's desktop, and never kill another session's browser.
 - **Isolate worktrees:** their own ports, databases and generated clients.
 - **Never touch the user's own checkouts** (the clones the user works in), including their git config, which their worktrees share. That means no edits, commits, checkouts, resets or branch switches there. Work in worktrees you create. To read another branch, run `git worktree add --detach <artifact root>/<name> <ref>`.
-
-## 1.11 Reporting to the user
-
-- **Write it like an inbox, not a log.** The first lines answer the user's questions. Next comes what needs them: each decision with your pick and quick options to answer, the way a colleague asks. Then what moved. The engine room (rounds, reviewers, agents, hooks, models) stays out unless it changed what they should do.
-- **Then the state:** each PR's state and what was found and fixed since the last report, with links. Add what's still running, what's waiting on whom, what's theirs to decide, and the critical path with an ETA per step.
-- **Every reply carries thought.** When something went wrong, say why it happened, what you judge, and what changes, in your own reasoning. Restating their instruction and your next command is not a reply.
-- **About 12 lines** unless asked for more. Write local files as absolute paths. Give every PR or issue with its title and link, including every issue you filed. `writing.md` applies. Don't restate their instructions, and don't narrate step by step.
-- **Check before reporting status.** Re-read the umbrella issue against the PRs' states (Tier L), and check 1.7's Ready list where it applies. Never claim a pass went dry for a slice that hasn't had it. State unfavorable facts, mistakes and skipped steps plainly.
 
 ## 1.12 Pre-flight (every tier; step 4 for UI work)
 

@@ -23,7 +23,7 @@ These scripts enforce the rules that failed as text alone.
 - **One watcher per thread.** It refuses a thread another live watch dir already watches.
 - **The Monitor.** It prints the Monitor to arm in the session. The session is what answers events, and nothing else wakes it.
 
-### `post-lint` (enforces 1.6)
+### `post-lint` (enforces 1.6 and writing 1.11)
 
 `post-lint drafts/x.md --kind reply|pr|issue|inline|tracker|proposal [--repo o/r]` checks a draft before it is posted.
 - **A reply** reads its parent comment from `drafts/x.parent.md`. Use `--parent none` when it answers nobody.

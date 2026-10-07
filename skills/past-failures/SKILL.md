@@ -20,7 +20,7 @@ Each failure below happened, most more than once. When a rule fails or the user 
 | A subagent started six agents of its own, then ended its turn while they ran; its report never came. | `delegating` (what the agent must not do) |
 | Behavior verdicts taken by reasoning, without a run; a bot's opposite "fix" went in within seconds, and a probe showed the reviewer was right. | `review` (behavior is settled by a run), `converge` |
 | "Ready" without review, refactor or guardian verdict; fixes pushed to ready PRs unreviewed, a CI result recorded as their review. | always-on 1–3, `pr-steps`, `pre-bash-guard` |
-| "Stacked on #N" without `gh stack`. | 1.6 links, `post-lint` |
+| "Stacked on #N" without `gh stack`. | `writing` links, `post-lint` |
 | "Should I…? / your call" on our own recommendation. | 1.1.3, `stop-lint` |
 | A modal question answered by accident. | 1.1.3 |
 | User questions absorbed into work and never answered. | 1.1.4 |
@@ -30,7 +30,7 @@ Each failure below happened, most more than once. When a rule fails or the user 
 | A design that sent the payload three times "for now". | 1.1.2 |
 | Hooks named against their behavior; options nobody asked for. | 1.1.10 |
 | A proposal that pulled in unrelated behavior, with unexplained shorthand. | 1.4 walkthrough |
-| A design comparison sent as a table; the user needed code. | `writing.md`, 1.4 |
+| A design comparison sent as a table; the user needed code. | `writing`, 1.4 |
 | Side-PR review rounds while the critical-path feature stayed a prototype. | 1.1.1 |
 | "Separate PR" meaning "later"; a 5-minute item deferred twice; a promised PR never opened. | 1.1.7, 1.5 `PROMISED`, `gate-pass` |
 | Parts of the task and of an accepted design silently dropped. | 1.1.8 |
@@ -40,13 +40,13 @@ Each failure below happened, most more than once. When a rule fails or the user 
 | A transport fix opened with Node-script evidence only. | `evidence` (reproduce it as a person would) |
 | A release unlike the maintainer's past releases. | 1.3 precedent |
 | Docs in the agent's voice; repeated "I don't understand"; a coined term. | 1.3, 1.5 |
-| Jargon, AI phrasing, out-of-context replies; replies that only complied or restated. | `writing.md`, `post-lint` |
+| Jargon, AI phrasing, out-of-context replies; replies that only complied or restated. | `writing`, `post-lint` |
 | Class-wide bugs got narrow fixes: a query-parser default; a router that didn't decode paths, fixed by an opt-in option rated for Vike from an anchored brief. | 1.5 step 3, `pull-request` step 3 |
 | A reply claim no longer true after a revert. | 1.6 step 4 |
 | Soft suggestions answered "Done"; the wrong paragraph removed. | 1.5 step 2, `post-lint` |
 | Choices handed back that we could settle. | 1.6, `post-lint` |
-| A design credited to the maintainer who couldn't recall it. | 1.6 credit |
-| Review reports and raw rater output posted on PRs. | 1.6 process invisible, `post-lint` |
+| A design credited to the maintainer who couldn't recall it. | `writing` credit |
+| Review reports and raw rater output posted on PRs. | `writing` process invisible, `post-lint` |
 | Over-engineering the maintainer cut (long collision checks, a tiny cache, rare-case docs, lookup tests); the maintainer cut most submitted test lines. | 1.1.15, 1.1.16 |
 | A 100-line feature with no user. | 1.1.16 feature list |
 | Five new core hooks where an existing extension point sufficed. | 1.4 step 0 |
@@ -74,4 +74,4 @@ Each failure below happened, most more than once. When a rule fails or the user 
 | A decision issue recommended the smallest change over the option users want. | `github-threads` 1.6: recommend what is best for users; cost never decides. |
 | Agents taken for dead when their turn ended, retried and killed; the orchestrator blocked on wait loops. | 1.10, `pre-agent-dedupe`, `agent-job`, `pre-bash-guard` |
 | Design-thread replies chased the latest comment, flipped without evidence, argued from execution cost and left invariants open (the user's too). | github-threads (converge through the other side), `finality`, `design-loop` (end state first) |
-| Replies read like reports: label lines ("Two decisions:"), options described in words instead of code, a bug backlog sent as "holes". | `writing.md` (draft by talking; the reply that carries the load) |
+| Replies read like reports: label lines ("Two decisions:"), options described in words instead of code, a bug backlog sent as "holes". | `writing` (draft by talking; the reply that carries the load) |

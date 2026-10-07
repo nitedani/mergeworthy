@@ -17,7 +17,7 @@ The design loop takes a new API or protocol from candidates to a shape the maint
    1. the one new concept, in one sentence;
    2. what the user or extension writes, as code;
    3. what happens on each path a user can take;
-   4. why this format, each alternative shown the same way (as `writing.md` says, as code), and the recommended one's downsides against `main`, found by arguing against it before posting;
+   4. why this format, each alternative shown the same way (as `writing` says, as code), and the recommended one's downsides against `main`, found by arguing against it before posting;
    5. numbered questions.
 
    The walkthrough holds nothing that changes existing behavior the feature doesn't strictly need. Every term is explained in plain words.

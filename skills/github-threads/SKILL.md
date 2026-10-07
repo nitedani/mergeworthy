@@ -39,7 +39,7 @@ Each comment you answer goes through these steps:
    - **Only then does the agent judge:** it scores both sides, names each side's weakest point and the traps (hidden cost, a fix for a case nobody hits), and recommends.
    - **You decide.** Rate the agent's recommendation as in `pull-request` step 3 (open `pull-request` for the rating steps), and decide.
    - **Before answering "keep",** build the simpler version (theirs, or the simplest row of your own comparison) and name what breaks in it. If nothing breaks, recommend the simpler version.
-   - **The reply reads as one person thinking:** your view, the reason, and in a sentence why the other side lost. Where the question is about code behavior, show your view as code at both ends (caller and callee). Never a bare yes, and plain even when it disagrees.
+   - **The reply reads as one person thinking** (`mergeworthy:writing`): your view, the reason, why the other side lost, as code at both ends where it's about behavior.
    - **Head the thread to a converged design, through the other side, not around them, and carry its load.** The thread has converged when every invariant is agreed. Keep a map of the whole thread in the artifact root: the linked threads and PRs, every invariant agreed (with the link) or open, and where it is heading. Each design reply moves the open ones by number: decide what evidence or a measurement settles and state it as the plan you'll follow unless they object, and ask only what is truly theirs to decide, each a question a yes or no answers. A decision blocks only the part it decides: start everything else now, and say in the reply what is already moving, so progress never waits on a reply. Then come back when it's sorted, not with progress. When the design has drifted over several rounds, run the finality pass first (`finality`, when to run it), then restate the design as those invariants.
      - Hold your own position: say where you disagree, what each option costs and which part of the design is weakest, also when it is the part the other side likes. Ask the question that would settle each disagreement.
      - Change position only on new evidence (a probe, a case, a cost you had missed), and name it; the other side's preference is a reason to look again, not a reason to flip.
@@ -80,7 +80,7 @@ The watcher runs independently of any session and only records events (and adds 
 
 1. **Write it the way it should end up;** the gate checks, it doesn't edit. Write in `drafts/<name>.md` (never straight into a `gh` command), with the comment it answers in `drafts/<name>.parent.md`.
    - First write the reader's one line (the verdict or the ask) and what they already said.
-   - Write it by `writing.md` and the Thread rules below. A design-thread reply to a maintainer, or a PR body, gets three drafts that differ in what they lead with, not wording; the review picks one against `writing.md`'s model, saying why. A draft that keeps failing is rewritten from what you'd say aloud, not patched.
+   - Write it by `mergeworthy:writing` (open it): its three drafts, voice, budgets and badge.
    - Read it as a newcomer would: every term named where it first appears, nothing to read twice.
 2. **Run `post-lint`** with the draft's `--kind` (and `--repo`). It must pass; `gate-pass` re-runs it with the same flags.
 3. **Run the review** (`review`: open it for who reviews) with a prompt file. A finding means step 1 missed something: fix the draft and log in the ledger what the writing missed. The review checks facts and noise, not word choice:
@@ -92,7 +92,7 @@ The watcher runs independently of any session and only records events (and adds 
      - every absolute word ("every", "unchanged", "always", "only") quotes what proves it, or is cut;
      - maintainer requests are followed, and links are correct.
    - **Convergence** (design threads): the reply states its author's own position and the design's weakest part; a change of position names the new evidence; every open invariant is either a stated default or a question that only the other side can answer, and the questions are as few as that allows.
-   - **Reader:** "you have not seen this thread; list every term or sentence you can't understand", and "say in one line what the reader is asked to decide". If the reviewer can't say, names two decisions, or finds a pronoun with two meanings, a term or label not yet seen, a sentence to read twice, or a bold label or fragment standing in for a sentence, that's a finding. It must also read as the owner talking to a colleague (`voice.md`, `writing.md`); a finding there means the draft wasn't written that way, so rewrite it from what you'd say out loud, never patch the wording.
+   - **Reader:** "you have not seen this thread; list every term or sentence you can't understand", and "say in one line what the reader is asked to decide". If the reviewer can't say, names two decisions, or finds a pronoun with two meanings, a term or label not yet seen, a sentence to read twice, or a bold label or fragment standing in for a sentence, that's a finding. It must also read as `mergeworthy:writing` says; a finding there means the draft wasn't written that way, so rewrite it, never patch the wording.
    - **The result:** capture only the reviewer's final message (`drafts/<name>.review.out`). Fix every finding and re-review until that message is exactly `CLEAN`. Never paste the reviewer's rewritten wording; write the fix in your own plain words.
 4. **Right before posting, re-read every claim against the current head** (`git fetch` first; read a PR's state before describing it). Every referenced commit is pushed (`git ls-remote`). Run `gate-pass <abs path>/drafts/<name>.md <review output>` and post with `--body-file` on that absolute path (`gh api … -F body=@<file>` for API posts).
 5. **Post in the thread where the person wrote.** Log it.
@@ -101,24 +101,8 @@ The watcher runs independently of any session and only records events (and adds 
 
 ### Thread rules
 
-**How to write** a post (voice, drafting by talking, what reads as machine-written, the reply that carries the load) is in `writing.md` next to this skill, with `~/.mergeworthy/voice.md` (else `voice.md` here): read both before drafting any post. The rules below are about the thread, not the prose.
+**How a post reads** (voice, budgets, the badge, the notes table, model replies) is `mergeworthy:writing`: open it before drafting. The rules below are about the thread.
 
 - **At most two comments in a row.** The second is only the 1.5 result after its holding reply, a wait ping, a dependency's progress, a 👎 fix, or the review of commits a maintainer pushed after your last comment; anything else edits your last comment. `pre-bash-guard` blocks a third while your last two have no reply from anyone else and the last is under 3 hours old; after that, the third may be the wait ping.
 - **Evidence carries no secret.** In logs, requests, payloads and screenshots, write `<REDACTED>` in place of every token, cookie, auth header and key. Quote only the lines that show the point (`post-lint` fails on common token shapes).
 - **One reply per person, edits for corrections.** Several comments from one person get one reply. Never post a comment that corrects or adds to your own earlier one: edit it in place, through the gate.
-- **Keep the process invisible.** Reviewers, models, gates, rounds, working ratings and pass reports stay in the artifact root (`ledger.md`). The thread gets the result, with evidence only where a reader needs it to judge.
-- **Decide what you can decide or measure.** A question carries your recommendation and its reason; recommend the option that is best for the people who use it, and state the cost of each option beside it. Never pick the smallest change when another serves users better; a change you'd recommend within scope is made, not listed. Don't invite generic pushback ("pushback welcome"; a question carries your pick), and don't promise how you'll behave next time. Only what you measured is fact; reasoning is "I think", with why. Write as a coworker eager to ship it: what excites you, what you'll do next.
-- **Credit** a design or statement to someone only with a link to where they said it.
-- **Links** to another repo use `owner/repo#N`. Write "depends on #N", never "stacked on", unless `gh stack` links them.
-- **The badge.** Unless the `badge` option says otherwise (`auto`: only from a human account), start with the icon of each agent that worked on it, reviewers too, then a line break (`<img src="https://github.com/claude.png" width="20" height="20" alt="Claude">`; Codex: `openai.png`, `alt="Codex"`).
-- **Budgets:**
-  - reply or design answer ≤ 300 words, code included, however many questions: one plan, decision first, that a newcomer follows; the rest linked;
-  - PR body about 150 words plus evidence, up to 250 when it lists decisions for the maintainer;
-  - issue (`open-issue`): ≤ 400 characters besides `### How to reproduce` and its evidence; a decision issue ≤ 400 words;
-  - inline review comments ≤ 2 sentences, only where the reader must judge.
-
-  Tables, code and collapsed sections count toward every budget except a PR body's, where tables, code, images and links don't count. Moving prose into a table to fit is the loophole the budget exists to close.
-- **Notes for a maintainer go in one table:** `| Note | Kind | Blocks merge | Next |`.
-  - Kind is bug, limitation, not a regression, or decision needed. Next is fixed in <sha>, PR <url>, or nothing, because Y.
-  - A follow-up is opened before the post, never listed as "recommend" or "follow-up"; in the user's own repos, just do it.
-  - A note that blocks the goal and can be fixed anywhere, upstream included, is fixed instead of listed.
