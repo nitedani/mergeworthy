@@ -110,7 +110,7 @@ The watcher runs independently of any session and only records events (and adds 
 - **Decide what you can decide or measure.** A question carries your recommendation and its reason; recommend the option that is best for the people who use it, and state the cost of each option beside it. Never pick an option because it is the smallest change when another serves users better; a change you'd recommend within scope is made, not listed. Don't invite generic pushback ("pushback welcome"; a question carries your pick), and don't promise how you'll behave next time.
 - **Credit** a design or statement to someone only with a link to where they said it.
 - **Links** to another repo use `owner/repo#N`. Write "depends on #N", never "stacked on", unless `gh stack` links them.
-- **The badge.** Unless the plugin's `badge` option says otherwise (`auto`: only from a human account), start with the icon of each agent that worked on the post, then a line break, no label (e.g. `<img src="https://github.com/claude.png" width="20" height="20" alt="Claude">`).
+- **The badge.** Unless the `badge` option says otherwise (`auto`: only from a human account), start with the icon of each agent that worked on it, reviewers too, then a line break (`<img src="https://github.com/claude.png" width="20" height="20" alt="Claude">`; Codex: `openai.png`, `alt="Codex"`).
 - **Budgets:**
   - reply ≤ 300 words, design answer ≤ 400, code included: ceilings: nobody answers with a book; one decision per comment;
   - a reply or design answer gets 60 more words for each question beyond the first in the comment it answers (quoted lines don't count);
