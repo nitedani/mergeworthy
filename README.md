@@ -30,7 +30,7 @@ Run `npx mergeworthy` again to change the options or add an agent; `npx mergewor
 
 | Option | Values (default first) | What changes |
 |---|---|---|
-| `badge` | `on`, `off`, `auto` | The agent's icon and label at the start of every post; `auto`: only when posting from a human account. |
+| `badge` | `on`, `off`, `auto` | The icons of the agents that worked on a post, at its start; `auto`: only when posting from a human account. |
 | `merge` | `on-request-squash`, `reviewer` | `reviewer`: the agent never merges. |
 | `watcher` | `on`, `off` | `off`: no GitHub watcher. |
 

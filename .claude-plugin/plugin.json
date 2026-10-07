@@ -16,7 +16,7 @@
     "badge": {
       "type": "string",
       "title": "Agent badge on posts",
-      "description": "on: every post starts with the agent's icon and label; off: never; auto: only when posting from a human account",
+      "description": "on: every post starts with the icons of the agents that worked on it; off: never; auto: only when posting from a human account",
       "options": [
         "on",
         "off",

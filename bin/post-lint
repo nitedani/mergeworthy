@@ -28,10 +28,10 @@ text = open(path).read()
 # An issue draft's first line may be its title ("Title: …"): the budget is for the body
 title = (re.match(r'\ATitle:\s*([^\n]*)\n', text) or [None, None])[1]
 text = re.sub(r'\ATitle:[^\n]*\n', '', text)
-# Posts by the agent share the user's account: each starts with a badge naming the agent that wrote it
-# (the agent's icon plus "Agent:", or the legacy Claude badge), so readers see who wrote it.
-# The other checks run on the text after the badge.
-BADGE = re.compile(r'^<img src="[^"]+"[^>]*>\s+\*\*(?:Claude|Agent):\*\*')
+# Posts by the agent share the user's account: each starts with the icons of the agents that worked on it,
+# then a line break, so readers see who wrote it. The other checks run on the text after the badge.
+BADGE = re.compile(r'^(?:<img src="[^"]+"[^>]*alt="[^"]+"[^>]*>[ \t]*)+\n')
+_label = re.match(r'^\s*<img [^>]*>[ \t]*\*\*[^*\n]+:\*\*', text)
 _m = BADGE.match(text.lstrip())
 if _m:
     text = text.lstrip()[_m.end():].lstrip()
@@ -46,6 +46,8 @@ counted = re.sub(r'!\[[^\]]*\]\([^)]*\)', '', counted)                  # images
 counted = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', counted)              # links: keep the text
 counted = re.sub(r'https?://\S+', 'URL', counted)
 findings = []
+if _label:
+    findings.append("badge label: drop the '**Name:**' label; the icons, then a line break, then the text")
 BANNED = [r'\bin this run\b', r"\bdoesn't establish\b", r'\bworth noting\b', r'\bhappy to\b', r'\blet me know\b',
           r'\bpushback welcome\b', r'\bsay the word\b', r'\bwant me to\b', r'\bshall I\b', r'\bif you want\b',
           r"\bif you'd rather\b", r'\byour call\b', r'\bI hope this helps\b', r'\bgreat question\b', r'\bdelve\b',
@@ -82,7 +84,7 @@ for m in re.finditer(r'(?<![\w/.-])#(\d+)\b', prose):
         findings.append(f"bare #{m.group(1)} doesn't exist in {repo}: another repo's item? write owner/repo#{m.group(1)}")
 # the umbrella issue's format (methodology 1.2, Tier L; reference nitedani/vike-react-rsc#9)
 if kind == 'tracker':
-    head = re.sub(r'^\s*<img [^>]*>\s*\*\*[^*\n]+\*\*\s*', '', text)  # after the agent badge
+    head = re.sub(r'^\s*(?:<img [^>]*>[ \t]*)+\n\s*', '', text)  # after the agent badge
     if head.startswith('## Decisions'):
         for h in ('Process and requirements', 'Agreed', 'Open'):
             if not re.search(rf'^### [^\n]*{h}', text, flags=re.M):
@@ -112,7 +114,7 @@ if kind != 'pr':
     counted = re.sub(r'!\[[^\]]*\]\([^)]*\)', '', counted)
     counted = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', counted)
     counted = re.sub(r'https?://\S+', 'URL', counted)
-    counted = re.sub(r'<img [^>]*>\s*\*\*[^*\n]+\*\*', '', counted)            # the badge
+    counted = re.sub(r'^(?:<img [^>]*>[ \t]*)+\n', '', counted)            # the badge
     if kind == 'issue':  # the reproduction steps a newcomer needs are required, not part of the budget
         counted = re.sub(r'^#+\s*How to reproduce\b.*?(?=^#+ |\Z)', '', counted, flags=re.S | re.M | re.I)
 words = len(re.findall(r"[A-Za-z0-9][\w'’-]*", counted))
@@ -158,7 +160,7 @@ if kind == 'issue' and not decision and chars > 400:
     findings.append(f"{chars} characters > 400 for an issue (tables, code, images and URLs not counted): keep one finding")
 # a newcomer must see where it is and how to reproduce it (lexunit-ai/atotal_vagyon_borze#49 comment 6017184273)
 if kind == 'issue':
-    shown = re.sub(r'<img [^>]*>\s*\*\*[^*\n]+\*\*', '', text)  # the badge is no evidence
+    shown = re.sub(r'^(?:<img [^>]*>[ \t]*)+\n', '', text)  # the badge is no evidence
     repro = re.search(r'^#+\s*(?:how to (?:see|reproduce)|steps to reproduce)\b.*?(?=^#+ |\Z)', shown, re.I | re.M | re.S)
     video = re.search(r'<video|\.(?:mp4|webm|mov)\b', shown, re.I)
     still = re.search(r'<img|\.(?:png|jpe?g|gif|webp)\b', shown, re.I)
@@ -193,9 +195,9 @@ for m in re.finditer(r"[^.\n]*\b(separate issue|separate PR|out of scope|left fo
     findings.append(f"deferral {m.group(0).strip()[:70]!r}: fix it in this change, open the PR now and link it, or quote the user's OK (1.1.7)")
 has_badge = _m is not None
 badge = setting('BADGE', 'on')  # auto: only a human account (`gh api user` type User, not Bot) needs it
-if kind != 'tracker' and not has_badge and (badge == 'on' or badge == 'auto' and
+if kind != 'tracker' and not has_badge and not _label and (badge == 'on' or badge == 'auto' and
         subprocess.run(['gh', 'api', 'user', '--jq', '.type'], capture_output=True, text=True).stdout.strip() == 'User'):
-    findings.append("missing badge: start the post with the agent's icon and an **Agent:** label (the legacy Claude badge also passes)")
+    findings.append("missing badge: start the post with the icon of each agent that worked on it, then a line break; no label")
 # the process stays in the artifact root: the reader gets results, not how the agent produced them
 if not record:
     PROCESS = [r'\breview rounds?\b', r'\b(refactor|verification|dry) pass(es)?\b', r'\bcharter\b', r'\bgpt-\d[\w.-]*',

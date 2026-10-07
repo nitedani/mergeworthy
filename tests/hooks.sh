@@ -160,8 +160,13 @@ touch -d '+1 minute' "$AR/maps/o-r-9.md"
 check "the 3rd proposal with a fresh map passes" 0 "$(pguard 3)"
 touch -d '-1 hour' "$AR/maps/o-r-9.md"
 check "BLOCK: a map older than the last proposal" 2 "$(pguard 3)"
+# ---------- post-lint: the badge is icons, then a line break ----------
+blint() { printf '%s' "$1" > "$T/badge.md"; python3 "$R/bin/post-lint" "$T/badge.md" --parent none 2>&1 | grep -c 'badge'; }
+check "icons then a line break pass" 0 "$(blint $'<img src="https://github.com/claude.png" width="20" height="20" alt="Claude"> <img src="https://github.com/openai.png" width="20" height="20" alt="Codex">\nFixed in abc1234.\n')"
+check "a **Claude:** label is flagged" 1 "$(blint $'<img src="https://github.com/claude.png" width="20" height="20" alt="Claude"> **Claude:** Fixed in abc1234.\n')"
+check "no badge is flagged" 1 "$(blint $'Fixed in abc1234.\n')"
 # ---------- post-lint: each list item is its own sentence ----------
-B='<img src="https://github.com/claude.png" width="20" height="20" align="left" alt="Claude"> **Claude:**'
+B=$'<img src="https://github.com/claude.png" width="20" height="20" alt="Claude">\n'
 lint() { python3 "$R/bin/post-lint" "$1" --kind issue --parent none 2>&1 | grep -c 'word sentence'; }
 items=$(for i in 1 2 3 4 5 6 7; do echo "  - item number $i with a few short words;"; done)
 printf '%s A list of short items follows here:\n%s\n' "$B" "$items" > "$T/list.md"
