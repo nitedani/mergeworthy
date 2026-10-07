@@ -53,7 +53,7 @@ What counts:
 
 How:
 - read each change end to end with every caller;
-- try the edges: <list the risky edges for this slice>.
+- try the edges: <list the risky edges for this slice; for stream code always core 1.1.11's stream probes>.
 - Make your own worktrees under <artifacts dir> (worktree add --detach, install, build) and remove them when done.
 - Lanes you may run: <lanes>. Don't run <lanes owned by others>.
 
