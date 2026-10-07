@@ -79,11 +79,11 @@ The watcher runs independently of any session and only records events (and adds 
 **Everything that reaches an external service passes this gate,** with no lighter category: comments, review replies, inline comments, PR and issue bodies, filed issues, and edits of any of these. Reactions are exempt. Subagents never post; they hand you drafts.
 
 1. **Write it the way it should end up;** the gate checks, it doesn't edit. Write in `drafts/<name>.md` (never straight into a `gh` command), with the comment it answers in `drafts/<name>.parent.md`.
-   - Before the first sentence, write the one line the reader needs (the verdict or the ask), and what they already said or guessed.
-   - Write it as `writing.md` says (and by the Thread rules below).
-   - Read the draft top to bottom as a newcomer to the thread would: every term named where it first appears, every link between two sentences written out, nothing you'd have to read twice.
+   - First write the reader's one line (the verdict or the ask) and what they already said.
+   - Write it by `writing.md` and the Thread rules below. A design-thread reply to a maintainer, or a PR body, gets three drafts that differ in what they lead with, not wording; the review picks one against `writing.md`'s model, saying why. A draft that keeps failing is rewritten from what you'd say aloud, not patched.
+   - Read it as a newcomer would: every term named where it first appears, nothing to read twice.
 2. **Run `post-lint`** with the draft's `--kind` (and `--repo`). It must pass; `gate-pass` re-runs it with the same flags.
-3. **Run the review** (`review`: open it for who reviews) with a prompt file. The review should come back quickly with nothing. A finding means step 1 missed something: fix the draft, and add one line to the ledger saying what the writing missed, so the writing improves and the gate stays quiet. The review checks facts and noise, not word choice:
+3. **Run the review** (`review`: open it for who reviews) with a prompt file. A finding means step 1 missed something: fix the draft and log in the ledger what the writing missed. The review checks facts and noise, not word choice:
    - **Claims:** every claim against the code (`file:line` or a command and its output), the thread and the evidence.
    - **Noise:**
      - every con or risk names who hits it today (a caller, repo or user), or is cut;
