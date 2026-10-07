@@ -112,7 +112,7 @@ The watcher runs independently of any session and only records events (and adds 
 - **Links** to another repo use `owner/repo#N`. Write "depends on #N", never "stacked on", unless `gh stack` links them.
 - **The badge.** Unless the plugin's `badge` option says otherwise (`auto`: only from a human account), start with the icon of the agent that did the work and its name as the label (e.g. `<img src="https://github.com/claude.png" width="20" height="20" align="left" alt="Claude"> **Claude:**`, or `**Agent:**` for any agent).
 - **Budgets:**
-  - reply ≤ 80 words;
+  - reply ≤ 120 words;
   - a design answer or walkthrough ≤ 400 words, code included; one decision per comment, with your pick;
   - a reply or design answer gets 60 more words for each question beyond the first in the comment it answers (quoted lines don't count);
   - PR body about 150 words plus evidence, up to 250 when it lists decisions for the maintainer;
