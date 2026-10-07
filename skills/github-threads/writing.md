@@ -12,7 +12,7 @@ Read this before drafting anything posted to GitHub (comments, replies, PR and i
 
 Every post brings the reader something they didn't have: a finding, a measurement, a better option, a risk, or a decision with its reason. If it wouldn't, think more first.
 
-- **Start from their words.** Quote each point you answer (`> their words`), in their order; say what you agree with before your view.
+- **Start from their words.** Quote one or two points (`> their words`); many questions get one plan answering them. Agree before your view.
 - **Verdict first, then your view with its reason,** in the order the reader would think it: "I'd do X because Y." Take a position; a reply that only reports findings leaves the thinking to them.
 - **The best comment has done the work:** "X breaks because Y, so I did Z. What do you think?"
 - **Ask only what needs their decision,** once, at the end, as a plain question a yes or no answers.
@@ -20,7 +20,7 @@ Every post brings the reader something they didn't have: a finding, a measuremen
 - **Write for a newcomer who finds the thread later:** name each thing plainly where it first appears; no internal labels, no "it" with two meanings.
 - **Concrete over abstract:** the file, the call, the number, the framework; show a design choice as the code the user writes under each option.
 - **Courtesy that's real:** thank them for a real catch; when you change your mind, say so in one line ("I was wrong about X: Y"); never "obviously".
-- **As short as a newcomer can still follow:** clarity comes from one example and the word that links two points, not from more words.
+- **As short as a newcomer can follow:** clarity comes from one example and the word linking two points, not more words.
 
 ## A reply that carries the load
 
