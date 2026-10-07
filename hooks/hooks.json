@@ -28,6 +28,15 @@
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/hooks/pre-agent-dedupe.py"
           }
         ]
+      },
+      {
+        "matcher": "^(Write|Edit|MultiEdit|NotebookEdit|mcp__.*delegate_task)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/hooks/pre-design-gate.py"
+          }
+        ]
       }
     ],
     "PostToolUse": [

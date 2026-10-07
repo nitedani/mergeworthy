@@ -49,7 +49,7 @@ Each failure below happened, most more than once. When a rule fails or the user 
 | Review reports and raw rater output posted on PRs. | `writing` process invisible, `post-lint` |
 | Over-engineering the maintainer cut (long collision checks, a tiny cache, rare-case docs, lookup tests); the maintainer cut most submitted test lines. | 1.1.15, 1.1.16 |
 | A 100-line feature with no user. | 1.1.16 feature list |
-| Five new core hooks where an existing extension point sufficed. | 1.4 step 0 |
+| Five new core hooks where an existing extension point sufficed; a diff viewer the named project already had, rewritten. | 1.4 step 0, 1.3 |
 | Instruction files bloated with rationale and opt-outs. | 1.9 |
 | A lesson from one repo repeated in another. | 1.1.12 |
 | Work stopped at every rate limit; hundreds of headless browsers; a preview left running for hours. | 1.1.13, 1.8 |

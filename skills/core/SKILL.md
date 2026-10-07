@@ -55,7 +55,7 @@ Run every PR through bug verification, code review and a fresh read on the final
     - **User decisions stay decided.** Mark a setting or design the user decided where it lives (`# user decision YYYY-MM-DD: <what, why>`); a session that never saw the decision reads the marker, not the chat. If you find a problem with the decision, keep it and report the problem with evidence.
     - **A broken premise** (e.g. "one PR per item" when the items depend on each other): say so with a recommendation before acting.
 5. **Investigate before claiming.** Support factual claims with sources and say what you could not verify (`writing`).
-    - Check `main`, the registry and the upstream source before recommending to close, remove, replace or switch anything; before a fix or design, read how peers solve it.
+    - Check `main`, the registry and the upstream source before recommending to close, remove, replace or switch anything.
     - When you report a measurement, take it through the exact path the real work takes: the same client, API and settings the user runs, never a convenient substitute. A result from any other path is not evidence.
     - A CI workflow change works only once a real run on the branch shows it.
 6. **Fix at the root; never document around a defect.** A sentence telling users to work around the product is a bug to fix, upstream included, unless the user explicitly accepts it. Examples: "order by seq when order matters", "may miss for 60 s".
@@ -173,7 +173,7 @@ Run every PR through bug verification, code review and a fresh read on the final
     - A sentence that says when something applies states its exact condition and one example with real names, in terms the docs already use. Explain things in the reader’s existing words (`writing`, How a good colleague writes).
     - Before pushing docs, a fresh-context agent that sees only the rendered text explains each new section back and lists every sentence it can't act on. Fix the text until that explanation is right.
 - **Behavior before removal.** Before removing or rewriting behavior, inventory what exists (triggers, paths, gates) and run `git log -S` on it. Keep all of it unless the task says otherwise. After a move or rename, grep the repo and sibling PRs for the old name or anchor.
-- **Prior art:** research it in upstream source at pinned versions.
+- **Prior art:** before a fix or design, research the web (at least 10 searches, 20 pages read), every project the user names in full, peers and upstream at pinned versions; build on what exists.
 - **The project file** holds what is particular to a repo beyond its `AGENTS.md` / `CLAUDE.md`: the base branch, gates, existing guarantees, security surfaces, tracker, labels, and how to run the app. Every skill reads it. Use the repo's own if it ships one; otherwise derive it once into `<artifact root>/project.md`, outside the repo, under the headings of the template below:
     - the base branch from `gh repo view --json defaultBranchRef`;
     - the gates from the CI config and package scripts;

@@ -314,6 +314,17 @@ check "BLOCK: a gates log with a red gate" 1 "$(prs2 gates "$T/g1.md")"
 check "BLOCK: gh pr ready with five of six steps" 2 "$(ready)"
 printf 'pnpm test -> exit 0\npnpm lint -> exit 0\n' > "$T/g2.md"; check "a green gates log records" 0 "$(prs2 gates "$T/g2.md")"
 check "gh pr ready passes once all six steps hold on HEAD" 0 "$(ready)"
+# ---------- pre-design-gate: Tier M code waits for prior-art.md and decisions/*.md ----------
+D="$T/dg"; mkdir -p "$D" "$D-work"; git -C "$D" init -q
+gate() { python3 -c 'import json,sys; print(json.dumps({"tool_name":sys.argv[1],"tool_input":json.loads(sys.argv[2]),"cwd":sys.argv[3]}))' "$1" "$2" "$D" | python3 "$R/hooks/pre-design-gate.py" 2>/dev/null; echo $?; }
+check "no scope.md: an edit passes" 0 "$(gate Edit "{\"file_path\":\"$D/a.ts\"}")"
+printf 'Tier: M, because x\n' > "$D-work/scope.md"
+check "BLOCK: Tier M edit with no prior art or decision" 2 "$(gate Edit "{\"file_path\":\"$D/a.ts\"}")"
+check "BLOCK: Tier M implementation agent with no decision" 2 "$(gate mcp__t3-code__delegate_task '{"role":"implementation"}')"
+check "a research agent passes" 0 "$(gate mcp__t3-code__delegate_task '{"role":"research"}')"
+check "an artifact-root write passes" 0 "$(gate Write "{\"file_path\":\"$D-work/prior-art.md\"}")"
+touch "$D-work/prior-art.md"; mkdir -p "$D-work/decisions"; touch "$D-work/decisions/x.md"
+check "Tier M edit passes once prior art and a decision exist" 0 "$(gate Edit "{\"file_path\":\"$D/a.ts\"}")"
 # ---------- pre-bash-guard: never kill a running agent ----------
 printf '#!/bin/sh\nsleep 600\n' > "$T/claude"; chmod +x "$T/claude"
 "$T/claude" --output-format stream-json >/dev/null 2>&1 & APID=$!

@@ -1,5 +1,7 @@
 ## Always-on rules (mergeworthy)
 
+**Always critically follow the mergeworthy methodology and its skills in every session, without exception.**
+
 These rules apply in every session. Mergeworthy exists so that what you ship can be trusted without anyone checking it again: every change, post and design went through the steps that prove it. Each skill is one of those procedures.
 
 1. **Run the skill, don't recall it.** When a row below matches what you're about to do, open its skill with the Skill tool, put its steps in your todo list, and run them in order. Your memory of a skill is not the skill.
