@@ -88,13 +88,13 @@ Every PR, whatever its tier, goes through `converge`'s pipeline: a Loop A agent 
 10. **Names match behavior; no invented options.** Every new public name gets a one-line "name → what it does in every case" check. A new option needs a named user scenario that can't be served without it.
 11. **No regressions.** Anything that works on `main` and fails on the head is a regression, experimental features included: fix it, never list it as a limitation.
     - So is every row of your own comparison where the head is worse than the run-to-run spread.
-    - **Streams, transports and hot paths** are written and checked for health, not only output:
-      - cancellation travels both ways: a consumer that cancels or a client that aborts stops the source and frees its socket; a source that errors fails the consumer, never hangs it;
-      - backpressure holds: read on demand, never everything up front;
-      - every buffer has a stated cap, including a `tee()` or `clone()` branch nobody reads, which holds the whole body;
+    - **Streams, transports and hot paths** are checked for health, not only output:
+      - cancellation travels both ways: a cancelling consumer or aborting client stops the source; a failing source fails the consumer, never hangs it;
+      - backpressure holds: read on demand;
+      - every buffer has a cap, including an unread `tee()` or `clone()` branch;
       - listeners, timers and readers are released on every exit path, and what the code still needs is held by more than a listener;
       - a stream is read once, or copied before its first read.
-    - Probe each on every runtime the code ships to: cancel mid-stream from each end, a slow consumer, a large body's peak memory against `main`, listener counts after many requests. Probes with a deterministic signal (memory bound, listener or request count) become tests; timing goes to the benchmark: `main` against the head before the PR opens, all scenarios, alternating runs, N ≥ 3, throughput, p50/p99, request count and reconnects. A cell worse than the spread is fixed or reverted, never called a trade-off without the user's OK.
+    - Probe each on every runtime the code ships to: cancel mid-stream from each end, a slow consumer, a large body, listener counts after many requests. Probes with a deterministic signal (memory bound, listener or request count) become tests; timing goes to the benchmark: `main` against the head before the PR opens, all scenarios, alternating runs, N ≥ 3, throughput, p50/p99, peak memory, request count and reconnects. A cell worse than the spread is fixed or reverted, never called a trade-off without the user's OK.
     - **UI and runtime fixes** are shown working in the real app, per `evidence`; unit scripts alone don't count.
 12. **Fix the mistake and the rule that allowed it.** When the user names a failure, stop, re-read, and fix the whole class in the same turn:
     - the artifact (PR, comment, code);

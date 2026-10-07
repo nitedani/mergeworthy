@@ -110,7 +110,7 @@ Closes #N
 **Write it to be scanned,** by `writing.md` (`github-threads`), with this template's form winning where they differ.
 - **The first sentence says what was wrong** in a user's words, not the mechanism.
 - **Plain sentences that say why, not only what**; one line per caption. The implementation belongs in the diff.
-- **Evidence in a skimmable shape:** a before/after table beats a transcript (for code with no UI, the request and the response, from a real run), with a permalink to the line that caused it.
+- **Evidence in a skimmable shape:** a before/after table, not a transcript (with no UI, the request and response from a real run), and a permalink to the line at fault. A hot path, transport or stream change also shows the 1.1.11 benchmark as a `main`/head table with its spread, so the maintainer sees performance kept.
 - **At most one closing caveat**, last, for the reviewer's decision. When a revert wouldn't undo the merge (a stored or wire format, a migration, a published name), that is the caveat.
 
 #### The walkthrough
