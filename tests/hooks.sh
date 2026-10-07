@@ -229,6 +229,14 @@ check "BLOCK: a second launch of the same ticket" 2 "$(launch 'Retry: execute /t
 check "another ticket passes" 0 "$(launch 'Execute /tmp/x/other.md')"
 python3 "$R/bin/agent-job" done /tmp/x/ticket-check.md >/dev/null
 check "after agent-job done the ticket launches again" 0 "$(launch 'Execute /tmp/x/ticket-check.md')"
+cid() { # clientRequestId
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":"x","clientRequestId":sys.argv[1]}}))' "$1" \
+    | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; echo $?
+}
+check "a new clientRequestId passes" 0 "$(cid r-1)"
+check "a retry of the same clientRequestId within 10 minutes passes" 0 "$(cid r-1)"
+python3 -c 'import json,os,time; p=os.path.expanduser("~/.claude/agent-jobs/client-request-ids.json"); d=json.load(open(p)); d["r-1"]=time.time()-3600; json.dump(d,open(p,"w"))'
+check "BLOCK: a clientRequestId reused later (T3 replays the old result)" 2 "$(cid r-1)"
 # a gate review starts only on a draft that passed post-lint in its current form
 mkdir -p "$T/drafts/lf"; printf 'Fixed in abc1234.\n' > "$T/drafts/lf/reply.md"
 printf 'Review %s and write the verdict to %s/drafts/lf/r.out; the last message is exactly CLEAN.\n' "$T/drafts/lf/reply.md" "$T" > "$T/drafts/lf/review-ticket.md"

@@ -100,4 +100,4 @@ It skips its watcher checks while the user's last message contains "pause".
 
 It puts the always-on rules into context and writes `settings.env`. It also points `~/.mergeworthy/current` at the installed version, the stable path watchers use.
 
-**`pre-agent-dedupe`** (every `Agent` and `delegate_task` launch) registers the job under the ticket files its prompt names and blocks a second launch of the same job. `agent-job list` shows the registered jobs; `agent-job done <ticket>` releases one, only once its agent's task is terminal and its result is read.
+**`pre-agent-dedupe`** (every agent launch) registers the job under the ticket files its prompt names and blocks a second launch of the same job, and a reused `clientRequestId` (T3 replays its old result). `agent-job done <ticket>` releases a job once its task ended and its result was read.

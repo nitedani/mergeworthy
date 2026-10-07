@@ -6,6 +6,16 @@ child wakes again when its background commands end, so only its terminal task st
 import hashlib, json, os, re, sys, time
 d = json.load(sys.stdin)
 ti = d.get('tool_input', {}) or {}
+# T3 answers a delegate_task whose clientRequestId it has seen with that earlier task's result, without running anything.
+# Reuse is allowed only within 10 minutes (a retry of the same launch).
+cid = str(ti.get('clientRequestId') or '')
+if cid:
+    ids = os.path.expanduser('~/.claude/agent-jobs/client-request-ids.json'); os.makedirs(os.path.dirname(ids), exist_ok=True)
+    seen = json.load(open(ids)) if os.path.exists(ids) else {}
+    if cid in seen and time.time() - seen[cid] > 600:
+        sys.stderr.write(f"BLOCKED: clientRequestId '{cid}' was used before; T3 would return that earlier task's result instead of running this one. Use a new id (add the date or the head SHA).\n")
+        sys.exit(2)
+    seen.setdefault(cid, time.time()); json.dump(seen, open(ids, 'w'))
 text = ' '.join(str(ti.get(k) or '') for k in ('prompt', 'task', 'description', 'title'))
 tickets = sorted(set(re.findall(r'(/[^\s`\'"]+\.md)\b', text)))
 # A gate review (names a review output `.out` and CLEAN) starts only on drafts that passed post-lint in their current form.
