@@ -202,6 +202,14 @@ badge = setting('BADGE', 'on')  # auto: only a human account (`gh api user` type
 if kind != 'tracker' and not has_badge and not _label and (badge == 'on' or badge == 'auto' and
         subprocess.run(['gh', 'api', 'user', '--jq', '.type'], capture_output=True, text=True).stdout.strip() == 'User'):
     findings.append("missing badge: start the post with the icon of each agent that worked on it, then a line break; no label")
+# Codex worked on it when its run left a trace next to the draft (a codex log, or its "model: gpt…" banner): its icon belongs in the badge
+_dir = os.path.dirname(os.path.abspath(path))
+def _codex_trace(f):
+    if 'codex' in f.lower(): return True
+    if not f.endswith(('.log', '.out')) or os.path.getsize(os.path.join(_dir, f)) > 2_000_000: return False
+    return re.search(r'^model: gpt', open(os.path.join(_dir, f), errors='replace').read(), re.M) is not None
+if has_badge and 'alt="Codex"' not in _m.group(0) and any(_codex_trace(f) for f in os.listdir(_dir) if os.path.isfile(os.path.join(_dir, f))):
+    findings.append('badge without Codex: Codex worked on this post (a codex run left its log next to the draft), so add <img src="https://github.com/openai.png" width="20" height="20" alt="Codex">')
 # the process stays in the artifact root: the reader gets results, not how the agent produced them
 if not record:
     PROCESS = [r'\breview rounds?\b', r'\b(refactor|verification|dry) pass(es)?\b', r'\bcharter\b', r'\bgpt-\d[\w.-]*',
