@@ -203,6 +203,7 @@ flowchart TB
   s5 -.-> r10[["converge"]]
   s6 -.-> r11[["github-threads"]]
   s6 -.-> r12[["evidence"]]
+  s6 -.-> r13[["core"]]
   start --> g0
 ```
 

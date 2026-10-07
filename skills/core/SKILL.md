@@ -94,7 +94,7 @@ Every PR, whatever its tier, goes through `converge`'s pipeline: a Loop A agent 
       - every buffer has a cap, including an unread `tee()` or `clone()` branch;
       - listeners, timers and readers are released on every exit path, and what the code still needs is held by more than a listener;
       - a stream is read once, or copied before its first read.
-    - Probe each on every runtime the code ships to: cancel mid-stream from each end, a slow consumer, a large body, listener counts after many requests. Probes with a deterministic signal (memory bound, listener or request count) become tests; timing goes to the benchmark: `main` against the head before the PR opens, all scenarios, alternating runs, N ≥ 3, throughput, p50/p99, peak memory, request count and reconnects. A cell worse than the spread is fixed or reverted, never called a trade-off without the user's OK.
+    - Probe each on every runtime the code ships to: cancel mid-stream from each end, a slow consumer, a large body, listener counts after many requests. Deterministic probes (memory bound, listener or request count) become tests; timing goes to the benchmark: `main` against the head before the PR opens, all scenarios, alternating runs, N ≥ 3, throughput, p50/p99, peak memory, request count and reconnects. A cell worse than the spread is fixed or reverted, never called a trade-off without the user's OK.
     - **UI and runtime fixes** are shown working in the real app, per `evidence`; unit scripts alone don't count.
 12. **Fix the mistake and the rule that allowed it.** When the user names a failure, stop, re-read, and fix the whole class in the same turn:
     - the artifact (PR, comment, code);
