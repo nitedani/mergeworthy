@@ -41,6 +41,10 @@ prose = re.sub(r'^(```|~~~).*?^\1[^\n]*$', '', text, flags=re.S | re.M)
 prose = re.sub(r'<!--.*?-->', '', prose, flags=re.S)
 prose = re.sub(r'^\s*(?:[-*]\s+)?>.*$', '', prose, flags=re.M)
 prose = re.sub(r'`[^`\n]*`', 'CODE', prose)
+# A maintainer who asked for the full lists (his refactor prompt: ratings old => new) gets them, collapsed in <details>: not linted or counted
+_rp = arg('--parent', None); _rp = (re.sub(r'\.md$', '', path) + '.parent.md') if _rp is None else (None if _rp == 'none' else _rp)
+if _rp and os.path.exists(_rp) and re.search(r'\brefactor this pr\b|\bold rating\b|\bratings?\b.*\blists?\b', open(_rp).read(), re.I | re.S):
+    prose = re.sub(r'<details>.*?</details>', '', prose, flags=re.S)
 counted = re.sub(r'^\s*\|.*$', '', prose, flags=re.M)                 # table rows
 counted = re.sub(r'!\[[^\]]*\]\([^)]*\)', '', counted)                  # images
 counted = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', counted)              # links: keep the text

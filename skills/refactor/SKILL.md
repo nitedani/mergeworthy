@@ -62,5 +62,5 @@ Refactor this PR:
 - **Gates after every commit.** A red gate means fix that commit, never a patch on top.
 - **Refactor commits are separate from behavior commits.**
 - **A pass that changed nothing** says so, and why.
-- **The final lists go in a file in the artifact root,** linked from the ledger (1.2): old ⇒ new, the reason, commit links, and the ✅ lists. The PR shows the result, not the ratings (1.6).
+- **The final lists go in a file in the artifact root,** linked from the ledger (1.2): old ⇒ new, reasons, commits, ✅ lists. The PR shows results, not ratings (1.6), unless the maintainer asks: then `<details>`.
 - **The pass goes stale.** The pass belongs to the PR as it is now, not to the head it first ran on. When later commits (maintainer requests included) change more than ~80 lines, re-run it on the whole PR diff before the next "Done" reply, and replace the lists. The watcher prints `### REFACTOR STALE` when that happens.
