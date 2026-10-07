@@ -5,9 +5,10 @@ description: "Designing an API, protocol or module, or restructuring code: the d
 
 ## 1.4 Design loop (Tier ≥ M, any API or protocol)
 
-The design loop takes a new API or protocol from candidates to a shape the maintainer has agreed to, before any PR converges.
+The design loop takes a new API or protocol to a shape the maintainer agreed to, before any PR converges.
 
-- **Design the end state first, then plan the way there.** The cleanest end state from first principles wins; effort, release count and diff size belong to the plan that builds it, and 1.1.15 judges findings, never a design's shape. Judge a design on its correctness, its invariants and how simple the final shape is. The work to get there (releases, migrations, how many PRs) is planning, never an argument for a weaker shape, and "later" or "until someone needs it" is not a design decision. Do the work the design needs now, and defer nothing that the design depends on.
+- **Question the goal first.** Does it belong in this layer: who owns the concern, what already does it? Argue both ways. When it needs framework tricks, upstream fixes or a growing list of holes, stop and ask again: wrong layer.
+- **Design the end state first, then plan the way there.** Judge a design on its correctness, its invariants and how simple its final shape is (1.1.15 judges findings, not designs). Effort, releases, migrations and PR count belong to the plan, never an argument for a weaker shape. "Later" is not a design decision: do now what the design depends on.
 
 0. **Prototype on existing extension points first.** Before any new core API, prototype the solution that uses only existing extension points (e.g. an existing middleware, render hook or plugin hook). That prototype is the first candidate; a core change needs a named requirement the prototype fails.
 1. **Draft `decisions/<name>.md`:** the invariant table (1.1.2), and the candidates rated as in `pull-request` step 3 (open `pull-request` for the rating steps). Rank the candidates by interface size. Recommend the smallest that keeps every invariant; recommend a larger one only with the requirement the smaller one fails, shown as code.
