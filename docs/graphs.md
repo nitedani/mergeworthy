@@ -169,13 +169,13 @@ flowchart TB
   g1 ~~~ g2
 ```
 
-## Any change you'll open a PR for, from an issue or not
+## Any change that lands in a PR: writing it, committing it, pushing it to an open PR
 
 Opens `mergeworthy:pull-request` (the steps to a merge-ready PR).
 
 ```mermaid
 flowchart TB
-  start(["Any change you'll open a<br/>PR for, from an issue or<br/>not"])
+  start(["Any change that lands in<br/>a PR: writing it,<br/>committing it, pushing<br/>it to …"])
   subgraph g0["pull-request"]
     s0["1. Check it is not already<br/>fixed"]
     s1["2. Prove the problem exists"]

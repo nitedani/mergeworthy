@@ -89,7 +89,7 @@ Tear the stack down when you finish, including when you abort.
 
 ### 6. Converge
 
-Run `converge`'s pipeline on the diff (open `converge`): Loop A until dry, Loop B until it leaves nothing worth doing, Loop A again on Loop B's commits, then the fresh reader on the final head. Before the fresh reader, update the PR body draft per step 7 (`drafts/pr-body.md`) and pass `post-lint --kind pr`, since the fresh reader reviews it. The pipeline's last step records `pr-steps review` and `pr-steps refactor` on the final head. A PR that skipped a step runs it now or is closed.
+Run `converge`'s pipeline on the diff (open `converge`): Loop A until dry, Loop B until it leaves nothing worth doing, Loop A again on Loop B's commits, then the fresh reader on the final head. Before the fresh reader, update the PR body draft per step 7 (`drafts/pr-body.md`) and pass `post-lint --kind pr`, since the fresh reader reviews it. The pipeline's last step records `pr-steps review` and `pr-steps refactor` on the final head.
 
 ### 7. The PR
 

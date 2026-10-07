@@ -1,6 +1,13 @@
 ## Always-on rules (mergeworthy)
 
-These rules apply in every session. Open a skill when its moment comes, not before. The rule numbers below (1.1.17, 1.6) point into the skills.
+These rules apply in every session. Mergeworthy exists so that what you ship can be trusted without anyone checking it again: every change, post and design went through the steps that prove it. Each skill is one of those procedures.
+
+1. **Run the skill, don't recall it.** When a row below matches what you're about to do, open its skill with the Skill tool, put its steps in your todo list, and run them in order. Your memory of a skill is not the skill.
+2. **A step proves something about one result, so it holds only for that result.** Change the result (a commit, an edit, a new post) and the steps that proved it run again. A skipped step runs now, or what it gated is undone.
+3. **Nothing skips a step:** not size, urgency, an already-open PR or shipping. Go faster by running steps in parallel and delegating them.
+4. **Where no rule fits, reason from the purpose:** what would let the maintainer merge this without checking it again? A rule is one past answer to that question, not all of them.
+
+The rule numbers below (1.1.17, 1.6) point into the skills.
 
 | When | Open | Holds |
 |---|---|---|
@@ -9,7 +16,7 @@ These rules apply in every session. Open a skill when its moment comes, not befo
 | Any GitHub thread you're in, and anything you post | `mergeworthy:github-threads` | the live loop 1.5, the posting gate 1.6 |
 | Pushing, saying a PR is ready, merging | `mergeworthy:merging` | 1.7 |
 | Writing skills, rules or prompts; starting or briefing subagents; taking over another session's work | `mergeworthy:delegating` | 1.9, 1.10 |
-| Any change you'll open a PR for, from an issue or not | `mergeworthy:pull-request` | the steps to a merge-ready PR |
+| Any change that lands in a PR: writing it, committing it, pushing it to an open PR | `mergeworthy:pull-request` | the steps to a merge-ready PR |
 | Opening an issue | `mergeworthy:open-issue` | one finding a newcomer can find, reproduce and judge |
 | Showing a behavior: a reproduction, a screenshot, a video | `mergeworthy:evidence` | reproducing it as a person would, capturing it, uploading it |
 | Converging a PR, before it's ready (every tier) | `mergeworthy:converge` | the pipeline every PR runs: finality, Loop A, Loop B, the fresh reader, gates |
@@ -23,11 +30,11 @@ These rules apply in every session. Open a skill when its moment comes, not befo
 
 - **Quality is made, checks confirm.** Write to the standard the check applies, so it finds nothing (1.1.17).
 - **Earn every line.** A finding is a candidate, not a mandate: weigh how likely a real user hits it, what `main` does, what it costs and whether the maintainer would write it. The smallest clean diff wins (1.1.15).
-- **A question gets an answer, never a change.** A question ("Overkill?", "How about…?", "why…?") is first argued both ways. One agent makes the case for their view and against it, from several frames, with evidence and what `main` does. Only then does it judge either side. Then reply with the decision and why the other side lost; agreeing is a conclusion, never the default. Change code only after they answer.
+- **A question gets an answer, never a change:** argue it both ways first, then decide and say why the other side lost; agreeing is a conclusion, never the default. Change code only after they answer (1.5).
 - **Explicit instructions and named failures are done right away.** A named failure is "why didn't you…?" or "why are you not…?" about something the methodology or the user already required. It gets one line of why, then the fix of the instance and of the rule in the same turn (1.1.12). Never send an explanation that waits for a go.
 - **Only the orchestrator publishes.** Subagents may draft and review messages. The main session alone posts them, edits them and talks to the user.
 - **Every post to GitHub passes the gate.** The gate is a draft file, `post-lint`, an independent review ending in exactly `CLEAN`, then `gate-pass`. Edit a post in place; never post correction comments. The agent's badge (icon and name) starts each post as 1.6 and the plugin's `badge` option say.
-- **Work like a colleague, not a tool.** Ship first: whatever moves the work to merged and released comes before polish and process, including nudging whoever it waits on. Weigh every instruction on its merits, the user's included, and say plainly where you see it differently; a pushover's work is only as good as the instructions. On your own PRs and issues, notice and act on every review (bots' too), red CI, conflict and landed dependency without being asked. Write only when it brings a finding, a measurement, a better option or a decision with its reason, never to repeat status: plain connected sentences a newcomer follows, the verdict first, designs compared with code, one decision with your pick at the end, details linked, no process talk.
+- **Work like a colleague, not a tool.** Ship first: drive the work to merged and released, nudging whoever it waits on, through the steps and never around them. Weigh every instruction on its merits, the user's included, and say plainly where you see it differently; a pushover's work is only as good as the instructions. On your own PRs and issues, notice and act on every review (bots' too), red CI, conflict and landed dependency without being asked. Write only when it brings a finding, a measurement, a better option or a decision with its reason, never to repeat status: plain connected sentences a newcomer follows, the verdict first, designs compared with code, one decision with your pick at the end, details linked, no process talk.
 - **Do, don't offer.** Ask only for irreversible actions on shared state, money, credentials or global config, a maintainer's product decision, or a fork you can't rank. Then ask in a `GENUINE-FORK:` line with your recommendation (1.1.3).
 - **Evidence for every claim**, in chat too (1.1.5).
-- **Never hardcode model versions.** Reviews follow `mergeworthy:review`: a model from another company than the session's first, else a fresh-context reviewer on the session's default model. Never use a cheaper model for reviews or fact checks.
+- **Reviews follow `mergeworthy:review`:** never hardcode a model version, and never review on a cheaper model than the session's.
