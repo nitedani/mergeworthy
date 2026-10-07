@@ -9,6 +9,7 @@ if d.get('stop_hook_active'):
 last = ''
 posted, monitor_ids, monitors, dead, commands, monitor_cmds = False, {}, set(), set(), [], []
 last_user = ''  # the user's own last message (not a tool result or a hook's feedback)
+started_since_user = False  # background work, an agent or a Monitor started since the user's last message
 POST = re.compile(r'\bgh\b[^\n]*(body-file|body=@|--input|\s-F\s)')
 READ = re.compile(r'\bgh\s+api\s+graphql\b|\bgh\s+api\b[^\n]*\s(?:-X\s*|--method[\s=])GET\b')  # a field makes `gh api` a POST, but these read
 def posts(cmd):
@@ -33,6 +34,7 @@ for line in lines:
         typed = c if isinstance(c, str) else ' '.join(x.get('text', '') for x in c or [] if isinstance(x, dict) and x.get('type') == 'text')
         if typed.strip() and not typed.lstrip().startswith(('<', 'Stop hook feedback')):
             last_user = typed
+            started_since_user = False
         for t in texts:
             for tid in re.findall(r'<task-id>(\w+)</task-id>[\s\S]*?Monitor expired', t or ''): dead.add(tid)
     if e.get('type') == 'assistant':
@@ -45,6 +47,7 @@ for line in lines:
                 monitor_ids[x.get('id')] = 1
                 monitor_cmds.append(i.get('command', ''))
             if x.get('name') == 'TaskStop': dead.add(i.get('task_id') or i.get('shell_id') or '')
+            if i.get('run_in_background') or x.get('name') in ('Agent', 'Monitor') or 'delegate_task' in (x.get('name') or ''): started_since_user = True
         if isinstance(c, list):
             t = ''.join(x.get('text', '') for x in c if isinstance(x, dict) and x.get('type') == 'text')
             if t.strip(): last = t
@@ -57,6 +60,14 @@ if re.search(OFFER, tail, re.I) and 'GENUINE-FORK' not in last:
           "do it now. Ask only for (a) irreversible actions on shared state you didn't create, (b) money, credentials "
           "or the user's global config, (c) an external maintainer's product decision or a fork you can't rank; then "
           "include a line starting 'GENUINE-FORK:' with your recommended default.", file=sys.stderr)
+    sys.exit(2)
+# Announcing work is not doing it: a turn that ends on "next is…" or "I'll start…" starts it, unless this turn already
+# started background work, the user said stop or pause, or it waits on someone
+ANNOUNCE = r"(\bnext (is|up)\b|\bthe next (work|step|thing) is\b|\bI'?ll (start|begin|pick (it|that) up|get to|move on to|run|do) )"
+if (re.search(ANNOUNCE, tail, re.I) and not started_since_user and not re.search(r'\b(stop|pause)\b', last_user, re.I)
+        and 'GENUINE-FORK' not in last):
+    print("Your last message announces work you haven't started (\"next is…\", \"I'll start…\"). Start it now, or say what "
+          "it waits on and start what doesn't (mergeworthy:core, ship first).", file=sys.stderr)
     sys.exit(2)
 own_dirs = set()
 reg = os.path.expanduser('~/.claude/gh-watch-dirs.txt')
