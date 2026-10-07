@@ -5,7 +5,7 @@ import hashlib, json, os, sys, time
 jobs = os.path.expanduser('~/.claude/agent-jobs'); os.makedirs(jobs, exist_ok=True)
 if len(sys.argv) < 2 or sys.argv[1] not in ('list', 'done'):
     sys.exit('usage: agent-job list | done <key or ticket path>')
-entries = [(f, json.load(open(os.path.join(jobs, f)))) for f in os.listdir(jobs)]
+entries = [(f, j) for f in os.listdir(jobs) for j in [json.load(open(os.path.join(jobs, f)))] if isinstance(j, dict) and 'key' in j]
 if sys.argv[1] == 'list':
     for f, j in sorted(entries, key=lambda e: e[1]['started']):
         print(f"{int((time.time() - j['started']) / 60):>5} min  {j['key']}")
