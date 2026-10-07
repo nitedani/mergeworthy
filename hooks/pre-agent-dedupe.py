@@ -10,7 +10,7 @@ ti = d.get('tool_input', {}) or {}
 # Reuse is allowed only within 10 minutes (a retry of the same launch).
 cid = str(ti.get('clientRequestId') or '')
 if cid:
-    ids = os.path.expanduser('~/.claude/agent-jobs/client-request-ids.json'); os.makedirs(os.path.dirname(ids), exist_ok=True)
+    ids = os.path.expanduser('~/.claude/agent-client-request-ids.json'); os.makedirs(os.path.dirname(ids), exist_ok=True)
     seen = json.load(open(ids)) if os.path.exists(ids) else {}
     if cid in seen and time.time() - seen[cid] > 600:
         sys.stderr.write(f"BLOCKED: clientRequestId '{cid}' was used before; T3 would return that earlier task's result instead of running this one. Use a new id (add the date or the head SHA).\n")

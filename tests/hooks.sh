@@ -235,8 +235,9 @@ cid() { # clientRequestId
 }
 check "a new clientRequestId passes" 0 "$(cid r-1)"
 check "a retry of the same clientRequestId within 10 minutes passes" 0 "$(cid r-1)"
-python3 -c 'import json,os,time; p=os.path.expanduser("~/.claude/agent-jobs/client-request-ids.json"); d=json.load(open(p)); d["r-1"]=time.time()-3600; json.dump(d,open(p,"w"))'
+python3 -c 'import json,os,time; p=os.path.expanduser("~/.claude/agent-client-request-ids.json"); d=json.load(open(p)); d["r-1"]=time.time()-3600; json.dump(d,open(p,"w"))'
 check "BLOCK: a clientRequestId reused later (T3 replays the old result)" 2 "$(cid r-1)"
+check "agent-job lists jobs with the id file present" 0 "$(python3 "$R/bin/agent-job" list >/dev/null 2>&1; echo $?)"
 # a gate review starts only on a draft that passed post-lint in its current form
 mkdir -p "$T/drafts/lf"; printf 'Fixed in abc1234.\n' > "$T/drafts/lf/reply.md"
 printf 'Review %s and write the verdict to %s/drafts/lf/r.out; the last message is exactly CLEAN.\n' "$T/drafts/lf/reply.md" "$T" > "$T/drafts/lf/review-ticket.md"
