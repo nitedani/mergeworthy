@@ -254,6 +254,10 @@ check "a review of a draft with a current post-lint record launches" 0 "$(launch
 python3 "$R/bin/agent-job" done "$T/drafts/lf/review-ticket.md" >/dev/null
 echo 'edited' >> "$T/drafts/lf/reply.md"
 check "BLOCK: the same review after the draft was edited" 2 "$(launch "Execute $T/drafts/lf/review-ticket.md")"
+python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest(), end="")' "$T/drafts/lf/reply.md" > "$T/drafts/lf/reply.md.lint.sha"
+printf 'Evidence.\n' > "$T/drafts/lf/research.md"
+printf 'Review %s against the evidence in %s, write the verdict to %s/drafts/lf/r2.out; the last message is exactly CLEAN.\n' "$T/drafts/lf/reply.md" "$T/drafts/lf/research.md" "$T" > "$T/drafts/lf/review2-ticket.md"
+check "the evidence file a review names is not a draft" 0 "$(launch "Execute $T/drafts/lf/review2-ticket.md")"
 # ---------- pre-bash-guard: never kill a running agent ----------
 printf '#!/bin/sh\nsleep 600\n' > "$T/claude"; chmod +x "$T/claude"
 "$T/claude" --output-format stream-json >/dev/null 2>&1 & APID=$!
