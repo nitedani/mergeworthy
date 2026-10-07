@@ -24,15 +24,13 @@ Every post brings the reader something they didn't have: a finding, a measuremen
 
 ## A reply that carries the load
 
-A maintainer asked whether a design has holes. This answer gives them the result and nothing they don't need:
+A maintainer asked whether a design has holes; the user picked this answer:
 
-> I dug in with real apps on three frameworks, and `app.use(handler)` as the one injection point holds up. Its few real limits are in a short [list](…); the main one is that a route placed before the handler is only reported on two of them.
+> It's built! I kept poking at `vike(app)` as the single injection point while implementing it, and it held up. #3557 is the Vike side, ready for your review, and vikejs/vike-server-adapters#10 is the adapter side.
 >
-> I also found a few bugs that would stop it from working, but they look simple to fix and I'm on them: the first is already pushed to #12, and the rest goes to the adapter library. I weighed a second entry point to avoid some workarounds and dropped it, because it's the second injection point you didn't want.
->
-> I'll come back when the fixes are in.
+> The only real catch I hit: Universal Middleware's router checks a `+middleware`'s `path` against the raw URL, but Vike routes on the decoded one. So an auth `+middleware` with `path: '/dash'` never runs for `/%64ash`. I'd rather fix that at the root than work around it in Vike, so magne4000/universal-middleware#385 decodes the path.
 
-Why it works: the verdict comes first. The design's limits are a linked short list; the bugs you'll fix are one line, because a maintainer doesn't need your backlog. A rejected alternative gets one line with its reason. It asks nothing that isn't theirs to decide, and says when you'll be back.
+A person talking, verdict first, the one finding with what you do about it, nothing they don't act on.
 
 ## What reads as machine-written, and the fix
 
@@ -50,3 +48,5 @@ Why it works: the verdict comes first. The design's limits are a linked short li
 | Every paragraph the same shape and length, each ending on a neat summary | Let length follow the content; stop when the point is made |
 | Bold on concepts, inline headers, bullet points for reasoning | Plain prose for reasoning; bullets only for parallel items |
 | Fancy verbs ("leverage", "utilize", "facilitate", "delve") | use, help, look at |
+| A telegraphic verdict ("No holes, and it's built.") | A person talking, as in the reply above |
+| A word that means something else in the reader's project ("guard" to a Vike maintainer, who has a `+guard` hook) | The exact thing: "a `+middleware` with `path: '/dash'`" |
