@@ -5,7 +5,9 @@ set -euo pipefail
 kind=${1:?usage: pr-steps <review|refactor> <output-file>}; out=${2:?output file}
 case "$kind" in review|refactor) ;; *) echo "kind must be review or refactor" >&2; exit 1;; esac
 [ -s "$out" ] || { echo "$out is empty: run the step and save the reviewer's output" >&2; exit 1; }
+[ "$kind" = refactor ] || [ "$(grep -v '^[[:space:]]*$' "$out" | tail -n1)" = CLEAN ] || { echo "$out does not end with a line CLEAN: fix its findings and re-run the fresh reader" >&2; exit 1; }
 sha=$(git rev-parse HEAD)
+grep -qsF " $(realpath "$out") " ~/.claude/pr-steps/"$sha" && { echo "$out is already recorded for $sha: review and refactor are separate outputs" >&2; exit 1; }
 mkdir -p ~/.claude/pr-steps
 echo "$kind $(realpath "$out") $(date -u +%FT%TZ)" >> ~/.claude/pr-steps/$sha
 echo "recorded $kind for $sha"

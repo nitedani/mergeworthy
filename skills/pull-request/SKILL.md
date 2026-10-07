@@ -5,7 +5,7 @@ description: "Any change you'll open a PR for, from an issue or not: already fix
 
 # Implementing a change
 
-From an issue or a problem to one merge-ready PR. Steps 1 to 5 build the change, step 6 converges it with `converge`'s pipeline, and step 7 is the PR. Open it as a draft (`gh pr create --draft`) with the branch's first push after step 3 passes, its body the problem on `main` through the fast gate, so CI runs while it converges; the fresh reader's `CLEAN` gates step 7's final body. A Tier ≥ M change (`core` 1.0) runs this once per PR.
+From an issue or a problem to one merge-ready PR. Open one only when the change blocks something you ship, and say what in its first lines. Steps 1 to 5 build the change, step 6 converges it with `converge`'s pipeline, and step 7 is the PR. Open it as a draft (`gh pr create --draft`) with the branch's first push after step 3 passes, its body the problem on `main` through the fast gate, so CI runs while it converges; the fresh reader's `CLEAN` gates step 7's final body. A Tier ≥ M change (`core` 1.0) runs this once per PR.
 
 **The repo's `AGENTS.md` / `CLAUDE.md` governs how the code is written;** everything else particular to the repo is in its project file (`core` 1.3).
 
@@ -89,7 +89,7 @@ Tear the stack down when you finish, including when you abort.
 
 ### 6. Converge
 
-Run `converge`'s pipeline on the diff (open `converge`): Loop A until dry, Loop B until it leaves nothing worth doing, Loop A again on Loop B's commits, then the fresh reader on the final head. Before the fresh reader, update the PR body draft per step 7 (`drafts/pr-body.md`) and pass `post-lint --kind pr`, since the fresh reader reviews it. The pipeline's last step records `pr-steps review` and `pr-steps refactor` on the final head.
+Run `converge`'s pipeline on the diff (open `converge`): Loop A until dry, Loop B until it leaves nothing worth doing, Loop A again on Loop B's commits, then the fresh reader on the final head. Before the fresh reader, update the PR body draft per step 7 (`drafts/pr-body.md`) and pass `post-lint --kind pr`, since the fresh reader reviews it. The pipeline's last step records `pr-steps review` and `pr-steps refactor` on the final head. A PR that skipped a step runs it now or is closed.
 
 ### 7. The PR
 

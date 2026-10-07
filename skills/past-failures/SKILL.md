@@ -19,7 +19,7 @@ Each failure below happened, most more than once. When a rule fails or the user 
 | Review, guardian and refactor briefs pasted from copies saved hours earlier, as separate agents, without the verifier; a review passed on the author's evidence without a run. | `delegating` (pasted from the installed skill), `converge` (the pipeline) |
 | A subagent started six agents of its own, then ended its turn while they ran; its report never came. | `delegating` (what the agent must not do) |
 | Behavior verdicts taken without a run: a reviewer called a case correct by reasoning; a bot then called the same case a bug, and its "fix" went in within seconds, against the reviewer's verdict; a probe later showed the reviewer was right. A Tier S review round ran without the verifier's bug hunt. | `review` (behavior is settled by a run), `converge` (the pipeline) |
-| "Ready" on green CI alone, or without review, refactor or guardian verdict; a subagent ran a hand-written checklist. | 1.7 Ready list, `pr-steps` |
+| "Ready" on green CI alone, or without review, refactor or guardian verdict; a subagent ran a hand-written checklist; fixes pushed to ready PRs unreviewed, with a CI result or an unclean review recorded as the review. | 1.7 Ready list, `pr-steps` (refuses a review not ending `CLEAN`), the push gate in `pre-bash-guard` |
 | "Stacked on #N" without `gh stack`. | 1.6 links, `post-lint` |
 | "Should I…? / your call" on our own recommendation. | 1.1.3, `stop-lint` |
 | A modal question answered by accident. | 1.1.3 |
