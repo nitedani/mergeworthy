@@ -73,5 +73,5 @@ Each failure below happened, most more than once. When a rule fails or the user 
 | Phase B branches were about to get the code map and angles phrased in the current design's terms, anchoring them on what exists; the user named it. | finality (Phase B: the clean problem) |
 | A decision issue recommended the smallest change over the option users want. | `github-threads` 1.6: recommend what is best for users; cost never decides. |
 | Agents taken for dead when their turn ended, retried and killed; the orchestrator blocked on wait loops. | 1.10, `pre-agent-dedupe`, `agent-job`, `pre-bash-guard` |
-| Design-thread replies chased the latest comment, flipped without evidence, argued from execution cost and left invariants open. | github-threads (converge through the other side), `finality`, `design-loop` (end state first) |
+| Design-thread replies chased the latest comment, flipped without evidence, argued from execution cost and left invariants open (the user's too). | github-threads (converge through the other side), `finality`, `design-loop` (end state first) |
 | Replies read like reports: label lines ("Two decisions:"), options described in words instead of code, a bug backlog sent as "holes". | `writing.md` (draft by talking; the reply that carries the load) |
