@@ -107,13 +107,12 @@ The watcher runs independently of any session and only records events (and adds 
 - **Evidence carries no secret.** In logs, requests, payloads and screenshots, write `<REDACTED>` in place of every token, cookie, auth header and key. Quote only the lines that show the point (`post-lint` fails on common token shapes).
 - **One reply per person, edits for corrections.** Several comments from one person get one reply. Never post a comment that corrects or adds to your own earlier one: edit it in place, through the gate.
 - **Keep the process invisible.** Reviewers, models, gates, rounds, working ratings and pass reports stay in the artifact root (`ledger.md`). The thread gets the result, with evidence only where a reader needs it to judge.
-- **Decide what you can decide or measure.** A question carries your recommendation and its reason; recommend the option that is best for the people who use it, and state the cost of each option beside it. Never pick an option because it is the smallest change when another serves users better; a change you'd recommend within scope is made, not listed. Don't invite generic pushback ("pushback welcome"; a question carries your pick), and don't promise how you'll behave next time.
+- **Decide what you can decide or measure.** A question carries your recommendation and its reason; recommend the option that is best for the people who use it, and state the cost of each option beside it. Never pick the smallest change when another serves users better; a change you'd recommend within scope is made, not listed. Don't invite generic pushback ("pushback welcome"; a question carries your pick), and don't promise how you'll behave next time. Only what you measured is fact; reasoning is "I think", with why. Write as a coworker eager to ship it: what excites you, what you'll do next.
 - **Credit** a design or statement to someone only with a link to where they said it.
 - **Links** to another repo use `owner/repo#N`. Write "depends on #N", never "stacked on", unless `gh stack` links them.
 - **The badge.** Unless the `badge` option says otherwise (`auto`: only from a human account), start with the icon of each agent that worked on it, reviewers too, then a line break (`<img src="https://github.com/claude.png" width="20" height="20" alt="Claude">`; Codex: `openai.png`, `alt="Codex"`).
 - **Budgets:**
-  - reply ≤ 300 words, design answer ≤ 400, code included: ceilings: nobody answers with a book; one decision per comment;
-  - a reply or design answer gets 60 more words for each question beyond the first in the comment it answers (quoted lines don't count);
+  - reply or design answer ≤ 300 words, code included, however many questions: one plan, decision first, that a newcomer follows; the rest linked;
   - PR body about 150 words plus evidence, up to 250 when it lists decisions for the maintainer;
   - issue (`open-issue`): ≤ 400 characters besides `### How to reproduce` and its evidence; a decision issue ≤ 400 words;
   - inline review comments ≤ 2 sentences, only where the reader must judge.

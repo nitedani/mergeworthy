@@ -192,7 +192,7 @@ check "a difficulty word without its scope is flagged" 1 "$(python3 "$R/bin/post
 # the budget grows with the questions in the comment answered
 printf 'One? Two? Three?\n' > "$T/q.parent.md"
 printf '%s %s\n' "$B" "$(printf 'word %.0s' $(seq 350))" > "$T/q.md"
-check "a reply of 350 words to three questions passes" 0 "$(python3 "$R/bin/post-lint" "$T/q.md" --parent "$T/q.parent.md" 2>&1 | grep -c 'for a reply')"
+check "a reply of 350 words is over the ceiling, however many questions" 1 "$(python3 "$R/bin/post-lint" "$T/q.md" --parent "$T/q.parent.md" 2>&1 | grep -c 'for a reply')"
 printf 'One?\n' > "$T/q1.parent.md"
 check "the same reply to one question is over budget" 1 "$(python3 "$R/bin/post-lint" "$T/q.md" --parent "$T/q1.parent.md" 2>&1 | grep -c 'for a reply')"
 printf 'See https://x.io/a?b=1 and https://x.io/c?d=2.\n```\na ? b : c ? d : e\n```\nOK?\n' > "$T/q2.parent.md"

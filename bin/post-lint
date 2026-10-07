@@ -149,14 +149,14 @@ if _pp and os.path.exists(_pp):
     _q = '\n'.join(l for l in _q.splitlines() if not l.lstrip().startswith('>'))          # quotes of others
     _q = re.sub(r'`[^`]*`|https?://\S+', '', _q)                                         # inline code, URLs
     _asked = len(re.findall(r'\?+', _q))
-extra = 60 * max(0, _asked - 1)
+extra = 0  # however many questions: one plan, the rest linked
 if kind == 'reply' and words > 300 + extra:
     findings.append(f"{words} words > {300 + extra} for a reply: a dump, not a reply; move the long material into a gist and link it")
 pr_budget = 250 if re.search(r'^#+ .*\b(notes|decisions)\b|^Decisions\b', text, re.I | re.M) else 150  # a PR with decisions for the maintainer may run longer
 if kind == 'pr' and words > pr_budget:
     findings.append(f"{words} words > {pr_budget} for a PR body (tables, code, images and URLs not counted): cut what the reader doesn't need")
-if kind == 'proposal' and words > 400 + extra:  # a design walkthrough (methodology 1.4 step 4)
-    findings.append(f"{words} words > {400 + extra} for a design answer or walkthrough (tables and code count): one decision per comment, verdict first, the full material in a linked document (1.6)")
+if kind == 'proposal' and words > 300 + extra:  # a design walkthrough (methodology 1.4 step 4)
+    findings.append(f"{words} words > {300 + extra} for a design answer or walkthrough (tables and code count): one decision per comment, verdict first, the full material in a linked document (1.6)")
 decision = kind == 'issue' and re.search(r'^#+\s*Options\b', text, re.I | re.M)  # a decision issue (open-issue)
 if decision and words > 400 + extra:
     findings.append(f"{words} words > {400 + extra} for a decision issue (tables and code count): the options a user would see and your pick, the rest linked")
