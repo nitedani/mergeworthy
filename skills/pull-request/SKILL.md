@@ -46,8 +46,9 @@ For a feature, capture the current state as the before shot and settle what "don
 ### 3. Find an approach that rates high, or stop
 
 List the distinct problems the change must solve. Then rate each candidate approach 0–10 on how confident you are that it is the obviously right approach (not on implementation quality):
-- **Generate two or three before rating any**, and include *not building it*; for a guard, not building it often wins.
-- **Leave the frame.** Invert it (how would you guarantee this bug?), or delete what everyone treats as immovable.
+- **Generate two or three before rating any**, peers read first (1.1.5), including *not building it*, from a brief naming no preferred answer (for someone else's library or API, from finality's Phase B branches).
+- **Rate as the code's owner, for all its users:** fixing a bug they all share is not a cost.
+- **Leave the frame:** invert it, or delete what everyone treats as immovable.
 - **Shared assumptions count once.** Candidates resting on the same unspoken assumption count as one.
 
 **6 or below is not ready to build.**
@@ -76,11 +77,11 @@ The guardian checks; it isn't where the code gets its shape. A guardian round th
 
 The project file's preflight starts what is missing, isolated from everyone else's.
 
-**Capture "before" by reverting only your own files** (`git checkout origin/<base> -- <files>`), letting HMR reload, then restoring them (`git checkout HEAD -- <files>`). Leave `git status` clean; never amend or force-push to fake it.
+**Capture "before" by reverting only your own files** (`git checkout origin/<base> -- <files>`), then restore them (`git checkout HEAD -- <files>`); never amend or force-push to fake it.
 
-**Then use it as a user for five minutes.** Look at the screen around your change, not the path you fixed. If the screen renders by role, walk it as each role. Fix what your change caused; anything else you trip over gets a disposition (1.1.7), and an issue is opened per `open-issue`.
+**Then use it as a user for five minutes,** around your change, not only the path you fixed, as each role it renders for. Fix what your change caused; anything else you trip over gets a disposition (1.1.7), and an issue is opened per `open-issue`.
 
-Tear the stack down when you finish, including when you abort.
+Tear the stack down when done or aborted.
 
 #### UI and runtime work
 
@@ -115,7 +116,7 @@ Closes #N
 
 #### The walkthrough
 
-The images are the review: a sequence, not a before/after pair, each captured per `evidence`. Open on the defect and close on the fix, in the real app with real data, and in between show what your change could have broken and did not.
+The images are the review, a sequence per `evidence`: open on the defect, close on the fix, and between them show what your change could have broken and didn't.
 
 #### Publishing
 

@@ -55,7 +55,7 @@ Every PR, whatever its tier, goes through `converge`'s pipeline: a Loop A agent 
     - **User decisions stay decided.** Mark a setting or design the user decided where it lives (`# user decision YYYY-MM-DD: <what, why>`); a session that never saw the decision reads the marker, not the chat. If you find a problem with the decision, keep it and report the problem with evidence.
     - **A broken premise** (e.g. "one PR per item" when the items depend on each other): say so with a recommendation before acting.
 5. **Evidence for every claim, in chat too.** Each factual sentence about code, a package, a release or runtime behavior carries its source (`file:line`, `npm view`, command output), or is marked `guess:`. Say what you could not verify.
-    - Check `main`, the registry and the upstream source before recommending to close, remove, replace or switch anything.
+    - Check `main`, the registry and the upstream source before recommending to close, remove, replace or switch anything; before a fix or design, read how peers solve it.
     - A "can't" needs the failed attempt quoted plus one alternative tried. Check a blocker you report ("X isn't running") again right before you report it.
     - If you contradict something you said earlier, say so.
     - A job you report as running is one you saw make progress (its log, its output file, its CPU or GPU busy), not one you only started.

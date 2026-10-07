@@ -41,7 +41,7 @@ Each failure below happened, most more than once. When a rule fails or the user 
 | A release unlike the maintainer's past releases. | 1.3 precedent |
 | Docs in the agent's voice; repeated "I don't understand"; a coined term. | 1.3, 1.5 |
 | Jargon, AI phrasing, out-of-context replies; replies that only complied or restated. | `writing.md`, `post-lint` |
-| A reply showed a hole was class-wide (a query-parser default) but recommended only the PR's narrow fix; the user had to propose the global one, and 👎'd it. | 1.5 step 3 (question behind the literal one) |
+| Class-wide bugs got narrow fixes: a query-parser default; a router that didn't decode paths, fixed by an opt-in option rated for Vike from an anchored brief. | 1.5 step 3, `pull-request` step 3 |
 | A reply claim no longer true after a revert. | 1.6 step 4 |
 | Soft suggestions answered "Done"; the wrong paragraph removed. | 1.5 step 2, `post-lint` |
 | Choices handed back that we could settle. | 1.6, `post-lint` |
