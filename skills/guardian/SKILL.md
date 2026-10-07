@@ -5,9 +5,9 @@ description: "Guardian rounds on a PR (bloat and quality, part of Loop B in conv
 
 # Guardian rounds
 
-Guardian rounds are the quality half of Loop B in `converge`'s pipeline (step 3): repeated rounds that find bloat and quality problems and land their fixes. This skill holds the charter, the briefs and how findings are judged and landed; open `converge` for when the loop runs and what it records.
+Guardian rounds are the quality half of Loop B in `converge`'s pipeline (step 2): repeated rounds that find bloat and quality problems and land their fixes. This skill holds the charter, the briefs and how findings are judged and landed; open `converge` for when the loop runs and what it records.
 
-- **When:** after Loop A is dry, with the gates as the safety net (`converge`, step 3).
+- **When:** after Loop A is dry, with the gates as the safety net (`converge`, step 2).
 - **Judging findings:** each finding is judged per 1.1.15 (earn every line), as in Loop A (`verify`'s reproduce-only bug hunt).
 - **Scopes** are Loop A's slices; the guardian brief calls them scopes. The bottom PR of a stack is its own.
 
@@ -30,7 +30,7 @@ Guardian rounds are the quality half of Loop B in `converge`'s pipeline (step 3)
 1. Review each implementer's diff yourself before cherry-picking (1.10).
 2. Cherry-pick onto the PR branch, resolve conflicts, and run the full gates.
 3. Run the product lanes the changes touch.
-4. Continue the Loop A agent with the landed commits (`converge`, step 4).
+4. Continue the Loop A agent with the landed commits (`converge`, step 3).
 
 **Round N+1:**
 - **The Loop B agent continues (`delegating`, one run):** send it the implemented commits and the declined items with reasons. Start a new one only when the scope changed beyond its findings.

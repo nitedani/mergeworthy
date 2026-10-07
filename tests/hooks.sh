@@ -266,6 +266,33 @@ python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read
 printf 'Evidence.\n' > "$T/drafts/lf/research.md"
 printf 'Review %s against the evidence in %s, write the verdict to %s/drafts/lf/r2.out; the last message is exactly CLEAN.\n' "$T/drafts/lf/reply.md" "$T/drafts/lf/research.md" "$T" > "$T/drafts/lf/review2-ticket.md"
 check "the evidence file a review names is not a draft" 0 "$(launch "Execute $T/drafts/lf/review2-ticket.md")"
+# ---------- pr-steps: a refactor record is a real pass ----------
+G="$T/prs"; mkdir -p "$G"; git -C "$G" init -q; git -C "$G" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
+prs() { (cd "$G" && bash "$R/bin/pr-steps" "$@" >/dev/null 2>&1; echo $?); }
+printf '# Loop B fix log\nfixed the README\n' > "$T/fixlog.md"
+check "BLOCK: a fix log recorded as the refactor pass" 1 "$(prs refactor "$T/fixlog.md")"
+printf '| express vike() | 5 ⇒ 8 | abc | named steps |\n✅ express vike()\n' > "$T/pass.md"
+check "a pass with ratings and the ✅ list records" 0 "$(prs refactor "$T/pass.md")"
+A=$(git -C "$G" rev-parse HEAD); printf 'x\n' > "$G/f"; git -C "$G" add f; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m b
+printf 'carries the pass of %s: one docs line\n' "$A" > "$T/carry.md"
+check "a small follow-up carries the earlier pass" 0 "$(prs refactor "$T/carry.md")"
+# ---------- pr-steps: every converge step leaves its proof; the guard needs all six ----------
+G2="$T/prs2"; mkdir -p "$G2"; git -C "$G2" init -q; git -C "$G2" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
+prs2() { (cd "$G2" && bash "$R/bin/pr-steps" "$@" >/dev/null 2>&1; echo $?); }
+ready() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr ready 5"},"cwd":sys.argv[1]}))' "$G2" | python3 "$R/hooks/pre-bash-guard.py" >/dev/null 2>&1; echo $?; }
+check "BLOCK: gh pr ready with no step recorded" 2 "$(ready)"
+printf 'slice 1: no bug that counts\n' > "$T/v0.md"
+check "BLOCK: a Loop A output without DRY" 1 "$(prs2 verify "$T/v0.md")"
+printf 'slice 1: no bug that counts\nDRY\n' > "$T/v.md"; check "Loop A ending DRY records" 0 "$(prs2 verify "$T/v.md")"
+printf 'nothing worth changing\nCLEAN\n' > "$T/lb.md"; check "Loop B's review ending CLEAN records" 0 "$(prs2 loopb "$T/lb.md")"
+printf '| vike() | 5 ⇒ 8 | abc | why |\n✅ vike()\n' > "$T/rf.md"; check "Loop B's ratings record" 0 "$(prs2 refactor "$T/rf.md")"
+printf 'NO LOOP B COMMITS\n' > "$T/rv.md"; check "Loop A again, with no Loop B commits, records" 0 "$(prs2 reverify "$T/rv.md")"
+printf 'CLEAN\n' > "$T/fr.md"; check "the fresh reader's CLEAN records" 0 "$(prs2 fresh "$T/fr.md")"
+printf 'pnpm test -> exit 0\npnpm lint -> exit 1\n' > "$T/g1.md"
+check "BLOCK: a gates log with a red gate" 1 "$(prs2 gates "$T/g1.md")"
+check "BLOCK: gh pr ready with five of six steps" 2 "$(ready)"
+printf 'pnpm test -> exit 0\npnpm lint -> exit 0\n' > "$T/g2.md"; check "a green gates log records" 0 "$(prs2 gates "$T/g2.md")"
+check "gh pr ready passes once all six steps hold on HEAD" 0 "$(ready)"
 # ---------- pre-bash-guard: never kill a running agent ----------
 printf '#!/bin/sh\nsleep 600\n' > "$T/claude"; chmod +x "$T/claude"
 "$T/claude" --output-format stream-json >/dev/null 2>&1 & APID=$!

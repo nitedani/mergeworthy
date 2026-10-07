@@ -7,7 +7,8 @@ def missing_steps(d):
     head = subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
     rec = os.path.expanduser(f'~/.claude/pr-steps/{head}')
     kinds = {l.split()[0] for l in open(rec)} if head and os.path.exists(rec) else set()
-    return head, [k for k in ('review', 'refactor') if k not in kinds]
+    kinds |= {'fresh'} if 'review' in kinds else set()  # records made before the six steps
+    return head, [k for k in ('verify', 'loopb', 'refactor', 'reverify', 'fresh', 'gates') if k not in kinds]
 
 def setting(name, default):
     """MERGEWORTHY_<name> from the environment, else from ~/.mergeworthy/settings.env (written at session start from the plugin's options)."""
@@ -225,11 +226,11 @@ def check(t, has_cd):
                 pr = subprocess.run(['gh', 'pr', 'view', '--json', 'isDraft,state', '--jq', 'select(.state=="OPEN" and (.isDraft|not)) | "ready"'], cwd=d, capture_output=True, text=True, timeout=20).stdout.strip()
                 head, missing = missing_steps(d)
                 if pr == 'ready' and missing:
-                    block(f"this branch's PR is out of draft and HEAD {head[:10]} has no pr-steps review and refactor record: run converge's pipeline on it first, or `gh pr ready --undo` while it converges")
+                    block(f"this branch's PR is out of draft and HEAD {head[:10]} has no pr-steps {', '.join(missing)} record: run converge's pipeline on it first (each step ends with its `pr-steps <step> <output>`), or `gh pr ready --undo` while it converges")
     if p == 'gh' and len(a) >= 2 and a[0] == 'pr' and ((a[1] == 'create' and '--draft' not in a and '-d' not in a) or (a[1] == 'ready' and '--undo' not in a)):
         head, missing = missing_steps(run_dir)
         if missing:
-            block(f"HEAD {head[:10] or '(no git repo in cwd)'} has no {' and no '.join(missing)} record: finish mergeworthy:converge's pipeline, then run `pr-steps review <fresh reader's output>` and `pr-steps refactor <Loop B's last re-rating>` on the final HEAD (again after a base merge); or open it with --draft")
+            block(f"HEAD {head[:10] or '(no git repo in cwd)'} has no pr-steps {', '.join(missing)} record: run those steps of mergeworthy:converge's pipeline on the final HEAD, each ending with `pr-steps <step> <its output>` (again after a base merge); or open it with --draft")
     if p == 'gh' and len(a) >= 2 and a[0] == 'pr' and a[1] == 'merge':
         if setting('MERGE', 'on-request-squash') == 'reviewer':
             block('never merge: the reviewer merges this repo\'s PRs (MERGEWORTHY_MERGE=reviewer)')

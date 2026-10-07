@@ -5,7 +5,7 @@ description: "Bug verification of a PR (reproduce-only, Loop A in converge): sli
 
 # Bug verification
 
-**Split each PR's code into slices one verifier can hold** (e.g. core feature, backend and storage, runtime adapter, wire and client). This is Loop A of `converge`'s pipeline (steps 2 and 4): one agent runs the verifier brief below for all slices, one report section per slice, and the fresh reader runs it again on the final head (step 5). This skill holds what counts and when a slice is dry; open `converge` for when the loop runs.
+**Split each PR's code into slices one verifier can hold** (e.g. core feature, backend and storage, runtime adapter, wire and client). This is Loop A of `converge`'s pipeline (steps 1 and 3): one agent runs the verifier brief below for all slices, one report section per slice, and the fresh reader runs it again on the final head (step 4). This skill holds what counts and when a slice is dry; open `converge` for when the loop runs.
 
 **Counting rule:**
 - **A candidate counts only with a reproduction:** a spec or script that fails on the head and passes on the base (main, or the bottom PR for the top).
@@ -60,7 +60,7 @@ How:
 Write <artifacts dir>/<name>.md:
 - each reproduced bug with its commit, the repro inline, observed vs expected;
 - then every candidate you tried and dropped, one line each with why.
-- If you found nothing, say so plainly and list what you tried.
+- If you found nothing, say so plainly and list what you tried, and end the file with a line DRY.
 
-Final message: the count and one line each.
+Final message: the count and one line each, or exactly DRY when no bug counts.
 ```

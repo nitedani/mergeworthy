@@ -15,7 +15,7 @@ description: "Pushing, saying a PR is ready, merging, stacked PRs."
     - Its prompt tells it to load the skills and names the steps it runs: `pull-request` steps 1 to 5, evidence in the real app, and the benchmark for transports.
     - Its report lists each step with its output file.
     - It starts no agents of its own, so the main session runs `converge`'s pipeline on its branch: the loops and the fresh reader need agents.
-    - `pre-bash-guard` blocks a ready PR without the `pr-steps` review and refactor records.
+    - `pre-bash-guard` blocks a ready PR without all six `pr-steps` records (`converge`).
 - **Ready** means every item of the Ready list holds on the head. Paste this list, checked against the head, into the ledger:
     - every slice dry after its last fix (a pass that finds no bug that counts, `verify`);
     - a guardian verdict on the PR's own diff at the head (a base merge alone doesn't change it);

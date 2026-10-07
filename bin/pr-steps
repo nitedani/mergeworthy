@@ -1,13 +1,37 @@
 #!/usr/bin/env bash
-# pr-steps <review|refactor> <output-file>: records that the methodology step ran on the current HEAD (mergeworthy `converge`, the pipeline's last step).
-# The posting hook blocks `gh pr create` (unless --draft) and `gh pr ready` until HEAD has a review and a refactor record.
+# pr-steps <step> <output-file>: records that a converge step ran on the current HEAD, after checking its output proves it.
+# Steps, in pipeline order (mergeworthy converge): verify (Loop A), loopb (Loop B's review), refactor (Loop B's ratings),
+# reverify (Loop A after Loop B's commits), fresh (the fresh reader), gates (every gate's exit code on the final head).
+# The posting hook blocks `gh pr create` (unless --draft), `gh pr ready` and pushes to a ready PR until HEAD has all six.
 set -euo pipefail
-kind=${1:?usage: pr-steps <review|refactor> <output-file>}; out=${2:?output file}
-case "$kind" in review|refactor) ;; *) echo "kind must be review or refactor" >&2; exit 1;; esac
-[ -s "$out" ] || { echo "$out is empty: run the step and save the reviewer's output" >&2; exit 1; }
-[ "$kind" = refactor ] || [ "$(grep -v '^[[:space:]]*$' "$out" | tail -n1)" = CLEAN ] || { echo "$out does not end with a line CLEAN: fix its findings and re-run the fresh reader" >&2; exit 1; }
+step=${1:?usage: pr-steps <verify|loopb|refactor|reverify|fresh|gates> <output-file>}; out=${2:?output file}
+case "$step" in verify|loopb|refactor|reverify|fresh|gates) ;; review) step=fresh ;; *) echo "step must be verify, loopb, refactor, reverify, fresh or gates" >&2; exit 1;; esac
+[ -s "$out" ] || { echo "$out is empty: run the step and save its output" >&2; exit 1; }
+last=$(grep -v '^[[:space:]]*$' "$out" | tail -n1)
 sha=$(git rev-parse HEAD)
-grep -qsF " $(realpath "$out") " ~/.claude/pr-steps/"$sha" && { echo "$out is already recorded for $sha: review and refactor are separate outputs" >&2; exit 1; }
+# A refactor record is the pass's lists (the ✅ coverage list and old ⇒ new ratings), or a small follow-up that carries an
+# earlier pass ("carries the pass of <sha>", ≤ 80 changed lines since): a fix log or a note is not a refactor pass
+is_pass() { grep -q '✅' "$1" && grep -Eq '[0-9]+ *(⇒|=>) *([0-9]+|removed|new|n/a)' "$1"; }
+case "$step" in
+  verify|reverify)
+    [ "$last" = DRY ] || [ "$step" = reverify -a "$last" = "NO LOOP B COMMITS" ] || { echo "$out does not end with a line DRY: Loop A is done only when every slice has a dry pass after its last fix" >&2; exit 1; } ;;
+  loopb|fresh)
+    [ "$last" = CLEAN ] || { echo "$out does not end with a line CLEAN: fix its findings and continue the same agent" >&2; exit 1; } ;;
+  refactor)
+    if ! is_pass "$out"; then
+      carried=$(grep -Eo 'carries the pass of [0-9a-f]{7,40}' "$out" | head -n1 | awk '{print $NF}')
+      [ -n "$carried" ] || { echo "$out is not a refactor pass: it needs the ✅ coverage list and old ⇒ new ratings (mergeworthy refactor), or 'carries the pass of <sha>' for a small follow-up" >&2; exit 1; }
+      full=$(git rev-parse "$carried")
+      prev=$(awk '$1=="refactor"{print $2}' ~/.claude/pr-steps/"$full" 2>/dev/null | while read -r f; do is_pass "$f" && echo "$f"; done | head -n1)
+      [ -n "$prev" ] || { echo "$carried has no recorded refactor pass with ratings to carry" >&2; exit 1; }
+      changed=$(git diff --numstat "$full" HEAD | awk '{s+=$1+$2} END{print s+0}')
+      [ "$changed" -le 80 ] || { echo "$changed lines changed since $carried: the pass is stale (mergeworthy refactor), run it again" >&2; exit 1; }
+    fi ;;
+  gates)
+    grep -Eq '^.+ -> exit [0-9]+$' "$out" || { echo "$out lists no gate: one line per gate, '<command> -> exit <code>', run on this HEAD" >&2; exit 1; }
+    ! grep -Eq ' -> exit [1-9][0-9]*$' "$out" || { echo "$out has a red gate: fix it on this HEAD first" >&2; exit 1; } ;;
+esac
+grep -qsF " $(realpath "$out") " ~/.claude/pr-steps/"$sha" && { echo "$out is already recorded for $sha: each step has its own output" >&2; exit 1; }
 mkdir -p ~/.claude/pr-steps
-echo "$kind $(realpath "$out") $(date -u +%FT%TZ)" >> ~/.claude/pr-steps/$sha
-echo "recorded $kind for $sha"
+echo "$step $(realpath "$out") $(date -u +%FT%TZ)" >> ~/.claude/pr-steps/$sha
+echo "recorded $step for $sha"

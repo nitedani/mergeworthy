@@ -48,8 +48,8 @@ These scripts enforce the rules that failed as text alone.
 
 ### `pr-steps` (enforces 1.7)
 
-`pr-steps review <reviewer output>` and `pr-steps refactor <rating output>` record, on the final head, that the step ran. It refuses a review whose last line isn't exactly `CLEAN`, and one file recorded as both.
-- `gh pr create` (unless `--draft`) and `gh pr ready` are blocked until HEAD has a `review` and a `refactor` record.
+`pr-steps <step> <output>` records a `converge` step on the head, after checking the output proves it: `verify` and `reverify` end `DRY`, `loopb` and `fresh` end `CLEAN`, `refactor` has its ✅ list and ratings (or `carries the pass of <sha>`, ≤ 80 lines since), `gates` lists `<command> -> exit 0` lines. One file records one step.
+- `gh pr create` (unless `--draft`), `gh pr ready` and a push to a ready PR are blocked until HEAD has all six.
 
 ## The watcher daemon: `watcher/gh-watch.py` (enforces 1.5)
 

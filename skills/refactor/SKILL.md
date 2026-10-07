@@ -5,7 +5,7 @@ description: "The refactor pass on a PR's diff: the pinnacle-split-and-simplify 
 
 # Refactor pass
 
-**Who rates, and when:** the Loop B agent, right after its review, in the same prompt (`converge`, pipeline step 3). Its last re-rating on the final head is what `pr-steps refactor` records. With no reviewer available at all, run the prompt yourself in two separate passes (rate, then edit), and record that.
+**Who rates, and when:** the Loop B agent, right after its review, in the same prompt (`converge`, pipeline step 2). Its last re-rating on the final head is what `pr-steps refactor` records. With no reviewer available at all, run the prompt yourself in two separate passes (rate, then edit), and record that.
 
 ## The prompt
 

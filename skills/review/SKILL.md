@@ -34,13 +34,13 @@ A reviewer, picked in the order above, reviews the diff with the reviewer charte
 3. Where the reviewer can't run your gates, paste the gate commands, exit codes and output; it says UNKNOWN for anything it could not observe.
 4. If no reviewer at all is available, review the diff yourself with the charter.
 
-In a PR, this round is part of `converge`'s pipeline: the Loop B agent runs it before its guardian and refactor ratings (step 3), and the fresh reader runs it on the final head, which is what `pr-steps review` records (step 5).
+In a PR, this round is part of `converge`'s pipeline: the Loop B agent runs it before its ratings (step 2), and the fresh reader on the final head (step 4).
 
 **Outside a PR's pipeline, one round.** Fix real defects, and decline the rest as above, with the run's output or a one-line reason (1.1.15). The same reviewer then confirms the fixes (above), with no fresh audit. Record who reviewed (or that it was a self-review) and what they found, including nothing, in the ledger (1.2).
 
 ## Reviewer charter
 
-Hand this to the reviewer (`converge`, pipeline steps 3 and 5): not the author, not in the author's context.
+Hand this to the reviewer (`converge`, pipeline steps 2 and 4): not the author, not in the author's context.
 
 ---
 

@@ -6,7 +6,7 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 
 | Skill | Hands over to |
 |---|---|
-| `converge` | `finality`, `pull-request`, `verify`, `review`, `guardian`, `refactor`, `merging`, `github-threads`, `writing` |
+| `converge` | nothing |
 | `core` | `open-issue`, `evidence`, `delegating`, `merging`, `github-threads`, `design-loop`, `converge`, `pull-request` |
 | `delegating` | nothing |
 | `design-loop` | `pull-request`, `core`, `review`, `writing`, `converge` |
@@ -287,30 +287,41 @@ Opens `mergeworthy:converge` (the pipeline every PR runs: finality, Loop A, Loop
 flowchart TB
   start(["Converging a PR, before<br/>it's ready (every tier)"])
   subgraph g0["The pipeline"]
-    s0["1. Finality"]
-    s1["2. Loop A"]
-    s0 --> s1
-    s2["3. Loop B"]
-    s1 --> s2
-    s3["4. Loop A again"]
-    s2 --> s3
-    s4["5. The fresh reader"]
-    s3 --> s4
-    s5["6. Gates"]
-    s4 --> s5
+    s0["The pipeline"]
   end
-  s0 -.-> r1[["finality"]]
-  s0 -.-> r2[["pull-request"]]
-  s1 -.-> r3[["verify"]]
-  s2 -.-> r4[["review"]]
-  s2 -.-> r5[["guardian"]]
-  s2 -.-> r6[["refactor"]]
-  s3 -.-> r7[["verify"]]
-  s4 -.-> r8[["review"]]
-  s4 -.-> r9[["merging"]]
-  s4 -.-> r10[["github-threads"]]
-  s5 -.-> r11[["writing"]]
+  subgraph g1["Running the agents"]
+    s1["Running the agents"]
+  end
+  subgraph g2["Git and files"]
+    s2["Git and files"]
+  end
+  subgraph g3["Authority"]
+    s3["Authority"]
+  end
+  subgraph g4["The phantom gate"]
+    s4["The phantom gate"]
+  end
+  subgraph g5["The removal gate"]
+    s5["The removal gate"]
+  end
+  subgraph g6["Stacked PRs"]
+    s6["Stacked PRs"]
+  end
+  subgraph g7["Gates"]
+    s7["Gates"]
+  end
+  subgraph g8["PR bodies"]
+    s8["PR bodies"]
+  end
   start --> g0
+  g0 ~~~ g1
+  g1 ~~~ g2
+  g2 ~~~ g3
+  g3 ~~~ g4
+  g4 ~~~ g5
+  g5 ~~~ g6
+  g6 ~~~ g7
+  g7 ~~~ g8
 ```
 
 ## Bug verification, reproduce-only

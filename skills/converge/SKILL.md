@@ -13,26 +13,57 @@ Converging a pull request means working it to a final state: no reviewer, agent 
 
 ### The pipeline
 
-In the order it runs. Converged means every step's done condition holds on the final head.
+Converged means every step below is done **on the final head**. A step that leaves no record can't be told from a skipped one, so each ends with its `pr-steps` line; the hooks refuse `gh pr create` (unless `--draft`), `gh pr ready` and a push to a ready PR until the final head has all six. A head that changes afterwards re-runs and re-records the steps it re-opens.
 
-1. **Finality,** where the area has drifted through many patches: open `finality` when the work reshapes existing code, or when a small change can't be made cleanly because of past patches. Its Phases A and B are the analysis while planning (`pull-request` step 3), and its Phase C is the build itself.
-2. **Loop A, bug verification.** One agent runs the verifier brief (`verify`) on the diff. Fix what it reproduces, then continue the same agent with the commits. Done when every slice has a dry pass after its last fix: a pass that finds no bug that counts.
-3. **Loop B, review and quality.** Once Loop A is dry, one agent runs, in one prompt and each into its own output file, the reviewer charter (`review`), then the guardian brief, which carries the refactor prompt (`guardian`, `refactor`). Reviewing first fills the context it rates with. Land its findings commit by commit with the gates after each, then continue the same agent with the commits. A bug its review finds is fixed, and Loop A re-verifies that slice. Done when it finds nothing behavior-preserving worth its price, said as an honest-positive verdict ("nothing worth changing"), and its ratings are high and justified. Keep its last re-rating's output file; step 6 records it.
-4. **Loop A again, on Loop B's commits.** They re-open the slices they touch, so continue the Loop A agent with them: it compares the pre-refactor tree with the head (`verify`, after the refactors). Done when those slices are dry again.
-5. **The fresh reader,** one cold read of the final head, after you merge the base into the branch (1.7) so it reads what will merge: the verifier brief, the reviewer charter, and the posting gate's review (1.6 step 3) of the PR body draft, its claims and screenshots checked against the head. Where finality ran, it also runs the guardian brief, which gives Owner-Safe closure its fresh guardian evidence; in that report only DELETE-NOW, FIX, FILL or DELETE-CAREFULLY items worth their price are findings, and OWNER-DECISION rows go on the owner's list. Pick it in `review`'s order: another company's model first. The loop agents have lived inside the fixes and are judging their own suggestions, so an agent that hasn't seen them catches what that familiarity hides. Its findings go back to step 2 or 3; if the head then changed only by those fixes, continue the same fresh reader, otherwise start a new one. Its `CLEAN` is the PR body's posting-gate review (1.6), and step 6 records it.
-6. **Gates, body and closure.** Every gate and product lane is green on each PR's final head, CI is green, and the PR bodies are true to the final head. Where finality ran, its Owner-Safe closure comes last, with the review and guardian evidence attached. Last, on the final head, run `pr-steps review <fresh reader's output>` and `pr-steps refactor <Loop B's last re-rating>`; a head that changes after that (a CI fix, a base merge) needs both again before it is pushed.
+#### 0. Finality, only where the area has drifted
+
+When the work reshapes existing code, or a small change can't be made cleanly because of past patches, open `finality`. Its Phases A and B are the analysis while planning (`pull-request` step 3), and Phase C is the build. Skip it otherwise.
+
+#### 1. Loop A: does it break anything?
+
+- **Who:** one agent, kept for the loop's whole life. It runs `verify`'s verifier brief on the diff, one report section per slice.
+- **You:** fix each bug it reproduces at its root, then send the same agent your commits.
+- **Done when** every slice has a dry pass after its last fix, and its output file ends with a line `DRY`.
+- **Record:** `pr-steps verify <its output file>`
+
+#### 2. Loop B: is it good code?
+
+- **Who:** one agent, after Loop A is dry. In one prompt, each into its own output file: first `review`'s reviewer charter, then `guardian`'s brief with `refactor`'s prompt. Reviewing first fills the context it rates with.
+- **You:** land its findings commit by commit, gates after each, and send the same agent the commits. A bug its review finds is fixed, and Loop A re-verifies that slice.
+- **Done when** its review ends `CLEAN` ("nothing worth changing" is an honest result) and its last re-rating lists every file, function and piece of logic with old ⇒ new ratings and the ✅ lists, high and justified.
+- **Record:** `pr-steps loopb <its review output>` and `pr-steps refactor <its last re-rating>`
+
+#### 3. Loop A again, on Loop B's commits
+
+- **Who:** the Loop A agent, sent Loop B's commits. It compares the tree before the refactors with the head (`verify`, after the refactors).
+- **Done when** the slices those commits touch are dry again (`DRY`), or Loop B landed no commits (the file says `NO LOOP B COMMITS`).
+- **Record:** `pr-steps reverify <its output file>`
+
+#### 4. The fresh reader
+
+- **Who:** a new agent that hasn't seen the fixes, in `review`'s order (another company's model first), after you merge the base into the branch (1.7). The loop agents judge their own suggestions; a cold reader catches what that hides.
+- **What it runs:** the verifier brief, the reviewer charter, and the posting gate's review (`github-threads` 1.6 step 3) of the PR body draft, checked against the head. Where finality ran, also the guardian brief: only DELETE-NOW, FIX, FILL or DELETE-CAREFULLY items worth their price count, and OWNER-DECISION rows go on the owner's list.
+- **You:** its findings go back to step 1 or 2. If the head then changed only by those fixes, continue the same reader; otherwise start a new one.
+- **Done when** its final message is exactly `CLEAN`. That is also the PR body's posting-gate review.
+- **Record:** `pr-steps fresh <its output>`
+
+#### 5. Gates, body and closure
+
+- **You:** run every gate and product lane on the final head; CI is green; the PR bodies are true to that head (`mergeworthy:writing`). Where finality ran, its Owner-Safe closure comes last, with the review and guardian evidence attached.
+- **Done when** every gate exits 0. Write each as `<command> -> exit <code>`, one per line, into a gates log.
+- **Record:** `pr-steps gates <the gates log>`
 
 Owner decisions don't block convergence, and neither do changes to code the owner wrote. They go on the owner's list with a recommendation: the PR body's notes table for an external maintainer, the decisions in your report (1.11) for the user.
 
 ### Running the agents
 
-- **One agent per loop, for the loop's whole life.** After every fix, continue that agent (`delegating`, one run) instead of starting a new one, so it re-checks only what changed. The loops get separate agents because their work fills different contexts: Loop A runs repros, Loop B reads and rates code. On a small diff (a Tier S fix, under about 300 lines) both fit one context, so one agent runs Loop A, then Loop B. The fresh reader is always separate, because not having seen the fixes is its point.
-- **Who lands Loop B's findings:** you, commit by commit. For a long list, one implementer agent in its own worktree does it with `guardian`'s implementer brief, and you review its diff before landing (1.10).
-- **Slices.** A diff too big for one agent's context (roughly over 1500 lines) is split into slices that each fit (`verify`), with their own loop agents; in a stack, each PR has its own.
+- **Continue, don't restart.** After every fix, continue the loop's agent (`delegating`, one run), so it re-checks only what changed. Loop A runs repros and Loop B rates code, so they get separate agents, except on a small diff (Tier S, under about 300 lines), where one agent runs both.
+- **A long list of Loop B findings** goes to one implementer agent in its own worktree (`guardian`'s implementer brief); you review its diff before landing (1.10).
+- **Slices.** A diff over about 1500 lines is split into slices that each fit (`verify`), with their own loop agents; in a stack, each PR has its own.
 - **What they read.** The head's code in full, at pinned SHAs. A finality graph (Phase A) is only a navigation index.
-- **A new loop agent** starts, given the last report, when its context passes about half the window. A changed decision packet is sent to the running agent, with what it re-opens.
-- **Commits others push** (a maintainer's) re-open the slices they touch, like your own fixes: send them to the running loop agents. They are owner code (Authority, below).
-- **Execution is yours.** Repro loops, tests and benchmarks with a time budget run in the main session or a smaller-tier subagent (1.1.14); judgment stays with the loop agents.
+- **A new loop agent** starts, given the last report, past about half its context window. A changed decision packet goes to the running agent.
+- **Commits others push** (a maintainer's) re-open the slices they touch: send them to the loop agents. They are owner code (Authority, below).
+- **Execution is yours:** repro loops, tests and timed benchmarks run in the main session or a smaller subagent (1.1.14).
 
 ### Git and files
 
