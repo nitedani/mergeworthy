@@ -14,7 +14,7 @@ The rule numbers below (1.1.17, 1.6) point into the skills.
 | Any multi-step or GitHub task, first | `mergeworthy:core` | the task, triage 1.0, principles 1.1, tracking 1.2, discovery 1.3 (docs, style), safety 1.8, pre-flight 1.12 |
 | Writing anything a person reads: a comment, reply or edit, a PR or issue body, a design answer, a report to the user | `mergeworthy:writing` | every writing rule 1.11: voice, model replies, budgets, the badge |
 | Designing an API, protocol or module, or restructuring code | `mergeworthy:design-loop` | 1.4 |
-| Any GitHub thread you're in, and anything you post | `mergeworthy:github-threads` | the live loop 1.5, the posting gate 1.6 |
+| Any GitHub thread you're in, and anything you post | `mergeworthy:github-threads` | the live loop 1.5 (with its convergence step for design threads), the posting gate 1.6 |
 | Pushing, saying a PR is ready, merging | `mergeworthy:merging` | 1.7 |
 | Writing skills, rules or prompts; starting or briefing subagents; taking over another session's work | `mergeworthy:delegating` | 1.9, 1.10 |
 | Any change that lands in a PR: writing it, committing it, pushing it to an open PR | `mergeworthy:pull-request` | the steps to a merge-ready PR |

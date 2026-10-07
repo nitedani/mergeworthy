@@ -22,7 +22,7 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 | `refactor` | nothing |
 | `review` | `delegating`, `guardian`, `refactor`, `github-threads`, `core`, `converge` |
 | `verify` | `core`, `converge` |
-| `writing` | nothing |
+| `writing` | `github-threads` |
 
 ## Any multi-step or GitHub task, first
 
@@ -66,14 +66,17 @@ Opens `mergeworthy:writing` (every writing rule 1.11: voice, model replies, budg
 flowchart TB
   start(["Writing anything a<br/>person reads: a comment,<br/>reply or edit, a PR or<br/>issue …"])
   subgraph g0["Draft by talking"]
-    s0["1. Before writing"]
-    s1["2. Read it out loud as them"]
+    s0["0. Read everything the<br/>reply builds on"]
+    s1["1. Before writing"]
     s0 --> s1
-    s2["3. A passage that can't be<br/>fixed sentence by …"]
+    s2["2. Read it out loud as them"]
     s1 --> s2
-    s3["4. A design reply to a<br/>maintainer"]
+    s3["3. A passage that can't be<br/>fixed sentence by …"]
     s2 --> s3
+    s4["4. A design reply to a<br/>maintainer"]
+    s3 --> s4
   end
+  s0 -.-> r1[["github-threads"]]
   start --> g0
 ```
 
@@ -118,7 +121,7 @@ flowchart TB
 
 ## Any GitHub thread you're in, and anything you post
 
-Opens `mergeworthy:github-threads` (the live loop 1.5, the posting gate 1.6).
+Opens `mergeworthy:github-threads` (the live loop 1.5 (with its convergence step for design threads), the posting gate 1.6).
 
 ```mermaid
 flowchart TB

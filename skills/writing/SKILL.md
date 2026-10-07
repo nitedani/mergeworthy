@@ -9,6 +9,7 @@ Every rule about how outward words read is here, and only here: comments, replie
 
 ## Draft by talking
 
+0. **Read everything the reply builds on** before a word of it: the whole thread from its first comment, the threads and PRs it links, your own earlier replies there, the thread map (`github-threads`) and the evidence. Never repeat what's settled, contradict an earlier reply silently, or miss an earlier question.
 1. Before writing, say what you'd tell this person across the desk: what you found, what you think, what you'll do, what you need from them. Write that down.
 2. Read it out loud as them. What you wouldn't say to a colleague goes, replaced by what you would say. A newcomer who finds it later must follow it too.
 3. A passage that can't be fixed sentence by sentence is explained aloud to an imagined friend and replaced by what you said. Review findings are fixed the same way: take their substance in your own plain words, never paste a reviewer's wording, never patch clause by clause.
@@ -39,7 +40,7 @@ Every post brings something the reader didn't have: a finding, a measurement, a 
 
 ## Design threads: converge before you build
 
-Learned over days of designing with a maintainer on vike#3407 and vike#3500.
+A design reply comes out of `github-threads` step 3 (the mini debate, the divergent agent, the convergence step with its thread map); run it first. This section is how the reply reads.
 
 - **Converge through the other side.** Each reply gives your own position with its reasons, the design's weakest part (also the part they like), and the question that would settle each disagreement. Agreeing is a conclusion, never the default; a reply that only agrees is a tool, not a colleague.
 - **Change position only on evidence,** and name it ("I measured it: …"). Their preference is a reason to look again, not to flip. When they move you, say so once, and what it changes.
