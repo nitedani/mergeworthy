@@ -95,12 +95,12 @@ It adds a thread you just posted in (a new issue or PR, a comment, a review) to 
 
 ### `stop-lint.py` (enforces 1.1.3, 1.5)
 
-It blocks ending a turn in three cases:
-- the turn ends with "want me to / should I / your call…" and has no `GENUINE-FORK:` line;
-- you posted on GitHub and no live Monitor in the session watches a watcher's `events.log` (a `claude -p` run is exempt: its caller watches);
-- a watch dir the session worked in has a reply owed.
+It blocks ending a turn when:
+- it ends with "want me to / should I / your call…" and no `GENUINE-FORK:` line;
+- you posted on GitHub and no live Monitor watches a watcher's `events.log` (a `claude -p` run's caller watches);
+- a watch dir it worked in owes a reply.
 
-It skips its watcher checks while the user's last message contains "pause".
+It skips its watcher checks while the user's last message says "pause". Each turn's first stop also gets a check-in: work to start, or anything waiting?
 
 ### `session-start` (enforces the always-on rules)
 

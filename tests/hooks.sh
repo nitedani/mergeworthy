@@ -27,16 +27,17 @@ echo "$WD" > "$HOME/.claude/gh-watch-dirs.txt"
 tr_file() { # final assistant text
   python3 -c 'import json,sys; print(json.dumps({"type":"user","message":{"content":"tidy up the README"}})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":sys.argv[1]}]}}))' "$1" > "$T/tr.jsonl"
 }
-stop() { # cwd
+stop() { # cwd (the other checks; the check-in has its own test)
   python3 -c 'import json,sys; print(json.dumps({"transcript_path":sys.argv[1],"cwd":sys.argv[2]}))' "$T/tr.jsonl" "$1" \
-    | python3 "$R/hooks/stop-lint.py" 2>"$T/err"; echo $?
+    | MERGEWORTHY_STOP_CHECKIN=off python3 "$R/hooks/stop-lint.py" 2>"$T/err"; echo $?
 }
-tr_file "The watch is re-armed. The next work is #3557: merge its base, then run the pipeline."
-check "BLOCK: a turn that announces work it didn't start" 2 "$(stop "$T")"
-python3 -c 'import json,sys; print(json.dumps({"type":"user","message":{"content":"go"}})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","id":"t9","input":{"command":"sleep 1","run_in_background":True}}]}})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":"Loop A runs; next is the review."}]}}))' > "$T/tr.jsonl"
-check "announcing the next step while work runs in the background passes" 0 "$(stop "$T")"
-python3 -c 'import json,sys; print(json.dumps({"type":"user","message":{"content":"stop"}})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":"Stopped. Next is #3557 when you want it."}]}}))' > "$T/tr.jsonl"
-check "after the user says stop, naming the next work passes" 0 "$(stop "$T")"
+checkin() { # stop_hook_active
+  python3 -c 'import json,sys; print(json.dumps({"transcript_path":sys.argv[1],"cwd":sys.argv[2],"stop_hook_active":sys.argv[3]=="1"}))' "$T/tr.jsonl" "$T" "$1" \
+    | MERGEWORTHY_STOP_CHECKIN=on python3 "$R/hooks/stop-lint.py" 2>"$T/err"; echo $?
+}
+tr_file "Loop A is done."
+check "the first stop of a turn gets the check-in" 2 "$(checkin 0)"
+check "the next stop goes through" 0 "$(checkin 1)"
 tr_file "The watcher runs and the Monitor is armed."
 check "no replies-owed.md, cwd=watch dir" 0 "$(stop "$WD")"
 echo "o/r 1 comment 42 by someone" > "$WD/replies-owed.md"
