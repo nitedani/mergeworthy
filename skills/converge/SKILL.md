@@ -24,14 +24,14 @@ When the work reshapes existing code, or a small change can't be made cleanly be
 #### 1. Loop A: does it break anything?
 
 - **Who:** one agent, kept for the loop's whole life. It runs `verify`'s verifier brief on the diff, one report section per slice.
-- **You:** fix each bug it reproduces at its root, then send the same agent your commits.
+- **You:** decide each reproduced bug's root-cause fix; an implementer (`delegating`) lands it, and the same agent gets the commits.
 - **Done when** every slice has a dry pass after its last fix, and its output file ends with a line `DRY`.
 - **Record:** `pr-steps verify <its output file>`
 
 #### 2. Loop B: is it good code?
 
 - **Who:** one agent, after Loop A is dry. In one prompt, each into its own output file: first `review`'s reviewer charter, then `guardian`'s brief with `refactor`'s prompt. Reviewing first fills the context it rates with.
-- **You:** land its findings commit by commit, gates after each, and send the same agent the commits. A bug its review finds is fixed, and Loop A re-verifies that slice.
+- **You:** decide which findings land; an implementer (`delegating`) lands them commit by commit, gates after each, and the same agent gets the commits. A bug its review finds is fixed, and Loop A re-verifies that slice.
 - **Done when** its review ends `CLEAN` ("nothing worth changing" is an honest result) and its last re-rating lists every file, function and piece of logic with old ⇒ new ratings and the ✅ lists, high and justified.
 - **Record:** `pr-steps loopb <its captured final-message file>` and `pr-steps refactor <its last re-rating>`; keep the reviewer charter’s full report separately.
 
@@ -53,7 +53,7 @@ When the work reshapes existing code, or a small change can't be made cleanly be
 
 #### 5. Gates, body and closure
 
-- **You:** have an execution-tier agent (`delegating`) run every gate and product lane on the final head; CI is green, or only workflow approval is pending (ready for review, never merge, per `merging`’s CI-limits exception); the PR bodies are true to that head (`mergeworthy:writing`). Where finality ran, its Owner-Safe closure comes last, with the review and guardian evidence attached.
+- **You:** have a smallest-tier agent (`delegating`) run every gate and product lane on the final head; CI is green, or only workflow approval is pending (ready for review, never merge, per `merging`’s CI-limits exception); the PR bodies are true to that head (`mergeworthy:writing`). Where finality ran, its Owner-Safe closure comes last, with the review and guardian evidence attached.
 - **The evidence goes in the PR body,** just enough to prove each step ran: one collapsed block per step above, its runs newest first, each with the head it ran on. It says in a few plain sentences what ran and what came of it ("I rated every file and function with its reason and re-rated until nothing worth changing was left"), names a finding that changed the PR, and links the full output in a gist a person can read: first how many passes ran and what each found, then the commits, what stays below the bar and why, then one line per item, grouped by area. Claim only what ran on that head.
 - **After adding the completed runs’ evidence, run `github-threads` 1.6 on the final body draft again.** This posting-only review is separate from the recorded fresh-reader step; capture its verdict for the updated draft.
 - **Done when** every gate exits 0. Write each as `<command> -> exit <code>`, one per line, into a gates log.
