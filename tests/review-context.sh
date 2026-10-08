@@ -106,14 +106,21 @@ check "anonymous default class: the caller under another name is listed" yes "$(
 
 proj spaces; G init -q
 printf 'export function target(): number {\n  return 1\n}\n' > 'some file.ts'
-printf 'export function other(): number {\n  return 1\n}\n' > 'q"uote.ts'
+printf 'export function other(): number {\n  return 1\n}\n' > 'q"😀.ts'
 printf "import { target } from './some file'\nexport const r = target()\n" > b.ts
 commit base
 printf 'export function target(): number {\n  return 2\n}\n' > 'some file.ts'
-printf 'export function other(): number {\n  return 2\n}\n' > 'q"uote.ts'
+printf 'export function other(): number {\n  return 2\n}\n' > 'q"😀.ts'
 commit change; OUT=$(review)
 check "path with a space: its symbol and caller are listed" yes "$(section 'target ' | grep -q 'b\.ts:2' && echo yes || echo no)"
-check "quoted path: its symbol is listed" yes "$(has '^### other ')"
+check "quoted path with an emoji: its symbol is listed" yes "$(has '^### other ')"
+
+proj siblings; G init -q
+printf 'export function one(): number { return 1 }\nexport function two(): number { return 1 }\n' > a.ts
+commit base
+printf 'export function one(): number { return 2 }\nexport function two(): number { return 2 }\n' > a.ts
+commit change; OUT=$(review)
+check "two changed functions in one hunk: both are listed" yes "$(has '^### one ' | grep -q yes && has '^### two ')"
 
 proj mixed; G init -q
 printf 'export function target(v: number): number {\n  return v\n}\n' > a.ts
