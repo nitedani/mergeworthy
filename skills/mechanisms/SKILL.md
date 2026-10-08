@@ -47,8 +47,8 @@ These scripts enforce the rules that failed as text alone.
 `review-context <base-ref> [--max-refs N]` prints, for the symbols a diff changes, who calls them, what they call and which names the diff removes. Run it inside the repo at the head under review and paste its output into the reviewer's prompt; it costs no model tokens.
 - For each changed function, method, class, arrow function, exported const, interface or type it lists the callers grouped by file (test files tagged `[test]`, capped at `--max-refs`, default 15) and the in-repo functions it calls.
 - For each top-level name the diff removes it lists the remaining `git grep` hits at HEAD (dangling callers) under `### removed: name`.
-- It loads TypeScript from the target repo and builds one language service per tsconfig; a small diff on vike takes about 3 s.
-- It never blocks a review: on any failure it prints one line saying why context is missing and exits 0. Output is capped at about 400 lines.
+- It loads the repo's TypeScript, falling back to mergeworthy's own when the repo's has no compiler API (TypeScript 7). It builds one language service per tsconfig, freeing each after use; a small diff on vike takes about 3 s.
+- It never blocks a review: the analysis runs in a child with a 3 GB heap cap and a 60 s limit (`--timeout SECONDS`); on a failure, crash or timeout it prints `review-context: failed (<reason>); no context` and exits 0. Output is capped at about 400 lines.
 
 ### The finality trigger (`pre-bash-guard`, `post-bash-register`)
 

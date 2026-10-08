@@ -1,12 +1,14 @@
 #!/usr/bin/env node
-// review-context <base-ref> [--max-refs N]: for the symbols a diff changes, prints their callers, callees and the names it removes.
+// review-context <base-ref> [--max-refs N] [--timeout SECONDS]: for the symbols a diff changes, prints their callers, callees and the names it removes.
 // Run inside a git repo whose HEAD is the head under review. Prints markdown; never blocks: on any failure it prints one line and exits 0.
-// TypeScript comes from the target repo (not from mergeworthy); the language service is built once per tsconfig.
+// TypeScript comes from the target repo, else from mergeworthy; the language service is built once per tsconfig.
+// The analysis runs in a child process with a heap cap and a time limit (default 60 s), so a crash or a hang still ends in one line.
 'use strict'
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { createRequire } from 'node:module'
+import { fileURLToPath } from 'node:url'
 
 const CODE = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/
 const SKIP = /(^|\/)(node_modules|dist)\//
@@ -45,10 +47,12 @@ function parseDiff(text) {
   return files.filter((f) => [f.oldPath, f.newPath].some((p) => p && CODE.test(p) && !SKIP.test(p)))
 }
 
+// The repo's own TypeScript, else mergeworthy's: TypeScript 7 has no JavaScript compiler API
 function loadTS(dirs) {
-  for (const dir of dirs) {
+  for (const req of dirs.map((dir) => createRequire(path.join(dir, 'noop.js'))).concat(createRequire(import.meta.url))) {
     try {
-      return createRequire(path.join(dir, 'noop.js'))('typescript')
+      const ts = req('typescript')
+      if (ts.createLanguageService) return ts
     } catch {}
   }
   return null
@@ -68,9 +72,10 @@ function main() {
   let maxRefs = 15
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--max-refs') maxRefs = parseInt(argv[++i], 10) || 15
-    else if (!base) base = argv[i]
+    else if (argv[i] === '--timeout') i++
+    else if (argv[i] !== '--child' && !base) base = argv[i]
   }
-  if (!base) throw new Fail('usage: review-context <base-ref> [--max-refs N]')
+  if (!base) throw new Fail('usage: review-context <base-ref> [--max-refs N] [--timeout SECONDS]')
   root = fs.realpathSync(git(['rev-parse', '--show-toplevel']).trim())
   const head = git(['rev-parse', '--short=12', 'HEAD']).trim()
   const mergeBase = git(['merge-base', base, 'HEAD'], { okFail: true }).trim() || base
@@ -176,7 +181,8 @@ function main() {
     groups.get(c.configPath).entries.push(e)
   }
 
-  const lsList = []
+  // one registry shares parsed lib and node_modules files between the programs
+  const registry = ts.createDocumentRegistry()
   function buildLS(group) {
     const abs = group.entries.map((e) => path.join(root, e.newPath))
     let rootNames
@@ -199,12 +205,9 @@ function main() {
         const text = fs.readFileSync(path.join(root, e.newPath), 'utf8')
         for (const d of findDecls(parseText(e.newPath, text), e.ranges)) names.add(d.name.split('.').pop())
       }
-      if (names.size) {
-        const args = ['grep', '-lIwF']
-        for (const n of [...names].slice(0, 50)) args.push('-e', n)
-        const extra = git(args, { okFail: true }).split('\n').filter((f) => CODE.test(f) && !SKIP.test(f)).map((f) => path.join(root, f))
-        for (const f of extra.filter((f) => !have.has(f)).slice(0, MAX_EXTRA_ROOTS)) (rootNames.push(f), have.add(f))
-      }
+      const extra = new Set()
+      for (const n of [...names].slice(0, 50)) for (const h of mentions(n)) if (CODE.test(h.file)) extra.add(path.join(root, h.file))
+      for (const f of [...extra].filter((f) => !have.has(f)).slice(0, MAX_EXTRA_ROOTS)) (rootNames.push(f), have.add(f))
     }
     const host = {
       getCompilationSettings: () => options,
@@ -220,9 +223,7 @@ function main() {
       getDirectories: ts.sys.getDirectories,
       realpath: ts.sys.realpath,
     }
-    const ls = ts.createLanguageService(host, ts.createDocumentRegistry())
-    lsList.push(ls)
-    return ls
+    return ts.createLanguageService(host, registry)
   }
 
   // ----- per-symbol context -----
@@ -274,6 +275,26 @@ function main() {
     }
     return any
   }
+  // whole-word mentions at HEAD per name, from one `git grep` for many names (a spawn per symbol is slow on a monorepo)
+  const mentionIndex = new Map()
+  const wordRe = (name) => new RegExp(`(?<![\\w$])${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w$])`)
+  function prefetchMentions(names) {
+    const todo = [...new Set(names)].filter((n) => !mentionIndex.has(n))
+    for (let i = 0; i < todo.length; i += 100) {
+      const batch = todo.slice(i, i + 100)
+      const res = batch.map((name) => ({ name, re: wordRe(name), hits: [] }))
+      const args = ['grep', '-nIwF']
+      for (const n of batch) args.push('-e', n)
+      args.push('HEAD')
+      for (const h of git(args, { okFail: true }).split('\n')) {
+        const m = /^HEAD:(.+?):(\d+):(.*)$/.exec(h)
+        if (!m || SKIP.test(m[1])) continue
+        for (const r of res) if (r.re.test(m[3])) r.hits.push({ file: m[1], l: +m[2], text: m[3] })
+      }
+      for (const r of res) mentionIndex.set(r.name, r.hits)
+    }
+  }
+  const mentions = (name) => (prefetchMentions([name]), mentionIndex.get(name))
   const headSource = new Map()
   const headFile = (p) => {
     if (!headSource.has(p)) headSource.set(p, parseText(p, git(['show', `HEAD:${p}`], { okFail: true })))
@@ -323,11 +344,10 @@ function main() {
     if (name.length >= 4 && !GENERIC.has(name)) {
       const resolved = new Set([...byFile.keys()].map(rel))
       const others = []
-      for (const h of git(['grep', '-nIwF', '-e', name, 'HEAD'], { okFail: true }).split('\n')) {
-        const m = /^HEAD:(.+?):(\d+):(.*)$/.exec(h)
-        if (!m || SKIP.test(m[1]) || resolved.has(m[1]) || (m[1] === rel(file) && +m[2] === line + 1)) continue
-        if (CODE.test(m[1]) && importOnly(headFile(m[1]), +m[2] - 1, name)) continue
-        others.push({ file: m[1], l: m[2], text: clip(m[3].trim()) })
+      for (const h of mentions(name)) {
+        if (resolved.has(h.file) || (h.file === rel(file) && h.l === line + 1)) continue
+        if (CODE.test(h.file) && importOnly(headFile(h.file), h.l - 1, name)) continue
+        others.push({ file: h.file, l: h.l, text: clip(h.text.trim()) })
       }
       if (others.length) {
         sec.push('**Other mentions (by name, unresolved):**')
@@ -367,6 +387,9 @@ function main() {
   }
 
   let symbols = 0
+  const declared = []
+  for (const e of changed) for (const d of findDecls(parseText(e.newPath, fs.readFileSync(path.join(root, e.newPath), 'utf8')), e.ranges)) declared.push(d.name.split('.').pop())
+  prefetchMentions(declared)
   for (const group of groups.values()) {
     const ls = buildLS(group)
     const program = ls.getProgram()
@@ -386,6 +409,7 @@ function main() {
         }
       }
     }
+    ls.dispose() // a monorepo has many programs; keeping them all runs out of memory
   }
 
   // ----- removed names -----
@@ -436,16 +460,12 @@ function main() {
   for (const r of removed) {
     symbols++
     out.push(`### removed: ${r.name}`, `- declared in \`${r.from}\` at ${mergeBase.slice(0, 12)}, gone at HEAD`)
-    const hits = git(['grep', '-nIwF', '-e', r.name], { okFail: true }).split('\n').filter(Boolean)
+    const hits = mentions(r.name)
     if (!hits.length) out.push('- no remaining references at HEAD')
-    for (const h of hits.slice(0, MAX_HITS)) {
-      const m = /^([^:]+):(\d+):(.*)$/.exec(h)
-      out.push(m ? `- ${TEST.test(m[1]) ? '[test] ' : ''}${m[1]}:${m[2]}: \`${clip(m[3].trim(), 140).replace(/`/g, "'")}\`` : `- ${clip(h)}`)
-    }
+    for (const h of hits.slice(0, MAX_HITS)) out.push(`- ${TEST.test(h.file) ? '[test] ' : ''}${h.file}:${h.l}: \`${clip(h.text.trim(), 140).replace(/`/g, "'")}\``)
     if (hits.length > MAX_HITS) out.push(`- … ${hits.length - MAX_HITS} more`)
   }
 
-  for (const ls of lsList) ls.dispose()
   const header = ['# review-context', `base ${base} · head ${head} · ${changed.length} changed file${changed.length === 1 ? '' : 's'} · ${symbols} changed symbol${symbols === 1 ? '' : 's'}`]
   if (!symbols) out.push('No changed declarations found.')
   const all = header.concat(out)
@@ -456,8 +476,18 @@ function main() {
   return all
 }
 
+function guarded() {
+  const args = process.argv.slice(2)
+  const t = args.indexOf('--timeout')
+  const seconds = t >= 0 ? parseFloat(args[t + 1]) : 60
+  const r = spawnSync(process.execPath, ['--max-old-space-size=3072', fileURLToPath(import.meta.url), '--child', ...args], { encoding: 'utf8', maxBuffer: 1 << 26, timeout: (seconds > 0 ? seconds : 60) * 1000, killSignal: 'SIGKILL' })
+  if (r.status === 0 && r.stdout) return r.stdout
+  const why = r.error && r.error.code === 'ETIMEDOUT' ? `timed out after ${seconds > 0 ? seconds : 60} s` : r.signal ? `killed by ${r.signal}` : r.error ? r.error.message : `exited with status ${r.status}, out of memory?`
+  return `review-context: failed (${why}); no context\n`
+}
+
 try {
-  process.stdout.write(main().join('\n') + '\n')
+  process.stdout.write(process.argv.includes('--child') ? main().join('\n') + '\n' : guarded())
 } catch (err) {
   const msg = err instanceof Fail ? err.message : `failed (${String((err && err.message) || err).split('\n')[0]})`
   process.stdout.write(`review-context: ${msg}; no context\n`)

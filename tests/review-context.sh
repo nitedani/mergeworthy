@@ -70,8 +70,19 @@ check "pkg2/use.ts is an other mention of twice" yes "$(section 'twice ' | sed -
 check "f (under 4 characters) gets no other mentions" no "$(section 'f (function)' | grep -q 'Other mentions' && echo yes || echo no)"
 check "--max-refs 1 caps the callers" yes "$(OUT=$("$R/bin/review-context" "$BASE" --max-refs 1); has '… 1 more')"
 
-rm node_modules/typescript
-OUT=$("$R/bin/review-context" "$BASE" 2>&1); code=$?
+# a run over its time limit still ends in one line (the heap cap shares this path; no cheap fixture runs out of memory)
+OUT=$("$R/bin/review-context" "$BASE" --timeout 0.001 2>&1); code=$?
+check "time limit: exit code" 0 "$code"
+check "time limit: one line" "review-context: failed (timed out after 0.001 s); no context" "$OUT"
+
+# a TypeScript without the compiler API (TypeScript 7): mergeworthy's own takes over
+rm node_modules/typescript; mkdir -p node_modules/typescript; echo 'module.exports = {}' > node_modules/typescript/index.js
+OUT=$("$R/bin/review-context" "$BASE" 2>&1)
+check "TypeScript 7 in the repo: mergeworthy's TypeScript lists the callers" yes "$(grep -q 'b.ts' <<<"$OUT" && echo yes || echo no)"
+
+# no usable TypeScript anywhere: a copy of the script outside mergeworthy
+cp "$R/bin/review-context" "$T/review-context.mjs"
+OUT=$(node "$T/review-context.mjs" "$BASE" 2>&1); code=$?
 check "no TypeScript: exit code" 0 "$code"
 check "no TypeScript: message" "review-context: no TypeScript found in $(readlink -f "$P"); no context" "$OUT"
 
