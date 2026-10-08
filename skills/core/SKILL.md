@@ -14,7 +14,7 @@ How an AI agent works so that what it posts and the PRs it opens are worth mergi
 These defaults hold unless the user overrides them:
 - **The user** owns the goal. Code in the user's own repos is theirs, and so are beta, experimental or pre-1.0 features. That code is yours to change for the goal: decide, act, and report afterwards. Removing or rewriting an owner's code on an agent's reading alone is `converge`'s owner-code rule.
 - **External maintainers** are whoever merges in a repo you don't own (CODEOWNERS, recent mergers). Their requests are settled decisions. Changes to their code's behavior or public surface are their call (`converge`, authority).
-- **Models.** Reviews follow `review`: open it before any independent review, for who reviews. Judgment work runs on the session's default model; routine work follows 1.1.14. Never use a model above the default's tier unless the user names it, and never one the user has excluded. Never write a model version into a prompt, skill or memory.
+- **Models** follow `delegating`; reviews follow `review`. Never a model the user excluded, nor a model version in a prompt, skill or memory.
 - **Artifact root:** a persistent `<task>-work/` directory next to the worktree. It holds notes, logs, probes, agent outputs and scratch worktrees; never use `/tmp`.
 - **Publishing authority:** what the task allows you to open, comment and file. A reviewed draft isn't permission to publish.
 
@@ -109,12 +109,11 @@ Run every PR through bug verification, code review and a fresh read on the final
     - When a context nears its limit, hand off at a clean boundary to a fresh agent with the ledger.
 14. **Spend tokens like money.**
     - **Do small steps yourself:** one command, one file read, a short edit, a "Done in <sha>" reply.
-    - **Start an agent only for long, independent work,** at most 3 running at a time (mappers and loop agents together) without asking, and only from the main session; queue the rest. A subagent does the work itself without starting agents (`delegating` 1.10). Continue the agent that already holds this context (`delegating`, One run). Stop an agent as soon as its question is settled.
+    - **Start an agent only for long, independent work,** at most 3 default-tier agents running at a time (smallest-tier fan-out: up to 10) without asking, and only from the main session; queue the rest. A subagent does the work itself without starting agents (`delegating` 1.10). Continue the agent that already holds this context (`delegating`, One run). Stop an agent as soon as its question is settled.
     - Group roles that share a loop context in one agent, splitting for context size or independence (`delegating`, One run).
     - **Give agents paths and the question,** never pasted files or long histories, and ask for a short report. Each role gets only what it uses: an executor a brief (1.10), a reviewer its charter and the artifact.
     - **Match the check to the risk.** A short reply gets the fast gate (1.6); a PR body or a proposal gets the full review.
     - **Re-run only the tests a change can affect** (a docs change doesn't need the e2e matrix).
-    - **Routine work that is more than a small step** (running tests and gates, mining logs, mechanical edits, relaying status) goes to a smaller-tier subagent. Design, hard debugging, reviews, fact checks and anything posted to a maintainer stay on the session's default model.
     - **Never trim a charter or skip a pass it requires** to save tokens.
 15. **Earn every line.** A reviewer's, verifier's or guardian's finding is a candidate, not a mandate. Before it becomes code, a test, a doc or an option, ask:
     - **How likely does a real user hit it, and what happens then?** A rare case whose failure is mild, or arguably what the user asked for, gets no code. Wrong data returned silently (a misattribution, a lenient parse that hides the cause) is never mild: fix it at the root (1.1.6).

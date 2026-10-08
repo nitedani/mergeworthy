@@ -58,7 +58,7 @@ Principles:
 
 **Design it twice:** your first interface is unlikely to be the best. The three designs are the candidates of 1.4 step 1.
 1. **Frame the problem for the user:** the constraints any interface must meet, the dependencies and their categories, and a rough code sketch that makes the constraints concrete. The sketch is not a proposal.
-2. **Have one fresh-context agent design it three times** (1.1.14). The agent writes all three before comparing any. Each design works under a different one of these constraints, and none reuses another's entry points:
+2. **Have one fresh-context agent design it three times** (`delegating`). The agent writes all three before comparing any. Each design works under a different one of these constraints, and none reuses another's entry points:
    - minimize the interface (1–3 entry points);
    - maximize flexibility; or, where dependencies cross a seam, ports and adapters in its place;
    - make the most common caller trivial.

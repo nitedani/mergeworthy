@@ -17,6 +17,9 @@ try:
     lines = open(d['transcript_path']).readlines()
 except Exception:
     sys.exit(0)
+# A T3 Code delegated child: its result is its last message, and the main session owns replies and next steps
+child = any(re.match(r'Act as the [\w-]+ sub-agent for this task', (json.loads(l).get('message') or {}).get('content') or '')
+            for l in lines[:20] if '"type":"user"' in l.replace(' ', '') and 'sub-agent for this task' in l)
 for line in lines:
     try:
         e = json.loads(line)
@@ -83,7 +86,7 @@ if posted and watcher_on and not headless and not paused and not (monitors - dea
     sys.exit(2)
 # The owed-reply list: the daemon records each human comment in the live watcher's replies-owed.md; a turn
 # cannot end with a line still owed.
-if watcher_on and not paused:
+if watcher_on and not paused and not child:
     for wd in sorted(own_dirs):
         try:
             os.kill(int(open(os.path.join(wd, 'gh-watch.pid')).read().strip()), 0)
@@ -105,7 +108,7 @@ if watcher_on and not paused:
                   file=sys.stderr)
             sys.exit(2)
 # Before a turn ends, one check-in (the hook doesn't ask twice in a row: stop_hook_active lets the next stop through)
-if os.environ.get('MERGEWORTHY_STOP_CHECKIN', 'on') != 'off':
+if os.environ.get('MERGEWORTHY_STOP_CHECKIN', 'on') != 'off' and not child:
     print("Before you stop, check once: did the user ask you to stop or pause? Then stop. Otherwise: is there work you said "
           "is next, or that the critical path needs, that you could start now? Is anything waiting on you (a reply owed, "
           "red CI, a finished agent's result to read, a dependency that landed)? If so, do it now. If nothing is, stop.",

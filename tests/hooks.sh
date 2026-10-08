@@ -38,6 +38,8 @@ checkin() { # stop_hook_active
 tr_file "Loop A is done."
 check "the first stop of a turn gets the check-in" 2 "$(checkin 0)"
 check "the next stop goes through" 0 "$(checkin 1)"
+python3 -c 'import json; print(json.dumps({"type":"user","message":{"content":"Act as the review sub-agent for this task.\n\nCheck the diff."}})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":"CLEAN"}]}}))' > "$T/tr.jsonl"
+check "a delegated child ends with its result, no check-in" 0 "$(checkin 0)"
 tr_file "The watcher runs and the Monitor is armed."
 check "no replies-owed.md, cwd=watch dir" 0 "$(stop "$WD")"
 echo "o/r 1 comment 42 by someone" > "$WD/replies-owed.md"

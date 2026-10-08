@@ -18,7 +18,7 @@ description: "The finality pass, for code that has drifted through many patches,
 
 Ask external maintainers about behavior or public-surface changes and decide changes authorized by the user’s task (`core`, The task and 1.1.9); convergence remains behavior-preserving.
 
-**"Fan out parallel mapper agents"** means the main session starts one mapper for all subsystems when they fit one context. Otherwise use one mapper per subsystem, at most 3 at once (1.1.14).
+**"Fan out parallel mapper agents"** means the main session starts one mapper for all subsystems when they fit one context. Otherwise use one mapper per subsystem, in parallel (`delegating`).
 
 **The deliverable is the short design doc** at the end. The graph is working material. Post the doc per 1.6 (a gist counts), unless the repo keeps design docs.
 

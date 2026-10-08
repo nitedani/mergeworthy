@@ -27,6 +27,12 @@ These rules hold when you edit a skill, prompt, rules file or AGENTS.md. Rules f
 - **Relay every agent report.** When an agent reports, relay the result to the user and act on it; the user never sees the agent's report.
 - **Taking over another session's work starts with its state,** re-checked on the current head. Re-run each claim in the open PR's body (checks, e2e, screenshots), and list each owed reply. That state is the first answer to "done?", and the work continues from what failed.
 
+### Choosing the model
+
+- **Fan-out** (parallel agents, one per angle: designs, finality branches, mappers, probe cases, reproductions) and checklist checks: the smallest tier with an effort setting, at high effort. Go wider, not bigger.
+- **Routine work** (tests, gates, log mining, mechanical edits): a smaller tier.
+- **Judgment** (merging fan-out findings, design calls, Loop B, ratings, the fresh reader, gates on design answers and PR bodies): the session's default model, never above unless the user names one.
+
 ### Briefing an agent
 
 - **The brief** has five parts:
