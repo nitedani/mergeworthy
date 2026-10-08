@@ -69,7 +69,7 @@ Optional owner recommendations do not block convergence; approval required by th
 - **What they read.** Read the head’s code in full at the brief’s pinned SHAs (`delegating` 1.10). A finality graph (Phase A) is only a navigation index.
 - **A new loop agent** starts, given the last report, past about half its context window. A changed decision packet goes to the running agent.
 - **Commits others push** (a maintainer's) re-open the slices they touch: send them to the loop agents. They are owner code (Authority, below).
-- **Execution:** run routine supporting work past one-line lookups on an agent a tier below (`delegating`); verifiers, reviewers and guardians still run the checks their charters require them to observe personally.
+- **Execution:** run routine supporting work past one-line lookups on the smallest tier (`delegating`); verifiers, reviewers and guardians still run the checks their charters require them to observe personally.
 
 ### Git and files
 

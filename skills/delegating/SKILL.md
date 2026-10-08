@@ -29,10 +29,10 @@ These rules hold when you edit a skill, prompt, rules file or AGENTS.md. Rules f
 
 ### Choosing the model
 
-Model tiers count down from the session's model; below the lowest, use the lowest.
-- **Fan-out** (parallel agents, one per angle: designs, finality branches, mappers, probe cases, reproductions) and checklist checks: the smallest tier with an effort setting, at high effort. Go wider, not bigger.
-- **Execution** (building from a plan, tests, gates, log mining, mechanical edits) and the loop agents (Loop A, Loop B, ratings): a tier below the session's.
-- **Every decision** (merging findings, design calls, what lands) stays with the main session; independent reviews follow `review`. Never above the session's tier unless the user names one.
+The main session runs on the strongest tier and is the only agent there: it plans, briefs, makes every decision, spot-checks results, and writes or approves every word to a maintainer. Subagents run below it; independent reviews follow `review`.
+- **The next tier down** (medium effort, high for the hardest): complex or subtle implementation (crossing modules, streaming or concurrency, semantics a plausible wrong change breaks, a large codebase), non-obvious root causes, verifying complex behavior, Loop B and the ratings, audits of rules and designs.
+- **The smallest tier with an effort setting, at high effort:** everything else. Fan-out (parallel agents, one per angle: exploration, designs, finality branches, probe cases), mechanical implementation from an exact plan, gates and tests, reproductions from a recipe, checklist reviews (tracker edits, short replies, fact checks, cold reads), log mining and bookkeeping. Go wider, not bigger.
+- **Escalate one tier** when a result fails your spot-check or the agent is blocked, with what failed; from the next tier down, it comes back to you. Never resend a brief to the same tier.
 
 ### Briefing an agent
 

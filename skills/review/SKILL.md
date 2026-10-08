@@ -12,7 +12,7 @@ description: "Any independent review: who reviews (Codex, else a fresh Claude), 
    codex exec -m "$(codex-review-model)" --sandbox danger-full-access --skip-git-repo-check -o <out> "$(cat <prompt file>)" < /dev/null
    ```
    If it fails (out of credits, a rate limit, an error), go to the next reviewer; that failure takes seconds.
-2. **A fresh-context subagent on the session's default model,** with the same prompt, when no other company's model is available. Never a cheaper model for the posting gate or the fresh reader.
+2. **A fresh-context subagent on the next tier down** (`delegating`), with the same prompt, when no other company's model is available.
 
 After the review:
 - Send fixes to the same reviewer and start a fresh one only when the artifact changes beyond them or needs a final cold read (`delegating`, One run).
