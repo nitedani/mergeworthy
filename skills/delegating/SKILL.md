@@ -29,9 +29,10 @@ These rules hold when you edit a skill, prompt, rules file or AGENTS.md. Rules f
 
 ### Choosing the model
 
+Model tiers count down from the session's model; below the lowest, use the lowest.
 - **Fan-out** (parallel agents, one per angle: designs, finality branches, mappers, probe cases, reproductions) and checklist checks: the smallest tier with an effort setting, at high effort. Go wider, not bigger.
-- **Routine work** (tests, gates, log mining, mechanical edits): a smaller tier.
-- **Judgment** (merging fan-out findings, design calls, Loop B, ratings, the fresh reader, gates on design answers and PR bodies): the session's default model, never above unless the user names one.
+- **Execution** (building from a plan, tests, gates, log mining, mechanical edits) and the loop agents (Loop A, Loop B, ratings): a tier below the session's.
+- **Every decision** (merging findings, design calls, what lands) stays with the main session; independent reviews follow `review`. Never above the session's tier unless the user names one.
 
 ### Briefing an agent
 
@@ -46,7 +47,7 @@ These rules hold when you edit a skill, prompt, rules file or AGENTS.md. Rules f
 - **An agent ends its turn only with its result.** A turn ended while its own install or test still runs never reports back, and a process it finds later is its own leftover: it checks with `ps` and kills it by PID, never waits on it. Long installs skip postinstall downloads (`--ignore-scripts`) when the browsers or binaries are already cached.
 - **A brief from a skill** has its `<...>` placeholders filled with the specifics, and points the agent at pinned SHAs, never a moving branch.
 - **A charter or prompt from a skill is pasted from the installed skill** each time you write the brief (in Claude Code, `~/.mergeworthy/current/skills/`). A copy saved earlier in your work folder drifts from it.
-- **What the agent returns:** the result with evidence (`path:line`, or the command and its exit code), and a `not_checked` list. An unchecked item or a deviation is yours to decide; never send the same brief again.
+- **What the agent returns:** the result with evidence (`path:line`, or the command and its exit code), and a `not_checked` list, in a final message of at most 15 lines; the rest goes to a file, and you open only the lines it cites. An unchecked item or a deviation is yours to decide; never send the same brief again.
 - **What the agent must not do:**
     - widen the brief;
     - pick a different approach than the plan (it stops and reports why the plan is wrong instead);

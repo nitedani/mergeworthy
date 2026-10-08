@@ -12,11 +12,9 @@ description: "The finality pass, for code that has drifted through many patches,
 - A design discussion has drifted: three or more rounds of proposals, or each reply answers only the latest idea. Run it before the next reply, which then states the whole design as its invariants and asks the other side to confirm each one, so both converge on one design instead of trading ideas. The third proposal on a thread is enforced: `pre-bash-guard` blocks it until the thread map `<artifact root>/maps/<owner>-<repo>-<number>.md` is newer than the last proposal.
 
 **Who runs each phase:**
-- **Phases A and B are analysis.** The main session starts their agents: the mappers, then Phase B's branch agents and its converging agent. Each is the reviewer (`review`) or a fresh-context subagent, never the author's context, and does its share itself. Phase B’s branch and converging agents run on the session’s default model (`core`, The task).
+- **Phases A and B are analysis.** The main session starts their agents: the mappers, then Phase B's branch agents and its converging agent. Each is the reviewer (`review`) or a fresh-context subagent, never the author's context, and does its share itself. Phase B’s branches run as fan-out and its converging agent a tier below (`delegating`); you decide.
 - **Phase B½ is split.** Its graph queries are analysis, run by the Phase B agent. Instrumenting guards, running the full suite and e2e, and the removals are execution: the author runs them, as in Phase C.
 - **Phase C is the author's**, implementing commit by commit with the gates green underneath.
-
-Ask external maintainers about behavior or public-surface changes and decide changes authorized by the user’s task (`core`, The task and 1.1.9); convergence remains behavior-preserving.
 
 **"Fan out parallel mapper agents"** means the main session starts one mapper for all subsystems when they fit one context. Otherwise use one mapper per subsystem, in parallel (`delegating`).
 
@@ -24,7 +22,7 @@ Ask external maintainers about behavior or public-surface changes and decide cha
 
 **Owner-Safe closure** is the reconciliation that ends the pass, defined in the prompt's last paragraph. It needs the reviewer's and the guardian's evidence, so it runs last in `converge`.
 
-Run the prompt as written, except that you start every agent it names yourself, as above: the mappers, the 3 branch agents, and the one converging agent (on the session's own model). Its reader does the work itself without starting agents (`delegating` 1.10).
+Run the prompt as written, except that you start every agent it names yourself, as above: the mappers, the 3 branch agents, and the one converging agent (a tier below, `delegating`). Its reader does the work itself without starting agents (`delegating` 1.10).
 
 ```
 Run a FINALITY PASS on <FEATURE / PATHS>.
@@ -64,11 +62,11 @@ APIs, runtimes, networks). No current design, no file or function names, no proj
 hint of how it is solved today: those anchor the branches on what exists. Pick 6 to 9 frames
 from that clean problem (the ways it fails, the people it serves, fields that solved its like),
 never from the current solution and never a fixed list. The orchestrator starts 3 isolated branch
-agents on the session’s default model, each with the clean problem and 2 or 3 of those frames,
+agents on the smallest model tier at high effort, each with the clean problem and 2 or 3 of those frames,
 no frame given twice. Each first writes its 3 obvious
 designs, marked obvious, then 6 more beyond them, with no evaluation; no branch sees another's
 output. CONVERGE: only now does the graph come in: the orchestrator gives the assembled graph
-AND every branch’s lists to ONE converging agent on the session’s default model. The obvious
+AND every branch’s lists to ONE converging agent a model tier below the session’s. The obvious
 designs are its baseline; it ranks every
 design on merit only (correctness, cost on the fast path, behavior at the edges, simplicity;
 novelty earns nothing), flags the traps, and a non-obvious design wins only by beating the best

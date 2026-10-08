@@ -108,8 +108,8 @@ Run every PR through bug verification, code review and a fresh read on the final
     - After a usage limit, resume every agent the limit stopped through its own thread, never a new one. Never auto-resume parallel agents on a non-default model without asking the user first. Schedule one wakeup at the reset time.
     - When a context nears its limit, hand off at a clean boundary to a fresh agent with the ledger.
 14. **Spend tokens like money.**
-    - **Do small steps yourself:** one command, one file read, a short edit, a "Done in <sha>" reply.
-    - **Start an agent only for long, independent work,** at most 3 default-tier agents running at a time (smallest-tier fan-out: up to 10) without asking, and only from the main session; queue the rest. A subagent does the work itself without starting agents (`delegating` 1.10). Continue the agent that already holds this context (`delegating`, One run). Stop an agent as soon as its question is settled.
+    - **You decide; subagents do the work.** You plan, brief, make every decision (agents' verdicts are your input), check their citations, and post. Run one-line lookups yourself; every other step goes to a subagent (`delegating`).
+    - **Use the fewest agents that cover the work** (one per loop, one per fan-out angle), at most 3 agents at the session's tier at a time (smallest-tier fan-out: up to 10) without asking, and only from the main session; queue the rest. A subagent does the work itself without starting agents (`delegating` 1.10). Continue the agent that already holds this context (`delegating`, One run). Stop an agent as soon as its question is settled.
     - Group roles that share a loop context in one agent, splitting for context size or independence (`delegating`, One run).
     - **Give agents paths and the question,** never pasted files or long histories, and ask for a short report. Each role gets only what it uses: an executor a brief (1.10), a reviewer its charter and the artifact.
     - **Match the check to the risk.** A short reply gets the fast gate (1.6); a PR body or a proposal gets the full review.
@@ -131,7 +131,6 @@ Run every PR through bug verification, code review and a fresh read on the final
     - **Tests follow the repo's habit.** Where the maintainer removes PR-proving tests ("remove the test right before merging"), remove them unasked, in a final commit once the PR is approved. Where the maintainer keeps regression tests, keep them. Write no tests for message text, comments or dead code. Add at most one permanent e2e assertion per new capability, in an existing test app, and unit specs only for tricky pure algorithms.
     - **Docs:** main usage and one example, plus `llms.txt`; no edge cases, nothing obvious (1.3).
     - **Reuse existing code.** Search before adding a helper, and never claim something is missing without linking the code. In a program of PRs, also search the sibling PRs, open and merged: when one already enforces a rule (a validator, a guard), extend that layer, never add a second check for the same thing elsewhere.
-    - Keep comments to one literally true line about a constraint the code cannot show (`writing`).
     - **Deletions:** every comment, guard or workaround the diff deletes gets one line in the body with the evidence that it's obsolete; otherwise it stays.
     - **A test app imports the package by its name,** never by a source path.
     - **Draft, then ready:** `pull-request` says when; say "ready" once (1.7).

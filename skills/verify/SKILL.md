@@ -12,7 +12,6 @@ description: "Bug verification of a PR (reproduce-only, Loop A in converge): sli
 - **Documented usage on both ends.** The candidate must trace to documented usage on both ends.
 - **A deliberate behavior doesn't count.**
 - **Not worth code.** A finding that fails 1.1.15 gets the disposition "accepted, not worth code" with its one-line reason. It never becomes code to make a pass dry: Loop A converges on real bugs, not on every imaginable edge case.
-- **Dropped candidates are listed.** The verifier lists every candidate it dropped, one line each with the reason.
 
 **When a pass finds bugs:**
 1. Fix the root cause with the smallest diff (`core` 1.1.6 and 1.1.15), with a failing repro first (show it failing on the parent; keep it as a test only under `core` 1.1.16), and pass the phantom gate (`converge`). Re-run the verifier's own repro on the fixed build, and compare its output with the base's.

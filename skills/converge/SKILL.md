@@ -53,7 +53,7 @@ When the work reshapes existing code, or a small change can't be made cleanly be
 
 #### 5. Gates, body and closure
 
-- **You:** run every gate and product lane on the final head; CI is green, or only workflow approval is pending (ready for review, never merge, per `merging`’s CI-limits exception); the PR bodies are true to that head (`mergeworthy:writing`). Where finality ran, its Owner-Safe closure comes last, with the review and guardian evidence attached.
+- **You:** have an execution-tier agent (`delegating`) run every gate and product lane on the final head; CI is green, or only workflow approval is pending (ready for review, never merge, per `merging`’s CI-limits exception); the PR bodies are true to that head (`mergeworthy:writing`). Where finality ran, its Owner-Safe closure comes last, with the review and guardian evidence attached.
 - **The evidence goes in the PR body,** just enough to prove each step ran: one collapsed block per step above, its runs newest first, each with the head it ran on. It says in a few plain sentences what ran and what came of it ("I rated every file and function with its reason and re-rated until nothing worth changing was left"), names a finding that changed the PR, and links the full output in a gist a person can read: first how many passes ran and what each found, then the commits, what stays below the bar and why, then one line per item, grouped by area. Claim only what ran on that head.
 - **After adding the completed runs’ evidence, run `github-threads` 1.6 on the final body draft again.** This posting-only review is separate from the recorded fresh-reader step; capture its verdict for the updated draft.
 - **Done when** every gate exits 0. Write each as `<command> -> exit <code>`, one per line, into a gates log.
@@ -69,7 +69,7 @@ Optional owner recommendations do not block convergence; approval required by th
 - **What they read.** Read the head’s code in full at the brief’s pinned SHAs (`delegating` 1.10). A finality graph (Phase A) is only a navigation index.
 - **A new loop agent** starts, given the last report, past about half its context window. A changed decision packet goes to the running agent.
 - **Commits others push** (a maintainer's) re-open the slices they touch: send them to the loop agents. They are owner code (Authority, below).
-- **Execution:** run routine supporting work yourself or on a smaller subagent (`delegating`); verifiers, reviewers and guardians still run the checks their charters require them to observe personally.
+- **Execution:** run routine supporting work past one-line lookups on an agent a tier below (`delegating`); verifiers, reviewers and guardians still run the checks their charters require them to observe personally.
 
 ### Git and files
 
@@ -158,8 +158,6 @@ Evidence:
 ### PR bodies
 
 Each PR body is part of the deliverable. It is true of the final head, within 1.1.16, and written by `mergeworthy:writing`.
-
-Explain the feature with a code sample, list its user-visible fixes and owner decisions, and include the notes and head-specific evidence (`writing`).
 
 Keep process reports outside outward prose, except the requested PR evidence (`writing`); save working reports in the artifact root.
 

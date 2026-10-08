@@ -5,7 +5,7 @@ description: "The refactor pass on a PR's diff: the pinnacle-split-and-simplify 
 
 # Refactor pass
 
-Have the Loop B agent rate after its review and record its final re-rating (`converge`, step 2). If no independent rater is available, keep the PR draft and record the block (`review`).
+Have the Loop B agent rate after its review and record its final re-rating (`converge`, step 2).
 
 ## The prompt
 

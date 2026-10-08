@@ -5,14 +5,14 @@ description: "Any independent review: who reviews (Codex, else a fresh Claude), 
 
 # Review
 
-**Every independent review picks its reviewer in this order.** That covers the posting gate (1.6), the PR review round below, a standalone review, and the fresh reader of a PR's final head (`converge`). The loop agents run on the session's model.
+**Every independent review picks its reviewer in this order.** That covers the posting gate (1.6), the PR review round below, a standalone review, and the fresh reader of a PR's final head (`converge`). The loop agents, the PR review round included, run a tier below it (`delegating`).
 
 1. **A model from another company than the session's,** since a model misses the bugs it tends to write: Codex for a Claude session, a Claude subagent for a Codex session. Under an orchestrator that spawns other providers' agents (T3 Code's `delegate_task`), start it there, on the highest provider model allowed by `core`’s model authorization limits, so the run is tracked, notifies you and can be cancelled; the prompt names the output file. Elsewhere:
    ```bash
    codex exec -m "$(codex-review-model)" --sandbox danger-full-access --skip-git-repo-check -o <out> "$(cat <prompt file>)" < /dev/null
    ```
    If it fails (out of credits, a rate limit, an error), go to the next reviewer; that failure takes seconds.
-2. **A fresh-context subagent on the session's default model,** with the same prompt, when no other company's model is available. Never a cheaper model.
+2. **A fresh-context subagent on the session's default model,** with the same prompt, when no other company's model is available. Never a cheaper model for the posting gate or the fresh reader.
 
 After the review:
 - Send fixes to the same reviewer and start a fresh one only when the artifact changes beyond them or needs a final cold read (`delegating`, One run).
@@ -21,7 +21,7 @@ After the review:
 
 **The prompt is a file.** It holds the charter: the gate's checks in 1.6, the reviewer charter below, `guardian`'s charter or `refactor`'s prompt. Read the artifact at the brief’s pinned SHAs (`delegating` 1.10), with one sentence on what it claims to do. Give the reviewer facts and questions, never a desired verdict (`delegating` 1.10).
 
-**The reviewer's final message is exactly `CLEAN`, or the findings.** One run may follow several briefs that have their own output (the reviewer charter's verdict, the verifier's count). Then each brief writes to its own output file, and the final message is exactly `CLEAN` only when none of them has a finding.
+**The reviewer's final message is exactly `CLEAN`, or the findings (past 15 lines, in the output file).** One run may follow several briefs that have their own output (the reviewer charter's verdict, the verifier's count). Then each brief writes to its own output file, and the final message is exactly `CLEAN` only when none of them has a finding.
 
 **Behavior is settled by a run, not a reading.** A behavior finding from a reviewer, a bot or a maintainer is a candidate, and so is a reviewer's "this case is correct". Run the case on the head first. If it doesn't reproduce, reply with the output; to a maintainer, add your recommendation (1.1.9). If an earlier verdict says the opposite, argue both ways first. Judge the rest per 1.1.15, and rewrite the real fixes in your own plain words (`writing`, Draft by talking). Never write `CLEAN` yourself.
 

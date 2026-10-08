@@ -78,7 +78,7 @@ The watcher runs independently of any session and only records events (and adds 
 
 1. **Write the draft to the gate’s standard before review** (`core` 1.1.17). Write in `drafts/<name>.md` (never straight into a `gh` command), with the comment it answers in `drafts/<name>.parent.md`.
    - First write the reader's one line (the verdict or the ask) and what they already said.
-   - Write it by `mergeworthy:writing` (open it): its three drafts, voice, budgets and badge.
+   - Write it by `mergeworthy:writing` (open it): its drafts (three only where it says), voice, budgets and badge.
    - Read as a newcomer and explain every term on first use (`writing`, How a good colleague writes).
 2. **Run `post-lint`** with the draft's `--kind` (and `--repo`). It must pass; `gate-pass` re-runs it with the same flags.
 3. **Run the review** (`review`: open it for who reviews) with a prompt file. Fix the draft and log what its writing step missed (`core` 1.1.17). The review checks facts and noise, not word choice:
@@ -92,7 +92,7 @@ The watcher runs independently of any session and only records events (and adds 
    - **Convergence** (design threads): the reply states its author's own position and the design's weakest part; a change of position names the new evidence; every open invariant is either a stated default or a question that only the other side can answer, and the questions are as few as that allows.
    - **Opening:** from the opening alone, state the problem and, for a PR, the change (`writing`); inability to do so is a finding.
    - **Reader:** "you have not seen this thread; list every term or sentence you can't understand", and "say in one line what the reader is asked to decide". If the reviewer cannot identify the decision or decisions the reply requires, or finds a pronoun with two meanings, a term or label not yet seen, a sentence to read twice, or a bold label or fragment standing in for a sentence, that's a finding. It must also read as `mergeworthy:writing` says; a finding there means the draft wasn't written that way, so rewrite it, never patch the wording.
-   - **The result:** capture only the reviewer's final message (`drafts/<name>.review.out`). Fix every finding and re-review until that message is exactly `CLEAN`. Rewrite a finding’s substance in your own plain words (`writing`, Draft by talking).
+   - **The result:** capture only the reviewer's final message (`drafts/<name>.review.out`). Fix every finding and re-review until that message is exactly `CLEAN`.
 4. **Right before posting, re-read every claim against the current head** (`git fetch` first; read a PR's state before describing it). Every referenced commit is pushed (`git ls-remote`). Run `gate-pass <abs path>/drafts/<name>.md <review output>` and post with `--body-file` on that absolute path (`gh api … -F body=@<file>` for API posts).
 5. **Post in the thread where the person wrote.** Log it.
 

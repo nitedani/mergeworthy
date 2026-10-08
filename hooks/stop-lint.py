@@ -111,7 +111,7 @@ if watcher_on and not paused and not child:
 if os.environ.get('MERGEWORTHY_STOP_CHECKIN', 'on') != 'off' and not child:
     print("Before you stop, check once: did the user ask you to stop or pause? Then stop. Otherwise: is there work you said "
           "is next, or that the critical path needs, that you could start now? Is anything waiting on you (a reply owed, "
-          "red CI, a finished agent's result to read, a dependency that landed)? If so, do it now. If nothing is, stop.",
+          "red CI, a finished agent's result to read, a dependency that landed)? If so, do it now, or brief a subagent for it. If nothing is, stop.",
           file=sys.stderr)
     sys.exit(2)
 sys.exit(0)
