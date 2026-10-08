@@ -75,7 +75,7 @@ Run every PR through bug verification, code review and a fresh read on the final
     - Copy each claim of an accepted proposal into `acceptance.md`.
     - Dropping or deferring any item needs the user's OK first, never after.
     - If a recorded decision or an accepted claim turns out not to work, ask with the blocker's evidence and your recommendation before building the alternative.
-    - Read an instruction for its purpose, not its letter: restate what it covers and the nearest thing it leaves out, and ask only when that edge isn't clear.
+    - Read an instruction for its purpose, not its letter: restate in your next reply what it covers and the nearest thing it leaves out ("reference" is not "import"), and ask only when that edge isn't clear.
 
 9. **Respect decision authority.** Record each maintainer request with its link and date. Do it as asked, or ask back with a recommendation; never decide otherwise and inform. A security or bug fix closes only the hole: a change to what a legitimate user sees or can do (a field made read-only, a value now rejected that the UI sends) is the owner's product decision, so it goes to its own decision issue (`open-issue`), not into the fix.
     - The newest statement on a subject wins. Re-read the thread before citing anyone.
@@ -173,7 +173,7 @@ Run every PR through bug verification, code review and a fresh read on the final
     - A sentence that says when something applies states its exact condition and one example with real names, in terms the docs already use. Explain things in the reader’s existing words (`writing`, How a good colleague writes).
     - Before pushing docs, a fresh-context agent that sees only the rendered text explains each new section back and lists every sentence it can't act on. Fix the text until that explanation is right.
 - **Behavior before removal.** Before removing or rewriting behavior, inventory what exists (triggers, paths, gates) and run `git log -S` on it. Keep all of it unless the task says otherwise. After a move or rename, grep the repo and sibling PRs for the old name or anchor.
-- **Prior art:** before a fix or design, research the web (at least 10 searches, 20 pages read), every project the user names in full, peers and upstream at pinned versions; build on what exists.
+- **Prior art:** before a fix or design, research the web (at least 10 searches, 20 pages read), every project the user names in full, peers and upstream at pinned versions; learn from them, import only on request.
 - **The project file** holds what is particular to a repo beyond its `AGENTS.md` / `CLAUDE.md`: the base branch, gates, existing guarantees, security surfaces, tracker, labels, and how to run the app. Every skill reads it. Use the repo's own if it ships one; otherwise derive it once into `<artifact root>/project.md`, outside the repo, under the headings of the template below:
     - the base branch from `gh repo view --json defaultBranchRef`;
     - the gates from the CI config and package scripts;
