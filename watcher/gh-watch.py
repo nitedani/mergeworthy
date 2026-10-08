@@ -170,7 +170,7 @@ def waiting_keys():
     for l in (l.strip() for l in open(path)):
         if not l or l.startswith('#') or l.lower().startswith('done:') or ' -> ' not in l:
             continue
-        m = re.match(r'(\S+?)#(\d+)', l.split(' -> ')[0].strip())
+        m = re.match(r'([\w.-]+/[\w.-]+)#(\d+)', l.split(' -> ')[0].strip())  # only a PR key; other waits stay unwatched
         if m:
             yield l, f"{m[1]}#{m[2]}"
 
