@@ -29,14 +29,30 @@ function git(args, opts = {}) {
   return r.status === 0 ? r.stdout : ''
 }
 
+// the path of a `--- a/x` or `+++ b/x` line: Git quotes paths with special characters (C-style escapes) and ends paths with spaces by a tab
+function patchPath(line) {
+  let p = line.slice(4)
+  if (p === '/dev/null') return null
+  if (p.startsWith('"')) {
+    const bytes = []
+    for (let i = 1; i < p.length && p[i] !== '"'; i++) {
+      if (p[i] !== '\\') bytes.push(...Buffer.from(p[i]))
+      else if (/[0-7]/.test(p[i + 1])) (bytes.push(parseInt(p.slice(i + 1, i + 4), 8)), (i += 3))
+      else bytes.push(...Buffer.from(({ t: '\t', n: '\n', r: '\r', a: '\x07', b: '\b', f: '\f', v: '\v' })[p[i + 1]] ?? p[i + 1])), i++
+    }
+    p = Buffer.from(bytes).toString('utf8')
+  } else if (p.endsWith('\t')) p = p.slice(0, -1)
+  return p.slice(2)
+}
+
 function parseDiff(text) {
   const files = []
   let cur = null
   for (const line of text.split('\n')) {
     if (line.startsWith('diff --git ')) files.push((cur = { oldPath: null, newPath: null, ranges: [] }))
     else if (!cur) continue
-    else if (line.startsWith('--- ')) cur.oldPath = line === '--- /dev/null' ? null : line.slice(6)
-    else if (line.startsWith('+++ ')) cur.newPath = line === '+++ /dev/null' ? null : line.slice(6)
+    else if (line.startsWith('--- ')) cur.oldPath = patchPath(line)
+    else if (line.startsWith('+++ ')) cur.newPath = patchPath(line)
     else if (line.startsWith('@@')) {
       const m = /\+(\d+)(?:,(\d+))?/.exec(line)
       const start = +m[1]
@@ -98,7 +114,8 @@ function main() {
     return ''
   }
   function meaningful(n, sf) {
-    const own = (name) => ({ name, nameNode: n.name })
+    // an unnamed default export is referenced at its `default` keyword
+    const own = (name) => ({ name, nameNode: n.name || (n.modifiers || []).find((m) => m.kind === K.DefaultKeyword) || n })
     switch (n.kind) {
       case K.FunctionDeclaration:
         return { kind: 'function', ...own(n.name ? n.name.text : 'default') }
@@ -129,29 +146,27 @@ function main() {
     }
     return null
   }
+  // per changed range, the innermost declarations, plus an enclosing one when some of its own changed lines lie outside them
   function findDecls(sf, ranges) {
-    const found = []
     const lineOf = (pos) => sf.getLineAndCharacterOfPosition(pos).line + 1
-    const hit = (n) => {
-      const a = lineOf(n.getStart(sf))
-      const b = lineOf(n.getEnd())
-      return ranges.some(([x, y]) => a <= y && b >= x)
-    }
-    const visit = (n) => {
-      if (!hit(n)) return false
-      const m = meaningful(n, sf)
-      let deeper = false
-      ts.forEachChild(n, (c) => {
-        if (visit(c)) deeper = true
-      })
-      if (m && !deeper) {
-        found.push({ ...m, node: n })
-        return true
+    const found = new Map()
+    for (const [x, y] of ranges) {
+      const visit = (n) => {
+        const a = lineOf(n.getStart(sf))
+        const b = lineOf(n.getEnd())
+        if (a > y || b < x) return []
+        const nested = []
+        ts.forEachChild(n, (c) => nested.push(...visit(c)))
+        const m = meaningful(n, sf)
+        if (!m) return nested
+        const decl = { ...m, node: n, a, b }
+        if (!nested.length) return [decl]
+        for (let l = Math.max(a, x); l <= Math.min(b, y); l++) if (!nested.some((d) => d.a <= l && l <= d.b)) return [...nested, decl]
+        return nested
       }
-      return deeper
+      for (const d of visit(sf)) found.set(d.node, d)
     }
-    visit(sf)
-    return found
+    return [...found.values()].sort((p, q) => p.node.getStart(sf) - q.node.getStart(sf))
   }
 
   // ----- one language service per tsconfig -----
@@ -203,7 +218,7 @@ function main() {
       const names = new Set()
       for (const e of group.entries) {
         const text = fs.readFileSync(path.join(root, e.newPath), 'utf8')
-        for (const d of findDecls(parseText(e.newPath, text), e.ranges)) names.add(d.name.split('.').pop())
+        for (const d of findDecls(parseText(e.newPath, text), e.ranges)) if (d.name !== 'default') names.add(d.name.split('.').pop())
       }
       const extra = new Set()
       for (const n of [...names].slice(0, 50)) for (const h of mentions(n)) if (CODE.test(h.file)) extra.add(path.join(root, h.file))
@@ -334,7 +349,8 @@ function main() {
       if (shown >= maxRefs) break
       sec.push(`- ${TEST.test(rel(f)) ? '[test] ' : ''}${rel(f)}`)
       for (const r of byFile.get(f).sort((a, b) => a.l - b.l)) {
-        if (shown++ >= maxRefs) break
+        if (shown >= maxRefs) break
+        shown++
         sec.push(`  - ${rel(f)}:${r.l + 1} in \`${r.who}\`: \`${r.text.replace(/`/g, "'")}\``)
       }
     }
@@ -342,10 +358,10 @@ function main() {
     // mentions by name in code the language service did not resolve (another tsconfig, a dynamic path); a member's name is too common to grep
     const name = d.name
     if (!name.includes('.') && name.length >= 4 && !GENERIC.has(name)) {
-      const resolved = new Set([...byFile.keys()].map(rel))
+      const resolved = new Set([...byFile].flatMap(([f, rs]) => rs.map((r) => `${rel(f)}:${r.l + 1}`)))
       const others = []
       for (const h of mentions(name)) {
-        if (!CODE.test(h.file) || resolved.has(h.file) || (h.file === rel(file) && h.l === line + 1)) continue
+        if (!CODE.test(h.file) || resolved.has(`${h.file}:${h.l}`) || (h.file === rel(file) && h.l === line + 1)) continue
         if (importOnly(headFile(h.file), h.l - 1, name)) continue
         others.push({ file: h.file, l: h.l, text: clip(h.text.trim()) })
       }
@@ -388,7 +404,7 @@ function main() {
 
   let symbols = 0
   const declared = []
-  for (const e of changed) for (const d of findDecls(parseText(e.newPath, fs.readFileSync(path.join(root, e.newPath), 'utf8')), e.ranges)) declared.push(d.name.split('.').pop())
+  for (const e of changed) for (const d of findDecls(parseText(e.newPath, fs.readFileSync(path.join(root, e.newPath), 'utf8')), e.ranges)) if (d.name !== 'default') declared.push(d.name.split('.').pop())
   prefetchMentions(declared)
   for (const group of groups.values()) {
     const ls = buildLS(group)

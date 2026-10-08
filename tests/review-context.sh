@@ -70,6 +70,69 @@ check "pkg2/use.ts is an other mention of twice" yes "$(section 'twice ' | sed -
 check "f (under 4 characters) gets no other mentions" no "$(section 'f (function)' | grep -q 'Other mentions' && echo yes || echo no)"
 check "--max-refs 1 caps the callers" yes "$(OUT=$("$R/bin/review-context" "$BASE" --max-refs 1); has '… 1 more')"
 
+# one fixture per case: `proj NAME` makes a repo with a tsconfig; `commit` commits all; `OUT=$(review NAME)` runs review-context on its last commit
+proj() { mkdir -p "$T/$1/node_modules"; cd "$T/$1"; ln -s "$TSDIR" node_modules/typescript; echo node_modules > .gitignore
+  echo '{"compilerOptions":{"target":"ES2020","module":"ESNext","moduleResolution":"Bundler","strict":true},"include":["*.ts"]}' > tsconfig.json; }
+commit() { G add -A && G commit -qm "$1"; }
+review() { "$R/bin/review-context" "${@:-HEAD~1}" 2>&1; }
+
+proj nested; G init -q
+printf 'export function outer(v: number): number {\n  const inner = (x: number) => x + 1\n  return inner(v) + 10\n}\n' > a.ts
+printf "import { outer } from './a'\nexport const r = outer(1)\n" > b.ts
+commit base
+printf 'export function outer(v: number): number {\n  const inner = (x: number) => x + 2\n  return inner(v) + 20\n}\n' > a.ts
+commit change; OUT=$(review)
+check "nested change: the enclosing function and its caller are listed" yes "$(section 'outer ' | grep -q 'b\.ts:2' && echo yes || echo no)"
+check "nested change: the nested declaration is listed" yes "$(has '^### inner ')"
+printf 'export function outer(v: number): number {\n  const inner = (x: number) => x + 3\n  return inner(v) + 20\n}\n' > a.ts
+commit nestedonly; OUT=$(review)
+check "nested-only change: the enclosing function is not listed" no "$(has '^### outer ')"
+
+proj anon; G init -q
+printf 'export default function (v: number): number {\n  return v + 1\n}\n' > a.ts
+printf "import transform from './a'\nexport const r = transform(1)\n" > b.ts
+commit base
+printf 'export default function (v: number): number {\n  return v + 2\n}\n' > a.ts
+commit change; OUT=$(review)
+check "anonymous default export: no failure" no "$(has 'context failed')"
+check "anonymous default export: the caller under another name is listed" yes "$(section 'default ' | grep -q 'b\.ts:2' && echo yes || echo no)"
+printf 'export default class {\n  m() { return 1 }\n}\n' > a.ts
+printf "import K from './a'\nexport const k = new K()\n" > b.ts
+commit class1
+printf 'export default class /* changed */ {\n  m() { return 1 }\n}\n' > a.ts
+commit class; OUT=$(review)
+check "anonymous default class: no failure" no "$(has 'context failed')"
+check "anonymous default class: the caller under another name is listed" yes "$(section 'default ' | grep -q 'b\.ts:2' && echo yes || echo no)"
+
+proj spaces; G init -q
+printf 'export function target(): number {\n  return 1\n}\n' > 'some file.ts'
+printf 'export function other(): number {\n  return 1\n}\n' > 'q"uote.ts'
+printf "import { target } from './some file'\nexport const r = target()\n" > b.ts
+commit base
+printf 'export function target(): number {\n  return 2\n}\n' > 'some file.ts'
+printf 'export function other(): number {\n  return 2\n}\n' > 'q"uote.ts'
+commit change; OUT=$(review)
+check "path with a space: its symbol and caller are listed" yes "$(section 'target ' | grep -q 'b\.ts:2' && echo yes || echo no)"
+check "quoted path: its symbol is listed" yes "$(has '^### other ')"
+
+proj mixed; G init -q
+printf 'export function target(v: number): number {\n  return v\n}\n' > a.ts
+printf "import { target } from './a'\ndeclare const runtime: any\nexport const r = target(1)\nexport const s = runtime.target(2)\n" > b.ts
+commit base
+printf 'export function target(v: number): number {\n  return v + 1\n}\n' > a.ts
+commit change; OUT=$(review)
+check "a resolved reference leaves the file's other unresolved mention" yes "$(section 'target ' | sed -n '/^\*\*Other mentions/,$p' | grep -q 'b\.ts:4' && echo yes || echo no)"
+check "a resolved line is not an unresolved mention" no "$(section 'target ' | sed -n '/^\*\*Other mentions/,$p' | grep -q 'b\.ts:3' && echo yes || echo no)"
+
+proj cap; G init -q
+printf 'export function target(v: number): number {\n  return v\n}\n' > a.ts
+printf "import { target } from './a'\nexport const r = [target(1), target(2), target(3)]\n" | sed 's/, /,\n  /g' > b.ts
+commit base
+printf 'export function target(v: number): number {\n  return v + 1\n}\n' > a.ts
+commit change; OUT=$(review HEAD~1 --max-refs 1)
+check "--max-refs 1 counts every hidden caller" yes "$(has '… 2 more')"
+cd "$P"
+
 # a run over its time limit still ends in one line (the heap cap shares this path; no cheap fixture runs out of memory)
 OUT=$("$R/bin/review-context" "$BASE" --timeout 0.001 2>&1); code=$?
 check "time limit: exit code" 0 "$code"
