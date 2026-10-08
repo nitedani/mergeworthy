@@ -66,7 +66,9 @@ The watcher runs independently of any session and only records events (and adds 
 
 **After a burst of maintainer comments,** check the PR: no comment is the last word without a change, an answer or a reaction.
 
-**The wait ping.** The watcher emits `WAIT PING DUE` after 3 hours of silence on your last comment, and you post it then. Post one when a proposal or question has waited 3 hours or more and the wait isn't obvious to them (buried in a thread, several open at once):
+**Nothing stalls on you.** A session that drives threads schedules a check every 3 hours (T3 Code: `schedule_task`, bound to its thread): each open item's owner; yours, do it now; a landed dependency, run its step; another's, past 3 hours since your last comment, the wait ping.
+
+**The wait ping.** The watcher emits `WAIT PING DUE` and owes it in `replies-owed.md` after 3 hours of silence on your last comment; post it then, every time:
 - one @-mention on that PR with the decisions you need, each with your recommendation and link;
 - once per thread per wait, never while they're mid-review.
 

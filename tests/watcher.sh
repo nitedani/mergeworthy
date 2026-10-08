@@ -133,9 +133,10 @@ def run(l):
     with contextlib.redirect_stdout(buf): m.emit_wait_ping(state, "o/r#5", l, [])
     return buf.getvalue().count("### WAIT PING DUE o/r#5: no reply for ")
 out = [run(last("me", 20)), run(last("me", 20)), run(last("them", 1, 6)), run(last("me", 1, 7)), run(last("me", 20, 8, False)), run(last("me", 20, 9))]
-print(*out)
+owed = open(os.path.join(m.HERE, "replies-owed.md")).read() if os.path.exists(os.path.join(m.HERE, "replies-owed.md")) else ""
+print(*out, owed.count(" wait-ping "))
 ')
-check "wait ping: emitted once, not repeated, not after their reply, not under 3 h, not on a closed thread, again for a new comment" "1 0 0 0 0 1" "$got"
+check "wait ping: emitted once, not repeated, not after their reply, not under 3 h, not on a closed thread, again for a new comment; each owed" "1 0 0 0 0 1 2" "$got"
 
 # The Monitor command gh-watch-start prints delivers an event within 2 s, and only lines that start an event
 M="$T/mon"; mkdir -p "$M"; : > "$M/events.log"

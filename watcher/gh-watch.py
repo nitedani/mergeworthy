@@ -359,6 +359,7 @@ def emit_wait_ping(state, key, last, events):
         return
     done[:] = [c['databaseId']]  # only the latest comment matters
     emit(f"### WAIT PING DUE {key}: no reply for {int(hours)} h since {c['url']}; nudge whoever it waits on with the open question (mergeworthy:github-threads)")
+    append_owed(f"{key} wait-ping {c['databaseId']} since {c['url']}: no reply for {int(hours)} h; nudge whoever it waits on")  # the Stop hook holds the turn until it's done
 
 
 def scan(state, only=None, threads=None):
