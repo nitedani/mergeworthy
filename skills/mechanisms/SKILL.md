@@ -42,6 +42,14 @@ These scripts enforce the rules that failed as text alone.
 - It records the pass as the draft's sha256 in `<draft>.gate`.
 - A draft that promises work ("I'll", "follow-up PR") first needs a `PROMISED … (<draft name>)` line in `proposals-open.md`.
 
+### `review-context`
+
+`review-context <base-ref> [--max-refs N]` prints, for the symbols a diff changes, who calls them, what they call and which names the diff removes. Run it inside the repo at the head under review and paste its output into the reviewer's prompt; it costs no model tokens.
+- For each changed function, method, class, arrow function, exported const, interface or type it lists the callers grouped by file (test files tagged `[test]`, capped at `--max-refs`, default 15) and the in-repo functions it calls.
+- For each top-level name the diff removes it lists the remaining `git grep` hits at HEAD (dangling callers) under `### removed: name`.
+- It loads TypeScript from the target repo and builds one language service per tsconfig; a small diff on vike takes about 3 s.
+- It never blocks a review: on any failure it prints one line saying why context is missing and exits 0. Output is capped at about 400 lines.
+
 ### The finality trigger (`pre-bash-guard`, `post-bash-register`)
 
 `post-bash-register` counts each posted `--kind proposal` draft per thread in `~/.claude/proposal-rounds.txt`. Before the third proposal, refresh the thread map with its invariants (`finality`, When to run it).

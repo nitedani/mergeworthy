@@ -1,0 +1,428 @@
+#!/usr/bin/env node
+// review-context <base-ref> [--max-refs N]: for the symbols a diff changes, prints their callers, callees and the names it removes.
+// Run inside a git repo whose HEAD is the head under review. Prints markdown; never blocks: on any failure it prints one line and exits 0.
+// TypeScript comes from the target repo (not from mergeworthy); the language service is built once per tsconfig.
+'use strict'
+import { spawnSync } from 'node:child_process'
+import fs from 'node:fs'
+import path from 'node:path'
+import { createRequire } from 'node:module'
+
+const CODE = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/
+const SKIP = /(^|\/)(node_modules|dist)\//
+const TEST = /(^|\/)(tests?|__tests__|e2e)\/|(^|[./_-])(spec|e2e)([./_-]|$)|\.test\./
+const MAX_LINES = 400
+const MAX_CALLS = 15
+const MAX_HITS = 8
+const MAX_ROOTS = 2000
+const MAX_EXTRA_ROOTS = 200
+
+class Fail extends Error {}
+
+let root = process.cwd()
+function git(args, opts = {}) {
+  const r = spawnSync('git', ['-c', 'core.quotepath=off', ...args], { cwd: root, encoding: 'utf8', maxBuffer: 1 << 28 })
+  if (r.status !== 0 && !opts.okFail) throw new Fail(`git ${args[0]} failed: ${(r.stderr || '').trim().split('\n')[0]}`)
+  return r.status === 0 ? r.stdout : ''
+}
+
+function parseDiff(text) {
+  const files = []
+  let cur = null
+  for (const line of text.split('\n')) {
+    if (line.startsWith('diff --git ')) files.push((cur = { oldPath: null, newPath: null, ranges: [] }))
+    else if (!cur) continue
+    else if (line.startsWith('--- ')) cur.oldPath = line === '--- /dev/null' ? null : line.slice(6)
+    else if (line.startsWith('+++ ')) cur.newPath = line === '+++ /dev/null' ? null : line.slice(6)
+    else if (line.startsWith('@@')) {
+      const m = /\+(\d+)(?:,(\d+))?/.exec(line)
+      const start = +m[1]
+      const count = m[2] === undefined ? 1 : +m[2]
+      cur.ranges.push(count === 0 ? [start, start + 1] : [start, start + count - 1])
+    }
+  }
+  return files.filter((f) => [f.oldPath, f.newPath].some((p) => p && CODE.test(p) && !SKIP.test(p)))
+}
+
+function loadTS(dirs) {
+  for (const dir of dirs) {
+    try {
+      return createRequire(path.join(dir, 'noop.js'))('typescript')
+    } catch {}
+  }
+  return null
+}
+
+const rel = (f) => path.relative(root, f)
+const inRepo = (f) => f.startsWith(root + path.sep) && !SKIP.test(rel(f))
+const lineText = (sf, line0) => {
+  const starts = sf.getLineStarts()
+  return sf.text.slice(starts[line0], line0 + 1 < starts.length ? starts[line0 + 1] : sf.text.length).trim()
+}
+const clip = (s, n = 160) => (s.length > n ? s.slice(0, n - 1) + '…' : s)
+
+function main() {
+  const argv = process.argv.slice(2)
+  let base
+  let maxRefs = 15
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--max-refs') maxRefs = parseInt(argv[++i], 10) || 15
+    else if (!base) base = argv[i]
+  }
+  if (!base) throw new Fail('usage: review-context <base-ref> [--max-refs N]')
+  root = fs.realpathSync(git(['rev-parse', '--show-toplevel']).trim())
+  const head = git(['rev-parse', '--short=12', 'HEAD']).trim()
+  const mergeBase = git(['merge-base', base, 'HEAD'], { okFail: true }).trim() || base
+  const entries = parseDiff(git(['diff', '-U0', '--no-color', '--no-ext-diff', '--no-renames', `${base}...HEAD`]))
+  if (!entries.length) return [`# review-context`, `base ${base} · head ${head} · no changed TypeScript or JavaScript files`]
+
+  const changed = entries.filter((e) => e.newPath && CODE.test(e.newPath) && !SKIP.test(e.newPath))
+  const ts = loadTS([...new Set(changed.map((e) => path.dirname(path.join(root, e.newPath))))].concat(root))
+  if (!ts) throw new Fail(`no TypeScript found in ${root}`)
+
+  const out = []
+  const lang = ts.ScriptTarget.Latest
+  const parseText = (name, text) => ts.createSourceFile(name, text, lang, true)
+
+  // ----- changed declarations -----
+  const K = ts.SyntaxKind
+  const isFn = (n) => n && (n.kind === K.ArrowFunction || n.kind === K.FunctionExpression)
+  const className = (n) => {
+    for (let p = n.parent; p; p = p.parent) if ((p.kind === K.ClassDeclaration || p.kind === K.ClassExpression) && p.name) return p.name.text
+    return ''
+  }
+  function meaningful(n, sf) {
+    const own = (name) => ({ name, nameNode: n.name })
+    switch (n.kind) {
+      case K.FunctionDeclaration:
+        return { kind: 'function', ...own(n.name ? n.name.text : 'default') }
+      case K.MethodDeclaration:
+      case K.GetAccessor:
+      case K.SetAccessor:
+        return { kind: 'method', ...own((className(n) ? className(n) + '.' : '') + n.name.getText(sf)) }
+      case K.Constructor:
+        return { kind: 'method', name: (className(n) || 'class') + '.constructor', nameNode: n.getChildren(sf).find((c) => c.kind === K.ConstructorKeyword) || n }
+      case K.ClassDeclaration:
+        return { kind: 'class', ...own(n.name ? n.name.text : 'default') }
+      case K.InterfaceDeclaration:
+        return { kind: 'interface', ...own(n.name.text) }
+      case K.TypeAliasDeclaration:
+        return { kind: 'type', ...own(n.name.text) }
+      case K.EnumDeclaration:
+        return { kind: 'enum', ...own(n.name.text) }
+      case K.PropertyDeclaration:
+        if (isFn(n.initializer) && n.name.kind === K.Identifier) return { kind: 'method', ...own((className(n) ? className(n) + '.' : '') + n.name.text) }
+        return null
+      case K.VariableDeclaration: {
+        if (n.name.kind !== K.Identifier) return null
+        if (isFn(n.initializer)) return { kind: n.initializer.kind === K.ArrowFunction ? 'arrow function' : 'function', ...own(n.name.text) }
+        const stmt = n.parent && n.parent.parent
+        const exported = stmt && stmt.kind === K.VariableStatement && stmt.parent.kind === K.SourceFile && (stmt.modifiers || []).some((m) => m.kind === K.ExportKeyword)
+        return exported ? { kind: 'const', ...own(n.name.text) } : null
+      }
+    }
+    return null
+  }
+  function findDecls(sf, ranges) {
+    const found = []
+    const lineOf = (pos) => sf.getLineAndCharacterOfPosition(pos).line + 1
+    const hit = (n) => {
+      const a = lineOf(n.getStart(sf))
+      const b = lineOf(n.getEnd())
+      return ranges.some(([x, y]) => a <= y && b >= x)
+    }
+    const visit = (n) => {
+      if (!hit(n)) return false
+      const m = meaningful(n, sf)
+      let deeper = false
+      ts.forEachChild(n, (c) => {
+        if (visit(c)) deeper = true
+      })
+      if (m && !deeper) {
+        found.push({ ...m, node: n })
+        return true
+      }
+      return deeper
+    }
+    visit(sf)
+    return found
+  }
+
+  // ----- one language service per tsconfig -----
+  const readConfig = (configPath) => {
+    const cfg = ts.readConfigFile(configPath, ts.sys.readFile)
+    if (cfg.error) return null
+    return ts.parseJsonConfigFileContent(cfg.config, ts.sys, path.dirname(configPath), undefined, configPath)
+  }
+  const configFor = (abs) => {
+    const found = ts.findConfigFile(path.dirname(abs), ts.sys.fileExists)
+    if (!found || !found.startsWith(root + path.sep)) return null
+    const parsed = readConfig(found)
+    if (!parsed) return null
+    if (parsed.fileNames.includes(abs) || !parsed.projectReferences || !parsed.projectReferences.length) return { configPath: found, parsed }
+    for (const ref of parsed.projectReferences) {
+      const p = fs.existsSync(ref.path) && fs.statSync(ref.path).isDirectory() ? path.join(ref.path, 'tsconfig.json') : ref.path
+      const sub = fs.existsSync(p) ? readConfig(p) : null
+      if (sub && sub.fileNames.includes(abs)) return { configPath: p, parsed: sub }
+    }
+    return { configPath: found, parsed }
+  }
+  const groups = new Map()
+  for (const e of changed) {
+    const abs = path.join(root, e.newPath)
+    const c = configFor(abs) || { configPath: '(none)', parsed: null }
+    if (!groups.has(c.configPath)) groups.set(c.configPath, { ...c, entries: [] })
+    groups.get(c.configPath).entries.push(e)
+  }
+
+  const lsList = []
+  function buildLS(group) {
+    const abs = group.entries.map((e) => path.join(root, e.newPath))
+    let rootNames
+    let options
+    if (group.parsed) {
+      rootNames = [...group.parsed.fileNames]
+      options = group.parsed.options
+    } else {
+      const all = git(['ls-files']).split('\n').filter((f) => CODE.test(f) && !SKIP.test(f)).slice(0, MAX_ROOTS).map((f) => path.join(root, f))
+      rootNames = all
+      options = { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.ESNext, moduleResolution: ts.ModuleResolutionKind.Bundler || ts.ModuleResolutionKind.Node10 || 2, jsx: ts.JsxEmit.Preserve, esModuleInterop: true }
+    }
+    options = { ...options, allowJs: true, noEmit: true, skipLibCheck: true, incremental: false, composite: false, declaration: false, tsBuildInfoFile: undefined }
+    const have = new Set(rootNames)
+    for (const f of abs) if (!have.has(f)) (rootNames.push(f), have.add(f))
+    // files outside the config's include (tests, scripts) that mention a changed name still count as callers
+    if (group.parsed) {
+      const names = new Set()
+      for (const e of group.entries) {
+        const text = fs.readFileSync(path.join(root, e.newPath), 'utf8')
+        for (const d of findDecls(parseText(e.newPath, text), e.ranges)) names.add(d.name.split('.').pop())
+      }
+      if (names.size) {
+        const args = ['grep', '-lIwF']
+        for (const n of [...names].slice(0, 50)) args.push('-e', n)
+        const extra = git(args, { okFail: true }).split('\n').filter((f) => CODE.test(f) && !SKIP.test(f)).map((f) => path.join(root, f))
+        for (const f of extra.filter((f) => !have.has(f)).slice(0, MAX_EXTRA_ROOTS)) (rootNames.push(f), have.add(f))
+      }
+    }
+    const host = {
+      getCompilationSettings: () => options,
+      getScriptFileNames: () => rootNames,
+      getScriptVersion: () => '1',
+      getScriptSnapshot: (f) => (ts.sys.fileExists(f) ? ts.ScriptSnapshot.fromString(ts.sys.readFile(f)) : undefined),
+      getCurrentDirectory: () => path.dirname(group.configPath === '(none)' ? root + '/x' : group.configPath),
+      getDefaultLibFileName: (o) => ts.getDefaultLibFilePath(o),
+      fileExists: ts.sys.fileExists,
+      readFile: ts.sys.readFile,
+      readDirectory: ts.sys.readDirectory,
+      directoryExists: ts.sys.directoryExists,
+      getDirectories: ts.sys.getDirectories,
+      realpath: ts.sys.realpath,
+    }
+    const ls = ts.createLanguageService(host, ts.createDocumentRegistry())
+    lsList.push(ls)
+    return ls
+  }
+
+  // ----- per-symbol context -----
+  function nodeAt(sf, pos) {
+    let cur = sf
+    for (;;) {
+      let next
+      ts.forEachChild(cur, (c) => {
+        if (!next && c.getStart(sf) <= pos && pos < c.getEnd()) next = c
+      })
+      if (!next) return cur
+      cur = next
+    }
+  }
+  function enclosingName(n) {
+    for (let p = n.parent; p; p = p.parent) {
+      switch (p.kind) {
+        case K.FunctionDeclaration:
+        case K.MethodDeclaration:
+        case K.GetAccessor:
+        case K.SetAccessor:
+          if (p.name) return (className(p) && p.kind !== K.FunctionDeclaration ? className(p) + '.' : '') + p.name.getText()
+          break
+        case K.Constructor:
+          return (className(p) || 'class') + '.constructor'
+        case K.ArrowFunction:
+        case K.FunctionExpression:
+          if (p.parent && [K.VariableDeclaration, K.PropertyAssignment, K.PropertyDeclaration].includes(p.parent.kind) && p.parent.name) return p.parent.name.getText()
+          break
+      }
+    }
+    return '(top level)'
+  }
+  const isImport = (n) => {
+    for (let p = n; p; p = p.parent) if ([K.ImportSpecifier, K.ImportClause, K.NamespaceImport, K.ImportEqualsDeclaration, K.ImportDeclaration].includes(p.kind)) return true
+    return false
+  }
+
+  function symbolSection(ls, program, d, sf, file) {
+    const sec = []
+    const line = sf.getLineAndCharacterOfPosition(d.node.getStart(sf)).line
+    sec.push(`### ${d.name} (${d.kind}) — ${rel(file)}:${line + 1}`)
+    sec.push('`' + clip(lineText(sf, line), 200).replace(/`/g, "'") + '`')
+    // callers
+    const seen = new Set()
+    const byFile = new Map()
+    let total = 0
+    const pos = d.nameNode.getStart(sf)
+    for (const rs of ls.findReferences(file, pos) || []) {
+      for (const r of rs.references) {
+        const key = r.fileName + ':' + r.textSpan.start
+        if (r.isDefinition || seen.has(key) || !inRepo(r.fileName)) continue
+        seen.add(key)
+        const rsf = program.getSourceFile(r.fileName)
+        if (!rsf) continue
+        const n = nodeAt(rsf, r.textSpan.start)
+        if (isImport(n) || (r.fileName === file && n.parent && n.parent.kind === K.ExportSpecifier)) continue
+        const l = rsf.getLineAndCharacterOfPosition(r.textSpan.start).line
+        if (!byFile.has(r.fileName)) byFile.set(r.fileName, [])
+        byFile.get(r.fileName).push({ l, text: clip(lineText(rsf, l)), who: enclosingName(n) })
+        total++
+      }
+    }
+    sec.push('**Callers / references:**')
+    if (!total) sec.push('- none found')
+    const files = [...byFile.keys()].sort((a, b) => (TEST.test(rel(a)) - TEST.test(rel(b))) || a.localeCompare(b))
+    let shown = 0
+    for (const f of files) {
+      if (shown >= maxRefs) break
+      sec.push(`- ${TEST.test(rel(f)) ? '[test] ' : ''}${rel(f)}`)
+      for (const r of byFile.get(f).sort((a, b) => a.l - b.l)) {
+        if (shown++ >= maxRefs) break
+        sec.push(`  - ${rel(f)}:${r.l + 1} in \`${r.who}\`: \`${r.text.replace(/`/g, "'")}\``)
+      }
+    }
+    if (total > shown) sec.push(`- … ${total - shown} more`)
+    // callees
+    if (d.kind !== 'interface' && d.kind !== 'type') {
+      const calls = new Map()
+      const start = d.node.getStart(sf)
+      const end = d.node.getEnd()
+      const walk = (n) => {
+        if (calls.size >= MAX_CALLS) return
+        if (n.kind === K.CallExpression || n.kind === K.NewExpression) {
+          let t = n.expression
+          if (t.kind === K.PropertyAccessExpression) t = t.name
+          if (t.kind === K.Identifier) {
+            for (const def of ls.getDefinitionAtPosition(file, t.getStart(sf)) || []) {
+              if (!inRepo(def.fileName) || (def.fileName === file && def.textSpan.start >= start && def.textSpan.start < end)) continue
+              const dsf = program.getSourceFile(def.fileName)
+              if (!dsf) continue
+              const nm = (def.containerName && !/^["']/.test(def.containerName) ? def.containerName + '.' : '') + def.name
+              const loc = `${rel(def.fileName)}:${dsf.getLineAndCharacterOfPosition(def.textSpan.start).line + 1}`
+              calls.set(nm + ' ' + loc, `${nm} — ${loc}`)
+            }
+          }
+        }
+        ts.forEachChild(n, walk)
+      }
+      walk(d.node)
+      sec.push('**Calls:**')
+      if (!calls.size) sec.push('- none in the repo')
+      for (const c of [...calls.values()].slice(0, MAX_CALLS)) sec.push(`- ${c}`)
+    }
+    return sec
+  }
+
+  let symbols = 0
+  for (const group of groups.values()) {
+    const ls = buildLS(group)
+    const program = ls.getProgram()
+    for (const e of group.entries) {
+      const file = path.join(root, e.newPath)
+      const sf = program.getSourceFile(file)
+      if (!sf) {
+        out.push(`### ${e.newPath}`, '- not part of the TypeScript program (not covered by tsconfig); no context')
+        continue
+      }
+      for (const d of findDecls(sf, e.ranges)) {
+        symbols++
+        try {
+          out.push(...symbolSection(ls, program, d, sf, file))
+        } catch (err) {
+          out.push(`### ${d.name} (${d.kind})`, `- context failed: ${String(err.message || err).split('\n')[0]}`)
+        }
+      }
+    }
+  }
+
+  // ----- removed names -----
+  const topNames = (sf) => {
+    const names = new Set()
+    const bind = (b) => {
+      if (b.kind === K.Identifier) names.add(b.text)
+      else for (const el of b.elements || []) if (el.name) bind(el.name)
+    }
+    for (const st of sf.statements) {
+      switch (st.kind) {
+        case K.FunctionDeclaration:
+        case K.ClassDeclaration:
+        case K.InterfaceDeclaration:
+        case K.TypeAliasDeclaration:
+        case K.EnumDeclaration:
+        case K.ModuleDeclaration:
+          if (st.name && st.name.text) names.add(st.name.text)
+          break
+        case K.VariableStatement:
+          for (const v of st.declarationList.declarations) bind(v.name)
+          break
+        case K.ExportDeclaration:
+          if (st.exportClause && st.exportClause.elements) for (const el of st.exportClause.elements) names.add(el.name.text)
+          break
+      }
+    }
+    names.delete('default')
+    return names
+  }
+  const headNames = new Map()
+  for (const e of changed) {
+    const p = path.join(root, e.newPath)
+    if (fs.existsSync(p)) headNames.set(e.newPath, topNames(parseText(e.newPath, fs.readFileSync(p, 'utf8'))))
+  }
+  const removed = []
+  for (const e of entries) {
+    if (!e.oldPath || !CODE.test(e.oldPath) || SKIP.test(e.oldPath)) continue
+    const old = git(['show', `${mergeBase}:${e.oldPath}`], { okFail: true })
+    if (!old) continue
+    const sameFile = e.newPath && headNames.get(e.newPath)
+    for (const name of topNames(parseText(e.oldPath, old))) {
+      if (sameFile && sameFile.has(name)) continue
+      if ([...headNames.values()].some((s) => s.has(name))) continue // moved to another changed file
+      removed.push({ name, from: e.oldPath })
+    }
+  }
+  for (const r of removed) {
+    symbols++
+    out.push(`### removed: ${r.name}`, `- declared in \`${r.from}\` at ${mergeBase.slice(0, 12)}, gone at HEAD`)
+    const hits = git(['grep', '-nIwF', '-e', r.name], { okFail: true }).split('\n').filter(Boolean)
+    if (!hits.length) out.push('- no remaining references at HEAD')
+    for (const h of hits.slice(0, MAX_HITS)) {
+      const m = /^([^:]+):(\d+):(.*)$/.exec(h)
+      out.push(m ? `- ${TEST.test(m[1]) ? '[test] ' : ''}${m[1]}:${m[2]}: \`${clip(m[3].trim(), 140).replace(/`/g, "'")}\`` : `- ${clip(h)}`)
+    }
+    if (hits.length > MAX_HITS) out.push(`- … ${hits.length - MAX_HITS} more`)
+  }
+
+  for (const ls of lsList) ls.dispose()
+  const header = ['# review-context', `base ${base} · head ${head} · ${changed.length} changed file${changed.length === 1 ? '' : 's'} · ${symbols} changed symbol${symbols === 1 ? '' : 's'}`]
+  if (!symbols) out.push('No changed declarations found.')
+  const all = header.concat(out)
+  if (all.length > MAX_LINES) {
+    const cut = all.length - (MAX_LINES - 1)
+    return all.slice(0, MAX_LINES - 1).concat(`… output truncated, ${cut} more lines`)
+  }
+  return all
+}
+
+try {
+  process.stdout.write(main().join('\n') + '\n')
+} catch (err) {
+  const msg = err instanceof Fail ? err.message : `failed (${String((err && err.message) || err).split('\n')[0]})`
+  process.stdout.write(`review-context: ${msg}; no context\n`)
+}
+process.exitCode = 0
