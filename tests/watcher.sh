@@ -46,7 +46,7 @@ got=$(py '
 json.dump({"since": "2026-01-01T00:00:00Z", "seen": {}, "prs": {"o/r#1": {"state": "merged"}, "o/r#2": {"state": "open"}}, "ci": {}, "is_pr": {}, "since_by": {}, "closed_scan": 0}, open(m.STATE, "w"))
 open(m.THREADS, "w").write("o/r 1\no/r 2\n")
 seen = {"scan": [], "reactions": []}
-m.fetch_thread = lambda repo, num, *a, **k: (seen["scan"].append(num), (False, "x", [], None, None))[1]
+m.fetch_thread = lambda repo, num, *a, **k: (seen["scan"].append(num), (False, "x", [], None, None, None))[1]
 m.scan_reactions = lambda state, threads: seen["reactions"].extend(n for _, n in threads)
 m.run_scan()
 print("scan=" + ",".join(sorted(seen["scan"])) + " reactions=" + ",".join(sorted(seen["reactions"])))
@@ -120,6 +120,22 @@ print("\n".join(out), file=sys.stderr)
 ' 2>"$T/event")
 check "comment bodies: lines starting ### / body lines all indented" "1 True" "$got"
 sed 's/^/  | /' "$T/event"
+
+# WAIT PING DUE: our last comment, older than the threshold on an open thread, emits once per comment; someone's later comment doesn't
+got=$(py '
+import datetime
+m.ONCE = False
+ago = lambda h: (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=h)).strftime("%Y-%m-%dT%H:%M:%SZ")
+last = lambda who, h, cid=5, is_open=True: {"open": is_open, "last": {"databaseId": cid, "url": "<url>", "createdAt": ago(h), "author": {"login": who}}}
+state = {"seen": {}}
+def run(l):
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf): m.emit_wait_ping(state, "o/r#5", l, [])
+    return buf.getvalue().count("### WAIT PING DUE o/r#5: no reply for ")
+out = [run(last("me", 20)), run(last("me", 20)), run(last("them", 1, 6)), run(last("me", 1, 7)), run(last("me", 20, 8, False)), run(last("me", 20, 9))]
+print(*out)
+')
+check "wait ping: emitted once, not repeated, not after their reply, not under 3 h, not on a closed thread, again for a new comment" "1 0 0 0 0 1" "$got"
 
 # The Monitor command gh-watch-start prints delivers an event within 2 s, and only lines that start an event
 M="$T/mon"; mkdir -p "$M"; : > "$M/events.log"

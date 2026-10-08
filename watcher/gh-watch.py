@@ -5,6 +5,7 @@
   (write access) on a thread in threads.txt, the threads the agent opened or posted in; and yours with /ai or /agent, on any thread
   (your events feed; one watch dir gets each, see main_dir). Nothing else.
 - Maintainers' commits pushed to a tracked PR, and 👍/👎 from GH_WATCH_EYES on the agent's comments.
+- WAIT PING DUE: your account's comment is the last on an open thread and has had no reply for WAIT_PING_HOURS (3).
 - PR head/state changes (pushes, merges, closes), CI turning red or green on open PRs, and your PR's code (tests excluded) changing by more than ~80 lines since its last refactor pass (REFACTOR STALE).
 State lives in gh-watch-state.json: every seen (id, updated_at) pair, so nothing is skipped or repeated,
 and scans overlap by 10 minutes. A failed API call prints WATCH ERROR and that thread's scan position isn't advanced.
@@ -19,6 +20,7 @@ ME = os.environ.get('GH_WATCH_ME') or subprocess.run(['gh', 'api', 'user', '--jq
 if not ME:
     sys.exit("WATCH ERROR could not read your login (gh api user); set GH_WATCH_ME")  # else your own comments become events
 ONCE = '--once' in sys.argv  # a manual check: prints events but doesn't consume them or react, so the daemon still logs them
+WAIT_PING_HOURS = float(os.environ.get('WAIT_PING_HOURS') or 3)  # mergeworthy:github-threads: a wait ping may follow after this long
 EYES_FOR = set(filter(None, os.environ.get('GH_WATCH_EYES', '').split(',')))  # maintainers: their commits on your PRs and 👍/👎 are reported
 
 
@@ -302,7 +304,7 @@ def react_eyes(repo, kind, cid):
 
 
 def fetch_thread(repo, num, since, is_pr_known, author_known=None):
-    """Network only (runs in a worker thread). Returns (is_pr, author, events, pr_state, red_checks)."""
+    """Network only (runs in a worker thread). Returns (is_pr, author, events, pr_state, red_checks, last_comment)."""
     is_pr, author = is_pr_known, author_known
     if is_pr is None or author is None:
         issue = json.loads(gh(['api', f"repos/{repo}/issues/{num}"]))
@@ -326,7 +328,37 @@ def fetch_thread(repo, num, since, is_pr_known, author_known=None):
                 raise RuntimeError(f"gh pr checks {num} -R {repo}: {r.stderr.strip()[:200]}")
             checks = r.stdout
             red = sorted(l.split('\t')[0] for l in checks.splitlines() if '\tfail\t' in l)
-    return is_pr, author, events, pr_state, red
+    return is_pr, author, events, pr_state, red, fetch_last_comment(repo, num)
+
+
+_F = 'state comments(last:1){nodes{databaseId url createdAt author{login}}}'
+LAST_COMMENT = ('query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){issueOrPullRequest(number:$n){'
+                '... on Issue{F} ... on PullRequest{F}}}}').replace('F', _F)
+
+
+def fetch_last_comment(repo, num):
+    """The thread's latest issue or PR conversation comment and whether the thread is open: one GraphQL call."""
+    o, r = repo.split('/')
+    t = json.loads(gh(['api', 'graphql', '-f', f'query={LAST_COMMENT}', '-f', f'o={o}', '-f', f'r={r}', '-F', f'n={num}']))['data']['repository']['issueOrPullRequest']
+    nodes = t['comments']['nodes']
+    return {'open': t['state'] == 'OPEN', 'last': nodes[0] if nodes else None}
+
+
+def emit_wait_ping(state, key, last, events):
+    """mergeworthy:github-threads, the wait ping: your account's comment is the thread's last, and nobody has replied since
+    WAIT_PING_HOURS. Once per comment id; a newer comment by anyone makes a different comment the last, so it starts over."""
+    if not last or not last['open'] or not last['last'] or (last['last'].get('author') or {}).get('login') != ME:
+        return
+    c = last['last']
+    posted = datetime.datetime.strptime(c['createdAt'], '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=datetime.timezone.utc)
+    if any(user.get('login') != ME and upd > c['createdAt'] for _, _, upd, user, *_ in events):
+        return  # a review comment or review from someone else, newer than ours (the call above sees only conversation comments)
+    hours = (datetime.datetime.now(datetime.timezone.utc) - posted).total_seconds() / 3600
+    done = state.setdefault('wait_ping', {}).setdefault(key, [])
+    if hours < WAIT_PING_HOURS or c['databaseId'] in done:
+        return
+    done[:] = [c['databaseId']]  # only the latest comment matters
+    emit(f"### WAIT PING DUE {key}: no reply for {int(hours)} h since {c['url']}; nudge whoever it waits on with the open question (mergeworthy:github-threads)")
 
 
 def scan(state, only=None, threads=None):
@@ -348,7 +380,7 @@ def scan(state, only=None, threads=None):
         for fut, (repo, num) in futs.items():
             key = f"{repo}#{num}"
             try:
-                is_pr, author, events, pr_state, red = fut.result()
+                is_pr, author, events, pr_state, red, last = fut.result()
             except Exception as e:
                 ok = False
                 emit(f"WATCH ERROR {key}: {e}")
@@ -376,6 +408,7 @@ def scan(state, only=None, threads=None):
             for kind, cid, upd, user, url, body, extra in events:
                 if answerable(user, body, agent_hashes, kind, own=author == ME):
                     handle_comment(state, repo, key, kind, cid, upd, user['login'], url, body, extra)
+            emit_wait_ping(state, key, last, events)
     if only is None:
         state['since'] = started  # only the default for threads added to threads.txt later
     return ok
