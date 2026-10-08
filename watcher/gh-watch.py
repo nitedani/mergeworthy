@@ -161,12 +161,23 @@ def emit(line):
     print(line, flush=True)  # into events.log, where the session's Monitor delivers it (mergeworthy:github-threads)
 
 
-def emit_dependents(key):
-    # waiting-on.txt: "<owner/repo#N> -> <dependent thread>: <what to do>", one per line
+def waiting_keys():
+    """waiting-on.txt: "<owner/repo#N> -> <dependent thread>: <what to do>", one per line. Yields (line, "owner/repo#N"):
+    the key is the left side's start, so a trailing note such as "(Version Packages, releases #390)" doesn't hide it."""
     path = os.path.join(HERE, 'waiting-on.txt')
-    lines = [l.strip() for l in open(path)] if os.path.exists(path) else []
-    for l in lines:
-        if l.split(' -> ')[0].strip() == key:
+    if not os.path.exists(path):
+        return
+    for l in (l.strip() for l in open(path)):
+        if not l or l.startswith('#') or l.lower().startswith('done:') or ' -> ' not in l:
+            continue
+        m = re.match(r'(\S+?)#(\d+)', l.split(' -> ')[0].strip())
+        if m:
+            yield l, f"{m[1]}#{m[2]}"
+
+
+def emit_dependents(key):
+    for l, k in waiting_keys():
+        if k == key:
             emit(f"### DEPENDENT of merged {key}: {l.split(' -> ', 1)[1]}: do it now and post the progress on that PR (mergeworthy:github-threads)")
 
 
@@ -238,6 +249,10 @@ def read_threads():
             threads.append(w)
         elif w:
             emit(f"WATCH ERROR threads.txt: bad line {l.strip()!r} (want 'owner/repo number')")
+    for _, key in waiting_keys():  # a PR you wait on is watched too, so its merge emits DEPENDENT
+        repo, num = key.rsplit('#', 1)
+        if [repo, num] not in threads:
+            threads.append([repo, num])
     return threads
 
 

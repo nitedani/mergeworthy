@@ -53,6 +53,17 @@ print("scan=" + ",".join(sorted(seen["scan"])) + " reactions=" + ",".join(sorted
 ')
 check "threads read by scan and by scan_reactions" "scan=1,2 reactions=1,2" "$got"
 
+# a waiting-on.txt key with a trailing note is read as a thread, and emit_dependents still matches it; a # line is not
+got=$(py '
+open(os.path.join(m.HERE, "threads.txt"), "w").write("o/r 1\n")
+open(os.path.join(m.HERE, "waiting-on.txt"), "w").write("o/r#391 (Version Packages, releases #390) -> you/plugin: bump the dependency\n# o/r#7 -> commented out\n")
+threads = " ".join(sorted(r + " " + n for r, n in m.read_threads()))
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf): m.emit_dependents("o/r#391")
+print(threads + " " + ("DEPENDENT" if "DEPENDENT of merged o/r#391" in buf.getvalue() else "none"))
+')
+check "waiting-on.txt key with trailing note: read as a thread, DEPENDENT emitted" "o/r 1 o/r 391 DEPENDENT" "$got"
+
 # a ticked grouped tracker line is accepted; an unticked one still fires TRACKER STALE
 tracker() { py "
 open(os.path.join(m.HERE, 'umbrella.txt'), 'w').write('o/r 9')
