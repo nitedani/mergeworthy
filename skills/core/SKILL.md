@@ -91,7 +91,7 @@ Run every PR through bug verification, code review and a fresh read on the final
       - listeners, timers and readers are released on every exit path, and what the code still needs is held by more than a listener;
       - a stream is read once, or copied before its first read.
     - Probe each on every runtime the code ships to: cancel mid-stream from each end, a body past runtime caps (Node: 1 GiB) into a slow consumer, listener counts after many requests. Deterministic probes (memory bound, listener or request count) become tests; timing goes to the benchmark: `main` against the head before the PR opens, all scenarios, alternating runs, N ≥ 3, throughput, p50/p99, peak memory, request count and reconnects. A cell worse than the spread is fixed or reverted, never called a trade-off without the user's OK.
-    - **UI and runtime fixes** are shown working in the real app, per `evidence`; unit scripts alone don't count.
+    - **UI and runtime fixes** are shown working in the real app, per `evidence`; unit scripts alone don't count. New UI ships after a fresh reviewer passes its screenshot's hierarchy and noise.
 12. **Fix the mistake and the rule that allowed it.** When the user names a failure ("why didn’t you…?" or "why are you not…?" about something already required), give one line of why, stop, re-read, and fix the whole class in the same turn:
     - the artifact (PR, comment, code);
     - the rule that allowed it (a mergeworthy skill, the project file, or a mechanism), by editing the existing rule in the mergeworthy repo (1.9).
