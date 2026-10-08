@@ -339,14 +339,14 @@ function main() {
       }
     }
     if (total > shown) sec.push(`- … ${total - shown} more`)
-    // mentions by name in files the language service did not resolve (another tsconfig, a dynamic path)
-    const name = d.name.split('.').pop()
-    if (name.length >= 4 && !GENERIC.has(name)) {
+    // mentions by name in code the language service did not resolve (another tsconfig, a dynamic path); a member's name is too common to grep
+    const name = d.name
+    if (!name.includes('.') && name.length >= 4 && !GENERIC.has(name)) {
       const resolved = new Set([...byFile.keys()].map(rel))
       const others = []
       for (const h of mentions(name)) {
-        if (resolved.has(h.file) || (h.file === rel(file) && h.l === line + 1)) continue
-        if (CODE.test(h.file) && importOnly(headFile(h.file), h.l - 1, name)) continue
+        if (!CODE.test(h.file) || resolved.has(h.file) || (h.file === rel(file) && h.l === line + 1)) continue
+        if (importOnly(headFile(h.file), h.l - 1, name)) continue
         others.push({ file: h.file, l: h.l, text: clip(h.text.trim()) })
       }
       if (others.length) {
