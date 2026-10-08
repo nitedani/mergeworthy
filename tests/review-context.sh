@@ -11,6 +11,7 @@ check() { # name want got
   echo "$1: $3 (want $2)"; [ "$2" = "$3" ] || fails=$((fails+1))
 }
 has() { printf '%s\n' "$OUT" | grep -qE -- "$1" && echo yes || echo no; }
+section() { printf '%s\n' "$OUT" | sed -n "/^### $1/,/^### /p"; } # the output section of the symbol heading $1
 G() { git -c user.name=t -c user.email=t@example.invalid "$@"; }
 
 P="$T/proj"; mkdir -p "$P/test" "$P/node_modules"; cd "$P"
@@ -20,6 +21,9 @@ echo '{"compilerOptions":{"target":"ES2020","module":"ESNext","moduleResolution"
 cat > a.ts <<'X'
 export function f(x: number): number {
   return x + 1
+}
+export function twice(x: number): number {
+  return x * 2
 }
 X
 cat > b.ts <<'X'
@@ -37,11 +41,16 @@ export function g(): string {
   return 'g'
 }
 X
+mkdir pkg2 && echo '{"compilerOptions":{"strict":true},"include":["*.ts"]}' > pkg2/tsconfig.json
+echo 'export const v = twice(3)' > pkg2/use.ts
 G init -q && G add -A && G commit -qm base
 BASE=$(git rev-parse HEAD)
 cat > a.ts <<'X'
 export function f(x: number): number {
   return x + 2
+}
+export function twice(x: number): number {
+  return x * 3
 }
 X
 git rm -q c.ts
@@ -56,6 +65,9 @@ check "the test caller is tagged" yes "$(has '\[test\] test/a\.test\.ts')"
 check "g is listed as removed" yes "$(has '^### removed: g$')"
 check "g's remaining hit is listed" yes "$(has 'c2\.ts:1')"
 check "the header names the base" yes "$(has "^base $BASE")"
+check "twice is listed" yes "$(has '^### twice \(function\) — a\.ts:4')"
+check "pkg2/use.ts is an other mention of twice" yes "$(section 'twice ' | sed -n '/^\*\*Other mentions/,$p' | grep -qE '^- pkg2/use\.ts:1: `export const v = twice\(3\)`$' && echo yes || echo no)"
+check "f (under 4 characters) gets no other mentions" no "$(section 'f (function)' | grep -q 'Other mentions' && echo yes || echo no)"
 check "--max-refs 1 caps the callers" yes "$(OUT=$("$R/bin/review-context" "$BASE" --max-refs 1); has '… 1 more')"
 
 rm node_modules/typescript

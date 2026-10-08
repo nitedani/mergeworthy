@@ -16,6 +16,7 @@ const MAX_CALLS = 15
 const MAX_HITS = 8
 const MAX_ROOTS = 2000
 const MAX_EXTRA_ROOTS = 200
+const GENERIC = new Set(['get', 'set', 'run', 'init', 'default', 'handler', 'config', 'options', 'context', 'constructor'])
 
 class Fail extends Error {}
 
@@ -259,6 +260,25 @@ function main() {
     for (let p = n; p; p = p.parent) if ([K.ImportSpecifier, K.ImportClause, K.NamespaceImport, K.ImportEqualsDeclaration, K.ImportDeclaration].includes(p.kind)) return true
     return false
   }
+  // true when every whole-word `name` on line l0 of sf sits in an import or an export specifier
+  const importOnly = (sf, l0, name) => {
+    const starts = sf.getLineStarts()
+    const from = starts[l0]
+    const text = sf.text.slice(from, l0 + 1 < starts.length ? starts[l0 + 1] : sf.text.length)
+    const re = new RegExp(`(?<![\\w$])${name.replace(/\$/g, '\\$')}(?![\\w$])`, 'g')
+    let any = false
+    for (let m; (m = re.exec(text)); ) {
+      any = true
+      const n = nodeAt(sf, from + m.index)
+      if (!isImport(n) && !(n.parent && n.parent.kind === K.ExportSpecifier)) return false
+    }
+    return any
+  }
+  const headSource = new Map()
+  const headFile = (p) => {
+    if (!headSource.has(p)) headSource.set(p, parseText(p, git(['show', `HEAD:${p}`], { okFail: true })))
+    return headSource.get(p)
+  }
 
   function symbolSection(ls, program, d, sf, file) {
     const sec = []
@@ -298,6 +318,23 @@ function main() {
       }
     }
     if (total > shown) sec.push(`- … ${total - shown} more`)
+    // mentions by name in files the language service did not resolve (another tsconfig, a dynamic path)
+    const name = d.name.split('.').pop()
+    if (name.length >= 4 && !GENERIC.has(name)) {
+      const resolved = new Set([...byFile.keys()].map(rel))
+      const others = []
+      for (const h of git(['grep', '-nIwF', '-e', name, 'HEAD'], { okFail: true }).split('\n')) {
+        const m = /^HEAD:(.+?):(\d+):(.*)$/.exec(h)
+        if (!m || SKIP.test(m[1]) || resolved.has(m[1]) || (m[1] === rel(file) && +m[2] === line + 1)) continue
+        if (CODE.test(m[1]) && importOnly(headFile(m[1]), +m[2] - 1, name)) continue
+        others.push({ file: m[1], l: m[2], text: clip(m[3].trim()) })
+      }
+      if (others.length) {
+        sec.push('**Other mentions (by name, unresolved):**')
+        for (const o of others.slice(0, maxRefs)) sec.push(`- ${TEST.test(o.file) ? '[test] ' : ''}${o.file}:${o.l}: \`${o.text.replace(/`/g, "'")}\``)
+        if (others.length > maxRefs) sec.push(`- … ${others.length - maxRefs} more`)
+      }
+    }
     // callees
     if (d.kind !== 'interface' && d.kind !== 'type') {
       const calls = new Map()
