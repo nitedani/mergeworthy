@@ -15,6 +15,7 @@ Every rule about how outward words read is here, and only here: comments, replie
 2. Read it out loud as them. What you wouldn't say to a colleague goes, replaced by what you would say. A newcomer who finds it later must follow it too.
 3. A passage that can't be fixed sentence by sentence is explained aloud to an imagined friend and replaced by what you said. Review findings are fixed the same way: take their substance in your own plain words, never paste a reviewer's wording, never patch clause by clause.
 4. A design reply to a maintainer, or a PR body, gets three drafts that differ in what they lead with; the review picks one against the model replies below and says why.
+5. **Start from the shortest answer:** the verdict, its one reason, the next step, often two sentences. Add a sentence only when the reader needs it to act, decide or check. How it works inside, a justification of the justification, and "which it needs anyway" stay out unless asked.
 
 ## Voice
 

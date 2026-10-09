@@ -29,6 +29,7 @@ Before writing, answer where a user with this task would look, and what already 
 - Lead with the common case and its code, so a reader who stops after the first block has done the task.
 - Give the minimum a user needs. Details go later, in a `>` note or behind a link, in the order users hit them.
 - Say what a user can act on. Leave out how it works inside, the names of a dependency's helpers, and hedges about cases the user can't reach.
+- Describe how it works now, never its history: no "now", "no longer", "instead of", "unlike before", and nothing about what an earlier version did or why it changed. That belongs in the PR, not the docs.
 - A sentence that says when something applies states its exact condition and one example with real names, in words the docs already use.
 - Keep sections near the length of their siblings. A section several times longer than any neighbour is probably two pages, or details that don't belong.
 

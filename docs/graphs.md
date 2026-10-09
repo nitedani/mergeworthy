@@ -77,6 +77,8 @@ flowchart TB
     s2 --> s3
     s4["4. A design reply to a<br/>maintainer"]
     s3 --> s4
+    s5["5. Start from the shortest<br/>answer"]
+    s4 --> s5
   end
   s0 -.-> r1[["github-threads"]]
   s0 -.-> r2[["mechanisms"]]
