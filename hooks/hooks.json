@@ -41,6 +41,15 @@
     ],
     "PostToolUse": [
       {
+        "matcher": "^(Agent|Task|mcp__.*delegate_task)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/hooks/pre-agent-dedupe.py register"
+          }
+        ]
+      },
+      {
         "matcher": "Bash",
         "hooks": [
           {

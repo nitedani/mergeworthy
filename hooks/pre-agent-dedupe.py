@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Claude Code PreToolUse hook (matcher: Agent, Task, delegate_task). Exit 2 blocks the launch; stderr goes to the agent.
+With the argument `register` it runs as the PostToolUse hook: only a launch that ran is registered, so one another hook blocked leaves no job.
 One agent per job: a launch is registered under its job key (the ticket files its prompt names, else its title), and a second
 launch of the same job is blocked until `agent-job done <key>` releases it. A turn that ended is not a finished agent: on T3 a
 child wakes again when its background commands end, so only its terminal task status (read first) releases the job."""
 import hashlib, json, os, re, sys, time
+register = sys.argv[1:] == ['register']
 d = json.load(sys.stdin)
 ti = d.get('tool_input', {}) or {}
 # T3 answers a delegate_task whose clientRequestId it has seen with that earlier task's result, without running anything.
@@ -15,12 +17,13 @@ if cid:
     if cid in seen and time.time() - seen[cid] > 600:
         sys.stderr.write(f"BLOCKED: clientRequestId '{cid}' was used before; T3 would return that earlier task's result instead of running this one. Use a new id (add the date or the head SHA).\n")
         sys.exit(2)
-    seen.setdefault(cid, time.time()); json.dump(seen, open(ids, 'w'))
+    if register:
+        seen.setdefault(cid, time.time()); json.dump(seen, open(ids, 'w'))
 text = ' '.join(str(ti.get(k) or '') for k in ('prompt', 'task', 'description', 'title'))
 tickets = sorted(set(re.findall(r'(/[^\s`\'"]+\.md)\b', text)))
 # A gate review (names a review output `.out` and CLEAN) starts only on drafts that passed post-lint in their current form.
 gate_text = text + ' ' + ' '.join(open(t).read() for t in tickets if os.path.isfile(t))
-if re.search(r'\.out\b', gate_text) and 'CLEAN' in gate_text:
+if not register and re.search(r'\.out\b', gate_text) and 'CLEAN' in gate_text:
     for draft in sorted(set(re.findall(r'(/[^\s`\'"()]*/drafts/[^\s`\'"()]+\.md)\b', gate_text))):
         base = os.path.basename(draft)
         if base.endswith(('.parent.md', '.current.md')) or 'ticket' in base or 'research' in base or re.search(r'\.v\d+\.md$', base) or not os.path.isfile(draft):
@@ -35,7 +38,9 @@ if not key:
     sys.exit(0)
 jobs = os.path.expanduser('~/.claude/agent-jobs'); os.makedirs(jobs, exist_ok=True)
 f = os.path.join(jobs, hashlib.sha256(key.encode()).hexdigest()[:16])
-if os.path.exists(f):
+if register:
+    json.dump({'key': key, 'started': time.time()}, open(f, 'w'))
+elif os.path.exists(f):
     j = json.load(open(f))
     if time.time() - j.get('started', 0) < 24 * 3600:
         age = int((time.time() - j['started']) / 60)
@@ -45,5 +50,4 @@ if os.path.exists(f):
             "Continue it with a message instead of starting another. Only when its task is terminal and you have read its result, "
             f"release the job with `agent-job done '{key[:200]}'`, then launch.\n")
         sys.exit(2)
-json.dump({'key': key, 'started': time.time()}, open(f, 'w'))
 sys.exit(0)

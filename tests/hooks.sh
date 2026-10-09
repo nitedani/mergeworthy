@@ -328,18 +328,22 @@ check "BLOCK: a foreground until-sleep loop" 2 "$(wait_guard 'until [ -s out.md 
 check "the same loop in the background passes" 0 "$(wait_guard 'until [ -s out.md ]; do sleep 20; done; cat out.md' true)"
 check "a plain sleep passes" 0 "$(wait_guard 'sleep 2; ls' false)"
 # ---------- pre-agent-dedupe: one agent per job ----------
-launch() { # task text
-  python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":sys.argv[1],"title":"t"}}))' "$1" \
-    | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; echo $?
+launch_in() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":sys.argv[1],"title":"t"}}))' "$1"; }
+launch() { # task text; a launch that passes runs, so the PostToolUse half registers it
+  launch_in "$1" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; local rc=$?
+  [ $rc = 0 ] && launch_in "$1" | python3 "$R/hooks/pre-agent-dedupe.py" register; echo $rc
 }
 check "first launch of a ticket passes" 0 "$(launch 'Execute the ticket at /tmp/x/ticket-check.md exactly')"
 check "BLOCK: a second launch of the same ticket" 2 "$(launch 'Retry: execute /tmp/x/ticket-check.md')"
 check "another ticket passes" 0 "$(launch 'Execute /tmp/x/other.md')"
+launch_in 'Execute /tmp/x/blocked.md' | python3 "$R/hooks/pre-agent-dedupe.py" >/dev/null 2>&1
+check "a launch another hook blocked (never ran) leaves no job" 0 "$(launch 'Execute /tmp/x/blocked.md')"
 python3 "$R/bin/agent-job" done /tmp/x/ticket-check.md >/dev/null
 check "after agent-job done the ticket launches again" 0 "$(launch 'Execute /tmp/x/ticket-check.md')"
+cid_in() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":"x","clientRequestId":sys.argv[1]}}))' "$1"; }
 cid() { # clientRequestId
-  python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":"x","clientRequestId":sys.argv[1]}}))' "$1" \
-    | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; echo $?
+  cid_in "$1" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; local rc=$?
+  [ $rc = 0 ] && cid_in "$1" | python3 "$R/hooks/pre-agent-dedupe.py" register; echo $rc
 }
 check "a new clientRequestId passes" 0 "$(cid r-1)"
 check "a retry of the same clientRequestId within 10 minutes passes" 0 "$(cid r-1)"
