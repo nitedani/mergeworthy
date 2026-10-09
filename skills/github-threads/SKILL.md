@@ -66,9 +66,9 @@ The watcher runs independently of any session and only records events (and adds 
 
 **After a burst of maintainer comments,** check the PR: no comment is the last word without a change, an answer or a reaction.
 
-**Nothing stalls on you.** A session that drives threads schedules a check every 3 hours (T3 Code: `schedule_task`, bound to its thread): each open item's owner; yours, do it now; a landed dependency, run its step; another's, past 3 hours since your last comment, the wait ping.
+**Nothing stalls on you.** A session that drives threads schedules a check every 3 hours (T3 Code: `schedule_task`, bound to its thread): each open item's owner; yours, do it now; a landed dependency, run its step; another's that blocks your work, past 3 hours since your last comment, the wait ping.
 
-**The wait ping.** The watcher emits `WAIT PING DUE` and owes it in `replies-owed.md` after 3 hours of silence on your last comment; post it then, every time:
+**The wait ping.** The watcher emits `WAIT PING DUE` and owes it in `replies-owed.md` after 3 hours of silence on your last comment; when the wait blocks your work, post it then, every time; when it blocks nothing, clear it with that reason (`core` 1.1.7):
 - one @-mention on that PR with the decisions you need, each with your recommendation and link;
 - once per thread per wait, never while they're mid-review.
 
