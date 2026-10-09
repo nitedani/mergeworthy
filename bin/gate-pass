@@ -22,6 +22,13 @@ if grep -qiE "\b(I'll|I will)\b|follow-up PR|subsequent PR|separate PR" "$d" && 
   grep -q "^PROMISED .*$(basename "$d")" "$po" 2>/dev/null || { echo "the draft promises work: add 'PROMISED <thread>: <what> ($(basename "$d"))' to $po first, or do it now and write 'Done in <link>'"; exit 1; }
 fi
 sha256sum "$d" | cut -d' ' -f1 > "$d.gate"
+# the draft was written from the thread's record, and the reviewer had the same file: it predates the draft's last edit;
+# its hash goes into the gate record, so the posting hook can tell it from one made after the review
+tcf="$(dirname "$(readlink -f "$d")")/thread-context.md"
+if [ -f "$tcf" ]; then
+  [ "$tcf" -nt "$d" ] && { rm -f "$d.gate"; echo "thread-context.md is newer than the draft: it was made after drafting. Re-read it, revise the draft if it changes anything, and review again (mergeworthy:writing step 0)"; exit 1; }
+  echo "tc $(sha256sum "$tcf" | cut -d' ' -f1)" >> "$d.gate"
+fi
 echo "gate passed: $d"
 # post-lint checked that the draft shows every mergeworthy commit this repo's maintainers asked to see: record them as shown
 repo=""; for i in "${!flags[@]}"; do [ "${flags[$i]}" = --repo ] && repo="${flags[$((i+1))]}"; done

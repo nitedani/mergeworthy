@@ -49,6 +49,7 @@ These scripts enforce the rules that failed as text alone.
 - It checks that the review's final message is exactly `CLEAN`.
 - It records the pass as the draft's sha256 in `<draft>.gate`.
 - A `reply`, `inline` or `proposal` draft needs `thread-context.md` in its folder, newer than its `.parent.md`, recording a latest human comment (`thread-context --verify`).
+- When `thread-context.md` sits beside the draft, it must be older than the draft's last edit, and its hash goes into the gate record; posting refuses a thread context made or regenerated after the gate, so it can't be added just to pass the hook.
 - A draft that promises work ("I'll", "follow-up PR") first needs a `PROMISED … (<draft name>)` line in `proposals-open.md`.
 
 ### `review-context`

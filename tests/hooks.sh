@@ -80,8 +80,9 @@ kill "$SPID"; wait "$SPID" 2>/dev/null
 
 # ---------- pre-bash-guard check_turn ----------
 ctx() { printf '# Thread context: %s\n- root: %s\n- latest-human-comment: id=0 at=0\n' "$2" "$2" > "$1/thread-context.md"; }  # the record the guard asks for (its content is tested below)
+tcbind() { echo "tc $(sha256sum "$(dirname "$1")/thread-context.md" | cut -d' ' -f1)" >> "$1.gate"; }  # gate-pass records the thread context it gated with
 D="$T/drafts"; mkdir -p "$D"; ctx "$D" o/r#5
-gate() { printf '%s\n' "$2" > "$D/$1.md"; sha256sum "$D/$1.md" | cut -d' ' -f1 > "$D/$1.md.gate"
+gate() { printf '%s\n' "$2" > "$D/$1.md"; sha256sum "$D/$1.md" | cut -d' ' -f1 > "$D/$1.md.gate"; tcbind "$D/$1.md"
          python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1]).read().replace("\r\n","\n").strip().encode()).hexdigest())' "$D/$1.md" >> "$HOME/.claude/gated-posts.txt"; }
 gate a1 "Agent comment one."
 gate a2 "Agent comment two."
@@ -163,6 +164,8 @@ tcguard() { # post to #41 from $TD/r.md
 check "BLOCK: a comment on the thread without thread-context.md" 2 "$(tcguard)"
 grep -o 'no thread-context.md at.*' "$T/err" | sed "s#$T#<T>#g; s/ (mergeworthy.*//"
 cp "$TC" "$TD/thread-context.md"
+check "BLOCK: a thread-context.md made after the gate (the draft wasn't written or reviewed from it)" 2 "$(tcguard)"
+sha256sum "$TD/r.md" | cut -d' ' -f1 > "$TD/r.md.gate"; tcbind "$TD/r.md"
 check "a current thread-context.md lets the post through" 0 "$(tcguard)"
 sed 's/^- root: o\/r#41/- root: o\/r#7/' "$TC" > "$TD/thread-context.md"
 check "BLOCK: a thread-context.md of another thread" 2 "$(tcguard)"
@@ -172,7 +175,9 @@ tc_fx repos_o_r_issues_41_comments_per_page_100 "$(python3 -c 'import json,sys; 
 check "BLOCK: the thread has a newer human comment than the recorded one" 2 "$(tcguard)"
 grep -o 'records the latest comment.*' "$T/err" | sed "s#$T#<T>#g; s/ (mergeworthy.*//"
 "$R/bin/thread-context" o/r#41 --out "$TD/thread-context.md" >/dev/null
-check "the regenerated thread-context.md passes" 0 "$(tcguard)"
+check "BLOCK: a thread-context.md regenerated after the gate needs a new review" 2 "$(tcguard)"
+sha256sum "$TD/r.md" | cut -d' ' -f1 > "$TD/r.md.gate"; tcbind "$TD/r.md"
+check "the regenerated thread-context.md passes once gated again" 0 "$(tcguard)"
 touch -d '+1 minute' "$TD/r.parent.md"
 check "BLOCK: older than the comment the draft answers" 2 "$(tcguard)"
 rm "$TD/r.parent.md"
@@ -189,7 +194,10 @@ gp() { MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GD/r.m
 check "BLOCK: gate-pass on a reply without thread-context.md" 1 "$(gp)"
 grep -c 'no thread-context.md' "$T/gp.out"
 cp "$TD/thread-context.md" "$GD/thread-context.md"
-check "gate-pass passes with thread-context.md beside the draft" 0 "$(gp)"
+check "BLOCK: gate-pass with a thread-context.md newer than the draft" 1 "$(gp)"
+touch -d '+1 minute' "$GD/r.md"
+check "gate-pass passes with thread-context.md beside the draft, written before it" 0 "$(gp)"
+check "gate-pass records the thread context in the gate" 1 "$(grep -c '^tc ' "$GD/r.md.gate")"
 
 # ---------- post-bash-register: only a real gh post registers, and only the thread it posted to ----------
 sleep 600 & SPID=$!
@@ -228,7 +236,7 @@ kill "$SPID"; wait "$SPID" 2>/dev/null
 AR="$T/art"; mkdir -p "$AR/drafts/r1" "$AR/maps"; ctx "$AR/drafts/r1" o/r#9
 rm -f "$HOME/.claude/proposal-rounds.txt"
 prop() { # n: a gated proposal draft, as gate-pass leaves it
-  printf 'Proposal %s\n' "$1" > "$AR/drafts/r1/p$1.md"; sha256sum "$AR/drafts/r1/p$1.md" | cut -d' ' -f1 > "$AR/drafts/r1/p$1.md.gate"
+  printf 'Proposal %s\n' "$1" > "$AR/drafts/r1/p$1.md"; sha256sum "$AR/drafts/r1/p$1.md" | cut -d' ' -f1 > "$AR/drafts/r1/p$1.md.gate"; tcbind "$AR/drafts/r1/p$1.md"
   echo "--kind proposal --repo o/r --parent none" > "$AR/drafts/r1/p$1.md.lint"
 }
 pguard() { # n -> exit code of the pre-bash-guard on posting proposal n to o/r#9

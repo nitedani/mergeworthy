@@ -74,7 +74,7 @@ def gated_file(p, has_cd, create=False):
     if not os.path.exists(p) or not os.path.exists(gate):
         block(f"no gate record for {p}: run post-lint + the review until CLEAN, then `gate-pass {p} <review-output>`")
     sha = hashlib.sha256(open(p, 'rb').read()).hexdigest()
-    if sha != open(gate).read().strip():
+    if sha != open(gate).read().split('\n')[0].strip():
         block(f"{p} changed after its gate: review it again and re-run gate-pass")
     if create:  # a new comment/issue/PR from this exact draft: only once (edits may repeat)
         posted = p + '.posted'
@@ -203,7 +203,12 @@ def check_context(thread, files):
         except OSError: flags = []
         if '--kind' in flags and flags[flags.index('--kind') + 1:][:1] == ['tracker']: continue
         parent = re.sub(r'\.md$', '', f) + '.parent.md'
-        cmd = [tc, '--verify', os.path.join(os.path.dirname(f), 'thread-context.md'), '--target', thread] + (['--parent', parent] if os.path.exists(parent) else [])
+        tcf = os.path.join(os.path.dirname(f), 'thread-context.md')
+        # the gate record names the thread context the draft was written and reviewed from (gate-pass); one made later is not it
+        recorded = [l[3:].strip() for l in (open(f + '.gate').read().splitlines() if os.path.exists(f + '.gate') else []) if l.startswith('tc ')]
+        if os.path.exists(tcf) and recorded != [hashlib.sha256(open(tcf, 'rb').read()).hexdigest()]:
+            block(f"{tcf} isn't the one {f} was gated with: draft from thread-context.md before the review, then gate-pass (mergeworthy:writing step 0)")
+        cmd = [tc, '--verify', tcf, '--target', thread] + (['--parent', parent] if os.path.exists(parent) else [])
         try: r = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
         except Exception: continue
         if r.returncode != 0 and r.stderr.strip():
