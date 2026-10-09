@@ -84,6 +84,12 @@ if kind in ('reply', 'inline', 'proposal', 'issue'):
     for m in re.finditer(r"(?:^|(?<=[.!?]\s))([A-Z][^:\n.!?`|*]{0,50}?):[ \t]+(?=\S)", prose, flags=re.M):
         if 1 <= len(m.group(1).split()) <= 6 and not re.search(r'\d$', m.group(1)):
             findings.append(f"a label opening a sentence ({m.group(0).strip()[:40]!r}): say it the way you would to a colleague")
+# Crediting a decision or idea to someone needs a link to where they said it, or a summary becomes "you agreed" (writing 1.11, Credit)
+if kind in ('reply', 'inline', 'proposal', 'issue', 'pr'):
+    _credit = r"\b(you|we|he|she|they|brillout|\w+ and I) (agreed|approved|proposed|suggested|signed off|decided)\b|\bas (agreed|you said|you suggested|you proposed)\b|\b(your|his|her|their) (design|proposal|suggestion|decision)\b|\bthe rule you\b"
+    for sent in re.split(r'(?<=[.!?])\s+|\n{2,}', prose):
+        if re.search(_credit, sent, flags=re.I) and not re.search(r'https?://|\]\(', sent):
+            findings.append(f"credit without a link ({sent.strip()[:60]!r}): link where they said or agreed it, after re-reading the thread")
 if '—' in prose:
     findings.append("em dash (—): rewrite the sentence")
 for m in re.finditer(r'\bstacked on\b[^\n]*|\bstack(s|ed)? on (top of )?([\w.-]+/[\w.-]+)?#\d+[^\n]*', prose, flags=re.I):
