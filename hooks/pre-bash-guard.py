@@ -174,7 +174,7 @@ def check_finality(repo, num, files):
         m = os.path.join(root, 'maps', f"{repo.replace('/', '-')}-{num}.md")
         if os.path.exists(m) and os.path.getmtime(m) > rounds[-1]: continue
         block(f"{repo}#{num} has had {len(rounds)} proposal rounds: run the finality pass (mergeworthy:finality, 'a design discussion has drifted') before this reply, "
-              f"write its thread map with the invariants list to {m} (newer than your last proposal), update the thread's TODO comment (Agreed with permalinks, Open; mergeworthy:github-threads) from it, and let this reply say 'I updated the [todo list](link)' instead of restating the design")
+              f"write its thread map with the invariants list to {m} (newer than your last proposal), update the thread's WIP comment (Agreed with permalinks, Open; mergeworthy:github-threads) from it, and let this reply say 'I updated the [todo list](link)' instead of restating the design")
 
 def thread_of_ref(repo, ref):
     """owner/repo#N from a gh issue/pr argument (number or URL) or None."""
