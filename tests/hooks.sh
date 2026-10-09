@@ -260,6 +260,8 @@ hl() { printf '%s\n' "$1" > "$T/hs.md"; MERGEWORTHY_SRC="$S" python3 "$R/bin/pos
 check "BLOCK: a reply in acme/x that leaves out unseen mergeworthy commits" 1 "$(hl 'Fixed the bug.' acme/x)"
 check "a reply that shows both unseen commits passes" 0 "$(hl "Fixed. Mergeworthy: $h2 and $h3." acme/x)"
 check "another owner's repo asked for nothing" 0 "$(hl 'Fixed the bug.' other/x)"
+git clone -q --depth 1 "file://$S" "$T/mwshallow"
+check "a shallow clone fetches the history it needs" 1 "$(printf 'Fixed the bug.\n' > "$T/hs.md"; MERGEWORTHY_SRC="$T/mwshallow" python3 "$R/bin/post-lint" "$T/hs.md" --kind reply --repo acme/x --parent none 2>&1 | grep -c 'asked to see')"
 printf 'Fixed. Mergeworthy: %s and %s.\n' "$h2" "$h3" > "$T/hs.md"; printf 'CLEAN\n' > "$T/hs.review"
 MERGEWORTHY_SRC="$S" bash "$R/bin/gate-pass" "$T/hs.md" "$T/hs.review" --kind tracker --repo acme/x >/dev/null 2>&1 || true
 check "gate-pass of a tracker post doesn't mark them shown" "$(git -C "$S" rev-parse --short=7 HEAD~2)" "$(cat "$HOME/.mergeworthy/harness-shown/acme")"

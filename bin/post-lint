@@ -58,7 +58,11 @@ def harness_pending(owner):
     f = os.path.join(os.environ.get('MERGEWORTHY_HOME', os.path.expanduser('~/.mergeworthy')), 'harness-shown', owner)
     if not os.path.exists(f): return None, []
     src = os.environ.get('MERGEWORTHY_SRC', os.path.expanduser('~/.claude/plugins/marketplaces/mergeworthy'))
-    r = subprocess.run(['git', '-C', src, 'log', '--format=%h', f"{open(f).read().split()[0]}..HEAD"], capture_output=True, text=True)
+    log = ['git', '-C', src, 'log', '--format=%h', f"{open(f).read().split()[0]}..HEAD"]
+    r = subprocess.run(log, capture_output=True, text=True)
+    if r.returncode:  # the plugin's marketplace clone is shallow: fetch its history once
+        subprocess.run(['git', '-C', src, 'fetch', '-q', '--unshallow'], capture_output=True)
+        r = subprocess.run(log, capture_output=True, text=True)
     return (r.stderr.strip() or 'git log failed') if r.returncode else None, [h[:7] for h in r.stdout.split()]
 if repo and kind in ('reply', 'proposal'):
     err, pending = harness_pending(repo.split('/')[0])
