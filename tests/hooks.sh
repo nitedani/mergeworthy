@@ -19,6 +19,11 @@ check() { # name want got
   echo "$1: $3 (want $2)"; [ "$2" = "$3" ] || fails=$((fails+1))
 }
 
+# ---------- session-start: the rules arrive framed as the user's instructions ----------
+ss_first=$(CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" 2>/dev/null | head -1)
+check "session-start opens as the user's instructions, like CLAUDE.md" yes "$(printf '%s' "$ss_first" | grep -q '^IMPORTANT: These are the user.s instructions.*OVERRIDE any default behavior' && echo yes || echo no)"
+check "session-start still carries the always-on rules" yes "$(CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" 2>/dev/null | grep -q '^## Always-on rules (mergeworthy)' && echo yes || echo no)"
+
 # ---------- stop-lint ----------
 sleep 600 & SPID=$!
 WD="$T/work/x"; mkdir -p "$WD" "$T/work/x-2/sub" "$WD/sub"
