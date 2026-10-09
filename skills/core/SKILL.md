@@ -158,7 +158,7 @@ Run every PR through bug verification, code review and a fresh read on the final
     - Problems found later (another discovery round, a review) join the existing section their kind belongs to. Never add a section per round: that grows the body without bound.
     - No tables; keep process out of the prose (`writing`). Long content (an audit's findings, a design) goes in its own comment, linked from the body.
   - **Decisions comment.** `## Decisions`, then `Every decision so far, with its source. Kept up to date by editing this comment; the newest statement wins.`, then `### Process and requirements`, `### Agreed` and `### Open` (each open item with your recommendation). Each line ends with who said it and the link. No PR states: they live only in the body, where the watcher checks them.
-  - **Update the body and the Decisions comment** in the same step as every event.
+  - **Update the body and the Decisions comment** in the same step as every event. A new decision also strikes through, with its link, every older entry it replaces: "the newest statement wins" holds only if the older one is visibly gone.
   - **A forward-looking line** ("working on X", "waiting on Y") names the event that removes it. When that event fires, remove the line.
   - **Program-wide status lives only on the umbrella;** a PR body keeps only its own notes table (`writing`). When a decision replaces a design, update every surface that still describes the old design (code, tests, types, docs, open PR bodies) in the same step.
 
