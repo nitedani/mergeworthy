@@ -178,7 +178,17 @@ Run every PR through bug verification, code review and a fresh read on the final
     - how to run the app from the README.
 
   Mention in your report that you derived it, and correct it as you learn.
+- **What the maintainers taught you.** Read `~/.mergeworthy/projects/<owner>/<repo>.md` before writing code or a body for that repo, and give it to every subagent that writes either. It survives across sessions and tasks; see Learning from follow-ups below.
 
+
+### Learning from follow-ups
+
+After one of your PRs merges, the commits others make to its lines (polish, a rename, a revert) and the PRs that reference it are a review you didn't get; the watcher reports each as `FOLLOW-UP` (`mechanisms`). Read the change against your own diff and sort it once:
+- **A miss your checks should have caught** (a bug, a sibling case, a gap a gate could find): fix the rule or mechanism in mergeworthy (`past-failures`), the same turn.
+- **The project's taste** (naming, structure, comment density, what the maintainer cuts or adds): one line in `~/.mergeworthy/projects/<owner>/<repo>.md`, under Conventions, Maintainer preferences or Recurring misses, with the link to the commit or PR that shows it.
+- **A new direction** (the maintainer chose differently, no fault in yours): nothing to keep; say why in one line in your report.
+
+Keep that file short and true: update an entry instead of adding a near-duplicate, delete one a later change contradicts, and keep only what would change your next diff. The knowledge stays per project; only the method lives here.
 
 ### The project template
 
