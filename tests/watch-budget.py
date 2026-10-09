@@ -380,6 +380,23 @@ def _():
         return f"{record['scanned'] != gh.prs[('vikejs/vike', 50)]['merged_at']} {len([e for e in gh.log if e[2].endswith('/pulls/50')])}"
 
 
+@case("follow-ups: a backlog of 4100 commits (41 pages, more than a pass) is listed across passes, then read oldest first; a later repo is served meanwhile", "True True")
+def _():
+    with world() as (sim, gh, dirs):
+        gh.commits['vikejs/vike'] = []
+        for i in range(4100):
+            gh.commit('vikejs/vike', 'alice', [{'filename': 'packages/50/a.ts', 'status': 'modified', 'patch': ws.TS(11)}], when=ws.T0 - 4 * ws.DAY + i * 60)
+        json.dump({'prs': {'vikejs/vike#50': {'state': 'merged'}, 'vikejs/vike-react#8': {'state': 'merged'}}, 'author': {'vikejs/vike#50': 'me', 'vikejs/vike-react#8': 'me'}}, open(f"{dirs['d1']}/gh-watch-state.json", 'w'))
+        open(f"{dirs['d1']}/threads.txt", 'a').write('vikejs/vike-react 8\n')
+        m = load(dirs['d1'], sim)
+        m.JOBS = tuple(j for j in m.JOBS if j[0] == 'followups')
+        for _ in range(4):
+            m.shared_pass()
+            sim.now += 700
+        details = [e for e in gh.log if re.fullmatch(r'repos/vikejs/vike/commits/[0-9a-f]{40}', e[2])]
+        return f"{bool(details)} {'vikejs/vike-react#8' in m.shared_read()['followups'] and m.shared_read()['followups']['vikejs/vike-react#8']['checked'] > 0}"
+
+
 shutil.rmtree(T, ignore_errors=True)
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)

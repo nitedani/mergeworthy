@@ -161,7 +161,7 @@ threads = {  # number -> (body, comments, timeline)
     411: ("", [cm(19, "me", "/agent only the search backup sees this", 411)], []),  # in x/y, which no dir lists: no comments feed reads it
 }
 calls = []
-Answer = lambda data: type("A", (), {"status": 200, "json": lambda self: data})()
+Answer = lambda data: type("A", (), {"status": 200, "json": lambda self: data, "next": lambda self: None})()
 def fake_request(path, *a, **k):
     if path.startswith("search/issues"):  # lags: it never returns the o/r threads, only x/y#411
         return Answer({"items": [{"number": 411, "repository_url": "https://api.github.com/repos/x/y"}]})
@@ -217,11 +217,13 @@ timeline = [
     {"event": "cross-referenced", "source": {"issue": {"html_url": "<pr-6>", "pull_request": {}, "user": {"login": "dep[bot]", "type": "Bot"}}}},
 ]
 calls = []
-Answer = lambda data: type("A", (), {"status": 200, "json": lambda self: data})()
+Answer = lambda data: type("A", (), {"status": 200, "json": lambda self: data, "next": lambda self: None})()
 def fake_request(path, *a, **k):
     calls.append(path)
     if path.endswith("/pulls/5"):
         return Answer({"merged_at": MERGED, "merge_commit_sha": "c0merge", "base": {"ref": "main"}})
+    if path.startswith("repos/o/r/commits?"):
+        return Answer(commits)
     return Answer({"files": files[path.rsplit("/", 1)[1]]})
 def fake_paged(path, *a, **k):
     calls.append(path)

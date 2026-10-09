@@ -50,7 +50,7 @@ def shared_path(name='shared-watch.json'):
 
 
 def shared_default():
-    return {'rate': {}, 'pause_until': 0, 'jobs': {}, 'etags': {}, 'commits': {}, 'followups': {}, 'agent_since': None, 'me': None}
+    return {'rate': {}, 'pause_until': 0, 'jobs': {}, 'etags': {}, 'commits': {}, 'followups': {}, 'backlog': {}, 'agent_since': None, 'me': None}
 
 
 _read, _once_state = {}, {}
@@ -1139,7 +1139,8 @@ def follow_ups():
     followed for FOLLOWUP_DAYS. `### FOLLOW-UP` goes once, to the dirs that list the PR, per commit (not yours, not a bot's,
     not a merge) that touches its recorded lines, and once per other person's PR that references it.
     The commits of a repo are listed once per pass, newest first and with an ETag, and read oldest first, so a pass that
-    runs out of calls (PASS_CALLS) resumes where it stopped; PRs not checked for longest go first."""
+    runs out of calls (PASS_CALLS) resumes where it stopped, a list of more pages than a pass included (the backlog in the shared state);
+    PRs not checked for longest go first."""
     prs, now = followed_prs(), time.time()
     fu = shared_read()['followups']
     for key in sorted(prs.keys() - fu.keys()):
@@ -1160,13 +1161,23 @@ def follow_ups():
             shared_update(lambda s: s['followups'][k].update(files={}))  # past the window: kept as a marker so the PR isn't recorded again
     for (repo, base), keys in groups.items():
         entries = {k: json.loads(json.dumps(fu[k])) for k in keys}  # worked on here, written back when the group is done or stops
-        started, pending = iso(now - 600), {}  # overlap: claims dedupe
+        gk, pending, done = f"{repo}@{base}", {}, False
+        floor, since = min(e['scanned'] for e in entries.values()), min(e['merged'] for e in entries.values())
+        url = f"repos/{repo}/commits?sha={base}&since={since}&per_page=100"
+        bk = shared_read()['backlog'].get(gk)  # a commit list longer than a pass, kept page by page: this pass continues it
+        if not bk or bk['since'] > since or bk['floor'] > floor:
+            bk = {'since': since, 'floor': floor, 'started': iso(now - 600), 'next': url, 'queue': [],  # overlap: claims dedupe
+                  'fresh': any(e['checked'] == 0 for e in entries.values())}  # a PR never read can't use a 304 for a list others have read
         try:
-            floor = min(e['scanned'] for e in entries.values())
-            fresh = any(e['checked'] == 0 for e in entries.values())  # a PR never read can't use a 304 for a list others have read
-            url = f"repos/{repo}/commits?sha={base}&since={min(e['merged'] for e in entries.values())}&per_page=100"
-            commits = paged(url, shared_read()['etags'], pending, fresh=fresh, newest_first=True, until=lambda page: page[-1]['commit']['committer']['date'] < floor)
-            for c in reversed(commits):
+            while bk['next']:  # newest first, down to what was already read
+                first = bk['next'] == url
+                resp = request(bk['next'], store=shared_read()['etags'] if first else None, pending=pending if first else None, fresh=bk['fresh'], newest_first=True)
+                page = [] if resp.status == 304 else resp.json()
+                bk['queue'] += [{'sha': c['sha'], 'html_url': c['html_url'], 'parents': [0] * len(c.get('parents') or []), 'author': c.get('author') and {k: c['author'].get(k) for k in ('login', 'type')},
+                                 'commit': {'committer': {'date': c['commit']['committer']['date']}, 'author': {'name': c['commit']['author']['name']}}} for c in page]
+                bk['next'] = None if not page or not resp.next() or page[-1]['commit']['committer']['date'] < bk['floor'] else resp.next()
+            while bk['queue']:  # oldest first
+                c = bk['queue'][-1]
                 sha, author, when = c['sha'], c.get('author'), c['commit']['committer']['date']
                 if author and not is_bot(author) and author.get('login') != ME and len(c.get('parents') or []) <= 1:
                     wanted = [k for k, e in entries.items() if when >= e['scanned'] and sha != e['merge_sha'] and claim(f"followup:{k}:{sha}", record=False)]
@@ -1177,20 +1188,24 @@ def follow_ups():
                                 follow_emit(f"followup:{k}:{sha}", prs[k], f"### FOLLOW-UP {k}: {sha[:10]} by {author['login']} changes lines from your PR  {c['html_url']}")
                 for e in entries.values():
                     e['scanned'] = max(e['scanned'], when)
+                bk['queue'].pop()
             for k, e in entries.items():
                 tpending = {}
-                for t in paged(f"repos/{repo}/issues/{k.rsplit('#', 1)[1]}/timeline?per_page=100", shared_read()['etags'], tpending, fresh=e['checked'] == 0):
+                for t in paged(f"repos/{repo}/issues/{k.rsplit('#', 1)[1]}/timeline?per_page=100", shared_read()['etags'], tpending, fresh=bk['fresh']):
                     i = (t.get('source') or {}).get('issue') or {}
                     if t.get('event') == 'cross-referenced' and 'pull_request' in i and not is_bot(i.get('user')) and (i.get('user') or {}).get('login') != ME:
                         follow_emit(f"followup-ref:{k}:{i['html_url']}", prs[k], f"### FOLLOW-UP {k}: {i['html_url']} by {i['user']['login']} references your PR")
                 pending.update(tpending)
-                e['scanned'], e['checked'] = started, now
+                e['scanned'] = bk['started']
+            done = True
         except (Budget, PassSpent):
             raise
         except Exception as ex:
             fail(f"follow-up {repo}", ex)
         finally:
-            shared_update(lambda s: (s['followups'].update(entries), s['etags'].update(pending if all(e['checked'] == now for e in entries.values()) else {})))
+            for e in entries.values():
+                e['checked'] = now  # done or not, the group goes to the back of the line: a long backlog doesn't hold up the other repos
+            shared_update(lambda s: (s['followups'].update(entries), s['etags'].update(pending if done else {}), s['backlog'].pop(gk, None) if done else s['backlog'].__setitem__(gk, bk)))
 
 
 def locked():
