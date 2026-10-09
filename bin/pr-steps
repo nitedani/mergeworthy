@@ -4,11 +4,27 @@
 # reverify (Loop A after Loop B's commits), fresh (the fresh reader), gates (every gate's exit code on the final head).
 # The posting hook blocks `gh pr create` (unless --draft), `gh pr ready` and pushes to a ready PR until HEAD has all six.
 set -euo pipefail
-step=${1:?usage: pr-steps <verify|loopb|refactor|reverify|fresh|gates> <output-file>}; out=${2:?output file}
-case "$step" in verify|loopb|refactor|reverify|fresh|gates) ;; review) step=fresh ;; *) echo "step must be verify, loopb, refactor, reverify, fresh or gates" >&2; exit 1;; esac
+step=${1:?usage: pr-steps <approach|verify|loopb|refactor|reverify|fresh|gates> <output-file>}; out=${2:?output file}
+case "$step" in approach|verify|loopb|refactor|reverify|fresh|gates) ;; review) step=fresh ;; *) echo "step must be approach, verify, loopb, refactor, reverify, fresh or gates" >&2; exit 1;; esac
 [ -s "$out" ] || { echo "$out is empty: run the step and save its output" >&2; exit 1; }
 last=$(grep -v '^[[:space:]]*$' "$out" | tail -n1)
 sha=$(git rev-parse HEAD)
+if [ "$step" = approach ]; then
+  # one record per repo and branch; the guard computes the same key
+  key=$(printf '%s\n%s' "$(realpath "$(git rev-parse --git-common-dir)")" "$(git symbolic-ref --short -q HEAD || echo HEAD)" | sha256sum | cut -c1-40)
+  chosen=$(sed -n 's/^[[:space:]]*Chosen:[[:space:]]*//p' "$out" | head -n1 | sed 's/[[:space:]]*$//')
+  [ -n "$chosen" ] || { echo "$out has no line 'Chosen: <candidate>'" >&2; exit 1; }
+  # candidates: table rows `| name | rating 0-10 | why |`; the header and separator rows have no numeric rating
+  rows=$(awk -F'|' '/^[[:space:]]*\|/ { for (i=1;i<=NF;i++) gsub(/^[[:space:]]+|[[:space:]]+$/,"",$i); if ($3 ~ /^([0-9]|10)(\/10)?$/ && $2 != "" && $4 != "") { sub(/\/10$/,"",$3); print tolower($2) "\t" $3 } }' "$out")
+  [ "$(printf '%s' "$rows" | grep -c .)" -ge 2 ] || { echo "$out lists fewer than two rated candidates: a table '| Candidate | Rating | Why |' with each candidate, not building it included, rated 0-10 with its reason" >&2; exit 1; }
+  rating=$(printf '%s\n' "$rows" | awk -F'\t' -v c="$(printf '%s' "$chosen" | tr 'A-Z' 'a-z')" '$1==c {print $2; exit}')
+  [ -n "$rating" ] || { echo "Chosen '$chosen' is not a row of the candidates table" >&2; exit 1; }
+  [ "$rating" -ge 7 ] || { echo "the chosen approach is rated $rating: 6 or below is not ready to build (pull-request step 3); find a better candidate or stop" >&2; exit 1; }
+  mkdir -p ~/.claude/pr-steps
+  echo "approach $(realpath "$out") $(date -u +%FT%TZ)" >> ~/.claude/pr-steps/approach."$key"
+  echo "recorded approach for branch $(git symbolic-ref --short -q HEAD || echo HEAD)"
+  exit 0
+fi
 # A refactor record is the pass's lists (the ✅ coverage list and old ⇒ new ratings), or a small follow-up that carries an
 # earlier pass ("carries the pass of <sha>", ≤ 80 changed lines since): a fix log or a note is not a refactor pass
 is_pass() { grep -q '✅' "$1" && grep -Eq '[0-9]+ *(⇒|=>) *([0-9]+|removed|new|n/a)' "$1"; }

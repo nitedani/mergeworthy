@@ -46,7 +46,7 @@ _rp = arg('--parent', None); _rp = (re.sub(r'\.md$', '', path) + '.parent.md') i
 if _rp and os.path.exists(_rp) and re.search(r'\brefactor this pr\b|\bold rating\b|\bratings?\b.*\blists?\b', open(_rp).read(), re.I | re.S):
     prose = re.sub(r'<details>.*?</details>', '', prose, flags=re.S)
 # The converge steps' runs, collapsed in a PR body (converge step 5), are evidence: not linted or counted
-prose = re.sub(r'<details>\s*<summary>(?:Loop A|Loop B|Refactor pass|Fresh read|Gates)[^<]*</summary>.*?</details>', '', prose, flags=re.S)
+prose = re.sub(r'<details>\s*<summary>(?:Approach|Loop A|Loop B|Refactor pass|Fresh read|Gates)[^<]*</summary>.*?</details>', '', prose, flags=re.S)
 counted = re.sub(r'^\s*\|.*$', '', prose, flags=re.M)                 # table rows
 counted = re.sub(r'!\[[^\]]*\]\([^)]*\)', '', counted)                  # images
 counted = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', counted)              # links: keep the text

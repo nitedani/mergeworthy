@@ -13,7 +13,7 @@ Converging a pull request means working it to a final state: no reviewer, agent 
 
 ### The pipeline
 
-Converged means every step below is done **on the final head**. A step that leaves no record can't be told from a skipped one, so each ends with its `pr-steps` line; the hooks refuse `gh pr create` (unless `--draft`), `gh pr ready` and a push to a ready PR until the final head has all six. A head that changes afterwards re-runs and re-records the steps it re-opens.
+Converged means every step below is done **on the final head**. A step that leaves no record can't be told from a skipped one, so each ends with its `pr-steps` line; the hooks refuse `gh pr create` (unless `--draft`), `gh pr ready` and a push to a ready PR until the final head has all six and the branch has its `approach` record (`pull-request` step 3; recorded once per branch, not per head). A head that changes afterwards re-runs and re-records the steps it re-opens.
 
 #### 0. The design is agreed, and the area is clean
 
@@ -54,7 +54,7 @@ When the work reshapes existing code, or a small change can't be made cleanly be
 #### 5. Gates, body and closure
 
 - **You:** have a smallest-tier agent (`delegating`) run every gate and product lane on the final head; CI is green, or only workflow approval is pending (ready for review, never merge, per `merging`’s CI-limits exception); the PR bodies are true to that head (`mergeworthy:writing`). Where finality ran, its Owner-Safe closure comes last, with the review and guardian evidence attached.
-- **The evidence goes in the PR body,** just enough to prove each step ran: one collapsed block per step above, its runs newest first, each with the head it ran on. It says in a few plain sentences what ran and what came of it ("I rated every file and function with its reason and re-rated until nothing worth changing was left"), names a finding that changed the PR, and links the full output in a gist a person can read: first how many passes ran and what each found, then the commits, what stays below the bar and why, then one line per item, grouped by area. Claim only what ran on that head.
+- **The evidence goes in the PR body,** just enough to prove each step ran: one collapsed block per step above, plus an "Approach" block (the candidates and ratings, linking the gist of `pull-request` step 3), its runs newest first, each with the head it ran on. It says in a few plain sentences what ran and what came of it ("I rated every file and function with its reason and re-rated until nothing worth changing was left"), names a finding that changed the PR, and links the full output in a gist a person can read: first how many passes ran and what each found, then the commits, what stays below the bar and why, then one line per item, grouped by area. Claim only what ran on that head.
 - **After adding the completed runs’ evidence, run `github-threads` 1.6 on the final body draft again.** This posting-only review is separate from the recorded fresh-reader step; capture its verdict for the updated draft.
 - **Done when** every gate exits 0. Write each as `<command> -> exit <code>`, one per line, into a gates log.
 - **Record:** `pr-steps gates <the gates log>`

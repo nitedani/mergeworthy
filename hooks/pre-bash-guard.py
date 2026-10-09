@@ -8,7 +8,16 @@ def missing_steps(d):
     rec = os.path.expanduser(f'~/.claude/pr-steps/{head}')
     kinds = {l.split()[0] for l in open(rec)} if head and os.path.exists(rec) else set()
     kinds |= {'fresh'} if 'review' in kinds else set()  # records made before the six steps
-    return head, [k for k in ('verify', 'loopb', 'refactor', 'reverify', 'fresh', 'gates') if k not in kinds]
+    missing = [k for k in ('verify', 'loopb', 'refactor', 'reverify', 'fresh', 'gates') if k not in kinds]
+    # the approach is chosen once per PR: recorded per repo and branch (same key as bin/pr-steps)
+    git = lambda *a: subprocess.run(['git', '-C', d, *a], capture_output=True, text=True).stdout.strip()
+    common = git('rev-parse', '--git-common-dir')
+    if head and common:
+        branch = git('symbolic-ref', '--short', '-q', 'HEAD') or 'HEAD'
+        key = hashlib.sha256(f"{os.path.realpath(os.path.join(d, common))}\n{branch}".encode()).hexdigest()[:40]
+        if not os.path.exists(os.path.expanduser(f'~/.claude/pr-steps/approach.{key}')):
+            missing.insert(0, 'approach')
+    return head, missing
 
 def setting(name, default):
     """MERGEWORTHY_<name> from the environment, else from ~/.mergeworthy/settings.env (written at session start from the plugin's options)."""
@@ -250,7 +259,7 @@ def check(t, has_cd):
                 pr = subprocess.run(['gh', 'pr', 'view', '--json', 'isDraft,state', '--jq', 'select(.state=="OPEN" and (.isDraft|not)) | "ready"'], cwd=d, capture_output=True, text=True, timeout=20).stdout.strip()
                 head, missing = missing_steps(d)
                 if pr == 'ready' and missing:
-                    block(f"this branch's PR is out of draft and HEAD {head[:10]} has no pr-steps {', '.join(missing)} record: run converge's pipeline on it first (each step ends with its `pr-steps <step> <output>`), or `gh pr ready --undo` while it converges")
+                    block(f"this branch's PR is out of draft and HEAD {head[:10]} has no pr-steps {', '.join(missing)} record (approach: pull-request step 3, once per branch): run converge's pipeline on it first (each step ends with its `pr-steps <step> <output>`), or `gh pr ready --undo` while it converges")
     if p == 'gh' and len(a) >= 2 and a[0] == 'pr' and ((a[1] == 'create' and '--draft' not in a and '-d' not in a) or (a[1] == 'ready' and '--undo' not in a)):
         head, missing = missing_steps(run_dir)
         if missing:

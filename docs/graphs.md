@@ -19,7 +19,7 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 | `merging` | nothing |
 | `open-issue` | `core`, `evidence`, `writing`, `github-threads` |
 | `past-failures` | nothing |
-| `pull-request` | `evidence`, `delegating`, `core`, `finality`, `guardian`, `design-loop`, `writing`, `docs`, `converge`, `open-issue`, `mechanisms` |
+| `pull-request` | `evidence`, `delegating`, `core`, `finality`, `converge`, `guardian`, `design-loop`, `writing`, `docs`, `open-issue`, `mechanisms` |
 | `refactor` | nothing |
 | `review` | `core`, `delegating`, `guardian`, `refactor`, `mechanisms`, `writing`, `github-threads`, `converge` |
 | `verify` | `core`, `converge` |
@@ -234,20 +234,21 @@ flowchart TB
   s2 -.-> r2[["delegating"]]
   s2 -.-> r3[["core"]]
   s2 -.-> r4[["finality"]]
-  s3 -.-> r5[["delegating"]]
-  s3 -.-> r6[["core"]]
-  s3 -.-> r7[["guardian"]]
-  s3 -.-> r8[["design-loop"]]
-  s3 -.-> r9[["writing"]]
-  s3 -.-> r10[["docs"]]
-  s3 -.-> r11[["converge"]]
-  s4 -.-> r12[["open-issue"]]
-  s4 -.-> r13[["core"]]
-  s4 -.-> r14[["evidence"]]
-  s5 -.-> r15[["converge"]]
-  s6 -.-> r16[["writing"]]
-  s6 -.-> r17[["evidence"]]
-  s6 -.-> r18[["mechanisms"]]
+  s2 -.-> r5[["converge"]]
+  s3 -.-> r6[["delegating"]]
+  s3 -.-> r7[["core"]]
+  s3 -.-> r8[["guardian"]]
+  s3 -.-> r9[["design-loop"]]
+  s3 -.-> r10[["writing"]]
+  s3 -.-> r11[["docs"]]
+  s3 -.-> r12[["converge"]]
+  s4 -.-> r13[["open-issue"]]
+  s4 -.-> r14[["core"]]
+  s4 -.-> r15[["evidence"]]
+  s5 -.-> r16[["converge"]]
+  s6 -.-> r17[["writing"]]
+  s6 -.-> r18[["evidence"]]
+  s6 -.-> r19[["mechanisms"]]
   start --> g0
 ```
 
