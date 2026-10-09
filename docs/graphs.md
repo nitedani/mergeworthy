@@ -9,18 +9,18 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 | `converge` | nothing |
 | `core` | `writing`, `open-issue`, `github-threads`, `evidence`, `delegating`, `design-loop`, `converge`, `pull-request`, `merging` |
 | `delegating` | nothing |
-| `design-loop` | `pull-request`, `core`, `review`, `writing`, `converge` |
+| `design-loop` | `pull-request`, `core`, `review`, `writing`, `converge`, `delegating` |
 | `evidence` | nothing |
 | `finality` | nothing |
 | `github-threads` | `converge`, `review`, `refactor`, `core`, `writing`, `pull-request`, `finality` |
 | `guardian` | `delegating`, `converge`, `refactor`, `design-loop`, `core`, `writing` |
 | `mechanisms` | nothing |
 | `merging` | nothing |
-| `open-issue` | `evidence`, `writing`, `github-threads` |
+| `open-issue` | `core`, `evidence`, `writing`, `github-threads` |
 | `past-failures` | nothing |
 | `pull-request` | `evidence`, `delegating`, `finality`, `core`, `guardian`, `design-loop`, `writing`, `converge`, `open-issue` |
 | `refactor` | nothing |
-| `review` | `core`, `delegating`, `guardian`, `refactor`, `writing`, `github-threads`, `converge` |
+| `review` | `core`, `delegating`, `guardian`, `refactor`, `mechanisms`, `writing`, `github-threads`, `converge` |
 | `verify` | `core`, `converge` |
 | `writing` | `github-threads` |
 
@@ -115,7 +115,7 @@ flowchart TB
     s9["4. Compare and recommend"]
     s8 --> s9
   end
-  s7 -.-> r6[["core"]]
+  s7 -.-> r6[["delegating"]]
   start --> g0
   g0 ~~~ g1
 ```
@@ -191,12 +191,16 @@ flowchart TB
   subgraph g1["1.10 Integrating agents'<br/>work"]
     s1["1.10 Integrating agents'<br/>work"]
   end
-  subgraph g2["Briefing an agent"]
-    s2["Briefing an agent"]
+  subgraph g2["Choosing the model"]
+    s2["Choosing the model"]
+  end
+  subgraph g3["Briefing an agent"]
+    s3["Briefing an agent"]
   end
   start --> g0
   g0 ~~~ g1
   g1 ~~~ g2
+  g2 ~~~ g3
 ```
 
 ## Any change that lands in a PR: writing it, committing it, pushing it to an open PR
@@ -225,17 +229,18 @@ flowchart TB
   s2 -.-> r2[["delegating"]]
   s2 -.-> r3[["finality"]]
   s2 -.-> r4[["core"]]
-  s3 -.-> r5[["core"]]
-  s3 -.-> r6[["guardian"]]
-  s3 -.-> r7[["design-loop"]]
-  s3 -.-> r8[["writing"]]
-  s3 -.-> r9[["converge"]]
-  s4 -.-> r10[["open-issue"]]
-  s4 -.-> r11[["core"]]
-  s4 -.-> r12[["evidence"]]
-  s5 -.-> r13[["converge"]]
-  s6 -.-> r14[["writing"]]
-  s6 -.-> r15[["evidence"]]
+  s3 -.-> r5[["delegating"]]
+  s3 -.-> r6[["core"]]
+  s3 -.-> r7[["guardian"]]
+  s3 -.-> r8[["design-loop"]]
+  s3 -.-> r9[["writing"]]
+  s3 -.-> r10[["converge"]]
+  s4 -.-> r11[["open-issue"]]
+  s4 -.-> r12[["core"]]
+  s4 -.-> r13[["evidence"]]
+  s5 -.-> r14[["converge"]]
+  s6 -.-> r15[["writing"]]
+  s6 -.-> r16[["evidence"]]
   start --> g0
 ```
 
@@ -247,18 +252,21 @@ Opens `mergeworthy:open-issue` (one finding a newcomer can find, reproduce and j
 flowchart TB
   start(["Opening an issue"])
   subgraph g0["open-issue"]
-    s0["1. Already filed or fixed?"]
-    s1["2. Reproduce it on today's<br/>‹base›"]
+    s0["0. Should this be a PR<br/>instead?"]
+    s1["1. Already filed or fixed?"]
     s0 --> s1
-    s2["3. Write the body"]
+    s2["2. Reproduce it on today's<br/>‹base›"]
     s1 --> s2
-    s3["4. Post it through the gate"]
+    s3["3. Write the body"]
     s2 --> s3
+    s4["4. Post it through the gate"]
+    s3 --> s4
   end
-  s1 -.-> r1[["evidence"]]
-  s2 -.-> r2[["writing"]]
-  s2 -.-> r3[["evidence"]]
-  s3 -.-> r4[["github-threads"]]
+  s0 -.-> r1[["core"]]
+  s2 -.-> r2[["evidence"]]
+  s3 -.-> r3[["writing"]]
+  s3 -.-> r4[["evidence"]]
+  s4 -.-> r5[["github-threads"]]
   start --> g0
 ```
 
@@ -420,16 +428,17 @@ flowchart TB
   start(["Any independent review"])
   subgraph g0["review"]
     s0["1. A model from another<br/>company than the<br/>session's"]
-    s1["2. A fresh-context subagent<br/>on the session's default<br/>model"]
+    s1["2. A fresh-context subagent<br/>on the next tier down"]
     s0 --> s1
   end
   s0 -.-> r1[["core"]]
   s1 -.-> r2[["delegating"]]
   s1 -.-> r3[["guardian"]]
   s1 -.-> r4[["refactor"]]
-  s1 -.-> r5[["writing"]]
-  s1 -.-> r6[["github-threads"]]
-  s1 -.-> r7[["core"]]
+  s1 -.-> r5[["mechanisms"]]
+  s1 -.-> r6[["writing"]]
+  s1 -.-> r7[["github-threads"]]
+  s1 -.-> r8[["core"]]
   subgraph g1["The PR review round"]
     s2["1. Write the charter below<br/>to ‹artifact<br/>root›/review-‹pass<br/>id›.md"]
     s3["2. Append the diff command<br/>against git merge-base<br/>HEAD …"]
@@ -439,9 +448,9 @@ flowchart TB
     s5["4. If no independent<br/>reviewer is available"]
     s4 --> s5
   end
-  s3 -.-> r8[["core"]]
-  s5 -.-> r9[["converge"]]
-  s5 -.-> r10[["core"]]
+  s3 -.-> r9[["core"]]
+  s5 -.-> r10[["converge"]]
+  s5 -.-> r11[["core"]]
   start --> g0
   g0 ~~~ g1
 ```
@@ -475,29 +484,32 @@ flowchart TB
   subgraph g3["gate-pass"]
     s3["gate-pass"]
   end
-  subgraph g4["The finality trigger"]
-    s4["The finality trigger"]
+  subgraph g4["review-context"]
+    s4["review-context"]
   end
-  subgraph g5["pr-steps"]
-    s5["pr-steps"]
+  subgraph g5["The finality trigger"]
+    s5["The finality trigger"]
   end
-  subgraph g6["The watcher daemon"]
-    s6["The watcher daemon"]
+  subgraph g6["pr-steps"]
+    s6["pr-steps"]
   end
-  subgraph g7["Hooks"]
-    s7["Hooks"]
+  subgraph g7["The watcher daemon"]
+    s7["The watcher daemon"]
   end
-  subgraph g8["pre-bash-guard.py"]
-    s8["pre-bash-guard.py"]
+  subgraph g8["Hooks"]
+    s8["Hooks"]
   end
-  subgraph g9["post-bash-register.py"]
-    s9["post-bash-register.py"]
+  subgraph g9["pre-bash-guard.py"]
+    s9["pre-bash-guard.py"]
   end
-  subgraph g10["stop-lint.py"]
-    s10["stop-lint.py"]
+  subgraph g10["post-bash-register.py"]
+    s10["post-bash-register.py"]
   end
-  subgraph g11["session-start"]
-    s11["session-start"]
+  subgraph g11["stop-lint.py"]
+    s11["stop-lint.py"]
+  end
+  subgraph g12["session-start"]
+    s12["session-start"]
   end
   start --> g0
   g0 ~~~ g1
@@ -511,4 +523,5 @@ flowchart TB
   g8 ~~~ g9
   g9 ~~~ g10
   g10 ~~~ g11
+  g11 ~~~ g12
 ```
