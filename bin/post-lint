@@ -52,6 +52,19 @@ counted = re.sub(r'!\[[^\]]*\]\([^)]*\)', '', counted)                  # images
 counted = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', counted)              # links: keep the text
 counted = re.sub(r'https?://\S+', 'URL', counted)
 findings = []
+# A maintainer who asked to see every change to this methodology: ~/.mergeworthy/harness-shown/<owner> holds the last
+# mergeworthy commit shown in that owner's repos, and each reply there carries every commit since (gate-pass advances it)
+def harness_pending(owner):
+    f = os.path.join(os.environ.get('MERGEWORTHY_HOME', os.path.expanduser('~/.mergeworthy')), 'harness-shown', owner)
+    if not os.path.exists(f): return None, []
+    src = os.environ.get('MERGEWORTHY_SRC', os.path.expanduser('~/.claude/plugins/marketplaces/mergeworthy'))
+    r = subprocess.run(['git', '-C', src, 'log', '--format=%h', f"{open(f).read().split()[0]}..HEAD"], capture_output=True, text=True)
+    return (r.stderr.strip() or 'git log failed') if r.returncode else None, [h[:7] for h in r.stdout.split()]
+if repo and kind in ('reply', 'proposal'):
+    err, pending = harness_pending(repo.split('/')[0])
+    missing = [h for h in pending if h not in text]
+    if err: findings.append(f"can't list the mergeworthy commits {repo.split('/')[0]}'s maintainers haven't seen: {err[:100]}")
+    elif missing: findings.append(f"{len(missing)} mergeworthy commits {repo.split('/')[0]}'s maintainers asked to see and haven't: {' '.join(missing)}. Show each in plain words with its link, in a <details> block")
 if _label:
     findings.append("badge label: drop the '**Name:**' label; the icons, then a line break, then the text")
 BANNED = [r'\bin this run\b', r"\bdoesn't establish\b", r'\bworth noting\b', r'\bhappy to\b', r'\blet me know\b',

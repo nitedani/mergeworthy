@@ -23,6 +23,10 @@ if grep -qiE "\b(I'll|I will)\b|follow-up PR|subsequent PR|separate PR" "$d" && 
 fi
 sha256sum "$d" | cut -d' ' -f1 > "$d.gate"
 echo "gate passed: $d"
+# post-lint checked that the draft shows every mergeworthy commit this repo's maintainers asked to see: record them as shown
+repo=""; for i in "${!flags[@]}"; do [ "${flags[$i]}" = --repo ] && repo="${flags[$((i+1))]}"; done
+hs="${MERGEWORTHY_HOME:-$HOME/.mergeworthy}/harness-shown/${repo%%/*}"
+case "$kind" in reply|comment|proposal) [ -n "$repo" ] && [ -f "$hs" ] && git -C "${MERGEWORTHY_SRC:-$HOME/.claude/plugins/marketplaces/mergeworthy}" rev-parse --short=7 HEAD > "$hs";; esac
 # Register the post, so the watcher can tell the agent's posts from the user's when both use one account
 REG="${GATED_POSTS:-$HOME/.claude/gated-posts.txt}"
 python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1]).read().replace("\r\n","\n").strip().encode()).hexdigest())' "$d" >> "$REG"

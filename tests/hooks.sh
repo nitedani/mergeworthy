@@ -252,6 +252,18 @@ blint() { printf '%s' "$1" > "$T/badge.md"; python3 "$R/bin/post-lint" "$T/badge
 check "icons then a line break pass" 0 "$(blint $'<img src="https://github.com/claude.png" width="20" height="20" alt="Claude"> <img src="https://github.com/openai.png" width="20" height="20" alt="Codex">\nFixed in abc1234.\n')"
 check "a **Claude:** label is flagged" 1 "$(blint $'<img src="https://github.com/claude.png" width="20" height="20" alt="Claude"> **Claude:** Fixed in abc1234.\n')"
 check "no badge is flagged" 1 "$(blint $'Fixed in abc1234.\n')"
+# ---------- post-lint + gate-pass: a reply shows the mergeworthy commits the repo's maintainers asked to see ----------
+S="$T/mwsrc"; git init -q "$S"; for m in one two three; do git -C "$S" -c user.name=t -c user.email=t@t commit -q --allow-empty -m "$m"; done
+mkdir -p "$HOME/.mergeworthy/harness-shown"; git -C "$S" rev-parse --short=7 HEAD~2 > "$HOME/.mergeworthy/harness-shown/acme"
+h2=$(git -C "$S" rev-parse --short=7 HEAD~1); h3=$(git -C "$S" rev-parse --short=7 HEAD)
+hl() { printf '%s\n' "$1" > "$T/hs.md"; MERGEWORTHY_SRC="$S" python3 "$R/bin/post-lint" "$T/hs.md" --kind reply --repo "$2" --parent none 2>&1 | grep -c 'asked to see'; }
+check "BLOCK: a reply in acme/x that leaves out unseen mergeworthy commits" 1 "$(hl 'Fixed the bug.' acme/x)"
+check "a reply that shows both unseen commits passes" 0 "$(hl "Fixed. Mergeworthy: $h2 and $h3." acme/x)"
+check "another owner's repo asked for nothing" 0 "$(hl 'Fixed the bug.' other/x)"
+printf 'Fixed. Mergeworthy: %s and %s.\n' "$h2" "$h3" > "$T/hs.md"; printf 'CLEAN\n' > "$T/hs.review"
+MERGEWORTHY_SRC="$S" bash "$R/bin/gate-pass" "$T/hs.md" "$T/hs.review" --kind tracker --repo acme/x >/dev/null 2>&1 || true
+check "gate-pass of a tracker post doesn't mark them shown" "$(git -C "$S" rev-parse --short=7 HEAD~2)" "$(cat "$HOME/.mergeworthy/harness-shown/acme")"
+
 # ---------- post-lint: each list item is its own sentence ----------
 B=$'<img src="https://github.com/claude.png" width="20" height="20" alt="Claude">\n'
 lint() { python3 "$R/bin/post-lint" "$1" --kind issue --parent none 2>&1 | grep -c 'word sentence'; }

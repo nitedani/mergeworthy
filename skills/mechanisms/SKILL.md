@@ -33,6 +33,7 @@ These scripts enforce the rules that failed as text alone.
   - **References:** "stacked on"; bare `#N`.
   - **Content:** budgets; unclassified notes; process in the thread; questions without a recommendation; a bare "Done" to a question (`reply`, `inline`); deferrals in the notes table.
   - **Safety and form:** secrets; a missing badge, unless the `badge` option says otherwise (not for `tracker`).
+  - **Methodology changes asked for** (`reply`, `proposal`): when `~/.mergeworthy/harness-shown/<owner>` exists, every mergeworthy commit since the one it names must appear in the draft. `gate-pass` then records the installed commit there.
 
 ### `thread-context` (enforces 1.6 and writing step 0)
 
