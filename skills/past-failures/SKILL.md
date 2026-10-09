@@ -81,6 +81,7 @@ Each failure below happened, most more than once. When a rule fails or the user 
 | Wait pings repeated the same open items in new comments; the maintainer: "the aggressive pinging is annoying because you end up repeating yourself". | `github-threads` 1.5, A TODO comment instead of repeated pings |
 | A reply told the maintainer "the rule you agreed to" for a design he never agreed to, written from a session summary instead of the thread; he had proposed the opposite days before. | `writing` (Credit), `post-lint` (credit without a link) |
 | An upstream PR branch started from a stale fork's main and carried upstream's already-merged commits. | `pull-request` (branch from the target repository's base) |
+| Asked an upstream maintainer for a release two hours after a review ping, while the Vike PR that would use it wasn't merged; the user: "Don't ping magne too much unless it's really blocking you." | `github-threads` 1.5, The wait ping (blocking means now) |
 | A decision issue recommended the smallest change over the option users want. | `mergeworthy:writing`, How a good colleague writes (recommendations) |
 | Agents taken for dead when their turn ended, retried and killed; the orchestrator blocked on wait loops. | 1.10, `pre-agent-dedupe`, `agent-job`, `pre-bash-guard` |
 | Design-thread replies chased the latest comment, flipped without evidence, argued from execution cost and left invariants open (the user's too). | `writing` (Design threads), `github-threads` 1.5 step 3, `finality`, `design-loop` (end state first) |
