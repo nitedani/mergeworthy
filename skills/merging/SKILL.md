@@ -10,6 +10,7 @@ description: "Pushing, saying a PR is ready, merging, stacked PRs."
     - Before any push: fetch; if you have unpushed commits, rebase them onto the remote branch (`git rebase origin/<branch>`) and re-run the quick gates; then check `git merge-base --is-ancestor <remote> HEAD` and push.
     - Never force-push, except on your own unmerged branch with `--force-with-lease=<branch>:<sha you last pushed>`.
     - Never push to a merged branch.
+    - Push to the PR's head repository by URL (`gh pr view <N> --json headRepositoryOwner,headRefName`), never by a remote's name: `origin` is upstream in some checkouts, and a push there opens a branch in the maintainer's repo.
 - **Each maintainer instruction is a checkbox for its PR.** Before saying ready and before merging, re-read the whole thread, inline comments included. Tick or do each instruction.
 - **A subagent that writes a PR follows the mergeworthy skills, not a summary of them.**
     - Its prompt tells it to load the skills and names the steps it runs: `pull-request` steps 1 to 5, evidence in the real app, and the benchmark for transports.
