@@ -40,7 +40,7 @@ The main session runs on the strongest tier and is the only agent there: it plan
     - `Goal`: one observable outcome.
     - `Facts`: only what you verified, each with its source.
     - `To check`: your guesses, as questions.
-    - `Scope`: the paths and commands it may use.
+    - `Scope`: the paths and commands it may use, and the machine's safety limits (ports and processes it must not touch, where servers may run), in every brief, follow-up rounds included.
     - `Acceptance`: the commands or observations that define done.
 
   Never put in your opinion, the answer you expect, or earlier agents' conclusions: a guess goes under `To check`. The one exception is a previous round's report, given to an agent that re-rates it.
