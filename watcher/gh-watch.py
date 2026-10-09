@@ -1000,8 +1000,8 @@ def own_events_changed(state):
 
 FOLLOWUP_DAYS, SLACK = 60, 3  # how long a merged PR is followed; lines of slack around its lines
 LOCKFILES = ('pnpm-lock.yaml', 'package-lock.json', 'yarn.lock')
-# a package.json line that only gives a dependency (or the package) a version; in a lockfile, semver numbers and integrity hashes
-DEP_LINE = re.compile(r'^\s*"([^"]+)":\s*"(?:[\^~<>=v ]*\d[^"]*|\*|latest|(?:workspace|npm|catalog|link|file):[^"]*)"(,?)\s*$')
+# a package.json line that only gives a dependency (or the package) a version: "name": "<alias target, workspace: or nothing><version>"; in a lockfile, semver numbers and integrity hashes
+DEP_LINE = re.compile(r'^\s*"([^"]+)":\s*"((?:npm:.+@|workspace:)?)(?:[\^~<>=v ]*\d[^"]*|\*|latest)"(,?)\s*$')
 SEMVER = re.compile(r'\d+\.\d+\.\d+[\w.+-]*|(?:sha\d+|md5)-[\w+/=]+|\b[0-9a-f]{40}\b')
 
 
@@ -1012,7 +1012,7 @@ def version_only(base, lines):
         return False
     def norm(l):
         m = DEP_LINE.match(l[1:])
-        return f'"{m[1]}"{m[2]}' if m else SEMVER.sub('V', l[1:]).strip()
+        return f'"{m[1]}":"{m[2]}"{m[3]}' if m else SEMVER.sub('V', l[1:]).strip()
     return sorted(norm(l) for l in lines if l[0] == '-') == sorted(norm(l) for l in lines if l[0] == '+')
 
 

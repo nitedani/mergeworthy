@@ -332,7 +332,7 @@ def _():
         return len(gh.log) - mark
 
 
-@case("noise: a hunk that only changes dependency versions in package.json or a lockfile touches none of your lines; a script change, an added dependency, the same bump in source code, and a bump with a script change in the same hunk do", "[] [] [] [] [11] [11] [11] [11]")
+@case("noise: a hunk that only changes dependency versions in package.json or a lockfile touches none of your lines; a script change, an added dependency, the same bump in source code, and a bump with a script change in the same hunk, and a changed alias target or file: path do; an alias version bump does not", "[] [] [] [] [11] [11] [11] [11] [11] [11] []")
 def _():
     with world() as (sim, gh, dirs):
         m = load(dirs['d1'], sim)
@@ -340,10 +340,12 @@ def _():
         lock = '@@ -10,4 +10,4 @@\n ctx\n-  /vite@7.0.1:\n-    resolution: {integrity: sha512-AAA}\n+  /vite@7.1.0:\n+    resolution: {integrity: sha512-BBB}\n ctx'
         script = '@@ -10,3 +10,3 @@\n ctx\n-    "build": "tsc",\n+    "build": "tsc -b",\n ctx'
         added = '@@ -10,2 +10,3 @@\n ctx\n+    "react": "^18.0.0",\n ctx'
+        alias = '@@ -10,3 +10,3 @@\n ctx\n-    "vite": "npm:vite@7.0.0",\n+    "vite": "npm:other@7.1.0",\n ctx'
+        path = '@@ -10,3 +10,3 @@\n ctx\n-    "a": "file:../a",\n+    "a": "file:../b",\n ctx'
         mixed = bump.replace(' ctx\n-    "vite"', ' ctx\n-    "build": "tsc",\n+    "build": "tsc -b",\n-    "vite"', 1)
         return ' '.join(str(x) for x in [
             m.patch_lines(bump, 'packages/vike/package.json')[0], m.patch_lines(lock, 'pnpm-lock.yaml')[0], m.patch_lines(lock, 'a/package-lock.json')[0], m.patch_lines(lock, 'yarn.lock')[0],
-            m.patch_lines(script, 'package.json')[0][:1], m.patch_lines(added, 'package.json')[0][:1], m.patch_lines(bump, 'src/a.ts')[0][:1], m.patch_lines(mixed, 'package.json')[0][:1]])
+            m.patch_lines(script, 'package.json')[0][:1], m.patch_lines(added, 'package.json')[0][:1], m.patch_lines(bump, 'src/a.ts')[0][:1], m.patch_lines(mixed, 'package.json')[0][:1], m.patch_lines(alias, 'package.json')[0][:1], m.patch_lines(path, 'package.json')[0][:1], m.patch_lines(alias.replace('other@', 'vite@'), 'package.json')[0]])
 
 
 @case("follow-ups: a backlog of 120 commits is read 40 calls a pass, oldest commit first, each commit's detail once", "True True True")
