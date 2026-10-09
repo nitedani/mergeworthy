@@ -72,6 +72,7 @@ Each failure below happened, most more than once. When a rule fails or the user 
 | A benchmark regression sent as a GENUINE-FORK, then kept by default. | 1.1.3 (no default on a regression), 1.1.11 |
 | Stuck on a fix whose every option regressed, the agent asked the user to pick instead of running the finality pass; the user had to name it. | finality (when to run it), 1.1.3 |
 | Phase B branches were about to get the code map and angles phrased in the current design's terms, anchoring them on what exists; the user named it. | finality (Phase B: the clean problem) |
+| A reproduced upstream bug with a known location was filed as an issue with tests offered, then a nudge asked the maintainer where the fix should go; the user: "Is it not clear where the bug is?" | 1.1.7: a found defect gets its PR now; a placement question goes into that PR's body as a decision with your pick, never in front of the fix. |
 | A decision issue recommended the smallest change over the option users want. | `mergeworthy:writing`, How a good colleague writes (recommendations) |
 | Agents taken for dead when their turn ended, retried and killed; the orchestrator blocked on wait loops. | 1.10, `pre-agent-dedupe`, `agent-job`, `pre-bash-guard` |
 | Design-thread replies chased the latest comment, flipped without evidence, argued from execution cost and left invariants open (the user's too). | `writing` (Design threads), `github-threads` 1.5 step 3, `finality`, `design-loop` (end state first) |
