@@ -11,6 +11,9 @@
 - Maintainers' commits pushed to a tracked PR, and 👍/👎 from GH_WATCH_EYES on the agent's comments.
 - WAIT PING DUE: your account's comment is the last on an open thread and has had no reply for WAIT_PING_HOURS (3).
 - PR head/state changes (pushes, merges, closes), CI turning red or green on open PRs, and your PR's code (tests excluded) changing by more than ~80 lines since its last refactor pass (REFACTOR STALE).
+- How often each thread is read depends on its state (see "How often a thread is read"); the notifications, your events feed
+  and the repos' issue lists are polled once per X-Poll-Interval, the repo lists by the one daemon holding the lease for all.
+- Every request is counted, 304 answers too (tally; `gh-watch.py --stats` prints the rate, and once an hour a line goes to gh-watch-stats.log).
 State lives in gh-watch-state.json: every seen (id, updated_at) pair, so nothing is skipped or repeated,
 and scans overlap by 10 minutes. A failed API call prints WATCH ERROR and that thread's scan position isn't advanced.
 """
@@ -41,7 +44,9 @@ class PassSpent(Exception):
 
 OK, RESERVE, LOW, PAUSED = range(4)  # level(): how much budget is left
 RESERVE_AT, LOW_AT = 1500, 500  # remaining calls: below RESERVE_AT only the daemons' own threads are scanned; below LOW_AT only the notifications fast path
+IDLE_DISCOVERY = 1800  # seconds after which a repo's comment feeds (and the search backup) are read although nothing is known to have moved in it
 PASS_CALLS, STABLE = 40, 86400  # calls one shared job may make per pass; seconds a polled URL's `since` stays the same, so its ETag still matches
+POLL_DEFAULT = 60  # seconds between polls of the notifications, your events feed and the repos' issue lists, unless GitHub's X-Poll-Interval says longer
 _pass = {'left': None}
 
 
@@ -50,7 +55,8 @@ def shared_path(name='shared-watch.json'):
 
 
 def shared_default():
-    return {'rate': {}, 'pause_until': 0, 'jobs': {}, 'etags': {}, 'commits': {}, 'followups': {}, 'backlog': {}, 'agent_since': None, 'me': None}
+    return {'rate': {}, 'pause_until': 0, 'jobs': {}, 'etags': {}, 'commits': {}, 'followups': {}, 'backlog': {}, 'agent_since': None, 'me': None,
+            'poll': POLL_DEFAULT, 'feeds': {}, 'activity': {}, 'dirty': {}, 'disc': {}}
 
 
 _read, _once_state = {}, {}
@@ -225,6 +231,33 @@ def limit_pause(resp):
     return int(h['x-ratelimit-reset']) if h.get('x-ratelimit-remaining') == '0' else time.time() + 60
 
 
+_calls, _calls_lock, _poll_seen = {}, threading.Lock(), [POLL_DEFAULT]
+
+
+def tally(status):
+    """Every request counts, a 304 too: observed on 2026-10-09, the account's drain matched ~180 304 answers a minute, not zero.
+    Kept per minute until save_state moves it into the daemon's state (`calls`: minute -> [requests, of them 304])."""
+    with _calls_lock:
+        c = _calls.setdefault(int(time.time() // 60), [0, 0])
+        c[0] += 1
+        c[1] += status == 304
+
+
+def note_poll(h):
+    """GitHub's X-Poll-Interval (seconds; usually 60) on the notifications and events answers is how often they may be polled."""
+    try:
+        every = int(h.get('x-poll-interval') or 0)
+    except ValueError:
+        return
+    if every and every != _poll_seen[0]:
+        _poll_seen[0] = every
+        shared_update(lambda s: s.__setitem__('poll', every))
+
+
+def poll_interval():
+    return max(POLL_DEFAULT, shared_read()['poll'])
+
+
 def spend():
     if _pass['left'] is not None:
         if _pass['left'] <= 0:
@@ -234,7 +267,7 @@ def spend():
 
 def request(path, method='GET', args=(), store=None, pending=None, fresh=False, newest_first=False):
     """The one place the watcher calls GitHub: pause check, rate-limit bookkeeping, conditional requests.
-    - store: a dict of validators by path. A request sends If-None-Match for its path; a 304 (not counted against the limit)
+    - store: a dict of validators by path. A request sends If-None-Match for its path; a 304 (counted like any call, see tally)
       comes back as status 304 with no body, for the caller to read as "nothing new since I last read it".
       The new validators go to `pending` if given (the caller commits them once it has used the answer), else straight to store.
       A first page with more pages after it is cached only if the list is newest first: otherwise a change on a later page hides.
@@ -249,14 +282,14 @@ def request(path, method='GET', args=(), store=None, pending=None, fresh=False, 
         resp = http_get(path, headers)
     else:
         resp = gh_send(method, path, headers, args)
+    tally(resp.status)
     note_rate(resp.headers)
+    note_poll(resp.headers)
     until = limit_pause(resp)
     if until:
         pause_until(until)
         raise Budget(f"rate limited until {iso(until)}")
     if resp.status == 304:
-        if _pass['left'] is not None:
-            _pass['left'] += 1  # a 304 isn't a call against the limit, so it doesn't use up the pass either
         return resp
     if resp.status >= 400:
         raise RuntimeError(f"gh api {path}: HTTP {resp.status} {resp.body.strip()[:150]}")
@@ -284,6 +317,7 @@ def run_gh(argv):
         raise Budget('paused')
     spend()
     r = subprocess.run(['gh'] + argv, capture_output=True, text=True)
+    tally(None)
     if r.returncode and 'rate limit' in r.stderr.lower():
         pause_until(time.time() + 600)
         raise Budget('rate limited')
@@ -333,9 +367,59 @@ def load_state():
         return {'since': now.strftime('%Y-%m-%dT%H:%M:%SZ'), 'seen': {}, 'prs': {}, 'ci': {}, 'is_pr': {}, 'since_by': {}, 'etag': {}}
 
 
+def flush_calls(s):
+    """Move the minutes counted since the last save into the state, and drop what is older than a day."""
+    with _calls_lock:
+        mine = dict(_calls)
+        _calls.clear()
+    calls = s.setdefault('calls', {})
+    for minute, (n, n304) in mine.items():
+        c = calls.setdefault(str(minute), [0, 0])
+        c[0] += n
+        c[1] += n304
+    for k in [k for k in calls if int(k) < time.time() // 60 - 1440]:
+        del calls[k]
+
+
+def rates(calls, minutes):
+    """-> (counted requests a minute, of them 304 answers) over the last `minutes` minutes, from a state's `calls`."""
+    lo = time.time() // 60 - minutes
+    rows = [v for k, v in calls.items() if int(k) > lo]
+    return sum(v[0] for v in rows) / minutes, sum(v[1] for v in rows) / minutes
+
+
+def stats_text():
+    """`gh-watch.py --stats`: the counted requests a minute of each live watch dir's daemon and of the machine, read from their state files."""
+    out, total = [], 0
+    for d in dict.fromkeys(live_dirs() + [HERE]):
+        try:
+            calls = json.load(open(os.path.join(d, 'gh-watch-state.json'))).get('calls') or {}
+        except (OSError, ValueError):
+            continue
+        hour, slow = rates(calls, 60)
+        total += hour
+        out.append(f"{d}: {hour:.1f} counted requests a minute in the last hour ({slow:.1f} of them 304 answers), {rates(calls, 1440)[0]:.1f} in the last 24 hours")
+    return '\n'.join(out + [f"all watch dirs: {total:.1f} counted requests a minute in the last hour (the limit is 83 a minute)"])
+
+
+def log_stats(state):
+    """Once an hour a line in gh-watch-stats.log (not events.log: it would wake the session), so the rate can be looked at later."""
+    now = time.time()
+    if 'stats_at' not in state:
+        state['stats_at'] = now
+    elif now - state['stats_at'] >= 3600:
+        state['stats_at'] = now
+        flush_calls(state)
+        hour, slow = rates(state['calls'], 60)
+        if not ONCE:
+            with open(os.path.join(HERE, 'gh-watch-stats.log'), 'a') as f:
+                f.write(f"{iso(now)} counted requests a minute in the last hour: {hour:.1f} ({slow:.1f} of them 304 answers), in the last 24 hours: {rates(state['calls'], 1440)[0]:.1f}\n")
+
+
 def save_state(s):
     if ONCE:
         return
+    flush_calls(s)
     prune(s.setdefault('etag', {}))
     tmp = STATE + '.tmp'
     json.dump(s, open(tmp, 'w'))
@@ -549,6 +633,8 @@ def scan_reactions(state, threads):
     for repo, num in threads:
         pending, clean = {}, True  # an answer's ETag is kept only once everything in it was handled: a 304 later means "nothing new"
         for kind, path in (('body', 'issues'), ('comment', 'issues'), ('review-comment', 'pulls')):
+            if kind == 'review-comment' and state['is_pr'].get(f"{repo}#{num}") is False:
+                continue  # an issue has no review comments
             try:
                 if kind == 'body':  # the PR or issue description itself
                     comments = paged(f"repos/{repo}/issues/{num}", etags, pending)
@@ -592,38 +678,50 @@ def react_eyes(repo, kind, cid):
         fail(f"eyes {repo} {kind} {cid}", e)
 
 
-def fetch_thread(repo, num, since, is_pr_known, author_known, prev_pr, etags):
-    """Network only (runs in a worker thread). Returns (is_pr, author, events, pr_state, red_checks, last_comment, validators):
-    validators are the ETags to keep once the caller has used the answers. A list that answers 304 has nothing new
-    (comments, reviews), and an unchanged PR keeps its previous state."""
-    is_pr, author, pending = is_pr_known, author_known, {}
+def fetch_thread(repo, num, since, is_pr_known, author_known, prev_pr, etags, mode='full', upd_known=True):
+    """Network only (runs in a worker thread). Returns (is_pr, author, events, pr_state, red, last_comment, validators, full, updated_at):
+    validators are the ETags to keep once the caller has used the answers; full says whether the comment lists were read.
+    A list that answers 304 has nothing new (comments, reviews), and an unchanged PR keeps its previous state.
+    mode 'check' first asks for the PR (or the issue) itself, with its validator: its body shows its comment counts and update time,
+    so a 304 means nothing happened in the thread (a comment, review, push, merge or close changes it), and only CI is then asked
+    for. Anything else reads the thread in full. updated_at is None while the PR or issue answered 304."""
+    is_pr, author, pending, updated = is_pr_known, author_known, {}, None
+    full, fresh = mode == 'full', not upd_known  # a thread whose update time isn't known yet can't use a 304
     if is_pr is None or author is None:
         issue = request(f"repos/{repo}/issues/{num}").json()
-        is_pr, author = 'pull_request' in issue, (issue.get('user') or {}).get('login')
-    events = []
-    for c in paged(f"repos/{repo}/issues/{num}/comments?since={stable_since(since)}&per_page=100", etags, pending):
-        events.append(('comment', c['id'], c['updated_at'], {**c['user'], 'assoc': c.get('author_association')}, c['html_url'], c.get('body') or '', ''))
+        is_pr, author, updated, full = 'pull_request' in issue, (issue.get('user') or {}).get('login'), issue.get('updated_at'), True
     pr_state = red = None
     if is_pr:
-        for c in paged(f"repos/{repo}/pulls/{num}/comments?since={stable_since(since)}&per_page=100", etags, pending):
-            events.append(('review-comment', c['id'], c['updated_at'], {**c['user'], 'assoc': c.get('author_association')}, c['html_url'], c.get('body') or '', f"{c.get('path')}:{c.get('line') or c.get('original_line')}"))
-        for r in paged(f"repos/{repo}/pulls/{num}/reviews?per_page=100", etags, pending):
-            if (r.get('submitted_at') or '') >= since and (r.get('body') or r.get('state') in ('APPROVED', 'CHANGES_REQUESTED')):
-                events.append(('review', r['id'], r['submitted_at'], {**r['user'], 'assoc': r.get('author_association')}, r['html_url'], r.get('body') or '', r.get('state')))
-        resp = request(f"repos/{repo}/pulls/{num}", store=etags, pending=pending, fresh=not prev_pr)
+        resp = request(f"repos/{repo}/pulls/{num}", store=etags, pending=pending, fresh=fresh or not prev_pr)
         if resp.status == 304:
             pr_state = prev_pr
         else:
             pr = resp.json()
             # 'conflict': GitHub runs no CI on a PR that conflicts with its base, so a conflict must be reported like red CI
             pr_state = {'head': pr['head']['sha'][:10], 'state': 'merged' if pr.get('merged') else pr['state'], 'conflict': pr.get('mergeable_state') == 'dirty'}
+            updated, full = pr.get('updated_at') or updated, True
         if pr_state['state'] == 'open':
             r = run_gh(['pr', 'checks', num, '-R', repo])
             if r.returncode not in (0, 1, 8) and 'no checks reported' not in r.stderr:  # 1 = some failed, 8 = some pending
                 raise RuntimeError(f"gh pr checks {num} -R {repo}: {r.stderr.strip()[:200]}")
-            checks = r.stdout
-            red = sorted(l.split('\t')[0] for l in checks.splitlines() if '\tfail\t' in l)
-    return is_pr, author, events, pr_state, red, fetch_last_comment(repo, num), pending
+            red = sorted(l.split('\t')[0] for l in r.stdout.splitlines() if '\tfail\t' in l)
+    elif not full or updated is None:
+        resp = request(f"repos/{repo}/issues/{num}", store=etags, pending=pending, fresh=fresh)
+        if resp.status != 304:
+            updated, full = resp.json().get('updated_at'), True
+    events, last = [], None
+    if full:
+        for c in paged(f"repos/{repo}/issues/{num}/comments?since={stable_since(since)}&per_page=100", etags, pending):
+            events.append(('comment', c['id'], c['updated_at'], {**c['user'], 'assoc': c.get('author_association')}, c['html_url'], c.get('body') or '', ''))
+        if is_pr:
+            for c in paged(f"repos/{repo}/pulls/{num}/comments?since={stable_since(since)}&per_page=100", etags, pending):
+                events.append(('review-comment', c['id'], c['updated_at'], {**c['user'], 'assoc': c.get('author_association')}, c['html_url'], c.get('body') or '', f"{c.get('path')}:{c.get('line') or c.get('original_line')}"))
+            for r in paged(f"repos/{repo}/pulls/{num}/reviews?per_page=100", etags, pending):
+                if (r.get('submitted_at') or '') >= since and (r.get('body') or r.get('state') in ('APPROVED', 'CHANGES_REQUESTED')):
+                    events.append(('review', r['id'], r['submitted_at'], {**r['user'], 'assoc': r.get('author_association')}, r['html_url'], r.get('body') or '', r.get('state')))
+        if not is_pr or pr_state['state'] == 'open':  # nobody is waiting for a reply on a merged or closed PR
+            last = fetch_last_comment(repo, num)
+    return is_pr, author, events, pr_state, red, last, pending, full, updated
 
 
 _F = 'state comments(last:1){nodes{databaseId url createdAt author{login}}}'
@@ -657,33 +755,74 @@ def emit_wait_ping(state, key, last, events):
     append_owed(f"{key} wait-ping {c['databaseId']} since {c['url']}: no reply for {int(hours)} h; nudge whoever it waits on")  # the Stop hook holds the turn until it's done
 
 
-def scan(state, only=None, threads=None):
-    """Scan all tracked threads (or only the given keys, or the given threads) in parallel; apply results in this thread."""
-    from concurrent.futures import ThreadPoolExecutor
+# ---------- How often a thread is read ----------
+# A look at a thread is a "check" (its PR or issue and, for an open PR, its CI: one or two requests, 304 answers counted) or a "full"
+# read (that, the comment lists, the last comment and the reactions: up to nine). A check that finds the thread changed becomes a
+# full read, and so does a notification or an issue-list change (repo_feeds) that names the thread: those are read at once.
+CHECK = {'recent': 300, 'open': 1800, 'closed': 21600}  # seconds between looks, by what the thread is now: open and changed in the last day, other open, merged or closed
+FULL = {'recent': 3600, 'open': 86400, 'closed': 86400}  # seconds after which a look is a full read anyway (reactions, edited comments: nothing else shows them)
+RECENT = 86400
+
+
+def thread_kind(state, key, now):
+    if state['prs'].get(key, {}).get('state') in ('merged', 'closed') or state.get('open', {}).get(key) is False:
+        return 'closed'
+    upd = state.get('upd', {}).get(key)
+    return 'recent' if upd is not None and now - upd < RECENT else 'open'
+
+
+def spread(key, every):
+    """When a thread is next looked at: `every` seconds, give or take a tenth fixed per thread, so threads first read together drift apart."""
+    return every * (0.9 + 0.2 * int(hashlib.sha256(key.encode()).hexdigest()[:6], 16) / 0xffffff)
+
+
+def plan(state, threads, lvl=OK, everything=False):
+    """-> [(repo, num, mode, activity)]: what a round reads. A thread never read here is read in full; one whose notification or
+    issue-list activity is newer than the last time it was read is read in full; otherwise it is looked at when its turn comes
+    (not at all while the budget is LOW). After an update the turn is worked out from the thread's last scan, so nothing is read at once."""
+    now, act, sched, out = time.time(), shared_read()['activity'], state.setdefault('sched', {}), []
+    for repo, num in threads:
+        key = f"{repo}#{num}"
+        s, a = sched.get(key), act.get(key, 0)
+        if s is None and key in state['since_by']:
+            t = iso_epoch(state['since_by'][key])
+            s = sched[key] = {'full': t, 'act': 0, 'next': t + spread(key, CHECK[thread_kind(state, key, now)])}  # act 0: what was published since that scan is unread
+        if s and now < s.get('retry', 0):
+            continue
+        if s is None and (lvl <= RESERVE or a) or s and a > s.get('act', 0):
+            out.append((repo, num, 'full', a))
+        elif s and lvl <= RESERVE and (everything or now >= s['next']):
+            out.append((repo, num, 'full' if everything or now - s['full'] >= FULL[thread_kind(state, key, now)] else 'check', a))
+    return out
+
+
+def scan(state, jobs):
+    """Read the given (repo, num, mode, activity) jobs in parallel; apply results in this thread. -> (all fine, the (repo, num) read in full)"""
+    started = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
     def since(key):  # each thread keeps its own position, so one failing thread doesn't hold back the others
         dt = datetime.datetime.strptime(state['since_by'].get(key, state['since']), '%Y-%m-%dT%H:%M:%SZ') - datetime.timedelta(minutes=10)
         return dt.strftime('%Y-%m-%dT%H:%M:%SZ')
-    started = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-    if threads is None:
-        threads = read_threads()
-        if only is not None:
-            threads = [t for t in threads if f"{t[0]}#{t[1]}" in only]
-        else:
-            threads = scan_set(state, threads)
-    ok = True
+    ok, fulls, now = True, [], time.time()
+    state.setdefault('upd', {})
+    sched = state.setdefault('sched', {})
     with ThreadPoolExecutor(max_workers=8) as ex:
-        futs = {ex.submit(fetch_thread, repo, num, since(f"{repo}#{num}"), state['is_pr'].get(f"{repo}#{num}"), state.setdefault('author', {}).get(f"{repo}#{num}"), state['prs'].get(f"{repo}#{num}"), state['etag']): (repo, num) for repo, num in threads}
-        for fut, (repo, num) in futs.items():
+        futs = {ex.submit(fetch_thread, repo, num, since(f"{repo}#{num}"), state['is_pr'].get(f"{repo}#{num}"), state.setdefault('author', {}).get(f"{repo}#{num}"), state['prs'].get(f"{repo}#{num}"),
+                          state['etag'], mode, f"{repo}#{num}" in state['upd']): (repo, num, a) for repo, num, mode, a in jobs}
+        for fut, (repo, num, a) in futs.items():
             key = f"{repo}#{num}"
             try:
-                is_pr, author, events, pr_state, red, last, validators = fut.result()
+                is_pr, author, events, pr_state, red, last, validators, full, updated = fut.result()
             except Exception as e:
                 ok = False
                 fail(key, e)
+                s = sched.setdefault(key, {'full': 0, 'act': 0})
+                s['next'] = s['retry'] = now + 300  # not again at once, whatever names it: a thread GitHub keeps failing would be asked for every round
                 continue
             state['etag'].update(validators)
             state['is_pr'][key] = is_pr
             state['author'][key] = author
+            if updated:
+                state['upd'][key] = iso_epoch(updated)
             if last:
                 state.setdefault('open', {})[key] = last['open']
             state['since_by'][key] = started
@@ -708,19 +847,14 @@ def scan(state, only=None, threads=None):
                 if answerable(user, body, agent_hashes, kind, own=author == ME):
                     handle_comment(state, repo, key, kind, cid, upd, user['login'], url, body, extra)
             emit_wait_ping(state, key, last, events)
-    if only is None:
-        state['since'] = started  # only the default for threads added to threads.txt later
-    return ok
-
-
-def scan_set(state, threads):
-    """The threads a full scan reads: the open ones, and once an hour the merged and closed ones too. A full scan costs
-    about 7 API calls a thread; reading every closed thread every 3 minutes ran through GitHub's 5,000 calls an hour.
-    A comment on a closed thread still arrives sooner through the notifications fast path (your own threads notify you)."""
-    if time.time() - state.get('closed_scan', 0) > 3600:
-        state['closed_scan'] = time.time()
-        return threads
-    return [t for t in threads if state['prs'].get(f"{t[0]}#{t[1]}", {}).get('state') not in ('merged', 'closed')]
+            s = sched.setdefault(key, {'full': 0})
+            s['act'] = a
+            if full:
+                s['full'] = now
+                fulls.append((repo, num))
+            s['next'] = now + spread(key, CHECK[thread_kind(state, key, now)])
+    state['since'] = started  # only the default for threads added to threads.txt later
+    return ok, fulls
 
 
 def notifications_changed(state):
@@ -751,42 +885,91 @@ def notifications_changed(state):
     return keys
 
 
-_pool = ThreadPoolExecutor(8)
+def publish(keys):
+    """Threads ("owner/repo#N") something happened on, for every daemon on the machine: each reads such a thread at once (see plan)."""
+    if not keys:
+        return
+    now = time.time()
+    def put(s):
+        for k in keys:
+            s['activity'][k] = max(now, s['activity'].get(k, 0) + 0.001)  # strictly rising, so a second event is never mistaken for the first
+        for k in [k for k, t in s['activity'].items() if t < now - 2 * 86400]:
+            del s['activity'][k]
+    shared_update(put)
 
 
-def repo_comments_changed(state):
-    """The notifications fast path lags GitHub by 20-30 s. Each watched repo's newest issue and review comments, polled
-    with If-None-Match (a 304 isn't rate-limited), catch a comment within one loop. Returns the changed thread keys."""
-    threads = read_threads()
-    watched = {f"{r}#{n}" for r, n in threads}
-    seen = state.setdefault('rc_seen', {})
-    def poll(url):
+def poll_account(state, lvl):
+    """The notifications and your events feed are the account's, the same for every daemon: the daemon of main_dir polls them once per
+    poll interval and publishes the threads they name. (The notifications also tell of comments on closed threads.)"""
+    if main_dir() not in (HERE, None) or time.time() - state.get('account_at', 0) < poll_interval():  # no live dir (a daemon started by hand) polls for itself
+        return
+    state['account_at'] = time.time()
+    keys = notifications_changed(state) or set()
+    if lvl <= RESERVE:
+        keys |= own_events_changed(state)
+    publish(keys)
+
+
+def feed_repos():
+    """The repos that need a feed of their own: those with a thread a live watch dir lists that isn't known to be merged or closed and
+    isn't yours, and the whole-repo lines of repos.txt. Your own threads are all in one feed (OWN_FEED); a repo of only finished
+    threads is reached through the notifications."""
+    repos, now = set(), time.time()
+    for d in dict.fromkeys(live_dirs() + [HERE]):
         try:
-            resp = request(url, store=state['etag'])
-            return url, resp.body if resp.status == 200 else None
-        except Budget:
-            raise
-        except Exception:  # a failed poll: the next round tries again
-            return url, None
-    urls = [f"repos/{r}/{k}/comments?sort=created&direction=desc&per_page=20" for r in sorted({r for r, _ in threads}) for k in ('issues', 'pulls')]
-    keys = set()
-    for url, body in _pool.map(poll, urls):
-        if body is None:
-            continue
+            st = json.load(open(os.path.join(d, 'gh-watch-state.json')))
+            st.setdefault('prs', {})
+        except (OSError, ValueError):
+            st = {'prs': {}}
+        repos |= {k.rsplit('#', 1)[0] for k in listed_threads(d) if thread_kind(st, k, now) != 'closed' and st.get('author', {}).get(k) != ME}
         try:
-            comments = json.loads(body)
-        except ValueError:
-            continue
-        prev = seen.get(url)
-        seen[url] = max([prev or ''] + [c.get('created_at', '') for c in comments])
-        if prev is None:  # the first poll only records where the feed stands
-            continue
-        for c in comments:
-            num = (c.get('issue_url') or c.get('pull_request_url') or '').rsplit('/', 1)[-1]
-            key = f"{url.split('/')[1]}/{url.split('/')[2]}#{num}"
-            if c.get('created_at', '') > prev and key in watched:
-                keys.add(key)
-    return keys
+            repos |= {l.split('#', 1)[0].strip() for l in open(os.path.join(d, 'repos.txt')) if l.split('#', 1)[0].strip()}
+        except OSError:
+            pass
+    return repos
+
+
+OWN_FEED = 'issues?filter=created&state=all&sort=updated&direction=desc&per_page=50'  # every issue and PR you opened, in every repo (50 a page)
+
+
+FEED_PAGES = 4  # pages one poll of an issue list reads at most; what is behind them is found by the thread's next check
+
+
+def poll_feed(url, repo_of, watched, size):
+    """One issue list, most recently updated first, with its validator. A watched thread whose update time moved since the last poll is
+    published as activity, and its repo is marked for discovery (see discover_agent_commands). The first poll of a list only records.
+    More pages are read while the page just read still shows moved threads: it ends on one the last poll saw changed, newer than the oldest
+    it saw, and FEED_PAGES isn't reached."""
+    pending, before = {}, shared_read()['feeds'].get(url)
+    key = lambda i: f"{repo_of(i)}#{i['number']}"
+    resp = request(url, store=shared_read()['etags'], pending=pending, newest_first=True)
+    if resp.status == 304:
+        return
+    page = items = resp.json()
+    oldest, pages = min(before.values()) if before else '', 1
+    while resp.next() and pages < FEED_PAGES and page and before and page[-1]['updated_at'] > oldest and before.get(key(page[-1])) != page[-1]['updated_at']:
+        resp = request(resp.next())
+        page = resp.json()
+        items, pages = items + page, pages + 1
+    seen = {key(i): i['updated_at'] for i in items}
+    moved = set() if before is None else {k for k, u in seen.items() if before.get(k) != u}
+    now = time.time()
+    def put(s):
+        s['feeds'][url] = dict(list(seen.items())[:size])  # one page's worth: the next poll reads back to its oldest
+        s['etags'].update(pending)
+        s['dirty'].update({k.rsplit('#', 1)[0]: now for k in moved})
+    shared_update(put)
+    publish(moved & watched)
+
+
+def repo_feeds():
+    """A shared job (shared_pass): once per poll interval for the whole machine, your own threads in all repos (one request) and the
+    threads of others you watch, repo by repo. The notifications lag GitHub by 20-30 s and only name threads you are subscribed to;
+    these name every watched thread at once, whoever wrote and whatever happened (a comment, a review, a push, a merge)."""
+    watched = set().union(*(listed_threads(d) for d in live_dirs() + [HERE]))
+    poll_feed(OWN_FEED, lambda i: i['repository']['full_name'], watched, 50)
+    for repo in sorted(feed_repos()):
+        poll_feed(f"repos/{repo}/issues?state=all&sort=updated&direction=desc&per_page=30", lambda i, repo=repo: repo, watched, 30)
 
 
 AGENT_CMD = re.compile(r'\s*/agent\b(?:[ \t]+([\w.-]+))?', re.I)  # a comment that starts with /agent, then maybe a watch dir's name
@@ -894,59 +1077,61 @@ def discover_agent_commands():
     """Your /agent comments on threads no watcher lists reach no one: you comment as the agent's own account, which GitHub
     doesn't notify you of, and the search and events indexes lag by many minutes. So each pass lists the recent issue
     and review comments of every watched repo (the comments feeds are live) and hands each /agent comment to agent_command.
-    A search of the threads you commented on, minus those repos, backs it up for repos no one lists. A feed is read with its
-    ETag, newest first, only back to where the last pass stopped. A failed call leaves the position, so it is retried."""
+    A repo is read when repo_feeds saw something move in it, else every IDLE_DISCOVERY seconds (a thread of someone else's that
+    you don't watch doesn't show in the feeds). A search of the threads you commented on, minus those repos, backs it up for repos no
+    one lists. A feed is read with its ETag, newest first, only back to where the last read of that repo stopped. A failed call leaves
+    the position, so it is retried."""
     started = iso(time.time())
-    cursor = shared_read()['agent_since'] or iso(time.time() - 3600)
-    since = iso(iso_epoch(cursor) - 600)  # passes overlap by 10 minutes
-    day = stable_since(since)
+    first = iso_epoch(shared_read()['agent_since'] or iso(time.time() - 3600))
     etags, ok = shared_read()['etags'], True
-    old = lambda page: page[-1].get('updated_at', '') < since
-    repos = watched_repos()
+    repos, dirty, disc = watched_repos(), shared_read()['dirty'], shared_read()['disc']
     for repo in sorted(repos):
-        pending = {}
+        if dirty.get(repo, 0) <= disc.get(repo, 0) and time.time() - disc.get(repo, 0) < IDLE_DISCOVERY:
+            continue
+        since = iso((disc.get(repo) or first) - 600)  # reads overlap by 10 minutes
+        day, pending = stable_since(since), {}
+        old = lambda page: page[-1].get('updated_at', '') < since
         try:
             for kind, path in (('comment', 'issues'), ('review-comment', 'pulls')):
                 for c in paged(f"repos/{repo}/{path}/comments?since={day}&sort=updated&direction=desc&per_page=100", etags, pending, newest_first=True, until=old):
                     agent_command(repo, (c.get('issue_url') or c.get('pull_request_url') or '').rsplit('/', 1)[-1], kind, c)
-            keep_etags(pending)
+            shared_update(lambda s: (s['etags'].update(pending), s['disc'].__setitem__(repo, iso_epoch(started))))
         except (Budget, PassSpent):
             raise
         except Exception as e:
             ok = False
             fail(f"agent commands {repo}", e)
-    try:
-        pending = {}
-        query = urllib.parse.quote(f'commenter:{ME} updated:>={day}', safe='')
-        found = request(f"search/issues?q={query}&sort=updated&order=desc&per_page=50", store=etags, pending=pending, newest_first=True)
-        for i in ([] if found.status == 304 else found.json()['items']):
-            repo, num = i['repository_url'].split('/repos/')[-1], i['number']
-            if repo in repos:
-                continue
-            try:
-                found = [('comment', c) for c in paged(f"repos/{repo}/issues/{num}/comments?since={day}&per_page=100", etags, pending)]
-                if 'pull_request' in i:
-                    found += [('review-comment', c) for c in paged(f"repos/{repo}/pulls/{num}/comments?since={day}&per_page=100", etags, pending)]
-                for kind, c in found:
-                    agent_command(repo, num, kind, c)
-            except (Budget, PassSpent):
-                raise
-            except Exception as e:
-                ok = False
-                fail(f"agent commands {repo}#{num}", e)
-        if ok:
-            keep_etags(pending)
-    except (Budget, PassSpent):
-        raise
-    except Exception as e:
-        ok = False
-        fail("agent command search", e)
+    if time.time() - disc.get('search', 0) >= IDLE_DISCOVERY:
+        since = iso((disc.get('search') or first) - 600)
+        day = stable_since(since)
+        try:
+            pending = {}
+            query = urllib.parse.quote(f'commenter:{ME} updated:>={day}', safe='')
+            found = request(f"search/issues?q={query}&sort=updated&order=desc&per_page=50", store=etags, pending=pending, newest_first=True)
+            for i in ([] if found.status == 304 else found.json()['items']):
+                repo, num = i['repository_url'].split('/repos/')[-1], i['number']
+                if repo in repos:
+                    continue
+                try:
+                    found = [('comment', c) for c in paged(f"repos/{repo}/issues/{num}/comments?since={day}&per_page=100", etags, pending)]
+                    if 'pull_request' in i:
+                        found += [('review-comment', c) for c in paged(f"repos/{repo}/pulls/{num}/comments?since={day}&per_page=100", etags, pending)]
+                    for kind, c in found:
+                        agent_command(repo, num, kind, c)
+                except (Budget, PassSpent):
+                    raise
+                except Exception as e:
+                    ok = False
+                    fail(f"agent commands {repo}#{num}", e)
+            if ok:
+                shared_update(lambda s: (s['etags'].update(pending), s['disc'].__setitem__('search', iso_epoch(started))))
+        except (Budget, PassSpent):
+            raise
+        except Exception as e:
+            ok = False
+            fail("agent command search", e)
     if ok:
         shared_update(lambda s: s.__setitem__('agent_since', started))
-
-
-def keep_etags(pending):
-    shared_update(lambda s: s['etags'].update(pending))
 
 
 def ai_call_elsewhere(state, repo, num, etype, c):
@@ -1219,35 +1404,40 @@ def locked():
     return f
 
 
-def run_scan():
+def run_scan(everything=False):
+    """Read what is due now (everything: every listed thread, in full); the reactions of what was read in full."""
     with locked():
         state = load_state()
-        state['last_full'] = time.time()
-        threads = scan_set(state, read_threads())  # once: it opens the hourly closed-thread window for both scans
-        scan(state, threads=threads)
+        ok, fulls = scan(state, plan(state, read_threads(), OK, everything))
         save_state(state)
-    with locked():
-        state = load_state()
-        scan_reactions(state, threads)
-        save_state(state)
+    read_reactions(fulls)
 
 
-JOBS = (('discovery', 300, discover_agent_commands), ('followups', 600, follow_ups))  # machine-wide work: name, seconds between passes, job
+def read_reactions(fulls):
+    if fulls:
+        with locked():
+            state = load_state()
+            scan_reactions(state, fulls)
+            save_state(state)
+
+
+JOBS = (('feeds', poll_interval, repo_feeds), ('discovery', 300, discover_agent_commands), ('followups', 1800, follow_ups))  # machine-wide work: name, seconds between passes (or a function of it), job
+RESERVE_JOBS = ('feeds',)  # the jobs that run below RESERVE_AT calls left too: they are what names the threads to read
 
 
 def shared_pass(force=False):
     """The machine-wide jobs, for every live watch dir, by the one daemon that holds the lease; the others skip them. Each job
     is due every so many seconds across all daemons (its last_run is in the shared state, so a restart doesn't make it due
     again), makes at most PASS_CALLS calls per pass, and runs only while the budget is healthy."""
-    if level() != OK and not force:
+    if level() > RESERVE and not force:
         return
     with lease() as mine:
         if not mine:
             return
         for name, every, job in JOBS:
-            if level() != OK and not force:
-                return
-            if not force and time.time() - (shared_read()['jobs'].get(name) or {}).get('last_run', 0) < every:
+            if level() > (RESERVE if name in RESERVE_JOBS else OK) and not force:
+                continue
+            if not force and time.time() - (shared_read()['jobs'].get(name) or {}).get('last_run', 0) < (every() if callable(every) else every):
                 continue
             shared_update(lambda s: s['jobs'].__setitem__(name, {'last_run': time.time()}))  # at the start: a failing job waits its turn too
             _pass['left'] = PASS_CALLS
@@ -1357,23 +1547,21 @@ def announce():
 
 
 def tick():
-    """One round of a daemon. What each budget level allows: OK everything; RESERVE (below RESERVE_AT calls left) not the shared
-    jobs; LOW (below LOW_AT) only the notifications fast path and the threads it reports; PAUSED nothing."""
+    """One round of a daemon. What each budget level allows: OK everything; RESERVE (below RESERVE_AT calls left) not discovery and
+    follow-ups; LOW (below LOW_AT) only the notifications and the threads they name; PAUSED nothing."""
     follow_update()
     lvl = level()
     if lvl < PAUSED:
         try:
             with locked():
                 state = load_state()
-                changed = notifications_changed(state) or set()
-                if lvl <= RESERVE:
-                    changed |= own_events_changed(state) | repo_comments_changed(state)
-                if changed:
-                    scan(state, only=changed)
+                poll_account(state, lvl)
+                ok, fulls = scan(state, plan(state, read_threads(), lvl))
+                log_stats(state)
                 save_state(state)
-                full = lvl <= RESERVE and time.time() - state.get('last_full', 0) > 300  # the backstop; the repo comment feeds catch comments within ~10 s
-            if full:
-                run_scan()
+            read_reactions(fulls)
+            if lvl <= RESERVE and time.time() - _retire_at[0] > 300:
+                _retire_at[0] = time.time()
                 retire_if_done()
             shared_pass()
         except Budget:
@@ -1381,9 +1569,15 @@ def tick():
     announce()
 
 
+_retire_at = [0]
+
+
 def main():
+    if '--stats' in sys.argv:
+        print(stats_text())
+        return
     if ONCE:
-        run_scan()
+        run_scan(everything=True)
         shared_pass(force=True)
         return
     while True:

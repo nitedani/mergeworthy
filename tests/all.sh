@@ -7,5 +7,6 @@ bash tests/hooks.sh .
 bash tests/word-budget .
 bash tests/watcher.sh .
 python3 tests/watch-budget.py .
+python3 tests/watch-cadence.py .
 bash tests/loc-breakdown.sh .
 bash tests/netns.sh .

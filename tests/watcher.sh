@@ -41,12 +41,12 @@ $1
 EOF
 }
 
-# hourly window open, #1 merged, #2 open: the full scan and the reactions scan both read #1 and #2
+# #1 merged, #2 open, neither read here before: the full scan and the reactions scan both read #1 and #2
 got=$(py '
 json.dump({"since": "2026-01-01T00:00:00Z", "seen": {}, "prs": {"o/r#1": {"state": "merged"}, "o/r#2": {"state": "open"}}, "ci": {}, "is_pr": {}, "since_by": {}, "closed_scan": 0}, open(m.STATE, "w"))
 open(m.THREADS, "w").write("o/r 1\no/r 2\n")
 seen = {"scan": [], "reactions": []}
-m.fetch_thread = lambda repo, num, *a, **k: (seen["scan"].append(num), (False, "x", [], None, None, None, {}))[1]
+m.fetch_thread = lambda repo, num, *a, **k: (seen["scan"].append(num), (False, "x", [], None, None, None, {}, True, None))[1]
 m.scan_reactions = lambda state, threads: seen["reactions"].extend(n for _, n in threads)
 m.run_scan()
 print("scan=" + ",".join(sorted(seen["scan"])) + " reactions=" + ",".join(sorted(seen["reactions"])))
@@ -175,7 +175,10 @@ def fake_paged(path, *a, **k):
     return {"comments": threads[n][1], "timeline": threads[n][2]}.get(parts[5], [])
 m.request, m.paged = fake_request, fake_paged
 m.discover_agent_commands()
+m.shared_update(lambda s: s["dirty"].__setitem__("o/r", m.time.time() + 5))  # repo_feeds saw something move in the repo
 m.discover_agent_commands()
+m.shared_update(lambda s: s["dirty"].__setitem__("o/r", 0))
+m.discover_agent_commands()  # nothing moved since: no feed is read
 feed = [c for c in calls if "/o/r/issues/comments" in c or "/o/r/pulls/comments" in c]
 print("feeds:", len(feed), all("sort=updated&direction=desc" in c and "since=" in c for c in feed), file=sys.stderr)
 '"$1"'
@@ -187,7 +190,7 @@ got="alpha: $(grep '^###' "$AD/alpha/events.log" | sed 's/ [0-9T:Z-]*  <u/ <u/' 
 check "/agent in unlisted threads: alpha gets the reference by body" "alpha: ### AGENT COMMAND o/r#407 comment 11 by me <u11>|" "$got"
 got="beta: $(grep '^###' "$AD/beta/events.log" | sed 's/ [0-9T:Z-]*  <u/ <u/' | tr '\n' '|')"
 check "/agent: beta gets the named, the unrouted (main_dir) and the cross-referenced one, each once, no gated post / other author / mid-line; x/y#411, no one lists its repo, comes from the search backup" "beta: ### AGENT COMMAND o/r#408 comment 12 by me <u12>|### UNROUTED /agent o/r#409 comment 13 by me <u13>|### AGENT COMMAND o/r#410 comment 17 by me <u17>|### UNROUTED /agent x/y#411 comment 19 by me <u19>|" "$got"
-check "discovery lists both comment feeds of the watched repo each pass (two passes), sorted by update, with since" "feeds: 4 True" "$(grep '^feeds' "$T/agentcalls")"
+check "discovery lists both comment feeds of the watched repo in a pass after something moved in it (and the first), sorted by update, with since; a pass with nothing moved reads none" "feeds: 4 True" "$(grep '^feeds' "$T/agentcalls")"
 check "a routed thread joins its dir's threads.txt, an unrouted one does not" "o/r 1 o/r 407|o/r 2 o/r 408 o/r 410|" "$(echo $(cat "$AD/alpha/threads.txt"))|$(echo $(cat "$AD/beta/threads.txt"))|"
 
 # FOLLOW-UP: commits by others to the lines of your merged PR, and PRs that reference it: each once, to the dirs that list the PR

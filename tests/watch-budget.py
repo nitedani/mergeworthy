@@ -72,8 +72,8 @@ def events(dirs):
     return sorted(out)
 
 
-def simulate(restart_at=1800, hours=3600):
-    """Seven daemons for an hour; at restart_at every one of them is stopped and started again (a plugin update).
+def simulate(restart_at=1800, hours=5400):
+    """Seven daemons for 90 minutes (the follow-ups run every 30); at restart_at every one of them is stopped and started again (a plugin update).
     -> (gh, events per dir, the events expected, errors)"""
     fresh_home()
     sim = ws.Sim()
@@ -96,11 +96,11 @@ def simulate(restart_at=1800, hours=3600):
 # ---------- 1. seven daemons and a restart, for an hour ----------
 gh, got, want, errors = simulate()
 core, graphql = gh.count('core'), gh.count('graphql')
-BUDGET = int(os.environ.get('WATCH_BUDGET', 550))
+BUDGET = int(os.environ.get('WATCH_BUDGET', 500))
 detail_counts = collections.Counter(p for t, m, p, s, r in gh.log if re.fullmatch(r'repos/[^/]+/[^/]+/commits/[0-9a-f]{40}', p) and s != 304)
-print(f"measured over the simulated hour: core calls {core}, graphql calls {graphql}, 304 answers {sum(1 for e in gh.log if e[3] == 304)}, commit-detail reads {sum(detail_counts.values())} of {len(detail_counts)} commits")
+print(f"measured over the simulated 90 minutes: core calls {core}, graphql calls {graphql}, 304 answers {sum(1 for e in gh.log if e[3] == 304)}, commit-detail reads {sum(detail_counts.values())} of {len(detail_counts)} commits")
 check("simulation: no daemon crashed", [], [e[1].strip().splitlines()[-1] for e in errors])
-check(f"seven daemons and a restart for an hour: counted calls within {BUDGET}", True, core <= BUDGET)
+check(f"seven daemons and a restart for 90 minutes: counted calls within {BUDGET}", True, core <= BUDGET)
 check("every commit's detail read at most once, restart included", 1, max(detail_counts.values(), default=0))
 check("events: each FOLLOW-UP, comment and /agent command arrives once, in the right dir; none for a bot's commit or a dependency bump", want, got)
 restart_core = gh.count("core", upto=ws.T0 + 2300) - gh.count("core", upto=ws.T0 + 1800)
@@ -268,7 +268,7 @@ def _():
         return f"{again} {gh.count('core') - n - again}"
 
 
-@case("discovery: seven daemons at the same moment read each repo's two comment feeds once, not seven times; due again only after 5 minutes", "12 12 24")
+@case("discovery: seven daemons at the same moment read each repo's two comment feeds once, not seven times; due again after 5 minutes, but only for a repo something moved in", "12 12 14")
 def _():
     with world() as (sim, gh, dirs):
         mods = [load(d, sim) for d in dirs.values()]
@@ -281,6 +281,7 @@ def _():
         for m in mods:
             m.shared_pass()
         second = n() - before
+        gh.comment('vikejs/vike', 101, 'alice', 'something moves in one repo')
         sim.now += 101
         for m in mods:
             m.shared_pass()

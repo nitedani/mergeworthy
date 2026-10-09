@@ -112,6 +112,7 @@ class FakeGitHub:
         self.notifications, self.events = [], []
         self.hold = None  # a threading.Event the next request waits for
         self.version = 0  # bumped by any change a feed shows
+        self.poll = 60  # the X-Poll-Interval of the notifications and the events feed
 
     # ----- data -----
     def comment(self, repo, n, user, body, kind='comment', at=None):
@@ -122,8 +123,14 @@ class FakeGitHub:
              'created_at': at, 'updated_at': at, 'html_url': f'https://github.com/{repo}/issues/{n}#c', 'author_association': 'OWNER',
              ('issue_url' if kind == 'comment' else 'pull_request_url'): f'https://api.github.com/repos/{repo}/{"issues" if kind == "comment" else "pulls"}/{n}'}
         feed.append(c)
-        self.version += 1
+        self.touch(repo, n, at)
         return c
+
+    def touch(self, repo, n, at=None):
+        """Anything that happens on a thread (a comment, a push) moves its updated_at, which the PR/issue bodies and the repo's issue list show."""
+        if (repo, n) in self.issues:
+            self.issues[(repo, n)]['updated_at'] = at or iso(self.sim.now)
+        self.version += 1
 
     def commit(self, repo, author, files, when=None, parents=1):
         when = self.sim.now if when is None else when
@@ -213,9 +220,16 @@ class FakeGitHub:
             return 200, {}, json.dumps({'login': 'me'})
         if url.startswith('notifications'):
             body = json.dumps(self.notifications, sort_keys=True)
-            return 200, {'Last-Modified': f'v{len(self.notifications)}'}, body
+            return 200, {'Last-Modified': f'v{len(self.notifications)}', 'X-Poll-Interval': str(self.poll)}, body
         if url == 'users/me/events':
-            return 200, {}, json.dumps(self.events, sort_keys=True)
+            return 200, {'X-Poll-Interval': str(self.poll)}, json.dumps(self.events, sort_keys=True)
+        m = re.fullmatch(r'repos/([^/]+/[^/]+)/issues', url) or (url == 'issues' and q.get('filter') == 'created' and [None, None])
+        if m:  # the repo's issues and PRs (or all you opened, in every repo), as the list shows them
+            items = [{'number': k[1], 'updated_at': v.get('updated_at', iso(T0 - 3 * DAY)), 'state': v['state'], 'user': v['user'], 'repository': {'full_name': k[0]}, **({'pull_request': {}} if k in self.prs else {})}
+                     for k, v in self.issues.items() if (k[0] == m[1] if m[1] else v['user']['login'] == 'me')]
+            items.sort(key=lambda i: i['updated_at'], reverse=q.get('direction', 'desc') == 'desc')
+            body, hdr = self.page(items, q, url)
+            return 200, hdr, body
         if url.startswith('search/issues'):
             return 200, {}, json.dumps({'items': []})
         m = re.fullmatch(r'repos/([^/]+/[^/]+)/(issues|pulls)/comments', url)
@@ -242,7 +256,8 @@ class FakeGitHub:
                 return 200, {}, json.dumps(issue, sort_keys=True)
             pr = self.prs[key]
             return 200, {}, json.dumps({'head': {'sha': pr['head']}, 'state': pr['state'], 'merged': pr['merged'], 'merged_at': pr.get('merged_at'),
-                'merge_commit_sha': pr.get('merge_commit_sha'), 'base': {'ref': 'main'}, 'user': {'login': 'me'}, 'mergeable_state': 'clean'}, sort_keys=True)
+                'merge_commit_sha': pr.get('merge_commit_sha'), 'base': {'ref': 'main'}, 'user': {'login': 'me'}, 'mergeable_state': 'clean',
+                'updated_at': self.issues[key].get('updated_at')}, sort_keys=True)
         if sub == 'comments':
             store = self.comments if kind == 'issues' else self.pr_comments
             items = [c for c in store.get(repo, []) if (c.get('issue_url') or c.get('pull_request_url')).endswith(f'/{n}') and c['updated_at'] >= q.get('since', '')]
@@ -450,3 +465,58 @@ def build_world(gh):
         ('d1', '### vikejs/vike#101 comment'),
         ('d1', '### UNROUTED /agent vikejs/vike#999'),
     ])
+
+
+# ---------- the user's machine as of 2026-10-09: seven watch dirs, ~200 threads, 70 of them in one dir, most merged ----------
+# (dir, repo, open PRs, of them changed in the last day, merged PRs, closed PRs, open issues, of them changed in the last day)
+MACHINE = [
+    ('conv', 'vikejs/vike', 4, 1, 18, 0, 3, 0), ('conv', 'magne4000/universal-middleware', 2, 1, 14, 1, 2, 1), ('conv', 'nitedani/vike-react-rsc', 3, 1, 9, 0, 2, 0),
+    ('conv', 'brillout/react-streaming', 1, 0, 4, 0, 1, 0), ('conv', 'nitedani/mergeworthy', 0, 0, 2, 0, 2, 0), ('conv', 'react/react', 0, 0, 2, 0, 0, 0),
+    ('d1', 'vikejs/vike', 5, 2, 20, 1, 2, 0), ('d2', 'vikejs/docpress', 3, 1, 14, 1, 2, 0), ('d3', 'telefunc/telefunc', 4, 1, 14, 1, 1, 0),
+    ('d4', 'vikejs/vike-react', 3, 1, 14, 1, 2, 0), ('d5', 'universal-deploy/universal-deploy', 3, 1, 14, 1, 2, 0), ('d6', 'brillout/x', 5, 1, 12, 1, 2, 0),
+]
+
+
+FOREIGN = {('d3', 'open', True), ('d6', 'issue', False)}  # threads of someone else's that are watched: their repos are polled one by one
+
+
+def build_machine(gh, seed=11):
+    """The threads of MACHINE in a FakeGitHub: -> ({dir: ['owner/repo N', ...]}, {'recent_pr': [keys], 'stale_issue': [keys]}).
+    Each repo also has commits (a fifth by bots) over the last 60 days, so the follow-ups of the merged PRs have work to do."""
+    rng, dirs, pick = random.Random(seed), {}, {'recent_pr': [], 'stale_issue': [], 'recent_issue': []}
+    numbers = {}
+    def new(repo):
+        numbers[repo] = numbers.get(repo, 100) + 1
+        return numbers[repo]
+    for d, repo, open_prs, recent_prs, merged, closed, issues, recent_issues in MACHINE:
+        lines = dirs.setdefault(d, [])
+        kinds = [('open', i < recent_prs) for i in range(open_prs)] + [('merged', False)] * merged + [('closed', False)] * closed + [('issue', i < recent_issues) for i in range(issues)]
+        for kind, recent in kinds:
+            n = new(repo)
+            lines.append(f'{repo} {n}')
+            upd = iso(T0 - (rng.uniform(.05, .8) if recent else rng.uniform(2, 40)) * DAY)
+            gh.issues[(repo, n)] = {'number': n, 'user': {'login': 'carol' if (d, kind, recent) in FOREIGN else 'me'}, 'state': 'open', 'body': '', 'updated_at': upd}
+            if kind == 'issue':
+                pick['recent_issue' if recent else 'stale_issue'].append((d, repo, n))
+                continue
+            merged_ago = rng.uniform(1, 120)
+            pr = {'head': sha_of(repo, n, 'head'), 'state': 'open' if kind == 'open' else 'closed', 'merged': kind == 'merged'}
+            gh.prs[(repo, n)] = pr
+            if kind == 'open' and recent:
+                pick['recent_pr'].append((d, repo, n))
+            if kind == 'merged':
+                pr.update(merged_at=iso(T0 - merged_ago * DAY), merge_commit_sha=sha_of(repo, n, 'merge'))
+                gh.issues[(repo, n)].update(state='closed', updated_at=pr['merged_at'])
+                gh.files[(repo, n)] = [{'filename': f'packages/{n}/a.ts', 'status': 'modified', 'patch': HUNK.format(a=10, old='x', new='y')}]
+                gh.commits.setdefault(repo, []).append({'sha': pr['merge_commit_sha'], 'html_url': 'u', 'parents': [{}], 'author': {'login': 'me', 'type': 'User'},
+                    'commit': {'committer': {'date': pr['merged_at']}, 'author': {'name': 'me'}}})
+                gh.details[(repo, pr['merge_commit_sha'])] = gh.files[(repo, n)]
+            elif kind == 'closed':
+                gh.issues[(repo, n)].update(state='closed', updated_at=iso(T0 - rng.uniform(5, 90) * DAY))
+            gh.timeline[(repo, n)] = []
+    for repo in {r for _, r, *_ in MACHINE}:
+        for i in range(40):
+            who = rng.choices(['alice', 'bob', 'dependabot[bot]', 'renovate[bot]'], [3, 3, 2, 2])[0]
+            files = [{'filename': f'src/mod{rng.randrange(30)}.ts', 'status': 'modified', 'patch': TS(rng.randrange(1, 200))}]
+            gh.commit(repo, who, files, when=T0 - rng.uniform(.01, 59) * DAY)
+    return dirs, pick
