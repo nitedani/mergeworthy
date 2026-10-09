@@ -53,6 +53,7 @@ What counts:
 How:
 - read each change end to end with every caller;
 - try the edges: <list the risky edges for this slice; for stream code always core 1.1.11's stream probes>.
+- when the change handles one case of a mechanism (one method, status, adapter or runtime), probe the same failure in its sibling cases; one that fails on the base too is outside the scope: list it under its own heading as a base bug for its own PR (1.1.7), never drop it.
 - Make your own worktrees under <artifacts dir> (worktree add --detach, install, build) and remove them when done.
 - Lanes you may run: <lanes>. Don't run <lanes owned by others>.
 
