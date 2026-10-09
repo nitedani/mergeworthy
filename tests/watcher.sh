@@ -151,42 +151,33 @@ m.react_eyes = lambda *a: None
 gated = "/agent gated post"
 open(os.path.join(m.HERE, "gated"), "w").write(m._norm(gated))
 m.GATED_POSTS = os.path.join(m.HERE, "gated")
-cm = lambda i, who, body, n: {"id": i, "user": {"login": who}, "body": body, "html_url": f"<u{i}>", "updated_at": "2026-10-09T00:00:00Z", "issue_url": f"https://api.github.com/repos/o/r/issues/{n}"}
+cm = lambda i, who, body, n: {"id": i, "user": {"login": who}, "body": body, "html_url": f"<u{i}>", "updated_at": "2026-10-09T00:00:00Z"}
 threads = {  # number -> (body, comments, timeline)
     407: ("see o/r#1", [cm(11, "me", "/agent Reflect on this pr", 407)], []),
     408: ("", [cm(12, "me", "/agent beta check this\nmore", 408)], [{"event": "commented", "body": "o/r#1"}]),
     409: ("", [cm(13, "me", "/agent do it", 409), cm(14, "me", gated, 409), cm(15, "them", "/agent hi", 409), cm(16, "me", "thanks /agent", 409)], []),
     410: ("", [cm(17, "me", "/agent via timeline", 410)], [{"event": "cross-referenced", "source": {"issue": {"number": 2, "repository_url": "https://api.github.com/repos/o/r"}}}]),
     1: ("", [cm(18, "me", "/agent on a listed thread", 1)], []),
-    411: ("", [cm(19, "me", "/agent only the search backup sees this", 411)], []),  # in x/y, which no dir lists: no comments feed reads it
 }
-calls = []
 def fake_gh(args):
-    if "search/issues" in args:  # lags: it never returns the o/r threads, only x/y#411
-        return json.dumps({"items": [{"number": 411, "repository_url": "https://api.github.com/repos/x/y"}]})
+    if "search/issues" in args:
+        return json.dumps({"items": [{"number": n, "repository_url": "https://api.github.com/repos/o/r"} for n in threads]})
     return json.dumps({"body": threads[int(args[1].rsplit("/", 1)[1])][0]})
 def fake_json(path):
-    calls.append(path)
-    parts = path.split("?")[0].split("/")  # repos/<owner>/<repo>/<issues|pulls>/comments, or .../issues/<n>/<comments|timeline>
-    if parts[4] == "comments":  # the recent comments feed of a repo: every o/r thread but 411
-        return [c for n, t in threads.items() if n != 411 for c in t[1]] if parts[3] == "issues" and parts[2] == "r" else []
-    n = int(parts[4])
-    return {"comments": threads[n][1], "timeline": threads[n][2]}.get(parts[5], [])
+    n = int(path.split("/")[4]); kind = path.split("/")[5].split("?")[0]
+    return {"comments": threads[n][1], "timeline": threads[n][2]}.get(kind, [])
 m.gh, m.gh_json = fake_gh, fake_json
 state = {"since": "2026-10-08T00:00:00Z"}
 m.discover_agent_commands(state)
 m.discover_agent_commands(state)
-feed = [c for c in calls if "/o/r/issues/comments" in c or "/o/r/pulls/comments" in c]
-print("feeds:", len(feed), all("sort=updated&direction=desc" in c and "since=" in c for c in feed), file=sys.stderr)
 '"$1"'
 '; }
 ev() { grep -c "^###" "$AD/$1/events.log" 2>/dev/null || true; }
-agent_cmds 'print(1)' >/dev/null 2>"$T/agentcalls"
+agent_cmds 'print(1)' >/dev/null 2>&1
 got="alpha: $(grep '^###' "$AD/alpha/events.log" | sed 's/ [0-9T:Z-]*  <u/ <u/' | tr '\n' '|')"
 check "/agent in unlisted threads: alpha gets the reference by body" "alpha: ### AGENT COMMAND o/r#407 comment 11 by me <u11>|" "$got"
 got="beta: $(grep '^###' "$AD/beta/events.log" | sed 's/ [0-9T:Z-]*  <u/ <u/' | tr '\n' '|')"
-check "/agent: beta gets the named, the unrouted (main_dir) and the cross-referenced one, each once, no gated post / other author / mid-line; x/y#411, no one lists its repo, comes from the search backup" "beta: ### AGENT COMMAND o/r#408 comment 12 by me <u12>|### UNROUTED /agent o/r#409 comment 13 by me <u13>|### AGENT COMMAND o/r#410 comment 17 by me <u17>|### UNROUTED /agent x/y#411 comment 19 by me <u19>|" "$got"
-check "discovery lists both comment feeds of the watched repo each pass (two passes), sorted by update, with since" "feeds: 4 True" "$(grep '^feeds' "$T/agentcalls")"
+check "/agent: beta gets the named, the unrouted (main_dir) and the cross-referenced one, each once, no gated post / other author / mid-line" "beta: ### AGENT COMMAND o/r#408 comment 12 by me <u12>|### UNROUTED /agent o/r#409 comment 13 by me <u13>|### AGENT COMMAND o/r#410 comment 17 by me <u17>|" "$got"
 check "a routed thread joins its dir's threads.txt, an unrouted one does not" "o/r 1 o/r 407|o/r 2 o/r 408 o/r 410|" "$(echo $(cat "$AD/alpha/threads.txt"))|$(echo $(cat "$AD/beta/threads.txt"))|"
 
 # The Monitor command gh-watch-start prints delivers an event within 2 s, and only lines that start an event

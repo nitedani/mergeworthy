@@ -4,7 +4,7 @@
 - The comments the agent answers (mergeworthy:github-threads), new or edited, each with an :eyes: reaction: a maintainer's
   (write access) on a thread in threads.txt, the threads the agent opened or posted in; and yours with /ai or /agent, on any thread
   (your events feed; one watch dir gets each, see main_dir). Nothing else.
-- Your "/agent ..." comments on threads no watch dir lists, found in the watched repos' recent comments (search as a backup) and sent to one dir (see agent_command): `### AGENT COMMAND`.
+- Your "/agent ..." comments on threads no watch dir lists, found by search and sent to one dir (see agent_command): `### AGENT COMMAND`.
 - Maintainers' commits pushed to a tracked PR, and 👍/👎 from GH_WATCH_EYES on the agent's comments.
 - WAIT PING DUE: your account's comment is the last on an open thread and has had no reply for WAIT_PING_HOURS (3).
 - PR head/state changes (pushes, merges, closes), CI turning red or green on open PRs, and your PR's code (tests excluded) changing by more than ~80 lines since its last refactor pass (REFACTOR STALE).
@@ -591,42 +591,17 @@ def agent_command(repo, num, kind, c):
         f.write(event)
 
 
-def watched_repos():
-    """Every repo a live watch dir lists a thread or a whole-repo line for (and this dir's own)."""
-    repos = set()
-    for d in dict.fromkeys(live_dirs() + [HERE]):
-        repos |= {t.rsplit('#', 1)[0] for t in listed_threads(d)}
-        try:
-            repos |= {l.split('#', 1)[0].strip() for l in open(os.path.join(d, 'repos.txt')) if l.split('#', 1)[0].strip()}
-        except OSError:
-            pass
-    return repos
-
-
 def discover_agent_commands(state):
     """Your /agent comments on threads no watcher lists reach no one: you comment as the agent's own account, which GitHub
-    doesn't notify you of, and the search and events indexes lag by many minutes. So each full scan lists the recent issue
-    and review comments of every watched repo (the comments feeds are live) and hands each /agent comment to agent_command.
-    A search of the threads you commented on, minus those repos, backs it up for repos no one lists. Scans overlap by
-    10 minutes; a failed call leaves the scan position, so it is retried."""
+    doesn't notify you of. Each full scan, search the threads you commented on since the last scan (overlapping by 10
+    minutes) and hand each /agent comment to agent_command. A failed call leaves the scan position, so it is retried."""
     started = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
     since = (datetime.datetime.strptime(state.get('agent_since') or state['since'], '%Y-%m-%dT%H:%M:%SZ') - datetime.timedelta(minutes=10)).strftime('%Y-%m-%dT%H:%M:%SZ')
     ok = True
-    repos = watched_repos()
-    for repo in sorted(repos):
-        try:
-            for kind, path in (('comment', 'issues'), ('review-comment', 'pulls')):
-                for c in gh_json(f"repos/{repo}/{path}/comments?since={since}&sort=updated&direction=desc&per_page=100"):
-                    agent_command(repo, (c.get('issue_url') or c.get('pull_request_url') or '').rsplit('/', 1)[-1], kind, c)
-        except Exception as e:
-            ok = False
-            emit(f"WATCH ERROR agent commands {repo}: {e}")
     try:
         items = json.loads(gh(['api', '-X', 'GET', 'search/issues', '-f', f'q=commenter:{ME} updated:>={since}', '-f', 'per_page=50']))['items']
         for i in items:
             repo, num = i['repository_url'].split('/repos/')[-1], i['number']
-            if repo in repos:
-                continue
             try:
                 found = [('comment', c) for c in gh_json(f"repos/{repo}/issues/{num}/comments?since={since}&per_page=100")]
                 if 'pull_request' in i:
