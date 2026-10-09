@@ -36,7 +36,10 @@ done
 reg=~/.claude/gh-watch-dirs.txt
 grep -qxF "$dir" "$reg" 2>/dev/null || echo "$dir" >> "$reg"
 if [ -n "$GH_WATCH_EYES" ]; then echo "$GH_WATCH_EYES" > "$dir/eyes"; fi
-[ -s "$dir/eyes" ] || gh api user --jq .login > "$dir/eyes"
+# gh prints an error answer (a rate limit) on stdout too: keep only a login gh really returned
+if ! [ -s "$dir/eyes" ]; then
+  if login=$(gh api user --jq .login 2>/dev/null) && [ -n "$login" ]; then echo "$login" > "$dir/eyes"; else echo "gh-watch-start: could not read your login (gh api user failed); no maintainers watched until you re-run it" >&2; fi
+fi
 # Supervision, so the watcher restarts on failure and after a reboot, with no session alive:
 # systemd user service (Linux), launchd agent (macOS), else a detached daemon that cron revives.
 printf 'PATH=%s\nHOME=%s\n' "$PATH" "$HOME" > "$dir/env"

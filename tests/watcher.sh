@@ -283,5 +283,25 @@ cmd=$(dir="$M"; eval "$(grep -m1 "tail -n 0 -F" "$R/bin/gh-watch-start")" | sed 
 printf '### ev1\n    ### a body line\nWATCH ERROR x\n' >> "$M/events.log"; sleep 2
 check "Monitor command: events within 2 s, body lines dropped" "### ev1|WATCH ERROR x|" "$(tr '\n' '|' < "$M/out")"
 
+# A rate-limited `gh api user` prints the error JSON on stdout: it is no login. The watcher refuses to start rather than take it
+# as ME (every comment by the user's account, the agent's own gated posts too, then reads as a human's and gets an :eyes:),
+# and gh-watch-start writes no `eyes` from it.
+RL="$T/rl"; mkdir -p "$RL/bin" "$RL/home/.claude"
+cat > "$RL/bin/gh" <<'EOF'
+#!/bin/sh
+case "$*" in
+  *"-i"*) printf 'HTTP/2.0 403 Forbidden\r\nx-ratelimit-remaining: 0\r\nx-ratelimit-reset: 4102444800\r\n\r\n{"message": "API rate limit exceeded"}'; exit 1 ;;
+  "auth token") echo tok ;;
+  *) printf '{\n\t"message": "API rate limit exceeded",\n\t"status": "403"\n}'; echo "gh: API rate limit exceeded (HTTP 403)" >&2; exit 1 ;;
+esac
+EOF
+chmod +x "$RL/bin/gh"
+out=$(cd "$RL" && env -u GH_WATCH_ME HOME="$RL/home" PATH="$RL/bin:$PATH" GH_HOST=h.example timeout 20 python3 "$R/watcher/gh-watch.py" --once 2>&1); rc=$?
+check "watcher: a rate-limited login lookup exits instead of taking the error as ME" "1 could not read your login" "$rc $(echo "$out" | grep -o 'could not read your login' | head -1)"
+D="$RL/dir"; mkdir -p "$D"
+eyes_step=$(awk '/-s "\$dir\/eyes"/ { p = 1; b = /^if/ } p { print } p && (!b || /^fi/) { exit }' "$R/bin/gh-watch-start")
+( dir="$D"; PATH="$RL/bin:$PATH"; eval "$eyes_step" ) 2>/dev/null
+check "gh-watch-start: a rate-limited login lookup writes no eyes" "0" "$(cat "$D/eyes" 2>/dev/null | wc -c)"
+
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]
