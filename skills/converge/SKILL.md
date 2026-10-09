@@ -142,7 +142,7 @@ After every merge of the bottom into the top:
 ### Gates, lanes, flakes, evidence
 
 - **Quick gates, after every commit:** format, type-check and units.
-- **Full gates, before every push:** the quick gates; spellcheck and docs lint; the released-API or public-surface check; the runtime-specific lanes.
+- **Full gates, before every push:** the quick gates; spellcheck and docs lint; the released-API or public-surface check; the runtime-specific lanes. Build the list from the repo's CI workflows, every check they run, not from memory.
 - **Heavy lanes, before every push,** on each PR's head: build, then the heavy lanes the project file lists (e.g. production-mode e2e, every adapter or transport, the examples).
 
 Failures:

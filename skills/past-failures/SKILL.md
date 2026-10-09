@@ -75,6 +75,7 @@ Each failure below happened, most more than once. When a rule fails or the user 
 | A reproduced upstream bug with a known location was filed as an issue with tests offered, then a nudge asked the maintainer where the fix should go; the user: "Is it not clear where the bug is?" | 1.1.7: find the fix first and open the PR; an issue only when you can't, and no nudges about one that blocks nothing. |
 | The 3-hour wakeup only checked that nothing waited on the session, so the critical path sat still between maintainer replies; the user: "You need to be actively working on making rsc happen." | `github-threads` 1.5, Drive the goal at every wakeup |
 | Fifteen mergeworthy pushes in a row left CI red: the tests were run without their argument and a stale `docs/graphs.md` went unnoticed. | `delegating` 1.9, `tests/all.sh` |
+| A PR's gates were picked by hand and missed the repo's `test:types`, so a type error rode along for several heads. | `converge`, Gates (the list comes from CI) |
 | A decision issue recommended the smallest change over the option users want. | `mergeworthy:writing`, How a good colleague writes (recommendations) |
 | Agents taken for dead when their turn ended, retried and killed; the orchestrator blocked on wait loops. | 1.10, `pre-agent-dedupe`, `agent-job`, `pre-bash-guard` |
 | Design-thread replies chased the latest comment, flipped without evidence, argued from execution cost and left invariants open (the user's too). | `writing` (Design threads), `github-threads` 1.5 step 3, `finality`, `design-loop` (end state first) |
