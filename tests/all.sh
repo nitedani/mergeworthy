@@ -8,3 +8,4 @@ bash tests/word-budget .
 bash tests/watcher.sh .
 python3 tests/watch-budget.py .
 bash tests/loc-breakdown.sh .
+bash tests/netns.sh .

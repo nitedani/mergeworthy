@@ -552,6 +552,9 @@ flowchart TB
   subgraph g14["session-start"]
     s14["session-start"]
   end
+  subgraph g15["netns-run"]
+    s15["netns-run"]
+  end
   start --> g0
   g0 ~~~ g1
   g1 ~~~ g2
@@ -567,4 +570,5 @@ flowchart TB
   g11 ~~~ g12
   g12 ~~~ g13
   g13 ~~~ g14
+  g14 ~~~ g15
 ```
