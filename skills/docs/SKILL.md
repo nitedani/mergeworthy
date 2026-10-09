@@ -43,4 +43,4 @@ A fresh-context reader (`review`, Codex when available) gets only the rendered p
 - (a) Can I do the task from this alone? Where do I get stuck?
 - (b) Which sentences read unlike the siblings, and why?
 
-Fix the text, from the producing step in 4, until (a) is yes and (b) is empty. Run the project's docs lint and spellcheck, and update `llms.txt` or the index where the project keeps one. Docs that disagree with the code are a code question (`converge`, Docs are the contract).
+Fix the text, from the producing step in 4, until (a) is yes and (b) is empty. Docs in a PR also run `converge`'s pipeline like its code: each sentence about behavior is a claim that Loop A reproduces against the code, and Loop B and the fresh reader see the docs with the diff. Run the project's docs lint and spellcheck, and update `llms.txt` or the index where the project keeps one. Docs that disagree with the code are a code question (`converge`, Docs are the contract).
