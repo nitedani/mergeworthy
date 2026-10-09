@@ -417,6 +417,18 @@ def _():
         return ' '.join(str(any(s[:10] in l for l in out)) for s in shas)
 
 
+@case("follow-ups: a merged PR of yours that a dir watches only through waiting-on.txt is followed too", True)
+def _():
+    with world(names=['d1']) as (sim, gh, dirs):
+        json.dump({'prs': {'vikejs/vike#50': {'state': 'merged'}}, 'author': {'vikejs/vike#50': 'me'}}, open(f"{dirs['d1']}/gh-watch-state.json", 'w'))
+        open(f"{dirs['d1']}/threads.txt", 'w').write('vikejs/vike 101\n')
+        open(f"{dirs['d1']}/waiting-on.txt", 'w').write('vikejs/vike#50 -> something: act (releases #1)\n')
+        m = load(dirs['d1'], sim)
+        m.JOBS = tuple(j for j in m.JOBS if j[0] == 'followups')
+        m.shared_pass()
+        return 'vikejs/vike#50' in m.shared_read()['followups']
+
+
 shutil.rmtree(T, ignore_errors=True)
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)

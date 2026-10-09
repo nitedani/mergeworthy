@@ -447,10 +447,10 @@ def emit(line):
     print(line, flush=True)  # into events.log, where the session's Monitor delivers it (mergeworthy:github-threads)
 
 
-def waiting_keys():
+def waiting_keys(d=None):
     """waiting-on.txt: "<owner/repo#N> -> <dependent thread>: <what to do>", one per line. Yields (line, "owner/repo#N"):
     the key is the left side's start, so a trailing note such as "(Version Packages, releases #390)" doesn't hide it."""
-    path = os.path.join(HERE, 'waiting-on.txt')
+    path = os.path.join(d or HERE, 'waiting-on.txt')
     if not os.path.exists(path):
         return
     for l in (l.strip() for l in open(path)):
@@ -799,10 +799,12 @@ def live_dirs():
 
 
 def listed_threads(d):
+    """The threads watch dir d scans: its threads.txt and the PRs its waiting-on.txt waits on."""
     try:
-        return {f"{w[0]}#{w[1]}" for w in (l.split('#', 1)[0].split() for l in open(os.path.join(d, 'threads.txt'))) if len(w) == 2}
+        listed = {f"{w[0]}#{w[1]}" for w in (l.split('#', 1)[0].split() for l in open(os.path.join(d, 'threads.txt'))) if len(w) == 2}
     except OSError:
-        return set()
+        listed = set()
+    return listed | {key for _, key in waiting_keys(d)}
 
 
 def thread_links(repo, num):
