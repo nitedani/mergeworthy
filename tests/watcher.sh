@@ -189,6 +189,89 @@ check "/agent: beta gets the named, the unrouted (main_dir) and the cross-refere
 check "discovery lists both comment feeds of the watched repo each pass (two passes), sorted by update, with since" "feeds: 4 True" "$(grep '^feeds' "$T/agentcalls")"
 check "a routed thread joins its dir's threads.txt, an unrouted one does not" "o/r 1 o/r 407|o/r 2 o/r 408 o/r 410|" "$(echo $(cat "$AD/alpha/threads.txt"))|$(echo $(cat "$AD/beta/threads.txt"))|"
 
+# FOLLOW-UP: commits by others to the lines of your merged PR, and PRs that reference it: each once, per dir that watches the PR
+FU="$T/followup"; mkdir -p "$FU"
+follow() { py '
+import time, datetime
+m.ONCE = False
+open(m.THREADS, "w").write("o/r 5\n")
+iso = lambda t: datetime.datetime.fromtimestamp(t, datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+now = time.time()
+MERGED = iso(now - 86400 * '"${2:-1}"')
+hunk = lambda old, new, a, b: f"@@ -{old},2 +{new},2 @@\n-{a}\n+{b}\n ctx"
+com = lambda sha, who, parents=1, when=now - 3600: {"sha": sha, "author": {"login": who}, "parents": [{}] * parents, "html_url": f"<c-{sha}>", "commit": {"committer": {"date": iso(when)}, "author": {"name": who}}}
+commits = [com("c1aaaaaaaaaa", "alice"), com("c2bbbbbbbbbb", "alice"), com("c3cccccccccc", "me"), com("c4dddddddddd", "bob", 2), com("c5eeeeeeeeee", "carol"), com("c0merge", "me")]
+files = {  # commit -> files
+    "c1aaaaaaaaaa": [{"filename": "a.ts", "status": "modified", "patch": hunk(11, 11, "x", "y")}],      # old line 11: inside the PR lines 11-12
+    "c2bbbbbbbbbb": [{"filename": "a.ts", "status": "modified", "patch": hunk(40, 40, "x", "y")}, {"filename": "b.ts", "status": "modified", "patch": hunk(11, 11, "x", "y")}],  # far away; another file
+    "c3cccccccccc": [{"filename": "a.ts", "status": "modified", "patch": hunk(11, 11, "x", "y")}],      # yours
+    "c4dddddddddd": [{"filename": "a.ts", "status": "modified", "patch": hunk(11, 11, "x", "y")}],      # a merge commit
+    "c5eeeeeeeeee": [{"filename": "z.ts", "previous_filename": "a.ts", "status": "renamed"}],           # a rename
+}
+timeline = [
+    {"event": "cross-referenced", "source": {"issue": {"html_url": "<pr-9>", "pull_request": {}, "user": {"login": "alice"}}}},
+    {"event": "cross-referenced", "source": {"issue": {"html_url": "<issue-8>", "user": {"login": "alice"}}}},         # an issue, not a PR
+    {"event": "cross-referenced", "source": {"issue": {"html_url": "<pr-7>", "pull_request": {}, "user": {"login": "me"}}}},   # yours
+    {"event": "cross-referenced", "source": {"issue": {"html_url": "<pr-6>", "pull_request": {}, "user": {"login": "dep[bot]", "type": "Bot"}}}},
+]
+calls = []
+def fake_gh(args):
+    calls.append(args[1])
+    if args[1].endswith("/pulls/5"):
+        return json.dumps({"merged_at": MERGED, "merge_commit_sha": "c0merge", "base": {"ref": "main"}})
+    return json.dumps({"files": files[args[1].rsplit("/", 1)[1]]})
+def fake_json(path):
+    calls.append(path)
+    if "/pulls/5/files" in path:
+        return [{"filename": "a.ts", "status": "modified", "patch": "@@ -10,3 +10,4 @@\n a\n-b\n+B\n+B2\n c"}]
+    if "/timeline" in path:
+        return timeline
+    return commits
+m.gh, m.gh_json = fake_gh, fake_json
+state = {"prs": {"o/r#5": {"state": "merged"}}, "author": {"o/r#5": "me"}}
+def scan():
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf): m.follow_ups(state)
+    return [l.replace("  <", " <") for l in buf.getvalue().splitlines() if l]
+'"$1"'
+'; }
+got=$(follow '
+first = scan()
+for e in state["followups"].values(): e["checked"] = 0   # an hour later
+second = scan()
+print("first=" + "|".join(first)); print("second=" + "|".join(second))
+print("recorded=" + str(sorted(state["followups"]["o/r#5"]["files"].items())))
+')
+check "FOLLOW-UP: overlap and rename and the referencing PR once; non-overlap, own commit, merge commit, issue, own PR, bot nothing; no repeat" "first=### FOLLOW-UP o/r#5: c1aaaaaaaa by alice changes lines from your PR <c-c1aaaaaaaaaa>|### FOLLOW-UP o/r#5: c5eeeeeeee by carol changes lines from your PR <c-c5eeeeeeeeee>|### FOLLOW-UP o/r#5: <pr-9> by alice references your PR
+second=
+recorded=[('z.ts', [[11, 12]])]" "$got"
+got=$(follow '
+scan()
+for e in state["followups"].values(): e["checked"] = 0
+n = len(calls); scan()
+print("calls on a due recheck without new commits: " + str(len(calls) - n))
+' 1)
+check "FOLLOW-UP: a due check is the commit list, the unseen commits' files (none left: all claimed or skipped) and the timeline" "calls on a due recheck without new commits: 2" "$got"
+got=$(follow '
+out = scan()
+print(len(out), len(state["followups"]["o/r#5"]["files"]), "commits?" in "".join(calls), "o/r#5" in state["followups"])
+' 70)
+check "FOLLOW-UP: a PR merged before the window (60 days) is never followed: no events, no commit calls, a marker only" "0 0 False True" "$got"
+got=$(follow '
+scan()
+e = state["followups"]["o/r#5"]; e["until"] = now - 1; e["checked"] = 0   # the window ends
+n = len(calls); out = scan()
+print(len(out), len(calls) - n, len(e["files"]))
+')
+check "FOLLOW-UP: a PR whose window has ended stops: no events, no API calls, lines dropped" "0 0 0" "$got"
+got=$(follow '
+scan(); m.save_state(state)
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf): m.retire_if_done()   # every thread merged, but one is still followed: the watcher stays
+print(repr(buf.getvalue()))
+')
+check "retire_if_done: stays while a merged PR is followed" "''" "$got"
+
 # The Monitor command gh-watch-start prints delivers an event within 2 s, and only lines that start an event
 M="$T/mon"; mkdir -p "$M"; : > "$M/events.log"
 cmd=$(dir="$M"; eval "$(grep -m1 "tail -n 0 -F" "$R/bin/gh-watch-start")" | sed 's/^ *//')
