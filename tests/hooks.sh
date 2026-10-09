@@ -11,6 +11,7 @@ cat > "$T/bin/gh" <<'EOF'
 # stub gh: answers `gh api <path>` from $FX/<path with / ? & = replaced by _>; exit 1 when the fixture is missing (a 404)
 [ "$1" = api ] || exit 1
 f="$FX/$(printf '%s' "$2" | tr '/?&=' '____')"
+[ -n "$GH_STUB_403" ] && { echo 'gh: API rate limit exceeded for user ID 1. (HTTP 403)' >&2; exit 1; }
 [ -f "$f" ] && cat "$f" || { echo 'gh: Not Found (HTTP 404)' >&2; exit 1; }
 EOF
 chmod +x "$T/bin/gh"; export PATH="$T/bin:$PATH" FX="$T/fx"
@@ -444,5 +445,8 @@ kill_guard() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"com
 check "BLOCK: kill of an agent's claude process" 2 "$(kill_guard $APID)"
 check "kill of an ordinary process passes" 0 "$(kill_guard $OPID)"
 kill $(ps -o pid= --ppid $APID) $APID $OPID 2>/dev/null
+printf 'See #7.\n' > "$T/ref.md"
+check "post-lint: a 404 reference doesn't exist" 1 "$(python3 "$R/bin/post-lint" "$T/ref.md" --kind reply --repo o/r --parent none 2>&1 | grep -c "doesn't exist in o/r")"
+check "post-lint: a rate-limited check says it couldn't check, not that it doesn't exist" "1 0" "$(GH_STUB_403=1 python3 "$R/bin/post-lint" "$T/ref.md" --kind reply --repo o/r --parent none 2>&1 | grep -c "couldn't check it") $(GH_STUB_403=1 python3 "$R/bin/post-lint" "$T/ref.md" --kind reply --repo o/r --parent none 2>&1 | grep -c "doesn't exist")"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]

@@ -97,8 +97,12 @@ for m in re.finditer(r'\bstacked on\b[^\n]*|\bstack(s|ed)? on (top of )?([\w.-]+
 for m in re.finditer(r'(?<![\w/.-])#(\d+)\b', prose):
     if not repo:
         findings.append(f"bare #{m.group(1)}: write owner/repo#{m.group(1)} (or pass --repo when it's the same repo)")
-    elif subprocess.run(['gh', 'api', f'repos/{repo}/issues/{m.group(1)}', '--silent'], capture_output=True).returncode != 0:
-        findings.append(f"bare #{m.group(1)} doesn't exist in {repo}: another repo's item? write owner/repo#{m.group(1)}")
+    else:
+        _r = subprocess.run(['gh', 'api', f'repos/{repo}/issues/{m.group(1)}', '--silent'], capture_output=True, text=True)
+        if _r.returncode != 0 and 'HTTP 404' in _r.stderr:
+            findings.append(f"bare #{m.group(1)} doesn't exist in {repo}: another repo's item? write owner/repo#{m.group(1)}")
+        elif _r.returncode != 0:  # a rate limit or an outage proves nothing about the reference
+            findings.append(f"bare #{m.group(1)}: couldn't check it in {repo} ({_r.stderr.strip()[:80]}); rerun post-lint when the API answers")
 # the umbrella issue's format (methodology 1.2, Tier L; reference nitedani/vike-react-rsc#9)
 if kind == 'tracker':
     head = re.sub(r'^\s*(?:<img [^>]*>[ \t]*)+\n\s*', '', text)  # after the agent badge
