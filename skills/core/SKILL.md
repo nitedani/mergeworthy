@@ -66,7 +66,7 @@ Run every PR through bug verification, code review and a fresh read on the final
     - Before removing, moving or rewriting, list what depends on it and what its owner wrote: change what depends on it, keep the owner's words unless they asked for new ones.
 
 7. **Parallel, not later.** "A separate PR" means started now, alongside.
-    - **Exactly one disposition per found defect,** in or out of scope: fixed in this change, a PR opened now (listed on the umbrella if there is one), or an issue. An issue (`open-issue`) only when there's no umbrella and the defect is unrelated. "Mentioned" is never a disposition.
+    - **Exactly one disposition per found defect,** in or out of scope: fixed in this change, a PR opened now (listed on the umbrella if there is one), or an issue. An issue (`open-issue`) only when there's no umbrella and the defect is unrelated. "Mentioned" is never a disposition. When the fix is obvious and the defect blocks your work, open the PR with it in whatever repo it lives, rather than an issue that offers the fix or asks where it goes; a placement question then goes in the PR body, with your pick. Otherwise judge: an issue is fine.
     - **The same defect in a sibling** (another adapter, another call site) is related. Fix it in this change, a public API change included, and the PR states that change.
     - **Count lines before deferring anything.** An item under ~20 lines that is neither a user-visible fix nor a defect on `main` goes in this PR; otherwise it gets its own PR, now. "It can be added later" is never a reason.
     - A new dependency never joins an open PR the maintainer hasn't agreed to.
