@@ -22,6 +22,7 @@ Before writing, answer where a user with this task would look, and what already 
 - Match the kind of the page to the content: reference for what a thing is and does, a guide for a task, a concept page for why. Mixing them is the usual fault.
 - A new public thing gets what its siblings have (their own page with its header, a one-line entry in the property list, the index or `llms.txt` line), each as short as its siblings' entries.
 - What another page already says is linked, never repeated. A comparison table gets a row, not a section.
+- A link replaces an explanation, never the code a user copies for their setup: show every case the project's own pages show (each server tab the siblings have), each with working code.
 - A rare case belongs on the page of the thing it concerns, or nowhere.
 
 ### 3. Shape
@@ -40,7 +41,7 @@ Pick the closest sibling page (same kind, same neighbours in the nav) and the cl
 ### 5. Verify
 
 A fresh-context reader (`review`, Codex when available) gets only the rendered page text and two sibling pages, not the diff or your reasons. It answers:
-- (a) Can I do the task from this alone? Where do I get stuck?
+- (a) Can I do the task from this alone, for each setup the page claims to cover (each server, framework or runtime)? Where do I get stuck?
 - (b) Which sentences read unlike the siblings, and why?
 
 Fix the text, from the producing step in 4, until (a) is yes and (b) is empty. Docs in a PR go through `converge`'s pipeline with its code (`converge`, Docs go through with the code). Run the project's docs lint and spellcheck, and update `llms.txt` or the index where the project keeps one. Docs that disagree with the code are a code question (`converge`, Docs are the contract).
