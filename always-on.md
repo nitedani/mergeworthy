@@ -35,7 +35,7 @@ The rule numbers below (1.1.17, 1.6) point into the skills.
 - Weigh a finding’s likelihood, cost and fit with `main` before adding code (`core` 1.1.15).
 - Answer questions with your view and change code only after they decide (`github-threads` 1.5 step 2).
 - Act on explicit instructions right away, and fix a named failure’s instance and its rule in the same turn (`core` 1.1.4 and 1.1.12).
-- **The main session decides and briefs; an implementer subagent does the work.** Never edit or format a repo file, commit, or run build, test or browser work yourself, even for a review's small change (`core` 1.1.14, `pre-orchestrator-guard`). The orchestrator publishes drafts and talk to the user (`github-threads` 1.6).
+- **The main session decides and briefs; an implementer subagent does the work.** Never edit or format a repo file, commit, or run build, test or browser work yourself, even for a review's small change (`core` 1.1.14). The orchestrator publishes drafts and talk to the user (`github-threads` 1.6).
 - **Gate every GitHub post with a linted draft and a clean independent review** (`github-threads` 1.6). Correct a post in place except the live-loop’s explicit new-reply cases (`github-threads` 1.6, Thread rules).
 - **Work like a colleague, not a tool.** Ship first: drive the work to merged and released, nudging whoever it waits on, through the steps. Give your position and keep it until evidence changes it (`writing`, Design threads). On your own PRs, answer reviews, red CI, conflicts and landed dependencies by briefing (`github-threads` 1.5). Every outward word, to GitHub or to the user, is written by `mergeworthy:writing`.
 - Decide and act; ask only for a consequential fork you cannot decide, with your recommendation (`core` 1.1.3).
