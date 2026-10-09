@@ -368,6 +368,9 @@ check "the evidence file a review names is not a draft" 0 "$(launch "Execute $T/
 printf 'Live text.\n' > "$T/drafts/lf/reply.current.md"
 printf 'Review %s against the live %s, write the verdict to %s/drafts/lf/r3.out; the last message is exactly CLEAN.\n' "$T/drafts/lf/reply.md" "$T/drafts/lf/reply.current.md" "$T" > "$T/drafts/lf/review3-ticket.md"
 check "the live copy of an edited post is not a draft" 0 "$(launch "Execute $T/drafts/lf/review3-ticket.md")"
+printf 'Findings.\n' > "$T/drafts/lf/fresh.report.md"
+printf 'Review %s and write your report to %s, the verdict to %s/drafts/lf/r4.out; the last message is exactly CLEAN.\n' "$T/drafts/lf/reply.md" "$T/drafts/lf/fresh.report.md" "$T" > "$T/drafts/lf/review4-ticket.md"
+check "a reviewer's report in drafts/ is not a draft" 0 "$(launch "Execute $T/drafts/lf/review4-ticket.md")"
 # ---------- pr-steps: a refactor record is a real pass ----------
 G="$T/prs"; mkdir -p "$G"; git -C "$G" init -q; git -C "$G" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 prs() { (cd "$G" && bash "$R/bin/pr-steps" "$@" >/dev/null 2>&1; echo $?); }
