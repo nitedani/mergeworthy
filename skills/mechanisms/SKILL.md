@@ -123,4 +123,6 @@ It skips its watcher checks while the user's last message says "pause". Each tur
 
 It puts the always-on rules into context and writes `settings.env`. It also points `~/.mergeworthy/current` at the installed version, the stable path watchers use.
 
+**`pre-orchestrator-guard`** blocks the orchestrator's repo writes, commits and build or test runs (`core` 1.1.14); delegated sessions pass. Limits: its header.
+
 **`pre-agent-dedupe`** registers launches that ran (its PostToolUse half) by ticket and blocks duplicate jobs (`delegating` 1.10). A `clientRequestId` may retry within ten minutes; later reuse is blocked. Read a terminal task’s result, then release it with `agent-job done <ticket>` (`delegating` 1.10).

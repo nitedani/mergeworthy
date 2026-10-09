@@ -108,7 +108,7 @@ Run every PR through bug verification, code review and a fresh read on the final
     - After a usage limit, resume every agent the limit stopped through its own thread, never a new one. Never auto-resume parallel agents on a non-default model without asking the user first. Schedule one wakeup at the reset time.
     - When a context nears its limit, hand off at a clean boundary to a fresh agent with the ledger.
 14. **Spend tokens like money.**
-    - **You decide; subagents do the work.** You plan, brief, make every decision (agents' verdicts are your input), check their citations, and post. Run one-line lookups yourself; every other step goes to a subagent (`delegating`).
+    - **You decide; subagents do the work.** You plan, brief, decide (agents' verdicts are input), check citations and post. Run one-line lookups yourself. Never edit or format a repo file, commit, or run build, test or browser work, even for a review's small change: brief an implementer (`pre-orchestrator-guard`).
     - **Use the fewest agents that cover the work** (one per loop, one per fan-out angle), at most 3 next-tier agents at a time (smallest-tier fan-out: up to 10) without asking, and only from the main session; queue the rest. A subagent does the work itself without starting agents (`delegating` 1.10). Continue the agent that already holds this context (`delegating`, One run). Stop an agent as soon as its question is settled.
     - Group roles that share a loop context in one agent, splitting for context size or independence (`delegating`, One run).
     - **Give agents paths and the question,** never pasted files or long histories, and ask for a short report. Each role gets only what it uses: an executor a brief (1.10), a reviewer its charter and the artifact.

@@ -419,5 +419,31 @@ kill_guard() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"com
 check "BLOCK: kill of an agent's claude process" 2 "$(kill_guard $APID)"
 check "kill of an ordinary process passes" 0 "$(kill_guard $OPID)"
 kill $(ps -o pid= --ppid $APID) $APID $OPID 2>/dev/null
+# ---------- pre-orchestrator-guard: the orchestrator does not write repo files; delegated agents may ----------
+RP="$T/repo"; mkdir -p "$RP" "$T/repo-work"; git -C "$RP" init -q
+mkdir -p "$HOME/.claude"
+orch() { # tool, key, value, [first user message]: exit code of the hook
+  python3 -c 'import json,sys
+t,k,v,first=sys.argv[1:5]
+open(sys.argv[5],"w").write(json.dumps({"type":"user","message":{"content":first}})+"\n")
+print(json.dumps({"tool_name":t,"tool_input":{k:v},"cwd":sys.argv[6],"transcript_path":sys.argv[5]}))' "$1" "$2" "$3" "${4:-Review the PR.}" "$T/otr.jsonl" "$RP" \
+    | python3 "$R/hooks/pre-orchestrator-guard.py" 2>/dev/null; echo $?
+}
+CHILD="Act as the implementation sub-agent for this task. Read the brief."
+check "BLOCK: orchestrator Edit of a repo file" 2 "$(orch Edit file_path "$RP/src.ts")"
+check "BLOCK: orchestrator Write of a repo file" 2 "$(orch Write file_path "$RP/new.ts")"
+check "delegated child Edit of a repo file passes" 0 "$(orch Edit file_path "$RP/src.ts" "$CHILD")"
+check "orchestrator Write under the artifact root passes" 0 "$(orch Write file_path "$T/repo-work/briefs/a.md")"
+check "orchestrator Write to memory passes" 0 "$(orch Write file_path "$HOME/.claude/projects/x/memory/m.md")"
+check "BLOCK: orchestrator git commit" 2 "$(orch Bash command "cd $RP && git commit -m x")"
+check "BLOCK: orchestrator sed -i" 2 "$(orch Bash command "sed -i s/a/b/ $RP/src.ts")"
+check "BLOCK: orchestrator redirect into the repo" 2 "$(orch Bash command "echo hi > $RP/out.txt")"
+check "BLOCK: orchestrator type check" 2 "$(orch Bash command "pnpm run typecheck")"
+check "delegated child git commit passes" 0 "$(orch Bash command "git commit -m x" "$CHILD")"
+check "orchestrator redirect into the artifact root passes" 0 "$(orch Bash command "echo hi > $T/repo-work/n.md")"
+check "orchestrator git log passes" 0 "$(orch Bash command "git -C $RP log --oneline | head")"
+check "orchestrator grep passes" 0 "$(orch Bash command "grep -rn 'git commit' $RP")"
+python3 -c 'import json,sys; print(json.dumps({"tool_name":"Edit","tool_input":{"file_path":sys.argv[1]},"cwd":sys.argv[1],"agent_id":"a1"}))' "$RP/x" | python3 "$R/hooks/pre-orchestrator-guard.py" 2>/dev/null; check "a Claude subagent (agent_id) passes" 0 "$?"
+
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]
