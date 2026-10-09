@@ -236,6 +236,7 @@ check "the 1st proposal passes" 0 "$(pguard 1)"; pposted 1
 check "the 2nd proposal passes" 0 "$(pguard 2)"; pposted 2
 check "BLOCK: the 3rd proposal without a thread map" 2 "$(pguard 3)"
 grep -o 'maps/[^ ]*' "$T/err" | head -1
+check "the finality block points to the TODO comment, not a restated design" 1 "$(grep -c "update the thread's TODO comment" "$T/err")"
 touch -d '+1 minute' "$AR/maps/o-r-9.md"
 check "the 3rd proposal with a fresh map passes" 0 "$(pguard 3)"
 touch -d '-1 hour' "$AR/maps/o-r-9.md"

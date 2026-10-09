@@ -60,7 +60,7 @@ These scripts enforce the rules that failed as text alone.
 
 ### The finality trigger (`pre-bash-guard`, `post-bash-register`)
 
-`post-bash-register` counts each posted `--kind proposal` draft per thread in `~/.claude/proposal-rounds.txt`. Before the third proposal, refresh the thread map with its invariants (`finality`, When to run it).
+`post-bash-register` counts each posted `--kind proposal` draft per thread in `~/.claude/proposal-rounds.txt`. Before the third proposal, refresh the thread map with its invariants (`finality`, When to run it) and update the thread's TODO comment from it (`github-threads`).
 
 ### `pr-steps` (enforces 1.7)
 
