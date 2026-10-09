@@ -11,7 +11,7 @@ From an issue or a problem to one merge-ready PR. Open PRs within the task’s p
 
 **A repo’s own `.claude/skills/pull-request/SKILL.md` governs implementation steps.** Read it on `origin/<base>` first; `core`, `github-threads`, `merging`, `converge`, `review`, and `writing` retain ownership of their rules.
 
-**Work in a worktree off `<base>`** (the project file names it): `git fetch origin && git worktree add -b <branch> <artifact root>/<branch> origin/<base>`. In CI, read the project file’s Gates section and the repository’s CI configuration first.
+**Work in a worktree off `<base>`** (the project file names it): `git fetch origin && git worktree add -b <branch> <artifact root>/<branch> origin/<base>`. `origin` here is the repository the PR targets; in a fork clone, fetch the upstream repository and branch from its `<base>`, never from the fork's, which may be stale. In CI, read the project file’s Gates section and the repository’s CI configuration first.
 
 **Check you can finish before you start**, both halves up front:
 - **Browser control** (UI or runtime work), set up and tried per `evidence`.
