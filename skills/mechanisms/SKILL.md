@@ -90,10 +90,14 @@ The daemon reports to `<dir>/events.log` and never starts an agent.
     - `### TRACKER STALE`: a PR merged or closed, and the umbrella issue named in `<dir>/umbrella.txt` doesn't show it ticked with that state;
     - `### REFACTOR STALE`: a PR's code changed by more than ~80 lines since its last `pr-steps refactor`;
     - `### DEPENDENT of merged …`: a PR listed in `waiting-on.txt` merged;
-    - `### FOLLOW-UP`: for 60 days after one of your watched PRs merges, a commit by someone else (not a merge) that changes lines the PR changed, or renames or removes its files, and another person's PR that references it, each once. The watcher checks hourly and records the PR's lines at the merge; a commit counts within 3 lines of them. Read each as `core` 1.3 says (Learning from follow-ups).
+    - `### FOLLOW-UP`: for 60 days after one of your watched PRs merges, a commit by someone else (not a merge) that changes lines the PR changed, or renames or removes its files, and another person's PR that references it, each once. The watcher records the PR's lines at the merge; a commit counts within 3 lines of them. Bots' commits, and hunks that only change dependency versions in `package.json` or a lockfile, don't count. Read each as `core` 1.3 says (Learning from follow-ups).
 - **`/agent` commands.** Your comment starting with `/agent` on a thread no live watch dir lists is found in the recent issue and review comments of every repo a live watch dir lists (the comments feeds are live; the search index and your events feed lag by many minutes, so a search of your comments only backs it up), since you and the agent post as one account. It goes once to one dir's `events.log` as `### AGENT COMMAND`, and the thread joins that dir's `threads.txt`: to the dir named by `/agent <folder name>`, else to the dir listing a thread this one links to or is linked from (most matches; a tie goes to the `--main` dir), else to the `--main` dir as `### UNROUTED /agent`.
 - **Retiring.** It retires itself, service, launchd agent and cron lines included, once every thread is merged or closed and `repos.txt` is empty.
-- **State.** State lives in `gh-watch-state.json`, so restarts lose nothing.
+- **API budget.** All watchers share one account's 5,000 calls an hour, so they keep one budget in `~/.mergeworthy/shared-watch.json`.
+    - **Calls.** Every call goes through one helper that records GitHub's rate-limit headers and sends the `ETag` it saw for the URL. A 304 costs nothing and means "no news".
+    - **Reserve.** Below 1500 calls left, shared work and follow-ups wait for the reset. Below 500, only the notifications fast path and the threads it reports are read. After a rate-limit answer every daemon waits for the reset and prints one `WATCH ERROR API budget: paused until <time>`.
+    - **Shared work.** Discovery (every 5 minutes) and follow-ups (every 10) run in one daemon at a time, the holder of the lease `~/.mergeworthy/shared-watch.lease`, for every live dir. A pass makes at most 40 calls and the next goes on. A commit's detail is read once, ever.
+- **State.** State lives in `gh-watch-state.json` and the shared file, so restarts and plugin updates lose nothing and cost no calls. A daemon's own ETags stay in its file: a validator shared between readers would hide one's change from the other.
 
 ## Hooks
 

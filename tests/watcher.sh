@@ -46,7 +46,7 @@ got=$(py '
 json.dump({"since": "2026-01-01T00:00:00Z", "seen": {}, "prs": {"o/r#1": {"state": "merged"}, "o/r#2": {"state": "open"}}, "ci": {}, "is_pr": {}, "since_by": {}, "closed_scan": 0}, open(m.STATE, "w"))
 open(m.THREADS, "w").write("o/r 1\no/r 2\n")
 seen = {"scan": [], "reactions": []}
-m.fetch_thread = lambda repo, num, *a, **k: (seen["scan"].append(num), (False, "x", [], None, None, None))[1]
+m.fetch_thread = lambda repo, num, *a, **k: (seen["scan"].append(num), (False, "x", [], None, None, None, {}))[1]
 m.scan_reactions = lambda state, threads: seen["reactions"].extend(n for _, n in threads)
 m.run_scan()
 print("scan=" + ",".join(sorted(seen["scan"])) + " reactions=" + ",".join(sorted(seen["reactions"])))
@@ -67,7 +67,7 @@ check "waiting-on.txt key with trailing note: read as a thread, DEPENDENT emitte
 # a ticked grouped tracker line is accepted; an unticked one still fires TRACKER STALE
 tracker() { py "
 open(os.path.join(m.HERE, 'umbrella.txt'), 'w').write('o/r 9')
-m.gh = lambda args: json.dumps({'body': '''$1'''})
+m.request = lambda path, *a, **k: type('R', (), {'json': lambda self: {'body': '''$1'''}})()
 buf = io.StringIO()
 with contextlib.redirect_stdout(buf): m.emit_tracker_stale('o/r#12', 'merged')
 print('STALE' if 'TRACKER STALE' in buf.getvalue() else 'quiet')
@@ -138,7 +138,7 @@ print(*out, owed.count(" wait-ping "))
 ')
 check "wait ping: emitted once, not repeated, not after their reply, not under 3 h, not on a closed thread, again for a new comment; each owed" "1 0 0 0 0 1 2" "$got"
 
-# /agent commands in threads no watch dir lists: found by search, routed to one dir, emitted once
+# /agent commands in threads no watch dir lists: found in the watched repos' comments feeds, routed to one dir, emitted once
 AD="$T/agentdirs"; mkdir -p "$AD/alpha" "$AD/beta" "$HOME/.mergeworthy"
 printf 'o/r 1\n' > "$AD/alpha/threads.txt"; printf 'o/r 2\n' > "$AD/beta/threads.txt"
 printf '%s\n%s\n' "$AD/alpha" "$AD/beta" > "$HOME/.claude/gh-watch-dirs.txt"; echo "$AD/beta" > "$HOME/.mergeworthy/main-watch"
@@ -161,26 +161,27 @@ threads = {  # number -> (body, comments, timeline)
     411: ("", [cm(19, "me", "/agent only the search backup sees this", 411)], []),  # in x/y, which no dir lists: no comments feed reads it
 }
 calls = []
-def fake_gh(args):
-    if "search/issues" in args:  # lags: it never returns the o/r threads, only x/y#411
-        return json.dumps({"items": [{"number": 411, "repository_url": "https://api.github.com/repos/x/y"}]})
-    return json.dumps({"body": threads[int(args[1].rsplit("/", 1)[1])][0]})
-def fake_json(path):
+Answer = lambda data: type("A", (), {"status": 200, "json": lambda self: data})()
+def fake_request(path, *a, **k):
+    if path.startswith("search/issues"):  # lags: it never returns the o/r threads, only x/y#411
+        return Answer({"items": [{"number": 411, "repository_url": "https://api.github.com/repos/x/y"}]})
+    return Answer({"body": threads[int(path.rsplit("/", 1)[1])][0]})
+def fake_paged(path, *a, **k):
     calls.append(path)
     parts = path.split("?")[0].split("/")  # repos/<owner>/<repo>/<issues|pulls>/comments, or .../issues/<n>/<comments|timeline>
     if parts[4] == "comments":  # the recent comments feed of a repo: every o/r thread but 411
         return [c for n, t in threads.items() if n != 411 for c in t[1]] if parts[3] == "issues" and parts[2] == "r" else []
     n = int(parts[4])
     return {"comments": threads[n][1], "timeline": threads[n][2]}.get(parts[5], [])
-m.gh, m.gh_json = fake_gh, fake_json
-state = {"since": "2026-10-08T00:00:00Z"}
-m.discover_agent_commands(state)
-m.discover_agent_commands(state)
+m.request, m.paged = fake_request, fake_paged
+m.discover_agent_commands()
+m.discover_agent_commands()
 feed = [c for c in calls if "/o/r/issues/comments" in c or "/o/r/pulls/comments" in c]
 print("feeds:", len(feed), all("sort=updated&direction=desc" in c and "since=" in c for c in feed), file=sys.stderr)
 '"$1"'
 '; }
 ev() { grep -c "^###" "$AD/$1/events.log" 2>/dev/null || true; }
+touch "$AD/alpha/events.log" "$AD/beta/events.log"
 agent_cmds 'print(1)' >/dev/null 2>"$T/agentcalls"
 got="alpha: $(grep '^###' "$AD/alpha/events.log" | sed 's/ [0-9T:Z-]*  <u/ <u/' | tr '\n' '|')"
 check "/agent in unlisted threads: alpha gets the reference by body" "alpha: ### AGENT COMMAND o/r#407 comment 11 by me <u11>|" "$got"
@@ -189,9 +190,9 @@ check "/agent: beta gets the named, the unrouted (main_dir) and the cross-refere
 check "discovery lists both comment feeds of the watched repo each pass (two passes), sorted by update, with since" "feeds: 4 True" "$(grep '^feeds' "$T/agentcalls")"
 check "a routed thread joins its dir's threads.txt, an unrouted one does not" "o/r 1 o/r 407|o/r 2 o/r 408 o/r 410|" "$(echo $(cat "$AD/alpha/threads.txt"))|$(echo $(cat "$AD/beta/threads.txt"))|"
 
-# FOLLOW-UP: commits by others to the lines of your merged PR, and PRs that reference it: each once, per dir that watches the PR
-FU="$T/followup"; mkdir -p "$FU"
-follow() { py '
+# FOLLOW-UP: commits by others to the lines of your merged PR, and PRs that reference it: each once, to the dirs that list the PR
+rm -rf "$HOME/.mergeworthy/shared-watch.json"*
+follow() { rm -f "$HOME/.mergeworthy/shared-watch.json" "$HOME/.mergeworthy/agent-commands.seen"; : > "$W/events.log"; py '
 import time, datetime
 m.ONCE = False
 open(m.THREADS, "w").write("o/r 5\n")
@@ -199,14 +200,15 @@ iso = lambda t: datetime.datetime.fromtimestamp(t, datetime.timezone.utc).strfti
 now = time.time()
 MERGED = iso(now - 86400 * '"${2:-1}"')
 hunk = lambda old, new, a, b: f"@@ -{old},2 +{new},2 @@\n-{a}\n+{b}\n ctx"
-com = lambda sha, who, parents=1, when=now - 3600: {"sha": sha, "author": {"login": who}, "parents": [{}] * parents, "html_url": f"<c-{sha}>", "commit": {"committer": {"date": iso(when)}, "author": {"name": who}}}
-commits = [com("c1aaaaaaaaaa", "alice"), com("c2bbbbbbbbbb", "alice"), com("c3cccccccccc", "me"), com("c4dddddddddd", "bob", 2), com("c5eeeeeeeeee", "carol"), com("c0merge", "me")]
+com = lambda sha, who, parents=1, when=now - 3600, bot=False: {"sha": sha, "author": {"login": who, "type": "Bot" if bot else "User"}, "parents": [{}] * parents, "html_url": f"<c-{sha}>", "commit": {"committer": {"date": iso(when)}, "author": {"name": who}}}
+commits = [com("c1aaaaaaaaaa", "alice"), com("c2bbbbbbbbbb", "alice"), com("c3cccccccccc", "me"), com("c4dddddddddd", "bob", 2), com("c5eeeeeeeeee", "carol"), com("c6ffffffffff", "dependabot[bot]", bot=True), com("c0merge", "me")]
 files = {  # commit -> files
-    "c1aaaaaaaaaa": [{"filename": "a.ts", "status": "modified", "patch": hunk(11, 11, "x", "y")}],      # old line 11: inside the PR lines 11-12
+    "c1aaaaaaaaaa": [{"filename": "z.ts", "status": "modified", "patch": hunk(11, 11, "x", "y")}],      # the newest: old line 11 of the renamed file, inside the PR lines 11-12
     "c2bbbbbbbbbb": [{"filename": "a.ts", "status": "modified", "patch": hunk(40, 40, "x", "y")}, {"filename": "b.ts", "status": "modified", "patch": hunk(11, 11, "x", "y")}],  # far away; another file
     "c3cccccccccc": [{"filename": "a.ts", "status": "modified", "patch": hunk(11, 11, "x", "y")}],      # yours
     "c4dddddddddd": [{"filename": "a.ts", "status": "modified", "patch": hunk(11, 11, "x", "y")}],      # a merge commit
     "c5eeeeeeeeee": [{"filename": "z.ts", "previous_filename": "a.ts", "status": "renamed"}],           # a rename
+    "c6ffffffffff": [{"filename": "a.ts", "status": "modified", "patch": hunk(11, 11, "x", "y")}],      # a bot
 }
 timeline = [
     {"event": "cross-referenced", "source": {"issue": {"html_url": "<pr-9>", "pull_request": {}, "user": {"login": "alice"}}}},
@@ -215,57 +217,57 @@ timeline = [
     {"event": "cross-referenced", "source": {"issue": {"html_url": "<pr-6>", "pull_request": {}, "user": {"login": "dep[bot]", "type": "Bot"}}}},
 ]
 calls = []
-def fake_gh(args):
-    calls.append(args[1])
-    if args[1].endswith("/pulls/5"):
-        return json.dumps({"merged_at": MERGED, "merge_commit_sha": "c0merge", "base": {"ref": "main"}})
-    return json.dumps({"files": files[args[1].rsplit("/", 1)[1]]})
-def fake_json(path):
+Answer = lambda data: type("A", (), {"status": 200, "json": lambda self: data})()
+def fake_request(path, *a, **k):
+    calls.append(path)
+    if path.endswith("/pulls/5"):
+        return Answer({"merged_at": MERGED, "merge_commit_sha": "c0merge", "base": {"ref": "main"}})
+    return Answer({"files": files[path.rsplit("/", 1)[1]]})
+def fake_paged(path, *a, **k):
     calls.append(path)
     if "/pulls/5/files" in path:
         return [{"filename": "a.ts", "status": "modified", "patch": "@@ -10,3 +10,4 @@\n a\n-b\n+B\n+B2\n c"}]
     if "/timeline" in path:
         return timeline
     return commits
-m.gh, m.gh_json = fake_gh, fake_json
-state = {"prs": {"o/r#5": {"state": "merged"}}, "author": {"o/r#5": "me"}}
+m.request, m.paged = fake_request, fake_paged
+m.followed_prs = lambda: {"o/r#5": [m.HERE]}
+record = lambda: m.shared_read()["followups"]["o/r#5"]
 def scan():
-    buf = io.StringIO()
-    with contextlib.redirect_stdout(buf): m.follow_ups(state)
-    return [l.replace("  <", " <") for l in buf.getvalue().splitlines() if l]
+    before = open(os.path.join(m.HERE, "events.log")).read()
+    m.follow_ups()
+    return [l.replace("  <", " <") for l in open(os.path.join(m.HERE, "events.log")).read()[len(before):].splitlines() if l]
 '"$1"'
 '; }
 got=$(follow '
 first = scan()
-for e in state["followups"].values(): e["checked"] = 0   # an hour later
-second = scan()
+second = scan()   # an hour later
 print("first=" + "|".join(first)); print("second=" + "|".join(second))
-print("recorded=" + str(sorted(state["followups"]["o/r#5"]["files"].items())))
+print("recorded=" + str(sorted(record()["files"].items())))
 ')
-check "FOLLOW-UP: overlap and rename and the referencing PR once; non-overlap, own commit, merge commit, issue, own PR, bot nothing; no repeat" "first=### FOLLOW-UP o/r#5: c1aaaaaaaa by alice changes lines from your PR <c-c1aaaaaaaaaa>|### FOLLOW-UP o/r#5: c5eeeeeeee by carol changes lines from your PR <c-c5eeeeeeeeee>|### FOLLOW-UP o/r#5: <pr-9> by alice references your PR
+check "FOLLOW-UP: overlap and rename and the referencing PR once; non-overlap, own commit, merge commit, issue, own PR, bots nothing; no repeat" "first=### FOLLOW-UP o/r#5: c5eeeeeeee by carol changes lines from your PR <c-c5eeeeeeeeee>|### FOLLOW-UP o/r#5: c1aaaaaaaa by alice changes lines from your PR <c-c1aaaaaaaaaa>|### FOLLOW-UP o/r#5: <pr-9> by alice references your PR
 second=
 recorded=[('z.ts', [[11, 12]])]" "$got"
 got=$(follow '
 scan()
-for e in state["followups"].values(): e["checked"] = 0
 n = len(calls); scan()
 print("calls on a due recheck without new commits: " + str(len(calls) - n))
 ' 1)
-check "FOLLOW-UP: a due check is the commit list, the unseen commits' files (none left: all claimed or skipped) and the timeline" "calls on a due recheck without new commits: 2" "$got"
+check "FOLLOW-UP: a due check is the commit list and the timeline: the commits' files were all read (or skipped) already" "calls on a due recheck without new commits: 2" "$got"
 got=$(follow '
 out = scan()
-print(len(out), len(state["followups"]["o/r#5"]["files"]), "commits?" in "".join(calls), "o/r#5" in state["followups"])
+print(len(out), len(record()["files"]), "commits?" in "".join(calls), "o/r#5" in m.shared_read()["followups"])
 ' 70)
 check "FOLLOW-UP: a PR merged before the window (60 days) is never followed: no events, no commit calls, a marker only" "0 0 False True" "$got"
 got=$(follow '
 scan()
-e = state["followups"]["o/r#5"]; e["until"] = now - 1; e["checked"] = 0   # the window ends
+m.shared_update(lambda s: s["followups"]["o/r#5"].update(until=now - 1))   # the window ends
 n = len(calls); out = scan()
-print(len(out), len(calls) - n, len(e["files"]))
+print(len(out), len(calls) - n, len(record()["files"]))
 ')
 check "FOLLOW-UP: a PR whose window has ended stops: no events, no API calls, lines dropped" "0 0 0" "$got"
 got=$(follow '
-scan(); m.save_state(state)
+scan(); m.save_state({"prs": {"o/r#5": {"state": "merged"}}, "author": {"o/r#5": "me"}, "ci": {}, "is_pr": {}, "since_by": {}, "seen": {}, "since": "2026-01-01T00:00:00Z"})
 buf = io.StringIO()
 with contextlib.redirect_stdout(buf): m.retire_if_done()   # every thread merged, but one is still followed: the watcher stays
 print(repr(buf.getvalue()))
