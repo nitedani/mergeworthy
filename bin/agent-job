@@ -11,8 +11,11 @@ if sys.argv[1] == 'list':
         print(f"{int((time.time() - j['started']) / 60):>5} min  {j['key']}")
     sys.exit(0)
 want = ' '.join(sys.argv[2:]).strip()
-hit = [f for f, j in entries if j['key'] == want or want in j['key'].split()]
+# the exact key; a single ticket path only when one job holds it, so one release never drops another agent's job
+hit = [f for f, j in entries if j['key'] == want] or [f for f, j in entries if want in j['key'].split()]
 if not hit:
     sys.exit(f'agent-job: no registered job for {want!r} (agent-job list)')
+if len(hit) > 1:
+    sys.exit(f'agent-job: {len(hit)} jobs hold {want!r}; release one by its full key from `agent-job list`')
 for f in hit:
     os.remove(os.path.join(jobs, f)); print('released', want)
