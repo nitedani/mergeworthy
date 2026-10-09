@@ -1,0 +1,110 @@
+#!/usr/bin/env python3
+# loc-breakdown <base>..<head> <map file> [--repo-dir DIR]: a markdown table of which feature each changed line of a diff belongs to.
+# The map has lines "<feature>\t<path>[:<start>-<end>]": the range is in the head's file (added lines), or "<path>:base:<start>-<end>"
+# in the base's file (removed lines); a path alone covers all its lines. Reserved features Docs, Tests, Lockfile and Generated
+# collect the non-feature lines (a path may be a glob); a file with no entry falls back to the default patterns below.
+# Exits 1, printing the lines, when a changed line falls in no entry or in two, so the totals always equal `git diff --numstat`.
+import fnmatch, re, subprocess, sys
+
+DEFAULTS = [
+    ('Lockfile', r'(^|/)(pnpm-lock\.yaml|package-lock\.json|yarn\.lock)$'),
+    ('Docs', r'(^|/)docs/|\.mdx?$|(^|/)llms\.txt$'),
+    ('Tests', r'(^|/)(tests?|__tests__)/|\.(spec|test)\.|(^|/)fixtures?/'),
+]
+ORDER = ['Docs', 'Tests', 'Lockfile', 'Generated']
+LABEL = {'Docs': 'Docs (one change)'}
+USAGE = 'usage: loc-breakdown <base>..<head> <map file> [--repo-dir DIR]'
+
+def die(msg, code=2):
+    print(msg, file=sys.stderr); sys.exit(code)
+
+def git(repo, *args):
+    r = subprocess.run(['git', '-c', 'core.quotepath=off', '-C', repo, *args], capture_output=True, text=True)
+    if r.returncode: die(f"git {args[0]} failed: {r.stderr.strip()}")
+    return r.stdout
+
+args = sys.argv[1:]
+repo = '.'
+if '--repo-dir' in args:
+    i = args.index('--repo-dir')
+    if i + 1 >= len(args): die(USAGE)
+    repo = args[i + 1]; del args[i:i + 2]
+if len(args) != 2 or '..' not in args[0]: die(USAGE)
+rng, mapfile = args
+
+# entries: (feature, path, side, start, end); start None = whole file
+entries = []
+for n, line in enumerate(open(mapfile), 1):
+    line = line.rstrip('\n')
+    if not line.strip() or line.startswith('#'): continue
+    if '\t' not in line: die(f"{mapfile}:{n}: want <feature>\\t<path>[:<start>-<end>]")
+    feature, spec = (s.strip() for s in line.split('\t', 1))
+    m = re.fullmatch(r'(.*?)(?::(base:)?(\d+)-(\d+))?', spec)
+    path, base, s, e = m.groups()
+    entries.append((feature, path, 'base' if base else 'head', int(s) if s else None, int(e) if e else None))
+
+def covers(entry, path, side, ln):
+    _, p, eside, s, e = entry
+    if not (p == path or ('*' in p and fnmatch.fnmatchcase(path, p))): return False
+    return s is None or (eside == side and s <= ln <= e)
+
+# changed lines: (path, side, line number)
+changed = []
+path = None
+for l in git(repo, 'diff', '-U0', '--no-renames', '--no-color', '--src-prefix=a/', '--dst-prefix=b/', rng).splitlines():
+    if l.startswith('--- '): old = l[4:].split('\t')[0]
+    elif l.startswith('+++ '):
+        new = l[4:].split('\t')[0]
+        path = old[2:] if new == '/dev/null' else new[2:]
+    elif l.startswith('@@'):
+        a, b, c, d = re.match(r'@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@', l).groups()
+        removed = range(int(a), int(a) + int(1 if b is None else b)) if b != '0' else range(0)
+        added = range(int(c), int(c) + int(1 if d is None else d)) if d != '0' else range(0)
+        changed += [(path, 'base', i) for i in removed] + [(path, 'head', i) for i in added]
+
+def default_bucket(p):
+    return next((name for name, rx in DEFAULTS if re.search(rx, p)), None)
+
+buckets = {}   # name -> {path: [added, removed]}
+gaps, overlaps = [], []
+for p, side, ln in changed:
+    hits = sorted({e[0] for e in entries if covers(e, p, side, ln)})
+    if len(hits) > 1: overlaps.append((p, side, ln, hits)); continue
+    name = hits[0] if hits else default_bucket(p)
+    if name is None: gaps.append((p, side, ln, [])); continue
+    buckets.setdefault(name, {}).setdefault(p, [0, 0])[0 if side == 'head' else 1] += 1
+
+def ranges(items):  # [(path, side, line, hits)] -> "path:3-5, path:base:9"
+    out, prev = [], None
+    for p, side, ln, hits in sorted(items):
+        if prev and prev[0] == p and prev[1] == side and ln == prev[3] + 1: prev[3] = ln; continue
+        prev = [p, side, ln, ln]; out.append(prev)
+    return ', '.join(f"{p}:{'base:' if s == 'base' else ''}{a}" + (f"-{b}" if b != a else '') for p, s, a, b in out)
+
+if gaps or overlaps:
+    if gaps: print(f"loc-breakdown: changed lines in no map entry: {ranges(gaps)}", file=sys.stderr)
+    for p, side, ln, hits in overlaps:
+        print(f"loc-breakdown: {p}:{'base:' if side == 'base' else ''}{ln} is in {len(hits)} entries: {', '.join(hits)}", file=sys.stderr)
+    sys.exit(1)
+
+# the sum of our buckets must equal the diff's numstat (binary files have no line counts)
+want = [0, 0]
+for l in git(repo, 'diff', '--numstat', '--no-renames', rng).splitlines():
+    a, r, _ = l.split('\t', 2)
+    if a != '-': want[0] += int(a); want[1] += int(r)
+got = [sum(v[0] for f in buckets.values() for v in f.values()), sum(v[1] for f in buckets.values() for v in f.values())]
+if got != want: die(f"loc-breakdown: internal error: counted +{got[0]} -{got[1]}, git numstat says +{want[0]} -{want[1]}")
+
+def size(name): return sum(a + r for a, r in buckets[name].values())
+def where(name):
+    files = sorted(buckets[name].items(), key=lambda kv: -sum(kv[1]))
+    shown = [f"`{p}` ({'+%d' % a if a else ''}{' / ' if a and r else ''}{'−%d' % r if r else ''})" for p, (a, r) in files[:4]]
+    return ', '.join(shown) + (f", {len(files) - 4} more" if len(files) > 4 else '')
+def row(name):
+    a = sum(v[0] for v in buckets[name].values()); r = sum(v[1] for v in buckets[name].values())
+    return f"| {LABEL.get(name, name)} | +{a} / −{r} | {where(name)} |"
+
+features = sorted((n for n in buckets if n not in ORDER), key=lambda n: (-size(n), n))
+print('| Feature | Lines (+ / −) | Where |\n|---|---|---|')
+for n in features + [n for n in ORDER if n in buckets]: print(row(n))
+print(f"| **Total** | +{got[0]} / −{got[1]} | {len({p for f in buckets.values() for p in f})} files |")

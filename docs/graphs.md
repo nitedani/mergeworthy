@@ -18,7 +18,7 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 | `merging` | nothing |
 | `open-issue` | `core`, `evidence`, `writing`, `github-threads` |
 | `past-failures` | nothing |
-| `pull-request` | `evidence`, `delegating`, `finality`, `core`, `guardian`, `design-loop`, `writing`, `converge`, `open-issue` |
+| `pull-request` | `evidence`, `delegating`, `finality`, `core`, `guardian`, `design-loop`, `writing`, `converge`, `open-issue`, `mechanisms` |
 | `refactor` | nothing |
 | `review` | `core`, `delegating`, `guardian`, `refactor`, `mechanisms`, `writing`, `github-threads`, `converge` |
 | `verify` | `core`, `converge` |
@@ -243,6 +243,7 @@ flowchart TB
   s5 -.-> r14[["converge"]]
   s6 -.-> r15[["writing"]]
   s6 -.-> r16[["evidence"]]
+  s6 -.-> r17[["mechanisms"]]
   start --> g0
 ```
 
@@ -492,29 +493,32 @@ flowchart TB
   subgraph g5["review-context"]
     s5["review-context"]
   end
-  subgraph g6["The finality trigger"]
-    s6["The finality trigger"]
+  subgraph g6["loc-breakdown"]
+    s6["loc-breakdown"]
   end
-  subgraph g7["pr-steps"]
-    s7["pr-steps"]
+  subgraph g7["The finality trigger"]
+    s7["The finality trigger"]
   end
-  subgraph g8["The watcher daemon"]
-    s8["The watcher daemon"]
+  subgraph g8["pr-steps"]
+    s8["pr-steps"]
   end
-  subgraph g9["Hooks"]
-    s9["Hooks"]
+  subgraph g9["The watcher daemon"]
+    s9["The watcher daemon"]
   end
-  subgraph g10["pre-bash-guard.py"]
-    s10["pre-bash-guard.py"]
+  subgraph g10["Hooks"]
+    s10["Hooks"]
   end
-  subgraph g11["post-bash-register.py"]
-    s11["post-bash-register.py"]
+  subgraph g11["pre-bash-guard.py"]
+    s11["pre-bash-guard.py"]
   end
-  subgraph g12["stop-lint.py"]
-    s12["stop-lint.py"]
+  subgraph g12["post-bash-register.py"]
+    s12["post-bash-register.py"]
   end
-  subgraph g13["session-start"]
-    s13["session-start"]
+  subgraph g13["stop-lint.py"]
+    s13["stop-lint.py"]
+  end
+  subgraph g14["session-start"]
+    s14["session-start"]
   end
   start --> g0
   g0 ~~~ g1
@@ -530,4 +534,5 @@ flowchart TB
   g10 ~~~ g11
   g11 ~~~ g12
   g12 ~~~ g13
+  g13 ~~~ g14
 ```

@@ -58,6 +58,12 @@ These scripts enforce the rules that failed as text alone.
 - It loads the repo's TypeScript, falling back to mergeworthy's own when the repo's has no compiler API (TypeScript 7). It builds one language service per tsconfig, freeing each after use; a small diff on vike takes about 3 s.
 - It never blocks a review: the analysis runs in a child with a 3 GB heap cap and a 60 s limit (`--timeout SECONDS`); on a failure, crash or timeout it prints `review-context: failed (<reason>); no context` and exits 0. Output is capped at about 400 lines.
 
+### `loc-breakdown`
+
+`loc-breakdown <base>..<head> <map file> [--repo-dir DIR]` prints a markdown table of the lines each feature changed (`pull-request`, the PR body). The map has lines `<feature>\t<path>[:<start>-<end>]`: a head range for added lines, `<path>:base:<start>-<end>` for removed lines, a bare path for the whole file.
+- Docs (one row, one number), Tests, Lockfile and Generated are separate rows and not features; docs, tests and lockfiles are recognized by path, and the map can assign any path to those names.
+- It exits 1 and lists the lines when a changed line is in no entry or in two, so the totals equal `git diff --numstat`. `post-lint` doesn't count the table in a PR's word budget.
+
 ### The finality trigger (`pre-bash-guard`, `post-bash-register`)
 
 `post-bash-register` counts each posted `--kind proposal` draft per thread in `~/.claude/proposal-rounds.txt`. Before the third proposal, refresh the thread map with its invariants (`finality`, When to run it) and update the thread's WIP comment from it (`github-threads`).

@@ -110,6 +110,8 @@ Closes #N
 
 **Write its prose by `writing` and keep the body’s template form** (`writing`, opening precedence). Show real requests and responses for non-UI changes (`evidence`) and benchmarks for hot paths, transports and streams (`writing`). Close with the caveat when a revert cannot undo the merge (`writing`).
 
+**A PR whose feature code (tests, docs and lockfiles excluded) is over about 300 changed lines carries a table of what makes it up.** Write a map file by reading the hunks, one line per feature and range, the features named in the maintainer’s words, and run `loc-breakdown <base>..<head> <map>` (`mechanisms`); put its table in the body. It is evidence, not counted in the word budget. The tool fails on a changed line that no entry or two entries cover, so fix the map until it passes.
+
 #### The walkthrough
 
 The images are the review, a sequence per `evidence`: open on the defect, close on the fix, and between them show what your change could have broken and didn't.
