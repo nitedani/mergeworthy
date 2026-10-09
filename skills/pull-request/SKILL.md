@@ -70,6 +70,8 @@ Write the code to the guardian’s standard before its review (`core` 1.1.17).
 
 **Build the whole interaction, not the happy path.** Someone will finish the task, change their mind, go back, reload, mistype, use the keyboard, leave halfway. Anything that would make them wonder what happened is a defect, whether or not the ticket mentioned it.
 
+**Docs, a README or JSDoc in the diff** are written by `docs` (profile, placement, imitation of a sibling page) before the review round, and their fresh-reader check runs on the final text.
+
 **Converging a subsystem** is built as the finality pass's Phase C: behavior-preserving commits, with the gates after each.
 
 **Independent user-visible fixes are separate PRs** (1.1.16). A larger change whose pieces depend on each other becomes a stack of small PRs only as `converge` (stacked PRs) says; otherwise it is one PR with a commit per item.

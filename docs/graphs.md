@@ -10,6 +10,7 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 | `core` | `writing`, `open-issue`, `github-threads`, `evidence`, `delegating`, `design-loop`, `converge`, `pull-request`, `merging` |
 | `delegating` | nothing |
 | `design-loop` | `pull-request`, `core`, `review`, `writing`, `converge`, `delegating` |
+| `docs` | `review`, `converge` |
 | `evidence` | nothing |
 | `finality` | nothing |
 | `github-threads` | `writing`, `converge`, `review`, `refactor`, `core`, `pull-request`, `finality` |
@@ -18,7 +19,7 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 | `merging` | nothing |
 | `open-issue` | `core`, `evidence`, `writing`, `github-threads` |
 | `past-failures` | nothing |
-| `pull-request` | `evidence`, `delegating`, `core`, `finality`, `guardian`, `design-loop`, `writing`, `converge`, `open-issue`, `mechanisms` |
+| `pull-request` | `evidence`, `delegating`, `core`, `finality`, `guardian`, `design-loop`, `writing`, `docs`, `converge`, `open-issue`, `mechanisms` |
 | `refactor` | nothing |
 | `review` | `core`, `delegating`, `guardian`, `refactor`, `mechanisms`, `writing`, `github-threads`, `converge` |
 | `verify` | `core`, `converge` |
@@ -236,14 +237,38 @@ flowchart TB
   s3 -.-> r7[["guardian"]]
   s3 -.-> r8[["design-loop"]]
   s3 -.-> r9[["writing"]]
-  s3 -.-> r10[["converge"]]
-  s4 -.-> r11[["open-issue"]]
-  s4 -.-> r12[["core"]]
-  s4 -.-> r13[["evidence"]]
-  s5 -.-> r14[["converge"]]
-  s6 -.-> r15[["writing"]]
-  s6 -.-> r16[["evidence"]]
-  s6 -.-> r17[["mechanisms"]]
+  s3 -.-> r10[["docs"]]
+  s3 -.-> r11[["converge"]]
+  s4 -.-> r12[["open-issue"]]
+  s4 -.-> r13[["core"]]
+  s4 -.-> r14[["evidence"]]
+  s5 -.-> r15[["converge"]]
+  s6 -.-> r16[["writing"]]
+  s6 -.-> r17[["evidence"]]
+  s6 -.-> r18[["mechanisms"]]
+  start --> g0
+```
+
+## Writing or changing docs: a docs page, a README, JSDoc or an `llms.txt` line a user reads
+
+Opens `mergeworthy:docs` (the project's docs voice, placement, shape, drafting from a sibling page, the fresh-reader check).
+
+```mermaid
+flowchart TB
+  start(["Writing or changing<br/>docs: a docs page, a<br/>README, JSDoc or an<br/>llms.txt line …"])
+  subgraph g0["docs"]
+    s0["1. The voice profile"]
+    s1["2. Placement"]
+    s0 --> s1
+    s2["3. Shape"]
+    s1 --> s2
+    s3["4. Draft by imitation"]
+    s2 --> s3
+    s4["5. Verify"]
+    s3 --> s4
+  end
+  s4 -.-> r1[["review"]]
+  s4 -.-> r2[["converge"]]
   start --> g0
 ```
 

@@ -5,7 +5,7 @@ description: "Writing skills, rules or prompts, and starting, briefing or integr
 
 ## 1.9 Writing rules, prompts and docs
 
-These rules hold when you edit a skill, prompt, rules file or AGENTS.md. Rules for user-facing docs are in `core` 1.3 (docs, style): open `core` before writing docs in a repo.
+These rules hold when you edit a skill, prompt, rules file or AGENTS.md. Rules for user-facing docs are in `docs` (and `core` 1.3, style): open `docs` before writing docs in a repo.
 - **Exactly the requested operation.** Make exactly the requested operation on exactly the named text. Anything extra gets one line in your reply, not an edit. Text the user supplied verbatim stays verbatim.
 - **The minimal delta,** usually one sentence, placed at the step where it bites.
     - No rationale, no incident stories, nothing a competent model does anyway.

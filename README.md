@@ -46,6 +46,7 @@ Run `npx mergeworthy` again to change the options or add an agent; `npx mergewor
 | `evidence` | reproducing a behavior as a person would, a screenshot or video of it, uploading it |
 | `github-threads` | watching threads, answering, and the review every post passes |
 | `writing` | every writing rule: voice, model replies, budgets, the badge, reports to the user (`~/.mergeworthy/voice.md` replaces its voice) |
+| `docs` | docs, READMEs and JSDoc that read as the project's own: voice profile, placement, imitation, fresh-reader check |
 | `merging` | pushing, ready, merge |
 | `design-loop` | designing an API, protocol or module |
 | `converge` | the passes a PR runs until nothing worth changing is left |

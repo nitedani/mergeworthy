@@ -20,6 +20,7 @@ The rule numbers below (1.1.17, 1.6) point into the skills.
 | Pushing, saying a PR is ready, merging | `mergeworthy:merging` | 1.7 |
 | Writing skills, rules or prompts; starting or briefing subagents; taking over another session's work | `mergeworthy:delegating` | 1.9, 1.10 |
 | Any change that lands in a PR: writing it, committing it, pushing it to an open PR | `mergeworthy:pull-request` | the steps to a merge-ready PR |
+| Writing or changing docs: a docs page, a README, JSDoc or an `llms.txt` line a user reads | `mergeworthy:docs` | the project's docs voice, placement, shape, drafting from a sibling page, the fresh-reader check |
 | Opening an issue | `mergeworthy:open-issue` | one finding a newcomer can find, reproduce and judge |
 | Showing a behavior: a reproduction, a screenshot, a video | `mergeworthy:evidence` | reproducing it as a person would, capturing it, uploading it |
 | Converging a PR, before it's ready (every tier) | `mergeworthy:converge` | the pipeline every PR runs: finality, Loop A, Loop B, the fresh reader, gates |
