@@ -1174,18 +1174,20 @@ def follow_ups():
                 resp = request(bk['next'], store=shared_read()['etags'] if first else None, pending=pending if first else None, fresh=bk['fresh'], newest_first=True)
                 page = [] if resp.status == 304 else resp.json()
                 bk['queue'] += [{'sha': c['sha'], 'html_url': c['html_url'], 'parents': [0] * len(c.get('parents') or []), 'author': c.get('author') and {k: c['author'].get(k) for k in ('login', 'type')},
-                                 'commit': {'committer': {'date': c['commit']['committer']['date']}, 'author': {'name': c['commit']['author']['name']}}} for c in page]
+                                 'commit': {'committer': {'date': c['commit']['committer']['date']}, 'author': {k: c['commit']['author'].get(k) for k in ('name', 'email')}}} for c in page]
                 bk['next'] = None if not page or not resp.next() or page[-1]['commit']['committer']['date'] < bk['floor'] else resp.next()
             while bk['queue']:  # oldest first
                 c = bk['queue'][-1]
-                sha, author, when = c['sha'], c.get('author'), c['commit']['committer']['date']
-                if author and not is_bot(author) and author.get('login') != ME and len(c.get('parents') or []) <= 1:
+                sha, author, when = c['sha'], c.get('author') or {}, c['commit']['committer']['date']
+                who = author.get('login') or c['commit']['author'].get('name')  # no GitHub account is linked to the commit's email: its git name
+                mine = author.get('login') == ME or re.fullmatch(rf"(\d+\+)?{re.escape(ME)}@users\.noreply\.github\.com", c['commit']['author'].get('email') or '', re.I)
+                if not is_bot({**author, 'login': who}) and not mine and len(c.get('parents') or []) <= 1:
                     wanted = [k for k, e in entries.items() if when >= e['scanned'] and sha != e['merge_sha'] and claim(f"followup:{k}:{sha}", record=False)]
                     if wanted:
                         files = commit_files(repo, sha)
                         for k in wanted:
                             if touches(entries[k], files):
-                                follow_emit(f"followup:{k}:{sha}", prs[k], f"### FOLLOW-UP {k}: {sha[:10]} by {author['login']} changes lines from your PR  {c['html_url']}")
+                                follow_emit(f"followup:{k}:{sha}", prs[k], f"### FOLLOW-UP {k}: {sha[:10]} by {who} changes lines from your PR  {c['html_url']}")
                 for e in entries.values():
                     e['scanned'] = max(e['scanned'], when)
                 bk['queue'].pop()

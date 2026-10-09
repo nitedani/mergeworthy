@@ -397,6 +397,24 @@ def _():
         return f"{bool(details)} {'vikejs/vike-react#8' in m.shared_read()['followups'] and m.shared_read()['followups']['vikejs/vike-react#8']['checked'] > 0}"
 
 
+@case("follow-ups: a commit whose author has no GitHub account is still reported, by its commit author name; your own (by noreply email) and a bot's are not", "True True False False")
+def _():
+    with world(names=['d1']) as (sim, gh, dirs):
+        gh.commits['vikejs/vike'] = []
+        shas = []
+        for i, (name, email) in enumerate([('Alice', 'alice@example.com'), ('Alice', 'alice@example.com'), ('Me', '12+me@users.noreply.github.com'), ('x[bot]', 'x@bots')]):
+            shas.append(gh.commit('vikejs/vike', 'alice', [{'filename': 'packages/50/a.ts', 'status': 'modified', 'patch': ws.TS(11)}], when=ws.T0 - 100 + i))
+            c = next(c for c in gh.commits['vikejs/vike'] if c['sha'] == shas[-1])
+            c['author'] = None
+            c['commit']['author'] = {'name': name, 'email': email}
+        json.dump({'prs': {'vikejs/vike#50': {'state': 'merged'}}, 'author': {'vikejs/vike#50': 'me'}}, open(f"{dirs['d1']}/gh-watch-state.json", 'w'))
+        m = load(dirs['d1'], sim)
+        m.JOBS = tuple(j for j in m.JOBS if j[0] == 'followups')
+        m.shared_pass()
+        out = lines(dirs['d1'])
+        return ' '.join(str(any(s[:10] in l for l in out)) for s in shas)
+
+
 shutil.rmtree(T, ignore_errors=True)
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)
