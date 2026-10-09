@@ -61,6 +61,14 @@ When the work reshapes existing code, or a small change can't be made cleanly be
 
 Optional owner recommendations do not block convergence; approval required by the pipeline’s entry conditions does. Present unresolved recommendations with your pick in the PR’s notes table or your report (`writing`).
 
+### Docs go through with the code
+
+Docs, READMEs and JSDoc a user reads are part of the diff, so each step above covers them in the same pass, never in a separate one afterwards:
+- **Loop A:** every sentence about behavior is a claim; reproduce it against the head like any other ("only the most specific `path` runs" gets a spec or script). A sentence the code contradicts is a bug in the docs or the code (Docs are the contract, below).
+- **Loop B:** the `docs` skill's placement and shape: the right page, the minimum, no internals, history or hedges a user can't act on, the length of the siblings.
+- **The fresh reader:** also gets the rendered page and two sibling pages alone, and answers the `docs` skill's two questions: can I do the task from this, and which sentences read unlike the siblings.
+- **Gates:** the project's docs lint, spellcheck and docs build.
+
 ### Running the agents
 
 - **Continue, don't restart.** After every fix, continue the loop's agent (`delegating`, one run), so it re-checks changed slices in Loop A and audits the whole scope in Loop B (`verify`, `guardian`). Loop A runs repros and Loop B rates code, so they get separate agents, except on a small diff (Tier S, under about 300 lines), where one agent runs both.

@@ -331,29 +331,32 @@ flowchart TB
   subgraph g0["The pipeline"]
     s0["The pipeline"]
   end
-  subgraph g1["Running the agents"]
-    s1["Running the agents"]
+  subgraph g1["Docs go through with the<br/>code"]
+    s1["Docs go through with the<br/>code"]
   end
-  subgraph g2["Git and files"]
-    s2["Git and files"]
+  subgraph g2["Running the agents"]
+    s2["Running the agents"]
   end
-  subgraph g3["Authority"]
-    s3["Authority"]
+  subgraph g3["Git and files"]
+    s3["Git and files"]
   end
-  subgraph g4["The phantom gate"]
-    s4["The phantom gate"]
+  subgraph g4["Authority"]
+    s4["Authority"]
   end
-  subgraph g5["The removal gate"]
-    s5["The removal gate"]
+  subgraph g5["The phantom gate"]
+    s5["The phantom gate"]
   end
-  subgraph g6["Stacked PRs"]
-    s6["Stacked PRs"]
+  subgraph g6["The removal gate"]
+    s6["The removal gate"]
   end
-  subgraph g7["Gates"]
-    s7["Gates"]
+  subgraph g7["Stacked PRs"]
+    s7["Stacked PRs"]
   end
-  subgraph g8["PR bodies"]
-    s8["PR bodies"]
+  subgraph g8["Gates"]
+    s8["Gates"]
+  end
+  subgraph g9["PR bodies"]
+    s9["PR bodies"]
   end
   start --> g0
   g0 ~~~ g1
@@ -364,6 +367,7 @@ flowchart TB
   g5 ~~~ g6
   g6 ~~~ g7
   g7 ~~~ g8
+  g8 ~~~ g9
 ```
 
 ## Bug verification, reproduce-only
