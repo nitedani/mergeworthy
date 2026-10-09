@@ -176,6 +176,30 @@ def check_finality(repo, num, files):
         block(f"{repo}#{num} has had {len(rounds)} proposal rounds: run the finality pass (mergeworthy:finality, 'a design discussion has drifted') before this reply, "
               f"write its thread map with the invariants list to {m} (newer than your last proposal), and let this reply state the whole design as those invariants")
 
+def thread_of_ref(repo, ref):
+    """owner/repo#N from a gh issue/pr argument (number or URL) or None."""
+    m = re.search(r'github\.com/([\w.-]+/[\w.-]+)/(?:issues|pull)/(\d+)', ref or '')
+    if m: return f'{m.group(1)}#{m.group(2)}'
+    return f'{repo}#{ref}' if repo and str(ref).isdigit() else None
+
+def check_context(thread, files):
+    """1.6 a post on a thread is drafted from its whole record: <draft dir>/thread-context.md, made by `thread-context <repo#N> --out <dir>/thread-context.md`,
+    for this thread and recording its latest human comment (the tool's --verify). Tracker drafts are exempt; a thread gh can't read is not checked."""
+    if not thread: return
+    tc = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'bin', 'thread-context')
+    for f in files:
+        f = os.path.expandvars(os.path.expanduser(f[5:] if f.startswith('body=') else f)).lstrip('@')
+        f = f if os.path.isabs(f) else os.path.join(cwd, f)
+        try: flags = open(f + '.lint').read().split()
+        except OSError: flags = []
+        if '--kind' in flags and flags[flags.index('--kind') + 1:][:1] == ['tracker']: continue
+        parent = re.sub(r'\.md$', '', f) + '.parent.md'
+        cmd = [tc, '--verify', os.path.join(os.path.dirname(f), 'thread-context.md'), '--target', thread] + (['--parent', parent] if os.path.exists(parent) else [])
+        try: r = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        except Exception: continue
+        if r.returncode != 0 and r.stderr.strip():
+            block(f"{r.stderr.strip()} (mergeworthy:writing step 0: draft from thread-context.md, give the reviewer the same file)")
+
 def cwd_repo(run_dir):
     import subprocess
     url = subprocess.run(['git', '-C', run_dir, 'remote', 'get-url', 'origin'], capture_output=True, text=True).stdout.strip()
@@ -270,6 +294,9 @@ def check(t, has_cd):
                 check_turn((opt(rest, ['--repo', '-R']) or [None])[-1] or cwd_repo(run_dir), num, rest)
             if sub in ('comment', 'review'):
                 check_finality((opt(rest, ['--repo', '-R']) or [None])[-1] or cwd_repo(run_dir), next((x for x in rest if x.isdigit()), None), files)
+            if sub != 'create':
+                r_ = (opt(rest, ['--repo', '-R']) or [None])[-1] or cwd_repo(run_dir)
+                check_context(next((thread_of_ref(r_, x) for x in rest if x.isdigit() or 'github.com/' in x), None), files)
             for f in files: gated_file(f, has_cd, create=sub in ('comment', 'create', 'review'))
     if p == 'gh' and a and a[0] == 'api':
         rest = a[1:]
@@ -292,6 +319,16 @@ def check(t, has_cd):
         if m and method == 'POST': need_watch(m.group(1))
         c = re.fullmatch(r'/?repos/([\w.-]+/[\w.-]+)/issues/(\d+)/comments', ep)
         if c and method == 'POST': check_turn(c.group(1), c.group(2), rest); check_finality(c.group(1), c.group(2), bodies + inputs)
+        thread = None
+        t_ = re.fullmatch(r'/?repos/([\w.-]+/[\w.-]+)/(?:issues|pulls)/(\d+)(?:/.*)?', ep)
+        if t_: thread = f'{t_.group(1)}#{t_.group(2)}'
+        else:  # an edit of a comment by id: ask which thread it is on
+            c_ = re.fullmatch(r'/?repos/([\w.-]+/[\w.-]+)/(?:issues|pulls)/comments/\d+', ep)
+            if c_:
+                r_ = subprocess.run(['gh', 'api', ep.lstrip('/'), '--jq', '.issue_url // .pull_request_url'], capture_output=True, text=True, timeout=20)
+                n_ = re.search(r'/(\d+)\s*$', r_.stdout) if r_.returncode == 0 else None
+                thread = f'{c_.group(1)}#{n_.group(1)}' if n_ else None
+        check_context(thread, bodies + inputs)
         for f in bodies + inputs: gated_file(f, has_cd, create=method == 'POST')
 
 try:

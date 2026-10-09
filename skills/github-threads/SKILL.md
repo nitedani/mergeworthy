@@ -20,7 +20,7 @@ description: "Any GitHub thread you're in: the live loop (watcher, 👀, replies
 Each comment you answer goes through these steps:
 
 1. **On detection:** the watcher adds 👀 to new answerable comments; reviews cannot receive reactions. New comments usually arrive on the ten-second polling path; edits and missed fast-path events may wait for the five-minute backstop.
-2. **The answer, or a holding reply.** Answer through the gate (1.6). Only when the answer needs long work (more than about 15 minutes) post a holding reply first, through the fast gate, and make it carry something: what you've found so far, and when the answer comes. Before acting on any comment, check that its reason fits the line it's anchored to; if the reason fits another line better, ask before changing anything.
+2. **The answer, or a holding reply.** A drafter subagent drafts it from `thread-context.md` (`writing` step 0); answer through the gate (1.6). Only when the answer needs long work (more than about 15 minutes) post a holding reply first, through the fast gate, and make it carry something: what you've found so far, and when the answer comes. Before acting on any comment, check that its reason fits the line it's anchored to; if the reason fits another line better, ask before changing anything.
    - **An instruction** ("Let's…", "Remove…", "Merge origin/main") or a suggestion block: do it, then reply "Done in <sha>."
    - **A question or soft suggestion** ("Overkill?", "How about…?", "why…?", "I think we can…") gets an answer, never a code change until they answer it. "How about X?" or "Is X possible?" starts with yes or no and the one real obstacle. When their idea is simpler than yours, recommend their idea. If the answer needs work, say what you're checking ("Measuring the calls"); never agree with a premise or promise a change you haven't measured. Hold any loop finding on the questioned lines until they answer.
    - **A short acknowledgement** ("OK", "Good!", 👍) is not the end of the thread: read the whole thread to find what the acknowledgement answers. It answers your last open proposal or question in that thread. If that thread has none, it answers your latest open proposal or question elsewhere in the same PR, posted just before the acknowledgement. That proposal is now an instruction. If the acknowledgement could answer two, do both if they don't conflict; otherwise ask which in one line. Only an acknowledgement of a finished change needs nothing but a 👍.
@@ -81,12 +81,13 @@ The watcher runs independently of any session and only records events (and adds 
 **Everything that reaches an external service passes this gate,** with no lighter category: comments, review replies, inline comments, PR and issue bodies, filed issues, and edits of any of these. Reactions are exempt. Only the orchestrator posts, edits posts, and talks to the user; subagents hand it drafts.
 
 1. **Write the draft to the gate’s standard before review** (`core` 1.1.17). Write in `drafts/<name>.md` (never straight into a `gh` command), with the comment it answers in `drafts/<name>.parent.md`.
+   - On a thread, build `thread-context <repo#N> --out drafts/<dir>/thread-context.md` and have a drafter subagent draft from it (`writing` step 0); the main session reads only the draft and the drafter's list of conflicts with past decisions. `gate-pass` and `pre-bash-guard` require the file, newer than the parent and recording the thread's latest human comment; a newer comment blocks the post until you rebuild it and re-read.
    - First write the reader's one line (the verdict or the ask) and what they already said.
    - Write it by `mergeworthy:writing` (open it): its drafts (three only where it says), voice, budgets and badge.
    - Read as a newcomer and explain every term on first use (`writing`, How a good colleague writes).
 2. **Run `post-lint`** with the draft's `--kind` (and `--repo`). It must pass; `gate-pass` re-runs it with the same flags.
 3. **Run the review** (`review`: open it for who reviews) with a prompt file. Fix the draft and log what its writing step missed (`core` 1.1.17). The review checks facts and noise, not word choice:
-   - **Claims:** every claim against the code (`file:line` or a command and its output), the thread and the evidence.
+   - **Claims:** every claim against the code (`file:line` or a command and its output), the thread and the evidence; every claim about who said, proposed or agreed what against `thread-context.md`, which the reviewer gets as a file.
    - **Noise:**
      - every con or risk names who hits it today (a caller, repo or user), or is cut;
      - every sentence that adds nothing is cut, but a sentence that links two points ("because", "so", "but") stays;

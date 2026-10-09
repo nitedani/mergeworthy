@@ -1,0 +1,235 @@
+#!/usr/bin/env python3
+"""thread-context <owner/repo#N | issue/PR URL> [--depth 2] [--max 30] [--out <file>]: the whole record a reply must be drafted from.
+Fetches the thread (body, issue comments, PR review comments and reviews, each with author, time and permalink) and every thread it
+links (owner/repo#N, bare #N, github.com issue/PR/comment URLs), breadth-first to --depth, at most --max threads, skipping bots.
+Writes one markdown file (default ./thread-context.md): a header (root, latest human comment, threads), a ledger of the humans'
+agreements, rejections, proposals and decisions, the root transcript, then the linked transcripts (last 30 comments each).
+Threads are cached by updated_at under ~/.cache/mergeworthy/threads/.
+  thread-context --latest <repo#N>     print "<id> <time>" of the thread's latest human comment
+  thread-context --verify <file> [--target <repo#N>] [--parent <file>]
+                                       exit 1 with the reason unless <file> is for the target thread, newer than the parent
+                                       comment, and records the target's current latest human comment (gate-pass, pre-bash-guard)"""
+import json, os, re, subprocess, sys, datetime
+from concurrent.futures import ThreadPoolExecutor
+
+AGENT_BADGE = '<img src="https://github.com/claude.png"'
+LINKED_LAST = 30          # comments kept per linked thread
+LINKED_BODY = 4000        # characters kept per comment in a linked thread
+CACHE = os.path.expanduser('~/.cache/mergeworthy/threads')
+USAGE = "usage: thread-context <owner/repo#N> [--depth 2] [--max 30] [--out <file>] | --latest <repo#N> | --verify <file> [--target <repo#N>] [--parent <file>]"
+
+def die(msg, code=1):
+    print(msg, file=sys.stderr); sys.exit(code)
+
+def gh_json(path, paginate=False):
+    """JSON from `gh api <path>` (pages flattened into one list); None when the call fails (404, offline)."""
+    cmd = ['gh', 'api', path] + (['--paginate'] if paginate else [])
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if r.returncode != 0: return None
+    dec, s, i, out = json.JSONDecoder(), r.stdout, 0, []
+    while i < len(s):
+        while i < len(s) and s[i].isspace(): i += 1
+        if i >= len(s): break
+        try: v, i = dec.raw_decode(s, i)
+        except ValueError: return None
+        out += v if isinstance(v, list) else [v]
+    return out if paginate else (out[0] if out else None)
+
+def is_bot(u):
+    u = u or {}
+    return u.get('type') == 'Bot' or (u.get('login') or '').endswith('[bot]')
+
+def record(kind, c, at_key='created_at', extra=''):
+    u = c.get('user') or {}
+    body = c.get('body') or ''
+    return {'kind': kind, 'id': c.get('id') or 0, 'author': u.get('login') or 'ghost', 'bot': is_bot(u), 'agent': AGENT_BADGE in body,
+            'at': c.get(at_key) or c.get('created_at') or '', 'url': c.get('html_url') or '', 'body': body, 'extra': extra}
+
+def load(repo, num):
+    """The thread as {ref, title, url, state, is_pr, updated_at, items:[record...]}; None if it doesn't exist. Cached by updated_at."""
+    meta = gh_json(f'repos/{repo}/issues/{num}')
+    if not isinstance(meta, dict) or 'number' not in meta: return None
+    f = os.path.join(CACHE, f"{repo.replace('/', '__')}__{num}.json")
+    try:
+        cached = json.load(open(f))
+        if cached.get('updated_at') == meta.get('updated_at'): return cached
+    except (OSError, ValueError): pass
+    is_pr = 'pull_request' in meta
+    items = [record('body', meta)]
+    items += [record('comment', c) for c in gh_json(f'repos/{repo}/issues/{num}/comments?per_page=100', True) or []]
+    if is_pr:
+        for r in gh_json(f'repos/{repo}/pulls/{num}/reviews?per_page=100', True) or []:
+            if (r.get('body') or '').strip(): items.append(record('review', r, 'submitted_at', r.get('state') or ''))
+        for c in gh_json(f'repos/{repo}/pulls/{num}/comments?per_page=100', True) or []:
+            items.append(record('review comment', c, 'created_at', f"{c.get('path') or ''}:{c.get('line') or c.get('original_line') or ''}"))
+    items.sort(key=lambda x: (x['at'], x['id']))
+    t = {'ref': f'{repo}#{num}', 'title': meta.get('title') or '', 'url': meta.get('html_url') or '', 'state': meta.get('state') or '',
+         'is_pr': is_pr, 'updated_at': meta.get('updated_at'), 'items': items}
+    try:
+        os.makedirs(CACHE, exist_ok=True); json.dump(t, open(f, 'w'))
+    except OSError: pass
+    return t
+
+def latest_human(t):
+    """(at, id, url) of the newest comment by a human who isn't the agent (the root body doesn't count), else None."""
+    hs = [x for x in t['items'] if x['kind'] != 'body' and not x['bot'] and not x['agent']]
+    return max(((x['at'], x['id'], x['url']) for x in hs), default=None)
+
+def refs(text, repo):
+    """Thread refs (owner/repo#N) in text, in order; code blocks and quoted lines aren't followed."""
+    text = re.sub(r'^(```|~~~).*?^\1[^\n]*$', '', text, flags=re.S | re.M)
+    out = []
+    for m in re.finditer(r'https?://github\.com/([\w.-]+/[\w.-]+)/(?:issues|pull)/(\d+)', text): out.append(f'{m[1]}#{m[2]}')
+    text = re.sub(r'https?://\S+', ' ', text)
+    for m in re.finditer(r'(?<![\w/.#-])([\w.-]+/[\w.-]+)#(\d+)\b', text): out.append(f'{m[1]}#{m[2]}')
+    text = re.sub(r'(?<![\w/.#-])[\w.-]+/[\w.-]+#\d+', ' ', text)
+    for m in re.finditer(r'(?<![\w/&#])#(\d{1,6})\b', text): out.append(f'{repo}#{m[1]}')
+    return out
+
+def parse_ref(s):
+    m = re.fullmatch(r'(?:https?://github\.com/)?([\w.-]+/[\w.-]+?)(?:#|/(?:issues|pull)/)(\d+)(?:[/#?].*)?', s.strip())
+    return (m[1], int(m[2])) if m else None
+
+def crawl(root, depth, cap):
+    """Breadth-first: [(thread, depth, linked_from)] and the refs left out by the cap."""
+    seen, order, level, left = {root}, [], [(root, None)], []
+    for d in range(depth + 1):
+        with ThreadPoolExecutor(8) as ex:
+            loaded = list(ex.map(lambda rf: load(*parse_ref(rf[0])), level))
+        nxt = []
+        for (ref, via), t in zip(level, loaded):
+            if t is None:
+                if d == 0: die(f'thread-context: cannot read {ref} (gh api failed)')
+                continue
+            if len(order) >= cap: left.append(ref); continue
+            order.append((t, d, via))
+            for x in t['items']:
+                if x['bot']: continue
+                for r in refs(x['body'], ref.rsplit('#', 1)[0]):
+                    if r not in seen: seen.add(r); nxt.append((r, ref))
+        level = nxt
+        if not level: break
+    return order, left
+
+# ---- the ledger: one line per human comment with agreement, rejection, proposal or decision language
+LANG = [
+    ('agree', r"\b(agree[ds]?|sounds good|looks good|lgtm|sgtm|makes sense|go ahead|go for it|that works|fine by me|i'?m (?:ok|fine|happy) with|good idea|love it|ship it|approved?|exactly|yes,? (?:please|let'?s|do)|\+1)\b|👍"),
+    ('reject', r"\b(disagree[ds]?|nope|i don'?t think|not (?:a fan|convinced|sure)|i'?d rather|rather not|prefer\w*|bad idea|against|reject\w*|don'?t want|won'?t work|shouldn'?t|no,|instead of|-1)\b|👎"),
+    ('propose', r"\b(propos\w*|suggest\w*|what if|how about|we could|we should|i think we should|let'?s|idea:|option [a-z0-9]\b|alternative\w*|maybe we|plan is)\b"),
+    ('decide', r"\b(decid\w*|decision|we'?ll go with|going with|settled|conclusion|from now on|the rule|convention|policy|will merge|we (?:will|won'?t))\b"),
+]
+def ledger_line(x):
+    text = re.sub(r'^(```|~~~).*?^\1[^\n]*$', '', x['body'], flags=re.S | re.M)
+    text = '\n'.join(l for l in text.split('\n') if not l.lstrip().startswith('>'))
+    text = re.sub(r'<[^>]+>|\[([^\]]*)\]\([^)]*\)', lambda m: m[1] or '', text)
+    sents = [s.strip() for s in re.split(r'(?<=[.!?])\s+|\n+', text) if s.strip()]
+    def tags_of(sent):
+        return [tag for tag, rx in LANG if re.search(rx, sent, re.I) and (tag == 'propose' or not sent.endswith('?'))]  # a question doesn't agree, reject or decide
+    cand = [(s, tags_of(s)) for s in sents]
+    cand = [(s, t) for s, t in cand if t]
+    if not cand: return None
+    quote, tags = next(((s, t) for s, t in cand if t != ['propose']), cand[0])  # a stated position beats a bare proposal
+    quote = re.sub(r'\s+', ' ', quote)
+    return tags, (quote[:197] + '...') if len(quote) > 200 else quote
+
+def day(at): return at[:10]
+
+def render(order, left, root, depth, cap):
+    rt = order[0][0]
+    lh = latest_human(rt)
+    L = [f'# Thread context: {root}', '',
+         'Drafting input for replies on this thread. Read the ledger and the root transcript in full before drafting; check every claim about who said, proposed or agreed what against them, and link it (the permalinks below). The agent\'s own earlier posts are in the transcript marked `AGENT` and are not positions of anyone else.', '',
+         f'- root: {root} {rt["url"]}',
+         f'- latest-human-comment: id={lh[1] if lh else 0} at={lh[0] if lh else 0} {lh[2] if lh else ""}'.rstrip(),
+         f'- generated: {datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}  (depth {depth}, max {cap} threads)',
+         f'- threads included ({len(order)}):']
+    for t, d, via in order:
+        n = sum(1 for x in t['items'] if x['kind'] != 'body' and not x['bot']); nb = sum(1 for x in t['items'] if x['bot'])
+        L.append(f'  - {t["ref"]} "{t["title"]}" ({"PR" if t["is_pr"] else "issue"}, {t["state"]}, {n} comments' + (f', {nb} bot comments omitted' if nb else '') +
+                 (', root' if via is None else f', depth {d}, linked from {via}') + ')')
+    if left: L.append(f'- referenced but not fetched (over the cap of {cap}): ' + ', '.join(left))
+    L += ['', '## Decisions and positions', '',
+          'One line per human comment (not the agent\'s) with agreement, rejection, proposal or decision language: `date @author [tags] "quote" permalink`. A line is a pointer: open the permalink in the transcript before attributing anything.', '']
+    n = 0
+    for t, d, via in order:
+        lines = [(x, ledger_line(x)) for x in t['items'] if not x['bot'] and not x['agent']]
+        lines = [(x, l) for x, l in lines if l]
+        if not lines: continue
+        L.append(f'### {t["ref"]}' + (' (root)' if via is None else ''))
+        for x, (tags, q) in lines:
+            n += 1
+            L.append(f'- {day(x["at"])} @{x["author"]} [{"/".join(tags)}] "{q}" {x["url"]}')
+        L.append('')
+    if not n: L.append('(none found)\n')
+    def transcript(t, last=None):
+        its = [x for x in t['items'] if not x['bot']]
+        out = [f'## {"Root transcript: " if last is None else ""}{t["ref"]} "{t["title"]}"', '', f'{t["url"]} ({t["state"]})', '']
+        if last is not None and len(its) > last + 1:
+            out += [f'(first post kept; {len(its) - last - 1} earlier comments omitted)', '']
+            its = its[:1] + its[-last:]
+        for x in its:
+            body = x['body'].strip()
+            if last is not None and len(body) > LINKED_BODY: body = body[:LINKED_BODY] + f'\n... (cut at {LINKED_BODY} characters, full text at the permalink)'
+            who = f'@{x["author"]}' + (' AGENT (badge: the agent\'s own post)' if x['agent'] else '')
+            what = {'body': 'opened', 'comment': 'comment', 'review': f'review {x["extra"]}'.strip(), 'review comment': f'review comment {x["extra"]}'.strip()}[x['kind']]
+            out += [f'### {x["at"]} {who}, {what}', x['url'], '', re.sub(r'^#', r'\\#', body, flags=re.M) or '(empty)', '']
+        return out
+    L += transcript(rt)
+    if len(order) > 1:
+        L += ['# Linked threads', '']
+        for t, d, via in order[1:]:
+            L += transcript(t, LINKED_LAST)
+    return '\n'.join(L).rstrip() + '\n'
+
+def header(path):
+    s = open(path).read(20000)
+    r = re.search(r'^- root: (\S+)', s, re.M); l = re.search(r'^- latest-human-comment: id=(\d+) at=(\S+)', s, re.M)
+    return (r[1] if r else None), ((l[2], int(l[1])) if l else None)
+
+def verify(path, target, parent):
+    """Reason string if path doesn't satisfy the gate, else ''."""
+    cmd = f'thread-context {target or "<owner/repo#N>"} --out {path}'
+    if not os.path.isfile(path): return f'no thread-context.md at {path}: run `{cmd}`, read its decisions ledger and root transcript, then draft (or re-draft) from it'
+    root, rec = header(path)
+    if not root or not rec: return f'{path} is not a thread-context file: run `{cmd}`'
+    if target and root != target: return f'{path} is the context of {root}, not {target}: keep one drafts folder per thread, or run `{cmd}`'
+    if parent and os.path.exists(parent) and os.path.getmtime(path) < os.path.getmtime(parent):
+        return f'{path} is older than the comment it answers ({parent}): run `{cmd}` again and re-read it'
+    if target:
+        t = load(*parse_ref(target)) if parse_ref(target) else None
+        lh = latest_human(t) if t else None
+        if lh and (lh[0], lh[1]) > rec:
+            return f'{path} records the latest comment of {target} as {rec[0]} (id {rec[1]}), but the thread has {lh[2]} ({lh[0]}): run `{cmd}`, read what is new, and re-draft'
+    return ''
+
+def main(argv):
+    if not argv or argv[0] in ('-h', '--help'): die(__doc__ if argv else USAGE, 0 if argv else 2)
+    def opt(name, default=None):
+        if name not in argv: return default
+        i = argv.index(name)
+        if i + 1 >= len(argv): die(USAGE, 2)
+        return argv[i + 1]
+    if argv[0] == '--latest':
+        rf = parse_ref(opt('--latest') or '')
+        if not rf: die(USAGE, 2)
+        t = load(*rf)
+        lh = latest_human(t) if t else None
+        print(f'{lh[1]} {lh[0]}' if lh else '0 0'); return
+    if argv[0] == '--verify':
+        why = verify(opt('--verify'), opt('--target'), opt('--parent'))
+        if why: die(why)
+        return
+    rf = parse_ref(argv[0])
+    if not rf: die(USAGE, 2)
+    depth, cap, out = int(opt('--depth', 2)), int(opt('--max', 30)), opt('--out', os.path.join(os.getcwd(), 'thread-context.md'))
+    root = f'{rf[0]}#{rf[1]}'
+    order, left = crawl(root, depth, cap)
+    text = render(order, left, root, depth, cap)
+    os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
+    open(out, 'w').write(text)
+    print(f'thread-context: {out}: {len(order)} threads, {len(text)} characters')
+
+main(sys.argv[1:])

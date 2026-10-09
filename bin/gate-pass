@@ -1,6 +1,6 @@
 #!/bin/bash
 # gate-pass <draft.md> <review-output-file> [post-lint flags]: records that <draft.md> passed the posting gate.
-# Requires post-lint to pass and the review's final message to be exactly CLEAN (the reviewer writes only its verdict to that file).
+# Requires post-lint to pass, a current thread-context.md next to a reply/inline/proposal draft, and the review's final message to be exactly CLEAN (the reviewer writes only its verdict to that file).
 # Writes <draft.md>.gate with the draft's sha256; the posting hook checks it, so any later edit needs a new review.
 set -e
 d="$1"; r="$2"
@@ -8,6 +8,12 @@ d="$1"; r="$2"
 # the flags given here, else those the draft last passed post-lint with (<draft>.lint), else a reply's
 shift 2; flags=("$@"); [ ${#flags[@]} -gt 0 ] || { [ -f "$d.lint" ] && read -ra flags < "$d.lint"; } || true
 "$(dirname "$(readlink -f "$0")")/post-lint" "$d" "${flags[@]}" || { echo "post-lint failed"; exit 1; }
+# a reply, inline comment or proposal is drafted from the whole thread: thread-context.md (mechanisms) next to the draft, newer than the comment it answers
+kind=reply; for i in "${!flags[@]}"; do [ "${flags[$i]}" = --kind ] && kind="${flags[$((i+1))]}"; done
+case "$kind" in reply|comment|inline|proposal)
+  parent="${d%.md}.parent.md"; [ -f "$parent" ] || parent=""
+  "$(dirname "$(readlink -f "$0")")/thread-context" --verify "$(dirname "$(readlink -f "$d")")/thread-context.md" ${parent:+--parent "$parent"} || exit 1;;
+esac
 out=$(tr -d '\r' < "$r" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -v '^$' || true)
 [ "$out" = "CLEAN" ] || { echo "review is not exactly CLEAN (it has $(printf '%s\n' "$out" | wc -l) non-empty lines; last: $(printf '%s\n' "$out" | tail -1)). The reviewer's final message, alone, is the review output"; exit 1; }
 # a posted promise is a task opened (mergeworthy:github-threads): it needs a PROMISED line naming this draft in proposals-open.md

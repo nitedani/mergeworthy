@@ -12,7 +12,7 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 | `design-loop` | `pull-request`, `core`, `review`, `writing`, `converge`, `delegating` |
 | `evidence` | nothing |
 | `finality` | nothing |
-| `github-threads` | `converge`, `review`, `refactor`, `core`, `writing`, `pull-request`, `finality` |
+| `github-threads` | `writing`, `converge`, `review`, `refactor`, `core`, `pull-request`, `finality` |
 | `guardian` | `delegating`, `converge`, `refactor`, `design-loop`, `core`, `writing` |
 | `mechanisms` | nothing |
 | `merging` | nothing |
@@ -22,7 +22,7 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 | `refactor` | nothing |
 | `review` | `core`, `delegating`, `guardian`, `refactor`, `mechanisms`, `writing`, `github-threads`, `converge` |
 | `verify` | `core`, `converge` |
-| `writing` | `github-threads` |
+| `writing` | `github-threads`, `mechanisms` |
 
 ## Any multi-step or GitHub task, first
 
@@ -78,6 +78,7 @@ flowchart TB
     s3 --> s4
   end
   s0 -.-> r1[["github-threads"]]
+  s0 -.-> r2[["mechanisms"]]
   start --> g0
 ```
 
@@ -138,13 +139,14 @@ flowchart TB
     s4["5. Book-keeping"]
     s3 --> s4
   end
-  s1 -.-> r1[["converge"]]
-  s1 -.-> r2[["review"]]
-  s1 -.-> r3[["refactor"]]
-  s1 -.-> r4[["core"]]
-  s2 -.-> r5[["writing"]]
-  s2 -.-> r6[["pull-request"]]
-  s2 -.-> r7[["finality"]]
+  s1 -.-> r1[["writing"]]
+  s1 -.-> r2[["converge"]]
+  s1 -.-> r3[["review"]]
+  s1 -.-> r4[["refactor"]]
+  s1 -.-> r5[["core"]]
+  s2 -.-> r6[["writing"]]
+  s2 -.-> r7[["pull-request"]]
+  s2 -.-> r8[["finality"]]
   subgraph g1["1.6 Posting gate"]
     s5["1. Write the draft to the<br/>gate’s standard before …"]
     s6["2. Run post-lint"]
@@ -156,11 +158,11 @@ flowchart TB
     s9["5. Post in the thread where<br/>the person wrote"]
     s8 --> s9
   end
-  s5 -.-> r8[["core"]]
-  s5 -.-> r9[["writing"]]
-  s7 -.-> r10[["review"]]
-  s7 -.-> r11[["core"]]
-  s7 -.-> r12[["writing"]]
+  s5 -.-> r9[["core"]]
+  s5 -.-> r10[["writing"]]
+  s7 -.-> r11[["review"]]
+  s7 -.-> r12[["core"]]
+  s7 -.-> r13[["writing"]]
   start --> g0
   g0 ~~~ g1
 ```
@@ -481,35 +483,38 @@ flowchart TB
   subgraph g2["post-lint"]
     s2["post-lint"]
   end
-  subgraph g3["gate-pass"]
-    s3["gate-pass"]
+  subgraph g3["thread-context"]
+    s3["thread-context"]
   end
-  subgraph g4["review-context"]
-    s4["review-context"]
+  subgraph g4["gate-pass"]
+    s4["gate-pass"]
   end
-  subgraph g5["The finality trigger"]
-    s5["The finality trigger"]
+  subgraph g5["review-context"]
+    s5["review-context"]
   end
-  subgraph g6["pr-steps"]
-    s6["pr-steps"]
+  subgraph g6["The finality trigger"]
+    s6["The finality trigger"]
   end
-  subgraph g7["The watcher daemon"]
-    s7["The watcher daemon"]
+  subgraph g7["pr-steps"]
+    s7["pr-steps"]
   end
-  subgraph g8["Hooks"]
-    s8["Hooks"]
+  subgraph g8["The watcher daemon"]
+    s8["The watcher daemon"]
   end
-  subgraph g9["pre-bash-guard.py"]
-    s9["pre-bash-guard.py"]
+  subgraph g9["Hooks"]
+    s9["Hooks"]
   end
-  subgraph g10["post-bash-register.py"]
-    s10["post-bash-register.py"]
+  subgraph g10["pre-bash-guard.py"]
+    s10["pre-bash-guard.py"]
   end
-  subgraph g11["stop-lint.py"]
-    s11["stop-lint.py"]
+  subgraph g11["post-bash-register.py"]
+    s11["post-bash-register.py"]
   end
-  subgraph g12["session-start"]
-    s12["session-start"]
+  subgraph g12["stop-lint.py"]
+    s12["stop-lint.py"]
+  end
+  subgraph g13["session-start"]
+    s13["session-start"]
   end
   start --> g0
   g0 ~~~ g1
@@ -524,4 +529,5 @@ flowchart TB
   g9 ~~~ g10
   g10 ~~~ g11
   g11 ~~~ g12
+  g12 ~~~ g13
 ```

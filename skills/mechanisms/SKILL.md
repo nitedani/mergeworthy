@@ -34,12 +34,20 @@ These scripts enforce the rules that failed as text alone.
   - **Content:** budgets; unclassified notes; process in the thread; questions without a recommendation; a bare "Done" to a question (`reply`, `inline`); deferrals in the notes table.
   - **Safety and form:** secrets; a missing badge, unless the `badge` option says otherwise (not for `tracker`).
 
+### `thread-context` (enforces 1.6 and writing step 0)
+
+`thread-context <owner/repo#N> [--depth 2] [--max 30] [--out <file>]` writes the record a reply is drafted from (default `./thread-context.md`). Run it into the draft folder, and hand it to the drafter and the reviewer, never read it into the main session.
+- It fetches the thread's body, issue comments, PR review comments and review bodies, each with author, time and permalink, and every thread they reference (`owner/repo#N`, bare `#N`, github.com URLs), breadth-first to `--depth`, at most `--max` threads, skipping bots. Threads are cached by `updated_at` under `~/.cache/mergeworthy/threads/`.
+- The file holds a header (root, `latest-human-comment`, threads included), a **Decisions and positions** ledger (one line per human comment, not the agent's, with agreement, rejection, proposal or decision language: date, author, tags, quote, permalink), the root's full transcript, then the linked transcripts (first post and last 30 comments). The agent's posts (the `claude.png` badge) are marked `AGENT` and kept out of the ledger.
+- `--latest <repo#N>` prints the latest human comment; `--verify <file> [--target <repo#N>] [--parent <file>]` is what the gate and the guard run.
+
 ### `gate-pass` (enforces 1.6)
 
 `gate-pass <abs>/drafts/x.md <review output> [post-lint flags]` records that a draft passed the gate.
 - It re-runs `post-lint` with the flags the draft last passed with (stored in `<draft>.lint`).
 - It checks that the review's final message is exactly `CLEAN`.
 - It records the pass as the draft's sha256 in `<draft>.gate`.
+- A `reply`, `inline` or `proposal` draft needs `thread-context.md` in its folder, newer than its `.parent.md`, recording a latest human comment (`thread-context --verify`).
 - A draft that promises work ("I'll", "follow-up PR") first needs a `PROMISED … (<draft name>)` line in `proposals-open.md`.
 
 ### `review-context`
@@ -87,6 +95,7 @@ It blocks:
 - a `gh` post or edit whose body isn't a gated draft, or changed since its gate (use absolute draft paths);
 - opening an issue or PR in a repo no running watcher covers;
 - the same gated draft posted twice as new;
+- a post or edit on a thread (comment, review, PR or issue body edit, comment PATCH) whose draft folder has no `thread-context.md` for that thread recording its current latest human comment, or older than the draft's parent; the message gives the `thread-context` command. `--kind tracker` drafts and new issues and PRs are exempt;
 - a third comment on a thread (1.6 states the condition);
 - `gh pr merge` without `--squash --subject "<title> (#N)" --body ""`, and with `merge=reviewer`, every merge;
 - `--delete-branch` while PRs are based on the branch;

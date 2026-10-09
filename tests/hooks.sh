@@ -73,7 +73,8 @@ check "BLOCK: a post with no Monitor on the watcher" 2 "$(stop "$T/work")"
 kill "$SPID"; wait "$SPID" 2>/dev/null
 
 # ---------- pre-bash-guard check_turn ----------
-D="$T/drafts"; mkdir -p "$D"
+ctx() { printf '# Thread context: %s\n- root: %s\n- latest-human-comment: id=0 at=0\n' "$2" "$2" > "$1/thread-context.md"; }  # the record the guard asks for (its content is tested below)
+D="$T/drafts"; mkdir -p "$D"; ctx "$D" o/r#5
 gate() { printf '%s\n' "$2" > "$D/$1.md"; sha256sum "$D/$1.md" | cut -d' ' -f1 > "$D/$1.md.gate"
          python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1]).read().replace("\r\n","\n").strip().encode()).hexdigest())' "$D/$1.md" >> "$HOME/.claude/gated-posts.txt"; }
 gate a1 "Agent comment one."
@@ -114,6 +115,76 @@ check "BLOCK: your own push is not a reply" 2 "$(guard)"
 rm -f "$FX/repos_o_r_pulls_5_commits_per_page_100" "$FX/user"
 grep -o 'your last two comments.*' "$T/err" | sed 's#https\?://[^ )]*#<url>#'
 
+# ---------- thread-context: the record a reply is drafted from, and the guard that requires it current ----------
+BADGE='<img src=\"https://github.com/claude.png\" alt=\"Claude\">'
+tc_fx() { # name json
+  printf '%s' "$2" > "$FX/$1"; }
+tc_fx repos_o_r_issues_41 '{"number":41,"id":1,"title":"Root","html_url":"https://example.invalid/o/r/issues/41","state":"open","updated_at":"2026-10-01T10:00:00Z","created_at":"2026-09-30T10:00:00Z","user":{"login":"maint"},"body":"Proposal. See o/r#42 and #43. Not #99."}'
+tc_fx repos_o_r_issues_41_comments_per_page_100 "[
+ {\"id\":101,\"user\":{\"login\":\"maint\"},\"created_at\":\"2026-10-01T09:00:00Z\",\"html_url\":\"https://example.invalid/o/r/issues/41#c101\",\"body\":\"I prefer option A, not B.\"},
+ {\"id\":102,\"user\":{\"login\":\"nitedani\"},\"created_at\":\"2026-10-01T09:10:00Z\",\"html_url\":\"https://example.invalid/o/r/issues/41#c102\",\"body\":\"$BADGE\\nSounds good, I agree with the rule you proposed.\"},
+ {\"id\":103,\"user\":{\"login\":\"changeset-bot\",\"type\":\"Bot\"},\"created_at\":\"2026-10-01T09:20:00Z\",\"html_url\":\"https://example.invalid/o/r/issues/41#c103\",\"body\":\"see #99\"},
+ {\"id\":104,\"user\":{\"login\":\"maint\"},\"created_at\":\"2026-10-01T09:30:00Z\",\"html_url\":\"https://example.invalid/o/r/issues/41#c104\",\"body\":\"Agreed, let's go with option A.\"}]"
+tc_fx repos_o_r_issues_42 '{"number":42,"id":2,"title":"Linked issue","html_url":"https://example.invalid/o/r/issues/42","state":"closed","updated_at":"2026-09-01T10:00:00Z","created_at":"2026-09-01T09:00:00Z","user":{"login":"other"},"body":"Rename it."}'
+tc_fx repos_o_r_issues_42_comments_per_page_100 '[{"id":90,"user":{"login":"other"},"created_at":"2026-09-01T11:00:00Z","html_url":"https://example.invalid/o/r/issues/42#c90","body":"I disagree with the rename."}]'
+tc_fx repos_o_r_issues_43 '{"number":43,"id":3,"title":"Linked PR","html_url":"https://example.invalid/o/r/pull/43","state":"open","updated_at":"2026-09-02T10:00:00Z","created_at":"2026-09-02T09:00:00Z","user":{"login":"other"},"body":"Implements it.","pull_request":{}}'
+tc_fx repos_o_r_issues_43_comments_per_page_100 '[]'
+tc_fx repos_o_r_pulls_43_reviews_per_page_100 '[{"id":7,"user":{"login":"other"},"submitted_at":"2026-09-02T12:00:00Z","html_url":"https://example.invalid/o/r/pull/43#r7","state":"CHANGES_REQUESTED","body":"Please keep the old name."}]'
+tc_fx repos_o_r_pulls_43_comments_per_page_100 '[{"id":8,"user":{"login":"other"},"created_at":"2026-09-02T12:05:00Z","html_url":"https://example.invalid/o/r/pull/43#c8","path":"a.ts","line":3,"body":"This line stays."}]'
+TC="$T/ctx/thread-context.md"; mkdir -p "$T/ctx"
+"$R/bin/thread-context" o/r#41 --out "$TC" >/dev/null
+tcg() { grep -c "$1" "$TC"; }
+check "thread-context records the root" 1 "$(tcg '^- root: o/r#41 ')"
+check "it records the latest human comment, not the agent's or the bot's" 1 "$(tcg '^- latest-human-comment: id=104 at=2026-10-01T09:30:00Z')"
+check "it lists the linked issue and PR, not the bot's #99" "2 0" "$(echo "$(tcg '^  - o/r#4[23] ') $(tcg 'o/r#99 ')")"
+check "the ledger has the maintainer's agreement with a permalink" 1 "$(tcg '^- 2026-10-01 @maint \[agree/propose\] "Agreed, let.s go with option A." https://example.invalid/o/r/issues/41#c104$')"
+check "the ledger has the linked thread's rejection" 1 "$(tcg '^- 2026-09-01 @other \[reject\] "I disagree with the rename."')"
+check "the agent's own agreement is not in the ledger" 0 "$(tcg '^- .* @nitedani \[')"
+check "the transcript marks the agent's post" 1 "$(tcg '@nitedani AGENT')"
+check "the PR's review body and review comment are in" "1 1" "$(echo "$(tcg 'Please keep the old name') $(tcg 'This line stays')")"
+check "a bot's comment is not in the transcript" 0 "$(tcg '^see #99')"
+check "--verify accepts it for its thread" 0 "$("$R/bin/thread-context" --verify "$TC" --target o/r#41 2>/dev/null; echo $?)"
+check "--latest" "104 2026-10-01T09:30:00Z" "$("$R/bin/thread-context" --latest o/r#41)"
+
+# the guard: a post on the thread needs thread-context.md in the draft's folder, current
+TD="$T/tdrafts/o-r-41"; mkdir -p "$TD"
+printf 'Agreed, option A it is.\n' > "$TD/r.md"; sha256sum "$TD/r.md" | cut -d' ' -f1 > "$TD/r.md.gate"
+tcguard() { # post to #41 from $TD/r.md
+  rm -f "$TD/r.md.posted"
+  python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh issue comment 41 --repo o/r --body-file "+sys.argv[2]},"cwd":sys.argv[1]}))' "$T" "$TD/r.md" > "$T/in.json"
+  python3 "$R/hooks/pre-bash-guard.py" < "$T/in.json" 2>"$T/err"; echo $?
+}
+check "BLOCK: a comment on the thread without thread-context.md" 2 "$(tcguard)"
+grep -o 'no thread-context.md at.*' "$T/err" | sed "s#$T#<T>#g; s/ (mergeworthy.*//"
+cp "$TC" "$TD/thread-context.md"
+check "a current thread-context.md lets the post through" 0 "$(tcguard)"
+sed 's/^- root: o\/r#41/- root: o\/r#7/' "$TC" > "$TD/thread-context.md"
+check "BLOCK: a thread-context.md of another thread" 2 "$(tcguard)"
+cp "$TC" "$TD/thread-context.md"
+tc_fx repos_o_r_issues_41 '{"number":41,"id":1,"title":"Root","html_url":"https://example.invalid/o/r/issues/41","state":"open","updated_at":"2026-10-02T10:00:00Z","created_at":"2026-09-30T10:00:00Z","user":{"login":"maint"},"body":"Proposal. See o/r#42 and #43. Not #99."}'
+tc_fx repos_o_r_issues_41_comments_per_page_100 "$(python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); c.append({"id":105,"user":{"login":"maint"},"created_at":"2026-10-02T09:00:00Z","html_url":"https://example.invalid/o/r/issues/41#c105","body":"Wait, I changed my mind."}); print(json.dumps(c))' "$FX/repos_o_r_issues_41_comments_per_page_100")"
+check "BLOCK: the thread has a newer human comment than the recorded one" 2 "$(tcguard)"
+grep -o 'records the latest comment.*' "$T/err" | sed "s#$T#<T>#g; s/ (mergeworthy.*//"
+"$R/bin/thread-context" o/r#41 --out "$TD/thread-context.md" >/dev/null
+check "the regenerated thread-context.md passes" 0 "$(tcguard)"
+touch -d '+1 minute' "$TD/r.parent.md"
+check "BLOCK: older than the comment the draft answers" 2 "$(tcguard)"
+rm "$TD/r.parent.md"
+printf 'Tracking: x\n' > "$T/tdrafts/t.md"; sha256sum "$T/tdrafts/t.md" | cut -d' ' -f1 > "$T/tdrafts/t.md.gate"; echo "--kind tracker" > "$T/tdrafts/t.md.lint"
+python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh issue comment 41 --repo o/r --body-file "+sys.argv[2]},"cwd":sys.argv[1]}))' "$T" "$T/tdrafts/t.md" > "$T/in.json"
+check "a tracker draft needs no thread-context.md" 0 "$(python3 "$R/hooks/pre-bash-guard.py" < "$T/in.json" 2>/dev/null; echo $?)"
+printf 'Tracking: x\n' > "$T/tdrafts/u.md"; sha256sum "$T/tdrafts/u.md" | cut -d' ' -f1 > "$T/tdrafts/u.md.gate"
+python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr edit 41 --repo o/r --body-file "+sys.argv[2]},"cwd":sys.argv[1]}))' "$T" "$T/tdrafts/u.md" > "$T/in.json"
+check "BLOCK: a PR body edit is covered too" 2 "$(python3 "$R/hooks/pre-bash-guard.py" < "$T/in.json" 2>/dev/null; echo $?)"
+
+# gate-pass wants the same file beside a reply draft
+GD="$T/gdrafts/x"; mkdir -p "$GD"; printf 'Agreed, option A it is.\n' > "$GD/r.md"; echo CLEAN > "$GD/r.review.out"
+gp() { MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GD/r.md" "$GD/r.review.out" --kind reply --parent none >"$T/gp.out" 2>&1; echo $?; }
+check "BLOCK: gate-pass on a reply without thread-context.md" 1 "$(gp)"
+grep -c 'no thread-context.md' "$T/gp.out"
+cp "$TD/thread-context.md" "$GD/thread-context.md"
+check "gate-pass passes with thread-context.md beside the draft" 0 "$(gp)"
+
 # ---------- post-bash-register: only a real gh post registers, and only the thread it posted to ----------
 sleep 600 & SPID=$!
 WD="$T/reg"; mkdir -p "$WD"; echo "$SPID" > "$WD/gh-watch.pid"
@@ -148,7 +219,7 @@ check "gh --help on a comment command" none \
 kill "$SPID"; wait "$SPID" 2>/dev/null
 
 # ---------- finality trigger: the third proposal on a thread needs a thread map ----------
-AR="$T/art"; mkdir -p "$AR/drafts/r1" "$AR/maps"
+AR="$T/art"; mkdir -p "$AR/drafts/r1" "$AR/maps"; ctx "$AR/drafts/r1" o/r#9
 rm -f "$HOME/.claude/proposal-rounds.txt"
 prop() { # n: a gated proposal draft, as gate-pass leaves it
   printf 'Proposal %s\n' "$1" > "$AR/drafts/r1/p$1.md"; sha256sum "$AR/drafts/r1/p$1.md" | cut -d' ' -f1 > "$AR/drafts/r1/p$1.md.gate"

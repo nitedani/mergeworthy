@@ -30,8 +30,8 @@ These rules hold when you edit a skill, prompt, rules file or AGENTS.md. Rules f
 ### Choosing the model
 
 The main session runs on the strongest tier and is the only agent there: it plans, briefs, makes every decision, spot-checks results, and writes or approves every word to a maintainer. Subagents run below it; independent reviews follow `review`.
-- **The next tier down** (medium effort, high for the hardest): complex or subtle implementation (crossing modules, streaming or concurrency, semantics a plausible wrong change breaks, a large codebase), non-obvious root causes, verifying complex behavior, Loop B and the ratings, audits of rules and designs.
-- **The smallest tier with an effort setting, at high effort:** everything else. Fan-out (parallel agents, one per angle: exploration, designs, finality branches, probe cases), mechanical implementation from an exact plan, gates and tests, reproductions from a recipe, checklist reviews (tracker edits, short replies, fact checks, cold reads), log mining and bookkeeping. Go wider, not bigger.
+- **The next tier down** (medium effort, high for the hardest): complex or subtle implementation (crossing modules, streaming or concurrency, semantics a plausible wrong change breaks, a large codebase), non-obvious root causes, verifying complex behavior, drafting design replies on a GitHub thread from `thread-context.md` (`writing` step 0), Loop B and the ratings, audits of rules and designs.
+- **The smallest tier with an effort setting, at high effort:** everything else. Fan-out (parallel agents, one per angle: exploration, designs, finality branches, probe cases), mechanical implementation from an exact plan, gates and tests, reproductions from a recipe, checklist reviews (tracker edits, short replies, drafting a short thread reply from `thread-context.md`, fact checks, cold reads), log mining and bookkeeping. Go wider, not bigger.
 - **Escalate one tier** when a result fails your spot-check or the agent is blocked, with what failed; from the next tier down, it comes back to you. Never resend a brief to the same tier.
 
 ### Briefing an agent
