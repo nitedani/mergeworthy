@@ -50,6 +50,7 @@ List the distinct problems the change must solve. Then rate each candidate appro
 - **Rate as the code's owner, for all its users:** fixing a bug they all share is not a cost.
 - **Leave the frame:** invert it, or delete what everyone treats as immovable.
 - **Shared assumptions count once.** Candidates resting on the same unspoken assumption count as one.
+- **Siblings decide the scope.** Before choosing, check the same failure in the mechanism's other cases (the other methods, statuses, adapters, runtimes). One that fails the same way, in the same mechanism and files, with the title still true, is part of this fix: a follow-up PR would only make the maintainer review the same code twice. One that spreads to other modules or needs its own decision gets its own PR, opened now (`core` 1.1.7).
 
 **6 or below is not ready to build.**
 - If the work adds a surface, rate the **contract** (the surface, its invariants, its counterexamples) before writing a line.
