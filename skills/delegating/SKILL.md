@@ -30,11 +30,8 @@ These rules hold when you edit a skill, prompt, rules file or AGENTS.md. Rules f
 ### Choosing the model
 
 The main session runs on the strongest tier: it plans, briefs, makes every decision, spot-checks results, and approves every word to a maintainer. Independent reviews follow `review`.
-- **The main session's tier, for authoring** (high effort): writing that needs complex reasoning: implementation, docs, PR bodies, replies and design answers drafted from `thread-context.md` (`writing` step 0). A tier down only when the authoring doesn't need it.
-- **A tier down is only to save tokens** on long-running work that needs no complex thinking once it's delegated. Then the main session hands over a structured, token-efficient plan with every important decision already made, so the lower tier decides nothing that matters.
-- **The next tier down** (medium effort, high for the hardest): non-obvious root causes, verifying complex behavior, Loop B and the ratings, audits of rules and designs, and authoring that needs no complex reasoning.
-- **The smallest tier with an effort setting, at high effort:** everything else. Fan-out (parallel agents, one per angle: exploration, designs, finality branches, probe cases), mechanical implementation from an exact plan, gates and tests, reproductions from a recipe, checklist reviews (tracker edits, short replies, drafting a short thread reply from `thread-context.md`, fact checks, cold reads), log mining and bookkeeping. Go wider, not bigger.
-- **Escalate one tier** when a result fails your spot-check or the agent is blocked, with what failed; from the next tier down, it comes back to you. Never resend a brief to the same tier.
+- **The main session's tier, at high effort, for everything that writes or judges:** code of any size, docs, PR bodies, replies, design answers, fan-out (exploration, designs, finality branches), root causes, verification, every `converge` loop agent and audits. Cleaning up a weaker model's output costs more than writing it well once.
+- **The smallest tier with an effort setting, at high effort, only for work where nothing it writes ships:** running gates, tests and a reproduction from a recipe, log mining, data processing and bookkeeping. If its result fails your spot-check, or it is blocked, redo the work on your tier with what failed.
 
 ### Briefing an agent
 

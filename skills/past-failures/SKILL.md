@@ -56,7 +56,7 @@ Each failure below happened, most more than once. When a rule fails or the user 
 | A lesson from one repo repeated in another. | 1.1.12 |
 | Work stopped at every rate limit; hundreds of headless browsers; a preview left running for hours. | 1.1.13, 1.8 |
 | Shared pnpm store modified, logs overwritten, backups lost in `/tmp`, a colleague's commits force-pushed over. | 1.8, 1.2, `core` (artifact root), 1.7 |
-| A model above the default's tier used for subagents; global config edited instead of the skill. | `core` (models), 1.1.3 |
+| A subagent's model picked outside `delegating`; global config edited instead of the skill. | `core` (models), 1.1.3 |
 | A subagent's design merged without understanding it. | 1.10 |
 | Squash merges carrying full PR history. | 1.7, `pre-bash-guard` |
 | `ps \| awk '/<port>/'` matched and killed another session's server. | 1.8 |

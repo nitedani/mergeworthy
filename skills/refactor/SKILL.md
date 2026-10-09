@@ -26,7 +26,9 @@ Refactor this PR:
 
 - Simplify
   - Review ALL logic. Can implemented logic be simplified?
-  - Do you see logic implemented twice? Is logic DRY?
+  - Do you see logic implemented twice, in the diff or anywhere in the codebase? For each constant,
+    literal or import the new code uses, grep the repo for its other uses: an existing function that
+    already does this work is a reuse finding.
   - Can boilerplate be removed? Frivolous indirections? Frivolous tiny functions? Can we merge
     functions to make reading code easier (jumping between functions is costly when reading code
     linearly, which is what humans do)?

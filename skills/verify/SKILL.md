@@ -1,6 +1,6 @@
 ---
 name: verify
-description: "Bug verification of a PR (reproduce-only, Loop A in converge): slicing, the verifier brief, the counting and dry rules, and the final verification after refactors."
+description: "Bug verification of a PR (reproduce-only, Loop A in converge): slicing, the verifier brief, the counting and done rules, and the final verification after refactors."
 ---
 
 # Bug verification
@@ -11,7 +11,7 @@ description: "Bug verification of a PR (reproduce-only, Loop A in converge): sli
 - **A candidate counts only with a reproduction:** a spec or script fails on the head and either passes on the base (main, or the bottom PR for the top) or demonstrates an incomplete fix of the scenario the change names.
 - **Documented usage on both ends.** The candidate must trace to documented usage on both ends.
 - **A deliberate behavior doesn't count.**
-- **Not worth code.** A finding that fails 1.1.15 gets the disposition "accepted, not worth code" with its one-line reason. It never becomes code to make a pass dry: Loop A converges on real bugs, not on every imaginable edge case.
+- **Not worth code.** A finding that fails 1.1.15 gets the disposition "accepted, not worth code" with its one-line reason. It never becomes code to make a pass come back with no bugs: Loop A converges on real bugs, not on every imaginable edge case.
 
 **When a pass finds bugs:**
 1. Fix the root cause with the smallest diff (`core` 1.1.6 and 1.1.15), with a failing repro first (show it failing on the parent; keep it as a test only under `core` 1.1.16), and pass the phantom gate (`converge`). Re-run the verifier's own repro on the fixed build, and compare its output with the base's.
@@ -19,10 +19,10 @@ description: "Bug verification of a PR (reproduce-only, Loop A in converge): sli
 3. Put fixes to base code in the bottom PR (when there is a stack, `converge`), then merge up.
 4. Queue another pass on that slice, and record it in the ledger. A merge-up re-opens the top PR's slices that call the changed base code, and the top's base SHA for counting moves to the bottom's new head.
 
-**Dry criteria** (a dry pass finds no bug that counts):
-- **Every slice needs a dry pass after its last fix.**
+**When a slice is done** (a pass that finds no bug that counts):
+- **Every slice needs a pass with no bugs after its last fix.**
 - **A change re-opens a slice.** A fix, a refactor or a revert in a slice's code re-opens it.
-- **Don't rerun a dry, unchanged slice.** A slice that is dry, and whose code hasn't changed since, isn't run again.
+- **Don't rerun a finished, unchanged slice.** A slice whose last pass found no bugs, and whose code hasn't changed since, isn't run again.
 - **Never drop a queued pass.** The ledger lists every pass owed, and the PR isn't converged while one is outstanding.
 
 Bugs outside the task's scope get a disposition (1.1.7).
@@ -60,7 +60,7 @@ How:
 Write <artifacts dir>/<name>.md:
 - each reproduced bug with its commit, the repro inline, observed vs expected;
 - then every candidate you tried and dropped, one line each with why.
-- If you found nothing, say so plainly and list what you tried, and end the file with a line DRY.
+- If you found nothing, say so plainly and list what you tried, and end the file with a line NO BUGS.
 
-Final message: the count and one line each, or exactly DRY when no bug counts.
+Final message: the count and one line each, or exactly NO BUGS when no bug counts.
 ```

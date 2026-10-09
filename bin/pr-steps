@@ -30,7 +30,7 @@ fi
 is_pass() { grep -q '✅' "$1" && grep -Eq '[0-9]+ *(⇒|=>) *([0-9]+|removed|new|n/a)' "$1"; }
 case "$step" in
   verify|reverify)
-    [ "$last" = DRY ] || [ "$step" = reverify -a "$last" = "NO LOOP B COMMITS" ] || { echo "$out does not end with a line DRY: Loop A is done only when every slice has a dry pass after its last fix" >&2; exit 1; } ;;
+    [ "$last" = "NO BUGS" ] || [ "$step" = reverify -a "$last" = "NO LOOP B COMMITS" ] || { echo "$out does not end with a line NO BUGS: Loop A is done only when every slice has a dry pass after its last fix" >&2; exit 1; } ;;
   loopb)
     [ "$last" = CLEAN ] || { echo "$out does not end with a line CLEAN: fix its findings and continue the same agent" >&2; exit 1; } ;;
   fresh)

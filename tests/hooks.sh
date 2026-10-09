@@ -400,8 +400,8 @@ prs2() { (cd "$G2" && bash "$R/bin/pr-steps" "$@" >/dev/null 2>&1; echo $?); }
 ready() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr ready 5"},"cwd":sys.argv[1]}))' "$G2" | python3 "$R/hooks/pre-bash-guard.py" >/dev/null 2>&1; echo $?; }
 check "BLOCK: gh pr ready with no step recorded" 2 "$(ready)"
 printf 'slice 1: no bug that counts\n' > "$T/v0.md"
-check "BLOCK: a Loop A output without DRY" 1 "$(prs2 verify "$T/v0.md")"
-printf 'slice 1: no bug that counts\nDRY\n' > "$T/v.md"; check "Loop A ending DRY records" 0 "$(prs2 verify "$T/v.md")"
+check "BLOCK: a Loop A output without NO BUGS" 1 "$(prs2 verify "$T/v0.md")"
+printf 'slice 1: no bug that counts\nNO BUGS\n' > "$T/v.md"; check "Loop A ending NO BUGS records" 0 "$(prs2 verify "$T/v.md")"
 printf 'nothing worth changing\nCLEAN\n' > "$T/lb.md"; check "Loop B's review ending CLEAN records" 0 "$(prs2 loopb "$T/lb.md")"
 printf '| vike() | 5 ⇒ 8 | abc | why |\n✅ vike()\n' > "$T/rf.md"; check "Loop B's ratings record" 0 "$(prs2 refactor "$T/rf.md")"
 printf 'NO LOOP B COMMITS\n' > "$T/rv.md"; check "Loop A again, with no Loop B commits, records" 0 "$(prs2 reverify "$T/rv.md")"

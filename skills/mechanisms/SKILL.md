@@ -72,8 +72,8 @@ These scripts enforce the rules that failed as text alone.
 
 `pr-steps <step> <output>` checks and records one `converge` step on HEAD, one file per step:
 - `approach`: a table `| Candidate | Rating | Why |` of at least two candidates rated 0–10 and a line `Chosen: <candidate>` rated 7 or more (`pull-request`, step 3). Recorded per repo and branch, not per HEAD.
-- `verify`: trailing `DRY`.
-- `reverify`: trailing `DRY`, or `NO LOOP B COMMITS` when none landed (`converge`, step 3).
+- `verify`: trailing `NO BUGS`.
+- `reverify`: trailing `NO BUGS`, or `NO LOOP B COMMITS` when none landed (`converge`, step 3).
 - `loopb`: captured final message `CLEAN` (`review`).
 - `fresh`: `MERGE AS IS: yes` and trailing `CLEAN`; keep the posting verdict in a separate file (`converge`, step 4).
 - `refactor`: ✅ list and ratings, or `carries the pass of <sha>` with ≤ 80 changed lines.

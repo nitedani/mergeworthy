@@ -7,7 +7,7 @@ description: "Converging a PR before it is ready, in every tier: the pipeline (f
 
 Converging a pull request means working it to a final state: no reviewer, agent or verifier finds anything worth changing, and every claim in the PR is backed by evidence you observed. The same holds for a stack of PRs.
 
-- **When:** every PR, in every tier. The tier changes the records (`core` 1.2), not the loops: on a small fix each loop usually ends after its first dry pass.
+- **When:** every PR, in every tier. The tier changes the records (`core` 1.2), not the loops: on a small fix each loop usually ends after its first pass.
 - **New API or protocol:** the pipeline runs on it only once the maintainer has OK'd its shape (`design-loop`, 1.4 step 5). In the user's own repos, post the walkthrough and continue on your recommendation; a reply from the user re-opens the shape (1.1.3).
 - **Your role:** you are the orchestrator, and the only writer of the PR branches' git history. Subagents work read-only or in their own worktrees; you review what they produce and land it.
 
@@ -25,12 +25,12 @@ When the work reshapes existing code, or a small change can't be made cleanly be
 
 - **Who:** one agent, kept for the loop's whole life. It runs `verify`'s verifier brief on the diff, one report section per slice.
 - **You:** decide each reproduced bug's root-cause fix; an implementer (`delegating`) lands it, and the same agent gets the commits.
-- **Done when** every slice has a dry pass after its last fix, and its output file ends with a line `DRY`.
+- **Done when** every slice has a pass with no bugs after its last fix, and its output file ends with a line `NO BUGS`.
 - **Record:** `pr-steps verify <its output file>`
 
 #### 2. Loop B: is it good code?
 
-- **Who:** one agent, after Loop A is dry. In one prompt, each into its own output file: first `review`'s reviewer charter, then `guardian`'s brief with `refactor`'s prompt. Reviewing first fills the context it rates with.
+- **Who:** one agent, after Loop A finds no bugs. In one prompt, each into its own output file: first `review`'s reviewer charter, then `guardian`'s brief with `refactor`'s prompt. Reviewing first fills the context it rates with.
 - **You:** decide which findings land; an implementer (`delegating`) lands them commit by commit, gates after each, and the same agent gets the commits. A bug its review finds is fixed, and Loop A re-verifies that slice.
 - **Done when** its review ends `CLEAN` ("nothing worth changing" is an honest result) and its last re-rating lists every file, function and piece of logic with old ⇒ new ratings and the ✅ lists, high and justified.
 - **Record:** `pr-steps loopb <its captured final-message file>` and `pr-steps refactor <its last re-rating>`; keep the reviewer charter’s full report separately.
@@ -38,7 +38,7 @@ When the work reshapes existing code, or a small change can't be made cleanly be
 #### 3. Loop A again, on Loop B's commits
 
 - **Who:** the Loop A agent, sent Loop B's commits. It compares the tree before the refactors with the head (`verify`, after the refactors).
-- **Done when** the slices those commits touch are dry again (`DRY`), or Loop B landed no commits (the file says `NO LOOP B COMMITS`).
+- **Done when** the slices those commits touch find no bugs again (`NO BUGS`), or Loop B landed no commits (the file says `NO LOOP B COMMITS`).
 - **Record:** `pr-steps reverify <its output file>`
 
 #### 4. The fresh reader
@@ -77,7 +77,7 @@ Docs, READMEs and JSDoc a user reads are part of the diff, so each step above co
 - **What they read.** Read the head’s code in full at the brief’s pinned SHAs (`delegating` 1.10). A finality graph (Phase A) is only a navigation index.
 - **A new loop agent** starts, given the last report, past about half its context window. A changed decision packet goes to the running agent.
 - **Commits others push** (a maintainer's) re-open the slices they touch: send them to the loop agents. They are owner code (Authority, below).
-- **Execution:** run routine supporting work past one-line lookups on the smallest tier (`delegating`); verifiers, reviewers and guardians still run the checks their charters require them to observe personally.
+- **Execution:** gates, tests and log mining run on the smallest tier (`delegating`); verifiers, reviewers and guardians still run the checks their charters require them to observe personally.
 
 ### Git and files
 

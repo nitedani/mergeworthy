@@ -7,7 +7,7 @@ description: "Guardian rounds on a PR (bloat and quality, part of Loop B in conv
 
 Run guardian rounds to find bloat and quality problems and land their fixes (`converge`, step 2). This skill holds the charter, briefs and how findings are judged and landed.
 
-- **When:** after Loop A is dry, with the gates as the safety net (`converge`, step 2).
+- **When:** after Loop A finds no bugs, with the gates as the safety net (`converge`, step 2).
 - **Judging findings:** each finding is judged per 1.1.15 (earn every line), as in Loop A (`verify`'s reproduce-only bug hunt).
 - **Scopes** are Loop A's slices; the guardian brief calls them scopes. The bottom PR of a stack is its own.
 

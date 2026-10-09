@@ -463,7 +463,7 @@ flowchart TB
   start(["Any independent review"])
   subgraph g0["review"]
     s0["1. A model from another<br/>company than the<br/>session's"]
-    s1["2. A fresh-context subagent<br/>on the next tier down"]
+    s1["2. A fresh-context subagent<br/>on the session's tier"]
     s0 --> s1
   end
   s0 -.-> r1[["core"]]

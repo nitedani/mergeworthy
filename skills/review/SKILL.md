@@ -5,14 +5,14 @@ description: "Any independent review: who reviews (Codex, else a fresh Claude), 
 
 # Review
 
-**Every independent review picks its reviewer in this order.** That covers the posting gate (1.6), the PR review round below, a standalone review, and the fresh reader of a PR's final head (`converge`). The loop agents, the PR review round included, run a tier below it (`delegating`).
+**Every independent review picks its reviewer in this order.** That covers the posting gate (1.6), the PR review round below, a standalone review, and the fresh reader of a PR's final head (`converge`). The loop agents, the PR review round included, run on the session's tier (`delegating`).
 
 1. **A model from another company than the session's,** since a model misses the bugs it tends to write: Codex for a Claude session, a Claude subagent for a Codex session. Under an orchestrator that spawns other providers' agents (T3 Code's `delegate_task`), start it there, on the highest provider model allowed by `core`’s model authorization limits, so the run is tracked, notifies you and can be cancelled; the prompt names the output file. Elsewhere:
    ```bash
    codex exec -m "$(codex-review-model)" --sandbox danger-full-access --skip-git-repo-check -o <out> "$(cat <prompt file>)" < /dev/null
    ```
    If it fails (out of credits, a rate limit, an error), go to the next reviewer; that failure takes seconds.
-2. **A fresh-context subagent on the next tier down** (`delegating`), with the same prompt, when no other company's model is available.
+2. **A fresh-context subagent on the session's tier** (`delegating`), with the same prompt, when no other company's model is available.
 
 After the review:
 - Send fixes to the same reviewer and start a fresh one only when the artifact changes beyond them or needs a final cold read (`delegating`, One run).
