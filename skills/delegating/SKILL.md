@@ -16,7 +16,7 @@ These rules hold when you edit a skill, prompt, rules file or AGENTS.md. Rules f
 - **State the behavior you want** ("write one-line comments"), not only the one you don't. Keep a "never" for hard guardrails, and pair it with what to do instead.
 - **No self-assessed opt-outs** ("skip on small fixes"). A missing precondition is a hard stop.
 - **A cold read after any cut.** A fresh-context agent reads the file cold and lists every sentence it can't act on. Fix those sentences.
-- **Commit and push every change** to a mergeworthy skill or mechanism, to its repo, in the same step, after `tests/all.sh .` exits 0 (the checks CI runs), and confirm CI is green after the push. Update each installed agent through its installation mechanism and verify the installed version before claiming the rule is fixed there (README, Install). Never edit an installed or running copy.
+- **Commit and push every change** to a mergeworthy skill or mechanism, to its repo, in the same step, after `tests/all.sh .` exits 0 (the checks CI runs; `git config core.hooksPath .githooks` makes the repo's pre-push hook enforce it), and confirm CI is green after the push. Update each installed agent through its installation mechanism and verify the installed version before claiming the rule is fixed there (README, Install). Never edit an installed or running copy.
 
 ## 1.10 Integrating agents' work
 
