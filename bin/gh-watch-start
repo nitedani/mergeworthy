@@ -1,6 +1,6 @@
 #!/bin/bash
 # gh-watch-start [--main] <dir> [owner/repo [N]]...: the one way to start watching (mergeworthy:github-threads). Idempotent.
-# - --main: this dir gets your /ai and /agent calls on threads no watcher watches (default: the first live dir).
+# - --main: this dir gets your /ai calls, and /agent calls no dir claims, on threads no watcher watches (default: the first live dir).
 # - <dir> is the session's artifact root; it gets links to the daemon (../watcher/), threads.txt and repos.txt.
 # - "owner/repo N" goes to threads.txt; a bare "owner/repo" goes to repos.txt (the repo is covered, e.g. before `gh issue create`).
 # - Starts the daemon unless its PID is alive, with GH_WATCH_EYES from the environment, else from <dir>/eyes, else your gh login.

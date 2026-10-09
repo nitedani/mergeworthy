@@ -4,6 +4,7 @@
 - The comments the agent answers (mergeworthy:github-threads), new or edited, each with an :eyes: reaction: a maintainer's
   (write access) on a thread in threads.txt, the threads the agent opened or posted in; and yours with /ai or /agent, on any thread
   (your events feed; one watch dir gets each, see main_dir). Nothing else.
+- Your "/agent ..." comments on threads no watch dir lists, found by search and sent to one dir (see agent_command): `### AGENT COMMAND`.
 - Maintainers' commits pushed to a tracked PR, and 👍/👎 from GH_WATCH_EYES on the agent's comments.
 - WAIT PING DUE: your account's comment is the last on an open thread and has had no reply for WAIT_PING_HOURS (3).
 - PR head/state changes (pushes, merges, closes), CI turning red or green on open PRs, and your PR's code (tests excluded) changing by more than ~80 lines since its last refactor pass (REFACTOR STALE).
@@ -102,11 +103,11 @@ def is_human(u, body=None, agent_hashes=frozenset()):
     return _norm(body) not in agent_hashes  # ME: the user's own comment unless it's an agent post
 
 
-def append_owed(entry):
+def append_owed(entry, d=None):
     """replies-owed.md (mergeworthy:github-threads): the daemon records each human comment as an owed reply; the session
     clears the line with "done: <reply url> <what changed>" when it is answered. The Stop hook
     blocks a turn while a line is still owed, so an unposted reply cannot end the session unseen."""
-    path = os.path.join(HERE, 'replies-owed.md')
+    path = os.path.join(d or HERE, 'replies-owed.md')
     owed = open(path).read().splitlines() if os.path.exists(path) else []
     if any(f' {entry.split()[2]} ' in l for l in owed):
         return  # already recorded
@@ -503,10 +504,133 @@ def repo_comments_changed(state):
     return keys
 
 
+AGENT_CMD = re.compile(r'\s*/agent\b(?:[ \t]+([\w.-]+))?', re.I)  # a comment that starts with /agent, then maybe a watch dir's name
+THREAD_REF = re.compile(r'(?<![\w/.-])([\w.-]+/[\w.-]+)#(\d+)|github\.com/([\w.-]+/[\w.-]+)/(?:issues|pull)/(\d+)')
+AGENT_CLAIMS = os.path.expanduser('~/.mergeworthy/agent-commands.seen')  # shared by every daemon: each command is emitted once
+
+
+def live_dirs():
+    return [d for d in dict.fromkeys(watch_dirs()) if live(d)]
+
+
+def listed_threads(d):
+    try:
+        return {f"{w[0]}#{w[1]}" for w in (l.split('#', 1)[0].split() for l in open(os.path.join(d, 'threads.txt'))) if len(w) == 2}
+    except OSError:
+        return set()
+
+
+def thread_links(repo, num):
+    """Threads this one links to (its body and comments) or that link to it (GitHub's cross-references)."""
+    links = set()
+    def read(text):
+        links.update(f"{m[1] or m[3]}#{m[2] or m[4]}" for m in THREAD_REF.finditer(text or ''))
+    read(json.loads(gh(['api', f"repos/{repo}/issues/{num}"])).get('body'))
+    for e in gh_json(f"repos/{repo}/issues/{num}/timeline?per_page=100"):
+        if e.get('event') == 'commented':
+            read(e.get('body'))
+        elif e.get('event') == 'cross-referenced' and ((e.get('source') or {}).get('issue') or {}).get('number'):
+            i = e['source']['issue']
+            links.add(f"{i['repository_url'].split('/repos/')[-1]}#{i['number']}")
+    links.discard(f"{repo}#{num}")
+    return links
+
+
+def route_agent_command(repo, num, name):
+    """-> (watch dir, routed). The dir named `name` (its folder's name); else the dir listing most of the threads this one
+    links to or is linked from (a tie goes to main_dir); else main_dir, unrouted."""
+    dirs = live_dirs()
+    for d in dirs:
+        if name and os.path.basename(d.rstrip('/')).lower() == name.lower():
+            return d, True
+    links = thread_links(repo, num)
+    score = {d: len(links & listed_threads(d)) for d in dirs}
+    best = max(score.values(), default=0)
+    if best:
+        top = [d for d in dirs if score[d] == best]
+        return (main_dir() if main_dir() in top else top[0]), True
+    return main_dir(), False
+
+
+def claim(sk, record=True):
+    """True if no daemon has taken this command yet (and, with record, takes it): the claim file is locked, so two daemons can't both."""
+    os.makedirs(os.path.dirname(AGENT_CLAIMS), exist_ok=True)
+    with open(AGENT_CLAIMS, 'a+') as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        f.seek(0)
+        if sk in f.read().split():
+            return False
+        if record:
+            f.write(sk + '\n')
+        return True
+
+
+def agent_command(repo, num, kind, c):
+    """Your comment starting with /agent on a thread no live watch dir lists (a listed thread's own scan reports it) goes to
+    one dir's events.log, once: `/agent <name>` to the dir of that name, else the dir that lists a thread this one links to
+    or is linked from, else main_dir (UNROUTED). You and the agent post as one account: a gated post is not a command."""
+    key, body, cid = f"{repo}#{num}", c.get('body') or '', c.get('id')
+    sk = f"{kind}:{cid}"
+    if not cid or not AGENT_CMD.match(body) or (c.get('user') or {}).get('login', ME) != ME or _norm(body) in agent_post_hashes() \
+            or any(key in listed_threads(d) for d in live_dirs()) or not claim(sk, record=False):
+        return
+    target, routed = route_agent_command(repo, num, AGENT_CMD.match(body)[1])
+    upd, url = c.get('updated_at') or c.get('created_at', ''), c.get('html_url', '')
+    indented = '\n'.join('    ' + l for l in body.splitlines())  # no body line can start with ### and pass as an event
+    event = f"### {'AGENT COMMAND' if routed else 'UNROUTED /agent'} {key} {kind} {cid} by {ME} {upd}  {url}\n{indented}\n"
+    if ONCE:
+        return emit(event)
+    if not target or not claim(sk):
+        return
+    line = key.replace('#', ' ')
+    if routed and line not in open(os.path.join(target, 'threads.txt')).read().splitlines():
+        open(os.path.join(target, 'threads.txt'), 'a').write(line + '\n')  # its follow-ups are watched
+    append_owed(f"{key} {kind} {cid} by {ME} {url} — {body.strip().splitlines()[0][:80]}", target)
+    react_eyes(repo, kind, cid)
+    with open(os.path.join(target, 'events.log'), 'a') as f:  # last: the event wakes that session, which finds the rest in place
+        f.write(event)
+
+
+def discover_agent_commands(state):
+    """Your /agent comments on threads no watcher lists reach no one: you comment as the agent's own account, which GitHub
+    doesn't notify you of. Each full scan, search the threads you commented on since the last scan (overlapping by 10
+    minutes) and hand each /agent comment to agent_command. A failed call leaves the scan position, so it is retried."""
+    started = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    since = (datetime.datetime.strptime(state.get('agent_since') or state['since'], '%Y-%m-%dT%H:%M:%SZ') - datetime.timedelta(minutes=10)).strftime('%Y-%m-%dT%H:%M:%SZ')
+    ok = True
+    try:
+        items = json.loads(gh(['api', '-X', 'GET', 'search/issues', '-f', f'q=commenter:{ME} updated:>={since}', '-f', 'per_page=50']))['items']
+        for i in items:
+            repo, num = i['repository_url'].split('/repos/')[-1], i['number']
+            try:
+                found = [('comment', c) for c in gh_json(f"repos/{repo}/issues/{num}/comments?since={since}&per_page=100")]
+                if 'pull_request' in i:
+                    found += [('review-comment', c) for c in gh_json(f"repos/{repo}/pulls/{num}/comments?since={since}&per_page=100")]
+                for kind, c in found:
+                    agent_command(repo, num, kind, c)
+            except Exception as e:
+                ok = False
+                emit(f"WATCH ERROR agent commands {repo}#{num}: {e}")
+    except Exception as e:
+        ok = False
+        emit(f"WATCH ERROR agent command search: {e}")
+    if ok:
+        state['agent_since'] = started
+
+
 def ai_call_elsewhere(state, repo, num, etype, c):
     """Your /ai or /agent comment on a thread no live watcher watches goes to main_dir's watcher, so one session gets it."""
     key, body = f"{repo}#{num}", c.get('body') or ''
-    if not c.get('id') or not AI_CALL.search(body) or _norm(body) in agent_post_hashes() or main_dir() != HERE:
+    if not c.get('id') or not AI_CALL.search(body) or _norm(body) in agent_post_hashes():
+        return
+    if AGENT_CMD.match(body):  # routed to the right dir, from any daemon
+        kind = 'review-comment' if etype == 'PullRequestReviewCommentEvent' else 'comment'
+        try:
+            agent_command(repo, num, kind, {**c, 'user': c.get('user') or {'login': ME}})
+        except Exception as e:
+            emit(f"WATCH ERROR agent command {key}: {e}")
+        return
+    if main_dir() != HERE:
         return
     watched = any(f"{repo} {num}" in (l.strip() for l in open(os.path.join(d, 'threads.txt')))
                   for d in watch_dirs() if live(d) and os.path.exists(os.path.join(d, 'threads.txt')))
@@ -564,6 +688,13 @@ def run_scan():
     with locked():
         state = load_state()
         scan_reactions(state, threads)
+        save_state(state)
+
+
+def agent_command_scan():
+    with locked():
+        state = load_state()
+        discover_agent_commands(state)
         save_state(state)
 
 
@@ -647,6 +778,7 @@ def follow_update():
 def main():
     if ONCE:
         run_scan()
+        agent_command_scan()
         return
     last_full = 0
     while True:
@@ -659,6 +791,7 @@ def main():
             save_state(state)
         if time.time() - last_full > 300:  # a full scan is the backstop; the repo comment feeds catch comments within ~10 s
             run_scan()
+            agent_command_scan()
             retire_if_done()
             last_full = time.time()
         time.sleep(10)
