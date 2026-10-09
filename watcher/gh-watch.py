@@ -5,7 +5,6 @@
   (write access) on a thread in threads.txt, the threads the agent opened or posted in; and yours with /ai or /agent, on any thread
   (your events feed; one watch dir gets each, see main_dir). Nothing else.
 - Your "/agent ..." comments on threads no watch dir lists, found in the watched repos' recent comments (search as a backup) and sent to one dir (see agent_command): `### AGENT COMMAND`.
-- FOLLOW-UP: later commits by others to the lines of your merged PRs, and PRs that reference them (see follow_ups), for 60 days after the merge.
 - Maintainers' commits pushed to a tracked PR, and 👍/👎 from GH_WATCH_EYES on the agent's comments.
 - WAIT PING DUE: your account's comment is the last on an open thread and has had no reply for WAIT_PING_HOURS (3).
 - PR head/state changes (pushes, merges, closes), CI turning red or green on open PRs, and your PR's code (tests excluded) changing by more than ~80 lines since its last refactor pass (REFACTOR STALE).
@@ -698,130 +697,6 @@ def own_events_changed(state):
     return keys
 
 
-FOLLOWUP_DAYS, FOLLOWUP_EVERY, SLACK = 60, 3600, 3  # how long a merged PR is followed, how often, lines of slack around its lines
-
-
-def patch_lines(patch):
-    """-> (old-side, new-side) line numbers a unified-diff patch changes; a pure insertion or deletion counts at its position."""
-    old, new, o, n = [], [], 0, 0
-    for l in (patch or '').splitlines():
-        if l.startswith('@@'):
-            m = re.match(r'@@ -(\d+)(?:,\d+)? \+(\d+)', l)
-            o, n = int(m[1]), int(m[2])
-        elif l.startswith('-'):
-            old.append(o); new.append(n); o += 1
-        elif l.startswith('+'):
-            old.append(o); new.append(n); n += 1
-        elif not l.startswith('\\'):
-            o += 1; n += 1
-    return old, new
-
-
-def spans(nums):
-    out = []
-    for x in sorted(set(nums)):
-        if out and x <= out[-1][1] + 1:
-            out[-1][1] = x
-        else:
-            out.append([x, x])
-    return out
-
-
-def iso_epoch(t):
-    return datetime.datetime.strptime(t, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=datetime.timezone.utc).timestamp()
-
-
-def follow_record(key):
-    """A merged PR of yours: its merge commit and the lines it changed, to compare later commits against."""
-    repo, num = key.rsplit('#', 1)
-    pr = json.loads(gh(['api', f"repos/{repo}/pulls/{num}"]))
-    files = {f['filename']: spans(patch_lines(f['patch'])[1]) if f.get('patch') else [[1, 10**9]]  # no patch: the whole file
-             for f in gh_json(f"repos/{repo}/pulls/{num}/files?per_page=100") if f.get('status') != 'removed'}
-    until = iso_epoch(pr['merged_at']) + FOLLOWUP_DAYS * 86400
-    return {'merge_sha': pr['merge_commit_sha'], 'base': pr['base']['ref'], 'scanned': pr['merged_at'], 'checked': 0,
-            'until': until, 'files': files if until > time.time() else {}}
-
-
-def touches(e, files):
-    """Does a commit's file list change lines of the PR (within SLACK lines), or rename or remove one of its files? A rename is followed."""
-    hit, renames = False, []
-    for f in files:
-        old = f.get('previous_filename') or f['filename']
-        ranges = e['files'].get(old)
-        if ranges is None:
-            continue
-        if old != f['filename']:
-            renames.append((old, f['filename']))
-        if old != f['filename'] or f.get('status') == 'removed' or not f.get('patch'):
-            hit = True
-        else:
-            hit = hit or any(lo - SLACK <= l <= hi + SLACK for l in patch_lines(f['patch'])[0] for lo, hi in ranges)
-    for old, new in renames:
-        e['files'][new] = e['files'].pop(old)
-    return hit
-
-
-def follow_emit(sk, line):
-    if claim(sk, record=not ONCE):  # once across restarts; a manual --once check records nothing
-        emit(line)
-
-
-def follow_ups(state):
-    """After a PR of yours merges, later commits to its lines by others and PRs that reference it are a review you didn't get
-    (mergeworthy:core, Learning from follow-ups). Each merged PR in threads.txt is followed for FOLLOWUP_DAYS, one check an hour:
-    `### FOLLOW-UP` once per commit (not yours, not a merge) that touches its recorded lines, and once per other person's PR
-    that references it (GitHub's cross-referenced timeline events, which a mention in a PR body creates too)."""
-    fu, now = state.setdefault('followups', {}), time.time()
-    for key in {f"{r}#{n}" for r, n in read_threads()} - fu.keys():
-        if state['prs'].get(key, {}).get('state') == 'merged' and state.get('author', {}).get(key) == ME:
-            try:
-                fu[key] = follow_record(key)
-            except Exception as e:
-                emit(f"WATCH ERROR follow-up record {key}: {e}")
-    for e in fu.values():
-        if e['until'] <= now:
-            e['files'] = {}  # past the window: kept as a marker so the PR isn't recorded again
-    due = {}
-    for key, e in fu.items():
-        if e['until'] > now and now - e['checked'] >= FOLLOWUP_EVERY:
-            due.setdefault((key.rsplit('#', 1)[0], e['base']), []).append(key)
-    details = {}
-    for (repo, base), keys in due.items():
-        started = datetime.datetime.fromtimestamp(now - 600, datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')  # overlap: claims dedupe
-        try:
-            commits = gh_json(f"repos/{repo}/commits?sha={base}&since={min(fu[k]['scanned'] for k in keys)}&per_page=100")
-        except Exception as ex:
-            emit(f"WATCH ERROR follow-up commits {repo}: {ex}")
-            continue
-        for key in keys:
-            e, num = fu[key], key.rsplit('#', 1)[1]
-            try:
-                for c in commits:
-                    sha, author = c['sha'], (c.get('author') or {}).get('login')
-                    sk = f"followup:{key}:{sha}"
-                    if sha == e['merge_sha'] or author == ME or len(c.get('parents') or []) > 1 \
-                            or c['commit']['committer']['date'] < e['scanned'] or not claim(sk, record=False):
-                        continue
-                    if sha not in details:
-                        details[sha] = json.loads(gh(['api', f"repos/{repo}/commits/{sha}"])).get('files') or []
-                    if touches(e, details[sha]):
-                        follow_emit(sk, f"### FOLLOW-UP {key}: {sha[:10]} by {author or c['commit']['author']['name']} changes lines from your PR  {c['html_url']}")
-                for t in gh_json(f"repos/{repo}/issues/{num}/timeline?per_page=100"):
-                    i = (t.get('source') or {}).get('issue') or {}
-                    if t.get('event') == 'cross-referenced' and 'pull_request' in i and not is_bot(i.get('user')) and (i.get('user') or {}).get('login') != ME:
-                        follow_emit(f"followup-ref:{key}:{i['html_url']}", f"### FOLLOW-UP {key}: {i['html_url']} by {i['user']['login']} references your PR")
-                e['scanned'], e['checked'] = started, now
-            except Exception as ex:
-                emit(f"WATCH ERROR follow-up {key}: {ex}")
-
-
-def follow_up_scan():
-    with locked():
-        state = load_state()
-        follow_ups(state)
-        save_state(state)
-
-
 def locked():
     """One scan at a time across processes (daemon and manual runs), so state updates aren't lost."""
     f = open(STATE + '.lock', 'w')
@@ -858,10 +733,7 @@ def retire_if_done():
     if not threads:
         return
     with locked():
-        state = load_state()
-    if any(e['until'] > time.time() for e in state.get('followups', {}).values()):
-        return  # a merged PR still being followed (follow_ups)
-    prs = state['prs']
+        prs = load_state()['prs']
     for repo, num in threads:
         key = f"{repo}#{num}"
         if key in prs:
@@ -932,7 +804,6 @@ def main():
     if ONCE:
         run_scan()
         agent_command_scan()
-        follow_up_scan()
         return
     last_full = 0
     while True:
@@ -946,7 +817,6 @@ def main():
         if time.time() - last_full > 300:  # a full scan is the backstop; the repo comment feeds catch comments within ~10 s
             run_scan()
             agent_command_scan()
-            follow_up_scan()
             retire_if_done()
             last_full = time.time()
         time.sleep(10)
