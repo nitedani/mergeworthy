@@ -104,7 +104,7 @@ Run every PR through bug verification, code review and a fresh read on the final
     - A long job gets a Monitor on its failure signals (its process or server exiting, errors, no progress), not only a completion notice: a run that dies silently must wake you.
     - While any wait exceeds 10 minutes, at least one independent item is in flight; if none exists, say why.
     - When the user says they're leaving, send every open question in one message within 5 minutes, then continue on your recommended defaults.
-    - Work held for budget names the signal that lifts the hold (e.g. `claude-usage --mode` leaving `execute`) and a Monitor on it that wakes you; when it fires, resume without asking. Re-arming a GitHub watcher is not work.
+    - Work held for budget names the signal that lifts the hold (e.g. the usage limit's reset time) and a Monitor on it that wakes you; when it fires, resume without asking. Re-arming a GitHub watcher is not work.
     - After a usage limit, resume every agent the limit stopped through its own thread, never a new one. Never auto-resume parallel agents on a non-default model without asking the user first. Schedule one wakeup at the reset time.
     - When a context nears its limit, hand off at a clean boundary to a fresh agent with the ledger.
 14. **Spend tokens like money.**
