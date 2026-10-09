@@ -1,3 +1,5 @@
 #!/bin/sh
-# Every check CI runs, before the push leaves: a red tests/all.sh blocks it (enable with `git config core.hooksPath .githooks`)
-cd "$(git rev-parse --show-toplevel)" && bash tests/all.sh . >/tmp/mergeworthy-pre-push.log 2>&1 || { echo "pre-push: tests/all.sh failed, see /tmp/mergeworthy-pre-push.log"; exit 1; }
+# Every check CI runs, before the push leaves: a red tests/all.sh blocks it (enable with `git config core.hooksPath .githooks`).
+# Git sets GIT_DIR and friends for hooks; the tests create their own repos, so they must not inherit them.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX
+cd "$(dirname "$0")/.." && bash tests/all.sh . >/tmp/mergeworthy-pre-push.log 2>&1 || { echo "pre-push: tests/all.sh failed, see /tmp/mergeworthy-pre-push.log"; exit 1; }
