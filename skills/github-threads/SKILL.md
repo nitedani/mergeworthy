@@ -72,6 +72,8 @@ The watcher runs independently of any session and only records events (and adds 
 - one @-mention on that PR with the decisions you need, each with your recommendation and link;
 - once per thread per wait, never while they're mid-review.
 
+**A TODO comment instead of repeated pings.** In a long design thread, keep one comment you edit in place, in this form: `# TODO`, then *This comment is edited as the list updates.*, then `## TODO` with the open items (each with who it waits on) and `## Next steps` with your recommended order. When it changes, edit it and say so in your next reply with a link ("I updated the [todo list](link)"), instead of repeating the list in a new comment.
+
 **Repo rules:** before a commit, merge or PR in a repo, read its CLAUDE.md / AGENTS.md on the target branch and follow it.
 
 ## 1.6 Posting gate (every tier, no exceptions)
