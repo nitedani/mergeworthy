@@ -44,6 +44,7 @@ checkin() { # stop_hook_active
 tr_file "Loop A is done."
 check "the first stop of a turn gets the check-in" 2 "$(checkin 0)"
 check "the next stop goes through" 0 "$(checkin 1)"
+check "no second check-in within 30 minutes of the last" 0 "$(checkin 0)"
 python3 -c 'import json; print(json.dumps({"type":"user","message":{"content":"Act as the review sub-agent for this task.\n\nCheck the diff."}})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":"CLEAN"}]}}))' > "$T/tr.jsonl"
 check "a delegated child ends with its result, no check-in" 0 "$(checkin 0)"
 tr_file "The watcher runs and the Monitor is armed."
@@ -434,6 +435,14 @@ check "a pass with ratings and the ✅ list records" 0 "$(prs refactor "$T/pass.
 A=$(git -C "$G" rev-parse HEAD); printf 'x\n' > "$G/f"; git -C "$G" add f; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m b
 printf 'carries the pass of %s: one docs line\n' "$A" > "$T/carry.md"
 check "a small follow-up carries the earlier pass" 0 "$(prs refactor "$T/carry.md")"
+printf 'NO BUGS\n' > "$T/vA.md"; G_A=$A; (cd "$G" && git checkout -q "$G_A" && bash "$R/bin/pr-steps" verify "$T/vA.md" >/dev/null 2>&1; git checkout -q -); 
+cp "$T/carry.md" "$T/carry-v.md"
+check "a small follow-up carries an earlier head's Loop A" 0 "$(prs verify "$T/carry-v.md")"
+cp "$T/carry.md" "$T/carry-f.md"
+check "BLOCK: carrying a step the earlier head never recorded" 1 "$(prs fresh "$T/carry-f.md")"
+seq 1 100 > "$G/big"; git -C "$G" add big; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m c
+printf 'carries the pass of %s: big change\n' "$A" > "$T/carry2.md"
+check "BLOCK: carrying across more than 80 changed lines" 1 "$(prs loopb "$T/carry2.md")"
 # ---------- pr-steps: every converge step leaves its proof; the guard needs all six ----------
 G2="$T/prs2"; mkdir -p "$G2"; git -C "$G2" init -q; git -C "$G2" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 prs2() { (cd "$G2" && bash "$R/bin/pr-steps" "$@" >/dev/null 2>&1; echo $?); }

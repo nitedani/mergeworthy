@@ -28,6 +28,15 @@ fi
 # A refactor record is the pass's lists (the ✅ coverage list and old ⇒ new ratings), or a small follow-up that carries an
 # earlier pass ("carries the pass of <sha>", ≤ 80 changed lines since): a fix log or a note is not a refactor pass
 is_pass() { grep -q '✅' "$1" && grep -Eq '[0-9]+ *(⇒|=>) *([0-9]+|removed|new|n/a)' "$1"; }
+# A small follow-up (≤ 80 changed lines, no new behavior) carries an earlier head's recorded step: "carries the pass of <sha>"
+carries() {
+  c=$(grep -Eo 'carries the pass of [0-9a-f]{7,40}' "$out" | head -n1 | awk '{print $NF}'); [ -n "$c" ] || return 1
+  full=$(git rev-parse "$c" 2>/dev/null) || { echo "$c is not a commit" >&2; exit 1; }
+  awk -v s="$step" '$1==s' ~/.claude/pr-steps/"$full" 2>/dev/null | grep -q . || { echo "$c has no recorded $step to carry" >&2; exit 1; }
+  changed=$(git diff --numstat "$full" HEAD | awk '{s+=$1+$2} END{print s+0}')
+  [ "$changed" -le 80 ] || { echo "$changed lines changed since $c: too much to carry, run the $step step again (converge, per push)" >&2; exit 1; }
+}
+if [ "$step" != refactor ] && [ "$step" != gates ] && carries; then :; else
 case "$step" in
   verify|reverify)
     [ "$last" = "NO BUGS" ] || [ "$step" = reverify -a "$last" = "NO LOOP B COMMITS" ] || { echo "$out does not end with a line NO BUGS: Loop A is done only when every slice has a dry pass after its last fix" >&2; exit 1; } ;;
@@ -50,6 +59,7 @@ case "$step" in
     grep -Eq '^.+ -> exit [0-9]+$' "$out" || { echo "$out lists no gate: one line per gate, '<command> -> exit <code>', run on this HEAD" >&2; exit 1; }
     ! grep -Eq ' -> exit [1-9][0-9]*$' "$out" || { echo "$out has a red gate: fix it on this HEAD first" >&2; exit 1; } ;;
 esac
+fi
 grep -qsF " $(realpath "$out") " ~/.claude/pr-steps/"$sha" && { echo "$out is already recorded for $sha: each step has its own output" >&2; exit 1; }
 mkdir -p ~/.claude/pr-steps
 echo "$step $(realpath "$out") $(date -u +%FT%TZ)" >> ~/.claude/pr-steps/$sha

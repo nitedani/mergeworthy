@@ -108,7 +108,20 @@ if watcher_on and not paused and not child:
                   file=sys.stderr)
             sys.exit(2)
 # Before a turn ends, one check-in (the hook doesn't ask twice in a row: stop_hook_active lets the next stop through)
-if os.environ.get('MERGEWORTHY_STOP_CHECKIN', 'on') != 'off' and not child:
+# At most once per MERGEWORTHY_STOP_CHECKIN_SECONDS (default 30 min): every extra turn re-reads the whole context from cache
+def checkin_due():
+    import time
+    f = os.path.expanduser('~/.claude/mergeworthy-stop-checkin')
+    try:
+        last = float(open(f).read().strip())
+    except (OSError, ValueError):
+        last = 0
+    if time.time() - last < float(os.environ.get('MERGEWORTHY_STOP_CHECKIN_SECONDS', '1800')):
+        return False
+    os.makedirs(os.path.dirname(f), exist_ok=True)
+    open(f, 'w').write(str(time.time()))
+    return True
+if os.environ.get('MERGEWORTHY_STOP_CHECKIN', 'on') != 'off' and not child and checkin_due():
     print("Before you stop, check once: did the user ask you to stop or pause? Then stop. Otherwise: is there work you said "
           "is next, or that the critical path needs, that you could start now? Is anything waiting on you (a reply owed, "
           "red CI, a finished agent's result to read, a dependency that landed)? If so, do it now, or brief a subagent for it. If nothing is, stop.",
