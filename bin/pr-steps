@@ -27,7 +27,8 @@ if [ "$step" = approach ]; then
 fi
 # A refactor record is the pass's lists (the ✅ coverage list and old ⇒ new ratings), or a small follow-up that carries an
 # earlier pass ("carries the pass of <sha>", ≤ 80 changed lines since): a fix log or a note is not a refactor pass
-is_pass() { grep -q '✅' "$1" && grep -Eq '[0-9]+ *(⇒|=>) *([0-9]+|removed|new|n/a)' "$1"; }
+# A pass rates every item afresh: a row whose rating is copied ("10 =", "=", "unchanged since") is a re-rating of a delta, not a pass
+is_pass() { grep -q '✅' "$1" && grep -Eq '[0-9]+ *(⇒|=>) *([0-9]+|removed|new|n/a)' "$1" && ! grep -Eiq '\| *([0-9]+ *)?= *\||unchanged since' "$1"; }
 # A small follow-up (≤ 80 changed lines, no new behavior) carries an earlier head's recorded step: "carries the pass of <sha>"
 carries() {
   c=$(grep -Eo 'carries the pass of [0-9a-f]{7,40}' "$out" | head -n1 | awk '{print $NF}'); [ -n "$c" ] || return 1

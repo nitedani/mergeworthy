@@ -64,5 +64,6 @@ Refactor this PR:
 - **Run quick gates after every commit** (`converge`, Gates, lanes, flakes, evidence). A red gate means fix that commit, never a patch on top.
 - **Refactor commits are separate from behavior commits.**
 - **A pass that changed nothing** says so, and why.
-- **Each run's proof goes in the PR body, its full lists in a gist** (`converge` step 5, the evidence).
-- **The pass goes stale.** The pass belongs to the PR as it is now, not to the head it first ran on. When net additions plus deletions since the last full rating pass exceed 80 lines, including tests and lockfiles, re-run it on the whole PR diff before the next "Done" reply, and write new lists under a unique pass ID, updating the ledger’s active link. Check the whole-tree count before carrying a pass; the watcher’s `### REFACTOR STALE` counts production lines per commit.
+- **A project's own refactor prompt wins:** when its notes name one, fetch it fresh each pass and use it, with this file's lists.
+- **The PR body shows the summary** (old ⇒ new, each linked to its commits, and a link to the whole refactor diff); full lists go in a gist (`converge` step 5).
+- **The pass goes stale.** Past 80 changed lines since the last full pass (tests and lockfiles included), a fresh rater re-rates the whole PR diff, every item anew, before the next "Done" reply, under a new pass ID in the ledger.

@@ -441,6 +441,8 @@ prs() { (cd "$G" && bash "$R/bin/pr-steps" "$@" >/dev/null 2>&1; echo $?); }
 printf '# Loop B fix log\nfixed the README\n' > "$T/fixlog.md"
 check "BLOCK: a fix log recorded as the refactor pass" 1 "$(prs refactor "$T/fixlog.md")"
 printf '| express vike() | 5 ⇒ 8 | abc | named steps |\n✅ express vike()\n' > "$T/pass.md"
+printf '| express vike() | 5 ⇒ 8 | abc | named steps |\n| render() | 10 = | Unchanged since ratings17. |\n✅ express vike()\n' > "$T/copied.md"
+check "BLOCK: a re-rating that copies earlier ratings is not a pass" 1 "$(prs refactor "$T/copied.md")"
 check "a pass with ratings and the ✅ list records" 0 "$(prs refactor "$T/pass.md")"
 A=$(git -C "$G" rev-parse HEAD); printf 'x\n' > "$G/f"; git -C "$G" add f; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m b
 printf 'carries the pass of %s: one docs line\n' "$A" > "$T/carry.md"
