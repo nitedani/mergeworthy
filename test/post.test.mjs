@@ -108,6 +108,14 @@ test('mw post stops a third comment in a row posted through gh api', () => {
   assert.match(r.stderr, /third comment in a row/)
 })
 
+test('mw post lints with the repo named in a gh api path', () => {
+  const { draft, mw, post } = setup({ text: `${BADGE}\n\nThe guardian found nothing.\n` })
+  mw('verdict', draft, 'CLEAN', '--by', 'codex')
+  const r = post([], ['api', 'repos/bot/tools/issues/5/comments', '-F', `body=@${draft}`])
+  assert.equal(r.code, 0)
+  assert.doesNotMatch(r.stdout, /process word/)
+})
+
 test('mw post infers the lint kind from the gh command, and --kind overrides it', () => {
   const { draft, mw, post } = setup({ text: `${BADGE}\n\n${'word '.repeat(450)}\n` })
   mw('verdict', draft, 'CLEAN', '--by', 'codex')
