@@ -50,7 +50,7 @@ A failing check is a finding, with its exit code. Every finding about behavior, 
 Look through three lenses, in one pass:
 
 **Correctness.**
-- Revert the fix and confirm the failure comes back, then restore it. A check that also passes without the change proves nothing.
+- Check each test the change relies on as the Tests section of the code standard says (its path is in your prompt): it must fail without the change.
 - Look for the behavior the issue actually reported, not the behavior the diff implements.
 - List each requested behavior that is missing or only partly there, quoting the line that asks for it.
 

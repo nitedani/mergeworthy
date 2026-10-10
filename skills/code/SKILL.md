@@ -22,6 +22,7 @@ A lane, in this file, is one of the repo's test suites that runs the product in 
 
 ## Writing it
 
+- **Fix at the root, and never make anything worse.** If something works on `main` and fails on your branch, that is a regression for you to fix, not a limitation to mention.
 - **Make the smallest diff that finishes the job:** every call site, every translation. A new dependency joins an open PR only after the maintainer agrees.
 - **A silent fallback, a retry or reload loop, parsing something twice, or a second code path for old runtimes** needs the user's OK, plus a written reason why fixing the root cause is impossible. Errors from misuse stay visible. Code that is unreleased or before 1.0 gets no compatibility layer for old versions. Check with `npm view <pkg> versions`, which lists the published versions.
 - **Check every new public name with one line:** the name, then what it does in every case. Add an option only for a named user scenario that nothing else serves.

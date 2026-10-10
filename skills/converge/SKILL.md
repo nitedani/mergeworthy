@@ -106,7 +106,7 @@ Keep the settled decisions intact: <decisions>.
 - When code and docs disagree, judge against the documented behavior, and ask the owner when the intended fix is unclear.
 - Code from a human's commit, or from a commit without the environment's agent trailer, is the owner's. Mark findings that would remove or rewrite it OWNER-DECISION, instead of acting on your reading alone.
 - Changes to behavior or public API in someone else's repo are for its maintainers to decide. Changes the user's task asks for are decided. Refactors never change behavior.
-- A comment is at most one literally true line about a constraint the code can't show.
+- Comments follow the Comments section of the code standard.
 - Judge whether each finding is worth its diff: how likely a real user runs into it, what main does in the similar case, what it costs, and whether the maintainer would write it.
 
 Evidence:
