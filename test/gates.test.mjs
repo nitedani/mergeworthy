@@ -31,6 +31,7 @@ const prWithSteps = (steps) => {
   writeFileSync(join(ctx.home, 'steps.jsonl'), steps.map(([step, head]) => JSON.stringify({ step, head, pr: PR }) + '\n').join(''))
   return ctx
 }
+const checkoutAt = () => fakeCtx({ exec: execResponses({ 'rev-parse HEAD': `${HEAD}\n`, 'rev-parse --abbrev-ref HEAD': 'fix-x\n' }) })
 const pushOf = (authorEmail, remote = { 'ls-remote': '' }) =>
   fakeCtx({
     gh: ghResponses({ 'api user': '123\nbot\n' }),
@@ -68,14 +69,16 @@ const CASES = {
       `gh api graphql -f query='{ viewer { login } }'`,
       `gh api graphql -f query='mutation { addReaction(input: {subjectId: "x", content: EYES}) { clientMutationId } }'`,
       'gh pr view 5',
+      'mw post b.md -- gh pr comment 5 --body-file b.md',
     ],
   },
   ready: {
-    fires: [['gh pr ready 5', () => prWithSteps([])]],
+    fires: [['gh pr ready 5', () => prWithSteps([])], ['mw post b.md -- gh pr create --title "Fix it" --body-file b.md', checkoutAt]],
     silent: [
       ['gh pr ready 5', () => prWithSteps([['gates', HEAD], ['verify', HEAD], ['quality', HEAD], ['review', HEAD]])],
       ['gh pr ready 5 --undo', () => prWithSteps([])],
       ['gh pr create --draft --title t', () => prWithSteps([])],
+      ['mw post b.md -- gh pr create --draft --title t --body-file b.md', checkoutAt],
       ['gh pr ready 5', () => fakeCtx()],
     ],
   },
@@ -147,8 +150,7 @@ test('ready lists the steps recorded on an older head, with lines changed since'
 })
 
 test('ready checks the checkout head for gh pr create without --draft', () => {
-  const ctx = fakeCtx({ exec: execResponses({ 'rev-parse HEAD': `${HEAD}\n`, 'rev-parse --abbrev-ref HEAD': 'fix-x\n' }) })
-  const [finding] = bashGates({ command: 'gh pr create --title t --body-file b.md', cwd: '/work' }, ctx).filter((f) => f.gate === 'ready')
+  const [finding] = bashGates({ command: 'gh pr create --title t --body-file b.md', cwd: '/work' }, checkoutAt()).filter((f) => f.gate === 'ready')
   assert.match(finding.message, /aaaaaaa of fix-x has no gates, verify, quality, review step/)
 })
 
