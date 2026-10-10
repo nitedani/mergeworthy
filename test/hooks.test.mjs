@@ -35,7 +35,8 @@ test('stop blocks once, then allows the stop', () => {
 })
 
 test('stop blocks when the transcript is missing or unreadable', () => {
-  for (const input of [{ stop_hook_active: false }, { stop_hook_active: false, transcript_path: join(tempDir(), 'gone.jsonl') }]) {
+  for (const transcript_path of [undefined, join(tempDir(), 'gone.jsonl'), tempDir()]) {
+    const input = { stop_hook_active: false, transcript_path }
     assert.equal(JSON.parse(hook('stop', input).stdout).decision, 'block')
   }
 })
