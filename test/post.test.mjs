@@ -108,8 +108,9 @@ test('mw post reads a release draft from --notes-file and a gist draft from a fi
   mw('verdict', draft, 'CLEAN', '--by', 'codex')
   assert.equal(post([], ['release', 'create', 'v1', '-R', 'o/r', '--notes-file', draft]).code, 0)
   assert.equal(post([], ['gist', 'create', draft]).code, 0)
+  assert.equal(post([], ['gist', 'create', '-p', draft]).code, 0)
   assert.equal(post([], ['pr', 'edit', '5', '-R', 'o/r', '--title', draft]).code, 2)
-  assert.deepEqual(posts().map((args) => args.slice(0, 2).join(' ')).filter((command) => command !== 'repo view'), ['release create', 'gist create'])
+  assert.deepEqual(posts().map((args) => args.slice(0, 2).join(' ')).filter((command) => command !== 'repo view'), ['release create', 'gist create', 'gist create'])
 })
 
 test('mw post refuses gh api forms that send the draft path or the raw file instead of its text', () => {

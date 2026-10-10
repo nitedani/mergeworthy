@@ -23,13 +23,14 @@ test('ghCommand finds the target after flag values, wherever -R is', () => {
   assert.equal(ghCommand(['pr', 'close', '-c', '7', '-R', 'o/r', 'https://github.com/o/r/pull/5']).target, 'https://github.com/o/r/pull/5')
   assert.equal(ghCommand(['pr', 'close', '-d', '5']).target, '5')
   assert.equal(ghCommand(['pr', 'ready']).target, null)
+  assert.equal(ghCommand(['pr', 'review', '-r', '5', '-b', 'Fix the key']).target, '5')
 })
 
 test('textFiles gives the files a command reads its text from, by the flag its command uses', () => {
   assert.deepEqual(textFiles(ghCommand(['pr', 'comment', '5', '--body-file', 'a.md'])), ['a.md'])
   assert.deepEqual(textFiles(ghCommand(['issue', 'create', '--title', 't', '--body-file=a.md'])), ['a.md'])
   assert.deepEqual(textFiles(ghCommand(['release', 'create', 'v1', '-F', 'notes.md'])), ['notes.md'])
-  assert.deepEqual(textFiles(ghCommand(['gist', 'create', '-d', 'desc', 'a.md'])), ['desc', 'a.md'])
+  assert.deepEqual(textFiles(ghCommand(['gist', 'create', '-d', 'desc', '-p', 'a.md'])), ['a.md'])
   assert.deepEqual(textFiles(ghCommand(['api', 'repos/o/r/issues/5/comments', '-F', 'body=@a.md'])), ['a.md'])
   assert.deepEqual(textFiles(ghCommand(['pr', 'comment', '5', '--title', 'a.md'])), [])
 })
