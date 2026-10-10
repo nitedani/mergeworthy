@@ -148,63 +148,75 @@ test('foreground-wait stays silent when the command runs in the background', () 
   assert.deepEqual(gateNames('sleep 60', { runInBackground: true }), [])
 })
 
-const agentFiring = (input, ctx) => agentGates({ input }, ctx).map((f) => f.gate)
+const agentNames = (input, ctx) => agentGates({ input }, ctx).map((f) => f.gate)
 const withState = (files, overrides) => {
   const ctx = fakeCtx(overrides)
   for (const [name, value] of Object.entries(files)) writeState(ctx, name, value)
   return ctx
 }
+const firstUsed = (minutes) => () => withState({ 'request-ids.json': { 'req-1': NOW - minutes * MINUTE } })
+const started = (ms) => () => withState({ 'agents.json': { 'review pr 5': { at: NOW - ms, tool: 'Agent' } } })
+const claude = (pid, rssKiB = 2 ** 20) => ({ pid, comm: 'claude', ageSec: 3700, cpuPct: 12, rssKiB })
+const lowMemory = () => fakeCtx({ meminfo: () => ({ availableKiB: 2 * 2 ** 20 }), procs: () => [claude(11), claude(22, 3 * 2 ** 20), { pid: 33, comm: 'bash', rssKiB: 9e9 }] })
+const claudes = (count) => () => fakeCtx({ procs: () => Array.from({ length: count }, (_, i) => claude(i + 1)) })
 
-test('reused-request-id blocks an id first seen over 10 minutes ago, bypass or not', () => {
-  const ctx = withState({ 'request-ids.json': { 'req-1': NOW - 11 * MINUTE } })
-  assert.deepEqual(agentFiring({ clientRequestId: 'req-1', task: 'x' + BYPASS }, ctx), ['reused-request-id'])
-})
+const AGENT_CASES = {
+  'reused-request-id': {
+    fires: [
+      { when: 'on an id first used 11 minutes ago', input: { clientRequestId: 'req-1' }, ctx: firstUsed(11) },
+      { when: 'on a reused id even with a bypass line', input: { clientRequestId: 'req-1', task: 'x' + BYPASS }, ctx: firstUsed(11) },
+    ],
+    silent: [
+      { when: 'on a retry within 10 minutes', input: { clientRequestId: 'req-1' }, ctx: firstUsed(5) },
+      { when: 'on a new id', input: { clientRequestId: 'req-2' }, ctx: firstUsed(11) },
+    ],
+  },
+  'agent-dedupe': {
+    fires: [{ when: 'on a title registered 30 minutes ago', input: { description: ' Review PR 5 ' }, ctx: started(30 * MINUTE) }],
+    silent: [
+      { when: 'on a title registered over 24 hours ago', input: { description: 'Review PR 5' }, ctx: started(DAY + 60 * MINUTE) },
+      { when: 'on a different title', input: { title: 'review pr 6' }, ctx: started(30 * MINUTE) },
+    ],
+  },
+  'agent-load': {
+    fires: [
+      { when: 'when free memory is under the floor', input: {}, ctx: lowMemory },
+      { when: 'at the agent cap', input: {}, ctx: claudes(8) },
+    ],
+    silent: [
+      { when: 'under both limits', input: {}, ctx: claudes(1) },
+      { when: 'when config.json lowers the floor', input: {}, ctx: () => withState({ 'config.json': { minFreeGiB: 1 } }, { meminfo: () => ({ availableKiB: 2 * 2 ** 20 }) }) },
+    ],
+  },
+}
 
-test('reused-request-id allows a retry within 10 minutes and a new id', () => {
-  const ctx = withState({ 'request-ids.json': { 'req-1': NOW - 5 * MINUTE } })
-  assert.deepEqual(agentFiring({ clientRequestId: 'req-1' }, ctx), [])
-  assert.deepEqual(agentFiring({ clientRequestId: 'req-2' }, ctx), [])
-})
+for (const [gate, { fires, silent }] of Object.entries(AGENT_CASES)) {
+  for (const { when, input, ctx } of fires) test(`${gate} fires ${when}`, () => assert.deepEqual(agentNames(input, ctx()), [gate]))
+  for (const { when, input, ctx } of silent) test(`${gate} stays silent ${when}`, () => assert.deepEqual(agentNames(input, ctx()), []))
+}
 
-test('agent-dedupe fires on a title registered under 24 hours ago', () => {
-  const ctx = withState({ 'agents.json': { 'review pr 5': { at: NOW - 30 * MINUTE, tool: 'Agent' } } })
-  const [finding] = agentGates({ input: { description: ' Review PR 5 ' } }, ctx)
-  assert.equal(finding.gate, 'agent-dedupe')
+for (const { gate, input, ctx } of [
+  { gate: 'agent-dedupe', input: { description: 'Review PR 5' }, ctx: started(30 * MINUTE) },
+  { gate: 'agent-load', input: {}, ctx: lowMemory },
+]) {
+  test(`${gate} is bypassed by a reason of 3+ words in the prompt`, () => assert.deepEqual(agentNames({ ...input, prompt: 'go' + BYPASS }, ctx()), []))
+  test(`${gate} is not bypassed by a shorter reason in the task`, () => {
+    const [finding] = agentGates({ input: { ...input, task: 'go' + SHORT_BYPASS } }, ctx())
+    assert.equal(finding.gate, gate)
+    assert.match(finding.message, /missing its reason/)
+  })
+}
+
+test('an agent-dedupe message says how long ago the agent started and where the bypass goes', () => {
+  const [finding] = agentGates({ input: { description: 'Review PR 5' } }, started(30 * MINUTE)())
   assert.match(finding.message, /started 30 min ago/)
   assert.match(finding.message, /add this line to the prompt/)
 })
 
-test('agent-dedupe stays silent on an older or different title', () => {
-  const ctx = withState({ 'agents.json': { 'review pr 5': { at: NOW - (DAY + 60 * MINUTE) } } })
-  assert.deepEqual(agentFiring({ description: 'Review PR 5' }, ctx), [])
-  assert.deepEqual(agentFiring({ title: 'review pr 6' }, ctx), [])
-})
-
-test('agent-dedupe is bypassed only by a reason of 3+ words in the prompt', () => {
-  const ctx = withState({ 'agents.json': { 'review pr 5': { at: NOW - 30 * MINUTE } } })
-  assert.deepEqual(agentFiring({ description: 'Review PR 5', prompt: 'go' + BYPASS }, ctx), [])
-  assert.deepEqual(agentFiring({ description: 'Review PR 5', prompt: 'go' + SHORT_BYPASS }, ctx), ['agent-dedupe'])
-})
-
-const claude = (pid, rssKiB = 2 ** 20) => ({ pid, comm: 'claude', ageSec: 3700, cpuPct: 12, rssKiB })
-
-test('agent-load fires when free memory is under the floor, naming the largest agents', () => {
-  const ctx = fakeCtx({ meminfo: () => ({ availableKiB: 2 * 2 ** 20 }), procs: () => [claude(11), claude(22, 3 * 2 ** 20), { pid: 33, comm: 'bash', rssKiB: 9e9 }] })
-  const [finding] = agentGates({ input: {} }, ctx)
-  assert.equal(finding.gate, 'agent-load')
+test('an agent-load message gives the numbers and the largest agents', () => {
+  const [finding] = agentGates({ input: {} }, lowMemory())
   assert.match(finding.message, /2\.0 GiB of memory is available .* 2 claude\/codex processes/)
   assert.match(finding.message, /The largest: pid 22 \(claude, 1h 1m, 12% cpu, 3\.0 GiB\); pid 11/)
-})
-
-test('agent-load fires at the agent cap', () => {
-  const ctx = fakeCtx({ procs: () => Array.from({ length: 8 }, (_, i) => claude(i + 1)) })
-  assert.deepEqual(agentFiring({}, ctx), ['agent-load'])
-})
-
-test('agent-load stays silent under the limits and honors config.json', () => {
-  assert.deepEqual(agentFiring({}, fakeCtx({ procs: () => [claude(1)] })), [])
-  const ctx = withState({ 'config.json': { minFreeGiB: 1 } }, { meminfo: () => ({ availableKiB: 2 * 2 ** 20 }) })
-  assert.deepEqual(agentFiring({}, ctx), [])
 })
 
 test('recordAgent registers the title and keeps the first sighting of a request id', () => {
