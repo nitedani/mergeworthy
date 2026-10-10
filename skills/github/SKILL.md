@@ -11,7 +11,7 @@ A maintainer's comment is handled like the user typing in this chat: first, with
 
 The live loop, from your first post until every thread you're in is merged or closed:
 
-1. **Watch every thread you're in.** Run `mw watch <url> …` with `run_in_background` and the longest timeout. It exits when events arrive (comments, reviews, inline comments, a 👍 or 👎 on your comment, someone else's push to your PR, red CI, merge, close, conflict) and prints the command to re-arm it. The session that handles `/agent` comments for its workspace adds `--commands --workspace <name>`. Without `~/.mergeworthy/workspaces.json`, the workspace is the current repo's owner alone.
+1. **Watch every thread you're in.** Run `mw watch <url> …` with `run_in_background` and the longest timeout. It exits when events arrive (comments, reviews, inline comments, a 👍 or 👎 on your comment, someone else's push to your PR, red CI, merge, close, conflict) and prints the command to re-arm it. The session that handles `/agent` comments for its workspace adds `--commands --workspace <name>`: a key of `~/.mergeworthy/workspaces.json`, or a single GitHub owner when the file doesn't list it.
    Done: a watch is running with every open thread you're in.
 2. **On each event, decide whether it's yours,** and re-arm the watch in the same step.
    - **On a thread you opened:** every human comment and every review bot's inline finding.
@@ -19,7 +19,7 @@ The live loop, from your first post until every thread you're in is merged or cl
    - **Anywhere in your workspace:** the user's `/agent <instruction>`, which is the user typing in this chat: start it now, in parallel with what's running.
    - **The user's own comments** in a watched thread are instructions too: answer them in the session, not in the thread.
 
-   React 👀 to each comment that's yours when you start on it (reviews can't take reactions).
+   React 👀 to each comment that's yours when you start on it: `gh api repos/<o>/<r>/issues/comments/<id>/reactions -f content=eyes`, or `pulls/comments/<id>/reactions` for an inline comment. Reviews can't take reactions.
    Done: every event is handled, or listed in `task.md` as not yours with why, and the watch is re-armed.
 3. **Answer by kind** (How each comment is answered, below). If the answer needs more than about an hour of work, post a holding reply first that carries what you found so far and when the answer comes.
    Done: the answer is posted (Posting, below) as a new comment, because edits don't notify. After a holding reply, the answer is that new comment; anything more before someone replies edits it.

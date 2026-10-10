@@ -100,8 +100,8 @@ A workspace is a set of GitHub owners whose work may mix, listed in `~/.mergewor
 When the user names a failure ("why didn't you…?"), or you find one:
 1. Say in one line why it happened.
 2. Fix the instance: the PR, the post, the code.
-3. Fix the rule in your own worktree of the mergeworthy repo (`git worktree add <work folder>/mergeworthy origin/<the branch the plugin is installed from>`), in the same turn. Edit the line that should have covered it, or delete a line that caused it; add a line only when none covers it. When the failure has a detectable trigger, prefer a mechanism (a gate, a lint check) to a sentence.
-4. Run `npm test` there, then commit and push to that branch.
+3. Fix the rule in your own worktree of the mergeworthy repo (`git fetch origin && git worktree add -b <fix-name> <work folder>/mergeworthy origin/<the branch the plugin is installed from>`), in the same turn. Edit the line that should have covered it, or delete a line that caused it; add a line only when none covers it. When the failure has a detectable trigger, prefer a mechanism (a gate, a lint check) to a sentence.
+4. Run `npm test` there, then commit and `git push origin HEAD:<the branch the plugin is installed from>`.
 5. Update the installed plugin (`claude plugin update mergeworthy`, or a new session for `--plugin-dir`) and show the change in the installed skill file.
 
 Done: the instance is fixed, the rule change is pushed, and the installed copy contains it.
