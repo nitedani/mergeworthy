@@ -8,12 +8,12 @@ const DRAFT = withHeader('Fixed in the latest commit, with a test.')
 const REASON = 'the maintainer asked for this exact text'
 const OURS = { user: { login: 'bot' }, body: withHeader('earlier') }
 
-function setup({ comments = [], text = DRAFT } = {}) {
+function setup({ comments = [], text = DRAFT, commentsFail = false } = {}) {
   const home = tempDir()
   const draft = join(home, 'reply.md')
   writeFileSync(draft, text)
   writeFileSync(join(home, 'gh-user.json'), JSON.stringify({ id: 1, login: 'bot' }))
-  const gh = fakeGh([['issues/5/comments', JSON.stringify([comments])]])
+  const gh = fakeGh([['issues/5/comments', commentsFail ? '' : JSON.stringify([comments]), commentsFail ? 1 : 0]])
   const mw = (...args) => run('bin/mw', args, { env: { ...gh.env, MW_HOME: home } })
   return {
     draft,
@@ -105,6 +105,17 @@ test('mw post stops a third comment in a row', () => {
   const r = post()
   assert.equal(r.code, 3)
   assert.match(r.stderr, /third comment in a row on this thread, after two of yours\. Edit your last comment instead/)
+})
+
+test('mw post stops when it cannot read the thread, and the bypass posts anyway', () => {
+  const { draft, mw, post, posts } = setup({ commentsFail: true })
+  mw('verdict', draft, 'CLEAN', '--by', 'codex')
+  const r = post()
+  assert.equal(r.code, 3)
+  assert.match(r.stderr, /its thread check\): couldn't read the thread's comments, so mw post can't tell whether this would be your third comment in a row \(gh api repos\/o\/r\/issues\/5\/comments --paginate failed/)
+  assert.deepEqual(posts(), [])
+  assert.equal(post(['--I_UNDERSTAND_IMPLICATIONS_AND_BYPASS_GATE', REASON]).code, 0)
+  assert.equal(posts().length, 1)
 })
 
 test('mw post stops a third comment in a row posted through gh api', () => {
