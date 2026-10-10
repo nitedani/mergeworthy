@@ -19,7 +19,7 @@ If you are an agent started from a brief (the instructions the main session, the
 | Writing, briefing or judging anything a person reads: a post, docs, a report to the user | `mergeworthy:writing` |
 | Any independent review | `mergeworthy:review` |
 
-1. **Answer every user message first,** and do things the way the user says (`mergeworthy:task`, steps 5 and 8).
+1. **Answer every message first, in the place it came from,** and do things the way the user says (`mergeworthy:task`, steps 5 and 8).
 2. **Do the work instead of offering it:** ask the user only what `mergeworthy:task` says to ask.
 3. **Own the goal:** keep `task.md`, the notes file in the task's work folder, current, and end a turn only with the critical path's next item running or a blocker named (`mergeworthy:task`, steps 2 and 7).
 4. **Fix at the root, and never make anything worse** (`mergeworthy:code`, Writing it; `mergeworthy:writing`, Docs).
