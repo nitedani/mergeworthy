@@ -248,7 +248,13 @@ def _codex_trace(f):
     if not f.endswith(('.log', '.out')) or os.path.getsize(os.path.join(_dir, f)) > 2_000_000: return False
     return re.search(r'^model: gpt', open(os.path.join(_dir, f), errors='replace').read(), re.M) is not None
 if has_badge and kind != 'tracker' and '*' not in _m.group(0):
-    findings.append("badge without its model line: after the icons, on the same line, add *<model version> wrote this; …* in italics (writing, the badge)")
+    findings.append("badge without its model line: after the icons, on the same line, add *<model version> (<effort> effort) wrote this; …* in italics (writing, the badge)")
+# each model in the model line carries its reasoning effort: "Opus 5.5 (high effort)", "GPT-6.1-Sol (Codex, high effort)"
+if has_badge and kind != 'tracker' and '*' in _m.group(0):
+    _line = re.sub(r'\]\([^)]*\)', ']', _m.group(0).split('*', 1)[1])  # link targets aren't model names
+    _bare = [m.group(1) for m in re.finditer(r'\b([A-Z][A-Za-z]*[ -]?\d+(?:\.\d+)*(?:-[A-Za-z0-9]+)*)(?![\w-]|\.\w)(?!\s*\([^()]*\b(?:low|medium|high|xhigh|max|ultra) effort\b[^()]*\))', _line)]
+    if _bare or not re.search(r'\b(?:low|medium|high|xhigh|max|ultra) effort\b', _line):
+        findings.append(f"model line without effort{' for ' + ', '.join(_bare) if _bare else ''}: add each model's configured reasoning effort right after its name, \"Opus 5.5 (high effort)\" or inside its parenthesis, \"GPT-6.1-Sol (Codex, high effort)\" (writing, the badge)")
 if has_badge and 'alt="Codex"' not in _m.group(0) and any(_codex_trace(f) for f in os.listdir(_dir) if os.path.isfile(os.path.join(_dir, f))):
     findings.append('badge without Codex: Codex worked on this post (a codex run left its log next to the draft), so add <img src="https://github.com/openai.png" width="20" height="20" alt="Codex">')
 # the process stays in the artifact root: the reader gets results, not how the agent produced them
