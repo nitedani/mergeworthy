@@ -61,8 +61,15 @@ const CASES = {
       'gh api -X PATCH repos/o/r/issues/comments/1 -f body=x',
       'gh api --method=POST repos/o/r/pulls/5/reviews --input review.json',
       `gh api graphql -f query='mutation { addComment(input: {subjectId: "x", body: "y"}) { clientMutationId } }'`,
+      'gh api repos/o/r/issues/5/comments -F body=@reply.md',
+      'gh pr close 5 --comment "Replaced by #6"',
+      'gh issue close 5 -c "Fixed in #6"',
     ],
     silent: [
+      'gh pr close 5',
+      'gh api repos/o/r/issues/5/labels -f labels[]=bug',
+      'gh api repos/o/r/pulls/5/requested_reviewers -f reviewers[]=x',
+      'gh api repos/o/r/issues/5 -X PATCH -f state=closed',
       'gh api repos/o/r/issues/comments/1/reactions -f content=eyes',
       'gh pr edit 5 --add-label bug --add-reviewer x',
       'gh api repos/o/r/issues/5/comments',
@@ -143,6 +150,18 @@ test('a warn message ends with the exact bypass line', () => {
 test('a block message says there is no bypass', () => {
   const [finding] = bashGates({ command: 'pkill x', cwd: '/work' }, fakeCtx())
   assert.match(finding.message, /^mergeworthy blocked this command \(its kill-by-pattern check\), and this check has no bypass: .*ps -o pid,ppid,cmd -p <pid>/)
+})
+
+test('a post message names the API path of a gh api call and the flag that reads the draft', () => {
+  const [finding] = bashGates({ command: 'gh api -X PATCH repos/o/r/issues/comments/1 -f body=x', cwd: '/work' }, fakeCtx())
+  assert.match(finding.message, /^mergeworthy stopped this command \(its post check\): `gh api repos\/o\/r\/issues\/comments\/1` posts to GitHub directly/)
+  assert.match(finding.message, /`mw post <draft> -- <this gh command with -F body=@<draft>>`/)
+})
+
+test('a post message for a closing comment says to post it first, then close', () => {
+  const [finding] = bashGates({ command: 'gh pr close 5 --comment "Replaced by #6"', cwd: '/work' }, fakeCtx())
+  assert.match(finding.message, /`gh pr close` posts to GitHub directly/)
+  assert.match(finding.message, /`mw post <draft> -- gh pr comment 5 --body-file <draft>`, which runs both checks first\. Then close without --comment\./)
 })
 
 test('ready lists the steps recorded on an older head, with lines changed since', () => {
