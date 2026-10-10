@@ -82,7 +82,7 @@ Run every PR through bug verification, code review and a fresh read on the final
     - "The rest LGTM" agrees to every unquestioned proposal in the comment it answers: record those proposals as agreed and start.
     - Answer a question before treating it as a decision (`github-threads` 1.5 step 2).
 10. **Names match behavior; no invented options.** Every new public name gets a one-line "name → what it does in every case" check. A new option needs a named user scenario that can't be served without it.
-11. **No regressions.** Anything that works on `main` and fails on the head is a regression, experimental features included: fix it, never list it as a limitation.
+11. **No regressions, no artificial limits.** Anything that works on `main` and fails on the head is a regression, experimental features included: fix it, never list it as a limitation. So is a cap our own design creates (a retry budget, one lock every writer shares) that makes realistic use fail: redesign so it succeeds. A real limit is imposed from outside, and its note names the source.
     - So is every row of your own comparison where the head is worse than the run-to-run spread.
     - **Streams, transports and hot paths** are checked for health, not only output:
       - cancellation travels both ways: a cancelling consumer or aborting client stops the source; a failing source fails the consumer, never hangs it;

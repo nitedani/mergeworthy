@@ -229,6 +229,11 @@ SECRET = re.compile(r'ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|\bsk-[A-
                     re.I | re.M)
 for m in SECRET.finditer(text):
     findings.append(f"secret-shaped text {m.group(0)[:12]!r}...: write <REDACTED> in its place")
+# a limitation names what imposes it: one our own design creates is a defect (core 1.1.11)
+for row in re.findall(r'^\|([^|\n]*)\|\s*limitation\s*\|[^\n]*$', text, flags=re.M | re.I):
+    whole = re.search(r'^\|' + re.escape(row) + r'\|[^\n]*$', text, flags=re.M).group(0)
+    if not re.search(r'imposed by', whole, re.I):
+        findings.append(f"limitation {row.strip()[:50]!r} names nothing that imposes it: say 'imposed by <runtime, provider or protocol>', or fix it, since a limit our own design creates is a defect (core 1.1.11)")
 # a follow-up is opened before the post, never parked as advice (writing 1.11 notes, 1.1.7)
 for row in re.findall(r'^\|(?:[^|\n]*\|){3}([^|\n]*)\|\s*$', text, flags=re.M):
     if re.search(r'\b(recommend|follow-up|follow up|later)\b', row, re.I):

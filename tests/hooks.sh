@@ -288,6 +288,10 @@ MERGEWORTHY_SRC="$S" bash "$R/bin/gate-pass" "$T/hs.md" "$T/hs.review" --kind tr
 check "gate-pass of a tracker post doesn't mark them shown" "$(git -C "$S" rev-parse --short=7 HEAD~2)" "$(cat "$HOME/.mergeworthy/harness-shown/acme")"
 
 check "a badge followed on its line by an italic model line passes, model names included" 0 "$(printf '%s\n\nFixed the bug.\n' '<img src="https://github.com/claude.png" width="20" height="20" alt="Claude"><img src="https://github.com/openai.png" width="20" height="20" alt="Codex"> *Opus 5.5 (medium effort) wrote this; a second Opus 5.5 (high effort) reviewed it; GPT-6.1-Sol (Codex, high effort) reviewed it.*' > "$T/ml.md"; MERGEWORTHY_BADGE=on python3 "$R/bin/post-lint" "$T/ml.md" --kind reply --parent none >/dev/null 2>&1; echo $?)"
+# ---------- post-lint: a limitation names what imposes it (core 1.1.11) ----------
+llint() { printf '| Note | Kind | Blocks merge | Next |\n|---|---|---|---|\n| %s | limitation | no | nothing |\n' "$1" > "$T/lim.md"; python3 "$R/bin/post-lint" "$T/lim.md" --kind pr --parent none 2>&1 | grep -c 'names nothing that imposes it'; }
+check "a limitation our own design could create is flagged" 1 "$(llint 'Joins past 100 at once fail with a contention error')"
+check "a limitation imposed by an outside system passes" 0 "$(llint 'Receipts omit receivers, imposed by Redis Cluster: PUBLISH counts one node')"
 # ---------- post-lint: each list item is its own sentence ----------
 B=$'<img src="https://github.com/claude.png" width="20" height="20" alt="Claude">\n'
 lint() { python3 "$R/bin/post-lint" "$1" --kind issue --parent none 2>&1 | grep -c 'word sentence'; }

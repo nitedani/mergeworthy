@@ -35,7 +35,7 @@ Each failure below happened, most more than once. When a rule fails or the user 
 | "Separate PR" meaning "later"; a 5-minute item deferred twice; a promised PR never opened. | 1.1.7, 1.5 `PROMISED`, `gate-pass` |
 | Parts of the task and of an accepted design silently dropped. | 1.1.8 |
 | Throughput losses called trade-offs; a `read(n)` that grew the buffer until 20 GB stalled passed 200 MB probes. | 1.1.11 |
-| A regression for users of an existing feature called "limitation: experimental". | 1.1.11 |
+| A regression for users of an existing feature called "limitation: experimental"; Room joins past ~100 at once rejected by a retry cap and called a limitation. | 1.1.11, `post-lint` |
 | UI bugs found by the user; UI "verified" by computed styles and scripted events. | `evidence` (reproduce it as a person would) |
 | A transport fix opened with Node-script evidence only. | `evidence` (reproduce it as a person would) |
 | A release unlike the maintainer's past releases. | 1.3 precedent |
