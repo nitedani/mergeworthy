@@ -16,6 +16,8 @@ const CASES = {
       `${BADGE} *Claude wrote this.*\n`,
       `${BADGE} *Opus 5.5 ${'word '.repeat(30)}*\n`,
       `${BADGE} *Opus 5.5 fixed it in a1b2c3d.*\n`,
+      `<img src="https://github.com/openai.png" width="20"> *Opus 5.5 wrote this.*\n`,
+      `${BADGE} *GPT-5 wrote this.*\n`,
     ],
     silent: [
       withHeader('Fixed.'),
