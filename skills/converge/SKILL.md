@@ -11,12 +11,12 @@ Every head runs these, scaled to the diff, in the PR's worktree. Each step ends 
 
 0. **Start from the current base:** `git fetch origin && git merge origin/<base>`, resolve conflicts, push.
    Done: the branch contains `origin/<base>`.
-1. **Gates:** `pull-request` step 6's commands on the head, run by a Haiku agent if they're long. `mw step gates <gates log>`.
+1. **Gates:** `pull-request` step 6's commands on the head, run by a Haiku agent if they're long. A known base bug a gate shows is recorded as the base's, with the run showing the base fails it too. `mw step gates <gates log>`.
    Done: every gate exits 0, recorded.
-2. **Verify:** an Opus agent runs the verifier brief (below) on each slice. A slice is what one agent can hold; under ~300 lines it's one slice. You, or an implementer, fix each reproduced bug at its root, from its failing repro. The same verifier re-checks the fix, until a pass finds nothing. `mw step verify <its report>`.
+2. **Verify:** an Opus agent runs the verifier brief (below) on each slice. A slice is what one agent can hold; under ~300 lines it's one slice. For stream code, the edges you fill in add a stream read twice without a copy and a slow consumer of over 1 GiB. You, or an implementer, fix each reproduced bug at its root, from its failing repro. The same verifier re-checks the fix, until a pass finds nothing. `mw step verify <its report>`.
    Done: the last pass on every slice ends `NO BUGS`, recorded.
 3. **Quality:** an Opus rater runs the guardian brief (below) with the refactor prompt (`refactor`), read-only.
-   - You judge each finding: is it likely, what does it cost, would the maintainer write it?
+   - You judge each finding: is it likely, what does it cost, would the maintainer write it? Wrong data returned silently is never mild.
    - An implementer (the implementer brief, below), or you for a few lines, lands the accepted ones commit by commit, with the quick gates after each.
    - The same rater re-rates old ⇒ new until nothing worth changing is left.
    - The verifier then re-checks the refactor commits against the tree before them.
@@ -34,7 +34,8 @@ Every head runs these, scaled to the diff, in the PR's worktree. Each step ends 
 - **No phantom fixes.** A fix needs a documented scenario that reaches it, traced on both ends. It never changes a deliberate behavior, and it goes at the call site rather than into a changed default others depend on.
 - **No removal without a probe.** Before removing a guard, dedupe, retry or memo, probe the symptom it prevents in its owning lane; a failure keeps it.
 - **Owner code** (a commit by a human, or without the agent trailer) is never removed or rewritten on an agent's reading alone. Such a finding goes to the owner with a recommendation.
-- **Docs are the contract.** When code and docs disagree, the code is the suspect.
+- **Docs are the contract.** When code and docs disagree, the code is the suspect. Each docs sentence the diff adds is a claim the verifier reproduces.
+- **Every feature has a user.** Before ready, list each feature with non-trivial code next to the link that needs it today, and remove the rest.
 - **Behavior and public surfaces** in someone else's repo are the maintainer's call: ask before changing them, and keep refactors behavior-preserving. In the user's own repo, changes the task needs are yours to decide.
 
 ## The verifier brief

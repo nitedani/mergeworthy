@@ -11,7 +11,7 @@ A maintainer's comment is handled like the user typing in this chat: first, with
 
 The live loop, from your first post until every thread you're in is merged or closed:
 
-1. **Watch every thread you're in.** Run `mw watch <url> …` with `run_in_background` and the longest timeout. It exits when events arrive (comments, reviews, inline comments, a 👍 or 👎 on your comment, someone else's push to your PR, red CI, merge, close, conflict) and prints the command to re-arm it. The session that handles `/agent` comments for its workspace adds `--commands --workspace <name>`: a key of `~/.mergeworthy/workspaces.json`, or a single GitHub owner when the file doesn't list it.
+1. **Watch every thread you're in.** Run `mw watch <url> …` with `run_in_background` and the longest timeout. It exits when events arrive (comments, reviews, inline comments, a 👍 or 👎 on your comment, someone else's push to your PR, red CI, merge, close, conflict) and prints the command to re-arm it. After a resume or a compaction, re-arm it before anything else and handle what it reports. The session that handles `/agent` comments for its workspace adds `--commands --workspace <name>`: a key of `~/.mergeworthy/workspaces.json`, or a single GitHub owner when the file doesn't list it.
    Done: a watch is running with every open thread you're in.
 2. **On each event, decide whether it's yours,** and re-arm the watch in the same step.
    - **On a thread you opened:** every human comment and every review bot's inline finding.
@@ -21,37 +21,38 @@ The live loop, from your first post until every thread you're in is merged or cl
 
    React 👀 to each comment that's yours when you start on it: `gh api repos/<o>/<r>/issues/comments/<id>/reactions -f content=eyes`, or `pulls/comments/<id>/reactions` for an inline comment. Reviews can't take reactions.
    Done: every event is handled, or listed in `task.md` as not yours with why, and the watch is re-armed.
-3. **Answer by kind** (How each comment is answered, below). If the answer needs more than about an hour of work, post a holding reply first that carries what you found so far and when the answer comes.
+3. **Answer by kind** (How each comment is answered, below). If the answer needs more than about an hour of work, post a holding reply first that carries what you found so far and when the answer comes. Work you can finish in minutes is done before replying, so the reply says "Done in <sha>"; a promise you post stays in `task.md` until its commit or link delivers it. After a burst of comments, check that no comment is the last word without a change, an answer or a reaction.
    Done: the answer is posted (`posting`) as a new comment, because edits don't notify. After a holding reply, the answer is that new comment; anything more before someone replies edits it.
-4. **Record it in the same step.** A decision goes into `task.md` with its permalink; a change to the agreed or open list goes into the umbrella issue's body.
+4. **Record it in the same step.** A decision goes into `task.md` with its permalink; a change to the agreed or open list goes into the umbrella's body. When a decision replaces a design, update every surface that still describes the old one (code, tests, types, docs, open PR bodies) in the same step.
    Done: `task.md` and the umbrella body are true of the thread.
-5. **Red CI on your PR is the maintainer's first question.** Fix it. When the red isn't the PR's doing (a secret forks don't get, a flaky job), say so on the PR at once, with the evidence.
+5. **Red CI on your PR is the maintainer's first question.** Fix it. When the red isn't the PR's doing (a secret forks don't get, a flaky job), say so on the PR at once, with the evidence. Rerunning an upstream repo's job needs admin, and a first-time contributor's fork PR waits for a maintainer to approve its workflows.
    Done: CI is green, or the PR carries a comment explaining the red.
-6. **Drive the goal at every wakeup.** Name the critical path's next item and move it. A dependency that lands (a merge or release you wait on) is handled like a maintainer comment: apply what waited on it and post the progress on the dependent PR.
+6. **Drive the goal at every wakeup.** Name the critical path's next item and move it, and check the releases and unwatched PRs you wait on. A dependency that lands (a merge or release you wait on) is handled like a maintainer comment: apply what waited on it and post the progress on the dependent PR.
    Done: the wakeup moved an item, not only confirmed that nothing waits on you.
 
 ## How each comment is answered
 
 - **An instruction** ("Let's…", "Remove…") or a suggestion block: do it, then reply "Done in <sha>". Once you've said yes to a request ("Yes, I'm splitting it"), do exactly that; if the work leads elsewhere, say so in the thread before you deviate.
 - **A critical question about your own work** ("Is it all DRY?", "Is this tested?", "Why this comment?") is a request: fix it, push, and reply with what was missing and the commit. Ask first only when the fix would change behavior or scope.
-- **A question about a decision** ("Why X?", "How about Y?", "Overkill?") gets an answer, not a code change that reverses the decision before they answer. "Why X?" gets the reason, and if X now looks wrong, say so with your recommendation. "How about Y?" starts with yes or no and the one real obstacle. When their idea is simpler than yours, recommend theirs.
+- **A question about a decision** ("Why X?", "How about Y?", "Overkill?") gets an answer, not a code change that reverses the decision before they answer, and no converge finding lands on the lines in question until then. Never agree with a premise you haven't measured. "Why X?" gets the reason, and if X now looks wrong, say so with your recommendation. "How about Y?" starts with yes or no and the one real obstacle. When their idea is simpler than yours, recommend theirs.
 - **A design question:** think before replying.
   1. Trace the actual flow in code, every path to the same thing. Done: the gap is written in `task.md` with its `file:line`.
   2. Have one fresh Opus agent argue both sides from at least three frames (the user who hits it, the maintainer who keeps it, the smallest diff, no new code, the design from scratch), then score them. Done: its report is in the work folder.
-  3. Decide. Before answering "keep", build the simpler version and name what breaks in it; if nothing breaks, recommend the simpler one. Done: your position and its evidence are in `task.md`.
+  3. Decide. Before answering "keep", build the simpler version and name what breaks in it; if nothing breaks, recommend the simpler one. When the answer shows the defect is a class (a default, a parser, a shared helper), recommend the class-wide fix with its evidence, not only the instance. Done: your position and its evidence are in `task.md`.
 
   "First principles" or "perfect world" means the ideal design; leave out migration, release and option-visibility costs until asked. A thread that drifted through three or more rounds gets the finality pass first (`finality`).
-- **A short acknowledgement** ("OK", 👍) answers your last open proposal or question in that thread, or your latest one just before it in the same PR. That proposal is now an instruction.
-- **A 👍 or 👎 on your comment** is feedback on that comment. For a 👎, find out why and fix the rule behind it (`task`, When a rule fails).
+- **A short acknowledgement** ("OK", 👍) answers your last open proposal or question in that thread, or your latest one just before it in the same PR. That proposal is now an instruction. "The rest LGTM" agrees to every proposal in that comment it doesn't question: record each one and start.
+- **A 👍 on a proposal** approves it, as an instruction. Any other 👍 or 👎 on your comment is feedback on that comment. For a 👎, find out why and fix the rule behind it (`task`, When a rule fails).
 - **Commits a maintainer pushed to your PR** (a `PUSH` event): fetch, fast-forward, and run the gates. Then review each commit in one table, `| Commit | What it does, and the idea behind it | Rating |`: a rating below 10 carries its reason, and findings come with the exact fix. Don't push while they're committing.
 - **"I don't understand this"** on a docs or comment line reports a bug in that text. Push clearer wording and reply "Done in <sha>: <new sentence>".
+- **An inline comment:** before acting on it, check that its reason fits the line it's anchored to; if it fits another line better, ask which.
 - **A bot's finding** is a reviewer's finding: run its case first, then reply with the fix's commit or the output that declines it.
 
 ## The umbrella issue
 
-Any goal that needs two or more PRs or issues gets one umbrella issue, `Tracking: <goal>`. Use the issue the user names, or turn the program's own issue into it; open a new one only when neither exists.
+Any goal that needs two or more PRs or issues gets one umbrella issue, `Tracking: <goal>`. Use the issue the user names, or turn the program's own issue into it; open a new one only when neither exists. When the goal's design thread is a maintainer's issue, the umbrella is your own `# 🚧 WIP` comment in that thread, edited in place, never a new issue.
 
-1. **Body:** `# 🚧 WIP`, then *This issue is edited upon updates.*, then:
+1. **Body:** `# 🚧 WIP`, then *This issue is edited upon updates.* (*comment* for a WIP comment), then:
    - `## TLDR`: two or three sentences, the goal and where it stands;
    - `## Scope`: what's in and what's out;
    - `## State`: three or four high-level bullets;
@@ -61,14 +62,14 @@ Any goal that needs two or more PRs or issues gets one umbrella issue, `Tracking
    - `## Next steps`: your recommended order.
 
    Done: every line has a source link.
-2. **Edit it in place** in the same step as every event: a PR merges, a decision lands, an item opens. A new decision strikes through, with its link, the older entries it replaces.
+2. **Edit it in place** in the same step as every event: a PR merges, a decision lands, an item opens. A new decision strikes through, with its link, the older entries it replaces. A line about the future names the event that removes it.
    Done: the body is true of every linked thread.
 3. **Replies never repeat its lists.** When one changed, say so in one line with a link ("I updated the [tracking issue](link)").
    Done: no reply restates the agreed or open list.
 
 ## Waiting and nudging
 
-- **No @-mention** unless you're blocked on that person now, and never while they're mid-review or after they said they're busy. Then it's one mention with the decisions you need, each with your recommendation (`mw lint` stops other mentions).
+- **Nudge once per wait,** after about 3 hours of silence on your last comment, and only when the wait blocks your next step now; otherwise write in `task.md` what lifts the wait. Never @-mention someone mid-review or after they said they're busy. The nudge is one mention with the decisions you need, each with your recommendation (`mw lint` stops other mentions).
 - **No release requests** unless the downstream work is ready to use the release now and the user agreed.
 - **Open quick-win PRs without asking:** a small fix for a bug that already breaks today and is independent of the open discussion.
 - **Harness changes** are shown to a maintainer only when they ask, in one place.

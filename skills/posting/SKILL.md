@@ -24,17 +24,19 @@ Everything that reaches GitHub goes through these steps: comments, replies, inli
 
 ## Forms
 
-- **The header.** A post's first line is the icon of every agent that worked on it, reviewers too: Claude `<img src="https://github.com/claude.png" width="20" height="20" alt="Claude">`, Codex `<img src="https://github.com/openai.png" width="20" height="20" alt="Codex">`. On the same line, in italics, one short sentence says which model did what, with its version (*<model and version> wrote this; <model and version> reviewed it.*), and ends with a link to the umbrella issue of the goal the post belongs to, when there is one. Then a line break, no label. Only the umbrella issue's own body goes without.
+- **The header.** A post's first line is the icon of every agent that worked on it, reviewers too: Claude `<img src="https://github.com/claude.png" width="20" height="20" alt="Claude">`, Codex `<img src="https://github.com/openai.png" width="20" height="20" alt="Codex">`. On the same line, in italics, one short sentence says which model did what, with its version (*<model and version> wrote this; <model and version> reviewed it.*), and ends with a link to the umbrella issue or WIP comment of the goal the post belongs to, when there is one. Then a line break, no label. Only the umbrella's own body goes without. When the header form changes, edit every open PR body you own to it.
 - **A PR body:**
   - It is written to be scanned. The first paragraph says what was wrong, in a user's words, and what this PR changes; status (draft, dependencies) comes after.
   - Evidence comes in a skimmable shape: a before/after table, a permalink to the line at fault, screenshots with one line each on what to look at.
   - A feature explains how it works with a code sample.
-  - A note for the maintainer goes in one table, `| Note | Kind | Blocks merge | Next |`.
+  - A note for the maintainer goes in one table, `| Note | Kind | Blocks merge | Next |`. Every comment, guard or workaround the diff deletes gets a row there with the evidence that it's obsolete; otherwise it stays.
+  - `Closes #N` only when the change fixes what the issue reported; otherwise `Refs #N`, with your findings commented on the issue.
   - Say a dependent project needs this PR only if it is still broken without it. When a revert wouldn't undo the merge, that caveat ends the prose.
   - One collapsed Verification block comes last (`pull-request`, step 10).
 - **An issue body:** one finding, without how you came across it. The title is the symptom as a user meets it. `### How to reproduce` with numbered steps, then the evidence; `file:line` last, for whoever fixes it.
 - **An inline review comment:** only where a reviewer must judge (a call that could have gone the other way, something the diff can't show, a risk you hand over), at most two sentences. No comment at all is the normal outcome for a small fix.
-- **An image or video:** one line on what to look at and what it proves, and the setup (page, filter) when the default view doesn't show it.
+- **An image or video:** one line on what to look at and what it proves, and the setup (page, filter) when the default view doesn't show it. A PR's images open on the defect, close on the fix, and between them show what the change could have broken and didn't.
+- **A review of someone else's PR** posts its findings and never approves unless the user asked.
 
 ## Opening an issue
 

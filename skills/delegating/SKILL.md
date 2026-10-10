@@ -13,14 +13,14 @@ You decide and brief; an agent does the work you hand it. Do small edits yoursel
    Done: `task.md` names the agent's role and its model.
 2. **Write the brief** in five parts:
    - **Goal:** one observable outcome.
-   - **Facts:** only what you verified, each with its source.
+   - **Facts:** only what you verified, each with its source, and code at pinned SHAs, never a moving branch.
    - **To check:** your guesses, as questions. Never your expected answer or an earlier agent's conclusion.
    - **Scope:** the paths and commands it may use, plus the machine's limits: ports it must not touch, servers only under `mw netns`, killing only the PIDs it started, in scripts it writes too, and no agents of its own.
-   - **Acceptance:** the commands or observations that define done, plus a final message of at most 15 lines (the result with `path:line` or command evidence, and a `not_checked` list), with the rest in a file.
+   - **Acceptance:** the commands or observations that define done, plus a final message of at most 15 lines (the result with `path:line` or command evidence, and a `not_checked` list), with the rest in a file. The agent ends its turn only with that message, never while its own install, test or server still runs.
 
-   A charter or prompt from a skill is pasted from the installed skill, never from a saved copy.
+   A charter or prompt from a skill is pasted from the installed skill, never from a saved copy. Keep model versions out of prompts, skills and briefs; only a post's header names them.
    Done: the brief has all five parts, the machine's limits included.
-3. **Check `mw load`,** then launch in the background. Never wait in the foreground: the agent's completion wakes you. One agent per job: a follow-up on the same work continues that agent (SendMessage in Claude Code, `t3_thread_send` with mode `queue` in T3 Code). In T3 Code, a review round is a new launch with its own title that carries the prior findings (`review`, step 4).
+3. **Check `mw load`,** then launch in the background. Never wait in the foreground: the agent's completion wakes you. One agent per job: an agent is alive until its task is terminal, so when its turn ended or its log went quiet, message it, and never start another on the same job. A follow-up on the same work continues that agent (SendMessage in Claude Code, `t3_thread_send` with mode `queue` in T3 Code). In T3 Code, a review round is a new launch with its own title that carries the prior findings (`review`, step 4).
    Done: the agent runs in the background, `mw load` showed room for it, and nothing waits on it in the foreground.
 4. **Check its first output early.** At 2 minutes, and at every wakeup, confirm it is making progress; five minutes with no output means investigate. A long job gets a time budget in its brief.
    Done: its first output exists, or you found out why not.

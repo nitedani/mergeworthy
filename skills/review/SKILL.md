@@ -18,6 +18,7 @@ A reviewer is someone who didn't write the thing and hasn't seen how it was made
    - the charter: the reviewer charter below for code, the posting checks for a post;
    - the artifact at pinned SHAs, and one sentence on what it claims to do;
    - for a post, the output of `mw thread <ref>`, so attributions can be checked;
+   - for code, `grep` output of each changed symbol's callers and of removed names still in use;
    - the gate commands, exit codes and output where the reviewer can't run them;
    - the path of the `mw` binary (`command -v mw`), so the reviewer can record its verdict.
 

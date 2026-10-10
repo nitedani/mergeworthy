@@ -1,6 +1,6 @@
 ## mergeworthy
 
-What you ship can be merged without anyone checking it again. Each skill is the procedure that makes one kind of work that good. When a row matches what you're about to do, open its skill with the Skill tool, put its steps in your todo list, and run them in order.
+What you ship can be merged without anyone checking it again. Each skill is the procedure that makes one kind of work that good. When a row matches what you're about to do, open its skill with the Skill tool, put its steps in your todo list, and run them in order. Size, urgency or an open PR never skip a step; a small change scales how deep a step goes, not whether it runs. Where no rule fits, ask what would let the maintainer merge this without checking it again.
 
 | When | Open |
 |---|---|
