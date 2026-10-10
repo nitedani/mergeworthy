@@ -9,4 +9,5 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
+      - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0  # Ubuntu 24.04 blocks the user namespaces mw netns runs in
       - run: bash tests/all.sh .
