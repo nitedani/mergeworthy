@@ -1,6 +1,6 @@
 ---
 name: code
-description: "The standard for code: what good code, tests, code comments and module designs look like. Read it before you write any of them; an agent gets its path in its brief; every checker of code uses it as its checklist. The house's ways, writing it, deep modules, the twelve lenses, mechanisms and who decides, edge cases and related cases, tests, comments, the self-check, and the refactor prompt."
+description: "The standard for code: what good code, tests, code comments and module designs look like. Read it before you write any of them; an agent gets its path in its brief; every checker of code uses it as its checklist. The repo's own ways, writing it, deep modules, the twelve lenses, mechanisms and who decides, edge cases and related cases, tests, comments, the self-check, and the refactor prompt."
 ---
 
 # Code
@@ -13,7 +13,7 @@ A lane, in this file, is one of the repo's test suites that runs the product in 
 
 ## Steps
 
-1. **Learn the house's ways first.** The repo's `AGENTS.md` / `CLAUDE.md`, your notes on the project in `~/.mergeworthy/projects/<owner>/<repo>.md`, and three files next to the change show how code is written there. In a PR, `mergeworthy:pull-request` step 4 writes these conventions into `task.md`. An agent gets them in its brief.
+1. **Learn the repo's own ways first.** The repo's `AGENTS.md` / `CLAUDE.md`, your notes on the project in `~/.mergeworthy/projects/<owner>/<repo>.md`, and three files next to the change show how code is written there. In a PR, `mergeworthy:pull-request` step 4 writes these conventions into `task.md`. An agent gets them in its brief.
    Done: you can name the conventions this code must follow: typing patterns, naming, JSDoc tags, test helpers, how many comments.
 2. **Write to the sections below:** Writing it, Deep modules, Mechanisms and who decides, Edges and related cases, Tests, and Comments. Read the lenses before you start too, because they are what the quality review will look for.
    Done: every section holds for the code as you wrote it.
@@ -31,6 +31,11 @@ A lane, in this file, is one of the repo's test suites that runs the product in 
 
 ## Deep modules
 
+A module (a function, a class, a package, a part of a system) is deep when a lot of behavior sits behind a small interface. The interface is everything a caller must know to use it: its types, the rules it relies on, the order of calls, how it fails, and its configuration.
+- **The deletion test:** imagine deleting the module. If the complexity disappears with it, the module only passed calls through. If the complexity comes back in every caller, the module earns its place.
+- **Test through the interface.** If a test has to reach past the interface, the module has the wrong shape. When you make a module deeper, test each of its dependencies according to what it is: code in the same process, a local stand-in for a service, your own remote service, or a true third-party service. Tests written against the new interface replace the old tests of the shallow parts.
+- **Add a seam (a point where one implementation can be swapped for another) only for variation that exists today,** or for a named dependency that is known to change. Never add one for a second user who might come one day.
+- **Take dependencies as arguments rather than creating them inside, and return results rather than causing side effects.**
 
 ## The lenses
 
@@ -76,7 +81,7 @@ The quality review in `mergeworthy:converge` step 3 looks at the code through ea
 - **No phantom fixes.** A phantom fix guards against a problem that no real usage can cause. Every mechanism you add (a guard, a retry, a fallback) needs a documented scenario that reaches it, traced from where the user starts to where the code fails. "It could break" is not a scenario. With no scenario, delete the mechanism. A fix never changes a behavior someone chose on purpose. It goes at the call site, not into a changed default that other code depends on.
 - **No removal without a probe.** A probe is a run that could fail. Before you remove a guard, a deduplication, a retry or a cache, try to make the symptom it prevents happen, in the lane that owns that code. If the symptom appears, keep it.
 - **Code the owner wrote** is never removed or rewritten because an agent read it that way. Code the owner wrote is a commit by a human, or a commit without the trailer line that the environment adds to an agent's commits. Send such a finding to the owner, with a recommendation. In the user's own repo, the user is the owner, so the finding goes to them and they decide.
-- **The docs are the contract.** When code and docs disagree, suspect the code. Each sentence of docs the diff adds is a claim the bug verifier reproduces.
+- **The docs are the contract.** When code and docs disagree, suspect the code. Each sentence of docs the diff adds is a claim that the bug hunt (`mergeworthy:converge`, step 2) reproduces.
 - **Every feature has a user.** Before the PR is ready, list each feature with non-trivial code, next to the link that shows someone needs it today. Remove the rest.
 - **Behavior and public API** in someone else's repo are for the maintainer to decide. Ask before changing them, and keep refactors from changing behavior. In the user's own repo, you decide the changes the task needs.
 - **Wrong data returned silently is never a minor finding.**
@@ -103,7 +108,7 @@ None by default. A comment is one literally true line about a constraint the cod
 
 Run it on your own diff before you call the code done or hand it back. It is the pass the quality review will make, so what it finds now, the review won't.
 1. Look at every file and function you changed through each lens above.
-2. Rate your diff with the refactor prompt below, as its rater would.
+2. Rate your diff with the refactor prompt below, as the rater in the quality review would.
 3. Check the diff against Mechanisms and who decides, Edges and related cases, and Tests: each mechanism you added has its scenario, each related case was tried, and each new test fails without the change.
 4. Ask yourself, as this repo's maintainer: would you merge this exactly as it is?
 
