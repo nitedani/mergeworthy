@@ -1,22 +1,22 @@
 ---
 name: refactor
-description: "The refactor pass on a diff (the pinnacle split + simplify prompt), and the standard code is written to from its first line."
+description: "The refactor pass on a diff: a prompt that rates how the code is split into files and functions and how it can be simplified, and the standard code is written to from its first line."
 ---
 
 # Refactor
 
-The prompt below is the bar every diff is written to from its first line, and rated against before it is ready. A rater who isn't the author runs it read-only; the author lands its findings; the same rater re-rates until nothing worth changing is left.
+The prompt below sets the bar every diff is written to from its first line, and the diff is rated against it before the PR is ready. A rater, an agent that isn't the author, runs it and only reads the code. The author commits fixes for its findings. The same rater then rates again, until nothing worth changing is left.
 
 ## Steps
 
-1. **Rate, read-only:** a rater who isn't the author runs the prompt below on the whole diff, at 100% coverage. Code outside the diff is context.
-   Done: its ratings and ✅ coverage lists are in the work folder.
-2. **Land the findings** commit by commit, refactor commits apart from behavior commits, the quick gates green after each. A red gate means fixing that commit, never a patch on top.
-   Done: one commit per finding or class, and a reason for each one skipped.
-3. **Re-rate:** the same rater re-rates old ⇒ new with the commits. A pass that changed nothing says so, and why.
-   Done: the re-rating lists every row old ⇒ new and says nothing worth changing is left.
-4. **Keep it fresh:** once net additions plus deletions since the last full rating exceed ~80 lines, including tests and lockfiles, re-run it on the whole diff before the next "ready", under a new pass name.
-   Done: the latest full rating is less than ~80 changed lines old.
+1. **Rate, without changing code:** a rater who isn't the author runs the prompt below on the whole diff, covering every file and function in it. Code outside the diff is context.
+   Done: its ratings and its ✅ coverage lists are in the work folder.
+2. **Commit fixes for the findings,** one at a time. Keep refactor commits separate from commits that change behavior. Run the quick checks (lint, type check, unit tests) after each commit. If a check fails, fix that commit, never with a patch on top.
+   Done: one commit per finding, or per class of findings (all instances of one kind), and a reason for each finding skipped.
+3. **Rate again:** the same rater rates every row again, showing old rating ⇒ new rating, with the commits. A pass that changed nothing says so, and why.
+   Done: the new ratings list every row old ⇒ new, and say nothing worth changing is left.
+4. **Keep it current:** once the lines added plus the lines deleted since the last full rating exceed about 80, tests and lockfiles included, run it again on the whole diff before the next "ready". Give that run a new name in the work folder, so it doesn't overwrite the last one.
+   Done: the latest full rating is less than about 80 changed lines old.
 
 ## The prompt
 
