@@ -6,6 +6,7 @@ import { BADGE, fakeGh, run, tempDir } from './helpers.mjs'
 
 const DRAFT = `${BADGE}\n\nFixed in the latest commit, with a test.\n`
 const REASON = 'the maintainer asked for this exact text'
+const OURS = { user: { login: 'bot' }, body: `${BADGE}\n\nearlier` }
 
 function setup({ comments = [], text = DRAFT } = {}) {
   const home = tempDir()
@@ -92,12 +93,19 @@ test('mw post stops on a lint error', () => {
 })
 
 test('mw post stops a third comment in a row', () => {
-  const ours = { user: { login: 'bot' }, body: `${BADGE}\n\nearlier` }
-  const { draft, mw, post } = setup({ comments: [{ user: { login: 'carol' }, body: 'q' }, ours, ours] })
+  const { draft, mw, post } = setup({ comments: [{ user: { login: 'carol' }, body: 'q' }, OURS, OURS] })
   mw('verdict', draft, 'CLEAN', '--by', 'codex')
   const r = post()
   assert.equal(r.code, 3)
   assert.match(r.stderr, /third comment in a row; edit your last one instead/)
+})
+
+test('mw post stops a third comment in a row posted through gh api', () => {
+  const { draft, mw, post } = setup({ comments: [OURS, OURS] })
+  mw('verdict', draft, 'CLEAN', '--by', 'codex')
+  const r = post([], ['api', 'repos/o/r/issues/5/comments', '-F', `body=@${draft}`])
+  assert.equal(r.code, 3)
+  assert.match(r.stderr, /third comment in a row/)
 })
 
 test('mw post infers the lint kind from the gh command, and --kind overrides it', () => {
