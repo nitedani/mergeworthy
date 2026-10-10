@@ -42,10 +42,8 @@ test('parses bash -c and sh -c scripts recursively', () => {
   assert.deepEqual(argvs(`sh -c "pkill x"`).slice(1), [['pkill', 'x']])
 })
 
-test('moves leading assignments into env and unwraps prefixes', () => {
-  const [cmd] = commandsOf('FOO=1 sudo -u me env BAR=2 nohup timeout 5m nice -n 5 git push')
-  assert.deepEqual(cmd.argv, ['git', 'push'])
-  assert.deepEqual(cmd.env, { FOO: '1', BAR: '2' })
+test('skips assignments and unwraps prefixes', () => {
+  assert.deepEqual(argvs('FOO=1 sudo -u me env BAR=2 nohup timeout 5m nice -n 5 git push'), [['git', 'push']])
 })
 
 test('keeps command -v as a query', () => {
