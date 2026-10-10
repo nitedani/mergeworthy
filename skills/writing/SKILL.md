@@ -1,6 +1,6 @@
 ---
 name: writing
-description: "Every word a person reads, and only here: GitHub comments, replies, design answers, PR and issue bodies, code comments, docs pages, reports to the user. The voice, how a colleague writes, evidence, design threads, length, the forms."
+description: "Every word a person reads: GitHub posts, design answers, PR and issue bodies, docs pages, code comments, reports to the user. The voice, how a colleague writes, evidence for claims, design threads, length."
 ---
 
 # Writing
@@ -11,7 +11,7 @@ Every post reads as if the account's owner wrote it: a colleague who cares about
 
 For every GitHub post and docs page. Reports to the user and code comments follow their own sections below.
 
-1. **Read what it builds on:** the whole thread, the threads it links, your own earlier replies, the evidence (`github`, Posting step 1).
+1. **Read what it builds on:** the whole thread, the threads it links, your own earlier replies, the evidence (`posting`, step 1).
    Done: the draft's notes list every open question and every decision already made, each with its permalink.
 2. **Say it across the desk first.** What did you find, what do you think, what will you do, what do you need from them? Write that down in two or three sentences: the verdict, its one reason, the next step.
    Done: those sentences open the draft file; everything after them must earn its place.
@@ -131,20 +131,6 @@ Length follows the kind of post and what it answers; there is no cap.
 - **Past about 200 words,** the reviewer asks what it's for (several quoted questions, code, a walkthrough). That's a question, not a cut.
 
 **Density, not length, is what confuses:** a clipped clause whose referent the reader must guess ("which `+middleware` must run before your routes" draws "what do you mean with 'your routes'?"). Every sentence must make sense read alone by a newcomer, with every term named where it appears.
-
-## Forms
-
-- **The badge.** A post starts with the icon of every agent that worked on it, reviewers too, then a line break, no label: Claude `<img src="https://github.com/claude.png" width="20" height="20" alt="Claude">`, Codex `<img src="https://github.com/openai.png" width="20" height="20" alt="Codex">`. Only the umbrella issue's body goes without.
-- **A PR body:**
-  - It is written to be scanned. The first paragraph says what was wrong, in a user's words, and what this PR changes; status (draft, dependencies) comes after.
-  - Evidence comes in a skimmable shape: a before/after table, a permalink to the line at fault, screenshots with one line each on what to look at.
-  - A feature explains how it works with a code sample.
-  - A note for the maintainer goes in one table, `| Note | Kind | Blocks merge | Next |`.
-  - Say a dependent project needs this PR only if it is still broken without it. When a revert wouldn't undo the merge, that caveat ends the prose.
-  - One collapsed Verification block comes last (`pull-request`, step 10).
-- **An issue body:** one finding, without how you came across it. The title is the symptom as a user meets it. `### How to reproduce` with numbered steps, then the evidence; `file:line` last, for whoever fixes it.
-- **An inline review comment:** only where a reviewer must judge (a call that could have gone the other way, something the diff can't show, a risk you hand over), at most two sentences. No comment at all is the normal outcome for a small fix.
-- **An image or video:** one line on what to look at and what it proves, and the setup (page, filter) when the default view doesn't show it.
 
 ## Code comments
 

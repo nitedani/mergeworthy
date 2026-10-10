@@ -5,8 +5,8 @@ import { readFileSync, readdirSync } from 'node:fs'
 const skillsDir = new URL('../skills/', import.meta.url)
 const skills = readdirSync(skillsDir)
 
-test('the five skills exist', () => {
-  assert.deepEqual(skills.sort(), ['github', 'pull-request', 'review', 'work', 'writing'])
+test('the twelve skills exist', () => {
+  assert.deepEqual(skills.sort(), ['converge', 'delegating', 'design', 'evidence', 'finality', 'github', 'posting', 'pull-request', 'refactor', 'review', 'task', 'writing'])
 })
 
 for (const name of skills) {

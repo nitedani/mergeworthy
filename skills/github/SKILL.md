@@ -1,6 +1,6 @@
 ---
 name: github
-description: "Any GitHub thread you're in, and everything you post: the live loop (mw watch, whose comments, how each kind is answered, /agent), the umbrella issue, waiting and nudging, thread rules, the posting steps, and opening an issue."
+description: "Any GitHub thread you're in: mw watch, whose comments are yours, how each kind is answered, /agent, the umbrella issue, waiting and nudging, and the thread rules."
 ---
 
 # GitHub
@@ -22,7 +22,7 @@ The live loop, from your first post until every thread you're in is merged or cl
    React 👀 to each comment that's yours when you start on it: `gh api repos/<o>/<r>/issues/comments/<id>/reactions -f content=eyes`, or `pulls/comments/<id>/reactions` for an inline comment. Reviews can't take reactions.
    Done: every event is handled, or listed in `task.md` as not yours with why, and the watch is re-armed.
 3. **Answer by kind** (How each comment is answered, below). If the answer needs more than about an hour of work, post a holding reply first that carries what you found so far and when the answer comes.
-   Done: the answer is posted (Posting, below) as a new comment, because edits don't notify. After a holding reply, the answer is that new comment; anything more before someone replies edits it.
+   Done: the answer is posted (`posting`) as a new comment, because edits don't notify. After a holding reply, the answer is that new comment; anything more before someone replies edits it.
 4. **Record it in the same step.** A decision goes into `task.md` with its permalink; a change to the agreed or open list goes into the umbrella issue's body.
    Done: `task.md` and the umbrella body are true of the thread.
 5. **Red CI on your PR is the maintainer's first question.** Fix it. When the red isn't the PR's doing (a secret forks don't get, a flaky job), say so on the PR at once, with the evidence.
@@ -40,9 +40,9 @@ The live loop, from your first post until every thread you're in is merged or cl
   2. Have one fresh Opus agent argue both sides from at least three frames (the user who hits it, the maintainer who keeps it, the smallest diff, no new code, the design from scratch), then score them. Done: its report is in the work folder.
   3. Decide. Before answering "keep", build the simpler version and name what breaks in it; if nothing breaks, recommend the simpler one. Done: your position and its evidence are in `task.md`.
 
-  "First principles" or "perfect world" means the ideal design; leave out migration, release and option-visibility costs until asked. A thread that drifted through three or more rounds gets the finality pass first (`work`).
+  "First principles" or "perfect world" means the ideal design; leave out migration, release and option-visibility costs until asked. A thread that drifted through three or more rounds gets the finality pass first (`finality`).
 - **A short acknowledgement** ("OK", 👍) answers your last open proposal or question in that thread, or your latest one just before it in the same PR. That proposal is now an instruction.
-- **A 👍 or 👎 on your comment** is feedback on that comment. For a 👎, find out why and fix the rule behind it (`work`, When a rule fails).
+- **A 👍 or 👎 on your comment** is feedback on that comment. For a 👎, find out why and fix the rule behind it (`task`, When a rule fails).
 - **Commits a maintainer pushed to your PR** (a `PUSH` event): fetch, fast-forward, and run the gates. Then review each commit in one table, `| Commit | What it does, and the idea behind it | Rating |`: a rating below 10 carries its reason, and findings come with the exact fix. Don't push while they're committing.
 - **"I don't understand this"** on a docs or comment line reports a bug in that text. Push clearer wording and reply "Done in <sha>: <new sentence>".
 - **A bot's finding** is a reviewer's finding: run its case first, then reply with the fix's commit or the output that declines it.
@@ -51,7 +51,10 @@ The live loop, from your first post until every thread you're in is merged or cl
 
 Any goal that needs two or more PRs or issues gets one umbrella issue, `Tracking: <goal>`. Use the issue the user names, or turn the program's own issue into it; open a new one only when neither exists.
 
-1. **Body:** `# 🚧 WIP`, then *This issue is edited upon updates.*, one sentence on what it tracks and what has to land, then:
+1. **Body:** `# 🚧 WIP`, then *This issue is edited upon updates.*, then:
+   - `## TLDR`: two or three sentences, the goal and where it stands;
+   - `## Scope`: what's in and what's out;
+   - `## State`: three or four high-level bullets;
    - `## TODO`: each PR and issue as a checkbox, `- [x] owner/repo#N (merged): <what a user hit on main>`, and work with no PR yet, with what it waits on;
    - `## Agreed`: each point with the permalink where it was agreed;
    - `## Open`: each item with who it waits on and your recommendation;
@@ -77,33 +80,3 @@ Any goal that needs two or more PRs or issues gets one umbrella issue, `Tracking
 - **Post in the thread where the person wrote.** Read the repo's `AGENTS.md` / `CLAUDE.md` on the target branch before a commit, merge or PR there.
 - **Evidence carries no secret:** write `<REDACTED>` for every token, cookie, auth header and key.
 - **Only the main session posts.** Agents hand it drafts.
-
-## Posting
-
-Everything that reaches GitHub goes through these steps: comments, replies, inline comments, reviews, PR and issue bodies, edits of any of them, and gists. Reactions don't.
-
-1. **Read the whole thread** from its first comment, the threads it links and your own earlier replies: `mw thread <ref>`. For a long thread, an Opus drafter reads it and drafts from your brief (the question, your position and reasons), and returns the draft plus every conflict with a past decision, each with its permalink.
-   Done: the draft's notes list every question still open and every decision already made, each with its permalink.
-2. **Draft it by `writing`** into a file in the task's work folder (`drafts/<name>.md`), never straight into a command.
-   Done: the draft file exists.
-3. **Lint it:** `mw lint <draft> --repo <owner/repo> --kind <reply|design|pr|issue|umbrella>`. Fix every error.
-   Done: `mw lint` exits 0.
-4. **Review it** (`review`, with the posting checks). Fix the draft and re-review until the reviewer's verdict is `CLEAN`.
-   Done: `<draft>.verdict.json` says `CLEAN` for the current text.
-5. **Re-check every claim against the current head** right before posting: `git fetch`, and confirm every referenced commit is pushed.
-   Done: every claim and link holds on the head.
-6. **Post it:** `mw post --kind <kind> <draft> -- gh <command with --body-file <draft>>`, or `-F body=@<draft>` for API posts. An inline review comment is one draft per comment: `mw post <draft> -- gh api repos/<o>/<r>/pulls/<N>/comments -F body=@<draft> -f commit_id=<head sha> -f path=<path> -F line=<n> -f side=RIGHT`. A reply whose only content is an acknowledgement, or "Done in <sha>" with nothing else, may skip the review, with that reason in the bypass flag.
-   Done: `mw post` printed the URL, and the thread is in your watch.
-
-## Opening an issue
-
-1. **Should it be a PR instead?** Find the fix first; an obvious fix for a defect you hit is a PR, upstream included. File an issue only when you can't find a fix, or when the fix needs the owner's product decision.
-   Done: `task.md` says why it's an issue and not a PR.
-2. **Already filed or fixed?** Run `gh issue list --state all --search "<keyword>"` and `git log --oneline origin/<base> -- <files>`. An existing issue gets your finding as a comment, not a twin.
-   Done: no twin, and no fix on the base.
-3. **Reproduce it on today's base** from a clean start, as a user meets it. What you can't reproduce isn't filed.
-   Done: a screenshot, video, or request and response that shows it.
-4. **Write the body** by `writing` (Forms), with `### How to reproduce` and the evidence. A decision issue adds `### Options`, showing what a user sees under each option, plus your recommendation.
-   Done: a newcomer could reproduce it from the body alone.
-5. **Post it** (Posting, above) and add it to the watch.
-   Done: the posted body shows its evidence.

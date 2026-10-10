@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto'
 const MAIN_PROMPT_SHA256 = 'e3b5de6cc3b62759da488494b326094a924d3548ba814ed8d140326c3eb469a9'
 
 test('the refactor prompt is byte for byte the one on main', () => {
-  const skill = readFileSync(new URL('../skills/pull-request/SKILL.md', import.meta.url), 'utf8')
+  const skill = readFileSync(new URL('../skills/refactor/SKILL.md', import.meta.url), 'utf8')
   const start = skill.indexOf('Refactor this PR:')
   const last = '  rating with link to commit(s).'
   const end = skill.indexOf(last, start) + last.length
