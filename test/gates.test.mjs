@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { agentGates, bashGates, recordAgent } from '../lib/gates.mjs'
 import { readState, writeState } from '../lib/state.mjs'
+import { DAY, MINUTE } from '../lib/time.mjs'
 import { execResponses, fakeCtx, ghResponses, NOW } from './helpers.mjs'
 
 const BYPASS = '\n# --I_UNDERSTAND_IMPLICATIONS_AND_BYPASS_GATE: the user asked for exactly this'
@@ -155,21 +156,20 @@ const withState = (files, overrides) => {
   for (const [name, value] of Object.entries(files)) writeState(ctx, name, value)
   return ctx
 }
-const MIN = 60_000
 
 test('reused-request-id blocks an id first seen over 10 minutes ago, bypass or not', () => {
-  const ctx = withState({ 'request-ids.json': { 'req-1': NOW - 11 * MIN } })
+  const ctx = withState({ 'request-ids.json': { 'req-1': NOW - 11 * MINUTE } })
   assert.deepEqual(agentFiring({ clientRequestId: 'req-1', task: 'x' + BYPASS }, ctx), ['reused-request-id'])
 })
 
 test('reused-request-id allows a retry within 10 minutes and a new id', () => {
-  const ctx = withState({ 'request-ids.json': { 'req-1': NOW - 5 * MIN } })
+  const ctx = withState({ 'request-ids.json': { 'req-1': NOW - 5 * MINUTE } })
   assert.deepEqual(agentFiring({ clientRequestId: 'req-1' }, ctx), [])
   assert.deepEqual(agentFiring({ clientRequestId: 'req-2' }, ctx), [])
 })
 
 test('agent-dedupe fires on a title registered under 24 hours ago', () => {
-  const ctx = withState({ 'agents.json': { 'review pr 5': { at: NOW - 30 * MIN, tool: 'Agent' } } })
+  const ctx = withState({ 'agents.json': { 'review pr 5': { at: NOW - 30 * MINUTE, tool: 'Agent' } } })
   const [finding] = agentGates({ input: { description: ' Review PR 5 ' } }, ctx)
   assert.equal(finding.gate, 'agent-dedupe')
   assert.match(finding.message, /started 30 min ago/)
@@ -177,13 +177,13 @@ test('agent-dedupe fires on a title registered under 24 hours ago', () => {
 })
 
 test('agent-dedupe stays silent on an older or different title', () => {
-  const ctx = withState({ 'agents.json': { 'review pr 5': { at: NOW - 25 * 60 * MIN } } })
+  const ctx = withState({ 'agents.json': { 'review pr 5': { at: NOW - (DAY + 60 * MINUTE) } } })
   assert.deepEqual(agentFiring({ description: 'Review PR 5' }, ctx), [])
   assert.deepEqual(agentFiring({ title: 'review pr 6' }, ctx), [])
 })
 
 test('agent-dedupe is bypassed only by a reason of 3+ words in the prompt', () => {
-  const ctx = withState({ 'agents.json': { 'review pr 5': { at: NOW - 30 * MIN } } })
+  const ctx = withState({ 'agents.json': { 'review pr 5': { at: NOW - 30 * MINUTE } } })
   assert.deepEqual(agentFiring({ description: 'Review PR 5', prompt: 'go' + BYPASS }, ctx), [])
   assert.deepEqual(agentFiring({ description: 'Review PR 5', prompt: 'go' + SHORT_BYPASS }, ctx), ['agent-dedupe'])
 })
@@ -210,8 +210,8 @@ test('agent-load stays silent under the limits and honors config.json', () => {
 })
 
 test('recordAgent registers the title and keeps the first sighting of a request id', () => {
-  const ctx = withState({ 'request-ids.json': { 'req-1': NOW - MIN, stale: NOW - 8 * 24 * 60 * MIN } })
+  const ctx = withState({ 'request-ids.json': { 'req-1': NOW - MINUTE, stale: NOW - 8 * DAY } })
   recordAgent({ toolName: 'mcp__t3__delegate_task', input: { title: 'Fix X', clientRequestId: 'req-1' } }, ctx)
   assert.deepEqual(readState(ctx, 'agents.json'), { 'fix x': { at: NOW, tool: 'mcp__t3__delegate_task' } })
-  assert.deepEqual(readState(ctx, 'request-ids.json'), { 'req-1': NOW - MIN })
+  assert.deepEqual(readState(ctx, 'request-ids.json'), { 'req-1': NOW - MINUTE })
 })
