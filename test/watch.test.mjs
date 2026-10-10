@@ -157,3 +157,9 @@ test('mw watch exits 1 after 5 API errors in a row', async () => {
   assert.equal(calls.length, 5)
   assert.deepEqual(ctx.output, ['ERROR HTTP 502'])
 })
+
+test('mw watch --once reports a failed poll as an error, not a quiet thread', async () => {
+  const { ctx } = pollsOf([{ error: 'HTTP 502' }])
+  assert.equal(await watchCommand(['o/r#5', '--once'], ctx), 1)
+  assert.deepEqual(ctx.output, ['ERROR HTTP 502'])
+})
