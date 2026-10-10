@@ -1,6 +1,6 @@
 ---
 name: delegating
-description: "Starting, instructing, continuing or checking a subagent: which model, the six-part brief with the standard's path, one agent per job, never waiting in the foreground, checking and passing on its result."
+description: "Starting, instructing, continuing or checking a subagent: which model, the six-part brief with the standard's path, one agent per job, continuing an agent or starting a new one, never waiting in the foreground, checking and passing on its result."
 ---
 
 # Delegating
@@ -31,11 +31,17 @@ You are the main session: you make the decisions and write each agent's instruct
 
    When a skill gives you a fixed text to hand an agent (a reviewer's instructions, a prompt), copy it from the installed skill each time, never from a copy you saved earlier. Keep model versions out of prompts, skills and briefs. Only the first line of a GitHub post names them (`mergeworthy:writing`, Forms).
    Done: the brief has all six parts, including the machine's limits and a standard's path for everything it asks the agent to write or judge.
-3. **Run `mw load`** to see free memory, then start the agent in the background. Never wait for it in the foreground: you're notified when it finishes. Give each job to one agent only. An agent counts as alive until its task has finished, failed or been cancelled. So when its turn ended or its log went quiet, send it a message, and never start a second agent on the same job. Follow-up work on the same thing goes to the same agent: in Claude Code with SendMessage, in T3 Code (an app that runs Claude Code and Codex sessions side by side) with its `t3_thread_send` tool in mode `queue`. In T3 Code, each review round is the exception: it is a new task with its own title, and its prompt carries the earlier findings (`mergeworthy:review`, step 4).
+3. **Run `mw load`** to see free memory, then start the agent in the background. Never wait for it in the foreground: you're notified when it finishes. Give each job to one agent only. An agent counts as alive until its task has finished, failed or been cancelled. So when its turn ended or its log went quiet, send it a message, and never start a second agent on the same job.
    Done: the agent runs in the background, `mw load` showed room for it, and nothing waits on it in the foreground.
-4. **Check its first output early.** At 2 minutes, and every time you wake up, confirm it is making progress. If it has produced no output for five minutes, find out why. Give a long job a time budget in its brief.
+4. **Continue the agent, or start a new one, for follow-up work** such as fixing what a check found, confirming fixes, or the next part of the same job. Every call an agent makes re-reads its whole context. That re-read is cheap while the agent was active in the last hour, and costs 25 to 40 times as much after that, as does a new agent reading the same files.
+   - **Continue the agent** when the follow-up needs most of what it has already read. It keeps what it learned, and it doesn't read the files again. In Claude Code, use SendMessage. In T3 Code (an app that runs Claude Code and Codex sessions side by side), use its `t3_thread_send` tool in mode `queue`.
+   - **Start a new agent** when the work must not see what the agent saw: a review, a fresh reader, or a check of the agent's own work. In T3 Code, each review round is a new task with its own title, and its prompt carries the earlier findings (`mergeworthy:review`, step 4).
+   - **Start a new agent** also when the follow-up needs only a small part of what the agent read, for example 2 files of a whole module. This matters most when the agent has been idle for over an hour. Its brief points to the old agent's report file and the files it needs.
+
+   Done: `task.md` says, for each follow-up, which agent got it and why.
+5. **Check its first output early.** At 2 minutes, and every time you wake up, confirm it is making progress. If it has produced no output for five minutes, find out why. Give a long job a time budget in its brief.
    Done: its first output exists, or you found out why not.
-5. **Check its result and pass it on.** Check it as `mergeworthy:task` step 6 says. The user never sees the agent's report, so tell them what matters in it, and act on it.
+6. **Check its result and pass it on.** Check it as `mergeworthy:task` step 6 says. The user never sees the agent's report, so tell them what matters in it, and act on it.
    Done: you checked the result against the lines it cites, told the user, and acted on it.
 
 An agent never goes beyond its brief. It never takes a different approach than the plan: if the plan is wrong, it stops and says why. It never calls code unused until it has found every caller. It never says a step ran when it couldn't run it.
