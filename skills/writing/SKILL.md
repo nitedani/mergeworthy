@@ -88,6 +88,7 @@ A maintainer argued that some of the proxy's jobs belong to the server; he wante
 | A label line or heading in a comment ("Two decisions:", "**Fundamental:** the wrong word.") | A sentence: "Two things need your decision." |
 | A telegraphic verdict ("No holes, and it's built.") | A person talking, as in the model replies |
 | A coined term ("the runner", "the marker") | What it does, in the reader's words |
+| A sentence only the code explains ("two specs pin why it changed", "the detach skip for pending admissions") | What the user sees or does, and why, in their words; the review rejects any sentence the owner couldn't follow without the code |
 | An inventory of internals to prove completeness | What the user sees |
 | Opinions cut to fit a length | Keep each, with its argument; cut jargon and repeats instead |
 | "I was wrong" in every answer | One line of it, then the plan |
