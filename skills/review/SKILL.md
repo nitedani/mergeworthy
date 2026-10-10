@@ -16,6 +16,7 @@ A reviewer is someone who didn't write the thing and hasn't seen how it was made
    Done: a reviewer is running, and `task.md` records which one.
 2. **Write the prompt as a file.** It holds:
    - the reviewer's instructions: the Reviewer charter below for code, the Posting checks below for a post;
+   - the absolute path of the standard the work was written to, which the reviewer checks it against: `skills/code/SKILL.md` for code, `skills/writing/SKILL.md` for a post. The Skill tool's message that loads a skill shows its base directory;
    - what to review, at specific commit SHAs, and one sentence on what it claims to do;
    - for a post, the output of `mw thread <ref>` (the whole thread with permalinks), so the reviewer can check who said what;
    - for code, `grep` output showing the callers of each changed symbol, and where removed names are still used;
@@ -26,7 +27,7 @@ A reviewer is someone who didn't write the thing and hasn't seen how it was made
    Done: the prompt file exists and names the command that records the verdict.
 3. **The reviewer records its verdict itself.** For a post, it runs `mw verdict <draft> CLEAN|CHANGES --by <its id>`. This writes `<draft>.verdict.json` with a hash of the draft, which `mw post` checks before posting. For code, it writes a verdict file, and `mw step review` records that file. The charter's PASS means `CLEAN`. CHANGES-REQUESTED and FAIL mean `CHANGES`. The reviewer's final message is exactly `CLEAN`, or its findings (in its output file if they run past 15 lines). Never write a verdict yourself.
    Done: the verdict file exists, written by the reviewer.
-4. **Settle each finding.** A finding about behavior, or a reviewer saying "this case is correct", is only a candidate until a run on the latest commit shows it. Fix a real defect in your own words, never by pasting the reviewer's. A finding not worth code gets a one-line reason. Send the fixes to the same reviewer to confirm. In Claude Code, continue the same agent with SendMessage. In T3 Code, each round is a new `delegate_task`, and its prompt carries the brief, the earlier findings, your responses and the fixes. Start a fresh reviewer only when the thing under review changed beyond the fixes, or for a final read with fresh eyes.
+4. **Settle each finding.** A finding about behavior, or a reviewer saying "this case is correct", is only a candidate until a run on the latest commit shows it. Fix a real defect in your own words, never by pasting the reviewer's. A finding not worth code gets a one-line reason. An accepted finding that no line of the standard covers adds that line to the standard (`mergeworthy:task`, When a rule fails). Send the fixes to the same reviewer to confirm. In Claude Code, continue the same agent with SendMessage. In T3 Code, each round is a new `delegate_task`, and its prompt carries the brief, the earlier findings, your responses and the fixes. Start a fresh reviewer only when the thing under review changed beyond the fixes, or for a final read with fresh eyes.
    Done: the latest round's verdict on the current text or commit is `CLEAN`.
 
 ## Reviewer charter
@@ -57,11 +58,7 @@ Look through three lenses, in one pass:
 - You know what to look for. This repo's security-sensitive parts are listed in its project notes (`~/.mergeworthy/projects/<owner>/<repo>.md`).
 - Changes to behavior or public API in someone else's repo are for its maintainer to decide. Changes that the user's task asks for, in the user's own repo, are not a finding.
 
-**Bloat**, deletions first.
-- For every mechanism added (a guard, a retry, a fallback), name the scenario a user would see that it serves. "It could break" is not a scenario. With no scenario, delete it.
-- Price comments and tests like code.
-
-**Before deleting, run a probe that could fail: try to cause the symptom the mechanism prevents, in the test suite that runs the product for real in that area (its lane). If the symptom appears, keep the mechanism.**
+**Bloat**, deletions first: check the diff against the code standard, whose absolute path is in your prompt. Its lenses, and its section Mechanisms and who decides, are your checklist. Each finding names the line of that file it breaks.
 
 Don't ask for a guarantee to be made stronger as a way to close a finding. A round that finds nothing is a real result: say what you searched for and didn't find. If you confirm nearly every suspicion you started with, you were building a case, not reviewing.
 

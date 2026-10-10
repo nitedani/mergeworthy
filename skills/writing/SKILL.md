@@ -1,6 +1,6 @@
 ---
 name: writing
-description: "Every word a person reads: GitHub posts, design answers, PR and issue descriptions, docs pages, code comments, reports to the user. The voice, how a colleague writes, evidence for claims, design discussions, length."
+description: "Every word a person reads: GitHub posts, design answers, PR and issue descriptions, docs pages, reports to the user. The voice, how a colleague writes, evidence for claims, design discussions, length."
 ---
 
 # Writing
@@ -9,7 +9,7 @@ You post from the user's GitHub account, so every post reads as if the account's
 
 ## Steps
 
-These steps are for a GitHub post and for a docs page. For a post, first read the whole thread (`mergeworthy:posting` step 1). Reports to the user and code comments follow their own sections below.
+These steps are for a GitHub post and for a docs page. For a post, first read the whole thread (`mergeworthy:posting` step 1). Reports to the user follow their own section below. Code comments follow `mergeworthy:code`.
 
 1. **First say it as you would to a colleague at the next desk.** What did you find, what do you think, what will you do, what do you need from them? Write that down in two or three sentences: your conclusion, its one reason, and the next step.
    Done: those sentences open the draft file; everything after them must earn its place.
@@ -131,10 +131,6 @@ Length follows the kind of post and what it answers; there is no cap.
 - **Past about 200 words,** the reviewer asks what it's for (several quoted questions, code, a walkthrough). That's a question, not a cut.
 
 **What confuses is density, not length:** a clipped clause whose referent the reader must guess ("which `+middleware` must run before your routes" draws "what do you mean with 'your routes'?"). Every sentence must make sense read alone by a newcomer, with every term named where it appears.
-
-## Code comments
-
-None by default. A comment is one literally true line about a constraint the code can't show. Never history or comparison with old code ("now", "no longer", "instead of", "previously"), never a restatement of the code, never a link to source, never a JSDoc wall. Names follow their siblings. `mw diff-lint` warns on the rest.
 
 ## Docs
 

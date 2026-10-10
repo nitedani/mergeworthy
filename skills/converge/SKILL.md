@@ -1,6 +1,6 @@
 ---
 name: converge
-description: "Bringing a PR's latest commit to merge quality before it is marked ready: the checks, the bug hunt, the quality review and the final review, each recorded with mw step; how findings are judged; the briefs for the bug verifier, the quality guardian and the implementer."
+description: "Bringing a PR's latest commit to merge quality before it is marked ready: the checks, the bug hunt, the quality review with its refactor pass and the final review, each recorded with mw step; the briefs for the bug verifier, the quality guardian and the implementer."
 ---
 
 # Converge
@@ -17,30 +17,25 @@ A lane, in these steps, is one of the repo's test suites that runs the product i
    Done: the branch contains `origin/<base>`.
 1. **Checks:** run the commands from `mergeworthy:pull-request` step 6 on the head. If they're long, a Haiku agent runs them. When a check fails because of a bug already known on the base branch, record the failure as the base's, with a run that shows the base fails it too. Then `mw step gates <log of the checks>`.
    Done: every check exits 0, and the step is recorded.
-2. **Bug hunt:** an Opus agent runs the verifier brief (below) on each slice of the diff. A slice is as much code as one agent can keep in mind. A diff under about 300 lines is one slice. For code that handles streams, add these edge cases to the ones you list in the brief: the same stream read twice without a copy, and a slow consumer of more than 1 GiB. You, or an implementer agent, fix each reproduced bug at its root, starting from the script that reproduced it. The same verifier then checks the fix again. Repeat until a pass finds nothing. Then `mw step verify <its report>`.
+2. **Bug hunt:** an Opus agent runs the verifier brief (below) on each slice of the diff. A slice is as much code as one agent can keep in mind. A diff under about 300 lines is one slice. You, or an implementer agent, fix each reproduced bug at its root, starting from the script that reproduced it. The same verifier then checks the fix again. Repeat until a pass finds nothing. Then `mw step verify <its report>`.
    Done: the last pass on every slice ends with `NO BUGS`, and the step is recorded.
-3. **Quality:** an Opus agent, the rater, runs the guardian brief (below) together with the refactor prompt (`mergeworthy:refactor`). It reads the code but doesn't change it.
-   - You judge each finding. How likely is it to matter? What does fixing it cost? Would the maintainer write this change? Wrong data returned silently is never a minor finding.
-   - An implementer agent (the implementer brief, below) commits the accepted findings one by one, running the quick checks after each. For a few lines, you do it yourself.
-   - The same rater rates the code again, showing old rating ⇒ new rating, until nothing worth changing is left.
+3. **Quality:** an Opus agent, the rater, runs the guardian brief (below). The brief gives it the `code` standard (`mergeworthy:code`) as its checklist: the lenses, and the refactor prompt at the end of that file. The rater isn't the author. It reads the whole diff, every file and function in it, but doesn't change the code. Code outside the diff is context. Its ratings and its ✅ coverage lists go in the work folder.
+   - You judge each finding against `code`, Mechanisms and who decides. How likely is it to matter? What does fixing it cost? Would the maintainer write this change? Each finding names the line of `code` it breaks. An accepted finding that no line of `code` covers adds that line to `code` (`mergeworthy:task`, When a rule fails).
+   - An implementer agent (the implementer brief, below) commits the accepted findings, one commit per finding or per class of findings (every instance of one kind). Refactor commits stay separate from commits that change behavior. The quick checks run after each commit. If a check fails, fix that commit, never with a patch on top. Each finding you skip gets a reason. For a few lines, you do it yourself.
+   - The same rater rates every row again, showing old rating ⇒ new rating, with the commits, until nothing worth changing is left. A pass that changed nothing says so, and why.
    - The verifier then checks the refactor commits against the code before them, for changes in behavior.
+   - Keep the rating current. Once the lines added plus the lines deleted since the last full rating exceed about 80, tests and lockfiles included, the rater runs it again on the whole diff before the next "ready". Give that run a new name in the work folder, so it doesn't overwrite the last one.
 
    Then `mw step quality <the last re-rating>`.
-   Done: the rater's last re-rating says nothing worth changing is left, the verifier found no regression, and the step is recorded.
+   Done: the rater's last re-rating says nothing worth changing is left, it is less than about 80 changed lines old, the verifier found no regression, and the step is recorded.
 4. **Final review:** a fresh reviewer (`mergeworthy:review`) gets the diff and the draft PR description. It answers "As this repo's maintainer, would you merge this exactly as it is?" You send its findings back through step 2 or 3. If the base branch moved in the meantime, merge it again and re-run step 1. Then `mw step review <its verdict file>`.
    Done: the verdict is `CLEAN` with `MERGE AS IS: yes`, and the step is recorded.
 
-**Under about 50 changed lines of code,** one Opus agent runs steps 2 and 3 together, with the verifier brief, the guardian charter and the refactor prompt, and writes one report for each. Step 4 is still a separate fresh reviewer.
+**Under about 50 changed lines of code,** one Opus agent runs steps 2 and 3 together, with the verifier brief, the guardian charter and the path of `code`, and writes one report for each. Step 4 is still a separate fresh reviewer.
 
 **Benchmarks** run only when the repo has a benchmark that covers the changed code. Run `main` and the head in turns, at least 3 times each, once per head, with a time budget. When a result is worse than the normal variation between runs, fix the change or revert it. Never call it a trade-off.
 
-**How the steps judge findings:**
-- **No phantom fixes.** A phantom fix guards against a problem that no real usage can cause. A fix needs a documented scenario that reaches it, traced from where the user starts to where the code fails. It never changes a behavior someone chose on purpose. It goes at the call site, not into a changed default that other code depends on.
-- **No removal without a probe.** Before you remove a guard, a deduplication, a retry or a cache, try to make the symptom it prevents happen, in the lane that owns that code. If the symptom appears, keep it.
-- **Code the owner wrote** (a commit by a human, or a commit without the agent trailer) is never removed or rewritten because an agent read it that way. Send such a finding to the owner, with a recommendation.
-- **The docs are the contract.** When code and docs disagree, suspect the code. Each sentence of docs the diff adds is a claim the verifier reproduces.
-- **Every feature has a user.** Before the PR is ready, list each feature with non-trivial code, next to the link that shows someone needs it today. Remove the rest.
-- **Behavior and public API** in someone else's repo are for the maintainer to decide. Ask before changing them, and keep refactors from changing behavior. In the user's own repo, you decide the changes the task needs.
+**How the steps judge findings:** every step judges by the `code` standard, and its section Mechanisms and who decides settles what a fix may add or remove and who decides.
 
 ## The verifier brief
 
@@ -60,9 +55,9 @@ What counts:
 - A candidate counts only with a test or script that fails on the head, and that either passes on the base or shows the fix is incomplete for the scenario the change names.
 
 How:
-- Read each change from start to end, with every caller.
-- Try the edge cases: <list the risky edge cases for this slice. For stream code, always: cancellation from either side, backpressure, a size limit on every buffer, listeners and timers released on every exit path>.
-- When the change handles one case of a mechanism (one method, status code, adapter or runtime), try the same failure in the other cases. One this PR should have covered is an incomplete fix. One that belongs in its own PR goes under its own heading, for that PR. Never drop it.
+- Read the code standard at <absolute path of skills/code/SKILL.md>. Apply its section "Edges and related cases" to this slice: every caller, the risky edge cases, the related cases.
+- The risky edge cases particular to this slice: <list them>.
+- A related case this PR should have covered is an incomplete fix. One that belongs in its own PR goes under its own heading, for that PR. Never drop it.
 - Make your own worktrees under <artifacts dir> (git worktree add --detach, install, build), and remove them when you're done. Run servers and end-to-end tests under `mw netns -- <cmd>`, which gives each its own private network.
 - Test suites you may run: <lanes>. Don't run <lanes owned by others>.
 
@@ -84,42 +79,7 @@ Guardian (LeanKeeper): how to audit, with no specifics
 
 You guard the PR's code quality and keep bloat out, for as long as the PR is open. You never edit code: you report findings. Look with fresh eyes. This charter says how to audit. You find what is wrong on your own. It names no findings and no files in advance.
 
-**Lenses: look at the code through each of these, on every pass:**
-
-1. **Bloat:** dead code; API surface nobody uses yet; two pieces of code for the same purpose; defensive branches for states that can't happen (turn them into assertions); custom test scripts (delete them).
-2. **Code quality:** rate every file, function and piece of logic, and tick off the coverage list (the refactor prompt).
-3. **Other ways to solve it:** list every flow, rate each from 0 to 10 on how good its solution is, and sketch better alternatives for low scores.
-4. **File placement:** each file sits where the repo's existing structure would put it.
-5. **The mechanism census.** For every mechanism that corrects or guards against something (a retry, a guard, a deduplication, a fallback), write down:
-   - where it came from, from `git blame` (one added during a round of fixes is presumed to be accumulated clutter);
-   - the user-visible scenario it serves, or NO NAMED SCENARIO;
-   - one sentence on the promise it enforces;
-   - the evidence for that promise in the docs or types;
-   - an honest, weaker alternative;
-   - a verdict: GENUINE, OVERBUILT or SUSPECTED-PHANTOM (guarding against something no real usage causes), with the lines removing it would save.
-
-   Before deleting one, try to make its symptom happen in the lane that owns the code. If the symptom appears, keep the mechanism.
-6. **Essential against accidental complexity:** keep complexity that comes from a hard problem (only suggest making it easier to read). Cut complexity that comes from making the solution more general than it needs to be.
-7. **Invisible optimizations:** cut machinery that only matters at a scale nobody runs. Report, but don't cut, optimizations whose removal would really hurt.
-8. **No surface added only to inspect internals or to make noise** (debug APIs, extra logging).
-9. **Deep modules:** find modules whose interface is nearly as complex as what they do, and boundaries in the wrong place (`mergeworthy:design`, Deep modules).
-10. **Fowler's code smells** (from *Refactoring*): Mysterious Name, Duplicated Code, Feature Envy, Data Clumps, Primitive Obsession, Repeated Switches, Shotgun Surgery, Divergent Change, Speculative Generality, Message Chains, Middle Man, Refused Bequest.
-11. **The 10-second pass:** what makes a reader wince at first sight:
-    - names that admit to mixing responsibilities;
-    - functions that read but also write;
-    - renamed imports (rename the original symbol instead);
-    - boolean flags that switch what a function does;
-    - long runs of positional parameters;
-    - ternaries with side effects.
-
-    Fix these as classes: one commit fixes every instance of one kind.
-12. **The weight of tests and comments:** price each of these like bloat in code, and decide what happens to it:
-    - redundant tests (several tests proving exactly the same behavior);
-    - permanent tests beyond the repo's habit and beyond the limit per capability (at most one permanent end-to-end assertion per new capability);
-    - test harnesses and scaffolding that should have been throwaway probes;
-    - comments that narrate, justify or record history, and walls of JSDoc.
-
-    Never remove a test that checks a documented contract holds, or a regression test for a named counterexample.
+**Lenses:** look at the code through each lens in the code standard, on every pass. Your brief gives that file's path. Its section The lenses lists them, and the rest of the file, with the refactor prompt at its end, is your checklist too.
 
 **When:** after every change that lands, and also, from time to time, a full sweep of the whole scope that re-checks earlier findings are really closed.
 
@@ -136,7 +96,7 @@ You guard the PR's code quality and keep bloat out, for as long as the PR is ope
 
 ```
 You are the Guardian (LeanKeeper) for one scope of <PR>, and the rater of its refactor pass.
-Apply the charter and the refactor prompt below as written: they say HOW you audit. You find WHAT on your own.
+Apply the charter below and the code standard at <absolute path of skills/code/SKILL.md>, with its lenses and its refactor prompt, as written: they say HOW you audit. You find WHAT on your own. Each finding names the line of the code standard it breaks.
 You only read the code. You never change it.
 
 Scope: `git diff <base> <head>` limited to <scope file list>.
@@ -166,13 +126,12 @@ Write <report path>:
 - DELETE-NOW, FIX, FILL, DELETE-CAREFULLY and OWNER-DECISION findings, each with path:line, the lens, the price in lines, and the exact change for those that keep behavior unchanged;
 - the mechanism census;
 - the 10-second pass, grouped into classes;
-- the ratings of every file, function and piece of logic, with the coverage list (the refactor prompt);
+- the ratings of every file, function and piece of logic, with the coverage list (the refactor prompt in the code standard);
 - an honest statement of what is good.
 
 Final message: the report's path, the number of findings per disposition, the three most valuable findings, and the overall rating.
 
 <the guardian charter above, word for word>
-<the refactor prompt (`mergeworthy:refactor`), word for word>
 ```
 
 ## The implementer brief
@@ -187,17 +146,17 @@ Work only in that worktree. Don't push, never stash, and stage files by name.
 Implement exactly these finding IDs from <report>: <list>.
 Not these: <owner decisions and exclusions>.
 
-Write every change with the guardian charter's lenses and the Deep modules section of `mergeworthy:design` in mind, so that the guardian's next round has nothing to add.
+Read the code standard at <absolute path of skills/code/SKILL.md> before you start, and write every change to it, so that the guardian's next round has nothing to add.
 
 For every item:
 - read the code from start to end, and check the finding is true at <head>;
 - skip it, with a reason, if it is false, or if it can't be done as an authorized refactor that keeps behavior unchanged.
 - Make the smallest change.
-- When you remove, merge or move a test or a guard, break the production line it protects and check that a remaining test fails. Record this probe.
+- Run the probes the code standard's Tests section asks for, and record each one.
 
 Run <quick checks> and <test suites for the touched areas> after every commit. If a refactor commit makes a check fail, fix that commit instead of adding a patch on top.
 
 One commit per finding, or per class of findings. Message style: <style>. Trailer: <trailer>.
 
-Final message: the commits (sha, subject, finding IDs), skipped items with reasons, probes and their results, and the final output of the checks.
+Final message: the commits (sha, subject, finding IDs), skipped items with reasons, probes and their results, what your self-check against the code standard found, and the final output of the checks.
 ```

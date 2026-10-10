@@ -18,7 +18,7 @@ A change becomes a small PR that its maintainer merges as it is, without asking 
    Done: no fix on `main` and no open PR. If one exists, you posted a comment with the commit and the `file:line`, and you stop.
 2. **Reproduce it on `main`** as a user meets it (`mergeworthy:evidence`). For UI, in the running app. For a backend, with the request and response. Otherwise, with one fast command that fails because of the symptom. For a feature, capture how things are now. Claim the issue (`gh issue edit <N> --add-assignee @me`, where you have triage rights), and comment the reproduction on it. If it doesn't reproduce, comment what you tried.
    Done: a command, screenshot or video in the work folder shows the symptom on `main`.
-3. **Find the root cause, and every related case.** Check whether the same failure happens in the other cases of the same mechanism: each adapter, method, status code, runtime.
+3. **Find the root cause, and every related case.** Check whether the same failure happens in the other cases of the same mechanism: each adapter, method, status code, runtime (`mergeworthy:code`, Edges and related cases).
    - A related case that fails the same way in the same files is part of this fix.
    - A related case elsewhere with a clear fix gets its own PR, opened now.
    - A related case whose fix needs the owner's decision gets an issue (`mergeworthy:posting`, Opening an issue).
@@ -33,18 +33,8 @@ A change becomes a small PR that its maintainer merges as it is, without asking 
 
    Search the code for something that already does the work, and search other PRs, open and merged, for a check that already exists. Reuse it. If it needs a fix before you can reuse it, that fix is part of this PR.
    Done: `task.md` lists the conventions this diff must follow (typing patterns, naming, JSDoc tags, test helpers, how many comments).
-5. **Write it** in a worktree based on the target repo's base branch, never a fork's: `git worktree add -b <branch> <work folder>/<branch> origin/<base>`.
-   - Make the smallest diff that finishes the job: every call site, every translation. A new dependency joins an open PR only after the maintainer agrees.
-   - A silent fallback, a retry or reload loop, parsing something twice, or a second code path for old runtimes needs the user's OK, plus a written reason why fixing the root cause is impossible. Errors from misuse stay visible. Code that is unreleased or before 1.0 gets no compatibility layer for old versions (check with `npm view <pkg> versions`).
-   - Check every new public name with one line: the name, then what it does in every case. Add an option only for a named user scenario that nothing else serves.
-   - Before changing a mechanism (a hook, a scheduler, a lifecycle), write down how it starts and what running and finished look like. Before removing or moving code, list what depends on it, and run `git log -S <name>`. After a rename, search the repo and the open PRs for the old name.
-   - Build the whole interaction, not only the path where everything goes right.
-   - Make it elegant: the simplest shape that is obviously right. Each file reads from top to bottom, with each caller above the functions it calls, and one level of abstraction per function. Prefer modules that hide a lot behind a small interface (`mergeworthy:design`, Deep modules). No special cases. No wrappers or tiny functions that add nothing. Where logic is really a lookup, write it as a table of data. Write to the standard of the refactor prompt (`mergeworthy:refactor`) from the first line, so its review finds nothing.
-   - Code comments follow `mergeworthy:writing`: none by default.
-   - Tests follow the repo's habit. Where the maintainer keeps regression tests, keep them. Where they remove tests that only proved a PR worked, remove yours in a final commit once the PR is approved. Add at most one permanent end-to-end assertion per new capability. Tests wait for events, never for a fixed time. Expected values come from outside the code under test.
-   - Docs follow `mergeworthy:writing`, Docs.
-
-   Done: reading your own diff with the refactor prompt finds nothing worth changing, and the diff follows every convention from step 4.
+5. **Write it** in a worktree based on the target repo's base branch, never a fork's: `git worktree add -b <branch> <work folder>/<branch> origin/<base>`. Open `mergeworthy:code` and write the code, its tests and its comments to it, from the first line. When an agent writes it, its brief names that file's absolute path (`mergeworthy:delegating`, step 2). Docs follow `mergeworthy:writing`, Docs.
+   Done: your self-check against `code` (its step 3) finds nothing worth changing, and the diff follows every convention from step 4.
 6. **Run the checks:** every check the repo's CI runs, read from its workflow files, plus `mw diff-lint`. `mw diff-lint` warns about added comments longer than one line, comments about history, and timed waits added to tests. Run servers and end-to-end tests under `mw netns` (a private network, `mergeworthy:task`, The machine). A check passes only when it exits 0. A check that errors or can't run counts as failed. A failure that doesn't happen again is still a finding.
    Done: every check exits 0, and each `mw diff-lint` warning is fixed or answered in one line in the log of the checks you ran.
 7. **See it work as a user meets it** (`mergeworthy:evidence`):

@@ -6,7 +6,7 @@ const skillsDir = new URL('../skills/', import.meta.url)
 const skills = readdirSync(skillsDir)
 
 test('the twelve skills exist', () => {
-  assert.deepEqual(skills.sort(), ['converge', 'delegating', 'design', 'evidence', 'finality', 'github', 'posting', 'pull-request', 'refactor', 'review', 'task', 'writing'])
+  assert.deepEqual(skills.sort(), ['code', 'converge', 'delegating', 'design', 'evidence', 'finality', 'github', 'posting', 'pull-request', 'review', 'task', 'writing'])
 })
 
 for (const name of skills) {

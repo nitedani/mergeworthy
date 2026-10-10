@@ -17,7 +17,7 @@ The finality pass brings code that has drifted through many patches, or a design
    - a design discussion has gone through three or more rounds without settling.
 
    Done: `task.md` names the reason it applies.
-2. **Phase A, map the code:** start the mapper agents on Opus. They only read code. Each builds a map of its part of the system: every file and function, what it does, what it depends on, and where patches piled up. Use one mapper when all the parts fit in one context, otherwise one per part, in parallel.
+2. **Phase A, map the code:** start the mapper agents on Opus. They only read code. Each builds a map of its part of the system: every file and function, what it does, what it depends on, and where patches piled up. Use one mapper when all the parts fit in one context, otherwise one per part, in parallel. Each agent's brief, here and in Phase B, names the absolute path of the `code` standard (`mergeworthy:code`) next to the prompt, as what good code looks like.
    Done: each part's map is in the work folder, ending with its list of core concepts.
 3. **Phase B, imagine the design fresh:** write the problem as its users would state it, with no trace of the current solution, and pick the points of view to look at it from. Then start 3 separate design agents that can't see each other's work. After them, start one agent that compares all their designs against the map and derives the best design. All run on Opus, and none of them is the author.
    Done: the best design, how it differs from the current code, and a ranked plan of refactors are in the work folder.

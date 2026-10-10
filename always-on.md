@@ -10,11 +10,11 @@ The goal: a maintainer can merge what you ship without checking it again. Each s
 | Code or a design that has drifted through many patches; being stuck; a request for the ideal design | `mergeworthy:finality` |
 | A change that goes into a PR: writing it, pushing it, merging it | `mergeworthy:pull-request` |
 | Bringing a PR's latest commit to merge quality before you call it ready | `mergeworthy:converge` |
-| Rating a diff's code quality, or writing code to that standard | `mergeworthy:refactor` |
+| Writing, briefing or judging code, tests, a code comment or a module design | `mergeworthy:code` |
 | Showing a behavior: a reproduction, a screenshot, a video | `mergeworthy:evidence` |
 | A GitHub thread you're in: watching it, answering it, the tracking issue | `mergeworthy:github` |
 | Posting or editing anything on GitHub; opening an issue | `mergeworthy:posting` |
-| Anything a person reads: a post, docs, a code comment, a report to the user | `mergeworthy:writing` |
+| Writing, briefing or judging anything a person reads: a post, docs, a report to the user | `mergeworthy:writing` |
 | Any independent review | `mergeworthy:review` |
 
 1. **Answer every user message first.** Each question the user asked since your last reply gets its answer before any status. When the user tells you how to do something, do it that way.
