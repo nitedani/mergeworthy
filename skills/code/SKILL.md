@@ -7,7 +7,7 @@ description: "The standard for code: what good code, tests, code comments and mo
 
 This file says what good code looks like. Quality is made while writing, so you read this file before you write code, tests, a code comment or a module design, and you write to it from the first line. The checks that come later use this same file as their checklist: the bug hunt, the quality review and the final review in `mergeworthy:converge`, and any review from `mergeworthy:review`. When the writing met this file, they find nothing.
 
-When you hand the writing or the checking of code to an agent, its brief names this file by its absolute path, because the agent may not have this plugin's skills loaded (`mergeworthy:delegating`, step 2). The Skill tool's message that loads this skill shows its base directory, and the file is `SKILL.md` in it. A checker's finding names the section of this file it breaks. A real finding that no line here covers gets that line added here, never to a checker's brief (`mergeworthy:task`, When a rule fails).
+When you hand the writing or the checking of code to an agent, its brief names this file by its absolute path, because the agent may not have this plugin's skills loaded (`mergeworthy:delegating`, step 2). The Skill tool's message that loads this skill shows its base directory, and the file is `SKILL.md` in it. A checker's finding names the line of this file it breaks. A real finding that no line here covers gets that line added here, never to a checker's brief (`mergeworthy:task`, When a rule fails).
 
 A lane, in this file, is one of the repo's test suites that runs the product in a real setup: production-mode end-to-end tests, a specific adapter, transport or runtime, the examples. The lane that owns a piece of code is the one that exercises it for real.
 
@@ -25,7 +25,7 @@ A lane, in this file, is one of the repo's test suites that runs the product in 
 - **Fix at the root, and never make anything worse.** If something works on `main` and fails on your branch, that is a regression for you to fix, not a limitation to mention.
 - **Make the smallest diff that finishes the job:** every call site, every translation. A new dependency joins an open PR only after the maintainer agrees.
 - **A silent fallback, a retry or reload loop, parsing something twice, or a second code path for old runtimes** needs the user's OK, plus a written reason why fixing the root cause is impossible. Errors from misuse stay visible. Code that is unreleased or before 1.0 gets no compatibility layer for old versions. Check with `npm view <pkg> versions`, which lists the published versions.
-- **Check every new public name with one line:** the name, then what it does in every case. Add an option only for a named user scenario that nothing else serves.
+- **Test every new public name by writing one line in `task.md`:** the name, then what it does in every case. If the line is hard to write, the name or the behavior is wrong. Add an option only for a named user scenario that nothing else serves.
 - **Before changing a mechanism** (a hook, a scheduler, a lifecycle), write down how it starts and what running and finished look like. Before removing or moving code, list what depends on it, and run `git log -S <name>` to find the commits that added or removed that name. After a rename, search the repo and the open PRs for the old name.
 - **Build the whole interaction,** not only the path where everything goes right.
 - **Make it elegant:** the simplest shape that is obviously right. Each file reads from top to bottom, with each caller above the functions it calls, and one level of abstraction per function. Prefer modules that hide a lot behind a small interface (Deep modules, below). No special cases. No wrappers or tiny functions that add nothing. Where logic is really a lookup, write it as a table of data. Write to the standard of the refactor prompt (the last section of this file) from the first line, so that its rating finds nothing.
@@ -34,7 +34,7 @@ A lane, in this file, is one of the repo's test suites that runs the product in 
 
 A module (a function, a class, a package, a part of a system) is deep when a lot of behavior sits behind a small interface. The interface is everything a caller must know to use it: its types, the rules it relies on, the order of calls, how it fails, and its configuration.
 - **The deletion test:** imagine deleting the module. If the complexity disappears with it, the module only passed calls through. If the complexity comes back in every caller, the module earns its place.
-- **Test through the interface.** If a test has to reach past the interface, the module has the wrong shape. When you make a module deeper, test each of its dependencies according to what it is: code in the same process, a local stand-in for a service, your own remote service, or a true third-party service. Tests written against the new interface replace the old tests of the shallow parts.
+- **Test through the interface.** If a test has to reach past the interface, the module has the wrong shape. When you make a module deeper, test each of its dependencies according to what it is. Test code in the same process directly. Test a service that has a local stand-in against the stand-in. Give your own remote service an in-memory version behind its interface. Replace a true third-party service with a fake at the boundary. Tests written against the new interface replace the old tests of the shallow parts.
 - **Add a seam (a point where one implementation can be swapped for another) only for variation that exists today,** or for a named dependency that is known to change. Never add one for a second user who might come one day.
 - **Take dependencies as arguments rather than creating them inside, and return results rather than causing side effects.**
 
@@ -42,7 +42,7 @@ A module (a function, a class, a package, a part of a system) is deep when a lot
 
 The quality review in `mergeworthy:converge` step 3 looks at the code through each of these lenses, on every pass. Write with them in mind, so it finds nothing.
 
-1. **Bloat:** dead code; API surface nobody uses yet; two pieces of code for the same purpose; defensive branches for states that can't happen (turn them into assertions); custom test scripts (delete them).
+1. **Bloat:** dead code; API surface nobody uses yet; two pieces of code for the same purpose; defensive branches for states that can't happen (turn them into assertions); custom test scripts committed to the repo (delete them; a reproduction script in the work folder isn't one).
 2. **Code quality:** rate every file, function and piece of logic, and tick off the coverage list (the refactor prompt, the last section of this file).
 3. **Other ways to solve it:** list every flow, rate each from 0 to 10 on how good its solution is, and sketch better alternatives for low scores.
 4. **File placement:** each file sits where the repo's existing structure would put it.
@@ -81,9 +81,9 @@ The quality review in `mergeworthy:converge` step 3 looks at the code through ea
 
 - **No phantom fixes.** A phantom fix guards against a problem that no real usage can cause. Every mechanism you add (a guard, a retry, a fallback) needs a documented scenario that reaches it, traced from where the user starts to where the code fails. "It could break" is not a scenario. With no scenario, delete the mechanism. A fix never changes a behavior someone chose on purpose. It goes at the call site, not into a changed default that other code depends on.
 - **No removal without a probe.** A probe is a run that could fail. Before you remove a guard, a deduplication, a retry or a cache, try to make the symptom it prevents happen, in the lane that owns that code. If the symptom appears, keep it.
-- **Code the owner wrote** is never removed or rewritten because an agent read it that way. Code the owner wrote is a commit by a human, or a commit without the trailer line that the environment adds to an agent's commits. Send such a finding to the owner, with a recommendation. In the user's own repo, the user is the owner, so the finding goes to them and they decide.
+- **Code the owner wrote** is never removed or rewritten because an agent read it that way. Code the owner wrote is a commit by a human, or a commit without the trailer line that the environment adds to an agent's commits (in Claude Code, `Co-Authored-By: Claude`). In someone else's repo, every commit already on the base branch counts as the owner's. Send such a finding to the owner, with a recommendation. In the user's own repo, the user is the owner, so the finding goes to them and they decide.
 - **The docs are the contract.** When code and docs disagree, suspect the code. Each sentence of docs the diff adds is a claim that the bug hunt (`mergeworthy:converge`, step 2) reproduces.
-- **Every feature has a user.** Before the PR is ready, list each feature with non-trivial code, next to the link that shows someone needs it today. Remove the rest.
+- **Every feature has a user.** Before the PR is ready, list in `task.md` each feature with non-trivial code, next to the link that shows someone needs it today. Remove the rest.
 - **Behavior and public API** in someone else's repo are for the maintainer to decide. Ask before changing them, and keep refactors from changing behavior. In the user's own repo, you decide the changes the task needs.
 - **Wrong data returned silently is never a minor finding.**
 
@@ -95,10 +95,10 @@ The quality review in `mergeworthy:converge` step 3 looks at the code through ea
 
 ## Tests
 
-- **Tests follow the repo's habit.** Where the maintainer keeps regression tests, keep them. Where they remove tests that only proved a PR worked, remove yours in a final commit once the PR is approved.
+- **Tests follow the repo's habit.** Where the maintainer keeps regression tests, keep them. Where they remove tests that only proved a PR worked, remove yours in a final commit once the PR is approved. That commit removes only tests, so it re-runs only the converge steps a test removal affects (`mergeworthy:pull-request`, step 12).
 - **Add at most one permanent end-to-end assertion per new capability.**
 - **Tests wait for events, never for a fixed time.** Expected values come from outside the code under test.
-- **A test proves something only when it fails without the change.** Revert the fix, see the test fail, then restore the fix.
+- **The revert check: a test or check proves the fix only when it fails without the change.** Revert the fix, see it fail, then restore the fix.
 - **When you remove, merge or move a test or a guard,** break the production line it protects, and check that a remaining test fails. Record this probe.
 
 ## Comments
@@ -109,7 +109,7 @@ None by default. A comment is one literally true line about a constraint the cod
 
 Run it on your own diff before you call the code done or hand it back. It is the pass the quality review will make, so what it finds now, the review won't.
 1. Look at every file and function you changed through each lens above.
-2. Rate your diff with the refactor prompt below, as the rater in the quality review would.
+2. Run the refactor prompt below on your diff, and change the code where it finds something worth changing.
 3. Check the diff against Mechanisms and who decides, Edges and related cases, and Tests: each mechanism you added has its scenario, each related case was tried, and each new test fails without the change.
 4. Ask yourself, as this repo's maintainer: would you merge this exactly as it is?
 
@@ -117,7 +117,11 @@ Fix what you find, then run the self-check again on what changed.
 
 ## The refactor prompt
 
-The prompt below sets the bar every diff is written to from its first line. Before a PR is ready, a rater, an agent that isn't the author, runs it on the whole diff and only reads the code (`mergeworthy:converge`, step 3).
+The prompt below sets the bar every diff is written to from its first line. It has two uses:
+- **The writer** runs it on its own diff as the self-check (above), and changes the code.
+- **Converge's rater,** an agent that isn't the author, runs it on the whole diff before the PR is ready. It only reads and reports, and an implementer agent makes the changes (`mergeworthy:converge`, step 3).
+
+So "Refactor this PR" and "link to commit(s)" apply to whoever changes the code; the rater rates, and links the implementer's commits when it rates again. In the prompt, "pinnacle architectural split" means the best possible split into files and functions, and "in this chat" means in your report. The prompt's own words stay exactly as they are.
 
 Refactor this PR:
 

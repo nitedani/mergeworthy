@@ -5,7 +5,7 @@ description: "Bringing a PR's latest commit to merge quality before it is marked
 
 # Converge
 
-Converging a PR means running four steps on its latest commit (its head) until none of them finds anything: the checks, a bug hunt, a quality review, and a final review. Run them in the PR's worktree, every time the head changes, with depth scaled to the size of the diff.
+Converging a PR means running four steps on its latest commit (its head) until none of them finds anything: the checks, a bug hunt, a quality review, and a final review. Run them in the PR's worktree, every time the head changes, with depth scaled to the size of the diff: under about 50 changed lines, one agent runs steps 2 and 3 (below), and a bigger diff is split into slices of about 300 lines.
 
 Each step ends with `mw step <name> <evidence file> --pr <url>`. It records that the step ran on the local head, together with an ID of the PR's own diff (its changes against the base branch). A record holds for that head. It also holds for any later head whose own diff is the same, for example after you merge the base branch in. When you run `gh pr ready`, a mergeworthy hook compares the records with the pushed head and stops the command if a step is missing. When the PR's own diff changed, run again the steps the change affects. Or, if an old record still holds, add the bypass line the hook prints, and say why in it.
 
@@ -13,25 +13,25 @@ A lane, in these steps, is one of the repo's test suites that runs the product i
 
 ## Steps
 
-0. **Start from the current base branch:** `git fetch origin && git merge origin/<base>`, resolve conflicts, push.
+0. **Start from the current base branch:** `git fetch origin && git merge origin/<base>`, resolve conflicts, push. This brings the base in with a merge commit, because the branch is already pushed, unless the repo's `AGENTS.md` asks for rebases. It differs from pull-request's rebase of your unpushed commits onto your own remote branch.
    Done: the branch contains `origin/<base>`.
-1. **Checks:** run the commands from `mergeworthy:pull-request` step 6 on the head. If they're long, a Haiku agent runs them. When a check fails because of a bug already known on the base branch, record the failure as the base's, with a run that shows the base fails it too. Then `mw step gates <log of the checks>`.
-   Done: every check exits 0, and the step is recorded.
-2. **Bug hunt:** an Opus agent runs the verifier brief (below) on each slice of the diff. A slice is as much code as one agent can keep in mind. A diff under about 300 lines is one slice. You, or an implementer agent, fix each reproduced bug at its root, starting from the script that reproduced it. The same verifier then checks the fix again. Repeat until a pass finds nothing. Then `mw step verify <its report>`.
+1. **Checks:** run the commands from `mergeworthy:pull-request` step 6 on the head. If they're long, a Haiku agent runs them. When a check fails because of a bug already known on the base branch, record the failure as the base's, with a run that shows the base fails it too. Then `mw step gates <log of the checks> --pr <url>`.
+   Done: every check exits 0 or is marked CI-only with its reason (`mergeworthy:pull-request`, step 6), and the step is recorded.
+2. **Bug hunt:** an Opus agent runs the verifier brief (below) on each slice of the diff. A slice is as much code as one agent can keep in mind. A diff under about 300 lines is one slice. You, or an implementer agent, fix each reproduced bug at its root, starting from the script that reproduced it. The same verifier then checks the fix again. Repeat until a pass finds nothing. Then `mw step verify <its report> --pr <url>`.
    Done: the last pass on every slice ends with `NO BUGS`, and the step is recorded.
-3. **Quality:** an Opus agent, the rater, runs the guardian brief (below). The brief gives it the `code` standard (`mergeworthy:code`) as its checklist: the lenses, and the refactor prompt at the end of that file. The rater isn't the author. It reads the whole diff, every file and function in it, but doesn't change the code. Code outside the diff is context. Its ratings and its ✅ coverage lists go in the work folder.
+3. **Quality:** an Opus agent, the rater, runs the guardian brief (below). The brief gives it the `code` standard (`mergeworthy:code`) as its checklist: the lenses, and the refactor prompt at the end of that file. The rater isn't the author. It reads the whole diff, every file and function in it, and runs the refactor prompt read-only: it reports, and an implementer makes the changes. (The writer's own run of the prompt, as its self-check, does change the code.) Code outside the diff is context. Its ratings and its ✅ coverage lists go in the work folder.
    - You judge each finding against `code`, Mechanisms and who decides. How likely is it to matter? What does fixing it cost? Would the maintainer write this change? Each finding names the line of `code` it breaks. An accepted finding that no line of `code` covers adds that line to `code` (`mergeworthy:task`, When a rule fails).
    - An implementer agent (the implementer brief, below) commits the accepted findings, one commit per finding or per class of findings (every instance of one kind). Refactor commits stay separate from commits that change behavior. The quick checks run after each commit. If a check fails, fix that commit, never with a patch on top. Each finding you skip gets a reason. For a few lines, you do it yourself.
    - The same rater rates every row again, showing old rating ⇒ new rating, with the commits, until nothing worth changing is left. A pass that changed nothing says so, and why.
    - The verifier then checks the refactor commits against the code before them, for changes in behavior.
    - Keep the rating current. Once the lines added plus the lines deleted since the last full rating exceed about 80, tests and lockfiles included, the rater runs it again on the whole diff before the next "ready". Give that run a new name in the work folder, so it doesn't overwrite the last one.
 
-   Then `mw step quality <the last re-rating>`.
+   Then `mw step quality <the last re-rating> --pr <url>`.
    Done: the rater's last re-rating says nothing worth changing is left, it is less than about 80 changed lines old, the verifier found no regression, and the step is recorded.
-4. **Final review:** a fresh reviewer (`mergeworthy:review`) gets the diff and the draft PR description. It answers "As this repo's maintainer, would you merge this exactly as it is?" You send its findings back through step 2 or 3. If the base branch moved in the meantime, merge it again and re-run step 1. Then `mw step review <its verdict file>`.
+4. **Final review:** a fresh reviewer (`mergeworthy:review`) gets the diff and the draft PR description. It answers "As this repo's maintainer, would you merge this exactly as it is?" You send its findings back through step 2 or 3. If the base branch moved in the meantime, merge it again and re-run step 1. Then you run `mw step review <its verdict file> --pr <url>`.
    Done: the verdict is `CLEAN` with `MERGE AS IS: yes`, and the step is recorded.
 
-**Under about 50 changed lines of code,** one Opus agent runs steps 2 and 3 together, with the verifier brief, the guardian charter and the path of `code`, and writes one report for each. Step 4 is still a separate fresh reviewer.
+**Under about 50 changed lines of code,** one Opus agent runs steps 2 and 3 together. It gets the verifier brief and the guardian brief, plus the path of `code`. It writes two reports: one that ends `NO BUGS` or lists the bugs, and one with the guardian's counts per disposition. Step 4 is still a separate fresh reviewer.
 
 **Benchmarks** run only when the repo has a benchmark that covers the changed code. Run `main` and the head in turns, at least 3 times each, once per head, with a time budget. When a result is worse than the normal variation between runs, fix the change or revert it. Never call it a trade-off.
 
@@ -39,7 +39,7 @@ A lane, in these steps, is one of the repo's test suites that runs the product i
 
 ## The verifier brief
 
-**What counts as a bug:** a candidate counts only with a test or script that fails on the head, and that either passes on the base or shows that the fix is incomplete for the scenario the change names. It must trace back to documented usage at both ends: where the user starts and where it fails. A finding not worth code gets one line: "accepted, not worth code: <why>". If an area has already needed two corrections, stop patching it, and restate the cases as one rule.
+**What counts as a bug:** a candidate counts only with a test or script that fails on the head, and that either passes on the base or shows that the fix is incomplete for the scenario the change names. It must trace back to documented usage at both ends: where the user starts and where it fails. A finding not worth code gets one line: "accepted, not worth code: <why>". If an area has already needed two corrections, you (not the verifier) stop patching it: write down the one rule all its cases break, and check every case against it (`mergeworthy:design`, step 3).
 
 ```
 You are a bug verifier for <PR and slice>. Count only what you reproduce. Don't start subagents. Don't commit, push or comment anywhere.
@@ -73,7 +73,7 @@ Final message: the number of bugs and one line for each, or exactly NO BUGS when
 
 ## The guardian charter and brief
 
-The guardian is the agent that rates code quality and finds bloat in step 3. It reads the code and reports findings. It doesn't change the code. Hand it the brief below, with this charter pasted in.
+The guardian is the agent that rates code quality and finds bloat in step 3. Its name in the briefs is LeanKeeper, because it keeps the code lean. It reads the code and reports findings. It doesn't change the code. A scope is the part of the diff (a list of files) one guardian can keep in mind, like a verifier's slice; a small PR is one scope. Hand it the brief below, with this charter pasted in.
 
 Guardian (LeanKeeper): how to audit, with no specifics
 
@@ -83,14 +83,14 @@ You guard the PR's code quality and keep bloat out, for as long as the PR is ope
 
 **When:** after every change that lands, and also, from time to time, a full sweep of the whole scope that re-checks earlier findings are really closed.
 
-**Every finding** has a `path:line`, a disposition (DELETE-NOW, FILL, DELETE-CAREFULLY, FIX or KEEP), and a price in lines. Saying honestly that something is good is part of the job. List DELETE-NOW findings first. End with the old ⇒ new ratings, and a list of every earlier finding and whether it is closed.
+**Every finding** has a `path:line`, a disposition, and a price in lines. The dispositions: DELETE-NOW (remove it, nothing needs it), DELETE-CAREFULLY (remove it only after a probe shows nothing needs it), FIX (change it), FILL (add what's missing: a test, a case, a check) and KEEP (it's right as it is). Saying honestly that something is good is part of the job. List DELETE-NOW findings first. End with the old ⇒ new ratings, and a list of every earlier finding and whether it is closed.
 
 **Your role stays the same each round, but you start each round with fresh context.**
 
 - You receive the invariants, the settled decisions, the agreed behavior, the current diff and the evidence. Never a verdict you're expected to reach.
-- Check that each settled decision reached every place it affects, and that each unit's progress report contains actual output, not only claims.
+- Check that each settled decision reached every place it affects, and that each implementer's report contains actual output, not only claims.
 - When the work follows a reference (a design, another app), compare every screen and interaction with the reference yourself.
-- When the change is to a methodology or setup like this one, check that every named mechanism survived, and fail any that was reduced to general prose.
+- When the change is to a methodology or agent setup (skills, prompts, hooks), check that every named mechanism survived, and fail any that was reduced to general prose.
 - A claim that something is closed stays open unless you saw the evidence yourself: in the code, in a test run, or in a capture.
 - Mark evidence you couldn't get as UNKNOWN.
 
