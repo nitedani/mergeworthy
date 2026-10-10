@@ -14,7 +14,7 @@ You are the main session: you make the decisions and write each agent's instruct
    - **Haiku at high effort** does three kinds of work:
      - work a mechanical check decides: running tests or CI checks, a reproduction from a recipe, log mining;
      - applying code that Opus already wrote, line for line;
-     - generating ideas in parallel: several agents, each from a different angle, propose options for you to decide between. Its brief says how to check a premise: read code only as it is at the pinned commit (`git show <sha>:<path>`, `git grep <symbol> <sha>`), and treat a commit that an issue, a PR or a note names as history, confirming in the pinned commit that the code it describes still exists.
+     - generating ideas in parallel: several agents, each from a different angle, propose options for you to decide between. Its brief says how to check a premise: read code only as it is at the pinned commit (`git show <sha>:<path>`, `git grep <symbol> <sha>`). When the brief or an earlier note names a commit, treat it as history: confirm in the pinned commit that the code it describes still exists.
    - **Every Haiku claim is a lead, not a fact.** Check it in the code yourself before you act on it or put it to the user. Redo on Opus any Haiku result that fails a check.
    - **Generate ideas on Opus instead** when a wrong decision is expensive, such as a decision a maintainer sees, on complex code.
    - **Never Sonnet.**

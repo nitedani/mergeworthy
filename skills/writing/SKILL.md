@@ -186,6 +186,7 @@ You run this on your draft before review (step 3), and the reviewer of a post us
   - a maintainer's request not followed, or a wrong link.
 - **Position,** in a design discussion: the reply does everything Design threads (above) asks, starting with its author's own position and the design's weakest part.
 - **The reader.** Read it as a newcomer who finds the thread later. List every term or sentence you can't understand, and say in one line what the reader is asked to decide. Each of these is a finding: an unclear decision, an "it" that could mean two things, a term not named where it first appears, a sentence you must read twice, or a bold label standing in for a sentence. So is anything that breaks Voice, How a colleague writes, or the table in What reads as machine-written. Headings in the places Voice allows them aren't a finding. Read it out loud as the reader: what you wouldn't say to a colleague goes.
+- **The form.** The post follows its kind's form (Forms) and length (Length).
 - **The workspace.** Nothing from outside this repo's workspace: no names, links, code or numbers (How a colleague writes, above).
 
 A draft with findings is rewritten as step 4 says, never patched clause by clause.
