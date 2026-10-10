@@ -179,14 +179,15 @@ test('foreground-wait stays silent when the command runs in the background', () 
   assert.deepEqual(gateNames('sleep 60', { runInBackground: true }), [])
 })
 
-const agentNames = (input, ctx) => agentGates({ input }, ctx).map((f) => f.gate)
+const SESSION = 'session-a'
+const agentNames = (input, ctx, session = SESSION) => agentGates({ input, session }, ctx).map((f) => f.gate)
 const withState = (files, overrides) => {
   const ctx = fakeCtx(overrides)
   for (const [name, value] of Object.entries(files)) writeState(ctx, name, value)
   return ctx
 }
 const firstUsed = (minutes) => () => withState({ 'request-ids.json': { 'req-1': NOW - minutes * MINUTE } })
-const started = (ms) => () => withState({ 'agents.json': { 'review pr 5': { at: NOW - ms, tool: 'Agent' } } })
+const started = (ms) => () => withState({ 'agents.json': { [`${SESSION}/review pr 5`]: { at: NOW - ms, tool: 'Agent' } } })
 const claude = (pid, rssKiB = 2 ** 20) => ({ pid, comm: 'claude', ageSec: 3700, cpuPct: 12, rssKiB })
 const lowMemory = () => fakeCtx({ meminfo: () => ({ availableKiB: 2 * 2 ** 20 }), procs: () => [claude(11), claude(22, 3 * 2 ** 20), { pid: 33, comm: 'bash', rssKiB: 9e9 }] })
 const claudes = (count) => () => fakeCtx({ procs: () => Array.from({ length: count }, (_, i) => claude(i + 1)) })
@@ -232,15 +233,15 @@ for (const { gate, input, ctx } of [
 ]) {
   test(`${gate} is bypassed by a reason of 3+ words in the prompt`, () => assert.deepEqual(agentNames({ ...input, prompt: 'go' + BYPASS }, ctx()), []))
   test(`${gate} is not bypassed by a shorter reason in the task`, () => {
-    const [finding] = agentGates({ input: { ...input, task: 'go' + SHORT_BYPASS } }, ctx())
+    const [finding] = agentGates({ input: { ...input, task: 'go' + SHORT_BYPASS }, session: SESSION }, ctx())
     assert.equal(finding.gate, gate)
     assert.match(finding.message, /no reason of at least 3 words/)
   })
 }
 
 test('an agent-dedupe message says how long ago the agent started and where the bypass goes', () => {
-  const [finding] = agentGates({ input: { description: 'Review PR 5' } }, started(30 * MINUTE)())
-  assert.match(finding.message, /started 30 min ago/)
+  const [finding] = agentGates({ input: { description: 'Review PR 5' }, session: SESSION }, started(30 * MINUTE)())
+  assert.match(finding.message, /started in this session 30 min ago/)
   assert.match(finding.message, /add this line to the agent prompt/)
 })
 
@@ -250,9 +251,13 @@ test('an agent-load message gives the numbers and the largest agents', () => {
   assert.match(finding.message, /The largest: pid 22 \(claude, 1h 1m, 12% cpu, 3\.0 GiB\); pid 11/)
 })
 
-test('recordAgent registers the title and keeps the first sighting of a request id', () => {
+test('agent-dedupe stays silent on a title that another session started', () => {
+  assert.deepEqual(agentNames({ description: 'Review PR 5' }, started(30 * MINUTE)(), 'session-b'), [])
+})
+
+test('recordAgent registers the title under the session and keeps the first sighting of a request id', () => {
   const ctx = withState({ 'request-ids.json': { 'req-1': NOW - MINUTE, stale: NOW - 8 * DAY } })
-  recordAgent({ toolName: 'mcp__t3__delegate_task', input: { title: 'Fix X', clientRequestId: 'req-1' } }, ctx)
-  assert.deepEqual(readState(ctx, 'agents.json'), { 'fix x': { at: NOW, tool: 'mcp__t3__delegate_task' } })
+  recordAgent({ toolName: 'mcp__t3__delegate_task', input: { title: 'Fix X', clientRequestId: 'req-1' }, session: SESSION }, ctx)
+  assert.deepEqual(readState(ctx, 'agents.json'), { 'session-a/fix x': { at: NOW, tool: 'mcp__t3__delegate_task' } })
   assert.deepEqual(readState(ctx, 'request-ids.json'), { 'req-1': NOW - MINUTE })
 })

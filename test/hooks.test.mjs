@@ -19,11 +19,13 @@ test('pre-bash is silent on an ungated command', () => {
   assert.deepEqual(hook('pre-bash', { tool_name: 'Bash', tool_input: { command: 'ls -la' }, cwd: '/tmp' }), { code: 0, stdout: '', stderr: '' })
 })
 
-test('pre-agent denies a duplicate launch that post-agent registered', () => {
+test('pre-agent denies a duplicate launch that post-agent registered in the same session', () => {
   const home = tempDir()
-  const launch = { tool_name: 'Agent', tool_input: { description: 'Review PR 5', prompt: 'review it' } }
+  writeFileSync(join(home, 'config.json'), JSON.stringify({ minFreeGiB: 0, maxAgents: 1e9 }))
+  const launch = { session_id: 'session-a', tool_name: 'Agent', tool_input: { description: 'Review PR 5', prompt: 'review it' } }
   assert.equal(hook('post-agent', launch, { MW_HOME: home }).stdout, '')
   assert.match(denial(hook('pre-agent', launch, { MW_HOME: home }).stdout).permissionDecisionReason, /^mergeworthy stopped this agent launch \(its agent-dedupe check\): an agent with the same title or description, 'review pr 5'/)
+  assert.equal(hook('pre-agent', { ...launch, session_id: 'session-b' }, { MW_HOME: home }).stdout, '')
 })
 
 test('stop blocks once, then allows the stop', () => {

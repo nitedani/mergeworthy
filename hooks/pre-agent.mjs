@@ -1,4 +1,4 @@
 import { agentGates } from '../lib/gates.mjs'
 import { denial, runHook } from '../lib/hooks.mjs'
 
-runHook((input, ctx) => denial(agentGates({ input: input.tool_input }, ctx)))
+runHook((input, ctx) => denial(agentGates({ input: input.tool_input, session: input.session_id }, ctx)))
