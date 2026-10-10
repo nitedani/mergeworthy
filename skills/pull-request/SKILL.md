@@ -31,12 +31,12 @@ A change becomes a small PR that its maintainer merges as it is, without asking 
 5. **Write it** in a worktree off the target repo's base, never a fork's (`git worktree add -b <branch> <work folder>/<branch> origin/<base>`):
    - The smallest diff that finishes the job: every call site, every locale.
    - Build the whole interaction, not only the happy path.
-   - Deep modules, caller above callee.
+   - Elegant: the simplest shape that is obviously right. Each file reads top to bottom, caller above callee, one level of abstraction per function. Deep modules, no special cases, no frivolous wrappers or tiny functions, data where the logic is a table. Write it to the refactor prompt's standard (Appendix D) from the first line, so its pass finds nothing.
    - Comments per `writing`: none by default.
    - Tests follow the repo's habit: where the maintainer keeps regression tests, keep them; where they remove PR-proving tests, remove them in a final commit once approved. Tests wait on events, never on sleeps or timeouts. Expected values come from outside the implementation.
    - Docs are written per `writing`, Docs.
 
-   Done: the diff reads as if the maintainer wrote it.
+   Done: the diff is elegant and reads as if the maintainer wrote it.
 6. **Run the gates:** every check the repo's CI workflows run, read from the workflow files, plus `mw diff-lint`. Run servers and e2e under `mw netns`. The exit code is the verdict. A failure that doesn't repeat is still a finding.
    Done: every gate exits 0, and the commands and exit codes are in the gates log.
 7. **See it work in the real app** for UI and runtime changes:
