@@ -1,25 +1,26 @@
 ---
 name: delegating
-description: "Starting, instructing, continuing or checking a subagent: which model, the five-part brief, one agent per job, never waiting in the foreground, checking and passing on its result."
+description: "Starting, instructing, continuing or checking a subagent: which model, the six-part brief with the standard's path, one agent per job, never waiting in the foreground, checking and passing on its result."
 ---
 
 # Delegating
 
-You are the main session: you make the decisions and write each agent's instructions, called its brief. The agent does the work you hand it. Do small edits yourself. Hand big work or parallel work to an agent, and every independent check too.
+You are the main session: you make the decisions and write each agent's instructions, called its brief. The agent does the work you hand it. Do small edits yourself. Hand big work or parallel work to an agent, and every independent check too. Step 1 picks the model for your own agents. An independent review is the exception: it goes to Codex first, and to a fresh Opus agent only when Codex fails (`mergeworthy:review`, step 1).
 
 ## Steps
 
 1. **Choose the model by role.** Opus at high effort for everything that writes or judges: code, tests, docs, posts, reviews, designs, root causes, verification. Haiku at high effort only for mechanical work whose output doesn't ship: running gates or tests, a reproduction from a recipe, log mining. A Haiku result that fails your spot-check is redone on Opus. Never Sonnet.
    Done: `task.md` names the agent's role and its model.
-2. **Write the brief** in five parts:
+2. **Write the brief** in six parts:
    - **Goal:** one outcome you can observe.
    - **Facts:** only what you verified, each with its source. Point to code at a specific commit SHA, never at a branch, which can move.
    - **To check:** your guesses, written as questions. Never your expected answer, and never an earlier agent's conclusion.
    - **Scope:** the paths and commands the agent may use, plus the limits of the shared machine. Name the ports it must not touch. It runs servers only under `mw netns` (its own private network). It kills only the PIDs it started, in scripts it writes too. It starts no agents of its own.
+   - **Standard:** the absolute path of the standard for each thing the agent writes or judges: the plugin's `skills/code/SKILL.md` for code, tests, code comments or a module design, and `skills/writing/SKILL.md` for anything a person reads. The Skill tool's message that loads a skill shows its base directory. Name the file by path, because the agent may not have this plugin's skills loaded. The agent reads the standard before it starts, and its final message says what its self-check against the standard found.
    - **Acceptance:** the commands or observations that show the work is done. Also ask for a final message of at most 15 lines: the result, with `path:line` or command evidence, and a `not_checked` list of what it couldn't check. Everything else goes in a file. The agent ends its turn only with that message, never while an install, test or server it started is still running.
 
    When a skill gives you a fixed text to hand an agent (a reviewer's instructions, a prompt), copy it from the installed skill each time, never from a copy you saved earlier. Keep model versions out of prompts, skills and briefs. Only the first line of a GitHub post names them (`mergeworthy:writing`, Forms).
-   Done: the brief has all five parts, including the machine's limits.
+   Done: the brief has all six parts, including the machine's limits and a standard's path for everything it asks the agent to write or judge.
 3. **Run `mw load`** to see free memory, then start the agent in the background. Never wait for it in the foreground: you're notified when it finishes. Give each job to one agent only. An agent counts as alive until its task has finished, failed or been cancelled. So when its turn ended or its log went quiet, send it a message, and never start a second agent on the same job. Follow-up work on the same thing goes to the same agent: in Claude Code with SendMessage, in T3 Code with `t3_thread_send` in mode `queue`. In T3 Code, each review round is the exception: it is a new task with its own title, and its prompt carries the earlier findings (`mergeworthy:review`, step 4).
    Done: the agent runs in the background, `mw load` showed room for it, and nothing waits on it in the foreground.
 4. **Check its first output early.** At 2 minutes, and every time you wake up, confirm it is making progress. If it has produced no output for five minutes, find out why. Give a long job a time budget in its brief.

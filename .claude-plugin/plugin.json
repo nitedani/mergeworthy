@@ -1,6 +1,6 @@
 {
   "name": "mergeworthy",
-  "description": "A way of working for coding agents whose PRs and posts a maintainer can merge without checking them again: short always-on rules, twelve skills, command gates and the mw tools.",
+  "description": "A way of working for coding agents whose PRs and posts a maintainer can merge without checking them again: short always-on rules, twelve skills (ten procedures, and two standards for code and prose), command gates and the mw tools.",
   "author": {
     "name": "nitedani"
   },

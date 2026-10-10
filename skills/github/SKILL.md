@@ -27,7 +27,7 @@ From your first post until every thread you're in is merged or closed, repeat th
 2. **On each event, decide whether it's yours to answer,** and re-arm the watch in the same step. These are yours:
    - **On a thread you opened:** every comment from a person, and every inline finding from a review bot.
    - **On a thread where you only posted:** a comment from a maintainer or from the user.
-   - **Anywhere in your workspace:** the user's `/agent <instruction>` comment. Treat it as the user typing in this chat: start on it now, alongside what's already running.
+   - **Anywhere in your workspace:** the user's `/agent <instruction>` comment. Treat it as the user typing in this chat: start on it now, alongside what's already running, and answer it here in the session. Post in the thread only when the instruction asks for a post.
    - **The user's own comments** in a watched thread (from their account, without the agent icon) are instructions to you too. Answer them here in the session, not in the thread.
 
    When you start on a comment that's yours, react to it with 👀: `gh api repos/<o>/<r>/issues/comments/<id>/reactions -f content=eyes`, or `pulls/comments/<id>/reactions` for an inline comment. Reviews can't take reactions.

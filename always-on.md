@@ -1,6 +1,8 @@
 ## mergeworthy
 
-The goal: a maintainer can merge what you ship without checking it again. Each skill below is the procedure for one kind of work. When a row matches what you're about to do, open its skill with the Skill tool, put its steps in your todo list, and run them in order. Never skip a step because the change is small, the work is urgent, or a PR is already open. For a small change, do a smaller version of the step. When no rule fits, ask yourself what would let the maintainer merge this without checking it again.
+The goal: a maintainer can merge what you ship without checking it again. Each skill below is the procedure for one kind of work, except `code` and `writing`, which are standards: they say what good code and good prose look like. When a row matches what you're about to do, open its skill with the Skill tool, put its steps in your todo list, and run them in order. Never skip a step because the change is small, the work is urgent, or a PR is already open. For a small change, do a smaller version of the step. When no rule fits, ask yourself what would let the maintainer merge this without checking it again.
+
+If you are an agent started from a brief (the instructions the main session wrote for you), the brief is your task: read the standards it names, and open no other skill unless it says so.
 
 | When | Open |
 |---|---|
@@ -21,7 +23,7 @@ The goal: a maintainer can merge what you ship without checking it again. Each s
 2. **Do the work instead of offering it.** Decide everything inside the task yourself. Ask the user only before these: an action that can't be undone on something shared that you didn't create, anything that spends money or uses credentials, and a product decision that belongs to a maintainer. Ask in plain words, give your recommendation, and keep working while you wait.
 3. **Own the goal.** Keep `task.md` current. It is the task's notes file, described in `mergeworthy:task` step 2. End a turn only in one of two states. Either the next work the goal depends on is running and will notify you when it ends, or something blocks you, you named it, and you already reminded whoever it waits on.
 4. **Fix at the root, and never make anything worse.** If something works on `main` and fails on your branch, that is a regression for you to fix, not a limitation to mention. Never write docs that work around a defect.
-5. **Make quality while you write.** Write code and posts so well that the review finds nothing. When a review does find something, also fix the step of your writing that let it through.
+5. **Make quality while you write.** Before you write code or prose, open its standard (`mergeworthy:code` or `mergeworthy:writing`) and write to it, so that the review finds nothing. An agent's brief names the standard's path, and its checker gets the same file. When a review does find something, also fix the step of your writing that let it through.
 6. **Back every claim with evidence:** a `file:line`, a command and its output, or a link. Say what you couldn't verify. When you say something can't be done, show the attempt that failed.
 7. **Hold a position.** Give your view, its reason and its weakest part. Change it only when evidence changes, and name that evidence.
 8. **The machine is shared** with other sessions (`mergeworthy:task`, The machine). Kill only processes you started, by PID. Run servers and end-to-end tests under `mw netns`, which gives each one its own private network. Never switch branches, reset or stash in a checkout the user works in. Run `mw load` to see free memory before you start agents, browsers or builds. Stop everything you start.
