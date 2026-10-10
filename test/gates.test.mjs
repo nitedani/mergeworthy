@@ -163,6 +163,20 @@ test('a post message names the API path of a gh api call and the flag that reads
   assert.match(finding.message, /`mw post <draft> -- <this gh command with -F body=@<draft>>`/)
 })
 
+const postAdvice = (command) => bashGates({ command, cwd: '/work' }, fakeCtx()).find((f) => f.gate === 'post').message.split('\n')[1]
+
+for (const [command, advice] of [
+  ['gh pr close --comment "superseded by #6" 5', '`mw post <draft> -- gh pr comment 5 --body-file <draft>`, which runs both checks first. Then close without --comment.'],
+  ['gh pr close 5 -R vikejs/vike --comment "Replaced by #6"', '`mw post <draft> -- gh pr comment 5 -R vikejs/vike --body-file <draft>`, which runs both checks first. Then close without --comment.'],
+  ['gh release create v1 --notes x', '`mw post <draft> -- <this gh command with --notes-file <draft>>`, which runs both checks first.'],
+  ['gh gist create notes.md', '`mw post <draft> -- <this gh command with <draft> as a file argument>`, which runs both checks first.'],
+  ['gh pr edit 5 --title "New title"', "mw post can't read a title from a draft file. Get the new title reviewed, then run this command again with the bypass line below."],
+  ['gh api repos/o/r/pulls/5 -X PATCH -f title="Fix the router"', "mw post can't read a title from a draft file. Get the new title reviewed, then run this command again with the bypass line below."],
+  ['gh pr edit 5 --title t --body-file b.md', '`mw post <draft> -- <this gh command with --body-file <draft>>`, which runs both checks first.'],
+]) {
+  test(`a post message gives advice that works for: ${command}`, () => assert.ok(postAdvice(command).endsWith(advice), postAdvice(command)))
+}
+
 test('a post message for a closing comment says to post it first, then close', () => {
   const [finding] = bashGates({ command: 'gh pr close 5 --comment "Replaced by #6"', cwd: '/work' }, fakeCtx())
   assert.match(finding.message, /`gh pr close` posts to GitHub directly/)

@@ -91,6 +91,15 @@ test('mw post exits 2 when the gh command does not post the draft', () => {
   assert.deepEqual(posts(), [])
 })
 
+test('mw post reads a release draft from --notes-file and a gist draft from a file argument, but not from --title', () => {
+  const { draft, mw, post, posts } = setup()
+  mw('verdict', draft, 'CLEAN', '--by', 'codex')
+  assert.equal(post([], ['release', 'create', 'v1', '-R', 'o/r', '--notes-file', draft]).code, 0)
+  assert.equal(post([], ['gist', 'create', draft]).code, 0)
+  assert.equal(post([], ['pr', 'edit', '5', '-R', 'o/r', '--title', draft]).code, 2)
+  assert.deepEqual(posts().map((args) => args.slice(0, 2).join(' ')).filter((command) => command !== 'repo view'), ['release create', 'gist create'])
+})
+
 test('mw post stops on a lint error', () => {
   const { draft, mw, post } = setup({ text: withHeader('Fixed — with a test.') })
   mw('verdict', draft, 'CLEAN', '--by', 'codex')
