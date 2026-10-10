@@ -10,10 +10,10 @@ A reviewer is someone who didn't write the thing and hasn't seen how it was made
 ## Steps
 
 1. **Pick the reviewer.**
-   - Codex first. In T3 Code, use `delegate_task` on the Codex provider with its newest model at high effort. Elsewhere: `codex exec --sandbox danger-full-access --skip-git-repo-check -o <out> "$(cat <prompt file>)" < /dev/null`.
+   - Codex first. In T3 Code, use `delegate_task` on the Codex provider with its newest model at high effort. Elsewhere: `codex exec -c model_reasoning_effort=high --sandbox danger-full-access --skip-git-repo-check -o <out> "$(cat <prompt file>)" < /dev/null`.
    - If it fails (out of credits, a rate limit, an error, a hang), go straight to a fresh Opus agent at high effort with the same prompt. A failed run is no review.
 
-   Done: a reviewer is running, and you know which one.
+   Done: a reviewer is running, and `task.md` records which one.
 2. **Write the prompt as a file:**
    - the charter: the reviewer charter below for code, the posting checks for a post;
    - the artifact at pinned SHAs, and one sentence on what it claims to do;
@@ -23,10 +23,10 @@ A reviewer is someone who didn't write the thing and hasn't seen how it was made
 
    Give facts and questions, never a desired verdict.
    Done: the prompt file exists and names the verdict command.
-3. **The reviewer records its verdict itself:** `mw verdict <draft> CLEAN|CHANGES --by <its id>` for a post, or a verdict file for code that `mw step review` points to. Its final message is exactly `CLEAN`, or the findings (past 15 lines, in its output file). Never write a verdict yourself.
+3. **The reviewer records its verdict itself:** `mw verdict <draft> CLEAN|CHANGES --by <its id>` for a post, or a verdict file for code that `mw step review` points to. The charter's PASS is `CLEAN`; CHANGES-REQUESTED and FAIL are `CHANGES`. Its final message is exactly `CLEAN`, or the findings (past 15 lines, in its output file). Never write a verdict yourself.
    Done: the verdict file exists, written by the reviewer.
-4. **Settle each finding.** A behavior finding, or a reviewer's "this case is correct", is a candidate until a run on the head shows it. A real defect gets fixed in your own words, never by pasting the reviewer's. A finding not worth code gets a one-line reason. Send the fixes to the same reviewer to confirm; start a fresh one only when the artifact changed beyond the fixes, or for a final cold read.
-   Done: the same reviewer's verdict on the current text or head is `CLEAN`.
+4. **Settle each finding.** A behavior finding, or a reviewer's "this case is correct", is a candidate until a run on the head shows it. A real defect gets fixed in your own words, never by pasting the reviewer's. A finding not worth code gets a one-line reason. Send the fixes to the same reviewer to confirm: in Claude Code, continue it (SendMessage). In T3 Code, every round is a new `delegate_task` whose prompt carries the brief, the prior findings, your responses and the fixes. Start a fresh reviewer only when the artifact changed beyond the fixes, or for a final cold read.
+   Done: the latest round's verdict on the current text or head is `CLEAN`.
 
 ## Reviewer charter
 

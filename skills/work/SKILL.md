@@ -9,8 +9,8 @@ You own the goal the way a senior colleague would: you read everything, decide w
 
 ## Steps
 
-1. **Read everything first.** Read the task, every link in it, and the issues and PRs those link to. Check for an existing PR, a fix on `main`, and another session already working on it. Pull the default branch.
-   Done: you can name every ask in the task and every prior attempt.
+1. **Read everything first.** Read the task, every link in it, and the issues and PRs those link to. Check for an existing PR, a fix on `main`, and another session already working on it. `git fetch origin`; never pull in a clone the user works in.
+   Done: `task.md` (step 2) lists every ask and every prior attempt.
 2. **Write `task.md`** in the task's work folder: `<name>-work/` next to the repo, never inside it and never in `/tmp`. It holds:
    - the goal in one sentence;
    - every ask and link of the task as a checkbox, plus every ask the user adds later;
@@ -29,10 +29,10 @@ You own the goal the way a senior colleague would: you read everything, decide w
 6. **Integrate each agent's result** before using it:
    - open 2 or 3 of the lines it cites;
    - re-run one of its commands;
-   - write down each structural decision in its diff and why it's right.
+   - write each structural decision in its diff, and why it's right, into `task.md`.
 
    Hardcoded lists and duplicated classifications get fixed before they land.
-   Done: you can state why each decision in the result holds.
+   Done: `task.md` holds each decision with its reason, and the cited lines matched.
 7. **Keep the work moving.**
    - At every wake-up, the next critical-path item is in flight before any side work.
    - While any wait exceeds 10 minutes, an independent item runs too.
@@ -74,7 +74,7 @@ You decide and brief; an agent does the work you hand it. Do small edits yoursel
    - **Acceptance:** the commands or observations that define done, plus a final message of at most 15 lines (the result with `path:line` or command evidence, and a `not_checked` list), with the rest in a file.
 
    A charter or prompt from a skill is pasted from the installed skill, never from a saved copy.
-3. **Check `mw load`,** then launch in the background. Never wait in the foreground: the agent's completion wakes you. One agent per job: a follow-up on the same work continues that agent (SendMessage in Claude Code, `t3_thread_send` with mode `queue` in T3 Code). A new review round is a new launch with its own title.
+3. **Check `mw load`,** then launch in the background. Never wait in the foreground: the agent's completion wakes you. One agent per job: a follow-up on the same work continues that agent (SendMessage in Claude Code, `t3_thread_send` with mode `queue` in T3 Code). In T3 Code, a review round is a new launch with its own title that carries the prior findings (`review`, step 4).
 4. **Check its first output early.** At 2 minutes, and at every wakeup, confirm it is making progress; five minutes with no output means investigate. A long job gets a time budget in its brief.
 5. **Relay its result** to the user and act on it; the user never sees the agent's report.
 
@@ -85,8 +85,8 @@ An agent never widens its brief, never picks another approach than the plan (it 
 ## The machine
 
 - **Processes:** kill only processes you started, by PID. Check each PID's command and parent chain first: other sessions run browsers, servers and agents on the same machine. Never `pkill -f`, `killall` or `pgrep -f`.
-- **Servers and e2e runs:** each runs under `mw netns -- <cmd>`, which gives it its own ports and internet access. Treat any test command as one that may start a server. At most 4 browsers and 4 dev servers of your own at once.
-- **Memory:** compute it before you allocate it. Check `mw load` before starting agents, browsers or builds. On WSL, an overflowing GPU spills into Windows RAM without an error.
+- **Servers and e2e runs:** each runs under `mw netns -- <cmd>`, which gives it its own ports and internet access; `--publish <port>` makes one reachable from the host's browser and prints its URL. Without slirp4netns, use a free port of your own on the host, never a bare `unshare -rn`, which cuts off the internet. Treat any test command as one that may start a server. At most 4 browsers and 4 dev servers of your own at once.
+- **Memory:** compute it before you allocate it, and keep it under the free memory with headroom; "it loaded" proves nothing. Check `mw load` before starting agents, browsers or builds.
 - **Shared state:** never restart or reconfigure a container someone else depends on. Never modify the package store or a shared `node_modules`; scratch installs use `--package-import-method=copy`. Check `git status` after any install.
 - **The user's checkouts:** never edit, commit, switch, reset or stash in a clone the user works in. Make your own worktree (`git worktree add <work folder>/<name> <ref>`) with its own ports and databases.
 - **Environment limits:** a test that fails only because of where you run it (no network, no GPU, a missing binary) changes how you run it, never the product or its test.
@@ -100,11 +100,11 @@ A workspace is a set of GitHub owners whose work may mix, listed in `~/.mergewor
 When the user names a failure ("why didn't you…?"), or you find one:
 1. Say in one line why it happened.
 2. Fix the instance: the PR, the post, the code.
-3. Fix the rule in the mergeworthy repo in the same turn. Edit the line that should have covered it, or delete a line that caused it; add a line only when none covers it. When the failure has a detectable trigger, prefer a mechanism (a gate, a lint check) to a sentence.
-4. Run `npm test` in the mergeworthy repo, then commit and push.
-5. Show the correction holds on the running copy.
+3. Fix the rule in your own worktree of the mergeworthy repo (`git worktree add <work folder>/mergeworthy origin/<the branch the plugin is installed from>`), in the same turn. Edit the line that should have covered it, or delete a line that caused it; add a line only when none covers it. When the failure has a detectable trigger, prefer a mechanism (a gate, a lint check) to a sentence.
+4. Run `npm test` there, then commit and push to that branch.
+5. Update the installed plugin (`claude plugin update mergeworthy`, or a new session for `--plugin-dir`) and show the change in the installed skill file.
 
-Done: the instance is fixed, the rule change is pushed, and the running copy shows it.
+Done: the instance is fixed, the rule change is pushed, and the installed copy contains it.
 
 ## Finality
 
@@ -119,6 +119,8 @@ Who runs what:
 - You start every agent the prompt names: the mappers (one for all subsystems when they fit one context), Phase B's 3 branch agents and its one converging agent, all on Opus.
 - Phases A and B are analysis, by fresh-context agents, never the author. Phase B½'s graph queries are analysis; instrumenting, running the suites and removing are the author's, as is Phase C.
 - The deliverable is the short design doc at the end; the graph is working material.
+
+Done: the design doc is in the work folder (or posted, where the repo keeps none), and every Owner-Safe closure join holds.
 
 ```
 Run a FINALITY PASS on <FEATURE / PATHS>.

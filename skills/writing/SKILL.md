@@ -9,14 +9,16 @@ Every post reads as if the account's owner wrote it: a colleague who cares about
 
 ## Steps
 
+For every GitHub post and docs page. Reports to the user and code comments follow their own sections below.
+
 1. **Read what it builds on:** the whole thread, the threads it links, your own earlier replies, the evidence (`github`, Posting step 1).
-   Done: you can list every open question and every decision already made.
+   Done: the draft's notes list every open question and every decision already made, each with its permalink.
 2. **Say it across the desk first.** What did you find, what do you think, what will you do, what do you need from them? Write that down in two or three sentences: the verdict, its one reason, the next step.
-   Done: that core exists; everything after it must earn its place.
+   Done: those sentences open the draft file; everything after them must earn its place.
 3. **Draft it.** A design answer or a PR body gets 3 to 5 drafts that lead with different things; pick the one that reads best against the model passages below. Other posts get one draft.
-   Done: one draft chosen, and you can say why.
+   Done: the drafts are in the work folder, and the chosen one carries a one-line reason.
 4. **Read it as a newcomer who finds the thread later.** Every term is named where it first appears, every "it" has one meaning, nothing needs reading twice. Read it out loud as the reader: what you wouldn't say to a colleague goes.
-   Done: a newcomer can follow it and can say what they're asked to decide.
+   Done: the draft passes `mw lint`, and its first paragraph says what the reader is asked to decide, if anything.
 5. **Fix review findings in your own words.** A passage that can't be fixed sentence by sentence is explained aloud to an imagined friend and replaced by what you said. Never paste a reviewer's wording, never patch clause by clause.
    Done: the reviewer's verdict is `CLEAN` on the rewritten text.
 
@@ -128,7 +130,7 @@ Length follows the kind of post and what it answers; there is no cap.
 - **A PR body** follows its evidence: the format that merged 14 of 14 upstream PRs is a symptom title, one cause, a before/after table and a regression test.
 - **Past about 200 words,** the reviewer asks what it's for (several quoted questions, code, a walkthrough). That's a question, not a cut.
 
-**Density, not length, is what confuses.** Every post that drew "I don't understand" this week had a clipped clause whose referent the reader had to guess ("which `+middleware` must run before your routes" drew "what do you mean with 'your routes'?"). Every sentence must make sense read alone by a newcomer, with every term named where it appears.
+**Density, not length, is what confuses:** a clipped clause whose referent the reader must guess ("which `+middleware` must run before your routes" draws "what do you mean with 'your routes'?"). Every sentence must make sense read alone by a newcomer, with every term named where it appears.
 
 ## Forms
 
@@ -137,9 +139,9 @@ Length follows the kind of post and what it answers; there is no cap.
   - It is written to be scanned. The first paragraph says what was wrong, in a user's words, and what this PR changes; status (draft, dependencies) comes after.
   - Evidence comes in a skimmable shape: a before/after table, a permalink to the line at fault, screenshots with one line each on what to look at.
   - A feature explains how it works with a code sample.
-  - One collapsed Verification block closes it (`pull-request`, step 10).
   - A note for the maintainer goes in one table, `| Note | Kind | Blocks merge | Next |`.
-  - Say a dependent project needs this PR only if it is still broken without it. When a revert wouldn't undo the merge, that is the closing caveat.
+  - Say a dependent project needs this PR only if it is still broken without it. When a revert wouldn't undo the merge, that caveat ends the prose.
+  - One collapsed Verification block comes last (`pull-request`, step 10).
 - **An issue body:** one finding, without how you came across it. The title is the symptom as a user meets it. `### How to reproduce` with numbered steps, then the evidence; `file:line` last, for whoever fixes it.
 - **An inline review comment:** only where a reviewer must judge (a call that could have gone the other way, something the diff can't show, a risk you hand over), at most two sentences. No comment at all is the normal outcome for a small fix.
 - **An image or video:** one line on what to look at and what it proves, and the setup (page, filter) when the default view doesn't show it.
@@ -154,7 +156,7 @@ Docs pass when a maintainer would have written them. The voice is the project's,
 1. **Know the project's docs voice:** the `## Docs voice` section of `~/.mergeworthy/projects/<owner>/<repo>.md`, 6 to 12 rules, each with a page path as its example. If it's missing, derive it once from 8 sibling pages and the maintainer's own edits on docs (`git log --author=<maintainer> -p -- docs/`).
    Done: the section exists.
 2. **Place it** where a user with this task would look. Reference says what a thing is, a guide covers a task, a concept page says why. A new public thing gets what its siblings have, as short as theirs. What another page says is linked, never repeated.
-   Done: you can name the page and why.
+   Done: `task.md` names the page and why it is the one.
 3. **Shape it:** the common case and its code first, the minimum a user needs, details later in the order users hit them. Describe how it works now, never its history. Sections stay near their siblings' length.
    Done: a reader who stops after the first code block has done the task.
 4. **Draft by imitation:** copy the closest sibling section's structure, sentence order, code block form and note style, and put your content in that frame. A sentence the frame has no slot for is a candidate for deletion.

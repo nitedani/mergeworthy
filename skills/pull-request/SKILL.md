@@ -16,10 +16,15 @@ A change becomes a small PR that its maintainer merges as it is, without asking 
 
    A hit isn't proof: confirm the behavior in today's code.
    Done: no fix on `main` and no open PR; or, if one exists, a comment with the commit and `file:line`, and you stop.
-2. **Reproduce it on `main`** as a user meets it: in the running app for UI or runtime behavior, otherwise with one fast command that goes red on the symptom. For a feature, capture the current state.
-   Done: a command, screenshot or video that shows the symptom on `main`.
-3. **Find the root cause and every sibling case.** Check the same failure in the mechanism's other cases: each adapter, method, status, runtime. A sibling that fails the same way in the same files is part of this fix. One that needs its own decision gets its own PR, opened now. Generate two or three approaches, "not building it" included, before choosing. When the fix belongs upstream, fix it there first.
-   Done: you can name the cause, the layer that owns it, and each sibling checked.
+2. **Reproduce it on `main`** as a user meets it (Evidence, below): in the running app for UI, with the request and response for a backend, otherwise with one fast command that goes red on the symptom. For a feature, capture the current state.
+   Done: a command, screenshot or video in the work folder that shows the symptom on `main`.
+3. **Find the root cause and every sibling case.** Check the same failure in the mechanism's other cases: each adapter, method, status, runtime.
+   - A sibling that fails the same way in the same files is part of this fix.
+   - A sibling elsewhere with a clear fix gets its own PR, opened now.
+   - A sibling whose fix needs the owner's decision gets an issue (`github`, Opening an issue).
+
+   Generate two or three approaches, "not building it" included, before choosing. When the fix belongs upstream, fix it there first.
+   Done: `task.md` names the cause, the layer that owns it, and each sibling with its disposition.
 4. **Read the house before writing:**
    - three files next to the change;
    - the maintainer's last merged PRs (what they keep and what they cut);
@@ -27,46 +32,58 @@ A change becomes a small PR that its maintainer merges as it is, without asking 
    - `mw followups <owner/repo>`, the commits maintainers made after our merged PRs. Add what they teach to the project notes, one line each, with the link.
 
    Grep for what already does the work: reuse it, and a fix it needs to be reused is part of this PR.
-   Done: you can list the house conventions this diff must follow (typing patterns, naming, JSDoc tags, test helpers, comment density).
+   Done: `task.md` lists the conventions this diff must follow (typing patterns, naming, JSDoc tags, test helpers, comment density).
 5. **Write it** in a worktree off the target repo's base, never a fork's (`git worktree add -b <branch> <work folder>/<branch> origin/<base>`):
    - The smallest diff that finishes the job: every call site, every locale.
    - Build the whole interaction, not only the happy path.
    - Elegant: the simplest shape that is obviously right. Each file reads top to bottom, caller above callee, one level of abstraction per function. Deep modules, no special cases, no frivolous wrappers or tiny functions, data where the logic is a table. Write it to the refactor prompt's standard (Appendix D) from the first line, so its pass finds nothing.
    - Comments per `writing`: none by default.
-   - Tests follow the repo's habit: where the maintainer keeps regression tests, keep them; where they remove PR-proving tests, remove them in a final commit once approved. Tests wait on events, never on sleeps or timeouts. Expected values come from outside the implementation.
+   - Tests follow the repo's habit: where the maintainer keeps regression tests, keep them; where they remove PR-proving tests, remove them in a final commit once approved. At most one permanent e2e assertion per new capability. Tests wait on events, never on sleeps or timeouts. Expected values come from outside the implementation.
    - Docs are written per `writing`, Docs.
 
-   Done: the diff is elegant and reads as if the maintainer wrote it.
+   Done: reading your own diff with the refactor prompt finds nothing worth changing, and it follows every convention from step 4.
 6. **Run the gates:** every check the repo's CI workflows run, read from the workflow files, plus `mw diff-lint`. Run servers and e2e under `mw netns`. The exit code is the verdict. A failure that doesn't repeat is still a finding.
-   Done: every gate exits 0, and the commands and exit codes are in the gates log.
-7. **See it work in the real app** for UI and runtime changes:
+   Done: every gate exits 0, and each `mw diff-lint` warning is fixed or answered in one line in the gates log.
+7. **See it work as a user meets it** (Evidence, below):
    - capture "before" by reverting only your files (`git checkout origin/<base> -- <files>`, then `git checkout HEAD -- <files>`);
-   - use it as a person would for five minutes, around the change and not only the fixed path;
-   - for UI, check each touched page at phone, tablet and desktop widths, light and dark, with hover, focus and open states, and compare it against the references from `work` step 3. Any console error fails.
+   - use it as a person would for five minutes, around the change and not only the fixed path. A server the browser must reach runs under `mw netns --publish <port> -- <cmd>`, which prints the host URL;
+   - for UI, check each touched page at phone, tablet and desktop widths, light and dark, with hover, focus and open states, and compare it against the references from `work` step 3. Any console error fails. Show the whole page at the real viewport with real data, or a video when it takes more than one click;
+   - for a backend, show the request and response, `main` against the head.
 
-   Show it with a screenshot of the whole page at the real viewport with real data, or a video when it takes more than one click.
-   Done: the before and after captures exist, and anything else you tripped over has a PR or an issue.
+   Done: the before and after evidence is in the work folder, and anything else you tripped over has a PR or an issue.
 8. **Open a draft PR** with the first push: `gh pr create --draft` through `mw post`, the body per `writing` (Forms). Then arm `mw watch <PR url>` (`github`).
-   Done: the draft PR exists and the watcher runs.
+   Done: the draft PR exists and the watch runs.
 9. **Converge the head** (Converge, below).
-   Done: `mw steps --pr <url>` shows every step on the current head.
-10. **Finish the body:** add one collapsed `<details><summary>Verification</summary>` block, one line per converge step: what ran on `<head sha>` and what came of it. Changes over ~300 lines of feature code (tests, docs and lockfiles excluded) also carry the `mw loc` table. Post the edit through `mw post`.
+   Done: `mw steps --pr <url>` shows every step holding on the head you pushed.
+10. **Finish the body:** add one collapsed `<details><summary>Verification</summary>` block, one line per converge step: what ran on `<head sha>` and what came of it. Changes over ~300 lines of feature code (tests, docs and lockfiles excluded) also carry the lines-per-feature table: write a map file of `<glob> = <feature>` lines, in the maintainer's words, and paste the output of `mw loc origin/<base> --map <file>`. Post the edit through `mw post`.
     Done: the body is true of the head, and its review is `CLEAN`.
 11. **Say ready:** `gh pr ready <N>`. Re-read the whole thread first, inline comments included: every maintainer instruction is done. CI is green. Then say once, in plain words, "Ready for review" with the head SHA.
     Done: the PR is ready, and you said so once.
-12. **Stay on it until it's merged** (`github`, the live loop): every review, red CI, conflict and landed dependency gets handled. A new head re-runs the converge steps it re-opens.
+12. **Stay on it until it's merged** (`github`, the live loop): every review, red CI, conflict, push and landed dependency gets handled. A change to the PR's own diff re-opens the converge steps it touches. While they re-run, the PR goes back to draft (`gh pr ready --undo <N>`). Never close a PR that fixes a real bug.
     Done: the PR is merged or closed.
 13. **Merge only on an explicit ask** from the user or the maintainer, in the repo's own merge form (its `AGENTS.md`, or `gh pr merge <N> --squash --subject "<title> (#<N>)" --body ""`). Retarget the PRs based on its branch first (`gh pr edit <M> --base <its base>`), then merge the new base into each.
     Done: merged, and every dependent PR is retargeted and shows only its own diff.
 
 ## Converge
 
-Every head runs these, scaled to the diff. Each step ends with `mw step <name> <evidence file> --pr <url>`, and `gh pr ready` checks the records on that PR's head. A step holds for the head it ran on: when the head moves, re-run what the change re-opens, or say in the bypass why the old record still holds.
+Every head runs these, scaled to the diff, in the PR's worktree. Each step ends with `mw step <name> <evidence file> --pr <url>`, which records the local head and the PR's own diff. A record holds for that head, and for any later head whose own diff is unchanged, such as after a merge of the base. `gh pr ready` checks the records against the pushed head. When the PR's own diff changed, re-run what the change re-opens, or say in the bypass why the old record still holds.
 
+0. **Start from the current base:** `git fetch origin && git merge origin/<base>`, resolve conflicts, push.
+   Done: the branch contains `origin/<base>`.
 1. **Gates:** step 6's commands on the head, run by a Haiku agent if they're long. `mw step gates <gates log>`.
-2. **Verify:** an Opus agent runs the verifier brief (Appendix A) on each slice (a slice is what one agent can hold; under ~300 lines, one slice). Each reproduced bug is fixed at its root, from a failing repro. The same agent re-checks the fix, until a pass finds nothing. `mw step verify <its report>`.
-3. **Quality:** an Opus rater runs the guardian brief (Appendix B) with the refactor prompt (Appendix D), read-only. You judge each finding: is it likely, what does it cost, would the maintainer write it? An implementer (Appendix C), or you for a few lines, lands the accepted ones, commit by commit, with the quick gates after each. The same rater re-rates old ⇒ new until nothing worth changing is left. The verifier then re-checks the refactor commits against the tree before them. `mw step quality <the last re-rating>`.
-4. **Final review:** after `git merge origin/<base>` and the gates again, a fresh reviewer (`review`) gets the diff and the PR body draft. It answers "As this repo's maintainer, would you merge this exactly as it is?" Its findings go back to step 2 or 3. `mw step review <its verdict file>`.
+   Done: every gate exits 0, recorded.
+2. **Verify:** an Opus agent runs the verifier brief (Appendix A) on each slice. A slice is what one agent can hold; under ~300 lines it's one slice. You, or an implementer, fix each reproduced bug at its root, from its failing repro. The same verifier re-checks the fix, until a pass finds nothing. `mw step verify <its report>`.
+   Done: the last pass on every slice ends `NO BUGS`, recorded.
+3. **Quality:** an Opus rater runs the guardian brief (Appendix B) with the refactor prompt (Appendix D), read-only.
+   - You judge each finding: is it likely, what does it cost, would the maintainer write it?
+   - An implementer (Appendix C), or you for a few lines, lands the accepted ones commit by commit, with the quick gates after each.
+   - The same rater re-rates old ⇒ new until nothing worth changing is left.
+   - The verifier then re-checks the refactor commits against the tree before them.
+
+   `mw step quality <the last re-rating>`.
+   Done: the rater's last re-rating says nothing worth changing is left, and the verifier found no regression, recorded.
+4. **Final review:** a fresh reviewer (`review`) gets the diff and the PR body draft. It answers "As this repo's maintainer, would you merge this exactly as it is?" Its findings go back to step 2 or 3. If the base moved meanwhile, merge it again and re-run step 1. `mw step review <its verdict file>`.
+   Done: the verdict is `CLEAN` with `MERGE AS IS: yes`, recorded.
 
 **Under ~50 changed code lines,** one Opus agent runs steps 2 and 3 together (the verifier brief, the guardian charter and the refactor prompt, one report each), and step 4 stays a separate fresh reviewer.
 
@@ -77,7 +94,7 @@ Every head runs these, scaled to the diff. Each step ends with `mw step <name> <
 - **No removal without a probe.** Before removing a guard, dedupe, retry or memo, probe the symptom it prevents in its owning lane; a failure keeps it.
 - **Owner code** (a commit by a human, or without the agent trailer) is never removed or rewritten on an agent's reading alone. Such a finding goes to the owner with a recommendation.
 - **Docs are the contract.** When code and docs disagree, the code is the suspect.
-- **Behavior and public surfaces** in someone else's repo are the maintainer's call: ask before changing them, and keep refactors behavior-preserving.
+- **Behavior and public surfaces** in someone else's repo are the maintainer's call: ask before changing them, and keep refactors behavior-preserving. In the user's own repo, changes the task needs are yours to decide.
 
 ## Evidence
 
@@ -90,7 +107,7 @@ What lets a newcomer see a behavior for themselves, in a PR, an issue or a repro
   - the request and response, or the command and its output, when nothing on screen shows it.
 
   Disclose anything you did to the page to get the shot. Redact secrets.
-- **Upload it:** `gh pr edit <N> --body-file body.md --attach '/abs/path/01-name.png#alt'` through `mw post`, which works for `gh issue create` and comments too. Reference each file by the exact path you pass, and confirm with `gh pr view <N> --json body` that no local path survived. A video goes in as `![](<path>.mp4)` alone in its paragraph.
+- **Upload it:** `gh pr edit <N> --body-file body.md --attach '/abs/path/01-name.png#alt'` through `mw post`, which works for `gh issue create` and comments too. Reference each file by the exact path you pass, and confirm with `gh pr view <N> --json body` that no local path survived. A video goes in as `![](<path>.mp4)` alone in its paragraph. If `gh` lacks `--attach`, upload by hand and link.
 
 ## Pushing and stacks
 
@@ -169,7 +186,7 @@ You are a PERMANENT code-quality & bloat guardian for the life of the PR. READ-O
     fix as CLASSES, one commit per class.
 12. **TEST & COMMENT MASS** — all priced and dispositioned like code bloat:
     - test redundancy (multiple tests proving the IDENTICAL behavior);
-    - excess permanent tests beyond the repo’s habit;
+    - excess permanent tests beyond the repo’s habit and per-capability limit (at most one permanent e2e assertion per new capability);
     - harnesses/scaffolds that should have been transient probes;
     - narration/justification/audit-trail comments and JSDoc walls.
 
@@ -199,7 +216,7 @@ Ratings and findings cover everything in scope at 100% coverage, tests included.
 Keep the settled decisions intact: <decisions>.
 - Judge code/doc disagreements against the documented contract and ask the owner when the intended fix is unclear.
 - Flag human commits or commits without the environment’s agent trailer as OWNER-DECISION before removing or rewriting their code on your reading alone.
-- Behavior or public-surface changes in someone else's repo are the maintainer's call; keep refactors behavior-preserving.
+- Ask external maintainers about behavior or public-surface changes; decide changes authorized by the user’s task, and keep refactors behavior-preserving.
 - Keep comments to one literally true line about a constraint the code cannot show.
 - Judge whether each finding earns its diff: how likely a real user hits it, what main does in the analogous case, what it costs, whether the maintainer would write it.
 
@@ -241,7 +258,7 @@ Work only there; don't push, never stash, stage files by name.
 Implement exactly these finding IDs from <report>: <list>.
 Not these: <owner decisions and exclusions>.
 
-Write every change with the guardian charter's lenses, so the next guardian round has nothing to add.
+Write every change with the guardian charter's lenses and `work`'s Deep modules terms, so the next guardian round has nothing to add.
 
 For every item:
 - read the code end to end and check the finding is true at <head>;
@@ -305,4 +322,4 @@ Refactor this PR:
 - End with a summary of what you worked on: print the lists again with old rating ⇒ new
   rating with link to commit(s).
 
-**Running it:** the rater rates read-only and is never the author. The author implements commit by commit, with refactor commits separate from behavior commits. Then the same rater re-rates old ⇒ new. A pass that changed nothing says so, and why. The pass goes stale: once net additions plus deletions since the last full rating exceed ~80 lines, re-run it on the whole diff before the next "ready".
+**Running it:** the rater rates read-only and is never the author. The author implements commit by commit, with refactor commits separate from behavior commits. Then the same rater re-rates old ⇒ new. A pass that changed nothing says so, and why. The pass goes stale: once net additions plus deletions since the last full rating exceed ~80 lines, including tests and lockfiles, re-run it on the whole diff before the next "ready".
