@@ -12,7 +12,7 @@ test('pre-bash denies a gated command with the gate message', () => {
   assert.equal(r.code, 0)
   assert.deepEqual(Object.keys(denial(r.stdout)), ['hookEventName', 'permissionDecision', 'permissionDecisionReason'])
   assert.equal(denial(r.stdout).permissionDecision, 'deny')
-  assert.match(denial(r.stdout).permissionDecisionReason, /^mergeworthy kill-by-pattern \(blocked, no bypass\)/)
+  assert.match(denial(r.stdout).permissionDecisionReason, /^mergeworthy blocked this command \(its kill-by-pattern check\), and this check has no bypass/)
 })
 
 test('pre-bash is silent on an ungated command', () => {
@@ -23,13 +23,13 @@ test('pre-agent denies a duplicate launch that post-agent registered', () => {
   const home = tempDir()
   const launch = { tool_name: 'Agent', tool_input: { description: 'Review PR 5', prompt: 'review it' } }
   assert.equal(hook('post-agent', launch, { MW_HOME: home }).stdout, '')
-  assert.match(denial(hook('pre-agent', launch, { MW_HOME: home }).stdout).permissionDecisionReason, /^mergeworthy agent-dedupe: an agent titled 'review pr 5'/)
+  assert.match(denial(hook('pre-agent', launch, { MW_HOME: home }).stdout).permissionDecisionReason, /^mergeworthy stopped this agent launch \(its agent-dedupe check\): an agent with the same title or description, 'review pr 5'/)
 })
 
 test('stop blocks once, then allows the stop', () => {
   const transcript = join(tempDir(), 't.jsonl')
   writeFileSync(transcript, JSON.stringify({ type: 'user', message: { role: 'user', content: 'Fix the bug' } }) + '\n')
-  assert.match(JSON.parse(hook('stop', { stop_hook_active: false, transcript_path: transcript }).stdout).reason, /^Before you stop: /)
+  assert.match(JSON.parse(hook('stop', { stop_hook_active: false, transcript_path: transcript }).stdout).reason, /^Before you stop, mergeworthy asks: /)
   assert.equal(JSON.parse(hook('stop', { transcript_path: transcript }).stdout).decision, 'block')
   assert.equal(hook('stop', { stop_hook_active: true, transcript_path: transcript }).stdout, '')
 })
@@ -50,7 +50,7 @@ test('stop allows a T3 delegated child to stop', () => {
 
 test('session-start prints the framing line, a blank line and always-on.md', () => {
   const { stdout } = hook('session-start', {})
-  assert.match(stdout, /^IMPORTANT: These are the user's instructions for every session .* before acting\.\n\n/)
+  assert.match(stdout, /^IMPORTANT: These are the user's instructions for every session .* open the skill that row names with the Skill tool\.\n\n/)
   assert.ok(stdout.endsWith(`\n\n${readFileSync(join(ROOT, 'always-on.md'), 'utf8')}\n`))
 })
 

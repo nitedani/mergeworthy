@@ -149,9 +149,9 @@ test('a design answer gets its length per quoted question', () => {
 
 test('each failing rule of the header gets its own message', () => {
   const messages = lint(`${BADGE} *Claude fixed it in a1b2c3d.*\n`, OTHER_REPO).map((f) => f.message)
-  assert.deepEqual(messages, ["the header's note must name the model with its version, like Opus 5.5 or GPT-5", "the header's note names a commit; leave commits to the body"])
+  assert.deepEqual(messages, ["the italic note on the first line must name the model with its version, like Opus 5.5 or GPT-5", "the italic note on the first line names a commit; mention commits in the body instead"])
 })
 
 test('findings carry their level and line', () => {
-  assert.deepEqual(lint(withHeader('Thanks @carol.'), OTHER_REPO), [{ check: 'mention', level: 'error', line: 3, message: '@carol pings them; write the name without @ unless you are blocked on them' }])
+  assert.deepEqual(lint(withHeader('Thanks @carol.'), OTHER_REPO), [{ check: 'mention', level: 'error', line: 3, message: '@carol sends that person a notification; write the name without @ unless you need them to unblock you' }])
 })

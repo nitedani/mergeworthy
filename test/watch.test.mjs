@@ -67,7 +67,7 @@ test('merging and closing are events', () => {
 })
 
 test('becoming CONFLICTING is an event', () => {
-  assert.deepEqual(events(pr(), pr({ mergeable: 'CONFLICTING' })), [`CONFLICT ${PR_URL} -: mergeable is CONFLICTING`])
+  assert.deepEqual(events(pr(), pr({ mergeable: 'CONFLICTING' })), [`CONFLICT ${PR_URL} -: the PR now has merge conflicts with its base branch`])
   assert.deepEqual(events(pr({ mergeable: 'CONFLICTING' }), pr({ mergeable: 'UNKNOWN' })), [])
 })
 
@@ -131,7 +131,7 @@ test('mw watch makes one GraphQL request per poll for any number of threads', as
   assert.equal(calls.length, 6)
   assert.ok(calls.every((args) => args[0] === 'api' && args[1] === 'graphql'))
   assert.match(calls[0][3], /t0: repository.*t1: repository.*t2: repository/s)
-  assert.deepEqual(ctx.output, [`no events; re-arm: mw watch ${URLS.join(' ')} --max 5m`])
+  assert.deepEqual(ctx.output, [`No new events. To keep watching, run: mw watch ${URLS.join(' ')} --max 5m`])
 })
 
 test('mw watch --commands searches every 3rd poll inside the same request', async () => {
@@ -153,24 +153,24 @@ test('mw watch exits on the first poll with events and prints the re-arm command
   const { ctx, calls } = pollsOf([data(pr()), data(pr({ comments: [comment('carol', AFTER, 'ping')] }))])
   assert.equal(await watchCommand(['o/r#5'], ctx), 0)
   assert.equal(calls.length, 2)
-  assert.deepEqual(ctx.output, [`COMMENT ${PR_URL}#issuecomment-carol carol: ping`, 're-arm: mw watch o/r#5'])
+  assert.deepEqual(ctx.output, [`COMMENT ${PR_URL}#issuecomment-carol carol: ping`, 'To keep watching, run: mw watch o/r#5'])
 })
 
 test('mw watch exits 1 after 5 API errors in a row', async () => {
   const { ctx, calls } = pollsOf([{ error: 'HTTP 502' }])
   assert.equal(await watchCommand(['o/r#5'], ctx), 1)
   assert.equal(calls.length, 5)
-  assert.deepEqual(ctx.output, ['ERROR HTTP 502'])
+  assert.deepEqual(ctx.output, ['ERROR: mw watch stopped because its GitHub request failed: HTTP 502. Check your network and `gh auth status`, then run it again: mw watch o/r#5'])
 })
 
 test('mw watch --once reports a failed poll as an error, not a quiet thread', async () => {
   const { ctx } = pollsOf([{ error: 'HTTP 502' }])
   assert.equal(await watchCommand(['o/r#5', '--once'], ctx), 1)
-  assert.deepEqual(ctx.output, ['ERROR HTTP 502'])
+  assert.deepEqual(ctx.output, ['ERROR: mw watch stopped because its GitHub request failed: HTTP 502. Check your network and `gh auth status`, then run it again: mw watch o/r#5 --once'])
 })
 
 test('mw watch names the failure when gh fails without printing anything', async () => {
   const { ctx } = pollsOf([{ error: '' }])
   assert.equal(await watchCommand(['o/r#5', '--once'], ctx), 1)
-  assert.deepEqual(ctx.output, ['ERROR gh api graphql exited with code 1 and printed nothing'])
+  assert.deepEqual(ctx.output, ['ERROR: mw watch stopped because its GitHub request failed: gh api graphql exited with code 1 and printed nothing. Check your network and `gh auth status`, then run it again: mw watch o/r#5 --once'])
 })

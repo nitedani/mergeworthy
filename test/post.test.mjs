@@ -52,7 +52,7 @@ test('mw post stops when the draft changed since its review', () => {
   appendFileSync(draft, 'One more line.\n')
   const r = post()
   assert.equal(r.code, 3)
-  assert.match(r.stderr, /changed since its review/)
+  assert.match(r.stderr, /changed after its review/)
   assert.deepEqual(posts(), [])
 })
 
@@ -62,7 +62,7 @@ test('mw post runs the gh command when the verdict is CLEAN and current', () => 
   const r = post()
   assert.equal(r.code, 0)
   assert.deepEqual(posts(), [['pr', 'comment', '5', '-R', 'o/r', '--body-file', draft]])
-  assert.match(r.stdout, /posted\. Not watching this thread yet\? mw watch https:\/\/github\.com\/o\/r\/issues\/5/)
+  assert.match(r.stdout, /Posted\. If you are not watching this thread for replies yet, run: mw watch https:\/\/github\.com\/o\/r\/issues\/5/)
 })
 
 test('mw post with a bypass reason runs gh and says what it bypassed', () => {
@@ -70,7 +70,7 @@ test('mw post with a bypass reason runs gh and says what it bypassed', () => {
     const { post, posts } = setup()
     const r = post(flags)
     assert.equal(r.code, 0)
-    assert.match(r.stderr, new RegExp(`bypassed \\(verdict\\): ${REASON}`))
+    assert.match(r.stderr, new RegExp(`posting despite the failed checks \\(verdict\\), with this bypass reason: ${REASON}`))
     assert.equal(posts().length, 1)
   }
 })
@@ -87,7 +87,7 @@ test('mw post exits 2 when the gh command does not post the draft', () => {
   const { post, posts } = setup()
   const r = post([], ['pr', 'comment', '5', '-R', 'o/r', '--body', 'other text'])
   assert.equal(r.code, 2)
-  assert.match(r.stderr, /the gh command must post this draft/)
+  assert.match(r.stderr, /the gh command after -- must read its text from this draft file/)
   assert.deepEqual(posts(), [])
 })
 
@@ -96,7 +96,7 @@ test('mw post stops on a lint error', () => {
   mw('verdict', draft, 'CLEAN', '--by', 'codex')
   const r = post()
   assert.equal(r.code, 3)
-  assert.match(r.stdout, /error: 3: em dash/)
+  assert.match(r.stdout, /error: line 3: em dash/)
 })
 
 test('mw post stops a third comment in a row', () => {
@@ -104,7 +104,7 @@ test('mw post stops a third comment in a row', () => {
   mw('verdict', draft, 'CLEAN', '--by', 'codex')
   const r = post()
   assert.equal(r.code, 3)
-  assert.match(r.stderr, /third comment in a row; edit your last one instead/)
+  assert.match(r.stderr, /third comment in a row on this thread, after two of yours\. Edit your last comment instead/)
 })
 
 test('mw post stops a third comment in a row posted through gh api', () => {
@@ -120,7 +120,7 @@ test('mw post lints with the repo named in a gh api path', () => {
   mw('verdict', draft, 'CLEAN', '--by', 'codex')
   const r = post([], ['api', 'repos/bot/tools/issues/5/comments', '-F', `body=@${draft}`])
   assert.equal(r.code, 0)
-  assert.doesNotMatch(r.stdout, /process word/)
+  assert.doesNotMatch(r.stdout, /a process word/)
 })
 
 test('mw post infers the lint kind from the gh command, and --kind overrides it', () => {

@@ -130,30 +130,30 @@ for (const [gate, command, makeCtx] of [
   test(`${gate} is not bypassed by a shorter reason`, () => {
     const [finding] = bashGates({ command: command + SHORT_BYPASS, cwd: '/work' }, makeCtx())
     assert.equal(finding.gate, gate)
-    assert.match(finding.message, /missing its reason/)
+    assert.match(finding.message, /no reason of at least 3 words/)
   })
 }
 
 test('a warn message ends with the exact bypass line', () => {
   const [finding] = bashGates({ command: 'sleep 60', cwd: '/work' }, fakeCtx())
-  assert.match(finding.message, /^mergeworthy foreground-wait: /)
+  assert.match(finding.message, /^mergeworthy stopped this command \(its foreground-wait check\): /)
   assert.match(finding.message, /\n# --I_UNDERSTAND_IMPLICATIONS_AND_BYPASS_GATE: <why this is right here>$/)
 })
 
 test('a block message says there is no bypass', () => {
   const [finding] = bashGates({ command: 'pkill x', cwd: '/work' }, fakeCtx())
-  assert.match(finding.message, /^mergeworthy kill-by-pattern \(blocked, no bypass\): .*ps -o pid,ppid,cmd -p <pid>/)
+  assert.match(finding.message, /^mergeworthy blocked this command \(its kill-by-pattern check\), and this check has no bypass: .*ps -o pid,ppid,cmd -p <pid>/)
 })
 
 test('ready lists the steps recorded on an older head, with lines changed since', () => {
   const [finding] = bashGates({ command: 'gh pr ready 5', cwd: '/work' }, prWithSteps([['gates', OLD_HEAD], ['verify', HEAD]]))
-  assert.match(finding.message, /has no gates, quality, review step on this head/)
-  assert.match(finding.message, /gates is recorded on an older head bbbbbbb \(\+2 lines since\)/)
+  assert.match(finding.message, /has no record of these required steps: gates, quality, review/)
+  assert.match(finding.message, /gates was done only on an older commit, bbbbbbb, and 2 lines of the PR's changes differ since then/)
 })
 
 test('ready checks the checkout head for gh pr create without --draft', () => {
   const [finding] = bashGates({ command: 'gh pr create --title t --body-file b.md', cwd: '/work' }, checkoutAt()).filter((f) => f.gate === 'ready')
-  assert.match(finding.message, /aaaaaaa of fix-x has no gates, verify, quality, review step/)
+  assert.match(finding.message, /`gh pr create` makes fix-x ready for review, but its latest commit, aaaaaaa, has no record of these required steps: gates, verify, quality, review/)
 })
 
 test('foreground-wait stays silent when the command runs in the background', () => {
@@ -215,19 +215,19 @@ for (const { gate, input, ctx } of [
   test(`${gate} is not bypassed by a shorter reason in the task`, () => {
     const [finding] = agentGates({ input: { ...input, task: 'go' + SHORT_BYPASS } }, ctx())
     assert.equal(finding.gate, gate)
-    assert.match(finding.message, /missing its reason/)
+    assert.match(finding.message, /no reason of at least 3 words/)
   })
 }
 
 test('an agent-dedupe message says how long ago the agent started and where the bypass goes', () => {
   const [finding] = agentGates({ input: { description: 'Review PR 5' } }, started(30 * MINUTE)())
   assert.match(finding.message, /started 30 min ago/)
-  assert.match(finding.message, /add this line to the prompt/)
+  assert.match(finding.message, /add this line to the agent prompt/)
 })
 
 test('an agent-load message gives the numbers and the largest agents', () => {
   const [finding] = agentGates({ input: {} }, lowMemory())
-  assert.match(finding.message, /2\.0 GiB of memory is available .* 2 claude\/codex processes/)
+  assert.match(finding.message, /2\.0 GiB of memory is free .* 2 claude\/codex processes/)
   assert.match(finding.message, /The largest: pid 22 \(claude, 1h 1m, 12% cpu, 3\.0 GiB\); pid 11/)
 })
 

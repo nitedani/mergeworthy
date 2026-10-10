@@ -39,7 +39,7 @@ test("identity fires on our commit with the machine's identity, and its rewrite 
   sh(work, `git config user.email me@work.example && echo ours >> a.txt && git commit -qam ours && echo theirs >> a.txt && GIT_AUTHOR_EMAIL=${MAINTAINER} git commit -qam theirs`)
   const [finding] = bashGates({ command: 'git push origin main', cwd: work }, asBot())
   assert.equal(finding.gate, 'identity')
-  assert.match(finding.message, /1 commit\(s\) to push are authored by me@work\.example/)
+  assert.match(finding.message, /1 commit\(s\) you are pushing have me@work\.example as author/)
   sh(work, `unset GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL; ${/`(git -c user\.name=bot .*)`/.exec(finding.message)[1]}`)
   assert.equal(sh(work, 'git log -2 --format=%ae'), `${MAINTAINER}\n${NOREPLY}`)
 })
@@ -78,7 +78,7 @@ const statusOf = (ctx) => {
 test('mw step records the local head, its diff id and the PR label', () => {
   const { ctx, work } = recordedBranch()
   const head = sh(work, 'git rev-parse HEAD')
-  assert.deepEqual(statusOf(ctx), [`gates: ✓ on ${head.slice(0, 7)}`, 'verify: missing', 'quality: missing', 'review: missing'])
+  assert.deepEqual(statusOf(ctx), [`gates: ✓ done on ${head.slice(0, 7)}`, 'verify: missing', 'quality: missing', 'review: missing'])
 })
 
 test('mw step refuses a missing or empty evidence file', () => {
@@ -91,12 +91,12 @@ test('a step survives a merge that only brings in the base branch', () => {
   const { ctx, upstream, work } = recordedBranch()
   sh(upstream, 'echo base > b.txt && git add . && git commit -qm base')
   sh(work, 'git fetch -q && git merge -q --no-edit origin/main')
-  assert.match(statusOf(ctx)[0], /^gates: ✓ on /)
+  assert.match(statusOf(ctx)[0], /^gates: ✓ done on /)
 })
 
 test('a step on an older diff shows the lines changed in the PR since', () => {
   const { ctx, work } = recordedBranch()
   const recorded = sh(work, 'git rev-parse HEAD')
   sh(work, 'printf "x\\ny\\n" >> a.txt && git commit -qam more')
-  assert.equal(statusOf(ctx)[0], `gates: older head ${recorded.slice(0, 7)} (+2 lines since)`)
+  assert.equal(statusOf(ctx)[0], `gates: done only on an older commit, ${recorded.slice(0, 7)}, and 2 lines of the PR's changes differ since then`)
 })

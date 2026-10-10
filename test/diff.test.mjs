@@ -6,17 +6,17 @@ const patch = (file, start, lines) => `diff --git a/${file} b/${file}\n--- a/${f
 const warnings = (diff) => diffLint(diff).map((w) => `${w.file}:${w.line}: ${w.message.split(';')[0]}`)
 
 test('diff-lint warns once per added comment block of 2+ lines', () => {
-  assert.deepEqual(warnings(patch('src/a.ts', 10, ['// one', '// two', 'code()', '// alone'])), ['src/a.ts:10: a comment of 2+ lines'])
+  assert.deepEqual(warnings(patch('src/a.ts', 10, ['// one', '// two', 'code()', '// alone'])), ['src/a.ts:10: an added code comment of 2+ lines'])
   assert.deepEqual(warnings(patch('run.sh', 1, ['#!/bin/sh', '# setup'])), [])
 })
 
 test('diff-lint warns on comments about history', () => {
-  assert.deepEqual(warnings(patch('lib/x.py', 3, ['# we now cache this'])), ['lib/x.py:3: a comment about history'])
+  assert.deepEqual(warnings(patch('lib/x.py', 3, ['# we now cache this'])), ['lib/x.py:3: an added code comment about history (what changed or used to be)'])
   assert.deepEqual(warnings(patch('README.md', 3, ['This no longer applies.'])), [])
 })
 
 test('diff-lint warns on timed waits added in tests only', () => {
-  assert.deepEqual(warnings(patch('test/a.test.mjs', 5, ['await sleep(100)'])), ['test/a.test.mjs:5: a timed wait in a test'])
+  assert.deepEqual(warnings(patch('test/a.test.mjs', 5, ['await sleep(100)'])), ['test/a.test.mjs:5: a test that waits a fixed time (setTimeout, sleep, …)'])
   assert.deepEqual(warnings(patch('src/retry.mjs', 5, ['setTimeout(retry, 100)'])), [])
 })
 

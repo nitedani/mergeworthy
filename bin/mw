@@ -11,18 +11,18 @@ import { threadCommand } from '../lib/thread.mjs'
 import { watchCommand } from '../lib/watch.mjs'
 
 const COMMANDS = {
-  thread: { run: threadCommand, usage: 'mw thread <url|owner/repo#number>', summary: 'The whole thread as markdown: body, comments, reviews, inline comments and cross-references, with permalinks.' },
-  lint: { run: lintCommand, usage: 'mw lint <draft> [--repo owner/repo] [--kind reply|design|pr|issue|umbrella]', summary: 'Checks a draft before posting; exits 1 on any error.' },
-  verdict: { run: verdictCommand, usage: 'mw verdict <draft> CLEAN|CHANGES --by <who>', summary: "Run by the reviewer: records the verdict with the draft's sha256 in <draft>.verdict.json." },
-  post: { run: postCommand, usage: 'mw post [--I_UNDERSTAND_IMPLICATIONS_AND_BYPASS_GATE <reason>] [--kind <kind>] <draft> -- gh <args...>', summary: 'Lints the draft, checks its CLEAN verdict and the thread, then runs the gh command that posts it.' },
-  watch: { run: watchCommand, usage: 'mw watch <url...> [--commands --workspace <name>] [--interval 60] [--max 110m] [--once]', summary: 'One GraphQL request per poll; exits on the first batch of events and prints the re-arm command.' },
-  step: { run: stepCommand, usage: 'mw step <gates|verify|quality|review> <evidence path> [--pr <url>]', summary: "Records a converge step on the checkout's head and its own diff; --pr labels it." },
-  steps: { run: stepsCommand, usage: 'mw steps [--pr <url>]', summary: 'Lists each required step: done on this head, on an older head, or missing.' },
-  'diff-lint': { run: diffLintCommand, usage: 'mw diff-lint [base]', summary: 'Warns on added multi-line or history comments and on timed waits added in tests.' },
-  loc: { run: locCommand, usage: 'mw loc [base] [--map <file>]', summary: 'Lines changed per feature (map lines: <glob> = <feature>), with tests and docs apart.' },
-  followups: { run: followupsCommand, usage: 'mw followups <owner/repo> [--days 14]', summary: 'Commits others made to the files of your PRs merged in that window.' },
-  netns: { run: netnsCommand, usage: 'mw netns [--publish <port>[,...]] -- <command...>', summary: 'Runs the command in a private network namespace with its own ports and internet through slirp4netns; --publish prints a 127.0.0.1 URL for each port inside.' },
-  load: { run: loadCommand, usage: 'mw load', summary: 'Free memory, load average, cores, and the claude, codex and chrome processes with their memory.' },
+  thread: { run: threadCommand, usage: 'mw thread <url|owner/repo#number>', summary: 'Prints a whole issue or PR as markdown: its body, comments, reviews, inline code comments and cross-references, with links.' },
+  lint: { run: lintCommand, usage: 'mw lint <draft> [--repo owner/repo] [--kind reply|design|pr|issue|umbrella]', summary: 'Checks a draft post against the writing rules and prints each error and warning; exits 1 on any error. --kind adds the checks for that kind of post; umbrella is the body or WIP comment of a tracking issue.' },
+  verdict: { run: verdictCommand, usage: 'mw verdict <draft> CLEAN|CHANGES --by <who>', summary: "The reviewer runs this after reading a draft: CLEAN means post it, CHANGES means it needs fixes. Saves the verdict and the draft's sha256 hash in <draft>.verdict.json, so any later edit needs a new review." },
+  post: { run: postCommand, usage: 'mw post [--I_UNDERSTAND_IMPLICATIONS_AND_BYPASS_GATE <reason>] [--kind <kind>] <draft> -- gh <args...>', summary: 'Posts a draft: checks that it passes mw lint, has a CLEAN verdict for its current text, and would not be your third comment in a row, then runs the gh command after --. The bypass flag posts despite failed checks, with your reason.' },
+  watch: { run: watchCommand, usage: 'mw watch <url...> [--commands --workspace <name>] [--interval 60] [--max 110m] [--once]', summary: 'Polls GitHub every --interval seconds, with one request, for new comments, reviews, reactions, pushes by others, failing CI, merges, closes and conflicts. Exits when something happens or after --max, and prints the command to keep watching. --commands --workspace <name> also picks up your /agent comments in that group of repos (~/.mergeworthy/workspaces.json) or GitHub owner.' },
+  step: { run: stepCommand, usage: 'mw step <gates|verify|quality|review> <evidence path> [--pr <url>]', summary: "Records that you ran one of a PR's required steps on the checkout's current commit, with the file that shows it. The record also counts for a later commit with the same changes against the base branch. --pr names the PR." },
+  steps: { run: stepsCommand, usage: 'mw steps [--pr <url>]', summary: "Lists each required step for the checkout's current commit, or the PR's latest commit with --pr: done, done only on an older commit, or missing." },
+  'diff-lint': { run: diffLintCommand, usage: 'mw diff-lint [base]', summary: 'Warns about code comments added since [base] that span several lines or describe history, and about fixed-time waits added in tests.' },
+  loc: { run: locCommand, usage: 'mw loc [base] [--map <file>]', summary: 'Prints the lines added and removed since [base] per feature, with tests and docs counted apart. The --map file assigns paths to features, one <glob> = <feature> line each.' },
+  followups: { run: followupsCommand, usage: 'mw followups <owner/repo> [--days 14]', summary: 'For each of your PRs merged in that repo in the last --days days, lists the commits others made since to the files it changed.' },
+  netns: { run: netnsCommand, usage: 'mw netns [--publish <port>[,...]] -- <command...>', summary: 'Runs the command in a private network namespace, so its ports never clash with other servers; it reaches the internet through slirp4netns. --publish prints a 127.0.0.1 URL for each listed port inside.' },
+  load: { run: loadCommand, usage: 'mw load', summary: 'Prints free memory, the load average, the CPU cores, and how many claude, codex and chrome processes run, with their memory.' },
 }
 
 const [name, ...args] = process.argv.slice(2)
