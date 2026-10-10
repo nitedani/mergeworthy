@@ -5,7 +5,7 @@ import { test } from 'node:test'
 import { agentGates, bashGates, recordAgent } from '../lib/gates.mjs'
 import { readState, writeState } from '../lib/state.mjs'
 import { DAY, MINUTE } from '../lib/time.mjs'
-import { execResponses, fakeCtx, gateNames, ghResponses, NOW, tempDir } from './helpers.mjs'
+import { execResponses, fakeCtx, gateNames, ghResponses, NOW } from './helpers.mjs'
 
 const BYPASS = '\n# --I_UNDERSTAND_IMPLICATIONS_AND_BYPASS_GATE: the user asked for exactly this'
 const SHORT_BYPASS = '\n# --I_UNDERSTAND_IMPLICATIONS_AND_BYPASS_GATE: asked'
@@ -14,13 +14,9 @@ const OLD_HEAD = 'b'.repeat(40)
 const BASE = 'c'.repeat(40)
 const PR = 'https://github.com/o/r/pull/5'
 
-const worktreeAt = (gitDir) => () => {
-  const commonDir = join(tempDir(), '.git')
-  mkdirSync(join(commonDir, 'worktrees/x'), { recursive: true })
-  return fakeCtx({ exec: execResponses({ 'rev-parse --path-format=absolute': `${join(commonDir, gitDir)}\n${commonDir}\n` }) })
-}
-const mainWorktree = worktreeAt('.')
-const linkedWorktree = worktreeAt('worktrees/x')
+const worktreeAt = (gitDir) => () => fakeCtx({ exec: execResponses({ 'rev-parse --path-format=absolute': `${gitDir}\n/work/.git\n` }) })
+const mainWorktree = worktreeAt('/work/.git')
+const linkedWorktree = worktreeAt('/work/.git/worktrees/x')
 const prWithSteps = (steps) => {
   const ctx = fakeCtx({
     gh: ghResponses({ 'pr view': JSON.stringify({ headRefOid: HEAD, url: PR }) }),
