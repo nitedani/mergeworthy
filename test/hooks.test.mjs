@@ -50,6 +50,13 @@ test('stop allows a T3 delegated child to stop', () => {
   assert.equal(hook('stop', { stop_hook_active: false, transcript_path: transcript }).stdout, '')
 })
 
+test('stop reads the transcript line by line, so a long first line does not hide the delegation prompt', () => {
+  const transcript = join(tempDir(), 't.jsonl')
+  const prompt = { type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'Act as the review sub-agent for this task.' }] } }
+  writeFileSync(transcript, [{ type: 'summary', text: 'x'.repeat(5 << 20) }, prompt].map((entry) => JSON.stringify(entry)).join('\n') + '\n')
+  assert.equal(hook('stop', { stop_hook_active: false, transcript_path: transcript }).stdout, '')
+})
+
 test('session-start prints the framing line, a blank line and always-on.md', () => {
   const { stdout } = hook('session-start', {})
   assert.match(stdout, /^IMPORTANT: These are the user's instructions for every session .* open the skill that row names with the Skill tool\.\n\n/)
