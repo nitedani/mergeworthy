@@ -116,7 +116,7 @@ const pollsOf = (responses, overrides = {}) => {
     gh: (args) => {
       calls.push(args)
       const response = responses[Math.min(calls.length, responses.length) - 1]
-      return response.error ? { code: 1, stdout: '', stderr: response.error } : { code: 0, stdout: JSON.stringify({ data: response }), stderr: '' }
+      return 'error' in response ? { code: 1, stdout: '', stderr: response.error } : { code: 0, stdout: JSON.stringify({ data: response }), stderr: '' }
     },
     ...overrides,
   })
@@ -161,4 +161,10 @@ test('mw watch --once reports a failed poll as an error, not a quiet thread', as
   const { ctx } = pollsOf([{ error: 'HTTP 502' }])
   assert.equal(await watchCommand(['o/r#5', '--once'], ctx), 1)
   assert.deepEqual(ctx.output, ['ERROR HTTP 502'])
+})
+
+test('mw watch names the failure when gh fails without printing anything', async () => {
+  const { ctx } = pollsOf([{ error: '' }])
+  assert.equal(await watchCommand(['o/r#5', '--once'], ctx), 1)
+  assert.deepEqual(ctx.output, ['ERROR gh api graphql exited with code 1 and printed nothing'])
 })
