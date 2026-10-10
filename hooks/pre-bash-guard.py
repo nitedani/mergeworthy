@@ -138,7 +138,7 @@ def check_turn(repo, num, args=()):
     try:
         n = int(api(f'repos/{repo}/issues/{num}', '.comments').strip() or 0)
         if n < 2: return
-        page = lambda p: json.loads(api(f'repos/{repo}/issues/{num}/comments?per_page=100&page={p}', '[.[] | {body, created: .created_at, url: .html_url}]') or '[]')
+        page = lambda p: json.loads(api(f'repos/{repo}/issues/{num}/comments?per_page=100&page={p}', '[.[] | {body, created: .created_at, url: .html_url, user: .user.login}]') or '[]')
         p = (n - 1) // 100 + 1
         last = page(p)
         if len(last) < 2 and p > 1: last = page(p - 1) + last
@@ -153,7 +153,8 @@ def check_turn(repo, num, args=()):
     f = os.path.expanduser(os.environ.get('GATED_POSTS', '~/.claude/gated-posts.txt'))
     gated = set(open(f).read().split()) if os.path.exists(f) else set()
     norm = lambda b: hashlib.sha256((b or '').replace('\r\n', '\n').strip().encode()).hexdigest()
-    if len(last) < 2 or not all(norm(c['body']) in gated for c in last):
+    # someone else's comment is a reply, even when its text matches a gated draft (e.g. a quoted parent)
+    if len(last) < 2 or not all(c.get('user') == me and norm(c['body']) in gated for c in last):
         return
     import datetime
     when = lambda t: datetime.datetime.fromisoformat(t.replace('Z', '+00:00'))

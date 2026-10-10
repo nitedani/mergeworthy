@@ -88,11 +88,12 @@ gate a1 "Agent comment one."
 gate a2 "Agent comment two."
 gate new "Agent answer."
 now=$(date -u +%Y-%m-%dT%H:%M:%SZ); old=$(date -u -d '-4 hours' +%Y-%m-%dT%H:%M:%SZ); hour=$(date -u -d '-1 hour' +%Y-%m-%dT%H:%M:%SZ)
-comments() { # body1 body2 created2
+comments() { # body1 body2 created2 [author2]
   echo 2 > "$FX/repos_o_r_issues_5"
-  python3 -c 'import json,sys; print(json.dumps([{"body":sys.argv[1],"created":sys.argv[3],"url":"https://example.invalid/c1"},{"body":sys.argv[2],"created":sys.argv[3],"url":"https://example.invalid/c2"}]))' \
-    "$1" "$2" "$3" > "$FX/repos_o_r_issues_5_comments_per_page_100_page_1"
+  python3 -c 'import json,sys; print(json.dumps([{"body":sys.argv[1],"created":sys.argv[3],"url":"https://example.invalid/c1","user":"nitedani"},{"body":sys.argv[2],"created":sys.argv[3],"url":"https://example.invalid/c2","user":sys.argv[4]}]))' \
+    "$1" "$2" "$3" "${4:-nitedani}" > "$FX/repos_o_r_issues_5_comments_per_page_100_page_1"
 }
+echo nitedani > "$FX/user"
 guard() { # extra args
   rm -f "$D/new.md.posted"
   python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":" ".join(["gh","issue","comment","5","--repo","o/r","--body-file",sys.argv[2]]+sys.argv[3:])},"cwd":sys.argv[1]}))' "$T" "$D/new.md" "$@" > "$T/in.json"
@@ -114,6 +115,9 @@ comments "$A1" "$A2" "$hour"
 check "BLOCK: last two are the agent's, last is 1 hour old" 2 "$(guard)"
 comments "$A1" "$A2" "$now"
 check "BLOCK: last two are the agent's gated posts, recent, no review (issue 404)" 2 "$(guard)"
+comments "$A1" "$A2" "$now" maint
+check "a maintainer's comment is a reply, even when its text matches a gated draft" 0 "$(guard)"
+comments "$A1" "$A2" "$now"
 echo nitedani > "$FX/user"
 date -u -d '+1 minute' +'maint %Y-%m-%dT%H:%M:%SZ' > "$FX/repos_o_r_pulls_5_commits_per_page_100"
 check "a maintainer's push after the last two comments counts as a reply" 0 "$(guard)"
