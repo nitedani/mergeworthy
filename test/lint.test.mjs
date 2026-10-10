@@ -1,40 +1,51 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { lint } from '../lib/lint.mjs'
-import { BADGE } from './helpers.mjs'
+import { BADGE, withHeader } from './helpers.mjs'
 
 const OTHER_REPO = { repo: 'vikejs/vike', login: 'bot' }
-const withBadge = (text) => `${BADGE}\n\n${text}\n`
 const checks = (text, options = OTHER_REPO) => lint(text, options).map((f) => f.check)
 
 const CASES = {
-  badge: {
-    fires: ['Fixed in abc.\n', `\nFixed.\n${BADGE}\n`],
-    silent: [withBadge('Fixed.'), `\n\n<img src="https://github.com/openai.png" width="20">\nFixed.`],
+  header: {
+    fires: [
+      'Fixed in abc.\n',
+      `\nFixed.\n${BADGE}\n`,
+      `${BADGE}\n\nFixed.\n`,
+      `${BADGE}\n*Opus 5.5 wrote this.*\n`,
+      `${BADGE} *Claude wrote this.*\n`,
+      `${BADGE} *Opus 5.5 ${'word '.repeat(30)}*\n`,
+      `${BADGE} *Opus 5.5 fixed it in a1b2c3d.*\n`,
+    ],
+    silent: [
+      withHeader('Fixed.'),
+      `\n\n<img src="https://github.com/openai.png" width="20"><img src="https://github.com/claude.png" width="20"> _GPT-5 and Opus 5.5 wrote this._\nFixed.`,
+      `${BADGE} *Opus 5.5 wrote this, see https://github.com/o/r/commit/a1b2c3d4e5 and comment 6097556038.*\n`,
+    ],
   },
   'process-words': {
-    fires: [withBadge('The guardian found nothing.'), withBadge('Loop A passed.'), withBadge('Per the Fresh Reader, fine.')],
-    silent: [withBadge('The loop and the guard are fine.'), withBadge('Run `mergeworthy` here.'), withBadge('> the harness said so')],
+    fires: [withHeader('The guardian found nothing.'), withHeader('Loop A passed.'), withHeader('Per the Fresh Reader, fine.')],
+    silent: [withHeader('The loop and the guard are fine.'), withHeader('Run `mergeworthy` here.'), withHeader('> the harness said so')],
   },
   attribution: {
-    fires: [withBadge('As agreed, I moved it.'), withBadge('You suggested a flag.'), withBadge('@carol decided to drop it.'), withBadge('Carol asked for this.')],
-    silent: [withBadge('As agreed in https://github.com/o/r/issues/1#issuecomment-9, I moved it.'), withBadge('It was decided long ago.'), withBadge('> you suggested a flag'), withBadge('The compiler said x.')],
+    fires: [withHeader('As agreed, I moved it.'), withHeader('You suggested a flag.'), withHeader('@carol decided to drop it.'), withHeader('Carol asked for this.')],
+    silent: [withHeader('As agreed in https://github.com/o/r/issues/1#issuecomment-9, I moved it.'), withHeader('It was decided long ago.'), withHeader('> you suggested a flag'), withHeader('The compiler said x.')],
   },
   mention: {
-    fires: [withBadge('Thanks @carol.'), withBadge('(@carol) can you look?')],
-    silent: [withBadge('Mail me@work.example.'), withBadge('Use `@carol`.'), withBadge('> @carol wrote this')],
+    fires: [withHeader('Thanks @carol.'), withHeader('(@carol) can you look?')],
+    silent: [withHeader('Mail me@work.example.'), withHeader('Use `@carol`.'), withHeader('> @carol wrote this')],
   },
   'em-dash': {
-    fires: [withBadge('Fixed — with a test.')],
-    silent: [withBadge('Fixed, with a test.'), withBadge('```\na — b\n```')],
+    fires: [withHeader('Fixed — with a test.')],
+    silent: [withHeader('Fixed, with a test.'), withHeader('```\na — b\n```')],
   },
   secret: {
-    fires: [withBadge('`ghp_' + 'a'.repeat(36) + '`'), withBadge('AKIA' + 'A'.repeat(16)), withBadge('-----BEGIN RSA PRIVATE KEY-----'), withBadge('Bearer ' + 'x'.repeat(30))],
-    silent: [withBadge('ghp_short'), withBadge('sk-short')],
+    fires: [withHeader('`ghp_' + 'a'.repeat(36) + '`'), withHeader('AKIA' + 'A'.repeat(16)), withHeader('-----BEGIN RSA PRIVATE KEY-----'), withHeader('Bearer ' + 'x'.repeat(30))],
+    silent: [withHeader('ghp_short'), withHeader('sk-short')],
   },
   cant: {
-    fires: [withBadge("That can't work here.")],
-    silent: [withBadge("That can't work: `x()` throws."), withBadge("That can't work, see https://example.com/x."), withBadge('That works.')],
+    fires: [withHeader("That can't work here.")],
+    silent: [withHeader("That can't work: `x()` throws."), withHeader("That can't work, see https://example.com/x."), withHeader('That works.')],
   },
 }
 
@@ -43,27 +54,32 @@ for (const [check, { fires, silent }] of Object.entries(CASES)) {
   for (const text of silent) test(`${check} stays silent on: ${JSON.stringify(text)}`, () => assert.ok(!checks(text).includes(check)))
 }
 
-test('the badge check skips umbrella bodies', () => {
+test('the header check skips umbrella bodies', () => {
   assert.deepEqual(checks('Tracking the fix.\n', { ...OTHER_REPO, kind: 'umbrella' }), [])
 })
 
 test('process words are fine in the user’s own repos', () => {
-  assert.deepEqual(checks(withBadge('The guardian found nothing.'), { repo: 'bot/tools', login: 'bot' }), [])
+  assert.deepEqual(checks(withHeader('The guardian found nothing.'), { repo: 'bot/tools', login: 'bot' }), [])
 })
 
 test('length warns past the norm for the kind, and only with a kind', () => {
-  const long = withBadge('word '.repeat(250))
+  const long = withHeader('word '.repeat(250))
   assert.deepEqual(lint(long, { ...OTHER_REPO, kind: 'reply' }).map((f) => [f.check, f.level]), [['length', 'warning']])
-  assert.deepEqual(checks(withBadge('word '.repeat(150)), { ...OTHER_REPO, kind: 'reply' }), [])
+  assert.deepEqual(checks(withHeader('word '.repeat(150)), { ...OTHER_REPO, kind: 'reply' }), [])
   assert.deepEqual(checks(long), [])
 })
 
 test('a design answer gets its length per quoted question', () => {
-  const answer = withBadge(['> Why X?', 'word '.repeat(140), '> And Y?', 'word '.repeat(140)].join('\n\n'))
+  const answer = withHeader(['> Why X?', 'word '.repeat(140), '> And Y?', 'word '.repeat(140)].join('\n\n'))
   assert.deepEqual(checks(answer, { ...OTHER_REPO, kind: 'design' }), [])
-  assert.deepEqual(checks(withBadge('word '.repeat(280)), { ...OTHER_REPO, kind: 'design' }), ['length'])
+  assert.deepEqual(checks(withHeader('word '.repeat(280)), { ...OTHER_REPO, kind: 'design' }), ['length'])
+})
+
+test('each failing rule of the header gets its own message', () => {
+  const messages = lint(`${BADGE} *Claude fixed it in a1b2c3d.*\n`, OTHER_REPO).map((f) => f.message)
+  assert.deepEqual(messages, ["the header's note must name the model with its version, like Opus 5.5 or GPT-5", "the header's note names a commit; leave commits to the body"])
 })
 
 test('findings carry their level and line', () => {
-  assert.deepEqual(lint(withBadge('Thanks @carol.'), OTHER_REPO), [{ check: 'mention', level: 'error', line: 3, message: '@carol pings them; write the name without @ unless you are blocked on them' }])
+  assert.deepEqual(lint(withHeader('Thanks @carol.'), OTHER_REPO), [{ check: 'mention', level: 'error', line: 3, message: '@carol pings them; write the name without @ unless you are blocked on them' }])
 })

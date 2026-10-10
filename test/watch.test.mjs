@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import { parseRef } from '../lib/github.mjs'
 import { writeState } from '../lib/state.mjs'
 import { diffPoll, watchCommand } from '../lib/watch.mjs'
-import { BADGE, fakeCtx, NOW } from './helpers.mjs'
+import { fakeCtx, NOW, withHeader } from './helpers.mjs'
 
 const LOGIN = 'bot'
 const PR_URL = 'https://github.com/o/r/pull/5'
@@ -40,7 +40,7 @@ test('a new comment by someone else is a COMMENT event', () => {
 })
 
 test('our own badge-first comment is not an event', () => {
-  assert.deepEqual(events(pr(), pr({ comments: [comment(LOGIN, AFTER, `${BADGE}\n\nDone in abc`)] })), [])
+  assert.deepEqual(events(pr(), pr({ comments: [comment(LOGIN, AFTER, withHeader('Done in abc'))] })), [])
 })
 
 test("the user's unbadged comment is an event marked (you)", () => {
@@ -87,7 +87,7 @@ test('a head seen for the first time is a baseline', () => {
 })
 
 test('a thumbs reaction by someone else on our comment is a REACTION event', () => {
-  const ours = (reactions) => pr({ comments: [comment(LOGIN, BEFORE, `${BADGE}\n\nProposal`, reactions)] })
+  const ours = (reactions) => pr({ comments: [comment(LOGIN, BEFORE, withHeader('Proposal'), reactions)] })
   assert.deepEqual(events(ours([]), ours([reaction('carol', 'THUMBS_UP'), reaction('dave', 'THUMBS_DOWN')])), [
     `REACTION ${PR_URL}#issuecomment-bot carol: 👍`,
     `REACTION ${PR_URL}#issuecomment-bot dave: 👎`,
@@ -95,7 +95,7 @@ test('a thumbs reaction by someone else on our comment is a REACTION event', () 
 })
 
 test('other reactions, our own, old ones and those on others’ comments are not events', () => {
-  const ours = (reactions) => pr({ comments: [comment(LOGIN, BEFORE, `${BADGE}\n\nProposal`, reactions)] })
+  const ours = (reactions) => pr({ comments: [comment(LOGIN, BEFORE, withHeader('Proposal'), reactions)] })
   assert.deepEqual(events(ours([]), ours([reaction('carol', 'HEART'), reaction(LOGIN, 'THUMBS_UP'), reaction('dave', 'THUMBS_UP', '2026-10-10T09:00:00Z')])), [])
   const theirs = pr({ comments: [comment('carol', BEFORE, 'idea', [reaction('dave', 'THUMBS_UP')])] })
   assert.deepEqual(events(pr(), theirs), [])

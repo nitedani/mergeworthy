@@ -2,11 +2,11 @@ import assert from 'node:assert/strict'
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { BADGE, fakeGh, run, tempDir } from './helpers.mjs'
+import { fakeGh, run, tempDir, withHeader } from './helpers.mjs'
 
-const DRAFT = `${BADGE}\n\nFixed in the latest commit, with a test.\n`
+const DRAFT = withHeader('Fixed in the latest commit, with a test.')
 const REASON = 'the maintainer asked for this exact text'
-const OURS = { user: { login: 'bot' }, body: `${BADGE}\n\nearlier` }
+const OURS = { user: { login: 'bot' }, body: withHeader('earlier') }
 
 function setup({ comments = [], text = DRAFT } = {}) {
   const home = tempDir()
@@ -92,7 +92,7 @@ test('mw post exits 2 when the gh command does not post the draft', () => {
 })
 
 test('mw post stops on a lint error', () => {
-  const { draft, mw, post } = setup({ text: `${BADGE}\n\nFixed — with a test.\n` })
+  const { draft, mw, post } = setup({ text: withHeader('Fixed — with a test.') })
   mw('verdict', draft, 'CLEAN', '--by', 'codex')
   const r = post()
   assert.equal(r.code, 3)
@@ -116,7 +116,7 @@ test('mw post stops a third comment in a row posted through gh api', () => {
 })
 
 test('mw post lints with the repo named in a gh api path', () => {
-  const { draft, mw, post } = setup({ text: `${BADGE}\n\nThe guardian found nothing.\n` })
+  const { draft, mw, post } = setup({ text: withHeader('The guardian found nothing.') })
   mw('verdict', draft, 'CLEAN', '--by', 'codex')
   const r = post([], ['api', 'repos/bot/tools/issues/5/comments', '-F', `body=@${draft}`])
   assert.equal(r.code, 0)
@@ -124,7 +124,7 @@ test('mw post lints with the repo named in a gh api path', () => {
 })
 
 test('mw post infers the lint kind from the gh command, and --kind overrides it', () => {
-  const { draft, mw, post } = setup({ text: `${BADGE}\n\n${'word '.repeat(450)}\n` })
+  const { draft, mw, post } = setup({ text: withHeader('word '.repeat(450)) })
   mw('verdict', draft, 'CLEAN', '--by', 'codex')
   assert.doesNotMatch(post([], ['pr', 'create', '-R', 'o/r', '--body-file', draft]).stdout, /posts usually need/)
   assert.match(post([], ['issue', 'create', '-R', 'o/r', '--body-file', draft]).stdout, /issue posts usually need/)
