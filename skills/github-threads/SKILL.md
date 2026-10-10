@@ -72,7 +72,7 @@ The watcher runs independently of any session and only records events (and adds 
 
 **The wait ping.** The watcher emits `WAIT PING DUE` and owes it in `replies-owed.md` after 3 hours of silence on your last comment; when the wait blocks your work, post it then, every time; when it blocks nothing, clear it with that reason (`core` 1.1.7). Blocking means your next step can't move without it now: a release or review that your own unmerged work will need later blocks nothing yet, so ask for it only when that work is ready to use it, and keep asks to one maintainer rare:
 - one @-mention on that PR with the decisions you need, each with your recommendation and link;
-- once per thread per wait, never while they're mid-review.
+- once per thread per wait, never while they're mid-review. A maintainer who has commented, reviewed or pushed in any of your threads since your ask is mid-review, so no ping.
 
 **A WIP comment instead of repeated pings.** In a long design thread, keep one comment you edit in place, in this form: `# 🚧 WIP`, then *This comment is edited upon updates.*, then `## TLDR` (two or three sentences: the goal and where it stands), `## Scope` (what's in and out), `## State` (three or four high-level bullets), then `## TODO` with the open work and who it waits on, then `## Agreed` with each agreed point and the permalink where it was agreed, `## Open` with the open items and invariants (each with who it waits on), and `## Next steps` with your recommended order. Replies never repeat these lists. When one changed, edit the comment and say so in your next reply with a link ("I updated the [WIP comment](link)"). That comment is where the maintainer reads what is agreed and what is still open.
 

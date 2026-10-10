@@ -138,6 +138,34 @@ print(*out, owed.count(" wait-ping "))
 ')
 check "wait ping: emitted once, not repeated, not after their reply, not under 3 h, not on a closed thread, again for a new comment; each owed" "1 0 0 0 0 1 2" "$got"
 
+# WAIT PING DUE waits while someone in the thread is active in any watched thread (a comment, a review, commits pushed to a PR;
+# bots don't count), and a ping that follows your own comment gets no ping of its own
+got=$(py '
+import datetime
+m.ONCE = False
+ago = lambda h: (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=h)).strftime("%Y-%m-%dT%H:%M:%SZ")
+note = lambda who, h: {"databaseId": 0, "url": "<url>", "createdAt": ago(h), "author": {"login": who}}
+state = {"seen": {}}
+def run(cid, prev=None):
+    l = {"open": True, "last": {**note("me", 20), "databaseId": cid}, "prev": prev, "people": ["me", "them", "bot[bot]"]}
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf): m.emit_wait_ping(state, "o/r#6", l, [])
+    return buf.getvalue().count("### WAIT PING DUE o/r#6: ")
+m.note_active(state, {"login": "bot[bot]", "type": "Bot"}, ago(0))
+out = [run(1)]
+m.note_active(state, {"login": "them", "type": "User"}, ago(1))  # a review comment on another watched thread, an hour ago
+out.append(run(2))
+Answer = lambda data: type("A", (), {"status": 200, "json": lambda self: data})()
+pushed = {"commits": [{"sha": "c1aaaaaaaaaa", "author": {"login": "them"}, "commit": {"committer": {"date": ago(0.5)}}}]}
+m.request = lambda path, *a, **k: Answer({"base": {"ref": "main"}} if path.endswith("/pulls/7") else pushed)
+m.emit_maintainer_commits(state, "o/r", "o/r#7", "old", "new")  # their commits pushed to another watched PR
+out.append(state["active"]["them"] == ago(0.5))
+state["active"]["them"] = ago(4)  # quiet for 3 h since
+out += [run(2), run(3, note("me", 21)), run(4, note("them", 21))]
+print(*out)
+')
+check "wait ping: bots active don't hold it, held while they are active elsewhere (a comment, pushed commits), sent once they are quiet, none right after your own comment" "1 0 True 1 0 1" "$got"
+
 # /agent commands in threads no watch dir lists: found in the watched repos' comments feeds, routed to one dir, emitted once
 AD="$T/agentdirs"; mkdir -p "$AD/alpha" "$AD/beta" "$HOME/.mergeworthy"
 printf 'o/r 1\n' > "$AD/alpha/threads.txt"; printf 'o/r 2\n' > "$AD/beta/threads.txt"

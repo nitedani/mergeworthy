@@ -9,7 +9,7 @@
 - Machine-wide work (those two) runs in one daemon at a time (shared_pass). Every call goes through request(), which keeps the
   hour's budget (see "The GitHub API budget") and sends ETags; a rate-limit pause prints one WATCH ERROR per daemon.
 - Maintainers' commits pushed to a tracked PR, and 👍/👎 from GH_WATCH_EYES on the agent's comments.
-- WAIT PING DUE: your account's comment is the last on an open thread and has had no reply for WAIT_PING_HOURS (3).
+- WAIT PING DUE: your account's comment is the last on an open thread, and nobody else in it has replied or acted in any watched thread for WAIT_PING_HOURS (3).
 - PR head/state changes (pushes, merges, closes), CI turning red or green on open PRs, and your PR's code (tests excluded) changing by more than ~80 lines since its last refactor pass (REFACTOR STALE).
 - How often each thread is read depends on its state (see "How often a thread is read"); the notifications, your events feed
   and the repos' issue lists are polled once per X-Poll-Interval, the repo lists by the one daemon holding the lease for all.
@@ -572,10 +572,10 @@ def emit_tracker_stale(key, ended):
         emit(f"### TRACKER STALE {w[0]}#{w[1]}: {key} {ended}: tick its checkbox and write '({ended}…)' after it, through the gate (mergeworthy:core 1.2)")
 
 
-def emit_maintainer_commits(repo, key, old, new):
+def emit_maintainer_commits(state, repo, key, old, new):
     """A maintainer's commits pushed to a tracked PR: reviewing them was requested ("Review each of my commit as I push them")."""
     try:
-        commits = [{'sha': c['sha'][:10], 'login': (c.get('author') or {}).get('login') or ''} for c in request(f"repos/{repo}/compare/{old}...{new}").json()['commits']]
+        commits = [{'sha': c['sha'][:10], 'login': (c.get('author') or {}).get('login') or '', 'date': c['commit']['committer']['date']} for c in request(f"repos/{repo}/compare/{old}...{new}").json()['commits']]
     except Exception as e:
         fail(f"compare {key} {old}...{new}", e)
         return
@@ -585,6 +585,9 @@ def emit_maintainer_commits(repo, key, old, new):
     except Exception as e:
         fail(f"compare {key} base...{new}", e)
         return
+    for c in commits:
+        if c['sha'] in on_pr:
+            note_active(state, {'login': c['login']}, c['date'])
     theirs = [c['sha'] for c in commits if c['login'] in EYES_FOR and c['login'] != ME and c['sha'] in on_pr]
     if theirs:
         emit(f"### MAINTAINER COMMITS {key}: {' '.join(theirs)}: review each one in a table (| Commit | What it does, and the idea behind it | Rating |, one short sentence each; rated N/10 with a short reason next to anything below 10, e.g. 9/10 (Vite's built-ins differ); an emoji only where it's funny; 10/10 only when nothing could be better), as requested (mergeworthy:github-threads)")
@@ -724,31 +727,45 @@ def fetch_thread(repo, num, since, is_pr_known, author_known, prev_pr, etags, mo
     return is_pr, author, events, pr_state, red, last, pending, full, updated
 
 
-_F = 'state comments(last:1){nodes{databaseId url createdAt author{login}}}'
+_F = 'state comments(last:2){nodes{databaseId url createdAt author{login}}} participants(first:100){nodes{login}}'
 LAST_COMMENT = ('query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){issueOrPullRequest(number:$n){'
                 '... on Issue{F} ... on PullRequest{F}}}}').replace('F', _F)
 
 
 def fetch_last_comment(repo, num):
-    """The thread's latest issue or PR conversation comment and whether the thread is open: one GraphQL call."""
+    """The thread's latest issue or PR conversation comment, the one before it, the people in it and whether it is open: one GraphQL call."""
     o, r = repo.split('/')
     t = request('graphql', 'POST', ['-f', f'query={LAST_COMMENT}', '-f', f'o={o}', '-f', f'r={r}', '-F', f'n={num}']).json()['data']['repository']['issueOrPullRequest']
     nodes = t['comments']['nodes']
-    return {'open': t['state'] == 'OPEN', 'last': nodes[0] if nodes else None}
+    return {'open': t['state'] == 'OPEN', 'last': nodes[-1] if nodes else None, 'prev': nodes[0] if len(nodes) > 1 else None,
+            'people': [p['login'] for p in t['participants']['nodes']]}
+
+
+def note_active(state, user, when):
+    """The latest time each person (not you, not a bot) acted in a watched thread: a comment, a review, or commits pushed to a PR."""
+    login = user.get('login') or ''
+    if login and login != ME and user.get('type') != 'Bot' and not login.endswith('[bot]'):
+        active = state.setdefault('active', {})
+        active[login] = max(active.get(login, ''), when)
 
 
 def emit_wait_ping(state, key, last, events):
     """mergeworthy:github-threads, the wait ping: your account's comment is the thread's last, and nobody has replied since
-    WAIT_PING_HOURS. Once per comment id; a newer comment by anyone makes a different comment the last, so it starts over."""
-    if not last or not last['open'] or not last['last'] or (last['last'].get('author') or {}).get('login') != ME:
+    WAIT_PING_HOURS. Once per comment id; a newer comment by anyone makes a different comment the last, so it starts over.
+    Once per wait: when the comment before yours is also yours, yours already nudged them. And never while they're mid-review:
+    the hours count from the last time anyone else in the thread acted in any watched thread, if that is later than your comment."""
+    login = lambda c: ((c or {}).get('author') or {}).get('login')
+    if not last or not last['open'] or login(last['last']) != ME or login(last.get('prev')) == ME:
         return
     c = last['last']
-    posted = datetime.datetime.strptime(c['createdAt'], '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=datetime.timezone.utc)
     if any(user.get('login') != ME and upd > c['createdAt'] for _, _, upd, user, *_ in events):
         return  # a review comment or review from someone else, newer than ours (the call above sees only conversation comments)
-    hours = (datetime.datetime.now(datetime.timezone.utc) - posted).total_seconds() / 3600
+    active = state.get('active', {})
+    quiet = max([c['createdAt']] + [active.get(p, '') for p in last.get('people', []) if p != ME])
+    since = lambda t: (datetime.datetime.now(datetime.timezone.utc) - datetime.datetime.strptime(t, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=datetime.timezone.utc)).total_seconds() / 3600
+    hours = since(c['createdAt'])
     done = state.setdefault('wait_ping', {}).setdefault(key, [])
-    if hours < WAIT_PING_HOURS or c['databaseId'] in done:
+    if since(quiet) < WAIT_PING_HOURS or c['databaseId'] in done:
         return
     done[:] = [c['databaseId']]  # only the latest comment matters
     emit(f"### WAIT PING DUE {key}: no reply for {int(hours)} h since {c['url']}; nudge whoever it waits on with the open question (mergeworthy:github-threads)")
@@ -802,7 +819,7 @@ def scan(state, jobs):
     def since(key):  # each thread keeps its own position, so one failing thread doesn't hold back the others
         dt = datetime.datetime.strptime(state['since_by'].get(key, state['since']), '%Y-%m-%dT%H:%M:%SZ') - datetime.timedelta(minutes=10)
         return dt.strftime('%Y-%m-%dT%H:%M:%SZ')
-    ok, fulls, now = True, [], time.time()
+    ok, fulls, pings, now = True, [], [], time.time()
     state.setdefault('upd', {})
     sched = state.setdefault('sched', {})
     with ThreadPoolExecutor(max_workers=8) as ex:
@@ -835,7 +852,7 @@ def scan(state, jobs):
                     if pr_state['state'] in ('merged', 'closed') and prev.get('state') != pr_state['state']:
                         emit_tracker_stale(key, pr_state['state'])
                     if prev.get('head') != pr_state['head']:
-                        emit_maintainer_commits(repo, key, prev['head'], pr_state['head'])
+                        emit_maintainer_commits(state, repo, key, prev['head'], pr_state['head'])
                         emit_refactor_stale(repo, key, pr_state['head'])
                 state['prs'][key] = pr_state
             if red is not None:
@@ -844,15 +861,18 @@ def scan(state, jobs):
                 state['ci'][key] = red
             agent_hashes = agent_post_hashes()  # read after the fetch: a post gated while it ran is the agent's
             for kind, cid, upd, user, url, body, extra in events:
+                note_active(state, user, upd)
                 if answerable(user, body, agent_hashes, kind, own=author == ME):
                     handle_comment(state, repo, key, kind, cid, upd, user['login'], url, body, extra)
-            emit_wait_ping(state, key, last, events)
+            pings.append((key, last, events))
             s = sched.setdefault(key, {'full': 0})
             s['act'] = a
             if full:
                 s['full'] = now
                 fulls.append((repo, num))
             s['next'] = now + spread(key, CHECK[thread_kind(state, key, now)])
+    for key, last, events in pings:  # after every thread's activity is noted: someone busy in another thread is mid-review
+        emit_wait_ping(state, key, last, events)
     state['since'] = started  # only the default for threads added to threads.txt later
     return ok, fulls
 
