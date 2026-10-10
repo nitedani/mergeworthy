@@ -59,7 +59,8 @@ test('stop reads the transcript line by line, so a long first line does not hide
 
 test('session-start prints the framing line, a blank line and always-on.md', () => {
   const { stdout } = hook('session-start', {})
-  assert.match(stdout, /^IMPORTANT: These are the user's instructions for every session .* open the skill that row names with the Skill tool\.\n\n/)
+  assert.match(stdout, /^IMPORTANT: These are the user's instructions for every session .* override default behavior\.\n\n/)
+  assert.doesNotMatch(stdout.split('\n')[0], /skill/i, 'the frame leaves which skill to open to always-on.md, which exempts an agent started from a brief')
   assert.ok(stdout.endsWith(`\n\n${readFileSync(join(ROOT, 'always-on.md'), 'utf8')}\n`))
 })
 
