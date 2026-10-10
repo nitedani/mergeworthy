@@ -13,7 +13,7 @@ You post from the user's GitHub account. Your posts start with an agent icon on 
 
 From your first post until every thread you're in is merged or closed, repeat these steps:
 
-1. **Watch every thread you're in.** Run `mw watch <url> …` with every open issue and PR you're in, using `run_in_background` and the longest timeout. It checks the threads on GitHub every minute. It exits as soon as something happens, or after about two hours with nothing new. Either way it prints what happened and the exact command to start it again. These count as events:
+1. **Watch every thread you're in.** Run `mw watch <url> …` with every open issue and PR you're in, using the Bash tool's `run_in_background` and the longest timeout it allows (7,200,000 ms for a background command). It checks the threads on GitHub every minute. It exits as soon as something happens, or after about two hours with nothing new. Either way it prints what happened and the exact command to start it again. These count as events:
    - a comment, a review, or an inline comment on the code;
    - a 👍 or 👎 on one of your comments;
    - someone else pushing to your PR;
@@ -35,7 +35,7 @@ From your first post until every thread you're in is merged or closed, repeat th
 3. **Answer each comment by its kind** (How each comment is answered, below). If the answer needs more than about an hour of work, first post a holding reply: what you found so far, and when the full answer will come. Do work you can finish in minutes before you reply, so the reply can say "Done in <sha>". When you promise something in a post, keep the promise in `task.md` until the commit or link that delivers it exists. After a burst of comments, check that every comment got a change, an answer or a reaction from you.
    Done: the answer is posted (`mergeworthy:posting`) as a new comment, because edits don't send notifications. After a holding reply, the full answer is that new comment. If you have more to add before anyone replies, edit it into that comment.
 4. **Record it in the same step.** Write a decision into `task.md` with its permalink. When the list of agreed or open points changes, update the tracking issue's description (The tracking issue, below). When a decision replaces a design, update everything that still describes the old one in the same step: code, tests, types, docs, and the descriptions of open PRs.
-   Done: `task.md` and the tracking issue match what the thread says.
+   Done: `task.md`, and the tracking issue if the goal has one, match what the thread says.
 5. **Treat failing CI on your PR as the maintainer's first question.** Fix it. When your PR didn't cause the failure (a secret that PRs from forks don't get, a flaky job), say so on the PR right away, with the evidence. Rerunning a job in an upstream repo needs admin rights. A first-time contributor's PR from a fork waits for a maintainer to approve its workflow runs.
    Done: CI passes, or the PR has a comment explaining the failure.
 6. **Move the goal forward each time you wake up.** Name the next item on the critical path (the items the goal can't be reached without) and move it. Also check the releases and PRs you wait on that aren't in your watch. When something you wait on lands (a merge or a release), handle it like a maintainer's comment: apply the work that waited on it, and post the progress on the PR that depends on it.
@@ -45,16 +45,17 @@ From your first post until every thread you're in is merged or closed, repeat th
 
 - **An instruction** ("Let's…", "Remove…") or a suggested change: do it, then reply "Done in <sha>". Once you've agreed to a request ("Yes, I'm splitting it"), do exactly that. If the work leads elsewhere, say so in the thread before you change course.
 - **A critical question about your own work** ("Is it all DRY?", "Is this tested?", "Why this comment?") is a request. Fix it, push, and reply with what was missing and the commit. Ask first only when the fix would change behavior or scope.
-- **A question about a decision** ("Why X?", "How about Y?", "Overkill?") gets an answer. Don't reverse the decision in code before they answer. Until then, also don't change those lines for a finding from your own reviews (`mergeworthy:converge`). Never agree with a premise you haven't measured. "Why X?" gets the reason, and if X now looks wrong, say so with your recommendation. "How about Y?" starts with yes or no and the one real obstacle. When their idea is simpler than yours, recommend theirs.
-- **A design question:** think before you reply.
+- **Which of the two a "Why?" is:** a question about a line you wrote, whose reason isn't in the PR, is a critical question (fix the line or add the reason, then reply), and a question about a choice you made on purpose, which the PR explains, is a decision question (answer it, and don't change the code).
+- **A question about a decision** ("Why X?", "How about Y?", "Overkill?") gets an answer. Don't reverse the decision in code before they reply to your answer. Until then, also don't change those lines for a finding from your own reviews (`mergeworthy:converge`). Never agree with a premise you haven't measured. "Why X?" gets the reason, and if X now looks wrong, say so with your recommendation. "How about Y?" starts with yes or no and the one real obstacle. When their idea is simpler than yours, recommend theirs.
+- **A design question** (how something should work, rather than why you chose what you did): think before you reply.
   1. Trace the actual flow in the code, every path that reaches the same thing. Done: `task.md` describes the gap with its `file:line`.
   2. Have one fresh Opus agent argue both sides from at least three points of view, then score them. Points of view to pick from: the user who runs into it, the maintainer who keeps it, the smallest diff, no new code, the design from scratch. Done: its report is in the work folder.
   3. Decide. Before you answer "keep it as it is", build the simpler version and name what breaks in it. If nothing breaks, recommend the simpler one. When your answer shows the defect is a whole class (a default, a parser, a shared helper), recommend the fix for the whole class with its evidence, not only for this instance. Done: your position and its evidence are in `task.md`.
 
   "First principles" or "perfect world" asks for the ideal design: leave out the costs of migration, releases and which options users see, until they ask. If the thread has gone through three or more rounds without settling, run the finality pass first (`mergeworthy:finality`).
-- **A short acknowledgement** ("OK", 👍) answers your last open proposal or question in that thread. If there is none, it answers your latest one just before it in the same PR. That proposal is now an instruction. "The rest LGTM" agrees to every proposal in that comment it doesn't question: record each one and start.
+- **A short acknowledgement** ("OK", 👍) answers your last open proposal or question in that thread. If that thread has none, it answers your latest open proposal or question elsewhere in the same PR, from before the acknowledgement. That proposal is now an instruction. "The rest LGTM" agrees to every proposal in that comment it doesn't question: record each one and start.
 - **A 👍 on a proposal** approves it, as an instruction. Any other 👍 or 👎 on your comment is feedback on that comment. For a 👎, find out why, and fix the rule that led to it (`mergeworthy:task`, When a rule fails).
-- **Commits a maintainer pushed to your PR** (a `PUSH` event from `mw watch`): fetch, fast-forward, and run the repo's checks. Then review the commits in one table, `| Commit | What it does, and the idea behind it | Rating |`. A rating below 10 comes with its reason, and each finding with the exact fix. Don't push while they're still committing.
+- **Commits a maintainer pushed to your PR** (a `PUSH` event from `mw watch`): fetch, fast-forward, and run the repo's checks. Then review the commits in one table, `| Commit | What it does, and the idea behind it | Rating |`, with ratings from 0 to 10. A rating below 10 comes with its reason, and each finding with the exact fix. Don't push while they're still committing.
 - **"I don't understand this"** on a line of docs or a code comment reports a bug in that text. Push clearer wording and reply "Done in <sha>: <new sentence>".
 - **An inline comment:** before acting on it, check that its reason fits the line it's attached to. If it fits another line better, ask which one they meant.
 - **A bot's finding** counts the same as a reviewer's. Run its case first, then reply with the commit that fixes it, or with the output that shows it doesn't apply.
@@ -84,12 +85,13 @@ A goal that needs two or more PRs or issues gets one tracking issue, titled `Tra
 - **Remind people once per wait,** after about 3 hours of silence on your last comment, and only when the wait blocks your next step right now. Otherwise write in `task.md` what will end the wait. Never @-mention someone in the middle of their review, or after they said they're busy. The reminder is one @-mention with the decisions you need, each with your recommendation. `mw lint` reports every @-mention as an error, so post this one with `mw post`'s bypass flag, and give the reminder as the reason (`mergeworthy:posting`, step 6).
 - **Don't ask for a release** unless the work that needs it is ready to use it now, and the user agreed.
 - **Open small PRs without asking** when they fix a bug that already breaks things today and don't depend on the open discussion.
-- **Changes to mergeworthy itself** (its skills, hooks and tools) are shown to a maintainer only when they ask, and in one place.
+- **Changes to mergeworthy itself** (its skills, hooks and tools) are shown to a project's maintainer only when they ask, and in one place.
 
 ## Thread rules
 
 - **One reply per person.** Several comments from one person get one reply. To correct something you posted, edit that post.
 - **At most two of your comments in a row.** Instead of a third, edit your last one. `mw post` refuses a third.
-- **Reply in the thread where the person wrote.** Before you commit, merge or open a PR in a repo, read its `AGENTS.md` / `CLAUDE.md` on the target branch.
+- **Reply in the thread where the person wrote.**
+- **Before you commit, merge or open a PR in a repo,** read its `AGENTS.md` / `CLAUDE.md` on the target branch.
 - **Evidence never contains a secret:** write `<REDACTED>` for every token, cookie, auth header and key.
 - **Only the main session posts.** Agents hand it drafts.

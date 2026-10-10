@@ -5,20 +5,20 @@ description: "Starting, instructing, continuing or checking a subagent: which mo
 
 # Delegating
 
-You are the main session: you make the decisions and write each agent's instructions, called its brief. The agent does the work you hand it. Do small edits yourself. Hand big work or parallel work to an agent, and every independent check too. Step 1 picks the model for your own agents. An independent review is the exception: it goes to Codex first, and to a fresh Opus agent only when Codex fails (`mergeworthy:review`, step 1).
+You are the main session: you make the decisions and write each agent's instructions, called its brief. The agent does the work you hand it. Do small edits, of a few lines, yourself. Hand bigger work or parallel work to an agent, and every independent check too.
 
 ## Steps
 
 1. **Choose the model by what the agent does.**
-   - **Opus at high effort** writes and judges: code, tests, docs, posts, reviews, designs, root causes, verification, and every decision.
+   - **Opus at high effort** writes and judges: code, tests, docs, posts, reviews other than the independent one, which goes to Codex first (`mergeworthy:review`, step 1), designs, root causes, verification, and every decision.
    - **Haiku at high effort** does three kinds of work:
      - work a mechanical check decides: running tests or CI checks, a reproduction from a recipe, log mining;
      - applying code that Opus already wrote, line for line;
-     - generating ideas in parallel: several agents, each from a different angle, propose options for you to decide between. Its brief says how to check a premise: read code only as it is at the pinned commit (`git show <sha>:<path>`, `git grep <symbol> <sha>`), and treat a commit that an item names as history, confirming in the pinned commit that the code it describes still exists.
+     - generating ideas in parallel: several agents, each from a different angle, propose options for you to decide between. Its brief says how to check a premise: read code only as it is at the pinned commit (`git show <sha>:<path>`, `git grep <symbol> <sha>`), and treat a commit that an issue, a PR or a note names as history, confirming in the pinned commit that the code it describes still exists.
    - **Every Haiku claim is a lead, not a fact.** Check it in the code yourself before you act on it or put it to the user. Redo on Opus any Haiku result that fails a check.
    - **Generate ideas on Opus instead** when a wrong decision is expensive, such as a decision a maintainer sees, on complex code.
    - **Never Sonnet.**
-   - **A repo's project notes can require Opus for every agent** (the `## Agents` section of `~/.mergeworthy/projects/<owner>/<repo>.md`, as vike's does). Follow them there.
+   - **A repo's project notes can require Opus for every agent** (the `## Agents` section of `~/.mergeworthy/projects/<owner>/<repo>.md`). Follow them there.
 
    Done: `task.md` names each agent's role and its model.
 2. **Write the brief** in six parts:
@@ -31,7 +31,7 @@ You are the main session: you make the decisions and write each agent's instruct
 
    When a skill gives you a fixed text to hand an agent (a reviewer's instructions, a prompt), copy it from the installed skill each time, never from a copy you saved earlier. Keep model versions out of prompts, skills and briefs. Only the first line of a GitHub post names them (`mergeworthy:writing`, Forms).
    Done: the brief has all six parts, including the machine's limits and a standard's path for everything it asks the agent to write or judge.
-3. **Run `mw load`** to see free memory, then start the agent in the background. Never wait for it in the foreground: you're notified when it finishes. Give each job to one agent only. An agent counts as alive until its task has finished, failed or been cancelled. So when its turn ended or its log went quiet, send it a message, and never start a second agent on the same job. Follow-up work on the same thing goes to the same agent: in Claude Code with SendMessage, in T3 Code with `t3_thread_send` in mode `queue`. In T3 Code, each review round is the exception: it is a new task with its own title, and its prompt carries the earlier findings (`mergeworthy:review`, step 4).
+3. **Run `mw load`** to see free memory, then start the agent in the background. Never wait for it in the foreground: you're notified when it finishes. Give each job to one agent only. An agent counts as alive until its task has finished, failed or been cancelled. So when its turn ended or its log went quiet, send it a message, and never start a second agent on the same job. Follow-up work on the same thing goes to the same agent: in Claude Code with SendMessage, in T3 Code (an app that runs Claude Code and Codex sessions side by side) with its `t3_thread_send` tool in mode `queue`. In T3 Code, each review round is the exception: it is a new task with its own title, and its prompt carries the earlier findings (`mergeworthy:review`, step 4).
    Done: the agent runs in the background, `mw load` showed room for it, and nothing waits on it in the foreground.
 4. **Check its first output early.** At 2 minutes, and every time you wake up, confirm it is making progress. If it has produced no output for five minutes, find out why. Give a long job a time budget in its brief.
    Done: its first output exists, or you found out why not.

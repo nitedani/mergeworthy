@@ -24,16 +24,16 @@ These steps are for a GitHub post and for a docs page. For a post, first read th
 
 ## Voice
 
-This is nitedani's voice, from their own comments (289 of them, before any agent wrote for the account). Write like this toward maintainers.
-- **The fact first, often as a link or code instead of a description.** "Fixed in 2.2.1, also added a nextjs example." "Continued in https://github.com/vikejs/vike/pull/1467". Most of his comments are under 30 words.
+This is the voice of the GitHub account this plugin posts as, built from that account's own comments (289 of them, written before any agent wrote for it). Whoever posts from another account replaces this section with their own voice, built the same way from their comments. Write like this toward maintainers.
+- **The fact first, often as a link or code instead of a description.** "Fixed in 2.2.1, also added a nextjs example." "Continued in https://github.com/vikejs/vike/pull/1467". Most of their comments are under 30 words.
 - **Short sentences,** about 10 words, joined by "because" or "but". No semicolons, never an em dash.
 - **An opinion is "I think" or "In my opinion", with its reason:** "I think the error should be a warning (possible redirect loop detected), shown only once."
-- **Disagreement grants what's right, then says what he doesn't like and why,** or says it bluntly: "I agree `suspense` should be changed to `query`, but I don't like `<SuspenseQuery />`, because this code to me, feels harder to understand at first glance." "I don't like that. Why would the rsc environment not have access to its own pagecontext?" The user likes this bluntness.
+- **Disagreement grants what's right, then says what they don't like and why,** or says it bluntly: "I agree `suspense` should be changed to `query`, but I don't like `<SuspenseQuery />`, because this code to me, feels harder to understand at first glance." "I don't like that. Why would the rsc environment not have access to its own pagecontext?" The user likes this bluntness.
 - **A concession is one line, then on:** "You're right, fixed."
 - **Warm in small doses:** thanks for real help, a smiley on good news, never on a bug. "Thank you for the report! It should be fixed in 2.2.2 :)"
-- **Says where he's unsure, and gives his best guess anyway:** "I'm not sure if code bundled for the edge is fully compatible with node though. I think not."
-- **Real questions, after saying what he'd do:** "Is this the right direction?"
-- **Never** bold labels, headings in a comment, or process talk. The one exception is the description of a tracking issue and the WIP comment (a comment that stands in for a tracking issue), which are built from headings (`mergeworthy:github`, The tracking issue).
+- **Says where they're unsure, and gives their best guess anyway:** "I'm not sure if code bundled for the edge is fully compatible with node though. I think not."
+- **Real questions, after saying what they'd do:** "Is this the right direction?"
+- **Never** bold labels, headings in a comment, or process talk. Headings are allowed in two places: the headings an issue or PR description's form asks for (Forms, below), and the description of a tracking issue or the WIP comment (a comment that stands in for a tracking issue), which are built from headings (`mergeworthy:github`, The tracking issue).
 
 ## How a colleague writes
 
@@ -45,7 +45,7 @@ This is nitedani's voice, from their own comments (289 of them, before any agent
 - **Full sentences joined by bridges** ("because", "so", "but"). Prose for reasoning; lists only for parallel items or a plan.
 - **Concrete over abstract:** the file, the call, the number. A design choice is shown as the code the user writes under each option.
 - **Credit** a statement to someone only with a link to where they said it, found by re-reading the thread, never from a summary.
-- **Keep our process out.** Reviewers, models, agents, checks, review rounds and mergeworthy itself never appear in what you write, except where a maintainer asked to see them. The one place every post names its models is its first line (Forms, below).
+- **Keep our process out.** Reviewers, models, agents, checks, review rounds and mergeworthy itself never appear in what you write, except where a maintainer asked to see them. The one place every post names its models is its first line (Forms, below), so that a maintainer always knows an agent wrote it.
 - **Stay in your workspace** (the group of repos that may share context, `mergeworthy:task`, Workspaces). Nothing from another workspace's repos: no names, links, code or numbers.
 - **Links:** write another repo's issue as `owner/repo#N`. Write "depends on #N". Write "stacked on" only when the `gh stack` extension links the PRs.
 
@@ -78,7 +78,7 @@ A maintainer asked whether a design has holes; the user picked this one:
 >
 > The only real catch I hit: Universal Middleware's router checks a `+middleware`'s `path` against the raw URL, but Vike routes on the decoded one. So an auth `+middleware` with `path: '/dash'` never runs for `/%64ash`. I'd rather fix that at the root than work around it in Vike, so magne4000/universal-middleware#385 decodes the path.
 
-A maintainer argued that some of the proxy's jobs belong to the server; he wanted either pushback with arguments or agreement with its consequences:
+A maintainer argued that some of the proxy's jobs belong to the server; they wanted either pushback with arguments or agreement with its consequences:
 
 > Here I partly disagree. Two of the four have to stay in Vike, because only Vike has the information. A `+middleware` with `path: '/dash'` must also run for `/dash/index.pageContext.json`, which client-side navigation fetches. Hono's `app.use('/dash')` misses it and can't know about it, so an auth `+middleware` would let that page's data through. The other two I agree belong in Universal Middleware rather than in Vike …
 
@@ -104,7 +104,7 @@ An agent reply the user approved: the verdict with what was tried, the bugs in o
 
 | Pattern | Instead |
 |---|---|
-| A label line or heading in a comment ("Two decisions:", "**Fundamental:** …") | A sentence: "Two things need your decision." |
+| A label line or heading in a comment ("Two decisions:", "**Fundamental:** …"), outside the places Voice allows headings | A sentence: "Two things need your decision." |
 | A telegraphic verdict ("No holes, and it's built.") | A person talking, as in the model passages |
 | A coined term | What it does, in the reader's words |
 | An inventory of internals to prove completeness | What the user sees |
@@ -126,14 +126,14 @@ An agent reply the user approved: the verdict with what was tried, the bugs in o
 ## Forms
 
 Each kind of post has the form below. `mw lint` (`mergeworthy:posting`, step 3) checks the first line and the sections each kind needs.
-- **The first line.** A post's first line holds the icon of every agent that worked on it, reviewers included: Claude `<img src="https://github.com/claude.png" width="20" height="20" alt="Claude">`, Codex `<img src="https://github.com/openai.png" width="20" height="20" alt="Codex">`. On the same line, one short sentence in italics says which model did what, with its version (*<model and version> wrote this; <model and version> reviewed it.*). When the post belongs to a goal with a tracking issue or a WIP comment (`mergeworthy:github`, The tracking issue), the sentence ends with a link to it. Then a line break, with no label. Only the tracking issue's own description has no such line. When this form changes, edit the description of every open PR you own to match.
+- **The first line.** A post's first line holds the icon of every agent that worked on it, reviewers included: Claude `<img src="https://github.com/claude.png" width="20" height="20" alt="Claude">`, Codex `<img src="https://github.com/openai.png" width="20" height="20" alt="Codex">`. On the same line, one short sentence in italics says which model did what, with its version (*<model and version> wrote this; <model and version> reviewed it.*). Take each version from the tool that ran the model: your own model's name in your system prompt, the model T3 Code's `delegate_task` was given, or the model line `codex exec` prints when it starts. When the post belongs to a goal with a tracking issue or a WIP comment (`mergeworthy:github`, The tracking issue), the sentence ends with a link to it. Then a line break, with no label. Only the tracking issue's own description has no such line. When mergeworthy changes this form, edit the description of every open PR you own to match.
 - **A PR description:**
   - Write it to be scanned. The first paragraph says what was wrong, in a user's words, and what this PR changes. Status (draft, what it depends on) comes after.
   - Show the evidence in a shape that's quick to skim: a before/after table, a permalink to the line at fault, screenshots with one line each saying what to look at.
   - For a feature, explain how it works with a code sample.
-  - Put notes for the maintainer in one table, `| Note | Kind | Blocks merge | Next |`. Every comment, guard or workaround the diff deletes gets a row there, with the evidence that it's no longer needed. Without that evidence, keep it.
+  - Put notes for the maintainer in one table, `| Note | Kind | Blocks merge | Next |`, where Kind says what the note is (a question, a risk, a follow-up, a deleted guard). Leave the table out when there are no notes. Every comment, guard or workaround the diff deletes gets a row there, with the evidence that it's no longer needed. Without that evidence, keep it.
   - Write `Closes #N` only when the change fixes what the issue reported. Otherwise write `Refs #N`, and post your findings as a comment on the issue.
-  - Say that another project needs this PR only if that project is still broken without it. When reverting the PR wouldn't undo what merging it did, say so as the last sentence of the text.
+  - Say that another project needs this PR only if that project is still broken without it. When reverting the PR wouldn't undo what merging it did, say so as the last sentence before the Verification block.
   - End with one collapsed Verification block (`mergeworthy:pull-request`, step 10).
 - **An issue description:** one finding, without the story of how you came across it. The title is the symptom as a user meets it. Then `### How to reproduce` with numbered steps, then the evidence, and the `file:line` last, for whoever fixes it.
 - **An inline review comment:** only where a reviewer must make a judgment (a choice that could have gone the other way, something the diff can't show, a risk you hand over). At most two sentences. For a small fix, the normal outcome is no inline comment at all.
@@ -144,10 +144,10 @@ Each kind of post has the form below. `mw lint` (`mergeworthy:posting`, step 3) 
 
 Length follows the kind of post and what it answers; there is no cap.
 - **An acknowledgement** is one line.
-- **An answer** is a few sentences per question. His own answers run about 25 words, rarely past 70.
+- **An answer** is a few sentences per question. Their own answers run about 25 words, rarely past 70.
 - **A design argument** runs about 60–150 words per question it answers, each question quoted so the reader finds its answer.
 - **An issue body** is one or two sentences of fact, besides `### How to reproduce` and the evidence.
-- **A PR body** follows its evidence: the format that merged 14 of 14 upstream PRs is a symptom title, one cause, a before/after table and a regression test.
+- **A PR body** follows its evidence: a symptom title, one cause, a before/after table and a regression test, the shape `mergeworthy:pull-request` says gets merged without discussion.
 - **Past about 200 words,** the reviewer asks what it's for (several quoted questions, code, a walkthrough). That's a question, not a cut.
 
 **What confuses is density, not length:** a clipped clause whose referent the reader must guess ("which `+middleware` must run before your routes" draws "what do you mean with 'your routes'?"). Every sentence must make sense read alone by a newcomer, with every term named where it appears.
@@ -175,7 +175,7 @@ Docs pass when a maintainer would have written them. Never write docs that work 
 
 ## The self-check
 
-You run this on your draft before review (step 3), and the reviewer of a post uses it as its checklist (`mergeworthy:review`). It checks facts and noise, not word choice. Each item that fails is a finding, and a reviewer's finding names the item or section of this file it breaks.
+You run this on your draft before review (step 3), and the reviewer of a post uses it as its checklist (`mergeworthy:review`). It checks facts and noise, not word choice. Each item that fails is a finding, and a reviewer's finding names the line of this file it breaks.
 - **Claims.** Check every claim against the code (`file:line`, or a command and its output), the thread and the evidence (Evidence for claims, above). Check every claim about who said, proposed or agreed to what against its permalink in the thread. Credit given without support is a finding.
 - **Noise.** Each of these is a finding:
   - a downside or risk that doesn't name who runs into it today. Cut it;
@@ -185,7 +185,7 @@ You run this on your draft before review (step 3), and the reviewer of a post us
   - a repeat of what the thread's tracking issue (`mergeworthy:github`) or earlier replies already say;
   - a maintainer's request not followed, or a wrong link.
 - **Position,** in a design discussion: the reply does everything Design threads (above) asks, starting with its author's own position and the design's weakest part.
-- **The reader.** Read it as a newcomer who finds the thread later. List every term or sentence you can't understand, and say in one line what the reader is asked to decide. Each of these is a finding: an unclear decision, an "it" that could mean two things, a term not named where it first appears, a sentence you must read twice, or a bold label standing in for a sentence. So is anything that breaks Voice, How a colleague writes, or the table in What reads as machine-written. Read it out loud as the reader: what you wouldn't say to a colleague goes.
+- **The reader.** Read it as a newcomer who finds the thread later. List every term or sentence you can't understand, and say in one line what the reader is asked to decide. Each of these is a finding: an unclear decision, an "it" that could mean two things, a term not named where it first appears, a sentence you must read twice, or a bold label standing in for a sentence. So is anything that breaks Voice, How a colleague writes, or the table in What reads as machine-written. Headings in the places Voice allows them aren't a finding. Read it out loud as the reader: what you wouldn't say to a colleague goes.
 - **The workspace.** Nothing from outside this repo's workspace: no names, links, code or numbers (How a colleague writes, above).
 
 A draft with findings is rewritten as step 4 says, never patched clause by clause.

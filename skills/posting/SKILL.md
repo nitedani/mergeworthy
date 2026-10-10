@@ -9,8 +9,8 @@ Everything you send to GitHub goes through these steps: comments, replies, inlin
 
 ## Steps
 
-1. **Read the whole thread,** from its first comment, plus the threads it links to and your own earlier replies. `mw thread <url or owner/repo#N>` prints all of it as markdown, with a permalink for each comment. For a long thread, hand the reading and drafting to an Opus agent. Its brief gives the question, your position and your reasons. It also names two files by their absolute paths, to read before drafting: the `writing` standard (`skills/writing/SKILL.md`), and `skills/github/SKILL.md`, whose section How each comment is answered says how each kind of comment is answered. It returns the draft, plus every place where the draft conflicts with a past decision, each with its permalink.
-   Done: the notes with the draft list every question still open and every decision already made, each with its permalink.
+1. **Read the whole thread,** from its first comment, plus the threads it links to and your own earlier replies. `mw thread <url or owner/repo#N>` prints all of it as markdown, with a permalink for each comment. Write what you learn into a notes file next to the draft (`drafts/<name>.notes.md`). For a thread too long to read without filling your context (`mergeworthy:task`, Context), hand the reading and drafting to an Opus agent. Its brief gives the question, your position and your reasons. It also names two files by their absolute paths, to read before drafting: the `writing` standard (`skills/writing/SKILL.md`), and `skills/github/SKILL.md`, whose section How each comment is answered says how each kind of comment is answered. It returns the draft, plus every place where the draft conflicts with a past decision, each with its permalink.
+   Done: the notes file lists every question still open and every decision already made, each with its permalink.
 2. **Write the draft as `mergeworthy:writing` says** (its steps 1–3, ending with its self-check), into a file in the task's work folder (`drafts/<name>.md`). Never write it straight into a command.
    Done: the draft file exists.
 3. **Lint it:** `mw lint <draft> --repo <owner/repo> --kind <kind>`. The kind is `reply`, `design` (an answer in a design discussion), `pr`, `issue`, or `umbrella` (the description of a tracking issue or WIP comment, `mergeworthy:github`). The linter checks the first line, @-mentions, em dashes, secrets, words about our internal process in other people's repos, credit given without a link, and the sections each kind needs. Fix every error. The exception is an error that is wrong for this post: the one @-mention in a reminder, or words about our process in a thread where the maintainer asked to see how we change mergeworthy. Keep that one. Step 6 posts it with the bypass flag, and the reason names it.
@@ -18,13 +18,14 @@ Everything you send to GitHub goes through these steps: comments, replies, inlin
 4. **Get it reviewed** (`mergeworthy:review`, with its Posting checks: the reviewer checks the draft against `writing`'s self-check). Fix the draft as `mergeworthy:writing` step 4 says, and send it for review again, until the reviewer records the verdict `CLEAN`.
    Done: `<draft>.verdict.json`, which the reviewer writes with `mw verdict`, says `CLEAN` for the current text.
 5. **Re-check every claim against the latest commit** right before posting. Run `git fetch`, and confirm every commit you refer to is pushed.
-   Done: every claim and link holds on the latest commit.
+   If the re-check changes the text, the verdict no longer matches it: send it for review again (step 4).
+   Done: every claim and link holds on the latest commit, and the verdict is for the current text.
 6. **Post it with `mw post`.** It lints the draft again, checks that the reviewer's `CLEAN` verdict is for this exact text, and refuses a third comment of yours in a row. Then it runs the `gh` command you give it after `--`:
    - `mw post --kind <kind> <draft> -- gh <command with --body-file <draft>>`;
    - for a post through the API, use `-F body=@<draft>` instead of `--body-file`;
    - an inline review comment is one draft per comment: `mw post <draft> -- gh api repos/<o>/<r>/pulls/<N>/comments -F body=@<draft> -f commit_id=<head sha> -f path=<path> -F line=<n> -f side=RIGHT`.
 
-   When one of these checks is wrong for this post, add `--I_UNDERSTAND_IMPLICATIONS_AND_BYPASS_GATE "<reason>"` anywhere before the `--`. This is the bypass flag. The reason is at least three words, and the user reads it. A reply that only acknowledges, or only says "Done in <sha>", may skip the review, with that reason in the bypass flag.
+   When one of these checks is wrong for this post, add `--I_UNDERSTAND_IMPLICATIONS_AND_BYPASS_GATE "<reason>"` anywhere before the `--`. This is the bypass flag. The reason is at least three words, and the user reads it. A reply that only acknowledges, or only says "Done in <sha>", may skip the review, with that reason in the bypass flag. A reply that also explains something, such as what was missing, gets the review.
    Done: `mw post` printed the URL, and the thread is in your watch (`mergeworthy:github`, step 1).
 
 ## Opening an issue
