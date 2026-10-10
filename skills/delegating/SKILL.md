@@ -9,8 +9,18 @@ You are the main session: you make the decisions and write each agent's instruct
 
 ## Steps
 
-1. **Choose the model by role.** Opus at high effort for everything that writes or judges: code, tests, docs, posts, reviews, designs, root causes, verification. Haiku at high effort only for mechanical work whose output doesn't ship: running gates or tests, a reproduction from a recipe, log mining. A Haiku result that fails your spot-check is redone on Opus. Never Sonnet.
-   Done: `task.md` names the agent's role and its model.
+1. **Choose the model by what the agent does.**
+   - **Opus at high effort** writes and judges: code, tests, docs, posts, reviews, designs, root causes, verification, and every decision.
+   - **Haiku at high effort** does three kinds of work:
+     - work a mechanical check decides: running tests or CI checks, a reproduction from a recipe, log mining;
+     - applying code that Opus already wrote, line for line;
+     - generating ideas in parallel: several agents, each from a different angle, propose options for you to decide between. Its brief says how to check a premise: read code only as it is at the pinned commit (`git show <sha>:<path>`, `git grep <symbol> <sha>`), and treat a commit that an item names as history, confirming in the pinned commit that the code it describes still exists.
+   - **Every Haiku claim is a lead, not a fact.** Check it in the code yourself before you act on it or put it to the user. Redo on Opus any Haiku result that fails a check.
+   - **Generate ideas on Opus instead** when a wrong decision is expensive, such as a decision a maintainer sees, on complex code.
+   - **Never Sonnet.**
+   - **A repo's project notes can require Opus for every agent** (the `## Agents` section of `~/.mergeworthy/projects/<owner>/<repo>.md`, as vike's does). Follow them there.
+
+   Done: `task.md` names each agent's role and its model.
 2. **Write the brief** in six parts:
    - **Goal:** one outcome you can observe.
    - **Facts:** only what you verified, each with its source. Point to code at a specific commit SHA, never at a branch, which can move.

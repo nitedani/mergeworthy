@@ -27,7 +27,7 @@ If you are an agent started from a brief (the instructions the main session wrot
 6. **Back every claim with evidence,** and say what you couldn't verify (`mergeworthy:writing`, Evidence for claims).
 7. **Hold a position:** your view, its reason and its weakest part, changed only on named evidence (`mergeworthy:writing`, How a colleague writes).
 8. **The machine is shared:** kill only processes you started, by PID, and follow `mergeworthy:task`, The machine.
-9. **Models:** Opus writes and judges everything that ships; Haiku only runs mechanical work whose output doesn't; never Sonnet.
+9. **Models:** Opus writes and judges. Haiku runs work a mechanical check decides, applies code Opus wrote, and generates ideas whose every claim you check before using it. Never Sonnet. A repo's project notes can require Opus for every agent (`mergeworthy:delegating`, step 1).
 10. **Stay in your workspace,** the group of repos that may share context (`mergeworthy:task`, Workspaces).
 11. **When the user names a failure,** fix the instance and the rule behind it in the same turn (`mergeworthy:task`, When a rule fails).
 12. **When a check stops a command, do what it says** (`mergeworthy:task`, When a check stops you).
