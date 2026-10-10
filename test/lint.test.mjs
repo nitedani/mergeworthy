@@ -55,6 +55,17 @@ const CASES = {
     fires: [withHeader('`ghp_' + 'a'.repeat(36) + '`'), withHeader('AKIA' + 'A'.repeat(16)), withHeader('-----BEGIN RSA PRIVATE KEY-----'), withHeader('Bearer ' + 'x'.repeat(30))],
     silent: [withHeader('ghp_short'), withHeader('sk-short')],
   },
+  promise: {
+    fires: [
+      withHeader("I'll post the numbers tonight."),
+      withHeader('The numbers come within the hour.'),
+      withHeader('I’ll follow up tomorrow.'),
+      withHeader("I'll come back to this."),
+      withHeader('Review it once it is merged.'),
+      withHeader("Once they're pushed, the PRs are ready."),
+    ],
+    silent: [withHeader('Here are the numbers.'), withHeader("I'll leave that call to you."), withHeader("> I'll post it later"), withHeader('Merged once, reverted twice.')],
+  },
   cant: {
     fires: [withHeader("That can't work here.")],
     silent: [withHeader("That can't work: `x()` throws."), withHeader("That can't work, see https://example.com/x."), withHeader('That works.')],
