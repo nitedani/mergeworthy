@@ -39,6 +39,13 @@ test('mw post stops with exit 3 when the draft has no verdict', () => {
   assert.deepEqual(posts(), [])
 })
 
+test('mw post prints a bypass command that keeps a multi-word title as one argument', () => {
+  const { draft, post } = setup()
+  const r = post([], ['pr', 'create', '-R', 'o/r', '--title', 'Fix the parser bug', '--body-file', draft])
+  assert.equal(r.code, 3)
+  assert.match(r.stderr, /-- gh pr create -R o\/r --title 'Fix the parser bug' --body-file /)
+})
+
 test('mw post stops when the draft changed since its review', () => {
   const { draft, mw, post, posts } = setup()
   mw('verdict', draft, 'CLEAN', '--by', 'codex')
