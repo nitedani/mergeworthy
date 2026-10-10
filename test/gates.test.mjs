@@ -11,6 +11,7 @@ const BYPASS = '\n# --I_UNDERSTAND_IMPLICATIONS_AND_BYPASS_GATE: the user asked 
 const SHORT_BYPASS = '\n# --I_UNDERSTAND_IMPLICATIONS_AND_BYPASS_GATE: asked'
 const HEAD = 'a'.repeat(40)
 const OLD_HEAD = 'b'.repeat(40)
+const BASE = 'c'.repeat(40)
 const PR = 'https://github.com/o/r/pull/5'
 
 const worktreeAt = (gitDir) => () => {
@@ -23,7 +24,12 @@ const linkedWorktree = worktreeAt('worktrees/x')
 const prWithSteps = (steps) => {
   const ctx = fakeCtx({
     gh: ghResponses({ 'pr view': JSON.stringify({ headRefOid: HEAD, url: PR }) }),
-    exec: execResponses({ 'diff --shortstat': ' 2 files changed, 10 insertions(+), 2 deletions(-)\n' }),
+    exec: execResponses({
+      'symbolic-ref refs/remotes/origin/HEAD': 'refs/remotes/origin/main\n',
+      'merge-base': `${BASE}\n`,
+      [`diff ${BASE} ${OLD_HEAD}`]: '+old line\n',
+      [`diff ${BASE} ${HEAD}`]: '+old line\n+new line\n-gone line\n',
+    }),
   })
   mkdirSync(ctx.home, { recursive: true })
   writeFileSync(join(ctx.home, 'steps.jsonl'), steps.map(([step, head]) => JSON.stringify({ step, head, pr: PR }) + '\n').join(''))
@@ -140,7 +146,7 @@ test('a block message says there is no bypass', () => {
 test('ready lists the steps recorded on an older head, with lines changed since', () => {
   const [finding] = bashGates({ command: 'gh pr ready 5', cwd: '/work' }, prWithSteps([['gates', OLD_HEAD], ['verify', HEAD]]))
   assert.match(finding.message, /has no gates, quality, review step on this head/)
-  assert.match(finding.message, /gates is recorded on an older head bbbbbbb \(\+12 lines since\)/)
+  assert.match(finding.message, /gates is recorded on an older head bbbbbbb \(\+2 lines since\)/)
 })
 
 test('ready checks the checkout head for gh pr create without --draft', () => {
