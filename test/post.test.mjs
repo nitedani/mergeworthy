@@ -2,9 +2,8 @@ import assert from 'node:assert/strict'
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { fakeGh, run, tempDir } from './helpers.mjs'
+import { BADGE, fakeGh, run, tempDir } from './helpers.mjs'
 
-const BADGE = '<img src="https://github.com/claude.png" width="20" height="20" alt="Claude">'
 const DRAFT = `${BADGE}\n\nFixed in the latest commit, with a test.\n`
 const REASON = 'the maintainer asked for this exact text'
 

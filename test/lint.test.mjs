@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { lint } from '../lib/lint.mjs'
+import { BADGE } from './helpers.mjs'
 
-const BADGE = '<img src="https://github.com/claude.png" width="20" height="20" alt="Claude">'
 const OTHER_REPO = { repo: 'vikejs/vike', login: 'bot' }
 const withBadge = (text) => `${BADGE}\n\n${text}\n`
 const checks = (text, options = OTHER_REPO) => lint(text, options).map((f) => f.check)

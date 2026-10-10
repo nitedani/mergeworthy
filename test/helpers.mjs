@@ -3,9 +3,11 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { after } from 'node:test'
+import { bashGates } from '../lib/gates.mjs'
 
 export const ROOT = new URL('..', import.meta.url).pathname
 export const NOW = Date.parse('2026-10-10T12:00:00Z')
+export const BADGE = '<img src="https://github.com/claude.png" width="20" height="20" alt="Claude">'
 const GIT_ENV = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', GIT_AUTHOR_NAME: 'Me', GIT_AUTHOR_EMAIL: 'me@work.example', GIT_COMMITTER_NAME: 'Me', GIT_COMMITTER_EMAIL: 'me@work.example' }
 
 export function tempDir() {
@@ -31,6 +33,10 @@ export function fakeCtx(overrides = {}) {
     ...overrides,
   }
   return ctx
+}
+
+export function gateNames(command, { cwd = '/work', ctx = fakeCtx(), runInBackground } = {}) {
+  return bashGates({ command, cwd, runInBackground }, ctx).map((finding) => finding.gate)
 }
 
 export function execResponses(table) {

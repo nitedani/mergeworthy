@@ -5,7 +5,7 @@ import { test } from 'node:test'
 import { realCtx } from '../lib/ctx.mjs'
 import { bashGates } from '../lib/gates.mjs'
 import { stepCommand, stepsCommand } from '../lib/steps.mjs'
-import { fakeCtx, ghResponses, sh, tempDir } from './helpers.mjs'
+import { fakeCtx, gateNames, ghResponses, sh, tempDir } from './helpers.mjs'
 
 const { exec } = realCtx()
 
@@ -15,14 +15,13 @@ function clonedRepo() {
   return { upstream: join(root, 'upstream'), work: join(root, 'work'), root }
 }
 
-const gates = (command, cwd, ctx = fakeCtx({ exec })) => bashGates({ command, cwd }, ctx).map((f) => f.gate)
-
 test('shared-git fires in a main worktree and stays silent in a linked one', () => {
   const { work, root } = clonedRepo()
   sh(work, `git worktree add -q ${root}/linked -b side`)
-  assert.deepEqual(gates('git checkout -b other', work), ['shared-git'])
-  assert.deepEqual(gates('git checkout -b other', join(root, 'linked')), [])
-  assert.deepEqual(gates(`git -C ${root}/linked reset --hard`, work), [])
+  const inDir = (cwd) => ({ cwd, ctx: fakeCtx({ exec }) })
+  assert.deepEqual(gateNames('git checkout -b other', inDir(work)), ['shared-git'])
+  assert.deepEqual(gateNames('git checkout -b other', inDir(join(root, 'linked'))), [])
+  assert.deepEqual(gateNames(`git -C ${root}/linked reset --hard`, inDir(work)), [])
 })
 
 test('identity fires on a push of commits not authored by the gh user', () => {
@@ -37,7 +36,7 @@ test('identity fires on a push of commits not authored by the gh user', () => {
 test('identity stays silent when the commits use the noreply address', () => {
   const { work } = clonedRepo()
   sh(work, 'echo two >> a.txt && GIT_AUTHOR_EMAIL=7+bot@users.noreply.github.com git commit -qam two')
-  assert.deepEqual(gates('git push origin main', work, fakeCtx({ exec, gh: ghResponses({ 'api user': '7\nbot\n' }) })), [])
+  assert.deepEqual(gateNames('git push origin main', { cwd: work, ctx: fakeCtx({ exec, gh: ghResponses({ 'api user': '7\nbot\n' }) }) }), [])
 })
 
 function recordedBranch() {

@@ -5,15 +5,13 @@ import { test } from 'node:test'
 import { agentGates, bashGates, recordAgent } from '../lib/gates.mjs'
 import { readState, writeState } from '../lib/state.mjs'
 import { DAY, MINUTE } from '../lib/time.mjs'
-import { execResponses, fakeCtx, ghResponses, NOW } from './helpers.mjs'
+import { execResponses, fakeCtx, gateNames, ghResponses, NOW } from './helpers.mjs'
 
 const BYPASS = '\n# --I_UNDERSTAND_IMPLICATIONS_AND_BYPASS_GATE: the user asked for exactly this'
 const SHORT_BYPASS = '\n# --I_UNDERSTAND_IMPLICATIONS_AND_BYPASS_GATE: asked'
 const HEAD = 'a'.repeat(40)
 const OLD_HEAD = 'b'.repeat(40)
 const PR = 'https://github.com/o/r/pull/5'
-
-const firing = (command, ctx = fakeCtx(), options = {}) => bashGates({ command, cwd: '/work', ...options }, ctx).map((f) => f.gate)
 
 const mainWorktree = () => fakeCtx({ exec: execResponses({ 'rev-parse --path-format=absolute': '/work/.git\n/work/.git\n' }) })
 const linkedWorktree = () => fakeCtx({ exec: execResponses({ 'rev-parse --path-format=absolute': '/work/.git/worktrees/x\n/work/.git\n' }) })
@@ -96,16 +94,16 @@ const CASES = {
 for (const [gate, { fires, silent }] of Object.entries(CASES)) {
   const cases = (list) => list.map((c) => (Array.isArray(c) ? c : [c, fakeCtx]))
   for (const [command, makeCtx] of cases(fires)) {
-    test(`${gate} fires on: ${command}`, () => assert.deepEqual(firing(command, makeCtx()), [gate]))
+    test(`${gate} fires on: ${command}`, () => assert.deepEqual(gateNames(command, { ctx: makeCtx() }), [gate]))
   }
   for (const [command, makeCtx] of cases(silent)) {
-    test(`${gate} stays silent on: ${command}`, () => assert.ok(!firing(command, makeCtx()).includes(gate)))
+    test(`${gate} stays silent on: ${command}`, () => assert.ok(!gateNames(command, { ctx: makeCtx() }).includes(gate)))
   }
 }
 
 test('a block gate ignores the bypass', () => {
-  assert.deepEqual(firing('pkill node' + BYPASS), ['kill-by-pattern'])
-  assert.deepEqual(firing('git push -f' + BYPASS), ['force-push'])
+  assert.deepEqual(gateNames('pkill node' + BYPASS), ['kill-by-pattern'])
+  assert.deepEqual(gateNames('git push -f' + BYPASS), ['force-push'])
 })
 
 for (const [gate, command, makeCtx] of [
@@ -115,7 +113,7 @@ for (const [gate, command, makeCtx] of [
   ['identity', 'git push origin main', () => pushOf('me@work.example')],
   ['foreground-wait', 'sleep 60', fakeCtx],
 ]) {
-  test(`${gate} is bypassed by a reason of 3+ words`, () => assert.deepEqual(firing(command + BYPASS, makeCtx()), []))
+  test(`${gate} is bypassed by a reason of 3+ words`, () => assert.deepEqual(gateNames(command + BYPASS, { ctx: makeCtx() }), []))
   test(`${gate} is not bypassed by a shorter reason`, () => {
     const [finding] = bashGates({ command: command + SHORT_BYPASS, cwd: '/work' }, makeCtx())
     assert.equal(finding.gate, gate)
@@ -147,7 +145,7 @@ test('ready checks the checkout head for gh pr create without --draft', () => {
 })
 
 test('foreground-wait stays silent when the command runs in the background', () => {
-  assert.deepEqual(firing('sleep 60', fakeCtx(), { runInBackground: true }), [])
+  assert.deepEqual(gateNames('sleep 60', { runInBackground: true }), [])
 })
 
 const agentFiring = (input, ctx) => agentGates({ input }, ctx).map((f) => f.gate)
