@@ -31,3 +31,4 @@ If you are an agent started from a brief (the instructions the main session wrot
 10. **Stay in your workspace,** the group of repos that may share context (`mergeworthy:task`, Workspaces).
 11. **When the user names a failure,** fix the instance and the rule behind it in the same turn (`mergeworthy:task`, When a rule fails).
 12. **When a check stops a command, do what it says** (`mergeworthy:task`, When a check stops you).
+13. **Keep your context small:** every call re-reads all of it. Batch calls, cut output, and send reading-heavy work to an agent (`mergeworthy:task`, Context).

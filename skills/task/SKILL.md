@@ -63,6 +63,15 @@ Other sessions run on the same machine as you.
 - **The user's checkouts:** never edit, commit, switch branches, reset or stash in a clone the user works in. Make your own worktree instead (`git worktree add <work folder>/<name> <ref>`), with its own ports and databases.
 - **Limits of the environment:** if a test fails only because of where you run it (no network, no GPU, a missing program), change how you run it. Never change the product or the test for it.
 
+## Context
+
+Every tool call sends your whole context to the model again. Re-reading it is most of what a long session costs, so keep it small and make fewer calls:
+- **Batch.** Put independent tool calls in one message, and chain dependent shell steps into one command.
+- **Cut output** to what you need: `| head`, `--stat`, `grep -n`, or a line range when you read a file. Never print a large file or log whole, and don't read a file again unless it changed.
+- **Delegate reading.** Send a long thread, a big diff, logs or many files to an agent. It returns at most 15 lines and puts the rest in a file, and you open only the lines it cites.
+- **Don't poll.** A background job or an agent wakes you when it ends.
+- **Start the next work item small.** When a work item is done and the next is unrelated, write where things stand in `task.md` and tell the user in one line that now is a good point to compact or start a fresh session.
+
 ## When a check stops you
 
 mergeworthy's hooks check some commands before they run. A check that stops a command says why and what to do instead, so do that. Some checks can be bypassed: the message shows the line to add, with your reason. Bypass one only when it's wrong for this case, and give the real reason, because the user reads it.
