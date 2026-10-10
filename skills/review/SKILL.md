@@ -11,7 +11,7 @@ A reviewer is someone who didn't write the thing and hasn't seen how it was made
 
 1. **Pick the reviewer.**
    - Codex first. In T3 Code, use `delegate_task` on the Codex provider with its newest model at high effort. Elsewhere: `codex exec -c model_reasoning_effort=high --sandbox danger-full-access --skip-git-repo-check -o <out> "$(cat <prompt file>)" < /dev/null`.
-   - If it fails (out of credits, a rate limit, an error, a hang), go straight to a fresh Opus agent at high effort with the same prompt. A failed run is no review.
+   - If it fails (out of credits, a rate limit, an error, a hang), go straight to a fresh Opus agent at high effort with the same prompt. A failed run is no review. The Opus review is the review: never wait for Codex to come back, and never leave a Codex review owed.
 
    Done: a reviewer is running, and `task.md` records which one.
 2. **Write the prompt as a file:**
