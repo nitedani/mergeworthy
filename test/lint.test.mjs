@@ -24,8 +24,20 @@ const CASES = {
     ],
   },
   'process-words': {
-    fires: [withHeader('The guardian found nothing.'), withHeader('Loop A passed.'), withHeader('Per the Fresh Reader, fine.')],
-    silent: [withHeader('The loop and the guard are fine.'), withHeader('Run `mergeworthy` here.'), withHeader('> the harness said so')],
+    fires: [
+      withHeader('The guardian found nothing.'),
+      withHeader('Loop A passed.'),
+      withHeader('Per the Fresh Reader, fine.'),
+      withHeader('Two fresh reads found nothing.'),
+      withHeader('Bug verification passed.'),
+      withHeader('After three review rounds.'),
+    ],
+    silent: [
+      withHeader('The loop and the guard are fine.'),
+      withHeader('Run `mergeworthy` here.'),
+      withHeader('> the harness said so'),
+      `${BADGE} *Opus 5.5 wrote this through the mergeworthy harness.*\n\nFixed.\n`,
+    ],
   },
   attribution: {
     fires: [withHeader('As agreed, I moved it.'), withHeader('You suggested a flag.'), withHeader('@carol decided to drop it.'), withHeader('Carol asked for this.')],
