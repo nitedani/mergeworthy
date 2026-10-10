@@ -149,7 +149,7 @@ test('foreground-wait stays silent when the command runs in the background', () 
   assert.deepEqual(firing('sleep 60', fakeCtx(), { runInBackground: true }), [])
 })
 
-const agentFiring = (input, ctx) => agentGates({ toolName: 'Agent', input }, ctx).map((f) => f.gate)
+const agentFiring = (input, ctx) => agentGates({ input }, ctx).map((f) => f.gate)
 const withState = (files, overrides) => {
   const ctx = fakeCtx(overrides)
   for (const [name, value] of Object.entries(files)) writeState(ctx, name, value)
