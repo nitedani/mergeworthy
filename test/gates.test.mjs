@@ -32,10 +32,10 @@ const prWithSteps = (steps) => {
   return ctx
 }
 const checkoutAt = () => fakeCtx({ exec: execResponses({ 'rev-parse HEAD': `${HEAD}\n`, 'rev-parse --abbrev-ref HEAD': 'fix-x\n' }) })
-const pushOf = (authorEmail, remote = { 'ls-remote': '' }) =>
+const pushOf = (authorEmail, config = { 'config user.email': 'me@work.example\n' }) =>
   fakeCtx({
     gh: ghResponses({ 'api user': '123\nbot\n' }),
-    exec: execResponses({ ...remote, '--format=%H %ae %ce': `${HEAD} ${authorEmail} ${authorEmail}\n${OLD_HEAD} 123+bot@users.noreply.github.com 123+bot@users.noreply.github.com\n` }),
+    exec: execResponses({ ...config, '--format=%H %ae': `${HEAD} ${authorEmail}\n${OLD_HEAD} 123+bot@users.noreply.github.com\n` }),
   })
 
 const CASES = {
@@ -90,10 +90,12 @@ const CASES = {
     fires: [['git push origin main', () => pushOf('me@work.example')]],
     silent: [
       ['git push origin main', () => pushOf('123+bot@users.noreply.github.com')],
+      ['git push origin main', () => pushOf('maintainer@example.com')],
       ['git push origin --delete x', () => pushOf('me@work.example')],
       ['git push origin --tags', () => pushOf('me@work.example')],
       ['git push origin main', () => fakeCtx({ exec: pushOf('me@work.example').exec })],
       ['git push origin main', () => pushOf('me@work.example', {})],
+      ['git push origin main', () => pushOf('123+bot@users.noreply.github.com', { 'config user.email': '123+bot@users.noreply.github.com\n' })],
     ],
   },
   'foreground-wait': {

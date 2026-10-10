@@ -9,7 +9,8 @@ import { fakeCtx, gateNames, ghResponses, sh, tempDir } from './helpers.mjs'
 
 const { exec } = realCtx()
 const NOREPLY = '7+bot@users.noreply.github.com'
-const AS_MAINTAINER = 'GIT_AUTHOR_EMAIL=maintainer@example.com GIT_COMMITTER_EMAIL=maintainer@example.com'
+const MAINTAINER = 'maintainer@example.com'
+const AS_MAINTAINER = `GIT_AUTHOR_EMAIL=${MAINTAINER} GIT_COMMITTER_EMAIL=${MAINTAINER}`
 const asBot = () => fakeCtx({ exec, gh: ghResponses({ 'api user': '7\nbot\n' }) })
 
 function clonedRepo() {
@@ -27,27 +28,26 @@ test('shared-git fires in a main worktree and stays silent in a linked one', () 
   assert.deepEqual(gateNames(`git -C ${root}/linked reset --hard`, inDir(work)), [])
 })
 
-test('identity fires on our push of commits not authored by the gh user, with the rewrite', () => {
+test('identity stays silent on a maintainer commit we rebased', () => {
   const { work } = clonedRepo()
-  sh(work, 'git config user.email me@work.example && echo two >> a.txt && git commit -qam two')
-  const [finding] = bashGates({ command: 'git push origin main', cwd: work }, asBot())
-  assert.equal(finding.gate, 'identity')
-  assert.match(finding.message, /authored by me@work\.example, not 7\+bot@users\.noreply\.github\.com/)
-  assert.match(finding.message, /Rewrite them with that identity: `git -c user.name=bot/)
+  sh(work, `git config user.email me@work.example && echo two >> a.txt && GIT_AUTHOR_EMAIL=${MAINTAINER} git commit -qam two`)
+  assert.deepEqual(gateNames('git push origin main', { cwd: work, ctx: asBot() }), [])
 })
 
-test("identity says someone else's commits must not be rewritten", () => {
+test("identity fires on our commit with the machine's identity, and its rewrite skips the maintainer's", () => {
   const { work } = clonedRepo()
-  sh(work, `git config user.email me@work.example && echo two >> a.txt && ${AS_MAINTAINER} git commit -qam two`)
+  sh(work, `git config user.email me@work.example && echo ours >> a.txt && git commit -qam ours && echo theirs >> a.txt && GIT_AUTHOR_EMAIL=${MAINTAINER} git commit -qam theirs`)
   const [finding] = bashGates({ command: 'git push origin main', cwd: work }, asBot())
-  assert.match(finding.message, /someone else's commits; don't rewrite them/)
-  assert.doesNotMatch(finding.message, /rebase --exec/)
+  assert.equal(finding.gate, 'identity')
+  assert.match(finding.message, /1 commit\(s\) to push are authored by me@work\.example/)
+  sh(work, `unset GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL; ${/`(git -c user\.name=bot .*)`/.exec(finding.message)[1]}`)
+  assert.equal(sh(work, 'git log -2 --format=%ae'), `${MAINTAINER}\n${NOREPLY}`)
 })
 
 test('identity stays silent on a maintainer commit the fork branch already has, fetched and pushed by URL', () => {
   const { work, root } = clonedRepo()
   sh(root, 'git clone -q --bare upstream fork.git')
-  sh(work, `git checkout -qb fix && echo fix >> a.txt && GIT_AUTHOR_EMAIL=${NOREPLY} git commit -qam fix && git push -q ../fork.git HEAD:fix`)
+  sh(work, `git config user.email me@work.example && git checkout -qb fix && echo fix >> a.txt && GIT_AUTHOR_EMAIL=${NOREPLY} git commit -qam fix && git push -q ../fork.git HEAD:fix`)
   sh(root, `git clone -q -b fix fork.git maintainer && cd maintainer && echo polish >> a.txt && ${AS_MAINTAINER} git commit -qam polish && git push -q origin fix`)
   sh(work, `git fetch -q ../fork.git fix && git rebase -q FETCH_HEAD && echo more >> a.txt && GIT_AUTHOR_EMAIL=${NOREPLY} git commit -qam more`)
   assert.deepEqual(gateNames('git push ../fork.git HEAD:fix', { cwd: work, ctx: asBot() }), [])
