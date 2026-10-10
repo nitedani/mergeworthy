@@ -206,7 +206,7 @@ const withState = (files, overrides) => {
   return ctx
 }
 const firstUsed = (minutes) => () => withState({ 'request-ids.json': { 'req-1': NOW - minutes * MINUTE } })
-const started = (ms) => () => withState({ 'agents.json': { [`${SESSION}/review pr 5`]: { at: NOW - ms, tool: 'Agent' } } })
+const started = (ms, tool = 'Agent') => () => withState({ 'agents.json': { [`${SESSION}/review pr 5`]: { at: NOW - ms, tool } } })
 const claude = (pid, rssKiB = 2 ** 20) => ({ pid, comm: 'claude', ageSec: 3700, cpuPct: 12, rssKiB })
 const lowMemory = () => fakeCtx({ meminfo: () => ({ availableKiB: 2 * 2 ** 20 }), procs: () => [claude(11), claude(22, 3 * 2 ** 20), { pid: 33, comm: 'bash', rssKiB: 9e9 }] })
 const claudes = (count) => () => fakeCtx({ procs: () => Array.from({ length: count }, (_, i) => claude(i + 1)) })
@@ -269,6 +269,18 @@ test('an agent-load message gives the numbers and the largest agents', () => {
   assert.match(finding.message, /2\.0 GiB of memory is free .* 2 claude\/codex processes/)
   assert.match(finding.message, /The largest: pid 22 \(claude, 1h 1m, 12% cpu, 3\.0 GiB\); pid 11/)
 })
+
+for (const [tool, advice] of [
+  ['Agent', 'Continue that agent instead, with SendMessage. A new review round gets its own title, like "… round 2". If the old agent died'],
+  ['Task', 'Continue that agent instead, with SendMessage.'],
+  ['mcp__t3-code__delegate_task', 'Check that task instead, with `task_status` on the taskId its `delegate_task` call returned. A new review round is a new `delegate_task` call with a new title, like "… round 2". If the old agent died'],
+]) {
+  test(`an agent-dedupe message says how to continue an agent that ${tool} started`, () => {
+    const [finding] = agentGates({ input: { description: 'Review PR 5' }, session: SESSION }, started(30 * MINUTE, tool)())
+    assert.ok(finding.message.includes(advice), finding.message)
+    assert.doesNotMatch(finding.message, /t3_thread_send/)
+  })
+}
 
 test('agent-dedupe stays silent on a title that another session started', () => {
   assert.deepEqual(agentNames({ description: 'Review PR 5' }, started(30 * MINUTE)(), 'session-b'), [])
