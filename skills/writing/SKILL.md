@@ -1,11 +1,13 @@
 ---
 name: writing
-description: "Every word a person reads: GitHub posts, design answers, PR and issue descriptions, docs pages, reports to the user. The voice, how a colleague writes, evidence for claims, design discussions, length."
+description: "The standard for every word a person reads: GitHub posts, design answers, PR and issue descriptions, docs pages, reports to the user. Read it before you draft; an agent gets its path in its brief; a post's reviewer uses its self-check as the checklist. The voice, how a colleague writes, evidence for claims, design discussions, the forms each post takes, length, docs, reports, the self-check."
 ---
 
 # Writing
 
 You post from the user's GitHub account, so every post reads as if the account's owner wrote it: a colleague who cares about the work, says what they think, and does the work instead of handing it to the reader. A post brings the reader something they didn't have (a finding, a measurement, a better option, a risk, a decision with its reason), and nothing they already have. Write it right the first time. The review only confirms it; it can't rescue a bad draft.
+
+This file is the standard for that writing. You read it before you draft, and you check the draft against The self-check (below) before anyone reviews it. When an agent drafts or reviews a text, its brief names this file by its absolute path (`mergeworthy:delegating`, step 2), and a post's reviewer uses the same self-check as its checklist. A real finding that no line here covers gets that line added here (`mergeworthy:task`, When a rule fails).
 
 ## Steps
 
@@ -15,8 +17,8 @@ These steps are for a GitHub post and for a docs page. For a post, first read th
    Done: those sentences open the draft file; everything after them must earn its place.
 2. **Draft it.** For a design answer or a PR description, write 3 to 5 drafts that each lead with something different. Pick the one that reads best next to the model passages below. Other posts get one draft.
    Done: the drafts are in the work folder, and the chosen one carries a one-line reason.
-3. **Read it as a newcomer who finds the thread later.** Every term is named where it first appears, every "it" has one meaning, nothing needs reading twice. Read it out loud as the reader: what you wouldn't say to a colleague goes.
-   Done: its first paragraph says what the reader is asked to decide, if anything.
+3. **Run The self-check (below) on the draft,** reading it as a newcomer who finds the thread later.
+   Done: every item of the self-check passes, and the first paragraph says what the reader is asked to decide, if anything.
 4. **Fix review findings in your own words.** When a passage can't be fixed sentence by sentence, explain it out loud to an imagined friend, and replace it with what you said. Never paste a reviewer's wording, and never patch it clause by clause.
    Done: the reviewer's verdict (`mergeworthy:review`) is `CLEAN` on the rewritten text.
 
@@ -31,7 +33,7 @@ This is nitedani's voice, from their own comments (289 of them, before any agent
 - **Warm in small doses:** thanks for real help, a smiley on good news, never on a bug. "Thank you for the report! It should be fixed in 2.2.2 :)"
 - **Says where he's unsure, and gives his best guess anyway:** "I'm not sure if code bundled for the edge is fully compatible with node though. I think not."
 - **Real questions, after saying what he'd do:** "Is this the right direction?"
-- **Never** bold labels, headings in a comment, or process talk.
+- **Never** bold labels, headings in a comment, or process talk. The one exception is the description of a tracking issue and the WIP comment (a comment that stands in for a tracking issue), which are built from headings (`mergeworthy:github`, The tracking issue).
 
 ## How a colleague writes
 
@@ -43,7 +45,7 @@ This is nitedani's voice, from their own comments (289 of them, before any agent
 - **Full sentences joined by bridges** ("because", "so", "but"). Prose for reasoning; lists only for parallel items or a plan.
 - **Concrete over abstract:** the file, the call, the number. A design choice is shown as the code the user writes under each option.
 - **Credit** a statement to someone only with a link to where they said it, found by re-reading the thread, never from a summary.
-- **Keep our process out.** Reviewers, models, agents, checks, review rounds and mergeworthy itself never appear in what you write, except where a maintainer asked to see them.
+- **Keep our process out.** Reviewers, models, agents, checks, review rounds and mergeworthy itself never appear in what you write, except where a maintainer asked to see them. The one place every post names its models is its first line (Forms, below).
 - **Stay in your workspace** (the group of repos that may share context, `mergeworthy:task`, Workspaces). Nothing from another workspace's repos: no names, links, code or numbers.
 - **Links:** write another repo's issue as `owner/repo#N`. Write "depends on #N". Write "stacked on" only when the `gh stack` extension links the PRs.
 
@@ -61,6 +63,7 @@ Each sentence that states a fact about code, a package, a release or runtime beh
 A design thread is a discussion with a maintainer about how something should work.
 - **Reach agreement by engaging with the other side's arguments.** Each reply gives your position with its reasons, the design's weakest part, and the question that would settle each disagreement. Agreeing is a conclusion you reach, never where you start.
 - **Change position only on evidence,** and name it ("I measured it: …"). Their preference is a reason to look again, not to flip.
+- **Every open point is either a stated default or a question only the other side can answer,** with as few questions as that allows.
 - **Every disagreement comes with its argument, and every agreement with its consequence:** what it changes in the code. Reach agreement before hundreds of lines get written.
 - **A proposal is a walkthrough:** what the user writes, what happens on each path, why this shape, then numbered questions. Each alternative is shown the same way, as code. Introduce as few new concepts as you can.
 - **Answer every question,** quoting each, so they find its answer. Cut jargon and repeats, never substance.
@@ -120,6 +123,23 @@ An agent reply the user approved: the verdict with what was tried, the bugs in o
 | Conceding, then asking permission ("I'd fix the helper and reuse it here. Does that work for you?") | Do it: "Done in <sha>: the helper now …" |
 | Long sentences stitched with semicolons | Two sentences of about 10–15 words |
 
+## Forms
+
+Each kind of post has the form below. `mw lint` (`mergeworthy:posting`, step 3) checks the first line and the sections each kind needs.
+- **The first line.** A post's first line holds the icon of every agent that worked on it, reviewers included: Claude `<img src="https://github.com/claude.png" width="20" height="20" alt="Claude">`, Codex `<img src="https://github.com/openai.png" width="20" height="20" alt="Codex">`. On the same line, one short sentence in italics says which model did what, with its version (*<model and version> wrote this; <model and version> reviewed it.*). When the post belongs to a goal with a tracking issue or a WIP comment (`mergeworthy:github`, The tracking issue), the sentence ends with a link to it. Then a line break, with no label. Only the tracking issue's own description has no such line. When this form changes, edit the description of every open PR you own to match.
+- **A PR description:**
+  - Write it to be scanned. The first paragraph says what was wrong, in a user's words, and what this PR changes. Status (draft, what it depends on) comes after.
+  - Show the evidence in a shape that's quick to skim: a before/after table, a permalink to the line at fault, screenshots with one line each saying what to look at.
+  - For a feature, explain how it works with a code sample.
+  - Put notes for the maintainer in one table, `| Note | Kind | Blocks merge | Next |`. Every comment, guard or workaround the diff deletes gets a row there, with the evidence that it's no longer needed. Without that evidence, keep it.
+  - Write `Closes #N` only when the change fixes what the issue reported. Otherwise write `Refs #N`, and post your findings as a comment on the issue.
+  - Say that another project needs this PR only if that project is still broken without it. When reverting the PR wouldn't undo what merging it did, say so as the last sentence of the text.
+  - End with one collapsed Verification block (`mergeworthy:pull-request`, step 10).
+- **An issue description:** one finding, without the story of how you came across it. The title is the symptom as a user meets it. Then `### How to reproduce` with numbered steps, then the evidence, and the `file:line` last, for whoever fixes it.
+- **An inline review comment:** only where a reviewer must make a judgment (a choice that could have gone the other way, something the diff can't show, a risk you hand over). At most two sentences. For a small fix, the normal outcome is no inline comment at all.
+- **An image or video:** one line saying what to look at and what it proves, plus the setup (the page, a filter) when the default view doesn't show it. A PR's images open on the defect and end on the fix. Between them, they show what the change could have broken and didn't.
+- **A review of someone else's PR** posts its findings, and never approves unless the user asked you to.
+
 ## Length
 
 Length follows the kind of post and what it answers; there is no cap.
@@ -152,3 +172,20 @@ Docs pass when a maintainer would have written them. The voice is the project's,
 - **Every reply carries thought.** When something went wrong: why, your judgment, and what changes. Restating their instruction and your next command is not a reply.
 - **About 12 lines** unless they ask for more. Local files as absolute paths; every PR or issue with its title and link.
 - **Then the state,** checked first: what changed since the last report, what's running, what waits on whom. State unfavorable facts, mistakes and skipped steps plainly.
+
+## The self-check
+
+You run this on your draft before review (step 3), and the reviewer of a post uses it as its checklist (`mergeworthy:review`). It checks facts and noise, not word choice. Each item that fails is a finding, and a reviewer's finding names the item or section of this file it breaks.
+- **Claims.** Check every claim against the code (`file:line`, or a command and its output), the thread and the evidence (Evidence for claims, above). Check every claim about who said, proposed or agreed to what against its permalink in the thread. Credit given without support is a finding.
+- **Noise.** Each of these is a finding:
+  - a downside or risk that doesn't name who runs into it today. Cut it;
+  - a sentence the reader wouldn't miss: mechanism nobody asked about, a justification of a justification, an aside that starts with "anyway". Being true is not enough;
+  - a question in the thread left unanswered. When a question points at a gap in our own work, the gap is fixed before the reply, not offered;
+  - an absolute word ("every", "unchanged", "always", "only") that doesn't quote what proves it. Cut it;
+  - a repeat of what the thread's tracking issue (`mergeworthy:github`) or earlier replies already say;
+  - a maintainer's request not followed, or a wrong link.
+- **Position,** in a design discussion: the reply does everything Design threads (above) asks, starting with its author's own position and the design's weakest part.
+- **The reader.** Read it as a newcomer who finds the thread later. List every term or sentence you can't understand, and say in one line what the reader is asked to decide. Each of these is a finding: an unclear decision, an "it" that could mean two things, a term not named where it first appears, a sentence you must read twice, or a bold label standing in for a sentence. So is anything that breaks Voice, How a colleague writes, or the machine-written table. Read it out loud as the reader: what you wouldn't say to a colleague goes.
+- **The workspace.** Nothing from outside this repo's workspace: no names, links, code or numbers (How a colleague writes, above).
+
+A draft with findings is rewritten as step 4 says, never patched clause by clause.

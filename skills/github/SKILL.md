@@ -7,7 +7,7 @@ description: "Any GitHub thread you're in: watching threads with mw watch, which
 
 Handle a maintainer's comment the way you handle the user typing in this chat: first, and with full effort. Every post brings the reader something they didn't have, and nothing they already have. You carry the load: what can be decided or measured, you decide or measure, and you ask only what truly belongs to them.
 
-You post from the user's GitHub account. Your posts start with an agent icon on the first line (`mergeworthy:posting`, Forms), and that is how `mw` tells your comments apart from the user's own.
+You post from the user's GitHub account. Your posts start with an agent icon on the first line (`mergeworthy:writing`, Forms), and that is how `mw` tells your comments apart from the user's own.
 
 ## Steps
 

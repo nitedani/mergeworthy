@@ -77,18 +77,10 @@ For a PR's final review, add: "As this repo's maintainer, would you merge this e
 
 ## Posting checks
 
-Hand these to the reviewer of a post, with the draft and the thread (`mw thread`). The review checks facts and noise, not word choice.
+Hand the reviewer of a post this frame, with the draft, the output of `mw thread <ref>`, and the absolute path of the `writing` standard (`skills/writing/SKILL.md`):
 
-- **Claims:**
-  - check every claim against the code (`file:line`, or a command and its output), the thread and the evidence;
-  - check every claim about who said, proposed or agreed to what against its permalink in the thread. Credit given without support is a finding.
-- **Noise:**
-  - every downside or risk names who runs into it today, or it is cut;
-  - every sentence the reader wouldn't miss is a finding: mechanism nobody asked about, a justification of a justification, an aside that starts with "anyway". Being true is not enough;
-  - every question in the thread is answered. When a question points at a gap in our own work, the gap is fixed before the reply, not offered;
-  - every absolute word ("every", "unchanged", "always", "only") quotes what proves it, or is cut;
-  - nothing that the thread's tracking issue (`mergeworthy:github`) or earlier replies already say is repeated;
-  - maintainers' requests are followed, and links are correct.
-- **Position (design discussions):** the reply states its author's own position and the design's weakest part. A change of position names the new evidence. Every open point is either a stated default or a question only the other side can answer, with as few questions as that allows.
-- **The reader:** "You have not seen this thread. List every term or sentence you can't understand, and say in one line what the reader is asked to decide." Each of these is a finding: an unclear decision, a pronoun that could mean two things, a term not yet introduced, a sentence you must read twice, or a bold label standing in for a sentence. So is anything that doesn't read the way `mergeworthy:writing` says. Then the draft is rewritten, never patched clause by clause.
-- **The workspace:** nothing from outside this repo's workspace (`mergeworthy:task`, Workspaces): no names, links, code or numbers.
+---
+
+You haven't seen this thread before. Check the draft against the writing standard at the path you were given. Its section The self-check is your checklist, and the rest of the file says what each item means. Check facts and noise, not word choice. Use the thread, with its permalinks, to check who said what. Each finding names the item or section of that file it breaks.
+
+---
