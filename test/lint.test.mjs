@@ -18,7 +18,7 @@ const CASES = {
   },
   attribution: {
     fires: [withBadge('As agreed, I moved it.'), withBadge('You suggested a flag.'), withBadge('@carol decided to drop it.'), withBadge('Carol asked for this.')],
-    silent: [withBadge('As agreed in https://github.com/o/r/issues/1#issuecomment-9, I moved it.'), withBadge('It was decided long ago.'), withBadge('> you suggested a flag')],
+    silent: [withBadge('As agreed in https://github.com/o/r/issues/1#issuecomment-9, I moved it.'), withBadge('It was decided long ago.'), withBadge('> you suggested a flag'), withBadge('The compiler said x.')],
   },
   mention: {
     fires: [withBadge('Thanks @carol.'), withBadge('(@carol) can you look?')],
