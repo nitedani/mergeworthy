@@ -29,8 +29,9 @@ text = open(path).read()
 title = (re.match(r'\ATitle:\s*([^\n]*)\n', text) or [None, None])[1]
 text = re.sub(r'\ATitle:[^\n]*\n', '', text)
 # Posts by the agent share the user's account: each starts with the icons of the agents that worked on it,
-# then a line break, so readers see who wrote it. The other checks run on the text after the badge.
-BADGE = re.compile(r'^(?:<img src="[^"]+"[^>]*alt="[^"]+"[^>]*>[ \t]*)+\n')
+# optionally followed on the same line by one italic line saying which model did what, then a line break,
+# so readers see who wrote it. The other checks run on the text after the badge.
+BADGE = re.compile(r'^(?:<img src="[^"]+"[^>]*alt="[^"]+"[^>]*>[ \t]*)+(?:\*[^*\n]+\*[ \t]*)?\n')
 _label = re.match(r'^\s*<img [^>]*>[ \t]*\*\*[^*\n]+:\*\*', text)
 _m = BADGE.match(text.lstrip())
 if _m:
