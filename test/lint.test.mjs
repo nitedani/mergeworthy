@@ -86,6 +86,24 @@ test('a State bullet over 25 words warns, and 25 words pass', () => {
   assert.deepEqual(umbrellaChecks(umbrella(UMBRELLA_HEADINGS, `- ${'word '.repeat(25)}`)), [])
 })
 
+const details = (summary) => `<details>\n<summary>${summary}</summary>\n\nRan it.\n</details>`
+const prChecks = (text) => lint(text, { ...OTHER_REPO, kind: 'pr' }).map((f) => f.check)
+
+test('a PR body may have one <details> block, summarized Verification', () => {
+  assert.deepEqual(prChecks(withHeader(`Fix.\n\n${details('Verification')}`)), [])
+  assert.deepEqual(prChecks(withHeader('Fix.')), [])
+  assert.deepEqual(prChecks(withHeader('Fix.\n\n```html\n<details><summary>Example</summary></details>\n```')), [])
+})
+
+test('a PR body fails with a second <details> block or another summary', () => {
+  assert.deepEqual(prChecks(withHeader(`Fix.\n\n${details('Verification')}\n\n${details('Process')}`)), ['pr-details'])
+  assert.deepEqual(prChecks(withHeader(`Fix.\n\n${details('How I tested')}`)), ['pr-details'])
+})
+
+test('pr-details checks only PR bodies', () => {
+  assert.deepEqual(lint(withHeader(details('How I tested')), { ...OTHER_REPO, kind: 'reply' }), [])
+})
+
 test('process words are fine in the user’s own repos', () => {
   assert.deepEqual(checks(withHeader('The guardian found nothing.'), { repo: 'bot/tools', login: 'bot' }), [])
 })
