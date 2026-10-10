@@ -1,0 +1,9 @@
+#!/usr/bin/env node
+import { appendFileSync, readFileSync } from 'node:fs'
+
+const dir = process.env.FAKE_GH_DIR
+const args = process.argv.slice(2)
+appendFileSync(`${dir}/calls.jsonl`, JSON.stringify(args) + '\n')
+const [, stdout = '', code = 0] = JSON.parse(readFileSync(`${dir}/responses.json`, 'utf8')).find(([pattern]) => args.join(' ').includes(pattern)) ?? []
+process.stdout.write(stdout)
+process.exit(code)

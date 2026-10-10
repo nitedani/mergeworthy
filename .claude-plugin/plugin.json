@@ -1,0 +1,6 @@
+{
+  "name": "mergeworthy",
+  "description": "A way of working for coding agents whose PRs and posts a maintainer can merge without checking them again: short always-on rules, five skills, command gates and the mw tools.",
+  "author": { "name": "nitedani" },
+  "repository": "https://github.com/nitedani/mergeworthy"
+}

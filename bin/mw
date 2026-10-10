@@ -1,0 +1,47 @@
+#!/usr/bin/env node
+import { realCtx } from '../lib/ctx.mjs'
+import { diffLintCommand } from '../lib/difflint.mjs'
+import { followupsCommand } from '../lib/followups.mjs'
+import { lintCommand } from '../lib/lint.mjs'
+import { loadCommand } from '../lib/load.mjs'
+import { locCommand } from '../lib/loc.mjs'
+import { netnsCommand } from '../lib/netns.mjs'
+import { postCommand, verdictCommand } from '../lib/post.mjs'
+import { stepCommand, stepsCommand } from '../lib/steps.mjs'
+import { threadCommand } from '../lib/thread.mjs'
+import { watchCommand } from '../lib/watch.mjs'
+
+const COMMANDS = {
+  thread: [threadCommand, 'mw thread <url|owner/repo#number>', 'The whole thread as markdown: body, comments, reviews, inline comments and cross-references, with permalinks.'],
+  lint: [lintCommand, 'mw lint <draft> [--repo owner/repo] [--kind reply|design|pr|issue|umbrella]', 'Checks a draft before posting; exits 1 on any error.'],
+  verdict: [verdictCommand, 'mw verdict <draft> CLEAN|CHANGES --by <who>', "Run by the reviewer: records the verdict with the draft's sha256 in <draft>.verdict.json."],
+  post: [postCommand, 'mw post [--I_UNDERSTAND_IMPLICATIONS_AND_BYPASS_GATE <reason>] [--kind <kind>] <draft> -- gh <args...>', 'Lints the draft, checks its CLEAN verdict and the thread, then runs the gh command that posts it.'],
+  watch: [watchCommand, 'mw watch <url...> [--commands --workspace <name>] [--interval 60] [--max 110m] [--once]', 'One GraphQL request per poll; exits on the first batch of events and prints the re-arm command.'],
+  step: [stepCommand, 'mw step <gates|verify|quality|review> <evidence path> [--pr <url>]', "Records a converge step against the PR's (or the checkout's) head."],
+  steps: [stepsCommand, 'mw steps [--pr <url>]', 'Lists each required step: done on this head, on an older head, or missing.'],
+  'diff-lint': [diffLintCommand, 'mw diff-lint [base]', 'Warns on added multi-line or history comments and on timed waits added in tests.'],
+  loc: [locCommand, 'mw loc [base] [--map <file>]', 'Lines changed per feature (map lines: <glob> = <feature>), with tests and docs apart.'],
+  followups: [followupsCommand, 'mw followups <owner/repo> [--days 14]', 'Commits others made to the files of your PRs merged in that window.'],
+  netns: [netnsCommand, 'mw netns -- <command...>', 'Runs the command in a private network namespace with its own ports and internet through slirp4netns.'],
+  load: [loadCommand, 'mw load', 'Free memory, load average, cores, and the claude, codex and chrome processes with their memory.'],
+}
+
+const [name, ...args] = process.argv.slice(2)
+const ownArgs = args.includes('--') ? args.slice(0, args.indexOf('--')) : args
+if (!COMMANDS[name]) {
+  console.log(['usage: mw <command> [args]', '', ...Object.values(COMMANDS).map(([, usage, summary]) => `  ${usage}\n      ${summary}`)].join('\n'))
+  process.exit(name === undefined || name === 'help' || name === '--help' ? 0 : 2)
+}
+const [run, usage, summary] = COMMANDS[name]
+if (ownArgs.includes('--help')) {
+  console.log(`usage: ${usage}\n\n${summary}`)
+  process.exit(0)
+}
+try {
+  const code = await run(args, realCtx())
+  if (code === 2) console.error(`usage: ${usage}`)
+  process.exit(code)
+} catch (error) {
+  console.error(`mw ${name}: ${error.message}`)
+  process.exit(1)
+}
