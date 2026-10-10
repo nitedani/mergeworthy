@@ -17,12 +17,12 @@ const COMMANDS = {
   verdict: [verdictCommand, 'mw verdict <draft> CLEAN|CHANGES --by <who>', "Run by the reviewer: records the verdict with the draft's sha256 in <draft>.verdict.json."],
   post: [postCommand, 'mw post [--I_UNDERSTAND_IMPLICATIONS_AND_BYPASS_GATE <reason>] [--kind <kind>] <draft> -- gh <args...>', 'Lints the draft, checks its CLEAN verdict and the thread, then runs the gh command that posts it.'],
   watch: [watchCommand, 'mw watch <url...> [--commands --workspace <name>] [--interval 60] [--max 110m] [--once]', 'One GraphQL request per poll; exits on the first batch of events and prints the re-arm command.'],
-  step: [stepCommand, 'mw step <gates|verify|quality|review> <evidence path> [--pr <url>]', "Records a converge step against the PR's (or the checkout's) head."],
+  step: [stepCommand, 'mw step <gates|verify|quality|review> <evidence path> [--pr <url>]', "Records a converge step on the checkout's head and its own diff; --pr labels it."],
   steps: [stepsCommand, 'mw steps [--pr <url>]', 'Lists each required step: done on this head, on an older head, or missing.'],
   'diff-lint': [diffLintCommand, 'mw diff-lint [base]', 'Warns on added multi-line or history comments and on timed waits added in tests.'],
   loc: [locCommand, 'mw loc [base] [--map <file>]', 'Lines changed per feature (map lines: <glob> = <feature>), with tests and docs apart.'],
   followups: [followupsCommand, 'mw followups <owner/repo> [--days 14]', 'Commits others made to the files of your PRs merged in that window.'],
-  netns: [netnsCommand, 'mw netns -- <command...>', 'Runs the command in a private network namespace with its own ports and internet through slirp4netns.'],
+  netns: [netnsCommand, 'mw netns [--publish <port>[,...]] -- <command...>', 'Runs the command in a private network namespace with its own ports and internet through slirp4netns; --publish prints a 127.0.0.1 URL for each port inside.'],
   load: [loadCommand, 'mw load', 'Free memory, load average, cores, and the claude, codex and chrome processes with their memory.'],
 }
 
