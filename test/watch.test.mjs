@@ -143,6 +143,12 @@ test('mw watch --commands searches every 3rd poll inside the same request', asyn
   assert.match(calls[0][3], /commenter:@me \\"\/agent\\" updated:>=\S+ user:o user:p/)
 })
 
+test('mw watch --commands without a workspaces.json entry searches the owner the workspace is named after', async () => {
+  const { ctx, calls } = pollsOf([threeThreads(pr())])
+  assert.equal(await watchCommand([...URLS, '--commands', '--workspace', 'o', '--once'], ctx), 0)
+  assert.match(calls[0][3], /updated:>=\S+ user:o"\)/)
+})
+
 test('mw watch exits on the first poll with events and prints the re-arm command', async () => {
   const { ctx, calls } = pollsOf([data(pr()), data(pr({ comments: [comment('carol', AFTER, 'ping')] }))])
   assert.equal(await watchCommand(['o/r#5'], ctx), 0)
