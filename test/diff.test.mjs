@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { diffLint } from '../lib/difflint.mjs'
-import { locTable, parseMap } from '../lib/loc.mjs'
+import { diffLint, locTable, parseMap } from '../lib/diff.mjs'
 
 const patch = (file, start, lines) => `diff --git a/${file} b/${file}\n--- a/${file}\n+++ b/${file}\n@@ -0,0 +${start},${lines.length} @@\n${lines.map((l) => '+' + l).join('\n')}\n`
 const warnings = (diff) => diffLint(diff).map((w) => `${w.file}:${w.line}: ${w.message.split(';')[0]}`)

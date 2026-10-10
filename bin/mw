@@ -1,10 +1,9 @@
 #!/usr/bin/env node
 import { realCtx } from '../lib/ctx.mjs'
-import { diffLintCommand } from '../lib/difflint.mjs'
+import { diffLintCommand, locCommand } from '../lib/diff.mjs'
 import { followupsCommand } from '../lib/followups.mjs'
 import { lintCommand } from '../lib/lint.mjs'
 import { loadCommand } from '../lib/load.mjs'
-import { locCommand } from '../lib/loc.mjs'
 import { netnsCommand } from '../lib/netns.mjs'
 import { postCommand, verdictCommand } from '../lib/post.mjs'
 import { stepCommand, stepsCommand } from '../lib/steps.mjs'
