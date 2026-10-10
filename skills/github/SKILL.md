@@ -59,7 +59,8 @@ From your first post until every thread you're in is merged or closed, repeat th
   - the middle column says in one short sentence what the commit does;
   - each rating is out of 10. A rating below 10 gives its reason in a few words (`8/10 (invalid keys untested now)`), and 10 means nothing could be better;
   - each finding comes with the exact fix. For a big change, have a fresh Opus agent review it with `mergeworthy:review`'s charter and `mergeworthy:code`'s refactor prompt, and use what it finds;
-  - never just "looks good".
+  - never just "looks good";
+  - the last line offers a full review of the PR when they're done. Run `mergeworthy:converge` only when they ask, mark the PR ready, or request your review.
 - **"I don't understand this"** on a line of docs or a code comment reports a bug in that text. Push clearer wording and reply "Done in <sha>: <new sentence>".
 - **An inline comment:** before acting on it, check that its reason fits the line it's attached to. If it fits another line better, ask which one they meant.
 - **A bot's finding** counts the same as a reviewer's. Run its case first, then reply with the commit that fixes it, or with the output that shows it doesn't apply.

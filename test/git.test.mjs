@@ -94,9 +94,15 @@ test('a step survives a merge that only brings in the base branch', () => {
   assert.match(statusOf(ctx)[0], /^gates: ✓ done on /)
 })
 
+test("a maintainer's commits on a recorded commit carry its record", () => {
+  const { ctx, work } = recordedBranch()
+  sh(work, 'printf "x\\n" >> a.txt && git commit -qam "maintainer tweak"')
+  assert.match(statusOf(ctx)[0], /^gates: ✓ done on /)
+})
+
 test('a step on an older diff shows the lines changed in the PR since', () => {
   const { ctx, work } = recordedBranch()
   const recorded = sh(work, 'git rev-parse HEAD')
-  sh(work, 'printf "x\\ny\\n" >> a.txt && git commit -qam more')
+  sh(work, 'printf "x\\ny\\n" >> a.txt && git commit -qam more -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"')
   assert.equal(statusOf(ctx)[0], `gates: done only on an older commit, ${recorded.slice(0, 7)}, and 2 lines of the PR's changes differ since then`)
 })
