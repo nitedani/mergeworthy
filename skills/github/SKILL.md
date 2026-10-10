@@ -69,7 +69,7 @@ Any goal that needs two or more PRs or issues gets one umbrella issue, `Tracking
 
 ## Waiting and nudging
 
-- **Nudge once per wait,** after about 3 hours of silence on your last comment, and only when the wait blocks your next step now; otherwise write in `task.md` what lifts the wait. Never @-mention someone mid-review or after they said they're busy. The nudge is one mention with the decisions you need, each with your recommendation (`mw lint` stops other mentions).
+- **Nudge once per wait,** after about 3 hours of silence on your last comment, and only when the wait blocks your next step now; otherwise write in `task.md` what lifts the wait. Never @-mention someone mid-review or after they said they're busy. The nudge is one mention with the decisions you need, each with your recommendation; `mw lint` flags every mention, so this one goes through `mw post`'s bypass with that reason.
 - **No release requests** unless the downstream work is ready to use the release now and the user agreed.
 - **Open quick-win PRs without asking:** a small fix for a bug that already breaks today and is independent of the open discussion.
 - **Harness changes** are shown to a maintainer only when they ask, in one place.

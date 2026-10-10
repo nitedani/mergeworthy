@@ -9,17 +9,15 @@ Every post reads as if the account's owner wrote it: a colleague who cares about
 
 ## Steps
 
-For every GitHub post and docs page. Reports to the user and code comments follow their own sections below.
+For a GitHub post (after `posting` step 1, which reads the thread) and a docs page. Reports to the user and code comments follow their own sections below.
 
-1. **Read what it builds on:** the whole thread, the threads it links, your own earlier replies, the evidence (`posting`, step 1).
-   Done: the draft's notes list every open question and every decision already made, each with its permalink.
-2. **Say it across the desk first.** What did you find, what do you think, what will you do, what do you need from them? Write that down in two or three sentences: the verdict, its one reason, the next step.
+1. **Say it across the desk first.** What did you find, what do you think, what will you do, what do you need from them? Write that down in two or three sentences: the verdict, its one reason, the next step.
    Done: those sentences open the draft file; everything after them must earn its place.
-3. **Draft it.** A design answer or a PR body gets 3 to 5 drafts that lead with different things; pick the one that reads best against the model passages below. Other posts get one draft.
+2. **Draft it.** A design answer or a PR body gets 3 to 5 drafts that lead with different things; pick the one that reads best against the model passages below. Other posts get one draft.
    Done: the drafts are in the work folder, and the chosen one carries a one-line reason.
-4. **Read it as a newcomer who finds the thread later.** Every term is named where it first appears, every "it" has one meaning, nothing needs reading twice. Read it out loud as the reader: what you wouldn't say to a colleague goes.
-   Done: the draft passes `mw lint`, and its first paragraph says what the reader is asked to decide, if anything.
-5. **Fix review findings in your own words.** A passage that can't be fixed sentence by sentence is explained aloud to an imagined friend and replaced by what you said. Never paste a reviewer's wording, never patch clause by clause.
+3. **Read it as a newcomer who finds the thread later.** Every term is named where it first appears, every "it" has one meaning, nothing needs reading twice. Read it out loud as the reader: what you wouldn't say to a colleague goes.
+   Done: its first paragraph says what the reader is asked to decide, if anything.
+4. **Fix review findings in your own words.** A passage that can't be fixed sentence by sentence is explained aloud to an imagined friend and replaced by what you said. Never paste a reviewer's wording, never patch clause by clause.
    Done: the reviewer's verdict is `CLEAN` on the rewritten text.
 
 ## Voice

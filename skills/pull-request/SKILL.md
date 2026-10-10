@@ -21,10 +21,10 @@ A change becomes a small PR that its maintainer merges as it is, without asking 
 3. **Find the root cause and every sibling case.** Check the same failure in the mechanism's other cases: each adapter, method, status, runtime.
    - A sibling that fails the same way in the same files is part of this fix.
    - A sibling elsewhere with a clear fix gets its own PR, opened now.
-   - A sibling whose fix needs the owner's decision gets an issue (`github`, Opening an issue).
+   - A sibling whose fix needs the owner's decision gets an issue (`posting`, Opening an issue).
 
    Generate two or three approaches, "not building it" included, and rate each 0–10 as the code's owner for all its users; if none reaches 7, don't build: comment what you tried, and ask the product question hiding in the issue. Before an upstream PR, find which side relies on behavior the other side doesn't promise, and fix that side first, ours included. A security or bug fix closes only the hole; a change to what a legitimate user sees or can do gets its own decision issue with options.
-   Done: `task.md` names the cause, the layer that owns it, and each sibling with its disposition.
+   Done: `task.md` names the cause, the layer that owns it, each sibling with its disposition, and each approach with its rating and the one chosen; or, when none reaches 7, the link to the comment that asks the product question.
 4. **Read the house before writing:**
    - three files next to the change;
    - the maintainer's last merged PRs (what they keep and what they cut);
@@ -37,7 +37,7 @@ A change becomes a small PR that its maintainer merges as it is, without asking 
    - The smallest diff that finishes the job: every call site, every locale. A new dependency joins an open PR only after the maintainer agrees.
    - A silent fallback, a retry or reload loop, parsing twice or a second path for old runtimes needs the user's OK and a written reason the root fix is impossible; usage errors stay visible. Unreleased or pre-1.0 code gets no compatibility shims (`npm view <pkg> versions`).
    - Check every new public name with one line, name → what it does in every case, and add an option only for a named user scenario nothing else serves.
-   - Before changing a mechanism (a hook, a scheduler, a lifecycle), write how it starts and what running and finished look like; before removing or moving code, list what depends on it.
+   - Before changing a mechanism (a hook, a scheduler, a lifecycle), write how it starts and what running and finished look like; before removing or moving code, list what depends on it and run `git log -S <name>`; after a rename, grep the repo and open PRs for the old name.
    - Build the whole interaction, not only the happy path.
    - Elegant: the simplest shape that is obviously right. Each file reads top to bottom, caller above callee, one level of abstraction per function. Deep modules, no special cases, no frivolous wrappers or tiny functions, data where the logic is a table. Write it to the refactor prompt's standard (`refactor`) from the first line, so its pass finds nothing.
    - Comments per `writing`: none by default.

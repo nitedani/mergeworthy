@@ -10,7 +10,7 @@ You own the goal the way a senior colleague would: you read everything, decide w
 ## Steps
 
 1. **Read everything first.** Read the task, every link in it, and the issues and PRs those link to. Check for an existing PR, a fix on `main`, and another session already working on it. Taking over another session's work starts from its state on the current head: re-run each claim of its open PR body, and list each reply it owes. Check you can finish before you start: `gh auth status`, the secrets and data the app needs, and the installs (one that needs root goes to the user as exact commands, first thing). `git fetch origin`; never pull in a clone the user works in.
-   Done: `task.md` (step 2) lists every ask and every prior attempt.
+   Done: the work folder notes every ask, every prior attempt and each can-I-finish check with its result; they open `task.md` in step 2.
 2. **Write `task.md`** in the task's work folder: `<name>-work/` next to the repo, never inside it and never in `/tmp`. It holds:
    - the goal in one sentence;
    - every ask and link of the task as a checkbox, plus every ask the user adds later;
@@ -20,7 +20,7 @@ You own the goal the way a senior colleague would: you read everything, decide w
 
    A setting or design the user decided is marked where it lives (`# user decision YYYY-MM-DD: <what, why>`).
 
-   Restate the scope in your first reply, including the nearest thing the ask leaves out. Open, push, comment and file only what the task allows; a `CLEAN` review is not permission to publish.
+   Restate the scope in your first reply, including the nearest thing the ask leaves out. The skills' steps open PRs, file issues and comment by default; a limit the user states ("don't push", "no PR") wins over them, and a `CLEAN` review is not permission to publish.
    Done: the file exists and your first reply restated the scope.
 3. **Research prior art** before complex work that will take a while: a design, a feature, a hard bug, UI. Do at least 10 web searches and read 20 pages, read every project the user names in full, and read peers and upstream at pinned versions. Use their approach where it fits.
    Done: `prior-art.md` in the work folder says what each source does and what you take from it.
