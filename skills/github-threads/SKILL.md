@@ -31,7 +31,8 @@ Each comment you answer goes through these steps:
      - a rating below 10 carries its reason in a few words next to it (`8/10 (invalid keys untested now)`);
      - 10/10 only when nothing could be better;
      - findings come with the exact fix; where the change is big, send the commits to the PR's Loop B agent (`converge`) and use its review and re-rating; with no loop running, apply `review`'s reviewer charter and `refactor`'s prompt to it;
-     - never just "looks good", and don't push onto the branch while they're committing unless asked.
+     - never just "looks good", and don't push onto the branch while they're committing unless asked;
+     - end offering a full review; run `converge` only when they ask, mark it ready or request your review.
    - **"I don't understand this"** on a docs or code-comment line reports a bug in that text. Push clearer wording and reply "Done in <sha>: <new sentence>"; ask "OK?" only if the meaning changes.
 3. **Then think, as a mini debate.** Instructions and acknowledgements skip this step. Keep your argued position until evidence changes it (`writing`, Design threads).
    - **The whole picture first:** what does the maintainer want overall? Trace the actual flow in code (caller → callee, which object each side sees, in each environment). Check that every path to the same thing behaves consistently, and name any gap you find with `file:line` and the next check.

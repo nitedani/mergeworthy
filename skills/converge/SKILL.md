@@ -16,8 +16,8 @@ Converging a pull request means working it to a final state: no reviewer, agent 
 Converged means every step below is done **on the final head**. A step that leaves no record can't be told from a skipped one, so each ends with its `pr-steps` line; the hooks refuse `gh pr create` (unless `--draft`), `gh pr ready` and a push to a ready PR until the final head has all six and the branch has its `approach` record (`pull-request` step 3; recorded once per branch, not per head). A head that changes afterwards re-runs and re-records the steps it re-opens.
 
 **Converge per push, not per commit.** Agent runs cost the user's subscription, so spend them where they can still find something.
-- **Batch:** collect the commits a round of review or a maintainer's ask produces, and converge the batch once, right before its push. A maintainer still pushing gets one review when his branch goes quiet, not one per commit.
-- **Small follow-ups carry the pass:** a change of 80 lines or fewer that adds no behavior (tests, docs, wording, a maintainer's tweak) gets the quick gates and the lanes it touches, and its loop records say `carries the pass of <sha>`; no new Loop A, Loop B or fresh reader. Behavior changes, and anything over 80 lines, get the loops again, then one fresh read for the batch.
+- **Batch:** collect the commits a round of review or a maintainer's ask produces, and converge the batch once, right before its push. A maintainer's commits get one `github-threads` 1.5 review once they stop.
+- **Small follow-ups carry the pass:** a change of 80 lines or fewer that adds no behavior (tests, docs, wording) gets the quick gates and the lanes it touches, and its loop records say `carries the pass of <sha>`; no new Loop A, Loop B or fresh reader. Behavior changes, and anything over 80 lines, get the loops again, then one fresh read for the batch.
 - **One review per post, not per wording fix:** after a reviewer's findings, fix them and post; a second round only when the fix changed a claim. A sha bump, an effort label or a typo is checked by `post-lint`, not by a reviewer.
 - **Side work waits:** porting, tracker polish and optional improvements wait while the critical path waits on someone else, unless they block it.
 - **Fewer turns, smaller contexts:** cache reads (context size × turns) dominate the cost. The orchestrator keeps one background wait for all its agents and the watcher, not one per job; an agent works its brief in as few turns as it can, batching tool calls, and never polls with sleep loops; a brief points to files instead of pasting them.
@@ -83,7 +83,7 @@ Docs, READMEs and JSDoc a user reads are part of the diff, so each step above co
 - **Slices.** A diff over about 1500 lines is split into slices that each fit (`verify`), with their own loop agents; in a stack, each PR has its own.
 - **What they read.** Read the head’s code in full at the brief’s pinned SHAs (`delegating` 1.10). A finality graph (Phase A) is only a navigation index.
 - **A new loop agent** starts, given the last report, once its context passes about 100k tokens: every continued turn re-reads the whole history from cache, which is most of the cost. A changed decision packet goes to the running agent.
-- **Commits others push** (a maintainer's) re-open the slices they touch: send them to the loop agents. They are owner code (Authority, below).
+- **A maintainer's commits** are owner code (Authority), reviewed per `github-threads` 1.5.
 - **Execution:** gates, tests and log mining run on the smallest tier (`delegating`); verifiers, reviewers and guardians still run the checks their charters require them to observe personally.
 
 ### Git and files

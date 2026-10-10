@@ -6,6 +6,14 @@ import json, re, sys, os, hashlib, shlex, subprocess
 def missing_steps(d):
     head = subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
     rec = os.path.expanduser(f'~/.claude/pr-steps/{head}')
+    # A maintainer's commits on top carry the last converged head's records, whatever their size: they get
+    # github-threads 1.5's review, and the pipeline runs again only once the maintainer says they're done.
+    # Only non-merge commits without the agent's Co-Authored-By: Claude trailer are skipped back over.
+    for c in subprocess.run(['git', '-C', d, 'rev-list', '--first-parent', '--max-count=100', 'HEAD'], capture_output=True, text=True).stdout.split():
+        if os.path.exists(os.path.expanduser(f'~/.claude/pr-steps/{c}')):
+            rec = os.path.expanduser(f'~/.claude/pr-steps/{c}'); break
+        parents, _, body = subprocess.run(['git', '-C', d, 'log', '-1', '--format=%P%x00%B', c], capture_output=True, text=True).stdout.partition('\0')
+        if len(parents.split()) != 1 or re.search(r'^Co-Authored-By: Claude', body, re.M | re.I): break
     kinds = {l.split()[0] for l in open(rec)} if head and os.path.exists(rec) else set()
     kinds |= {'fresh'} if 'review' in kinds else set()  # records made before the six steps
     missing = [k for k in ('verify', 'loopb', 'refactor', 'reverify', 'fresh', 'gates') if k not in kinds]
