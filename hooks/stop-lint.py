@@ -11,8 +11,19 @@ posted, monitor_ids, monitors, dead, commands, monitor_cmds = False, {}, set(), 
 last_user = ''  # the user's own last message (not a tool result or a hook's feedback)
 POST = re.compile(r'\bgh\b[^\n]*(body-file|body=@|--input|\s-F\s)')
 READ = re.compile(r'\bgh\s+api\s+graphql\b|\bgh\s+api\b[^\n]*\s(?:-X\s*|--method[\s=])GET\b')  # a field makes `gh api` a POST, but these read
+RUN_GH = re.compile(r'(?:^|[;&|(]|\s--)\s*gh\s')  # gh where the shell runs it: a line's start, after ; & | ( or mw post's --
+QUOTED = re.compile(r"'[^'\n]*'|\"(?:[^\"\\\n]|\\.)*\"|`[^`\n]*`")  # text in quotes or backticks is data, not a command
+def run_lines(cmd):  # the command's lines minus heredoc bodies, which are a file's text
+    end = None
+    for l in cmd.split('\n'):
+        if end is not None:
+            if l.strip() == end: end = None
+            continue
+        doc = re.search(r'<<-?\s*[\'"]?(\w+)', l)
+        end = doc and doc.group(1)
+        yield l
 def posts(cmd):
-    return any(POST.search(l) and not (READ.search(l) and 'mutation' not in cmd) for l in cmd.split('\n'))
+    return any(POST.search(l) and RUN_GH.search(QUOTED.sub("''", l)) and not (READ.search(l) and 'mutation' not in cmd) for l in run_lines(cmd))
 try:
     lines = open(d['transcript_path']).readlines()
 except Exception:

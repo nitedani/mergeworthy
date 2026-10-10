@@ -77,6 +77,12 @@ tr_cmd "gh api repos/o/r/issues -X GET -F per_page=100"
 check "an explicit GET with fields is a read" 0 "$(stop "$T/work")"
 tr_cmd "gh issue comment 5 --repo o/r --body-file $WD/drafts/r.md"
 check "BLOCK: a post with no Monitor on the watcher" 2 "$(stop "$T/work")"
+tr_cmd "mw post $WD/drafts/r.md -- gh pr comment 5 --repo o/r --body-file $WD/drafts/r.md"
+check "BLOCK: a post through mw post" 2 "$(stop "$T/work")"
+tr_cmd "sed -i 's/x/\`gh pr edit 5 --body-file b.md\`/' skills/a.md"
+check "a gh post quoted inside another command is text, not a post" 0 "$(stop "$T/work")"
+tr_cmd "$(printf "cat > a.md <<'EOF'\n- Post it: gh pr edit 5 --body-file b.md\nEOF")"
+check "a gh post inside a heredoc is a file's text, not a post" 0 "$(stop "$T/work")"
 kill "$SPID"; wait "$SPID" 2>/dev/null
 
 # ---------- pre-bash-guard check_turn ----------
