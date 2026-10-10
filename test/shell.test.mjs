@@ -3,7 +3,8 @@ import { homedir } from 'node:os'
 import { test } from 'node:test'
 import { parse } from '../lib/shell.mjs'
 
-const argvs = (command, cwd = '/work') => parse(command, cwd).map((cmd) => cmd.argv)
+const commandsOf = (command) => parse(command, '/work').commands
+const argvs = (command) => commandsOf(command).map((cmd) => cmd.argv)
 
 test('splits on every separator, in order', () => {
   assert.deepEqual(argvs('a 1; b && c || d | e & f\ng'), [['a', '1'], ['b'], ['c'], ['d'], ['e'], ['f'], ['g']])
@@ -14,16 +15,16 @@ test('removes quotes and escapes, joining line continuations', () => {
 })
 
 test('records which command a pipe feeds', () => {
-  const [pgrep, grep, xargs] = parse('pgrep node | grep -v x | xargs kill', '/work')
+  const [pgrep, grep, xargs] = commandsOf('pgrep node | grep -v x | xargs kill')
   assert.equal(pgrep.pipeTo, 1)
   assert.equal(grep.pipeTo, 2)
   assert.equal(xargs.pipeTo, undefined)
 })
 
 test('collects comments apart from commands', () => {
-  const commands = parse('echo hi # a note\n# another', '/work')
+  const { commands, comments } = parse('echo hi # a note\n# another', '/work')
   assert.deepEqual(commands.map((c) => c.argv), [['echo', 'hi']])
-  assert.deepEqual(commands.comments, ['# a note', '# another'])
+  assert.deepEqual(comments, ['# a note', '# another'])
 })
 
 test('treats a heredoc body as data', () => {
@@ -42,7 +43,7 @@ test('parses bash -c and sh -c scripts recursively', () => {
 })
 
 test('moves leading assignments into env and unwraps prefixes', () => {
-  const [cmd] = parse('FOO=1 sudo -u me env BAR=2 nohup timeout 5m nice -n 5 git push', '/work')
+  const [cmd] = commandsOf('FOO=1 sudo -u me env BAR=2 nohup timeout 5m nice -n 5 git push')
   assert.deepEqual(cmd.argv, ['git', 'push'])
   assert.deepEqual(cmd.env, { FOO: '1', BAR: '2' })
 })
@@ -52,7 +53,7 @@ test('keeps command -v as a query', () => {
 })
 
 test('a cd sets the cwd of the commands after it', () => {
-  const cwds = parse('git status; cd sub && git status; cd /abs; cd ~; cd $DIR; git status', '/work').map((c) => c.cwd)
+  const cwds = commandsOf('git status; cd sub && git status; cd /abs; cd ~; cd $DIR; git status').map((c) => c.cwd)
   assert.deepEqual(cwds, ['/work', '/work', '/work/sub', '/work/sub', '/abs', homedir(), null])
 })
 
@@ -61,10 +62,10 @@ test('drops redirections from argv', () => {
 })
 
 test('marks commands inside while and until loops', () => {
-  const loops = parse('while true; do sleep 5; done; until x; do y; done; sleep 1', '/work').map((c) => [c.argv[0], c.inWhile])
+  const loops = commandsOf('while true; do sleep 5; done; until x; do y; done; sleep 1').map((c) => [c.argv[0], c.inWhile])
   assert.deepEqual(loops, [['true', true], ['sleep', true], ['x', true], ['y', true], ['sleep', false]])
 })
 
 test('marks background commands', () => {
-  assert.deepEqual(parse('sleep 60 & echo', '/work').map((c) => c.background), [true, false])
+  assert.deepEqual(commandsOf('sleep 60 & echo').map((c) => c.background), [true, false])
 })
