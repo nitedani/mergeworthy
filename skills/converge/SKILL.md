@@ -24,7 +24,9 @@ A lane, in these steps, is one of the repo's test suites that runs the product i
    - An implementer agent (the implementer brief, below) commits the accepted findings, one commit per finding or per class of findings (every instance of one kind). Refactor commits stay separate from commits that change behavior. The quick checks run after each commit. If a check fails, fix that commit, never with a patch on top. Each finding you skip gets a reason. For a few lines, you do it yourself.
    - The same rater rates every row again, showing old rating ⇒ new rating, with the commits, until nothing worth changing is left. A pass that changed nothing says so, and why.
    - The verifier then checks the refactor commits against the code before them, for changes in behavior.
-   - Keep the rating current. Once the lines added plus the lines deleted since the last full rating exceed about 80, tests and lockfiles included, the rater runs it again on the whole diff before the next "ready". Give that run a new name in the work folder, so it doesn't overwrite the last one.
+   - Keep the rating current. Once the lines added plus the lines deleted since the last full rating exceed about 80, tests and lockfiles included, a fresh rater runs it again on the whole diff before the next "ready", rating every row anew: `mw step quality` refuses copied ratings ("10 =", "unchanged since"). Give that run a new name in the work folder, so it doesn't overwrite the last one.
+   - When the repo's project notes name their own refactor prompt, fetch it fresh for each pass and use it instead of the one in `mergeworthy:code`.
+   - The PR description shows the summary: each row's old ⇒ new rating linked to its commits, and a link to the whole refactor diff.
 
    Then `mw step quality <the last re-rating> --pr <url>`.
    Done: the rater's last re-rating says nothing worth changing is left, it is less than about 80 changed lines old, the verifier found no regression, and the step is recorded.

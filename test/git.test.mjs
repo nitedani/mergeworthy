@@ -81,6 +81,15 @@ test('mw step records the local head, its diff id and the PR label', () => {
   assert.deepEqual(statusOf(ctx), [`gates: ✓ done on ${head.slice(0, 7)}`, 'verify: missing', 'quality: missing', 'review: missing'])
 })
 
+test('mw step refuses a quality re-rating that copies earlier ratings', () => {
+  const repo = clonedRepo()
+  const ctx = fakeCtx({ exec, cwd: repo.work })
+  const evidence = join(repo.root, 'ratings.md')
+  writeFileSync(evidence, '| vike() | 5 ⇒ 8 | named steps |\n| render() | 10 = | Unchanged since ratings17. |\n')
+  assert.equal(stepCommand(['quality', evidence], ctx), 1)
+  assert.match(ctx.errors[0], /copies earlier ratings/)
+})
+
 test('mw step refuses a missing or empty evidence file', () => {
   const ctx = fakeCtx({ exec, cwd: clonedRepo().work })
   assert.equal(stepCommand(['gates', 'nothing.log'], ctx), 1)
