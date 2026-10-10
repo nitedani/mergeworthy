@@ -4,7 +4,7 @@ import { ghCommand, ghName, postsToGitHub, textFiles } from '../lib/gh-command.m
 
 test('ghCommand takes out the repo flag and reads a gh api request', () => {
   assert.deepEqual(ghCommand(['-R', 'o/r', 'pr', 'close', '5', '-c', 'Replaced by #6']), { group: 'pr', action: 'close', args: ['5', '-c', 'Replaced by #6'], repo: 'o/r', target: '5', api: null })
-  assert.deepEqual(ghCommand(['api', '-X', 'PATCH', 'repos/o/r/issues/5', '--input=b.json']).api, { method: 'PATCH', path: 'repos/o/r/issues/5', fields: [], input: 'b.json' })
+  assert.deepEqual(ghCommand(['api', '-X', 'PATCH', 'repos/o/r/issues/5', '--input=b.json']).api, { method: 'PATCH', path: 'repos/o/r/issues/5', fields: [], fileFields: [], input: 'b.json' })
   assert.equal(ghCommand(['api', 'repos/o/r/issues/5/comments', '-fbody=x']).api.method, 'POST')
 })
 

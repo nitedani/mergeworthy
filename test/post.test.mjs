@@ -112,6 +112,17 @@ test('mw post reads a release draft from --notes-file and a gist draft from a fi
   assert.deepEqual(posts().map((args) => args.slice(0, 2).join(' ')).filter((command) => command !== 'repo view'), ['release create', 'gist create'])
 })
 
+test('mw post refuses gh api forms that send the draft path or the raw file instead of its text', () => {
+  const { draft, mw, post, posts } = setup()
+  mw('verdict', draft, 'CLEAN', '--by', 'codex')
+  for (const form of [['-f', `body=@${draft}`], ['--raw-field', `body=@${draft}`], ['--input', draft]]) {
+    const r = post([], ['api', 'repos/o/r/issues/5/comments', ...form])
+    assert.equal(r.code, 2)
+    assert.match(r.stderr, /or with -F body=@<draft> for gh api'?$/m)
+  }
+  assert.deepEqual(posts(), [])
+})
+
 test('mw post stops on a lint error', () => {
   const { draft, mw, post } = setup({ text: withHeader('Fixed — with a test.') })
   mw('verdict', draft, 'CLEAN', '--by', 'codex')
