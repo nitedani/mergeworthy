@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { parse } from '../lib/shell.mjs'
 import { fakeGh, run, tempDir, umbrella, withHeader } from './helpers.mjs'
 
 const DRAFT = withHeader('Fixed in the latest commit, with a test.')
@@ -81,6 +82,17 @@ test('mw post rejects a bypass reason under 3 words', () => {
   assert.equal(r.code, 3)
   assert.match(r.stderr, /reason is missing or shorter than 3 words/)
   assert.deepEqual(posts(), [])
+})
+
+test('mw post prints a retry command without the old bypass, which posts once the reason is filled in', () => {
+  for (const flags of [['--I_UNDERSTAND_IMPLICATIONS_AND_BYPASS_GATE', 'because'], ['--I_UNDERSTAND_IMPLICATIONS_AND_BYPASS_GATE=because']]) {
+    const { mw, post, posts } = setup()
+    const printed = /in the command: mw (post .*)$/m.exec(post(flags).stderr)[1]
+    assert.equal(printed.match(/--I_UNDERSTAND_IMPLICATIONS_AND_BYPASS_GATE/g).length, 1)
+    const retry = parse(printed.replace('<why this is right here>', REASON)).commands[0].argv
+    assert.equal(mw(...retry).code, 0)
+    assert.equal(posts().length, 1)
+  }
 })
 
 test('mw post exits 2 when the gh command does not post the draft', () => {
