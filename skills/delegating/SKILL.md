@@ -16,7 +16,7 @@ You are the main session: you make the decisions and write each agent's instruct
      - applying code that Opus already wrote, line for line;
      - generating ideas in parallel: several agents, each from a different angle, propose options for you to decide between. Its brief says how to check a premise: read code only as it is at the pinned commit (`git show <sha>:<path>`, `git grep <symbol> <sha>`). When the brief or an earlier note names a commit, treat it as history: confirm in the pinned commit that the code it describes still exists.
    - **Every Haiku claim is a lead, not a fact.** Check it in the code yourself before you act on it or put it to the user. Redo on Opus any Haiku result that fails a check.
-   - **Generate ideas on Opus instead** when a wrong decision is expensive, such as a decision a maintainer sees, on complex code.
+   - **Generate ideas on Opus instead** when a wrong decision is expensive and no later step tests the ideas, for example options that go from the agents straight to a maintainer. When an Opus agent measures each idea next, as in `mergeworthy:design` step 4, the ideas stay on Haiku.
    - **Never Sonnet.**
    - **A repo's project notes can require Opus for every agent** (the `## Agents` section of `~/.mergeworthy/projects/<owner>/<repo>.md`). Follow them there.
 
