@@ -115,6 +115,19 @@ test('pr-details checks only PR bodies', () => {
   assert.deepEqual(lint(withHeader(details('How I tested')), { ...OTHER_REPO, kind: 'reply' }), [])
 })
 
+const issueChecks = (text) => lint(text, { ...OTHER_REPO, kind: 'issue' }).map((f) => f.check)
+
+test('an issue needs a How to reproduce section, decision issues too', () => {
+  assert.deepEqual(issueChecks(withHeader('It breaks.')), ['issue-reproduce'])
+  assert.deepEqual(issueChecks(withHeader('### Options\n\n- Keep it.\n- Drop it.')), ['issue-reproduce'])
+  assert.deepEqual(issueChecks(withHeader('```\n### How to reproduce\n```')), ['issue-reproduce'])
+})
+
+test('an issue with a How to reproduce section passes, and other kinds need none', () => {
+  assert.deepEqual(issueChecks(withHeader('It breaks.\n\n### How to reproduce\n\n1. Run `vike dev`.')), [])
+  assert.deepEqual(lint(withHeader('It breaks.'), { ...OTHER_REPO, kind: 'reply' }), [])
+})
+
 test('process words are fine in the user’s own repos', () => {
   assert.deepEqual(checks(withHeader('The guardian found nothing.'), { repo: 'bot/tools', login: 'bot' }), [])
 })

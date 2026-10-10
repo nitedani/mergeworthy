@@ -132,6 +132,14 @@ test('mw post infers the lint kind from the gh command, and --kind overrides it'
   assert.match(post(['--kind', 'design']).stdout, /design posts usually need/)
 })
 
+test('mw post stops an issue without a How to reproduce section', () => {
+  const { draft, mw, post } = setup({ text: withHeader('It breaks.') })
+  mw('verdict', draft, 'CLEAN', '--by', 'codex')
+  const r = post([], ['issue', 'create', '-R', 'o/r', '--title', 'It breaks', '--body-file', draft])
+  assert.equal(r.code, 3)
+  assert.match(r.stdout, /### How to reproduce/)
+})
+
 test('mw post --kind umbrella exempts the draft from the header', () => {
   const { draft, mw, post } = setup({ text: umbrella() })
   mw('verdict', draft, 'CLEAN', '--by', 'codex')
