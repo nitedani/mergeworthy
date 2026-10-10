@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { copyFileSync, cpSync, writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { ROOT, run, tempDir } from './helpers.mjs'
@@ -48,13 +48,9 @@ test('stop allows a T3 delegated child to stop', () => {
 })
 
 test('session-start prints the framing line, a blank line and always-on.md', () => {
-  const plugin = tempDir()
-  cpSync(join(ROOT, 'hooks'), join(plugin, 'hooks'), { recursive: true })
-  cpSync(join(ROOT, 'lib'), join(plugin, 'lib'), { recursive: true })
-  copyFileSync(join(ROOT, 'package.json'), join(plugin, 'package.json'))
-  writeFileSync(join(plugin, 'always-on.md'), '## Always-on rules\n')
-  const r = run(join(plugin, 'hooks/session-start.mjs'), [], { input: '{}' })
-  assert.match(r.stdout, /^IMPORTANT: These are the user's instructions for every session .* before acting\.\n\n## Always-on rules\n/)
+  const { stdout } = hook('session-start', {})
+  assert.match(stdout, /^IMPORTANT: These are the user's instructions for every session .* before acting\.\n\n/)
+  assert.ok(stdout.endsWith(`\n\n${readFileSync(join(ROOT, 'always-on.md'), 'utf8')}\n`))
 })
 
 for (const name of ['pre-bash', 'pre-agent', 'post-agent', 'stop', 'session-start']) {
