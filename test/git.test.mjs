@@ -8,6 +8,9 @@ import { stepCommand, stepsCommand } from '../lib/steps.mjs'
 import { fakeCtx, gateNames, ghResponses, sh, tempDir } from './helpers.mjs'
 
 const { exec } = realCtx()
+const NOREPLY = '7+bot@users.noreply.github.com'
+const AS_MAINTAINER = 'GIT_AUTHOR_EMAIL=maintainer@example.com GIT_COMMITTER_EMAIL=maintainer@example.com'
+const asBot = () => fakeCtx({ exec, gh: ghResponses({ 'api user': '7\nbot\n' }) })
 
 function clonedRepo() {
   const root = tempDir()
@@ -24,19 +27,36 @@ test('shared-git fires in a main worktree and stays silent in a linked one', () 
   assert.deepEqual(gateNames(`git -C ${root}/linked reset --hard`, inDir(work)), [])
 })
 
-test('identity fires on a push of commits not authored by the gh user', () => {
+test('identity fires on our push of commits not authored by the gh user, with the rewrite', () => {
   const { work } = clonedRepo()
-  sh(work, 'echo two >> a.txt && git commit -qam two')
-  const ctx = fakeCtx({ exec, gh: ghResponses({ 'api user': '7\nbot\n' }) })
-  const [finding] = bashGates({ command: 'git push origin main', cwd: work }, ctx)
+  sh(work, 'git config user.email me@work.example && echo two >> a.txt && git commit -qam two')
+  const [finding] = bashGates({ command: 'git push origin main', cwd: work }, asBot())
   assert.equal(finding.gate, 'identity')
   assert.match(finding.message, /authored by me@work\.example, not 7\+bot@users\.noreply\.github\.com/)
+  assert.match(finding.message, /Rewrite them with that identity: `git -c user.name=bot/)
+})
+
+test("identity says someone else's commits must not be rewritten", () => {
+  const { work } = clonedRepo()
+  sh(work, `git config user.email me@work.example && echo two >> a.txt && ${AS_MAINTAINER} git commit -qam two`)
+  const [finding] = bashGates({ command: 'git push origin main', cwd: work }, asBot())
+  assert.match(finding.message, /someone else's commits; don't rewrite them/)
+  assert.doesNotMatch(finding.message, /rebase --exec/)
+})
+
+test('identity stays silent on a maintainer commit the fork branch already has, fetched and pushed by URL', () => {
+  const { work, root } = clonedRepo()
+  sh(root, 'git clone -q --bare upstream fork.git')
+  sh(work, `git checkout -qb fix && echo fix >> a.txt && GIT_AUTHOR_EMAIL=${NOREPLY} git commit -qam fix && git push -q ../fork.git HEAD:fix`)
+  sh(root, `git clone -q -b fix fork.git maintainer && cd maintainer && echo polish >> a.txt && ${AS_MAINTAINER} git commit -qam polish && git push -q origin fix`)
+  sh(work, `git fetch -q ../fork.git fix && git rebase -q FETCH_HEAD && echo more >> a.txt && GIT_AUTHOR_EMAIL=${NOREPLY} git commit -qam more`)
+  assert.deepEqual(gateNames('git push ../fork.git HEAD:fix', { cwd: work, ctx: asBot() }), [])
 })
 
 test('identity stays silent when the commits use the noreply address', () => {
   const { work } = clonedRepo()
-  sh(work, 'echo two >> a.txt && GIT_AUTHOR_EMAIL=7+bot@users.noreply.github.com git commit -qam two')
-  assert.deepEqual(gateNames('git push origin main', { cwd: work, ctx: fakeCtx({ exec, gh: ghResponses({ 'api user': '7\nbot\n' }) }) }), [])
+  sh(work, `echo two >> a.txt && GIT_AUTHOR_EMAIL=${NOREPLY} git commit -qam two`)
+  assert.deepEqual(gateNames('git push origin main', { cwd: work, ctx: asBot() }), [])
 })
 
 function recordedBranch() {

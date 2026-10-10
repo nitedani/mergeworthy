@@ -31,10 +31,10 @@ const prWithSteps = (steps) => {
   writeFileSync(join(ctx.home, 'steps.jsonl'), steps.map(([step, head]) => JSON.stringify({ step, head, pr: PR }) + '\n').join(''))
   return ctx
 }
-const pushOf = (authorEmail) =>
+const pushOf = (authorEmail, remote = { 'ls-remote': '' }) =>
   fakeCtx({
     gh: ghResponses({ 'api user': '123\nbot\n' }),
-    exec: execResponses({ 'log --format': `${HEAD} ${authorEmail}\n${OLD_HEAD} 123+bot@users.noreply.github.com\n` }),
+    exec: execResponses({ ...remote, '--format=%H %ae %ce': `${HEAD} ${authorEmail} ${authorEmail}\n${OLD_HEAD} 123+bot@users.noreply.github.com 123+bot@users.noreply.github.com\n` }),
   })
 
 const CASES = {
@@ -90,6 +90,7 @@ const CASES = {
       ['git push origin --delete x', () => pushOf('me@work.example')],
       ['git push origin --tags', () => pushOf('me@work.example')],
       ['git push origin main', () => fakeCtx({ exec: pushOf('me@work.example').exec })],
+      ['git push origin main', () => pushOf('me@work.example', {})],
     ],
   },
   'foreground-wait': {
