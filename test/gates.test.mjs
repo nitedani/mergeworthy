@@ -85,7 +85,7 @@ const CASES = {
     ],
   },
   ready: {
-    fires: [['gh pr ready 5', () => prWithSteps([])], ['mw post b.md -- gh pr create --title "Fix it" --body-file b.md', checkoutAt]],
+    fires: [['gh pr ready 5', () => prWithSteps([])], ['gh pr ready 5 --undo=false', () => prWithSteps([])], ['mw post b.md -- gh pr create --title "Fix it" --body-file b.md', checkoutAt], ['mw post b.md -- gh pr create --draft=false --title "Fix it" --body-file b.md', checkoutAt]],
     silent: [
       ['gh pr ready 5', () => prWithSteps([['gates', HEAD], ['verify', HEAD], ['quality', HEAD], ['review', HEAD]])],
       ['gh pr ready 5 --undo', () => prWithSteps([])],
