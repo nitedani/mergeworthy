@@ -3,9 +3,10 @@ import { test } from 'node:test'
 import { ghCommand, ghName, postsToGitHub, textFiles } from '../lib/gh-command.mjs'
 
 test('ghCommand takes out the repo flag and reads a gh api request', () => {
-  assert.deepEqual(ghCommand(['-R', 'o/r', 'pr', 'close', '5', '-c', 'Replaced by #6']), { group: 'pr', action: 'close', args: ['5', '-c', 'Replaced by #6'], repo: 'o/r', target: '5', api: null })
+  assert.deepEqual(ghCommand(['-R', 'o/r', 'pr', 'close', '5', '-c', 'Replaced by #6']), { group: 'pr', action: 'close', positionals: ['5'], flags: { '-R': ['o/r'], '-c': ['Replaced by #6'] }, repo: 'o/r', target: '5', api: null })
   assert.deepEqual(ghCommand(['api', '-X', 'PATCH', 'repos/o/r/issues/5', '--input=b.json']).api, { method: 'PATCH', path: 'repos/o/r/issues/5', fields: [], fileFields: [], input: 'b.json' })
   assert.equal(ghCommand(['api', 'repos/o/r/issues/5/comments', '-fbody=x']).api.method, 'POST')
+  assert.deepEqual(ghCommand(['api', 'repos/o/r/issues/5/comments', '-fbody=x', '-F', 'body=@a.md', '--field=n=1']).api.fileFields, ['body=@a.md', 'n=1'])
 })
 
 test('ghName names a gh api call by its path and any other gh call by its group and action', () => {
@@ -33,4 +34,5 @@ test('textFiles gives the files a command reads its text from, by the flag its c
   assert.deepEqual(textFiles(ghCommand(['gist', 'create', '-d', 'desc', '-p', 'a.md'])), ['a.md'])
   assert.deepEqual(textFiles(ghCommand(['api', 'repos/o/r/issues/5/comments', '-F', 'body=@a.md'])), ['a.md'])
   assert.deepEqual(textFiles(ghCommand(['pr', 'comment', '5', '--title', 'a.md'])), [])
+  assert.deepEqual(textFiles(ghCommand(['pr', 'comment', '5', '-Fa.md', '-Ro/r'])), ['a.md'])
 })
