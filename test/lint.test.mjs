@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { lint } from '../lib/lint.mjs'
-import { BADGE, withHeader } from './helpers.mjs'
+import { BADGE, umbrella, UMBRELLA_HEADINGS, withHeader } from './helpers.mjs'
 
 const OTHER_REPO = { repo: 'vikejs/vike', login: 'bot' }
 const checks = (text, options = OTHER_REPO) => lint(text, options).map((f) => f.check)
@@ -54,8 +54,24 @@ for (const [check, { fires, silent }] of Object.entries(CASES)) {
   for (const text of silent) test(`${check} stays silent on: ${JSON.stringify(text)}`, () => assert.ok(!checks(text).includes(check)))
 }
 
-test('the header check skips umbrella bodies', () => {
-  assert.deepEqual(checks('Tracking the fix.\n', { ...OTHER_REPO, kind: 'umbrella' }), [])
+const umbrellaChecks = (text) => lint(text, { ...OTHER_REPO, kind: 'umbrella' }).map((f) => [f.check, f.level])
+
+test('an umbrella needs no header, and passes with every heading in order', () => {
+  assert.deepEqual(umbrellaChecks(umbrella()), [])
+})
+
+test('an umbrella missing a heading fails', () => {
+  assert.deepEqual(umbrellaChecks(umbrella(UMBRELLA_HEADINGS.filter((h) => h !== '## Scope'))), [['umbrella-headings', 'error']])
+})
+
+test('an umbrella with headings out of order fails', () => {
+  const swapped = ['# 🚧 WIP', '## TLDR', '## Scope', '## TODO', '## State', '## Agreed', '## Open', '## Next steps']
+  assert.deepEqual(umbrellaChecks(umbrella(swapped)), [['umbrella-headings', 'error']])
+})
+
+test('a State bullet over 25 words warns, and 25 words pass', () => {
+  assert.deepEqual(umbrellaChecks(umbrella(UMBRELLA_HEADINGS, `- ${'word '.repeat(26)}`)), [['umbrella-state', 'warning']])
+  assert.deepEqual(umbrellaChecks(umbrella(UMBRELLA_HEADINGS, `- ${'word '.repeat(25)}`)), [])
 })
 
 test('process words are fine in the user’s own repos', () => {

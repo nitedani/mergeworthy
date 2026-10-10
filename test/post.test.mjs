@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { fakeGh, run, tempDir, withHeader } from './helpers.mjs'
+import { fakeGh, run, tempDir, umbrella, withHeader } from './helpers.mjs'
 
 const DRAFT = withHeader('Fixed in the latest commit, with a test.')
 const REASON = 'the maintainer asked for this exact text'
@@ -132,8 +132,8 @@ test('mw post infers the lint kind from the gh command, and --kind overrides it'
   assert.match(post(['--kind', 'design']).stdout, /design posts usually need/)
 })
 
-test('mw post --kind umbrella exempts the draft from the badge', () => {
-  const { draft, mw, post } = setup({ text: 'Tracking the fix across packages.\n' })
+test('mw post --kind umbrella exempts the draft from the header', () => {
+  const { draft, mw, post } = setup({ text: umbrella() })
   mw('verdict', draft, 'CLEAN', '--by', 'codex')
   assert.equal(post().code, 3)
   assert.equal(post(['--kind', 'umbrella']).code, 0)

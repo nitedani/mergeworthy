@@ -11,6 +11,12 @@ export const BADGE = '<img src="https://github.com/claude.png" width="20" height
 export const HEADER = `${BADGE} *Drafted by Claude Opus 5.5 and reviewed before posting.*`
 const GIT_ENV = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', GIT_AUTHOR_NAME: 'Me', GIT_AUTHOR_EMAIL: 'me@work.example', GIT_COMMITTER_NAME: 'Me', GIT_COMMITTER_EMAIL: 'me@work.example' }
 
+export const UMBRELLA_HEADINGS = ['# 🚧 WIP', '## TLDR', '## Scope', '## State', '## TODO', '## Agreed', '## Open', '## Next steps']
+
+export function umbrella(headings = UMBRELLA_HEADINGS, state = '- The fix is in review.') {
+  return headings.map((heading) => `${heading}\n\n${heading === '## State' ? state : 'Text.'}\n`).join('\n')
+}
+
 export function withHeader(text) {
   return `${HEADER}\n\n${text}\n`
 }
