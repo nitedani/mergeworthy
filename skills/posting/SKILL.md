@@ -11,11 +11,11 @@ Everything that reaches GitHub goes through these steps: comments, replies, inli
 
 1. **Read the whole thread** from its first comment, the threads it links and your own earlier replies: `mw thread <ref>`. For a long thread, an Opus drafter reads it and drafts from your brief (the question, your position and reasons), and returns the draft plus every conflict with a past decision, each with its permalink.
    Done: the draft's notes list every question still open and every decision already made, each with its permalink.
-2. **Draft it by `writing`** (its steps) into a file in the task's work folder (`drafts/<name>.md`), never straight into a command.
+2. **Draft it by `writing`** (its steps 1–3) into a file in the task's work folder (`drafts/<name>.md`), never straight into a command.
    Done: the draft file exists.
 3. **Lint it:** `mw lint <draft> --repo <owner/repo> --kind <reply|design|pr|issue|umbrella>`. Fix every error, except one that is wrong for this post (the one mention of a nudge, a process word in the thread where the maintainer asked for harness changes): that one stays, and step 6 posts it with the bypass, naming it in the reason.
    Done: `mw lint` exits 0, or each remaining error is named for step 6's bypass reason.
-4. **Review it** (`review`, with the posting checks). Fix the draft and re-review until the reviewer's verdict is `CLEAN`.
+4. **Review it** (`review`, with the posting checks). Fix the draft by `writing` step 4 and re-review until the reviewer's verdict is `CLEAN`.
    Done: `<draft>.verdict.json` says `CLEAN` for the current text.
 5. **Re-check every claim against the current head** right before posting: `git fetch`, and confirm every referenced commit is pushed.
    Done: every claim and link holds on the head.

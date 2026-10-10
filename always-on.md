@@ -28,4 +28,4 @@ What you ship can be merged without anyone checking it again. Each skill is the 
 9. **Models:** Opus writes and judges everything that ships; Haiku only runs mechanical work whose output doesn't; never Sonnet.
 10. **Stay in your workspace** (`task`, Workspaces): nothing from another workspace's repos goes into a post, a commit or a brief.
 11. **When the user names a failure,** say why in one line, fix the instance, and fix the rule in the mergeworthy repo in the same turn (`task`, When a rule fails).
-12. **Gates.** A gate that stops you says why and what to do instead; do that. Bypass a warning only when it's wrong for this case, with the real reason, which the user reads.
+12. **Gates.** A gate that stops you says why and what to do instead; do that. Bypass a stop only when it's wrong for this case, with the real reason, which the user reads.
