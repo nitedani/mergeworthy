@@ -532,9 +532,11 @@ got=$(py '
 B = "<img src=\"https://github.com/claude.png\" width=\"20\"> *Opus wrote this.*\nDone."
 C = "<img src=\"https://github.com/openai.png\" width=\"20\"> *Codex wrote this.*\nDone."
 u = {"login": "another-agent-account", "assoc": "MEMBER"}
-print(m.answerable(u, B, set(), own=True), m.answerable(u, C, set(), own=True), m.answerable(u, "Please fix the test.", set(), own=True))
+Q = "> <img src=\"https://github.com/claude.png\" width=\"20\"> *Opus wrote this.*\n\nWhy this?"
+L = "Is https://github.com/openai.png the badge you mean? Please drop it."
+print(*(m.answerable(u, b, set(), own=True) for b in (B, C, "Please fix the test.", Q, L)))
 ')
-check "a badged post from any account is an agent post: no event, owed reply or :eyes:; a plain comment from it is a person" "False False True" "$got"
+check "a post starting with a badge, from any account, is an agent post; a person quoting or linking one is a person" "False False True True True" "$got"
 check "whole repo: moved threads join its dir unless another dir lists them; a bare line's repo joins nothing" "o/r 8 o/r 9 o/r 10 o/r 11 o/r 1|o/r 7|" \
   "$(echo $(cat "$WH/all/threads.txt"))|$(echo $(cat "$WH/other/threads.txt"))|$(cat "$WH/bare/threads.txt")"
 scanned() { py "$WHOLE"'

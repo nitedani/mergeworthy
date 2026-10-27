@@ -498,8 +498,7 @@ def is_human(u, body=None, agent_hashes=frozenset()):
 
 
 def agent_post(u, body, agent_hashes):
-    first = (body or '').lstrip().split('\n', 1)[0]
-    return any(b in first for b in (gl_watch.BADGE, 'https://github.com/openai.png')) or u.get('login') == ME and _norm(body) in agent_hashes
+    return bool(gl_watch.BADGE.match(body or '')) or u.get('login') == ME and _norm(body) in agent_hashes
 
 
 def append_owed(entry, d=None):
