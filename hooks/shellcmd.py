@@ -181,8 +181,9 @@ class Seg(list):
     stack or `declare`), 'user' (a shell whose environment can't be told: another user's, `sudo bash -c`, `su -c`, fish, or one
     `env` with options starts), 'cond' (it may not run: after ||, an if or case branch), 'and' (after &&: it runs once what &&
     follows succeeded), 'loop' (a loop's body, run again and again), 'opaque' (run where it can't be told: a function's body,
-    `D=x eval`, a command that doesn't parse) or 'eval' (eval's script, in this shell, with its placeholders). negated: run as `! cmd`."""
-    frames, negated = (), False
+    `D=x eval`, a command that doesn't parse), 'eval' (eval's script, in this shell, with its placeholders) or 'not' (a negated
+    statement's own, in this shell: `! cd x`, `! { cd x; }`, `! eval 'cd x'`)."""
+    frames = ()
 
 
 def _seg(argv, frames):
@@ -196,6 +197,8 @@ def _kind(x, k):
     t = x.get('Type')
     if t in ('Subshell', 'CmdSubst', 'ProcSubst', 'CoprocClause') or k == 'Cmd' and x.get('Background'):
         return 'sub'
+    if k == 'Cmd' and x.get('Negated'):
+        return 'not'
     if t == 'BinaryCmd':
         return 'sub' if x.get('Op') in ('|', '|&') else ('and' if x.get('Op') == '&&' else 'cond') if k == 'Y' else None
     if t in ('IfClause', 'CaseClause') and k in ('Then', 'Else', 'Items'):
@@ -243,7 +246,6 @@ def _calls(node, src, depth, frames):
             argv = [cmd['Variant']['Value']] + [_assign(a, src) for a in cmd.get('Args') or []] + words
         if cmd.get('Type') in ('CallExpr', 'DeclClause'):
             segs.append(_seg(argv, kids.get('Cmd', fr)))
-            segs[-1].negated = bool(x.get('Negated'))
             s, e = _inner(segs[-1], depth)
             segs += s
             err = err or e
@@ -505,7 +507,8 @@ class Where:
             self.exported.add(n)
 
     def _leave(self, f, state, changed):
-        if f[1] == 'eval': return  # it ran in this shell
+        if f[1] == 'not': self.pending = self.carry = None  # it fails when what it ran succeeded: no && goes on from inside it
+        if f[1] in ('eval', 'not'): return  # it ran in this shell
         if f[1] == 'and' and self.pending: self.dir, self.old, self.stack = self.pending  # a && after it runs once that cd succeeded
         carry = (self._state(), changed) if f[1] == 'and' else None
         self.dir, self.old, self.stack, self.vars, self.exported, self.lost = state
@@ -561,7 +564,7 @@ class Where:
             self._move(None, None, None)
             self.lost = True
             self._changed('lost')
-        elif name in ('cd', 'pushd', 'popd') and getattr(t, 'negated', False):  # `! cd x && ...` goes on when it fails
+        elif name in ('cd', 'pushd', 'popd') and self._negated():  # `! cd x && ...` goes on when it fails
             self._move(None, None, None)
         elif name in ('cd', 'pushd', 'popd'):
             opens = self._opens(a)
@@ -578,6 +581,10 @@ class Where:
                 self._go(stack[0], here, [here] + stack[1:] if name == 'pushd' else stack[1:], True, opens)
             else:  # a rotation, -n, or an empty stack
                 self._move(None, here, None)
+
+    def _negated(self):
+        """Whether the command runs under a `!` of this shell's (a 'not' frame since the innermost subshell or child shell)."""
+        return next((f[0][1] == 'not' for f in reversed(self.open) if f[0][1] in ('not', 'sub', 'proc', 'sh', 'user')), False)
 
     def _opens(self, t):
         """Whether bash surely opens each redirect of argv t, without which it runs nothing: /dev/null, a heredoc or here-string, a copy
