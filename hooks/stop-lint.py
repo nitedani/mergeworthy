@@ -51,11 +51,13 @@ t3_chain = steward.threads(d.get('session_id'))  # its T3 thread, then the threa
 child = len(t3_chain) > 1 or any(re.match(r'Act as the [\w-]+ sub-agent for this task', opening(l))
             for l in lines[:20] if '"type":"user"' in l.replace(' ', '') and 'sub-agent for this task' in l)
 reg = os.path.expanduser('~/.claude/gh-watch-dirs.txt')
-def wakes_thread(wd):  # a live watcher that sends wd's events to this session's T3 thread (gh-watch.py's wake_thread): its Monitor
+def watching(wd):  # wd's watcher daemon runs
     try: os.kill(int(steward.first(os.path.join(wd, 'gh-watch.pid'))), 0)
     except (ValueError, OSError): return False
-    return steward.first(os.path.join(wd, 't3-thread')) in t3_chain
-t3_dirs = {wd for wd in ((l.strip() for l in open(reg)) if os.path.exists(reg) else ()) if wd and wakes_thread(wd)}
+    return True
+live_dirs = [wd for wd in ((l.strip() for l in open(reg)) if os.path.exists(reg) else ()) if wd and watching(wd)]
+# a live watcher that sends wd's events to this session's T3 thread (gh-watch.py's wake_thread): its Monitor
+t3_dirs = {wd for wd in live_dirs if steward.first(os.path.join(wd, 't3-thread')) in t3_chain}
 for line in lines:
     try:
         e = json.loads(line)
@@ -334,9 +336,18 @@ paused = re.search(r'\bpause\b', last_user, re.I) is not None
 pass_dirs = {wd for wd in ((l.strip() for l in open(reg)) if os.path.exists(reg) else ()) if d.get('session_id') and steward.passed_by(wd) == d['session_id']}
 own_dirs |= pass_dirs
 if posted and watcher_on and not headless and not paused and not pass_dirs and not t3_dirs and not (monitors - dead):
+    # under T3, a watcher of this session's that dropped its t3-thread (the thread or t3 gone) wakes nothing: its events.log says why
+    dropped = [wd for wd in live_dirs if t3_chain and steward.first(os.path.join(wd, 'session')) == d.get('session_id')
+               and not os.path.exists(os.path.join(wd, 't3-thread'))]
+    if dropped:
+        how = (f"The watcher in {dropped[0]} stopped waking this T3 thread (its events.log's WATCH ERROR says why): run "
+               f"`gh-watch-start {dropped[0]}` again and arm the Monitor it prints, if any")
+    elif t3_chain:
+        how = "Run `gh-watch-start <your work folder> <owner/repo> <N>`: its watcher then wakes this T3 thread itself"
+    else:
+        how = "Run `gh-watch-start <your work folder> <owner/repo> <N>` and arm the Monitor it prints, with the longest timeout; re-arm it whenever it expires"
     print("You posted on GitHub in this session and nothing wakes it on a watcher's events, so replies go unseen: nothing else answers them. "
-          "Run `gh-watch-start <your work folder> <owner/repo> <N>`" + (": its watcher then wakes this T3 thread itself" if t3_chain else
-          " and arm the Monitor it prints, with the longest timeout; re-arm it whenever it expires") + " (mergeworthy:reply step 1).", file=sys.stderr)
+          + how + " (mergeworthy:reply step 1).", file=sys.stderr)
     sys.exit(2)
 # The owed-reply list: the daemon records each human comment in the live watcher's replies-owed.md; a turn
 # cannot end with a line still owed.

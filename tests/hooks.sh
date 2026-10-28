@@ -184,7 +184,10 @@ printf 'Tier: S, because one fix\n\n- [ ] answer the review\n' > "$WD/scope.md"
 check "that watcher counts as what wakes the session for an open scope.md box" 0 "$(stop_as s-t3)"
 echo 'Tier: S, because one fix' > "$WD/scope.md"; mv "$T/owed.keep" "$WD/replies-owed.md"
 check "BLOCK: that watcher's owed reply holds the session's turn, from any cwd" "2 1" "$(stop_as s-t3) $(grep -c 'still has an owed reply' "$T/err")"
-rm "$WD/t3-thread" "$WD/scope.md" "$HOME/.t3/userdata/statev2.sqlite"
+rm "$WD/t3-thread"; echo s-t3 > "$WD/session"  # the session's watcher dropped its thread (gh-watch.py's wake_thread fallback)
+check "BLOCK: under T3, a post whose own watcher dropped its t3-thread says that watcher stopped waking the thread, not that it wakes it" "2 1 0" \
+  "$(stop_as s-t3) $(grep -c "watcher in $WD stopped waking this T3 thread" "$T/err") $(grep -c 'wakes this T3 thread itself' "$T/err")"
+rm "$WD/session" "$WD/scope.md" "$HOME/.t3/userdata/statev2.sqlite"
 tr_cmd "mw post $WD/drafts/r.md -- gh pr comment 5 --repo o/r --body-file $WD/drafts/r.md"
 check "BLOCK: a post through mw post" 2 "$(stop "$T/work")"
 tr_cmd "sed -i 's/x/\`gh pr edit 5 --body-file b.md\`/' skills/a.md"
