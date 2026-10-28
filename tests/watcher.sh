@@ -409,6 +409,7 @@ cat > "$T/bin/t3" <<EOF
 #!/bin/sh
 { echo "t3 \$*"; cat; echo; } >> "$T/t3.log"
 [ ! -e "$T/t3.fail" ] || { echo 'connect ECONNREFUSED' >&2; exit 1; }
+[ ! -e "$T/t3.gone" ] || { echo "Thread \$3 was not found." >&2; exit 1; }  # t3 v0.1.4's answer for a deleted thread
 EOF
 chmod +x "$T/bin/t3"; : > "$T/t3.log"
 got=$(py '
@@ -452,6 +453,26 @@ os.remove("'"$T"'/t3.fail"); print(*first, cur, run(), open(log).read().count("W
 ')
 check "retire_if_done: failed last sends keep the watcher and its cursor and write WATCHER RETIRED once; the next pass sends it, then retires" "kept kept kept 0 stopped 1|t3 thread send thr-3 -|1" \
   "$got|$(grep '^t3 thread send thr-3' "$T/t3.log" | tail -1)|$(tail -n +"$(grep -n '^t3 thread send thr-3' "$T/t3.log" | tail -1 | cut -d: -f1)" "$T/t3.log" | grep -c '^WATCHER RETIRED at ')"
+# a deleted thread (t3's "was not found"), or a t3 binary gone, drops t3-thread: the watcher retires as outside T3 Code, events.log keeping the lines
+got=$(py '
+log = os.path.join(m.HERE, "events.log"); open(m.THREADS, "w").write("o/r 5\n")
+m.save_state({"prs": {"o/r#5": {"state": "closed"}}, "author": {}, "ci": {}, "is_pr": {}, "since_by": {}, "seen": {}, "since": "2026-01-01T00:00:00Z"})
+def run(t3):
+    os.path.exists(os.path.join(m.HERE, "retired")) and os.remove(os.path.join(m.HERE, "retired"))
+    open(log, "w").write("### o/r#5 closed\n"); open(os.path.join(m.HERE, "t3-wake.cursor"), "w").write("0\n")
+    open(os.path.join(m.HERE, "t3-thread"), "w").write("thr-4\n" + t3 + "\n")
+    with open(log, "a") as f, contextlib.redirect_stdout(f):
+        try:
+            m.retire_if_done()
+        except SystemExit:
+            pass
+    out = ("retired" if os.path.exists(os.path.join(m.HERE, "retired")) else "kept") + ("" if os.path.exists(os.path.join(m.HERE, "t3-thread")) else " dropped")
+    text = open(log).read(); os.path.exists(os.path.join(m.HERE, "retired")) and os.remove(os.path.join(m.HERE, "retired"))
+    return " ".join([out, str(text.count(chr(10))), str(text.count("no longer sends to T3"))])
+open("'"$T"'/t3.gone", "w"); a = run("'"$T"'/bin/t3"); os.remove("'"$T"'/t3.gone")
+print(a, "|", run("'"$T"'/bin/t3-removed"))
+')
+check "retire_if_done: a deleted thread or a removed t3 drops t3-thread and retires, events.log keeping the event, RETIRED and the reason" "retired dropped 3 1 | retired dropped 3 1" "$got"
 rm -f "$W/events.log" "$W/t3-wake.cursor" "$W/t3-thread"
 rm -f "$W/retired"
 

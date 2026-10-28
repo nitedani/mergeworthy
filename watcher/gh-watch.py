@@ -620,7 +620,8 @@ def unsent():
 def wake_thread():
     """Under T3 Code (gh-watch-start wrote the session's thread, then t3's path, to HERE/t3-thread) the event lines events.log got
     since the last pass, from any writer, go to that thread as one message; t3-wake.cursor holds the byte offset sent up to. A failed
-    send is retried; False when this one failed."""
+    send is retried (False), except when the thread or the t3 binary is gone: then t3-thread goes, and events.log alone keeps the
+    events, as outside T3 Code."""
     tid, _, t3 = first_line(os.path.join(HERE, 't3-thread')).partition('\n')
     cursor = os.path.join(HERE, 't3-wake.cursor')
     if not tid:
@@ -632,8 +633,15 @@ def wake_thread():
         try:
             r = subprocess.run([t3, 'thread', 'send', tid, '-'], input=msg, capture_output=True, text=True, timeout=60)
             err = r.returncode and (r.stderr.strip().splitlines() or [f"exit {r.returncode}"])[-1]
+            gone = err == f"Thread {tid} was not found."  # t3's answer for a deleted thread, exit 1
         except (OSError, subprocess.SubprocessError) as e:
-            err = str(e)
+            err, gone = str(e), isinstance(e, FileNotFoundError)
+        if gone:
+            emit(f"WATCH ERROR t3 thread send {tid}: {err[:200]}; the watcher no longer sends to T3, events.log keeps every event")
+            for f in ('t3-thread', 't3-wake.cursor'):
+                with contextlib.suppress(FileNotFoundError):
+                    os.remove(os.path.join(HERE, f))
+            return True
         if err:
             emit(f"WATCH ERROR t3 thread send {tid}: {err[:200]}")
             return False
