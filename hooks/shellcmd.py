@@ -84,8 +84,8 @@ def _src(n, src):
 class Word(str):
     """A word as bash passes it (_word), with script: the text a shell that reads it as a script gets, the parent having expanded it
     first, each of the parent's expansions made _parent's placeholder; splits: whether it holds an unquoted expansion, which bash
-    splits, globs and drops when empty."""
-    script, splits = None, False
+    splits, globs and drops when empty; tilde: whether it starts with an unquoted ~, which bash expands (a value's, in an assignment)."""
+    script, splits, tilde = None, False, None
 
 
 def _script(w):
@@ -128,7 +128,9 @@ def _word(w, src):
             continue
         sc.append(out[-1])
     word = Word(''.join(out))
-    word.script, word.splits = ''.join(sc), any(p.get('Type') not in ('Lit', 'SglQuoted', 'DblQuoted') for p in w.get('Parts') or [])
+    parts = w.get('Parts') or []
+    word.script, word.splits = ''.join(sc), any(p.get('Type') not in ('Lit', 'SglQuoted', 'DblQuoted') for p in parts)
+    word.tilde = bool(parts) and parts[0].get('Type') == 'Lit' and parts[0].get('Value', '')[:1] == '~'
     return word
 
 
@@ -143,7 +145,10 @@ def _heredoc(r, src):
 def _assign(a, src):
     if a.get('Naked'):
         return a['Name']['Value'] if a.get('Name') else _word(a['Value'], src)
-    return a['Name']['Value'] + '+' * bool(a.get('Append')) + '=' + (_word(a['Value'], src) if a.get('Value') else _src(a['Array'], src) if a.get('Array') else '')
+    v = _word(a['Value'], src) if a.get('Value') else _src(a['Array'], src) if a.get('Array') else ''
+    word = Word(a['Name']['Value'] + '+' * bool(a.get('Append')) + '=' + v)
+    word.tilde = getattr(v, 'tilde', False)
+    return word
 
 
 _ids = itertools.count()
@@ -418,7 +423,8 @@ class Where:
     def path(self, p, base=''):
         """p resolved from base (default: the dir), or None when it can't be told (an expansion left, an unknown base, a ~ after the
         line assigns HOME)."""
-        p = self._home(self.expand(p))
+        p = self._home(p)
+        p = p and self.expand(p)
         if p is None: return None
         base = self.dir if base == '' else base
         return None if re.search(r'[$`]', p) else p if os.path.isabs(p) else None if base is None else os.path.join(base, p)
@@ -448,13 +454,13 @@ class Where:
             for n in changed - {'dir', 'lost'}: self._set(n, vars.get(n))
         elif f[1] == 'and' and self.pending:
             self._move(*self.pending)
-        sets = [(w.partition('='), ordered) for w, ordered in (x for x in f[2] if not isinstance(x, str))]
-        argv = [(n, self._value(v)) for (n, _, v), ordered in sets if not ordered]  # env's and placeholders: expanded with the command's words
+        sets = [(w.partition('='), ordered, getattr(w, 'tilde', None)) for w, ordered in (x for x in f[2] if not isinstance(x, str))]
+        argv = [(n, self._value(v, t)) for (n, _, v), ordered, t in sets if not ordered]  # env's and placeholders: expanded with the command's words
         argv = [(n, v if not n.startswith(PARENT) or v is None or re.fullmatch(r'[\w./+,:@%=-]*', v) else None) for n, v in argv]  # a value the script reparses
         given, parent = [], dict(self.vars)
-        for (n, _, v), ordered in sets:  # the prefix's, in order: each sees the ones before it
+        for (n, _, v), ordered, t in sets:  # the prefix's, in order: each sees the ones before it
             if ordered:
-                given.append((n, self._value(v)))
+                given.append((n, self._value(v, t)))
                 self.vars[n] = given[-1][1]
         self.vars, given = parent, given + argv
         if f[1] in ('proc', 'sh', 'user'):  # a child shell gets the exported variables alone, and no dir stack
@@ -546,16 +552,20 @@ class Where:
     def _assign(self, x):
         n, plus, v = re.match(r'(\w+)(\+?)=(.*)', x, re.S).groups()
         self.written[n] = v
-        self._set(n, self._value('${' + n + '}' + v if plus else v))
+        self._set(n, self._value('${' + n + '}' + v, False) if plus else self._value(v, getattr(x, 'tilde', None)))
 
-    def _value(self, v):
+    def _value(self, v, tilde=None):
         """An assignment's value v as the shell stores it, or None when it can't be told."""
-        v = self._home(v)
+        v = self._home(v, tilde)
         v = v and self.expand(v)
         return None if v is None or re.search(r'[$`]', v) else v
 
-    def _home(self, p):
-        """p with a leading ~ expanded, or None for a ~ once the line assigns HOME."""
+    def _home(self, p, tilde=None):
+        """p with its leading ~ expanded when bash expands it (unquoted: tilde, else p's own, Word.tilde), or None for one once the line
+        assigns HOME; a ~ an expansion puts in stays as it is."""
+        tilde = getattr(p, 'tilde', None) if tilde is None else tilde
+        if not (p[:1] == '~' if tilde is None else tilde):
+            return p
         return None if 'HOME' in self.vars and re.match(r'~(/|$)', p) else os.path.expanduser(p)
 
     def _to(self, to):
