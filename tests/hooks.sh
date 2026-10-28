@@ -1981,6 +1981,8 @@ check "BLOCK: two MRs from two work folders in one command while the second fold
 check "BLOCK: an MR opened back in the unwatched folder after cd -, or where the dir can't be told (a cd to an unset variable), saying to cd to an absolute path" "2 2 1" \
   "$(bgs sess-b "cd $CK; $MRC; cd -; $MRC" "$CK4") $(bgs sess-b "cd \"\$NOWHERE\" && $MRC" "$CK") $(grep -c 'cd to an absolute path first' "$T/err")"
 check "BLOCK: an MR from bash -c whose prefix (D=... bash -c) moves it into the unwatched folder, over an exported D" 2 "$(bgs sess-b "export D=$CK; D=$CK4 bash -c 'cd \"\$D\"; $MRC'" "$CK")"
+check "BLOCK: an MR from bash -c \"..\" run in the unwatched folder the parent's \$D names, over the prefix's; and one after a cd there that fails" "2 2" \
+  "$(bgs sess-b "export D=$CK4; D=$CK bash -c \"cd \$D; $MRC\"" "$CK") $(bgs sess-b "cd $CK4; cd $CK/typo; $MRC" "$CK")"
 echo "$FPID" > "$TK4/gh-watch.pid"; echo gitlab.com/ns/proj > "$TK4/repos.txt"; echo "$TK4" >> "$HOME/.claude/gh-watch-dirs.txt"
 check "the same passes once each folder has its watcher" 0 "$(bgs sess-b "$TWO" "$T")"
 treg() { # stdout [command [cwd]]: post-bash-register on the command ($TWO, from $T), then exit code|the first folder's threads|the second's
