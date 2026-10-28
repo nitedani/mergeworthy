@@ -2165,6 +2165,9 @@ bash -c 'exec -a gh-watch-daemon sleep 600' & NPID=$!; NW="$T/nw"; mkdir -p "$NW
 echo '{"id": 123, "path_with_namespace": "me/app"}' > "$FX/gl_projects_123"; echo '{"id": 456, "path_with_namespace": "nobody/x"}' > "$FX/gl_projects_456"
 check "an issue opened through the API by a project's id: covered passes, from a checkout or outside one; an uncovered one blocks, naming it, in a checkout of a covered one; one GitLab can't read blocks; one on another host (--hostname) is that host's" "0 0 2 1 2 2 1" \
   "$(bg 'glab api projects/123/issues -X POST -f title=x' "$NA") $(bg 'glab api projects/123/issues -X POST -f title=x' "$T") $(bg 'glab api projects/456/issues -X POST -f title=x' "$NA") $(grep -c 'no running watcher covers gitlab.com/nobody/x' "$T/err") $(bg 'glab api projects/789/issues -X POST -f title=x' "$NA") $(bg 'glab api --hostname gl.example.com projects/123/issues -X POST -f title=x' "$NA") $(grep -c 'no running watcher covers gl.example.com/me/app' "$T/err")"
+git init -q "$T/glself"; git -C "$T/glself" remote add origin git@gitlab.example.com:me/app.git
+check "a project's id is resolved on the host glab uses: GITLAB_HOST outside a checkout, the checkout's self-hosted GitLab origin inside one" "2 1 2 1" \
+  "$(bg 'GITLAB_HOST=gitlab.example.com glab api projects/123/issues -X POST -f title=x' "$T") $(grep -c 'no running watcher covers gitlab.example.com/me/app' "$T/err") $(bg 'glab api projects/123/issues -X POST -f title=x' "$T/glself") $(grep -c 'no running watcher covers gitlab.example.com/me/app' "$T/err")"
 kill "$NPID"; : > "$HOME/.claude/gh-watch-dirs.txt"
 (cd "$NA" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 check "each passes once the branch has its approach record" "0 0 0 0 0 0 0 0 0 0" "$(na)"

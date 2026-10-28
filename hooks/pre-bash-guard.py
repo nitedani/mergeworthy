@@ -304,6 +304,12 @@ def gitlab_repo(a, run_dir):
         repo = (re.search(r'gitlab\.com[:/](.+?)(?:\.git)?$', url) or [None, None])[1]
     return 'gitlab.com/' + repo.strip('/') if repo and '://' not in repo else None
 
+def gitlab_host(a, env, run_dir):
+    """The host a glab command acts on, in glab's order: --hostname, GITLAB_HOST, the checkout's GitLab origin, gitlab.com."""
+    if host := (opt(a, ['--hostname']) or [None])[-1] or env.get('GITLAB_HOST') or os.environ.get('GITLAB_HOST'): return host
+    origin = repo_of(subprocess.run(['git', '-C', run_dir, 'remote', 'get-url', 'origin'], capture_output=True, text=True).stdout.strip())
+    return origin[0] if origin and 'gitlab' in origin[0] else 'gitlab.com'
+
 def api_opens(ep, rest, env, d):
     """(repo, 'issue' or 'pr') a `gh api` or `glab api` POST to ep, run in d, opens, in each form the CLIs take (a full URL, a leading slash, an api/v3/
     or api/v4/ prefix, a query, gh's {owner}/{repo} from GH_REPO or the checkout, glab's :fullpath or :id, a project's id); None for any other endpoint, repo None when it can't be told."""
@@ -314,7 +320,7 @@ def api_opens(ep, rest, env, d):
         return (None if '{' in repo else repo if host in (None, 'api.github.com') else f'{host}/{repo}'), 'pr' if m[2] == 'pulls' else 'issue'
     if (m := re.fullmatch(r'projects/([^/]+)/(issues|merge_requests)', path)):
         import urllib.parse
-        project, host = urllib.parse.unquote(m[1]), host or (opt(rest, ['--hostname']) or ['gitlab.com'])[-1]
+        project, host = urllib.parse.unquote(m[1]), host or gitlab_host(rest, env, d)
         if project.isdigit():  # a project's id: its path, as the host it is on names it
             try: project = json.loads(subprocess.run(['glab', 'api', '--hostname', host, f'projects/{project}'], capture_output=True, text=True, timeout=20).stdout).get('path_with_namespace') or ''
             except (OSError, subprocess.TimeoutExpired, ValueError, AttributeError): project = ''
