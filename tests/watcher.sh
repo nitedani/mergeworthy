@@ -440,13 +440,18 @@ got=$(py '
 log = os.path.join(m.HERE, "events.log"); open(log, "w").write(""); open(os.path.join(m.HERE, "t3-wake.cursor"), "w").write("0\n")
 open(os.path.join(m.HERE, "t3-thread"), "w").write("thr-3\n'"$T"'/bin/t3\n"); open(m.THREADS, "w").write("o/r 5\n")
 m.save_state({"prs": {"o/r#5": {"state": "closed"}}, "author": {}, "ci": {}, "is_pr": {}, "since_by": {}, "seen": {}, "since": "2026-01-01T00:00:00Z"})
-with open(log, "a") as f, contextlib.redirect_stdout(f):
-    try:
-        m.retire_if_done()
-    except SystemExit:
-        pass
+def run():
+    with open(log, "a") as f, contextlib.redirect_stdout(f):
+        try:
+            m.retire_if_done()
+        except SystemExit:
+            return "stopped" if os.path.exists(os.path.join(m.HERE, "retired")) else "exit"
+    return "retired" if os.path.exists(os.path.join(m.HERE, "retired")) else "kept"
+open("'"$T"'/t3.fail", "w"); first = run(); cur = open(os.path.join(m.HERE, "t3-wake.cursor")).read().strip()
+os.remove("'"$T"'/t3.fail"); print(first, cur, run())
 ')
-check "retire_if_done sends its WATCHER RETIRED line to the thread" "t3 thread send thr-3 -|1" "$(grep '^t3 thread send thr-3' "$T/t3.log")|$(grep -c '^WATCHER RETIRED at ' "$T/t3.log")"
+check "retire_if_done: a failed last send keeps the watcher and its cursor; the next pass sends the WATCHER RETIRED line, then retires" "kept 0 stopped|t3 thread send thr-3 -|sent" \
+  "$got|$(grep '^t3 thread send thr-3' "$T/t3.log" | tail -1)|$(tail -n +"$(grep -n '^t3 thread send thr-3' "$T/t3.log" | tail -1 | cut -d: -f1)" "$T/t3.log" | grep -q '^WATCHER RETIRED at ' && echo sent)"
 rm -f "$W/events.log" "$W/t3-wake.cursor" "$W/t3-thread"
 rm -f "$W/retired"
 

@@ -604,11 +604,11 @@ EVENT = re.compile(r'###|WATCH ERROR|WATCHER RETIRED')  # the lines gh-watch-sta
 def wake_thread():
     """Under T3 Code (gh-watch-start wrote the session's thread, then t3's path, to HERE/t3-thread) the event lines events.log got
     since the last pass, from any writer, go to that thread as one message; t3-wake.cursor holds the byte offset sent up to. A failed
-    send is retried."""
+    send is retried; False when this one failed."""
     tid, _, t3 = first_line(os.path.join(HERE, 't3-thread')).partition('\n')
     cursor = os.path.join(HERE, 't3-wake.cursor')
     if not tid:
-        return
+        return True
     with open(os.path.join(HERE, 'events.log'), 'rb') as f:
         size = os.fstat(f.fileno()).st_size
         try:
@@ -628,11 +628,13 @@ def wake_thread():
         except (OSError, subprocess.SubprocessError) as e:
             err = str(e)
         if err:
-            return emit(f"WATCH ERROR t3 thread send {tid}: {err[:200]}")
+            emit(f"WATCH ERROR t3 thread send {tid}: {err[:200]}")
+            return False
     if first_line(cursor) != str(start + len(data)):
         with open(cursor + '.tmp', 'w') as f:
             f.write(f"{start + len(data)}\n")
         os.replace(cursor + '.tmp', cursor)
+    return True
 
 
 def waiting_keys(d=None):
@@ -1699,9 +1701,10 @@ def retire_if_done():
         if not done:
             return
     print(f"WATCHER RETIRED at {datetime.datetime.now(datetime.timezone.utc):%Y-%m-%dT%H:%M:%SZ}: every watched thread is merged or closed", flush=True)
+    if not wake_thread():
+        return  # the thread didn't get the last events: the next pass sends them, then retires
     with open(os.path.join(HERE, 'retired'), 'w') as f:  # disk-sweep's w-done may delete this folder once nothing in it would be lost
         f.write(iso(time.time()) + '\n')
-    wake_thread()
     # each supervisor gh-watch-start may have used, so the watcher doesn't come back after a reboot
     supervisor = os.environ.get('GH_WATCH_SUPERVISOR', '')  # set by the unit or the launchd agent gh-watch-start wrote
     if supervisor == 'systemd':
