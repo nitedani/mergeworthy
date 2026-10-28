@@ -181,8 +181,8 @@ class Seg(list):
     stack or `declare`), 'user' (a shell whose environment can't be told: another user's, `sudo bash -c`, `su -c`, fish, or one
     `env` with options starts), 'cond' (it may not run: after ||, an if or case branch), 'and' (after &&: it runs once what &&
     follows succeeded), 'loop' (a loop's body, run again and again), 'opaque' (run where it can't be told: a function's body,
-    `D=x eval`, a command that doesn't parse) or 'eval' (eval's script, in this shell, with its placeholders)."""
-    frames = ()
+    `D=x eval`, a command that doesn't parse) or 'eval' (eval's script, in this shell, with its placeholders). negated: run as `! cmd`."""
+    frames, negated = (), False
 
 
 def _seg(argv, frames):
@@ -243,6 +243,7 @@ def _calls(node, src, depth, frames):
             argv = [cmd['Variant']['Value']] + [_assign(a, src) for a in cmd.get('Args') or []] + words
         if cmd.get('Type') in ('CallExpr', 'DeclClause'):
             segs.append(_seg(argv, kids.get('Cmd', fr)))
+            segs[-1].negated = bool(x.get('Negated'))
             s, e = _inner(segs[-1], depth)
             segs += s
             err = err or e
@@ -551,6 +552,8 @@ class Where:
             self._move(None, None, None)
             self.lost = True
             self._changed('lost')
+        elif name in ('cd', 'pushd', 'popd') and getattr(t, 'negated', False):  # `! cd x && ...` goes on when it fails
+            self._move(None, None, None)
         elif name in ('cd', 'pushd', 'popd'):
             a = [x for x in operands(a) if x not in ('-P', '-L', '-e', '-@', '--')]  # not its redirects (`pushd x >/dev/null`)
             here, stack = self.dir, self.stack
