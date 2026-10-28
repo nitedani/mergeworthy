@@ -247,6 +247,8 @@ def _calls(node, src, depth, frames):
             s, e = _inner(segs[-1], depth)
             segs += s
             err = err or e
+        elif cmd.get('Type') == 'FuncDecl':  # `function <name>`, so Where sees a cd of the line's own
+            segs.append(_seg(['function', cmd['Name']['Value']], kids.get('Cmd', fr)))
         if redirs and any(r.get('Hdoc') for r in redirs):
             docs.setdefault(id(top), []).extend((r, kids.get('Cmd', fr)) for r in redirs if r.get('Hdoc'))
         stack += [(v, None if k == 'Stmts' else top, kids[k])
@@ -432,6 +434,7 @@ class Where:
     def __init__(self, cwd):
         self.dir, self.old, self.stack, self.vars, self.exported, self.lost, self.moved = cwd, None, [], {}, set(), False, False
         self.pending = None  # (dir, old dir, stack) of the cd just run that may have failed: where a command after && runs
+        self.redefined = False  # whether the line defines cd, pushd or popd (a function, an alias)
         self.carry = None  # the state an 'and' frame just left ended in, and what changed in it: where the next && in the chain goes on
         self.written = {}  # each variable's last value as written (`C="$(echo git) push"`), for words a command named by it may run
         self.open = []  # the frames (Seg.frames) entered: (frame, the state on entering it, what changed in it: 'dir', 'lost', variable names)
@@ -549,6 +552,12 @@ class Where:
             for x in opt(a, ['-v']) if name == 'printf' else [x for x in a if not x.startswith('-')]:
                 if n := re.match(r'\w+', x): self._set(n[0], None)
         elif name in ('source', '.'):
+            self._move(None, None, None)
+            self.lost = True
+            self._changed('lost')
+        elif name in ('function', 'alias'):
+            self.redefined |= bool({x.split('=', 1)[0] for x in (a if name == 'alias' else a[:1])} & {'cd', 'pushd', 'popd'})
+        elif name in ('cd', 'pushd', 'popd') and self.redefined:  # runs what the line made it
             self._move(None, None, None)
             self.lost = True
             self._changed('lost')

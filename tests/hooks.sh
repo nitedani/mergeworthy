@@ -2022,6 +2022,7 @@ check "an MR from a script nested in bash -c \"..\" (bash -c '..', sh -c '..', e
   "$(treg "$U9" "export D=$CK4; D=$CK bash -c \"bash -c 'cd \$D; $MRC'\"" "$CK4") $(treg "$U9" "export D=$CK4; D=$CK bash -c \"sh -c 'cd \$D; $MRC'\"" "$CK4") $(treg "$U9" "export D=$CK4; D=$CK bash -c \"eval 'cd \$D'; $MRC\"" "$CK4") $(treg "$U9" "export D=$CK4; D=$CK bash -c \"bash <<< 'cd \$D; $MRC'\"" "$CK4")"
 check "an MR after pushd x >/dev/null joins x's folder" "0||gitlab.com/ns/proj !9" "$(treg "$U9" "pushd $CK4 >/dev/null; $MRC" "$CK")"
 check "BLOCK: an MR after a negated cd (! cd x && ..., which goes on when the cd fails) joins no watcher" "2||" "$(treg "$U9" "! cd $CK/nope && $MRC" "$CK4")"
+check "BLOCK: an MR after a cd the line redefined (a function, an alias) joins no watcher" "2|| 2||" "$(treg "$U9" "cd() { :; }; cd $CK; $MRC" "$CK4") $(treg "$U9" "alias cd=:; cd $CK; $MRC" "$CK4")"
 mkdir -p "$CK/my dir"
 check "BLOCK: an MR after a cd that fails (a missing target, an unquoted expansion holding a space, two arguments) joins no watcher; after && it joins the target's" \
   "2|| 2|| 2|| 0|gitlab.com/ns/proj !9|" \
