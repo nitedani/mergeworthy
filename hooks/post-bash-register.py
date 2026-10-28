@@ -7,7 +7,7 @@ Another session's watcher wakes that session alone, so it never gets the thread.
 import hashlib, json, os, re, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
-from shellcmd import segments, prog, new_post_drafts
+from shellcmd import segments, prog, new_post_drafts, Where
 import steward, work_folder
 d = json.load(sys.stdin)
 cmd = d.get('tool_input', {}).get('command', '')
@@ -41,17 +41,22 @@ def target(t):
     return None
 
 segs = segments(cmd)  # a command that doesn't lex still yields its words: a post in it is still registered
+# the drafts posted as new and the posting command's dir, resolved as pre-bash-guard resolves them
+cwd = d.get('cwd') or os.getcwd()
+where, drafts, post_dir = Where(cwd), [], None
+for s in segs:
+    drafts += [os.path.join(cwd, os.path.expanduser(where.expand(f))) for f in new_post_drafts(s)]
+    post_dir = post_dir or (where.dir if target(s) else None)
+    where.step(s)
 # Written here, not in pre-bash-guard: PostToolUse runs only after the command succeeded, so a post another hook blocked, or one that failed, can be retried
 if isinstance(r, dict) and not r.get('interrupted'):
-    for s in segs:
-        for f in new_post_drafts(s):
-            f = os.path.join(d.get('cwd') or os.getcwd(), os.path.expandvars(os.path.expanduser(f)))
-            try:
-                sha = hashlib.sha256(open(f, 'rb').read()).hexdigest()
-                if open(f + '.gate').read().split('\n')[0].strip() == sha:
-                    open(f + '.posted', 'w').write(sha)
-            except OSError:
-                pass  # a draft with no gate record wasn't posted (pre-bash-guard refuses it); one gone since can't be posted again
+    for f in drafts:
+        try:
+            sha = hashlib.sha256(open(f, 'rb').read()).hexdigest()
+            if open(f + '.gate').read().split('\n')[0].strip() == sha:
+                open(f + '.posted', 'w').write(sha)
+        except OSError:
+            pass  # a draft with no gate record wasn't posted (pre-bash-guard refuses it); one gone since can't be posted again
 targets = [x for x in (target(s) for s in segs) if x]
 if not targets:
     sys.exit(0)
@@ -106,11 +111,7 @@ def live(dr):
 sid = d.get('session_id')
 # a dir the posting session's steward pass read in the last day (gh-watch-start --round) counts: its next pass reads the thread
 live_dirs = [dr for dr in dirs if live(dr) or sid and steward.passed_by(dr) == sid]
-where = d.get('cwd') or os.getcwd()  # the posting command's dir: follows a `cd <dir>` before it
-for s in segs:
-    if target(s): break
-    if prog(s)[:1] in (['cd'], ['pushd']) and prog(s)[1:]: where = os.path.join(where, os.path.expanduser(prog(s)[-1]))
-mine = work_folder.watched_by(live_dirs, sid, where) + [dr for dr in live_dirs if sid and steward.passed_by(dr) == sid]
+mine = work_folder.watched_by(live_dirs, sid, post_dir) + [dr for dr in live_dirs if sid and steward.passed_by(dr) == sid]
 found = {(repo, num, f'{repo} {num}') for repo, num in re.findall(r'github\.com/([\w.-]+/[\w.-]+)/(?:issues|pull)/(\d+)', out)} | \
     {('gitlab.com/' + repo, num, f"gitlab.com/{repo} {'!' if kind == 'merge_requests' else ''}{num}")  # gh-watch-start's GitLab line
      for repo, kind, num in re.findall(r'gitlab\.com/([\w.-]+(?:/[\w.-]+)+?)/-/(issues|work_items|merge_requests)/(\d+)', out)}  # glab prints new issues as work_items

@@ -6,7 +6,7 @@ MERGEWORTHY_MERGE=reviewer blocks every `gh pr merge`."""
 import json, re, sys, os, hashlib, subprocess
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
-from shellcmd import parse, segments, prog, opt, api_call, new_post_drafts, branch_record, no_preflight, no_instructions_read, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested
+from shellcmd import parse, segments, prog, opt, api_call, new_post_drafts, branch_record, no_preflight, no_instructions_read, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Where
 import steward, post_words, work_folder
 def missing_steps(d):
     head = subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
@@ -36,9 +36,7 @@ def setting(name, default):
 d = json.load(sys.stdin)
 cmd = d.get('tool_input', {}).get('command', '')
 cwd = d.get('cwd') or os.getcwd()
-def expandvars(p):
-    """p with the command's own variables (`D=~/x; ... $D/a.md`), then the environment's, put in."""
-    return re.sub(r'\$\{?(\w+)\}?', lambda m: shell_vars.get(m[1], os.environ.get(m[1], m[0])), p)
+where = Where(cwd)  # where the command's git calls run: follows `cd <dir>` within the command, with the variables it set
 
 def block(msg):
     print(f"BLOCKED by pre-bash-guard: {msg}", file=sys.stderr); sys.exit(2)
@@ -47,7 +45,7 @@ def short_has(t, letter):  # -f, -9f, -fu ...
     return re.match(r'^-[A-Za-z0-9]*' + letter + r'[A-Za-z0-9]*$', t) is not None
 
 def gated_file(p, has_cd, create=False):
-    p = os.path.expanduser(expandvars(p))
+    p = os.path.expanduser(where.expand(p))
     if not os.path.isabs(p):
         if has_cd:
             block(f"relative draft path {p} after a cd: use an absolute path")
@@ -114,8 +112,8 @@ def watch_dirs():
             pass
     return live
 
-def need_watch(repo, where):
-    """Opening an issue or PR starts the live loop (mergeworthy:task step 5): a running watcher of the task's work folder holding where,
+def need_watch(repo, path):
+    """Opening an issue or PR starts the live loop (mergeworthy:task step 5): a running watcher of the task's work folder holding path,
     or of this session, must cover the repo (post-bash-register adds the new thread). A comment on an existing thread isn't blocked here:
     post-bash-register adds that thread, and stop-lint requires a watcher's Monitor after any post."""
     if setting('WATCHER', 'on') != 'on': return
@@ -127,11 +125,11 @@ def need_watch(repo, where):
     # a dir this session's steward pass read in the last day covers too (gh-watch-start --round): its next pass reads the thread
     reg, sid = os.path.expanduser('~/.claude/gh-watch-dirs.txt'), d.get('session_id')
     passed = [w for w in ((l.strip() for l in open(reg)) if os.path.exists(reg) else ()) if sid and steward.passed_by(w) == sid]
-    covering = [w for w in work_folder.watched_by(watch_dirs(), sid, where) + passed
+    covering = [w for w in work_folder.watched_by(watch_dirs(), sid, path) + passed
                 if any(l.split()[:1] in ([r] for r in repos) for l in lines(w, 'repos.txt') + lines(w, 'threads.txt'))]
     if not covering:
         block(f"no running watcher of this task or session covers {' or '.join(repos)} (another session's watcher wakes that session, not this one): "
-              f"`gh-watch-start {work_folder.task_of(where) or '<your work folder>'} {repos[0]}`, arm the Monitor it prints if any, then retry (mergeworthy:task step 5)")
+              f"`gh-watch-start {work_folder.task_of(path) or '<your work folder>'} {repos[0]}`, arm the Monitor it prints if any, then retry (mergeworthy:task step 5)")
 
 def check_turn(repo, num, args=()):
     """post §Thread rules: at most two comments in a row: while your last two comments on a thread have no reply after them and the last
@@ -181,7 +179,7 @@ def check_finality(repo, num, files):
     rounds = [int(l.split()[1]) for l in open(log) if l.split()[:1] == [f'{repo}#{num}']] if os.path.exists(log) else []
     if len(rounds) < 2: return
     for f in files:
-        f = os.path.expanduser(expandvars(f[5:] if f.startswith('body=') else f)).lstrip('@')
+        f = os.path.expanduser(where.expand(f[5:] if f.startswith('body=') else f)).lstrip('@')
         f = f if os.path.isabs(f) else os.path.join(cwd, f)
         try: flags = open(f + '.lint').read().split()
         except OSError: continue
@@ -227,7 +225,7 @@ def check_context(thread, files):
     if not thread: return
     tc = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'bin', 'thread-context')
     for f in files:
-        f = os.path.expanduser(expandvars(f[5:] if f.startswith('body=') else f)).lstrip('@')
+        f = os.path.expanduser(where.expand(f[5:] if f.startswith('body=') else f)).lstrip('@')
         f = f if os.path.isabs(f) else os.path.join(cwd, f)
         try: flags = open(f + '.lint').read().split()
         except OSError: flags = []
@@ -563,7 +561,7 @@ def check(t, has_cd):
                           "a turn that ended or 'waiting_for_children' is alive. Stop it through its task (interrupt) only after that, "
                           "and when two run the same job keep the one with the most progress")
     if p == 'git':
-        repo, overrides, sub, rest = git_argv(t, run_dir)
+        repo, overrides, sub, rest = git_argv(t, where)
         if sub in ('commit', 'push'):
             check_steward(repo)
         if sub == 'commit' and os.path.isdir(repo):  # in a folder this hook can't resolve (`cd "$(mktemp -d)"`), a commit stays local
@@ -672,7 +670,7 @@ def check(t, has_cd):
                 draft = '--draft' in rest or '-d' in rest
                 w = post_words.words((opt(rest, ['--repo', '-R']) or [None])[-1] or cwd_repo(run_dir))
                 for f in files:
-                    f = os.path.join(cwd, os.path.expanduser(expandvars(f)))
+                    f = os.path.join(cwd, os.path.expanduser(where.expand(f)))
                     lines = [l.strip() for l in open(f).read().split('\n') if l.strip()] if os.path.exists(f) else []
                     lead = lines[1:2] if lines[:1] and lines[0].startswith('<img') else lines[:1]  # under the badge
                     if lines and draft != bool(post_words.state_line(w).match((lead or [''])[0])):
@@ -735,33 +733,24 @@ if any(prog(x)[:1] and os.path.basename(prog(x)[0]) == 'gate-pass' for x in segs
         any(prog(x)[:1] == ['gh'] and (prog(x)[1:3] and prog(x)[1] in ('issue', 'pr') and prog(x)[2:3] and prog(x)[2] in ('comment', 'create', 'edit', 'review', 'close', 'merge')
                                         or prog(x)[1:2] == ['api'] and any(w.startswith('body=') or w in ('--input',) for w in prog(x))) for x in segs):
     block("run gate-pass as its own command and read its exit code, then post in the next command: this check reads the gate record before the command runs (mergeworthy:post step 4)")
-has_cd = False
-run_dir = cwd  # where the command's git calls run: follows `cd <dir>` within the command
-shell_vars = {}  # NAME=value set by the command itself (`W=~/x; cd $W`), for the cd targets after it
+run_dir, has_cd = where.dir, where.moved
 clones = {}  # folder: the repo it was cloned from, for a `git clone` in this command
 for s in segs:
-    if prog(s)[:2] == ['git', 'clone'] and (ops := [x for x in operands(prog(s)[2:]) if not x.startswith('-')]):
+    if prog(s)[:2] == ['git', 'clone'] and (ops := [where.expand(x) for x in operands(prog(s)[2:]) if not x.startswith('-')]):
         src = ops[0] if repo_of(ops[0]) else os.path.join(run_dir, os.path.expanduser(ops[0]))
         clones[os.path.normpath(os.path.join(run_dir, ops[1] if ops[1:] else re.sub(r'(\.git)?/*$', '', ops[0]).rsplit('/', 1)[-1]))] = src
     # a command named by a variable this command set (`G="git -C x"; $G commit`) is checked as what it runs
-    if prog(s)[:1] and (v := re.fullmatch(r'\$\{?(\w+)\}?', prog(s)[0])) and v[1] in shell_vars:
-        s = ((segments(shell_vars[v[1]]) or [[]])[0]) + prog(s)[1:]
+    if prog(s)[:1] and (v := re.fullmatch(r'\$\{?(\w+)\}?', prog(s)[0])) and v[1] in where.vars:
+        s = ((segments(where.vars[v[1]]) or [[]])[0]) + prog(s)[1:]
     # a command named by an expansion (`"${a[@]}"`, `$GIT push`), or a shell running a computed script (`sh -c "$(...)"`), runs what this
     # hook can't see: it blocks when its arguments, or the variables it names, hold a guarded verb
     named = prog(s)[0] if prog(s)[:1] and prog(s)[0][:1] in '$`' else (_nested(s) or '') if (_nested(s) or '')[:1] in '$`' else ''
     if named:
-        words = [x for x in prog(s)[1:] if ' ' not in x] + re.findall(r'[\w-]+', named) + [w for v in re.findall(r'\w+', named) for w in re.split(r'[\s()]+', shell_vars.get(v, ''))]
+        words = [x for x in prog(s)[1:] if ' ' not in x] + re.findall(r'[\w-]+', named) + [w for v in re.findall(r'\w+', named) for w in re.split(r'[\s()]+', where.vars.get(v, ''))]
         w = {x.lower() for x in words}
         if w & {'git', 'gh', 'glab'} and w & {'push', 'commit', 'pr', 'issue', 'api', 'release', 'mr'} or 'git' not in w and w & {'push', 'commit'}:
             block(f"`{named}` runs a command named only when it runs, with `{' '.join(words)[:80]}`: write the command out, so it can be checked")
-    if s and all(re.match(r'^\w+=', x) for x in s):
-        shell_vars.update(x.split('=', 1) for x in s)
     check(s, has_cd)
-    if prog(s)[:1] in (['cd'], ['pushd']):
-        has_cd = True
-        args = [x for x in prog(s)[1:] if x not in ('-P', '-L', '-e', '--')]
-        to = re.sub(r'\$\{?(\w+)\}?', lambda m: shell_vars.get(m[1], os.environ.get(m[1], m[0])), args[0]) if args else '~'
-        if to == '$(git rev-parse --show-toplevel)':
-            to = subprocess.run(['git', '-C', run_dir, 'rev-parse', '--show-toplevel'], capture_output=True, text=True).stdout.strip() or to
-        run_dir = os.path.join(run_dir, os.path.expanduser(to))
+    where.step(s)
+    run_dir, has_cd = where.dir, where.moved
 sys.exit(0)

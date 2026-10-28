@@ -310,6 +310,10 @@ check "a post the guard let through but that never ran (blocked by another hook)
 check "a failed post leaves no marker" none "$(postreg '"Error: Exit code 1\ngh: Not Found (HTTP 404)"')"
 check "an interrupted post leaves no marker" none "$(postreg '{"stdout":"","stderr":"","interrupted":true}')"
 check "a successful post writes the marker" marker "$(postreg '{"stdout":"https://example.invalid/c","stderr":"","interrupted":false}')"
+rm "$TD/r.md.posted"
+check "a post naming its draft by a variable the command set writes the marker too, as the guard reads that path" marker \
+  "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[2]},"cwd":sys.argv[1],"tool_response":{"stdout":"https://example.invalid/c"}}))' "$T" "F=$TD/r.md; gh issue comment 41 --repo o/r --body-file \"\$F\"" \
+    | python3 "$R/hooks/post-bash-register.py"; [ -f "$TD/r.md.posted" ] && echo marker || echo none)"
 python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh issue comment 41 --repo o/r --body-file "+sys.argv[2]},"cwd":sys.argv[1]}))' "$T" "$TD/r.md" > "$T/in.json"
 check "BLOCK: the same draft posted again as new" 2 "$(python3 "$R/hooks/pre-bash-guard.py" < "$T/in.json" 2>"$T/err"; echo $?)"
 grep -c 'was already posted' "$T/err"
@@ -1970,8 +1974,8 @@ check "outside any work folder, only the session's own watcher counts" "0 1" "$(
 oreg() { # session cwd command: the thread post-bash-register adds to the watched folder
   python3 -c 'import json,sys; print(json.dumps({"session_id":sys.argv[1],"cwd":sys.argv[2],"tool_input":{"command":sys.argv[3]},"tool_response":{"stdout":"https://github.com/vikejs/vike/pull/9"}}))' "$@" \
     | python3 "$R/hooks/post-bash-register.py"; cat "$TK2/threads.txt" 2>/dev/null || echo none; rm -f "$TK2/threads.txt"; }
-check "a PR opened from the unwatched folder joins no other session's watcher; from the watched one (after a cd too), it joins its watcher" "none|vikejs/vike 9|vikejs/vike 9" \
-  "$(oreg sess-b "$CK4" "$PRC")|$(oreg sess-b "$CK" "$PRC")|$(oreg sess-b "$T" "cd $CK && $PRC")"
+check "a PR opened from the unwatched folder joins no other session's watcher; from the watched one (after a cd, to a variable too), it joins its watcher" \
+  "none|vikejs/vike 9|vikejs/vike 9|vikejs/vike 9" "$(oreg sess-b "$CK4" "$PRC")|$(oreg sess-b "$CK" "$PRC")|$(oreg sess-b "$T" "cd $CK && $PRC")|$(oreg sess-b "$T" "D=$CK; cd \"\$D\" && $PRC")"
 rm "$TK2/gh-watch.pid" "$TK2/repos.txt" "$TK2/session"
 kill "$FPID"
 check "BLOCK: a shell write of a step record, and a Write of one" "2 2" "$(bg 'echo "quick /x 2026-10-27T00:00:00Z" >> ~/.claude/pr-steps/$(git rev-parse HEAD)') $(python3 -c 'import json,sys; print(json.dumps({"tool_name":"Write","tool_input":{"file_path":sys.argv[1]},"cwd":sys.argv[2]}))' "$HOME/.claude/pr-steps/abc" "$T" | python3 "$R/hooks/pre-design-gate.py" 2>/dev/null; echo $?)"
@@ -2125,6 +2129,8 @@ fp=; for c in '"$(npm bin)/vitest" run tests/git-push.test.ts' '$PYTHON -m pytes
 check "a command named by an expansion that only mentions git (a test name, a prompt) passes" " 0 0 0 0 0" "$fp"
 check "a command named by a variable the command set is checked as what it runs: \$G commit with the right author passes, a wrong one blocks" "0 2" \
   "$(echo 'me 42' > "$HOME/.claude/gh-user.txt"; bg 'G="git -c user.name=me -c user.email=42+me@users.noreply.github.com"; $G commit -m x' "$TCO") $(bg 'G="git -c user.name=x -c user.email=x@x"; $G commit -m x' "$TCO")"
+check "a git -C to a variable the command set is the checkout it names: a commit there with the right author passes, a wrong one blocks" "0 2" \
+  "$(bg "D=$TCO; git -C \"\$D\" -c user.name=me -c user.email=42+me@users.noreply.github.com commit -m x" "$T") $(bg "D=$TCO; git -C \"\$D\" -c user.name=x -c user.email=x@x commit -m x" "$T")"
 gql nitedani-agent nitedani-agent
 check "a computed sha pushed to its own repo with no PR passes (an evidence upload); a computed lease is a lease" "0 0" \
   "$(bg 'c=$(git rev-parse HEAD); git push origin $c:refs/heads/shots' "$OWN2") $(bg 'git push --force-with-lease=scratch:$(git rev-parse HEAD) origin HEAD:scratch' "$OWN2")"
@@ -2138,8 +2144,8 @@ check "a checkout inside <task>-work/ or beside it under the task's prefix is in
 AS="$T/assets"; git clone -q "$OWN" "$AS"; git -C "$AS" update-ref refs/remotes/origin/HEAD HEAD; git -C "$AS" checkout -q --orphan shots; git -C "$AS" -c user.name=t -c user.email=t@t commit -q --allow-empty -m s
 check "a commit on a branch that shares no history with origin's default (a PR's screenshots) needs no preflight; one on a branch of the product does" "0 2" \
   "$(bg 'git commit -q --allow-empty -m s2' "$AS") $(git -C "$AS" checkout -q scratch; bg 'git commit -q --allow-empty -m c' "$AS")"
-check "a push from a checkout the command makes first passes when it goes to a local path or the local repo it was cloned from, or is a dry run" "0 0 0 2" \
-  "$(bg 'T=$(mktemp -d); cd $T; git init -q --bare o.git; git init -q r; cd r; git push -q ../o.git main' "$T") $(bg 'git clone -q /tmp/o.git seed; cd seed; git push -q origin HEAD:main' "$T") $(bg 'git worktree add -q --detach ../wt HEAD; cd ../wt; git push --dry-run https://github.com/vikejs/vike.git HEAD:x' "$T") $(bg 'git clone -q https://github.com/vikejs/vike.git v; cd v; git push origin HEAD:x' "$T")"
+check "a push from a checkout the command makes first passes when it goes to a local path or the local repo it was cloned from (named by variables too), or is a dry run" "0 0 0 0 2" \
+  "$(bg 'T=$(mktemp -d); cd $T; git init -q --bare o.git; git init -q r; cd r; git push -q ../o.git main' "$T") $(bg 'git clone -q /tmp/o.git seed; cd seed; git push -q origin HEAD:main' "$T") $(bg 'S=/tmp/o.git; D=seed2; git clone -q "$S" "$D"; cd "$D"; git push -q origin HEAD:main' "$T") $(bg 'git worktree add -q --detach ../wt HEAD; cd ../wt; git push --dry-run https://github.com/vikejs/vike.git HEAD:x' "$T") $(bg 'git clone -q https://github.com/vikejs/vike.git v; cd v; git push origin HEAD:x' "$T")"
 check "a draft path through a variable the command set (D=...; --body-file \$D/x.md) is the path written out" 1   "$(MERGEWORTHY_WATCHER=off bg "X=$T/vdir; gh issue create --repo o/r --title t --body-file \$X/nogate.md" "$T" >/dev/null; grep -c "no gate record for $T/vdir/nogate.md" "$T/err")"
 check "parse: a script handed to watch or parallel, and git run by pnpm exec, npx, uv run, direnv exec, flock, taskset, chronic, su -c, script -c, fish -c" \
   "yes yes yes yes yes yes yes yes yes yes yes yes yes" "$(for c in "watch 'git push x HEAD:y'" "parallel 'git push {} HEAD:y' ::: x" 'pnpm exec git push' 'npx git push' 'uv run git push' \

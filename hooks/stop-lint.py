@@ -41,7 +41,7 @@ except (KeyError, TypeError, OSError):
         sys.exit(2)
     lines = []
 import steward
-from shellcmd import segments, prog, git_argv
+from shellcmd import segments, prog, git_argv, Where
 # A T3 Code delegated child (its thread has a parent in T3's state, or its prompt says so): its result is its last message, and the main session owns replies and next steps
 def opening(l):  # a user line's typed text ('' for a tool result's list, or a line that isn't JSON)
     try: c = (json.loads(l).get('message') or {}).get('content')
@@ -127,7 +127,7 @@ def runs(rx):  # the simple commands of this session's commands that rx finds a 
             open(_parse_file + '.tmp', 'w').write(json.dumps({**old, **keep})); os.replace(_parse_file + '.tmp', _parse_file)
         except (OSError, ValueError): pass  # the parses still hold for this stop
     return [prog(t) for c in commands if re.search(rx, c) for t in parsed[_key(c)]]
-acted = posted or any(t[:3] in (['gh', 'pr', 'create'], ['gh', 'issue', 'create']) or t[:1] == ['git'] and git_argv(t, cwd_d or '.')[2] == 'push'
+acted = posted or any(t[:3] in (['gh', 'pr', 'create'], ['gh', 'issue', 'create']) or t[:1] == ['git'] and git_argv(t, Where(cwd_d or '.'))[2] == 'push'
                       for t in runs(r'\b(?:git|gh)\b'))
 # the folders it works in: its cwd, and where its commands cd, write, run git or the step tools; one it only read isn't
 worked = [cwd_d]

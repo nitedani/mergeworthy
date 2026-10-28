@@ -272,14 +272,38 @@ def git_globals(t):
     return out
 
 
-def git_argv(t, cwd):
-    """(git dir, -c overrides, subcommand, its arguments) of a git argv, past its global options (each -C applies in turn); a
-    configured alias (`git config alias.p push`, or `-c alias.p=push`) is expanded, so `git p` is checked as the push it runs."""
+class Where:
+    """Where each simple command of one command line runs, step() taking them in order: the dir, which a `cd` or `pushd` moves for
+    the commands after it, and the variables the line set (`W=~/x; cd $W`)."""
+    def __init__(self, cwd):
+        self.dir, self.vars, self.moved = cwd, {}, False
+
+    def expand(self, p):
+        """p with the line's own variables (`D=~/x; ... $D/a.md`), then the environment's, put in."""
+        return re.sub(r'\$\{?(\w+)\}?', lambda m: self.vars.get(m[1], os.environ.get(m[1], m[0])), p)
+
+    def step(self, t):
+        """Take the simple command t, which ran: the variables it set, the dir it moved to."""
+        if t and all(re.match(r'^\w+=', x) for x in t):
+            self.vars.update(x.split('=', 1) for x in t)
+        if prog(t)[:1] in (['cd'], ['pushd']):
+            self.moved = True
+            args = [x for x in prog(t)[1:] if x not in ('-P', '-L', '-e', '--')]
+            to = self.expand(args[0]) if args else '~'
+            if to == '$(git rev-parse --show-toplevel)':
+                to = subprocess.run(['git', '-C', self.dir, 'rev-parse', '--show-toplevel'], capture_output=True, text=True).stdout.strip() or to
+            self.dir = os.path.join(self.dir, os.path.expanduser(to))
+
+
+def git_argv(t, where):
+    """(git dir, -c overrides, subcommand, its arguments) of a git argv run at where (a Where), past its global options (each -C
+    applies in turn, with where's variables); a configured alias (`git config alias.p push`, or `-c alias.p=push`) is expanded,
+    so `git p` is checked as the push it runs."""
     g = git_globals(t)
     overrides = dict(g[i + 1].split('=', 1) for i in range(len(g) - 1) if g[i] == '-c' and '=' in g[i + 1])
-    git_dir = cwd
+    git_dir = where.dir
     for i in range(len(g) - 1):
-        if g[i] == '-C': git_dir = os.path.join(git_dir, os.path.expanduser(g[i + 1]))
+        if g[i] == '-C': git_dir = os.path.join(git_dir, os.path.expanduser(where.expand(g[i + 1])))
     a = t[1 + len(g):]
     if not a:
         return git_dir, overrides, '', []
@@ -292,7 +316,7 @@ def git_argv(t, cwd):
     elif alias:  # a shell alias: its first command's verb
         inner = prog((segments(alias[1:]) or [['']])[0])
         if inner[:1] == ['git']:
-            return git_argv(inner + rest, cwd)
+            return git_argv(inner + rest, where)
     return git_dir, overrides, sub, rest
 
 
