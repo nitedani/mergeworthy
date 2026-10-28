@@ -2218,6 +2218,13 @@ git -C "$NA" checkout -q -b unrelated
 echo '[{"web_url":"https://gitlab.com/me/app/-/merge_requests/6","draft":true}]' > "$FX/gl_projects_me_2Fapp_merge_requests_state_opened_source_branch_unrecorded"
 check "a push of a recorded branch passes from an unrecorded one; of an unrecorded branch with an open MR, from a recorded one, it blocks, naming the branch" "0 2 1" \
   "$(MERGEWORTHY_WATCHER=off bg 'git push origin mr-b:mr-b' "$NA") $( (cd "$NA" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null); git -C "$NA" branch -q unrecorded; MERGEWORTHY_WATCHER=off bg 'git push origin unrecorded:unrecorded' "$NA") $(grep -c 'unrecorded has no approach record' "$T/err")"
+# a PR or MR create is held to the record of the branch it names (--head, -H owner:branch, --source-branch, -s, head=, source_branch=), else the checked-out one
+named() { for c in 'glab mr create --draft --source-branch unrecorded --title x' 'glab mr create --draft -s unrecorded --title x' \
+    "gh pr create --draft --repo o/r --title \"\$(cat /w/drafts/title.md)\" --body-file $T/na.md --head $1" "gh pr create --draft --repo o/r --title \"\$(cat /w/drafts/title.md)\" --body-file $T/na.md -H someone:$1" \
+    "gh api repos/o/r/pulls -f title=x -f head=someone:$1 -f base=main -F body=@$T/na.md" "glab api projects/me%2Fapp/merge_requests -X POST -f source_branch=$1 -f target_branch=main -f title=x"; do
+    printf '%s %s ' "$(MERGEWORTHY_WATCHER=off bg "${c//unrecorded/$1}" "$NA")" "$(grep -c "$1 has no approach record" "$T/err")"; done | xargs; }
+check "BLOCK: from a recorded checkout, a PR or MR create naming a branch with no record, in each form, naming it" "2 1 2 1 2 1 2 1 2 1 2 1" "$(named unrecorded)"
+check "from a checkout with no record, a PR or MR create naming a recorded branch passes, in each form" "0 0 0 0 0 0 0 0 0 0 0 0" "$(git -C "$NA" checkout -q unrecorded; named mr-b; git -C "$NA" checkout -q unrelated)"
 git -C "$NA" branch -q fresh; echo '[]' > "$FX/gl_projects_me_2Fapp_merge_requests_state_opened_source_branch_fresh"
 check "a push of a new branch with no MR and no record beside a recorded one with an open MR passes; beside an unrecorded one with an open MR, it blocks, naming that one" "0 2 1" \
   "$(MERGEWORTHY_WATCHER=off bg 'git push origin mr-b:mr-b fresh:fresh' "$NA") $(MERGEWORTHY_WATCHER=off bg 'git push origin fresh:fresh unrecorded:unrecorded' "$NA") $(grep -c 'unrecorded has no approach record' "$T/err")"

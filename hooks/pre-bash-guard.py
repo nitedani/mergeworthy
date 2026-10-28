@@ -600,6 +600,12 @@ def need_approach(d, what, branch=None):
         block(f"{branch or 'this branch'} has no approach record: rate the approaches before building it and opening its PR or MR (mergeworthy:pull-request step 5), "
               f"then `pr-steps approach <work folder>/approach.md`, before {what}")
 
+def opened_branch(a, options=(), fields=()):
+    """The branch a PR or MR create with arguments a opens from, as it names it (the last of options, or a head= or source_branch= field
+    among fields; owner:branch gives branch); None when it names none, for the checked-out one."""
+    named = opt(a, list(options)) + [v.split('=', 1)[1] for v in opt(a, list(fields)) if v.split('=', 1)[0] in ('head', 'source_branch')]
+    return expandvars(named[-1]).split(':')[-1] if named else None
+
 NEED_DRAFT ="post from a draft file (--body-file /abs/drafts/<name>.md, -F body=@/abs/drafts/<name>.md or --input) that passed the gate"
 
 def check(t, has_cd):
@@ -704,7 +710,7 @@ def check(t, has_cd):
         check_refactor_ask(*post_target('pr', a[2:], run_dir), comment=False)
     if p == 'gh' and a[:2] == ['pr', 'create'] and '--help' not in a and '-h' not in a:
         check_workflow('`gh pr create`', run_dir, [git_head(run_dir)])
-        need_approach(run_dir, '`gh pr create`')
+        need_approach(run_dir, '`gh pr create`', opened_branch(a[2:], ['--head', '-H']))
     if (p == 'gh' and len(a) >= 2 and a[0] == 'pr' and ((a[1] == 'create' and '--draft' not in a and '-d' not in a) or (a[1] == 'ready' and '--undo' not in a))) or \
        (p == 'glab' and len(a) >= 2 and a[0] == 'mr' and ((a[1] == 'create' and '--draft' not in a and '--wip' not in a) or (a[1] == 'update' and ('--ready' in a or '-r' in a)))):
         head, missing = missing_steps(run_dir)
@@ -712,10 +718,10 @@ def check(t, has_cd):
             block(f"HEAD {head[:10] or '(no git repo in cwd)'} has no pr-steps {', '.join(missing)} record: run those steps of mergeworthy:converge's pipeline on the final HEAD, each ending with `pr-steps <step> <its output>` (again after a base merge); or open it with --draft")
     if p == 'glab' and len(a) >= 2 and a[0] in ('issue', 'mr') and a[1] == 'create' and '--help' not in a and '-h' not in a:
         need_watch(gitlab_repo(a[2:], run_dir))
-        if a[0] == 'mr': need_approach(run_dir, '`glab mr create`')
+        if a[0] == 'mr': need_approach(run_dir, '`glab mr create`', opened_branch(a[2:], ['--source-branch', '-s']))
     if p == 'glab' and a[:1] == ['api'] and (call := api_call(a[1:]))[0] == 'POST' and (opens := api_opens(call[1], a[1:], env, run_dir)):
         need_watch([opens[0]])
-        if opens[1] == 'pr': need_approach(run_dir, '`glab api` creating an MR')
+        if opens[1] == 'pr': need_approach(run_dir, '`glab api` creating an MR', opened_branch(a[1:], fields=['-f', '--raw-field', '-F', '--field']))
     if p == 'gh' and len(a) >= 2 and a[0] == 'pr' and a[1] == 'merge':
         if setting('MERGE', 'on-request-squash') == 'reviewer':
             block('never merge: the reviewer merges this repo\'s PRs (MERGEWORTHY_MERGE=reviewer)')
@@ -782,7 +788,7 @@ def check(t, has_cd):
             block(NEED_DRAFT)
         if method == 'POST' and (opens := api_opens(ep, rest, env, run_dir)):
             need_watch([opens[0]])
-            if opens[1] == 'pr': need_approach(run_dir, '`gh api` creating a PR')
+            if opens[1] == 'pr': need_approach(run_dir, '`gh api` creating a PR', opened_branch(rest, fields=['-f', '--raw-field', '-F', '--field']))
         c = re.fullmatch(r'/?repos/([\w.-]+/[\w.-]+)/issues/(\d+)/comments', ep)
         if c and method == 'POST': check_turn(c.group(1), c.group(2), rest); check_finality(c.group(1), c.group(2), bodies + inputs)
         thread = None
