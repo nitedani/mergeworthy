@@ -1192,6 +1192,9 @@ tr_file 'It will be ready for review tomorrow: https://gitlab.com/g/p/-/merge_re
 tr_file 'Kész lesz délre: https://gitlab.com/g/p/-/merge_requests/96'; a="$a $(stop "$T")"
 tr_file 'Majd kész, ha átment a CI: https://gitlab.com/g/p/-/merge_requests/96'
 check "a future anywhere in the done word's clause is no claim" "0 0 0" "$a $(stop "$T")"
+tr_file 'The tests are not flaky and the work is done: https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
+tr_file 'A tesztek nem instabilak és kész a munka: https://gitlab.com/g/p/-/merge_requests/96'
+check "BLOCK: a negation in an earlier coordinated clause leaves the claim standing" "2 2" "$a $(stop "$T")"
 tr_file 'When you asked, I checked it: all done, https://gitlab.com/g/p/-/merge_requests/96'
 check "BLOCK: a condition in an earlier clause leaves the claim standing" 2 "$(stop "$T")"
 tr_file $'> Earlier context.\n\nAll done: https://gitlab.com/g/p/-/merge_requests/96'
