@@ -18,6 +18,7 @@
   and the repos' issue lists are polled once per X-Poll-Interval, the repo lists by the one daemon holding the lease for all.
 - GitLab threads in threads.txt are read by gl_watch.py (scan_gitlab), into the same events.log and replies-owed.md.
 - AGENT DONE: an agent the session launched has finished (hooks/agent_jobs.py), once per finish, until `agent-job done` releases its job.
+- Under T3 Code each pass's event lines also go to the session's thread (wake_thread), so it needs no Monitor.
 - Every request is counted, 304 answers too (tally; `gh-watch.py --stats` prints the rate, and once an hour a line goes to gh-watch-stats.log).
 - On Linux, main_dir's daemon starts bin/disk-sweep --delete at most once an hour, in the background (sweep_disk).
 State lives in gh-watch-state.json: every seen (id, updated_at) pair, so nothing is skipped or repeated,
@@ -594,7 +595,42 @@ def emit(line):
         ERRED = True
         if time.time() - ERRORS.get(line, 0) < 3600: return
         ERRORS[line] = time.time()
-    print(line, flush=True)  # into events.log, where the session's Monitor delivers it (mergeworthy:reply)
+    print(line, flush=True)  # into events.log, where wake_thread or the session's Monitor delivers it (mergeworthy:reply)
+
+
+EVENT = re.compile(r'###|WATCH ERROR|WATCHER RETIRED')  # the lines gh-watch-start's Monitor delivers
+
+
+def wake_thread():
+    """Under T3 Code (gh-watch-start wrote the session's thread to HERE/t3-thread) the event lines events.log got since the last
+    pass, from any writer, go to that thread as one message; t3-wake.cursor holds the byte offset sent up to. A failed send is retried."""
+    tid, cursor = first_line(os.path.join(HERE, 't3-thread')), os.path.join(HERE, 't3-wake.cursor')
+    if not tid:
+        return
+    with open(os.path.join(HERE, 'events.log'), 'rb') as f:
+        size = os.fstat(f.fileno()).st_size
+        try:
+            start = int(first_line(cursor))
+        except ValueError:  # gh-watch-start writes it with the thread; without it, nothing before now is sent
+            start = size
+        start = start if start <= size else 0  # the log was cut
+        f.seek(start)
+        data = f.read(size - start)
+    data = data[:data.rfind(b'\n') + 1]  # a line still being written goes with the next pass
+    lines = [l for l in data.decode(errors='replace').splitlines() if EVENT.match(l)]
+    if lines:
+        msg = f"Watcher events in {HERE}/events.log (mergeworthy:reply):\n" + '\n'.join(lines)
+        try:
+            r = subprocess.run(['t3', 'thread', 'send', tid, '-'], input=msg, capture_output=True, text=True, timeout=60)
+            err = r.returncode and (r.stderr.strip().splitlines() or [f"exit {r.returncode}"])[-1]
+        except (OSError, subprocess.SubprocessError) as e:
+            err = str(e)
+        if err:
+            return emit(f"WATCH ERROR t3 thread send {tid}: {err[:200]}")
+    if first_line(cursor) != str(start + len(data)):
+        with open(cursor + '.tmp', 'w') as f:
+            f.write(f"{start + len(data)}\n")
+        os.replace(cursor + '.tmp', cursor)
 
 
 def waiting_keys(d=None):
@@ -1661,6 +1697,7 @@ def retire_if_done():
     print(f"WATCHER RETIRED at {datetime.datetime.now(datetime.timezone.utc):%Y-%m-%dT%H:%M:%SZ}: every watched thread is merged or closed", flush=True)
     with open(os.path.join(HERE, 'retired'), 'w') as f:  # disk-sweep's w-done may delete this folder once nothing in it would be lost
         f.write(iso(time.time()) + '\n')
+    wake_thread()
     # each supervisor gh-watch-start may have used, so the watcher doesn't come back after a reboot
     supervisor = os.environ.get('GH_WATCH_SUPERVISOR', '')  # set by the unit or the launchd agent gh-watch-start wrote
     if supervisor == 'systemd':
@@ -1764,6 +1801,7 @@ def tick():
     scan_gitlab()
     agent_jobs_pass()
     announce()
+    wake_thread()
 
 
 def scan_gitlab():

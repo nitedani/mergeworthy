@@ -377,6 +377,30 @@ print(repr(buf.getvalue()))
 ')
 check "retire_if_done: stays while a merged PR is followed" "''" "$got"
 
+# Under T3 Code (gh-watch-start wrote t3-thread) a pass's event lines, from any writer, go to that thread as one message; a failed send is retried
+cat > "$T/bin/t3" <<EOF
+#!/bin/sh
+{ echo "t3 \$*"; cat; echo; } >> "$T/t3.log"
+[ ! -e "$T/t3.fail" ] || { echo 'connect ECONNREFUSED' >&2; exit 1; }
+EOF
+chmod +x "$T/bin/t3"; : > "$T/t3.log"
+got=$(py '
+log = os.path.join(m.HERE, "events.log"); add = lambda t: open(log, "a").write(t)
+open(log, "w").write("### old event\n"); open(os.path.join(m.HERE, "t3-thread"), "w").write("thr-1\n")
+open(os.path.join(m.HERE, "t3-wake.cursor"), "w").write(str(os.path.getsize(log)))
+add("### o/r#5 comment 1 by bob\n    the body\nWATCH ERROR x: y\nnot an event\n### AGENT DONE j\n### half"); m.wake_thread(); m.wake_thread()
+open("'"$T"'/t3.fail", "w"); add(" written\n")
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf): m.wake_thread()
+os.remove("'"$T"'/t3.fail"); add("WATCHER RETIRED at now\n"); m.wake_thread()
+os.remove(os.path.join(m.HERE, "t3-thread")); add("### unsent\n"); m.wake_thread()
+print(repr(buf.getvalue()))
+')
+check "wake_thread: one message per pass with only the event lines, a half-written line waits, nothing twice, a failed send reported and retried, none without t3-thread" \
+  "'WATCH ERROR t3 thread send thr-1: connect ECONNREFUSED\n'|t3 thread send thr-1 -;Watcher events in $W/events.log (mergeworthy:reply):;### o/r#5 comment 1 by bob;WATCH ERROR x: y;### AGENT DONE j;t3 thread send thr-1 -;Watcher events in $W/events.log (mergeworthy:reply):;### half written;t3 thread send thr-1 -;Watcher events in $W/events.log (mergeworthy:reply):;### half written;WATCHER RETIRED at now;" \
+  "$got|$(tr '\n' ';' < "$T/t3.log")"
+rm -f "$W/events.log" "$W/t3-wake.cursor"
+
 # The Monitor command gh-watch-start prints delivers an event within 2 s, and only lines that start an event
 M="$T/mon"; mkdir -p "$M"; : > "$M/events.log"
 cmd=$(dir="$M"; eval "$(grep -m1 "tail -n 0 -F" "$R/bin/gh-watch-start")" | sed 's/^ *//')
@@ -503,6 +527,19 @@ chmod +x "$GI/watcher/gh-watch-daemon.sh" "$T/cronbin/systemctl" "$T/cronbin/cro
 PATH="$T/cronbin:$PATH" GH_WATCH_EYES=me bash "$GI/bin/gh-watch-start" "$T/retiredwatch" o/r 5 < /dev/null > /dev/null 2>&1
 check "gh-watch-start on a dir whose watcher retired removes its retired file" "0 removed" "$? $([ -e "$T/retiredwatch/retired" ] && echo kept || echo removed)"
 GP=$(cat "$T/retiredwatch/gh-watch.pid" 2>/dev/null); ps -o args= -p "$GP" 2>/dev/null | grep -qx 'sleep 30' && kill "$GP"  # the stub daemon it started
+# under T3 Code (T3's state names the session's thread) it records the thread and the log's end, and prints no Monitor; outside it, the Monitor again
+mkdir -p "$GI/hooks" "$HOME/.t3/userdata" "$T/t3watch"; cp "$R/hooks/steward.py" "$GI/hooks/"; printf '### before\n' > "$T/t3watch/events.log"
+python3 -c 'import sqlite3, sys; c = sqlite3.connect(sys.argv[1]); c.execute("create table orchestration_v2_projection_provider_threads (provider_thread_id text, thread_id text, payload_json text)")
+c.execute("create table orchestration_v2_projection_subagents (subagent_id text, thread_id text, child_thread_id text)")
+c.execute("""insert into orchestration_v2_projection_provider_threads values ('"'p1', 'thr-9', '{\"nativeThreadRef\":{\"nativeId\":\"sess-t3\"}}'"')"""); c.commit()' "$HOME/.t3/userdata/statev2.sqlite"
+t3start() { PATH="$T/cronbin:$PATH" GH_WATCH_EYES=me CLAUDE_CODE_SESSION_ID=$1 bash "$GI/bin/gh-watch-start" "$T/t3watch" o/r 6 < /dev/null 2>/dev/null | tail -1; }
+out=$(t3start sess-t3)
+check "gh-watch-start under T3 Code records the thread and the log's end, and says no Monitor is needed" "thr-9 11 1" \
+  "$(cat "$T/t3watch/t3-thread") $(cat "$T/t3watch/t3-wake.cursor") $(echo "$out" | grep -c 'arm no Monitor')"
+out=$(t3start sess-plain)
+check "gh-watch-start outside T3 Code drops the thread and prints the Monitor" "none 1" "$([ -e "$T/t3watch/t3-thread" ] || [ -e "$T/t3watch/t3-wake.cursor" ] && echo kept || echo none) $(echo "$out" | grep -c 'tail -n 0 -F')"
+GP=$(cat "$T/t3watch/gh-watch.pid" 2>/dev/null); ps -o args= -p "$GP" 2>/dev/null | grep -qx 'sleep 30' && kill "$GP"
+rm -f "$HOME/.t3/userdata/statev2.sqlite"
 # --round (the steward skill): one round of gh-watch.py --round into events.log, no supervisor, no daemon, a passed mark
 printf 'import sys\nprint("### stub round", *sys.argv[1:])\n' > "$GI/watcher/gh-watch.py"; mkdir -p "$T/passwatch"
 out=$(PATH="$T/cronbin:$PATH" GH_WATCH_EYES=me CLAUDE_CODE_SESSION_ID=sess-p bash "$GI/bin/gh-watch-start" --round "$T/passwatch" o/r all < /dev/null 2>&1)
