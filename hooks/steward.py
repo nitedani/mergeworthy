@@ -9,9 +9,9 @@ def read():
     except (OSError, ValueError): return None
     return os.path.expanduser(wd).rstrip('/'), tid
 
-# The statuses T3 Code counts as active: a run's (its orchestration_v2_projection_runs_recovery_idx) and a delegated task's
+# The statuses T3 Code counts as active: a run's (its orchestration_v2_projection_runs_recovery_idx) and a delegated task's (its binary's widest set)
 ACTIVE_RUNS = ('queued', 'preparing', 'starting', 'running', 'waiting')
-ACTIVE_TASKS = ('pending', 'running', 'waiting')
+ACTIVE_TASKS = ('pending', 'starting', 'running', 'waiting')
 
 def _thread(session_id):
     """(read-only connection to T3 Code's state, the T3 thread a Claude session runs in), or None."""
