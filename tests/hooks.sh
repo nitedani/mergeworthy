@@ -1983,6 +1983,8 @@ check "BLOCK: an MR opened back in the unwatched folder after cd -, or where the
 check "BLOCK: an MR from bash -c whose prefix (D=... bash -c) moves it into the unwatched folder, over an exported D" 2 "$(bgs sess-b "export D=$CK; D=$CK4 bash -c 'cd \"\$D\"; $MRC'" "$CK")"
 check "BLOCK: an MR from bash -c \"..\" run in the unwatched folder the parent's \$D names, over the prefix's; and one after a cd there that fails" "2 2" \
   "$(bgs sess-b "export D=$CK4; D=$CK bash -c \"cd \$D; $MRC\"" "$CK") $(bgs sess-b "cd $CK4; cd $CK/typo; $MRC" "$CK")"
+check "BLOCK: an MR from a script nested in bash -c \"..\" (bash -c '..', eval '..') run in the unwatched folder the outer parent's \$D names" "2 2" \
+  "$(bgs sess-b "export D=$CK4; D=$CK bash -c \"bash -c 'cd \$D; $MRC'\"" "$CK") $(bgs sess-b "export D=$CK4; D=$CK bash -c \"eval 'cd \$D'; $MRC\"" "$CK")"
 echo "$FPID" > "$TK4/gh-watch.pid"; echo gitlab.com/ns/proj > "$TK4/repos.txt"; echo "$TK4" >> "$HOME/.claude/gh-watch-dirs.txt"
 check "the same passes once each folder has its watcher" 0 "$(bgs sess-b "$TWO" "$T")"
 treg() { # stdout [command [cwd]]: post-bash-register on the command ($TWO, from $T), then exit code|the first folder's threads|the second's
@@ -2013,6 +2015,9 @@ HD=$'\n'"cd \$D; $MRC"$'\nXEOF'
 check "an MR joins the folder the parent's \$D names when the parent expands the script (bash -c \"..\", an unquoted heredoc, <<< \"..\", env D=..), not the prefix's" \
   "0||gitlab.com/ns/proj !9 0||gitlab.com/ns/proj !9 0||gitlab.com/ns/proj !9 0||gitlab.com/ns/proj !9" \
   "$(treg "$U9" "export D=$CK4; D=$CK bash -c \"cd \$D; $MRC\"" "$CK4") $(treg "$U9" "export D=$CK4; D=$CK bash <<XEOF$HD" "$CK4") $(treg "$U9" "export D=$CK4; D=$CK bash <<< \"cd \$D; $MRC\"" "$CK4") $(treg "$U9" "export D=$CK4; env D=$CK bash -c \"cd \$D; $MRC\"" "$CK4")"
+check "an MR from a script nested in bash -c \"..\" (bash -c '..', sh -c '..', eval '..', <<< '..') joins the folder the outer parent's \$D names" \
+  "0||gitlab.com/ns/proj !9 0||gitlab.com/ns/proj !9 0||gitlab.com/ns/proj !9 0||gitlab.com/ns/proj !9" \
+  "$(treg "$U9" "export D=$CK4; D=$CK bash -c \"bash -c 'cd \$D; $MRC'\"" "$CK4") $(treg "$U9" "export D=$CK4; D=$CK bash -c \"sh -c 'cd \$D; $MRC'\"" "$CK4") $(treg "$U9" "export D=$CK4; D=$CK bash -c \"eval 'cd \$D'; $MRC\"" "$CK4") $(treg "$U9" "export D=$CK4; D=$CK bash -c \"bash <<< 'cd \$D; $MRC'\"" "$CK4")"
 mkdir -p "$CK/my dir"
 check "BLOCK: an MR after a cd that fails (a missing target, an unquoted expansion holding a space, two arguments) joins no watcher; after && it joins the target's" \
   "2|| 2|| 2|| 0|gitlab.com/ns/proj !9|" \

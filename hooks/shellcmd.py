@@ -101,20 +101,24 @@ def _script(w):
     return w if getattr(w, 'script', None) is None else w.script
 
 
-PARENT = '__mwp_'  # a placeholder's prefix: ${__mwp_D} holds the value $D had in the parent shell
+PARENT = '__mwp_'  # a placeholder's prefix: ${__mwp_7_D} holds the value $D had in the parent shell
+_pids = itertools.count()
 
 
 def _parent(p):
-    """The placeholder for the parent's expansion p in a script it hands on: ${__mwp_D} for $D or ${D}, whose value Where takes in
-    the parent; ${__mwp_}, never set, for any other (`${D:-x}`, `$(...)`, whose commands are the parent's own)."""
+    """The placeholder for the parent's expansion p in a script it hands on: ${__mwp_<n>_D} for $D or ${D}, whose value Where takes in
+    the parent, n telling it from one a script nested in it carries on; ${__mwp_}, never set, for any other (`${D:-x}`, `$(...)`,
+    whose commands are the parent's own)."""
     n = (p.get('Param') or {}).get('Value', '')
     simple = p.get('Type') == 'ParamExp' and re.fullmatch(r'[A-Za-z_]\w*', n) and not any(p.get(k) for k in ('Exp', 'Repl', 'Index', 'Slice', 'Length', 'Excl', 'Names', 'Width'))
-    return '${' + PARENT + (n if simple else '') + '}'
+    return '${' + PARENT + (f'{next(_pids)}_{n}' if simple else '') + '}'
 
 
-def _placeholders(script):
-    """The frame entries giving a script's placeholders their parent's values: env-argument ones, expanded before the prefix applies."""
-    return tuple((f'{PARENT}{n}=${{{n}}}', False) for n in dict.fromkeys(re.findall(r'\$\{' + PARENT + r'(\w+)\}', script)))
+def _placeholders(script, word=''):
+    """The frame entries giving the placeholders script got from its word (those not in the word itself) their parent's values: env-argument
+    ones, expanded before the prefix applies. One the word holds already came from further out, and keeps its value."""
+    names = [m for m in dict.fromkeys(re.findall(r'\$\{(' + PARENT + r'\d+_(\w+))\}', script)) if '${' + m[0] + '}' not in word]
+    return tuple((f'{m}=${{{n}}}', False) for m, n in names)
 
 
 def _word(w, src):
@@ -212,7 +216,8 @@ def _calls(node, src, depth, frames):
             for r, rfr in docs.pop(id(stmt), []):
                 if shell is not None:  # the parent's own substitutions in it, then the shell's script
                     text, (ps, e) = _heredoc(r, src), _calls(r['Hdoc'], src, depth, rfr)
-                    s, e2 = parse(text, depth + 1, segs[shell].frames + (_child(segs[shell], text),))
+                    raw = ''.join(_src(p, src) for p in r['Hdoc'].get('Parts') or [])
+                    s, e2 = parse(text, depth + 1, segs[shell].frames + (_child(segs[shell], text, raw),))
                     segs[shell + 1:shell + 1], shell, e = ps + s, shell + len(ps) + len(s), e or e2
                 else:
                     s, e = _calls(r['Hdoc'], src, depth, rfr)
@@ -260,14 +265,14 @@ def _inner(s, depth):
     if script:
         eval_ = t and os.path.basename(t[0]) == 'eval'  # in this shell; with a prefix (`D=x eval ...`), only for its duration
         text = _script(script)
-        frame = _child(s, text) if not eval_ else (next(_ids), 'opaque', ()) if len(t) < len(s) else (next(_ids), 'eval', _placeholders(text))
+        frame = _child(s, text, script) if not eval_ else (next(_ids), 'opaque', ()) if len(t) < len(s) else (next(_ids), 'eval', _placeholders(text, script))
         inner, err = parse(text, depth + 1, fr + (frame,))
         out += inner
     return out, err
 
 
-def _child(s, script=''):
-    """The frame of the child shell segment s starts to run script: 'proc' (bash) or 'sh' (another shell), with the assignments that
+def _child(s, script='', word=''):
+    """The frame of the child shell segment s starts to run script (from word): 'proc' (bash) or 'sh' (another shell), with the assignments that
     set its environment, each (word, whether it sees the ones before it: true for the command's prefix, false for env's arguments
     and the script's placeholders), or 'user' (another user's shell, fish, `env` with options, a prefix appending to a variable)."""
     t = prog(s)
@@ -278,7 +283,7 @@ def _child(s, script=''):
         return next(_ids), 'user', ()
     kind = 'proc' if not t or os.path.basename(t[0]) == 'bash' else 'sh'
     lead = next((i for i, w in enumerate(pre) if not re.match(r'\w+=', w)), len(pre))
-    return next(_ids), kind, tuple((w, i < lead) for i, w in enumerate(pre) if re.match(r'\w+=', w)) + _placeholders(script)
+    return next(_ids), kind, tuple((w, i < lead) for i, w in enumerate(pre) if re.match(r'\w+=', w)) + _placeholders(script, word)
 
 
 def reads_stdin(t):
