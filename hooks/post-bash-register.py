@@ -10,7 +10,7 @@ import hashlib, json, os, re, shlex, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
 from shellcmd import segments, prog, new_post_drafts, Where
-import steward, work_folder
+import work_folder
 d = json.load(sys.stdin)
 cmd = d.get('tool_input', {}).get('command', '')
 r = d.get('tool_response') or {}
@@ -111,11 +111,11 @@ def live(dr):
     except (IndexError, OSError, ValueError):
         return False
 sid = d.get('session_id')
-# a dir the posting session's steward pass read in the last day (gh-watch-start --round) counts: its next pass reads the thread
-live_dirs = [dr for dr in dirs if live(dr) or sid and steward.passed_by(dr) == sid]
+# only a running daemon wakes anyone on the thread: a dir a steward pass read (gh-watch-start --round) has none
+live_dirs = [dr for dr in dirs if live(dr)]
 def home_of(repo, post_dir):
     """The watcher a new thread of repo posted from post_dir joins: of those reaching the session from there, one covering repo first."""
-    mine = work_folder.watched_by(live_dirs, sid, post_dir) + [dr for dr in live_dirs if sid and steward.passed_by(dr) == sid]
+    mine = work_folder.watched_by(live_dirs, sid, post_dir)
     covering = [dr for dr in mine if any(l.split()[:1] == [repo] for l in lines(dr, 'repos.txt') + lines(dr, 'threads.txt'))]
     return (covering + mine + [None])[0]
 # the threads in stdout, in the order printed, each joining the watcher of the segment that posted it: with as many threads as

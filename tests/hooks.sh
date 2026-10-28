@@ -416,11 +416,13 @@ python3 -c 'import json; print(json.dumps({"session_id":"sess-2","tool_input":{"
 check "a new PR joins the posting session's dir, not an older dir covering the repo" "o/r 8|none" \
   "$(cat "$D2/threads.txt" 2>/dev/null)|$(cat "$D1/threads.txt" 2>/dev/null || echo none)"
 check "the thread replaces that dir's bare repo line" "|o/r" "$(cat "$D2/repos.txt")|$(cat "$D1/repos.txt")"
-# a dir a steward pass read today (its passed file names the session) counts as live, for that session only
-D3="$T/reg-pass"; mkdir -p "$D3"; echo o/r > "$D3/repos.txt"; echo sess-3 > "$D3/passed"; echo "$D3" > "$HOME/.claude/gh-watch-dirs.txt"
-preg() { python3 -c 'import json,sys; print(json.dumps({"session_id":sys.argv[1],"tool_input":{"command":"gh pr create --repo o/r --fill"},"tool_response":{"stdout":"https://github.com/o/r/pull/9"}}))' "$1" \
-  | python3 "$R/hooks/post-bash-register.py"; cat "$D3/threads.txt" 2>/dev/null || echo none; rm -f "$D3/threads.txt"; }
-check "a new PR joins the dir the session passed today; another session's post leaves it alone" "o/r 9|none" "$(preg sess-3)|$(preg sess-4)"
+# a dir a steward pass read today (its passed file names the session) has no daemon to wake anyone: the session's live dir gets the thread
+D3="$T/reg-pass"; D4="$T/reg-live"; mkdir -p "$D3" "$D4"; echo o/r > "$D3/repos.txt"; echo 'o/r 5' > "$D3/threads.txt"; echo sess-3 > "$D3/passed"
+echo "$SPID" > "$D4/gh-watch.pid"; echo sess-3 > "$D4/session"; printf '%s\n' "$D3" "$D4" > "$HOME/.claude/gh-watch-dirs.txt"
+preg() { python3 -c 'import json,sys; print(json.dumps({"session_id":"sess-3","tool_input":{"command":sys.argv[1]},"tool_response":{"stdout":sys.argv[2]}}))' "$1" "$2" \
+  | python3 "$R/hooks/post-bash-register.py"; cat "$D4/threads.txt" 2>/dev/null || echo none; rm -f "$D4/threads.txt"; }
+check "a new PR, and a comment on a thread only the passed dir lists, join the session's live dir, not the dir its steward pass read" "o/r 9|o/r 5|o/r 5" \
+  "$(preg 'gh pr create --repo o/r --fill' https://github.com/o/r/pull/9)|$(preg 'gh issue comment 5 --repo o/r --body-file x' https://github.com/o/r/issues/5#issuecomment-1)|$(cat "$D3/threads.txt")"
 kill "$SPID"; wait "$SPID" 2>/dev/null
 
 # ---------- finality trigger: the third proposal on a thread needs a thread map ----------

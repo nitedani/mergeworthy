@@ -73,7 +73,7 @@ fi
 printf 'PATH=%s\nHOME=%s\n' "$PATH" "$HOME" > "$dir/env"
 if [ -n "$round" ]; then
   n=$(wc -l < "$dir/events.log")
-  # passed: the hooks treat the dir as watched for a day, and stop-lint lets the session it names post without a Monitor
+  # passed: for a day pre-bash-guard treats the dir as watched, and stop-lint lets the session it names post without a Monitor
   rc=0; (cd "$dir" && GH_WATCH_EYES=$(cat eyes 2>/dev/null) python3 -u gh-watch.py --round >> events.log 2>&1) || rc=$?
   if [ "$rc" = 0 ]; then echo "${CLAUDE_CODE_SESSION_ID:-}" > "$dir/passed"; else echo "WATCH ERROR gh-watch.py --round exited $rc" >> "$dir/events.log"; fi
   rm -f "$dir/retired"
