@@ -1021,7 +1021,7 @@ def scan(state, jobs):
                     note_refactor_ask(repo, key, user, url, body, upd, pr_state['head'])
                 if answerable(user, body, agent_hashes, kind, own=author == ME or repo_lines(HERE).get(repo)):
                     handle_comment(state, repo, key, kind, cid, upd, user['login'], url, body, extra)
-                maintainer_review(key, author, kind, cid, user, url, extra)
+                maintainer_review(key, author, kind, cid, user, url, extra, upd)
             for r in last['renames'] if last and is_pr and author == ME else ():
                 pr_renamed(key, [HERE], *r)
             pings.append((key, last, events))
@@ -1523,9 +1523,13 @@ def emit_to(d, line):
         f.write(line + '\n')
 
 
-def maintainer_review(key, author, kind, cid, user, url, state):
-    """A maintainer's review of your PR, other than a bare approval, goes to the steward (else here) once, for the sort of each defect it names."""
+def maintainer_review(key, author, kind, cid, user, url, state, upd):
+    """A maintainer's review of your PR, other than a bare approval, goes to the steward (else here) once, for the sort of each defect it names.
+    One submitted before the dir's first round start is claimed, not reported (one_round)."""
     if kind == 'review' and author == ME and user.get('login') != ME and user.get('assoc') in MAINTAINER and state != 'APPROVED':
+        if before_seed(upd):
+            claim(f"mreview:{cid}")
+            return
         follow_emit(f"mreview:{cid}", [HERE], f"### MAINTAINER REVIEW {key}: {url} by {user['login']} reviews your PR  at {iso(time.time())}")
 
 
