@@ -67,7 +67,11 @@ ODD = [f'cd {{B}} {r}' for r in R] + [f'pushd {{B}} {r}' for r in R] + [f'pushd 
     'set -P; cd {A}/link; cd ..', 'set -o physical; cd {A}/link/..'] + [  # symlinks
     'CDPATH={C} cd repo', 'CDPATH= cd B', 'HOME={C} cd', 'HOME={C} cd ~', 'cd {B}; OLDPWD={C} cd -', 'CDPATH={C} pushd repo >/dev/null',
     'cd {B} && pushd {C} >/dev/null && HOME={B} popd >/dev/null', 'env CDPATH={C} cd repo', 'env cd {B}', 'nice cd {B}', 'command cd {B}',
-    'CDPATH={C} builtin cd repo', 'CDPATH={C} cd repo; cd repo', 'X=1 cd {B}', 'PWD={C} cd ..', 'CDPATH={C} command cd repo']  # prefixes
+    'CDPATH={C} builtin cd repo', 'CDPATH={C} cd repo; cd repo', 'X=1 cd {B}', 'PWD={C} cd ..', 'CDPATH={C} command cd repo'] + [  # prefixes
+    f'D={{B}}; {v}={{C}} {c} {w}' for v in ('D', 'HOME', 'CDPATH', 'OLDPWD', 'PWD') for c in ('cd', 'pushd')
+    for w in (f'${v}', f'${{{{{v}}}}}', f'"${v}"', f'{{B}} >"${v}/out.txt"', f'{{B}} 2>${{{{{v}}}}}/err.txt')] + [
+    'HOME={C} cd ~', 'HOME={C} cd ~/x', 'HOME={C} pushd ~ >/dev/null', 'D={B}; D={C} cd "$D" && :', 'cd {B}; OLDPWD={C} cd "$OLDPWD"',
+    'D={B}; pushd {C} >/dev/null; D={T} popd >"$D/out.txt"']  # a prefix's variable in the words and redirects, which see the line's
 EVERYDAY = [  # lines agents typed (Claude Code transcripts on this machine, 2026-10), their paths made the corpus's and other commands harmless ones
     'cd {B} && git push -u origin {G} 2>&1 | tail -6; git rev-parse HEAD',
     'cd {B}; glab issue view 1 --comments 2>&1 | head -40; glab mr create --title {G}',
