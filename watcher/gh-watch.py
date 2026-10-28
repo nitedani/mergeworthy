@@ -11,7 +11,7 @@
   Another account renaming your PR, open (the last-comment call) or merged (follow_ups' timeline), is one too (pr_renamed).
 - Machine-wide work (those two) runs in one daemon, or a --round, at a time (shared_pass). Every call goes through request(), which keeps the
   hour's budget (see "The GitHub API budget") and sends ETags; a rate-limit pause prints one WATCH ERROR per daemon.
-- Maintainers' commits pushed to a tracked PR, and 👍/👎 from GH_WATCH_EYES on the agent's comments.
+- Maintainers' commits pushed to a tracked PR, and 👍/👎 from you or a maintainer (write access, see maintainer) on the agent's comments.
 - WAIT PING DUE: your account's comment is the last on an open thread, and nobody else in it has replied or acted in any watched thread for WAIT_PING_HOURS (3).
 - PR head/state changes (pushes, merges, closes), CI turning red or green on open PRs, and your PR's code (tests excluded) changing by more than ~80 lines since its last shape pass (SHAPE STALE).
 - How often each thread is read depends on its state (see "How often a thread is read"); the notifications, your events feed
@@ -40,7 +40,6 @@ ROUND_LOOKBACK = 7 * 86400  # a --round reads the /agent feed back this far when
 ROUND_SINCE = None  # a --round reads the issue lists' threads updated since its dir's last complete round (one_round), whatever other readers saw
 SEED = None  # the dir's first --round start while none of its rounds has completed: what is older is where it started, not news (one_round)
 WAIT_PING_HOURS = float(os.environ.get('WAIT_PING_HOURS') or 3)  # mergeworthy:reply §Wait ping: a wait ping may follow after this long
-EYES_FOR = set(filter(None, os.environ.get('GH_WATCH_EYES', '').split(',')))  # maintainers: their commits on your PRs and 👍/👎 are reported
 
 
 # ---------- The GitHub API budget ----------
@@ -458,6 +457,7 @@ def save_state(s):
         return
     flush_calls(s)
     prune(s.setdefault('etag', {}))
+    prune(s.setdefault('perm', {}))
     tmp = STATE + '.tmp'
     json.dump(s, open(tmp, 'w'))
     os.replace(tmp, STATE)
@@ -483,6 +483,21 @@ def agent_post_hashes():
 
 MAINTAINER = ('OWNER', 'MEMBER', 'COLLABORATOR')
 AI_CALL = re.compile(r'(^|\s)/(ai|agent)\b', re.I)
+
+
+def maintainer(state, repo, login):
+    """An account with write access to the repo (mergeworthy:reply §Which comments), read once a day per repo and login. GitHub shows
+    it only to an account with push access itself: elsewhere (403) no one is a maintainer by it."""
+    perms, k = state.setdefault('perm', {}), f"{repo} {login}"
+    if time.time() - perms.get(k, {}).get('t', 0) >= 86400:
+        try:
+            w = request(f"repos/{repo}/collaborators/{login}/permission").json().get('permission') in ('admin', 'write')
+        except RuntimeError as e:
+            if ' HTTP 403 ' not in str(e):
+                raise
+            w = False
+        perms[k] = {'w': w, 't': time.time()}
+    return perms[k]['w']
 
 
 def answerable(u, body, agent_hashes, kind='comment', own=False):
@@ -724,7 +739,11 @@ def emit_maintainer_commits(state, repo, key, old, new):
     for c in commits:
         if c['sha'] in on_pr:
             note_active(state, {'login': c['login']}, c['date'])
-    theirs = [c['sha'] for c in commits if c['login'] in EYES_FOR and c['login'] != ME and c['sha'] in on_pr]
+    try:
+        theirs = [c['sha'] for c in commits if c['sha'] in on_pr and c['login'] not in ('', ME) and not is_bot(c) and maintainer(state, repo, c['login'])]
+    except Exception as e:
+        fail(f"permission {key}", e)
+        return
     if theirs:
         if (s := steward.recipient([])) and s[0] != HERE.rstrip('/') and not ONCE:  # a copy for the steward's follow-up sort
             emit_to(s[0], f"### MAINTAINER COMMITS {key}: {' '.join(theirs)}")
@@ -775,7 +794,8 @@ def read_threads():
 
 
 def scan_reactions(state, threads):
-    """A 👍 or 👎 from GH_WATCH_EYES on one of the agent's comments is feedback on that comment (mergeworthy:reply)."""
+    """A 👍 or 👎 from you (ME, as for comments: a reaction is no gated post) or a maintainer on one of the agent's comments is
+    feedback on that comment (mergeworthy:reply §Reactions)."""
     agent_hashes = agent_post_hashes()
     seen, etags = state.setdefault('reactions', {}), state['etag']  # seen: "<kind>:<id>" -> ["<login>:<content>", ...]
     for repo, num in threads:
@@ -807,10 +827,16 @@ def scan_reactions(state, threads):
                     continue
                 for r in reactions:
                     who, content = r['user']['login'], r['content']
-                    if content not in ('+1', '-1') or who not in EYES_FOR or f"{who}:{content}" in seen.get(sk, []):
+                    if content not in ('+1', '-1') or is_bot(r['user']) or f"{who}:{content}" in seen.get(sk, []):
+                        continue
+                    try:
+                        theirs = who == ME or maintainer(state, repo, who)
+                    except Exception as e:
+                        clean = False
+                        fail(f"permission {repo} {who}", e)
                         continue
                     seen.setdefault(sk, []).append(f"{who}:{content}")
-                    if before_seed(r.get('created_at') or ''):
+                    if not theirs or before_seed(r.get('created_at') or ''):
                         continue
                     if content == '-1':
                         emit(f"### THUMBS DOWN {repo}#{num} by {who} on {c['html_url']} (reaction {r['id']}): work out why and fix the rule behind it; if the thread is still on that point, post a new reply with the fix that @-mentions {who}; if it has moved past it or it's resolved, instead edit that comment to add how you'll do better. Leave the 👎 (mergeworthy:reply §Reactions, then mergeworthy:rules)")

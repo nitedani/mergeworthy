@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import watch_sim as ws
 
 T = tempfile.mkdtemp()
-os.environ.update(HOME=f'{T}/home', GH_WATCH_ME='me', GH_WATCH_EYES='')
+os.environ.update(HOME=f'{T}/home', GH_WATCH_ME='me')
 fails, counter = 0, itertools.count()
 STEADY_MAX, LATENCY_MAX = 20, 120  # counted calls a minute on the whole machine; seconds from a new comment on an open thread to its event
 ALL = ('conv', 'd1', 'd2', 'd3', 'd4', 'd5', 'd6')
