@@ -1188,12 +1188,14 @@ tr_file 'The `ready for review` step comes next: https://gitlab.com/g/p/-/merge_
 check "a done word in quotes or code is no claim" "0 0" "$a $(stop "$T")"
 echo '{"state":"open","draft":true,"head":{"sha":"h8"}}' > "$FX/repos_o_r_pulls_8"
 echo '{"check_runs":[{"name":"test","conclusion":"success"}]}' > "$FX/repos_o_r_commits_h8_check-runs"
-tr_file $'A https://github.com/o/r/pull/8 még vázlat.\n\nA https://github.com/o/r/pull/7 már ready for review állapotban van.'
+tr_file $'A https://github.com/o/r/pull/7 már ready for review állapotban van.\n\nA https://github.com/o/r/pull/8 még vázlat.'
 check "a claim about one PR is checked against that PR, not another linked draft" 0 "$(stop "$T")"
+tr_file $'Ezek vannak még hátra:\n- https://github.com/o/r/pull/8 (vázlat):\n  1. a kész állapotú leírás átnézése.'
+check "a done word past the opening sentence is no claim" 0 "$(stop "$T")"
 tr_file 'All done: https://github.com/o/r/pull/8 is up.'
 check "BLOCK: a claim about a draft PR" "2 1" "$(stop "$T") $(grep -c 'pull/8 (draft)' "$T/err")"
 tr_file $'All done.\n\nhttps://github.com/o/r/pull/8 needs a look.'
-check "BLOCK: a claim naming no PR is about every linked PR" 2 "$(stop "$T")"
+check "BLOCK: an opening sentence calling the work done, naming no PR, is about every linked PR" 2 "$(stop "$T")"
 echo '{"check_runs":[{"name":"test","conclusion":null}]}' > "$FX/repos_o_r_commits_h1_check-runs"
 tr_file 'All done, https://github.com/o/r/pull/7 is ready for review.'
 check "BLOCK: a PR whose checks are still running" 2 "$(stop "$T")"

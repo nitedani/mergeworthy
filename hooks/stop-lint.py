@@ -219,21 +219,19 @@ if running and not child:
               "and list only the ones still working (mergeworthy:writing §Reports to the user).", file=sys.stderr)
         sys.exit(2)
 # A message opening with "it's done" names no linked PR or MR that is still a draft or not green (mergeworthy:merging, Ready).
-# A claim is about the PRs its sentence links ("#1 is ready for review", while #26 is a draft); a sentence linking none, about all of them
+# The opening sentence is about the PRs it links ("#1 is ready for review", while #26 is a draft); one linking none, about all of them
 DONE = r"\b(?:(?:is|are|all|work's|it's) (?:done|finished|complete)\b|ready (?:for review|to merge)|kész\b|elkészült|befejeztem)"
 NOT = re.compile(r"\b(?:not|nem|nincs(?:enek)?|\w+n['’]t)\s+(?:\w+\s+)?$", re.I)  # "isn't ready", "nincsenek még kész"
 LINK = r'https://(github\.com|gitlab\.[\w.]+)/([\w.-]+/[\w./-]+?)(?:/-)?/(?:pull|merge_requests)/(\d+)'
 SENTENCE = r'(?<=[.!?])\s+|\n+'
-msg = own.strip()
-claims = [re.findall(LINK, re.split(SENTENCE, msg[:m.start()])[-1] + re.split(SENTENCE, msg[m.start():])[0])
-          for m in re.finditer(DONE, msg[:300], re.I) if not NOT.search(msg[:m.start()])]
-if not child and claims:
+first = re.split(SENTENCE, own.strip())[0]
+if not child and any(not NOT.search(first[:m.start()]) for m in re.finditer(DONE, first, re.I)):
     import subprocess, urllib.parse
     def api(cmd):
         try: return json.loads(subprocess.run(cmd, capture_output=True, text=True, timeout=20).stdout or 'null')
         except (OSError, ValueError, subprocess.SubprocessError): return None
     unfinished = []
-    for host, path, n in list(dict.fromkeys(sum(claims, []) if all(claims) else re.findall(LINK, last)))[:10]:
+    for host, path, n in list(dict.fromkeys(re.findall(LINK, first) or re.findall(LINK, last)))[:10]:
         url = f'https://{host}/{path}/{"pull" if host == "github.com" else "-/merge_requests"}/{n}'
         if host == 'github.com':
             pr = api(['gh', 'api', f'repos/{path}/pulls/{n}'])
