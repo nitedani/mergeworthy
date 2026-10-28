@@ -11,4 +11,6 @@ check "the host doesn't see that port" 0 "$(ss -ltn | grep -c ":$port ")"
 sleep 0.3; check "the server is gone once the command ends" 0 "$(pgrep -f "^$py -m http.server $port " | wc -l)"
 "$R/bin/netns-run" bash -c 'exit 7'; check "the command's exit status comes back" 7 "$?"
 check "the namespace has a route out (tap0)" 1 "$("$R/bin/netns-run" ip route | grep -c '^default via 10.0.2.2 dev tap0')"
+check "DNS inside goes to slirp4netns's forwarder, not a host stub like 127.0.0.53" "nameserver 10.0.2.3" "$("$R/bin/netns-run" grep -m1 '^nameserver' /etc/resolv.conf)"
+check "a name resolves inside" 0 "$("$R/bin/netns-run" getent hosts github.com >/dev/null; echo $?)"
 echo "failures: $fails"; [ "$fails" = 0 ]
