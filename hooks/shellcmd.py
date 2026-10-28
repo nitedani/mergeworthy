@@ -400,7 +400,7 @@ class Where:
             self.old, self.stack = None, []
         if f[1] in ('user', 'opaque') or changing:
             self.dir = self.old = self.stack = None
-            self.lost = True
+            self.vars, self.lost = {}, True
         for n in f[2]:
             if isinstance(n, str): self._set(n, None)
         for n, v in given:
