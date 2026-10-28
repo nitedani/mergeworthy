@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """shellcmd.Where against bash: a generated corpus of command lines (assignments, cd forms, the dir stack, git -C, subshells, child
-shells, heredocs, eval, env, &&, ||, pipes, if, for, while, case, functions, nested two deep), each run in real bash from dir A
+shells, heredocs, eval, env, &&, ||, pipes, if, for, while, case, functions, nested two deep; a script word single-, double- or
+unquoted, a heredoc quoted or not, a here-string single- or double-quoted, env-prefixed, crossed with cd targets that exist, are
+missing, hold a space, are two words, are relative under a CDPATH, or are ~ and - after HOME and OLDPWD are assigned), each run in real bash from dir A
 with stub glab and git that print the dir they run in, and walked by Where. Every posting command Where calls known must have run
 in that dir; None (unknown) is always allowed. Usage: tests/where-diff.py [repo root]"""
 import os, re, shlex, shutil, subprocess, sys, tempfile
@@ -8,8 +10,8 @@ import os, re, shlex, shutil, subprocess, sys, tempfile
 R = os.path.abspath(sys.argv[1] if sys.argv[1:] else os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 os.environ.setdefault('MERGEWORTHY_PYDEPS', os.path.expanduser('~/.mergeworthy/pydeps'))
 T = os.path.realpath(tempfile.mkdtemp(prefix='where-diff-'))
-A, B, C, H, BIN = (os.path.join(T, n) for n in ('A', 'B', 'C', 'home', 'bin'))
-for d in (A, B, C, H, BIN):
+A, B, C, H, BIN, S = (os.path.join(T, n) for n in ('A', 'B', 'C', 'home', 'bin', 'my dir'))
+for d in (A, B, C, H, BIN, S, f'{A}/B'):  # A/B: where a relative `cd B` goes without the CDPATH bash searches first
     os.makedirs(d)
 for v in ('D', 'E', 'CDPATH', 'OLDPWD', 'BASH_ENV', 'ENV'):
     os.environ.pop(v, None)
@@ -29,30 +31,53 @@ MOVERS = ['cd {B}', 'cd "$D"', 'cd $D', 'cd ../B', 'cd ~', 'cd', 'cd -', 'pushd 
 WRAPS = ['{X}', '( {X} )', '{{ {X}; }}', 'bash -c {q}', 'sh -c {q}', "bash <<'{H}'\n{X}\n{H}", 'bash <<< {q}', 'eval {q}',
          'D={C} bash -c {q}', 'D={C} E="$D" bash -c {q}', 'env D={C} E="$D" bash -c {q}', 'env -u D bash -c {q}', 'D={C} eval {q}',
          'true && {X}', 'false || {X}', 'false && {X}', '{X} | cat', 'if true; then {X}; fi', 'if false; then :; else {X}; fi',
-         'for i in 1 2; do {X}; done', 'while false; do {X}; done', 'case a in a) {X};; esac', 'f() {{ {X}; }}; f; f']
+         'for i in 1 2; do {X}; done', 'while false; do {X}; done', 'case a in a) {X};; esac', 'f() {{ {X}; }}; f; f',
+         'bash -c {dq}', 'bash -c {uq}', 'bash <<{H}\n{X}\n{H}', 'bash <<< {dq}', 'D={C} bash -c {dq}', 'env D={C} bash -c {dq}',
+         'D={C} bash <<{H}\n{X}\n{H}', 'D={C} bash <<< {dq}', 'eval {dq}', 'sh -c {dq}']
+SCRIPTS = ['{X}', '( {X} )', 'bash -c {q}', "bash <<'{H}'\n{X}\n{H}", 'bash <<< {q}', 'eval {q}'] + WRAPS[23:]  # every way a script word is quoted
+TARGETS = [('', '{B}'), ('', '{B}/nope'), ('', '{S}'), ('', '{B} {C}'), ('CDPATH={T}', 'B'), ('', '~'), ('cd {C}; HOME={B}', '~'),
+           ('cd {C}; HOME={B}', ''), ('cd {B}; OLDPWD={C}', '-')]  # (what the line sets first, a cd target)
+PATHS = ['cd {t}', "cd '{t}'", 'cd "{t}"', "D='{t}'; cd $D", "D='{t}'; cd \"$D\""]  # every way a path word is quoted
 SUDO = ['sudo bash -c {q}', 'sudo -u nobody sh -c {q}', 'su -c {q} nobody']  # not run: their environment and dir, so Where must call them unknown
 
 
 def lines():
-    """(command line, run it): every wrapper around every mover after a rotating prelude, then pairs of wrappers two deep, statements
-    on lines of their own (a heredoc's end line holds nothing else)."""
+    """(command line, run it, its environment's additions): every wrapper around every mover after a rotating prelude, pairs of
+    wrappers two deep, every script quoting around every cd target, and every path quoting of each target, alone, before && and in a chain of &&;
+    statements on lines of their own (a heredoc's end line holds nothing else)."""
     n = iter(range(1, 10 ** 6))
     def post(): return f'glab mr create --title t{next(n)}'
     def fill(w, x, depth):
-        return w.format(X=x, q=shlex.quote(x), H=f'EOF{depth}', B=B, C=C, T=T)
-    def body(m): return m.format(B=B, C=C, T=T, G=f't{next(n)}') + '\n' + post()
+        dq = '"' + re.sub(r'([\\"`])', r'\\\1', x) + '"'  # the parent expands its $D
+        uq = re.sub(r'([^\w$/.,:=+@%-])', r'\\\1', x.replace('\n', ';'))  # ... and splits what it expands
+        return w.format(X=x, q=shlex.quote(x), dq=dq, uq=uq, H=f'EOF{depth}', B=B, C=C, T=T)
+    def body(m, sep='\n'): return m.format(B=B, C=C, T=T, S=S, G=f't{next(n)}') + sep + post()
+    def line(*xs): return '\n'.join(x for x in xs if x)
     i = 0
     for w in WRAPS:
         for m in MOVERS:
             pre = PRELUDES[i % len(PRELUDES)].format(B=B, C=C, T=T); i += 1
-            yield '\n'.join(x for x in (pre, fill(w, body(m), 1), post(), f'git -C ../C t{next(n)}') if x), True
+            yield line(pre, fill(w, body(m), 1), post(), f'git -C ../C t{next(n)}'), True, {}
     for j, outer in enumerate(WRAPS[1:12]):
         for k, inner in enumerate(WRAPS[1:12]):
             m = MOVERS[(j + k) % len(MOVERS)]
-            yield fill(outer, fill(inner, body(m), 2) + '\n' + post(), 1) + '\n' + post(), True
+            yield fill(outer, fill(inner, body(m), 2) + '\n' + post(), 1) + '\n' + post(), True, {}
+    for pre, t in TARGETS:
+        pre = line(pre, 'export D={C}').format(B=B, C=C, T=T)
+        paths = [p.format(t=t) for p in PATHS]
+        for k, w in enumerate(SCRIPTS):
+            yield line(pre, fill(w, body(paths[k % len(paths)]), 1), post()), True, {}
+        for p in paths:
+            for w in ('{X}', 'D={C} bash -c {dq}'):
+                yield line(pre, fill(w, body(p), 1), post()), True, {}
+            yield line(pre, body(p, ' && ')), True, {}
+            yield line(pre, body('cd {C} && ' + p, ' && ')), True, {}  # a chain of &&
+    for p in PATHS:  # a CDPATH in the environment
+        for w in ('{X}', 'bash -c {q}'):
+            yield line(fill(w, body(p.format(t='B')), 1), post()), True, {'CDPATH': T}
     for w in SUDO:
         for m in (':', 'cd "$D"', 'cd ../B'):
-            yield 'export D={B}\n'.format(B=B) + fill(w, body(m), 1), False
+            yield 'export D={B}\n'.format(B=B) + fill(w, body(m), 1), False, {}
 
 
 def predicted(cmd):
@@ -68,13 +93,15 @@ def predicted(cmd):
 
 cases = ran = known = 0
 bad = []
-for cmd, run in lines():
+for cmd, run, extra in lines():
     cases += 1
+    os.environ.update(extra)  # Where reads the environment bash gets
     want = predicted(cmd)
+    for v in extra: del os.environ[v]
     if not run:
         bad += [(cmd, tag, d, 'unrun: must be unknown') for tag, ds in want.items() for d in ds if d is not None]
         continue
-    r = subprocess.run(['bash', '-c', cmd], cwd=A, env=BASH_ENV, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=20)
+    r = subprocess.run(['bash', '-c', cmd], cwd=A, env={**BASH_ENV, **extra}, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=20)
     actual = {}
     for l in r.stdout.splitlines():
         tag, _, d = l.partition(' ')
