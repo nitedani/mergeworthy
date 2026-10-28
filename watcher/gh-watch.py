@@ -1682,7 +1682,7 @@ def retire_if_done():
     fu = shared_read()['followups']  # a merged PR of yours still being followed, or not yet recorded by the shared job, keeps the watcher,
     # except in your own repo, where you are the one who follows up
     if any(state['prs'].get(k, {}).get('state') == 'merged' and state.get('author', {}).get(k) == ME and fu.get(k, {'until': float('inf')})['until'] > time.time()
-           for r, n in threads if r.split('/')[0].lower() != ME.lower() for k in [f"{r}#{n}"]):
+           for k in (f"{r}#{n}" for r, n in threads if r.split('/')[0].lower() != ME.lower())):
         return
     prs = state['prs']
     for repo, num in threads:
