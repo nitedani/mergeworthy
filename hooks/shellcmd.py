@@ -551,9 +551,11 @@ class Where:
         return None if re.search(r'[$`]', v) else v
 
     def _to(self, to):
+        """Where cd or pushd goes for `to`, or None; a relative one under a CDPATH (the environment's or the line's) may go elsewhere."""
         if to == '$(git rev-parse --show-toplevel)':
             return self.dir and subprocess.run(['git', '-C', self.dir, 'rev-parse', '--show-toplevel'], capture_output=True, text=True).stdout.strip() or None
-        return self.path(to)
+        cdpath = self.vars['CDPATH'] if 'CDPATH' in self.vars else None if self.lost else os.environ.get('CDPATH', '')
+        return None if (cdpath is None or cdpath) and not os.path.isabs(os.path.expanduser(self.expand(to))) else self.path(to)
 
 
 def _changes(t):
