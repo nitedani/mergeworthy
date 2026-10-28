@@ -522,6 +522,16 @@ def check_workflow(what, d, commits, updates=()):
                   + '; '.join(f'"{j}"' for j in missed) + ". Run each job's command here on this head (its workflow file names it; install what it needs), "
                   "add `<job name>: <command> -> exit 0` to the log, and `pr-steps quick <log>` again (code §Gates)")
 
+def need_approach(d, what):
+    """pull-request step 5 comes before the build and the draft PR: the branch's approach record, before it opens a PR or MR (draft or not)
+    or updates an open one."""
+    rec = branch_record(d, 'approach')
+    if not rec:
+        block(f"{what} runs from the branch's checkout, so its approach record can be checked")
+    if not os.path.exists(rec):
+        block(f"this branch has no approach record: rate the approaches before building it and opening its PR or MR (mergeworthy:pull-request step 5), "
+              f"then `pr-steps approach <work folder>/approach.md`, before {what}")
+
 NEED_DRAFT ="post from a draft file (--body-file /abs/drafts/<name>.md, -F body=@/abs/drafts/<name>.md or --input) that passed the gate"
 
 def check(t, has_cd):
@@ -597,6 +607,7 @@ def check(t, has_cd):
                 block(f"this push ({'; '.join(why)}) publishes a commit computed when it runs, so its records can't be checked: push a branch or a sha written out")
             if why:  # a push of its own (no PR, its own repo) is free; collaboration runs the task's records first
                 check_workflow(f"this push ({'; '.join(why)})", repo, [sha for sha, _ in heads], [p['url'] for p in prs])
+                if prs: need_approach(repo, f"this push ({'; '.join(why)})")
                 head, missing = missing_steps(repo)
                 if missing and any(not p['isDraft'] for p in prs):
                     block(f"this branch's PR is out of draft and HEAD {head[:10]} has no pr-steps {', '.join(missing)} record (approach: pull-request step 5, once per branch): run converge's pipeline on it first (each step ends with its `pr-steps <step> <output>`), or `gh pr ready --undo` while it converges")
@@ -624,6 +635,7 @@ def check(t, has_cd):
         check_refactor_ask(*post_target('pr', a[2:], run_dir), comment=False)
     if p == 'gh' and a[:2] == ['pr', 'create'] and '--help' not in a and '-h' not in a:
         check_workflow('`gh pr create`', run_dir, [git_head(run_dir)])
+        need_approach(run_dir, '`gh pr create`')
     if (p == 'gh' and len(a) >= 2 and a[0] == 'pr' and ((a[1] == 'create' and '--draft' not in a and '-d' not in a) or (a[1] == 'ready' and '--undo' not in a))) or \
        (p == 'glab' and len(a) >= 2 and a[0] == 'mr' and ((a[1] == 'create' and '--draft' not in a and '--wip' not in a) or (a[1] == 'update' and ('--ready' in a or '-r' in a)))):
         head, missing = missing_steps(run_dir)
@@ -631,6 +643,9 @@ def check(t, has_cd):
             block(f"HEAD {head[:10] or '(no git repo in cwd)'} has no pr-steps {', '.join(missing)} record: run those steps of mergeworthy:converge's pipeline on the final HEAD, each ending with `pr-steps <step> <its output>` (again after a base merge); or open it with --draft")
     if p == 'glab' and len(a) >= 2 and a[0] in ('issue', 'mr') and a[1] == 'create' and '--help' not in a and '-h' not in a:
         need_watch(gitlab_repo(a[2:], run_dir))
+        if a[0] == 'mr': need_approach(run_dir, '`glab mr create`')
+    if p == 'glab' and a[:1] == ['api'] and (call := api_call(a[1:]))[0] == 'POST' and re.fullmatch(r'/?(?:api/v4/)?projects/[^/]+/merge_requests', call[1]):
+        need_approach(run_dir, '`glab api` creating an MR')
     if p == 'gh' and len(a) >= 2 and a[0] == 'pr' and a[1] == 'merge':
         if setting('MERGE', 'on-request-squash') == 'reviewer':
             block('never merge: the reviewer merges this repo\'s PRs (MERGEWORTHY_MERGE=reviewer)')
@@ -697,6 +712,7 @@ def check(t, has_cd):
             block(NEED_DRAFT)
         m = re.fullmatch(r'/?repos/([\w.-]+/[\w.-]+)/(?:issues|pulls)', ep)
         if m and method == 'POST': need_watch(m.group(1))
+        if m and method == 'POST' and ep.endswith('pulls'): need_approach(run_dir, '`gh api` creating a PR')
         c = re.fullmatch(r'/?repos/([\w.-]+/[\w.-]+)/issues/(\d+)/comments', ep)
         if c and method == 'POST': check_turn(c.group(1), c.group(2), rest); check_finality(c.group(1), c.group(2), bodies + inputs)
         thread = None
