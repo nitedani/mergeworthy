@@ -4,7 +4,8 @@ shells, heredocs, eval, env, &&, ||, pipes, if, for, while, case, functions, nes
 unquoted, a heredoc quoted or not, a here-string single- or double-quoted, env-prefixed, crossed with cd targets that exist, are
 missing, hold a space, are two words, are relative under a CDPATH, or are ~ and - after HOME and OLDPWD are assigned; a $ bash keeps
 literal in every quoting that keeps it; child shells nested three deep; redirects on cd, pushd and popd; cd to $(...) and `...`; a
-negated cd; a line redefining cd, pushd or popd; and a fixed list of everyday lines agents type), each run in real bash from dir A
+negated cd; a line redefining cd, pushd or popd; cd through a symlink, logically and physically; prefix assignments on cd, pushd
+and popd; and a fixed list of everyday lines agents type), each run in real bash from dir A
 with stub glab, gh and git that print the dir they run in, and walked by Where. Every posting command Where calls known must have run
 in that dir; None (unknown) is always allowed. Usage: tests/where-diff.py [repo root]"""
 import os, re, shlex, shutil, subprocess, sys, tempfile
@@ -13,8 +14,9 @@ R = os.path.abspath(sys.argv[1] if sys.argv[1:] else os.path.join(os.path.dirnam
 os.environ.setdefault('MERGEWORTHY_PYDEPS', os.path.expanduser('~/.mergeworthy/pydeps'))
 T = os.path.realpath(tempfile.mkdtemp(prefix='where-diff-'))
 A, B, C, H, BIN, S, G = (os.path.join(T, n) for n in ('A', 'B', 'C', 'home', 'bin', 'my dir', 'repo'))
-for d in (A, B, C, H, BIN, S, f'{A}/B', f'{A}/$D', f'{G}/sub'):  # A/B: where a relative `cd B` goes without the CDPATH bash searches first; A/$D: a cd to a literal $D
+for d in (A, B, C, H, BIN, S, f'{A}/B', f'{A}/$D', f'{G}/sub', f'{C}/repo', f'{C}/x'):  # A/B: where a relative `cd B` goes without the CDPATH bash searches first; A/$D: a cd to a literal $D
     os.makedirs(d)
+os.symlink(f'{C}/repo', f'{A}/link')  # a folder linked into another: cd follows it logically, cd -P physically
 GIT = shutil.which('git')
 subprocess.run([GIT, 'init', '-q', G], check=True)  # for cd $(git rev-parse --show-toplevel)
 open(f'{T}/in.txt', 'w').close()  # an input a redirect can read
@@ -58,7 +60,14 @@ ODD = [f'cd {{B}} {r}' for r in R] + [f'pushd {{B}} {r}' for r in R] + [f'pushd 
     f'{c} {r}' for c in ('cd {B}', 'pushd {B}', 'pushd {B} >/dev/null; popd') for r in (
         '>$F', '>"$F"', '>/nonexistent/x', '2>{T}/nodir/x', '<{T}/missing', '>{B}', '>{T}/out.txt', '>>{T}/out.txt', '<{T}/in.txt')] + [
     '! {{ cd {B}/nope; }}', '! {{ cd {B}; }}', "! eval 'cd {B}/nope'", "! eval 'cd {B}'", '! ( cd {B}/nope )', 'f() {{ cd {B}/nope; }}; ! f',
-    '! {{ true && cd {B}/nope; }}']  # redirects, substitutions, negation, a redefined cd; redirects that fail, negated groups
+    '! {{ true && cd {B}/nope; }}'] + [  # redirects, substitutions, negation, a redefined cd; redirects that fail, negated groups
+    'cd {A}/link; cd ..', 'cd {A}/link/..', 'cd -L {A}/link/..', 'cd -P {A}/link/..', 'cd -P {A}/link; cd ..', 'cd {A}/link; cd -P ..',
+    'cd {A}/link/../x', 'cd -P {A}/link/../x', 'cd {A}/link; cd ..; cd -', 'cd {A}/link && cd .. && :', 'pushd {A}/link >/dev/null; cd ..',
+    'pushd {A}/link/.. >/dev/null', 'cd {A}/link; pushd .. >/dev/null', 'pushd {A}/link >/dev/null; pushd {B} >/dev/null; popd >/dev/null',
+    'set -P; cd {A}/link; cd ..', 'set -o physical; cd {A}/link/..'] + [  # symlinks
+    'CDPATH={C} cd repo', 'CDPATH= cd B', 'HOME={C} cd', 'HOME={C} cd ~', 'cd {B}; OLDPWD={C} cd -', 'CDPATH={C} pushd repo >/dev/null',
+    'cd {B} && pushd {C} >/dev/null && HOME={B} popd >/dev/null', 'env CDPATH={C} cd repo', 'env cd {B}', 'nice cd {B}', 'command cd {B}',
+    'CDPATH={C} builtin cd repo', 'CDPATH={C} cd repo; cd repo', 'X=1 cd {B}', 'PWD={C} cd ..', 'CDPATH={C} command cd repo']  # prefixes
 EVERYDAY = [  # lines agents typed (Claude Code transcripts on this machine, 2026-10), their paths made the corpus's and other commands harmless ones
     'cd {B} && git push -u origin {G} 2>&1 | tail -6; git rev-parse HEAD',
     'cd {B}; glab issue view 1 --comments 2>&1 | head -40; glab mr create --title {G}',
@@ -100,7 +109,7 @@ def lines():
         dq = '"' + re.sub(r'([\\"`])', r'\\\1', x) + '"'  # the parent expands its $D
         uq = re.sub(r'([^\w$/.,:=+@%-])', r'\\\1', x.replace('\n', ';'))  # ... and splits what it expands
         return w.format(X=x, q=shlex.quote(x), dq=dq, uq=uq, H=f'EOF{depth}', B=B, C=C, T=T)
-    def body(m, sep='\n'): return m.replace('{G}/', G + '/').format(B=B, C=C, T=T, S=S, G=f't{next(n)}') + sep + post()
+    def body(m, sep='\n'): return m.replace('{G}/', G + '/').format(A=A, B=B, C=C, T=T, S=S, G=f't{next(n)}') + sep + post()
     def line(*xs): return '\n'.join(x for x in xs if x)
     i = 0
     for w in WRAPS:
