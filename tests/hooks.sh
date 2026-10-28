@@ -1943,6 +1943,11 @@ git clone -q -b main "$T/cr.git" "$T/cr2"; echo squash > "$T/cr2/skills/a/SKILL.
 git -C "$T/cr" fetch -q; git -C "$T/cr" merge -q origin/main -m 'Merge main'
 check "a merged main's squash commit, already on a remote-tracking ref, needs no trailer of the push" "0 Merge main" \
   "$(git -C "$T/cr" push -q origin f > "$T/cr.out" 2>&1; echo $?) $(git -C "$T/cr.git" log -1 --format=%s f)"
+# pre-push on a checkout without node_modules: tests/all.sh names the install command, and each push keeps its own log
+mkdir -p "$T/pp/tests"; cp -r "$R/.githooks" "$T/pp/"; cp "$R/tests/all.sh" "$T/pp/tests/"
+pp() { TMPDIR="$T/pplogs" sh "$T/pp/.githooks/pre-push" </dev/null | sed -n 's/.*see //p'; }
+mkdir -p "$T/pplogs"; L1=$(pp); L2=$(pp)
+check "pre-push: two failed pushes keep two logs, each naming the install command" "2 1 1" "$(ls "$T/pplogs" | wc -l) $(grep -c 'pnpm install' "$L1") $([ -n "$L1" ] && [ "$L1" != "$L2" ] && grep -c 'pnpm install' "$L2")"
 # ---------- fail closed: a check that can't run blocks; the vikejs/vike#3671 session ("Fix CI"), replayed command by command ----------
 # shellcmd.parse lexes the whole command as bash does: that session's commit messages and PR body spanned lines, the old
 # line-by-line split raised, and its fallback saw only `cd`, so every check after it was skipped
