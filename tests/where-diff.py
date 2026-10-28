@@ -2,7 +2,8 @@
 """shellcmd.Where against bash: a generated corpus of command lines (assignments, cd forms, the dir stack, git -C, subshells, child
 shells, heredocs, eval, env, &&, ||, pipes, if, for, while, case, functions, nested two deep; a script word single-, double- or
 unquoted, a heredoc quoted or not, a here-string single- or double-quoted, env-prefixed, crossed with cd targets that exist, are
-missing, hold a space, are two words, are relative under a CDPATH, or are ~ and - after HOME and OLDPWD are assigned), each run in real bash from dir A
+missing, hold a space, are two words, are relative under a CDPATH, or are ~ and - after HOME and OLDPWD are assigned; a $ bash keeps
+literal in every quoting that keeps it), each run in real bash from dir A
 with stub glab and git that print the dir they run in, and walked by Where. Every posting command Where calls known must have run
 in that dir; None (unknown) is always allowed. Usage: tests/where-diff.py [repo root]"""
 import os, re, shlex, shutil, subprocess, sys, tempfile
@@ -11,7 +12,7 @@ R = os.path.abspath(sys.argv[1] if sys.argv[1:] else os.path.join(os.path.dirnam
 os.environ.setdefault('MERGEWORTHY_PYDEPS', os.path.expanduser('~/.mergeworthy/pydeps'))
 T = os.path.realpath(tempfile.mkdtemp(prefix='where-diff-'))
 A, B, C, H, BIN, S = (os.path.join(T, n) for n in ('A', 'B', 'C', 'home', 'bin', 'my dir'))
-for d in (A, B, C, H, BIN, S, f'{A}/B'):  # A/B: where a relative `cd B` goes without the CDPATH bash searches first
+for d in (A, B, C, H, BIN, S, f'{A}/B', f'{A}/$D'):  # A/B: where a relative `cd B` goes without the CDPATH bash searches first; A/$D: a cd to a literal $D
     os.makedirs(d)
 for v in ('D', 'E', 'CDPATH', 'OLDPWD', 'BASH_ENV', 'ENV'):
     os.environ.pop(v, None)
@@ -37,13 +38,15 @@ WRAPS = ['{X}', '( {X} )', '{{ {X}; }}', 'bash -c {q}', 'sh -c {q}', "bash <<'{H
 SCRIPTS = ['{X}', '( {X} )', 'bash -c {q}', "bash <<'{H}'\n{X}\n{H}", 'bash <<< {q}', 'eval {q}'] + WRAPS[23:]  # every way a script word is quoted
 TARGETS = [('', '{B}'), ('', '{B}/nope'), ('', '{S}'), ('', '{B} {C}'), ('CDPATH={T}', 'B'), ('', '~'), ('cd {C}; HOME={B}', '~'),
            ('cd {C}; HOME={B}', ''), ('cd {B}; OLDPWD={C}', '-')]  # (what the line sets first, a cd target)
+LITS = ["cd '$D'", "cd '${{D}}'", 'cd "\\$D"', 'cd \\$D', "cd $'$D'", "E='$D'; cd \"$E\"", 'E="\\$D"; cd $E', "E=$'\\x24D'; cd \"$E\""]  # a $ bash keeps
 PATHS = ['cd {t}', "cd '{t}'", 'cd "{t}"', "D='{t}'; cd $D", "D='{t}'; cd \"$D\""]  # every way a path word is quoted
 SUDO = ['sudo bash -c {q}', 'sudo -u nobody sh -c {q}', 'su -c {q} nobody']  # not run: their environment and dir, so Where must call them unknown
 
 
 def lines():
     """(command line, run it, its environment's additions): every wrapper around every mover after a rotating prelude, pairs of
-    wrappers two deep, every script quoting around every cd target, and every path quoting of each target, alone, before && and in a chain of &&;
+    wrappers two deep, every script quoting around every cd target, every path quoting of each target, alone, before && and in a chain of
+    &&, and every script quoting around every literal $;
     statements on lines of their own (a heredoc's end line holds nothing else)."""
     n = iter(range(1, 10 ** 6))
     def post(): return f'glab mr create --title t{next(n)}'
@@ -72,6 +75,10 @@ def lines():
                 yield line(pre, fill(w, body(p), 1), post()), True, {}
             yield line(pre, body(p, ' && ')), True, {}
             yield line(pre, body('cd {C} && ' + p, ' && ')), True, {}  # a chain of &&
+    for m in LITS:  # with D an existing dir, so expanding the literal $D lands somewhere
+        for w in SCRIPTS:
+            yield line(f'export D={B}', fill(w, body(m), 1), post()), True, {}
+        yield line(f'export D={B}', body(m, ' && ')), True, {}
     for p in PATHS:  # a CDPATH in the environment
         for w in ('{X}', 'bash -c {q}'):
             yield line(fill(w, body(p.format(t='B')), 1), post()), True, {'CDPATH': T}

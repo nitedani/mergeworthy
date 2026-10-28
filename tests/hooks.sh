@@ -2017,6 +2017,8 @@ mkdir -p "$CK/my dir"
 check "BLOCK: an MR after a cd that fails (a missing target, an unquoted expansion holding a space, two arguments) joins no watcher; after && it joins the target's" \
   "2|| 2|| 2|| 0|gitlab.com/ns/proj !9|" \
   "$(treg "$U9" "cd $CK4; cd $CK/typo; $MRC" "$CK4") $(treg "$U9" "D=\"$CK/my dir\"; cd \$D; $MRC" "$CK4") $(treg "$U9" "cd $CK $CK4; $MRC" "$CK4") $(treg "$U9" "cd $CK/typo2 && $MRC" "$CK4")"
+check "BLOCK: an MR after a cd to a \$ bash keeps literal (cd '\$D', a value set from '\$D') joins no watcher, though D names a watched folder" "2|| 2||" \
+  "$(treg "$U9" "export D=$CK; cd '\$D'; $MRC" "$CK4") $(treg "$U9" "export D=$CK; E='\$D'; cd \"\$E\" && $MRC" "$CK4")"
 rm "$TK4/gh-watch.pid" "$TK4/repos.txt"
 rm "$TK2/gh-watch.pid" "$TK2/repos.txt" "$TK2/session"
 kill "$FPID"

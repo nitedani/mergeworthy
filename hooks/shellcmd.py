@@ -84,8 +84,17 @@ def _src(n, src):
 class Word(str):
     """A word as bash passes it (_word), with script: the text a shell that reads it as a script gets, the parent having expanded it
     first, each of the parent's expansions made _parent's placeholder; splits: whether it holds an unquoted expansion, which bash
-    splits, globs and drops when empty; tilde: whether it starts with an unquoted ~, which bash expands (a value's, in an assignment)."""
-    script, splits, tilde = None, False, None
+    splits, globs and drops when empty; tilde: whether it starts with an unquoted ~, which bash expands (a value's, in an assignment);
+    literal: the word with each $ and ` bash keeps as it is (quoted or escaped) marked (_LITERAL), when it has one."""
+    script, splits, tilde, literal = None, False, None, None
+
+
+_LITERAL = str.maketrans('$`', '\0\1')  # a literal $ and `, which Where.expand leaves alone
+
+
+def _plain(w):
+    """A Word.literal (or any text) with its literal $ and ` back."""
+    return w.replace('\0', '$').replace('\1', '`')
 
 
 def _script(w):
@@ -110,7 +119,7 @@ def _placeholders(script):
 
 def _word(w, src):
     """A word as bash passes it: quotes and escapes removed; expansions and substitutions as written (a Word)."""
-    out, sc = [], []  # the word, and its script
+    out, sc, lt = [], [], []  # the word, its script, its literal
     for p in w.get('Parts') or []:
         t, v = p.get('Type'), p.get('Value', '')
         if t == 'Lit':
@@ -121,13 +130,18 @@ def _word(w, src):
             for x in p.get('Parts') or []:
                 out.append(re.sub(r'\\([$`"\\])', r'\1', x.get('Value', '').replace('\\\n', '')) if x.get('Type') == 'Lit' else _src(x, src))
                 sc.append(out[-1] if x.get('Type') == 'Lit' else _parent(x))
+                lt.append(out[-1].translate(_LITERAL) if x.get('Type') == 'Lit' else out[-1])
             continue
         else:
             out.append(_src(p, src))
             sc.append(_parent(p))
+            lt.append(out[-1])
             continue
         sc.append(out[-1])
+        lt.append(out[-1].translate(_LITERAL))
     word = Word(''.join(out))
+    literal = ''.join(lt)
+    word.literal = literal if literal != word else None
     parts = w.get('Parts') or []
     word.script, word.splits = ''.join(sc), any(p.get('Type') not in ('Lit', 'SglQuoted', 'DblQuoted') for p in parts)
     word.tilde = bool(parts) and parts[0].get('Type') == 'Lit' and parts[0].get('Value', '')[:1] == '~'
@@ -148,6 +162,7 @@ def _assign(a, src):
     v = _word(a['Value'], src) if a.get('Value') else _src(a['Array'], src) if a.get('Array') else ''
     word = Word(a['Name']['Value'] + '+' * bool(a.get('Append')) + '=' + v)
     word.tilde = getattr(v, 'tilde', False)
+    word.literal = getattr(v, 'literal', None) and word[:len(word) - len(v)] + v.literal
     return word
 
 
@@ -415,16 +430,17 @@ class Where:
     def expand(self, p):
         """p with the line's variables ($D, ${D}; $PWD and $OLDPWD where it runs, unless the line assigns them), then the environment's,
         put in; one it can't tell stays as written."""
+        p = getattr(p, 'literal', None) or p
         def value(m):
             n = m[1] or m[2]
             v = None if n in ('PWD', 'OLDPWD') and n in self.vars else self.dir if n == 'PWD' else self.old if n == 'OLDPWD' else self.vars[n] if n in self.vars else None if self.lost else os.environ.get(n)
             return m[0] if v is None else v
-        return re.sub(r'\$(?:(\w+)|\{(\w+)\})', value, p)
+        return _plain(re.sub(r'\$(?:(\w+)|\{(\w+)\})', value, p))
 
     def path(self, p, base=''):
         """p resolved from base (default: the dir), or None when it can't be told (an expansion left, an unknown base, a ~ after the
         line assigns HOME)."""
-        p = self._home(p)
+        p = self._home(getattr(p, 'literal', None) or p, getattr(p, 'tilde', None))
         p = p and self.expand(p)
         if p is None: return None
         base = self.dir if base == '' else base
@@ -455,7 +471,7 @@ class Where:
             for n in changed - {'dir', 'lost'}: self._set(n, vars.get(n))
         elif f[1] == 'and' and self.pending:
             self._move(*self.pending)
-        sets = [(w.partition('='), ordered, getattr(w, 'tilde', None)) for w, ordered in (x for x in f[2] if not isinstance(x, str))]
+        sets = [((getattr(w, 'literal', None) or w).partition('='), ordered, getattr(w, 'tilde', None)) for w, ordered in (x for x in f[2] if not isinstance(x, str))]
         argv = [(n, self._value(v, t)) for (n, _, v), ordered, t in sets if not ordered]  # env's and placeholders: expanded with the command's words
         argv = [(n, v if not n.startswith(PARENT) or v is None or re.fullmatch(r'[\w./+,:@%=-]*', v) else None) for n, v in argv]  # a value the script reparses
         given, parent = [], dict(self.vars)
@@ -551,8 +567,8 @@ class Where:
         self.pending = (to, old, stack) if one and to is not None else None
 
     def _assign(self, x):
-        n, plus, v = re.match(r'(\w+)(\+?)=(.*)', x, re.S).groups()
-        self.written[n] = v
+        n, plus, v = re.match(r'(\w+)(\+?)=(.*)', getattr(x, 'literal', None) or x, re.S).groups()
+        self.written[n] = _plain(v)
         self._set(n, self._value('${' + n + '}' + v, False) if plus else self._value(v, getattr(x, 'tilde', None)))
 
     def _value(self, v, tilde=None):
