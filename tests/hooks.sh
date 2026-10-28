@@ -1987,6 +1987,8 @@ check "replay: a push to a draft PR's branch whose head ran no gates ('I'll push
   "$(MERGEWORTHY_WATCHER=off bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$TCO") $(grep -c 'pr-steps quick' "$T/err")"
 printf 'pnpm test -> exit 0 (3 tests)\nTypeScript: types not installed here, let CI verify -> exit 0\n' > "$T/q-ci.log"
 check "pr-steps quick refuses a log whose gate didn't run ('not installed', 'let CI verify')" "1 1" "$(cd "$TCO" && bash "$R/bin/pr-steps" quick "$T/q-ci.log" 2>"$T/err" >/dev/null; echo $?) $(grep -c "says a gate didn't run" "$T/err")"
+printf "replay: a push whose head ran no gates ('I'll push and let CI verify'): blocked: 2 (want 2)\nbash tests/hooks.sh . -> exit 0 (739 tests)\nbash tests/word-budget . -> exit 0 (32586 words)\n" > "$T/q-titles.log"
+check "pr-steps quick records a log whose test titles quote 'let CI', with a word-count gate" 0 "$(git -C "$TCO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m q; cd "$TCO" && bash "$R/bin/pr-steps" quick "$T/q-titles.log" >/dev/null 2>&1; echo $?)"
 TK2="$HOME/.mergeworthy/work/vike-3671"; CK="$TK2/vike"; mkdir -p "$TK2"
 printf 'Tier: S, because one CI fix in one repo\n\n- [ ] Fix CI https://github.com/vikejs/vike/pull/3671\n' > "$TK2/scope.md"
 git init -q -b fix-telefunc "$CK"; git -C "$CK" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; git -C "$CK" remote add upstream https://github.com/vikejs/vike.git
