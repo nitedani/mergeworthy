@@ -307,7 +307,8 @@ if kind == 'issue' and not decision and chars > 400:
 _loc = uncoded(text)
 _loc = re.sub(r'^\s*(?:[-*]\s+)?>.*$', '', _loc, flags=re.M)
 _loc = re.sub(r'\[(?:[^\[\]]|\[[^\]]*\])*\]\([^)]*\)', '', _loc)  # linked text, `[x](url)` included
-_locs = re.findall(r'[\w./-]+\.(?:[cm]?[jt]sx?|py|rs|go|vue|svelte|java|rb|php|css|html?|json|ya?ml|toml):\d+(?:-\d+)?\b|\blines? \d+(?:[-–]\d+)?\b', _loc)
+_locs = re.findall(r'[\w./-]+\.(?:[cm]?[jt]sx?|py|rs|go|vue|svelte|java|rb|php|css|html?|json|ya?ml|toml):\d+(?:-\d+)?\b', _loc)
+_locs += re.findall(r'\blines? \d+(?:[-–]\d+)?\b', re.sub(r'`[^`\n]*`', '', _loc))  # "line 1" in inline code quotes a message, not a place
 if _locs:
     findings.append(f"code location without a link: {', '.join(dict.fromkeys(_locs))}: link each to the line at a commit (a permalink), so a reader can open it")
 # a newcomer must see where it is and how to reproduce it (lexunit-ai/atotal_vagyon_borze#49 comment 6017184273)
