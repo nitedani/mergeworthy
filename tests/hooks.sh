@@ -2004,6 +2004,9 @@ check "BLOCK: an MR whose command ran where the dir can't be told (a cd to an un
 check "an MR joins the folder a bash -c prefix assignment names, over an exported value; a subshell's cd after && or in a loop leaves the dir known" \
   "0|gitlab.com/ns/proj !9| 0||gitlab.com/ns/proj !9 0||gitlab.com/ns/proj !9" \
   "$(treg "$U9" "export D=$CK4; D=$CK bash -c 'cd \"\$D\"; $MRC'" "$CK4") $(treg "$U9" "true && (cd $CK4); $MRC" "$CK4") $(treg "$U9" "for n in 1 2; do (cd $CK4); done; $MRC" "$CK4")"
+check "an MR joins the folder a later prefix assignment takes from an earlier one (D=.. E=\"\$D\" bash -c); env's own arguments see the exported value" \
+  "0|gitlab.com/ns/proj !9| 0||gitlab.com/ns/proj !9" \
+  "$(treg "$U9" "export D=$CK4; D=$CK E=\"\$D\" bash -c 'cd \"\$E\"; $MRC'" "$CK4") $(treg "$U9" "export D=$CK4; env D=$CK E=\"\$D\" bash -c 'cd \"\$E\"; $MRC'" "$CK4")"
 rm "$TK4/gh-watch.pid" "$TK4/repos.txt"
 rm "$TK2/gh-watch.pid" "$TK2/repos.txt" "$TK2/session"
 kill "$FPID"

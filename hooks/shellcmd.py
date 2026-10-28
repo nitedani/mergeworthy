@@ -109,7 +109,7 @@ _ids = itertools.count()
 
 class Seg(list):
     """A simple command's argv. frames: the scopes it runs in, outermost first, each (id, kind, the variables set on entering it: a
-    loop's own, unknown; a child shell's from its command's prefix, `D=x bash -c`): 'sub' (a copy of the shell: a subshell,
+    loop's own, unknown; a child shell's, (word, whether it sees the ones before it) of its command's prefix or env's arguments, `D=x bash -c`): 'sub' (a copy of the shell: a subshell,
     substitution, pipeline part or background job), 'proc' (a child shell: `bash -c`, a heredoc a shell reads), 'user' (a shell
     whose environment can't be told: another user's, `sudo bash -c`, `su -c`, or one `env` with options starts), 'cond' (it may not run: after && or ||, an if or
     case branch), 'loop' (a loop's body, run again and again) or 'opaque' (run where it can't be told: a function's body, a command
@@ -201,15 +201,17 @@ def _inner(s, depth):
 
 
 def _child(s):
-    """The frame of the child shell segment s starts: 'proc', with the assignments its command's prefix sets in its environment,
-    or 'user' (another user's shell, `env` with options, a prefix appending to a variable)."""
+    """The frame of the child shell segment s starts: 'proc', with the assignments that set its environment, each (word, whether
+    it sees the ones before it: true for the command's prefix, false for env's arguments), or 'user' (another user's shell, `env`
+    with options, a prefix appending to a variable)."""
     t = prog(s)
     pre = s[:len(s) - len(t)]
     names = [os.path.basename(w) for w in pre + t[:1]]
     if {'sudo', 'su', 'runuser'} & set(names) or 'env' in names and any(w.startswith('-') for w in pre[names.index('env'):]) or \
             any(re.match(r'\w+\+=', w) for w in pre):
         return next(_ids), 'user', ()
-    return next(_ids), 'proc', tuple(w for w in pre if re.match(r'\w+=', w))
+    lead = next((i for i, w in enumerate(pre) if not re.match(r'\w+=', w)), len(pre))
+    return next(_ids), 'proc', tuple((w, i < lead) for i, w in enumerate(pre) if re.match(r'\w+=', w))
 
 
 def reads_stdin(t):
@@ -385,7 +387,14 @@ class Where:
 
     def _enter(self, f, changing):
         self.open.append((f, self._state(), set()))
-        given = [(n, self._value(v)) for n, _, v in (x.partition('=') for x in f[2] if '=' in x)]  # expanded where the command runs
+        sets = [(w.partition('='), ordered) for w, ordered in (x for x in f[2] if not isinstance(x, str))]
+        argv = [(n, self._value(v)) for (n, _, v), ordered in sets if not ordered]  # env's: expanded with the command's words
+        given, parent = [], dict(self.vars)
+        for (n, _, v), ordered in sets:  # the prefix's, in order: each sees the ones before it
+            if ordered:
+                given.append((n, self._value(v)))
+                self.vars[n] = given[-1][1]
+        self.vars, given = parent, given + argv
         if f[1] in ('proc', 'user'):  # a child shell gets the exported variables alone, and no dir stack
             self.vars = {} if f[1] == 'user' else {n: v if n in self.exported or n in os.environ else None for n, v in self.vars.items()}
             self.old, self.stack = None, []
@@ -393,7 +402,7 @@ class Where:
             self.dir = self.old = self.stack = None
             self.lost = True
         for n in f[2]:
-            if '=' not in n: self._set(n, None)
+            if isinstance(n, str): self._set(n, None)
         for n, v in given:
             self._set(n, v)
             self.exported.add(n)
