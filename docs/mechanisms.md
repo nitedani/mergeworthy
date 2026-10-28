@@ -159,7 +159,7 @@ It parses the whole command with mvdan/sh, the parser of `shfmt` (`hooks/shellcm
 
 ### `post-bash-register.py` (`reply`, `task` step 5)
 
-It adds a thread you just opened or posted in (its `gh` or `glab` URL) to a watcher that counts for pre-bash-guard: the task's work folder holding the command's dir (after a `cd` in it) or your session's, one covering its repo first. Another session's watcher never gets it. With several posts in one command, each thread joins the watcher of the folder its own command ran in: in order when there are as many threads as posting commands, else by the one folder every command it could come from ran in. A thread that could come from commands in different folders joins none, and the hook names it with the `gh-watch-start` that adds it.
+It adds a thread you just opened or posted in (its `gh` or `glab` URL) to a watcher that counts for pre-bash-guard: the task's work folder holding the command's dir (after a `cd` in it) or your session's, one covering its repo first. Another session's watcher never gets it. With several posts in one command, each thread joins the watcher of the folder its own command ran in: in order when there are as many threads as posting commands, else by the one watcher every command it could come from leads to. A thread that could come from commands leading to different watchers (or to one and to none) joins none, and the hook names it with the `gh-watch-start` that adds it.
 
 ### `stop-lint.py` (always-on, `reply`)
 

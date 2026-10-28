@@ -3,7 +3,7 @@
 joins the threads.txt of a watcher whose events reach the posting session (the task's work folder holding the command's dir,
 or the session's own), the one covering its repo first, so maintainer comments on it are answered (mergeworthy:reply).
 Another session's watcher wakes that session alone, so it never gets the thread. With several posts in one command, each thread
-is registered from the command that posted it; one whose folder would be a guess joins none, and the hook says so (exit 2).
+is registered from the command that posted it; one whose watcher would be a guess joins none, and the hook says so (exit 2).
 A gated draft it posted as new gets its .posted marker, which pre-bash-guard reads to refuse posting it as new again."""
 import hashlib, json, os, re, shlex, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -113,29 +113,30 @@ def live(dr):
 sid = d.get('session_id')
 # a dir the posting session's steward pass read in the last day (gh-watch-start --round) counts: its next pass reads the thread
 live_dirs = [dr for dr in dirs if live(dr) or sid and steward.passed_by(dr) == sid]
-# the threads in stdout, in the order printed, each registered from the segment that posted it: with as many threads as posting
-# segments, the first unpaired one it fits; else the one dir every segment it fits ran in. A thread whose folder would be a guess
-# joins no watcher, and the agent is told
+def home_of(repo, post_dir):
+    """The watcher a new thread of repo posted from post_dir joins: of those reaching the session from there, one covering repo first."""
+    mine = work_folder.watched_by(live_dirs, sid, post_dir) + [dr for dr in live_dirs if sid and steward.passed_by(dr) == sid]
+    covering = [dr for dr in mine if any(l.split()[:1] == [repo] for l in lines(dr, 'repos.txt') + lines(dr, 'threads.txt'))]
+    return (covering + mine + [None])[0]
+# the threads in stdout, in the order printed, each joining the watcher of the segment that posted it: with as many threads as
+# posting segments, the first unpaired one it fits; else the one watcher every segment it fits leads to. A thread whose watcher
+# would be a guess joins none, and the agent is told
 found = [(m[1], m[2], f'{m[1]} {m[2]}') if m[1] else ('gitlab.com/' + m[3], m[5], f"gitlab.com/{m[3]} {'!' if m[4] == 'merge_requests' else ''}{m[5]}")  # gh-watch-start's GitLab line
          for m in re.finditer(r'github\.com/([\w.-]+/[\w.-]+)/(?:issues|pull)/(\d+)|gitlab\.com/([\w.-]+(?:/[\w.-]+)+?)/-/(issues|work_items|merge_requests)/(\d+)', out)]  # glab prints new issues as work_items
 found = [f for f in dict.fromkeys(found) if posted(f[0], f[1])]
 pairs, free, lost = [], list(posts), []
 for repo, num, line in found:
-    fits = [p for p in posts if wrote(p, repo, num)]
     if len(found) == len(posts) and (p := next((p for p in free if wrote(p, repo, num)), None)):
-        free.remove(p); pairs.append((repo, line, p[2]))
-    elif len({p[2] for p in fits}) == 1:
-        pairs.append((repo, line, fits[0][2]))
+        free.remove(p); homes = {home_of(repo, p[2])}
     else:
-        lost.append(line)
-for repo, line, post_dir in pairs:
-    mine = work_folder.watched_by(live_dirs, sid, post_dir) + [dr for dr in live_dirs if sid and steward.passed_by(dr) == sid]
-    home = next((dr for dr in live_dirs if line in lines(dr, 'threads.txt')), None)
-    if not home:
-        covering = [dr for dr in mine if any(l.split()[:1] == [repo] for l in lines(dr, 'repos.txt') + lines(dr, 'threads.txt'))]
-        home = (covering + mine + [None])[0]
-        if home:
-            open(os.path.join(home, 'threads.txt'), 'a').write(line + '\n')
+        homes = {home_of(repo, p[2]) for p in posts if wrote(p, repo, num)}
+    if len(homes) == 1: pairs.append((repo, line, homes.pop()))
+    else: lost.append(line)
+for repo, line, home in pairs:
+    if watched := next((dr for dr in live_dirs if line in lines(dr, 'threads.txt')), None):
+        home = watched
+    elif home:
+        open(os.path.join(home, 'threads.txt'), 'a').write(line + '\n')
     # the thread now covers its repo there: its bare repo line says nothing more
     if home and repo in lines(home, 'repos.txt'):
         p = os.path.join(home, 'repos.txt')
