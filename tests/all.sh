@@ -12,6 +12,7 @@ run() { # a suite; once it and every process it started have exited (tests/reap.
 }
 run python3 docs/build-graphs.py --check
 run bash tests/hooks.sh .
+run python3 tests/where-diff.py .
 run bash tests/word-budget .
 run python3 tests/pointers.py .
 run bash tests/watcher.sh .
