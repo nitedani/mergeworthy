@@ -157,6 +157,21 @@ tr_cmd "gh api graphql -f query='query(\$n:Int!){repository(owner:\"o\",name:\"r
 check "a GraphQL query is a read, not a post" 0 "$(stop "$T/work")"
 tr_cmd "gh api repos/o/r/issues -X GET -F per_page=100"
 check "an explicit GET with fields is a read" 0 "$(stop "$T/work")"
+# a steward pass (gh-watch-start --round) leaves no Monitor: the session its passed file names may post, and that dir's owed replies hold the turn
+PD="$T/passdir"; mkdir -p "$PD"; echo "$PD" >> "$HOME/.claude/gh-watch-dirs.txt"; echo 'Tier: S, because one fix' > "$PD/scope.md"  # a posting session works on a scoped task
+stop_as() { python3 -c 'import json,sys; print(json.dumps({"transcript_path":sys.argv[1],"cwd":sys.argv[2],"session_id":sys.argv[3]}))' "$T/tr.jsonl" "$T" "$1" \
+  | MERGEWORTHY_STOP_CHECKIN=off python3 "$R/hooks/stop-lint.py" 2>"$T/err"; echo $?; }
+tr_cmd "gh issue comment 5 --repo o/r --body-file $PD/drafts/r.md"
+check "BLOCK: a post with no Monitor and no pass" 2 "$(stop_as s-p)"
+echo s-other > "$PD/passed"
+check "BLOCK: a pass another session ran doesn't count" 2 "$(stop_as s-p)"
+echo s-p > "$PD/passed"
+check "a post in the session whose pass round ran needs no Monitor" 0 "$(stop_as s-p)"
+echo "o/r 5 comment 77 by someone" > "$PD/replies-owed.md"
+check "BLOCK: the pass dir's owed reply holds the turn though no daemon runs there" 2 "$(stop_as s-p)"
+rm "$PD/replies-owed.md"; touch -d '-25 hours' "$PD/passed"
+check "BLOCK: a pass over a day old doesn't count" 2 "$(stop_as s-p)"
+rm "$PD/passed"
 tr_cmd "gh issue comment 5 --repo o/r --body-file $WD/drafts/r.md"
 check "BLOCK: a post with no Monitor on the watcher" 2 "$(stop "$T/work")"
 tr_cmd "mw post $WD/drafts/r.md -- gh pr comment 5 --repo o/r --body-file $WD/drafts/r.md"
@@ -308,10 +323,40 @@ check "gate-pass passes with thread-context.md beside the draft, written before 
 check "gate-pass records the thread context in the gate" 1 "$(grep -c '^tc ' "$GD/r.md.gate")"
 printf 'The test checks that "I'"'"'ll switch it once X is released" passes.\n' > "$GD/r.md"; touch -d '+2 minutes' "$GD/r.md"
 check "a quoted \"I'll\" is someone else's words, not a promise" 0 "$(gp)"
+printf 'The lint says:\n\n```\nsay what is being done ('"'"'I'"'"'ll merge …'"'"')\n```\n' > "$GD/r.md"; touch -d '+150 seconds' "$GD/r.md"
+check "an \"I'll\" inside a fenced code block is a tool's output, not a promise" 0 "$(gp)"
+printf 'The build fails:\n\n```\n3 foo();\n  ~~~\n```\n\nI'"'"'ll fix it in a follow-up PR.\n' > "$GD/r.md"; touch -d '+160 seconds' "$GD/r.md"
+check "BLOCK: a promise after a code block whose output holds a fence-like line (tsc's ~~~ underline)" "1 1" "$(gp) $(grep -c 'promises work' "$T/gp.out")"
+printf 'The lint says:\n\n~~~\nI'"'"'ll merge it once green\n~~~\n' > "$GD/r.md"; touch -d '+170 seconds' "$GD/r.md"
+check "an \"I'll\" inside a ~~~ code block is not a promise either" 0 "$(gp)"
 printf "I'll open a PR for it.\n" > "$GD/r.md"; touch -d '+3 minutes' "$GD/r.md"
 check "BLOCK: the draft's own \"I'll\" needs a PROMISED line" "1 1" "$(gp) $(grep -c 'promises work' "$T/gp.out")"
 WP="$T/wp"; mkdir -p "$WP"; echo sess1 > "$WP/session"; echo "$WP" >> "$HOME/.claude/gh-watch-dirs.txt"; echo "PROMISED o/r#1: a PR (r.md)" > "$WP/proposals-open.md"
 check "a PROMISED line in the session's watch dir counts, wherever the draft lives" 0 "$(CLAUDE_CODE_SESSION_ID=sess1 gp)"
+
+# ---------- a status post (post step 3): post-lint checks it in place of a review, and gate-pass takes `none` for it alone ----------
+FUT=$(date -u -d '+1 day' +%Y-%m-%dT%H:%MZ); PAST=$(date -u -d '-1 hour' +%Y-%m-%dT%H:%MZ)
+# sl <finding> <draft> [badge]: the lines naming <finding>; with '' post-lint's exit code, so a crash isn't a pass
+sl() { printf '%s\n' "$2" > "$T/st.md"; local out rc; out=$(MERGEWORTHY_BADGE="${3:-off}" python3 "$R/bin/post-lint" "$T/st.md" --kind status --parent none 2>/dev/null); rc=$?; [ -n "$1" ] || { echo "$rc"; return; }; printf '%s\n' "$out" | grep -c "$1"; }
+check "status: what is being done and by when, in UTC, passes" 0 "$(sl '' "@brillout On it: I'm rating everything this PR adds or changes against your refactor skill, with one commit per refactor. The table of old ⇒ new ratings comes by $FUT.")"
+check "status: a time of day (UTC, or with a date beside it), one that passed, a lowercase ISO one (stop-lint can't parse it), a relative one (hedged too), and none at all are findings" "1 1 1 1 1 1 1 1" "$(sl 'time of day' 'The table comes by 16:00.') $(sl 'time of day' "I'll merge it by 23:30 UTC on October 27th.") $(sl 'has passed' "The table comes by $PAST.") $(sl 'say by when' "The table comes by ${PAST,,}.") $(sl 'relative time' "The table comes tomorrow, the rest by $FUT.") $(sl 'relative time' "The table comes by $FUT (in about an hour).") $(sl 'relative time' "The rest comes in a few days, the table by $FUT.") $(sl 'say by when' 'On it.')"
+check "status: a date, a month or a number in the prose is no time: those pass" "0 0 0" "$(sl '' "I'm reviewing the May release, the JUnit 5 suite and 3 decisions. The report comes by $FUT.") $(sl '' "I'll mark 2 items done before $FUT.") $(sl '' "I'm checking the 2026-10-27 run. The report comes by $FUT.")"
+check "status: a sha, a count, a result word, a reason (because, \", since\", now that, not the time \"since\"), a table and a question each need the review" "1 1 1 1 1 1 0 1 1" "$(sl 'is a claim' "Fixed in abc1234, the rest by $FUT.") $(sl 'is a claim' "12 tests to go, done by $FUT.") $(sl 'is a claim' "It passes now, the docs come by $FUT.") $(sl 'is a claim' "I'm switching to the new parser because the old one is slow. The report comes by $FUT.") $(sl 'is a claim' "I'm rerunning the suite, since the cache was the cause. The report comes by $FUT.") $(sl 'is a claim' "I'm rerunning the suite now that the patch is in. The report comes by $FUT.") $(sl '' "I'm reading what changed since the last pass. The report comes by $FUT.") $(sl 'is a claim' "$(printf '| a | b |\n|---|---|\n| 1 | 2 |\n\nBy %s.' "$FUT")") $(sl 'question or a decision' "Should it cover X? I recommend yes, by $FUT.")"
+check "status: a fenced code block, with backticks or tildes, needs the review" "1 1" "$(sl 'code block' "$(printf 'I am rerunning the suite.\n\n```\nok\n```\n\nThe report comes by %s.' "$FUT")") $(sl 'code block' "$(printf 'I am rerunning the suite.\n\n~~~\nok\n~~~\n\nThe report comes by %s.' "$FUT")")"
+check "status: each sentence says what is being done or by when; any other needs the review" "1 1 0" "$(sl 'says neither' "The docs are updated. The report comes by $FUT.") $(sl 'says neither' "I checked it and the cache was the cause. The report comes by $FUT.") $(sl '' "Next, I'll rebase onto main. Then I'm rerunning the gates, and the report comes by $FUT.")"
+check "status: 'I'm seeing …' or 'I'm getting …' reports a result: it needs the review" "1 1 1 0" "$(sl 'says neither' "I'm seeing the expected output. The report comes by $FUT.") $(sl 'says neither' "We are still getting the correct output. The report comes by $FUT.") $(sl 'says neither' "I'm seeing matching output. The report comes by $FUT.") $(sl '' "I'm still reviewing the patch. The report comes by $FUT.")"
+check "status: a list of actions and their deadline passes, an item that is neither does not" "0 0 1" "$(sl '' "$(printf -- "- I'm reviewing the patch.\n- I'll send the report by %s." "$FUT")") $(sl '' "$(printf -- "1. I'm reviewing the patch\n2. I'll send the report by %s" "$FUT")") $(sl 'says neither' "$(printf -- "- I'm reviewing the patch\n- The docs are updated\n- I'll send the report by %s" "$FUT")")"
+check "status: a time not after by or before (stop-lint's form), a link to code, a GENUINE-FORK line and over 100 words are findings" "1 1 1 1" "$(sl 'say by when' "The table comes at $FUT.") $(sl 'is a claim' "See https://github.com/o/r/commit/abc, the rest by $FUT.") $(sl 'question or a decision' "$(printf 'The rest by %s.\nGENUINE-FORK: a or b; I recommend a' "$FUT")") $(sl '> 100' "$(printf 'word %.0s' $(seq 101)) by $FUT.")"
+check "status: a badge naming a reviewer is a finding" 1 "$(sl 'names only the writer' "$(printf '<img src="https://github.com/claude.png" width="20" height="20" alt="Claude"> *Opus 5.5 (low effort) wrote this; Opus 5.5 (low effort) reviewed it.*\nThe table comes by %s.' "$FUT")" on)"
+GS="$T/sdrafts/x"; mkdir -p "$GS"; cp "$TD/thread-context.md" "$GS/"; printf 'The table of old ⇒ new ratings comes by %s.\n' "$FUT" > "$GS/s.md"; touch -d '+1 minute' "$GS/s.md"
+sg() { MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GS/s.md" none --kind "$1" --parent none >"$T/gp.out" 2>&1; echo $?; }
+check "BLOCK: gate-pass without a review for anything but a status post" "1 1" "$(sg reply) $(grep -c 'only a status post' "$T/gp.out")"
+check "BLOCK: a status post needs its PROMISED line" "1 1" "$(sg status) $(grep -c 'promises work' "$T/gp.out")"
+printf 'The rebase lands by %s, and then I'"'"'ll merge.\n' "$FUT" > "$GS/s.md"; touch -d '+2 minutes' "$GS/s.md"
+check "BLOCK: a status post needs its PROMISED line even when it says it will merge" "1 1" "$(sg status) $(grep -c 'promises work' "$T/gp.out")"
+printf 'The table of old ⇒ new ratings comes by %s.\n' "$FUT" > "$GS/s.md"; touch -d '+3 minutes' "$GS/s.md"
+echo "PROMISED o/r#1: the ratings table (s.md)" > "$T/sdrafts/proposals-open.md"
+check "gate-pass gates a status post with no review once its PROMISED line is there" "0 yes" "$(sg status) $([ "$(sha256sum "$GS/s.md" | cut -d' ' -f1)" = "$(head -1 "$GS/s.md.gate")" ] && echo yes)"
 
 # ---------- post-bash-register: only a real gh post registers, and only the thread it posted to ----------
 sleep 600 & SPID=$!
@@ -353,6 +398,11 @@ python3 -c 'import json; print(json.dumps({"session_id":"sess-2","tool_input":{"
 check "a new PR joins the posting session's dir, not an older dir covering the repo" "o/r 8|none" \
   "$(cat "$D2/threads.txt" 2>/dev/null)|$(cat "$D1/threads.txt" 2>/dev/null || echo none)"
 check "the thread replaces that dir's bare repo line" "|o/r" "$(cat "$D2/repos.txt")|$(cat "$D1/repos.txt")"
+# a dir a steward pass read today (its passed file names the session) counts as live, for that session only
+D3="$T/reg-pass"; mkdir -p "$D3"; echo o/r > "$D3/repos.txt"; echo sess-3 > "$D3/passed"; echo "$D3" > "$HOME/.claude/gh-watch-dirs.txt"
+preg() { python3 -c 'import json,sys; print(json.dumps({"session_id":sys.argv[1],"tool_input":{"command":"gh pr create --repo o/r --fill"},"tool_response":{"stdout":"https://github.com/o/r/pull/9"}}))' "$1" \
+  | python3 "$R/hooks/post-bash-register.py"; cat "$D3/threads.txt" 2>/dev/null || echo none; rm -f "$D3/threads.txt"; }
+check "a new PR joins the dir the session passed today; another session's post leaves it alone" "o/r 9|none" "$(preg sess-3)|$(preg sess-4)"
 kill "$SPID"; wait "$SPID" 2>/dev/null
 
 # ---------- finality trigger: the third proposal on a thread needs a thread map ----------
@@ -985,6 +1035,32 @@ python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started
 done_events > "$T/ev4"; touch -d '5 minutes ago' "$JD/grand.jsonl"; done_events > "$T/ev5"
 check "a quiet agent whose own agent still runs is not done; it is once that one is" "0 1" "$(grep -c "AGENT DONE $T/jobs/parent-ticket.md" "$T/ev4") $(grep -c "AGENT DONE $T/jobs/parent-ticket.md" "$T/ev5")"
 python3 "$R/bin/agent-job" done "$T/jobs/parent-ticket.md" >/dev/null; python3 "$R/bin/agent-job" done "$T/jobs/grand-ticket.md" >/dev/null
+# a quiet agent whose T3 thread still has a run going (a turn waiting on a background command) hasn't finished either
+mkdir -p "$HOME/.t3/userdata"; python3 - "$HOME/.t3/userdata/statev2.sqlite" <<'EOF2'
+import sqlite3, sys
+c = sqlite3.connect(sys.argv[1])
+c.execute('create table orchestration_v2_projection_provider_threads (provider_thread_id text, thread_id text, payload_json text)')
+c.execute('create table orchestration_v2_projection_subagents (subagent_id text, thread_id text, child_thread_id text, status text)')
+c.execute('create table orchestration_v2_projection_runs (run_id text, thread_id text, status text)')
+c.execute("""insert into orchestration_v2_projection_provider_threads values ('p1', 'busy-1', '{"nativeThreadRef":{"driver":"claudeAgent","nativeId":"t3busy"}}')""")
+c.execute("insert into orchestration_v2_projection_runs values ('r1', 'busy-1', 'waiting')"); c.commit()  # waiting on an approval: as active as running
+EOF2
+reg "Execute $T/jobs/t3busy-ticket.md exactly"; child_log "$JD/t3busy.jsonl" "Execute $T/jobs/t3busy-ticket.md exactly" 5 text
+python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "t3busy-ticket" in open(f).read()]'
+t3db() { python3 -c 'import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); c.execute(sys.argv[2]); c.commit()' "$HOME/.t3/userdata/statev2.sqlite" "$1"; }
+done_events > "$T/ev6"; t3db "update orchestration_v2_projection_runs set status = 'completed'"
+t3db "insert into orchestration_v2_projection_subagents values ('s9', 'busy-1', 'child-9', 'pending')"; done_events > "$T/ev7"
+t3db "update orchestration_v2_projection_subagents set status = 'completed' where subagent_id = 's9'"; done_events > "$T/ev8"
+check "a quiet agent whose T3 run is still active (waiting), or whose delegated task is (pending), is not done; it is once both ended" "0 0 1" "$(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev6") $(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev7") $(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev8")"
+# the watcher asks T3's state on every tick for days: each lookup closes its connection, not the cycle collector
+check "T3 state lookups leave no connection open" 0 "$(python3 -c '
+import gc, os, sys; sys.path.insert(0, sys.argv[1]); import steward; gc.disable()
+for _ in range(40): steward.busy("t3busy"); steward.task_done("t3busy"); steward.is_task("t3busy"); steward.threads("t3busy"); steward.busy("nobody")
+def name(f):
+    try: return os.readlink("/proc/self/fd/" + f)
+    except OSError: return ""
+print(sum("statev2" in name(f) for f in os.listdir("/proc/self/fd")))' "$R/hooks")"
+python3 "$R/bin/agent-job" done "$T/jobs/t3busy-ticket.md" >/dev/null; rm -f "$HOME/.t3/userdata/statev2.sqlite"
 # a job launched by another watch dir's declared session goes to that dir, though its launcher's transcript names this one's events.log
 WS="$T/ws"; mkdir -p "$WS"; echo stew > "$WS/session"; echo $$ > "$WS/gh-watch.pid"; printf '%s\n' "$WS" >> "$HOME/.claude/gh-watch-dirs.txt"
 for i in 1 2 3; do echo "tail $WJ/events.log" >> "$T/stew-tr.jsonl"; done
@@ -1254,6 +1330,15 @@ seq 1 70 >> "$GS/src/a.ts"; git -C "$GS" -c user.name=t -c user.email=t@t commit
 printf 'NO BUGS\nMERGE AS IS: yes\n- a finding after them\n' > "$T/sr4.md"
 check "BLOCK: pr-steps small on a report whose last lines aren't NO BUGS and MERGE AS IS: yes" 1 "$(prss "$T/sr4.md")"
 check "BLOCK: pr-steps small past 60 lines outside tests and docs" "1 1" "$(prss "$T/sr3.md") $(grep -c 'past a small fix' "$T/prss.err")"
+# a diff of docs alone carries the cold read's record (rules step 4) instead of a test
+GD="$T/prsd"; mkdir -p "$GD/skills/a"; git -C "$GD" init -q -b main; echo a > "$GD/skills/a/SKILL.md"; git -C "$GD" add -A; git -C "$GD" -c user.name=t -c user.email=t@t commit -q -m a
+git -C "$GD" update-ref refs/remotes/origin/main HEAD; git -C "$GD" checkout -q -b fix; echo b >> "$GD/skills/a/SKILL.md"; git -C "$GD" -c user.name=t -c user.email=t@t commit -qam b
+prsd() { (cd "$GD" && bash "$R/bin/pr-steps" small "$@" 2>"$T/prsd.err" >/dev/null; echo $?); }
+r1=$(prsd "$T/sr1.md"); r1="$r1 $(grep -c 'no cold read' "$T/prsd.err")"
+echo record > "$T/sd-cold.md"; git -C "$GD" -c user.name=t -c user.email=t@t commit -q --allow-empty -m c -m "Cold-read: $T/sd-cold.md"
+check "pr-steps small on a diff of docs alone: BLOCK naming the cold read with no Cold-read trailer, records with one" "1 1 0" "$r1 $(prsd "$T/sr1.md")"
+echo x > "$GD/pnpm-lock.yaml"; git -C "$GD" add pnpm-lock.yaml; git -C "$GD" -c user.name=t -c user.email=t@t commit -q -m lock
+check "BLOCK: pr-steps small on docs and a lockfile without a test, though a commit carries a cold read" "1 1" "$(prsd "$T/sr1.md") $(grep -c 'adds or changes no test' "$T/prsd.err")"
 # ---------- pr-steps: every converge step leaves its proof; the guard needs all five ----------
 G2="$T/prs2"; mkdir -p "$G2"; git -C "$G2" init -q; git -C "$G2" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 prs2() { (cd "$G2" && bash "$R/bin/pr-steps" "$@" >/dev/null 2>&1; echo $?); }
@@ -1752,6 +1837,11 @@ echo gitlab.com/ns/sub/proj > "$GW/repos.txt"
 check "glab issue create passes once a watcher covers the project" "0 0" "$(glguard 'glab issue create -R https://gitlab.com/ns/sub/proj --title x') $(glguard 'glab mr create --draft --title x' "$T/glrepo")"
 echo 'o/r all' > "$GW/repos.txt"
 check "an 'owner/repo all' line covers the repo for opening an issue" 0 "$(glguard 'gh issue create -R o/r --title x --body-file x.md' >/dev/null; grep -c 'no running watcher' "$T/err")"
+PG="$T/glpass"; mkdir -p "$PG"; echo 'p/q all' > "$PG/repos.txt"; echo sess-g > "$PG/passed"; printf '%s\n' "$GW" "$PG" > "$HOME/.claude/gh-watch-dirs.txt"
+glsess() { python3 -c 'import json,sys; print(json.dumps({"session_id":sys.argv[1],"tool_input":{"command":"gh issue create -R p/q --title x --body-file x.md"},"cwd":sys.argv[2]}))' "$1" "$T" \
+  | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err" >/dev/null; grep -c 'no running watcher' "$T/err"; }
+check "a dir the session's steward pass read today covers its repo for opening an issue; not for another session" "0 1" "$(glsess sess-g) $(glsess sess-h)"
+echo "$GW" > "$HOME/.claude/gh-watch-dirs.txt"
 echo gitlab.com/ns/sub/proj > "$GW/repos.txt"
 glreg() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"tool_response":{"stdout":sys.argv[2]}}))' "$1" "$2" | python3 "$R/hooks/post-bash-register.py"; }
 glreg 'glab issue create -R ns/sub/proj --title x' 'https://gitlab.com/ns/sub/proj/-/work_items/12'
@@ -1773,6 +1863,12 @@ check "a later commit of the same push with the trailer covers them" 0 "$(crpush
 echo four > "$T/cr/skills/a/SKILL.md"; git -C "$T/cr" commit -qam 'skill: four' -m "Cold-read: $T/coldread.md"
 echo five > "$T/cr/skills/a/SKILL.md"; git -C "$T/cr" commit -qam 'skill: five'
 check "BLOCK: on a pushed branch, a skill commit after the last trailer, naming only it" "1 0 1" "$(crpush) $(grep -c 'skill: four' "$T/cr.out") $(grep -c 'skill: five' "$T/cr.out")"
+git -C "$T/cr" checkout -qb f origin/main; mkdir -p "$T/cr/skills/b"; echo six > "$T/cr/skills/b/SKILL.md"; git -C "$T/cr" add skills
+git -C "$T/cr" commit -qm 'skill: six' -m "Cold-read: $T/coldread.md"; git -C "$T/cr" push -q origin f
+git clone -q -b main "$T/cr.git" "$T/cr2"; echo squash > "$T/cr2/skills/a/SKILL.md"; git -C "$T/cr2" commit -qam 'skill: squash (#1)'; git -C "$T/cr2" push -q origin main
+git -C "$T/cr" fetch -q; git -C "$T/cr" merge -q origin/main -m 'Merge main'
+check "a merged main's squash commit, already on a remote-tracking ref, needs no trailer of the push" "0 Merge main" \
+  "$(git -C "$T/cr" push -q origin f > "$T/cr.out" 2>&1; echo $?) $(git -C "$T/cr.git" log -1 --format=%s f)"
 # ---------- fail closed: a check that can't run blocks; the vikejs/vike#3671 session ("Fix CI"), replayed command by command ----------
 # shellcmd.parse lexes the whole command as bash does: that session's commit messages and PR body spanned lines, the old
 # line-by-line split raised, and its fallback saw only `cd`, so every check after it was skipped
