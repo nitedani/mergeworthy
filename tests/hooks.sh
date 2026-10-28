@@ -2168,6 +2168,12 @@ git -C "$NA" checkout -q -b unrelated
 echo '[{"web_url":"https://gitlab.com/me/app/-/merge_requests/6","draft":true}]' > "$FX/gl_projects_me_2Fapp_merge_requests_state_opened_source_branch_unrecorded"
 check "a push of a recorded branch passes from an unrecorded one; of an unrecorded branch with an open MR, from a recorded one, it blocks, naming the branch" "0 2 1" \
   "$(MERGEWORTHY_WATCHER=off bg 'git push origin mr-b:mr-b' "$NA") $( (cd "$NA" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null); git -C "$NA" branch -q unrecorded; MERGEWORTHY_WATCHER=off bg 'git push origin unrecorded:unrecorded' "$NA") $(grep -c 'unrecorded has no approach record' "$T/err")"
+git -C "$NA" branch -q fresh; echo '[]' > "$FX/gl_projects_me_2Fapp_merge_requests_state_opened_source_branch_fresh"
+check "a push of a new branch with no MR and no record beside a recorded one with an open MR passes; beside an unrecorded one with an open MR, it blocks, naming that one" "0 2 1" \
+  "$(MERGEWORTHY_WATCHER=off bg 'git push origin mr-b:mr-b fresh:fresh' "$NA") $(MERGEWORTHY_WATCHER=off bg 'git push origin fresh:fresh unrecorded:unrecorded' "$NA") $(grep -c 'unrecorded has no approach record' "$T/err")"
+ghpr() { python3 -c 'import json,sys; print(json.dumps({"data": {"viewer": {"login": "me"}, "repository": {"owner": {"login": "me"}, **{f"b{i}": {"associatedPullRequests": {"nodes": [{"url": "https://github.com/me/app/pull/7", "isDraft": True}] if x == "pr" else []}} for i, x in enumerate(sys.argv[1:])}}}}))' "$@" > "$FX/graphql_me"; }
+check "the same on GitHub: a new branch with no PR beside a recorded PR branch passes; beside an unrecorded PR branch it blocks, naming that one" "0 2 1" \
+  "$(ghpr pr none; MERGEWORTHY_WATCHER=off bg 'git push https://github.com/me/app.git mr-b:mr-b fresh:fresh' "$NA") $(ghpr none pr; MERGEWORTHY_WATCHER=off bg 'git push https://github.com/me/app.git fresh:fresh unrecorded:unrecorded' "$NA") $(grep -c 'unrecorded has no approach record' "$T/err")"
 tr_cmd 'cd /tmp/x && git push origin HEAD:fix'
 check "a session that pushed, with no scope.md in a work folder it used, is told to write one (stop-lint reads its git commands)" "2 1" "$(slj 'Pushed the fix.') $(grep -c 'no work folder it used has a scope.md' "$T/err")"
 check "the parses a stop made are kept for the session's next stop, which blocks the same" "1 2" "$(ls "$HOME/.claude/mergeworthy-parses/s-fc.json" | wc -l) $(slj 'Pushed the fix.')"

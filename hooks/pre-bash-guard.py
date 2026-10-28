@@ -450,8 +450,8 @@ def pushed(git_cmd, env, rest):
     return urls, out
 
 def collaboration(d, url, heads):
-    """([why this push is collaboration work], [{url, isDraft} of each open PR or MR it updates]): it updates an open PR's (MR's)
-    head, or goes to a repo the pushing account doesn't own, or to a host that is neither GitHub nor GitLab. A push of its own (no
+    """([why this push is collaboration work], [{url, isDraft, head: its branch} of each open PR or MR it updates]): it updates an open
+    PR's (MR's) head, or goes to a repo the pushing account doesn't own, or to a host that is neither GitHub nor GitLab. A push of its own (no
     PR, its own repo) has no why. When GitHub or GitLab can't answer, a push to the account's own repo from a checkout of no one
     else's repo is its own; anything else blocks."""
     if not heads or not (r := repo_of(url)): return [], []
@@ -478,7 +478,7 @@ def collaboration(d, url, heads):
     else:
         import urllib.parse
         answers = [ask(['glab', 'api', '--hostname', host, f"projects/{urllib.parse.quote(repo, safe='')}/merge_requests?state=opened&source_branch={urllib.parse.quote(b)}"]) for _, b, _ in heads]
-        data = [x for a, _ in answers for x in a] if all(isinstance(a, list) for a, _ in answers) else None
+        data = [(b, x) for (a, _), (_, b, _) in zip(answers, heads) for x in a] if all(isinstance(a, list) for a, _ in answers) else None
         err = next((e for a, e in answers if not isinstance(a, list)), '')
     if data is None:
         others = {o[1].split('/')[0] for u in set(subprocess.run(['git', '-C', d, 'remote', '-v'], capture_output=True, text=True).stdout.split()[1::3])
@@ -486,9 +486,9 @@ def collaboration(d, url, heads):
         if login and login == owner and not others: return [], []
         block(f"{'gh' if hub else 'glab'} couldn't tell whether this push to {repo} updates a {'PR' if hub else 'MR'} ({err[:160]}), so its push gates can't be checked: retry once it answers")
     if not hub:
-        mrs = [{'url': x.get('web_url'), 'isDraft': bool(x.get('draft'))} for x in data if isinstance(x, dict)]
+        mrs = [{'url': x.get('web_url'), 'isDraft': bool(x.get('draft')), 'head': b} for b, x in data if isinstance(x, dict)]
         return [f"it updates {', '.join(p['url'] for p in mrs)}"] * bool(mrs), mrs
-    prs = [p for i in range(len(heads)) for p in ((data['repository'].get(f'b{i}') or {}).get('associatedPullRequests') or {}).get('nodes') or []]
+    prs = [{**p, 'head': b} for i, (_, b, _) in enumerate(heads) for p in ((data['repository'].get(f'b{i}') or {}).get('associatedPullRequests') or {}).get('nodes') or []]
     why = [f"it updates {', '.join(p['url'] for p in prs)}"] * bool(prs) + \
           [f"{repo} isn't {data['viewer']['login']}'s"] * (data['repository']['owner']['login'] != data['viewer']['login'])
     return why, prs
@@ -625,8 +625,8 @@ def check(t, has_cd):
                 block(f"this push ({'; '.join(why)}) publishes a commit computed when it runs, so its records can't be checked: push a branch or a sha written out")
             if why:  # a push of its own (no PR, its own repo) is free; collaboration runs the task's records first
                 check_workflow(f"this push ({'; '.join(why)})", repo, [sha for sha, _, _ in heads], [p['url'] for p in prs])
-                if prs:
-                    for _, _, local in heads: need_approach(repo, f"this push ({'; '.join(why)})", local)
+                for _, branch, local in heads:
+                    if any(p['head'] == branch for p in prs): need_approach(repo, f"this push ({'; '.join(why)})", local)
                 head, missing = missing_steps(repo)
                 if missing and any(not p['isDraft'] for p in prs):
                     block(f"this branch's PR is out of draft and HEAD {head[:10]} has no pr-steps {', '.join(missing)} record (approach: pull-request step 5, once per branch): run converge's pipeline on it first (each step ends with its `pr-steps <step> <output>`), or `gh pr ready --undo` while it converges")
