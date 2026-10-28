@@ -2161,6 +2161,11 @@ check "BLOCK: an issue opened through the API in those forms, in a repo no watch
 (cd "$NA" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 check "each passes once the branch has its approach record" "0 0 0 0 0 0 0 0 0 0" "$(na)"
 check "the API forms pass too" "0 0 0 0" "$(api_forms)"
+# a push is held to the approach of each branch it publishes, whichever is checked out
+git -C "$NA" checkout -q -b unrelated
+echo '[{"web_url":"https://gitlab.com/me/app/-/merge_requests/6","draft":true}]' > "$FX/gl_projects_me_2Fapp_merge_requests_state_opened_source_branch_unrecorded"
+check "a push of a recorded branch passes from an unrecorded one; of an unrecorded branch with an open MR, from a recorded one, it blocks, naming the branch" "0 2 1" \
+  "$(MERGEWORTHY_WATCHER=off bg 'git push origin mr-b:mr-b' "$NA") $( (cd "$NA" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null); git -C "$NA" branch -q unrecorded; MERGEWORTHY_WATCHER=off bg 'git push origin unrecorded:unrecorded' "$NA") $(grep -c 'unrecorded has no approach record' "$T/err")"
 tr_cmd 'cd /tmp/x && git push origin HEAD:fix'
 check "a session that pushed, with no scope.md in a work folder it used, is told to write one (stop-lint reads its git commands)" "2 1" "$(slj 'Pushed the fix.') $(grep -c 'no work folder it used has a scope.md' "$T/err")"
 check "the parses a stop made are kept for the session's next stop, which blocks the same" "1 2" "$(ls "$HOME/.claude/mergeworthy-parses/s-fc.json" | wc -l) $(slj 'Pushed the fix.')"

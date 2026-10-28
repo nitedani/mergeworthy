@@ -402,7 +402,7 @@ def repo_of(url):
     return host, m[2]
 
 def pushed(git_cmd, env, rest):
-    """([remote URLs], [(commit, branch it updates)]) of a `git push <rest>` run as git_cmd (git and the command's own global options,
+    """([remote URLs], [(commit, branch it updates, local branch it publishes)]) of a `git push <rest>` run as git_cmd (git and the command's own global options,
     in run_dir, with env): the remote's push URLs (pushurl, pushInsteadOf), or the URL given; no commits for a delete, tags only, or
     a local path."""
     if '--delete' in rest or '-d' in rest: return [], []
@@ -443,7 +443,10 @@ def pushed(git_cmd, env, rest):
         branch = dst or (to[1] if not pos[1:] else head if src == 'HEAD' else src)
         if re.search(r'[$`]', branch):
             block(f"the branch this push updates ({branch}) is computed when it runs, so whether it is a PR's can't be told: write it out")
-        out.append((sha, re.sub(r'^refs/heads/', '', branch)))
+        local = re.sub(r'^refs/heads/', '', src)
+        if src == 'HEAD': local = head or 'HEAD'
+        elif run('show-ref', '--verify', '-q', f'refs/heads/{local}').returncode: local = branch  # a commit, not a branch: the one it updates
+        out.append((sha, re.sub(r'^refs/heads/', '', branch), re.sub(r'^refs/heads/', '', local)))
     return urls, out
 
 def collaboration(d, url, heads):
@@ -468,13 +471,13 @@ def collaboration(d, url, heads):
         q = 'query($o:String!,$n:String!' + ''.join(f',$b{i}:String!' for i in range(len(heads))) + '){viewer{login} repository(owner:$o,name:$n){owner{login} ' + \
             ' '.join(f'b{i}:ref(qualifiedName:$b{i}){{associatedPullRequests(states:OPEN,first:5){{nodes{{url isDraft}}}}}}' for i in range(len(heads))) + '}}'
         data, err = ask(['gh', 'api', 'graphql', '-f', f'query={q}', '-f', f'o={owner}', '-f', f'n={repo.split("/")[1]}',
-                         *[x for i, (_, b) in enumerate(heads) for x in ('-f', f'b{i}=refs/heads/{b}')]])
+                         *[x for i, (_, b, _) in enumerate(heads) for x in ('-f', f'b{i}=refs/heads/{b}')]])
         data = (data.get('data') or {}).get('repository') and data['data'] if isinstance(data, dict) else None
     elif login and owner != login:
         return [f"{repo} isn't {login}'s"], []
     else:
         import urllib.parse
-        answers = [ask(['glab', 'api', '--hostname', host, f"projects/{urllib.parse.quote(repo, safe='')}/merge_requests?state=opened&source_branch={urllib.parse.quote(b)}"]) for _, b in heads]
+        answers = [ask(['glab', 'api', '--hostname', host, f"projects/{urllib.parse.quote(repo, safe='')}/merge_requests?state=opened&source_branch={urllib.parse.quote(b)}"]) for _, b, _ in heads]
         data = [x for a, _ in answers for x in a] if all(isinstance(a, list) for a, _ in answers) else None
         err = next((e for a, e in answers if not isinstance(a, list)), '')
     if data is None:
@@ -537,14 +540,14 @@ def check_workflow(what, d, commits, updates=()):
                   + '; '.join(f'"{j}"' for j in missed) + ". Run each job's command here on this head (its workflow file names it; install what it needs), "
                   "add `<job name>: <command> -> exit 0` to the log, and `pr-steps quick <log>` again (code §Gates)")
 
-def need_approach(d, what):
+def need_approach(d, what, branch=None):
     """pull-request step 5 comes before the build and the draft PR: the branch's approach record, before it opens a PR or MR (draft or not)
-    or updates an open one."""
-    rec = branch_record(d, 'approach')
+    or updates an open one; branch defaults to the checked-out one."""
+    rec = branch_record(d, 'approach', branch)
     if not rec:
         block(f"{what} runs from the branch's checkout, so its approach record can be checked")
     if not os.path.exists(rec):
-        block(f"this branch has no approach record: rate the approaches before building it and opening its PR or MR (mergeworthy:pull-request step 5), "
+        block(f"{branch or 'this branch'} has no approach record: rate the approaches before building it and opening its PR or MR (mergeworthy:pull-request step 5), "
               f"then `pr-steps approach <work folder>/approach.md`, before {what}")
 
 NEED_DRAFT ="post from a draft file (--body-file /abs/drafts/<name>.md, -F body=@/abs/drafts/<name>.md or --input) that passed the gate"
@@ -618,11 +621,12 @@ def check(t, has_cd):
                 block("push from the checkout itself (cd or -C, without --git-dir, --work-tree, GIT_DIR or GIT_WORK_TREE), so what it publishes can be checked")
             urls, heads = pushed(['git', *git_globals(t)], {**os.environ, **env}, rest)
             why, prs = [sum(x, []) for x in zip(*[collaboration(repo, u, heads) for u in urls])] or ([], [])
-            if why and not all(sha for sha, _ in heads):
+            if why and not all(sha for sha, _, _ in heads):
                 block(f"this push ({'; '.join(why)}) publishes a commit computed when it runs, so its records can't be checked: push a branch or a sha written out")
             if why:  # a push of its own (no PR, its own repo) is free; collaboration runs the task's records first
-                check_workflow(f"this push ({'; '.join(why)})", repo, [sha for sha, _ in heads], [p['url'] for p in prs])
-                if prs: need_approach(repo, f"this push ({'; '.join(why)})")
+                check_workflow(f"this push ({'; '.join(why)})", repo, [sha for sha, _, _ in heads], [p['url'] for p in prs])
+                if prs:
+                    for _, _, local in heads: need_approach(repo, f"this push ({'; '.join(why)})", local)
                 head, missing = missing_steps(repo)
                 if missing and any(not p['isDraft'] for p in prs):
                     block(f"this branch's PR is out of draft and HEAD {head[:10]} has no pr-steps {', '.join(missing)} record (approach: pull-request step 5, once per branch): run converge's pipeline on it first (each step ends with its `pr-steps <step> <output>`), or `gh pr ready --undo` while it converges")
