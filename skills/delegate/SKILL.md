@@ -65,7 +65,7 @@ The prompt is a file with the template filled. When one run follows several brie
 Every review loop:
 - **Severity:** re-rate each label (`agent.md`) yourself; a nit gets no code (`code §Earn every line`).
 - **Budget:** 3 rounds (reviewer passes, re-checks included) per loop; 5 for security, permissions, auth, data loss or concurrency while a reproduced blocker or should stays open there.
-- **From round 2,** outside the changes and the open ids only a blocker or a regression counts, except for the fresh reader. Before each round, cut what the fixes added beyond their findings' need.
+- **From round 2,** outside the changes and the open ids only a blocker or a regression counts, except for the fresh reader. Before each round, cut what the fixes added beyond need.
 - **Ledger:** `<work folder>/drafts/<review>.ledger.md`, one line per finding: `<id> <label> <outcome>` (fixed in <sha>, disputed: <evidence>, declined: <why>), the id `R<round>.<n>` from its first round.
 - **Stuck:** a finding the reviewer holds after two replies of yours disputing it, or open at the budget's end, goes to the user, both sides in 2–3 lines. Budget end is not approval. Rule on evidence, never to end the loop.
-- **While a round runs,** leave the files and head it reads unchanged.
+- **While a round runs,** leave what it reads unchanged.
