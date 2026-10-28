@@ -2168,6 +2168,9 @@ check "an issue opened through the API by a project's id: covered passes, from a
 git init -q "$T/glself"; git -C "$T/glself" remote add origin git@gitlab.example.com:me/app.git
 check "a project's id is resolved on the host glab uses: GITLAB_HOST outside a checkout, the checkout's self-hosted GitLab origin inside one" "2 1 2 1" \
   "$(bg 'GITLAB_HOST=gitlab.example.com glab api projects/123/issues -X POST -f title=x' "$T") $(grep -c 'no running watcher covers gitlab.example.com/me/app' "$T/err") $(bg 'glab api projects/123/issues -X POST -f title=x' "$T/glself") $(grep -c 'no running watcher covers gitlab.example.com/me/app' "$T/err")"
+git init -q "$T/glcode"; git -C "$T/glcode" remote add origin git@code.example.com:me/app.git; mkdir -p "$T/glcfg"; printf 'host: gitlab.com\nhosts:\n    gitlab.com:\n        token:\n    code.example.com:\n        token: x\n' > "$T/glcfg/config.yml"
+check "a self-hosted origin whose name has no 'gitlab' is GitLab once glab's config has its host: a project's id is resolved there, naming it; without, on gitlab.com" "2 1 0" \
+  "$(GLAB_CONFIG_DIR="$T/glcfg" bg 'glab api projects/123/issues -X POST -f title=x' "$T/glcode") $(grep -c 'no running watcher covers code.example.com/me/app' "$T/err") $(GLAB_CONFIG_DIR="$T/nocfg" bg 'glab api projects/123/issues -X POST -f title=x' "$T/glcode")"
 kill "$NPID"; : > "$HOME/.claude/gh-watch-dirs.txt"
 (cd "$NA" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 check "each passes once the branch has its approach record" "0 0 0 0 0 0 0 0 0 0" "$(na)"
@@ -2183,6 +2186,10 @@ check "a push of a new branch with no MR and no record beside a recorded one wit
 ghpr() { python3 -c 'import json,sys; print(json.dumps({"data": {"viewer": {"login": "me"}, "repository": {"owner": {"login": "me"}, **{f"b{i}": {"associatedPullRequests": {"nodes": [{"url": "https://github.com/me/app/pull/7", "isDraft": True}] if x == "pr" else []}} for i, x in enumerate(sys.argv[1:])}}}}))' "$@" > "$FX/graphql_me"; }
 check "the same on GitHub: a new branch with no PR beside a recorded PR branch passes; beside an unrecorded PR branch it blocks, naming that one" "0 2 1" \
   "$(ghpr pr none; MERGEWORTHY_WATCHER=off bg 'git push https://github.com/me/app.git mr-b:mr-b fresh:fresh' "$NA") $(ghpr none pr; MERGEWORTHY_WATCHER=off bg 'git push https://github.com/me/app.git fresh:fresh unrecorded:unrecorded' "$NA") $(grep -c 'unrecorded has no approach record' "$T/err")"
+CB="$TASKW/cb"; git init -q -b cb "$CB"; git -C "$CB" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; git -C "$CB" remote add origin git@code.example.com:me/app.git; quick "$CB"
+echo '[{"web_url":"https://code.example.com/me/app/-/merge_requests/2","draft":true}]' > "$FX/gl_projects_me_2Fapp_merge_requests_state_opened_source_branch_cb"
+check "BLOCK: a push to an open MR on a self-hosted GitLab glab's config names, with no approach record, naming step 5" "2 1" \
+  "$(GLAB_CONFIG_DIR="$T/glcfg" MERGEWORTHY_WATCHER=off bg 'git push origin HEAD:cb' "$CB") $(grep -c 'pull-request step 5).*before this push (it updates https://code.example.com/me/app/-/merge_requests/2)' "$T/err")"
 tr_cmd 'cd /tmp/x && git push origin HEAD:fix'
 check "a session that pushed, with no scope.md in a work folder it used, is told to write one (stop-lint reads its git commands)" "2 1" "$(slj 'Pushed the fix.') $(grep -c 'no work folder it used has a scope.md' "$T/err")"
 check "the parses a stop made are kept for the session's next stop, which blocks the same" "1 2" "$(ls "$HOME/.claude/mergeworthy-parses/s-fc.json" | wc -l) $(slj 'Pushed the fix.')"

@@ -304,11 +304,20 @@ def gitlab_repo(a, run_dir):
         repo = (re.search(r'gitlab\.com[:/](.+?)(?:\.git)?$', url) or [None, None])[1]
     return 'gitlab.com/' + repo.strip('/') if repo and '://' not in repo else None
 
+def is_gitlab(host, env):
+    """Whether host is a GitLab instance as glab knows one: its name says so, or glab's config.yml (where glab reads it) has a section for it."""
+    if 'gitlab' in host: return True
+    d = env.get('GLAB_CONFIG_DIR') or os.path.join(env.get('XDG_CONFIG_HOME') or os.path.expanduser('~/.config'), 'glab-cli')
+    try: hosts = re.search(r'^hosts:[ \t]*\n((?:[ \t]+.*\n?|[ \t]*\n)*)', open(os.path.join(d, 'config.yml')).read(), re.M)
+    except OSError: return False
+    keys = re.findall(r'^([ \t]+)([^\s#][^:]*):', hosts[1], re.M) if hosts else []
+    return any(k == host and i == keys[0][0] for i, k in keys)
+
 def gitlab_host(a, env, run_dir):
     """The host a glab command acts on, in glab's order: --hostname, GITLAB_HOST, the checkout's GitLab origin, gitlab.com."""
     if host := (opt(a, ['--hostname']) or [None])[-1] or env.get('GITLAB_HOST') or os.environ.get('GITLAB_HOST'): return host
     origin = repo_of(subprocess.run(['git', '-C', run_dir, 'remote', 'get-url', 'origin'], capture_output=True, text=True).stdout.strip())
-    return origin[0] if origin and 'gitlab' in origin[0] else 'gitlab.com'
+    return origin[0] if origin and is_gitlab(origin[0], {**os.environ, **env}) else 'gitlab.com'
 
 def api_opens(ep, rest, env, d):
     """(repo, 'issue' or 'pr') a `gh api` or `glab api` POST to ep, run in d, opens, in each form the CLIs take (a full URL, a leading slash, an api/v3/
@@ -466,7 +475,7 @@ def collaboration(d, url, heads):
     if not heads or not (r := repo_of(url)): return [], []
     host, repo = r
     hub = host == 'github.com'
-    if not hub and 'gitlab' not in host: return [f"{host} is neither GitHub nor GitLab, so whether it updates a PR can't be told"], []
+    if not hub and not is_gitlab(host, os.environ): return [f"{host} is neither GitHub nor GitLab, so whether it updates a PR can't be told"], []
     owner = repo.rsplit('/', 1)[0]
     cli = ['gh', 'config', 'get', '-h', host, 'user'] if hub else ['glab', 'config', 'get', 'user', '--host', host]
     try: login = subprocess.run(cli, capture_output=True, text=True, timeout=20).stdout.strip()
