@@ -602,9 +602,11 @@ EVENT = re.compile(r'###|WATCH ERROR|WATCHER RETIRED')  # the lines gh-watch-sta
 
 
 def wake_thread():
-    """Under T3 Code (gh-watch-start wrote the session's thread to HERE/t3-thread) the event lines events.log got since the last
-    pass, from any writer, go to that thread as one message; t3-wake.cursor holds the byte offset sent up to. A failed send is retried."""
-    tid, cursor = first_line(os.path.join(HERE, 't3-thread')), os.path.join(HERE, 't3-wake.cursor')
+    """Under T3 Code (gh-watch-start wrote the session's thread, then t3's path, to HERE/t3-thread) the event lines events.log got
+    since the last pass, from any writer, go to that thread as one message; t3-wake.cursor holds the byte offset sent up to. A failed
+    send is retried."""
+    tid, _, t3 = first_line(os.path.join(HERE, 't3-thread')).partition('\n')
+    cursor = os.path.join(HERE, 't3-wake.cursor')
     if not tid:
         return
     with open(os.path.join(HERE, 'events.log'), 'rb') as f:
@@ -621,7 +623,7 @@ def wake_thread():
     if lines:
         msg = f"Watcher events in {HERE}/events.log (mergeworthy:reply):\n" + '\n'.join(lines)
         try:
-            r = subprocess.run(['t3', 'thread', 'send', tid, '-'], input=msg, capture_output=True, text=True, timeout=60)
+            r = subprocess.run([t3, 'thread', 'send', tid, '-'], input=msg, capture_output=True, text=True, timeout=60)
             err = r.returncode and (r.stderr.strip().splitlines() or [f"exit {r.returncode}"])[-1]
         except (OSError, subprocess.SubprocessError) as e:
             err = str(e)

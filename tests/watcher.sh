@@ -413,7 +413,7 @@ EOF
 chmod +x "$T/bin/t3"; : > "$T/t3.log"
 got=$(py '
 log = os.path.join(m.HERE, "events.log"); add = lambda t: open(log, "a").write(t)
-open(log, "w").write("### old event\n"); open(os.path.join(m.HERE, "t3-thread"), "w").write("thr-1\n")
+open(log, "w").write("### old event\n"); open(os.path.join(m.HERE, "t3-thread"), "w").write("thr-1\n'"$T"'/bin/t3\n")
 open(os.path.join(m.HERE, "t3-wake.cursor"), "w").write(str(os.path.getsize(log)))
 add("### o/r#5 comment 1 by bob\n    the body\nWATCH ERROR x: y\nnot an event\n### AGENT DONE j\n### half"); m.wake_thread(); m.wake_thread()
 open("'"$T"'/t3.fail", "w"); add(" written\n")
@@ -426,7 +426,15 @@ print(repr(buf.getvalue()))
 check "wake_thread: one message per pass with only the event lines, a half-written line waits, nothing twice, a failed send reported and retried, none without t3-thread" \
   "'WATCH ERROR t3 thread send thr-1: connect ECONNREFUSED\n'|t3 thread send thr-1 -;Watcher events in $W/events.log (mergeworthy:reply):;### o/r#5 comment 1 by bob;WATCH ERROR x: y;### AGENT DONE j;t3 thread send thr-1 -;Watcher events in $W/events.log (mergeworthy:reply):;### half written;t3 thread send thr-1 -;Watcher events in $W/events.log (mergeworthy:reply):;### half written;WATCHER RETIRED at now;" \
   "$got|$(tr '\n' ';' < "$T/t3.log")"
-rm -f "$W/events.log" "$W/t3-wake.cursor"
+got=$(py '
+log = os.path.join(m.HERE, "events.log"); open(log, "w").write("### cron event\n"); open(os.path.join(m.HERE, "t3-wake.cursor"), "w").write("0\n")
+open(os.path.join(m.HERE, "t3-thread"), "w").write("thr-2\n'"$T"'/bin/t3\n"); os.environ["PATH"] = "/usr/bin:/bin"
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf): m.wake_thread()
+print(repr(buf.getvalue()), open(os.path.join(m.HERE, "t3-wake.cursor")).read().strip())
+')
+check "wake_thread runs the t3 gh-watch-start recorded, so a daemon cron revived with PATH=/usr/bin:/bin still sends" "'' 15|t3 thread send thr-2 -" "$got|$(grep '^t3 thread send thr-2' "$T/t3.log")"
+rm -f "$W/events.log" "$W/t3-wake.cursor" "$W/t3-thread"
 
 # The Monitor command gh-watch-start prints delivers an event within 2 s, and only lines that start an event
 M="$T/mon"; mkdir -p "$M"; : > "$M/events.log"
@@ -561,8 +569,8 @@ c.execute("create table orchestration_v2_projection_subagents (subagent_id text,
 c.execute("""insert into orchestration_v2_projection_provider_threads values ('"'p1', 'thr-9', '{\"nativeThreadRef\":{\"nativeId\":\"sess-t3\"}}'"')"""); c.commit()' "$HOME/.t3/userdata/statev2.sqlite"
 t3start() { PATH="$T/cronbin:$PATH" GH_WATCH_EYES=me CLAUDE_CODE_SESSION_ID=$1 bash "$GI/bin/gh-watch-start" "$T/t3watch" o/r 6 < /dev/null 2>/dev/null | tail -1; }
 out=$(t3start sess-t3)
-check "gh-watch-start under T3 Code records the thread and the log's end, and says no Monitor is needed" "thr-9 11 1" \
-  "$(cat "$T/t3watch/t3-thread") $(cat "$T/t3watch/t3-wake.cursor") $(echo "$out" | grep -c 'arm no Monitor')"
+check "gh-watch-start under T3 Code records the thread, t3's full path and the log's end, and says no Monitor is needed" "thr-9 $T/bin/t3 11 1" \
+  "$(echo $(cat "$T/t3watch/t3-thread")) $(cat "$T/t3watch/t3-wake.cursor") $(echo "$out" | grep -c 'arm no Monitor')"
 out=$(t3start sess-plain)
 check "gh-watch-start outside T3 Code drops the thread and prints the Monitor" "none 1" "$([ -e "$T/t3watch/t3-thread" ] || [ -e "$T/t3watch/t3-wake.cursor" ] && echo kept || echo none) $(echo "$out" | grep -c 'tail -n 0 -F')"
 GP=$(cat "$T/t3watch/gh-watch.pid" 2>/dev/null); ps -o args= -p "$GP" 2>/dev/null | grep -qx 'sleep 30' && kill "$GP"
