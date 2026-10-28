@@ -10,7 +10,7 @@ The main session fills it (`review` step 2, `converge` steps 2 and 4, `design` s
 You are reviewing a change you did not write: <PR or artifact>, head <SHA>.
 It claims to: <one sentence>. It fixes: <the defect>; its sibling sites: <list>. Issue: <link>.
 Diff: git diff $(git merge-base <head> origin/<base>) <head>, in <worktree>.
-The project file: <project file path>. Settled decisions: <decisions/*.md>. The ledger: <its path; none in round 1 and for the fresh reader>; don't report a fixed or declined id again. <Round 2 on, not for the fresh reader: check <the changes since> and the open ids; elsewhere report only a blocker or a regression.>
+The project file: <project file path>. Settled decisions: <decisions/*.md>. <Round 2 on, not for the fresh reader: the ledger <its path>, its fixed and declined ids not reported again; check <the changes since> and the open ids; elsewhere report only a blocker or a regression.>
 Callers and callees of the changed symbols (review-context <base> at the head):
 <its output>
 <Gate commands, exit codes and output, where you can't run them.>
@@ -28,7 +28,7 @@ Three lenses, one pass, finishing every lens:
 - Security: the project file's security surfaces. A change to an external maintainer's behavior or public surface that the task didn't authorize is a finding.
 - Bloat, deletions first: every mechanism added names the user-visible scenario it serves ("it could break" is not one), else delete it. Comments and tests are priced like code. Before deleting a mechanism, a probe that could fail in its owning lane; a failure keeps it (code §Removal gate). Owner code is never removed on your reading alone (code §Owner code and authority): an OWNER-DECISION row.
 
-Each line of the project file that the diff breaks is a finding: `path:line — breaks "<quoted line>" — what to do instead`.
+Each line of the project file that the diff breaks is a finding: `<id> <label> path:line — breaks "<quoted line>" — what to do instead`.
 No style preferences of your own, nothing a linter or the type checker catches, and no request to "check" or "confirm" something: check it yourself. Don't ask for a guarantee to be strengthened to close a finding. A round that finds nothing is a real result: say what you searched and failed to find. If you confirm nearly every suspicion you started with, you were building a case.
 
 Write <out>: your verdict, then findings as `<id> <label> path:line — what breaks — what to do instead`, blockers first, then `## Dropped`, then what you searched and did not find.
