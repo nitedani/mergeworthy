@@ -73,7 +73,9 @@ if [ "$step" = small ]; then
     git diff --name-only "$base" HEAD | grep -Evq "$docs" && { echo "the diff adds or changes no test: a small fix carries a test that fails on the base and passes on the head" >&2; exit 1; }
     python3 "$(dirname "$(realpath "$0")")/../.githooks/cold-read" "$base..HEAD" || { echo "the diff changes only docs and has no cold read: a commit of it carries a 'Cold-read: <path>' trailer naming the cold read's record (mergeworthy:rules step 4)" >&2; exit 1; }
   fi
-  [ "$(grep -v '^[[:space:]]*$' "$out" | tail -n2 | tr '\n' '|')" = 'NO BUGS|MERGE AS IS: yes|' ] || { echo "$out does not end with NO BUGS and MERGE AS IS: yes: fix what it found and send the same reviewer a new round checking that fix" >&2; exit 1; }
+  # the verdict ends the report, before any trailing Verification or not_checked section (delegate/agent.md asks every agent for not_checked)
+  verdict=$(awk '{ l = tolower($0) } l ~ /^#+[ \t]*(verification|not[ _]checked)([^a-z]|$)/ { tail = 1; next } /^#/ { tail = 0 } !tail' "$out" | grep -v '^[[:space:]]*$' | tail -n2 | tr '\n' '|')
+  [ "$verdict" = 'NO BUGS|MERGE AS IS: yes|' ] || { echo "$out does not end with NO BUGS and MERGE AS IS: yes: fix what it found and send the same reviewer a new round checking that fix" >&2; exit 1; }
   grep -qsF " $(realpath "$out") " ~/.claude/pr-steps/"$sha" && { echo "$out is already recorded for $sha" >&2; exit 1; }
   for k in verify shape reverify fresh; do echo "$k $(realpath "$out") $(date -u +%FT%TZ)" >> ~/.claude/pr-steps/"$sha"; done
   catalog=$(cut -d' ' -f2 ~/.mergeworthy/sessions/"$(basename "${CLAUDE_CODE_SESSION_ID:-none}")" 2>/dev/null || true)
