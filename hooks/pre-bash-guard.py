@@ -304,6 +304,21 @@ def gitlab_repo(a, run_dir):
         repo = (re.search(r'gitlab\.com[:/](.+?)(?:\.git)?$', url) or [None, None])[1]
     return 'gitlab.com/' + repo.strip('/') if repo and '://' not in repo else None
 
+def api_opens(ep, rest, env, d):
+    """(repo, 'issue' or 'pr') a `gh api` or `glab api` POST to ep, run in d, opens, in each form the CLIs take (a leading slash, an api/v4/
+    prefix, a query, gh's {owner}/{repo} from GH_REPO or the checkout, glab's :fullpath or :id); None for any other endpoint, repo None when it can't be told."""
+    path = re.sub(r'^/?(?:api/v4/)?|\?.*$', '', ep)
+    if (m := re.fullmatch(r'repos/([^/]+/[^/]+)/(issues|pulls)', path)):
+        base = re.sub(r'^.*?([^/]+/[^/]+)$', r'\1', env.get('GH_REPO') or os.environ.get('GH_REPO') or cwd_repo(d) or '')
+        repo = m[1].replace('{owner}', base.split('/')[0]).replace('{repo}', base.split('/')[-1]) if base else m[1]
+        return (None if '{' in repo else repo), 'pr' if m[2] == 'pulls' else 'issue'
+    if (m := re.fullmatch(r'projects/([^/]+)/(issues|merge_requests)', path)):
+        import urllib.parse
+        project = urllib.parse.unquote(m[1])
+        repo = gitlab_repo(rest, d) if project in (':fullpath', ':id') else 'gitlab.com/' + project if '/' in project else None
+        return repo, 'pr' if m[2] == 'merge_requests' else 'issue'
+    return None
+
 def check_compose(env, t):
     """delegate/agent.md §Machine, own ports: a compose stack you start publishes no fixed host port and pins no container name;
     netns-run doesn't isolate what the Docker daemon publishes. A config that can't be read blocks (the stack wouldn't start either)."""
@@ -644,8 +659,9 @@ def check(t, has_cd):
     if p == 'glab' and len(a) >= 2 and a[0] in ('issue', 'mr') and a[1] == 'create' and '--help' not in a and '-h' not in a:
         need_watch(gitlab_repo(a[2:], run_dir))
         if a[0] == 'mr': need_approach(run_dir, '`glab mr create`')
-    if p == 'glab' and a[:1] == ['api'] and (call := api_call(a[1:]))[0] == 'POST' and re.fullmatch(r'/?(?:api/v4/)?projects/[^/]+/merge_requests', call[1]):
-        need_approach(run_dir, '`glab api` creating an MR')
+    if p == 'glab' and a[:1] == ['api'] and (call := api_call(a[1:]))[0] == 'POST' and (opens := api_opens(call[1], a[1:], env, run_dir)):
+        need_watch([opens[0]])
+        if opens[1] == 'pr': need_approach(run_dir, '`glab api` creating an MR')
     if p == 'gh' and len(a) >= 2 and a[0] == 'pr' and a[1] == 'merge':
         if setting('MERGE', 'on-request-squash') == 'reviewer':
             block('never merge: the reviewer merges this repo\'s PRs (MERGEWORTHY_MERGE=reviewer)')
@@ -710,9 +726,9 @@ def check(t, has_cd):
         literal = [v for v in fields if re.match(r'^(body|query)=', v) and not v.startswith('body=@') and not (ep == 'graphql' and v.startswith('query='))]
         if literal or not (bodies or inputs):
             block(NEED_DRAFT)
-        m = re.fullmatch(r'/?repos/([\w.-]+/[\w.-]+)/(?:issues|pulls)', ep)
-        if m and method == 'POST': need_watch(m.group(1))
-        if m and method == 'POST' and ep.endswith('pulls'): need_approach(run_dir, '`gh api` creating a PR')
+        if method == 'POST' and (opens := api_opens(ep, rest, env, run_dir)):
+            need_watch([opens[0]])
+            if opens[1] == 'pr': need_approach(run_dir, '`gh api` creating a PR')
         c = re.fullmatch(r'/?repos/([\w.-]+/[\w.-]+)/issues/(\d+)/comments', ep)
         if c and method == 'POST': check_turn(c.group(1), c.group(2), rest); check_finality(c.group(1), c.group(2), bodies + inputs)
         thread = None

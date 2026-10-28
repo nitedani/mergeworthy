@@ -2152,8 +2152,15 @@ na() { for c in "gh pr create --draft --repo o/r --title \"\$(cat /w/drafts/titl
     printf '%s %s ' "$(MERGEWORTHY_WATCHER=off bg "$c" "$NA")" "$(grep -c 'pull-request step 5).*pr-steps approach <work folder>/approach.md' "$T/err")"; done | xargs; }
 check "BLOCK: with no approach record, a draft gh pr create, gh api POST pulls, a draft glab mr create, glab api POST merge_requests and a push updating an open MR, naming step 5" "2 1 2 1 2 1 2 1 2 1" "$(na)"
 check "a collaboration push updating no PR or MR needs no approach record" 0 "$(MERGEWORTHY_WATCHER=off bg 'git push git@gitlab.com:acme/app.git HEAD:mr-b' "$NA")"
+api_forms() { for c in "GH_REPO=o/r gh api 'repos/{owner}/{repo}/pulls' -f title=x -f head=mr-b -f base=main -F body=@$T/na.md" "gh api /repos/o/r/pulls -f title=x -f head=mr-b -f base=main -F body=@$T/na.md" \
+                       'glab api api/v4/projects/me%2Fapp/merge_requests -X POST -f source_branch=mr-b -f target_branch=main -f title=x' "glab api 'projects/me%2Fapp/merge_requests?foo=bar' -X POST -f source_branch=mr-b -f target_branch=main -f title=x"; do
+    printf '%s ' "$(MERGEWORTHY_WATCHER=off bg "$c" "$NA")"; done | xargs; }
+check "BLOCK: with no approach record, a PR or MR created through the API in each form gh and glab take ({owner}/{repo}, a leading slash, api/v4/, a query)" "2 2 2 2" "$(api_forms)"
+check "BLOCK: an issue opened through the API in those forms, in a repo no watcher covers, naming it" "2 1 2 1" \
+  "$(bg "GH_REPO=nobody/x gh api 'repos/{owner}/{repo}/issues' -f title=x -F body=@$T/na.md" "$NA") $(grep -c 'no running watcher covers nobody/x' "$T/err") $(bg "glab api '/api/v4/projects/nobody%2Fx/issues?x=1' -X POST -f title=x" "$NA") $(grep -c 'no running watcher covers gitlab.com/nobody/x' "$T/err")"
 (cd "$NA" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 check "each passes once the branch has its approach record" "0 0 0 0 0 0 0 0 0 0" "$(na)"
+check "the API forms pass too" "0 0 0 0" "$(api_forms)"
 tr_cmd 'cd /tmp/x && git push origin HEAD:fix'
 check "a session that pushed, with no scope.md in a work folder it used, is told to write one (stop-lint reads its git commands)" "2 1" "$(slj 'Pushed the fix.') $(grep -c 'no work folder it used has a scope.md' "$T/err")"
 check "the parses a stop made are kept for the session's next stop, which blocks the same" "1 2" "$(ls "$HOME/.claude/mergeworthy-parses/s-fc.json" | wc -l) $(slj 'Pushed the fix.')"
