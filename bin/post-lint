@@ -139,6 +139,9 @@ for a, n in _labels:
         findings.append(f"internal label {a + n!r}: say what it is in plain words")
 for m in re.finditer(r'(?<![\w`/#.-])R\*(?![\w`])', prose):
     findings.append("internal label 'R*': say what it is in plain words")
+# A placeholder left for later (POST_TIME, GATES_LINE) makes the reviewed draft not the posted one: fill it before the review
+for m in dict.fromkeys(re.findall(r'(?<![\w`$/.-])[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+(?![\w`])', prose)):
+    findings.append(f"placeholder {m!r}: write the real text before the review, so the reviewed draft is the one posted (a real name goes in `code`)")
 for m in re.finditer(r'^\s*[-*]\s+\*\*[^*\n]+\*\*:?\s+([^\n]*)$', prose, flags=re.M):
     if len(m.group(1).split()) < 6 and m.group(1).rstrip().endswith('.'):
         findings.append(f"a bold label with a fragment ({m.group(0).strip()[:60]!r}): write it as a full sentence")

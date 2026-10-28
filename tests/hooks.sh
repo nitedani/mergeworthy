@@ -505,6 +505,8 @@ B=$'<img src="https://github.com/claude.png" width="20" height="20" alt="Claude"
 loclint() { printf '%s\n' "$1" > "$T/loc.md"; python3 "$R/bin/post-lint" "$T/loc.md" --parent none 2>&1 | grep -c 'code location without a link'; }
 check "a bare file:line, a bare line number, a linked one, one in a code block" "1 1 0 0" "$(loclint 'It breaks in `src/adapter/utils.ts:160`.') $(loclint 'Elysia copies them at line 160.') $(loclint 'Elysia copies them ([line 160](https://github.com/o/r/blob/abc1234/src/u.ts#L160)).') $(loclint $'```\nat src/u.ts:160\n```')"
 check "a line number inside inline code quotes a message, not a location" 0 "$(loclint 'The hook fails with `Expecting value: line 1 column 1` on every call.')"
+phlint() { printf '%s\n' "$1" > "$T/ph.md"; python3 "$R/bin/post-lint" "$T/ph.md" --parent none 2>&1 | grep -c '^placeholder'; }
+check "an ALLCAPS placeholder left in a draft is flagged, a name in inline code is not" "2 0" "$(phlint $'Posted at POST_TIME.\n\nGATES_LINE') $(phlint 'The `MERGEWORTHY_BADGE` setting stays.')"
 lint() { python3 "$R/bin/post-lint" "$1" --kind issue --parent none 2>&1 | grep -c 'word sentence'; }
 items=$(for i in 1 2 3 4 5 6 7; do echo "  - item number $i with a few short words;"; done)
 printf '%s A list of short items follows here:\n%s\n' "$B" "$items" > "$T/list.md"
