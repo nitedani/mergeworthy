@@ -395,9 +395,9 @@ def repo_of(url):
         except (OSError, subprocess.TimeoutExpired, TypeError): pass
     return host, m[2]
 
-def pushed(git_cmd, env, rest):
-    """([remote URLs], [(commit, branch it updates)]) of a `git push <rest>` run as git_cmd (git and the command's own global options,
-    in run_dir, with env): the remote's push URLs (pushurl, pushInsteadOf), or the URL given; no commits for a delete, tags only, or
+def pushed(git_dir, opts, env, rest):
+    """([remote URLs], [(commit, branch it updates)]) of a `git push <rest>` run in git_dir with the command's other global options
+    (opts) and env: the remote's push URLs (pushurl, pushInsteadOf), or the URL given; no commits for a delete, tags only, or
     a local path."""
     if '--delete' in rest or '-d' in rest: return [], []
     if {'--all', '--branches', '--mirror'} & set(rest):
@@ -407,7 +407,7 @@ def pushed(git_cmd, env, rest):
         if skip: skip = False
         elif x in ('-o', '--push-option', '--repo', '--receive-pack', '--exec'): skip = True
         elif not x.startswith('-'): pos.append(x)
-    run = lambda *a: subprocess.run([*git_cmd, *a], cwd=run_dir, env=env, capture_output=True, text=True)
+    run = lambda *a: subprocess.run(['git', '-C', git_dir, *opts, *a], env=env, capture_output=True, text=True)
     git = lambda *a: run(*a).stdout.strip()
     to = git('rev-parse', '--abbrev-ref', '@{push}').split('/', 1)  # where a bare `git push` goes: remote/branch
     head = git('symbolic-ref', '--short', '-q', 'HEAD')
@@ -421,7 +421,7 @@ def pushed(git_cmd, env, rest):
         rules = [l.split(' ', 1) for l in git('config', '--get-regexp', r'^url\..*\.(push)?insteadof$').splitlines() if ' ' in l]
         best = max((r for r in rules if remote.startswith(r[1])), key=lambda r: (r[0].endswith('pushinsteadof'), len(r[1])), default=None)
         urls = [best[0][4:best[0].rindex('.')] + remote[len(best[1]):] if best else remote]
-        if not best and not re.search(r'[/:]', remote) and not os.path.exists(os.path.join(run_dir, remote)):  # a bare name git can't resolve
+        if not best and not re.search(r'[/:]', remote) and not os.path.exists(os.path.join(git_dir, remote)):  # a bare name git can't resolve
             block(f"`{remote}` is neither a remote of this checkout nor a URL or path, so where this push goes can't be told")
     push_urls.extend(urls)
     if all(repo_of(u) is None for u in urls):
@@ -599,7 +599,8 @@ def check(t, has_cd):
                 block("force-push only with --force-with-lease=<branch>:<sha you last pushed>, after checking others' commits")
             if {'--git-dir', '--work-tree'} & {x.split('=')[0] for x in git_globals(t)} or {'GIT_DIR', 'GIT_WORK_TREE'} & set(env):
                 block("push from the checkout itself (cd or -C, without --git-dir, --work-tree, GIT_DIR or GIT_WORK_TREE), so what it publishes can be checked")
-            urls, heads = pushed(['git', *git_globals(t)], {**os.environ, **env}, rest)
+            g = git_globals(t)
+            urls, heads = pushed(repo, [x for i, x in enumerate(g) if x != '-C' and g[i - 1:i] != ['-C']], {**os.environ, **env}, rest)
             why, prs = [sum(x, []) for x in zip(*[collaboration(repo, u, heads) for u in urls])] or ([], [])
             if why and not all(sha for sha, _ in heads):
                 block(f"this push ({'; '.join(why)}) publishes a commit computed when it runs, so its records can't be checked: push a branch or a sha written out")

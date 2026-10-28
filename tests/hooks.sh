@@ -2096,6 +2096,7 @@ check "a tool result quoting the sub-agent line is no crash (and no child)" 0 "$
 # Only collaboration pays the push gates: a push of its own (its own repo, no PR) is free, a PR's head or another owner's repo is not
 OWN="$T/own"; git init -q -b scratch "$OWN"; git -C "$OWN" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; git -C "$OWN" remote add origin https://github.com/nitedani-agent/notes.git
 gql nitedani-agent nitedani-agent
+check "a push through git -C \"\$D\" reads its remote in the checkout \$D names" 0 "$(bg "D=$OWN; git -C \"\$D\" push origin HEAD:scratch" "$T")"
 check "a push to its own repo's branch with no PR, from no work folder, passes; once that branch is a PR's head it is blocked, naming the PR" "0 2 1" \
   "$(bg 'git push origin HEAD:scratch' "$OWN") $(gql nitedani-agent nitedani-agent https://github.com/nitedani-agent/notes/pull/1; bg 'git push origin HEAD:scratch' "$OWN") $(grep -c 'updates https://github.com/nitedani-agent/notes/pull/1' "$T/err")"
 gql nitedani-agent vikejs
