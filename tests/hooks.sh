@@ -2168,6 +2168,14 @@ check "an issue opened through the API by a project's id: covered passes, from a
 git init -q "$T/glself"; git -C "$T/glself" remote add origin git@gitlab.example.com:me/app.git
 check "a project's id is resolved on the host glab uses: GITLAB_HOST outside a checkout, the checkout's self-hosted GitLab origin inside one" "2 1 2 1" \
   "$(bg 'GITLAB_HOST=gitlab.example.com glab api projects/123/issues -X POST -f title=x' "$T") $(grep -c 'no running watcher covers gitlab.example.com/me/app' "$T/err") $(bg 'glab api projects/123/issues -X POST -f title=x' "$T/glself") $(grep -c 'no running watcher covers gitlab.example.com/me/app' "$T/err")"
+glenv() { # <variables> <host> [glab api options]: the hook's exit for a project id's issue under those variables, and whether it names <host>'s project
+  printf '%s %s' "$(bg "$1 glab api ${3:-}projects/123/issues -X POST -f title=x" "$T")" "$(grep -c "no running watcher covers $2/me/app:" "$T/err")"; }
+check "GITLAB_HOST, as a URL too, names the host a project's id is resolved on" "2 1" "$(glenv GITLAB_HOST=https://a.example.com a.example.com)"
+check "GITLAB_URI names the host a project's id is resolved on" "2 1" "$(glenv GITLAB_URI=c.example.com c.example.com)"
+check "GL_HOST names the host a project's id is resolved on" "2 1" "$(glenv GL_HOST=b.example.com b.example.com)"
+check "under CI auto-login, CI_SERVER_FQDN names it, and GITLAB_HOST is ignored" "2 1" "$(glenv 'GLAB_ENABLE_CI_AUTOLOGIN=true GITLAB_CI=true CI_SERVER_FQDN=f.example.com GITLAB_HOST=a.example.com' f.example.com)"
+check "with several set, glab 1.125.0's order: GITLAB_HOST, then GITLAB_URI, then GL_HOST, and --hostname over them" "2 1 2 1 2 1" \
+  "$(glenv 'GITLAB_HOST=a.example.com GITLAB_URI=c.example.com GL_HOST=b.example.com' a.example.com) $(glenv 'GITLAB_URI=c.example.com GL_HOST=b.example.com' c.example.com) $(glenv 'GITLAB_HOST=a.example.com GL_HOST=b.example.com' h.example.com '--hostname h.example.com ')"
 git init -q "$T/glcode"; git -C "$T/glcode" remote add origin git@code.example.com:me/app.git; mkdir -p "$T/glcfg"; printf 'host: gitlab.com\nhosts:\n    gitlab.com:\n        token:\n    code.example.com:\n        token: x\n' > "$T/glcfg/config.yml"
 check "a self-hosted origin whose name has no 'gitlab' is GitLab once glab's config has its host: a project's id is resolved there, naming it; without, on gitlab.com" "2 1 0" \
   "$(GLAB_CONFIG_DIR="$T/glcfg" bg 'glab api projects/123/issues -X POST -f title=x' "$T/glcode") $(grep -c 'no running watcher covers code.example.com/me/app' "$T/err") $(GLAB_CONFIG_DIR="$T/nocfg" bg 'glab api projects/123/issues -X POST -f title=x' "$T/glcode")"

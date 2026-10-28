@@ -314,10 +314,14 @@ def is_gitlab(host, env):
     return any(k == host and i == keys[0][0] for i, k in keys)
 
 def gitlab_host(a, env, run_dir):
-    """The host a glab command acts on, in glab's order: --hostname, GITLAB_HOST, the checkout's GitLab origin, gitlab.com."""
-    if host := (opt(a, ['--hostname']) or [None])[-1] or env.get('GITLAB_HOST') or os.environ.get('GITLAB_HOST'): return host
+    """The host a glab command acts on, in glab's order: --hostname; GITLAB_HOST, GITLAB_URI, GL_HOST (CI_SERVER_FQDN alone under CI auto-login),
+    a host or URL; the checkout's GitLab origin; gitlab.com."""
+    env = {**os.environ, **env}
+    if host := (opt(a, ['--hostname']) or [None])[-1]: return host
+    names = ['CI_SERVER_FQDN'] if env.get('GLAB_ENABLE_CI_AUTOLOGIN') == env.get('GITLAB_CI') == 'true' else ['GITLAB_HOST', 'GITLAB_URI', 'GL_HOST']
+    if host := next(filter(None, map(env.get, names)), None): return re.sub(r'^https?://|/+$', '', host)
     origin = repo_of(subprocess.run(['git', '-C', run_dir, 'remote', 'get-url', 'origin'], capture_output=True, text=True).stdout.strip())
-    return origin[0] if origin and is_gitlab(origin[0], {**os.environ, **env}) else 'gitlab.com'
+    return origin[0] if origin and is_gitlab(origin[0], env) else 'gitlab.com'
 
 def api_opens(ep, rest, env, d):
     """(repo, 'issue' or 'pr') a `gh api` or `glab api` POST to ep, run in d, opens, in each form the CLIs take (a full URL, a leading slash, an api/v3/
