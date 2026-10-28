@@ -3,7 +3,8 @@
 joins the threads.txt of a watcher whose events reach the posting session (the task's work folder holding the command's dir,
 or the session's own), the one covering its repo first, so maintainer comments on it are answered (mergeworthy:reply).
 Another session's watcher wakes that session alone, so it never gets the thread. With several posts in one command, each thread
-is registered from the command that posted it; one whose watcher would be a guess joins none, and the hook says so (exit 2).
+is registered from the command that posted it; one whose watcher would be a guess, or whose command ran in a dir it can't tell
+(shellcmd.Where), joins none, and the hook says so (exit 2).
 A gated draft it posted as new gets its .posted marker, which pre-bash-guard reads to refuse posting it as new again."""
 import hashlib, json, os, re, shlex, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -45,10 +46,9 @@ segs = segments(cmd)  # a command that doesn't lex still yields its words: a pos
 # the drafts posted as new, and each posting segment's target with the dir it ran in, resolved as pre-bash-guard resolves them
 cwd = d.get('cwd') or os.getcwd()
 where, drafts, posts = Where(cwd), [], []
-for s in segs:
+for s in where.walk(segs):
     drafts += [os.path.join(cwd, os.path.expanduser(where.expand(f))) for f in new_post_drafts(s)]
     if tg := target(s): posts.append((*tg, where.dir))
-    where.step(s)
 # Written here, not in pre-bash-guard: PostToolUse runs only after the command succeeded, so a post another hook blocked, or one that failed, can be retried
 if isinstance(r, dict) and not r.get('interrupted'):
     for f in drafts:
@@ -127,9 +127,10 @@ found = [f for f in dict.fromkeys(found) if posted(f[0], f[1])]
 pairs, free, lost = [], list(posts), []
 for repo, num, line in found:
     if len(found) == len(posts) and (p := next((p for p in free if wrote(p, repo, num)), None)):
-        free.remove(p); homes = {home_of(repo, p[2])}
+        free.remove(p); fits = [p]
     else:
-        homes = {home_of(repo, p[2]) for p in posts if wrote(p, repo, num)}
+        fits = [p for p in posts if wrote(p, repo, num)]
+    homes = {home_of(repo, p[2]) for p in fits} if all(p[2] for p in fits) else set()  # a dir Where can't tell picks no watcher
     if len(homes) == 1: pairs.append((repo, line, homes.pop()))
     else: lost.append(line)
 for repo, line, home in pairs:
@@ -145,8 +146,10 @@ for repo, line, home in pairs:
             f.writelines(keep)
         os.replace(p + '.tmp', p)
 if lost:
-    print(f"post-bash-register: {len(found)} threads in the output and {len(posts)} posting commands, so which command posted these can't be told, "
-          f"and they joined no watcher. Add each to the watcher of the work folder its command ran in ({', '.join(dict.fromkeys(p[2] for p in posts))}): "
+    why = ("which dir a posting command ran in can't be told (after a cd to an expansion it can't resolve, a `source`, or a dir change in a branch, loop or function)"
+           if any(p[2] is None for p in posts) else f"{len(found)} threads in the output and {len(posts)} posting commands, so which command posted these can't be told")
+    ran = ', '.join(dict.fromkeys(p[2] for p in posts if p[2]))
+    print(f"post-bash-register: {why}, and they joined no watcher. Add each to the watcher of the work folder its command ran in{f' ({ran})' if ran else ''}: "
           + '; '.join(f"`gh-watch-start <work folder> {' '.join(shlex.quote(x) for x in line.split())}`" for line in lost), file=sys.stderr)
     sys.exit(2)
 sys.exit(0)
