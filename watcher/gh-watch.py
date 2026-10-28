@@ -36,8 +36,9 @@ STATE = os.path.join(HERE, 'gh-watch-state.json')
 THREADS = os.path.join(HERE, 'threads.txt')  # one "owner/repo number" per line
 ONCE = '--once' in sys.argv  # a manual check: prints events but doesn't consume them or react, so the daemon still logs them
 ROUND = '--round' in sys.argv  # one round without a daemon (gh-watch-start --round, mergeworthy:steward): it records what it reports, as a daemon's round does
-ROUND_LOOKBACK = 7 * 86400  # a dir's first --round reads back this far: no earlier round recorded where to start
+ROUND_LOOKBACK = 7 * 86400  # a --round reads the /agent feed back this far when no reader on the machine recorded where to start
 ROUND_SINCE = None  # a --round reads the issue lists' threads updated since its dir's last complete round (one_round), whatever other readers saw
+SEED = False  # a dir's first --round, with no state yet: it records where everything stands and reports none of it (one_round)
 WAIT_PING_HOURS = float(os.environ.get('WAIT_PING_HOURS') or 3)  # mergeworthy:reply §Wait ping: a wait ping may follow after this long
 EYES_FOR = set(filter(None, os.environ.get('GH_WATCH_EYES', '').split(',')))  # maintainers: their commits on your PRs and 👍/👎 are reported
 
@@ -511,6 +512,8 @@ def append_owed(entry, d=None):
     """replies-owed.md (mergeworthy:reply): the daemon records each human comment as an owed reply; the session
     clears the line with "done: <reply url> <what changed>" when it is answered. The Stop hook
     blocks a turn while a line is still owed, so an unposted reply cannot end the session unseen."""
+    if SEED and not d:
+        return
     path = os.path.join(d or HERE, 'replies-owed.md')
     owed = open(path).read().splitlines() if os.path.exists(path) else []
     if any(f' {entry.split()[2]} ' in l for l in owed):
@@ -556,7 +559,7 @@ def handle_comment(state, repo, key, kind, cid, upd, login, url, body, extra='',
     append_owed(f"{key} {kind} {cid} by {login} {url} — {body.strip().splitlines()[0][:80]}" if body.strip() else f"{key} {kind} {cid} by {login} {url}")
     if re.fullmatch(r"\W*(ok(ay)?|good|great|lgtm|yes|sure|agreed|sounds good|👍|nice)\W*", body.strip().lower()):
         emit(f"### ACK {key} {cid}: an acknowledgement answers your last open proposal in that thread or PR; apply it now (mergeworthy:reply §Kinds of comment)")
-    if not ONCE and kind != 'review':  # GitHub has no reactions on a review
+    if not ONCE and not SEED and kind != 'review':  # GitHub has no reactions on a review
         (react or react_eyes)(repo, kind, cid)
 
 
@@ -591,6 +594,8 @@ ERRED = False  # a call failed: a --round exits 1, so gh-watch-start --round doe
 
 def emit(line):
     global ERRED
+    if SEED and line.startswith('###'):
+        return
     if line.startswith('WATCH ERROR'):  # the same error, every pass, is printed once an hour
         ERRED = True
         if time.time() - ERRORS.get(line, 0) < 3600: return
@@ -1883,11 +1888,18 @@ def agent_jobs_pass():
 
 def one_round():
     """One round with no daemon (--round) -> its exit status. The shared jobs first: a thread that moved in a repo watched whole
-    joins threads.txt, and the scan reads it. Only a complete round moves round_since: a failed one is read again from the same point."""
-    global ROUND_SINCE
+    joins threads.txt, and the scan reads it. Only a complete round moves round_since: a failed one is read again from the same point.
+    A dir's first round (SEED) starts every scan position at its own start."""
+    global ROUND_SINCE, SEED
     started = time.time()
     with locked():
-        ROUND_SINCE = load_state().get('round_since') or iso(started - ROUND_LOOKBACK)
+        SEED = not os.path.exists(STATE)
+        state = load_state()
+        if SEED:
+            state['since'] = iso(started)
+            save_state(state)
+            emit(f"note: the first round in {HERE} starts reading at {iso(started)}: nothing older is recorded as owed or as an event")
+        ROUND_SINCE = state.get('round_since') or state['since']
     steward_line()
     shared_pass(force=True)
     run_scan(everything=True)
