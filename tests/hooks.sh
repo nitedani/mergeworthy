@@ -1337,6 +1337,8 @@ prsd() { (cd "$GD" && bash "$R/bin/pr-steps" small "$@" 2>"$T/prsd.err" >/dev/nu
 r1=$(prsd "$T/sr1.md"); r1="$r1 $(grep -c 'no cold read' "$T/prsd.err")"
 echo record > "$T/sd-cold.md"; git -C "$GD" -c user.name=t -c user.email=t@t commit -q --allow-empty -m c -m "Cold-read: $T/sd-cold.md"
 check "pr-steps small on a diff of docs alone: BLOCK naming the cold read with no Cold-read trailer, records with one" "1 1 0" "$r1 $(prsd "$T/sr1.md")"
+echo x > "$GD/pnpm-lock.yaml"; git -C "$GD" add pnpm-lock.yaml; git -C "$GD" -c user.name=t -c user.email=t@t commit -q -m lock
+check "BLOCK: pr-steps small on docs and a lockfile without a test, though a commit carries a cold read" "1 1" "$(prsd "$T/sr1.md") $(grep -c 'adds or changes no test' "$T/prsd.err")"
 # ---------- pr-steps: every converge step leaves its proof; the guard needs all five ----------
 G2="$T/prs2"; mkdir -p "$G2"; git -C "$G2" init -q; git -C "$G2" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 prs2() { (cd "$G2" && bash "$R/bin/pr-steps" "$@" >/dev/null 2>&1; echo $?); }
