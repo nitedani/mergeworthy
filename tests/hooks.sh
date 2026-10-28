@@ -1354,6 +1354,8 @@ check "BLOCK: a dropped candidate whose reason is 'not a regression', quoting it
 printf 'slice 1\n## Tried and dropped\n- **abort leaks a listener**: Not a regression, main does the same\nRULED: abort leaks a listener: not a regression, main does the same\nNO BUGS\n' > "$T/vr4.md"; std "$T/vr4.md"
 printf 'slice 1\n## Tried and dropped\n- **abort leaks a listener**: Not a regression, main does the same\nRULED: abort leaks a listener: not a regression, and only a staged race reaches it (code Earn every line)\nNO BUGS\n' > "$T/vr5.md"; std "$T/vr5.md"
 check "BLOCK: a RULED line whose only reason is that main does the same; one citing Earn every line records" "1 1 0" "$(prs verify "$T/vr4.md") $(cd "$G" && bash "$R/bin/pr-steps" verify "$T/vr4.md" 2>&1 | grep -c 'is not a ruling') $(prs verify "$T/vr5.md")"
+printf 'slice 1\n## Tried and dropped\n- `D=~/cfg` (tilde.sh): a nit.\n  - **Why a nit:** both fail closed, and it is rare.\nRULED: `D=~/cfg` (tilde.sh): a nit, no realistic usage (code Earn every line)\nNO BUGS\n' > "$T/vr6.md"; std "$T/vr6.md"
+check "a dropped item's sub-bullet reason is ruled under the item's name, not its label" 0 "$(prs verify "$T/vr6.md")"
 # pr-steps verify: a diff that touches bodies or streams needs code §No regressions' list answered by name
 G3="$T/prs3"; mkdir -p "$G3"; git -C "$G3" init -q -b main; git -C "$G3" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 git -C "$G3" update-ref refs/remotes/origin/main HEAD; git -C "$G3" checkout -q -b fix

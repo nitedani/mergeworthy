@@ -129,12 +129,16 @@ case "$step" in
     unruled=$(python3 - "$out" <<'EOF'
 import re, sys
 lines, plain = open(sys.argv[1]).read().splitlines(), lambda l: re.sub(r'[*`]', '', l).strip().lower()
-dropped = False  # only the dropped list: a counted bug may well be "a rare race"
+dropped, item = False, None  # only the dropped list: a counted bug may well be "a rare race"
+name_of = lambda l: re.split(r':|\s[—–-]\s', re.sub(r'^[\s>+-]*(\d+\.\s*)?', '', plain(l)), maxsplit=1)[0].strip()
 for i, l in enumerate(lines):
     if l.startswith('#'):
         dropped = 'dropped' in l.lower()
-    elif dropped and re.search(r'no documented usage|\brare\b|not a regression|same as (on )?(main|master)|(main|master) does the same|pre-?existing|(also|too) on (main|master)|on (main|master) (too|as well)|masteren is', l, re.I) and not l.startswith('RULED:'):
-        name = re.split(r':|\s[—–-]\s', re.sub(r'^[\s>+-]*(\d+\.\s*)?', '', plain(l)), maxsplit=1)[0].strip()
+        continue
+    sub = re.match(r'\s+[-*+]\s', l)  # a sub-bullet ('**Why a nit:** …') belongs to the item above it
+    if not sub and l.strip() and not l.startswith('RULED:'): item = name_of(l)
+    if dropped and re.search(r'no documented usage|\brare\b|not a regression|same as (on )?(main|master)|(main|master) does the same|pre-?existing|(also|too) on (main|master)|on (main|master) (too|as well)|masteren is', l, re.I) and not l.startswith('RULED:'):
+        name = item if sub and item else name_of(l)
         rulings = [r for r in lines[i + 1:] if r.startswith('RULED:') and name in plain(r)]
         if not rulings:
             print(l)
