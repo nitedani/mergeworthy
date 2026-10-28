@@ -305,13 +305,13 @@ def gitlab_repo(a, run_dir):
     return 'gitlab.com/' + repo.strip('/') if repo and '://' not in repo else None
 
 def api_opens(ep, rest, env, d):
-    """(repo, 'issue' or 'pr') a `gh api` or `glab api` POST to ep, run in d, opens, in each form the CLIs take (a full URL, a leading slash, an api/v4/
-    prefix, a query, gh's {owner}/{repo} from GH_REPO or the checkout, glab's :fullpath or :id, a project's id); None for any other endpoint, repo None when it can't be told."""
-    host, path = re.match(r'(?:https?://([^/]+))?/?(?:api/v4/)?([^?]*)', ep).groups()
+    """(repo, 'issue' or 'pr') a `gh api` or `glab api` POST to ep, run in d, opens, in each form the CLIs take (a full URL, a leading slash, an api/v3/
+    or api/v4/ prefix, a query, gh's {owner}/{repo} from GH_REPO or the checkout, glab's :fullpath or :id, a project's id); None for any other endpoint, repo None when it can't be told."""
+    host, path = re.match(r'(?:https?://([^/]+))?/?(?:api/v[34]/)?([^?]*)', ep).groups()
     if (m := re.fullmatch(r'repos/([^/]+/[^/]+)/(issues|pulls)', path)):
         base = re.sub(r'^.*?([^/]+/[^/]+)$', r'\1', env.get('GH_REPO') or os.environ.get('GH_REPO') or cwd_repo(d) or '')
         repo = m[1].replace('{owner}', base.split('/')[0]).replace('{repo}', base.split('/')[-1]) if base else m[1]
-        return (None if '{' in repo else repo), 'pr' if m[2] == 'pulls' else 'issue'
+        return (None if '{' in repo else repo if host in (None, 'api.github.com') else f'{host}/{repo}'), 'pr' if m[2] == 'pulls' else 'issue'
     if (m := re.fullmatch(r'projects/([^/]+)/(issues|merge_requests)', path)):
         import urllib.parse
         project, host = urllib.parse.unquote(m[1]), host or (opt(rest, ['--hostname']) or ['gitlab.com'])[-1]
