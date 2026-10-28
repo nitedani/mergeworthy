@@ -50,8 +50,8 @@ The classes are model families, never versions: the strongest class is the newes
 
 ### Reviewers
 
-Every independent review (a post's, the Loop B review, the fresh reader, a standalone review) picks its reviewer in this order, at each review by launching the first; an earlier "unavailable" (memory, badges) is no check:
-- **First, a model from another company than the main session's:** Codex for a Claude session, Claude for a Codex session, that provider's strongest model, at the effort chosen per call (high; medium for a quick check of a short reply). Start it through the orchestration tools: in T3 Code one `delegate_task` per round, the model from `orchestrator_capabilities`:
+Every independent review (a post's, the Loop B review, the fresh reader, a standalone review) picks its reviewer in this order, trying the first each time; an earlier "unavailable" (memory, badges) is no check:
+- **First, a model from another company than the main session's:** Codex for a Claude session, Claude for a Codex session, its strongest model the user hasn't excluded, at the effort chosen per call (high; medium for a quick check of a short reply). Start it through orchestration tools: in T3 Code one `delegate_task` per round, the model from `orchestrator_capabilities`:
    ```json
    {"task": "Follow <prompt file>; output to <out>", "target": {"providerInstanceId": "codex", "model": "<model>", "options": {"reasoningEffort": "<effort>"}}, "clientRequestId": "<review>-<round>"}
    ```
