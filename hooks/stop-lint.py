@@ -47,8 +47,15 @@ def opening(l):  # a user line's typed text ('' for a tool result's list, or a l
     try: c = (json.loads(l).get('message') or {}).get('content')
     except (ValueError, AttributeError): return ''
     return c if isinstance(c, str) else ''
-child = len(steward.threads(d.get('session_id'))) > 1 or any(re.match(r'Act as the [\w-]+ sub-agent for this task', opening(l))
+t3_chain = steward.threads(d.get('session_id'))  # its T3 thread, then the threads that delegated it; [] outside T3 Code
+child = len(t3_chain) > 1 or any(re.match(r'Act as the [\w-]+ sub-agent for this task', opening(l))
             for l in lines[:20] if '"type":"user"' in l.replace(' ', '') and 'sub-agent for this task' in l)
+reg = os.path.expanduser('~/.claude/gh-watch-dirs.txt')
+def wakes_thread(wd):  # a live watcher that sends wd's events to this session's T3 thread (gh-watch.py's wake_thread): its Monitor
+    try: os.kill(int(steward.first(os.path.join(wd, 'gh-watch.pid'))), 0)
+    except (ValueError, OSError): return False
+    return steward.first(os.path.join(wd, 't3-thread')) in t3_chain
+t3_dirs = {wd for wd in ((l.strip() for l in open(reg)) if os.path.exists(reg) else ()) if wd and wakes_thread(wd)}
 for line in lines:
     try:
         e = json.loads(line)
@@ -130,9 +137,9 @@ for t in runs(r'\.mergeworthy/work|-work\b'):
 task_dirs = {t for p in worked if p.startswith(('/', '~')) and (t := work_folder.task_of(p))}
 # mergeworthy work (a task, a work folder, a push or post, a watcher, an agent it started) gets the hand-back check;
 # a plain question answered doesn't
-working = opened_task or acted or delegated or bool(task_dirs or monitor_cmds)
+working = opened_task or acted or delegated or bool(task_dirs or monitor_cmds or t3_dirs)
 # the check-in asks only where work can still be waiting after the answer: a work folder it worked in, an agent it started, a Monitor
-may_wait = delegated or bool(task_dirs or monitor_cmds)
+may_wait = delegated or bool(task_dirs or monitor_cmds or t3_dirs)
 # quoted words are someone else's (a user's "should I ...?", a banned phrase being discussed): not an offer
 own = re.sub(r'```.*?```|`[^`\n]*`|"[^"\n]*"|“[^”\n]*”|^>.*$', ' ', last, flags=re.S | re.M)
 # An offer, or a hand-back of work the agent can do or wait for itself ("tell me when to re-check CI", "nothing will notify me")
@@ -305,8 +312,7 @@ if not child and last.strip():
         print("Your message states a PR's state that GitHub contradicts now: " + '; '.join(wrong) + ". Re-read it live and say what it shows "
               "(mergeworthy:writing §Evidence for claims); then act on it (a ready PR: the reply loop; red CI: fix it).", file=sys.stderr)
         sys.exit(2)
-own_dirs = set()
-reg = os.path.expanduser('~/.claude/gh-watch-dirs.txt')
+own_dirs = set(t3_dirs)
 cwd_d = d.get('cwd') or ''
 for wd in (l.strip() for l in open(reg)) if os.path.exists(reg) else ():
     # or a watch dir this session works through from elsewhere (its cwd is a repo, the watch dir an artifact root):
@@ -327,10 +333,10 @@ paused = re.search(r'\bpause\b', last_user, re.I) is not None
 # names its session in <dir>/passed; that dir's owed lines hold the session's turn as a live watcher's do
 pass_dirs = {wd for wd in ((l.strip() for l in open(reg)) if os.path.exists(reg) else ()) if d.get('session_id') and steward.passed_by(wd) == d['session_id']}
 own_dirs |= pass_dirs
-if posted and watcher_on and not headless and not paused and not pass_dirs and not (monitors - dead):
-    print("You posted on GitHub in this session and no Monitor in it watches a watcher's events.log, so replies go unseen: "
-          "nothing else answers them. Run `gh-watch-start <your work folder> <owner/repo> <N>` and arm the Monitor it "
-          "prints, with the longest timeout; re-arm it whenever it expires (mergeworthy:reply step 1).", file=sys.stderr)
+if posted and watcher_on and not headless and not paused and not pass_dirs and not t3_dirs and not (monitors - dead):
+    print("You posted on GitHub in this session and nothing wakes it on a watcher's events, so replies go unseen: nothing else answers them. "
+          "Run `gh-watch-start <your work folder> <owner/repo> <N>`" + (": its watcher then wakes this T3 thread itself" if t3_chain else
+          " and arm the Monitor it prints, with the longest timeout; re-arm it whenever it expires") + " (mergeworthy:reply step 1).", file=sys.stderr)
     sys.exit(2)
 # The owed-reply list: the daemon records each human comment in the live watcher's replies-owed.md; a turn
 # cannot end with a line still owed.
@@ -345,7 +351,7 @@ if watcher_on and not paused and not child:
                 # a retired watcher has nothing left to answer; one that died still owes its lines, and sees no new comment
                 if not os.path.exists(os.path.join(wd, 'retired')) and any(not l.lower().startswith('done:') for l in owed):
                     print(f"The watcher in {wd} isn't running and its replies-owed.md still has open lines ({owed[0][:120]}): restart it "
-                          f"(`gh-watch-start {wd} <owner/repo>`), arm its Monitor, then answer them (mergeworthy:reply).", file=sys.stderr)
+                          f"(`gh-watch-start {wd} <owner/repo>`), arm the Monitor it prints if any, then answer them (mergeworthy:reply).", file=sys.stderr)
                     sys.exit(2)
                 continue
         import datetime
@@ -427,7 +433,7 @@ if (opened_task or acted) and not child and not paused and not headless:
         sys.exit(2)
     open_items = [(f, m) for f, t in sorted(scopes.items()) for m in re.findall(r'^\s*[-*] \[ \] (.+)$', t, re.M)]
     jobs = [j for _, j in agent_jobs.jobs() if j.get('session') == d.get('session_id') and not agent_jobs.finished(j)] if d.get('session_id') else []
-    live = [w for w in wakers if w not in dead] + jobs
+    live = [w for w in wakers if w not in dead] + jobs + sorted(t3_dirs)
     if open_items and not live and 'GENUINE-FORK' not in last:
         print(f"{open_items[0][0]}/scope.md still has open items ({'; '.join(m[:80] for _, m in open_items[:3])}) and nothing this session "
               "started will wake it: no live Monitor, background command or agent. Do the next one now. If it waits on something (CI, a review, "
