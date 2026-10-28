@@ -83,8 +83,9 @@ def _src(n, src):
 
 class Word(str):
     """A word as bash passes it (_word), with script: the text a shell that reads it as a script gets, the parent having expanded it
-    first, each of the parent's expansions made _parent's placeholder."""
-    script = None
+    first, each of the parent's expansions made _parent's placeholder; splits: whether it holds an unquoted expansion, which bash
+    splits, globs and drops when empty."""
+    script, splits = None, False
 
 
 def _script(w):
@@ -127,7 +128,7 @@ def _word(w, src):
             continue
         sc.append(out[-1])
     word = Word(''.join(out))
-    word.script = ''.join(sc)
+    word.script, word.splits = ''.join(sc), any(p.get('Type') not in ('Lit', 'SglQuoted', 'DblQuoted') for p in w.get('Parts') or [])
     return word
 
 
@@ -154,7 +155,7 @@ class Seg(list):
     `D=x bash -c`, and a script's placeholders, _parent). Kinds: 'sub' (a copy of the shell: a subshell, substitution, pipeline part or background job), 'proc' (a child
     bash: `bash -c`, a heredoc bash reads), 'sh' (a child shell that isn't bash: no dir stack or `declare`), 'user' (a shell whose
     environment can't be told: another user's, `sudo bash -c`, `su -c`, fish, or one `env` with options starts), 'cond' (it may not
-    run: after && or ||, an if or case branch), 'loop' (a loop's body, run again and again) or 'opaque' (run where it can't be
+    run: after ||, an if or case branch; 'and' after &&, where what && follows succeeded), 'loop' (a loop's body, run again and again) or 'opaque' (run where it can't be
     told: a function's body, `D=x eval`, a command that doesn't parse) or 'eval' (eval's script, in this shell, with its placeholders)."""
     frames = ()
 
@@ -171,7 +172,7 @@ def _kind(x, k):
     if t in ('Subshell', 'CmdSubst', 'ProcSubst', 'CoprocClause') or k == 'Cmd' and x.get('Background'):
         return 'sub'
     if t == 'BinaryCmd':
-        return 'sub' if x.get('Op') in ('|', '|&') else 'cond' if k == 'Y' else None
+        return 'sub' if x.get('Op') in ('|', '|&') else ('and' if x.get('Op') == '&&' else 'cond') if k == 'Y' else None
     if t in ('IfClause', 'CaseClause') and k in ('Then', 'Else', 'Items'):
         return 'cond'
     return {'WhileClause': 'loop', 'ForClause': 'loop', 'FuncDecl': 'opaque'}.get(t)
@@ -207,7 +208,7 @@ def _calls(node, src, depth, frames):
             top = x
         ids = {}  # the frame each child runs in: one per pipeline part or branch, one for a whole loop or function
         loop = tuple(n['Value'] for n in [(x.get('Loop') or {}).get('Name')] if n) if x.get('Type') == 'ForClause' else ()
-        kids = {k: fr + ((ids.setdefault(k if kind in ('sub', 'cond') else '', next(_ids)), kind, loop),) if (kind := _kind(x, k)) else fr for k in x}
+        kids = {k: fr + ((ids.setdefault(k if kind in ('sub', 'cond', 'and') else '', next(_ids)), kind, loop),) if (kind := _kind(x, k)) else fr for k in x}
         cmd, redirs = x.get('Cmd') or {}, x.get('Redirs') or []
         words = [w for r in redirs for w in ((r.get('N') or {}).get('Value', '') + r['Op'], _word(r.get('Word') or {}, src))]
         if cmd.get('Type') == 'CallExpr':
@@ -400,6 +401,8 @@ class Where:
     A subshell's or child shell's changes end with it."""
     def __init__(self, cwd):
         self.dir, self.old, self.stack, self.vars, self.exported, self.lost, self.moved = cwd, None, [], {}, set(), False, False
+        self.pending = None  # (dir, old dir, stack) of the cd just run that may have failed: where a command after && runs
+        self.carry = None  # the state an 'and' frame just left ended in, and what changed in it: where the next && in the chain goes on
         self.written = {}  # each variable's last value as written (`C="$(echo git) push"`), for words a command named by it may run
         self.open = []  # the frames (Seg.frames) entered: (frame, the state on entering it, what changed in it: 'dir', 'lost', variable names)
 
@@ -435,6 +438,13 @@ class Where:
 
     def _enter(self, f, changing):
         self.open.append((f, self._state(), set()))
+        carry, self.carry = self.carry, None
+        if f[1] == 'and' and carry:  # `a && b && c`: c runs as b left it
+            (to, old, stack, vars, _, _), changed = carry
+            if 'dir' in changed: self._move(to, old, stack)
+            for n in changed - {'dir', 'lost'}: self._set(n, vars.get(n))
+        elif f[1] == 'and' and self.pending:
+            self._move(*self.pending)
         sets = [(w.partition('='), ordered) for w, ordered in (x for x in f[2] if not isinstance(x, str))]
         argv = [(n, self._value(v)) for (n, _, v), ordered in sets if not ordered]  # env's and placeholders: expanded with the command's words
         argv = [(n, v if not n.startswith(PARENT) or v is None or re.fullmatch(r'[\w./+,:@%=-]*', v) else None) for n, v in argv]  # a value the script reparses
@@ -458,11 +468,15 @@ class Where:
 
     def _leave(self, f, state, changed):
         if f[1] == 'eval': return  # it ran in this shell
+        if f[1] == 'and' and self.pending: self.dir, self.old, self.stack = self.pending  # a && after it runs once that cd succeeded
+        carry = (self._state(), changed) if f[1] == 'and' else None
         self.dir, self.old, self.stack, self.vars, self.exported, self.lost = state
-        if f[1] in ('cond', 'loop', 'opaque'):  # what changed in it may or may not hold after it
+        self.pending = None
+        if f[1] in ('cond', 'and', 'loop', 'opaque'):  # what changed in it may or may not hold after it
             if 'dir' in changed: self._move(None, None, None)
             if 'lost' in changed: self.lost = True; self._changed('lost')
             for n in changed - {'dir', 'lost'}: self._set(n, None)
+        self.carry = carry
 
     def _changed(self, what):
         for f in reversed(self.open):  # up to the innermost subshell or child shell: its changes end with it
@@ -479,6 +493,7 @@ class Where:
 
     def step(self, t):
         """Take the simple command t, which ran: the variables it set, the dir it moved to."""
+        self.pending = self.carry = None
         if t and all(re.match(r'^\w+\+?=', x) for x in t):
             for x in t: self._assign(x)
             return
@@ -505,14 +520,25 @@ class Where:
         elif name in ('cd', 'pushd', 'popd'):
             a = [x for x in a if x not in ('-P', '-L', '-e', '-@', '--')]
             here, stack = self.dir, self.stack
-            if name == 'cd':
-                self._move(self.old if a[:1] == ['-'] else self._to(a[0] if a else '~'), here, stack)
-            elif name == 'pushd' and a and a[0][:1] not in '+-':
-                self._move(self._to(a[0]), here, None if stack is None else [here] + stack)
+            arg = self.expand(a[0]) if a else ''
+            if a and getattr(a[0], 'splits', False) and not re.fullmatch(r'[^\s*?[]+', arg):  # split, globbed or dropped: what cd gets can't be told
+                self._move(None, None, None)
+            elif name == 'cd':
+                self._go(self.old if arg == '-' else self._to(a[0] if a else '~'), here, stack, len(a) < 2)
+            elif name == 'pushd' and a and arg[:1] not in '+-':
+                self._go(self._to(a[0]), here, None if stack is None else [here] + stack, len(a) < 2)
             elif not a and stack:  # pushd swaps the top two, popd goes to the top one
-                self._move(stack[0], here, [here] + stack[1:] if name == 'pushd' else stack[1:])
+                self._go(stack[0], here, [here] + stack[1:] if name == 'pushd' else stack[1:], True)
             else:  # a rotation, -n, or an empty stack
                 self._move(None, here, None)
+
+    def _go(self, to, old, stack, one):
+        """cd's move to `to`, when bash surely gets there: one argument, a dir it may enter. Else the dir can't be told, but a
+        command after && runs there."""
+        if one and to is not None and os.path.isdir(to) and os.access(to, os.X_OK):
+            return self._move(to, old, stack)
+        self._move(None, None, None)
+        self.pending = (to, old, stack) if one and to is not None else None
 
     def _assign(self, x):
         n, plus, v = re.match(r'(\w+)(\+?)=(.*)', x, re.S).groups()

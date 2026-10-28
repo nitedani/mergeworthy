@@ -44,8 +44,9 @@ def block(msg):
 def known(d):
     """d, a dir a check reads (where the command runs, from Where); one Where can't tell blocks."""
     if d is None:
-        block("can't tell which dir this command runs in (after a cd to an expansion it can't resolve, a `source`, or a dir change in a branch, "
-              "loop or function), so its checks can't run: cd to an absolute path first (`cd /abs/dir && <command>`), or pass absolute paths")
+        block("can't tell which dir this command runs in (after a cd to an expansion it can't resolve, a cd before `;` that may fail, a relative "
+              "cd under a CDPATH, a `source`, or a dir change in a branch, loop or function), so its checks can't run: cd to an absolute path "
+              "first and go on with && (`cd /abs/dir && <command>`), or pass absolute paths")
     return d
 
 def short_has(t, letter):  # -f, -9f, -fu ...
@@ -577,7 +578,7 @@ def check(t, has_cd):
         if sub == 'push' and {'--dry-run', '-n'} & set(rest):
             sub = 'push --dry-run'  # publishes nothing
         if sub == 'push' and (repo is None or not os.path.isdir(repo)) and '--help' not in rest:
-            # a checkout the command makes first (`git clone ../o.git d; cd d`): a push to a local path, or to the local repo it was cloned from, publishes nothing
+            # a checkout the command makes first (`git clone ../o.git d && cd d`): a push to a local path, or to the local repo it was cloned from, publishes nothing
             to, made = next((x for x in operands(rest) if not x.startswith('-')), 'origin'), repo and os.path.normpath(repo)
             if repo_of(to if to != 'origin' else clones.get(made, to)) is None and (to != 'origin' or made in clones):
                 return

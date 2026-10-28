@@ -2011,6 +2011,10 @@ HD=$'\n'"cd \$D; $MRC"$'\nXEOF'
 check "an MR joins the folder the parent's \$D names when the parent expands the script (bash -c \"..\", an unquoted heredoc, <<< \"..\", env D=..), not the prefix's" \
   "0||gitlab.com/ns/proj !9 0||gitlab.com/ns/proj !9 0||gitlab.com/ns/proj !9 0||gitlab.com/ns/proj !9" \
   "$(treg "$U9" "export D=$CK4; D=$CK bash -c \"cd \$D; $MRC\"" "$CK4") $(treg "$U9" "export D=$CK4; D=$CK bash <<XEOF$HD" "$CK4") $(treg "$U9" "export D=$CK4; D=$CK bash <<< \"cd \$D; $MRC\"" "$CK4") $(treg "$U9" "export D=$CK4; env D=$CK bash -c \"cd \$D; $MRC\"" "$CK4")"
+mkdir -p "$CK/my dir"
+check "BLOCK: an MR after a cd that fails (a missing target, an unquoted expansion holding a space, two arguments) joins no watcher; after && it joins the target's" \
+  "2|| 2|| 2|| 0|gitlab.com/ns/proj !9|" \
+  "$(treg "$U9" "cd $CK4; cd $CK/typo; $MRC" "$CK4") $(treg "$U9" "D=\"$CK/my dir\"; cd \$D; $MRC" "$CK4") $(treg "$U9" "cd $CK $CK4; $MRC" "$CK4") $(treg "$U9" "cd $CK/typo2 && $MRC" "$CK4")"
 rm "$TK4/gh-watch.pid" "$TK4/repos.txt"
 rm "$TK2/gh-watch.pid" "$TK2/repos.txt" "$TK2/session"
 kill "$FPID"
@@ -2181,8 +2185,8 @@ check "a checkout inside <task>-work/ or beside it under the task's prefix is in
 AS="$T/assets"; git clone -q "$OWN" "$AS"; git -C "$AS" update-ref refs/remotes/origin/HEAD HEAD; git -C "$AS" checkout -q --orphan shots; git -C "$AS" -c user.name=t -c user.email=t@t commit -q --allow-empty -m s
 check "a commit on a branch that shares no history with origin's default (a PR's screenshots) needs no preflight; one on a branch of the product does" "0 2" \
   "$(bg 'git commit -q --allow-empty -m s2' "$AS") $(git -C "$AS" checkout -q scratch; bg 'git commit -q --allow-empty -m c' "$AS")"
-check "a push from a checkout the command makes first passes when it goes to a local path or the local repo it was cloned from (named by variables too), or is a dry run" "0 0 0 0 2" \
-  "$(bg 'T=$(mktemp -d); cd $T; git init -q --bare o.git; git init -q r; cd r; git push -q ../o.git main' "$T") $(bg 'git clone -q /tmp/o.git seed; cd seed; git push -q origin HEAD:main' "$T") $(bg 'S=/tmp/o.git; D=seed2; git clone -q "$S" "$D"; cd "$D"; git push -q origin HEAD:main' "$T") $(bg 'git worktree add -q --detach ../wt HEAD; cd ../wt; git push --dry-run https://github.com/vikejs/vike.git HEAD:x' "$T") $(bg 'git clone -q https://github.com/vikejs/vike.git v; cd v; git push origin HEAD:x' "$T")"
+check "a push from a checkout the command makes first passes when it goes to a local path or the local repo it was cloned from (named by variables too), or is a dry run; after a cd there before ;, which may fail, it blocks" "0 0 0 0 2 2" \
+  "$(bg 'T=$(mktemp -d); cd $T; git init -q --bare o.git; git init -q r; cd r; git push -q ../o.git main' "$T") $(bg 'git clone -q /tmp/o.git seed && cd seed && git push -q origin HEAD:main' "$T") $(bg 'S=/tmp/o.git; D=seed2; git clone -q "$S" "$D" && cd "$D" && git push -q origin HEAD:main' "$T") $(bg 'git worktree add -q --detach ../wt HEAD; cd ../wt; git push --dry-run https://github.com/vikejs/vike.git HEAD:x' "$T") $(bg 'git clone -q https://github.com/vikejs/vike.git v; cd v; git push origin HEAD:x' "$T") $(bg 'git clone -q /tmp/o.git seed; cd seed; git push -q origin HEAD:main' "$T")"
 check "a draft path through a variable the command set (D=...; --body-file \$D/x.md) is the path written out" 1   "$(MERGEWORTHY_WATCHER=off bg "X=$T/vdir; gh issue create --repo o/r --title t --body-file \$X/nogate.md" "$T" >/dev/null; grep -c "no gate record for $T/vdir/nogate.md" "$T/err")"
 check "parse: a script handed to watch or parallel, and git run by pnpm exec, npx, uv run, direnv exec, flock, taskset, chronic, su -c, script -c, fish -c" \
   "yes yes yes yes yes yes yes yes yes yes yes yes yes" "$(for c in "watch 'git push x HEAD:y'" "parallel 'git push {} HEAD:y' ::: x" 'pnpm exec git push' 'npx git push' 'uv run git push' \
