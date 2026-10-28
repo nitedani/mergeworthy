@@ -157,11 +157,12 @@ _ids = itertools.count()
 class Seg(list):
     """A simple command's argv. frames: the scopes it runs in, outermost first, each (id, kind, the variables set on entering it: a
     loop's own, unknown; a child shell's, (word, whether it sees the ones before it) of its command's prefix or env's arguments,
-    `D=x bash -c`, and a script's placeholders, _parent). Kinds: 'sub' (a copy of the shell: a subshell, substitution, pipeline part or background job), 'proc' (a child
-    bash: `bash -c`, a heredoc bash reads), 'sh' (a child shell that isn't bash: no dir stack or `declare`), 'user' (a shell whose
-    environment can't be told: another user's, `sudo bash -c`, `su -c`, fish, or one `env` with options starts), 'cond' (it may not
-    run: after ||, an if or case branch; 'and' after &&, where what && follows succeeded), 'loop' (a loop's body, run again and again) or 'opaque' (run where it can't be
-    told: a function's body, `D=x eval`, a command that doesn't parse) or 'eval' (eval's script, in this shell, with its placeholders)."""
+    `D=x bash -c`, and its script's placeholders, _parent). Kinds: 'sub' (a copy of the shell: a subshell, substitution, pipeline
+    part or background job), 'proc' (a child bash: `bash -c`, a heredoc bash reads), 'sh' (a child shell that isn't bash: no dir
+    stack or `declare`), 'user' (a shell whose environment can't be told: another user's, `sudo bash -c`, `su -c`, fish, or one
+    `env` with options starts), 'cond' (it may not run: after ||, an if or case branch), 'and' (after &&: it runs once what &&
+    follows succeeded), 'loop' (a loop's body, run again and again), 'opaque' (run where it can't be told: a function's body,
+    `D=x eval`, a command that doesn't parse) or 'eval' (eval's script, in this shell, with its placeholders)."""
     frames = ()
 
 
@@ -573,7 +574,7 @@ class Where:
         if to == '$(git rev-parse --show-toplevel)':
             return self.dir and subprocess.run(['git', '-C', self.dir, 'rev-parse', '--show-toplevel'], capture_output=True, text=True).stdout.strip() or None
         cdpath = self.vars['CDPATH'] if 'CDPATH' in self.vars else None if self.lost else os.environ.get('CDPATH', '')
-        return None if (cdpath is None or cdpath) and not os.path.isabs(os.path.expanduser(self.expand(to))) else self.path(to)
+        return None if (cdpath is None or cdpath) and not os.path.isabs(self.expand(self._home(to) or '/')) else self.path(to)
 
 
 def _changes(t):
