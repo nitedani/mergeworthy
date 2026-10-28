@@ -315,14 +315,19 @@ def is_gitlab(host, env):
 
 GLAB_VARS = ('GITLAB_HOST', 'GITLAB_URI', 'GL_HOST', 'GLAB_CONFIG_DIR', 'XDG_CONFIG_HOME', 'GITLAB_API_HOST', 'GLAB_ENABLE_CI_AUTOLOGIN', 'GITLAB_CI', 'CI_SERVER_FQDN')
 
-def glab_env(env):
-    """The environment a glab command with the assignments env runs in: the hook's, with each value as the shell expands it ($X, ${X}, a leading ~).
+def glab_env(env, d):
+    """The environment a glab command with the assignments env runs in, in d: the hook's, with each value as the shell expands it ($X, ${X}, a leading ~),
+    and a relative config dir taken from d.
     One computed when it runs ($(...), a backtick, ${X:-...}) blocks when it picks glab's server or config (GLAB_VARS), and is left out otherwise (a token)."""
     if env_removed:
         block("this command removes variables (env -i, env -u, unset), so which GitLab server and project it acts on can't be told: run it without removing them")
     out = dict(os.environ)
     for k, v in env.items():
         v = expandvars(os.path.expanduser(v) if v.startswith('~') else v)
+        if k in ('GLAB_CONFIG_DIR', 'XDG_CONFIG_HOME') and v and not v.startswith('/') and not re.search(r'[$`]', v):
+            if re.search(r'[$`]', d):
+                block(f"{k} on this command is relative, and the dir it runs in is computed when it runs, so which config glab reads can't be told: write it out absolute")
+            v = os.path.join(d, v)
         if re.search(r'[$`]', v):
             if k in GLAB_VARS:
                 block(f"{k} on this command is computed when it runs, so which GitLab server and project it acts on can't be told: write its value out")
@@ -355,7 +360,7 @@ def api_opens(ep, rest, env, d):
     if (m := re.fullmatch(r'projects/([^/]+)/(issues|merge_requests)', path)):
         import urllib.parse
         project = urllib.parse.unquote(m[1])
-        if not host or project.isdigit(): env = glab_env(env)
+        if not host or project.isdigit(): env = glab_env(env, d)
         host = host or gitlab_host(rest, env, d)
         if project.isdigit():  # a project's id: its path, asked of the server the write goes to, with the command's variables
             try: project = json.loads(subprocess.run(['glab', 'api', '--hostname', host, f'projects/{project}'], env=env, capture_output=True, text=True, timeout=20).stdout).get('path_with_namespace') or ''

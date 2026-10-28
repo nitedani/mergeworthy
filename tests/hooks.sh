@@ -2196,6 +2196,9 @@ check "BLOCK: a host, config dir, API host or CI variable computed when it runs 
   "$( { unknown 'GITLAB_HOST="$(cat h)"' GITLAB_HOST; unknown 'GLAB_CONFIG_DIR=`pwd`/c' GLAB_CONFIG_DIR; unknown 'XDG_CONFIG_HOME=${NOPE_X:-/tmp}' XDG_CONFIG_HOME; unknown 'GITLAB_API_HOST=$(cat a)' GITLAB_API_HOST
        unknown 'GLAB_ENABLE_CI_AUTOLOGIN=true GITLAB_CI=true CI_SERVER_FQDN=$(cat f)' CI_SERVER_FQDN; } | xargs)"
 git init -q "$T/glcode"; git -C "$T/glcode" remote add origin git@code.example.com:me/app.git; mkdir -p "$T/glcfg"; printf 'host: gitlab.com\nhosts:\n    gitlab.com:\n        token:\n    code.example.com:\n        token: x\n' > "$T/glcfg/config.yml"
+mkdir -p "$T/glcode/cfgrel" "$T/glcode/xdgrel/glab-cli"; cp "$T/glcfg/config.yml" "$T/glcode/cfgrel/"; cp "$T/glcfg/config.yml" "$T/glcode/xdgrel/glab-cli/"
+check "a relative GLAB_CONFIG_DIR or XDG_CONFIG_HOME is the command's dir's: its host is GitLab, naming the project there; under a dir computed when it runs, it blocks, naming it" "2 1 2 1 2 1" \
+  "$(bg 'GLAB_CONFIG_DIR=cfgrel glab api projects/123/issues -X POST -f title=x' "$T/glcode") $(grep -c 'no running watcher covers code.example.com/me/app:' "$T/err") $(bg 'XDG_CONFIG_HOME=xdgrel glab api projects/123/issues -X POST -f title=x' "$T/glcode") $(grep -c 'no running watcher covers code.example.com/me/app:' "$T/err") $(bg 'cd "$(mktemp -d)" && GLAB_CONFIG_DIR=cfgrel glab api projects/123/issues -X POST -f title=x' "$T/glcode") $(grep -c 'GLAB_CONFIG_DIR on this command is relative' "$T/err")"
 removes() { printf '%s %s ' "$(bg "$1" "$T")" "$(grep -c 'removes variables' "$T/err")"; }
 check "BLOCK: a glab api POST that removes variables (env -u, env --unset=, env -i, unset before it), naming it; env setting one passes" "2 1 2 1 2 1 2 1 0 0" \
   "$( { removes 'env -u GITLAB_HOST glab api projects/123/issues -X POST -f title=x'; removes 'env --unset=GITLAB_TOKEN glab api projects/123/issues -X POST -f title=x'
