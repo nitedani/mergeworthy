@@ -564,24 +564,44 @@ class Where:
         elif name in ('cd', 'pushd', 'popd') and getattr(t, 'negated', False):  # `! cd x && ...` goes on when it fails
             self._move(None, None, None)
         elif name in ('cd', 'pushd', 'popd'):
+            opens = self._opens(a)
             a = [x for x in operands(a) if x not in ('-P', '-L', '-e', '-@', '--')]  # not its redirects (`pushd x >/dev/null`)
             here, stack = self.dir, self.stack
             arg = self.expand(a[0]) if a else ''
             if a and getattr(a[0], 'splits', False) and a[0] != TOPLEVEL and not re.fullmatch(r'[^\s*?[]+', arg):  # split, globbed or dropped: what cd gets can't be told
                 self._move(None, None, None)
             elif name == 'cd':
-                self._go((None if 'OLDPWD' in self.vars else self.old) if arg == '-' else self._to(a[0] if a else '~'), here, stack, len(a) < 2)
+                self._go((None if 'OLDPWD' in self.vars else self.old) if arg == '-' else self._to(a[0] if a else '~'), here, stack, len(a) < 2, opens)
             elif name == 'pushd' and a and arg[:1] not in '+-':
-                self._go(self._to(a[0]), here, None if stack is None else [here] + stack, len(a) < 2)
+                self._go(self._to(a[0]), here, None if stack is None else [here] + stack, len(a) < 2, opens)
             elif not a and stack:  # pushd swaps the top two, popd goes to the top one
-                self._go(stack[0], here, [here] + stack[1:] if name == 'pushd' else stack[1:], True)
+                self._go(stack[0], here, [here] + stack[1:] if name == 'pushd' else stack[1:], True, opens)
             else:  # a rotation, -n, or an empty stack
                 self._move(None, here, None)
 
-    def _go(self, to, old, stack, one):
-        """cd's move to `to`, when bash surely gets there: one argument, a dir it may enter. Else the dir can't be told, but a
-        command after && runs there."""
-        if one and to is not None and os.path.isdir(to) and os.access(to, os.X_OK):
+    def _opens(self, t):
+        """Whether bash surely opens each redirect of argv t, without which it runs nothing: /dev/null, a heredoc or here-string, a copy
+        of an fd, an input it may read, an output it may write (an existing file, or a new one in a dir it may write)."""
+        i = 0
+        while i < len(t) - 1:
+            if not REDIR.fullmatch(t[i]):
+                i += 1
+                continue
+            op, w, i = t[i].lstrip('0123456789'), t[i + 1], i + 2
+            if op in ('<<', '<<-', '<<<') or op in ('>&', '<&') and re.fullmatch(r'\d+-?|-', w):
+                continue
+            p = None if getattr(w, 'splits', False) and not re.fullmatch(r'[^\s*?[]+', self.expand(w)) else self.path(w)  # `>$F`: ambiguous
+            if p == '/dev/null':
+                continue
+            if p is None or os.path.isdir(p) or not (os.access(p, os.R_OK) if op == '<' else os.access(p, os.W_OK) if os.path.exists(p)
+                                                      else os.access(os.path.dirname(p), os.W_OK | os.X_OK)):
+                return False
+        return True
+
+    def _go(self, to, old, stack, one, opens=True):
+        """cd's move to `to`, when bash surely gets there: one argument, a dir it may enter, redirects it opens. Else the dir can't be
+        told, but a command after && runs there."""
+        if one and opens and to is not None and os.path.isdir(to) and os.access(to, os.X_OK):
             return self._move(to, old, stack)
         self._move(None, None, None)
         self.pending = (to, old, stack) if one and to is not None else None

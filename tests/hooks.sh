@@ -1987,6 +1987,8 @@ check "BLOCK: an MR from a script nested in bash -c \"..\" (bash -c '..', eval '
   "$(bgs sess-b "export D=$CK4; D=$CK bash -c \"bash -c 'cd \$D; $MRC'\"" "$CK") $(bgs sess-b "export D=$CK4; D=$CK bash -c \"eval 'cd \$D'; $MRC\"" "$CK")"
 check "a redirect on cd or pushd (pushd x >/dev/null, cd x 2>/dev/null) and an unquoted cd \$(git rev-parse --show-toplevel) leave the dir known: an MR in the watched folder passes" "0 0 0 0" \
   "$(bgs sess-b "pushd $CK >/dev/null && $MRC" "$CK") $(bgs sess-b "pushd $CK >/dev/null; $MRC; popd >/dev/null" "$CK") $(bgs sess-b "cd $CK 2>/dev/null && $MRC" "$CK") $(bgs sess-b "cd \$(git rev-parse --show-toplevel) && $MRC" "$CK")"
+check "BLOCK: an MR after a cd whose redirect fails (>\$UNSET, >/nonexistent/x), which bash skips, from the unwatched folder" "2 2" \
+  "$(bgs sess-b "cd $CK >\$R8_UNSET; $MRC" "$CK4") $(bgs sess-b "cd $CK >/nonexistent/x; $MRC" "$CK4")"
 echo "$FPID" > "$TK4/gh-watch.pid"; echo gitlab.com/ns/proj > "$TK4/repos.txt"; echo "$TK4" >> "$HOME/.claude/gh-watch-dirs.txt"
 check "the same passes once each folder has its watcher" 0 "$(bgs sess-b "$TWO" "$T")"
 treg() { # stdout [command [cwd]]: post-bash-register on the command ($TWO, from $T), then exit code|the first folder's threads|the second's
@@ -2021,6 +2023,7 @@ check "an MR from a script nested in bash -c \"..\" (bash -c '..', sh -c '..', e
   "0||gitlab.com/ns/proj !9 0||gitlab.com/ns/proj !9 0||gitlab.com/ns/proj !9 0||gitlab.com/ns/proj !9" \
   "$(treg "$U9" "export D=$CK4; D=$CK bash -c \"bash -c 'cd \$D; $MRC'\"" "$CK4") $(treg "$U9" "export D=$CK4; D=$CK bash -c \"sh -c 'cd \$D; $MRC'\"" "$CK4") $(treg "$U9" "export D=$CK4; D=$CK bash -c \"eval 'cd \$D'; $MRC\"" "$CK4") $(treg "$U9" "export D=$CK4; D=$CK bash -c \"bash <<< 'cd \$D; $MRC'\"" "$CK4")"
 check "an MR after pushd x >/dev/null joins x's folder" "0||gitlab.com/ns/proj !9" "$(treg "$U9" "pushd $CK4 >/dev/null; $MRC" "$CK")"
+check "BLOCK: an MR after a cd whose redirect may fail joins no watcher, not the cd's folder (bash stays put when it fails)" "2||" "$(treg "$U9" "cd $CK4 >/nonexistent/x; $MRC" "$CK")"
 check "BLOCK: an MR after a negated cd (! cd x && ..., which goes on when the cd fails) joins no watcher" "2||" "$(treg "$U9" "! cd $CK/nope && $MRC" "$CK4")"
 check "BLOCK: an MR after a cd the line redefined (a function, an alias) joins no watcher" "2|| 2||" "$(treg "$U9" "cd() { :; }; cd $CK; $MRC" "$CK4") $(treg "$U9" "alias cd=:; cd $CK; $MRC" "$CK4")"
 mkdir -p "$CK/my dir"
