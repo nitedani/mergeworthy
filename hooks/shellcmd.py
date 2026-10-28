@@ -562,15 +562,30 @@ class Where:
             self._changed('lost')
         elif name in ('function', 'alias'):
             self.redefined |= bool({x.split('=', 1)[0] for x in (a if name == 'alias' else a[:1])} & {'cd', 'pushd', 'popd'})
-        elif name in ('cd', 'pushd', 'popd') and self.redefined:  # runs what the line made it
+        elif name == 'set' and any(re.fullmatch(r'-[a-zA-Z]*P[a-zA-Z]*', x) for x in a) or name == 'set' and 'physical' in a:
+            self.physical = True
+        elif name in ('cd', 'pushd', 'popd'):
+            pre = t[:len(t) - len(p)]
+            if {os.path.basename(w) for w in pre} & (set(WRAPPERS) | set(RUNNERS)) - {'builtin', 'command', 'time'}:
+                return  # another program named cd (`env cd`, `nice cd`): this shell's dir stays
+            outer = self.vars
+            self.vars = {**outer, **{n: None if plus else self._value(v, getattr(x, 'tilde', None))
+                                    for x in pre if (m := re.match(r'(\w+)(\+?)=(.*)', getattr(x, 'literal', None) or x, re.S))
+                                    for n, plus, v in [m.groups()]}}  # its own prefix (`CDPATH=x cd y`), for it alone
+            try:
+                self._cd(name, a)
+            finally:
+                self.vars = outer
+
+    def _cd(self, name, a):
+        """Take cd, pushd or popd with arguments a, its own prefix in self.vars."""
+        if self.redefined:  # runs what the line made it
             self._move(None, None, None)
             self.lost = True
             self._changed('lost')
-        elif name == 'set' and any(re.fullmatch(r'-[a-zA-Z]*P[a-zA-Z]*', x) for x in a) or name == 'set' and 'physical' in a:
-            self.physical = True
-        elif name in ('cd', 'pushd', 'popd') and (self._negated() or self.physical):  # `! cd x && ...` goes on when it fails; set -P: cd -P
+        elif self._negated() or self.physical or 'PWD' in self.vars:  # `! cd x && ..` goes on when it fails; set -P: cd -P; cd .. starts from $PWD
             self._move(None, None, None)
-        elif name in ('cd', 'pushd', 'popd'):
+        else:
             opens, physical = self._opens(a), next((x == '-P' for x in reversed(operands(a)) if x in ('-P', '-L')), False)
             a = [x for x in operands(a) if x not in ('-P', '-L', '-e', '-@', '--')]  # not its redirects (`pushd x >/dev/null`)
             here, stack = self.dir, self.stack
