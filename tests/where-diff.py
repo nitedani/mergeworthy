@@ -17,7 +17,8 @@ for d in (A, B, C, H, BIN, S, f'{A}/B', f'{A}/$D', f'{G}/sub'):  # A/B: where a 
     os.makedirs(d)
 GIT = shutil.which('git')
 subprocess.run([GIT, 'init', '-q', G], check=True)  # for cd $(git rev-parse --show-toplevel)
-for v in ('D', 'E', 'CDPATH', 'OLDPWD', 'BASH_ENV', 'ENV'):
+open(f'{T}/in.txt', 'w').close()  # an input a redirect can read
+for v in ('D', 'E', 'F', 'CDPATH', 'OLDPWD', 'BASH_ENV', 'ENV'):
     os.environ.pop(v, None)
 os.environ['HOME'] = H  # `cd ~` in bash and in Where
 TAGS = 'for a; do case "$a" in t[0-9]*) echo "$a $PWD";; esac; done\n'  # each tag among its arguments, and the dir
@@ -53,7 +54,11 @@ ODD = [f'cd {{B}} {r}' for r in R] + [f'pushd {{B}} {r}' for r in R] + [f'pushd 
     '>/dev/null cd {B}', '2>/dev/null pushd {B}', 'cd $(echo {B})', 'cd "$(echo {B})"', 'cd `echo {B}`', 'cd {G}/sub; cd $(git rev-parse --show-toplevel)',
     'cd {G}/sub; cd "$(git rev-parse --show-toplevel)"', 'cd {G}/sub; cd `git rev-parse --show-toplevel`', '! cd {B}', '! cd {B}/nope',
     'cd() {{ :; }}; cd {B}', 'function cd {{ builtin cd {C}; }}; cd {B}', 'pushd() {{ :; }}; pushd {B}', 'popd() {{ builtin cd {C}; }}; pushd {B}; popd',
-    "shopt -s expand_aliases\nalias cd='builtin cd {C}'\ncd {B}"]  # redirects, substitutions, negation, a redefined cd
+    "shopt -s expand_aliases\nalias cd='builtin cd {C}'\ncd {B}"] + [
+    f'{c} {r}' for c in ('cd {B}', 'pushd {B}', 'pushd {B} >/dev/null; popd') for r in (
+        '>$F', '>"$F"', '>/nonexistent/x', '2>{T}/nodir/x', '<{T}/missing', '>{B}', '>{T}/out.txt', '>>{T}/out.txt', '<{T}/in.txt')] + [
+    '! {{ cd {B}/nope; }}', '! {{ cd {B}; }}', "! eval 'cd {B}/nope'", "! eval 'cd {B}'", '! ( cd {B}/nope )', 'f() {{ cd {B}/nope; }}; ! f',
+    '! {{ true && cd {B}/nope; }}']  # redirects, substitutions, negation, a redefined cd; redirects that fail, negated groups
 EVERYDAY = [  # lines agents typed (Claude Code transcripts on this machine, 2026-10), their paths made the corpus's and other commands harmless ones
     'cd {B} && git push -u origin {G} 2>&1 | tail -6; git rev-parse HEAD',
     'cd {B}; glab issue view 1 --comments 2>&1 | head -40; glab mr create --title {G}',
