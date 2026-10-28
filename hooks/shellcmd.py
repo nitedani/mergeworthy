@@ -437,6 +437,8 @@ class Where:
         self.dir, self.old, self.stack, self.vars, self.exported, self.lost, self.moved = cwd, None, [], {}, set(), False, False
         self.pending = None  # (dir, old dir, stack) of the cd just run that may have failed: where a command after && runs
         self.redefined = False  # whether the line defines cd, pushd or popd (a function, an alias)
+        self.physical = False  # whether it set -P, so cd follows symlinks
+
         self.carry = None  # the state an 'and' frame just left ended in, and what changed in it: where the next && in the chain goes on
         self.written = {}  # each variable's last value as written (`C="$(echo git) push"`), for words a command named by it may run
         self.open = []  # the frames (Seg.frames) entered: (frame, the state on entering it, what changed in it: 'dir', 'lost', variable names)
@@ -564,23 +566,37 @@ class Where:
             self._move(None, None, None)
             self.lost = True
             self._changed('lost')
-        elif name in ('cd', 'pushd', 'popd') and self._negated():  # `! cd x && ...` goes on when it fails
+        elif name == 'set' and any(re.fullmatch(r'-[a-zA-Z]*P[a-zA-Z]*', x) for x in a) or name == 'set' and 'physical' in a:
+            self.physical = True
+        elif name in ('cd', 'pushd', 'popd') and (self._negated() or self.physical):  # `! cd x && ...` goes on when it fails; set -P: cd -P
             self._move(None, None, None)
         elif name in ('cd', 'pushd', 'popd'):
-            opens = self._opens(a)
+            opens, physical = self._opens(a), next((x == '-P' for x in reversed(operands(a)) if x in ('-P', '-L')), False)
             a = [x for x in operands(a) if x not in ('-P', '-L', '-e', '-@', '--')]  # not its redirects (`pushd x >/dev/null`)
             here, stack = self.dir, self.stack
             arg = self.expand(a[0]) if a else ''
             if a and getattr(a[0], 'splits', False) and a[0] != TOPLEVEL and not re.fullmatch(r'[^\s*?[]+', arg):  # split, globbed or dropped: what cd gets can't be told
                 self._move(None, None, None)
             elif name == 'cd':
-                self._go((None if 'OLDPWD' in self.vars else self.old) if arg == '-' else self._to(a[0] if a else '~'), here, stack, len(a) < 2, opens)
-            elif name == 'pushd' and a and arg[:1] not in '+-':
-                self._go(self._to(a[0]), here, None if stack is None else [here] + stack, len(a) < 2, opens)
+                to = (None if 'OLDPWD' in self.vars else self.old) if arg == '-' else self._to(a[0] if a else '~')
+                self._go(self._land(to, physical), here, stack, len(a) < 2, opens)
+            elif name == 'pushd' and a and arg[:1] not in '+-':  # through a symlink and back up (`pushd link/..`): not told
+                to = self._to(a[0])
+                self._go(to and (os.path.normpath(to) if os.path.realpath(to) == os.path.realpath(os.path.normpath(to)) else None),
+                         here, None if stack is None else [here] + stack, len(a) < 2, opens)
             elif not a and stack:  # pushd swaps the top two, popd goes to the top one
                 self._go(stack[0], here, [here] + stack[1:] if name == 'pushd' else stack[1:], True, opens)
             else:  # a rotation, -n, or an empty stack
                 self._move(None, here, None)
+
+    def _land(self, to, physical):
+        """The dir cd's target `to` lands in, as bash sets PWD: its .. and . taken off by name (cd -L, the default), or the dir it names
+        once its symlinks are followed (cd -P, or when the name isn't a dir but the path is); None when neither can be told."""
+        if to is None:
+            return None
+        if physical or not os.path.isdir(os.path.normpath(to)) and os.path.isdir(to):
+            return os.path.realpath(to)
+        return os.path.normpath(to) if os.path.isdir(os.path.normpath(to)) or '..' not in to.split(os.sep) else None
 
     def _negated(self):
         """Whether the command runs under a `!` of this shell's (a 'not' frame since the innermost subshell or child shell)."""

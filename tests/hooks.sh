@@ -1990,6 +1990,9 @@ check "a redirect on cd or pushd (pushd x >/dev/null, cd x 2>/dev/null) and an u
 check "BLOCK: an MR after a cd whose redirect fails (>\$UNSET, >/nonexistent/x), which bash skips, from the unwatched folder" "2 2" \
   "$(bgs sess-b "cd $CK >\$R8_UNSET; $MRC" "$CK4") $(bgs sess-b "cd $CK >/nonexistent/x; $MRC" "$CK4")"
 check "BLOCK: an MR after a negated group holding a cd that fails (! { cd x; } && ..), from the unwatched folder" 2 "$(bgs sess-b "! { cd $CK/nope; } && $MRC" "$CK4")"
+ln -s "$CK" "$TK4/link"  # a checkout of the watched folder, linked into the unwatched one
+check "BLOCK: an MR after cd .. from a symlink into the watched folder: bash goes back up the link, to the unwatched folder" 2 "$(bgs sess-b "cd $TK4/link; cd ..; $MRC" "$CK4")"
+rm "$TK4/link"
 echo "$FPID" > "$TK4/gh-watch.pid"; echo gitlab.com/ns/proj > "$TK4/repos.txt"; echo "$TK4" >> "$HOME/.claude/gh-watch-dirs.txt"
 check "the same passes once each folder has its watcher" 0 "$(bgs sess-b "$TWO" "$T")"
 treg() { # stdout [command [cwd]]: post-bash-register on the command ($TWO, from $T), then exit code|the first folder's threads|the second's
@@ -2027,6 +2030,9 @@ check "an MR after pushd x >/dev/null joins x's folder" "0||gitlab.com/ns/proj !
 check "BLOCK: an MR after a cd whose redirect may fail joins no watcher, not the cd's folder (bash stays put when it fails)" "2||" "$(treg "$U9" "cd $CK4 >/nonexistent/x; $MRC" "$CK")"
 check "BLOCK: an MR after a negated cd (! cd x && ..., which goes on when the cd fails) joins no watcher" "2||" "$(treg "$U9" "! cd $CK/nope && $MRC" "$CK4")"
 check "BLOCK: an MR after a negated eval holding a cd that fails (! eval 'cd x' && ..) joins no watcher" "2||" "$(treg "$U9" "! eval 'cd $CK/nope' && $MRC" "$CK4")"
+ln -s "$CK4" "$TK2/link"
+check "an MR after cd .. from a symlink into another folder joins the folder bash went back up to (the link's), not the target's parent" "0|gitlab.com/ns/proj !9|" "$(treg "$U9" "cd $TK2/link; cd ..; $MRC" "$CK4")"
+rm "$TK2/link"
 check "BLOCK: an MR after a cd the line redefined (a function, an alias) joins no watcher" "2|| 2||" "$(treg "$U9" "cd() { :; }; cd $CK; $MRC" "$CK4") $(treg "$U9" "alias cd=:; cd $CK; $MRC" "$CK4")"
 mkdir -p "$CK/my dir"
 check "BLOCK: an MR after a cd that fails (a missing target, an unquoted expansion holding a space, two arguments) joins no watcher; after && it joins the target's" \
