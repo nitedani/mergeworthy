@@ -464,7 +464,7 @@ def hook_list(r):
     try: return open(os.path.join(r, 'hooks', 'hooks.json')).read()
     except OSError: return None
 told = os.path.expanduser(f"~/.claude/mergeworthy-restart-told/{d.get('session_id')}")
-if (not child and d.get('session_id') and '/plugins/cache/' in own_root and os.path.isdir(own_root) and os.path.isdir(cur) and os.path.realpath(own_root) != cur
+if (not child and working and d.get('session_id') and '/plugins/cache/' in own_root and os.path.isdir(own_root) and os.path.isdir(cur) and os.path.realpath(own_root) != cur
         and os.path.getmtime(own_root) < os.path.getmtime(cur) and hook_list(own_root) != hook_list(cur) and not os.path.exists(told)):
     os.makedirs(os.path.dirname(told), exist_ok=True); open(told, 'w').close()
     print(f"mergeworthy's hook list changed after this session started ({own_root} -> {cur}): tell the user that a restart of this "
@@ -479,7 +479,7 @@ def skill_texts(r):
         except OSError: pass
     return out
 told = os.path.expanduser(f"~/.claude/mergeworthy-skills-told/{d.get('session_id')}")
-if (not child and d.get('session_id') and '/plugins/cache/' in own_root and os.path.isdir(own_root) and os.path.isdir(cur)
+if (not child and working and d.get('session_id') and '/plugins/cache/' in own_root and os.path.isdir(own_root) and os.path.isdir(cur)
         and os.path.realpath(own_root) != cur and not os.path.exists(told) and skill_texts(own_root) != skill_texts(cur)):
     os.makedirs(os.path.dirname(told), exist_ok=True); open(told, 'w').close()
     names = ', '.join(sorted(os.path.basename(x) for x in glob.glob(os.path.join(cur, 'skills', '*')) if os.path.isdir(x)))
