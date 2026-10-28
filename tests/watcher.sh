@@ -102,7 +102,7 @@ codes="$(follow "$W/gh-watch.py") $(follow "$W/gh-watch.py") $(follow "$W/gh-wat
 check "three starts from a checkout, exit codes" "0 0 0" "$codes"
 [ -e "$HOME/.mergeworthy/current" ]; check "~/.mergeworthy/current not repointed" 1 $?
 # control: the same code inside the plugin cache, with a newer version installed, still follows (exit 75)
-C="$HOME/.claude/plugins/cache/mergeworthy/mergeworthy/v1"; mkdir -p "$C/watcher" "$C/hooks"; cp "$R/watcher/gh-watch.py" "$R/watcher/gl_watch.py" "$C/watcher/"; cp "$R/hooks/agent_jobs.py" "$R/hooks/steward.py" "$C/hooks/"
+C="$HOME/.claude/plugins/cache/mergeworthy/mergeworthy/v1"; mkdir -p "$C/watcher" "$C/hooks"; cp "$R/watcher/gh-watch.py" "$R/watcher/gl_watch.py" "$C/watcher/"; cp "$R/hooks/agent_jobs.py" "$R/hooks/steward.py" "$R/hooks/work_folder.py" "$C/hooks/"
 check "control: running from the plugin cache, newer version installed" 75 "$(follow "$C/watcher/gh-watch.py")"
 [ "$(readlink "$HOME/.mergeworthy/current")" = "$T/installed/v2" ]; check "control: current points at the new version" 0 $?
 
@@ -251,7 +251,7 @@ check "a routed thread joins its dir's threads.txt, an unrouted one does not" "o
 
 # FOLLOW-UP: commits by others to the lines of your merged PR, and PRs that reference it: each once, to the dirs that list the PR
 rm -rf "$HOME/.mergeworthy/shared-watch.json"*
-follow() { rm -f "$HOME/.mergeworthy/shared-watch.json" "$HOME/.mergeworthy/agent-commands.seen"; : > "$W/events.log"; py '
+follow() { rm -f "$HOME/.mergeworthy/shared-watch.json" "$HOME/.mergeworthy/agent-commands.seen" "$W/replies-owed.md"; : > "$W/events.log"; py '
 import time, datetime, re
 m.ONCE = False
 open(m.THREADS, "w").write("o/r 5\n")
@@ -388,6 +388,20 @@ def run(threads):
 print(run("Me/r 5\n"), run("Me/r 5\no/r 6\n"))
 ')
 check "retire_if_done: a merged PR of yours in your own repo doesn't keep the watcher for follow-ups; one in another repo does" "1 0" "$got"
+got=$(py '
+def run(owed):
+    open(m.THREADS, "w").write("Me/r 5\n"); open(os.path.join(m.HERE, "replies-owed.md"), "w").write(owed); buf = io.StringIO()
+    m.save_state({"prs": {"Me/r#5": {"state": "merged"}}, "author": {"Me/r#5": "me"}, "ci": {}, "is_pr": {}, "since_by": {}, "seen": {}, "since": "2026-01-01T00:00:00Z"})
+    try:
+        with contextlib.redirect_stdout(buf): m.retire_if_done()
+    except SystemExit:
+        pass
+    return buf.getvalue().count("WATCHER RETIRED")
+owed = "# replies owed\nme/r#5 comment 9 by bob https://github.com/me/r/pull/5#issuecomment-9\n"
+print(run(owed), run(owed.replace("me/r#5 comment", "- done: https://example.invalid/r answered; me/r#5 comment")))
+os.remove(os.path.join(m.HERE, "replies-owed.md"))
+')
+check "retire_if_done: a reply still owed keeps the watcher; once that line is done:, it retires" "0 1" "$got"
 rm -f "$W/retired"
 
 # Under T3 Code (gh-watch-start wrote t3-thread) a pass's event lines, from any writer, go to that thread as one message; a failed send is retried
@@ -493,7 +507,7 @@ with contextlib.redirect_stdout(buf): m.scan_gitlab()
 print(buf.getvalue().count("### gitlab.com/ns/sub/proj#8 note 81 by alice"))
 ')
 check "GitLab in a --round: a thread not due yet is read, one never read back to the pass start, though the state saw a later round" 1 "$got"
-sed -i '/^gitlab.com\/ns\/sub\/proj 8$/d' "$GLW/threads.txt"
+sed -i '/^gitlab.com\/ns\/sub\/proj 8$/d' "$GLW/threads.txt"; rm -f "$GLW/replies-owed.md"  # answered, so the retire cases below can retire
 got=$(glpy '
 thread("issues", "4", "opened"); thread("merge_requests", "9", "merged")
 out = run(m.scan_gitlab)

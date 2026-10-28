@@ -29,7 +29,7 @@ from concurrent.futures import ThreadPoolExecutor
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))  # a watch dir runs this through a link
 import gl_watch
 sys.path.insert(1, os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'hooks'))
-import agent_jobs, shlex, steward
+import agent_jobs, shlex, steward, work_folder
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE = os.path.join(HERE, 'gh-watch-state.json')
@@ -1666,8 +1666,9 @@ def shared_pass(force=False):
 def retire_if_done():
     """A watcher whose every thread is merged or closed (and that covers no whole repo: a bare `owner/repo` line in repos.txt doesn't
     keep it, an `owner/repo all` line does) has nothing left to watch: it writes the time to HERE/retired and disables its service, so
-    it doesn't come back after a reboot, or stops its daemon."""
-    if any(repo_lines(HERE).values()):
+    it doesn't come back after a reboot, or stops its daemon. A reply still owed in replies-owed.md keeps it: stop-lint holds a
+    session's turn only for a live watcher's owed lines."""
+    if any(repo_lines(HERE).values()) or work_folder.has_open_line(os.path.join(HERE, 'replies-owed.md'), 'done:'):
         return
     threads, gl = read_threads(), gl_watch.threads(THREADS)
     if not threads and not gl:
