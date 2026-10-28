@@ -2196,6 +2196,11 @@ check "BLOCK: a host, config dir, API host or CI variable computed when it runs 
   "$( { unknown 'GITLAB_HOST="$(cat h)"' GITLAB_HOST; unknown 'GLAB_CONFIG_DIR=`pwd`/c' GLAB_CONFIG_DIR; unknown 'XDG_CONFIG_HOME=${NOPE_X:-/tmp}' XDG_CONFIG_HOME; unknown 'GITLAB_API_HOST=$(cat a)' GITLAB_API_HOST
        unknown 'GLAB_ENABLE_CI_AUTOLOGIN=true GITLAB_CI=true CI_SERVER_FQDN=$(cat f)' CI_SERVER_FQDN; } | xargs)"
 git init -q "$T/glcode"; git -C "$T/glcode" remote add origin git@code.example.com:me/app.git; mkdir -p "$T/glcfg"; printf 'host: gitlab.com\nhosts:\n    gitlab.com:\n        token:\n    code.example.com:\n        token: x\n' > "$T/glcfg/config.yml"
+removes() { printf '%s %s ' "$(bg "$1" "$T")" "$(grep -c 'removes variables' "$T/err")"; }
+check "BLOCK: a glab api POST that removes variables (env -u, env --unset=, env -i, unset before it), naming it; env setting one passes" "2 1 2 1 2 1 2 1 0 0" \
+  "$( { removes 'env -u GITLAB_HOST glab api projects/123/issues -X POST -f title=x'; removes 'env --unset=GITLAB_TOKEN glab api projects/123/issues -X POST -f title=x'
+       removes 'env -i glab api projects/123/issues -X POST -f title=x'; removes 'unset GITLAB_HOST; glab api projects/123/issues -X POST -f title=x'
+       removes 'env FOO=1 glab api projects/123/issues -X POST -f title=x'; } | xargs)"
 mkdir -p "$HOME/glcfgh"; cp "$T/glcfg/config.yml" "$HOME/glcfgh/"
 check "a config dir written as ~/... or \$HOME/... is that dir: its host is GitLab, naming the project there" "2 1 2 1" \
   "$(bg 'GLAB_CONFIG_DIR=~/glcfgh glab api projects/123/issues -X POST -f title=x' "$T/glcode") $(grep -c 'no running watcher covers code.example.com/me/app:' "$T/err") $(bg 'GLAB_CONFIG_DIR=$HOME/glcfgh glab api projects/123/issues -X POST -f title=x' "$T/glcode") $(grep -c 'no running watcher covers code.example.com/me/app:' "$T/err")"

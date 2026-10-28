@@ -318,6 +318,8 @@ GLAB_VARS = ('GITLAB_HOST', 'GITLAB_URI', 'GL_HOST', 'GLAB_CONFIG_DIR', 'XDG_CON
 def glab_env(env):
     """The environment a glab command with the assignments env runs in: the hook's, with each value as the shell expands it ($X, ${X}, a leading ~).
     One computed when it runs ($(...), a backtick, ${X:-...}) blocks when it picks glab's server or config (GLAB_VARS), and is left out otherwise (a token)."""
+    if env_removed:
+        block("this command removes variables (env -i, env -u, unset), so which GitLab server and project it acts on can't be told: run it without removing them")
     out = dict(os.environ)
     for k, v in env.items():
         v = expandvars(os.path.expanduser(v) if v.startswith('~') else v)
@@ -327,6 +329,11 @@ def glab_env(env):
             continue
         out[k] = v
     return out
+
+def removes_vars(t):
+    """Whether the env wrapper of the simple command t removes variables from what it runs (`env -i`, `env -u X`, `env --unset=X`)."""
+    pre = t[:len(t) - len(prog(t))]
+    return any(re.fullmatch(r'-|-\w*[iu]\w*|--(?:ignore-environment|unset)(?:=.*)?', x) for i, w in enumerate(pre) if os.path.basename(w) == 'env' for x in pre[i + 1:])
 
 def gitlab_host(a, env, run_dir):
     """The host a glab command acts on, with the environment env (glab_env), in glab's order: --hostname; GITLAB_HOST, GITLAB_URI, GL_HOST
@@ -810,6 +817,7 @@ has_cd = False
 run_dir = cwd  # where the command's git calls run: follows `cd <dir>` within the command
 shell_vars = {}  # NAME=value set by the command itself (`W=~/x; cd $W`), for the cd targets after it
 clones = {}  # folder: the repo it was cloned from, for a `git clone` in this command
+unset_seen = env_removed = False  # an `unset` earlier in this command; the command being checked removes variables (glab_env)
 for s in segs:
     if prog(s)[:2] == ['git', 'clone'] and (ops := [x for x in operands(prog(s)[2:]) if not x.startswith('-')]):
         src = ops[0] if repo_of(ops[0]) else os.path.join(run_dir, os.path.expanduser(ops[0]))
@@ -827,7 +835,9 @@ for s in segs:
             block(f"`{named}` runs a command named only when it runs, with `{' '.join(words)[:80]}`: write the command out, so it can be checked")
     if s and all(re.match(r'^\w+=', x) for x in s):
         shell_vars.update(x.split('=', 1) for x in s)
+    env_removed = unset_seen or removes_vars(s)
     check(s, has_cd)
+    unset_seen = unset_seen or prog(s)[:1] == ['unset']
     if prog(s)[:1] in (['cd'], ['pushd']):
         has_cd = True
         args = [x for x in prog(s)[1:] if x not in ('-P', '-L', '-e', '--')]
