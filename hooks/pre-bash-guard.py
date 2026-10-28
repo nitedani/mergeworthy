@@ -305,9 +305,9 @@ def gitlab_repo(a, run_dir):
     return 'gitlab.com/' + repo.strip('/') if repo and '://' not in repo else None
 
 def api_opens(ep, rest, env, d):
-    """(repo, 'issue' or 'pr') a `gh api` or `glab api` POST to ep, run in d, opens, in each form the CLIs take (a leading slash, an api/v4/
+    """(repo, 'issue' or 'pr') a `gh api` or `glab api` POST to ep, run in d, opens, in each form the CLIs take (a full URL, a leading slash, an api/v4/
     prefix, a query, gh's {owner}/{repo} from GH_REPO or the checkout, glab's :fullpath or :id); None for any other endpoint, repo None when it can't be told."""
-    path = re.sub(r'^/?(?:api/v4/)?|\?.*$', '', ep)
+    host, path = re.match(r'(?:https?://([^/]+))?/?(?:api/v4/)?([^?]*)', ep).groups()
     if (m := re.fullmatch(r'repos/([^/]+/[^/]+)/(issues|pulls)', path)):
         base = re.sub(r'^.*?([^/]+/[^/]+)$', r'\1', env.get('GH_REPO') or os.environ.get('GH_REPO') or cwd_repo(d) or '')
         repo = m[1].replace('{owner}', base.split('/')[0]).replace('{repo}', base.split('/')[-1]) if base else m[1]
@@ -315,7 +315,7 @@ def api_opens(ep, rest, env, d):
     if (m := re.fullmatch(r'projects/([^/]+)/(issues|merge_requests)', path)):
         import urllib.parse
         project = urllib.parse.unquote(m[1])
-        repo = gitlab_repo(rest, d) if project in (':fullpath', ':id') else 'gitlab.com/' + project if '/' in project else None
+        repo = gitlab_repo(rest, d) if project in (':fullpath', ':id') else f"{host or 'gitlab.com'}/{project}" if '/' in project else None
         return repo, 'pr' if m[2] == 'merge_requests' else 'issue'
     return None
 
