@@ -157,20 +157,17 @@ tr_cmd "gh api graphql -f query='query(\$n:Int!){repository(owner:\"o\",name:\"r
 check "a GraphQL query is a read, not a post" 0 "$(stop "$T/work")"
 tr_cmd "gh api repos/o/r/issues -X GET -F per_page=100"
 check "an explicit GET with fields is a read" 0 "$(stop "$T/work")"
-# a steward pass (gh-watch-start --round) leaves no Monitor: the session its passed file names may post, and that dir's owed replies hold the turn
+# a steward pass (gh-watch-start --round) leaves no daemon: a post still needs a live watcher, and the dir's owed replies hold its session's turn
 PD="$T/passdir"; mkdir -p "$PD"; echo "$PD" >> "$HOME/.claude/gh-watch-dirs.txt"; echo 'Tier: S, because one fix' > "$PD/scope.md"  # a posting session works on a scoped task
 stop_as() { python3 -c 'import json,sys; print(json.dumps({"transcript_path":sys.argv[1],"cwd":sys.argv[2],"session_id":sys.argv[3]}))' "$T/tr.jsonl" "$T" "$1" \
   | MERGEWORTHY_STOP_CHECKIN=off python3 "$R/hooks/stop-lint.py" 2>"$T/err"; echo $?; }
 tr_cmd "gh issue comment 5 --repo o/r --body-file $PD/drafts/r.md"
 check "BLOCK: a post with no Monitor and no pass" 2 "$(stop_as s-p)"
-echo s-other > "$PD/passed"
-check "BLOCK: a pass another session ran doesn't count" 2 "$(stop_as s-p)"
 echo s-p > "$PD/passed"
-check "a post in the session whose pass round ran needs no Monitor" 0 "$(stop_as s-p)"
+check "BLOCK: a post in the session whose pass round ran: nothing wakes it on a reply, so it says to start a watcher" "2 1" "$(stop_as s-p) $(grep -c 'gh-watch-start <your work folder>' "$T/err")"
+tr_cmd "gh api repos/o/r/issues -X GET -F per_page=100"
 echo "o/r 5 comment 77 by someone" > "$PD/replies-owed.md"
-check "BLOCK: the pass dir's owed reply holds the turn though no daemon runs there" 2 "$(stop_as s-p)"
-rm "$PD/replies-owed.md"; touch -d '-25 hours' "$PD/passed"
-check "BLOCK: a pass over a day old doesn't count" 2 "$(stop_as s-p)"
+check "BLOCK: the pass dir's owed reply holds the turn though no daemon runs there; answered, the turn ends" "2 0" "$(stop_as s-p) $(rm "$PD/replies-owed.md"; stop_as s-p)"
 rm "$PD/passed"
 tr_cmd "gh issue comment 5 --repo o/r --body-file $WD/drafts/r.md"
 check "BLOCK: a post with no Monitor on the watcher" 2 "$(stop "$T/work")"
@@ -1870,7 +1867,7 @@ check "an 'owner/repo all' line covers the repo for opening an issue" 0 "$(glgua
 PG="$T/glpass"; mkdir -p "$PG"; echo 'p/q all' > "$PG/repos.txt"; echo sess-g > "$PG/passed"; printf '%s\n' "$GW" "$PG" > "$HOME/.claude/gh-watch-dirs.txt"
 glsess() { python3 -c 'import json,sys; print(json.dumps({"session_id":sys.argv[1],"tool_input":{"command":"gh issue create -R p/q --title x --body-file x.md"},"cwd":sys.argv[2]}))' "$1" "$T" \
   | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err" >/dev/null; grep -c 'no running watcher' "$T/err"; }
-check "a dir the session's steward pass read today covers its repo for opening an issue; not for another session" "0 1" "$(glsess sess-g) $(glsess sess-h)"
+check "BLOCK: a dir a steward pass read today covers no repo for opening an issue, its session's or another's, saying to start a watcher" "1 1 1" "$(glsess sess-g) $(glsess sess-h) $(grep -c 'gh-watch-start' "$T/err")"
 echo "$GW" > "$HOME/.claude/gh-watch-dirs.txt"
 echo gitlab.com/ns/sub/proj > "$GW/repos.txt"
 glreg() { python3 -c 'import json,sys; print(json.dumps({"session_id":"sess-gl","tool_input":{"command":sys.argv[1]},"tool_response":{"stdout":sys.argv[2]}}))' "$1" "$2" | python3 "$R/hooks/post-bash-register.py"; }

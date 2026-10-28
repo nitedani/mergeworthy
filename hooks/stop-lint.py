@@ -331,11 +331,11 @@ watcher_on = (os.environ.get('MERGEWORTHY_WATCHER') or ('off' if 'MERGEWORTHY_WA
 headless = any('"entrypoint":"sdk-cli"' in l for l in lines[-20:])
 # The user paused the work: nothing is to be watched or answered until they resume
 paused = re.search(r'\bpause\b', last_user, re.I) is not None
-# A steward pass (gh-watch-start --round, mergeworthy:steward) leaves nothing running: the next pass reads the replies. A round that ran
-# names its session in <dir>/passed; that dir's owed lines hold the session's turn as a live watcher's do
+# A steward pass's round (gh-watch-start --round, mergeworthy:steward) names its session in <dir>/passed: that dir's owed lines hold the
+# session's turn as a live watcher's do. It has no daemon, so a post there still needs a live watcher, as any post does
 pass_dirs = {wd for wd in ((l.strip() for l in open(reg)) if os.path.exists(reg) else ()) if d.get('session_id') and steward.passed_by(wd) == d['session_id']}
 own_dirs |= pass_dirs
-if posted and watcher_on and not headless and not paused and not pass_dirs and not t3_dirs and not (monitors - dead):
+if posted and watcher_on and not headless and not paused and not t3_dirs and not (monitors - dead):
     # under T3, a watcher of this session's that dropped its t3-thread (the thread or t3 gone) wakes nothing: its events.log says why
     dropped = [wd for wd in live_dirs if t3_chain and steward.first(os.path.join(wd, 'session')) == d.get('session_id')
                and not os.path.exists(os.path.join(wd, 't3-thread'))]

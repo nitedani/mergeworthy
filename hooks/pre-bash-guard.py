@@ -130,10 +130,8 @@ def need_watch(repo, path):
     path = known(path)
     def lines(d, f):
         return [l.strip() for l in open(os.path.join(d, f))] if os.path.exists(os.path.join(d, f)) else []
-    # a dir this session's steward pass read in the last day covers too (gh-watch-start --round): its next pass reads the thread
-    reg, sid = os.path.expanduser('~/.claude/gh-watch-dirs.txt'), d.get('session_id')
-    passed = [w for w in ((l.strip() for l in open(reg)) if os.path.exists(reg) else ()) if sid and steward.passed_by(w) == sid]
-    covering = [w for w in work_folder.watched_by(watch_dirs(), sid, path) + passed
+    sid = d.get('session_id')
+    covering = [w for w in work_folder.watched_by(watch_dirs(), sid, path)
                 if any(l.split()[:1] in ([r] for r in repos) for l in lines(w, 'repos.txt') + lines(w, 'threads.txt'))]
     if not covering:
         block(f"no running watcher of this task or session covers {' or '.join(repos)} (another session's watcher wakes that session, not this one): "
