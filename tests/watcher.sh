@@ -434,7 +434,21 @@ with contextlib.redirect_stdout(buf): m.wake_thread()
 print(repr(buf.getvalue()), open(os.path.join(m.HERE, "t3-wake.cursor")).read().strip())
 ')
 check "wake_thread runs the t3 gh-watch-start recorded, so a daemon cron revived with PATH=/usr/bin:/bin still sends" "'' 15|t3 thread send thr-2 -" "$got|$(grep '^t3 thread send thr-2' "$T/t3.log")"
+# retiring sends its WATCHER RETIRED line before the supervisor stops the daemon
+: > "$T/t3.log"
+got=$(py '
+log = os.path.join(m.HERE, "events.log"); open(log, "w").write(""); open(os.path.join(m.HERE, "t3-wake.cursor"), "w").write("0\n")
+open(os.path.join(m.HERE, "t3-thread"), "w").write("thr-3\n'"$T"'/bin/t3\n"); open(m.THREADS, "w").write("o/r 5\n")
+m.save_state({"prs": {"o/r#5": {"state": "closed"}}, "author": {}, "ci": {}, "is_pr": {}, "since_by": {}, "seen": {}, "since": "2026-01-01T00:00:00Z"})
+with open(log, "a") as f, contextlib.redirect_stdout(f):
+    try:
+        m.retire_if_done()
+    except SystemExit:
+        pass
+')
+check "retire_if_done sends its WATCHER RETIRED line to the thread" "t3 thread send thr-3 -|1" "$(grep '^t3 thread send thr-3' "$T/t3.log")|$(grep -c '^WATCHER RETIRED at ' "$T/t3.log")"
 rm -f "$W/events.log" "$W/t3-wake.cursor" "$W/t3-thread"
+rm -f "$W/retired"
 
 # The Monitor command gh-watch-start prints delivers an event within 2 s, and only lines that start an event
 M="$T/mon"; mkdir -p "$M"; : > "$M/events.log"
