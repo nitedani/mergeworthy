@@ -38,7 +38,7 @@ ONCE = '--once' in sys.argv  # a manual check: prints events but doesn't consume
 ROUND = '--round' in sys.argv  # one round without a daemon (gh-watch-start --round, mergeworthy:steward): it records what it reports, as a daemon's round does
 ROUND_LOOKBACK = 7 * 86400  # a --round reads the /agent feed back this far when no reader on the machine recorded where to start
 ROUND_SINCE = None  # a --round reads the issue lists' threads updated since its dir's last complete round (one_round), whatever other readers saw
-SEED = False  # a dir's first --round, with no state yet: it records where everything stands and reports none of it (one_round)
+SEED = False  # a --round in a dir whose first round started it and none has completed: it records where everything stands and reports none of it (one_round)
 WAIT_PING_HOURS = float(os.environ.get('WAIT_PING_HOURS') or 3)  # mergeworthy:reply §Wait ping: a wait ping may follow after this long
 EYES_FOR = set(filter(None, os.environ.get('GH_WATCH_EYES', '').split(',')))  # maintainers: their commits on your PRs and 👍/👎 are reported
 
@@ -1889,16 +1889,17 @@ def agent_jobs_pass():
 def one_round():
     """One round with no daemon (--round) -> its exit status. The shared jobs first: a thread that moved in a repo watched whole
     joins threads.txt, and the scan reads it. Only a complete round moves round_since: a failed one is read again from the same point.
-    A dir's first round (SEED) starts every scan position at its own start."""
+    A dir's first round starts every scan position at its own start, and the rounds stay SEED until one completes."""
     global ROUND_SINCE, SEED
     started = time.time()
     with locked():
-        SEED = not os.path.exists(STATE)
         state = load_state()
-        if SEED:
-            state['since'] = iso(started)
+        if not os.path.exists(STATE):
+            state['since'] = state['seed'] = iso(started)
             save_state(state)
-            emit(f"note: the first round in {HERE} starts reading at {iso(started)}: nothing older is recorded as owed or as an event")
+        SEED = 'seed' in state and 'round_since' not in state
+        if SEED:
+            emit(f"note: rounds in {HERE} start reading at {state['seed']}, its first; until one completes, nothing is recorded as owed or as an event")
         ROUND_SINCE = state.get('round_since') or state['since']
     steward_line()
     shared_pass(force=True)
