@@ -36,7 +36,7 @@ text = '\n'.join(str(ti.get(k) or '') for k in ('prompt', 'task', 'message', 'de
 # A review round's id is `<review>-<round>` (delegate §Reviewers), maybe followed by the date the reuse block asks for
 rnd = re.search(r'-(\d{1,2})$', re.sub(r'-\d{4}-\d{2}-\d{2}$', '', cid))
 if not register and ti.get('role') == 'review' and rnd and int(rnd[1]) > 3 and not (
-        int(rnd[1]) <= 5 and re.search(r'\b(security|permissions?|auth|data loss|concurrency)\b', text, re.I)):
+        int(rnd[1]) <= 5 and re.search(r'\b(security|permissions?|auth\w*|data loss|concurrency)\b', text, re.I)):
     sys.stderr.write(f"BLOCKED: review round {rnd[1]} ('{cid}') is past mergeworthy:delegate §Review rounds' budget: 3 rounds per loop, "
                      "5 for security, permissions, auth, data loss or concurrency while a reproduced blocker or should stays open there "
                      "(name the category in the task). A finding still open at the budget's end goes to the user, both sides in 2-3 lines.\n")
