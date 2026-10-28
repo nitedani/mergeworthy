@@ -45,7 +45,7 @@ def known(d):
     """d, a dir a check reads (where the command runs, from Where); one Where can't tell blocks."""
     if d is None:
         block("can't tell which dir this command runs in (after a cd to an expansion it can't resolve, a cd before `;` that may fail, a relative "
-              "cd under a CDPATH, a `source`, or a dir change in a branch, loop or function), so its checks can't run: cd to an absolute path "
+              "cd under a CDPATH, a negated or redefined cd, a `source`, or a dir change in a branch, loop or function), so its checks can't run: cd to an absolute path "
               "first and go on with && (`cd /abs/dir && <command>`), or pass absolute paths")
     return d
 
