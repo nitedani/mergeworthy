@@ -447,11 +447,11 @@ def run():
         except SystemExit:
             return "stopped" if os.path.exists(os.path.join(m.HERE, "retired")) else "exit"
     return "retired" if os.path.exists(os.path.join(m.HERE, "retired")) else "kept"
-open("'"$T"'/t3.fail", "w"); first = run(); cur = open(os.path.join(m.HERE, "t3-wake.cursor")).read().strip()
-os.remove("'"$T"'/t3.fail"); print(first, cur, run())
+open("'"$T"'/t3.fail", "w"); first = [run() for _ in range(3)]; cur = open(os.path.join(m.HERE, "t3-wake.cursor")).read().strip()
+os.remove("'"$T"'/t3.fail"); print(*first, cur, run(), open(log).read().count("WATCHER RETIRED"))
 ')
-check "retire_if_done: a failed last send keeps the watcher and its cursor; the next pass sends the WATCHER RETIRED line, then retires" "kept 0 stopped|t3 thread send thr-3 -|sent" \
-  "$got|$(grep '^t3 thread send thr-3' "$T/t3.log" | tail -1)|$(tail -n +"$(grep -n '^t3 thread send thr-3' "$T/t3.log" | tail -1 | cut -d: -f1)" "$T/t3.log" | grep -q '^WATCHER RETIRED at ' && echo sent)"
+check "retire_if_done: failed last sends keep the watcher and its cursor and write WATCHER RETIRED once; the next pass sends it, then retires" "kept kept kept 0 stopped 1|t3 thread send thr-3 -|1" \
+  "$got|$(grep '^t3 thread send thr-3' "$T/t3.log" | tail -1)|$(tail -n +"$(grep -n '^t3 thread send thr-3' "$T/t3.log" | tail -1 | cut -d: -f1)" "$T/t3.log" | grep -c '^WATCHER RETIRED at ')"
 rm -f "$W/events.log" "$W/t3-wake.cursor" "$W/t3-thread"
 rm -f "$W/retired"
 

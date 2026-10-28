@@ -601,6 +601,22 @@ def emit(line):
 EVENT = re.compile(r'###|WATCH ERROR|WATCHER RETIRED')  # the lines gh-watch-start's Monitor delivers
 
 
+def unsent():
+    """(offset, bytes): the whole lines of events.log past t3-wake.cursor, which wake_thread hasn't sent yet; none outside T3 Code."""
+    if not first_line(os.path.join(HERE, 't3-thread')):
+        return 0, b''
+    with open(os.path.join(HERE, 'events.log'), 'rb') as f:
+        size = os.fstat(f.fileno()).st_size
+        try:
+            start = int(first_line(os.path.join(HERE, 't3-wake.cursor')))
+        except ValueError:  # gh-watch-start writes it with the thread; without it, nothing before now is sent
+            start = size
+        start = start if start <= size else 0  # the log was cut
+        f.seek(start)
+        data = f.read(size - start)
+    return start, data[:data.rfind(b'\n') + 1]  # a line still being written goes with the next pass
+
+
 def wake_thread():
     """Under T3 Code (gh-watch-start wrote the session's thread, then t3's path, to HERE/t3-thread) the event lines events.log got
     since the last pass, from any writer, go to that thread as one message; t3-wake.cursor holds the byte offset sent up to. A failed
@@ -609,16 +625,7 @@ def wake_thread():
     cursor = os.path.join(HERE, 't3-wake.cursor')
     if not tid:
         return True
-    with open(os.path.join(HERE, 'events.log'), 'rb') as f:
-        size = os.fstat(f.fileno()).st_size
-        try:
-            start = int(first_line(cursor))
-        except ValueError:  # gh-watch-start writes it with the thread; without it, nothing before now is sent
-            start = size
-        start = start if start <= size else 0  # the log was cut
-        f.seek(start)
-        data = f.read(size - start)
-    data = data[:data.rfind(b'\n') + 1]  # a line still being written goes with the next pass
+    start, data = unsent()
     lines = [l for l in data.decode(errors='replace').splitlines() if EVENT.match(l)]
     if lines:
         msg = f"Watcher events in {HERE}/events.log (mergeworthy:reply):\n" + '\n'.join(lines)
@@ -1700,7 +1707,8 @@ def retire_if_done():
                 return  # unknown: keep watching
         if not done:
             return
-    print(f"WATCHER RETIRED at {datetime.datetime.now(datetime.timezone.utc):%Y-%m-%dT%H:%M:%SZ}: every watched thread is merged or closed", flush=True)
+    if not re.search(rb'^WATCHER RETIRED ', unsent()[1], re.M):  # once, however many sends fail
+        print(f"WATCHER RETIRED at {datetime.datetime.now(datetime.timezone.utc):%Y-%m-%dT%H:%M:%SZ}: every watched thread is merged or closed", flush=True)
     if not wake_thread():
         return  # the thread didn't get the last events: the next pass sends them, then retires
     with open(os.path.join(HERE, 'retired'), 'w') as f:  # disk-sweep's w-done may delete this folder once nothing in it would be lost
