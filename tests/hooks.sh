@@ -2007,6 +2007,10 @@ check "an MR joins the folder a bash -c prefix assignment names, over an exporte
 check "an MR joins the folder a later prefix assignment takes from an earlier one (D=.. E=\"\$D\" bash -c); env's own arguments see the exported value" \
   "0|gitlab.com/ns/proj !9| 0||gitlab.com/ns/proj !9" \
   "$(treg "$U9" "export D=$CK4; D=$CK E=\"\$D\" bash -c 'cd \"\$E\"; $MRC'" "$CK4") $(treg "$U9" "export D=$CK4; env D=$CK E=\"\$D\" bash -c 'cd \"\$E\"; $MRC'" "$CK4")"
+HD=$'\n'"cd \$D; $MRC"$'\nXEOF'
+check "an MR joins the folder the parent's \$D names when the parent expands the script (bash -c \"..\", an unquoted heredoc, <<< \"..\", env D=..), not the prefix's" \
+  "0||gitlab.com/ns/proj !9 0||gitlab.com/ns/proj !9 0||gitlab.com/ns/proj !9 0||gitlab.com/ns/proj !9" \
+  "$(treg "$U9" "export D=$CK4; D=$CK bash -c \"cd \$D; $MRC\"" "$CK4") $(treg "$U9" "export D=$CK4; D=$CK bash <<XEOF$HD" "$CK4") $(treg "$U9" "export D=$CK4; D=$CK bash <<< \"cd \$D; $MRC\"" "$CK4") $(treg "$U9" "export D=$CK4; env D=$CK bash -c \"cd \$D; $MRC\"" "$CK4")"
 rm "$TK4/gh-watch.pid" "$TK4/repos.txt"
 rm "$TK2/gh-watch.pid" "$TK2/repos.txt" "$TK2/session"
 kill "$FPID"

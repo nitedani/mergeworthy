@@ -81,9 +81,35 @@ def _src(n, src):
     return src[n['Pos']['Offset']:n['End']['Offset']].decode(errors='replace')
 
 
+class Word(str):
+    """A word as bash passes it (_word), with script: the text a shell that reads it as a script gets, the parent having expanded it
+    first, each of the parent's expansions made _parent's placeholder."""
+    script = None
+
+
+def _script(w):
+    return w if getattr(w, 'script', None) is None else w.script
+
+
+PARENT = '__mwp_'  # a placeholder's prefix: ${__mwp_D} holds the value $D had in the parent shell
+
+
+def _parent(p):
+    """The placeholder for the parent's expansion p in a script it hands on: ${__mwp_D} for $D or ${D}, whose value Where takes in
+    the parent; ${__mwp_}, never set, for any other (`${D:-x}`, `$(...)`, whose commands are the parent's own)."""
+    n = (p.get('Param') or {}).get('Value', '')
+    simple = p.get('Type') == 'ParamExp' and re.fullmatch(r'[A-Za-z_]\w*', n) and not any(p.get(k) for k in ('Exp', 'Repl', 'Index', 'Slice', 'Length', 'Excl', 'Names', 'Width'))
+    return '${' + PARENT + (n if simple else '') + '}'
+
+
+def _placeholders(script):
+    """The frame entries giving a script's placeholders their parent's values: env-argument ones, expanded before the prefix applies."""
+    return tuple((f'{PARENT}{n}=${{{n}}}', False) for n in dict.fromkeys(re.findall(r'\$\{' + PARENT + r'(\w+)\}', script)))
+
+
 def _word(w, src):
-    """A word as bash passes it: quotes and escapes removed; expansions and substitutions as written."""
-    out = []
+    """A word as bash passes it: quotes and escapes removed; expansions and substitutions as written (a Word)."""
+    out, sc = [], []  # the word, and its script
     for p in w.get('Parts') or []:
         t, v = p.get('Type'), p.get('Value', '')
         if t == 'Lit':
@@ -91,11 +117,26 @@ def _word(w, src):
         elif t == 'SglQuoted':
             out.append(v.encode('latin-1', 'backslashreplace').decode('unicode_escape', 'replace') if p.get('Dollar') else v)
         elif t == 'DblQuoted':
-            out.append(''.join(re.sub(r'\\([$`"\\])', r'\1', x.get('Value', '').replace('\\\n', '')) if x.get('Type') == 'Lit' else _src(x, src)
-                               for x in p.get('Parts') or []))
+            for x in p.get('Parts') or []:
+                out.append(re.sub(r'\\([$`"\\])', r'\1', x.get('Value', '').replace('\\\n', '')) if x.get('Type') == 'Lit' else _src(x, src))
+                sc.append(out[-1] if x.get('Type') == 'Lit' else _parent(x))
+            continue
         else:
             out.append(_src(p, src))
-    return ''.join(out)
+            sc.append(_parent(p))
+            continue
+        sc.append(out[-1])
+    word = Word(''.join(out))
+    word.script = ''.join(sc)
+    return word
+
+
+def _heredoc(r, src):
+    """The text a shell reading heredoc r gets: as written under a quoted delimiter, else with the parent's expansions done (_parent)."""
+    parts = r['Hdoc'].get('Parts') or []
+    if re.search(r'[\'"\\]', _src(r['Word'], src)):
+        return ''.join(_src(p, src) for p in parts)
+    return ''.join(re.sub(r'\\([$`\\])', r'\1', p.get('Value', '').replace('\\\n', '')) if p.get('Type') == 'Lit' else _parent(p) for p in parts)
 
 
 def _assign(a, src):
@@ -110,11 +151,11 @@ _ids = itertools.count()
 class Seg(list):
     """A simple command's argv. frames: the scopes it runs in, outermost first, each (id, kind, the variables set on entering it: a
     loop's own, unknown; a child shell's, (word, whether it sees the ones before it) of its command's prefix or env's arguments,
-    `D=x bash -c`). Kinds: 'sub' (a copy of the shell: a subshell, substitution, pipeline part or background job), 'proc' (a child
+    `D=x bash -c`, and a script's placeholders, _parent). Kinds: 'sub' (a copy of the shell: a subshell, substitution, pipeline part or background job), 'proc' (a child
     bash: `bash -c`, a heredoc bash reads), 'sh' (a child shell that isn't bash: no dir stack or `declare`), 'user' (a shell whose
     environment can't be told: another user's, `sudo bash -c`, `su -c`, fish, or one `env` with options starts), 'cond' (it may not
     run: after && or ||, an if or case branch), 'loop' (a loop's body, run again and again) or 'opaque' (run where it can't be
-    told: a function's body, `D=x eval`, a command that doesn't parse)."""
+    told: a function's body, `D=x eval`, a command that doesn't parse) or 'eval' (eval's script, in this shell, with its placeholders)."""
     frames = ()
 
 
@@ -147,9 +188,10 @@ def _calls(node, src, depth, frames):
             stmt, start = x
             shell = next((i for i in range(start, len(segs)) if reads_stdin(segs[i])), None) if depth < 4 else None
             for r, rfr in docs.pop(id(stmt), []):
-                if shell is not None:
-                    s, e = parse(''.join(_src(p, src) for p in r['Hdoc'].get('Parts') or []), depth + 1, segs[shell].frames + (_child(segs[shell]),))
-                    segs[shell + 1:shell + 1], shell = s, shell + len(s)
+                if shell is not None:  # the parent's own substitutions in it, then the shell's script
+                    text, (ps, e) = _heredoc(r, src), _calls(r['Hdoc'], src, depth, rfr)
+                    s, e2 = parse(text, depth + 1, segs[shell].frames + (_child(segs[shell], text),))
+                    segs[shell + 1:shell + 1], shell, e = ps + s, shell + len(ps) + len(s), e or e2
                 else:
                     s, e = _calls(r['Hdoc'], src, depth, rfr)
                     segs += s
@@ -195,16 +237,17 @@ def _inner(s, depth):
     script = (_nested(s) or (here[0] if here and reads_stdin(s) else None)) if depth < 4 else None
     if script:
         eval_ = t and os.path.basename(t[0]) == 'eval'  # in this shell; with a prefix (`D=x eval ...`), only for its duration
-        frame = _child(s) if not eval_ else (next(_ids), 'opaque', ()) if len(t) < len(s) else None
-        inner, err = parse(script, depth + 1, fr + (frame,) if frame else fr)
+        text = _script(script)
+        frame = _child(s, text) if not eval_ else (next(_ids), 'opaque', ()) if len(t) < len(s) else (next(_ids), 'eval', _placeholders(text))
+        inner, err = parse(text, depth + 1, fr + (frame,))
         out += inner
     return out, err
 
 
-def _child(s):
-    """The frame of the child shell segment s starts: 'proc' (bash) or 'sh' (another shell), with the assignments that set its
-    environment, each (word, whether it sees the ones before it: true for the command's prefix, false for env's arguments), or
-    'user' (another user's shell, fish, `env` with options, a prefix appending to a variable)."""
+def _child(s, script=''):
+    """The frame of the child shell segment s starts to run script: 'proc' (bash) or 'sh' (another shell), with the assignments that
+    set its environment, each (word, whether it sees the ones before it: true for the command's prefix, false for env's arguments
+    and the script's placeholders), or 'user' (another user's shell, fish, `env` with options, a prefix appending to a variable)."""
     t = prog(s)
     pre = s[:len(s) - len(t)]
     names = [os.path.basename(w) for w in pre + t[:1]]
@@ -213,7 +256,7 @@ def _child(s):
         return next(_ids), 'user', ()
     kind = 'proc' if not t or os.path.basename(t[0]) == 'bash' else 'sh'
     lead = next((i for i, w in enumerate(pre) if not re.match(r'\w+=', w)), len(pre))
-    return next(_ids), kind, tuple((w, i < lead) for i, w in enumerate(pre) if re.match(r'\w+=', w))
+    return next(_ids), kind, tuple((w, i < lead) for i, w in enumerate(pre) if re.match(r'\w+=', w)) + _placeholders(script)
 
 
 def reads_stdin(t):
@@ -252,7 +295,10 @@ def _nested(t):
     t = prog(t)
     name, a = (os.path.basename(t[0]), t[1:]) if t else ('', [])
     if name == 'eval' or t[:1] and ' ' in t[0]:  # eval's words, or a script handed to a wrapper as one word
-        return ' '.join(t if ' ' in t[0] else a)
+        words = t if ' ' in t[0] else a
+        script = Word(' '.join(words))
+        script.script = ' '.join(map(_script, words))
+        return script
     if name in ('su', 'runuser', 'script'):  # -c <command>, also in a flag group (`script -qc`)
         return next((a[i + 1] for i in range(len(a) - 1) if re.fullmatch(r'-[a-zA-Z]*c|--command', a[i])), None)
     if name in SHELLS:
@@ -390,7 +436,8 @@ class Where:
     def _enter(self, f, changing):
         self.open.append((f, self._state(), set()))
         sets = [(w.partition('='), ordered) for w, ordered in (x for x in f[2] if not isinstance(x, str))]
-        argv = [(n, self._value(v)) for (n, _, v), ordered in sets if not ordered]  # env's: expanded with the command's words
+        argv = [(n, self._value(v)) for (n, _, v), ordered in sets if not ordered]  # env's and placeholders: expanded with the command's words
+        argv = [(n, v if not n.startswith(PARENT) or v is None or re.fullmatch(r'[\w./+,:@%=-]*', v) else None) for n, v in argv]  # a value the script reparses
         given, parent = [], dict(self.vars)
         for (n, _, v), ordered in sets:  # the prefix's, in order: each sees the ones before it
             if ordered:
@@ -410,6 +457,7 @@ class Where:
             self.exported.add(n)
 
     def _leave(self, f, state, changed):
+        if f[1] == 'eval': return  # it ran in this shell
         self.dir, self.old, self.stack, self.vars, self.exported, self.lost = state
         if f[1] in ('cond', 'loop', 'opaque'):  # what changed in it may or may not hold after it
             if 'dir' in changed: self._move(None, None, None)
