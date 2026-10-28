@@ -617,15 +617,22 @@ def unsent():
     return start, data[:data.rfind(b'\n') + 1]  # a line still being written goes with the next pass
 
 
+_ticks, _t3_missing = [0], [None]  # tick() counts its passes; the pass in which the recorded t3 was first found missing
+
+
 def wake_thread():
     """Under T3 Code (gh-watch-start wrote the session's thread, then t3's path, to HERE/t3-thread) the event lines events.log got
     since the last pass, from any writer, go to that thread as one message; t3-wake.cursor holds the byte offset sent up to. A failed
-    send is retried (False), except when the thread or the t3 binary is gone: then t3-thread goes, and events.log alone keeps the
-    events, as outside T3 Code."""
+    send is retried (False), except when the thread is gone, or the t3 binary on two passes in a row (a `t3 update` relinks it for an
+    instant): then t3-thread goes, and events.log alone keeps the events, as outside T3 Code."""
     tid, _, t3 = first_line(os.path.join(HERE, 't3-thread')).partition('\n')
     cursor = os.path.join(HERE, 't3-wake.cursor')
     if not tid:
         return True
+    if os.path.exists(t3):
+        _t3_missing[0] = None
+    elif _t3_missing[0] is None:
+        _t3_missing[0] = _ticks[0]
     start, data = unsent()
     lines = [l for l in data.decode(errors='replace').splitlines() if EVENT.match(l)]
     if lines:
@@ -635,12 +642,13 @@ def wake_thread():
             err = r.returncode and (r.stderr.strip().splitlines() or [f"exit {r.returncode}"])[-1]
             gone = err == f"Thread {tid} was not found."  # t3's answer for a deleted thread, exit 1
         except (OSError, subprocess.SubprocessError) as e:
-            err, gone = str(e), isinstance(e, FileNotFoundError)
+            err, gone = str(e), isinstance(e, FileNotFoundError) and _t3_missing[0] is not None and _t3_missing[0] < _ticks[0]
         if gone:
             emit(f"WATCH ERROR t3 thread send {tid}: {err[:200]}; the watcher no longer sends to T3, events.log keeps every event")
             for f in ('t3-thread', 't3-wake.cursor'):
                 with contextlib.suppress(FileNotFoundError):
                     os.remove(os.path.join(HERE, f))
+            _t3_missing[0] = None
             return True
         if err:
             emit(f"WATCH ERROR t3 thread send {tid}: {err[:200]}")
@@ -1802,6 +1810,7 @@ def steward_line():
 def tick():
     """One round of a daemon. What each budget level allows: OK everything; RESERVE (below RESERVE_AT calls left) not discovery and
     follow-ups; LOW (below LOW_AT) only the notifications and the threads they name; PAUSED nothing."""
+    _ticks[0] += 1
     follow_update()
     steward_line()
     lvl = level()

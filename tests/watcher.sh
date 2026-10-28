@@ -469,10 +469,15 @@ def run(t3):
     out = ("retired" if os.path.exists(os.path.join(m.HERE, "retired")) else "kept") + ("" if os.path.exists(os.path.join(m.HERE, "t3-thread")) else " dropped")
     text = open(log).read(); os.path.exists(os.path.join(m.HERE, "retired")) and os.remove(os.path.join(m.HERE, "retired"))
     return " ".join([out, str(text.count(chr(10))), str(text.count("no longer sends to T3"))])
+def next_pass():
+    m._ticks[0] += 1
+    return ""
 open("'"$T"'/t3.gone", "w"); a = run("'"$T"'/bin/t3"); os.remove("'"$T"'/t3.gone")
-print(a, "|", run("'"$T"'/bin/t3-removed"))
+gone = "'"$T"'/bin/t3-removed"
+print(a, "|", run(gone), next_pass() + run(gone), "|", run(gone), next_pass() + run("'"$T"'/bin/t3"))
 ')
-check "retire_if_done: a deleted thread or a removed t3 drops t3-thread and retires, events.log keeping the event, RETIRED and the reason" "retired dropped 3 1 | retired dropped 3 1" "$got"
+check "retire_if_done: a deleted thread drops t3-thread at once, a t3 missing on two passes in a row too, one missing for a pass doesn't; events.log keeps the event, RETIRED and the reason" \
+  "retired dropped 3 1 | kept 3 0 retired dropped 3 1 | kept 2 0 retired 2 0" "$got"
 rm -f "$W/events.log" "$W/t3-wake.cursor" "$W/t3-thread"
 rm -f "$W/retired"
 
