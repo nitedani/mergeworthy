@@ -128,9 +128,11 @@ for t in runs(r'\.mergeworthy/work|-work\b'):
         'cd', 'pushd', 'mkdir', 'gh-watch-start', 'gate-pass', 'pr-steps', 'memory-prep', 'post-lint', 'thread-context') else []
     worked += [t[i + 1] for i in range(len(t) - 1) if t[i] == '-C' and name == 'git' or re.fullmatch(r'\d*>>?|&>>?', t[i])]
 task_dirs = {t for p in worked if p.startswith(('/', '~')) and (t := work_folder.task_of(p))}
-# mergeworthy work (a task, a work folder, a push or post, a watcher, an agent it started) gets the hand-back check and the check-in;
-# a plain question answered gets neither
+# mergeworthy work (a task, a work folder, a push or post, a watcher, an agent it started) gets the hand-back check;
+# a plain question answered doesn't
 working = opened_task or acted or delegated or bool(task_dirs or monitor_cmds)
+# the check-in asks only where work can still be waiting after the answer: a work folder it worked in, an agent it started, a Monitor
+may_wait = delegated or bool(task_dirs or monitor_cmds)
 # quoted words are someone else's (a user's "should I ...?", a banned phrase being discussed): not an offer
 own = re.sub(r'```.*?```|`[^`\n]*`|"[^"\n]*"|“[^”\n]*”|^>.*$', ' ', last, flags=re.S | re.M)
 # An offer, or a hand-back of work the agent can do or wait for itself ("tell me when to re-check CI", "nothing will notify me")
@@ -501,10 +503,12 @@ def checkin_due():
     os.makedirs(os.path.dirname(f), exist_ok=True)
     open(f, 'w').write(str(time.time()))
     return True
-if os.environ.get('MERGEWORTHY_STOP_CHECKIN', 'on') != 'off' and working and not child and not active and checkin_due():
-    print("Before you stop, check once: did the user ask you to stop or pause? Then stop. Otherwise: is there work you said "
-          "is next, or that the critical path needs, that you could start now? Is anything waiting on you (a reply owed, "
-          "red CI, a finished agent's result to read, a dependency that landed)? If so, do it now, or brief a subagent for it. If nothing is, stop.",
+if (os.environ.get('MERGEWORTHY_STOP_CHECKIN', 'on') != 'off' and may_wait and not child and not active
+        and not re.search(r'^GENUINE-FORK:.*\Z', last.rstrip(), re.M) and checkin_due()):
+    print("Before you stop, check once, unless the user asked you to stop or pause: is there work you said is next, or that the "
+          "critical path needs, that you could start now? Is anything waiting on you (a reply owed, red CI, a finished agent's result "
+          "to read, a dependency that landed)? If so, do it now, or brief a subagent for it. Otherwise end the turn without writing "
+          "anything: the user already has your answer.",
           file=sys.stderr)
     sys.exit(2)
 sys.exit(0)
