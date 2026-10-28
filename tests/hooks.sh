@@ -1812,6 +1812,11 @@ mkdir -p "$PO/skills/task" "$PN/skills/task"; echo old > "$PO/skills/task/SKILL.
 check "BLOCK once per session: a newer version changed the skills, naming where the installed text is; the same skills say nothing" "2 1 0 0" "$(rs rs-3) $(grep -c 'read and follow ~/.mergeworthy/current/skills/<name>/SKILL.md' "$T/err") $(rs rs-3) $(cp "$PN/skills/task/SKILL.md" "$PO/skills/task/"; rs rs-4)"
 echo new2 > "$PN/skills/task/SKILL.md"; tr_file "Done."
 check "a plain session (no work folder, agent or Monitor) hears of neither a changed hook list nor changed skills" "0 0" "$(echo '{"hooks": 3}' > "$PN/hooks/hooks.json"; rs rs-5) $(rs rs-6)"
+python3 -c 'import json
+print(json.dumps({"type":"user","message":{"content":"make me a fox image"}}))
+print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","id":"s1","input":{"skill":"mergeworthy:task"}}]}}))
+print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":"Here is the fox."}]}}))' > "$T/tr.jsonl"
+check "a session that only opened the task skill hears of neither (it is asked for its scope.md instead)" "0 0 1" "$(rs rs-7 >/dev/null; grep -c 'restart of this session' "$T/err") $(rs rs-8 >/dev/null; grep -c 'read and follow ~/.mergeworthy/current/skills' "$T/err") $(grep -c 'scope.md' "$T/err")"
 if [ -n "$CUR" ]; then ln -sfn "$CUR" "$HOME/.mergeworthy/current"; else rm -f "$HOME/.mergeworthy/current"; fi
 # ---------- GitLab: a stub glab answers `glab api --hostname gitlab.com <path>` from $FX/gl_<path> ----------
 cat > "$T/bin/glab" <<'EOF'
