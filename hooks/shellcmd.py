@@ -101,16 +101,17 @@ def _word(w, src):
 def _assign(a, src):
     if a.get('Naked'):
         return a['Name']['Value'] if a.get('Name') else _word(a['Value'], src)
-    return a['Name']['Value'] + '=' + (_word(a['Value'], src) if a.get('Value') else _src(a['Array'], src) if a.get('Array') else '')
+    return a['Name']['Value'] + '+' * bool(a.get('Append')) + '=' + (_word(a['Value'], src) if a.get('Value') else _src(a['Array'], src) if a.get('Array') else '')
 
 
 _ids = itertools.count()
 
 
 class Seg(list):
-    """A simple command's argv. frames: the scopes it runs in, outermost first, each (id, kind, the variables a loop sets): 'sub'
-    (a copy of the shell: a subshell, substitution, pipeline part or background job), 'proc' (a child shell: `bash -c`, a heredoc
-    a shell reads), 'user' (another user's shell: `sudo bash -c`, `su -c`), 'cond' (it may not run: after && or ||, an if or
+    """A simple command's argv. frames: the scopes it runs in, outermost first, each (id, kind, the variables set on entering it: a
+    loop's own, unknown; a child shell's from its command's prefix, `D=x bash -c`): 'sub' (a copy of the shell: a subshell,
+    substitution, pipeline part or background job), 'proc' (a child shell: `bash -c`, a heredoc a shell reads), 'user' (a shell
+    whose environment can't be told: another user's, `sudo bash -c`, `su -c`, or one `env` with options starts), 'cond' (it may not run: after && or ||, an if or
     case branch), 'loop' (a loop's body, run again and again) or 'opaque' (run where it can't be told: a function's body, a command
     that doesn't parse)."""
     frames = ()
@@ -146,7 +147,7 @@ def _calls(node, src, depth, frames):
             shell = next((i for i in range(start, len(segs)) if reads_stdin(segs[i])), None) if depth < 4 else None
             for r, rfr in docs.pop(id(stmt), []):
                 if shell is not None:
-                    s, e = parse(''.join(_src(p, src) for p in r['Hdoc'].get('Parts') or []), depth + 1, segs[shell].frames + ((next(_ids), 'proc', ()),))
+                    s, e = parse(''.join(_src(p, src) for p in r['Hdoc'].get('Parts') or []), depth + 1, segs[shell].frames + (_child(segs[shell]),))
                     segs[shell + 1:shell + 1], shell = s, shell + len(s)
                 else:
                     s, e = _calls(r['Hdoc'], src, depth, rfr)
@@ -192,11 +193,23 @@ def _inner(s, depth):
     here = [s[i + 1] for i in range(len(s) - 1) if s[i] == '<<<']
     script = (_nested(s) or (here[0] if here and reads_stdin(s) else None)) if depth < 4 else None
     if script:
-        user = any(os.path.basename(w) in ('sudo', 'su', 'runuser') for w in s[:len(s) - len(t) + 1])
-        kind = 'user' if user else None if t and os.path.basename(t[0]) == 'eval' else 'proc'  # eval runs in this shell
-        inner, err = parse(script, depth + 1, fr + ((next(_ids), kind, ()),) if kind else fr)
+        eval_ = t and os.path.basename(t[0]) == 'eval'  # in this shell; with a prefix (`D=x eval ...`), only for its duration
+        frame = _child(s) if not eval_ else (next(_ids), 'opaque', ()) if len(t) < len(s) else None
+        inner, err = parse(script, depth + 1, fr + (frame,) if frame else fr)
         out += inner
     return out, err
+
+
+def _child(s):
+    """The frame of the child shell segment s starts: 'proc', with the assignments its command's prefix sets in its environment,
+    or 'user' (another user's shell, `env` with options, a prefix appending to a variable)."""
+    t = prog(s)
+    pre = s[:len(s) - len(t)]
+    names = [os.path.basename(w) for w in pre + t[:1]]
+    if {'sudo', 'su', 'runuser'} & set(names) or 'env' in names and any(w.startswith('-') for w in pre[names.index('env'):]) or \
+            any(re.match(r'\w+\+=', w) for w in pre):
+        return next(_ids), 'user', ()
+    return next(_ids), 'proc', tuple(w for w in pre if re.match(r'\w+=', w))
 
 
 def reads_stdin(t):
@@ -291,7 +304,7 @@ KEYWORDS = ('!', '{', 'if', 'then', 'else', 'elif', 'do', 'while', 'until')  # a
 def prog(t):
     """Drop env assignments, shell keywords and wrappers (with their options, and timeout's duration); return the command's argv."""
     while t:
-        if re.match(r'^\w+=', t[0]) or t[0] in KEYWORDS:
+        if re.match(r'^\w+\+?=', t[0]) or t[0] in KEYWORDS:
             t = t[1:]
             continue
         w = os.path.basename(t[0])
@@ -330,7 +343,8 @@ def git_globals(t):
 
 class Where:
     """Where each simple command of one command line runs, walk() taking them in order: the dir a cd, pushd or popd moves (with
-    `cd -` and the dir stack), and the variables the line set (`W=~/x; cd $W`, `export`, a value expanded when it is assigned).
+    `cd -` and the dir stack), and the variables the line set (`W=~/x; cd $W`, `export`, a value expanded when it is assigned, a
+    command's prefix for the child shell it starts: `D=x bash -c`).
     What it can't tell is None, the dir included: after a cd to an expansion it can't resolve, a `source`, or a change where it
     may not run (after && or ||, in an if or case branch, a loop or a function); inside a function, and a loop that changes either.
     A subshell's or child shell's changes end with it."""
@@ -371,6 +385,7 @@ class Where:
 
     def _enter(self, f, changing):
         self.open.append((f, self._state(), set()))
+        given = [(n, self._value(v)) for n, _, v in (x.partition('=') for x in f[2] if '=' in x)]  # expanded where the command runs
         if f[1] in ('proc', 'user'):  # a child shell gets the exported variables alone, and no dir stack
             self.vars = {} if f[1] == 'user' else {n: v if n in self.exported or n in os.environ else None for n, v in self.vars.items()}
             self.old, self.stack = None, []
@@ -378,7 +393,10 @@ class Where:
             self.dir = self.old = self.stack = None
             self.lost = True
         for n in f[2]:
-            self._set(n, None)
+            if '=' not in n: self._set(n, None)
+        for n, v in given:
+            self._set(n, v)
+            self.exported.add(n)
 
     def _leave(self, f, state, changed):
         self.dir, self.old, self.stack, self.vars, self.exported, self.lost = state
@@ -388,7 +406,9 @@ class Where:
             for n in changed - {'dir', 'lost'}: self._set(n, None)
 
     def _changed(self, what):
-        for f in self.open: f[2].add(what)
+        for f in reversed(self.open):  # up to the innermost subshell or child shell: its changes end with it
+            f[2].add(what)
+            if f[0][1] in ('sub', 'proc', 'user'): break
 
     def _set(self, name, value):
         self.vars[name] = value
@@ -433,9 +453,12 @@ class Where:
     def _assign(self, x):
         n, plus, v = re.match(r'(\w+)(\+?)=(.*)', x, re.S).groups()
         self.written[n] = v
+        self._set(n, self._value('${' + n + '}' + v if plus else v))
+
+    def _value(self, v):
+        """An assignment's value v as the shell stores it, or None when it can't be told."""
         v = self.expand(os.path.expanduser(v))
-        if plus: v = self.expand('$' + n) + v
-        self._set(n, None if re.search(r'[$`]', v) else v)
+        return None if re.search(r'[$`]', v) else v
 
     def _to(self, to):
         if to == '$(git rev-parse --show-toplevel)':

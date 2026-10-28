@@ -1980,6 +1980,7 @@ TWO="cd $CK; $MRC; cd $CK4; $MRC"
 check "BLOCK: two MRs from two work folders in one command while the second folder has no watcher" 2 "$(bgs sess-b "$TWO" "$T")"
 check "BLOCK: an MR opened back in the unwatched folder after cd -, or where the dir can't be told (a cd to an unset variable), saying to cd to an absolute path" "2 2 1" \
   "$(bgs sess-b "cd $CK; $MRC; cd -; $MRC" "$CK4") $(bgs sess-b "cd \"\$NOWHERE\" && $MRC" "$CK") $(grep -c 'cd to an absolute path first' "$T/err")"
+check "BLOCK: an MR from bash -c whose prefix (D=... bash -c) moves it into the unwatched folder, over an exported D" 2 "$(bgs sess-b "export D=$CK; D=$CK4 bash -c 'cd \"\$D\"; $MRC'" "$CK")"
 echo "$FPID" > "$TK4/gh-watch.pid"; echo gitlab.com/ns/proj > "$TK4/repos.txt"; echo "$TK4" >> "$HOME/.claude/gh-watch-dirs.txt"
 check "the same passes once each folder has its watcher" 0 "$(bgs sess-b "$TWO" "$T")"
 treg() { # stdout [command [cwd]]: post-bash-register on the command ($TWO, from $T), then exit code|the first folder's threads|the second's
@@ -2000,6 +2001,9 @@ check "an MR after a cd to an exported variable, or to one set from another, joi
   "$(treg "$U9" "export D=$CK; cd \"\$D\"; $MRC" "$CK4") $(treg "$U9" "D=$CK; E=\$D; cd \"\$E\"; $MRC" "$CK4")"
 check "BLOCK: an MR whose command ran where the dir can't be told (a cd to an unset variable, a cd that may not run) joins no watcher, saying why" "2|| 1 2||" \
   "$(treg "$U9" "cd \"\$NOWHERE\"; $MRC" "$CK4") $(grep -c "which dir a posting command ran in can't be told" "$T/err") $(treg "$U9" "[ -d $CK ] && cd $CK; $MRC" "$CK4")"
+check "an MR joins the folder a bash -c prefix assignment names, over an exported value; a subshell's cd after && or in a loop leaves the dir known" \
+  "0|gitlab.com/ns/proj !9| 0||gitlab.com/ns/proj !9 0||gitlab.com/ns/proj !9" \
+  "$(treg "$U9" "export D=$CK4; D=$CK bash -c 'cd \"\$D\"; $MRC'" "$CK4") $(treg "$U9" "true && (cd $CK4); $MRC" "$CK4") $(treg "$U9" "for n in 1 2; do (cd $CK4); done; $MRC" "$CK4")"
 rm "$TK4/gh-watch.pid" "$TK4/repos.txt"
 rm "$TK2/gh-watch.pid" "$TK2/repos.txt" "$TK2/session"
 kill "$FPID"
