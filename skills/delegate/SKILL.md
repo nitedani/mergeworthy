@@ -58,14 +58,14 @@ Every independent review (a post's, the Loop B review, the fresh reader, a stand
    Without them: `codex exec -m <model> --sandbox danger-full-access --skip-git-repo-check -o <out> "$(cat <prompt file>)" < /dev/null`.
 - **Else, a fresh agent of the main session's class,** with the same prompt, when the first fails (out of credits, a rate limit, an error, a timeout, no reply: a failure is not a review).
 
-The prompt is a file with the template filled. When one run follows several briefs, each writes its own file, and the final `CLEAN` means none has a blocker or should. Never write `CLEAN` yourself. Send fixes to the same reviewer (§Continue); a fresh one only when the artifact changed beyond them or needs a final cold read. Record which reviewer ran (Tier M: a `ledger.md` row); on Tier M or L work, re-review on the other company's model once it's back.
+The prompt is a file with the template filled. When one run follows several briefs, each writes its own file. Never write `CLEAN` yourself. Send fixes to the same reviewer (§Continue); a fresh one only when the artifact changed beyond them or needs a final cold read. Record which reviewer ran (Tier M: a `ledger.md` row); on Tier M or L work, re-review on the other company's model once it's back.
 
 ### Review rounds
 
 Every review loop:
 - **Severity:** re-rate each label (`agent.md`) yourself; a nit gets no code (`code §Earn every line`).
-- **Budget:** 3 rounds (reviewer passes, re-checks included) per loop; 5 for security, permissions, auth, data loss or concurrency while a reproduced blocker or should stays open there.
-- **From round 2,** outside the changes and the open ids only a blocker or a regression counts, except for the fresh reader. Before each round, cut what the fixes added beyond need.
+- **Budget:** 3 rounds (reviewer passes, re-checks included) per loop, renewed at `converge` step 3 and each return from step 4; 5 for security, permissions, auth, data loss or concurrency while a reproduced blocker or should stays open there.
+- **From round 2,** the prompt says that outside the changes and the open ids only a blocker or a regression counts (not the fresh reader's). Before each round, cut what the fixes added beyond need.
 - **Ledger:** `<work folder>/drafts/<review>.ledger.md`, one line per finding: `<id> <label> <outcome>` (fixed in <sha>, disputed: <evidence>, declined: <why>), the id `R<round>.<n>` from its first round.
 - **Stuck:** a finding the reviewer holds after two replies of yours disputing it, or open at the budget's end, goes to the user, both sides in 2–3 lines. Budget end is not approval. Rule on evidence, never to end the loop.
 - **While a round runs,** leave what it reads unchanged.
