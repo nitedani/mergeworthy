@@ -1183,6 +1183,13 @@ check "a message saying it is not done passes" 0 "$(stop "$T")"
 tr_file 'Ezek nincsenek még kész: https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
 tr_file "It isn't ready for review: https://gitlab.com/g/p/-/merge_requests/96 still needs green CI."
 check "a done word negated in Hungarian or English is no claim" "0 0" "$a $(stop "$T")"
+tr_file 'It is not quite yet ready for review: https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
+tr_file 'Once it is ready for review, I will send https://gitlab.com/g/p/-/merge_requests/96'; a="$a $(stop "$T")"
+tr_file 'Amint kész, szólok: https://gitlab.com/g/p/-/merge_requests/96'; a="$a $(stop "$T")"
+tr_file 'A review-ig kész lesz: https://gitlab.com/g/p/-/merge_requests/96'
+check "a negation, condition or plan anywhere earlier in the done word's clause is no claim" "0 0 0 0" "$a $(stop "$T")"
+tr_file 'When you asked, I checked it: all done, https://gitlab.com/g/p/-/merge_requests/96'
+check "BLOCK: a condition in an earlier clause leaves the claim standing" 2 "$(stop "$T")"
 tr_file 'A „kész” jelzés még a régi futásé: https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
 tr_file 'The `ready for review` step comes next: https://gitlab.com/g/p/-/merge_requests/96'
 check "a done word in quotes or code is no claim" "0 0" "$a $(stop "$T")"

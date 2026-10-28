@@ -221,11 +221,12 @@ if running and not child:
 # A message opening with "it's done" names no linked PR or MR that is still a draft or not green (mergeworthy:merging, Ready).
 # The opening sentence is about the PRs it links ("#1 is ready for review", while #26 is a draft); one linking none, about all of them
 DONE = r"\b(?:(?:is|are|all|work's|it's) (?:done|finished|complete)\b|ready (?:for review|to merge)|kész\b|elkészült|befejeztem)"
-NOT = re.compile(r"\b(?:not|nem|nincs(?:enek)?|\w+n['’]t)\s+(?:\w+\s+)?$", re.I)  # "isn't ready", "nincsenek még kész"
+# a negation, a condition or a plan earlier in the done word's clause: "isn't quite ready", "once it is ready", "amint kész"
+NOT_NOW = re.compile(r"\b(?:not|nem|nincs(?:enek)?|\w+n['’]t|once|when|if|until|after|ha|amint|amikor|majd|mihelyt|amíg|\w+-ig)\b", re.I)
 LINK = r'https://(github\.com|gitlab\.[\w.]+)/([\w.-]+/[\w./-]+?)(?:/-)?/(?:pull|merge_requests)/(\d+)'
 SENTENCE = r'(?<=[.!?])\s+|\n+'
 first = re.split(SENTENCE, own.strip())[0]
-if not child and any(not NOT.search(first[:m.start()]) for m in re.finditer(DONE, first, re.I)):
+if not child and any(not NOT_NOW.search(re.split(r'[,;:]', first[:m.start()])[-1]) for m in re.finditer(DONE, first, re.I)):
     import subprocess, urllib.parse
     def api(cmd):
         try: return json.loads(subprocess.run(cmd, capture_output=True, text=True, timeout=20).stdout or 'null')
