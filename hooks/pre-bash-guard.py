@@ -316,13 +316,13 @@ def is_gitlab(host, env):
 GLAB_VARS = ('GITLAB_HOST', 'GITLAB_URI', 'GL_HOST', 'GLAB_CONFIG_DIR', 'XDG_CONFIG_HOME', 'GITLAB_API_HOST', 'GLAB_ENABLE_CI_AUTOLOGIN', 'GITLAB_CI', 'CI_SERVER_FQDN')
 
 def glab_env(env, d):
-    """The environment a glab command with the assignments env runs in, in d: the hook's, with each value as the shell expands it ($X, ${X}, a leading ~),
-    and a relative config dir taken from d.
+    """The environment a glab command with the assignments env runs in, in d: the hook's, with those and the variables exported earlier on the line,
+    each value as the shell expands it ($X, ${X}, a leading ~), and a relative config dir taken from d.
     One computed when it runs ($(...), a backtick, ${X:-...}) blocks when it picks glab's server or config (GLAB_VARS), and is left out otherwise (a token)."""
     if env_removed:
         block("this command removes variables (env -i, env -u, unset), so which GitLab server and project it acts on can't be told: run it without removing them")
     out = dict(os.environ)
-    for k, v in env.items():
+    for k, v in {**{n: shell_vars[n] for n in exported if n in shell_vars}, **env}.items():
         v = expandvars(os.path.expanduser(v) if v.startswith('~') else v)
         if k in ('GLAB_CONFIG_DIR', 'XDG_CONFIG_HOME') and v and not v.startswith('/') and not re.search(r'[$`]', v):
             if re.search(r'[$`]', d):
@@ -829,6 +829,7 @@ run_dir = cwd  # where the command's git calls run: follows `cd <dir>` within th
 shell_vars = {}  # NAME=value set by the command itself (`W=~/x; cd $W`), for the cd targets after it
 clones = {}  # folder: the repo it was cloned from, for a `git clone` in this command
 unset_seen = env_removed = False  # an `unset` earlier in this command; the command being checked removes variables (glab_env)
+exported = set()  # names this command exported (`export X=v`, `X=v; export X`, `declare -x X=v`), whose shell_vars value reaches glab (glab_env)
 for s in segs:
     if prog(s)[:2] == ['git', 'clone'] and (ops := [x for x in operands(prog(s)[2:]) if not x.startswith('-')]):
         src = ops[0] if repo_of(ops[0]) else os.path.join(run_dir, os.path.expanduser(ops[0]))
@@ -846,6 +847,10 @@ for s in segs:
             block(f"`{named}` runs a command named only when it runs, with `{' '.join(words)[:80]}`: write the command out, so it can be checked")
     if s and all(re.match(r'^\w+=', x) for x in s):
         shell_vars.update(x.split('=', 1) for x in s)
+    if s[:1] == ['export'] and '-n' not in s or s[:1] in (['declare'], ['typeset']) and any(re.fullmatch(r'-\w*x\w*', x) for x in s):
+        for n, eq, v in (x.partition('=') for x in s[1:] if not x.startswith('-')):
+            exported.add(n)
+            if eq: shell_vars[n] = v
     env_removed = unset_seen or removes_vars(s)
     check(s, has_cd)
     unset_seen = unset_seen or prog(s)[:1] == ['unset']
