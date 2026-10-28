@@ -2133,7 +2133,8 @@ cat > "$T/bin/glab" <<'EOF'
 #!/usr/bin/env bash
 [ "$1 $2 $3" = "config get user" ] && { [ ! -f "$FX/gl_login" ] || cat "$FX/gl_login"; exit; }
 [ "$1" = api ] || exit 1
-f="$FX/gl_$(printf '%s' "$4" | tr '/?&=%' '_____')"
+a=${GITLAB_API_HOST:-}; [ "${GLAB_ENABLE_CI_AUTOLOGIN:-} ${GITLAB_CI:-}" = 'true true' ] && a=${CI_SERVER_FQDN:-}  # the server glab sends to: $FX/gl_<it>@<path> answers there
+f="$FX/gl_${a:+$a@}$(printf '%s' "$4" | tr '/?&=%' '_____')"
 [ -f "$f" ] && cat "$f" || { echo 'glab: 404 Not found (HTTP 404)' >&2; exit 1; }
 EOF
 GL="$T/gl"; git init -q -b scratch "$GL"; git -C "$GL" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; git -C "$GL" remote add origin git@gitlab.com:me/app.git
@@ -2162,7 +2163,7 @@ check "BLOCK: an issue opened through the API in those forms, in a repo no watch
   "$(bg "GH_REPO=nobody/x gh api 'repos/{owner}/{repo}/issues' -f title=x -F body=@$T/na.md" "$NA") $(grep -c 'no running watcher covers nobody/x' "$T/err") $(bg "glab api '/api/v4/projects/nobody%2Fx/issues?x=1' -X POST -f title=x" "$NA") $(grep -c 'no running watcher covers gitlab.com/nobody/x' "$T/err") $(bg 'glab api https://gitlab.example.com/api/v4/projects/nobody%2Fx/issues -X POST -f title=x' "$NA") $(grep -c 'no running watcher covers gitlab.example.com/nobody/x' "$T/err") $(bg "gh api https://github.example.com/api/v3/repos/nobody/x/issues -f title=x -F body=@$T/na.md" "$NA") $(grep -c 'no running watcher covers github.example.com/nobody/x' "$T/err")"
 # a numeric project id is the project GitLab names for it, never the checkout's
 bash -c 'exec -a gh-watch-daemon sleep 600' & NPID=$!; NW="$T/nw"; mkdir -p "$NW"; echo "$NPID" > "$NW/gh-watch.pid"; echo gitlab.com/me/app > "$NW/repos.txt"; echo "$NW" > "$HOME/.claude/gh-watch-dirs.txt"
-echo '{"id": 123, "path_with_namespace": "me/app"}' > "$FX/gl_projects_123"; echo '{"id": 456, "path_with_namespace": "nobody/x"}' > "$FX/gl_projects_456"
+echo '{"id": 123, "path_with_namespace": "me/app"}' | tee "$FX/gl_projects_123" > "$FX/gl_f.example.com@projects_123"; echo '{"id": 456, "path_with_namespace": "nobody/x"}' > "$FX/gl_projects_456"
 check "an issue opened through the API by a project's id: covered passes, from a checkout or outside one; an uncovered one blocks, naming it, in a checkout of a covered one; one GitLab can't read blocks; one on another host (--hostname) is that host's" "0 0 2 1 2 2 1" \
   "$(bg 'glab api projects/123/issues -X POST -f title=x' "$NA") $(bg 'glab api projects/123/issues -X POST -f title=x' "$T") $(bg 'glab api projects/456/issues -X POST -f title=x' "$NA") $(grep -c 'no running watcher covers gitlab.com/nobody/x' "$T/err") $(bg 'glab api projects/789/issues -X POST -f title=x' "$NA") $(bg 'glab api --hostname gl.example.com projects/123/issues -X POST -f title=x' "$NA") $(grep -c 'no running watcher covers gl.example.com/me/app' "$T/err")"
 git init -q "$T/glself"; git -C "$T/glself" remote add origin git@gitlab.example.com:me/app.git
@@ -2176,6 +2177,11 @@ check "GL_HOST names the host a project's id is resolved on" "2 1" "$(glenv GL_H
 check "under CI auto-login, CI_SERVER_FQDN names it, and GITLAB_HOST is ignored" "2 1" "$(glenv 'GLAB_ENABLE_CI_AUTOLOGIN=true GITLAB_CI=true CI_SERVER_FQDN=f.example.com GITLAB_HOST=a.example.com' f.example.com)"
 check "with several set, glab 1.125.0's order: GITLAB_HOST, then GITLAB_URI, then GL_HOST, and --hostname over them" "2 1 2 1 2 1" \
   "$(glenv 'GITLAB_HOST=a.example.com GITLAB_URI=c.example.com GL_HOST=b.example.com' a.example.com) $(glenv 'GITLAB_URI=c.example.com GL_HOST=b.example.com' c.example.com) $(glenv 'GITLAB_HOST=a.example.com GL_HOST=b.example.com' h.example.com '--hostname h.example.com ')"
+echo '{"id": 123, "path_with_namespace": "other/proj"}' | tee "$FX/gl_e.example.com@projects_123" > "$FX/gl_g.example.com@projects_123"
+check "a project's id is resolved on the server the write goes to: GITLAB_API_HOST's, naming the project there" "2 1" \
+  "$(bg 'GITLAB_API_HOST=e.example.com glab api projects/123/issues -X POST -f title=x' "$T") $(grep -c 'no running watcher covers gitlab.com/other/proj:' "$T/err")"
+check "a project's id is resolved on the server the write goes to: CI_SERVER_FQDN's under CI auto-login, naming the project there" "2 1" \
+  "$(bg 'GLAB_ENABLE_CI_AUTOLOGIN=true GITLAB_CI=true CI_SERVER_FQDN=g.example.com glab api projects/123/issues -X POST -f title=x' "$T") $(grep -c 'no running watcher covers g.example.com/other/proj:' "$T/err")"
 git init -q "$T/glcode"; git -C "$T/glcode" remote add origin git@code.example.com:me/app.git; mkdir -p "$T/glcfg"; printf 'host: gitlab.com\nhosts:\n    gitlab.com:\n        token:\n    code.example.com:\n        token: x\n' > "$T/glcfg/config.yml"
 check "a self-hosted origin whose name has no 'gitlab' is GitLab once glab's config has its host: a project's id is resolved there, naming it; without, on gitlab.com" "2 1 0" \
   "$(GLAB_CONFIG_DIR="$T/glcfg" bg 'glab api projects/123/issues -X POST -f title=x' "$T/glcode") $(grep -c 'no running watcher covers code.example.com/me/app' "$T/err") $(GLAB_CONFIG_DIR="$T/nocfg" bg 'glab api projects/123/issues -X POST -f title=x' "$T/glcode")"

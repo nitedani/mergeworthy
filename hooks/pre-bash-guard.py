@@ -334,8 +334,8 @@ def api_opens(ep, rest, env, d):
     if (m := re.fullmatch(r'projects/([^/]+)/(issues|merge_requests)', path)):
         import urllib.parse
         project, host = urllib.parse.unquote(m[1]), host or gitlab_host(rest, env, d)
-        if project.isdigit():  # a project's id: its path, as the host it is on names it
-            try: project = json.loads(subprocess.run(['glab', 'api', '--hostname', host, f'projects/{project}'], capture_output=True, text=True, timeout=20).stdout).get('path_with_namespace') or ''
+        if project.isdigit():  # a project's id: its path, asked of the server the write goes to, with the command's variables
+            try: project = json.loads(subprocess.run(['glab', 'api', '--hostname', host, f'projects/{project}'], env={**os.environ, **env}, capture_output=True, text=True, timeout=20).stdout).get('path_with_namespace') or ''
             except (OSError, subprocess.TimeoutExpired, ValueError, AttributeError): project = ''
         repo = gitlab_repo(rest, d) if project in (':fullpath', ':id') else f'{host}/{project}' if '/' in project else None
         return repo, 'pr' if m[2] == 'merge_requests' else 'issue'
