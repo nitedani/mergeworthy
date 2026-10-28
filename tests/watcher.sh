@@ -376,6 +376,19 @@ with contextlib.redirect_stdout(buf): m.retire_if_done()   # every thread merged
 print(repr(buf.getvalue()))
 ')
 check "retire_if_done: stays while a merged PR is followed" "''" "$got"
+got=$(py '
+def run(threads):
+    open(m.THREADS, "w").write(threads); buf = io.StringIO()
+    m.save_state({"prs": {"Me/r#5": {"state": "merged"}, "o/r#6": {"state": "merged"}}, "author": {"Me/r#5": "me", "o/r#6": "me"}, "ci": {}, "is_pr": {}, "since_by": {}, "seen": {}, "since": "2026-01-01T00:00:00Z"})
+    try:
+        with contextlib.redirect_stdout(buf): m.retire_if_done()
+    except SystemExit:
+        pass
+    return buf.getvalue().count("WATCHER RETIRED")
+print(run("Me/r 5\n"), run("Me/r 5\no/r 6\n"))
+')
+check "retire_if_done: a merged PR of yours in your own repo doesn't keep the watcher for follow-ups; one in another repo does" "1 0" "$got"
+rm -f "$W/retired"
 
 # Under T3 Code (gh-watch-start wrote t3-thread) a pass's event lines, from any writer, go to that thread as one message; a failed send is retried
 cat > "$T/bin/t3" <<EOF

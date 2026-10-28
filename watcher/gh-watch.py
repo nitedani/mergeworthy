@@ -1676,9 +1676,10 @@ def retire_if_done():
         state = load_state()
     if not all(gl_watch.done(state, key) for key, *_ in gl):
         return
-    fu = shared_read()['followups']  # a merged PR of yours still being followed, or not yet recorded by the shared job, keeps the watcher
+    fu = shared_read()['followups']  # a merged PR of yours still being followed, or not yet recorded by the shared job, keeps the watcher,
+    # except in your own repo, where you are the one who follows up
     if any(state['prs'].get(k, {}).get('state') == 'merged' and state.get('author', {}).get(k) == ME and fu.get(k, {'until': float('inf')})['until'] > time.time()
-           for k in (f"{r}#{n}" for r, n in threads)):
+           for r, n in threads if r.split('/')[0].lower() != ME.lower() for k in [f"{r}#{n}"]):
         return
     prs = state['prs']
     for repo, num in threads:
