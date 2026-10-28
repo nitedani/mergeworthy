@@ -2,9 +2,10 @@
 """Claude Code PostToolUse hook (matcher: Bash). A thread you just posted in (a new issue or PR, a comment, a review)
 joins the threads.txt of a watcher whose events reach the posting session (the task's work folder holding the command's dir,
 or the session's own), the one covering its repo first, so maintainer comments on it are answered (mergeworthy:reply).
-Another session's watcher wakes that session alone, so it never gets the thread. A gated draft it posted as new gets its
-.posted marker, which pre-bash-guard reads to refuse posting it as new again."""
-import hashlib, json, os, re, sys, time
+Another session's watcher wakes that session alone, so it never gets the thread. With several posts in one command, each thread
+is registered from the command that posted it; one whose folder would be a guess joins none, and the hook says so (exit 2).
+A gated draft it posted as new gets its .posted marker, which pre-bash-guard reads to refuse posting it as new again."""
+import hashlib, json, os, re, shlex, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
 from shellcmd import segments, prog, new_post_drafts, Where
@@ -41,12 +42,12 @@ def target(t):
     return None
 
 segs = segments(cmd)  # a command that doesn't lex still yields its words: a post in it is still registered
-# the drafts posted as new and the posting command's dir, resolved as pre-bash-guard resolves them
+# the drafts posted as new, and each posting segment's target with the dir it ran in, resolved as pre-bash-guard resolves them
 cwd = d.get('cwd') or os.getcwd()
-where, drafts, post_dir = Where(cwd), [], None
+where, drafts, posts = Where(cwd), [], []
 for s in segs:
     drafts += [os.path.join(cwd, os.path.expanduser(where.expand(f))) for f in new_post_drafts(s)]
-    post_dir = post_dir or (where.dir if target(s) else None)
+    if tg := target(s): posts.append((*tg, where.dir))
     where.step(s)
 # Written here, not in pre-bash-guard: PostToolUse runs only after the command succeeded, so a post another hook blocked, or one that failed, can be retried
 if isinstance(r, dict) and not r.get('interrupted'):
@@ -57,11 +58,12 @@ if isinstance(r, dict) and not r.get('interrupted'):
                 open(f + '.posted', 'w').write(sha)
         except OSError:
             pass  # a draft with no gate record wasn't posted (pre-bash-guard refuses it); one gone since can't be posted again
-targets = [x for x in (target(s) for s in segs) if x]
-if not targets:
+if not posts:
     sys.exit(0)
+def wrote(post, repo, num):  # whether that posting segment can have written the thread
+    return (post[0] is None or post[0] == repo) and (post[1] is None or post[1] == num)
 def posted(repo, num):  # a URL in stdout counts only when it is the thread a posting segment wrote to
-    return any((tr is None or tr == repo) and (tn is None or tn == num) for tr, tn in targets)
+    return any(wrote(p, repo, num) for p in posts)
 # The agent and the user may share one login, so the watcher knows a comment is the agent's by its body's hash.
 # `gh --attach` rewrites the body as it posts, so register the body that was actually posted, not only the draft's.
 import subprocess
@@ -111,13 +113,23 @@ def live(dr):
 sid = d.get('session_id')
 # a dir the posting session's steward pass read in the last day (gh-watch-start --round) counts: its next pass reads the thread
 live_dirs = [dr for dr in dirs if live(dr) or sid and steward.passed_by(dr) == sid]
-mine = work_folder.watched_by(live_dirs, sid, post_dir) + [dr for dr in live_dirs if sid and steward.passed_by(dr) == sid]
-found = {(repo, num, f'{repo} {num}') for repo, num in re.findall(r'github\.com/([\w.-]+/[\w.-]+)/(?:issues|pull)/(\d+)', out)} | \
-    {('gitlab.com/' + repo, num, f"gitlab.com/{repo} {'!' if kind == 'merge_requests' else ''}{num}")  # gh-watch-start's GitLab line
-     for repo, kind, num in re.findall(r'gitlab\.com/([\w.-]+(?:/[\w.-]+)+?)/-/(issues|work_items|merge_requests)/(\d+)', out)}  # glab prints new issues as work_items
+# the threads in stdout, in the order printed, each registered from the segment that posted it: with as many threads as posting
+# segments, the first unpaired one it fits; else the one dir every segment it fits ran in. A thread whose folder would be a guess
+# joins no watcher, and the agent is told
+found = [(m[1], m[2], f'{m[1]} {m[2]}') if m[1] else ('gitlab.com/' + m[3], m[5], f"gitlab.com/{m[3]} {'!' if m[4] == 'merge_requests' else ''}{m[5]}")  # gh-watch-start's GitLab line
+         for m in re.finditer(r'github\.com/([\w.-]+/[\w.-]+)/(?:issues|pull)/(\d+)|gitlab\.com/([\w.-]+(?:/[\w.-]+)+?)/-/(issues|work_items|merge_requests)/(\d+)', out)]  # glab prints new issues as work_items
+found = [f for f in dict.fromkeys(found) if posted(f[0], f[1])]
+pairs, free, lost = [], list(posts), []
 for repo, num, line in found:
-    if not posted(repo, num):
-        continue
+    fits = [p for p in posts if wrote(p, repo, num)]
+    if len(found) == len(posts) and (p := next((p for p in free if wrote(p, repo, num)), None)):
+        free.remove(p); pairs.append((repo, line, p[2]))
+    elif len({p[2] for p in fits}) == 1:
+        pairs.append((repo, line, fits[0][2]))
+    else:
+        lost.append(line)
+for repo, line, post_dir in pairs:
+    mine = work_folder.watched_by(live_dirs, sid, post_dir) + [dr for dr in live_dirs if sid and steward.passed_by(dr) == sid]
     home = next((dr for dr in live_dirs if line in lines(dr, 'threads.txt')), None)
     if not home:
         covering = [dr for dr in mine if any(l.split()[:1] == [repo] for l in lines(dr, 'repos.txt') + lines(dr, 'threads.txt'))]
@@ -131,4 +143,9 @@ for repo, num, line in found:
         with open(p + '.tmp', 'w') as f:
             f.writelines(keep)
         os.replace(p + '.tmp', p)
+if lost:
+    print(f"post-bash-register: {len(found)} threads in the output and {len(posts)} posting commands, so which command posted these can't be told, "
+          f"and they joined no watcher. Add each to the watcher of the work folder its command ran in ({', '.join(dict.fromkeys(p[2] for p in posts))}): "
+          + '; '.join(f"`gh-watch-start <work folder> {' '.join(shlex.quote(x) for x in line.split())}`" for line in lost), file=sys.stderr)
+    sys.exit(2)
 sys.exit(0)

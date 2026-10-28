@@ -1976,6 +1976,19 @@ oreg() { # session cwd command: the thread post-bash-register adds to the watche
     | python3 "$R/hooks/post-bash-register.py"; cat "$TK2/threads.txt" 2>/dev/null || echo none; rm -f "$TK2/threads.txt"; }
 check "a PR opened from the unwatched folder joins no other session's watcher; from the watched one (after a cd, to a variable too), it joins its watcher" \
   "none|vikejs/vike 9|vikejs/vike 9|vikejs/vike 9" "$(oreg sess-b "$CK4" "$PRC")|$(oreg sess-b "$CK" "$PRC")|$(oreg sess-b "$T" "cd $CK && $PRC")|$(oreg sess-b "$T" "D=$CK; cd \"\$D\" && $PRC")"
+# two MRs opened in one command from two watched work folders: each joins the watcher of the folder its command ran in
+TWO="cd $CK; $MRC; cd $CK4; $MRC"
+check "BLOCK: two MRs from two work folders in one command while the second folder has no watcher" 2 "$(bgs sess-b "$TWO" "$T")"
+echo "$FPID" > "$TK4/gh-watch.pid"; echo gitlab.com/ns/proj > "$TK4/repos.txt"; echo "$TK4" >> "$HOME/.claude/gh-watch-dirs.txt"
+check "the same passes once each folder has its watcher" 0 "$(bgs sess-b "$TWO" "$T")"
+treg() { # stdout: post-bash-register on $TWO, then exit code|the first folder's threads|the second's
+  python3 -c 'import json,sys; print(json.dumps({"session_id":"sess-b","cwd":sys.argv[1],"tool_input":{"command":sys.argv[2]},"tool_response":{"stdout":sys.argv[3]}}))' "$T" "$TWO" "$1" \
+    | python3 "$R/hooks/post-bash-register.py" 2>"$T/err"; echo "$?|$(paste -sd, "$TK2/threads.txt" 2>/dev/null)|$(paste -sd, "$TK4/threads.txt" 2>/dev/null)"; rm -f "$TK2/threads.txt" "$TK4/threads.txt"; }
+check "two MRs from two work folders in one command each join their own folder's watcher" "0|gitlab.com/ns/proj !9|gitlab.com/ns/proj !10" \
+  "$(treg $'https://gitlab.com/ns/proj/-/merge_requests/9\nhttps://gitlab.com/ns/proj/-/merge_requests/10')"
+check "BLOCK: one URL for two posting commands in two folders joins neither, and the hook names the gh-watch-start that adds it" "2|||1" \
+  "$(treg 'https://gitlab.com/ns/proj/-/merge_requests/9')|$(grep -c "gh-watch-start <work folder> gitlab.com/ns/proj '!9'" "$T/err")"
+rm "$TK4/gh-watch.pid" "$TK4/repos.txt"
 rm "$TK2/gh-watch.pid" "$TK2/repos.txt" "$TK2/session"
 kill "$FPID"
 check "BLOCK: a shell write of a step record, and a Write of one" "2 2" "$(bg 'echo "quick /x 2026-10-27T00:00:00Z" >> ~/.claude/pr-steps/$(git rev-parse HEAD)') $(python3 -c 'import json,sys; print(json.dumps({"tool_name":"Write","tool_input":{"file_path":sys.argv[1]},"cwd":sys.argv[2]}))' "$HOME/.claude/pr-steps/abc" "$T" | python3 "$R/hooks/pre-design-gate.py" 2>/dev/null; echo $?)"
