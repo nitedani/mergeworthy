@@ -478,6 +478,15 @@ print(a, "|", run(gone), next_pass() + run(gone), "|", run(gone), next_pass() + 
 ')
 check "retire_if_done: a deleted thread drops t3-thread at once, a t3 missing on two passes in a row too, one missing for a pass doesn't; events.log keeps the event, RETIRED and the reason" \
   "retired dropped 3 1 | kept 3 0 retired dropped 3 1 | kept 2 0 retired 2 0" "$got"
+# the passes those two runs stand for: the real tick() counts one per pass, before its wake_thread
+got=$(py '
+for name in ("follow_update", "steward_line", "scan_gitlab", "agent_jobs_pass", "announce"):
+    setattr(m, name, lambda *a, **k: None)
+seen = []; m.level = lambda: m.PAUSED; m.wake_thread = lambda: seen.append(m._ticks[0])
+before = m._ticks[0]; m.tick(); m.tick()
+print(m._ticks[0] - before, [n - before for n in seen])
+')
+check "tick() advances _ticks once per pass, before the pass's wake_thread" "2 [1, 2]" "$got"
 rm -f "$W/events.log" "$W/t3-wake.cursor" "$W/t3-thread"
 rm -f "$W/retired"
 
