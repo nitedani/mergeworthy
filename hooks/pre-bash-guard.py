@@ -37,8 +37,8 @@ d = json.load(sys.stdin)
 cmd = d.get('tool_input', {}).get('command', '')
 cwd = d.get('cwd') or os.getcwd()
 def expandvars(p):
-    """p with the command's own variables (`D=~/x; ... $D/a.md`), then the environment's, put in."""
-    return re.sub(r'\$\{?(\w+)\}?', lambda m: shell_vars.get(m[1], os.environ.get(m[1], m[0])), p)
+    """p with the command's own variables (`D=~/x; ... $D/a.md`), then the environment's, put in ($X, ${X}); anything else stays as written."""
+    return re.sub(r'\$(?:\{(\w+)\}|(\w+))', lambda m: shell_vars.get(m[1] or m[2], os.environ.get(m[1] or m[2], m[0])), p)
 
 def block(msg):
     print(f"BLOCKED by pre-bash-guard: {msg}", file=sys.stderr); sys.exit(2)
@@ -313,10 +313,24 @@ def is_gitlab(host, env):
     keys = re.findall(r'^([ \t]+)([^\s#][^:]*):', hosts[1], re.M) if hosts else []
     return any(k == host and i == keys[0][0] for i, k in keys)
 
+GLAB_VARS = ('GITLAB_HOST', 'GITLAB_URI', 'GL_HOST', 'GLAB_CONFIG_DIR', 'XDG_CONFIG_HOME', 'GITLAB_API_HOST', 'GLAB_ENABLE_CI_AUTOLOGIN', 'GITLAB_CI', 'CI_SERVER_FQDN')
+
+def glab_env(env):
+    """The environment a glab command with the assignments env runs in: the hook's, with each value as the shell expands it ($X, ${X}, a leading ~).
+    One computed when it runs ($(...), a backtick, ${X:-...}) blocks when it picks glab's server or config (GLAB_VARS), and is left out otherwise (a token)."""
+    out = dict(os.environ)
+    for k, v in env.items():
+        v = expandvars(os.path.expanduser(v) if v.startswith('~') else v)
+        if re.search(r'[$`]', v):
+            if k in GLAB_VARS:
+                block(f"{k} on this command is computed when it runs, so which GitLab server and project it acts on can't be told: write its value out")
+            continue
+        out[k] = v
+    return out
+
 def gitlab_host(a, env, run_dir):
-    """The host a glab command acts on, in glab's order: --hostname; GITLAB_HOST, GITLAB_URI, GL_HOST (CI_SERVER_FQDN alone under CI auto-login),
-    a host or URL; the checkout's GitLab origin; gitlab.com."""
-    env = {**os.environ, **env}
+    """The host a glab command acts on, with the environment env (glab_env), in glab's order: --hostname; GITLAB_HOST, GITLAB_URI, GL_HOST
+    (CI_SERVER_FQDN alone under CI auto-login), a host or URL; the checkout's GitLab origin; gitlab.com."""
     if host := (opt(a, ['--hostname']) or [None])[-1]: return host
     names = ['CI_SERVER_FQDN'] if env.get('GLAB_ENABLE_CI_AUTOLOGIN') == env.get('GITLAB_CI') == 'true' else ['GITLAB_HOST', 'GITLAB_URI', 'GL_HOST']
     if host := next(filter(None, map(env.get, names)), None): return re.sub(r'^https?://|/+$', '', host)
@@ -333,9 +347,11 @@ def api_opens(ep, rest, env, d):
         return (None if '{' in repo else repo if host in (None, 'api.github.com') else f'{host}/{repo}'), 'pr' if m[2] == 'pulls' else 'issue'
     if (m := re.fullmatch(r'projects/([^/]+)/(issues|merge_requests)', path)):
         import urllib.parse
-        project, host = urllib.parse.unquote(m[1]), host or gitlab_host(rest, env, d)
+        project = urllib.parse.unquote(m[1])
+        if not host or project.isdigit(): env = glab_env(env)
+        host = host or gitlab_host(rest, env, d)
         if project.isdigit():  # a project's id: its path, asked of the server the write goes to, with the command's variables
-            try: project = json.loads(subprocess.run(['glab', 'api', '--hostname', host, f'projects/{project}'], env={**os.environ, **env}, capture_output=True, text=True, timeout=20).stdout).get('path_with_namespace') or ''
+            try: project = json.loads(subprocess.run(['glab', 'api', '--hostname', host, f'projects/{project}'], env=env, capture_output=True, text=True, timeout=20).stdout).get('path_with_namespace') or ''
             except (OSError, subprocess.TimeoutExpired, ValueError, AttributeError): project = ''
         repo = gitlab_repo(rest, d) if project in (':fullpath', ':id') else f'{host}/{project}' if '/' in project else None
         return repo, 'pr' if m[2] == 'merge_requests' else 'issue'
@@ -815,7 +831,7 @@ for s in segs:
     if prog(s)[:1] in (['cd'], ['pushd']):
         has_cd = True
         args = [x for x in prog(s)[1:] if x not in ('-P', '-L', '-e', '--')]
-        to = re.sub(r'\$\{?(\w+)\}?', lambda m: shell_vars.get(m[1], os.environ.get(m[1], m[0])), args[0]) if args else '~'
+        to = expandvars(args[0]) if args else '~'
         if to == '$(git rev-parse --show-toplevel)':
             to = subprocess.run(['git', '-C', run_dir, 'rev-parse', '--show-toplevel'], capture_output=True, text=True).stdout.strip() or to
         run_dir = os.path.join(run_dir, os.path.expanduser(to))

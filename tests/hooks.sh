@@ -2135,6 +2135,7 @@ cat > "$T/bin/glab" <<'EOF'
 [ "$1" = api ] || exit 1
 a=${GITLAB_API_HOST:-}; [ "${GLAB_ENABLE_CI_AUTOLOGIN:-} ${GITLAB_CI:-}" = 'true true' ] && a=${CI_SERVER_FQDN:-}  # the server glab sends to: $FX/gl_<it>@<path> answers there
 f="$FX/gl_${a:+$a@}$(printf '%s' "$4" | tr '/?&=%' '_____')"
+[ -f "$f.token" ] && [ "${GITLAB_TOKEN:-}" != "$(cat "$f.token")" ] && { echo 'glab: 401 Unauthorized (HTTP 401)' >&2; exit 1; }  # a project only that token reads
 [ -f "$f" ] && cat "$f" || { echo 'glab: 404 Not found (HTTP 404)' >&2; exit 1; }
 EOF
 GL="$T/gl"; git init -q -b scratch "$GL"; git -C "$GL" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; git -C "$GL" remote add origin git@gitlab.com:me/app.git
@@ -2182,7 +2183,22 @@ check "a project's id is resolved on the server the write goes to: GITLAB_API_HO
   "$(bg 'GITLAB_API_HOST=e.example.com glab api projects/123/issues -X POST -f title=x' "$T") $(grep -c 'no running watcher covers gitlab.com/other/proj:' "$T/err")"
 check "a project's id is resolved on the server the write goes to: CI_SERVER_FQDN's under CI auto-login, naming the project there" "2 1" \
   "$(bg 'GLAB_ENABLE_CI_AUTOLOGIN=true GITLAB_CI=true CI_SERVER_FQDN=g.example.com glab api projects/123/issues -X POST -f title=x' "$T") $(grep -c 'no running watcher covers g.example.com/other/proj:' "$T/err")"
+# a value on the command is read as the shell expands it ($VAR, ${VAR}, a leading ~); one computed when it runs blocks, unless it is only a token
+echo '{"id": 777, "path_with_namespace": "me/app"}' > "$FX/gl_projects_777"; echo good > "$FX/gl_projects_777.token"
+check "a token on the command, as the shell expands it: a wrong one can't read the project (blocks), the right one, \$BOT and \${BOT} can" "2 0 0 0" \
+  "$(bg 'GITLAB_TOKEN=bad glab api projects/777/issues -X POST -f title=x' "$T") $(bg 'GITLAB_TOKEN=good glab api projects/777/issues -X POST -f title=x' "$T") $(BOT=good bg 'GITLAB_TOKEN="$BOT" glab api projects/777/issues -X POST -f title=x' "$T") $(BOT=good bg 'GITLAB_TOKEN=${BOT} glab api projects/777/issues -X POST -f title=x' "$T")"
+check "a token, or another variable, computed when it runs is left out: the lookup uses the session's token" "0 0 0" \
+  "$(GITLAB_TOKEN=good bg 'GITLAB_TOKEN="$(cat tok)" glab api projects/777/issues -X POST -f title=x' "$T") $(GITLAB_TOKEN=good bg 'GITLAB_TOKEN=`cat tok` glab api projects/777/issues -X POST -f title=x' "$T") $(GITLAB_TOKEN=good bg 'FOO=$(date) glab api projects/777/issues -X POST -f title=x' "$T")"
+check "a host variable written as \$H or \${H} names H's host" "2 1 2 1 2 1" \
+  "$(H=h.example.com bg 'GITLAB_HOST=$H glab api projects/123/issues -X POST -f title=x' "$T") $(grep -c 'no running watcher covers h.example.com/me/app:' "$T/err") $(H=h.example.com bg 'GITLAB_URI=${H} glab api projects/123/issues -X POST -f title=x' "$T") $(grep -c 'no running watcher covers h.example.com/me/app:' "$T/err") $(H=h.example.com bg 'GL_HOST="$H" glab api projects/123/issues -X POST -f title=x' "$T") $(grep -c 'no running watcher covers h.example.com/me/app:' "$T/err")"
+unknown() { printf '%s %s ' "$(bg "$1 glab api projects/123/issues -X POST -f title=x" "$T")" "$(grep -c "$2 on this command is computed when it runs" "$T/err")"; }
+check "BLOCK: a host, config dir, API host or CI variable computed when it runs (\$(...), a backtick, \${X:-...}), naming it" "2 1 2 1 2 1 2 1 2 1" \
+  "$( { unknown 'GITLAB_HOST="$(cat h)"' GITLAB_HOST; unknown 'GLAB_CONFIG_DIR=`pwd`/c' GLAB_CONFIG_DIR; unknown 'XDG_CONFIG_HOME=${NOPE_X:-/tmp}' XDG_CONFIG_HOME; unknown 'GITLAB_API_HOST=$(cat a)' GITLAB_API_HOST
+       unknown 'GLAB_ENABLE_CI_AUTOLOGIN=true GITLAB_CI=true CI_SERVER_FQDN=$(cat f)' CI_SERVER_FQDN; } | xargs)"
 git init -q "$T/glcode"; git -C "$T/glcode" remote add origin git@code.example.com:me/app.git; mkdir -p "$T/glcfg"; printf 'host: gitlab.com\nhosts:\n    gitlab.com:\n        token:\n    code.example.com:\n        token: x\n' > "$T/glcfg/config.yml"
+mkdir -p "$HOME/glcfgh"; cp "$T/glcfg/config.yml" "$HOME/glcfgh/"
+check "a config dir written as ~/... or \$HOME/... is that dir: its host is GitLab, naming the project there" "2 1 2 1" \
+  "$(bg 'GLAB_CONFIG_DIR=~/glcfgh glab api projects/123/issues -X POST -f title=x' "$T/glcode") $(grep -c 'no running watcher covers code.example.com/me/app:' "$T/err") $(bg 'GLAB_CONFIG_DIR=$HOME/glcfgh glab api projects/123/issues -X POST -f title=x' "$T/glcode") $(grep -c 'no running watcher covers code.example.com/me/app:' "$T/err")"
 check "a self-hosted origin whose name has no 'gitlab' is GitLab once glab's config has its host: a project's id is resolved there, naming it; without, on gitlab.com" "2 1 0" \
   "$(GLAB_CONFIG_DIR="$T/glcfg" bg 'glab api projects/123/issues -X POST -f title=x' "$T/glcode") $(grep -c 'no running watcher covers code.example.com/me/app' "$T/err") $(GLAB_CONFIG_DIR="$T/nocfg" bg 'glab api projects/123/issues -X POST -f title=x' "$T/glcode")"
 kill "$NPID"; : > "$HOME/.claude/gh-watch-dirs.txt"
