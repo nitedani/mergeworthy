@@ -418,6 +418,9 @@ def git_globals(t):
     return out
 
 
+TOPLEVEL = '$(git rev-parse --show-toplevel)'  # the one substitution Where runs itself, in `cd $(git rev-parse --show-toplevel)`
+
+
 class Where:
     """Where each simple command of one command line runs, walk() taking them in order: the dir a cd, pushd or popd moves (with
     `cd -` and the dir stack), and the variables the line set (`W=~/x; cd $W`, `export`, a value expanded when it is assigned, a
@@ -549,10 +552,10 @@ class Where:
             self.lost = True
             self._changed('lost')
         elif name in ('cd', 'pushd', 'popd'):
-            a = [x for x in a if x not in ('-P', '-L', '-e', '-@', '--')]
+            a = [x for x in operands(a) if x not in ('-P', '-L', '-e', '-@', '--')]  # not its redirects (`pushd x >/dev/null`)
             here, stack = self.dir, self.stack
             arg = self.expand(a[0]) if a else ''
-            if a and getattr(a[0], 'splits', False) and not re.fullmatch(r'[^\s*?[]+', arg):  # split, globbed or dropped: what cd gets can't be told
+            if a and getattr(a[0], 'splits', False) and a[0] != TOPLEVEL and not re.fullmatch(r'[^\s*?[]+', arg):  # split, globbed or dropped: what cd gets can't be told
                 self._move(None, None, None)
             elif name == 'cd':
                 self._go((None if 'OLDPWD' in self.vars else self.old) if arg == '-' else self._to(a[0] if a else '~'), here, stack, len(a) < 2)
@@ -592,8 +595,9 @@ class Where:
 
     def _to(self, to):
         """Where cd or pushd goes for `to`, or None; a relative one under a CDPATH (the environment's or the line's) may go elsewhere."""
-        if to == '$(git rev-parse --show-toplevel)':
-            return self.dir and subprocess.run(['git', '-C', self.dir, 'rev-parse', '--show-toplevel'], capture_output=True, text=True).stdout.strip() or None
+        if to == TOPLEVEL:  # unquoted, a top dir holding a space or a glob splits
+            top = self.dir and subprocess.run(['git', '-C', self.dir, 'rev-parse', '--show-toplevel'], capture_output=True, text=True).stdout.strip() or None
+            return None if top and getattr(to, 'splits', False) and re.search(r'\s|[*?[]', top) else top
         cdpath = self.vars['CDPATH'] if 'CDPATH' in self.vars else None if self.lost else os.environ.get('CDPATH', '')
         return None if (cdpath is None or cdpath) and not os.path.isabs(self.expand(self._home(to) or '/')) else self.path(to)
 
