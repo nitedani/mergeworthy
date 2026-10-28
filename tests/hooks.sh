@@ -1994,6 +1994,7 @@ ln -s "$CK" "$TK4/link"  # a checkout of the watched folder, linked into the unw
 check "BLOCK: an MR after cd .. from a symlink into the watched folder: bash goes back up the link, to the unwatched folder" 2 "$(bgs sess-b "cd $TK4/link; cd ..; $MRC" "$CK4")"
 rm "$TK4/link"
 check "BLOCK: an MR after a cd with its own CDPATH (CDPATH=<unwatched folder> cd vike), which bash searches first" 2 "$(bgs sess-b "cd $TK2; CDPATH=$TK4 cd vike; $MRC" "$CK")"
+check "BLOCK: an MR after D=<watched> cd \"\$D\": bash expands cd's words with the line's D, the unwatched folder, not its prefix's" 2 "$(bgs sess-b "D=$CK4; D=$CK cd \"\$D\"; $MRC" "$CK4")"
 echo "$FPID" > "$TK4/gh-watch.pid"; echo gitlab.com/ns/proj > "$TK4/repos.txt"; echo "$TK4" >> "$HOME/.claude/gh-watch-dirs.txt"
 check "the same passes once each folder has its watcher" 0 "$(bgs sess-b "$TWO" "$T")"
 treg() { # stdout [command [cwd]]: post-bash-register on the command ($TWO, from $T), then exit code|the first folder's threads|the second's
@@ -2036,6 +2037,7 @@ check "an MR after cd .. from a symlink into another folder joins the folder bas
 rm "$TK2/link"
 check "BLOCK: an MR after a cd with its own CDPATH joins no watcher; one after env cd (another program) joins the folder this shell stayed in" "2|| 0|gitlab.com/ns/proj !9|" \
   "$(treg "$U9" "cd $TK2; CDPATH=$TK4 cd vike; $MRC" "$CK") $(treg "$U9" "env cd $CK4; $MRC" "$CK")"
+check "an MR after D=<other> cd \"\$D\" joins the folder the line's D names, which cd's words see, not the prefix's" "0|gitlab.com/ns/proj !9|" "$(treg "$U9" "D=$CK; D=$CK4 cd \"\$D\"; $MRC" "$CK")"
 check "BLOCK: an MR after a cd the line redefined (a function, an alias) joins no watcher" "2|| 2||" "$(treg "$U9" "cd() { :; }; cd $CK; $MRC" "$CK4") $(treg "$U9" "alias cd=:; cd $CK; $MRC" "$CK4")"
 mkdir -p "$CK/my dir"
 check "BLOCK: an MR after a cd that fails (a missing target, an unquoted expansion holding a space, two arguments) joins no watcher; after && it joins the target's" \

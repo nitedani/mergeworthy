@@ -438,6 +438,7 @@ class Where:
         self.pending = None  # (dir, old dir, stack) of the cd just run that may have failed: where a command after && runs
         self.redefined = False  # whether the line defines cd, pushd or popd (a function, an alias)
         self.physical = False  # whether it set -P, so cd follows symlinks
+        self.prefix = {}  # the prefix of the cd being taken, which its own lookups see and its words don't
 
         self.carry = None  # the state an 'and' frame just left ended in, and what changed in it: where the next && in the chain goes on
         self.written = {}  # each variable's last value as written (`C="$(echo git) push"`), for words a command named by it may run
@@ -568,22 +569,22 @@ class Where:
             pre = t[:len(t) - len(p)]
             if {os.path.basename(w) for w in pre} & (set(WRAPPERS) | set(RUNNERS)) - {'builtin', 'command', 'time'}:
                 return  # another program named cd (`env cd`, `nice cd`): this shell's dir stays
-            outer = self.vars
-            self.vars = {**outer, **{n: None if plus else self._value(v, getattr(x, 'tilde', None))
-                                    for x in pre if (m := re.match(r'(\w+)(\+?)=(.*)', getattr(x, 'literal', None) or x, re.S))
-                                    for n, plus, v in [m.groups()]}}  # its own prefix (`CDPATH=x cd y`), for it alone
+            self.prefix = {n: None if plus else self._value(v, getattr(x, 'tilde', None))
+                           for x in pre if (m := re.match(r'(\w+)(\+?)=(.*)', getattr(x, 'literal', None) or x, re.S)) for n, plus, v in [m.groups()]}
             try:
                 self._cd(name, a)
             finally:
-                self.vars = outer
+                self.prefix = {}
 
     def _cd(self, name, a):
-        """Take cd, pushd or popd with arguments a, its own prefix in self.vars."""
+        """Take cd, pushd or popd with arguments a: its words and redirects expanded with the line's variables, its own lookups
+        (CDPATH, HOME, OLDPWD, PWD) seeing its prefix too (self.prefix: `CDPATH=x cd y`)."""
+        env = {**self.vars, **self.prefix}
         if self.redefined:  # runs what the line made it
             self._move(None, None, None)
             self.lost = True
             self._changed('lost')
-        elif self._negated() or self.physical or 'PWD' in self.vars:  # `! cd x && ..` goes on when it fails; set -P: cd -P; cd .. starts from $PWD
+        elif self._negated() or self.physical or 'PWD' in env:  # `! cd x && ..` goes on when it fails; set -P: cd -P; cd .. starts from $PWD
             self._move(None, None, None)
         else:
             opens, physical = self._opens(a), next((x == '-P' for x in reversed(operands(a)) if x in ('-P', '-L')), False)
@@ -593,7 +594,7 @@ class Where:
             if a and getattr(a[0], 'splits', False) and a[0] != TOPLEVEL and not re.fullmatch(r'[^\s*?[]+', arg):  # split, globbed or dropped: what cd gets can't be told
                 self._move(None, None, None)
             elif name == 'cd':
-                to = (None if 'OLDPWD' in self.vars else self.old) if arg == '-' else self._to(a[0] if a else '~')
+                to = (None if 'OLDPWD' in env else self.old) if arg == '-' else self._to(a[0]) if a else None if 'HOME' in self.prefix else self._to('~')
                 self._go(self._land(to, physical), here, stack, len(a) < 2, opens)
             elif name == 'pushd' and a and arg[:1] not in '+-':  # through a symlink and back up (`pushd link/..`): not told
                 to = self._to(a[0])
@@ -668,7 +669,8 @@ class Where:
         if to == TOPLEVEL:  # unquoted, a top dir holding a space or a glob splits
             top = self.dir and subprocess.run(['git', '-C', self.dir, 'rev-parse', '--show-toplevel'], capture_output=True, text=True).stdout.strip() or None
             return None if top and getattr(to, 'splits', False) and re.search(r'\s|[*?[]', top) else top
-        cdpath = self.vars['CDPATH'] if 'CDPATH' in self.vars else None if self.lost else os.environ.get('CDPATH', '')
+        env = {**self.vars, **self.prefix}
+        cdpath = env['CDPATH'] if 'CDPATH' in env else None if self.lost else os.environ.get('CDPATH', '')
         return None if (cdpath is None or cdpath) and not os.path.isabs(self.expand(self._home(to) or '/')) else self.path(to)
 
 
