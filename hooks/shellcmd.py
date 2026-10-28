@@ -109,11 +109,12 @@ _ids = itertools.count()
 
 class Seg(list):
     """A simple command's argv. frames: the scopes it runs in, outermost first, each (id, kind, the variables set on entering it: a
-    loop's own, unknown; a child shell's, (word, whether it sees the ones before it) of its command's prefix or env's arguments, `D=x bash -c`): 'sub' (a copy of the shell: a subshell,
-    substitution, pipeline part or background job), 'proc' (a child shell: `bash -c`, a heredoc a shell reads), 'user' (a shell
-    whose environment can't be told: another user's, `sudo bash -c`, `su -c`, or one `env` with options starts), 'cond' (it may not run: after && or ||, an if or
-    case branch), 'loop' (a loop's body, run again and again) or 'opaque' (run where it can't be told: a function's body, a command
-    that doesn't parse)."""
+    loop's own, unknown; a child shell's, (word, whether it sees the ones before it) of its command's prefix or env's arguments,
+    `D=x bash -c`). Kinds: 'sub' (a copy of the shell: a subshell, substitution, pipeline part or background job), 'proc' (a child
+    bash: `bash -c`, a heredoc bash reads), 'sh' (a child shell that isn't bash: no dir stack or `declare`), 'user' (a shell whose
+    environment can't be told: another user's, `sudo bash -c`, `su -c`, fish, or one `env` with options starts), 'cond' (it may not
+    run: after && or ||, an if or case branch), 'loop' (a loop's body, run again and again) or 'opaque' (run where it can't be
+    told: a function's body, `D=x eval`, a command that doesn't parse)."""
     frames = ()
 
 
@@ -201,17 +202,18 @@ def _inner(s, depth):
 
 
 def _child(s):
-    """The frame of the child shell segment s starts: 'proc', with the assignments that set its environment, each (word, whether
-    it sees the ones before it: true for the command's prefix, false for env's arguments), or 'user' (another user's shell, `env`
-    with options, a prefix appending to a variable)."""
+    """The frame of the child shell segment s starts: 'proc' (bash) or 'sh' (another shell), with the assignments that set its
+    environment, each (word, whether it sees the ones before it: true for the command's prefix, false for env's arguments), or
+    'user' (another user's shell, fish, `env` with options, a prefix appending to a variable)."""
     t = prog(s)
     pre = s[:len(s) - len(t)]
     names = [os.path.basename(w) for w in pre + t[:1]]
-    if {'sudo', 'su', 'runuser'} & set(names) or 'env' in names and any(w.startswith('-') for w in pre[names.index('env'):]) or \
+    if {'sudo', 'su', 'runuser', 'fish'} & set(names) or 'env' in names and any(w.startswith('-') for w in pre[names.index('env'):]) or \
             any(re.match(r'\w+\+=', w) for w in pre):
         return next(_ids), 'user', ()
+    kind = 'proc' if not t or os.path.basename(t[0]) == 'bash' else 'sh'
     lead = next((i for i, w in enumerate(pre) if not re.match(r'\w+=', w)), len(pre))
-    return next(_ids), 'proc', tuple((w, i < lead) for i, w in enumerate(pre) if re.match(r'\w+=', w))
+    return next(_ids), kind, tuple((w, i < lead) for i, w in enumerate(pre) if re.match(r'\w+=', w))
 
 
 def reads_stdin(t):
@@ -372,7 +374,7 @@ class Where:
     def walk(self, segs):
         """Each of segs (parse()'s), with self moved to where it runs; self takes it once the caller is done with it."""
         changing = {f[0] for t in segs for i, f in enumerate(getattr(t, 'frames', ())) if f[1] == 'loop' and _changes(t)
-                    and not any(g[1] in ('sub', 'proc', 'user') for g in t.frames[i + 1:])}
+                    and not any(g[1] in ('sub', 'proc', 'sh', 'user') for g in t.frames[i + 1:])}
         for t in segs:
             frames = getattr(t, 'frames', ())
             while [f[0] for f in self.open] != list(frames[:len(self.open)]):
@@ -395,7 +397,7 @@ class Where:
                 given.append((n, self._value(v)))
                 self.vars[n] = given[-1][1]
         self.vars, given = parent, given + argv
-        if f[1] in ('proc', 'user'):  # a child shell gets the exported variables alone, and no dir stack
+        if f[1] in ('proc', 'sh', 'user'):  # a child shell gets the exported variables alone, and no dir stack
             self.vars = {} if f[1] == 'user' else {n: v if n in self.exported or n in os.environ else None for n, v in self.vars.items()}
             self.old, self.stack = None, []
         if f[1] in ('user', 'opaque') or changing:
@@ -417,7 +419,7 @@ class Where:
     def _changed(self, what):
         for f in reversed(self.open):  # up to the innermost subshell or child shell: its changes end with it
             f[2].add(what)
-            if f[0][1] in ('sub', 'proc', 'user'): break
+            if f[0][1] in ('sub', 'proc', 'sh', 'user'): break
 
     def _set(self, name, value):
         self.vars[name] = value
@@ -434,6 +436,11 @@ class Where:
             return
         p = prog(t)
         name, a = (os.path.basename(p[0]), p[1:]) if p else ('', [])
+        if name in ('declare', 'typeset', 'pushd', 'popd') and next((f[0][1] for f in reversed(self.open) if f[0][1] in ('proc', 'sh', 'user')), '') == 'sh':
+            if name in ('pushd', 'popd'): self._move(None, self.dir, None)  # bash's own: in another shell they fail or differ
+            for n in (re.match(r'\w+', x) for x in a if name in ('declare', 'typeset')):
+                if n: self._set(n[0], None)
+            return
         if name in ('export', 'declare', 'typeset', 'local', 'readonly'):
             flags = ''.join(x[1:] for x in a if x[:1] in '-+')
             for x in a:
