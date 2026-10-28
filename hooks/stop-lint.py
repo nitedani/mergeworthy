@@ -143,7 +143,7 @@ working = opened_task or acted or delegated or bool(task_dirs or monitor_cmds or
 # the check-in asks only where work can still be waiting after the answer: a work folder it worked in, an agent it started, a Monitor
 may_wait = delegated or bool(task_dirs or monitor_cmds or t3_dirs)
 # quoted words are someone else's (a user's "should I ...?", a banned phrase being discussed): not an offer
-own = re.sub(r'```.*?```|`[^`\n]*`|"[^"\n]*"|[“„][^”\n]*”|^>.*$', ' ', last, flags=re.S | re.M)
+own = re.sub(r'```.*?```|`[^`\n]*`|"[^"\n]*"|[“„][^”\n]*”|^>[^\n]*$', ' ', last, flags=re.S | re.M)
 # An offer, or a hand-back of work the agent can do or wait for itself ("tell me when to re-check CI", "nothing will notify me")
 OFFER = (r"(when you say (go|so)|say the word|(do|would) you (want|like) me to|want me to|shall I\b|should I\b|if you want|if you'd (rather|like)|your call|"
          r"is yours to|up to you|or would you rather|which do you (want|prefer)|let me know (if|when|whether)|"

@@ -1190,6 +1190,8 @@ tr_file 'A review-ig kész lesz: https://gitlab.com/g/p/-/merge_requests/96'
 check "a negation, condition or plan anywhere earlier in the done word's clause is no claim" "0 0 0 0" "$a $(stop "$T")"
 tr_file 'When you asked, I checked it: all done, https://gitlab.com/g/p/-/merge_requests/96'
 check "BLOCK: a condition in an earlier clause leaves the claim standing" 2 "$(stop "$T")"
+tr_file $'> Earlier context.\n\nAll done: https://gitlab.com/g/p/-/merge_requests/96'
+check "BLOCK: a claim after a quoted line" 2 "$(stop "$T")"
 tr_file 'A „kész” jelzés még a régi futásé: https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
 tr_file 'The `ready for review` step comes next: https://gitlab.com/g/p/-/merge_requests/96'
 check "a done word in quotes or code is no claim" "0 0" "$a $(stop "$T")"
