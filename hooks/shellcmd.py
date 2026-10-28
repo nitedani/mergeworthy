@@ -407,16 +407,19 @@ class Where:
         self.open = []  # the frames (Seg.frames) entered: (frame, the state on entering it, what changed in it: 'dir', 'lost', variable names)
 
     def expand(self, p):
-        """p with the line's variables ($D, ${D}; $PWD and $OLDPWD where it runs), then the environment's, put in; one it can't tell stays as written."""
+        """p with the line's variables ($D, ${D}; $PWD and $OLDPWD where it runs, unless the line assigns them), then the environment's,
+        put in; one it can't tell stays as written."""
         def value(m):
             n = m[1] or m[2]
-            v = self.dir if n == 'PWD' else self.old if n == 'OLDPWD' else self.vars[n] if n in self.vars else None if self.lost else os.environ.get(n)
+            v = None if n in ('PWD', 'OLDPWD') and n in self.vars else self.dir if n == 'PWD' else self.old if n == 'OLDPWD' else self.vars[n] if n in self.vars else None if self.lost else os.environ.get(n)
             return m[0] if v is None else v
         return re.sub(r'\$(?:(\w+)|\{(\w+)\})', value, p)
 
     def path(self, p, base=''):
-        """p resolved from base (default: the dir), or None when it can't be told (an expansion left, an unknown base)."""
-        p = os.path.expanduser(self.expand(p))
+        """p resolved from base (default: the dir), or None when it can't be told (an expansion left, an unknown base, a ~ after the
+        line assigns HOME)."""
+        p = self._home(self.expand(p))
+        if p is None: return None
         base = self.dir if base == '' else base
         return None if re.search(r'[$`]', p) else p if os.path.isabs(p) else None if base is None else os.path.join(base, p)
 
@@ -524,7 +527,7 @@ class Where:
             if a and getattr(a[0], 'splits', False) and not re.fullmatch(r'[^\s*?[]+', arg):  # split, globbed or dropped: what cd gets can't be told
                 self._move(None, None, None)
             elif name == 'cd':
-                self._go(self.old if arg == '-' else self._to(a[0] if a else '~'), here, stack, len(a) < 2)
+                self._go((None if 'OLDPWD' in self.vars else self.old) if arg == '-' else self._to(a[0] if a else '~'), here, stack, len(a) < 2)
             elif name == 'pushd' and a and arg[:1] not in '+-':
                 self._go(self._to(a[0]), here, None if stack is None else [here] + stack, len(a) < 2)
             elif not a and stack:  # pushd swaps the top two, popd goes to the top one
@@ -547,8 +550,13 @@ class Where:
 
     def _value(self, v):
         """An assignment's value v as the shell stores it, or None when it can't be told."""
-        v = self.expand(os.path.expanduser(v))
-        return None if re.search(r'[$`]', v) else v
+        v = self._home(v)
+        v = v and self.expand(v)
+        return None if v is None or re.search(r'[$`]', v) else v
+
+    def _home(self, p):
+        """p with a leading ~ expanded, or None for a ~ once the line assigns HOME."""
+        return None if 'HOME' in self.vars and re.match(r'~(/|$)', p) else os.path.expanduser(p)
 
     def _to(self, to):
         """Where cd or pushd goes for `to`, or None; a relative one under a CDPATH (the environment's or the line's) may go elsewhere."""
