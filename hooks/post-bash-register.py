@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Claude Code PostToolUse hook (matcher: Bash). A thread you just posted in (a new issue or PR, a comment, a review)
-joins the threads.txt of the posting session's watcher, else of the one that covers its repo, else of the first live
-watcher, so maintainer comments on it are answered (mergeworthy:reply). A gated draft it posted as new gets its
+joins the threads.txt of a watcher whose events reach the posting session (the task's work folder holding the command's dir,
+or the session's own), the one covering its repo first, so maintainer comments on it are answered (mergeworthy:reply).
+Another session's watcher wakes that session alone, so it never gets the thread. A gated draft it posted as new gets its
 .posted marker, which pre-bash-guard reads to refuse posting it as new again."""
 import hashlib, json, os, re, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
 from shellcmd import segments, prog, new_post_drafts
-import steward
+import steward, work_folder
 d = json.load(sys.stdin)
 cmd = d.get('tool_input', {}).get('command', '')
 r = d.get('tool_response') or {}
@@ -102,11 +103,14 @@ def live(dr):
         return True
     except (IndexError, OSError, ValueError):
         return False
+sid = d.get('session_id')
 # a dir the posting session's steward pass read in the last day (gh-watch-start --round) counts: its next pass reads the thread
-live_dirs = [dr for dr in dirs if live(dr) or d.get('session_id') and steward.passed_by(dr) == d['session_id']]
-# The posting session's own dirs come first (gh-watch-start records the session): its Monitor tails only those, and an
-# older dir can stay live after its session ended, kept by a forgotten repos.txt line
-own = [dr for dr in live_dirs if d.get('session_id') and lines(dr, 'session')[:1] == [d['session_id']]]
+live_dirs = [dr for dr in dirs if live(dr) or sid and steward.passed_by(dr) == sid]
+where = d.get('cwd') or os.getcwd()  # the posting command's dir: follows a `cd <dir>` before it
+for s in segs:
+    if target(s): break
+    if prog(s)[:1] in (['cd'], ['pushd']) and prog(s)[1:]: where = os.path.join(where, os.path.expanduser(prog(s)[-1]))
+mine = work_folder.watched_by(live_dirs, sid, where) + [dr for dr in live_dirs if sid and steward.passed_by(dr) == sid]
 found = {(repo, num, f'{repo} {num}') for repo, num in re.findall(r'github\.com/([\w.-]+/[\w.-]+)/(?:issues|pull)/(\d+)', out)} | \
     {('gitlab.com/' + repo, num, f"gitlab.com/{repo} {'!' if kind == 'merge_requests' else ''}{num}")  # gh-watch-start's GitLab line
      for repo, kind, num in re.findall(r'gitlab\.com/([\w.-]+(?:/[\w.-]+)+?)/-/(issues|work_items|merge_requests)/(\d+)', out)}  # glab prints new issues as work_items
@@ -115,8 +119,8 @@ for repo, num, line in found:
         continue
     home = next((dr for dr in live_dirs if line in lines(dr, 'threads.txt')), None)
     if not home:
-        covering = [dr for dr in live_dirs if any(l.split()[:1] == [repo] for l in lines(dr, 'repos.txt') + lines(dr, 'threads.txt'))]
-        home = ([dr for dr in own if dr in covering] + own + covering + live_dirs + [None])[0]
+        covering = [dr for dr in mine if any(l.split()[:1] == [repo] for l in lines(dr, 'repos.txt') + lines(dr, 'threads.txt'))]
+        home = (covering + mine + [None])[0]
         if home:
             open(os.path.join(home, 'threads.txt'), 'a').write(line + '\n')
     # the thread now covers its repo there: its bare repo line says nothing more

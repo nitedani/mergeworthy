@@ -114,9 +114,10 @@ def watch_dirs():
             pass
     return live
 
-def need_watch(repo):
-    """Opening an issue or PR starts the live loop (mergeworthy:task step 5): a running watcher must cover the repo (post-bash-register adds
-    the new thread). A comment on an existing thread isn't blocked here: post-bash-register adds that thread, and stop-lint requires a watcher's Monitor after any post."""
+def need_watch(repo, where):
+    """Opening an issue or PR starts the live loop (mergeworthy:task step 5): a running watcher of the task's work folder holding where,
+    or of this session, must cover the repo (post-bash-register adds the new thread). A comment on an existing thread isn't blocked here:
+    post-bash-register adds that thread, and stop-lint requires a watcher's Monitor after any post."""
     if setting('WATCHER', 'on') != 'on': return
     repos = [repo] if isinstance(repo, str) else [r for r in repo if r]
     if not repos:
@@ -126,9 +127,11 @@ def need_watch(repo):
     # a dir this session's steward pass read in the last day covers too (gh-watch-start --round): its next pass reads the thread
     reg, sid = os.path.expanduser('~/.claude/gh-watch-dirs.txt'), d.get('session_id')
     passed = [w for w in ((l.strip() for l in open(reg)) if os.path.exists(reg) else ()) if sid and steward.passed_by(w) == sid]
-    covering = [d for d in watch_dirs() + passed if any(l.split()[:1] in ([r] for r in repos) for l in lines(d, 'repos.txt') + lines(d, 'threads.txt'))]
+    covering = [w for w in work_folder.watched_by(watch_dirs(), sid, where) + passed
+                if any(l.split()[:1] in ([r] for r in repos) for l in lines(w, 'repos.txt') + lines(w, 'threads.txt'))]
     if not covering:
-        block(f"no running watcher covers {' or '.join(repos)}: `gh-watch-start <your work folder> {repos[0]}`, arm the Monitor it prints if any, then retry (mergeworthy:task step 5)")
+        block(f"no running watcher of this task or session covers {' or '.join(repos)} (another session's watcher wakes that session, not this one): "
+              f"`gh-watch-start {work_folder.task_of(where) or '<your work folder>'} {repos[0]}`, arm the Monitor it prints if any, then retry (mergeworthy:task step 5)")
 
 def check_turn(repo, num, args=()):
     """post §Thread rules: at most two comments in a row: while your last two comments on a thread have no reply after them and the last
@@ -508,7 +511,7 @@ def check_workflow(what, d, commits, updates=()):
     if what.startswith('this push'):  # the PR this push updates is answered by a watcher on its repo (task step 5): upstream, origin or the fork pushed to
         urls = subprocess.run(['git', '-C', top, 'remote', '-v'], capture_output=True, text=True).stdout + ' ' + ' '.join(push_urls)
         repos = sorted({m[0] or 'gitlab.com/' + m[1] for m in re.findall(r'github\.com[:/]([\w.-]+/[\w.-]+?)(?:\.git)?(?:\s|$)|gitlab\.com[:/]([\w./-]+?)(?:\.git)?(?:\s|$)', urls)})
-        if repos: need_watch(repos)  # a host no watcher reads (neither GitHub nor GitLab) has nothing to arm
+        if repos: need_watch(repos, top)  # a host no watcher reads (neither GitHub nor GitLab) has nothing to arm
     for sha in commits:
         rec = os.path.expanduser(f'~/.claude/pr-steps/{sha}')
         logs = [l.split()[1] for l in (open(rec) if os.path.isfile(rec) else []) if l.split()[:1] in (['quick'], ['gates']) and len(l.split()) > 1]
@@ -630,7 +633,7 @@ def check(t, has_cd):
         if missing:
             block(f"HEAD {head[:10] or '(no git repo in cwd)'} has no pr-steps {', '.join(missing)} record: run those steps of mergeworthy:converge's pipeline on the final HEAD, each ending with `pr-steps <step> <its output>` (again after a base merge); or open it with --draft")
     if p == 'glab' and len(a) >= 2 and a[0] in ('issue', 'mr') and a[1] == 'create' and '--help' not in a and '-h' not in a:
-        need_watch(gitlab_repo(a[2:], run_dir))
+        need_watch(gitlab_repo(a[2:], run_dir), run_dir)
     if p == 'gh' and len(a) >= 2 and a[0] == 'pr' and a[1] == 'merge':
         if setting('MERGE', 'on-request-squash') == 'reviewer':
             block('never merge: the reviewer merges this repo\'s PRs (MERGEWORTHY_MERGE=reviewer)')
@@ -664,7 +667,7 @@ def check(t, has_cd):
                     return  # an approval without a body posts no text
                 block(NEED_DRAFT)
             if sub == 'create':
-                need_watch((opt(rest, ['--repo', '-R']) or [None])[-1] or cwd_repo(run_dir))
+                need_watch((opt(rest, ['--repo', '-R']) or [None])[-1] or cwd_repo(run_dir), run_dir)
             if a[0] == 'pr' and sub == 'create':  # a draft's body says why on its State line, a ready PR's has none (pull-request step 7)
                 draft = '--draft' in rest or '-d' in rest
                 w = post_words.words((opt(rest, ['--repo', '-R']) or [None])[-1] or cwd_repo(run_dir))
@@ -696,7 +699,7 @@ def check(t, has_cd):
         if literal or not (bodies or inputs):
             block(NEED_DRAFT)
         m = re.fullmatch(r'/?repos/([\w.-]+/[\w.-]+)/(?:issues|pulls)', ep)
-        if m and method == 'POST': need_watch(m.group(1))
+        if m and method == 'POST': need_watch(m.group(1), run_dir)
         c = re.fullmatch(r'/?repos/([\w.-]+/[\w.-]+)/issues/(\d+)/comments', ep)
         if c and method == 'POST': check_turn(c.group(1), c.group(2), rest); check_finality(c.group(1), c.group(2), bodies + inputs)
         thread = None

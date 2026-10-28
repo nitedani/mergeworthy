@@ -374,12 +374,12 @@ check "gate-pass gates a status post with no review once its PROMISED line is th
 
 # ---------- post-bash-register: only a real gh post registers, and only the thread it posted to ----------
 sleep 600 & SPID=$!
-WD="$T/reg"; mkdir -p "$WD"; echo "$SPID" > "$WD/gh-watch.pid"
+WD="$T/reg"; mkdir -p "$WD"; echo "$SPID" > "$WD/gh-watch.pid"; echo sess-r > "$WD/session"
 echo "$WD" > "$HOME/.claude/gh-watch-dirs.txt"
 U5='https://github.com/o/r/issues/5#issuecomment-1'
 register() { # command stdout -> the watch dir's threads.txt, space-joined
   rm -f "$WD/threads.txt"
-  python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"tool_response":{"stdout":sys.argv[2]}}))' "$1" "$2" \
+  python3 -c 'import json,sys; print(json.dumps({"session_id":"sess-r","tool_input":{"command":sys.argv[1]},"tool_response":{"stdout":sys.argv[2]}}))' "$1" "$2" \
     | python3 "$R/hooks/post-bash-register.py"
   [ -f "$WD/threads.txt" ] && paste -sd' ' "$WD/threads.txt" || echo none
 }
@@ -1852,8 +1852,8 @@ check "tracker: the issue's creation needs no Decisions link yet, an edit does" 
 ' '') $(trk '' '')"
 bash -c 'exec -a gh-watch-daemon sleep 600' & GPID=$!  # the guard takes a watcher as live when its command names gh-watch-daemon
 GW="$T/glw"; mkdir -p "$GW"; : > "$GW/threads.txt"; : > "$GW/repos.txt"
-echo "$GPID" > "$GW/gh-watch.pid"; echo "$GW" > "$HOME/.claude/gh-watch-dirs.txt"
-glguard() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "${2:-$T}" | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?; }
+echo "$GPID" > "$GW/gh-watch.pid"; echo sess-gl > "$GW/session"; echo "$GW" > "$HOME/.claude/gh-watch-dirs.txt"
+glguard() { python3 -c 'import json,sys; print(json.dumps({"session_id":"sess-gl","tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "${2:-$T}" | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?; }
 check "BLOCK: glab issue create with no watcher on the project" "2 1" "$(glguard 'glab issue create -R ns/sub/proj --title x') $(grep -c 'gitlab.com/ns/sub/proj' "$T/err")"
 git init -q "$T/glrepo"; git -C "$T/glrepo" remote add origin git@gitlab.com:ns/sub/proj.git
 check "BLOCK: glab mr create --draft in a clone of an unwatched project" 2 "$(glguard 'glab mr create --draft --title x' "$T/glrepo")"
@@ -1867,7 +1867,7 @@ glsess() { python3 -c 'import json,sys; print(json.dumps({"session_id":sys.argv[
 check "a dir the session's steward pass read today covers its repo for opening an issue; not for another session" "0 1" "$(glsess sess-g) $(glsess sess-h)"
 echo "$GW" > "$HOME/.claude/gh-watch-dirs.txt"
 echo gitlab.com/ns/sub/proj > "$GW/repos.txt"
-glreg() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"tool_response":{"stdout":sys.argv[2]}}))' "$1" "$2" | python3 "$R/hooks/post-bash-register.py"; }
+glreg() { python3 -c 'import json,sys; print(json.dumps({"session_id":"sess-gl","tool_input":{"command":sys.argv[1]},"tool_response":{"stdout":sys.argv[2]}}))' "$1" "$2" | python3 "$R/hooks/post-bash-register.py"; }
 glreg 'glab issue create -R ns/sub/proj --title x' 'https://gitlab.com/ns/sub/proj/-/work_items/12'
 glreg 'glab mr create --draft --title x' 'https://gitlab.com/ns/sub/proj/-/merge_requests/3'
 glreg 'glab issue list' 'https://gitlab.com/ns/sub/proj/-/issues/13'
@@ -1950,9 +1950,29 @@ git -C "$CK" -c user.name=t -c user.email=t@t commit -q --allow-empty -m b
 quick "$CK" $'TypeScript: pnpm exec tsc --noEmit -> exit 0\nExamples Vue/Others (ubuntu-latest): pnpm -C examples/vue test -> exit 0 (12 tests)\n'
 check "the same push passes once its head's log runs each failing job" 0 "$(MERGEWORTHY_WATCHER=off bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK")"
 echo "$T/nowatch" > "$HOME/.claude/gh-watch-dirs.txt"
-check "replay: the same push with no watcher on vikejs/vike (or the fork): blocked, naming the repos" "2 1" "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK") $(grep -c 'no running watcher covers nitedani-agent/vike or vikejs/vike' "$T/err")"
-bash -c 'exec -a gh-watch-daemon sleep 600' & FPID=$!; FW="$T/fw"; mkdir -p "$FW"; echo "$FPID" > "$FW/gh-watch.pid"; echo vikejs/vike > "$FW/repos.txt"; echo "$FW" > "$HOME/.claude/gh-watch-dirs.txt"
-check "a watcher on the upstream repo covers it" 0 "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK")"
+check "replay: the same push with no watcher on vikejs/vike (or the fork): blocked, naming the repos" "2 1" "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK") $(grep -c 'covers nitedani-agent/vike or vikejs/vike' "$T/err")"
+bash -c 'exec -a gh-watch-daemon sleep 600' & FPID=$!; echo "$FPID" > "$TK2/gh-watch.pid"; echo vikejs/vike > "$TK2/repos.txt"; echo "$TK2" > "$HOME/.claude/gh-watch-dirs.txt"
+check "a watcher of the checkout's work folder on the upstream repo covers it" 0 "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK")"
+# two tasks' work folders, one watched by session sess-a: its events wake that session alone, so a session acting from the other folder needs a watcher of its own
+printf 'vikejs/vike\ngitlab.com/ns/proj\n' > "$TK2/repos.txt"; echo sess-a > "$TK2/session"
+TK4="$HOME/.mergeworthy/work/vike-other"; CK4="$TK4/vike"; mkdir -p "$TK4"; printf 'Tier: S, because one fix\n\n- [ ] Fix it https://github.com/vikejs/vike/issues/1\n' > "$TK4/scope.md"
+git init -q -b fix-telefunc "$CK4"; git -C "$CK4" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; git -C "$CK4" remote add upstream https://github.com/vikejs/vike.git; quick "$CK4"
+bgs() { # session command cwd: pre-bash-guard's exit code, its message in $T/err
+  python3 -c 'import json,sys; print(json.dumps({"session_id":sys.argv[1],"tool_input":{"command":sys.argv[2]},"cwd":sys.argv[3]}))' "$@" | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?; }
+unwatched() { bgs "$@" >/dev/null; grep -c 'no running watcher' "$T/err"; }
+PUSH='git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc'
+PRC="gh pr create --repo vikejs/vike --draft --title \"\$(cat $TK4/drafts/title.md)\" --body-file $TK4/drafts/pr.md"
+MRC='glab mr create --draft -R gitlab.com/ns/proj --title x'
+check "BLOCK: a push, a PR and an MR from a work folder another session's watcher doesn't watch, naming the folder to watch" "2 1 1 1" \
+  "$(bgs sess-b "$PUSH" "$CK4") $(grep -c "gh-watch-start $TK4 " "$T/err") $(unwatched sess-b "$PRC" "$CK4") $(unwatched sess-b "$MRC" "$CK4")"
+check "the same from the watched work folder pass, whichever session acts there" "0 0 0" "$(bgs sess-b "$PUSH" "$CK") $(unwatched sess-b "$PRC" "$CK") $(unwatched sess-b "$MRC" "$CK")"
+check "outside any work folder, only the session's own watcher counts" "0 1" "$(unwatched sess-a "$MRC" "$T") $(unwatched sess-b "$MRC" "$T")"
+oreg() { # session cwd command: the thread post-bash-register adds to the watched folder
+  python3 -c 'import json,sys; print(json.dumps({"session_id":sys.argv[1],"cwd":sys.argv[2],"tool_input":{"command":sys.argv[3]},"tool_response":{"stdout":"https://github.com/vikejs/vike/pull/9"}}))' "$@" \
+    | python3 "$R/hooks/post-bash-register.py"; cat "$TK2/threads.txt" 2>/dev/null || echo none; rm -f "$TK2/threads.txt"; }
+check "a PR opened from the unwatched folder joins no other session's watcher; from the watched one (after a cd too), it joins its watcher" "none|vikejs/vike 9|vikejs/vike 9" \
+  "$(oreg sess-b "$CK4" "$PRC")|$(oreg sess-b "$CK" "$PRC")|$(oreg sess-b "$T" "cd $CK && $PRC")"
+rm "$TK2/gh-watch.pid" "$TK2/repos.txt" "$TK2/session"
 kill "$FPID"
 check "BLOCK: a shell write of a step record, and a Write of one" "2 2" "$(bg 'echo "quick /x 2026-10-27T00:00:00Z" >> ~/.claude/pr-steps/$(git rev-parse HEAD)') $(python3 -c 'import json,sys; print(json.dumps({"tool_name":"Write","tool_input":{"file_path":sys.argv[1]},"cwd":sys.argv[2]}))' "$HOME/.claude/pr-steps/abc" "$T" | python3 "$R/hooks/pre-design-gate.py" 2>/dev/null; echo $?)"
 check "BLOCK: a GitHub write through curl" 2 "$(bg 'curl -X POST -H "Authorization: token x" https://api.github.com/repos/o/r/issues/5/comments -d @body.json')"
