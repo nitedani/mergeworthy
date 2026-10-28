@@ -4,8 +4,11 @@ session and transcript) and whether each one's agent has finished. T3's notices 
 and was revived, or that wrote its report without a final message, so the agent's own transcript decides: the one under
 ~/.claude/projects whose first prompt carries the brief (or, for a job an older hook registered with only its key and start,
 every ticket path in the key). It has finished when that transcript has been quiet for QUIET
-seconds with no tool call pending, or for LONG seconds whatever it was doing (no foreground tool call runs ten minutes)."""
-import glob, json, os, re, sqlite3, time
+seconds with no tool call pending, or for LONG seconds whatever it was doing (no foreground tool call runs ten minutes),
+while T3 Code shows no active run of its thread and no agent it launched is still at work."""
+import glob, json, os, re, sys, time
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import steward
 
 JOBS = os.path.expanduser('~/.claude/agent-jobs')
 REPORTED = os.path.expanduser('~/.claude/agent-jobs-reported')  # <job file>-<transcript mtime>: reported once per finish
@@ -92,28 +95,16 @@ def pending(path):
     return False
 
 def finished(job, now=None, _seen=()):
-    """(transcript, its mtime) when the job's agent has finished, else None. An agent that launched agents of its own (a T3
-    child waiting for its reviewer) has finished only once each of its open jobs has."""
+    """(transcript, its mtime) when the job's agent has finished, else None. An agent whose T3 thread has an active run
+    (waiting on a background command or an approval), or that launched agents of its own, hasn't finished."""
     p = transcript(job)
     if not p: return None
     m = os.path.getmtime(p); quiet = (now or time.time()) - m
     if not (quiet >= LONG or (quiet >= QUIET and not pending(p))): return None
     sid = os.path.basename(p)[:-len('.jsonl')]
-    if t3_busy(sid) or sid not in _seen and any(j.get('session') == sid and not finished(j, now, _seen + (sid,)) for _, j in jobs(now)):
+    if steward.busy(sid) or sid not in _seen and any(j.get('session') == sid and not finished(j, now, _seen + (sid,)) for _, j in jobs(now)):
         return None
     return (p, m)
-
-def t3_busy(session_id):
-    """True when T3 Code runs this Claude session as a thread with a run queued or running, or a task it delegated still
-    running: a quiet transcript there is a turn that waits on a background command, not a finished agent."""
-    try:
-        c = sqlite3.connect(f"file:{os.path.expanduser('~/.t3/userdata/statev2.sqlite')}?mode=ro", uri=True, timeout=2)
-        r = c.execute("select thread_id from orchestration_v2_projection_provider_threads where json_extract(payload_json, '$.nativeThreadRef.nativeId') = ?",
-                      (session_id,)).fetchone()
-        return bool(r) and bool(c.execute("select 1 from orchestration_v2_projection_runs where thread_id = ? and status in ('queued', 'running')", r).fetchone()
-                                or c.execute("select 1 from orchestration_v2_projection_subagents where thread_id = ? and status = 'running'", r).fetchone())
-    except sqlite3.Error:
-        return False
 
 def reported(f, mtime):
     return os.path.exists(os.path.join(REPORTED, f'{f}-{int(mtime)}'))

@@ -23,16 +23,38 @@ def threads(session_id):
         pass
     return out
 
-def task_done(session_id):
-    """True when the Claude session is a T3 delegated task that completed, with no run of its thread queued or running and no
-    task it delegated still running: T3 won't wake it again."""
+# The run statuses T3 Code counts as active (its orchestration_v2_projection_runs_recovery_idx)
+ACTIVE_RUNS = ('queued', 'preparing', 'starting', 'running', 'waiting')
+
+def _thread(session_id):
+    """(read-only connection to T3 Code's state, the T3 thread a Claude session runs in), or None."""
     try:
         c = sqlite3.connect(f"file:{os.path.expanduser('~/.t3/userdata/statev2.sqlite')}?mode=ro", uri=True, timeout=2)
         r = c.execute("select thread_id from orchestration_v2_projection_provider_threads where json_extract(payload_json, '$.nativeThreadRef.nativeId') = ?",
                       (session_id,)).fetchone()
-        return bool(r) and c.execute("select status from orchestration_v2_projection_subagents where child_thread_id = ?", r).fetchone() == ('completed',) \
-            and not c.execute("select 1 from orchestration_v2_projection_runs where thread_id = ? and status in ('queued', 'running')", r).fetchone() \
-            and not c.execute("select 1 from orchestration_v2_projection_subagents where thread_id = ? and status = 'running'", r).fetchone()
+        return (c, r[0]) if r else None
+    except sqlite3.Error:
+        return None
+
+def busy(session_id):
+    """True when the Claude session's T3 thread has an active run, or a task it delegated still running: T3 will act on it again."""
+    t = _thread(session_id)
+    if not t: return False
+    c, tid = t
+    try:
+        return bool(c.execute(f"select 1 from orchestration_v2_projection_runs where thread_id = ? and status in ({','.join('?' * len(ACTIVE_RUNS))})", (tid, *ACTIVE_RUNS)).fetchone()
+                    or c.execute("select 1 from orchestration_v2_projection_subagents where thread_id = ? and status = 'running'", (tid,)).fetchone())
+    except sqlite3.Error:
+        return False
+
+def task_done(session_id):
+    """True when the Claude session is a T3 delegated task that completed and isn't busy: T3 won't wake it again."""
+    t = _thread(session_id)
+    if not t: return False
+    c, tid = t
+    try:
+        return c.execute("select status from orchestration_v2_projection_subagents where child_thread_id = ?", (tid,)).fetchone() == ('completed',) \
+            and not busy(session_id)
     except sqlite3.Error:
         return False
 
