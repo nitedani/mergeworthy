@@ -24,13 +24,29 @@ def running_list(message):
     return running and running.group(1).lower()
 
 
+# The words that take back a claim, one row per language; a word added here holds for the done opening and the PR states alike
+LEX = {
+    'NEGATION': {'en': r"not|no|none|nothing|neither|nor|never|nobody|\w+n['’]t", 'hu': r"nem|nincs\w*|sincs\w*|sem|semmi\w*|senki|soha"},
+    'FUTURE': {'en': r"will|would|\w+['’]ll|going to|tomorrow|later|soon|next|expect\w*|wait\w*", 'hu': r"lesz\w*|lenne\w*|majd|holnap\w*|később|hamarosan"},
+    'CONDITION': {'en': r"once|when|if|until|after|before|unless|whether", 'hu': r"ha|amint|amikor|mihelyt|amíg|\w+-ig"},
+    'CONJUNCTION': {'en': r"and|but|so", 'hu': r"és|de|ezért|viszont"},
+}
+NEGATION, FUTURE, CONDITION, CONJUNCTION = (re.compile(rf"\b(?:{w['en']}|{w['hu']})\b", re.I) for w in LEX.values())
+PART = re.compile(r"[,;:](?=\s|$)")  # not the colon of https:
+CLAUSE = re.compile(rf"(?={CONJUNCTION.pattern})", re.I)
+
+
+def asserted(sentence, i):
+    """Whether the words at sentence[i] state something as true now: no negation or plan in their clause ("none is ready", "it
+    will be ready", "és kész lesz"), no condition in their part or opening the next one ("once it is ready", "kész, ha zöld a
+    CI"), and the sentence is no question. A part ends at a comma, semicolon or colon; a clause also before a conjunction."""
+    before, (part, *after) = PART.split(sentence[:i])[-1], PART.split(sentence[i:], 1)
+    clause = CLAUSE.split(before)[-1] + CLAUSE.split(part)[0]
+    return not (NEGATION.search(clause) or FUTURE.search(clause) or CONDITION.search(before + part)
+                or after and CONDITION.match(after[0].lstrip()) or sentence.rstrip().endswith('?'))
+
+
 DONE = r"\b(?:(?:is|are|all|work's|it's) (?:done|finished|complete)\b|ready (?:for review|to merge)|kész\b|elkészült|befejeztem)"
-# a negation or a condition earlier in the done word's clause: "isn't quite ready", "once it is ready", "amint kész"
-NOT_NOW = re.compile(r"\b(?:not|nem|nincs(?:enek)?|\w+n['’]t|once|when|if|until|after|ha|amint|amikor|mihelyt|amíg|\w+-ig)\b", re.I)
-# a future or a conditional anywhere in its clause: "it will be ready for review tomorrow", "holnapra kész lesz", "kész lenne"
-FUTURE = re.compile(r"\b(?:will|would|\w+['’]ll|going to|tomorrow|later|soon|lesz\w*|lenne\w*|majd|holnap\w*|később|hamarosan)\b", re.I)
-# a clause ends at a comma, semicolon or colon, or before a conjunction: "the tests are not flaky | and the work is done"
-CLAUSE = re.compile(r"[,;:]|(?=\b(?:and|but|so|és|de|ezért|viszont|majd)\b)", re.I)
 LINK = r'https://(github\.com|gitlab\.[\w.]+)/([\w.-]+/[\w./-]+?)(?:/-)?/(?:pull|merge_requests)/(\d+)'
 SENTENCE = r'(?<=[.!?])\s+|\n+'
 
@@ -39,10 +55,7 @@ def done_links(message):
     """(host, path, number) of each PR or MR the opening sentence calls done, at most 10: those it links ("#1 is ready for
     review", while #26 is a draft), else every one the message links; [] when it calls nothing done."""
     first = re.split(SENTENCE, authored(message).strip())[0]
-    def is_claim(m):
-        before, after = CLAUSE.split(first[:m.start()])[-1], CLAUSE.split(first[m.start():])[0]
-        return not NOT_NOW.search(before) and not FUTURE.search(before + after)
-    if not any(map(is_claim, re.finditer(DONE, first, re.I))): return []
+    if not any(asserted(first, m.start()) for m in re.finditer(DONE, first, re.I)): return []
     return list(dict.fromkeys(re.findall(LINK, first) or re.findall(LINK, message)))[:10]
 
 
@@ -56,15 +69,13 @@ ON = r"\s+(?:on|for|of)\s+(?:PR\s*)?" + REF
 CLAIMS = [(c, re.compile(rx, re.I)) for c, rx in [(c, SUBJECT + x) for c, x in STATE.items()] + [
     (c, r"\b(?:CI|checks?)" + ON + r"\s+" + STATE[c]) for c in ('green', 'red')] + [
     (c, r"\b(?:CI|checks?|jobs?)\s+" + STATE[c] + ON) for c in ('green', 'red')] + [('green', r"\ball\s+\d+\s+(?:CI\s+)?(?:checks|jobs)\s+pass(?:ed)?" + ON)]]
-# a condition, a plan or a wait is no claim about now
-LATER = re.compile(r"\b(?:once|when|after|until|if|before|unless|whether|will|would|waiting|wait|expect|next|tomorrow|soon|later)\b", re.I)
 
 
 def state_claims(message):
     """(state, (repo or None, number), sentence) for each PR state a sentence claims, in the message's order."""
     return [(c, (m['r1'] or m['r2'], m['n1'] or m['n2']), sentence) for sentence in re.split(SENTENCE, authored(message))
             for c, rx in CLAIMS for m in rx.finditer(sentence)
-            if not re.search(r"\blocal(ly)?\b", sentence, re.I) and not LATER.search(re.split(r'[,;:]', sentence[:m.start()])[-1] + sentence[m.start():])]
+            if not re.search(r"\blocal(ly)?\b", sentence, re.I) and asserted(sentence, m.end() - 1)]
 
 
 def linked_repos(message): return re.findall(r'github\.com/([\w.-]+/[\w.-]+)/pull/\d+', message)

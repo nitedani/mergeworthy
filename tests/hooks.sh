@@ -1220,6 +1220,14 @@ tr_file 'It would be ready for review if CI passed: https://gitlab.com/g/p/-/mer
 tr_file 'It would be ready for review with green CI: https://gitlab.com/g/p/-/merge_requests/96'; a="$a $(stop "$T")"
 tr_file 'Kész lenne, ha zöld a CI: https://gitlab.com/g/p/-/merge_requests/96'
 check "a conditional in the done word's clause is no claim" "0 0 0" "$a $(stop "$T")"
+a=; for m in 'Egyik MR sem kész: mindháromnál a CI hiányzik. https://gitlab.com/g/p/-/merge_requests/96' 'Semmi sincs kész: https://gitlab.com/g/p/-/merge_requests/96' \
+             'Nothing is done yet: https://gitlab.com/g/p/-/merge_requests/96' 'None of them is ready for review: https://gitlab.com/g/p/-/merge_requests/96'; do tr_file "$m"; a="$a $(stop "$T")"; done
+check "a done word under sem, sincs, semmi, nothing or none is no claim" " 0 0 0 0" "$a"
+tr_file 'It is ready for review if CI passes: https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
+tr_file 'Kész, ha zöld a CI: https://gitlab.com/g/p/-/merge_requests/96'
+check "a condition after the done word, or opening the next part, is no claim" "0 0" "$a $(stop "$T")"
+tr_file 'Kész van? https://gitlab.com/g/p/-/merge_requests/96'
+check "a question is no claim" 0 "$(stop "$T")"
 tr_file 'The tests are not flaky and the work is done: https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
 tr_file 'A tesztek nem instabilak és kész a munka: https://gitlab.com/g/p/-/merge_requests/96'
 check "BLOCK: a negation in an earlier coordinated clause leaves the claim standing" "2 2" "$a $(stop "$T")"
@@ -2220,6 +2228,9 @@ check "BLOCK: a CI claim GitHub contradicts, however phrased" "2 2 2 2" \
   "$(slj 'o/r#12: CI is green.') $(slj 'CI is green on o/r#12.') $(slj 'All 12 checks pass on o/r#12.') $(slj 'o/r#12 is green.')"
 check "the condition words count only in the claim's own clause: an earlier clause doesn't hide it" "2 2 2" \
   "$(slj 'After the rebase, o/r#12 is green.') $(slj 'Fixed the test that failed when run in parallel; o/r#12 is green now.') $(slj 'No need to wait: o/r#12 is green.')"
+check "BLOCK: a plan in the next clause doesn't hide a state claim" "2 2" "$(slj 'o/r#12 is green, and I will merge it.') $(slj 'o/r#12 is green and I am waiting for review.')"
+check "a condition over the claim's part (past a URL's colon), or opening the next part, states nothing" "0 0 0" \
+  "$(slj 'Once CI passes and o/r#12 is green, I merge.') $(slj 'Once CI passes and https://github.com/o/r/pull/12 is green, I merge.') $(slj 'o/r#12 is merged, if the maintainer agrees.')"
 rm -f "$FX/repos_o_r_commits_abc_check-runs_per_page_100"
 # the second bug hunt: where git really pushes (-c, GIT_CONFIG_*, every -C, pushDefault), --git-dir and GIT_DIR, a name that is no remote
 OTH="$T/oth"; git clone -q "$OWN" "$OTH"; git -C "$OTH" remote set-url origin https://github.com/vikejs/vike.git
