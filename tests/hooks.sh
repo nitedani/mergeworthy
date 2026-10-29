@@ -1141,7 +1141,12 @@ def name(f):
     try: return os.readlink("/proc/self/fd/" + f)
     except OSError: return ""
 print(sum("statev2" in name(f) for f in os.listdir("/proc/self/fd")))' "$R/hooks")"
-python3 "$R/bin/agent-job" done "$T/jobs/t3busy-ticket.md" >/dev/null; rm -f "$HOME/.t3/userdata/statev2.sqlite"
+t3db "insert into orchestration_v2_projection_runs values ('r3', 'busy-1', 'running')"  # woken again: its next turn runs
+check "BLOCK: agent-job done while the ticket's agent is still at work keeps the job, pointing at AGENT DONE" "1 1 1" \
+  "$(python3 "$R/bin/agent-job" done "$T/jobs/t3busy-ticket.md" >/dev/null 2>"$T/aj.err"; echo $?) $(grep -c 'AGENT DONE. wakes this session' "$T/aj.err") $(python3 "$R/bin/agent-job" list | grep -c t3busy-ticket)"
+t3db "update orchestration_v2_projection_runs set status = 'completed' where run_id = 'r3'"
+check "agent-job done releases it once the agent has ended" "0 0" "$(python3 "$R/bin/agent-job" done "$T/jobs/t3busy-ticket.md" >/dev/null; echo $?) $(python3 "$R/bin/agent-job" list | grep -c t3busy-ticket)"
+rm -f "$HOME/.t3/userdata/statev2.sqlite"
 # a job launched by another watch dir's declared session goes to that dir, though its launcher's transcript names this one's events.log
 WS="$T/ws"; mkdir -p "$WS"; echo stew > "$WS/session"; echo $$ > "$WS/gh-watch.pid"; printf '%s\n' "$WS" >> "$HOME/.claude/gh-watch-dirs.txt"
 for i in 1 2 3; do echo "tail $WJ/events.log" >> "$T/stew-tr.jsonl"; done
