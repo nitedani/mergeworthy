@@ -8,6 +8,7 @@
 - Your "/agent ..." comments on threads no watch dir lists, found in the watched repos' recent comments (search as a backup) and sent to one dir (see agent_command): `### AGENT COMMAND`.
 - MAINTAINER REVIEW: a maintainer's review (not a bare approval) on your PR, sent to the steward like FOLLOW-UP: every defect it names is sorted.
 - FOLLOW-UP: later commits by others to the lines of your merged PRs, and PRs that reference them (see follow_ups), for 60 days after the merge.
+  What you caused yourself (your reference, a head you pushed: agent_push) is a `note:` line, logged without waking you.
   Another account renaming your PR, open (the last-comment call) or merged (follow_ups' timeline), is one too (pr_renamed).
 - Machine-wide work (those two) runs in one daemon, or a --round, at a time (shared_pass). Every call goes through request(), which keeps the
   hour's budget (see "The GitHub API budget") and sends ETags; a rate-limit pause prints one WATCH ERROR per daemon.
@@ -481,6 +482,17 @@ def agent_post_hashes():
         return set(open(GATED_POSTS).read().split())
     except OSError:
         return set()
+
+
+PUSHED_HEADS = os.path.expanduser(os.environ.get('PUSHED_HEADS', '~/.claude/pushed-heads.txt'))  # written by pre-bash-guard
+
+
+def agent_push(head):
+    """Whether a PR's head (a sha prefix) is a commit this machine's agents pushed: its change is theirs, not news to them."""
+    try:
+        return bool(head) and any(l.startswith(head) for l in open(PUSHED_HEADS).read().split())
+    except OSError:
+        return False
 
 
 MAINTAINER = ('OWNER', 'MEMBER', 'COLLABORATOR')
@@ -1069,7 +1081,8 @@ def scan(state, jobs):
             if pr_state:
                 prev = state['prs'].get(key)
                 if prev and prev != pr_state:
-                    emit(f"### PR CHANGED {key}: {prev} -> {pr_state}")
+                    ours = prev.get('state') == pr_state['state'] and prev.get('head') != pr_state['head'] and agent_push(pr_state['head'])
+                    emit(f"{'note:' if ours else '###'} PR CHANGED {key}: {prev} -> {pr_state}")  # a note is logged, and wakes no one
                     if pr_state['state'] == 'merged' and prev.get('state') != 'merged':
                         emit_dependents(key)
                     if pr_state['state'] in ('merged', 'closed') and prev.get('state') != pr_state['state']:
@@ -1713,8 +1726,10 @@ def follow_ups():
                 tpending = {}
                 for t in paged(f"repos/{repo}/issues/{k.rsplit('#', 1)[1]}/timeline?per_page=100", shared_read()['etags'], tpending, fresh=bk['fresh']):
                     i = (t.get('source') or {}).get('issue') or {}
-                    if t.get('event') == 'cross-referenced' and 'pull_request' in i and not is_bot(i.get('user')) and (i.get('user') or {}).get('login') != ME:
-                        follow_emit(f"followup-ref:{k}:{i['html_url']}", prs[k], f"### FOLLOW-UP {k}: {i['html_url']} by {i['user']['login']} references your PR  at {iso(time.time())}")
+                    if t.get('event') == 'cross-referenced' and 'pull_request' in i and not is_bot(i.get('user')):
+                        who = (t.get('actor') or {}).get('login') or i['user']['login']  # who wrote the reference: in another's PR, it can be your comment
+                        ours = ME in (who, i['user']['login'])
+                        follow_emit(f"followup-ref:{k}:{i['html_url']}", prs[k], f"{'note:' if ours else '###'} FOLLOW-UP {k}: {i['html_url']} by {who} references your PR  at {iso(time.time())}")
                     elif t.get('event') == 'renamed':
                         pr_renamed(k, prs[k], t['created_at'], (t.get('actor') or {}).get('login'), t['rename']['from'], t['rename']['to'])
                 pending.update(tpending)
@@ -1950,7 +1965,7 @@ def scan_gitlab():
     if threads:
         with locked():
             state = load_state()
-            gl_watch.scan(state, threads, handle_comment, emit, lambda body: _norm(body) in agent_post_hashes(), CHECK, ROUND_SINCE)
+            gl_watch.scan(state, threads, handle_comment, emit, lambda body: _norm(body) in agent_post_hashes(), agent_push, CHECK, ROUND_SINCE)
             save_state(state)
 
 

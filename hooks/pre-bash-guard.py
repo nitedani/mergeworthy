@@ -710,6 +710,11 @@ def check(t, has_cd):
                 head, missing = missing_steps(repo)
                 if missing and any(not p['isDraft'] for p in prs):
                     block(f"this branch's PR is out of draft and HEAD {head[:10]} has no pr-steps {', '.join(missing)} record (approach: pull-request step 5, once per branch): run converge's pipeline on it first (each step ends with its `pr-steps <step> <output>`), or `gh pr ready --undo` while it converges")
+            try:  # the watcher logs a PR's head moving to one of these without waking the session (gh-watch.py agent_push)
+                with open(os.path.expanduser(os.environ.get('PUSHED_HEADS', '~/.claude/pushed-heads.txt')), 'a') as f:
+                    f.writelines(f"{sha}\n" for sha, _, _ in heads if sha)
+            except OSError:
+                pass
     if p in ('curl', 'wget', 'http', 'https', 'xh') and any(re.search(r'\bapi\.github\.com\b|github\.com/api/', x) for x in a) and \
             any(re.fullmatch(r'-X|--request|-d|--data[\w-]*|-F|--form|--json|-T|--upload-file|--method|POST|PATCH|PUT|DELETE|-\w*[dXFT]', x) or re.match(r'--(?:request|method)=', x) for x in a):
         block("a GitHub write goes through gh, where the posting gate checks it (mergeworthy:post): use `gh api` with the draft file")

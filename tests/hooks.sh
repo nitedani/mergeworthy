@@ -2207,6 +2207,8 @@ echo "$T/nowatch" > "$HOME/.claude/gh-watch-dirs.txt"
 check "replay: the same push with no watcher on vikejs/vike (or the fork): blocked, naming the repos" "2 1" "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK") $(grep -c 'covers nitedani-agent/vike or vikejs/vike' "$T/err")"
 bash -c 'exec -a gh-watch-daemon sleep 600' & FPID=$!; echo "$FPID" > "$TK2/gh-watch.pid"; echo vikejs/vike > "$TK2/repos.txt"; echo "$TK2" > "$HOME/.claude/gh-watch-dirs.txt"
 check "a watcher of the checkout's work folder on the upstream repo covers it" 0 "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK")"
+check "a push the guard passes records the head it publishes, for the watcher (agent_push); one it blocks records nothing" "2 0 $(git -C "$CK" rev-parse HEAD)|" \
+  "$(PUSHED_HEADS="$T/pushed" bg 'git push --all https://github.com/nitedani-agent/vike.git' "$CK") $(PUSHED_HEADS="$T/pushed" bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK") $(tr '\n' '|' < "$T/pushed")"
 # two tasks' work folders, one watched by session sess-a: its events wake that session alone, so a session acting from the other folder needs a watcher of its own
 printf 'vikejs/vike\ngitlab.com/ns/proj\n' > "$TK2/repos.txt"; echo sess-a > "$TK2/session"
 TK4="$HOME/.mergeworthy/work/vike-other"; CK4="$TK4/vike"; mkdir -p "$TK4"; printf 'Tier: S, because one fix\n\n- [ ] Fix it https://github.com/vikejs/vike/issues/1\n' > "$TK4/scope.md"
