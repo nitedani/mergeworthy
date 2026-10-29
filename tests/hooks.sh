@@ -91,6 +91,8 @@ check "the next stop goes through" 0 "$(checkin 1)"
 check "no second check-in within 30 minutes of the last" 0 "$(checkin 0)"
 python3 -c 'import json; print(json.dumps({"type":"user","message":{"content":"Act as the review sub-agent for this task.\n\nCheck the diff."}})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":"CLEAN"}]}}))' > "$T/tr.jsonl"
 check "a delegated child ends with its result, no check-in" 0 "$(checkin 0)"
+python3 -c 'import json; print(json.dumps({"type":"user","message":{"content":"Act as the review sub-agent for this task.\n\nCheck the diff."}})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","id":"a1","input":{"prompt":"x"}}]}})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":"Should I open the PR?"}]}}))' > "$T/tr.jsonl"
+check "a delegated child's result is the main session's to judge: a question in it is no hand-back" 0 "$(stop "$T")"
 forks() { python3 -c 'import json,sys
 print(json.dumps({"type":"user","message":{"content":"status?"}}))
 for t in sys.argv[1:]: print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":t}]}}))' "$@" > "$T/tr.jsonl"; }
