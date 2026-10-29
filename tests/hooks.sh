@@ -282,6 +282,10 @@ check "a bot's comment is not in the transcript" 0 "$(tcg '^see #99')"
 check "--verify accepts it for its thread" 0 "$("$R/bin/thread-context" --verify "$TC" --target o/r#41 2>/dev/null; echo $?)"
 check "a maintainer's retitle is in the ledger and the transcript, and isn't the latest comment" "1 1" "$(echo "$(tcg '@maint \[title\] "Retitled "feat: old" to "fix: his title"."') $(tcg 'maint, retitled')")"
 check "--latest" "104 2026-10-01T09:30:00Z" "$("$R/bin/thread-context" --latest o/r#41)"
+tc_fx repos_o_r_issues_45 '{"number":45,"id":5,"title":"Code in a list","html_url":"https://example.invalid/o/r/issues/45","state":"open","updated_at":"2026-10-02T10:00:00Z","created_at":"2026-10-02T09:00:00Z","user":{"login":"maint"},"body":"- The log:\n  ```\n  see o/r#42\n  ```"}'
+tc_fx repos_o_r_issues_45_comments_per_page_100 '[{"id":105,"user":{"login":"maint"},"created_at":"2026-10-02T09:30:00Z","html_url":"https://example.invalid/o/r/issues/45#c105","body":"- The bot said:\n  ```\n  I disagree with the rename.\n  ```"}]'
+"$R/bin/thread-context" o/r#45 --out "$T/ctx/tc45.md" >/dev/null
+check "a ref and a rejection inside a code block in a list item are code: not followed, not in the ledger" "0 0" "$(grep -c '^  - o/r#42 ' "$T/ctx/tc45.md") $(grep -c '\[reject\]' "$T/ctx/tc45.md")"
 
 # the guard: a post on the thread needs thread-context.md in the draft's folder, current
 TD="$T/tdrafts/o-r-41"; mkdir -p "$TD"
