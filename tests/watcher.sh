@@ -742,7 +742,8 @@ out=$(t3start sess-plain)
 check "gh-watch-start outside T3 Code drops the thread and prints the Monitor" "none 1" "$([ -e "$T/t3watch/t3-thread" ] || [ -e "$T/t3watch/t3-wake.cursor" ] && echo kept || echo none) $(echo "$out" | grep -c 'tail -n 0 -F')"
 GP=$(cat "$T/t3watch/gh-watch.pid" 2>/dev/null); ps -o args= -p "$GP" 2>/dev/null | grep -qx 'sleep 30' && kill "$GP"
 # a daemon whose dir has no t3-thread (started before T3 delivery, or while t3 wasn't found) binds its session's thread on a pass
-tpass() { W="$T/t3daemon" py '
+# its PATH holds no real t3: with the stub moved away, the daemon finds none
+tpass() { W="$T/t3daemon" PATH="$T/bin:/usr/bin:/bin" py '
 for name in ("follow_update", "steward_line", "agent_jobs_pass", "announce"):
     setattr(m, name, lambda *a, **k: None)
 m.scan_gitlab = lambda: os.environ.get("TEV") and open(os.path.join(m.HERE, "events.log"), "a").write(os.environ["TEV"] + chr(10))  # an event the pass finds
@@ -757,6 +758,9 @@ rm "$T/t3daemon/t3-thread" "$T/t3daemon/t3-wake.cursor"; echo sess-plain > "$T/t
 check "a daemon whose session has no T3 thread, or that has no session, stays unbound" "unbound |unbound " "$c|$(tpass)"
 echo sess-child > "$T/t3daemon/session"; : > "$T/t3.log"; e=$(TEV='### found in the binding pass' tpass)
 check "the pass that binds the thread sends it the events that pass found" "thr-p $T/bin/t3 46|### found in the binding pass" "$e|$(tail -n1 "$T/t3.log")"
+mv "$T/bin/t3" "$T/t3.away"; f=$(TPASSES=3 TEV='### found while t3 was missing' tpass | tail -n1); mv "$T/t3.away" "$T/bin/t3"; : > "$T/t3.log"
+check "a t3 missing on two passes unbinds the thread, keeping its cursor; once it is back, the next pass binds it again and sends what came meanwhile" \
+  "unbound 46|thr-p $T/bin/t3 139|### found while t3 was missing;### found while t3 was missing;### found while t3 was missing;" "$f|$(tpass)|$(grep '^###' "$T/t3.log" | tr '\n' ';')"
 echo sess-child > "$T/t3daemon/session"; tpass >/dev/null; printf '### to a deleted thread\n' >> "$T/t3daemon/events.log"; : > "$T/t3.gone"
 d=$(tpass | tail -n1); rm "$T/t3.gone"
 check "a thread T3 reports deleted is not bound again" "unbound |unbound " "$d|$(tpass)"

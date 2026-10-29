@@ -56,16 +56,19 @@ def threads(session_id):
 
 def bind_watcher(wd):
     """Under T3 Code <wd>/t3-thread names the main session's thread (the last of the threads that delegated the session in
-    <wd>/session), then t3's full path, for gh-watch.py's wake_thread; t3-wake.cursor starts at events.log's end when the thread
-    changes. Without either, or for the thread wake_thread found deleted (<wd>/t3-gone), both files go."""
+    <wd>/session), then t3's full path, for gh-watch.py's wake_thread. t3-wake.cursor starts at events.log's end when there is none
+    or the thread replaces another, else it stays, so what came while t3 was missing still goes. Without t3, t3-thread goes; without
+    a thread, or for the one wake_thread found deleted (<wd>/t3-gone), the cursor too."""
     s = first(os.path.join(wd, 'session'))
     tid, t3 = s and (threads(s) or [''])[-1], shutil.which('t3')  # its full path: cron revives the daemon with a PATH that may not hold it
-    if not (tid and t3) or tid == first(os.path.join(wd, 't3-gone')):
-        for f in ('t3-thread', 't3-wake.cursor'):
+    cursor, bound = os.path.join(wd, 't3-wake.cursor'), first(os.path.join(wd, 't3-thread'))
+    drop = not tid or tid == first(os.path.join(wd, 't3-gone'))
+    if drop or not t3:
+        for f in ['t3-thread', 't3-wake.cursor'][:1 + drop]:
             with contextlib.suppress(FileNotFoundError): os.remove(os.path.join(wd, f))
         return
-    if first(os.path.join(wd, 't3-thread')) != tid:
-        with open(os.path.join(wd, 't3-wake.cursor'), 'w') as f: f.write(f"{os.path.getsize(os.path.join(wd, 'events.log'))}\n")
+    if bound and bound != tid or not os.path.exists(cursor):
+        with open(cursor, 'w') as f: f.write(f"{os.path.getsize(os.path.join(wd, 'events.log'))}\n")
     with open(os.path.join(wd, 't3-thread'), 'w') as f: f.write(f"{tid}\n{t3}\n")
 
 def _busy(c, tid):

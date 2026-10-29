@@ -678,7 +678,7 @@ def wake_thread():
             if deleted:  # steward.bind_watcher doesn't bind it again
                 with open(os.path.join(HERE, 't3-gone'), 'w') as f:
                     f.write(tid + '\n')
-            for f in ('t3-thread', 't3-wake.cursor'):
+            for f in ('t3-thread', 't3-wake.cursor')[:1 + deleted]:  # a kept cursor: once t3 is back, the rebound thread gets what it missed
                 with contextlib.suppress(FileNotFoundError):
                     os.remove(os.path.join(HERE, f))
             _t3_missing[0] = None
