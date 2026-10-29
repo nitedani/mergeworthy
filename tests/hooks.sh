@@ -103,6 +103,8 @@ forks $'#20 is in review.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recomme
 check "a GENUINE-FORK line quoted in a fenced block isn't sent again" 0 "$(stop "$T")"
 forks $'#20 is in review.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.' $'The earlier question was:\n~~~\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.\n~~~'
 check "a GENUINE-FORK line quoted in a ~~~ fence isn't sent again" 0 "$(stop "$T")"
+forks $'#20 is in review.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.' $'Copyable Markdown:\n~~~~markdown\n~~~text\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.\n~~~\n~~~~'
+check "a GENUINE-FORK line in a shorter fence inside a longer one isn't sent again" 0 "$(stop "$T")"
 tr_file "The watcher runs and the Monitor is armed."
 check "no replies-owed.md, cwd=watch dir" 0 "$(stop "$WD")"
 F40=$(date -u -d '-40 minutes' +%FT%TZ); F10=$(date -u -d '-10 minutes' +%FT%TZ)
