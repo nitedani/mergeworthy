@@ -1960,10 +1960,11 @@ _jobs_at, _routed = [0], {}
 
 def agent_jobs_pass():
     """Once a minute: `### AGENT DONE` for each job whose agent finished, once per finish, in the watch dir its work belongs
-    to: the one holding the first file its task text names (the brief), else the launcher's: the one whose `session` file
-    names the launcher (one session watches many dirs, so this alone goes to whichever ticks first), else the one whose
-    events.log the launcher's transcript names most (a transcript also names other watchers, in a `ps` listing say). A job an
-    older hook registered without them has its launcher found by agent_jobs.launchers."""
+    to: a launcher's watch dir in the work folder of the first file its task text names (the brief; the steward's watcher runs
+    in <folder>/live, its briefs sit beside it), else the one whose `session` file names the launcher (one session watches many
+    dirs, so this alone goes to whichever ticks first), else the one whose events.log the launcher's transcript names most (a
+    transcript also names other watchers, in a `ps` listing say). A job an older hook registered without them has its launcher
+    found by agent_jobs.launchers."""
     if time.time() - _jobs_at[0] < 60:
         return
     _jobs_at[0] = time.time()
@@ -1973,13 +1974,15 @@ def agent_jobs_pass():
         mine = ''
     ready = [(f, j, done) for f, j in agent_jobs.jobs() for done in [agent_jobs.finished(j)] if done and not agent_jobs.reported(f, done[1])]
     found = agent_jobs.launchers([(f, j, done[0]) for f, j, done in ready if f not in _routed and not j.get('transcript')])
-    dirs = sorted({os.path.join(d, '') for d in live_dirs() + [HERE]}, key=len, reverse=True)  # the deepest dir holding a path
+    dirs = list(dict.fromkeys(live_dirs() + [HERE]))
     for f, j, done in ready:
         if f not in _routed:
-            paths = [os.path.expanduser(p) for p in re.findall(r'(?<![\w.~/-])(~?/[^\s`\'"]+)', j.get('brief') or j['key'])]
-            home = next((d for p in paths for d in dirs if p.startswith(d)), None)
+            # the brief is the first path the task names; a path it cites later is another task's, not this job's
+            brief = re.search(r'(?<![\w.~/-])(~?/[^\s`\'"]+)', j.get('brief') or j['key'])
+            wf = brief and work_folder.task_of(os.path.expanduser(brief[1]))
+            home = [d for d in dirs if wf and work_folder.task_of(d) == wf and j.get('session') and first_line(os.path.join(d, 'session')) == j['session']]
             if home:
-                _routed[f] = home == os.path.join(HERE, '')
+                _routed[f] = HERE in home
         if f not in _routed:
             try:
                 tr = j.get('transcript') or found.get(f)
