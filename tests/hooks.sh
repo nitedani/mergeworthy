@@ -2248,8 +2248,8 @@ check "parse: bash -c -- '<script>', \$'\\x67it', a herestring to bash -s, bash 
 printf '{"state":"open","draft":false,"merged":false,"html_url":"https://github.com/o/r/pull/12","head":{"sha":"abc"},"base":{"repo":{"full_name":"o/r"}}}' > "$FX/repos_o_r_pulls_12"
 printf '{"check_runs":[{"name":"t","status":"completed","conclusion":"failure"}]}' > "$FX/repos_o_r_commits_abc_check-runs_per_page_100"
 tr_file 'README tidied.'
-check "a condition or a plan names no state: once, until, if, will" "0 0 0" \
-  "$(slj 'I will update the docs once PR o/r#12 is merged.') $(slj 'I am waiting until PR o/r#12 is green.') $(slj 'If the maintainer agrees, PR o/r#12 is merged next week.')"
+check "a condition or a plan names no state: once, until, if, will, next week, next Tuesday" "0 0 0 0" \
+  "$(slj 'I will update the docs once PR o/r#12 is merged.') $(slj 'I am waiting until PR o/r#12 is green.') $(slj 'If the maintainer agrees, PR o/r#12 is merged next week.') $(slj 'o/r#12 is green next Tuesday.')"
 check "BLOCK: a CI claim GitHub contradicts, however phrased" "2 2 2 2" \
   "$(slj 'o/r#12: CI is green.') $(slj 'CI is green on o/r#12.') $(slj 'All 12 checks pass on o/r#12.') $(slj 'o/r#12 is green.')"
 check "the condition words count only in the claim's own clause: an earlier clause doesn't hide it" "2 2 2" \
