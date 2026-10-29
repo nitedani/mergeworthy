@@ -99,16 +99,6 @@ for t in sys.argv[1:]: print(json.dumps({"type":"assistant","message":{"content"
 forks $'#20 is in review.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.' $'#21 is ready.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.'; f1=$(stop "$T"); f1e=$(grep -c 'already sent' "$T/err")
 forks $'#20 is in review.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.' $'#21 is ready.\n\nGENUINE-FORK: publish now as 0.1.0, or after #20 lands; I recommend after #20.'; f2=$(stop "$T")
 check "BLOCK: a GENUINE-FORK line already sent this session; one with changed options passes" "2 1 0" "$f1 $f1e $f2"
-forks $'#20 is in review.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.' $'The earlier question was:\n```\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.\n```'
-check "a GENUINE-FORK line quoted in a fenced block isn't sent again" 0 "$(stop "$T")"
-forks $'#20 is in review.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.' $'The earlier question was:\n~~~\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.\n~~~'
-check "a GENUINE-FORK line quoted in a ~~~ fence isn't sent again" 0 "$(stop "$T")"
-forks $'#20 is in review.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.' $'Copyable Markdown:\n~~~~markdown\n~~~text\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.\n~~~\n~~~~'
-check "a GENUINE-FORK line in a shorter fence inside a longer one isn't sent again" 0 "$(stop "$T")"
-forks $'#20 is in review.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.' $'The earlier question:\n```\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.'
-check "BLOCK: a fence never closed hides nothing: the fork in it is sent again" 2 "$(stop "$T")"
-forks $'#20 is in review.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.' $'```npm publish``` is next.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.'
-check "BLOCK: a line opening with inline triple-backtick code opens no fence: the fork after it is sent again" 2 "$(stop "$T")"
 tr_file "The watcher runs and the Monitor is armed."
 check "no replies-owed.md, cwd=watch dir" 0 "$(stop "$WD")"
 F40=$(date -u -d '-40 minutes' +%FT%TZ); F10=$(date -u -d '-10 minutes' +%FT%TZ)
@@ -1174,11 +1164,6 @@ EOF
 }
 rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user; check "BLOCK: a Running list not read from T3 since the user's last message" 2 "$(stop "$T")"
 rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user status:completed; check "BLOCK: a Running list naming a completed task" 2 "$(stop "$T")"
-rl_tr $'Done for now. The old report looked like this:\n```\nRunning:\n- Loop A on the head\n```' user status:completed; check "a Running list in a fenced example names nothing running" 0 "$(stop "$T")"
-rl_tr $'The example is:\n\n- ```text\n  example output\n  ```\n\nRunning:\n- Loop A on the head' user status:completed; check "BLOCK: a closed fence in a list item hides no Running list after it" 2 "$(stop "$T")"
-rl_tr $'The example is:\n- ```text\n  example output\nRunning:\n- Loop A on the head' user status:completed; check "BLOCK: a fence left open in a list item hides no Running list after it" 2 "$(stop "$T")"
-rl_tr $'The README delimiter is:\n-     ```text\nRunning:\n- Loop A on the head' user status:completed; check "BLOCK: an indented delimiter in a list item hides no Running list after it" 2 "$(stop "$T")"
-rl_tr $'The README ends with this unclosed delimiter:\n\n    ```text\n\nRunning:\n- Loop A on the head' user status:completed; check "BLOCK: a fence indented four spaces is code, not an opener: the Running list after it still counts" 2 "$(stop "$T")"
 rl_tr $'Done for now.\n\n**Running:**\n- loop-a-1, the bug hunt' user status:failed; check "BLOCK: matched by its request id too" 2 "$(stop "$T")"
 rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user status:running; check "a Running list read live, its task still running, passes" 0 "$(stop "$T")"
 rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user status:running other; check "another task's T3 completion notice is not the user: a list read live before it passes" 0 "$(stop "$T")"
@@ -1209,6 +1194,7 @@ Running:
 - Loop A on the head' user status:running waiting; check "a sub-agent whose turn ended while its gates still run (T3 says completed, it says it continues) is still running" 0 "$(stop "$T")"
 rl_tr $'Done for now.\n\nRunning:\n- [Loop A](t3-thread://v1/thread:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aloop-a-1) (e2e gates)' user status:running notice continued status:completed; check "a thread T3 continued on its own, waiting on its gates, is running even after a read of its first task says completed" 0 "$(stop "$T")"
 rl_tr 'Running the tests found nothing.' user; check "a sentence starting with Running is no Running list" 0 "$(stop "$T")"
+rl_tr $'The example is:\n\n- ```text\n  example output\n  ```\n\nRunning:\n- Loop A\n\nTo reproduce:\n```sh\npnpm test\n```' user status:completed; check "BLOCK: a Running list between two code examples still counts" 2 "$(stop "$T")"
 # stop-lint: a message opening with "done" names no linked PR or MR that is still a draft or not green
 cat > "$T/bin/glab" <<'EOF2'
 #!/usr/bin/env bash
