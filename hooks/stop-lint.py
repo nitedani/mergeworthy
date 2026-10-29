@@ -42,7 +42,7 @@ except (KeyError, TypeError, OSError):
               "Re-check it yourself: anything owed, unfinished or unwatched, do now; then end the turn.", file=sys.stderr)
         sys.exit(2)
     lines = []
-import forge, steward
+import forge, steward, t3_tasks
 from shellcmd import segments, prog, git_argv, Where
 # A T3 Code delegated child (its thread has a parent in T3's state, or its prompt says so): its result is its last message, and the main session owns replies and next steps
 def opening(l):  # a user line's typed text ('' for a tool result's list, or a line that isn't JSON)
@@ -173,48 +173,16 @@ def fork_check():
 def running_check():
     running = re.search(r'^(?:#+ *Running\b|[-*\s]*\*{0,2}Running\*{0,2}:)(.*(?:\n[ \t]*[-*\d].*)*)', last, re.M)  # a `Running:` label or heading
     if not running: return
-    titles, status, launched, seen, thread = {}, {}, False, set(), {}  # status: in the order last heard of
-    for line in lines:
-        try: e = json.loads(line)
-        except ValueError: continue
-        c = (e.get('message') or {}).get('content') if isinstance(e, dict) else None
-        if e.get('type') == 'user' and isinstance(c, str) and not c.startswith('<'):
-            # T3's own completion notice and a skill's re-invocation aren't the user: a notice marks its task terminal instead
-            # T3's notice is `Delegated task <id> reached a terminal state`, or `Delegated task <id> (<title>) [<status>]:` with its result
-            n = re.match(r'Delegated task (\S+) (?:reached a terminal state|\(.*?\) \[(\w+)\]:?)', c)
-            # a sub-agent whose turn ends while its own background work runs says so, and T3 continues it later: not finished
-            waits = n and re.search(r"\b(?:still running|I'll (?:continue|wait|resume)|I will (?:continue|wait|resume)|I'm waiting|wakes? (?:me )?when)\b", c[n.end():n.end() + 400], re.I)
-            if n: status[n.group(1)] = ('waiting' if waits else n.group(2) or 'completed', status.pop(n.group(1), ('', ''))[1])
-            elif not c.startswith(('Skill /', 'Stop hook feedback')): seen = set()
-        for b in c if isinstance(c, list) else []:
-            if b.get('type') == 'tool_use' and re.search(r'(delegate_task|task_status|thread_send)$', b.get('name', '')):
-                titles[b['id']] = (b.get('name', '').endswith('task_status'), str((b.get('input') or {}).get('title') or ''))
-                launched = launched or not titles[b['id']][0]
-            elif b.get('type') == 'tool_result' and b.get('tool_use_id') in titles:
-                r = b.get('content'); r = ''.join(x.get('text', '') for x in r) if isinstance(r, list) else str(r or '')
-                try: r = json.loads(r)
-                except ValueError: continue
-                if isinstance(r, dict) and r.get('threadId') and not r.get('taskId'):  # a message sent to a task's thread runs it again
-                    r = {'taskId': r['threadId'] + '#sent', 'childThreadId': r['threadId'], 'status': r.get('status') or 'running'}
-                if isinstance(r, dict) and r.get('taskId'):
-                    is_read, title = titles[b['tool_use_id']]
-                    old = status.pop(r['taskId'], ('', ''))
-                    status[r['taskId']] = (str(r.get('status') or ''), title or old[1])
-                    thread[r['taskId']] = str(r.get('childThreadId') or r.get('threadId') or thread.get(r['taskId']) or r['taskId'])  # a follow-up message is a new task of its thread
-                    seen.add(r['taskId'])
+    status, thread, seen, launched = t3_tasks.observed(lines)
     text = running.group(1).lower()
     # a link names a thread, and a list with no link names a thread by a title its tasks hold ("memory refresh" is the refresh just
-    # launched). A thread is all its tasks: the first, each message sent to it, each turn T3 continues on its own (provider-continuation).
-    # It is finished only when every task of it is; it is current when one of them was heard of since the user's last message.
-    def name_of(i):
-        m = re.search(r'%25253A([^%]+)%3Aordinal', i)  # a continuation's id holds its thread's, encoded twice
-        return (m[1] if m else thread.get(i, i).rsplit('%3A', 1)[-1]).lower()
+    # launched). It is finished only when every task of it is; it is current when one of them was heard of since the user's last message.
     threads = {}
-    for i in status: threads.setdefault(name_of(i), []).append(i)
+    for i in status: threads.setdefault(thread[i], []).append(i)
     named = [g for n, g in threads.items() if re.search(r'(?:%3a|[^\w-])' + re.escape(n) + r'(?![\w-])', text)]
     if not named:
         for t in {t.lower() for _, t in status.values() if t and t.lower() in text}:
-            named.append(threads[name_of([i for i, (_, u) in status.items() if t in u.lower()][-1])])
+            named.append(threads[thread[[i for i, (_, u) in status.items() if t in u.lower()][-1]]])
     label = lambda g: next((status[i][1] for i in g if status[i][1]), g[0])
     done = [label(g) for g in named if all(re.match(r'(completed|failed|cancel+ed|interrupted|error)', status[i][0]) for i in g)]
     stale = [label(g) for g in named if not set(g) & seen]
