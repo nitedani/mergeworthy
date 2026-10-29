@@ -63,9 +63,9 @@ The prompt is a file with the template filled. When one run follows several brie
 ### Review rounds
 
 Every review loop:
-- **Severity:** re-rate each label (`agent.md`) yourself; a finding nobody hits in practice is a nit; nits get no code.
-- **Budget:** 3 rounds (reviewer passes, re-checks included) per loop, never renewed or raised. Each round's launch is named `<loop>-r<N>` (T3's `clientRequestId`, the Agent tool's `description`, a shell reviewer's prompt file); a rewrite (a new approach record or change) is a new loop.
-- **Round 1's prompt** asks for every finding exhaustively; **from round 2,** the prompt says outside the changes and the open ids only a blocker or a regression counts (not the fresh reader's). Before each round, cut what the fixes added beyond need.
+- **Severity:** re-rate each label (`agent.md`) yourself; nits (findings nobody hits in practice) get no code.
+- **Budget:** 3 rounds (re-checks included) per loop, never renewed or raised. Name each round `<loop>-r<N>` (T3's `clientRequestId`, the Agent tool's `description`, a shell reviewer's prompt file). Replacing the implementation with a different approach starts a new loop with a new name; fixes to the existing approach keep its round count.
+- **Round 1's prompt** asks for every finding exhaustively; **from round 2,** it says outside the changes and open ids only a blocker or regression counts (not the fresh reader's). Before each round, cut what the fixes added beyond need.
 - **Ledger:** `<work folder>/drafts/<review>.ledger.md`, one line per finding: `<id> <label> <outcome>` (fixed in <sha>, disputed: <evidence>, declined: <why>), the id `R<round>.<n>` from its first round.
-- **Stuck:** a finding the reviewer holds after two replies of yours disputing it, or open at the budget's end, goes to the user, both sides in 2–3 lines. Rule on evidence, never to end the loop.
+- **Stuck:** a finding the reviewer holds after two disputing replies of yours, or open at the budget's end, goes to the user, both sides in 2–3 lines. Rule on evidence, never to end the loop.
 - **While a round runs,** leave what it reads unchanged.
