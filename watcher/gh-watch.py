@@ -19,7 +19,8 @@
 - GitLab threads in threads.txt are read by gl_watch.py (scan_gitlab), into the same events.log and replies-owed.md.
 - AGENT DONE: an agent the session launched has finished (hooks/agent_jobs.py), once per finish, until `agent-job done` releases its job.
 - Under T3 Code each pass's event lines also go to the session's thread (wake_thread), so it needs no Monitor.
-- The steward's folder and the dirs inside it (steward.quiet) only log: no :eyes:, no owed reply, no thread woken; its next pass reads events.log.
+- The steward's folder and the dirs inside it (steward.quiet) watch nitedani/mergeworthy whole and only log: no :eyes:, no owed reply, and only
+  a new issue there wakes the steward (WAKES); its next pass reads the rest of events.log.
 - Every request is counted, 304 answers too (tally; `gh-watch.py --stats` prints the rate, and once an hour a line goes to gh-watch-stats.log).
 - On Linux, main_dir's daemon starts bin/disk-sweep --delete at most once an hour, in the background (sweep_disk).
 State lives in gh-watch-state.json: every seen (id, updated_at) pair, so nothing is skipped or repeated,
@@ -632,6 +633,8 @@ def emit(line):
 
 
 EVENT = re.compile(r'###|WATCH ERROR|WATCHER RETIRED')  # the lines gh-watch-start's Monitor delivers
+STEWARD_REPO = 'nitedani/mergeworthy'
+WAKES = re.compile(rf'### NEW ISSUE {STEWARD_REPO}#')  # the one event a steward's dir delivers (rules step 2: a session's report of a mergeworthy fault)
 
 
 def unsent():
@@ -667,7 +670,7 @@ def wake_thread():
     elif _t3_missing[0] is None:
         _t3_missing[0] = _ticks[0]
     start, data = unsent()
-    lines = [l for l in data.decode(errors='replace').splitlines() if EVENT.match(l)]
+    lines = [l for l in data.decode(errors='replace').splitlines() if (WAKES if steward.quiet(HERE) else EVENT).match(l)]
     if lines:
         msg = f"Watcher events in {HERE}/events.log (mergeworthy:reply):\n" + '\n'.join(lines)
         try:
@@ -1884,14 +1887,14 @@ def announce():
             save_state(state)
 
 
-STEWARD_LINE = 'nitedani/mergeworthy all  # the steward watches its repo (gh-watch.py)'
+STEWARD_LINE = f'{STEWARD_REPO} all  # the steward watches its repo (gh-watch.py)'
 
 
 def steward_line():
-    """The steward's watch dir watches the mergeworthy repo whole while ~/.mergeworthy/steward names it."""
+    """The steward's dirs (steward.quiet) watch the mergeworthy repo whole: a new issue there is how sessions report a fault to it."""
     path = os.path.join(HERE, 'repos.txt')
     lines = open(path).read().splitlines() if os.path.exists(path) else []
-    want = (steward.read() or ('',))[0] == HERE.rstrip('/')
+    want = steward.quiet(HERE)
     if want != (STEWARD_LINE in lines) and not ONCE:
         with open(path + '.tmp', 'w') as f:
             f.writelines(l + '\n' for l in lines if l != STEWARD_LINE)

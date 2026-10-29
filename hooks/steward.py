@@ -14,8 +14,8 @@ def folder():
     return (read() or (os.path.expanduser('~/.mergeworthy/work/steward'),))[0]
 
 def quiet(d):
-    """True for the steward's folder and the watch dirs inside it: their watcher reacts to nothing, owes no reply and wakes no
-    thread; their events.log waits for the next pass."""
+    """True for the steward's folder and the watch dirs inside it: their watcher reacts to nothing, owes no reply and wakes its
+    thread only for a new mergeworthy issue (gh-watch.py's WAKES); the rest of their events.log waits for the next pass."""
     s, d = os.path.realpath(folder()), os.path.realpath(d)
     return d == s or d.startswith(s + '/')
 
@@ -68,11 +68,11 @@ def bind_watcher(wd):
     """Under T3 Code <wd>/t3-thread names the main session's thread (the last of the threads that delegated the session in
     <wd>/session), then t3's full path, for gh-watch.py's wake_thread. t3-wake.cursor starts at events.log's end when there is none
     or the thread replaces another, else it stays, so what came while t3 was missing still goes. Without t3, t3-thread goes; without
-    a thread, for the one wake_thread found deleted (<wd>/t3-gone), or in a quiet dir, the cursor too."""
+    a thread, or for the one wake_thread found deleted (<wd>/t3-gone), the cursor too."""
     s = first(os.path.join(wd, 'session'))
     tid, t3 = s and (threads(s) or [''])[-1], shutil.which('t3')  # its full path: cron revives the daemon with a PATH that may not hold it
     cursor, bound = os.path.join(wd, 't3-wake.cursor'), first(os.path.join(wd, 't3-thread'))
-    drop = not tid or tid == first(os.path.join(wd, 't3-gone')) or quiet(wd)
+    drop = not tid or tid == first(os.path.join(wd, 't3-gone'))
     if drop or not t3:
         for f in ['t3-thread', 't3-wake.cursor'][:1 + drop]:
             with contextlib.suppress(FileNotFoundError): os.remove(os.path.join(wd, f))

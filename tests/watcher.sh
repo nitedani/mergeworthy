@@ -604,10 +604,14 @@ rm -f "$W/retired"
 
 # The Monitor command gh-watch-start prints delivers an event within 2 s, and only lines that start an event
 M="$T/mon"; mkdir -p "$M"; : > "$M/events.log"
-cmd=$(dir="$M"; eval "$(grep -m1 "tail -n 0 -F" "$R/bin/gh-watch-start")" | sed 's/^ *//')
+mon() { (dir="$M"; eval "$(grep -m1 "^${1:-}events=" "$R/bin/gh-watch-start")"; eval "$(grep -m1 "tail -n 0 -F" "$R/bin/gh-watch-start")") | sed 's/^ *//'; }  # the Monitor it prints, with its events line
+cmd=$(mon)
 ( timeout 4 bash -c "$cmd" > "$M/out" 2>&1 & ); sleep 1
 printf '### ev1\n    ### a body line\nWATCH ERROR x\n' >> "$M/events.log"; sleep 2
 check "Monitor command: events within 2 s, body lines dropped" "### ev1|WATCH ERROR x|" "$(tr '\n' '|' < "$M/out")"
+cmd=$(mon '  '); : > "$M/events.log"; ( timeout 4 bash -c "$cmd" > "$M/out" 2>&1 & ); sleep 1
+printf '### o/r#5 comment 9 by bob\nWATCH ERROR x\n### NEW ISSUE nitedani/mergeworthy#7 by eve\n### NEW PR nitedani/mergeworthy#8 by eve\n' >> "$M/events.log"; sleep 2
+check "the steward's Monitor command passes only a new mergeworthy issue" "### NEW ISSUE nitedani/mergeworthy#7 by eve|" "$(tr '\n' '|' < "$M/out")"
 
 # A rate-limited `gh api user` prints the error JSON on stdout: it is no login. The watcher refuses to start rather than take it
 # as ME (every comment by the user's account, the agent's own gated posts too, then reads as a human's and gets an :eyes:).
@@ -738,9 +742,9 @@ c.execute("""insert into orchestration_v2_projection_provider_threads values ('"
 c.execute("""insert into orchestration_v2_projection_subagents values ('"'s1', 'thr-p', 'thr-c'"')"""); c.commit()' "$HOME/.t3/userdata/statev2.sqlite"
 t3start sess-child >/dev/null
 check "gh-watch-start run by a delegated task binds the thread that delegated it, not the task's" "thr-p" "$(head -n1 "$T/t3watch/t3-thread")"
-mkdir -p "$HOME/.mergeworthy"; echo "$T/t3watch tid" > "$HOME/.mergeworthy/steward"; out=$(t3start sess-child); rm "$HOME/.mergeworthy/steward"
-check "gh-watch-start in the steward's folder binds no thread and prints no Monitor: its next pass reads events.log" "none 1 0" \
-  "$([ -e "$T/t3watch/t3-thread" ] || [ -e "$T/t3watch/t3-wake.cursor" ] && echo kept || echo none) $(echo "$out" | grep -c 'Arm no Monitor') $(echo "$out" | grep -c 'tail -n 0 -F')"
+mkdir -p "$HOME/.mergeworthy"; echo "$T/t3watch tid" > "$HOME/.mergeworthy/steward"; out=$(t3start sess-child); b=$(head -n1 "$T/t3watch/t3-thread"); out2=$(t3start sess-plain); rm "$HOME/.mergeworthy/steward"
+check "gh-watch-start in the steward's folder: under T3 it binds the thread and arms no Monitor; outside it, the Monitor passes only a new mergeworthy issue" "thr-p 1 1 0" \
+  "$b $(echo "$out" | grep -c 'arm no Monitor') $(echo "$out2" | grep -c "'### NEW ISSUE nitedani/mergeworthy#'\*)") $(echo "$out2" | grep -c "'###'\*|")"
 out=$(t3start sess-plain)
 check "gh-watch-start outside T3 Code drops the thread and prints the Monitor" "none 1" "$([ -e "$T/t3watch/t3-thread" ] || [ -e "$T/t3watch/t3-wake.cursor" ] && echo kept || echo none) $(echo "$out" | grep -c 'tail -n 0 -F')"
 GP=$(cat "$T/t3watch/gh-watch.pid" 2>/dev/null); ps -o args= -p "$GP" 2>/dev/null | grep -qx 'sleep 30' && kill "$GP"
@@ -759,12 +763,14 @@ check "a daemon with no t3-thread binds the main session's thread and t3's path 
   "thr-p $T/bin/t3 8|thr-p $T/bin/t3 16|t3 thread send thr-p -;Watcher events in $T/t3daemon/events.log (mergeworthy:reply):;### new;" "$a|$b|$(tr '\n' ';' < "$T/t3.log")"
 rm "$T/t3daemon/t3-thread" "$T/t3daemon/t3-wake.cursor"; echo sess-plain > "$T/t3daemon/session"; c=$(tpass); rm "$T/t3daemon/session"
 echo "$T/t3daemon/live tid" > "$HOME/.mergeworthy/steward"; mkdir -p "$T/t3daemon/live"; cp "$T/t3daemon/events.log" "$T/t3daemon/live/"; echo sess-child > "$T/t3daemon/live/session"
-check "a daemon in the steward's folder never binds its session's thread" "unbound " "$(W="$T/t3daemon/live" PATH="$T/bin:/usr/bin:/bin" py '
-for name in ("follow_update", "steward_line", "agent_jobs_pass", "announce", "scan_gitlab"):
+: > "$T/t3.log"
+check "a daemon in the steward's folder binds its session's thread and sends it only a new mergeworthy issue" "thr-p|t3 thread send thr-p -;Watcher events in $T/t3daemon/live/events.log (mergeworthy:reply):;### NEW ISSUE nitedani/mergeworthy#7 by eve;" "$(W="$T/t3daemon/live" PATH="$T/bin:/usr/bin:/bin" py '
+for name in ("follow_update", "steward_line", "agent_jobs_pass", "announce"):
     setattr(m, name, lambda *a, **k: None)
+m.scan_gitlab = lambda: open(os.path.join(m.HERE, "events.log"), "a").write("### o/r#5 comment 9 by bob\n### NEW ISSUE nitedani/mergeworthy#7 by eve\n### NEW PR nitedani/mergeworthy#8 by eve\n")
 m.level = lambda: m.PAUSED; m.tick()
-print(m.first_line(os.path.join(m.HERE, "t3-thread")) or "unbound", m.first_line(os.path.join(m.HERE, "t3-wake.cursor")))
-')"
+print(m.first_line(os.path.join(m.HERE, "t3-thread")).split()[0])
+')|$(tr '\n' ';' < "$T/t3.log")"
 rm -r "$HOME/.mergeworthy/steward" "$T/t3daemon/live"
 check "a daemon whose session has no T3 thread, or that has no session, stays unbound" "unbound |unbound " "$c|$(tpass)"
 echo sess-child > "$T/t3daemon/session"; : > "$T/t3.log"; e=$(TEV='### found in the binding pass' tpass)
@@ -881,6 +887,11 @@ os.remove(sw)
 print(a, open(os.path.join(m.HERE, "repos.txt")).read().strip())
 ')
 check "the steward's dir watches the mergeworthy repo whole while ~/.mergeworthy/steward names it" "(1, [('nitedani/mergeworthy', True), ('x/y', False)]) x/y" "$got"
+got=$(py "$WHOLE"'
+m.HERE = os.path.expanduser("~/.mergeworthy/work/steward/live"); os.makedirs(m.HERE, exist_ok=True); m.steward_line()
+print(m.repo_lines(m.HERE))
+')
+check "with no steward declared, the default steward folder's dirs watch the mergeworthy repo whole" "{'nitedani/mergeworthy': True}" "$got"
 # a --round dir has no daemon: each pass reads a list itself back to its last complete pass, though a daemon
 # polled it between (its validator, its baseline), and /agent on a thread no one lists goes to it
 mkdir -p "$WH/pass"; : > "$WH/pass/threads.txt"; : > "$WH/pass/events.log"; echo 'p/q all' > "$WH/pass/repos.txt"; echo "$WH/pass" >> "$HOME/.claude/gh-watch-dirs.txt"

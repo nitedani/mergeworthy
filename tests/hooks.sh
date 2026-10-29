@@ -1948,7 +1948,7 @@ sg() { # command session cwd
     | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?; }
 check "no steward declared: a push in a mergeworthy checkout passes" 0 "$(sg "git -C $T/mwc push $T/elsewhere.git HEAD:main" other-session "$T")"
 echo "$SW steward-thread" > "$HOME/.mergeworthy/steward"
-check "BLOCK: another session's commit or push in a mergeworthy checkout, naming the steward's inbox" "2 1 2" "$(sg "git -C $T/mwc push $T/elsewhere.git HEAD:main" other-session "$T") $(grep -c "$SW/inbox.md" "$T/err") $(sg "git commit -m x" other-session "$T/mwc")"
+check "BLOCK: another session's commit or push in a mergeworthy checkout, saying to open an issue there" "2 1 2" "$(sg "git -C $T/mwc push $T/elsewhere.git HEAD:main" other-session "$T") $(grep -c "open an issue on nitedani/mergeworthy" "$T/err") $(sg "git commit -m x" other-session "$T/mwc")"
 check "the steward's delegated agent (its T3 parent thread) and a session in its watch dir push; another repo passes" "0 0 0" "$(sg "git -C $T/mwc push $T/elsewhere.git HEAD:main" child-session "$T") $(sg "git -C $T/mwc push $T/elsewhere.git HEAD:main" x "$SW") $(sg "git -C $T/gr push $T/elsewhere.git HEAD:main" other-session "$T")"
 python3 - "$HOME/.t3/userdata/statev2.sqlite" <<'EOF2'
 import sqlite3, sys
