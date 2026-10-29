@@ -754,6 +754,13 @@ wait_guard() { # command background(true|false)
 check "BLOCK: a foreground until-sleep loop" 2 "$(wait_guard 'until [ -s out.md ]; do sleep 20; done; cat out.md' false)"
 check "the same loop in the background passes" 0 "$(wait_guard 'until [ -s out.md ]; do sleep 20; done; cat out.md' true)"
 check "a plain sleep passes" 0 "$(wait_guard 'sleep 2; ls' false)"
+check "a loop written into a file by a heredoc passes: nothing waits" 0 "$(wait_guard "$(printf 'cat > x.md <<EOF\nuntil done; do sleep 5; done\nEOF')" false)"
+check "a loop in a quoted argument passes" 0 "$(wait_guard "jq -n --arg s 'while true; do sleep 1; done' '\$s'" false)"
+check "BLOCK: a loop a shell runs from a heredoc" 2 "$(wait_guard "$(printf 'bash <<EOF\nuntil [ -s out.md ]; do sleep 5; done\nEOF')" false)"
+check "BLOCK: a loop in bash -c" 2 "$(wait_guard "bash -c 'while true; do sleep 1; done'" false)"
+check "BLOCK: a loop running bash -c or a heredoc script with a sleep" "2 2" "$(wait_guard "while true; do bash -c 'sleep 1'; done" false) $(wait_guard "$(printf 'while true; do bash <<EOF\nsleep 1\nEOF\ndone')" false)"
+check "BLOCK: a loop sent to the background in a foreground command" 2 "$(wait_guard '(until [ -s out.md ]; do sleep 20; done) & wait' false)"
+check "BLOCK: a loop with sleep in a command that doesn't parse" 2 "$(wait_guard 'until [ -s out.md ]; do sleep 20; done; echo "x' false)"
 # ---------- pre-agent-dedupe: one agent per job ----------
 launch_in() { python3 -c 'import json,sys,time; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":sys.argv[1],"title":"t","clientRequestId":f"t-{time.time_ns()}-r1"}}))' "$1"; }
 launch() { # task text; a launch that passes runs, so the PostToolUse half registers it
