@@ -2210,6 +2210,9 @@ echo p5 >> "$SP/a.py"; r5=$(bg 'git commit -am p5' "$SP"); sc -am p5
 echo p6 >> "$SP/a.py"; r6=$(bg 'git commit -am p6' "$SP"); n6=$(grep -c 'a.py would get a 6th change' "$T/err")
 git -C "$SP" checkout -q a.py; echo t >> "$SP/tests/a_test.py"; git -C "$SP" add tests
 check "a code file's 5th change on the branch passes; its 6th is refused, naming it; a test-only commit passes" "0 2 1 0" "$r5 $r6 $n6 $(bg 'git commit -m t' "$SP")"
+echo p5b >> "$SP/a.py"; git -C "$SP" add a.py
+check "an amend of the 5th change is no 6th" 0 "$(bg 'git commit --amend --no-edit' "$SP")"
+git -C "$SP" checkout -q HEAD -- a.py
 sc -m t; printf 'Class: each patch narrows which lines a counts\nDISTINCT\n' > "$T/simp.md"; (cd "$SP" && bash "$R/bin/pr-steps" simplify "$T/simp.md" >/dev/null)
 echo p6 >> "$SP/a.py"; git -C "$SP" add a.py
 check "with a simplify record on the head, the 6th change passes" 0 "$(bg 'git commit -m p6' "$SP")"

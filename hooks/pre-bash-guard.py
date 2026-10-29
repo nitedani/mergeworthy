@@ -376,15 +376,18 @@ def git_head(d):
     return subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
 
 NOT_CODE = re.compile(r'(^|/)(tests?|__tests__|e2e|specs?|docs?)/|\.(test|spec)\.|\.md$|lock\.(json|yaml)$|\.lock$|(^|/)\.changeset/')
-def check_patches(d, pending=None):
+def check_patches(d, pending=None, amend=False):
     """`finality` step 1 as a mechanism: a code file (no test or doc) changed by 5 commits of the branch gets no 6th until
     `pr-steps simplify` records on the head (delegate/simplify.md); a commit with that record, HEAD too, starts the counts over after it.
-    pending: the files the commit being made changes; None for a push, which checks the commits alone."""
+    pending: the files the commit being made changes; None for a push, which checks the commits alone. amend: it replaces HEAD."""
     g = lambda *a: subprocess.run(['git', '-C', d, *a], capture_output=True, text=True).stdout
     base = g('symbolic-ref', '-q', '--short', 'refs/remotes/origin/HEAD').strip() or 'origin/main'
     count = {}
-    for c in g('rev-list', '--reverse', '--no-merges', 'HEAD', '--not', base).split():
-        for f in g('diff-tree', '--no-commit-id', '--name-only', '-r', c).split():
+    commits = g('rev-list', '--reverse', '--no-merges', 'HEAD', '--not', base).split()
+    for c in commits:
+        files = g('diff-tree', '--no-commit-id', '--name-only', '-r', c).split()
+        if amend and c == commits[-1]: pending, files = sorted(set(pending or []) | set(files)), []  # the amended commit is the pending one
+        for f in files:
             count[f] = count.get(f, 0) + 1
         if os.path.exists(RECORDS + c) and any(l.split()[:1] == ['simplify'] for l in open(RECORDS + c)): count = {}
     for f in pending or []: count[f] = count.get(f, 0) + 1
@@ -586,7 +589,7 @@ def check(t, has_cd):
                 block(why)
             check_commit_identity(overrides, repo)
             every = any(x == '--all' or re.fullmatch(r'-[a-zA-Z]*a[a-zA-Z]*', x) for x in rest)  # `git commit -a` commits the worktree's changes too
-            check_patches(repo, subprocess.run(['git', '-C', repo, 'diff', '--name-only', *([] if every else ['--cached']), 'HEAD'], capture_output=True, text=True).stdout.split())
+            check_patches(repo, subprocess.run(['git', '-C', repo, 'diff', '--name-only', *([] if every else ['--cached']), 'HEAD'], capture_output=True, text=True).stdout.split(), '--amend' in rest)
         if sub == 'push' and {'--dry-run', '-n'} & set(rest):
             sub = 'push --dry-run'  # publishes nothing
         if sub == 'push' and not os.path.isdir(repo) and '--help' not in rest:
