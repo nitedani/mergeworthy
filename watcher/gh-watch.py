@@ -670,11 +670,14 @@ def wake_thread():
         try:
             r = subprocess.run([t3, 'thread', 'send', tid, '-'], input=msg, capture_output=True, text=True, timeout=60)
             err = r.returncode and (r.stderr.strip().splitlines() or [f"exit {r.returncode}"])[-1]
-            gone = err == f"Thread {tid} was not found."  # t3's answer for a deleted thread, exit 1
+            gone = deleted = err == f"Thread {tid} was not found."  # t3's answer for a deleted thread, exit 1
         except (OSError, subprocess.SubprocessError) as e:
-            err, gone = str(e), isinstance(e, FileNotFoundError) and _t3_missing[0] is not None and _t3_missing[0] < _ticks[0]
+            err, deleted, gone = str(e), False, isinstance(e, FileNotFoundError) and _t3_missing[0] is not None and _t3_missing[0] < _ticks[0]
         if gone:
             emit(f"WATCH ERROR t3 thread send {tid}: {err[:200]}; the watcher no longer sends to T3, events.log keeps every event")
+            if deleted:  # steward.bind_watcher doesn't bind it again
+                with open(os.path.join(HERE, 't3-gone'), 'w') as f:
+                    f.write(tid + '\n')
             for f in ('t3-thread', 't3-wake.cursor'):
                 with contextlib.suppress(FileNotFoundError):
                     os.remove(os.path.join(HERE, f))

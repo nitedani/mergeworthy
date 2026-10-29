@@ -599,7 +599,7 @@ before = m._ticks[0]; m.tick(); m.tick()
 print(m._ticks[0] - before, [n - before for n in seen])
 ')
 check "tick() advances _ticks once per pass, before the pass's wake_thread" "2 [1, 2]" "$got"
-rm -f "$W/events.log" "$W/t3-wake.cursor" "$W/t3-thread"
+rm -f "$W/events.log" "$W/t3-wake.cursor" "$W/t3-thread" "$W/t3-gone"
 rm -f "$W/retired"
 
 # The Monitor command gh-watch-start prints delivers an event within 2 s, and only lines that start an event
@@ -754,6 +754,10 @@ check "a daemon with no t3-thread binds the main session's thread and t3's path 
   "thr-p $T/bin/t3 8|thr-p $T/bin/t3 16|t3 thread send thr-p -;Watcher events in $T/t3daemon/events.log (mergeworthy:reply):;### new;" "$a|$b|$(tr '\n' ';' < "$T/t3.log")"
 rm "$T/t3daemon/t3-thread" "$T/t3daemon/t3-wake.cursor"; echo sess-plain > "$T/t3daemon/session"; c=$(tpass); rm "$T/t3daemon/session"
 check "a daemon whose session has no T3 thread, or that has no session, stays unbound" "unbound |unbound " "$c|$(tpass)"
+echo sess-child > "$T/t3daemon/session"; tpass >/dev/null; printf '### to a deleted thread\n' >> "$T/t3daemon/events.log"; : > "$T/t3.gone"
+d=$(tpass | tail -n1); rm "$T/t3.gone"
+check "a thread T3 reports deleted is not bound again" "unbound |unbound " "$d|$(tpass)"
+rm "$T/t3daemon/session"
 rm -f "$HOME/.t3/userdata/statev2.sqlite"
 # --round (the steward skill): one round of gh-watch.py --round into events.log, no supervisor, no daemon, a passed mark
 printf 'import sys\nprint("### stub round", *sys.argv[1:])\n' > "$GI/watcher/gh-watch.py"; mkdir -p "$T/passwatch"

@@ -57,10 +57,10 @@ def threads(session_id):
 def bind_watcher(wd):
     """Under T3 Code <wd>/t3-thread names the main session's thread (the last of the threads that delegated the session in
     <wd>/session), then t3's full path, for gh-watch.py's wake_thread; t3-wake.cursor starts at events.log's end when the thread
-    changes. Without either, both files go."""
+    changes. Without either, or for the thread wake_thread found deleted (<wd>/t3-gone), both files go."""
     s = first(os.path.join(wd, 'session'))
     tid, t3 = s and (threads(s) or [''])[-1], shutil.which('t3')  # its full path: cron revives the daemon with a PATH that may not hold it
-    if not (tid and t3):
+    if not (tid and t3) or tid == first(os.path.join(wd, 't3-gone')):
         for f in ('t3-thread', 't3-wake.cursor'):
             with contextlib.suppress(FileNotFoundError): os.remove(os.path.join(wd, f))
         return
