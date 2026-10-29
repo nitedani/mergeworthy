@@ -780,6 +780,10 @@ python3 -c 'import json,os,time; p=os.path.expanduser("~/.claude/agent-client-re
 check "BLOCK: a clientRequestId reused later (T3 replays the old result)" 2 "$(cid r-1)"
 rnd() { # clientRequestId task [role]
   python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":sys.argv[2],"role":sys.argv[3],"clientRequestId":sys.argv[1]}}))' "$1" "$2" "${3:-review}" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; echo $?; }
+agent_rnd() { # description prompt
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"Agent","tool_input":{"description":sys.argv[1],"prompt":sys.argv[2]}}))' "$1" "$2" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; echo $?; }
+check "review rounds: r3 passes, r4 blocks, no round blocks, a new loop's r1 passes, a trailing date or head SHA is no escape, an implementation needs no round" "0 2 2 0 0 2 0" "$(rnd loop-a-r3 'Follow /tmp/x/rr.md') $(rnd loop-a-r4 'Follow /tmp/x/rr.md') $(rnd loop-a 'Follow /tmp/x/rr.md') $(rnd loop-a2-r1 'Follow /tmp/x/rr.md') $(rnd loop-a-r2-2026-10-28 'Follow /tmp/x/rr.md') $(rnd loop-a-r4-96ef442 'Follow /tmp/x/rr.md') $(rnd fix-r4 'Follow /tmp/x/rr.md' implementation)"
+check "review rounds by the Agent tool's description: r3 passes, r4 blocks, no round blocks, a non-review launch needs none" "0 2 2 0" "$(agent_rnd fresh-r3 'Review it. Final message: exactly CLEAN, or the findings.') $(agent_rnd fresh-r4 'Review it. Final message: exactly CLEAN, or the findings.') $(agent_rnd 'Fresh read' 'Verify it. Final message: exactly NO BUGS only when both lists are empty.') $(agent_rnd 'Fix the parser' 'Edit hooks/x.py and run the tests.')"
 J="$HOME/.claude/agent-jobs"; mkdir -p "$J"
 printf '{"key": "/x/a.md /x/shared.md", "started": 1}' > "$J/aj1.json"; printf '{"key": "/x/b.md /x/shared.md", "started": 2}' > "$J/aj2.json"
 check "agent-job done with a path two jobs hold releases neither" "1 2" "$(python3 "$R/bin/agent-job" done /x/shared.md >/dev/null 2>&1; echo $? $(ls "$J"/aj*.json | wc -l))"
