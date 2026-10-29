@@ -41,13 +41,14 @@ CLAUSE = re.compile(rf"(?={CONJUNCTION.pattern})", re.I)
 def asserted(sentence, i):
     """Whether the words at sentence[i] state something as true now: no negation in their clause, an English one only before them
     ("none is ready", "kész még nem vagyok"; "ready with no issues" still claims), no plan in their clause ("it will be ready",
-    "és kész lesz"), no condition in their part or opening the next one ("once it is ready", "kész, ha zöld a CI"), and the
-    sentence is no question. A part ends at a comma, semicolon or colon; a clause also before a conjunction."""
+    "és kész lesz"), no condition in their part or opening the next one ("once it is ready", "kész, ha zöld a CI"), and their
+    stretch of the sentence up to a semicolon is no question ("Kész van?"; "All done; any questions?" still claims). A part ends
+    at a comma, semicolon or colon; a clause also before a conjunction."""
     before, (part, *after) = PART.split(sentence[:i])[-1], PART.split(sentence[i:], 1)
     lead = CLAUSE.split(before)[-1]
     clause = lead + CLAUSE.split(part)[0]
     return not (NEGATION_EN.search(lead) or NEGATION_HU.search(clause) or FUTURE.search(clause) or CONDITION.search(before + part)
-                or after and CONDITION.match(after[0].lstrip()) or sentence.rstrip().endswith('?'))
+                or after and CONDITION.match(after[0].lstrip()) or re.split(r';\s', sentence[i:], 1)[0].rstrip().endswith('?'))
 
 
 DONE = r"\b(?:(?:is|are|all|work's|it's) (?:done|finished|complete)\b|ready (?:for review|to merge)|kész\b|elkészült|befejeztem)"
