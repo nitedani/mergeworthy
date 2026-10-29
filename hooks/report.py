@@ -6,8 +6,9 @@ import re
 
 def unfenced(message):
     """The message without its fenced blocks and quoted lines: an example or a quote of an earlier message isn't said again."""
-    # a fence closes at a line of its own character, at least as long as its opening (CommonMark), so a longer one can hold a shorter one
-    return re.sub(r'^[ \t]*(`{3,}|~{3,})[^\n]*\n.*?^[ \t]*\1[`~]*[ \t]*$|```.*?```|^>[^\n]*$', ' ', message, flags=re.S | re.M)
+    # a fence closes at a line of its own character, at least as long as its opening, or at the message's end (CommonMark), so a
+    # longer one can hold a shorter one
+    return re.sub(r'^[ \t]*(`{3,}|~{3,})[^\n`]*$(?:\n.*?^[ \t]*\1[`~]*[ \t]*$|.*\Z)|```.*?```|^>[^\n]*$', ' ', message, flags=re.S | re.M)
 
 
 def authored(message):
