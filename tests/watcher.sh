@@ -148,6 +148,22 @@ print("\n".join(out), file=sys.stderr)
 check "comment bodies: lines starting ### / body lines all indented" "1 True" "$got"
 sed 's/^/  | /' "$T/event"
 
+# a comment in the steward's folder is only logged: no :eyes:, no owed reply; the same comment in an ordinary dir gets both
+got=$(py '
+m.ONCE = False
+sw = os.path.expanduser("~/.mergeworthy/steward")
+os.makedirs(os.path.dirname(sw), exist_ok=True); open(sw, "w").write(os.path.join(m.HERE, "stew") + " tid\n")
+out = []
+for d in ("stew", "plain"):
+    m.HERE = os.path.join(sys.argv[2], d); os.makedirs(m.HERE)
+    eyes, buf = [], io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        m.handle_comment({"seen": {}}, "o/r", "o/r#5", "comment", 8, "2026-10-05T00:00:00Z", "someone", "<url>", "Please fix.", react=lambda *a: eyes.append(a))
+    out += [d, buf.getvalue().count("### o/r#5 comment 8 by someone"), len(eyes), os.path.exists(os.path.join(m.HERE, "replies-owed.md"))]
+os.remove(sw); print(*out)
+')
+check "a comment in the steward's folder is logged without :eyes: or an owed reply; in an ordinary dir it gets both" "stew 1 0 False plain 1 1 True" "$got"
+
 # a maintainer's comment carrying a refactor prompt URL its project file names is a refactor ask, recorded for pr-steps
 mkdir -p "$HOME/.mergeworthy/projects/o"
 ask() { # project-file line, comment body, commenter's association -> lines in ~/.claude/refactor-asks.txt
