@@ -766,7 +766,7 @@ def emit_maintainer_commits(state, repo, key, old, new):
 
 def emit_refactor_stale(repo, key, new):
     """Your PR's own commits changed more than ~80 lines since its last shape pass (`pr-steps shape`): the ratings
-    describe old code. Merges of the base branch, tests and lockfiles don't count: they aren't the PR's code to rate."""
+    describe old code. Merges of the base branch, tests, lockfiles and dist/ don't count: they aren't the PR's code to rate."""
     num = key.split('#')[1]
     try:
         pr = request(f"repos/{repo}/pulls/{num}").json()
@@ -775,7 +775,7 @@ def emit_refactor_stale(repo, key, new):
         rec = os.path.expanduser('~/.claude/pr-steps')
         idx = max((i for i, c in enumerate(commits) if os.path.exists(f"{rec}/{c['sha']}") and any(l.startswith(('shape ', 'refactor ')) for l in open(f"{rec}/{c['sha']}"))), default=-1)
         since = [c['sha'] for c in commits[idx + 1:] if not c['merge']]
-        skip = re.compile(r'\.(spec|test)\.|(^|/)tests?/|(^|/)(pnpm-lock\.yaml|package-lock\.json|yarn\.lock)$')
+        skip = re.compile(r'\.(spec|test)\.|(^|/)tests?/|(^|/)(pnpm-lock\.yaml|package-lock\.json|yarn\.lock)$|(^|/)dist/')
         lines = sum(f['additions'] + f['deletions'] for sha in since for f in (request(f"repos/{repo}/commits/{sha}").json().get('files') or []) if not skip.search(f['filename']))
     except Exception as e:
         fail(f"shape check {key}", e)

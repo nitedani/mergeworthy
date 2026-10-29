@@ -994,5 +994,16 @@ print(len(started), [p.wait() for p in started], open(os.path.join(m.HERE, "disk
 ')
 check "a temp-HOME main() starts one disk-sweep --delete, which skips Docker and runs no prune" "1 [0] 1 0" "$got $(grep -c prune "$T/docker.log")"
 
+# SHAPE STALE counts your PR's code: a committed build bundle (dist/) is not
+got=$(py '
+Answer = lambda data: type("A", (), {"status": 200, "json": lambda self: data})()
+files = [{"filename": "dist/a.mjs", "additions": 300, "deletions": 0}, {"filename": "src/a.ts", "additions": 5, "deletions": 0}]
+m.request = lambda path, *a, **k: Answer({"user": {"login": "me"}, "base": {"ref": "main"}} if path.endswith("/pulls/8")
+                                         else {"commits": [{"sha": "c1", "parents": [{}]}]} if "/compare/" in path else {"files": files})
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf): m.emit_refactor_stale("o/r", "o/r#8", "new")
+print(buf.getvalue().count("### SHAPE STALE"))
+')
+check "SHAPE STALE doesn't count a committed build bundle (dist/)" 0 "$got"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]

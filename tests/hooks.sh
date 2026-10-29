@@ -1316,6 +1316,8 @@ cp "$T/carry.md" "$T/carry-v.md"
 check "a small follow-up carries an earlier head's Loop A" 0 "$(prs verify "$T/carry-v.md")"
 cp "$T/carry.md" "$T/carry-f.md"
 check "BLOCK: carrying a step the earlier head never recorded" 1 "$(prs fresh "$T/carry-f.md")"
+mkdir -p "$G/dist"; seq 1 300 > "$G/dist/a.mjs"; git -C "$G" add dist; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m bundle; cp "$T/carry.md" "$T/carry-d.md"
+check "a committed build bundle (dist/) doesn't count against a carry" 0 "$(prs shape "$T/carry-d.md")"
 seq 1 100 > "$G/big"; git -C "$G" add big; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m c
 printf 'carries the pass of %s: big change\n' "$A" > "$T/carry2.md"
 check "BLOCK: carrying across more than 80 changed lines" 1 "$(prs shape "$T/carry2.md")"
@@ -1400,6 +1402,8 @@ check "pr-steps small: BLOCK with no test in the diff, BLOCK on a report with fi
 check "after pr-steps small, gh pr ready lacks only the gates" "gates" "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr ready 5 -R o/r"},"cwd":sys.argv[1]}))' "$GS" | python3 "$R/hooks/pre-bash-guard.py" 2>&1 | grep -o 'no pr-steps [a-z, ]* record' | sed 's/no pr-steps //; s/ record//')"
 printf 'x\n## Outside this change\nNone.\n\nNO BUGS\nMERGE AS IS: yes\n\n## Verification\n- ran it\n\n## not_checked\n- Windows\n' > "$T/sr5.md"
 check "pr-steps small records a report whose verdict comes before its Verification and not_checked sections" 0 "$(prss "$T/sr5.md")"
+mkdir -p "$GS/dist"; seq 1 300 > "$GS/dist/a.mjs"; git -C "$GS" add dist; git -C "$GS" -c user.name=t -c user.email=t@t commit -qm bundle
+check "pr-steps small doesn't count a committed build bundle (dist/)" 0 "$(prss "$T/sr2.md")"
 seq 1 70 >> "$GS/src/a.ts"; git -C "$GS" -c user.name=t -c user.email=t@t commit -qam d
 printf 'NO BUGS\nMERGE AS IS: yes\n- a finding after them\n' > "$T/sr4.md"
 check "BLOCK: pr-steps small on a report whose last lines aren't NO BUGS and MERGE AS IS: yes" 1 "$(prss "$T/sr4.md")"
