@@ -2269,5 +2269,18 @@ echo p13 >> "$SP/a.py"; git -C "$SP" add a.py; r13=$(bg 'git commit -m p13' "$SP
 check "BLOCK: a 7th change; a simplify record on the head that holds the 6th unblocks it" "2 0" "$r13 $(bg 'git commit -m p13' "$SP")"
 printf 'Class: each patch narrows which lines a counts\nSIMPLIFIED\n' > "$T/simp2.md"
 check "BLOCK: pr-steps simplify SIMPLIFIED while the worktree's diff is no smaller than HEAD's" "1 1" "$(cd "$SP" && bash "$R/bin/pr-steps" simplify "$T/simp2.md" 2>"$T/err" >/dev/null; echo $?) $(grep -c 'no smaller than HEAD' "$T/err")"
+# merges: a merge of the base, being made or in the history, is no change, and a simplify record on a merge commit counts
+SM="$T/simpm"; git init -q -b main "$SM"; mc() { git -C "$SM" -c user.name=t -c user.email=t@t "$@"; }
+seq 1 10 > "$SM/a.py"; git -C "$SM" add -A; mc commit -q -m base
+git -C "$SM" update-ref refs/remotes/origin/main HEAD; git -C "$SM" checkout -q -b fix; (cd "$SM" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null)
+for i in 1 2 3 4 5; do echo "p$i" >> "$SM/a.py"; mc commit -qam "p$i"; done
+base_edit() { mc checkout -q main; sed -i "$1s/.*/main$1/" "$SM/a.py"; mc commit -qam "main$1"; git -C "$SM" update-ref refs/remotes/origin/main HEAD; mc checkout -q fix; mc merge -q --no-commit origin/main >/dev/null; }
+base_edit 1
+check "committing a merge of the base is no change, though the branch changed its file 5 times" 0 "$(bg 'git commit --no-edit' "$SM")"
+mc commit -q --no-edit; (cd "$SM" && bash "$R/bin/pr-steps" simplify "$T/simp.md" >/dev/null)
+for i in 6 7 8; do echo "p$i" >> "$SM/a.py"; mc commit -qam "p$i"; done; echo p9 >> "$SM/a.py"; git -C "$SM" add a.py
+check "a simplify record on a merge commit starts the counts over" 0 "$(bg 'git commit -m p9' "$SM")"
+mc commit -q -m p9; base_edit 2; mc commit -q --no-edit; echo p10 >> "$SM/a.py"; git -C "$SM" add a.py
+check "a merge of the base in the history is no change either: the 5th change since the record passes" 0 "$(bg 'git commit -m p10' "$SM")"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]
