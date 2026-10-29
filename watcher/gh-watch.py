@@ -19,7 +19,8 @@
   and the repos' issue lists are polled once per X-Poll-Interval, the repo lists by the one daemon holding the lease for all.
 - GitLab threads in threads.txt are read by gl_watch.py (scan_gitlab), into the same events.log and replies-owed.md.
 - AGENT DONE: an agent the session launched has finished (hooks/agent_jobs.py), once per finish, until `agent-job done` releases its job.
-- Under T3 Code each pass's event lines also go to the session's thread (wake_thread), so it needs no Monitor.
+- Under T3 Code each pass's event lines also go to the session's thread (wake_thread), so it needs no Monitor; none while its last
+  such message is still queued in T3, whose run reads events.log past the session's cursor.
 - The steward's folder and the dirs inside it (steward.quiet) watch nitedani/mergeworthy whole and only log: no :eyes:, no owed reply, and only
   a new issue there wakes the steward (WAKES); its next pass reads the rest of events.log.
 - Every request is counted, 304 answers too (tally; `gh-watch.py --stats` prints the rate, and once an hour a line goes to gh-watch-stats.log).
@@ -683,8 +684,9 @@ def wake_thread():
         _t3_missing[0] = _ticks[0]
     start, data = unsent()
     lines = [l for l in data.decode(errors='replace').splitlines() if (WAKES if steward.quiet(HERE) else EVENT).match(l)]
-    if lines:
-        msg = f"Watcher events in {HERE}/events.log (mergeworthy:reply):\n" + '\n'.join(lines)
+    head = f"Watcher events in {HERE}/events.log (mergeworthy:reply):\n"
+    if lines and not steward.queued(tid, head):  # a wake still queued reads every event past the session's cursor when it runs
+        msg = head + '\n'.join(lines)
         try:
             r = subprocess.run([t3, 'thread', 'send', tid, '-'], input=msg, capture_output=True, text=True, timeout=60)
             err = r.returncode and (r.stderr.strip().splitlines() or [f"exit {r.returncode}"])[-1]

@@ -612,6 +612,34 @@ print(repr(buf.getvalue()))
 check "wake_thread: one message per pass with only the event lines, a half-written line waits, nothing twice, a failed send reported and retried, none without t3-thread" \
   "'WATCH ERROR t3 thread send thr-1: connect ECONNREFUSED\n'|t3 thread send thr-1 -;Watcher events in $W/events.log (mergeworthy:reply):;### o/r#5 comment 1 by bob;WATCH ERROR x: y;### AGENT DONE j;t3 thread send thr-1 -;Watcher events in $W/events.log (mergeworthy:reply):;### half written;t3 thread send thr-1 -;Watcher events in $W/events.log (mergeworthy:reply):;### half written;WATCHER RETIRED at now;" \
   "$got|$(tr '\n' ';' < "$T/t3.log")"
+: > "$T/t3.log"
+got=$(py '
+import sqlite3
+db = os.path.expanduser("~/.t3/userdata/statev2.sqlite"); os.makedirs(os.path.dirname(db), exist_ok=True)
+c = sqlite3.connect(db)
+c.execute("create table orchestration_v2_projection_runs (run_id text, thread_id text, status text, payload_json text)")
+c.execute("create table orchestration_v2_projection_messages (message_id text, payload_json text)")
+def queue(mid, text):  # T3 queues a message behind the running turn of the thread
+    c.execute("insert into orchestration_v2_projection_messages values (?, ?)", (mid, json.dumps({"text": text})))
+    c.execute("insert into orchestration_v2_projection_runs values (?, ?, ?, ?)", ("run-" + mid, "thr-q", "queued", json.dumps({"userMessageId": mid}))); c.commit()
+queue("u1", "please also look at the docs")  # a user message queued too: not a wake
+log = os.path.join(m.HERE, "events.log"); open(log, "w").close()
+open(os.path.join(m.HERE, "t3-thread"), "w").write("thr-q\n'"$T"'/bin/t3\n"); open(os.path.join(m.HERE, "t3-wake.cursor"), "w").write("0")
+sends = lambda: open("'"$T"'/t3.log").read().count("t3 thread send")
+counts = []
+for i in range(1, 6):
+    open(log, "a").write(f"### event {i}\n"); m.wake_thread()
+    if i == 1:
+        queue("w1", open("'"$T"'/t3.log").read().split("\n", 1)[1])
+    counts.append(sends())
+c.execute("update orchestration_v2_projection_runs set status = ? where run_id = ?", ("running", "run-w1")); c.commit()
+open(log, "a").write("### event 6\n"); m.wake_thread(); counts.append(sends())
+os.remove(os.path.join(m.HERE, "t3-thread")); os.remove(db)
+print(*counts)
+')
+check "wake_thread: while its wake is queued in T3, 4 more events send nothing (that run reads the log); once it runs, the next event sends, alone" \
+  "1 1 1 1 1 2|t3 thread send thr-q -;Watcher events in $W/events.log (mergeworthy:reply):;### event 1;t3 thread send thr-q -;Watcher events in $W/events.log (mergeworthy:reply):;### event 6;" \
+  "$got|$(tr '\n' ';' < "$T/t3.log")"
 got=$(py '
 log = os.path.join(m.HERE, "events.log"); open(log, "w").write("### cron event\n"); open(os.path.join(m.HERE, "t3-wake.cursor"), "w").write("0\n")
 open(os.path.join(m.HERE, "t3-thread"), "w").write("thr-2\n'"$T"'/bin/t3\n"); os.environ["PATH"] = "/usr/bin:/bin"
