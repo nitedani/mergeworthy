@@ -37,12 +37,13 @@ CLAUSE = re.compile(rf"(?={CONJUNCTION.pattern})", re.I)
 
 
 def asserted(sentence, i):
-    """Whether the words at sentence[i] state something as true now: no negation or plan in their clause ("none is ready", "it
-    will be ready", "és kész lesz"), no condition in their part or opening the next one ("once it is ready", "kész, ha zöld a
-    CI"), and the sentence is no question. A part ends at a comma, semicolon or colon; a clause also before a conjunction."""
+    """Whether the words at sentence[i] state something as true now: no negation before them in their clause ("none is ready";
+    "ready with no issues" still claims), no plan in their clause ("it will be ready", "és kész lesz"), no condition in their part
+    or opening the next one ("once it is ready", "kész, ha zöld a CI"), and the sentence is no question. A part ends at a comma,
+    semicolon or colon; a clause also before a conjunction."""
     before, (part, *after) = PART.split(sentence[:i])[-1], PART.split(sentence[i:], 1)
-    clause = CLAUSE.split(before)[-1] + CLAUSE.split(part)[0]
-    return not (NEGATION.search(clause) or FUTURE.search(clause) or CONDITION.search(before + part)
+    lead = CLAUSE.split(before)[-1]
+    return not (NEGATION.search(lead) or FUTURE.search(lead + CLAUSE.split(part)[0]) or CONDITION.search(before + part)
                 or after and CONDITION.match(after[0].lstrip()) or sentence.rstrip().endswith('?'))
 
 

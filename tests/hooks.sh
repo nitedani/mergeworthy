@@ -1240,6 +1240,9 @@ check "a question is no claim" 0 "$(stop "$T")"
 tr_file 'The tests are not flaky and the work is done: https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
 tr_file 'A tesztek nem instabilak és kész a munka: https://gitlab.com/g/p/-/merge_requests/96'
 check "BLOCK: a negation in an earlier coordinated clause leaves the claim standing" "2 2" "$a $(stop "$T")"
+tr_file 'It is ready for review with no issues: https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
+tr_file 'Kész, nincs több teendő: https://gitlab.com/g/p/-/merge_requests/96'
+check "BLOCK: a negation after the done word doesn't take the claim back" "2 2" "$a $(stop "$T")"
 tr_file 'When you asked, I checked it: all done, https://gitlab.com/g/p/-/merge_requests/96'
 check "BLOCK: a condition in an earlier clause leaves the claim standing" 2 "$(stop "$T")"
 tr_file $'> Earlier context.\n\nAll done: https://gitlab.com/g/p/-/merge_requests/96'
@@ -2243,6 +2246,7 @@ check "BLOCK: a CI claim GitHub contradicts, however phrased" "2 2 2 2" \
 check "the condition words count only in the claim's own clause: an earlier clause doesn't hide it" "2 2 2" \
   "$(slj 'After the rebase, o/r#12 is green.') $(slj 'Fixed the test that failed when run in parallel; o/r#12 is green now.') $(slj 'No need to wait: o/r#12 is green.')"
 check "BLOCK: a plan in the next clause doesn't hide a state claim" "2 2" "$(slj 'o/r#12 is green, and I will merge it.') $(slj 'o/r#12 is green and I am waiting for review.')"
+check "BLOCK: a negation after the state words doesn't take the claim back" 2 "$(slj 'o/r#12 is green with no failures.')"
 check "a condition over the claim's part (past a URL's colon), or opening the next part, states nothing" "0 0 0" \
   "$(slj 'Once CI passes and o/r#12 is green, I merge.') $(slj 'Once CI passes and https://github.com/o/r/pull/12 is green, I merge.') $(slj 'o/r#12 is merged, if the maintainer agrees.')"
 rm -f "$FX/repos_o_r_commits_abc_check-runs_per_page_100"
