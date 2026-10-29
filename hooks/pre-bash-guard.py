@@ -37,8 +37,8 @@ d = json.load(sys.stdin)
 cmd = d.get('tool_input', {}).get('command', '')
 cwd = d.get('cwd') or os.getcwd()
 def expandvars(p):
-    """p with the command's own variables (`D=~/x; ... $D/a.md`), then the environment's, put in ($X, ${X}); anything else stays as written."""
-    return re.sub(r'\$(?:\{(\w+)\}|(\w+))', lambda m: shell_vars.get(m[1] or m[2], os.environ.get(m[1] or m[2], m[0])), p)
+    """p with the command's own variables (`D=~/x; ... $D/a.md`), then the environment's, put in."""
+    return re.sub(r'\$\{?(\w+)\}?', lambda m: shell_vars.get(m[1], os.environ.get(m[1], m[0])), p)
 
 def block(msg):
     print(f"BLOCKED by pre-bash-guard: {msg}", file=sys.stderr); sys.exit(2)
@@ -304,54 +304,10 @@ def gitlab_repo(a, run_dir):
         repo = (re.search(r'gitlab\.com[:/](.+?)(?:\.git)?$', url) or [None, None])[1]
     return 'gitlab.com/' + repo.strip('/') if repo and '://' not in repo else None
 
-def is_gitlab(host, env):
-    """Whether host is a GitLab instance as glab knows one: its name says so, or glab's config.yml (where glab reads it) has a section for it."""
-    if 'gitlab' in host: return True
-    d = env.get('GLAB_CONFIG_DIR') or os.path.join(env.get('XDG_CONFIG_HOME') or os.path.expanduser('~/.config'), 'glab-cli')
-    try: hosts = re.search(r'^hosts:[ \t]*\n((?:[ \t]+.*\n?|[ \t]*\n)*)', open(os.path.join(d, 'config.yml')).read(), re.M)
-    except OSError: return False
-    keys = re.findall(r'^([ \t]+)([^\s#][^:]*):', hosts[1], re.M) if hosts else []
-    return any(k == host and i == keys[0][0] for i, k in keys)
-
-GLAB_VARS = ('GITLAB_HOST', 'GITLAB_URI', 'GL_HOST', 'GLAB_CONFIG_DIR', 'XDG_CONFIG_HOME', 'GITLAB_API_HOST', 'GLAB_ENABLE_CI_AUTOLOGIN', 'GITLAB_CI', 'CI_SERVER_FQDN')
-
-def glab_env(env, d):
-    """The environment a glab command with the assignments env runs in, in d: the hook's, with those and the variables exported earlier on the line,
-    each value as the shell expands it ($X, ${X}, a leading ~), and a relative config dir taken from d.
-    One computed when it runs ($(...), a backtick, ${X:-...}) blocks when it picks glab's server or config (GLAB_VARS), and is left out otherwise (a token)."""
-    if env_removed:
-        block("this command removes variables (env -i, env -u, unset), so which GitLab server and project it acts on can't be told: run it without removing them")
-    out = dict(os.environ)
-    for k, v in {**{n: shell_vars[n] for n in exported if n in shell_vars}, **env}.items():
-        v = expandvars(os.path.expanduser(v) if v.startswith('~') else v)
-        if k in ('GLAB_CONFIG_DIR', 'XDG_CONFIG_HOME') and v and not v.startswith('/') and not re.search(r'[$`]', v):
-            if re.search(r'[$`]', d):
-                block(f"{k} on this command is relative, and the dir it runs in is computed when it runs, so which config glab reads can't be told: write it out absolute")
-            v = os.path.join(d, v)
-        if re.search(r'[$`]', v):
-            if k in GLAB_VARS:
-                block(f"{k} on this command is computed when it runs, so which GitLab server and project it acts on can't be told: write its value out")
-            continue
-        out[k] = v
-    return out
-
-def removes_vars(t):
-    """Whether the env wrapper of the simple command t removes variables from what it runs (`env -i`, `env -u X`, `env --unset=X`)."""
-    pre = t[:len(t) - len(prog(t))]
-    return any(re.fullmatch(r'-|-\w*[iu]\w*|--(?:ignore-environment|unset)(?:=.*)?', x) for i, w in enumerate(pre) if os.path.basename(w) == 'env' for x in pre[i + 1:])
-
-def gitlab_host(a, env, run_dir):
-    """The host a glab command acts on, with the environment env (glab_env), in glab's order: --hostname; GITLAB_HOST, GITLAB_URI, GL_HOST
-    (CI_SERVER_FQDN alone under CI auto-login), a host or URL; the checkout's GitLab origin; gitlab.com."""
-    if host := (opt(a, ['--hostname']) or [None])[-1]: return host
-    names = ['CI_SERVER_FQDN'] if env.get('GLAB_ENABLE_CI_AUTOLOGIN') == env.get('GITLAB_CI') == 'true' else ['GITLAB_HOST', 'GITLAB_URI', 'GL_HOST']
-    if host := next(filter(None, map(env.get, names)), None): return re.sub(r'^https?://|/+$', '', host)
-    origin = repo_of(subprocess.run(['git', '-C', run_dir, 'remote', 'get-url', 'origin'], capture_output=True, text=True).stdout.strip())
-    return origin[0] if origin and is_gitlab(origin[0], env) else 'gitlab.com'
-
 def api_opens(ep, rest, env, d):
     """(repo, 'issue' or 'pr') a `gh api` or `glab api` POST to ep, run in d, opens, in each form the CLIs take (a full URL, a leading slash, an api/v3/
-    or api/v4/ prefix, a query, gh's {owner}/{repo} from GH_REPO or the checkout, glab's :fullpath or :id, a project's id); None for any other endpoint, repo None when it can't be told."""
+    or api/v4/ prefix, a query, gh's {owner}/{repo} from GH_REPO or the checkout, glab's :fullpath or :id, a GitLab host from --hostname or GITLAB_HOST);
+    None for any other endpoint, repo None when it can't be told (a project's numeric id)."""
     host, path = re.match(r'(?:https?://([^/]+))?/?(?:api/v[34]/)?([^?]*)', ep).groups()
     if (m := re.fullmatch(r'repos/([^/]+/[^/]+)/(issues|pulls)', path)):
         base = re.sub(r'^.*?([^/]+/[^/]+)$', r'\1', env.get('GH_REPO') or os.environ.get('GH_REPO') or cwd_repo(d) or '')
@@ -360,12 +316,8 @@ def api_opens(ep, rest, env, d):
     if (m := re.fullmatch(r'projects/([^/]+)/(issues|merge_requests)', path)):
         import urllib.parse
         project = urllib.parse.unquote(m[1])
-        if not host or project.isdigit(): env = glab_env(env, d)
-        host = host or gitlab_host(rest, env, d)
-        if project.isdigit():  # a project's id: its path, asked of the server the write goes to, with the command's variables
-            try: project = json.loads(subprocess.run(['glab', 'api', '--hostname', host, f'projects/{project}'], env=env, capture_output=True, text=True, timeout=20).stdout).get('path_with_namespace') or ''
-            except (OSError, subprocess.TimeoutExpired, ValueError, AttributeError): project = ''
-        repo = gitlab_repo(rest, d) if project in (':fullpath', ':id') else f'{host}/{project}' if '/' in project else None
+        host = host or (opt(rest, ['--hostname']) or [None])[-1] or env.get('GITLAB_HOST') or os.environ.get('GITLAB_HOST') or 'gitlab.com'
+        repo = gitlab_repo(rest, d) if project in (':fullpath', ':id') else f"{re.sub(r'^https?://|/+$', '', host)}/{project}" if '/' in project else None
         return repo, 'pr' if m[2] == 'merge_requests' else 'issue'
     return None
 
@@ -500,14 +452,14 @@ def pushed(git_cmd, env, rest):
     return urls, out
 
 def collaboration(d, url, heads):
-    """([why this push is collaboration work], [{url, isDraft, head: its branch} of each open PR or MR it updates]): it updates an open
-    PR's (MR's) head, or goes to a repo the pushing account doesn't own, or to a host that is neither GitHub nor GitLab. A push of its own (no
+    """([why this push is collaboration work], [{url, isDraft} of each open PR or MR it updates]): it updates an open PR's (MR's)
+    head, or goes to a repo the pushing account doesn't own, or to a host that is neither GitHub nor GitLab. A push of its own (no
     PR, its own repo) has no why. When GitHub or GitLab can't answer, a push to the account's own repo from a checkout of no one
     else's repo is its own; anything else blocks."""
     if not heads or not (r := repo_of(url)): return [], []
     host, repo = r
     hub = host == 'github.com'
-    if not hub and not is_gitlab(host, os.environ): return [f"{host} is neither GitHub nor GitLab, so whether it updates a PR can't be told"], []
+    if not hub and 'gitlab' not in host: return [f"{host} is neither GitHub nor GitLab, so whether it updates a PR can't be told"], []
     owner = repo.rsplit('/', 1)[0]
     cli = ['gh', 'config', 'get', '-h', host, 'user'] if hub else ['glab', 'config', 'get', 'user', '--host', host]
     try: login = subprocess.run(cli, capture_output=True, text=True, timeout=20).stdout.strip()
@@ -521,14 +473,14 @@ def collaboration(d, url, heads):
         q = 'query($o:String!,$n:String!' + ''.join(f',$b{i}:String!' for i in range(len(heads))) + '){viewer{login} repository(owner:$o,name:$n){owner{login} ' + \
             ' '.join(f'b{i}:ref(qualifiedName:$b{i}){{associatedPullRequests(states:OPEN,first:5){{nodes{{url isDraft}}}}}}' for i in range(len(heads))) + '}}'
         data, err = ask(['gh', 'api', 'graphql', '-f', f'query={q}', '-f', f'o={owner}', '-f', f'n={repo.split("/")[1]}',
-                         *[x for i, (_, b, _) in enumerate(heads) for x in ('-f', f'b{i}=refs/heads/{b}')]])
+                         *[x for i, (_, b) in enumerate(heads) for x in ('-f', f'b{i}=refs/heads/{b}')]])
         data = (data.get('data') or {}).get('repository') and data['data'] if isinstance(data, dict) else None
     elif login and owner != login:
         return [f"{repo} isn't {login}'s"], []
     else:
         import urllib.parse
-        answers = [ask(['glab', 'api', '--hostname', host, f"projects/{urllib.parse.quote(repo, safe='')}/merge_requests?state=opened&source_branch={urllib.parse.quote(b)}"]) for _, b, _ in heads]
-        data = [(b, x) for (a, _), (_, b, _) in zip(answers, heads) for x in a] if all(isinstance(a, list) for a, _ in answers) else None
+        answers = [ask(['glab', 'api', '--hostname', host, f"projects/{urllib.parse.quote(repo, safe='')}/merge_requests?state=opened&source_branch={urllib.parse.quote(b)}"]) for _, b in heads]
+        data = [x for a, _ in answers for x in a] if all(isinstance(a, list) for a, _ in answers) else None
         err = next((e for a, e in answers if not isinstance(a, list)), '')
     if data is None:
         others = {o[1].split('/')[0] for u in set(subprocess.run(['git', '-C', d, 'remote', '-v'], capture_output=True, text=True).stdout.split()[1::3])
@@ -536,9 +488,9 @@ def collaboration(d, url, heads):
         if login and login == owner and not others: return [], []
         block(f"{'gh' if hub else 'glab'} couldn't tell whether this push to {repo} updates a {'PR' if hub else 'MR'} ({err[:160]}), so its push gates can't be checked: retry once it answers")
     if not hub:
-        mrs = [{'url': x.get('web_url'), 'isDraft': bool(x.get('draft')), 'head': b} for b, x in data if isinstance(x, dict)]
+        mrs = [{'url': x.get('web_url'), 'isDraft': bool(x.get('draft'))} for x in data if isinstance(x, dict)]
         return [f"it updates {', '.join(p['url'] for p in mrs)}"] * bool(mrs), mrs
-    prs = [{**p, 'head': b} for i, (_, b, _) in enumerate(heads) for p in ((data['repository'].get(f'b{i}') or {}).get('associatedPullRequests') or {}).get('nodes') or []]
+    prs = [p for i in range(len(heads)) for p in ((data['repository'].get(f'b{i}') or {}).get('associatedPullRequests') or {}).get('nodes') or []]
     why = [f"it updates {', '.join(p['url'] for p in prs)}"] * bool(prs) + \
           [f"{repo} isn't {data['viewer']['login']}'s"] * (data['repository']['owner']['login'] != data['viewer']['login'])
     return why, prs
@@ -676,13 +628,13 @@ def check(t, has_cd):
             if {'--git-dir', '--work-tree'} & {x.split('=')[0] for x in git_globals(t)} or {'GIT_DIR', 'GIT_WORK_TREE'} & set(env):
                 block("push from the checkout itself (cd or -C, without --git-dir, --work-tree, GIT_DIR or GIT_WORK_TREE), so what it publishes can be checked")
             urls, heads = pushed(['git', *git_globals(t)], {**os.environ, **env}, rest)
-            why, prs = [sum(x, []) for x in zip(*[collaboration(repo, u, heads) for u in urls])] or ([], [])
+            why, prs = [sum(x, []) for x in zip(*[collaboration(repo, u, [h[:2] for h in heads]) for u in urls])] or ([], [])
             if why and not all(sha for sha, _, _ in heads):
                 block(f"this push ({'; '.join(why)}) publishes a commit computed when it runs, so its records can't be checked: push a branch or a sha written out")
             if why:  # a push of its own (no PR, its own repo) is free; collaboration runs the task's records first
                 check_workflow(f"this push ({'; '.join(why)})", repo, [sha for sha, _, _ in heads], [p['url'] for p in prs])
-                for _, branch, local in heads:
-                    if any(p['head'] == branch for p in prs): need_approach(repo, f"this push ({'; '.join(why)})", local)
+                if prs:  # each branch it publishes, whichever is checked out
+                    for _, _, local in heads: need_approach(repo, f"this push ({'; '.join(why)})", local)
                 head, missing = missing_steps(repo)
                 if missing and any(not p['isDraft'] for p in prs):
                     block(f"this branch's PR is out of draft and HEAD {head[:10]} has no pr-steps {', '.join(missing)} record (approach: pull-request step 5, once per branch): run converge's pipeline on it first (each step ends with its `pr-steps <step> <output>`), or `gh pr ready --undo` while it converges")
@@ -828,8 +780,6 @@ has_cd = False
 run_dir = cwd  # where the command's git calls run: follows `cd <dir>` within the command
 shell_vars = {}  # NAME=value set by the command itself (`W=~/x; cd $W`), for the cd targets after it
 clones = {}  # folder: the repo it was cloned from, for a `git clone` in this command
-unset_seen = env_removed = False  # an `unset` earlier in this command; the command being checked removes variables (glab_env)
-exported = set()  # names this command exported (`export X=v`, `X=v; export X`, `declare -x X=v`), whose shell_vars value reaches glab (glab_env)
 for s in segs:
     if prog(s)[:2] == ['git', 'clone'] and (ops := [x for x in operands(prog(s)[2:]) if not x.startswith('-')]):
         src = ops[0] if repo_of(ops[0]) else os.path.join(run_dir, os.path.expanduser(ops[0]))
@@ -847,17 +797,11 @@ for s in segs:
             block(f"`{named}` runs a command named only when it runs, with `{' '.join(words)[:80]}`: write the command out, so it can be checked")
     if s and all(re.match(r'^\w+=', x) for x in s):
         shell_vars.update(x.split('=', 1) for x in s)
-    if s[:1] == ['export'] and '-n' not in s or s[:1] in (['declare'], ['typeset']) and any(re.fullmatch(r'-\w*x\w*', x) for x in s):
-        for n, eq, v in (x.partition('=') for x in s[1:] if not x.startswith('-')):
-            exported.add(n)
-            if eq: shell_vars[n] = v
-    env_removed = unset_seen or removes_vars(s)
     check(s, has_cd)
-    unset_seen = unset_seen or prog(s)[:1] == ['unset']
     if prog(s)[:1] in (['cd'], ['pushd']):
         has_cd = True
         args = [x for x in prog(s)[1:] if x not in ('-P', '-L', '-e', '--')]
-        to = expandvars(args[0]) if args else '~'
+        to = re.sub(r'\$\{?(\w+)\}?', lambda m: shell_vars.get(m[1], os.environ.get(m[1], m[0])), args[0]) if args else '~'
         if to == '$(git rev-parse --show-toplevel)':
             to = subprocess.run(['git', '-C', run_dir, 'rev-parse', '--show-toplevel'], capture_output=True, text=True).stdout.strip() or to
         run_dir = os.path.join(run_dir, os.path.expanduser(to))

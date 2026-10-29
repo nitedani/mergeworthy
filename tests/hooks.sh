@@ -2169,9 +2169,7 @@ cat > "$T/bin/glab" <<'EOF'
 #!/usr/bin/env bash
 [ "$1 $2 $3" = "config get user" ] && { [ ! -f "$FX/gl_login" ] || cat "$FX/gl_login"; exit; }
 [ "$1" = api ] || exit 1
-a=${GITLAB_API_HOST:-}; [ "${GLAB_ENABLE_CI_AUTOLOGIN:-} ${GITLAB_CI:-}" = 'true true' ] && a=${CI_SERVER_FQDN:-}  # the server glab sends to: $FX/gl_<it>@<path> answers there
-f="$FX/gl_${a:+$a@}$(printf '%s' "$4" | tr '/?&=%' '_____')"
-[ -f "$f.token" ] && [ "${GITLAB_TOKEN:-}" != "$(cat "$f.token")" ] && { echo 'glab: 401 Unauthorized (HTTP 401)' >&2; exit 1; }  # a project only that token reads
+f="$FX/gl_$(printf '%s' "$4" | tr '/?&=%' '_____')"
 [ -f "$f" ] && cat "$f" || { echo 'glab: 404 Not found (HTTP 404)' >&2; exit 1; }
 EOF
 GL="$T/gl"; git init -q -b scratch "$GL"; git -C "$GL" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; git -C "$GL" remote add origin git@gitlab.com:me/app.git
@@ -2198,60 +2196,10 @@ api_forms() { for c in "GH_REPO=o/r gh api 'repos/{owner}/{repo}/pulls' -f title
 check "BLOCK: with no approach record, a PR or MR created through the API in each form gh and glab take ({owner}/{repo}, a leading slash, a full URL, GitHub Enterprise's, api/v4/, a query)" "2 2 2 2 2 2 2" "$(api_forms)"
 check "BLOCK: an issue opened through the API in those forms, in a repo no watcher covers, naming it with its host" "2 1 2 1 2 1 2 1" \
   "$(bg "GH_REPO=nobody/x gh api 'repos/{owner}/{repo}/issues' -f title=x -F body=@$T/na.md" "$NA") $(grep -c 'no running watcher covers nobody/x' "$T/err") $(bg "glab api '/api/v4/projects/nobody%2Fx/issues?x=1' -X POST -f title=x" "$NA") $(grep -c 'no running watcher covers gitlab.com/nobody/x' "$T/err") $(bg 'glab api https://gitlab.example.com/api/v4/projects/nobody%2Fx/issues -X POST -f title=x' "$NA") $(grep -c 'no running watcher covers gitlab.example.com/nobody/x' "$T/err") $(bg "gh api https://github.example.com/api/v3/repos/nobody/x/issues -f title=x -F body=@$T/na.md" "$NA") $(grep -c 'no running watcher covers github.example.com/nobody/x' "$T/err")"
-# a numeric project id is the project GitLab names for it, never the checkout's
-bash -c 'exec -a gh-watch-daemon sleep 600' & NPID=$!; NW="$T/nw"; mkdir -p "$NW"; echo "$NPID" > "$NW/gh-watch.pid"; echo gitlab.com/me/app > "$NW/repos.txt"; echo "$NW" > "$HOME/.claude/gh-watch-dirs.txt"
-echo '{"id": 123, "path_with_namespace": "me/app"}' | tee "$FX/gl_projects_123" > "$FX/gl_f.example.com@projects_123"; echo '{"id": 456, "path_with_namespace": "nobody/x"}' > "$FX/gl_projects_456"
-check "an issue opened through the API by a project's id: covered passes, from a checkout or outside one; an uncovered one blocks, naming it, in a checkout of a covered one; one GitLab can't read blocks; one on another host (--hostname) is that host's" "0 0 2 1 2 2 1" \
-  "$(bg 'glab api projects/123/issues -X POST -f title=x' "$NA") $(bg 'glab api projects/123/issues -X POST -f title=x' "$T") $(bg 'glab api projects/456/issues -X POST -f title=x' "$NA") $(grep -c 'no running watcher covers gitlab.com/nobody/x' "$T/err") $(bg 'glab api projects/789/issues -X POST -f title=x' "$NA") $(bg 'glab api --hostname gl.example.com projects/123/issues -X POST -f title=x' "$NA") $(grep -c 'no running watcher covers gl.example.com/me/app' "$T/err")"
-git init -q "$T/glself"; git -C "$T/glself" remote add origin git@gitlab.example.com:me/app.git
-check "a project's id is resolved on the host glab uses: GITLAB_HOST outside a checkout, the checkout's self-hosted GitLab origin inside one" "2 1 2 1" \
-  "$(bg 'GITLAB_HOST=gitlab.example.com glab api projects/123/issues -X POST -f title=x' "$T") $(grep -c 'no running watcher covers gitlab.example.com/me/app' "$T/err") $(bg 'glab api projects/123/issues -X POST -f title=x' "$T/glself") $(grep -c 'no running watcher covers gitlab.example.com/me/app' "$T/err")"
-glenv() { # <variables> <host> [glab api options]: the hook's exit for a project id's issue under those variables, and whether it names <host>'s project
-  printf '%s %s' "$(bg "$1 glab api ${3:-}projects/123/issues -X POST -f title=x" "$T")" "$(grep -c "no running watcher covers $2/me/app:" "$T/err")"; }
-check "GITLAB_HOST, as a URL too, names the host a project's id is resolved on" "2 1" "$(glenv GITLAB_HOST=https://a.example.com a.example.com)"
-check "GITLAB_URI names the host a project's id is resolved on" "2 1" "$(glenv GITLAB_URI=c.example.com c.example.com)"
-check "GL_HOST names the host a project's id is resolved on" "2 1" "$(glenv GL_HOST=b.example.com b.example.com)"
-check "under CI auto-login, CI_SERVER_FQDN names it, and GITLAB_HOST is ignored" "2 1" "$(glenv 'GLAB_ENABLE_CI_AUTOLOGIN=true GITLAB_CI=true CI_SERVER_FQDN=f.example.com GITLAB_HOST=a.example.com' f.example.com)"
-check "with several set, glab 1.125.0's order: GITLAB_HOST, then GITLAB_URI, then GL_HOST, and --hostname over them" "2 1 2 1 2 1" \
-  "$(glenv 'GITLAB_HOST=a.example.com GITLAB_URI=c.example.com GL_HOST=b.example.com' a.example.com) $(glenv 'GITLAB_URI=c.example.com GL_HOST=b.example.com' c.example.com) $(glenv 'GITLAB_HOST=a.example.com GL_HOST=b.example.com' h.example.com '--hostname h.example.com ')"
-echo '{"id": 123, "path_with_namespace": "other/proj"}' | tee "$FX/gl_e.example.com@projects_123" > "$FX/gl_g.example.com@projects_123"
-check "a project's id is resolved on the server the write goes to: GITLAB_API_HOST's, naming the project there" "2 1" \
-  "$(bg 'GITLAB_API_HOST=e.example.com glab api projects/123/issues -X POST -f title=x' "$T") $(grep -c 'no running watcher covers gitlab.com/other/proj:' "$T/err")"
-check "a project's id is resolved on the server the write goes to: CI_SERVER_FQDN's under CI auto-login, naming the project there" "2 1" \
-  "$(bg 'GLAB_ENABLE_CI_AUTOLOGIN=true GITLAB_CI=true CI_SERVER_FQDN=g.example.com glab api projects/123/issues -X POST -f title=x' "$T") $(grep -c 'no running watcher covers g.example.com/other/proj:' "$T/err")"
-# a value on the command is read as the shell expands it ($VAR, ${VAR}, a leading ~); one computed when it runs blocks, unless it is only a token
-echo '{"id": 777, "path_with_namespace": "me/app"}' > "$FX/gl_projects_777"; echo good > "$FX/gl_projects_777.token"
-check "a token on the command, as the shell expands it: a wrong one can't read the project (blocks), the right one, \$BOT and \${BOT} can" "2 0 0 0" \
-  "$(bg 'GITLAB_TOKEN=bad glab api projects/777/issues -X POST -f title=x' "$T") $(bg 'GITLAB_TOKEN=good glab api projects/777/issues -X POST -f title=x' "$T") $(BOT=good bg 'GITLAB_TOKEN="$BOT" glab api projects/777/issues -X POST -f title=x' "$T") $(BOT=good bg 'GITLAB_TOKEN=${BOT} glab api projects/777/issues -X POST -f title=x' "$T")"
-check "a token, or another variable, computed when it runs is left out: the lookup uses the session's token" "0 0 0" \
-  "$(GITLAB_TOKEN=good bg 'GITLAB_TOKEN="$(cat tok)" glab api projects/777/issues -X POST -f title=x' "$T") $(GITLAB_TOKEN=good bg 'GITLAB_TOKEN=`cat tok` glab api projects/777/issues -X POST -f title=x' "$T") $(GITLAB_TOKEN=good bg 'FOO=$(date) glab api projects/777/issues -X POST -f title=x' "$T")"
-check "a host variable written as \$H or \${H} names H's host" "2 1 2 1 2 1" \
-  "$(H=h.example.com bg 'GITLAB_HOST=$H glab api projects/123/issues -X POST -f title=x' "$T") $(grep -c 'no running watcher covers h.example.com/me/app:' "$T/err") $(H=h.example.com bg 'GITLAB_URI=${H} glab api projects/123/issues -X POST -f title=x' "$T") $(grep -c 'no running watcher covers h.example.com/me/app:' "$T/err") $(H=h.example.com bg 'GL_HOST="$H" glab api projects/123/issues -X POST -f title=x' "$T") $(grep -c 'no running watcher covers h.example.com/me/app:' "$T/err")"
-unknown() { printf '%s %s ' "$(bg "$1 glab api projects/123/issues -X POST -f title=x" "$T")" "$(grep -c "$2 on this command is computed when it runs" "$T/err")"; }
-check "BLOCK: a host, config dir, API host or CI variable computed when it runs (\$(...), a backtick, \${X:-...}), naming it" "2 1 2 1 2 1 2 1 2 1" \
-  "$( { unknown 'GITLAB_HOST="$(cat h)"' GITLAB_HOST; unknown 'GLAB_CONFIG_DIR=`pwd`/c' GLAB_CONFIG_DIR; unknown 'XDG_CONFIG_HOME=${NOPE_X:-/tmp}' XDG_CONFIG_HOME; unknown 'GITLAB_API_HOST=$(cat a)' GITLAB_API_HOST
-       unknown 'GLAB_ENABLE_CI_AUTOLOGIN=true GITLAB_CI=true CI_SERVER_FQDN=$(cat f)' CI_SERVER_FQDN; } | xargs)"
-git init -q "$T/glcode"; git -C "$T/glcode" remote add origin git@code.example.com:me/app.git; mkdir -p "$T/glcfg"; printf 'host: gitlab.com\nhosts:\n    gitlab.com:\n        token:\n    code.example.com:\n        token: x\n' > "$T/glcfg/config.yml"
-mkdir -p "$T/glcode/cfgrel" "$T/glcode/xdgrel/glab-cli"; cp "$T/glcfg/config.yml" "$T/glcode/cfgrel/"; cp "$T/glcfg/config.yml" "$T/glcode/xdgrel/glab-cli/"
-check "a relative GLAB_CONFIG_DIR or XDG_CONFIG_HOME is the command's dir's: its host is GitLab, naming the project there; under a dir computed when it runs, it blocks, naming it" "2 1 2 1 2 1" \
-  "$(bg 'GLAB_CONFIG_DIR=cfgrel glab api projects/123/issues -X POST -f title=x' "$T/glcode") $(grep -c 'no running watcher covers code.example.com/me/app:' "$T/err") $(bg 'XDG_CONFIG_HOME=xdgrel glab api projects/123/issues -X POST -f title=x' "$T/glcode") $(grep -c 'no running watcher covers code.example.com/me/app:' "$T/err") $(bg 'cd "$(mktemp -d)" && GLAB_CONFIG_DIR=cfgrel glab api projects/123/issues -X POST -f title=x' "$T/glcode") $(grep -c 'GLAB_CONFIG_DIR on this command is relative' "$T/err")"
-exported() { printf '%s %s ' "$(bg "$1 glab api projects/123/issues -X POST -f title=x" "$T")" "$(grep -c "$2" "$T/err")"; }
-check "a host exported earlier on the line (export X=, X=; export X, declare -x, export X=\$H) is the one glab uses, naming its project; one only assigned isn't exported, so it doesn't count" "2 1 2 1 2 1 2 1 0 0" \
-  "$( { exported 'export GITLAB_HOST=self.example.com;' 'covers self.example.com/me/app:'; exported 'GITLAB_HOST=self.example.com; export GITLAB_HOST;' 'covers self.example.com/me/app:'
-       exported 'declare -x GITLAB_HOST=self.example.com;' 'covers self.example.com/me/app:'; exported 'H=self.example.com; export GITLAB_HOST=$H;' 'covers self.example.com/me/app:'
-       exported 'GITLAB_HOST=self.example.com;' 'covers self.example.com/me/app:'; } | xargs)"
-check "BLOCK: a host exported earlier on the line that is computed when it runs, naming it" "2 1" "$(exported 'export GITLAB_HOST="$(cat h)";' 'GITLAB_HOST on this command is computed' | xargs)"
-removes() { printf '%s %s ' "$(bg "$1" "$T")" "$(grep -c 'removes variables' "$T/err")"; }
-check "BLOCK: a glab api POST that removes variables (env -u, env --unset=, env -i, unset before it), naming it; env setting one passes" "2 1 2 1 2 1 2 1 0 0" \
-  "$( { removes 'env -u GITLAB_HOST glab api projects/123/issues -X POST -f title=x'; removes 'env --unset=GITLAB_TOKEN glab api projects/123/issues -X POST -f title=x'
-       removes 'env -i glab api projects/123/issues -X POST -f title=x'; removes 'unset GITLAB_HOST; glab api projects/123/issues -X POST -f title=x'
-       removes 'env FOO=1 glab api projects/123/issues -X POST -f title=x'; } | xargs)"
-mkdir -p "$HOME/glcfgh"; cp "$T/glcfg/config.yml" "$HOME/glcfgh/"
-check "a config dir written as ~/... or \$HOME/... is that dir: its host is GitLab, naming the project there" "2 1 2 1" \
-  "$(bg 'GLAB_CONFIG_DIR=~/glcfgh glab api projects/123/issues -X POST -f title=x' "$T/glcode") $(grep -c 'no running watcher covers code.example.com/me/app:' "$T/err") $(bg 'GLAB_CONFIG_DIR=$HOME/glcfgh glab api projects/123/issues -X POST -f title=x' "$T/glcode") $(grep -c 'no running watcher covers code.example.com/me/app:' "$T/err")"
-check "a self-hosted origin whose name has no 'gitlab' is GitLab once glab's config has its host: a project's id is resolved there, naming it; without, on gitlab.com" "2 1 0" \
-  "$(GLAB_CONFIG_DIR="$T/glcfg" bg 'glab api projects/123/issues -X POST -f title=x' "$T/glcode") $(grep -c 'no running watcher covers code.example.com/me/app' "$T/err") $(GLAB_CONFIG_DIR="$T/nocfg" bg 'glab api projects/123/issues -X POST -f title=x' "$T/glcode")"
-kill "$NPID"; : > "$HOME/.claude/gh-watch-dirs.txt"
+check "BLOCK: an issue or MR opened through the API by a project's numeric id, since which project it is can't be told, naming that" "2 1" \
+  "$(bg 'glab api projects/123/issues -X POST -f title=x' "$NA") $(grep -c "can't tell which repo this acts on" "$T/err")"
+check "a GitLab project path through the API is on --hostname's or GITLAB_HOST's host" "2 1 2 1" \
+  "$(bg 'glab api --hostname gl.example.com projects/nobody%2Fx/issues -X POST -f title=x' "$NA") $(grep -c 'no running watcher covers gl.example.com/nobody/x' "$T/err") $(bg 'GITLAB_HOST=https://h.example.com glab api projects/nobody%2Fx/issues -X POST -f title=x' "$NA") $(grep -c 'no running watcher covers h.example.com/nobody/x' "$T/err")"
 (cd "$NA" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 check "each passes once the branch has its approach record" "0 0 0 0 0 0 0 0 0 0" "$(na)"
 check "the API forms pass too" "0 0 0 0 0 0 0" "$(api_forms)"
@@ -2268,15 +2216,11 @@ named() { for c in 'glab mr create --draft --source-branch unrecorded --title x'
 check "BLOCK: from a recorded checkout, a PR or MR create naming a branch with no record, in each form, naming it" "2 1 2 1 2 1 2 1 2 1 2 1" "$(named unrecorded)"
 check "from a checkout with no record, a PR or MR create naming a recorded branch passes, in each form" "0 0 0 0 0 0 0 0 0 0 0 0" "$(git -C "$NA" checkout -q unrecorded; named mr-b; git -C "$NA" checkout -q unrelated)"
 git -C "$NA" branch -q fresh; echo '[]' > "$FX/gl_projects_me_2Fapp_merge_requests_state_opened_source_branch_fresh"
-check "a push of a new branch with no MR and no record beside a recorded one with an open MR passes; beside an unrecorded one with an open MR, it blocks, naming that one" "0 2 1" \
-  "$(MERGEWORTHY_WATCHER=off bg 'git push origin mr-b:mr-b fresh:fresh' "$NA") $(MERGEWORTHY_WATCHER=off bg 'git push origin fresh:fresh unrecorded:unrecorded' "$NA") $(grep -c 'unrecorded has no approach record' "$T/err")"
+check "BLOCK: a push updating an open MR needs the record of every branch it publishes, a new one beside it too, naming it" "2 1" \
+  "$(MERGEWORTHY_WATCHER=off bg 'git push origin mr-b:mr-b fresh:fresh' "$NA") $(grep -c 'fresh has no approach record' "$T/err")"
 ghpr() { python3 -c 'import json,sys; print(json.dumps({"data": {"viewer": {"login": "me"}, "repository": {"owner": {"login": "me"}, **{f"b{i}": {"associatedPullRequests": {"nodes": [{"url": "https://github.com/me/app/pull/7", "isDraft": True}] if x == "pr" else []}} for i, x in enumerate(sys.argv[1:])}}}}))' "$@" > "$FX/graphql_me"; }
-check "the same on GitHub: a new branch with no PR beside a recorded PR branch passes; beside an unrecorded PR branch it blocks, naming that one" "0 2 1" \
-  "$(ghpr pr none; MERGEWORTHY_WATCHER=off bg 'git push https://github.com/me/app.git mr-b:mr-b fresh:fresh' "$NA") $(ghpr none pr; MERGEWORTHY_WATCHER=off bg 'git push https://github.com/me/app.git fresh:fresh unrecorded:unrecorded' "$NA") $(grep -c 'unrecorded has no approach record' "$T/err")"
-CB="$TASKW/cb"; git init -q -b cb "$CB"; git -C "$CB" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; git -C "$CB" remote add origin git@code.example.com:me/app.git; quick "$CB"
-echo '[{"web_url":"https://code.example.com/me/app/-/merge_requests/2","draft":true}]' > "$FX/gl_projects_me_2Fapp_merge_requests_state_opened_source_branch_cb"
-check "BLOCK: a push to an open MR on a self-hosted GitLab glab's config names, with no approach record, naming step 5" "2 1" \
-  "$(GLAB_CONFIG_DIR="$T/glcfg" MERGEWORTHY_WATCHER=off bg 'git push origin HEAD:cb' "$CB") $(grep -c 'pull-request step 5).*before this push (it updates https://code.example.com/me/app/-/merge_requests/2)' "$T/err")"
+check "BLOCK: the same on GitHub, naming it" "2 1" \
+  "$(ghpr pr none; MERGEWORTHY_WATCHER=off bg 'git push https://github.com/me/app.git mr-b:mr-b fresh:fresh' "$NA") $(grep -c 'fresh has no approach record' "$T/err")"
 tr_cmd 'cd /tmp/x && git push origin HEAD:fix'
 check "a session that pushed, with no scope.md in a work folder it used, is told to write one (stop-lint reads its git commands)" "2 1" "$(slj 'Pushed the fix.') $(grep -c 'no work folder it used has a scope.md' "$T/err")"
 check "the parses a stop made are kept for the session's next stop, which blocks the same" "1 2" "$(ls "$HOME/.claude/mergeworthy-parses/s-fc.json" | wc -l) $(slj 'Pushed the fix.')"
