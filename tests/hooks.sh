@@ -1237,7 +1237,10 @@ tr_file 'Kész sem vagyok még: https://gitlab.com/g/p/-/merge_requests/96'
 check "a Hungarian negation after the done word is no claim either" "0 0" "$a $(stop "$T")"
 tr_file 'It is ready for review if CI passes: https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
 tr_file 'Kész, ha zöld a CI: https://gitlab.com/g/p/-/merge_requests/96'
-check "a condition after the done word, or opening the next part, is no claim" "0 0" "$a $(stop "$T")"
+check "a condition after the done word in its part is no claim; one opening the next part leaves it standing" "0 2" "$a $(stop "$T")"
+tr_file 'All done, if you have questions I can explain: https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
+tr_file 'All done as expected: https://gitlab.com/g/p/-/merge_requests/96'
+check "BLOCK: an offer's condition or an expectation after the done word leaves it standing" "2 2" "$a $(stop "$T")"
 tr_file 'Kész van? https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
 tr_file 'All done, any questions? https://gitlab.com/g/p/-/merge_requests/96'
 check "BLOCK: a question still claims, as on main" "2 2" "$a $(stop "$T")"
@@ -2255,7 +2258,8 @@ check "BLOCK: a plan in the next clause doesn't hide a state claim" "2 2" "$(slj
 check "BLOCK: a negation after the state words doesn't take the claim back" 2 "$(slj 'o/r#12 is green with no failures.')"
 check "BLOCK: a question after it doesn't hide a state claim" 2 "$(slj 'o/r#12 is green, any questions?')"
 check "BLOCK: a time word after the state words doesn't hide the claim" 2 "$(slj 'o/r#12 is green after the rebase.')"
-check "a condition over the claim's part (past a URL's colon), or opening the next part, states nothing" "0 0 0" \
+check "BLOCK: an expectation after the state words doesn't hide the claim" 2 "$(slj 'o/r#12 is green as expected.')"
+check "a condition over the claim's part (past a URL's colon) states nothing; one opening the next part leaves it standing" "0 0 2" \
   "$(slj 'Once CI passes and o/r#12 is green, I merge.') $(slj 'Once CI passes and https://github.com/o/r/pull/12 is green, I merge.') $(slj 'o/r#12 is merged, if the maintainer agrees.')"
 rm -f "$FX/repos_o_r_commits_abc_check-runs_per_page_100"
 # the second bug hunt: where git really pushes (-c, GIT_CONFIG_*, every -C, pushDefault), --git-dir and GIT_DIR, a name that is no remote
