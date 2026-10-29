@@ -487,7 +487,7 @@ AI_CALL = re.compile(r'(^|\s)/(ai|agent)\b', re.I)
 
 def maintainer(state, repo, login):
     """An account with write access to the repo (mergeworthy:reply §Which comments), read once a day per repo and login. GitHub shows
-    it only to an account with push access itself: elsewhere (403, 404) the repo's owner, or the association note_assoc last saw."""
+    it only to an account with push access itself: elsewhere (403, 404) the association note_assoc last saw decides, None when none was seen."""
     perms, k = state.setdefault('perm', {}), f"{repo} {login}"
     if time.time() - perms.get(k, {}).get('t', 0) >= 86400:
         try:
@@ -498,7 +498,8 @@ def maintainer(state, repo, login):
             w = None
         perms[k] = {'w': w, 't': time.time()}
     w = perms[k]['w']
-    return w if w is not None else login.lower() == repo.split('/')[0].lower() or state.get('assoc', {}).get(k) in MAINTAINER
+    a = state.get('assoc', {}).get(k)
+    return w if w is not None else None if a is None else a in MAINTAINER
 
 
 def note_assoc(state, repo, u, assoc):
@@ -854,18 +855,19 @@ def scan_reactions(state, threads):
                     if content not in ('+1', '-1') or is_bot(r['user']) or f"{who}:{content}" in seen.get(sk, []):
                         continue
                     try:
-                        theirs = who == ME or maintainer(state, repo, who)
+                        theirs = who == ME or maintainer(state, repo, who)  # None: access unknown, reported (a reaction on the agent's comment is rare)
                     except Exception as e:
                         clean = False
                         fail(f"permission {repo} {who}", e)
                         continue
                     seen.setdefault(sk, []).append(f"{who}:{content}")
-                    if not theirs or before_seed(r.get('created_at') or ''):
+                    if theirs is False or before_seed(r.get('created_at') or ''):
                         continue
+                    unknown = ' (access unknown)' * (theirs is None)
                     if content == '-1':
-                        emit(f"### THUMBS DOWN {repo}#{num} by {who} on {c['html_url']} (reaction {r['id']}): work out why and fix the rule behind it; if the thread is still on that point, post a new reply with the fix that @-mentions {who}; if it has moved past it or it's resolved, instead edit that comment to add how you'll do better. Leave the 👎 (mergeworthy:reply §Reactions, then mergeworthy:rules)")
+                        emit(f"### THUMBS DOWN {repo}#{num} by {who}{unknown} on {c['html_url']} (reaction {r['id']}): work out why and fix the rule behind it; if the thread is still on that point, post a new reply with the fix that @-mentions {who}; if it has moved past it or it's resolved, instead edit that comment to add how you'll do better. Leave the 👎 (mergeworthy:reply §Reactions, then mergeworthy:rules)")
                     else:
-                        emit(f"### THUMBS UP {repo}#{num} by {who} on {c['html_url']}: note what they liked and reinforce the rule that produced it (mergeworthy:reply §Reactions)")
+                        emit(f"### THUMBS UP {repo}#{num} by {who}{unknown} on {c['html_url']}: note what they liked and reinforce the rule that produced it (mergeworthy:reply §Reactions)")
         if clean:
             etags.update(pending)
             lists.setdefault(key, [])
