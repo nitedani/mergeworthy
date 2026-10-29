@@ -1182,6 +1182,12 @@ child_log "$JD/stew.jsonl" "Execute $T/jobs/stew-ticket.md exactly" 5 text
 python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "stew-ticket" in open(f).read()]'
 check "a job of another live watch dir's declared session is not reported here" 0 "$(done_events > "$T/ev4"; grep -c stew-ticket "$T/ev4")"
 python3 "$R/bin/agent-job" done "$T/jobs/stew-ticket.md" >/dev/null
+# one session watches two dirs: its job goes to the one holding the brief its task names, not to whichever ticks first
+WK="$T/wk"; mkdir -p "$WK"; echo orch > "$WK/session"; echo $$ > "$WK/gh-watch.pid"; printf '%s\n' "$WK" >> "$HOME/.claude/gh-watch-dirs.txt"
+reg "Follow $WK/home-brief.md, citing $WJ/events.log"; child_log "$JD/home.jsonl" "Follow $WK/home-brief.md, citing $WJ/events.log" 5 text
+python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "home-brief" in open(f).read()]'
+check "a job of a session with two watch dirs is reported only in the dir holding its brief" "0 1" "$(done_events | grep -c home-brief) $(WJ="$WK" done_events | grep -c home-brief)"
+python3 "$R/bin/agent-job" done "$WK/home-brief.md" >/dev/null; rm "$WK/gh-watch.pid"
 check "stop-lint passes once every finished job is released" 0 "$(sj orch)"
 reg "Execute $T/jobs/routed-ticket.md exactly"; child_log "$JD/routed.jsonl" "Execute $T/jobs/routed-ticket.md exactly" 5 text
 python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600}, open(f, "w")) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "routed-ticket" in open(f).read()]'
