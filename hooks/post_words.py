@@ -72,7 +72,7 @@ def state_line(w):
 
 def fence_spans(s):
     """(start, end, inner) of each fenced or indented code block in s as CommonMark renders it, read by markdown-it-py: the block's lines,
-    its closing fence included, and the code it shows. The one place post-lint and gate-pass decide what renders as code."""
+    its closing fence included, and the code it shows. The one place mergeworthy decides what renders as code."""
     try: from markdown_it import MarkdownIt
     except ImportError as e:  # raised, not sys.exit: failclosed turns it into a hook's block (exit 2), where an exit 1 lets the action through
         raise ImportError("mergeworthy reads Markdown with markdown-it-py: install it (apt install python3-markdown-it, or pip install markdown-it-py)") from e
