@@ -695,7 +695,7 @@ def check(t, has_cd):
             r = subprocess.run(['gh', *args], cwd=known(run_dir), env={**os.environ, **env}, capture_output=True, text=True, timeout=20)
             return json.loads(r.stdout) if r.returncode == 0 else None
         try:
-            pr = gh('pr', 'view', *([sel] if sel else []), *(['-R', repo[-1]] if repo else []), '--json', 'url,headRefName,headRefOid,baseRefName,mergeStateStatus,files,statusCheckRollup')
+            pr = gh('pr', 'view', *([sel] if sel else []), *(['-R', repo[-1]] if repo else []), '--json', 'url,headRefName,headRefOid,baseRefName,mergeStateStatus,changedFiles,files,statusCheckRollup')
             slug = '/'.join(pr['url'].split('/')[3:5])
             # the head's last check run tested the base as it was then: later base commits touching the PR's files are untested with it
             green = max((c.get('completedAt') or c.get('createdAt') or '' for c in pr['statusCheckRollup']), default='')
@@ -703,8 +703,8 @@ def check(t, has_cd):
             newer = [gh('api', f"repos/{slug}/commits/{c['sha']}")['files'] for c in moved['commits'] if c['commit']['committer']['date'] > green]
         except (OSError, subprocess.TimeoutExpired, ValueError, KeyError, TypeError) as e:
             block(f"gh couldn't read this PR's merge state ({type(e).__name__}: {e}), so whether its base moved can't be checked: retry once gh answers")
-        if len(moved['commits']) < moved['total_commits'] or any(len(f) >= 300 for f in newer):
-            block(f"{pr['baseRefName']} moved past one page of GitHub's compare (250 commits, 300 files a commit), so which of this PR's files it touched can't be checked: merge or rebase {pr['baseRefName']} into it, push, and merge once CI is green on that head")
+        if len(moved['commits']) < moved['total_commits'] or any(len(f) >= 300 for f in newer) or newer and len(pr['files']) < pr['changedFiles']:
+            block(f"{pr['baseRefName']} moved past one page of GitHub's lists (100 files a PR, 250 commits a compare, 300 files a commit), so which of this PR's files it touched can't be checked: merge or rebase {pr['baseRefName']} into it, push, and merge once CI is green on that head")
         touched = sorted({f['path'] for f in pr['files']} & {f['filename'] for files in newer for f in files})
         if pr['mergeStateStatus'] in ('BEHIND', 'DIRTY') or touched:
             why = f"its base {pr['baseRefName']} got commits touching {', '.join(touched)} after its last CI run" if touched else f"GitHub reports it {pr['mergeStateStatus']} against {pr['baseRefName']}"
