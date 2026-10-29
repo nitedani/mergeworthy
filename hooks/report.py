@@ -6,7 +6,7 @@ import re
 
 def unfenced(message):
     """The message without its fenced blocks and quoted lines: an example or a quote of an earlier message isn't said again."""
-    return re.sub(r'```.*?```|^>[^\n]*$', ' ', message, flags=re.S | re.M)
+    return re.sub(r'```.*?```|~~~.*?~~~|^>[^\n]*$', ' ', message, flags=re.S | re.M)
 
 
 def authored(message):
