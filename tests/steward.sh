@@ -68,7 +68,10 @@ case "\$*" in
 J
   ;;
   *n=10*) echo '{"data":{"repository":{"pullRequest":{"state":"MERGED","merged":true,"createdAt":"$C10","mergedAt":"$M10","closedAt":"$M10","author":{"login":"me"},"timelineItems":{"nodes":[]},"reviews":{"nodes":[{"author":{"login":"boss"},"authorAssociation":"OWNER","state":"APPROVED","submittedAt":"$R10","body":"","url":"u","comments":{"totalCount":0}}]},"comments":{"nodes":[]},"commits":{"nodes":[{"commit":{"committedDate":"$C10","parents":{"totalCount":1}}},{"commit":{"committedDate":"$B10","parents":{"totalCount":2}}}]}}}}}' ;;
-  *n=9*) echo '{"data":{"repository":{"pullRequest":{"state":"OPEN","merged":false,"createdAt":"$C9","mergedAt":null,"closedAt":null,"author":{"login":"me"},"timelineItems":{"nodes":[]},"reviews":{"nodes":[]},"comments":{"nodes":[{"author":{"login":"boss"},"authorAssociation":"OWNER","createdAt":"$C9","body":"Apply https://x/refactor/SKILL.md","url":"https://github.com/o/r/pull/9#issuecomment-91"},{"author":{"login":"boss"},"authorAssociation":"OWNER","createdAt":"$C9","body":"> Apply https://x/refactor/SKILL.md\\n\\nDone?","url":"q"},{"author":{"login":"eve"},"authorAssociation":"CONTRIBUTOR","createdAt":"$C9","body":"Apply https://x/refactor/SKILL.md","url":"e"},{"author":{"login":"boss"},"authorAssociation":"OWNER","createdAt":"$C9","body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> apply(app, https://x)","url":"b"},{"author":{"login":"boss"},"authorAssociation":"OWNER","createdAt":"$C9","body":"Could this be simpler?\\n\\n\`\`\`js\\napply(app, mw)\\n\`\`\`","url":"c"}]},"commits":{"nodes":[]}}}}}' ;;
+  *issues/9/comments*) cat "$T/c9.json" ;;
+  *pulls/7/reviews*) echo '[[{"user":{"login":"boss"},"author_association":"OWNER","submitted_at":"$C3","body":"Do another round of https://x/README.md","html_url":"https://github.com/o/r/pull/7#pullrequestreview-71"}]]' ;;
+  *--paginate*) echo '[[]]' ;;
+  *n=9*) cat "$T/g9.json" ;;
   *n=5*) echo '{"data":{"repository":{"pullRequest":{"state":"MERGED","merged":true,"createdAt":"$C1","mergedAt":"$M1","author":{"login":"me"},"timelineItems":{"nodes":[]},"reviews":{"nodes":[{"author":{"login":"boss"},"authorAssociation":"OWNER","state":"APPROVED","submittedAt":"$M1","body":"","url":"u","comments":{"totalCount":0}}]},"comments":{"nodes":[]},"commits":{"nodes":[{"commit":{"committedDate":"$C1","parents":{"totalCount":1}}}]}}}}}' ;;
   *n=6*) echo '{"data":{"repository":{"pullRequest":{"state":"MERGED","merged":true,"createdAt":"$C2","mergedAt":"$M2","author":{"login":"me"},"timelineItems":{"nodes":[{"createdAt":"$C2"}]},"reviews":{"nodes":[{"author":{"login":"boss"},"authorAssociation":"MEMBER","state":"CHANGES_REQUESTED","submittedAt":"$R2","body":"","url":"u","comments":{"totalCount":3}},{"author":{"login":"me"},"authorAssociation":"OWNER","state":"COMMENTED","submittedAt":"$R2","body":"","url":"u","comments":{"totalCount":1}}]},"comments":{"nodes":[]},"commits":{"nodes":[{"commit":{"committedDate":"$C2","parents":{"totalCount":1}}},{"commit":{"committedDate":"$M2","parents":{"totalCount":1}}}]}}}}}' ;;
   *n=7*) echo '{"data":{"repository":{"pullRequest":{"state":"MERGED","merged":true,"createdAt":"$C3","mergedAt":"$M3","author":{"login":"me"},"timelineItems":{"nodes":[]},"reviews":{"nodes":[{"author":{"login":"boss"},"authorAssociation":"OWNER","state":"COMMENTED","submittedAt":"$C3","body":"Do another round of https://x/README.md","url":"https://github.com/o/r/pull/7#pullrequestreview-71","comments":{"totalCount":0}}]},"comments":{"nodes":[]},"commits":{"nodes":[]}}}}}' ;;
@@ -76,6 +79,20 @@ J
 esac
 EOF
 chmod +x "$T/bin/gh"
+# #9 has 101 comments, the maintainer's ask first: GraphQL's comments(last:100) leaves it out, the REST pages hold it; the rest aren't asks
+python3 - "$T" "$C9" <<'PY'
+import json, sys
+T, at = sys.argv[1:]
+c = lambda who, assoc, body, url: {"user": {"login": who}, "author_association": assoc, "created_at": at, "body": body, "html_url": url}
+cs = [c("boss", "OWNER", "Apply https://x/refactor/SKILL.md", "https://github.com/o/r/pull/9#issuecomment-91"),
+      c("boss", "OWNER", "> Apply https://x/refactor/SKILL.md\n\nDone?", "q"), c("eve", "CONTRIBUTOR", "Apply https://x/refactor/SKILL.md", "e"),
+      c("boss", "OWNER", '<img src="https://github.com/claude.png" alt="Claude"> apply(app, https://x)', "b"),
+      c("boss", "OWNER", "Could this be simpler?\n\n```js\napply(app, mw)\n```", "c")] + [c("boss", "OWNER", "ok", f"f{n}") for n in range(96)]
+json.dump([cs], open(f"{T}/c9.json", "w"))
+node = lambda x: {"author": {"login": x["user"]["login"]}, "authorAssociation": x["author_association"], "createdAt": x["created_at"], "body": x["body"], "url": x["html_url"]}
+json.dump({"data": {"repository": {"pullRequest": {"state": "OPEN", "merged": False, "createdAt": at, "mergedAt": None, "closedAt": None, "author": {"login": "me"},
+           "timelineItems": {"nodes": []}, "reviews": {"nodes": []}, "comments": {"nodes": [node(x) for x in cs[-100:]]}, "commits": {"nodes": []}}}}}, open(f"{T}/g9.json", "w"))
+PY
 S="$HOME/.mergeworthy/work/steward"; mkdir -p "$S"; echo "$(iso '-5 days') first pass" > "$S/passes.txt"
 echo '### FOLLOW-UP o/r#5, #6: 1234567abc by carol changes lines from your PR  at 2026-10-01T00:00:00Z' >> "$W/events.log"
 check "owed: a follow-up naming two PRs is listed once, with both" 1 "$(python3 "$R/bin/steward" owed | grep -c $'\tsort\to/r#5, #6 1234567abc')"
@@ -90,7 +107,7 @@ check "metrics: a change request and a commit after it: not first-pass; the auth
 check "metrics: a PR merged before --since falls in the previous window" "previous" "$(rec o/r#7 window)"
 check "metrics: a PR created before --since and merged after it counts in this window; a merge of the base after approval isn't rework" "this True 0" "$(rec o/r#10 window first_pass commits_after_review)"
 check "metrics: an open PR is listed apart" "open|Open now: 1" "$(rec o/r#9 window)|$(echo "$out" | grep '^Open now')"
-check "metrics: a maintainer's ask to apply or rerun a linked prompt since the last pass is listed, one before it counted; quoted, a non-maintainer's, an agent's and code aren't asks" \
+check "metrics: a maintainer's ask to apply or rerun a linked prompt since the last pass is listed, one before it counted, the first of 101 comments too; quoted, a non-maintainer's, an agent's and code aren't asks" \
   "Maintainer asks for a pass we owe since $(iso '-5 days' | cut -c1-10): 1 (1 in the window before)|- $C9 o/r#9 https://github.com/o/r/pull/9#issuecomment-91|" "$(echo "$out" | sed -n '/^Maintainer asks/,$p' | tr '\n' '|')"
 check "metrics: the side-by-side table, first-pass acceptance per window" "| first-pass acceptance (north star) | 1/1 (100%) | 2/3 (66%) |" "$(echo "$out" | grep 'north star')"
 
