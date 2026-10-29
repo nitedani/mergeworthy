@@ -150,11 +150,18 @@ rm node_modules/typescript; mkdir -p node_modules/typescript; echo 'module.expor
 OUT=$("$R/bin/review-context" "$BASE" 2>&1)
 check "TypeScript 7 in the repo: mergeworthy's TypeScript lists the callers" yes "$(grep -q 'b.ts' <<<"$OUT" && echo yes || echo no)"
 
-# no usable TypeScript anywhere: a copy of the script outside mergeworthy
-cp "$R/bin/review-context" "$T/review-context.mjs"
-OUT=$(node "$T/review-context.mjs" "$BASE" 2>&1); code=$?
-check "no TypeScript: exit code" 0 "$code"
-check "no TypeScript: message" "review-context: no TypeScript found in $(readlink -f "$P"); no context" "$OUT"
+# no TypeScript in the repo or beside the script (a copy outside mergeworthy): it fetches the pinned one into ~/.mergeworthy/typescript
+cp "$R/bin/review-context" "$T/review-context.mjs"; mkdir -p "$T/nopm" "$T/nopnpm"
+printf '#!/bin/sh\necho "npm is disabled on this machine" >&2; exit 1\n' > "$T/nopm/npm"; cp "$T/nopm/npm" "$T/nopnpm/pnpm"; chmod +x "$T/nopm/npm" "$T/nopnpm/pnpm"
+OUT=$(PATH="$T/nopnpm:$T/nopm:$PATH" node "$T/review-context.mjs" "$BASE" 2>&1); code=$?
+check "no TypeScript, neither pnpm nor npm can fetch it: exit code" 0 "$code"
+check "no TypeScript, neither pnpm nor npm can fetch it: the message names the install command" \
+  "review-context: no TypeScript found in $(readlink -f "$P"), and neither pnpm nor npm could fetch it: run \`pnpm add --dir $HOME/.mergeworthy/typescript/6.0.3 typescript@6.0.3\`; no context" "$OUT"
+OUT=$(PATH="$T/nopm:$PATH" node "$T/review-context.mjs" "$BASE" 2>&1)
+check "no TypeScript, npm refused, pnpm present: pnpm fetches it into the cache and the callers are listed" "yes yes" \
+  "$(grep -q 'b.ts' <<<"$OUT" && echo yes || echo no) $([ -f "$HOME/.mergeworthy/typescript/6.0.3/node_modules/typescript/package.json" ] && echo yes || echo no)"
+OUT=$(PATH="$T/nopnpm:$T/nopm:$PATH" node "$T/review-context.mjs" "$BASE" 2>&1)
+check "the cached TypeScript is used without fetching again" yes "$(grep -q 'b.ts' <<<"$OUT" && echo yes || echo no)"
 
 cd /; rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]
