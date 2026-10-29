@@ -15,7 +15,7 @@ Called by `pull-request` steps 7, 11 and 12; when done, return there. Maintainer
    Run: `gh pr checks <N>` · Hook: pre-bash-guard (the five `converge` records and the approach record, `converge` intro; the State line)
 3. **Say it.** Edit the body without the State line (through `post`), `gh pr ready <N>`, then say once, in plain words, "Ready for review" with the head SHA and the CI link. "Reply `merge` and I'll squash-merge it" only in the user's own repos, and never when the `merge` option is `reviewer` (`task §Files`).
    Open: `post`; `writing §Reports to the user` · Record: the PR's state · Hook: pre-bash-guard
-4. **Merge only after a maintainer asks.** First retarget PRs based on this branch (`gh pr edit <N> --base <its base>`): deleting the branch closes them. After the squash, merge the new base into each, so their diff shows only their own change. A rebase onto a moved base: `git range-diff` shows only the conflict resolution. If the repo's `AGENTS.md` requires another merge form, ask the user: the hook allows only this one.
+4. **Merge only after a maintainer asks.** First retarget PRs based on this branch (`gh pr edit <N> --base <its base>`): deleting the branch closes them. After the squash, merge the new base into each, so their diff shows only their own change. Before rebasing onto a moved base, note the old base and head: `git range-diff <old-base>..<old-head> <new-base>..HEAD` shows only the conflict resolution. If the repo's `AGENTS.md` requires another merge form, ask the user: the hook allows only this one.
    Run: `gh pr merge <N> --squash --delete-branch --subject "<PR title> (#<N>)" --body ""` · Record: the merged PR · Hook: pre-bash-guard (the form, dependents, a moved base, `--admin`)
 
 ### CI limits
