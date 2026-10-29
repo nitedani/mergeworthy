@@ -2268,6 +2268,7 @@ cat > "$T/bin/glab" <<'EOF'
 [ "$1" = api ] || exit 1
 f="$FX/gl_$(printf '%s' "$4" | tr '/?&=%' '_____')"
 [ -f "$f" ] && cat "$f" || { echo 'glab: 404 Not found (HTTP 404)' >&2; exit 1; }
+[ "$5" != --paginate ] || [ ! -f "$f.page2" ] || cat "$f.page2"  # glab prints the next page's array right after the first
 EOF
 GL="$T/gl"; git init -q -b scratch "$GL"; git -C "$GL" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; git -C "$GL" remote add origin git@gitlab.com:me/app.git
 for mr in me_2Fapp_merge_requests_4 me_2Fapp_merge_requests_5 me_2Fapp_merge_requests_6 acme_2Fapp_merge_requests_9; do echo '{"head_pipeline":null}' > "$FX/gl_projects_$mr"; done  # the MRs below have no pipeline
@@ -2331,6 +2332,10 @@ check "a push updating a draft MR of a group's GitLab project passes with its ap
   "$(MERGEWORTHY_WATCHER=off bg 'git push git@gitlab.com:acme/app.git fresh:fresh' "$NA")"
 echo '[{"name":"lint","status":"failed"}]' > "$FX/gl_projects_acme_2Fapp_pipelines_77_jobs_scope[]_failed_scope[]_canceled_per_page_100"
 check "BLOCK: the same push while the MR's pipeline has a failed job its gate log doesn't name, naming the job and the MR" "2 1" \
+  "$(MERGEWORTHY_WATCHER=off bg 'git push git@gitlab.com:acme/app.git fresh:fresh' "$NA") $(grep -c 'these CI jobs fail (https://gitlab.com/acme/app/-/merge_requests/9).*"lint"' "$T/err")"
+python3 -c 'import json; print(json.dumps([{"name": f"flaky-{i}", "status": "failed", "allow_failure": True} for i in range(100)]))' > "$FX/gl_projects_acme_2Fapp_pipelines_77_jobs_scope[]_failed_scope[]_canceled_per_page_100"
+echo '[{"name":"lint","status":"failed"}]' > "$FX/gl_projects_acme_2Fapp_pipelines_77_jobs_scope[]_failed_scope[]_canceled_per_page_100.page2"
+check "BLOCK: the same with the failed job on the second page of the pipeline's jobs, behind 100 allowed-to-fail ones, naming it" "2 1" \
   "$(MERGEWORTHY_WATCHER=off bg 'git push git@gitlab.com:acme/app.git fresh:fresh' "$NA") $(grep -c 'these CI jobs fail (https://gitlab.com/acme/app/-/merge_requests/9).*"lint"' "$T/err")"
 tr_cmd 'cd /tmp/x && git push origin HEAD:fix'
 check "a session that pushed, with no scope.md in a work folder it used, is told to write one (stop-lint reads its git commands)" "2 1" "$(slj 'Pushed the fix.') $(grep -c 'no work folder it used has a scope.md' "$T/err")"
