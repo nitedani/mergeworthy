@@ -31,11 +31,12 @@ EVENT = re.compile(r'^### (?:FOLLOW-UP|MAINTAINER REVIEW) ([\w.-]+/[\w.-]+#\d+(?
 BADGE = re.compile(r'\A\s*(?:<img [^>]*alt="(?:Claude|Codex)"[^>]*>\s*)+')  # an agent's post starts with its badge
 VERDICT = re.compile(r'^(\S+)\s+(MISS|TASTE|DIRECTION|WORKED)\b', re.M)
 SHA = re.compile(r'[0-9a-f]{7,40}')
-# a maintainer asking for a pass we owed: "Apply <prompt URL>", or at a sentence's start "Do another round", "Look for opportunities to
-# simplify", "Refactor this PR"; not a question about the design ("I think it can be simplified?")
-ASK = re.compile(r"\b(?:apply|appy)\b[^\n]{0,10}https?://|(?:^|[.!?:]\s+|\bthen\s+)\W*(?:@[\w-]+\s*(?:\([^)\n]*\)\s*)?)?(?:please\s+)?"
-                 r"(?:(?:do|run)\s+(?:another|one\s+more|one\s+last|a\s+new)\s+(?:round|pass|review)\b|look\s+for\s+(?:opportunities|ways)\s+to\s+(?:simplify|refactor)\b"
-                 r"|(?:simplify|refactor|re-?review|review)\s+(?:this|the|your)\s+(?:PR|pull\s+request|code|diff|changes)\b)", re.I | re.M)
+# a pass we owed: a linked prompt, or a refactor, simplify or review round
+PASS = re.compile(r"(?:apply|appy)\b[^\n]{0,10}https?://|(?:do|run)\s+(?:another|one\s+more|one\s+last|a\s+new)\s+(?:round|pass|review)\b"
+                  r"|look\s+for\s+(?:opportunities|ways)\s+to\s+(?:simplify|refactor)\b"
+                  r"|(?:simplify|refactor|re-?review|review)\s+(?:this|the|your)\s+(?:PR|pull\s+request|code|diff|changes)\b", re.I)
+# what puts a sentence to us: @mentions, a condition ("If it is from your perspective, then"), a request ("could you", "please")
+TO_US = re.compile(r"[^\w@]*(?:@[\w-]+[\s,]*(?:\([^)\n]*\)\s*)?)*(?:(?:if|when|once)\b[^,\n]*,\s*(?:then\s+)?)?(?:(?:can|could|would|will)\s+you\s+)?(?:please\s+)?", re.I)
 
 
 def iso(t):
@@ -200,7 +201,13 @@ def maintainer_asks(repo, num, author):
     posts = [(c['created_at'], c) for c in pages(f'repos/{repo}/issues/{num}/comments')] + \
             [(r['submitted_at'], r) for r in pages(f'repos/{repo}/pulls/{num}/reviews') if r.get('submitted_at')]
     return sorted([at, v['html_url']] for at, v in posts if (v.get('user') or {}).get('login') != author and v.get('author_association') in MAINTAINER
-                  and not BADGE.match(v.get('body') or '') and ASK.search(own_words(v.get('body'))))
+                  and not BADGE.match(v.get('body') or '') and asks_us(own_words(v.get('body'))))
+
+
+def asks_us(text):
+    """True when a sentence opens with a pass we owed, addressed to us: an instruction or a request, never the writer's own plan
+    ("I'll address the comments, then do another round of review")."""
+    return any(PASS.match(c, TO_US.match(c).end()) for c in re.split(r'[.!?;]\s+|\s+[—–]\s+|\n', text))
 
 
 def own_words(body):
