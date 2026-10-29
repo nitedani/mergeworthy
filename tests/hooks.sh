@@ -282,6 +282,10 @@ check "a bot's comment is not in the transcript" 0 "$(tcg '^see #99')"
 check "--verify accepts it for its thread" 0 "$("$R/bin/thread-context" --verify "$TC" --target o/r#41 2>/dev/null; echo $?)"
 check "a maintainer's retitle is in the ledger and the transcript, and isn't the latest comment" "1 1" "$(echo "$(tcg '@maint \[title\] "Retitled "feat: old" to "fix: his title"."') $(tcg 'maint, retitled')")"
 check "--latest" "104 2026-10-01T09:30:00Z" "$("$R/bin/thread-context" --latest o/r#41)"
+tc_fx repos_o_r_issues_45 '{"number":45,"id":5,"title":"Code in a list","html_url":"https://example.invalid/o/r/issues/45","state":"open","updated_at":"2026-10-02T10:00:00Z","created_at":"2026-10-02T09:00:00Z","user":{"login":"maint"},"body":"- The log:\n  ```\n  see o/r#42\n  ```"}'
+tc_fx repos_o_r_issues_45_comments_per_page_100 '[{"id":105,"user":{"login":"maint"},"created_at":"2026-10-02T09:30:00Z","html_url":"https://example.invalid/o/r/issues/45#c105","body":"- The bot said:\n  ```\n  I disagree with the rename.\n  ```"}]'
+"$R/bin/thread-context" o/r#45 --out "$T/ctx/tc45.md" >/dev/null
+check "a ref and a rejection inside a code block in a list item are code: not followed, not in the ledger" "0 0" "$(grep -c '^  - o/r#42 ' "$T/ctx/tc45.md") $(grep -c '\[reject\]' "$T/ctx/tc45.md")"
 
 # the guard: a post on the thread needs thread-context.md in the draft's folder, current
 TD="$T/tdrafts/o-r-41"; mkdir -p "$TD"
@@ -358,6 +362,18 @@ printf 'The lint says:\n\n```\nsay what is being done ('"'"'I'"'"'ll merge …'"
 check "an \"I'll\" inside a fenced code block is a tool's output, not a promise" 0 "$(gp)"
 printf 'The build fails:\n\n```\n3 foo();\n  ~~~\n```\n\nI'"'"'ll fix it in a follow-up PR.\n' > "$GD/r.md"; touch -d '+160 seconds' "$GD/r.md"
 check "BLOCK: a promise after a code block whose output holds a fence-like line (tsc's ~~~ underline)" "1 1" "$(gp) $(grep -c 'promises work' "$T/gp.out")"
+printf -- '- Run it:\n- ```bash\n  # I'"'"'ll open a PR for it\n  ```\n' > "$GD/r.md"; touch -d '+162 seconds' "$GD/r.md"
+check "an \"I'll\" inside a code block opened on a list line is not a promise" 0 "$(gp)"
+printf -- '- ```bash\n\t# I'"'"'ll open a PR for it\n\t```\n' > "$GD/r.md"; touch -d '+163 seconds' "$GD/r.md"
+check "an \"I'll\" in a list item's code block indented with tabs is not a promise" 0 "$(gp)"
+printf 'The fix:\n\n    # I'"'"'ll open a PR for it\n\nDone.\n' > "$GD/r.md"; touch -d '+164 seconds' "$GD/r.md"
+check "an \"I'll\" in an indented code block is not a promise" 0 "$(gp)"
+printf -- '10. ```bash\n    echo hello\n    ```\n\nI'"'"'ll open a PR for it.\n' > "$GD/r.md"; touch -d '+165 seconds' "$GD/r.md"
+check "BLOCK: a promise after a code block opened on a list line, closed at the item's content column" "1 1" "$(gp) $(grep -c 'promises work' "$T/gp.out")"
+printf -- '- ```bash\n  make\n\nI'"'"'ll open a PR for it.\n' > "$GD/r.md"; touch -d '+166 seconds' "$GD/r.md"
+check "BLOCK: a promise after a list item whose code block is never closed: the block ends with the item" "1 1" "$(gp) $(grep -c 'promises work' "$T/gp.out")"
+printf -- '- Run it:\n  ```bash\n  make\n\nI'"'"'ll open a PR for it.\n' > "$GD/r.md"; touch -d '+167 seconds' "$GD/r.md"
+check "BLOCK: a promise after a list item whose code block opens on a continuation line and is never closed" "1 1" "$(gp) $(grep -c 'promises work' "$T/gp.out")"
 printf 'The lint says:\n\n~~~\nI'"'"'ll merge it once green\n~~~\n' > "$GD/r.md"; touch -d '+170 seconds' "$GD/r.md"
 check "an \"I'll\" inside a ~~~ code block is not a promise either" 0 "$(gp)"
 printf "I'll open a PR for it.\n" > "$GD/r.md"; touch -d '+3 minutes' "$GD/r.md"
@@ -700,6 +716,8 @@ check "a ready Hungarian body's evidence heading passes under Language: hu, not 
 hdguard() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr create --draft --repo acme/hu --title \"$(cat /w/drafts/title.md)\" --body-file "+sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$TCO" \
     | MERGEWORTHY_WATCHER=off python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?; }
 printf '%s\n**Állapot: piszkozat** (a CI futtatója nem működik)\n\nA feltöltés elakad nagy fájloknál.\n' "$B" > "$T/hdg.md"; sha256sum "$T/hdg.md" | cut -d' ' -f1 > "$T/hdg.md.gate"
+check "gh pr create --draft without --repo takes the language of GH_REPO, not of the checkout's origin" 0 "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"GH_REPO=acme/hu gh pr create --draft --title \"$(cat /w/drafts/title.md)\" --body-file "+sys.argv[1]},"cwd":sys.argv[2]}))' "$T/hdg.md" "$TCO" \
+  | MERGEWORTHY_WATCHER=off python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?)"
 check "gh pr create --draft accepts the Hungarian State line under Language: hu, and blocks it without" "0 2" "$(hdguard "$T/hdg.md") $(printf '# acme/hu\n' > "$HUP"; hdguard "$T/hdg.md")"
 # without --repo (the livekit session's calls), the language comes from the draft's watch dir: the repos.txt above it
 LK="$T/lkw"; mkdir -p "$LK/drafts"; cp "$T/hu0.md" "$LK/drafts/mr.md"; echo CLEAN > "$LK/drafts/mr.review.out"; printf '# acme/hu\n\nLanguage: hu\n' > "$HUP"
@@ -996,10 +1014,14 @@ python3 -c 'import json,sys; print(json.dumps({"type":"assistant","timestamp":sy
 python3 -c 'import json,sys; print(json.dumps({"type":"assistant","timestamp":sys.argv[1],"message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":sys.argv[2]}}]}}))' "$now" "$RD/src/a.ts" > "$T/tr-read.jsonl"
 B='Build o/r#9 by skills/code/SKILL.md per ~/.mergeworthy/projects/o/r.md'
 check "BLOCK: an implementation brief whose session read only an agent's report in the checkout (in a work folder); a Read, or a cd + sed of a tracked source, passes" "2 1 0 0" "$(agt "$B" "$T/tr-noread.jsonl") $(grep -c 'read the code this change is about yourself' "$T/err") $(agt "$B" "$T/tr-read.jsonl") $(agt "$B" "$T/tr-sed.jsonl")"
+python3 -c 'import json,sys; print(json.dumps({"type":"assistant","timestamp":sys.argv[1],"message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":sys.argv[2]}}]}}))' "$now" "D=$RD; cd \"\$D\" && sed -n 1,80p src/a.ts" > "$T/tr-var.jsonl"
+python3 -c 'import json,sys; print(json.dumps({"type":"assistant","timestamp":sys.argv[1],"message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":sys.argv[2]}}]}}))' "$now" "D=$RD; git -C \"\$D\" show HEAD:src/a.ts" > "$T/tr-gshow.jsonl"
+check "a read in a checkout named by a variable the command set (cd \"\$D\" && sed, git -C \"\$D\" show) passes too" "0 0" "$(agt "$B" "$T/tr-var.jsonl") $(agt "$B" "$T/tr-gshow.jsonl")"
 check "BLOCK: a drafter brief (it reads thread-context.md) without writing/SKILL.md; with it, it passes" "2 0" "$(ag "$T" 'Draft the reply from /w/drafts/x/thread-context.md' review) $(ag "$T" 'Write a reply draft by skills/writing/SKILL.md from /w/drafts/y/thread-context.md; list each claim with a scope word beside its source' review)"
 check "BLOCK: a drafter brief without the template's scope-word check, naming the template; a review of a draft (CLEAN) needs none" "2 1 0" "$(ag "$T" 'Write a reply draft by skills/writing/SKILL.md from /w/drafts/z/thread-context.md' review) $(grep -c 'delegate/drafter.md' "$T/err") $(ag "$T" 'Review /w/drafts/z/r.md against /w/drafts/z/thread-context.md by skills/writing/SKILL.md; final message CLEAN or findings' review)"
 # pre-agent-dedupe: a template's placeholder left in the brief, by the plugin's own skills/delegate templates
 check "BLOCK: a brief with a template's placeholder unfilled, naming it and its template" "2 1" "$(ag "$T" $'Verify the slice.\n- try the edges: <the slice\'s risky edges>, each Recurring misses line' review) $(grep -c "<the slice's risky edges> (delegate/verifier.md)" "$T/err")"
+check "BLOCK: a slot of a template's code block indented in a list item (delegate/SKILL.md's reviewer launch)" "2 1" "$(ag "$T" $'Review the diff.\n{"target": {"options": {"<its effort option>": "high"}}}' review) $(grep -c '<its effort option> (delegate/SKILL.md)' "$T/err")"
 check "a filled brief passes with the paste-in rules (their <work folder>), an output form in backticks and a quoted HTML tag" 0 "$(ag "$T" "$(printf 'Verify the slice: try the edges: the abort path.\nFinal message: the gates as `<command> -> exit <code>`; check the <head> tags.\n'; cat "$R/skills/delegate/agent.md")" review)"
 check "a brief quoting a line format in backticks that holds a template's slot passes (a format, not a slot)" 0 "$(ag "$T" 'Check each `PROMISED <thread>: <what> (<draft>)` line in proposals-open.md.' review)"
 mkdir -p "$T/mem"; printf 'Next: the brief may say (git show <sha>) in a quoted ruling.\n' > "$T/mem/memory.md"; printf 'Summarize %s into the digest.\n' "$T/mem/memory.md" > "$T/mem/memory-brief-1.md"
@@ -1609,6 +1631,10 @@ newpass
 check "a pass after the ask on any of the PR's commits answers it" 0 "$(asked "gh pr comment 7 -R o/r --body-file $NEWR")"
 oldpass
 check "BLOCK: through gh api, a comment and a body PATCH on the PR" "1 1" "$(asked "gh api repos/o/r/issues/7/comments -F body=@$NEWR") $(asked "gh api -X PATCH repos/o/r/pulls/7 -F body=@$NEWR")"
+check "BLOCK: the same through gh api's {owner}/{repo}, which gh fills from the checkout's repo" "1 1" "$(asked "cd $IDR && gh api 'repos/{owner}/{repo}/issues/7/comments' -F body=@$NEWR") $(asked "cd $IDR && gh api -X PATCH 'repos/{owner}/{repo}/pulls/7' -F body=@$NEWR")"
+ODR="$T/odr"; git init -q "$ODR"; git -C "$ODR" remote add origin https://github.com/x/y.git
+check "BLOCK: GH_REPO, on the command or inherited, fills {owner}/{repo} before the checkout's origin, as gh does" "1 1" "$(asked "cd $ODR && GH_REPO=o/r gh api 'repos/{owner}/{repo}/issues/7/comments' -F body=@$NEWR") $(GH_REPO=github.com/o/r asked "cd $ODR && gh api -X PATCH 'repos/{owner}/{repo}/pulls/7' -F body=@$NEWR")"
+check "BLOCK: gh pr comment and gh pr ready without -R act on GH_REPO, on the command or inherited, before the checkout's origin" "1 1" "$(asked "cd $ODR && GH_REPO=o/r gh pr comment 7 --body-file $NEWR") $(GH_REPO=https://github.com/o/r asked "cd $ODR && gh pr ready 7")"
 newpass
 check "through gh api, the pass recorded after the ask answers it" "0 0" "$(asked "gh api repos/o/r/issues/7/comments -F body=@$NEWR") $(asked "gh api -X PATCH repos/o/r/pulls/7 -F body=@$NEWR")"
 # every form gh takes for the target reaches the same check: a URL, a branch, an issue number that is a PR, gh pr ready; the current branch's PR (#6) is not the target
@@ -2016,6 +2042,7 @@ echo gitlab.com/ns/sub/proj > "$GW/repos.txt"
 check "glab issue create passes once a watcher covers the project" "0 0" "$(glguard 'glab issue create -R https://gitlab.com/ns/sub/proj --title x') $(glguard 'glab mr create --draft --title x' "$T/glrepo")"
 echo 'o/r all' > "$GW/repos.txt"
 check "an 'owner/repo all' line covers the repo for opening an issue" 0 "$(glguard 'gh issue create -R o/r --title x --body-file x.md' >/dev/null; grep -c 'no running watcher' "$T/err")"
+check "gh issue create without -R opens it on GH_REPO, which the watcher covers, not on the checkout's origin" "0 0" "$(glguard 'GH_REPO=o/r gh issue create --title x --body-file x.md' "$ODR" >/dev/null; grep -c 'no running watcher' "$T/err") $(GH_REPO=o/r glguard 'gh issue create --title x --body-file x.md' "$ODR" >/dev/null; grep -c 'no running watcher' "$T/err")"
 PG="$T/glpass"; mkdir -p "$PG"; echo 'p/q all' > "$PG/repos.txt"; echo sess-g > "$PG/passed"; printf '%s\n' "$GW" "$PG" > "$HOME/.claude/gh-watch-dirs.txt"
 glsess() { python3 -c 'import json,sys; print(json.dumps({"session_id":sys.argv[1],"tool_input":{"command":"gh issue create -R p/q --title x --body-file x.md"},"cwd":sys.argv[2]}))' "$1" "$T" \
   | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err" >/dev/null; grep -c 'no running watcher' "$T/err"; }
@@ -2108,6 +2135,9 @@ check "pr-steps quick records a log whose only gate counts words" 0 "$(git -C "$
 printf 'pnpm run test:types -> exit 0 (15 projects)\npnpm exec tsc --noEmit -p tsconfig.spec.json -> exit 0 (1 project)\n' > "$T/q-types.log"; printf 'pnpm run test:types -> exit 0 (0 projects)\n' > "$T/q-types0.log"
 printf 'pnpm lint -> exit 0\npnpm exec tsc --noEmit -p tsconfig.spec.json -> exit 0 (0 projects)\n' > "$T/q-tsc0.log"
 check "pr-steps quick records a type-check script's line counting its projects, and refuses 0 projects, under any command" "0 1 1" "$(git -C "$TCO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m qt; cd "$TCO" && bash "$R/bin/pr-steps" quick "$T/q-types.log" >/dev/null 2>&1; echo $?) $(cd "$TCO" && bash "$R/bin/pr-steps" quick "$T/q-types0.log" >/dev/null 2>&1; echo $?) $(cd "$TCO" && bash "$R/bin/pr-steps" quick "$T/q-tsc0.log" >/dev/null 2>&1; echo $?)"
+printf 'pnpm exec biome ci test/discord-clone test-e2e.config.mjs -> exit 0 (36 files)\n' > "$T/q-files.log"; printf 'pnpm exec biome ci test/discord-clone test-e2e.config.mjs -> exit 0 (0 files)\n' > "$T/q-files0.log"; printf 'pnpm exec biome ci packages -> exit 0 (0 files)\n' > "$T/q-lint0.log"
+for g in 'tests/hooks.sh .' 'VAR=x ./tests/hooks.sh .' 'netns-run ./tests/hooks.sh .' 'bash -x tests/hooks.sh .' '/bin/bash tests/hooks.sh .'; do printf '%s -> exit 0\n' "$g"; done > "$T/q-scripts.log"
+check "pr-steps quick records a check naming test paths that counts its files, refuses 0 files, and asks a count of each test script however it's called" "0 1 1 5" "$(git -C "$TCO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m qf; cd "$TCO" && bash "$R/bin/pr-steps" quick "$T/q-files.log" >/dev/null 2>&1; echo $?) $(cd "$TCO" && bash "$R/bin/pr-steps" quick "$T/q-files0.log" >/dev/null 2>&1; echo $?) $(cd "$TCO" && bash "$R/bin/pr-steps" quick "$T/q-lint0.log" >/dev/null 2>&1; echo $?) $(n=0; while read -r l; do printf '%s\n' "$l" > "$T/q-one.log"; (cd "$TCO" && bash "$R/bin/pr-steps" quick "$T/q-one.log" >/dev/null 2>&1) || n=$((n+1)); done < "$T/q-scripts.log"; echo $n)"
 printf 'pnpm test -> exit 0 (3 tests)\npnpm typecheck was not run: dependency unavailable\n' > "$T/q-unrun.log"
 check "BLOCK: pr-steps quick on a log saying a gate was not run, on a line of its own" "1 1" "$(git -C "$TCO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m qu; cd "$TCO" && bash "$R/bin/pr-steps" quick "$T/q-unrun.log" 2>"$T/err" >/dev/null; echo $?) $(grep -c "says a gate didn't run" "$T/err")"
 TK2="$HOME/.mergeworthy/work/vike-3671"; CK="$TK2/vike"; mkdir -p "$TK2"
@@ -2198,6 +2228,7 @@ hb=; for m in 'The fix is committed locally on `fix-telefunc`. Pushing it, or te
              "The reply to brillout is drafted and reviewed as CLEAN, but it isn't posted yet. Do you want me to post it now that CI is green?"; do tr_file "$m" work; hb="$hb $(slj)"; done
 check "BLOCK: the session's six hand-backs, as it wrote them" " 2 2 2 2 2 2" "$hb"
 tr_file 'README tidied.' work
+check "a hand-back a tool printed, in a ~~~ code block or an indented one, is not the agent's" "0 0" "$(slj $'The tool printed:\n\n~~~\nShould I retry?\n~~~') $(slj $'The tool printed:\n\n    Should I retry?')"
 check "the final message is the hook input's, not the transcript's last line (which may not be written yet)" "2 1" "$(slj 'Tell me when to re-check CI.') $(grep -ci 'tell me when' "$T/err")"
 tr_file 'Ask me to check the run when you want it.' work
 check "stop_hook_active no longer lets the next stop through: the hand-back still blocks" 2 "$(slj '' 1)"
