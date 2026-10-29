@@ -210,17 +210,17 @@ def thread_of_ref(repo, ref):
 VALUED = {'-R', '--repo', '-F', '--body-file', '-b', '--body', '-t', '--title', '-B', '--base', '-H', '--head', '-l', '--label', '-a', '--assignee',
           '-r', '--reviewer', '-p', '--project', '-m', '--milestone', '-c', '--comment', '-T', '--template', '-s', '--state', '-q', '--jq',
           '--add-label', '--remove-label', '--add-assignee', '--remove-assignee', '--add-reviewer', '--remove-reviewer', '--add-project', '--remove-project'}
-def post_target(group, rest, run_dir):
+def post_target(group, rest, env, run_dir):
     """(owner/repo, N) a `gh issue|pr <sub> <rest>` command acts on: its number or URL argument, or for gh pr its branch argument or the current
     branch's PR (`gh pr view`). Every check of a post on a thread reads its target here; one it can't tell blocks, as no check could run."""
-    repo = re.sub(r'^(?:https?://)?github\.com/', '', (opt(rest, ['--repo', '-R']) or [None])[-1] or '') or cwd_repo(run_dir)  # gh takes [HOST/]OWNER/REPO
+    repo = gh_repo(rest, env, run_dir)
     ref = next((x for i, x in enumerate(rest) if not x.startswith('-') and (i == 0 or rest[i - 1] not in VALUED)), None)
     if t := thread_of_ref(repo, ref): return tuple(t.split('#'))
     n = ''
     if group == 'pr':
         try:
             r = subprocess.run(['gh', 'pr', 'view', *([ref] if ref else []), *(['-R', repo] if ref and repo else []), '--json', 'number', '--jq', '.number'],
-                               cwd=run_dir if ref and repo else known(run_dir), capture_output=True, text=True, timeout=20)
+                               cwd=run_dir if ref and repo else known(run_dir), env={**os.environ, **env}, capture_output=True, text=True, timeout=20)
             n = r.stdout.strip() if r.returncode == 0 else ''
         except (OSError, subprocess.TimeoutExpired): pass
     if not (repo and n.isdigit()):
@@ -297,8 +297,11 @@ def real_passes(sha):
     rows = [l.split()[:3] for l in open(rec) if len(l.split()) >= 3] if sha and os.path.isfile(rec) else []
     return [r for r in rows if r[0] == 'shape' and os.path.isfile(r[1]) and 'carries the pass of' not in open(r[1], errors='replace').read()]
 
-def cwd_repo(run_dir):
-    import subprocess
+def gh_repo(args, env, run_dir):
+    """owner/repo a gh command with args acts on, as gh picks it: its -R, else GH_REPO set on the command or inherited (both
+    [HOST/]OWNER/REPO or a URL), else the checkout's origin."""
+    if r := (opt(args, ['--repo', '-R']) or [None])[-1] or env.get('GH_REPO', os.environ.get('GH_REPO')):
+        return '/'.join(re.sub(r'(\.git)?/*$', '', r).split('/')[-2:])
     url = subprocess.run(['git', '-C', known(run_dir), 'remote', 'get-url', 'origin'], capture_output=True, text=True).stdout.strip()
     m = re.search(r'github\.com[:/]([\w.-]+/[\w.-]+?)(\.git)?$', url)
     return m.group(1) if m else None
@@ -319,7 +322,7 @@ def api_opens(ep, rest, env, d):
     None for any other endpoint, repo None when it can't be told (a project's numeric id)."""
     host, path = re.match(r'(?:https?://([^/]+))?/?(?:api/v[34]/)?([^?]*)', ep).groups()
     if (m := re.fullmatch(r'repos/([^/]+/[^/]+)/(issues|pulls)', path)):
-        base = re.sub(r'^.*?([^/]+/[^/]+)$', r'\1', env.get('GH_REPO') or os.environ.get('GH_REPO') or cwd_repo(d) or '')
+        base = gh_repo(rest, env, d) or ''
         repo = m[1].replace('{owner}', base.split('/')[0]).replace('{repo}', base.split('/')[-1]) if base else m[1]
         return (None if '{' in repo else repo if host in (None, 'api.github.com') else f'{host}/{repo}'), 'pr' if m[2] == 'pulls' else 'issue'
     if (m := re.fullmatch(r'projects/([^/]+)/(issues|merge_requests)', path)):
@@ -598,6 +601,12 @@ def check_workflow(what, d, commits, updates=()):
                   + '; '.join(f'"{j}"' for j in missed) + ". Run each job's command here on this head (its workflow file names it; install what it needs), "
                   "add `<job name>: <command> -> exit 0` to the log, and `pr-steps quick <log>` again (code §Gates)")
 
+def unproven_trailers(body, commits):
+    """The squash body's lines that aren't a Co-authored-by trailer for a human author of the PR's commits (gh lists their co-authors as authors)."""
+    authors = {f"{a['name']} <{a['email']}>".lower() for c in commits for a in c['authors']
+               if a['email'] != 'noreply@anthropic.com' and not re.match(r'Claude\b', a['name'])}  # the agent's trailer is no contributor credit
+    return [l for l in body.strip().split('\n') if not ((m := re.fullmatch(r'Co-authored-by: (.+ <[^<>]+>)', l.strip(), re.I)) and m[1].lower() in authors)]
+
 def need_approach(d, what, branch=None):
     """pull-request step 5 comes before the build and the draft PR: the branch's approach record, before it opens a PR or MR (draft or not)
     or updates an open one; branch defaults to the checked-out one."""
@@ -709,7 +718,7 @@ def check(t, has_cd):
         if any(not re.fullmatch(r'\$\(cat \S+\)', v) for v in opt(a[2:], ['--title', '-t'])):
             block('the PR title is typed inline: write it to <work folder>/drafts/title.md in the repo\'s form (its last 10 merged titles) '
                   'and pass --title "$(cat <that file>)" (mergeworthy:pull-request step 7)')
-        if a[1] == 'edit' and opt(a[2:], ['--title', '-t']) and (who := title_setter(*post_target('pr', a[2:], run_dir))):
+        if a[1] == 'edit' and opt(a[2:], ['--title', '-t']) and (who := title_setter(*post_target('pr', a[2:], env, run_dir))):
             block(f"{who[0]} set this PR's title ({who[1]}): it is their decision. Keep it, or ask them on the PR first (mergeworthy:pull-request step 7)")
     written = [x if os.path.isabs(x) else os.path.join(known(run_dir), x) for x in map(os.path.expanduser, written_files(t))]
     for x in written:
@@ -722,7 +731,7 @@ def check(t, has_cd):
         block("a review's output is the reviewer's final message, written by the reviewer: `codex exec -o <out>`, or the agent writes <out> itself. "
               "Never write a verdict yourself (mergeworthy:delegate §Reviewers, post step 3)")
     if p == 'gh' and a[:2] == ['pr', 'ready'] and '--undo' not in a:
-        check_refactor_ask(*post_target('pr', a[2:], run_dir), comment=False)
+        check_refactor_ask(*post_target('pr', a[2:], env, run_dir), comment=False)
     if p == 'gh' and a[:2] == ['pr', 'create'] and '--help' not in a and '-h' not in a:
         check_workflow('`gh pr create`', known(run_dir), [git_head(run_dir)])
         need_approach(run_dir, '`gh pr create`', opened_branch(a[2:], ['--head', '-H']))
@@ -745,7 +754,7 @@ def check(t, has_cd):
         # the PR the merge names (a number, a URL or a branch), else the current branch's
         sel = next((x for i, x in enumerate(rest) if not x.startswith('-') and (i == 0 or rest[i - 1] not in ('-t', '--subject', '-b', '--body', '-F', '--body-file', '-A', '--author-email', '--match-head-commit', '-R', '--repo'))), '')
         num = m.group(1) if (m := re.fullmatch(r'(?:\S*/pull/)?(\d+)(?:/\S*)?', sel)) else ''
-        if not ('--squash' in rest or '-s' in rest) or not subj or not re.search(r' \(#' + (num or r'\d+') + r'\)$', subj[-1]) or body != ['']:
+        if not ('--squash' in rest or '-s' in rest) or not subj or not re.search(r' \(#' + (num or r'\d+') + r'\)$', subj[-1]) or len(body) != 1:
             block('squash-merge as the repo asks, by default `gh pr merge <N> --squash --delete-branch --subject "<exact PR title> (#<N>)" --body ""`; re-read the repo\'s AGENTS.md first')
         if '--admin' in rest:
             block("never `gh pr merge --admin`: it bypasses the base's branch protection. Merge once the PR meets it")
@@ -754,14 +763,17 @@ def check(t, has_cd):
             r = subprocess.run(['gh', *args], cwd=known(run_dir), env={**os.environ, **env}, capture_output=True, text=True, timeout=20)
             return json.loads(r.stdout) if r.returncode == 0 else None
         try:
-            pr = gh('pr', 'view', *([sel] if sel else []), *(['-R', repo[-1]] if repo else []), '--json', 'url,headRefName,headRefOid,baseRefName,mergeStateStatus,changedFiles,files,statusCheckRollup')
-            slug = '/'.join(pr['url'].split('/')[3:5])
+            pr = gh('pr', 'view', *([sel] if sel else []), *(['-R', repo[-1]] if repo else []), '--json', 'url,headRefName,headRefOid,baseRefName,mergeStateStatus,changedFiles,files,statusCheckRollup,commits')
+            slug, commits = '/'.join(pr['url'].split('/')[3:5]), pr['commits']
             # the head's last check run tested the base as it was then: later base commits touching the PR's files are untested with it
             green = max((c.get('completedAt') or c.get('createdAt') or '' for c in pr['statusCheckRollup']), default='')
             moved = gh('api', f"repos/{slug}/compare/{pr['headRefOid']}...{pr['baseRefName']}")
             newer = [gh('api', f"repos/{slug}/commits/{c['sha']}")['files'] for c in moved['commits'] if c['commit']['committer']['date'] > green]
         except (OSError, subprocess.TimeoutExpired, ValueError, KeyError, TypeError) as e:
             block(f"gh couldn't read this PR's merge state ({type(e).__name__}: {e}), so whether its base moved can't be checked: retry once gh answers")
+        if body[0].strip() and (bad := unproven_trailers(body[0], commits)):
+            block(f"the squash body holds only `Co-authored-by: <name> <email>` lines naming human authors of the PR's commits, copied from `gh pr view <N> --json commits` "
+                  f"(mergeworthy:merging step 4); not one: {bad[0]!r}")
         if len(moved['commits']) < moved['total_commits'] or any(len(f) >= 300 for f in newer) or newer and len(pr['files']) < pr['changedFiles']:
             block(f"{pr['baseRefName']} moved past one page of GitHub's lists (100 files a PR, 250 commits a compare, 300 files a commit), so which of this PR's files it touched can't be checked: merge or rebase {pr['baseRefName']} into it, push, and merge once CI is green on that head")
         touched = sorted({f['path'] for f in pr['files']} & {f['filename'] for files in newer for f in files})
@@ -783,17 +795,17 @@ def check(t, has_cd):
         if '--help' in rest or '-h' in rest:
             return  # reading gh's help posts nothing
         files = opt(rest, ['--body-file', '-F'])
-        texts = [v for v in opt(rest, ['--body', '-b']) + (opt(rest, ['--comment', '-c']) if sub == 'close' else []) if v.strip()]
+        texts = [] if sub == 'merge' else [v for v in opt(rest, ['--body', '-b']) + (opt(rest, ['--comment', '-c']) if sub == 'close' else []) if v.strip()]
         if sub in ('comment', 'create', 'review') or (sub in ('edit', 'close', 'merge') and (files or texts)):
             if texts or not files:
                 if sub == 'review' and not texts and not files and '--approve' in rest:
                     return  # an approval without a body posts no text
                 block(NEED_DRAFT)
             if sub == 'create':
-                need_watch((opt(rest, ['--repo', '-R']) or [None])[-1] or cwd_repo(run_dir), run_dir)
+                need_watch(gh_repo(rest, env, run_dir), run_dir)
             if a[0] == 'pr' and sub == 'create':  # a draft's body says why on its State line, a ready PR's has none (pull-request step 7)
                 draft = '--draft' in rest or '-d' in rest
-                w = post_words.words((opt(rest, ['--repo', '-R']) or [None])[-1] or cwd_repo(run_dir))
+                w = post_words.words(gh_repo(rest, env, run_dir))
                 for f in files:
                     f = os.path.join(cwd, os.path.expanduser(where.expand(f)))
                     lines = [l.strip() for l in open(f).read().split('\n') if l.strip()] if os.path.exists(f) else []
@@ -802,7 +814,7 @@ def check(t, has_cd):
                         block(f"{f}: a draft PR's body starts, right under the badge, with '**{w['state'][0]}: {w['state'][1]}** (<why it's a draft, in plain words>)' (post-lint --kind pr --draft)" if draft else
                               f"{f}: this PR isn't a draft: remove the State line, or open it with --draft")
             # a comment or body edit on a PR with a refactor ask: the target post_target resolves (gh issue too: an issue number that is a PR)
-            target = post_target(a[0], rest, run_dir) if sub != 'create' else (None, None)
+            target = post_target(a[0], rest, env, run_dir) if sub != 'create' else (None, None)
             if sub in ('comment', 'edit') and files:
                 check_refactor_ask(*target, comment=sub == 'comment', drafts=files)
             if sub == 'comment' and '--edit-last' not in rest:
@@ -817,6 +829,8 @@ def check(t, has_cd):
         method, ep, fields, inputs, posts = api_call(rest)
         if not posts:
             return
+        if re.search(r'\{(owner|repo)\}', ep) and (here := gh_repo(rest, env, run_dir)):  # what gh fills them from
+            ep = ep.replace('{owner}', here.split('/')[0]).replace('{repo}', here.split('/')[1])
         bodies = [v[len('body=@'):] for v in opt(rest, ['-F', '--field']) if v.startswith('body=@')]
         literal = [v for v in fields if re.match(r'^(body|query)=', v) and not v.startswith('body=@') and not (ep == 'graphql' and v.startswith('query='))]
         if literal or not (bodies or inputs):

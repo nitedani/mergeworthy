@@ -716,6 +716,8 @@ check "a ready Hungarian body's evidence heading passes under Language: hu, not 
 hdguard() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr create --draft --repo acme/hu --title \"$(cat /w/drafts/title.md)\" --body-file "+sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$TCO" \
     | MERGEWORTHY_WATCHER=off python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?; }
 printf '%s\n**Állapot: piszkozat** (a CI futtatója nem működik)\n\nA feltöltés elakad nagy fájloknál.\n' "$B" > "$T/hdg.md"; sha256sum "$T/hdg.md" | cut -d' ' -f1 > "$T/hdg.md.gate"
+check "gh pr create --draft without --repo takes the language of GH_REPO, not of the checkout's origin" 0 "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"GH_REPO=acme/hu gh pr create --draft --title \"$(cat /w/drafts/title.md)\" --body-file "+sys.argv[1]},"cwd":sys.argv[2]}))' "$T/hdg.md" "$TCO" \
+  | MERGEWORTHY_WATCHER=off python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?)"
 check "gh pr create --draft accepts the Hungarian State line under Language: hu, and blocks it without" "0 2" "$(hdguard "$T/hdg.md") $(printf '# acme/hu\n' > "$HUP"; hdguard "$T/hdg.md")"
 # without --repo (the livekit session's calls), the language comes from the draft's watch dir: the repos.txt above it
 LK="$T/lkw"; mkdir -p "$LK/drafts"; cp "$T/hu0.md" "$LK/drafts/mr.md"; echo CLEAN > "$LK/drafts/mr.review.out"; printf '# acme/hu\n\nLanguage: hu\n' > "$HUP"
@@ -1012,6 +1014,9 @@ python3 -c 'import json,sys; print(json.dumps({"type":"assistant","timestamp":sy
 python3 -c 'import json,sys; print(json.dumps({"type":"assistant","timestamp":sys.argv[1],"message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":sys.argv[2]}}]}}))' "$now" "$RD/src/a.ts" > "$T/tr-read.jsonl"
 B='Build o/r#9 by skills/code/SKILL.md per ~/.mergeworthy/projects/o/r.md'
 check "BLOCK: an implementation brief whose session read only an agent's report in the checkout (in a work folder); a Read, or a cd + sed of a tracked source, passes" "2 1 0 0" "$(agt "$B" "$T/tr-noread.jsonl") $(grep -c 'read the code this change is about yourself' "$T/err") $(agt "$B" "$T/tr-read.jsonl") $(agt "$B" "$T/tr-sed.jsonl")"
+python3 -c 'import json,sys; print(json.dumps({"type":"assistant","timestamp":sys.argv[1],"message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":sys.argv[2]}}]}}))' "$now" "D=$RD; cd \"\$D\" && sed -n 1,80p src/a.ts" > "$T/tr-var.jsonl"
+python3 -c 'import json,sys; print(json.dumps({"type":"assistant","timestamp":sys.argv[1],"message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":sys.argv[2]}}]}}))' "$now" "D=$RD; git -C \"\$D\" show HEAD:src/a.ts" > "$T/tr-gshow.jsonl"
+check "a read in a checkout named by a variable the command set (cd \"\$D\" && sed, git -C \"\$D\" show) passes too" "0 0" "$(agt "$B" "$T/tr-var.jsonl") $(agt "$B" "$T/tr-gshow.jsonl")"
 check "BLOCK: a drafter brief (it reads thread-context.md) without writing/SKILL.md; with it, it passes" "2 0" "$(ag "$T" 'Draft the reply from /w/drafts/x/thread-context.md' review) $(ag "$T" 'Write a reply draft by skills/writing/SKILL.md from /w/drafts/y/thread-context.md; list each claim with a scope word beside its source' review)"
 check "BLOCK: a drafter brief without the template's scope-word check, naming the template; a review of a draft (CLEAN) needs none" "2 1 0" "$(ag "$T" 'Write a reply draft by skills/writing/SKILL.md from /w/drafts/z/thread-context.md' review) $(grep -c 'delegate/drafter.md' "$T/err") $(ag "$T" 'Review /w/drafts/z/r.md against /w/drafts/z/thread-context.md by skills/writing/SKILL.md; final message CLEAN or findings' review)"
 # pre-agent-dedupe: a template's placeholder left in the brief, by the plugin's own skills/delegate templates
@@ -1557,7 +1562,7 @@ check "a head recorded before the shape pass (loopb and refactor) counts as shap
 # pre-bash-guard: `gh pr merge` waits for a PR that is up to date with its base and whose CI ran after the base last touched its files; never --admin
 M='gh pr merge 41 -R o/r --squash --delete-branch --subject "Fix it (#41)" --body ""'
 mpr() { # mergeStateStatus, when its last check completed
-  printf '{"url":"https://github.com/o/r/pull/41","headRefName":"fix","headRefOid":"hd","baseRefName":"main","mergeStateStatus":"%s","changedFiles":1,"files":[{"path":"a.py"}],"statusCheckRollup":[{"completedAt":"%s"}]}' "$1" "$2" > "$FX/pr_view_41"; }
+  printf '{"url":"https://github.com/o/r/pull/41","headRefName":"fix","headRefOid":"hd","baseRefName":"main","mergeStateStatus":"%s","changedFiles":1,"files":[{"path":"a.py"}],"statusCheckRollup":[{"completedAt":"%s"}],"commits":[{"authors":[%s]}]}' "$1" "$2" "${3:-}" > "$FX/pr_view_41"; }
 printf '{"total_commits":1,"commits":[{"sha":"b1","commit":{"committer":{"date":"2026-10-28T12:00:00Z"}}}]}' > "$FX/repos_o_r_compare_hd...main"
 printf '{"files":[{"filename":"a.py"}]}' > "$FX/repos_o_r_commits_b1"
 mpr CLEAN 2026-10-28T13:00:00Z
@@ -1578,9 +1583,24 @@ check "the merge's PR is read in the dir and with the env the merge runs in: eve
 printf '{"total_commits":251,"commits":[]}' > "$FX/repos_o_r_compare_hd...main.big"; mv "$FX/repos_o_r_compare_hd...main" "$FX/cmp.keep"; mv "$FX/repos_o_r_compare_hd...main.big" "$FX/repos_o_r_compare_hd...main"
 check "BLOCK: a base past one page of GitHub's compare, naming it" "2 1" "$(guard "$M") $(grep -c "moved past one page of GitHub's lists" "$T/err")"
 mv "$FX/cmp.keep" "$FX/repos_o_r_compare_hd...main"
-python3 -c 'import json; print(json.dumps({"url":"https://github.com/o/r/pull/41","headRefName":"fix","headRefOid":"hd","baseRefName":"main","mergeStateStatus":"CLEAN","changedFiles":101,"files":[{"path":f"f{i}.py"} for i in range(100)],"statusCheckRollup":[{"completedAt":"2026-10-28T11:00:00Z"}]}))' > "$FX/pr_view_41"
+python3 -c 'import json; print(json.dumps({"url":"https://github.com/o/r/pull/41","headRefName":"fix","headRefOid":"hd","baseRefName":"main","mergeStateStatus":"CLEAN","changedFiles":101,"files":[{"path":f"f{i}.py"} for i in range(100)],"statusCheckRollup":[{"completedAt":"2026-10-28T11:00:00Z"}],"commits":[]}))' > "$FX/pr_view_41"
 printf '{"files":[{"filename":"z101.py"}]}' > "$FX/repos_o_r_commits_b1"
 check "BLOCK: a base commit after the last CI run on a PR past gh's 100 files, which may touch one gh left out" "2 1" "$(guard "$M") $(grep -c "100 files a PR" "$T/err")"
+# a squash keeps the human authors' credit: a body of only Co-authored-by lines naming the PR's commit authors (gh lists co-authors as authors), never the agent's
+RT='{"name":"rtritto","email":"rtritto@example.invalid"}'; AG='{"name":"Claude Opus 5.5","email":"noreply@anthropic.com"},{"name":"Claude","email":"81847+claude@users.noreply.github.com"}'
+mpr CLEAN 2026-10-28T13:00:00Z "$RT,$AG"; MB='gh pr merge 41 -R o/r --squash --delete-branch --subject "Fix it (#41)" --body'
+check "a squash body of the PR's authors' Co-authored-by lines passes" 0 "$(guard "$MB \"Co-authored-by: rtritto <rtritto@example.invalid>\"")"
+check "BLOCK: a squash body with other text, a co-author no commit of the PR has (a guessed email), or two bodies" "2 2 2 1" \
+  "$(guard "$MB \"Co-authored-by: rtritto <rtritto@example.invalid>"$'\n'"Fixes the thing.\"") $(guard "$MB \"Co-authored-by: rtritto <rtritto@users.noreply.github.com>\"") $(guard "$MB '' --body ''") $(grep -c 'squash-merge as the repo asks' "$T/err")"
+check "BLOCK: the agent's co-author line, by its email or its name, though gh lists it among the PR's authors" "2 2" \
+  "$(guard "$MB \"Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>\"") $(guard "$MB \"Co-authored-by: Claude <81847+claude@users.noreply.github.com>\"")"
+sed 's/"rtritto","email":"rtritto@example.invalid"/"Other","email":"other@example.invalid"/' "$FX/pr_view_41" > "$FX/pr_view_current"; cp "$FX/pr_view_41" "$FX/pr_view_https___github.com_o_r_pull_41"
+U='gh pr merge https://github.com/o/r/pull/41 --squash --subject "Fix it (#41)" --body'
+check "a squash by URL checks the credit against that PR's authors, not the current branch's" "0 2" "$(guard "$U \"Co-authored-by: rtritto <rtritto@example.invalid>\"") $(guard "$U \"Co-authored-by: Other <other@example.invalid>\"")"
+cp "$FX/pr_view_41" "$FX/pr_view_current"; : > "$T/pwd"
+check "a squash of the current branch's PR after a cd reads its authors in that dir" "0 0" \
+  "$(guard "cd $T/other && GH_STUB_PWD=$T/pwd gh pr merge --squash --subject \"Fix it (#41)\" --body \"Co-authored-by: rtritto <rtritto@example.invalid>\"") $(grep -vc " $T/other$" "$T/pwd")"
+rm "$FX/pr_view_current" "$FX/pr_view_https___github.com_o_r_pull_41"
 rm "$FX/pr_view_41"
 check "BLOCK: a merge state gh can't read" "2 1" "$(guard "$M") $(grep -c "gh couldn't read this PR's merge state" "$T/err")"
 # ---------- pre-bash-guard: a maintainer's refactor ask (the watcher's refactor-asks.txt) is answered by a pass recorded after it ----------
@@ -1611,6 +1631,10 @@ newpass
 check "a pass after the ask on any of the PR's commits answers it" 0 "$(asked "gh pr comment 7 -R o/r --body-file $NEWR")"
 oldpass
 check "BLOCK: through gh api, a comment and a body PATCH on the PR" "1 1" "$(asked "gh api repos/o/r/issues/7/comments -F body=@$NEWR") $(asked "gh api -X PATCH repos/o/r/pulls/7 -F body=@$NEWR")"
+check "BLOCK: the same through gh api's {owner}/{repo}, which gh fills from the checkout's repo" "1 1" "$(asked "cd $IDR && gh api 'repos/{owner}/{repo}/issues/7/comments' -F body=@$NEWR") $(asked "cd $IDR && gh api -X PATCH 'repos/{owner}/{repo}/pulls/7' -F body=@$NEWR")"
+ODR="$T/odr"; git init -q "$ODR"; git -C "$ODR" remote add origin https://github.com/x/y.git
+check "BLOCK: GH_REPO, on the command or inherited, fills {owner}/{repo} before the checkout's origin, as gh does" "1 1" "$(asked "cd $ODR && GH_REPO=o/r gh api 'repos/{owner}/{repo}/issues/7/comments' -F body=@$NEWR") $(GH_REPO=github.com/o/r asked "cd $ODR && gh api -X PATCH 'repos/{owner}/{repo}/pulls/7' -F body=@$NEWR")"
+check "BLOCK: gh pr comment and gh pr ready without -R act on GH_REPO, on the command or inherited, before the checkout's origin" "1 1" "$(asked "cd $ODR && GH_REPO=o/r gh pr comment 7 --body-file $NEWR") $(GH_REPO=https://github.com/o/r asked "cd $ODR && gh pr ready 7")"
 newpass
 check "through gh api, the pass recorded after the ask answers it" "0 0" "$(asked "gh api repos/o/r/issues/7/comments -F body=@$NEWR") $(asked "gh api -X PATCH repos/o/r/pulls/7 -F body=@$NEWR")"
 # every form gh takes for the target reaches the same check: a URL, a branch, an issue number that is a PR, gh pr ready; the current branch's PR (#6) is not the target
@@ -2018,6 +2042,7 @@ echo gitlab.com/ns/sub/proj > "$GW/repos.txt"
 check "glab issue create passes once a watcher covers the project" "0 0" "$(glguard 'glab issue create -R https://gitlab.com/ns/sub/proj --title x') $(glguard 'glab mr create --draft --title x' "$T/glrepo")"
 echo 'o/r all' > "$GW/repos.txt"
 check "an 'owner/repo all' line covers the repo for opening an issue" 0 "$(glguard 'gh issue create -R o/r --title x --body-file x.md' >/dev/null; grep -c 'no running watcher' "$T/err")"
+check "gh issue create without -R opens it on GH_REPO, which the watcher covers, not on the checkout's origin" "0 0" "$(glguard 'GH_REPO=o/r gh issue create --title x --body-file x.md' "$ODR" >/dev/null; grep -c 'no running watcher' "$T/err") $(GH_REPO=o/r glguard 'gh issue create --title x --body-file x.md' "$ODR" >/dev/null; grep -c 'no running watcher' "$T/err")"
 PG="$T/glpass"; mkdir -p "$PG"; echo 'p/q all' > "$PG/repos.txt"; echo sess-g > "$PG/passed"; printf '%s\n' "$GW" "$PG" > "$HOME/.claude/gh-watch-dirs.txt"
 glsess() { python3 -c 'import json,sys; print(json.dumps({"session_id":sys.argv[1],"tool_input":{"command":"gh issue create -R p/q --title x --body-file x.md"},"cwd":sys.argv[2]}))' "$1" "$T" \
   | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err" >/dev/null; grep -c 'no running watcher' "$T/err"; }
@@ -2089,7 +2114,6 @@ gql() { # viewer owner [PR URL]: GitHub's answer to whether a push updates a PR'
   python3 -c 'import json,sys; v, o, u = (sys.argv[1:] + [""])[:3]
 print(json.dumps({"data": {"viewer": {"login": v}, "repository": {"owner": {"login": o}, "b0": {"associatedPullRequests": {"nodes": [{"url": u, "isDraft": True}] if u else []}}}}}))' "$@" > "$FX/graphql"; }
 gql nitedani-agent nitedani-agent https://github.com/vikejs/vike/pull/3675  # the session's pushes went to its draft PR's head
-echo 'me 42' > "$FX/user"
 C1="cd $VK; "$'git commit -qam "fix: pass \\`headers\\` to telefunc \\`serve()\\` (telefunc 0.3.0)\n\nCo-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>" && git push origin HEAD:dependabot/npm_and_yarn/telefunc-0.3.0 2>&1 | tail -3'
 check "replay: the first commit and push (a multi-line message), with no preflight: blocked at the commit" "2 1" "$(bg "$C1") $(grep -c 'pr-steps preflight' "$T/err")"
 (cd "$VK" && bash "$R/bin/pr-steps" preflight 'none, because the test repo has no UI' >/dev/null)
