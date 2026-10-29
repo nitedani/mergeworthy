@@ -302,8 +302,8 @@ elif os.path.exists(f):
             f"release the job with `agent-job done {shlex.quote(key[:200])}`, then launch.\n")
         sys.exit(2)
 # At most 3 agents at a time per session (delegate step 1): a job is open until released or its agent finished; a memory refresh doesn't count
-# A fan-out a step names (finality steps 2-3, converge's per-slice verifiers) says so on a `Fan-out:` line and passes
-fanout = ti.get('role') != 'implementation' and re.search(r'^Fan-out: (finality step [23]|converge §Running the agents)$', gate_text, re.M)
+# A fan-out a step names (finality steps 2-3, converge's per-slice verifiers) says so on a `Fan-out:` line, in the task or its brief, and passes
+fanout = ti.get('role') != 'implementation' and re.search(r'^Fan-out: (finality step [23]|converge §Running the agents)$', briefs, re.M)
 if not register and d.get('session_id') and 'memory-refresh' not in gate_text and not fanout:
     import agent_jobs
     live = [j for _, j in agent_jobs.jobs() if j.get('session') == d['session_id'] and '/memory-brief-' not in j['key']
