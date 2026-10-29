@@ -185,6 +185,10 @@ The five checks of the final message (the hand-back, the repeated fork, the PR s
 
 It skips its watcher checks, the open-box check and the refresh order while the user's last message says "pause". A turn's first stop also gets a check-in, at most once per 30 minutes per session, in a session with work that can still be waiting (a work folder it worked in, an agent it started, a Monitor) and a message not ending with a `GENUINE-FORK:` line: work to start, or anything waiting? With nothing, the session ends the turn without writing anything.
 
+### `pre-monitor-guard.py` (`reply`)
+
+It blocks a Monitor on the `events.log` of a watch dir bound to a T3 thread (`<dir>/t3-thread`): that watcher sends each event to the thread itself, so the Monitor would only wake the session when it expires.
+
 ### `session-start` 
 
 It puts the always-on rules into context and writes `settings.env`. A second SessionStart hook, `session-memory.py`, prints, in a main session's checkout, the order to refresh `memory.md` when it is behind, then its Standing digest. `session-start` also points `~/.mergeworthy/current` at the installed version.
