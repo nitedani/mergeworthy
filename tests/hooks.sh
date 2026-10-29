@@ -11,11 +11,12 @@ cat > "$T/bin/gh" <<'EOF'
 #!/usr/bin/env bash
 # stub gh: answers `gh api <path>` from $FX/<path with / ? & = replaced by _>; exit 1 when the fixture is missing (a 404)
 # ...and `gh pr view [<ref>] --json number` from $FX/pr_view_<ref with / and : replaced by _>, or $FX/pr_view_current without a ref (none: gh's "no pull requests found")
-# ...and `gh pr checks <url> --json name,bucket` from $FX/pr_checks_<url with / and : replaced by _> (none: "no checks reported")
+# ...and `gh pr checks <url> --json name,bucket` from $FX/pr_checks_<url with / and : replaced by _> (none: "no checks reported"; a URL not on github.com: gh's "no pull requests found")
 # A `--jq .a.b` on a fixture holding a JSON object answers that field, as gh does; any other fixture is the answer as it stands
 [ "$1 $2" = "config get" ] && { [ ! -f "$FX/login" ] || cat "$FX/login"; exit; }  # the login gh's own config names: $FX/login
 [ "$1 $2" = "pr view" ] && [ -n "$GH_STUB_NOHOST" ] &&{ echo 'none of the git remotes configured for this repository point to a known GitHub host' >&2; exit 1; }
 if [ "$1 $2" = "pr view" ]; then r=$3; case "$r" in -*|'') r=current;; esac; f="$FX/pr_view_$(printf '%s' "$r" | tr '/:' '__')"; [ -f "$f" ] && cat "$f" && exit 0; echo 'no pull requests found for branch "x"' >&2; exit 1; fi
+[ "$1 $2" = "pr checks" ] && [ "${3#https://github.com/}" = "$3" ] && { echo "no pull requests found for branch \"$3\"" >&2; exit 1; }
 if [ "$1 $2" = "pr checks" ]; then f="$FX/pr_checks_$(printf '%s' "$3" | tr '/:' '__')"; [ -f "$f" ] && cat "$f" && exit 1; echo "no checks reported on the 'x' branch" >&2; exit 1; fi
 [ "$1" = api ] || exit 1
 f="$FX/$(printf '%s' "$2" | tr '/?&=' '____')"
@@ -2269,6 +2270,7 @@ f="$FX/gl_$(printf '%s' "$4" | tr '/?&=%' '_____')"
 [ -f "$f" ] && cat "$f" || { echo 'glab: 404 Not found (HTTP 404)' >&2; exit 1; }
 EOF
 GL="$T/gl"; git init -q -b scratch "$GL"; git -C "$GL" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; git -C "$GL" remote add origin git@gitlab.com:me/app.git
+for mr in me_2Fapp_merge_requests_4 me_2Fapp_merge_requests_5 me_2Fapp_merge_requests_6 acme_2Fapp_merge_requests_9; do echo '{"head_pipeline":null}' > "$FX/gl_projects_$mr"; done  # the MRs below have no pipeline
 echo me > "$FX/gl_login"; echo '[]' > "$FX/gl_projects_me_2Fapp_merge_requests_state_opened_source_branch_scratch"; echo '[]' > "$FX/gl_projects_acme_2Fapp_merge_requests_state_opened_source_branch_scratch"
 (cd "$GL" && bash "$R/bin/pr-steps" preflight 'none, because the test repo has no UI' >/dev/null)
 check "a commit in a checkout of a GitLab repo isn't held to gh's account" 0 "$(bg 'git -c user.name=Someone -c user.email=me@example.com commit -q --allow-empty -m x' "$GL")"
@@ -2321,6 +2323,15 @@ check "BLOCK: the same on GitHub, naming it" "2 1" \
 echo '[{"web_url":"https://gitlab.com/acme/app/-/merge_requests/9","draft":true}]' > "$FX/gl_projects_acme_2Fapp_merge_requests_state_opened_source_branch_fresh"
 check "BLOCK: a push updating an open MR of a group's GitLab project (not the login's) needs the record too, naming it" "2 1" \
   "$(MERGEWORTHY_WATCHER=off bg 'git push git@gitlab.com:acme/app.git fresh:fresh' "$NA") $(grep -c 'fresh has no approach record' "$T/err")"
+# an MR's failing jobs are read from its head pipeline through glab, on the MR's host
+git -C "$NA" checkout -q fresh; (cd "$NA" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null); git -C "$NA" checkout -q unrelated
+echo '{"head_pipeline":{"id":77}}' > "$FX/gl_projects_acme_2Fapp_merge_requests_9"
+echo '[{"name":"flaky","status":"failed","allow_failure":true}]' > "$FX/gl_projects_acme_2Fapp_pipelines_77_jobs_scope[]_failed_scope[]_canceled_per_page_100"
+check "a push updating a draft MR of a group's GitLab project passes with its approach recorded and only an allowed-to-fail job failing" 0 \
+  "$(MERGEWORTHY_WATCHER=off bg 'git push git@gitlab.com:acme/app.git fresh:fresh' "$NA")"
+echo '[{"name":"lint","status":"failed"}]' > "$FX/gl_projects_acme_2Fapp_pipelines_77_jobs_scope[]_failed_scope[]_canceled_per_page_100"
+check "BLOCK: the same push while the MR's pipeline has a failed job its gate log doesn't name, naming the job and the MR" "2 1" \
+  "$(MERGEWORTHY_WATCHER=off bg 'git push git@gitlab.com:acme/app.git fresh:fresh' "$NA") $(grep -c 'these CI jobs fail (https://gitlab.com/acme/app/-/merge_requests/9).*"lint"' "$T/err")"
 tr_cmd 'cd /tmp/x && git push origin HEAD:fix'
 check "a session that pushed, with no scope.md in a work folder it used, is told to write one (stop-lint reads its git commands)" "2 1" "$(slj 'Pushed the fix.') $(grep -c 'no work folder it used has a scope.md' "$T/err")"
 check "the parses a stop made are kept for the session's next stop, which blocks the same" "1 2" "$(ls "$HOME/.claude/mergeworthy-parses/s-fc.json" | wc -l) $(slj 'Pushed the fix.')"

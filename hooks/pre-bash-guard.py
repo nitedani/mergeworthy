@@ -526,15 +526,27 @@ def collaboration(d, url, heads):
     return why, prs
 
 def failing_jobs(urls):
-    """{job name: PR URL} of every failing CI job on these PRs' heads; a PR whose checks gh can't read blocks."""
+    """{job name: PR URL} of every failing CI job on these PRs' (MRs') heads: gh reads a PR's checks, glab an MR's head pipeline
+    on the MR's own host; a PR or MR whose CI can't be read blocks."""
+    import urllib.parse
+    def api(host, path):
+        return json.loads(subprocess.run(['glab', 'api', '--hostname', host, path], capture_output=True, text=True, timeout=30, check=True).stdout)
     out = {}
     for u in urls:
+        mr = re.match(r'https?://([^/]+)/(.+?)/-/merge_requests/(\d+)', u)
         try:
-            r = subprocess.run(['gh', 'pr', 'checks', u, '--json', 'name,bucket'], capture_output=True, text=True, timeout=30)
-            rows = [] if 'no checks reported' in r.stderr else json.loads(r.stdout)
-        except (OSError, subprocess.TimeoutExpired, ValueError):
-            block(f"gh couldn't read the CI of {u}, so whether this head reproduces its failing jobs can't be checked: retry once gh answers")
-        out.update({x.get('name'): u for x in rows if isinstance(x, dict) and x.get('bucket') in ('fail', 'cancel')})
+            if mr:
+                project = f"projects/{urllib.parse.quote(mr[2], safe='')}"
+                pipeline = (api(mr[1], f'{project}/merge_requests/{mr[3]}').get('head_pipeline') or {}).get('id')
+                failed = [x.get('name') for x in api(mr[1], f'{project}/pipelines/{pipeline}/jobs?scope[]=failed&scope[]=canceled&per_page=100')
+                          if isinstance(x, dict) and not x.get('allow_failure')] if pipeline else []
+            else:
+                r = subprocess.run(['gh', 'pr', 'checks', u, '--json', 'name,bucket'], capture_output=True, text=True, timeout=30)
+                failed = [x.get('name') for x in ([] if 'no checks reported' in r.stderr else json.loads(r.stdout)) if isinstance(x, dict) and x.get('bucket') in ('fail', 'cancel')]
+        except (OSError, subprocess.SubprocessError, ValueError, AttributeError, TypeError):
+            cli = 'glab' if mr else 'gh'
+            block(f"{cli} couldn't read the CI of {u}, so whether this head reproduces its failing jobs can't be checked: retry once {cli} answers")
+        out.update(dict.fromkeys(failed, u))
     return out
 
 def check_workflow(what, d, commits, updates=()):
