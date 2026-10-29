@@ -1895,6 +1895,11 @@ import sys; sys.path.insert(0, sys.argv[1]); import shellcmd as s
 print(*[s.api_call(['graphql', '-f', 'query=mutation{%s(input:{subjectId:"x"}){x}}' % m])[4] for m in ('addReaction', 'addComment')])
 PY2
 )"
+check "granting a collaborator and accepting its invitation post no text" "False False" "$(python3 - "$R/hooks" <<'PY2'
+import sys; sys.path.insert(0, sys.argv[1]); import shellcmd as s
+print(*[s.api_call(a)[4] for a in (['-X', 'PUT', 'repos/o/r/collaborators/u', '-f', 'permission=push'], ['-X', 'PATCH', 'user/repository_invitations/7'])])
+PY2
+)"
 sg_tr "$T/sg.jsonl" text
 check "BLOCK: gh api comment POST" 2 "$(sgb "gh api repos/o/r/issues/5/comments -F body=@$T/d.md")"
 check "the post block names post and writing" "mergeworthy:post mergeworthy:writing" "$(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | sort | xargs)"

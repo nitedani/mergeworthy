@@ -380,7 +380,7 @@ def opt(t, names):
 
 def api_call(rest):
     """(method, endpoint, fields, inputs, posts) of `gh api <rest>`. It posts text when it is a GraphQL mutation, or a POST,
-    PATCH or PUT that isn't a reaction, rerun, dispatch, label, assignee or review request."""
+    PATCH or PUT that isn't a reaction, rerun, dispatch, label, assignee, review request, collaborator or invitation."""
     method = (opt(rest, ['-X', '--method']) or [''])[-1].upper()
     fields = opt(rest, ['-f', '--raw-field', '-F', '--field'])
     inputs = opt(rest, ['--input'])
@@ -391,7 +391,7 @@ def api_call(rest):
     if ep == 'graphql':
         posts = any(re.search(r'\bmutation\b', v) and re.search(r'\b(?!(?:add|remove)Reaction\b)[a-z]\w*\s*\(input:', v) for v in fields)  # a reaction posts no text
     else:
-        posts = method in ('POST', 'PATCH', 'PUT') and not re.search(r'/(reactions|rerun[\w-]*|dispatches|labels|assignees|requested_reviewers)(/|$|\?)', ep)
+        posts = method in ('POST', 'PATCH', 'PUT') and not re.search(r'/(reactions|rerun[\w-]*|dispatches|labels|assignees|requested_reviewers|collaborators|repository_invitations|invitations)(/|$|\?)', ep)
     return method, ep, fields, inputs, posts
 
 def new_post_drafts(t):
