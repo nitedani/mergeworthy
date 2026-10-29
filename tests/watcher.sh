@@ -48,7 +48,7 @@ json.dump({"since": "2026-01-01T00:00:00Z", "seen": {}, "prs": {"o/r#1": {"state
 open(m.THREADS, "w").write("o/r 1\no/r 2\n")
 seen = {"scan": [], "reactions": []}
 m.fetch_thread = lambda repo, num, *a, **k: (seen["scan"].append(num), (False, "x", [], None, None, None, {}, True, None))[1]
-m.scan_reactions = lambda state, threads: seen["reactions"].extend(n for _, n in threads)
+m.scan_reactions = lambda state, threads: seen["reactions"].extend(n for _, n, _ in threads)
 m.run_scan()
 print("scan=" + ",".join(sorted(seen["scan"])) + " reactions=" + ",".join(sorted(seen["reactions"])))
 ')
@@ -222,7 +222,7 @@ got=$(PATH="$PB:$PATH" GH_HOST=github.com GATED_POSTS="$gated_posts" py '
 state = {"etag": {}, "is_pr": {}}
 buf = io.StringIO()
 with contextlib.redirect_stdout(buf):
-    m.scan_reactions(state, [("o/r", "5")]); m.scan_reactions(state, [("o/r", "5")])
+    m.scan_reactions(state, [("o/r", "5", True)]); m.scan_reactions(state, [("o/r", "5", True)])
     m.emit_maintainer_commits(state, "o/r", "o/r#5", "old", "new")
 out = buf.getvalue()
 print(*[l.split(" on ")[0] if l.startswith("### THUMBS") else l.split(": review")[0].split(": gh api")[0] for l in out.splitlines() if l.startswith(("### ", "WATCH"))], sep="|")

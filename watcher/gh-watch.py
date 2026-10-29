@@ -795,19 +795,24 @@ def read_threads():
 
 def scan_reactions(state, threads):
     """A 👍 or 👎 from you (ME, as for comments: a reaction is no gated post) or a maintainer on one of the agent's comments is
-    feedback on that comment (mergeworthy:reply §Reactions)."""
+    feedback on that comment (mergeworthy:reply §Reactions). threads: (repo, num, read in full). After a check only the lists
+    known to hold an agent comment are read: a new comment makes the thread's next look a full read, which reads them all."""
     agent_hashes = agent_post_hashes()
     seen, etags = state.setdefault('reactions', {}), state['etag']  # seen: "<kind>:<id>" -> ["<login>:<content>", ...]
-    for repo, num in threads:
-        pending, clean = {}, True  # an answer's ETag is kept only once everything in it was handled: a 304 later means "nothing new"
+    lists = state.setdefault('agent_lists', {})  # "<repo>#<num>" -> the kinds below whose list holds an agent comment
+    for repo, num, full in threads:
+        key, pending, clean = f"{repo}#{num}", {}, True  # an answer's ETag is kept only once everything in it was handled: a 304 later means "nothing new"
+        known = lists.get(key)  # None: never read here, so read whole (no validators), else a 304 hides the agent's comments
         for kind, path in (('body', 'issues'), ('comment', 'issues'), ('review-comment', 'pulls')):
-            if kind == 'review-comment' and state['is_pr'].get(f"{repo}#{num}") is False:
+            if kind == 'review-comment' and state['is_pr'].get(key) is False:
                 continue  # an issue has no review comments
+            if not full and known is not None and kind not in known:
+                continue
             try:
                 if kind == 'body':  # the PR or issue description itself
-                    comments = paged(f"repos/{repo}/issues/{num}", etags, pending)
+                    comments = paged(f"repos/{repo}/issues/{num}", etags, pending, fresh=known is None)
                 else:
-                    comments = paged(f"repos/{repo}/{path}/{num}/comments?per_page=100", etags, pending)
+                    comments = paged(f"repos/{repo}/{path}/{num}/comments?per_page=100", etags, pending, fresh=known is None)
             except Exception as e:
                 if path == 'issues':
                     clean = False
@@ -815,7 +820,11 @@ def scan_reactions(state, threads):
                 continue  # an issue has no review comments
             for c in comments:
                 counts = c.get('reactions') or {}
-                if c['user'].get('login') != ME or _norm(c.get('body')) not in agent_hashes or not (counts.get('+1') or counts.get('-1')):
+                if c['user'].get('login') != ME or _norm(c.get('body')) not in agent_hashes:
+                    continue
+                if kind not in lists.setdefault(key, []):
+                    lists[key].append(kind)
+                if not (counts.get('+1') or counts.get('-1')):
                     continue
                 sk = f"{kind}:{c['id']}"
                 try:
@@ -844,6 +853,7 @@ def scan_reactions(state, threads):
                         emit(f"### THUMBS UP {repo}#{num} by {who} on {c['html_url']}: note what they liked and reinforce the rule that produced it (mergeworthy:reply §Reactions)")
         if clean:
             etags.update(pending)
+            lists.setdefault(key, [])
 
 
 def react_eyes(repo, kind, cid, num=None):
@@ -951,10 +961,11 @@ def emit_wait_ping(state, key, last, events):
 
 # ---------- How often a thread is read ----------
 # A look at a thread is a "check" (its PR or issue and, for an open PR, its CI: one or two requests, 304 answers counted) or a "full"
-# read (that, the comment lists, the last comment and the reactions: up to nine). A check that finds the thread changed becomes a
-# full read, and so does a notification or an issue-list change (repo_feeds) that names the thread: those are read at once.
+# read (that, the comment lists and the last comment: up to seven). A check that finds the thread changed becomes a full read, and so
+# does a notification or an issue-list change (repo_feeds) that names the thread: those are read at once. After either, the reactions
+# on the agent's comments are read (scan_reactions: after a check, each list holding one, 304 while no count changed): a reaction moves nothing else.
 CHECK = {'recent': 300, 'open': 1800, 'closed': 21600}  # seconds between looks, by what the thread is now: open and changed in the last day, other open, merged or closed
-FULL = {'recent': 3600, 'open': 86400, 'closed': 86400}  # seconds after which a look is a full read anyway (reactions, edited comments: nothing else shows them)
+FULL = {'recent': 3600, 'open': 86400, 'closed': 86400}  # seconds after which a look is a full read anyway (edited comments: nothing else shows them)
 RECENT = 86400
 
 
@@ -991,13 +1002,13 @@ def plan(state, threads, lvl=OK, everything=False):
 
 
 def scan(state, jobs):
-    """Read the given (repo, num, mode, activity) jobs in parallel; apply results in this thread. -> (all fine, the (repo, num) read in full)"""
+    """Read the given (repo, num, mode, activity) jobs in parallel; apply results in this thread. -> (all fine, the (repo, num, read in full) read)"""
     started = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
     def since(key):  # each thread keeps its own position, so one failing thread doesn't hold back the others
         first = min(state['since'], ROUND_SINCE) if ROUND_SINCE else state['since']  # a --round's new thread: back to what it hasn't read
         dt = datetime.datetime.strptime(state['since_by'].get(key, first), '%Y-%m-%dT%H:%M:%SZ') - datetime.timedelta(minutes=10)
         return dt.strftime('%Y-%m-%dT%H:%M:%SZ')
-    ok, fulls, pings, now = True, [], [], time.time()
+    ok, read, pings, now = True, [], [], time.time()
     state.setdefault('upd', {})
     sched = state.setdefault('sched', {})
     with ThreadPoolExecutor(max_workers=8) as ex:
@@ -1055,12 +1066,12 @@ def scan(state, jobs):
             s['act'] = a
             if full:
                 s['full'] = now
-                fulls.append((repo, num))
+            read.append((repo, num, full))
             s['next'] = now + spread(key, CHECK[thread_kind(state, key, now)])
     for key, last, events in pings:  # after every thread's activity is noted: someone busy in another thread is mid-review
         emit_wait_ping(state, key, last, events)
     state['since'] = started  # only the default for threads added to threads.txt later
-    return ok, fulls
+    return ok, read
 
 
 def notifications_changed(state):
@@ -1686,23 +1697,23 @@ def locked():
 
 
 def run_scan(everything=False):
-    """Read what is due now (everything: every listed thread, in full); the reactions of what was read in full."""
+    """Read what is due now (everything: every listed thread, in full), then the reactions of what was read."""
     threads = read_threads()
     if ROUND:  # a thread a live daemon watches is its dir's, though an earlier round listed it here
         taken = set().union(*(listed_threads(d) for d in live_dirs() if d != HERE))
         threads = [t for t in threads if f"{t[0]}#{t[1]}" not in taken]
     with locked():
         state = load_state()
-        ok, fulls = scan(state, plan(state, threads, OK, everything))
+        ok, read = scan(state, plan(state, threads, OK, everything))
         save_state(state)
-    read_reactions(fulls)
+    read_reactions(read)
 
 
-def read_reactions(fulls):
-    if fulls:
+def read_reactions(read):
+    if read:
         with locked():
             state = load_state()
-            scan_reactions(state, fulls)
+            scan_reactions(state, read)
             save_state(state)
 
 
@@ -1868,11 +1879,11 @@ def tick():
             with locked():
                 state = load_state()
                 poll_account(state, lvl)
-                ok, fulls = scan(state, plan(state, read_threads(), lvl))
+                ok, read = scan(state, plan(state, read_threads(), lvl))
                 log_stats(state)
                 sweep_disk(state)
                 save_state(state)
-            read_reactions(fulls)
+            read_reactions(read)
             if lvl <= RESERVE and time.time() - _retire_at[0] > 300:
                 _retire_at[0] = time.time()
                 retire_if_done()

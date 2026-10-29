@@ -194,7 +194,7 @@ def _():
     return due_at(34 * 60)
 
 
-@case("cadence: after an hour the PRs changed in the last day are read in full again (reactions, edited comments); the rest is still checked", "5 open check, 2 recent full")
+@case("cadence: after an hour the PRs changed in the last day are read in full again (edited comments); the rest is still checked", "5 open check, 2 recent full")
 def _():
     return due_at(61 * 60)
 
@@ -240,8 +240,33 @@ def _():
         repo, n = thread_of(m, 'recent')
         gh.comment(repo, int(n), 'alice', 'Could you look at this?')
         state = m.load_state()
-        ok, fulls = m.scan(state, [(repo, n, 'check', 0)])
-        return f"{(repo, n) in fulls} {any(l.startswith(f'### {repo}#{n} comment') for _, _, l in emitted)}"
+        m.scan(state, [(repo, n, 'check', 0)])
+        return f"{state['sched'][f'{repo}#{n}']['full'] == sim.now} {any(l.startswith(f'### {repo}#{n} comment') for _, _, l in emitted)}"
+
+
+@case("a 👍 on the agent's comment is reported at the thread's next check, not its next full read, also after an update from a state that read reactions only in full; unchanged comment lists then answer 304", "True 1 0")
+def _():
+    with small() as (sim, gh, dirs, pick):
+        m = load('d1', dirs['d1'], sim)
+        repo, n = next(p for p in pick['stale_issue'] if p[0] == 'd1')[1:]
+        mine = gh.comment(repo, n, 'me', 'the agent', at=sim.now - 3 * 86400)
+        m.GATED_POSTS = f"{dirs['d1']}/gated"
+        open(m.GATED_POSTS, 'w').write(m._norm('the agent') + '\n')
+        m.run_scan()
+        state = m.load_state()
+        state.pop('agent_lists')  # the update: the comment lists' validators are kept, nothing says which hold the agent's comments
+        json.dump(state, open(m.STATE, 'w'))
+        sim.now += 1900  # the open issue's check is due, its full read not for a day
+        m.run_scan()
+        sim.now += 1900
+        mine['reactions'] = {'+1': 1, '-1': 0}
+        gh.reactions[mine['id']] = [{'id': 1, 'user': {'login': 'me', 'type': 'User'}, 'content': '+1', 'created_at': ws.iso(sim.now)}]
+        m.run_scan()
+        state, mark = m.load_state(), len(gh.log)
+        sim.now += 1900
+        m.run_scan()
+        lists = [e for e in gh.log[mark:] if re.search(r'/comments$', e[2])]
+        return f"{state['sched'][f'{repo}#{n}']['full'] < sim.now - 5000} {sum(1 for _, _, l in emitted if l.startswith(f'### THUMBS UP {repo}#{n} by me'))} {sum(1 for e in lists if e[3] != 304)}"
 
 
 @case("activity named by a notification or an issue list is read at once, even on a merged thread that is not due for hours", "[('vikejs/vike', '{n}', 'full')]")
