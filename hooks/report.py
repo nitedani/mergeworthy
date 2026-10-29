@@ -31,19 +31,22 @@ LEX = {
     'CONDITION': {'en': r"once|when|if|until|after|before|unless|whether", 'hu': r"ha|amint|amikor|mihelyt|amíg|\w+-ig"},
     'CONJUNCTION': {'en': r"and|but|so", 'hu': r"és|de|ezért|viszont"},
 }
-NEGATION, FUTURE, CONDITION, CONJUNCTION = (re.compile(rf"\b(?:{w['en']}|{w['hu']})\b", re.I) for w in LEX.values())
+FUTURE, CONDITION, CONJUNCTION = (re.compile(rf"\b(?:{LEX[k]['en']}|{LEX[k]['hu']})\b", re.I) for k in ('FUTURE', 'CONDITION', 'CONJUNCTION'))
+# English negates before the claim ("is not ready"; "ready with no issues" still claims), Hungarian on either side ("kész még nem vagyok")
+NEGATION_EN, NEGATION_HU = (re.compile(rf"\b(?:{LEX['NEGATION'][l]})\b", re.I) for l in ('en', 'hu'))
 PART = re.compile(r"[,;:](?=\s|$)")  # not the colon of https:
 CLAUSE = re.compile(rf"(?={CONJUNCTION.pattern})", re.I)
 
 
 def asserted(sentence, i):
-    """Whether the words at sentence[i] state something as true now: no negation before them in their clause ("none is ready";
-    "ready with no issues" still claims), no plan in their clause ("it will be ready", "és kész lesz"), no condition in their part
-    or opening the next one ("once it is ready", "kész, ha zöld a CI"), and the sentence is no question. A part ends at a comma,
-    semicolon or colon; a clause also before a conjunction."""
+    """Whether the words at sentence[i] state something as true now: no negation in their clause, an English one only before them
+    ("none is ready", "kész még nem vagyok"; "ready with no issues" still claims), no plan in their clause ("it will be ready",
+    "és kész lesz"), no condition in their part or opening the next one ("once it is ready", "kész, ha zöld a CI"), and the
+    sentence is no question. A part ends at a comma, semicolon or colon; a clause also before a conjunction."""
     before, (part, *after) = PART.split(sentence[:i])[-1], PART.split(sentence[i:], 1)
     lead = CLAUSE.split(before)[-1]
-    return not (NEGATION.search(lead) or FUTURE.search(lead + CLAUSE.split(part)[0]) or CONDITION.search(before + part)
+    clause = lead + CLAUSE.split(part)[0]
+    return not (NEGATION_EN.search(lead) or NEGATION_HU.search(clause) or FUTURE.search(clause) or CONDITION.search(before + part)
                 or after and CONDITION.match(after[0].lstrip()) or sentence.rstrip().endswith('?'))
 
 

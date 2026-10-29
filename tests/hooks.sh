@@ -1232,6 +1232,9 @@ check "a conditional in the done word's clause is no claim" "0 0 0" "$a $(stop "
 a=; for m in 'Egyik MR sem kész: mindháromnál a CI hiányzik. https://gitlab.com/g/p/-/merge_requests/96' 'Semmi sincs kész: https://gitlab.com/g/p/-/merge_requests/96' \
              'Nothing is done yet: https://gitlab.com/g/p/-/merge_requests/96' 'None of them is ready for review: https://gitlab.com/g/p/-/merge_requests/96'; do tr_file "$m"; a="$a $(stop "$T")"; done
 check "a done word under sem, sincs, semmi, nothing or none is no claim" " 0 0 0 0" "$a"
+tr_file 'Kész még nem vagyok: https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
+tr_file 'Kész sem vagyok még: https://gitlab.com/g/p/-/merge_requests/96'
+check "a Hungarian negation after the done word is no claim either" "0 0" "$a $(stop "$T")"
 tr_file 'It is ready for review if CI passes: https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
 tr_file 'Kész, ha zöld a CI: https://gitlab.com/g/p/-/merge_requests/96'
 check "a condition after the done word, or opening the next part, is no claim" "0 0" "$a $(stop "$T")"
