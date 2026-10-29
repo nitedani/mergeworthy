@@ -303,6 +303,11 @@ def cwd_repo(run_dir):
     m = re.search(r'github\.com[:/]([\w.-]+/[\w.-]+?)(\.git)?$', url)
     return m.group(1) if m else None
 
+def gh_repo(env, run_dir):
+    """owner/repo a gh command without -R acts on: GH_REPO ([HOST/]OWNER/REPO), set on the command or inherited, else the checkout's origin."""
+    r = env.get('GH_REPO', os.environ.get('GH_REPO'))
+    return '/'.join(r.split('/')[-2:]) if r else cwd_repo(run_dir)
+
 def gitlab_repo(a, run_dir):
     """`gitlab.com/<namespace>/<project>` a glab command acts on: its -R value (a path or URL), else the cwd's origin."""
     repo = (opt(a, ['--repo', '-R']) or [None])[-1]
@@ -817,7 +822,7 @@ def check(t, has_cd):
         method, ep, fields, inputs, posts = api_call(rest)
         if not posts:
             return
-        if re.search(r'\{(owner|repo)\}', ep) and (here := cwd_repo(run_dir)):  # gh fills them from the checkout's repo
+        if re.search(r'\{(owner|repo)\}', ep) and (here := gh_repo(env, run_dir)):  # what gh fills them from
             ep = ep.replace('{owner}', here.split('/')[0]).replace('{repo}', here.split('/')[1])
         bodies = [v[len('body=@'):] for v in opt(rest, ['-F', '--field']) if v.startswith('body=@')]
         literal = [v for v in fields if re.match(r'^(body|query)=', v) and not v.startswith('body=@') and not (ep == 'graphql' and v.startswith('query='))]
