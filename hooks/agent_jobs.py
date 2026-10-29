@@ -80,6 +80,15 @@ def launchers(items):
             if any(all(n in l for n in ns) for l in calls): out[f] = p
     return out
 
+def session_id(path):
+    """The provider's id of the session a transcript records, the one T3 Code names it by: a Codex rollout's session_meta id,
+    else (Claude) the file's name."""
+    try:
+        with open(path) as fh: o = json.loads(fh.readline())
+        if isinstance(o, dict) and o.get('type') == 'session_meta': return str((o.get('payload') or {}).get('id') or '')
+    except (OSError, ValueError): pass
+    return os.path.basename(path)[:-len('.jsonl')]
+
 def pending(path):
     """The transcript's last turn is a tool call still running (or cut off by a crash: LONG covers that)."""
     with open(path, 'rb') as fh:
@@ -101,7 +110,7 @@ def finished(job, now=None, _seen=()):
     if not p: return None
     m = os.path.getmtime(p); quiet = (now or time.time()) - m
     if not (quiet >= LONG or (quiet >= QUIET and not pending(p))): return None
-    sid = os.path.basename(p)[:-len('.jsonl')]
+    sid = session_id(p)
     if steward.busy(sid) or sid not in _seen and any(j.get('session') == sid and not finished(j, now, _seen + (sid,)) for _, j in jobs(now)):
         return None
     return (p, m)

@@ -49,7 +49,7 @@ for f in hit:
     j = dict(entries)[f]
     # a released job is never reported: while its agent works on (a T3 run, task or background command), its result would be lost
     p = agent_jobs.transcript(j)
-    if p and steward.busy(os.path.basename(p)[:-len('.jsonl')]):
+    if p and steward.busy(agent_jobs.session_id(p)):
         sys.exit(f"agent-job: the agent for {want!r} is still at work (its T3 thread has a run, a task or a background command going), "
                  "so its job stays open: the watcher's `### AGENT DONE` wakes this session when it ends; read its result then and release it (mergeworthy:delegate step 6)")
     os.remove(os.path.join(jobs, f)); print('released', want)
