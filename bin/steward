@@ -222,8 +222,7 @@ def pr_record(repo, num):
     return {'pr': f"{repo}#{num}", 'created': p['createdAt'], 'settled': p['mergedAt'] or p['closedAt'], 'outcome': 'merged' if p['merged'] else p['state'].lower(),
             'hours_to_merge': hours(p['createdAt']), 'hours_ready_to_merge': hours(ready), 'review_rounds': len(revs),
             'change_requests': changes, 'review_comments': sum(v['comments']['totalCount'] for v in revs),
-            'commits_after_review': after, 'first_pass': bool(p['merged'] and not changes and not after),
-            'maintainer_asks': maintainer_asks(repo, num, (p.get('author') or {}).get('login'))}
+            'commits_after_review': after, 'first_pass': bool(p['merged'] and not changes and not after)}
 
 
 def followups():
@@ -277,8 +276,8 @@ def metrics(folder, since, authors):
     """A PR counts in the window it settled in (merged or closed), so a window isn't judged by the fast merges of PRs still open."""
     start = since - (NOW - since)
     me = gh('api', 'user')['login']
-    items = [i for a in authors or [me] for q in (f"closed:>={iso(start)[:10]}", "is:open") for i in search(f"is:pr author:{a} {q}")
-             if BADGE.match(i.get('body') or '') or i['user']['login'] != me]
+    prs = lambda q: [i for a in authors or [me] for i in search(f"is:pr author:{a} {q}") if BADGE.match(i.get('body') or '') or i['user']['login'] != me]
+    items = prs(f"closed:>={iso(start)[:10]}") + prs("is:open")
     fu, cost, rows = followups(), costs(start - 86400), []
     for i in items:
         r = pr_record(i['repository_url'].split('/repos/', 1)[1], i['number'])
@@ -293,7 +292,9 @@ def metrics(folder, since, authors):
         for r in rows:
             f.write(json.dumps({'pass': iso(NOW), **r}) + '\n')
     print_tables(rows, since)
-    asks = [(at, r['pr'], url) for r in rows for at, url in r['maintainer_asks'] if epoch(at) >= start]
+    # by the ask's time, whenever its PR settled: a maintainer may ask on a PR closed long before
+    asks = [(at, f"{repo}#{i['number']}", url) for i in prs(f"updated:>={iso(start)[:10]}") for repo in [i['repository_url'].split('/repos/', 1)[1]]
+            for at, url in maintainer_asks(repo, i['number'], i['user']['login']) if epoch(at) >= start]
     now = sorted(a for a in asks if epoch(a[0]) >= since)
     print(f"\nMaintainer asks for a pass we owe since {iso(since)[:10]}: {len(now)} ({len(asks) - len(now)} in the window before)")
     for at, pr, url in now:

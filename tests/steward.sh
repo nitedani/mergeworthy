@@ -58,6 +58,7 @@ cat > "$T/bin/gh" <<EOF
 #!/usr/bin/env bash
 case "\$*" in
   "api user") echo '{"login":"me"}' ;;
+  *updated:*) echo '{"items":[{"number":4,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"},{"number":7,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"},{"number":9,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"},{"number":8,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"a PR the user wrote"}]}' ;;
   *is:open*) echo '{"items":[{"number":9,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"}]}' ;;
   *search/issues*) cat <<'J'
 {"items":[{"number":5,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*\\nbody"},
@@ -69,6 +70,7 @@ J
   ;;
   *n=10*) echo '{"data":{"repository":{"pullRequest":{"state":"MERGED","merged":true,"createdAt":"$C10","mergedAt":"$M10","closedAt":"$M10","author":{"login":"me"},"timelineItems":{"nodes":[]},"reviews":{"nodes":[{"author":{"login":"boss"},"authorAssociation":"OWNER","state":"APPROVED","submittedAt":"$R10","body":"","url":"u","comments":{"totalCount":0}}]},"comments":{"nodes":[]},"commits":{"nodes":[{"commit":{"committedDate":"$C10","parents":{"totalCount":1}}},{"commit":{"committedDate":"$B10","parents":{"totalCount":2}}}]}}}}}' ;;
   *issues/9/comments*) cat "$T/c9.json" ;;
+  *issues/4/comments*) echo '[[{"user":{"login":"boss"},"author_association":"OWNER","created_at":"$C9","body":"Apply https://x/refactor/SKILL.md","html_url":"https://github.com/o/r/pull/4#issuecomment-41"}]]' ;;
   *pulls/7/reviews*) echo '[[{"user":{"login":"boss"},"author_association":"OWNER","submitted_at":"$C3","body":"Do another round of https://x/README.md","html_url":"https://github.com/o/r/pull/7#pullrequestreview-71"}]]' ;;
   *--paginate*) echo '[[]]' ;;
   *n=9*) cat "$T/g9.json" ;;
@@ -114,8 +116,8 @@ check "metrics: a change request and a commit after it: not first-pass; the auth
 check "metrics: a PR merged before --since falls in the previous window" "previous" "$(rec o/r#7 window)"
 check "metrics: a PR created before --since and merged after it counts in this window; a merge of the base after approval isn't rework" "this True 0" "$(rec o/r#10 window first_pass commits_after_review)"
 check "metrics: an open PR is listed apart" "open|Open now: 1" "$(rec o/r#9 window)|$(echo "$out" | grep '^Open now')"
-check "metrics: a maintainer's ask for a pass since the last pass is listed, one before it counted, the first of 101 comments too; a direct ask without a link counts; quoted, a non-maintainer's, an agent's, code and a question about the design aren't asks" \
-  "Maintainer asks for a pass we owe since $(iso '-5 days' | cut -c1-10): 3 (1 in the window before)|- $C9 o/r#9 https://github.com/o/r/pull/9#issuecomment-91|- $C9 o/r#9 https://github.com/o/r/pull/9#issuecomment-92|- $C9 o/r#9 https://github.com/o/r/pull/9#issuecomment-93|" "$(echo "$out" | sed -n '/^Maintainer asks/,$p' | tr '\n' '|')"
+check "metrics: a maintainer's ask for a pass since the last pass is listed, one before it counted, the first of 101 comments too; a direct ask without a link counts; quoted, a non-maintainer's, an agent's, code and a question about the design aren't asks; one on a PR closed before the window counts by its own time" \
+  "Maintainer asks for a pass we owe since $(iso '-5 days' | cut -c1-10): 4 (1 in the window before)|- $C9 o/r#4 https://github.com/o/r/pull/4#issuecomment-41|- $C9 o/r#9 https://github.com/o/r/pull/9#issuecomment-91|- $C9 o/r#9 https://github.com/o/r/pull/9#issuecomment-92|- $C9 o/r#9 https://github.com/o/r/pull/9#issuecomment-93|" "$(echo "$out" | sed -n '/^Maintainer asks/,$p' | tr '\n' '|')"
 check "metrics: the side-by-side table, first-pass acceptance per window" "| first-pass acceptance (north star) | 1/1 (100%) | 2/3 (66%) |" "$(echo "$out" | grep 'north star')"
 
 check "sessions <folder>: the window starts at the folder's last pass" 2 "$(python3 "$R/bin/steward" sessions "$S" | grep -c "^~")"
