@@ -2259,6 +2259,8 @@ check "BLOCK: a negation after the state words doesn't take the claim back" 2 "$
 check "BLOCK: a question after it doesn't hide a state claim" 2 "$(slj 'o/r#12 is green, any questions?')"
 check "BLOCK: a time word after the state words doesn't hide the claim" 2 "$(slj 'o/r#12 is green after the rebase.')"
 check "BLOCK: an expectation after the state words doesn't hide the claim" 2 "$(slj 'o/r#12 is green as expected.')"
+tr_file 'All done with the next steps documented: https://gitlab.com/g/p/-/merge_requests/96'
+check "BLOCK: \"next\" that isn't a time leaves the claim standing" 2 "$(stop "$T")"
 check "a condition over the claim's part (past a URL's colon) states nothing; one opening the next part leaves it standing" "0 0 2" \
   "$(slj 'Once CI passes and o/r#12 is green, I merge.') $(slj 'Once CI passes and https://github.com/o/r/pull/12 is green, I merge.') $(slj 'o/r#12 is merged, if the maintainer agrees.')"
 rm -f "$FX/repos_o_r_commits_abc_check-runs_per_page_100"

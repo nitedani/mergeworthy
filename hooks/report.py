@@ -32,7 +32,7 @@ TAKE_BACK = {
     # before it in its clause: a negation or an expectation ("none is ready", "I expect it is done")
     'lead': words(r"not|no|none|nothing|neither|nor|never|nobody|\w+n['’]t|expect\w*|wait\w*", r"vár\w*"),
     # in its clause: a plan, or a Hungarian negation ("it will be ready", "kész lesz", "kész még nem vagyok")
-    'clause': words(r"will|would|\w+['’]ll|going to|tomorrow|later|soon|next",
+    'clause': words(r"will|would|\w+['’]ll|going to|tomorrow|later|soon|next (?:week|month|year|release)",
                 r"lesz\w*|lenne\w*|majd|holnap\w*|később|hamarosan|nem|nincs\w*|sincs\w*|sem|semmi\w*|senki|soha"),
     # before it in its part: a time word ("once it is ready")
     'before': words(r"once|when|until|after|before", r"amint|amikor|mihelyt|amíg|\w+-ig"),
