@@ -22,7 +22,7 @@ if [ "$1 $2" = "pr checks" ]; then f="$FX/pr_checks_$(printf '%s' "$3" | tr '/:'
 f="$FX/$(printf '%s' "$2" | tr '/?&=' '____')"
 for a in "$@"; do case "$a" in o=*) [ -f "${f}_${a#o=}" ] && f="${f}_${a#o=}";; esac; done  # graphql: $FX/graphql_<owner> answers for that owner
 [ -n "$GH_STUB_403" ] && { echo 'gh: API rate limit exceeded for user ID 1. (HTTP 403)' >&2; exit 1; }
-[ -f "$f" ] || { echo 'gh: Not Found (HTTP 404)' >&2; exit 1; }
+[ -f "$f" ] || { printf '{"message":"Not Found","status":"404"}'; echo 'gh: Not Found (HTTP 404)' >&2; exit 1; }  # gh prints the error's JSON body too
 q=; while [ $# -gt 0 ]; do [ "$1" = --jq ] && q=$2; shift; done
 python3 -c 'import json, re, sys
 raw = open(sys.argv[1]).read(); q = sys.argv[2]
@@ -94,6 +94,8 @@ check "the next stop goes through" 0 "$(checkin 1)"
 check "no second check-in within 30 minutes of the last" 0 "$(checkin 0)"
 python3 -c 'import json; print(json.dumps({"type":"user","message":{"content":"Act as the review sub-agent for this task.\n\nCheck the diff."}})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":"CLEAN"}]}}))' > "$T/tr.jsonl"
 check "a delegated child ends with its result, no check-in" 0 "$(checkin 0)"
+python3 -c 'import json; print(json.dumps({"type":"user","message":{"content":"Act as the review sub-agent for this task.\n\nCheck the diff."}})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","id":"a1","input":{"prompt":"x"}}]}})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":"Should I open the PR?"}]}}))' > "$T/tr.jsonl"
+check "a delegated child's result is the main session's to judge: a question in it is no hand-back" 0 "$(stop "$T")"
 forks() { python3 -c 'import json,sys
 print(json.dumps({"type":"user","message":{"content":"status?"}}))
 for t in sys.argv[1:]: print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":t}]}}))' "$@" > "$T/tr.jsonl"; }
@@ -757,6 +759,14 @@ wait_guard() { # command background(true|false)
 check "BLOCK: a foreground until-sleep loop" 2 "$(wait_guard 'until [ -s out.md ]; do sleep 20; done; cat out.md' false)"
 check "the same loop in the background passes" 0 "$(wait_guard 'until [ -s out.md ]; do sleep 20; done; cat out.md' true)"
 check "a plain sleep passes" 0 "$(wait_guard 'sleep 2; ls' false)"
+check "a loop written into a file by a heredoc passes: nothing waits" 0 "$(wait_guard "$(printf 'cat > x.md <<EOF\nuntil done; do sleep 5; done\nEOF')" false)"
+check "a loop in a quoted argument passes" 0 "$(wait_guard "jq -n --arg s 'while true; do sleep 1; done' '\$s'" false)"
+check "BLOCK: a loop a shell runs from a heredoc" 2 "$(wait_guard "$(printf 'bash <<EOF\nuntil [ -s out.md ]; do sleep 5; done\nEOF')" false)"
+check "BLOCK: a loop running sleep by its path" 2 "$(wait_guard 'while true; do /usr/bin/sleep 1; done' false)"
+check "BLOCK: a loop in bash -c" 2 "$(wait_guard "bash -c 'while true; do sleep 1; done'" false)"
+check "BLOCK: a loop running bash -c or a heredoc script with a sleep" "2 2" "$(wait_guard "while true; do bash -c 'sleep 1'; done" false) $(wait_guard "$(printf 'while true; do bash <<EOF\nsleep 1\nEOF\ndone')" false)"
+check "BLOCK: a loop sent to the background in a foreground command" 2 "$(wait_guard '(until [ -s out.md ]; do sleep 20; done) & wait' false)"
+check "BLOCK: a loop with sleep in a command that doesn't parse" 2 "$(wait_guard 'until [ -s out.md ]; do sleep 20; done; echo "x' false)"
 # ---------- pre-agent-dedupe: one agent per job ----------
 launch_in() { python3 -c 'import json,sys,time; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":sys.argv[1],"title":"t","clientRequestId":f"t-{time.time_ns()}-r1"}}))' "$1"; }
 launch() { # task text; a launch that passes runs, so the PostToolUse half registers it
@@ -1187,6 +1197,7 @@ Running:
 - Loop A on the head' user status:running waiting; check "a sub-agent whose turn ended while its gates still run (T3 says completed, it says it continues) is still running" 0 "$(stop "$T")"
 rl_tr $'Done for now.\n\nRunning:\n- [Loop A](t3-thread://v1/thread:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aloop-a-1) (e2e gates)' user status:running notice continued status:completed; check "a thread T3 continued on its own, waiting on its gates, is running even after a read of its first task says completed" 0 "$(stop "$T")"
 rl_tr 'Running the tests found nothing.' user; check "a sentence starting with Running is no Running list" 0 "$(stop "$T")"
+rl_tr $'The example is:\n\n- ```text\n  example output\n  ```\n\nRunning:\n- Loop A\n\nTo reproduce:\n```sh\npnpm test\n```' user status:completed; check "BLOCK: a Running list between two code examples still counts" 2 "$(stop "$T")"
 # stop-lint: a message opening with "done" names no linked PR or MR that is still a draft or not green
 cat > "$T/bin/glab" <<'EOF2'
 #!/usr/bin/env bash
@@ -1221,9 +1232,29 @@ tr_file 'It would be ready for review if CI passed: https://gitlab.com/g/p/-/mer
 tr_file 'It would be ready for review with green CI: https://gitlab.com/g/p/-/merge_requests/96'; a="$a $(stop "$T")"
 tr_file 'Kész lenne, ha zöld a CI: https://gitlab.com/g/p/-/merge_requests/96'
 check "a conditional in the done word's clause is no claim" "0 0 0" "$a $(stop "$T")"
+a=; for m in 'Egyik MR sem kész: mindháromnál a CI hiányzik. https://gitlab.com/g/p/-/merge_requests/96' 'Semmi sincs kész: https://gitlab.com/g/p/-/merge_requests/96' \
+             'Nothing is done yet: https://gitlab.com/g/p/-/merge_requests/96' 'None of them is ready for review: https://gitlab.com/g/p/-/merge_requests/96'; do tr_file "$m"; a="$a $(stop "$T")"; done
+check "a done word under sem, sincs, semmi, nothing or none is no claim" " 0 0 0 0" "$a"
+tr_file 'Kész még nem vagyok: https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
+tr_file 'Kész sem vagyok még: https://gitlab.com/g/p/-/merge_requests/96'
+check "a Hungarian negation after the done word is no claim either" "0 0" "$a $(stop "$T")"
+tr_file 'It is ready for review if CI passes: https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
+tr_file 'Kész, ha zöld a CI: https://gitlab.com/g/p/-/merge_requests/96'
+check "a condition after the done word in its part is no claim; one opening the next part leaves it standing" "0 2" "$a $(stop "$T")"
+tr_file 'All done, if you have questions I can explain: https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
+tr_file 'All done as expected: https://gitlab.com/g/p/-/merge_requests/96'
+check "BLOCK: an offer's condition or an expectation after the done word leaves it standing" "2 2" "$a $(stop "$T")"
+tr_file 'Kész van? https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
+tr_file 'All done, any questions? https://gitlab.com/g/p/-/merge_requests/96'
+check "BLOCK: a question still claims, as on main" "2 2" "$a $(stop "$T")"
+tr_file 'All done after I fixed the tests: https://gitlab.com/g/p/-/merge_requests/96'
+check "BLOCK: a time word after the done word is past work, not a condition" 2 "$(stop "$T")"
 tr_file 'The tests are not flaky and the work is done: https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
 tr_file 'A tesztek nem instabilak és kész a munka: https://gitlab.com/g/p/-/merge_requests/96'
 check "BLOCK: a negation in an earlier coordinated clause leaves the claim standing" "2 2" "$a $(stop "$T")"
+tr_file 'It is ready for review with no issues: https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
+tr_file 'Kész, nincs több teendő: https://gitlab.com/g/p/-/merge_requests/96'
+check "BLOCK: a negation after the done word doesn't take the claim back" "2 2" "$a $(stop "$T")"
 tr_file 'When you asked, I checked it: all done, https://gitlab.com/g/p/-/merge_requests/96'
 check "BLOCK: a condition in an earlier clause leaves the claim standing" 2 "$(stop "$T")"
 tr_file $'> Earlier context.\n\nAll done: https://gitlab.com/g/p/-/merge_requests/96'
@@ -1831,16 +1862,21 @@ check "BLOCK: kill of an agent's claude process" 2 "$(kill_guard $APID)"
 check "kill of an ordinary process passes" 0 "$(kill_guard $OPID)"
 kill $(ps -o pid= --ppid $APID) $APID $OPID 2>/dev/null
 # ---------- pre-bash-guard: a compose stack takes no fixed host port or container name ----------
-printf '#!/bin/sh\ncase " $* " in *" config "*) [ -f "$DC_FX" ] && cat "$DC_FX";; esac\n' > "$T/bin/docker"; chmod +x "$T/bin/docker"
+printf '#!/bin/sh\ncase " $* " in *" config "*) f=$DC_FX; while [ $# -gt 0 ]; do case "$1" in -f) f=$2;; --file=*) f=${1#--file=};; esac; shift; done; [ -f "$f" ] && cat "$f";; esac\n' > "$T/bin/docker"; chmod +x "$T/bin/docker"
 echo '{"services":{"db":{"ports":[{"target":5432,"published":"5432"}]}}}' > "$T/fixed.json"
 echo '{"services":{"web":{"container_name":"web","ports":[{"target":80}]}}}' > "$T/named.json"
 echo '{"services":{"web":{"ports":[{"target":80}]}}}' > "$T/assigned.json"
-dc_guard() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$T" | python3 "$R/hooks/pre-bash-guard.py" 2>/dev/null; echo $?; }
+dc_guard() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$T" | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?; }
 check "BLOCK: compose up publishing a fixed host port" 2 "$(dc_guard "DC_FX=$T/fixed.json docker compose -p x up -d")"
 check "BLOCK: compose up with a container_name" 2 "$(dc_guard "DC_FX=$T/named.json docker compose -p x up -d")"
 check "compose up with Docker-assigned ports passes" 0 "$(dc_guard "DC_FX=$T/assigned.json docker compose -p x up -d")"
 check "compose up on the usual ports when the user asked passes" 0 "$(dc_guard "MERGEWORTHY_HOST_PORTS=user-asked DC_FX=$T/fixed.json docker compose -p x up -d")"
 check "BLOCK: compose up whose config fails (its ports can't be checked)" 2 "$(dc_guard "DC_FX=$T/missing.json docker compose -p x up -d")"
+cp "$T/assigned.json" "$HOME/assigned.json"
+check "compose up with a file under ~ passes" 0 "$(dc_guard 'docker compose -f ~/assigned.json -p x up -d')"
+check "compose up with a file under a dir the line set passes" 0 "$(dc_guard "W=$T; docker compose -f \$W/assigned.json -p x up -d")"
+check "BLOCK: compose up with --file= under a dir the line set, publishing a fixed host port" "2 1" "$(dc_guard "W=$T; docker compose --file=\$W/fixed.json -p x up -d") $(grep -c 'db host port 5432' "$T/err")"
+check "BLOCK: compose up with a file path it can't tell, naming it" "2 1" "$(dc_guard 'docker compose -f $NOPE_DIR/c.yml -p x up -d') $(grep -c "can't tell.*NOPE_DIR/c.yml" "$T/err")"
 printf 'See #7.\n' > "$T/ref.md"
 check "post-lint: a 404 reference doesn't exist" 1 "$(python3 "$R/bin/post-lint" "$T/ref.md" --kind reply --repo o/r --parent none 2>&1 | grep -c "doesn't exist in o/r")"
 check "post-lint: a rate-limited check says it couldn't check, not that it doesn't exist" "1 0" "$(GH_STUB_403=1 python3 "$R/bin/post-lint" "$T/ref.md" --kind reply --repo o/r --parent none 2>&1 | grep -c "couldn't check it") $(GH_STUB_403=1 python3 "$R/bin/post-lint" "$T/ref.md" --kind reply --repo o/r --parent none 2>&1 | grep -c "doesn't exist")"
@@ -2019,6 +2055,9 @@ printf "replay: a push whose head ran no gates ('I'll push and let CI verify'): 
 check "pr-steps quick records a log whose test titles quote 'let CI', with a word-count gate" 0 "$(git -C "$TCO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m q; cd "$TCO" && bash "$R/bin/pr-steps" quick "$T/q-titles.log" >/dev/null 2>&1; echo $?)"
 printf 'bash tests/word-budget . -> exit 0 (32586 words)\n' > "$T/q-words.log"
 check "pr-steps quick records a log whose only gate counts words" 0 "$(git -C "$TCO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m qw; cd "$TCO" && bash "$R/bin/pr-steps" quick "$T/q-words.log" >/dev/null 2>&1; echo $?)"
+printf 'pnpm run test:types -> exit 0 (15 projects)\npnpm exec tsc --noEmit -p tsconfig.spec.json -> exit 0 (1 project)\n' > "$T/q-types.log"; printf 'pnpm run test:types -> exit 0 (0 projects)\n' > "$T/q-types0.log"
+printf 'pnpm lint -> exit 0\npnpm exec tsc --noEmit -p tsconfig.spec.json -> exit 0 (0 projects)\n' > "$T/q-tsc0.log"
+check "pr-steps quick records a type-check script's line counting its projects, and refuses 0 projects, under any command" "0 1 1" "$(git -C "$TCO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m qt; cd "$TCO" && bash "$R/bin/pr-steps" quick "$T/q-types.log" >/dev/null 2>&1; echo $?) $(cd "$TCO" && bash "$R/bin/pr-steps" quick "$T/q-types0.log" >/dev/null 2>&1; echo $?) $(cd "$TCO" && bash "$R/bin/pr-steps" quick "$T/q-tsc0.log" >/dev/null 2>&1; echo $?)"
 printf 'pnpm test -> exit 0 (3 tests)\npnpm typecheck was not run: dependency unavailable\n' > "$T/q-unrun.log"
 check "BLOCK: pr-steps quick on a log saying a gate was not run, on a line of its own" "1 1" "$(git -C "$TCO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m qu; cd "$TCO" && bash "$R/bin/pr-steps" quick "$T/q-unrun.log" 2>"$T/err" >/dev/null; echo $?) $(grep -c "says a gate didn't run" "$T/err")"
 TK2="$HOME/.mergeworthy/work/vike-3671"; CK="$TK2/vike"; mkdir -p "$TK2"
@@ -2216,12 +2255,25 @@ check "parse: bash -c -- '<script>', \$'\\x67it', a herestring to bash -s, bash 
 printf '{"state":"open","draft":false,"merged":false,"html_url":"https://github.com/o/r/pull/12","head":{"sha":"abc"},"base":{"repo":{"full_name":"o/r"}}}' > "$FX/repos_o_r_pulls_12"
 printf '{"check_runs":[{"name":"t","status":"completed","conclusion":"failure"}]}' > "$FX/repos_o_r_commits_abc_check-runs_per_page_100"
 tr_file 'README tidied.'
-check "a condition or a plan names no state: once, until, if, will" "0 0 0" \
-  "$(slj 'I will update the docs once PR o/r#12 is merged.') $(slj 'I am waiting until PR o/r#12 is green.') $(slj 'If the maintainer agrees, PR o/r#12 is merged next week.')"
+check "a condition or a plan names no state: once, until, if, will, next week, next Tuesday, next sprint" "0 0 0 0 0" \
+  "$(slj 'I will update the docs once PR o/r#12 is merged.') $(slj 'I am waiting until PR o/r#12 is green.') $(slj 'If the maintainer agrees, PR o/r#12 is merged next week.') $(slj 'o/r#12 is green next Tuesday.') $(slj 'o/r#12 is green next sprint.')"
 check "BLOCK: a CI claim GitHub contradicts, however phrased" "2 2 2 2" \
   "$(slj 'o/r#12: CI is green.') $(slj 'CI is green on o/r#12.') $(slj 'All 12 checks pass on o/r#12.') $(slj 'o/r#12 is green.')"
 check "the condition words count only in the claim's own clause: an earlier clause doesn't hide it" "2 2 2" \
   "$(slj 'After the rebase, o/r#12 is green.') $(slj 'Fixed the test that failed when run in parallel; o/r#12 is green now.') $(slj 'No need to wait: o/r#12 is green.')"
+check "BLOCK: a plan in the next clause doesn't hide a state claim" "2 2" "$(slj 'o/r#12 is green, and I will merge it.') $(slj 'o/r#12 is green and I am waiting for review.')"
+check "BLOCK: a negation after the state words doesn't take the claim back" 2 "$(slj 'o/r#12 is green with no failures.')"
+check "BLOCK: a question after it doesn't hide a state claim" 2 "$(slj 'o/r#12 is green, any questions?')"
+check "BLOCK: a time word after the state words doesn't hide the claim" 2 "$(slj 'o/r#12 is green after the rebase.')"
+check "BLOCK: an expectation after the state words doesn't hide the claim" 2 "$(slj 'o/r#12 is green as expected.')"
+tr_file 'All done with the next steps documented: https://gitlab.com/g/p/-/merge_requests/96'
+check "BLOCK: \"next\" that isn't a time leaves the claim standing" 2 "$(stop "$T")"
+tr_file 'https://gitlab.com/research-and-development/next/-/merge_requests/96 is ready for review.'
+check "BLOCK: words inside a URL take nothing back" 2 "$(stop "$T")"
+tr_file 'Waiting on https://example.com/build; https://gitlab.com/g/p/-/merge_requests/96 is ready for review.'
+check "BLOCK: the semicolon after a URL still ends its part" 2 "$(stop "$T")"
+check "a condition over the claim's part (past a URL's colon) states nothing; one opening the next part leaves it standing" "0 0 2" \
+  "$(slj 'Once CI passes and o/r#12 is green, I merge.') $(slj 'Once CI passes and https://github.com/o/r/pull/12 is green, I merge.') $(slj 'o/r#12 is merged, if the maintainer agrees.')"
 rm -f "$FX/repos_o_r_commits_abc_check-runs_per_page_100"
 # the second bug hunt: where git really pushes (-c, GIT_CONFIG_*, every -C, pushDefault), --git-dir and GIT_DIR, a name that is no remote
 OTH="$T/oth"; git clone -q "$OWN" "$OTH"; git -C "$OTH" remote set-url origin https://github.com/vikejs/vike.git
