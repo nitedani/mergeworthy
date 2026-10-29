@@ -28,10 +28,11 @@ def running_list(message):
 LEX = {
     'NEGATION': {'en': r"not|no|none|nothing|neither|nor|never|nobody|\w+n['’]t", 'hu': r"nem|nincs\w*|sincs\w*|sem|semmi\w*|senki|soha"},
     'FUTURE': {'en': r"will|would|\w+['’]ll|going to|tomorrow|later|soon|next|expect\w*|wait\w*", 'hu': r"lesz\w*|lenne\w*|majd|holnap\w*|később|hamarosan"},
-    'CONDITION': {'en': r"once|when|if|until|after|before|unless|whether", 'hu': r"ha|amint|amikor|mihelyt|amíg|\w+-ig"},
+    'CONDITION': {'en': r"if|unless|whether", 'hu': r"ha"},
+    'TIME': {'en': r"once|when|until|after|before", 'hu': r"amint|amikor|mihelyt|amíg|\w+-ig"},
     'CONJUNCTION': {'en': r"and|but|so", 'hu': r"és|de|ezért|viszont"},
 }
-FUTURE, CONDITION, CONJUNCTION = (re.compile(rf"\b(?:{LEX[k]['en']}|{LEX[k]['hu']})\b", re.I) for k in ('FUTURE', 'CONDITION', 'CONJUNCTION'))
+FUTURE, CONDITION, TIME, CONJUNCTION = (re.compile(rf"\b(?:{LEX[k]['en']}|{LEX[k]['hu']})\b", re.I) for k in ('FUTURE', 'CONDITION', 'TIME', 'CONJUNCTION'))
 # English negates before the claim ("is not ready"; "ready with no issues" still claims), Hungarian on either side ("kész még nem vagyok")
 NEGATION_EN, NEGATION_HU = (re.compile(rf"\b(?:{LEX['NEGATION'][l]})\b", re.I) for l in ('en', 'hu'))
 PART = re.compile(r"[,;:](?=\s|$)")  # not the colon of https:
@@ -41,14 +42,15 @@ CLAUSE = re.compile(rf"(?={CONJUNCTION.pattern})", re.I)
 def asserted(sentence, i):
     """Whether the words at sentence[i] state something as true now: no negation in their clause, an English one only before them
     ("none is ready", "kész még nem vagyok"; "ready with no issues" still claims), no plan in their clause ("it will be ready",
-    "és kész lesz"), no condition in their part or opening the next one ("once it is ready", "kész, ha zöld a CI"). A question
+    "és kész lesz"), no condition or time word before them in their part ("once it is ready"), and no condition after them in it
+    or opening the next one ("ready if CI passes", "kész, ha zöld a CI"; "done after I fixed the tests" still claims). A question
     still claims ("Kész van?" next to a draft MR is refused, as on main). A part ends at a comma, semicolon or colon; a clause also
     before a conjunction."""
     before, (part, *after) = PART.split(sentence[:i])[-1], PART.split(sentence[i:], 1)
     lead = CLAUSE.split(before)[-1]
     clause = lead + CLAUSE.split(part)[0]
     return not (NEGATION_EN.search(lead) or NEGATION_HU.search(clause) or FUTURE.search(clause) or CONDITION.search(before + part)
-                or after and CONDITION.match(after[0].lstrip()))
+                or TIME.search(before) or after and CONDITION.match(after[0].lstrip()))
 
 
 DONE = r"\b(?:(?:is|are|all|work's|it's) (?:done|finished|complete)\b|ready (?:for review|to merge)|kész\b|elkészült|befejeztem)"
