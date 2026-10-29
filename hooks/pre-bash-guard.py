@@ -3,7 +3,7 @@
 Checks each simple command separately (shellcmd.parse: chains, substitutions, `bash -c`; heredoc bodies and quoted text are data).
 It fails closed: a command it can't parse, a record it can't find or a state gh can't read blocks what it guards.
 MERGEWORTHY_MERGE=reviewer blocks every `gh pr merge`."""
-import glob, json, re, sys, os, hashlib, subprocess
+import json, re, sys, os, hashlib, subprocess
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
 from shellcmd import parse, segments, prog, opt, api_call, new_post_drafts, branch_record, no_preflight, no_instructions_read, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested
@@ -375,34 +375,22 @@ push_urls = []  # where this command's pushes go (pushed()), for the watcher che
 def git_head(d):
     return subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
 
-REVIEWED = {'verify', 'shape', 'reverify', 'fresh', 'small', 'loopb', 'refactor', 'review'}  # pr-steps records of a review
 NOT_CODE = re.compile(r'(^|/)(tests?|__tests__|e2e|specs?|docs?)/|\.(test|spec)\.|\.md$|lock\.(json|yaml)$|\.lock$|(^|/)\.changeset/')
 def check_patches(d, pending=None):
-    """`finality` step 1 as a mechanism: a file (no test or doc) patched by 3 commits after the branch's first review (its first
-    pr-steps review record, or the first `*.report.md` in its work folder's drafts/ written since the branch began, whichever is earlier)
-    gets no 4th until `pr-steps simplify` records on the head (delegate/simplify.md), which starts every count over.
+    """`finality` step 1 as a mechanism: a code file (no test or doc) changed by 5 commits of the branch gets no 6th until
+    `pr-steps simplify` records on the head (delegate/simplify.md); a commit with that record starts the counts over after it.
     pending: the files the commit being made changes; None for a push, which checks the commits alone."""
     g = lambda *a: subprocess.run(['git', '-C', d, *a], capture_output=True, text=True).stdout
     base = g('symbolic-ref', '-q', '--short', 'refs/remotes/origin/HEAD').strip() or 'origin/main'
-    kinds = lambda c: {l.split()[0] for l in open(RECORDS + c) if l.split()} if os.path.exists(RECORDS + c) else set()
-    commits = [(c, int(t)) for c, t in (l.split() for l in g('log', '--reverse', '--no-merges', '--format=%H %ct', 'HEAD', '--not', base).splitlines())]
-    if not commits: return
-    wf = work_folder.task_of(d)
-    reports = [m for p in glob.glob(os.path.join(wf, 'drafts', '**', '*.report.md'), recursive=True) if (m := os.path.getmtime(p)) > commits[0][1]] if wf else []
-    # the commits after the first review: after the first one with a review record, or made after the first report
-    starts = [i + 1 for i, (c, _) in enumerate(commits) if kinds(c) & REVIEWED][:1]
-    if reports: starts.append(next((i for i, (_, t) in enumerate(commits) if t > min(reports)), len(commits)))
-    if not starts: return
     count = {}
-    for c, _ in commits[min(starts):] + [(None, 0)]:
-        files = g('diff-tree', '--no-commit-id', '--name-only', '-r', c).split() if c else pending or []
-        for f in (f for f in files if not NOT_CODE.search(f)):
+    for c in g('rev-list', '--reverse', '--no-merges', 'HEAD', '--not', base).split() + [None]:
+        for f in (f for f in (g('diff-tree', '--no-commit-id', '--name-only', '-r', c).split() if c else pending or []) if not NOT_CODE.search(f)):
             count[f] = count.get(f, 0) + 1
-            if count[f] > 3:
-                block(f"{f} {'would get' if c is None else 'got'} its {count[f]}th patch since this branch's first review: "
-                      "patch after patch in one place is drift (`finality` step 1). A fresh agent by delegate/simplify.md names the class the patches share "
-                      "and replaces them with one smaller shape, or says why each is a different class; record it with `pr-steps simplify <its report>` on this head first")
-        if c and 'simplify' in kinds(c): count = {}
+            if count[f] > 5:
+                block(f"{f} {'would get' if c is None else 'got'} its {count[f]}th change on this branch: patch after patch in one place is drift (`finality` step 1). "
+                      "A fresh agent by delegate/simplify.md names the class the changes share and replaces them with one smaller shape, or shows each is needed; "
+                      "record it with `pr-steps simplify <its report>` on this head first")
+        if c and os.path.exists(RECORDS + c) and any(l.split()[:1] == ['simplify'] for l in open(RECORDS + c)): count = {}
 
 def repo_of(url):
     """(host, repo path) of a remote URL in each form git takes (scheme://[user@]host[:port]/path, [user@]host:path); an ssh host

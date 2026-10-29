@@ -1,9 +1,9 @@
-# Simplify brief (a file's fourth patch after review: one fresh agent)
+# Simplify brief (a code file's sixth change on a branch: one fresh agent)
 
 Standards: `~/.mergeworthy/current/skills/code/SKILL.md` §Checklist. Include `delegate/agent.md`.
 
 ```
-<file> in <worktree> took these commits after <PR>'s first review: <shas>. Read each diff, then the file at HEAD.
+<file> in <worktree> took these commits of <PR>: <shas>. Read each diff, then the file at HEAD.
 
 Write `Class: <the rule every patch enforces>`. When one shape covers all, rewrite the file to it, uncommitted, so the branch's diff shrinks, and end SIMPLIFIED. When the patches fix different rules, give each one line, its rule and what shows it isn't the others', and end DISTINCT.
 

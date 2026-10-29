@@ -2201,18 +2201,19 @@ tr_file "$QA2" work
 check "the same answer in a session that started an agent is a hand-back" 2 "$(slj)"
 tr_file 'I have nothing else to start. The review waits on the maintainer, and the watcher will tell me when that happens.' work
 check "'the watcher will tell me when' is no hand-back; 'Tell me when' and 'or ask me to' are" "0 2 2" "$(slj) $(slj 'Tell me when to re-check CI.') $(slj 'I can rerun it, or ask me to stop.')"
-# ---------- pre-bash-guard: a file's 4th patch after the branch's first review waits for `pr-steps simplify` ----------
+# ---------- pre-bash-guard: a code file's 6th change on the branch waits for `pr-steps simplify` ----------
 SP="$T/simp"; git init -q -b main "$SP"; sc() { git -C "$SP" -c user.name=t -c user.email=t@t commit -q "$@"; }
 echo 0 > "$SP/a.py"; mkdir "$SP/tests"; echo 0 > "$SP/tests/a_test.py"; git -C "$SP" add -A; sc -m base
 git -C "$SP" update-ref refs/remotes/origin/main HEAD; git -C "$SP" checkout -q -b fix; (cd "$SP" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null)
-echo 1 >> "$SP/a.py"; sc -am reviewed; echo "verify /x 2026-10-29T00:00:00Z" >> "$HOME/.claude/pr-steps/$(git -C "$SP" rev-parse HEAD)"
-for i in 1 2 3; do echo "p$i" >> "$SP/a.py"; sc -am "p$i"; done
-echo p4 >> "$SP/a.py"; r1=$(bg 'git commit -am p4' "$SP"); n1=$(grep -c 'a.py would get its 4th patch' "$T/err")
-git -C "$SP" checkout -q a.py; echo t >> "$SP/tests/a_test.py"; git -C "$SP" add tests; r2=$(bg 'git commit -m t' "$SP"); sc -m t
-printf 'Class: each patch narrows which lines a counts\nDISTINCT\n' > "$T/simp.md"; (cd "$SP" && bash "$R/bin/pr-steps" simplify "$T/simp.md" >/dev/null)
-echo p4 >> "$SP/a.py"; git -C "$SP" add a.py
-check "BLOCK: a file's 4th patch after the first review, naming it; a test-only commit passes; with a simplify record on the head it passes" "2 1 0 0" "$r1 $n1 $r2 $(bg 'git commit -m p4' "$SP")"
+for i in 1 2 3 4; do echo "p$i" >> "$SP/a.py"; sc -am "p$i"; done
+echo p5 >> "$SP/a.py"; r5=$(bg 'git commit -am p5' "$SP"); sc -am p5
+echo p6 >> "$SP/a.py"; r6=$(bg 'git commit -am p6' "$SP"); n6=$(grep -c 'a.py would get its 6th change' "$T/err")
+git -C "$SP" checkout -q a.py; echo t >> "$SP/tests/a_test.py"; git -C "$SP" add tests
+check "a code file's 5th change on the branch passes; its 6th is refused, naming it; a test-only commit passes" "0 2 1 0" "$r5 $r6 $n6 $(bg 'git commit -m t' "$SP")"
+sc -m t; printf 'Class: each patch narrows which lines a counts\nDISTINCT\n' > "$T/simp.md"; (cd "$SP" && bash "$R/bin/pr-steps" simplify "$T/simp.md" >/dev/null)
+echo p6 >> "$SP/a.py"; git -C "$SP" add a.py
+check "with a simplify record on the head, the 6th change passes" 0 "$(bg 'git commit -m p6' "$SP")"
 printf 'Class: each patch narrows which lines a counts\nSIMPLIFIED\n' > "$T/simp2.md"
-check "BLOCK: pr-steps simplify SIMPLIFIED while the worktree's diff is no smaller than HEAD's" 1 "$(cd "$SP" && bash "$R/bin/pr-steps" simplify "$T/simp2.md" >/dev/null 2>&1; echo $?)"
+check "BLOCK: pr-steps simplify SIMPLIFIED while the worktree's diff is no smaller than HEAD's" "1 1" "$(cd "$SP" && bash "$R/bin/pr-steps" simplify "$T/simp2.md" 2>"$T/err" >/dev/null; echo $?) $(grep -c 'no smaller than HEAD' "$T/err")"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]
