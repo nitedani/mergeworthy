@@ -19,6 +19,7 @@
 - GitLab threads in threads.txt are read by gl_watch.py (scan_gitlab), into the same events.log and replies-owed.md.
 - AGENT DONE: an agent the session launched has finished (hooks/agent_jobs.py), once per finish, until `agent-job done` releases its job.
 - Under T3 Code each pass's event lines also go to the session's thread (wake_thread), so it needs no Monitor.
+- The steward's folder and the dirs inside it (steward.quiet) only log: no :eyes:, no owed reply, no thread woken; its next pass reads events.log.
 - Every request is counted, 304 answers too (tally; `gh-watch.py --stats` prints the rate, and once an hour a line goes to gh-watch-stats.log).
 - On Linux, main_dir's daemon starts bin/disk-sweep --delete at most once an hour, in the background (sweep_disk).
 State lives in gh-watch-state.json: every seen (id, updated_at) pair, so nothing is skipped or repeated,
@@ -535,6 +536,8 @@ def append_owed(entry, d=None):
     """replies-owed.md (mergeworthy:reply): the daemon records each human comment as an owed reply; the session
     clears the line with "done: <reply url> <what changed>" when it is answered. The Stop hook
     blocks a turn while a line is still owed, so an unposted reply cannot end the session unseen."""
+    if steward.quiet(d or HERE):
+        return  # the steward's next pass reads its events.log
     path = os.path.join(d or HERE, 'replies-owed.md')
     owed = open(path).read().splitlines() if os.path.exists(path) else []
     if any(f' {entry.split()[2]} ' in l for l in owed):
@@ -582,7 +585,7 @@ def handle_comment(state, repo, key, kind, cid, upd, login, url, body, extra='',
     append_owed(f"{key} {kind} {cid} by {login} {url} — {body.strip().splitlines()[0][:80]}" if body.strip() else f"{key} {kind} {cid} by {login} {url}")
     if re.fullmatch(r"\W*(ok(ay)?|good|great|lgtm|yes|sure|agreed|sounds good|👍|nice)\W*", body.strip().lower()):
         emit(f"### ACK {key} {cid}: an acknowledgement answers your last open proposal in that thread or PR; apply it now (mergeworthy:reply §Kinds of comment)")
-    if not ONCE and kind != 'review':  # GitHub has no reactions on a review
+    if not ONCE and kind != 'review' and not steward.quiet(HERE):  # GitHub has no reactions on a review
         (react or react_eyes)(repo, kind, cid)
 
 
@@ -1224,7 +1227,7 @@ def moved_thread(repo, i, new):
     if new and not agent_post(user, body, agent_post_hashes()) and claim(f"new:{i['id']}", record=not ONCE):
         indented = '\n'.join('    ' + l for l in body.splitlines())
         emit_to(d, f"### NEW {'PR' if 'pull_request' in i else 'ISSUE'} {key} by {user.get('login')} {i['created_at']} {i['html_url']}: {i['title']}\n{indented}\n")
-        if not ONCE:
+        if not ONCE and not steward.quiet(d):
             append_owed(f"{key} body {i['id']} by {user.get('login')} {i['html_url']} — {i['title'][:80]}", d)
             react_eyes(repo, 'body', i['id'], num)
 
@@ -1344,8 +1347,9 @@ def agent_command(repo, num, kind, c):
     line = key.replace('#', ' ')
     if routed and line not in open(os.path.join(target, 'threads.txt')).read().splitlines():
         open(os.path.join(target, 'threads.txt'), 'a').write(line + '\n')  # its follow-ups are watched
-    append_owed(f"{key} {kind} {cid} by {ME} {url} — {body.strip().splitlines()[0][:80]}", target)
-    react_eyes(repo, kind, cid, num)
+    if not steward.quiet(target):
+        append_owed(f"{key} {kind} {cid} by {ME} {url} — {body.strip().splitlines()[0][:80]}", target)
+        react_eyes(repo, kind, cid, num)
     with open(os.path.join(target, 'events.log'), 'a') as f:  # last: the event wakes that session, which finds the rest in place
         f.write(event)
 

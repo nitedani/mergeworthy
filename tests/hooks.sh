@@ -193,6 +193,9 @@ check "BLOCK: that watcher's owed reply holds the session's turn, from any cwd" 
 rm "$WD/t3-thread"; echo s-t3 > "$WD/session"  # the session's watcher dropped its thread (gh-watch.py's wake_thread fallback)
 check "BLOCK: under T3, a post whose own watcher dropped its t3-thread says that watcher stopped waking the thread, not that it wakes it" "2 1 0" \
   "$(stop_as s-t3) $(grep -c "watcher in $WD stopped waking this T3 thread" "$T/err") $(grep -c 'wakes this T3 thread itself' "$T/err")"
+mv "$WD/replies-owed.md" "$T/owed.keep"; mkdir -p "$HOME/.mergeworthy"; echo "$WD tid" > "$HOME/.mergeworthy/steward"
+check "the steward's own live watcher, which wakes nothing (steward.quiet), is its post's watch" 0 "$(stop_as s-t3 >/dev/null; grep -c 'nothing wakes it' "$T/err")"
+rm "$HOME/.mergeworthy/steward"; mv "$T/owed.keep" "$WD/replies-owed.md"
 rm "$WD/session" "$WD/scope.md" "$HOME/.t3/userdata/statev2.sqlite"
 tr_cmd "mw post $WD/drafts/r.md -- gh pr comment 5 --repo o/r --body-file $WD/drafts/r.md"
 check "BLOCK: a post through mw post" 2 "$(stop "$T/work")"
@@ -1960,12 +1963,16 @@ check "without T3's database, the session its watch dir's session file names is 
 mv "$T/state.bak" "$HOME/.t3/userdata/statev2.sqlite"
 printf '### FOLLOW-UP o/r#5: abcdef1234 by carol changes lines from your PR  <c>  at %s\n' "$(date -u -d '-40 minutes' +%FT%TZ)" > "$SW/events.log"; : > "$WD/events.log"; echo "$WD" > "$HOME/.claude/gh-watch-dirs.txt"
 tr_file "Done."
-check "with a steward, its unsorted FOLLOW-UP blocks it, not an orchestrator" "0 2" "$(stop "$WD") $(stop "$SW")"
+stop_in() { python3 -c 'import json,sys; print(json.dumps({"transcript_path":sys.argv[1],"cwd":sys.argv[2],"session_id":sys.argv[3]}))' "$T/tr.jsonl" "$1" "$2" \
+  | MERGEWORTHY_STOP_CHECKIN=off python3 "$R/hooks/stop-lint.py" 2>"$T/err"; echo $?; }  # cwd session
+s1=$(stop_in "$SW" steward-session); echo "$SW" >> "$HOME/.claude/gh-watch-dirs.txt"; echo steward-session > "$SW/passed"
+check "with a steward, its unsorted FOLLOW-UP waits for its pass, then blocks it, not an orchestrator" "0 2 0" "$s1 $(stop_in "$SW" steward-session) $(stop "$WD")"
 cp "$SW/events.log" "$WD/events.log"
 check "a FOLLOW-UP that fell back to the orchestrator's dir (no steward watcher ran) blocks the orchestrator" 2 "$(stop "$WD")"
 echo 'abcdef1234 WORKED https://github.com/o/r/pull/5#issuecomment-1' > "$SW/followups-sorted.txt"
-check "a WORKED verdict sorts it" 0 "$(stop "$SW")"
-rm -f "$HOME/.mergeworthy/steward" "$WD/events.log" "$SW/followups-sorted.txt"
+check "a WORKED verdict sorts it" 0 "$(stop_in "$SW" steward-session)"
+echo "$WD" > "$HOME/.claude/gh-watch-dirs.txt"
+rm -f "$HOME/.mergeworthy/steward" "$WD/events.log" "$SW/followups-sorted.txt" "$SW/passed"
 # ---------- hooks/run: hook scripts run from ~/.mergeworthy/current; a changed hook list asks once for a restart ----------
 PO="$T/plugins/cache/mw/old"; PN="$T/plugins/cache/mw/new"; mkdir -p "$PO/hooks" "$PN/hooks" "$T/co/hooks"; cp "$R/hooks/run" "$PO/hooks/"; cp "$R/hooks/run" "$T/co/hooks/"; CUR=$(readlink "$HOME/.mergeworthy/current")
 printf 'print("old")\n' > "$PO/hooks/x.py"; printf 'print("new")\n' > "$PN/hooks/x.py"; printf 'print("checkout")\n' > "$T/co/hooks/x.py"

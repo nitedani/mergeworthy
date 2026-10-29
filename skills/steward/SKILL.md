@@ -9,8 +9,8 @@ One pass, when the user asks; before posting, `gh-watch-start <S>/live <owner/re
 
 ## Steps
 
-1. **What GitHub owes:** one watcher round; refused because a daemon watches `<S>`: stop and tell the user. Handle each new event in `<S>/events.log` by `reply` steps 1–7 (no Monitor), and each `steward owed` line (folders whose session is idle) in that folder's files, by its kind: `reply` by `reply` steps 3–7, `sort` by `rules` step 6, `promise` by delivering it, then `DONE <link>` at its line's start.
-   Run: `steward round <S>` (your open PRs, and nitedani/mergeworthy whole when `~/.mergeworthy/steward` names `<S>`); `steward owed` · Record: `<S>/events.cursor`; each owed line cleared, or, when only its folder's user or session can clear it, kept for the report
+1. **What came since the last pass:** one watcher round; refused because a daemon watches `<S>`: stop and tell the user. The watchers in `<S>` only log: no 👀, owed reply or wake. Sort each new FOLLOW-UP, MAINTAINER REVIEW and MAINTAINER COMMITS in `<S>`'s `events.log` files, and each `sort` line of `steward owed` (folders whose session is idle), by `rules` step 6; list the rest in the report under the session or user who owns it.
+   Run: `steward round <S>` (your open PRs, and nitedani/mergeworthy whole when `~/.mergeworthy/steward` names `<S>`); `steward owed` · Record: each `events.cursor` in `<S>`
 2. **The numbers:** first-pass acceptance is the goal; hours to merge and tokens per merged PR are the guardrails.
    Run: `steward metrics <S>` · Record: `<S>/metrics.jsonl`
 3. **Why:** the items are each log `steward sessions <S>` lists and, from the table, a PR with its thread and sessions for the 3 slowest merges, the 3 with most commits after review, each closed one and the 3 last settled with `first_pass` true in `<S>/metrics.jsonl`. Research agents, 5 items each, at most 3 at once, write one line per cause (looped or redone work, a correction by the user or a maintainer, a rule broken that no hook caught): `<cause> <path:line or URL> <short quote>`.
