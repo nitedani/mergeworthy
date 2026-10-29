@@ -6,9 +6,10 @@ from post_words import uncoded
 
 
 def unfenced(message):
-    """The message without its fenced code blocks (as post-lint reads them) and quoted lines: an example or a quote of an earlier
-    message isn't said again."""
-    return re.sub(r'```.*?```|^>[^\n]*$', ' ', uncoded(message), flags=re.S | re.M)
+    """The message without its closed fenced code blocks (as post-lint reads them) and quoted lines: an example or a quote of an
+    earlier message isn't said again. A fence never closed hides nothing: where a Markdown reader would end it is guesswork, and
+    guessing wrong would hide a live claim."""
+    return re.sub(r'```.*?```|^>[^\n]*$', ' ', uncoded(message, unclosed=False), flags=re.S | re.M)
 
 
 def authored(message):

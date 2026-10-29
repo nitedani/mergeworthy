@@ -106,7 +106,7 @@ check "a GENUINE-FORK line quoted in a ~~~ fence isn't sent again" 0 "$(stop "$T
 forks $'#20 is in review.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.' $'Copyable Markdown:\n~~~~markdown\n~~~text\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.\n~~~\n~~~~'
 check "a GENUINE-FORK line in a shorter fence inside a longer one isn't sent again" 0 "$(stop "$T")"
 forks $'#20 is in review.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.' $'The earlier question:\n```\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.'
-check "a GENUINE-FORK line in a fence left open to the message's end isn't sent again" 0 "$(stop "$T")"
+check "BLOCK: a fence never closed hides nothing: the fork in it is sent again" 2 "$(stop "$T")"
 forks $'#20 is in review.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.' $'```npm publish``` is next.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.'
 check "BLOCK: a line opening with inline triple-backtick code opens no fence: the fork after it is sent again" 2 "$(stop "$T")"
 tr_file "The watcher runs and the Monitor is armed."
@@ -1175,7 +1175,9 @@ EOF
 rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user; check "BLOCK: a Running list not read from T3 since the user's last message" 2 "$(stop "$T")"
 rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user status:completed; check "BLOCK: a Running list naming a completed task" 2 "$(stop "$T")"
 rl_tr $'Done for now. The old report looked like this:\n```\nRunning:\n- Loop A on the head\n```' user status:completed; check "a Running list in a fenced example names nothing running" 0 "$(stop "$T")"
-rl_tr $'The example is:\n\n- ```text\n  example output\n  ```\n\nRunning:\n- Loop A on the head' user status:completed; check "BLOCK: a fence in a list item closes inside it: the Running list after it still counts" 2 "$(stop "$T")"
+rl_tr $'The example is:\n\n- ```text\n  example output\n  ```\n\nRunning:\n- Loop A on the head' user status:completed; check "BLOCK: a closed fence in a list item hides no Running list after it" 2 "$(stop "$T")"
+rl_tr $'The example is:\n- ```text\n  example output\nRunning:\n- Loop A on the head' user status:completed; check "BLOCK: a fence left open in a list item hides no Running list after it" 2 "$(stop "$T")"
+rl_tr $'The README delimiter is:\n-     ```text\nRunning:\n- Loop A on the head' user status:completed; check "BLOCK: an indented delimiter in a list item hides no Running list after it" 2 "$(stop "$T")"
 rl_tr $'The README ends with this unclosed delimiter:\n\n    ```text\n\nRunning:\n- Loop A on the head' user status:completed; check "BLOCK: a fence indented four spaces is code, not an opener: the Running list after it still counts" 2 "$(stop "$T")"
 rl_tr $'Done for now.\n\n**Running:**\n- loop-a-1, the bug hunt' user status:failed; check "BLOCK: matched by its request id too" 2 "$(stop "$T")"
 rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user status:running; check "a Running list read live, its task still running, passes" 0 "$(stop "$T")"
