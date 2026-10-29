@@ -19,7 +19,7 @@ Each role's brief is a template in `~/.mergeworthy/current/skills/delegate/`, wi
    Run: T3 Code: `delegate_task` with a unique `clientRequestId`; else the Agent tool · Record: the job pre-agent-dedupe registers · Hook: pre-bash-guard (wait loops), pre-agent-dedupe
 5. **Liveness** at 2 minutes and at every wakeup (its output size or log time); five minutes without output: look now. A long job's first output is read within half an hour; confirm its numbers can be used (a benchmark alone on the machine, warmed up, comparing like with like) before it runs the rest; past its budget, stop it or extend it deliberately.
    Run: `task_status` · Hook: stop-lint
-6. **Its result** (T3's notice, or the watcher's `### AGENT DONE <ticket>`; the ticket is the key pre-agent-dedupe registered: the brief's ticket id, else its title). Read the final message; open two or three cited `path:line`s or re-run one command, and diff the result against your plan. A diff: write down each structural decision in it and why it's right before landing it; hardcoded lists and duplicated classifications get fixed before pushing. Then release the job.
+6. **Its result** (T3's notice, or the watcher's `### AGENT DONE <ticket>`). Read the final message; open two or three cited `path:line`s or re-run one command, and diff the result against your plan. A diff: write down each structural decision in it and why it's right before landing it; hardcoded lists and duplicated classifications get fixed before pushing. Then release the job.
    Run: `agent-job done <ticket>` · Hook: stop-lint, the watcher
 7. **Relay the result to the user and act on it;** an unchecked item, a deviation and each finding (by `code §Earn every line`) are yours to decide; never send the same brief again. If the result fails your check, or the agent is blocked, redo the work on your model class with what failed.
    Open: `writing §Reports to the user`
@@ -27,7 +27,7 @@ Each role's brief is a template in `~/.mergeworthy/current/skills/delegate/`, wi
 ### Brief
 
 - **Five parts:** `Goal` (one observable outcome); `Facts` (only what you verified, each with its source); `To check` (your guesses, as questions); `Scope` (the paths and commands it may use, the semantic code-search MCP's name when your session has one, and `agent.md §Machine`, in every brief and every follow-up round); `Acceptance` (the commands or observations that define done).
-- **In T3 Code,** `delegate_task`'s `role` is `implementation`, `research`, `test` or `review`. A research brief adds `Topic: <key words>` and a `Checked: <file>` line per work-folder file already read: pre-agent-dedupe blocks one whose topic is already written up (every topic word in one paragraph) in an unchecked file.
+- **In T3 Code,** `delegate_task`'s `role` is `implementation`, `research`, `test` or `review`. A research brief adds `Topic: <key words>` and a `Checked: <file>` line per work-folder file already read: pre-agent-dedupe blocks one already written up in an unchecked file.
 - **Never put in** your opinion, the answer you expect, or earlier agents' conclusions: a guess goes under `To check`. The exception is a previous round's report, given to an agent that re-rates it. A maintainer's ask goes in quoted whole: an either/or stays an either/or; the implementer reads the code each option touches and recommends one, saying why, and the main session decides before it lands.
 - **Give paths and the question,** never pasted files or long histories.
 - **One run is one agent with one prompt.** Group roles reading one artifact in one loop, in order, each writing its own file. Split only for context limits or independence: authors never review themselves, and fresh readers haven't seen the fixes.
@@ -53,7 +53,7 @@ The classes are model families, never versions: the strongest class is the newes
 Every independent review (a post's, the Loop B review, the fresh reader, a standalone review) picks its reviewer in this order, trying the first each time: an earlier "unavailable" note (memory, a post's badge) is no check:
 - **First, a model from another company than the main session's:** on its default model, at the effort chosen per call (high; medium for a few-sentence reply). In T3 Code, one `delegate_task` per round, the reviewer's `providerInstanceId` from `orchestrator_capabilities`:
    ```json
-   {"task": "Follow <prompt file>; output to <out>", "role": "review", "target": {"providerInstanceId": "<id>", "options": {"<its effort option>": "<effort>"}}, "clientRequestId": "<review>-<round>"}
+   {"task": "Follow <prompt file>; output to <out>", "role": "review", "target": {"providerInstanceId": "<id>", "options": {"<its effort option>": "<effort>"}}, "clientRequestId": "<loop>-r<N>"}
    ```
    Elsewhere, a Codex reviewer: `codex exec -c model_reasoning_effort=<effort> --sandbox danger-full-access --skip-git-repo-check -o <out> "$(cat <prompt file>)" < /dev/null`; a Claude reviewer: `claude -p --effort <effort> --permission-mode bypassPermissions < <prompt file> > <out>`.
 - **Else, a fresh agent of the main session's class,** with the same prompt, when the first fails (credits spent, a rate limit, an error, a timeout, no reply: a failure is not a review).
@@ -63,9 +63,9 @@ The prompt is a file with the template filled. When one run follows several brie
 ### Review rounds
 
 Every review loop:
-- **Severity:** re-rate each label (`agent.md`) yourself; a nit gets no code.
-- **Budget:** 3 rounds (reviewer passes, re-checks included) per loop, renewed for Loops A and B at `converge` step 3 and each return from step 4; 5 for security, permissions, auth, data loss or concurrency while a reproduced blocker or should stays open there.
-- **From round 2,** the prompt says outside the changes and the open ids only a blocker or a regression counts (not the fresh reader's). Before each round, cut what the fixes added beyond need.
+- **Severity:** re-rate each label (`agent.md`) yourself; nits (findings nobody hits in practice) get no code.
+- **Budget:** 3 rounds (re-checks included) per loop, never renewed or raised. Name each round `<loop>-r<N>` (T3's `clientRequestId`, the Agent tool's `description`, a shell reviewer's prompt file). Replacing the implementation with a different approach starts a new loop with a new name; fixes to the existing approach keep its round count.
+- **Round 1's prompt** asks for every finding exhaustively; **from round 2,** it says outside the changes and open ids only a blocker or regression counts (not the fresh reader's). Before each round, cut what the fixes added beyond need.
 - **Ledger:** `<work folder>/drafts/<review>.ledger.md`, one line per finding: `<id> <label> <outcome>` (fixed in <sha>, disputed: <evidence>, declined: <why>), the id `R<round>.<n>` from its first round.
-- **Stuck:** a finding the reviewer holds after two replies of yours disputing it, or open at the budget's end, goes to the user, both sides in 2–3 lines. Budget end is not approval. Rule on evidence, never to end the loop.
+- **Stuck:** a finding the reviewer holds after two disputing replies of yours, or open at the budget's end, goes to the user, both sides in 2–3 lines. Rule on evidence, never to end the loop.
 - **While a round runs,** leave what it reads unchanged.

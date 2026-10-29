@@ -4,6 +4,7 @@
 # reverify (Loop A after Loop B's commits), fresh (the fresh reader), gates (every gate's exit code on the final head).
 # The posting hook blocks `gh pr create` (unless --draft), `gh pr ready` and pushes to a ready PR until HEAD has all five.
 # quick: the quick gates' exit codes on a head (code §Gates), which a push to a PR or another owner's repo, and `gh pr create`, need on the pushed head.
+# simplify: the report delegate/simplify.md asks for, which a code file's 6th change on the branch needs on the head (pre-bash-guard).
 set -euo pipefail
 # The first sentence of each code/SKILL.md section a checker's brief names: its file copies them under '## Standards read', proof it read them
 standards() { python3 - "$(dirname "$(realpath "$0")")/../skills/code/SKILL.md" <<'EOF'
@@ -20,9 +21,9 @@ read_standards() {
   miss=$(standards | while IFS= read -r l; do case "$sec" in *"$l"*) ;; *) printf '%s\n' "$l" ;; esac; done)
   [ -z "$miss" ] || { printf '%s\n' "$out has no '## Standards read' copying the first sentence of each code/SKILL.md section its brief names (read them before checking; the brief of this step: mergeworthy delegate/verifier.md, shape.md or fresh-reader.md). Missing:" "$miss" >&2; exit 1; }
 }
-step=${1:?usage: pr-steps <preflight|approach|small|quick|verify|shape|reverify|fresh|gates> <output-file>}; out=${2:?output file}
-case "$step" in preflight|approach|small|quick|verify|shape|loopb|refactor|reverify|fresh|gates) ;; review) step=fresh ;;
-  *) echo "step must be preflight, approach, small, quick, verify, shape, reverify, fresh or gates" >&2; exit 1;; esac
+step=${1:?usage: pr-steps <preflight|approach|small|quick|verify|shape|reverify|fresh|gates|simplify> <output-file>}; out=${2:?output file}
+case "$step" in preflight|approach|small|quick|verify|shape|loopb|refactor|reverify|fresh|gates|simplify) ;; review) step=fresh ;;
+  *) echo "step must be preflight, approach, small, quick, verify, shape, reverify, fresh, gates or simplify" >&2; exit 1;; esac
 # preflight and approach: one record per repo and branch; the hooks compute the same key
 key=$(printf '%s\n%s' "$(realpath "$(git rev-parse --git-common-dir)")" "$(git symbolic-ref --short -q HEAD || echo HEAD)" | sha256sum | cut -c1-40)
 mkdir -p ~/.claude/pr-steps
@@ -73,7 +74,9 @@ if [ "$step" = small ]; then
     git diff --name-only "$base" HEAD | grep -Evq "$docs" && { echo "the diff adds or changes no test: a small fix carries a test that fails on the base and passes on the head" >&2; exit 1; }
     python3 "$(dirname "$(realpath "$0")")/../.githooks/cold-read" "$base..HEAD" || { echo "the diff changes only docs and has no cold read: a commit of it carries a 'Cold-read: <path>' trailer naming the cold read's record (mergeworthy:rules step 4)" >&2; exit 1; }
   fi
-  [ "$(grep -v '^[[:space:]]*$' "$out" | tail -n2 | tr '\n' '|')" = 'NO BUGS|MERGE AS IS: yes|' ] || { echo "$out does not end with NO BUGS and MERGE AS IS: yes: fix what it found and send the same reviewer a new round checking that fix" >&2; exit 1; }
+  # the verdict ends the report, before any trailing Verification or not_checked section (delegate/agent.md asks every agent for not_checked)
+  verdict=$(awk '{ l = tolower($0) } l ~ /^#+[ \t]*(verification|not[ _]checked)([^a-z]|$)/ { tail = 1; next } /^#/ { tail = 0 } !tail' "$out" | grep -v '^[[:space:]]*$' | tail -n2 | tr '\n' '|')
+  [ "$verdict" = 'NO BUGS|MERGE AS IS: yes|' ] || { echo "$out does not end with NO BUGS and MERGE AS IS: yes: fix what it found and send the same reviewer a new round checking that fix" >&2; exit 1; }
   grep -qsF " $(realpath "$out") " ~/.claude/pr-steps/"$sha" && { echo "$out is already recorded for $sha" >&2; exit 1; }
   for k in verify shape reverify fresh; do echo "$k $(realpath "$out") $(date -u +%FT%TZ)" >> ~/.claude/pr-steps/"$sha"; done
   catalog=$(cut -d' ' -f2 ~/.mergeworthy/sessions/"$(basename "${CLAUDE_CODE_SESSION_ID:-none}")" 2>/dev/null || true)
@@ -117,7 +120,7 @@ carries() {
   changed=$(delta "$full")
   [ "$changed" -le 80 ] || { echo "$changed lines changed since $c: too much to carry, run the $step step again (converge, per push)" >&2; exit 1; }
 }
-if [ "$step" != shape ] && [ "$step" != refactor ] && [ "$step" != gates ] && [ "$step" != quick ] && carries; then :; else
+if [ "$step" != shape ] && [ "$step" != refactor ] && [ "$step" != gates ] && [ "$step" != quick ] && [ "$step" != simplify ] && carries; then :; else
 base=$(git merge-base HEAD "$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)" 2>/dev/null || true)
 case "$step" in
   verify|reverify)
@@ -127,12 +130,16 @@ case "$step" in
     unruled=$(python3 - "$out" <<'EOF'
 import re, sys
 lines, plain = open(sys.argv[1]).read().splitlines(), lambda l: re.sub(r'[*`]', '', l).strip().lower()
-dropped = False  # only the dropped list: a counted bug may well be "a rare race"
+dropped, item = False, None  # only the dropped list: a counted bug may well be "a rare race"
+name_of = lambda l: re.split(r':|\s[—–-]\s', re.sub(r'^[\s>+-]*(\d+\.\s*)?', '', plain(l)), maxsplit=1)[0].strip()
 for i, l in enumerate(lines):
     if l.startswith('#'):
         dropped = 'dropped' in l.lower()
-    elif dropped and re.search(r'no documented usage|\brare\b|not a regression|same as (on )?(main|master)|(main|master) does the same|pre-?existing|(also|too) on (main|master)|on (main|master) (too|as well)|masteren is', l, re.I) and not l.startswith('RULED:'):
-        name = re.split(r':|\s[—–-]\s', re.sub(r'^[\s>+-]*(\d+\.\s*)?', '', plain(l)), maxsplit=1)[0].strip()
+        continue
+    sub = re.match(r'\s+[-*+]\s', l)  # a sub-bullet ('**Why a nit:** …') belongs to the item above it
+    if not sub and l.strip() and not l.startswith('RULED:'): item = name_of(l)
+    if dropped and re.search(r'no documented usage|\brare\b|not a regression|same as (on )?(main|master)|(main|master) does the same|pre-?existing|(also|too) on (main|master)|on (main|master) (too|as well)|masteren is', l, re.I) and not l.startswith('RULED:'):
+        name = item if sub and item else name_of(l)
         rulings = [r for r in lines[i + 1:] if r.startswith('RULED:') and name in plain(r)]
         if not rulings:
             print(l)
@@ -148,6 +155,15 @@ EOF
       miss=$(for w in Cancellation Backpressure Cap Release 'Read once' Ownership Failure Sources 'Second copy'; do printf '%s\n' "$sec" | grep -Eqi "^- \*{0,2}$w\*{0,2}: +[^ ]+ +[^ ]+ +[^ ]+" || printf '%s, ' "$w"; done)
       [ -z "$miss" ] || { echo "the diff touches bodies, buffers, streams or cancellation: $out needs '## Bodies and streams' with a line '- <item>: <the probe run and what it showed>' (or 'not reached, because <reason>') for each item of code §No regressions' first bullet; missing or too short: ${miss%, }" >&2; exit 1; }
     fi ;;
+  simplify)
+    # delegate/simplify.md: a code file's 6th change on the branch waits for this record (pre-bash-guard)
+    grep -Eq '^Class: +[^ ]+ +[^ ]+' "$out" || { echo "$out has no line 'Class: <what the patches share>' (mergeworthy delegate/simplify.md)" >&2; exit 1; }
+    case "$last" in
+      SIMPLIFIED) n() { git diff --numstat "$@" | awk '{s+=$1+$2} END{print s+0}'; }
+        [ -n "$base" ] && [ "$(n "$base")" -lt "$(n "$base" HEAD)" ] || { echo "$out says SIMPLIFIED, but the worktree's diff from the base is no smaller than HEAD's: leave the one smaller shape uncommitted, then record" >&2; exit 1; } ;;
+      DISTINCT) ;;
+      *) echo "$out does not end with a line SIMPLIFIED or DISTINCT (mergeworthy delegate/simplify.md)" >&2; exit 1 ;;
+    esac ;;
   loopb)
     [ "$last" = CLEAN ] || { echo "$out does not end with a line CLEAN: fix its findings and continue the same agent" >&2; exit 1; } ;;
   fresh)
@@ -187,14 +203,18 @@ EOF
       [ "$changed" -le 80 ] || { echo "$changed lines changed since $carried: the pass is stale (mergeworthy:converge §Batching), run it again" >&2; exit 1; }
     fi ;;
   gates|quick)
-    grep -Eq '^.+ -> exit [0-9]+( \([0-9]+ tests?\))?$' "$out" || { echo "$out lists no gate: one line per gate, '<command> -> exit <code>', run on this HEAD" >&2; exit 1; }
+    grep -Eq '^.+ -> exit [0-9]+( \([0-9]+ (tests?|words)\))?$' "$out" || { echo "$out lists no gate: one line per gate, '<command> -> exit <code>', run on this HEAD" >&2; exit 1; }
     # a gate that can't run here is installed or run another way: CI is never where a change is first checked
     unrun="\\b(not installed|isn't installed|let CI|leave it to CI|CI will (verify|check|tell)|(can't|cannot|can not) (run|install)|(not|wasn't|weren't) run)\\b"
-    ! grep -Eiq "$unrun" "$out" || { echo "$out says a gate didn't run ($(grep -Eio "$unrun" "$out" | head -n1)): install what it needs and run it (code §Gates)" >&2; exit 1; }
+    # read on every line but a suite's test results, whose titles may quote these words: '<title>: <got> (want <want>)', ok/PASS/✓ lines
+    own=$(grep -Ev '\(want .*\)$|^[[:space:]]*(ok|not ok|PASS|FAIL|✓|✔|✗|×)[[:space:]]' "$out" || true)
+    ! printf '%s\n' "$own" | grep -Eiq "$unrun" || { echo "$out says a gate didn't run ($(printf '%s\n' "$own" | grep -Eio "$unrun" | head -n1)): install what it needs and run it (code §Gates)" >&2; exit 1; }
+    gl=$(grep -E ' -> exit [0-9]+' "$out" || true)
     ! grep -Eq ' -> exit [1-9][0-9]*( \(.*\))?$' "$out" || { echo "$out has a red gate: fix it on this HEAD first" >&2; exit 1; }
-    # a test run with no test in it is red (a filter that matched nothing): each test line ends with its count, '(N tests)'
-    bad=$(grep -E ' -> exit [0-9]+' "$out" | grep -Ei '(^|[ /:])(test|tests|e2e|vitest|jest|playwright|mocha|pytest|bun test)([ :/-]|$)' | grep -Ev '\(([1-9][0-9]*) tests?\)$' | head -n3 || true)
-    [ -z "$bad" ] || { echo "a test gate in $out has no '(N tests)' with N > 0, so it may have run nothing (code §Gates): $bad" >&2; exit 1; }
+    # a test run with no test in it is red (a filter that matched nothing): each test line ends with its count, '(N tests)';
+    # a gate that counts words (tests/word-budget) ends with '(N words)'
+    bad=$(printf '%s\n' "$gl" | grep -Ei '(^|[ /:])(test|tests|e2e|vitest|jest|playwright|mocha|pytest|bun test)([ :/-]|$)' | grep -Ev '\(([1-9][0-9]*) (tests?|words)\)$' | head -n3 || true)
+    [ -z "$bad" ] || { echo "a test gate in $out has no '(N tests)' with N > 0, so it may have run nothing (code §Gates); a gate that counts words ends with '(N words)': $bad" >&2; exit 1; }
     # a changeset is a sentence or two on what changed for users, naming every package whose files the branch changed (a maintainer's ask)
     if [ -n "$base" ] && [ -d "$(git rev-parse --show-toplevel)/.changeset" ]; then
       bad=$(cd "$(git rev-parse --show-toplevel)" && python3 - "$base" <<'EOF'

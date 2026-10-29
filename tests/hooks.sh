@@ -317,7 +317,7 @@ grep -c 'was already posted' "$T/err"
 python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr edit 41 --repo o/r --body-file "+sys.argv[2]},"cwd":sys.argv[1]}))' "$T" "$TD/r.md" > "$T/in.json"
 check "an edit from a posted draft may repeat" 0 "$(python3 "$R/hooks/pre-bash-guard.py" < "$T/in.json" 2>/dev/null; echo $?)"
 touch -d '+1 minute' "$TD/r.parent.md"
-check "BLOCK: older than the comment the draft answers" 2 "$(tcguard)"
+check "a parent saved after a record that holds the thread's latest comment passes" 0 "$(tcguard)"
 rm "$TD/r.parent.md"
 printf 'Tracking: x\n' > "$T/tdrafts/t.md"; sha256sum "$T/tdrafts/t.md" | cut -d' ' -f1 > "$T/tdrafts/t.md.gate"; echo "--kind tracker" > "$T/tdrafts/t.md.lint"
 python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh issue comment 41 --repo o/r --body-file "+sys.argv[2]},"cwd":sys.argv[1]}))' "$T" "$T/tdrafts/t.md" > "$T/in.json"
@@ -331,10 +331,17 @@ GD="$T/gdrafts/x"; mkdir -p "$GD"; printf 'Agreed, option A it is.\n' > "$GD/r.m
 gp() { touch -d '+10 minutes' "$GD/r.review.out"; MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GD/r.md" "$GD/r.review.out" --kind reply --parent none >"$T/gp.out" 2>&1; echo $?; }
 check "BLOCK: gate-pass on a reply without thread-context.md" 1 "$(gp)"
 grep -c 'no thread-context.md' "$T/gp.out"
-cp "$TD/thread-context.md" "$GD/thread-context.md"
-check "BLOCK: gate-pass with a thread-context.md newer than the draft" 1 "$(gp)"
+cp "$TD/thread-context.md" "$GD/thread-context.md"; touch -d 2026-10-01T00:00:00Z "$GD/r.md"
+check "BLOCK: gate-pass with a thread-context.md holding a human comment newer than the draft" "1 1" "$(gp) $(grep -c 'newer than the draft' "$T/gp.out")"
+touch -d 2026-10-03T00:00:00Z "$GD/r.md"
+check "gate-pass passes with a thread-context.md made after the draft whose comments all predate it" 0 "$(gp)"
 touch -d '+1 minute' "$GD/r.md"
 check "gate-pass passes with thread-context.md beside the draft, written before it" 0 "$(gp)"
+touch -d '+5 minutes' "$GD/r.parent.md"
+check "gate-pass passes with the parent saved after a current thread-context.md" 0 "$(gp)"
+cp "$GD/thread-context.md" "$T/gd-tc.md"; cp "$TC" "$GD/thread-context.md"; touch -d '+30 seconds' "$GD/r.md"; touch -d '+5 minutes' "$GD/r.parent.md"
+check "BLOCK: gate-pass with the parent saved after a record the thread has outgrown" "1 1" "$(gp) $(grep -c 'records the latest comment' "$T/gp.out")"
+mv "$T/gd-tc.md" "$GD/thread-context.md"; rm "$GD/r.parent.md"; touch -d '+1 minute' "$GD/r.md"
 check "gate-pass records the thread context in the gate" 1 "$(grep -c '^tc ' "$GD/r.md.gate")"
 printf 'The test checks that "I'"'"'ll switch it once X is released" passes.\n' > "$GD/r.md"; touch -d '+2 minutes' "$GD/r.md"
 check "a quoted \"I'll\" is someone else's words, not a promise" 0 "$(gp)"
@@ -507,6 +514,9 @@ check "code, then (a) (b), then a pick passes" 0 "$(dblint $'### Decision: who r
 B=$'<img src="https://github.com/claude.png" width="20" height="20" alt="Claude">\n'
 loclint() { printf '%s\n' "$1" > "$T/loc.md"; python3 "$R/bin/post-lint" "$T/loc.md" --parent none 2>&1 | grep -c 'code location without a link'; }
 check "a bare file:line, a bare line number, a linked one, one in a code block" "1 1 0 0" "$(loclint 'It breaks in `src/adapter/utils.ts:160`.') $(loclint 'Elysia copies them at line 160.') $(loclint 'Elysia copies them ([line 160](https://github.com/o/r/blob/abc1234/src/u.ts#L160)).') $(loclint $'```\nat src/u.ts:160\n```')"
+check "a line number inside inline code quotes a message, not a location" 0 "$(loclint 'The hook fails with `Expecting value: line 1 column 1` on every call.')"
+phlint() { printf '%s\n' "$1" > "$T/ph.md"; python3 "$R/bin/post-lint" "$T/ph.md" --parent none 2>&1 | grep -c '^placeholder'; }
+check "an ALLCAPS placeholder left in a draft is flagged, a name in inline code is not" "2 0" "$(phlint $'Posted at POST_TIME.\n\nGATES_LINE') $(phlint 'The `MERGEWORTHY_BADGE` setting stays.')"
 lint() { python3 "$R/bin/post-lint" "$1" --kind issue --parent none 2>&1 | grep -c 'word sentence'; }
 items=$(for i in 1 2 3 4 5 6 7; do echo "  - item number $i with a few short words;"; done)
 printf '%s A list of short items follows here:\n%s\n' "$B" "$items" > "$T/list.md"
@@ -745,7 +755,7 @@ check "BLOCK: a foreground until-sleep loop" 2 "$(wait_guard 'until [ -s out.md 
 check "the same loop in the background passes" 0 "$(wait_guard 'until [ -s out.md ]; do sleep 20; done; cat out.md' true)"
 check "a plain sleep passes" 0 "$(wait_guard 'sleep 2; ls' false)"
 # ---------- pre-agent-dedupe: one agent per job ----------
-launch_in() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":sys.argv[1],"title":"t"}}))' "$1"; }
+launch_in() { python3 -c 'import json,sys,time; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":sys.argv[1],"title":"t","clientRequestId":f"t-{time.time_ns()}-r1"}}))' "$1"; }
 launch() { # task text; a launch that passes runs, so the PostToolUse half registers it
   launch_in "$1" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; local rc=$?
   [ $rc = 0 ] && launch_in "$1" | python3 "$R/hooks/pre-agent-dedupe.py" register; echo $rc
@@ -783,7 +793,12 @@ python3 -c 'import json,os,time; p=os.path.expanduser("~/.claude/agent-client-re
 check "BLOCK: a clientRequestId reused later (T3 replays the old result)" 2 "$(cid r-1)"
 rnd() { # clientRequestId task [role]
   python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":sys.argv[2],"role":sys.argv[3],"clientRequestId":sys.argv[1]}}))' "$1" "$2" "${3:-review}" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; echo $?; }
-check "review rounds: 3 passes, 4 blocks, 4 naming security passes, 6 naming security blocks, a trailing date is no round, an implementation's -4 is no round, authentication names auth, author doesn't, a head SHA after the round is no escape" "0 2 0 2 0 0 0 2 2 2" "$(rnd post-review-3 'Follow /tmp/x/rr.md') $(rnd post-review-4 'Follow /tmp/x/rr.md') $(rnd authz-review-4 'Follow /tmp/x/rr.md; the security fix') $(rnd authz-review-6 'Follow /tmp/x/rr.md; the security fix') $(rnd post-review-2026-10-28 'Follow /tmp/x/rr.md') $(rnd fix-4 'Follow /tmp/x/rr.md' implementation) $(rnd login-review-5 'Follow /tmp/x/rr.md; the authentication bypass') $(rnd words-review-4 'Review author wording. Follow /tmp/x/rr.md') $(rnd post-review-4-96ef442 'Follow /tmp/x/rr.md') $(rnd authz-review-6-96ef442 'Follow /tmp/x/rr.md; the security fix')"
+agent_rnd() { # description prompt
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"Agent","tool_input":{"description":sys.argv[1],"prompt":sys.argv[2]}}))' "$1" "$2" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; echo $?; }
+check "review rounds: r3 passes, r4 blocks, no round blocks, a new loop's r1 passes, a trailing date or head SHA is no escape, an implementation needs no round" "0 2 2 0 0 2 0" "$(rnd loop-a-r3 'Follow /tmp/x/rr.md') $(rnd loop-a-r4 'Follow /tmp/x/rr.md') $(rnd loop-a 'Follow /tmp/x/rr.md') $(rnd loop-a2-r1 'Follow /tmp/x/rr.md') $(rnd loop-a-r2-2026-10-28 'Follow /tmp/x/rr.md') $(rnd loop-a-r4-96ef442 'Follow /tmp/x/rr.md') $(rnd fix-r4 'Follow /tmp/x/rr.md' implementation)"
+check "review rounds by the Agent tool's description: r3 passes, r4 blocks, no round blocks, a non-review launch needs none" "0 2 2 0" "$(agent_rnd fresh-r3 'Review it. Final message: exactly CLEAN, or the findings.') $(agent_rnd fresh-r4 'Review it. Final message: exactly CLEAN, or the findings.') $(agent_rnd 'Fresh read' 'Verify it. Final message: exactly NO BUGS only when both lists are empty.') $(agent_rnd 'Fix the parser' 'Edit hooks/x.py and run the tests.')"
+mkdir -p "$HOME/.mergeworthy/work/rr"; printf 'Review the patch. Final message: exactly CLEAN, or the findings.\n' > "$HOME/.mergeworthy/work/rr/review.prompt.md"
+check "BLOCK: an Agent review past r3 that follows a brief in the work folder" 2 "$(agent_rnd loop-r4 "Follow $HOME/.mergeworthy/work/rr/review.prompt.md exactly.")"
 J="$HOME/.claude/agent-jobs"; mkdir -p "$J"
 printf '{"key": "/x/a.md /x/shared.md", "started": 1}' > "$J/aj1.json"; printf '{"key": "/x/b.md /x/shared.md", "started": 2}' > "$J/aj2.json"
 check "agent-job done with a path two jobs hold releases neither" "1 2" "$(python3 "$R/bin/agent-job" done /x/shared.md >/dev/null 2>&1; echo $? $(ls "$J"/aj*.json | wc -l))"
@@ -914,7 +929,7 @@ git init -q -b main "$T/gr"; git -C "$T/gr" commit -q --allow-empty -m one; OLD=
 git -C "$T/gr" worktree add -q -b w "$T/gw"; git -C "$T/gw" commit -q --allow-empty -m two; NEW=$(git -C "$T/gw" rev-parse HEAD)
 git -C "$T/gr" commit -q --allow-empty -m three; MAINOLD=$OLD
 ag() { # cwd task [role]
-  python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","cwd":sys.argv[1],"tool_input":{"task":sys.argv[2],"title":sys.argv[2][:50],"role":sys.argv[3]}}))' "$1" "$2" "${3:-implementation}" \
+  python3 -c 'import json,sys,time; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","cwd":sys.argv[1],"tool_input":{"task":sys.argv[2],"title":sys.argv[2][:50],"role":sys.argv[3],"clientRequestId":f"ag-{time.time_ns()}-r1"}}))' "$1" "$2" "${3:-implementation}" \
     | timeout 10 python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
 printf '# Memory\n## Standing\n### Ruled out\n- **Cron jobs** (now). The user refused them.\n## Recent\n<!-- covered-until: 2099-01-01T00:00:00.000Z -->\n' > "$MR/memory.md"
 check "BLOCK: a brief pinned to an older commit of the worktree it names, with the ruled-out list" "2 1" "$(ag "$OC" "Fix it in $T/gw at $OLD") $(grep -c 'Cron jobs' "$T/err")"
@@ -1183,6 +1198,42 @@ tr_file 'The work is done: https://github.com/o/r/pull/7'
 check "a done message whose linked PR is ready and green passes" 0 "$(stop "$T")"
 tr_file 'It is not done: https://gitlab.com/g/p/-/merge_requests/96 still needs green CI.'
 check "a message saying it is not done passes" 0 "$(stop "$T")"
+tr_file 'Ezek nincsenek még kész: https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
+tr_file "It isn't ready for review: https://gitlab.com/g/p/-/merge_requests/96 still needs green CI."
+check "a done word negated in Hungarian or English is no claim" "0 0" "$a $(stop "$T")"
+tr_file 'It is not quite yet ready for review: https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
+tr_file 'Once it is ready for review, I will send https://gitlab.com/g/p/-/merge_requests/96'; a="$a $(stop "$T")"
+tr_file 'Amint kész, szólok: https://gitlab.com/g/p/-/merge_requests/96'; a="$a $(stop "$T")"
+tr_file 'A review-ig kész lesz: https://gitlab.com/g/p/-/merge_requests/96'
+check "a negation, condition or plan anywhere earlier in the done word's clause is no claim" "0 0 0 0" "$a $(stop "$T")"
+tr_file 'It will be ready for review tomorrow: https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
+tr_file 'Kész lesz délre: https://gitlab.com/g/p/-/merge_requests/96'; a="$a $(stop "$T")"
+tr_file 'Majd kész, ha átment a CI: https://gitlab.com/g/p/-/merge_requests/96'
+check "a future anywhere in the done word's clause is no claim" "0 0 0" "$a $(stop "$T")"
+tr_file 'It would be ready for review if CI passed: https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
+tr_file 'It would be ready for review with green CI: https://gitlab.com/g/p/-/merge_requests/96'; a="$a $(stop "$T")"
+tr_file 'Kész lenne, ha zöld a CI: https://gitlab.com/g/p/-/merge_requests/96'
+check "a conditional in the done word's clause is no claim" "0 0 0" "$a $(stop "$T")"
+tr_file 'The tests are not flaky and the work is done: https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
+tr_file 'A tesztek nem instabilak és kész a munka: https://gitlab.com/g/p/-/merge_requests/96'
+check "BLOCK: a negation in an earlier coordinated clause leaves the claim standing" "2 2" "$a $(stop "$T")"
+tr_file 'When you asked, I checked it: all done, https://gitlab.com/g/p/-/merge_requests/96'
+check "BLOCK: a condition in an earlier clause leaves the claim standing" 2 "$(stop "$T")"
+tr_file $'> Earlier context.\n\nAll done: https://gitlab.com/g/p/-/merge_requests/96'
+check "BLOCK: a claim after a quoted line" 2 "$(stop "$T")"
+tr_file 'A „kész” jelzés még a régi futásé: https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
+tr_file 'The `ready for review` step comes next: https://gitlab.com/g/p/-/merge_requests/96'
+check "a done word in quotes or code is no claim" "0 0" "$a $(stop "$T")"
+echo '{"state":"open","draft":true,"head":{"sha":"h8"}}' > "$FX/repos_o_r_pulls_8"
+echo '{"check_runs":[{"name":"test","conclusion":"success"}]}' > "$FX/repos_o_r_commits_h8_check-runs"
+tr_file $'A https://github.com/o/r/pull/7 már ready for review állapotban van.\n\nA https://github.com/o/r/pull/8 még vázlat.'
+check "a claim about one PR is checked against that PR, not another linked draft" 0 "$(stop "$T")"
+tr_file $'Ezek vannak még hátra:\n- https://github.com/o/r/pull/8 (vázlat):\n  1. a kész állapotú leírás átnézése.'
+check "a done word past the opening sentence is no claim" 0 "$(stop "$T")"
+tr_file 'All done: https://github.com/o/r/pull/8 is up.'
+check "BLOCK: a claim about a draft PR" "2 1" "$(stop "$T") $(grep -c 'pull/8 (draft)' "$T/err")"
+tr_file $'All done.\n\nhttps://github.com/o/r/pull/8 needs a look.'
+check "BLOCK: an opening sentence calling the work done, naming no PR, is about every linked PR" 2 "$(stop "$T")"
 echo '{"check_runs":[{"name":"test","conclusion":null}]}' > "$FX/repos_o_r_commits_h1_check-runs"
 tr_file 'All done, https://github.com/o/r/pull/7 is ready for review.'
 check "BLOCK: a PR whose checks are still running" 2 "$(stop "$T")"
@@ -1311,6 +1362,8 @@ check "BLOCK: a dropped candidate whose reason is 'not a regression', quoting it
 printf 'slice 1\n## Tried and dropped\n- **abort leaks a listener**: Not a regression, main does the same\nRULED: abort leaks a listener: not a regression, main does the same\nNO BUGS\n' > "$T/vr4.md"; std "$T/vr4.md"
 printf 'slice 1\n## Tried and dropped\n- **abort leaks a listener**: Not a regression, main does the same\nRULED: abort leaks a listener: not a regression, and only a staged race reaches it (code Earn every line)\nNO BUGS\n' > "$T/vr5.md"; std "$T/vr5.md"
 check "BLOCK: a RULED line whose only reason is that main does the same; one citing Earn every line records" "1 1 0" "$(prs verify "$T/vr4.md") $(cd "$G" && bash "$R/bin/pr-steps" verify "$T/vr4.md" 2>&1 | grep -c 'is not a ruling') $(prs verify "$T/vr5.md")"
+printf 'slice 1\n## Tried and dropped\n- `D=~/cfg` (tilde.sh): a nit.\n  - **Why a nit:** both fail closed, and it is rare.\nRULED: `D=~/cfg` (tilde.sh): a nit, no realistic usage (code Earn every line)\nNO BUGS\n' > "$T/vr6.md"; std "$T/vr6.md"
+check "a dropped item's sub-bullet reason is ruled under the item's name, not its label" 0 "$(prs verify "$T/vr6.md")"
 # pr-steps verify: a diff that touches bodies or streams needs code §No regressions' list answered by name
 G3="$T/prs3"; mkdir -p "$G3"; git -C "$G3" init -q -b main; git -C "$G3" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 git -C "$G3" update-ref refs/remotes/origin/main HEAD; git -C "$G3" checkout -q -b fix
@@ -1346,6 +1399,8 @@ r1=$(prss "$T/sr1.md"); echo t > "$GS/test/a.test.ts"; seq 1 300 > "$GS/README.m
 r2=$(prss "$T/sr0.md")
 check "pr-steps small: BLOCK with no test in the diff, BLOCK on a report with findings, records with both (docs not counted)" "1 1 0" "$r1 $r2 $(prss "$T/sr2.md")"
 check "after pr-steps small, gh pr ready lacks only the gates" "gates" "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr ready 5 -R o/r"},"cwd":sys.argv[1]}))' "$GS" | python3 "$R/hooks/pre-bash-guard.py" 2>&1 | grep -o 'no pr-steps [a-z, ]* record' | sed 's/no pr-steps //; s/ record//')"
+printf 'x\n## Outside this change\nNone.\n\nNO BUGS\nMERGE AS IS: yes\n\n## Verification\n- ran it\n\n## not_checked\n- Windows\n' > "$T/sr5.md"
+check "pr-steps small records a report whose verdict comes before its Verification and not_checked sections" 0 "$(prss "$T/sr5.md")"
 seq 1 70 >> "$GS/src/a.ts"; git -C "$GS" -c user.name=t -c user.email=t@t commit -qam d
 printf 'NO BUGS\nMERGE AS IS: yes\n- a finding after them\n' > "$T/sr4.md"
 check "BLOCK: pr-steps small on a report whose last lines aren't NO BUGS and MERGE AS IS: yes" 1 "$(prss "$T/sr4.md")"
@@ -1896,6 +1951,11 @@ git clone -q -b main "$T/cr.git" "$T/cr2"; echo squash > "$T/cr2/skills/a/SKILL.
 git -C "$T/cr" fetch -q; git -C "$T/cr" merge -q origin/main -m 'Merge main'
 check "a merged main's squash commit, already on a remote-tracking ref, needs no trailer of the push" "0 Merge main" \
   "$(git -C "$T/cr" push -q origin f > "$T/cr.out" 2>&1; echo $?) $(git -C "$T/cr.git" log -1 --format=%s f)"
+# pre-push on a checkout without node_modules: tests/all.sh names the install command, and each push keeps its own log
+mkdir -p "$T/pp/tests"; cp -r "$R/.githooks" "$T/pp/"; cp "$R/tests/all.sh" "$T/pp/tests/"
+pp() { TMPDIR="$T/pplogs" sh "$T/pp/.githooks/pre-push" </dev/null | sed -n 's/.*see //p'; }
+mkdir -p "$T/pplogs"; L1=$(pp); L2=$(pp)
+check "pre-push: two failed pushes keep two logs, each naming the install command" "2 1 1" "$(ls "$T/pplogs" | wc -l) $(grep -c 'pnpm install' "$L1") $([ -n "$L1" ] && [ "$L1" != "$L2" ] && grep -c 'pnpm install' "$L2")"
 # ---------- fail closed: a check that can't run blocks; the vikejs/vike#3671 session ("Fix CI"), replayed command by command ----------
 # shellcmd.parse lexes the whole command as bash does: that session's commit messages and PR body spanned lines, the old
 # line-by-line split raised, and its fallback saw only `cd`, so every check after it was skipped
@@ -1942,6 +2002,12 @@ check "replay: a push to a draft PR's branch whose head ran no gates ('I'll push
   "$(MERGEWORTHY_WATCHER=off bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$TCO") $(grep -c 'pr-steps quick' "$T/err")"
 printf 'pnpm test -> exit 0 (3 tests)\nTypeScript: types not installed here, let CI verify -> exit 0\n' > "$T/q-ci.log"
 check "pr-steps quick refuses a log whose gate didn't run ('not installed', 'let CI verify')" "1 1" "$(cd "$TCO" && bash "$R/bin/pr-steps" quick "$T/q-ci.log" 2>"$T/err" >/dev/null; echo $?) $(grep -c "says a gate didn't run" "$T/err")"
+printf "replay: a push whose head ran no gates ('I'll push and let CI verify'): blocked: 2 (want 2)\nbash tests/hooks.sh . -> exit 0 (739 tests)\nbash tests/word-budget . -> exit 0 (32586 words)\n" > "$T/q-titles.log"
+check "pr-steps quick records a log whose test titles quote 'let CI', with a word-count gate" 0 "$(git -C "$TCO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m q; cd "$TCO" && bash "$R/bin/pr-steps" quick "$T/q-titles.log" >/dev/null 2>&1; echo $?)"
+printf 'bash tests/word-budget . -> exit 0 (32586 words)\n' > "$T/q-words.log"
+check "pr-steps quick records a log whose only gate counts words" 0 "$(git -C "$TCO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m qw; cd "$TCO" && bash "$R/bin/pr-steps" quick "$T/q-words.log" >/dev/null 2>&1; echo $?)"
+printf 'pnpm test -> exit 0 (3 tests)\npnpm typecheck was not run: dependency unavailable\n' > "$T/q-unrun.log"
+check "BLOCK: pr-steps quick on a log saying a gate was not run, on a line of its own" "1 1" "$(git -C "$TCO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m qu; cd "$TCO" && bash "$R/bin/pr-steps" quick "$T/q-unrun.log" 2>"$T/err" >/dev/null; echo $?) $(grep -c "says a gate didn't run" "$T/err")"
 TK2="$HOME/.mergeworthy/work/vike-3671"; CK="$TK2/vike"; mkdir -p "$TK2"
 printf 'Tier: S, because one CI fix in one repo\n\n- [ ] Fix CI https://github.com/vikejs/vike/pull/3671\n' > "$TK2/scope.md"
 git init -q -b fix-telefunc "$CK"; git -C "$CK" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; git -C "$CK" remote add upstream https://github.com/vikejs/vike.git
@@ -2032,6 +2098,13 @@ tr_file 'README tidied.' work
 check "the final message is the hook input's, not the transcript's last line (which may not be written yet)" "2 1" "$(slj 'Tell me when to re-check CI.') $(grep -ci 'tell me when' "$T/err")"
 tr_file 'Ask me to check the run when you want it.' work
 check "stop_hook_active no longer lets the next stop through: the hand-back still blocks" 2 "$(slj '' 1)"
+# a claude -p --no-session-persistence run's Stop input, as captured: its transcript_path names a file that is never written
+nopersist() { # CLAUDE_PID
+  python3 -c 'import json,sys; print(json.dumps({"session_id":"4c63f963","transcript_path":sys.argv[1]+"/never/4c63f963.jsonl","cwd":sys.argv[1],"prompt_id":"e89cd96c","permission_mode":"default","effort":{"level":"medium"},"hook_event_name":"Stop","stop_hook_active":False,"last_assistant_message":"OK","background_tasks":[],"session_crons":[]}))' "$T" \
+    | CLAUDE_PID=$1 MERGEWORTHY_STOP_CHECKIN=off python3 "$R/hooks/stop-lint.py" 2>"$T/err"; echo "$? $(wc -c < "$T/err")"; }
+(exec -a 'claude -p --no-session-persistence reply with exactly OK' sleep 600) & NPID=$!
+check "a claude -p --no-session-persistence run ends silently; a session whose transcript can't be read still blocks once" "0 0 2" "$(nopersist $NPID) $(nopersist $$ | cut -d' ' -f1)"
+kill "$NPID"; wait "$NPID" 2>/dev/null
 tr_file 'README tidied.' work
 ci() { # session [cwd]
   python3 -c 'import json,sys; print(json.dumps({"transcript_path":sys.argv[1],"cwd":sys.argv[2],"session_id":sys.argv[3]}))' "$T/tr.jsonl" "${2:-$T}" "$1" | MERGEWORTHY_STOP_CHECKIN=on python3 "$R/hooks/stop-lint.py" 2>"$T/err"; echo $?; }
@@ -2212,5 +2285,25 @@ tr_file "$QA2" work
 check "the same answer in a session that started an agent is a hand-back" 2 "$(slj)"
 tr_file 'I have nothing else to start. The review waits on the maintainer, and the watcher will tell me when that happens.' work
 check "'the watcher will tell me when' is no hand-back; 'Tell me when' and 'or ask me to' are" "0 2 2" "$(slj) $(slj 'Tell me when to re-check CI.') $(slj 'I can rerun it, or ask me to stop.')"
+# ---------- pre-bash-guard: a code file's 6th change on the branch waits for `pr-steps simplify` ----------
+SP="$T/simp"; git init -q -b main "$SP"; sc() { git -C "$SP" -c user.name=t -c user.email=t@t commit -q "$@"; }
+echo 0 > "$SP/a.py"; mkdir "$SP/tests"; echo 0 > "$SP/tests/a_test.py"; git -C "$SP" add -A; sc -m base
+git -C "$SP" update-ref refs/remotes/origin/main HEAD; git -C "$SP" checkout -q -b fix; (cd "$SP" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null)
+for i in 1 2 3 4; do echo "p$i" >> "$SP/a.py"; sc -am "p$i"; done
+echo p5 >> "$SP/a.py"; r5=$(bg 'git commit -am p5' "$SP"); sc -am p5
+echo p6 >> "$SP/a.py"; r6=$(bg 'git commit -am p6' "$SP"); n6=$(grep -c 'a.py would get a 6th change' "$T/err")
+git -C "$SP" checkout -q a.py; echo t >> "$SP/tests/a_test.py"; git -C "$SP" add tests
+check "a code file's 5th change on the branch passes; its 6th is refused, naming it; a test-only commit passes" "0 2 1 0" "$r5 $r6 $n6 $(bg 'git commit -m t' "$SP")"
+echo p5b >> "$SP/a.py"; git -C "$SP" add a.py
+check "an amend of the 5th change is no 6th" 0 "$(bg 'git commit --amend --no-edit' "$SP")"
+git -C "$SP" checkout -q HEAD -- a.py
+sc -m t; printf 'Class: each patch narrows which lines a counts\nDISTINCT\n' > "$T/simp.md"; (cd "$SP" && bash "$R/bin/pr-steps" simplify "$T/simp.md" >/dev/null)
+echo p6 >> "$SP/a.py"; git -C "$SP" add a.py
+check "with a simplify record on the head, the 6th change passes" 0 "$(bg 'git commit -m p6' "$SP")"
+for i in 7 8 9 10 11 12; do echo "p$i" >> "$SP/a.py"; git -C "$SP" add a.py; sc -m "p$i"; done  # 6 changes since the record, made without the hook
+echo p13 >> "$SP/a.py"; git -C "$SP" add a.py; r13=$(bg 'git commit -m p13' "$SP"); (cd "$SP" && bash "$R/bin/pr-steps" simplify "$T/simp.md" >/dev/null)
+check "BLOCK: a 7th change; a simplify record on the head that holds the 6th unblocks it" "2 0" "$r13 $(bg 'git commit -m p13' "$SP")"
+printf 'Class: each patch narrows which lines a counts\nSIMPLIFIED\n' > "$T/simp2.md"
+check "BLOCK: pr-steps simplify SIMPLIFIED while the worktree's diff is no smaller than HEAD's" "1 1" "$(cd "$SP" && bash "$R/bin/pr-steps" simplify "$T/simp2.md" 2>"$T/err" >/dev/null; echo $?) $(grep -c 'no smaller than HEAD' "$T/err")"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]
