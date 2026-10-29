@@ -5,7 +5,7 @@ on GitHub with no live Monitor on a watcher's events.log in this session (the se
 wakes it), or with a line still owed in a watcher's replies-owed.md (mergeworthy:reply).
 The final message is the hook input's last_assistant_message (the transcript may not hold it yet). stop_hook_active skips only
 the check-in: every other check holds until it is met (Claude Code itself ends the turn after 8 blocks in a row)."""
-import glob, hashlib, json, os, re, subprocess, sys, time, urllib.parse
+import glob, hashlib, json, os, re, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import failclosed
 d = json.load(sys.stdin)
@@ -42,7 +42,7 @@ except (KeyError, TypeError, OSError):
               "Re-check it yourself: anything owed, unfinished or unwatched, do now; then end the turn.", file=sys.stderr)
         sys.exit(2)
     lines = []
-import steward
+import forge, steward
 from shellcmd import segments, prog, git_argv, Where
 # A T3 Code delegated child (its thread has a parent in T3's state, or its prompt says so): its result is its last message, and the main session owns replies and next steps
 def opening(l):  # a user line's typed text ('' for a tool result's list, or a line that isn't JSON)
@@ -240,24 +240,21 @@ def done_check():
         before, after = CLAUSE.split(first[:m.start()])[-1], CLAUSE.split(first[m.start():])[0]
         return not NOT_NOW.search(before) and not FUTURE.search(before + after)
     if not any(map(is_claim, re.finditer(DONE, first, re.I))): return
-    def api(cmd):
-        try: return json.loads(subprocess.run(cmd, capture_output=True, text=True, timeout=20).stdout or 'null')
-        except (OSError, ValueError, subprocess.SubprocessError): return None
     unfinished = []
     for host, path, n in list(dict.fromkeys(re.findall(LINK, first) or re.findall(LINK, last)))[:10]:
         url = f'https://{host}/{path}/{"pull" if host == "github.com" else "-/merge_requests"}/{n}'
         if host == 'github.com':
-            pr = api(['gh', 'api', f'repos/{path}/pulls/{n}'])
+            pr = forge.pull(path, n)[0]
             if not isinstance(pr, dict):
                 unfinished.append(f"{url} (gh couldn't read it)"); continue
             if pr.get('state') != 'open': continue
-            check_runs = api(['gh', 'api', f'repos/{path}/commits/{pr["head"]["sha"]}/check-runs'])
+            check_runs = forge.check_runs(path, pr['head']['sha'])[0]
             if not isinstance(check_runs, dict):
                 unfinished.append(f"{url} (gh couldn't read its checks)"); continue
             red = [r.get('name') for r in check_runs.get('check_runs', []) if r.get('conclusion') not in ('success', 'skipped', 'neutral')]
             why = (['draft'] if pr.get('draft') else []) + ([f"checks not green: {', '.join(red[:3])}"] if red else [])
         else:
-            mr = api(['glab', 'api', '--hostname', host, f'projects/{urllib.parse.quote(path, safe="")}/merge_requests/{n}'])
+            mr = forge.merge_request(host, path, n)[0]
             if not isinstance(mr, dict):
                 unfinished.append(f"{url} (glab couldn't read it)"); continue
             if mr.get('state') != 'opened': continue
@@ -284,17 +281,6 @@ CLAIMS = [(c, re.compile(rx, re.I)) for c, rx in [(c, SUBJECT + x) for c, x in S
 LATER = re.compile(r"\b(?:once|when|after|until|if|before|unless|whether|will|would|waiting|wait|expect|next|tomorrow|soon|later)\b", re.I)
 def state_check():
     if not last.strip(): return
-    def gh(*a):
-        try: r = subprocess.run(['gh', *a], capture_output=True, text=True, timeout=20)
-        except (OSError, subprocess.TimeoutExpired) as e: return None, str(e)
-        try: return (json.loads(r.stdout or 'null') if r.returncode == 0 else None), r.stderr
-        except ValueError: return None, 'unreadable answer'
-    def remotes():
-        out = []
-        for name in ('upstream', 'origin'):
-            u = subprocess.run(['git', '-C', d.get('cwd') or '.', 'remote', 'get-url', name], capture_output=True, text=True).stdout.strip()
-            if m := re.search(r'github\.com[:/]([\w.-]+/[\w.-]+?)(?:\.git)?$', u): out.append(m[1])
-        return out
     url_repos = re.findall(r'github\.com/([\w.-]+/[\w.-]+)/pull/\d+', last)
     states, wrong = {}, []
     for sentence in re.split(SENTENCE, own):
@@ -302,18 +288,18 @@ def state_check():
             key = (m['r1'] or m['r2'], m['n1'] or m['n2'])
             if key not in states:
                 pr, why = None, ''
-                repos = list(dict.fromkeys(([key[0]] if key[0] else []) + url_repos + remotes()))
+                repos = list(dict.fromkeys(([key[0]] if key[0] else []) + url_repos + forge.remotes(d.get('cwd') or '.')))
                 for repo in repos:
-                    pr, why = gh('api', f'repos/{repo}/pulls/{key[1]}')
+                    pr, why = forge.pull(repo, key[1])
                     if pr is not None or 'HTTP 404' not in (why or ''): break
-                if pr is None and 'HTTP 404' in (why or '') and any(isinstance(i := gh('api', f'repos/{r}/issues/{key[1]}')[0], dict) and 'pull_request' not in i for r in repos[:1]):
+                if pr is None and 'HTTP 404' in (why or '') and any(isinstance(i := forge.issue(r, key[1])[0], dict) and 'pull_request' not in i for r in repos[:1]):
                     states[key] = None  # an issue, not a PR: its state is no PR state
                     continue
                 if not isinstance(pr, dict):
                     print(f"Your message states #{key[1]}'s state (\"{sentence.strip()[:120]}\"), and gh couldn't read that PR ({(why or 'no repo to look in').strip()[:120]}). "
                           "Name it by its URL, read its state live (`gh pr view <url> --json isDraft,state,statusCheckRollup`), and say what that shows.", file=sys.stderr)
                     sys.exit(2)
-                check_runs, why = gh('api', f"repos/{pr['base']['repo']['full_name']}/commits/{pr['head']['sha']}/check-runs?per_page=100")
+                check_runs, why = forge.check_runs(pr['base']['repo']['full_name'], pr['head']['sha'], per_page=100)
                 if not isinstance(check_runs, dict):
                     print(f"Your message states {pr.get('html_url')}'s state, and gh couldn't read its checks ({(why or '').strip()[:120]}): read them live and say what they show.", file=sys.stderr)
                     sys.exit(2)

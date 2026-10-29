@@ -21,7 +21,7 @@ if [ "$1 $2" = "pr checks" ]; then f="$FX/pr_checks_$(printf '%s' "$3" | tr '/:'
 f="$FX/$(printf '%s' "$2" | tr '/?&=' '____')"
 for a in "$@"; do case "$a" in o=*) [ -f "${f}_${a#o=}" ] && f="${f}_${a#o=}";; esac; done  # graphql: $FX/graphql_<owner> answers for that owner
 [ -n "$GH_STUB_403" ] && { echo 'gh: API rate limit exceeded for user ID 1. (HTTP 403)' >&2; exit 1; }
-[ -f "$f" ] || { echo 'gh: Not Found (HTTP 404)' >&2; exit 1; }
+[ -f "$f" ] || { printf '{"message":"Not Found","status":"404"}'; echo 'gh: Not Found (HTTP 404)' >&2; exit 1; }  # gh prints the error's JSON body too
 q=; while [ $# -gt 0 ]; do [ "$1" = --jq ] && q=$2; shift; done
 python3 -c 'import json, re, sys
 raw = open(sys.argv[1]).read(); q = sys.argv[2]
