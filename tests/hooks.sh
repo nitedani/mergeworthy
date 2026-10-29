@@ -439,6 +439,12 @@ preg() { python3 -c 'import json,sys; print(json.dumps({"session_id":"sess-3","t
   | python3 "$R/hooks/post-bash-register.py"; cat "$D4/threads.txt" 2>/dev/null || echo none; rm -f "$D4/threads.txt"; }
 check "a new PR, and a comment on a thread only the passed dir lists, join the session's live dir, not the dir its steward pass read" "o/r 9|o/r 5|o/r 5" \
   "$(preg 'gh pr create --repo o/r --fill' https://github.com/o/r/pull/9)|$(preg 'gh issue comment 5 --repo o/r --body-file x' https://github.com/o/r/issues/5#issuecomment-1)|$(cat "$D3/threads.txt")"
+# the steward's live dir may list a new mergeworthy issue first: it wakes no one on its closing, so the opener's dir still gets it
+SL="$T/reg-steward"; mkdir -p "$SL" "$HOME/.mergeworthy"; echo "$SPID" > "$SL/gh-watch.pid"; echo 'nitedani/mergeworthy 12' > "$SL/threads.txt"; echo "$SL tid" > "$HOME/.mergeworthy/steward"
+printf '%s\n' "$SL" "$D4" > "$HOME/.claude/gh-watch-dirs.txt"
+check "an issue the session opens on mergeworthy joins its own dir though the steward's lists it" "nitedani/mergeworthy 12" \
+  "$(preg 'gh issue create --repo nitedani/mergeworthy --title t --body-file x' https://github.com/nitedani/mergeworthy/issues/12)"
+rm "$HOME/.mergeworthy/steward"
 kill "$SPID"; wait "$SPID" 2>/dev/null
 
 # ---------- finality trigger: the third proposal on a thread needs a thread map ----------

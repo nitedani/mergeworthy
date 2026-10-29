@@ -1061,6 +1061,9 @@ def scan(state, jobs):
             if updated:
                 state['upd'][key] = iso_epoch(updated)
             if last:
+                if not is_pr and state.setdefault('open', {}).get(key) and not last['open']:
+                    emit(f"### ISSUE CLOSED {key}" + (": the steward shipped its fix: update your installed mergeworthy (README, Install), then go on"
+                                                      if repo == STEWARD_REPO else ""))
                 state.setdefault('open', {})[key] = last['open']
             state['since_by'][key] = started
             if pr_state:
@@ -1217,17 +1220,21 @@ def poll_feed(url, repo_of, watched, size):
 def moved_thread(repo, i, new):
     """A thread an issue list shows moved. A new one whose body starts with your /agent is an agent command. One of a repo a live dir
     watches whole (`owner/repo all` in repos.txt) that no live dir lists joins that dir's threads.txt, so its scan reports each new
-    comment; a new one is reported there (### NEW ISSUE, ### NEW PR, an owed reply, :eyes:) unless it is the agent's."""
+    comment; a new one is reported there (### NEW ISSUE, ### NEW PR, an owed reply, :eyes:) unless it is the agent's. A new mergeworthy
+    issue is reported to the steward's dir however it is listed and whoever opened it: a session's report of a fault (rules step 2)."""
     num, body, user = i['number'], i.get('body') or '', i.get('user') or {}
     key, dirs = f"{repo}#{num}", live_dirs()
     if new and AGENT_CMD.match(body) and user.get('login') == ME:
         return agent_command(repo, num, 'body', i)
     d = next((d for d in dirs if repo_lines(d).get(repo)), None)
-    if not d or any(key in listed_threads(x) for x in dirs):
+    if not d:
         return
-    if not ONCE:
+    listed, report = any(key in listed_threads(x) for x in dirs), repo == STEWARD_REPO and 'pull_request' not in i and steward.quiet(d)
+    if listed and not report:
+        return
+    if not ONCE and not listed:
         open(os.path.join(d, 'threads.txt'), 'a').write(f"{repo} {num}\n")
-    if new and not agent_post(user, body, agent_post_hashes()) and claim(f"new:{i['id']}", record=not ONCE):
+    if new and (report or not agent_post(user, body, agent_post_hashes())) and claim(f"new:{i['id']}", record=not ONCE):
         indented = '\n'.join('    ' + l for l in body.splitlines())
         emit_to(d, f"### NEW {'PR' if 'pull_request' in i else 'ISSUE'} {key} by {user.get('login')} {i['created_at']} {i['html_url']}: {i['title']}\n{indented}\n")
         if not ONCE and not steward.quiet(d):

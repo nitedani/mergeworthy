@@ -53,6 +53,25 @@ m.run_scan()
 print("scan=" + ",".join(sorted(seen["scan"])) + " reactions=" + ",".join(sorted(seen["reactions"])))
 ')
 check "threads read by scan and by scan_reactions" "scan=1,2 reactions=1,2" "$got"
+# an issue that closes wakes the dirs listing it, once (the session that opened it); a mergeworthy issue says to update the plugin; a PR doesn't
+got=$(py '
+json.dump({"since": "2026-01-01T00:00:00Z", "seen": {}, "prs": {}, "ci": {}, "is_pr": {}, "since_by": {}, "closed_scan": 0}, open(m.STATE, "w"))
+open(m.THREADS, "w").write("o/r 3\nnitedani/mergeworthy 12\no/r 4\n")
+st = {"open": True}
+last = lambda: {"open": st["open"], "last": None, "prev": None, "people": [], "renames": []}
+m.fetch_thread = lambda repo, num, *a, **k: (num == "4", "me", [], {"head": "a", "state": "open" if st["open"] else "closed", "conflict": False} if num == "4" else None, None, last(), {}, True, None)
+m.emit_tracker_stale = lambda *a: None
+m.read_reactions = lambda *a: None
+out = []
+for open_ in (True, False, False):
+    st["open"] = open_
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf): m.run_scan(everything=True)
+    out.append("|".join(l for l in buf.getvalue().splitlines() if l.startswith("### ISSUE CLOSED")))
+print(*out, sep=";")
+')
+check "an issue closing emits ISSUE CLOSED once; a mergeworthy one says to update the plugin; a PR closing doesn't" \
+  ";### ISSUE CLOSED o/r#3|### ISSUE CLOSED nitedani/mergeworthy#12: the steward shipped its fix: update your installed mergeworthy (README, Install), then go on;" "$got"
 
 # a waiting-on.txt key with a trailing note is read as a thread, and emit_dependents still matches it; a # line is not
 got=$(py '
@@ -863,6 +882,23 @@ L = "Is https://github.com/openai.png the badge you mean? Please drop it."
 print(*(m.answerable(u, b, set(), own=True) for b in (B, C, "Please fix the test.", Q, L)))
 ')
 check "a post starting with a badge, from any account, is an agent post; a person quoting or linking one is a person" "False False True True True" "$got"
+# the steward's dir: an agent's new mergeworthy issue is reported to it though the opener's dir already lists it (rules step 2); a PR isn't
+got=$(py "$WHOLE"'
+SW = os.path.join(WH, "steward"); os.makedirs(SW, exist_ok=True); open(os.path.join(SW, "gh-watch.pid"), "w").write(str(os.getpid()))
+open(os.path.join(SW, "repos.txt"), "w").write("nitedani/mergeworthy all\n"); open(os.path.join(SW, "events.log"), "w").close()
+OP = os.path.join(WH, "opener"); os.makedirs(OP, exist_ok=True); open(os.path.join(OP, "gh-watch.pid"), "w").write(str(os.getpid()))
+open(os.path.join(OP, "threads.txt"), "w").write("nitedani/mergeworthy 20\nnitedani/mergeworthy 21\n")
+open(os.path.expanduser("~/.mergeworthy/steward"), "w").write(SW + " tid\n")
+reg = os.path.expanduser("~/.claude/gh-watch-dirs.txt"); kept = open(reg).read(); open(reg, "a").write(SW + "\n" + OP + "\n")
+m.HERE = SW
+it = lambda n, pr=False: {"id": 2000 + n, "number": n, "user": {"login": "me"}, "body": B, "title": f"t{n}", "html_url": f"<m{n}>",
+                          "created_at": "2026-10-29T10:00:00Z", "updated_at": "2026-10-29T10:00:00Z", **({"pull_request": {}} if pr else {})}
+m.request = lambda *a, **k: (_ for _ in ()).throw(AssertionError("no call"))
+m.moved_thread("nitedani/mergeworthy", it(20), True); m.moved_thread("nitedani/mergeworthy", it(21, pr=True), True); m.moved_thread("nitedani/mergeworthy", it(20), True)
+os.remove(os.path.expanduser("~/.mergeworthy/steward")); open(reg, "w").write(kept)
+print("|".join(l.split(" <")[0] for l in open(os.path.join(SW, "events.log")) if l.startswith("###")), open(os.path.join(SW, "threads.txt")).read() if os.path.exists(os.path.join(SW, "threads.txt")) else "unlisted")
+')
+check "the steward's dir gets an agent's new mergeworthy issue another dir lists, once, unlisted there; not a PR" "### NEW ISSUE nitedani/mergeworthy#20 by me 2026-10-29T10:00:00Z unlisted" "$got"
 check "whole repo: moved threads join its dir unless another dir lists them; a bare line's repo joins nothing" "o/r 8 o/r 9 o/r 10 o/r 11 o/r 1|o/r 7|" \
   "$(echo $(cat "$WH/all/threads.txt"))|$(echo $(cat "$WH/other/threads.txt"))|$(cat "$WH/bare/threads.txt")"
 scanned() { py "$WHOLE"'

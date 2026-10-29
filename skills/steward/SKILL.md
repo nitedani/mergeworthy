@@ -5,11 +5,11 @@ description: "\"steward\", \"run the steward\": one on-demand pass over what Git
 
 # Steward
 
-One pass, when the user asks; before posting, `gh-watch-start <S>/live <owner/repo>`, all it leaves running (a daemon in `<S>` refuses the next round). Its folder `<S>` is the first word of `~/.mergeworthy/steward`, else `~/.mergeworthy/work/steward/`. Run every command from `<S>`: where that file names it, that makes you the steward (`rules` step 2). Read only this machine's files, and GitHub through `gh`. Mergeworthy changes, `<S>/inbox.md`'s lines and open nitedani/mergeworthy issues included, ship as PRs (`Closes #N`), their worktrees inside `<S>` (`rules` steps 3–4, then `pull-request`, never `rules` step 5's push), at most 3 a pass.
+One pass, when the user asks; before posting, `gh-watch-start <S>/live <owner/repo>`, all it leaves running (a daemon in `<S>` refuses the next round). Its folder `<S>` is the first word of `~/.mergeworthy/steward`, else `~/.mergeworthy/work/steward/`. Run every command from `<S>`: where that file names it, that makes you the steward (`rules` step 2). Read only this machine's files, and GitHub through `gh`. Mergeworthy changes, `<S>/inbox.md`'s lines and open nitedani/mergeworthy issues included, ship as PRs (`Closes #N`) you merge once ready, their worktrees inside `<S>` (`rules` steps 3–4, then `pull-request`, never `rules` step 5's push), at most 3 a pass.
 
 ## Steps
 
-1. **What came since the last pass:** one watcher round; refused because a daemon watches `<S>`: stop and tell the user. The watchers in `<S>` only log: no 👀, owed reply or wake, but for a new nitedani/mergeworthy issue, which you fix when it wakes you. Sort each new FOLLOW-UP, MAINTAINER REVIEW and MAINTAINER COMMITS in `<S>`'s `events.log` files, and each `sort` line of `steward owed` (folders whose session is idle), by `rules` step 6; list the rest in the report under the session or user who owns it.
+1. **What came since the last pass:** one watcher round; refused because a daemon watches `<S>`: stop and tell the user. The watchers in `<S>` only log: no 👀, owed reply or wake, but a new nitedani/mergeworthy issue: fix it then. Sort each new FOLLOW-UP, MAINTAINER REVIEW and MAINTAINER COMMITS in `<S>`'s `events.log` files, and each `sort` line of `steward owed` (folders whose session is idle), by `rules` step 6; list the rest in the report under the session or user who owns it.
    Run: `steward round <S>` (your open PRs, and nitedani/mergeworthy whole when `~/.mergeworthy/steward` names `<S>`); `steward owed` · Record: each `events.cursor` in `<S>`
 2. **The numbers:** first-pass acceptance is the goal; hours to merge and tokens per merged PR are the guardrails.
    Run: `steward metrics <S>` · Record: `<S>/metrics.jsonl`
