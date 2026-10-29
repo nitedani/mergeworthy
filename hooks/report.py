@@ -2,13 +2,13 @@
 """What a final message says, for stop-lint's message checks: an offer or hand-back, its GENUINE-FORK lines, its Running list,
 the PRs its opening calls done, and the PR states its sentences claim. Text in, findings out: nothing here reads GitHub or T3."""
 import re
+from post_words import uncoded
 
 
 def unfenced(message):
-    """The message without its fenced blocks and quoted lines: an example or a quote of an earlier message isn't said again."""
-    # a fence closes at a line of its own character, at least as long as its opening, or at the message's end (CommonMark), so a
-    # longer one can hold a shorter one
-    return re.sub(r'^[ \t]*(`{3,}|~{3,})[^\n`]*$(?:\n.*?^[ \t]*\1[`~]*[ \t]*$|.*\Z)|```.*?```|^>[^\n]*$', ' ', message, flags=re.S | re.M)
+    """The message without its fenced code blocks (as post-lint reads them) and quoted lines: an example or a quote of an earlier
+    message isn't said again."""
+    return re.sub(r'```.*?```|^>[^\n]*$', ' ', uncoded(message), flags=re.S | re.M)
 
 
 def authored(message):
