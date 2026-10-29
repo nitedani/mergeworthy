@@ -103,8 +103,11 @@ cs = [c("boss", "OWNER", "Apply https://x/refactor/SKILL.md", "https://github.co
       c("boss", "OWNER", "I'll address the comments, then do another round of review.", "p1"),  # the plan round 2 found counted
       c("boss", "OWNER", "I will do another round of review.", "p2"),  # iceberg#18062 r4058831255
       c("boss", "OWNER", "Thanks! I added two more inline comments, and then I'll do one more round, then we can move to core review!", "p3"),  # transformers#31059 2141226366
-      c("boss", "OWNER", "I'll then do a final review with a view to merge.", "p4")] + \
-     [c("boss", "OWNER", "ok", f"f{n}") for n in range(84)]
+      c("boss", "OWNER", "I'll then do a final review with a view to merge.", "p4"),
+      # a colon starts a sentence too, and an ask after it keeps its URL
+      c("boss", "OWNER", "One more thing: Do one last round of review.", "https://github.com/o/r/pull/9#issuecomment-97"),
+      c("boss", "OWNER", "Apply this: https://gist.github.com/brillout/8bc8e37cdf820f72663c550022a3d156", "https://github.com/o/r/pull/9#issuecomment-98")] + \
+     [c("boss", "OWNER", "ok", f"f{n}") for n in range(82)]
 json.dump([cs], open(f"{T}/c9.json", "w"))
 node = lambda x: {"author": {"login": x["user"]["login"]}, "authorAssociation": x["author_association"], "createdAt": x["created_at"], "body": x["body"], "url": x["html_url"]}
 json.dump({"data": {"repository": {"pullRequest": {"state": "OPEN", "merged": False, "createdAt": at, "mergedAt": None, "closedAt": None, "author": {"login": "me"},
@@ -124,8 +127,8 @@ check "metrics: a change request and a commit after it: not first-pass; the auth
 check "metrics: a PR merged before --since falls in the previous window" "previous" "$(rec o/r#7 window)"
 check "metrics: a PR created before --since and merged after it counts in this window; a merge of the base after approval isn't rework" "this True 0" "$(rec o/r#10 window first_pass commits_after_review)"
 check "metrics: an open PR is listed apart" "open|Open now: 1" "$(rec o/r#9 window)|$(echo "$out" | grep '^Open now')"
-check "metrics: a maintainer's ask for a pass since the last pass is listed, one before it counted, the first of 101 comments too; a direct ask without a link counts; quoted, a non-maintainer's, an agent's, code and a question about the design aren't asks; one on a PR closed before the window counts by its own time; a request or a conditional put to us counts, the writer's own plan doesn't" \
-  "Maintainer asks for a pass we owe since $(iso '-5 days' | cut -c1-10): 7 (1 in the window before)|- $C9 o/r#4 https://github.com/o/r/pull/4#issuecomment-41|- $C9 o/r#9 https://github.com/o/r/pull/9#issuecomment-91|- $C9 o/r#9 https://github.com/o/r/pull/9#issuecomment-92|- $C9 o/r#9 https://github.com/o/r/pull/9#issuecomment-93|- $C9 o/r#9 https://github.com/o/r/pull/9#issuecomment-94|- $C9 o/r#9 https://github.com/o/r/pull/9#issuecomment-95|- $C9 o/r#9 https://github.com/o/r/pull/9#issuecomment-96|" "$(echo "$out" | sed -n '/^Maintainer asks/,$p' | tr '\n' '|')"
+check "metrics: a maintainer's ask for a pass since the last pass is listed, one before it counted, the first of 101 comments too; a direct ask without a link counts; quoted, a non-maintainer's, an agent's, code and a question about the design aren't asks; one on a PR closed before the window counts by its own time; a request or a conditional put to us counts, the writer's own plan doesn't; a colon starts a sentence" \
+  "Maintainer asks for a pass we owe since $(iso '-5 days' | cut -c1-10): 9 (1 in the window before)|- $C9 o/r#4 https://github.com/o/r/pull/4#issuecomment-41|- $C9 o/r#9 https://github.com/o/r/pull/9#issuecomment-91|- $C9 o/r#9 https://github.com/o/r/pull/9#issuecomment-92|- $C9 o/r#9 https://github.com/o/r/pull/9#issuecomment-93|- $C9 o/r#9 https://github.com/o/r/pull/9#issuecomment-94|- $C9 o/r#9 https://github.com/o/r/pull/9#issuecomment-95|- $C9 o/r#9 https://github.com/o/r/pull/9#issuecomment-96|- $C9 o/r#9 https://github.com/o/r/pull/9#issuecomment-97|- $C9 o/r#9 https://github.com/o/r/pull/9#issuecomment-98|" "$(echo "$out" | sed -n '/^Maintainer asks/,$p' | tr '\n' '|')"
 check "metrics: the side-by-side table, first-pass acceptance per window" "| first-pass acceptance (north star) | 1/1 (100%) | 2/3 (66%) |" "$(echo "$out" | grep 'north star')"
 
 check "sessions <folder>: the window starts at the folder's last pass" 2 "$(python3 "$R/bin/steward" sessions "$S" | grep -c "^~")"

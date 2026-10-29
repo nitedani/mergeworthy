@@ -207,7 +207,8 @@ def maintainer_asks(repo, num, author):
 def asks_us(text):
     """True when a sentence opens with a pass we owed, addressed to us: an instruction or a request, never the writer's own plan
     ("I'll address the comments, then do another round of review")."""
-    return any(PASS.match(c, TO_US.match(c).end()) for c in re.split(r'[.!?;]\s+|\s+[—–]\s+|\n', text))
+    starts = [0] + [m.end() for m in re.finditer(r'[.!?;:]\s+|\s+[—–]\s+|\n', text)]  # read from each start on: "Apply this: <URL>" keeps its URL
+    return any(PASS.match(text, TO_US.match(text, i).end()) for i in starts)
 
 
 def own_words(body):
