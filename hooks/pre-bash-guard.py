@@ -44,9 +44,8 @@ def block(msg):
 def known(d):
     """d, a dir a check reads (where the command runs, from Where); one Where can't tell blocks."""
     if d is None:
-        block("can't tell which dir this command runs in (after a cd to an expansion it can't resolve, a cd before `;` that may fail, a relative "
-              "cd under a CDPATH, a negated or redefined cd, a `source`, or a dir change in a branch, loop or function), so its checks can't run: cd to an absolute path "
-              "first and go on with && (`cd /abs/dir && <command>`), or pass absolute paths")
+        block("can't tell which dir this command runs in (after a cd to an expansion it can't resolve, `cd -`, popd, or a cd in a subshell, child shell, "
+              "branch, loop or function), so its checks can't run: cd to an absolute path first (`cd /abs/dir && <command>`), or pass absolute paths")
     return d
 
 def short_has(t, letter):  # -f, -9f, -fu ...
@@ -753,7 +752,7 @@ for s in where.walk(segs):
     # hook can't see: it blocks when its arguments, or the variables it names, hold a guarded verb
     named = prog(s)[0] if prog(s)[:1] and prog(s)[0][:1] in '$`' else (_nested(s) or '') if (_nested(s) or '')[:1] in '$`' else ''
     if named:
-        words = [x for x in prog(s)[1:] if ' ' not in x] + re.findall(r'[\w-]+', named) + [w for v in re.findall(r'\w+', named) for w in re.split(r'[\s()]+', where.written.get(v, ''))]
+        words = [x for x in prog(s)[1:] if ' ' not in x] + re.findall(r'[\w-]+', named) + [w for v in re.findall(r'\w+', named) for w in re.split(r'[\s()]+', where.vars.get(v, ''))]
         w = {x.lower() for x in words}
         if w & {'git', 'gh', 'glab'} and w & {'push', 'commit', 'pr', 'issue', 'api', 'release', 'mr'} or 'git' not in w and w & {'push', 'commit'}:
             block(f"`{named}` runs a command named only when it runs, with `{' '.join(words)[:80]}`: write the command out, so it can be checked")

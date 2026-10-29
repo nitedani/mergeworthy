@@ -2,9 +2,8 @@
 """Claude Code PostToolUse hook (matcher: Bash). A thread you just posted in (a new issue or PR, a comment, a review)
 joins the threads.txt of a watcher whose events reach the posting session (the task's work folder holding the command's dir,
 or the session's own), the one covering its repo first, so maintainer comments on it are answered (mergeworthy:reply).
-Another session's watcher wakes that session alone, so it never gets the thread. With several posts in one command, each thread
-is registered from the command that posted it; one whose watcher would be a guess, or whose command ran in a dir it can't tell
-(shellcmd.Where), joins none, and the hook says so (exit 2).
+Another session's watcher wakes that session alone, so it never gets the thread. A thread whose watcher would be a guess (posting
+commands leading to different watchers, or one in a dir shellcmd.Where can't tell) joins none, and the hook says so (exit 2).
 A gated draft it posted as new gets its .posted marker, which pre-bash-guard reads to refuse posting it as new again."""
 import hashlib, json, os, re, shlex, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -118,18 +117,14 @@ def home_of(repo, post_dir):
     mine = work_folder.watched_by(live_dirs, sid, post_dir)
     covering = [dr for dr in mine if any(l.split()[:1] == [repo] for l in lines(dr, 'repos.txt') + lines(dr, 'threads.txt'))]
     return (covering + mine + [None])[0]
-# the threads in stdout, in the order printed, each joining the watcher of the segment that posted it: with as many threads as
-# posting segments, the first unpaired one it fits; else the one watcher every segment it fits leads to. A thread whose watcher
-# would be a guess joins none, and the agent is told
+# each thread in stdout joins the one watcher every posting segment it fits leads to; one whose watcher would be a guess joins
+# none, and the agent is told
 found = [(m[1], m[2], f'{m[1]} {m[2]}') if m[1] else ('gitlab.com/' + m[3], m[5], f"gitlab.com/{m[3]} {'!' if m[4] == 'merge_requests' else ''}{m[5]}")  # gh-watch-start's GitLab line
          for m in re.finditer(r'github\.com/([\w.-]+/[\w.-]+)/(?:issues|pull)/(\d+)|gitlab\.com/([\w.-]+(?:/[\w.-]+)+?)/-/(issues|work_items|merge_requests)/(\d+)', out)]  # glab prints new issues as work_items
 found = [f for f in dict.fromkeys(found) if posted(f[0], f[1])]
-pairs, free, lost = [], list(posts), []
+pairs, lost = [], []
 for repo, num, line in found:
-    if len(found) == len(posts) and (p := next((p for p in free if wrote(p, repo, num)), None)):
-        free.remove(p); fits = [p]
-    else:
-        fits = [p for p in posts if wrote(p, repo, num)]
+    fits = [p for p in posts if wrote(p, repo, num)]
     homes = {home_of(repo, p[2]) for p in fits} if all(p[2] for p in fits) else set()  # a dir Where can't tell picks no watcher
     if len(homes) == 1: pairs.append((repo, line, homes.pop()))
     else: lost.append(line)
@@ -146,8 +141,8 @@ for repo, line, home in pairs:
             f.writelines(keep)
         os.replace(p + '.tmp', p)
 if lost:
-    why = ("which dir a posting command ran in can't be told (after a cd to an expansion it can't resolve, a `source`, or a dir change in a branch, loop or function)"
-           if any(p[2] is None for p in posts) else f"{len(found)} threads in the output and {len(posts)} posting commands, so which command posted these can't be told")
+    why = ("which dir a posting command ran in can't be told (shellcmd.Where: cd to an absolute path first)"
+           if any(p[2] is None for p in posts) else "posting commands ran in folders with different watchers, so which one posted these can't be told")
     ran = ', '.join(dict.fromkeys(p[2] for p in posts if p[2]))
     print(f"post-bash-register: {why}, and they joined no watcher. Add each to the watcher of the work folder its command ran in{f' ({ran})' if ran else ''}: "
           + '; '.join(f"`gh-watch-start <work folder> {' '.join(shlex.quote(x) for x in line.split())}`" for line in lost), file=sys.stderr)

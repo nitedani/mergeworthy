@@ -1975,76 +1975,26 @@ oreg() { # session cwd command: the thread post-bash-register adds to the watche
     | python3 "$R/hooks/post-bash-register.py"; cat "$TK2/threads.txt" 2>/dev/null || echo none; rm -f "$TK2/threads.txt"; }
 check "a PR opened from the unwatched folder joins no other session's watcher; from the watched one (after a cd, to a variable too), it joins its watcher" \
   "none|vikejs/vike 9|vikejs/vike 9|vikejs/vike 9" "$(oreg sess-b "$CK4" "$PRC")|$(oreg sess-b "$CK" "$PRC")|$(oreg sess-b "$T" "cd $CK && $PRC")|$(oreg sess-b "$T" "D=$CK; cd \"\$D\" && $PRC")"
-# two MRs opened in one command from two watched work folders: each joins the watcher of the folder its command ran in
+# two MRs opened in one command from two work folders: the second folder needs its own watcher
 TWO="cd $CK; $MRC; cd $CK4; $MRC"
 check "BLOCK: two MRs from two work folders in one command while the second folder has no watcher" 2 "$(bgs sess-b "$TWO" "$T")"
-check "BLOCK: an MR opened back in the unwatched folder after cd -, or where the dir can't be told (a cd to an unset variable), saying to cd to an absolute path" "2 2 1" \
-  "$(bgs sess-b "cd $CK; $MRC; cd -; $MRC" "$CK4") $(bgs sess-b "cd \"\$NOWHERE\" && $MRC" "$CK") $(grep -c 'cd to an absolute path first' "$T/err")"
-check "BLOCK: an MR from bash -c whose prefix (D=... bash -c) moves it into the unwatched folder, over an exported D" 2 "$(bgs sess-b "export D=$CK; D=$CK4 bash -c 'cd \"\$D\"; $MRC'" "$CK")"
-check "BLOCK: an MR from bash -c \"..\" run in the unwatched folder the parent's \$D names, over the prefix's; and one after a cd there that fails" "2 2" \
-  "$(bgs sess-b "export D=$CK4; D=$CK bash -c \"cd \$D; $MRC\"" "$CK") $(bgs sess-b "cd $CK4; cd $CK/typo; $MRC" "$CK")"
-check "BLOCK: an MR from a script nested in bash -c \"..\" (bash -c '..', eval '..') run in the unwatched folder the outer parent's \$D names" "2 2" \
-  "$(bgs sess-b "export D=$CK4; D=$CK bash -c \"bash -c 'cd \$D; $MRC'\"" "$CK") $(bgs sess-b "export D=$CK4; D=$CK bash -c \"eval 'cd \$D'; $MRC\"" "$CK")"
-check "a redirect on cd or pushd (pushd x >/dev/null, cd x 2>/dev/null) and an unquoted cd \$(git rev-parse --show-toplevel) leave the dir known: an MR in the watched folder passes" "0 0 0 0" \
+check "BLOCK: an MR where the dir can't be told (cd -, a cd to an unset variable, a cd in a subshell or bash -c), saying to cd to an absolute path" "2 2 2 2 1" \
+  "$(bgs sess-b "cd $CK; $MRC; cd -; $MRC" "$CK4") $(bgs sess-b "cd \"\$NOWHERE\" && $MRC" "$CK") $(bgs sess-b "(cd $CK4); $MRC" "$CK") $(bgs sess-b "bash -c 'cd $CK4'; $MRC" "$CK") $(grep -c 'cd to an absolute path first' "$T/err")"
+check "a redirect on cd or pushd (pushd x >/dev/null, cd x 2>/dev/null) and cd \$(git rev-parse --show-toplevel) leave the dir known: an MR in the watched folder passes" "0 0 0 0" \
   "$(bgs sess-b "pushd $CK >/dev/null && $MRC" "$CK") $(bgs sess-b "pushd $CK >/dev/null; $MRC; popd >/dev/null" "$CK") $(bgs sess-b "cd $CK 2>/dev/null && $MRC" "$CK") $(bgs sess-b "cd \$(git rev-parse --show-toplevel) && $MRC" "$CK")"
-check "BLOCK: an MR after a cd whose redirect fails (>\$UNSET, >/nonexistent/x), which bash skips, from the unwatched folder" "2 2" \
-  "$(bgs sess-b "cd $CK >\$R8_UNSET; $MRC" "$CK4") $(bgs sess-b "cd $CK >/nonexistent/x; $MRC" "$CK4")"
-check "BLOCK: an MR after a negated group holding a cd that fails (! { cd x; } && ..), from the unwatched folder" 2 "$(bgs sess-b "! { cd $CK/nope; } && $MRC" "$CK4")"
-ln -s "$CK" "$TK4/link"  # a checkout of the watched folder, linked into the unwatched one
-check "BLOCK: an MR after cd .. from a symlink into the watched folder: bash goes back up the link, to the unwatched folder" 2 "$(bgs sess-b "cd $TK4/link; cd ..; $MRC" "$CK4")"
-rm "$TK4/link"
-check "BLOCK: an MR after a cd with its own CDPATH (CDPATH=<unwatched folder> cd vike), which bash searches first" 2 "$(bgs sess-b "cd $TK2; CDPATH=$TK4 cd vike; $MRC" "$CK")"
-check "BLOCK: an MR after D=<watched> cd \"\$D\": bash expands cd's words with the line's D, the unwatched folder, not its prefix's" 2 "$(bgs sess-b "D=$CK4; D=$CK cd \"\$D\"; $MRC" "$CK4")"
 echo "$FPID" > "$TK4/gh-watch.pid"; echo gitlab.com/ns/proj > "$TK4/repos.txt"; echo "$TK4" >> "$HOME/.claude/gh-watch-dirs.txt"
 check "the same passes once each folder has its watcher" 0 "$(bgs sess-b "$TWO" "$T")"
 treg() { # stdout [command [cwd]]: post-bash-register on the command ($TWO, from $T), then exit code|the first folder's threads|the second's
   python3 -c 'import json,sys; print(json.dumps({"session_id":"sess-b","cwd":sys.argv[1],"tool_input":{"command":sys.argv[2]},"tool_response":{"stdout":sys.argv[3]}}))' "${3:-$T}" "${2:-$TWO}" "$1" \
     | python3 "$R/hooks/post-bash-register.py" 2>"$T/err"; echo "$?|$(paste -sd, "$TK2/threads.txt" 2>/dev/null)|$(paste -sd, "$TK4/threads.txt" 2>/dev/null)"; rm -f "$TK2/threads.txt" "$TK4/threads.txt"; }
-check "two MRs from two work folders in one command each join their own folder's watcher" "0|gitlab.com/ns/proj !9|gitlab.com/ns/proj !10" \
-  "$(treg $'https://gitlab.com/ns/proj/-/merge_requests/9\nhttps://gitlab.com/ns/proj/-/merge_requests/10')"
-check "BLOCK: one URL for two posting commands in two folders joins neither, and the hook names the gh-watch-start that adds it" "2|||1" \
+check "BLOCK: a URL from posting commands in two folders joins neither, and the hook names the gh-watch-start that adds it" "2|||1" \
   "$(treg 'https://gitlab.com/ns/proj/-/merge_requests/9')|$(grep -c "gh-watch-start <work folder> gitlab.com/ns/proj '!9'" "$T/err")"
 mkdir -p "$TK2/vike2"
 check "one URL for two posting commands in two checkouts of one work folder joins that folder's watcher" "0|gitlab.com/ns/proj !9|" \
   "$(treg 'https://gitlab.com/ns/proj/-/merge_requests/9' "cd $CK; $MRC; cd $TK2/vike2; $MRC")"
-# each command's dir as bash runs it, from the second folder: the first MR is opened in the first folder, the second back in the second
-U9='https://gitlab.com/ns/proj/-/merge_requests/9'; U910="$U9"$'\nhttps://gitlab.com/ns/proj/-/merge_requests/10'; BOTH='0|gitlab.com/ns/proj !9|gitlab.com/ns/proj !10'
-check "each MR joins the folder its command ran in after cd -, popd, a subshell's cd and bash -c's" "$BOTH $BOTH $BOTH $BOTH" \
-  "$(treg "$U910" "cd $CK; $MRC; cd -; $MRC" "$CK4") $(treg "$U910" "pushd $CK; $MRC; popd; $MRC" "$CK4") $(treg "$U910" "(cd $CK; $MRC); $MRC" "$CK4") $(treg "$U910" "bash -c 'cd $CK; $MRC'; $MRC" "$CK4")"
-check "an MR after a cd to an exported variable, or to one set from another, joins the folder they name" "0|gitlab.com/ns/proj !9| 0|gitlab.com/ns/proj !9|" \
-  "$(treg "$U9" "export D=$CK; cd \"\$D\"; $MRC" "$CK4") $(treg "$U9" "D=$CK; E=\$D; cd \"\$E\"; $MRC" "$CK4")"
-check "BLOCK: an MR whose command ran where the dir can't be told (a cd to an unset variable, a cd that may not run) joins no watcher, saying why" "2|| 1 2||" \
-  "$(treg "$U9" "cd \"\$NOWHERE\"; $MRC" "$CK4") $(grep -c "which dir a posting command ran in can't be told" "$T/err") $(treg "$U9" "[ -d $CK ] && cd $CK; $MRC" "$CK4")"
-check "an MR joins the folder a bash -c prefix assignment names, over an exported value; a subshell's cd after && or in a loop leaves the dir known" \
-  "0|gitlab.com/ns/proj !9| 0||gitlab.com/ns/proj !9 0||gitlab.com/ns/proj !9" \
-  "$(treg "$U9" "export D=$CK4; D=$CK bash -c 'cd \"\$D\"; $MRC'" "$CK4") $(treg "$U9" "true && (cd $CK4); $MRC" "$CK4") $(treg "$U9" "for n in 1 2; do (cd $CK4); done; $MRC" "$CK4")"
-check "an MR joins the folder a later prefix assignment takes from an earlier one (D=.. E=\"\$D\" bash -c); env's own arguments see the exported value" \
-  "0|gitlab.com/ns/proj !9| 0||gitlab.com/ns/proj !9" \
-  "$(treg "$U9" "export D=$CK4; D=$CK E=\"\$D\" bash -c 'cd \"\$E\"; $MRC'" "$CK4") $(treg "$U9" "export D=$CK4; env D=$CK E=\"\$D\" bash -c 'cd \"\$E\"; $MRC'" "$CK4")"
-HD=$'\n'"cd \$D; $MRC"$'\nXEOF'
-check "an MR joins the folder the parent's \$D names when the parent expands the script (bash -c \"..\", an unquoted heredoc, <<< \"..\", env D=..), not the prefix's" \
-  "0||gitlab.com/ns/proj !9 0||gitlab.com/ns/proj !9 0||gitlab.com/ns/proj !9 0||gitlab.com/ns/proj !9" \
-  "$(treg "$U9" "export D=$CK4; D=$CK bash -c \"cd \$D; $MRC\"" "$CK4") $(treg "$U9" "export D=$CK4; D=$CK bash <<XEOF$HD" "$CK4") $(treg "$U9" "export D=$CK4; D=$CK bash <<< \"cd \$D; $MRC\"" "$CK4") $(treg "$U9" "export D=$CK4; env D=$CK bash -c \"cd \$D; $MRC\"" "$CK4")"
-check "an MR from a script nested in bash -c \"..\" (bash -c '..', sh -c '..', eval '..', <<< '..') joins the folder the outer parent's \$D names" \
-  "0||gitlab.com/ns/proj !9 0||gitlab.com/ns/proj !9 0||gitlab.com/ns/proj !9 0||gitlab.com/ns/proj !9" \
-  "$(treg "$U9" "export D=$CK4; D=$CK bash -c \"bash -c 'cd \$D; $MRC'\"" "$CK4") $(treg "$U9" "export D=$CK4; D=$CK bash -c \"sh -c 'cd \$D; $MRC'\"" "$CK4") $(treg "$U9" "export D=$CK4; D=$CK bash -c \"eval 'cd \$D'; $MRC\"" "$CK4") $(treg "$U9" "export D=$CK4; D=$CK bash -c \"bash <<< 'cd \$D; $MRC'\"" "$CK4")"
-check "an MR after pushd x >/dev/null joins x's folder" "0||gitlab.com/ns/proj !9" "$(treg "$U9" "pushd $CK4 >/dev/null; $MRC" "$CK")"
-check "BLOCK: an MR after a cd whose redirect may fail joins no watcher, not the cd's folder (bash stays put when it fails)" "2||" "$(treg "$U9" "cd $CK4 >/nonexistent/x; $MRC" "$CK")"
-check "BLOCK: an MR after a negated cd (! cd x && ..., which goes on when the cd fails) joins no watcher" "2||" "$(treg "$U9" "! cd $CK/nope && $MRC" "$CK4")"
-check "BLOCK: an MR after a negated eval holding a cd that fails (! eval 'cd x' && ..) joins no watcher" "2||" "$(treg "$U9" "! eval 'cd $CK/nope' && $MRC" "$CK4")"
-ln -s "$CK4" "$TK2/link"
-check "an MR after cd .. from a symlink into another folder joins the folder bash went back up to (the link's), not the target's parent" "0|gitlab.com/ns/proj !9|" "$(treg "$U9" "cd $TK2/link; cd ..; $MRC" "$CK4")"
-rm "$TK2/link"
-check "BLOCK: an MR after a cd with its own CDPATH joins no watcher; one after env cd (another program) joins the folder this shell stayed in" "2|| 0|gitlab.com/ns/proj !9|" \
-  "$(treg "$U9" "cd $TK2; CDPATH=$TK4 cd vike; $MRC" "$CK") $(treg "$U9" "env cd $CK4; $MRC" "$CK")"
-check "an MR after D=<other> cd \"\$D\" joins the folder the line's D names, which cd's words see, not the prefix's" "0|gitlab.com/ns/proj !9|" "$(treg "$U9" "D=$CK; D=$CK4 cd \"\$D\"; $MRC" "$CK")"
-check "BLOCK: an MR after a cd the line redefined (a function, an alias) joins no watcher" "2|| 2||" "$(treg "$U9" "cd() { :; }; cd $CK; $MRC" "$CK4") $(treg "$U9" "alias cd=:; cd $CK; $MRC" "$CK4")"
-mkdir -p "$CK/my dir"
-check "BLOCK: an MR after a cd that fails (a missing target, an unquoted expansion holding a space, two arguments) joins no watcher; after && it joins the target's" \
-  "2|| 2|| 2|| 0|gitlab.com/ns/proj !9|" \
-  "$(treg "$U9" "cd $CK4; cd $CK/typo; $MRC" "$CK4") $(treg "$U9" "D=\"$CK/my dir\"; cd \$D; $MRC" "$CK4") $(treg "$U9" "cd $CK $CK4; $MRC" "$CK4") $(treg "$U9" "cd $CK/typo2 && $MRC" "$CK4")"
-check "BLOCK: an MR after a cd to a \$ bash keeps literal (cd '\$D', a value set from '\$D') joins no watcher, though D names a watched folder" "2|| 2||" \
-  "$(treg "$U9" "export D=$CK; cd '\$D'; $MRC" "$CK4") $(treg "$U9" "export D=$CK; E='\$D'; cd \"\$E\" && $MRC" "$CK4")"
+U9='https://gitlab.com/ns/proj/-/merge_requests/9'
+check "an MR after pushd x >/dev/null joins x's folder; one where the dir can't be told (a cd to an unset variable) joins no watcher, saying why" "0||gitlab.com/ns/proj !9 2|| 1" \
+  "$(treg "$U9" "pushd $CK4 >/dev/null; $MRC" "$CK") $(treg "$U9" "cd \"\$NOWHERE\"; $MRC" "$CK4") $(grep -c "which dir a posting command ran in can't be told" "$T/err")"
 rm "$TK4/gh-watch.pid" "$TK4/repos.txt"
 rm "$TK2/gh-watch.pid" "$TK2/repos.txt" "$TK2/session"
 kill "$FPID"
@@ -2215,8 +2165,8 @@ check "a checkout inside <task>-work/ or beside it under the task's prefix is in
 AS="$T/assets"; git clone -q "$OWN" "$AS"; git -C "$AS" update-ref refs/remotes/origin/HEAD HEAD; git -C "$AS" checkout -q --orphan shots; git -C "$AS" -c user.name=t -c user.email=t@t commit -q --allow-empty -m s
 check "a commit on a branch that shares no history with origin's default (a PR's screenshots) needs no preflight; one on a branch of the product does" "0 2" \
   "$(bg 'git commit -q --allow-empty -m s2' "$AS") $(git -C "$AS" checkout -q scratch; bg 'git commit -q --allow-empty -m c' "$AS")"
-check "a push from a checkout the command makes first passes when it goes to a local path or the local repo it was cloned from (named by variables too), or is a dry run; after a cd there before ;, which may fail, it blocks" "0 0 0 0 2 2" \
-  "$(bg 'T=$(mktemp -d); cd $T; git init -q --bare o.git; git init -q r; cd r; git push -q ../o.git main' "$T") $(bg 'git clone -q /tmp/o.git seed && cd seed && git push -q origin HEAD:main' "$T") $(bg 'S=/tmp/o.git; D=seed2; git clone -q "$S" "$D" && cd "$D" && git push -q origin HEAD:main' "$T") $(bg 'git worktree add -q --detach ../wt HEAD; cd ../wt; git push --dry-run https://github.com/vikejs/vike.git HEAD:x' "$T") $(bg 'git clone -q https://github.com/vikejs/vike.git v; cd v; git push origin HEAD:x' "$T") $(bg 'git clone -q /tmp/o.git seed; cd seed; git push -q origin HEAD:main' "$T")"
+check "a push from a checkout the command makes first passes when it goes to a local path or the local repo it was cloned from (named by variables too), or is a dry run" "0 0 0 0 2" \
+  "$(bg 'T=$(mktemp -d); cd $T; git init -q --bare o.git; git init -q r; cd r; git push -q ../o.git main' "$T") $(bg 'git clone -q /tmp/o.git seed && cd seed && git push -q origin HEAD:main' "$T") $(bg 'S=/tmp/o.git; D=seed2; git clone -q "$S" "$D" && cd "$D" && git push -q origin HEAD:main' "$T") $(bg 'git worktree add -q --detach ../wt HEAD; cd ../wt; git push --dry-run https://github.com/vikejs/vike.git HEAD:x' "$T") $(bg 'git clone -q https://github.com/vikejs/vike.git v; cd v; git push origin HEAD:x' "$T")"
 check "a draft path through a variable the command set (D=...; --body-file \$D/x.md) is the path written out" 1   "$(MERGEWORTHY_WATCHER=off bg "X=$T/vdir; gh issue create --repo o/r --title t --body-file \$X/nogate.md" "$T" >/dev/null; grep -c "no gate record for $T/vdir/nogate.md" "$T/err")"
 check "parse: a script handed to watch or parallel, and git run by pnpm exec, npx, uv run, direnv exec, flock, taskset, chronic, su -c, script -c, fish -c" \
   "yes yes yes yes yes yes yes yes yes yes yes yes yes" "$(for c in "watch 'git push x HEAD:y'" "parallel 'git push {} HEAD:y' ::: x" 'pnpm exec git push' 'npx git push' 'uv run git push' \

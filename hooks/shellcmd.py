@@ -4,7 +4,7 @@ parse() reads a command with mvdan/sh, bash's syntax as shfmt parses it (hooks/r
 ~/.mergeworthy/pydeps): every simple command it runs, in substitutions, heredocs a shell reads, `bash -c` and `eval` too. A
 command that doesn't parse, or a parser that can't be installed, yields the command's words split roughly, with the error,
 so a hook checks what it can and blocks a guarded verb it can't check."""
-import hashlib, itertools, json, os, re, subprocess, sys
+import hashlib, json, os, re, subprocess, sys
 
 
 def branch_record(d, kind):
@@ -81,49 +81,9 @@ def _src(n, src):
     return src[n['Pos']['Offset']:n['End']['Offset']].decode(errors='replace')
 
 
-class Word(str):
-    """A word as bash passes it (_word), with script: the text a shell that reads it as a script gets, the parent having expanded it
-    first, each of the parent's expansions made _parent's placeholder; splits: whether it holds an unquoted expansion, which bash
-    splits, globs and drops when empty; tilde: whether it starts with an unquoted ~, which bash expands (a value's, in an assignment);
-    literal: the word with each $ and ` bash keeps as it is (quoted or escaped) marked (_LITERAL), when it has one."""
-    script, splits, tilde, literal = None, False, None, None
-
-
-_LITERAL = str.maketrans('$`', '\0\1')  # a literal $ and `, which Where.expand leaves alone
-
-
-def _plain(w):
-    """A Word.literal (or any text) with its literal $ and ` back."""
-    return w.replace('\0', '$').replace('\1', '`')
-
-
-def _script(w):
-    return w if getattr(w, 'script', None) is None else w.script
-
-
-PARENT = '__mwp_'  # a placeholder's prefix: ${__mwp_7_D} holds the value $D had in the parent shell
-_pids = itertools.count()
-
-
-def _parent(p):
-    """The placeholder for the parent's expansion p in a script it hands on: ${__mwp_<n>_D} for $D or ${D}, whose value Where takes in
-    the parent, n telling it from one a script nested in it carries on; ${__mwp_}, never set, for any other (`${D:-x}`, `$(...)`,
-    whose commands are the parent's own)."""
-    n = (p.get('Param') or {}).get('Value', '')
-    simple = p.get('Type') == 'ParamExp' and re.fullmatch(r'[A-Za-z_]\w*', n) and not any(p.get(k) for k in ('Exp', 'Repl', 'Index', 'Slice', 'Length', 'Excl', 'Names', 'Width'))
-    return '${' + PARENT + (f'{next(_pids)}_{n}' if simple else '') + '}'
-
-
-def _placeholders(script, word=''):
-    """The frame entries giving the placeholders script got from its word (those not in the word itself) their parent's values: env-argument
-    ones, expanded before the prefix applies. One the word holds already came from further out, and keeps its value."""
-    names = [m for m in dict.fromkeys(re.findall(r'\$\{(' + PARENT + r'\d+_(\w+))\}', script)) if '${' + m[0] + '}' not in word]
-    return tuple((f'{m}=${{{n}}}', False) for m, n in names)
-
-
 def _word(w, src):
-    """A word as bash passes it: quotes and escapes removed; expansions and substitutions as written (a Word)."""
-    out, sc, lt = [], [], []  # the word, its script, its literal
+    """A word as bash passes it: quotes and escapes removed; expansions and substitutions as written."""
+    out = []
     for p in w.get('Parts') or []:
         t, v = p.get('Type'), p.get('Value', '')
         if t == 'Lit':
@@ -131,164 +91,71 @@ def _word(w, src):
         elif t == 'SglQuoted':
             out.append(v.encode('latin-1', 'backslashreplace').decode('unicode_escape', 'replace') if p.get('Dollar') else v)
         elif t == 'DblQuoted':
-            for x in p.get('Parts') or []:
-                out.append(re.sub(r'\\([$`"\\])', r'\1', x.get('Value', '').replace('\\\n', '')) if x.get('Type') == 'Lit' else _src(x, src))
-                sc.append(out[-1] if x.get('Type') == 'Lit' else _parent(x))
-                lt.append(out[-1].translate(_LITERAL) if x.get('Type') == 'Lit' else out[-1])
-            continue
+            out.append(''.join(re.sub(r'\\([$`"\\])', r'\1', x.get('Value', '').replace('\\\n', '')) if x.get('Type') == 'Lit' else _src(x, src)
+                               for x in p.get('Parts') or []))
         else:
             out.append(_src(p, src))
-            sc.append(_parent(p))
-            lt.append(out[-1])
-            continue
-        sc.append(out[-1])
-        lt.append(out[-1].translate(_LITERAL))
-    word = Word(''.join(out))
-    literal = ''.join(lt)
-    word.literal = literal if literal != word else None
-    parts = w.get('Parts') or []
-    word.script, word.splits = ''.join(sc), any(p.get('Type') not in ('Lit', 'SglQuoted', 'DblQuoted') for p in parts)
-    word.tilde = bool(parts) and parts[0].get('Type') == 'Lit' and parts[0].get('Value', '')[:1] == '~'
-    return word
-
-
-def _heredoc(r, src):
-    """The text a shell reading heredoc r gets: as written under a quoted delimiter, else with the parent's expansions done (_parent)."""
-    parts = r['Hdoc'].get('Parts') or []
-    if re.search(r'[\'"\\]', _src(r['Word'], src)):
-        return ''.join(_src(p, src) for p in parts)
-    return ''.join(re.sub(r'\\([$`\\])', r'\1', p.get('Value', '').replace('\\\n', '')) if p.get('Type') == 'Lit' else _parent(p) for p in parts)
+    return ''.join(out)
 
 
 def _assign(a, src):
     if a.get('Naked'):
         return a['Name']['Value'] if a.get('Name') else _word(a['Value'], src)
-    v = _word(a['Value'], src) if a.get('Value') else _src(a['Array'], src) if a.get('Array') else ''
-    word = Word(a['Name']['Value'] + '+' * bool(a.get('Append')) + '=' + v)
-    word.tilde = getattr(v, 'tilde', False)
-    word.literal = getattr(v, 'literal', None) and word[:len(word) - len(v)] + v.literal
-    return word
-
-
-_ids = itertools.count()
+    return a['Name']['Value'] + '=' + (_word(a['Value'], src) if a.get('Value') else _src(a['Array'], src) if a.get('Array') else '')
 
 
 class Seg(list):
-    """A simple command's argv. frames: the scopes it runs in, outermost first, each (id, kind, the variables set on entering it: a
-    loop's own, unknown; a child shell's, (word, whether it sees the ones before it) of its command's prefix or env's arguments,
-    `D=x bash -c`, and its script's placeholders, _parent). Kinds: 'sub' (a copy of the shell: a subshell, substitution, pipeline
-    part or background job), 'proc' (a child bash: `bash -c`, a heredoc bash reads), 'sh' (a child shell that isn't bash: no dir
-    stack or `declare`), 'user' (a shell whose environment can't be told: another user's, `sudo bash -c`, `su -c`, fish, or one
-    `env` with options starts), 'cond' (it may not run: after ||, an if or case branch), 'and' (after &&: it runs once what &&
-    follows succeeded), 'loop' (a loop's body, run again and again), 'opaque' (run where it can't be told: a function's body,
-    `D=x eval`, a command that doesn't parse), 'eval' (eval's script, in this shell, with its placeholders) or 'not' (a negated
-    statement's own, in this shell: `! cd x`, `! { cd x; }`, `! eval 'cd x'`)."""
-    frames = ()
+    """A simple command's argv; nested: whether it runs where a cd in it may not hold for what follows (a subshell, substitution,
+    pipeline part or background job, after || or !, a branch, a loop, a function, a child shell's script, find's -exec), for Where."""
+    nested = False
 
 
-def _seg(argv, frames):
+def _seg(argv, nested):
     s = Seg(argv)
-    s.frames = frames
+    s.nested = nested
     return s
 
 
-def _kind(x, k):
-    """The kind of frame node x's child k runs in, or None for x's own."""
+def _scoped(x, k):
+    """Whether node x's child k runs nested (Seg.nested)."""
     t = x.get('Type')
-    if t in ('Subshell', 'CmdSubst', 'ProcSubst', 'CoprocClause') or k == 'Cmd' and x.get('Background'):
-        return 'sub'
-    if k == 'Cmd' and x.get('Negated'):
-        return 'not'
-    if t == 'BinaryCmd':
-        return 'sub' if x.get('Op') in ('|', '|&') else ('and' if x.get('Op') == '&&' else 'cond') if k == 'Y' else None
-    if t in ('IfClause', 'CaseClause') and k in ('Then', 'Else', 'Items'):
-        return 'cond'
-    return {'WhileClause': 'loop', 'ForClause': 'loop', 'FuncDecl': 'opaque'}.get(t)
+    return t in ('Subshell', 'CmdSubst', 'ProcSubst', 'CoprocClause', 'IfClause', 'CaseClause', 'WhileClause', 'ForClause', 'FuncDecl') or \
+        k == 'Cmd' and bool(x.get('Background') or x.get('Negated')) or t == 'BinaryCmd' and x.get('Op') != '&&' and (k == 'Y' or x.get('Op') != '||')
 
 
-def _calls(node, src, depth, frames):
-    """(the argv of every simple command under node, in the order they run, each a Seg; the error of a script in it that doesn't
-    parse). The script a command runs (`bash -c`, `eval`, find's -exec) follows it, as does a heredoc a shell without a script reads
-    (`bash <<EOF`, `cat <<EOF | sh`); another heredoc's substitutions follow its statement."""
-    segs, err, docs, stack = [], '', {}, [(node, None, frames)]
+def _calls(node, src, nested=False):
+    """(the argv of every simple command under node, in order, each a Seg; the statements each heredoc of them is read by: (redirect, top statement))."""
+    segs, docs, stack = [], [], [(node, None, nested)]
     while stack:
-        x, top, fr = stack.pop()
-        if top == 'end':  # x: (a top statement, the index of its first command): what its heredocs run
-            stmt, start = x
-            shell = next((i for i in range(start, len(segs)) if reads_stdin(segs[i])), None) if depth < 4 else None
-            for r, rfr in docs.pop(id(stmt), []):
-                if shell is not None:  # the parent's own substitutions in it, then the shell's script
-                    text, (ps, e) = _heredoc(r, src), _calls(r['Hdoc'], src, depth, rfr)
-                    raw = ''.join(_src(p, src) for p in r['Hdoc'].get('Parts') or [])
-                    s, e2 = parse(text, depth + 1, segs[shell].frames + (_child(segs[shell], text, raw),))
-                    segs[shell + 1:shell + 1], shell, e = ps + s, shell + len(ps) + len(s), e or e2
-                else:
-                    s, e = _calls(r['Hdoc'], src, depth, rfr)
-                    segs += s
-                err = err or e
-            continue
+        x, top, n = stack.pop()
         if isinstance(x, list):
-            stack += [(y, top, fr) for y in reversed(x)]
+            stack += [(y, top, n) for y in reversed(x)]
             continue
         if not isinstance(x, dict):
             continue
-        if 'Cmd' in x and top is None:  # each statement of a list is a top statement
-            stack.append(((x, len(segs)), 'end', fr))
-            top = x
-        ids = {}  # the frame each child runs in: one per pipeline part or branch, one for a whole loop or function
-        loop = tuple(n['Value'] for n in [(x.get('Loop') or {}).get('Name')] if n) if x.get('Type') == 'ForClause' else ()
-        kids = {k: fr + ((ids.setdefault(k if kind in ('sub', 'cond', 'and') else '', next(_ids)), kind, loop),) if (kind := _kind(x, k)) else fr for k in x}
         cmd, redirs = x.get('Cmd') or {}, x.get('Redirs') or []
         words = [w for r in redirs for w in ((r.get('N') or {}).get('Value', '') + r['Op'], _word(r.get('Word') or {}, src))]
         if cmd.get('Type') == 'CallExpr':
-            argv = [_assign(a, src) for a in cmd.get('Assigns') or []] + [_word(a, src) for a in cmd.get('Args') or []] + words
+            segs.append(_seg([_assign(a, src) for a in cmd.get('Assigns') or []] + [_word(a, src) for a in cmd.get('Args') or []] + words, n or _scoped(x, 'Cmd')))
         elif cmd.get('Type') == 'DeclClause':
-            argv = [cmd['Variant']['Value']] + [_assign(a, src) for a in cmd.get('Args') or []] + words
-        if cmd.get('Type') in ('CallExpr', 'DeclClause'):
-            segs.append(_seg(argv, kids.get('Cmd', fr)))
-            s, e = _inner(segs[-1], depth)
-            segs += s
-            err = err or e
-        elif cmd.get('Type') == 'FuncDecl':  # `function <name>`, so Where sees a cd of the line's own
-            segs.append(_seg(['function', cmd['Name']['Value']], kids.get('Cmd', fr)))
-        if redirs and any(r.get('Hdoc') for r in redirs):
-            docs.setdefault(id(top), []).extend((r, kids.get('Cmd', fr)) for r in redirs if r.get('Hdoc'))
-        stack += [(v, None if k == 'Stmts' else top, kids[k])
+            segs.append(_seg([cmd['Variant']['Value']] + [_assign(a, src) for a in cmd.get('Args') or []] + words, n or _scoped(x, 'Cmd')))
+        docs += [(r, top or x) for r in redirs if r.get('Hdoc')]
+        stack += [(v, None if k == 'Stmts' else (top or x) if 'Cmd' in x else top, n or _scoped(x, k))  # each statement of a list is a top statement
                   for k, v in reversed(x.items()) if isinstance(v, (dict, list)) and k not in ('Pos', 'End', 'Hdoc')]
+    return segs, docs
+
+
+def _segments(tree, src, depth):
+    """(every simple command the tree runs, with each heredoc's commands: its substitutions, or all of it when a shell
+    without a script reads it (`bash <<EOF`, `cat <<EOF | sh`); the error of a heredoc script that doesn't parse)."""
+    (segs, docs), err = _calls(tree, src), ''
+    for r, top in docs:
+        if any(reads_stdin(a) for a in _calls(top, src)[0]) and depth < 4:
+            s, e = parse(''.join(_src(p, src) for p in r['Hdoc'].get('Parts') or []), depth + 1, True)
+        else:
+            s, e = _segments(r['Hdoc'], src, depth)
+        segs, err = segs + s, err or e
     return segs, err
-
-
-def _inner(s, depth):
-    """The commands segment s runs as further commands, with the error of a script among them that doesn't parse: find's -exec
-    commands, and the script of `bash -c`, `eval` or a here-string a shell reads (`bash <<< '<script>'`)."""
-    t, out, err = prog(s), [], ''
-    fr = getattr(s, 'frames', ())
-    if t[:1] and os.path.basename(t[0]) == 'find':  # find -exec <command> ;
-        out += [_seg(x.split('\0'), fr + ((next(_ids), 'proc', ()),)) for x in re.findall(r'\0-(?:exec|execdir|ok|okdir)\0(.+?)\0(?:;|\+)(?=\0|$)', '\0' + '\0'.join(t))]
-    here = [s[i + 1] for i in range(len(s) - 1) if s[i] == '<<<']
-    script = (_nested(s) or (here[0] if here and reads_stdin(s) else None)) if depth < 4 else None
-    if script:
-        eval_ = t and os.path.basename(t[0]) == 'eval'  # in this shell; with a prefix (`D=x eval ...`), only for its duration
-        text = _script(script)
-        frame = _child(s, text, script) if not eval_ else (next(_ids), 'opaque', ()) if len(t) < len(s) else (next(_ids), 'eval', _placeholders(text, script))
-        inner, err = parse(text, depth + 1, fr + (frame,))
-        out += inner
-    return out, err
-
-
-def _child(s, script='', word=''):
-    """The frame of the child shell segment s starts to run script (from word): 'proc' (bash) or 'sh' (another shell), with the assignments that
-    set its environment, each (word, whether it sees the ones before it: true for the command's prefix, false for env's arguments
-    and the script's placeholders), or 'user' (another user's shell, fish, `env` with options, a prefix appending to a variable)."""
-    t = prog(s)
-    pre = s[:len(s) - len(t)]
-    names = [os.path.basename(w) for w in pre + t[:1]]
-    if {'sudo', 'su', 'runuser', 'fish'} & set(names) or 'env' in names and any(w.startswith('-') for w in pre[names.index('env'):]) or \
-            any(re.match(r'\w+\+=', w) for w in pre):
-        return next(_ids), 'user', ()
-    kind = 'proc' if not t or os.path.basename(t[0]) == 'bash' else 'sh'
-    lead = next((i for i, w in enumerate(pre) if not re.match(r'\w+=', w)), len(pre))
-    return next(_ids), kind, tuple((w, i < lead) for i, w in enumerate(pre) if re.match(r'\w+=', w)) + _placeholders(script, word)
 
 
 def reads_stdin(t):
@@ -327,10 +194,7 @@ def _nested(t):
     t = prog(t)
     name, a = (os.path.basename(t[0]), t[1:]) if t else ('', [])
     if name == 'eval' or t[:1] and ' ' in t[0]:  # eval's words, or a script handed to a wrapper as one word
-        words = t if ' ' in t[0] else a
-        script = Word(' '.join(words))
-        script.script = ' '.join(map(_script, words))
-        return script
+        return ' '.join(t if ' ' in t[0] else a)
     if name in ('su', 'runuser', 'script'):  # -c <command>, also in a flag group (`script -qc`)
         return next((a[i + 1] for i in range(len(a) - 1) if re.fullmatch(r'-[a-zA-Z]*c|--command', a[i])), None)
     if name in SHELLS:
@@ -343,25 +207,33 @@ def _nested(t):
     return None
 
 
-def parse(cmd, depth=0, frames=()):
-    """(segments, error): the argv of every simple command cmd runs, in the order they run, each a Seg run in frames and its own,
-    command substitutions and the scripts of `bash -c` and `eval` included; error is '' when it parsed, else why not (the segments
-    are then _rough's, run where Where can't tell)."""
+def parse(cmd, depth=0, nested=False):
+    """(segments, error): the argv of every simple command cmd runs, each a Seg (nested: all of them), command substitutions and
+    the scripts of `bash -c` and `eval` included; error is '' when it parsed, else why not (the segments are then _rough's, nested)."""
     try:
         r = subprocess.run([os.path.join(_deps(), 'bin', 'shfmt'), '--to-json', '-ln', 'bash'], input=cmd.encode(), capture_output=True, timeout=60)
         if r.returncode:
             raise ValueError('bash syntax error at ' + r.stderr.decode(errors='replace').strip().replace('<standard input>:', ''))
-        return _calls(json.loads(r.stdout), cmd.encode(), depth, frames)
+        segs, err = _segments(json.loads(r.stdout), cmd.encode(), depth)
+        if nested:
+            for x in segs: x.nested = True
     except ValueError as e:  # also a JSON error
-        err = str(e)
+        segs, err = [_seg(x, True) for x in _rough(cmd)], str(e)
     except Exception as e:  # no parser: nothing is checked as parsed, and a guarded verb blocks
-        err = f"mergeworthy's shell parser (shfmt, {REQUIREMENTS}) can't run: {e}"
-    segs, fr = [], frames + ((next(_ids), 'opaque', ()),)
-    for s in (_seg(x, fr) for x in _rough(cmd)):
-        inner, e = _inner(s, depth)
-        segs += [s, *inner]
-        err = err or e
-    return segs, err
+        segs, err = [_seg(x, True) for x in _rough(cmd)], f"mergeworthy's shell parser (shfmt, {REQUIREMENTS}) can't run: {e}"
+    out = []
+    for s in segs:  # each command, then what it runs: find's -exec commands, a script
+        out.append(s)
+        t = prog(s)
+        if t[:1] and os.path.basename(t[0]) == 'find':  # find -exec <command> ;
+            out += [_seg(x.split('\0'), True) for x in re.findall(r'\0-(?:exec|execdir|ok|okdir)\0(.+?)\0(?:;|\+)(?=\0|$)', '\0' + '\0'.join(t))]
+        here = [s[i + 1] for i in range(len(s) - 1) if s[i] == '<<<']  # `bash <<< '<script>'`
+        script = (_nested(s) or (here[0] if here and reads_stdin(s) else None)) if depth < 4 else None
+        if script:
+            inner, e = parse(script, depth + 1, True)
+            out += inner
+            err = err or e
+    return out, err
 
 
 def segments(cmd):
@@ -386,7 +258,7 @@ KEYWORDS = ('!', '{', 'if', 'then', 'else', 'elif', 'do', 'while', 'until')  # a
 def prog(t):
     """Drop env assignments, shell keywords and wrappers (with their options, and timeout's duration); return the command's argv."""
     while t:
-        if re.match(r'^\w+\+?=', t[0]) or t[0] in KEYWORDS:
+        if re.match(r'^\w+=', t[0]) or t[0] in KEYWORDS:
             t = t[1:]
             continue
         w = os.path.basename(t[0])
@@ -427,264 +299,51 @@ TOPLEVEL = '$(git rev-parse --show-toplevel)'  # the one substitution Where runs
 
 
 class Where:
-    """Where each simple command of one command line runs, walk() taking them in order: the dir a cd, pushd or popd moves (with
-    `cd -` and the dir stack), and the variables the line set (`W=~/x; cd $W`, `export`, a value expanded when it is assigned, a
-    command's prefix for the child shell it starts: `D=x bash -c`).
-    What it can't tell is None, the dir included: after a cd to an expansion it can't resolve, a `source`, or a change where it
-    may not run (after && or ||, in an if or case branch, a loop or a function); inside a function, and a loop that changes either.
-    A subshell's or child shell's changes end with it."""
+    """Where each simple command of one command line runs, walk() taking them in order, with the variables the line set
+    (`D=~/x; cd "$D"`). It follows the forms agents write: a cd or pushd to a path (`cd /abs/dir && ...`, or relative to a dir it
+    knows), `cd $(git rev-parse --show-toplevel)` and `git -C <dir>`. After any other dir change (a nested one: Seg.nested; a target
+    holding an expansion it can't resolve; `cd -`, popd or a stack rotation) the dir is None, and a check that needs it blocks."""
     def __init__(self, cwd):
-        self.dir, self.old, self.stack, self.vars, self.exported, self.lost, self.moved = cwd, None, [], {}, set(), False, False
-        self.pending = None  # (dir, old dir, stack) of the cd just run that may have failed: where a command after && runs
-        self.redefined = False  # whether the line defines cd, pushd or popd (a function, an alias)
-        self.physical = False  # whether it set -P, so cd follows symlinks
-        self.prefix = {}  # the prefix of the cd being taken, which its own lookups see and its words don't
-
-        self.carry = None  # the state an 'and' frame just left ended in, and what changed in it: where the next && in the chain goes on
-        self.written = {}  # each variable's last value as written (`C="$(echo git) push"`), for words a command named by it may run
-        self.open = []  # the frames (Seg.frames) entered: (frame, the state on entering it, what changed in it: 'dir', 'lost', variable names)
+        self.dir, self.moved, self.vars = cwd, False, {}
 
     def expand(self, p):
-        """p with the line's variables ($D, ${D}; $PWD and $OLDPWD where it runs, unless the line assigns them), then the environment's,
-        put in; one it can't tell stays as written."""
-        p = getattr(p, 'literal', None) or p
-        def value(m):
-            n = m[1] or m[2]
-            v = None if n in ('PWD', 'OLDPWD') and n in self.vars else self.dir if n == 'PWD' else self.old if n == 'OLDPWD' else self.vars[n] if n in self.vars else None if self.lost else os.environ.get(n)
-            return m[0] if v is None else v
-        return _plain(re.sub(r'\$(?:(\w+)|\{(\w+)\})', value, p))
+        """p with the line's variables ($D, ${D}), then the environment's, put in; one it can't tell stays as written."""
+        return re.sub(r'\$(?:(\w+)|\{(\w+)\})', lambda m: self.vars.get(m[1] or m[2], os.environ.get(m[1] or m[2], m[0])), p)
 
     def path(self, p, base=''):
-        """p resolved from base (default: the dir), or None when it can't be told (an expansion left, an unknown base, a ~ after the
-        line assigns HOME)."""
-        p = self._home(getattr(p, 'literal', None) or p, getattr(p, 'tilde', None))
-        p = p and self.expand(p)
-        if p is None: return None
+        """p resolved from base (default: the dir), or None when it can't be told (an expansion left, or no base)."""
+        p = os.path.expanduser(self.expand(p))
         base = self.dir if base == '' else base
         return None if re.search(r'[$`]', p) else p if os.path.isabs(p) else None if base is None else os.path.join(base, p)
 
     def walk(self, segs):
         """Each of segs (parse()'s), with self moved to where it runs; self takes it once the caller is done with it."""
-        changing = {f[0] for t in segs for i, f in enumerate(getattr(t, 'frames', ())) if f[1] == 'loop' and _changes(t)
-                    and not any(g[1] in ('sub', 'proc', 'sh', 'user') for g in t.frames[i + 1:])}
         for t in segs:
-            frames = getattr(t, 'frames', ())
-            while [f[0] for f in self.open] != list(frames[:len(self.open)]):
-                self._leave(*self.open.pop())
-            for f in frames[len(self.open):]:
-                self._enter(f, f[0] in changing)
             yield t
             self.step(t)
 
-    def _state(self):
-        return self.dir, self.old, self.stack and list(self.stack), dict(self.vars), set(self.exported), self.lost
-
-    def _enter(self, f, changing):
-        self.open.append((f, self._state(), set()))
-        carry, self.carry = self.carry, None
-        if f[1] == 'and' and carry:  # `a && b && c`: c runs as b left it
-            (to, old, stack, vars, _, _), changed = carry
-            if 'dir' in changed: self._move(to, old, stack)
-            for n in changed - {'dir', 'lost'}: self._set(n, vars.get(n))
-        elif f[1] == 'and' and self.pending:
-            self._move(*self.pending)
-        sets = [((getattr(w, 'literal', None) or w).partition('='), ordered, getattr(w, 'tilde', None)) for w, ordered in (x for x in f[2] if not isinstance(x, str))]
-        argv = [(n, self._value(v, t)) for (n, _, v), ordered, t in sets if not ordered]  # env's and placeholders: expanded with the command's words
-        argv = [(n, v if not n.startswith(PARENT) or v is None or re.fullmatch(r'[\w./+,:@%=-]*', v) else None) for n, v in argv]  # a value the script reparses
-        given, parent = [], dict(self.vars)
-        for (n, _, v), ordered, t in sets:  # the prefix's, in order: each sees the ones before it
-            if ordered:
-                given.append((n, self._value(v, t)))
-                self.vars[n] = given[-1][1]
-        self.vars, given = parent, given + argv
-        if f[1] in ('proc', 'sh', 'user'):  # a child shell gets the exported variables alone, and no dir stack
-            self.vars = {} if f[1] == 'user' else {n: v if n in self.exported or n in os.environ else None for n, v in self.vars.items()}
-            self.old, self.stack = None, []
-        if f[1] in ('user', 'opaque') or changing:
-            self.dir = self.old = self.stack = None
-            self.vars, self.lost = {}, True
-        for n in f[2]:
-            if isinstance(n, str): self._set(n, None)
-        for n, v in given:
-            self._set(n, v)
-            self.exported.add(n)
-
-    def _leave(self, f, state, changed):
-        if f[1] == 'not': self.pending = self.carry = None  # it fails when what it ran succeeded: no && goes on from inside it
-        if f[1] in ('eval', 'not'): return  # it ran in this shell
-        if f[1] == 'and' and self.pending: self.dir, self.old, self.stack = self.pending  # a && after it runs once that cd succeeded
-        carry = (self._state(), changed) if f[1] == 'and' else None
-        self.dir, self.old, self.stack, self.vars, self.exported, self.lost = state
-        self.pending = None
-        if f[1] in ('cond', 'and', 'loop', 'opaque'):  # what changed in it may or may not hold after it
-            if 'dir' in changed: self._move(None, None, None)
-            if 'lost' in changed: self.lost = True; self._changed('lost')
-            for n in changed - {'dir', 'lost'}: self._set(n, None)
-        self.carry = carry
-
-    def _changed(self, what):
-        for f in reversed(self.open):  # up to the innermost subshell or child shell: its changes end with it
-            f[2].add(what)
-            if f[0][1] in ('sub', 'proc', 'sh', 'user'): break
-
-    def _set(self, name, value):
-        self.vars[name] = value
-        self._changed(name)
-
-    def _move(self, to, old, stack):
-        self.dir, self.old, self.stack, self.moved = to, old, stack, True
-        self._changed('dir')
-
     def step(self, t):
-        """Take the simple command t, which ran: the variables it set, the dir it moved to."""
-        self.pending = self.carry = None
-        if t and all(re.match(r'^\w+\+?=', x) for x in t):
-            for x in t: self._assign(x)
+        if t and all(re.match(r'^\w+=', x) for x in t):
+            self.vars.update(x.split('=', 1) for x in t)
             return
         p = prog(t)
-        name, a = (os.path.basename(p[0]), p[1:]) if p else ('', [])
-        if name in ('declare', 'typeset', 'pushd', 'popd') and next((f[0][1] for f in reversed(self.open) if f[0][1] in ('proc', 'sh', 'user')), '') == 'sh':
-            if name in ('pushd', 'popd'): self._move(None, self.dir, None)  # bash's own: in another shell they fail or differ
-            for n in (re.match(r'\w+', x) for x in a if name in ('declare', 'typeset')):
-                if n: self._set(n[0], None)
+        if p[:1] not in (['cd'], ['pushd'], ['popd']):
             return
-        if name in ('export', 'declare', 'typeset', 'local', 'readonly'):
-            flags = ''.join(x[1:] for x in a if x[:1] in '-+')
-            for x in a:
-                if x[:1] in '-+' or not (n := re.match(r'\w+', x)): continue
-                if '=' in x: self._assign(x) if set(flags) <= set('xgr') else self._set(n[0], None)  # -a, -i, -n: a value it doesn't hold
-                if name == 'export' or 'x' in flags: self.exported.add(n[0])
-        elif name in ('read', 'mapfile', 'readarray', 'unset', 'getopts', 'let', 'printf'):  # set what they read or compute
-            for x in opt(a, ['-v']) if name == 'printf' else [x for x in a if not x.startswith('-')]:
-                if n := re.match(r'\w+', x): self._set(n[0], None)
-        elif name in ('source', '.'):
-            self._move(None, None, None)
-            self.lost = True
-            self._changed('lost')
-        elif name in ('function', 'alias'):
-            self.redefined |= bool({x.split('=', 1)[0] for x in (a if name == 'alias' else a[:1])} & {'cd', 'pushd', 'popd'})
-        elif name == 'set' and any(re.fullmatch(r'-[a-zA-Z]*P[a-zA-Z]*', x) for x in a) or name == 'set' and 'physical' in a:
-            self.physical = True
-        elif name in ('cd', 'pushd', 'popd'):
-            pre = t[:len(t) - len(p)]
-            if {os.path.basename(w) for w in pre} & (set(WRAPPERS) | set(RUNNERS)) - {'builtin', 'command', 'time'}:
-                return  # another program named cd (`env cd`, `nice cd`): this shell's dir stays
-            self.prefix = {n: None if plus else self._value(v, getattr(x, 'tilde', None))
-                           for x in pre if (m := re.match(r'(\w+)(\+?)=(.*)', getattr(x, 'literal', None) or x, re.S)) for n, plus, v in [m.groups()]}
-            try:
-                self._cd(name, a)
-            finally:
-                self.prefix = {}
-
-    def _cd(self, name, a):
-        """Take cd, pushd or popd with arguments a: its words and redirects expanded with the line's variables, its own lookups
-        (CDPATH, HOME, OLDPWD, PWD) seeing its prefix too (self.prefix: `CDPATH=x cd y`)."""
-        env = {**self.vars, **self.prefix}
-        if self.redefined:  # runs what the line made it
-            self._move(None, None, None)
-            self.lost = True
-            self._changed('lost')
-        elif self._negated() or self.physical or 'PWD' in env:  # `! cd x && ..` goes on when it fails; set -P: cd -P; cd .. starts from $PWD
-            self._move(None, None, None)
+        self.moved = True
+        a = [x for x in operands(p[1:]) if x not in ('-P', '-L', '-e', '--')]
+        to = a[0] if a else '~' if p[0] == 'cd' else '-'
+        if getattr(t, 'nested', False) or p[0] == 'popd' or to[:1] in '-+' or self.dir is None:
+            self.dir = None
+        elif to == TOPLEVEL:
+            self.dir = subprocess.run(['git', '-C', self.dir, 'rev-parse', '--show-toplevel'], capture_output=True, text=True).stdout.strip() or None
         else:
-            opens, physical = self._opens(a), next((x == '-P' for x in reversed(operands(a)) if x in ('-P', '-L')), False)
-            a = [x for x in operands(a) if x not in ('-P', '-L', '-e', '-@', '--')]  # not its redirects (`pushd x >/dev/null`)
-            here, stack = self.dir, self.stack
-            arg = self.expand(a[0]) if a else ''
-            if a and getattr(a[0], 'splits', False) and a[0] != TOPLEVEL and not re.fullmatch(r'[^\s*?[]+', arg):  # split, globbed or dropped: what cd gets can't be told
-                self._move(None, None, None)
-            elif name == 'cd':
-                to = (None if 'OLDPWD' in env else self.old) if arg == '-' else self._to(a[0]) if a else None if 'HOME' in self.prefix else self._to('~')
-                self._go(self._land(to, physical), here, stack, len(a) < 2, opens)
-            elif name == 'pushd' and a and arg[:1] not in '+-':  # through a symlink and back up (`pushd link/..`): not told
-                to = self._to(a[0])
-                self._go(to and (os.path.normpath(to) if os.path.realpath(to) == os.path.realpath(os.path.normpath(to)) else None),
-                         here, None if stack is None else [here] + stack, len(a) < 2, opens)
-            elif not a and stack:  # pushd swaps the top two, popd goes to the top one
-                self._go(stack[0], here, [here] + stack[1:] if name == 'pushd' else stack[1:], True, opens)
-            else:  # a rotation, -n, or an empty stack
-                self._move(None, here, None)
-
-    def _land(self, to, physical):
-        """The dir cd's target `to` lands in, as bash sets PWD: its .. and . taken off by name (cd -L, the default), or the dir it names
-        once its symlinks are followed (cd -P, or when the name isn't a dir but the path is); None when neither can be told."""
-        if to is None:
-            return None
-        if physical or not os.path.isdir(os.path.normpath(to)) and os.path.isdir(to):
-            return os.path.realpath(to)
-        return os.path.normpath(to) if os.path.isdir(os.path.normpath(to)) or '..' not in to.split(os.sep) else None
-
-    def _negated(self):
-        """Whether the command runs under a `!` of this shell's (a 'not' frame since the innermost subshell or child shell)."""
-        return next((f[0][1] == 'not' for f in reversed(self.open) if f[0][1] in ('not', 'sub', 'proc', 'sh', 'user')), False)
-
-    def _opens(self, t):
-        """Whether bash surely opens each redirect of argv t, without which it runs nothing: /dev/null, a heredoc or here-string, a copy
-        of an fd, an input it may read, an output it may write (an existing file, or a new one in a dir it may write)."""
-        i = 0
-        while i < len(t) - 1:
-            if not REDIR.fullmatch(t[i]):
-                i += 1
-                continue
-            op, w, i = t[i].lstrip('0123456789'), t[i + 1], i + 2
-            if op in ('<<', '<<-', '<<<') or op in ('>&', '<&') and re.fullmatch(r'\d+-?|-', w):
-                continue
-            p = None if getattr(w, 'splits', False) and not re.fullmatch(r'[^\s*?[]+', self.expand(w)) else self.path(w)  # `>$F`: ambiguous
-            if p == '/dev/null':
-                continue
-            if p is None or os.path.isdir(p) or not (os.access(p, os.R_OK) if op == '<' else os.access(p, os.W_OK) if os.path.exists(p)
-                                                      else os.access(os.path.dirname(p), os.W_OK | os.X_OK)):
-                return False
-        return True
-
-    def _go(self, to, old, stack, one, opens=True):
-        """cd's move to `to`, when bash surely gets there: one argument, a dir it may enter, redirects it opens. Else the dir can't be
-        told, but a command after && runs there."""
-        if one and opens and to is not None and os.path.isdir(to) and os.access(to, os.X_OK):
-            return self._move(to, old, stack)
-        self._move(None, None, None)
-        self.pending = (to, old, stack) if one and to is not None else None
-
-    def _assign(self, x):
-        n, plus, v = re.match(r'(\w+)(\+?)=(.*)', getattr(x, 'literal', None) or x, re.S).groups()
-        self.written[n] = _plain(v)
-        self._set(n, self._value('${' + n + '}' + v, False) if plus else self._value(v, getattr(x, 'tilde', None)))
-
-    def _value(self, v, tilde=None):
-        """An assignment's value v as the shell stores it, or None when it can't be told."""
-        v = self._home(v, tilde)
-        v = v and self.expand(v)
-        return None if v is None or re.search(r'[$`]', v) else v
-
-    def _home(self, p, tilde=None):
-        """p with its leading ~ expanded when bash expands it (unquoted: tilde, else p's own, Word.tilde), or None for one once the line
-        assigns HOME; a ~ an expansion puts in stays as it is."""
-        tilde = getattr(p, 'tilde', None) if tilde is None else tilde
-        if not (p[:1] == '~' if tilde is None else tilde):
-            return p
-        return None if 'HOME' in self.vars and re.match(r'~(/|$)', p) else os.path.expanduser(p)
-
-    def _to(self, to):
-        """Where cd or pushd goes for `to`, or None; a relative one under a CDPATH (the environment's or the line's) may go elsewhere."""
-        if to == TOPLEVEL:  # unquoted, a top dir holding a space or a glob splits
-            top = self.dir and subprocess.run(['git', '-C', self.dir, 'rev-parse', '--show-toplevel'], capture_output=True, text=True).stdout.strip() or None
-            return None if top and getattr(to, 'splits', False) and re.search(r'\s|[*?[]', top) else top
-        env = {**self.vars, **self.prefix}
-        cdpath = env['CDPATH'] if 'CDPATH' in env else None if self.lost else os.environ.get('CDPATH', '')
-        return None if (cdpath is None or cdpath) and not os.path.isabs(self.expand(self._home(to) or '/')) else self.path(to)
-
-
-def _changes(t):
-    """Whether the simple command t changes the dir or a variable."""
-    w = Where('/')
-    w.step(t)
-    return w.moved or w.lost or bool(w.vars)
+            self.dir = self.path(to) and os.path.normpath(self.path(to))
 
 
 def git_argv(t, where):
     """(git dir, -c overrides, subcommand, its arguments) of a git argv run at where (a Where), past its global options (each -C
-    applies in turn, with where's variables; the dir is None when it can't be told); a configured alias (`git config alias.p push`, or `-c alias.p=push`) is expanded,
-    so `git p` is checked as the push it runs."""
+    applies in turn; the dir is None when Where can't tell it); a configured alias (`git config alias.p push`, or `-c alias.p=push`)
+    is expanded, so `git p` is checked as the push it runs."""
     g = git_globals(t)
     overrides = dict(g[i + 1].split('=', 1) for i in range(len(g) - 1) if g[i] == '-c' and '=' in g[i + 1])
     git_dir = where.dir
