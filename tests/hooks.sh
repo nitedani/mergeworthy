@@ -700,6 +700,8 @@ check "a ready Hungarian body's evidence heading passes under Language: hu, not 
 hdguard() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr create --draft --repo acme/hu --title \"$(cat /w/drafts/title.md)\" --body-file "+sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$TCO" \
     | MERGEWORTHY_WATCHER=off python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?; }
 printf '%s\n**Állapot: piszkozat** (a CI futtatója nem működik)\n\nA feltöltés elakad nagy fájloknál.\n' "$B" > "$T/hdg.md"; sha256sum "$T/hdg.md" | cut -d' ' -f1 > "$T/hdg.md.gate"
+check "gh pr create --draft without --repo takes the language of GH_REPO, not of the checkout's origin" 0 "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"GH_REPO=acme/hu gh pr create --draft --title \"$(cat /w/drafts/title.md)\" --body-file "+sys.argv[1]},"cwd":sys.argv[2]}))' "$T/hdg.md" "$TCO" \
+  | MERGEWORTHY_WATCHER=off python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?)"
 check "gh pr create --draft accepts the Hungarian State line under Language: hu, and blocks it without" "0 2" "$(hdguard "$T/hdg.md") $(printf '# acme/hu\n' > "$HUP"; hdguard "$T/hdg.md")"
 # without --repo (the livekit session's calls), the language comes from the draft's watch dir: the repos.txt above it
 LK="$T/lkw"; mkdir -p "$LK/drafts"; cp "$T/hu0.md" "$LK/drafts/mr.md"; echo CLEAN > "$LK/drafts/mr.review.out"; printf '# acme/hu\n\nLanguage: hu\n' > "$HUP"
@@ -1600,6 +1602,7 @@ check "BLOCK: through gh api, a comment and a body PATCH on the PR" "1 1" "$(ask
 check "BLOCK: the same through gh api's {owner}/{repo}, which gh fills from the checkout's repo" "1 1" "$(asked "cd $IDR && gh api 'repos/{owner}/{repo}/issues/7/comments' -F body=@$NEWR") $(asked "cd $IDR && gh api -X PATCH 'repos/{owner}/{repo}/pulls/7' -F body=@$NEWR")"
 ODR="$T/odr"; git init -q "$ODR"; git -C "$ODR" remote add origin https://github.com/x/y.git
 check "BLOCK: GH_REPO, on the command or inherited, fills {owner}/{repo} before the checkout's origin, as gh does" "1 1" "$(asked "cd $ODR && GH_REPO=o/r gh api 'repos/{owner}/{repo}/issues/7/comments' -F body=@$NEWR") $(GH_REPO=github.com/o/r asked "cd $ODR && gh api -X PATCH 'repos/{owner}/{repo}/pulls/7' -F body=@$NEWR")"
+check "BLOCK: gh pr comment and gh pr ready without -R act on GH_REPO, on the command or inherited, before the checkout's origin" "1 1" "$(asked "cd $ODR && GH_REPO=o/r gh pr comment 7 --body-file $NEWR") $(GH_REPO=https://github.com/o/r asked "cd $ODR && gh pr ready 7")"
 newpass
 check "through gh api, the pass recorded after the ask answers it" "0 0" "$(asked "gh api repos/o/r/issues/7/comments -F body=@$NEWR") $(asked "gh api -X PATCH repos/o/r/pulls/7 -F body=@$NEWR")"
 # every form gh takes for the target reaches the same check: a URL, a branch, an issue number that is a PR, gh pr ready; the current branch's PR (#6) is not the target
@@ -2007,6 +2010,7 @@ echo gitlab.com/ns/sub/proj > "$GW/repos.txt"
 check "glab issue create passes once a watcher covers the project" "0 0" "$(glguard 'glab issue create -R https://gitlab.com/ns/sub/proj --title x') $(glguard 'glab mr create --draft --title x' "$T/glrepo")"
 echo 'o/r all' > "$GW/repos.txt"
 check "an 'owner/repo all' line covers the repo for opening an issue" 0 "$(glguard 'gh issue create -R o/r --title x --body-file x.md' >/dev/null; grep -c 'no running watcher' "$T/err")"
+check "gh issue create without -R opens it on GH_REPO, which the watcher covers, not on the checkout's origin" "0 0" "$(glguard 'GH_REPO=o/r gh issue create --title x --body-file x.md' "$ODR" >/dev/null; grep -c 'no running watcher' "$T/err") $(GH_REPO=o/r glguard 'gh issue create --title x --body-file x.md' "$ODR" >/dev/null; grep -c 'no running watcher' "$T/err")"
 PG="$T/glpass"; mkdir -p "$PG"; echo 'p/q all' > "$PG/repos.txt"; echo sess-g > "$PG/passed"; printf '%s\n' "$GW" "$PG" > "$HOME/.claude/gh-watch-dirs.txt"
 glsess() { python3 -c 'import json,sys; print(json.dumps({"session_id":sys.argv[1],"tool_input":{"command":"gh issue create -R p/q --title x --body-file x.md"},"cwd":sys.argv[2]}))' "$1" "$T" \
   | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err" >/dev/null; grep -c 'no running watcher' "$T/err"; }
