@@ -2263,6 +2263,8 @@ tr_file 'All done with the next steps documented: https://gitlab.com/g/p/-/merge
 check "BLOCK: \"next\" that isn't a time leaves the claim standing" 2 "$(stop "$T")"
 tr_file 'https://gitlab.com/research-and-development/next/-/merge_requests/96 is ready for review.'
 check "BLOCK: words inside a URL take nothing back" 2 "$(stop "$T")"
+tr_file 'Waiting on https://example.com/build; https://gitlab.com/g/p/-/merge_requests/96 is ready for review.'
+check "BLOCK: the semicolon after a URL still ends its part" 2 "$(stop "$T")"
 check "a condition over the claim's part (past a URL's colon) states nothing; one opening the next part leaves it standing" "0 0 2" \
   "$(slj 'Once CI passes and o/r#12 is green, I merge.') $(slj 'Once CI passes and https://github.com/o/r/pull/12 is green, I merge.') $(slj 'o/r#12 is merged, if the maintainer agrees.')"
 rm -f "$FX/repos_o_r_commits_abc_check-runs_per_page_100"

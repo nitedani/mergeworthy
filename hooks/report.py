@@ -46,7 +46,7 @@ CLAUSE = re.compile(r"(?=\b(?:and|but|so|és|de|ezért|viszont)\b)", re.I)
 def asserted(sentence, i):
     """Whether the words at sentence[i] state something as true now: no TAKE_BACK word where it stands. A part ends at a comma,
     semicolon or colon; a clause also before a conjunction. A URL's words are no one's: each is blanked first, keeping its length."""
-    sentence = re.sub(r'https?://\S+', lambda m: '_' * len(m[0]), sentence)
+    sentence = re.sub(r'https?://\S*[^\s,;:.!?)\]]', lambda m: '_' * len(m[0]), sentence)  # not the punctuation after it
     before, part = PART.split(sentence[:i])[-1], PART.split(sentence[i:], 1)[0]
     lead = CLAUSE.split(before)[-1]
     where = {'lead': lead, 'clause': lead + CLAUSE.split(part)[0], 'before': before, 'part': before + part}
