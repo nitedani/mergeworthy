@@ -194,7 +194,9 @@ rm "$WD/t3-thread"; echo s-t3 > "$WD/session"  # the session's watcher dropped i
 check "BLOCK: under T3, a post whose own watcher dropped its t3-thread says that watcher stopped waking the thread, not that it wakes it" "2 1 0" \
   "$(stop_as s-t3) $(grep -c "watcher in $WD stopped waking this T3 thread" "$T/err") $(grep -c 'wakes this T3 thread itself' "$T/err")"
 mv "$WD/replies-owed.md" "$T/owed.keep"; mkdir -p "$HOME/.mergeworthy"; echo "$WD tid" > "$HOME/.mergeworthy/steward"
-check "the steward's own live watcher, which wakes nothing (steward.quiet), is its post's watch" 0 "$(stop_as s-t3 >/dev/null; grep -c 'nothing wakes it' "$T/err")"
+b1=$(stop_as s-t3); b1e=$(grep -c "watcher in $WD stopped waking this T3 thread" "$T/err"); echo thr-h > "$WD/t3-thread"
+check "BLOCK: the steward's watcher, though it delivers only new mergeworthy issues, needs working delivery like any: unbound, the post blocks; bound to its T3 thread, it passes" "2 1 0" "$b1 $b1e $(stop_as s-t3)"
+rm "$WD/t3-thread"
 rm "$HOME/.mergeworthy/steward"; mv "$T/owed.keep" "$WD/replies-owed.md"
 rm "$WD/session" "$WD/scope.md" "$HOME/.t3/userdata/statev2.sqlite"
 tr_cmd "mw post $WD/drafts/r.md -- gh pr comment 5 --repo o/r --body-file $WD/drafts/r.md"

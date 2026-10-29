@@ -60,8 +60,6 @@ def watching(wd):  # wd's watcher daemon runs
 live_dirs = [wd for wd in ((l.strip() for l in open(reg)) if os.path.exists(reg) else ()) if wd and watching(wd)]
 # a live watcher that sends wd's events to this session's T3 thread (gh-watch.py's wake_thread): its Monitor
 t3_dirs = {wd for wd in live_dirs if steward.first(os.path.join(wd, 't3-thread')) in t3_chain}
-# the steward's live watcher of this session: what it sees waits for the next pass, nothing is to be woken (steward.quiet)
-steward_watch = any(steward.quiet(wd) and steward.first(os.path.join(wd, 'session')) == d.get('session_id') for wd in live_dirs)
 for line in lines:
     try:
         e = json.loads(line)
@@ -273,7 +271,7 @@ paused = re.search(r'\bpause\b', last_user, re.I) is not None
 # session's turn as a live watcher's do. It has no daemon, so a post there still needs a live watcher, as any post does
 pass_dirs = {wd for wd in ((l.strip() for l in open(reg)) if os.path.exists(reg) else ()) if d.get('session_id') and steward.passed_by(wd) == d['session_id']}
 own_dirs |= pass_dirs
-if posted and watcher_on and not child and not headless and not paused and not t3_dirs and not steward_watch and not (monitors - dead):  # a child's posts are its main session's to watch
+if posted and watcher_on and not child and not headless and not paused and not t3_dirs and not (monitors - dead):  # a child's posts are its main session's to watch
     # under T3, a watcher of this session's that dropped its t3-thread (the thread or t3 gone) wakes nothing: its events.log says why
     dropped = [wd for wd in live_dirs if t3_chain and steward.first(os.path.join(wd, 'session')) == d.get('session_id')
                and not os.path.exists(os.path.join(wd, 't3-thread'))]
