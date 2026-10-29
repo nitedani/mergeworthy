@@ -17,7 +17,7 @@ that `round` writes <folder>'s watcher files, `metrics` appends its records to <
 - metrics: the PRs the author opened (default: you; only those whose body starts with an agent's badge) settled (merged or closed)
   since --since (default: the last line of <folder>/passes.txt, else 60 days), in the window as long before it, and still open:
   outcome, hours to merge, first-pass acceptance (merged with no change request and no commit after the first maintainer review
-  but a merge of the base), review rounds,
+  but a merge of the base), review rounds, a maintainer's asks to apply or rerun a linked prompt (quotes left out),
   FOLLOW-UP MISS/TASTE verdicts, and the tokens (cache reads left out) of the local sessions that name the PR more than any other
   (unknown when none does).
 """
@@ -31,6 +31,7 @@ EVENT = re.compile(r'^### (?:FOLLOW-UP|MAINTAINER REVIEW) ([\w.-]+/[\w.-]+#\d+(?
 BADGE = re.compile(r'\A\s*(?:<img [^>]*alt="(?:Claude|Codex)"[^>]*>\s*)+')  # an agent's post starts with its badge
 VERDICT = re.compile(r'^(\S+)\s+(MISS|TASTE|DIRECTION|WORKED)\b', re.M)
 SHA = re.compile(r'[0-9a-f]{7,40}')
+ASK = re.compile(r'\b(?:app?ly|round of)\b[^\n]{0,10}https?://', re.I)  # "Apply <prompt URL>", "Do another round of <prompt URL>": a pass we owed
 
 
 def iso(t):
@@ -184,7 +185,8 @@ def gh(*args):
 QUERY = '''query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){
  state merged createdAt mergedAt closedAt author{login}
  timelineItems(itemTypes:[READY_FOR_REVIEW_EVENT],first:1){nodes{... on ReadyForReviewEvent{createdAt}}}
- reviews(first:100){nodes{author{login} authorAssociation state submittedAt comments{totalCount}}}
+ reviews(first:100){nodes{author{login} authorAssociation state submittedAt body url comments{totalCount}}}
+ comments(last:100){nodes{author{login} authorAssociation createdAt body url}}
  commits(last:100){nodes{commit{committedDate parents{totalCount}}}}}}}'''
 MAINTAINER = ('OWNER', 'MEMBER', 'COLLABORATOR')
 
@@ -192,8 +194,11 @@ MAINTAINER = ('OWNER', 'MEMBER', 'COLLABORATOR')
 def pr_record(repo, num):
     o, r = repo.split('/')
     p = gh('api', 'graphql', '-f', f'query={QUERY}', '-F', f'o={o}', '-F', f'r={r}', '-F', f'n={num}')['data']['repository']['pullRequest']
-    revs = [v for v in p['reviews']['nodes'] if (v.get('author') or {}).get('login') != (p.get('author') or {}).get('login')
-            and v['authorAssociation'] in MAINTAINER and v.get('submittedAt')]
+    theirs = lambda v: (v.get('author') or {}).get('login') != (p.get('author') or {}).get('login') and v['authorAssociation'] in MAINTAINER
+    revs = [v for v in p['reviews']['nodes'] if theirs(v) and v.get('submittedAt')]
+    unquoted = lambda b: '\n'.join(l for l in (b or '').splitlines() if not l.lstrip().startswith('>'))
+    asks = sorted([v.get('createdAt') or v['submittedAt'], v['url']] for v in p['comments']['nodes'] + revs
+                  if theirs(v) and not BADGE.match(v['body'] or '') and ASK.search(unquoted(v['body'])))
     first = min((v['submittedAt'] for v in revs), default=None)
     after = sum(1 for c in p['commits']['nodes'] if first and c['commit']['committedDate'] > first and c['commit']['parents']['totalCount'] < 2)  # a merge of the base isn't rework
     ready = (p['timelineItems']['nodes'] or [{}])[0].get('createdAt') or p['createdAt']
@@ -202,7 +207,7 @@ def pr_record(repo, num):
     return {'pr': f"{repo}#{num}", 'created': p['createdAt'], 'settled': p['mergedAt'] or p['closedAt'], 'outcome': 'merged' if p['merged'] else p['state'].lower(),
             'hours_to_merge': hours(p['createdAt']), 'hours_ready_to_merge': hours(ready), 'review_rounds': len(revs),
             'change_requests': changes, 'review_comments': sum(v['comments']['totalCount'] for v in revs),
-            'commits_after_review': after, 'first_pass': bool(p['merged'] and not changes and not after)}
+            'commits_after_review': after, 'first_pass': bool(p['merged'] and not changes and not after), 'maintainer_asks': asks}
 
 
 def followups():
@@ -272,6 +277,11 @@ def metrics(folder, since, authors):
         for r in rows:
             f.write(json.dumps({'pass': iso(NOW), **r}) + '\n')
     print_tables(rows, since)
+    asks = [(at, r['pr'], url) for r in rows for at, url in r['maintainer_asks'] if epoch(at) >= start]
+    now = sorted(a for a in asks if epoch(a[0]) >= since)
+    print(f"\nMaintainer asks for a pass we owe since {iso(since)[:10]}: {len(now)} ({len(asks) - len(now)} in the window before)")
+    for at, pr, url in now:
+        print(f"- {at} {pr} {url}")
 
 
 def print_tables(rows, since):
