@@ -2187,6 +2187,8 @@ git -C "$OWN2" checkout -q scratch; git -C "$OWN2" config --unset remote.pushDef
 fp=; for c in '"$(npm bin)/vitest" run tests/git-push.test.ts' '$PYTHON -m pytest -k "git push"' '"$VENV/bin/pytest" -k git-commit' \
              '${PNPM:-pnpm} test && git log --oneline | grep -i commit' '"$CLAUDE" -p "summarize the last git commit"'; do fp="$fp $(bg "$c" "$OWN2")"; done
 check "a command named by an expansion that only mentions git (a test name, a prompt) passes" " 0 0 0 0 0" "$fp"
+check "env's assignment named by a variable (\"\$v=host\") is no command name: the glab call after it passes, a push after it is still checked" "0 2" \
+  "$(bg 'env -i HOME="$HOME" "$v=code.example.com" timeout 20 glab api projects/x' "$OWN2") $(bg 'env "$v=x" git push nosuch HEAD:s' "$OWN2")"
 check "a command named by a variable the command set is checked as what it runs: \$G commit with the right author passes, a wrong one blocks" "0 2" \
   "$(echo 'me 42' > "$HOME/.claude/gh-user.txt"; bg 'G="git -c user.name=me -c user.email=42+me@users.noreply.github.com"; $G commit -m x' "$TCO") $(bg 'G="git -c user.name=x -c user.email=x@x"; $G commit -m x' "$TCO")"
 gql nitedani-agent nitedani-agent
