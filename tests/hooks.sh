@@ -2200,6 +2200,7 @@ hb=; for m in 'The fix is committed locally on `fix-telefunc`. Pushing it, or te
              "The reply to brillout is drafted and reviewed as CLEAN, but it isn't posted yet. Do you want me to post it now that CI is green?"; do tr_file "$m" work; hb="$hb $(slj)"; done
 check "BLOCK: the session's six hand-backs, as it wrote them" " 2 2 2 2 2 2" "$hb"
 tr_file 'README tidied.' work
+check "a hand-back a tool printed, in a ~~~ code block or an indented one, is not the agent's" "0 0" "$(slj $'The tool printed:\n\n~~~\nShould I retry?\n~~~') $(slj $'The tool printed:\n\n    Should I retry?')"
 check "the final message is the hook input's, not the transcript's last line (which may not be written yet)" "2 1" "$(slj 'Tell me when to re-check CI.') $(grep -ci 'tell me when' "$T/err")"
 tr_file 'Ask me to check the run when you want it.' work
 check "stop_hook_active no longer lets the next stop through: the hand-back still blocks" 2 "$(slj '' 1)"
