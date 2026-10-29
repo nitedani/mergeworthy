@@ -487,17 +487,24 @@ AI_CALL = re.compile(r'(^|\s)/(ai|agent)\b', re.I)
 
 def maintainer(state, repo, login):
     """An account with write access to the repo (mergeworthy:reply §Which comments), read once a day per repo and login. GitHub shows
-    it only to an account with push access itself: elsewhere (403) no one is a maintainer by it."""
+    it only to an account with push access itself: elsewhere (403, 404) the repo's owner, or the association note_assoc last saw."""
     perms, k = state.setdefault('perm', {}), f"{repo} {login}"
     if time.time() - perms.get(k, {}).get('t', 0) >= 86400:
         try:
             w = request(f"repos/{repo}/collaborators/{login}/permission").json().get('permission') in ('admin', 'write')
         except RuntimeError as e:
-            if ' HTTP 403 ' not in str(e):
+            if not re.search(r' HTTP 40[34] ', str(e)):
                 raise
-            w = False
+            w = None
         perms[k] = {'w': w, 't': time.time()}
-    return perms[k]['w']
+    w = perms[k]['w']
+    return w if w is not None else login.lower() == repo.split('/')[0].lower() or state.get('assoc', {}).get(k) in MAINTAINER
+
+
+def note_assoc(state, repo, u, assoc):
+    """The author_association GitHub last showed for a login in the repo (a comment, review, PR or issue): maintainer's fallback."""
+    if u and u.get('login'):
+        state.setdefault('assoc', {})[f"{repo} {u['login']}"] = assoc
 
 
 def answerable(u, body, agent_hashes, kind='comment', own=False):
@@ -723,10 +730,14 @@ def emit_tracker_stale(key, ended):
         emit(f"### TRACKER STALE {w[0]}#{w[1]}: {key} {ended}: tick its checkbox and write '({ended}…)' after it, through mergeworthy:post (mergeworthy:task §Umbrella)")
 
 
+AGENT_TRAILER = re.compile(r'^co-authored-by: claude\b', re.I | re.M)  # an agent's commit, whoever pushed it (the project files' definition)
+
+
 def emit_maintainer_commits(state, repo, key, old, new):
     """A maintainer's commits pushed to a tracked PR: reviewing them was requested ("Review each of my commit as I push them")."""
     try:
-        commits = [{'sha': c['sha'][:10], 'login': (c.get('author') or {}).get('login') or '', 'date': c['commit']['committer']['date']} for c in request(f"repos/{repo}/compare/{old}...{new}").json()['commits']]
+        commits = [{'sha': c['sha'][:10], 'login': (c.get('author') or {}).get('login') or '', 'date': c['commit']['committer']['date'], 'agent': bool(AGENT_TRAILER.search(c['commit'].get('message') or ''))}
+                   for c in request(f"repos/{repo}/compare/{old}...{new}").json()['commits']]
     except Exception as e:
         fail(f"compare {key} {old}...{new}", e)
         return
@@ -740,7 +751,7 @@ def emit_maintainer_commits(state, repo, key, old, new):
         if c['sha'] in on_pr:
             note_active(state, {'login': c['login']}, c['date'])
     try:
-        theirs = [c['sha'] for c in commits if c['sha'] in on_pr and c['login'] not in ('', ME) and not is_bot(c) and maintainer(state, repo, c['login'])]
+        theirs = [c['sha'] for c in commits if c['sha'] in on_pr and c['login'] not in ('', ME) and not c['agent'] and not is_bot(c) and maintainer(state, repo, c['login'])]
     except Exception as e:
         fail(f"permission {key}", e)
         return
@@ -801,7 +812,7 @@ def scan_reactions(state, threads):
     seen, etags = state.setdefault('reactions', {}), state['etag']  # seen: "<kind>:<id>" -> ["<login>:<content>", ...]
     lists = state.setdefault('agent_lists', {})  # "<repo>#<num>" -> the kinds below whose list holds an agent comment
     for repo, num, full in threads:
-        key, pending, clean = f"{repo}#{num}", {}, True  # an answer's ETag is kept only once everything in it was handled: a 304 later means "nothing new"
+        key, pending, clean, got = f"{repo}#{num}", {}, True, []  # an answer's ETag is kept only once everything in it was handled: a 304 later means "nothing new"
         known = lists.get(key)  # None: never read here, so read whole (no validators), else a 304 hides the agent's comments
         for kind, path in (('body', 'issues'), ('comment', 'issues'), ('review-comment', 'pulls')):
             if kind == 'review-comment' and state['is_pr'].get(key) is False:
@@ -818,6 +829,10 @@ def scan_reactions(state, threads):
                     clean = False
                     fail(f"reactions {repo}#{num}", e)
                 continue  # an issue has no review comments
+            got.append((kind, path, comments))
+            for c in comments:
+                note_assoc(state, repo, c.get('user'), c.get('author_association'))
+        for kind, path, comments in got:
             for c in comments:
                 counts = c.get('reactions') or {}
                 if c['user'].get('login') != ME or _norm(c.get('body')) not in agent_hashes:
@@ -1054,6 +1069,7 @@ def scan(state, jobs):
             agent_hashes = agent_post_hashes()  # read after the fetch: a post gated while it ran is the agent's
             for kind, cid, upd, user, url, body, extra in events:
                 note_active(state, user, upd)
+                note_assoc(state, repo, user, user.get('assoc'))
                 if is_pr and pr_state:
                     note_refactor_ask(repo, key, user, url, body, upd, pr_state['head'])
                 if answerable(user, body, agent_hashes, kind, own=author == ME or repo_lines(HERE).get(repo)):

@@ -194,7 +194,8 @@ check "wait ping: bots active don't hold it, held while they are active elsewher
 
 # Whose 👍/👎 on the agent's comments and whose commits on its PR are reported: yours (ME) and a write-access account's, read through
 # a stub gh; not a read-only account's, a bot's, or one GitHub won't show (403 to an account without push access); one lookup per login.
-# A failed lookup is an error, retried on the next read, never a non-maintainer
+# A failed lookup is an error, retried on the next read, never a non-maintainer. Where GitHub won't say (p/q: 403, or 404 for its owner), the repo's
+# owner and an account the thread's comments show as a member count; a commit with the agent's trailer is no maintainer's, whoever pushed it
 PB="$T/permbin"; mkdir -p "$PB"
 cat > "$PB/gh" <<'EOF'
 #!/usr/bin/env python3
@@ -203,16 +204,22 @@ path = sys.argv[-1].split('?')[0]
 open(os.path.join(os.path.dirname(os.path.realpath(__file__)), 'calls'), 'a').write(path + '\n')
 gated = {'id': 51, 'user': {'login': 'me'}, 'body': 'the agent', 'html_url': '<c51>', 'reactions': {'+1': 3, '-1': 1}}
 r = lambda i, who, content, kind='User': {'id': i, 'user': {'login': who, 'type': kind}, 'content': content, 'created_at': '2026-10-29T00:00:00Z'}
-commit = lambda sha, who: {'sha': sha, 'author': {'login': who}, 'commit': {'committer': {'date': '2026-10-29T00:00:00Z'}}}
+commit = lambda sha, who, msg='a change': {'sha': sha, 'author': {'login': who}, 'commit': {'message': msg, 'committer': {'date': '2026-10-29T00:00:00Z'}}}
 perms = {'writer': 'write', 'owner': 'admin', 'reader': 'read', 'ci[bot]': 'write'}
 answers = {'repos/o/r/issues/5': {'id': 5, 'user': {'login': 'them'}, 'body': '', 'reactions': {}}, 'repos/o/r/issues/5/comments': [gated],
            'repos/o/r/issues/comments/51/reactions': [r(1, 'writer', '+1'), r(2, 'reader', '+1'), r(3, 'me', '-1'), r(4, 'ci[bot]', '+1', 'Bot'), r(5, 'outsider', '+1'), r(6, 'writer', 'eyes'), r(7, 'flaky', '+1')],
-           'repos/o/r/pulls/5': {'base': {'ref': 'main'}}, 'repos/o/r/compare/old...new': {'commits': [commit('a' * 40, 'owner'), commit('b' * 40, 'reader'), commit('c' * 40, 'me'), commit('d' * 40, 'writer')]},
-           'repos/o/r/compare/main...new': {'commits': [commit(c * 40, '') for c in 'abcd']}}
+           'repos/o/r/pulls/5': {'base': {'ref': 'main'}}, 'repos/o/r/compare/old...new': {'commits': [commit('a' * 40, 'owner'), commit('b' * 40, 'reader'), commit('c' * 40, 'me'), commit('d' * 40, 'writer'), commit('e' * 40, 'writer', 'fix\n\nCo-authored-by: Claude Opus 5.5 <noreply@anthropic.com>')]},
+           'repos/o/r/compare/main...new': {'commits': [commit(c * 40, '') for c in 'abcde']},
+           'repos/p/q/issues/3': {'id': 3, 'user': {'login': 'them'}, 'author_association': 'NONE', 'body': '', 'reactions': {}},
+           'repos/p/q/issues/3/comments': [{**gated, 'id': 61, 'html_url': '<c61>'}, {'id': 62, 'user': {'login': 'maint'}, 'author_association': 'MEMBER', 'body': 'hm', 'reactions': {}},
+                                          {'id': 63, 'user': {'login': 'stranger'}, 'author_association': 'CONTRIBUTOR', 'body': 'me too', 'reactions': {}}],
+           'repos/p/q/issues/comments/61/reactions': [r(1, 'maint', '+1'), r(2, 'stranger', '+1'), r(3, 'p', '+1')]}
 who = path.split('/collaborators/')[-1].split('/')[0]
 if who == 'flaky':
     print('HTTP/2.0 502 Bad Gateway\n\n{}'); sys.exit(1)
-if path.endswith('/permission') and who not in perms:
+if path == 'repos/p/q/collaborators/p/permission':
+    print('HTTP/2.0 404 Not Found\n\n{"message": "Not Found"}'); sys.exit(1)
+if path.endswith('/permission') and (who not in perms or path.startswith('repos/p/q/')):
     print('HTTP/2.0 403 Forbidden\n\n{"message": "Must have push access to view collaborator permission."}'); sys.exit(1)
 print('HTTP/2.0 200 OK\n\n' + json.dumps({'permission': perms[who]} if path.endswith('/permission') else answers.get(path, [])))
 EOF
@@ -222,14 +229,14 @@ got=$(PATH="$PB:$PATH" GH_HOST=github.com GATED_POSTS="$gated_posts" py '
 state = {"etag": {}, "is_pr": {}}
 buf = io.StringIO()
 with contextlib.redirect_stdout(buf):
-    m.scan_reactions(state, [("o/r", "5", True)]); m.scan_reactions(state, [("o/r", "5", True)])
+    m.scan_reactions(state, [("o/r", "5", True), ("p/q", "3", True)]); m.scan_reactions(state, [("o/r", "5", True)])
     m.emit_maintainer_commits(state, "o/r", "o/r#5", "old", "new")
 out = buf.getvalue()
 print(*[l.split(" on ")[0] if l.startswith("### THUMBS") else l.split(": review")[0].split(": gh api")[0] for l in out.splitlines() if l.startswith(("### ", "WATCH"))], sep="|")
 ')
-check "reactions and commits: yours and a write-access account's are reported once, a read-only, a bot's or a hidden one's aren't; a failed lookup is one error" \
-  "### THUMBS UP o/r#5 by writer|### THUMBS DOWN o/r#5 by me|WATCH ERROR permission o/r flaky|### MAINTAINER COMMITS o/r#5: aaaaaaaaaa dddddddddd" "$got"
-check "permission: looked up once per login and repo, never for you or a bot" "flaky flaky outsider owner reader writer" "$(grep -o '[^/]*/permission$' "$PB/calls" | cut -d/ -f1 | sort | tr '\n' ' ' | sed 's/ $//')"
+check "reactions and commits: yours and a write-access account's are reported once, a read-only, a bot's or a hidden one's aren't; a failed lookup is one error; on a repo GitHub won't say for, its owner's and a member's, not a stranger's; no agent-trailer commit" \
+  "### THUMBS UP o/r#5 by writer|### THUMBS DOWN o/r#5 by me|WATCH ERROR permission o/r flaky|### THUMBS UP p/q#3 by maint|### THUMBS UP p/q#3 by p|### MAINTAINER COMMITS o/r#5: aaaaaaaaaa dddddddddd" "$got"
+check "permission: looked up once per login and repo, never for you or a bot" "flaky flaky outsider owner reader writer" "$(grep -o '^repos/o/r/collaborators/[^/]*/permission$' "$PB/calls" | cut -d/ -f5 | sort | tr '\n' ' ' | sed 's/ $//')"
 
 # /agent commands in threads no watch dir lists: found in the watched repos' comments feeds, routed to one dir, emitted once
 AD="$T/agentdirs"; mkdir -p "$AD/alpha" "$AD/beta" "$HOME/.mergeworthy"
