@@ -337,11 +337,12 @@ check "BLOCK: a PR body edit is covered too" 2 "$(python3 "$R/hooks/pre-bash-gua
 
 # gate-pass wants the same file beside a reply draft
 GD="$T/gdrafts/x"; mkdir -p "$GD"; printf 'Agreed, option A it is.\n' > "$GD/r.md"; echo CLEAN > "$GD/r.review.out"
-gp() { touch -d '+10 minutes' "$GD/r.review.out"; MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GD/r.md" "$GD/r.review.out" --kind reply --parent none >"$T/gp.out" 2>&1; echo $?; }
+gp() { touch -d "${RT:-+10 minutes}" "$GD/r.review.out"; MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GD/r.md" "$GD/r.review.out" --kind reply --parent none >"$T/gp.out" 2>&1; echo $?; }
 check "BLOCK: gate-pass on a reply without thread-context.md" 1 "$(gp)"
 grep -c 'no thread-context.md' "$T/gp.out"
 cp "$TD/thread-context.md" "$GD/thread-context.md"; touch -d 2026-10-01T00:00:00Z "$GD/r.md"
-check "BLOCK: gate-pass with a thread-context.md holding a human comment newer than the draft" "1 1" "$(gp) $(grep -c 'newer than the draft' "$T/gp.out")"
+check "BLOCK: gate-pass with a thread-context.md holding a human comment newer than the review" "1 1" "$(RT=2026-10-01T12:00:00Z gp) $(grep -c 'newer than the review' "$T/gp.out")"
+check "gate-pass passes a draft saved before a human comment the review's record holds (a PR body gated before the thread's comments)" 0 "$(gp)"
 touch -d 2026-10-03T00:00:00Z "$GD/r.md"
 check "gate-pass passes with a thread-context.md made after the draft whose comments all predate it" 0 "$(gp)"
 touch -d '+1 minute' "$GD/r.md"
