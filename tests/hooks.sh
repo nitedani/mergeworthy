@@ -1112,8 +1112,10 @@ done_events > "$T/ev6"; t3db "update orchestration_v2_projection_runs set status
 t3db "insert into orchestration_v2_projection_subagents values ('s9', 'busy-1', 'child-9', 'pending')"; done_events > "$T/ev7"
 t3db "update orchestration_v2_projection_subagents set status = 'completed' where subagent_id = 's9'"
 t3db "insert into orchestration_v2_projection_subagents values ('s0', 'orch-1', 'busy-1', 'running')"; done_events > "$T/ev8"  # its own task: its turn ended, its background command runs
-t3db "update orchestration_v2_projection_subagents set status = 'completed' where subagent_id = 's0'"; done_events > "$T/ev9"
-check "a quiet agent whose T3 run is still active (waiting), whose delegated task is (pending), or whose own task is (running), is not done; it is once all ended" "0 0 0 1" "$(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev6") $(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev7") $(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev8") $(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev9")"
+t3db "update orchestration_v2_projection_subagents set status = 'completed' where subagent_id = 's0'"
+t3db "update orchestration_v2_projection_provider_threads set payload_json = json_set(payload_json, '$.pendingBackgroundTasks', json('[{\"taskId\":\"b1\",\"kind\":\"command\"}]'))"; done_events > "$T/ev8b"  # its task completed, its background all.sh runs: T3's waiting_for_children
+t3db "update orchestration_v2_projection_provider_threads set payload_json = json_set(payload_json, '$.pendingBackgroundTasks', json('[]'))"; done_events > "$T/ev9"
+check "a quiet agent whose T3 run is still active (waiting), whose delegated task is (pending), whose own task is (running), or whose background command runs, is not done; it is once all ended" "0 0 0 0 1" "$(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev6") $(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev7") $(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev8") $(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev8b") $(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev9")"
 # the watcher asks T3's state on every tick for days: each lookup closes its connection, not the cycle collector
 check "T3 state lookups leave no connection open" 0 "$(python3 -c '
 import gc, os, sys; sys.path.insert(0, sys.argv[1]); import steward; gc.disable()

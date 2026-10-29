@@ -5,7 +5,7 @@ and was revived, or that wrote its report without a final message, so the agent'
 ~/.claude/projects whose first prompt carries the brief (or, for a job an older hook registered with only its key and start,
 every ticket path in the key). It has finished when that transcript has been quiet for QUIET
 seconds with no tool call pending, or for LONG seconds whatever it was doing (no foreground tool call runs ten minutes),
-while T3 Code shows no active run of its thread and no agent it launched is still at work."""
+while T3 Code shows no active run or background command of its thread and no agent it launched is still at work."""
 import glob, json, os, re, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import steward
@@ -96,7 +96,7 @@ def pending(path):
 
 def finished(job, now=None, _seen=()):
     """(transcript, its mtime) when the job's agent has finished, else None. An agent whose T3 thread has an active run
-    (waiting on a background command or an approval), or that launched agents of its own, hasn't finished."""
+    (waiting on an approval) or background command still running, or that launched agents of its own, hasn't finished."""
     p = transcript(job)
     if not p: return None
     m = os.path.getmtime(p); quiet = (now or time.time()) - m
