@@ -153,13 +153,13 @@ def handback_check():
               "or the user's global config, (c) an external maintainer's product decision or a fork you can't rank; then "
               "include a line starting 'GENUINE-FORK:' with your recommended default.", file=sys.stderr)
         sys.exit(2)
-# A fork is asked once: until the user answers it, it waits in questions-owed.md, not at the end of every report
+# A fork is asked once per session: a GENUINE-FORK line already sent blocks, answered or not (it waits in questions-owed.md)
 def fork_check():
     asked = set().union(*map(report.forks, said[:-1])) if len(said) > 1 else set()
     if report.forks(last) & asked:
         print("This GENUINE-FORK line was already sent to the user in this session. Ask a fork once: until they answer, "
               "it waits in questions-owed.md, and a later report doesn't repeat it. Send it again only with changed "
-              "options, or when the user asks about it (always-on: Do, don't offer).", file=sys.stderr)
+              "options; to refer to it, quote it (always-on: Do, don't offer).", file=sys.stderr)
         sys.exit(2)
 # A Running list in the reply is checked against T3 task status: each task it names was launched or read (task_status) after the
 # user's last message, and none has a terminal status.
