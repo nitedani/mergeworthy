@@ -49,7 +49,7 @@ def asserted(sentence, i):
     before, part = PART.split(sentence[:i])[-1], PART.split(sentence[i:], 1)[0]
     lead = CLAUSE.split(before)[-1]
     where = {'lead': lead, 'clause': lead + CLAUSE.split(part)[0], 'before': before, 'part': before + part}
-    return not any(rx.search(where[k]) for k, rx in TAKE_BACK.items())
+    return not any(rx.search(re.sub(r'https?://\S+', ' ', where[k])) for k, rx in TAKE_BACK.items())  # a URL's words are no one's
 
 
 DONE = r"\b(?:(?:is|are|all|work's|it's) (?:done|finished|complete)\b|ready (?:for review|to merge)|kész\b|elkészült|befejeztem)"
