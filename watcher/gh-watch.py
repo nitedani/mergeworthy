@@ -1221,22 +1221,26 @@ def moved_thread(repo, i, new):
     """A thread an issue list shows moved. A new one whose body starts with your /agent is an agent command. One of a repo a live dir
     watches whole (`owner/repo all` in repos.txt) that no live dir lists joins that dir's threads.txt, so its scan reports each new
     comment; a new one is reported there (### NEW ISSUE, ### NEW PR, an owed reply, :eyes:) unless it is the agent's. A new mergeworthy
-    issue is reported to the steward's dir however it is listed and whoever opened it: a session's report of a fault (rules step 2)."""
+    issue is reported to the steward's dir, whichever dir watches the repo first, however it is listed and whoever opened it: a session's
+    report of a fault (rules step 2)."""
     num, body, user = i['number'], i.get('body') or '', i.get('user') or {}
     key, dirs = f"{repo}#{num}", live_dirs()
     if new and AGENT_CMD.match(body) and user.get('login') == ME:
         return agent_command(repo, num, 'body', i)
-    d = next((d for d in dirs if repo_lines(d).get(repo)), None)
-    if not d:
+    whole = [d for d in dirs if repo_lines(d).get(repo)]
+    fault = repo == STEWARD_REPO and 'pull_request' not in i
+    s = next((d for d in whole if steward.quiet(d)), None) if fault else None
+    indented = '\n'.join('    ' + l for l in body.splitlines())
+    event = lambda: f"### NEW {'PR' if 'pull_request' in i else 'ISSUE'} {key} by {user.get('login')} {i['created_at']} {i['html_url']}: {i['title']}\n{indented}\n"  # built only for a new thread: a moved one may lack these fields
+    if new and s and claim(f"fault:{i['id']}", record=not ONCE):  # whichever dir saw it first or lists it, an agent's too
+        emit_to(s, event())
+    d = next((d for d in whole if not (fault and steward.quiet(d))), s)
+    if not d or any(key in listed_threads(x) for x in dirs):
         return
-    listed, report = any(key in listed_threads(x) for x in dirs), repo == STEWARD_REPO and 'pull_request' not in i and steward.quiet(d)
-    if listed and not report:
-        return
-    if not ONCE and not listed:
+    if not ONCE:
         open(os.path.join(d, 'threads.txt'), 'a').write(f"{repo} {num}\n")
-    if new and (report or not agent_post(user, body, agent_post_hashes())) and claim(f"new:{i['id']}", record=not ONCE):
-        indented = '\n'.join('    ' + l for l in body.splitlines())
-        emit_to(d, f"### NEW {'PR' if 'pull_request' in i else 'ISSUE'} {key} by {user.get('login')} {i['created_at']} {i['html_url']}: {i['title']}\n{indented}\n")
+    if new and d != s and not agent_post(user, body, agent_post_hashes()) and claim(f"new:{i['id']}", record=not ONCE):
+        emit_to(d, event())
         if not ONCE and not steward.quiet(d):
             append_owed(f"{key} body {i['id']} by {user.get('login')} {i['html_url']} — {i['title'][:80]}", d)
             react_eyes(repo, 'body', i['id'], num)
