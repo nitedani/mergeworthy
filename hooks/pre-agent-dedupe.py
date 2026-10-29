@@ -4,7 +4,7 @@ With the argument `register` it runs as the PostToolUse hook: only a launch that
 One agent per job: a launch is registered under its job key (the ticket files its prompt names, and its title), and a second
 launch of the same job is blocked until `agent-job done <key>` releases it. A turn that ended is not a finished agent: on T3 a
 child wakes again when its background commands end, so only its terminal task status (read first) releases the job."""
-import datetime, glob, hashlib, json, os, re, shlex, sys, time
+import datetime, fcntl, glob, hashlib, json, os, re, shlex, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import failclosed
 import memory_file, steward, subprocess
@@ -26,21 +26,16 @@ if register and 'parent_not_active' in json.dumps(d.get('tool_response') or ''):
 cid = str(ti.get('clientRequestId') or '')
 if cid:
     ids = os.path.expanduser('~/.claude/agent-client-request-ids.json'); os.makedirs(os.path.dirname(ids), exist_ok=True)
+    lock = open(ids + '.lock', 'a'); fcntl.flock(lock, fcntl.LOCK_EX)  # held until exit: launches register at once
     seen = json.load(open(ids)) if os.path.exists(ids) else {}
     if cid in seen and time.time() - seen[cid] > 600:
         sys.stderr.write(f"BLOCKED: clientRequestId '{cid}' was used before; T3 would return that earlier task's result instead of running this one. Use a new id (add the date or the head SHA).\n")
         sys.exit(2)
     if register:
-        seen.setdefault(cid, time.time()); json.dump(seen, open(ids, 'w'))
+        seen.setdefault(cid, time.time())
+        with open(ids + '.tmp', 'w') as f: json.dump(seen, f)
+        os.replace(ids + '.tmp', ids)
 text = '\n'.join(str(ti.get(k) or '') for k in ('prompt', 'task', 'message', 'description', 'title', 'workspaceStrategy'))
-# A review round's id is `<review>-<round>` (delegate §Reviewers), maybe followed by the date or head SHA the reuse block asks for
-rnd = re.search(r'-(\d{1,2})$', re.sub(r'(-\d{4}-\d{2}-\d{2}|-[0-9a-f]{7,40})+$', '', cid))
-if not register and ti.get('role') == 'review' and rnd and int(rnd[1]) > 3 and not (
-        int(rnd[1]) <= 5 and re.search(r'\b(security|permissions?|auth|authn|authz|authentication|authorization|data loss|concurrency)\b', text, re.I)):
-    sys.stderr.write(f"BLOCKED: review round {rnd[1]} ('{cid}') is past mergeworthy:delegate §Review rounds' budget: 3 rounds per loop, "
-                     "5 for security, permissions, auth, data loss or concurrency while a reproduced blocker or should stays open there "
-                     "(name the category in the task). A finding still open at the budget's end goes to the user, both sides in 2-3 lines.\n")
-    sys.exit(2)
 # a ticket is the brief file the agent executes; a file under ~/.mergeworthy (project notes, an installed skill) is a reference
 mw = os.path.abspath(os.path.expanduser('~/.mergeworthy')) + os.sep
 MD = r'(?<![\w.~/-])(~?/[^\s`\'"]+\.md)\b'
@@ -63,6 +58,19 @@ if not register and re.search(r'\.out\b', gate_text) and 'CLEAN' in gate_text:
         if not ok:
             sys.stderr.write(f"BLOCKED: {draft} has no passing post-lint for its current text: run post-lint first, then the review.\n")
             sys.exit(2)
+# A review round's launch is named `<loop>-r<N>` (delegate §Review rounds), maybe followed by the date or head SHA the reuse block asks for.
+# A review is a review launch, or a launch with no role whose brief ends as a review template does (`exactly CLEAN`, `exactly NO BUGS`)
+name = cid or str(ti.get('description') or '')
+rnd = re.search(r'-r(\d+)$', re.sub(r'(-\d{4}-\d{2}-\d{2}|-[0-9a-f]{7,40})+$', '', name))
+# a brief the launch follows from the work folder counts here, though the tickets above skip all of ~/.mergeworthy
+briefs = gate_text + '\n' + '\n'.join(open(t).read() for t in {os.path.abspath(os.path.expanduser(m)) for m in re.findall(MD, text)}
+                               if t.startswith(mw + 'work' + os.sep) and os.path.isfile(t))
+if not register and (ti.get('role') == 'review' or not ti.get('role') and re.search(r'\bexactly (CLEAN|NO BUGS)\b', briefs)) and not (rnd and int(rnd[1]) <= 3):
+    sys.stderr.write((f"BLOCKED: review round {rnd[1]} ('{name}') is past the budget" if rnd else
+                      f"BLOCKED: name this review launch `<loop>-r<N>` (T3's clientRequestId, the Agent tool's description; '{name}' names no round)")
+                     + ": mergeworthy:delegate §Review rounds allows 3 rounds per loop, never renewed or raised; a rewrite is a new loop. "
+                     "A finding still open at the budget's end goes to the user, both sides in 2-3 lines.\n")
+    sys.exit(2)
 # A template's slot left unfilled (`<the slice's risky edges>`) reaches the agent as a rule it never got. A slot in backticks is
 # the agent's own output form, the paste-in rules (agent.md) carry slots of their own, and an HTML tag a brief quotes is no slot.
 if not register:
@@ -294,8 +302,8 @@ elif os.path.exists(f):
             f"release the job with `agent-job done {shlex.quote(key[:200])}`, then launch.\n")
         sys.exit(2)
 # At most 3 agents at a time per session (delegate step 1): a job is open until released or its agent finished; a memory refresh doesn't count
-# A fan-out a step names (finality steps 2-3, converge's per-slice verifiers) says so on a `Fan-out:` line and passes
-fanout = ti.get('role') != 'implementation' and re.search(r'^Fan-out: (finality step [23]|converge §Running the agents)$', gate_text, re.M)
+# A fan-out a step names (finality steps 2-3, converge's per-slice verifiers) says so on a `Fan-out:` line, in the task or its brief, and passes
+fanout = ti.get('role') != 'implementation' and re.search(r'^Fan-out: (finality step [23]|converge §Running the agents)$', briefs, re.M)
 if not register and d.get('session_id') and 'memory-refresh' not in gate_text and not fanout:
     import agent_jobs
     live = [j for _, j in agent_jobs.jobs() if j.get('session') == d['session_id'] and '/memory-brief-' not in j['key']

@@ -159,20 +159,17 @@ tr_cmd "gh api graphql -f query='query(\$n:Int!){repository(owner:\"o\",name:\"r
 check "a GraphQL query is a read, not a post" 0 "$(stop "$T/work")"
 tr_cmd "gh api repos/o/r/issues -X GET -F per_page=100"
 check "an explicit GET with fields is a read" 0 "$(stop "$T/work")"
-# a steward pass (gh-watch-start --round) leaves no Monitor: the session its passed file names may post, and that dir's owed replies hold the turn
+# a steward pass (gh-watch-start --round) leaves no daemon: a post still needs a live watcher, and the dir's owed replies hold its session's turn
 PD="$T/passdir"; mkdir -p "$PD"; echo "$PD" >> "$HOME/.claude/gh-watch-dirs.txt"; echo 'Tier: S, because one fix' > "$PD/scope.md"  # a posting session works on a scoped task
 stop_as() { python3 -c 'import json,sys; print(json.dumps({"transcript_path":sys.argv[1],"cwd":sys.argv[2],"session_id":sys.argv[3]}))' "$T/tr.jsonl" "$T" "$1" \
   | MERGEWORTHY_STOP_CHECKIN=off python3 "$R/hooks/stop-lint.py" 2>"$T/err"; echo $?; }
 tr_cmd "gh issue comment 5 --repo o/r --body-file $PD/drafts/r.md"
 check "BLOCK: a post with no Monitor and no pass" 2 "$(stop_as s-p)"
-echo s-other > "$PD/passed"
-check "BLOCK: a pass another session ran doesn't count" 2 "$(stop_as s-p)"
 echo s-p > "$PD/passed"
-check "a post in the session whose pass round ran needs no Monitor" 0 "$(stop_as s-p)"
+check "BLOCK: a post in the session whose pass round ran: nothing wakes it on a reply, so it says to start a watcher" "2 1" "$(stop_as s-p) $(grep -c 'gh-watch-start <your work folder>' "$T/err")"
+tr_cmd "gh api repos/o/r/issues -X GET -F per_page=100"
 echo "o/r 5 comment 77 by someone" > "$PD/replies-owed.md"
-check "BLOCK: the pass dir's owed reply holds the turn though no daemon runs there" 2 "$(stop_as s-p)"
-rm "$PD/replies-owed.md"; touch -d '-25 hours' "$PD/passed"
-check "BLOCK: a pass over a day old doesn't count" 2 "$(stop_as s-p)"
+check "BLOCK: the pass dir's owed reply holds the turn though no daemon runs there; answered, the turn ends" "2 0" "$(stop_as s-p) $(rm "$PD/replies-owed.md"; stop_as s-p)"
 rm "$PD/passed"
 tr_cmd "gh issue comment 5 --repo o/r --body-file $WD/drafts/r.md"
 check "BLOCK: a post with no Monitor on the watcher" 2 "$(stop "$T/work")"
@@ -312,13 +309,17 @@ check "a post the guard let through but that never ran (blocked by another hook)
 check "a failed post leaves no marker" none "$(postreg '"Error: Exit code 1\ngh: Not Found (HTTP 404)"')"
 check "an interrupted post leaves no marker" none "$(postreg '{"stdout":"","stderr":"","interrupted":true}')"
 check "a successful post writes the marker" marker "$(postreg '{"stdout":"https://example.invalid/c","stderr":"","interrupted":false}')"
+rm "$TD/r.md.posted"
+check "a post naming its draft by a variable the command set writes the marker too, as the guard reads that path" marker \
+  "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[2]},"cwd":sys.argv[1],"tool_response":{"stdout":"https://example.invalid/c"}}))' "$T" "F=$TD/r.md; gh issue comment 41 --repo o/r --body-file \"\$F\"" \
+    | python3 "$R/hooks/post-bash-register.py"; [ -f "$TD/r.md.posted" ] && echo marker || echo none)"
 python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh issue comment 41 --repo o/r --body-file "+sys.argv[2]},"cwd":sys.argv[1]}))' "$T" "$TD/r.md" > "$T/in.json"
 check "BLOCK: the same draft posted again as new" 2 "$(python3 "$R/hooks/pre-bash-guard.py" < "$T/in.json" 2>"$T/err"; echo $?)"
 grep -c 'was already posted' "$T/err"
 python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr edit 41 --repo o/r --body-file "+sys.argv[2]},"cwd":sys.argv[1]}))' "$T" "$TD/r.md" > "$T/in.json"
 check "an edit from a posted draft may repeat" 0 "$(python3 "$R/hooks/pre-bash-guard.py" < "$T/in.json" 2>/dev/null; echo $?)"
 touch -d '+1 minute' "$TD/r.parent.md"
-check "BLOCK: older than the comment the draft answers" 2 "$(tcguard)"
+check "a parent saved after a record that holds the thread's latest comment passes" 0 "$(tcguard)"
 rm "$TD/r.parent.md"
 printf 'Tracking: x\n' > "$T/tdrafts/t.md"; sha256sum "$T/tdrafts/t.md" | cut -d' ' -f1 > "$T/tdrafts/t.md.gate"; echo "--kind tracker" > "$T/tdrafts/t.md.lint"
 python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh issue comment 41 --repo o/r --body-file "+sys.argv[2]},"cwd":sys.argv[1]}))' "$T" "$T/tdrafts/t.md" > "$T/in.json"
@@ -332,10 +333,17 @@ GD="$T/gdrafts/x"; mkdir -p "$GD"; printf 'Agreed, option A it is.\n' > "$GD/r.m
 gp() { touch -d '+10 minutes' "$GD/r.review.out"; MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GD/r.md" "$GD/r.review.out" --kind reply --parent none >"$T/gp.out" 2>&1; echo $?; }
 check "BLOCK: gate-pass on a reply without thread-context.md" 1 "$(gp)"
 grep -c 'no thread-context.md' "$T/gp.out"
-cp "$TD/thread-context.md" "$GD/thread-context.md"
-check "BLOCK: gate-pass with a thread-context.md newer than the draft" 1 "$(gp)"
+cp "$TD/thread-context.md" "$GD/thread-context.md"; touch -d 2026-10-01T00:00:00Z "$GD/r.md"
+check "BLOCK: gate-pass with a thread-context.md holding a human comment newer than the draft" "1 1" "$(gp) $(grep -c 'newer than the draft' "$T/gp.out")"
+touch -d 2026-10-03T00:00:00Z "$GD/r.md"
+check "gate-pass passes with a thread-context.md made after the draft whose comments all predate it" 0 "$(gp)"
 touch -d '+1 minute' "$GD/r.md"
 check "gate-pass passes with thread-context.md beside the draft, written before it" 0 "$(gp)"
+touch -d '+5 minutes' "$GD/r.parent.md"
+check "gate-pass passes with the parent saved after a current thread-context.md" 0 "$(gp)"
+cp "$GD/thread-context.md" "$T/gd-tc.md"; cp "$TC" "$GD/thread-context.md"; touch -d '+30 seconds' "$GD/r.md"; touch -d '+5 minutes' "$GD/r.parent.md"
+check "BLOCK: gate-pass with the parent saved after a record the thread has outgrown" "1 1" "$(gp) $(grep -c 'records the latest comment' "$T/gp.out")"
+mv "$T/gd-tc.md" "$GD/thread-context.md"; rm "$GD/r.parent.md"; touch -d '+1 minute' "$GD/r.md"
 check "gate-pass records the thread context in the gate" 1 "$(grep -c '^tc ' "$GD/r.md.gate")"
 printf 'The test checks that "I'"'"'ll switch it once X is released" passes.\n' > "$GD/r.md"; touch -d '+2 minutes' "$GD/r.md"
 check "a quoted \"I'll\" is someone else's words, not a promise" 0 "$(gp)"
@@ -376,12 +384,12 @@ check "gate-pass gates a status post with no review once its PROMISED line is th
 
 # ---------- post-bash-register: only a real gh post registers, and only the thread it posted to ----------
 sleep 600 & SPID=$!
-WD="$T/reg"; mkdir -p "$WD"; echo "$SPID" > "$WD/gh-watch.pid"
+WD="$T/reg"; mkdir -p "$WD"; echo "$SPID" > "$WD/gh-watch.pid"; echo sess-r > "$WD/session"
 echo "$WD" > "$HOME/.claude/gh-watch-dirs.txt"
 U5='https://github.com/o/r/issues/5#issuecomment-1'
 register() { # command stdout -> the watch dir's threads.txt, space-joined
   rm -f "$WD/threads.txt"
-  python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"tool_response":{"stdout":sys.argv[2]}}))' "$1" "$2" \
+  python3 -c 'import json,sys; print(json.dumps({"session_id":"sess-r","tool_input":{"command":sys.argv[1]},"tool_response":{"stdout":sys.argv[2]}}))' "$1" "$2" \
     | python3 "$R/hooks/post-bash-register.py"
   [ -f "$WD/threads.txt" ] && paste -sd' ' "$WD/threads.txt" || echo none
 }
@@ -414,11 +422,13 @@ python3 -c 'import json; print(json.dumps({"session_id":"sess-2","tool_input":{"
 check "a new PR joins the posting session's dir, not an older dir covering the repo" "o/r 8|none" \
   "$(cat "$D2/threads.txt" 2>/dev/null)|$(cat "$D1/threads.txt" 2>/dev/null || echo none)"
 check "the thread replaces that dir's bare repo line" "|o/r" "$(cat "$D2/repos.txt")|$(cat "$D1/repos.txt")"
-# a dir a steward pass read today (its passed file names the session) counts as live, for that session only
-D3="$T/reg-pass"; mkdir -p "$D3"; echo o/r > "$D3/repos.txt"; echo sess-3 > "$D3/passed"; echo "$D3" > "$HOME/.claude/gh-watch-dirs.txt"
-preg() { python3 -c 'import json,sys; print(json.dumps({"session_id":sys.argv[1],"tool_input":{"command":"gh pr create --repo o/r --fill"},"tool_response":{"stdout":"https://github.com/o/r/pull/9"}}))' "$1" \
-  | python3 "$R/hooks/post-bash-register.py"; cat "$D3/threads.txt" 2>/dev/null || echo none; rm -f "$D3/threads.txt"; }
-check "a new PR joins the dir the session passed today; another session's post leaves it alone" "o/r 9|none" "$(preg sess-3)|$(preg sess-4)"
+# a dir a steward pass read today (its passed file names the session) has no daemon to wake anyone: the session's live dir gets the thread
+D3="$T/reg-pass"; D4="$T/reg-live"; mkdir -p "$D3" "$D4"; echo o/r > "$D3/repos.txt"; echo 'o/r 5' > "$D3/threads.txt"; echo sess-3 > "$D3/passed"
+echo "$SPID" > "$D4/gh-watch.pid"; echo sess-3 > "$D4/session"; printf '%s\n' "$D3" "$D4" > "$HOME/.claude/gh-watch-dirs.txt"
+preg() { python3 -c 'import json,sys; print(json.dumps({"session_id":"sess-3","tool_input":{"command":sys.argv[1]},"tool_response":{"stdout":sys.argv[2]}}))' "$1" "$2" \
+  | python3 "$R/hooks/post-bash-register.py"; cat "$D4/threads.txt" 2>/dev/null || echo none; rm -f "$D4/threads.txt"; }
+check "a new PR, and a comment on a thread only the passed dir lists, join the session's live dir, not the dir its steward pass read" "o/r 9|o/r 5|o/r 5" \
+  "$(preg 'gh pr create --repo o/r --fill' https://github.com/o/r/pull/9)|$(preg 'gh issue comment 5 --repo o/r --body-file x' https://github.com/o/r/issues/5#issuecomment-1)|$(cat "$D3/threads.txt")"
 kill "$SPID"; wait "$SPID" 2>/dev/null
 
 # ---------- finality trigger: the third proposal on a thread needs a thread map ----------
@@ -506,6 +516,9 @@ check "code, then (a) (b), then a pick passes" 0 "$(dblint $'### Decision: who r
 B=$'<img src="https://github.com/claude.png" width="20" height="20" alt="Claude">\n'
 loclint() { printf '%s\n' "$1" > "$T/loc.md"; python3 "$R/bin/post-lint" "$T/loc.md" --parent none 2>&1 | grep -c 'code location without a link'; }
 check "a bare file:line, a bare line number, a linked one, one in a code block" "1 1 0 0" "$(loclint 'It breaks in `src/adapter/utils.ts:160`.') $(loclint 'Elysia copies them at line 160.') $(loclint 'Elysia copies them ([line 160](https://github.com/o/r/blob/abc1234/src/u.ts#L160)).') $(loclint $'```\nat src/u.ts:160\n```')"
+check "a line number inside inline code quotes a message, not a location" 0 "$(loclint 'The hook fails with `Expecting value: line 1 column 1` on every call.')"
+phlint() { printf '%s\n' "$1" > "$T/ph.md"; python3 "$R/bin/post-lint" "$T/ph.md" --parent none 2>&1 | grep -c '^placeholder'; }
+check "an ALLCAPS placeholder left in a draft is flagged, a name in inline code is not" "2 0" "$(phlint $'Posted at POST_TIME.\n\nGATES_LINE') $(phlint 'The `MERGEWORTHY_BADGE` setting stays.')"
 lint() { python3 "$R/bin/post-lint" "$1" --kind issue --parent none 2>&1 | grep -c 'word sentence'; }
 items=$(for i in 1 2 3 4 5 6 7; do echo "  - item number $i with a few short words;"; done)
 printf '%s A list of short items follows here:\n%s\n' "$B" "$items" > "$T/list.md"
@@ -744,7 +757,7 @@ check "BLOCK: a foreground until-sleep loop" 2 "$(wait_guard 'until [ -s out.md 
 check "the same loop in the background passes" 0 "$(wait_guard 'until [ -s out.md ]; do sleep 20; done; cat out.md' true)"
 check "a plain sleep passes" 0 "$(wait_guard 'sleep 2; ls' false)"
 # ---------- pre-agent-dedupe: one agent per job ----------
-launch_in() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":sys.argv[1],"title":"t"}}))' "$1"; }
+launch_in() { python3 -c 'import json,sys,time; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":sys.argv[1],"title":"t","clientRequestId":f"t-{time.time_ns()}-r1"}}))' "$1"; }
 launch() { # task text; a launch that passes runs, so the PostToolUse half registers it
   launch_in "$1" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; local rc=$?
   [ $rc = 0 ] && launch_in "$1" | python3 "$R/hooks/pre-agent-dedupe.py" register; echo $rc
@@ -780,9 +793,16 @@ check "a new clientRequestId passes" 0 "$(cid r-1)"
 check "a retry of the same clientRequestId within 10 minutes passes" 0 "$(cid r-1)"
 python3 -c 'import json,os,time; p=os.path.expanduser("~/.claude/agent-client-request-ids.json"); d=json.load(open(p)); d["r-1"]=time.time()-3600; json.dump(d,open(p,"w"))'
 check "BLOCK: a clientRequestId reused later (T3 replays the old result)" 2 "$(cid r-1)"
+for i in $(seq 40); do (cid_in "c-$i" | python3 "$R/hooks/pre-agent-dedupe.py" register 2>/dev/null || echo crash) & done > "$T/cid.out"; wait
+check "40 launches registering at once: none crashes, none is lost" "0 40" "$(grep -c crash "$T/cid.out") $(python3 -c 'import json,os; print(sum(k.startswith("c-") for k in json.load(open(os.path.expanduser("~/.claude/agent-client-request-ids.json")))))')"
 rnd() { # clientRequestId task [role]
   python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":sys.argv[2],"role":sys.argv[3],"clientRequestId":sys.argv[1]}}))' "$1" "$2" "${3:-review}" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; echo $?; }
-check "review rounds: 3 passes, 4 blocks, 4 naming security passes, 6 naming security blocks, a trailing date is no round, an implementation's -4 is no round, authentication names auth, author doesn't, a head SHA after the round is no escape" "0 2 0 2 0 0 0 2 2 2" "$(rnd post-review-3 'Follow /tmp/x/rr.md') $(rnd post-review-4 'Follow /tmp/x/rr.md') $(rnd authz-review-4 'Follow /tmp/x/rr.md; the security fix') $(rnd authz-review-6 'Follow /tmp/x/rr.md; the security fix') $(rnd post-review-2026-10-28 'Follow /tmp/x/rr.md') $(rnd fix-4 'Follow /tmp/x/rr.md' implementation) $(rnd login-review-5 'Follow /tmp/x/rr.md; the authentication bypass') $(rnd words-review-4 'Review author wording. Follow /tmp/x/rr.md') $(rnd post-review-4-96ef442 'Follow /tmp/x/rr.md') $(rnd authz-review-6-96ef442 'Follow /tmp/x/rr.md; the security fix')"
+agent_rnd() { # description prompt
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"Agent","tool_input":{"description":sys.argv[1],"prompt":sys.argv[2]}}))' "$1" "$2" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; echo $?; }
+check "review rounds: r3 passes, r4 blocks, no round blocks, a new loop's r1 passes, a trailing date or head SHA is no escape, an implementation needs no round" "0 2 2 0 0 2 0" "$(rnd loop-a-r3 'Follow /tmp/x/rr.md') $(rnd loop-a-r4 'Follow /tmp/x/rr.md') $(rnd loop-a 'Follow /tmp/x/rr.md') $(rnd loop-a2-r1 'Follow /tmp/x/rr.md') $(rnd loop-a-r2-2026-10-28 'Follow /tmp/x/rr.md') $(rnd loop-a-r4-96ef442 'Follow /tmp/x/rr.md') $(rnd fix-r4 'Follow /tmp/x/rr.md' implementation)"
+check "review rounds by the Agent tool's description: r3 passes, r4 blocks, no round blocks, a non-review launch needs none" "0 2 2 0" "$(agent_rnd fresh-r3 'Review it. Final message: exactly CLEAN, or the findings.') $(agent_rnd fresh-r4 'Review it. Final message: exactly CLEAN, or the findings.') $(agent_rnd 'Fresh read' 'Verify it. Final message: exactly NO BUGS only when both lists are empty.') $(agent_rnd 'Fix the parser' 'Edit hooks/x.py and run the tests.')"
+mkdir -p "$HOME/.mergeworthy/work/rr"; printf 'Review the patch. Final message: exactly CLEAN, or the findings.\n' > "$HOME/.mergeworthy/work/rr/review.prompt.md"
+check "BLOCK: an Agent review past r3 that follows a brief in the work folder" 2 "$(agent_rnd loop-r4 "Follow $HOME/.mergeworthy/work/rr/review.prompt.md exactly.")"
 J="$HOME/.claude/agent-jobs"; mkdir -p "$J"
 printf '{"key": "/x/a.md /x/shared.md", "started": 1}' > "$J/aj1.json"; printf '{"key": "/x/b.md /x/shared.md", "started": 2}' > "$J/aj2.json"
 check "agent-job done with a path two jobs hold releases neither" "1 2" "$(python3 "$R/bin/agent-job" done /x/shared.md >/dev/null 2>&1; echo $? $(ls "$J"/aj*.json | wc -l))"
@@ -807,6 +827,9 @@ check "another session, and a memory refresh in this one, pass" "0 0" "$(cap cap
 check "a fifth brief naming its fan-out step passes; one naming another step does not" "0 2" "$(cap capS $'Execute /tmp/x/cap8.md\nFan-out: converge §Running the agents') $(cap capS $'Execute /tmp/x/cap9.md\nFan-out: review step 2')"
 cap_impl() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"capS","tool_input":{"task":sys.argv[1],"title":"impl","role":"implementation"}}))' "$1" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; echo $?; }
 check "BLOCK: an implementation brief carrying the fan-out line still counts" 2 "$(cap_impl $'Execute /tmp/x/cap10.md\nFan-out: converge §Running the agents')"
+FB="$HOME/.mergeworthy/work/fx/verify-1.md"; mkdir -p "${FB%/*}"; printf 'Verify slice 1.\nFan-out: converge §Running the agents\n' > "$FB"
+check "a fifth launch following a work-folder brief that holds the fan-out line passes" 0 "$(cap capS "Follow $FB exactly")"
+python3 "$R/bin/agent-job" done "$(python3 -c 'import sys; print(sys.argv[1][:40])' "Follow $FB exactly")" >/dev/null  # its key: the title
 python3 "$R/bin/agent-job" done /tmp/x/cap8.md >/dev/null; python3 "$R/bin/agent-job" done /tmp/x/cap1.md >/dev/null
 check "a released job no longer counts" 0 "$(cap capS 'Execute /tmp/x/cap4.md')"
 python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "cap2.md" in open(f).read()]'
@@ -913,7 +936,7 @@ git init -q -b main "$T/gr"; git -C "$T/gr" commit -q --allow-empty -m one; OLD=
 git -C "$T/gr" worktree add -q -b w "$T/gw"; git -C "$T/gw" commit -q --allow-empty -m two; NEW=$(git -C "$T/gw" rev-parse HEAD)
 git -C "$T/gr" commit -q --allow-empty -m three; MAINOLD=$OLD
 ag() { # cwd task [role]
-  python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","cwd":sys.argv[1],"tool_input":{"task":sys.argv[2],"title":sys.argv[2][:50],"role":sys.argv[3]}}))' "$1" "$2" "${3:-implementation}" \
+  python3 -c 'import json,sys,time; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","cwd":sys.argv[1],"tool_input":{"task":sys.argv[2],"title":sys.argv[2][:50],"role":sys.argv[3],"clientRequestId":f"ag-{time.time_ns()}-r1"}}))' "$1" "$2" "${3:-implementation}" \
     | timeout 10 python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
 printf '# Memory\n## Standing\n### Ruled out\n- **Cron jobs** (now). The user refused them.\n## Recent\n<!-- covered-until: 2099-01-01T00:00:00.000Z -->\n' > "$MR/memory.md"
 check "BLOCK: a brief pinned to an older commit of the worktree it names, with the ruled-out list" "2 1" "$(ag "$OC" "Fix it in $T/gw at $OLD") $(grep -c 'Cron jobs' "$T/err")"
@@ -1069,8 +1092,10 @@ python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started
 t3db() { python3 -c 'import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); c.execute(sys.argv[2]); c.commit()' "$HOME/.t3/userdata/statev2.sqlite" "$1"; }
 done_events > "$T/ev6"; t3db "update orchestration_v2_projection_runs set status = 'completed'"
 t3db "insert into orchestration_v2_projection_subagents values ('s9', 'busy-1', 'child-9', 'pending')"; done_events > "$T/ev7"
-t3db "update orchestration_v2_projection_subagents set status = 'completed' where subagent_id = 's9'"; done_events > "$T/ev8"
-check "a quiet agent whose T3 run is still active (waiting), or whose delegated task is (pending), is not done; it is once both ended" "0 0 1" "$(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev6") $(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev7") $(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev8")"
+t3db "update orchestration_v2_projection_subagents set status = 'completed' where subagent_id = 's9'"
+t3db "insert into orchestration_v2_projection_subagents values ('s0', 'orch-1', 'busy-1', 'running')"; done_events > "$T/ev8"  # its own task: its turn ended, its background command runs
+t3db "update orchestration_v2_projection_subagents set status = 'completed' where subagent_id = 's0'"; done_events > "$T/ev9"
+check "a quiet agent whose T3 run is still active (waiting), whose delegated task is (pending), or whose own task is (running), is not done; it is once all ended" "0 0 0 1" "$(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev6") $(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev7") $(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev8") $(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev9")"
 # the watcher asks T3's state on every tick for days: each lookup closes its connection, not the cycle collector
 check "T3 state lookups leave no connection open" 0 "$(python3 -c '
 import gc, os, sys; sys.path.insert(0, sys.argv[1]); import steward; gc.disable()
@@ -1301,6 +1326,8 @@ cp "$T/carry.md" "$T/carry-v.md"
 check "a small follow-up carries an earlier head's Loop A" 0 "$(prs verify "$T/carry-v.md")"
 cp "$T/carry.md" "$T/carry-f.md"
 check "BLOCK: carrying a step the earlier head never recorded" 1 "$(prs fresh "$T/carry-f.md")"
+mkdir -p "$G/dist"; seq 1 300 > "$G/dist/a.mjs"; git -C "$G" add dist; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m bundle; cp "$T/carry.md" "$T/carry-d.md"
+check "a committed build bundle (dist/) doesn't count against a carry" 0 "$(prs shape "$T/carry-d.md")"
 seq 1 100 > "$G/big"; git -C "$G" add big; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m c
 printf 'carries the pass of %s: big change\n' "$A" > "$T/carry2.md"
 check "BLOCK: carrying across more than 80 changed lines" 1 "$(prs shape "$T/carry2.md")"
@@ -1346,6 +1373,8 @@ check "BLOCK: a dropped candidate whose reason is 'not a regression', quoting it
 printf 'slice 1\n## Tried and dropped\n- **abort leaks a listener**: Not a regression, main does the same\nRULED: abort leaks a listener: not a regression, main does the same\nNO BUGS\n' > "$T/vr4.md"; std "$T/vr4.md"
 printf 'slice 1\n## Tried and dropped\n- **abort leaks a listener**: Not a regression, main does the same\nRULED: abort leaks a listener: not a regression, and only a staged race reaches it (code Earn every line)\nNO BUGS\n' > "$T/vr5.md"; std "$T/vr5.md"
 check "BLOCK: a RULED line whose only reason is that main does the same; one citing Earn every line records" "1 1 0" "$(prs verify "$T/vr4.md") $(cd "$G" && bash "$R/bin/pr-steps" verify "$T/vr4.md" 2>&1 | grep -c 'is not a ruling') $(prs verify "$T/vr5.md")"
+printf 'slice 1\n## Tried and dropped\n- `D=~/cfg` (tilde.sh): a nit.\n  - **Why a nit:** both fail closed, and it is rare.\nRULED: `D=~/cfg` (tilde.sh): a nit, no realistic usage (code Earn every line)\nNO BUGS\n' > "$T/vr6.md"; std "$T/vr6.md"
+check "a dropped item's sub-bullet reason is ruled under the item's name, not its label" 0 "$(prs verify "$T/vr6.md")"
 # pr-steps verify: a diff that touches bodies or streams needs code §No regressions' list answered by name
 G3="$T/prs3"; mkdir -p "$G3"; git -C "$G3" init -q -b main; git -C "$G3" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 git -C "$G3" update-ref refs/remotes/origin/main HEAD; git -C "$G3" checkout -q -b fix
@@ -1381,6 +1410,10 @@ r1=$(prss "$T/sr1.md"); echo t > "$GS/test/a.test.ts"; seq 1 300 > "$GS/README.m
 r2=$(prss "$T/sr0.md")
 check "pr-steps small: BLOCK with no test in the diff, BLOCK on a report with findings, records with both (docs not counted)" "1 1 0" "$r1 $r2 $(prss "$T/sr2.md")"
 check "after pr-steps small, gh pr ready lacks only the gates" "gates" "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr ready 5 -R o/r"},"cwd":sys.argv[1]}))' "$GS" | python3 "$R/hooks/pre-bash-guard.py" 2>&1 | grep -o 'no pr-steps [a-z, ]* record' | sed 's/no pr-steps //; s/ record//')"
+printf 'x\n## Outside this change\nNone.\n\nNO BUGS\nMERGE AS IS: yes\n\n## Verification\n- ran it\n\n## not_checked\n- Windows\n' > "$T/sr5.md"
+check "pr-steps small records a report whose verdict comes before its Verification and not_checked sections" 0 "$(prss "$T/sr5.md")"
+mkdir -p "$GS/dist"; seq 1 300 > "$GS/dist/a.mjs"; git -C "$GS" add dist; git -C "$GS" -c user.name=t -c user.email=t@t commit -qm bundle
+check "pr-steps small doesn't count a committed build bundle (dist/)" 0 "$(prss "$T/sr2.md")"
 seq 1 70 >> "$GS/src/a.ts"; git -C "$GS" -c user.name=t -c user.email=t@t commit -qam d
 printf 'NO BUGS\nMERGE AS IS: yes\n- a finding after them\n' > "$T/sr4.md"
 check "BLOCK: pr-steps small on a report whose last lines aren't NO BUGS and MERGE AS IS: yes" 1 "$(prss "$T/sr4.md")"
@@ -1890,8 +1923,8 @@ check "tracker: the issue's creation needs no Decisions link yet, an edit does" 
 ' '') $(trk '' '')"
 bash -c 'exec -a gh-watch-daemon sleep 600' & GPID=$!  # the guard takes a watcher as live when its command names gh-watch-daemon
 GW="$T/glw"; mkdir -p "$GW"; : > "$GW/threads.txt"; : > "$GW/repos.txt"
-echo "$GPID" > "$GW/gh-watch.pid"; echo "$GW" > "$HOME/.claude/gh-watch-dirs.txt"
-glguard() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "${2:-$T}" | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?; }
+echo "$GPID" > "$GW/gh-watch.pid"; echo sess-gl > "$GW/session"; echo "$GW" > "$HOME/.claude/gh-watch-dirs.txt"
+glguard() { python3 -c 'import json,sys; print(json.dumps({"session_id":"sess-gl","tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "${2:-$T}" | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?; }
 check "BLOCK: glab issue create with no watcher on the project" "2 1" "$(glguard 'glab issue create -R ns/sub/proj --title x') $(grep -c 'gitlab.com/ns/sub/proj' "$T/err")"
 git init -q "$T/glrepo"; git -C "$T/glrepo" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; git -C "$T/glrepo" remote add origin git@gitlab.com:ns/sub/proj.git; (cd "$T/glrepo" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 check "BLOCK: glab mr create --draft in a clone of an unwatched project" 2 "$(glguard 'glab mr create --draft --title x' "$T/glrepo")"
@@ -1902,10 +1935,10 @@ check "an 'owner/repo all' line covers the repo for opening an issue" 0 "$(glgua
 PG="$T/glpass"; mkdir -p "$PG"; echo 'p/q all' > "$PG/repos.txt"; echo sess-g > "$PG/passed"; printf '%s\n' "$GW" "$PG" > "$HOME/.claude/gh-watch-dirs.txt"
 glsess() { python3 -c 'import json,sys; print(json.dumps({"session_id":sys.argv[1],"tool_input":{"command":"gh issue create -R p/q --title x --body-file x.md"},"cwd":sys.argv[2]}))' "$1" "$T" \
   | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err" >/dev/null; grep -c 'no running watcher' "$T/err"; }
-check "a dir the session's steward pass read today covers its repo for opening an issue; not for another session" "0 1" "$(glsess sess-g) $(glsess sess-h)"
+check "BLOCK: a dir a steward pass read today covers no repo for opening an issue, its session's or another's, saying to start a watcher" "1 1 1" "$(glsess sess-g) $(glsess sess-h) $(grep -c 'gh-watch-start' "$T/err")"
 echo "$GW" > "$HOME/.claude/gh-watch-dirs.txt"
 echo gitlab.com/ns/sub/proj > "$GW/repos.txt"
-glreg() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"tool_response":{"stdout":sys.argv[2]}}))' "$1" "$2" | python3 "$R/hooks/post-bash-register.py"; }
+glreg() { python3 -c 'import json,sys; print(json.dumps({"session_id":"sess-gl","tool_input":{"command":sys.argv[1]},"tool_response":{"stdout":sys.argv[2]}}))' "$1" "$2" | python3 "$R/hooks/post-bash-register.py"; }
 glreg 'glab issue create -R ns/sub/proj --title x' 'https://gitlab.com/ns/sub/proj/-/work_items/12'
 glreg 'glab mr create --draft --title x' 'https://gitlab.com/ns/sub/proj/-/merge_requests/3'
 glreg 'glab issue list' 'https://gitlab.com/ns/sub/proj/-/issues/13'
@@ -1931,6 +1964,11 @@ git clone -q -b main "$T/cr.git" "$T/cr2"; echo squash > "$T/cr2/skills/a/SKILL.
 git -C "$T/cr" fetch -q; git -C "$T/cr" merge -q origin/main -m 'Merge main'
 check "a merged main's squash commit, already on a remote-tracking ref, needs no trailer of the push" "0 Merge main" \
   "$(git -C "$T/cr" push -q origin f > "$T/cr.out" 2>&1; echo $?) $(git -C "$T/cr.git" log -1 --format=%s f)"
+# pre-push on a checkout without node_modules: tests/all.sh names the install command, and each push keeps its own log
+mkdir -p "$T/pp/tests"; cp -r "$R/.githooks" "$T/pp/"; cp "$R/tests/all.sh" "$T/pp/tests/"
+pp() { TMPDIR="$T/pplogs" sh "$T/pp/.githooks/pre-push" </dev/null | sed -n 's/.*see //p'; }
+mkdir -p "$T/pplogs"; L1=$(pp); L2=$(pp)
+check "pre-push: two failed pushes keep two logs, each naming the install command" "2 1 1" "$(ls "$T/pplogs" | wc -l) $(grep -c 'pnpm install' "$L1") $([ -n "$L1" ] && [ "$L1" != "$L2" ] && grep -c 'pnpm install' "$L2")"
 # ---------- fail closed: a check that can't run blocks; the vikejs/vike#3671 session ("Fix CI"), replayed command by command ----------
 # shellcmd.parse lexes the whole command as bash does: that session's commit messages and PR body spanned lines, the old
 # line-by-line split raised, and its fallback saw only `cd`, so every check after it was skipped
@@ -1977,6 +2015,12 @@ check "replay: a push to a draft PR's branch whose head ran no gates ('I'll push
   "$(MERGEWORTHY_WATCHER=off bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$TCO") $(grep -c 'pr-steps quick' "$T/err")"
 printf 'pnpm test -> exit 0 (3 tests)\nTypeScript: types not installed here, let CI verify -> exit 0\n' > "$T/q-ci.log"
 check "pr-steps quick refuses a log whose gate didn't run ('not installed', 'let CI verify')" "1 1" "$(cd "$TCO" && bash "$R/bin/pr-steps" quick "$T/q-ci.log" 2>"$T/err" >/dev/null; echo $?) $(grep -c "says a gate didn't run" "$T/err")"
+printf "replay: a push whose head ran no gates ('I'll push and let CI verify'): blocked: 2 (want 2)\nbash tests/hooks.sh . -> exit 0 (739 tests)\nbash tests/word-budget . -> exit 0 (32586 words)\n" > "$T/q-titles.log"
+check "pr-steps quick records a log whose test titles quote 'let CI', with a word-count gate" 0 "$(git -C "$TCO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m q; cd "$TCO" && bash "$R/bin/pr-steps" quick "$T/q-titles.log" >/dev/null 2>&1; echo $?)"
+printf 'bash tests/word-budget . -> exit 0 (32586 words)\n' > "$T/q-words.log"
+check "pr-steps quick records a log whose only gate counts words" 0 "$(git -C "$TCO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m qw; cd "$TCO" && bash "$R/bin/pr-steps" quick "$T/q-words.log" >/dev/null 2>&1; echo $?)"
+printf 'pnpm test -> exit 0 (3 tests)\npnpm typecheck was not run: dependency unavailable\n' > "$T/q-unrun.log"
+check "BLOCK: pr-steps quick on a log saying a gate was not run, on a line of its own" "1 1" "$(git -C "$TCO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m qu; cd "$TCO" && bash "$R/bin/pr-steps" quick "$T/q-unrun.log" 2>"$T/err" >/dev/null; echo $?) $(grep -c "says a gate didn't run" "$T/err")"
 TK2="$HOME/.mergeworthy/work/vike-3671"; CK="$TK2/vike"; mkdir -p "$TK2"
 printf 'Tier: S, because one CI fix in one repo\n\n- [ ] Fix CI https://github.com/vikejs/vike/pull/3671\n' > "$TK2/scope.md"
 git init -q -b fix-telefunc "$CK"; git -C "$CK" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; git -C "$CK" remote add upstream https://github.com/vikejs/vike.git
@@ -1989,9 +2033,50 @@ git -C "$CK" -c user.name=t -c user.email=t@t commit -q --allow-empty -m b
 quick "$CK" $'TypeScript: pnpm exec tsc --noEmit -> exit 0\nExamples Vue/Others (ubuntu-latest): pnpm -C examples/vue test -> exit 0 (12 tests)\n'
 check "the same push passes once its head's log runs each failing job" 0 "$(MERGEWORTHY_WATCHER=off bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK")"
 echo "$T/nowatch" > "$HOME/.claude/gh-watch-dirs.txt"
-check "replay: the same push with no watcher on vikejs/vike (or the fork): blocked, naming the repos" "2 1" "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK") $(grep -c 'no running watcher covers nitedani-agent/vike or vikejs/vike' "$T/err")"
-bash -c 'exec -a gh-watch-daemon sleep 600' & FPID=$!; FW="$T/fw"; mkdir -p "$FW"; echo "$FPID" > "$FW/gh-watch.pid"; echo vikejs/vike > "$FW/repos.txt"; echo "$FW" > "$HOME/.claude/gh-watch-dirs.txt"
-check "a watcher on the upstream repo covers it" 0 "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK")"
+check "replay: the same push with no watcher on vikejs/vike (or the fork): blocked, naming the repos" "2 1" "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK") $(grep -c 'covers nitedani-agent/vike or vikejs/vike' "$T/err")"
+bash -c 'exec -a gh-watch-daemon sleep 600' & FPID=$!; echo "$FPID" > "$TK2/gh-watch.pid"; echo vikejs/vike > "$TK2/repos.txt"; echo "$TK2" > "$HOME/.claude/gh-watch-dirs.txt"
+check "a watcher of the checkout's work folder on the upstream repo covers it" 0 "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK")"
+# two tasks' work folders, one watched by session sess-a: its events wake that session alone, so a session acting from the other folder needs a watcher of its own
+printf 'vikejs/vike\ngitlab.com/ns/proj\n' > "$TK2/repos.txt"; echo sess-a > "$TK2/session"
+TK4="$HOME/.mergeworthy/work/vike-other"; CK4="$TK4/vike"; mkdir -p "$TK4"; printf 'Tier: S, because one fix\n\n- [ ] Fix it https://github.com/vikejs/vike/issues/1\n' > "$TK4/scope.md"
+git init -q -b fix-telefunc "$CK4"; git -C "$CK4" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; git -C "$CK4" remote add upstream https://github.com/vikejs/vike.git; quick "$CK4"; (cd "$CK4" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
+bgs() { # session command cwd: pre-bash-guard's exit code, its message in $T/err
+  python3 -c 'import json,sys; print(json.dumps({"session_id":sys.argv[1],"tool_input":{"command":sys.argv[2]},"cwd":sys.argv[3]}))' "$@" | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?; }
+unwatched() { bgs "$@" >/dev/null; grep -c 'no running watcher' "$T/err"; }
+PUSH='git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc'
+PRC="gh pr create --repo vikejs/vike --draft --title \"\$(cat $TK4/drafts/title.md)\" --body-file $TK4/drafts/pr.md"
+MRC='glab mr create --draft -R gitlab.com/ns/proj --title x'
+check "BLOCK: a push, a PR and an MR from a work folder another session's watcher doesn't watch, naming the folder to watch" "2 1 1 1" \
+  "$(bgs sess-b "$PUSH" "$CK4") $(grep -c "gh-watch-start $TK4 " "$T/err") $(unwatched sess-b "$PRC" "$CK4") $(unwatched sess-b "$MRC" "$CK4")"
+check "the same from the watched work folder pass, whichever session acts there" "0 0 0" "$(bgs sess-b "$PUSH" "$CK") $(unwatched sess-b "$PRC" "$CK") $(unwatched sess-b "$MRC" "$CK")"
+check "outside any work folder, only the session's own watcher counts" "0 1" "$(unwatched sess-a "$MRC" "$T") $(unwatched sess-b "$MRC" "$T")"
+oreg() { # session cwd command: the thread post-bash-register adds to the watched folder
+  python3 -c 'import json,sys; print(json.dumps({"session_id":sys.argv[1],"cwd":sys.argv[2],"tool_input":{"command":sys.argv[3]},"tool_response":{"stdout":"https://github.com/vikejs/vike/pull/9"}}))' "$@" \
+    | python3 "$R/hooks/post-bash-register.py"; cat "$TK2/threads.txt" 2>/dev/null || echo none; rm -f "$TK2/threads.txt"; }
+check "a PR opened from the unwatched folder joins no other session's watcher; from the watched one (after a cd, to a variable too), it joins its watcher" \
+  "none|vikejs/vike 9|vikejs/vike 9|vikejs/vike 9" "$(oreg sess-b "$CK4" "$PRC")|$(oreg sess-b "$CK" "$PRC")|$(oreg sess-b "$T" "cd $CK && $PRC")|$(oreg sess-b "$T" "D=$CK; cd \"\$D\" && $PRC")"
+# two MRs opened in one command from two work folders: the second folder needs its own watcher
+TWO="cd $CK; $MRC; cd $CK4; $MRC"
+check "BLOCK: two MRs from two work folders in one command while the second folder has no watcher" 2 "$(bgs sess-b "$TWO" "$T")"
+check "BLOCK: an MR where the dir can't be told (cd -, a cd to an unset variable, a cd in a subshell or bash -c), saying to cd to an absolute path" "2 2 2 2 1" \
+  "$(bgs sess-b "cd $CK; $MRC; cd -; $MRC" "$CK4") $(bgs sess-b "cd \"\$NOWHERE\" && $MRC" "$CK") $(bgs sess-b "(cd $CK4); $MRC" "$CK") $(bgs sess-b "bash -c 'cd $CK4'; $MRC" "$CK") $(grep -c 'cd to an absolute path first' "$T/err")"
+check "a redirect on cd or pushd (pushd x >/dev/null, cd x 2>/dev/null) and cd \$(git rev-parse --show-toplevel) leave the dir known: an MR in the watched folder passes" "0 0 0 0" \
+  "$(bgs sess-b "pushd $CK >/dev/null && $MRC" "$CK") $(bgs sess-b "pushd $CK >/dev/null; $MRC; popd >/dev/null" "$CK") $(bgs sess-b "cd $CK 2>/dev/null && $MRC" "$CK") $(bgs sess-b "cd \$(git rev-parse --show-toplevel) && $MRC" "$CK")"
+echo "$FPID" > "$TK4/gh-watch.pid"; echo gitlab.com/ns/proj > "$TK4/repos.txt"; echo "$TK4" >> "$HOME/.claude/gh-watch-dirs.txt"
+check "the same passes once each folder has its watcher" 0 "$(bgs sess-b "$TWO" "$T")"
+treg() { # stdout [command [cwd]]: post-bash-register on the command ($TWO, from $T), then exit code|the first folder's threads|the second's
+  python3 -c 'import json,sys; print(json.dumps({"session_id":"sess-b","cwd":sys.argv[1],"tool_input":{"command":sys.argv[2]},"tool_response":{"stdout":sys.argv[3]}}))' "${3:-$T}" "${2:-$TWO}" "$1" \
+    | python3 "$R/hooks/post-bash-register.py" 2>"$T/err"; echo "$?|$(paste -sd, "$TK2/threads.txt" 2>/dev/null)|$(paste -sd, "$TK4/threads.txt" 2>/dev/null)"; rm -f "$TK2/threads.txt" "$TK4/threads.txt"; }
+check "BLOCK: a URL from posting commands in two folders joins neither, and the hook names the gh-watch-start that adds it" "2|||1" \
+  "$(treg 'https://gitlab.com/ns/proj/-/merge_requests/9')|$(grep -c "gh-watch-start <work folder> gitlab.com/ns/proj '!9'" "$T/err")"
+mkdir -p "$TK2/vike2"
+check "one URL for two posting commands in two checkouts of one work folder joins that folder's watcher" "0|gitlab.com/ns/proj !9|" \
+  "$(treg 'https://gitlab.com/ns/proj/-/merge_requests/9' "cd $CK; $MRC; cd $TK2/vike2; $MRC")"
+U9='https://gitlab.com/ns/proj/-/merge_requests/9'
+check "an MR after pushd x >/dev/null joins x's folder; one where the dir can't be told (a cd to an unset variable) joins no watcher, saying why" "0||gitlab.com/ns/proj !9 2|| 1" \
+  "$(treg "$U9" "pushd $CK4 >/dev/null; $MRC" "$CK") $(treg "$U9" "cd \"\$NOWHERE\"; $MRC" "$CK4") $(grep -c "which dir a posting command ran in can't be told" "$T/err")"
+rm "$TK4/gh-watch.pid" "$TK4/repos.txt"
+rm "$TK2/gh-watch.pid" "$TK2/repos.txt" "$TK2/session"
 kill "$FPID"
 check "BLOCK: a shell write of a step record, and a Write of one" "2 2" "$(bg 'echo "quick /x 2026-10-27T00:00:00Z" >> ~/.claude/pr-steps/$(git rev-parse HEAD)') $(python3 -c 'import json,sys; print(json.dumps({"tool_name":"Write","tool_input":{"file_path":sys.argv[1]},"cwd":sys.argv[2]}))' "$HOME/.claude/pr-steps/abc" "$T" | python3 "$R/hooks/pre-design-gate.py" 2>/dev/null; echo $?)"
 check "BLOCK: a GitHub write through curl" 2 "$(bg 'curl -X POST -H "Authorization: token x" https://api.github.com/repos/o/r/issues/5/comments -d @body.json')"
@@ -2027,6 +2112,13 @@ tr_file 'README tidied.' work
 check "the final message is the hook input's, not the transcript's last line (which may not be written yet)" "2 1" "$(slj 'Tell me when to re-check CI.') $(grep -ci 'tell me when' "$T/err")"
 tr_file 'Ask me to check the run when you want it.' work
 check "stop_hook_active no longer lets the next stop through: the hand-back still blocks" 2 "$(slj '' 1)"
+# a claude -p --no-session-persistence run's Stop input, as captured: its transcript_path names a file that is never written
+nopersist() { # CLAUDE_PID
+  python3 -c 'import json,sys; print(json.dumps({"session_id":"4c63f963","transcript_path":sys.argv[1]+"/never/4c63f963.jsonl","cwd":sys.argv[1],"prompt_id":"e89cd96c","permission_mode":"default","effort":{"level":"medium"},"hook_event_name":"Stop","stop_hook_active":False,"last_assistant_message":"OK","background_tasks":[],"session_crons":[]}))' "$T" \
+    | CLAUDE_PID=$1 MERGEWORTHY_STOP_CHECKIN=off python3 "$R/hooks/stop-lint.py" 2>"$T/err"; echo "$? $(wc -c < "$T/err")"; }
+(exec -a 'claude -p --no-session-persistence reply with exactly OK' sleep 600) & NPID=$!
+check "a claude -p --no-session-persistence run ends silently; a session whose transcript can't be read still blocks once" "0 0 2" "$(nopersist $NPID) $(nopersist $$ | cut -d' ' -f1)"
+kill "$NPID"; wait "$NPID" 2>/dev/null
 tr_file 'README tidied.' work
 ci() { # session [cwd]
   python3 -c 'import json,sys; print(json.dumps({"transcript_path":sys.argv[1],"cwd":sys.argv[2],"session_id":sys.argv[3]}))' "$T/tr.jsonl" "${2:-$T}" "$1" | MERGEWORTHY_STOP_CHECKIN=on python3 "$R/hooks/stop-lint.py" 2>"$T/err"; echo $?; }
@@ -2085,6 +2177,7 @@ check "a tool result quoting the sub-agent line is no crash (and no child)" 0 "$
 # Only collaboration pays the push gates: a push of its own (its own repo, no PR) is free, a PR's head or another owner's repo is not
 OWN="$T/own"; git init -q -b scratch "$OWN"; git -C "$OWN" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; git -C "$OWN" remote add origin https://github.com/nitedani-agent/notes.git
 gql nitedani-agent nitedani-agent
+check "a push through git -C \"\$D\" reads its remote in the checkout \$D names" 0 "$(bg "D=$OWN; git -C \"\$D\" push origin HEAD:scratch" "$T")"
 check "a push to its own repo's branch with no PR, from no work folder, passes; once that branch is a PR's head it is blocked, naming the PR" "0 2 1" \
   "$(bg 'git push origin HEAD:scratch' "$OWN") $(gql nitedani-agent nitedani-agent https://github.com/nitedani-agent/notes/pull/1; bg 'git push origin HEAD:scratch' "$OWN") $(grep -c 'updates https://github.com/nitedani-agent/notes/pull/1' "$T/err")"
 gql nitedani-agent vikejs
@@ -2142,8 +2235,12 @@ git -C "$OWN2" checkout -q scratch; git -C "$OWN2" config --unset remote.pushDef
 fp=; for c in '"$(npm bin)/vitest" run tests/git-push.test.ts' '$PYTHON -m pytest -k "git push"' '"$VENV/bin/pytest" -k git-commit' \
              '${PNPM:-pnpm} test && git log --oneline | grep -i commit' '"$CLAUDE" -p "summarize the last git commit"'; do fp="$fp $(bg "$c" "$OWN2")"; done
 check "a command named by an expansion that only mentions git (a test name, a prompt) passes" " 0 0 0 0 0" "$fp"
+check "env's assignment named by a variable (\"\$v=host\") is no command name: the glab call after it passes, a push after it is still checked" "0 2" \
+  "$(bg 'env -i HOME="$HOME" "$v=code.example.com" timeout 20 glab api projects/x' "$OWN2") $(bg 'env "$v=x" git push nosuch HEAD:s' "$OWN2")"
 check "a command named by a variable the command set is checked as what it runs: \$G commit with the right author passes, a wrong one blocks" "0 2" \
   "$(echo 'me 42' > "$HOME/.claude/gh-user.txt"; bg 'G="git -c user.name=me -c user.email=42+me@users.noreply.github.com"; $G commit -m x' "$TCO") $(bg 'G="git -c user.name=x -c user.email=x@x"; $G commit -m x' "$TCO")"
+check "a git -C to a variable the command set is the checkout it names: a commit there with the right author passes, a wrong one blocks" "0 2" \
+  "$(bg "D=$TCO; git -C \"\$D\" -c user.name=me -c user.email=42+me@users.noreply.github.com commit -m x" "$T") $(bg "D=$TCO; git -C \"\$D\" -c user.name=x -c user.email=x@x commit -m x" "$T")"
 gql nitedani-agent nitedani-agent
 check "a computed sha pushed to its own repo with no PR passes (an evidence upload); a computed lease is a lease" "0 0" \
   "$(bg 'c=$(git rev-parse HEAD); git push origin $c:refs/heads/shots' "$OWN2") $(bg 'git push --force-with-lease=scratch:$(git rev-parse HEAD) origin HEAD:scratch' "$OWN2")"
@@ -2157,8 +2254,8 @@ check "a checkout inside <task>-work/ or beside it under the task's prefix is in
 AS="$T/assets"; git clone -q "$OWN" "$AS"; git -C "$AS" update-ref refs/remotes/origin/HEAD HEAD; git -C "$AS" checkout -q --orphan shots; git -C "$AS" -c user.name=t -c user.email=t@t commit -q --allow-empty -m s
 check "a commit on a branch that shares no history with origin's default (a PR's screenshots) needs no preflight; one on a branch of the product does" "0 2" \
   "$(bg 'git commit -q --allow-empty -m s2' "$AS") $(git -C "$AS" checkout -q scratch; bg 'git commit -q --allow-empty -m c' "$AS")"
-check "a push from a checkout the command makes first passes when it goes to a local path or the local repo it was cloned from, or is a dry run" "0 0 0 2" \
-  "$(bg 'T=$(mktemp -d); cd $T; git init -q --bare o.git; git init -q r; cd r; git push -q ../o.git main' "$T") $(bg 'git clone -q /tmp/o.git seed; cd seed; git push -q origin HEAD:main' "$T") $(bg 'git worktree add -q --detach ../wt HEAD; cd ../wt; git push --dry-run https://github.com/vikejs/vike.git HEAD:x' "$T") $(bg 'git clone -q https://github.com/vikejs/vike.git v; cd v; git push origin HEAD:x' "$T")"
+check "a push from a checkout the command makes first passes when it goes to a local path or the local repo it was cloned from (named by variables too), or is a dry run" "0 0 0 0 2" \
+  "$(bg 'T=$(mktemp -d); cd $T; git init -q --bare o.git; git init -q r; cd r; git push -q ../o.git main' "$T") $(bg 'git clone -q /tmp/o.git seed && cd seed && git push -q origin HEAD:main' "$T") $(bg 'S=/tmp/o.git; D=seed2; git clone -q "$S" "$D" && cd "$D" && git push -q origin HEAD:main' "$T") $(bg 'git worktree add -q --detach ../wt HEAD; cd ../wt; git push --dry-run https://github.com/vikejs/vike.git HEAD:x' "$T") $(bg 'git clone -q https://github.com/vikejs/vike.git v; cd v; git push origin HEAD:x' "$T")"
 check "a draft path through a variable the command set (D=...; --body-file \$D/x.md) is the path written out" 1   "$(MERGEWORTHY_WATCHER=off bg "X=$T/vdir; gh issue create --repo o/r --title t --body-file \$X/nogate.md" "$T" >/dev/null; grep -c "no gate record for $T/vdir/nogate.md" "$T/err")"
 check "parse: a script handed to watch or parallel, and git run by pnpm exec, npx, uv run, direnv exec, flock, taskset, chronic, su -c, script -c, fish -c" \
   "yes yes yes yes yes yes yes yes yes yes yes yes yes" "$(for c in "watch 'git push x HEAD:y'" "parallel 'git push {} HEAD:y' ::: x" 'pnpm exec git push' 'npx git push' 'uv run git push' \
@@ -2195,11 +2292,11 @@ api_forms() { for c in "GH_REPO=o/r gh api 'repos/{owner}/{repo}/pulls' -f title
     printf '%s ' "$(MERGEWORTHY_WATCHER=off bg "$c" "$NA")"; done | xargs; }
 check "BLOCK: with no approach record, a PR or MR created through the API in each form gh and glab take ({owner}/{repo}, a leading slash, a full URL, GitHub Enterprise's, api/v4/, a query)" "2 2 2 2 2 2 2" "$(api_forms)"
 check "BLOCK: an issue opened through the API in those forms, in a repo no watcher covers, naming it with its host" "2 1 2 1 2 1 2 1" \
-  "$(bg "GH_REPO=nobody/x gh api 'repos/{owner}/{repo}/issues' -f title=x -F body=@$T/na.md" "$NA") $(grep -c 'no running watcher covers nobody/x' "$T/err") $(bg "glab api '/api/v4/projects/nobody%2Fx/issues?x=1' -X POST -f title=x" "$NA") $(grep -c 'no running watcher covers gitlab.com/nobody/x' "$T/err") $(bg 'glab api https://gitlab.example.com/api/v4/projects/nobody%2Fx/issues -X POST -f title=x' "$NA") $(grep -c 'no running watcher covers gitlab.example.com/nobody/x' "$T/err") $(bg "gh api https://github.example.com/api/v3/repos/nobody/x/issues -f title=x -F body=@$T/na.md" "$NA") $(grep -c 'no running watcher covers github.example.com/nobody/x' "$T/err")"
+  "$(bg "GH_REPO=nobody/x gh api 'repos/{owner}/{repo}/issues' -f title=x -F body=@$T/na.md" "$NA") $(grep -c 'no running watcher of this task or session covers nobody/x' "$T/err") $(bg "glab api '/api/v4/projects/nobody%2Fx/issues?x=1' -X POST -f title=x" "$NA") $(grep -c 'no running watcher of this task or session covers gitlab.com/nobody/x' "$T/err") $(bg 'glab api https://gitlab.example.com/api/v4/projects/nobody%2Fx/issues -X POST -f title=x' "$NA") $(grep -c 'no running watcher of this task or session covers gitlab.example.com/nobody/x' "$T/err") $(bg "gh api https://github.example.com/api/v3/repos/nobody/x/issues -f title=x -F body=@$T/na.md" "$NA") $(grep -c 'no running watcher of this task or session covers github.example.com/nobody/x' "$T/err")"
 check "BLOCK: an issue or MR opened through the API by a project's numeric id, since which project it is can't be told, naming that" "2 1" \
   "$(bg 'glab api projects/123/issues -X POST -f title=x' "$NA") $(grep -c "can't tell which repo this acts on" "$T/err")"
 check "a GitLab project path through the API is on --hostname's or GITLAB_HOST's host" "2 1 2 1" \
-  "$(bg 'glab api --hostname gl.example.com projects/nobody%2Fx/issues -X POST -f title=x' "$NA") $(grep -c 'no running watcher covers gl.example.com/nobody/x' "$T/err") $(bg 'GITLAB_HOST=https://h.example.com glab api projects/nobody%2Fx/issues -X POST -f title=x' "$NA") $(grep -c 'no running watcher covers h.example.com/nobody/x' "$T/err")"
+  "$(bg 'glab api --hostname gl.example.com projects/nobody%2Fx/issues -X POST -f title=x' "$NA") $(grep -c 'no running watcher of this task or session covers gl.example.com/nobody/x' "$T/err") $(bg 'GITLAB_HOST=https://h.example.com glab api projects/nobody%2Fx/issues -X POST -f title=x' "$NA") $(grep -c 'no running watcher of this task or session covers h.example.com/nobody/x' "$T/err")"
 (cd "$NA" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 check "each passes once the branch has its approach record" "0 0 0 0 0 0 0 0 0 0" "$(na)"
 check "the API forms pass too" "0 0 0 0 0 0 0" "$(api_forms)"
@@ -2246,5 +2343,38 @@ tr_file "$QA2" work
 check "the same answer in a session that started an agent is a hand-back" 2 "$(slj)"
 tr_file 'I have nothing else to start. The review waits on the maintainer, and the watcher will tell me when that happens.' work
 check "'the watcher will tell me when' is no hand-back; 'Tell me when' and 'or ask me to' are" "0 2 2" "$(slj) $(slj 'Tell me when to re-check CI.') $(slj 'I can rerun it, or ask me to stop.')"
+# ---------- pre-bash-guard: a code file's 6th change on the branch waits for `pr-steps simplify` ----------
+SP="$T/simp"; git init -q -b main "$SP"; sc() { git -C "$SP" -c user.name=t -c user.email=t@t commit -q "$@"; }
+echo 0 > "$SP/a.py"; mkdir "$SP/tests"; echo 0 > "$SP/tests/a_test.py"; git -C "$SP" add -A; sc -m base
+git -C "$SP" update-ref refs/remotes/origin/main HEAD; git -C "$SP" checkout -q -b fix; (cd "$SP" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null)
+for i in 1 2 3 4; do echo "p$i" >> "$SP/a.py"; sc -am "p$i"; done
+echo p5 >> "$SP/a.py"; r5=$(bg 'git commit -am p5' "$SP"); sc -am p5
+echo p6 >> "$SP/a.py"; r6=$(bg 'git commit -am p6' "$SP"); n6=$(grep -c 'a.py would get a 6th change' "$T/err")
+git -C "$SP" checkout -q a.py; echo t >> "$SP/tests/a_test.py"; git -C "$SP" add tests
+check "a code file's 5th change on the branch passes; its 6th is refused, naming it; a test-only commit passes" "0 2 1 0" "$r5 $r6 $n6 $(bg 'git commit -m t' "$SP")"
+echo p5b >> "$SP/a.py"; git -C "$SP" add a.py
+check "an amend of the 5th change is no 6th" 0 "$(bg 'git commit --amend --no-edit' "$SP")"
+git -C "$SP" checkout -q HEAD -- a.py
+sc -m t; printf 'Class: each patch narrows which lines a counts\nDISTINCT\n' > "$T/simp.md"; (cd "$SP" && bash "$R/bin/pr-steps" simplify "$T/simp.md" >/dev/null)
+echo p6 >> "$SP/a.py"; git -C "$SP" add a.py
+check "with a simplify record on the head, the 6th change passes" 0 "$(bg 'git commit -m p6' "$SP")"
+for i in 7 8 9 10 11 12; do echo "p$i" >> "$SP/a.py"; git -C "$SP" add a.py; sc -m "p$i"; done  # 6 changes since the record, made without the hook
+echo p13 >> "$SP/a.py"; git -C "$SP" add a.py; r13=$(bg 'git commit -m p13' "$SP"); (cd "$SP" && bash "$R/bin/pr-steps" simplify "$T/simp.md" >/dev/null)
+check "BLOCK: a 7th change; a simplify record on the head that holds the 6th unblocks it" "2 0" "$r13 $(bg 'git commit -m p13' "$SP")"
+printf 'Class: each patch narrows which lines a counts\nSIMPLIFIED\n' > "$T/simp2.md"
+check "BLOCK: pr-steps simplify SIMPLIFIED while the worktree's diff is no smaller than HEAD's" "1 1" "$(cd "$SP" && bash "$R/bin/pr-steps" simplify "$T/simp2.md" 2>"$T/err" >/dev/null; echo $?) $(grep -c 'no smaller than HEAD' "$T/err")"
+# merges: a merge of the base, being made or in the history, is no change, and a simplify record on a merge commit counts
+SM="$T/simpm"; git init -q -b main "$SM"; mc() { git -C "$SM" -c user.name=t -c user.email=t@t "$@"; }
+seq 1 10 > "$SM/a.py"; git -C "$SM" add -A; mc commit -q -m base
+git -C "$SM" update-ref refs/remotes/origin/main HEAD; git -C "$SM" checkout -q -b fix; (cd "$SM" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null)
+for i in 1 2 3 4 5; do echo "p$i" >> "$SM/a.py"; mc commit -qam "p$i"; done
+base_edit() { mc checkout -q main; sed -i "$1s/.*/main$1/" "$SM/a.py"; mc commit -qam "main$1"; git -C "$SM" update-ref refs/remotes/origin/main HEAD; mc checkout -q fix; mc merge -q --no-commit origin/main >/dev/null; }
+base_edit 1
+check "committing a merge of the base is no change, though the branch changed its file 5 times" 0 "$(bg 'git commit --no-edit' "$SM")"
+mc commit -q --no-edit; (cd "$SM" && bash "$R/bin/pr-steps" simplify "$T/simp.md" >/dev/null)
+for i in 6 7 8; do echo "p$i" >> "$SM/a.py"; mc commit -qam "p$i"; done; echo p9 >> "$SM/a.py"; git -C "$SM" add a.py
+check "a simplify record on a merge commit starts the counts over" 0 "$(bg 'git commit -m p9' "$SM")"
+mc commit -q -m p9; base_edit 2; mc commit -q --no-edit; echo p10 >> "$SM/a.py"; git -C "$SM" add a.py
+check "a merge of the base in the history is no change either: the 5th change since the record passes" 0 "$(bg 'git commit -m p10' "$SM")"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]

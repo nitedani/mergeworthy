@@ -5,7 +5,7 @@ on GitHub with no live Monitor on a watcher's events.log in this session (the se
 wakes it), or with a line still owed in a watcher's replies-owed.md (mergeworthy:reply).
 The final message is the hook input's last_assistant_message (the transcript may not hold it yet). stop_hook_active skips only
 the check-in: every other check holds until it is met (Claude Code itself ends the turn after 8 blocks in a row)."""
-import glob, hashlib, json, os, re, sys, time
+import glob, hashlib, json, os, re, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import failclosed
 d = json.load(sys.stdin)
@@ -35,13 +35,15 @@ try:
 except (KeyError, TypeError, OSError):
     # Without the transcript, what the session did can't be checked: block once; on the stop after, the final message's
     # own checks still run (this session can't make its transcript readable)
+    claude = subprocess.run(['ps', '-p', os.environ.get('CLAUDE_PID', ''), '-o', 'command='], capture_output=True, text=True).stdout
+    if '--no-session-persistence' in claude.split(): sys.exit(0)  # a run that keeps no transcript (claude -p for a program's output)
     if not active:
         print(f"stop-lint can't read this session's transcript ({d.get('transcript_path')}), so whether its work is finished can't be checked. "
               "Re-check it yourself: anything owed, unfinished or unwatched, do now; then end the turn.", file=sys.stderr)
         sys.exit(2)
     lines = []
 import steward
-from shellcmd import segments, prog, git_argv
+from shellcmd import segments, prog, git_argv, Where
 # A T3 Code delegated child (its thread has a parent in T3's state, or its prompt says so): its result is its last message, and the main session owns replies and next steps
 def opening(l):  # a user line's typed text ('' for a tool result's list, or a line that isn't JSON)
     try: c = (json.loads(l).get('message') or {}).get('content')
@@ -127,7 +129,7 @@ def runs(rx):  # the simple commands of this session's commands that rx finds a 
             open(_parse_file + '.tmp', 'w').write(json.dumps({**old, **keep})); os.replace(_parse_file + '.tmp', _parse_file)
         except (OSError, ValueError): pass  # the parses still hold for this stop
     return [prog(t) for c in commands if re.search(rx, c) for t in parsed[_key(c)]]
-acted = posted or any(t[:3] in (['gh', 'pr', 'create'], ['gh', 'issue', 'create']) or t[:1] == ['git'] and git_argv(t, cwd_d or '.')[2] == 'push'
+acted = posted or any(t[:3] in (['gh', 'pr', 'create'], ['gh', 'issue', 'create']) or t[:1] == ['git'] and git_argv(t, Where(cwd_d or '.'))[2] == 'push'
                       for t in runs(r'\b(?:git|gh)\b'))
 # the folders it works in: its cwd, and where its commands cd, write, run git or the step tools; one it only read isn't
 worked = [cwd_d]
@@ -344,11 +346,11 @@ watcher_on = (os.environ.get('MERGEWORTHY_WATCHER') or ('off' if 'MERGEWORTHY_WA
 headless = any('"entrypoint":"sdk-cli"' in l for l in lines[-20:])
 # The user paused the work: nothing is to be watched or answered until they resume
 paused = re.search(r'\bpause\b', last_user, re.I) is not None
-# A steward pass (gh-watch-start --round, mergeworthy:steward) leaves nothing running: the next pass reads the replies. A round that ran
-# names its session in <dir>/passed; that dir's owed lines hold the session's turn as a live watcher's do
+# A steward pass's round (gh-watch-start --round, mergeworthy:steward) names its session in <dir>/passed: that dir's owed lines hold the
+# session's turn as a live watcher's do. It has no daemon, so a post there still needs a live watcher, as any post does
 pass_dirs = {wd for wd in ((l.strip() for l in open(reg)) if os.path.exists(reg) else ()) if d.get('session_id') and steward.passed_by(wd) == d['session_id']}
 own_dirs |= pass_dirs
-if posted and watcher_on and not headless and not paused and not pass_dirs and not t3_dirs and not (monitors - dead):
+if posted and watcher_on and not headless and not paused and not t3_dirs and not (monitors - dead):
     # under T3, a watcher of this session's that dropped its t3-thread (the thread or t3 gone) wakes nothing: its events.log says why
     dropped = [wd for wd in live_dirs if t3_chain and steward.first(os.path.join(wd, 'session')) == d.get('session_id')
                and not os.path.exists(os.path.join(wd, 't3-thread'))]
