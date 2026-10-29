@@ -8,6 +8,8 @@ import datetime, fcntl, glob, hashlib, json, os, re, shlex, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import failclosed
 import memory_file, steward, subprocess
+from post_words import fence_spans
+from shellcmd import segments, prog, git_argv, Where
 register = sys.argv[1:] == ['register']
 d = json.load(sys.stdin)
 ti = d.get('tool_input', {}) or {}
@@ -74,7 +76,7 @@ if not register:
     HTML = set('a b base body br code div em footer form h1 h2 h3 head header html i img input li link main meta nav ol p path pre script section span strong style svg table td template title tr ul'.split())
     unfilled = {}
     for t in sorted(glob.glob(os.path.join(tdir, '*.md'))):
-        for line in '\n'.join(re.findall(r'^```[^\n]*\n(.*?)^```', open(t).read(), re.M | re.S)).splitlines():
+        for line in '\n'.join(inner for _, _, inner in fence_spans(open(t).read())).splitlines():
             code = [m.span() for m in re.finditer(r'`[^`]*`', line)]
             for m in re.finditer(r'<([^<>\n]+)>', line):
                 if m[1] not in HTML and m[0] in brief and not any(a <= m.start() and m.end() <= b for a, b in code):
@@ -196,17 +198,14 @@ if not register and ti.get('role') not in ('research', 'test') and 'memory-refre
             if r not in named: return False
             return os.path.isdir(q) or subprocess.run(['git', '-C', top, 'ls-files', '--error-unmatch', q], capture_output=True).returncode == 0
         def bash_reads(cmd, cwd):
-            out = []
-            for seg in re.split(r'&&|\|\||;|\||\n', cmd):
-                try: w = shlex.split(seg)
-                except ValueError: continue
-                if not w: continue
-                if w[0] == 'cd' and len(w) > 1: cwd = os.path.join(cwd, os.path.expanduser(w[1])); continue
-                if w[0] == 'git' and 'show' in w and not {'--stat', '--name-only', '--name-status', '--no-patch', '-s', '--oneline'} & set(w):
-                    c = w[w.index('-C') + 1] if '-C' in w and w.index('-C') + 1 < len(w) else cwd
-                    out += [os.path.join(c, a.split(':', 1)[1]) for a in w if re.match(r'^[\w./~^-]+:[^/]', a)] or [c]
-                elif w[0] in ('cat', 'sed', 'head', 'tail', 'grep', 'rg', 'less', 'nl'):
-                    out += [os.path.join(cwd, os.path.expanduser(a)) for a in w[1:] if not a.startswith('-') and (os.sep in a or '.' in a)]
+            out, where = [], Where(cwd)
+            for t in where.walk(segments(cmd)):
+                w = prog(t)
+                if w[:1] == ['git'] and 'show' in w and (g := git_argv(w, where))[2] == 'show' and g[0] and \
+                        not {'--stat', '--name-only', '--name-status', '--no-patch', '-s', '--oneline'} & set(g[3]):
+                    out += [os.path.join(g[0], a.split(':', 1)[1]) for a in g[3] if re.match(r'^[\w./~^-]+:[^/]', a)] or [g[0]]
+                elif w[:1] and w[0] in ('cat', 'sed', 'head', 'tail', 'grep', 'rg', 'less', 'nl'):
+                    out += [p for a in w[1:] if not a.startswith('-') and (os.sep in a or '.' in a) and (p := where.path(a))]
             return out
         since, seen = time.time() - 3 * 3600, False
         for l in reversed(open(d['transcript_path'], errors='replace').readlines()[-4000:]):
