@@ -735,19 +735,20 @@ AGENT_TRAILER = re.compile(r'^co-authored-by: claude\b', re.I | re.M)  # an agen
 
 
 def emit_maintainer_commits(state, repo, key, old, new):
-    """A maintainer's commits pushed to a tracked PR: reviewing them was requested ("Review each of my commit as I push them")."""
+    """A maintainer's commits pushed to a tracked PR: reviewing them was requested ("Review each of my commit as I push them").
+    -> False when a call failed, so the caller reads them again."""
     try:
         commits = [{'sha': c['sha'][:10], 'login': (c.get('author') or {}).get('login') or '', 'date': c['commit']['committer']['date'], 'agent': bool(AGENT_TRAILER.search(c['commit'].get('message') or ''))}
                    for c in request(f"repos/{repo}/compare/{old}...{new}").json()['commits']]
     except Exception as e:
         fail(f"compare {key} {old}...{new}", e)
-        return
+        return False
     try:  # commits that came from merging the base branch aren't the PR's
         base = request(f"repos/{repo}/pulls/{key.split('#')[1]}").json()['base']['ref']
         on_pr = {c['sha'][:10] for c in request(f"repos/{repo}/compare/{base}...{new}").json()['commits']}
     except Exception as e:
         fail(f"compare {key} base...{new}", e)
-        return
+        return False
     for c in commits:
         if c['sha'] in on_pr:
             note_active(state, {'login': c['login']}, c['date'])
@@ -755,11 +756,12 @@ def emit_maintainer_commits(state, repo, key, old, new):
         theirs = [c['sha'] for c in commits if c['sha'] in on_pr and c['login'] not in ('', ME) and not c['agent'] and not is_bot(c) and maintainer(state, repo, c['login'])]
     except Exception as e:
         fail(f"permission {key}", e)
-        return
+        return False
     if theirs:
         if (s := steward.recipient([])) and s[0] != HERE.rstrip('/') and not ONCE:  # a copy for the steward's follow-up sort
             emit_to(s[0], f"### MAINTAINER COMMITS {key}: {' '.join(theirs)}")
         emit(f"### MAINTAINER COMMITS {key}: {' '.join(theirs)}: review each one in a table (| Commit | What it does, and the idea behind it | Rating |, one short sentence each; rated N/10 with a short reason next to anything below 10, e.g. 9/10 (Vite's built-ins differ); an emoji only where it's funny; 10/10 only when nothing could be better), as requested (mergeworthy:reply §Maintainer commits)")
+    return True
 
 
 def emit_refactor_stale(repo, key, new):
@@ -1061,8 +1063,11 @@ def scan(state, jobs):
                     if pr_state['state'] in ('merged', 'closed') and prev.get('state') != pr_state['state']:
                         emit_tracker_stale(key, pr_state['state'])
                     if prev.get('head') != pr_state['head']:
-                        emit_maintainer_commits(state, repo, key, prev['head'], pr_state['head'])
+                        reported = emit_maintainer_commits(state, repo, key, prev['head'], pr_state['head'])
                         emit_refactor_stale(repo, key, pr_state['head'])
+                        if not reported:  # as after a failed read: the old head and no validator, so the next look compares again
+                            pr_state = {**pr_state, 'head': prev['head']}
+                            state['etag'].pop(f"repos/{repo}/pulls/{num}", None)
                 state['prs'][key] = pr_state
             if red is not None:
                 if red != state['ci'].get(key, []) and (key in state['ci'] or not SEED):  # red already when a seeding round first reads it

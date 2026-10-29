@@ -239,6 +239,29 @@ check "reactions and commits: yours and a write-access account's are reported on
   "### THUMBS UP o/r#5 by writer|### THUMBS DOWN o/r#5 by me|### THUMBS UP o/r#5 by outsider (access unknown)|WATCH ERROR permission o/r flaky|### THUMBS UP p/q#3 by maint|### THUMBS UP p/q#3 by p (access unknown)|### MAINTAINER COMMITS o/r#5: aaaaaaaaaa dddddddddd" "$got"
 check "permission: looked up once per login and repo, never for you or a bot" "flaky flaky outsider owner reader writer" "$(grep -o '^repos/o/r/collaborators/[^/]*/permission$' "$PB/calls" | cut -d/ -f5 | sort | tr '\n' ' ' | sed 's/ $//')"
 
+# A permission lookup that fails while a push's commits are reported leaves the PR's head and drops its validator, as a failed read does:
+# the next look reports them, once (the fresh reader's repro)
+got=$(py '
+import json
+m.agent_post_hashes, m.emit_refactor_stale, m.emit_wait_ping = (lambda: set()), (lambda *a: None), (lambda *a: None)
+pulls = "repos/o/r/pulls/1"
+m.fetch_thread = lambda *a: (True, "me", [], {"head": "new", "state": "open"}, None, None, {pulls: {"e": "x", "t": 0}}, True, None)
+m.request = lambda p, *a, **k: m.Resp(200, {}, json.dumps({"base": {"ref": "main"}} if "/pulls/" in p else {"commits": [{"sha": "a" * 40, "author": {"login": "boss"}, "commit": {"message": "human fix", "committer": {"date": "2026-10-29T00:00:00Z"}}}]}))
+state = {"since": "2026-10-29T00:00:00Z", "since_by": {}, "is_pr": {}, "prs": {"o/r#1": {"head": "old", "state": "open"}}, "etag": {}, "ci": {}}
+def down(*a):
+    raise RuntimeError("gh api permission: HTTP 502 Bad Gateway")
+buf, after = io.StringIO(), []
+with contextlib.redirect_stdout(buf):
+    m.maintainer = down
+    m.scan(state, [("o/r", "1", "full", 0)])
+    after += [state["prs"]["o/r#1"]["head"], pulls in state["etag"]]
+    m.maintainer = lambda *a: True
+    m.scan(state, [("o/r", "1", "full", 0)]); m.scan(state, [("o/r", "1", "full", 0)])
+out = buf.getvalue()
+print(*after, out.count("WATCH ERROR permission o/r#1"), out.count("### MAINTAINER COMMITS o/r#1: aaaaaaaaaa"), state["prs"]["o/r#1"]["head"])
+')
+check "maintainer commits: a failed permission lookup keeps the old head and drops the PR's validator; the next look reports them once" "old False 1 1 new" "$got"
+
 # /agent commands in threads no watch dir lists: found in the watched repos' comments feeds, routed to one dir, emitted once
 AD="$T/agentdirs"; mkdir -p "$AD/alpha" "$AD/beta" "$HOME/.mergeworthy"
 printf 'o/r 1\n' > "$AD/alpha/threads.txt"; printf 'o/r 2\n' > "$AD/beta/threads.txt"
