@@ -570,6 +570,23 @@ print(run(owed), run(owed.replace("me/r#5 comment", "- done: https://example.inv
 os.remove(os.path.join(m.HERE, "replies-owed.md"))
 ')
 check "retire_if_done: a reply still owed keeps the watcher; once that line is done:, it retires" "0 1" "$got"
+got=$(py '
+wf = os.path.expanduser("~/.mergeworthy/work/jt"); os.makedirs(wf, exist_ok=True)
+m.HERE, m.STATE, m.THREADS = wf, os.path.join(wf, "gh-watch-state.json"), os.path.join(wf, "threads.txt")
+os.makedirs(m.agent_jobs.JOBS, exist_ok=True)
+def run(brief):
+    json.dump({"key": "/x.brief.md steward C", "started": m.time.time(), "brief": brief, "session": "s1"}, open(os.path.join(m.agent_jobs.JOBS, "j1.json"), "w"))
+    open(m.THREADS, "w").write("Me/r 5\n"); buf = io.StringIO()
+    m.save_state({"prs": {"Me/r#5": {"state": "merged"}}, "author": {"Me/r#5": "me"}, "ci": {}, "is_pr": {}, "since_by": {}, "seen": {}, "since": "2026-01-01T00:00:00Z"})
+    try:
+        with contextlib.redirect_stdout(buf): m.retire_if_done()
+    except SystemExit:
+        pass
+    return buf.getvalue().count("WATCHER RETIRED")
+print(run(f"Follow {wf}/c.brief.md, see /elsewhere/x.md"), run("Follow /elsewhere/c.brief.md, see " + wf + "/x.md"))
+os.remove(os.path.join(m.agent_jobs.JOBS, "j1.json"))
+')
+check "retire_if_done: an open agent job whose brief is in the watcher's work folder keeps it, so its AGENT DONE comes here; one whose brief is elsewhere doesn't" "0 1" "$got"
 rm -f "$W/retired"
 
 # Under T3 Code (gh-watch-start wrote t3-thread) a pass's event lines, from any writer, go to that thread as one message; a failed send is retried

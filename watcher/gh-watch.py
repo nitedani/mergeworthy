@@ -1813,10 +1813,12 @@ def retire_if_done():
     """A watcher whose every thread is merged or closed (and that covers no whole repo: a bare `owner/repo` line in repos.txt keeps it
     only for an hour after it was written, for the thread about to join, an `owner/repo all` line always) has nothing left to watch:
     it writes the time to HERE/retired and disables its service, so it doesn't come back after a reboot, or stops its daemon. A reply
-    still owed in replies-owed.md keeps it: stop-lint holds a session's turn only for a live watcher's owed lines."""
-    repos = repo_lines(HERE)
+    still owed in replies-owed.md keeps it: stop-lint holds a session's turn only for a live watcher's owed lines. So does an open agent
+    job whose brief is in its work folder: its AGENT DONE comes here (agent_jobs_pass)."""
+    repos, wf = repo_lines(HERE), work_folder.task_of(HERE)
     if (any(repos.values()) or repos and time.time() - os.path.getmtime(os.path.join(HERE, 'repos.txt')) < 3600
-            or work_folder.has_open_line(os.path.join(HERE, 'replies-owed.md'), 'done:')):
+            or work_folder.has_open_line(os.path.join(HERE, 'replies-owed.md'), 'done:')
+            or wf and any(job_folder(j) == wf for _, j in agent_jobs.jobs())):
         return
     threads, gl = read_threads(), gl_watch.threads(THREADS)
     if not threads and not gl:
@@ -1973,6 +1975,12 @@ _retire_at = [0]
 _jobs_at, _routed = [0], {}
 
 
+def job_folder(j):
+    """The work folder of an agent job's brief: the first path its task names; a path it cites later is another task's."""
+    brief = re.search(r'(?<![\w.~/-])(~?/[^\s`\'"]+)', j.get('brief') or j['key'])
+    return brief and work_folder.task_of(os.path.expanduser(brief[1]))
+
+
 def agent_jobs_pass():
     """Once a minute: `### AGENT DONE` for each job whose agent finished, once per finish, in the watch dir its work belongs
     to: a launcher's watch dir in the work folder of the first file its task text names (the brief; the steward's watcher runs
@@ -1992,9 +2000,7 @@ def agent_jobs_pass():
     dirs = list(dict.fromkeys(live_dirs() + [HERE]))
     for f, j, done in ready:
         if f not in _routed:
-            # the brief is the first path the task names; a path it cites later is another task's, not this job's
-            brief = re.search(r'(?<![\w.~/-])(~?/[^\s`\'"]+)', j.get('brief') or j['key'])
-            wf = brief and work_folder.task_of(os.path.expanduser(brief[1]))
+            wf = job_folder(j)
             home = [d for d in dirs if wf and work_folder.task_of(d) == wf and j.get('session') and first_line(os.path.join(d, 'session')) == j['session']]
             if home:
                 _routed[f] = HERE in home
