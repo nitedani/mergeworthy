@@ -1175,6 +1175,7 @@ EOF
 rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user; check "BLOCK: a Running list not read from T3 since the user's last message" 2 "$(stop "$T")"
 rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user status:completed; check "BLOCK: a Running list naming a completed task" 2 "$(stop "$T")"
 rl_tr $'Done for now. The old report looked like this:\n```\nRunning:\n- Loop A on the head\n```' user status:completed; check "a Running list in a fenced example names nothing running" 0 "$(stop "$T")"
+rl_tr $'The example is:\n\n- ```text\n  example output\n  ```\n\nRunning:\n- Loop A on the head' user status:completed; check "BLOCK: a fence in a list item closes inside it: the Running list after it still counts" 2 "$(stop "$T")"
 rl_tr $'The README ends with this unclosed delimiter:\n\n    ```text\n\nRunning:\n- Loop A on the head' user status:completed; check "BLOCK: a fence indented four spaces is code, not an opener: the Running list after it still counts" 2 "$(stop "$T")"
 rl_tr $'Done for now.\n\n**Running:**\n- loop-a-1, the bug hunt' user status:failed; check "BLOCK: matched by its request id too" 2 "$(stop "$T")"
 rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user status:running; check "a Running list read live, its task still running, passes" 0 "$(stop "$T")"

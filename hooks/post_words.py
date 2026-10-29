@@ -71,15 +71,17 @@ def state_line(w):
     return re.compile(rf'^\*\*{re.escape(w["state"][0])}: {re.escape(w["state"][1])}\*\* \(.*\S.*\)$')
 
 def fence_spans(s):
-    """(start, end, inner) of each fenced code block in s, by CommonMark: an opening run of 3+ backticks or tildes indented up to 3 spaces
-    (a backtick fence's info string holds no backtick), closed by a run of the same character at least as long, indented up to 3 spaces
-    with nothing after it, or by the end of s. The one place post-lint and gate-pass decide what renders as code."""
+    """(start, end, inner) of each fenced code block in s, by CommonMark: an opening run of 3+ backticks or tildes indented up to 3 spaces,
+    or after a list item's marker (a backtick fence's info string holds no backtick), closed by a run of the same character at least as
+    long, indented up to 3 spaces past the opener's list item, with nothing after it, or by the end of s. The one place post-lint,
+    gate-pass and stop-lint decide what renders as code."""
     spans, pos, opened = [], 0, None
     for l in s.splitlines(True):
-        m = re.match(r' {0,3}(`{3,}|~{3,})([^\n]*)', l)
+        m = re.match(r'( {0,3}(?:(?:[-*+]|\d{1,9}[.)]) +)?)(`{3,}|~{3,})([^\n]*)', l)
+        c = re.match(r'( *)(`{3,}|~{3,})([^\n]*)', l)
         if opened is None:
-            if m and not (m[1][0] == '`' and '`' in m[2]): opened = (pos, m[1], pos + len(l))
-        elif m and m[1][0] == opened[1][0] and len(m[1]) >= len(opened[1]) and not m[2].strip():
+            if m and not (m[2][0] == '`' and '`' in m[3]): opened = (pos, m[2], pos + len(l), len(m[1]))
+        elif c and len(c[1]) <= opened[3] + 3 and c[2][0] == opened[1][0] and len(c[2]) >= len(opened[1]) and not c[3].strip():
             spans.append((opened[0], pos + len(l), s[opened[2]:pos])); opened = None
         pos += len(l)
     return spans + ([(opened[0], len(s), s[opened[2]:])] if opened else [])
