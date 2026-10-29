@@ -4,7 +4,7 @@ With the argument `register` it runs as the PostToolUse hook: only a launch that
 One agent per job: a launch is registered under its job key (the ticket files its prompt names, and its title), and a second
 launch of the same job is blocked until `agent-job done <key>` releases it. A turn that ended is not a finished agent: on T3 a
 child wakes again when its background commands end, so only its terminal task status (read first) releases the job."""
-import datetime, glob, hashlib, json, os, re, shlex, sys, time
+import datetime, fcntl, glob, hashlib, json, os, re, shlex, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import failclosed
 import memory_file, steward, subprocess
@@ -26,12 +26,15 @@ if register and 'parent_not_active' in json.dumps(d.get('tool_response') or ''):
 cid = str(ti.get('clientRequestId') or '')
 if cid:
     ids = os.path.expanduser('~/.claude/agent-client-request-ids.json'); os.makedirs(os.path.dirname(ids), exist_ok=True)
+    lock = open(ids + '.lock', 'a'); fcntl.flock(lock, fcntl.LOCK_EX)  # held until exit: launches register at once
     seen = json.load(open(ids)) if os.path.exists(ids) else {}
     if cid in seen and time.time() - seen[cid] > 600:
         sys.stderr.write(f"BLOCKED: clientRequestId '{cid}' was used before; T3 would return that earlier task's result instead of running this one. Use a new id (add the date or the head SHA).\n")
         sys.exit(2)
     if register:
-        seen.setdefault(cid, time.time()); json.dump(seen, open(ids, 'w'))
+        seen.setdefault(cid, time.time())
+        with open(ids + '.tmp', 'w') as f: json.dump(seen, f)
+        os.replace(ids + '.tmp', ids)
 text = '\n'.join(str(ti.get(k) or '') for k in ('prompt', 'task', 'message', 'description', 'title', 'workspaceStrategy'))
 # a ticket is the brief file the agent executes; a file under ~/.mergeworthy (project notes, an installed skill) is a reference
 mw = os.path.abspath(os.path.expanduser('~/.mergeworthy')) + os.sep
