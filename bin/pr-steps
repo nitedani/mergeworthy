@@ -193,7 +193,7 @@ EOF
       [ "$changed" -le 80 ] || { echo "$changed lines changed since $carried: the pass is stale (mergeworthy:converge §Batching), run it again" >&2; exit 1; }
     fi ;;
   gates|quick)
-    grep -Eq '^.+ -> exit [0-9]+( \([0-9]+ tests?\))?$' "$out" || { echo "$out lists no gate: one line per gate, '<command> -> exit <code>', run on this HEAD" >&2; exit 1; }
+    grep -Eq '^.+ -> exit [0-9]+( \([0-9]+ (tests?|words)\))?$' "$out" || { echo "$out lists no gate: one line per gate, '<command> -> exit <code>', run on this HEAD" >&2; exit 1; }
     # a gate that can't run here is installed or run another way: CI is never where a change is first checked
     unrun="\\b(not installed|isn't installed|let CI|leave it to CI|CI will (verify|check|tell)|(can't|cannot|can not) (run|install)|(not|wasn't|weren't) run)\\b"
     # read on the gate lines: a log pasted below them holds test titles that quote these words
