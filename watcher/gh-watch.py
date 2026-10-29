@@ -1774,11 +1774,13 @@ def shared_pass(force=False):
 
 
 def retire_if_done():
-    """A watcher whose every thread is merged or closed (and that covers no whole repo: a bare `owner/repo` line in repos.txt doesn't
-    keep it, an `owner/repo all` line does) has nothing left to watch: it writes the time to HERE/retired and disables its service, so
-    it doesn't come back after a reboot, or stops its daemon. A reply still owed in replies-owed.md keeps it: stop-lint holds a
-    session's turn only for a live watcher's owed lines."""
-    if any(repo_lines(HERE).values()) or work_folder.has_open_line(os.path.join(HERE, 'replies-owed.md'), 'done:'):
+    """A watcher whose every thread is merged or closed (and that covers no whole repo: a bare `owner/repo` line in repos.txt keeps it
+    only for an hour after it was written, for the thread about to join, an `owner/repo all` line always) has nothing left to watch:
+    it writes the time to HERE/retired and disables its service, so it doesn't come back after a reboot, or stops its daemon. A reply
+    still owed in replies-owed.md keeps it: stop-lint holds a session's turn only for a live watcher's owed lines."""
+    repos = repo_lines(HERE)
+    if (any(repos.values()) or repos and time.time() - os.path.getmtime(os.path.join(HERE, 'repos.txt')) < 3600
+            or work_folder.has_open_line(os.path.join(HERE, 'replies-owed.md'), 'done:')):
         return
     threads, gl = read_threads(), gl_watch.threads(THREADS)
     if not threads and not gl:

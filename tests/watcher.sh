@@ -697,13 +697,13 @@ check "GitLab: an issue close is reported, and with every thread closed or merge
 got=$(glpy '
 thread("issues", "4", "closed"); thread("merge_requests", "9", "merged")
 out = []
-for line in ("o/r\n", "o/r all  # watched whole\n"):
-    open(os.path.join(m.HERE, "repos.txt"), "w").write(line)
+for line, age in (("o/r\n", 60), ("o/r\n", 7200), ("o/r all  # watched whole\n", 7200)):  # a bare line: gh-watch-start before the next PR
+    open(os.path.join(m.HERE, "repos.txt"), "w").write(line); os.utime(os.path.join(m.HERE, "repos.txt"), (m.time.time() - age,) * 2)
     out.append(run(m.retire_if_done).count("WATCHER RETIRED"))
 os.remove(os.path.join(m.HERE, "repos.txt"))
 print(*out)
 ')
-check "retire_if_done: every thread done, a bare owner/repo line in repos.txt doesn't keep the watcher, an owner/repo all line does" "1 0" "$got"
+check "retire_if_done: every thread done, a bare owner/repo line in repos.txt keeps the watcher for an hour after it was written, an owner/repo all line always" "0 1 0" "$got"
 got=$(glpy 'print(len(m.read_threads()), sorted(m.listed_threads(m.HERE)))')
 check "GitLab lines stay out of the GitHub thread lists" "0 []" "$got"
 # gh-watch-start's argument loop, without its supervisor: the GitLab forms are stored, a GitHub !N is refused
