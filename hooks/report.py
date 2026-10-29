@@ -4,10 +4,15 @@ the PRs its opening calls done, and the PR states its sentences claim. Text in, 
 import re
 
 
+def unfenced(message):
+    """The message without its fenced blocks and quoted lines: an example or a quote of an earlier message isn't said again."""
+    return re.sub(r'```.*?```|^>[^\n]*$', ' ', message, flags=re.S | re.M)
+
+
 def authored(message):
     """The message without code, quotes and quoted lines: the agent's own words."""
     # quoted words are someone else's (a user's "should I ...?", a banned phrase being discussed): not an offer
-    return re.sub(r'```.*?```|`[^`\n]*`|"[^"\n]*"|[“„][^”\n]*”|^>[^\n]*$', ' ', message, flags=re.S | re.M)
+    return re.sub(r'`[^`\n]*`|"[^"\n]*"|[“„][^”\n]*”', ' ', unfenced(message))
 
 
 # An offer, or a hand-back of work the agent can do or wait for itself ("tell me when to re-check CI", "nothing will notify me")
@@ -15,12 +20,12 @@ OFFER = (r"(when you say (go|so)|say the word|(do|would) you (want|like) me to|w
          r"is yours to|up to you|or would you rather|which do you (want|prefer)|let me know (if|when|whether)|"
          r"(?:^[\s>*\-•]*|[.!?:;,]\s*|\b(?:or|and|just|please)\s+)(?:tell me (when|to|if|whether)|ask me (to|when|if)|ping me)|nothing (will|would|is going to) (notify|wake|tell) me|(won't|will not|doesn't|does not|can't) (notify|wake) me)\b")
 def offer(message): return re.search(OFFER, authored(message), re.I | re.M)
-def forks(text): return {re.sub(r'\W+', ' ', f).strip().lower() for f in re.findall(r'^GENUINE-FORK:(.*)$', text, re.M)}
+def forks(text): return {re.sub(r'\W+', ' ', f).strip().lower() for f in re.findall(r'^GENUINE-FORK:(.*)$', unfenced(text), re.M)}
 
 
 def running_list(message):
     """What a `Running:` label or heading lists, lowercased; None when the message has none."""
-    running = re.search(r'^(?:#+ *Running\b|[-*\s]*\*{0,2}Running\*{0,2}:)(.*(?:\n[ \t]*[-*\d].*)*)', message, re.M)
+    running = re.search(r'^(?:#+ *Running\b|[-*\s]*\*{0,2}Running\*{0,2}:)(.*(?:\n[ \t]*[-*\d].*)*)', unfenced(message), re.M)
     return running and running.group(1).lower()
 
 

@@ -99,6 +99,8 @@ for t in sys.argv[1:]: print(json.dumps({"type":"assistant","message":{"content"
 forks $'#20 is in review.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.' $'#21 is ready.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.'; f1=$(stop "$T"); f1e=$(grep -c 'already sent' "$T/err")
 forks $'#20 is in review.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.' $'#21 is ready.\n\nGENUINE-FORK: publish now as 0.1.0, or after #20 lands; I recommend after #20.'; f2=$(stop "$T")
 check "BLOCK: a GENUINE-FORK line already sent this session; one with changed options passes" "2 1 0" "$f1 $f1e $f2"
+forks $'#20 is in review.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.' $'The earlier question was:\n```\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.\n```'
+check "a GENUINE-FORK line quoted in a fenced block isn't sent again" 0 "$(stop "$T")"
 tr_file "The watcher runs and the Monitor is armed."
 check "no replies-owed.md, cwd=watch dir" 0 "$(stop "$WD")"
 F40=$(date -u -d '-40 minutes' +%FT%TZ); F10=$(date -u -d '-10 minutes' +%FT%TZ)
@@ -1164,6 +1166,7 @@ EOF
 }
 rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user; check "BLOCK: a Running list not read from T3 since the user's last message" 2 "$(stop "$T")"
 rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user status:completed; check "BLOCK: a Running list naming a completed task" 2 "$(stop "$T")"
+rl_tr $'Done for now. The old report looked like this:\n```\nRunning:\n- Loop A on the head\n```' user status:completed; check "a Running list in a fenced example names nothing running" 0 "$(stop "$T")"
 rl_tr $'Done for now.\n\n**Running:**\n- loop-a-1, the bug hunt' user status:failed; check "BLOCK: matched by its request id too" 2 "$(stop "$T")"
 rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user status:running; check "a Running list read live, its task still running, passes" 0 "$(stop "$T")"
 rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user status:running other; check "another task's T3 completion notice is not the user: a list read live before it passes" 0 "$(stop "$T")"
