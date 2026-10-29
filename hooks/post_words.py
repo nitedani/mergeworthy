@@ -1,6 +1,6 @@
 """The words a post's checks look for, per language (post-lint, pre-bash-guard), and what in a post renders as code. A repo's language is the `Language: <code>` line of
 its project file (~/.mergeworthy/projects/<owner>/<repo>.md); without one, or with a code not listed here, it is English."""
-import os, re, sys
+import os, re
 
 WORDS = {
     'en': {
@@ -74,7 +74,8 @@ def fence_spans(s):
     """(start, end, inner) of each fenced or indented code block in s as CommonMark renders it, read by markdown-it-py: the block's lines,
     its closing fence included, and the code it shows. The one place post-lint and gate-pass decide what renders as code."""
     try: from markdown_it import MarkdownIt
-    except ImportError: sys.exit("mergeworthy reads Markdown with markdown-it-py: install it (apt install python3-markdown-it, or pip install markdown-it-py)")
+    except ImportError as e:  # raised, not sys.exit: failclosed turns it into a hook's block (exit 2), where an exit 1 lets the action through
+        raise ImportError("mergeworthy reads Markdown with markdown-it-py: install it (apt install python3-markdown-it, or pip install markdown-it-py)") from e
     lines = [0] + [m.end() for m in re.finditer(r'\r\n?|\n', s)]  # where markdown-it's lines start
     at = lambda n: lines[n] if n < len(lines) else len(s)
     return [(at(t.map[0]), at(t.map[1]), t.content) for t in MarkdownIt('commonmark').parse(s) if t.type in ('fence', 'code_block')]
