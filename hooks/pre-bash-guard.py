@@ -316,13 +316,19 @@ def check_compose(env, t):
     netns-run doesn't isolate what the Docker daemon publishes. A config that can't be read blocks (the stack wouldn't start either)."""
     n = 2 if os.path.basename(t[0]) == 'docker' else 1
     if t[1:n] not in ([], ['compose']) or env.get('MERGEWORTHY_HOST_PORTS') == 'user-asked': return
-    keep = ('-f', '--file', '-p', '--project-name', '--profile', '--project-directory', '--env-file')
+    keep, paths = ('-f', '--file', '-p', '--project-name', '--profile', '--project-directory', '--env-file'), ('-f', '--file', '--project-directory', '--env-file')
     a, glob = t[n:], []
     while a and a[0].startswith('-'):
         k = 2 if a[0] in keep + ('--ansi', '--parallel', '--progress') else 1
         if a[0].split('=')[0] in keep: glob += a[:k]
         a = a[k:]
     if not (a[:1] == ['up'] or a[:1] == ['run'] and '--service-ports' in a): return
+    for i, x in enumerate(glob):  # compose gets the paths, not the words: ~ and the variables the line set put in
+        o, eq, v = x.partition('=') if x.startswith('--') else ('', '', x)
+        if eq and o in paths or not o and i and glob[i - 1] in paths:
+            if where.path(v) is None:
+                block(f"can't tell the path `{v}` this compose command reads, so its ports can't be checked: write it out, or set its variable on this line")
+            glob[i] = o + eq + where.path(v)
     try:
         r = subprocess.run(t[:n] + glob + ['config', '--format', 'json'], cwd=known(run_dir), env={**os.environ, **env}, capture_output=True, text=True, timeout=30)
         svcs = json.loads(r.stdout)['services'] if r.returncode == 0 else {}
