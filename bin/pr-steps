@@ -196,9 +196,10 @@ EOF
     grep -Eq '^.+ -> exit [0-9]+( \([0-9]+ (tests?|words)\))?$' "$out" || { echo "$out lists no gate: one line per gate, '<command> -> exit <code>', run on this HEAD" >&2; exit 1; }
     # a gate that can't run here is installed or run another way: CI is never where a change is first checked
     unrun="\\b(not installed|isn't installed|let CI|leave it to CI|CI will (verify|check|tell)|(can't|cannot|can not) (run|install)|(not|wasn't|weren't) run)\\b"
-    # read on the gate lines: a log pasted below them holds test titles that quote these words
+    # read on every line but a suite's test results, whose titles may quote these words: '<title>: <got> (want <want>)', ok/PASS/✓ lines
+    own=$(grep -Ev '\(want .*\)$|^[[:space:]]*(ok|not ok|PASS|FAIL|✓|✔|✗|×)[[:space:]]' "$out" || true)
+    ! printf '%s\n' "$own" | grep -Eiq "$unrun" || { echo "$out says a gate didn't run ($(printf '%s\n' "$own" | grep -Eio "$unrun" | head -n1)): install what it needs and run it (code §Gates)" >&2; exit 1; }
     gl=$(grep -E ' -> exit [0-9]+' "$out" || true)
-    ! printf '%s\n' "$gl" | grep -Eiq "$unrun" || { echo "$out says a gate didn't run ($(printf '%s\n' "$gl" | grep -Eio "$unrun" | head -n1)): install what it needs and run it (code §Gates)" >&2; exit 1; }
     ! grep -Eq ' -> exit [1-9][0-9]*( \(.*\))?$' "$out" || { echo "$out has a red gate: fix it on this HEAD first" >&2; exit 1; }
     # a test run with no test in it is red (a filter that matched nothing): each test line ends with its count, '(N tests)';
     # a gate that counts words (tests/word-budget) ends with '(N words)'
