@@ -1594,6 +1594,7 @@ newpass
 check "a pass after the ask on any of the PR's commits answers it" 0 "$(asked "gh pr comment 7 -R o/r --body-file $NEWR")"
 oldpass
 check "BLOCK: through gh api, a comment and a body PATCH on the PR" "1 1" "$(asked "gh api repos/o/r/issues/7/comments -F body=@$NEWR") $(asked "gh api -X PATCH repos/o/r/pulls/7 -F body=@$NEWR")"
+check "BLOCK: the same through gh api's {owner}/{repo}, which gh fills from the checkout's repo" "1 1" "$(asked "cd $IDR && gh api 'repos/{owner}/{repo}/issues/7/comments' -F body=@$NEWR") $(asked "cd $IDR && gh api -X PATCH 'repos/{owner}/{repo}/pulls/7' -F body=@$NEWR")"
 newpass
 check "through gh api, the pass recorded after the ask answers it" "0 0" "$(asked "gh api repos/o/r/issues/7/comments -F body=@$NEWR") $(asked "gh api -X PATCH repos/o/r/pulls/7 -F body=@$NEWR")"
 # every form gh takes for the target reaches the same check: a URL, a branch, an issue number that is a PR, gh pr ready; the current branch's PR (#6) is not the target

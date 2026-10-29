@@ -817,6 +817,8 @@ def check(t, has_cd):
         method, ep, fields, inputs, posts = api_call(rest)
         if not posts:
             return
+        if re.search(r'\{(owner|repo)\}', ep) and (here := cwd_repo(run_dir)):  # gh fills them from the checkout's repo
+            ep = ep.replace('{owner}', here.split('/')[0]).replace('{repo}', here.split('/')[1])
         bodies = [v[len('body=@'):] for v in opt(rest, ['-F', '--field']) if v.startswith('body=@')]
         literal = [v for v in fields if re.match(r'^(body|query)=', v) and not v.startswith('body=@') and not (ep == 'graphql' and v.startswith('query='))]
         if literal or not (bodies or inputs):
