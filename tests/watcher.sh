@@ -741,6 +741,19 @@ check "gh-watch-start run by a delegated task binds the thread that delegated it
 out=$(t3start sess-plain)
 check "gh-watch-start outside T3 Code drops the thread and prints the Monitor" "none 1" "$([ -e "$T/t3watch/t3-thread" ] || [ -e "$T/t3watch/t3-wake.cursor" ] && echo kept || echo none) $(echo "$out" | grep -c 'tail -n 0 -F')"
 GP=$(cat "$T/t3watch/gh-watch.pid" 2>/dev/null); ps -o args= -p "$GP" 2>/dev/null | grep -qx 'sleep 30' && kill "$GP"
+# a daemon whose dir has no t3-thread (started before T3 delivery, or while t3 wasn't found) binds its session's thread on a pass
+tpass() { W="$T/t3daemon" py '
+for name in ("follow_update", "steward_line", "scan_gitlab", "agent_jobs_pass", "announce"):
+    setattr(m, name, lambda *a, **k: None)
+m.level = lambda: m.PAUSED; m.tick()
+print(m.first_line(os.path.join(m.HERE, "t3-thread")).replace(chr(10), " ") or "unbound", m.first_line(os.path.join(m.HERE, "t3-wake.cursor")))
+'; }
+mkdir -p "$T/t3daemon"; printf '### old\n' > "$T/t3daemon/events.log"; echo sess-child > "$T/t3daemon/session"; : > "$T/t3.log"
+a=$(tpass); printf '### new\n' >> "$T/t3daemon/events.log"; b=$(tpass)
+check "a daemon with no t3-thread binds the main session's thread and t3's path from the log's end, then sends what follows" \
+  "thr-p $T/bin/t3 8|thr-p $T/bin/t3 16|t3 thread send thr-p -;Watcher events in $T/t3daemon/events.log (mergeworthy:reply):;### new;" "$a|$b|$(tr '\n' ';' < "$T/t3.log")"
+rm "$T/t3daemon/t3-thread" "$T/t3daemon/t3-wake.cursor"; echo sess-plain > "$T/t3daemon/session"; c=$(tpass); rm "$T/t3daemon/session"
+check "a daemon whose session has no T3 thread, or that has no session, stays unbound" "unbound |unbound " "$c|$(tpass)"
 rm -f "$HOME/.t3/userdata/statev2.sqlite"
 # --round (the steward skill): one round of gh-watch.py --round into events.log, no supervisor, no daemon, a passed mark
 printf 'import sys\nprint("### stub round", *sys.argv[1:])\n' > "$GI/watcher/gh-watch.py"; mkdir -p "$T/passwatch"

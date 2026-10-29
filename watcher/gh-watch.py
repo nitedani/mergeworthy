@@ -1918,6 +1918,8 @@ def tick():
     scan_gitlab()
     agent_jobs_pass()
     announce()
+    if not os.path.exists(os.path.join(HERE, 't3-thread')):  # a watcher started before T3 delivery, or while t3 wasn't found
+        steward.bind_watcher(HERE)
     wake_thread()
 
 
