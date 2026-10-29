@@ -1238,11 +1238,9 @@ check "a Hungarian negation after the done word is no claim either" "0 0" "$a $(
 tr_file 'It is ready for review if CI passes: https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
 tr_file 'Kész, ha zöld a CI: https://gitlab.com/g/p/-/merge_requests/96'
 check "a condition after the done word, or opening the next part, is no claim" "0 0" "$a $(stop "$T")"
-tr_file 'Kész van? https://gitlab.com/g/p/-/merge_requests/96'
-check "a question is no claim" 0 "$(stop "$T")"
-tr_file 'All done; any questions? https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
-tr_file 'Kész; van kérdés? https://gitlab.com/g/p/-/merge_requests/96'
-check "BLOCK: a question after a semicolon doesn't take the claim before it back" "2 2" "$a $(stop "$T")"
+tr_file 'Kész van? https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
+tr_file 'All done, any questions? https://gitlab.com/g/p/-/merge_requests/96'
+check "BLOCK: a question still claims, as on main" "2 2" "$a $(stop "$T")"
 tr_file 'The tests are not flaky and the work is done: https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
 tr_file 'A tesztek nem instabilak és kész a munka: https://gitlab.com/g/p/-/merge_requests/96'
 check "BLOCK: a negation in an earlier coordinated clause leaves the claim standing" "2 2" "$a $(stop "$T")"
@@ -2253,7 +2251,7 @@ check "the condition words count only in the claim's own clause: an earlier clau
   "$(slj 'After the rebase, o/r#12 is green.') $(slj 'Fixed the test that failed when run in parallel; o/r#12 is green now.') $(slj 'No need to wait: o/r#12 is green.')"
 check "BLOCK: a plan in the next clause doesn't hide a state claim" "2 2" "$(slj 'o/r#12 is green, and I will merge it.') $(slj 'o/r#12 is green and I am waiting for review.')"
 check "BLOCK: a negation after the state words doesn't take the claim back" 2 "$(slj 'o/r#12 is green with no failures.')"
-check "BLOCK: a question after a semicolon doesn't hide a state claim" 2 "$(slj 'o/r#12 is green; any questions?')"
+check "BLOCK: a question after it doesn't hide a state claim" 2 "$(slj 'o/r#12 is green, any questions?')"
 check "a condition over the claim's part (past a URL's colon), or opening the next part, states nothing" "0 0 0" \
   "$(slj 'Once CI passes and o/r#12 is green, I merge.') $(slj 'Once CI passes and https://github.com/o/r/pull/12 is green, I merge.') $(slj 'o/r#12 is merged, if the maintainer agrees.')"
 rm -f "$FX/repos_o_r_commits_abc_check-runs_per_page_100"
