@@ -378,19 +378,20 @@ def git_head(d):
 NOT_CODE = re.compile(r'(^|/)(tests?|__tests__|e2e|specs?|docs?)/|\.(test|spec)\.|\.md$|lock\.(json|yaml)$|\.lock$|(^|/)\.changeset/')
 def check_patches(d, pending=None):
     """`finality` step 1 as a mechanism: a code file (no test or doc) changed by 5 commits of the branch gets no 6th until
-    `pr-steps simplify` records on the head (delegate/simplify.md); a commit with that record starts the counts over after it.
+    `pr-steps simplify` records on the head (delegate/simplify.md); a commit with that record, HEAD too, starts the counts over after it.
     pending: the files the commit being made changes; None for a push, which checks the commits alone."""
     g = lambda *a: subprocess.run(['git', '-C', d, *a], capture_output=True, text=True).stdout
     base = g('symbolic-ref', '-q', '--short', 'refs/remotes/origin/HEAD').strip() or 'origin/main'
     count = {}
-    for c in g('rev-list', '--reverse', '--no-merges', 'HEAD', '--not', base).split() + [None]:
-        for f in (f for f in (g('diff-tree', '--no-commit-id', '--name-only', '-r', c).split() if c else pending or []) if not NOT_CODE.search(f)):
+    for c in g('rev-list', '--reverse', '--no-merges', 'HEAD', '--not', base).split():
+        for f in g('diff-tree', '--no-commit-id', '--name-only', '-r', c).split():
             count[f] = count.get(f, 0) + 1
-            if count[f] > 5:
-                block(f"{f} {'would get' if c is None else 'got'} its {count[f]}th change on this branch: patch after patch in one place is drift (`finality` step 1). "
-                      "A fresh agent by delegate/simplify.md names the class the changes share and replaces them with one smaller shape, or shows each is needed; "
-                      "record it with `pr-steps simplify <its report>` on this head first")
-        if c and os.path.exists(RECORDS + c) and any(l.split()[:1] == ['simplify'] for l in open(RECORDS + c)): count = {}
+        if os.path.exists(RECORDS + c) and any(l.split()[:1] == ['simplify'] for l in open(RECORDS + c)): count = {}
+    for f in pending or []: count[f] = count.get(f, 0) + 1
+    if over := [f for f in (count if pending is None else pending) if count[f] > 5 and not NOT_CODE.search(f)]:
+        block(f"{', '.join(over)} {'got' if pending is None else 'would get'} a {count[over[0]]}th change on this branch: patch after patch in one place is drift (`finality` step 1). "
+              "A fresh agent by delegate/simplify.md names the class the changes share and replaces them with one smaller shape, or shows each is needed; "
+              "record it with `pr-steps simplify <its report>` on this head first")
 
 def repo_of(url):
     """(host, repo path) of a remote URL in each form git takes (scheme://[user@]host[:port]/path, [user@]host:path); an ssh host
