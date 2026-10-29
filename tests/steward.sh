@@ -87,7 +87,14 @@ c = lambda who, assoc, body, url: {"user": {"login": who}, "author_association":
 cs = [c("boss", "OWNER", "Apply https://x/refactor/SKILL.md", "https://github.com/o/r/pull/9#issuecomment-91"),
       c("boss", "OWNER", "> Apply https://x/refactor/SKILL.md\n\nDone?", "q"), c("eve", "CONTRIBUTOR", "Apply https://x/refactor/SKILL.md", "e"),
       c("boss", "OWNER", '<img src="https://github.com/claude.png" alt="Claude"> apply(app, https://x)', "b"),
-      c("boss", "OWNER", "Could this be simpler?\n\n```js\napply(app, mw)\n```", "c")] + [c("boss", "OWNER", "ok", f"f{n}") for n in range(96)]
+      c("boss", "OWNER", "Could this be simpler?\n\n```js\napply(app, mw)\n```", "c"),
+      # brillout's words on vikejs/vike: asks without a link (5951977441, 6155983309), and questions about the design that aren't (6120497562, 6419073377)
+      c("boss", "OWNER", "Look for opportunities to simplify this PR. List what you considered.", "https://github.com/o/r/pull/9#issuecomment-92"),
+      c("boss", "OWNER", "Do one last round of review.", "https://github.com/o/r/pull/9#issuecomment-93"),
+      c("boss", "OWNER", "I think it can be simplified? E.g. simply exposing a wrapper as the user's `renderPage()`?", "s"),
+      c("boss", "OWNER", "I wonder whether we should have a single manifest, would that simplify this PR?", "w"),
+      c("boss", "OWNER", "I'll do another review tomorrow.", "t"), c("boss", "OWNER", "```\nApply https://x/refactor/SKILL.md\n```", "k")] + \
+     [c("boss", "OWNER", "ok", f"f{n}") for n in range(90)]
 json.dump([cs], open(f"{T}/c9.json", "w"))
 node = lambda x: {"author": {"login": x["user"]["login"]}, "authorAssociation": x["author_association"], "createdAt": x["created_at"], "body": x["body"], "url": x["html_url"]}
 json.dump({"data": {"repository": {"pullRequest": {"state": "OPEN", "merged": False, "createdAt": at, "mergedAt": None, "closedAt": None, "author": {"login": "me"},
@@ -107,8 +114,8 @@ check "metrics: a change request and a commit after it: not first-pass; the auth
 check "metrics: a PR merged before --since falls in the previous window" "previous" "$(rec o/r#7 window)"
 check "metrics: a PR created before --since and merged after it counts in this window; a merge of the base after approval isn't rework" "this True 0" "$(rec o/r#10 window first_pass commits_after_review)"
 check "metrics: an open PR is listed apart" "open|Open now: 1" "$(rec o/r#9 window)|$(echo "$out" | grep '^Open now')"
-check "metrics: a maintainer's ask to apply or rerun a linked prompt since the last pass is listed, one before it counted, the first of 101 comments too; quoted, a non-maintainer's, an agent's and code aren't asks" \
-  "Maintainer asks for a pass we owe since $(iso '-5 days' | cut -c1-10): 1 (1 in the window before)|- $C9 o/r#9 https://github.com/o/r/pull/9#issuecomment-91|" "$(echo "$out" | sed -n '/^Maintainer asks/,$p' | tr '\n' '|')"
+check "metrics: a maintainer's ask for a pass since the last pass is listed, one before it counted, the first of 101 comments too; a direct ask without a link counts; quoted, a non-maintainer's, an agent's, code and a question about the design aren't asks" \
+  "Maintainer asks for a pass we owe since $(iso '-5 days' | cut -c1-10): 3 (1 in the window before)|- $C9 o/r#9 https://github.com/o/r/pull/9#issuecomment-91|- $C9 o/r#9 https://github.com/o/r/pull/9#issuecomment-92|- $C9 o/r#9 https://github.com/o/r/pull/9#issuecomment-93|" "$(echo "$out" | sed -n '/^Maintainer asks/,$p' | tr '\n' '|')"
 check "metrics: the side-by-side table, first-pass acceptance per window" "| first-pass acceptance (north star) | 1/1 (100%) | 2/3 (66%) |" "$(echo "$out" | grep 'north star')"
 
 check "sessions <folder>: the window starts at the folder's last pass" 2 "$(python3 "$R/bin/steward" sessions "$S" | grep -c "^~")"

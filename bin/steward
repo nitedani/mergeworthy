@@ -17,7 +17,7 @@ that `round` writes <folder>'s watcher files, `metrics` appends its records to <
 - metrics: the PRs the author opened (default: you; only those whose body starts with an agent's badge) settled (merged or closed)
   since --since (default: the last line of <folder>/passes.txt, else 60 days), in the window as long before it, and still open:
   outcome, hours to merge, first-pass acceptance (merged with no change request and no commit after the first maintainer review
-  but a merge of the base), review rounds, a maintainer's asks to apply or rerun a linked prompt (quotes left out),
+  but a merge of the base), review rounds, a maintainer's asks for a pass (a refactor, simplify or review round, or a linked prompt; quotes and code left out),
   FOLLOW-UP MISS/TASTE verdicts, and the tokens (cache reads left out) of the local sessions that name the PR more than any other
   (unknown when none does).
 """
@@ -31,7 +31,11 @@ EVENT = re.compile(r'^### (?:FOLLOW-UP|MAINTAINER REVIEW) ([\w.-]+/[\w.-]+#\d+(?
 BADGE = re.compile(r'\A\s*(?:<img [^>]*alt="(?:Claude|Codex)"[^>]*>\s*)+')  # an agent's post starts with its badge
 VERDICT = re.compile(r'^(\S+)\s+(MISS|TASTE|DIRECTION|WORKED)\b', re.M)
 SHA = re.compile(r'[0-9a-f]{7,40}')
-ASK = re.compile(r'\b(?:app?ly|round of)\b[^\n]{0,10}https?://', re.I)  # "Apply <prompt URL>", "Do another round of <prompt URL>": a pass we owed
+# a maintainer asking for a pass we owed: "Apply <prompt URL>", or at a sentence's start "Do another round", "Look for opportunities to
+# simplify", "Refactor this PR"; not a question about the design ("I think it can be simplified?")
+ASK = re.compile(r"\b(?:apply|appy)\b[^\n]{0,10}https?://|(?:^|[.!?:]\s+|\bthen\s+)\W*(?:@[\w-]+\s*(?:\([^)\n]*\)\s*)?)?(?:please\s+)?"
+                 r"(?:(?:do|run)\s+(?:another|one\s+more|one\s+last|a\s+new)\s+(?:round|pass|review)\b|look\s+for\s+(?:opportunities|ways)\s+to\s+(?:simplify|refactor)\b"
+                 r"|(?:simplify|refactor|re-?review|review)\s+(?:this|the|your)\s+(?:PR|pull\s+request|code|diff|changes)\b)", re.I | re.M)
 
 
 def iso(t):
@@ -195,9 +199,14 @@ def maintainer_asks(repo, num, author):
     pages = lambda path: [x for page in gh('api', '--paginate', '--slurp', f'{path}?per_page=100') for x in page]
     posts = [(c['created_at'], c) for c in pages(f'repos/{repo}/issues/{num}/comments')] + \
             [(r['submitted_at'], r) for r in pages(f'repos/{repo}/pulls/{num}/reviews') if r.get('submitted_at')]
-    unquoted = lambda b: '\n'.join(l for l in (b or '').splitlines() if not l.lstrip().startswith('>'))
     return sorted([at, v['html_url']] for at, v in posts if (v.get('user') or {}).get('login') != author and v.get('author_association') in MAINTAINER
-                  and not BADGE.match(v.get('body') or '') and ASK.search(unquoted(v.get('body'))))
+                  and not BADGE.match(v.get('body') or '') and ASK.search(own_words(v.get('body'))))
+
+
+def own_words(body):
+    """A post's text without its quoted lines and its code: what the poster wrote."""
+    body = re.sub(r'`[^`\n]*`', '', re.sub(r'(?ms)^\s*(```|~~~).*?^\s*\1[^\n]*$', '', body or ''))
+    return '\n'.join(l for l in body.splitlines() if not l.lstrip().startswith('>'))
 
 
 def pr_record(repo, num):
