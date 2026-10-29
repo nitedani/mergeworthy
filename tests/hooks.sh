@@ -1407,6 +1407,8 @@ check "pr-steps small: BLOCK with no test in the diff, BLOCK on a report with fi
 check "after pr-steps small, gh pr ready lacks only the gates" "gates" "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr ready 5 -R o/r"},"cwd":sys.argv[1]}))' "$GS" | python3 "$R/hooks/pre-bash-guard.py" 2>&1 | grep -o 'no pr-steps [a-z, ]* record' | sed 's/no pr-steps //; s/ record//')"
 printf 'x\n## Outside this change\nNone.\n\nNO BUGS\nMERGE AS IS: yes\n\n## Verification\n- ran it\n\n## not_checked\n- Windows\n' > "$T/sr5.md"
 check "pr-steps small records a report whose verdict comes before its Verification and not_checked sections" 0 "$(prss "$T/sr5.md")"
+printf 'x\n## Outside this change\nNone.\n\n## not_checked\n- Windows\n\nNO BUGS\nMERGE AS IS: yes\n' > "$T/sr6.md"
+check "pr-steps small records a report whose verdict ends the file after its not_checked section" 0 "$(prss "$T/sr6.md")"
 mkdir -p "$GS/dist"; seq 1 300 > "$GS/dist/a.mjs"; git -C "$GS" add dist; git -C "$GS" -c user.name=t -c user.email=t@t commit -qm bundle
 check "pr-steps small doesn't count a committed build bundle (dist/)" 0 "$(prss "$T/sr2.md")"
 seq 1 70 >> "$GS/src/a.ts"; git -C "$GS" -c user.name=t -c user.email=t@t commit -qam d
