@@ -24,35 +24,32 @@ def running_list(message):
     return running and running.group(1).lower()
 
 
-# The words that take back a claim, one row per language; a word added here holds for the done opening and the PR states alike
-LEX = {
-    'NEGATION': {'en': r"not|no|none|nothing|neither|nor|never|nobody|\w+n['’]t", 'hu': r"nem|nincs\w*|sincs\w*|sem|semmi\w*|senki|soha"},
-    'FUTURE': {'en': r"will|would|\w+['’]ll|going to|tomorrow|later|soon|next", 'hu': r"lesz\w*|lenne\w*|majd|holnap\w*|később|hamarosan"},
-    'EXPECT': {'en': r"expect\w*|wait\w*", 'hu': r"vár\w*"},
-    'CONDITION': {'en': r"if|unless|whether", 'hu': r"ha"},
-    'TIME': {'en': r"once|when|until|after|before", 'hu': r"amint|amikor|mihelyt|amíg|\w+-ig"},
-    'CONJUNCTION': {'en': r"and|but|so", 'hu': r"és|de|ezért|viszont"},
+# The words that take back a claim, by where they stand (English, Hungarian); a word added here holds for the done opening and the
+# PR states alike. Anything later leaves the claim standing: "ready with no issues", "done after I fixed the tests", "done as
+# expected", "done, if you have questions", "Kész van?".
+def words(en, hu): return re.compile(rf"\b(?:{en}|{hu})\b", re.I)
+TAKE_BACK = {
+    # before it in its clause: a negation or an expectation ("none is ready", "I expect it is done")
+    'lead': words(r"not|no|none|nothing|neither|nor|never|nobody|\w+n['’]t|expect\w*|wait\w*", r"vár\w*"),
+    # in its clause: a plan, or a Hungarian negation ("it will be ready", "kész lesz", "kész még nem vagyok")
+    'clause': words(r"will|would|\w+['’]ll|going to|tomorrow|later|soon|next",
+                r"lesz\w*|lenne\w*|majd|holnap\w*|később|hamarosan|nem|nincs\w*|sincs\w*|sem|semmi\w*|senki|soha"),
+    # before it in its part: a time word ("once it is ready")
+    'before': words(r"once|when|until|after|before", r"amint|amikor|mihelyt|amíg|\w+-ig"),
+    # in its part: a condition ("ready if CI passes")
+    'part': words(r"if|unless|whether", r"ha"),
 }
-FUTURE, EXPECT, CONDITION, TIME, CONJUNCTION = (re.compile(rf"\b(?:{LEX[k]['en']}|{LEX[k]['hu']})\b", re.I)
-                                               for k in ('FUTURE', 'EXPECT', 'CONDITION', 'TIME', 'CONJUNCTION'))
-# English negates before the claim ("is not ready"; "ready with no issues" still claims), Hungarian on either side ("kész még nem vagyok")
-NEGATION_EN, NEGATION_HU = (re.compile(rf"\b(?:{LEX['NEGATION'][l]})\b", re.I) for l in ('en', 'hu'))
 PART = re.compile(r"[,;:](?=\s|$)")  # not the colon of https:
-CLAUSE = re.compile(rf"(?={CONJUNCTION.pattern})", re.I)
+CLAUSE = re.compile(r"(?=\b(?:and|but|so|és|de|ezért|viszont)\b)", re.I)
 
 
 def asserted(sentence, i):
-    """Whether the words at sentence[i] state something as true now. Before them, in their clause: no negation, plan or expectation
-    ("none is ready", "I expect it is done"), and in their part no condition or time word ("once it is ready"). After them, in their
-    clause: no plan ("it will be ready", "kész lesz") or Hungarian negation ("kész még nem vagyok"), and in their part no condition
-    ("ready if CI passes"). Anything later leaves the claim standing: "ready with no issues", "done after I fixed the tests", "done
-    as expected", "done, if you have questions", "Kész van?". A part ends at a comma, semicolon or colon; a clause also before a
-    conjunction."""
+    """Whether the words at sentence[i] state something as true now: no TAKE_BACK word where it stands. A part ends at a comma,
+    semicolon or colon; a clause also before a conjunction."""
     before, part = PART.split(sentence[:i])[-1], PART.split(sentence[i:], 1)[0]
     lead = CLAUSE.split(before)[-1]
-    clause = lead + CLAUSE.split(part)[0]
-    return not (NEGATION_EN.search(lead) or NEGATION_HU.search(clause) or FUTURE.search(clause) or CONDITION.search(before + part)
-                or TIME.search(before) or EXPECT.search(lead))
+    where = {'lead': lead, 'clause': lead + CLAUSE.split(part)[0], 'before': before, 'part': before + part}
+    return not any(rx.search(where[k]) for k, rx in TAKE_BACK.items())
 
 
 DONE = r"\b(?:(?:is|are|all|work's|it's) (?:done|finished|complete)\b|ready (?:for review|to merge)|kész\b|elkészült|befejeztem)"
