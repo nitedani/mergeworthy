@@ -505,9 +505,7 @@ def collaboration(d, url, heads):
         data, err = ask(['gh', 'api', 'graphql', '-f', f'query={q}', '-f', f'o={owner}', '-f', f'n={repo.split("/")[1]}',
                          *[x for i, (_, b) in enumerate(heads) for x in ('-f', f'b{i}=refs/heads/{b}')]])
         data = (data.get('data') or {}).get('repository') and data['data'] if isinstance(data, dict) else None
-    elif login and owner != login:
-        return [f"{repo} isn't {login}'s"], []
-    else:
+    else:  # a group's project too: whether the push updates an MR decides its approach check
         import urllib.parse
         answers = [ask(['glab', 'api', '--hostname', host, f"projects/{urllib.parse.quote(repo, safe='')}/merge_requests?state=opened&source_branch={urllib.parse.quote(b)}"]) for _, b in heads]
         data = [x for a, _ in answers for x in a] if all(isinstance(a, list) for a, _ in answers) else None
@@ -519,7 +517,7 @@ def collaboration(d, url, heads):
         block(f"{'gh' if hub else 'glab'} couldn't tell whether this push to {repo} updates a {'PR' if hub else 'MR'} ({err[:160]}), so its push gates can't be checked: retry once it answers")
     if not hub:
         mrs = [{'url': x.get('web_url'), 'isDraft': bool(x.get('draft'))} for x in data if isinstance(x, dict)]
-        return [f"it updates {', '.join(p['url'] for p in mrs)}"] * bool(mrs), mrs
+        return [f"it updates {', '.join(p['url'] for p in mrs)}"] * bool(mrs) + [f"{repo} isn't {login}'s"] * bool(login and owner != login), mrs
     prs = [p for i in range(len(heads)) for p in ((data['repository'].get(f'b{i}') or {}).get('associatedPullRequests') or {}).get('nodes') or []]
     why = [f"it updates {', '.join(p['url'] for p in prs)}"] * bool(prs) + \
           [f"{repo} isn't {data['viewer']['login']}'s"] * (data['repository']['owner']['login'] != data['viewer']['login'])

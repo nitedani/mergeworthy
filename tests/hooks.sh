@@ -2270,7 +2270,7 @@ f="$FX/gl_$(printf '%s' "$4" | tr '/?&=%' '_____')"
 [ -f "$f" ] && cat "$f" || { echo 'glab: 404 Not found (HTTP 404)' >&2; exit 1; }
 EOF
 GL="$T/gl"; git init -q -b scratch "$GL"; git -C "$GL" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; git -C "$GL" remote add origin git@gitlab.com:me/app.git
-echo me > "$FX/gl_login"; echo '[]' > "$FX/gl_projects_me_2Fapp_merge_requests_state_opened_source_branch_scratch"
+echo me > "$FX/gl_login"; echo '[]' > "$FX/gl_projects_me_2Fapp_merge_requests_state_opened_source_branch_scratch"; echo '[]' > "$FX/gl_projects_acme_2Fapp_merge_requests_state_opened_source_branch_scratch"
 (cd "$GL" && bash "$R/bin/pr-steps" preflight 'none, because the test repo has no UI' >/dev/null)
 check "a commit in a checkout of a GitLab repo isn't held to gh's account" 0 "$(bg 'git -c user.name=Someone -c user.email=me@example.com commit -q --allow-empty -m x' "$GL")"
 check "GitLab: ssh://git@gitlab.com:22/ is the same own namespace" 0 "$(bg 'git push ssh://git@gitlab.com:22/me/app.git HEAD:scratch' "$GL")"
@@ -2284,6 +2284,7 @@ na() { for c in "gh pr create --draft --repo o/r --title \"\$(cat /w/drafts/titl
                 'glab mr create --draft --title x' 'glab api projects/me%2Fapp/merge_requests -X POST -f source_branch=mr-b -f target_branch=main -f title=x' 'git push origin HEAD:mr-b'; do
     printf '%s %s ' "$(MERGEWORTHY_WATCHER=off bg "$c" "$NA")" "$(grep -c 'pull-request step 5).*pr-steps approach <work folder>/approach.md' "$T/err")"; done | xargs; }
 check "BLOCK: with no approach record, a draft gh pr create, gh api POST pulls, a draft glab mr create, glab api POST merge_requests and a push updating an open MR, naming step 5" "2 1 2 1 2 1 2 1 2 1" "$(na)"
+echo '[]' > "$FX/gl_projects_acme_2Fapp_merge_requests_state_opened_source_branch_mr-b"
 check "a collaboration push updating no PR or MR needs no approach record" 0 "$(MERGEWORTHY_WATCHER=off bg 'git push git@gitlab.com:acme/app.git HEAD:mr-b' "$NA")"
 api_forms() { for c in "GH_REPO=o/r gh api 'repos/{owner}/{repo}/pulls' -f title=x -f head=mr-b -f base=main -F body=@$T/na.md" "gh api /repos/o/r/pulls -f title=x -f head=mr-b -f base=main -F body=@$T/na.md" \
                        "gh api https://api.github.com/repos/o/r/pulls -f title=x -f head=mr-b -f base=main -F body=@$T/na.md" "gh api https://github.example.com/api/v3/repos/o/r/pulls -f title=x -f head=mr-b -f base=main -F body=@$T/na.md" \
@@ -2318,6 +2319,9 @@ check "BLOCK: a push updating an open MR needs the record of every branch it pub
 ghpr() { python3 -c 'import json,sys; print(json.dumps({"data": {"viewer": {"login": "me"}, "repository": {"owner": {"login": "me"}, **{f"b{i}": {"associatedPullRequests": {"nodes": [{"url": "https://github.com/me/app/pull/7", "isDraft": True}] if x == "pr" else []}} for i, x in enumerate(sys.argv[1:])}}}}))' "$@" > "$FX/graphql_me"; }
 check "BLOCK: the same on GitHub, naming it" "2 1" \
   "$(ghpr pr none; MERGEWORTHY_WATCHER=off bg 'git push https://github.com/me/app.git mr-b:mr-b fresh:fresh' "$NA") $(grep -c 'fresh has no approach record' "$T/err")"
+echo '[{"web_url":"https://gitlab.com/acme/app/-/merge_requests/9","draft":true}]' > "$FX/gl_projects_acme_2Fapp_merge_requests_state_opened_source_branch_fresh"
+check "BLOCK: a push updating an open MR of a group's GitLab project (not the login's) needs the record too, naming it" "2 1" \
+  "$(MERGEWORTHY_WATCHER=off bg 'git push git@gitlab.com:acme/app.git fresh:fresh' "$NA") $(grep -c 'fresh has no approach record' "$T/err")"
 tr_cmd 'cd /tmp/x && git push origin HEAD:fix'
 check "a session that pushed, with no scope.md in a work folder it used, is told to write one (stop-lint reads its git commands)" "2 1" "$(slj 'Pushed the fix.') $(grep -c 'no work folder it used has a scope.md' "$T/err")"
 check "the parses a stop made are kept for the session's next stop, which blocks the same" "1 2" "$(ls "$HOME/.claude/mergeworthy-parses/s-fc.json" | wc -l) $(slj 'Pushed the fix.')"
