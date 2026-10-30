@@ -7,7 +7,7 @@ def _not(seen):
     """Not one of a language's observation verbs: "I'm seeing …", "Látom …" report a result, not what is being done."""
     return rf"(?!(?:{seen})\b)"
 
-_SEEN = {'en': r'(?:see|gett|find|notic|observ|hitt)ing', 'hu': r'(?:lát|kap|talál|észrev|megfigyel|tapasztal|belefut)\w*'}
+_SEEN = {'en': r'(?:see|gett|find|notic|observ|hitt)ing', 'hu': r'(?:lát|kap|talál|észrev|észlel|megfigyel|tapasztal|belefut)\w*'}
 _act = _not(_SEEN['en']) + r'\w+'
 
 WORDS = {
