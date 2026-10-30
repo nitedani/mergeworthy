@@ -120,10 +120,10 @@ ISOLATING, CONDITIONAL, LOOP = 'isolating', 'conditional', 'loop'
 _ids = itertools.count()
 
 
-def _scope(kind, name=''):
-    """A new scope of kind, for Seg.scopes; name: the function whose body it is, or the variable a for loop takes from words of
-    plain characters (no /, $, backtick, quote or glob) when its body only reads it (_only_read), if any."""
-    return ((next(_ids), kind, name),)
+def _scope(kind, name='', plain=False):
+    """A new scope of kind, for Seg.scopes; name: the function whose body it is, or a for loop's variable, if any; plain: the loop
+    takes it from words of plain characters (no /, $, backtick, quote or glob) and the rest of the line only reads it (_only_read)."""
+    return ((next(_ids), kind, name, plain),)
 
 
 class Seg(list):
@@ -150,16 +150,31 @@ def _kind(x, k):
     return None
 
 
-def _only_read(body, var):
-    """Whether body (a loop body's source) names var only in a plain $var or ${var}, with no eval, let or (( that could set it."""
-    rest = re.sub(rf'\$(?:{var}(?!\w)|\{{{var}\}})', '', body)
-    return not re.search(rf'(?<!\w){var}(?!\w)|\b(?:eval|let)\b|\(\(', rest)
+def _code(node, src):
+    """src with the text of every single-quoted word under node blanked: this shell never runs it (eval, source and trap aside)."""
+    code, todo = bytearray(src), [node]
+    while todo:
+        y = todo.pop()
+        if isinstance(y, list):
+            todo += y
+        elif isinstance(y, dict):
+            if y.get('Type') == 'SglQuoted':
+                code[y['Pos']['Offset']:y['End']['Offset']] = b' ' * (y['End']['Offset'] - y['Pos']['Offset'])
+            todo += [v for v in y.values() if isinstance(v, (dict, list))]
+    return bytes(code)
+
+
+def _only_read(text, var):
+    """Whether text (the command line's code, _code's, without the loop's own `for var in`) names var only in a plain $var or
+    ${var}, with no eval, let, ((, source, trap or . command that could set it unseen."""
+    rest = re.sub(rf'\$(?:{var}(?!\w)|\{{{var}\}})', '', text)
+    return not re.search(rf'(?<!\w){var}(?!\w)|\b(?:eval|let|source|trap)\b|\(\(|(?:^|[;&|(){{\n]|\b(?:then|do|else)\b)\s*\.\s', rest)
 
 
 def _calls(node, src):
     """(the argv of every simple command under node, in order, each a Seg; the statements each heredoc of them is read by:
     (redirect, top statement, whether it is in a loop))."""
-    segs, docs, stack = [], [], [(node, None, (), False)]
+    segs, docs, stack, code = [], [], [(node, None, (), False)], _code(node, src)
     while stack:
         x, top, n, loop = stack.pop()
         if isinstance(x, list):
@@ -168,12 +183,11 @@ def _calls(node, src):
         if not isinstance(x, dict):
             continue
         loop = loop or x.get('Type') == 'WhileClause'  # shfmt's node for until too
-        items = (x.get('Loop') or {}).get('Items') if x.get('Type') == 'ForClause' else None
-        name = x['Name']['Value'] if x.get('Type') == 'FuncDecl' else \
-            x['Loop']['Name']['Value'] if items and all(re.fullmatch(r'[\w.+@%,:=-]+', _src(w, src)) for w in items) and \
-            _only_read(src[x['Do'][0]['Pos']['Offset']:x['Do'][-1]['End']['Offset']].decode(errors='replace') if x.get('Do') else '',
-                       x['Loop']['Name']['Value']) else ''
-        inner = {k: n + _scope(kind, name) if (kind := _kind(x, k)) else n for k, v in x.items() if isinstance(v, (dict, list))}
+        var = ((x.get('Loop') or {}).get('Name') or {}).get('Value', '') if x.get('Type') == 'ForClause' else ''
+        plain = bool(var) and bool(x['Loop'].get('Items')) and all(re.fullmatch(r'[\w.+@%,:=-]+', _src(w, src)) for w in x['Loop']['Items']) and \
+            _only_read((code[:x['Pos']['Offset']] + code[x['Loop']['End']['Offset']:]).decode(errors='replace'), var)
+        name = x['Name']['Value'] if x.get('Type') == 'FuncDecl' else var
+        inner = {k: n + _scope(kind, name, plain) if (kind := _kind(x, k)) else n for k, v in x.items() if isinstance(v, (dict, list))}
         cmd, redirs = x.get('Cmd') or {}, x.get('Redirs') or []
         words = [w for r in redirs for w in ((r.get('N') or {}).get('Value', '') + r['Op'], _word(r.get('Word') or {}, src))]
         raws = [w for r in redirs for w in (r['Op'], _src(r['Word'], src) if r.get('Word') else '')]
@@ -378,7 +392,7 @@ class Where:
         """A file the current command names, p, resolved from the dir. None when its folder can't be told: no dir, or any expansion
         left, which may hold a / (`$F`), except in its name the variable of a for loop it is in over plain words (`$S/$w.log`)."""
         p = os.path.expanduser(self.expand(p))
-        words = {x[0][2] for x in self.scopes if x[0][1] == LOOP and x[0][2]}
+        words = {x[0][2] for x in self.scopes if x[0][1] == LOOP and x[0][3]}
         folder, name = os.path.split(p)
         name = re.sub(r'\$(?:(\w+)|\{(\w+)\})', lambda m: '' if (m[1] or m[2]) in words else m[0], name)
         return None if re.search(r'[$`]', folder + name) or not os.path.isabs(p) and self.dir is None else os.path.join(self.dir or '/', p)
@@ -395,7 +409,7 @@ class Where:
         """Leave the scopes not in scopes, innermost first, and enter the new ones."""
         n = 0
         while n < min(len(self.scopes), len(scopes)) and self.scopes[n][0] == scopes[n]: n += 1
-        for (_, kind, _), before, moved, vars, set_in in reversed(self.scopes[n:]):
+        for (_, kind, *_), before, moved, vars, set_in in reversed(self.scopes[n:]):
             self.dir = before if kind == ISOLATING else None if moved else self.dir
             self.vars = vars if kind == ISOLATING else {**self.vars, **{v: Maybe(self.vars.get(v, '')) for v in set_in}}
         self.funcs |= {x[2] for x in scopes[n:] if x[2] and x[1] != LOOP}

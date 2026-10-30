@@ -1887,6 +1887,8 @@ check "a call to a function no body on the line changes dir in (a logging helper
   "$(ibash "$IT" "log() { echo \"\$@\"; }; log starting; echo x > a.txt" "$T/nogit")"
 check "BLOCK: a loop variable its body names other than as \$f (set in a branch, read, let, \${f:=…}) is no longer the loop's word: a write to it can't be told" "2 2 2 2" \
   "$(ibash "$IT" "for f in a b; do if true; then f=$I/c.txt; fi; echo x > \$f; done" "$T/nogit") $(ibash "$IT" "for f in a b; do read f; echo x > $T/nogit/\$f; done" "$T/nogit") $(ibash "$IT" "for f in a b; do let f=1; echo x > $T/nogit/\$f; done" "$T/nogit") $(ibash "$IT" "for f in a b; do : \${f:=x}; echo x > $T/nogit/\$f; done" "$T/nogit")"
+check "BLOCK: a loop variable a helper function on the line assigns is no longer the loop's word: a write to it can't be told" 2 \
+  "$(ibash "$IT" "setpath() { f=$I/helper.txt; }; for f in a b; do setpath; echo x > \$f; done" "$T/nogit")"
 check "logs written outside it by a backgrounded { } group in a loop, after its cd to \$W/\$t, pass" 0 \
   "$(ibash "$IT" "W=$T/nogit; for t in a b; do { cd \$W/\$t && netns-run bash x.sh > \$W/probe/\$t.out 2> \$W/probe/\$t.err; echo \"\$t exit \$?\" >> \$W/probe/\$t.err; } & done; wait")"
 ir_tr "$IT" "read:$I/AGENTS.md" "read:$I/CLAUDE.md"; check "a command writing into it passes once both were read" 0 "$(ibash "$IT" "echo x > $I/a.txt")"
