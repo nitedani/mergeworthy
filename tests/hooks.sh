@@ -1807,8 +1807,8 @@ EOF
 iedit() { # <transcript> <tool> <file> [extra hook input as JSON]: pre-design-gate's exit code (its message in $T/ierr)
   python3 -c 'import json,sys; d={"tool_name":sys.argv[2],"tool_input":{("notebook_path" if sys.argv[2]=="NotebookEdit" else "file_path"):sys.argv[3]},"cwd":sys.argv[4],"transcript_path":sys.argv[1]}; d.update(json.loads(sys.argv[5])); print(json.dumps(d))' "$1" "$2" "$3" "$T" "${4:-{\}}" | python3 "$R/hooks/pre-design-gate.py" 2>"$T/ierr"; echo $?
 }
-ibash() { # <transcript> <command>: pre-bash-guard's exit code for the command run in $I
-  python3 -c 'import json,sys; print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[2]},"cwd":sys.argv[3],"transcript_path":sys.argv[1]}))' "$1" "$2" "$I" | python3 "$R/hooks/pre-bash-guard.py" 2>/dev/null; echo $?
+ibash() { # <transcript> <command> [cwd]: pre-bash-guard's exit code for the command run in cwd, by default $I
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[2]},"cwd":sys.argv[3],"transcript_path":sys.argv[1]}))' "$1" "$2" "${3:-$I}" | python3 "$R/hooks/pre-bash-guard.py" 2>/dev/null; echo $?
 }
 IT="$T/instr.jsonl"; ir_tr "$IT"
 check "BLOCK: an edit in a repo whose root has AGENTS.md and CLAUDE.md, before reading them, naming both" "2 1" "$(iedit "$IT" Edit "$I/a.ts") $(grep -c "read this repo's instructions first.*$I/AGENTS.md, $I/CLAUDE.md" "$T/ierr")"
@@ -1830,6 +1830,8 @@ check "a log a background job writes after its cd lands in that dir: outside it 
   "$(ibash "$IT" "cd $T/nogit && nohup pnpm dev > log 2>&1 &") $(ibash "$IT" "cd $I && nohup pnpm dev > log 2>&1 &")"
 check "logs background subshells in a loop write to \$S/\$w paths, S set on the line: outside it passes, into it blocks" "0 2" \
   "$(ibash "$IT" "S=$T/nogit; for w in a b; do (cd \$S/\$w && pnpm install > \$S/\$w-install.log 2>&1) & done; wait") $(ibash "$IT" "S=$I; for w in a b; do (cd \$S/\$w && pnpm install > \$S/\$w-install.log 2>&1) & done; wait")"
+check "BLOCK: eval runs its script in this shell: a write after its cd into the repo, or to a path its variable names there" "2 2" \
+  "$(ibash "$IT" "eval 'cd $I'; echo x > a.txt" "$T/nogit") $(ibash "$IT" "eval 'WD=$I'; echo x > \$WD/a.txt" "$T/nogit")"
 check "logs written outside it by a backgrounded { } group in a loop, after its cd to \$W/\$t, pass" 0 \
   "$(ibash "$IT" "W=$T/nogit; for t in a b; do { cd \$W/\$t && netns-run bash x.sh > \$W/probe/\$t.out 2> \$W/probe/\$t.err; echo \"\$t exit \$?\" >> \$W/probe/\$t.err; } & done; wait")"
 ir_tr "$IT" "read:$I/AGENTS.md" "read:$I/CLAUDE.md"; check "a command writing into it passes once both were read" 0 "$(ibash "$IT" "echo x > $I/a.txt")"

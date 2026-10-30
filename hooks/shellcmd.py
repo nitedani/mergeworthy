@@ -249,7 +249,8 @@ def parse(cmd, depth=0, scopes=(), loop=False):
         here = [s[i + 1] for i in range(len(s) - 1) if s[i] == '<<<']  # `bash <<< '<script>'`
         script = (_nested(s) or (here[0] if here and reads_stdin(s) else None)) if depth < 4 else None
         if script:
-            inner, e = parse(script, depth + 1, s.scopes + _scope(ISOLATING), s.loop)
+            same = t[:1] and os.path.basename(t[0]) == 'eval'  # eval runs its words in this shell; a child shell, in its own
+            inner, e = parse(script, depth + 1, s.scopes + (() if same else _scope(ISOLATING)), s.loop)
             out += inner
             err = err or e
     return out, err
