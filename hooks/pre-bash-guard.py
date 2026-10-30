@@ -339,7 +339,7 @@ def check_compose(env, t):
     n = 2 if os.path.basename(t[0]) == 'docker' else 1
     if t[1:n] not in ([], ['compose']) or env.get('MERGEWORTHY_HOST_PORTS') == 'user-asked': return
     keep, paths = ('-f', '--file', '-p', '--project-name', '--profile', '--project-directory', '--env-file'), ('-f', '--file', '--project-directory', '--env-file')
-    a, glob = t[n:], []
+    a, glob, files = t[n:], [], []
     while a and a[0].startswith('-'):
         k = 2 if a[0] in keep + ('--ansi', '--parallel', '--progress') else 1
         if a[0].split('=')[0] in keep: glob += a[:k]
@@ -348,9 +348,16 @@ def check_compose(env, t):
     for i, x in enumerate(glob):  # compose gets the paths, not the words: ~ and the variables the line set put in
         o, eq, v = x.partition('=') if x.startswith('--') else ('', '', x)
         if eq and o in paths or not o and i and glob[i - 1] in paths:
-            if where.path(v) is None:
+            if (f := where.path(v)) is None:
                 block(f"can't tell the path `{v}` this compose command reads, so its ports can't be checked: write it out, or set its variable on this line")
-            glob[i] = o + eq + where.path(v)
+            files += [f] if (o or glob[i - 1]) in ('-f', '--file') else []
+            glob[i] = o + eq + f
+    listed, sep = (env.get(k, os.environ.get(k, default)) for k, default in (('COMPOSE_FILE', ''), ('COMPOSE_PATH_SEPARATOR', ':')))
+    files = {os.path.normpath(f) for f in files or map(where.path, listed.split(sep) if listed else []) if f}
+    # without -f or COMPOSE_FILE, compose finds a default name in the project dir or a parent, wherever that is
+    defaults = () if files or listed else {f'{b}{o}.{e}' for b in ('compose', 'docker-compose') for o in ('', '.override') for e in ('yaml', 'yml')}
+    if f := next((f for f in sorted(wrote) if f in files or os.path.basename(f) in defaults), None):
+        block(f"{f} is written by this same command, so its ports can't be checked yet: write it in one command, then start the stack in the next")
     try:
         r = subprocess.run(t[:n] + glob + ['config', '--format', 'json'], cwd=known(run_dir), env={**os.environ, **env}, capture_output=True, text=True, timeout=30)
         svcs = json.loads(r.stdout)['services'] if r.returncode == 0 else {}
@@ -883,6 +890,7 @@ if any(prog(x)[:1] and os.path.basename(prog(x)[0]) == 'gate-pass' for x in segs
                                         or prog(x)[1:2] == ['api'] and any(w.startswith('body=') or w in ('--input',) for w in prog(x))) for x in segs):
     block("run gate-pass as its own command and read its exit code, then post in the next command: this check reads the gate record before the command runs (mergeworthy:post step 4)")
 clones = {}  # folder: the repo it was cloned from, for a `git clone` in this command
+wrote = set()  # the files the simple commands walked so far write: a compose file among them isn't written yet when its check runs
 for s in where.walk(segs):
     run_dir, has_cd = where.dir, where.moved
     if run_dir is not None and prog(s)[:2] == ['git', 'clone'] and (ops := [where.expand(x) for x in operands(prog(s)[2:]) if not x.startswith('-')]):
@@ -900,6 +908,7 @@ for s in where.walk(segs):
         if w & {'git', 'gh', 'glab'} and w & {'push', 'commit', 'pr', 'issue', 'api', 'release', 'mr'} or 'git' not in w and w & {'push', 'commit'}:
             block(f"`{named}` runs a command named only when it runs, with `{' '.join(words)[:80]}`: write the command out, so it can be checked")
     check(s, has_cd)
+    wrote.update(os.path.normpath(f) for f in map(where.path, written_files(prog(s))) if f)
 try:  # pending until post-bash-register sees how the command ended
     own_actions.intend(own_actions.key(d), own)
 except OSError:
