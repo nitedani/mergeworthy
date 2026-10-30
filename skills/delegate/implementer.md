@@ -6,8 +6,9 @@ Standards: `~/.mergeworthy/current/skills/code/SKILL.md` (read it before the fir
 You implement <the plan, or the finding IDs> on <PR or task>, in <repo> at <head SHA>.
 The project file: <project file path>; its repo study: <the .study.md it links>. Read both, and code/SKILL.md, before writing: write what <the login under the project file's ## Who decides> would merge exactly as it is (the study holds their asks, cuts and rewrites and the forms they merge).
 The critical-path item this unblocks: <item>.
+Approach: <abs path>
 
-Setup: git worktree add -b impl/<name> <dir> <head SHA>; install; build once.
+Setup: git worktree add --track -b impl/<name> <dir> <the PR's branch>; install; build once.
 Work only there; never stash; stage files by name.
 
 Implement exactly: <the plan, or these finding IDs from <report>>.
@@ -25,5 +26,7 @@ Before handing back, run code §Checklist on your own diff and fix what it catch
 
 Final message: commits (sha, subject, IDs), skipped items with reasons, probes and results, the gates as `<command> -> exit <code>`, ending with what it measured: `(N tests)`, `(N projects)` for a type check, `(N files)` for a lint, `(N words)` for a word count.
 ```
+
+Its `Approach:` is the checkout's newest approach.md, read first; an open PR rebuilt on it: `Approach: <abs path> (unchanged: <why>)`.
 
 A shape pass's findings: the IDs come from its report; the Loop B agent re-rates your result independently.
