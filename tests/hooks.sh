@@ -1290,8 +1290,8 @@ python3 "$R/hooks/pre-agent-dedupe.py" < "$T/lt.json" 2>/dev/null; sleep 1; pyth
 check "pre-agent-dedupe records when the launch began (PreToolUse), before its registration" True \
   "$(python3 -c 'import glob,json,os; j=[json.load(open(f)) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "lt.md" in open(f).read()][0]; print(j["started"] - j["launched"] >= 1)')"
 rm -f $(grep -l lt.md "$HOME"/.claude/agent-jobs/*)
-# two calls in one message with different tasks: each registers its own call's launch, so A's agent, started before B's
-# check, is still A's
+# two calls in one message, each its own job (own description and task; one key is refused above): each registers its own
+# launch time, so A's agent, started before B's check, is still A's
 got=$(python3 - "$R/hooks" "$T/dd-launcher.jsonl" <<'EOF2'
 import datetime, json, os, subprocess, sys, time
 hooks, tr = sys.argv[1:]; sys.path.insert(0, hooks); import agent_jobs
@@ -1311,7 +1311,7 @@ out = [hook('dd-a')]; time.sleep(.1); agent('dd-a'); time.sleep(.1); out.append(
 print(*out, mine('dd-a'), mine('dd-b'))
 EOF2
 )
-check "two calls in one message with different tasks both pass, and each registered job finds its own agent's transcript" "0 0 dd-a.jsonl dd-b.jsonl" "$got"
+check "two calls in one message under their own descriptions both pass, and each registered job finds its own agent's transcript, though A's agent started before B's check" "0 0 dd-a.jsonl dd-b.jsonl" "$got"
 rm -f $(grep -l dd-worker "$HOME"/.claude/agent-jobs/*)
 # a T3 Codex agent: T3 names it by its rollout's session_meta id, not the file's name
 CX=0aa0c0de-1111-7222-8333-444455556666; CXF="$HOME/.codex/sessions/2026/10/14/rollout-2026-10-14T10-00-00-$CX.jsonl"
