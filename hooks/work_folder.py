@@ -3,6 +3,7 @@
 <checkout>-work/ beside a checkout. keep() says what deleting a folder would lose; disk-sweep's w-done rule deletes a retired
 folder it finds nothing in."""
 import glob, os, re, subprocess
+import steward
 
 ROOT = os.path.join(os.path.expanduser('~'), '.mergeworthy', 'work')
 OTHER_VCS = ('.hg', '.svn', '.jj')
@@ -38,14 +39,15 @@ def task_of(path):
 
 
 def watched_by(dirs, session_id, path):
-    """The watch dirs (gh-watch-start) among dirs whose events reach the session acting at path: the task's work folder holding path
-    first, then the dirs whose `session` file names session_id. Another session's watcher wakes that session alone."""
-    wf = task_of(path)
+    """The watch dirs (gh-watch-start) among dirs whose events reach the session acting at path: the task's work folder holding path;
+    outside one, the dirs whose `session` file names session_id, but the steward's (steward.quiet: it wakes only for a new mergeworthy issue).
+    Another session's watcher wakes that session alone."""
+    if wf := task_of(path):
+        return [w for w in dirs if os.path.realpath(w) == wf]
     def session(w):
         try: return open(os.path.join(w, 'session')).read().strip()
         except OSError: return ''
-    return sorted((w for w in dirs if wf and os.path.realpath(w) == wf or session_id and session(w) == session_id),
-                  key=lambda w: os.path.realpath(w) != wf)
+    return [w for w in dirs if session_id and session(w) == session_id and not steward.quiet(w)]
 
 
 def inside(p, top):

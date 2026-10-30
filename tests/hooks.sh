@@ -35,6 +35,11 @@ if isinstance(v, dict) and re.fullmatch(r"(\.\w+)+", q):
 else: sys.stdout.write(raw)' "$f" "$q"
 EOF
 chmod +x "$T/bin/gh"; export PATH="$T/bin:$PATH" FX="$T/fx"
+# stub gh-watch-start (post-bash-register starts a work folder's watcher): logs its session and arguments, adds the thread, prints the Monitor
+printf '#!/bin/sh
+echo "$CLAUDE_CODE_SESSION_ID $*" >> "$T/started"; d=$1; shift; echo "$*" >> "$d/threads.txt"; echo "Arm a Monitor in this session on: tail $d/events.log"
+' > "$T/bin/gh-watch-start"
+chmod +x "$T/bin/gh-watch-start"; export T GH_WATCH_START="$T/bin/gh-watch-start"
 fails=0
 TASKW="$HOME/.mergeworthy/work/t"; TCO="$TASKW/repo"; mkdir -p "$TASKW"
 printf 'Tier: S, because one bounded fix\n\n- [ ] fix the thing https://github.com/o/r/issues/1\n' > "$TASKW/scope.md"
@@ -1068,6 +1073,18 @@ check "BLOCK: an implementer brief whose repo study is over 30 days old, or miss
 echo "Studied: $(date -u +%F)" > "$HOME/.mergeworthy/projects/o/r.study.md"
 check "BLOCK: an implementation brief for that repo without code/SKILL.md, naming it" "2 1" "$(ag "$T" 'Build o/r#6 per ~/.mergeworthy/projects/o/r.md') $(grep -c 'skills/code/SKILL.md' "$T/err")"
 check "a review brief needs no code/SKILL.md" 0 "$(ag "$T" 'Review o/r#8 per ~/.mergeworthy/projects/o/r.md' review)"
+# pre-agent-dedupe: the project file's `## Agents` line `Effort: <effort>` is the effort every agent for its repo launches at
+aeff() { # tool input-extra-JSON
+  python3 -c 'import json,sys,time; print(json.dumps({"tool_name":sys.argv[1],"cwd":sys.argv[2],"tool_input":{"task":"Review o/r#8 per ~/.mergeworthy/projects/o/r.md","prompt":"Review o/r#8 per ~/.mergeworthy/projects/o/r.md","role":"review","clientRequestId":f"ae-{time.time_ns()}-r1",**json.loads(sys.argv[3])}}))' "$1" "$T" "$2" \
+    | timeout 10 python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
+check "with no Effort line, any effort or none passes" "0 0" "$(aeff mcp__t3-code__delegate_task '{"target":{"options":{"effort":"high"}}}') $(aeff mcp__t3-code__delegate_task '{}')"
+printf -- '- a convention\n## Who decides\n- maint merges: ~/.mergeworthy/projects/o/r.study.md\n## Agents\n- Every agent runs at medium.\n- Effort: medium\n' > "$HOME/.mergeworthy/projects/o/r.md"
+check "BLOCK: a Codex delegate_task at high, naming the line; at medium (as options or a list of {id, value}) it passes" "2 1 0 0" "$(aeff mcp__t3-code__delegate_task '{"target":{"options":{"reasoningEffort":"high"}}}') $(grep -c 'Effort: medium.*not high' "$T/err") $(aeff mcp__t3-code__delegate_task '{"target":{"options":{"reasoningEffort":"medium"}}}') $(aeff mcp__t3-code__delegate_task '{"target":{"options":[{"id":"effort","value":"medium"}]}}')"
+check "BLOCK: a Claude delegate_task and an Agent at high, and a launch with no effort option" "2 2 2 1" "$(aeff mcp__t3-code__delegate_task '{"target":{"options":{"effort":"high"}}}') $(aeff Agent '{"effort":"high"}') $(aeff mcp__t3-code__delegate_task '{}') $(grep -c "harness's default" "$T/err")"
+check "an Agent at medium passes" 0 "$(aeff Agent '{"effort":"medium"}')"
+printf -- '- a convention\n## Who decides\n- maint merges: ~/.mergeworthy/projects/o/r.study.md\n## Agents\nEffort: medium\n' > "$HOME/.mergeworthy/projects/o/r.md"
+check "BLOCK: an unbulleted Effort line holds too: high or no option blocks, medium passes" "2 2 0" "$(aeff mcp__t3-code__delegate_task '{"target":{"options":{"reasoningEffort":"high"}}}') $(aeff mcp__t3-code__delegate_task '{}') $(aeff Agent '{"effort":"medium"}')"
+printf -- '- a convention\n## Who decides\n- maint merges: ~/.mergeworthy/projects/o/r.study.md\n' > "$HOME/.mergeworthy/projects/o/r.md"
 # the main session reads the code itself before briefing an implementer: a Read of a file in a checkout of that repo, in its transcript
 RD="$T/x-work/rd"; git init -q "$RD"; git -C "$RD" remote add origin git@github.com:o/r.git; mkdir -p "$RD/src"; echo 'export {}' > "$RD/src/a.ts"; git -C "$RD" add src/a.ts; echo report > "$RD/verify.md"
 agt() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","cwd":sys.argv[1],"transcript_path":sys.argv[3],"tool_input":{"task":sys.argv[2],"title":sys.argv[2][:50],"role":"implementation"}}))' "$T" "$1$AFX" "$2" \
@@ -2544,7 +2561,7 @@ unwatched() { bgs "$@" >/dev/null; grep -c 'no running watcher' "$T/err"; }
 PUSH='git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc'
 PRC="gh pr create --repo vikejs/vike --draft --title \"\$(cat $TK4/drafts/title.md)\" --body-file $TK4/drafts/pr.md"
 MRC='glab mr create --draft -R gitlab.com/ns/proj --title x'
-check "BLOCK: a push, a PR and an MR from a work folder another session's watcher doesn't watch, naming the folder to watch" "2 1 1 1" \
+check "BLOCK: a push from a work folder another session's watcher doesn't watch, naming the folder to watch; a PR and an MR from there pass: post-bash-register starts its watcher" "2 1 0 0" \
   "$(bgs sess-b "$PUSH" "$CK4") $(grep -c "gh-watch-start $TK4 " "$T/err") $(unwatched sess-b "$PRC" "$CK4") $(unwatched sess-b "$MRC" "$CK4")"
 check "the same from the watched work folder pass, whichever session acts there" "0 0 0" "$(bgs sess-b "$PUSH" "$CK") $(unwatched sess-b "$PRC" "$CK") $(unwatched sess-b "$MRC" "$CK")"
 check "a variable a subshell sets stays inside it: a cd to it after the subshell goes where the line set it before, a watched folder" 0 "$(bgs sess-b "WD=$CK; (WD=$CK4); cd \$WD && $PUSH" "$T")"
@@ -2554,12 +2571,72 @@ check "BLOCK: a push after a subshell's cd and push is checked in the session's 
 check "outside any work folder, only the session's own watcher counts" "0 1" "$(unwatched sess-a "$MRC" "$T") $(unwatched sess-b "$MRC" "$T")"
 oreg() { # session cwd command: the thread post-bash-register adds to the watched folder
   python3 -c 'import json,sys; print(json.dumps({"session_id":sys.argv[1],"cwd":sys.argv[2],"tool_input":{"command":sys.argv[3]},"tool_response":{"stdout":"https://github.com/vikejs/vike/pull/9"}}))' "$@" \
-    | python3 "$R/hooks/post-bash-register.py"; cat "$TK2/threads.txt" 2>/dev/null || echo none; rm -f "$TK2/threads.txt"; }
-check "a PR opened from the unwatched folder joins no other session's watcher; from the watched one (after a cd, to a variable too), it joins its watcher" \
-  "none|vikejs/vike 9|vikejs/vike 9|vikejs/vike 9" "$(oreg sess-b "$CK4" "$PRC")|$(oreg sess-b "$CK" "$PRC")|$(oreg sess-b "$T" "cd $CK && $PRC")|$(oreg sess-b "$T" "D=$CK; cd \"\$D\" && $PRC")"
+    | python3 "$R/hooks/post-bash-register.py" 2>"$T/err"; echo "$?:$(cat "$TK2/threads.txt" 2>/dev/null || echo none)"; rm -f "$TK2/threads.txt" "$TK4/threads.txt"; }
+check "a PR opened from the unwatched folder joins no other session's watcher but starts its own folder's, as this session's, saying to arm the Monitor; from the watched one (after a cd, to a variable too), it joins its watcher" \
+  "2:none sess-b $TK4 vikejs/vike 9 1|0:vikejs/vike 9|0:vikejs/vike 9|0:vikejs/vike 9" \
+  "$(oreg sess-b "$CK4" "$PRC") $(cat "$T/started") $(grep -c 'Arm a Monitor' "$T/err")|$(oreg sess-b "$CK" "$PRC")|$(oreg sess-b "$T" "cd $CK && $PRC")|$(oreg sess-b "$T" "D=$CK; cd \"\$D\" && $PRC")"
+# an issue opened through the API from that folder starts its watcher too, in each form need_home lets through; a form whose repo can't be
+# told, or a host no watcher reads, is refused there as before
+areg() { # command stdout: post-bash-register from the unwatched folder, then the start it made
+  : > "$T/started"; python3 -c 'import json,sys; print(json.dumps({"session_id":"sess-b","cwd":sys.argv[1],"tool_input":{"command":sys.argv[2]},"tool_response":{"stdout":sys.argv[3]}}))' "$CK4" "$1" "$2" \
+    | python3 "$R/hooks/post-bash-register.py" 2>/dev/null; echo "$?:$(cat "$T/started")"; rm -f "$TK4/threads.txt"; }
+check "an issue opened through the API from a work folder with no watcher starts it: a full-URL gh api, a glab api; {owner}/{repo} from a GH_REPO= prefix is no plain create and starts none" \
+  "2:sess-b $TK4 vikejs/vike 9|2:|2:sess-b $TK4 gitlab.com/ns/proj 9" \
+  "$(areg "gh api https://api.github.com/repos/vikejs/vike/issues -f title=x -F body=@$T/na.md" https://github.com/vikejs/vike/issues/9)|$(areg "GH_REPO=vikejs/vike gh api 'repos/{owner}/{repo}/issues' -f title=x -F body=@$T/na.md" https://github.com/vikejs/vike/issues/9)|$(areg 'glab api projects/ns%2Fproj/issues -X POST -f title=x' https://gitlab.com/ns/proj/-/issues/9)"
+check "an API create whose new thread's body links another thread of the repo starts the watcher for the created one only (glab api, gh api, the body before the URL)" \
+  "2:sess-b $TK4 gitlab.com/ns/proj 9|2:sess-b $TK4 vikejs/vike 9|2:sess-b $TK4 vikejs/vike 9" \
+  "$(areg 'glab api projects/ns%2Fproj/issues -X POST -f title=x' '{"iid":9,"web_url":"https://gitlab.com/ns/proj/-/issues/9","description":"Follows https://gitlab.com/ns/proj/-/issues/3"}')|$(areg "gh api https://api.github.com/repos/vikejs/vike/issues -f title=x -F body=@$T/na.md" '{"number":9,"html_url":"https://github.com/vikejs/vike/issues/9","body":"Follows https://github.com/vikejs/vike/issues/3"}')|$(areg "gh api https://api.github.com/repos/vikejs/vike/issues -f title=x -F body=@$T/na.md" '{"body":"Follows https://github.com/vikejs/vike/issues/3","html_url":"https://github.com/vikejs/vike/issues/9"}')"
+check "an API create whose body links a thread of the other kind with its number starts the watcher for the created one only: GitLab issue 9 linking MR !9, MR !9 linking issue 9, GitHub issue 9 linking PR 9" \
+  "2:sess-b $TK4 gitlab.com/ns/proj 9|2:sess-b $TK4 gitlab.com/ns/proj !9|2:sess-b $TK4 vikejs/vike 9" \
+  "$(areg 'glab api projects/ns%2Fproj/issues -X POST -f title=x' '{"iid":9,"web_url":"https://gitlab.com/ns/proj/-/issues/9","description":"Follows https://gitlab.com/ns/proj/-/merge_requests/9"}')|$(areg 'glab api projects/ns%2Fproj/merge_requests -X POST -f title=x -f source_branch=a -f target_branch=main' '{"iid":9,"web_url":"https://gitlab.com/ns/proj/-/merge_requests/9","description":"Fixes https://gitlab.com/ns/proj/-/issues/9"}')|$(areg "gh api https://api.github.com/repos/vikejs/vike/issues -f title=x -F body=@$T/na.md" '{"number":9,"html_url":"https://github.com/vikejs/vike/issues/9","body":"Follows https://github.com/vikejs/vike/pull/9"}')"
+printf '%s\nIt breaks.\n' '<img src="https://github.com/claude.png" width="20" height="20" alt="Claude">' > "$T/h1.md"; sha256sum "$T/h1.md" | cut -d' ' -f1 > "$T/h1.md.gate"
+GI="gh api https://api.github.com/repos/vikejs/vike/issues -f title=x -F body=@$T/h1.md"
+drops() { for c in "$GI --jq .number" "$GI -q .number" "$GI --silent" "$GI > $T/out.json" "$GI | cat" "$PRC --web"; do
+  printf '%s %s ' "$(bgs sess-b "$c" "$CK4")" "$(grep -c 'only a plain create starts its work folder' "$T/err")"; done | xargs; }
+check "BLOCK: from that folder, a create whose output can't carry the new thread's URL (--jq, -q, --silent, a redirect, a pipe; gh pr create --web), saying what a plain create is; with none, it passes" \
+  "2 1 2 1 2 1 2 1 2 1 2 1 0" "$(drops) $(bgs sess-b "$GI" "$CK4")"
+check "BLOCK: from that folder, an API create on a host no watcher reads or by a project's numeric id, as before" "2 1 2 1" \
+  "$(bgs sess-b "gh api https://github.example.com/api/v3/repos/o/r/issues -f title=x -F body=@$T/na.md" "$CK4") $(grep -c 'no running watcher of this task or session covers github.example.com/o/r' "$T/err") $(bgs sess-b 'glab api projects/123/issues -X POST -f title=x' "$CK4") $(grep -c "can't tell which repo this acts on" "$T/err")"
+# the steward's watcher, whose session file names the session, wakes it only for a new mergeworthy issue: a PR opened while the task's
+# own folder has no watcher (it retired) starts that one instead (nitedani/mergeworthy#67, #68), and outside a work folder it covers nothing
+SWD="$HOME/.mergeworthy/work/steward"; mkdir -p "$SWD"; echo "$FPID" > "$SWD/gh-watch.pid"; echo sess-s > "$SWD/session"; printf 'vikejs/vike\ngitlab.com/ns/proj\n' > "$SWD/repos.txt"; echo "$SWD" >> "$HOME/.claude/gh-watch-dirs.txt"; : > "$T/started"
+check "a PR from a work folder whose watcher retired starts that folder's watcher, not the steward's that names the session; outside a work folder the steward's covers nothing" \
+  "2:none sess-s $TK4 vikejs/vike 9 none 1" "$(oreg sess-s "$CK4" "$PRC") $(cat "$T/started") $(cat "$SWD/threads.txt" 2>/dev/null || echo none) $(unwatched sess-s "$MRC" "$T")"
+rm -r "$SWD"; sed -i "\|^$SWD\$|d" "$HOME/.claude/gh-watch-dirs.txt"
 # two MRs opened in one command from two work folders: the second folder needs its own watcher
 TWO="cd $CK; $MRC; cd $CK4; $MRC"
-check "BLOCK: two MRs from two work folders in one command while the second folder has no watcher" 2 "$(bgs sess-b "$TWO" "$T")"
+check "BLOCK: two MRs from two work folders in one command while the second folder has no watcher: post-bash-register can't tell which folder each joins" "2 1" \
+  "$(bgs sess-b "$TWO" "$T") $(grep -c 'only a plain create starts its work folder' "$T/err")"
+# only a plain create passes without a running watcher: a create in a redirected group, or beside a note in another folder, doesn't
+GIC='glab issue create -R gitlab.com/ns/proj --title x'; H2="$GIC; cd $CK; glab issue note 1 -R gitlab.com/ns/proj --message done"
+check "BLOCK: from a work folder with no watcher, a create in a brace group redirected to a file, one beside a note, one after echo &&, in \$(...) or backgrounded; alone it passes" \
+  "2 2 2 2 2 0" "$(bgs sess-b "{ $GIC; } > $T/out" "$CK4") $(bgs sess-b "$H2" "$CK4") $(bgs sess-b "echo x && $GIC" "$CK4") $(bgs sess-b "echo \$($GIC)" "$CK4") $(bgs sess-b "$GIC &" "$CK4") $(bgs sess-b "$GIC" "$CK4")"
+check "a create after cd to the work folder's checkout by absolute path (cd /abs &&, twice, cd /abs 2>/dev/null &&) is plain: it passes; after a relative cd, a computed one, true &&, cd /abs ||, or with its output redirected, it doesn't" \
+  "0 0 0 2 2 2 2 2" "$(bgs sess-b "cd $CK4 && $GIC" "$T") $(bgs sess-b "cd $T && cd $CK4 && $GIC" "$T") $(bgs sess-b "cd $CK4 2>/dev/null && $GIC" "$T") $(bgs sess-b "cd vike && $GIC" "$TK4") $(X=$CK4 bgs sess-b "cd \$X && $GIC" "$T") $(bgs sess-b "true && $GIC" "$CK4") $(bgs sess-b "cd $CK4 || $GIC" "$T") $(bgs sess-b "cd $CK4 && $GIC > $T/out" "$T")"
+check "BLOCK: from a work folder with no watcher, a create after exec > file (its output goes to the file), after an assignment, before or after another command" "2 2 2 2 1" \
+  "$(bgs sess-b "exec > $T/create.log; $GIC" "$CK4") $(bgs sess-b "FOO=1 $MRC" "$CK4") $(bgs sess-b "$MRC; echo done" "$CK4") $(bgs sess-b "echo x; $MRC" "$CK4") $(grep -c 'only a plain create starts its work folder' "$T/err")"
+check "BLOCK: from a work folder with no watcher, a create after a cd whose redirect runs another create (\$(…) in its target), after cd > file, with a backtick or a \$(…) other than cat in an argument, or reading a heredoc" "2 2 2 2 2 1" \
+  "$(bgs sess-b "cd $CK4 > \"\$($GIC)\" && $GIC" "$T") $(bgs sess-b "cd $CK4 > $T/out && $MRC" "$T") $(bgs sess-b "glab mr create --draft -R gitlab.com/ns/proj --title \`echo x\`" "$CK4") $(bgs sess-b "glab mr create --draft -R gitlab.com/ns/proj --title \"\$(echo x)\"" "$CK4") $(bgs sess-b "$(printf 'glab mr create --draft -R gitlab.com/ns/proj --title x --description-file - <<EOF\nBody.\nEOF')" "$CK4") $(grep -c 'only a plain create starts its work folder' "$T/err")"
+# a plain create's exemption holds only on the host the watcher reads, however gh or glab is pointed elsewhere
+GHE="gh api repos/vikejs/vike/issues -f title=x -F body=@$T/h1.md"; GHI="gh issue create --title x --body-file $T/h1.md"
+check "BLOCK: from a work folder with no watcher, a create on another host: gh api --hostname, gh -R HOST/OWNER/REPO, a GH_REPO or GH_HOST naming it, glab -R HOST/PATH or its URL, GITLAB_HOST or GL_HOST, glab api --hostname" "2 2 2 2 2 2 2 2 2 1" \
+  "$(bgs sess-b "gh api --hostname github.example.com repos/vikejs/vike/issues -f title=x -F body=@$T/h1.md" "$CK4") $(bgs sess-b "gh issue create -R github.example.com/vikejs/vike --title x --body-file $T/h1.md" "$CK4") $(GH_REPO=github.example.com/vikejs/vike bgs sess-b "$GHI" "$CK4") $(GH_HOST=github.example.com bgs sess-b "$GHE" "$CK4") $(bgs sess-b 'glab issue create -R gitlab.example.com/ns/proj --title x' "$CK4") $(bgs sess-b 'glab issue create -R https://gitlab.example.com/ns/proj --title x' "$CK4") $(GITLAB_HOST=gitlab.example.com bgs sess-b 'glab issue create -R ns/proj --title x' "$CK4") $(GL_HOST=gitlab.example.com bgs sess-b 'glab issue create -R ns/proj --title x' "$CK4") $(bgs sess-b 'glab api --hostname gitlab.example.com projects/ns%2Fproj/issues -X POST -f title=x' "$CK4") $(grep -c 'only a plain create starts its work folder' "$T/err")"
+check "BLOCK: a public host in one signal and another host in a second: GH_REPO github.com with GH_HOST another (round 6), --hostname github.com with GH_HOST another, glab -R gitlab.com with GITLAB_HOST another, two --hostname" "2 2 2 2 1" \
+  "$(GH_REPO=github.com/vikejs/vike GH_HOST=github.example.com bgs sess-b "$GHE" "$CK4") $(GH_HOST=github.example.com bgs sess-b "gh api --hostname github.com repos/vikejs/vike/issues -f title=x -F body=@$T/h1.md" "$CK4") $(GITLAB_HOST=gitlab.example.com bgs sess-b "$GIC" "$CK4") $(bgs sess-b "gh api --hostname github.com --hostname github.example.com repos/vikejs/vike/issues -f title=x -F body=@$T/h1.md" "$CK4") $(grep -c 'only a plain create starts its work folder' "$T/err")"
+check "every signal naming the public host passes: GH_REPO github.com with GH_HOST github.com, GITLAB_HOST and GL_HOST gitlab.com with glab -R gitlab.com" "0 0" \
+  "$(GH_REPO=github.com/vikejs/vike GH_HOST=github.com bgs sess-b "$GHE" "$CK4") $(GITLAB_HOST=gitlab.com GL_HOST=https://gitlab.com bgs sess-b "$GIC" "$CK4")"
+check "the same creates on github.com and gitlab.com pass: gh api, with --hostname github.com, gh -R OWNER/REPO and github.com/OWNER/REPO, glab -R PATH and gitlab.com/PATH" "0 0 0 0 0 0" \
+  "$(bgs sess-b "$GHE" "$CK4") $(bgs sess-b "gh api --hostname github.com repos/vikejs/vike/issues -f title=x -F body=@$T/h1.md" "$CK4") $(bgs sess-b "gh issue create -R vikejs/vike --title x --body-file $T/h1.md" "$CK4") $(bgs sess-b "gh issue create -R github.com/vikejs/vike --title x --body-file $T/h1.md" "$CK4") $(bgs sess-b 'glab issue create -R ns/proj --title x' "$CK4") $(bgs sess-b "$GIC" "$CK4")"
+check "a create alone, after cd /abs &&, with 2>&1 or with --title \"\$(cat <file>)\" passes and starts the folder's watcher; after exec > file it starts none" \
+  "0 0 0 0|2:sess-b $TK4 vikejs/vike 9|2:sess-b $TK4 vikejs/vike 9|2:sess-b $TK4 vikejs/vike 9|0:" \
+  "$(bgs sess-b "$MRC" "$CK4") $(bgs sess-b "cd $CK4 && $MRC" "$T") $(bgs sess-b "$MRC 2>&1" "$CK4") $(bgs sess-b "glab mr create --draft -R gitlab.com/ns/proj --title \"\$(cat $T/h1.md)\"" "$CK4")|$(areg "$PRC" https://github.com/vikejs/vike/pull/9)|$(areg "cd $CK4 && $PRC" https://github.com/vikejs/vike/pull/9)|$(areg "$PRC 2>&1" https://github.com/vikejs/vike/pull/9)|$(areg "exec > $T/create.log; $GIC" '')"
+check "a create whose repository names the host (-R github.com/OWNER/REPO, --repo with its URL, --repo=) starts the folder's watcher as -R OWNER/REPO does" \
+  "2:sess-b $TK4 vikejs/vike 9|2:sess-b $TK4 vikejs/vike 9|2:sess-b $TK4 vikejs/vike 9|2:sess-b $TK4 vikejs/vike 9" \
+  "$(for r in '-R vikejs/vike' '-R github.com/vikejs/vike' '--repo https://github.com/vikejs/vike' '--repo=github.com/vikejs/vike'; do areg "gh issue create $r --title x --body-file $T/h1.md" https://github.com/vikejs/vike/issues/9; done | paste -sd'|')"
+check "post-bash-register starts the folder's watcher for cd /abs && a create" "2:sess-b $TK4 gitlab.com/ns/proj 9" \
+  "$(: > "$T/started"; python3 -c 'import json,sys; print(json.dumps({"session_id":"sess-b","cwd":sys.argv[1],"tool_input":{"command":sys.argv[2]},"tool_response":{"stdout":"https://gitlab.com/ns/proj/-/issues/9"}}))' "$T" "cd $CK4 && $GIC" | python3 "$R/hooks/post-bash-register.py" 2>/dev/null; echo "$?:$(cat "$T/started")"; rm -f "$TK4/threads.txt")"
+check "post-bash-register starts the folder's watcher for a plain create only: the create beside a note starts none; a note alone neither, saying to start it" "2:sess-b $TK4 gitlab.com/ns/proj 9|2:|1" \
+  "$(areg "$GIC" https://gitlab.com/ns/proj/-/issues/9)|$(areg "$H2" "$(printf 'https://gitlab.com/ns/proj/-/issues/9\nhttps://gitlab.com/ns/proj/-/issues/1#note_2')")|$(python3 -c 'import json,sys; print(json.dumps({"session_id":"sess-b","cwd":sys.argv[1],"tool_input":{"command":sys.argv[2]},"tool_response":{"stdout":"https://gitlab.com/ns/proj/-/issues/9"}}))' "$CK4" 'glab issue note 9 -R gitlab.com/ns/proj --message x' | python3 "$R/hooks/post-bash-register.py" 2>&1 >/dev/null | grep -c "isn't running, so gitlab.com/ns/proj 9 joined none")"
 check "BLOCK: an MR where the dir can't be told (cd -, a cd to an unset variable, a cd in a branch or a function), saying to cd to an absolute path" "2 2 2 2 1" \
   "$(bgs sess-b "cd $CK; $MRC; cd -; $MRC" "$CK4") $(bgs sess-b "cd \"\$NOWHERE\" && $MRC" "$CK") $(bgs sess-b "if true; then cd $CK; fi; $MRC" "$CK") $(bgs sess-b "f() { cd $CK; }; $MRC" "$CK") $(grep -c 'cd to an absolute path first' "$T/err")"
 check "a cd in a subshell, a background job or bash -c never reaches what follows: the MR after it runs in the session's dir" "0 0 0" "$(bgs sess-b "(cd $CK4); $MRC" "$CK") $(bgs sess-b "cd $CK4 && sleep 1 & $MRC" "$CK") $(bgs sess-b "bash -c 'cd $CK4'; $MRC" "$CK")"
@@ -2813,12 +2890,12 @@ api_forms() { for c in "GH_REPO=o/r gh api 'repos/{owner}/{repo}/pulls' -f title
                        'glab api https://gitlab.com/api/v4/projects/me%2Fapp/merge_requests -X POST -f source_branch=mr-b -f target_branch=main -f title=x'; do
     printf '%s ' "$(MERGEWORTHY_WATCHER=off bg "$c" "$NA")"; done | xargs; }
 check "BLOCK: with no approach record, a PR or MR created through the API in each form gh and glab take ({owner}/{repo}, a leading slash, a full URL, GitHub Enterprise's, api/v4/, a query)" "2 2 2 2 2 2 2" "$(api_forms)"
-check "BLOCK: an issue opened through the API in those forms, in a repo no watcher covers, naming it with its host" "2 1 2 1 2 1 2 1" \
-  "$(bg "GH_REPO=nobody/x gh api 'repos/{owner}/{repo}/issues' -f title=x -F body=@$T/na.md" "$NA") $(grep -c 'no running watcher of this task or session covers nobody/x' "$T/err") $(bg "glab api '/api/v4/projects/nobody%2Fx/issues?x=1' -X POST -f title=x" "$NA") $(grep -c 'no running watcher of this task or session covers gitlab.com/nobody/x' "$T/err") $(bg 'glab api https://gitlab.example.com/api/v4/projects/nobody%2Fx/issues -X POST -f title=x' "$NA") $(grep -c 'no running watcher of this task or session covers gitlab.example.com/nobody/x' "$T/err") $(bg "gh api https://github.example.com/api/v3/repos/nobody/x/issues -f title=x -F body=@$T/na.md" "$NA") $(grep -c 'no running watcher of this task or session covers github.example.com/nobody/x' "$T/err")"
-check "BLOCK: an issue or MR opened through the API by a project's numeric id, since which project it is can't be told, naming that" "2 1" \
-  "$(bg 'glab api projects/123/issues -X POST -f title=x' "$NA") $(grep -c "can't tell which repo this acts on" "$T/err")"
+check "BLOCK: an issue opened through the API in those forms, outside a work folder, in a repo no watcher covers, naming it with its host" "2 1 2 1 2 1 2 1" \
+  "$(bg "GH_REPO=nobody/x gh api 'repos/{owner}/{repo}/issues' -f title=x -F body=@$T/na.md" "$T") $(grep -c 'no running watcher of this task or session covers nobody/x' "$T/err") $(bg "glab api '/api/v4/projects/nobody%2Fx/issues?x=1' -X POST -f title=x" "$T") $(grep -c 'no running watcher of this task or session covers gitlab.com/nobody/x' "$T/err") $(bg 'glab api https://gitlab.example.com/api/v4/projects/nobody%2Fx/issues -X POST -f title=x' "$T") $(grep -c 'no running watcher of this task or session covers gitlab.example.com/nobody/x' "$T/err") $(bg "gh api https://github.example.com/api/v3/repos/nobody/x/issues -f title=x -F body=@$T/na.md" "$T") $(grep -c 'no running watcher of this task or session covers github.example.com/nobody/x' "$T/err")"
+check "BLOCK: an issue or MR opened through the API by a project's numeric id, outside a work folder, since which project it is can't be told, naming that" "2 1" \
+  "$(bg 'glab api projects/123/issues -X POST -f title=x' "$T") $(grep -c "can't tell which repo this acts on" "$T/err")"
 check "a GitLab project path through the API is on --hostname's or GITLAB_HOST's host" "2 1 2 1" \
-  "$(bg 'glab api --hostname gl.example.com projects/nobody%2Fx/issues -X POST -f title=x' "$NA") $(grep -c 'no running watcher of this task or session covers gl.example.com/nobody/x' "$T/err") $(bg 'GITLAB_HOST=https://h.example.com glab api projects/nobody%2Fx/issues -X POST -f title=x' "$NA") $(grep -c 'no running watcher of this task or session covers h.example.com/nobody/x' "$T/err")"
+  "$(bg 'glab api --hostname gl.example.com projects/nobody%2Fx/issues -X POST -f title=x' "$T") $(grep -c 'no running watcher of this task or session covers gl.example.com/nobody/x' "$T/err") $(bg 'GITLAB_HOST=https://h.example.com glab api projects/nobody%2Fx/issues -X POST -f title=x' "$T") $(grep -c 'no running watcher of this task or session covers h.example.com/nobody/x' "$T/err")"
 (cd "$NA" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 check "each passes once the branch has its approach record" "0 0 0 0 0 0 0 0 0 0" "$(na)"
 check "the API forms pass too" "0 0 0 0 0 0 0" "$(api_forms)"

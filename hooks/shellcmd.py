@@ -5,6 +5,7 @@ parse() reads a command with mvdan/sh, bash's syntax as shfmt parses it (hooks/r
 command that doesn't parse, or a parser that can't be installed, yields the command's words split roughly, with the error,
 so a hook checks what it can and blocks a guarded verb it can't check."""
 import hashlib, itertools, json, os, re, subprocess, sys
+import work_folder
 
 
 def branch_record(d, kind, branch=None):
@@ -593,6 +594,119 @@ def api_call(rest, cwd=None):
     else:
         posts = method in ('POST', 'PATCH', 'PUT') and not NO_TEXT.fullmatch(re.sub(r'^(?:https?://[^/]+)?/?(?:api/v3/)?', '', ep).split('?')[0])
     return method, ep, fields, inputs, posts
+
+def repo_name(r):
+    """owner/repo a gh repository value names: [HOST/]OWNER/REPO or a URL."""
+    return '/'.join(re.sub(r'(\.git)?/*$', '', r).split('/')[-2:])
+
+def gh_repo(args, env, origin):
+    """owner/repo a gh command with args acts on, as gh picks it: its -R, else GH_REPO set on the command or inherited (both
+    [HOST/]OWNER/REPO or a URL), else the checkout's origin (origin(): its URL, read only then)."""
+    if r := (opt(args, ['--repo', '-R']) or [None])[-1] or env.get('GH_REPO', os.environ.get('GH_REPO')):
+        return repo_name(r)
+    m = re.search(r'github\.com[:/]([\w.-]+/[\w.-]+?)(\.git)?$', origin())
+    return m.group(1) if m else None
+
+def gitlab_repo(a, origin):
+    """`gitlab.com/<namespace>/<project>` a glab command acts on: its -R value (a path or URL), else the cwd's origin."""
+    repo = (opt(a, ['--repo', '-R']) or [None])[-1]
+    if repo:
+        repo = re.sub(r'^(https://)?gitlab\.com/', '', repo)
+    else:
+        repo = (re.search(r'gitlab\.com[:/](.+?)(?:\.git)?$', origin()) or [None, None])[1]
+    return 'gitlab.com/' + repo.strip('/') if repo and '://' not in repo else None
+
+def api_opens(ep, rest, env, origin):
+    """(repo, 'issue' or 'pr') a `gh api` or `glab api` POST to ep opens, in each form the CLIs take (a full URL, a leading slash, an api/v3/
+    or api/v4/ prefix, a query, gh's {owner}/{repo} from GH_REPO or the checkout (origin, as gh_repo), glab's :fullpath or :id, a GitLab host from --hostname or GITLAB_HOST);
+    None for any other endpoint, repo None when it can't be told (a project's numeric id)."""
+    host, path = re.match(r'(?:https?://([^/]+))?/?(?:api/v[34]/)?([^?]*)', ep).groups()
+    if (m := re.fullmatch(r'repos/([^/]+/[^/]+)/(issues|pulls)', path)):
+        base = gh_repo(rest, env, origin) or ''
+        repo = m[1].replace('{owner}', base.split('/')[0]).replace('{repo}', base.split('/')[-1]) if base else m[1]
+        return (None if '{' in repo else repo if host in (None, 'api.github.com') else f'{host}/{repo}'), 'pr' if m[2] == 'pulls' else 'issue'
+    if (m := re.fullmatch(r'projects/([^/]+)/(issues|merge_requests)', path)):
+        import urllib.parse
+        project = urllib.parse.unquote(m[1])
+        host = host or (opt(rest, ['--hostname']) or [None])[-1] or env.get('GITLAB_HOST') or os.environ.get('GITLAB_HOST') or 'gitlab.com'
+        repo = gitlab_repo(rest, origin) if project in (':fullpath', ':id') else f"{re.sub(r'^https?://|/+$', '', host)}/{project}" if '/' in project else None
+        return repo, 'pr' if m[2] == 'merge_requests' else 'issue'
+    return None
+
+def env_of(t):
+    """The variables a simple command sets for itself (`GH_REPO=o/r gh ...`)."""
+    return dict(x.split('=', 1) for x in t[:len(t) - len(prog(t))] if re.match(r'^\w+=', x))
+
+def origin(d):
+    """The origin remote's URL of the checkout at d; '' without one."""
+    return subprocess.run(['git', '-C', d, 'remote', 'get-url', 'origin'], capture_output=True, text=True).stdout.strip()
+
+def _named_host(r, p):
+    """The host a -R or GH_REPO value names (a URL, git@host:path, gh's HOST/OWNER/REPO, a glab path whose first part has a dot,
+    which glab can't tell from a dotted group either); None when it names none, '' when it can't be read."""
+    if m := re.match(r'(?:[a-z][\w+.-]*://)?[^@/]+@([^/:]+)[:/]|[a-z][\w+.-]*://([^/:]+)', r):
+        return m[1] or m[2]
+    if '://' in r or '@' in r: return ''
+    parts = r.strip('/').split('/')
+    return parts[0] if (len(parts) >= 3 if p == 'gh' else '.' in parts[0]) else None
+
+def public_host(t):
+    """Whether every host the gh or glab command t names is the CLI's public one (github.com, api.github.com; gitlab.com): an API
+    endpoint's URL, each --hostname, a host in each -R or in GH_REPO, and GH_HOST (gh) or GITLAB_HOST and GL_HOST (glab), set on
+    the command or in this environment. One naming another host, or one that can't be read, and it isn't; which of them the CLI
+    would use isn't guessed."""
+    env, a = env_of(t), prog(t)
+    p, rest = os.path.basename(a[0]), a[1:]
+    get = lambda k: env.get(k, os.environ.get(k))
+    ep = api_call(rest[1:])[1] if rest[:1] == ['api'] else ''
+    hosts = ([(re.match(r'https?://([^/]+)', ep) or [None, ''])[1]] if '://' in ep else []) + opt(rest, ['--hostname']) \
+        + [h for r in opt(rest, ['--repo', '-R']) + ([get('GH_REPO')] if p == 'gh' and get('GH_REPO') else []) if (h := _named_host(r, p)) is not None] \
+        + [v for k in (('GH_HOST',) if p == 'gh' else ('GITLAB_HOST', 'GL_HOST')) if (v := get(k))]
+    public = ('github.com', 'api.github.com') if p == 'gh' else ('gitlab.com',)
+    return all(re.sub(r'^https?://|/+$', '', h).lower() in public for h in hosts)
+
+def watchable(repo):
+    """True for a repo a watcher reads: owner/repo on github.com, or gitlab.com/<path>."""
+    return bool(repo) and (repo.startswith('gitlab.com/') or bool(re.fullmatch(r'[\w.-]+/[\w.-]+', repo)))
+
+def opened(t, d):
+    """(repo, the options that keep its URL out of the output) of the issue, PR or MR the simple command t, run in d, opens (gh or
+    glab create, or an API POST, as api_opens reads it); None when it opens none. repo is None when it can't be told."""
+    env, a = env_of(t), prog(t)
+    if not a or os.path.basename(a[0]) not in ('gh', 'glab') or '--help' in a or '-h' in a:
+        return None
+    p, a, here = os.path.basename(a[0]), a[1:], lambda: origin(d) if d else ''
+    if a[:1] == ['api']:
+        method, ep = api_call(a[1:])[:2]
+        if method != 'POST' or not (o := api_opens(ep, a[1:], env, here)):
+            return None
+        return o[0], ('--jq', '-q', '--template', '-t', '--silent')
+    if a[1:2] == ['create'] and a[0] in (('issue', 'pr') if p == 'gh' else ('issue', 'mr')):
+        return gh_repo(a[2:], env, here) if p == 'gh' else gitlab_repo(a[2:], here), ('--web', '-w') if p == 'gh' else ('--web',)
+    return None
+
+PLAIN = ("only a plain create starts its work folder's watcher by itself: the command is exactly zero or more `cd /abs/dir && `, then "
+         "gh or glab and its words (bare, '…', \"…\" without $, ` or \\, or \"$(cat <file>)\"), then at most one stderr redirect (2>&1, "
+         "2>/dev/null, 2>/abs/file); no other $, `, >, <, ;, |, &, newline or parenthesis, and no output filter (--jq, -q, --silent, "
+         "--template, --web); run in a task's work folder, on github.com or gitlab.com: every host it names (its URL, "
+         "--hostname, -R, GH_REPO, GH_HOST, GITLAB_HOST, GL_HOST) is that one")
+_BARE = r"[A-Za-z0-9_./:@=+,%-]"  # one character of a bare word
+_ERR = rf"2>(?:&1|/dev/null|\s?/{_BARE}+)"
+PLAIN_TEXT = re.compile(rf"""[ \t]*(?:cd[ \t]+/{_BARE}+(?:[ \t]+{_ERR})?[ \t]+&&[ \t]+)*(?:gh|glab)"""  # each piece of a word one way only: no backtracking blowup
+                        rf"""(?:[ \t]+(?:{_BARE}|'[^'\n]*'|"[^"$`\\\n]*"|"\$\(cat {_BARE}+\)")+)*(?:[ \t]+{_ERR})?[ \t]*""")
+
+def plain_create(cmd, cwd):
+    """The task's work folder whose watcher post-bash-register adds the thread to, starting or reviving it, when the command text
+    (run from cwd) is a plain create, the whole of it matching PLAIN_TEXT (PLAIN says which); None for any other command."""
+    if not PLAIN_TEXT.fullmatch(cmd):
+        return None
+    where = Where(cwd)
+    for t in where.walk(segments(cmd)):
+        if t[:1] in (['gh'], ['glab']) and (o := opened(t, where.dir)):
+            repo, filters = o
+            ok = watchable(repo) and public_host(t) and not any(f in t or opt(t, [f]) for f in filters)
+            return ok and where.dir and work_folder.task_of(where.dir) or None
+    return None
 
 def new_post_drafts(t):
     """Draft files a gh argv posts as something new (an issue, PR, comment or review): each draft is posted as new once, edits may repeat."""
