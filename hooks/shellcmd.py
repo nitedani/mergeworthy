@@ -383,14 +383,12 @@ NO_TEXT = re.compile(r'(?:repos/[^/]+/[^/]+/(?:.+/)?(?:reactions|rerun[\w-]*|dis
 
 def graphql_posts(fields, inputs):
     """A GraphQL call posts text when its query, literal or read from a file, is a mutation other than adding or removing a reaction."""
-    queries = []
-    for v in fields + [f'query=@{f}' for f in inputs]:
-        if not v.startswith('query=@'):
-            queries.append(v); continue
-        try:
-            queries.append(open(os.path.expanduser(v[len('query=@'):])).read())
-        except OSError:
-            return True  # stdin or an unreadable file: treated as a post
+    queries = [v for v in fields if not v.startswith('query=@')]
+    try:
+        queries += [open(os.path.expanduser(v[len('query=@'):])).read() for v in fields if v.startswith('query=@')]
+        queries += [str(json.load(open(os.path.expanduser(f))).get('query', '')) for f in inputs]  # --input is a JSON request body
+    except (OSError, ValueError, AttributeError):
+        return True  # stdin, an unreadable file or a body that isn't a JSON object: treated as a post
     for q in queries:
         if re.search(r'\bmutation\b', q):
             names = re.findall(r'\b([a-z]\w*)\s*\(\s*input\s*:', q)

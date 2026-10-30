@@ -1913,10 +1913,11 @@ import sys; sys.path.insert(0, sys.argv[1]); import shellcmd as s; T = sys.argv[
 print(*[s.api_call(['graphql', *a])[4] for a in (['-F', f'query=@{T}/m.graphql'], ['-f', 'query=mutation { addComment(input : {subjectId: "x", body: "y"}) { x } }'], ['--input', f'{T}/r.json'])])
 PY2
 )"
-check "GraphQL: a mutation in an --input payload posts" "True" "$(python3 - "$R/hooks" "$T" <<'PY2'
-import sys; sys.path.insert(0, sys.argv[1]); import shellcmd as s; T = sys.argv[2]
-open(f'{T}/c.json', 'w').write('{"query": "mutation { addComment(input: {subjectId: \\"x\\", body: \\"y\\"}) { x } }"}')
-print(s.api_call(['graphql', '--input', f'{T}/c.json'])[4])
+check "GraphQL: a mutation in an --input payload posts; a reaction there split over lines doesn't" "True False" "$(python3 - "$R/hooks" "$T" <<'PY2'
+import json, sys; sys.path.insert(0, sys.argv[1]); import shellcmd as s; T = sys.argv[2]
+json.dump({'query': 'mutation { addComment(input: {subjectId: "x", body: "y"}) { x } }'}, open(f'{T}/c.json', 'w'))
+json.dump({'query': 'mutation { addReaction(\n input: {subjectId: "x", content: EYES}) { x } }'}, open(f'{T}/rn.json', 'w'))
+print(*[s.api_call(['graphql', '--input', f'{T}/{f}'])[4] for f in ('c.json', 'rn.json')])
 PY2
 )"
 sg_tr "$T/sg.jsonl" text
