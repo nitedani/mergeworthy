@@ -119,14 +119,13 @@ def _assign(a, src):
 class Seg(list):
     """A simple command's argv; nested: whether it runs where a cd in it may not hold for what follows (a subshell, substitution,
     pipeline part or background job, after || or !, a branch, a loop, a function, a child shell's script, find's -exec), for Where;
-    loop: whether it runs inside a while or until loop; top: whether it is a statement of the command line itself, the first part of
-    an && or || chain there, or what follows `cd /abs/dir &&` (not in a group, subshell, pipeline, substitution, branch, loop or function)."""
-    nested = loop = top = False
+    loop: whether it runs inside a while or until loop; alone: whether it is the whole command line (_alone)."""
+    nested = loop = alone = False
 
 
-def _seg(argv, nested, loop=False, top=False):
+def _seg(argv, nested, loop=False, alone=False):
     s = Seg(argv)
-    s.nested, s.loop, s.top = nested, loop, top
+    s.nested, s.loop, s.alone = nested, loop, alone
     return s
 
 
@@ -147,14 +146,47 @@ def _cds(stmt, src):
     return len(a) == 2 and a[0] == 'cd' and a[1].startswith('/') and not re.search(r'[$`*?]', a[1])
 
 
-def _calls(node, src, nested=False):
+def _subs(node):
+    """The command and process substitutions in node, outermost first."""
+    if isinstance(node, list):
+        for v in node: yield from _subs(v)
+    elif isinstance(node, dict):
+        if node.get('Type') in ('CmdSubst', 'ProcSubst'): yield node; return
+        for k, v in node.items():
+            if k not in ('Pos', 'End'): yield from _subs(v)
+
+
+def _cat(sub, src):
+    """Whether a substitution is `$(cat <file>)`, the form pre-bash-guard asks a --title to be read with."""
+    st = sub.get('Stmts') or []
+    x = st[0] if sub.get('Type') == 'CmdSubst' and len(st) == 1 else {}
+    c, a = x.get('Cmd') or {}, (x.get('Cmd') or {}).get('Args') or []
+    return c.get('Type') == 'CallExpr' and not (c.get('Assigns') or x.get('Redirs') or x.get('Background') or x.get('Negated')) \
+        and len(a) == 2 and _word(a[0], src) == 'cat' and not any(_subs(a[1]))
+
+
+def _alone(tree, src):
+    """The statement that is the whole command line: one simple command, after zero or more `cd /abs/dir &&` (_cds), with no
+    substitution but `$(cat <file>)`, no redirect but stderr's (2>&1, 2>file), and nothing else before or after it; else None."""
+    stmts = tree.get('Stmts') or []
+    x = stmts[0] if len(stmts) == 1 else {}
+    while (x.get('Cmd') or {}).get('Type') == 'BinaryCmd' and x['Cmd'].get('Op') == '&&' and _cds(x['Cmd'].get('X'), src) and not x.get('Redirs'):
+        x = x['Cmd'].get('Y') or {}
+    c = x.get('Cmd') or {}
+    if c.get('Type') != 'CallExpr' or x.get('Background') or x.get('Negated') or not all(_cat(y, src) for y in _subs(c)):
+        return None
+    rs = x.get('Redirs') or []
+    return x if all((r.get('N') or {}).get('Value') == '2' and r['Op'] in ('>', '>>', '>&') for r in rs) and not any(_subs(rs)) else None
+
+
+def _calls(node, src, nested=False, alone=None):
     """(the argv of every simple command under node, in order, each a Seg; the statements each heredoc of them is read by:
     (redirect, top statement, whether it is in a loop))."""
-    segs, docs, stack = [], [], [(node, None, nested, False, node.get('Type') == 'File')]
+    segs, docs, stack = [], [], [(node, None, nested, False)]
     while stack:
-        x, top, n, loop, plain = stack.pop()
+        x, top, n, loop = stack.pop()
         if isinstance(x, list):
-            stack += [(y, top, n, loop, plain) for y in reversed(x)]
+            stack += [(y, top, n, loop) for y in reversed(x)]
             continue
         if not isinstance(x, dict):
             continue
@@ -162,15 +194,11 @@ def _calls(node, src, nested=False):
         cmd, redirs = x.get('Cmd') or {}, x.get('Redirs') or []
         words = [w for r in redirs for w in ((r.get('N') or {}).get('Value', '') + r['Op'], _word(r.get('Word') or {}, src))]
         if cmd.get('Type') == 'CallExpr':
-            segs.append(_seg([_assign(a, src) for a in cmd.get('Assigns') or []] + [_word(a, src) for a in cmd.get('Args') or []] + words, n or _scoped(x, 'Cmd'), loop,
-                             plain and not (x.get('Background') or x.get('Negated'))))
+            segs.append(_seg([_assign(a, src) for a in cmd.get('Assigns') or []] + [_word(a, src) for a in cmd.get('Args') or []] + words, n or _scoped(x, 'Cmd'), loop, x is alone))
         elif cmd.get('Type') == 'DeclClause':
             segs.append(_seg([cmd['Variant']['Value']] + [_assign(a, src) for a in cmd.get('Args') or []] + words, n or _scoped(x, 'Cmd'), loop))
         docs += [(r, top or x, loop) for r in redirs if r.get('Hdoc')]
-        # plain: the command line's own statements, a statement's command, and the first part of an && or || chain of them
-        keep = lambda k: plain and (x.get('Type') == 'File' and k == 'Stmts' or 'Cmd' in x and k == 'Cmd' and not (x.get('Background') or x.get('Negated'))
-                                    or x.get('Type') == 'BinaryCmd' and x.get('Op') in ('&&', '||') and (k == 'X' or k == 'Y' and x.get('Op') == '&&' and _cds(x.get('X'), src)))
-        stack += [(v, None if k == 'Stmts' else (top or x) if 'Cmd' in x else top, n or _scoped(x, k), loop, keep(k))  # each statement of a list is a top statement
+        stack += [(v, None if k == 'Stmts' else (top or x) if 'Cmd' in x else top, n or _scoped(x, k), loop)  # each statement of a list is a top statement
                   for k, v in reversed(x.items()) if isinstance(v, (dict, list)) and k not in ('Pos', 'End', 'Hdoc')]
     return segs, docs
 
@@ -178,7 +206,7 @@ def _calls(node, src, nested=False):
 def _segments(tree, src, depth):
     """(every simple command the tree runs, with each heredoc's commands: its substitutions, or all of it when a shell
     without a script reads it (`bash <<EOF`, `cat <<EOF | sh`); the error of a heredoc script that doesn't parse)."""
-    (segs, docs), err = _calls(tree, src), ''
+    (segs, docs), err = _calls(tree, src, alone=_alone(tree, src) if tree.get('Type') == 'File' else None), ''
     for r, top, loop in docs:
         if any(reads_stdin(a) for a in _calls(top, src)[0]) and depth < 4:
             s, e = parse(''.join(_src(p, src) for p in r['Hdoc'].get('Parts') or []), depth + 1, True, loop)
@@ -245,7 +273,7 @@ def parse(cmd, depth=0, nested=False, loop=False):
         if r.returncode:
             raise ValueError('bash syntax error at ' + r.stderr.decode(errors='replace').strip().replace('<standard input>:', ''))
         segs, err = _segments(json.loads(r.stdout), cmd.encode(), depth)
-        for x in segs: x.nested, x.loop, x.top = x.nested or nested, x.loop or loop, x.top and not nested
+        for x in segs: x.nested, x.loop, x.alone = x.nested or nested, x.loop or loop, x.alone and not nested
     except ValueError as e:  # also a JSON error
         segs, err = [_seg(x, True) for x in _rough(cmd)], str(e)
     except Exception as e:  # no parser: nothing is checked as parsed, and a guarded verb blocks
@@ -503,30 +531,21 @@ def opened(t, d):
         return gh_repo(a[2:], env, here) if p == 'gh' else gitlab_repo(a[2:], here), ('--web', '-w') if p == 'gh' else ('--web',)
     return None
 
-READS = ('view', 'list', 'ls', 'status', 'diff', 'checks', 'search', 'checkout')
-def posts(t):
-    """Whether the simple command t may write to GitHub or GitLab: a gh or glab command that isn't a read (view, list, an API GET)."""
-    a = prog(t)
-    if not a or os.path.basename(a[0]) not in ('gh', 'glab'):
-        return False
-    return api_call(a[2:])[0] != 'GET' if a[1:2] == ['api'] else a[2:3] == [] or a[2] not in READS
+PLAIN = ("only a plain create starts its work folder's watcher by itself: the whole command is the create (gh or glab), after zero or more "
+         "`cd /abs/dir &&` (an absolute path written out), with nothing else before or after it (no assignment, exec, `;`, pipe, group, "
+         "second command or substitution but `$(cat <file>)`), no redirect but stderr's (2>&1, 2>file) and no output filter (--jq, -q, --silent, --template, "
+         "--web), run in a task's work folder, on github.com or gitlab.com")
 
-PLAIN = ("only a plain create starts its work folder's watcher by itself: the command's one posting command, at its top level (not in a "
-         "group, subshell, pipe, substitution, loop, function, or after && or || but `cd /abs/dir &&`), with no redirect or output filter (--jq, -q, --silent, "
-         "--template, --web), run from an absolute dir in a task's work folder, on github.com or gitlab.com")
 def plain_create(segs, cwd):
     """The task's work folder whose watcher post-bash-register adds the thread to, starting or reviving it, when the command line
     (segs, run from cwd) is a plain create (PLAIN says which); None for any other command."""
-    where, found = Where(cwd), []
+    where = Where(cwd)
     for t in where.walk(segs):
-        if posts(t): found.append((t, where.dir, opened(t, where.dir)))
-    if len(found) != 1 or not found[0][2] or not found[0][0].top:
-        return None
-    t, d, (repo, filters) = found[0]
-    a = prog(t)
-    if any(f in a or opt(a, [f]) for f in filters) or any(re.fullmatch(r'1?(?:>|>>|>\||>&)|&>>?', w) for w in t) or not watchable(repo):
-        return None
-    return d and work_folder.task_of(d) or None
+        if t.alone and t[:1] in (['gh'], ['glab']) and (o := opened(t, where.dir)):  # gh or glab itself: no assignment or wrapper before it
+            repo, filters = o
+            ok = watchable(repo) and not any(f in t or opt(t, [f]) for f in filters)
+            return ok and where.dir and work_folder.task_of(where.dir) or None
+    return None
 
 def new_post_drafts(t):
     """Draft files a gh argv posts as something new (an issue, PR, comment or review): each draft is posted as new once, edits may repeat."""

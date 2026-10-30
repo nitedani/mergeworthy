@@ -2327,8 +2327,8 @@ check "a PR opened from the unwatched folder joins no other session's watcher bu
 areg() { # command stdout: post-bash-register from the unwatched folder, then the start it made
   : > "$T/started"; python3 -c 'import json,sys; print(json.dumps({"session_id":"sess-b","cwd":sys.argv[1],"tool_input":{"command":sys.argv[2]},"tool_response":{"stdout":sys.argv[3]}}))' "$CK4" "$1" "$2" \
     | python3 "$R/hooks/post-bash-register.py" 2>/dev/null; echo "$?:$(cat "$T/started")"; rm -f "$TK4/threads.txt"; }
-check "an issue opened through the API from a work folder with no watcher starts it: a full-URL gh api, {owner}/{repo} from GH_REPO, a glab api" \
-  "2:sess-b $TK4 vikejs/vike 9|2:sess-b $TK4 vikejs/vike 9|2:sess-b $TK4 gitlab.com/ns/proj 9" \
+check "an issue opened through the API from a work folder with no watcher starts it: a full-URL gh api, a glab api; {owner}/{repo} from a GH_REPO= prefix is no plain create and starts none" \
+  "2:sess-b $TK4 vikejs/vike 9|2:|2:sess-b $TK4 gitlab.com/ns/proj 9" \
   "$(areg "gh api https://api.github.com/repos/vikejs/vike/issues -f title=x -F body=@$T/na.md" https://github.com/vikejs/vike/issues/9)|$(areg "GH_REPO=vikejs/vike gh api 'repos/{owner}/{repo}/issues' -f title=x -F body=@$T/na.md" https://github.com/vikejs/vike/issues/9)|$(areg 'glab api projects/ns%2Fproj/issues -X POST -f title=x' https://gitlab.com/ns/proj/-/issues/9)"
 printf '%s\nIt breaks.\n' '<img src="https://github.com/claude.png" width="20" height="20" alt="Claude">' > "$T/h1.md"; sha256sum "$T/h1.md" | cut -d' ' -f1 > "$T/h1.md.gate"
 GI="gh api https://api.github.com/repos/vikejs/vike/issues -f title=x -F body=@$T/h1.md"
@@ -2354,6 +2354,11 @@ check "BLOCK: from a work folder with no watcher, a create in a brace group redi
   "2 2 2 2 2 0" "$(bgs sess-b "{ $GIC; } > $T/out" "$CK4") $(bgs sess-b "$H2" "$CK4") $(bgs sess-b "echo x && $GIC" "$CK4") $(bgs sess-b "echo \$($GIC)" "$CK4") $(bgs sess-b "$GIC &" "$CK4") $(bgs sess-b "$GIC" "$CK4")"
 check "a create after cd to the work folder's checkout by absolute path (cd /abs &&, twice, cd /abs 2>/dev/null &&) is plain: it passes; after a relative cd, a computed one, true &&, cd /abs ||, or with its output redirected, it doesn't" \
   "0 0 0 2 2 2 2 2" "$(bgs sess-b "cd $CK4 && $GIC" "$T") $(bgs sess-b "cd $T && cd $CK4 && $GIC" "$T") $(bgs sess-b "cd $CK4 2>/dev/null && $GIC" "$T") $(bgs sess-b "cd vike && $GIC" "$TK4") $(X=$CK4 bgs sess-b "cd \$X && $GIC" "$T") $(bgs sess-b "true && $GIC" "$CK4") $(bgs sess-b "cd $CK4 || $GIC" "$T") $(bgs sess-b "cd $CK4 && $GIC > $T/out" "$T")"
+check "BLOCK: from a work folder with no watcher, a create after exec > file (its output goes to the file), after an assignment, before or after another command" "2 2 2 2 1" \
+  "$(bgs sess-b "exec > $T/create.log; $GIC" "$CK4") $(bgs sess-b "FOO=1 $MRC" "$CK4") $(bgs sess-b "$MRC; echo done" "$CK4") $(bgs sess-b "echo x; $MRC" "$CK4") $(grep -c 'only a plain create starts its work folder' "$T/err")"
+check "a create alone, after cd /abs &&, with 2>&1 or with --title \"\$(cat <file>)\" passes and starts the folder's watcher; after exec > file it starts none" \
+  "0 0 0 0|2:sess-b $TK4 vikejs/vike 9|2:sess-b $TK4 vikejs/vike 9|2:sess-b $TK4 vikejs/vike 9|0:" \
+  "$(bgs sess-b "$MRC" "$CK4") $(bgs sess-b "cd $CK4 && $MRC" "$T") $(bgs sess-b "$MRC 2>&1" "$CK4") $(bgs sess-b "glab mr create --draft -R gitlab.com/ns/proj --title \"\$(cat $T/h1.md)\"" "$CK4")|$(areg "$PRC" https://github.com/vikejs/vike/pull/9)|$(areg "cd $CK4 && $PRC" https://github.com/vikejs/vike/pull/9)|$(areg "$PRC 2>&1" https://github.com/vikejs/vike/pull/9)|$(areg "exec > $T/create.log; $GIC" '')"
 check "post-bash-register starts the folder's watcher for cd /abs && a create" "2:sess-b $TK4 gitlab.com/ns/proj 9" \
   "$(: > "$T/started"; python3 -c 'import json,sys; print(json.dumps({"session_id":"sess-b","cwd":sys.argv[1],"tool_input":{"command":sys.argv[2]},"tool_response":{"stdout":"https://gitlab.com/ns/proj/-/issues/9"}}))' "$T" "cd $CK4 && $GIC" | python3 "$R/hooks/post-bash-register.py" 2>/dev/null; echo "$?:$(cat "$T/started")"; rm -f "$TK4/threads.txt")"
 check "post-bash-register starts the folder's watcher for a plain create only: the create beside a note starts none; a note alone neither, saying to start it" "2:sess-b $TK4 gitlab.com/ns/proj 9|2:|1" \
