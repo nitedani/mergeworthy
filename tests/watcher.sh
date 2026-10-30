@@ -127,7 +127,7 @@ codes="$(follow "$W/gh-watch.py") $(follow "$W/gh-watch.py") $(follow "$W/gh-wat
 check "three starts from a checkout, exit codes" "0 0 0" "$codes"
 [ -e "$HOME/.mergeworthy/current" ]; check "~/.mergeworthy/current not repointed" 1 $?
 # control: the same code inside the plugin cache, with a newer version installed, still follows (exit 75)
-C="$HOME/.claude/plugins/cache/mergeworthy/mergeworthy/v1"; mkdir -p "$C/watcher" "$C/hooks"; cp "$R/watcher/gh-watch.py" "$R/watcher/gl_watch.py" "$C/watcher/"; cp "$R/hooks/agent_jobs.py" "$R/hooks/own_actions.py" "$R/hooks/steward.py" "$R/hooks/work_folder.py" "$C/hooks/"
+C="$HOME/.claude/plugins/cache/mergeworthy/mergeworthy/v1"; mkdir -p "$C/watcher" "$C/hooks"; cp "$R/watcher/gh-watch.py" "$R/watcher/gl_watch.py" "$C/watcher/"; cp "$R/hooks/agent_jobs.py" "$R/hooks/own_actions.py" "$R/hooks/steward.py" "$R/hooks/testpaths.py" "$R/hooks/work_folder.py" "$C/hooks/"
 check "control: running from the plugin cache, newer version installed" 75 "$(follow "$C/watcher/gh-watch.py")"
 [ "$(readlink "$HOME/.mergeworthy/current")" = "$T/installed/v2" ]; check "control: current points at the new version" 0 $?
 
@@ -1249,13 +1249,14 @@ check "a temp-HOME main() starts one disk-sweep --delete, which skips Docker and
 # SHAPE STALE counts your PR's code: a committed build bundle (dist/) is not
 got=$(py '
 Answer = lambda data: type("A", (), {"status": 200, "json": lambda self: data})()
-files = [{"filename": "dist/a.mjs", "additions": 300, "deletions": 0}, {"filename": "src/a.ts", "additions": 5, "deletions": 0}]
+files = [{"filename": "dist/a.mjs", "additions": 300, "deletions": 0}, {"filename": "src/a.ts", "additions": 5, "deletions": 0},
+         {"filename": "unit_tests/test_a.py", "additions": 90, "deletions": 0}, {"filename": "pkg/a_test.go", "additions": 90, "deletions": 0}]
 m.request = lambda path, *a, **k: Answer({"user": {"login": "me"}, "base": {"ref": "main"}} if path.endswith("/pulls/8")
                                          else {"commits": [{"sha": "c1", "parents": [{}]}]} if "/compare/" in path else {"files": files})
 buf = io.StringIO()
 with contextlib.redirect_stdout(buf): m.emit_refactor_stale("o/r", "o/r#8", "new")
 print(buf.getvalue().count("### SHAPE STALE"))
 ')
-check "SHAPE STALE doesn't count a committed build bundle (dist/)" 0 "$got"
+check "SHAPE STALE doesn't count a committed build bundle (dist/) or tests in unit_tests/ and *_test.go" 0 "$got"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]
