@@ -723,7 +723,7 @@ def check(t, has_cd):
                   'and pass --title "$(cat <that file>)" (mergeworthy:pull-request step 7)')
         if a[1] == 'edit' and opt(a[2:], ['--title', '-t']) and (who := title_setter(*post_target('pr', a[2:], env, run_dir))):
             block(f"{who[0]} set this PR's title ({who[1]}): it is their decision. Keep it, or ask them on the PR first (mergeworthy:pull-request step 7)")
-    written = [x if os.path.isabs(x) else os.path.join(known(run_dir), x) for x in map(os.path.expanduser, written_files(t))]
+    written = [x if os.path.isabs(x) else os.path.join(known(run_dir), x) for x in (os.path.expanduser(where.expand(f)) for f in written_files(t))]
     for x in written:
         if why := no_instructions_read(x, d):
             block(why)

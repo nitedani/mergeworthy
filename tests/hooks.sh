@@ -1828,6 +1828,10 @@ check "BLOCK: a command writing into that repo before the reads: a redirect, tee
 check "a command reading there, or writing outside it, passes" "0 0 0" "$(ibash "$IT" "cat $I/AGENTS.md") $(ibash "$IT" "echo x > /dev/null") $(ibash "$IT" "echo x > $T/nogit/a.md")"
 check "a log a background job writes after its cd lands in that dir: outside it passes, into it blocks" "0 2" \
   "$(ibash "$IT" "cd $T/nogit && nohup pnpm dev > log 2>&1 &") $(ibash "$IT" "cd $I && nohup pnpm dev > log 2>&1 &")"
+check "logs background subshells in a loop write to \$S/\$w paths, S set on the line: outside it passes, into it blocks" "0 2" \
+  "$(ibash "$IT" "S=$T/nogit; for w in a b; do (cd \$S/\$w && pnpm install > \$S/\$w-install.log 2>&1) & done; wait") $(ibash "$IT" "S=$I; for w in a b; do (cd \$S/\$w && pnpm install > \$S/\$w-install.log 2>&1) & done; wait")"
+check "logs written outside it by a backgrounded { } group in a loop, after its cd to \$W/\$t, pass" 0 \
+  "$(ibash "$IT" "W=$T/nogit; for t in a b; do { cd \$W/\$t && netns-run bash x.sh > \$W/probe/\$t.out 2> \$W/probe/\$t.err; echo \"\$t exit \$?\" >> \$W/probe/\$t.err; } & done; wait")"
 ir_tr "$IT" "read:$I/AGENTS.md" "read:$I/CLAUDE.md"; check "a command writing into it passes once both were read" 0 "$(ibash "$IT" "echo x > $I/a.txt")"
 ir_tr "$IT"; echo x > "$T/nogit/src"
 check "BLOCK: cp, mv and install into the repo's folder itself (a folder destination)" "2 2 2 2" "$(ibash "$IT" "cp $T/nogit/src .") $(ibash "$IT" "mv $T/nogit/src .") $(ibash "$IT" "install $T/nogit/src .") $(ibash "$IT" "cp $T/nogit/src $I/")"
