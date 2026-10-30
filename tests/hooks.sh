@@ -226,8 +226,8 @@ gate a1 "Agent comment one."
 gate a2 "Agent comment two."
 gate new "Agent answer."
 now=$(date -u +%Y-%m-%dT%H:%M:%SZ); old=$(date -u -d '-4 hours' +%Y-%m-%dT%H:%M:%SZ); hour=$(date -u -d '-1 hour' +%Y-%m-%dT%H:%M:%SZ)
-comments() { # body1 body2 created2 [author2]
-  echo '{"number":5,"comments":2}' > "$FX/repos_o_r_issues_5"
+comments() { # body1 body2 created2 [author2]; thread-context --verify reads the thread through its own (empty) listings
+  echo '{"number":5,"comments":2}' > "$FX/repos_o_r_issues_5"; echo '[]' | tee "$FX/repos_o_r_issues_5_comments_per_page_100" > "$FX/repos_o_r_issues_5_timeline_per_page_100"
   python3 -c 'import json,sys; print(json.dumps([{"body":sys.argv[1],"created":sys.argv[3],"url":"https://example.invalid/c1","user":"nitedani"},{"body":sys.argv[2],"created":sys.argv[3],"url":"https://example.invalid/c2","user":sys.argv[4]}]))' \
     "$1" "$2" "$3" "${4:-nitedani}" > "$FX/repos_o_r_issues_5_comments_per_page_100_page_1"
 }
@@ -281,6 +281,7 @@ tc_fx repos_o_r_issues_43_comments_per_page_100 '[]'
 tc_fx repos_o_r_pulls_43_reviews_per_page_100 '[{"id":7,"user":{"login":"other"},"submitted_at":"2026-09-02T12:00:00Z","html_url":"https://example.invalid/o/r/pull/43#r7","state":"CHANGES_REQUESTED","body":"Please keep the old name."}]'
 tc_fx repos_o_r_pulls_43_comments_per_page_100 '[{"id":8,"user":{"login":"other"},"created_at":"2026-09-02T12:05:00Z","html_url":"https://example.invalid/o/r/pull/43#c8","path":"a.ts","line":3,"body":"This line stays."}]'
 tc_fx repos_o_r_issues_41_timeline_per_page_100 '[{"id":55,"event":"renamed","actor":{"login":"maint"},"created_at":"2026-10-01T09:40:00Z","rename":{"from":"feat: old","to":"fix: his title"}}]'
+for n in 42 43 45; do tc_fx repos_o_r_issues_${n}_timeline_per_page_100 '[]'; done
 TC="$T/ctx/thread-context.md"; mkdir -p "$T/ctx"
 "$R/bin/thread-context" o/r#41 --out "$TC" >/dev/null
 tcg() { grep -c "$1" "$TC"; }
@@ -296,6 +297,16 @@ check "a bot's comment is not in the transcript" 0 "$(tcg '^see #99')"
 check "--verify accepts it for its thread" 0 "$("$R/bin/thread-context" --verify "$TC" --target o/r#41 2>/dev/null; echo $?)"
 check "a maintainer's retitle is in the ledger and the transcript, and isn't the latest comment" "1 1" "$(echo "$(tcg '@maint \[title\] "Retitled "feat: old" to "fix: his title"."') $(tcg 'maint, retitled')")"
 check "--latest" "104 2026-10-01T09:30:00Z" "$("$R/bin/thread-context" --latest o/r#41)"
+# a failed comments or timeline request: no record, no cache, and --verify can't accept an old record; once gh answers, --latest has the newest comment
+c46() { printf '[{"id":1,"user":{"login":"maint"},"created_at":"2026-10-03T09:00:00Z","html_url":"https://example.invalid/o/r/issues/46#c1","body":"First."}%s]' "${1:-}" > "$FX/repos_o_r_issues_46_comments_per_page_100"; }
+tc_fx repos_o_r_issues_46 '{"number":46,"id":6,"title":"Flaky","html_url":"https://example.invalid/o/r/issues/46","state":"open","updated_at":"2026-10-03T09:00:00Z","created_at":"2026-10-03T08:00:00Z","user":{"login":"maint"},"body":"It flakes."}'
+c46; tc_fx repos_o_r_issues_46_timeline_per_page_100 '[]'; "$R/bin/thread-context" --latest o/r#46 >/dev/null
+sed -i 's/"updated_at":"2026-10-03T09:00:00Z"/"updated_at":"2026-10-03T10:00:00Z"/' "$FX/repos_o_r_issues_46"; c46 ',{"id":2,"user":{"login":"maint"},"created_at":"2026-10-03T10:00:00Z","html_url":"https://example.invalid/o/r/issues/46#c2","body":"Still."}'
+printf -- '- root: o/r#46\n- latest-human-comment: id=1 at=2026-10-03T09:00:00Z\n' > "$T/ctx/tc46.md"; mv "$FX/repos_o_r_issues_46_comments_per_page_100" "$T/c46"
+check "BLOCK: a failed comments request fails thread-context, --verify and --latest, naming it, and caches nothing; a failed timeline request fails it too" "1 1 1 1 1 0 1 1" \
+  "$("$R/bin/thread-context" o/r#46 --out "$T/ctx/x46.md" >/dev/null 2>"$T/c46.err"; echo $?) $(grep -c 'repos/o/r/issues/46/comments?per_page=100. failed' "$T/c46.err") $("$R/bin/thread-context" --verify "$T/ctx/tc46.md" --target o/r#46 2>"$T/c46.err"; echo $?) $(grep -c "gh couldn't read" "$T/c46.err") $("$R/bin/thread-context" --latest o/r#46 >/dev/null 2>&1; echo $?) $(grep -c 10:00:00Z "$HOME/.cache/mergeworthy/threads/o__r__46.json") $(mv "$T/c46" "$FX/repos_o_r_issues_46_comments_per_page_100"; mv "$FX/repos_o_r_issues_46_timeline_per_page_100" "$T/t46"; "$R/bin/thread-context" --latest o/r#46 >/dev/null 2>"$T/c46.err"; echo $?) $(grep -c 'issues/46/timeline?per_page=100. failed' "$T/c46.err")"
+mv "$T/t46" "$FX/repos_o_r_issues_46_timeline_per_page_100"
+check "once gh answers again, --latest reports the newest comment" "2 2026-10-03T10:00:00Z" "$("$R/bin/thread-context" --latest o/r#46)"
 tc_fx repos_o_r_issues_45 '{"number":45,"id":5,"title":"Code in a list","html_url":"https://example.invalid/o/r/issues/45","state":"open","updated_at":"2026-10-02T10:00:00Z","created_at":"2026-10-02T09:00:00Z","user":{"login":"maint"},"body":"- The log:\n  ```\n  see o/r#42\n  ```"}'
 tc_fx repos_o_r_issues_45_comments_per_page_100 '[{"id":105,"user":{"login":"maint"},"created_at":"2026-10-02T09:30:00Z","html_url":"https://example.invalid/o/r/issues/45#c105","body":"- The bot said:\n  ```\n  I disagree with the rename.\n  ```"}]'
 "$R/bin/thread-context" o/r#45 --out "$T/ctx/tc45.md" >/dev/null
@@ -477,7 +488,7 @@ kill "$SPID"; wait "$SPID" 2>/dev/null
 
 # ---------- finality trigger: the third proposal on a thread needs a thread map ----------
 AR="$T/art"; mkdir -p "$AR/drafts/r1" "$AR/maps"; ctx "$AR/drafts/r1" o/r#9
-rm -f "$HOME/.claude/proposal-rounds.txt"; echo '{"number":9,"comments":0}' > "$FX/repos_o_r_issues_9"
+rm -f "$HOME/.claude/proposal-rounds.txt"; echo '{"number":9,"comments":0}' > "$FX/repos_o_r_issues_9"; echo '[]' | tee "$FX/repos_o_r_issues_9_comments_per_page_100" > "$FX/repos_o_r_issues_9_timeline_per_page_100"
 prop() { # n: a gated proposal draft, as gate-pass leaves it
   printf 'Proposal %s\n' "$1" > "$AR/drafts/r1/p$1.md"; sha256sum "$AR/drafts/r1/p$1.md" | cut -d' ' -f1 > "$AR/drafts/r1/p$1.md.gate"; tcbind "$AR/drafts/r1/p$1.md"
   echo "--kind proposal --repo o/r --parent none" > "$AR/drafts/r1/p$1.md.lint"
@@ -1321,6 +1332,45 @@ cat > "$T/bin/glab" <<'EOF2'
 f="$FX/$(printf '%s' "$4" | tr '/?&=' '____')"; [ -f "$f" ] && cat "$f" || exit 1
 EOF2
 chmod +x "$T/bin/glab"
+# thread-context on a GitLab MR, read through glab: the record, --latest and --verify, as on GitHub
+GLM="$FX/projects_acme%2Fapp_merge_requests_1"
+gl_mr() { printf '{"iid":1,"id":501,"title":"Fix total","web_url":"https://gitlab.com/acme/app/-/merge_requests/1","state":"opened","updated_at":"%s","created_at":"2026-10-29T13:00:00Z","author":{"username":"me"},"description":"Fixes #3, after !2."}' "$1" > "$GLM"; }
+gl_mr 2026-10-29T15:20:00Z
+printf '%s' "[{\"id\":11,\"type\":\"DiffNote\",\"author\":{\"username\":\"bob\"},\"created_at\":\"2026-10-29T14:00:00Z\",\"body\":\"This line stays.\",\"position\":{\"new_path\":\"a.py\",\"new_line\":3}},
+ {\"id\":7,\"author\":{\"username\":\"alice\"},\"created_at\":\"2026-10-29T15:00:00Z\",\"body\":\"Could you also cover the empty list?\"},
+ {\"id\":8,\"author\":{\"username\":\"me\"},\"created_at\":\"2026-10-29T15:10:00Z\",\"body\":\"$BADGE\\nDone.\"},
+ {\"id\":9,\"system\":true,\"author\":{\"username\":\"alice\"},\"created_at\":\"2026-10-29T15:15:00Z\",\"body\":\"added 1 commit\"},
+ {\"id\":10,\"author\":{\"username\":\"project_5_bot\"},\"created_at\":\"2026-10-29T15:20:00Z\",\"body\":\"Pipeline passed.\"}]" > "${GLM}_notes_sort_asc_order_by_created_at_per_page_100"
+printf '{"iid":3,"id":503,"title":"Total breaks on None","web_url":"https://gitlab.com/acme/app/-/issues/3","state":"opened","updated_at":"2026-10-28T10:00:00Z","created_at":"2026-10-28T09:00:00Z","author":{"username":"alice"},"description":"It crashes."}' > "$FX/projects_acme%2Fapp_issues_3"
+printf '{"iid":2,"id":502,"title":"Refactor total","web_url":"https://gitlab.com/acme/app/-/merge_requests/2","state":"merged","updated_at":"2026-10-28T10:00:00Z","created_at":"2026-10-28T09:00:00Z","author":{"username":"bob"},"description":"Moves it."}' > "$FX/projects_acme%2Fapp_merge_requests_2"
+echo '[]' | tee "$FX/projects_acme%2Fapp_issues_3_notes_sort_asc_order_by_created_at_per_page_100" > "$FX/projects_acme%2Fapp_merge_requests_2_notes_sort_asc_order_by_created_at_per_page_100"
+GTC="$T/glctx/thread-context.md"; mkdir -p "$T/glctx"; "$R/bin/thread-context" 'gitlab.com/acme/app!1' --out "$GTC" >/dev/null
+check "thread-context on a GitLab MR: its root, its latest human note (not the agent's, a system note or a bot's), the linked issue and MR, a diff note" "1 1 2 1" \
+  "$(grep -c '^- root: gitlab.com/acme/app!1 ' "$GTC") $(grep -c '^- latest-human-comment: id=7 at=2026-10-29T15:00:00Z' "$GTC") $(grep -Ec '^  - gitlab.com/acme/app(#3|!2) ' "$GTC") $(grep -c 'bob, review comment a.py:3' "$GTC")"
+check "--latest and --verify on a GitLab MR" "7 2026-10-29T15:00:00Z 0" "$("$R/bin/thread-context" --latest 'gitlab.com/acme/app!1') $("$R/bin/thread-context" --verify "$GTC" --target 'gitlab.com/acme/app!1' 2>/dev/null; echo $?)"
+gl_mr 2026-10-29T16:00:00Z; sed -i 's/^\[/[{"id":12,"author":{"username":"alice"},"created_at":"2026-10-29T16:00:00Z","body":"And the None case?"},/' "${GLM}_notes_sort_asc_order_by_created_at_per_page_100"
+check "BLOCK: --verify once the MR has a newer human note" "1 1" "$("$R/bin/thread-context" --verify "$GTC" --target 'gitlab.com/acme/app!1' 2>"$T/glv.err"; echo $?) $(grep -c 'but the thread has https://gitlab.com/acme/app/-/merge_requests/1#note_12' "$T/glv.err")"
+# the notes request fails: no record, no cache, and --verify can't accept an old record; once glab answers, --latest has the newest note
+GLN="${GLM}_notes_sort_asc_order_by_created_at_per_page_100"
+gl_mr 2026-10-29T17:00:00Z; sed -i 's/^\[/[{"id":13,"author":{"username":"alice"},"created_at":"2026-10-29T17:00:00Z","body":"One more."},/' "$GLN"; mv "$GLN" "$T/gl-notes"
+sed -i 's/^- latest-human-comment: .*/- latest-human-comment: id=12 at=2026-10-29T16:00:00Z/' "$GTC"
+check "BLOCK: a failed notes request fails thread-context, --verify and --latest, naming it, and caches nothing" "1 1 1 1 1 0" \
+  "$("$R/bin/thread-context" 'gitlab.com/acme/app!1' --out "$T/glctx/x.md" >/dev/null 2>"$T/gln.err"; echo $?) $(grep -c 'notes?sort=asc.* failed' "$T/gln.err") $("$R/bin/thread-context" --verify "$GTC" --target 'gitlab.com/acme/app!1' 2>"$T/gln.err"; echo $?) $(grep -c "glab couldn't read" "$T/gln.err") $("$R/bin/thread-context" --latest 'gitlab.com/acme/app!1' >/dev/null 2>&1; echo $?) $(grep -c 17:00 "$HOME/.cache/mergeworthy/threads/gitlab.com__acme__app__!1.json")"
+mv "$T/gl-notes" "$GLN"
+check "once the notes request answers again, --latest reports the newest note" "13 2026-10-29T17:00:00Z" "$("$R/bin/thread-context" --latest 'gitlab.com/acme/app!1')"
+printf '{"iid":4,"id":504,"title":"Follow-up","web_url":"https://gitlab.com/acme/app/-/merge_requests/4","state":"opened","updated_at":"2026-10-29T13:00:00Z","created_at":"2026-10-29T13:00:00Z","author":{"username":"bob"},"description":"After gitlab.com/acme/app!2 and gitlab.com/acme/app#3."}' > "$FX/projects_acme%2Fapp_merge_requests_4"
+echo '[]' > "$FX/projects_acme%2Fapp_merge_requests_4_notes_sort_asc_order_by_created_at_per_page_100"
+"$R/bin/thread-context" 'gitlab.com/acme/app!4' --out "$T/glctx/q.md" >/dev/null
+check "a qualified gitlab.com/<path>!N and #N in a GitLab thread are followed as written" 2 "$(grep -Ec '^  - gitlab.com/acme/app(#3|!2) ' "$T/glctx/q.md")"
+# GitLab's note times carry a fraction (2022-01-31T15:10:44.988Z): the record writes every time in one UTC form, so gate-pass, east of
+# UTC, still refuses a review older than the note
+NA=$(date -u -d '-30 minutes' +%Y-%m-%dT%H:%M:%S); GZ="$T/gltz"; mkdir -p "$GZ"
+printf '{"iid":5,"id":505,"title":"Times","web_url":"https://gitlab.com/acme/app/-/merge_requests/5","state":"opened","updated_at":"%s.988Z","created_at":"2026-10-29T13:00:00.123Z","author":{"username":"bob"},"description":"Times."}' "$NA" > "$FX/projects_acme%2Fapp_merge_requests_5"
+printf '[{"id":21,"author":{"username":"alice"},"created_at":"%s.988Z","body":"One more thing."}]' "$NA" > "$FX/projects_acme%2Fapp_merge_requests_5_notes_sort_asc_order_by_created_at_per_page_100"
+"$R/bin/thread-context" 'gitlab.com/acme/app!5' --out "$GZ/thread-context.md" >/dev/null
+printf 'Agreed, option A it is.\n' > "$GZ/r.md"; echo CLEAN > "$GZ/r.review.out"; touch -d '-3 hours' "$GZ/r.md"; touch -d '-1 hour' "$GZ/r.review.out"
+check "BLOCK: a GitLab note at a fractional time, newer than the review, under TZ=Europe/Budapest; the record writes its time and the body's as UTC seconds" "1 1 1 1" \
+  "$(TZ=Europe/Budapest MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GZ/r.md" "$GZ/r.review.out" --kind reply --parent none >"$T/gz.out" 2>&1; echo $?) $(grep -c 'newer than the review' "$T/gz.out") $(grep -c "^- latest-human-comment: id=21 at=${NA}Z " "$GZ/thread-context.md") $(grep -c '^### 2026-10-29T13:00:00Z @bob' "$GZ/thread-context.md")"
 echo '{"state":"open","draft":false,"head":{"sha":"h1"}}' > "$FX/repos_o_r_pulls_7"
 echo '{"check_runs":[{"name":"test","conclusion":"success"}]}' > "$FX/repos_o_r_commits_h1_check-runs"
 echo '{"state":"opened","draft":true,"head_pipeline":{"status":"failed"}}' > "$FX/projects_g%2Fp_merge_requests_96"

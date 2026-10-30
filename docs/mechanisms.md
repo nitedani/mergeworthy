@@ -41,7 +41,7 @@ A reference for the scripts that enforce the skills' steps; the skills name each
 
 ### `thread-context` (`post` step 1)
 
-`thread-context <owner/repo#N> [--depth 2] [--max 30] [--out <file>]` writes the record a reply is drafted from (default `./thread-context.md`). Run it into the draft folder, and hand it to the drafter and the reviewer, never read it into the main session.
+`thread-context <owner/repo#N> [--depth 2] [--max 30] [--out <file>]` writes the record a reply is drafted from (default `./thread-context.md`). A GitLab thread is `gitlab.com/<path>!N` (an MR) or `gitlab.com/<path>#N` (an issue), read through `glab api`; its notes are its comments, a diff note a review comment, and it follows `!N` and `#N` links as that project's. Run it into the draft folder, and hand it to the drafter and the reviewer, never read it into the main session.
 - The file holds a header, a **Decisions and positions** ledger (each human comment that agrees, rejects, proposes or decides, quoted with its permalink), the root's full transcript, then each linked thread's first post and last 30 comments. The agent's posts are marked `AGENT` and kept out of the ledger.
 - `--latest <repo#N>` prints the latest human comment; `--verify <file> [--target <repo#N>] [--parent <file>]` is what the gate and the guard run.
 
