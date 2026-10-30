@@ -7,7 +7,7 @@ import json, re, sys, os, hashlib, subprocess
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
 from shellcmd import parse, segments, prog, opt, api_call, new_post_drafts, branch_record, no_preflight, no_instructions_read, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Where
-import steward, post_words, work_folder
+import own_actions, steward, post_words, work_folder
 def missing_steps(d):
     head = subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
     rec = os.path.expanduser(f'~/.claude/pr-steps/{head}')
@@ -406,8 +406,8 @@ def by_agent():
 
 RECORDS = os.path.realpath(os.path.expanduser('~/.claude/pr-steps')) + os.sep
 push_urls = []  # where this command's pushes go (pushed()), for the watcher check
-# what this command does on GitHub, written once it passed every check: the watcher logs these changes without waking the session
-own = {'PUSHED_HEADS': [], 'CLOSED_THREADS': []}  # the heads it pushes (gh-watch.py agent_push); `owner/repo#N merged|closed` (agent_closed)
+# what this command does on GitHub (own_actions), recorded once it passed every check: the watcher logs these changes without waking the session
+own = {'PUSHED_HEADS': [], 'CLOSED_THREADS': []}  # the heads it pushes; `owner/repo#N merged|closed`
 
 def git_head(d):
     return subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
@@ -900,11 +900,8 @@ for s in where.walk(segs):
         if w & {'git', 'gh', 'glab'} and w & {'push', 'commit', 'pr', 'issue', 'api', 'release', 'mr'} or 'git' not in w and w & {'push', 'commit'}:
             block(f"`{named}` runs a command named only when it runs, with `{' '.join(words)[:80]}`: write the command out, so it can be checked")
     check(s, has_cd)
-for var, lines in own.items():
-    try:
-        if lines:
-            with open(os.path.expanduser(os.environ.get(var, f"~/.claude/{var.lower().replace('_', '-')}.txt")), 'a') as f:
-                f.writelines(l + '\n' for l in lines)
-    except OSError:
-        pass
+try:  # pending until post-bash-register sees how the command ended
+    own_actions.intend(own_actions.key(d), own)
+except OSError:
+    pass
 sys.exit(0)

@@ -1621,8 +1621,8 @@ printf '{"files":[{"filename":"a.py"}]}' > "$FX/repos_o_r_commits_b1"
 mpr CLEAN 2026-10-28T13:00:00Z
 check "a PR up to date with its base, CI run after the base's last commit, merges" 0 "$(guard "$M")"
 check "BLOCK: --admin, naming it" "2 1" "$(guard "$M --admin") $(grep -c 'never `gh pr merge --admin`' "$T/err")"
-check "a merge the guard passes records its PR as merged, for the watcher (agent_closed); one it blocks records nothing" "2 0 o/r#41 merged|" \
-  "$(CLOSED_THREADS="$T/closed" guard "$M --admin") $(CLOSED_THREADS="$T/closed" guard "$M") $(tr '\n' '|' < "$T/closed")"
+check "a merge the guard passes records its PR as merged, pending until it ends (own_actions); one it blocks records nothing" "2 0 CLOSED_THREADS o/r#41 merged|" \
+  "$(OWN_PENDING="$T/own-pm" guard "$M --admin") $(OWN_PENDING="$T/own-pm" guard "$M") $(cut -d' ' -f3- "$T/own-pm" | tr '\n' '|')"
 mpr BEHIND 2026-10-28T13:00:00Z
 check "BLOCK: a PR GitHub reports BEHIND, naming it and the way out" "2 1" "$(guard "$M") $(grep -c 'reports it BEHIND against main: merge or rebase main into it (after a rebase, `git range-diff`' "$T/err")"
 mpr DIRTY 2026-10-28T13:00:00Z
@@ -2214,10 +2214,16 @@ echo "$T/nowatch" > "$HOME/.claude/gh-watch-dirs.txt"
 check "replay: the same push with no watcher on vikejs/vike (or the fork): blocked, naming the repos" "2 1" "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK") $(grep -c 'covers nitedani-agent/vike or vikejs/vike' "$T/err")"
 bash -c 'exec -a gh-watch-daemon sleep 600' & FPID=$!; echo "$FPID" > "$TK2/gh-watch.pid"; echo vikejs/vike > "$TK2/repos.txt"; echo "$TK2" > "$HOME/.claude/gh-watch-dirs.txt"
 check "a watcher of the checkout's work folder on the upstream repo covers it" 0 "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK")"
-check "a push the guard passes records the head it publishes, for the watcher (agent_push); one it blocks records nothing" "2 0 $(git -C "$CK" rev-parse HEAD)|" \
-  "$(PUSHED_HEADS="$T/pushed" bg 'git push --all https://github.com/nitedani-agent/vike.git' "$CK") $(PUSHED_HEADS="$T/pushed" bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK") $(tr '\n' '|' < "$T/pushed")"
-check "a close the guard passes records its thread as closed (agent_closed); one it blocks, or whose thread it can't tell, records nothing" "2 0 0 0 o/r#7 closed|o/r#9 closed|" \
-  "$(CLOSED_THREADS="$T/cl" bg 'gh pr close 8 -R o/r --comment bye' "$CK") $(CLOSED_THREADS="$T/cl" bg 'gh issue close 7 -R o/r' "$CK") $(CLOSED_THREADS="$T/cl" bg 'gh pr close https://github.com/o/r/pull/9' "$CK") $(CLOSED_THREADS="$T/cl" bg 'gh pr close' "$CK") $(tr '\n' '|' < "$T/cl")"
+check "a push the guard passes records the head it publishes, pending until it ends (own_actions); one it blocks records nothing" "2 0 PUSHED_HEADS $(git -C "$CK" rev-parse HEAD)|" \
+  "$(OWN_PENDING="$T/own-pp" bg 'git push --all https://github.com/nitedani-agent/vike.git' "$CK") $(OWN_PENDING="$T/own-pp" bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK") $(cut -d' ' -f3- "$T/own-pp" | tr '\n' '|')"
+check "a close the guard passes records its thread as closed, pending until it ends; one it blocks, or whose thread it can't tell, records nothing" "2 0 0 0 CLOSED_THREADS o/r#7 closed|CLOSED_THREADS o/r#9 closed|" \
+  "$(OWN_PENDING="$T/own-cl" bg 'gh pr close 8 -R o/r --comment bye' "$CK") $(OWN_PENDING="$T/own-cl" bg 'gh issue close 7 -R o/r' "$CK") $(OWN_PENDING="$T/own-cl" bg 'gh pr close https://github.com/o/r/pull/9' "$CK") $(OWN_PENDING="$T/own-cl" bg 'gh pr close' "$CK") $(cut -d' ' -f3- "$T/own-cl" | tr '\n' '|')"
+pbr() { # hook event, tool_use_id, command: post-bash-register as that command ends
+  python3 -c 'import json,sys; print(json.dumps({"hook_event_name":sys.argv[1],"tool_name":"Bash","tool_use_id":sys.argv[2],"tool_input":{"command":sys.argv[3]},"tool_response":{"stdout":"","stderr":"","interrupted":False},"cwd":sys.argv[4]}))' "$1" "$2" "$3" "$CK" \
+    | OWN_PENDING="$T/own-ps" CLOSED_THREADS="$T/own-cs" python3 "$R/hooks/post-bash-register.py" >/dev/null 2>&1; echo $?; }
+pbg() { python3 -c 'import json,sys; print(json.dumps({"tool_use_id":sys.argv[1],"tool_input":{"command":sys.argv[2]},"cwd":sys.argv[3]}))' "$1" "$2" "$CK" | OWN_PENDING="$T/own-ps" python3 "$R/hooks/pre-bash-guard.py" 2>/dev/null; echo $?; }
+check "a recorded close is its own only once its command succeeded: the failed one (false && gh issue close) goes, the one that succeeded stays, none left pending" "0 0 0 0 o/r#5 closed| 0" \
+  "$(pbg tu-1 'false && gh issue close 7 -R o/r') $(pbr PostToolUseFailure tu-1 'false && gh issue close 7 -R o/r') $(pbg tu-2 'gh issue close 5 -R o/r') $(pbr PostToolUse tu-2 'gh issue close 5 -R o/r') $(tr '\n' '|' < "$T/own-cs") $(grep -c . "$T/own-ps")"
 # two tasks' work folders, one watched by session sess-a: its events wake that session alone, so a session acting from the other folder needs a watcher of its own
 printf 'vikejs/vike\ngitlab.com/ns/proj\n' > "$TK2/repos.txt"; echo sess-a > "$TK2/session"
 TK4="$HOME/.mergeworthy/work/vike-other"; CK4="$TK4/vike"; mkdir -p "$TK4"; printf 'Tier: S, because one fix\n\n- [ ] Fix it https://github.com/vikejs/vike/issues/1\n' > "$TK4/scope.md"

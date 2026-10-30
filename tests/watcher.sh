@@ -127,7 +127,7 @@ codes="$(follow "$W/gh-watch.py") $(follow "$W/gh-watch.py") $(follow "$W/gh-wat
 check "three starts from a checkout, exit codes" "0 0 0" "$codes"
 [ -e "$HOME/.mergeworthy/current" ]; check "~/.mergeworthy/current not repointed" 1 $?
 # control: the same code inside the plugin cache, with a newer version installed, still follows (exit 75)
-C="$HOME/.claude/plugins/cache/mergeworthy/mergeworthy/v1"; mkdir -p "$C/watcher" "$C/hooks"; cp "$R/watcher/gh-watch.py" "$R/watcher/gl_watch.py" "$C/watcher/"; cp "$R/hooks/agent_jobs.py" "$R/hooks/steward.py" "$R/hooks/work_folder.py" "$C/hooks/"
+C="$HOME/.claude/plugins/cache/mergeworthy/mergeworthy/v1"; mkdir -p "$C/watcher" "$C/hooks"; cp "$R/watcher/gh-watch.py" "$R/watcher/gl_watch.py" "$C/watcher/"; cp "$R/hooks/agent_jobs.py" "$R/hooks/own_actions.py" "$R/hooks/steward.py" "$R/hooks/work_folder.py" "$C/hooks/"
 check "control: running from the plugin cache, newer version installed" 75 "$(follow "$C/watcher/gh-watch.py")"
 [ "$(readlink "$HOME/.mergeworthy/current")" = "$T/installed/v2" ]; check "control: current points at the new version" 0 $?
 
@@ -316,6 +316,25 @@ with contextlib.redirect_stdout(buf):
 print("|".join(l.split(":")[0] for l in buf.getvalue().splitlines()))
 ')
 check "PR CHANGED: a head this machine pushed is a log note, another head an event" "note|### PR CHANGED o/r#2" "$got"
+# A change whose push, merge or close still runs (own_actions pending) is held, its old state kept, until the command ends:
+# succeeded, a note; failed (dropped) or pending past PENDING_TTL, an event like anyone's
+got=$(OWN_PENDING="$T/opend" PUSHED_HEADS="$T/opushed" CLOSED_THREADS="$T/oclosed" py '
+m.agent_post_hashes, m.emit_refactor_stale, m.emit_wait_ping, m.emit_maintainer_commits = (lambda: set()), (lambda *a: None), (lambda *a: None), (lambda *a: True)
+now = int(m.time.time())
+open(os.environ["OWN_PENDING"], "w").write(f"{now} k1 PUSHED_HEADS aaaaaaaaaa11\n{now - 4000} k2 PUSHED_HEADS bbbbbbbbbb22\n{now} k3 PUSHED_HEADS cccccccccc33\n")
+heads = {"1": "aaaaaaaaaa", "2": "bbbbbbbbbb", "3": "cccccccccc"}
+m.fetch_thread = lambda repo, num, *a: (True, "me", [], {"head": heads[num], "state": "open", "conflict": False}, None, None, {}, True, None)
+state = {"since": "2026-10-29T00:00:00Z", "since_by": {}, "is_pr": {}, "prs": {f"o/r#{n}": {"head": "0000000000", "state": "open", "conflict": False} for n in heads}, "etag": {}, "ci": {}}
+out = []
+for ended in ((), (("k1", True), ("k3", False))):
+    for k, ok in ended: m.own_actions.settle(k, ok)
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf): m.scan(state, [("o/r", n, "full", 0) for n in heads])
+    out.append("|".join(l.split(":")[0] for l in buf.getvalue().splitlines()) + " " + state["prs"]["o/r#1"]["head"])
+print(*out, sep=";")
+')
+check "PR CHANGED: a head whose push still runs is held, its old head kept; once it succeeded, a note; dropped, or pending past its TTL, an event" \
+  "### PR CHANGED o/r#2 0000000000;note|### PR CHANGED o/r#3 aaaaaaaaaa" "$got"
 # A merge or close this machine made (pre-bash-guard records `gh pr merge`, `gh pr|issue close`) only logs the change; its DEPENDENT and TRACKER STALE still wake
 got=$(CLOSED_THREADS="$T/closed" py '
 m.agent_post_hashes, m.emit_refactor_stale, m.emit_wait_ping = (lambda: set()), (lambda *a: None), (lambda *a: None)

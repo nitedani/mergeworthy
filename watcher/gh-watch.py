@@ -8,7 +8,7 @@
 - Your "/agent ..." comments on threads no watch dir lists, found in the watched repos' recent comments (search as a backup) and sent to one dir (see agent_command): `### AGENT COMMAND`.
 - MAINTAINER REVIEW: a maintainer's review (not a bare approval) on your PR, sent to the steward like FOLLOW-UP: every defect it names is sorted.
 - FOLLOW-UP: later commits by others to the lines of your merged PRs, and PRs that reference them (see follow_ups), for 60 days after the merge.
-  What you caused yourself (your reference, a head you pushed: agent_push, your merge or close: agent_closed) is a `note:` line, logged without waking you.
+  What you caused yourself (your reference, a head you pushed, your merge or close: own_change) is a `note:` line, logged without waking you.
   Another account renaming your PR, open (the last-comment call) or merged (follow_ups' timeline), is one too (pr_renamed).
 - Machine-wide work (those two) runs in one daemon, or a --round, at a time (shared_pass). Every call goes through request(), which keeps the
   hour's budget (see "The GitHub API budget") and sends ETags; a rate-limit pause prints one WATCH ERROR per daemon.
@@ -33,7 +33,7 @@ from concurrent.futures import ThreadPoolExecutor
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))  # a watch dir runs this through a link
 import gl_watch
 sys.path.insert(1, os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'hooks'))
-import agent_jobs, shlex, steward, work_folder
+import agent_jobs, own_actions, shlex, steward, work_folder
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE = os.path.join(HERE, 'gh-watch-state.json')
@@ -485,26 +485,12 @@ def agent_post_hashes():
         return set()
 
 
-PUSHED_HEADS = os.path.expanduser(os.environ.get('PUSHED_HEADS', '~/.claude/pushed-heads.txt'))  # written by pre-bash-guard
-
-
-def agent_push(head):
-    """Whether a PR's head (a sha prefix) is a commit this machine's agents pushed: its change is theirs, not news to them."""
-    try:
-        return bool(head) and any(l.startswith(head) for l in open(PUSHED_HEADS).read().split())
-    except OSError:
-        return False
-
-
-CLOSED_THREADS = os.path.expanduser(os.environ.get('CLOSED_THREADS', '~/.claude/closed-threads.txt'))  # written by pre-bash-guard
-
-
-def agent_closed(key, state):
-    """Whether this machine's agents merged or closed the thread (`gh pr merge`, `gh pr|issue close`): state is 'merged' or 'closed'."""
-    try:
-        return f"{key} {state}" in open(CLOSED_THREADS).read().splitlines()
-    except OSError:
-        return False
+def own_change(key, prev, now):
+    """'done' when every change from prev to now is this machine's agents' own (own_actions: a head they pushed, a merge or close they
+    made), 'pending' while the command making one still runs and the rest are theirs too, else None: someone else's, which wakes."""
+    marks = ([own_actions.state('PUSHED_HEADS', lambda e: bool(now['head']) and e.startswith(now['head']))] if prev.get('head') != now.get('head') else []) + \
+            ([own_actions.state('CLOSED_THREADS', lambda e: e == f"{key} {now['state']}")] if prev.get('state') != now['state'] else [])
+    return None if not marks or None in marks else 'pending' if 'pending' in marks else 'done'
 
 
 MAINTAINER = ('OWNER', 'MEMBER', 'COLLABORATOR')
@@ -1086,17 +1072,25 @@ def scan(state, jobs):
             if updated:
                 state['upd'][key] = iso_epoch(updated)
             if last:
-                if not is_pr and state.setdefault('open', {}).get(key) and not last['open']:
-                    emit(f"{'note:' if agent_closed(key, 'closed') else '###'} ISSUE CLOSED {key}" + (": the steward shipped its fix: update your installed mergeworthy (README, Install), then go on"
-                                                      if repo == STEWARD_REPO else ""))
-                state.setdefault('open', {})[key] = last['open']
+                state.setdefault('open', {})
+                closed = not is_pr and state['open'].get(key) and not last['open']
+                mine = closed and own_change(key, {'state': 'open'}, {'state': 'closed'})
+                if mine == 'pending':  # the close's command still runs: read the issue again next pass
+                    state['etag'].pop(f"repos/{repo}/issues/{num}", None)
+                else:
+                    if closed:
+                        emit(f"{'note:' if mine else '###'} ISSUE CLOSED {key}" + (": the steward shipped its fix: update your installed mergeworthy (README, Install), then go on"
+                                                                              if repo == STEWARD_REPO else ""))
+                    state['open'][key] = last['open']
             state['since_by'][key] = started
             if pr_state:
                 prev = state['prs'].get(key)
-                if prev and prev != pr_state:
-                    ours = (prev.get('head') == pr_state['head'] or agent_push(pr_state['head'])) and \
-                        (agent_closed(key, pr_state['state']) if prev.get('state') != pr_state['state'] else prev.get('head') != pr_state['head'])
-                    emit(f"{'note:' if ours else '###'} PR CHANGED {key}: {prev} -> {pr_state}")  # a note is logged, and wakes no one
+                mine = prev and prev != pr_state and own_change(key, prev, pr_state)
+                if mine == 'pending':  # the push, merge or close still runs: compare again next pass
+                    pr_state = prev
+                    state['etag'].pop(f"repos/{repo}/pulls/{num}", None)
+                elif prev and prev != pr_state:
+                    emit(f"{'note:' if mine else '###'} PR CHANGED {key}: {prev} -> {pr_state}")  # a note is logged, and wakes no one
                     if pr_state['state'] == 'merged' and prev.get('state') != 'merged':
                         emit_dependents(key)
                     if pr_state['state'] in ('merged', 'closed') and prev.get('state') != pr_state['state']:
@@ -1981,7 +1975,7 @@ def scan_gitlab():
     if threads:
         with locked():
             state = load_state()
-            gl_watch.scan(state, threads, handle_comment, emit, lambda body: _norm(body) in agent_post_hashes(), agent_push, CHECK, ROUND_SINCE)
+            gl_watch.scan(state, threads, handle_comment, emit, lambda body: _norm(body) in agent_post_hashes(), own_change, CHECK, ROUND_SINCE)
             save_state(state)
 
 
