@@ -110,13 +110,13 @@ ISOLATING, CONDITIONAL, LOOP = 'isolating', 'conditional', 'loop'
 _ids = itertools.count()
 
 
-def _scope(kind):
-    """A new scope of kind, for Seg.scopes."""
-    return ((next(_ids), kind),)
+def _scope(kind, name=''):
+    """A new scope of kind, for Seg.scopes; name: the function whose body it is, if any."""
+    return ((next(_ids), kind, name),)
 
 
 class Seg(list):
-    """A simple command's argv; scopes: the (id, kind) of each scope it runs in, outermost first, for Where; loop: whether it
+    """A simple command's argv; scopes: the (id, kind, function name) of each scope it runs in, outermost first, for Where; loop: whether it
     runs inside a while or until loop."""
     scopes, loop = (), False
 
@@ -151,7 +151,8 @@ def _calls(node, src):
         if not isinstance(x, dict):
             continue
         loop = loop or x.get('Type') == 'WhileClause'  # shfmt's node for until too
-        inner = {k: n + _scope(kind) if (kind := _kind(x, k)) else n for k, v in x.items() if isinstance(v, (dict, list))}
+        name = x['Name']['Value'] if x.get('Type') == 'FuncDecl' else ''
+        inner = {k: n + _scope(kind, name) if (kind := _kind(x, k)) else n for k, v in x.items() if isinstance(v, (dict, list))}
         cmd, redirs = x.get('Cmd') or {}, x.get('Redirs') or []
         words = [w for r in redirs for w in ((r.get('N') or {}).get('Value', '') + r['Op'], _word(r.get('Word') or {}, src))]
         if cmd.get('Type') == 'CallExpr':
@@ -331,7 +332,8 @@ class Where:
     that may run it or not, once the scope is left; a relative one in a loop; a target holding an expansion it can't resolve; `cd -`,
     popd or a stack rotation) the dir is None until a cd to an absolute path, and a check that needs it blocks."""
     def __init__(self, cwd):
-        self.dir, self.moved, self.vars, self.scopes = cwd, False, {}, []  # each scope entered: [(id, kind), dir before it, whether a cd ran in it, variables before it, variables set in it]
+        self.funcs = {}  # each function the line defines: [whether its body changes dir, the variables it sets]
+        self.dir, self.moved, self.vars, self.scopes = cwd, False, {}, []  # each scope entered: [(id, kind, name), dir before it, whether a cd ran in it, variables before it, variables set in it]
 
     def expand(self, p):
         """p with the line's variables ($D, ${D}), then the environment's, put in; one it can't tell (a Maybe) stays as written."""
@@ -357,30 +359,41 @@ class Where:
         """Leave the scopes not in scopes, innermost first, and enter the new ones."""
         n = 0
         while n < min(len(self.scopes), len(scopes)) and self.scopes[n][0] == scopes[n]: n += 1
-        for (_, kind), before, moved, vars, set_in in reversed(self.scopes[n:]):
+        for (_, kind, _), before, moved, vars, set_in in reversed(self.scopes[n:]):
             self.dir = before if kind == ISOLATING else None if moved else self.dir
             self.vars = vars if kind == ISOLATING else {**self.vars, **{v: Maybe(self.vars.get(v, '')) for v in set_in}}
         self.scopes = self.scopes[:n] + [[x, self.dir, False, dict(self.vars), set()] for x in scopes[n:]]
 
-    def changed(self):
-        """The scopes a cd or an assignment here changes what they leave behind: up to the innermost isolating one."""
+    def changed(self, var=None):
+        """Record a cd (var None) or an assignment of var here in the scopes it changes what they leave behind, up to the innermost
+        isolating one, and in the functions whose bodies they are."""
         for x in reversed(self.scopes):
-            yield x
+            if var is None: x[2] = True
+            else: x[4].add(var)
+            if x[0][2]:
+                f = self.funcs.setdefault(x[0][2], [False, set()])
+                if var is None: f[0] = True
+                else: f[1].add(var)
             if x[0][1] == ISOLATING: return
 
     def step(self, t):
         if t and all(re.match(r'^\w+=', x) for x in t):
             self.vars.update(x.split('=', 1) for x in t)
-            for x in self.changed(): x[4].update(a.split('=', 1)[0] for a in t)
+            for x in t: self.changed(x.split('=', 1)[0])
             return
         p = prog(t)
+        if p[:1] and p[0] in self.funcs:  # a call runs the body here: what it may change can't be told
+            moves, sets = self.funcs[p[0]]
+            if moves: self.dir, self.moved = None, True; self.changed()
+            for v in sets: self.vars[v] = Maybe(self.vars.get(v, '')); self.changed(v)
+            return
         if p[:1] not in (['cd'], ['pushd'], ['popd']):
             return
         self.moved = True
         a = [x for x in operands(p[1:]) if x not in ('-P', '-L', '-e', '--')]
         to = a[0] if a else '~' if p[0] == 'cd' else '-'
         kinds = [x[0][1] for x in self.scopes if x[0][1] != CONDITIONAL]
-        for x in self.changed(): x[2] = True
+        self.changed()
         if p[0] == 'popd' or to[:1] in '-+' or to == TOPLEVEL and self.dir is None or kinds[-1:] == [LOOP] and not os.path.isabs(os.path.expanduser(self.expand(to))):
             self.dir = None
         elif to == TOPLEVEL:
