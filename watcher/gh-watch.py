@@ -31,9 +31,9 @@ and scans overlap by 10 minutes. A failed API call prints WATCH ERROR and that t
 import contextlib, datetime, fcntl, hashlib, http.client, json, os, re, subprocess, sys, threading, time, urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))  # a watch dir runs this through a link
-import gl_watch
 sys.path.insert(1, os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'hooks'))
-import agent_jobs, own_actions, shlex, steward, testpaths, work_folder
+import gl_watch
+import agent_jobs, own_actions, shlex, steward, testpaths, threads_file, work_folder
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE = os.path.join(HERE, 'gh-watch-state.json')
@@ -838,20 +838,12 @@ def emit_refactor_stale(repo, key, new):
 
 
 def read_threads():
-    """threads.txt, an `owner/repo#N` line rewritten there as `owner/repo N`, the form every reader of it expects."""
-    threads, text = [], open(THREADS).read()
-    fixed = re.sub(r'^(\s*[\w.-]+/[\w.-]+)#(\d+)\b', r'\1 \2', text, flags=re.M)
-    if fixed != text and not ONCE:
-        open(THREADS + '.tmp', 'w').write(fixed)
-        if open(THREADS).read() == text: os.replace(THREADS + '.tmp', THREADS)  # unless a line was added meanwhile
-    for l in fixed.splitlines(True):
-        w = l.split('#', 1)[0].split() if not l.lstrip().startswith('#') else []
-        if w[:1] and w[0].startswith(gl_watch.HOST):
-            continue  # gl_watch reads it
-        if len(w) == 2 and w[1].isdigit():
-            threads.append(w)
-        elif w:
-            emit(f"WATCH ERROR threads.txt: bad line {l.strip()!r} (want 'owner/repo number')")
+    """threads.txt's GitHub threads as [repo, number] (threads_file reads every form; gl_watch.threads the GitLab ones); a line
+    threads_file can't read is a WATCH ERROR."""
+    threads, bad = threads_file.read(THREADS)
+    threads = [list(t) for t in threads if not t[0].startswith(gl_watch.HOST)]
+    for l in bad:
+        emit(f"WATCH ERROR threads.txt: bad line {l!r} (want 'owner/repo number', or 'gitlab.com/<path> number' and '!number' for a merge request)")
     for _, key in waiting_keys():  # a PR you wait on is watched too, so its merge emits DEPENDENT
         repo, num = key.rsplit('#', 1)
         if [repo, num] not in threads:
@@ -1359,10 +1351,7 @@ def repo_lines(d):
 
 def listed_threads(d):
     """The threads watch dir d scans: its threads.txt and the PRs its waiting-on.txt waits on."""
-    try:
-        listed = {f"{w[0]}#{w[1]}" for w in (l.split('#', 1)[0].split() for l in open(os.path.join(d, 'threads.txt'))) if len(w) == 2 and not w[0].startswith(gl_watch.HOST)}
-    except OSError:
-        listed = set()
+    listed = {f"{r}#{n}" for r, n in threads_file.read(os.path.join(d, 'threads.txt'))[0] if not r.startswith(gl_watch.HOST)}
     return listed | {key for _, key in waiting_keys(d)}
 
 
@@ -1430,7 +1419,7 @@ def agent_command(repo, num, kind, c):
     if not target or not claim(sk):
         return
     line = key.replace('#', ' ')
-    if routed and line not in open(os.path.join(target, 'threads.txt')).read().splitlines():
+    if routed and not threads_file.lists(os.path.join(target, 'threads.txt'), repo, num):
         open(os.path.join(target, 'threads.txt'), 'a').write(line + '\n')  # its follow-ups are watched
     if not steward.quiet(target):
         append_owed(f"{key} {kind} {cid} by {ME} {url} — {body.strip().splitlines()[0][:80]}", target)
@@ -1527,8 +1516,7 @@ def ai_call_elsewhere(state, repo, num, etype, c):
         return
     if main_dir() != HERE:
         return
-    watched = any(f"{repo} {num}" in (l.strip() for l in open(os.path.join(d, 'threads.txt')))
-                  for d in watch_dirs() if live(d) and os.path.exists(os.path.join(d, 'threads.txt')))
+    watched = any(threads_file.lists(os.path.join(d, 'threads.txt'), repo, num) for d in watch_dirs() if live(d))
     if not watched:  # a watched thread's own scan handles it
         kind = 'review-comment' if etype == 'PullRequestReviewCommentEvent' else 'comment'
         handle_comment(state, repo, key, kind, c['id'], c.get('updated_at') or c.get('created_at', ''), ME, c.get('html_url', ''), body)

@@ -4,8 +4,9 @@ changed in the last day, else at the GitHub threads' cadence; GitHub's budget, E
 Reported like a GitHub thread: answerable notes (an event, an owed reply and an :eyes: award), MR state changes, pipeline results
 and issue closes. Keys are "gitlab.com/<path>#N" and "gitlab.com/<path>!N": no GitHub owner has a dot, so they can't collide."""
 import datetime, json, re, subprocess, time, urllib.parse
+import threads_file  # hooks/, on the path gh-watch.py sets
 
-HOST = 'gitlab.com/'
+HOST = threads_file.GL
 RECENT_EVERY = 60
 BADGE = re.compile(r'\s*<img src="https://github\.com/(claude|openai)\.png"')  # an agent's post starts with it (mergeworthy:writing §Forms); BADGE.match(body)
 BOT = re.compile(r'^(project|group)_\d+_bot|[-_]bot$|^(ghost|support-bot|alert-bot)$')
@@ -15,12 +16,11 @@ DEVELOPER = 30  # GitLab's access level that can push: GitHub's write access
 def threads(path):
     """-> [(key, project, 'issues' or 'merge_requests', iid)] for the GitLab lines of threads.txt."""
     out = []
-    for l in open(path):
-        w = l.split()
-        if len(w) == 2 and w[0].startswith(HOST) and re.fullmatch(r'!?\d+', w[1]):
-            iid = w[1].lstrip('!')
-            mr = w[1] != iid
-            out.append((f"{w[0]}{'!' if mr else '#'}{iid}", w[0][len(HOST):], 'merge_requests' if mr else 'issues', iid))
+    for repo, num in threads_file.read(path)[0]:
+        if repo.startswith(HOST):
+            iid = num.lstrip('!')
+            mr = num != iid
+            out.append((f"{repo}{'!' if mr else '#'}{iid}", repo[len(HOST):], 'merge_requests' if mr else 'issues', iid))
     return out
 
 
