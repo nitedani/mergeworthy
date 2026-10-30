@@ -300,7 +300,7 @@ if kind == 'proposal' and words > 900 + extra:  # a design walkthrough (mergewor
     findings.append(f"{words} words > {900 + extra} for a design answer or walkthrough (tables and code count): a dump: cut what the reader doesn't need to decide, act or check (mergeworthy:writing)")
 # Parallel, not later (task §Dispositions): work promised for "after it" or "later" is deferred, not waiting on anything named
 if kind in ('reply', 'proposal', 'inline') and (_d := re.search(r"\bI(?:'ll| will)\b[^.\n]*?\b(?:after (?:it|that|this)|later)\b", prose)):
-    findings.append(f"{_d.group(0)!r} defers work: start a quick win now, or name the dependency or decision it waits on (task §Dispositions)")
+    findings.append(f"{_d.group(0)!r} defers work: do it now, name the dependency or decision it waits on, or drop the promise (task §Dispositions)")
 decision = kind == 'issue' and re.search(r'^#+\s*Options\b', text, re.I | re.M)  # a decision issue (open-issue)
 if decision and words > 400 + extra:
     findings.append(f"{words} words > {400 + extra} for a decision issue (tables and code count): the options a user would see and your pick; cut the rest")
@@ -362,13 +362,13 @@ for row in re.findall(rf'^\|([^|\n]*)\|\s*{re.escape(W["kinds"][1])}\s*\|[^\n]*$
     whole = re.search(r'^\|' + re.escape(row) + r'\|[^\n]*$', text, flags=re.M).group(0)
     if not re.search(re.escape(W['imposed']), whole, re.I):
         findings.append(f"limitation {row.strip()[:50]!r} names nothing that imposes it: say '{W['imposed']} <runtime, provider or protocol>', or fix it, since a limit our own design creates is a defect (code §No regressions)")
-# a follow-up is opened before the post, never parked as advice (mergeworthy:writing §Forms, task §Dispositions)
+# a note's Next is done or 'nothing', never parked as advice (mergeworthy:writing §Forms, task §Dispositions)
 for row in re.findall(r'^\|(?:[^|\n]*\|){3}([^|\n]*)\|\s*$', text, flags=re.M):
     if re.search(r'\b(recommend|follow-up|follow up|later)\b', row, re.I):
-        findings.append(f"notes table Next {row.strip()[:50]!r}: open the follow-up first and link it (PR <url>), fix it (fixed in <sha>), or write 'nothing, because …'")
-# a found defect is fixed in this change, not parked in prose (mergeworthy:task §Dispositions): the same bug elsewhere is related
-for m in re.finditer(r"[^.\n]*\b(separate issue|separate PR|out of scope|left for later|for later|a later PR|follow-up issue|another PR)\b[^.\n]*", prose, re.I):
-    findings.append(f"deferral {m.group(0).strip()[:70]!r}: fix it in this change, open the PR now and link it, or quote the user's OK (task §Dispositions)")
+        findings.append(f"notes table Next {row.strip()[:50]!r}: fix it (fixed in <sha>), link the PR the defect gets (task §Dispositions), or write 'nothing, because …'")
+# promised work isn't parked for later (mergeworthy:task §Dispositions); naming a defect left alone is no promise
+for m in re.finditer(r"[^.\n]*\b(left for later|for later|a later PR|follow-up issue)\b[^.\n]*", prose, re.I):
+    findings.append(f"deferral {m.group(0).strip()[:70]!r}: do it now and link it, or drop the promise (task §Dispositions)")
 has_badge = _m is not None
 badge = setting('BADGE', 'on')  # auto: only a human account (`gh api user` type User, not Bot) needs it
 if kind != 'tracker' and not has_badge and not _label and (badge == 'on' or badge == 'auto' and

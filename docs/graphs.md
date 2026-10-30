@@ -17,7 +17,7 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 | `open-issue` | `pull-request`, `task`, `delegate`, `evidence`, `writing`, `post` |
 | `post` | `pull-request`, `open-issue`, `writing`, `delegate`, `task` |
 | `pull-request` | `delegate`, `post`, `evidence`, `design`, `finality`, `code`, `task`, `docs`, `converge`, `merging`, `writing`, `reply` |
-| `reply` | `post`, `converge`, `design`, `merging`, `delegate`, `task` |
+| `reply` | `task`, `post`, `converge`, `design`, `merging`, `delegate` |
 | `review` | `delegate`, `code`, `post`, `writing` |
 | `rules` | `task`, `open-issue`, `delegate`, `reply` |
 | `steward` | `rules`, `delegate`, `writing` |
@@ -95,16 +95,17 @@ flowchart TB
     s7["8. Before the turn ends"]
     s6 --> s7
   end
-  s2 -.-> r1[["post"]]
-  s3 -.-> r2[["converge"]]
-  s4 -.-> r3[["design"]]
-  s4 -.-> r4[["merging"]]
-  s4 -.-> r5[["delegate"]]
-  s5 -.-> r6[["post"]]
-  s5 -.-> r7[["delegate"]]
-  s6 -.-> r8[["post"]]
-  s6 -.-> r9[["task"]]
-  s7 -.-> r10[["task"]]
+  s0 -.-> r1[["task"]]
+  s2 -.-> r2[["post"]]
+  s3 -.-> r3[["converge"]]
+  s4 -.-> r4[["design"]]
+  s4 -.-> r5[["merging"]]
+  s4 -.-> r6[["delegate"]]
+  s5 -.-> r7[["post"]]
+  s5 -.-> r8[["delegate"]]
+  s6 -.-> r9[["post"]]
+  s6 -.-> r10[["task"]]
+  s7 -.-> r11[["task"]]
   start --> g0
 ```
 
@@ -159,7 +160,7 @@ Opens `mergeworthy:open-issue` (already filed?, reproduce, body, post (5 steps))
 flowchart TB
   start(["Opening an issue"])
   subgraph g0["Steps"]
-    s0["0. Should this be a PR?"]
+    s0["0. Should this be a PR"]
     s1["1. Already filed or fixed?"]
     s0 --> s1
     s2["2. Reproduce it on today's<br/>‹base›"]
@@ -314,17 +315,18 @@ flowchart TB
   s1 -.-> r4[["task"]]
   s2 -.-> r5[["code"]]
   s2 -.-> r6[["delegate"]]
-  s2 -.-> r7[["writing"]]
-  s3 -.-> r8[["delegate"]]
-  s4 -.-> r9[["pull-request"]]
-  s4 -.-> r10[["task"]]
-  s4 -.-> r11[["delegate"]]
-  s4 -.-> r12[["rules"]]
-  s4 -.-> r13[["post"]]
-  s5 -.-> r14[["merging"]]
-  s5 -.-> r15[["post"]]
-  s5 -.-> r16[["finality"]]
-  s5 -.-> r17[["code"]]
+  s2 -.-> r7[["task"]]
+  s2 -.-> r8[["writing"]]
+  s3 -.-> r9[["delegate"]]
+  s4 -.-> r10[["pull-request"]]
+  s4 -.-> r11[["task"]]
+  s4 -.-> r12[["delegate"]]
+  s4 -.-> r13[["rules"]]
+  s4 -.-> r14[["post"]]
+  s5 -.-> r15[["merging"]]
+  s5 -.-> r16[["post"]]
+  s5 -.-> r17[["finality"]]
+  s5 -.-> r18[["code"]]
   start --> g0
 ```
 
@@ -354,17 +356,18 @@ flowchart TB
   s1 -.-> r4[["task"]]
   s2 -.-> r5[["code"]]
   s2 -.-> r6[["delegate"]]
-  s2 -.-> r7[["writing"]]
-  s3 -.-> r8[["delegate"]]
-  s4 -.-> r9[["pull-request"]]
-  s4 -.-> r10[["task"]]
-  s4 -.-> r11[["delegate"]]
-  s4 -.-> r12[["rules"]]
-  s4 -.-> r13[["post"]]
-  s5 -.-> r14[["merging"]]
-  s5 -.-> r15[["post"]]
-  s5 -.-> r16[["finality"]]
-  s5 -.-> r17[["code"]]
+  s2 -.-> r7[["task"]]
+  s2 -.-> r8[["writing"]]
+  s3 -.-> r9[["delegate"]]
+  s4 -.-> r10[["pull-request"]]
+  s4 -.-> r11[["task"]]
+  s4 -.-> r12[["delegate"]]
+  s4 -.-> r13[["rules"]]
+  s4 -.-> r14[["post"]]
+  s5 -.-> r15[["merging"]]
+  s5 -.-> r16[["post"]]
+  s5 -.-> r17[["finality"]]
+  s5 -.-> r18[["code"]]
   start --> g0
 ```
 
@@ -394,17 +397,18 @@ flowchart TB
   s1 -.-> r4[["task"]]
   s2 -.-> r5[["code"]]
   s2 -.-> r6[["delegate"]]
-  s2 -.-> r7[["writing"]]
-  s3 -.-> r8[["delegate"]]
-  s4 -.-> r9[["pull-request"]]
-  s4 -.-> r10[["task"]]
-  s4 -.-> r11[["delegate"]]
-  s4 -.-> r12[["rules"]]
-  s4 -.-> r13[["post"]]
-  s5 -.-> r14[["merging"]]
-  s5 -.-> r15[["post"]]
-  s5 -.-> r16[["finality"]]
-  s5 -.-> r17[["code"]]
+  s2 -.-> r7[["task"]]
+  s2 -.-> r8[["writing"]]
+  s3 -.-> r9[["delegate"]]
+  s4 -.-> r10[["pull-request"]]
+  s4 -.-> r11[["task"]]
+  s4 -.-> r12[["delegate"]]
+  s4 -.-> r13[["rules"]]
+  s4 -.-> r14[["post"]]
+  s5 -.-> r15[["merging"]]
+  s5 -.-> r16[["post"]]
+  s5 -.-> r17[["finality"]]
+  s5 -.-> r18[["code"]]
   start --> g0
 ```
 
@@ -434,17 +438,18 @@ flowchart TB
   s1 -.-> r4[["task"]]
   s2 -.-> r5[["code"]]
   s2 -.-> r6[["delegate"]]
-  s2 -.-> r7[["writing"]]
-  s3 -.-> r8[["delegate"]]
-  s4 -.-> r9[["pull-request"]]
-  s4 -.-> r10[["task"]]
-  s4 -.-> r11[["delegate"]]
-  s4 -.-> r12[["rules"]]
-  s4 -.-> r13[["post"]]
-  s5 -.-> r14[["merging"]]
-  s5 -.-> r15[["post"]]
-  s5 -.-> r16[["finality"]]
-  s5 -.-> r17[["code"]]
+  s2 -.-> r7[["task"]]
+  s2 -.-> r8[["writing"]]
+  s3 -.-> r9[["delegate"]]
+  s4 -.-> r10[["pull-request"]]
+  s4 -.-> r11[["task"]]
+  s4 -.-> r12[["delegate"]]
+  s4 -.-> r13[["rules"]]
+  s4 -.-> r14[["post"]]
+  s5 -.-> r15[["merging"]]
+  s5 -.-> r16[["post"]]
+  s5 -.-> r17[["finality"]]
+  s5 -.-> r18[["code"]]
   start --> g0
 ```
 
