@@ -363,10 +363,10 @@ class Where:
         return None if re.search(r'[$`]', p) else p if os.path.isabs(p) else None if base is None else os.path.join(base, p)
 
     def file(self, p):
-        """A file the current command names, p, resolved from the dir; an expansion left after its folder stays as written (`/abs/$t.log`).
-        None when its folder can't be told: no dir, or p starts with an expansion left."""
+        """A file the current command names, p, resolved from the dir; an expansion left in its name stays as written (`/abs/$t.log`).
+        None when its folder can't be told: no dir, or an expansion left in its folder."""
         p = os.path.expanduser(self.expand(p))
-        return None if re.match(r'[$`]', p) or not os.path.isabs(p) and self.dir is None else os.path.join(self.dir or '/', p)
+        return None if re.search(r'[$`]', os.path.dirname(p)) or not os.path.isabs(p) and self.dir is None else os.path.join(self.dir or '/', p)
 
     def walk(self, segs):
         """Each of segs (parse()'s), with self moved to where it runs; self takes it once the caller is done with it."""

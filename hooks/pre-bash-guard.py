@@ -908,7 +908,7 @@ for s in where.walk(segs):
         if w & {'git', 'gh', 'glab'} and w & {'push', 'commit', 'pr', 'issue', 'api', 'release', 'mr'} or 'git' not in w and w & {'push', 'commit'}:
             block(f"`{named}` runs a command named only when it runs, with `{' '.join(words)[:80]}`: write the command out, so it can be checked")
     check(s, has_cd)
-    wrote.update(os.path.normpath(f) for f in map(where.path, written_files(prog(s))) if f)
+    wrote.update(os.path.normpath(f) for f in map(where.file, written_files(prog(s))) if f)
 try:  # pending until post-bash-register sees how the command ended
     own_actions.intend(own_actions.key(d), own)
 except OSError:
