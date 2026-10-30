@@ -1199,7 +1199,8 @@ t3db "update orchestration_v2_projection_runs set status = 'completed' where run
 check "agent-job done releases it once the agent has ended" "0 0" "$(python3 "$R/bin/agent-job" done "$T/jobs/t3busy-ticket.md" >/dev/null; echo $?) $(python3 "$R/bin/agent-job" list | grep -c t3busy-ticket)"
 # a transcript belongs to one job: the earliest-started one carrying its whole task that started at or after its launch, one carrying an
 # open job's longer task that holds it being that job's, and a claim stays (nitedani/mergeworthy#60 and its review rounds: a quick second
-# round, fan-out agents whose transcripts start in the reverse of their launch order, a released sibling, a repeated foreground call)
+# round, fan-out agents whose transcripts start in the reverse of their launch order, a released sibling, a repeated foreground call,
+# a head read before its prompt was written)
 got=$(python3 - "$R/hooks" <<'EOF2'
 import json, os, sys, time
 sys.path.insert(0, sys.argv[1]); import agent_jobs
@@ -1237,11 +1238,18 @@ out.append(name(agent_jobs.transcript(w1)))
 fg = 'Run /work/briefs/fg.md exactly.'  # two foreground calls in a row: each registered once its agent returned
 log('agent-r1.jsonl', fg, now - 1000, now - 330, True); log('agent-r2.jsonl', fg, now - 320, now - 310, True)
 out.append(name(agent_jobs.transcript(job('fg2', now - 321, fg))))
+grow = 'Read /work/briefs/grow.md exactly.'  # a watcher tick reads the rollout before T3 has written the task into it
+g, p = job('grow', now - 100, grow), os.path.join(d, 'rollout-grow.jsonl')
+open(p, 'w').write(json.dumps({'timestamp': at(now - 99), 'type': 'session_meta', 'payload': {'id': 'grow', 'timestamp': at(now - 99)}}) + '\n'
+                   + json.dumps(user('# AGENTS.md instructions')) + '\n')
+out.append(name(agent_jobs.transcript(g)))
+open(p, 'a').write(json.dumps(user(grow)) + '\n')
+out.append(name(agent_jobs.transcript(g)))
 print(*out)
 EOF2
 )
-check "a transcript belongs to one job: a quick second round gets none before its own starts, then its own, running; fan-out agents started in reverse get their own; a job keeps its own after a sibling holding its task is released; a repeated foreground call gets its own" \
-  "None rollout-q2.jsonl False rollout-fa.jsonl rollout-fb.jsonl True False rollout-w1.jsonl rollout-w1.jsonl agent-r2.jsonl" "$got"
+check "a transcript belongs to one job: a quick second round gets none before its own starts, then its own, running; fan-out agents started in reverse get their own; a job keeps its own after a sibling holding its task is released; a repeated foreground call gets its own; a head read before its task was written is read again" \
+  "None rollout-q2.jsonl False rollout-fa.jsonl rollout-fb.jsonl True False rollout-w1.jsonl rollout-w1.jsonl agent-r2.jsonl None rollout-grow.jsonl" "$got"
 python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"lt","tool_input":{"task":"Execute /work/briefs/lt.md exactly","title":"lt"}}))' > "$T/lt.json"
 python3 "$R/hooks/pre-agent-dedupe.py" < "$T/lt.json" 2>/dev/null; sleep 1; python3 "$R/hooks/pre-agent-dedupe.py" register < "$T/lt.json"
 check "pre-agent-dedupe records when the launch began (PreToolUse), before its registration" True \

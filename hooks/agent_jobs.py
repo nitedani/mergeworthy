@@ -9,7 +9,7 @@ this one's is that job's, and a claim is kept in CLAIMS, so a sibling's release 
 It has finished when that transcript has been quiet for QUIET
 seconds with no tool call pending, or for LONG seconds whatever it was doing (no foreground tool call runs ten minutes),
 while T3 Code shows no active run or background command of its thread and no agent it launched is still at work."""
-import datetime, fcntl, glob, hashlib, json, os, re, sys, time
+import datetime, fcntl, glob, hashlib, itertools, json, os, re, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import steward
 
@@ -34,27 +34,34 @@ def jobs(now=None):
 _head = {}
 def head(path):
     """(first prompt, start time) of a transcript, None for a start it doesn't record: the first entry's `timestamp` (a Codex
-    rollout's session_meta, a Claude transcript's first queued prompt). Neither ever changes, so each file is read once."""
-    if path not in _head:
-        prompt, start = '', None
-        with open(path, errors='replace') as fh:
-            for i, line in zip(range(50), fh):
-                try: o = json.loads(line)
-                except ValueError: continue
-                if not isinstance(o, dict): continue
-                if start is None and isinstance(o.get('timestamp'), str):
-                    start = datetime.datetime.fromisoformat(o['timestamp'].replace('Z', '+00:00')).timestamp()
-                if o.get('type') == 'response_item' and (o.get('payload') or {}).get('role') == 'user':
-                    prompt += ' '.join(b.get('text', '') for b in o['payload'].get('content') or [] if isinstance(b, dict)) + '\n'
-                    continue
-                if o.get('type') == 'user' and not o.get('isMeta'):
-                    c = (o.get('message') or {}).get('content')
-                    t = c if isinstance(c, str) else ' '.join(b.get('text', '') for b in c or [] if isinstance(b, dict) and b.get('type') == 'text')
-                    if t.strip():
-                        prompt = t
-                        break
-        _head[path] = (prompt, start)
-    return _head[path]
+    rollout's session_meta, a Claude transcript's first queued prompt). Neither changes once the agent's first reply (Codex)
+    or the first prompt (Claude) is written, so such a head is read once; one written before it is read again on the next call."""
+    if path in _head: return _head[path]
+    prompt, start, done, n = '', None, False, 0
+    with open(path, errors='replace') as fh:
+        for line in itertools.islice(fh, 50):
+            if not line.endswith('\n'): break  # a line still being written
+            n += 1
+            try: o = json.loads(line)
+            except ValueError: continue
+            if not isinstance(o, dict): continue
+            if start is None and isinstance(o.get('timestamp'), str):
+                start = datetime.datetime.fromisoformat(o['timestamp'].replace('Z', '+00:00')).timestamp()
+            p = o.get('payload') or {}
+            if o.get('type') == 'response_item' and p.get('role') == 'user':
+                prompt += ' '.join(b.get('text', '') for b in p.get('content') or [] if isinstance(b, dict)) + '\n'
+                continue
+            if o.get('type') == 'response_item' and (p.get('role') == 'assistant' or p.get('type') == 'reasoning' or str(p.get('type')).endswith('_call')):
+                done = True
+                break
+            if o.get('type') == 'user' and not o.get('isMeta'):
+                c = (o.get('message') or {}).get('content')
+                t = c if isinstance(c, str) else ' '.join(b.get('text', '') for b in c or [] if isinstance(b, dict) and b.get('type') == 'text')
+                if t.strip():
+                    prompt, done = t, True
+                    break
+    if done or n == 50: _head[path] = (prompt, start)
+    return prompt, start
 
 def needles(job):
     """What the agent's first prompt carries: the whole task, else the ticket paths the key lists (a title-only key has none)."""
