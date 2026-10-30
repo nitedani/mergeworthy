@@ -1355,6 +1355,15 @@ printf '{"iid":4,"id":504,"title":"Follow-up","web_url":"https://gitlab.com/acme
 echo '[]' > "$FX/projects_acme%2Fapp_merge_requests_4_notes_sort_asc_order_by_created_at_per_page_100"
 "$R/bin/thread-context" 'gitlab.com/acme/app!4' --out "$T/glctx/q.md" >/dev/null
 check "a qualified gitlab.com/<path>!N and #N in a GitLab thread are followed as written" 2 "$(grep -Ec '^  - gitlab.com/acme/app(#3|!2) ' "$T/glctx/q.md")"
+# GitLab's note times carry a fraction (2022-01-31T15:10:44.988Z): the record writes every time in one UTC form, so gate-pass, east of
+# UTC, still refuses a review older than the note
+NA=$(date -u -d '-30 minutes' +%Y-%m-%dT%H:%M:%S); GZ="$T/gltz"; mkdir -p "$GZ"
+printf '{"iid":5,"id":505,"title":"Times","web_url":"https://gitlab.com/acme/app/-/merge_requests/5","state":"opened","updated_at":"%s.988Z","created_at":"2026-10-29T13:00:00.123Z","author":{"username":"bob"},"description":"Times."}' "$NA" > "$FX/projects_acme%2Fapp_merge_requests_5"
+printf '[{"id":21,"author":{"username":"alice"},"created_at":"%s.988Z","body":"One more thing."}]' "$NA" > "$FX/projects_acme%2Fapp_merge_requests_5_notes_sort_asc_order_by_created_at_per_page_100"
+"$R/bin/thread-context" 'gitlab.com/acme/app!5' --out "$GZ/thread-context.md" >/dev/null
+printf 'Agreed, option A it is.\n' > "$GZ/r.md"; echo CLEAN > "$GZ/r.review.out"; touch -d '-3 hours' "$GZ/r.md"; touch -d '-1 hour' "$GZ/r.review.out"
+check "BLOCK: a GitLab note at a fractional time, newer than the review, under TZ=Europe/Budapest; the record writes its time and the body's as UTC seconds" "1 1 1 1" \
+  "$(TZ=Europe/Budapest MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GZ/r.md" "$GZ/r.review.out" --kind reply --parent none >"$T/gz.out" 2>&1; echo $?) $(grep -c 'newer than the review' "$T/gz.out") $(grep -c "^- latest-human-comment: id=21 at=${NA}Z " "$GZ/thread-context.md") $(grep -c '^### 2026-10-29T13:00:00Z @bob' "$GZ/thread-context.md")"
 echo '{"state":"open","draft":false,"head":{"sha":"h1"}}' > "$FX/repos_o_r_pulls_7"
 echo '{"check_runs":[{"name":"test","conclusion":"success"}]}' > "$FX/repos_o_r_commits_h1_check-runs"
 echo '{"state":"opened","draft":true,"head_pipeline":{"status":"failed"}}' > "$FX/projects_g%2Fp_merge_requests_96"

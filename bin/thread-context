@@ -54,11 +54,17 @@ def is_bot(u):
     u = u or {}
     return u.get('type') == 'Bot' or (u.get('login') or '').endswith('[bot]')
 
+def utc(at):
+    """at as the record writes every time: YYYY-MM-DDTHH:MM:SSZ in UTC, whatever form GitHub or GitLab returned (GitLab's
+    2022-01-31T15:10:44.988Z, an offset); '' when there is none, at itself when it isn't a time."""
+    try: return datetime.datetime.fromisoformat(at).astimezone(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ') if at else ''
+    except ValueError: return at
+
 def record(kind, c, at_key='created_at', extra=''):
     u = c.get('user') or {}
     body = c.get('body') or ''
     return {'kind': kind, 'id': c.get('id') or 0, 'author': u.get('login') or 'ghost', 'bot': is_bot(u), 'agent': bool(gl_watch.BADGE.match(body)),
-            'at': c.get(at_key) or c.get('created_at') or '', 'url': c.get('html_url') or '', 'body': body, 'extra': extra}
+            'at': utc(c.get(at_key) or c.get('created_at') or ''), 'url': c.get('html_url') or '', 'body': body, 'extra': extra}
 
 def load(repo, sep, num):
     """The thread as {ref, title, url, state, is_pr, updated_at, items:[record...]}, cached by updated_at; Unreadable when a request
