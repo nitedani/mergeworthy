@@ -122,7 +122,7 @@ _ids = itertools.count()
 
 def _scope(kind, name=''):
     """A new scope of kind, for Seg.scopes; name: the function whose body it is, or the variable a for loop takes from words of
-    plain characters (no /, $, backtick, quote or glob), if any."""
+    plain characters (no /, $, backtick, quote or glob) when nothing in its body sets it, if any."""
     return ((next(_ids), kind, name),)
 
 
@@ -150,6 +150,25 @@ def _kind(x, k):
     return None
 
 
+def _sets(node, var, src):
+    """Whether anything under node may set var: an assignment or declaration of it, a loop or function so named, or var handed to a
+    builtin that sets it (read, mapfile, printf -v)."""
+    stack = [node]
+    while stack:
+        x = stack.pop()
+        if isinstance(x, list):
+            stack += x
+        elif isinstance(x, dict):
+            if (x.get('Name') or {}).get('Value') == var:
+                return True
+            a = prog([_word(w, src) for w in x.get('Args') or []]) if x.get('Type') == 'CallExpr' else []
+            if a[:1] and a[0] in ('read', 'mapfile', 'readarray', 'printf', 'declare', 'local', 'export', 'typeset', 'readonly') and \
+                    any(w == var or w.startswith(var + '=') for w in a[1:]):
+                return True
+            stack += [v for v in x.values() if isinstance(v, (dict, list))]
+    return False
+
+
 def _calls(node, src):
     """(the argv of every simple command under node, in order, each a Seg; the statements each heredoc of them is read by:
     (redirect, top statement, whether it is in a loop))."""
@@ -164,7 +183,8 @@ def _calls(node, src):
         loop = loop or x.get('Type') == 'WhileClause'  # shfmt's node for until too
         items = (x.get('Loop') or {}).get('Items') if x.get('Type') == 'ForClause' else None
         name = x['Name']['Value'] if x.get('Type') == 'FuncDecl' else \
-            x['Loop']['Name']['Value'] if items and all(re.fullmatch(r'[\w.+@%,:=-]+', _src(w, src)) for w in items) else ''
+            x['Loop']['Name']['Value'] if items and all(re.fullmatch(r'[\w.+@%,:=-]+', _src(w, src)) for w in items) and \
+            not _sets(x.get('Do'), x['Loop']['Name']['Value'], src) else ''
         inner = {k: n + _scope(kind, name) if (kind := _kind(x, k)) else n for k, v in x.items() if isinstance(v, (dict, list))}
         cmd, redirs = x.get('Cmd') or {}, x.get('Redirs') or []
         words = [w for r in redirs for w in ((r.get('N') or {}).get('Value', '') + r['Op'], _word(r.get('Word') or {}, src))]
