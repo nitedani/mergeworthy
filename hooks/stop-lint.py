@@ -42,7 +42,7 @@ except (KeyError, TypeError, OSError):
               "Re-check it yourself: anything owed, unfinished or unwatched, do now; then end the turn.", file=sys.stderr)
         sys.exit(2)
     lines = []
-import forge, report, steward, t3_tasks
+import forge, post_words, report, steward, t3_tasks
 from shellcmd import segments, prog, git_argv, Where
 # A T3 Code delegated child (its thread has a parent in T3's state, or its prompt says so): its result is its last message, and the main session owns replies and next steps
 def opening(l):  # a user line's typed text ('' for a tool result's list, or a line that isn't JSON)
@@ -329,14 +329,14 @@ if watcher_on and not paused and not child:
 # a line still opening with PROMISED, not cleared by the commit or link that delivers it (task §Files), blocks the turn
 if watcher_on and not paused and not child:
     import datetime, time
-    BY = re.compile(r'\b(?:by|before)\s+(?:(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?Z)|(\d{1,2}):(\d{2})\s*(?:Z|UTC)\b)', re.I)
+    BY = re.compile(r'\b(?:by|before)\s+(\d{1,2}):(\d{2})\s*(?:Z|UTC)\b|' + '|'.join(w['status']['by'] for w in post_words.WORDS.values()), re.I)
     def due(text, written):
-        """The first promised time in text; a bare time of day is the first one after the draft was written."""
+        """The first promised time in text, in any language post_words lists; a bare time of day is the first one after the draft was written."""
         m = BY.search(text)
         if not m: return None
-        if m[1]: return datetime.datetime.fromisoformat(m[1].replace('Z', '+00:00')).timestamp()
+        if not m[1]: return datetime.datetime.fromisoformat(next(g for g in m.groups()[2:] if g).replace('Z', '+00:00')).timestamp()
         w = datetime.datetime.fromtimestamp(written, datetime.timezone.utc)
-        t = w.replace(hour=int(m[2]) % 24, minute=int(m[3]), second=0, microsecond=0)
+        t = w.replace(hour=int(m[1]) % 24, minute=int(m[2]), second=0, microsecond=0)
         return (t + datetime.timedelta(days=1) if t < w else t).timestamp()
     for po in sorted(p for wd in own_dirs for p in glob.glob(os.path.join(wd, 'proposals-open.md')) + glob.glob(os.path.join(wd, '*', 'proposals-open.md'))):
         for l in open(po, errors='replace'):

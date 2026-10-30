@@ -142,6 +142,8 @@ printf 'PROMISED o/r#1: post the fix by %s (reply.md)\nPROMISED o/r#1: a docs PR
 check "a PROMISED line whose time is ahead, or with no time, passes" 0 "$(stop "$WD")"
 printf 'PROMISED o/r#1: post the fix by %s (reply.md)\n' "$(date -u -d '-1 hour' +%FT%H:%MZ)" > "$WD/proposals-open.md"
 check "BLOCK: a PROMISED line past its time, naming it" "2 1" "$(stop "$WD") $(grep -c 'post the fix' "$T/err")"
+printf 'PROMISED o/r#1: a javítás %s-ig (reply.md)\n' "$(date -u -d '-1 hour' +%FT%H:%MZ)" > "$WD/proposals-open.md"
+check "BLOCK: a Hungarian PROMISED line past its time (<ISO>-ig)" 2 "$(stop "$WD")"
 printf 'DONE https://github.com/o/r/pull/2 PROMISED o/r#1: post the fix by %s (reply.md)\n' "$(date -u -d '-1 hour' +%FT%H:%MZ)" > "$WD/proposals-open.md"
 check "the same line cleared by its delivering link passes" 0 "$(stop "$WD")"
 rm "$WD/proposals-open.md"; echo 'PROMISED o/r#1: come back with the result (holding.md)' > "$WD/hold/proposals-open.md"
@@ -741,6 +743,11 @@ printf '# acme/hu\n\n## PR conventions\n- Titles: sentence case.\n' > "$HUP"
 check "BLOCK: the same body with no Language line, on its State line and effort words" "1 1 1" "$(hulint) $(grep -c 'State: draft' "$T/hu.out") $(grep -c 'model line without effort' "$T/hu.out")"
 printf '# acme/hu\n\nLanguage: hu\n' > "$HUP"
 check "BLOCK: under Language: hu, an English State line and a decision without its Hungarian pick" "1 1 1" "$(sed -i 's/^\*\*Állapot: piszkozat\*\*/**State: draft**/; s/^Az (a) lehetőséget választottam/I picked (a)/' "$T/hu.md"; hulint) $(grep -c 'Állapot: piszkozat' "$T/hu.out") $(grep -c 'választottam' "$T/hu.out")"
+# slh <finding> <draft>: sl under Language: hu
+slh() { printf '%s\n' "$2" > "$T/st.md"; local out rc; out=$(MERGEWORTHY_BADGE=off python3 "$R/bin/post-lint" "$T/st.md" --kind status --repo acme/hu --parent none 2>/dev/null); rc=$?; [ -n "$1" ] || { echo "$rc"; return; }; printf '%s\n' "$out" | grep -c "$1"; }
+check "status under Language: hu: a deadline with -ig, an action sentence and an English status pass" "0 0 0" "$(slh '' "Mergelem az !1-et, $FUT-ig.") $(slh '' "Átnézem a javítást. A jelentés $FUT-ig jön.") $(slh '' "I'll merge it by $FUT.")"
+check "status under Language: hu: actions that share a stem with an observation (visit, switch, meet, comment on) are listed and pass" "0 0 0 0 0" "$(slh '' "Meglátogatom az oldalt. Átnézem $FUT-ig.") $(slh '' "Meglátogatjuk az oldalt. Átnézem $FUT-ig.") $(slh '' "Kapcsolom a zászlót. Átnézem $FUT-ig.") $(slh '' "Találkozom a karbantartóval. Átnézem $FUT-ig.") $(slh '' "Észrevételezem a PR-t. Átnézem $FUT-ig.")"
+check "status under Language: hu: a past verb, an observation (a prefixed one too), a result, a verb outside the list, a claim, a relative time and no deadline are findings; listed actions, prefixed ones too, are not" "1 1 1 1 1 1 1 1 0 0 0 0 0 0 0 0 1 1 1" "$(slh 'says neither' "Megnéztem a naplót. Átnézem $FUT-ig.") $(slh 'says neither' "Látom az eltérést. Átnézem $FUT-ig.") $(slh 'says neither' "Észreveszem az eltérést. Átnézem $FUT-ig.") $(slh 'says neither' "Észlelem az eltérést. Átnézem $FUT-ig.") $(slh 'says neither' "Megtalálom az eltérést. Átnézem $FUT-ig.") $(slh 'says neither' "Sikeresek a tesztek. Átnézem $FUT-ig.") $(slh 'says neither' "Zöldek a tesztek. Átnézem $FUT-ig.") $(slh 'says neither' "Gondolom, rendben van. Átnézem $FUT-ig.") $(slh 'says neither' "Megnézem a naplót. Átnézem $FUT-ig.") $(slh 'says neither' "Kijavítom a hibát. Átnézem $FUT-ig.") $(slh 'says neither' "Elküldöm a választ. Átnézem $FUT-ig.") $(slh 'says neither' "Frissítem a leírást. Átnézem $FUT-ig.") $(slh 'says neither' "Letöltöm a csomagot. Átnézem $FUT-ig.") $(slh 'says neither' "Áttekintem a kódot. Átnézem $FUT-ig.") $(slh 'says neither' "Ráfuttatjuk a teszteket az ágra. Átnézem $FUT-ig.") $(slh 'says neither' "Dolgozom rajta. Írok a karbantartónak. Átnézem $FUT-ig.") $(slh 'is a claim' "Átnézem, mert elbukott, $FUT-ig.") $(slh 'relative time' "Átnézem holnap, a többit $FUT-ig.") $(slh "say by when, as an ISO time in UTC ('2026-10-28T16:00Z-ig')" 'Átnézem a javítást.')"
 printf '%s\nA feltöltés elakad nagy fájloknál. Ez az MR darabokban küldi a fájlt.\n\n### Amit látni fogsz\n\n**1.** Egy 50 MB-os fájl feltöltése:\n\n```\nPOST /upload -> 201\n```\n' "$B" > "$T/hus.md"
 check "a ready Hungarian body's evidence heading passes under Language: hu, not without it" "0 1" "$(python3 "$R/bin/post-lint" "$T/hus.md" --kind pr --repo acme/hu --parent none 2>&1 | grep -c 'pull-request §Body') $(python3 "$R/bin/post-lint" "$T/hus.md" --kind pr --repo acme/en --parent none 2>&1 | grep -c 'pull-request §Body')"
 hdguard() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr create --draft --repo acme/hu --title \"$(cat /w/drafts/title.md)\" --body-file "+sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$TCO" \
@@ -1913,8 +1920,8 @@ EOF
 iedit() { # <transcript> <tool> <file> [extra hook input as JSON]: pre-design-gate's exit code (its message in $T/ierr)
   python3 -c 'import json,sys; d={"tool_name":sys.argv[2],"tool_input":{("notebook_path" if sys.argv[2]=="NotebookEdit" else "file_path"):sys.argv[3]},"cwd":sys.argv[4],"transcript_path":sys.argv[1]}; d.update(json.loads(sys.argv[5])); print(json.dumps(d))' "$1" "$2" "$3" "$T" "${4:-{\}}" | python3 "$R/hooks/pre-design-gate.py" 2>"$T/ierr"; echo $?
 }
-ibash() { # <transcript> <command>: pre-bash-guard's exit code for the command run in $I
-  python3 -c 'import json,sys; print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[2]},"cwd":sys.argv[3],"transcript_path":sys.argv[1]}))' "$1" "$2" "$I" | python3 "$R/hooks/pre-bash-guard.py" 2>/dev/null; echo $?
+ibash() { # <transcript> <command> [cwd]: pre-bash-guard's exit code for the command run in cwd, by default $I
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[2]},"cwd":sys.argv[3],"transcript_path":sys.argv[1]}))' "$1" "$2" "${3:-$I}" | python3 "$R/hooks/pre-bash-guard.py" 2>/dev/null; echo $?
 }
 IT="$T/instr.jsonl"; ir_tr "$IT"
 check "BLOCK: an edit in a repo whose root has AGENTS.md and CLAUDE.md, before reading them, naming both" "2 1" "$(iedit "$IT" Edit "$I/a.ts") $(grep -c "read this repo's instructions first.*$I/AGENTS.md, $I/CLAUDE.md" "$T/ierr")"
@@ -1932,6 +1939,45 @@ check "a repo without AGENTS.md or CLAUDE.md is never blocked" 0 "$(iedit "$IT" 
 check "a path outside any git repo is never blocked" 0 "$(iedit "$IT" Write "$T/nogit/a.md")"
 check "BLOCK: a command writing into that repo before the reads: a redirect, tee, sed -i, cp" "2 2 2 2" "$(ibash "$IT" "echo x > $I/a.txt") $(ibash "$IT" "echo x | tee sub/b.txt") $(ibash "$IT" "sed -i s/a/b/ $I/a.ts") $(ibash "$IT" "cp /etc/hostname $I/h")"
 check "a command reading there, or writing outside it, passes" "0 0 0" "$(ibash "$IT" "cat $I/AGENTS.md") $(ibash "$IT" "echo x > /dev/null") $(ibash "$IT" "echo x > $T/nogit/a.md")"
+check "a log a background job writes after its cd lands in that dir: outside it passes, into it blocks" "0 2" \
+  "$(ibash "$IT" "cd $T/nogit && nohup pnpm dev > log 2>&1 &") $(ibash "$IT" "cd $I && nohup pnpm dev > log 2>&1 &")"
+check "logs background subshells in a loop write to \$S/\$w paths, S set on the line: outside it passes, into it blocks" "0 2" \
+  "$(ibash "$IT" "S=$T/nogit; for w in a b; do (cd \$S/\$w && pnpm install > \$S/\$w-install.log 2>&1) & done; wait") $(ibash "$IT" "S=$I; for w in a b; do (cd \$S/\$w && pnpm install > \$S/\$w-install.log 2>&1) & done; wait")"
+check "BLOCK: eval runs its script in this shell: a write after its cd into the repo, or to a path its variable names there" "2 2" \
+  "$(ibash "$IT" "eval 'cd $I'; echo x > a.txt" "$T/nogit") $(ibash "$IT" "eval 'WD=$I'; echo x > \$WD/a.txt" "$T/nogit")"
+check "BLOCK: a variable set in a branch may or may not hold after it, nor falls back to the environment's: a write to a path it starts" "2 2" \
+  "$(ibash "$IT" "WD=$I; if false; then WD=$T/nogit; fi; echo x > \$WD/a.txt" "$T/nogit") $(WD=$T/nogit ibash "$IT" "if true; then WD=$I; fi; echo x > \$WD/a.txt" "$T/nogit")"
+check "BLOCK: a call to a function the line defines runs its cd or assignment there, after an absolute cd too: a write after it" "2 2" \
+  "$(ibash "$IT" "f() { cd $I; }; cd $T/nogit; f; echo x > a.txt" "$T/nogit") $(ibash "$IT" "f() { WD=$I; }; WD=$T/nogit; f; echo x > \$WD/a.txt" "$T/nogit")"
+check "BLOCK: a word with a quoted or escaped \$ isn't expanded: a write to '\$WD/a.txt' or \\\$WD/a.txt can't be told" "2 2" \
+  "$(ibash "$IT" "WD=$T/nogit; echo x > '\$WD/a.txt'") $(ibash "$IT" "WD=$T/nogit; echo x > \\\$WD/a.txt")"
+check "BLOCK: the same text quoted in one word and written plain in another: the plain redirect into the repo isn't taken as literal" 2 \
+  "$(ibash "$IT" "WD=$I; echo '\$WD/a.txt' > \$WD/a.txt" "$T/nogit")"
+check "BLOCK: a call to a function that calls one defined after it: the write after the call can't be told" 2 \
+  "$(ibash "$IT" "g() { f; }; f() { cd $I; }; cd $T/nogit; g; echo x > a.txt" "$T/nogit")"
+check "BLOCK: an absolute path whose folder holds an expansion left unexpanded (its text quoted elsewhere in the command) can't be told" 2 \
+  "$(ibash "$IT" "WD=${I##*/}; echo '$T/\$WD/a.txt' > $T/\$WD/a.txt" "$T/nogit")"
+check "BLOCK: a written path that is a variable a branch may have changed, or a loop's over words holding a /, can't be told" "2 2" \
+  "$(ibash "$IT" "F=$I/a.txt; if false; then F=$T/nogit/other.txt; fi; echo x > \$F" "$T/nogit") $(ibash "$IT" "D=$T/nogit; for f in a/b c; do echo x > \$D/\$f; done" "$T/nogit")"
+check "a call to a function no body on the line changes dir in (a logging helper) keeps the dir: a relative write after it passes" 0 \
+  "$(ibash "$IT" "log() { echo \"\$@\"; }; log starting; echo x > a.txt" "$T/nogit")"
+check "BLOCK: a loop variable its body names other than as \$f (set in a branch, read, let, \${f:=…}) is no longer the loop's word: a write to it can't be told" "2 2 2 2" \
+  "$(ibash "$IT" "for f in a b; do if true; then f=$I/c.txt; fi; echo x > \$f; done" "$T/nogit") $(ibash "$IT" "for f in a b; do read f; echo x > $T/nogit/\$f; done" "$T/nogit") $(ibash "$IT" "for f in a b; do let f=1; echo x > $T/nogit/\$f; done" "$T/nogit") $(ibash "$IT" "for f in a b; do : \${f:=x}; echo x > $T/nogit/\$f; done" "$T/nogit")"
+check "BLOCK: a loop variable a helper function on the line assigns is no longer the loop's word: a write to it can't be told" 2 \
+  "$(ibash "$IT" "setpath() { f=$I/helper.txt; }; for f in a b; do setpath; echo x > \$f; done" "$T/nogit")"
+check "BLOCK: a script a shell reads from a heredoc starts in a dir that can't be told: its relative cd and write, before a cd of the line, can't be checked" 2 \
+  "$(ibash "$IT" "bash <<'EOF'"$'\n'"cd sub"$'\n'"echo x > a.txt"$'\n'"EOF"$'\n'"cd $T/nogit")"
+check "BLOCK: a loop variable the line names in quotes (printf -v 'f') is no longer the loop's word: a write to it can't be told" 2 \
+  "$(ibash "$IT" "for f in a b; do printf -v 'f' $I/out; echo x > \$f; done" "$T/nogit")"
+check "BLOCK: a bash -c script, quoted, gets none of the line's unexported variables: its cd \"\$D\" fails and its write lands in the repo, so the line's D can't be told; a double-quoted one, which this shell expands, keeps it" "2 0" \
+  "$(ibash "$IT" "D=$T/nogit; bash -c 'cd \"\$D\"; pwd; echo x > a.txt'") $(ibash "$IT" "D=$T/nogit; bash -c \"cd \$D; echo x > a.txt\"")"
+check "BLOCK: a variable a subshell sets other than by a plain D=… (export, read, unset, printf -v) can't be told: a relative write after its cd \$D may land in a repo whose instructions weren't read" "2 2 2 2" \
+  "$(ibash "$IT" "D=$T/nogit; (export D=$I; cd \$D; echo x > a.txt)" "$T/nogit") $(ibash "$IT" "D=$T/nogit; (read D <<< $I; cd \$D; echo x > a.txt)" "$T/nogit") $(ibash "$IT" "D=$T/nogit; (unset D; cd \$D; echo x > a.txt)" "$T/nogit") $(ibash "$IT" "D=$T/nogit; (printf -v D $I; cd \$D; echo x > a.txt)" "$T/nogit")"
+check "a top-level cd to an inherited variable the line only names in text (printf 'D=%s') resolves, as on main; in a subshell it blocks, as on main" "0 2" \
+  "$(D="$T/nogit" ibash "$IT" "printf 'D=%s\n' \"\$D\"; cd \"\$D\"; echo x > a.txt") $(D="$T/nogit" ibash "$IT" "(printf 'D=%s\n' \"\$D\"; cd \"\$D\"; echo x > a.txt)")"
+check "a variable the line sets only by a plain D=… is still followed into a subshell's cd" 0 "$(ibash "$IT" "D=$T/nogit; (cd \$D; echo x > a.txt)")"
+check "logs written outside it by a backgrounded { } group in a loop, after its cd to \$W/\$t, pass" 0 \
+  "$(ibash "$IT" "W=$T/nogit; for t in a b; do { cd \$W/\$t && netns-run bash x.sh > \$W/probe/\$t.out 2> \$W/probe/\$t.err; echo \"\$t exit \$?\" >> \$W/probe/\$t.err; } & done; wait")"
 ir_tr "$IT" "read:$I/AGENTS.md" "read:$I/CLAUDE.md"; check "a command writing into it passes once both were read" 0 "$(ibash "$IT" "echo x > $I/a.txt")"
 ir_tr "$IT"; echo x > "$T/nogit/src"
 check "BLOCK: cp, mv and install into the repo's folder itself (a folder destination)" "2 2 2 2" "$(ibash "$IT" "cp $T/nogit/src .") $(ibash "$IT" "mv $T/nogit/src .") $(ibash "$IT" "install $T/nogit/src .") $(ibash "$IT" "cp $T/nogit/src $I/")"
@@ -2379,6 +2425,10 @@ MRC='glab mr create --draft -R gitlab.com/ns/proj --title x'
 check "BLOCK: a push, a PR and an MR from a work folder another session's watcher doesn't watch, naming the folder to watch" "2 1 1 1" \
   "$(bgs sess-b "$PUSH" "$CK4") $(grep -c "gh-watch-start $TK4 " "$T/err") $(unwatched sess-b "$PRC" "$CK4") $(unwatched sess-b "$MRC" "$CK4")"
 check "the same from the watched work folder pass, whichever session acts there" "0 0 0" "$(bgs sess-b "$PUSH" "$CK") $(unwatched sess-b "$PRC" "$CK") $(unwatched sess-b "$MRC" "$CK")"
+check "a variable a subshell sets stays inside it: a cd to it after the subshell goes where the line set it before, a watched folder" 0 "$(bgs sess-b "WD=$CK; (WD=$CK4); cd \$WD && $PUSH" "$T")"
+check "a cd to an absolute path, written out or from a variable the line set, makes the dir known again after cd -: a push in the watched folder passes" "0 0" \
+  "$(bgs sess-b "cd -; cd $CK && $PUSH" "$T") $(bgs sess-b "cd -; WD=$CK; cd \$WD && $PUSH" "$T")"
+check "BLOCK: a push after a subshell's cd and push is checked in the session's dir, an unwatched work folder, naming it" "2 1" "$(bgs sess-b "(cd $CK && $PUSH); $PUSH" "$CK4") $(grep -c "gh-watch-start $TK4 " "$T/err")"
 check "outside any work folder, only the session's own watcher counts" "0 1" "$(unwatched sess-a "$MRC" "$T") $(unwatched sess-b "$MRC" "$T")"
 oreg() { # session cwd command: the thread post-bash-register adds to the watched folder
   python3 -c 'import json,sys; print(json.dumps({"session_id":sys.argv[1],"cwd":sys.argv[2],"tool_input":{"command":sys.argv[3]},"tool_response":{"stdout":"https://github.com/vikejs/vike/pull/9"}}))' "$@" \
@@ -2388,8 +2438,11 @@ check "a PR opened from the unwatched folder joins no other session's watcher; f
 # two MRs opened in one command from two work folders: the second folder needs its own watcher
 TWO="cd $CK; $MRC; cd $CK4; $MRC"
 check "BLOCK: two MRs from two work folders in one command while the second folder has no watcher" 2 "$(bgs sess-b "$TWO" "$T")"
-check "BLOCK: an MR where the dir can't be told (cd -, a cd to an unset variable, a cd in a subshell or bash -c), saying to cd to an absolute path" "2 2 2 2 1" \
-  "$(bgs sess-b "cd $CK; $MRC; cd -; $MRC" "$CK4") $(bgs sess-b "cd \"\$NOWHERE\" && $MRC" "$CK") $(bgs sess-b "(cd $CK4); $MRC" "$CK") $(bgs sess-b "bash -c 'cd $CK4'; $MRC" "$CK") $(grep -c 'cd to an absolute path first' "$T/err")"
+check "BLOCK: an MR where the dir can't be told (cd -, a cd to an unset variable, a cd in a branch or a function), saying to cd to an absolute path" "2 2 2 2 1" \
+  "$(bgs sess-b "cd $CK; $MRC; cd -; $MRC" "$CK4") $(bgs sess-b "cd \"\$NOWHERE\" && $MRC" "$CK") $(bgs sess-b "if true; then cd $CK; fi; $MRC" "$CK") $(bgs sess-b "f() { cd $CK; }; $MRC" "$CK") $(grep -c 'cd to an absolute path first' "$T/err")"
+check "a cd in a subshell, a background job or bash -c never reaches what follows: the MR after it runs in the session's dir" "0 0 0" "$(bgs sess-b "(cd $CK4); $MRC" "$CK") $(bgs sess-b "cd $CK4 && sleep 1 & $MRC" "$CK") $(bgs sess-b "bash -c 'cd $CK4'; $MRC" "$CK")"
+check "BLOCK: a push after a cd in a branch, or in a loop to a relative dir, can't tell its checkout" "2 2 1" \
+  "$(bgs sess-b "if true; then cd $CK; fi; $PUSH" "$CK") $(bgs sess-b "for d in a b; do cd \$d; $PUSH; done" "$CK") $(grep -c "can't tell which" "$T/err")"
 check "a redirect on cd or pushd (pushd x >/dev/null, cd x 2>/dev/null) and cd \$(git rev-parse --show-toplevel) leave the dir known: an MR in the watched folder passes" "0 0 0 0" \
   "$(bgs sess-b "pushd $CK >/dev/null && $MRC" "$CK") $(bgs sess-b "pushd $CK >/dev/null; $MRC; popd >/dev/null" "$CK") $(bgs sess-b "cd $CK 2>/dev/null && $MRC" "$CK") $(bgs sess-b "cd \$(git rev-parse --show-toplevel) && $MRC" "$CK")"
 echo "$FPID" > "$TK4/gh-watch.pid"; echo gitlab.com/ns/proj > "$TK4/repos.txt"; echo "$TK4" >> "$HOME/.claude/gh-watch-dirs.txt"

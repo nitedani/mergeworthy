@@ -44,8 +44,8 @@ def block(msg):
 def known(d):
     """d, a dir a check reads (where the command runs, from Where); one Where can't tell blocks."""
     if d is None:
-        block("can't tell which dir this command runs in (after a cd to an expansion it can't resolve, `cd -`, popd, or a cd in a subshell, child shell, "
-              "branch, loop or function), so its checks can't run: cd to an absolute path first (`cd /abs/dir && <command>`), or pass absolute paths")
+        block("can't tell which dir this command runs in (after a cd to an expansion it can't resolve, `cd -`, popd, a cd in a branch, loop or function, "
+              "or a relative cd in a loop), so its checks can't run: cd to an absolute path first (`cd /abs/dir && <command>`), or pass absolute paths")
     return d
 
 def short_has(t, letter):  # -f, -9f, -fu ...
@@ -730,16 +730,16 @@ def check(t, has_cd):
                   'and pass --title "$(cat <that file>)" (mergeworthy:pull-request step 7)')
         if a[1] == 'edit' and opt(a[2:], ['--title', '-t']) and (who := title_setter(*post_target('pr', a[2:], env, run_dir))):
             block(f"{who[0]} set this PR's title ({who[1]}): it is their decision. Keep it, or ask them on the PR first (mergeworthy:pull-request step 7)")
-    written = [x if os.path.isabs(x) else os.path.join(known(run_dir), x) for x in map(os.path.expanduser, written_files(t))]
+    # A review's verdict is the reviewer's final message, which it writes itself (`codex exec -o`, an agent's output file); an agent's stdout is it too
+    if p not in ('claude', 'codex') and any(where.expand(x).endswith('.review.out') for x in written_files(t)) and not by_agent():
+        block("a review's output is the reviewer's final message, written by the reviewer: `codex exec -o <out>`, or the agent writes <out> itself. "
+              "Never write a verdict yourself (mergeworthy:delegate §Reviewers, post step 3)")
+    written = [known(where.file(x)) for x in written_files(t)]
     for x in written:
         if why := no_instructions_read(x, d):
             block(why)
-    # A review's verdict is the reviewer's final message, which it writes itself (`codex exec -o`, an agent's output file); an agent's stdout is it too
     if any(os.path.realpath(x).startswith(RECORDS) for x in written):
         block("the step records in ~/.claude/pr-steps are written by `pr-steps <step> <its output>` alone, which checks the output first")
-    if p not in ('claude', 'codex') and any(x.endswith('.review.out') for x in written) and not by_agent():
-        block("a review's output is the reviewer's final message, written by the reviewer: `codex exec -o <out>`, or the agent writes <out> itself. "
-              "Never write a verdict yourself (mergeworthy:delegate §Reviewers, post step 3)")
     if p == 'gh' and a[:2] == ['pr', 'ready'] and '--undo' not in a:
         check_refactor_ask(*post_target('pr', a[2:], env, run_dir), comment=False)
     if p == 'gh' and a[:2] == ['pr', 'create'] and '--help' not in a and '-h' not in a:
@@ -908,7 +908,7 @@ for s in where.walk(segs):
         if w & {'git', 'gh', 'glab'} and w & {'push', 'commit', 'pr', 'issue', 'api', 'release', 'mr'} or 'git' not in w and w & {'push', 'commit'}:
             block(f"`{named}` runs a command named only when it runs, with `{' '.join(words)[:80]}`: write the command out, so it can be checked")
     check(s, has_cd)
-    wrote.update(os.path.normpath(f) for f in map(where.path, written_files(prog(s))) if f)
+    wrote.update(os.path.normpath(f) for f in map(where.file, written_files(prog(s))) if f)
 try:  # pending until post-bash-register sees how the command ended
     own_actions.intend(own_actions.key(d), own)
 except OSError:
