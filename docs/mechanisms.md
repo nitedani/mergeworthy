@@ -91,6 +91,8 @@ A reference for the scripts that enforce the skills' steps; the skills name each
 
 `post-bash-register` counts each posted `--kind proposal` draft per thread in `~/.claude/proposal-rounds.txt`. Before the third proposal, refresh the thread map with its invariants (`design` step 7) and update the thread's WIP comment from it (`design §WIP comment`).
 
+`pre-bash-guard` refuses a commit or push that gives a code file (no test or doc) its 6th change among the branch's own commits since its first review record, until `pr-steps finality <plan>` records the finality pass's pinnacle and plan (`finality` step 3) on the head; that record starts the counts over.
+
 ### `pr-steps` (`converge`, `merging`)
 
 `pr-steps <step> <output>` checks a step's output and records it, one file per step:
@@ -120,7 +122,7 @@ The daemon reports to `<dir>/events.log` and never starts an agent.
     - `### TRACKER STALE`: a PR merged or closed, and the umbrella issue named in `<dir>/umbrella.txt` doesn't show it ticked with that state;
     - `### SHAPE STALE`: a PR's code changed by more than ~80 lines since its last `pr-steps shape`;
     - `### DEPENDENT of merged …`: a PR listed in `waiting-on.txt` merged;
-    - `### ISSUE CLOSED`: an issue the dir lists closed, once; on nitedani/mergeworthy it says to update the installed plugin (the steward merged the fix of the issue a session opened, `rules` step 2). post-bash-register puts an issue the session opens in its own dir, though a steward's dir lists it, and the steward's dir gets `### NEW ISSUE` for every new mergeworthy issue, an agent's or one another dir lists included;
+    - `### ISSUE CLOSED`: an issue the dir lists closed, once; on nitedani/mergeworthy it says to run `mergeworthy-update` (the steward merged the fix of the issue a session opened, `rules` step 2). post-bash-register puts an issue the session opens in its own dir, though a steward's dir lists it, and the steward's dir gets `### NEW ISSUE` for every new mergeworthy issue, an agent's or one another dir lists included;
     - `### AGENT DONE <ticket>`: an agent the session launched finished (`agent_jobs.py`: its transcript went quiet), once per finish until `agent-job done`; the dir is the launcher's watch dir in the work folder of the first file its task names (its brief), else the one whose `session` file names the launcher, or whose `events.log` the launcher's transcript tails;
     - `### FOLLOW-UP`: for 60 days after one of your watched PRs merges, a commit by someone else (not a merge) that changes lines the PR changed, or renames or removes its files, another person's PR that references it, and, on your PR open or merged, another account's rename (`#rename-<time>`, quoting both titles), each once, with its time. A commit touching several of your PRs is one line naming them all. While the steward's watcher runs, its dir gets these instead, plus a copy of each `MAINTAINER COMMITS`, which the PR's session still handles. A commit counts within 3 lines of the PR's lines at the merge. Bots' commits and hunks that only bump dependency versions don't count. Each session that receives one sorts it (`rules` step 6).
     - `### MAINTAINER REVIEW`: a maintainer's review of your PR, other than a bare approval, once per review; it goes where a `FOLLOW-UP` goes, and each defect it names is sorted the same way (`rules` step 6).
