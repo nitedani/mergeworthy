@@ -186,9 +186,11 @@ c.execute("create table orchestration_v2_projection_subagents (subagent_id text,
 c.execute("""insert into orchestration_v2_projection_provider_threads values ('"'p1', 'thr-h', '{\"nativeThreadRef\":{\"nativeId\":\"s-t3\"}}'"')"""); c.commit()' "$HOME/.t3/userdata/statev2.sqlite"
 mv "$WD/replies-owed.md" "$T/owed.keep"; echo 'Tier: S, because one fix' > "$WD/scope.md"; b1=$(stop_as s-t3); b1e=$(grep -c 'wakes this T3 thread itself' "$T/err"); echo thr-other > "$WD/t3-thread"; b2=$(stop_as s-t3); echo thr-h > "$WD/t3-thread"
 check "under T3 Code a post passes once the session's watcher wakes its thread, not before nor for another thread; the block says no Monitor is needed" "2 1 2 0 2" "$b1 $b1e $b2 $(stop_as s-t3) $(stop_as s-other)"
-mon() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"Monitor","tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$T" | python3 "$R/hooks/pre-monitor-guard.py" 2>"$T/err"; echo $?; }
+mon() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"Monitor","tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "${2:-$T}" | python3 "$R/hooks/pre-monitor-guard.py" 2>"$T/err"; echo $?; }
 check "BLOCK: a Monitor on the events.log of a watcher that wakes a T3 thread, saying so; one on a dir with no t3-thread passes" "2 1 0" \
   "$(mon "tail -n 0 -F $WD/events.log | grep --line-buffered -E '^### '") $(grep -c 'sends each event to T3 thread thr-h itself' "$T/err") $(mon "tail -n 0 -F '$T/work2/events.log'")"
+check "BLOCK: the same events.log named relative to the call's cwd (bare, ./, .., a subdir) or from ~ or \$HOME; a bare one in an unbound cwd passes" "2 2 2 2 2 2 0" \
+  "$(mon 'tail -F events.log' "$WD") $(mon "tail -F './events.log'" "$WD") $(mon 'tail -F ../events.log' "$WD/sub") $(mon 'tail -F x/events.log' "$T/work") $(mon 'tail -F ~/../work/x/events.log') $(mon 'tail -F "${HOME}/../work/x/events.log"') $(mon 'tail -F events.log' "$T")"
 printf 'Tier: S, because one fix\n\n- [ ] answer the review\n' > "$WD/scope.md"
 check "that watcher counts as what wakes the session for an open scope.md box" 0 "$(stop_as s-t3)"
 echo 'Tier: S, because one fix' > "$WD/scope.md"; mv "$T/owed.keep" "$WD/replies-owed.md"

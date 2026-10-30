@@ -9,8 +9,9 @@ import steward
 d = json.load(sys.stdin)
 cmd = str((d.get('tool_input') or {}).get('command') or '')
 cwd = d.get('cwd') or os.getcwd()
-for p in re.findall(r'''([^\s'"|;&<>]*)/events\.log\b''', cmd):
-    wd = os.path.join(cwd, os.path.expanduser(re.sub(r'^\$(HOME\b|\{HOME\})', '~', p)))
+for p in re.findall(r'''(?<![^\s'"|;&<>=])([^\s'"|;&<>]*?)events\.log\b''', cmd):  # bare, ./, .., ~, $HOME or absolute: from the call's cwd
+    if p and not p.endswith('/'): continue
+    wd = os.path.normpath(os.path.join(cwd, os.path.expanduser(re.sub(r'^\$(HOME\b|\{HOME\})', '~', p or '.'))))
     if tid := steward.first(os.path.join(wd, 't3-thread')):
         sys.stderr.write(f"BLOCKED: the watcher in {wd} sends each event to T3 thread {tid} itself (gh-watch.py's wake_thread): "
                          "arm no Monitor on its events.log, and re-arm none when one expires\n")
