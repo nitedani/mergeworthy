@@ -313,7 +313,9 @@ if not key:
     sys.exit(0)  # nothing names the job (no ticket, title or description), so no second launch of it can be told apart
 jobs = os.path.expanduser('~/.claude/agent-jobs'); os.makedirs(jobs, exist_ok=True)
 f = os.path.join(jobs, hashlib.sha256(key.encode()).hexdigest()[:16])
-pre = os.path.join(agent_jobs.LAUNCHED, os.path.basename(f))  # when the launch this registers began: its transcript starts after it
+# when the launch this registers began (its transcript starts after it), one record per call: its PostToolUse carries the same
+# tool_use_id, and two calls on one key with different tasks both pass
+pre = os.path.join(agent_jobs.LAUNCHED, hashlib.sha256(d['tool_use_id'].encode()).hexdigest()[:16] if d.get('tool_use_id') else os.path.basename(f))
 task = str(ti.get('task') or ti.get('prompt') or '')
 # one launch at a time checks the open jobs and leaves its record, so launches in one message see each other; held until exit
 lock = open(jobs + '.lock', 'a'); fcntl.flock(lock, fcntl.LOCK_EX)
