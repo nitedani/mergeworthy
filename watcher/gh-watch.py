@@ -487,10 +487,22 @@ def agent_post_hashes():
 
 def own_change(key, prev, now):
     """'done' when every change from prev to now is this machine's agents' own (own_actions: a head they pushed, a merge or close they
-    made), 'pending' while the command making one still runs and the rest are theirs too, else None: someone else's, which wakes."""
+    made that GitHub also credits to you: a command can exit 0 though its gh never ran), 'pending' while the command making one still
+    runs and the rest are theirs too, else None: someone else's, which wakes."""
     marks = ([own_actions.state('PUSHED_HEADS', lambda e: bool(now['head']) and e.startswith(now['head']))] if prev.get('head') != now.get('head') else []) + \
             ([own_actions.state('CLOSED_THREADS', lambda e: e == f"{key} {now['state']}")] if prev.get('state') != now['state'] else [])
+    if marks[-1:] == ['done'] and prev.get('state') != now['state'] and closer(key) != ME:
+        return None
     return None if not marks or None in marks else 'pending' if 'pending' in marks else 'done'
+
+
+def closer(key):
+    """Who closed the issue or PR, as GitHub says (its closed_by: for a merged PR, the one who merged it); None when it can't say."""
+    repo, num = key.rsplit('#', 1)
+    try:
+        return (request(f"repos/{repo}/issues/{num}").json().get('closed_by') or {}).get('login')
+    except Exception:
+        return None
 
 
 MAINTAINER = ('OWNER', 'MEMBER', 'COLLABORATOR')
