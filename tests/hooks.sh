@@ -42,8 +42,10 @@ git init -q -b fix "$TCO"; git -C "$TCO" -c user.name=t -c user.email=t@t commit
 quick() { # <checkout> [extra log lines]: records its HEAD's quick gates
   local f; f=$(mktemp "$T/quick.XXXXXX"); printf 'pnpm test -> exit 0 (3 tests)\n%s' "${2:-}" > "$f"; (cd "$1" && bash "$R/bin/pr-steps" quick "$f" >/dev/null); }
 quick "$TCO"
-printf 'Root cause: src/a.ts:3 does it\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix it | 8 | one place |\n\nChosen: Fix it\n' > "$T/approach.md"
+printf 'Root cause: src/a.ts:3 does it\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix it | 8 | one place |\nShared assumption: the bug is in this repo\n\nChosen: Fix it\n' > "$T/approach.md"
 (cd "$TCO" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
+# an implementer brief names its recorded approach (pre-agent-dedupe): the briefs below that test other checks carry this one
+git init -q "$T/afx"; git -C "$T/afx" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; (cd "$T/afx" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null); AFX=$'\n'"Approach: $T/approach.md (unchanged: a test fixture)"$'\n'"Checkout: $T/afx"
 check() { # name want got
   echo "$1: $3 (want $2)"; [ "$2" = "$3" ] || fails=$((fails+1))
 }
@@ -872,7 +874,7 @@ cap() { cap_in "$1" "$2" | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; lo
 check "BLOCK: a fourth agent open at once in one session, naming the three" "0 0 0 2 3" "$(cap capS 'Execute /tmp/x/cap1.md') $(cap capS 'Execute /tmp/x/cap2.md') $(cap capS 'Execute /tmp/x/cap3.md') $(cap capS 'Execute /tmp/x/cap4.md') $(grep -c '^/tmp/x/cap[123].md' "$T/err")"
 check "another session, and a memory refresh in this one, pass" "0 0" "$(cap capT 'Execute /tmp/x/cap5.md') $(cap capS 'Follow skills/delegate/memory-refresh.md on /tmp/x/mem-lines.md')"
 check "a fifth brief naming its fan-out step passes; one naming another step does not" "0 2" "$(cap capS $'Execute /tmp/x/cap8.md\nFan-out: converge §Running the agents') $(cap capS $'Execute /tmp/x/cap9.md\nFan-out: review step 2')"
-cap_impl() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"capS","tool_input":{"task":sys.argv[1],"title":"impl","role":"implementation"}}))' "$1" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; echo $?; }
+cap_impl() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"capS","tool_input":{"task":sys.argv[1],"title":"impl","role":"implementation"}}))' "$1$AFX" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; echo $?; }
 check "BLOCK: an implementation brief carrying the fan-out line still counts" 2 "$(cap_impl $'Execute /tmp/x/cap10.md\nFan-out: converge §Running the agents')"
 FB="$HOME/.mergeworthy/work/fx/verify-1.md"; mkdir -p "${FB%/*}"; printf 'Verify slice 1.\nFan-out: converge §Running the agents\n' > "$FB"
 check "a fifth launch following a work-folder brief that holds the fan-out line passes" 0 "$(cap capS "Follow $FB exactly")"
@@ -983,7 +985,7 @@ git init -q -b main "$T/gr"; git -C "$T/gr" commit -q --allow-empty -m one; OLD=
 git -C "$T/gr" worktree add -q -b w "$T/gw"; git -C "$T/gw" commit -q --allow-empty -m two; NEW=$(git -C "$T/gw" rev-parse HEAD)
 git -C "$T/gr" commit -q --allow-empty -m three; MAINOLD=$OLD
 ag() { # cwd task [role]
-  python3 -c 'import json,sys,time; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","cwd":sys.argv[1],"tool_input":{"task":sys.argv[2],"title":sys.argv[2][:50],"role":sys.argv[3],"clientRequestId":f"ag-{time.time_ns()}-r1"}}))' "$1" "$2" "${3:-implementation}" \
+  python3 -c 'import json,sys,time; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","cwd":sys.argv[1],"tool_input":{"task":sys.argv[2],"title":sys.argv[2][:50],"role":sys.argv[3],"clientRequestId":f"ag-{time.time_ns()}-r1"}}))' "$1" "$2$AFX" "${3:-implementation}" \
     | timeout 10 python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
 printf '# Memory\n## Standing\n### Ruled out\n- **Cron jobs** (now). The user refused them.\n## Recent\n<!-- covered-until: 2099-01-01T00:00:00.000Z -->\n' > "$MR/memory.md"
 check "BLOCK: a brief pinned to an older commit of the worktree it names, with the ruled-out list" "2 1" "$(ag "$OC" "Fix it in $T/gw at $OLD") $(grep -c 'Cron jobs' "$T/err")"
@@ -1023,7 +1025,7 @@ check "BLOCK: an implementation brief for that repo without code/SKILL.md, namin
 check "a review brief needs no code/SKILL.md" 0 "$(ag "$T" 'Review o/r#8 per ~/.mergeworthy/projects/o/r.md' review)"
 # the main session reads the code itself before briefing an implementer: a Read of a file in a checkout of that repo, in its transcript
 RD="$T/x-work/rd"; git init -q "$RD"; git -C "$RD" remote add origin git@github.com:o/r.git; mkdir -p "$RD/src"; echo 'export {}' > "$RD/src/a.ts"; git -C "$RD" add src/a.ts; echo report > "$RD/verify.md"
-agt() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","cwd":sys.argv[1],"transcript_path":sys.argv[3],"tool_input":{"task":sys.argv[2],"title":sys.argv[2][:50],"role":"implementation"}}))' "$T" "$1" "$2" \
+agt() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","cwd":sys.argv[1],"transcript_path":sys.argv[3],"tool_input":{"task":sys.argv[2],"title":sys.argv[2][:50],"role":"implementation"}}))' "$T" "$1$AFX" "$2" \
   | timeout 10 python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
 now=$(date -u +%FT%T.000Z)
 python3 -c 'import json,sys; print(json.dumps({"type":"assistant","timestamp":sys.argv[1],"message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"cat "+sys.argv[2]+"/verify.md; git -C "+sys.argv[2]+" status"}}]}}))' "$now" "$RD" > "$T/tr-noread.jsonl"
@@ -1034,6 +1036,34 @@ check "BLOCK: an implementation brief whose session read only an agent's report 
 python3 -c 'import json,sys; print(json.dumps({"type":"assistant","timestamp":sys.argv[1],"message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":sys.argv[2]}}]}}))' "$now" "D=$RD; cd \"\$D\" && sed -n 1,80p src/a.ts" > "$T/tr-var.jsonl"
 python3 -c 'import json,sys; print(json.dumps({"type":"assistant","timestamp":sys.argv[1],"message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":sys.argv[2]}}]}}))' "$now" "D=$RD; git -C \"\$D\" show HEAD:src/a.ts" > "$T/tr-gshow.jsonl"
 check "a read in a checkout named by a variable the command set (cd \"\$D\" && sed, git -C \"\$D\" show) passes too" "0 0" "$(agt "$B" "$T/tr-var.jsonl") $(agt "$B" "$T/tr-gshow.jsonl")"
+# pre-agent-dedupe: an implementer brief names the approach it builds, the newest record of a checkout it names; the PR's next build a newer one, or says unchanged
+AB="$T/abr"; git init -q "$AB"; git -C "$AB" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; cp "$T/approach.md" "$T/ab1.md"; cp "$T/approach.md" "$T/ab2.md"; (cd "$AB" && bash "$R/bin/pr-steps" approach "$T/ab1.md" >/dev/null)
+abrief() { # task: the launch, then its registration, as Claude Code runs the two hooks
+  local j; j=$(python3 -c 'import json,sys,time; print(json.dumps({"tool_name":"Agent","cwd":sys.argv[1],"tool_input":{"prompt":sys.argv[2],"description":f"impl {time.time_ns()}"}}))' "$T" "$1")
+  printf '%s' "$j" | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err" >/dev/null; local r=$?; [ $r = 0 ] && printf '%s' "$j" | python3 "$R/hooks/pre-agent-dedupe.py" register >/dev/null 2>&1; echo $r; }
+check "BLOCK: an implementer brief with no Approach line, or one naming a file no checkout it names recorded last, naming why" "2 1 2 1" \
+  "$(abrief "You implement the fix in $AB.") $(grep -c 'a line `Approach: <abs path of approach.md>`' "$T/err") $(abrief $'You implement the fix in '"$AB"$'.\nApproach: '"$T/approach.md") $(grep -c 'is not the newest `pr-steps approach` record' "$T/err")"
+check "the newest record passes; the next build on the same record waits, unless it says why the approach is unchanged" "0 2 1 0" \
+  "$(abrief $'You implement the fix in '"$AB"$'.\nApproach: '"$T/ab1.md") $(abrief $'You implement the review fix in '"$AB"$'.\nApproach: '"$T/ab1.md") $(grep -c 'last build was briefed on the approach recorded' "$T/err") $(abrief $'You implement the review fix in '"$AB"$'.\nApproach: '"$T/ab1.md (unchanged: a test the review asked for)")"
+sleep 1; (cd "$AB" && bash "$R/bin/pr-steps" approach "$T/ab2.md" >/dev/null)
+check "a changed approach recorded after the last build passes; the record it replaced no longer does" "0 2" "$(abrief $'You implement it as a virtual module in '"$AB"$'.\nApproach: '"$T/ab2.md") $(abrief $'You implement more in '"$AB"$'.\nApproach: '"$T/ab1.md (unchanged: same)")"
+# the brief a launch follows from the work folder is the one checked, in each launch form: delegate_task as an implementer or in another role, and Agent
+AF="$HOME/.mergeworthy/work/apf"; mkdir -p "$AF"; printf 'You implement the fix in %s.\n' "$AB" > "$AF/brief.md"; printf 'You implement the fix in %s.\nApproach: %s (unchanged: a review fix)\n' "$AB" "$T/ab2.md" > "$AF/brief-ok.md"
+flaunch() { # tool role brief: one launch that follows the brief file
+  python3 -c 'import json,sys,time; t={"prompt":"Follow "+sys.argv[3]+" exactly.","description":f"impl {time.time_ns()}"} if sys.argv[1]=="Agent" else {"task":"Follow "+sys.argv[3]+" exactly.","title":f"impl {time.time_ns()}","role":sys.argv[2]}
+print(json.dumps({"tool_name":sys.argv[1],"cwd":sys.argv[4],"tool_input":t}))' "$1" "$2" "$3" "$T" | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err" >/dev/null; echo $?; }
+check "BLOCK: a followed brief file in the work folder with no Approach line, launched by delegate_task as an implementer, in another role, or by Agent; with it, each passes" "2 2 2 0 0 0" \
+  "$(flaunch mcp__t3-code__delegate_task implementation "$AF/brief.md") $(flaunch mcp__t3-code__delegate_task review "$AF/brief.md") $(flaunch Agent '' "$AF/brief.md") $(flaunch mcp__t3-code__delegate_task implementation "$AF/brief-ok.md") $(flaunch mcp__t3-code__delegate_task review "$AF/brief-ok.md") $(flaunch Agent '' "$AF/brief-ok.md")"
+# delegate/implementer.md's template, filled the way it says, passes the gate
+AT="$T/atpl"; git init -q "$AT"; git -C "$AT" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; (cd "$AT" && bash "$R/bin/pr-steps" approach "$T/ab1.md" >/dev/null)
+python3 - "$R/skills/delegate/implementer.md" "$T/ab1.md" "$AT" > "$AF/brief-tpl.md" <<'PY'
+import re, sys
+body = re.search(r'```\n(.*?)```', open(sys.argv[1]).read(), re.S)[1].replace('Approach: <abs path>', 'Approach: ' + sys.argv[2])
+body = body.replace('<repo>', sys.argv[3])
+while re.search(r'<[^<>\n]+>', body): body = re.sub(r'<[^<>\n]+>', 'it', body)
+print(body)
+PY
+check "the implementer template filled as it says passes, by Agent" 0 "$(flaunch Agent '' "$AF/brief-tpl.md")"
 check "BLOCK: a drafter brief (it reads thread-context.md) without writing/SKILL.md; with it, it passes" "2 0" "$(ag "$T" 'Draft the reply from /w/drafts/x/thread-context.md' review) $(ag "$T" 'Write a reply draft by skills/writing/SKILL.md from /w/drafts/y/thread-context.md; list each claim with a scope word beside its source' review)"
 check "BLOCK: a drafter brief without the template's scope-word check, naming the template; a review of a draft (CLEAN) needs none" "2 1 0" "$(ag "$T" 'Write a reply draft by skills/writing/SKILL.md from /w/drafts/z/thread-context.md' review) $(grep -c 'delegate/drafter.md' "$T/err") $(ag "$T" 'Review /w/drafts/z/r.md against /w/drafts/z/thread-context.md by skills/writing/SKILL.md; final message CLEAN or findings' review)"
 # pre-agent-dedupe: a template's placeholder left in the brief, by the plugin's own skills/delegate templates
@@ -1468,7 +1498,7 @@ printf 'carries the pass of %s: merged main\n' "$MA" > "$T/carry-m.md"
 check "a clean merge of the base (200 lines, none the PR's) carries the earlier head's Loop A" 0 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m.md" >/dev/null 2>&1; echo $?) )"
 # a branch whose latest approach record has no `contract: 2` was started by a session on v1's skills: it finishes under the old records
 mkdir -p "$HOME/.mergeworthy/sessions"; echo "/p graph startup 0" > "$HOME/.mergeworthy/sessions/s-graph"; echo "/p v1 startup 0" > "$HOME/.mergeworthy/sessions/s-v1"
-printf 'Root cause: src/a.ts:3 does it\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | stays |\n| Fix it | 8 | ok |\n\nChosen: Fix it\n' > "$T/apo.md"; CLAUDE_CODE_SESSION_ID=s-graph prs approach "$T/apo.md" >/dev/null
+printf 'Root cause: src/a.ts:3 does it\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | stays |\n| Fix it | 8 | ok |\nShared assumption: the bug is in this repo\n\nChosen: Fix it\n' > "$T/apo.md"; CLAUDE_CODE_SESSION_ID=s-graph prs approach "$T/apo.md" >/dev/null
 APF=$(ls -t "$HOME"/.claude/pr-steps/approach.* | head -n1)
 check "an approach recorded by a session on the graph catalog carries contract: 2" 1 "$(tail -n1 "$APF" | grep -c ' contract: 2$')"
 printf 'nothing worth changing\nCLEAN\n' > "$T/olb.md"
@@ -1535,7 +1565,7 @@ seq 1 5 >> "$GS/src/a.ts"; git -C "$GS" -c user.name=t -c user.email=t@t commit 
 r1=$(prss "$T/sr1.md"); echo t > "$GS/test/a.test.ts"; seq 1 300 > "$GS/README.md"; git -C "$GS" add -A; git -C "$GS" -c user.name=t -c user.email=t@t commit -qm c
 r2=$(prss "$T/sr0.md")
 check "pr-steps small: BLOCK with no test in the diff, BLOCK on a report with findings, records with both (docs not counted)" "1 1 0" "$r1 $r2 $(prss "$T/sr2.md")"
-check "after pr-steps small, gh pr ready lacks only the gates" "gates" "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr ready 5 -R o/r"},"cwd":sys.argv[1]}))' "$GS" | python3 "$R/hooks/pre-bash-guard.py" 2>&1 | grep -o 'no pr-steps [a-z, ]* record' | sed 's/no pr-steps //; s/ record//')"
+check "after pr-steps small, gh pr ready lacks only the approach and the gates" "approach, gates" "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr ready 5 -R o/r"},"cwd":sys.argv[1]}))' "$GS" | python3 "$R/hooks/pre-bash-guard.py" 2>&1 | grep -o 'no pr-steps [a-z, ]* record' | sed 's/no pr-steps //; s/ record//')"
 printf 'x\n## Outside this change\nNone.\n\nNO BUGS\nMERGE AS IS: yes\n\n## Verification\n- ran it\n\n## not_checked\n- Windows\n' > "$T/sr5.md"
 check "pr-steps small records a report whose verdict comes before its Verification and not_checked sections" 0 "$(prss "$T/sr5.md")"
 printf 'x\n## Outside this change\nNone.\n\n## not_checked\n- Windows\n\nNO BUGS\nMERGE AS IS: yes\n' > "$T/sr6.md"
@@ -1576,12 +1606,12 @@ printf 'pnpm test -> exit 0\npnpm lint -> exit 0\n' > "$T/g0.md"; printf 'pnpm t
 check "BLOCK: a test gate without its count, or with 0 tests" "1 1" "$(prs2 gates "$T/g0.md") $(prs2 gates "$T/g00.md")"
 printf 'pnpm test -> exit 0 (134 tests)\npnpm lint -> exit 0\n' > "$T/g2.md"; check "a green gates log records" 0 "$(prs2 gates "$T/g2.md")"
 check "BLOCK: gh pr ready with the five steps but no approach record" 2 "$(ready)"
-printf 'Root cause: src/a.ts:3 does it\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 5 | misses siblings |\n| Fix the shared helper | 8 | one place for all |\n\nChosen: Fix the shared helper\n' > "$T/ap.md"
-printf 'Root cause: src/a.ts:3 does it\n| Candidate | Rating | Why |\n|---|---|---|\n| Fix the shared helper | 8 | only one |\n\nChosen: Fix the shared helper\n' > "$T/ap1.md"
-printf '| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 8 | ok |\n\nChosen: Fix in place\n' > "$T/apnr.md"
-printf 'Root cause: src/a.ts:3 does it\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 6 | misses siblings |\n\nChosen: Fix in place\n' > "$T/ap6.md"
-printf 'Root cause: src/a.ts:3 does it\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 8 | ok |\n\nChosen: Rewrite\n' > "$T/apx.md"
-rc=; for c in 'Root cause: unknown yet, logged at 12:30' '- **Root cause:** src/a.ts:3 does it' 'Root cause: none, a feature'; do printf '%s\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 8 | ok |\n\nChosen: Fix in place\n' "$c" > "$T/aprc.md"; GR="$T/aprc-$((n=${n:-0}+1))"; git init -q "$GR"; git -C "$GR" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; rc="$rc $(cd "$GR" && bash "$R/bin/pr-steps" approach "$T/aprc.md" >/dev/null 2>&1; echo $?)"; done
+printf 'Root cause: src/a.ts:3 does it\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 5 | misses siblings |\n| Fix the shared helper | 8 | one place for all |\nShared assumption: the bug is in this repo\n\nChosen: Fix the shared helper\n' > "$T/ap.md"
+printf 'Root cause: src/a.ts:3 does it\n| Candidate | Rating | Why |\n|---|---|---|\n| Fix the shared helper | 8 | only one |\nShared assumption: the bug is in this repo\n\nChosen: Fix the shared helper\n' > "$T/ap1.md"
+printf '| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 8 | ok |\nShared assumption: the bug is in this repo\n\nChosen: Fix in place\n' > "$T/apnr.md"
+printf 'Root cause: src/a.ts:3 does it\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 6 | misses siblings |\nShared assumption: the bug is in this repo\n\nChosen: Fix in place\n' > "$T/ap6.md"
+printf 'Root cause: src/a.ts:3 does it\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 8 | ok |\nShared assumption: the bug is in this repo\n\nChosen: Rewrite\n' > "$T/apx.md"
+rc=; for c in 'Root cause: unknown yet, logged at 12:30' '- **Root cause:** src/a.ts:3 does it' 'Root cause: none, a feature'; do printf '%s\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 8 | ok |\nShared assumption: the bug is in this repo\n\nChosen: Fix in place\n' "$c" > "$T/aprc.md"; GR="$T/aprc-$((n=${n:-0}+1))"; git init -q "$GR"; git -C "$GR" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; rc="$rc $(cd "$GR" && bash "$R/bin/pr-steps" approach "$T/aprc.md" >/dev/null 2>&1; echo $?)"; done
 check "BLOCK: an approach with no Root cause line citing a path:line, or one citing a time; a bold list item or a feature records" "1 1 0 0" "$(prs2 approach "$T/apnr.md")$rc"
 check "BLOCK: an approach with one candidate" 1 "$(prs2 approach "$T/ap1.md")"
 check "BLOCK: a chosen approach rated 6" 1 "$(prs2 approach "$T/ap6.md")"
@@ -1606,7 +1636,7 @@ printf 'fix: deprecate `vike/fetch` (closes #3608)\n' > "$T/title.md"; printf 'f
 check "post-lint --kind title passes one line and records it; two lines fail" "0 1 1" "$("$R/bin/post-lint" "$T/title.md" --kind title >/dev/null; echo $?) $([ -s "$T/title.md.lint.sha" ] && echo 1) $("$R/bin/post-lint" "$T/title2.md" --kind title >/dev/null; echo $?)"
 echo 'me 42' > "$FX/user"
 IDR="$T/idr"; git init -q "$IDR"; git -C "$IDR" remote add origin https://github.com/o/r.git  # the identity is checked in a checkout of a GitHub repo
-(cd "$IDR" && bash "$R/bin/pr-steps" preflight 'none, because the test repo has no UI' >/dev/null)
+(cd "$IDR" && bash "$R/bin/pr-steps" preflight 'none, because the test repo has no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 check "BLOCK: a commit as the pushing login but with another email, naming the noreply form; the noreply email passes" "2 1 0" "$(guard "git -C $IDR -c user.name=me -c user.email=real@example.com commit -m a") $(grep -c '42+me@users.noreply.github.com' "$T/err") $(guard "git -C $IDR -c user.name=me -c user.email=42+me@users.noreply.github.com commit -m a")"
 rm "$FX/user"
 # pre-bash-guard: a review's verdict is the reviewer's own output, never the main session's
@@ -1751,12 +1781,19 @@ check "BLOCK: a URL that shows Chrome's error page" 1 "$(pfurl '<div id="main-fr
 check "BLOCK: a URL that renders a blank page" 1 "$(pfurl '<html><body><div id="root"></div><script>boot()</script></body></html>')"
 check "an edit still waits after refused preflights" 2 "$(pfedit "$P/a.ts")"
 check "a URL that renders records the screenshot Chrome took" 0 "$(pfurl '<body><h1>Dashboard</h1></body>')"
-check "an edit passes once the branch has its preflight" 0 "$(pfedit "$P/a.ts")"
-check "git commit passes it too" 0 "$(pfcommit | grep -c 'pr-steps preflight')"
+# pull-request step 5 before the code: edits and commits wait for the branch's approach too, a moved branch shares it only by tracking
+check "BLOCK: with its preflight, an edit and a commit there wait for the branch's approach, naming step 5" "2 1" "$(pfedit "$P/a.ts") $(pfcommit | grep -c 'rate the approaches (mergeworthy:pull-request step 5), then `pr-steps approach <work folder>/approach.md`')"
+(cd "$P" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
+check "an edit passes once the branch has its preflight and approach" 0 "$(pfedit "$P/a.ts")"
+check "git commit passes it too" 0 "$(pfcommit | grep -c 'pr-steps preflight\|pr-steps approach')"
+git -C "$P" -c user.name=t -c user.email=t@t commit -q --allow-empty -m feat
+check "a worktree's own branch tracking the PR's local branch shares its records; a stacked branch on it, or one that merged it in, doesn't" "0 2 2" \
+  "$(git -C "$P" checkout -q -b impl --track feat; pfedit "$P/a.ts") $(git -C "$P" checkout -q -b child feat; pfedit "$P/a.ts") $(git -C "$P" checkout -q --orphan indep; git -C "$P" -c user.name=t -c user.email=t@t commit -q --allow-empty -m i; git -C "$P" merge -q --allow-unrelated-histories feat -m m; pfedit "$P/a.ts")"
+git -C "$P" checkout -q feat
 git -C "$P" checkout -q -b other
 check "BLOCK: another branch needs its own preflight" 2 "$(pfedit "$P/a.ts")"
 Q="$T/q"; git init -q "$Q"; git -C "$Q" -c user.name=t -c user.email=t@t commit -q --allow-empty -m i; qb=$(git -C "$Q" symbolic-ref --short HEAD)
-(cd "$Q" && bash "$R/bin/pr-steps" preflight 'none, because the test repo has no UI' >/dev/null 2>&1)
+(cd "$Q" && bash "$R/bin/pr-steps" preflight 'none, because the test repo has no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null 2>&1)
 git -C "$Q" config remote.origin.url "$Q"; git -C "$Q" config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'; git -C "$Q" update-ref "refs/remotes/origin/$qb" HEAD
 git -C "$Q" checkout -q -b cleanup "origin/$qb" 2>/dev/null
 qedit() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"Edit","tool_input":{"file_path":sys.argv[1]},"cwd":sys.argv[1]}))' "$Q/a.ts" | python3 "$R/hooks/pre-design-gate.py" 2>/dev/null; echo $?; }
@@ -1764,7 +1801,7 @@ check "a local branch tracking the recorded branch shares its preflight; one tra
 touch "$T/pf.png"; check "a PNG the browser MCP just took records" 0 "$(pf "$T/pf.png")"
 git -C "$P" checkout -q -b docs
 check "none, because with its reason records" 0 "$(pf 'none, because it only changes a CLI flag')"
-check "an edit passes after it" 0 "$(pfedit "$P/a.ts")"
+check "an edit passes after it, with the branch's approach" 0 "$( (cd "$P" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null); pfedit "$P/a.ts")"
 check "preflight's Chrome runs muted and without the WSLg audio server" "2 2" "$( (cd "$P" && PULSE_SERVER=unix:/mnt/wslg/PulseServer FAKE_LOG="$T/chrome.log" CHROME="$T/bin/fakechrome" FAKE_DOM='<html><body>app</body></html>' bash "$R/bin/pr-steps" preflight https://app.test >/dev/null 2>&1); grep -c -- '--mute-audio' "$T/chrome.log") $(grep -c '^pulse=unset ' "$T/chrome.log")"
 # ---------- under T3 Code, Codex starts through delegate_task, not a shell ----------
 # the hook's nearest `claude` ancestor is the session; T3 starts it with its MCP server in --mcp-config
@@ -1783,7 +1820,7 @@ check "codex exec through bash -c without T3 passes" 0 "$(cx '{"mcpServers":{}}'
 check "codex login under T3 passes" 0 "$(cx "$T3CFG" 'codex login status')"
 # ---------- pre-design-gate: Tier M code waits for prior-art.md and decisions/*.md ----------
 D="$T/dg"; mkdir -p "$D" "$D-work"; git -C "$D" init -q
-(cd "$D" && bash "$R/bin/pr-steps" preflight 'none, because the design gate is tested here' >/dev/null)
+(cd "$D" && bash "$R/bin/pr-steps" preflight 'none, because the design gate is tested here' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 gate() { python3 -c 'import json,sys; print(json.dumps({"tool_name":sys.argv[1],"tool_input":json.loads(sys.argv[2]),"cwd":sys.argv[3]}))' "$1" "$2" "$D" | python3 "$R/hooks/pre-design-gate.py" 2>/dev/null; echo $?; }
 check "no scope.md: an edit passes" 0 "$(gate Edit "{\"file_path\":\"$D/a.ts\"}")"
 printf 'Tier: M, because x\n' > "$D-work/scope.md"
@@ -1796,7 +1833,7 @@ check "BLOCK: Tier M edit with only the design debate and review records" 2 "$(g
 mkdir -p "$D-work/decisions"; touch "$D-work/decisions/x.md"
 check "Tier M edit passes once prior art and a decision exist" 0 "$(gate Edit "{\"file_path\":\"$D/a.ts\"}")"
 DW="$HOME/.mergeworthy/work/dg"; D="$DW/repo"; mkdir -p "$D"; git -C "$D" init -q  # the work folder holding the checkout
-(cd "$D" && bash "$R/bin/pr-steps" preflight 'none, because the design gate is tested here' >/dev/null)
+(cd "$D" && bash "$R/bin/pr-steps" preflight 'none, because the design gate is tested here' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 printf 'Tier: M, because x\n' > "$DW/scope.md"
 check "BLOCK: in ~/.mergeworthy/work/<task>/, a Tier M edit and an implementation agent with no prior art or decision" "2 2" "$(gate Edit "{\"file_path\":\"$D/a.ts\"}") $(gate mcp__t3-code__delegate_task '{"role":"implementation"}')"
 check "there, an artifact-root write passes" 0 "$(gate Write "{\"file_path\":\"$DW/prior-art.md\"}")"
@@ -1805,7 +1842,7 @@ check "there, a Tier M edit passes once prior art and a decision exist" 0 "$(gat
 # ---------- pre-design-gate and pre-bash-guard: no file change in a repo before this session read its AGENTS.md and CLAUDE.md ----------
 I="$T/instr"; mkdir -p "$I/sub"; git -C "$I" init -q; printf 'rules\n' > "$I/AGENTS.md"; printf '@AGENTS.md\n' > "$I/CLAUDE.md"
 IN="$T/instr-none"; mkdir -p "$IN"; git -C "$IN" init -q
-for x in "$I" "$IN"; do (cd "$x" && bash "$R/bin/pr-steps" preflight 'none, because instruction reads are tested here' >/dev/null); done
+for x in "$I" "$IN"; do (cd "$x" && bash "$R/bin/pr-steps" preflight 'none, because instruction reads are tested here' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null); done
 ir_tr() { # <transcript> <event>...: read:<path> | bash:<cwd>|<command> | compact; failread: and failbash: get an error result
   python3 - "$@" <<'EOF'
 import json, sys
@@ -1855,7 +1892,7 @@ ir_tr "$IT" "failread:$I/AGENTS.md" "failread:$I/CLAUDE.md"; check "BLOCK: reads
 ir_tr "$IT" "failbash:$I|cat AGENTS.md CLAUDE.md"; check "BLOCK: a cat whose result is an error" 2 "$(iedit "$IT" Edit "$I/a.ts")"
 ir_tr "$IT" "bash:$I|cat \"\$PWD/AGENTS.md\" \"\${PWD}/CLAUDE.md\""; check "a cat of \$PWD/AGENTS.md counts as a read" 0 "$(iedit "$IT" Edit "$I/a.ts")"
 IL="$T/instr-link"; mkdir -p "$IL"; git -C "$IL" init -q; printf 'rules\n' > "$T/shared-agents"; ln -s "$T/shared-agents" "$IL/AGENTS.md"
-(cd "$IL" && bash "$R/bin/pr-steps" preflight 'none, because instruction reads are tested here' >/dev/null)
+(cd "$IL" && bash "$R/bin/pr-steps" preflight 'none, because instruction reads are tested here' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 ir_tr "$IT" "read:$T/shared-agents"; check "a Read of a symlinked AGENTS.md's target counts" 0 "$(iedit "$IT" Edit "$IL/a.ts")"
 # ---------- pre-skill-gate: an action waits for the skills its always-on row names, opened since the last compaction ----------
 sg_tr() { # <transcript> <event>...: skill:<input.skill> | typed:<name> | compact | text
@@ -2051,6 +2088,15 @@ check "compose up with a file under ~ passes" 0 "$(dc_guard 'docker compose -f ~
 check "compose up with a file under a dir the line set passes" 0 "$(dc_guard "W=$T; docker compose -f \$W/assigned.json -p x up -d")"
 check "BLOCK: compose up with --file= under a dir the line set, publishing a fixed host port" "2 1" "$(dc_guard "W=$T; docker compose --file=\$W/fixed.json -p x up -d") $(grep -c 'db host port 5432' "$T/err")"
 check "BLOCK: compose up with a file path it can't tell, naming it" "2 1" "$(dc_guard 'docker compose -f $NOPE_DIR/c.yml -p x up -d') $(grep -c "can't tell.*NOPE_DIR/c.yml" "$T/err")"
+WRITE_UP=$'cat > ovr.yml <<EOF\n{"services":{"web":{"ports":[{"target":80}]}}}\nEOF\ndocker compose -p t -f assigned.json -f ovr.yml up -d'
+check "BLOCK: compose up with an override the same command writes, naming it" "2 1" "$(dc_guard "$WRITE_UP") $(grep -c "$T/ovr.yml is written by this same command" "$T/err")"
+cp "$T/assigned.json" "$T/ovr.yml"
+check "BLOCK: compose up with an override on disk that the same command rewrites, naming it" "2 1" "$(dc_guard "$WRITE_UP") $(grep -c "$T/ovr.yml is written by this same command" "$T/err")"
+rm "$T/ovr.yml"
+check "BLOCK: compose up with a missing override nobody writes says its config failed" "2 1" "$(dc_guard 'docker compose -p t -f assigned.json -f ovr.yml up -d') $(grep -c 'fix the config' "$T/err")"
+check "BLOCK: compose up reading a default-named file the same command writes, naming it" "2 1" "$(dc_guard 'cp assigned.json compose.yaml; docker compose -p t up -d') $(grep -c "$T/compose.yaml is written by this same command" "$T/err")"
+check "BLOCK: compose up reading a COMPOSE_FILE entry the same command writes, naming it" "2 1" "$(dc_guard 'cp assigned.json new.yml; COMPOSE_FILE=assigned.json:new.yml docker compose -p t up -d') $(grep -c "$T/new.yml is written by this same command" "$T/err")"
+check "BLOCK: compose up reading a default-named file the same command writes in its --project-directory, naming it" "2 1" "$(dc_guard 'cp assigned.json app/compose.yaml; docker compose -p t --project-directory app up -d') $(grep -c "$T/app/compose.yaml is written by this same command" "$T/err")"
 printf 'See #7.\n' > "$T/ref.md"
 check "post-lint: a 404 reference doesn't exist" 1 "$(python3 "$R/bin/post-lint" "$T/ref.md" --kind reply --repo o/r --parent none 2>&1 | grep -c "doesn't exist in o/r")"
 check "post-lint: a rate-limited check says it couldn't check, not that it doesn't exist" "1 0" "$(GH_STUB_403=1 python3 "$R/bin/post-lint" "$T/ref.md" --kind reply --repo o/r --parent none 2>&1 | grep -c "couldn't check it") $(GH_STUB_403=1 python3 "$R/bin/post-lint" "$T/ref.md" --kind reply --repo o/r --parent none 2>&1 | grep -c "doesn't exist")"
@@ -2220,7 +2266,7 @@ print(json.dumps({"data": {"viewer": {"login": v}, "repository": {"owner": {"log
 gql nitedani-agent nitedani-agent https://github.com/vikejs/vike/pull/3675  # the session's pushes went to its draft PR's head
 C1="cd $VK; "$'git commit -qam "fix: pass \\`headers\\` to telefunc \\`serve()\\` (telefunc 0.3.0)\n\nCo-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>" && git push origin HEAD:dependabot/npm_and_yarn/telefunc-0.3.0 2>&1 | tail -3'
 check "replay: the first commit and push (a multi-line message), with no preflight: blocked at the commit" "2 1" "$(bg "$C1") $(grep -c 'pr-steps preflight' "$T/err")"
-(cd "$VK" && bash "$R/bin/pr-steps" preflight 'none, because the test repo has no UI' >/dev/null)
+(cd "$VK" && bash "$R/bin/pr-steps" preflight 'none, because the test repo has no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 check "replay: with a preflight, the push from a checkout in no task's work folder is blocked" "2 1" "$(bg "$C1") $(grep -c "isn't in a task's work folder" "$T/err")"
 check "replay: the push through a git alias, or bash -c, is the same push" "2 2" "$(bg 'git -c alias.p=push p origin HEAD:b') $(bg 'bash -c "git push origin HEAD:b"')"
 C2="cd $VK; "$'gh pr create --repo vikejs/vike --base dependabot/npm_and_yarn/telefunc-0.3.0 --head nitedani-agent:fix-telefunc --draft --title "fix: pass \\`headers\\` to telefunc \\`serve()\\`" --body "Fixes CI of #3671.\n\nPasses \\`headers\\` at the three \\`serve()\\` call sites."'
@@ -2315,7 +2361,7 @@ check "BLOCK: a shell write of a step record, and a Write of one" "2 2" "$(bg 'e
 check "BLOCK: a GitHub write through curl" 2 "$(bg 'curl -X POST -H "Authorization: token x" https://api.github.com/repos/o/r/issues/5/comments -d @body.json')"
 check "BLOCK: a command that doesn't parse, holding a guarded verb, saying so; one without passes" "2 1 0" "$(bg 'git commit -m "oops') $(grep -c "doesn't parse" "$T/err") $(bg 'echo "oops')"
 check "BLOCK: a comment while gh can't read the thread (two in a row can't be checked)" "2 1" "$(GH_STUB_403=1 bg "gh issue comment 5 --repo o/r --body-file $D/new.md" "$T") $(grep -c "couldn't read o/r#5" "$T/err")"
-(cd "$TCO" && bash "$R/bin/pr-steps" preflight 'none, because the test repo has no UI' >/dev/null); rm -f "$FX/user" "$HOME/.claude/gh-user.txt"
+(cd "$TCO" && bash "$R/bin/pr-steps" preflight 'none, because the test repo has no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null); rm -f "$FX/user" "$HOME/.claude/gh-user.txt"
 check "a commit while gh can't say which account pushes (offline, nothing cached) passes: it stays local" 0 "$(bg 'git commit -m x' "$TCO")"
 check "an identity the command computes (\${id}, \$(git log ...)) isn't compared as written" 0 "$(echo 'me 42' > "$HOME/.claude/gh-user.txt"; bg 'id=42; git -c user.name=me -c user.email=${id}+me@users.noreply.github.com commit -m x' "$TCO")"
 echo 'me 42' > "$HOME/.claude/gh-user.txt"
@@ -2323,7 +2369,7 @@ check "the account gh last named is the one checked while gh can't answer" "2 1"
 check "BLOCK: a hook that crashes (here on input it can't read) blocks, saying the check failed" "2 1" "$(printf 'not json' | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?) $(grep -c 'the check itself failed' "$T/err")"
 mkdir -p "$T/hk"; cp "$R/hooks/run" "$T/hk/run"; printf 'import sys; sys.exit(3)\n' > "$T/hk/bad.py"; printf 'import time; time.sleep(5)\n' > "$T/hk/slow.py"
 check "hooks/run: a hook exiting with neither 0 nor 2, or past its time, blocks" "2 2 1" "$(bash "$T/hk/run" bad.py </dev/null 2>/dev/null; echo $?) $(MERGEWORTHY_HOOK_SECONDS=1 bash "$T/hk/run" slow.py </dev/null 2>"$T/err"; echo $?) $(grep -c 'after 1s' "$T/err")"
-TK3="$HOME/.mergeworthy/work/unscoped"; git init -q "$TK3/r"; (cd "$TK3/r" && bash "$R/bin/pr-steps" preflight 'none, because the test repo has no UI' >/dev/null)
+TK3="$HOME/.mergeworthy/work/unscoped"; git init -q "$TK3/r"; (cd "$TK3/r" && bash "$R/bin/pr-steps" preflight 'none, because the test repo has no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 check "BLOCK: an edit in a task's checkout before scope.md has its Tier line" "2" "$(python3 -c 'import json,sys; print(json.dumps({"tool_name":"Edit","tool_input":{"file_path":sys.argv[1]},"cwd":sys.argv[2]}))' "$TK3/r/a.ts" "$TK3/r" | python3 "$R/hooks/pre-design-gate.py" 2>/dev/null; echo $?)"
 sg_tr "$T/sg.jsonl" skill:mergeworthy:task skill:mergeworthy:merging
 check "replay: the inline-body draft PR waits for pull-request, post and writing" "2 mergeworthy:post mergeworthy:pull-request mergeworthy:writing" \
@@ -2520,7 +2566,7 @@ EOF
 GL="$T/gl"; git init -q -b scratch "$GL"; git -C "$GL" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; git -C "$GL" remote add origin git@gitlab.com:me/app.git
 for mr in me_2Fapp_merge_requests_4 me_2Fapp_merge_requests_5 me_2Fapp_merge_requests_6 acme_2Fapp_merge_requests_9; do echo '{"head_pipeline":null}' > "$FX/gl_projects_$mr"; done  # the MRs below have no pipeline
 echo me > "$FX/gl_login"; echo '[]' > "$FX/gl_projects_me_2Fapp_merge_requests_state_opened_source_branch_scratch"; echo '[]' > "$FX/gl_projects_acme_2Fapp_merge_requests_state_opened_source_branch_scratch"
-(cd "$GL" && bash "$R/bin/pr-steps" preflight 'none, because the test repo has no UI' >/dev/null)
+(cd "$GL" && bash "$R/bin/pr-steps" preflight 'none, because the test repo has no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 check "a commit in a checkout of a GitLab repo isn't held to gh's account" 0 "$(bg 'git -c user.name=Someone -c user.email=me@example.com commit -q --allow-empty -m x' "$GL")"
 check "GitLab: ssh://git@gitlab.com:22/ is the same own namespace" 0 "$(bg 'git push ssh://git@gitlab.com:22/me/app.git HEAD:scratch' "$GL")"
 check "GitLab: a push to its own namespace with no MR passes; to a group's repo, or an open MR's branch, it is blocked, naming why" "0 2 1 2 1" \
@@ -2612,7 +2658,7 @@ check "'the watcher will tell me when' is no hand-back; 'Tell me when' and 'or a
 # ---------- pre-bash-guard: a code file's 6th change on the branch waits for `pr-steps finality` ----------
 SP="$T/simp"; git init -q -b main "$SP"; sc() { git -C "$SP" -c user.name=t -c user.email=t@t commit -q "$@"; }
 echo 0 > "$SP/a.py"; mkdir "$SP/tests"; echo 0 > "$SP/tests/a_test.py"; git -C "$SP" add -A; sc -m base
-git -C "$SP" update-ref refs/remotes/origin/main HEAD; git -C "$SP" checkout -q -b fix; (cd "$SP" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null)
+git -C "$SP" update-ref refs/remotes/origin/main HEAD; git -C "$SP" checkout -q -b fix; (cd "$SP" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 for i in 1 2 3 4 5 6; do echo "d$i" >> "$SP/a.py"; sc -am "d$i"; done; echo d7 >> "$SP/a.py"; git -C "$SP" add a.py
 check "before the branch's first review, a code file's 7th change passes: building counts nothing" 0 "$(bg 'git commit -m d7' "$SP")"
 sc -m d7; printf 'NO LOOP B COMMITS\n' > "$T/rv.md"; (cd "$SP" && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null) || echo "pr-steps verify failed in the patch-gate setup"
@@ -2638,7 +2684,7 @@ check "BLOCK: a 7th change; a finality record on the head that holds the 6th unb
 # merges: a merge of the base, being made or in the history, is no change, and a finality record on a merge commit counts
 SM="$T/simpm"; git init -q -b main "$SM"; mc() { git -C "$SM" -c user.name=t -c user.email=t@t "$@"; }
 seq 1 10 > "$SM/a.py"; git -C "$SM" add -A; mc commit -q -m base
-git -C "$SM" update-ref refs/remotes/origin/main HEAD; git -C "$SM" checkout -q -b fix; (cd "$SM" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null)
+git -C "$SM" update-ref refs/remotes/origin/main HEAD; git -C "$SM" checkout -q -b fix; (cd "$SM" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 (cd "$SM" && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null)
 for i in 1 2 3 4 5; do echo "p$i" >> "$SM/a.py"; mc commit -qam "p$i"; done
 base_edit() { mc checkout -q main; sed -i "$1s/.*/main$1/" "$SM/a.py"; mc commit -qam "main$1"; git -C "$SM" update-ref refs/remotes/origin/main HEAD; mc checkout -q fix; mc merge -q --no-commit origin/main >/dev/null; }
