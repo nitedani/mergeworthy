@@ -1836,6 +1836,8 @@ check "BLOCK: a variable set in a branch may or may not hold after it, nor falls
   "$(ibash "$IT" "WD=$I; if false; then WD=$T/nogit; fi; echo x > \$WD/a.txt" "$T/nogit") $(WD=$T/nogit ibash "$IT" "if true; then WD=$I; fi; echo x > \$WD/a.txt" "$T/nogit")"
 check "BLOCK: a call to a function the line defines runs its cd or assignment there, after an absolute cd too: a write after it" "2 2" \
   "$(ibash "$IT" "f() { cd $I; }; cd $T/nogit; f; echo x > a.txt" "$T/nogit") $(ibash "$IT" "f() { WD=$I; }; WD=$T/nogit; f; echo x > \$WD/a.txt" "$T/nogit")"
+check "BLOCK: a quoted or escaped \$ is the file's name, not the line's variable: a write to '\$WD/a.txt' or \\\$WD/a.txt lands in the repo" "2 2" \
+  "$(ibash "$IT" "WD=$T/nogit; echo x > '\$WD/a.txt'") $(ibash "$IT" "WD=$T/nogit; echo x > \\\$WD/a.txt")"
 check "logs written outside it by a backgrounded { } group in a loop, after its cd to \$W/\$t, pass" 0 \
   "$(ibash "$IT" "W=$T/nogit; for t in a b; do { cd \$W/\$t && netns-run bash x.sh > \$W/probe/\$t.out 2> \$W/probe/\$t.err; echo \"\$t exit \$?\" >> \$W/probe/\$t.err; } & done; wait")"
 ir_tr "$IT" "read:$I/AGENTS.md" "read:$I/CLAUDE.md"; check "a command writing into it passes once both were read" 0 "$(ibash "$IT" "echo x > $I/a.txt")"

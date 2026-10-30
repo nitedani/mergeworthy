@@ -723,13 +723,11 @@ def check(t, has_cd):
                   'and pass --title "$(cat <that file>)" (mergeworthy:pull-request step 7)')
         if a[1] == 'edit' and opt(a[2:], ['--title', '-t']) and (who := title_setter(*post_target('pr', a[2:], env, run_dir))):
             block(f"{who[0]} set this PR's title ({who[1]}): it is their decision. Keep it, or ask them on the PR first (mergeworthy:pull-request step 7)")
-    names = [os.path.expanduser(where.expand(f)) for f in written_files(t)]
     # A review's verdict is the reviewer's final message, which it writes itself (`codex exec -o`, an agent's output file); an agent's stdout is it too
-    if p not in ('claude', 'codex') and any(x.endswith('.review.out') for x in names) and not by_agent():
+    if p not in ('claude', 'codex') and any(where.expand(x).endswith('.review.out') for x in written_files(t)) and not by_agent():
         block("a review's output is the reviewer's final message, written by the reviewer: `codex exec -o <out>`, or the agent writes <out> itself. "
               "Never write a verdict yourself (mergeworthy:delegate §Reviewers, post step 3)")
-    # a path that starts with an expansion Where can't resolve is in a dir it can't tell
-    written = [x if os.path.isabs(x) else os.path.join(known(None if re.match(r'[$`]', x) else run_dir), x) for x in names]
+    written = [known(where.file(x)) for x in written_files(t)]
     for x in written:
         if why := no_instructions_read(x, d):
             block(why)
