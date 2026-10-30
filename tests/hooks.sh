@@ -35,6 +35,11 @@ if isinstance(v, dict) and re.fullmatch(r"(\.\w+)+", q):
 else: sys.stdout.write(raw)' "$f" "$q"
 EOF
 chmod +x "$T/bin/gh"; export PATH="$T/bin:$PATH" FX="$T/fx"
+# stub gh-watch-start (post-bash-register starts a work folder's watcher): logs its session and arguments, adds the thread, prints the Monitor
+printf '#!/bin/sh
+echo "$CLAUDE_CODE_SESSION_ID $*" >> "$T/started"; d=$1; shift; echo "$*" >> "$d/threads.txt"; echo "Arm a Monitor in this session on: tail $d/events.log"
+' > "$T/bin/gh-watch-start"
+chmod +x "$T/bin/gh-watch-start"; export T GH_WATCH_START="$T/bin/gh-watch-start"
 fails=0
 TASKW="$HOME/.mergeworthy/work/t"; TCO="$TASKW/repo"; mkdir -p "$TASKW"
 printf 'Tier: S, because one bounded fix\n\n- [ ] fix the thing https://github.com/o/r/issues/1\n' > "$TASKW/scope.md"
@@ -2261,18 +2266,25 @@ unwatched() { bgs "$@" >/dev/null; grep -c 'no running watcher' "$T/err"; }
 PUSH='git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc'
 PRC="gh pr create --repo vikejs/vike --draft --title \"\$(cat $TK4/drafts/title.md)\" --body-file $TK4/drafts/pr.md"
 MRC='glab mr create --draft -R gitlab.com/ns/proj --title x'
-check "BLOCK: a push, a PR and an MR from a work folder another session's watcher doesn't watch, naming the folder to watch" "2 1 1 1" \
+check "BLOCK: a push from a work folder another session's watcher doesn't watch, naming the folder to watch; a PR and an MR from there pass: post-bash-register starts its watcher" "2 1 0 0" \
   "$(bgs sess-b "$PUSH" "$CK4") $(grep -c "gh-watch-start $TK4 " "$T/err") $(unwatched sess-b "$PRC" "$CK4") $(unwatched sess-b "$MRC" "$CK4")"
 check "the same from the watched work folder pass, whichever session acts there" "0 0 0" "$(bgs sess-b "$PUSH" "$CK") $(unwatched sess-b "$PRC" "$CK") $(unwatched sess-b "$MRC" "$CK")"
 check "outside any work folder, only the session's own watcher counts" "0 1" "$(unwatched sess-a "$MRC" "$T") $(unwatched sess-b "$MRC" "$T")"
 oreg() { # session cwd command: the thread post-bash-register adds to the watched folder
   python3 -c 'import json,sys; print(json.dumps({"session_id":sys.argv[1],"cwd":sys.argv[2],"tool_input":{"command":sys.argv[3]},"tool_response":{"stdout":"https://github.com/vikejs/vike/pull/9"}}))' "$@" \
-    | python3 "$R/hooks/post-bash-register.py"; cat "$TK2/threads.txt" 2>/dev/null || echo none; rm -f "$TK2/threads.txt"; }
-check "a PR opened from the unwatched folder joins no other session's watcher; from the watched one (after a cd, to a variable too), it joins its watcher" \
-  "none|vikejs/vike 9|vikejs/vike 9|vikejs/vike 9" "$(oreg sess-b "$CK4" "$PRC")|$(oreg sess-b "$CK" "$PRC")|$(oreg sess-b "$T" "cd $CK && $PRC")|$(oreg sess-b "$T" "D=$CK; cd \"\$D\" && $PRC")"
+    | python3 "$R/hooks/post-bash-register.py" 2>"$T/err"; echo "$?:$(cat "$TK2/threads.txt" 2>/dev/null || echo none)"; rm -f "$TK2/threads.txt" "$TK4/threads.txt"; }
+check "a PR opened from the unwatched folder joins no other session's watcher but starts its own folder's, as this session's, saying to arm the Monitor; from the watched one (after a cd, to a variable too), it joins its watcher" \
+  "2:none sess-b $TK4 vikejs/vike 9 1|0:vikejs/vike 9|0:vikejs/vike 9|0:vikejs/vike 9" \
+  "$(oreg sess-b "$CK4" "$PRC") $(cat "$T/started") $(grep -c 'Arm a Monitor' "$T/err")|$(oreg sess-b "$CK" "$PRC")|$(oreg sess-b "$T" "cd $CK && $PRC")|$(oreg sess-b "$T" "D=$CK; cd \"\$D\" && $PRC")"
+# the steward's watcher, whose session file names the session, wakes it only for a new mergeworthy issue: a PR opened while the task's
+# own folder has no watcher (it retired) starts that one instead (nitedani/mergeworthy#67, #68), and outside a work folder it covers nothing
+SWD="$HOME/.mergeworthy/work/steward"; mkdir -p "$SWD"; echo "$FPID" > "$SWD/gh-watch.pid"; echo sess-s > "$SWD/session"; printf 'vikejs/vike\ngitlab.com/ns/proj\n' > "$SWD/repos.txt"; echo "$SWD" >> "$HOME/.claude/gh-watch-dirs.txt"; : > "$T/started"
+check "a PR from a work folder whose watcher retired starts that folder's watcher, not the steward's that names the session; outside a work folder the steward's covers nothing" \
+  "2:none sess-s $TK4 vikejs/vike 9 none 1" "$(oreg sess-s "$CK4" "$PRC") $(cat "$T/started") $(cat "$SWD/threads.txt" 2>/dev/null || echo none) $(unwatched sess-s "$MRC" "$T")"
+rm -r "$SWD"; sed -i "\|^$SWD\$|d" "$HOME/.claude/gh-watch-dirs.txt"
 # two MRs opened in one command from two work folders: the second folder needs its own watcher
 TWO="cd $CK; $MRC; cd $CK4; $MRC"
-check "BLOCK: two MRs from two work folders in one command while the second folder has no watcher" 2 "$(bgs sess-b "$TWO" "$T")"
+check "two MRs from two work folders in one command pass though the second folder has no watcher: post-bash-register starts it" 0 "$(bgs sess-b "$TWO" "$T")"
 check "BLOCK: an MR where the dir can't be told (cd -, a cd to an unset variable, a cd in a subshell or bash -c), saying to cd to an absolute path" "2 2 2 2 1" \
   "$(bgs sess-b "cd $CK; $MRC; cd -; $MRC" "$CK4") $(bgs sess-b "cd \"\$NOWHERE\" && $MRC" "$CK") $(bgs sess-b "(cd $CK4); $MRC" "$CK") $(bgs sess-b "bash -c 'cd $CK4'; $MRC" "$CK") $(grep -c 'cd to an absolute path first' "$T/err")"
 check "a redirect on cd or pushd (pushd x >/dev/null, cd x 2>/dev/null) and cd \$(git rev-parse --show-toplevel) leave the dir known: an MR in the watched folder passes" "0 0 0 0" \
@@ -2523,12 +2535,12 @@ api_forms() { for c in "GH_REPO=o/r gh api 'repos/{owner}/{repo}/pulls' -f title
                        'glab api https://gitlab.com/api/v4/projects/me%2Fapp/merge_requests -X POST -f source_branch=mr-b -f target_branch=main -f title=x'; do
     printf '%s ' "$(MERGEWORTHY_WATCHER=off bg "$c" "$NA")"; done | xargs; }
 check "BLOCK: with no approach record, a PR or MR created through the API in each form gh and glab take ({owner}/{repo}, a leading slash, a full URL, GitHub Enterprise's, api/v4/, a query)" "2 2 2 2 2 2 2" "$(api_forms)"
-check "BLOCK: an issue opened through the API in those forms, in a repo no watcher covers, naming it with its host" "2 1 2 1 2 1 2 1" \
-  "$(bg "GH_REPO=nobody/x gh api 'repos/{owner}/{repo}/issues' -f title=x -F body=@$T/na.md" "$NA") $(grep -c 'no running watcher of this task or session covers nobody/x' "$T/err") $(bg "glab api '/api/v4/projects/nobody%2Fx/issues?x=1' -X POST -f title=x" "$NA") $(grep -c 'no running watcher of this task or session covers gitlab.com/nobody/x' "$T/err") $(bg 'glab api https://gitlab.example.com/api/v4/projects/nobody%2Fx/issues -X POST -f title=x' "$NA") $(grep -c 'no running watcher of this task or session covers gitlab.example.com/nobody/x' "$T/err") $(bg "gh api https://github.example.com/api/v3/repos/nobody/x/issues -f title=x -F body=@$T/na.md" "$NA") $(grep -c 'no running watcher of this task or session covers github.example.com/nobody/x' "$T/err")"
-check "BLOCK: an issue or MR opened through the API by a project's numeric id, since which project it is can't be told, naming that" "2 1" \
-  "$(bg 'glab api projects/123/issues -X POST -f title=x' "$NA") $(grep -c "can't tell which repo this acts on" "$T/err")"
+check "BLOCK: an issue opened through the API in those forms, outside a work folder, in a repo no watcher covers, naming it with its host" "2 1 2 1 2 1 2 1" \
+  "$(bg "GH_REPO=nobody/x gh api 'repos/{owner}/{repo}/issues' -f title=x -F body=@$T/na.md" "$T") $(grep -c 'no running watcher of this task or session covers nobody/x' "$T/err") $(bg "glab api '/api/v4/projects/nobody%2Fx/issues?x=1' -X POST -f title=x" "$T") $(grep -c 'no running watcher of this task or session covers gitlab.com/nobody/x' "$T/err") $(bg 'glab api https://gitlab.example.com/api/v4/projects/nobody%2Fx/issues -X POST -f title=x' "$T") $(grep -c 'no running watcher of this task or session covers gitlab.example.com/nobody/x' "$T/err") $(bg "gh api https://github.example.com/api/v3/repos/nobody/x/issues -f title=x -F body=@$T/na.md" "$T") $(grep -c 'no running watcher of this task or session covers github.example.com/nobody/x' "$T/err")"
+check "BLOCK: an issue or MR opened through the API by a project's numeric id, outside a work folder, since which project it is can't be told, naming that" "2 1" \
+  "$(bg 'glab api projects/123/issues -X POST -f title=x' "$T") $(grep -c "can't tell which repo this acts on" "$T/err")"
 check "a GitLab project path through the API is on --hostname's or GITLAB_HOST's host" "2 1 2 1" \
-  "$(bg 'glab api --hostname gl.example.com projects/nobody%2Fx/issues -X POST -f title=x' "$NA") $(grep -c 'no running watcher of this task or session covers gl.example.com/nobody/x' "$T/err") $(bg 'GITLAB_HOST=https://h.example.com glab api projects/nobody%2Fx/issues -X POST -f title=x' "$NA") $(grep -c 'no running watcher of this task or session covers h.example.com/nobody/x' "$T/err")"
+  "$(bg 'glab api --hostname gl.example.com projects/nobody%2Fx/issues -X POST -f title=x' "$T") $(grep -c 'no running watcher of this task or session covers gl.example.com/nobody/x' "$T/err") $(bg 'GITLAB_HOST=https://h.example.com glab api projects/nobody%2Fx/issues -X POST -f title=x' "$T") $(grep -c 'no running watcher of this task or session covers h.example.com/nobody/x' "$T/err")"
 (cd "$NA" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 check "each passes once the branch has its approach record" "0 0 0 0 0 0 0 0 0 0" "$(na)"
 check "the API forms pass too" "0 0 0 0 0 0 0" "$(api_forms)"

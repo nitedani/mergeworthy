@@ -120,9 +120,9 @@ def watch_dirs():
     return live
 
 def need_watch(repo, path):
-    """Opening an issue or PR starts the live loop (mergeworthy:task step 5): a running watcher of the task's work folder holding path,
-    or of this session, must cover the repo (post-bash-register adds the new thread). A comment on an existing thread isn't blocked here:
-    post-bash-register adds that thread, and stop-lint requires a watcher's Monitor after any post."""
+    """A push, or opening an issue or PR outside a task's work folder (need_home), needs the live loop (mergeworthy:task step 5): a running
+    watcher of the task's work folder holding path, or of this session, must cover the repo. A comment on an existing thread isn't blocked
+    here: post-bash-register adds that thread, and stop-lint requires a watcher's Monitor after any post."""
     if setting('WATCHER', 'on') != 'on': return
     repos = [repo] if isinstance(repo, str) else [r for r in repo if r]
     if not repos:
@@ -138,6 +138,12 @@ def need_watch(repo, path):
         block(f"no running watcher of this task or session covers {' or '.join(repos)} (another session's watcher wakes that session, not this one): "
               + (f"a subagent starts none: end your turn asking the main session to run {start}" if by_agent()
                  else f"{start}, arm the Monitor it prints if any, then retry (mergeworthy:task step 5)"))
+
+def need_home(repo, path):
+    """Opening an issue or PR from a task's work folder: post-bash-register adds the new thread to that folder's watcher, and starts or
+    revives it when it isn't running. From anywhere else, need_watch."""
+    if not work_folder.task_of(known(path)):
+        need_watch(repo, path)
 
 def check_turn(repo, num, args=()):
     """post §Thread rules: at most two comments in a row: while your last two comments on a thread have no reply after them and the last
@@ -744,10 +750,10 @@ def check(t, has_cd):
         if missing:
             block(f"HEAD {head[:10] or '(no git repo in cwd)'} has no pr-steps {', '.join(missing)} record: run those steps of mergeworthy:converge's pipeline on the final HEAD, each ending with `pr-steps <step> <its output>` (again after a base merge); or open it with --draft")
     if p == 'glab' and len(a) >= 2 and a[0] in ('issue', 'mr') and a[1] == 'create' and '--help' not in a and '-h' not in a:
-        need_watch(gitlab_repo(a[2:], run_dir), run_dir)
+        need_home(gitlab_repo(a[2:], run_dir), run_dir)
         if a[0] == 'mr': need_approach(run_dir, '`glab mr create`', opened_branch(a[2:], ['--source-branch', '-s']))
     if p == 'glab' and a[:1] == ['api'] and (call := api_call(a[1:]))[0] == 'POST' and (opens := api_opens(call[1], a[1:], env, run_dir)):
-        need_watch([opens[0]], run_dir)
+        need_home([opens[0]], run_dir)
         if opens[1] == 'pr': need_approach(run_dir, '`glab api` creating an MR', opened_branch(a[1:], fields=['-f', '--raw-field', '-F', '--field']))
     if p == 'gh' and len(a) >= 2 and a[0] == 'pr' and a[1] == 'merge':
         if setting('MERGE', 'on-request-squash') == 'reviewer':
@@ -806,7 +812,7 @@ def check(t, has_cd):
                     return  # an approval without a body posts no text
                 block(NEED_DRAFT)
             if sub == 'create':
-                need_watch(gh_repo(rest, env, run_dir), run_dir)
+                need_home(gh_repo(rest, env, run_dir), run_dir)
             if a[0] == 'pr' and sub == 'create':  # a draft's body says why on its State line, a ready PR's has none (pull-request step 7)
                 draft = '--draft' in rest or '-d' in rest
                 w = post_words.words(gh_repo(rest, env, run_dir))
@@ -844,7 +850,7 @@ def check(t, has_cd):
         if literal or not (bodies or inputs):
             block(NEED_DRAFT)
         if method == 'POST' and (opens := api_opens(ep, rest, env, run_dir)):
-            need_watch([opens[0]], run_dir)
+            need_home([opens[0]], run_dir)
             if opens[1] == 'pr': need_approach(run_dir, '`gh api` creating a PR', opened_branch(rest, fields=['-f', '--raw-field', '-F', '--field']))
         c = re.fullmatch(r'/?repos/([\w.-]+/[\w.-]+)/issues/(\d+)/comments', ep)
         if c and method == 'POST': check_turn(c.group(1), c.group(2), rest); check_finality(c.group(1), c.group(2), bodies + inputs)

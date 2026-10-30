@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Claude Code PostToolUse and PostToolUseFailure hook (matcher: Bash). It settles the pushes, merges and closes pre-bash-guard
 recorded as pending for the command (own_actions): its own once it succeeded, gone once it failed. A thread you just posted in (a new issue or PR, a comment, a review)
-joins the threads.txt of a watcher whose events reach the posting session (the task's work folder holding the command's dir,
-or the session's own), the one covering its repo first, so maintainer comments on it are answered (mergeworthy:reply).
-Another session's watcher wakes that session alone, so it never gets the thread. A thread whose watcher would be a guess (posting
+joins the threads.txt of a watcher whose events reach the posting session, so maintainer comments on it are answered (mergeworthy:reply):
+the task's work folder holding the command's dir, whose watcher it starts or revives when it isn't running (gh-watch-start), else
+the session's own, the one covering its repo first. Another session's watcher wakes that session alone, so it never gets the thread. A thread whose watcher would be a guess (posting
 commands leading to different watchers, or one in a dir shellcmd.Where can't tell) joins none, and the hook says so (exit 2).
 A gated draft it posted as new gets its .posted marker, which pre-bash-guard reads to refuse posting it as new again."""
 import hashlib, json, os, re, shlex, sys, time
@@ -118,10 +118,25 @@ sid = d.get('session_id')
 # only a running daemon wakes anyone on the thread: a dir a steward pass read (gh-watch-start --round) has none
 live_dirs = [dr for dr in dirs if live(dr)]
 def home_of(repo, post_dir):
-    """The watcher a new thread of repo posted from post_dir joins: of those reaching the session from there, one covering repo first."""
+    """The watcher a new thread of repo posted from post_dir joins: the task's work folder holding post_dir, though its watcher isn't
+    running (started below); elsewhere, of those reaching the session from there, one covering repo first."""
+    if wf := work_folder.task_of(post_dir):
+        return wf
     mine = work_folder.watched_by(live_dirs, sid, post_dir)
     covering = [dr for dr in mine if any(l.split()[:1] == [repo] for l in lines(dr, 'repos.txt') + lines(dr, 'threads.txt'))]
     return (covering + mine + [None])[0]
+_env = os.path.expanduser('~/.mergeworthy/settings.env')  # MERGEWORTHY_WATCHER as stop-lint reads it
+watcher_on = (os.environ.get('MERGEWORTHY_WATCHER') or ('off' if 'MERGEWORTHY_WATCHER=off' in (open(_env).read() if os.path.exists(_env) else '') else 'on')) != 'off'
+START = os.environ.get('GH_WATCH_START') or os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'bin', 'gh-watch-start')
+told = []  # what the session must do after a start: arm the Monitor, or start it by hand
+def start(home, line):
+    """Starts or revives home's watcher with the thread, as this session's (its T3 thread, else the Monitor it prints)."""
+    r = subprocess.run([START, home, *line.split()], capture_output=True, text=True, timeout=120, stdin=subprocess.DEVNULL,
+                       env={**os.environ, 'CLAUDE_CODE_SESSION_ID': sid or ''})
+    if r.returncode:
+        told.append(f"`gh-watch-start {home} {line}` failed ({r.returncode}): {(r.stderr or r.stdout).strip()[-300:]}; run it yourself")
+    elif 'Arm a Monitor' in r.stdout:
+        told.append(f"started the watcher of {home} for {line}. " + r.stdout[r.stdout.index('Arm a Monitor'):].strip())
 # each thread in stdout joins the one watcher every posting segment it fits leads to; one whose watcher would be a guess joins
 # none, and the agent is told
 found = [(m[1], m[2], f'{m[1]} {m[2]}') if m[1] else ('gitlab.com/' + m[3], m[5], f"gitlab.com/{m[3]} {'!' if m[4] == 'merge_requests' else ''}{m[5]}")  # gh-watch-start's GitLab line
@@ -136,8 +151,10 @@ for repo, num, line in found:
 for repo, line, home in pairs:
     if watched := next((dr for dr in live_dirs if line in lines(dr, 'threads.txt') and not steward.quiet(dr)), None):  # the steward's dirs wake no one on it
         home = watched
-    elif home:
+    elif home and os.path.realpath(home) in map(os.path.realpath, live_dirs):
         open(os.path.join(home, 'threads.txt'), 'a').write(line + '\n')
+    elif home and watcher_on:
+        start(home, line)
     # the thread now covers its repo there: its bare repo line says nothing more
     if home and repo in lines(home, 'repos.txt'):
         p = os.path.join(home, 'repos.txt')
@@ -145,6 +162,8 @@ for repo, line, home in pairs:
         with open(p + '.tmp', 'w') as f:
             f.writelines(keep)
         os.replace(p + '.tmp', p)
+if told:
+    print('post-bash-register: ' + '\n'.join(told), file=sys.stderr)
 if lost:
     why = ("which dir a posting command ran in can't be told (shellcmd.Where: cd to an absolute path first)"
            if any(p[2] is None for p in posts) else "posting commands ran in folders with different watchers, so which one posted these can't be told")
@@ -152,4 +171,4 @@ if lost:
     print(f"post-bash-register: {why}, and they joined no watcher. Add each to the watcher of the work folder its command ran in{f' ({ran})' if ran else ''}: "
           + '; '.join(f"`gh-watch-start <work folder> {' '.join(shlex.quote(x) for x in line.split())}`" for line in lost), file=sys.stderr)
     sys.exit(2)
-sys.exit(0)
+sys.exit(2 if told else 0)
