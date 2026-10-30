@@ -52,10 +52,18 @@ def _ask(session_id, ask, default):
     return _db(run, default)
 
 def queued(tid, text):
-    """True when T3 thread tid holds a message starting with text whose run hasn't started yet."""
-    return _db(lambda c: bool(c.execute(
-        "select 1 from orchestration_v2_projection_runs r join orchestration_v2_projection_messages m on m.message_id = json_extract(r.payload_json, '$.userMessageId') "
-        "where r.thread_id = ? and r.status = 'queued' and substr(json_extract(m.payload_json, '$.text'), 1, ?) = ?", (tid, len(text), text)).fetchone()), False)
+    """The run on T3 thread tid still queued for a message starting with text, or None."""
+    r = _db(lambda c: c.execute(
+        "select r.run_id from orchestration_v2_projection_runs r join orchestration_v2_projection_messages m on m.message_id = json_extract(r.payload_json, '$.userMessageId') "
+        "where r.thread_id = ? and r.status = 'queued' and substr(json_extract(m.payload_json, '$.text'), 1, ?) = ?", (tid, len(text), text)).fetchone(), None)
+    return r and r[0]
+
+def started(run_id):
+    """True once T3 started the run, False while it can still start, None when it ended without starting, is gone or can't be read."""
+    def ask(c):
+        r = c.execute("select status, json_extract(payload_json, '$.startedAt') from orchestration_v2_projection_runs where run_id = ?", (run_id,)).fetchone()
+        return None if not r else True if r[1] else False if r[0] in ACTIVE_RUNS else None
+    return _db(ask, None)
 
 def _in(values):
     return f"({','.join('?' * len(values))})"

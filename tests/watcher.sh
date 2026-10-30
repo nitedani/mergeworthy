@@ -667,13 +667,18 @@ for i in range(1, 6):
     if i == 1:
         queue("w1", open("'"$T"'/t3.log").read().split("\n", 1)[1])
     counts.append(sends())
-c.execute("update orchestration_v2_projection_runs set status = ? where run_id = ?", ("running", "run-w1")); c.commit()
+c.execute("update orchestration_v2_projection_runs set status = ?, payload_json = ? where run_id = ?", ("running", json.dumps({"userMessageId": "w1", "startedAt": "now"}), "run-w1")); c.commit()
 open(log, "a").write("### event 6\n"); m.wake_thread(); counts.append(sends())
+# a wake cancelled before it started: the events it held go with the next pass, though no new one came
+queue("w2", "Watcher events in " + m.HERE + "/events.log (mergeworthy:reply):\n### event 6\n")
+open(log, "a").write("### event 7\n"); m.wake_thread(); counts.append(sends())
+c.execute("update orchestration_v2_projection_runs set status = ? where run_id = ?", ("cancelled", "run-w2")); c.commit()
+m.wake_thread(); counts.append(sends()); m.wake_thread(); counts.append(sends())
 os.remove(os.path.join(m.HERE, "t3-thread")); os.remove(db)
 print(*counts)
 ')
-check "wake_thread: while its wake is queued in T3, 4 more events send nothing (that run reads the log); once it runs, the next event sends, alone" \
-  "1 1 1 1 1 2|t3 thread send thr-q -;Watcher events in $W/events.log (mergeworthy:reply):;### event 1;t3 thread send thr-q -;Watcher events in $W/events.log (mergeworthy:reply):;### event 6;" \
+check "wake_thread: while its wake is queued in T3, 4 more events send nothing (that run reads the log); once it runs, the next event sends, alone; one cancelled before it ran gets its events sent on the next pass, once" \
+  "1 1 1 1 1 2 2 3 3|t3 thread send thr-q -;Watcher events in $W/events.log (mergeworthy:reply):;### event 1;t3 thread send thr-q -;Watcher events in $W/events.log (mergeworthy:reply):;### event 6;t3 thread send thr-q -;Watcher events in $W/events.log (mergeworthy:reply):;### event 7;" \
   "$got|$(tr '\n' ';' < "$T/t3.log")"
 got=$(py '
 log = os.path.join(m.HERE, "events.log"); open(log, "w").write("### cron event\n"); open(os.path.join(m.HERE, "t3-wake.cursor"), "w").write("0\n")

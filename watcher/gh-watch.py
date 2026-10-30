@@ -670,19 +670,38 @@ def wake_thread():
     """Under T3 Code (steward.bind_watcher wrote the main session's thread, then t3's path, to HERE/t3-thread) the event lines events.log got
     since the last pass, from any writer, go to that thread as one message; t3-wake.cursor holds the byte offset sent up to. A failed
     send is retried (False), except when the thread is gone, or the t3 binary on two passes in a row (a `t3 update` relinks it for an
-    instant): then t3-thread goes, and events.log alone keeps the events, as outside T3 Code."""
+    instant): then t3-thread goes, and events.log alone keeps the events, as outside T3 Code. While the thread holds a wake of ours still
+    queued, nothing is sent: t3-wake.held names that run and how far the events it will read go; once it starts, the cursor moves there,
+    and if it ends without starting, the next pass sends them (False until then: the thread hasn't got them)."""
     tid, _, t3 = first_line(os.path.join(HERE, 't3-thread')).partition('\n')
-    cursor = os.path.join(HERE, 't3-wake.cursor')
+    cursor, held = os.path.join(HERE, 't3-wake.cursor'), os.path.join(HERE, 't3-wake.held')
     if not tid:
         return True
     if os.path.exists(t3):
         _t3_missing[0] = None
     elif _t3_missing[0] is None:
         _t3_missing[0] = _ticks[0]
+    def hold(run, upto):
+        with open(held + '.tmp', 'w') as f:
+            f.write(f"{run} {upto}\n")
+        os.replace(held + '.tmp', held)
+        return False
     start, data = unsent()
+    run, _, upto = first_line(held).partition(' ')
+    if run:
+        began = steward.started(run)
+        if began is False:
+            return hold(run, start + len(data))
+        os.remove(held)
+        if began:  # the session read events.log up to upto when that run started
+            with open(cursor, 'w') as f:
+                f.write(f"{max(start, int(upto))}\n")
+            start, data = unsent()
     lines = [l for l in data.decode(errors='replace').splitlines() if (WAKES if steward.quiet(HERE) else EVENT).match(l)]
     head = f"Watcher events in {HERE}/events.log (mergeworthy:reply):\n"
-    if lines and not steward.queued(tid, head):  # a wake still queued reads every event past the session's cursor when it runs
+    if lines and (run := steward.queued(tid, head)):  # that wake reads every event past the session's cursor when it runs
+        return hold(run, start + len(data))
+    if lines:
         msg = head + '\n'.join(lines)
         try:
             r = subprocess.run([t3, 'thread', 'send', tid, '-'], input=msg, capture_output=True, text=True, timeout=60)
