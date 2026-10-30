@@ -1272,9 +1272,8 @@ def poll_feed(url, repo_of, watched, size):
 def moved_thread(repo, i, new):
     """A thread an issue list shows moved. A new one whose body starts with your /agent is an agent command. One of a repo a live dir
     watches whole (`owner/repo all` in repos.txt) that no live dir lists joins that dir's threads.txt, so its scan reports each new
-    comment; a new one is reported there (### NEW ISSUE, ### NEW PR, an owed reply, :eyes:) unless it is the agent's. A new mergeworthy
-    issue is reported to the steward's dir, whichever dir watches the repo first, however it is listed and whoever opened it: a session's
-    report of a fault (rules step 2)."""
+    comment; a new one is reported there (### NEW ISSUE, ### NEW PR, an owed reply, :eyes:) unless it is the agent's. The steward's dir
+    takes a mergeworthy issue only when no other dir watches the repo whole: open_faults reports each to it."""
     num, body, user = i['number'], i.get('body') or '', i.get('user') or {}
     key, dirs = f"{repo}#{num}", live_dirs()
     if new and AGENT_CMD.match(body) and user.get('login') == ME:
@@ -1282,20 +1281,38 @@ def moved_thread(repo, i, new):
     whole = [d for d in dirs if repo_lines(d).get(repo)]
     fault = repo == STEWARD_REPO and 'pull_request' not in i
     s = next((d for d in whole if steward.quiet(d)), None) if fault else None
-    indented = '\n'.join('    ' + l for l in body.splitlines())
-    event = lambda: f"### NEW {'PR' if 'pull_request' in i else 'ISSUE'} {key} by {user.get('login')} {i['created_at']} {i['html_url']}: {i['title']}\n{indented}\n"  # built only for a new thread: a moved one may lack these fields
-    if new and s and claim(f"fault:{i['id']}", record=not ONCE):  # whichever dir saw it first or lists it, an agent's too
-        emit_to(s, event())
     d = next((d for d in whole if not (fault and steward.quiet(d))), s)
     if not d or any(key in listed_threads(x) for x in dirs):
         return
     if not ONCE:
         open(os.path.join(d, 'threads.txt'), 'a').write(f"{repo} {num}\n")
     if new and d != s and not agent_post(user, body, agent_post_hashes()) and claim(f"new:{i['id']}", record=not ONCE):
-        emit_to(d, event())
+        emit_to(d, new_event(key, i))
         if not ONCE and not steward.quiet(d):
             append_owed(f"{key} body {i['id']} by {user.get('login')} {i['html_url']} — {i['title'][:80]}", d)
             react_eyes(repo, 'body', i['id'], num)
+
+
+def new_event(key, i):
+    """The report of a new thread; a moved one may lack these fields. Its body is indented: no line of it passes as an event."""
+    indented = '\n'.join('    ' + l for l in (i.get('body') or '').splitlines())
+    return f"### NEW {'PR' if 'pull_request' in i else 'ISSUE'} {key} by {(i.get('user') or {}).get('login')} {i['created_at']} {i['html_url']}: {i['title']}\n{indented}\n"
+
+
+OPEN_FAULTS = f'repos/{STEWARD_REPO}/issues?state=open&sort=updated&direction=desc&per_page=100'  # a reopened issue comes first: page 1's validator stands for the list
+
+
+def open_faults():
+    """Each open mergeworthy issue goes to the steward's dir once, whenever it was opened and whoever opened it, also one opened while no
+    watcher ran: a session's report of a fault (rules step 2). The open issues are the queue; the fault claim keeps each once."""
+    s = next((d for d in live_dirs() if steward.quiet(d) and repo_lines(d).get(STEWARD_REPO)), None)
+    if not s:
+        return
+    pending = {}
+    for i in paged(OPEN_FAULTS, store=shared_read()['etags'], pending=pending, fresh=ROUND, newest_first=True):
+        if 'pull_request' not in i and claim(f"fault:{i['id']}", record=not ONCE):
+            emit_to(s, new_event(f"{STEWARD_REPO}#{i['number']}", i))
+    shared_update(lambda st: st['etags'].update(pending))
 
 
 def repo_feeds():
@@ -1306,6 +1323,7 @@ def repo_feeds():
     poll_feed(OWN_FEED, lambda i: i['repository']['full_name'], watched, 50)
     for repo in sorted(feed_repos()):
         poll_feed(f"repos/{repo}/issues?state=all&sort=updated&direction=desc&per_page=30", lambda i, repo=repo: repo, watched, 30)
+    open_faults()
 
 
 AGENT_CMD = re.compile(r'\s*/agent\b(?:[ \t]+([\w.-]+))?', re.I)  # a comment that starts with /agent, then maybe a watch dir's name
