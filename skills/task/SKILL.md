@@ -73,7 +73,7 @@ The plugin's options (`/plugin` → mergeworthy → Configure options; an enviro
 - **Feature-scale precedent:** how bigger changes have landed before, with an example.
 - **Running the app:** *Preflight*: one command that checks everything the app needs and prints every failure together, plus install commands for what doesn't need root. *Start*: an isolated copy that disturbs nobody (a compose override with Docker-assigned ports, derived into the work folder when the repo has none), and how to tell it is ready (the HTTP status). *Drive it*: URLs, test accounts, seed data, how to reach the screen an issue is about. *Stop*: how to tear it all down, including after an abort.
 - **Who decides:** who merges PRs and who wrote most of each area, with the link to the repo study.
-- **Docs voice** (`docs` step 1), **Agents** (a model class every agent for this repo uses; a line `Effort: <effort>` sets every launch's effort), **Conventions**, **Maintainer preferences**, **Recurring misses**, **What worked**: each line with the link that shows it (`rules` step 6).
+- **Docs voice** (`docs` step 1), **Agents** (a model class every agent for this repo uses; `Effort: <effort>` sets launches' `effort` (Codex: `reasoningEffort`)), **Conventions**, **Maintainer preferences**, **Recurring misses**, **What worked**: each line with the link that shows it (`rules` step 6).
 
 ### Repo study
 

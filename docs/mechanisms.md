@@ -218,7 +218,7 @@ Read-only commands pass.
 - a fourth agent open at once for the same session (`delegate` step 1): a job is open until `agent-job done` releases it or its agent finished (`agent_jobs.py`); memory-refresh jobs and a brief with a `Fan-out: <finality step 2 or 3, or converge §Running the agents>` line don't count;
 - an implementation, drafter (`thread-context.md`) or fresh-reader (`MERGE AS IS`) brief for a repo whose project file's `## Who decides` links no `<repo>.study.md` with a first line `Studied: <date>` within 30 days (`task` step 4);
 - a brief pinning an older commit of a linked worktree it names, printing `memory.md`'s Ruled out list;
-- a launch whose brief names a project file with a `## Agents` line `Effort: <effort>` and sets another effort, or none (the Agent tool's `effort`, `target.options` or `modelSelection.options` `effort` or `reasoningEffort`), naming the line;
+- a launch whose brief names a project file with a `## Agents` line `Effort: <effort>` (bulleted or not) and sets another effort, or none, naming the line: the Agent tool's `effort`, or in `delegate_task`'s `target.options` or `t3_thread_launch`'s `modelSelection.options`, `effort` for Claude and `reasoningEffort` for Codex;
 - a brief still holding a placeholder of a fenced template in `skills/delegate/` (`<the slice's risky edges>`), naming each and its template; one in backticks there (the agent's output form), the pasted `agent.md`'s and an HTML tag don't count;
 - in a main session's checkout, a research brief (`role: research`, or research in its title) without a `Topic:` line, or whose topic words (all of them in one paragraph) all appear in a file under the work folder not named in a `Checked:` line.
 
