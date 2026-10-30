@@ -513,6 +513,9 @@ grep -o 'maps/[^ ]*' "$T/err" | head -1
 check "the finality block points to the WIP comment, not a restated design" 1 "$(grep -c "update the thread's WIP comment" "$T/err")"
 touch -d '+1 minute' "$AR/maps/o-r-9.md"
 check "the 3rd proposal with a fresh map passes" 0 "$(pguard 3)"
+cp "$AR/drafts/r1/p3.md" "$AR/drafts/r1/p3.md.lint" "$AR/drafts/r1/p3.md.gate" "$T/"; mv "$T/p3.md" "$T/p9.md"; mv "$T/p3.md.lint" "$T/p9.md.lint"; mv "$T/p3.md.gate" "$T/p9.md.gate"; tcbind "$T/p9.md"
+check "BLOCK: a proposal posted from a //path outside any drafts/ folder, for its missing map, without walking up forever" 2 \
+  "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh issue comment 9 --repo o/r --body-file /"+sys.argv[1]},"cwd":sys.argv[2]}))' "$T/p9.md" "$T" | timeout 20 python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?)"
 touch -d '-1 hour' "$AR/maps/o-r-9.md"
 check "BLOCK: a map older than the last proposal" 2 "$(pguard 3)"
 # ---------- post-lint: the badge is icons, then a line break ----------
@@ -1105,6 +1108,10 @@ check "BLOCK: an implementation brief whose session read only an agent's report 
 python3 -c 'import json,sys; print(json.dumps({"type":"assistant","timestamp":sys.argv[1],"message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":sys.argv[2]}}]}}))' "$now" "D=$RD; cd \"\$D\" && sed -n 1,80p src/a.ts" > "$T/tr-var.jsonl"
 python3 -c 'import json,sys; print(json.dumps({"type":"assistant","timestamp":sys.argv[1],"message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":sys.argv[2]}}]}}))' "$now" "D=$RD; git -C \"\$D\" show HEAD:src/a.ts" > "$T/tr-gshow.jsonl"
 check "a read in a checkout named by a variable the command set (cd \"\$D\" && sed, git -C \"\$D\" show) passes too" "0 0" "$(agt "$B" "$T/tr-var.jsonl") $(agt "$B" "$T/tr-gshow.jsonl")"
+# #87: a walk up from '' (a brief's `//`) or from '//' (a `cat //`) ends at the root instead of looping until the hook's timeout
+python3 -c 'import json,sys; [print(json.dumps({"type":"assistant","timestamp":sys.argv[1],"message":{"content":[{"type":"tool_use","name":n,"input":i}]}})) for n, i in (("Read",{"file_path":sys.argv[2]}),("Bash",{"command":"cat //"}))]' "$now" "$RD/src/a.ts" > "$T/tr-root.jsonl"
+check "a brief with a // TODO line, a session that ran cat //, and both (#87), launched outside a checkout, pass in time" "0 0 0" \
+  "$(cd "$T" && ag "$T" $'Review o/r#8 per ~/.mergeworthy/projects/o/r.md\n// TODO' review) $(cd "$T" && agt "$B" "$T/tr-root.jsonl") $(cd "$T" && agt "$B"$'\n// TODO' "$T/tr-root.jsonl")"
 # pre-agent-dedupe: an implementer brief names the approach it builds, the newest record of a checkout it names; the PR's next build a newer one, or says unchanged
 AB="$T/abr"; git init -q "$AB"; git -C "$AB" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; cp "$T/approach.md" "$T/ab1.md"; cp "$T/approach.md" "$T/ab2.md"; (cd "$AB" && bash "$R/bin/pr-steps" approach "$T/ab1.md" >/dev/null)
 abrief() { # task: the launch, then its registration, as Claude Code runs the two hooks

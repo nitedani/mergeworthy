@@ -11,6 +11,7 @@ import failclosed
 import agent_jobs, memory_file, steward, subprocess
 from post_words import fence_spans
 from shellcmd import branch_record, segments, prog, git_argv, rlines, Where
+from work_folder import git_top
 from t3_tasks import under_t3
 register = sys.argv[1:] == ['register']
 d = json.load(sys.stdin)
@@ -108,7 +109,7 @@ if not register:
                              f"delegate_task's target.options `effort` for Claude or `reasoningEffort` for Codex), not "
                              + (f"{effort}.\n" if effort else "the harness's default.\n"))
             sys.exit(2)
-path_set = lambda t: {os.path.expanduser(p.rstrip('/.,:')) for p in re.findall(r'(~?/[^\s`\'"()<>,;]+)', t)}
+path_set = lambda t: {q for p in re.findall(r'(~?/[^\s`\'"()<>,;]+)', t) if (q := os.path.expanduser(p.rstrip('/.,:')))}
 paths = path_set(gate_text)
 # A brief names a worktree in its launch text or its brief file (a ticket it says to follow, or named so), not in a reference it names
 # or an installed skill (~/.mergeworthy/current may link to a worktree of mergeworthy)
@@ -138,10 +139,8 @@ if not register:
 # it doesn't work in), not the launcher's own, nor that of a T3 task that completed and won't be woken again (a review round's last agent).
 if not register:
     def linked(p):
-        while p != '/':
-            if os.path.exists(os.path.join(p, '.git')):
-                return p if os.path.isfile(os.path.join(p, '.git')) else None
-            p = os.path.dirname(p)
+        top = git_top(p)
+        return top if top and os.path.isfile(os.path.join(top, '.git')) else None
     own = linked(os.path.realpath(d.get('cwd') or '/'))
     wts = sorted({w for w in (linked(os.path.realpath(p)) for p in worktree_paths) if w and w != own})
     anc, p = set(), os.getpid()
@@ -183,9 +182,8 @@ if not register and ti.get('role') not in ('research', 'test') and 'memory-refre
     tops = set()
     for p in paths if notes else ():
         if p.startswith('//'): continue  # the //host/… of a URL, not a path
-        while p != '/' and not os.path.exists(os.path.join(p, '.git')): p = os.path.dirname(p)
-        tops.add(p)
-    for top in tops - {'/'}:
+        tops.add(git_top(p))
+    for top in tops - {None}:
         url = subprocess.run(['git', '-C', top, 'remote', 'get-url', 'origin'], capture_output=True, text=True).stdout.strip()
         m = re.search(r'[:/]([\w.-]+/[\w.-]+?)(?:\.git)?$', url)
         named |= {m.group(1).lower()} & set(notes) if m else set()
@@ -207,9 +205,8 @@ if not register and ti.get('role') not in ('research', 'test') and 'memory-refre
     if ti.get('role') == 'implementation' and named and d.get('transcript_path') and os.path.isfile(d['transcript_path']):
         origin = {}
         def repo_of(p):
-            top = p if os.path.isdir(p) else os.path.dirname(p)
-            while top not in ('/', '') and not os.path.exists(os.path.join(top, '.git')): top = os.path.dirname(top)
-            if top in ('/', ''): return '', top
+            top = git_top(p)
+            if not top: return '', top
             if top not in origin:
                 u = subprocess.run(['git', '-C', top, 'remote', 'get-url', 'origin'], capture_output=True, text=True).stdout.strip()
                 m = re.search(r'[:/]([\w.-]+/[\w.-]+?)(?:\.git)?$', u); origin[top] = m.group(1).lower() if m else ''
@@ -292,8 +289,7 @@ def brief_approach():
         sys.exit(2)
     named, recs = os.path.realpath(os.path.expanduser(m[1])), set()
     for p in (p for p in path_set(exec_text) if not p.startswith('//')):  # the //host/… of a URL, not a path
-        while p not in ('/', '') and not os.path.exists(os.path.join(p, '.git')): p = os.path.dirname(p)
-        if p not in ('/', '') and (r := branch_record(p, 'approach')) and os.path.isfile(r): recs.add(r)
+        if (top := git_top(p)) and (r := branch_record(top, 'approach')) and os.path.isfile(r): recs.add(r)
     for r in sorted(recs):
         rows = [l.split() for l in open(r) if len(l.split()) >= 3]
         if rows and os.path.realpath(rows[-1][1]) == named:

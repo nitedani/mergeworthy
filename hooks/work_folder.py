@@ -18,6 +18,20 @@ def git(repo, *args, **kw):
                           env={**os.environ, 'GIT_NO_LAZY_FETCH': '1'}, **kw)
 
 
+def ancestors(path):
+    """path made absolute, then each folder above it, the root last: a walk up that ends on any input, '//' too (its own parent)."""
+    p = os.path.abspath(path)
+    while True:
+        yield p
+        if (up := os.path.dirname(p)) == p: return
+        p = up
+
+
+def git_top(path):
+    """The nearest folder at or above path holding a .git (a checkout's top), or None."""
+    return next((p for p in ancestors(path) if os.path.exists(os.path.join(p, '.git'))), None)
+
+
 def of(path):
     """The work folder holding path: its ancestor directly under ROOT, else None."""
     p, root = os.path.realpath(path), os.path.realpath(ROOT)
@@ -28,14 +42,13 @@ def task_of(path):
     """The task's work folder holding path: ~/.mergeworthy/work/<task>/; before that layout, the nearest <name>-work/ above it, or
     the <prefix>-work/ beside the checkout it is in (`fu185-work/` beside `fu185-gps-fix/`); None when there is none."""
     if wf := of(path): return wf
-    home, p = os.path.realpath(os.path.expanduser('~')), os.path.realpath(os.path.expanduser(path))
-    while p not in (home, '/'):
+    home = os.path.realpath(os.path.expanduser('~'))
+    for p in ancestors(os.path.realpath(os.path.expanduser(path))):
+        if p in (home, '/'): return None
         if p.endswith('-work') and os.path.isdir(p): return p
         name = os.path.basename(p)
         for i in [len(name)] + [m.start() for m in re.finditer('-', name)][::-1]:
             if os.path.isdir(beside := os.path.join(os.path.dirname(p), name[:i] + '-work')): return beside
-        p = os.path.dirname(p)
-    return None
 
 
 def watched_by(dirs, session_id, path):

@@ -25,9 +25,7 @@ def branch_record(d, kind, branch=None):
 
 def folder(path):
     """path when it is a folder, else its nearest existing parent (a new file's folder may not exist yet)."""
-    path = os.path.realpath(path)
-    while not os.path.isdir(path): path = os.path.dirname(path)
-    return path
+    return next(p for p in work_folder.ancestors(os.path.realpath(path)) if os.path.isdir(p))
 
 
 def waits_for(path, kind):
