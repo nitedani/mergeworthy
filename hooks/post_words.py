@@ -5,7 +5,8 @@ import os, re
 ISO = r'\d{4}-\d\d-\d\dT\d\d:\d\d(?::\d\d(?:\.\d+)?)?Z'  # an ISO time in UTC, the date included
 _act = r'(?!(?:see|gett|find|notic|observ|hitt)ing\b)\w+'  # not an observation verb: "I'm seeing …" reports a result, not what is being done
 # The first-person present forms a Hungarian status sentence opens with (I, we; definite, indefinite), with the verbal prefixes they take
-# (Átnézem, Kijavítom, Letöltöm): a closed list, so any other opener (Látom, Javítottam, Sikeresek a tesztek) goes through the review.
+# (Átnézem, Kijavítom, Letöltöm): a closed list, so a sentence opening any other way (Látom, Javítottam, Sikeresek a tesztek) goes through
+# the review unless it holds the deadline.
 _HU_FORMS = """
     nézem nézek nézzük nézünk  tekintem tekintek tekintjük tekintünk  vizsgálom vizsgálok vizsgáljuk vizsgálunk
     ellenőrzöm ellenőrzök ellenőrizzük ellenőrzünk  javítom javítok javítjuk javítunk  módosítom módosítok módosítjuk módosítunk
