@@ -415,7 +415,7 @@ def git_head(d):
 NOT_CODE = re.compile(r'(^|/)(tests?|__tests__|e2e|specs?|docs?)/|\.(test|spec)\.|\.md$|lock\.(json|yaml)$|\.lock$|(^|/)\.changeset/')
 def check_patches(d, pending=None, amend=False):
     """`finality` step 1 as a mechanism: a code file (no test or doc) changed by 5 commits of the branch since its first review
-    (a verify, small, shape, reverify or fresh record) gets no 6th until `pr-steps simplify` records on the head (delegate/simplify.md);
+    (a verify, small, shape, reverify or fresh record) gets no 6th until `pr-steps finality` records the finality pass's plan on the head;
     a commit with that record, HEAD too, starts the counts over after it. Building before any review counts nothing. Only the
     branch's own commits count (first parent): a merge commit, made or being made, is no change, nor are the commits it brings in.
     pending: the files the commit being made changes; None for a push, which checks the commits alone. amend: it replaces HEAD."""
@@ -430,12 +430,12 @@ def check_patches(d, pending=None, amend=False):
         for f in files if reviewed else []:
             count[f] = count.get(f, 0) + 1
         steps = {l.split()[0] for l in open(RECORDS + c) if l.split()} if os.path.exists(RECORDS + c) else set()
-        if 'simplify' in steps or not reviewed and steps & {'verify', 'small', 'shape', 'reverify', 'fresh'}: count, reviewed = {}, True
+        if 'finality' in steps or not reviewed and steps & {'verify', 'small', 'shape', 'reverify', 'fresh'}: count, reviewed = {}, True
     for f in (pending or []) if reviewed else []: count[f] = count.get(f, 0) + 1
     if over := [f for f in (count if pending is None else pending) if count.get(f, 0) > 5 and not NOT_CODE.search(f)]:
-        block(f"{', '.join(over)} {'got' if pending is None else 'would get'} a {count[over[0]]}th change on this branch: patch after patch in one place is drift (`finality` step 1). "
-              "A fresh agent by delegate/simplify.md names the class the changes share and replaces them with one smaller shape, or shows each is needed; "
-              "record it with `pr-steps simplify <its report>` on this head first")
+        block(f"{', '.join(over)} {'got' if pending is None else 'would get'} a {count[over[0]]}th change on this branch: patch after patch in one place is drift. "
+              "Run the finality pass (mergeworthy:finality steps 2-3) on it and record its plan with `pr-steps finality <the plan>` on this head "
+              "before Phase C's commits")
 
 def repo_of(url):
     """(host, repo path) of a remote URL in each form git takes (scheme://[user@]host[:port]/path, [user@]host:path); an ssh host
