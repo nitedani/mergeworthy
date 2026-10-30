@@ -154,6 +154,18 @@ print("\n".join(out), file=sys.stderr)
 check "comment bodies: lines starting ### / body lines all indented" "1 True" "$got"
 sed 's/^/  | /' "$T/event"
 
+# a comment whose updated_at moves with its body unchanged (an award on a GitLab note) is no edit; a changed body is
+got=$(py '
+m.ONCE = True
+state, out = {"seen": {"note:8": "2026-10-05T00:00:00Z", "note:9": "2026-10-05T00:00:00Z"}}, []
+for nid, upd, body in ((8, "2026-10-05T00:00:00Z", "Hi"), (9, "2026-10-05T00:01:00Z", "Hi"), (9, "2026-10-05T00:02:00Z", "Hi"), (9, "2026-10-05T00:03:00Z", "Hi, and the empty list?")):
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf): m.handle_comment(state, "gitlab.com/a/b", "gitlab.com/a/b!1", "note", nid, upd, "alice", "<url>", body)
+    out.append(buf.getvalue().count("### gitlab.com/a/b!1 note"))
+print(*out)
+')
+check "a note seen before the body hash, unmoved: nothing; moved: edited, as it can't be told; moved again with its body unchanged: nothing; its body changed: edited" "0 1 0 1" "$got"
+
 # a comment in the steward's folder is only logged: no :eyes:, no owed reply; the same comment in an ordinary dir gets both
 got=$(py '
 m.ONCE = False
