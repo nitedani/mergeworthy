@@ -3,7 +3,12 @@ its project file (~/.mergeworthy/projects/<owner>/<repo>.md); without one, or wi
 import os, re
 
 ISO = r'\d{4}-\d\d-\d\dT\d\d:\d\d(?::\d\d(?:\.\d+)?)?Z'  # an ISO time in UTC, the date included
-_act = r"(?!(?:see|gett|find|notic|observ|hitt)ing\b)\w+"  # a word that isn't an observation: "I'm seeing …" reports a result
+def _not(seen):
+    """Not one of a language's observation verbs: "I'm seeing …", "Látom …" report a result, not what is being done."""
+    return rf"(?!(?:{seen})\b)"
+
+_SEEN = {'en': r'(?:see|gett|find|notic|observ|hitt)ing', 'hu': r'(?:lát|kap|talál|észrev|megfigyel|tapasztal|belefut)\w*'}
+_act = _not(_SEEN['en']) + r'\w+'
 
 WORDS = {
     'en': {
@@ -39,8 +44,8 @@ WORDS = {
         'status': {
             'by': rf'\b({ISO})(?:-ig\b|\s+előtt\b)', 'by_example': '2026-10-28T16:00Z-ig',
             'on_it': ('Rajta vagyok',), 'then': ('Most', 'Majd', 'Aztán', 'Utána', 'Ezután', 'Közben'),
-            # a first-person present verb (Átnézem, Dolgozom, Írok, Mergeljük), not a past one (Javítottam, Néztünk) or Nem, Szerintem
-            'act': r"(?!nem\b)\w*(?:(?<!t)[eö]m|om|[oeö]k|j[uü]k|(?<!t)[uü]nk)\b", 'act_example': "'Átnézem …', 'Mergelem …'",
+            # a first-person present verb (Átnézem, Dolgozom, Írok, Mergeljük), not a past one (Javítottam, Néztünk), an observation (Látom) or Nem, Szerintem
+            'act': _not('nem|' + _SEEN['hu']) + r"\w*(?:(?<!t)[eö]m|om|[oeö]k|j[uü]k|(?<!t)[uü]nk)\b", 'act_example': "'Átnézem …', 'Mergelem …'",
             'relative': r'\b(?:holnap\w*|ma este|később)\b|\b(?:egy|fél|pár|néhány|\d+)\s+(?:órá?|perc|nap)\w*\s+(?:múlva|belül)\b',
             'claim': r'\b\d+(?:\.\d+)?\s*(?:teszt|fájl|sor|hívás)\w*|\b(?:javíto?tt\w*|javítva|működ\w*|átm(?:ent|egy)\w*|elbuk\w*|hib\w*|reprodukált\w*|ellenőriz(?:tem|tük|ve)|megerősített\w*|okoz(?:za|ta)|regresszió\w*|mert|mivel)\b',
         },
