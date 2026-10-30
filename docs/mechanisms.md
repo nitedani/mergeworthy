@@ -211,6 +211,7 @@ It blocks an action until every skill its always-on row names was opened with th
 Read-only commands pass.
 
 **`pre-agent-dedupe`** registers launches that ran by ticket and title and blocks duplicate jobs (`delegate` step 1). A `clientRequestId` may retry within ten minutes; later reuse is blocked. It also blocks:
+- under T3 Code (`T3CODE_THREAD_ID` set), an `Agent` or `Task` launch without `run_in_background: false`: T3 starts a new session each turn, which ends the background agent, so its message names `delegate_task`;
 - a brief with any role but `research` or `test` that names a repo (`owner/repo`, its URL or a path in its checkout) but not its existing `~/.mergeworthy/projects/<owner>/<repo>.md`;
 - an `implementation` brief for such a repo that doesn't name `skills/code/SKILL.md`, and a brief that reads a `thread-context.md` but doesn't name `skills/writing/SKILL.md`;
 - a brief naming a linked worktree (not the launcher's own), in its launch text or the brief file it follows, that a process has as its cwd or an agent transcript written in the last five minutes names, unless T3's state shows that transcript's task completed, with no run of it queued or running and no task it started still running;

@@ -6,6 +6,7 @@
 set -u
 R=$(readlink -f "${1:-$(dirname "$0")/..}")
 export MERGEWORTHY_PYDEPS=${MERGEWORTHY_PYDEPS:-$HOME/.mergeworthy/pydeps}  # the shell parser the hooks run, installed once outside the temp HOME
+unset T3CODE_THREAD_ID  # a run from a T3 session tests the same hooks as one outside it; the T3 cases set it
 T=$(mktemp -d); export HOME="$T/home"; mkdir -p "$HOME/.claude" "$T/bin" "$T/fx"
 cat > "$T/bin/gh" <<'EOF'
 #!/usr/bin/env bash
@@ -902,6 +903,10 @@ rnd() { # clientRequestId task [role]
 agent_rnd() { # description prompt
   python3 -c 'import json,sys; print(json.dumps({"tool_name":"Agent","tool_input":{"description":sys.argv[1],"prompt":sys.argv[2]}}))' "$1" "$2" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; echo $?; }
 check "a review launch at any round, or naming none, passes: rounds aren't capped, the loop stops when a round finds only nits" "0 0 0" "$(rnd loop-a-r7 'Follow /tmp/x/rr.md') $(rnd loop-a 'Follow /tmp/x/rr.md') $(agent_rnd fresh-r5 'Review it. Final message: exactly CLEAN, or the findings.')"
+bg() { # [run_in_background]: an Agent launch's exit code, with T3CODE_THREAD_ID as the caller has it
+  python3 -c 'import json,sys; t={"description":"bg","prompt":"Execute /tmp/x/bg.md"}; t.update({"run_in_background":json.loads(sys.argv[1])} if sys.argv[1:] else {}); print(json.dumps({"tool_name":"Agent","tool_input":t}))' "$@" | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
+check "BLOCK: under T3 an Agent in the background, by default or asked, naming delegate_task; in the foreground it passes" "2 1 2 0" "$(T3CODE_THREAD_ID=th bg) $(grep -c delegate_task "$T/err") $(T3CODE_THREAD_ID=th bg true) $(T3CODE_THREAD_ID=th bg false)"
+check "outside T3 an Agent passes, in the background or not" "0 0 0" "$(bg) $(bg true) $(bg false)"
 J="$HOME/.claude/agent-jobs"; mkdir -p "$J"
 printf '{"key": "/x/a.md /x/shared.md", "started": 1}' > "$J/aj1.json"; printf '{"key": "/x/b.md /x/shared.md", "started": 2}' > "$J/aj2.json"
 check "agent-job done with a path two jobs hold releases neither" "1 2" "$(python3 "$R/bin/agent-job" done /x/shared.md >/dev/null 2>&1; echo $? $(ls "$J"/aj*.json | wc -l))"
@@ -2001,20 +2006,16 @@ check "none, because with its reason records" 0 "$(pf 'none, because it only cha
 check "an edit passes after it, with the branch's approach" 0 "$( (cd "$P" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null); pfedit "$P/a.ts")"
 check "preflight's Chrome runs muted and without the WSLg audio server" "2 2" "$( (cd "$P" && PULSE_SERVER=unix:/mnt/wslg/PulseServer FAKE_LOG="$T/chrome.log" CHROME="$T/bin/fakechrome" FAKE_DOM='<html><body>app</body></html>' bash "$R/bin/pr-steps" preflight https://app.test >/dev/null 2>&1); grep -c -- '--mute-audio' "$T/chrome.log") $(grep -c '^pulse=unset ' "$T/chrome.log")"
 # ---------- under T3 Code, Codex starts through delegate_task, not a shell ----------
-# the hook's nearest `claude` ancestor is the session; T3 starts it with its MCP server in --mcp-config
-cx() { # <mcp config> <command>: the guard run under a claude process given that config
-  (exec -a claude "$(python3 -c 'import sys; print(sys.executable)')" -c 'import json, subprocess, sys
-r = subprocess.run(["python3", sys.argv[4]], input=json.dumps({"tool_input": {"command": sys.argv[3]}, "cwd": sys.argv[5]}), capture_output=True, text=True)
-print(r.returncode)' --mcp-config "$1" "$2" "$R/hooks/pre-bash-guard.py" "$T")
-}
-T3CFG='{"mcpServers":{"t3-code":{"type":"http","url":"http://127.0.0.1:3774/mcp"}}}'
-check "BLOCK: codex exec under T3" 2 "$(cx "$T3CFG" 'codex exec -m m -o /tmp/o "$(cat /tmp/p)" < /dev/null')"
-check "BLOCK: codex exec resume under T3" 2 "$(cx "$T3CFG" 'codex exec resume -c sandbox_mode=x abc "more"')"
-check "BLOCK: codex exec through bash -c under T3" 2 "$(cx "$T3CFG" "bash -lc 'cd /tmp && FOO=1 codex exec hi'")"
-check "BLOCK: codex exec inside \$(...) under T3" 2 "$(cx "$T3CFG" 'out=$(codex exec hi)')"
-check "codex exec without T3 (a terminal session) passes" 0 "$(cx '{"mcpServers":{}}' 'codex exec -m m hi')"
-check "codex exec through bash -c without T3 passes" 0 "$(cx '{"mcpServers":{}}' "bash -c 'codex exec hi'")"
-check "codex login under T3 passes" 0 "$(cx "$T3CFG" 'codex login status')"
+cx() { # <T3CODE_THREAD_ID, empty outside T3> <command>: the guard's exit code
+  python3 -c 'import json,sys; print(json.dumps({"tool_input": {"command": sys.argv[1]}, "cwd": sys.argv[2]}))' "$2" "$T" \
+    | env ${1:+T3CODE_THREAD_ID=$1} python3 "$R/hooks/pre-bash-guard.py" >/dev/null 2>&1; echo $?; }
+check "BLOCK: codex exec under T3" 2 "$(cx th 'codex exec -m m -o /tmp/o "$(cat /tmp/p)" < /dev/null')"
+check "BLOCK: codex exec resume under T3" 2 "$(cx th 'codex exec resume -c sandbox_mode=x abc "more"')"
+check "BLOCK: codex exec through bash -c under T3" 2 "$(cx th "bash -lc 'cd /tmp && FOO=1 codex exec hi'")"
+check "BLOCK: codex exec inside \$(...) under T3" 2 "$(cx th 'out=$(codex exec hi)')"
+check "codex exec without T3 (a terminal session) passes" 0 "$(cx '' 'codex exec -m m hi')"
+check "codex exec through bash -c without T3 passes" 0 "$(cx '' "bash -c 'codex exec hi'")"
+check "codex login under T3 passes" 0 "$(cx th 'codex login status')"
 # ---------- pre-design-gate: Tier M code waits for prior-art.md and decisions/*.md ----------
 D="$T/dg"; mkdir -p "$D" "$D-work"; git -C "$D" init -q
 (cd "$D" && bash "$R/bin/pr-steps" preflight 'none, because the design gate is tested here' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
