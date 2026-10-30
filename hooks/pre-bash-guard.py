@@ -834,7 +834,7 @@ def check(t, has_cd):
             own['CLOSED_THREADS'].append(f"{t_} closed")
     if p == 'gh' and a and a[0] == 'api':
         rest = a[1:]
-        method, ep, fields, inputs, posts = api_call(rest)
+        method, ep, fields, inputs, posts = api_call(rest, run_dir)
         if not posts:
             return
         if re.search(r'\{(owner|repo)\}', ep) and (here := gh_repo(rest, env, run_dir)):  # what gh fills them from

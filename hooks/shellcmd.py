@@ -378,9 +378,30 @@ def opt(t, names):
             elif not n.startswith('--') and a.startswith(n) and len(a) > len(n): vals.append(a[len(n):])
     return vals
 
-def api_call(rest):
+NO_TEXT = re.compile(r'(?:repos/[^/]+/[^/]+/(?:.+/)?(?:reactions|rerun[\w-]*|dispatches|labels|assignees|requested_reviewers)(?:/[^/]+)?'
+                     r'|repos/[^/]+/[^/]+/(?:collaborators|invitations)/[^/]+|user/repository_invitations/\d+)')
+
+def graphql_posts(fields, inputs, cwd):
+    """A GraphQL call posts text when its query, literal or read from a file (relative to cwd, the dir the command runs in), is a mutation other than
+    adding or removing a reaction."""
+    queries = [v for v in fields if not v.startswith('query=@')]
+    try:
+        path = lambda f: os.path.join(cwd or '', os.path.expanduser(f)) if cwd or os.path.isabs(os.path.expanduser(f)) else None
+        queries += [open(path(v[len('query=@'):])).read() for v in fields if v.startswith('query=@')]
+        queries += [str(json.load(open(path(f))).get('query', '')) for f in inputs]  # --input is a JSON request body
+    except (OSError, ValueError, AttributeError, TypeError):
+        return True  # stdin, an unreadable file or a body that isn't a JSON object: treated as a post
+    for q in queries:
+        if re.search(r'\bmutation\b', q):
+            names = re.findall(r'\b([a-z]\w*)\s*\(\s*input\s*:', q)
+            if not names or any(n not in ('addReaction', 'removeReaction') for n in names):
+                return True
+    return False
+
+def api_call(rest, cwd=None):
     """(method, endpoint, fields, inputs, posts) of `gh api <rest>`. It posts text when it is a GraphQL mutation, or a POST,
-    PATCH or PUT that isn't a reaction, rerun, dispatch, label, assignee or review request."""
+    PATCH or PUT that isn't a reaction, rerun, dispatch, label, assignee, review request, collaborator or invitation. cwd: where the command
+    runs, for the files a GraphQL query is read from; None when unknown, so a relative file counts as a post."""
     method = (opt(rest, ['-X', '--method']) or [''])[-1].upper()
     fields = opt(rest, ['-f', '--raw-field', '-F', '--field'])
     inputs = opt(rest, ['--input'])
@@ -389,9 +410,9 @@ def api_call(rest):
            ('-X', '--method', '-f', '--raw-field', '-F', '--field', '--input', '-H', '--header', '-q', '--jq', '-t', '--template', '--hostname', '--cache', '-p', '--preview'))]
     ep = pos[0] if pos else ''
     if ep == 'graphql':
-        posts = any(re.search(r'\bmutation\b', v) and re.search(r'\b(?!(?:add|remove)Reaction\b)[a-z]\w*\s*\(input:', v) for v in fields)  # a reaction posts no text
+        posts = graphql_posts(fields, inputs, cwd)
     else:
-        posts = method in ('POST', 'PATCH', 'PUT') and not re.search(r'/(reactions|rerun[\w-]*|dispatches|labels|assignees|requested_reviewers)(/|$|\?)', ep)
+        posts = method in ('POST', 'PATCH', 'PUT') and not NO_TEXT.fullmatch(re.sub(r'^(?:https?://[^/]+)?/?(?:api/v3/)?', '', ep).split('?')[0])
     return method, ep, fields, inputs, posts
 
 def new_post_drafts(t):
