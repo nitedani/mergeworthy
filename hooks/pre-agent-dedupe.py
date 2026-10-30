@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import failclosed
 import agent_jobs, memory_file, steward, subprocess
 from post_words import fence_spans
-from shellcmd import segments, prog, git_argv, Where
+from shellcmd import branch_record, segments, prog, git_argv, Where
 register = sys.argv[1:] == ['register']
 d = json.load(sys.stdin)
 ti = d.get('tool_input', {}) or {}
@@ -251,6 +251,39 @@ if not register and ti.get('role') not in ('research', 'test') and 'memory-refre
         sys.stderr.write("BLOCKED: a drafter brief carries the template's scope-word check: paste "
                          "~/.mergeworthy/current/skills/delegate/drafter.md, filled in (mergeworthy:delegate step 3)\n")
         sys.exit(2)
+# pull-request step 5 is the build's input: an implementer brief names `Approach: <path>`, the newest approach record of a checkout it names
+# (pr-steps approach). A later build of that record's PR names a newer record, or the same one marked `(unchanged: <why>)`.
+BUILT = os.path.expanduser('~/.claude/approach-builds')  # per approach record: the time of the record the PR's last build was briefed on
+def brief_approach():
+    """(record file, its newest line's time, the unchanged reason or '') of an implementer brief's Approach line; blocks when it has none."""
+    m = re.search(r'^[ \t>*-]*Approach:\s*(\S+\.md)(?:\s+\(unchanged:\s*([^)]*\S)\s*\))?\s*$', gate_text, re.M)
+    if not m:
+        sys.stderr.write("BLOCKED: an implementer brief names the approach it builds (mergeworthy:pull-request step 5, delegate/implementer.md): "
+                         "a line `Approach: <abs path of approach.md>`, recorded first by `pr-steps approach` in the PR branch's checkout the brief names\n")
+        sys.exit(2)
+    named, recs = os.path.realpath(os.path.expanduser(m[1])), set()
+    for p in (p for p in paths if not p.startswith('//')):  # the //host/… of a URL, not a path
+        while p not in ('/', '') and not os.path.exists(os.path.join(p, '.git')): p = os.path.dirname(p)
+        if p not in ('/', '') and (r := branch_record(p, 'approach')) and os.path.isfile(r): recs.add(r)
+    for r in sorted(recs):
+        rows = [l.split() for l in open(r) if len(l.split()) >= 3]
+        if rows and os.path.realpath(rows[-1][1]) == named:
+            return r, rows[-1][2], m[2] or ''
+    sys.stderr.write(f"BLOCKED: {m[1]} is not the newest `pr-steps approach` record of a checkout this brief names: record it in the PR branch's "
+                     "checkout (mergeworthy:pull-request step 5) and name that checkout in the brief\n")
+    sys.exit(2)
+approach = brief_approach() if ti.get('role') == 'implementation' or re.search(r'^\s*You implement\b', gate_text, re.M) else None
+if approach and not register and not approach[2]:
+    built = os.path.join(BUILT, os.path.basename(approach[0]))
+    last = open(built).read().strip() if os.path.isfile(built) else ''
+    if last >= approach[1]:
+        sys.stderr.write(f"BLOCKED: this PR's last build was briefed on the approach recorded {last}, and this brief names no newer one. A changed "
+                         "approach is rated and recorded first (mergeworthy:pull-request step 5); the same approach says so: "
+                         "`Approach: <path> (unchanged: <why, in one line>)`\n")
+        sys.exit(2)
+if approach and register:
+    os.makedirs(BUILT, exist_ok=True)
+    open(os.path.join(BUILT, os.path.basename(approach[0])), 'w').write(approach[1])
 # Research the program already wrote up (memory.md, the notes) is read, not redone.
 root = None if register else memory_file.for_cwd(d.get('cwd') or '')
 if root and (ti.get('role') == 'research' or re.search(r'\bresearch', f"{ti.get('title') or ''} {ti.get('description') or ''}", re.I)):

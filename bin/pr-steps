@@ -24,17 +24,17 @@ read_standards() {
 step=${1:?usage: pr-steps <preflight|approach|small|quick|verify|shape|reverify|fresh|gates|simplify> <output-file>}; out=${2:?output file}
 case "$step" in preflight|approach|small|quick|verify|shape|loopb|refactor|reverify|fresh|gates|simplify) ;; review) step=fresh ;;
   *) echo "step must be preflight, approach, small, quick, verify, shape, reverify, fresh, gates or simplify" >&2; exit 1;; esac
-# preflight and approach: one record per repo and branch; the hooks compute the same key
-key=$(printf '%s\n%s' "$(realpath "$(git rev-parse --git-common-dir)")" "$(git symbolic-ref --short -q HEAD || echo HEAD)" | sha256sum | cut -c1-40)
+# preflight and approach: one record per repo and branch, the path the hooks read (hooks/shellcmd.py branch_record)
 mkdir -p ~/.claude/pr-steps
+approach=$(python3 "$(dirname "$(realpath "$0")")/../hooks/shellcmd.py" approach)
 # A branch whose latest approach record has no `contract: 2` field was started by a session on v1's skills (before the shape
 # pass and the maintainer's fresh read): it finishes under that contract (loopb and refactor, a fresh report without a Maintainer line).
-old_pipeline() { [ -s ~/.claude/pr-steps/approach."$key" ] && ! tail -n1 ~/.claude/pr-steps/approach."$key" | grep -q ' contract: 2$'; }
+old_pipeline() { [ -s "$approach" ] && ! tail -n1 "$approach" | grep -q ' contract: 2$'; }
 case "$step" in loopb|refactor) old_pipeline || { echo "pr-steps shape replaces loopb and refactor: record Loop B's shape report (mergeworthy:converge step 2). Only a branch whose approach a session on v1's skills recorded (no contract: 2) still records them." >&2; exit 1; };; esac
 # pr-steps preflight <app URL> [Chrome flags] | <PNG the session's browser MCP took just now> | 'none, because <why>':
 # before any code, the app runs and browser control loads it (pull-request, Check you can finish before you start)
 if [ "$step" = preflight ]; then
-  shift; proof=~/.claude/pr-steps/preflight."$key".png
+  shift; preflight=$(python3 "$(dirname "$(realpath "$0")")/../hooks/shellcmd.py" preflight); proof=$preflight.png
   case "$out" in
     "none, because "?*) proof=$out ;;
     http://*|https://*)
@@ -52,8 +52,26 @@ sys.exit("main-frame-error" in d or not re.sub(r"<[^>]*>|\s", "", re.sub(r"(?is)
     *) echo "usage: pr-steps preflight <app URL> [Chrome flags], or <absolute path of a PNG the session's browser MCP just took of the app>, or 'none, because <why there is no UI or browser-run code>'" >&2; exit 1 ;;
   esac
   case "$proof" in none,*) ;; *) [ "$(head -c8 "$proof" 2>/dev/null | od -An -tx1 | tr -d ' \n')" = 89504e470d0a1a0a ] || { echo "$proof is not a PNG" >&2; exit 1; } ;; esac
-  echo "preflight $proof $(date -u +%FT%TZ)" >> ~/.claude/pr-steps/preflight."$key"
+  echo "preflight $proof $(date -u +%FT%TZ)" >> "$preflight"
   echo "recorded preflight for branch $(git symbolic-ref --short -q HEAD || echo HEAD): $proof"
+  exit 0
+fi
+if [ "$step" = approach ]; then
+  chosen=$(sed -n 's/^[[:space:]]*Chosen:[[:space:]]*//p' "$out" | head -n1 | sed 's/[[:space:]]*$//')
+  [ -n "$chosen" ] || { echo "$out has no line 'Chosen: <candidate>'" >&2; exit 1; }
+  grep -Eq '^[[:space:]*>-]*Root cause:[*]*[[:space:]]+(none, .+|.*[A-Za-z0-9_-]*[/.][A-Za-z0-9_./-]*:[0-9]+)' "$out" || { echo "$out has no line 'Root cause: <why it happens, with the path:line that does it>' ('Root cause: none, <what it is>' for a feature or a reshape): rate candidates only once the cause is found, and one of them stops it there (pull-request step 5)" >&2; exit 1; }
+  # candidates: table rows `| name | rating 0-10 | why |`; the header and separator rows have no numeric rating
+  rows=$(awk -F'|' '/^[[:space:]]*\|/ { for (i=1;i<=NF;i++) gsub(/^[[:space:]]+|[[:space:]]+$/,"",$i); if ($3 ~ /^([0-9]|10)(\/10)?$/ && $2 != "" && $4 != "") { sub(/\/10$/,"",$3); print tolower($2) "\t" $3 } }' "$out")
+  [ "$(printf '%s' "$rows" | grep -c .)" -ge 2 ] || { echo "$out lists fewer than two rated candidates: a table '| Candidate | Rating | Why |' with each candidate, not building it included, rated 0-10 with its reason" >&2; exit 1; }
+  rating=$(printf '%s\n' "$rows" | awk -F'\t' -v c="$(printf '%s' "$chosen" | tr 'A-Z' 'a-z')" '$1==c {print $2; exit}')
+  [ -n "$rating" ] || { echo "Chosen '$chosen' is not a row of the candidates table" >&2; exit 1; }
+  [ "$rating" -ge 7 ] || { echo "the chosen approach is rated $rating: 6 or below is not ready to build (pull-request step 5); find a better candidate or stop" >&2; exit 1; }
+  grep -Eq '^[[:space:]*>-]*Shared assumption:[*]*[[:space:]]+[^[:space:]]+[[:space:]]+[^[:space:]]+' "$out" || { echo "$out has no line 'Shared assumption: <what every other candidate takes for granted>', which one candidate drops (pull-request §Rating)" >&2; exit 1; }
+  # the contract is the one this session's loaded skills follow (session-start's record): a session on v1's catalog, or one
+  # with no record, still records loopb and refactor, so its branch gets no `contract: 2`
+  catalog=$(cut -d' ' -f2 ~/.mergeworthy/sessions/"$(basename "${CLAUDE_CODE_SESSION_ID:-none}")" 2>/dev/null || true)
+  echo "approach $(realpath "$out") $(date -u +%FT%TZ)$([ "$catalog" = graph ] && echo ' contract: 2')" >> "$approach"
+  echo "recorded approach for branch $(git symbolic-ref --short -q HEAD || echo HEAD)"
   exit 0
 fi
 [ -s "$out" ] || { echo "$out is empty: run the step and save its output" >&2; exit 1; }
@@ -62,7 +80,7 @@ sha=$(git rev-parse HEAD)
 built='(^|/)dist/'  # a committed build bundle: not code a reviewer reads
 # pr-steps small <report>: a fix of at most 60 lines outside tests, docs, lockfiles and dist/, with a test in the diff (a diff of docs
 # alone: a commit's Cold-read trailer, rules step 4), reviewed once by delegate/small-review.md, stands for verify, shape,
-# reverify, fresh and the approach (converge §Small fix); gates still run
+# reverify and fresh (converge §Small fix); gates still run
 if [ "$step" = small ]; then
   pb=$(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || true)  # a stacked PR is measured against its own base
   base=$(git merge-base HEAD "${pb:+origin/$pb}" 2>/dev/null || git merge-base HEAD "$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)" 2>/dev/null) || { echo "no merge-base with the base branch" >&2; exit 1; }
@@ -80,26 +98,7 @@ if [ "$step" = small ]; then
   [ "$(grep -v '^[[:space:]]*$' "$out" | tail -n2 | tr '\n' '|')" = 'NO BUGS|MERGE AS IS: yes|' ] || [ "$verdict" = 'NO BUGS|MERGE AS IS: yes|' ] || { echo "$out does not end with NO BUGS and MERGE AS IS: yes: fix what it found and send the same reviewer a new round checking that fix" >&2; exit 1; }
   grep -qsF " $(realpath "$out") " ~/.claude/pr-steps/"$sha" && { echo "$out is already recorded for $sha" >&2; exit 1; }
   for k in verify shape reverify fresh; do echo "$k $(realpath "$out") $(date -u +%FT%TZ)" >> ~/.claude/pr-steps/"$sha"; done
-  catalog=$(cut -d' ' -f2 ~/.mergeworthy/sessions/"$(basename "${CLAUDE_CODE_SESSION_ID:-none}")" 2>/dev/null || true)
-  [ -s ~/.claude/pr-steps/approach."$key" ] || echo "approach $(realpath "$out") $(date -u +%FT%TZ)$([ "$catalog" = graph ] && echo ' contract: 2')" >> ~/.claude/pr-steps/approach."$key"
   echo "recorded small fix ($n lines) for $sha: verify, shape, reverify, fresh; run the gates next"
-  exit 0
-fi
-if [ "$step" = approach ]; then
-  chosen=$(sed -n 's/^[[:space:]]*Chosen:[[:space:]]*//p' "$out" | head -n1 | sed 's/[[:space:]]*$//')
-  [ -n "$chosen" ] || { echo "$out has no line 'Chosen: <candidate>'" >&2; exit 1; }
-  grep -Eq '^[[:space:]*>-]*Root cause:[*]*[[:space:]]+(none, .+|.*[A-Za-z0-9_-]*[/.][A-Za-z0-9_./-]*:[0-9]+)' "$out" || { echo "$out has no line 'Root cause: <why it happens, with the path:line that does it>' ('Root cause: none, <what it is>' for a feature or a reshape): rate candidates only once the cause is found, and one of them stops it there (pull-request step 5)" >&2; exit 1; }
-  # candidates: table rows `| name | rating 0-10 | why |`; the header and separator rows have no numeric rating
-  rows=$(awk -F'|' '/^[[:space:]]*\|/ { for (i=1;i<=NF;i++) gsub(/^[[:space:]]+|[[:space:]]+$/,"",$i); if ($3 ~ /^([0-9]|10)(\/10)?$/ && $2 != "" && $4 != "") { sub(/\/10$/,"",$3); print tolower($2) "\t" $3 } }' "$out")
-  [ "$(printf '%s' "$rows" | grep -c .)" -ge 2 ] || { echo "$out lists fewer than two rated candidates: a table '| Candidate | Rating | Why |' with each candidate, not building it included, rated 0-10 with its reason" >&2; exit 1; }
-  rating=$(printf '%s\n' "$rows" | awk -F'\t' -v c="$(printf '%s' "$chosen" | tr 'A-Z' 'a-z')" '$1==c {print $2; exit}')
-  [ -n "$rating" ] || { echo "Chosen '$chosen' is not a row of the candidates table" >&2; exit 1; }
-  [ "$rating" -ge 7 ] || { echo "the chosen approach is rated $rating: 6 or below is not ready to build (pull-request step 5); find a better candidate or stop" >&2; exit 1; }
-  # the contract is the one this session's loaded skills follow (session-start's record): a session on v1's catalog, or one
-  # with no record, still records loopb and refactor, so its branch gets no `contract: 2`
-  catalog=$(cut -d' ' -f2 ~/.mergeworthy/sessions/"$(basename "${CLAUDE_CODE_SESSION_ID:-none}")" 2>/dev/null || true)
-  echo "approach $(realpath "$out") $(date -u +%FT%TZ)$([ "$catalog" = graph ] && echo ' contract: 2')" >> ~/.claude/pr-steps/approach."$key"
-  echo "recorded approach for branch $(git symbolic-ref --short -q HEAD || echo HEAD)"
   exit 0
 fi
 # A shape record is the pass's lists (the ✅ coverage list and old ⇒ new ratings) ending CLEAN, or a small follow-up that
