@@ -46,7 +46,7 @@ Taking over a PR: your own PR, from your fork, supersedes theirs.
 - **Rate as the code's owner, for all its users:** fixing a bug they all share is not a cost.
 - **Leave the frame:** invert it, or delete what everyone treats as immovable. For someone else's library or API, generate the candidates as `finality` step 3 does. When a dependency causes the bug, one candidate stops it at its source, citing the line in that dependency's code that allows it; stopping a behavior ranks above undoing it after the fact.
 - **Shared assumptions count once:** candidates resting on one unspoken assumption are one.
-- **Siblings decide the scope.** Before choosing, check the same failure in the mechanism's other cases (the other methods, statuses, adapters, runtimes; `delegate/agent.md` §Code search). One that fails the same way, in the same mechanism and files, with the title still true, is part of this fix. One that spreads to other modules or needs its own decision gets its own PR, opened now.
+- **Siblings decide the scope.** Before choosing, check the same failure in the mechanism's other cases (the other methods, statuses, adapters, runtimes; `delegate/agent.md` §Code search). One that fails the same way, in the same mechanism and files, with the title still true, is part of this fix. One that spreads to other modules or needs its own decision gets its `task §Dispositions`.
 
 ### Body
 

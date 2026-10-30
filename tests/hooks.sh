@@ -541,6 +541,8 @@ check "post-lint flags a semicolon joining two steps in prose; one inside code p
 printf "Nothing's blocking you, correct? So let's postpone this.\n" > "$T/ack.parent.md"; printf '@brillout Correct, nothing is blocking me, so postponing is good.\n' > "$T/ack.md"; printf '@brillout One thing changed since: the fix needs your field after all, because the meta reads it.\n' > "$T/ack2.md"; cp "$T/ack.parent.md" "$T/ack2.parent.md"
 check "post-lint: agreeing with a short comment is a 👍, not a reply; news for them passes" "1 0" "$(MERGEWORTHY_BADGE=off python3 "$R/bin/post-lint" "$T/ack.md" --kind reply 2>/dev/null | grep -c 'only agrees') $(MERGEWORTHY_BADGE=off python3 "$R/bin/post-lint" "$T/ack2.md" --kind reply 2>/dev/null | grep -c 'only agrees')"
 check "naming what it waits on passes" 0 "$(qlint $'I\'ll switch the adapters once vikejs/vike#3594 is released.\n')"
+printf 'Fixed in abc1234. The router has the same race on main, a separate issue and out of scope here, so this PR leaves it alone.\n' > "$T/sf.md"; printf 'The router fix is left for later.\n' > "$T/sf2.md"
+check "post-lint: a reply noting a self-found defect without a PR passes; promised work left for later is a deferral" "0 1" "$(MERGEWORTHY_BADGE=off python3 "$R/bin/post-lint" "$T/sf.md" --kind reply --parent none >/dev/null 2>&1; echo $?) $(MERGEWORTHY_BADGE=off python3 "$R/bin/post-lint" "$T/sf2.md" --kind reply --parent none 2>&1 | grep -c 'deferral')"
 
 # ---------- gate-pass: a reply in a repo whose maintainers asked to see mergeworthy's changes links them ----------
 S="$T/mwsrc"; git init -q "$S"; for m in one two three; do git -C "$S" -c user.name=t -c user.email=t@t commit -q --allow-empty -m "$m"; done
@@ -1718,6 +1720,8 @@ check "BLOCK: a dropped candidate whose reason is 'not a regression', quoting it
 printf 'slice 1\n## Tried and dropped\n- **abort leaks a listener**: Not a regression, main does the same\nRULED: abort leaks a listener: not a regression, main does the same\nNO BUGS\n' > "$T/vr4.md"; std "$T/vr4.md"
 printf 'slice 1\n## Tried and dropped\n- **abort leaks a listener**: Not a regression, main does the same\nRULED: abort leaks a listener: not a regression, and only a staged race reaches it (code Earn every line)\nNO BUGS\n' > "$T/vr5.md"; std "$T/vr5.md"
 check "BLOCK: a RULED line whose only reason is that main does the same; one citing Earn every line records" "1 1 0" "$(prs verify "$T/vr4.md") $(cd "$G" && bash "$R/bin/pr-steps" verify "$T/vr4.md" 2>&1 | grep -c 'is not a ruling') $(prs verify "$T/vr5.md")"
+printf 'slice 1\n## Tried and dropped\n- **abort leaks a listener**: Not a regression, main does the same\nRULED: abort leaks a listener: not a regression, main does the same, a self-found defect for the report\nNO BUGS\n' > "$T/vr4s.md"; std "$T/vr4s.md"
+check "a RULED line calling a main-too defect self-found records" 0 "$(prs verify "$T/vr4s.md")"
 printf 'slice 1\n## Tried and dropped\n- `D=~/cfg` (tilde.sh): a nit.\n  - **Why a nit:** both fail closed, and it is rare.\nRULED: `D=~/cfg` (tilde.sh): a nit, no realistic usage (code Earn every line)\nNO BUGS\n' > "$T/vr6.md"; std "$T/vr6.md"
 check "a dropped item's sub-bullet reason is ruled under the item's name, not its label" 0 "$(prs verify "$T/vr6.md")"
 printf 'slice 1\n## Dropped\nNone. No newly reproduced candidate downgraded as rare or preexisting.\nNO BUGS\n' > "$T/vr7.md"; std "$T/vr7.md"

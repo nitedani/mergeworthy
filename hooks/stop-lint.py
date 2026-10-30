@@ -460,7 +460,7 @@ def checkin_due():
     return True
 if (os.environ.get('MERGEWORTHY_STOP_CHECKIN', 'on') != 'off' and may_wait and not child and not active
         and not re.search(r'^GENUINE-FORK:.*\Z', last.rstrip(), re.M) and checkin_due()):
-    print("Before you stop, check once, unless the user asked you to stop or pause: is there work you said is next, or that the "
+    print("Before you stop, check once, unless the user asked you to stop or pause: is there work the user asked for, or that the "
           "critical path needs, that you could start now? Is anything waiting on you (a reply owed, red CI, a finished agent's result "
           "to read, a dependency that landed)? If so, do it now, or brief a subagent for it. Otherwise end the turn without writing "
           "anything: the user already has your answer.",
