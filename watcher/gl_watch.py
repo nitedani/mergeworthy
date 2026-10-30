@@ -53,14 +53,15 @@ def maintainer(state, proj, uid):
     return cache[k][0] >= DEVELOPER
 
 
-def award_eyes(base, nid, emit):
+def award_eyes(base, nid, fail, worked, project):
     try:
         api(f"{base}/notes/{nid}/award_emoji", '--method', 'POST', '-f', 'name=eyes')
     except Exception as e:
-        emit(f"WATCH ERROR eyes {base} note {nid}: {e}")
+        return fail(f"eyes {project}", e, f"{base} note {nid}")
+    worked(f"eyes {project}")
 
 
-def read(state, t, key, proj, kind, iid, report, emit, agent_post, own_change, first):
+def read(state, t, key, proj, kind, iid, report, emit, fail, worked, agent_post, own_change, first):
     base = f"projects/{proj}/{kind}/{iid}"
     th = api(base)
     me = state.get('gl_me') or state.setdefault('gl_me', api('user')['username'])
@@ -94,11 +95,12 @@ def read(state, t, key, proj, kind, iid, report, emit, agent_post, own_change, f
             notes.append((n['id'], upd, who, body))
     for nid, upd, who, body in reversed(notes):  # oldest first, as they were written
         report(state, key, key, 'note', nid, upd, who, f"{th['web_url']}#note_{nid}", body,
-               react=lambda _key, _kind, cid: award_eyes(base, cid, emit))
+               react=lambda _key, _kind, cid: award_eyes(base, cid, fail, worked, re.split('[#!]', key)[0]))
 
 
-def scan(state, threads, report, emit, agent_post, own_change, every, since=None):
-    """Read each GitLab thread that is due. report: gh-watch's handle_comment; agent_post(body): a gated post of the agent's; own_change(key, was, now): 'done' or 'pending' when the change is the agent's own push;
+def scan(state, threads, report, emit, fail, worked, agent_post, own_change, every, since=None):
+    """Read each GitLab thread that is due. report: gh-watch's handle_comment; fail(what, error, detail) and worked(what): its record of
+    failing calls (gh-watch-failing.json); agent_post(body): a gated post of the agent's; own_change(key, was, now): 'done' or 'pending' when the change is the agent's own push;
     every: gh-watch's seconds between looks by 'open' and 'closed'; since: a --round's start (ROUND_SINCE): every thread is read
     now, and one never read before back to it, as the round reads GitHub's."""
     gl, now = state.setdefault('gl', {}), time.time()
@@ -107,12 +109,13 @@ def scan(state, threads, report, emit, agent_post, own_change, every, since=None
         if now < t.get('next', 0) and not since:
             continue
         try:
-            read(state, t, key, urllib.parse.quote(proj, safe=''), kind, iid, report, emit, agent_post, own_change, since or state['since'])
+            read(state, t, key, urllib.parse.quote(proj, safe=''), kind, iid, report, emit, fail, worked, agent_post, own_change, since or state['since'])
         except Exception as e:
-            emit(f"WATCH ERROR {key}: {e}")
+            fail(key, e)
             t['next'] = now + 300
             continue
         t['since'] = iso(now)
+        worked(key)
         t['next'] = now + (every['closed'] if t['state'] != 'open' else RECENT_EVERY if now - t['upd'] < 86400 else every['open'])
 
 

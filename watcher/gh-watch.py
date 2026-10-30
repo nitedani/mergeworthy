@@ -26,7 +26,9 @@
 - Every request is counted, 304 answers too (tally; `gh-watch.py --stats` prints the rate, and once an hour a line goes to gh-watch-stats.log).
 - On Linux, main_dir's daemon starts bin/disk-sweep --delete at most once an hour, in the background (sweep_disk).
 State lives in gh-watch-state.json: every seen comment's updated_at and body hash, so nothing is skipped or repeated,
-and scans overlap by 10 minutes. A failed API call prints WATCH ERROR and that thread's scan position isn't advanced.
+and scans overlap by 10 minutes. A failed API call is a note, and a WATCH ERROR once that call has failed 3 times in a row, the first 30 minutes
+ago or more (fail; the count is in gh-watch-failing.json, shared by every process reading the dir); a failed thread read doesn't
+advance that thread's scan position.
 """
 import contextlib, datetime, fcntl, hashlib, http.client, json, os, re, subprocess, sys, threading, time, urllib.parse
 from concurrent.futures import ThreadPoolExecutor
@@ -346,12 +348,96 @@ def run_gh(argv):
     return r
 
 
-def fail(what, e):
-    """`WATCH ERROR` for a failed call, except when the pause stopped it: that is announced once (announce_pause)."""
+WAKE_FAILURES, WAKE_SPAN = 3, 1800  # a call wakes the session once it failed this many times in a row, the first this long ago: a run of failures, not a blip
+SUBJECT = re.compile(r'(?:^|\s)(gitlab\.com(?:/[\w.-]+)+|[\w.-]+/[\w.-]+)([#!]\d+)?')  # a key's repo, the first word with a /, and its thread
+UNLISTED = ('agent search hit ', 'agent command event ')  # keys naming threads found through your activity, which no watch list names
+_failing_seen = [None, set()]  # the failing file's (inode, mtime, size) when this process last read or wrote it, and its keys then
+
+
+@contextlib.contextmanager
+def failing_calls():
+    """{what: {first, last, n, woke}}: the watch dir's failing calls, in gh-watch-failing.json beside the state, read and written
+    under its own lock: every process reading the dir (its daemon, a --round, the shared jobs and wake_thread outside the state's
+    lock) adds to one count, and a success in any of them starts it over. A record goes on worked(), or once the thread or repo
+    its key names (SUBJECT) is no longer watched; one naming neither, or UNLISTED, stays until its call succeeds."""
+    fd = os.open(os.path.join(os.path.dirname(STATE), 'gh-watch-failing.json'), os.O_RDWR | os.O_CREAT, 0o644)
+    with os.fdopen(fd, 'r+') as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        try:
+            calls = json.loads(f.read() or '{}')
+        except ValueError:
+            calls = {}
+        before = json.dumps(calls, sort_keys=True)
+        yield calls
+        threads, repos = watched() if calls else (set(), set())
+        for what in [w for w in calls if (m := SUBJECT.search(w)) and not w.startswith(UNLISTED)
+                     and (m[0].strip() not in threads if m[2] else m[1] not in repos)]:  # what it names is no longer watched
+            del calls[what]
+        after = json.dumps(calls, sort_keys=True)
+        if after != before and not ONCE:
+            f.seek(0)
+            f.truncate()
+            f.write(after)
+            f.flush()
+        st = os.fstat(f.fileno())
+        _failing_seen[:] = [(st.st_ino, st.st_mtime_ns, st.st_size), set(calls)]
+
+
+def fail(what, e, detail=''):
+    """A failed call. what: the operation and what it reads, the same on every try (a thread, a repo's comment list, the umbrella
+    issue; a repo only for one-shot items such as :eyes: on its comments), passed to worked() right after that operation's own
+    call succeeds, never on a return that skipped it;
+    detail: this try's part (a comment, a commit range). A `note:` line, and `WATCH ERROR` once `what` has failed WAKE_FAILURES
+    times with no success between, the first WAKE_SPAN ago, then at most once an hour; at once in a --round, whose exit status
+    reports it. None when the pause stopped it: that is announced once (announce_pause). What needs a person whoever retries it
+    (a bad threads.txt line, the login check, a dropped T3 thread) calls emit() with its WATCH ERROR instead."""
     global ERRED
     ERRED = True
-    if not isinstance(e, Budget):
-        emit(f"WATCH ERROR {what}: {e}")
+    if isinstance(e, Budget):
+        return
+    about = f" ({detail})" if detail else ''
+    if ROUND:
+        return emit(f"WATCH ERROR {what}{about}: {e}")
+    now = time.time()
+    with failing_calls() as calls:
+        rec = calls.setdefault(what, {'first': now, 'n': 0, 'woke': 0})
+        rec['last'], rec['n'] = now, rec['n'] + 1
+        wake = rec['n'] >= WAKE_FAILURES and now - rec['first'] >= WAKE_SPAN and now - rec['woke'] >= 3600
+        if wake:
+            rec['woke'] = now
+    if wake:
+        emit(f"WATCH ERROR {what}: failed {rec['n']} times in a row since {iso(rec['first'])}{about}: {e}")
+    else:
+        emit(f"note: {what} failed{about}: {e}")
+
+
+def watched():
+    """(threads, repos) that every live watch dir and this one read: threads.txt, the PRs waiting-on.txt waits on, repos.txt, the
+    umbrella issue, and the repos of those threads. The machine-wide jobs record in the dir whose daemon runs them, about threads
+    other dirs list, so all of them count."""
+    here, threads, repos = os.path.dirname(STATE), set(), set()
+    for d in dict.fromkeys(live_dirs() + [here]):
+        threads |= {f"{r}{n}" if n.startswith('!') else f"{r}#{n}" for r, n in threads_file.read(os.path.join(d, 'threads.txt'))[0]}
+        threads |= {key for _, key in waiting_keys(d)}
+        with contextlib.suppress(OSError):
+            repos |= {w[0] for w in (l.split('#', 1)[0].split() for l in open(os.path.join(d, 'repos.txt'))) if w}
+    with contextlib.suppress(OSError):
+        if len(w := open(os.path.join(here, 'umbrella.txt')).read().split()) >= 2:
+            threads.add(f"{w[0]}#{w[1]}")
+    return threads, repos | {re.split('[#!]', t)[0] for t in threads}
+
+
+def worked(what):
+    """The call fail() names `what` succeeded: its failures start over. Reads the file only when it changed since this process
+    last saw it or held `what` then: most successes follow none."""
+    try:
+        st = os.stat(os.path.join(os.path.dirname(STATE), 'gh-watch-failing.json'))
+    except FileNotFoundError:
+        return
+    if _failing_seen[0] == (st.st_ino, st.st_mtime_ns, st.st_size) and what not in _failing_seen[1]:
+        return
+    with failing_calls() as calls:
+        calls.pop(what, None)
 
 
 def stable_since(since):
@@ -733,8 +819,9 @@ def wake_thread():
             _t3_missing[0] = None
             return True
         if err:
-            emit(f"WATCH ERROR t3 thread send {tid}: {err[:200]}")
+            fail(f"t3 thread send {tid}", err[:200])
             return False
+        worked(f"t3 thread send {tid}")
     if first_line(cursor) != str(start + len(data)):
         with open(cursor + '.tmp', 'w') as f:
             f.write(f"{start + len(data)}\n")
@@ -772,8 +859,9 @@ def emit_tracker_stale(key, ended):
     try:
         body = request(f"repos/{w[0]}/issues/{w[1]}").json()['body'] or ''
     except Exception as e:
-        fail(f"tracker check {key}", e)
+        fail(f"tracker check {w[0]}#{w[1]}", e, key)
         return
+    worked(f"tracker check {w[0]}#{w[1]}")
     repo, num = key.split('#')
     ref = re.compile(rf'(?<![\w/.-])(?:{re.escape(repo)}#|{"#" if repo == w[0] else "(?!)"}){num}(?!\d)')
     items = [l for l in body.splitlines() if re.match(r'\s*- \[[ x]\] ', l) and ref.search(l)]
@@ -793,22 +881,29 @@ def emit_maintainer_commits(state, repo, key, old, new):
         commits = [{'sha': c['sha'][:10], 'login': (c.get('author') or {}).get('login') or '', 'date': c['commit']['committer']['date'], 'agent': bool(AGENT_TRAILER.search(c['commit'].get('message') or ''))}
                    for c in request(f"repos/{repo}/compare/{old}...{new}").json()['commits']]
     except Exception as e:
-        fail(f"compare {key} {old}...{new}", e)
+        fail(f"compare {key}", e, f"{old}...{new}")
         return False
     try:  # commits that came from merging the base branch aren't the PR's
         base = request(f"repos/{repo}/pulls/{key.split('#')[1]}").json()['base']['ref']
         on_pr = {c['sha'][:10] for c in request(f"repos/{repo}/compare/{base}...{new}").json()['commits']}
     except Exception as e:
-        fail(f"compare {key} base...{new}", e)
+        fail(f"compare {key}", e, f"base...{new}")
         return False
+    worked(f"compare {key}")
     for c in commits:
         if c['sha'] in on_pr:
             note_active(state, {'login': c['login']}, c['date'])
-    try:
-        theirs = [c['sha'] for c in commits if c['sha'] in on_pr and c['login'] not in ('', ME) and not c['agent'] and not is_bot(c) and maintainer(state, repo, c['login'])]
-    except Exception as e:
-        fail(f"permission {key}", e)
-        return False
+    theirs = []
+    for c in commits:
+        if c['sha'] not in on_pr or c['login'] in ('', ME) or c['agent'] or is_bot(c):
+            continue
+        try:
+            if maintainer(state, repo, c['login']):
+                theirs.append(c['sha'])
+        except Exception as e:
+            fail(f"permission {repo} {c['login']}", e, key)
+            return False
+        worked(f"permission {repo} {c['login']}")
     if theirs:
         if (s := steward.recipient([])) and s[0] != HERE.rstrip('/') and not ONCE:  # a copy for the steward's follow-up sort
             emit_to(s[0], f"### MAINTAINER COMMITS {key}: {' '.join(theirs)}")
@@ -822,7 +917,7 @@ def emit_refactor_stale(repo, key, new):
     num = key.split('#')[1]
     try:
         pr = request(f"repos/{repo}/pulls/{num}").json()
-        if pr['user']['login'] != ME: return
+        if pr['user']['login'] != ME: return worked(f"shape check {key}")  # no shape pass to keep up with: checked
         commits = [{'sha': c['sha'], 'merge': len(c['parents']) > 1} for c in request(f"repos/{repo}/compare/{pr['base']['ref']}...{new}").json()['commits']]
         rec = os.path.expanduser('~/.claude/pr-steps')
         idx = max((i for i, c in enumerate(commits) if os.path.exists(f"{rec}/{c['sha']}") and any(l.startswith(('shape ', 'refactor ')) for l in open(f"{rec}/{c['sha']}"))), default=-1)
@@ -832,6 +927,7 @@ def emit_refactor_stale(repo, key, new):
     except Exception as e:
         fail(f"shape check {key}", e)
         return
+    worked(f"shape check {key}")
     if lines > 80:
         last = commits[idx]['sha'][:10] if idx >= 0 else 'never'
         emit(f"### SHAPE STALE {key}: {lines} changed lines since the last shape pass ({last}): re-run it on the whole PR diff (mergeworthy:converge step 2), then `pr-steps shape`")
@@ -874,8 +970,9 @@ def scan_reactions(state, threads):
             except Exception as e:
                 if path == 'issues':
                     clean = False
-                    fail(f"reactions {repo}#{num}", e)
+                    fail(f"reactions {repo}#{num} {kind} list", e)
                 continue  # an issue has no review comments
+            worked(f"reactions {repo}#{num} {kind} list")
             got.append((kind, path, comments))
             for c in comments:
                 note_assoc(state, repo, c.get('user'), c.get('author_association'))
@@ -894,8 +991,9 @@ def scan_reactions(state, threads):
                     reactions = paged(f"{url}?per_page=100", etags, pending)
                 except Exception as e:
                     clean = False
-                    fail(f"reactions {sk}", e)
+                    fail(f"reactions {repo}#{num} {sk}", e)
                     continue
+                worked(f"reactions {repo}#{num} {sk}")
                 for r in reactions:
                     who, content = r['user']['login'], r['content']
                     if content not in ('+1', '-1') or is_bot(r['user']) or f"{who}:{content}" in seen.get(sk, []):
@@ -906,6 +1004,7 @@ def scan_reactions(state, threads):
                         clean = False
                         fail(f"permission {repo} {who}", e)
                         continue
+                    worked(f"permission {repo} {who}")
                     seen.setdefault(sk, []).append(f"{who}:{content}")
                     if theirs is False or before_seed(r.get('created_at') or ''):
                         continue
@@ -924,7 +1023,9 @@ def react_eyes(repo, kind, cid, num=None):
     try:
         request(path, 'POST', ['-f', 'content=eyes'])
     except Exception as e:
-        fail(f"eyes {repo} {kind} {cid}", e)
+        fail(f"eyes {repo}", e, f"{kind} {cid}")
+        return
+    worked(f"eyes {repo}")
 
 
 def fetch_thread(repo, num, since, is_pr_known, author_known, prev_pr, etags, mode='full', upd_known=True):
@@ -1144,6 +1245,7 @@ def scan(state, jobs):
             pings.append((key, last, events))
             s = sched.setdefault(key, {'full': 0})
             s['act'] = a
+            worked(key)
             if full:
                 s['full'] = now
             read.append((repo, num, full))
@@ -1404,7 +1506,8 @@ def claim(sk, record=True):
 def agent_command(repo, num, kind, c):
     """Your comment, or a new issue's or PR's body (kind 'body'), starting with /agent on a thread no live watch dir lists (a listed
     thread's own scan reports it) goes to one dir's events.log, once: `/agent <name>` to the dir of that name, else the dir that lists
-    a thread this one links to or is linked from, else a dir watching its repo whole, else main_dir (UNROUTED). You and the agent post as one account: a gated post is not a command."""
+    a thread this one links to or is linked from, else a dir watching its repo whole, else main_dir (UNROUTED). You and the agent post as one account: a gated post is not a command.
+    -> True once it routed the command; None when there was nothing to route (not a command, listed, claimed already)."""
     key, body, cid = f"{repo}#{num}", c.get('body') or '', c.get('id')
     sk = f"{kind}:{cid}"
     if not cid or not AGENT_CMD.match(body) or (c.get('user') or {}).get('login', ME) != ME or _norm(body) in agent_post_hashes() \
@@ -1426,6 +1529,7 @@ def agent_command(repo, num, kind, c):
         react_eyes(repo, kind, cid, num)
     with open(os.path.join(target, 'events.log'), 'a') as f:  # last: the event wakes that session, which finds the rest in place
         f.write(event)
+    return True
 
 
 def watched_repos():
@@ -1459,6 +1563,7 @@ def discover_agent_commands():
                 for c in paged(f"repos/{repo}/{path}/comments?since={day}&sort=updated&direction=desc&per_page=100", etags, pending, newest_first=True, until=old):
                     agent_command(repo, (c.get('issue_url') or c.get('pull_request_url') or '').rsplit('/', 1)[-1], kind, c)
             shared_update(lambda s: (s['etags'].update(pending), s['disc'].__setitem__(repo, iso_epoch(started))))
+            worked(f"agent commands {repo}")
         except (Budget, PassSpent):
             raise
         except Exception as e:
@@ -1476,6 +1581,7 @@ def discover_agent_commands():
                 if not found.next():
                     break
                 found = request(found.next())
+            worked("agent command search")
             for i in items:
                 repo, num = i['repository_url'].split('/repos/')[-1], i['number']
                 if repo in repos:
@@ -1486,11 +1592,12 @@ def discover_agent_commands():
                         found += [('review-comment', c) for c in paged(f"repos/{repo}/pulls/{num}/comments?since={day}&per_page=100", etags, pending)]
                     for kind, c in found:
                         agent_command(repo, num, kind, c)
+                    worked(f"agent search hit {repo}#{num}")
                 except (Budget, PassSpent):
                     raise
                 except Exception as e:
                     ok = False
-                    fail(f"agent commands {repo}#{num}", e)
+                    fail(f"agent search hit {repo}#{num}", e)
             if ok:
                 shared_update(lambda s: (s['etags'].update(pending), s['disc'].__setitem__('search', iso_epoch(started))))
         except (Budget, PassSpent):
@@ -1510,9 +1617,12 @@ def ai_call_elsewhere(state, repo, num, etype, c):
     if AGENT_CMD.match(body):  # routed to the right dir, from any daemon
         kind = 'review-comment' if etype == 'PullRequestReviewCommentEvent' else 'comment'
         try:
-            agent_command(repo, num, kind, {**c, 'user': c.get('user') or {'login': ME}})
+            routed = agent_command(repo, num, kind, {**c, 'user': c.get('user') or {'login': ME}})
         except Exception as e:
-            emit(f"WATCH ERROR agent command {key}: {e}")
+            fail(f"agent command event {repo}", e, f"#{num} comment {c['id']}")  # one try per comment, as :eyes:
+        else:
+            if routed:
+                worked(f"agent command event {repo}")
         return
     if main_dir() != HERE:
         return
@@ -1722,6 +1832,7 @@ def follow_ups():
         except Exception as e:
             fail(f"follow-up record {key}", e)
             continue
+        worked(f"follow-up record {key}")
         shared_update(lambda s: s['followups'].__setitem__(key, record))
     fu = shared_read()['followups']
     groups = {}
@@ -1781,11 +1892,12 @@ def follow_ups():
                 pending.update(tpending)
                 e['scanned'] = bk['started']
             done = True
+            worked(f"follow-up {gk}")
         except (Budget, PassSpent):
             raise
         except Exception as ex:
             if not moved:
-                fail(f"follow-up {repo}", ex)
+                fail(f"follow-up {gk}", ex)
         finally:
             for e in entries.values():
                 e['checked'] = now  # done or not, the group goes to the back of the line: a long backlog doesn't hold up the other repos
@@ -1851,6 +1963,8 @@ def shared_pass(force=False):
                 return
             except Exception as e:
                 fail(name, e)
+            else:
+                worked(name)
             finally:
                 _pass['left'] = None
 
@@ -2013,7 +2127,7 @@ def scan_gitlab():
     if threads:
         with locked():
             state = load_state()
-            gl_watch.scan(state, threads, handle_comment, emit, lambda body: _norm(body) in agent_post_hashes(), own_change, CHECK, ROUND_SINCE)
+            gl_watch.scan(state, threads, handle_comment, emit, fail, worked, lambda body: _norm(body) in agent_post_hashes(), own_change, CHECK, ROUND_SINCE)
             save_state(state)
 
 
