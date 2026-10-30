@@ -4,19 +4,17 @@ session and transcript) and whether each one's agent has finished. T3's notices 
 and was revived, or that wrote its report without a final message, so the agent's own transcript decides: the earliest-started
 one under ~/.claude/projects or ~/.codex/sessions that started at or after the launch and whose first prompt carries the job's
 whole task (or, for a job an older hook registered with only its key and start, every ticket path in the key). pre-agent-dedupe
-lets no two open jobs share a task, so that names the agent's own; a transcript carrying another open job's longer task that holds
-this one's is that job's, and a claim is kept in CLAIMS, so a sibling's release never hands its transcript to another job.
+lets no open job's task contain another's, so that names the agent's own.
 It has finished when that transcript has been quiet for QUIET
 seconds with no tool call pending, or for LONG seconds whatever it was doing (no foreground tool call runs ten minutes),
 while T3 Code shows no active run or background command of its thread and no agent it launched is still at work."""
-import datetime, fcntl, glob, hashlib, itertools, json, os, re, sys, time
+import datetime, glob, hashlib, itertools, json, os, re, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import steward
 
 JOBS = os.path.expanduser('~/.claude/agent-jobs')
 REPORTED = os.path.expanduser('~/.claude/agent-jobs-reported')  # <job file>-<transcript mtime>: reported once per finish
 LAUNCHED = os.path.expanduser('~/.claude/agent-jobs-launch')  # <job file>: the time pre-agent-dedupe let its launch through
-CLAIMS = os.path.expanduser('~/.claude/agent-jobs-claims')  # <claim time>\t<job id>\t<transcript>, one line per claim
 LAUNCH = re.compile(rb'"name": ?"(Agent|Task|mcp__[^"]*(delegate_task|t3_thread_launch))"')  # pre-agent-dedupe's matcher
 QUIET, LONG, OPEN = 180, 660, 24 * 3600
 CODEX = '~/.codex/sessions/*/*/*/rollout-*.jsonl'  # T3 Code's Codex agents  # OPEN: pre-agent-dedupe's window, after which a job no longer counts
@@ -76,37 +74,22 @@ def job_id(job):
 
 _hit = {}
 def transcript(job):
-    """The agent's transcript, the one claimed for the job (CLAIMS); None until it starts."""
+    """The agent's transcript; None until it starts."""
     ns, jid = needles(job), job_id(job)
     if not ns: return None
     if os.path.exists(_hit.get(jid) or '/nonexistent'):
         return _hit[jid]
-    os.makedirs(os.path.dirname(CLAIMS), exist_ok=True)
-    with open(CLAIMS, 'a+') as fh:
-        fcntl.flock(fh, fcntl.LOCK_EX)  # every hook and watcher claims through this file, one at a time
-        fh.seek(0)
-        lines = fh.readlines()
-        rows = [l.rstrip('\n').split('\t') for l in lines if l.count('\t') == 2 and time.time() - float(l.split('\t')[0]) < 2 * OPEN]
-        if len(rows) < len(lines):  # a claim is kept two days, a day past the longest its job stays open (OPEN)
-            fh.truncate(0); fh.writelines('\t'.join(r) + '\n' for r in rows)
-        owner = {r[1]: r[2] for r in rows}
-        if jid not in owner:
-            wider = [w for w in (needles(j) for _, j in jobs()) if w != ns and '\n'.join(ns) in '\n'.join(w)]
-            root, taken, found = os.path.expanduser('~/.claude/projects'), set(owner.values()), []
-            for p in glob.glob(f'{root}/*/*.jsonl') + glob.glob(f'{root}/*/*/subagents/*.jsonl') + glob.glob(os.path.expanduser(CODEX)):
-                try:
-                    if p in taken or os.path.getmtime(p) < launched(job): continue
-                    prompt, start = head(p)
-                    if start is not None and start >= launched(job) and all(n in prompt for n in ns) \
-                            and not any(all(n in prompt for n in w) for w in wider):
-                        found.append((start, p))
-                except OSError: pass
-            if found:
-                owner[jid] = min(found)[1]
-                fh.write(f"{time.time()}\t{jid}\t{owner[jid]}\n")
-    if p := owner.get(jid):
-        _hit[jid] = p
-    return p
+    root, found = os.path.expanduser('~/.claude/projects'), []
+    for p in glob.glob(f'{root}/*/*.jsonl') + glob.glob(f'{root}/*/*/subagents/*.jsonl') + glob.glob(os.path.expanduser(CODEX)):
+        try:
+            if os.path.getmtime(p) < launched(job): continue
+            prompt, start = head(p)
+            if start is not None and start >= launched(job) and all(n in prompt for n in ns): found.append((start, p))
+        except OSError: pass
+    if found:
+        _hit[jid] = min(found)[1]
+        return _hit[jid]
+    return None
 
 def launchers(items):
     """{file name: launcher transcript} for (file name, job, agent transcript) items whose job recorded no launcher: the

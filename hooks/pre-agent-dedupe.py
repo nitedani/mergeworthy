@@ -2,8 +2,8 @@
 """Claude Code PreToolUse hook (matcher: Agent, Task, delegate_task, t3_thread_launch). Exit 2 blocks the launch; stderr goes to the agent.
 With the argument `register` it runs as the PostToolUse hook: only a launch that ran is registered, so one another hook blocked leaves no job.
 One agent per job: a launch is registered under its job key (the ticket files its prompt names, and its title), and a second
-launch of the same job, or of the same task text under another key (the text tells the agents' transcripts apart, agent_jobs), is
-blocked until `agent-job done <key>` releases it. A turn that ended is not a finished agent: on T3 a
+launch of the same job, or of a task that contains or is contained in an open job's (the text tells the agents' transcripts
+apart, agent_jobs), is blocked until `agent-job done <key>` releases it. A turn that ended is not a finished agent: on T3 a
 child wakes again when its background commands end, so only its terminal task status (read first) releases the job."""
 import datetime, fcntl, glob, hashlib, json, os, re, shlex, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
@@ -336,9 +336,9 @@ elif os.path.exists(f):
         sys.exit(2)
 if not register and task.strip():
     for _, j in agent_jobs.jobs():
-        if j.get('brief', '').strip() == task.strip():
+        if (other := j.get('brief', '').strip()) and (other in task.strip() or task.strip() in other):
             sys.stderr.write(
-                f"BLOCKED: an open job already has this exact task text ({j['key'][:160]}, started {int((time.time() - j['started']) / 60)} min ago), "
+                f"BLOCKED: this task contains, or is contained in, an open job's task ({j['key'][:160]}, started {int((time.time() - j['started']) / 60)} min ago), "
                 "and an agent's transcript is told apart from another's by its task text. An agent of a fan-out names its part in its task "
                 "(its slice, subsystem, frames or topic). A new round on the same task releases the earlier job first, once its agent "
                 f"is done and you have read its result: `agent-job done {shlex.quote(j['key'][:200])}`.\n")
