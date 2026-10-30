@@ -2033,6 +2033,12 @@ check "compose up with a file under ~ passes" 0 "$(dc_guard 'docker compose -f ~
 check "compose up with a file under a dir the line set passes" 0 "$(dc_guard "W=$T; docker compose -f \$W/assigned.json -p x up -d")"
 check "BLOCK: compose up with --file= under a dir the line set, publishing a fixed host port" "2 1" "$(dc_guard "W=$T; docker compose --file=\$W/fixed.json -p x up -d") $(grep -c 'db host port 5432' "$T/err")"
 check "BLOCK: compose up with a file path it can't tell, naming it" "2 1" "$(dc_guard 'docker compose -f $NOPE_DIR/c.yml -p x up -d') $(grep -c "can't tell.*NOPE_DIR/c.yml" "$T/err")"
+WRITE_UP=$'cat > ovr.yml <<EOF\n{"services":{"web":{"ports":[{"target":80}]}}}\nEOF\ndocker compose -p t -f assigned.json -f ovr.yml up -d'
+check "BLOCK: compose up with an override the same command writes, naming it" "2 1" "$(dc_guard "$WRITE_UP") $(grep -c "$T/ovr.yml is written by this same command" "$T/err")"
+cp "$T/assigned.json" "$T/ovr.yml"
+check "compose up with that override already on disk is checked as it stands" 0 "$(dc_guard "$WRITE_UP")"
+rm "$T/ovr.yml"
+check "BLOCK: compose up with a missing override nobody writes says its config failed" "2 1" "$(dc_guard 'docker compose -p t -f assigned.json -f ovr.yml up -d') $(grep -c 'fix the config' "$T/err")"
 printf 'See #7.\n' > "$T/ref.md"
 check "post-lint: a 404 reference doesn't exist" 1 "$(python3 "$R/bin/post-lint" "$T/ref.md" --kind reply --repo o/r --parent none 2>&1 | grep -c "doesn't exist in o/r")"
 check "post-lint: a rate-limited check says it couldn't check, not that it doesn't exist" "1 0" "$(GH_STUB_403=1 python3 "$R/bin/post-lint" "$T/ref.md" --kind reply --repo o/r --parent none 2>&1 | grep -c "couldn't check it") $(GH_STUB_403=1 python3 "$R/bin/post-lint" "$T/ref.md" --kind reply --repo o/r --parent none 2>&1 | grep -c "doesn't exist")"
