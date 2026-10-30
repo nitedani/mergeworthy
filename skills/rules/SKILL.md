@@ -1,13 +1,13 @@
 ---
 name: rules
-description: "A rule failed or the user names a failure; a 👎; editing a skill, prompt or rules file; the steward's tick, its FOLLOW-UPs and MAINTAINER REVIEWs: fix the instance, then the rule, or an issue for the steward."
+description: "A rule, mergeworthy hook or tool failed, can't be followed or was worked around; the user names a failure; a 👎; editing a skill, prompt or rules file; the steward's tick, its FOLLOW-UPs and MAINTAINER REVIEWs: fix the instance, then the rule, or an issue for the steward."
 ---
 
 # Rules
 
 ## Steps
 
-1. **A named failure** ("why didn't you…?" or "why are you not…?" about something already required, or a 👎): stop, re-read, and fix the instance now (the PR, the comment, the code). Then find why in the faulty session's own transcript (a Claude Code `.jsonl` under `~/.claude/projects/`, a T3 thread, a Codex log): the brief it got, what it loaded, and the turn where it decided wrong, quoted with its line. A cause read off its report or the rule text is a guess, and steps 2–5 fix the rule that turn shows failed.
+1. **A named failure** ("why didn't you…?" or "why are you not…?" about something already required, or a 👎): stop, re-read, and fix the instance now (the PR, the comment, the code). Then find why in the faulty session's own transcript (a Claude Code `.jsonl` under `~/.claude/projects/`, a T3 thread, a Codex log): the brief it got, what it loaded, and the turn where it decided wrong, quoted with its line. A cause read off its report or the rule text is a guess, and steps 2–5 fix the rule that turn shows failed. A fault you hit: step 2.
    Record: the fixed artifact
 2. **Whose rule is it?** A rule of another repo (its `AGENTS.md`, `CLAUDE.md` or rules files): fix it there, through that repo's own workflow (`task`), and stop here. A mergeworthy rule is the steward's to fix. You are the steward if `~/.mergeworthy/steward` (`<work folder> <T3 thread id>`) names your T3 thread or your delegator's, your working directory is inside that work folder (none declared: `~/.mergeworthy/work/steward`), or `<work folder>/session` names your session: go on. Otherwise open an issue on nitedani/mergeworthy (`open-issue`) with the fault, its evidence and the fix you'd make, which wakes the steward; meanwhile work around it. Its closing wakes you.
    Record: the issue · Hook: pre-bash-guard (a commit or push to mergeworthy by any other session while a steward is declared)
