@@ -55,8 +55,8 @@ def rows():
 
 
 def bash_actions(cmd, cwd='.'):
-    out = []
-    for s in segments(cmd):
+    out, where = [], Where(cwd)
+    for s in where.walk(segments(cmd)):
         t = prog(s)
         if t and t[0] in ('python3', 'python', 'bash', 'sh') and len(t) > 1 and not t[1].startswith('-'):
             t = t[1:]
@@ -67,7 +67,7 @@ def bash_actions(cmd, cwd='.'):
         if name == 'gh' and opt(a, ['--attach']):
             out.append('an upload')
         if name == 'git':
-            _, _, sub, rest = git_argv(t, Where(cwd))
+            _, _, sub, rest = git_argv(t, where)
             if sub == 'push' and not {'--dry-run', '-n'} & set(rest):
                 out.append('git push')
         elif name == 'gh' and len(a) >= 2 and a[0] in ('pr', 'issue'):
@@ -84,7 +84,7 @@ def bash_actions(cmd, cwd='.'):
             elif sub == 'comment' or (sub == 'edit' and text) or (sub == 'close' and opt(rest, ['--comment', '-c'])):
                 out.append('a post in a thread')
         elif name == 'gh' and a[:1] == ['api']:
-            method, ep, fields, inputs, posts = api_call(a[1:])
+            method, ep, fields, inputs, posts = api_call(a[1:], where.dir)
             if not posts:
                 continue
             if ep == 'graphql':

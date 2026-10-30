@@ -1895,6 +1895,33 @@ import sys; sys.path.insert(0, sys.argv[1]); import shellcmd as s
 print(*[s.api_call(['graphql', '-f', 'query=mutation{%s(input:{subjectId:"x"}){x}}' % m])[4] for m in ('addReaction', 'addComment')])
 PY2
 )"
+check "granting a collaborator and accepting its invitation post no text" "False False" "$(python3 - "$R/hooks" <<'PY2'
+import sys; sys.path.insert(0, sys.argv[1]); import shellcmd as s
+print(*[s.api_call(a)[4] for a in (['-X', 'PUT', 'repos/o/r/collaborators/u', '-f', 'permission=push'], ['-X', 'PATCH', 'user/repository_invitations/7'])])
+PY2
+)"
+check "a comment in a repo named like a no-text route still posts; a reaction by full URL doesn't" "True True False" "$(python3 - "$R/hooks" <<'PY2'
+import sys; sys.path.insert(0, sys.argv[1]); import shellcmd as s
+print(*[s.api_call(a)[4] for a in (['repos/o/collaborators/issues/1/comments', '-f', 'body=x'], ['repos/labels/r/issues/1/comments', '-f', 'body=x'],
+                                   ['https://api.github.com/repos/o/r/issues/comments/9/reactions', '-f', 'content=eyes'])])
+PY2
+)"
+printf 'mutation { addComment(input: {subjectId: "x", body: "y"}) { clientMutationId } }' > "$T/m.graphql"
+printf '{"query": "mutation { addReaction(input: {subjectId: \\"x\\", content: EYES}) { clientMutationId } }"}' > "$T/r.json"
+check "GraphQL: a mutation from a file, from --input or with spaces before input's colon posts; a reaction from a file doesn't" "True True False" "$(python3 - "$R/hooks" "$T" <<'PY2'
+import sys; sys.path.insert(0, sys.argv[1]); import shellcmd as s; T = sys.argv[2]
+print(*[s.api_call(['graphql', *a])[4] for a in (['-F', f'query=@{T}/m.graphql'], ['-f', 'query=mutation { addComment(input : {subjectId: "x", body: "y"}) { x } }'], ['--input', f'{T}/r.json'])])
+PY2
+)"
+check "GraphQL: a mutation in an --input payload posts; a reaction there split over lines doesn't" "True False" "$(python3 - "$R/hooks" "$T" <<'PY2'
+import json, sys; sys.path.insert(0, sys.argv[1]); import shellcmd as s; T = sys.argv[2]
+json.dump({'query': 'mutation { addComment(input: {subjectId: "x", body: "y"}) { x } }'}, open(f'{T}/c.json', 'w'))
+json.dump({'query': 'mutation { addReaction(\n input: {subjectId: "x", content: EYES}) { x } }'}, open(f'{T}/rn.json', 'w'))
+print(*[s.api_call(['graphql', '--input', f'{T}/{f}'])[4] for f in ('c.json', 'rn.json')])
+PY2
+)"
+mkdir -p "$T/gq" && cp "$T/r.json" "$T/gq/r.json"
+check "GraphQL: a relative --input is read from the dir the command runs in, after a cd too" 0 "$(sgb "cd $T/gq && gh api graphql --input r.json")"
 sg_tr "$T/sg.jsonl" text
 check "BLOCK: gh api comment POST" 2 "$(sgb "gh api repos/o/r/issues/5/comments -F body=@$T/d.md")"
 check "the post block names post and writing" "mergeworthy:post mergeworthy:writing" "$(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | sort | xargs)"
