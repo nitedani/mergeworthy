@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""The jobs pre-agent-dedupe registered (~/.claude/agent-jobs, one JSON file each: key, started, and the brief, the launcher's
+"""The jobs pre-agent-dedupe registered (~/.claude/agent-jobs, one JSON file each: key, started, and the task, the launcher's
 session and transcript) and whether each one's agent has finished. T3's notices miss a run that ended interrupted or failed
-and was revived, or that wrote its report without a final message, so the agent's own transcript decides: the one under
-~/.claude/projects or ~/.codex/sessions whose first prompt carries the brief (or, for a job an older hook registered with only its
-key and start, every ticket path in the key). A transcript belongs to one job, kept in CLAIMS: the open jobs on one brief, in launch
-order, each claim the earliest-started unclaimed one that started at or after their launch, so a release, a later round or another
-process never moves it. It has finished when that transcript has been quiet for QUIET
+and was revived, or that wrote its report without a final message, so the agent's own transcript decides: the earliest-started
+one under ~/.claude/projects or ~/.codex/sessions that started at or after the launch and whose first prompt carries the job's
+whole task (or, for a job an older hook registered with only its key and start, every ticket path in the key). pre-agent-dedupe
+lets no two open jobs share a task, so that names the agent's own; a transcript carrying another open job's longer task that holds
+this one's is that job's, and a claim is kept in CLAIMS, so a sibling's release never hands its transcript to another job.
+It has finished when that transcript has been quiet for QUIET
 seconds with no tool call pending, or for LONG seconds whatever it was doing (no foreground tool call runs ten minutes),
 while T3 Code shows no active run or background command of its thread and no agent it launched is still at work."""
 import datetime, fcntl, glob, hashlib, json, os, re, sys, time
@@ -56,8 +57,8 @@ def head(path):
     return _head[path]
 
 def needles(job):
-    """What the agent's first prompt carries: the brief, else the ticket paths the key lists (a title-only key has none)."""
-    return [job['brief'].strip()[:500]] if job.get('brief') else [w for w in job['key'].split() if w.startswith('/')]
+    """What the agent's first prompt carries: the whole task, else the ticket paths the key lists (a title-only key has none)."""
+    return [job['brief'].strip()] if job.get('brief') else [w for w in job['key'].split() if w.startswith('/')]
 
 def launched(job):
     """When the job's launch began (pre-agent-dedupe's PreToolUse); its registration for a job recorded without it."""
@@ -69,10 +70,10 @@ def job_id(job):
 _hit = {}
 def transcript(job):
     """The agent's transcript, the one claimed for the job (CLAIMS); None until it starts."""
-    ns = needles(job)
+    ns, jid = needles(job), job_id(job)
     if not ns: return None
-    if os.path.exists(_hit.get(job_id(job)) or '/nonexistent'):
-        return _hit[job_id(job)]
+    if os.path.exists(_hit.get(jid) or '/nonexistent'):
+        return _hit[jid]
     os.makedirs(os.path.dirname(CLAIMS), exist_ok=True)
     with open(CLAIMS, 'a+') as fh:
         fcntl.flock(fh, fcntl.LOCK_EX)  # every hook and watcher claims through this file, one at a time
@@ -82,24 +83,22 @@ def transcript(job):
         if len(rows) < len(lines):  # a claim is kept two days, a day past the longest its job stays open (OPEN)
             fh.truncate(0); fh.writelines('\t'.join(r) + '\n' for r in rows)
         owner = {r[1]: r[2] for r in rows}
-        if job_id(job) not in owner:
-            same = sorted({job_id(j): j for j in [job] + [j for _, j in jobs()] if needles(j) == ns}.values(), key=launched)
-            wait = [j for j in same if job_id(j) not in owner]
+        if jid not in owner:
+            wider = [w for w in (needles(j) for _, j in jobs()) if w != ns and '\n'.join(ns) in '\n'.join(w)]
             root, taken, found = os.path.expanduser('~/.claude/projects'), set(owner.values()), []
             for p in glob.glob(f'{root}/*/*.jsonl') + glob.glob(f'{root}/*/*/subagents/*.jsonl') + glob.glob(os.path.expanduser(CODEX)):
                 try:
-                    if p in taken or p in (j.get('transcript') for j in same) or os.path.getmtime(p) < launched(wait[0]): continue
+                    if p in taken or os.path.getmtime(p) < launched(job): continue
                     prompt, start = head(p)
-                    if start is not None and all(n in prompt for n in ns): found.append((start, p))
+                    if start is not None and start >= launched(job) and all(n in prompt for n in ns) \
+                            and not any(all(n in prompt for n in w) for w in wider):
+                        found.append((start, p))
                 except OSError: pass
-            found.sort()
-            for j in wait:
-                p = next((p for s, p in found if s >= launched(j) and p not in taken), None)
-                if p is None: continue
-                taken.add(p); owner[job_id(j)] = p
-                fh.write(f"{time.time()}\t{job_id(j)}\t{p}\n")
-    if p := owner.get(job_id(job)):
-        _hit[job_id(job)] = p
+            if found:
+                owner[jid] = min(found)[1]
+                fh.write(f"{time.time()}\t{jid}\t{owner[jid]}\n")
+    if p := owner.get(jid):
+        _hit[jid] = p
     return p
 
 def launchers(items):

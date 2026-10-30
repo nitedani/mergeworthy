@@ -2,7 +2,8 @@
 """Claude Code PreToolUse hook (matcher: Agent, Task, delegate_task, t3_thread_launch). Exit 2 blocks the launch; stderr goes to the agent.
 With the argument `register` it runs as the PostToolUse hook: only a launch that ran is registered, so one another hook blocked leaves no job.
 One agent per job: a launch is registered under its job key (the ticket files its prompt names, and its title), and a second
-launch of the same job is blocked until `agent-job done <key>` releases it. A turn that ended is not a finished agent: on T3 a
+launch of the same job, or of the same task text under another key (the text tells the agents' transcripts apart, agent_jobs), is
+blocked until `agent-job done <key>` releases it. A turn that ended is not a finished agent: on T3 a
 child wakes again when its background commands end, so only its terminal task status (read first) releases the job."""
 import datetime, fcntl, glob, hashlib, json, os, re, shlex, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
@@ -306,17 +307,18 @@ if root and (ti.get('role') == 'research' or re.search(r'\bresearch', f"{ti.get(
         sys.stderr.write("BLOCKED: these files already cover the topic; read them first. If one answers it, use it; "
                          "if not, add `Checked: <file>` to the brief for each:\n" + '\n'.join(hits) + '\n')
         sys.exit(2)
-# a fan-out runs several agents on one brief, each under its own title: the title is part of the job
+# a fan-out runs several agents on one brief, each under its own title and naming its part in its task: the title is part of the job
 key = ' '.join([*tickets, str(ti.get('title') or ti.get('description') or '').strip()]).strip()
 if not key:
     sys.exit(0)  # nothing names the job (no ticket, title or description), so no second launch of it can be told apart
 jobs = os.path.expanduser('~/.claude/agent-jobs'); os.makedirs(jobs, exist_ok=True)
 f = os.path.join(jobs, hashlib.sha256(key.encode()).hexdigest()[:16])
 pre = os.path.join(agent_jobs.LAUNCHED, os.path.basename(f))  # when the launch this registers began: its transcript starts after it
+task = str(ti.get('task') or ti.get('prompt') or '')
 if register:
     try: launched = float(open(pre).read()); os.remove(pre)
     except (OSError, ValueError): launched = time.time()
-    json.dump({'key': key, 'started': time.time(), 'launched': launched, 'brief': str(ti.get('task') or ti.get('prompt') or '')[:2000],
+    json.dump({'key': key, 'started': time.time(), 'launched': launched, 'brief': task,
                'session': d.get('session_id'), 'transcript': d.get('transcript_path')}, open(f, 'w'))
     # an agent now runs memory-prep's brief: stop-lint's hourly repeat of the refresh order waits an hour
     for t in tickets:
@@ -332,6 +334,15 @@ elif os.path.exists(f):
             "Continue it with a message instead of starting another. Only when its task is terminal and you have read its result, "
             f"release the job with `agent-job done {shlex.quote(key[:200])}`, then launch.\n")
         sys.exit(2)
+if not register and task.strip():
+    for _, j in agent_jobs.jobs():
+        if j.get('brief', '').strip() == task.strip():
+            sys.stderr.write(
+                f"BLOCKED: an open job already has this exact task text ({j['key'][:160]}, started {int((time.time() - j['started']) / 60)} min ago), "
+                "and an agent's transcript is told apart from another's by its task text. An agent of a fan-out names its part in its task "
+                "(its slice, subsystem, frames or topic). A new round on the same task releases the earlier job first, once its agent "
+                f"is done and you have read its result: `agent-job done {shlex.quote(j['key'][:200])}`.\n")
+            sys.exit(2)
 # At most 3 agents at a time per session (delegate step 1): a job is open until released or its agent finished; a memory refresh doesn't count
 # A fan-out a step names (finality steps 2-3, converge's per-slice verifiers) says so on a `Fan-out:` line, in the task or its brief, and passes
 fanout = ti.get('role') != 'implementation' and re.search(r'^Fan-out: (finality step [23]|converge §Running the agents)$', briefs, re.M)

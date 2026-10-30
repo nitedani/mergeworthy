@@ -834,6 +834,9 @@ fan() { # task title
   [ $rc = 0 ] && python3 "$R/hooks/pre-agent-dedupe.py" register < "$T/fan.json"; echo $rc; }
 check "a fan-out on one brief passes, one launch per title; the same brief and title again is blocked" "0 0 2" "$(fan $'Topic: cost\nFollow /tmp/x/fan.md' 'fan: cost') $(fan $'Topic: security\nFollow /tmp/x/fan.md' 'fan: security') $(fan $'Topic: cost\nFollow /tmp/x/fan.md' 'fan: cost')"
 check "agent-job done with the shared brief path releases neither; each job releases by its full key" "1 0 0" "$(python3 "$R/bin/agent-job" done /tmp/x/fan.md >/dev/null 2>&1; echo $?) $(python3 "$R/bin/agent-job" done '/tmp/x/fan.md fan: cost' >/dev/null; echo $?) $(python3 "$R/bin/agent-job" done '/tmp/x/fan.md fan: security' >/dev/null; echo $?)"
+check "BLOCK: the same task under another title while its job is open; it launches once that job is released" "0 2 0" \
+  "$(fan 'Follow /tmp/x/same.md' 'same: a') $(fan 'Follow /tmp/x/same.md' 'same: b') $(python3 "$R/bin/agent-job" done '/tmp/x/same.md same: a' >/dev/null; fan 'Follow /tmp/x/same.md' 'same: b')"
+python3 "$R/bin/agent-job" done '/tmp/x/same.md same: b' >/dev/null
 fan 'Follow /tmp/x/fan.md' "the user's ask" >/dev/null; python3 "$R/hooks/pre-agent-dedupe.py" < "$T/fan.json" 2>"$T/err"
 check "the block's release command, run as printed, releases a job whose title has an apostrophe" "0 0" "$(eval "$(grep -o 'agent-job done [^\`]*' "$T/err" | sed "s|^agent-job|python3 $R/bin/agent-job|")" >/dev/null; echo $?) $(python3 "$R/bin/agent-job" list | grep -c "user's ask")"
 cid_in() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":"x","clientRequestId":sys.argv[1]}}))' "$1"; }
@@ -1194,20 +1197,20 @@ check "BLOCK: agent-job done while the ticket's agent is still at work keeps the
   "$(python3 "$R/bin/agent-job" done "$T/jobs/t3busy-ticket.md" >/dev/null 2>"$T/aj.err"; echo $?) $(grep -c 'AGENT DONE. wakes this session' "$T/aj.err") $(python3 "$R/bin/agent-job" list | grep -c t3busy-ticket)"
 t3db "update orchestration_v2_projection_runs set status = 'completed' where run_id = 'r3'"
 check "agent-job done releases it once the agent has ended" "0 0" "$(python3 "$R/bin/agent-job" done "$T/jobs/t3busy-ticket.md" >/dev/null; echo $?) $(python3 "$R/bin/agent-job" list | grep -c t3busy-ticket)"
-# a transcript belongs to one job: the open jobs on a brief, in launch order, claim the earliest unclaimed one that started at or after
-# their launch, and a claim stays (nitedani/mergeworthy#60 and its round-1 review: a quick second round, a released fan-out sibling,
-# a repeated foreground call)
+# a transcript belongs to one job: the earliest-started one carrying its whole task that started at or after its launch, one carrying an
+# open job's longer task that holds it being that job's, and a claim stays (nitedani/mergeworthy#60 and its review rounds: a quick second
+# round, fan-out agents whose transcripts start in the reverse of their launch order, a released sibling, a repeated foreground call)
 got=$(python3 - "$R/hooks" <<'EOF2'
 import json, os, sys, time
 sys.path.insert(0, sys.argv[1]); import agent_jobs
 now = time.time(); d = os.path.expanduser('~/.codex/sessions/2026/10/29'); os.makedirs(d, exist_ok=True); os.makedirs(agent_jobs.JOBS, exist_ok=True)
 at = lambda t: time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime(t))
+user = lambda text: {'type': 'response_item', 'payload': {'type': 'message', 'role': 'user', 'content': [{'type': 'input_text', 'text': text}]}}
 def log(name, brief, start, write, fg=False):
     p = os.path.join(os.path.expanduser('~/.claude/projects/-fg/sess/subagents'), name) if fg else os.path.join(d, name)
     os.makedirs(os.path.dirname(p), exist_ok=True)
     lines = ({'type': 'queue-operation', 'operation': 'enqueue', 'timestamp': at(start), 'content': brief}, {'type': 'user', 'message': {'content': brief}}) if fg else \
-            ({'timestamp': at(start), 'type': 'session_meta', 'payload': {'id': name, 'timestamp': at(start)}},
-             {'type': 'response_item', 'payload': {'type': 'message', 'role': 'user', 'content': [{'type': 'input_text', 'text': brief}]}},
+            ({'timestamp': at(start), 'type': 'session_meta', 'payload': {'id': name, 'timestamp': at(start)}}, user(brief),
              {'type': 'event_msg', 'payload': {'type': 'task_complete'}})
     open(p, 'w').write(''.join(json.dumps(o) + '\n' for o in lines)); os.utime(p, (write, write))
 def job(f, launched, brief):  # as pre-agent-dedupe records it: launched when its PreToolUse passed, started when it registered
@@ -1221,20 +1224,24 @@ log('rollout-q1.jsonl', quick, now - 330, now - 240); q2 = job('q2', now - 301, 
 out.append(name(agent_jobs.transcript(q2)))
 log('rollout-q2.jsonl', quick, now - 299, now); fresh()
 out += [name(agent_jobs.transcript(q2)), bool(agent_jobs.finished(q2))]
-fan = 'Read /work/briefs/fan.md exactly.'
-a, b = job('fa', now - 301, fan), job('fb', now - 300, fan)
-log('rollout-fa.jsonl', fan, now - 298, now - 240); log('rollout-fb.jsonl', fan, now - 297, now)
-out.append(name(agent_jobs.transcript(b)))  # asked first, it still gets its own
-os.remove(os.path.join(agent_jobs.JOBS, 'fa')); fresh()  # agent-job done fa
-out += [name(agent_jobs.transcript(b)), bool(agent_jobs.finished(b))]
+fan = 'Read /work/briefs/fan.md exactly.\n' + 'Context: the shared brief.\n' * 25  # each agent names its part after 600 characters
+a, b = job('fa', now - 301, fan + 'Part: cost'), job('fb', now - 300, fan + 'Part: security')
+log('rollout-fb.jsonl', b['brief'], now - 298, now); log('rollout-fa.jsonl', a['brief'], now - 297, now - 240)  # fb's agent started first
+out += [name(agent_jobs.transcript(a)), name(agent_jobs.transcript(b)), bool(agent_jobs.finished(a)), bool(agent_jobs.finished(b))]
+wide = 'Read /work/briefs/wide.md exactly.'  # a sibling's task holds this one's whole and its agent started first
+w1, w2 = job('w1', now - 301, wide), job('w2', now - 300, wide + '\nPart: cost')
+log('rollout-w2.jsonl', w2['brief'], now - 299, now - 240); log('rollout-w1.jsonl', wide, now - 298, now)
+out.append(name(agent_jobs.transcript(w1)))
+os.remove(os.path.join(agent_jobs.JOBS, 'w2')); fresh()  # agent-job done w2
+out.append(name(agent_jobs.transcript(w1)))
 fg = 'Run /work/briefs/fg.md exactly.'  # two foreground calls in a row: each registered once its agent returned
 log('agent-r1.jsonl', fg, now - 1000, now - 330, True); log('agent-r2.jsonl', fg, now - 320, now - 310, True)
 out.append(name(agent_jobs.transcript(job('fg2', now - 321, fg))))
 print(*out)
 EOF2
 )
-check "a transcript belongs to one job: a quick second round gets none before its own starts, then its own, running; a fan-out job keeps its own after its sibling is released; a repeated foreground call gets its own" \
-  "None rollout-q2.jsonl False rollout-fb.jsonl rollout-fb.jsonl False agent-r2.jsonl" "$got"
+check "a transcript belongs to one job: a quick second round gets none before its own starts, then its own, running; fan-out agents started in reverse get their own; a job keeps its own after a sibling holding its task is released; a repeated foreground call gets its own" \
+  "None rollout-q2.jsonl False rollout-fa.jsonl rollout-fb.jsonl True False rollout-w1.jsonl rollout-w1.jsonl agent-r2.jsonl" "$got"
 python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"lt","tool_input":{"task":"Execute /work/briefs/lt.md exactly","title":"lt"}}))' > "$T/lt.json"
 python3 "$R/hooks/pre-agent-dedupe.py" < "$T/lt.json" 2>/dev/null; sleep 1; python3 "$R/hooks/pre-agent-dedupe.py" register < "$T/lt.json"
 check "pre-agent-dedupe records when the launch began (PreToolUse), before its registration" True \
