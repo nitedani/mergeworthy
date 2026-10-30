@@ -1571,6 +1571,12 @@ seq 1 70 >> "$GS/src/a.ts"; git -C "$GS" -c user.name=t -c user.email=t@t commit
 printf 'NO BUGS\nMERGE AS IS: yes\n- a finding after them\n' > "$T/sr4.md"
 check "BLOCK: pr-steps small on a report whose last lines aren't NO BUGS and MERGE AS IS: yes" 1 "$(prss "$T/sr4.md")"
 check "BLOCK: pr-steps small past 60 lines outside tests and docs" "1 1" "$(prss "$T/sr3.md") $(grep -c 'past a small fix' "$T/prss.err")"
+# a test beside the code or in a *_tests/ directory, as pytest and Go lay them out, is a test (90 lines of it: not counted as code)
+GU="$T/prsu"; mkdir -p "$GU/app"; git -C "$GU" init -q -b main; echo a > "$GU/app/calc.py"; git -C "$GU" add -A; git -C "$GU" -c user.name=t -c user.email=t@t commit -q -m a
+git -C "$GU" update-ref refs/remotes/origin/main HEAD
+prsu() { git -C "$GU" checkout -q -b "b$2" main; echo b >> "$GU/app/calc.py"; mkdir -p "$GU/$(dirname "$1")"; seq 1 90 > "$GU/$1"
+  git -C "$GU" add -A; git -C "$GU" -c user.name=t -c user.email=t@t commit -q -m b; (cd "$GU" && bash "$R/bin/pr-steps" small "$T/sr1.md" 2>/dev/null >/dev/null; echo $?); }
+check "pr-steps small takes unit_tests/conftest.py, app/test_calc.py and app/calc_test.go as tests" "0 0 0" "$(prsu unit_tests/conftest.py 1) $(prsu app/test_calc.py 2) $(prsu app/calc_test.go 3)"
 # a diff of docs alone carries the cold read's record (rules step 4) instead of a test
 GD="$T/prsd"; mkdir -p "$GD/skills/a"; git -C "$GD" init -q -b main; echo a > "$GD/skills/a/SKILL.md"; git -C "$GD" add -A; git -C "$GD" -c user.name=t -c user.email=t@t commit -q -m a
 git -C "$GD" update-ref refs/remotes/origin/main HEAD; git -C "$GD" checkout -q -b fix; echo b >> "$GD/skills/a/SKILL.md"; git -C "$GD" -c user.name=t -c user.email=t@t commit -qam b
