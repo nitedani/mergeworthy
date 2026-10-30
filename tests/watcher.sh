@@ -45,6 +45,11 @@ py() { python3 - "$R/watcher/gh-watch.py" "$W" <<EOF
 import importlib.util, sys, io, contextlib, json, os
 spec = importlib.util.spec_from_file_location('ghw', sys.argv[1]); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 m.HERE = sys.argv[2]; m.STATE = os.path.join(m.HERE, 'gh-watch-state.json'); m.THREADS = os.path.join(m.HERE, 'threads.txt')
+on_file = lambda what: what in json.load(open(os.path.join(os.path.dirname(m.STATE), 'gh-watch-failing.json')))  # fail()'s record of a failing call
+def own_dir(name, threads='', repos=''):  # fail()'s records in a watch dir of their own, which watches these: what it watches keeps them
+    d = os.path.join(m.HERE, name); os.makedirs(d, exist_ok=True)
+    open(os.path.join(d, 'threads.txt'), 'w').write(threads); open(os.path.join(d, 'repos.txt'), 'w').write(repos)
+    m.STATE = os.path.join(d, 'gh-watch-state.json')
 $1
 EOF
 }
@@ -316,10 +321,10 @@ with contextlib.redirect_stdout(buf):
     m.scan_reactions(state, [("o/r", "5", True), ("p/q", "3", True)]); m.scan_reactions(state, [("o/r", "5", True)])
     m.emit_maintainer_commits(state, "o/r", "o/r#5", "old", "new")
 out = buf.getvalue()
-print(*[l.split(" on ")[0] if l.startswith("### THUMBS") else l.split(": review")[0].split(": gh api")[0] for l in out.splitlines() if l.startswith(("### ", "WATCH"))], sep="|")
+print(*[l.split(" on ")[0] if l.startswith("### THUMBS") else l.split(": review")[0].split(": gh api")[0] for l in out.splitlines() if l.startswith(("### ", "WATCH", "note: permission"))], sep="|")
 ')
-check "reactions and commits: yours and a write-access account's are reported once, a read-only, a bot's or a hidden one's aren't; a failed lookup is one error; where GitHub won't say, a member's, an unseen one's as access unknown, not a contributor's; no agent-trailer commit" \
-  "### THUMBS UP o/r#5 by writer|### THUMBS DOWN o/r#5 by me|### THUMBS UP o/r#5 by outsider (access unknown)|WATCH ERROR permission o/r flaky|### THUMBS UP p/q#3 by maint|### THUMBS UP p/q#3 by p (access unknown)|### MAINTAINER COMMITS o/r#5: aaaaaaaaaa dddddddddd" "$got"
+check "reactions and commits: yours and a write-access account's are reported once, a read-only, a bot's or a hidden one's aren't; a failed lookup is a note on each try; where GitHub won't say, a member's, an unseen one's as access unknown, not a contributor's; no agent-trailer commit" \
+  "### THUMBS UP o/r#5 by writer|### THUMBS DOWN o/r#5 by me|### THUMBS UP o/r#5 by outsider (access unknown)|note: permission o/r flaky failed|### THUMBS UP p/q#3 by maint|### THUMBS UP p/q#3 by p (access unknown)|note: permission o/r flaky failed|### MAINTAINER COMMITS o/r#5: aaaaaaaaaa dddddddddd" "$got"
 check "permission: looked up once per login and repo, never for you or a bot" "flaky flaky outsider owner reader writer" "$(grep -o '^repos/o/r/collaborators/[^/]*/permission$' "$PB/calls" | cut -d/ -f5 | sort | tr '\n' ' ' | sed 's/ $//')"
 
 # A permission lookup that fails while a push's commits are reported leaves the PR's head and drops its validator, as a failed read does:
@@ -341,9 +346,180 @@ with contextlib.redirect_stdout(buf):
     m.maintainer = lambda *a: True
     m.scan(state, [("o/r", "1", "full", 0)]); m.scan(state, [("o/r", "1", "full", 0)])
 out = buf.getvalue()
-print(*after, out.count("WATCH ERROR permission o/r#1"), out.count("### MAINTAINER COMMITS o/r#1: aaaaaaaaaa"), state["prs"]["o/r#1"]["head"])
+print(*after, out.count("note: permission o/r boss failed (o/r#1): "), out.count("### MAINTAINER COMMITS o/r#1: aaaaaaaaaa"), state["prs"]["o/r#1"]["head"])
 ')
 check "maintainer commits: a failed permission lookup keeps the old head and drops the PR's validator; the next look reports them once" "old False 1 1 new" "$got"
+got=$(py '
+m.agent_post_hashes, m.emit_refactor_stale, m.emit_wait_ping = (lambda: set()), (lambda *a: None), (lambda *a: None)
+m.fetch_thread = lambda *a: (True, "me", [], {"head": "new", "state": "open"}, None, None, {}, True, None)
+m.request = lambda p, *a, **k: m.Resp(200, {}, json.dumps({"base": {"ref": "main"}} if "/pulls/" in p else {"commits": [{"sha": "a" * 40, "author": {"login": "boss"}, "commit": {"message": "human fix", "committer": {"date": "2026-10-29T00:00:00Z"}}}]}))
+def down(*a): raise RuntimeError("gh api permission: HTTP 502 Bad Gateway")
+state, _ = {"since": "2026-10-29T00:00:00Z", "since_by": {}, "is_pr": {}, "prs": {}, "etag": {}, "ci": {}}, own_dir("perm", "o/r 1\n")
+def look(fn):  # a maintainer pushed to the PR again: its commits are looked up
+    m.maintainer, buf = fn, io.StringIO()
+    state["prs"]["o/r#1"] = {"head": "old", "state": "open"}
+    with contextlib.redirect_stdout(buf): m.scan(state, [("o/r", "1", "full", 0)])
+    return buf.getvalue().count("WATCH ERROR permission o/r boss: failed 3 times in a row since "), buf.getvalue().count("note: permission o/r boss failed (o/r#1): gh api permission: HTTP 502")
+def back(t):
+    with m.failing_calls() as calls: calls["permission o/r boss"]["first"] -= t
+out = [look(down)]; back(2400); out.append(look(down))
+look(lambda *a: True); out.append(on_file("permission o/r boss"))  # a lookup that works: the next failure starts over
+out.append(look(down)); back(2400); out += [look(down), look(down)]
+print(*out)
+')
+check "a failed call that is not a thread read (a permission lookup): 2 failures over 40 minutes are notes; a success between starts it over; then a third failure in a row is a WATCH ERROR" "(0, 1) (0, 1) False (0, 1) (0, 1) (1, 0)" "$got"
+got=$(py '
+own_dir("cadence", "o/r 1\n")
+def back(what, t):
+    with m.failing_calls() as calls: calls[what]["first"] -= t; calls[what]["last"] -= t
+def cadence(what, every):
+    out = []
+    for i in range(3):
+        i and back(what, every)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf): m.fail(what, RuntimeError("HTTP 502"))
+        out.append(buf.getvalue().split(":")[0])
+    return "|".join(out)
+print(cadence("follow-up o/r@main", 1800), cadence("reactions o/r#1 comment list", 21600))  # the follow-ups job; a closed thread, read every 6 hours
+')
+check "a call tried every 30 minutes, or every 6 hours, that keeps failing wakes at its third failure" "note|note|WATCH ERROR follow-up o/r@main note|note|WATCH ERROR reactions o/r#1 comment list" "$got"
+got=$(py '
+def try_(what):
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf): m.fail(what, RuntimeError("HTTP 502"))
+    return buf.getvalue().split(":")[0]
+def day_passes():
+    with m.failing_calls() as calls:
+        for r in calls.values(): r["first"] -= 86400; r["last"] -= 86400
+own_dir("daily", repos="daily/repo\nother/repo\n")
+out = [try_("eyes daily/repo")]
+for i in range(2):
+    day_passes(); try_(f"permission other/repo user{i}")  # other calls fail meanwhile
+    out.append(try_("eyes daily/repo"))
+print("|".join(out))
+')
+check "a call failing on events a day apart, others failing between, wakes at its third failure" "note|note|WATCH ERROR eyes daily/repo" "$got"
+got=$(py '
+def crowd(name, key, every, tries):  # 102 threads failing together, every `every` seconds: woken by try, and records kept
+    own_dir(name, "".join(f"o/r {n}\n" for n in range(102)))
+    woke = []
+    for i in range(tries):
+        if i:
+            with m.failing_calls() as calls:
+                for r in calls.values(): r["first"] -= every; r["last"] -= every
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            for n in range(102): m.fail(key % n, RuntimeError("HTTP 502"))
+        woke.append(buf.getvalue().count("WATCH ERROR"))
+    return woke, len(json.load(open(os.path.join(os.path.dirname(m.STATE), "gh-watch-failing.json"))))
+print(*crowd("outage", "o/r#%d", 300, 7), *crowd("closed", "reactions o/r#%d comment list", 21600, 3))  # an outage; closed threads read every 6 hours
+')
+check "102 threads failing together, every 5 minutes (an outage) or every 6 hours (closed threads): all kept, each wakes once its 3rd failure is 30 minutes after its first" "[0, 0, 0, 0, 0, 0, 102] 102 [0, 0, 102] 102" "$got"
+got=$(py '
+own_dir("drop", "o/r 3\no/r 4\n", "gone/repo\n")
+with contextlib.redirect_stdout(io.StringIO()):
+    for k in ("o/r#3", "o/r#4", "eyes gone/repo", "permission o/r boss", "agent search hit x/y#5", "agent command event x/y", "t3 thread send thr-1"):
+        m.fail(k, RuntimeError("HTTP 502"))
+open(os.path.join(os.path.dirname(m.STATE), "threads.txt"), "w").write("o/r 4\n")  # o/r#3 left threads.txt, o/r stays watched
+open(os.path.join(os.path.dirname(m.STATE), "repos.txt"), "w").write("")  # gone/repo left repos.txt
+with contextlib.redirect_stdout(io.StringIO()): m.fail("o/r#4", RuntimeError("HTTP 502"))  # the next write
+print(*[on_file(k) for k in ("o/r#3", "eyes gone/repo", "o/r#4", "permission o/r boss", "agent search hit x/y#5", "agent command event x/y", "t3 thread send thr-1")])
+')
+check "a record goes on the next write once its thread left threads.txt, or its repo left both files; one for a still-watched repo (a permission per login), one naming no watch list (an /agent search hit, an events-feed command) or no repo stays" "False False True True True True True" "$got"
+got=$(py '
+m.STATE = os.path.join(m.HERE, "mixed", "gh-watch-state.json"); os.makedirs(os.path.dirname(m.STATE))  # a watch dir with no record yet
+state = {"agent_since": m.iso(m.time.time() - 3600), "etags": {}, "dirty": {}, "disc": {}}
+m.shared_read, m.shared_update, m.watched_repos = (lambda: state), (lambda fn: fn(state)), (lambda: set())
+m.request = lambda *a, **k: m.Resp(200, {}, json.dumps({"items": [{"repository_url": "https://api.github.com/repos/o/r", "number": n} for n in (1, 2)]}))
+def paged(path, *a, **k):
+    if "/issues/1/" in path: raise RuntimeError("HTTP 403: Resource not accessible by integration")
+    return []  # o/r#2 reads fine
+m.paged, out = paged, []
+for i in range(3):  # three searches, 30 minutes apart
+    if i:
+        with m.failing_calls() as calls: calls["agent search hit o/r#1"]["first"] -= 1800
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf): m.discover_agent_commands()
+    out.append(buf.getvalue().split(":")[0])
+print(*out, sep="|")
+')
+check "/agent discovery: a thread failing (403) on every search while another thread of its repo reads fine wakes at its third failure" "note|note|WATCH ERROR agent search hit o/r#1" "$got"
+got=$(py '
+m.STATE = os.path.join(m.HERE, "mixed-path", "gh-watch-state.json"); os.makedirs(os.path.dirname(m.STATE))
+state = {"agent_since": m.iso(m.time.time() - 3600), "etags": {}, "dirty": {}, "disc": {}}
+m.shared_read, m.shared_update, m.watched_repos, m.agent_post_hashes = (lambda: state), (lambda fn: fn(state)), (lambda: set()), (lambda: set())
+m.request = lambda *a, **k: m.Resp(200, {}, json.dumps({"items": [{"repository_url": "https://api.github.com/repos/o/r", "number": 1}]}))
+def paged(path, *a, **k): raise RuntimeError("HTTP 403: Resource not accessible by integration")
+routed = iter([None, True, None])  # the event comment: claimed already (an early return), routed, claimed already
+m.paged, m.agent_command, out = paged, (lambda *a, **k: next(routed)), []
+for i in range(3):  # three searches 30 minutes apart, each after a /agent comment on that thread came through your events
+    if i:
+        with m.failing_calls() as calls: calls["agent search hit o/r#1"]["first"] -= 1800
+    m.ai_call_elsewhere(state, "o/r", 1, "IssueCommentEvent", {"id": 70 + i, "body": "/agent go on", "user": {"login": m.ME}})
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf): m.discover_agent_commands()
+    out.append(buf.getvalue().split(":")[0])
+print(*out, sep="|")
+')
+check "/agent: an events-feed command on a thread, routed or claimed already, does not clear that thread failing (403) on every discovery read: it wakes at its third failure" "note|note|WATCH ERROR agent search hit o/r#1" "$got"
+got=$(py '
+spec = importlib.util.spec_from_file_location("ghw2", sys.argv[1]); b = importlib.util.module_from_spec(spec); spec.loader.exec_module(b)
+own_dir("two", "o/r 11\no/r 12\n")
+b.HERE, b.STATE, b.THREADS, b.ROUND = m.HERE, m.STATE, m.THREADS, False  # another process on the same watch dir: a --round, the daemon
+def try_(mod, key):
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf): mod.fail(key, RuntimeError("timed out"))
+    return buf.getvalue().split(":")[0]
+def back(key, t):
+    with m.failing_calls() as calls: calls[key]["first"] -= t
+reset = [try_(m, "o/r#11"), try_(m, "o/r#11")]; back("o/r#11", 1801)
+b.worked("o/r#11"); reset.append(try_(m, "o/r#11"))  # the other process read it fine: this failure is the first again
+both = [try_(m, "o/r#12"), try_(b, "o/r#12")]; back("o/r#12", 1801); both.append(try_(m, "o/r#12"))
+print(*reset, "/", *both, sep="|")
+')
+check "two processes on one watch dir share the failure count: a success in one starts the other over; failures in both add up" "note|note|note|/|note|note|WATCH ERROR o/r#12" "$got"
+got=$(py '
+own_dir("eyes", repos="o/r\np/q\n")
+def boom(*a, **k): raise RuntimeError("gh api: HTTP 502")
+def events(repo, cids):  # :eyes: is tried once, on a new comment; 15 minutes between them
+    out = []
+    for cid in cids:
+        with m.failing_calls() as calls:
+            if f"eyes {repo}" in calls: calls[f"eyes {repo}"]["first"] -= 900
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf): m.react_eyes(repo, "comment", cid)
+        line = buf.getvalue().strip()
+        out.append(line.split(" in a row")[0].split(": gh api")[0] + ("" if not line or "(comment %d)" % cid in line else " no detail"))
+    return out
+m.request = boom; a = events("o/r", (11, 12, 13))
+b = events("p/q", (21, 22))
+m.request = lambda *a, **k: None; b += events("p/q", (23,))
+m.request = boom; b += events("p/q", (24, 25))
+print(*a, "/", *b, sep="|")
+')
+check ":eyes: failing on 3 comments of one repo is one call: notes, then a WATCH ERROR, each line naming its comment; a success between starts it over" \
+  "note: eyes o/r failed (comment 11)|note: eyes o/r failed (comment 12)|WATCH ERROR eyes o/r: failed 3 times|/|note: eyes p/q failed (comment 21)|note: eyes p/q failed (comment 22)||note: eyes p/q failed (comment 24)|note: eyes p/q failed (comment 25)" "$got"
+
+# A failed call is a note and a retry; only 30 minutes of failures wake the session (the clock: the recorded failure times moved back)
+got=$(py '
+m.agent_post_hashes, m.emit_wait_ping = (lambda: set()), (lambda *a: None)
+state, _ = {"since": "2026-10-29T00:00:00Z", "since_by": {}, "is_pr": {}, "prs": {}, "etag": {}, "ci": {}}, own_dir("read", "o/r 1\n")
+def boom(*a): raise RuntimeError("gh api repos/o/r/issues/1: timed out after 60 seconds")
+def look(fetch):
+    m.fetch_thread, buf = fetch, io.StringIO()
+    with contextlib.redirect_stdout(buf): m.scan(state, [("o/r", "1", "full", 0)])
+    return buf.getvalue()
+def back(s):
+    with m.failing_calls() as calls: calls["o/r#1"]["first"] -= s
+ok = lambda *a: (False, "x", [], None, None, None, {}, True, None)
+once = look(boom) + look(ok)
+early = look(boom); back(1700); early += look(boom)
+back(100); late = look(boom)
+look(ok); after = look(boom)
+print(once.count("WATCH ERROR"), once.count("note: o/r#1 failed: gh api repos/o/r/issues/1: timed out after 60 seconds"),
+      early.count("WATCH ERROR"), late.count("WATCH ERROR o/r#1: failed 3 times in a row since "), after.count("WATCH ERROR"), after.count("note: o/r#1 failed"))
+')
+check "a thread read that fails once and then works writes a note and no WATCH ERROR; one failing every read wakes only after 30 minutes and 3 failures; a read that works clears it" "0 1 0 1 0 1" "$got"
 
 # A PR whose head moved to a commit this machine pushed (pre-bash-guard records it) only logs the change; another head wakes the session
 got=$(PUSHED_HEADS="$T/pushed" py '
@@ -692,7 +868,7 @@ os.remove(os.path.join(m.HERE, "t3-thread")); add("### unsent\n"); m.wake_thread
 print(repr(buf.getvalue()))
 ')
 check "wake_thread: one message per pass with only the event lines, a half-written line waits, nothing twice, a failed send reported and retried, none without t3-thread" \
-  "'WATCH ERROR t3 thread send thr-1: connect ECONNREFUSED\n'|t3 thread send thr-1 -;Watcher events in $W/events.log (mergeworthy:reply):;### o/r#5 comment 1 by bob;WATCH ERROR x: y;### AGENT DONE j;t3 thread send thr-1 -;Watcher events in $W/events.log (mergeworthy:reply):;### half written;t3 thread send thr-1 -;Watcher events in $W/events.log (mergeworthy:reply):;### half written;WATCHER RETIRED at now;" \
+  "'note: t3 thread send thr-1 failed: connect ECONNREFUSED\n'|t3 thread send thr-1 -;Watcher events in $W/events.log (mergeworthy:reply):;### o/r#5 comment 1 by bob;WATCH ERROR x: y;### AGENT DONE j;t3 thread send thr-1 -;Watcher events in $W/events.log (mergeworthy:reply):;### half written;t3 thread send thr-1 -;Watcher events in $W/events.log (mergeworthy:reply):;### half written;WATCHER RETIRED at now;" \
   "$got|$(tr '\n' ';' < "$T/t3.log")"
 : > "$T/t3.log"
 got=$(py '
@@ -777,7 +953,7 @@ gone = "'"$T"'/bin/t3-removed"
 print(a, "|", run(gone), next_pass() + run(gone), "|", run(gone), next_pass() + run("'"$T"'/bin/t3"))
 ')
 check "retire_if_done: a deleted thread drops t3-thread at once, a t3 missing on two passes in a row too, one missing for a pass doesn't; events.log keeps the event, RETIRED and the reason" \
-  "retired dropped 3 1 | kept 3 0 retired dropped 3 1 | kept 2 0 retired 2 0" "$got"
+  "retired dropped 3 1 | kept 3 0 retired dropped 3 1 | kept 3 0 retired 2 0" "$got"
 # the passes those two runs stand for: the real tick() counts one per pass, before its wake_thread
 got=$(py '
 for name in ("follow_update", "steward_line", "scan_gitlab", "agent_jobs_pass", "announce"):
@@ -869,6 +1045,22 @@ print(buf.getvalue().count("### gitlab.com/ns/sub/proj#8 note 81 by alice"))
 ')
 check "GitLab in a --round: a thread not due yet is read, one never read back to the pass start, though the state saw a later round" 1 "$got"
 sed -i '/^gitlab.com\/ns\/sub\/proj 8$/d' "$GLW/threads.txt"; rm -f "$GLW/replies-owed.md"  # answered, so the retire cases below can retire
+echo 'gitlab.com/ns/sub/proj 7' >> "$GLW/threads.txt"
+got=$(glpy '
+K = "gitlab.com/ns/sub/proj#7"
+gone = lambda: [os.remove(os.path.join(os.environ["GLFX"], f)) for f in os.listdir(os.environ["GLFX"]) if "_issues_7" in f]  # the stub glab fails it
+def back(t):
+    with m.failing_calls() as calls: calls[K]["first"] -= t
+once = run(m.scan_gitlab); thread("issues", "7", "opened"); once += run(m.scan_gitlab)
+gone(); early = run(m.scan_gitlab); back(1700); early += run(m.scan_gitlab)
+back(100); late = run(m.scan_gitlab)
+thread("issues", "7", "opened"); run(m.scan_gitlab); cleared = K not in json.load(open(os.path.join(m.HERE, "gh-watch-failing.json")))
+gone(); after = run(m.scan_gitlab)
+print(once.count("WATCH ERROR"), once.count(f"note: {K} failed: glab api "), early.count("WATCH ERROR"),
+      late.count(f"WATCH ERROR {K}: failed 3 times in a row since "), cleared, after.count("WATCH ERROR"), after.count(f"note: {K} failed"))
+')
+check "GitLab: a thread read that fails once and then works writes a note and no WATCH ERROR; one failing every read wakes only after 30 minutes and 3 failures; a read that works clears it" "0 1 0 1 True 0 1" "$got"
+sed -i '/^gitlab.com\/ns\/sub\/proj 7$/d' "$GLW/threads.txt"
 got=$(glpy '
 thread("issues", "4", "opened"); thread("merge_requests", "9", "merged")
 out = run(m.scan_gitlab)
