@@ -147,6 +147,8 @@ printf 'PROMISED o/r#1: post the fix by %s (reply.md)\nPROMISED o/r#1: a docs PR
 check "a PROMISED line whose time is ahead, or with no time, passes" 0 "$(stop "$WD")"
 printf 'PROMISED o/r#1: post the fix by %s (reply.md)\n' "$(date -u -d '-1 hour' +%FT%H:%MZ)" > "$WD/proposals-open.md"
 check "BLOCK: a PROMISED line past its time, naming it" "2 1" "$(stop "$WD") $(grep -c 'post the fix' "$T/err")"
+printf 'PROMISED o/r#1: a javítás %s-ig (reply.md)\n' "$(date -u -d '-1 hour' +%FT%H:%MZ)" > "$WD/proposals-open.md"
+check "BLOCK: a Hungarian PROMISED line past its time (<ISO>-ig)" 2 "$(stop "$WD")"
 printf 'DONE https://github.com/o/r/pull/2 PROMISED o/r#1: post the fix by %s (reply.md)\n' "$(date -u -d '-1 hour' +%FT%H:%MZ)" > "$WD/proposals-open.md"
 check "the same line cleared by its delivering link passes" 0 "$(stop "$WD")"
 rm "$WD/proposals-open.md"; echo 'PROMISED o/r#1: come back with the result (holding.md)' > "$WD/hold/proposals-open.md"
@@ -229,8 +231,8 @@ gate a1 "Agent comment one."
 gate a2 "Agent comment two."
 gate new "Agent answer."
 now=$(date -u +%Y-%m-%dT%H:%M:%SZ); old=$(date -u -d '-4 hours' +%Y-%m-%dT%H:%M:%SZ); hour=$(date -u -d '-1 hour' +%Y-%m-%dT%H:%M:%SZ)
-comments() { # body1 body2 created2 [author2]
-  echo '{"number":5,"comments":2}' > "$FX/repos_o_r_issues_5"
+comments() { # body1 body2 created2 [author2]; thread-context --verify reads the thread through its own (empty) listings
+  echo '{"number":5,"comments":2}' > "$FX/repos_o_r_issues_5"; echo '[]' | tee "$FX/repos_o_r_issues_5_comments_per_page_100" > "$FX/repos_o_r_issues_5_timeline_per_page_100"
   python3 -c 'import json,sys; print(json.dumps([{"body":sys.argv[1],"created":sys.argv[3],"url":"https://example.invalid/c1","user":"nitedani"},{"body":sys.argv[2],"created":sys.argv[3],"url":"https://example.invalid/c2","user":sys.argv[4]}]))' \
     "$1" "$2" "$3" "${4:-nitedani}" > "$FX/repos_o_r_issues_5_comments_per_page_100_page_1"
 }
@@ -284,6 +286,7 @@ tc_fx repos_o_r_issues_43_comments_per_page_100 '[]'
 tc_fx repos_o_r_pulls_43_reviews_per_page_100 '[{"id":7,"user":{"login":"other"},"submitted_at":"2026-09-02T12:00:00Z","html_url":"https://example.invalid/o/r/pull/43#r7","state":"CHANGES_REQUESTED","body":"Please keep the old name."}]'
 tc_fx repos_o_r_pulls_43_comments_per_page_100 '[{"id":8,"user":{"login":"other"},"created_at":"2026-09-02T12:05:00Z","html_url":"https://example.invalid/o/r/pull/43#c8","path":"a.ts","line":3,"body":"This line stays."}]'
 tc_fx repos_o_r_issues_41_timeline_per_page_100 '[{"id":55,"event":"renamed","actor":{"login":"maint"},"created_at":"2026-10-01T09:40:00Z","rename":{"from":"feat: old","to":"fix: his title"}}]'
+for n in 42 43 45; do tc_fx repos_o_r_issues_${n}_timeline_per_page_100 '[]'; done
 TC="$T/ctx/thread-context.md"; mkdir -p "$T/ctx"
 "$R/bin/thread-context" o/r#41 --out "$TC" >/dev/null
 tcg() { grep -c "$1" "$TC"; }
@@ -299,6 +302,16 @@ check "a bot's comment is not in the transcript" 0 "$(tcg '^see #99')"
 check "--verify accepts it for its thread" 0 "$("$R/bin/thread-context" --verify "$TC" --target o/r#41 2>/dev/null; echo $?)"
 check "a maintainer's retitle is in the ledger and the transcript, and isn't the latest comment" "1 1" "$(echo "$(tcg '@maint \[title\] "Retitled "feat: old" to "fix: his title"."') $(tcg 'maint, retitled')")"
 check "--latest" "104 2026-10-01T09:30:00Z" "$("$R/bin/thread-context" --latest o/r#41)"
+# a failed comments or timeline request: no record, no cache, and --verify can't accept an old record; once gh answers, --latest has the newest comment
+c46() { printf '[{"id":1,"user":{"login":"maint"},"created_at":"2026-10-03T09:00:00Z","html_url":"https://example.invalid/o/r/issues/46#c1","body":"First."}%s]' "${1:-}" > "$FX/repos_o_r_issues_46_comments_per_page_100"; }
+tc_fx repos_o_r_issues_46 '{"number":46,"id":6,"title":"Flaky","html_url":"https://example.invalid/o/r/issues/46","state":"open","updated_at":"2026-10-03T09:00:00Z","created_at":"2026-10-03T08:00:00Z","user":{"login":"maint"},"body":"It flakes."}'
+c46; tc_fx repos_o_r_issues_46_timeline_per_page_100 '[]'; "$R/bin/thread-context" --latest o/r#46 >/dev/null
+sed -i 's/"updated_at":"2026-10-03T09:00:00Z"/"updated_at":"2026-10-03T10:00:00Z"/' "$FX/repos_o_r_issues_46"; c46 ',{"id":2,"user":{"login":"maint"},"created_at":"2026-10-03T10:00:00Z","html_url":"https://example.invalid/o/r/issues/46#c2","body":"Still."}'
+printf -- '- root: o/r#46\n- latest-human-comment: id=1 at=2026-10-03T09:00:00Z\n' > "$T/ctx/tc46.md"; mv "$FX/repos_o_r_issues_46_comments_per_page_100" "$T/c46"
+check "BLOCK: a failed comments request fails thread-context, --verify and --latest, naming it, and caches nothing; a failed timeline request fails it too" "1 1 1 1 1 0 1 1" \
+  "$("$R/bin/thread-context" o/r#46 --out "$T/ctx/x46.md" >/dev/null 2>"$T/c46.err"; echo $?) $(grep -c 'repos/o/r/issues/46/comments?per_page=100. failed' "$T/c46.err") $("$R/bin/thread-context" --verify "$T/ctx/tc46.md" --target o/r#46 2>"$T/c46.err"; echo $?) $(grep -c "gh couldn't read" "$T/c46.err") $("$R/bin/thread-context" --latest o/r#46 >/dev/null 2>&1; echo $?) $(grep -c 10:00:00Z "$HOME/.cache/mergeworthy/threads/o__r__46.json") $(mv "$T/c46" "$FX/repos_o_r_issues_46_comments_per_page_100"; mv "$FX/repos_o_r_issues_46_timeline_per_page_100" "$T/t46"; "$R/bin/thread-context" --latest o/r#46 >/dev/null 2>"$T/c46.err"; echo $?) $(grep -c 'issues/46/timeline?per_page=100. failed' "$T/c46.err")"
+mv "$T/t46" "$FX/repos_o_r_issues_46_timeline_per_page_100"
+check "once gh answers again, --latest reports the newest comment" "2 2026-10-03T10:00:00Z" "$("$R/bin/thread-context" --latest o/r#46)"
 tc_fx repos_o_r_issues_45 '{"number":45,"id":5,"title":"Code in a list","html_url":"https://example.invalid/o/r/issues/45","state":"open","updated_at":"2026-10-02T10:00:00Z","created_at":"2026-10-02T09:00:00Z","user":{"login":"maint"},"body":"- The log:\n  ```\n  see o/r#42\n  ```"}'
 tc_fx repos_o_r_issues_45_comments_per_page_100 '[{"id":105,"user":{"login":"maint"},"created_at":"2026-10-02T09:30:00Z","html_url":"https://example.invalid/o/r/issues/45#c105","body":"- The bot said:\n  ```\n  I disagree with the rename.\n  ```"}]'
 "$R/bin/thread-context" o/r#45 --out "$T/ctx/tc45.md" >/dev/null
@@ -480,7 +493,7 @@ kill "$SPID"; wait "$SPID" 2>/dev/null
 
 # ---------- finality trigger: the third proposal on a thread needs a thread map ----------
 AR="$T/art"; mkdir -p "$AR/drafts/r1" "$AR/maps"; ctx "$AR/drafts/r1" o/r#9
-rm -f "$HOME/.claude/proposal-rounds.txt"; echo '{"number":9,"comments":0}' > "$FX/repos_o_r_issues_9"
+rm -f "$HOME/.claude/proposal-rounds.txt"; echo '{"number":9,"comments":0}' > "$FX/repos_o_r_issues_9"; echo '[]' | tee "$FX/repos_o_r_issues_9_comments_per_page_100" > "$FX/repos_o_r_issues_9_timeline_per_page_100"
 prop() { # n: a gated proposal draft, as gate-pass leaves it
   printf 'Proposal %s\n' "$1" > "$AR/drafts/r1/p$1.md"; sha256sum "$AR/drafts/r1/p$1.md" | cut -d' ' -f1 > "$AR/drafts/r1/p$1.md.gate"; tcbind "$AR/drafts/r1/p$1.md"
   echo "--kind proposal --repo o/r --parent none" > "$AR/drafts/r1/p$1.md.lint"
@@ -735,6 +748,11 @@ printf '# acme/hu\n\n## PR conventions\n- Titles: sentence case.\n' > "$HUP"
 check "BLOCK: the same body with no Language line, on its State line and effort words" "1 1 1" "$(hulint) $(grep -c 'State: draft' "$T/hu.out") $(grep -c 'model line without effort' "$T/hu.out")"
 printf '# acme/hu\n\nLanguage: hu\n' > "$HUP"
 check "BLOCK: under Language: hu, an English State line and a decision without its Hungarian pick" "1 1 1" "$(sed -i 's/^\*\*Állapot: piszkozat\*\*/**State: draft**/; s/^Az (a) lehetőséget választottam/I picked (a)/' "$T/hu.md"; hulint) $(grep -c 'Állapot: piszkozat' "$T/hu.out") $(grep -c 'választottam' "$T/hu.out")"
+# slh <finding> <draft>: sl under Language: hu
+slh() { printf '%s\n' "$2" > "$T/st.md"; local out rc; out=$(MERGEWORTHY_BADGE=off python3 "$R/bin/post-lint" "$T/st.md" --kind status --repo acme/hu --parent none 2>/dev/null); rc=$?; [ -n "$1" ] || { echo "$rc"; return; }; printf '%s\n' "$out" | grep -c "$1"; }
+check "status under Language: hu: a deadline with -ig, an action sentence and an English status pass" "0 0 0" "$(slh '' "Mergelem az !1-et, $FUT-ig.") $(slh '' "Átnézem a javítást. A jelentés $FUT-ig jön.") $(slh '' "I'll merge it by $FUT.")"
+check "status under Language: hu: actions that share a stem with an observation (visit, switch, meet, comment on) are listed and pass" "0 0 0 0 0" "$(slh '' "Meglátogatom az oldalt. Átnézem $FUT-ig.") $(slh '' "Meglátogatjuk az oldalt. Átnézem $FUT-ig.") $(slh '' "Kapcsolom a zászlót. Átnézem $FUT-ig.") $(slh '' "Találkozom a karbantartóval. Átnézem $FUT-ig.") $(slh '' "Észrevételezem a PR-t. Átnézem $FUT-ig.")"
+check "status under Language: hu: a past verb, an observation (a prefixed one too), a result, a verb outside the list, a claim, a relative time and no deadline are findings; listed actions, prefixed ones too, are not" "1 1 1 1 1 1 1 1 0 0 0 0 0 0 0 0 1 1 1" "$(slh 'says neither' "Megnéztem a naplót. Átnézem $FUT-ig.") $(slh 'says neither' "Látom az eltérést. Átnézem $FUT-ig.") $(slh 'says neither' "Észreveszem az eltérést. Átnézem $FUT-ig.") $(slh 'says neither' "Észlelem az eltérést. Átnézem $FUT-ig.") $(slh 'says neither' "Megtalálom az eltérést. Átnézem $FUT-ig.") $(slh 'says neither' "Sikeresek a tesztek. Átnézem $FUT-ig.") $(slh 'says neither' "Zöldek a tesztek. Átnézem $FUT-ig.") $(slh 'says neither' "Gondolom, rendben van. Átnézem $FUT-ig.") $(slh 'says neither' "Megnézem a naplót. Átnézem $FUT-ig.") $(slh 'says neither' "Kijavítom a hibát. Átnézem $FUT-ig.") $(slh 'says neither' "Elküldöm a választ. Átnézem $FUT-ig.") $(slh 'says neither' "Frissítem a leírást. Átnézem $FUT-ig.") $(slh 'says neither' "Letöltöm a csomagot. Átnézem $FUT-ig.") $(slh 'says neither' "Áttekintem a kódot. Átnézem $FUT-ig.") $(slh 'says neither' "Ráfuttatjuk a teszteket az ágra. Átnézem $FUT-ig.") $(slh 'says neither' "Dolgozom rajta. Írok a karbantartónak. Átnézem $FUT-ig.") $(slh 'is a claim' "Átnézem, mert elbukott, $FUT-ig.") $(slh 'relative time' "Átnézem holnap, a többit $FUT-ig.") $(slh "say by when, as an ISO time in UTC ('2026-10-28T16:00Z-ig')" 'Átnézem a javítást.')"
 printf '%s\nA feltöltés elakad nagy fájloknál. Ez az MR darabokban küldi a fájlt.\n\n### Amit látni fogsz\n\n**1.** Egy 50 MB-os fájl feltöltése:\n\n```\nPOST /upload -> 201\n```\n' "$B" > "$T/hus.md"
 check "a ready Hungarian body's evidence heading passes under Language: hu, not without it" "0 1" "$(python3 "$R/bin/post-lint" "$T/hus.md" --kind pr --repo acme/hu --parent none 2>&1 | grep -c 'pull-request §Body') $(python3 "$R/bin/post-lint" "$T/hus.md" --kind pr --repo acme/en --parent none 2>&1 | grep -c 'pull-request §Body')"
 hdguard() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr create --draft --repo acme/hu --title \"$(cat /w/drafts/title.md)\" --body-file "+sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$TCO" \
@@ -1319,6 +1337,45 @@ cat > "$T/bin/glab" <<'EOF2'
 f="$FX/$(printf '%s' "$4" | tr '/?&=' '____')"; [ -f "$f" ] && cat "$f" || exit 1
 EOF2
 chmod +x "$T/bin/glab"
+# thread-context on a GitLab MR, read through glab: the record, --latest and --verify, as on GitHub
+GLM="$FX/projects_acme%2Fapp_merge_requests_1"
+gl_mr() { printf '{"iid":1,"id":501,"title":"Fix total","web_url":"https://gitlab.com/acme/app/-/merge_requests/1","state":"opened","updated_at":"%s","created_at":"2026-10-29T13:00:00Z","author":{"username":"me"},"description":"Fixes #3, after !2."}' "$1" > "$GLM"; }
+gl_mr 2026-10-29T15:20:00Z
+printf '%s' "[{\"id\":11,\"type\":\"DiffNote\",\"author\":{\"username\":\"bob\"},\"created_at\":\"2026-10-29T14:00:00Z\",\"body\":\"This line stays.\",\"position\":{\"new_path\":\"a.py\",\"new_line\":3}},
+ {\"id\":7,\"author\":{\"username\":\"alice\"},\"created_at\":\"2026-10-29T15:00:00Z\",\"body\":\"Could you also cover the empty list?\"},
+ {\"id\":8,\"author\":{\"username\":\"me\"},\"created_at\":\"2026-10-29T15:10:00Z\",\"body\":\"$BADGE\\nDone.\"},
+ {\"id\":9,\"system\":true,\"author\":{\"username\":\"alice\"},\"created_at\":\"2026-10-29T15:15:00Z\",\"body\":\"added 1 commit\"},
+ {\"id\":10,\"author\":{\"username\":\"project_5_bot\"},\"created_at\":\"2026-10-29T15:20:00Z\",\"body\":\"Pipeline passed.\"}]" > "${GLM}_notes_sort_asc_order_by_created_at_per_page_100"
+printf '{"iid":3,"id":503,"title":"Total breaks on None","web_url":"https://gitlab.com/acme/app/-/issues/3","state":"opened","updated_at":"2026-10-28T10:00:00Z","created_at":"2026-10-28T09:00:00Z","author":{"username":"alice"},"description":"It crashes."}' > "$FX/projects_acme%2Fapp_issues_3"
+printf '{"iid":2,"id":502,"title":"Refactor total","web_url":"https://gitlab.com/acme/app/-/merge_requests/2","state":"merged","updated_at":"2026-10-28T10:00:00Z","created_at":"2026-10-28T09:00:00Z","author":{"username":"bob"},"description":"Moves it."}' > "$FX/projects_acme%2Fapp_merge_requests_2"
+echo '[]' | tee "$FX/projects_acme%2Fapp_issues_3_notes_sort_asc_order_by_created_at_per_page_100" > "$FX/projects_acme%2Fapp_merge_requests_2_notes_sort_asc_order_by_created_at_per_page_100"
+GTC="$T/glctx/thread-context.md"; mkdir -p "$T/glctx"; "$R/bin/thread-context" 'gitlab.com/acme/app!1' --out "$GTC" >/dev/null
+check "thread-context on a GitLab MR: its root, its latest human note (not the agent's, a system note or a bot's), the linked issue and MR, a diff note" "1 1 2 1" \
+  "$(grep -c '^- root: gitlab.com/acme/app!1 ' "$GTC") $(grep -c '^- latest-human-comment: id=7 at=2026-10-29T15:00:00Z' "$GTC") $(grep -Ec '^  - gitlab.com/acme/app(#3|!2) ' "$GTC") $(grep -c 'bob, review comment a.py:3' "$GTC")"
+check "--latest and --verify on a GitLab MR" "7 2026-10-29T15:00:00Z 0" "$("$R/bin/thread-context" --latest 'gitlab.com/acme/app!1') $("$R/bin/thread-context" --verify "$GTC" --target 'gitlab.com/acme/app!1' 2>/dev/null; echo $?)"
+gl_mr 2026-10-29T16:00:00Z; sed -i 's/^\[/[{"id":12,"author":{"username":"alice"},"created_at":"2026-10-29T16:00:00Z","body":"And the None case?"},/' "${GLM}_notes_sort_asc_order_by_created_at_per_page_100"
+check "BLOCK: --verify once the MR has a newer human note" "1 1" "$("$R/bin/thread-context" --verify "$GTC" --target 'gitlab.com/acme/app!1' 2>"$T/glv.err"; echo $?) $(grep -c 'but the thread has https://gitlab.com/acme/app/-/merge_requests/1#note_12' "$T/glv.err")"
+# the notes request fails: no record, no cache, and --verify can't accept an old record; once glab answers, --latest has the newest note
+GLN="${GLM}_notes_sort_asc_order_by_created_at_per_page_100"
+gl_mr 2026-10-29T17:00:00Z; sed -i 's/^\[/[{"id":13,"author":{"username":"alice"},"created_at":"2026-10-29T17:00:00Z","body":"One more."},/' "$GLN"; mv "$GLN" "$T/gl-notes"
+sed -i 's/^- latest-human-comment: .*/- latest-human-comment: id=12 at=2026-10-29T16:00:00Z/' "$GTC"
+check "BLOCK: a failed notes request fails thread-context, --verify and --latest, naming it, and caches nothing" "1 1 1 1 1 0" \
+  "$("$R/bin/thread-context" 'gitlab.com/acme/app!1' --out "$T/glctx/x.md" >/dev/null 2>"$T/gln.err"; echo $?) $(grep -c 'notes?sort=asc.* failed' "$T/gln.err") $("$R/bin/thread-context" --verify "$GTC" --target 'gitlab.com/acme/app!1' 2>"$T/gln.err"; echo $?) $(grep -c "glab couldn't read" "$T/gln.err") $("$R/bin/thread-context" --latest 'gitlab.com/acme/app!1' >/dev/null 2>&1; echo $?) $(grep -c 17:00 "$HOME/.cache/mergeworthy/threads/gitlab.com__acme__app__!1.json")"
+mv "$T/gl-notes" "$GLN"
+check "once the notes request answers again, --latest reports the newest note" "13 2026-10-29T17:00:00Z" "$("$R/bin/thread-context" --latest 'gitlab.com/acme/app!1')"
+printf '{"iid":4,"id":504,"title":"Follow-up","web_url":"https://gitlab.com/acme/app/-/merge_requests/4","state":"opened","updated_at":"2026-10-29T13:00:00Z","created_at":"2026-10-29T13:00:00Z","author":{"username":"bob"},"description":"After gitlab.com/acme/app!2 and gitlab.com/acme/app#3."}' > "$FX/projects_acme%2Fapp_merge_requests_4"
+echo '[]' > "$FX/projects_acme%2Fapp_merge_requests_4_notes_sort_asc_order_by_created_at_per_page_100"
+"$R/bin/thread-context" 'gitlab.com/acme/app!4' --out "$T/glctx/q.md" >/dev/null
+check "a qualified gitlab.com/<path>!N and #N in a GitLab thread are followed as written" 2 "$(grep -Ec '^  - gitlab.com/acme/app(#3|!2) ' "$T/glctx/q.md")"
+# GitLab's note times carry a fraction (2022-01-31T15:10:44.988Z): the record writes every time in one UTC form, so gate-pass, east of
+# UTC, still refuses a review older than the note
+NA=$(date -u -d '-30 minutes' +%Y-%m-%dT%H:%M:%S); GZ="$T/gltz"; mkdir -p "$GZ"
+printf '{"iid":5,"id":505,"title":"Times","web_url":"https://gitlab.com/acme/app/-/merge_requests/5","state":"opened","updated_at":"%s.988Z","created_at":"2026-10-29T13:00:00.123Z","author":{"username":"bob"},"description":"Times."}' "$NA" > "$FX/projects_acme%2Fapp_merge_requests_5"
+printf '[{"id":21,"author":{"username":"alice"},"created_at":"%s.988Z","body":"One more thing."}]' "$NA" > "$FX/projects_acme%2Fapp_merge_requests_5_notes_sort_asc_order_by_created_at_per_page_100"
+"$R/bin/thread-context" 'gitlab.com/acme/app!5' --out "$GZ/thread-context.md" >/dev/null
+printf 'Agreed, option A it is.\n' > "$GZ/r.md"; echo CLEAN > "$GZ/r.review.out"; touch -d '-3 hours' "$GZ/r.md"; touch -d '-1 hour' "$GZ/r.review.out"
+check "BLOCK: a GitLab note at a fractional time, newer than the review, under TZ=Europe/Budapest; the record writes its time and the body's as UTC seconds" "1 1 1 1" \
+  "$(TZ=Europe/Budapest MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GZ/r.md" "$GZ/r.review.out" --kind reply --parent none >"$T/gz.out" 2>&1; echo $?) $(grep -c 'newer than the review' "$T/gz.out") $(grep -c "^- latest-human-comment: id=21 at=${NA}Z " "$GZ/thread-context.md") $(grep -c '^### 2026-10-29T13:00:00Z @bob' "$GZ/thread-context.md")"
 echo '{"state":"open","draft":false,"head":{"sha":"h1"}}' > "$FX/repos_o_r_pulls_7"
 echo '{"check_runs":[{"name":"test","conclusion":"success"}]}' > "$FX/repos_o_r_commits_h1_check-runs"
 echo '{"state":"opened","draft":true,"head_pipeline":{"status":"failed"}}' > "$FX/projects_g%2Fp_merge_requests_96"
@@ -1868,8 +1925,8 @@ EOF
 iedit() { # <transcript> <tool> <file> [extra hook input as JSON]: pre-design-gate's exit code (its message in $T/ierr)
   python3 -c 'import json,sys; d={"tool_name":sys.argv[2],"tool_input":{("notebook_path" if sys.argv[2]=="NotebookEdit" else "file_path"):sys.argv[3]},"cwd":sys.argv[4],"transcript_path":sys.argv[1]}; d.update(json.loads(sys.argv[5])); print(json.dumps(d))' "$1" "$2" "$3" "$T" "${4:-{\}}" | python3 "$R/hooks/pre-design-gate.py" 2>"$T/ierr"; echo $?
 }
-ibash() { # <transcript> <command>: pre-bash-guard's exit code for the command run in $I
-  python3 -c 'import json,sys; print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[2]},"cwd":sys.argv[3],"transcript_path":sys.argv[1]}))' "$1" "$2" "$I" | python3 "$R/hooks/pre-bash-guard.py" 2>/dev/null; echo $?
+ibash() { # <transcript> <command> [cwd]: pre-bash-guard's exit code for the command run in cwd, by default $I
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[2]},"cwd":sys.argv[3],"transcript_path":sys.argv[1]}))' "$1" "$2" "${3:-$I}" | python3 "$R/hooks/pre-bash-guard.py" 2>/dev/null; echo $?
 }
 IT="$T/instr.jsonl"; ir_tr "$IT"
 check "BLOCK: an edit in a repo whose root has AGENTS.md and CLAUDE.md, before reading them, naming both" "2 1" "$(iedit "$IT" Edit "$I/a.ts") $(grep -c "read this repo's instructions first.*$I/AGENTS.md, $I/CLAUDE.md" "$T/ierr")"
@@ -1887,6 +1944,45 @@ check "a repo without AGENTS.md or CLAUDE.md is never blocked" 0 "$(iedit "$IT" 
 check "a path outside any git repo is never blocked" 0 "$(iedit "$IT" Write "$T/nogit/a.md")"
 check "BLOCK: a command writing into that repo before the reads: a redirect, tee, sed -i, cp" "2 2 2 2" "$(ibash "$IT" "echo x > $I/a.txt") $(ibash "$IT" "echo x | tee sub/b.txt") $(ibash "$IT" "sed -i s/a/b/ $I/a.ts") $(ibash "$IT" "cp /etc/hostname $I/h")"
 check "a command reading there, or writing outside it, passes" "0 0 0" "$(ibash "$IT" "cat $I/AGENTS.md") $(ibash "$IT" "echo x > /dev/null") $(ibash "$IT" "echo x > $T/nogit/a.md")"
+check "a log a background job writes after its cd lands in that dir: outside it passes, into it blocks" "0 2" \
+  "$(ibash "$IT" "cd $T/nogit && nohup pnpm dev > log 2>&1 &") $(ibash "$IT" "cd $I && nohup pnpm dev > log 2>&1 &")"
+check "logs background subshells in a loop write to \$S/\$w paths, S set on the line: outside it passes, into it blocks" "0 2" \
+  "$(ibash "$IT" "S=$T/nogit; for w in a b; do (cd \$S/\$w && pnpm install > \$S/\$w-install.log 2>&1) & done; wait") $(ibash "$IT" "S=$I; for w in a b; do (cd \$S/\$w && pnpm install > \$S/\$w-install.log 2>&1) & done; wait")"
+check "BLOCK: eval runs its script in this shell: a write after its cd into the repo, or to a path its variable names there" "2 2" \
+  "$(ibash "$IT" "eval 'cd $I'; echo x > a.txt" "$T/nogit") $(ibash "$IT" "eval 'WD=$I'; echo x > \$WD/a.txt" "$T/nogit")"
+check "BLOCK: a variable set in a branch may or may not hold after it, nor falls back to the environment's: a write to a path it starts" "2 2" \
+  "$(ibash "$IT" "WD=$I; if false; then WD=$T/nogit; fi; echo x > \$WD/a.txt" "$T/nogit") $(WD=$T/nogit ibash "$IT" "if true; then WD=$I; fi; echo x > \$WD/a.txt" "$T/nogit")"
+check "BLOCK: a call to a function the line defines runs its cd or assignment there, after an absolute cd too: a write after it" "2 2" \
+  "$(ibash "$IT" "f() { cd $I; }; cd $T/nogit; f; echo x > a.txt" "$T/nogit") $(ibash "$IT" "f() { WD=$I; }; WD=$T/nogit; f; echo x > \$WD/a.txt" "$T/nogit")"
+check "BLOCK: a word with a quoted or escaped \$ isn't expanded: a write to '\$WD/a.txt' or \\\$WD/a.txt can't be told" "2 2" \
+  "$(ibash "$IT" "WD=$T/nogit; echo x > '\$WD/a.txt'") $(ibash "$IT" "WD=$T/nogit; echo x > \\\$WD/a.txt")"
+check "BLOCK: the same text quoted in one word and written plain in another: the plain redirect into the repo isn't taken as literal" 2 \
+  "$(ibash "$IT" "WD=$I; echo '\$WD/a.txt' > \$WD/a.txt" "$T/nogit")"
+check "BLOCK: a call to a function that calls one defined after it: the write after the call can't be told" 2 \
+  "$(ibash "$IT" "g() { f; }; f() { cd $I; }; cd $T/nogit; g; echo x > a.txt" "$T/nogit")"
+check "BLOCK: an absolute path whose folder holds an expansion left unexpanded (its text quoted elsewhere in the command) can't be told" 2 \
+  "$(ibash "$IT" "WD=${I##*/}; echo '$T/\$WD/a.txt' > $T/\$WD/a.txt" "$T/nogit")"
+check "BLOCK: a written path that is a variable a branch may have changed, or a loop's over words holding a /, can't be told" "2 2" \
+  "$(ibash "$IT" "F=$I/a.txt; if false; then F=$T/nogit/other.txt; fi; echo x > \$F" "$T/nogit") $(ibash "$IT" "D=$T/nogit; for f in a/b c; do echo x > \$D/\$f; done" "$T/nogit")"
+check "a call to a function no body on the line changes dir in (a logging helper) keeps the dir: a relative write after it passes" 0 \
+  "$(ibash "$IT" "log() { echo \"\$@\"; }; log starting; echo x > a.txt" "$T/nogit")"
+check "BLOCK: a loop variable its body names other than as \$f (set in a branch, read, let, \${f:=…}) is no longer the loop's word: a write to it can't be told" "2 2 2 2" \
+  "$(ibash "$IT" "for f in a b; do if true; then f=$I/c.txt; fi; echo x > \$f; done" "$T/nogit") $(ibash "$IT" "for f in a b; do read f; echo x > $T/nogit/\$f; done" "$T/nogit") $(ibash "$IT" "for f in a b; do let f=1; echo x > $T/nogit/\$f; done" "$T/nogit") $(ibash "$IT" "for f in a b; do : \${f:=x}; echo x > $T/nogit/\$f; done" "$T/nogit")"
+check "BLOCK: a loop variable a helper function on the line assigns is no longer the loop's word: a write to it can't be told" 2 \
+  "$(ibash "$IT" "setpath() { f=$I/helper.txt; }; for f in a b; do setpath; echo x > \$f; done" "$T/nogit")"
+check "BLOCK: a script a shell reads from a heredoc starts in a dir that can't be told: its relative cd and write, before a cd of the line, can't be checked" 2 \
+  "$(ibash "$IT" "bash <<'EOF'"$'\n'"cd sub"$'\n'"echo x > a.txt"$'\n'"EOF"$'\n'"cd $T/nogit")"
+check "BLOCK: a loop variable the line names in quotes (printf -v 'f') is no longer the loop's word: a write to it can't be told" 2 \
+  "$(ibash "$IT" "for f in a b; do printf -v 'f' $I/out; echo x > \$f; done" "$T/nogit")"
+check "BLOCK: a bash -c script, quoted, gets none of the line's unexported variables: its cd \"\$D\" fails and its write lands in the repo, so the line's D can't be told; a double-quoted one, which this shell expands, keeps it" "2 0" \
+  "$(ibash "$IT" "D=$T/nogit; bash -c 'cd \"\$D\"; pwd; echo x > a.txt'") $(ibash "$IT" "D=$T/nogit; bash -c \"cd \$D; echo x > a.txt\"")"
+check "BLOCK: a variable a subshell sets other than by a plain D=… (export, read, unset, printf -v) can't be told: a relative write after its cd \$D may land in a repo whose instructions weren't read" "2 2 2 2" \
+  "$(ibash "$IT" "D=$T/nogit; (export D=$I; cd \$D; echo x > a.txt)" "$T/nogit") $(ibash "$IT" "D=$T/nogit; (read D <<< $I; cd \$D; echo x > a.txt)" "$T/nogit") $(ibash "$IT" "D=$T/nogit; (unset D; cd \$D; echo x > a.txt)" "$T/nogit") $(ibash "$IT" "D=$T/nogit; (printf -v D $I; cd \$D; echo x > a.txt)" "$T/nogit")"
+check "a top-level cd to an inherited variable the line only names in text (printf 'D=%s') resolves, as on main; in a subshell it blocks, as on main" "0 2" \
+  "$(D="$T/nogit" ibash "$IT" "printf 'D=%s\n' \"\$D\"; cd \"\$D\"; echo x > a.txt") $(D="$T/nogit" ibash "$IT" "(printf 'D=%s\n' \"\$D\"; cd \"\$D\"; echo x > a.txt)")"
+check "a variable the line sets only by a plain D=… is still followed into a subshell's cd" 0 "$(ibash "$IT" "D=$T/nogit; (cd \$D; echo x > a.txt)")"
+check "logs written outside it by a backgrounded { } group in a loop, after its cd to \$W/\$t, pass" 0 \
+  "$(ibash "$IT" "W=$T/nogit; for t in a b; do { cd \$W/\$t && netns-run bash x.sh > \$W/probe/\$t.out 2> \$W/probe/\$t.err; echo \"\$t exit \$?\" >> \$W/probe/\$t.err; } & done; wait")"
 ir_tr "$IT" "read:$I/AGENTS.md" "read:$I/CLAUDE.md"; check "a command writing into it passes once both were read" 0 "$(ibash "$IT" "echo x > $I/a.txt")"
 ir_tr "$IT"; echo x > "$T/nogit/src"
 check "BLOCK: cp, mv and install into the repo's folder itself (a folder destination)" "2 2 2 2" "$(ibash "$IT" "cp $T/nogit/src .") $(ibash "$IT" "mv $T/nogit/src .") $(ibash "$IT" "install $T/nogit/src .") $(ibash "$IT" "cp $T/nogit/src $I/")"
@@ -2334,6 +2430,10 @@ MRC='glab mr create --draft -R gitlab.com/ns/proj --title x'
 check "BLOCK: a push from a work folder another session's watcher doesn't watch, naming the folder to watch; a PR and an MR from there pass: post-bash-register starts its watcher" "2 1 0 0" \
   "$(bgs sess-b "$PUSH" "$CK4") $(grep -c "gh-watch-start $TK4 " "$T/err") $(unwatched sess-b "$PRC" "$CK4") $(unwatched sess-b "$MRC" "$CK4")"
 check "the same from the watched work folder pass, whichever session acts there" "0 0 0" "$(bgs sess-b "$PUSH" "$CK") $(unwatched sess-b "$PRC" "$CK") $(unwatched sess-b "$MRC" "$CK")"
+check "a variable a subshell sets stays inside it: a cd to it after the subshell goes where the line set it before, a watched folder" 0 "$(bgs sess-b "WD=$CK; (WD=$CK4); cd \$WD && $PUSH" "$T")"
+check "a cd to an absolute path, written out or from a variable the line set, makes the dir known again after cd -: a push in the watched folder passes" "0 0" \
+  "$(bgs sess-b "cd -; cd $CK && $PUSH" "$T") $(bgs sess-b "cd -; WD=$CK; cd \$WD && $PUSH" "$T")"
+check "BLOCK: a push after a subshell's cd and push is checked in the session's dir, an unwatched work folder, naming it" "2 1" "$(bgs sess-b "(cd $CK && $PUSH); $PUSH" "$CK4") $(grep -c "gh-watch-start $TK4 " "$T/err")"
 check "outside any work folder, only the session's own watcher counts" "0 1" "$(unwatched sess-a "$MRC" "$T") $(unwatched sess-b "$MRC" "$T")"
 oreg() { # session cwd command: the thread post-bash-register adds to the watched folder
   python3 -c 'import json,sys; print(json.dumps({"session_id":sys.argv[1],"cwd":sys.argv[2],"tool_input":{"command":sys.argv[3]},"tool_response":{"stdout":"https://github.com/vikejs/vike/pull/9"}}))' "$@" \
@@ -2400,8 +2500,11 @@ check "post-bash-register starts the folder's watcher for cd /abs && a create" "
   "$(: > "$T/started"; python3 -c 'import json,sys; print(json.dumps({"session_id":"sess-b","cwd":sys.argv[1],"tool_input":{"command":sys.argv[2]},"tool_response":{"stdout":"https://gitlab.com/ns/proj/-/issues/9"}}))' "$T" "cd $CK4 && $GIC" | python3 "$R/hooks/post-bash-register.py" 2>/dev/null; echo "$?:$(cat "$T/started")"; rm -f "$TK4/threads.txt")"
 check "post-bash-register starts the folder's watcher for a plain create only: the create beside a note starts none; a note alone neither, saying to start it" "2:sess-b $TK4 gitlab.com/ns/proj 9|2:|1" \
   "$(areg "$GIC" https://gitlab.com/ns/proj/-/issues/9)|$(areg "$H2" "$(printf 'https://gitlab.com/ns/proj/-/issues/9\nhttps://gitlab.com/ns/proj/-/issues/1#note_2')")|$(python3 -c 'import json,sys; print(json.dumps({"session_id":"sess-b","cwd":sys.argv[1],"tool_input":{"command":sys.argv[2]},"tool_response":{"stdout":"https://gitlab.com/ns/proj/-/issues/9"}}))' "$CK4" 'glab issue note 9 -R gitlab.com/ns/proj --message x' | python3 "$R/hooks/post-bash-register.py" 2>&1 >/dev/null | grep -c "isn't running, so gitlab.com/ns/proj 9 joined none")"
-check "BLOCK: an MR where the dir can't be told (cd -, a cd to an unset variable, a cd in a subshell or bash -c), saying to cd to an absolute path" "2 2 2 2 1" \
-  "$(bgs sess-b "cd $CK; $MRC; cd -; $MRC" "$CK4") $(bgs sess-b "cd \"\$NOWHERE\" && $MRC" "$CK") $(bgs sess-b "(cd $CK4); $MRC" "$CK") $(bgs sess-b "bash -c 'cd $CK4'; $MRC" "$CK") $(grep -c 'cd to an absolute path first' "$T/err")"
+check "BLOCK: an MR where the dir can't be told (cd -, a cd to an unset variable, a cd in a branch or a function), saying to cd to an absolute path" "2 2 2 2 1" \
+  "$(bgs sess-b "cd $CK; $MRC; cd -; $MRC" "$CK4") $(bgs sess-b "cd \"\$NOWHERE\" && $MRC" "$CK") $(bgs sess-b "if true; then cd $CK; fi; $MRC" "$CK") $(bgs sess-b "f() { cd $CK; }; $MRC" "$CK") $(grep -c 'cd to an absolute path first' "$T/err")"
+check "a cd in a subshell, a background job or bash -c never reaches what follows: the MR after it runs in the session's dir" "0 0 0" "$(bgs sess-b "(cd $CK4); $MRC" "$CK") $(bgs sess-b "cd $CK4 && sleep 1 & $MRC" "$CK") $(bgs sess-b "bash -c 'cd $CK4'; $MRC" "$CK")"
+check "BLOCK: a push after a cd in a branch, or in a loop to a relative dir, can't tell its checkout" "2 2 1" \
+  "$(bgs sess-b "if true; then cd $CK; fi; $PUSH" "$CK") $(bgs sess-b "for d in a b; do cd \$d; $PUSH; done" "$CK") $(grep -c "can't tell which" "$T/err")"
 check "a redirect on cd or pushd (pushd x >/dev/null, cd x 2>/dev/null) and cd \$(git rev-parse --show-toplevel) leave the dir known: an MR in the watched folder passes" "0 0 0 0" \
   "$(bgs sess-b "pushd $CK >/dev/null && $MRC" "$CK") $(bgs sess-b "pushd $CK >/dev/null; $MRC; popd >/dev/null" "$CK") $(bgs sess-b "cd $CK 2>/dev/null && $MRC" "$CK") $(bgs sess-b "cd \$(git rev-parse --show-toplevel) && $MRC" "$CK")"
 echo "$FPID" > "$TK4/gh-watch.pid"; echo gitlab.com/ns/proj > "$TK4/repos.txt"; echo "$TK4" >> "$HOME/.claude/gh-watch-dirs.txt"
