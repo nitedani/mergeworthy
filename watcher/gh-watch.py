@@ -25,7 +25,7 @@
   a new issue there wakes the steward (WAKES); its next pass reads the rest of events.log.
 - Every request is counted, 304 answers too (tally; `gh-watch.py --stats` prints the rate, and once an hour a line goes to gh-watch-stats.log).
 - On Linux, main_dir's daemon starts bin/disk-sweep --delete at most once an hour, in the background (sweep_disk).
-State lives in gh-watch-state.json: every seen (id, updated_at) pair, so nothing is skipped or repeated,
+State lives in gh-watch-state.json: every seen comment's updated_at and body hash, so nothing is skipped or repeated,
 and scans overlap by 10 minutes. A failed API call prints WATCH ERROR and that thread's scan position isn't advanced.
 """
 import contextlib, datetime, fcntl, hashlib, http.client, json, os, re, subprocess, sys, threading, time, urllib.parse
@@ -594,11 +594,12 @@ def note_refactor_ask(repo, key, user, url, body, upd, head):
 
 def handle_comment(state, repo, key, kind, cid, upd, login, url, body, extra='', react=None):
     """An answerable comment (mergeworthy:reply): an event, an owed reply and an :eyes: reaction, each once."""
-    sk = f"{kind}:{cid}"
-    if state['seen'].get(sk) == upd:
+    sk, mark = f"{kind}:{cid}", hashlib.sha256(body.encode()).hexdigest()[:12]
+    was = (state['seen'].get(sk) or '').split()  # "<updated_at> <body hash>"; a state from before the hash has the time alone
+    state['seen'][sk] = f"{upd} {mark}"
+    if was[:1] == [upd] or was[1:] == [mark]:  # unchanged: an award on a GitLab note moves its updated_at
         return
-    edited = sk in state['seen']
-    state['seen'][sk] = upd
+    edited = bool(was)
     if before_seed(upd):
         return
     indented = '\n'.join('    ' + l for l in body.splitlines())  # no body line can start with ### and pass as an event
