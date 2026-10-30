@@ -14,7 +14,7 @@ import steward
 
 JOBS = os.path.expanduser('~/.claude/agent-jobs')
 REPORTED = os.path.expanduser('~/.claude/agent-jobs-reported')  # <job file>-<transcript mtime>: reported once per finish
-LAUNCHED = os.path.expanduser('~/.claude/agent-jobs-launch')  # <job file>: the time pre-agent-dedupe let its launch through
+LAUNCHED = os.path.expanduser('~/.claude/agent-jobs-launch')  # <job file>: when pre-agent-dedupe let its launch through, its key and task
 LAUNCH = re.compile(rb'"name": ?"(Agent|Task|mcp__[^"]*(delegate_task|t3_thread_launch))"')  # pre-agent-dedupe's matcher
 QUIET, LONG, OPEN = 180, 660, 24 * 3600
 CODEX = '~/.codex/sessions/*/*/*/rollout-*.jsonl'  # T3 Code's Codex agents  # OPEN: pre-agent-dedupe's window, after which a job no longer counts

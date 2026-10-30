@@ -315,9 +315,11 @@ jobs = os.path.expanduser('~/.claude/agent-jobs'); os.makedirs(jobs, exist_ok=Tr
 f = os.path.join(jobs, hashlib.sha256(key.encode()).hexdigest()[:16])
 pre = os.path.join(agent_jobs.LAUNCHED, os.path.basename(f))  # when the launch this registers began: its transcript starts after it
 task = str(ti.get('task') or ti.get('prompt') or '')
+# one launch at a time checks the open jobs and leaves its record, so launches in one message see each other; held until exit
+lock = open(jobs + '.lock', 'a'); fcntl.flock(lock, fcntl.LOCK_EX)
 if register:
-    try: launched = float(open(pre).read()); os.remove(pre)
-    except (OSError, ValueError): launched = time.time()
+    try: launched = json.load(open(pre))['launched']; os.remove(pre)
+    except (OSError, ValueError, KeyError, TypeError): launched = time.time()
     json.dump({'key': key, 'started': time.time(), 'launched': launched, 'brief': task,
                'session': d.get('session_id'), 'transcript': d.get('transcript_path')}, open(f, 'w'))
     # an agent now runs memory-prep's brief: stop-lint's hourly repeat of the refresh order waits an hour
@@ -335,7 +337,13 @@ elif os.path.exists(f):
             f"release the job with `agent-job done {shlex.quote(key[:200])}`, then launch.\n")
         sys.exit(2)
 if not register and task.strip():
-    for _, j in agent_jobs.jobs():
+    pending = []  # a launch of another job let through in the last minute, not registered yet (one another hook blocked expires)
+    for n in os.listdir(agent_jobs.LAUNCHED) if os.path.isdir(agent_jobs.LAUNCHED) else ():
+        try: r = json.load(open(os.path.join(agent_jobs.LAUNCHED, n)))
+        except (OSError, ValueError): continue
+        if n != os.path.basename(f) and isinstance(r, dict) and time.time() - r.get('launched', 0) < 60:
+            pending.append({'key': r.get('key', ''), 'brief': r.get('task', ''), 'started': r['launched']})
+    for j in [j for _, j in agent_jobs.jobs()] + pending:
         if (other := j.get('brief', '').strip()) and (other in task.strip() or task.strip() in other):
             sys.stderr.write(
                 f"BLOCKED: this task contains, or is contained in, an open job's task ({j['key'][:160]}, started {int((time.time() - j['started']) / 60)} min ago), "
@@ -355,5 +363,5 @@ if not register and d.get('session_id') and 'memory-refresh' not in gate_text an
                          + "\nContinue one with a message, or wait for one to finish, read its result and release it with `agent-job done <key>`.\n")
         sys.exit(2)
 if not register:
-    os.makedirs(agent_jobs.LAUNCHED, exist_ok=True); open(pre, 'w').write(str(time.time()))
+    os.makedirs(agent_jobs.LAUNCHED, exist_ok=True); json.dump({'launched': time.time(), 'key': key, 'task': task}, open(pre, 'w'))
 sys.exit(0)
