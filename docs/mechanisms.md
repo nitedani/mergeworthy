@@ -91,6 +91,8 @@ A reference for the scripts that enforce the skills' steps; the skills name each
 
 `post-bash-register` counts each posted `--kind proposal` draft per thread in `~/.claude/proposal-rounds.txt`. Before the third proposal, refresh the thread map with its invariants (`design` step 7) and update the thread's WIP comment from it (`design §WIP comment`).
 
+`pre-bash-guard` refuses a commit or push that gives a code file (no test or doc) its 6th change among the branch's own commits since its first review record, until `pr-steps finality <plan>` records the finality pass's pinnacle and plan (`finality` step 3) on the head; that record starts the counts over.
+
 ### `pr-steps` (`converge`, `merging`)
 
 `pr-steps <step> <output>` checks a step's output and records it, one file per step:
