@@ -118,12 +118,13 @@ def _assign(a, src):
 # The kinds of scope a command runs in (Seg.scopes): a cd in an isolating one never reaches what follows it (Where)
 ISOLATING, CONDITIONAL, LOOP = 'isolating', 'conditional', 'loop'
 _ids = itertools.count()
-STDIN = '<<'
+STDIN, CHILD = '<<', '-c'
 
 
 def _scope(kind, name='', plain=False):
-    """A new scope of kind, for Seg.scopes; name: the function whose body it is, a for loop's variable, or STDIN for the script a
-    shell reads from a heredoc or <<<, which may run after later commands of the line moved, so it starts knowing nothing; plain: the loop
+    """A new scope of kind, for Seg.scopes; name: the function whose body it is, a for loop's variable, CHILD for the script a child
+    shell runs (`bash -c`), which gets none of the line's unexported variables, so it starts with them unknown, or STDIN for the script
+    a shell reads from a heredoc or <<<, which may run after later commands of the line moved, so it starts knowing nothing; plain: the loop
     takes it from words of plain characters (no /, $, backtick, quote or glob) and the rest of the line only reads it (_only_read)."""
     return ((next(_ids), kind, name, plain),)
 
@@ -293,7 +294,9 @@ def parse(cmd, depth=0, scopes=(), loop=False):
         script = here[0] if stdin else script
         if script:
             same = t[:1] and os.path.basename(t[0]) == 'eval'  # eval runs its words in this shell; a child shell, in its own
-            inner, e = parse(script, depth + 1, s.scopes + (() if same else _scope(ISOLATING, STDIN if stdin else '')), s.loop)
+            # a script word with no quote or escape (`bash -c "cd $W"`) had every expansion done by this shell; else the child does its own
+            child = s.raw is None or script not in s or re.search(r"['\\]", s.raw[s.index(script)])
+            inner, e = parse(script, depth + 1, s.scopes + (() if same else _scope(ISOLATING, STDIN if stdin else CHILD if child else '')), s.loop)
             out += inner
             err = err or e
     return out, err
@@ -421,7 +424,8 @@ class Where:
         for x in scopes[n:]:
             self.scopes.append([x, self.dir, False, dict(self.vars), set()])
             if x[1] == LOOP and x[2]: self.vars[x[2]] = Maybe(''); self.changed(x[2])  # each pass gives it another of its words
-            if x[2] == STDIN: self.dir, self.vars = None, {k: Maybe(v) for k, v in self.vars.items()}
+            if x[2] in (STDIN, CHILD): self.vars = {k: Maybe(v) for k, v in self.vars.items()}
+            if x[2] == STDIN: self.dir = None
 
     def changed(self, var=None):
         """Record a cd (var None) or an assignment of var here in the scopes it changes what they leave behind, up to the innermost

@@ -1912,6 +1912,8 @@ check "BLOCK: a script a shell reads from a heredoc starts in a dir that can't b
   "$(ibash "$IT" "bash <<'EOF'"$'\n'"cd sub"$'\n'"echo x > a.txt"$'\n'"EOF"$'\n'"cd $T/nogit")"
 check "BLOCK: a loop variable the line names in quotes (printf -v 'f') is no longer the loop's word: a write to it can't be told" 2 \
   "$(ibash "$IT" "for f in a b; do printf -v 'f' $I/out; echo x > \$f; done" "$T/nogit")"
+check "BLOCK: a bash -c script, quoted, gets none of the line's unexported variables: its cd \"\$D\" fails and its write lands in the repo, so the line's D can't be told; a double-quoted one, which this shell expands, keeps it" "2 0" \
+  "$(ibash "$IT" "D=$T/nogit; bash -c 'cd \"\$D\"; pwd; echo x > a.txt'") $(ibash "$IT" "D=$T/nogit; bash -c \"cd \$D; echo x > a.txt\"")"
 check "logs written outside it by a backgrounded { } group in a loop, after its cd to \$W/\$t, pass" 0 \
   "$(ibash "$IT" "W=$T/nogit; for t in a b; do { cd \$W/\$t && netns-run bash x.sh > \$W/probe/\$t.out 2> \$W/probe/\$t.err; echo \"\$t exit \$?\" >> \$W/probe/\$t.err; } & done; wait")"
 ir_tr "$IT" "read:$I/AGENTS.md" "read:$I/CLAUDE.md"; check "a command writing into it passes once both were read" 0 "$(ibash "$IT" "echo x > $I/a.txt")"
