@@ -135,9 +135,9 @@ lines, plain = open(sys.argv[1]).read().splitlines(), lambda l: re.sub(r'[*`]', 
 dropped, item = False, None  # only the dropped list: a counted bug may well be "a rare race"
 sep, bare = r':|\s[—–-]\s', lambda l: re.sub(r'^[\s>+-]*(\d+\.\s*)?', '', plain(l))
 name_of = lambda l: re.split(sep, bare(l), maxsplit=1)[0].strip()
-# 'None.', 'No reproduced candidate dropped.': an unbulleted line whose first sentence says the list itself is empty
-empty = lambda l: not re.match(r'\s*([-*+]|\d+\.)\s', l) and (s := re.split(r'[.;](?:\s|$)', bare(l), maxsplit=1)[0]) and not re.search(sep, s) and \
-    re.fullmatch(r'none|nothing|(none|nothing|no)\b.*\b(candidates?|findings?|bugs?|blockers?|shoulds?|nits?|dropped)\b.*', s)
+# 'None.', 'Nothing was dropped.': an unbulleted line whose first sentence is one of these says the list is empty
+empty = lambda l: not re.match(r'\s*([-*+]|\d+\.)\s', l) and \
+    re.fullmatch(r'none|nothing|nothing( was)? dropped|no candidates? dropped|no candidates were dropped', re.split(r'\.(?:\s|$)', bare(l), maxsplit=1)[0].strip())
 for i, l in enumerate(lines):
     if l.startswith('#'):
         dropped = 'dropped' in l.lower()
