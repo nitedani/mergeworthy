@@ -1484,6 +1484,19 @@ mkdir -p "$HOME/.claude/pr-steps"; echo "verify $T/mv.md" >> "$HOME/.claude/pr-s
 gc checkout -q main; seq 1 200 > "$MG/other"; gc add other; gc commit -q -m other; gc push -q origin main; gc checkout -q fix; gc merge -q --no-edit main
 printf 'carries the pass of %s: merged main\n' "$MA" > "$T/carry-m.md"
 check "a clean merge of the base (200 lines, none the PR's) carries the earlier head's Loop A" 0 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m.md" >/dev/null 2>&1; echo $?) )"
+echo fix2 >> "$MG/f"; gc commit -qam follow-up; cp "$T/carry-m.md" "$T/carry-m2.md"
+check "the merge and a 2-line follow-up after it carry: only the follow-up counts" 0 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m2.md" >/dev/null 2>&1; echo $?) )"
+gc checkout -q -b fix3 main; echo pr > "$MG/a"; gc commit -qam fix3; MC=$(git -C "$MG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$MC"
+gc checkout -q main; echo base > "$MG/a"; seq 1 200 > "$MG/other2"; gc add -A; gc commit -q -m other2; gc push -q origin main; gc checkout -q fix3
+gc merge -q --no-edit main >/dev/null 2>&1; echo pr > "$MG/a"; gc commit -qam resolved; printf 'carries the pass of %s: merged main\n' "$MC" > "$T/carry-m3.md"
+check "BLOCK: a merge whose replay of the earlier head conflicts counts from that head, the base's 200 lines included" 1 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m3.md" >/dev/null 2>&1; echo $?) )"
+# a stacked PR's carry is measured against its own base: a merge of its parent brings in the parent's lines, not the PR's
+gc checkout -q -b parent main; echo p > "$MG/p"; gc add p; gc commit -q -m parent; gc push -q origin parent
+gc checkout -q -b child; echo c > "$MG/c"; gc add c; gc commit -q -m child; MS=$(git -C "$MG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$MS"
+gc checkout -q parent; seq 1 200 > "$MG/p"; gc commit -qam parent2; gc push -q origin parent; gc checkout -q child; gc merge -q --no-edit origin/parent
+printf 'carries the pass of %s: merged parent\n' "$MS" > "$T/carry-m4.md"; echo parent > "$FX/pr_view_current"
+check "a stacked PR's merge of its parent branch (200 lines) carries the earlier head's Loop A" 0 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m4.md" >/dev/null 2>&1; echo $?) )"
+rm "$FX/pr_view_current"
 # a branch whose latest approach record has no `contract: 2` was started by a session on v1's skills: it finishes under the old records
 mkdir -p "$HOME/.mergeworthy/sessions"; echo "/p graph startup 0" > "$HOME/.mergeworthy/sessions/s-graph"; echo "/p v1 startup 0" > "$HOME/.mergeworthy/sessions/s-v1"
 printf 'Root cause: src/a.ts:3 does it\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | stays |\n| Fix it | 8 | ok |\nShared assumption: the bug is in this repo\n\nChosen: Fix it\n' > "$T/apo.md"; CLAUDE_CODE_SESSION_ID=s-graph prs approach "$T/apo.md" >/dev/null
@@ -1564,6 +1577,12 @@ seq 1 70 >> "$GS/src/a.ts"; git -C "$GS" -c user.name=t -c user.email=t@t commit
 printf 'NO BUGS\nMERGE AS IS: yes\n- a finding after them\n' > "$T/sr4.md"
 check "BLOCK: pr-steps small on a report whose last lines aren't NO BUGS and MERGE AS IS: yes" 1 "$(prss "$T/sr4.md")"
 check "BLOCK: pr-steps small past 60 lines outside tests and docs" "1 1" "$(prss "$T/sr3.md") $(grep -c 'past a small fix' "$T/prss.err")"
+# a test beside the code or in a *_tests/ directory, as pytest and Go lay them out, is a test (90 lines of it: not counted as code)
+GU="$T/prsu"; mkdir -p "$GU/app"; git -C "$GU" init -q -b main; echo a > "$GU/app/calc.py"; git -C "$GU" add -A; git -C "$GU" -c user.name=t -c user.email=t@t commit -q -m a
+git -C "$GU" update-ref refs/remotes/origin/main HEAD
+prsu() { git -C "$GU" checkout -q -b "b$2" main; echo b >> "$GU/app/calc.py"; mkdir -p "$GU/$(dirname "$1")"; seq 1 90 > "$GU/$1"
+  git -C "$GU" add -A; git -C "$GU" -c user.name=t -c user.email=t@t commit -q -m b; (cd "$GU" && bash "$R/bin/pr-steps" small "$T/sr1.md" 2>/dev/null >/dev/null; echo $?); }
+check "pr-steps small takes unit_tests/conftest.py, app/test_calc.py and app/calc_test.go as tests" "0 0 0" "$(prsu unit_tests/conftest.py 1) $(prsu app/test_calc.py 2) $(prsu app/calc_test.go 3)"
 # a diff of docs alone carries the cold read's record (rules step 4) instead of a test
 GD="$T/prsd"; mkdir -p "$GD/skills/a"; git -C "$GD" init -q -b main; echo a > "$GD/skills/a/SKILL.md"; git -C "$GD" add -A; git -C "$GD" -c user.name=t -c user.email=t@t commit -q -m a
 git -C "$GD" update-ref refs/remotes/origin/main HEAD; git -C "$GD" checkout -q -b fix; echo b >> "$GD/skills/a/SKILL.md"; git -C "$GD" -c user.name=t -c user.email=t@t commit -qam b
