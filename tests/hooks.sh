@@ -1700,7 +1700,10 @@ printf 'slice 1\n## Tried and dropped\n- `D=~/cfg` (tilde.sh): a nit.\n  - **Why
 check "a dropped item's sub-bullet reason is ruled under the item's name, not its label" 0 "$(prs verify "$T/vr6.md")"
 printf 'slice 1\n## Dropped\nNone. No newly reproduced candidate downgraded as rare or preexisting.\nNO BUGS\n' > "$T/vr7.md"; std "$T/vr7.md"
 printf 'slice 1\n## Dropped\n- No timeout on the retry: pre-existing, also on main\nNO BUGS\n' > "$T/vr8.md"; std "$T/vr8.md"
-check "a Dropped line saying nothing was dropped needs no RULED line; a candidate opening with 'No' still does" "0 1" "$(prs verify "$T/vr7.md") $(prs verify "$T/vr8.md")"
+printf 'slice 1\n## Dropped\n- **Retry timeout**: reproduced timeout gap.\n  - No documented usage.\nNO BUGS\n' > "$T/vr9.md"; std "$T/vr9.md"
+printf 'slice 1\n## Dropped\n- No timeout on the retry; pre-existing, also on main\nNO BUGS\n' > "$T/vr10.md"; std "$T/vr10.md"
+printf 'slice 1\n## Dropped\nNo timeout on the retry; pre-existing, also on main\nNO BUGS\n' > "$T/vr11.md"; std "$T/vr11.md"
+check "a Dropped line saying nothing was dropped needs no RULED line; a candidate opening with 'No' still does, as a list item, its sub-bullet reason or a bare line" "0 1 1 1 1" "$(prs verify "$T/vr7.md") $(prs verify "$T/vr8.md") $(prs verify "$T/vr9.md") $(prs verify "$T/vr10.md") $(prs verify "$T/vr11.md")"
 # pr-steps verify: a diff that touches bodies or streams needs code §No regressions' list answered by name
 G3="$T/prs3"; mkdir -p "$G3"; git -C "$G3" init -q -b main; git -C "$G3" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 git -C "$G3" update-ref refs/remotes/origin/main HEAD; git -C "$G3" checkout -q -b fix
