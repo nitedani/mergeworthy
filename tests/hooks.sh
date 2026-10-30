@@ -224,8 +224,8 @@ gate a1 "Agent comment one."
 gate a2 "Agent comment two."
 gate new "Agent answer."
 now=$(date -u +%Y-%m-%dT%H:%M:%SZ); old=$(date -u -d '-4 hours' +%Y-%m-%dT%H:%M:%SZ); hour=$(date -u -d '-1 hour' +%Y-%m-%dT%H:%M:%SZ)
-comments() { # body1 body2 created2 [author2]
-  echo '{"number":5,"comments":2}' > "$FX/repos_o_r_issues_5"
+comments() { # body1 body2 created2 [author2]; thread-context --verify reads the thread through its own (empty) listings
+  echo '{"number":5,"comments":2}' > "$FX/repos_o_r_issues_5"; echo '[]' | tee "$FX/repos_o_r_issues_5_comments_per_page_100" > "$FX/repos_o_r_issues_5_timeline_per_page_100"
   python3 -c 'import json,sys; print(json.dumps([{"body":sys.argv[1],"created":sys.argv[3],"url":"https://example.invalid/c1","user":"nitedani"},{"body":sys.argv[2],"created":sys.argv[3],"url":"https://example.invalid/c2","user":sys.argv[4]}]))' \
     "$1" "$2" "$3" "${4:-nitedani}" > "$FX/repos_o_r_issues_5_comments_per_page_100_page_1"
 }
@@ -279,6 +279,7 @@ tc_fx repos_o_r_issues_43_comments_per_page_100 '[]'
 tc_fx repos_o_r_pulls_43_reviews_per_page_100 '[{"id":7,"user":{"login":"other"},"submitted_at":"2026-09-02T12:00:00Z","html_url":"https://example.invalid/o/r/pull/43#r7","state":"CHANGES_REQUESTED","body":"Please keep the old name."}]'
 tc_fx repos_o_r_pulls_43_comments_per_page_100 '[{"id":8,"user":{"login":"other"},"created_at":"2026-09-02T12:05:00Z","html_url":"https://example.invalid/o/r/pull/43#c8","path":"a.ts","line":3,"body":"This line stays."}]'
 tc_fx repos_o_r_issues_41_timeline_per_page_100 '[{"id":55,"event":"renamed","actor":{"login":"maint"},"created_at":"2026-10-01T09:40:00Z","rename":{"from":"feat: old","to":"fix: his title"}}]'
+for n in 42 43 45; do tc_fx repos_o_r_issues_${n}_timeline_per_page_100 '[]'; done
 TC="$T/ctx/thread-context.md"; mkdir -p "$T/ctx"
 "$R/bin/thread-context" o/r#41 --out "$TC" >/dev/null
 tcg() { grep -c "$1" "$TC"; }
@@ -294,6 +295,16 @@ check "a bot's comment is not in the transcript" 0 "$(tcg '^see #99')"
 check "--verify accepts it for its thread" 0 "$("$R/bin/thread-context" --verify "$TC" --target o/r#41 2>/dev/null; echo $?)"
 check "a maintainer's retitle is in the ledger and the transcript, and isn't the latest comment" "1 1" "$(echo "$(tcg '@maint \[title\] "Retitled "feat: old" to "fix: his title"."') $(tcg 'maint, retitled')")"
 check "--latest" "104 2026-10-01T09:30:00Z" "$("$R/bin/thread-context" --latest o/r#41)"
+# a failed comments or timeline request: no record, no cache, and --verify can't accept an old record; once gh answers, --latest has the newest comment
+c46() { printf '[{"id":1,"user":{"login":"maint"},"created_at":"2026-10-03T09:00:00Z","html_url":"https://example.invalid/o/r/issues/46#c1","body":"First."}%s]' "${1:-}" > "$FX/repos_o_r_issues_46_comments_per_page_100"; }
+tc_fx repos_o_r_issues_46 '{"number":46,"id":6,"title":"Flaky","html_url":"https://example.invalid/o/r/issues/46","state":"open","updated_at":"2026-10-03T09:00:00Z","created_at":"2026-10-03T08:00:00Z","user":{"login":"maint"},"body":"It flakes."}'
+c46; tc_fx repos_o_r_issues_46_timeline_per_page_100 '[]'; "$R/bin/thread-context" --latest o/r#46 >/dev/null
+sed -i 's/"updated_at":"2026-10-03T09:00:00Z"/"updated_at":"2026-10-03T10:00:00Z"/' "$FX/repos_o_r_issues_46"; c46 ',{"id":2,"user":{"login":"maint"},"created_at":"2026-10-03T10:00:00Z","html_url":"https://example.invalid/o/r/issues/46#c2","body":"Still."}'
+printf -- '- root: o/r#46\n- latest-human-comment: id=1 at=2026-10-03T09:00:00Z\n' > "$T/ctx/tc46.md"; mv "$FX/repos_o_r_issues_46_comments_per_page_100" "$T/c46"
+check "BLOCK: a failed comments request fails thread-context, --verify and --latest, naming it, and caches nothing; a failed timeline request fails it too" "1 1 1 1 1 0 1 1" \
+  "$("$R/bin/thread-context" o/r#46 --out "$T/ctx/x46.md" >/dev/null 2>"$T/c46.err"; echo $?) $(grep -c 'repos/o/r/issues/46/comments?per_page=100. failed' "$T/c46.err") $("$R/bin/thread-context" --verify "$T/ctx/tc46.md" --target o/r#46 2>"$T/c46.err"; echo $?) $(grep -c "gh couldn't read" "$T/c46.err") $("$R/bin/thread-context" --latest o/r#46 >/dev/null 2>&1; echo $?) $(grep -c 10:00:00Z "$HOME/.cache/mergeworthy/threads/o__r__46.json") $(mv "$T/c46" "$FX/repos_o_r_issues_46_comments_per_page_100"; mv "$FX/repos_o_r_issues_46_timeline_per_page_100" "$T/t46"; "$R/bin/thread-context" --latest o/r#46 >/dev/null 2>"$T/c46.err"; echo $?) $(grep -c 'issues/46/timeline?per_page=100. failed' "$T/c46.err")"
+mv "$T/t46" "$FX/repos_o_r_issues_46_timeline_per_page_100"
+check "once gh answers again, --latest reports the newest comment" "2 2026-10-03T10:00:00Z" "$("$R/bin/thread-context" --latest o/r#46)"
 tc_fx repos_o_r_issues_45 '{"number":45,"id":5,"title":"Code in a list","html_url":"https://example.invalid/o/r/issues/45","state":"open","updated_at":"2026-10-02T10:00:00Z","created_at":"2026-10-02T09:00:00Z","user":{"login":"maint"},"body":"- The log:\n  ```\n  see o/r#42\n  ```"}'
 tc_fx repos_o_r_issues_45_comments_per_page_100 '[{"id":105,"user":{"login":"maint"},"created_at":"2026-10-02T09:30:00Z","html_url":"https://example.invalid/o/r/issues/45#c105","body":"- The bot said:\n  ```\n  I disagree with the rename.\n  ```"}]'
 "$R/bin/thread-context" o/r#45 --out "$T/ctx/tc45.md" >/dev/null
@@ -475,7 +486,7 @@ kill "$SPID"; wait "$SPID" 2>/dev/null
 
 # ---------- finality trigger: the third proposal on a thread needs a thread map ----------
 AR="$T/art"; mkdir -p "$AR/drafts/r1" "$AR/maps"; ctx "$AR/drafts/r1" o/r#9
-rm -f "$HOME/.claude/proposal-rounds.txt"; echo '{"number":9,"comments":0}' > "$FX/repos_o_r_issues_9"
+rm -f "$HOME/.claude/proposal-rounds.txt"; echo '{"number":9,"comments":0}' > "$FX/repos_o_r_issues_9"; echo '[]' | tee "$FX/repos_o_r_issues_9_comments_per_page_100" > "$FX/repos_o_r_issues_9_timeline_per_page_100"
 prop() { # n: a gated proposal draft, as gate-pass leaves it
   printf 'Proposal %s\n' "$1" > "$AR/drafts/r1/p$1.md"; sha256sum "$AR/drafts/r1/p$1.md" | cut -d' ' -f1 > "$AR/drafts/r1/p$1.md.gate"; tcbind "$AR/drafts/r1/p$1.md"
   echo "--kind proposal --repo o/r --parent none" > "$AR/drafts/r1/p$1.md.lint"

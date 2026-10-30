@@ -61,8 +61,8 @@ def record(kind, c, at_key='created_at', extra=''):
             'at': c.get(at_key) or c.get('created_at') or '', 'url': c.get('html_url') or '', 'body': body, 'extra': extra}
 
 def load(repo, sep, num):
-    """The thread as {ref, title, url, state, is_pr, updated_at, items:[record...]}, cached by updated_at; Unreadable when the thread
-    or a GitLab thread's notes can't be fetched (it doesn't exist, or the service is down)."""
+    """The thread as {ref, title, url, state, is_pr, updated_at, items:[record...]}, cached by updated_at; Unreadable when a request
+    for it fails (it doesn't exist, or the service is down)."""
     if repo.startswith(gl_watch.HOST): return load_gitlab(repo, sep, num)
     meta = fetch(f'repos/{repo}/issues/{num}')
     if not isinstance(meta, dict) or 'number' not in meta: raise Unreadable(f'gh read no issue or PR at {repo}#{num}')
@@ -73,13 +73,13 @@ def load(repo, sep, num):
     except (OSError, ValueError): pass
     is_pr = 'pull_request' in meta
     items = [record('body', meta)]
-    items += [record('comment', c) for c in api_json(f'repos/{repo}/issues/{num}/comments?per_page=100', True) or []]
+    items += [record('comment', c) for c in fetch(f'repos/{repo}/issues/{num}/comments?per_page=100', True)]
     if is_pr:
-        for r in api_json(f'repos/{repo}/pulls/{num}/reviews?per_page=100', True) or []:
+        for r in fetch(f'repos/{repo}/pulls/{num}/reviews?per_page=100', True):
             if (r.get('body') or '').strip(): items.append(record('review', r, 'submitted_at', r.get('state') or ''))
-        for c in api_json(f'repos/{repo}/pulls/{num}/comments?per_page=100', True) or []:
+        for c in fetch(f'repos/{repo}/pulls/{num}/comments?per_page=100', True):
             items.append(record('review comment', c, 'created_at', f"{c.get('path') or ''}:{c.get('line') or c.get('original_line') or ''}"))
-    for e in api_json(f'repos/{repo}/issues/{num}/timeline?per_page=100', True) or []:  # who set the title is a decision too
+    for e in fetch(f'repos/{repo}/issues/{num}/timeline?per_page=100', True):  # who set the title is a decision too
         if e.get('event') == 'renamed':
             r = e.get('rename') or {}
             items.append(record('rename', {'id': e.get('id'), 'user': e.get('actor'), 'created_at': e.get('created_at'), 'html_url': meta.get('html_url'),
