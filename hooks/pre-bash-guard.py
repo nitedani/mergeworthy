@@ -352,11 +352,11 @@ def check_compose(env, t):
                 block(f"can't tell the path `{v}` this compose command reads, so its ports can't be checked: write it out, or set its variable on this line")
             files += [f] if (o or glob[i - 1]) in ('-f', '--file') else []
             glob[i] = o + eq + f
-    if not files:  # the files compose reads without -f: COMPOSE_FILE's, else its default names in the dir it runs in
-        listed, sep = (env.get(k, os.environ.get(k, default)) for k, default in (('COMPOSE_FILE', ''), ('COMPOSE_PATH_SEPARATOR', ':')))
-        names = listed.split(sep) if listed else [f'{b}{o}.{e}' for b in ('compose', 'docker-compose') for o in ('', '.override') for e in ('yaml', 'yml')]
-        files = [f for f in map(where.path, names) if f]
-    if f := next((f for f in files if os.path.normpath(f) in wrote), None):
+    listed, sep = (env.get(k, os.environ.get(k, default)) for k, default in (('COMPOSE_FILE', ''), ('COMPOSE_PATH_SEPARATOR', ':')))
+    files = {os.path.normpath(f) for f in files or map(where.path, listed.split(sep) if listed else []) if f}
+    # without -f or COMPOSE_FILE, compose finds a default name in the project dir or a parent, wherever that is
+    defaults = () if files or listed else {f'{b}{o}.{e}' for b in ('compose', 'docker-compose') for o in ('', '.override') for e in ('yaml', 'yml')}
+    if f := next((f for f in sorted(wrote) if f in files or os.path.basename(f) in defaults), None):
         block(f"{f} is written by this same command, so its ports can't be checked yet: write it in one command, then start the stack in the next")
     try:
         r = subprocess.run(t[:n] + glob + ['config', '--format', 'json'], cwd=known(run_dir), env={**os.environ, **env}, capture_output=True, text=True, timeout=30)
