@@ -328,16 +328,17 @@ if register:
     for t in tickets:
         if os.path.basename(t).startswith('memory-brief-') and os.path.isfile(os.path.join(os.path.dirname(t), 'memory.source')):
             open(os.path.join(os.path.dirname(t), '.memory-order-repeated'), 'w').close()
-elif os.path.exists(f):
+def one_per_job(started):
+    """Blocks a second agent for this key: a key is one job, so two job files never share one."""
+    sys.stderr.write(
+        f"BLOCKED: an agent for this job is already launched ({key[:160]}, started {int((time.time() - started) / 60)} min ago). One agent per job: "
+        "read its status first (task_status, its latest runs); a turn that ended or 'waiting_for_children' means it is still alive. "
+        "Continue it with a message instead of starting another. Only when its task is terminal and you have read its result, "
+        f"release the job with `agent-job done {shlex.quote(key[:200])}`, then launch.\n")
+    sys.exit(2)
+if not register and os.path.exists(f):
     j = json.load(open(f))
-    if time.time() - j.get('started', 0) < 24 * 3600:
-        age = int((time.time() - j['started']) / 60)
-        sys.stderr.write(
-            f"BLOCKED: an agent for this job is already registered ({key[:160]}, started {age} min ago). One agent per job: "
-            "read its status first (task_status, its latest runs); a turn that ended or 'waiting_for_children' means it is still alive. "
-            "Continue it with a message instead of starting another. Only when its task is terminal and you have read its result, "
-            f"release the job with `agent-job done {shlex.quote(key[:200])}`, then launch.\n")
-        sys.exit(2)
+    if time.time() - j.get('started', 0) < 24 * 3600: one_per_job(j['started'])
 def returned(path, use_id):
     """The launcher's transcript holds the call's tool_result: another hook blocked it, or it returned (then it registers)."""
     try:
@@ -351,14 +352,16 @@ def returned(path, use_id):
                 if isinstance(b, dict) and b.get('type') == 'tool_use' and b.get('id') == use_id: return False
     except OSError: return True
     return False
-if not register and task.strip():
+if not register:
     pending = []  # a launch let through whose call is still running, not registered yet
     for n in os.listdir(agent_jobs.LAUNCHED) if os.path.isdir(agent_jobs.LAUNCHED) else ():
         try: r = json.load(open(os.path.join(agent_jobs.LAUNCHED, n)))
         except (OSError, ValueError): continue
         if isinstance(r, dict) and r.get('tool_use_id') and r.get('transcript') and not returned(r['transcript'], r['tool_use_id']):
             pending.append({'key': r.get('key', ''), 'brief': r.get('task', ''), 'started': r.get('launched', 0)})
-    for j in [j for _, j in agent_jobs.jobs()] + pending:
+    for j in pending:
+        if j['key'] == key: one_per_job(j['started'])
+    for j in [j for _, j in agent_jobs.jobs()] + pending if task.strip() else ():
         if (other := j.get('brief', '').strip()) and (other in task.strip() or task.strip() in other):
             sys.stderr.write(
                 f"BLOCKED: this task contains, or is contained in, an open job's task ({j['key'][:160]}, started {int((time.time() - j['started']) / 60)} min ago), "
