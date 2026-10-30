@@ -1715,6 +1715,13 @@ printf 'slice 1\n## Tried and dropped\n- **abort leaks a listener**: Not a regre
 check "BLOCK: a RULED line whose only reason is that main does the same; one citing Earn every line records" "1 1 0" "$(prs verify "$T/vr4.md") $(cd "$G" && bash "$R/bin/pr-steps" verify "$T/vr4.md" 2>&1 | grep -c 'is not a ruling') $(prs verify "$T/vr5.md")"
 printf 'slice 1\n## Tried and dropped\n- `D=~/cfg` (tilde.sh): a nit.\n  - **Why a nit:** both fail closed, and it is rare.\nRULED: `D=~/cfg` (tilde.sh): a nit, no realistic usage (code Earn every line)\nNO BUGS\n' > "$T/vr6.md"; std "$T/vr6.md"
 check "a dropped item's sub-bullet reason is ruled under the item's name, not its label" 0 "$(prs verify "$T/vr6.md")"
+printf 'slice 1\n## Dropped\nNone. No newly reproduced candidate downgraded as rare or preexisting.\nNO BUGS\n' > "$T/vr7.md"; std "$T/vr7.md"
+printf 'slice 1\n## Dropped\n- No timeout on the retry: pre-existing, also on main\nNO BUGS\n' > "$T/vr8.md"; std "$T/vr8.md"
+printf 'slice 1\n## Dropped\n- **Retry timeout**: reproduced timeout gap.\n  - No documented usage.\nNO BUGS\n' > "$T/vr9.md"; std "$T/vr9.md"
+printf 'slice 1\n## Dropped\n- No timeout on the retry; pre-existing, also on main\nNO BUGS\n' > "$T/vr10.md"; std "$T/vr10.md"
+printf 'slice 1\n## Dropped\nNo timeout on the retry; pre-existing, also on main\nNO BUGS\n' > "$T/vr11.md"; std "$T/vr11.md"
+printf 'slice 1\n## Dropped\nNo timeout on dropped connections; pre-existing, also on main\nNO BUGS\n' > "$T/vr12.md"; std "$T/vr12.md"
+check "a Dropped line saying nothing was dropped needs no RULED line; a candidate opening with 'No' still does, as a list item, its sub-bullet reason or a bare line, one naming \"dropped\" too" "0 1 1 1 1 1" "$(prs verify "$T/vr7.md") $(prs verify "$T/vr8.md") $(prs verify "$T/vr9.md") $(prs verify "$T/vr10.md") $(prs verify "$T/vr11.md") $(prs verify "$T/vr12.md")"
 # pr-steps verify: a diff that touches bodies or streams needs code §No regressions' list answered by name
 G3="$T/prs3"; mkdir -p "$G3"; git -C "$G3" init -q -b main; git -C "$G3" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 git -C "$G3" update-ref refs/remotes/origin/main HEAD; git -C "$G3" checkout -q -b fix
