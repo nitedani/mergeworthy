@@ -1284,6 +1284,24 @@ cat > "$T/bin/glab" <<'EOF2'
 f="$FX/$(printf '%s' "$4" | tr '/?&=' '____')"; [ -f "$f" ] && cat "$f" || exit 1
 EOF2
 chmod +x "$T/bin/glab"
+# thread-context on a GitLab MR, read through glab: the record, --latest and --verify, as on GitHub
+GLM="$FX/projects_acme%2Fapp_merge_requests_1"
+gl_mr() { printf '{"iid":1,"id":501,"title":"Fix total","web_url":"https://gitlab.com/acme/app/-/merge_requests/1","state":"opened","updated_at":"%s","created_at":"2026-10-29T13:00:00Z","author":{"username":"me"},"description":"Fixes #3, after !2."}' "$1" > "$GLM"; }
+gl_mr 2026-10-29T15:20:00Z
+printf '%s' "[{\"id\":11,\"type\":\"DiffNote\",\"author\":{\"username\":\"bob\"},\"created_at\":\"2026-10-29T14:00:00Z\",\"body\":\"This line stays.\",\"position\":{\"new_path\":\"a.py\",\"new_line\":3}},
+ {\"id\":7,\"author\":{\"username\":\"alice\"},\"created_at\":\"2026-10-29T15:00:00Z\",\"body\":\"Could you also cover the empty list?\"},
+ {\"id\":8,\"author\":{\"username\":\"me\"},\"created_at\":\"2026-10-29T15:10:00Z\",\"body\":\"$BADGE\\nDone.\"},
+ {\"id\":9,\"system\":true,\"author\":{\"username\":\"alice\"},\"created_at\":\"2026-10-29T15:15:00Z\",\"body\":\"added 1 commit\"},
+ {\"id\":10,\"author\":{\"username\":\"project_5_bot\"},\"created_at\":\"2026-10-29T15:20:00Z\",\"body\":\"Pipeline passed.\"}]" > "${GLM}_notes_sort_asc_order_by_created_at_per_page_100"
+printf '{"iid":3,"id":503,"title":"Total breaks on None","web_url":"https://gitlab.com/acme/app/-/issues/3","state":"opened","updated_at":"2026-10-28T10:00:00Z","created_at":"2026-10-28T09:00:00Z","author":{"username":"alice"},"description":"It crashes."}' > "$FX/projects_acme%2Fapp_issues_3"
+printf '{"iid":2,"id":502,"title":"Refactor total","web_url":"https://gitlab.com/acme/app/-/merge_requests/2","state":"merged","updated_at":"2026-10-28T10:00:00Z","created_at":"2026-10-28T09:00:00Z","author":{"username":"bob"},"description":"Moves it."}' > "$FX/projects_acme%2Fapp_merge_requests_2"
+echo '[]' | tee "$FX/projects_acme%2Fapp_issues_3_notes_sort_asc_order_by_created_at_per_page_100" > "$FX/projects_acme%2Fapp_merge_requests_2_notes_sort_asc_order_by_created_at_per_page_100"
+GTC="$T/glctx/thread-context.md"; mkdir -p "$T/glctx"; "$R/bin/thread-context" 'gitlab.com/acme/app!1' --out "$GTC" >/dev/null
+check "thread-context on a GitLab MR: its root, its latest human note (not the agent's, a system note or a bot's), the linked issue and MR, a diff note" "1 1 2 1" \
+  "$(grep -c '^- root: gitlab.com/acme/app!1 ' "$GTC") $(grep -c '^- latest-human-comment: id=7 at=2026-10-29T15:00:00Z' "$GTC") $(grep -Ec '^  - gitlab.com/acme/app(#3|!2) ' "$GTC") $(grep -c 'bob, review comment a.py:3' "$GTC")"
+check "--latest and --verify on a GitLab MR" "7 2026-10-29T15:00:00Z 0" "$("$R/bin/thread-context" --latest 'gitlab.com/acme/app!1') $("$R/bin/thread-context" --verify "$GTC" --target 'gitlab.com/acme/app!1' 2>/dev/null; echo $?)"
+gl_mr 2026-10-29T16:00:00Z; sed -i 's/^\[/[{"id":12,"author":{"username":"alice"},"created_at":"2026-10-29T16:00:00Z","body":"And the None case?"},/' "${GLM}_notes_sort_asc_order_by_created_at_per_page_100"
+check "BLOCK: --verify once the MR has a newer human note" "1 1" "$("$R/bin/thread-context" --verify "$GTC" --target 'gitlab.com/acme/app!1' 2>"$T/glv.err"; echo $?) $(grep -c 'but the thread has https://gitlab.com/acme/app/-/merge_requests/1#note_12' "$T/glv.err")"
 echo '{"state":"open","draft":false,"head":{"sha":"h1"}}' > "$FX/repos_o_r_pulls_7"
 echo '{"check_runs":[{"name":"test","conclusion":"success"}]}' > "$FX/repos_o_r_commits_h1_check-runs"
 echo '{"state":"opened","draft":true,"head_pipeline":{"status":"failed"}}' > "$FX/projects_g%2Fp_merge_requests_96"
