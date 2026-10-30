@@ -840,10 +840,25 @@ python3 "$R/bin/agent-job" done '/tmp/x/same.md same: b' >/dev/null
 check "BLOCK: a task containing an open job's, or contained in one, while that job is open; it launches once that job is released" "0 2 0 2" \
   "$(fan 'Follow /tmp/x/hold.md' 'hold: a') $(fan $'Follow /tmp/x/hold.md\nPart: cost' 'hold: b') $(python3 "$R/bin/agent-job" done '/tmp/x/hold.md hold: a' >/dev/null; fan $'Follow /tmp/x/hold.md\nPart: cost' 'hold: b') $(fan 'Follow /tmp/x/hold.md' 'hold: c')"
 python3 "$R/bin/agent-job" done '/tmp/x/hold.md hold: b' >/dev/null
-for t in a b; do python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":sys.argv[1],"title":sys.argv[2]}}))' 'Follow /tmp/x/race.md' "race: $t" > "$T/race-$t.json"; done
+# a launch let through counts until its call's tool_result is in the launcher's transcript (another hook blocked it, or it
+# returned) or it registered, as Claude Code gives each call's tool_use_id and the launcher's transcript_path
+LT="$T/launcher.jsonl"
+lc_in() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"Agent","tool_use_id":sys.argv[1],"transcript_path":sys.argv[4],"tool_input":{"prompt":sys.argv[3],"description":sys.argv[2]}}))' "$1" "$2" "$3" "$LT"; }
+lc() { lc_in "$@" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; echo $?; }  # tool_use_id description task
+use() { python3 -c 'import json,sys; print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","id":i,"name":"Agent","input":{}} for i in sys.argv[1:]]}}))' "$@" >> "$LT"; }  # the launcher's calls
+res() { python3 -c 'import json,sys; print(json.dumps({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":sys.argv[1],"content":"PreToolUse:Agent hook error: BLOCKED","is_error":True}]}}))' "$1" >> "$LT"; }  # its block
+use race-a race-b; lc_in race-a 'race: a' 'Follow /tmp/x/race.md' > "$T/race-a.json"; lc_in race-b 'race: b' 'Follow /tmp/x/race.md' > "$T/race-b.json"
 python3 "$R/hooks/pre-agent-dedupe.py" < "$T/race-a.json" 2>/dev/null & RA=$!; python3 "$R/hooks/pre-agent-dedupe.py" < "$T/race-b.json" 2>/dev/null & RB=$!
 wait $RA; ra=$?; wait $RB; rb=$?
 check "BLOCK: two launches of one task in one message, their checks started together: exactly one passes" "0 2" "$(printf '%s\n' $ra $rb | sort | tr '\n' ' ' | sed 's/ $//')"
+use same-1 same-2
+check "BLOCK: the same call twice in one message (one key, one task): the second" "0 2" "$(lc same-1 twin 'Follow /tmp/x/life-twin.md') $(lc same-2 twin 'Follow /tmp/x/life-twin.md')"
+use long-1 long-2; r=$(lc long-1 first 'Follow /tmp/x/life-long.md')
+python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "launched": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs-launch/*")) if "life-long" in open(f).read()]'  # a foreground agent still at work an hour later
+check "BLOCK: a launch whose call hasn't returned, an hour on, still counts" "0 2" "$r $(lc long-2 second 'Follow /tmp/x/life-long.md')"
+use blk-1; r=$(lc blk-1 first 'Follow /tmp/x/life-blk.md'); res blk-1; use blk-2
+r="$r $(lc blk-2 second 'Follow /tmp/x/life-blk.md')"; res blk-2; use blk-3
+check "a launch another hook blocked (its tool_result written) no longer counts: a retry passes at once, under another title or its own" "0 0 0" "$r $(lc blk-3 first 'Follow /tmp/x/life-blk.md')"
 fan 'Follow /tmp/x/fan.md' "the user's ask" >/dev/null; python3 "$R/hooks/pre-agent-dedupe.py" < "$T/fan.json" 2>"$T/err"
 check "the block's release command, run as printed, releases a job whose title has an apostrophe" "0 0" "$(eval "$(grep -o 'agent-job done [^\`]*' "$T/err" | sed "s|^agent-job|python3 $R/bin/agent-job|")" >/dev/null; echo $?) $(python3 "$R/bin/agent-job" list | grep -c "user's ask")"
 cid_in() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":"x","clientRequestId":sys.argv[1]}}))' "$1"; }
@@ -1061,8 +1076,7 @@ check "a changed approach recorded after the last build passes; the record it re
 AF="$HOME/.mergeworthy/work/apf"; mkdir -p "$AF"; printf 'You implement the fix in %s.\n' "$AB" > "$AF/brief.md"; printf 'You implement the fix in %s.\nApproach: %s (unchanged: a review fix)\n' "$AB" "$T/ab2.md" > "$AF/brief-ok.md"
 flaunch() { # tool role brief: one launch that follows the brief file
   python3 -c 'import json,sys,time; t={"prompt":"Follow "+sys.argv[3]+" exactly.","description":f"impl {time.time_ns()}"} if sys.argv[1]=="Agent" else {"task":"Follow "+sys.argv[3]+" exactly.","title":f"impl {time.time_ns()}","role":sys.argv[2]}
-print(json.dumps({"tool_name":sys.argv[1],"cwd":sys.argv[4],"tool_input":t}))' "$1" "$2" "$3" "$T" | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err" >/dev/null; echo $?
-  rm -f "$HOME"/.claude/agent-jobs-launch/*; }  # each a launch of its own: none before it is still pending
+print(json.dumps({"tool_name":sys.argv[1],"cwd":sys.argv[4],"tool_input":t}))' "$1" "$2" "$3" "$T" | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err" >/dev/null; echo $?; }
 check "BLOCK: a followed brief file in the work folder with no Approach line, launched by delegate_task as an implementer, in another role, or by Agent; with it, each passes" "2 2 2 0 0 0" \
   "$(flaunch mcp__t3-code__delegate_task implementation "$AF/brief.md") $(flaunch mcp__t3-code__delegate_task review "$AF/brief.md") $(flaunch Agent '' "$AF/brief.md") $(flaunch mcp__t3-code__delegate_task implementation "$AF/brief-ok.md") $(flaunch mcp__t3-code__delegate_task review "$AF/brief-ok.md") $(flaunch Agent '' "$AF/brief-ok.md")"
 # delegate/implementer.md's template, filled the way it says, passes the gate
@@ -1088,7 +1102,7 @@ check "an input file the brief names (memory.md quoting <sha>) is not scanned fo
 git -C "$T/gr" worktree add -q -b a "$T/aw"; AD="$HOME/.claude/projects/-aw"; AS="$AD/sess/subagents"; mkdir -p "$AD" "$AS" "$T/aw/src"
 alive() { # task [transcript_path]
   python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","cwd":sys.argv[1],"transcript_path":sys.argv[3],"tool_input":{"task":sys.argv[2],"title":sys.argv[2][:50]}}))' "$OC" "$1" "${2:-}" \
-    | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; rm -f "$HOME"/.claude/agent-jobs-launch/*; }  # each a launch of its own
+    | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
 (cd "$T/aw/src" && exec sleep 600) & APID=$!; sleep 0.2
 check "BLOCK: a process works in the worktree, naming its PID" "2 1" "$(alive "Run e2e in $T/aw/src") $(grep -c "$APID (sleep)" "$T/err")"
 CUR=$(readlink "$HOME/.mergeworthy/current"); ln -sfn "$T/aw" "$HOME/.mergeworthy/current"; mkdir -p "$HOME/.mergeworthy/work"; ln -sfn "$T/aw" "$HOME/.mergeworthy/work/aw"

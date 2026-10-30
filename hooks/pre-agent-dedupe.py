@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import failclosed
 import agent_jobs, memory_file, steward, subprocess
 from post_words import fence_spans
-from shellcmd import branch_record, segments, prog, git_argv, Where
+from shellcmd import branch_record, segments, prog, git_argv, rlines, Where
 register = sys.argv[1:] == ['register']
 d = json.load(sys.stdin)
 ti = d.get('tool_input', {}) or {}
@@ -336,13 +336,26 @@ elif os.path.exists(f):
             "Continue it with a message instead of starting another. Only when its task is terminal and you have read its result, "
             f"release the job with `agent-job done {shlex.quote(key[:200])}`, then launch.\n")
         sys.exit(2)
+def returned(path, use_id):
+    """The launcher's transcript holds the call's tool_result: another hook blocked it, or it returned (then it registers)."""
+    try:
+        for l in rlines(path):  # last first: the result comes after the call
+            if use_id.encode() not in l: continue
+            try: e = json.loads(l)
+            except ValueError: continue
+            content = (e.get('message') or {}).get('content') if isinstance(e.get('message'), dict) else None
+            for b in content if isinstance(content, list) else ():
+                if isinstance(b, dict) and b.get('type') == 'tool_result' and b.get('tool_use_id') == use_id: return True
+                if isinstance(b, dict) and b.get('type') == 'tool_use' and b.get('id') == use_id: return False
+    except OSError: return True
+    return False
 if not register and task.strip():
-    pending = []  # a launch of another job let through in the last minute, not registered yet (one another hook blocked expires)
+    pending = []  # a launch let through whose call is still running, not registered yet
     for n in os.listdir(agent_jobs.LAUNCHED) if os.path.isdir(agent_jobs.LAUNCHED) else ():
         try: r = json.load(open(os.path.join(agent_jobs.LAUNCHED, n)))
         except (OSError, ValueError): continue
-        if n != os.path.basename(f) and isinstance(r, dict) and time.time() - r.get('launched', 0) < 60:
-            pending.append({'key': r.get('key', ''), 'brief': r.get('task', ''), 'started': r['launched']})
+        if isinstance(r, dict) and r.get('tool_use_id') and r.get('transcript') and not returned(r['transcript'], r['tool_use_id']):
+            pending.append({'key': r.get('key', ''), 'brief': r.get('task', ''), 'started': r.get('launched', 0)})
     for j in [j for _, j in agent_jobs.jobs()] + pending:
         if (other := j.get('brief', '').strip()) and (other in task.strip() or task.strip() in other):
             sys.stderr.write(
@@ -363,5 +376,6 @@ if not register and d.get('session_id') and 'memory-refresh' not in gate_text an
                          + "\nContinue one with a message, or wait for one to finish, read its result and release it with `agent-job done <key>`.\n")
         sys.exit(2)
 if not register:
-    os.makedirs(agent_jobs.LAUNCHED, exist_ok=True); json.dump({'launched': time.time(), 'key': key, 'task': task}, open(pre, 'w'))
+    os.makedirs(agent_jobs.LAUNCHED, exist_ok=True); json.dump({'launched': time.time(), 'key': key, 'task': task, 'tool_use_id': d.get('tool_use_id'),
+                                                           'transcript': d.get('transcript_path')}, open(pre, 'w'))
 sys.exit(0)
