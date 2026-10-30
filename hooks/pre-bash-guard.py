@@ -350,7 +350,7 @@ def check_compose(env, t):
         if eq and o in paths or not o and i and glob[i - 1] in paths:
             if (f := where.path(v)) is None:
                 block(f"can't tell the path `{v}` this compose command reads, so its ports can't be checked: write it out, or set its variable on this line")
-            if (o or glob[i - 1]) in ('-f', '--file') and not os.path.exists(f) and os.path.normpath(f) in wrote:
+            if (o or glob[i - 1]) in ('-f', '--file') and os.path.normpath(f) in wrote:
                 block(f"{f} is written by this same command, so its ports can't be checked yet: write it in one command, then start the stack in the next")
             glob[i] = o + eq + f
     try:
@@ -885,7 +885,7 @@ if any(prog(x)[:1] and os.path.basename(prog(x)[0]) == 'gate-pass' for x in segs
                                         or prog(x)[1:2] == ['api'] and any(w.startswith('body=') or w in ('--input',) for w in prog(x))) for x in segs):
     block("run gate-pass as its own command and read its exit code, then post in the next command: this check reads the gate record before the command runs (mergeworthy:post step 4)")
 clones = {}  # folder: the repo it was cloned from, for a `git clone` in this command
-wrote = set()  # the files the simple commands walked so far write: a compose file among them doesn't exist when its check runs
+wrote = set()  # the files the simple commands walked so far write: a compose file among them isn't written yet when its check runs
 for s in where.walk(segs):
     run_dir, has_cd = where.dir, where.moved
     if run_dir is not None and prog(s)[:2] == ['git', 'clone'] and (ops := [where.expand(x) for x in operands(prog(s)[2:]) if not x.startswith('-')]):

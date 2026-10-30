@@ -2036,7 +2036,7 @@ check "BLOCK: compose up with a file path it can't tell, naming it" "2 1" "$(dc_
 WRITE_UP=$'cat > ovr.yml <<EOF\n{"services":{"web":{"ports":[{"target":80}]}}}\nEOF\ndocker compose -p t -f assigned.json -f ovr.yml up -d'
 check "BLOCK: compose up with an override the same command writes, naming it" "2 1" "$(dc_guard "$WRITE_UP") $(grep -c "$T/ovr.yml is written by this same command" "$T/err")"
 cp "$T/assigned.json" "$T/ovr.yml"
-check "compose up with that override already on disk is checked as it stands" 0 "$(dc_guard "$WRITE_UP")"
+check "BLOCK: compose up with an override on disk that the same command rewrites, naming it" "2 1" "$(dc_guard "$WRITE_UP") $(grep -c "$T/ovr.yml is written by this same command" "$T/err")"
 rm "$T/ovr.yml"
 check "BLOCK: compose up with a missing override nobody writes says its config failed" "2 1" "$(dc_guard 'docker compose -p t -f assigned.json -f ovr.yml up -d') $(grep -c 'fix the config' "$T/err")"
 printf 'See #7.\n' > "$T/ref.md"
