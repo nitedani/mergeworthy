@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
-"""T3 Code's delegated tasks as a session's transcript reports them: its tool calls and results (delegate_task, task_status,
-t3_thread_send) and T3's notices. A thread is all its tasks: the first, each message sent to it, each turn T3 continues on its
-own (provider-continuation)."""
-import json, re
+"""T3 Code: whether the session runs under it, and its delegated tasks as the session's transcript reports them: its tool calls
+and results (delegate_task, task_status, t3_thread_send) and T3's notices. A thread is all its tasks: the first, each message sent
+to it, each turn T3 continues on its own (provider-continuation)."""
+import json, os, re
+
+
+def under_t3():
+    """The hook's session was opened by T3 Code, so T3's MCP tools (delegate_task) are its own: T3 sets T3CODE_THREAD_ID in the
+    environment of every Claude session it opens, and passes its MCP server outside the command line."""
+    return bool(os.environ.get('T3CODE_THREAD_ID'))
 
 
 def observed(lines):

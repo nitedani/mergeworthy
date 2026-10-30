@@ -11,6 +11,7 @@ import failclosed
 import agent_jobs, memory_file, steward, subprocess
 from post_words import fence_spans
 from shellcmd import branch_record, segments, prog, git_argv, rlines, Where
+from t3_tasks import under_t3
 register = sys.argv[1:] == ['register']
 d = json.load(sys.stdin)
 ti = d.get('tool_input', {}) or {}
@@ -24,6 +25,12 @@ if register and 'parent_not_active' in json.dumps(d.get('tool_response') or ''):
         "edits, preparing the push or the body: delegate step 7); only an independent review and a post wait for a run. "
         "Keep the brief, launch it in the next run, and add no status line on each wake."}}))
     sys.exit(0)
+# T3 starts a new Claude session for each turn, and Claude Code's background agents end with the session that launched them;
+# the Agent tool runs in the background unless run_in_background is false
+if not register and d.get('tool_name') in ('Agent', 'Task') and under_t3() and ti.get('run_in_background') is not False:
+    sys.stderr.write("BLOCKED: under T3 Code a background Agent stops when this turn ends (T3 starts a new session for the next one). "
+                     "Launch it with delegate_task (mergeworthy:delegate step 4), or with run_in_background: false for a child that finishes within this turn.\n")
+    sys.exit(2)
 # T3 answers a delegate_task whose clientRequestId it has seen with that earlier task's result, without running anything.
 # Reuse is allowed only within 10 minutes (a retry of the same launch).
 cid = str(ti.get('clientRequestId') or '')
