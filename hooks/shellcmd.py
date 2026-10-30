@@ -318,19 +318,27 @@ def git_globals(t):
 TOPLEVEL = '$(git rev-parse --show-toplevel)'  # the one substitution Where runs itself, in `cd $(git rev-parse --show-toplevel)`
 
 
+class Maybe(str):
+    """A value a variable may hold or not (set in a branch or loop): Where.expand leaves the variable as written."""
+
+
 class Where:
     """Where each simple command of one command line runs, walk() taking them in order, with the variables the line set
     (`D=~/x; cd "$D"`). It follows the forms agents write: a cd or pushd to a path (`cd /abs/dir && ...`, or relative to a dir it
     knows), `cd $(git rev-parse --show-toplevel)` and `git -C <dir>`. A cd holds for the later commands of its scope (Seg.scopes) and
-    the scopes inside it; leaving an isolating scope restores the dir and the line's variables from before it. After any other dir change (a cd in a scope
+    the scopes inside it; leaving an isolating scope restores the dir and the line's variables from before it, leaving a branch or
+    loop makes each variable set in it a Maybe. After any other dir change (a cd in a scope
     that may run it or not, once the scope is left; a relative one in a loop; a target holding an expansion it can't resolve; `cd -`,
     popd or a stack rotation) the dir is None until a cd to an absolute path, and a check that needs it blocks."""
     def __init__(self, cwd):
-        self.dir, self.moved, self.vars, self.scopes = cwd, False, {}, []  # each scope entered: [(id, kind), dir before it, whether a cd ran in it, variables before it]
+        self.dir, self.moved, self.vars, self.scopes = cwd, False, {}, []  # each scope entered: [(id, kind), dir before it, whether a cd ran in it, variables before it, variables set in it]
 
     def expand(self, p):
-        """p with the line's variables ($D, ${D}), then the environment's, put in; one it can't tell stays as written."""
-        return re.sub(r'\$(?:(\w+)|\{(\w+)\})', lambda m: self.vars.get(m[1] or m[2], os.environ.get(m[1] or m[2], m[0])), p)
+        """p with the line's variables ($D, ${D}), then the environment's, put in; one it can't tell (a Maybe) stays as written."""
+        def value(m):
+            v = self.vars.get(m[1] or m[2], os.environ.get(m[1] or m[2], m[0]))
+            return m[0] if isinstance(v, Maybe) else v
+        return re.sub(r'\$(?:(\w+)|\{(\w+)\})', value, p)
 
     def path(self, p, base=''):
         """p resolved from base (default: the dir), or None when it can't be told (an expansion left, or no base)."""
@@ -349,14 +357,21 @@ class Where:
         """Leave the scopes not in scopes, innermost first, and enter the new ones."""
         n = 0
         while n < min(len(self.scopes), len(scopes)) and self.scopes[n][0] == scopes[n]: n += 1
-        for (_, kind), before, moved, vars in reversed(self.scopes[n:]):
+        for (_, kind), before, moved, vars, set_in in reversed(self.scopes[n:]):
             self.dir = before if kind == ISOLATING else None if moved else self.dir
-            if kind == ISOLATING: self.vars = vars
-        self.scopes = self.scopes[:n] + [[x, self.dir, False, dict(self.vars)] for x in scopes[n:]]
+            self.vars = vars if kind == ISOLATING else {**self.vars, **{v: Maybe(self.vars.get(v, '')) for v in set_in}}
+        self.scopes = self.scopes[:n] + [[x, self.dir, False, dict(self.vars), set()] for x in scopes[n:]]
+
+    def changed(self):
+        """The scopes a cd or an assignment here changes what they leave behind: up to the innermost isolating one."""
+        for x in reversed(self.scopes):
+            yield x
+            if x[0][1] == ISOLATING: return
 
     def step(self, t):
         if t and all(re.match(r'^\w+=', x) for x in t):
             self.vars.update(x.split('=', 1) for x in t)
+            for x in self.changed(): x[4].update(a.split('=', 1)[0] for a in t)
             return
         p = prog(t)
         if p[:1] not in (['cd'], ['pushd'], ['popd']):
@@ -365,9 +380,7 @@ class Where:
         a = [x for x in operands(p[1:]) if x not in ('-P', '-L', '-e', '--')]
         to = a[0] if a else '~' if p[0] == 'cd' else '-'
         kinds = [x[0][1] for x in self.scopes if x[0][1] != CONDITIONAL]
-        for x in reversed(self.scopes):  # the scopes this cd may leave changed, up to the innermost isolating one
-            x[2] = True
-            if x[0][1] == ISOLATING: break
+        for x in self.changed(): x[2] = True
         if p[0] == 'popd' or to[:1] in '-+' or to == TOPLEVEL and self.dir is None or kinds[-1:] == [LOOP] and not os.path.isabs(os.path.expanduser(self.expand(to))):
             self.dir = None
         elif to == TOPLEVEL:

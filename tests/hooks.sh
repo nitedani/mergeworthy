@@ -1832,6 +1832,8 @@ check "logs background subshells in a loop write to \$S/\$w paths, S set on the 
   "$(ibash "$IT" "S=$T/nogit; for w in a b; do (cd \$S/\$w && pnpm install > \$S/\$w-install.log 2>&1) & done; wait") $(ibash "$IT" "S=$I; for w in a b; do (cd \$S/\$w && pnpm install > \$S/\$w-install.log 2>&1) & done; wait")"
 check "BLOCK: eval runs its script in this shell: a write after its cd into the repo, or to a path its variable names there" "2 2" \
   "$(ibash "$IT" "eval 'cd $I'; echo x > a.txt" "$T/nogit") $(ibash "$IT" "eval 'WD=$I'; echo x > \$WD/a.txt" "$T/nogit")"
+check "BLOCK: a variable set in a branch may or may not hold after it, nor falls back to the environment's: a write to a path it starts" "2 2" \
+  "$(ibash "$IT" "WD=$I; if false; then WD=$T/nogit; fi; echo x > \$WD/a.txt" "$T/nogit") $(WD=$T/nogit ibash "$IT" "if true; then WD=$I; fi; echo x > \$WD/a.txt" "$T/nogit")"
 check "logs written outside it by a backgrounded { } group in a loop, after its cd to \$W/\$t, pass" 0 \
   "$(ibash "$IT" "W=$T/nogit; for t in a b; do { cd \$W/\$t && netns-run bash x.sh > \$W/probe/\$t.out 2> \$W/probe/\$t.err; echo \"\$t exit \$?\" >> \$W/probe/\$t.err; } & done; wait")"
 ir_tr "$IT" "read:$I/AGENTS.md" "read:$I/CLAUDE.md"; check "a command writing into it passes once both were read" 0 "$(ibash "$IT" "echo x > $I/a.txt")"

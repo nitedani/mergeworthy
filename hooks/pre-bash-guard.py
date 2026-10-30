@@ -723,16 +723,18 @@ def check(t, has_cd):
                   'and pass --title "$(cat <that file>)" (mergeworthy:pull-request step 7)')
         if a[1] == 'edit' and opt(a[2:], ['--title', '-t']) and (who := title_setter(*post_target('pr', a[2:], env, run_dir))):
             block(f"{who[0]} set this PR's title ({who[1]}): it is their decision. Keep it, or ask them on the PR first (mergeworthy:pull-request step 7)")
-    written = [x if os.path.isabs(x) else os.path.join(known(run_dir), x) for x in (os.path.expanduser(where.expand(f)) for f in written_files(t))]
+    names = [os.path.expanduser(where.expand(f)) for f in written_files(t)]
+    # A review's verdict is the reviewer's final message, which it writes itself (`codex exec -o`, an agent's output file); an agent's stdout is it too
+    if p not in ('claude', 'codex') and any(x.endswith('.review.out') for x in names) and not by_agent():
+        block("a review's output is the reviewer's final message, written by the reviewer: `codex exec -o <out>`, or the agent writes <out> itself. "
+              "Never write a verdict yourself (mergeworthy:delegate §Reviewers, post step 3)")
+    # a path that starts with an expansion Where can't resolve is in a dir it can't tell
+    written = [x if os.path.isabs(x) else os.path.join(known(None if re.match(r'[$`]', x) else run_dir), x) for x in names]
     for x in written:
         if why := no_instructions_read(x, d):
             block(why)
-    # A review's verdict is the reviewer's final message, which it writes itself (`codex exec -o`, an agent's output file); an agent's stdout is it too
     if any(os.path.realpath(x).startswith(RECORDS) for x in written):
         block("the step records in ~/.claude/pr-steps are written by `pr-steps <step> <its output>` alone, which checks the output first")
-    if p not in ('claude', 'codex') and any(x.endswith('.review.out') for x in written) and not by_agent():
-        block("a review's output is the reviewer's final message, written by the reviewer: `codex exec -o <out>`, or the agent writes <out> itself. "
-              "Never write a verdict yourself (mergeworthy:delegate §Reviewers, post step 3)")
     if p == 'gh' and a[:2] == ['pr', 'ready'] and '--undo' not in a:
         check_refactor_ask(*post_target('pr', a[2:], env, run_dir), comment=False)
     if p == 'gh' and a[:2] == ['pr', 'create'] and '--help' not in a and '-h' not in a:
