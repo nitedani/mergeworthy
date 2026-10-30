@@ -127,7 +127,7 @@ codes="$(follow "$W/gh-watch.py") $(follow "$W/gh-watch.py") $(follow "$W/gh-wat
 check "three starts from a checkout, exit codes" "0 0 0" "$codes"
 [ -e "$HOME/.mergeworthy/current" ]; check "~/.mergeworthy/current not repointed" 1 $?
 # control: the same code inside the plugin cache, with a newer version installed, still follows (exit 75)
-C="$HOME/.claude/plugins/cache/mergeworthy/mergeworthy/v1"; mkdir -p "$C/watcher" "$C/hooks"; cp "$R/watcher/gh-watch.py" "$R/watcher/gl_watch.py" "$C/watcher/"; cp "$R/hooks/agent_jobs.py" "$R/hooks/steward.py" "$R/hooks/work_folder.py" "$C/hooks/"
+C="$HOME/.claude/plugins/cache/mergeworthy/mergeworthy/v1"; mkdir -p "$C/watcher" "$C/hooks"; cp "$R/watcher/gh-watch.py" "$R/watcher/gl_watch.py" "$C/watcher/"; cp "$R/hooks/agent_jobs.py" "$R/hooks/own_actions.py" "$R/hooks/steward.py" "$R/hooks/work_folder.py" "$C/hooks/"
 check "control: running from the plugin cache, newer version installed" 75 "$(follow "$C/watcher/gh-watch.py")"
 [ "$(readlink "$HOME/.mergeworthy/current")" = "$T/installed/v2" ]; check "control: current points at the new version" 0 $?
 
@@ -303,6 +303,59 @@ print(*after, out.count("WATCH ERROR permission o/r#1"), out.count("### MAINTAIN
 ')
 check "maintainer commits: a failed permission lookup keeps the old head and drops the PR's validator; the next look reports them once" "old False 1 1 new" "$got"
 
+# A PR whose head moved to a commit this machine pushed (pre-bash-guard records it) only logs the change; another head wakes the session
+got=$(PUSHED_HEADS="$T/pushed" py '
+m.agent_post_hashes, m.emit_refactor_stale, m.emit_wait_ping, m.emit_maintainer_commits = (lambda: set()), (lambda *a: None), (lambda *a: None), (lambda *a: True)
+open(os.environ["PUSHED_HEADS"], "w").write("4f206bcab8deb5cb38e338c855b9cbf2478e7e7e\n")
+heads = {"1": "4f206bcab8", "2": "9a9a9a9a9a"}
+m.fetch_thread = lambda repo, num, *a: (True, "me", [], {"head": heads[num], "state": "open", "conflict": False}, None, None, {}, True, None)
+state = {"since": "2026-10-29T00:00:00Z", "since_by": {}, "is_pr": {}, "prs": {f"o/r#{n}": {"head": "f7015ae986", "state": "open", "conflict": False} for n in heads}, "etag": {}, "ci": {}}
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf):
+    m.scan(state, [("o/r", "1", "full", 0), ("o/r", "2", "full", 0)])
+print("|".join(l.split(":")[0] for l in buf.getvalue().splitlines()))
+')
+check "PR CHANGED: a head this machine pushed is a log note, another head an event" "note|### PR CHANGED o/r#2" "$got"
+# A change whose push, merge or close still runs (own_actions pending) is held, its old state kept, until the command ends:
+# succeeded, a note; failed (dropped) or pending past PENDING_TTL, an event like anyone's
+got=$(OWN_PENDING="$T/opend" PUSHED_HEADS="$T/opushed" CLOSED_THREADS="$T/oclosed" py '
+m.agent_post_hashes, m.emit_refactor_stale, m.emit_wait_ping, m.emit_maintainer_commits = (lambda: set()), (lambda *a: None), (lambda *a: None), (lambda *a: True)
+now = int(m.time.time())
+open(os.environ["OWN_PENDING"], "w").write(f"{now} k1 PUSHED_HEADS aaaaaaaaaa11\n{now - 4000} k2 PUSHED_HEADS bbbbbbbbbb22\n{now} k3 PUSHED_HEADS cccccccccc33\n")
+heads = {"1": "aaaaaaaaaa", "2": "bbbbbbbbbb", "3": "cccccccccc"}
+m.fetch_thread = lambda repo, num, *a: (True, "me", [], {"head": heads[num], "state": "open", "conflict": False}, None, None, {}, True, None)
+state = {"since": "2026-10-29T00:00:00Z", "since_by": {}, "is_pr": {}, "prs": {f"o/r#{n}": {"head": "0000000000", "state": "open", "conflict": False} for n in heads}, "etag": {}, "ci": {}}
+out = []
+for ended in ((), (("k1", True), ("k3", False))):
+    for k, ok in ended: m.own_actions.settle(k, ok)
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf): m.scan(state, [("o/r", n, "full", 0) for n in heads])
+    out.append("|".join(l.split(":")[0] for l in buf.getvalue().splitlines()) + " " + state["prs"]["o/r#1"]["head"])
+print(*out, sep=";")
+')
+check "PR CHANGED: a head whose push still runs is held, its old head kept; once it succeeded, a note; dropped, or pending past its TTL, an event" \
+  "### PR CHANGED o/r#2 0000000000;note|### PR CHANGED o/r#3 aaaaaaaaaa" "$got"
+# A merge or close this machine made (pre-bash-guard records `gh pr merge`, `gh pr|issue close`) only logs the change when GitHub
+# names ME as the one who did it; its DEPENDENT and TRACKER STALE still wake. o/r#7 and #8 are the reviewer's case: a confirmed record
+# (`gh issue close 7 -R o/r; true` exits 0 though its gh failed), the close or merge done by a maintainer
+got=$(CLOSED_THREADS="$T/closed" py '
+m.agent_post_hashes, m.emit_refactor_stale, m.emit_wait_ping = (lambda: set()), (lambda *a: None), (lambda *a: None)
+m.emit_dependents, m.emit_tracker_stale = (lambda key: print(f"### DEPENDENT of merged {key}")), (lambda key, ended: print(f"### TRACKER STALE {key}"))
+open(os.environ["CLOSED_THREADS"], "w").write("o/r#3 merged\no/r#5 closed\no/r#7 closed\no/r#8 merged\n")
+prs = {"3": "merged", "4": "closed", "8": "merged"}
+closers = {"3": "me", "4": "maint", "5": "me", "6": "maint", "7": "maint", "8": "maint"}
+m.request = lambda path, *a, **k: m.Resp(200, {}, json.dumps({"closed_by": {"login": closers[path.rsplit("/", 1)[1]]}}))
+m.fetch_thread = lambda repo, num, *a: (True, "me", [], {"head": "a1", "state": prs[num], "conflict": False}, None, None, {}, True, None) if num in prs \
+    else (False, "me", [], None, None, {"open": False}, {}, True, None)
+state = {"since": "2026-10-29T00:00:00Z", "since_by": {}, "is_pr": {}, "prs": {f"o/r#{n}": {"head": "a1", "state": "open", "conflict": False} for n in prs}, "etag": {}, "ci": {}, "open": {"o/r#5": True, "o/r#6": True, "o/r#7": True}}
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf):
+    m.scan(state, [("o/r", n, "full", 0) for n in "345678"])
+print("|".join(l.split(":")[0] for l in buf.getvalue().splitlines()))
+')
+check "PR CHANGED and ISSUE CLOSED: your own merge or close, GitHub naming you, is a log note, its DEPENDENT and TRACKER STALE still events; another merge or close an event, recorded or not" \
+  "note|### DEPENDENT of merged o/r#3|### TRACKER STALE o/r#3|### PR CHANGED o/r#4|### TRACKER STALE o/r#4|note|### ISSUE CLOSED o/r#6|### ISSUE CLOSED o/r#7|### PR CHANGED o/r#8|### DEPENDENT of merged o/r#8|### TRACKER STALE o/r#8" "$got"
+
 # /agent commands in threads no watch dir lists: found in the watched repos' comments feeds, routed to one dir, emitted once
 AD="$T/agentdirs"; mkdir -p "$AD/alpha" "$AD/beta" "$HOME/.mergeworthy"
 printf 'o/r 1\n' > "$AD/alpha/threads.txt"; printf 'o/r 2\n' > "$AD/beta/threads.txt"
@@ -385,6 +438,8 @@ timeline = [
     {"event": "cross-referenced", "source": {"issue": {"html_url": "<pr-9>", "pull_request": {}, "user": {"login": "alice"}}}},
     {"event": "cross-referenced", "source": {"issue": {"html_url": "<issue-8>", "user": {"login": "alice"}}}},         # an issue, not a PR
     {"event": "cross-referenced", "source": {"issue": {"html_url": "<pr-7>", "pull_request": {}, "user": {"login": "me"}}}},   # yours
+    {"event": "cross-referenced", "actor": {"login": "me"}, "source": {"issue": {"html_url": "<pr-4>", "pull_request": {}, "user": {"login": "alice"}}}},   # your comment in hers
+    {"event": "cross-referenced", "actor": {"login": "alice"}, "source": {"issue": {"html_url": "<pr-4>", "pull_request": {}, "user": {"login": "alice"}}}},   # hers, later, in the same PR
     {"event": "cross-referenced", "source": {"issue": {"html_url": "<pr-6>", "pull_request": {}, "user": {"login": "dep[bot]", "type": "Bot"}}}},
 ]
 calls = []
@@ -422,7 +477,7 @@ second = scan()   # an hour later
 print("first=" + "|".join(first)); print("second=" + "|".join(second))
 print("recorded=" + str(sorted(record()["files"].items())))
 ')
-check "FOLLOW-UP: overlap and rename and the referencing PR once; non-overlap, own commit, merge commit, issue, own PR, bots nothing; no repeat" "first=### FOLLOW-UP o/r#5: c5eeeeeeee by carol changes lines from your PR <c-c5eeeeeeeeee>|### FOLLOW-UP o/r#5: c1aaaaaaaa by alice changes lines from your PR <c-c1aaaaaaaaaa>|### FOLLOW-UP o/r#5: <pr-9> by alice references your PR
+check "FOLLOW-UP: overlap and rename and the referencing PR once; non-overlap, own commit, merge commit, issue, bots nothing; own PR and own reference only logged, a later one by another from that PR an event; no repeat" "first=### FOLLOW-UP o/r#5: c5eeeeeeee by carol changes lines from your PR <c-c5eeeeeeeeee>|### FOLLOW-UP o/r#5: c1aaaaaaaa by alice changes lines from your PR <c-c1aaaaaaaaaa>|### FOLLOW-UP o/r#5: <pr-9> by alice references your PR|note: FOLLOW-UP o/r#5: <pr-7> by me references your PR|note: FOLLOW-UP o/r#5: <pr-4> by me references your PR|### FOLLOW-UP o/r#5: <pr-4> by alice references your PR
 second=
 recorded=[('z.ts', [[11, 12]])]" "$got"
 got=$(follow '
@@ -438,7 +493,7 @@ print("first=" + "|".join(first)); print("second=" + "|".join(second))
 ')
 check "FOLLOW-UP: a PR whose base branch was deleted after the merge is followed on the default branch from the next pass, with no WATCH ERROR" "errors=0 base=main listed=gone,main backlog=
 first=
-second=### FOLLOW-UP o/r#5: c5eeeeeeee by carol changes lines from your PR <c-c5eeeeeeeeee>|### FOLLOW-UP o/r#5: c1aaaaaaaa by alice changes lines from your PR <c-c1aaaaaaaaaa>|### FOLLOW-UP o/r#5: <pr-9> by alice references your PR" "$got"
+second=### FOLLOW-UP o/r#5: c5eeeeeeee by carol changes lines from your PR <c-c5eeeeeeeeee>|### FOLLOW-UP o/r#5: c1aaaaaaaa by alice changes lines from your PR <c-c1aaaaaaaaaa>|### FOLLOW-UP o/r#5: <pr-9> by alice references your PR|note: FOLLOW-UP o/r#5: <pr-7> by me references your PR|note: FOLLOW-UP o/r#5: <pr-4> by me references your PR|### FOLLOW-UP o/r#5: <pr-4> by alice references your PR" "$got"
 got=$(follow '
 BASE = "gone"   # a pass that ran out of calls on page 1 left the rest of the list, and the branch is deleted before the next
 m.shared_update(lambda s: s["followups"].__setitem__("o/r#5", m.follow_record("o/r#5")))
@@ -451,7 +506,7 @@ print("errors=" + str(out.getvalue().count("WATCH ERROR")), "base=" + record()["
 print("second=" + "|".join(second))
 ')
 check "FOLLOW-UP: a backlog resumed past page 1 of a deleted base branch moves to the default branch too, with no WATCH ERROR" "errors=0 base=main backlog=
-second=### FOLLOW-UP o/r#5: c5eeeeeeee by carol changes lines from your PR <c-c5eeeeeeeeee>|### FOLLOW-UP o/r#5: c1aaaaaaaa by alice changes lines from your PR <c-c1aaaaaaaaaa>|### FOLLOW-UP o/r#5: <pr-9> by alice references your PR" "$got"
+second=### FOLLOW-UP o/r#5: c5eeeeeeee by carol changes lines from your PR <c-c5eeeeeeeeee>|### FOLLOW-UP o/r#5: c1aaaaaaaa by alice changes lines from your PR <c-c1aaaaaaaaaa>|### FOLLOW-UP o/r#5: <pr-9> by alice references your PR|note: FOLLOW-UP o/r#5: <pr-7> by me references your PR|note: FOLLOW-UP o/r#5: <pr-4> by me references your PR|### FOLLOW-UP o/r#5: <pr-4> by alice references your PR" "$got"
 joined() { follow '
 BASE = "'"$1"'"   # another PR followed on main stopped at its timeline: its backlog of the list is drained, its validator saved
 m.shared_update(lambda s: s["backlog"].__setitem__("o/r@main", {"since": iso(now - 86400 * 2), "floor": iso(now - 86400 * 2), "started": iso(now - 600), "next": None, "queue": [], "fresh": False, "keys": ["o/r#6"]}))
@@ -472,7 +527,7 @@ for p in ("shared-watch.json", "agent-commands.seen"): os.remove(os.path.expandu
 out = scan(); os.remove(os.path.expanduser("~/.mergeworthy/steward"))
 print(len(out), sum(l.startswith("### FOLLOW-UP") for l in open(os.path.join(sd, "events.log"))))
 ')
-check "FOLLOW-UP: a declared steward whose watcher isn't running leaves them to the PR's dirs; while it runs, they go to its watch dir instead" "3 0 3" "$got"
+check "FOLLOW-UP: a declared steward whose watcher isn't running leaves them to the PR's dirs (the notes too); while it runs, they go to its watch dir instead" "6 0 4" "$got"
 got=$(follow '
 sd = os.path.join(os.path.dirname(m.HERE), "stew2"); os.makedirs(sd, exist_ok=True); open(os.path.join(sd, "events.log"), "w").close()
 open(os.path.expanduser("~/.mergeworthy/steward"), "w").write(sd + " t1\n"); open(os.path.join(sd, "gh-watch.pid"), "w").write(str(os.getpid()))
@@ -555,6 +610,23 @@ print(run(owed), run(owed.replace("me/r#5 comment", "- done: https://example.inv
 os.remove(os.path.join(m.HERE, "replies-owed.md"))
 ')
 check "retire_if_done: a reply still owed keeps the watcher; once that line is done:, it retires" "0 1" "$got"
+got=$(py '
+wf = os.path.expanduser("~/.mergeworthy/work/jt"); os.makedirs(wf, exist_ok=True)
+m.HERE, m.STATE, m.THREADS = wf, os.path.join(wf, "gh-watch-state.json"), os.path.join(wf, "threads.txt")
+os.makedirs(m.agent_jobs.JOBS, exist_ok=True)
+def run(brief):
+    json.dump({"key": "/x.brief.md steward C", "started": m.time.time(), "brief": brief, "session": "s1"}, open(os.path.join(m.agent_jobs.JOBS, "j1.json"), "w"))
+    open(m.THREADS, "w").write("Me/r 5\n"); buf = io.StringIO()
+    m.save_state({"prs": {"Me/r#5": {"state": "merged"}}, "author": {"Me/r#5": "me"}, "ci": {}, "is_pr": {}, "since_by": {}, "seen": {}, "since": "2026-01-01T00:00:00Z"})
+    try:
+        with contextlib.redirect_stdout(buf): m.retire_if_done()
+    except SystemExit:
+        pass
+    return buf.getvalue().count("WATCHER RETIRED")
+print(run(f"Follow {wf}/c.brief.md, see /elsewhere/x.md"), run("Follow /elsewhere/c.brief.md, see " + wf + "/x.md"))
+os.remove(os.path.join(m.agent_jobs.JOBS, "j1.json"))
+')
+check "retire_if_done: an open agent job whose brief is in the watcher's work folder keeps it, so its AGENT DONE comes here; one whose brief is elsewhere doesn't" "0 1" "$got"
 rm -f "$W/retired"
 
 # Under T3 Code (gh-watch-start wrote t3-thread) a pass's event lines, from any writer, go to that thread as one message; a failed send is retried
@@ -579,6 +651,39 @@ print(repr(buf.getvalue()))
 ')
 check "wake_thread: one message per pass with only the event lines, a half-written line waits, nothing twice, a failed send reported and retried, none without t3-thread" \
   "'WATCH ERROR t3 thread send thr-1: connect ECONNREFUSED\n'|t3 thread send thr-1 -;Watcher events in $W/events.log (mergeworthy:reply):;### o/r#5 comment 1 by bob;WATCH ERROR x: y;### AGENT DONE j;t3 thread send thr-1 -;Watcher events in $W/events.log (mergeworthy:reply):;### half written;t3 thread send thr-1 -;Watcher events in $W/events.log (mergeworthy:reply):;### half written;WATCHER RETIRED at now;" \
+  "$got|$(tr '\n' ';' < "$T/t3.log")"
+: > "$T/t3.log"
+got=$(py '
+import sqlite3
+db = os.path.expanduser("~/.t3/userdata/statev2.sqlite"); os.makedirs(os.path.dirname(db), exist_ok=True)
+c = sqlite3.connect(db)
+c.execute("create table orchestration_v2_projection_runs (run_id text, thread_id text, status text, payload_json text)")
+c.execute("create table orchestration_v2_projection_messages (message_id text, payload_json text)")
+def queue(mid, text):  # T3 queues a message behind the running turn of the thread
+    c.execute("insert into orchestration_v2_projection_messages values (?, ?)", (mid, json.dumps({"text": text})))
+    c.execute("insert into orchestration_v2_projection_runs values (?, ?, ?, ?)", ("run-" + mid, "thr-q", "queued", json.dumps({"userMessageId": mid}))); c.commit()
+queue("u1", "please also look at the docs")  # a user message queued too: not a wake
+log = os.path.join(m.HERE, "events.log"); open(log, "w").close()
+open(os.path.join(m.HERE, "t3-thread"), "w").write("thr-q\n'"$T"'/bin/t3\n"); open(os.path.join(m.HERE, "t3-wake.cursor"), "w").write("0")
+sends = lambda: open("'"$T"'/t3.log").read().count("t3 thread send")
+counts = []
+for i in range(1, 6):
+    open(log, "a").write(f"### event {i}\n"); m.wake_thread()
+    if i == 1:
+        queue("w1", open("'"$T"'/t3.log").read().split("\n", 1)[1])
+    counts.append(sends())
+c.execute("update orchestration_v2_projection_runs set status = ?, payload_json = ? where run_id = ?", ("running", json.dumps({"userMessageId": "w1", "startedAt": "now"}), "run-w1")); c.commit()
+open(log, "a").write("### event 6\n"); m.wake_thread(); counts.append(sends())
+# a wake cancelled before it started: the events it held go with the next pass, though no new one came
+queue("w2", "Watcher events in " + m.HERE + "/events.log (mergeworthy:reply):\n### event 6\n")
+open(log, "a").write("### event 7\n"); m.wake_thread(); counts.append(sends())
+c.execute("update orchestration_v2_projection_runs set status = ? where run_id = ?", ("cancelled", "run-w2")); c.commit()
+m.wake_thread(); counts.append(sends()); m.wake_thread(); counts.append(sends())
+os.remove(os.path.join(m.HERE, "t3-thread")); os.remove(db)
+print(*counts)
+')
+check "wake_thread: while its wake is queued in T3, 4 more events send nothing (that run reads the log); once it runs, the next event sends, alone; one cancelled before it ran gets its events sent on the next pass, once" \
+  "1 1 1 1 1 2 2 3 3|t3 thread send thr-q -;Watcher events in $W/events.log (mergeworthy:reply):;### event 1;t3 thread send thr-q -;Watcher events in $W/events.log (mergeworthy:reply):;### event 6;t3 thread send thr-q -;Watcher events in $W/events.log (mergeworthy:reply):;### event 7;" \
   "$got|$(tr '\n' ';' < "$T/t3.log")"
 got=$(py '
 log = os.path.join(m.HERE, "events.log"); open(log, "w").write("### cron event\n"); open(os.path.join(m.HERE, "t3-wake.cursor"), "w").write("0\n")

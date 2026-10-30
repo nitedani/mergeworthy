@@ -31,20 +31,39 @@ def passed_by(wd):
 ACTIVE_RUNS = ('queued', 'preparing', 'starting', 'running', 'waiting')
 ACTIVE_TASKS = ('pending', 'starting', 'running', 'waiting')
 
-def _ask(session_id, ask, default):
-    """ask(read-only connection to T3 Code's state, the T3 thread a Claude session runs in), or default without that thread or on
-    an error. The connection is closed after: an unclosed one stays open until the cycle collector runs, so a watcher that asks
-    for days runs out of file handles."""
+def _db(ask, default):
+    """ask(read-only connection to T3 Code's state), or default on an error. The connection is closed after: an unclosed one stays
+    open until the cycle collector runs, so a watcher that asks for days runs out of file handles."""
     try: c = sqlite3.connect(f"file:{os.path.expanduser('~/.t3/userdata/statev2.sqlite')}?mode=ro", uri=True, timeout=2)
     except sqlite3.Error: return default
     try:
-        r = c.execute("select thread_id from orchestration_v2_projection_provider_threads where json_extract(payload_json, '$.nativeThreadRef.nativeId') = ?",
-                      (session_id,)).fetchone()
-        return ask(c, r[0]) if r else default
+        return ask(c)
     except sqlite3.Error:
         return default
     finally:
         c.close()
+
+def _ask(session_id, ask, default):
+    """ask(connection, the T3 thread a Claude session runs in), or default without that thread or on an error."""
+    def run(c):
+        r = c.execute("select thread_id from orchestration_v2_projection_provider_threads where json_extract(payload_json, '$.nativeThreadRef.nativeId') = ?",
+                      (session_id,)).fetchone()
+        return ask(c, r[0]) if r else default
+    return _db(run, default)
+
+def queued(tid, text):
+    """The run on T3 thread tid still queued for a message starting with text, or None."""
+    r = _db(lambda c: c.execute(
+        "select r.run_id from orchestration_v2_projection_runs r join orchestration_v2_projection_messages m on m.message_id = json_extract(r.payload_json, '$.userMessageId') "
+        "where r.thread_id = ? and r.status = 'queued' and substr(json_extract(m.payload_json, '$.text'), 1, ?) = ?", (tid, len(text), text)).fetchone(), None)
+    return r and r[0]
+
+def started(run_id):
+    """True once T3 started the run, False while it can still start, None when it ended without starting, is gone or can't be read."""
+    def ask(c):
+        r = c.execute("select status, json_extract(payload_json, '$.startedAt') from orchestration_v2_projection_runs where run_id = ?", (run_id,)).fetchone()
+        return None if not r else True if r[1] else False if r[0] in ACTIVE_RUNS else None
+    return _db(ask, None)
 
 def _in(values):
     return f"({','.join('?' * len(values))})"

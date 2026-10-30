@@ -8,6 +8,7 @@
 - Your "/agent ..." comments on threads no watch dir lists, found in the watched repos' recent comments (search as a backup) and sent to one dir (see agent_command): `### AGENT COMMAND`.
 - MAINTAINER REVIEW: a maintainer's review (not a bare approval) on your PR, sent to the steward like FOLLOW-UP: every defect it names is sorted.
 - FOLLOW-UP: later commits by others to the lines of your merged PRs, and PRs that reference them (see follow_ups), for 60 days after the merge.
+  What you caused yourself (your reference, a head you pushed, your merge or close: own_change) is a `note:` line, logged without waking you.
   Another account renaming your PR, open (the last-comment call) or merged (follow_ups' timeline), is one too (pr_renamed).
 - Machine-wide work (those two) runs in one daemon, or a --round, at a time (shared_pass). Every call goes through request(), which keeps the
   hour's budget (see "The GitHub API budget") and sends ETags; a rate-limit pause prints one WATCH ERROR per daemon.
@@ -18,7 +19,8 @@
   and the repos' issue lists are polled once per X-Poll-Interval, the repo lists by the one daemon holding the lease for all.
 - GitLab threads in threads.txt are read by gl_watch.py (scan_gitlab), into the same events.log and replies-owed.md.
 - AGENT DONE: an agent the session launched has finished (hooks/agent_jobs.py), once per finish, until `agent-job done` releases its job.
-- Under T3 Code each pass's event lines also go to the session's thread (wake_thread), so it needs no Monitor.
+- Under T3 Code each pass's event lines also go to the session's thread (wake_thread), so it needs no Monitor; none while its last
+  such message is still queued in T3, whose run reads events.log past the session's cursor.
 - The steward's folder and the dirs inside it (steward.quiet) watch nitedani/mergeworthy whole and only log: no :eyes:, no owed reply, and only
   a new issue there wakes the steward (WAKES); its next pass reads the rest of events.log.
 - Every request is counted, 304 answers too (tally; `gh-watch.py --stats` prints the rate, and once an hour a line goes to gh-watch-stats.log).
@@ -31,7 +33,7 @@ from concurrent.futures import ThreadPoolExecutor
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))  # a watch dir runs this through a link
 import gl_watch
 sys.path.insert(1, os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'hooks'))
-import agent_jobs, shlex, steward, work_folder
+import agent_jobs, own_actions, shlex, steward, work_folder
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE = os.path.join(HERE, 'gh-watch-state.json')
@@ -483,6 +485,26 @@ def agent_post_hashes():
         return set()
 
 
+def own_change(key, prev, now):
+    """'done' when every change from prev to now is this machine's agents' own (own_actions: a head they pushed, a merge or close they
+    made that GitHub also credits to you: a command can exit 0 though its gh never ran), 'pending' while the command making one still
+    runs and the rest are theirs too, else None: someone else's, which wakes."""
+    marks = ([own_actions.state('PUSHED_HEADS', lambda e: bool(now['head']) and e.startswith(now['head']))] if prev.get('head') != now.get('head') else []) + \
+            ([own_actions.state('CLOSED_THREADS', lambda e: e == f"{key} {now['state']}")] if prev.get('state') != now['state'] else [])
+    if marks[-1:] == ['done'] and prev.get('state') != now['state'] and closer(key) != ME:
+        return None
+    return None if not marks or None in marks else 'pending' if 'pending' in marks else 'done'
+
+
+def closer(key):
+    """Who closed the issue or PR, as GitHub says (its closed_by: for a merged PR, the one who merged it); None when it can't say."""
+    repo, num = key.rsplit('#', 1)
+    try:
+        return (request(f"repos/{repo}/issues/{num}").json().get('closed_by') or {}).get('login')
+    except Exception:
+        return None
+
+
 MAINTAINER = ('OWNER', 'MEMBER', 'COLLABORATOR')
 AI_CALL = re.compile(r'(^|\s)/(ai|agent)\b', re.I)
 
@@ -660,19 +682,39 @@ def wake_thread():
     """Under T3 Code (steward.bind_watcher wrote the main session's thread, then t3's path, to HERE/t3-thread) the event lines events.log got
     since the last pass, from any writer, go to that thread as one message; t3-wake.cursor holds the byte offset sent up to. A failed
     send is retried (False), except when the thread is gone, or the t3 binary on two passes in a row (a `t3 update` relinks it for an
-    instant): then t3-thread goes, and events.log alone keeps the events, as outside T3 Code."""
+    instant): then t3-thread goes, and events.log alone keeps the events, as outside T3 Code. While the thread holds a wake of ours still
+    queued, nothing is sent: t3-wake.held names that run and how far the events it will read go; once it starts, the cursor moves there,
+    and if it ends without starting, the next pass sends them (False until then: the thread hasn't got them)."""
     tid, _, t3 = first_line(os.path.join(HERE, 't3-thread')).partition('\n')
-    cursor = os.path.join(HERE, 't3-wake.cursor')
+    cursor, held = os.path.join(HERE, 't3-wake.cursor'), os.path.join(HERE, 't3-wake.held')
     if not tid:
         return True
     if os.path.exists(t3):
         _t3_missing[0] = None
     elif _t3_missing[0] is None:
         _t3_missing[0] = _ticks[0]
+    def hold(run, upto):
+        with open(held + '.tmp', 'w') as f:
+            f.write(f"{run} {upto}\n")
+        os.replace(held + '.tmp', held)
+        return False
     start, data = unsent()
+    run, _, upto = first_line(held).partition(' ')
+    if run:
+        began = steward.started(run)
+        if began is False:
+            return hold(run, start + len(data))
+        os.remove(held)
+        if began:  # the session read events.log up to upto when that run started
+            with open(cursor, 'w') as f:
+                f.write(f"{max(start, int(upto))}\n")
+            start, data = unsent()
     lines = [l for l in data.decode(errors='replace').splitlines() if (WAKES if steward.quiet(HERE) else EVENT).match(l)]
+    head = f"Watcher events in {HERE}/events.log (mergeworthy:reply):\n"
+    if lines and (run := steward.queued(tid, head)):  # that wake reads every event past the session's cursor when it runs
+        return hold(run, start + len(data))
     if lines:
-        msg = f"Watcher events in {HERE}/events.log (mergeworthy:reply):\n" + '\n'.join(lines)
+        msg = head + '\n'.join(lines)
         try:
             r = subprocess.run([t3, 'thread', 'send', tid, '-'], input=msg, capture_output=True, text=True, timeout=60)
             err = r.returncode and (r.stderr.strip().splitlines() or [f"exit {r.returncode}"])[-1]
@@ -1061,15 +1103,25 @@ def scan(state, jobs):
             if updated:
                 state['upd'][key] = iso_epoch(updated)
             if last:
-                if not is_pr and state.setdefault('open', {}).get(key) and not last['open']:
-                    emit(f"### ISSUE CLOSED {key}" + (": the steward shipped its fix: update your installed mergeworthy (README, Install), then go on"
-                                                      if repo == STEWARD_REPO else ""))
-                state.setdefault('open', {})[key] = last['open']
+                state.setdefault('open', {})
+                closed = not is_pr and state['open'].get(key) and not last['open']
+                mine = closed and own_change(key, {'state': 'open'}, {'state': 'closed'})
+                if mine == 'pending':  # the close's command still runs: read the issue again next pass
+                    state['etag'].pop(f"repos/{repo}/issues/{num}", None)
+                else:
+                    if closed:
+                        emit(f"{'note:' if mine else '###'} ISSUE CLOSED {key}" + (": the steward shipped its fix: update your installed mergeworthy (README, Install), then go on"
+                                                                              if repo == STEWARD_REPO else ""))
+                    state['open'][key] = last['open']
             state['since_by'][key] = started
             if pr_state:
                 prev = state['prs'].get(key)
-                if prev and prev != pr_state:
-                    emit(f"### PR CHANGED {key}: {prev} -> {pr_state}")
+                mine = prev and prev != pr_state and own_change(key, prev, pr_state)
+                if mine == 'pending':  # the push, merge or close still runs: compare again next pass
+                    pr_state = prev
+                    state['etag'].pop(f"repos/{repo}/pulls/{num}", None)
+                elif prev and prev != pr_state:
+                    emit(f"{'note:' if mine else '###'} PR CHANGED {key}: {prev} -> {pr_state}")  # a note is logged, and wakes no one
                     if pr_state['state'] == 'merged' and prev.get('state') != 'merged':
                         emit_dependents(key)
                     if pr_state['state'] in ('merged', 'closed') and prev.get('state') != pr_state['state']:
@@ -1713,8 +1765,10 @@ def follow_ups():
                 tpending = {}
                 for t in paged(f"repos/{repo}/issues/{k.rsplit('#', 1)[1]}/timeline?per_page=100", shared_read()['etags'], tpending, fresh=bk['fresh']):
                     i = (t.get('source') or {}).get('issue') or {}
-                    if t.get('event') == 'cross-referenced' and 'pull_request' in i and not is_bot(i.get('user')) and (i.get('user') or {}).get('login') != ME:
-                        follow_emit(f"followup-ref:{k}:{i['html_url']}", prs[k], f"### FOLLOW-UP {k}: {i['html_url']} by {i['user']['login']} references your PR  at {iso(time.time())}")
+                    if t.get('event') == 'cross-referenced' and 'pull_request' in i and not is_bot(i.get('user')):
+                        who = (t.get('actor') or {}).get('login') or i['user']['login']  # who wrote the reference: in another's PR, it can be your comment
+                        ours = ME in (who, i['user']['login'])  # its own claim: a later reference by someone else from that PR still wakes
+                        follow_emit(f"followup-ref{'-own' if ours else ''}:{k}:{i['html_url']}", prs[k], f"{'note:' if ours else '###'} FOLLOW-UP {k}: {i['html_url']} by {who} references your PR  at {iso(time.time())}")
                     elif t.get('event') == 'renamed':
                         pr_renamed(k, prs[k], t['created_at'], (t.get('actor') or {}).get('login'), t['rename']['from'], t['rename']['to'])
                 pending.update(tpending)
@@ -1798,10 +1852,12 @@ def retire_if_done():
     """A watcher whose every thread is merged or closed (and that covers no whole repo: a bare `owner/repo` line in repos.txt keeps it
     only for an hour after it was written, for the thread about to join, an `owner/repo all` line always) has nothing left to watch:
     it writes the time to HERE/retired and disables its service, so it doesn't come back after a reboot, or stops its daemon. A reply
-    still owed in replies-owed.md keeps it: stop-lint holds a session's turn only for a live watcher's owed lines."""
-    repos = repo_lines(HERE)
+    still owed in replies-owed.md keeps it: stop-lint holds a session's turn only for a live watcher's owed lines. So does an open agent
+    job whose brief is in its work folder: its AGENT DONE comes here (agent_jobs_pass)."""
+    repos, wf = repo_lines(HERE), work_folder.task_of(HERE)
     if (any(repos.values()) or repos and time.time() - os.path.getmtime(os.path.join(HERE, 'repos.txt')) < 3600
-            or work_folder.has_open_line(os.path.join(HERE, 'replies-owed.md'), 'done:')):
+            or work_folder.has_open_line(os.path.join(HERE, 'replies-owed.md'), 'done:')
+            or wf and any(job_folder(j) == wf for _, j in agent_jobs.jobs())):
         return
     threads, gl = read_threads(), gl_watch.threads(THREADS)
     if not threads and not gl:
@@ -1950,12 +2006,18 @@ def scan_gitlab():
     if threads:
         with locked():
             state = load_state()
-            gl_watch.scan(state, threads, handle_comment, emit, lambda body: _norm(body) in agent_post_hashes(), CHECK, ROUND_SINCE)
+            gl_watch.scan(state, threads, handle_comment, emit, lambda body: _norm(body) in agent_post_hashes(), own_change, CHECK, ROUND_SINCE)
             save_state(state)
 
 
 _retire_at = [0]
 _jobs_at, _routed = [0], {}
+
+
+def job_folder(j):
+    """The work folder of an agent job's brief: the first path its task names; a path it cites later is another task's."""
+    brief = re.search(r'(?<![\w.~/-])(~?/[^\s`\'"]+)', j.get('brief') or j['key'])
+    return brief and work_folder.task_of(os.path.expanduser(brief[1]))
 
 
 def agent_jobs_pass():
@@ -1977,9 +2039,7 @@ def agent_jobs_pass():
     dirs = list(dict.fromkeys(live_dirs() + [HERE]))
     for f, j, done in ready:
         if f not in _routed:
-            # the brief is the first path the task names; a path it cites later is another task's, not this job's
-            brief = re.search(r'(?<![\w.~/-])(~?/[^\s`\'"]+)', j.get('brief') or j['key'])
-            wf = brief and work_folder.task_of(os.path.expanduser(brief[1]))
+            wf = job_folder(j)
             home = [d for d in dirs if wf and work_folder.task_of(d) == wf and j.get('session') and first_line(os.path.join(d, 'session')) == j['session']]
             if home:
                 _routed[f] = HERE in home

@@ -46,6 +46,16 @@
         ]
       },
       {
+        "matcher": "^Monitor$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run pre-monitor-guard.py",
+            "timeout": 600
+          }
+        ]
+      },
+      {
         "matcher": "^(Write|Edit|MultiEdit|NotebookEdit|mcp__.*delegate_task)$",
         "hooks": [
           {
@@ -67,6 +77,18 @@
           }
         ]
       },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run post-bash-register.py",
+            "timeout": 600
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
       {
         "matcher": "Bash",
         "hooks": [

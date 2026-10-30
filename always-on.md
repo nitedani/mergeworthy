@@ -51,5 +51,5 @@ How steps point: `<skill> step N` is a numbered step; `<skill> §<Heading>` is a
 ### At session start and after compaction
 1. If the `session-memory` hook printed an order to refresh `memory.md`, follow it before anything else.
 2. Read line 1 (the Tier) and the critical path of `scope.md` in the work folder holding your checkout (`ls -d ~/.mergeworthy/work/*/ ~/*-work/` lists them, older tasks in the second); if none, run `task`.
-3. Read `events.log` past `events.cursor`, re-arm any Monitor, and handle each event by `reply`.
+3. Read `events.log` past `events.cursor`, re-arm any Monitor outside T3, and handle each event by `reply`.
 4. Open the skill and step that the critical path or the compaction summary names as in progress, before acting; if neither does, run `task` from step 1.

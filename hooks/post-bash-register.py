@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Claude Code PostToolUse hook (matcher: Bash). A thread you just posted in (a new issue or PR, a comment, a review)
+"""Claude Code PostToolUse and PostToolUseFailure hook (matcher: Bash). It settles the pushes, merges and closes pre-bash-guard
+recorded as pending for the command (own_actions): its own once it succeeded, gone once it failed. A thread you just posted in (a new issue or PR, a comment, a review)
 joins the threads.txt of a watcher whose events reach the posting session (the task's work folder holding the command's dir,
 or the session's own), the one covering its repo first, so maintainer comments on it are answered (mergeworthy:reply).
 Another session's watcher wakes that session alone, so it never gets the thread. A thread whose watcher would be a guess (posting
@@ -9,8 +10,12 @@ import hashlib, json, os, re, shlex, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
 from shellcmd import segments, prog, new_post_drafts, Where
-import steward, work_folder
+import own_actions, steward, work_folder
 d = json.load(sys.stdin)
+# the pushes, merges and closes pre-bash-guard let this command make are its own once it succeeded; a failed command's go
+own_actions.settle(own_actions.key(d), d.get('hook_event_name') != 'PostToolUseFailure')
+if d.get('hook_event_name') == 'PostToolUseFailure':
+    sys.exit(0)
 cmd = d.get('tool_input', {}).get('command', '')
 r = d.get('tool_response') or {}
 out = r.get('stdout', '') if isinstance(r, dict) else str(r)

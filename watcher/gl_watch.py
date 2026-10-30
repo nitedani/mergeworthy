@@ -60,16 +60,18 @@ def award_eyes(base, nid, emit):
         emit(f"WATCH ERROR eyes {base} note {nid}: {e}")
 
 
-def read(state, t, key, proj, kind, iid, report, emit, agent_post, first):
+def read(state, t, key, proj, kind, iid, report, emit, agent_post, own_change, first):
     base = f"projects/{proj}/{kind}/{iid}"
     th = api(base)
     me = state.get('gl_me') or state.setdefault('gl_me', api('user')['username'])
     now_state = {'opened': 'open', 'locked': 'open'}.get(th['state'], th['state'])
     if kind == 'merge_requests':
         pr = {'head': (th.get('sha') or '')[:10], 'state': now_state, 'conflict': bool(th.get('has_conflicts'))}
-        if t.get('pr') and t['pr'] != pr:
-            emit(f"### PR CHANGED {key}: {t['pr']} -> {pr}")
-        t['pr'] = pr
+        mine = t.get('pr') and t['pr'] != pr and own_change(key, t['pr'], pr)
+        if mine != 'pending':  # a push still running is compared again next look
+            if t.get('pr') and t['pr'] != pr:
+                emit(f"{'note:' if mine else '###'} PR CHANGED {key}: {t['pr']} -> {pr}")
+            t['pr'] = pr
         if now_state == 'open':
             p = th.get('head_pipeline') or {}
             red = [f"pipeline {p['id']}"] if p.get('status') == 'failed' else []
@@ -95,8 +97,8 @@ def read(state, t, key, proj, kind, iid, report, emit, agent_post, first):
                react=lambda _key, _kind, cid: award_eyes(base, cid, emit))
 
 
-def scan(state, threads, report, emit, agent_post, every, since=None):
-    """Read each GitLab thread that is due. report: gh-watch's handle_comment; agent_post(body): a gated post of the agent's;
+def scan(state, threads, report, emit, agent_post, own_change, every, since=None):
+    """Read each GitLab thread that is due. report: gh-watch's handle_comment; agent_post(body): a gated post of the agent's; own_change(key, was, now): 'done' or 'pending' when the change is the agent's own push;
     every: gh-watch's seconds between looks by 'open' and 'closed'; since: a --round's start (ROUND_SINCE): every thread is read
     now, and one never read before back to it, as the round reads GitHub's."""
     gl, now = state.setdefault('gl', {}), time.time()
@@ -105,7 +107,7 @@ def scan(state, threads, report, emit, agent_post, every, since=None):
         if now < t.get('next', 0) and not since:
             continue
         try:
-            read(state, t, key, urllib.parse.quote(proj, safe=''), kind, iid, report, emit, agent_post, since or state['since'])
+            read(state, t, key, urllib.parse.quote(proj, safe=''), kind, iid, report, emit, agent_post, own_change, since or state['since'])
         except Exception as e:
             emit(f"WATCH ERROR {key}: {e}")
             t['next'] = now + 300
