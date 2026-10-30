@@ -345,10 +345,11 @@ class Where:
     knows), `cd $(git rev-parse --show-toplevel)` and `git -C <dir>`. A cd holds for the later commands of its scope (Seg.scopes) and
     the scopes inside it; leaving an isolating scope restores the dir and the line's variables from before it, leaving a branch or
     loop makes each variable set in it a Maybe. After any other dir change (a cd in a scope that may run it or not, once the scope
-    is left; a call to a function the line defines; a relative one in a loop; a target holding an expansion it can't resolve; `cd -`,
-    popd or a stack rotation) the dir is None until a cd to an absolute path, and a check that needs it blocks."""
+    is left; a call to a function the line defines, when one of their bodies changes dir; a relative one in a loop; a target
+    holding an expansion it can't resolve; `cd -`, popd or a stack rotation) the dir is None until a cd to an absolute path, and a
+    check that needs it blocks."""
     def __init__(self, cwd):
-        self.funcs, self.func_vars = set(), set()  # the functions the line defines, and the variables any of their bodies sets
+        self.funcs, self.func_vars, self.func_moves = set(), set(), False  # the functions the line defines, the variables their bodies set, whether one changes dir
         self.dir, self.moved, self.vars, self.scopes, self.quoted = cwd, False, {}, [], set()  # each scope entered: [(id, kind, name), dir before it, whether a cd ran in it, variables before it, variables set in it]
 
     def expand(self, p):
@@ -403,21 +404,26 @@ class Where:
             else: x[4].add(var)
             if x[0][1] == ISOLATING: return
 
+    def in_body(self):
+        """Whether the current command is in a function's body."""
+        return any(x[0][2] and x[0][1] != LOOP for x in self.scopes)
+
     def step(self, t):
         if t and all(re.match(r'^\w+=', x) for x in t):
             self.vars.update(x.split('=', 1) for x in t)
             for x in t: self.changed(x.split('=', 1)[0])
-            if any(x[0][2] and x[0][1] != LOOP for x in self.scopes): self.func_vars.update(x.split('=', 1)[0] for x in t)
+            if self.in_body(): self.func_vars.update(x.split('=', 1)[0] for x in t)
             return
         p = prog(t)
         if p[:1] and p[0] in self.funcs:  # a call runs a body here, maybe calling another: what any of them changes can't be told
-            self.dir, self.moved = None, True
-            self.changed()
+            if self.func_moves:
+                self.dir, self.moved = None, True
+                self.changed()
             for v in self.func_vars: self.vars[v] = Maybe(self.vars.get(v, '')); self.changed(v)
             return
         if p[:1] not in (['cd'], ['pushd'], ['popd']):
             return
-        self.moved = True
+        self.moved, self.func_moves = True, self.func_moves or self.in_body()
         a = [x for x in operands(p[1:]) if x not in ('-P', '-L', '-e', '--')]
         to = a[0] if a else '~' if p[0] == 'cd' else '-'
         kinds = [x[0][1] for x in self.scopes if x[0][1] != CONDITIONAL]
