@@ -5,7 +5,8 @@
 # (no `npm install --prefix cli` yet) the CLI cases are skipped.
 set -u
 R=$(readlink -f "${1:-$(dirname "$0")/..}")
-T=$(mktemp -d); export HOME="$T/home"; mkdir -p "$HOME/.claude" "$T/bin"
+# in /tmp whatever TMPDIR says: disk-sweep refuses --delete for a HOME under the account home
+T=$(mktemp -d -p /tmp); export HOME="$T/home"; mkdir -p "$HOME/.claude" "$T/bin"
 printf '#!/bin/sh\necho "gh stub: $*" >&2; exit 1\n' > "$T/bin/gh"
 cat > "$T/bin/codex" <<EOF
 #!/bin/sh
