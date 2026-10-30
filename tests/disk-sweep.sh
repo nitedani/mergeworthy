@@ -6,7 +6,8 @@
 # Prints "case: <got> (want <want>)"; exits 0 only when every case gives what it wants.
 set -u
 R=$(readlink -f "${1:-$(dirname "$0")/..}")
-T=$(mktemp -d); export HOME="$T/home" DOCKER_LOG="$T/docker.log"; mkdir -p "$HOME/.claude/agent-jobs" "$T/bin"
+# in /tmp whatever TMPDIR says: disk-sweep refuses --delete for a HOME under the account home
+T=$(mktemp -d -p /tmp); export HOME="$T/home" DOCKER_LOG="$T/docker.log"; mkdir -p "$HOME/.claude/agent-jobs" "$T/bin"
 cat > "$T/bin/docker" <<'EOF'
 #!/bin/sh
 # stub docker: records each call; the prunes report what they reclaimed as Docker prints it, or fail when DOCKER_FAIL is set
