@@ -1111,7 +1111,7 @@ def scan(state, jobs):
                     state['etag'].pop(f"repos/{repo}/issues/{num}", None)
                 else:
                     if closed:
-                        emit(f"{'note:' if mine else '###'} ISSUE CLOSED {key}" + (": the steward shipped its fix: update your installed mergeworthy (README, Install), then go on"
+                        emit(f"{'note:' if mine else '###'} ISSUE CLOSED {key}" + (": the steward shipped its fix: run `mergeworthy-update`, then go on"
                                                                               if repo == STEWARD_REPO else ""))
                     state['open'][key] = last['open']
             state['since_by'][key] = started
