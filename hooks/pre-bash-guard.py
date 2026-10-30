@@ -44,8 +44,8 @@ def block(msg):
 def known(d):
     """d, a dir a check reads (where the command runs, from Where); one Where can't tell blocks."""
     if d is None:
-        block("can't tell which dir this command runs in (after a cd to an expansion it can't resolve, `cd -`, popd, or a cd in a subshell, child shell, "
-              "branch, loop or function), so its checks can't run: cd to an absolute path first (`cd /abs/dir && <command>`), or pass absolute paths")
+        block("can't tell which dir this command runs in (after a cd to an expansion it can't resolve, `cd -`, popd, a cd in a branch, loop or function, "
+              "or a relative cd in a loop), so its checks can't run: cd to an absolute path first (`cd /abs/dir && <command>`), or pass absolute paths")
     return d
 
 def short_has(t, letter):  # -f, -9f, -fu ...

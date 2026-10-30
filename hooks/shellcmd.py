@@ -4,7 +4,7 @@ parse() reads a command with mvdan/sh, bash's syntax as shfmt parses it (hooks/r
 ~/.mergeworthy/pydeps): every simple command it runs, in substitutions, heredocs a shell reads, `bash -c` and `eval` too. A
 command that doesn't parse, or a parser that can't be installed, yields the command's words split roughly, with the error,
 so a hook checks what it can and blocks a guarded verb it can't check."""
-import hashlib, json, os, re, subprocess, sys
+import hashlib, itertools, json, os, re, subprocess, sys
 
 
 def branch_record(d, kind, branch=None):
@@ -105,30 +105,44 @@ def _assign(a, src):
     return a['Name']['Value'] + '=' + (_word(a['Value'], src) if a.get('Value') else _src(a['Array'], src) if a.get('Array') else '')
 
 
+# The kinds of scope a command runs in (Seg.scopes): a cd in an isolating one never reaches what follows it (Where)
+ISOLATING, CONDITIONAL, LOOP = 'isolating', 'conditional', 'loop'
+_ids = itertools.count()
+
+
+def _scope(kind):
+    """A new scope of kind, for Seg.scopes."""
+    return ((next(_ids), kind),)
+
+
 class Seg(list):
-    """A simple command's argv; nested: whether it runs where a cd in it may not hold for what follows (a subshell, substitution,
-    pipeline part or background job, after || or !, a branch, a loop, a function, a child shell's script, find's -exec), for Where;
-    loop: whether it runs inside a while or until loop."""
-    nested = loop = False
+    """A simple command's argv; scopes: the (id, kind) of each scope it runs in, outermost first, for Where; loop: whether it
+    runs inside a while or until loop."""
+    scopes, loop = (), False
 
 
-def _seg(argv, nested, loop=False):
+def _seg(argv, scopes=(), loop=False):
     s = Seg(argv)
-    s.nested, s.loop = nested, loop
+    s.scopes, s.loop = scopes, loop
     return s
 
 
-def _scoped(x, k):
-    """Whether node x's child k runs nested (Seg.nested)."""
+def _kind(x, k):
+    """The kind of scope node x's child k runs in of its own, or None when it runs in x's."""
     t = x.get('Type')
-    return t in ('Subshell', 'CmdSubst', 'ProcSubst', 'CoprocClause', 'IfClause', 'CaseClause', 'WhileClause', 'ForClause', 'FuncDecl') or \
-        k == 'Cmd' and bool(x.get('Background') or x.get('Negated')) or t == 'BinaryCmd' and x.get('Op') != '&&' and (k == 'Y' or x.get('Op') != '||')
+    if t in ('Subshell', 'CmdSubst', 'ProcSubst', 'CoprocClause') or k == 'Cmd' and x.get('Background') or t == 'BinaryCmd' and x.get('Op') in ('|', '|&'):
+        return ISOLATING
+    if t in ('WhileClause', 'ForClause'):
+        return LOOP
+    if t in ('IfClause', 'CaseClause', 'FuncDecl') or k == 'Cmd' and x.get('Negated') or t == 'BinaryCmd' and x.get('Op') == '||' and k == 'Y':
+        return CONDITIONAL
+    return None
 
 
-def _calls(node, src, nested=False):
+def _calls(node, src):
     """(the argv of every simple command under node, in order, each a Seg; the statements each heredoc of them is read by:
     (redirect, top statement, whether it is in a loop))."""
-    segs, docs, stack = [], [], [(node, None, nested, False)]
+    segs, docs, stack = [], [], [(node, None, (), False)]
     while stack:
         x, top, n, loop = stack.pop()
         if isinstance(x, list):
@@ -137,14 +151,15 @@ def _calls(node, src, nested=False):
         if not isinstance(x, dict):
             continue
         loop = loop or x.get('Type') == 'WhileClause'  # shfmt's node for until too
+        inner = {k: n + _scope(kind) if (kind := _kind(x, k)) else n for k, v in x.items() if isinstance(v, (dict, list))}
         cmd, redirs = x.get('Cmd') or {}, x.get('Redirs') or []
         words = [w for r in redirs for w in ((r.get('N') or {}).get('Value', '') + r['Op'], _word(r.get('Word') or {}, src))]
         if cmd.get('Type') == 'CallExpr':
-            segs.append(_seg([_assign(a, src) for a in cmd.get('Assigns') or []] + [_word(a, src) for a in cmd.get('Args') or []] + words, n or _scoped(x, 'Cmd'), loop))
+            segs.append(_seg([_assign(a, src) for a in cmd.get('Assigns') or []] + [_word(a, src) for a in cmd.get('Args') or []] + words, inner['Cmd'], loop))
         elif cmd.get('Type') == 'DeclClause':
-            segs.append(_seg([cmd['Variant']['Value']] + [_assign(a, src) for a in cmd.get('Args') or []] + words, n or _scoped(x, 'Cmd'), loop))
+            segs.append(_seg([cmd['Variant']['Value']] + [_assign(a, src) for a in cmd.get('Args') or []] + words, inner['Cmd'], loop))
         docs += [(r, top or x, loop) for r in redirs if r.get('Hdoc')]
-        stack += [(v, None if k == 'Stmts' else (top or x) if 'Cmd' in x else top, n or _scoped(x, k), loop)  # each statement of a list is a top statement
+        stack += [(v, None if k == 'Stmts' else (top or x) if 'Cmd' in x else top, inner[k], loop)  # each statement of a list is a top statement
                   for k, v in reversed(x.items()) if isinstance(v, (dict, list)) and k not in ('Pos', 'End', 'Hdoc')]
     return segs, docs
 
@@ -155,7 +170,7 @@ def _segments(tree, src, depth):
     (segs, docs), err = _calls(tree, src), ''
     for r, top, loop in docs:
         if any(reads_stdin(a) for a in _calls(top, src)[0]) and depth < 4:
-            s, e = parse(''.join(_src(p, src) for p in r['Hdoc'].get('Parts') or []), depth + 1, True, loop)
+            s, e = parse(''.join(_src(p, src) for p in r['Hdoc'].get('Parts') or []), depth + 1, _scope(ISOLATING), loop)
         else:
             s, e = _segments(r['Hdoc'], src, depth)
         segs, err = segs + s, err or e
@@ -211,29 +226,30 @@ def _nested(t):
     return None
 
 
-def parse(cmd, depth=0, nested=False, loop=False):
-    """(segments, error): the argv of every simple command cmd runs, each a Seg (nested, loop: all of them), command substitutions and
-    the scripts of `bash -c` and `eval` included; error is '' when it parsed, else why not (the segments are then _rough's, nested)."""
+def parse(cmd, depth=0, scopes=(), loop=False):
+    """(segments, error): the argv of every simple command cmd runs, each a Seg (in scopes, loop: all of them), command substitutions and
+    the scripts of `bash -c` and `eval` included; error is '' when it parsed, else why not (the segments are then _rough's, each in a
+    conditional scope of its own)."""
     try:
         r = subprocess.run([os.path.join(_deps(), 'bin', 'shfmt'), '--to-json', '-ln', 'bash'], input=cmd.encode(), capture_output=True, timeout=60)
         if r.returncode:
             raise ValueError('bash syntax error at ' + r.stderr.decode(errors='replace').strip().replace('<standard input>:', ''))
         segs, err = _segments(json.loads(r.stdout), cmd.encode(), depth)
-        for x in segs: x.nested, x.loop = x.nested or nested, x.loop or loop
     except ValueError as e:  # also a JSON error
-        segs, err = [_seg(x, True) for x in _rough(cmd)], str(e)
+        segs, err = [_seg(x, _scope(CONDITIONAL)) for x in _rough(cmd)], str(e)
     except Exception as e:  # no parser: nothing is checked as parsed, and a guarded verb blocks
-        segs, err = [_seg(x, True) for x in _rough(cmd)], f"mergeworthy's shell parser (shfmt, {REQUIREMENTS}) can't run: {e}"
+        segs, err = [_seg(x, _scope(CONDITIONAL)) for x in _rough(cmd)], f"mergeworthy's shell parser (shfmt, {REQUIREMENTS}) can't run: {e}"
+    for x in segs: x.scopes, x.loop = scopes + x.scopes, x.loop or loop
     out = []
     for s in segs:  # each command, then what it runs: find's -exec commands, a script
         out.append(s)
         t = prog(s)
         if t[:1] and os.path.basename(t[0]) == 'find':  # find -exec <command> ;
-            out += [_seg(x.split('\0'), True, s.loop) for x in re.findall(r'\0-(?:exec|execdir|ok|okdir)\0(.+?)\0(?:;|\+)(?=\0|$)', '\0' + '\0'.join(t))]
+            out += [_seg(x.split('\0'), s.scopes + _scope(ISOLATING), s.loop) for x in re.findall(r'\0-(?:exec|execdir|ok|okdir)\0(.+?)\0(?:;|\+)(?=\0|$)', '\0' + '\0'.join(t))]
         here = [s[i + 1] for i in range(len(s) - 1) if s[i] == '<<<']  # `bash <<< '<script>'`
         script = (_nested(s) or (here[0] if here and reads_stdin(s) else None)) if depth < 4 else None
         if script:
-            inner, e = parse(script, depth + 1, True, s.loop)
+            inner, e = parse(script, depth + 1, s.scopes + _scope(ISOLATING), s.loop)
             out += inner
             err = err or e
     return out, err
@@ -304,10 +320,12 @@ TOPLEVEL = '$(git rev-parse --show-toplevel)'  # the one substitution Where runs
 class Where:
     """Where each simple command of one command line runs, walk() taking them in order, with the variables the line set
     (`D=~/x; cd "$D"`). It follows the forms agents write: a cd or pushd to a path (`cd /abs/dir && ...`, or relative to a dir it
-    knows), `cd $(git rev-parse --show-toplevel)` and `git -C <dir>`. After any other dir change (a nested one: Seg.nested; a target
-    holding an expansion it can't resolve; `cd -`, popd or a stack rotation) the dir is None, and a check that needs it blocks."""
+    knows), `cd $(git rev-parse --show-toplevel)` and `git -C <dir>`. A cd holds for the later commands of its scope (Seg.scopes) and
+    the scopes inside it; leaving an isolating scope restores the dir from before it. After any other dir change (a cd in a scope
+    that may run it or not, once the scope is left; a relative one in a loop; a target holding an expansion it can't resolve; `cd -`,
+    popd or a stack rotation) the dir is None, and a check that needs it blocks."""
     def __init__(self, cwd):
-        self.dir, self.moved, self.vars = cwd, False, {}
+        self.dir, self.moved, self.vars, self.scopes = cwd, False, {}, []  # each scope entered: [(id, kind), dir before it, whether a cd ran in it]
 
     def expand(self, p):
         """p with the line's variables ($D, ${D}), then the environment's, put in; one it can't tell stays as written."""
@@ -322,8 +340,17 @@ class Where:
     def walk(self, segs):
         """Each of segs (parse()'s), with self moved to where it runs; self takes it once the caller is done with it."""
         for t in segs:
+            self.enter(t.scopes)
             yield t
             self.step(t)
+
+    def enter(self, scopes):
+        """Leave the scopes not in scopes, innermost first, and enter the new ones."""
+        n = 0
+        while n < min(len(self.scopes), len(scopes)) and self.scopes[n][0] == scopes[n]: n += 1
+        for (_, kind), before, moved in reversed(self.scopes[n:]):
+            self.dir = before if kind == ISOLATING else None if moved else self.dir
+        self.scopes = self.scopes[:n] + [[x, self.dir, False] for x in scopes[n:]]
 
     def step(self, t):
         if t and all(re.match(r'^\w+=', x) for x in t):
@@ -335,7 +362,11 @@ class Where:
         self.moved = True
         a = [x for x in operands(p[1:]) if x not in ('-P', '-L', '-e', '--')]
         to = a[0] if a else '~' if p[0] == 'cd' else '-'
-        if getattr(t, 'nested', False) or p[0] == 'popd' or to[:1] in '-+' or self.dir is None:
+        kinds = [x[0][1] for x in self.scopes if x[0][1] != CONDITIONAL]
+        for x in reversed(self.scopes):  # the scopes this cd may leave changed, up to the innermost isolating one
+            x[2] = True
+            if x[0][1] == ISOLATING: break
+        if p[0] == 'popd' or to[:1] in '-+' or self.dir is None or kinds[-1:] == [LOOP] and not os.path.isabs(os.path.expanduser(self.expand(to))):
             self.dir = None
         elif to == TOPLEVEL:
             self.dir = subprocess.run(['git', '-C', self.dir, 'rev-parse', '--show-toplevel'], capture_output=True, text=True).stdout.strip() or None

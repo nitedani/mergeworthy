@@ -1826,6 +1826,8 @@ check "a repo without AGENTS.md or CLAUDE.md is never blocked" 0 "$(iedit "$IT" 
 check "a path outside any git repo is never blocked" 0 "$(iedit "$IT" Write "$T/nogit/a.md")"
 check "BLOCK: a command writing into that repo before the reads: a redirect, tee, sed -i, cp" "2 2 2 2" "$(ibash "$IT" "echo x > $I/a.txt") $(ibash "$IT" "echo x | tee sub/b.txt") $(ibash "$IT" "sed -i s/a/b/ $I/a.ts") $(ibash "$IT" "cp /etc/hostname $I/h")"
 check "a command reading there, or writing outside it, passes" "0 0 0" "$(ibash "$IT" "cat $I/AGENTS.md") $(ibash "$IT" "echo x > /dev/null") $(ibash "$IT" "echo x > $T/nogit/a.md")"
+check "a log a background job writes after its cd lands in that dir: outside it passes, into it blocks" "0 2" \
+  "$(ibash "$IT" "cd $T/nogit && nohup pnpm dev > log 2>&1 &") $(ibash "$IT" "cd $I && nohup pnpm dev > log 2>&1 &")"
 ir_tr "$IT" "read:$I/AGENTS.md" "read:$I/CLAUDE.md"; check "a command writing into it passes once both were read" 0 "$(ibash "$IT" "echo x > $I/a.txt")"
 ir_tr "$IT"; echo x > "$T/nogit/src"
 check "BLOCK: cp, mv and install into the repo's folder itself (a folder destination)" "2 2 2 2" "$(ibash "$IT" "cp $T/nogit/src .") $(ibash "$IT" "mv $T/nogit/src .") $(ibash "$IT" "install $T/nogit/src .") $(ibash "$IT" "cp $T/nogit/src $I/")"
@@ -2264,6 +2266,7 @@ MRC='glab mr create --draft -R gitlab.com/ns/proj --title x'
 check "BLOCK: a push, a PR and an MR from a work folder another session's watcher doesn't watch, naming the folder to watch" "2 1 1 1" \
   "$(bgs sess-b "$PUSH" "$CK4") $(grep -c "gh-watch-start $TK4 " "$T/err") $(unwatched sess-b "$PRC" "$CK4") $(unwatched sess-b "$MRC" "$CK4")"
 check "the same from the watched work folder pass, whichever session acts there" "0 0 0" "$(bgs sess-b "$PUSH" "$CK") $(unwatched sess-b "$PRC" "$CK") $(unwatched sess-b "$MRC" "$CK")"
+check "BLOCK: a push after a subshell's cd and push is checked in the session's dir, an unwatched work folder, naming it" "2 1" "$(bgs sess-b "(cd $CK && $PUSH); $PUSH" "$CK4") $(grep -c "gh-watch-start $TK4 " "$T/err")"
 check "outside any work folder, only the session's own watcher counts" "0 1" "$(unwatched sess-a "$MRC" "$T") $(unwatched sess-b "$MRC" "$T")"
 oreg() { # session cwd command: the thread post-bash-register adds to the watched folder
   python3 -c 'import json,sys; print(json.dumps({"session_id":sys.argv[1],"cwd":sys.argv[2],"tool_input":{"command":sys.argv[3]},"tool_response":{"stdout":"https://github.com/vikejs/vike/pull/9"}}))' "$@" \
@@ -2273,8 +2276,11 @@ check "a PR opened from the unwatched folder joins no other session's watcher; f
 # two MRs opened in one command from two work folders: the second folder needs its own watcher
 TWO="cd $CK; $MRC; cd $CK4; $MRC"
 check "BLOCK: two MRs from two work folders in one command while the second folder has no watcher" 2 "$(bgs sess-b "$TWO" "$T")"
-check "BLOCK: an MR where the dir can't be told (cd -, a cd to an unset variable, a cd in a subshell or bash -c), saying to cd to an absolute path" "2 2 2 2 1" \
-  "$(bgs sess-b "cd $CK; $MRC; cd -; $MRC" "$CK4") $(bgs sess-b "cd \"\$NOWHERE\" && $MRC" "$CK") $(bgs sess-b "(cd $CK4); $MRC" "$CK") $(bgs sess-b "bash -c 'cd $CK4'; $MRC" "$CK") $(grep -c 'cd to an absolute path first' "$T/err")"
+check "BLOCK: an MR where the dir can't be told (cd -, a cd to an unset variable, a cd in a branch or a function), saying to cd to an absolute path" "2 2 2 2 1" \
+  "$(bgs sess-b "cd $CK; $MRC; cd -; $MRC" "$CK4") $(bgs sess-b "cd \"\$NOWHERE\" && $MRC" "$CK") $(bgs sess-b "if true; then cd $CK; fi; $MRC" "$CK") $(bgs sess-b "f() { cd $CK; }; $MRC" "$CK") $(grep -c 'cd to an absolute path first' "$T/err")"
+check "a cd in a subshell, a background job or bash -c never reaches what follows: the MR after it runs in the session's dir" "0 0 0" "$(bgs sess-b "(cd $CK4); $MRC" "$CK") $(bgs sess-b "cd $CK4 && sleep 1 & $MRC" "$CK") $(bgs sess-b "bash -c 'cd $CK4'; $MRC" "$CK")"
+check "BLOCK: a push after a cd in a branch, or in a loop to a relative dir, can't tell its checkout" "2 2 1" \
+  "$(bgs sess-b "if true; then cd $CK; fi; $PUSH" "$CK") $(bgs sess-b "for d in a b; do cd \$d; $PUSH; done" "$CK") $(grep -c "can't tell which" "$T/err")"
 check "a redirect on cd or pushd (pushd x >/dev/null, cd x 2>/dev/null) and cd \$(git rev-parse --show-toplevel) leave the dir known: an MR in the watched folder passes" "0 0 0 0" \
   "$(bgs sess-b "pushd $CK >/dev/null && $MRC" "$CK") $(bgs sess-b "pushd $CK >/dev/null; $MRC; popd >/dev/null" "$CK") $(bgs sess-b "cd $CK 2>/dev/null && $MRC" "$CK") $(bgs sess-b "cd \$(git rev-parse --show-toplevel) && $MRC" "$CK")"
 echo "$FPID" > "$TK4/gh-watch.pid"; echo gitlab.com/ns/proj > "$TK4/repos.txt"; echo "$TK4" >> "$HOME/.claude/gh-watch-dirs.txt"
