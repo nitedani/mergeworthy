@@ -1914,6 +1914,9 @@ check "BLOCK: a loop variable the line names in quotes (printf -v 'f') is no lon
   "$(ibash "$IT" "for f in a b; do printf -v 'f' $I/out; echo x > \$f; done" "$T/nogit")"
 check "BLOCK: a bash -c script, quoted, gets none of the line's unexported variables: its cd \"\$D\" fails and its write lands in the repo, so the line's D can't be told; a double-quoted one, which this shell expands, keeps it" "2 0" \
   "$(ibash "$IT" "D=$T/nogit; bash -c 'cd \"\$D\"; pwd; echo x > a.txt'") $(ibash "$IT" "D=$T/nogit; bash -c \"cd \$D; echo x > a.txt\"")"
+check "BLOCK: a variable the line sets other than by a plain D=… (export in a subshell, export, read, unset, printf -v) can't be told: a relative write after cd \$D may land in a repo whose instructions weren't read" "2 2 2 2 2" \
+  "$(ibash "$IT" "D=$T/nogit; (export D=$I; cd \$D; echo x > a.txt)" "$T/nogit") $(ibash "$IT" "D=$T/nogit; export D=$I; cd \$D; echo x > a.txt" "$T/nogit") $(ibash "$IT" "D=$T/nogit; read D <<< $I; cd \$D; echo x > a.txt" "$T/nogit") $(ibash "$IT" "D=$T/nogit; unset D; cd \$D; echo x > a.txt" "$T/nogit") $(ibash "$IT" "D=$T/nogit; printf -v D $I; cd \$D; echo x > a.txt" "$T/nogit")"
+check "a variable the line sets only by a plain D=… is still followed into a subshell's cd" 0 "$(ibash "$IT" "D=$T/nogit; (cd \$D; echo x > a.txt)")"
 check "logs written outside it by a backgrounded { } group in a loop, after its cd to \$W/\$t, pass" 0 \
   "$(ibash "$IT" "W=$T/nogit; for t in a b; do { cd \$W/\$t && netns-run bash x.sh > \$W/probe/\$t.out 2> \$W/probe/\$t.err; echo \"\$t exit \$?\" >> \$W/probe/\$t.err; } & done; wait")"
 ir_tr "$IT" "read:$I/AGENTS.md" "read:$I/CLAUDE.md"; check "a command writing into it passes once both were read" 0 "$(ibash "$IT" "echo x > $I/a.txt")"
