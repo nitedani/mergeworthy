@@ -4,12 +4,14 @@
 # in the base's file (removed lines); a path alone covers all its lines. Reserved features Docs, Tests, Lockfile and Generated
 # collect the non-feature lines (a path may be a glob); a file with no entry falls back to the default patterns below.
 # Exits 1, printing the lines, when a changed line falls in no entry or in two, so the totals always equal `git diff --numstat`.
-import fnmatch, re, subprocess, sys
+import fnmatch, os, re, subprocess, sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'hooks'))
+import testpaths
 
 DEFAULTS = [
     ('Lockfile', r'(^|/)(pnpm-lock\.yaml|package-lock\.json|yarn\.lock)$'),
     ('Docs', r'(^|/)docs/|\.mdx?$|(^|/)llms\.txt$'),
-    ('Tests', r'(^|/)(tests?|__tests__)/|\.(spec|test)\.|(^|/)fixtures?/'),
+    ('Tests', testpaths.TESTS + r'|(^|/)fixtures?/'),
     ('Generated', r'(^|/)dist/'),  # a committed build bundle, as pr-steps counts it
 ]
 ORDER = ['Docs', 'Tests', 'Lockfile', 'Generated']
