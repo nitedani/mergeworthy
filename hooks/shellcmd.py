@@ -132,8 +132,9 @@ def _scope(kind, name='', plain=False):
 class Seg(list):
     """A simple command's argv; scopes: the (id, kind, function name) of each scope it runs in, outermost first, for Where; loop: whether it
     runs inside a while or until loop; raw: each word's source as written, None when not known (Where then expands none); unseen: the
-    names the line may set where Where can't follow (_unseen), whose values it never trusts."""
-    scopes, loop, raw, unseen = (), False, None, frozenset()
+    names the line may set where Where can't follow (_unseen), whose values it never trusts; nested: whether it is in a script the line
+    runs (`eval`'s included), where a plain walk loses the dir (Where)."""
+    scopes, loop, raw, unseen, nested = (), False, None, frozenset(), False
 
 
 def _seg(argv, scopes=(), loop=False, raw=None):
@@ -325,6 +326,7 @@ def parse(cmd, depth=0, scopes=(), loop=False):
             # a script word with no quote or escape (`bash -c "cd $W"`) had every expansion done by this shell; else the child does its own
             child = s.raw is None or script not in s or re.search(r"['\\]", s.raw[s.index(script)])
             inner, e = parse(script, depth + 1, s.scopes + (() if same else _scope(ISOLATING, STDIN if stdin else CHILD if child else '')), s.loop)
+            for x in inner: x.nested = True
             out += inner
             err = err or e
     if not depth:  # the whole line's names, its scripts' included, hold for each of its commands
@@ -406,23 +408,31 @@ class Where:
     loop makes each variable set in it a Maybe. After any other dir change (a cd in a scope that may run it or not, once the scope
     is left; a call to a function the line defines, when one of their bodies changes dir; a relative one in a loop; a target
     holding an expansion it can't resolve; `cd -`, popd or a stack rotation) the dir is None until a cd to an absolute path, and a
-    check that needs it blocks."""
+    check that needs it blocks.
+    That following is trust a plain walk doesn't give, so it is spent only where its variables are proven (strict expansion: Maybe,
+    Seg.raw's quoting, Seg.unseen): a cd nested in a scope or once the plain walk lost the dir, and a written file's name (file). The
+    plain walk (main_dir, main_vars: every NAME=value the line runs, but an isolating scope's once it is left, then the environment's)
+    decides each other cd, at the top level while it knows the dir, and every other expansion, as it did before scopes: a nested cd,
+    `cd -` or popd loses its dir for good."""
     def __init__(self, cwd):
         self.funcs, self.func_vars, self.func_moves = set(), set(), False  # the functions the line defines, the variables their bodies set, whether one changes dir
-        self.dir, self.moved, self.vars, self.scopes, self.quoted, self.unseen = cwd, False, {}, [], set(), frozenset()  # each scope entered: [(id, kind, name), dir before it, whether a cd ran in it, variables before it, variables set in it]
+        self.main_dir, self.main_vars = cwd, {}
+        self.dir, self.moved, self.vars, self.scopes, self.quoted, self.unseen = cwd, False, {}, [], set(), frozenset()  # each scope entered: [(id, kind, name), dir before it, whether a cd ran in it, variables before it, variables set in it, main_vars before it]
 
-    def expand(self, p):
-        """p with the line's variables ($D, ${D}), then the environment's, put in; one it can't tell (a Maybe) stays as written,
-        and so does every $ of a word the current command quoted or escaped (Seg.raw), whose $ may be literal, and every variable the line
-        may set unseen (Seg.unseen)."""
+    def expand(self, p, strict=False):
+        """p with the plain walk's variables ($D, ${D}: main_vars), then the environment's, put in. strict: the scoped ones (vars)
+        instead, and one it can't tell (a Maybe) stays as written, and so does every $ of a word the current command quoted or escaped
+        (Seg.raw), whose $ may be literal, and every variable the line may set unseen (Seg.unseen)."""
+        if not strict:
+            return re.sub(r'\$(?:(\w+)|\{(\w+)\})', lambda m: self.main_vars.get(m[1] or m[2], os.environ.get(m[1] or m[2], m[0])), p)
         def value(m):
             v = self.vars.get(m[1] or m[2], os.environ.get(m[1] or m[2], m[0]))
             return m[0] if isinstance(v, Maybe) or (m[1] or m[2]) in self.unseen else v
         return p if p in self.quoted else re.sub(r'\$(?:(\w+)|\{(\w+)\})', value, p)
 
-    def path(self, p, base=''):
+    def path(self, p, base='', strict=False):
         """p resolved from base (default: the dir), or None when it can't be told (an expansion left, or no base)."""
-        p = os.path.expanduser(self.expand(p))
+        p = os.path.expanduser(self.expand(p, strict))
         base = self.dir if base == '' else base
         return None if re.search(r'[$`]', p) else p if os.path.isabs(p) else None if base is None else os.path.join(base, p)
 
@@ -430,7 +440,7 @@ class Where:
         """A file the current command names, p, resolved from the dir. None when its folder can't be told: no dir, or any expansion
         left, which may hold a / (`$F`), except in its name the variable of a for loop it is in over plain words (`$S/$w.log`) that the
         line sets nowhere else (Seg.unseen)."""
-        p = os.path.expanduser(self.expand(p))
+        p = os.path.expanduser(self.expand(p, True))
         words = {x[0][2] for x in self.scopes if x[0][1] == LOOP and x[0][3] and x[0][2] not in self.unseen}
         folder, name = os.path.split(p)
         name = re.sub(r'\$(?:(\w+)|\{(\w+)\})', lambda m: '' if (m[1] or m[2]) in words else m[0], name)
@@ -449,13 +459,14 @@ class Where:
         """Leave the scopes not in scopes, innermost first, and enter the new ones."""
         n = 0
         while n < min(len(self.scopes), len(scopes)) and self.scopes[n][0] == scopes[n]: n += 1
-        for (_, kind, *_), before, moved, vars, set_in in reversed(self.scopes[n:]):
+        for (_, kind, *_), before, moved, vars, set_in, main_vars in reversed(self.scopes[n:]):
             self.dir = before if kind == ISOLATING else None if moved else self.dir
             self.vars = vars if kind == ISOLATING else {**self.vars, **{v: Maybe(self.vars.get(v, '')) for v in set_in}}
+            self.main_vars = main_vars if kind == ISOLATING else self.main_vars
         self.funcs |= {x[2] for x in scopes[n:] if x[2] and x[1] == CONDITIONAL}
         self.scopes = self.scopes[:n]
         for x in scopes[n:]:
-            self.scopes.append([x, self.dir, False, dict(self.vars), set()])
+            self.scopes.append([x, self.dir, False, dict(self.vars), set(), dict(self.main_vars)])
             if x[1] == LOOP and x[2]: self.vars[x[2]] = Maybe(''); self.changed(x[2])  # each pass gives it another of its words
             if x[2] in (STDIN, CHILD): self.vars = {k: Maybe(v) for k, v in self.vars.items()}
             if x[2] == STDIN: self.dir = None
@@ -475,6 +486,7 @@ class Where:
     def step(self, t):
         if t and all(re.match(r'^\w+=', x) for x in t):
             self.vars.update(x.split('=', 1) for x in t)
+            self.main_vars.update(x.split('=', 1) for x in t)
             for x in t: self.changed(x.split('=', 1)[0])
             if self.in_body(): self.func_vars.update(x.split('=', 1)[0] for x in t)
             return
@@ -492,12 +504,22 @@ class Where:
         to = a[0] if a else '~' if p[0] == 'cd' else '-'
         kinds = [x[0][1] for x in self.scopes if x[0][1] != CONDITIONAL]
         self.changed()
-        if p[0] == 'popd' or to[:1] in '-+' or to == TOPLEVEL and self.dir is None or kinds[-1:] == [LOOP] and not os.path.isabs(os.path.expanduser(self.expand(to))):
+        nested = t.nested or bool(t.scopes)
+        main = None if nested or p[0] == 'popd' or to[:1] in '-+' or self.main_dir is None else \
+            _toplevel(self.main_dir) if to == TOPLEVEL else self.path(to, self.main_dir) and os.path.normpath(self.path(to, self.main_dir))
+        if not nested and self.main_dir is not None:
+            self.dir = main
+        elif p[0] == 'popd' or to[:1] in '-+' or to == TOPLEVEL and self.dir is None or kinds[-1:] == [LOOP] and not os.path.isabs(os.path.expanduser(self.expand(to, True))):
             self.dir = None
         elif to == TOPLEVEL:
-            self.dir = subprocess.run(['git', '-C', self.dir, 'rev-parse', '--show-toplevel'], capture_output=True, text=True).stdout.strip() or None
+            self.dir = _toplevel(self.dir)
         else:
-            self.dir = self.path(to) and os.path.normpath(self.path(to))
+            self.dir = self.path(to, strict=True) and os.path.normpath(self.path(to, strict=True))
+        self.main_dir = main
+
+
+def _toplevel(d):
+    return subprocess.run(['git', '-C', d, 'rev-parse', '--show-toplevel'], capture_output=True, text=True).stdout.strip() or None
 
 
 def git_argv(t, where):
