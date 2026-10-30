@@ -119,8 +119,8 @@ def _assign(a, src):
 class Seg(list):
     """A simple command's argv; nested: whether it runs where a cd in it may not hold for what follows (a subshell, substitution,
     pipeline part or background job, after || or !, a branch, a loop, a function, a child shell's script, find's -exec), for Where;
-    loop: whether it runs inside a while or until loop; top: whether it is a statement of the command line itself, or the first
-    part of an && or || chain there (not in a group, subshell, pipeline, substitution, branch, loop or function)."""
+    loop: whether it runs inside a while or until loop; top: whether it is a statement of the command line itself, the first part of
+    an && or || chain there, or what follows `cd /abs/dir &&` (not in a group, subshell, pipeline, substitution, branch, loop or function)."""
     nested = loop = top = False
 
 
@@ -135,6 +135,16 @@ def _scoped(x, k):
     t = x.get('Type')
     return t in ('Subshell', 'CmdSubst', 'ProcSubst', 'CoprocClause', 'IfClause', 'CaseClause', 'WhileClause', 'ForClause', 'FuncDecl') or \
         k == 'Cmd' and bool(x.get('Background') or x.get('Negated')) or t == 'BinaryCmd' and x.get('Op') != '&&' and (k == 'Y' or x.get('Op') != '||')
+
+
+def _cds(stmt, src):
+    """Whether the statement only changes dir to an absolute path written out: `cd /abs/dir`, or an && chain of them (the form
+    pre-bash-guard asks for, `cd /abs/dir && <command>`); a relative or computed one isn't."""
+    c = (stmt or {}).get('Cmd') or {}
+    if stmt.get('Background') or stmt.get('Negated'): return False
+    if c.get('Type') == 'BinaryCmd': return c.get('Op') == '&&' and _cds(c.get('X'), src) and _cds(c.get('Y'), src)
+    a = [_word(w, src) for w in c.get('Args') or []] if c.get('Type') == 'CallExpr' and not c.get('Assigns') else []
+    return len(a) == 2 and a[0] == 'cd' and a[1].startswith('/') and not re.search(r'[$`*?]', a[1])
 
 
 def _calls(node, src, nested=False):
@@ -159,7 +169,7 @@ def _calls(node, src, nested=False):
         docs += [(r, top or x, loop) for r in redirs if r.get('Hdoc')]
         # plain: the command line's own statements, a statement's command, and the first part of an && or || chain of them
         keep = lambda k: plain and (x.get('Type') == 'File' and k == 'Stmts' or 'Cmd' in x and k == 'Cmd' and not (x.get('Background') or x.get('Negated'))
-                                    or x.get('Type') == 'BinaryCmd' and x.get('Op') in ('&&', '||') and k == 'X')
+                                    or x.get('Type') == 'BinaryCmd' and x.get('Op') in ('&&', '||') and (k == 'X' or k == 'Y' and x.get('Op') == '&&' and _cds(x.get('X'), src)))
         stack += [(v, None if k == 'Stmts' else (top or x) if 'Cmd' in x else top, n or _scoped(x, k), loop, keep(k))  # each statement of a list is a top statement
                   for k, v in reversed(x.items()) if isinstance(v, (dict, list)) and k not in ('Pos', 'End', 'Hdoc')]
     return segs, docs
@@ -502,7 +512,7 @@ def posts(t):
     return api_call(a[2:])[0] != 'GET' if a[1:2] == ['api'] else a[2:3] == [] or a[2] not in READS
 
 PLAIN = ("only a plain create starts its work folder's watcher by itself: the command's one posting command, at its top level (not in a "
-         "group, subshell, pipe, substitution, loop, function or after && or ||), with no redirect or output filter (--jq, -q, --silent, "
+         "group, subshell, pipe, substitution, loop, function, or after && or || but `cd /abs/dir &&`), with no redirect or output filter (--jq, -q, --silent, "
          "--template, --web), run from an absolute dir in a task's work folder, on github.com or gitlab.com")
 def plain_create(segs, cwd):
     """The task's work folder whose watcher post-bash-register adds the thread to, starting or reviving it, when the command line
