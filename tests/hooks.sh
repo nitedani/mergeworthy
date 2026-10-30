@@ -1721,7 +1721,7 @@ printf 'slice 1\n## Tried and dropped\n- **abort leaks a listener**: Not a regre
 printf 'slice 1\n## Tried and dropped\n- **abort leaks a listener**: Not a regression, main does the same\nRULED: abort leaks a listener: not a regression, and only a staged race reaches it (code Earn every line)\nNO BUGS\n' > "$T/vr5.md"; std "$T/vr5.md"
 check "BLOCK: a RULED line whose only reason is that main does the same; one citing Earn every line records" "1 1 0" "$(prs verify "$T/vr4.md") $(cd "$G" && bash "$R/bin/pr-steps" verify "$T/vr4.md" 2>&1 | grep -c 'is not a ruling') $(prs verify "$T/vr5.md")"
 printf 'slice 1\n## Tried and dropped\n- **abort leaks a listener**: Not a regression, main does the same\nRULED: abort leaks a listener: not a regression, main does the same, a self-found defect for the report\nNO BUGS\n' > "$T/vr4s.md"; std "$T/vr4s.md"
-check "a RULED line calling a main-too defect self-found records" 0 "$(prs verify "$T/vr4s.md")"
+check "BLOCK: a RULED line calling a main-too defect in the edited code self-found: it is fixed here" 1 "$(prs verify "$T/vr4s.md")"
 printf 'slice 1\n## Tried and dropped\n- `D=~/cfg` (tilde.sh): a nit.\n  - **Why a nit:** both fail closed, and it is rare.\nRULED: `D=~/cfg` (tilde.sh): a nit, no realistic usage (code Earn every line)\nNO BUGS\n' > "$T/vr6.md"; std "$T/vr6.md"
 check "a dropped item's sub-bullet reason is ruled under the item's name, not its label" 0 "$(prs verify "$T/vr6.md")"
 printf 'slice 1\n## Dropped\nNone. No newly reproduced candidate downgraded as rare or preexisting.\nNO BUGS\n' > "$T/vr7.md"; std "$T/vr7.md"

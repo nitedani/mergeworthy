@@ -27,9 +27,9 @@ Base <SHA>, head <SHA>, in <worktree> (read with git show/diff at those SHAs; do
 The project file: <project file path>. Settled decisions: <decisions/*.md or the PR body>.
 
 What counts:
-- through realistic usage (code §Phantom gate's list), the head behaves wrongly where a user can see it: a regression against the base, a fix that's incomplete for the scenario its commit names, new code that behaves unlike the platform behavior it reproduces (a later reader sees an earlier reader's writes; `bodyUsed` lies), or a bug or UX issue the PR's issue reports in a function the diff edits; any other the base has too goes under `## Outside this change`. Silent wrong data where the base threw is a bug, never "not a regression"; so is costing more than the base for the same request (copies, reads, allocations, time), shown by a count or a `main`-vs-head run. Code and docs that disagree are judged per code §Docs are a claim.
+- through realistic usage (code §Phantom gate's list), the head behaves wrongly where a user can see it: a regression against the base, a fix that's incomplete for the scenario its commit names, new code that behaves unlike the platform behavior it reproduces (a later reader sees an earlier reader's writes; `bodyUsed` lies), or a bug or UX issue in a function the diff edits, one the base has too included; one elsewhere goes under `## Outside this change`. Silent wrong data where the base threw is a bug, never "not a regression"; so is costing more than the base for the same request (copies, reads, allocations, time), shown by a count or a `main`-vs-head run. Code and docs that disagree are judged per code §Docs are a claim.
 - A deliberate behavior (a usage error) doesn't count.
-- A candidate counts only with a spec or script that fails on the head and either passes on the base (`main`, or the bottom PR for the top) or demonstrates an incomplete fix.
+- A candidate counts only with a spec or script that fails on the head and either passes on the base (`main`, or the bottom PR for the top), demonstrates an incomplete fix, or shows a bug in a function the diff edits.
 
 How:
 - read each change end to end with every caller; a change that makes a function cost more (a copy, a read, an allocation) gets each caller re-read for how often it calls and whether it discards the result;
