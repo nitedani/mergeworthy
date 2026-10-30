@@ -24,7 +24,7 @@ Working a PR's head to a final state: no reviewer, agent or verifier finds anyth
 
 ### Small fix
 
-A change of at most 60 lines outside tests, docs (any `.md` included), lockfiles and build output, with a test the base fails and the head passes (docs alone: a commit's `Cold-read: <rules step 4's report>` trailer), replaces steps 1–4 with one agent: `delegate/small-review.md` on the pushed head, recorded, with `pull-request` step 5's approach, by `pr-steps small <its report>`; then step 5. Each blocker or should: a fix and a new round (`delegate §Continue`); each `## Outside this change` line: its `task §Dispositions`.
+A change of at most 60 lines outside tests, docs (any `.md` included), lockfiles and build output, with a test the base fails and the head passes (docs alone: a commit's `Cold-read: <rules step 4's report>` trailer), replaces steps 1–4 with one agent: `delegate/small-review.md` on the pushed head, recorded by `pr-steps small <its report>`; then step 5. Each blocker or should: a fix and a new round (`delegate §Continue`); each `## Outside this change` line: its `task §Dispositions`.
 
 ### Batching
 
