@@ -857,6 +857,33 @@ fan() { # task title
   [ $rc = 0 ] && python3 "$R/hooks/pre-agent-dedupe.py" register < "$T/fan.json"; echo $rc; }
 check "a fan-out on one brief passes, one launch per title; the same brief and title again is blocked" "0 0 2" "$(fan $'Topic: cost\nFollow /tmp/x/fan.md' 'fan: cost') $(fan $'Topic: security\nFollow /tmp/x/fan.md' 'fan: security') $(fan $'Topic: cost\nFollow /tmp/x/fan.md' 'fan: cost')"
 check "agent-job done with the shared brief path releases neither; each job releases by its full key" "1 0 0" "$(python3 "$R/bin/agent-job" done /tmp/x/fan.md >/dev/null 2>&1; echo $?) $(python3 "$R/bin/agent-job" done '/tmp/x/fan.md fan: cost' >/dev/null; echo $?) $(python3 "$R/bin/agent-job" done '/tmp/x/fan.md fan: security' >/dev/null; echo $?)"
+check "BLOCK: the same task under another title while its job is open; it launches once that job is released" "0 2 0" \
+  "$(fan 'Follow /tmp/x/same.md' 'same: a') $(fan 'Follow /tmp/x/same.md' 'same: b') $(python3 "$R/bin/agent-job" done '/tmp/x/same.md same: a' >/dev/null; fan 'Follow /tmp/x/same.md' 'same: b')"
+python3 "$R/bin/agent-job" done '/tmp/x/same.md same: b' >/dev/null
+check "BLOCK: a task containing an open job's, or contained in one, while that job is open; it launches once that job is released" "0 2 0 2" \
+  "$(fan 'Follow /tmp/x/hold.md' 'hold: a') $(fan $'Follow /tmp/x/hold.md\nPart: cost' 'hold: b') $(python3 "$R/bin/agent-job" done '/tmp/x/hold.md hold: a' >/dev/null; fan $'Follow /tmp/x/hold.md\nPart: cost' 'hold: b') $(fan 'Follow /tmp/x/hold.md' 'hold: c')"
+python3 "$R/bin/agent-job" done '/tmp/x/hold.md hold: b' >/dev/null
+# a launch let through counts until its call's tool_result is in the launcher's transcript (another hook blocked it, or it
+# returned) or it registered, as Claude Code gives each call's tool_use_id and the launcher's transcript_path
+LT="$T/launcher.jsonl"
+lc_in() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"Agent","tool_use_id":sys.argv[1],"transcript_path":sys.argv[4],"tool_input":{"prompt":sys.argv[3],"description":sys.argv[2]}}))' "$1" "$2" "$3" "$LT"; }
+lc() { lc_in "$@" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; echo $?; }  # tool_use_id description task
+use() { python3 -c 'import json,sys; print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","id":i,"name":"Agent","input":{}} for i in sys.argv[1:]]}}))' "$@" >> "$LT"; }  # the launcher's calls
+res() { python3 -c 'import json,sys; print(json.dumps({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":sys.argv[1],"content":"PreToolUse:Agent hook error: BLOCKED","is_error":True}]}}))' "$1" >> "$LT"; }  # its block
+use race-a race-b; lc_in race-a 'race: a' 'Follow /tmp/x/race.md' > "$T/race-a.json"; lc_in race-b 'race: b' 'Follow /tmp/x/race.md' > "$T/race-b.json"
+python3 "$R/hooks/pre-agent-dedupe.py" < "$T/race-a.json" 2>/dev/null & RA=$!; python3 "$R/hooks/pre-agent-dedupe.py" < "$T/race-b.json" 2>/dev/null & RB=$!
+wait $RA; ra=$?; wait $RB; rb=$?
+check "BLOCK: two launches of one task in one message, their checks started together: exactly one passes" "0 2" "$(printf '%s\n' $ra $rb | sort | tr '\n' ' ' | sed 's/ $//')"
+use same-1 same-2
+check "BLOCK: the same call twice in one message (one key, one task): the second" "0 2" "$(lc same-1 twin 'Follow /tmp/x/life-twin.md') $(lc same-2 twin 'Follow /tmp/x/life-twin.md')"
+use key-1 key-2; r="$(lc key-1 keyed 'Check the cost.') $(lc key-2 keyed 'Check the security.')"; res key-1; use key-3
+check "BLOCK: two calls with one key and different tasks in one message: the second, until the first's call returned" "0 2 0" "$r $(lc key-3 keyed 'Check the security.')"
+use long-1 long-2; r=$(lc long-1 first 'Follow /tmp/x/life-long.md')
+python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "launched": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs-launch/*")) if "life-long" in open(f).read()]'  # a foreground agent still at work an hour later
+check "BLOCK: a launch whose call hasn't returned, an hour on, still counts" "0 2" "$r $(lc long-2 second 'Follow /tmp/x/life-long.md')"
+use blk-1; r=$(lc blk-1 first 'Follow /tmp/x/life-blk.md'); res blk-1; use blk-2
+r="$r $(lc blk-2 second 'Follow /tmp/x/life-blk.md')"; res blk-2; use blk-3
+check "a launch another hook blocked (its tool_result written) no longer counts: a retry passes at once, under another title or its own" "0 0 0" "$r $(lc blk-3 first 'Follow /tmp/x/life-blk.md')"
 fan 'Follow /tmp/x/fan.md' "the user's ask" >/dev/null; python3 "$R/hooks/pre-agent-dedupe.py" < "$T/fan.json" 2>"$T/err"
 check "the block's release command, run as printed, releases a job whose title has an apostrophe" "0 0" "$(eval "$(grep -o 'agent-job done [^\`]*' "$T/err" | sed "s|^agent-job|python3 $R/bin/agent-job|")" >/dev/null; echo $?) $(python3 "$R/bin/agent-job" list | grep -c "user's ask")"
 cid_in() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":"x","clientRequestId":sys.argv[1]}}))' "$1"; }
@@ -904,8 +931,8 @@ check "a fifth launch following a work-folder brief that holds the fan-out line 
 python3 "$R/bin/agent-job" done "$(python3 -c 'import sys; print(sys.argv[1][:40])' "Follow $FB exactly")" >/dev/null  # its key: the title
 python3 "$R/bin/agent-job" done /tmp/x/cap8.md >/dev/null; python3 "$R/bin/agent-job" done /tmp/x/cap1.md >/dev/null
 check "a released job no longer counts" 0 "$(cap capS 'Execute /tmp/x/cap4.md')"
-python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "cap2.md" in open(f).read()]'
-mkdir -p "$HOME/.claude/projects/-cap"; python3 -c 'import json,sys; w=lambda o: print(json.dumps(o)); w({"type":"user","message":{"content":"Execute /tmp/x/cap2.md"}}); w({"type":"assistant","message":{"content":[{"type":"text","text":"Report written."}]}})' > "$HOME/.claude/projects/-cap/cap2.jsonl"
+python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600, "launched": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "cap2.md" in open(f).read()]'
+mkdir -p "$HOME/.claude/projects/-cap"; python3 -c 'import json,sys,time; w=lambda o: print(json.dumps(o)); w({"type":"queue-operation","operation":"enqueue","timestamp":time.strftime("%Y-%m-%dT%H:%M:%S.000Z",time.gmtime(time.time()-600)),"content":"Execute /tmp/x/cap2.md"}); w({"type":"user","message":{"content":"Execute /tmp/x/cap2.md"}}); w({"type":"assistant","message":{"content":[{"type":"text","text":"Report written."}]}})' > "$HOME/.claude/projects/-cap/cap2.jsonl"
 touch -d '5 minutes ago' "$HOME/.claude/projects/-cap/cap2.jsonl"
 check "BLOCK: a job whose agent finished (its transcript quiet) no longer counts; the fourth open one still blocks" "0 2" "$(cap capS 'Execute /tmp/x/cap6.md') $(cap capS 'Execute /tmp/x/cap7.md')"
 for k in cap2 cap3 cap4 cap5 cap6 mem-lines; do python3 "$R/bin/agent-job" done "/tmp/x/$k.md" >/dev/null; done; rm -r "$HOME/.claude/projects/-cap"
@@ -1138,10 +1165,11 @@ rm -f "$AD/t3review.jsonl" "$HOME/.t3/userdata/statev2.sqlite"
 JD="$HOME/.claude/projects/-jobs"; WJ="$T/wj"; mkdir -p "$JD" "$WJ"; echo orch > "$WJ/session"
 reg() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"orch","transcript_path":sys.argv[2],"tool_input":{"task":sys.argv[1],"title":sys.argv[1][:40]}}))' "$1" "$T/tr.jsonl" \
   | python3 "$R/hooks/pre-agent-dedupe.py" register; }
-child_log() { # file brief minutes-ago last-entry(text|tool)
-  python3 -c 'import json,sys; f,b,last=sys.argv[1],sys.argv[2],sys.argv[3]; w=lambda o: open(f,"a").write(json.dumps(o)+"\n")
+child_log() { # file brief minutes-ago last-entry(text|tool): it started a minute before its last write
+  python3 -c 'import json,sys,time; f,b,last,ago=sys.argv[1],sys.argv[2],sys.argv[3],int(sys.argv[4]); w=lambda o: open(f,"a").write(json.dumps(o)+"\n")
+w({"type":"queue-operation","operation":"enqueue","timestamp":time.strftime("%Y-%m-%dT%H:%M:%S.000Z",time.gmtime(time.time()-60*(ago+1))),"content":b})
 w({"type":"user","promptSource":"sdk","message":{"role":"user","content":b}})
-w({"type":"assistant","message":{"content":[{"type":"tool_use","id":"x","name":"Bash","input":{}}] if last=="tool" else [{"type":"text","text":"Report written."}]}})' "$1" "$2" "$4"
+w({"type":"assistant","message":{"content":[{"type":"tool_use","id":"x","name":"Bash","input":{}}] if last=="tool" else [{"type":"text","text":"Report written."}]}})' "$1" "$2" "$4" "$3"
   touch -d "$3 minutes ago" "$1"; }
 done_events() { GH_WATCH_ME=me python3 - "$R/watcher/gh-watch.py" "$WJ" <<'EOF2'
 import importlib.util, sys
@@ -1152,16 +1180,17 @@ EOF2
 reg "Execute $T/jobs/quiet-ticket.md exactly"; child_log "$JD/quiet.jsonl" "Execute $T/jobs/quiet-ticket.md exactly" 5 text
 reg "Execute $T/jobs/busy-ticket.md exactly"; child_log "$JD/busy.jsonl" "Execute $T/jobs/busy-ticket.md exactly" 0 text
 reg "Execute $T/jobs/tool-ticket.md exactly"; child_log "$JD/tool.jsonl" "Execute $T/jobs/tool-ticket.md exactly" 5 tool
-codex_log() { # file brief minutes-ago last-event: a T3 Code Codex agent's transcript
-  mkdir -p "$HOME/.codex/sessions/2026/10/14"; python3 -c 'import json,sys; f,b,last=sys.argv[1],sys.argv[2],sys.argv[3]; w=lambda o: open(f,"a").write(json.dumps(o)+"\n")
-w({"type":"session_meta","payload":{"originator":"T3 Code"}})
+codex_log() { # file brief minutes-ago last-event: a T3 Code Codex agent's transcript, started a minute before its last write
+  mkdir -p "$HOME/.codex/sessions/2026/10/14"; python3 -c 'import json,sys,time; f,b,last,ago=sys.argv[1],sys.argv[2],sys.argv[3],int(sys.argv[4]); w=lambda o: open(f,"a").write(json.dumps(o)+"\n")
+at=time.strftime("%Y-%m-%dT%H:%M:%S.000Z",time.gmtime(time.time()-60*(ago+1)))
+w({"timestamp":at,"type":"session_meta","payload":{"timestamp":at,"originator":"T3 Code"}})
 w({"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"# AGENTS.md instructions"}]}})
 w({"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":b}]}})
-w({"type":"event_msg","payload":{"type":last}})' "$HOME/.codex/sessions/2026/10/14/$1" "$2" "$4"
+w({"type":"event_msg","payload":{"type":last}})' "$HOME/.codex/sessions/2026/10/14/$1" "$2" "$4" "$3"
   touch -d "$3 minutes ago" "$HOME/.codex/sessions/2026/10/14/$1"; }
 reg "Execute $T/jobs/codex-done.md exactly"; codex_log rollout-done.jsonl "Execute $T/jobs/codex-done.md exactly" 5 task_complete
 reg "Execute $T/jobs/codex-run.md exactly"; codex_log rollout-run.jsonl "Execute $T/jobs/codex-run.md exactly" 5 agent_message
-python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "jobs/" in open(f).read()]'  # launched an hour ago
+python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600, "launched": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "jobs/" in open(f).read()]'  # launched an hour ago
 done_events > "$T/ev1"; done_events > "$T/ev2"
 check "AGENT DONE for a Codex agent once its task completes, not while it runs" "1 0" "$(grep -c "AGENT DONE $T/jobs/codex-done.md" "$T/ev1") $(grep -c codex-run "$T/ev1")"
 python3 "$R/bin/agent-job" done "$T/jobs/codex-done.md" >/dev/null; python3 "$R/bin/agent-job" done "$T/jobs/codex-run.md" >/dev/null
@@ -1177,7 +1206,7 @@ python3 "$R/bin/agent-job" done "$T/jobs/tool-ticket.md" >/dev/null; python3 "$R
 reg "Execute $T/jobs/parent-ticket.md exactly"; child_log "$JD/parent.jsonl" "Execute $T/jobs/parent-ticket.md exactly" 5 text
 python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"parent","transcript_path":sys.argv[2],"tool_input":{"task":sys.argv[1],"title":"grandchild"}}))' "Execute $T/jobs/grand-ticket.md exactly" "$JD/parent.jsonl" | python3 "$R/hooks/pre-agent-dedupe.py" register
 child_log "$JD/grand.jsonl" "Execute $T/jobs/grand-ticket.md exactly" 0 text
-python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "-ticket.md" in open(f).read()]'
+python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600, "launched": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "-ticket.md" in open(f).read()]'
 done_events > "$T/ev4"; touch -d '5 minutes ago' "$JD/grand.jsonl"; done_events > "$T/ev5"
 check "a quiet agent whose own agent still runs is not done; it is once that one is" "0 1" "$(grep -c "AGENT DONE $T/jobs/parent-ticket.md" "$T/ev4") $(grep -c "AGENT DONE $T/jobs/parent-ticket.md" "$T/ev5")"
 python3 "$R/bin/agent-job" done "$T/jobs/parent-ticket.md" >/dev/null; python3 "$R/bin/agent-job" done "$T/jobs/grand-ticket.md" >/dev/null
@@ -1192,7 +1221,7 @@ c.execute("""insert into orchestration_v2_projection_provider_threads values ('p
 c.execute("insert into orchestration_v2_projection_runs values ('r1', 'busy-1', 'waiting')"); c.commit()  # waiting on an approval: as active as running
 EOF2
 reg "Execute $T/jobs/t3busy-ticket.md exactly"; child_log "$JD/t3busy.jsonl" "Execute $T/jobs/t3busy-ticket.md exactly" 5 text
-python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "t3busy-ticket" in open(f).read()]'
+python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600, "launched": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "t3busy-ticket" in open(f).read()]'
 t3db() { python3 -c 'import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); c.execute(sys.argv[2]); c.commit()' "$HOME/.t3/userdata/statev2.sqlite" "$1"; }
 done_events > "$T/ev6"; t3db "update orchestration_v2_projection_runs set status = 'completed'"
 t3db "insert into orchestration_v2_projection_subagents values ('s9', 'busy-1', 'child-9', 'pending')"; done_events > "$T/ev7"
@@ -1215,14 +1244,100 @@ check "BLOCK: agent-job done while the ticket's agent is still at work keeps the
   "$(python3 "$R/bin/agent-job" done "$T/jobs/t3busy-ticket.md" >/dev/null 2>"$T/aj.err"; echo $?) $(grep -c 'AGENT DONE. wakes this session' "$T/aj.err") $(python3 "$R/bin/agent-job" list | grep -c t3busy-ticket)"
 t3db "update orchestration_v2_projection_runs set status = 'completed' where run_id = 'r3'"
 check "agent-job done releases it once the agent has ended" "0 0" "$(python3 "$R/bin/agent-job" done "$T/jobs/t3busy-ticket.md" >/dev/null; echo $?) $(python3 "$R/bin/agent-job" list | grep -c t3busy-ticket)"
+# a transcript belongs to one job: the earliest-started one carrying its whole task that started at or after its launch
+# (nitedani/mergeworthy#60 and its review rounds: a quick second round, fan-out agents whose transcripts start in the reverse of their
+# launch order, a repeated foreground call, a head read before its prompt was written)
+got=$(python3 - "$R/hooks" <<'EOF2'
+import json, os, sys, time
+sys.path.insert(0, sys.argv[1]); import agent_jobs
+now = time.time(); d = os.path.expanduser('~/.codex/sessions/2026/10/29'); os.makedirs(d, exist_ok=True); os.makedirs(agent_jobs.JOBS, exist_ok=True)
+at = lambda t: time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime(t))
+user = lambda text: {'type': 'response_item', 'payload': {'type': 'message', 'role': 'user', 'content': [{'type': 'input_text', 'text': text}]}}
+def log(name, brief, start, write, fg=False):
+    p = os.path.join(os.path.expanduser('~/.claude/projects/-fg/sess/subagents'), name) if fg else os.path.join(d, name)
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    lines = ({'type': 'queue-operation', 'operation': 'enqueue', 'timestamp': at(start), 'content': brief}, {'type': 'user', 'message': {'content': brief}}) if fg else \
+            ({'timestamp': at(start), 'type': 'session_meta', 'payload': {'id': name, 'timestamp': at(start)}}, user(brief),
+             {'type': 'event_msg', 'payload': {'type': 'task_complete'}})
+    open(p, 'w').write(''.join(json.dumps(o) + '\n' for o in lines)); os.utime(p, (write, write))
+def job(f, launched, brief):  # as pre-agent-dedupe records it: launched when its PreToolUse passed, started when it registered
+    j = {'key': f, 'launched': launched, 'started': launched + 1, 'brief': brief}; json.dump(j, open(os.path.join(agent_jobs.JOBS, f), 'w')); return j
+def fresh():  # another hook process: nothing remembered but the files
+    agent_jobs._hit.clear(); agent_jobs._head.clear()
+name = lambda p: p and os.path.basename(p)
+out = []
+quick = 'Read /work/briefs/quick.md exactly.'  # round 1 started 30 s before round 2's launch and went quiet just after it
+log('rollout-q1.jsonl', quick, now - 330, now - 240); q2 = job('q2', now - 301, quick)
+out.append(name(agent_jobs.transcript(q2)))
+log('rollout-q2.jsonl', quick, now - 299, now); fresh()
+out += [name(agent_jobs.transcript(q2)), bool(agent_jobs.finished(q2))]
+fan = 'Read /work/briefs/fan.md exactly.\n' + 'Context: the shared brief.\n' * 25  # each agent names its part after 600 characters
+a, b = job('fa', now - 301, fan + 'Part: cost'), job('fb', now - 300, fan + 'Part: security')
+log('rollout-fb.jsonl', b['brief'], now - 298, now); log('rollout-fa.jsonl', a['brief'], now - 297, now - 240)  # fb's agent started first
+out += [name(agent_jobs.transcript(a)), name(agent_jobs.transcript(b)), bool(agent_jobs.finished(a)), bool(agent_jobs.finished(b))]
+fg = 'Run /work/briefs/fg.md exactly.'  # two foreground calls in a row: each registered once its agent returned
+log('agent-r1.jsonl', fg, now - 1000, now - 330, True); log('agent-r2.jsonl', fg, now - 320, now - 310, True)
+out.append(name(agent_jobs.transcript(job('fg2', now - 321, fg))))
+grow = 'Read /work/briefs/grow.md exactly.'  # a watcher tick reads the rollout before T3 has written the task into it
+g, p = job('grow', now - 100, grow), os.path.join(d, 'rollout-grow.jsonl')
+open(p, 'w').write(json.dumps({'timestamp': at(now - 99), 'type': 'session_meta', 'payload': {'id': 'grow', 'timestamp': at(now - 99)}}) + '\n'
+                   + json.dumps(user('# AGENTS.md instructions')) + '\n')
+out.append(name(agent_jobs.transcript(g)))
+open(p, 'a').write(json.dumps(user(grow)) + '\n')
+out.append(name(agent_jobs.transcript(g)))
+def old(f, started, brief, launcher):  # as an older hook recorded it: only its registration, after its agent's transcript began
+    j = {'key': f, 'started': started, 'brief': brief, 'transcript': launcher}; json.dump(j, open(os.path.join(agent_jobs.JOBS, f), 'w')); return j
+lt = os.path.expanduser('~/.claude/projects/-old/launcher.jsonl'); os.makedirs(os.path.dirname(lt), exist_ok=True)
+call = lambda t, task: {'type': 'assistant', 'timestamp': at(t), 'message': {'content': [{'type': 'tool_use', 'id': f'u{t}', 'name': 'mcp__t3-code__delegate_task', 'input': {'task': task}}]}}
+legacy = 'Read /work/briefs/legacy.md exactly.'  # its launch call, then a later round's after its registration
+open(lt, 'w').write(''.join(json.dumps(o) + '\n' for o in (call(now - 205, legacy), call(now - 100, legacy))))
+log('rollout-legacy.jsonl', legacy, now - 203, now)
+out.append(name(agent_jobs.transcript(old('legacy', now - 200, legacy, lt))))
+lost = 'Read /work/briefs/lost.md exactly.'  # its launcher's transcript is gone: its registration bounds it
+log('rollout-lost.jsonl', lost, now - 203, now)
+out.append(name(agent_jobs.transcript(old('lost', now - 200, lost, lt + '.gone'))))
+print(*out)
+EOF2
+)
+check "a transcript belongs to one job: a quick second round gets none before its own starts, then its own, running; fan-out agents started in reverse get their own; a repeated foreground call gets its own; a head read before its task was written is read again; an older hook's job, whose agent started before it registered, gets its own from its launch call, and none without its launcher's transcript" \
+  "None rollout-q2.jsonl False rollout-fa.jsonl rollout-fb.jsonl True False agent-r2.jsonl None rollout-grow.jsonl rollout-legacy.jsonl None" "$got"
+python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"lt","tool_input":{"task":"Execute /work/briefs/lt.md exactly","title":"lt"}}))' > "$T/lt.json"
+python3 "$R/hooks/pre-agent-dedupe.py" < "$T/lt.json" 2>/dev/null; sleep 1; python3 "$R/hooks/pre-agent-dedupe.py" register < "$T/lt.json"
+check "pre-agent-dedupe records when the launch began (PreToolUse), before its registration" True \
+  "$(python3 -c 'import glob,json,os; j=[json.load(open(f)) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "lt.md" in open(f).read()][0]; print(j["started"] - j["launched"] >= 1)')"
+rm -f $(grep -l lt.md "$HOME"/.claude/agent-jobs/*)
+# two calls in one message, each its own job (own description and task; one key is refused above): each registers its own
+# launch time, so A's agent, started before B's check, is still A's
+got=$(python3 - "$R/hooks" "$T/dd-launcher.jsonl" <<'EOF2'
+import datetime, json, os, subprocess, sys, time
+hooks, tr = sys.argv[1:]; sys.path.insert(0, hooks); import agent_jobs
+calls = {'dd-a': 'Check the cost of /work/briefs/dd.md.', 'dd-b': 'Check the security of /work/briefs/dd.md.'}
+open(tr, 'w').write(json.dumps({'type': 'assistant', 'message': {'content': [
+    {'type': 'tool_use', 'id': u, 'name': 'Agent', 'input': {'prompt': t, 'description': f'dd-worker {u}'}} for u, t in calls.items()]}}) + '\n')
+def hook(u, *reg):
+    d = {'tool_name': 'Agent', 'tool_use_id': u, 'transcript_path': tr, 'session_id': 'dd', 'tool_input': {'prompt': calls[u], 'description': f'dd-worker {u}'}}
+    return subprocess.run(['python3', os.path.join(hooks, 'pre-agent-dedupe.py'), *reg], input=json.dumps(d), text=True, capture_output=True).returncode
+def agent(u):  # its agent's transcript, started now
+    p = os.path.expanduser(f'~/.claude/projects/-dd/{u}.jsonl'); os.makedirs(os.path.dirname(p), exist_ok=True)
+    open(p, 'w').write(json.dumps({'type': 'user', 'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'message': {'content': calls[u]}}) + '\n')
+def mine(u):  # the job registered for the call, and the transcript it finds
+    hook(u, 'register'); j = [j for _, j in agent_jobs.jobs() if j['brief'] == calls[u]][0]
+    return os.path.basename(agent_jobs.transcript(j) or 'None')
+out = [hook('dd-a')]; time.sleep(.1); agent('dd-a'); time.sleep(.1); out.append(hook('dd-b')); time.sleep(.1); agent('dd-b')
+print(*out, mine('dd-a'), mine('dd-b'))
+EOF2
+)
+check "two calls in one message under their own descriptions both pass, and each registered job finds its own agent's transcript, though A's agent started before B's check" "0 0 dd-a.jsonl dd-b.jsonl" "$got"
+rm -f $(grep -l dd-worker "$HOME"/.claude/agent-jobs/*)
 # a T3 Codex agent: T3 names it by its rollout's session_meta id, not the file's name
 CX=0aa0c0de-1111-7222-8333-444455556666; CXF="$HOME/.codex/sessions/2026/10/14/rollout-2026-10-14T10-00-00-$CX.jsonl"
-python3 -c 'import json,sys; f,cx,b=sys.argv[1:]; w=lambda o: open(f,"a").write(json.dumps(o)+"\n")
-w({"type":"session_meta","payload":{"id":cx,"originator":"T3 Code"}})
+python3 -c 'import json,sys,time; f,cx,b=sys.argv[1:]; w=lambda o: open(f,"a").write(json.dumps(o)+"\n")
+at=time.strftime("%Y-%m-%dT%H:%M:%S.000Z",time.gmtime(time.time()-600))
+w({"timestamp":at,"type":"session_meta","payload":{"id":cx,"timestamp":at,"originator":"T3 Code"}})
 w({"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":b}]}})
 w({"type":"event_msg","payload":{"type":"task_complete"}})' "$CXF" "$CX" "Execute $T/jobs/cx-ticket.md exactly"
 reg "Execute $T/jobs/cx-ticket.md exactly"; touch -d '5 minutes ago' "$CXF"
-python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "cx-ticket" in open(f).read()]'
+python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600, "launched": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "cx-ticket" in open(f).read()]'
 t3db "insert into orchestration_v2_projection_provider_threads values ('p3', 'codex-1', '{\"nativeThreadRef\":{\"driver\":\"codex\",\"nativeId\":\"$CX\"}}')"
 t3db "insert into orchestration_v2_projection_runs values ('r4', 'codex-1', 'running')"
 done_events > "$T/ev10"; tr_file 'Done.'
@@ -1237,7 +1352,7 @@ WS="$T/ws"; mkdir -p "$WS"; echo stew > "$WS/session"; echo $$ > "$WS/gh-watch.p
 for i in 1 2 3; do echo "tail $WJ/events.log" >> "$T/stew-tr.jsonl"; done
 python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"stew","transcript_path":sys.argv[2],"tool_input":{"task":sys.argv[1],"title":"stew job"}}))' "Execute $T/jobs/stew-ticket.md exactly" "$T/stew-tr.jsonl" | python3 "$R/hooks/pre-agent-dedupe.py" register
 child_log "$JD/stew.jsonl" "Execute $T/jobs/stew-ticket.md exactly" 5 text
-python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "stew-ticket" in open(f).read()]'
+python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600, "launched": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "stew-ticket" in open(f).read()]'
 check "a job of another live watch dir's declared session is not reported here" 0 "$(done_events > "$T/ev4"; grep -c stew-ticket "$T/ev4")"
 python3 "$R/bin/agent-job" done "$T/jobs/stew-ticket.md" >/dev/null
 # one session watches two work folders, the steward's from <folder>/live: its job goes to the launcher's watch dir in the work folder of
@@ -1245,7 +1360,7 @@ python3 "$R/bin/agent-job" done "$T/jobs/stew-ticket.md" >/dev/null
 S="$HOME/.mergeworthy/work/stw"; O="$HOME/.mergeworthy/work/other"; mkdir -p "$S/live" "$S/drafts" "$O"
 for d in "$S/live" "$O"; do echo orch > "$d/session"; echo $$ > "$d/gh-watch.pid"; printf '%s\n' "$d" >> "$HOME/.claude/gh-watch-dirs.txt"; done
 job() { reg "$1"; child_log "$JD/$2.jsonl" "$1" 5 text
-  python3 -c 'import glob,json,os,sys,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if sys.argv[1] in open(f).read()]' "$2"; }
+  python3 -c 'import glob,json,os,sys,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600, "launched": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if sys.argv[1] in open(f).read()]' "$2"; }
 job "stw-brief: follow $S/drafts/stw-brief.md exactly" stw-brief
 check "a job whose brief sits beside the steward's live watcher is reported there only, though another dir of its session ticks first" "0 1" "$(WJ="$O" done_events | grep -c stw-brief) $(WJ="$S/live" done_events | grep -c stw-brief)"
 job "oth-brief: follow $O/oth-brief.md, citing $S/live/events.log" oth-brief
@@ -1255,7 +1370,7 @@ check "a brief outside every watched work folder leaves the job to the session r
 rm $(grep -l -e stw-brief -e oth-brief -e out-brief "$HOME"/.claude/agent-jobs/*) "$S/live/gh-watch.pid" "$O/gh-watch.pid"
 check "stop-lint passes once every finished job is released" 0 "$(sj orch)"
 reg "Execute $T/jobs/routed-ticket.md exactly"; child_log "$JD/routed.jsonl" "Execute $T/jobs/routed-ticket.md exactly" 5 text
-python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600}, open(f, "w")) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "routed-ticket" in open(f).read()]'
+python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600, "launched": time.time() - 3600}, open(f, "w")) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "routed-ticket" in open(f).read()]'
 mkdir -p "$T/wj2"; rm "$WJ/session"; printf 'tail -F %s/events.log\nps: watcher for %s/events.log\ntail -F %s/events.log\n' "$T/wj2" "$WJ" "$T/wj2" > "$T/tr.jsonl"
 check "a watch dir with no session file gets the event when the launcher's transcript names its events.log most; another it names once doesn't" "0 1" "$(done_events | wc -l) $(WJ="$T/wj2" done_events | grep -c routed-ticket)"
 for t in old listed; do python3 -c 'import json,os,sys,time,hashlib; json.dump({"key":sys.argv[1],"started":time.time()-3600},open(os.path.expanduser("~/.claude/agent-jobs/")+hashlib.sha256(sys.argv[1].encode()).hexdigest()[:16],"w"))' "$T/jobs/$t-ticket.md"
