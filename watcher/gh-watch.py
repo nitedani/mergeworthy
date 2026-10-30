@@ -1299,7 +1299,7 @@ def new_event(key, i):
     return f"### NEW {'PR' if 'pull_request' in i else 'ISSUE'} {key} by {(i.get('user') or {}).get('login')} {i['created_at']} {i['html_url']}: {i['title']}\n{indented}\n"
 
 
-OPEN_FAULTS = f'repos/{STEWARD_REPO}/issues?state=open&sort=created&direction=desc&per_page=100'
+OPEN_FAULTS = f'repos/{STEWARD_REPO}/issues?state=open&sort=updated&direction=desc&per_page=100'  # a reopened issue comes first: page 1's validator stands for the list
 
 
 def open_faults():

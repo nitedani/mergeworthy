@@ -1039,6 +1039,30 @@ print(evs(SW), evs(ORD), lst(SW) or "-", lst(ORD), lst(OP), ",".join(calls))
 ')
 check "the steward's dir gets each open mergeworthy issue once, an old one and an agent's one the opener lists too, though an ordinary dir watches the repo first; that dir handles the unlisted one; not a PR; one conditional request a pass" \
   "nitedani/mergeworthy#22,nitedani/mergeworthy#20,nitedani/mergeworthy#3,nitedani/mergeworthy#24 nitedani/mergeworthy#22 - 22 20,21 200,304,200" "$got"
+# more open issues than a page: an old unclaimed issue reopened behind page 1 still reaches the steward's dir (the list's order, as
+# GitHub sorts by the request's `sort`, puts it first, so page 1's validator changes)
+got=$(py "$WHOLE"'
+SW = os.path.join(WH, "steward2"); os.makedirs(SW, exist_ok=True)
+for f, t in (("gh-watch.pid", str(os.getpid())), ("repos.txt", "nitedani/mergeworthy all\n"), ("threads.txt", ""), ("events.log", "")): open(os.path.join(SW, f), "w").write(t)
+open(os.path.expanduser("~/.mergeworthy/steward"), "w").write(SW + " tid\n")
+reg = os.path.expanduser("~/.claude/gh-watch-dirs.txt"); kept = open(reg).read(); open(reg, "w").write(SW + "\n")
+m.HERE = SW
+it = lambda n, t: {"id": 3000 + n, "number": n, "user": {"login": "eve"}, "body": "", "title": f"t{n}", "html_url": f"<p{n}>", "created_at": t, "updated_at": t}
+OPEN = [it(n, f"2026-10-29T{n // 60:02d}:{n % 60:02d}:00Z") for n in range(100, 200)] + [it(4, "2026-10-13T00:00:00Z")]
+def get(path, headers):
+    key = "updated_at" if "sort=updated" in path else "created_at"
+    page = sorted(OPEN, key=lambda i: i[key], reverse=True)
+    page = page[100:] if "page=2" in path else page[:100]
+    etag = "\"" + str(hash(json.dumps(page))) + "\""
+    if headers.get("If-None-Match") == etag: return m.Resp(304, {}, "")
+    return m.Resp(200, {"etag": etag, **({} if "page=2" in path else {"link": "<https://api.github.com/" + m.OPEN_FAULTS + "&page=2>; rel=\"next\""})}, json.dumps(page))
+m.http_get, m.poll_feed = get, lambda *a: None
+m.repo_feeds(); OPEN.append({**it(3, "2026-10-12T00:00:00Z"), "updated_at": "2026-10-30T00:00:00Z"}); m.repo_feeds(); m.repo_feeds()
+os.remove(os.path.expanduser("~/.mergeworthy/steward")); open(reg, "w").write(kept)
+evs = [l.split()[3] for l in open(os.path.join(SW, "events.log")) if l.startswith("###")]
+print(len(evs), evs.count("nitedani/mergeworthy#3"))
+')
+check "the steward's dir gets an old unclaimed issue reopened behind the first page of open issues, once" "102 1" "$got"
 check "whole repo: moved threads join its dir unless another dir lists them; a bare line's repo joins nothing" "o/r 8 o/r 9 o/r 10 o/r 11 o/r 1|o/r 7|" \
   "$(echo $(cat "$WH/all/threads.txt"))|$(echo $(cat "$WH/other/threads.txt"))|$(cat "$WH/bare/threads.txt")"
 scanned() { py "$WHOLE"'
