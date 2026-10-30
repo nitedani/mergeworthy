@@ -595,11 +595,15 @@ def api_call(rest, cwd=None):
         posts = method in ('POST', 'PATCH', 'PUT') and not NO_TEXT.fullmatch(re.sub(r'^(?:https?://[^/]+)?/?(?:api/v3/)?', '', ep).split('?')[0])
     return method, ep, fields, inputs, posts
 
+def repo_name(r):
+    """owner/repo a gh repository value names: [HOST/]OWNER/REPO or a URL."""
+    return '/'.join(re.sub(r'(\.git)?/*$', '', r).split('/')[-2:])
+
 def gh_repo(args, env, origin):
     """owner/repo a gh command with args acts on, as gh picks it: its -R, else GH_REPO set on the command or inherited (both
     [HOST/]OWNER/REPO or a URL), else the checkout's origin (origin(): its URL, read only then)."""
     if r := (opt(args, ['--repo', '-R']) or [None])[-1] or env.get('GH_REPO', os.environ.get('GH_REPO')):
-        return '/'.join(re.sub(r'(\.git)?/*$', '', r).split('/')[-2:])
+        return repo_name(r)
     m = re.search(r'github\.com[:/]([\w.-]+/[\w.-]+?)(\.git)?$', origin())
     return m.group(1) if m else None
 

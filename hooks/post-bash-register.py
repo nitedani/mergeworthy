@@ -9,7 +9,7 @@ A gated draft it posted as new gets its .posted marker, which pre-bash-guard rea
 import hashlib, json, os, re, shlex, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
-from shellcmd import segments, prog, new_post_drafts, Where, opened, plain_create
+from shellcmd import segments, prog, new_post_drafts, Where, opened, plain_create, opt, repo_name
 import own_actions, steward, work_folder
 d = json.load(sys.stdin)
 # the pushes, merges and closes pre-bash-guard let this command make are its own once it succeeded; a failed command's go
@@ -48,8 +48,7 @@ def target(t, d):
         return None
     a = t[1:]
     if a[0] in ('issue', 'pr') and a[1:2] and a[1] in ('create', 'comment', 'review'):
-        repo = next((x.split('=', 1)[1] for x in a if x.startswith('--repo=')), None) or \
-            next((a[i + 1] for i in range(len(a) - 1) if a[i] in ('--repo', '-R')), None)
+        repo = repo_name(v[-1]) if (v := opt(a, ['--repo', '-R'])) else None  # as pre-bash-guard reads it
         arg = a[2] if a[2:3] and not a[2].startswith('-') else ''
         m = re.search(r'github\.com/([\w.-]+/[\w.-]+)/(?:issues|pull)/(\d+)', arg)
         if m: return m.group(1), m.group(2)

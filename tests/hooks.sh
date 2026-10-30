@@ -2496,6 +2496,9 @@ check "the same creates on github.com and gitlab.com pass: gh api, with --hostna
 check "a create alone, after cd /abs &&, with 2>&1 or with --title \"\$(cat <file>)\" passes and starts the folder's watcher; after exec > file it starts none" \
   "0 0 0 0|2:sess-b $TK4 vikejs/vike 9|2:sess-b $TK4 vikejs/vike 9|2:sess-b $TK4 vikejs/vike 9|0:" \
   "$(bgs sess-b "$MRC" "$CK4") $(bgs sess-b "cd $CK4 && $MRC" "$T") $(bgs sess-b "$MRC 2>&1" "$CK4") $(bgs sess-b "glab mr create --draft -R gitlab.com/ns/proj --title \"\$(cat $T/h1.md)\"" "$CK4")|$(areg "$PRC" https://github.com/vikejs/vike/pull/9)|$(areg "cd $CK4 && $PRC" https://github.com/vikejs/vike/pull/9)|$(areg "$PRC 2>&1" https://github.com/vikejs/vike/pull/9)|$(areg "exec > $T/create.log; $GIC" '')"
+check "a create whose repository names the host (-R github.com/OWNER/REPO, --repo with its URL, --repo=) starts the folder's watcher as -R OWNER/REPO does" \
+  "2:sess-b $TK4 vikejs/vike 9|2:sess-b $TK4 vikejs/vike 9|2:sess-b $TK4 vikejs/vike 9|2:sess-b $TK4 vikejs/vike 9" \
+  "$(for r in '-R vikejs/vike' '-R github.com/vikejs/vike' '--repo https://github.com/vikejs/vike' '--repo=github.com/vikejs/vike'; do areg "gh issue create $r --title x --body-file $T/h1.md" https://github.com/vikejs/vike/issues/9; done | paste -sd'|')"
 check "post-bash-register starts the folder's watcher for cd /abs && a create" "2:sess-b $TK4 gitlab.com/ns/proj 9" \
   "$(: > "$T/started"; python3 -c 'import json,sys; print(json.dumps({"session_id":"sess-b","cwd":sys.argv[1],"tool_input":{"command":sys.argv[2]},"tool_response":{"stdout":"https://gitlab.com/ns/proj/-/issues/9"}}))' "$T" "cd $CK4 && $GIC" | python3 "$R/hooks/post-bash-register.py" 2>/dev/null; echo "$?:$(cat "$T/started")"; rm -f "$TK4/threads.txt")"
 check "post-bash-register starts the folder's watcher for a plain create only: the create beside a note starts none; a note alone neither, saying to start it" "2:sess-b $TK4 gitlab.com/ns/proj 9|2:|1" \
