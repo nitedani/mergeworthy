@@ -140,6 +140,8 @@ printf 'PROMISED o/r#1: post the fix by %s (reply.md)\nPROMISED o/r#1: a docs PR
 check "a PROMISED line whose time is ahead, or with no time, passes" 0 "$(stop "$WD")"
 printf 'PROMISED o/r#1: post the fix by %s (reply.md)\n' "$(date -u -d '-1 hour' +%FT%H:%MZ)" > "$WD/proposals-open.md"
 check "BLOCK: a PROMISED line past its time, naming it" "2 1" "$(stop "$WD") $(grep -c 'post the fix' "$T/err")"
+printf 'PROMISED o/r#1: a javítás %s-ig (reply.md)\n' "$(date -u -d '-1 hour' +%FT%H:%MZ)" > "$WD/proposals-open.md"
+check "BLOCK: a Hungarian PROMISED line past its time (<ISO>-ig)" 2 "$(stop "$WD")"
 printf 'DONE https://github.com/o/r/pull/2 PROMISED o/r#1: post the fix by %s (reply.md)\n' "$(date -u -d '-1 hour' +%FT%H:%MZ)" > "$WD/proposals-open.md"
 check "the same line cleared by its delivering link passes" 0 "$(stop "$WD")"
 rm "$WD/proposals-open.md"; echo 'PROMISED o/r#1: come back with the result (holding.md)' > "$WD/hold/proposals-open.md"
@@ -728,6 +730,10 @@ printf '# acme/hu\n\n## PR conventions\n- Titles: sentence case.\n' > "$HUP"
 check "BLOCK: the same body with no Language line, on its State line and effort words" "1 1 1" "$(hulint) $(grep -c 'State: draft' "$T/hu.out") $(grep -c 'model line without effort' "$T/hu.out")"
 printf '# acme/hu\n\nLanguage: hu\n' > "$HUP"
 check "BLOCK: under Language: hu, an English State line and a decision without its Hungarian pick" "1 1 1" "$(sed -i 's/^\*\*Állapot: piszkozat\*\*/**State: draft**/; s/^Az (a) lehetőséget választottam/I picked (a)/' "$T/hu.md"; hulint) $(grep -c 'Állapot: piszkozat' "$T/hu.out") $(grep -c 'választottam' "$T/hu.out")"
+# slh <finding> <draft>: sl under Language: hu
+slh() { printf '%s\n' "$2" > "$T/st.md"; local out rc; out=$(MERGEWORTHY_BADGE=off python3 "$R/bin/post-lint" "$T/st.md" --kind status --repo acme/hu --parent none 2>/dev/null); rc=$?; [ -n "$1" ] || { echo "$rc"; return; }; printf '%s\n' "$out" | grep -c "$1"; }
+check "status under Language: hu: a deadline with -ig, an action sentence and an English status pass" "0 0 0" "$(slh '' "Mergelem az !1-et, $FUT-ig.") $(slh '' "Átnézem a javítást. A jelentés $FUT-ig jön.") $(slh '' "I'll merge it by $FUT.")"
+check "status under Language: hu: a past verb, a claim, a relative time and no deadline are findings" "1 1 1 1" "$(slh 'says neither' "Megnéztem a naplót. Átnézem $FUT-ig.") $(slh 'is a claim' "Átnézem, mert elbukott, $FUT-ig.") $(slh 'relative time' "Átnézem holnap, a többit $FUT-ig.") $(slh "say by when, as an ISO time in UTC ('2026-10-28T16:00Z-ig')" 'Átnézem a javítást.')"
 printf '%s\nA feltöltés elakad nagy fájloknál. Ez az MR darabokban küldi a fájlt.\n\n### Amit látni fogsz\n\n**1.** Egy 50 MB-os fájl feltöltése:\n\n```\nPOST /upload -> 201\n```\n' "$B" > "$T/hus.md"
 check "a ready Hungarian body's evidence heading passes under Language: hu, not without it" "0 1" "$(python3 "$R/bin/post-lint" "$T/hus.md" --kind pr --repo acme/hu --parent none 2>&1 | grep -c 'pull-request §Body') $(python3 "$R/bin/post-lint" "$T/hus.md" --kind pr --repo acme/en --parent none 2>&1 | grep -c 'pull-request §Body')"
 hdguard() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr create --draft --repo acme/hu --title \"$(cat /w/drafts/title.md)\" --body-file "+sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$TCO" \

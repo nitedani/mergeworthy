@@ -2,6 +2,9 @@
 its project file (~/.mergeworthy/projects/<owner>/<repo>.md); without one, or with a code not listed here, it is English."""
 import os, re
 
+ISO = r'\d{4}-\d\d-\d\dT\d\d:\d\d(?::\d\d(?:\.\d+)?)?Z'  # an ISO time in UTC, the date included
+_act = r"(?!(?:see|gett|find|notic|observ|hitt)ing\b)\w+"  # a word that isn't an observation: "I'm seeing …" reports a result
+
 WORDS = {
     'en': {
         'state': ('State', 'draft'),  # **State: draft** (<why>)
@@ -14,6 +17,13 @@ WORDS = {
         'see': 'What you should see',  # pull-request §Body
         'tracker': ('Tracking: ', 'Decisions', ('Process and requirements', 'Agreed', 'Open')),  # task §Umbrella: title, Decisions comment, its sections
         'recommend': "I recommend|recommend|I'd|I would|I propose|I suggest|I'll go with|I picked",  # a question carries our pick
+        'status': {  # post-lint --kind status, and the deadline stop-lint holds a PROMISED line to (its group: the ISO time)
+            'by': rf'\b(?:by|before)\s+({ISO})\b', 'by_example': 'by 2026-10-28T16:00Z',
+            'on_it': ('On it',), 'then': ('Next', 'Then', 'Now', 'Meanwhile', 'After that'),
+            'act': rf"(?:I|we)(?:['’]m| am|['’]re| are)\s+(?:{_act}\s+)?{_act}ing\b|(?:I|we)(?:['’]ll| will)\b", 'act_example': "'I'm rating …', 'I'll merge …'",
+            'relative': r'\b(?:tomorrow|tonight|later today|in (?:about |around |roughly |under |less than )?(?:an?|\d+|a few|a couple of) (?:hours?|minutes?|days?))\b',
+            'claim': r'\b\d+(?:\.\d+)?\s*(?:tests?|files?|lines?|calls?)\b|\b(?:fixed|fixes|works|passe[sd]|fail(?:s|ed|ing)?|broke|breaks|reproduced|verified|confirmed|caus(?:es|ed)|returns|regression|bug|done in|because|now that)\b|,\s*since\b',  # a reason is a claim too; "since the last pass" is time
+        },
     },
     'hu': {
         'state': ('Állapot', 'piszkozat'),
@@ -26,6 +36,14 @@ WORDS = {
         'see': 'Amit látni fogsz',
         'tracker': ('Követés: ', 'Döntések', ('Folyamat és követelmények', 'Elfogadva', 'Nyitott')),
         'recommend': 'javaslom|javasolnám|választanám|választottam',
+        'status': {
+            'by': rf'\b({ISO})(?:-ig\b|\s+előtt\b)', 'by_example': '2026-10-28T16:00Z-ig',
+            'on_it': ('Rajta vagyok',), 'then': ('Most', 'Majd', 'Aztán', 'Utána', 'Ezután', 'Közben'),
+            # a first-person present verb (Átnézem, Dolgozom, Írok, Mergeljük), not a past one (Javítottam, Néztünk) or Nem, Szerintem
+            'act': r"(?!nem\b)\w*(?:(?<!t)[eö]m|om|[oeö]k|j[uü]k|(?<!t)[uü]nk)\b", 'act_example': "'Átnézem …', 'Mergelem …'",
+            'relative': r'\b(?:holnap\w*|ma este|később)\b|\b(?:egy|fél|pár|néhány|\d+)\s+(?:órá?|perc|nap)\w*\s+(?:múlva|belül)\b',
+            'claim': r'\b\d+(?:\.\d+)?\s*(?:teszt|fájl|sor|hívás)\w*|\b(?:javíto?tt\w*|javítva|működ\w*|átm(?:ent|egy)\w*|elbuk\w*|hib\w*|reprodukált\w*|ellenőriz(?:tem|tük|ve)|megerősített\w*|okoz(?:za|ta)|regresszió\w*|mert|mivel)\b',
+        },
     },
 }
 
@@ -38,6 +56,15 @@ def language(repo):
 
 def words(repo):
     return WORDS[language(repo)]
+
+def status_words(repo):
+    """What post-lint's status checks look for: the repo's language's words and English's, which a status post may use in any repo;
+    the examples its findings quote are the repo's language's."""
+    ws = [WORDS[language(repo)]['status'], WORDS['en']['status']]
+    any_of = lambda k: '|'.join(dict.fromkeys(f'(?:{w[k]})' for w in ws))
+    every = lambda k: alt(dict.fromkeys(x for w in ws for x in w[k]))
+    return {**{k: any_of(k) for k in ('by', 'act', 'relative', 'claim')}, 'lead': rf"(?:(?:{every('on_it')})\b[\s:,.!]*)?(?:(?:{every('then')}),?\s+)?",
+            'by_example': ws[0]['by_example'], 'act_example': ws[0]['act_example']}
 
 def draft_repo(path):
     """(repo, why not) for a draft linted without --repo: its watch dir's repo (the first folder above the draft holding repos.txt; when
