@@ -1009,8 +1009,9 @@ L = "Is https://github.com/openai.png the badge you mean? Please drop it."
 print(*(m.answerable(u, b, set(), own=True) for b in (B, C, "Please fix the test.", Q, L)))
 ')
 check "a post starting with a badge, from any account, is an agent post; a person quoting or linking one is a person" "False False True True True" "$got"
-# the steward's dir: every new mergeworthy issue is reported to it though an ordinary dir watching the repo whole comes first, the opener's
-# dir already lists it or it is the agent's (rules step 2); the ordinary dir keeps its own handling, the opener its thread; a PR isn't
+# the steward's dir: every open mergeworthy issue is reported to it once, whenever it was opened (also while no watcher ran), though an
+# ordinary dir watching the repo whole comes first, the opener's dir lists it or it is the agent's (rules step 2); the ordinary dir keeps
+# its own handling, the opener its thread; a PR isn't; the open issues are one conditional request a pass
 got=$(py "$WHOLE"'
 mk = lambda name, repos, threads: (os.makedirs(os.path.join(WH, name), exist_ok=True), open(os.path.join(WH, name, "gh-watch.pid"), "w").write(str(os.getpid())),
                                    open(os.path.join(WH, name, "repos.txt"), "w").write(repos), open(os.path.join(WH, name, "threads.txt"), "w").write(threads),
@@ -1019,18 +1020,25 @@ ORD, SW, OP = mk("ordinary", "nitedani/mergeworthy all\n", ""), mk("steward", "n
 open(os.path.expanduser("~/.mergeworthy/steward"), "w").write(SW + " tid\n")
 reg = os.path.expanduser("~/.claude/gh-watch-dirs.txt"); kept = open(reg).read(); open(reg, "w").write("\n".join((ORD, SW, OP)) + "\n")
 m.HERE = ORD
-it = lambda n, who="me", body=B, pr=False: {"id": 2000 + n, "number": n, "user": {"login": who}, "body": body, "title": f"t{n}", "html_url": f"<m{n}>",
-                                           "created_at": "2026-10-29T10:00:00Z", "updated_at": "2026-10-29T10:00:00Z", **({"pull_request": {}} if pr else {})}
+it = lambda n, who="me", body=B, pr=False, created="2026-10-29T10:00:00Z": {"id": 2000 + n, "number": n, "user": {"login": who}, "body": body, "title": f"t{n}",
+                                           "html_url": f"<m{n}>", "created_at": created, "updated_at": created, **({"pull_request": {}} if pr else {})}
 m.react_eyes = lambda *a: None
 for i in (it(20), it(21, pr=True), it(20), it(22, "eve", "It breaks.")):
     m.moved_thread("nitedani/mergeworthy", i, True)
+OPEN, calls = [it(22, "eve", "It breaks."), it(21, pr=True), it(20), it(3, created="2026-10-13T21:12:06Z")], []
+def get(path, headers):
+    etag = f"\"{len(OPEN)}\""
+    calls.append("304" if headers.get("If-None-Match") == etag else "200")
+    return m.Resp(304, {}, "") if calls[-1] == "304" else m.Resp(200, {"etag": etag}, json.dumps(OPEN))
+m.http_get, m.poll_feed = get, lambda *a: None
+m.repo_feeds(); m.repo_feeds(); OPEN.insert(0, it(24, "eve", "Also this.")); m.repo_feeds()
 os.remove(os.path.expanduser("~/.mergeworthy/steward")); open(reg, "w").write(kept)
 evs = lambda d: ",".join(l.split()[3] for l in open(os.path.join(d, "events.log")) if l.startswith("###"))
 lst = lambda d: ",".join(l.split()[1] for l in open(os.path.join(d, "threads.txt")))
-print(evs(SW), evs(ORD), lst(SW) or "-", lst(ORD), lst(OP))
+print(evs(SW), evs(ORD), lst(SW) or "-", lst(ORD), lst(OP), ",".join(calls))
 ')
-check "the steward's dir gets each new mergeworthy issue once, an agent's one the opener lists too, though an ordinary dir watches the repo first; that dir handles the unlisted one; not a PR" \
-  "nitedani/mergeworthy#20,nitedani/mergeworthy#22 nitedani/mergeworthy#22 - 22 20,21" "$got"
+check "the steward's dir gets each open mergeworthy issue once, an old one and an agent's one the opener lists too, though an ordinary dir watches the repo first; that dir handles the unlisted one; not a PR; one conditional request a pass" \
+  "nitedani/mergeworthy#22,nitedani/mergeworthy#20,nitedani/mergeworthy#3,nitedani/mergeworthy#24 nitedani/mergeworthy#22 - 22 20,21 200,304,200" "$got"
 check "whole repo: moved threads join its dir unless another dir lists them; a bare line's repo joins nothing" "o/r 8 o/r 9 o/r 10 o/r 11 o/r 1|o/r 7|" \
   "$(echo $(cat "$WH/all/threads.txt"))|$(echo $(cat "$WH/other/threads.txt"))|$(cat "$WH/bare/threads.txt")"
 scanned() { py "$WHOLE"'
