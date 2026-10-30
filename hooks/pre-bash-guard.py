@@ -7,7 +7,7 @@ import json, re, sys, os, hashlib, subprocess
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
 import shellcmd
-from shellcmd import parse, segments, prog, opt, api_call, env_of, origin, watchable, new_post_drafts, branch_record, no_preflight, no_instructions_read, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Where
+from shellcmd import parse, segments, prog, opt, api_call, env_of, origin, unregistered, new_post_drafts, branch_record, no_preflight, no_instructions_read, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Where
 import own_actions, steward, post_words, work_folder
 def missing_steps(d):
     head = subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
@@ -120,7 +120,7 @@ def watch_dirs():
             pass
     return live
 
-def need_watch(repo, path):
+def need_watch(repo, path, why=''):
     """A push, or opening an issue or PR outside a task's work folder (need_home), needs the live loop (mergeworthy:task step 5): a running
     watcher of the task's work folder holding path, or of this session, must cover the repo. A comment on an existing thread isn't blocked
     here: post-bash-register adds that thread, and stop-lint requires a watcher's Monitor after any post."""
@@ -136,16 +136,15 @@ def need_watch(repo, path):
                 if any(l.split()[:1] in ([r] for r in repos) for l in lines(w, 'repos.txt') + lines(w, 'threads.txt'))]
     if not covering:
         start = f"`gh-watch-start {work_folder.task_of(path) or '<your work folder>'} {repos[0]}`"
-        block(f"no running watcher of this task or session covers {' or '.join(repos)} (another session's watcher wakes that session, not this one): "
+        block(f"no running watcher of this task or session covers {' or '.join(repos)} (another session's watcher wakes that session, not this one{'; ' + why if why else ''}): "
               + (f"a subagent starts none: end your turn asking the main session to run {start}" if by_agent()
                  else f"{start}, arm the Monitor it prints if any, then retry (mergeworthy:task step 5)"))
 
 def need_home(repo, path):
-    """Opening an issue or PR of a repo a watcher reads from a task's work folder: post-bash-register adds the new thread to that folder's
-    watcher, and starts or revives it when it isn't running. Anything else (another folder, a repo it can't tell or no watcher reads), need_watch."""
-    repos = [repo] if isinstance(repo, str) or repo is None else repo
-    if not (work_folder.task_of(known(path)) and all(map(watchable, repos))):
-        need_watch(repo, path)
+    """Opening an issue or PR: when post-bash-register adds every thread this command opens to its work folder's watcher, starting or
+    reviving it (shellcmd.unregistered), it passes; else need_watch, saying what keeps the hook from it."""
+    if why := unregistered(segs, cwd):
+        need_watch(repo, path, why)
 
 def check_turn(repo, num, args=()):
     """post §Thread rules: at most two comments in a row: while your last two comments on a thread have no reply after them and the last

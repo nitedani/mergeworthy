@@ -5,6 +5,7 @@ parse() reads a command with mvdan/sh, bash's syntax as shfmt parses it (hooks/r
 command that doesn't parse, or a parser that can't be installed, yields the command's words split roughly, with the error,
 so a hook checks what it can and blocks a guarded verb it can't check."""
 import hashlib, json, os, re, subprocess, sys
+import work_folder
 
 
 def branch_record(d, kind, branch=None):
@@ -460,6 +461,41 @@ def origin(d):
 def watchable(repo):
     """True for a repo a watcher reads: owner/repo on github.com, or gitlab.com/<path>."""
     return bool(repo) and (repo.startswith('gitlab.com/') or bool(re.fullmatch(r'[\w.-]+/[\w.-]+', repo)))
+
+def opened(t, d):
+    """(repo, what keeps the new thread's URL out of the output, or '') of the issue, PR or MR the simple command t, run in d, opens
+    (gh or glab create, or an API POST, as api_opens reads it); None when it opens none. repo is None when it can't be told."""
+    env, a = env_of(t), prog(t)
+    if not a or os.path.basename(a[0]) not in ('gh', 'glab') or '--help' in a or '-h' in a:
+        return None
+    p, a, here = os.path.basename(a[0]), a[1:], lambda: origin(d) if d else ''
+    if a[:1] == ['api']:
+        method, ep = api_call(a[1:])[:2]
+        if method != 'POST' or not (o := api_opens(ep, a[1:], env, here)):
+            return None
+        repo, filters = o[0], ('--jq', '-q', '--template', '-t', '--silent')
+    elif a[1:2] == ['create'] and a[0] in (('issue', 'pr') if p == 'gh' else ('issue', 'mr')):
+        repo, filters = gh_repo(a[2:], env, here) if p == 'gh' else gitlab_repo(a[2:], here), ('--web', '-w') if p == 'gh' else ('--web',)
+    else:
+        return None
+    drop = [f for f in filters if f in a or opt(a, [f])] + [w for w in t if re.fullmatch(r'1?(?:>|>>|>\||>&)|&>>?', w)]
+    return repo, (drop[0] if drop else 'a pipe, substitution, subshell or branch around it' if getattr(t, 'nested', False) else '')
+
+def unregistered(segs, cwd):
+    """'' when post-bash-register adds each issue, PR or MR the command line (segs, run from cwd) opens to its work folder's watcher, started
+    or revived if need be: each create's repo is on github.com or gitlab.com, it runs in a known dir of a task's work folder, all in one
+    folder, and its output is the new thread's URL. Else what keeps it from that, and what to change."""
+    folders, where = set(), Where(cwd)
+    for t in where.walk(segs):
+        if not (o := opened(t, where.dir)):
+            continue
+        repo, drop = o
+        if drop:
+            return f"its output can't carry the new thread's URL past {drop}: drop it, so post-bash-register can read the URL"
+        if not watchable(repo) or not (wf := where.dir and work_folder.task_of(where.dir)):
+            return "post-bash-register adds a new thread on github.com or gitlab.com, opened from a known dir in a task's work folder, to that folder's watcher"
+        folders.add(wf)
+    return "post-bash-register can't tell which work folder's watcher each new thread joins: one create per work folder, each in a command of its own" if len(folders) > 1 else ''
 
 def new_post_drafts(t):
     """Draft files a gh argv posts as something new (an issue, PR, comment or review): each draft is posted as new once, edits may repeat."""

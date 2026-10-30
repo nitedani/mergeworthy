@@ -2284,6 +2284,12 @@ areg() { # command stdout: post-bash-register from the unwatched folder, then th
 check "an issue opened through the API from a work folder with no watcher starts it: a full-URL gh api, {owner}/{repo} from GH_REPO, a glab api" \
   "2:sess-b $TK4 vikejs/vike 9|2:sess-b $TK4 vikejs/vike 9|2:sess-b $TK4 gitlab.com/ns/proj 9" \
   "$(areg "gh api https://api.github.com/repos/vikejs/vike/issues -f title=x -F body=@$T/na.md" https://github.com/vikejs/vike/issues/9)|$(areg "GH_REPO=vikejs/vike gh api 'repos/{owner}/{repo}/issues' -f title=x -F body=@$T/na.md" https://github.com/vikejs/vike/issues/9)|$(areg 'glab api projects/ns%2Fproj/issues -X POST -f title=x' https://gitlab.com/ns/proj/-/issues/9)"
+printf '%s\nIt breaks.\n' '<img src="https://github.com/claude.png" width="20" height="20" alt="Claude">' > "$T/h1.md"; sha256sum "$T/h1.md" | cut -d' ' -f1 > "$T/h1.md.gate"
+GI="gh api https://api.github.com/repos/vikejs/vike/issues -f title=x -F body=@$T/h1.md"
+drops() { for c in "$GI --jq .number" "$GI -q .number" "$GI --silent" "$GI > $T/out.json" "$GI | cat" "$PRC --web"; do
+  printf '%s %s ' "$(bgs sess-b "$c" "$CK4")" "$(grep -c 'drop it, so post-bash-register can read the URL' "$T/err")"; done | xargs; }
+check "BLOCK: from that folder, a create whose output can't carry the new thread's URL (--jq, -q, --silent, a redirect, a pipe; gh pr create --web), saying what to drop; with it, it passes" \
+  "2 1 2 1 2 1 2 1 2 1 2 1 0" "$(drops) $(bgs sess-b "$GI" "$CK4")"
 check "BLOCK: from that folder, an API create on a host no watcher reads or by a project's numeric id, as before" "2 1 2 1" \
   "$(bgs sess-b "gh api https://github.example.com/api/v3/repos/o/r/issues -f title=x -F body=@$T/na.md" "$CK4") $(grep -c 'no running watcher of this task or session covers github.example.com/o/r' "$T/err") $(bgs sess-b 'glab api projects/123/issues -X POST -f title=x' "$CK4") $(grep -c "can't tell which repo this acts on" "$T/err")"
 # the steward's watcher, whose session file names the session, wakes it only for a new mergeworthy issue: a PR opened while the task's
@@ -2294,7 +2300,8 @@ check "a PR from a work folder whose watcher retired starts that folder's watche
 rm -r "$SWD"; sed -i "\|^$SWD\$|d" "$HOME/.claude/gh-watch-dirs.txt"
 # two MRs opened in one command from two work folders: the second folder needs its own watcher
 TWO="cd $CK; $MRC; cd $CK4; $MRC"
-check "two MRs from two work folders in one command pass though the second folder has no watcher: post-bash-register starts it" 0 "$(bgs sess-b "$TWO" "$T")"
+check "BLOCK: two MRs from two work folders in one command while the second folder has no watcher: post-bash-register can't tell which folder each joins" "2 1" \
+  "$(bgs sess-b "$TWO" "$T") $(grep -c 'one create per work folder' "$T/err")"
 check "BLOCK: an MR where the dir can't be told (cd -, a cd to an unset variable, a cd in a subshell or bash -c), saying to cd to an absolute path" "2 2 2 2 1" \
   "$(bgs sess-b "cd $CK; $MRC; cd -; $MRC" "$CK4") $(bgs sess-b "cd \"\$NOWHERE\" && $MRC" "$CK") $(bgs sess-b "(cd $CK4); $MRC" "$CK") $(bgs sess-b "bash -c 'cd $CK4'; $MRC" "$CK") $(grep -c 'cd to an absolute path first' "$T/err")"
 check "a redirect on cd or pushd (pushd x >/dev/null, cd x 2>/dev/null) and cd \$(git rev-parse --show-toplevel) leave the dir known: an MR in the watched folder passes" "0 0 0 0" \
