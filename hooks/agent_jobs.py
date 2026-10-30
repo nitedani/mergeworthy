@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
-"""The jobs pre-agent-dedupe registered (~/.claude/agent-jobs, one JSON file each: key, started, and the brief, the launcher's
+"""The jobs pre-agent-dedupe registered (~/.claude/agent-jobs, one JSON file each: key, started, and the task, the launcher's
 session and transcript) and whether each one's agent has finished. T3's notices miss a run that ended interrupted or failed
-and was revived, or that wrote its report without a final message, so the agent's own transcript decides: the one under
-~/.claude/projects whose first prompt carries the brief (or, for a job an older hook registered with only its key and start,
-every ticket path in the key). It has finished when that transcript has been quiet for QUIET
+and was revived, or that wrote its report without a final message, so the agent's own transcript decides: the earliest-started
+one under ~/.claude/projects or ~/.codex/sessions that started at or after the launch and whose first prompt carries the job's
+whole task (or, for a job an older hook registered with only its key and start, every ticket path in the key). pre-agent-dedupe
+lets no open job's task contain another's, so that names the agent's own.
+It has finished when that transcript has been quiet for QUIET
 seconds with no tool call pending, or for LONG seconds whatever it was doing (no foreground tool call runs ten minutes),
 while T3 Code shows no active run or background command of its thread and no agent it launched is still at work."""
-import glob, json, os, re, sys, time
+import datetime, glob, hashlib, itertools, json, os, re, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import steward
+from shellcmd import rlines
 
 JOBS = os.path.expanduser('~/.claude/agent-jobs')
 REPORTED = os.path.expanduser('~/.claude/agent-jobs-reported')  # <job file>-<transcript mtime>: reported once per finish
+LAUNCHED = os.path.expanduser('~/.claude/agent-jobs-launch')  # <job file>: when pre-agent-dedupe let its launch through, its key, task, tool_use_id and launcher transcript
 LAUNCH = re.compile(rb'"name": ?"(Agent|Task|mcp__[^"]*(delegate_task|t3_thread_launch))"')  # pre-agent-dedupe's matcher
 QUIET, LONG, OPEN = 180, 660, 24 * 3600
 CODEX = '~/.codex/sessions/*/*/*/rollout-*.jsonl'  # T3 Code's Codex agents  # OPEN: pre-agent-dedupe's window, after which a job no longer counts
@@ -26,44 +30,88 @@ def jobs(now=None):
             out.append((f, j))
     return out
 
-_first = {}
-def first_prompt(path):
-    """A transcript's first prompt (it never changes, so each file is read once)."""
-    if path not in _first:
-        _first[path] = ''
-        with open(path, errors='replace') as fh:
-            for i, line in zip(range(50), fh):
-                try: o = json.loads(line)
-                except ValueError: continue
-                if isinstance(o, dict) and o.get('type') == 'response_item' and (o.get('payload') or {}).get('role') == 'user':
-                    _first[path] += ' '.join(b.get('text', '') for b in o['payload'].get('content') or [] if isinstance(b, dict)) + '\n'
-                    continue
-                if isinstance(o, dict) and o.get('type') == 'user' and not o.get('isMeta'):
-                    c = (o.get('message') or {}).get('content')
-                    t = c if isinstance(c, str) else ' '.join(b.get('text', '') for b in c or [] if isinstance(b, dict) and b.get('type') == 'text')
-                    if t.strip():
-                        _first[path] = t
-                        break
-    return _first[path]
+def stamp(s):
+    return datetime.datetime.fromisoformat(s.replace('Z', '+00:00')).timestamp()
+
+_head = {}
+def head(path):
+    """(first prompt, start time) of a transcript, None for a start it doesn't record: the first entry's `timestamp` (a Codex
+    rollout's session_meta, a Claude transcript's first queued prompt). Neither changes once the agent's first reply (Codex)
+    or the first prompt (Claude) is written, so such a head is read once; one written before it is read again on the next call."""
+    if path in _head: return _head[path]
+    prompt, start, done, n = '', None, False, 0
+    with open(path, errors='replace') as fh:
+        for line in itertools.islice(fh, 50):
+            if not line.endswith('\n'): break  # a line still being written
+            n += 1
+            try: o = json.loads(line)
+            except ValueError: continue
+            if not isinstance(o, dict): continue
+            if start is None and isinstance(o.get('timestamp'), str): start = stamp(o['timestamp'])
+            p = o.get('payload') or {}
+            if o.get('type') == 'response_item' and p.get('role') == 'user':
+                prompt += ' '.join(b.get('text', '') for b in p.get('content') or [] if isinstance(b, dict)) + '\n'
+                continue
+            if o.get('type') == 'response_item' and (p.get('role') == 'assistant' or p.get('type') == 'reasoning' or str(p.get('type')).endswith('_call')):
+                done = True
+                break
+            if o.get('type') == 'user' and not o.get('isMeta'):
+                c = (o.get('message') or {}).get('content')
+                t = c if isinstance(c, str) else ' '.join(b.get('text', '') for b in c or [] if isinstance(b, dict) and b.get('type') == 'text')
+                if t.strip():
+                    prompt, done = t, True
+                    break
+    if done or n == 50: _head[path] = (prompt, start)
+    return prompt, start
 
 def needles(job):
-    """What the agent's first prompt carries: the brief, else the ticket paths the key lists (a title-only key has none)."""
-    return [job['brief'].strip()[:500]] if job.get('brief') else [w for w in job['key'].split() if w.startswith('/')]
+    """What the agent's first prompt carries: the whole task, else the ticket paths the key lists (a title-only key has none)."""
+    return [job['brief'].strip()] if job.get('brief') else [w for w in job['key'].split() if w.startswith('/')]
+
+_launch = {}
+def launched(job):
+    """When the job's launch began (pre-agent-dedupe's PreToolUse). A job an older hook registered records only its
+    registration, after its agent's transcript began: its launch call's time in the launcher's transcript (the latest call
+    naming every needle, at or before the registration), else the registration."""
+    if job.get('launched'): return job['launched']
+    k = (job['key'], job['started'])
+    if k not in _launch:
+        _launch[k], ns = job['started'], needles(job)
+        try:
+            for l in rlines(job.get('transcript') or '/nonexistent') if ns else ():
+                if b'"tool_use"' not in l or not LAUNCH.search(l): continue
+                try: e = json.loads(l); at = stamp(e['timestamp'])
+                except (ValueError, KeyError, TypeError, AttributeError): continue
+                c = (e.get('message') or {}).get('content') if isinstance(e.get('message'), dict) else None
+                calls = [' '.join(map(str, b['input'].values())) for b in c if isinstance(b, dict) and b.get('type') == 'tool_use'
+                         and isinstance(b.get('input'), dict)] if isinstance(c, list) else []
+                if at <= job['started'] and any(all(n in t for n in ns) for t in calls):
+                    _launch[k] = at
+                    break
+        except OSError: pass
+    return _launch[k]
+
+def job_id(job):
+    return hashlib.sha256(f"{job['key']}\0{launched(job)}".encode()).hexdigest()[:16]
 
 _hit = {}
 def transcript(job):
-    """The agent's transcript: written since the launch, its first prompt carrying the needles; None until it starts."""
-    ns = needles(job); k = (tuple(ns), job['started'])
+    """The agent's transcript; None until it starts."""
+    ns, jid = needles(job), job_id(job)
     if not ns: return None
-    if os.path.exists(_hit.get(k) or '/nonexistent'):
-        return _hit[k]
-    root = os.path.expanduser('~/.claude/projects')
+    if os.path.exists(_hit.get(jid) or '/nonexistent'):
+        return _hit[jid]
+    root, found = os.path.expanduser('~/.claude/projects'), []
     for p in glob.glob(f'{root}/*/*.jsonl') + glob.glob(f'{root}/*/*/subagents/*.jsonl') + glob.glob(os.path.expanduser(CODEX)):
         try:
-            if os.path.getmtime(p) >= job['started'] - 60 and p != job.get('transcript') and all(n in first_prompt(p) for n in ns):
-                _hit[k] = p
-                return p
+            if os.path.getmtime(p) < launched(job): continue
+            prompt, start = head(p)
+            if start is not None and start >= launched(job) and all(n in prompt for n in ns): found.append((start, p))
         except OSError: pass
+    if found:
+        _hit[jid] = min(found)[1]
+        return _hit[jid]
+    return None
 
 def launchers(items):
     """{file name: launcher transcript} for (file name, job, agent transcript) items whose job recorded no launcher: the

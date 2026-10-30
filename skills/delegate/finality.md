@@ -23,6 +23,7 @@ done by lazily shuffling code around. Do it in three phases:
 PHASE A — MAP.
 Build a knowledge graph of the ENTIRE feature, line by line. It is tedious work; do it anyway.
 Map the subsystems using one shared node schema; the orchestrator assigns mapper agents.
+Subsystem: <name and paths>
 - For EVERY file: its role and why it is a separate file.
 - For EVERY function/class/constant (internal ones too):
   - purpose (what it decides, not its name paraphrased);
