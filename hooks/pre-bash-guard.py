@@ -9,6 +9,7 @@ import failclosed
 import shellcmd
 from shellcmd import parse, segments, prog, opt, api_call, env_of, origin, plain_create, PLAIN, new_post_drafts, branch_record, no_approach, no_preflight, no_instructions_read, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Where
 import own_actions, steward, post_words, testpaths, work_folder
+from t3_tasks import under_t3
 def missing_steps(d):
     head = subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
     rec = os.path.expanduser(f'~/.claude/pr-steps/{head}')
@@ -359,16 +360,6 @@ def check_steward(repo):
     if st and re.search(r'github\.com[:/]nitedani/mergeworthy(\.git)?$', subprocess.run(['git', '-C', repo, 'remote', 'get-url', 'origin'],
             capture_output=True, text=True).stdout.strip()) and not steward.is_steward(d.get('session_id'), d.get('cwd')):
         block(f"only the steward session (named in ~/.mergeworthy/steward; mergeworthy:rules step 2) commits to mergeworthy: open an issue on nitedani/mergeworthy with the fault and the fix you'd make: it wakes the steward")
-
-def under_t3():
-    """The session's claude process was started by T3 Code with T3's MCP server: its delegate_task runs other providers' agents."""
-    pid = os.getppid()
-    while pid > 1:
-        ppid, _, args = subprocess.run(['ps', '-o', 'ppid=,args=', '-p', str(pid)], capture_output=True, text=True).stdout.strip().partition(' ')
-        if os.path.basename(args.split(' ', 1)[0]) == 'claude':
-            return '"t3-code"' in args
-        pid = int(ppid or 0)
-    return False
 
 def title_setter(repo, num):
     """(login, when) of whoever else retitled the PR last, from its timeline; None when it's ours or nobody's. A timeline or
