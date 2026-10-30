@@ -158,7 +158,8 @@ EOF
     fi ;;
   finality)
     # finality step 3: a code file's 6th change on the branch waits for this record (pre-bash-guard)
-    grep -Eq '^Pinnacle: +[^ ]+ +[^ ]+ +[^ ]+' "$out" && grep -Eq '^Plan:' "$out" || { echo "$out needs a line 'Pinnacle: <the design>' and a line 'Plan:' with the ranked convergence plan (mergeworthy finality step 3)" >&2; exit 1; } ;;
+    grep -Eq '^Pinnacle: +[^ ]+ +[^ ]+ +[^ ]+' "$out" && awk '/^Plan:/{p=1;next} p&&/^[0-9]+\. +[^ ]/{f=1} END{exit !f}' "$out" ||
+      { echo "$out needs a line 'Pinnacle: <the design>' and a line 'Plan:' followed by the ranked convergence plan, one numbered line '1. <step>' per step (mergeworthy finality step 3)" >&2; exit 1; } ;;
   loopb)
     [ "$last" = CLEAN ] || { echo "$out does not end with a line CLEAN: fix its findings and continue the same agent" >&2; exit 1; } ;;
   fresh)

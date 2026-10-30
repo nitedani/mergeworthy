@@ -2608,6 +2608,8 @@ check "an amend of the 5th change is no 6th" 0 "$(bg 'git commit --amend --no-ed
 git -C "$SP" checkout -q HEAD -- a.py
 sc -m t; printf 'Class: each patch narrows which lines a counts\nDISTINCT\n' > "$T/simp.md"
 check "BLOCK: pr-steps simplify is gone, and a finality record needs its Pinnacle and Plan lines" "1 1" "$(cd "$SP" && bash "$R/bin/pr-steps" simplify "$T/simp.md" 2>/dev/null >/dev/null; echo $?) $(cd "$SP" && bash "$R/bin/pr-steps" finality "$T/simp.md" 2>/dev/null >/dev/null; echo $?)"
+printf 'Pinnacle: use one rule\nPlan:\n' > "$T/fin0.md"; printf 'Pinnacle: use one rule\nPlan:\nfold the patches into that rule\n' > "$T/fin1.md"
+check "BLOCK: a finality record with an empty Plan, or a Plan with no numbered step" "1 1" "$(cd "$SP" && bash "$R/bin/pr-steps" finality "$T/fin0.md" 2>/dev/null >/dev/null; echo $?) $(cd "$SP" && bash "$R/bin/pr-steps" finality "$T/fin1.md" 2>/dev/null >/dev/null; echo $?)"
 printf 'Pinnacle: one rule decides which lines a counts\nPlan:\n1. fold the patches into that rule\n' > "$T/fin.md"
 (cd "$SP" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null)
 echo p6 >> "$SP/a.py"; git -C "$SP" add a.py
