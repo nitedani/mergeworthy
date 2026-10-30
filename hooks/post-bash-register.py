@@ -20,21 +20,27 @@ cmd = d.get('tool_input', {}).get('command', '')
 r = d.get('tool_response') or {}
 out = r.get('stdout', '') if isinstance(r, dict) else str(r)
 
+def threads(text):
+    """The threads text's URLs name, in order, each (repo, number, gh-watch-start's line): `owner/repo N`, or `gitlab.com/<path> N`
+    for an issue and `gitlab.com/<path> !N` for an MR. The line names the thread whole: its repo, kind and number."""
+    return [(m[1], m[2], f'{m[1]} {m[2]}') if m[1] else ('gitlab.com/' + m[3], m[5], f"gitlab.com/{m[3]} {'!' if m[4] == 'merge_requests' else ''}{m[5]}")
+            for m in re.finditer(r'github\.com/([\w.-]+/[\w.-]+)/(?:issues|pull)/(\d+)|gitlab\.com/([\w.-]+(?:/[\w.-]+)+?)/-/(issues|work_items|merge_requests)/(\d+)', text)]  # glab prints new issues as work_items
+
 def created(out):
-    """The number of the thread an API create's JSON response is, by its top-level html_url or web_url; None when the output
-    isn't one such response (filtered, or several)."""
+    """The thread (as threads() names it) an API create's JSON response is, by its top-level html_url or web_url; None when the
+    output isn't one such response (filtered, or several)."""
     try: v = json.loads(out)
     except ValueError: return None
-    m = re.search(r'/(\d+)/?$', (v.get('html_url') or v.get('web_url') or '') if isinstance(v, dict) else '')
-    return m and m[1]
+    t = threads((v.get('html_url') or v.get('web_url') or '') if isinstance(v, dict) else '')
+    return t[0] if len(t) == 1 else None
 
 def target(t, d):
-    """(repo or None, number or None) a posting gh argv, run in d, writes to; None when the argv doesn't post.
+    """(repo or None, number or None[, the thread]) a posting gh argv, run in d, writes to; None when the argv doesn't post.
     Only a real `gh` argv counts: text that merely mentions one (an echo, a grep, a fixture) posts nothing.
-    An issue, PR or MR an API call opens is told as pre-bash-guard tells it (shellcmd.opened), its number by the response's own
+    An issue, PR or MR an API call opens is told as pre-bash-guard tells it (shellcmd.opened), the thread by the response's own
     URL (created): a URL in the new thread's body isn't the thread."""
     if prog(t)[1:2] == ['api'] and (o := opened(t, d)):
-        return o[0], created(out)
+        return (o[0], None, c) if (c := created(out)) else (o[0], None)
     t = prog(t)
     if t and os.path.basename(t[0]) == 'glab' and t[2:3] in (['create'], ['note']) and t[1] in ('issue', 'mr') and '--help' not in t and '-h' not in t:
         return None, None  # glab prints the thread's URL: that names it
@@ -64,7 +70,7 @@ cwd = d.get('cwd') or os.getcwd()
 where, drafts, posts = Where(cwd), [], []
 for s in where.walk(segs):
     drafts += [os.path.join(cwd, os.path.expanduser(where.expand(f))) for f in new_post_drafts(s)]
-    if tg := target(s, where.dir): posts.append((*tg, where.dir))
+    if tg := target(s, where.dir): posts.append((tg[0], tg[1], where.dir, tg[2] if len(tg) > 2 else None))
 # Written here, not in pre-bash-guard: PostToolUse runs only after the command succeeded, so a post another hook blocked, or one that failed, can be retried
 if isinstance(r, dict) and not r.get('interrupted'):
     for f in drafts:
@@ -76,17 +82,17 @@ if isinstance(r, dict) and not r.get('interrupted'):
             pass  # a draft with no gate record wasn't posted (pre-bash-guard refuses it); one gone since can't be posted again
 if not posts:
     sys.exit(0)
-def wrote(post, repo, num):  # whether that posting segment can have written the thread
-    return (post[0] is None or post[0] == repo) and (post[1] is None or post[1] == num)
-def posted(repo, num):  # a URL in stdout counts only when it is the thread a posting segment wrote to
-    return any(wrote(p, repo, num) for p in posts)
+def wrote(post, th):  # whether that posting segment can have written the thread th (threads()'s); one that names its thread, only that one
+    return post[3] == th if post[3] else (post[0] is None or post[0] == th[0]) and (post[1] is None or post[1] == th[1])
+def posted(th):  # a URL in stdout counts only when it is the thread a posting segment wrote to
+    return any(wrote(p, th) for p in posts)
 # The agent and the user may share one login, so the watcher knows a comment is the agent's by its body's hash.
 # `gh --attach` rewrites the body as it posts, so register the body that was actually posted, not only the draft's.
 import subprocess
 def register_posted(out):
     gated = os.path.expanduser(os.environ.get('GATED_POSTS', '~/.claude/gated-posts.txt'))
     for repo, num, kind, cid in re.findall(r'github\.com/([\w.-]+/[\w.-]+)/(?:issues|pull)/(\d+)(?:#(issuecomment|discussion_r)-?(\d+))?', out):
-        if not posted(repo, num):
+        if not posted((repo, num, f'{repo} {num}')):
             continue
         path = {'issuecomment': f'repos/{repo}/issues/comments/{cid}', 'discussion_r': f'repos/{repo}/pulls/comments/{cid}'}.get(kind, f'repos/{repo}/issues/{num}')
         try:
@@ -151,12 +157,10 @@ def start(home, line):
         told.append(f"started the watcher of {home} for {line}. " + r.stdout[r.stdout.index('Arm a Monitor'):].strip())
 # each thread in stdout joins the one watcher every posting segment it fits leads to; one whose watcher would be a guess joins
 # none, and the agent is told
-found = [(m[1], m[2], f'{m[1]} {m[2]}') if m[1] else ('gitlab.com/' + m[3], m[5], f"gitlab.com/{m[3]} {'!' if m[4] == 'merge_requests' else ''}{m[5]}")  # gh-watch-start's GitLab line
-         for m in re.finditer(r'github\.com/([\w.-]+/[\w.-]+)/(?:issues|pull)/(\d+)|gitlab\.com/([\w.-]+(?:/[\w.-]+)+?)/-/(issues|work_items|merge_requests)/(\d+)', out)]  # glab prints new issues as work_items
-found = [f for f in dict.fromkeys(found) if posted(f[0], f[1])]
+found = [f for f in dict.fromkeys(threads(out)) if posted(f)]
 pairs, lost = [], []
 for repo, num, line in found:
-    fits = [p for p in posts if wrote(p, repo, num)]
+    fits = [p for p in posts if wrote(p, (repo, num, line))]
     homes = {home_of(repo, p[2]) for p in fits} if all(p[2] for p in fits) else set()  # a dir Where can't tell picks no watcher
     if len(homes) == 1: pairs.append((repo, line, homes.pop()))
     else: lost.append(line)
