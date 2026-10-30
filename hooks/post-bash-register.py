@@ -9,7 +9,7 @@ A gated draft it posted as new gets its .posted marker, which pre-bash-guard rea
 import hashlib, json, os, re, shlex, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
-from shellcmd import segments, prog, new_post_drafts, Where, opened
+from shellcmd import segments, prog, new_post_drafts, Where, opened, plain_create
 import own_actions, steward, work_folder
 d = json.load(sys.stdin)
 # the pushes, merges and closes pre-bash-guard let this command make are its own once it succeeded; a failed command's go
@@ -156,8 +156,10 @@ for repo, line, home in pairs:
         home = watched
     elif home and os.path.realpath(home) in map(os.path.realpath, live_dirs):
         open(os.path.join(home, 'threads.txt'), 'a').write(line + '\n')
-    elif home and watcher_on:
+    elif home and watcher_on and home == plain_create(segs, cwd):  # what pre-bash-guard let through without a running watcher
         start(home, line)
+    elif home and watcher_on:
+        told.append(f"the watcher of {home} isn't running, so {line} joined none: run `gh-watch-start {home} {line}`, arm the Monitor it prints if any")
     # the thread now covers its repo there: its bare repo line says nothing more
     if home and repo in lines(home, 'repos.txt'):
         p = os.path.join(home, 'repos.txt')

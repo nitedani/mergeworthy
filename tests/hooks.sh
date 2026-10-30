@@ -2333,8 +2333,8 @@ check "an issue opened through the API from a work folder with no watcher starts
 printf '%s\nIt breaks.\n' '<img src="https://github.com/claude.png" width="20" height="20" alt="Claude">' > "$T/h1.md"; sha256sum "$T/h1.md" | cut -d' ' -f1 > "$T/h1.md.gate"
 GI="gh api https://api.github.com/repos/vikejs/vike/issues -f title=x -F body=@$T/h1.md"
 drops() { for c in "$GI --jq .number" "$GI -q .number" "$GI --silent" "$GI > $T/out.json" "$GI | cat" "$PRC --web"; do
-  printf '%s %s ' "$(bgs sess-b "$c" "$CK4")" "$(grep -c 'drop it, so post-bash-register can read the URL' "$T/err")"; done | xargs; }
-check "BLOCK: from that folder, a create whose output can't carry the new thread's URL (--jq, -q, --silent, a redirect, a pipe; gh pr create --web), saying what to drop; with it, it passes" \
+  printf '%s %s ' "$(bgs sess-b "$c" "$CK4")" "$(grep -c 'only a plain create starts its work folder' "$T/err")"; done | xargs; }
+check "BLOCK: from that folder, a create whose output can't carry the new thread's URL (--jq, -q, --silent, a redirect, a pipe; gh pr create --web), saying what a plain create is; with none, it passes" \
   "2 1 2 1 2 1 2 1 2 1 2 1 0" "$(drops) $(bgs sess-b "$GI" "$CK4")"
 check "BLOCK: from that folder, an API create on a host no watcher reads or by a project's numeric id, as before" "2 1 2 1" \
   "$(bgs sess-b "gh api https://github.example.com/api/v3/repos/o/r/issues -f title=x -F body=@$T/na.md" "$CK4") $(grep -c 'no running watcher of this task or session covers github.example.com/o/r' "$T/err") $(bgs sess-b 'glab api projects/123/issues -X POST -f title=x' "$CK4") $(grep -c "can't tell which repo this acts on" "$T/err")"
@@ -2347,7 +2347,13 @@ rm -r "$SWD"; sed -i "\|^$SWD\$|d" "$HOME/.claude/gh-watch-dirs.txt"
 # two MRs opened in one command from two work folders: the second folder needs its own watcher
 TWO="cd $CK; $MRC; cd $CK4; $MRC"
 check "BLOCK: two MRs from two work folders in one command while the second folder has no watcher: post-bash-register can't tell which folder each joins" "2 1" \
-  "$(bgs sess-b "$TWO" "$T") $(grep -c 'one create per work folder' "$T/err")"
+  "$(bgs sess-b "$TWO" "$T") $(grep -c 'only a plain create starts its work folder' "$T/err")"
+# only a plain create passes without a running watcher: a create in a redirected group, or beside a note in another folder, doesn't
+GIC='glab issue create -R gitlab.com/ns/proj --title x'; H2="$GIC; cd $CK; glab issue note 1 -R gitlab.com/ns/proj --message done"
+check "BLOCK: from a work folder with no watcher, a create in a brace group redirected to a file, one beside a note, one after cd &&, in \$(...) or backgrounded; alone it passes" \
+  "2 2 2 2 2 0" "$(bgs sess-b "{ $GIC; } > $T/out" "$CK4") $(bgs sess-b "$H2" "$CK4") $(bgs sess-b "cd $CK4 && $GIC" "$T") $(bgs sess-b "echo \$($GIC)" "$CK4") $(bgs sess-b "$GIC &" "$CK4") $(bgs sess-b "$GIC" "$CK4")"
+check "post-bash-register starts the folder's watcher for a plain create only: the create beside a note starts none; a note alone neither, saying to start it" "2:sess-b $TK4 gitlab.com/ns/proj 9|2:|1" \
+  "$(areg "$GIC" https://gitlab.com/ns/proj/-/issues/9)|$(areg "$H2" "$(printf 'https://gitlab.com/ns/proj/-/issues/9\nhttps://gitlab.com/ns/proj/-/issues/1#note_2')")|$(python3 -c 'import json,sys; print(json.dumps({"session_id":"sess-b","cwd":sys.argv[1],"tool_input":{"command":sys.argv[2]},"tool_response":{"stdout":"https://gitlab.com/ns/proj/-/issues/9"}}))' "$CK4" 'glab issue note 9 -R gitlab.com/ns/proj --message x' | python3 "$R/hooks/post-bash-register.py" 2>&1 >/dev/null | grep -c "isn't running, so gitlab.com/ns/proj 9 joined none")"
 check "BLOCK: an MR where the dir can't be told (cd -, a cd to an unset variable, a cd in a subshell or bash -c), saying to cd to an absolute path" "2 2 2 2 1" \
   "$(bgs sess-b "cd $CK; $MRC; cd -; $MRC" "$CK4") $(bgs sess-b "cd \"\$NOWHERE\" && $MRC" "$CK") $(bgs sess-b "(cd $CK4); $MRC" "$CK") $(bgs sess-b "bash -c 'cd $CK4'; $MRC" "$CK") $(grep -c 'cd to an absolute path first' "$T/err")"
 check "a redirect on cd or pushd (pushd x >/dev/null, cd x 2>/dev/null) and cd \$(git rev-parse --show-toplevel) leave the dir known: an MR in the watched folder passes" "0 0 0 0" \

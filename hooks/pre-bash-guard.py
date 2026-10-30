@@ -7,7 +7,7 @@ import json, re, sys, os, hashlib, subprocess
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
 import shellcmd
-from shellcmd import parse, segments, prog, opt, api_call, env_of, origin, unregistered, new_post_drafts, branch_record, no_approach, no_preflight, no_instructions_read, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Where
+from shellcmd import parse, segments, prog, opt, api_call, env_of, origin, plain_create, PLAIN, new_post_drafts, branch_record, no_approach, no_preflight, no_instructions_read, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Where
 import own_actions, steward, post_words, work_folder
 def missing_steps(d):
     head = subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
@@ -141,10 +141,10 @@ def need_watch(repo, path, why=''):
                  else f"{start}, arm the Monitor it prints if any, then retry (mergeworthy:task step 5)"))
 
 def need_home(repo, path):
-    """Opening an issue or PR: when post-bash-register adds every thread this command opens to its work folder's watcher, starting or
-    reviving it (shellcmd.unregistered), it passes; else need_watch, saying what keeps the hook from it."""
-    if why := unregistered(segs, cwd):
-        need_watch(repo, path, why)
+    """Opening an issue or PR: a plain create (shellcmd.plain_create), whose thread post-bash-register adds to its work folder's
+    watcher, starting or reviving it, passes; any other command needs need_watch's running watcher."""
+    if not plain_create(segs, cwd):
+        need_watch(repo, path, PLAIN)
 
 def check_turn(repo, num, args=()):
     """post §Thread rules: at most two comments in a row: while your last two comments on a thread have no reply after them and the last

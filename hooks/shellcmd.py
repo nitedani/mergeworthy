@@ -119,13 +119,14 @@ def _assign(a, src):
 class Seg(list):
     """A simple command's argv; nested: whether it runs where a cd in it may not hold for what follows (a subshell, substitution,
     pipeline part or background job, after || or !, a branch, a loop, a function, a child shell's script, find's -exec), for Where;
-    loop: whether it runs inside a while or until loop."""
-    nested = loop = False
+    loop: whether it runs inside a while or until loop; top: whether it is a statement of the command line itself, or the first
+    part of an && or || chain there (not in a group, subshell, pipeline, substitution, branch, loop or function)."""
+    nested = loop = top = False
 
 
-def _seg(argv, nested, loop=False):
+def _seg(argv, nested, loop=False, top=False):
     s = Seg(argv)
-    s.nested, s.loop = nested, loop
+    s.nested, s.loop, s.top = nested, loop, top
     return s
 
 
@@ -139,11 +140,11 @@ def _scoped(x, k):
 def _calls(node, src, nested=False):
     """(the argv of every simple command under node, in order, each a Seg; the statements each heredoc of them is read by:
     (redirect, top statement, whether it is in a loop))."""
-    segs, docs, stack = [], [], [(node, None, nested, False)]
+    segs, docs, stack = [], [], [(node, None, nested, False, node.get('Type') == 'File')]
     while stack:
-        x, top, n, loop = stack.pop()
+        x, top, n, loop, plain = stack.pop()
         if isinstance(x, list):
-            stack += [(y, top, n, loop) for y in reversed(x)]
+            stack += [(y, top, n, loop, plain) for y in reversed(x)]
             continue
         if not isinstance(x, dict):
             continue
@@ -151,11 +152,15 @@ def _calls(node, src, nested=False):
         cmd, redirs = x.get('Cmd') or {}, x.get('Redirs') or []
         words = [w for r in redirs for w in ((r.get('N') or {}).get('Value', '') + r['Op'], _word(r.get('Word') or {}, src))]
         if cmd.get('Type') == 'CallExpr':
-            segs.append(_seg([_assign(a, src) for a in cmd.get('Assigns') or []] + [_word(a, src) for a in cmd.get('Args') or []] + words, n or _scoped(x, 'Cmd'), loop))
+            segs.append(_seg([_assign(a, src) for a in cmd.get('Assigns') or []] + [_word(a, src) for a in cmd.get('Args') or []] + words, n or _scoped(x, 'Cmd'), loop,
+                             plain and not (x.get('Background') or x.get('Negated'))))
         elif cmd.get('Type') == 'DeclClause':
             segs.append(_seg([cmd['Variant']['Value']] + [_assign(a, src) for a in cmd.get('Args') or []] + words, n or _scoped(x, 'Cmd'), loop))
         docs += [(r, top or x, loop) for r in redirs if r.get('Hdoc')]
-        stack += [(v, None if k == 'Stmts' else (top or x) if 'Cmd' in x else top, n or _scoped(x, k), loop)  # each statement of a list is a top statement
+        # plain: the command line's own statements, a statement's command, and the first part of an && or || chain of them
+        keep = lambda k: plain and (x.get('Type') == 'File' and k == 'Stmts' or 'Cmd' in x and k == 'Cmd' and not (x.get('Background') or x.get('Negated'))
+                                    or x.get('Type') == 'BinaryCmd' and x.get('Op') in ('&&', '||') and k == 'X')
+        stack += [(v, None if k == 'Stmts' else (top or x) if 'Cmd' in x else top, n or _scoped(x, k), loop, keep(k))  # each statement of a list is a top statement
                   for k, v in reversed(x.items()) if isinstance(v, (dict, list)) and k not in ('Pos', 'End', 'Hdoc')]
     return segs, docs
 
@@ -230,7 +235,7 @@ def parse(cmd, depth=0, nested=False, loop=False):
         if r.returncode:
             raise ValueError('bash syntax error at ' + r.stderr.decode(errors='replace').strip().replace('<standard input>:', ''))
         segs, err = _segments(json.loads(r.stdout), cmd.encode(), depth)
-        for x in segs: x.nested, x.loop = x.nested or nested, x.loop or loop
+        for x in segs: x.nested, x.loop, x.top = x.nested or nested, x.loop or loop, x.top and not nested
     except ValueError as e:  # also a JSON error
         segs, err = [_seg(x, True) for x in _rough(cmd)], str(e)
     except Exception as e:  # no parser: nothing is checked as parsed, and a guarded verb blocks
@@ -473,8 +478,8 @@ def watchable(repo):
     return bool(repo) and (repo.startswith('gitlab.com/') or bool(re.fullmatch(r'[\w.-]+/[\w.-]+', repo)))
 
 def opened(t, d):
-    """(repo, what keeps the new thread's URL out of the output, or '') of the issue, PR or MR the simple command t, run in d, opens
-    (gh or glab create, or an API POST, as api_opens reads it); None when it opens none. repo is None when it can't be told."""
+    """(repo, the options that keep its URL out of the output) of the issue, PR or MR the simple command t, run in d, opens (gh or
+    glab create, or an API POST, as api_opens reads it); None when it opens none. repo is None when it can't be told."""
     env, a = env_of(t), prog(t)
     if not a or os.path.basename(a[0]) not in ('gh', 'glab') or '--help' in a or '-h' in a:
         return None
@@ -483,29 +488,35 @@ def opened(t, d):
         method, ep = api_call(a[1:])[:2]
         if method != 'POST' or not (o := api_opens(ep, a[1:], env, here)):
             return None
-        repo, filters = o[0], ('--jq', '-q', '--template', '-t', '--silent')
-    elif a[1:2] == ['create'] and a[0] in (('issue', 'pr') if p == 'gh' else ('issue', 'mr')):
-        repo, filters = gh_repo(a[2:], env, here) if p == 'gh' else gitlab_repo(a[2:], here), ('--web', '-w') if p == 'gh' else ('--web',)
-    else:
-        return None
-    drop = [f for f in filters if f in a or opt(a, [f])] + [w for w in t if re.fullmatch(r'1?(?:>|>>|>\||>&)|&>>?', w)]
-    return repo, (drop[0] if drop else 'a pipe, substitution, subshell or branch around it' if getattr(t, 'nested', False) else '')
+        return o[0], ('--jq', '-q', '--template', '-t', '--silent')
+    if a[1:2] == ['create'] and a[0] in (('issue', 'pr') if p == 'gh' else ('issue', 'mr')):
+        return gh_repo(a[2:], env, here) if p == 'gh' else gitlab_repo(a[2:], here), ('--web', '-w') if p == 'gh' else ('--web',)
+    return None
 
-def unregistered(segs, cwd):
-    """'' when post-bash-register adds each issue, PR or MR the command line (segs, run from cwd) opens to its work folder's watcher, started
-    or revived if need be: each create's repo is on github.com or gitlab.com, it runs in a known dir of a task's work folder, all in one
-    folder, and its output is the new thread's URL. Else what keeps it from that, and what to change."""
-    folders, where = set(), Where(cwd)
+READS = ('view', 'list', 'ls', 'status', 'diff', 'checks', 'search', 'checkout')
+def posts(t):
+    """Whether the simple command t may write to GitHub or GitLab: a gh or glab command that isn't a read (view, list, an API GET)."""
+    a = prog(t)
+    if not a or os.path.basename(a[0]) not in ('gh', 'glab'):
+        return False
+    return api_call(a[2:])[0] != 'GET' if a[1:2] == ['api'] else a[2:3] == [] or a[2] not in READS
+
+PLAIN = ("only a plain create starts its work folder's watcher by itself: the command's one posting command, at its top level (not in a "
+         "group, subshell, pipe, substitution, loop, function or after && or ||), with no redirect or output filter (--jq, -q, --silent, "
+         "--template, --web), run from an absolute dir in a task's work folder, on github.com or gitlab.com")
+def plain_create(segs, cwd):
+    """The task's work folder whose watcher post-bash-register adds the thread to, starting or reviving it, when the command line
+    (segs, run from cwd) is a plain create (PLAIN says which); None for any other command."""
+    where, found = Where(cwd), []
     for t in where.walk(segs):
-        if not (o := opened(t, where.dir)):
-            continue
-        repo, drop = o
-        if drop:
-            return f"its output can't carry the new thread's URL past {drop}: drop it, so post-bash-register can read the URL"
-        if not watchable(repo) or not (wf := where.dir and work_folder.task_of(where.dir)):
-            return "post-bash-register adds a new thread on github.com or gitlab.com, opened from a known dir in a task's work folder, to that folder's watcher"
-        folders.add(wf)
-    return "post-bash-register can't tell which work folder's watcher each new thread joins: one create per work folder, each in a command of its own" if len(folders) > 1 else ''
+        if posts(t): found.append((t, where.dir, opened(t, where.dir)))
+    if len(found) != 1 or not found[0][2] or not found[0][0].top:
+        return None
+    t, d, (repo, filters) = found[0]
+    a = prog(t)
+    if any(f in a or opt(a, [f]) for f in filters) or any(re.fullmatch(r'1?(?:>|>>|>\||>&)|&>>?', w) for w in t) or not watchable(repo):
+        return None
+    return d and work_folder.task_of(d) or None
 
 def new_post_drafts(t):
     """Draft files a gh argv posts as something new (an issue, PR, comment or review): each draft is posted as new once, edits may repeat."""
