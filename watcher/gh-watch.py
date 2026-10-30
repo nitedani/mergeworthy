@@ -33,7 +33,7 @@ from concurrent.futures import ThreadPoolExecutor
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))  # a watch dir runs this through a link
 import gl_watch
 sys.path.insert(1, os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'hooks'))
-import agent_jobs, own_actions, shlex, steward, work_folder
+import agent_jobs, own_actions, shlex, steward, testpaths, work_folder
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE = os.path.join(HERE, 'gh-watch-state.json')
@@ -826,7 +826,7 @@ def emit_refactor_stale(repo, key, new):
         rec = os.path.expanduser('~/.claude/pr-steps')
         idx = max((i for i, c in enumerate(commits) if os.path.exists(f"{rec}/{c['sha']}") and any(l.startswith(('shape ', 'refactor ')) for l in open(f"{rec}/{c['sha']}"))), default=-1)
         since = [c['sha'] for c in commits[idx + 1:] if not c['merge']]
-        skip = re.compile(r'\.(spec|test)\.|(^|/)tests?/|(^|/)(pnpm-lock\.yaml|package-lock\.json|yarn\.lock)$|(^|/)dist/')
+        skip = re.compile(testpaths.TESTS + r'|(^|/)(pnpm-lock\.yaml|package-lock\.json|yarn\.lock)$|(^|/)dist/')
         lines = sum(f['additions'] + f['deletions'] for sha in since for f in (request(f"repos/{repo}/commits/{sha}").json().get('files') or []) if not skip.search(f['filename']))
     except Exception as e:
         fail(f"shape check {key}", e)

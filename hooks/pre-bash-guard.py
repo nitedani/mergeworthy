@@ -7,7 +7,7 @@ import json, re, sys, os, hashlib, subprocess
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
 from shellcmd import parse, segments, prog, opt, api_call, new_post_drafts, branch_record, no_preflight, no_instructions_read, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Where
-import own_actions, steward, post_words, work_folder
+import own_actions, steward, post_words, testpaths, work_folder
 def missing_steps(d):
     head = subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
     rec = os.path.expanduser(f'~/.claude/pr-steps/{head}')
@@ -412,7 +412,7 @@ own = {'PUSHED_HEADS': [], 'CLOSED_THREADS': []}  # the heads it pushes; `owner/
 def git_head(d):
     return subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
 
-NOT_CODE = re.compile(r'(^|/)(tests?|__tests__|e2e|specs?|docs?)/|\.(test|spec)\.|\.md$|lock\.(json|yaml)$|\.lock$|(^|/)\.changeset/')
+NOT_CODE = re.compile(testpaths.TESTS + r'|(^|/)docs?/|\.md$|lock\.(json|yaml)$|\.lock$|(^|/)\.changeset/')
 def check_patches(d, pending=None, amend=False):
     """`finality` step 1 as a mechanism: a code file (no test or doc) changed by 5 commits of the branch since its first review
     (a verify, small, shape, reverify or fresh record) gets no 6th until `pr-steps finality` records the finality pass's plan on the head;
