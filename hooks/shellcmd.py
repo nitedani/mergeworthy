@@ -381,13 +381,15 @@ def opt(t, names):
 NO_TEXT = re.compile(r'(?:repos/[^/]+/[^/]+/(?:.+/)?(?:reactions|rerun[\w-]*|dispatches|labels|assignees|requested_reviewers)(?:/[^/]+)?'
                      r'|repos/[^/]+/[^/]+/(?:collaborators|invitations)/[^/]+|user/repository_invitations/\d+)')
 
-def graphql_posts(fields, inputs):
-    """A GraphQL call posts text when its query, literal or read from a file, is a mutation other than adding or removing a reaction."""
+def graphql_posts(fields, inputs, cwd):
+    """A GraphQL call posts text when its query, literal or read from a file (relative to cwd, the dir the command runs in), is a mutation other than
+    adding or removing a reaction."""
     queries = [v for v in fields if not v.startswith('query=@')]
     try:
-        queries += [open(os.path.expanduser(v[len('query=@'):])).read() for v in fields if v.startswith('query=@')]
-        queries += [str(json.load(open(os.path.expanduser(f))).get('query', '')) for f in inputs]  # --input is a JSON request body
-    except (OSError, ValueError, AttributeError):
+        path = lambda f: os.path.join(cwd or '', os.path.expanduser(f)) if cwd or os.path.isabs(os.path.expanduser(f)) else None
+        queries += [open(path(v[len('query=@'):])).read() for v in fields if v.startswith('query=@')]
+        queries += [str(json.load(open(path(f))).get('query', '')) for f in inputs]  # --input is a JSON request body
+    except (OSError, ValueError, AttributeError, TypeError):
         return True  # stdin, an unreadable file or a body that isn't a JSON object: treated as a post
     for q in queries:
         if re.search(r'\bmutation\b', q):
@@ -396,9 +398,10 @@ def graphql_posts(fields, inputs):
                 return True
     return False
 
-def api_call(rest):
+def api_call(rest, cwd=None):
     """(method, endpoint, fields, inputs, posts) of `gh api <rest>`. It posts text when it is a GraphQL mutation, or a POST,
-    PATCH or PUT that isn't a reaction, rerun, dispatch, label, assignee, review request, collaborator or invitation."""
+    PATCH or PUT that isn't a reaction, rerun, dispatch, label, assignee, review request, collaborator or invitation. cwd: where the command
+    runs, for the files a GraphQL query is read from; None when unknown, so a relative file counts as a post."""
     method = (opt(rest, ['-X', '--method']) or [''])[-1].upper()
     fields = opt(rest, ['-f', '--raw-field', '-F', '--field'])
     inputs = opt(rest, ['--input'])
@@ -407,7 +410,7 @@ def api_call(rest):
            ('-X', '--method', '-f', '--raw-field', '-F', '--field', '--input', '-H', '--header', '-q', '--jq', '-t', '--template', '--hostname', '--cache', '-p', '--preview'))]
     ep = pos[0] if pos else ''
     if ep == 'graphql':
-        posts = graphql_posts(fields, inputs)
+        posts = graphql_posts(fields, inputs, cwd)
     else:
         posts = method in ('POST', 'PATCH', 'PUT') and not NO_TEXT.fullmatch(re.sub(r'^(?:https?://[^/]+)?/?(?:api/v3/)?', '', ep).split('?')[0])
     return method, ep, fields, inputs, posts

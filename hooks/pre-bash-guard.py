@@ -826,7 +826,7 @@ def check(t, has_cd):
             for f in files: gated_file(f, has_cd, create=f in new_post_drafts(t))
     if p == 'gh' and a and a[0] == 'api':
         rest = a[1:]
-        method, ep, fields, inputs, posts = api_call(rest)
+        method, ep, fields, inputs, posts = api_call(rest, run_dir)
         if not posts:
             return
         if re.search(r'\{(owner|repo)\}', ep) and (here := gh_repo(rest, env, run_dir)):  # what gh fills them from

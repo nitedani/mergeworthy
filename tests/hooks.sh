@@ -1920,6 +1920,8 @@ json.dump({'query': 'mutation { addReaction(\n input: {subjectId: "x", content: 
 print(*[s.api_call(['graphql', '--input', f'{T}/{f}'])[4] for f in ('c.json', 'rn.json')])
 PY2
 )"
+mkdir -p "$T/gq" && cp "$T/r.json" "$T/gq/r.json"
+check "GraphQL: a relative --input is read from the dir the command runs in, after a cd too" 0 "$(sgb "cd $T/gq && gh api graphql --input r.json")"
 sg_tr "$T/sg.jsonl" text
 check "BLOCK: gh api comment POST" 2 "$(sgb "gh api repos/o/r/issues/5/comments -F body=@$T/d.md")"
 check "the post block names post and writing" "mergeworthy:post mergeworthy:writing" "$(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | sort | xargs)"
