@@ -7,7 +7,7 @@ def _not(seen):
     """Not one of a language's observation verbs: "I'm seeing …", "Látom …" report a result, not what is being done."""
     return rf"(?!(?:{seen})\b)"
 
-_SEEN = {'en': r'(?:see|gett|find|notic|observ|hitt)ing', 'hu': r'(?:(?:meg)?(?:lát|kap|tapasztal)|(?:meg|rá)?talál|észrev|észlel|(?:meg|fel)figyel|(?:bele|rá)fut)\w*'}  # with the verbal prefixes these stems take (Megtalálom, Rátalálok, Felfigyelek)
+_SEEN = {'en': r'(?:see|gett|find|notic|observ|hitt)ing', 'hu': r'(?:(?:meg)?(?:lát(?!ogat)|kap(?!cs)|tapasztal)|(?:meg|rá)?talál(?!koz)|észrev(?!étel)|észlel|(?:meg|fel)figyel|(?:bele|rá)fut(?!tat))\w*'}  # with the verbal prefixes these stems take (Megtalálom, Rátalálok, Felfigyelek), not the actions that share a stem (Meglátogatom, Kapcsolom, Találkozom, Észrevételezem, Ráfuttatom)
 _act = _not(_SEEN['en']) + r'\w+'
 
 WORDS = {
