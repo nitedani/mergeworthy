@@ -1755,8 +1755,8 @@ def follow_ups():
                     i = (t.get('source') or {}).get('issue') or {}
                     if t.get('event') == 'cross-referenced' and 'pull_request' in i and not is_bot(i.get('user')):
                         who = (t.get('actor') or {}).get('login') or i['user']['login']  # who wrote the reference: in another's PR, it can be your comment
-                        ours = ME in (who, i['user']['login'])
-                        follow_emit(f"followup-ref:{k}:{i['html_url']}", prs[k], f"{'note:' if ours else '###'} FOLLOW-UP {k}: {i['html_url']} by {who} references your PR  at {iso(time.time())}")
+                        ours = ME in (who, i['user']['login'])  # its own claim: a later reference by someone else from that PR still wakes
+                        follow_emit(f"followup-ref{'-own' if ours else ''}:{k}:{i['html_url']}", prs[k], f"{'note:' if ours else '###'} FOLLOW-UP {k}: {i['html_url']} by {who} references your PR  at {iso(time.time())}")
                     elif t.get('event') == 'renamed':
                         pr_renamed(k, prs[k], t['created_at'], (t.get('actor') or {}).get('login'), t['rename']['from'], t['rename']['to'])
                 pending.update(tpending)

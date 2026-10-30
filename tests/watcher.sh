@@ -435,6 +435,7 @@ timeline = [
     {"event": "cross-referenced", "source": {"issue": {"html_url": "<issue-8>", "user": {"login": "alice"}}}},         # an issue, not a PR
     {"event": "cross-referenced", "source": {"issue": {"html_url": "<pr-7>", "pull_request": {}, "user": {"login": "me"}}}},   # yours
     {"event": "cross-referenced", "actor": {"login": "me"}, "source": {"issue": {"html_url": "<pr-4>", "pull_request": {}, "user": {"login": "alice"}}}},   # your comment in hers
+    {"event": "cross-referenced", "actor": {"login": "alice"}, "source": {"issue": {"html_url": "<pr-4>", "pull_request": {}, "user": {"login": "alice"}}}},   # hers, later, in the same PR
     {"event": "cross-referenced", "source": {"issue": {"html_url": "<pr-6>", "pull_request": {}, "user": {"login": "dep[bot]", "type": "Bot"}}}},
 ]
 calls = []
@@ -472,7 +473,7 @@ second = scan()   # an hour later
 print("first=" + "|".join(first)); print("second=" + "|".join(second))
 print("recorded=" + str(sorted(record()["files"].items())))
 ')
-check "FOLLOW-UP: overlap and rename and the referencing PR once; non-overlap, own commit, merge commit, issue, bots nothing; own PR and own reference only logged; no repeat" "first=### FOLLOW-UP o/r#5: c5eeeeeeee by carol changes lines from your PR <c-c5eeeeeeeeee>|### FOLLOW-UP o/r#5: c1aaaaaaaa by alice changes lines from your PR <c-c1aaaaaaaaaa>|### FOLLOW-UP o/r#5: <pr-9> by alice references your PR|note: FOLLOW-UP o/r#5: <pr-7> by me references your PR|note: FOLLOW-UP o/r#5: <pr-4> by me references your PR
+check "FOLLOW-UP: overlap and rename and the referencing PR once; non-overlap, own commit, merge commit, issue, bots nothing; own PR and own reference only logged, a later one by another from that PR an event; no repeat" "first=### FOLLOW-UP o/r#5: c5eeeeeeee by carol changes lines from your PR <c-c5eeeeeeeeee>|### FOLLOW-UP o/r#5: c1aaaaaaaa by alice changes lines from your PR <c-c1aaaaaaaaaa>|### FOLLOW-UP o/r#5: <pr-9> by alice references your PR|note: FOLLOW-UP o/r#5: <pr-7> by me references your PR|note: FOLLOW-UP o/r#5: <pr-4> by me references your PR|### FOLLOW-UP o/r#5: <pr-4> by alice references your PR
 second=
 recorded=[('z.ts', [[11, 12]])]" "$got"
 got=$(follow '
@@ -488,7 +489,7 @@ print("first=" + "|".join(first)); print("second=" + "|".join(second))
 ')
 check "FOLLOW-UP: a PR whose base branch was deleted after the merge is followed on the default branch from the next pass, with no WATCH ERROR" "errors=0 base=main listed=gone,main backlog=
 first=
-second=### FOLLOW-UP o/r#5: c5eeeeeeee by carol changes lines from your PR <c-c5eeeeeeeeee>|### FOLLOW-UP o/r#5: c1aaaaaaaa by alice changes lines from your PR <c-c1aaaaaaaaaa>|### FOLLOW-UP o/r#5: <pr-9> by alice references your PR|note: FOLLOW-UP o/r#5: <pr-7> by me references your PR|note: FOLLOW-UP o/r#5: <pr-4> by me references your PR" "$got"
+second=### FOLLOW-UP o/r#5: c5eeeeeeee by carol changes lines from your PR <c-c5eeeeeeeeee>|### FOLLOW-UP o/r#5: c1aaaaaaaa by alice changes lines from your PR <c-c1aaaaaaaaaa>|### FOLLOW-UP o/r#5: <pr-9> by alice references your PR|note: FOLLOW-UP o/r#5: <pr-7> by me references your PR|note: FOLLOW-UP o/r#5: <pr-4> by me references your PR|### FOLLOW-UP o/r#5: <pr-4> by alice references your PR" "$got"
 got=$(follow '
 BASE = "gone"   # a pass that ran out of calls on page 1 left the rest of the list, and the branch is deleted before the next
 m.shared_update(lambda s: s["followups"].__setitem__("o/r#5", m.follow_record("o/r#5")))
@@ -501,7 +502,7 @@ print("errors=" + str(out.getvalue().count("WATCH ERROR")), "base=" + record()["
 print("second=" + "|".join(second))
 ')
 check "FOLLOW-UP: a backlog resumed past page 1 of a deleted base branch moves to the default branch too, with no WATCH ERROR" "errors=0 base=main backlog=
-second=### FOLLOW-UP o/r#5: c5eeeeeeee by carol changes lines from your PR <c-c5eeeeeeeeee>|### FOLLOW-UP o/r#5: c1aaaaaaaa by alice changes lines from your PR <c-c1aaaaaaaaaa>|### FOLLOW-UP o/r#5: <pr-9> by alice references your PR|note: FOLLOW-UP o/r#5: <pr-7> by me references your PR|note: FOLLOW-UP o/r#5: <pr-4> by me references your PR" "$got"
+second=### FOLLOW-UP o/r#5: c5eeeeeeee by carol changes lines from your PR <c-c5eeeeeeeeee>|### FOLLOW-UP o/r#5: c1aaaaaaaa by alice changes lines from your PR <c-c1aaaaaaaaaa>|### FOLLOW-UP o/r#5: <pr-9> by alice references your PR|note: FOLLOW-UP o/r#5: <pr-7> by me references your PR|note: FOLLOW-UP o/r#5: <pr-4> by me references your PR|### FOLLOW-UP o/r#5: <pr-4> by alice references your PR" "$got"
 joined() { follow '
 BASE = "'"$1"'"   # another PR followed on main stopped at its timeline: its backlog of the list is drained, its validator saved
 m.shared_update(lambda s: s["backlog"].__setitem__("o/r@main", {"since": iso(now - 86400 * 2), "floor": iso(now - 86400 * 2), "started": iso(now - 600), "next": None, "queue": [], "fresh": False, "keys": ["o/r#6"]}))
@@ -522,7 +523,7 @@ for p in ("shared-watch.json", "agent-commands.seen"): os.remove(os.path.expandu
 out = scan(); os.remove(os.path.expanduser("~/.mergeworthy/steward"))
 print(len(out), sum(l.startswith("### FOLLOW-UP") for l in open(os.path.join(sd, "events.log"))))
 ')
-check "FOLLOW-UP: a declared steward whose watcher isn't running leaves them to the PR's dirs (the notes too); while it runs, they go to its watch dir instead" "5 0 3" "$got"
+check "FOLLOW-UP: a declared steward whose watcher isn't running leaves them to the PR's dirs (the notes too); while it runs, they go to its watch dir instead" "6 0 4" "$got"
 got=$(follow '
 sd = os.path.join(os.path.dirname(m.HERE), "stew2"); os.makedirs(sd, exist_ok=True); open(os.path.join(sd, "events.log"), "w").close()
 open(os.path.expanduser("~/.mergeworthy/steward"), "w").write(sd + " t1\n"); open(os.path.join(sd, "gh-watch.pid"), "w").write(str(os.getpid()))
