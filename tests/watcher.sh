@@ -127,7 +127,7 @@ codes="$(follow "$W/gh-watch.py") $(follow "$W/gh-watch.py") $(follow "$W/gh-wat
 check "three starts from a checkout, exit codes" "0 0 0" "$codes"
 [ -e "$HOME/.mergeworthy/current" ]; check "~/.mergeworthy/current not repointed" 1 $?
 # control: the same code inside the plugin cache, with a newer version installed, still follows (exit 75)
-C="$HOME/.claude/plugins/cache/mergeworthy/mergeworthy/v1"; mkdir -p "$C/watcher" "$C/hooks"; cp "$R/watcher/gh-watch.py" "$R/watcher/gl_watch.py" "$C/watcher/"; cp "$R/hooks/agent_jobs.py" "$R/hooks/own_actions.py" "$R/hooks/steward.py" "$R/hooks/work_folder.py" "$C/hooks/"
+C="$HOME/.claude/plugins/cache/mergeworthy/mergeworthy/v1"; mkdir -p "$C/watcher" "$C/hooks"; cp "$R/watcher/gh-watch.py" "$R/watcher/gl_watch.py" "$C/watcher/"; cp "$R/hooks/agent_jobs.py" "$R/hooks/own_actions.py" "$R/hooks/steward.py" "$R/hooks/testpaths.py" "$R/hooks/work_folder.py" "$C/hooks/"
 check "control: running from the plugin cache, newer version installed" 75 "$(follow "$C/watcher/gh-watch.py")"
 [ "$(readlink "$HOME/.mergeworthy/current")" = "$T/installed/v2" ]; check "control: current points at the new version" 0 $?
 
@@ -153,6 +153,18 @@ print("\n".join(out), file=sys.stderr)
 ' 2>"$T/event")
 check "comment bodies: lines starting ### / body lines all indented" "1 True" "$got"
 sed 's/^/  | /' "$T/event"
+
+# a comment whose updated_at moves with its body unchanged (an award on a GitLab note) is no edit; a changed body is
+got=$(py '
+m.ONCE = True
+state, out = {"seen": {"note:8": "2026-10-05T00:00:00Z", "note:9": "2026-10-05T00:00:00Z"}}, []
+for nid, upd, body in ((8, "2026-10-05T00:00:00Z", "Hi"), (9, "2026-10-05T00:01:00Z", "Hi"), (9, "2026-10-05T00:02:00Z", "Hi"), (9, "2026-10-05T00:03:00Z", "Hi, and the empty list?")):
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf): m.handle_comment(state, "gitlab.com/a/b", "gitlab.com/a/b!1", "note", nid, upd, "alice", "<url>", body)
+    out.append(buf.getvalue().count("### gitlab.com/a/b!1 note"))
+print(*out)
+')
+check "a note seen before the body hash, unmoved: nothing; moved: edited, as it can't be told; moved again with its body unchanged: nothing; its body changed: edited" "0 1 0 1" "$got"
 
 # a comment in the steward's folder is only logged: no :eyes:, no owed reply; the same comment in an ordinary dir gets both
 got=$(py '
@@ -1009,8 +1021,9 @@ L = "Is https://github.com/openai.png the badge you mean? Please drop it."
 print(*(m.answerable(u, b, set(), own=True) for b in (B, C, "Please fix the test.", Q, L)))
 ')
 check "a post starting with a badge, from any account, is an agent post; a person quoting or linking one is a person" "False False True True True" "$got"
-# the steward's dir: every new mergeworthy issue is reported to it though an ordinary dir watching the repo whole comes first, the opener's
-# dir already lists it or it is the agent's (rules step 2); the ordinary dir keeps its own handling, the opener its thread; a PR isn't
+# the steward's dir: every open mergeworthy issue is reported to it once, whenever it was opened (also while no watcher ran), though an
+# ordinary dir watching the repo whole comes first, the opener's dir lists it or it is the agent's (rules step 2); the ordinary dir keeps
+# its own handling, the opener its thread; a PR isn't; the open issues are one conditional request a pass
 got=$(py "$WHOLE"'
 mk = lambda name, repos, threads: (os.makedirs(os.path.join(WH, name), exist_ok=True), open(os.path.join(WH, name, "gh-watch.pid"), "w").write(str(os.getpid())),
                                    open(os.path.join(WH, name, "repos.txt"), "w").write(repos), open(os.path.join(WH, name, "threads.txt"), "w").write(threads),
@@ -1019,18 +1032,49 @@ ORD, SW, OP = mk("ordinary", "nitedani/mergeworthy all\n", ""), mk("steward", "n
 open(os.path.expanduser("~/.mergeworthy/steward"), "w").write(SW + " tid\n")
 reg = os.path.expanduser("~/.claude/gh-watch-dirs.txt"); kept = open(reg).read(); open(reg, "w").write("\n".join((ORD, SW, OP)) + "\n")
 m.HERE = ORD
-it = lambda n, who="me", body=B, pr=False: {"id": 2000 + n, "number": n, "user": {"login": who}, "body": body, "title": f"t{n}", "html_url": f"<m{n}>",
-                                           "created_at": "2026-10-29T10:00:00Z", "updated_at": "2026-10-29T10:00:00Z", **({"pull_request": {}} if pr else {})}
+it = lambda n, who="me", body=B, pr=False, created="2026-10-29T10:00:00Z": {"id": 2000 + n, "number": n, "user": {"login": who}, "body": body, "title": f"t{n}",
+                                           "html_url": f"<m{n}>", "created_at": created, "updated_at": created, **({"pull_request": {}} if pr else {})}
 m.react_eyes = lambda *a: None
 for i in (it(20), it(21, pr=True), it(20), it(22, "eve", "It breaks.")):
     m.moved_thread("nitedani/mergeworthy", i, True)
+OPEN, calls = [it(22, "eve", "It breaks."), it(21, pr=True), it(20), it(3, created="2026-10-13T21:12:06Z")], []
+def get(path, headers):
+    etag = f"\"{len(OPEN)}\""
+    calls.append("304" if headers.get("If-None-Match") == etag else "200")
+    return m.Resp(304, {}, "") if calls[-1] == "304" else m.Resp(200, {"etag": etag}, json.dumps(OPEN))
+m.http_get, m.poll_feed = get, lambda *a: None
+m.repo_feeds(); m.repo_feeds(); OPEN.insert(0, it(24, "eve", "Also this.")); m.repo_feeds()
 os.remove(os.path.expanduser("~/.mergeworthy/steward")); open(reg, "w").write(kept)
 evs = lambda d: ",".join(l.split()[3] for l in open(os.path.join(d, "events.log")) if l.startswith("###"))
 lst = lambda d: ",".join(l.split()[1] for l in open(os.path.join(d, "threads.txt")))
-print(evs(SW), evs(ORD), lst(SW) or "-", lst(ORD), lst(OP))
+print(evs(SW), evs(ORD), lst(SW) or "-", lst(ORD), lst(OP), ",".join(calls))
 ')
-check "the steward's dir gets each new mergeworthy issue once, an agent's one the opener lists too, though an ordinary dir watches the repo first; that dir handles the unlisted one; not a PR" \
-  "nitedani/mergeworthy#20,nitedani/mergeworthy#22 nitedani/mergeworthy#22 - 22 20,21" "$got"
+check "the steward's dir gets each open mergeworthy issue once, an old one and an agent's one the opener lists too, though an ordinary dir watches the repo first; that dir handles the unlisted one; not a PR; one conditional request a pass" \
+  "nitedani/mergeworthy#22,nitedani/mergeworthy#20,nitedani/mergeworthy#3,nitedani/mergeworthy#24 nitedani/mergeworthy#22 - 22 20,21 200,304,200" "$got"
+# more open issues than a page: an old unclaimed issue reopened behind page 1 still reaches the steward's dir (the list's order, as
+# GitHub sorts by the request's `sort`, puts it first, so page 1's validator changes)
+got=$(py "$WHOLE"'
+SW = os.path.join(WH, "steward2"); os.makedirs(SW, exist_ok=True)
+for f, t in (("gh-watch.pid", str(os.getpid())), ("repos.txt", "nitedani/mergeworthy all\n"), ("threads.txt", ""), ("events.log", "")): open(os.path.join(SW, f), "w").write(t)
+open(os.path.expanduser("~/.mergeworthy/steward"), "w").write(SW + " tid\n")
+reg = os.path.expanduser("~/.claude/gh-watch-dirs.txt"); kept = open(reg).read(); open(reg, "w").write(SW + "\n")
+m.HERE = SW
+it = lambda n, t: {"id": 3000 + n, "number": n, "user": {"login": "eve"}, "body": "", "title": f"t{n}", "html_url": f"<p{n}>", "created_at": t, "updated_at": t}
+OPEN = [it(n, f"2026-10-29T{n // 60:02d}:{n % 60:02d}:00Z") for n in range(100, 200)] + [it(4, "2026-10-13T00:00:00Z")]
+def get(path, headers):
+    key = "updated_at" if "sort=updated" in path else "created_at"
+    page = sorted(OPEN, key=lambda i: i[key], reverse=True)
+    page = page[100:] if "page=2" in path else page[:100]
+    etag = "\"" + str(hash(json.dumps(page))) + "\""
+    if headers.get("If-None-Match") == etag: return m.Resp(304, {}, "")
+    return m.Resp(200, {"etag": etag, **({} if "page=2" in path else {"link": "<https://api.github.com/" + m.OPEN_FAULTS + "&page=2>; rel=\"next\""})}, json.dumps(page))
+m.http_get, m.poll_feed = get, lambda *a: None
+m.repo_feeds(); OPEN.append({**it(3, "2026-10-12T00:00:00Z"), "updated_at": "2026-10-30T00:00:00Z"}); m.repo_feeds(); m.repo_feeds()
+os.remove(os.path.expanduser("~/.mergeworthy/steward")); open(reg, "w").write(kept)
+evs = [l.split()[3] for l in open(os.path.join(SW, "events.log")) if l.startswith("###")]
+print(len(evs), evs.count("nitedani/mergeworthy#3"))
+')
+check "the steward's dir gets an old unclaimed issue reopened behind the first page of open issues, once" "102 1" "$got"
 check "whole repo: moved threads join its dir unless another dir lists them; a bare line's repo joins nothing" "o/r 8 o/r 9 o/r 10 o/r 11 o/r 1|o/r 7|" \
   "$(echo $(cat "$WH/all/threads.txt"))|$(echo $(cat "$WH/other/threads.txt"))|$(cat "$WH/bare/threads.txt")"
 scanned() { py "$WHOLE"'
@@ -1217,13 +1261,14 @@ check "a temp-HOME main() starts one disk-sweep --delete, which skips Docker and
 # SHAPE STALE counts your PR's code: a committed build bundle (dist/) is not
 got=$(py '
 Answer = lambda data: type("A", (), {"status": 200, "json": lambda self: data})()
-files = [{"filename": "dist/a.mjs", "additions": 300, "deletions": 0}, {"filename": "src/a.ts", "additions": 5, "deletions": 0}]
+files = [{"filename": "dist/a.mjs", "additions": 300, "deletions": 0}, {"filename": "src/a.ts", "additions": 5, "deletions": 0},
+         {"filename": "unit_tests/test_a.py", "additions": 90, "deletions": 0}, {"filename": "pkg/a_test.go", "additions": 90, "deletions": 0}]
 m.request = lambda path, *a, **k: Answer({"user": {"login": "me"}, "base": {"ref": "main"}} if path.endswith("/pulls/8")
                                          else {"commits": [{"sha": "c1", "parents": [{}]}]} if "/compare/" in path else {"files": files})
 buf = io.StringIO()
 with contextlib.redirect_stdout(buf): m.emit_refactor_stale("o/r", "o/r#8", "new")
 print(buf.getvalue().count("### SHAPE STALE"))
 ')
-check "SHAPE STALE doesn't count a committed build bundle (dist/)" 0 "$got"
+check "SHAPE STALE doesn't count a committed build bundle (dist/) or tests in unit_tests/ and *_test.go" 0 "$got"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]

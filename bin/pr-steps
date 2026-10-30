@@ -84,7 +84,7 @@ built='(^|/)dist/'  # a committed build bundle: not code a reviewer reads
 if [ "$step" = small ]; then
   pb=$(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || true)  # a stacked PR is measured against its own base
   base=$(git merge-base HEAD "${pb:+origin/$pb}" 2>/dev/null || git merge-base HEAD "$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)" 2>/dev/null) || { echo "no merge-base with the base branch" >&2; exit 1; }
-  testre='(^|/)(tests?|__tests__|e2e|specs?)/|\.(test|spec)\.|(^|/)\.test[A-Za-z-]*\.'
+  testre=$(python3 "$(dirname "$(realpath "$0")")/../hooks/testpaths.py")
   docs='\.md$|(^|/)docs?/'
   skip="$testre|$docs|$built"'|lock\.(json|yaml)$|\.lock$|(^|/)\.changeset/'
   n=$(git diff --numstat "$base" HEAD | awk -v r="$skip" '$3 !~ r {s+=$1+$2} END{print s+0}')
@@ -105,12 +105,14 @@ fi
 # carries an earlier pass ("carries the pass of <sha>", ≤ 80 changed lines since): a fix log or a note is not a shape pass
 # A pass rates every item afresh: a row whose rating is copied ("10 =", "=", "unchanged since") is a re-rating of a delta, not a pass
 is_pass() { grep -q '✅' "$1" && grep -Eq '([0-9]+|\bnew) *(⇒|=>) *([0-9]+|removed|new|n/a)' "$1" && ! grep -Eiq '\| *([0-9]+ *)?= *\||unchanged since' "$1"; }
-# Lines changed since an earlier head; 0 when only a merge of the base came in (the PR's own diff is the same patch)
+# Lines the PR itself changed since an earlier head: counted from that head replayed on the base HEAD has merged, so what a merge
+# of the base brought in doesn't count; from the head itself when the replay conflicts (the resolution is change)
 delta() {
-  local B; B=$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)
-  pid() { git diff "$(git merge-base "$1" "$B" 2>/dev/null)" "$1" 2>/dev/null | git patch-id --stable | cut -d' ' -f1; }
-  if git rev-parse -q --verify "$B" >/dev/null && [ -n "$(pid "$1")" ] && [ "$(pid "$1")" = "$(pid HEAD)" ]; then echo 0; return; fi
-  git diff --numstat "$1" HEAD | awk -v r="$built" '$3 !~ r {s+=$1+$2} END{print s+0}'
+  local pb B T
+  pb=$(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || true)  # a stacked PR's base is its parent branch
+  B=${pb:+origin/$pb}; B=${B:-$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)}
+  T=$(git merge-tree --write-tree "$(git merge-base HEAD "$B" 2>/dev/null)" "$1" 2>/dev/null) || T=$1
+  git diff --numstat "$T" HEAD | awk -v r="$built" '$3 !~ r {s+=$1+$2} END{print s+0}'
 }
 # A small follow-up (≤ 80 changed lines, no new behavior) carries an earlier head's recorded step: "carries the pass of <sha>"
 carries() {
