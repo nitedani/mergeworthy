@@ -166,11 +166,11 @@ def _code(node, src):
     return bytes(code)
 
 
-def _only_read(text, var):
-    """Whether text (the command line's code, _code's, without the loop's own `for var in`) names var only in a plain $var or
-    ${var}, with no eval, let, ((, source, trap or . command that could set it unseen."""
-    rest = re.sub(rf'\$(?:{var}(?!\w)|\{{{var}\}})', '', text)
-    return not re.search(rf'(?<!\w){var}(?!\w)|\b(?:eval|let|source|trap)\b|\(\(|(?:^|[;&|(){{\n]|\b(?:then|do|else)\b)\s*\.\s', rest)
+def _only_read(text, code, var):
+    """Whether text (the command line's source without the loop's own `for var in`) names var only in a plain $var or ${var},
+    quoted or not, and code (the same, _code's) has no eval, let, ((, source, trap or . command that could set it unseen."""
+    return not re.search(rf'(?<!\w){var}(?!\w)', re.sub(rf'\$(?:{var}(?!\w)|\{{{var}\}})', '', text)) and \
+        not re.search(r'\b(?:eval|let|source|trap)\b|\(\(|(?:^|[;&|(){\n]|\b(?:then|do|else)\b)\s*\.\s', code)
 
 
 def _calls(node, src):
@@ -187,7 +187,7 @@ def _calls(node, src):
         loop = loop or x.get('Type') == 'WhileClause'  # shfmt's node for until too
         var = ((x.get('Loop') or {}).get('Name') or {}).get('Value', '') if x.get('Type') == 'ForClause' else ''
         plain = bool(var) and bool(x['Loop'].get('Items')) and all(re.fullmatch(r'[\w.+@%,:=-]+', _src(w, src)) for w in x['Loop']['Items']) and \
-            _only_read((code[:x['Pos']['Offset']] + code[x['Loop']['End']['Offset']:]).decode(errors='replace'), var)
+            _only_read(*((b[:x['Pos']['Offset']] + b[x['Loop']['End']['Offset']:]).decode(errors='replace') for b in (src, code)), var)
         name = x['Name']['Value'] if x.get('Type') == 'FuncDecl' else var
         inner = {k: n + _scope(kind, name, plain) if (kind := _kind(x, k)) else n for k, v in x.items() if isinstance(v, (dict, list))}
         cmd, redirs = x.get('Cmd') or {}, x.get('Redirs') or []
