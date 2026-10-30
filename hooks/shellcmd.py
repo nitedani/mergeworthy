@@ -415,6 +415,52 @@ def api_call(rest, cwd=None):
         posts = method in ('POST', 'PATCH', 'PUT') and not NO_TEXT.fullmatch(re.sub(r'^(?:https?://[^/]+)?/?(?:api/v3/)?', '', ep).split('?')[0])
     return method, ep, fields, inputs, posts
 
+def gh_repo(args, env, origin):
+    """owner/repo a gh command with args acts on, as gh picks it: its -R, else GH_REPO set on the command or inherited (both
+    [HOST/]OWNER/REPO or a URL), else the checkout's origin (origin(): its URL, read only then)."""
+    if r := (opt(args, ['--repo', '-R']) or [None])[-1] or env.get('GH_REPO', os.environ.get('GH_REPO')):
+        return '/'.join(re.sub(r'(\.git)?/*$', '', r).split('/')[-2:])
+    m = re.search(r'github\.com[:/]([\w.-]+/[\w.-]+?)(\.git)?$', origin())
+    return m.group(1) if m else None
+
+def gitlab_repo(a, origin):
+    """`gitlab.com/<namespace>/<project>` a glab command acts on: its -R value (a path or URL), else the cwd's origin."""
+    repo = (opt(a, ['--repo', '-R']) or [None])[-1]
+    if repo:
+        repo = re.sub(r'^(https://)?gitlab\.com/', '', repo)
+    else:
+        repo = (re.search(r'gitlab\.com[:/](.+?)(?:\.git)?$', origin()) or [None, None])[1]
+    return 'gitlab.com/' + repo.strip('/') if repo and '://' not in repo else None
+
+def api_opens(ep, rest, env, origin):
+    """(repo, 'issue' or 'pr') a `gh api` or `glab api` POST to ep opens, in each form the CLIs take (a full URL, a leading slash, an api/v3/
+    or api/v4/ prefix, a query, gh's {owner}/{repo} from GH_REPO or the checkout (origin, as gh_repo), glab's :fullpath or :id, a GitLab host from --hostname or GITLAB_HOST);
+    None for any other endpoint, repo None when it can't be told (a project's numeric id)."""
+    host, path = re.match(r'(?:https?://([^/]+))?/?(?:api/v[34]/)?([^?]*)', ep).groups()
+    if (m := re.fullmatch(r'repos/([^/]+/[^/]+)/(issues|pulls)', path)):
+        base = gh_repo(rest, env, origin) or ''
+        repo = m[1].replace('{owner}', base.split('/')[0]).replace('{repo}', base.split('/')[-1]) if base else m[1]
+        return (None if '{' in repo else repo if host in (None, 'api.github.com') else f'{host}/{repo}'), 'pr' if m[2] == 'pulls' else 'issue'
+    if (m := re.fullmatch(r'projects/([^/]+)/(issues|merge_requests)', path)):
+        import urllib.parse
+        project = urllib.parse.unquote(m[1])
+        host = host or (opt(rest, ['--hostname']) or [None])[-1] or env.get('GITLAB_HOST') or os.environ.get('GITLAB_HOST') or 'gitlab.com'
+        repo = gitlab_repo(rest, origin) if project in (':fullpath', ':id') else f"{re.sub(r'^https?://|/+$', '', host)}/{project}" if '/' in project else None
+        return repo, 'pr' if m[2] == 'merge_requests' else 'issue'
+    return None
+
+def env_of(t):
+    """The variables a simple command sets for itself (`GH_REPO=o/r gh ...`)."""
+    return dict(x.split('=', 1) for x in t[:len(t) - len(prog(t))] if re.match(r'^\w+=', x))
+
+def origin(d):
+    """The origin remote's URL of the checkout at d; '' without one."""
+    return subprocess.run(['git', '-C', d, 'remote', 'get-url', 'origin'], capture_output=True, text=True).stdout.strip()
+
+def watchable(repo):
+    """True for a repo a watcher reads: owner/repo on github.com, or gitlab.com/<path>."""
+    return bool(repo) and (repo.startswith('gitlab.com/') or bool(re.fullmatch(r'[\w.-]+/[\w.-]+', repo)))
+
 def new_post_drafts(t):
     """Draft files a gh argv posts as something new (an issue, PR, comment or review): each draft is posted as new once, edits may repeat."""
     t = prog(t)

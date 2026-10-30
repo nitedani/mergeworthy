@@ -9,7 +9,7 @@ A gated draft it posted as new gets its .posted marker, which pre-bash-guard rea
 import hashlib, json, os, re, shlex, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
-from shellcmd import segments, prog, new_post_drafts, Where
+from shellcmd import segments, prog, new_post_drafts, Where, api_call, api_opens, env_of, origin
 import own_actions, steward, work_folder
 d = json.load(sys.stdin)
 # the pushes, merges and closes pre-bash-guard let this command make are its own once it succeeded; a failed command's go
@@ -20,10 +20,14 @@ cmd = d.get('tool_input', {}).get('command', '')
 r = d.get('tool_response') or {}
 out = r.get('stdout', '') if isinstance(r, dict) else str(r)
 
-def target(t):
-    """(repo or None, number or None) a posting gh argv writes to; None when the argv doesn't post.
-    Only a real `gh` argv counts: text that merely mentions one (an echo, a grep, a fixture) posts nothing."""
-    t = prog(t)
+def target(t, d):
+    """(repo or None, number or None) a posting gh argv, run in d, writes to; None when the argv doesn't post.
+    Only a real `gh` argv counts: text that merely mentions one (an echo, a grep, a fixture) posts nothing.
+    An issue, PR or MR an API call opens is told as pre-bash-guard tells it (api_opens): its URL names the number."""
+    env, t = env_of(t), prog(t)
+    if t and os.path.basename(t[0]) in ('gh', 'glab') and t[1:2] == ['api'] and (call := api_call(t[2:]))[0] == 'POST' and \
+            (opens := api_opens(call[1], t[2:], env, lambda: origin(d) if d else '')):
+        return opens[0], None
     if t and os.path.basename(t[0]) == 'glab' and t[2:3] in (['create'], ['note']) and t[1] in ('issue', 'mr') and '--help' not in t and '-h' not in t:
         return None, None  # glab prints the thread's URL: that names it
     if not t or os.path.basename(t[0]) != 'gh' or len(t) < 2 or '--help' in t or '-h' in t:
@@ -52,7 +56,7 @@ cwd = d.get('cwd') or os.getcwd()
 where, drafts, posts = Where(cwd), [], []
 for s in where.walk(segs):
     drafts += [os.path.join(cwd, os.path.expanduser(where.expand(f))) for f in new_post_drafts(s)]
-    if tg := target(s): posts.append((*tg, where.dir))
+    if tg := target(s, where.dir): posts.append((*tg, where.dir))
 # Written here, not in pre-bash-guard: PostToolUse runs only after the command succeeded, so a post another hook blocked, or one that failed, can be retried
 if isinstance(r, dict) and not r.get('interrupted'):
     for f in drafts:
@@ -91,7 +95,7 @@ def body_files(t):
     return [a[i + 1] for i in range(len(a) - 1) if a[i] in ('--body-file', '-F', '--field', '--input')] + \
         [x.split('=', 1)[1] for x in a if x.startswith('--body-file=')]
 for s in segs:
-    tg = target(s)
+    tg = target(s, None)
     if not tg or not tg[0] or not tg[1]:
         continue
     for f in body_files(s):

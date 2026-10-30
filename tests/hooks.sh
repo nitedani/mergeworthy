@@ -2276,6 +2276,16 @@ oreg() { # session cwd command: the thread post-bash-register adds to the watche
 check "a PR opened from the unwatched folder joins no other session's watcher but starts its own folder's, as this session's, saying to arm the Monitor; from the watched one (after a cd, to a variable too), it joins its watcher" \
   "2:none sess-b $TK4 vikejs/vike 9 1|0:vikejs/vike 9|0:vikejs/vike 9|0:vikejs/vike 9" \
   "$(oreg sess-b "$CK4" "$PRC") $(cat "$T/started") $(grep -c 'Arm a Monitor' "$T/err")|$(oreg sess-b "$CK" "$PRC")|$(oreg sess-b "$T" "cd $CK && $PRC")|$(oreg sess-b "$T" "D=$CK; cd \"\$D\" && $PRC")"
+# an issue opened through the API from that folder starts its watcher too, in each form need_home lets through; a form whose repo can't be
+# told, or a host no watcher reads, is refused there as before
+areg() { # command stdout: post-bash-register from the unwatched folder, then the start it made
+  : > "$T/started"; python3 -c 'import json,sys; print(json.dumps({"session_id":"sess-b","cwd":sys.argv[1],"tool_input":{"command":sys.argv[2]},"tool_response":{"stdout":sys.argv[3]}}))' "$CK4" "$1" "$2" \
+    | python3 "$R/hooks/post-bash-register.py" 2>/dev/null; echo "$?:$(cat "$T/started")"; rm -f "$TK4/threads.txt"; }
+check "an issue opened through the API from a work folder with no watcher starts it: a full-URL gh api, {owner}/{repo} from GH_REPO, a glab api" \
+  "2:sess-b $TK4 vikejs/vike 9|2:sess-b $TK4 vikejs/vike 9|2:sess-b $TK4 gitlab.com/ns/proj 9" \
+  "$(areg "gh api https://api.github.com/repos/vikejs/vike/issues -f title=x -F body=@$T/na.md" https://github.com/vikejs/vike/issues/9)|$(areg "GH_REPO=vikejs/vike gh api 'repos/{owner}/{repo}/issues' -f title=x -F body=@$T/na.md" https://github.com/vikejs/vike/issues/9)|$(areg 'glab api projects/ns%2Fproj/issues -X POST -f title=x' https://gitlab.com/ns/proj/-/issues/9)"
+check "BLOCK: from that folder, an API create on a host no watcher reads or by a project's numeric id, as before" "2 1 2 1" \
+  "$(bgs sess-b "gh api https://github.example.com/api/v3/repos/o/r/issues -f title=x -F body=@$T/na.md" "$CK4") $(grep -c 'no running watcher of this task or session covers github.example.com/o/r' "$T/err") $(bgs sess-b 'glab api projects/123/issues -X POST -f title=x' "$CK4") $(grep -c "can't tell which repo this acts on" "$T/err")"
 # the steward's watcher, whose session file names the session, wakes it only for a new mergeworthy issue: a PR opened while the task's
 # own folder has no watcher (it retired) starts that one instead (nitedani/mergeworthy#67, #68), and outside a work folder it covers nothing
 SWD="$HOME/.mergeworthy/work/steward"; mkdir -p "$SWD"; echo "$FPID" > "$SWD/gh-watch.pid"; echo sess-s > "$SWD/session"; printf 'vikejs/vike\ngitlab.com/ns/proj\n' > "$SWD/repos.txt"; echo "$SWD" >> "$HOME/.claude/gh-watch-dirs.txt"; : > "$T/started"
