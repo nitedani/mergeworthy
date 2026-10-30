@@ -20,12 +20,21 @@ cmd = d.get('tool_input', {}).get('command', '')
 r = d.get('tool_response') or {}
 out = r.get('stdout', '') if isinstance(r, dict) else str(r)
 
+def created(out):
+    """The number of the thread an API create's JSON response is, by its top-level html_url or web_url; None when the output
+    isn't one such response (filtered, or several)."""
+    try: v = json.loads(out)
+    except ValueError: return None
+    m = re.search(r'/(\d+)/?$', (v.get('html_url') or v.get('web_url') or '') if isinstance(v, dict) else '')
+    return m and m[1]
+
 def target(t, d):
     """(repo or None, number or None) a posting gh argv, run in d, writes to; None when the argv doesn't post.
     Only a real `gh` argv counts: text that merely mentions one (an echo, a grep, a fixture) posts nothing.
-    An issue, PR or MR an API call opens is told as pre-bash-guard tells it (shellcmd.opened): its URL names the number."""
+    An issue, PR or MR an API call opens is told as pre-bash-guard tells it (shellcmd.opened), its number by the response's own
+    URL (created): a URL in the new thread's body isn't the thread."""
     if prog(t)[1:2] == ['api'] and (o := opened(t, d)):
-        return o[0], None
+        return o[0], created(out)
     t = prog(t)
     if t and os.path.basename(t[0]) == 'glab' and t[2:3] in (['create'], ['note']) and t[1] in ('issue', 'mr') and '--help' not in t and '-h' not in t:
         return None, None  # glab prints the thread's URL: that names it
