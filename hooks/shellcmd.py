@@ -121,7 +121,8 @@ _ids = itertools.count()
 
 
 def _scope(kind, name=''):
-    """A new scope of kind, for Seg.scopes; name: the function whose body it is, if any."""
+    """A new scope of kind, for Seg.scopes; name: the function whose body it is, or the variable a for loop takes from words of
+    plain characters (no /, $, backtick, quote or glob), if any."""
     return ((next(_ids), kind, name),)
 
 
@@ -161,7 +162,9 @@ def _calls(node, src):
         if not isinstance(x, dict):
             continue
         loop = loop or x.get('Type') == 'WhileClause'  # shfmt's node for until too
-        name = x['Name']['Value'] if x.get('Type') == 'FuncDecl' else ''
+        items = (x.get('Loop') or {}).get('Items') if x.get('Type') == 'ForClause' else None
+        name = x['Name']['Value'] if x.get('Type') == 'FuncDecl' else \
+            x['Loop']['Name']['Value'] if items and all(re.fullmatch(r'[\w.+@%,:=-]+', _src(w, src)) for w in items) else ''
         inner = {k: n + _scope(kind, name) if (kind := _kind(x, k)) else n for k, v in x.items() if isinstance(v, (dict, list))}
         cmd, redirs = x.get('Cmd') or {}, x.get('Redirs') or []
         words = [w for r in redirs for w in ((r.get('N') or {}).get('Value', '') + r['Op'], _word(r.get('Word') or {}, src))]
@@ -363,10 +366,13 @@ class Where:
         return None if re.search(r'[$`]', p) else p if os.path.isabs(p) else None if base is None else os.path.join(base, p)
 
     def file(self, p):
-        """A file the current command names, p, resolved from the dir; an expansion left in its name stays as written (`/abs/$t.log`).
-        None when its folder can't be told: no dir, or an expansion left in its folder."""
+        """A file the current command names, p, resolved from the dir. None when its folder can't be told: no dir, or any expansion
+        left, which may hold a / (`$F`), except in its name the variable of a for loop it is in over plain words (`$S/$w.log`)."""
         p = os.path.expanduser(self.expand(p))
-        return None if re.search(r'[$`]', os.path.dirname(p)) or not os.path.isabs(p) and self.dir is None else os.path.join(self.dir or '/', p)
+        words = {x[0][2] for x in self.scopes if x[0][1] == LOOP and x[0][2]}
+        folder, name = os.path.split(p)
+        name = re.sub(r'\$(?:(\w+)|\{(\w+)\})', lambda m: '' if (m[1] or m[2]) in words else m[0], name)
+        return None if re.search(r'[$`]', folder + name) or not os.path.isabs(p) and self.dir is None else os.path.join(self.dir or '/', p)
 
     def walk(self, segs):
         """Each of segs (parse()'s), with self moved to where it runs; self takes it once the caller is done with it."""
@@ -383,8 +389,11 @@ class Where:
         for (_, kind, _), before, moved, vars, set_in in reversed(self.scopes[n:]):
             self.dir = before if kind == ISOLATING else None if moved else self.dir
             self.vars = vars if kind == ISOLATING else {**self.vars, **{v: Maybe(self.vars.get(v, '')) for v in set_in}}
-        self.funcs |= {x[2] for x in scopes[n:] if x[2]}
-        self.scopes = self.scopes[:n] + [[x, self.dir, False, dict(self.vars), set()] for x in scopes[n:]]
+        self.funcs |= {x[2] for x in scopes[n:] if x[2] and x[1] != LOOP}
+        self.scopes = self.scopes[:n]
+        for x in scopes[n:]:
+            self.scopes.append([x, self.dir, False, dict(self.vars), set()])
+            if x[1] == LOOP and x[2]: self.vars[x[2]] = Maybe(''); self.changed(x[2])  # each pass gives it another of its words
 
     def changed(self, var=None):
         """Record a cd (var None) or an assignment of var here in the scopes it changes what they leave behind, up to the innermost
@@ -398,7 +407,7 @@ class Where:
         if t and all(re.match(r'^\w+=', x) for x in t):
             self.vars.update(x.split('=', 1) for x in t)
             for x in t: self.changed(x.split('=', 1)[0])
-            if any(x[0][2] for x in self.scopes): self.func_vars.update(x.split('=', 1)[0] for x in t)
+            if any(x[0][2] and x[0][1] != LOOP for x in self.scopes): self.func_vars.update(x.split('=', 1)[0] for x in t)
             return
         p = prog(t)
         if p[:1] and p[0] in self.funcs:  # a call runs a body here, maybe calling another: what any of them changes can't be told
