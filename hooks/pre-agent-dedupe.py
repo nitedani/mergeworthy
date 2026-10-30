@@ -2,14 +2,15 @@
 """Claude Code PreToolUse hook (matcher: Agent, Task, delegate_task, t3_thread_launch). Exit 2 blocks the launch; stderr goes to the agent.
 With the argument `register` it runs as the PostToolUse hook: only a launch that ran is registered, so one another hook blocked leaves no job.
 One agent per job: a launch is registered under its job key (the ticket files its prompt names, and its title), and a second
-launch of the same job is blocked until `agent-job done <key>` releases it. A turn that ended is not a finished agent: on T3 a
+launch of the same job, or of a task that contains or is contained in an open job's (the text tells the agents' transcripts
+apart, agent_jobs), is blocked until `agent-job done <key>` releases it. A turn that ended is not a finished agent: on T3 a
 child wakes again when its background commands end, so only its terminal task status (read first) releases the job."""
 import datetime, fcntl, glob, hashlib, json, os, re, shlex, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import failclosed
 import agent_jobs, memory_file, steward, subprocess
 from post_words import fence_spans
-from shellcmd import branch_record, segments, prog, git_argv, Where
+from shellcmd import branch_record, segments, prog, git_argv, rlines, Where
 register = sys.argv[1:] == ['register']
 d = json.load(sys.stdin)
 ti = d.get('tool_input', {}) or {}
@@ -321,29 +322,68 @@ if root and (ti.get('role') == 'research' or re.search(r'\bresearch', f"{ti.get(
         sys.stderr.write("BLOCKED: these files already cover the topic; read them first. If one answers it, use it; "
                          "if not, add `Checked: <file>` to the brief for each:\n" + '\n'.join(hits) + '\n')
         sys.exit(2)
-# a fan-out runs several agents on one brief, each under its own title: the title is part of the job
+# a fan-out runs several agents on one brief, each under its own title and naming its part in its task: the title is part of the job
 key = ' '.join([*tickets, str(ti.get('title') or ti.get('description') or '').strip()]).strip()
 if not key:
     sys.exit(0)  # nothing names the job (no ticket, title or description), so no second launch of it can be told apart
 jobs = os.path.expanduser('~/.claude/agent-jobs'); os.makedirs(jobs, exist_ok=True)
 f = os.path.join(jobs, hashlib.sha256(key.encode()).hexdigest()[:16])
+# when the launch this registers began (its transcript starts after it): one record per key, as one_per_job lets one call of a key
+# pend at a time, and the key's next launch overwrites the record of a call another hook blocked
+pre = os.path.join(agent_jobs.LAUNCHED, os.path.basename(f))
+task = str(ti.get('task') or ti.get('prompt') or '')
+# one launch at a time checks the open jobs and leaves its record, so launches in one message see each other; held until exit
+lock = open(jobs + '.lock', 'a'); fcntl.flock(lock, fcntl.LOCK_EX)
 if register:
-    json.dump({'key': key, 'started': time.time(), 'brief': str(ti.get('task') or ti.get('prompt') or '')[:2000],
+    try: launched = json.load(open(pre))['launched']; os.remove(pre)
+    except (OSError, ValueError, KeyError, TypeError): launched = time.time()
+    json.dump({'key': key, 'started': time.time(), 'launched': launched, 'brief': task,
                'session': d.get('session_id'), 'transcript': d.get('transcript_path')}, open(f, 'w'))
     # an agent now runs memory-prep's brief: stop-lint's hourly repeat of the refresh order waits an hour
     for t in tickets:
         if os.path.basename(t).startswith('memory-brief-') and os.path.isfile(os.path.join(os.path.dirname(t), 'memory.source')):
             open(os.path.join(os.path.dirname(t), '.memory-order-repeated'), 'w').close()
-elif os.path.exists(f):
+def one_per_job(started):
+    """Blocks a second agent for this key: a key is one job, so two job files never share one."""
+    sys.stderr.write(
+        f"BLOCKED: an agent for this job is already launched ({key[:160]}, started {int((time.time() - started) / 60)} min ago). One agent per job: "
+        "read its status first (task_status, its latest runs); a turn that ended or 'waiting_for_children' means it is still alive. "
+        "Continue it with a message instead of starting another. Only when its task is terminal and you have read its result, "
+        f"release the job with `agent-job done {shlex.quote(key[:200])}`, then launch.\n")
+    sys.exit(2)
+if not register and os.path.exists(f):
     j = json.load(open(f))
-    if time.time() - j.get('started', 0) < 24 * 3600:
-        age = int((time.time() - j['started']) / 60)
-        sys.stderr.write(
-            f"BLOCKED: an agent for this job is already registered ({key[:160]}, started {age} min ago). One agent per job: "
-            "read its status first (task_status, its latest runs); a turn that ended or 'waiting_for_children' means it is still alive. "
-            "Continue it with a message instead of starting another. Only when its task is terminal and you have read its result, "
-            f"release the job with `agent-job done {shlex.quote(key[:200])}`, then launch.\n")
-        sys.exit(2)
+    if time.time() - j.get('started', 0) < 24 * 3600: one_per_job(j['started'])
+def returned(path, use_id):
+    """The launcher's transcript holds the call's tool_result: another hook blocked it, or it returned (then it registers)."""
+    try:
+        for l in rlines(path):  # last first: the result comes after the call
+            if use_id.encode() not in l: continue
+            try: e = json.loads(l)
+            except ValueError: continue
+            content = (e.get('message') or {}).get('content') if isinstance(e.get('message'), dict) else None
+            for b in content if isinstance(content, list) else ():
+                if isinstance(b, dict) and b.get('type') == 'tool_result' and b.get('tool_use_id') == use_id: return True
+                if isinstance(b, dict) and b.get('type') == 'tool_use' and b.get('id') == use_id: return False
+    except OSError: return True
+    return False
+if not register:
+    pending = []  # a launch let through whose call is still running, not registered yet
+    for n in os.listdir(agent_jobs.LAUNCHED) if os.path.isdir(agent_jobs.LAUNCHED) else ():
+        try: r = json.load(open(os.path.join(agent_jobs.LAUNCHED, n)))
+        except (OSError, ValueError): continue
+        if isinstance(r, dict) and r.get('tool_use_id') and r.get('transcript') and not returned(r['transcript'], r['tool_use_id']):
+            pending.append({'key': r.get('key', ''), 'brief': r.get('task', ''), 'started': r.get('launched', 0)})
+    for j in pending:
+        if j['key'] == key: one_per_job(j['started'])
+    for j in [j for _, j in agent_jobs.jobs()] + pending if task.strip() else ():
+        if (other := j.get('brief', '').strip()) and (other in task.strip() or task.strip() in other):
+            sys.stderr.write(
+                f"BLOCKED: this task contains, or is contained in, an open job's task ({j['key'][:160]}, started {int((time.time() - j['started']) / 60)} min ago), "
+                "and an agent's transcript is told apart from another's by its task text. An agent of a fan-out names its part in its task "
+                "(its slice, subsystem, frames or topic). A new round on the same task releases the earlier job first, once its agent "
+                f"is done and you have read its result: `agent-job done {shlex.quote(j['key'][:200])}`.\n")
+            sys.exit(2)
 # At most 3 agents at a time per session (delegate step 1): a job is open until released or its agent finished; a memory refresh doesn't count
 # A fan-out a step names (finality steps 2-3, converge's per-slice verifiers) says so on a `Fan-out:` line, in the task or its brief, and passes
 fanout = ti.get('role') != 'implementation' and re.search(r'^Fan-out: (finality step [23]|converge §Running the agents)$', briefs, re.M)
@@ -355,4 +395,7 @@ if not register and d.get('session_id') and 'memory-refresh' not in gate_text an
                          + '\n'.join(f"{j['key'][:160]} (started {int((time.time() - j['started']) / 60)} min ago)" for j in live)
                          + "\nContinue one with a message, or wait for one to finish, read its result and release it with `agent-job done <key>`.\n")
         sys.exit(2)
+if not register:
+    os.makedirs(agent_jobs.LAUNCHED, exist_ok=True); json.dump({'launched': time.time(), 'key': key, 'task': task, 'tool_use_id': d.get('tool_use_id'),
+                                                           'transcript': d.get('transcript_path')}, open(pre, 'w'))
 sys.exit(0)
