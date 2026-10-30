@@ -8,7 +8,7 @@
 - Your "/agent ..." comments on threads no watch dir lists, found in the watched repos' recent comments (search as a backup) and sent to one dir (see agent_command): `### AGENT COMMAND`.
 - MAINTAINER REVIEW: a maintainer's review (not a bare approval) on your PR, sent to the steward like FOLLOW-UP: every defect it names is sorted.
 - FOLLOW-UP: later commits by others to the lines of your merged PRs, and PRs that reference them (see follow_ups), for 60 days after the merge.
-  What you caused yourself (your reference, a head you pushed: agent_push) is a `note:` line, logged without waking you.
+  What you caused yourself (your reference, a head you pushed: agent_push, your merge or close: agent_closed) is a `note:` line, logged without waking you.
   Another account renaming your PR, open (the last-comment call) or merged (follow_ups' timeline), is one too (pr_renamed).
 - Machine-wide work (those two) runs in one daemon, or a --round, at a time (shared_pass). Every call goes through request(), which keeps the
   hour's budget (see "The GitHub API budget") and sends ETags; a rate-limit pause prints one WATCH ERROR per daemon.
@@ -492,6 +492,17 @@ def agent_push(head):
     """Whether a PR's head (a sha prefix) is a commit this machine's agents pushed: its change is theirs, not news to them."""
     try:
         return bool(head) and any(l.startswith(head) for l in open(PUSHED_HEADS).read().split())
+    except OSError:
+        return False
+
+
+CLOSED_THREADS = os.path.expanduser(os.environ.get('CLOSED_THREADS', '~/.claude/closed-threads.txt'))  # written by pre-bash-guard
+
+
+def agent_closed(key, state):
+    """Whether this machine's agents merged or closed the thread (`gh pr merge`, `gh pr|issue close`): state is 'merged' or 'closed'."""
+    try:
+        return f"{key} {state}" in open(CLOSED_THREADS).read().splitlines()
     except OSError:
         return False
 
@@ -1076,14 +1087,15 @@ def scan(state, jobs):
                 state['upd'][key] = iso_epoch(updated)
             if last:
                 if not is_pr and state.setdefault('open', {}).get(key) and not last['open']:
-                    emit(f"### ISSUE CLOSED {key}" + (": the steward shipped its fix: update your installed mergeworthy (README, Install), then go on"
+                    emit(f"{'note:' if agent_closed(key, 'closed') else '###'} ISSUE CLOSED {key}" + (": the steward shipped its fix: update your installed mergeworthy (README, Install), then go on"
                                                       if repo == STEWARD_REPO else ""))
                 state.setdefault('open', {})[key] = last['open']
             state['since_by'][key] = started
             if pr_state:
                 prev = state['prs'].get(key)
                 if prev and prev != pr_state:
-                    ours = prev.get('state') == pr_state['state'] and prev.get('head') != pr_state['head'] and agent_push(pr_state['head'])
+                    ours = (prev.get('head') == pr_state['head'] or agent_push(pr_state['head'])) and \
+                        (agent_closed(key, pr_state['state']) if prev.get('state') != pr_state['state'] else prev.get('head') != pr_state['head'])
                     emit(f"{'note:' if ours else '###'} PR CHANGED {key}: {prev} -> {pr_state}")  # a note is logged, and wakes no one
                     if pr_state['state'] == 'merged' and prev.get('state') != 'merged':
                         emit_dependents(key)

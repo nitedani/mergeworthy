@@ -1619,6 +1619,8 @@ printf '{"files":[{"filename":"a.py"}]}' > "$FX/repos_o_r_commits_b1"
 mpr CLEAN 2026-10-28T13:00:00Z
 check "a PR up to date with its base, CI run after the base's last commit, merges" 0 "$(guard "$M")"
 check "BLOCK: --admin, naming it" "2 1" "$(guard "$M --admin") $(grep -c 'never `gh pr merge --admin`' "$T/err")"
+check "a merge the guard passes records its PR as merged, for the watcher (agent_closed); one it blocks records nothing" "2 0 o/r#41 merged|" \
+  "$(CLOSED_THREADS="$T/closed" guard "$M --admin") $(CLOSED_THREADS="$T/closed" guard "$M") $(tr '\n' '|' < "$T/closed")"
 mpr BEHIND 2026-10-28T13:00:00Z
 check "BLOCK: a PR GitHub reports BEHIND, naming it and the way out" "2 1" "$(guard "$M") $(grep -c 'reports it BEHIND against main: merge or rebase main into it (after a rebase, `git range-diff`' "$T/err")"
 mpr DIRTY 2026-10-28T13:00:00Z
@@ -2212,6 +2214,8 @@ bash -c 'exec -a gh-watch-daemon sleep 600' & FPID=$!; echo "$FPID" > "$TK2/gh-w
 check "a watcher of the checkout's work folder on the upstream repo covers it" 0 "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK")"
 check "a push the guard passes records the head it publishes, for the watcher (agent_push); one it blocks records nothing" "2 0 $(git -C "$CK" rev-parse HEAD)|" \
   "$(PUSHED_HEADS="$T/pushed" bg 'git push --all https://github.com/nitedani-agent/vike.git' "$CK") $(PUSHED_HEADS="$T/pushed" bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK") $(tr '\n' '|' < "$T/pushed")"
+check "a close the guard passes records its thread as closed (agent_closed); one it blocks, or whose thread it can't tell, records nothing" "2 0 0 0 o/r#7 closed|o/r#9 closed|" \
+  "$(CLOSED_THREADS="$T/cl" bg 'gh pr close 8 -R o/r --comment bye' "$CK") $(CLOSED_THREADS="$T/cl" bg 'gh issue close 7 -R o/r' "$CK") $(CLOSED_THREADS="$T/cl" bg 'gh pr close https://github.com/o/r/pull/9' "$CK") $(CLOSED_THREADS="$T/cl" bg 'gh pr close' "$CK") $(tr '\n' '|' < "$T/cl")"
 # two tasks' work folders, one watched by session sess-a: its events wake that session alone, so a session acting from the other folder needs a watcher of its own
 printf 'vikejs/vike\ngitlab.com/ns/proj\n' > "$TK2/repos.txt"; echo sess-a > "$TK2/session"
 TK4="$HOME/.mergeworthy/work/vike-other"; CK4="$TK4/vike"; mkdir -p "$TK4"; printf 'Tier: S, because one fix\n\n- [ ] Fix it https://github.com/vikejs/vike/issues/1\n' > "$TK4/scope.md"

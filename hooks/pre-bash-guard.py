@@ -406,6 +406,8 @@ def by_agent():
 
 RECORDS = os.path.realpath(os.path.expanduser('~/.claude/pr-steps')) + os.sep
 push_urls = []  # where this command's pushes go (pushed()), for the watcher check
+# what this command does on GitHub, written once it passed every check: the watcher logs these changes without waking the session
+own = {'PUSHED_HEADS': [], 'CLOSED_THREADS': []}  # the heads it pushes (gh-watch.py agent_push); `owner/repo#N merged|closed` (agent_closed)
 
 def git_head(d):
     return subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
@@ -710,11 +712,7 @@ def check(t, has_cd):
                 head, missing = missing_steps(repo)
                 if missing and any(not p['isDraft'] for p in prs):
                     block(f"this branch's PR is out of draft and HEAD {head[:10]} has no pr-steps {', '.join(missing)} record (approach: pull-request step 5, once per branch): run converge's pipeline on it first (each step ends with its `pr-steps <step> <output>`), or `gh pr ready --undo` while it converges")
-            try:  # the watcher logs a PR's head moving to one of these without waking the session (gh-watch.py agent_push)
-                with open(os.path.expanduser(os.environ.get('PUSHED_HEADS', '~/.claude/pushed-heads.txt')), 'a') as f:
-                    f.writelines(f"{sha}\n" for sha, _, _ in heads if sha)
-            except OSError:
-                pass
+            own['PUSHED_HEADS'] += [sha for sha, _, _ in heads if sha]
     if p in ('curl', 'wget', 'http', 'https', 'xh') and any(re.search(r'\bapi\.github\.com\b|github\.com/api/', x) for x in a) and \
             any(re.fullmatch(r'-X|--request|-d|--data[\w-]*|-F|--form|--json|-T|--upload-file|--method|POST|PATCH|PUT|DELETE|-\w*[dXFT]', x) or re.match(r'--(?:request|method)=', x) for x in a):
         block("a GitHub write goes through gh, where the posting gate checks it (mergeworthy:post): use `gh api` with the draft file")
@@ -795,6 +793,7 @@ def check(t, has_cd):
                 deps = ''
             if deps:
                 block(f"open PRs #{deps} are based on {head}: retarget them first (`gh pr edit <N> --base <new base>`), or merge without --delete-branch; deleting it closes them")
+        own['CLOSED_THREADS'].append(f"{slug}#{pr['url'].rstrip('/').rsplit('/', 1)[1]} merged")
     if p == 'gh' and len(a) >= 2 and a[0] in ('issue', 'pr'):
         sub, rest = a[1], a[2:]
         if '--help' in rest or '-h' in rest:
@@ -829,6 +828,10 @@ def check(t, has_cd):
             if sub != 'create':
                 check_context(f'{target[0]}#{target[1]}' if all(target) else None, files)
             for f in files: gated_file(f, has_cd, create=f in new_post_drafts(t))
+    if p == 'gh' and a[:2] in (['pr', 'close'], ['issue', 'close']) and '--help' not in a and '-h' not in a:  # one it can't tell wakes as before
+        ref = next((x for i, x in enumerate(a[2:]) if not x.startswith('-') and (i == 0 or a[1 + i] not in VALUED)), None)
+        if t_ := thread_of_ref(gh_repo(a[2:], env, run_dir) if run_dir is not None or opt(a[2:], ['--repo', '-R']) else None, ref):
+            own['CLOSED_THREADS'].append(f"{t_} closed")
     if p == 'gh' and a and a[0] == 'api':
         rest = a[1:]
         method, ep, fields, inputs, posts = api_call(rest)
@@ -897,4 +900,11 @@ for s in where.walk(segs):
         if w & {'git', 'gh', 'glab'} and w & {'push', 'commit', 'pr', 'issue', 'api', 'release', 'mr'} or 'git' not in w and w & {'push', 'commit'}:
             block(f"`{named}` runs a command named only when it runs, with `{' '.join(words)[:80]}`: write the command out, so it can be checked")
     check(s, has_cd)
+for var, lines in own.items():
+    try:
+        if lines:
+            with open(os.path.expanduser(os.environ.get(var, f"~/.claude/{var.lower().replace('_', '-')}.txt")), 'a') as f:
+                f.writelines(l + '\n' for l in lines)
+    except OSError:
+        pass
 sys.exit(0)

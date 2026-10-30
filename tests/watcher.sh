@@ -316,6 +316,22 @@ with contextlib.redirect_stdout(buf):
 print("|".join(l.split(":")[0] for l in buf.getvalue().splitlines()))
 ')
 check "PR CHANGED: a head this machine pushed is a log note, another head an event" "note|### PR CHANGED o/r#2" "$got"
+# A merge or close this machine made (pre-bash-guard records `gh pr merge`, `gh pr|issue close`) only logs the change; its DEPENDENT and TRACKER STALE still wake
+got=$(CLOSED_THREADS="$T/closed" py '
+m.agent_post_hashes, m.emit_refactor_stale, m.emit_wait_ping = (lambda: set()), (lambda *a: None), (lambda *a: None)
+m.emit_dependents, m.emit_tracker_stale = (lambda key: print(f"### DEPENDENT of merged {key}")), (lambda key, ended: print(f"### TRACKER STALE {key}"))
+open(os.environ["CLOSED_THREADS"], "w").write("o/r#3 merged\no/r#5 closed\n")
+prs = {"3": "merged", "4": "closed"}
+m.fetch_thread = lambda repo, num, *a: (True, "me", [], {"head": "a1", "state": prs[num], "conflict": False}, None, None, {}, True, None) if num in prs \
+    else (False, "me", [], None, None, {"open": False}, {}, True, None)
+state = {"since": "2026-10-29T00:00:00Z", "since_by": {}, "is_pr": {}, "prs": {f"o/r#{n}": {"head": "a1", "state": "open", "conflict": False} for n in prs}, "etag": {}, "ci": {}, "open": {"o/r#5": True, "o/r#6": True}}
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf):
+    m.scan(state, [("o/r", n, "full", 0) for n in "3456"])
+print("|".join(l.split(":")[0] for l in buf.getvalue().splitlines()))
+')
+check "PR CHANGED and ISSUE CLOSED: your own merge or close is a log note, its DEPENDENT and TRACKER STALE still events; another merge or close an event" \
+  "note|### DEPENDENT of merged o/r#3|### TRACKER STALE o/r#3|### PR CHANGED o/r#4|### TRACKER STALE o/r#4|note|### ISSUE CLOSED o/r#6" "$got"
 
 # /agent commands in threads no watch dir lists: found in the watched repos' comments feeds, routed to one dir, emitted once
 AD="$T/agentdirs"; mkdir -p "$AD/alpha" "$AD/beta" "$HOME/.mergeworthy"
