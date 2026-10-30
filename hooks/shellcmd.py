@@ -470,25 +470,27 @@ def origin(d):
 
 def _named_host(r, p):
     """The host a -R or GH_REPO value names (a URL, git@host:path, gh's HOST/OWNER/REPO, a glab path whose first part has a dot,
-    which glab can't tell from a dotted group either); None when it names none."""
+    which glab can't tell from a dotted group either); None when it names none, '' when it can't be read."""
     if m := re.match(r'(?:[a-z][\w+.-]*://)?[^@/]+@([^/:]+)[:/]|[a-z][\w+.-]*://([^/:]+)', r):
         return m[1] or m[2]
+    if '://' in r or '@' in r: return ''
     parts = r.strip('/').split('/')
     return parts[0] if (len(parts) >= 3 if p == 'gh' else '.' in parts[0]) else None
 
-def cli_host(t):
-    """The host the gh or glab command t talks to, as the CLI picks it: an API endpoint's URL, --hostname, a host its -R (or gh's
-    GH_REPO) names, else GH_HOST (gh) or GITLAB_HOST / GL_HOST (glab) set on the command or in this environment, else github.com
-    or gitlab.com. api.github.com is github.com."""
+def public_host(t):
+    """Whether every host the gh or glab command t names is the CLI's public one (github.com, api.github.com; gitlab.com): an API
+    endpoint's URL, each --hostname, a host in each -R or in GH_REPO, and GH_HOST (gh) or GITLAB_HOST and GL_HOST (glab), set on
+    the command or in this environment. One naming another host, or one that can't be read, and it isn't; which of them the CLI
+    would use isn't guessed."""
     env, a = env_of(t), prog(t)
     p, rest = os.path.basename(a[0]), a[1:]
-    get = lambda *ks: next((v for k in ks if (v := env.get(k, os.environ.get(k)))), None)
-    repo = (opt(rest, ['--repo', '-R']) or [None])[-1] or (get('GH_REPO') if p == 'gh' else None)
-    host = (rest[:1] == ['api'] and (re.match(r'https?://([^/]+)', api_call(rest[1:])[1]) or [None, None])[1]
-            or (opt(rest, ['--hostname']) or [None])[-1] or (repo and _named_host(repo, p))
-            or get(*(('GH_HOST',) if p == 'gh' else ('GITLAB_HOST', 'GL_HOST'))) or ('github.com' if p == 'gh' else 'gitlab.com'))
-    host = re.sub(r'^https?://|/+$', '', host).lower()
-    return 'github.com' if host == 'api.github.com' else host
+    get = lambda k: env.get(k, os.environ.get(k))
+    ep = api_call(rest[1:])[1] if rest[:1] == ['api'] else ''
+    hosts = ([(re.match(r'https?://([^/]+)', ep) or [None, ''])[1]] if '://' in ep else []) + opt(rest, ['--hostname']) \
+        + [h for r in opt(rest, ['--repo', '-R']) + ([get('GH_REPO')] if p == 'gh' and get('GH_REPO') else []) if (h := _named_host(r, p)) is not None] \
+        + [v for k in (('GH_HOST',) if p == 'gh' else ('GITLAB_HOST', 'GL_HOST')) if (v := get(k))]
+    public = ('github.com', 'api.github.com') if p == 'gh' else ('gitlab.com',)
+    return all(re.sub(r'^https?://|/+$', '', h).lower() in public for h in hosts)
 
 def watchable(repo):
     """True for a repo a watcher reads: owner/repo on github.com, or gitlab.com/<path>."""
@@ -513,8 +515,8 @@ def opened(t, d):
 PLAIN = ("only a plain create starts its work folder's watcher by itself: the command is exactly zero or more `cd /abs/dir && `, then "
          "gh or glab and its words (bare, '…', \"…\" without $, ` or \\, or \"$(cat <file>)\"), then at most one stderr redirect (2>&1, "
          "2>/dev/null, 2>/abs/file); no other $, `, >, <, ;, |, &, newline or parenthesis, and no output filter (--jq, -q, --silent, "
-         "--template, --web); run in a task's work folder, on github.com or gitlab.com, the host gh or glab talks to (its URL, "
-         "--hostname, -R, GH_REPO, GH_HOST, GITLAB_HOST) included")
+         "--template, --web); run in a task's work folder, on github.com or gitlab.com: every host it names (its URL, "
+         "--hostname, -R, GH_REPO, GH_HOST, GITLAB_HOST, GL_HOST) is that one")
 _BARE = r"[A-Za-z0-9_./:@=+,%-]"  # one character of a bare word
 _ERR = rf"2>(?:&1|/dev/null|\s?/{_BARE}+)"
 PLAIN_TEXT = re.compile(rf"""[ \t]*(?:cd[ \t]+/{_BARE}+(?:[ \t]+{_ERR})?[ \t]+&&[ \t]+)*(?:gh|glab)"""  # each piece of a word one way only: no backtracking blowup
@@ -529,7 +531,7 @@ def plain_create(cmd, cwd):
     for t in where.walk(segments(cmd)):
         if t[:1] in (['gh'], ['glab']) and (o := opened(t, where.dir)):
             repo, filters = o
-            ok = watchable(repo) and cli_host(t) == ('github.com' if t[0] == 'gh' else 'gitlab.com') and not any(f in t or opt(t, [f]) for f in filters)
+            ok = watchable(repo) and public_host(t) and not any(f in t or opt(t, [f]) for f in filters)
             return ok and where.dir and work_folder.task_of(where.dir) or None
     return None
 
