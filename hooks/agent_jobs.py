@@ -11,6 +11,7 @@ while T3 Code shows no active run or background command of its thread and no age
 import datetime, glob, hashlib, itertools, json, os, re, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import steward
+from shellcmd import rlines
 
 JOBS = os.path.expanduser('~/.claude/agent-jobs')
 REPORTED = os.path.expanduser('~/.claude/agent-jobs-reported')  # <job file>-<transcript mtime>: reported once per finish
@@ -29,6 +30,9 @@ def jobs(now=None):
             out.append((f, j))
     return out
 
+def stamp(s):
+    return datetime.datetime.fromisoformat(s.replace('Z', '+00:00')).timestamp()
+
 _head = {}
 def head(path):
     """(first prompt, start time) of a transcript, None for a start it doesn't record: the first entry's `timestamp` (a Codex
@@ -43,8 +47,7 @@ def head(path):
             try: o = json.loads(line)
             except ValueError: continue
             if not isinstance(o, dict): continue
-            if start is None and isinstance(o.get('timestamp'), str):
-                start = datetime.datetime.fromisoformat(o['timestamp'].replace('Z', '+00:00')).timestamp()
+            if start is None and isinstance(o.get('timestamp'), str): start = stamp(o['timestamp'])
             p = o.get('payload') or {}
             if o.get('type') == 'response_item' and p.get('role') == 'user':
                 prompt += ' '.join(b.get('text', '') for b in p.get('content') or [] if isinstance(b, dict)) + '\n'
@@ -65,9 +68,28 @@ def needles(job):
     """What the agent's first prompt carries: the whole task, else the ticket paths the key lists (a title-only key has none)."""
     return [job['brief'].strip()] if job.get('brief') else [w for w in job['key'].split() if w.startswith('/')]
 
+_launch = {}
 def launched(job):
-    """When the job's launch began (pre-agent-dedupe's PreToolUse); its registration for a job recorded without it."""
-    return job.get('launched') or job['started']
+    """When the job's launch began (pre-agent-dedupe's PreToolUse). A job an older hook registered records only its
+    registration, after its agent's transcript began: its launch call's time in the launcher's transcript (the latest call
+    naming every needle, at or before the registration), else the registration."""
+    if job.get('launched'): return job['launched']
+    k = (job['key'], job['started'])
+    if k not in _launch:
+        _launch[k], ns = job['started'], needles(job)
+        try:
+            for l in rlines(job.get('transcript') or '/nonexistent') if ns else ():
+                if b'"tool_use"' not in l or not LAUNCH.search(l): continue
+                try: e = json.loads(l); at = stamp(e['timestamp'])
+                except (ValueError, KeyError, TypeError, AttributeError): continue
+                c = (e.get('message') or {}).get('content') if isinstance(e.get('message'), dict) else None
+                calls = [' '.join(map(str, b['input'].values())) for b in c if isinstance(b, dict) and b.get('type') == 'tool_use'
+                         and isinstance(b.get('input'), dict)] if isinstance(c, list) else []
+                if at <= job['started'] and any(all(n in t for n in ns) for t in calls):
+                    _launch[k] = at
+                    break
+        except OSError: pass
+    return _launch[k]
 
 def job_id(job):
     return hashlib.sha256(f"{job['key']}\0{launched(job)}".encode()).hexdigest()[:16]

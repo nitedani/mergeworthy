@@ -1260,11 +1260,22 @@ open(p, 'w').write(json.dumps({'timestamp': at(now - 99), 'type': 'session_meta'
 out.append(name(agent_jobs.transcript(g)))
 open(p, 'a').write(json.dumps(user(grow)) + '\n')
 out.append(name(agent_jobs.transcript(g)))
+def old(f, started, brief, launcher):  # as an older hook recorded it: only its registration, after its agent's transcript began
+    j = {'key': f, 'started': started, 'brief': brief, 'transcript': launcher}; json.dump(j, open(os.path.join(agent_jobs.JOBS, f), 'w')); return j
+lt = os.path.expanduser('~/.claude/projects/-old/launcher.jsonl'); os.makedirs(os.path.dirname(lt), exist_ok=True)
+call = lambda t, task: {'type': 'assistant', 'timestamp': at(t), 'message': {'content': [{'type': 'tool_use', 'id': f'u{t}', 'name': 'mcp__t3-code__delegate_task', 'input': {'task': task}}]}}
+legacy = 'Read /work/briefs/legacy.md exactly.'  # its launch call, then a later round's after its registration
+open(lt, 'w').write(''.join(json.dumps(o) + '\n' for o in (call(now - 205, legacy), call(now - 100, legacy))))
+log('rollout-legacy.jsonl', legacy, now - 203, now)
+out.append(name(agent_jobs.transcript(old('legacy', now - 200, legacy, lt))))
+lost = 'Read /work/briefs/lost.md exactly.'  # its launcher's transcript is gone: its registration bounds it
+log('rollout-lost.jsonl', lost, now - 203, now)
+out.append(name(agent_jobs.transcript(old('lost', now - 200, lost, lt + '.gone'))))
 print(*out)
 EOF2
 )
-check "a transcript belongs to one job: a quick second round gets none before its own starts, then its own, running; fan-out agents started in reverse get their own; a repeated foreground call gets its own; a head read before its task was written is read again" \
-  "None rollout-q2.jsonl False rollout-fa.jsonl rollout-fb.jsonl True False agent-r2.jsonl None rollout-grow.jsonl" "$got"
+check "a transcript belongs to one job: a quick second round gets none before its own starts, then its own, running; fan-out agents started in reverse get their own; a repeated foreground call gets its own; a head read before its task was written is read again; an older hook's job, whose agent started before it registered, gets its own from its launch call, and none without its launcher's transcript" \
+  "None rollout-q2.jsonl False rollout-fa.jsonl rollout-fb.jsonl True False agent-r2.jsonl None rollout-grow.jsonl rollout-legacy.jsonl None" "$got"
 python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"lt","tool_input":{"task":"Execute /work/briefs/lt.md exactly","title":"lt"}}))' > "$T/lt.json"
 python3 "$R/hooks/pre-agent-dedupe.py" < "$T/lt.json" 2>/dev/null; sleep 1; python3 "$R/hooks/pre-agent-dedupe.py" register < "$T/lt.json"
 check "pre-agent-dedupe records when the launch began (PreToolUse), before its registration" True \
