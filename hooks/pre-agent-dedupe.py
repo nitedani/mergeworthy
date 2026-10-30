@@ -85,6 +85,21 @@ if not register:
         sys.stderr.write("BLOCKED: the brief still has a template's placeholder; fill it with the specifics (mergeworthy:delegate §Brief):\n"
                          + '\n'.join(f"{p} (delegate/{', delegate/'.join(dict.fromkeys(fs))})" for p, fs in sorted(unfilled.items())) + '\n')
         sys.exit(2)
+# A project file's `## Agents` line `Effort: <effort>` is the effort every agent for its repo runs at: a launch whose brief names
+# that file sets it (the Agent tool's `effort`, delegate_task's target.options or t3_thread_launch's modelSelection.options
+# `effort` or `reasoningEffort`); with no option the harness's default runs, which is not the repo's choice.
+if not register:
+    opts = (ti.get('target') or ti.get('modelSelection') or {}).get('options') or {}
+    opts = {o.get('id'): o.get('value') for o in opts if isinstance(o, dict)} if isinstance(opts, list) else opts
+    effort = ti.get('effort') or opts.get('effort') or opts.get('reasoningEffort')
+    for f in sorted({os.path.expanduser('~/.mergeworthy/projects/' + r + '.md') for r in re.findall(r'\.mergeworthy/projects/([\w.-]+/[\w.-]+)\.md', briefs)}):
+        sec = re.search(r'^## Agents\n(.*?)(?=^## |\Z)', open(f, errors='replace').read(), re.M | re.S) if os.path.isfile(f) else None
+        want = re.search(r'^- Effort: *(\w+)', sec[1], re.M) if sec else None
+        if want and str(effort or '').lower() != want[1].lower():
+            sys.stderr.write(f"BLOCKED: {f}'s `## Agents` says `Effort: {want[1]}`: launch with effort {want[1]} (the Agent tool's `effort`, "
+                             f"delegate_task's target.options `effort` for Claude or `reasoningEffort` for Codex), not "
+                             + (f"{effort}.\n" if effort else "the harness's default.\n"))
+            sys.exit(2)
 path_set = lambda t: {os.path.expanduser(p.rstrip('/.,:')) for p in re.findall(r'(~?/[^\s`\'"()<>,;]+)', t)}
 paths = path_set(gate_text)
 # A brief names a worktree in its launch text or its brief file (a ticket it says to follow, or named so), not in a reference it names

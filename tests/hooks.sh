@@ -1041,6 +1041,16 @@ check "BLOCK: an implementer brief whose repo study is over 30 days old, or miss
 echo "Studied: $(date -u +%F)" > "$HOME/.mergeworthy/projects/o/r.study.md"
 check "BLOCK: an implementation brief for that repo without code/SKILL.md, naming it" "2 1" "$(ag "$T" 'Build o/r#6 per ~/.mergeworthy/projects/o/r.md') $(grep -c 'skills/code/SKILL.md' "$T/err")"
 check "a review brief needs no code/SKILL.md" 0 "$(ag "$T" 'Review o/r#8 per ~/.mergeworthy/projects/o/r.md' review)"
+# pre-agent-dedupe: the project file's `## Agents` line `Effort: <effort>` is the effort every agent for its repo launches at
+aeff() { # tool input-extra-JSON
+  python3 -c 'import json,sys,time; print(json.dumps({"tool_name":sys.argv[1],"cwd":sys.argv[2],"tool_input":{"task":"Review o/r#8 per ~/.mergeworthy/projects/o/r.md","prompt":"Review o/r#8 per ~/.mergeworthy/projects/o/r.md","role":"review","clientRequestId":f"ae-{time.time_ns()}-r1",**json.loads(sys.argv[3])}}))' "$1" "$T" "$2" \
+    | timeout 10 python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
+check "with no Effort line, any effort or none passes" "0 0" "$(aeff mcp__t3-code__delegate_task '{"target":{"options":{"effort":"high"}}}') $(aeff mcp__t3-code__delegate_task '{}')"
+printf -- '- a convention\n## Who decides\n- maint merges: ~/.mergeworthy/projects/o/r.study.md\n## Agents\n- Every agent runs at medium.\n- Effort: medium\n' > "$HOME/.mergeworthy/projects/o/r.md"
+check "BLOCK: a Codex delegate_task at high, naming the line; at medium (as options or a list of {id, value}) it passes" "2 1 0 0" "$(aeff mcp__t3-code__delegate_task '{"target":{"options":{"reasoningEffort":"high"}}}') $(grep -c 'Effort: medium.*not high' "$T/err") $(aeff mcp__t3-code__delegate_task '{"target":{"options":{"reasoningEffort":"medium"}}}') $(aeff mcp__t3-code__delegate_task '{"target":{"options":[{"id":"effort","value":"medium"}]}}')"
+check "BLOCK: a Claude delegate_task and an Agent at high, and a launch with no effort option" "2 2 2 1" "$(aeff mcp__t3-code__delegate_task '{"target":{"options":{"effort":"high"}}}') $(aeff Agent '{"effort":"high"}') $(aeff mcp__t3-code__delegate_task '{}') $(grep -c "harness's default" "$T/err")"
+check "an Agent at medium passes" 0 "$(aeff Agent '{"effort":"medium"}')"
+printf -- '- a convention\n## Who decides\n- maint merges: ~/.mergeworthy/projects/o/r.study.md\n' > "$HOME/.mergeworthy/projects/o/r.md"
 # the main session reads the code itself before briefing an implementer: a Read of a file in a checkout of that repo, in its transcript
 RD="$T/x-work/rd"; git init -q "$RD"; git -C "$RD" remote add origin git@github.com:o/r.git; mkdir -p "$RD/src"; echo 'export {}' > "$RD/src/a.ts"; git -C "$RD" add src/a.ts; echo report > "$RD/verify.md"
 agt() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","cwd":sys.argv[1],"transcript_path":sys.argv[3],"tool_input":{"task":sys.argv[2],"title":sys.argv[2][:50],"role":"implementation"}}))' "$T" "$1$AFX" "$2" \
