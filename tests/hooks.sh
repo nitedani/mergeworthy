@@ -2591,30 +2591,31 @@ tr_file "$QA2" work
 check "the same answer in a session that started an agent is a hand-back" 2 "$(slj)"
 tr_file 'I have nothing else to start. The review waits on the maintainer, and the watcher will tell me when that happens.' work
 check "'the watcher will tell me when' is no hand-back; 'Tell me when' and 'or ask me to' are" "0 2 2" "$(slj) $(slj 'Tell me when to re-check CI.') $(slj 'I can rerun it, or ask me to stop.')"
-# ---------- pre-bash-guard: a code file's 6th change on the branch waits for `pr-steps simplify` ----------
+# ---------- pre-bash-guard: a code file's 6th change on the branch waits for `pr-steps finality` ----------
 SP="$T/simp"; git init -q -b main "$SP"; sc() { git -C "$SP" -c user.name=t -c user.email=t@t commit -q "$@"; }
 echo 0 > "$SP/a.py"; mkdir "$SP/tests"; echo 0 > "$SP/tests/a_test.py"; git -C "$SP" add -A; sc -m base
 git -C "$SP" update-ref refs/remotes/origin/main HEAD; git -C "$SP" checkout -q -b fix; (cd "$SP" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null)
 for i in 1 2 3 4 5 6; do echo "d$i" >> "$SP/a.py"; sc -am "d$i"; done; echo d7 >> "$SP/a.py"; git -C "$SP" add a.py
 check "before the branch's first review, a code file's 7th change passes: building counts nothing" 0 "$(bg 'git commit -m d7' "$SP")"
-sc -m d7; printf 'NO LOOP B COMMITS\n' > "$T/rv.md"; (cd "$SP" && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null) || echo "pr-steps verify failed in the simplify setup"
+sc -m d7; printf 'NO LOOP B COMMITS\n' > "$T/rv.md"; (cd "$SP" && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null) || echo "pr-steps verify failed in the patch-gate setup"
 for i in 1 2 3 4; do echo "p$i" >> "$SP/a.py"; sc -am "p$i"; done
 echo p5 >> "$SP/a.py"; r5=$(bg 'git commit -am p5' "$SP"); sc -am p5
-echo p6 >> "$SP/a.py"; r6=$(bg 'git commit -am p6' "$SP"); n6=$(grep -c 'a.py would get a 6th change' "$T/err")
+echo p6 >> "$SP/a.py"; r6=$(bg 'git commit -am p6' "$SP"); n6=$(grep -c 'a.py would get a 6th change.*finality pass' "$T/err")
 git -C "$SP" checkout -q a.py; echo t >> "$SP/tests/a_test.py"; git -C "$SP" add tests
 check "a code file's 5th change on the branch passes; its 6th is refused, naming it; a test-only commit passes" "0 2 1 0" "$r5 $r6 $n6 $(bg 'git commit -m t' "$SP")"
 echo p5b >> "$SP/a.py"; git -C "$SP" add a.py
 check "an amend of the 5th change is no 6th" 0 "$(bg 'git commit --amend --no-edit' "$SP")"
 git -C "$SP" checkout -q HEAD -- a.py
-sc -m t; printf 'Class: each patch narrows which lines a counts\nDISTINCT\n' > "$T/simp.md"; (cd "$SP" && bash "$R/bin/pr-steps" simplify "$T/simp.md" >/dev/null)
+sc -m t; printf 'Class: each patch narrows which lines a counts\nDISTINCT\n' > "$T/simp.md"
+check "BLOCK: pr-steps simplify is gone, and a finality record needs its Pinnacle and Plan lines" "1 1" "$(cd "$SP" && bash "$R/bin/pr-steps" simplify "$T/simp.md" 2>/dev/null >/dev/null; echo $?) $(cd "$SP" && bash "$R/bin/pr-steps" finality "$T/simp.md" 2>/dev/null >/dev/null; echo $?)"
+printf 'Pinnacle: one rule decides which lines a counts\nPlan:\n1. fold the patches into that rule\n' > "$T/fin.md"
+(cd "$SP" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null)
 echo p6 >> "$SP/a.py"; git -C "$SP" add a.py
-check "with a simplify record on the head, the 6th change passes" 0 "$(bg 'git commit -m p6' "$SP")"
+check "with a finality record on the head, the 6th change passes" 0 "$(bg 'git commit -m p6' "$SP")"
 for i in 7 8 9 10 11 12; do echo "p$i" >> "$SP/a.py"; git -C "$SP" add a.py; sc -m "p$i"; done  # 6 changes since the record, made without the hook
-echo p13 >> "$SP/a.py"; git -C "$SP" add a.py; r13=$(bg 'git commit -m p13' "$SP"); (cd "$SP" && bash "$R/bin/pr-steps" simplify "$T/simp.md" >/dev/null)
-check "BLOCK: a 7th change; a simplify record on the head that holds the 6th unblocks it" "2 0" "$r13 $(bg 'git commit -m p13' "$SP")"
-printf 'Class: each patch narrows which lines a counts\nSIMPLIFIED\n' > "$T/simp2.md"
-check "BLOCK: pr-steps simplify SIMPLIFIED while the worktree's diff is no smaller than HEAD's" "1 1" "$(cd "$SP" && bash "$R/bin/pr-steps" simplify "$T/simp2.md" 2>"$T/err" >/dev/null; echo $?) $(grep -c 'no smaller than HEAD' "$T/err")"
-# merges: a merge of the base, being made or in the history, is no change, and a simplify record on a merge commit counts
+echo p13 >> "$SP/a.py"; git -C "$SP" add a.py; r13=$(bg 'git commit -m p13' "$SP"); (cd "$SP" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null)
+check "BLOCK: a 7th change; a finality record on the head that holds the 6th unblocks it" "2 0" "$r13 $(bg 'git commit -m p13' "$SP")"
+# merges: a merge of the base, being made or in the history, is no change, and a finality record on a merge commit counts
 SM="$T/simpm"; git init -q -b main "$SM"; mc() { git -C "$SM" -c user.name=t -c user.email=t@t "$@"; }
 seq 1 10 > "$SM/a.py"; git -C "$SM" add -A; mc commit -q -m base
 git -C "$SM" update-ref refs/remotes/origin/main HEAD; git -C "$SM" checkout -q -b fix; (cd "$SM" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null)
@@ -2623,9 +2624,9 @@ for i in 1 2 3 4 5; do echo "p$i" >> "$SM/a.py"; mc commit -qam "p$i"; done
 base_edit() { mc checkout -q main; sed -i "$1s/.*/main$1/" "$SM/a.py"; mc commit -qam "main$1"; git -C "$SM" update-ref refs/remotes/origin/main HEAD; mc checkout -q fix; mc merge -q --no-commit origin/main >/dev/null; }
 base_edit 1
 check "committing a merge of the base is no change, though the branch changed its file 5 times" 0 "$(bg 'git commit --no-edit' "$SM")"
-mc commit -q --no-edit; (cd "$SM" && bash "$R/bin/pr-steps" simplify "$T/simp.md" >/dev/null)
+mc commit -q --no-edit; (cd "$SM" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null)
 for i in 6 7 8; do echo "p$i" >> "$SM/a.py"; mc commit -qam "p$i"; done; echo p9 >> "$SM/a.py"; git -C "$SM" add a.py
-check "a simplify record on a merge commit starts the counts over" 0 "$(bg 'git commit -m p9' "$SM")"
+check "a finality record on a merge commit starts the counts over" 0 "$(bg 'git commit -m p9' "$SM")"
 mc commit -q -m p9; base_edit 2; mc commit -q --no-edit; echo p10 >> "$SM/a.py"; git -C "$SM" add a.py
 check "a merge of the base in the history is no change either: the 5th change since the record passes" 0 "$(bg 'git commit -m p10' "$SM")"
 mc commit -q -m p10; mc checkout -q -b side; for i in 1 2 3 4 5 6; do echo "s$i" >> "$SM/b.py"; mc add b.py; mc commit -qm "s$i"; done

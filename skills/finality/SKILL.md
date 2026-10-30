@@ -13,7 +13,7 @@ Converges code or a design to the final state that will need no rewrite. The pro
 2. **Phase A, map:** one mapper for all subsystems when they fit one context, else one per subsystem in parallel; fresh-context agents, never the author's; each starts from `code_research` when available (`delegate/agent.md` §Code search).
    Open: `delegate/finality.md` (PHASE A) · Record: the graph files in the work folder
 3. **Phase B, imagine.** You write the clean problem first, as its users would state it, with no current design, file names or project terms: those anchor the branches on what exists. Then 6–9 frames from it, 3 branch agents with 2 or 3 frames each, then one converging agent with the graph and every branch's lists; all on your model class. You rate the pinnacle and decide.
-   Open: `delegate/finality.md` (PHASE B) · Record: the pinnacle design and the ranked plan
+   Open: `delegate/finality.md` (PHASE B) · Record: a file with a line `Pinnacle: <the design>` and a line `Plan:` ranking the steps · Run (on a branch): `pr-steps finality <that file>` · Hook: pre-bash-guard (a code file's 6th change since review waits for it)
 4. **Phase B½, hunt phantom fixes:** the graph queries by Phase B's converging agent; instrumenting guards, running the full suite and e2e, and the removals by the implementer.
    Open: `delegate/finality.md` (PHASE B½); `code §Removal gate` · Record: the counters
 5. **Phase C, converge:** behavior-preserving, revert-ready commits through an implementer, gates after each.
