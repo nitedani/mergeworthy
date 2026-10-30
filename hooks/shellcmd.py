@@ -321,11 +321,11 @@ class Where:
     """Where each simple command of one command line runs, walk() taking them in order, with the variables the line set
     (`D=~/x; cd "$D"`). It follows the forms agents write: a cd or pushd to a path (`cd /abs/dir && ...`, or relative to a dir it
     knows), `cd $(git rev-parse --show-toplevel)` and `git -C <dir>`. A cd holds for the later commands of its scope (Seg.scopes) and
-    the scopes inside it; leaving an isolating scope restores the dir from before it. After any other dir change (a cd in a scope
+    the scopes inside it; leaving an isolating scope restores the dir and the line's variables from before it. After any other dir change (a cd in a scope
     that may run it or not, once the scope is left; a relative one in a loop; a target holding an expansion it can't resolve; `cd -`,
     popd or a stack rotation) the dir is None, and a check that needs it blocks."""
     def __init__(self, cwd):
-        self.dir, self.moved, self.vars, self.scopes = cwd, False, {}, []  # each scope entered: [(id, kind), dir before it, whether a cd ran in it]
+        self.dir, self.moved, self.vars, self.scopes = cwd, False, {}, []  # each scope entered: [(id, kind), dir before it, whether a cd ran in it, variables before it]
 
     def expand(self, p):
         """p with the line's variables ($D, ${D}), then the environment's, put in; one it can't tell stays as written."""
@@ -348,9 +348,10 @@ class Where:
         """Leave the scopes not in scopes, innermost first, and enter the new ones."""
         n = 0
         while n < min(len(self.scopes), len(scopes)) and self.scopes[n][0] == scopes[n]: n += 1
-        for (_, kind), before, moved in reversed(self.scopes[n:]):
+        for (_, kind), before, moved, vars in reversed(self.scopes[n:]):
             self.dir = before if kind == ISOLATING else None if moved else self.dir
-        self.scopes = self.scopes[:n] + [[x, self.dir, False] for x in scopes[n:]]
+            if kind == ISOLATING: self.vars = vars
+        self.scopes = self.scopes[:n] + [[x, self.dir, False, dict(self.vars)] for x in scopes[n:]]
 
     def step(self, t):
         if t and all(re.match(r'^\w+=', x) for x in t):

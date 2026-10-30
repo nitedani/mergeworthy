@@ -2270,6 +2270,7 @@ MRC='glab mr create --draft -R gitlab.com/ns/proj --title x'
 check "BLOCK: a push, a PR and an MR from a work folder another session's watcher doesn't watch, naming the folder to watch" "2 1 1 1" \
   "$(bgs sess-b "$PUSH" "$CK4") $(grep -c "gh-watch-start $TK4 " "$T/err") $(unwatched sess-b "$PRC" "$CK4") $(unwatched sess-b "$MRC" "$CK4")"
 check "the same from the watched work folder pass, whichever session acts there" "0 0 0" "$(bgs sess-b "$PUSH" "$CK") $(unwatched sess-b "$PRC" "$CK") $(unwatched sess-b "$MRC" "$CK")"
+check "a variable a subshell sets stays inside it: a cd to it after the subshell goes where the line set it before, a watched folder" 0 "$(bgs sess-b "WD=$CK; (WD=$CK4); cd \$WD && $PUSH" "$T")"
 check "BLOCK: a push after a subshell's cd and push is checked in the session's dir, an unwatched work folder, naming it" "2 1" "$(bgs sess-b "(cd $CK && $PUSH); $PUSH" "$CK4") $(grep -c "gh-watch-start $TK4 " "$T/err")"
 check "outside any work folder, only the session's own watcher counts" "0 1" "$(unwatched sess-a "$MRC" "$T") $(unwatched sess-b "$MRC" "$T")"
 oreg() { # session cwd command: the thread post-bash-register adds to the watched folder
