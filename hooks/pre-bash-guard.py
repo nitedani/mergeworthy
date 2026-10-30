@@ -143,7 +143,7 @@ def need_watch(repo, path, why=''):
 def need_home(repo, path):
     """Opening an issue or PR: a plain create (shellcmd.plain_create), whose thread post-bash-register adds to its work folder's
     watcher, starting or reviving it, passes; any other command needs need_watch's running watcher."""
-    if not plain_create(segs, cwd):
+    if not plain_create(cmd, cwd):
         need_watch(repo, path, PLAIN)
 
 def check_turn(repo, num, args=()):

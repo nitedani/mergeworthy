@@ -156,7 +156,7 @@ for repo, line, home in pairs:
         home = watched
     elif home and os.path.realpath(home) in map(os.path.realpath, live_dirs):
         open(os.path.join(home, 'threads.txt'), 'a').write(line + '\n')
-    elif home and watcher_on and home == plain_create(segs, cwd):  # what pre-bash-guard let through without a running watcher
+    elif home and watcher_on and home == plain_create(cmd, cwd):  # what pre-bash-guard let through without a running watcher
         start(home, line)
     elif home and watcher_on:
         told.append(f"the watcher of {home} isn't running, so {line} joined none: run `gh-watch-start {home} {line}`, arm the Monitor it prints if any")
