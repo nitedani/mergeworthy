@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
 import shellcmd
 from shellcmd import parse, segments, prog, opt, api_call, env_of, origin, plain_create, PLAIN, new_post_drafts, branch_record, no_approach, no_preflight, no_instructions_read, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Where
-import own_actions, steward, post_words, testpaths, work_folder
+import own_actions, steward, post_words, testpaths, threads_file, work_folder
 from t3_tasks import under_t3
 def missing_steps(d):
     head = subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
@@ -134,7 +134,8 @@ def need_watch(repo, path, why=''):
         return [l.strip() for l in open(os.path.join(d, f))] if os.path.exists(os.path.join(d, f)) else []
     sid = d.get('session_id')
     covering = [w for w in work_folder.watched_by(watch_dirs(), sid, path)
-                if any(l.split()[:1] in ([r] for r in repos) for l in lines(w, 'repos.txt') + lines(w, 'threads.txt'))]
+                if any(l.split()[:1] in ([r] for r in repos) for l in lines(w, 'repos.txt'))
+                or any(r in repos for r, _ in threads_file.read(os.path.join(w, 'threads.txt'))[0])]
     if not covering:
         start = f"`gh-watch-start {work_folder.task_of(path) or '<your work folder>'} {repos[0]}`"
         block(f"no running watcher of this task or session covers {' or '.join(repos)} (another session's watcher wakes that session, not this one{'; ' + why if why else ''}): "

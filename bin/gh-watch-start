@@ -27,6 +27,8 @@ daemon_alive() { local p; p=$(cat "$dir/gh-watch.pid" 2>/dev/null || true); [ -n
 # link through the stable path when installed as a plugin (its own folder changes with every update), even when this
 # copy is an older version on a session's PATH: a watcher linked to a version folder never moved to the next one
 root=$(dirname "$(dirname "$(realpath "$0")")"); case "$root" in */plugins/cache/*) [ -d ~/.mergeworthy/current ] && root=~/.mergeworthy/current;; esac
+# a thread is listed in any form threads.txt takes (owner/repo#N, gitlab.com/<path> #N ...), as the watcher reads it
+listed() { python3 "$(dirname "$(realpath "$0")")/../hooks/threads_file.py" "$@"; }
 mkdir -p "$dir"; touch "$dir/threads.txt" "$dir/repos.txt" "$dir/events.log"
 for f in gh-watch.py gh-watch-daemon.sh; do ln -sfn "$root/watcher/$f" "$dir/$f"; done
 while [ $# -gt 0 ]; do
@@ -38,14 +40,14 @@ while [ $# -gt 0 ]; do
   if [ "$file" = threads.txt ]; then
     taken=
     while read -r other; do
-      [ "$other" != "$dir" ] && [ -f "$other/threads.txt" ] && grep -qxF "$line" "$other/threads.txt" || continue
+      [ "$other" != "$dir" ] && listed "$other/threads.txt" $line || continue
       opid=$(cat "$other/gh-watch.pid" 2>/dev/null || true)
       if [ -n "$opid" ] && ps -p "$opid" -o command= 2>/dev/null | grep -q gh-watch-daemon; then taken=$other; fi
     done < <(cat ~/.claude/gh-watch-dirs.txt 2>/dev/null)
     if [ -n "$taken" ] && [ -n "$round" ]; then echo "skipped $line: $taken watches it" >&2; continue; fi
     [ -z "$taken" ] || { echo "$line is already watched by $taken: use that work folder, or remove the line there first" >&2; exit 1; }
   fi
-  grep -qxF "$line" "$dir/$file" || echo "$line" >> "$dir/$file"
+  if [ "$file" = threads.txt ]; then listed "$dir/$file" $line; else grep -qxF "$line" "$dir/$file"; fi || echo "$line" >> "$dir/$file"
   # the thread covers its repo now: its bare repo line says nothing more
   if [ "$file" = threads.txt ]; then grep -vxF "$repo" "$dir/repos.txt" > "$dir/repos.txt.tmp" || true; mv "$dir/repos.txt.tmp" "$dir/repos.txt"; fi
 done

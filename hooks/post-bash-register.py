@@ -10,7 +10,7 @@ import hashlib, json, os, re, shlex, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
 from shellcmd import segments, prog, new_post_drafts, Where, opened, plain_create, opt, repo_name
-import own_actions, steward, work_folder
+import own_actions, steward, threads_file, work_folder
 d = json.load(sys.stdin)
 # the pushes, merges and closes pre-bash-guard let this command make are its own once it succeeded; a failed command's go
 own_actions.settle(own_actions.key(d), d.get('hook_event_name') != 'PostToolUseFailure')
@@ -140,7 +140,8 @@ def home_of(repo, post_dir):
     if wf := work_folder.task_of(post_dir):
         return wf
     mine = work_folder.watched_by(live_dirs, sid, post_dir)
-    covering = [dr for dr in mine if any(l.split()[:1] == [repo] for l in lines(dr, 'repos.txt') + lines(dr, 'threads.txt'))]
+    covering = [dr for dr in mine if any(l.split()[:1] == [repo] for l in lines(dr, 'repos.txt'))
+                or any(r == repo for r, _ in threads_file.read(os.path.join(dr, 'threads.txt'))[0])]
     return (covering + mine + [None])[0]
 _env = os.path.expanduser('~/.mergeworthy/settings.env')  # MERGEWORTHY_WATCHER as stop-lint reads it
 watcher_on = (os.environ.get('MERGEWORTHY_WATCHER') or ('off' if 'MERGEWORTHY_WATCHER=off' in (open(_env).read() if os.path.exists(_env) else '') else 'on')) != 'off'
@@ -164,7 +165,7 @@ for repo, num, line in found:
     if len(homes) == 1: pairs.append((repo, line, homes.pop()))
     else: lost.append(line)
 for repo, line, home in pairs:
-    if watched := next((dr for dr in live_dirs if line in lines(dr, 'threads.txt') and not steward.quiet(dr)), None):  # the steward's dirs wake no one on it
+    if watched := next((dr for dr in live_dirs if threads_file.lists(os.path.join(dr, 'threads.txt'), *line.split()) and not steward.quiet(dr)), None):  # the steward's dirs wake no one on it
         home = watched
     elif home and os.path.realpath(home) in map(os.path.realpath, live_dirs):
         open(os.path.join(home, 'threads.txt'), 'a').write(line + '\n')

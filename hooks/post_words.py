@@ -92,8 +92,8 @@ def draft_repo(path):
         if os.path.isfile(f):
             repos = list(dict.fromkeys(l.split()[0] for l in open(f, errors='replace') if l.strip()))
             if len(repos) > 1:
-                t = os.path.join(d, 'threads.txt')
-                named = {l.split()[0] for l in open(t, errors='replace') if l.strip()} if os.path.isfile(t) else set()
+                import threads_file
+                named = {r for r, _ in threads_file.read(os.path.join(d, 'threads.txt'))[0]}
                 repos = [r for r in repos if r in named] or repos
             if len(repos) > 1:
                 return None, f"{f} lists {', '.join(repos)} and threads.txt doesn't single one out: pass --repo <owner/repo>, so the checks use its language"

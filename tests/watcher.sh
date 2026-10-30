@@ -96,7 +96,36 @@ buf = io.StringIO()
 with contextlib.redirect_stdout(buf): t = m.read_threads(); m.read_threads()
 print(" ".join(sorted(r + " " + n for r, n in t)) + "|" + open(m.THREADS).read().replace("\n", ";") + "|" + str(buf.getvalue().count("WATCH ERROR")))
 ')
-check "threads.txt: owner/repo#N is read as owner/repo N and rewritten so; a bad line is reported once an hour, not every pass" "magne4000/universal-middleware 408 o/r 2|magne4000/universal-middleware 408;o/r 2;bogus;|1" "$got"
+check "threads.txt: owner/repo#N is read as owner/repo N, the file left as written; a bad line is reported once an hour, not every pass" "magne4000/universal-middleware 408 o/r 2|magne4000/universal-middleware#408;o/r 2;bogus;|1" "$got"
+got=$(py '
+m.ONCE = True  # --once reads what a daemon reads
+open(m.THREADS, "w").write("gitlab.com/ns/sub/proj #187\ngitlab.com/ns/sub/proj!9\ngitlab.com/ns/sub/proj 4 # a note\n!5 gitlab.com/ns/sub/proj\ngitlab.com/ns/sub/proj x\no/r x\n")
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf): m.read_threads(); m.read_threads()
+out = buf.getvalue()
+print(" ".join(k for k, *_ in m.gl_watch.threads(m.THREADS)) + "|" + "".join(str(out.count("bad line \x27" + l)) for l in ("!5 gitlab.com", "gitlab.com/ns/sub/proj x", "o/r x")))
+')
+check "threads.txt: a GitLab <path> #N or <path>!N is read as <path> N or <path> !N, under --once too; a # comment after a GitLab line is one" \
+  "gitlab.com/ns/sub/proj#187 gitlab.com/ns/sub/proj!9 gitlab.com/ns/sub/proj#4" "${got%|*}"
+check "threads.txt: a bad GitLab line is reported once an hour, as a bad GitHub line is" 111 "${got##*|}"
+got=$(py '
+m.ONCE = False
+open(m.THREADS, "w").write("gitlab.com/ns/sub/proj #187\no/r#5\n")
+done = []
+def append():  # a hook appends while the watcher reads the file (or, on a watcher that rewrites it, just before it replaces it)
+    if not done: done.append(open(m.THREADS, "a").write("gitlab.com/ns/sub/proj 188\n"))
+replace, tf = m.os.replace, getattr(m, "threads_file", None)
+m.os.replace = lambda *a: (append(), replace(*a))
+if tf: parse = tf.parse; tf.parse = lambda l: (append(), parse(l))[1]
+m.read_threads(); m.os.replace = replace
+print(open(m.THREADS).read().replace("\n", ";") + "|" + " ".join(k for k, *_ in m.gl_watch.threads(m.THREADS)))
+')
+check "threads.txt is never rewritten: a line appended while the watcher reads it stays, and is read" "gitlab.com/ns/sub/proj #187;o/r#5;gitlab.com/ns/sub/proj 188;|gitlab.com/ns/sub/proj#187 gitlab.com/ns/sub/proj#188" "$got"
+got=$(py '
+open(m.THREADS, "w").write("o/r#5\no/r 5\ngitlab.com/ns/sub/proj #7\ngitlab.com/ns/sub/proj 7\n")
+print(m.read_threads(), [k for k, *_ in m.gl_watch.threads(m.THREADS)], sorted(m.listed_threads(m.HERE)))
+')
+check "threads.txt: a thread written as #N beside its canonical line is read once" "[['o/r', '5']] ['gitlab.com/ns/sub/proj#7'] ['o/r#5']" "$got"
 
 # a ticked grouped tracker line is accepted; an unticked one still fires TRACKER STALE
 tracker() { py "
@@ -128,7 +157,7 @@ codes="$(follow "$W/gh-watch.py") $(follow "$W/gh-watch.py") $(follow "$W/gh-wat
 check "three starts from a checkout, exit codes" "0 0 0" "$codes"
 [ -e "$HOME/.mergeworthy/current" ]; check "~/.mergeworthy/current not repointed" 1 $?
 # control: the same code inside the plugin cache, with a newer version installed, still follows (exit 75)
-C="$HOME/.claude/plugins/cache/mergeworthy/mergeworthy/v1"; mkdir -p "$C/watcher" "$C/hooks"; cp "$R/watcher/gh-watch.py" "$R/watcher/gl_watch.py" "$C/watcher/"; cp "$R/hooks/agent_jobs.py" "$R/hooks/own_actions.py" "$R/hooks/shellcmd.py" "$R/hooks/steward.py" "$R/hooks/testpaths.py" "$R/hooks/work_folder.py" "$C/hooks/"
+C="$HOME/.claude/plugins/cache/mergeworthy/mergeworthy/v1"; mkdir -p "$C/watcher" "$C/hooks"; cp "$R/watcher/gh-watch.py" "$R/watcher/gl_watch.py" "$C/watcher/"; cp "$R/hooks/agent_jobs.py" "$R/hooks/own_actions.py" "$R/hooks/shellcmd.py" "$R/hooks/steward.py" "$R/hooks/testpaths.py" "$R/hooks/threads_file.py" "$R/hooks/work_folder.py" "$C/hooks/"
 check "control: running from the plugin cache, newer version installed" 75 "$(follow "$C/watcher/gh-watch.py")"
 [ "$(readlink "$HOME/.mergeworthy/current")" = "$T/installed/v2" ]; check "control: current points at the new version" 0 $?
 
@@ -872,10 +901,13 @@ check "GitLab lines stay out of the GitHub thread lists" "0 []" "$got"
 # gh-watch-start's argument loop, without its supervisor: the GitLab forms are stored, a GitHub !N is refused
 GS="$T/glstart"; mkdir -p "$GS"; : > "$GS/threads.txt"; echo gitlab.com/ns/sub/proj > "$GS/repos.txt"
 args_step=$(awk '/^while \[ \$# -gt 0 \]/ { p = 1 } p { print } p && /^done$/ { exit }' "$R/bin/gh-watch-start")
+listed() { python3 "$R/hooks/threads_file.py" "$@"; }  # gh-watch-start's, from its own checkout
 ( dir="$GS"; set -- gitlab.com/ns/sub/proj 4 gitlab.com/ns/sub/proj '!9'; eval "$args_step" ) >/dev/null 2>&1
 check "gh-watch-start stores the GitLab lines and drops the covered repo line" "gitlab.com/ns/sub/proj 4|gitlab.com/ns/sub/proj !9|+" "$(tr '\n' '|' < "$GS/threads.txt")+$(cat "$GS/repos.txt")"
 ( dir="$GS"; set -- o/r '!9'; eval "$args_step" ) >/dev/null 2>&1
 check "gh-watch-start: !N on a GitHub repo is not a thread" "o/r" "$(cat "$GS/repos.txt")"
+( dir="$GS"; printf 'gitlab.com/ns/sub/proj #7\no/r#6\n' > "$GS/threads.txt"; set -- gitlab.com/ns/sub/proj 7 o/r 6; eval "$args_step" ) >/dev/null 2>&1
+check "gh-watch-start: a thread threads.txt lists as #N isn't added again" "gitlab.com/ns/sub/proj #7|o/r#6|" "$(tr '\n' '|' < "$GS/threads.txt")"
 
 ( dir="$GS"; : > "$GS/repos.txt"; set -- o/r all o/r 5; eval "$args_step" ) >/dev/null 2>&1
 check "gh-watch-start: an 'owner/repo all' line stays when a thread of its repo joins" "o/r all" "$(cat "$GS/repos.txt")"
@@ -887,7 +919,7 @@ PATH="$T/cronbin:$PATH" bash "$GI/bin/gh-watch-start" "$T/retiredwatch" o/r 5 < 
 check "gh-watch-start on a dir whose watcher retired removes its retired file" "0 removed" "$? $([ -e "$T/retiredwatch/retired" ] && echo kept || echo removed)"
 GP=$(cat "$T/retiredwatch/gh-watch.pid" 2>/dev/null); ps -o args= -p "$GP" 2>/dev/null | grep -qx 'sleep 30' && kill "$GP"  # the stub daemon it started
 # under T3 Code (T3's state names the session's thread) it records the thread and the log's end, and prints no Monitor; outside it, the Monitor again
-mkdir -p "$GI/hooks" "$HOME/.t3/userdata" "$T/t3watch"; cp "$R/hooks/steward.py" "$GI/hooks/"; printf '### before\n' > "$T/t3watch/events.log"
+mkdir -p "$GI/hooks" "$HOME/.t3/userdata" "$T/t3watch"; cp "$R/hooks/steward.py" "$R/hooks/threads_file.py" "$GI/hooks/"; printf '### before\n' > "$T/t3watch/events.log"
 python3 -c 'import sqlite3, sys; c = sqlite3.connect(sys.argv[1]); c.execute("create table orchestration_v2_projection_provider_threads (provider_thread_id text, thread_id text, payload_json text)")
 c.execute("create table orchestration_v2_projection_subagents (subagent_id text, thread_id text, child_thread_id text)")
 c.execute("""insert into orchestration_v2_projection_provider_threads values ('"'p1', 'thr-9', '{\"nativeThreadRef\":{\"nativeId\":\"sess-t3\"}}'"')"""); c.commit()' "$HOME/.t3/userdata/statev2.sqlite"
