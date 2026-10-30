@@ -77,7 +77,7 @@ for open_ in (True, False, False):
 print(*out, sep=";")
 ')
 check "an issue closing emits ISSUE CLOSED once; a mergeworthy one says to update the plugin; a PR closing doesn't" \
-  ";### ISSUE CLOSED o/r#3|### ISSUE CLOSED nitedani/mergeworthy#12: the steward shipped its fix: update your installed mergeworthy (README, Install), then go on;" "$got"
+  ";### ISSUE CLOSED o/r#3|### ISSUE CLOSED nitedani/mergeworthy#12: the steward shipped its fix: run \`mergeworthy-update\`, then go on;" "$got"
 
 # a waiting-on.txt key with a trailing note is read as a thread, and emit_dependents still matches it; a # line is not
 got=$(py '
