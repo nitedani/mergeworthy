@@ -1047,6 +1047,23 @@ check "the newest record passes; the next build on the same record waits, unless
   "$(abrief $'You implement the fix in '"$AB"$'.\nApproach: '"$T/ab1.md") $(abrief $'You implement the review fix in '"$AB"$'.\nApproach: '"$T/ab1.md") $(grep -c 'last build was briefed on the approach recorded' "$T/err") $(abrief $'You implement the review fix in '"$AB"$'.\nApproach: '"$T/ab1.md (unchanged: a test the review asked for)")"
 sleep 1; (cd "$AB" && bash "$R/bin/pr-steps" approach "$T/ab2.md" >/dev/null)
 check "a changed approach recorded after the last build passes; the record it replaced no longer does" "0 2" "$(abrief $'You implement it as a virtual module in '"$AB"$'.\nApproach: '"$T/ab2.md") $(abrief $'You implement more in '"$AB"$'.\nApproach: '"$T/ab1.md (unchanged: same)")"
+# the brief a launch follows from the work folder is the one checked, in each launch form: delegate_task as an implementer or in another role, and Agent
+AF="$HOME/.mergeworthy/work/apf"; mkdir -p "$AF"; printf 'You implement the fix in %s.\n' "$AB" > "$AF/brief.md"; printf 'You implement the fix in %s.\nApproach: %s (unchanged: a review fix)\n' "$AB" "$T/ab2.md" > "$AF/brief-ok.md"
+flaunch() { # tool role brief: one launch that follows the brief file
+  python3 -c 'import json,sys,time; t={"prompt":"Follow "+sys.argv[3]+" exactly.","description":f"impl {time.time_ns()}"} if sys.argv[1]=="Agent" else {"task":"Follow "+sys.argv[3]+" exactly.","title":f"impl {time.time_ns()}","role":sys.argv[2]}
+print(json.dumps({"tool_name":sys.argv[1],"cwd":sys.argv[4],"tool_input":t}))' "$1" "$2" "$3" "$T" | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err" >/dev/null; echo $?; }
+check "BLOCK: a followed brief file in the work folder with no Approach line, launched by delegate_task as an implementer, in another role, or by Agent; with it, each passes" "2 2 2 0 0 0" \
+  "$(flaunch mcp__t3-code__delegate_task implementation "$AF/brief.md") $(flaunch mcp__t3-code__delegate_task review "$AF/brief.md") $(flaunch Agent '' "$AF/brief.md") $(flaunch mcp__t3-code__delegate_task implementation "$AF/brief-ok.md") $(flaunch mcp__t3-code__delegate_task review "$AF/brief-ok.md") $(flaunch Agent '' "$AF/brief-ok.md")"
+# delegate/implementer.md's template, filled the way it says, passes the gate
+AT="$T/atpl"; git init -q "$AT"; git -C "$AT" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; (cd "$AT" && bash "$R/bin/pr-steps" approach "$T/ab1.md" >/dev/null)
+python3 - "$R/skills/delegate/implementer.md" "$T/ab1.md" "$AT" > "$AF/brief-tpl.md" <<'PY'
+import re, sys
+body = re.search(r'```\n(.*?)```', open(sys.argv[1]).read(), re.S)[1].replace('Approach: <abs path>', 'Approach: ' + sys.argv[2])
+body = body.replace('<repo>', sys.argv[3])
+while re.search(r'<[^<>\n]+>', body): body = re.sub(r'<[^<>\n]+>', 'it', body)
+print(body)
+PY
+check "the implementer template filled as it says passes, by Agent" 0 "$(flaunch Agent '' "$AF/brief-tpl.md")"
 check "BLOCK: a drafter brief (it reads thread-context.md) without writing/SKILL.md; with it, it passes" "2 0" "$(ag "$T" 'Draft the reply from /w/drafts/x/thread-context.md' review) $(ag "$T" 'Write a reply draft by skills/writing/SKILL.md from /w/drafts/y/thread-context.md; list each claim with a scope word beside its source' review)"
 check "BLOCK: a drafter brief without the template's scope-word check, naming the template; a review of a draft (CLEAN) needs none" "2 1 0" "$(ag "$T" 'Write a reply draft by skills/writing/SKILL.md from /w/drafts/z/thread-context.md' review) $(grep -c 'delegate/drafter.md' "$T/err") $(ag "$T" 'Review /w/drafts/z/r.md against /w/drafts/z/thread-context.md by skills/writing/SKILL.md; final message CLEAN or findings' review)"
 # pre-agent-dedupe: a template's placeholder left in the brief, by the plugin's own skills/delegate templates

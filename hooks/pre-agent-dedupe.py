@@ -254,15 +254,21 @@ if not register and ti.get('role') not in ('research', 'test') and 'memory-refre
 # pull-request step 5 is the build's input: an implementer brief names `Approach: <path>`, the newest approach record of a checkout it names
 # (pr-steps approach). A later build of that record's PR names a newer record, or the same one marked `(unchanged: <why>)`.
 BUILT = os.path.expanduser('~/.claude/approach-builds')  # per approach record: the time of the record the PR's last build was briefed on
+# the brief the launch executes: its own text, and each file it says to follow or names as a brief, under the work folder too
+# (`Follow ~/.mergeworthy/work/<task>/brief.md exactly`); never a reference it names, nor an installed skill or a project file
+executed = [t for t in sorted({os.path.abspath(os.path.expanduser(m)) for m in re.findall(MD, text)})
+            if os.path.isfile(t) and not t.startswith((mw + 'current' + os.sep, mw + 'projects' + os.sep))
+            and (t in said or re.search(r'brief|ticket|prompt', os.path.basename(t)))]
+exec_text = text + '\n' + '\n'.join(open(t, errors='replace').read() for t in executed)
 def brief_approach():
     """(record file, its newest line's time, the unchanged reason or '') of an implementer brief's Approach line; blocks when it has none."""
-    m = re.search(r'^[ \t>*-]*Approach:\s*(\S+\.md)(?:\s+\(unchanged:\s*([^)]*\S)\s*\))?\s*$', gate_text, re.M)
+    m = re.search(r'^[ \t>*-]*Approach:\s*(\S+\.md)(?:\s+\(unchanged:\s*([^)]*\S)\s*\))?\s*$', exec_text, re.M)
     if not m:
         sys.stderr.write("BLOCKED: an implementer brief names the approach it builds (mergeworthy:pull-request step 5, delegate/implementer.md): "
                          "a line `Approach: <abs path of approach.md>`, recorded first by `pr-steps approach` in the PR branch's checkout the brief names\n")
         sys.exit(2)
     named, recs = os.path.realpath(os.path.expanduser(m[1])), set()
-    for p in (p for p in paths if not p.startswith('//')):  # the //host/… of a URL, not a path
+    for p in (p for p in path_set(exec_text) if not p.startswith('//')):  # the //host/… of a URL, not a path
         while p not in ('/', '') and not os.path.exists(os.path.join(p, '.git')): p = os.path.dirname(p)
         if p not in ('/', '') and (r := branch_record(p, 'approach')) and os.path.isfile(r): recs.add(r)
     for r in sorted(recs):
@@ -272,7 +278,7 @@ def brief_approach():
     sys.stderr.write(f"BLOCKED: {m[1]} is not the newest `pr-steps approach` record of a checkout this brief names: record it in the PR branch's "
                      "checkout (mergeworthy:pull-request step 5) and name that checkout in the brief\n")
     sys.exit(2)
-approach = brief_approach() if ti.get('role') == 'implementation' or re.search(r'^\s*You implement\b', gate_text, re.M) else None
+approach = brief_approach() if ti.get('role') == 'implementation' or re.search(r'^\s*You implement\b', exec_text, re.M) else None
 if approach and not register and not approach[2]:
     built = os.path.join(BUILT, os.path.basename(approach[0]))
     last = open(built).read().strip() if os.path.isfile(built) else ''
