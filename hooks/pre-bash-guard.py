@@ -339,7 +339,7 @@ def check_compose(env, t):
     n = 2 if os.path.basename(t[0]) == 'docker' else 1
     if t[1:n] not in ([], ['compose']) or env.get('MERGEWORTHY_HOST_PORTS') == 'user-asked': return
     keep, paths = ('-f', '--file', '-p', '--project-name', '--profile', '--project-directory', '--env-file'), ('-f', '--file', '--project-directory', '--env-file')
-    a, glob = t[n:], []
+    a, glob, files = t[n:], [], []
     while a and a[0].startswith('-'):
         k = 2 if a[0] in keep + ('--ansi', '--parallel', '--progress') else 1
         if a[0].split('=')[0] in keep: glob += a[:k]
@@ -350,9 +350,14 @@ def check_compose(env, t):
         if eq and o in paths or not o and i and glob[i - 1] in paths:
             if (f := where.path(v)) is None:
                 block(f"can't tell the path `{v}` this compose command reads, so its ports can't be checked: write it out, or set its variable on this line")
-            if (o or glob[i - 1]) in ('-f', '--file') and os.path.normpath(f) in wrote:
-                block(f"{f} is written by this same command, so its ports can't be checked yet: write it in one command, then start the stack in the next")
+            files += [f] if (o or glob[i - 1]) in ('-f', '--file') else []
             glob[i] = o + eq + f
+    if not files:  # the files compose reads without -f: COMPOSE_FILE's, else its default names in the dir it runs in
+        listed, sep = (env.get(k, os.environ.get(k, default)) for k, default in (('COMPOSE_FILE', ''), ('COMPOSE_PATH_SEPARATOR', ':')))
+        names = listed.split(sep) if listed else [f'{b}{o}.{e}' for b in ('compose', 'docker-compose') for o in ('', '.override') for e in ('yaml', 'yml')]
+        files = [f for f in map(where.path, names) if f]
+    if f := next((f for f in files if os.path.normpath(f) in wrote), None):
+        block(f"{f} is written by this same command, so its ports can't be checked yet: write it in one command, then start the stack in the next")
     try:
         r = subprocess.run(t[:n] + glob + ['config', '--format', 'json'], cwd=known(run_dir), env={**os.environ, **env}, capture_output=True, text=True, timeout=30)
         svcs = json.loads(r.stdout)['services'] if r.returncode == 0 else {}
