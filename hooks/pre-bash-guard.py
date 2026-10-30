@@ -200,9 +200,7 @@ def check_finality(repo, num, files):
         try: flags = open(f + '.lint').read().split()
         except OSError: continue
         if flags[flags.index('--kind') + 1:][:1] != ['proposal']: continue
-        root = f
-        while root != '/' and os.path.basename(root) != 'drafts': root = os.path.dirname(root)
-        root = os.path.dirname(root) if root != '/' else os.path.dirname(os.path.dirname(f))
+        root = next((os.path.dirname(p) for p in work_folder.ancestors(f) if os.path.basename(p) == 'drafts'), os.path.dirname(os.path.dirname(f)))
         m = os.path.join(root, 'maps', f"{repo.replace('/', '-')}-{num}.md")
         if os.path.exists(m) and os.path.getmtime(m) > rounds[-1]: continue
         block(f"{repo}#{num} has had {len(rounds)} proposal rounds: run the finality pass (mergeworthy:finality step 1, a drifted design thread) before this reply, "

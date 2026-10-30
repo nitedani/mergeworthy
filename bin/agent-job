@@ -25,9 +25,8 @@ def leftovers(j):
     text = j.get('brief', '') + ''.join(open(t, errors='replace').read() for t in tickets if os.path.isfile(t))
     dirs = {os.path.dirname(t) for t in tickets if os.path.isdir(os.path.dirname(t))} - {os.path.expanduser('~'), '/'}
     for p in re.findall(r'(~?/[^\s`\'"()<>,;]+)', text):
-        p = os.path.realpath(os.path.expanduser(p.rstrip('/.,:')))
-        while p != '/' and not os.path.exists(os.path.join(p, '.git')): p = os.path.dirname(p)
-        if os.path.isfile(os.path.join(p, '.git')): dirs.add(p)
+        p = work_folder.git_top(os.path.realpath(os.path.expanduser(p.rstrip('/.,:'))))
+        if p and os.path.isfile(os.path.join(p, '.git')): dirs.add(p)
     mine, p = set(), os.getpid()
     while p > 1:
         mine.add(p)
@@ -44,7 +43,7 @@ def leftovers(j):
             out.append(f"  {e}{' listening on ' + ', '.join(ports[e]) if e in ports else ''}: {cmd[:150]} (in {cwd})")
     return out
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'hooks'))
-import agent_jobs, steward
+import agent_jobs, steward, work_folder
 for f in hit:
     j = dict(entries)[f]
     # a released job is never reported: while its agent works on (a T3 run, task or background command), its result would be lost
