@@ -323,7 +323,7 @@ class Where:
     knows), `cd $(git rev-parse --show-toplevel)` and `git -C <dir>`. A cd holds for the later commands of its scope (Seg.scopes) and
     the scopes inside it; leaving an isolating scope restores the dir and the line's variables from before it. After any other dir change (a cd in a scope
     that may run it or not, once the scope is left; a relative one in a loop; a target holding an expansion it can't resolve; `cd -`,
-    popd or a stack rotation) the dir is None, and a check that needs it blocks."""
+    popd or a stack rotation) the dir is None until a cd to an absolute path, and a check that needs it blocks."""
     def __init__(self, cwd):
         self.dir, self.moved, self.vars, self.scopes = cwd, False, {}, []  # each scope entered: [(id, kind), dir before it, whether a cd ran in it, variables before it]
 
@@ -367,7 +367,7 @@ class Where:
         for x in reversed(self.scopes):  # the scopes this cd may leave changed, up to the innermost isolating one
             x[2] = True
             if x[0][1] == ISOLATING: break
-        if p[0] == 'popd' or to[:1] in '-+' or self.dir is None or kinds[-1:] == [LOOP] and not os.path.isabs(os.path.expanduser(self.expand(to))):
+        if p[0] == 'popd' or to[:1] in '-+' or to == TOPLEVEL and self.dir is None or kinds[-1:] == [LOOP] and not os.path.isabs(os.path.expanduser(self.expand(to))):
             self.dir = None
         elif to == TOPLEVEL:
             self.dir = subprocess.run(['git', '-C', self.dir, 'rev-parse', '--show-toplevel'], capture_output=True, text=True).stdout.strip() or None
