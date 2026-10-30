@@ -18,7 +18,8 @@ _HU_FORMS = """
     próbálom próbálok próbáljuk próbálunk  reprodukálom reprodukálok reprodukáljuk reprodukálunk  mérem mérek mérjük mérünk
     kezdem kezdek kezdjük kezdünk  folytatom folytatok folytatjuk folytatunk  fejezem fejezek fejezzük fejezünk
     nyitom nyitok nyitjuk nyitunk  zárom zárok zárjuk zárunk  adom adok adjuk adunk  törlöm törölök töröljük törlünk
-    telepítem telepítek telepítjük telepítünk  indítom indítok indítjuk indítunk"""
+    telepítem telepítek telepítjük telepítünk  indítom indítok indítjuk indítunk  látogatom látogatok látogatjuk látogatunk
+    kapcsolom kapcsolok kapcsoljuk kapcsolunk  találkozom találkozok találkozunk  észrevételezem észrevételezek észrevételezzük észrevételezünk"""
 _HU_ACT = rf"(?:át|ki|be|el|le|fel|meg|újra|rá|hozzá|vissza|össze)?(?:{'|'.join(_HU_FORMS.split())})\b"
 
 WORDS = {
