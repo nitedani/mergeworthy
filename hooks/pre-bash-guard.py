@@ -6,7 +6,8 @@ MERGEWORTHY_MERGE=reviewer blocks every `gh pr merge`."""
 import json, re, sys, os, hashlib, subprocess
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
-from shellcmd import parse, segments, prog, opt, api_call, new_post_drafts, branch_record, no_approach, no_preflight, no_instructions_read, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Where
+import shellcmd
+from shellcmd import parse, segments, prog, opt, api_call, env_of, origin, plain_create, PLAIN, new_post_drafts, branch_record, no_approach, no_preflight, no_instructions_read, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Where
 import own_actions, steward, post_words, testpaths, work_folder
 def missing_steps(d):
     head = subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
@@ -119,10 +120,10 @@ def watch_dirs():
             pass
     return live
 
-def need_watch(repo, path):
-    """Opening an issue or PR starts the live loop (mergeworthy:task step 5): a running watcher of the task's work folder holding path,
-    or of this session, must cover the repo (post-bash-register adds the new thread). A comment on an existing thread isn't blocked here:
-    post-bash-register adds that thread, and stop-lint requires a watcher's Monitor after any post."""
+def need_watch(repo, path, why=''):
+    """A push, or opening an issue or PR outside a task's work folder (need_home), needs the live loop (mergeworthy:task step 5): a running
+    watcher of the task's work folder holding path, or of this session, must cover the repo. A comment on an existing thread isn't blocked
+    here: post-bash-register adds that thread, and stop-lint requires a watcher's Monitor after any post."""
     if setting('WATCHER', 'on') != 'on': return
     repos = [repo] if isinstance(repo, str) else [r for r in repo if r]
     if not repos:
@@ -135,9 +136,15 @@ def need_watch(repo, path):
                 if any(l.split()[:1] in ([r] for r in repos) for l in lines(w, 'repos.txt') + lines(w, 'threads.txt'))]
     if not covering:
         start = f"`gh-watch-start {work_folder.task_of(path) or '<your work folder>'} {repos[0]}`"
-        block(f"no running watcher of this task or session covers {' or '.join(repos)} (another session's watcher wakes that session, not this one): "
+        block(f"no running watcher of this task or session covers {' or '.join(repos)} (another session's watcher wakes that session, not this one{'; ' + why if why else ''}): "
               + (f"a subagent starts none: end your turn asking the main session to run {start}" if by_agent()
                  else f"{start}, arm the Monitor it prints if any, then retry (mergeworthy:task step 5)"))
+
+def need_home(repo, path):
+    """Opening an issue or PR: a plain create (shellcmd.plain_create), whose thread post-bash-register adds to its work folder's
+    watcher, starting or reviving it, passes; any other command needs need_watch's running watcher."""
+    if not plain_create(cmd, cwd):
+        need_watch(repo, path, PLAIN)
 
 def check_turn(repo, num, args=()):
     """post §Thread rules: at most two comments in a row: while your last two comments on a thread have no reply after them and the last
@@ -298,40 +305,13 @@ def real_passes(sha):
     return [r for r in rows if r[0] == 'shape' and os.path.isfile(r[1]) and 'carries the pass of' not in open(r[1], errors='replace').read()]
 
 def gh_repo(args, env, run_dir):
-    """owner/repo a gh command with args acts on, as gh picks it: its -R, else GH_REPO set on the command or inherited (both
-    [HOST/]OWNER/REPO or a URL), else the checkout's origin."""
-    if r := (opt(args, ['--repo', '-R']) or [None])[-1] or env.get('GH_REPO', os.environ.get('GH_REPO')):
-        return '/'.join(re.sub(r'(\.git)?/*$', '', r).split('/')[-2:])
-    url = subprocess.run(['git', '-C', known(run_dir), 'remote', 'get-url', 'origin'], capture_output=True, text=True).stdout.strip()
-    m = re.search(r'github\.com[:/]([\w.-]+/[\w.-]+?)(\.git)?$', url)
-    return m.group(1) if m else None
+    return shellcmd.gh_repo(args, env, lambda: origin(known(run_dir)))
 
 def gitlab_repo(a, run_dir):
-    """`gitlab.com/<namespace>/<project>` a glab command acts on: its -R value (a path or URL), else the cwd's origin."""
-    repo = (opt(a, ['--repo', '-R']) or [None])[-1]
-    if repo:
-        repo = re.sub(r'^(https://)?gitlab\.com/', '', repo)
-    else:
-        url = subprocess.run(['git', '-C', known(run_dir), 'remote', 'get-url', 'origin'], capture_output=True, text=True).stdout.strip()
-        repo = (re.search(r'gitlab\.com[:/](.+?)(?:\.git)?$', url) or [None, None])[1]
-    return 'gitlab.com/' + repo.strip('/') if repo and '://' not in repo else None
+    return shellcmd.gitlab_repo(a, lambda: origin(known(run_dir)))
 
 def api_opens(ep, rest, env, d):
-    """(repo, 'issue' or 'pr') a `gh api` or `glab api` POST to ep, run in d, opens, in each form the CLIs take (a full URL, a leading slash, an api/v3/
-    or api/v4/ prefix, a query, gh's {owner}/{repo} from GH_REPO or the checkout, glab's :fullpath or :id, a GitLab host from --hostname or GITLAB_HOST);
-    None for any other endpoint, repo None when it can't be told (a project's numeric id)."""
-    host, path = re.match(r'(?:https?://([^/]+))?/?(?:api/v[34]/)?([^?]*)', ep).groups()
-    if (m := re.fullmatch(r'repos/([^/]+/[^/]+)/(issues|pulls)', path)):
-        base = gh_repo(rest, env, d) or ''
-        repo = m[1].replace('{owner}', base.split('/')[0]).replace('{repo}', base.split('/')[-1]) if base else m[1]
-        return (None if '{' in repo else repo if host in (None, 'api.github.com') else f'{host}/{repo}'), 'pr' if m[2] == 'pulls' else 'issue'
-    if (m := re.fullmatch(r'projects/([^/]+)/(issues|merge_requests)', path)):
-        import urllib.parse
-        project = urllib.parse.unquote(m[1])
-        host = host or (opt(rest, ['--hostname']) or [None])[-1] or env.get('GITLAB_HOST') or os.environ.get('GITLAB_HOST') or 'gitlab.com'
-        repo = gitlab_repo(rest, d) if project in (':fullpath', ':id') else f"{re.sub(r'^https?://|/+$', '', host)}/{project}" if '/' in project else None
-        return repo, 'pr' if m[2] == 'merge_requests' else 'issue'
-    return None
+    return shellcmd.api_opens(ep, rest, env, lambda: origin(known(d)))
 
 def check_compose(env, t):
     """delegate/agent.md §Machine, own ports: a compose stack you start publishes no fixed host port and pins no container name;
@@ -635,7 +615,7 @@ def opened_branch(a, options=(), fields=()):
 NEED_DRAFT ="post from a draft file (--body-file /abs/drafts/<name>.md, -F body=@/abs/drafts/<name>.md or --input) that passed the gate"
 
 def check(t, has_cd):
-    env = dict(x.split('=', 1) for x in t[:len(t) - len(prog(t))] if re.match(r'^\w+=', x))
+    env = env_of(t)
     t = prog(t)
     if not t: return
     p, a = os.path.basename(t[0]), t[1:]
@@ -751,10 +731,10 @@ def check(t, has_cd):
         if missing:
             block(f"HEAD {head[:10] or '(no git repo in cwd)'} has no pr-steps {', '.join(missing)} record: run those steps of mergeworthy:converge's pipeline on the final HEAD, each ending with `pr-steps <step> <its output>` (again after a base merge); or open it with --draft")
     if p == 'glab' and len(a) >= 2 and a[0] in ('issue', 'mr') and a[1] == 'create' and '--help' not in a and '-h' not in a:
-        need_watch(gitlab_repo(a[2:], run_dir), run_dir)
+        need_home(gitlab_repo(a[2:], run_dir), run_dir)
         if a[0] == 'mr': need_approach(run_dir, '`glab mr create`', opened_branch(a[2:], ['--source-branch', '-s']))
     if p == 'glab' and a[:1] == ['api'] and (call := api_call(a[1:]))[0] == 'POST' and (opens := api_opens(call[1], a[1:], env, run_dir)):
-        need_watch([opens[0]], run_dir)
+        need_home([opens[0]], run_dir)
         if opens[1] == 'pr': need_approach(run_dir, '`glab api` creating an MR', opened_branch(a[1:], fields=['-f', '--raw-field', '-F', '--field']))
     if p == 'gh' and len(a) >= 2 and a[0] == 'pr' and a[1] == 'merge':
         if setting('MERGE', 'on-request-squash') == 'reviewer':
@@ -813,7 +793,7 @@ def check(t, has_cd):
                     return  # an approval without a body posts no text
                 block(NEED_DRAFT)
             if sub == 'create':
-                need_watch(gh_repo(rest, env, run_dir), run_dir)
+                need_home(gh_repo(rest, env, run_dir), run_dir)
             if a[0] == 'pr' and sub == 'create':  # a draft's body says why on its State line, a ready PR's has none (pull-request step 7)
                 draft = '--draft' in rest or '-d' in rest
                 w = post_words.words(gh_repo(rest, env, run_dir))
@@ -851,7 +831,7 @@ def check(t, has_cd):
         if literal or not (bodies or inputs):
             block(NEED_DRAFT)
         if method == 'POST' and (opens := api_opens(ep, rest, env, run_dir)):
-            need_watch([opens[0]], run_dir)
+            need_home([opens[0]], run_dir)
             if opens[1] == 'pr': need_approach(run_dir, '`gh api` creating a PR', opened_branch(rest, fields=['-f', '--raw-field', '-F', '--field']))
         c = re.fullmatch(r'/?repos/([\w.-]+/[\w.-]+)/issues/(\d+)/comments', ep)
         if c and method == 'POST': check_turn(c.group(1), c.group(2), rest); check_finality(c.group(1), c.group(2), bodies + inputs)
