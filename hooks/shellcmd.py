@@ -92,20 +92,17 @@ def _src(n, src):
     return src[n['Pos']['Offset']:n['End']['Offset']].decode(errors='replace')
 
 
-def _word(w, src, mark=False):
-    """A word as bash passes it: quotes and escapes removed; expansions and substitutions as written. mark: each $ bash takes as
-    itself (quoted or escaped) is a NUL, which no argument can hold."""
-    lit = '\0' if mark else '$'
-    unescape = lambda m: lit if m[1] == '$' else m[1]
+def _word(w, src):
+    """A word as bash passes it: quotes and escapes removed; expansions and substitutions as written."""
     out = []
     for p in w.get('Parts') or []:
         t, v = p.get('Type'), p.get('Value', '')
         if t == 'Lit':
-            out.append(re.sub(r'\\(.)', unescape, v.replace('\\\n', ''), flags=re.S))
+            out.append(re.sub(r'\\(.)', r'\1', v.replace('\\\n', ''), flags=re.S))
         elif t == 'SglQuoted':
-            out.append((v.encode('latin-1', 'backslashreplace').decode('unicode_escape', 'replace') if p.get('Dollar') else v).replace('$', lit))
+            out.append(v.encode('latin-1', 'backslashreplace').decode('unicode_escape', 'replace') if p.get('Dollar') else v)
         elif t == 'DblQuoted':
-            out.append(''.join(re.sub(r'\\([$`"\\])', unescape, x.get('Value', '').replace('\\\n', '')) if x.get('Type') == 'Lit' else _src(x, src)
+            out.append(''.join(re.sub(r'\\([$`"\\])', r'\1', x.get('Value', '').replace('\\\n', '')) if x.get('Type') == 'Lit' else _src(x, src)
                                for x in p.get('Parts') or []))
         else:
             out.append(_src(p, src))
@@ -130,13 +127,13 @@ def _scope(kind, name=''):
 
 class Seg(list):
     """A simple command's argv; scopes: the (id, kind, function name) of each scope it runs in, outermost first, for Where; loop: whether it
-    runs inside a while or until loop; literal: each word holding a $ bash takes as itself, that word as _word marks it."""
-    scopes, loop, literal = (), False, {}
+    runs inside a while or until loop; raw: each word's source as written, None when not known (Where then expands none)."""
+    scopes, loop, raw = (), False, None
 
 
-def _seg(argv, scopes=(), loop=False, literal=None):
+def _seg(argv, scopes=(), loop=False, raw=None):
     s = Seg(argv)
-    s.scopes, s.loop, s.literal = scopes, loop, literal or {}
+    s.scopes, s.loop, s.raw = scopes, loop, raw
     return s
 
 
@@ -166,16 +163,15 @@ def _calls(node, src):
         loop = loop or x.get('Type') == 'WhileClause'  # shfmt's node for until too
         name = x['Name']['Value'] if x.get('Type') == 'FuncDecl' else ''
         inner = {k: n + _scope(kind, name) if (kind := _kind(x, k)) else n for k, v in x.items() if isinstance(v, (dict, list))}
-        cmd, redirs, literal = x.get('Cmd') or {}, x.get('Redirs') or [], {}
-        def word(w):
-            s, marked = _word(w, src), _word(w, src, True)
-            if marked != s: literal[s] = marked
-            return s
-        words = [w for r in redirs for w in ((r.get('N') or {}).get('Value', '') + r['Op'], word(r.get('Word') or {}))]
+        cmd, redirs = x.get('Cmd') or {}, x.get('Redirs') or []
+        words = [w for r in redirs for w in ((r.get('N') or {}).get('Value', '') + r['Op'], _word(r.get('Word') or {}, src))]
+        raws = [w for r in redirs for w in (r['Op'], _src(r['Word'], src) if r.get('Word') else '')]
         if cmd.get('Type') == 'CallExpr':
-            segs.append(_seg([_assign(a, src) for a in cmd.get('Assigns') or []] + [word(a) for a in cmd.get('Args') or []] + words, inner['Cmd'], loop, literal))
+            segs.append(_seg([_assign(a, src) for a in cmd.get('Assigns') or []] + [_word(a, src) for a in cmd.get('Args') or []] + words, inner['Cmd'], loop,
+                             [_src(a, src) for a in (cmd.get('Assigns') or []) + (cmd.get('Args') or [])] + raws))
         elif cmd.get('Type') == 'DeclClause':
-            segs.append(_seg([cmd['Variant']['Value']] + [_assign(a, src) for a in cmd.get('Args') or []] + words, inner['Cmd'], loop))
+            segs.append(_seg([cmd['Variant']['Value']] + [_assign(a, src) for a in cmd.get('Args') or []] + words, inner['Cmd'], loop,
+                             [cmd['Variant']['Value']] + [_src(a, src) for a in cmd.get('Args') or []] + raws))
         docs += [(r, top or x, loop) for r in redirs if r.get('Hdoc')]
         stack += [(v, None if k == 'Stmts' else (top or x) if 'Cmd' in x else top, inner[k], loop)  # each statement of a list is a top statement
                   for k, v in reversed(x.items()) if isinstance(v, (dict, list)) and k not in ('Pos', 'End', 'Hdoc')]
@@ -350,37 +346,33 @@ class Where:
     popd or a stack rotation) the dir is None until a cd to an absolute path, and a check that needs it blocks."""
     def __init__(self, cwd):
         self.funcs = {}  # each function the line defines: [whether its body changes dir, the variables it sets]
-        self.dir, self.moved, self.vars, self.scopes, self.literal = cwd, False, {}, [], {}  # each scope entered: [(id, kind, name), dir before it, whether a cd ran in it, variables before it, variables set in it]
+        self.dir, self.moved, self.vars, self.scopes, self.quoted = cwd, False, {}, [], set()  # each scope entered: [(id, kind, name), dir before it, whether a cd ran in it, variables before it, variables set in it]
 
     def expand(self, p):
         """p with the line's variables ($D, ${D}), then the environment's, put in; one it can't tell (a Maybe) stays as written,
-        and so does a $ the current command quoted or escaped."""
-        return self._expand(p).replace('\0', '$')
-
-    def _expand(self, p):
+        and so does every $ of a word the current command quoted or escaped (Seg.raw), whose $ may be literal."""
         def value(m):
             v = self.vars.get(m[1] or m[2], os.environ.get(m[1] or m[2], m[0]))
             return m[0] if isinstance(v, Maybe) else v
-        return re.sub(r'\$(?:(\w+)|\{(\w+)\})', value, self.literal.get(p, p))
+        return p if p in self.quoted else re.sub(r'\$(?:(\w+)|\{(\w+)\})', value, p)
 
     def path(self, p, base=''):
         """p resolved from base (default: the dir), or None when it can't be told (an expansion left, or no base)."""
-        p, base = os.path.expanduser(self._expand(p)), self.dir if base == '' else base
-        if re.search(r'[$`]', p): return None
-        p = p.replace('\0', '$')
-        return p if os.path.isabs(p) else None if base is None else os.path.join(base, p)
+        p = os.path.expanduser(self.expand(p))
+        base = self.dir if base == '' else base
+        return None if re.search(r'[$`]', p) else p if os.path.isabs(p) else None if base is None else os.path.join(base, p)
 
     def file(self, p):
         """A file the current command names, p, resolved from the dir; an expansion left after its folder stays as written (`/abs/$t.log`).
         None when its folder can't be told: no dir, or p starts with an expansion left."""
-        p = os.path.expanduser(self._expand(p))
-        return None if re.match(r'[$`]', p) or not os.path.isabs(p) and self.dir is None else os.path.join(self.dir or '/', p).replace('\0', '$')
+        p = os.path.expanduser(self.expand(p))
+        return None if re.match(r'[$`]', p) or not os.path.isabs(p) and self.dir is None else os.path.join(self.dir or '/', p)
 
     def walk(self, segs):
         """Each of segs (parse()'s), with self moved to where it runs; self takes it once the caller is done with it."""
         for t in segs:
             self.enter(t.scopes)
-            self.literal = t.literal
+            self.quoted = {w for w in t if '$' in w} if t.raw is None else {w for w, r in zip(t, t.raw) if '$' in w and re.search(r"['\\]", r)}
             yield t
             self.step(t)
 
