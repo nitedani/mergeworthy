@@ -118,10 +118,12 @@ def _assign(a, src):
 # The kinds of scope a command runs in (Seg.scopes): a cd in an isolating one never reaches what follows it (Where)
 ISOLATING, CONDITIONAL, LOOP = 'isolating', 'conditional', 'loop'
 _ids = itertools.count()
+STDIN = '<<'
 
 
 def _scope(kind, name='', plain=False):
-    """A new scope of kind, for Seg.scopes; name: the function whose body it is, or a for loop's variable, if any; plain: the loop
+    """A new scope of kind, for Seg.scopes; name: the function whose body it is, a for loop's variable, or STDIN for the script a
+    shell reads from a heredoc or <<<, which may run after later commands of the line moved, so it starts knowing nothing; plain: the loop
     takes it from words of plain characters (no /, $, backtick, quote or glob) and the rest of the line only reads it (_only_read)."""
     return ((next(_ids), kind, name, plain),)
 
@@ -209,7 +211,7 @@ def _segments(tree, src, depth):
     (segs, docs), err = _calls(tree, src), ''
     for r, top, loop in docs:
         if any(reads_stdin(a) for a in _calls(top, src)[0]) and depth < 4:
-            s, e = parse(''.join(_src(p, src) for p in r['Hdoc'].get('Parts') or []), depth + 1, _scope(ISOLATING), loop)
+            s, e = parse(''.join(_src(p, src) for p in r['Hdoc'].get('Parts') or []), depth + 1, _scope(ISOLATING, STDIN), loop)
         else:
             s, e = _segments(r['Hdoc'], src, depth)
         segs, err = segs + s, err or e
@@ -286,10 +288,12 @@ def parse(cmd, depth=0, scopes=(), loop=False):
         if t[:1] and os.path.basename(t[0]) == 'find':  # find -exec <command> ;
             out += [_seg(x.split('\0'), s.scopes + _scope(ISOLATING), s.loop) for x in re.findall(r'\0-(?:exec|execdir|ok|okdir)\0(.+?)\0(?:;|\+)(?=\0|$)', '\0' + '\0'.join(t))]
         here = [s[i + 1] for i in range(len(s) - 1) if s[i] == '<<<']  # `bash <<< '<script>'`
-        script = (_nested(s) or (here[0] if here and reads_stdin(s) else None)) if depth < 4 else None
+        script = _nested(s) if depth < 4 else None
+        stdin = not script and depth < 4 and here and reads_stdin(s)
+        script = here[0] if stdin else script
         if script:
             same = t[:1] and os.path.basename(t[0]) == 'eval'  # eval runs its words in this shell; a child shell, in its own
-            inner, e = parse(script, depth + 1, s.scopes + (() if same else _scope(ISOLATING)), s.loop)
+            inner, e = parse(script, depth + 1, s.scopes + (() if same else _scope(ISOLATING, STDIN if stdin else '')), s.loop)
             out += inner
             err = err or e
     return out, err
@@ -412,11 +416,12 @@ class Where:
         for (_, kind, *_), before, moved, vars, set_in in reversed(self.scopes[n:]):
             self.dir = before if kind == ISOLATING else None if moved else self.dir
             self.vars = vars if kind == ISOLATING else {**self.vars, **{v: Maybe(self.vars.get(v, '')) for v in set_in}}
-        self.funcs |= {x[2] for x in scopes[n:] if x[2] and x[1] != LOOP}
+        self.funcs |= {x[2] for x in scopes[n:] if x[2] and x[1] == CONDITIONAL}
         self.scopes = self.scopes[:n]
         for x in scopes[n:]:
             self.scopes.append([x, self.dir, False, dict(self.vars), set()])
             if x[1] == LOOP and x[2]: self.vars[x[2]] = Maybe(''); self.changed(x[2])  # each pass gives it another of its words
+            if x[2] == STDIN: self.dir, self.vars = None, {k: Maybe(v) for k, v in self.vars.items()}
 
     def changed(self, var=None):
         """Record a cd (var None) or an assignment of var here in the scopes it changes what they leave behind, up to the innermost
@@ -428,7 +433,7 @@ class Where:
 
     def in_body(self):
         """Whether the current command is in a function's body."""
-        return any(x[0][2] and x[0][1] != LOOP for x in self.scopes)
+        return any(x[0][2] and x[0][1] == CONDITIONAL for x in self.scopes)
 
     def step(self, t):
         if t and all(re.match(r'^\w+=', x) for x in t):
