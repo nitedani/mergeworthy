@@ -41,6 +41,15 @@ def api_json(path, paginate=False, cmd=('gh', 'api')):
         out += v if isinstance(v, list) else [v]
     return out if paginate else (out[0] if out else None)
 
+class Unreadable(Exception):
+    """A request load() needs failed: the thread can't be read whole, so nothing is recorded or cached from it."""
+
+def fetch(path, paginate=False, cmd=('gh', 'api')):
+    """api_json, raising Unreadable (naming the request) when the call fails."""
+    v = api_json(path, paginate, cmd)
+    if v is None: raise Unreadable(f'`{" ".join(cmd)} {path}` failed')
+    return v
+
 def is_bot(u):
     u = u or {}
     return u.get('type') == 'Bot' or (u.get('login') or '').endswith('[bot]')
@@ -52,10 +61,11 @@ def record(kind, c, at_key='created_at', extra=''):
             'at': c.get(at_key) or c.get('created_at') or '', 'url': c.get('html_url') or '', 'body': body, 'extra': extra}
 
 def load(repo, sep, num):
-    """The thread as {ref, title, url, state, is_pr, updated_at, items:[record...]}; None if it doesn't exist. Cached by updated_at."""
+    """The thread as {ref, title, url, state, is_pr, updated_at, items:[record...]}, cached by updated_at; Unreadable when the thread
+    or a GitLab thread's notes can't be fetched (it doesn't exist, or the service is down)."""
     if repo.startswith(gl_watch.HOST): return load_gitlab(repo, sep, num)
-    meta = api_json(f'repos/{repo}/issues/{num}')
-    if not isinstance(meta, dict) or 'number' not in meta: return None
+    meta = fetch(f'repos/{repo}/issues/{num}')
+    if not isinstance(meta, dict) or 'number' not in meta: raise Unreadable(f'gh read no issue or PR at {repo}#{num}')
     f = os.path.join(CACHE, f"{repo.replace('/', '__')}__{num}.json")
     try:
         cached = json.load(open(f))
@@ -86,8 +96,8 @@ def load_gitlab(repo, sep, num):
     """load() for a GitLab issue (sep '#') or merge request ('!'): its description and its notes, a diff note as a review comment."""
     kind, glab = 'merge_requests' if sep == '!' else 'issues', ('glab', 'api', '--hostname', 'gitlab.com')
     base = f"projects/{urllib.parse.quote(repo[len(gl_watch.HOST):], safe='')}/{kind}/{num}"
-    meta = api_json(base, cmd=glab)
-    if not isinstance(meta, dict) or 'iid' not in meta: return None
+    meta = fetch(base, cmd=glab)
+    if not isinstance(meta, dict) or 'iid' not in meta: raise Unreadable(f'glab read no {kind[:-1].replace("_", " ")} at {repo}{sep}{num}')
     f = os.path.join(CACHE, f"{repo.replace('/', '__')}__{sep}{num}.json")
     try:
         cached = json.load(open(f))
@@ -95,7 +105,7 @@ def load_gitlab(repo, sep, num):
     except (OSError, ValueError): pass
     user = lambda a: {'login': (a or {}).get('username'), 'type': 'Bot' if gl_watch.BOT.search((a or {}).get('username') or '') else 'User'}
     items = [record('body', {'id': meta.get('id'), 'user': user(meta.get('author')), 'created_at': meta.get('created_at'), 'html_url': meta.get('web_url'), 'body': meta.get('description')})]
-    for n in api_json(f'{base}/notes?sort=asc&order_by=created_at&per_page=100', True, glab) or []:
+    for n in fetch(f'{base}/notes?sort=asc&order_by=created_at&per_page=100', True, glab):
         if n.get('system'): continue
         c = {'id': n.get('id'), 'user': user(n.get('author')), 'created_at': n.get('created_at'), 'html_url': f"{meta.get('web_url')}#note_{n.get('id')}", 'body': n.get('body')}
         p = n.get('position') or {}
@@ -122,6 +132,9 @@ def refs(text, repo):
     for m in re.finditer(r'https?://gitlab\.com/([\w.-]+(?:/[\w.-]+)+)/-/(issues|merge_requests)/(\d+)', text):
         out.append(f"{gl_watch.HOST}{m[1]}{'!' if m[2] == 'merge_requests' else '#'}{m[3]}")
     text = re.sub(r'https?://\S+', ' ', text)
+    qualified = r'(?<![\w/.#!-])gitlab\.com/([\w.-]+(?:/[\w.-]+)+)([#!])(\d+)\b'  # in any thread, and before a GitLab thread's relative <path>#N
+    for m in re.finditer(qualified, text): out.append(f'{gl_watch.HOST}{m[1]}{m[2]}{m[3]}')
+    text = re.sub(qualified, ' ', text)
     named = r'(?<![\w/.#!-])([\w.-]+(?:/[\w.-]+)+)([#!])(\d+)\b' if gl else r'(?<![\w/.#-])([\w.-]+/[\w.-]+)(#)(\d+)\b'
     for m in re.finditer(named, text): out.append(f"{gl_watch.HOST if gl else ''}{m[1]}{m[2]}{m[3]}")
     text = re.sub(named, ' ', text)
@@ -140,16 +153,21 @@ def parse_ref(s):
 def tool(ref):
     return 'glab' if ref.startswith(gl_watch.HOST) else 'gh'
 
+def tryload(ref):
+    """load() of a reference, or the Unreadable it raised."""
+    try: return load(*parse_ref(ref))
+    except Unreadable as e: return e
+
 def crawl(root, depth, cap):
     """Breadth-first: [(thread, depth, linked_from)] and the refs left out by the cap."""
     seen, order, level, left = {root}, [], [(root, None)], []
     for d in range(depth + 1):
         with ThreadPoolExecutor(8) as ex:
-            loaded = list(ex.map(lambda rf: load(*parse_ref(rf[0])), level))
+            loaded = list(ex.map(lambda rf: tryload(rf[0]), level))
         nxt = []
         for (ref, via), t in zip(level, loaded):
-            if t is None:
-                if d == 0: die(f'thread-context: cannot read {ref} ({tool(ref)} api failed)')
+            if isinstance(t, Unreadable):
+                if d == 0: die(f'thread-context: cannot read {ref}: {t}')
                 continue
             if len(order) >= cap: left.append(ref); continue
             order.append((t, d, via))
@@ -247,8 +265,8 @@ def verify(path, target, parent):
     # a parent saved after the record is fine while the record still holds the thread's latest human comment
     target = target or (root if parent and os.path.exists(parent) and os.path.getmtime(path) < os.path.getmtime(parent) else None)
     if target:
-        t = load(*parse_ref(target)) if parse_ref(target) else None
-        if not t: return f"{tool(target)} couldn't read {target}, so whether {path} records its latest comment can't be checked: retry once {tool(target)} answers"
+        t = tryload(target) if parse_ref(target) else Unreadable('not a thread reference')
+        if isinstance(t, Unreadable): return f"{tool(target)} couldn't read {target} ({t}), so whether {path} records its latest comment can't be checked: retry once {tool(target)} answers"
         lh = latest_human(t)
         if lh and (lh[0], lh[1]) > rec:
             return f'{path} records the latest comment of {target} as {rec[0]} (id {rec[1]}), but the thread has {lh[2]} ({lh[0]}): run `{cmd}`, read what is new, and re-draft'
@@ -264,8 +282,9 @@ def main(argv):
     if argv[0] == '--latest':
         rf = parse_ref(opt('--latest') or '')
         if not rf: die(USAGE, 2)
-        t = load(*rf)
-        lh = latest_human(t) if t else None
+        t = tryload(opt('--latest'))
+        if isinstance(t, Unreadable): die(f'thread-context: cannot read {opt("--latest")}: {t}')
+        lh = latest_human(t)
         print(f'{lh[1]} {lh[0]}' if lh else '0 0'); return
     if argv[0] == '--verify':
         why = verify(opt('--verify'), opt('--target'), opt('--parent'))

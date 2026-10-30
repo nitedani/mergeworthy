@@ -1332,6 +1332,18 @@ check "thread-context on a GitLab MR: its root, its latest human note (not the a
 check "--latest and --verify on a GitLab MR" "7 2026-10-29T15:00:00Z 0" "$("$R/bin/thread-context" --latest 'gitlab.com/acme/app!1') $("$R/bin/thread-context" --verify "$GTC" --target 'gitlab.com/acme/app!1' 2>/dev/null; echo $?)"
 gl_mr 2026-10-29T16:00:00Z; sed -i 's/^\[/[{"id":12,"author":{"username":"alice"},"created_at":"2026-10-29T16:00:00Z","body":"And the None case?"},/' "${GLM}_notes_sort_asc_order_by_created_at_per_page_100"
 check "BLOCK: --verify once the MR has a newer human note" "1 1" "$("$R/bin/thread-context" --verify "$GTC" --target 'gitlab.com/acme/app!1' 2>"$T/glv.err"; echo $?) $(grep -c 'but the thread has https://gitlab.com/acme/app/-/merge_requests/1#note_12' "$T/glv.err")"
+# the notes request fails: no record, no cache, and --verify can't accept an old record; once glab answers, --latest has the newest note
+GLN="${GLM}_notes_sort_asc_order_by_created_at_per_page_100"
+gl_mr 2026-10-29T17:00:00Z; sed -i 's/^\[/[{"id":13,"author":{"username":"alice"},"created_at":"2026-10-29T17:00:00Z","body":"One more."},/' "$GLN"; mv "$GLN" "$T/gl-notes"
+sed -i 's/^- latest-human-comment: .*/- latest-human-comment: id=12 at=2026-10-29T16:00:00Z/' "$GTC"
+check "BLOCK: a failed notes request fails thread-context, --verify and --latest, naming it, and caches nothing" "1 1 1 1 1 0" \
+  "$("$R/bin/thread-context" 'gitlab.com/acme/app!1' --out "$T/glctx/x.md" >/dev/null 2>"$T/gln.err"; echo $?) $(grep -c 'notes?sort=asc.* failed' "$T/gln.err") $("$R/bin/thread-context" --verify "$GTC" --target 'gitlab.com/acme/app!1' 2>"$T/gln.err"; echo $?) $(grep -c "glab couldn't read" "$T/gln.err") $("$R/bin/thread-context" --latest 'gitlab.com/acme/app!1' >/dev/null 2>&1; echo $?) $(grep -c 17:00 "$HOME/.cache/mergeworthy/threads/gitlab.com__acme__app__!1.json")"
+mv "$T/gl-notes" "$GLN"
+check "once the notes request answers again, --latest reports the newest note" "13 2026-10-29T17:00:00Z" "$("$R/bin/thread-context" --latest 'gitlab.com/acme/app!1')"
+printf '{"iid":4,"id":504,"title":"Follow-up","web_url":"https://gitlab.com/acme/app/-/merge_requests/4","state":"opened","updated_at":"2026-10-29T13:00:00Z","created_at":"2026-10-29T13:00:00Z","author":{"username":"bob"},"description":"After gitlab.com/acme/app!2 and gitlab.com/acme/app#3."}' > "$FX/projects_acme%2Fapp_merge_requests_4"
+echo '[]' > "$FX/projects_acme%2Fapp_merge_requests_4_notes_sort_asc_order_by_created_at_per_page_100"
+"$R/bin/thread-context" 'gitlab.com/acme/app!4' --out "$T/glctx/q.md" >/dev/null
+check "a qualified gitlab.com/<path>!N and #N in a GitLab thread are followed as written" 2 "$(grep -Ec '^  - gitlab.com/acme/app(#3|!2) ' "$T/glctx/q.md")"
 echo '{"state":"open","draft":false,"head":{"sha":"h1"}}' > "$FX/repos_o_r_pulls_7"
 echo '{"check_runs":[{"name":"test","conclusion":"success"}]}' > "$FX/repos_o_r_commits_h1_check-runs"
 echo '{"state":"opened","draft":true,"head_pipeline":{"status":"failed"}}' > "$FX/projects_g%2Fp_merge_requests_96"
