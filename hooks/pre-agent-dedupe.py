@@ -312,8 +312,11 @@ if not key:
     sys.exit(0)  # nothing names the job (no ticket, title or description), so no second launch of it can be told apart
 jobs = os.path.expanduser('~/.claude/agent-jobs'); os.makedirs(jobs, exist_ok=True)
 f = os.path.join(jobs, hashlib.sha256(key.encode()).hexdigest()[:16])
+pre = os.path.join(agent_jobs.LAUNCHED, os.path.basename(f))  # when the launch this registers began: its transcript starts after it
 if register:
-    json.dump({'key': key, 'started': time.time(), 'brief': str(ti.get('task') or ti.get('prompt') or '')[:2000],
+    try: launched = float(open(pre).read()); os.remove(pre)
+    except (OSError, ValueError): launched = time.time()
+    json.dump({'key': key, 'started': time.time(), 'launched': launched, 'brief': str(ti.get('task') or ti.get('prompt') or '')[:2000],
                'session': d.get('session_id'), 'transcript': d.get('transcript_path')}, open(f, 'w'))
     # an agent now runs memory-prep's brief: stop-lint's hourly repeat of the refresh order waits an hour
     for t in tickets:
@@ -340,4 +343,6 @@ if not register and d.get('session_id') and 'memory-refresh' not in gate_text an
                          + '\n'.join(f"{j['key'][:160]} (started {int((time.time() - j['started']) / 60)} min ago)" for j in live)
                          + "\nContinue one with a message, or wait for one to finish, read its result and release it with `agent-job done <key>`.\n")
         sys.exit(2)
+if not register:
+    os.makedirs(agent_jobs.LAUNCHED, exist_ok=True); open(pre, 'w').write(str(time.time()))
 sys.exit(0)
