@@ -1,36 +1,41 @@
 #!/bin/bash
-# mergeworthy-update: updates the installed mergeworthy (README, Install): Claude Code's plugin, and Codex's where it has the
-# plugin; points ~/.mergeworthy/current at Claude Code's new version folder; restarts every live watcher unit by the name
-# gh-watch-start gives it (gh-watch@<systemd-escape --path of its work folder>.service, never a name read back from
-# `systemctl list-units`, which drops the \x2d escapes) and prints each unit's state. Exits 1 when a unit isn't active after.
-set -eu
-if command -v claude >/dev/null; then
-  claude plugin marketplace update mergeworthy
-  claude plugin update mergeworthy@mergeworthy
-  new=$(claude plugin list --json | python3 -c 'import json, sys; print(next((p.get("installPath") or "" for p in json.load(sys.stdin) if p["id"] == "mergeworthy@mergeworthy"), ""))')
-  [ -f "$new/always-on.md" ] || { echo "claude plugin list names no installed mergeworthy folder: '$new'" >&2; exit 1; }
+# mergeworthy-update: updates the installed mergeworthy (README, Install) in each agent program that has it: Claude Code's
+# plugin, pointing ~/.mergeworthy/current at its new version folder, and Codex's; restarts every live watcher unit by the
+# name gh-watch-start gives it (gh-watch@<systemd-escape --path of its work folder>.service, never a name read back from
+# `systemctl list-units`, which drops the \x2d escapes) and prints each unit's state. Runs every step, then exits 1 naming
+# each update that failed and each unit that isn't active.
+set -u
+failed=()
+claude_root() { claude plugin list --json 2>/dev/null | python3 -c 'import json, sys; print(next((p.get("installPath") or "" for p in json.load(sys.stdin) if p["id"] == "mergeworthy@mergeworthy"), ""))' 2>/dev/null; }
+update_claude() {
+  claude plugin marketplace update mergeworthy && claude plugin update mergeworthy@mergeworthy || return 1
+  local new; new=$(claude_root)
+  [ -f "$new/always-on.md" ] || { echo "claude plugin list names no installed mergeworthy folder: '$new'" >&2; return 1; }
   # a new link renamed over the old one: ~/.mergeworthy/current never goes missing for a hook or watcher reading it
-  mkdir -p ~/.mergeworthy && ln -sfn "$new" ~/.mergeworthy/current.tmp && mv -T ~/.mergeworthy/current.tmp ~/.mergeworthy/current
+  mkdir -p ~/.mergeworthy && ln -sfn "$new" ~/.mergeworthy/current.tmp && mv -T ~/.mergeworthy/current.tmp ~/.mergeworthy/current || return 1
   echo "~/.mergeworthy/current -> $new"
-fi
-if command -v codex >/dev/null && codex plugin list 2>/dev/null | grep '^mergeworthy@mergeworthy ' | grep -vq 'not installed'; then
+}
+update_codex() {
   if command -v pnpm >/dev/null; then pnpm dlx mergeworthy --yes --agents codex; else npx -y mergeworthy --yes --agents codex; fi
+}
+if command -v claude >/dev/null && [ -n "$(claude_root)" ]; then update_claude || failed+=("the Claude Code update"); fi
+if command -v codex >/dev/null && codex plugin list 2>/dev/null | grep '^mergeworthy@mergeworthy ' | grep -vq 'not installed'; then
+  update_codex || failed+=("the Codex update")
 fi
-systemctl --user show-environment >/dev/null 2>&1 || { echo "no systemd user manager: no watcher unit to restart"; exit 0; }
 units=()
-while IFS= read -r dir; do
-  [ -n "$dir" ] || continue
-  unit="gh-watch@$(systemd-escape --path "$dir").service"
-  case $(systemctl --user is-active "$unit" 2>/dev/null) in active|activating|reloading) ;; *) continue;; esac
-  systemctl --user restart "$unit" || true
-  units+=("$unit")
-done < <(cat ~/.claude/gh-watch-dirs.txt 2>/dev/null)
-[ ${#units[@]} -gt 0 ] || { echo "no live watcher unit"; exit 0; }
-sleep 2  # a unit whose daemon can't start fails within this
-failed=0
+if systemctl --user show-environment >/dev/null 2>&1; then
+  while IFS= read -r dir; do
+    [ -d "$dir" ] || continue
+    unit="gh-watch@$(systemd-escape --path "$dir").service"
+    case $(systemctl --user is-active "$unit" 2>/dev/null) in active|activating|reloading) ;; *) continue;; esac
+    systemctl --user restart "$unit" || true
+    units+=("$unit")
+  done < <(cat ~/.claude/gh-watch-dirs.txt 2>/dev/null)
+else echo "no systemd user manager: no watcher unit to restart"; fi
+[ ${#units[@]} -gt 0 ] && sleep 2  # a unit whose daemon can't start fails within this
 for unit in "${units[@]}"; do
   state=$(systemctl --user is-active "$unit" 2>/dev/null || true)
   echo "$unit $state"
-  [ "$state" = active ] || failed=$((failed+1))
+  [ "$state" = active ] || failed+=("$unit")
 done
-[ "$failed" = 0 ] || { echo "$failed watcher unit(s) not active: systemctl --user status <unit> says why" >&2; exit 1; }
+[ ${#failed[@]} = 0 ] || { printf 'failed: %s\n' "${failed[@]}" >&2; exit 1; }
