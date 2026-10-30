@@ -341,11 +341,11 @@ class Where:
     (`D=~/x; cd "$D"`). It follows the forms agents write: a cd or pushd to a path (`cd /abs/dir && ...`, or relative to a dir it
     knows), `cd $(git rev-parse --show-toplevel)` and `git -C <dir>`. A cd holds for the later commands of its scope (Seg.scopes) and
     the scopes inside it; leaving an isolating scope restores the dir and the line's variables from before it, leaving a branch or
-    loop makes each variable set in it a Maybe. After any other dir change (a cd in a scope
-    that may run it or not, once the scope is left; a relative one in a loop; a target holding an expansion it can't resolve; `cd -`,
+    loop makes each variable set in it a Maybe. After any other dir change (a cd in a scope that may run it or not, once the scope
+    is left; a call to a function the line defines; a relative one in a loop; a target holding an expansion it can't resolve; `cd -`,
     popd or a stack rotation) the dir is None until a cd to an absolute path, and a check that needs it blocks."""
     def __init__(self, cwd):
-        self.funcs = {}  # each function the line defines: [whether its body changes dir, the variables it sets]
+        self.funcs, self.func_vars = set(), set()  # the functions the line defines, and the variables any of their bodies sets
         self.dir, self.moved, self.vars, self.scopes, self.quoted = cwd, False, {}, [], set()  # each scope entered: [(id, kind, name), dir before it, whether a cd ran in it, variables before it, variables set in it]
 
     def expand(self, p):
@@ -383,30 +383,28 @@ class Where:
         for (_, kind, _), before, moved, vars, set_in in reversed(self.scopes[n:]):
             self.dir = before if kind == ISOLATING else None if moved else self.dir
             self.vars = vars if kind == ISOLATING else {**self.vars, **{v: Maybe(self.vars.get(v, '')) for v in set_in}}
+        self.funcs |= {x[2] for x in scopes[n:] if x[2]}
         self.scopes = self.scopes[:n] + [[x, self.dir, False, dict(self.vars), set()] for x in scopes[n:]]
 
     def changed(self, var=None):
         """Record a cd (var None) or an assignment of var here in the scopes it changes what they leave behind, up to the innermost
-        isolating one, and in the functions whose bodies they are."""
+        isolating one."""
         for x in reversed(self.scopes):
             if var is None: x[2] = True
             else: x[4].add(var)
-            if x[0][2]:
-                f = self.funcs.setdefault(x[0][2], [False, set()])
-                if var is None: f[0] = True
-                else: f[1].add(var)
             if x[0][1] == ISOLATING: return
 
     def step(self, t):
         if t and all(re.match(r'^\w+=', x) for x in t):
             self.vars.update(x.split('=', 1) for x in t)
             for x in t: self.changed(x.split('=', 1)[0])
+            if any(x[0][2] for x in self.scopes): self.func_vars.update(x.split('=', 1)[0] for x in t)
             return
         p = prog(t)
-        if p[:1] and p[0] in self.funcs:  # a call runs the body here: what it may change can't be told
-            moves, sets = self.funcs[p[0]]
-            if moves: self.dir, self.moved = None, True; self.changed()
-            for v in sets: self.vars[v] = Maybe(self.vars.get(v, '')); self.changed(v)
+        if p[:1] and p[0] in self.funcs:  # a call runs a body here, maybe calling another: what any of them changes can't be told
+            self.dir, self.moved = None, True
+            self.changed()
+            for v in self.func_vars: self.vars[v] = Maybe(self.vars.get(v, '')); self.changed(v)
             return
         if p[:1] not in (['cd'], ['pushd'], ['popd']):
             return

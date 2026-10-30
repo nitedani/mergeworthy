@@ -1877,6 +1877,8 @@ check "BLOCK: a word with a quoted or escaped \$ isn't expanded: a write to '\$W
   "$(ibash "$IT" "WD=$T/nogit; echo x > '\$WD/a.txt'") $(ibash "$IT" "WD=$T/nogit; echo x > \\\$WD/a.txt")"
 check "BLOCK: the same text quoted in one word and written plain in another: the plain redirect into the repo isn't taken as literal" 2 \
   "$(ibash "$IT" "WD=$I; echo '\$WD/a.txt' > \$WD/a.txt" "$T/nogit")"
+check "BLOCK: a call to a function that calls one defined after it: the write after the call can't be told" 2 \
+  "$(ibash "$IT" "g() { f; }; f() { cd $I; }; cd $T/nogit; g; echo x > a.txt" "$T/nogit")"
 check "logs written outside it by a backgrounded { } group in a loop, after its cd to \$W/\$t, pass" 0 \
   "$(ibash "$IT" "W=$T/nogit; for t in a b; do { cd \$W/\$t && netns-run bash x.sh > \$W/probe/\$t.out 2> \$W/probe/\$t.err; echo \"\$t exit \$?\" >> \$W/probe/\$t.err; } & done; wait")"
 ir_tr "$IT" "read:$I/AGENTS.md" "read:$I/CLAUDE.md"; check "a command writing into it passes once both were read" 0 "$(ibash "$IT" "echo x > $I/a.txt")"
