@@ -50,7 +50,7 @@ Run `npx mergeworthy` again to change the options or add an agent; `npx mergewor
 | `open-issue` | one finding a newcomer can find, reproduce and judge |
 | `docs` | docs, READMEs and JSDoc that read as the project's own |
 | `delegate` | briefing subagents and checking their work; `skills/delegate/*.md` holds one brief template per role |
-| `rules` | a named failure, editing the skills, the steward's follow-ups |
+| `rules` | a named failure, a rule or mechanism that failed or can't be followed, editing the skills, the steward's follow-ups |
 | `steward` | on request: one pass over what GitHub owes, this machine's sessions and the PR metrics, rule changes from the evidence, a report; nothing left running |
 | `post`, `converge`, `merging`, `evidence`, `finality` | the procedures a step calls: posting through the review, the passes a PR runs until nothing worth changing is left, push to merge, screenshots and videos, rework of drifted code |
 | `writing`, `code` | the standards every post and every diff is written to, and checked against (`~/.mergeworthy/voice.md` replaces the writing voice) |

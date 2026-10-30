@@ -231,13 +231,13 @@ flowchart TB
   start --> g0
 ```
 
-## A rule failed or the user names a failure; a 👎; editing a skill, prompt or rules file; a `### FOLLOW-UP`; the steward's tick
+## A rule, mergeworthy hook or tool failed, can't be followed or was worked around; the user names a failure; a 👎; editing a skill, prompt or rules file; a `### FOLLOW-UP`; the steward's tick
 
 Opens `mergeworthy:rules` (fix the instance, then the rule or an issue for the steward (6 steps)).
 
 ```mermaid
 flowchart TB
-  start(["A rule failed or the<br/>user names a failure; a<br/>👎; editing a skill, …"])
+  start(["A rule, mergeworthy hook<br/>or tool failed, can't be<br/>followed or was worked<br/>around; …"])
   subgraph g0["Steps"]
     s0["1. A named failure"]
     s1["2. Whose rule is it?"]
