@@ -27,6 +27,7 @@ ACTIONS = {
     'post-lint reply':       ('reply',) + WRITE,            # --kind reply or inline
     'post-lint proposal':    ('design',) + WRITE,           # design step 8
     'post-lint pr':          ('pull-request',) + WRITE,
+    'post-lint title':       ('pull-request',) + WRITE,     # pull-request step 7
     'post-lint issue':       ('open-issue',) + WRITE,
     'post-lint tracker':     ('task',) + WRITE,             # task step 7
     'gate-pass':             WRITE,
