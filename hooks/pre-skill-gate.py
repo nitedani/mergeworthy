@@ -7,7 +7,7 @@ a gated action whose transcript can't be read is blocked, as nothing shows which
 import json, os, re, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
-from shellcmd import segments, prog, opt, api_call, git_argv, rlines, transcript, Where
+from shellcmd import segments, prog, script, opt, api_call, git_argv, rlines, transcript, Where
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WRITE = ('post', 'writing')
@@ -58,9 +58,7 @@ def rows():
 def bash_actions(cmd, cwd='.'):
     out, where = [], Where(cwd)
     for s in where.walk(segments(cmd)):
-        t = prog(s)
-        if t and t[0] in ('python3', 'python', 'bash', 'sh') and len(t) > 1 and not t[1].startswith('-'):
-            t = t[1:]
+        t = script(prog(s))
         name = os.path.basename(t[0]) if t else ''
         a = t[1:]
         if '--help' in a or '-h' in a:
@@ -101,7 +99,9 @@ def bash_actions(cmd, cwd='.'):
             out.append(f'post-lint {kind}' if f'post-lint {kind}' in ACTIONS else 'post-lint reply')  # inline and a missing --kind: reply
         elif name in ('gate-pass', 'gh-watch-start'):
             out.append(name)
-        elif name == 'thread-context' and not {'--latest', '--verify'} & set(a):
+        elif name == 'discussion-post':
+            out.append('a post in a thread')
+        elif name == 'thread-context' and not {'--latest', '--verify', '--ref', '--items'} & set(a):
             out.append(name)
         elif name == 'pr-steps' and a and f'pr-steps {a[0]}' in ACTIONS:
             out.append(f'pr-steps {a[0]}')

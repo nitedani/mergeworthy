@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""thread-context <owner/repo#N | gitlab.com/<path>!N or #N | issue/PR/MR URL> [--depth 2] [--max 30] [--out <file>]: the whole record a reply must be drafted from.
-Fetches the thread (body, issue comments, PR review comments and reviews, or a GitLab issue's or MR's notes, each with author, time
-and permalink; GitHub through gh, GitLab through glab) and every thread it links (owner/repo#N, bare #N, a GitLab thread's !N and
-<path>!N, github.com and gitlab.com issue/PR/MR URLs), breadth-first to --depth, at most --max threads, skipping bots.
+"""thread-context <owner/repo#N | gitlab.com/<path>!N or #N | issue/PR/MR/discussion URL> [--depth 2] [--max 30] [--out <file>]: the whole record a reply must be drafted from.
+Fetches the thread (body, issue comments, PR review comments and reviews, a GitHub Discussion's comments and replies, or a GitLab issue's
+or MR's notes, each with author, time and permalink; GitHub through gh, GitLab through glab) and every thread it links (owner/repo#N, bare #N,
+a GitLab thread's !N and <path>!N, github.com and gitlab.com issue/PR/MR/discussion URLs), breadth-first to --depth, at most --max threads, skipping bots.
 Writes one markdown file (default ./thread-context.md): a header (root, latest human comment, threads), a ledger of the humans'
 agreements, rejections, proposals and decisions, the root transcript, then the linked transcripts (last 30 comments each).
 Threads are cached by updated_at under ~/.cache/mergeworthy/threads/.
   thread-context --latest <repo#N>     print "<id> <time>" of the thread's latest human comment
+  thread-context --ref <ref>           print the owner/repo#N (or GitLab reference) a reference or URL names, an organization's discussion URL too
+  thread-context --items <ref>         print the thread's records (body, comments, replies, reviews) as JSON, in time order
   thread-context --verify <file> [--target <repo#N>] [--parent <file>]
                                        exit 1 with the reason unless <file> is for the target thread and records its current latest
                                        human comment (checked against its root when the parent comment is newer than <file>)"""
@@ -19,14 +21,14 @@ from post_words import uncoded
 LINKED_LAST = 30          # comments kept per linked thread
 LINKED_BODY = 4000        # characters kept per comment in a linked thread
 CACHE = os.path.expanduser('~/.cache/mergeworthy/threads')
-USAGE = "usage: thread-context <owner/repo#N | gitlab.com/<path>!N> [--depth 2] [--max 30] [--out <file>] | --latest <repo#N> | --verify <file> [--target <repo#N>] [--parent <file>]"
+USAGE = "usage: thread-context <owner/repo#N | gitlab.com/<path>!N | discussion URL> [--depth 2] [--max 30] [--out <file>] | --latest <repo#N> | --ref <ref> | --items <ref> | --verify <file> [--target <repo#N>] [--parent <file>]"
 
 def die(msg, code=1):
     print(msg, file=sys.stderr); sys.exit(code)
 
-def api_json(path, paginate=False, cmd=('gh', 'api')):
-    """JSON from `<cmd> <path>`, gh api by default (pages flattened into one list); None when the call fails (404, offline)."""
-    cmd = [*cmd, path] + (['--paginate'] if paginate else [])
+def api_json(path, paginate=False, cmd=('gh', 'api'), args=()):
+    """JSON from `<cmd> <path> <args>`, gh api by default (pages flattened into one list); None when the call fails (404, offline)."""
+    cmd = [*cmd, path, *args] + (['--paginate'] if paginate else [])
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
     except (OSError, subprocess.TimeoutExpired):
@@ -44,9 +46,9 @@ def api_json(path, paginate=False, cmd=('gh', 'api')):
 class Unreadable(Exception):
     """A request load() needs failed: the thread can't be read whole, so nothing is recorded or cached from it."""
 
-def fetch(path, paginate=False, cmd=('gh', 'api')):
+def fetch(path, paginate=False, cmd=('gh', 'api'), args=()):
     """api_json, raising Unreadable (naming the request) when the call fails."""
-    v = api_json(path, paginate, cmd)
+    v = api_json(path, paginate, cmd, args)
     if v is None: raise Unreadable(f'`{" ".join(cmd)} {path}` failed')
     return v
 
@@ -70,7 +72,8 @@ def load(repo, sep, num):
     """The thread as {ref, title, url, state, is_pr, updated_at, items:[record...]}, cached by updated_at; Unreadable when a request
     for it fails (it doesn't exist, or the service is down)."""
     if repo.startswith(gl_watch.HOST): return load_gitlab(repo, sep, num)
-    meta = fetch(f'repos/{repo}/issues/{num}')
+    meta = api_json(f'repos/{repo}/issues/{num}')
+    if meta is None: return load_discussion(repo, num)  # a discussion shares its repo's numbers, but REST has no issue for it
     if not isinstance(meta, dict) or 'number' not in meta: raise Unreadable(f'gh read no issue or PR at {repo}#{num}')
     f = os.path.join(CACHE, f"{repo.replace('/', '__')}__{num}.json")
     try:
@@ -124,6 +127,53 @@ def load_gitlab(repo, sep, num):
     except OSError: pass
     return t
 
+POST = 'databaseId createdAt url body author { login __typename }'
+REPLIES = f'replies(first: 100, after: $endCursor) {{ pageInfo {{ hasNextPage endCursor }} nodes {{ {POST} }} }}'
+DISCUSSION = f"""query($o: String!, $n: String!, $num: Int!, $endCursor: String) {{ repository(owner: $o, name: $n) {{ discussion(number: $num) {{
+  {POST} title closed updatedAt
+  comments(first: 100, after: $endCursor) {{ pageInfo {{ hasNextPage endCursor }} nodes {{ id {POST} replies(first: 100) {{ pageInfo {{ hasNextPage }} nodes {{ {POST} }} }} }} }} }} }} }}"""
+COMMENT_REPLIES = f'query($id: ID!, $endCursor: String) {{ node(id: $id) {{ ... on DiscussionComment {{ {REPLIES} }} }} }}'
+
+def load_discussion(repo, num):
+    """load() for a GitHub Discussion, read over GraphQL: its body, every comment and every reply, page by page; not cached, as
+    reading whether it changed would cost the same request."""
+    o, n = repo.split('/')
+    pages = api_json('graphql', True, args=('-f', f'query={DISCUSSION}', '-f', f'o={o}', '-f', f'n={n}', '-F', f'num={num}')) or []
+    found = [(p.get('data') or {}).get('repository') or {} for p in pages if isinstance(p, dict)]
+    d = (found[:1] or [{}])[0].get('discussion')
+    if not d: raise Unreadable(f'gh read no issue, PR or discussion at {repo}#{num}')
+    c = lambda x: {'id': x.get('databaseId'), 'user': {'login': (x.get('author') or {}).get('login'), 'type': (x.get('author') or {}).get('__typename')},
+                   'created_at': x.get('createdAt'), 'html_url': x.get('url'), 'body': x.get('body')}
+    items = [record('body', c(d))]
+    for x in (x for p in found for x in ((p.get('discussion') or {}).get('comments') or {}).get('nodes') or []):
+        items.append(record('comment', c(x)))
+        replies = x.get('replies') or {}
+        if (replies.get('pageInfo') or {}).get('hasNextPage'):  # over a page: all of them, read again from the first
+            more = fetch('graphql', True, args=('-f', f'query={COMMENT_REPLIES}', '-f', f'id={x.get("id")}'))
+            replies = {'nodes': [r for p in more for r in ((((p.get('data') or {}).get('node') or {}).get('replies') or {}).get('nodes') or [])]}
+        items += [record('reply', c(r), extra=x.get('url') or '') for r in replies.get('nodes') or []]
+    items.sort(key=lambda x: (x['at'], x['id']))
+    return {'ref': f'{repo}#{num}', 'title': d.get('title') or '', 'url': d.get('url') or '', 'state': 'closed' if d.get('closed') else 'open',
+            'is_pr': False, 'updated_at': d.get('updatedAt'), 'items': items}
+
+def org_discussion(s):
+    """(repo, '#', N) of an organization's discussion URL (github.com/orgs/<org>/discussions/N), from the repo GitHub keeps it in; None for
+    another reference, or one gh finds no discussion at."""
+    m = re.fullmatch(r'(?:https?://)?github\.com/orgs/([\w.-]+)/discussions/(\d+)(?:[/#?].*)?', s.strip())
+    if not m: return None
+    url = f'https://github.com/orgs/{m[1]}/discussions/{m[2]}'
+    q = 'query($q: String!) { search(type: DISCUSSION, query: $q, first: 20) { nodes { ... on Discussion { number url repository { nameWithOwner } } } } }'
+    found = api_json('graphql', args=('-f', f'query={q}', '-f', f'q=org:{m[1]} {m[2]}')) or {}
+    hit = next((x for x in ((found.get('data') or {}).get('search') or {}).get('nodes') or [] if x.get('url') == url), None)
+    return (hit['repository']['nameWithOwner'], '#', int(m[2])) if hit else None
+
+def thread_ref(s):
+    """parse_ref, and an organization's discussion URL; exits 2 on anything else, 1 on an organization's URL gh finds no discussion at."""
+    rf = parse_ref(s) or org_discussion(s)
+    if rf: return rf
+    if re.search(r'github\.com/orgs/', s): die(f'thread-context: gh found no discussion at {s}: pass it as <owner/repo>#N, the repo its discussions are in')
+    die(USAGE, 2)
+
 def latest_human(t):
     """(at, id, url) of the newest comment by a human who isn't the agent (the root body doesn't count), else None."""
     hs = [x for x in t['items'] if x['kind'] not in ('body', 'rename') and not x['bot'] and not x['agent']]
@@ -134,7 +184,9 @@ def refs(text, repo):
     In a GitLab thread, <path>#N, <path>!N, #N and !N name GitLab threads."""
     text = uncoded(text)
     out, gl = [], repo.startswith(gl_watch.HOST)
-    for m in re.finditer(r'https?://github\.com/([\w.-]+/[\w.-]+)/(?:issues|pull)/(\d+)', text): out.append(f'{m[1]}#{m[2]}')
+    for m in re.finditer(r'https?://github\.com/((?!orgs/)[\w.-]+/[\w.-]+)/(?:issues|pull|discussions)/(\d+)', text): out.append(f'{m[1]}#{m[2]}')
+    for m in re.finditer(r'https?://github\.com/orgs/[\w.-]+/discussions/\d+', text):
+        if rf := org_discussion(m[0]): out.append(f'{rf[0]}#{rf[2]}')
     for m in re.finditer(r'https?://gitlab\.com/([\w.-]+(?:/[\w.-]+)+)/-/(issues|merge_requests)/(\d+)', text):
         out.append(f"{gl_watch.HOST}{m[1]}{'!' if m[2] == 'merge_requests' else '#'}{m[3]}")
     text = re.sub(r'https?://\S+', ' ', text)
@@ -148,12 +200,12 @@ def refs(text, repo):
     return out
 
 def parse_ref(s):
-    """(repo, '#' or '!', N) of a thread reference: owner/repo#N or its github.com URL, gitlab.com/<path>#N (an issue) or !N (an MR)
+    """(repo, '#' or '!', N) of a thread reference: owner/repo#N or its github.com issue, PR or discussion URL, gitlab.com/<path>#N (an issue) or !N (an MR)
     or its gitlab.com URL; None for anything else."""
     s = s.strip()
     m = re.fullmatch(r'(?:https?://)?(gitlab\.com/[\w.-]+(?:/[\w.-]+)+?)(?:([#!])|/-/(issues|merge_requests)/)(\d+)(?:[/#?].*)?', s)
     if m: return (m[1], m[2] or ('!' if m[3] == 'merge_requests' else '#'), int(m[4]))
-    m = re.fullmatch(r'(?:https?://github\.com/)?([\w.-]+/[\w.-]+?)(?:#|/(?:issues|pull)/)(\d+)(?:[/#?].*)?', s)
+    m = re.fullmatch(r'(?:https?://github\.com/(?!orgs/))?([\w.-]+/[\w.-]+?)(?:#|/(?:issues|pull|discussions)/)(\d+)(?:[/#?].*)?', s)
     return (m[1], '#', int(m[2])) if m else None
 
 def tool(ref):
@@ -220,7 +272,7 @@ def render(order, left, root, depth, cap):
          f'- threads included ({len(order)}):']
     for t, d, via in order:
         n = sum(1 for x in t['items'] if x['kind'] != 'body' and not x['bot']); nb = sum(1 for x in t['items'] if x['bot'])
-        L.append(f'  - {t["ref"]} "{t["title"]}" ({"PR" if t["is_pr"] else "issue"}, {t["state"]}, {n} comments' + (f', {nb} bot comments omitted' if nb else '') +
+        L.append(f'  - {t["ref"]} "{t["title"]}" ({"PR" if t["is_pr"] else "discussion" if "/discussions/" in t["url"] else "issue"}, {t["state"]}, {n} comments' + (f', {nb} bot comments omitted' if nb else '') +
                  (', root' if via is None else f', depth {d}, linked from {via}') + ')')
     if left: L.append(f'- referenced but not fetched (over the cap of {cap}): ' + ', '.join(left))
     L += ['', '## Decisions and positions', '',
@@ -246,7 +298,7 @@ def render(order, left, root, depth, cap):
             body = x['body'].strip()
             if last is not None and len(body) > LINKED_BODY: body = body[:LINKED_BODY] + f'\n... (cut at {LINKED_BODY} characters, full text at the permalink)'
             who = f'@{x["author"]}' + (' AGENT (badge: the agent\'s own post)' if x['agent'] else '')
-            what = {'body': 'opened', 'comment': 'comment', 'review': f'review {x["extra"]}'.strip(), 'review comment': f'review comment {x["extra"]}'.strip(), 'rename': 'retitled'}[x['kind']]
+            what = {'body': 'opened', 'comment': 'comment', 'review': f'review {x["extra"]}'.strip(), 'review comment': f'review comment {x["extra"]}'.strip(), 'reply': f'reply to {x["extra"]}', 'rename': 'retitled'}[x['kind']]
             out += [f'### {x["at"]} {who}, {what}', x['url'], '', re.sub(r'^#', r'\\#', body, flags=re.M) or '(empty)', '']
         return out
     L += transcript(rt)
@@ -285,19 +337,19 @@ def main(argv):
         i = argv.index(name)
         if i + 1 >= len(argv): die(USAGE, 2)
         return argv[i + 1]
-    if argv[0] == '--latest':
-        rf = parse_ref(opt('--latest') or '')
-        if not rf: die(USAGE, 2)
-        t = tryload(opt('--latest'))
-        if isinstance(t, Unreadable): die(f'thread-context: cannot read {opt("--latest")}: {t}')
+    if argv[0] in ('--latest', '--ref', '--items'):
+        rf = thread_ref(opt(argv[0]) or '')
+        if argv[0] == '--ref': print(f'{rf[0]}{rf[1]}{rf[2]}'); return
+        t = tryload(f'{rf[0]}{rf[1]}{rf[2]}')
+        if isinstance(t, Unreadable): die(f'thread-context: cannot read {opt(argv[0])}: {t}')
+        if argv[0] == '--items': print(json.dumps(t['items'])); return
         lh = latest_human(t)
         print(f'{lh[1]} {lh[0]}' if lh else '0 0'); return
     if argv[0] == '--verify':
         why = verify(opt('--verify'), opt('--target'), opt('--parent'))
         if why: die(why)
         return
-    rf = parse_ref(argv[0])
-    if not rf: die(USAGE, 2)
+    rf = thread_ref(argv[0])
     depth, cap, out = int(opt('--depth', 2)), int(opt('--max', 30)), opt('--out', os.path.join(os.getcwd(), 'thread-context.md'))
     root = f'{rf[0]}{rf[1]}{rf[2]}'
     order, left = crawl(root, depth, cap)

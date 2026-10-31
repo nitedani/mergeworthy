@@ -13,8 +13,10 @@ cat > "$T/bin/gh" <<'EOF'
 # stub gh: answers `gh api <path>` from $FX/<path with / ? & = replaced by _>; exit 1 when the fixture is missing (a 404)
 # ...and `gh pr view [<ref>] --json number` from $FX/pr_view_<ref with / and : replaced by _>, or $FX/pr_view_current without a ref (none: gh's "no pull requests found")
 # ...and `gh pr checks <url> --json name,bucket` from $FX/pr_checks_<url with / and : replaced by _> (none: "no checks reported"; a URL not on github.com: gh's "no pull requests found")
-# A `--jq .a.b` on a fixture holding a JSON object answers that field, as gh does; any other fixture is the answer as it stands
+# A `--jq .a.b` on a fixture holding a JSON object answers that field, as gh does; any other fixture is the answer as it stands, its
+# first JSON page alone without --paginate
 [ -n "${GH_STUB_PWD:-}" ] && echo "$1 $2 $PWD" >> "$GH_STUB_PWD"  # each call and where it ran, for a check that must run gh in the command's dir
+[ -n "${GH_STUB_ARGS:-}" ] && printf '%s\n' "$*" >> "$GH_STUB_ARGS"  # each call's arguments
 [ "$1 $2" = "config get" ] && { [ ! -f "$FX/login" ] || cat "$FX/login"; exit; }  # the login gh's own config names: $FX/login
 [ "$1 $2" = "pr view" ] && [ -n "$GH_STUB_NOHOST" ] &&{ echo 'none of the git remotes configured for this repository point to a known GitHub host' >&2; exit 1; }
 if [ "$1 $2" = "pr view" ]; then r=$3; case "$r" in -*|'') r=current;; esac; f="$FX/pr_view_$(printf '%s' "$r" | tr '/:' '__')"; [ -f "$f" ] && cat "$f" && exit 0; echo 'no pull requests found for branch "x"' >&2; exit 1; fi
@@ -22,18 +24,21 @@ if [ "$1 $2" = "pr view" ]; then r=$3; case "$r" in -*|'') r=current;; esac; f="
 if [ "$1 $2" = "pr checks" ]; then f="$FX/pr_checks_$(printf '%s' "$3" | tr '/:' '__')"; [ -f "$f" ] && cat "$f" && exit 1; echo "no checks reported on the 'x' branch" >&2; exit 1; fi
 [ "$1" = api ] || exit 1
 f="$FX/$(printf '%s' "$2" | tr '/?&=' '____')"
-for a in "$@"; do case "$a" in o=*) [ -f "${f}_${a#o=}" ] && f="${f}_${a#o=}";; esac; done  # graphql: $FX/graphql_<owner> answers for that owner
+for a in "$@"; do case "$a" in o=*|id=*) [ -f "${f}_${a#*=}" ] && f="${f}_${a#*=}";; esac; done  # graphql: $FX/graphql_<owner> or $FX/graphql_<node id> answers for it
 [ -n "$GH_STUB_403" ] && { echo 'gh: API rate limit exceeded for user ID 1. (HTTP 403)' >&2; exit 1; }
 [ -f "$f" ] || { printf '{"message":"Not Found","status":"404"}'; echo 'gh: Not Found (HTTP 404)' >&2; exit 1; }  # gh prints the error's JSON body too
-q=; while [ $# -gt 0 ]; do [ "$1" = --jq ] && q=$2; shift; done
+q=; pg=; while [ $# -gt 0 ]; do [ "$1" = --jq ] && q=$2; [ "$1" = --paginate ] && pg=1; shift; done
 python3 -c 'import json, re, sys
 raw = open(sys.argv[1]).read(); q = sys.argv[2]
+if not sys.argv[3] and raw.lstrip()[:1] in ("{", "["):  # a fixture of several JSON pages: without --paginate, gh reads the first
+    try: raw = raw[:json.JSONDecoder().raw_decode(raw.lstrip())[1] + len(raw) - len(raw.lstrip())]
+    except ValueError: pass
 try: v = json.loads(raw)
 except ValueError: v = None
 if isinstance(v, dict) and re.fullmatch(r"(\.\w+)+", q):
     for k in q.split(".")[1:]: v = v.get(k) if isinstance(v, dict) else None
     print("" if v is None else v if isinstance(v, str) else json.dumps(v))
-else: sys.stdout.write(raw)' "$f" "$q"
+else: sys.stdout.write(raw)' "$f" "$q" "$pg"
 EOF
 chmod +x "$T/bin/gh"; export PATH="$T/bin:$PATH" FX="$T/fx"
 # stub gh-watch-start (post-bash-register starts a work folder's watcher): logs its session and arguments, adds the thread, prints the Monitor
@@ -369,6 +374,122 @@ check "a tracker draft needs no thread-context.md" 0 "$(python3 "$R/hooks/pre-ba
 printf 'Tracking: x\n' > "$T/tdrafts/u.md"; sha256sum "$T/tdrafts/u.md" | cut -d' ' -f1 > "$T/tdrafts/u.md.gate"
 python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr edit 41 --repo o/r --body-file "+sys.argv[2]},"cwd":sys.argv[1]}))' "$T" "$T/tdrafts/u.md" > "$T/in.json"
 check "BLOCK: a PR body edit is covered too" 2 "$(python3 "$R/hooks/pre-bash-guard.py" < "$T/in.json" 2>/dev/null; echo $?)"
+
+# a GitHub Discussion (nitedani/mergeworthy#98): thread-context reads it whole over GraphQL, gate-pass takes its record, discussion-post posts
+# a gated draft to it as `gh issue comment --body-file` posts one (and edits one as a comment edit), and a raw GraphQL discussion mutation is blocked
+DBADGE='<img src="https://github.com/claude.png" alt="Claude">'
+cat > "$T/dfx.py" <<'EOF'
+import json, sys
+mode, at, badge = (sys.argv[1:] + ['', '', ''])[:3]
+url = lambda i: f"https://example.invalid/d/r/discussions/5#discussioncomment-{i}"
+post = lambda i, at, who, body, kind="User": {"databaseId": i, "createdAt": at, "url": url(i), "body": body, "author": {"login": who, "__typename": kind}}
+def comment(i, at, who, body, replies=(), more=False):
+    return {"id": f"DC_{i}", **post(i, at, who, body), "replies": {"pageInfo": {"hasNextPage": more}, "nodes": list(replies)}}
+mine = [post(504, at, "nitedani", badge + "\nFirst."), post(505, at, "nitedani", badge + "\nSecond.")]
+page = lambda nodes, more=False: {"data": {"repository": {"discussion": {"id": "D_5", "title": "How to X", "closed": False, "updatedAt": "2026-10-05T10:00:00Z",
+    **post(500, "2026-10-05T08:00:00Z", "asker", "How do I X? As in https://github.com/orgs/dorg/discussions/6."),
+    "comments": {"pageInfo": {"hasNextPage": more, "endCursor": "c1" if more else None}, "nodes": nodes}}}}}
+old = lambda i, replies=(): comment(i, "2026-10-05T09:00:00Z", "maint", f"Old {i}.", replies)
+if mode == 'many':  # 101 comments over two pages; the agent's two newest replies are on the first comment
+    print(json.dumps(page([old(1, mine)] + [old(i) for i in range(2, 101)], True)) + json.dumps(page([old(101)])))
+elif mode == 'replies':  # 101 replies on one comment, over two pages of 100 and 1; with a time, the agent wrote the last two
+    replies = [post(1001 + k, f"2026-10-05T10:{k // 60:02d}:{k % 60:02d}Z", "asker", f"Reply {k}.") for k in range(101)]
+    if at: replies[-2:] = [post(1100, at, "nitedani", badge + "\nFirst."), post(1101, at, "nitedani", badge + "\nSecond.")]
+    print(json.dumps(page([comment(501, "2026-10-05T09:00:00Z", "maint", "Try Y.", replies[:100], True)])))
+    node = lambda nodes, more: json.dumps({"data": {"node": {"replies": {"pageInfo": {"hasNextPage": more, "endCursor": "r1" if more else None}, "nodes": nodes}}}})
+    open(sys.argv[4], 'w').write(node(replies[:100], True) + node(replies[100:], False))
+else:
+    first = comment(501, "2026-10-05T09:00:00Z", "maint", "Try Y.", [post(502, "2026-10-05T09:30:00Z", "asker", "Y fails for me."),
+                                                                  post(503, "2026-10-05T09:45:00Z", "github-actions", "Stale?", "Bot")])
+    print(json.dumps(page([first] + ([comment(504, at, "nitedani", badge + "\nFirst.", mine[1:])] if mode == 'turn' else []))))
+EOF
+dfx() { python3 "$T/dfx.py" "${1:-}" "${2:-}" "$DBADGE" > "$FX/graphql_d"; }  # [turn|many <agent comments' time> | replies]: discussion d/r#5 in the org dorg
+dfx
+printf '{"data":{"search":{"nodes":[{"number":5,"url":"https://github.com/orgs/dorg/discussions/50","repository":{"nameWithOwner":"d/x"}},{"number":5,"url":"https://github.com/orgs/dorg/discussions/5","repository":{"nameWithOwner":"d/r"}},{"number":6,"url":"https://github.com/orgs/dorg/discussions/6","repository":{"nameWithOwner":"d/r"}}]}}}' > "$FX/graphql"
+printf '{"data":{"node":{"discussion":{"number":5,"repository":{"nameWithOwner":"d/r"}}},"updateDiscussionComment":{"comment":{"url":"https://example.invalid/d/r/discussions/5#discussioncomment-504"}}}}' > "$FX/graphql_DC_504"
+printf '{"data":{"addDiscussionComment":{"comment":{"url":"https://example.invalid/d/r/discussions/5#discussioncomment-600"}}}}' > "$FX/graphql_D_5"
+DD="$T/ddrafts/d-r-5"; mkdir -p "$DD"
+dtc() { "$R/bin/thread-context" "$1" --out "$DD/thread-context.md" --depth "${2:-0}" >/dev/null 2>"$T/dtc.err"; echo "$? $(grep -c '^- root: d/r#5 ' "$DD/thread-context.md" 2>/dev/null) $(grep -c '^- latest-human-comment: id=502 at=2026-10-05T09:30:00Z' "$DD/thread-context.md" 2>/dev/null)"; }
+check "thread-context on a discussion by its repo URL, its org URL and owner/repo#N: its root, and its latest human reply, not a bot's" "0 1 1 0 1 1 0 1 1" \
+  "$(rm -f "$DD/thread-context.md"; dtc https://github.com/d/r/discussions/5) $(rm -f "$DD/thread-context.md"; dtc https://github.com/orgs/dorg/discussions/5) $(rm -f "$DD/thread-context.md"; dtc 'd/r#5')"
+check "the discussion's replies are in the transcript, each naming the comment it answers" 1 "$(grep -c '^### 2026-10-05T09:30:00Z @asker, reply to https://example.invalid/d/r/discussions/5#discussioncomment-501$' "$DD/thread-context.md")"
+check "an organization's discussion URL in the thread is followed as the thread it names" "0 1 1 1" "$(dtc 'd/r#5' 1) $(grep -c '^  - d/r#6 .*linked from d/r#5)$' "$DD/thread-context.md")"
+check "--ref names a discussion URL's thread, an organization's too; one gh finds none at fails" "d/r#5 d/r#5 1" \
+  "$("$R/bin/thread-context" --ref https://github.com/d/r/discussions/5) $("$R/bin/thread-context" --ref https://github.com/orgs/dorg/discussions/5) $("$R/bin/thread-context" --ref https://github.com/orgs/dorg/discussions/7 >/dev/null 2>&1; echo $?)"
+python3 "$T/dfx.py" replies '' '' "$FX/graphql_DC_501" > "$FX/graphql_d"
+"$R/bin/thread-context" 'd/r#5' --out "$T/d101.md" --depth 0 >/dev/null
+check "a comment's 101 replies, over two pages, are all read: the first and the newest, in the record and in --items" "1 1 1 101" "$(grep -c '^https://example.invalid/d/r/discussions/5#discussioncomment-1001$' "$T/d101.md") $(grep -c '^https://example.invalid/d/r/discussions/5#discussioncomment-1101$' "$T/d101.md") $(grep -c '^- latest-human-comment: id=1101 ' "$T/d101.md") $("$R/bin/thread-context" --items 'd/r#5' | python3 -c 'import json,sys; print(sum(x["kind"] == "reply" for x in json.load(sys.stdin)))')"
+dfx many 2026-10-05T11:00:00Z
+"$R/bin/thread-context" 'd/r#5' --out "$T/d101.md" --depth 0 >/dev/null
+check "a discussion's 101 comments are all read, from both pages" "1 1" "$(grep -c '^https://example.invalid/d/r/discussions/5#discussioncomment-1$' "$T/d101.md") $(grep -c '^https://example.invalid/d/r/discussions/5#discussioncomment-101$' "$T/d101.md")"
+rm -f "$FX/graphql_DC_501"; dfx; dtc 'd/r#5' >/dev/null
+printf 'Set Z first, and then Y works.\n' > "$DD/r.md"; echo CLEAN > "$DD/r.review.out"; touch -d '+10 minutes' "$DD/r.review.out"
+export GATED_POSTS="$T/dgated.txt"
+check "gate-pass takes a reply drafted beside the discussion's record" 0 "$(MERGEWORTHY_BADGE=off "$R/bin/gate-pass" "$DD/r.md" "$DD/r.review.out" --kind reply --parent none >"$T/dgp.out" 2>&1; echo $?)"
+hk() { # hook command: the hook (pre-bash-guard or post-bash-register) on that command run in $T; its exit code, stderr in $T/err
+  python3 -c 'import json,sys; print(json.dumps({"tool_input": {"command": sys.argv[2]}, "cwd": sys.argv[1], "tool_response": {"stdout": "{}"}}))' "$T" "$2" > "$T/in.json"
+  python3 "$R/hooks/$1.py" < "$T/in.json" 2>"$T/err"; echo $?; }
+echo nitedani > "$FX/user"
+check "discussion-post of the gated draft passes, by owner/repo#N and by the org URL" "0 0" "$(hk pre-bash-guard "discussion-post d/r#5 $DD/r.md") $(hk pre-bash-guard "discussion-post https://github.com/orgs/dorg/discussions/5 $DD/r.md")"
+printf 'Not reviewed.\n' > "$DD/u.md"
+check "BLOCK: discussion-post of an ungated draft" "2 1" "$(hk pre-bash-guard "discussion-post d/r#5 $DD/u.md") $(grep -c "isn't the one $DD/u.md was gated with" "$T/err")"
+cp "$DD/r.md" "$T/dr.md"; echo 'Also W.' >> "$DD/r.md"
+check "BLOCK: discussion-post of a draft changed after its gate" "2 1" "$(hk pre-bash-guard "discussion-post d/r#5 $DD/r.md") $(grep -c 'changed after its gate' "$T/err")"
+cp "$T/dr.md" "$DD/r.md"; cp "$DD/thread-context.md" "$T/dtc.md"; cp "$DD/r.md.gate" "$T/dgate"
+other() { sed -i 's/^- root: d\/r#5/- root: d\/r#7/' "$DD/thread-context.md"; sed -i '/^tc /d' "$DD/r.md.gate"; tcbind "$DD/r.md"; }  # the gate bound to another thread's record
+other
+check "BLOCK: discussion-post of a draft gated beside another thread's record" "2 1" "$(hk pre-bash-guard "discussion-post d/r#5 $DD/r.md") $(grep -c 'is the context of d/r#7, not d/r#5' "$T/err")"
+cp "$T/dtc.md" "$DD/thread-context.md"; cp "$T/dgate" "$DD/r.md.gate"
+for b in First Second; do printf '%s\n%s.' "$DBADGE" "$b" | sha256sum | cut -d' ' -f1 >> "$GATED_POSTS"; done
+dfx turn "$(date -u -d '-1 hour' +%Y-%m-%dT%H:%M:%SZ)"
+check "BLOCK: a third comment in a row on the discussion" "2 1" "$(hk pre-bash-guard "discussion-post d/r#5 $DD/r.md") $(grep -c 'your last two comments on d/r#5 have no reply yet' "$T/err")"
+dfx many "$(date -u -d '-1 hour' +%Y-%m-%dT%H:%M:%SZ)"
+check "BLOCK: a third comment in a row, the two being replies on the first of 101 comments" "2 1" "$(hk pre-bash-guard "discussion-post d/r#5 $DD/r.md") $(grep -c 'your last two comments on d/r#5 have no reply yet' "$T/err")"
+python3 "$T/dfx.py" replies "$(date -u -d '-1 hour' +%Y-%m-%dT%H:%M:%SZ)" "$DBADGE" "$FX/graphql_DC_501" > "$FX/graphql_d"
+check "BLOCK: a third comment in a row, the two being a comment's 100th and 101st replies, on its second page" "2 1" "$(hk pre-bash-guard "discussion-post d/r#5 $DD/r.md") $(grep -c 'your last two comments on d/r#5 have no reply yet' "$T/err")"
+rm -f "$FX/graphql_DC_501"
+dfx
+echo '--kind proposal' > "$DD/r.md.lint"; rm -f "$HOME/.claude/proposal-rounds.txt"
+check "post-bash-register after discussion-post: it says the reply joined no watcher, marks the draft posted and counts a proposal" "2 1 1 1" \
+  "$(hk post-bash-register "discussion-post d/r#5 $DD/r.md") $(grep -c 'GitHub Discussion joined no watcher' "$T/err") $(ls "$DD/r.md.posted" | wc -l) $(grep -c '^d/r#5 ' "$HOME/.claude/proposal-rounds.txt")"
+rm -f "$HOME/.claude/proposal-rounds.txt"; echo '--kind reply --parent none' > "$DD/r.md.lint"
+check "BLOCK: the posted draft posted to the discussion again" "2 1" "$(hk pre-bash-guard "discussion-post d/r#5 $DD/r.md") $(grep -c 'was already posted' "$T/err")"
+dfx turn "$(date -u -d '-1 hour' +%Y-%m-%dT%H:%M:%SZ)"
+check "discussion-post --edit from the posted draft passes, after two of the agent's comments too, and post-bash-register says nothing of a watcher" "0 0 0" \
+  "$(hk pre-bash-guard "discussion-post --edit DC_504 $DD/r.md") $(hk post-bash-register "discussion-post --edit DC_504 $DD/r.md") $(grep -c 'joined no watcher' "$T/err")"
+other
+check "BLOCK: an edit from a draft gated beside another thread's record" "2 1" "$(hk pre-bash-guard "discussion-post --edit DC_504 $DD/r.md") $(grep -c 'is the context of d/r#7, not d/r#5' "$T/err")"
+cp "$T/dtc.md" "$DD/thread-context.md"; cp "$T/dgate" "$DD/r.md.gate"; echo 'Also W.' >> "$DD/r.md"
+check "BLOCK: an edit from a draft changed after its gate" "2 1" "$(hk pre-bash-guard "discussion-post --edit DC_504 $DD/r.md") $(grep -c 'changed after its gate' "$T/err")"
+cp "$T/dr.md" "$DD/r.md"; dfx
+check "discussion-post sends the draft file as the comment's body: a new comment to the discussion's id, an edit to the comment's" "0 0 1 1" \
+  "$(GH_STUB_ARGS="$T/dargs" "$R/bin/discussion-post" d/r#5 "$DD/r.md" >/dev/null; echo $?) $(GH_STUB_ARGS="$T/dargs" "$R/bin/discussion-post" --edit DC_504 "$DD/r.md" >/dev/null; echo $?) $(grep -c "addDiscussionComment(input: {discussionId: \$id, body: \$body}).* -f id=D_5 -F body=@$DD/r.md$" "$T/dargs") $(grep -c "updateDiscussionComment(input: {commentId: \$id, body: \$body}).* -f id=DC_504 -F body=@$DD/r.md$" "$T/dargs")"
+# a GraphQL call naming a discussion mutation, in any form gh takes, is blocked: discussion-post is the checked way
+printf 'mutation($id: ID!, $body: String!) { addDiscussionComment(input: {discussionId: $id, body: $body}) { comment { url } } }' > "$T/dq.graphql"
+printf '{"query": "mutation { updateDiscussionComment(input: {commentId: \\"DC_504\\", body: \\"x\\"}) { comment { url } } }"}' > "$T/dq.json"
+check "BLOCK: a raw discussion mutation: inline, a batch aliasing both, the query from a relative file, --input, a query file it can't read; each but the last pointing at discussion-post" "2 2 2 2 2 1 4" \
+  "$(hk pre-bash-guard "gh api graphql -f 'query=mutation(\$id: ID!, \$body: String!) { addDiscussionComment(input: {discussionId: \$id, body: \$body}) { comment { url } } }' -f id=D_5 -F body=@$DD/r.md") \
+$(hk pre-bash-guard "gh api graphql -f 'query=mutation(\$b: String!) { e: updateDiscussionComment(input: {commentId: \"DC_504\", body: \$b}) { comment { url } } a: addDiscussionComment(input: {discussionId: \"D_5\", body: \$b}) { comment { url } } }' -F b=@$DD/r.md") \
+$(hk pre-bash-guard "gh api graphql -F query=@dq.graphql -f id=D_5 -F body=@$DD/r.md") $(hk pre-bash-guard "gh api graphql --input dq.json") \
+$(hk pre-bash-guard "gh api graphql -F query=@missing.graphql -F body=@$DD/r.md") $(grep -c "can't read a file" "$T/err") \
+$(for q in "-f 'query=mutation { addDiscussionComment(input: {discussionId: \"D_5\", body: \"x\"}) { comment { url } } }'" "-F query=@dq.graphql -F body=@$DD/r.md" "--input dq.json" "-f 'query=mutation(\$b: String!) { a: addDiscussionComment(input: {discussionId: \"D_5\", body: \$b}) { comment { url } } }' -F b=@$DD/r.md"; do hk pre-bash-guard "gh api graphql $q" >/dev/null; grep -q 'discussion-post <discussion URL' "$T/err" && echo y; done | wc -l)"
+printf '{"query":"mutation { \\u0061ddDiscussionComment(input: {discussionId: \\"D_5\\", body: \\"x\\"}) { comment { url } } }"}' > "$T/du.json"
+check "BLOCK: a raw discussion mutation after a reaction and a GraphQL comment, at /graphql, at the full URL, at a GHES host, and \\u-escaped in --input" "2 2 2 2 2 5" \
+  "$(hk pre-bash-guard "gh api graphql -f 'query=mutation {
+  r: addReaction(input: {subjectId: \"D_5\", content: THUMBS_UP}) { clientMutationId }
+  c: addDiscussionComment( # the reply
+    input: {discussionId: \"D_5\", body: \"x\"}) { comment { url } }
+}'") $(hk pre-bash-guard "gh api /graphql --input $T/dq.json") $(hk pre-bash-guard "gh api https://api.github.com/graphql --input $T/dq.json") \
+$(hk pre-bash-guard "gh api https://ghe.example.invalid/api/graphql --input $T/dq.json") $(hk pre-bash-guard "gh api graphql --input $T/du.json") \
+$(for c in "gh api graphql -f 'query=mutation { c: addDiscussionComment( # x
+input: {discussionId: \"D_5\", body: \"x\"}) { comment { url } } }'" "gh api /graphql --input $T/dq.json" "gh api https://api.github.com/graphql --input $T/dq.json" "gh api https://ghe.example.invalid/api/graphql --input $T/dq.json" "gh api graphql --input $T/du.json"; do hk pre-bash-guard "$c" >/dev/null; grep -q 'discussion-post <discussion URL' "$T/err" && echo y; done | wc -l)"
+check "a reaction alone still passes" 0 "$(hk pre-bash-guard "gh api graphql -f 'query=mutation { addReaction(input: {subjectId: \"D_5\", content: THUMBS_UP}) { clientMutationId } }'")"
+# discussion-post run through its interpreter is the same command
+check "BLOCK: discussion-post of an ungated draft through python3, env python3, python3 -u; an ungated edit through python3" "2 2 2 2" \
+  "$(hk pre-bash-guard "python3 $R/bin/discussion-post d/r#5 $DD/u.md") $(hk pre-bash-guard "env python3 $R/bin/discussion-post d/r#5 $DD/u.md") $(hk pre-bash-guard "python3 -u $R/bin/discussion-post d/r#5 $DD/u.md") $(hk pre-bash-guard "python3 $R/bin/discussion-post --edit DC_504 $DD/u.md")"
+rm -f "$DD/r.md.posted"
+check "post-bash-register after discussion-post through python3: the no-watcher notice and the .posted marker" "2 1 1" "$(hk post-bash-register "python3 $R/bin/discussion-post d/r#5 $DD/r.md") $(grep -c 'GitHub Discussion joined no watcher' "$T/err") $(ls "$DD/r.md.posted" | wc -l)"
+rm -f "$FX/graphql" "$FX/graphql_d" "$FX/graphql_DC_504" "$FX/graphql_D_5" "$FX/user"; unset GATED_POSTS
 
 # gate-pass wants the same file beside a reply draft
 GD="$T/gdrafts/x"; mkdir -p "$GD"; printf 'Agreed, option A it is.\n' > "$GD/r.md"; echo CLEAN > "$GD/r.review.out"
