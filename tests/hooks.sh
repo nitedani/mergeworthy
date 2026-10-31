@@ -1789,6 +1789,8 @@ git -C "$GU" update-ref refs/remotes/origin/main HEAD
 prsu() { git -C "$GU" checkout -q -b "b$2" main; echo b >> "$GU/app/calc.py"; mkdir -p "$GU/$(dirname "$1")"; seq 1 90 > "$GU/$1"
   git -C "$GU" add -A; git -C "$GU" -c user.name=t -c user.email=t@t commit -q -m b; (cd "$GU" && bash "$R/bin/pr-steps" small "$T/sr1.md" 2>/dev/null >/dev/null; echo $?); }
 check "pr-steps small takes unit_tests/conftest.py, app/test_calc.py and app/calc_test.go as tests" "0 0 0" "$(prsu unit_tests/conftest.py 1) $(prsu app/test_calc.py 2) $(prsu app/calc_test.go 3)"
+check "pr-steps small takes demo/testRun.ts, demo/test-utils.ts, demo/test_helpers.ts and conftest.py as tests, not demo/testimonial.ts, demo/tester.ts or demo/latest.ts" "0 0 0 0 1 1 1" \
+  "$(prsu demo/testRun.ts 4) $(prsu demo/test-utils.ts 5) $(prsu demo/test_helpers.ts 6) $(prsu conftest.py 7) $(prsu demo/testimonial.ts 8) $(prsu demo/tester.ts 9) $(prsu demo/latest.ts 10)"
 # a diff of docs alone carries the cold read's record (rules step 4) instead of a test
 GD="$T/prsd"; mkdir -p "$GD/skills/a"; git -C "$GD" init -q -b main; echo a > "$GD/skills/a/SKILL.md"; git -C "$GD" add -A; git -C "$GD" -c user.name=t -c user.email=t@t commit -q -m a
 git -C "$GD" update-ref refs/remotes/origin/main HEAD; git -C "$GD" checkout -q -b fix; echo b >> "$GD/skills/a/SKILL.md"; git -C "$GD" -c user.name=t -c user.email=t@t commit -qam b
@@ -3013,5 +3015,16 @@ check "a merge of the base in the history is no change either: the 5th change si
 mc commit -q -m p10; mc checkout -q -b side; for i in 1 2 3 4 5 6; do echo "s$i" >> "$SM/b.py"; mc add b.py; mc commit -qm "s$i"; done
 mc checkout -q fix; mc merge -q --no-ff --no-edit side; echo f1 >> "$SM/b.py"; git -C "$SM" add b.py
 check "the commits a merge of another branch brings in are not the branch's own: its next change of their file passes" 0 "$(bg 'git commit -m f1' "$SM")"
+# a suite named test<Name> is a test: its changes are no drift (#93's demo/testRun.ts); src/util.ts is code
+SH="$TASKW/suite"; mkdir -p "$SH/demo" "$SH/src"; git init -q -b main "$SH"; hc() { git -C "$SH" -c user.name=t -c user.email=t@t commit -q "$@"; }
+echo 'export const testRun = () => {}' > "$SH/demo/testRun.ts"; echo "import { testRun } from './testRun'; testRun('pnpm run dev')" > "$SH/demo/test-dev.test.ts"; echo 'export const util = 0' > "$SH/src/util.ts"
+git -C "$SH" add -A; hc -m base; git -C "$SH" update-ref refs/remotes/origin/main HEAD; git -C "$SH" remote add origin git@gitlab.com:acme/app.git; git -C "$SH" checkout -q -b suite
+echo '[]' > "$FX/gl_projects_acme_2Fapp_merge_requests_state_opened_source_branch_suite"
+echo 0 >> "$SH/demo/test-dev.test.ts"; hc -am reviewed; (cd "$SH" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null)
+for i in 1 2 3 4 5 6; do echo "// $i" >> "$SH/demo/testRun.ts"; hc -am "suite $i"; done; quick "$SH"
+rs=$(MERGEWORTHY_WATCHER=off bg 'git push git@gitlab.com:acme/app.git HEAD:suite' "$SH")
+for i in 1 2 3 4 5 6; do echo "// $i" >> "$SH/src/util.ts"; hc -am "util $i"; done; quick "$SH"
+check "a push after 6 changes to demo/testRun.ts since the review passes; after 6 to src/util.ts, blocked, naming it" "0 2 1" \
+  "$rs $(MERGEWORTHY_WATCHER=off bg 'git push git@gitlab.com:acme/app.git HEAD:suite' "$SH") $(grep -c 'src/util.ts got a 6th change' "$T/err")"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]
