@@ -2252,6 +2252,11 @@ sgb "post-lint $T/d.md --kind tracker" >/dev/null
 check "a tracker's lint names task" 1 "$(grep -c '^- mergeworthy:task, for post-lint tracker' "$T/sg.err")"
 sgb "post-lint $T/d.md --kind inline" >/dev/null
 check "an inline comment's lint counts as a reply's" 1 "$(grep -c '^- mergeworthy:reply, for post-lint reply' "$T/sg.err")"
+sg_tr "$T/sg.jsonl" skill:mergeworthy:post skill:mergeworthy:writing
+check "BLOCK: a PR title's lint without pull-request, naming it alone" "2 mergeworthy:pull-request" "$(sgb "post-lint $T/t.md --kind title") $(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | xargs)"
+sg_tr "$T/sg.jsonl" skill:mergeworthy:pull-request skill:mergeworthy:post skill:mergeworthy:writing
+check "a PR title's lint passes with pull-request, post and writing opened" 0 "$(sgb "post-lint $T/t.md --kind title")"
+sg_tr "$T/sg.jsonl" text
 check "BLOCK: gh-watch-start without task" 2 "$(sgb "gh-watch-start $T o/r")"
 check "BLOCK: building a thread record without post" 2 "$(sgb "thread-context o/r#5 --out $T/drafts/x/thread-context.md")"
 check "thread-context --latest and --verify only read" "0 0" "$(sgb 'thread-context --latest o/r#5') $(sgb "thread-context --verify $T/x.md")"
