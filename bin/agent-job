@@ -50,7 +50,7 @@ for f in hit:
     p = agent_jobs.transcript(j)
     if p and steward.busy(agent_jobs.session_id(p)):
         sys.exit(f"agent-job: the agent for {want!r} is still at work (its T3 thread has a run, a task or a background command going), "
-                 "so its job stays open: the watcher's `### AGENT DONE` wakes this session when it ends; read its result then and release it (mergeworthy:delegate step 6)")
+                 "so its job stays open: T3's notice or the watcher's `### AGENT DONE` wakes this session when it ends; read its result then and release it (mergeworthy:delegate step 6)")
     os.remove(os.path.join(jobs, f)); print('released', want)
     for m in glob.glob(os.path.expanduser(f'~/.claude/agent-jobs-reported/{f}-*')): os.remove(m)
     left = leftovers(j)

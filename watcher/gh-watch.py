@@ -18,7 +18,7 @@
 - How often each thread is read depends on its state (see "How often a thread is read"); the notifications, your events feed
   and the repos' issue lists are polled once per X-Poll-Interval, the repo lists by the one daemon holding the lease for all.
 - GitLab threads in threads.txt are read by gl_watch.py (scan_gitlab), into the same events.log and replies-owed.md.
-- AGENT DONE: an agent the session launched has finished (hooks/agent_jobs.py), once per finish, until `agent-job done` releases its job.
+- AGENT DONE: an agent the session launched has finished (hooks/agent_jobs.py), once per finish no T3 or Claude Code notice told it of, until `agent-job done` releases its job.
 - Under T3 Code each pass's event lines also go to the session's thread (wake_thread), so it needs no Monitor; none while its last
   such message is still queued in T3, whose run reads events.log past the session's cursor.
 - The steward's folder and the dirs inside it (steward.quiet) watch nitedani/mergeworthy whole and only log: no :eyes:, no owed reply, and only
@@ -2147,7 +2147,7 @@ def agent_jobs_pass():
     in <folder>/live, its briefs sit beside it), else the one whose `session` file names the launcher (one session watches many
     dirs, so this alone goes to whichever ticks first), else the one whose events.log the launcher's transcript names most (a
     transcript also names other watchers, in a `ps` listing say). A job an older hook registered without them has its launcher
-    found by agent_jobs.launchers."""
+    found by agent_jobs.launchers. A finish whose notice already reached the launcher (agent_jobs.noticed) is marked reported with no event."""
     if time.time() - _jobs_at[0] < 60:
         return
     _jobs_at[0] = time.time()
@@ -2175,7 +2175,7 @@ def agent_jobs_pass():
             # dir's events.log more often (the steward reads the orchestrator's on every tick)
             owner = [d for d in live_dirs() if d != HERE and j.get('session') and first_line(os.path.join(d, 'session')) == j['session']]
             _routed[f] = bool(mine and j.get('session') == mine) or not owner and bool(named) and max(set(named), key=named.count) == HERE
-        if _routed[f] and agent_jobs.claim(f, done[1]):
+        if _routed[f] and agent_jobs.claim(f, done[1]) and not agent_jobs.noticed(j.get('transcript') or found.get(f), done[0]):
             k = shlex.quote(j['key'])
             emit(f"### AGENT DONE {j['key']}: read its result (task_status / its report), then agent-job done {k}")
 
