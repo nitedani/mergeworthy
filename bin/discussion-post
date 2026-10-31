@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+"""discussion-post <discussion URL | owner/repo#N> <abs draft>: posts the draft as a new comment on a GitHub Discussion.
+discussion-post --edit <comment node id> <abs draft>: replaces that discussion comment's text with the draft.
+Prints the comment's URL. It is the one way to post to a discussion: pre-bash-guard checks it as `gh issue comment --body-file`
+and a comment edit, and blocks a `gh api graphql` call naming either mutation."""
+import json, os, subprocess, sys
+
+TC = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'thread-context')
+USAGE = 'usage: discussion-post <discussion URL | owner/repo#N> <abs draft> | --edit <comment node id> <abs draft>'
+
+
+def die(msg, code=1):
+    print(msg, file=sys.stderr); sys.exit(code)
+
+
+def graphql(query, *fields):
+    """data of a `gh api graphql` call; exits naming gh's error when it fails."""
+    r = subprocess.run(['gh', 'api', 'graphql', '-f', f'query={query}', *fields], capture_output=True, text=True)
+    if r.returncode: die(f'discussion-post: gh failed: {(r.stderr or r.stdout).strip()[:300]}')
+    return json.loads(r.stdout).get('data') or {}
+
+
+def main(argv):
+    edit = argv[:1] == ['--edit']
+    args = argv[1:] if edit else argv
+    if len(args) != 2 or '-h' in argv or '--help' in argv: die(USAGE, 2)
+    target, draft = args
+    if not os.path.isabs(draft) or not os.path.isfile(draft): die(f'discussion-post: {draft} is not an absolute path to a draft', 2)
+    if edit:
+        out = graphql('mutation($id: ID!, $body: String!) { updateDiscussionComment(input: {commentId: $id, body: $body}) { comment { url } } }',
+                      '-f', f'id={target}', '-F', f'body=@{draft}')['updateDiscussionComment']
+    else:
+        r = subprocess.run([TC, '--ref', target], capture_output=True, text=True)
+        if r.returncode: die(r.stderr.strip(), r.returncode)
+        repo, num = r.stdout.strip().split('#')
+        d = (graphql('query($o: String!, $n: String!, $num: Int!) { repository(owner: $o, name: $n) { discussion(number: $num) { id } } }',
+                     '-f', f'o={repo.split("/")[0]}', '-f', f'n={repo.split("/")[1]}', '-F', f'num={num}').get('repository') or {}).get('discussion')
+        if not d: die(f'discussion-post: {repo}#{num} is no discussion')
+        out = graphql('mutation($id: ID!, $body: String!) { addDiscussionComment(input: {discussionId: $id, body: $body}) { comment { url } } }',
+                      '-f', f'id={d["id"]}', '-F', f'body=@{draft}')['addDiscussionComment']
+    print(out['comment']['url'])
+
+
+main(sys.argv[1:])

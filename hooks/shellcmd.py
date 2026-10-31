@@ -4,7 +4,7 @@ parse() reads a command with mvdan/sh, bash's syntax as shfmt parses it (hooks/r
 ~/.mergeworthy/pydeps): every simple command it runs, in substitutions, heredocs a shell reads, `bash -c` and `eval` too. A
 command that doesn't parse, or a parser that can't be installed, yields the command's words split roughly, with the error,
 so a hook checks what it can and blocks a guarded verb it can't check."""
-import hashlib, itertools, json, os, re, subprocess, sys
+import functools, hashlib, itertools, json, os, re, subprocess, sys
 import work_folder
 
 
@@ -339,7 +339,7 @@ def segments(cmd):
 
 
 # The verbs the hooks check: a command holding one that doesn't parse is blocked (pre-bash-guard), never let through unchecked
-GUARDED = re.compile(r'\b(?:git\b.*?\b(?:push|commit)|gh\s+(?:pr|issue|api|release)|glab\s+(?:issue|mr)|(?:curl|wget|xh|https?)\b.*?\bapi\.github\.com)\b', re.S)
+GUARDED = re.compile(r'\b(?:git\b.*?\b(?:push|commit)|gh\s+(?:pr|issue|api|release)|discussion-post|glab\s+(?:issue|mr)|(?:curl|wget|xh|https?)\b.*?\bapi\.github\.com)\b', re.S)
 
 # Wrappers that run the command after them, with the options each takes a value for (`timeout 200`, `nice -n 19`, `env -u X`)
 WRAPPERS = {'sudo': ('-u', '-g', '-h', '-p', '-C', '-D', '-r', '-t', '-U'), 'env': ('-u', '-C', '--unset', '--chdir'), 'command': (),
@@ -351,6 +351,17 @@ POSITIONAL = {'timeout': 1, 'taskset': 1, 'flock': 1, 'direnv': 2}  # `timeout 2
 RUNNERS = {'pnpm': ('exec', 'dlx'), 'npm': ('exec',), 'yarn': ('exec', 'dlx'), 'bun': ('x',), 'uv': ('run',), 'uvx': ()}  # `pnpm exec git ...`
 KEYWORDS = ('!', '{', 'if', 'then', 'else', 'elif', 'do', 'while', 'until')  # a command after these still runs
 
+
+def script(t):
+    """The argv of the script an interpreter runs (`python3 -u /x/gate-pass a b` -> `/x/gate-pass a b`), so a mergeworthy command run through
+    one is that command; t itself for any other argv, and for code or a module an interpreter runs (-c, -m)."""
+    if not t or not re.fullmatch(r'python[\d.]*|bash|sh', os.path.basename(t[0])):
+        return t
+    i = 1
+    while i < len(t) and t[i].startswith('-'):
+        if t[i] in ('-c', '-m'): return t
+        i += 2 if t[i] in ('-X', '-W') else 1
+    return t[i:] or t
 
 def prog(t):
     """Drop env assignments, shell keywords and wrappers (with their options, and timeout's duration); return the command's argv."""
@@ -576,6 +587,49 @@ def graphql_posts(fields, inputs, cwd):
                 return True
     return False
 
+DISCUSSION_MUTATION = re.compile(r'\b(?:add|update)DiscussionComment\b')
+
+def graphql_endpoint(ep):
+    """Whether a `gh api` endpoint is GitHub's GraphQL one, in each form gh takes: graphql, /graphql, a full URL, GHES's api/graphql."""
+    return bool(re.fullmatch(r'(?:https?://[^/]+)?/?(?:api/)?graphql', ep.split('?')[0]))
+
+def names_discussion_mutation(rest, cwd):
+    """Whether a `gh api` GraphQL request's query names a mutation that posts or edits a GitHub Discussion comment (discussion-post makes
+    those) anywhere, as GitHub reads it: a query field's text, the file a -F query=@ field reads, or the --input body's query, JSON-decoded
+    (files relative to cwd); None when a file can't be read, so it can't be told."""
+    queries = [v[len('query='):] for v in opt(rest, ['-f', '--raw-field', '-F', '--field']) if v.startswith('query=')]
+    try:
+        path = lambda f: os.path.join(cwd or '', os.path.expanduser(f)) if cwd or os.path.isabs(os.path.expanduser(f)) else None
+        queries += [open(path(v[len('query=@'):])).read() for v in opt(rest, ['-F', '--field']) if v.startswith('query=@')]
+        for f in opt(rest, ['--input']):
+            body = open(path(f)).read()
+            try: body = json.loads(body)
+            except ValueError: pass  # GitHub refuses a body that isn't JSON; its text is searched as it stands
+            queries.append(str(body.get('query', '')) if isinstance(body, dict) else str(body))
+    except (OSError, TypeError):
+        return None
+    return any(DISCUSSION_MUTATION.search(q) for q in queries)
+
+def discussion_post(t):
+    """('add', <discussion URL or owner/repo#N>, draft) or ('edit', <comment node id>, draft) of a `discussion-post` argv; None for any
+    other argv, or its --help."""
+    t = script(prog(t))
+    if not t or os.path.basename(t[0]) != 'discussion-post' or '--help' in t or '-h' in t:
+        return None
+    a = t[1:]
+    if a[:1] == ['--edit']:
+        return ('edit', *a[1:3]) if len(a) == 3 else ('edit', '', '')
+    return ('add', *a[:2]) if len(a) == 2 else ('add', '', '')
+
+@functools.cache
+def discussion_thread_of(ref):
+    """owner/repo#N a discussion reference names (thread-context --ref: owner/repo#N or a discussion URL, an organization's too); None
+    when it names none or can't be read."""
+    tc = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'bin', 'thread-context')
+    try: r = subprocess.run([tc, '--ref', ref], capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired): return None
+    return r.stdout.strip() if r.returncode == 0 and re.fullmatch(r'[\w.-]+/[\w.-]+#\d+', r.stdout.strip()) else None
+
 def api_call(rest, cwd=None):
     """(method, endpoint, fields, inputs, posts) of `gh api <rest>`. It posts text when it is a GraphQL mutation, or a POST,
     PATCH or PUT that isn't a reaction, rerun, dispatch, label, assignee, review request, collaborator or invitation. cwd: where the command
@@ -707,7 +761,9 @@ def plain_create(cmd, cwd):
     return None
 
 def new_post_drafts(t):
-    """Draft files a gh argv posts as something new (an issue, PR, comment or review): each draft is posted as new once, edits may repeat."""
+    """Draft files a gh or discussion-post argv posts as something new (an issue, PR, comment or review): each draft is posted as new once, edits may repeat."""
+    if (dp := discussion_post(t)) and dp[0] == 'add':
+        return [dp[2]]
     t = prog(t)
     if not t or os.path.basename(t[0]) != 'gh' or '--help' in t or '-h' in t:
         return []

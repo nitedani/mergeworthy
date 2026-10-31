@@ -41,7 +41,7 @@ A reference for the scripts that enforce the skills' steps; the skills name each
 
 ### `thread-context` (`post` step 1)
 
-`thread-context <owner/repo#N> [--depth 2] [--max 30] [--out <file>]` writes the record a reply is drafted from (default `./thread-context.md`). A GitLab thread is `gitlab.com/<path>!N` (an MR) or `gitlab.com/<path>#N` (an issue), read through `glab api`; its notes are its comments, a diff note a review comment, and it follows `!N` and `#N` links as that project's. Run it into the draft folder, and hand it to the drafter and the reviewer, never read it into the main session.
+`thread-context <owner/repo#N> [--depth 2] [--max 30] [--out <file>]` writes the record a reply is drafted from (default `./thread-context.md`). A GitLab thread is `gitlab.com/<path>!N` (an MR) or `gitlab.com/<path>#N` (an issue), read through `glab api`; its notes are its comments, a diff note a review comment, and it follows `!N` and `#N` links as that project's. A GitHub Discussion is `owner/repo#N` or its URL (`github.com/orgs/<org>/discussions/N` too), read through `gh api graphql`; `discussion-post <discussion URL | owner/repo#N> <abs draft>` posts a reply to it, checked as a comment, which joins no watcher, and `discussion-post --edit <comment node id> <abs draft>` edits one, checked as a comment edit; a `gh api graphql` call naming either mutation is blocked. Run it into the draft folder, and hand it to the drafter and the reviewer, never read it into the main session.
 - The file holds a header, a **Decisions and positions** ledger (each human comment that agrees, rejects, proposes or decides, quoted with its permalink), the root's full transcript, then each linked thread's first post and last 30 comments. The agent's posts are marked `AGENT` and kept out of the ledger.
 - `--latest <repo#N>` prints the latest human comment; `--verify <file> [--target <repo#N>] [--parent <file>]` is what the gate and the guard run.
 
@@ -198,7 +198,7 @@ It puts the always-on rules into context and writes `settings.env`. A second Ses
 ### `pre-skill-gate.py` (always-on rule 1)
 
 It blocks an action until every skill its always-on row names was opened with the Skill tool, or typed as `/mergeworthy:<name>`, since the session's last compaction; a subagent counts only its own. The block names each skill and its row.
-- The table is `ACTIONS` in `hooks/pre-skill-gate.py`; `post` and `writing` gate every post (`gh pr create`, `gh pr edit`, `gh issue create`, `gh pr review`, comments and `gh api` writes, `post-lint`, `gate-pass`).
+- The table is `ACTIONS` in `hooks/pre-skill-gate.py`; `post` and `writing` gate every post (`gh pr create`, `gh pr edit`, `gh issue create`, `gh pr review`, comments, `gh api` writes and `discussion-post`, `post-lint`, `gate-pass`).
 - `post-lint --kind` adds the kind's skill: `reply` (and `inline`), `proposal` → `design`, `pr` → `pull-request`, `issue` → `open-issue`, `tracker` → `task`.
 - `gh-watch-start`: `task`. `thread-context` (building a record): `post`. Any `gh` command with `--attach`: `evidence`.
 - `gh pr ready`: `pull-request`, `merging`; `gh pr merge` and `git push`: `merging`; `gh pr create` and `gh issue create` also `task`. `pr-steps approach`: `pull-request`; the other `pr-steps` records: `converge`.

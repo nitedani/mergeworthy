@@ -67,7 +67,7 @@ Run `npx mergeworthy` again to change the options or add an agent; `npx mergewor
 always-on.md        the always-on rules and the index, in every session
 skills/<name>/      one skill per task, procedure or standard; skills/delegate/ also holds the brief templates
 hooks/              hooks.json and the scripts it runs
-bin/                commands on the Bash PATH: gate-pass, post-lint, pr-steps, gh-watch-start, steward
+bin/                commands on the Bash PATH: gate-pass, post-lint, discussion-post, pr-steps, gh-watch-start, steward
 watcher/            the GitHub watcher daemon gh-watch-start runs
 cli/                the npx mergeworthy installer
 docs/               graphs.md (generated from the skills), build-graphs.py, mechanisms.md

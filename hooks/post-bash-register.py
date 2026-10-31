@@ -4,12 +4,13 @@ recorded as pending for the command (own_actions): its own once it succeeded, go
 joins the threads.txt of a watcher whose events reach the posting session, so maintainer comments on it are answered (mergeworthy:reply):
 the task's work folder holding the command's dir, whose watcher it starts or revives when it isn't running (gh-watch-start), else
 the session's own, the one covering its repo first. Another session's watcher wakes that session alone, so it never gets the thread. A thread whose watcher would be a guess (posting
-commands leading to different watchers, or one in a dir shellcmd.Where can't tell) joins none, and the hook says so (exit 2).
+commands leading to different watchers, or one in a dir shellcmd.Where can't tell) joins none, and the hook says so (exit 2), as it does for a
+reply to a GitHub Discussion, which no watcher reads.
 A gated draft it posted as new gets its .posted marker, which pre-bash-guard reads to refuse posting it as new again."""
 import hashlib, json, os, re, shlex, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
-from shellcmd import segments, prog, new_post_drafts, Where, opened, plain_create, opt, repo_name
+from shellcmd import segments, prog, new_post_drafts, Where, opened, plain_create, opt, repo_name, discussion_post, discussion_thread_of
 import own_actions, steward, threads_file, work_folder
 d = json.load(sys.stdin)
 # the pushes, merges and closes pre-bash-guard let this command make are its own once it succeeded; a failed command's go
@@ -39,6 +40,8 @@ def target(t, d):
     Only a real `gh` argv counts: text that merely mentions one (an echo, a grep, a fixture) posts nothing.
     An issue, PR or MR an API call opens is told as pre-bash-guard tells it (shellcmd.opened), the thread by the response's own
     URL (created): a URL in the new thread's body isn't the thread."""
+    if (dp := discussion_post(t)) and dp[0] == 'add':  # a new discussion comment, which no watcher reads
+        return tuple(th.split('#')) if (th := discussion_thread_of(dp[1])) else (None, None)
     if prog(t)[1:2] == ['api'] and (o := opened(t, d)):
         return (o[0], None, c) if (c := created(out)) else (o[0], None)
     t = prog(t)
@@ -66,9 +69,10 @@ def target(t, d):
 segs = segments(cmd)  # a command that doesn't lex still yields its words: a post in it is still registered
 # the drafts posted as new, and each posting segment's target with the dir it ran in, resolved as pre-bash-guard resolves them
 cwd = d.get('cwd') or os.getcwd()
-where, drafts, posts = Where(cwd), [], []
+where, drafts, posts, discussed = Where(cwd), [], [], False
 for s in where.walk(segs):
     drafts += [os.path.join(cwd, os.path.expanduser(where.expand(f))) for f in new_post_drafts(s)]
+    discussed = discussed or (discussion_post(s) or ('',))[0] == 'add'
     if tg := target(s, where.dir): posts.append((tg[0], tg[1], where.dir, tg[2] if len(tg) > 2 else None))
 # Written here, not in pre-bash-guard: PostToolUse runs only after the command succeeded, so a post another hook blocked, or one that failed, can be retried
 if isinstance(r, dict) and not r.get('interrupted'):
@@ -79,6 +83,9 @@ if isinstance(r, dict) and not r.get('interrupted'):
                 open(f + '.posted', 'w').write(sha)
         except OSError:
             pass  # a draft with no gate record wasn't posted (pre-bash-guard refuses it); one gone since can't be posted again
+if discussed:  # gh-watch reads issues, PRs and merge requests only, so the thread a discussion-post names joins none
+    print("post-bash-register: this reply to a GitHub Discussion joined no watcher, so an answer to it wakes no session: "
+          "read the discussion for new comments yourself (`thread-context <owner/repo#N>`) until the thread is done", file=sys.stderr)
 if not posts:
     sys.exit(0)
 def wrote(post, th):  # whether that posting segment can have written the thread th (threads()'s); one that names its thread, only that one
@@ -104,6 +111,7 @@ def register_posted(out):
 register_posted(out)
 # Count a posted design proposal per thread (pre-bash-guard asks for a finality map from the third on)
 def body_files(t):
+    if dp := discussion_post(t): return [dp[2]]
     a = prog(t)
     return [a[i + 1] for i in range(len(a) - 1) if a[i] in ('--body-file', '-F', '--field', '--input')] + \
         [x.split('=', 1)[1] for x in a if x.startswith('--body-file=')]
@@ -189,4 +197,4 @@ if lost:
     print(f"post-bash-register: {why}, and they joined no watcher. Add each to the watcher of the work folder its command ran in{f' ({ran})' if ran else ''}: "
           + '; '.join(f"`gh-watch-start <work folder> {' '.join(shlex.quote(x) for x in line.split())}`" for line in lost), file=sys.stderr)
     sys.exit(2)
-sys.exit(2 if told else 0)
+sys.exit(2 if told or discussed else 0)

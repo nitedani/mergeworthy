@@ -7,7 +7,7 @@ import json, re, sys, os, hashlib, subprocess
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
 import shellcmd
-from shellcmd import parse, segments, prog, opt, api_call, env_of, origin, plain_create, PLAIN, new_post_drafts, branch_record, no_approach, no_preflight, no_instructions_read, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Where
+from shellcmd import parse, segments, prog, opt, api_call, discussion_post, discussion_thread_of, names_discussion_mutation, env_of, origin, plain_create, PLAIN, new_post_drafts, branch_record, no_approach, no_preflight, no_instructions_read, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Where
 import own_actions, steward, post_words, testpaths, threads_file, work_folder
 from t3_tasks import under_t3
 def missing_steps(d):
@@ -151,27 +151,35 @@ def need_home(repo, path):
 def check_turn(repo, num, args=()):
     """post §Thread rules: at most two comments in a row: while your last two comments on a thread have no reply after them and the last
     is under 3 hours old, a third stacks on them: edit the last one instead. After 3 hours, the third is the wait ping. The agent and the user may
-    share one login, so a comment is the agent's only when its body was gated (gate-pass writes ~/.claude/gated-posts.txt)."""
+    share one login, so a comment is the agent's only when its body was gated (gate-pass writes ~/.claude/gated-posts.txt).
+    A discussion's comments and their replies count as one row, in time order."""
     if '--help' in args or '-h' in args:
         return
     def api(path, jq, issue_404=False):
-        """gh's answer; an issue's 404 on a pulls endpoint is none. Anything else gh can't read blocks: the rule can't be checked."""
+        """gh's answer; an issue's 404 (on a pulls endpoint, or for a discussion's number) is None. Anything else gh can't read blocks: the rule can't be checked."""
         try: r = subprocess.run(['gh', 'api', path, '--jq', jq], capture_output=True, text=True, timeout=20)
         except (OSError, subprocess.TimeoutExpired) as e: r = subprocess.CompletedProcess([], 1, '', str(e))
         if r.returncode == 0: return r.stdout
-        if issue_404 and 'HTTP 404' in r.stderr: return ''
+        if issue_404 and 'HTTP 404' in r.stderr: return None
         block(f"gh couldn't read {repo}#{num} ({path}: {r.stderr.strip()[:160]}), so post §Thread rules (two comments in a row) can't be checked: retry once gh answers")
-    n = int(api(f'repos/{repo}/issues/{num}', '.comments').strip() or 0)
-    if n < 2: return
-    page = lambda p: json.loads(api(f'repos/{repo}/issues/{num}/comments?per_page=100&page={p}', '[.[] | {body, created: .created_at, url: .html_url, user: .user.login}]') or '[]')
-    p = (n - 1) // 100 + 1
-    last = page(p)
-    if len(last) < 2 and p > 1: last = page(p - 1) + last
-    last = last[-2:]
-    reviews = api(f'repos/{repo}/pulls/{num}/reviews?per_page=100', '.[].submitted_at', issue_404=True).split()
+    n = api(f'repos/{repo}/issues/{num}', '.comments', issue_404=True)
+    if n is None:  # a discussion: every comment and reply, as thread-context reads it, in time order
+        try: r = subprocess.run([TC, '--items', f'{repo}#{num}'], capture_output=True, text=True, timeout=120)
+        except (OSError, subprocess.TimeoutExpired) as e: r = subprocess.CompletedProcess([], 1, '', str(e))
+        if r.returncode: block(f"{r.stderr.strip()[:200]}, so post §Thread rules (two comments in a row) can't be checked: retry once gh answers")
+        last = [{'body': x['body'], 'created': x['at'], 'url': x['url'], 'user': x['author']} for x in json.loads(r.stdout) if x['kind'] != 'body'][-2:]
+        reviews = []
+    elif int(n.strip() or 0) < 2: return
+    else:
+        page = lambda p: json.loads(api(f'repos/{repo}/issues/{num}/comments?per_page=100&page={p}', '[.[] | {body, created: .created_at, url: .html_url, user: .user.login}]') or '[]')
+        p = (int(n.strip()) - 1) // 100 + 1
+        last = page(p)
+        if len(last) < 2 and p > 1: last = page(p - 1) + last
+        last = last[-2:]
+        reviews = (api(f'repos/{repo}/pulls/{num}/reviews?per_page=100', '.[].submitted_at', issue_404=True) or '').split()
     me = api('user', '.login').strip()
     # a maintainer's push after your comments answers them too (their commits deserve a review comment)
-    reviews += [d for l in api(f'repos/{repo}/pulls/{num}/commits?per_page=100', '.[] | "\\(.author.login) \\(.commit.committer.date)"', issue_404=True).splitlines()
+    reviews += [d for l in (api(f'repos/{repo}/pulls/{num}/commits?per_page=100', '.[] | "\\(.author.login) \\(.commit.committer.date)"', issue_404=True) or '').splitlines()
                 for who, d in [l.split(' ', 1)] if who != me and who != 'null']
     f = os.path.expanduser(os.environ.get('GATED_POSTS', '~/.claude/gated-posts.txt'))
     gated = set(open(f).read().split()) if os.path.exists(f) else set()
@@ -207,6 +215,29 @@ def check_finality(repo, num, files):
         block(f"{repo}#{num} has had {len(rounds)} proposal rounds: run the finality pass (mergeworthy:finality step 1, a drifted design thread) before this reply, "
               f"write its thread map with the invariants list to {m} (newer than your last proposal), update the thread's WIP comment (Agreed with permalinks, Open; mergeworthy:design §WIP comment) from it, and let this reply say 'I updated the [WIP comment](link)' instead of restating the design")
 
+def comment_discussion(node_id):
+    """owner/repo#N of the GitHub Discussion holding the comment with that node id; None when gh can't name it."""
+    q = 'query($id: ID!) { node(id: $id) { ... on DiscussionComment { discussion { number repository { nameWithOwner } } } } }'
+    try: r = subprocess.run(['gh', 'api', 'graphql', '-f', f'query={q}', '-f', f'id={node_id}'], capture_output=True, text=True, timeout=20)
+    except (OSError, subprocess.TimeoutExpired): return None
+    try: d = json.loads(r.stdout)['data']['node']['discussion'] if r.returncode == 0 else None
+    except (ValueError, KeyError, TypeError): d = None
+    return f"{d['repository']['nameWithOwner']}#{d['number']}" if d and d.get('number') else None
+
+def check_discussion_post(kind, ref, draft, has_cd):
+    """discussion-post, checked as `gh issue comment --body-file` (a new comment) or a comment edit."""
+    if not draft:
+        block("discussion-post takes <discussion URL | owner/repo#N> <abs draft>, or --edit <comment node id> <abs draft>")
+    thread = discussion_thread_of(ref) if kind == 'add' else comment_discussion(ref)
+    if not thread:
+        block(f"gh can't name the discussion {'at ' + ref if kind == 'add' else 'holding comment ' + ref}, so this post's checks can't run: retry once gh answers, "
+              "or check the reference")
+    repo, num = thread.split('#')
+    if kind == 'add':
+        check_turn(repo, num); check_finality(repo, num, [draft])
+    check_context(thread, [draft])
+    gated_file(draft, has_cd, create=kind == 'add')
+
 def thread_of_ref(repo, ref):
     """owner/repo#N from a gh issue/pr argument (number or URL) or None."""
     m = re.search(r'github\.com/([\w.-]+/[\w.-]+)/(?:issues|pull)/(\d+)', ref or '')
@@ -234,11 +265,12 @@ def post_target(group, rest, env, run_dir):
         block(f"can't tell which thread this `gh {group}` command acts on, so its checks can't run: pass the number or URL, and -R <owner/repo>")
     return repo, n
 
+TC = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'bin', 'thread-context')
+
 def check_context(thread, files):
     """post step 1: a post on a thread is drafted from its whole record: <draft dir>/thread-context.md, made by `thread-context <repo#N> --out <dir>/thread-context.md`,
     for this thread and recording its latest human comment (the tool's --verify). Tracker drafts are exempt; a thread gh can't read blocks."""
     if not thread: return
-    tc = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'bin', 'thread-context')
     for f in files:
         f = os.path.expanduser(where.expand(f[5:] if f.startswith('body=') else f)).lstrip('@')
         f = f if os.path.isabs(f) else os.path.join(cwd, f)
@@ -251,7 +283,7 @@ def check_context(thread, files):
         recorded = [l[3:].strip() for l in (open(f + '.gate').read().splitlines() if os.path.exists(f + '.gate') else []) if l.startswith('tc ')]
         if os.path.exists(tcf) and recorded != [hashlib.sha256(open(tcf, 'rb').read()).hexdigest()]:
             block(f"{tcf} isn't the one {f} was gated with: draft from thread-context.md before the review, then gate-pass (mergeworthy:post step 1)")
-        cmd = [tc, '--verify', tcf, '--target', thread] + (['--parent', parent] if os.path.exists(parent) else [])
+        cmd = [TC, '--verify', tcf, '--target', thread] + (['--parent', parent] if os.path.exists(parent) else [])
         try: r = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
         except (OSError, subprocess.TimeoutExpired) as e: r = subprocess.CompletedProcess(cmd, 1, '', f"thread-context --verify couldn't run: {e}")
         if r.returncode != 0:
@@ -771,6 +803,8 @@ def check(t, has_cd):
             if deps:
                 block(f"open PRs #{deps} are based on {head}: retarget them first (`gh pr edit <N> --base <new base>`), or merge without --delete-branch; deleting it closes them")
         own['CLOSED_THREADS'].append(f"{slug}#{pr['url'].rstrip('/').rsplit('/', 1)[1]} merged")
+    if dp := discussion_post(t):
+        check_discussion_post(*dp, has_cd)
     if p == 'gh' and len(a) >= 2 and a[0] in ('issue', 'pr'):
         sub, rest = a[1], a[2:]
         if '--help' in rest or '-h' in rest:
@@ -812,6 +846,10 @@ def check(t, has_cd):
     if p == 'gh' and a and a[0] == 'api':
         rest = a[1:]
         method, ep, fields, inputs, posts = api_call(rest, run_dir)
+        if shellcmd.graphql_endpoint(ep) and (named := names_discussion_mutation(rest, run_dir)) is not False:
+            block("post to a GitHub Discussion, or edit a comment there, with `discussion-post <discussion URL | owner/repo#N> <abs draft>` or "
+                  "`discussion-post --edit <comment node id> <abs draft>`: it posts the gated draft as the comment's text, which a GraphQL call can't be checked for"
+                  if named else "can't read a file this GraphQL call reads, so whether it posts to a GitHub Discussion can't be told: pass the query inline")
         if not posts:
             return
         if re.search(r'\{(owner|repo)\}', ep) and (here := gh_repo(rest, env, run_dir)):  # what gh fills them from
@@ -857,7 +895,7 @@ if any('playwright' in ' '.join(prog(x)) and 'install' in prog(x) for x in segs)
 # goes out on the old record even when gate-pass then refuses the draft (and a pipe hides that refusal)
 if any(prog(x)[:1] and os.path.basename(prog(x)[0]) == 'gate-pass' for x in segs) and \
         any(prog(x)[:1] == ['gh'] and (prog(x)[1:3] and prog(x)[1] in ('issue', 'pr') and prog(x)[2:3] and prog(x)[2] in ('comment', 'create', 'edit', 'review', 'close', 'merge')
-                                        or prog(x)[1:2] == ['api'] and any(w.startswith('body=') or w in ('--input',) for w in prog(x))) for x in segs):
+                                        or prog(x)[1:2] == ['api'] and any(w.startswith('body=') or w in ('--input',) for w in prog(x))) or discussion_post(x) for x in segs):
     block("run gate-pass as its own command and read its exit code, then post in the next command: this check reads the gate record before the command runs (mergeworthy:post step 4)")
 clones = {}  # folder: the repo it was cloned from, for a `git clone` in this command
 wrote = set()  # the files the simple commands walked so far write: a compose file among them isn't written yet when its check runs
