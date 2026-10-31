@@ -868,7 +868,7 @@ os.remove(os.path.join(m.HERE, "t3-thread")); add("### unsent\n"); m.wake_thread
 print(repr(buf.getvalue()))
 ')
 check "wake_thread: one message per pass with only the event lines, a half-written line waits, nothing twice, a failed send reported and retried, none without t3-thread" \
-  "'note: t3 thread send thr-1 failed: connect ECONNREFUSED\n'|t3 thread send thr-1 -;Watcher events in $W/events.log (mergeworthy:reply):;### o/r#5 comment 1 by bob;WATCH ERROR x: y;### AGENT DONE j;t3 thread send thr-1 -;Watcher events in $W/events.log (mergeworthy:reply):;### half written;t3 thread send thr-1 -;Watcher events in $W/events.log (mergeworthy:reply):;### half written;WATCHER RETIRED at now;" \
+  "'note: t3 thread send thr-1 failed: connect ECONNREFUSED\n'|t3 thread send thr-1 -;Watcher events in $W/events.log (mergeworthy:reply):;### o/r#5 comment 1 by bob;WATCH ERROR x: y;### AGENT DONE j;t3 thread send thr-1 -;Watcher events in $W/events.log (mergeworthy:reply):;### half written;t3 thread send thr-1 -;Watcher events in $W/events.log (mergeworthy:reply):;### half written;" \
   "$got|$(tr '\n' ';' < "$T/t3.log")"
 : > "$T/t3.log"
 got=$(py '
@@ -911,10 +911,10 @@ with contextlib.redirect_stdout(buf): m.wake_thread()
 print(repr(buf.getvalue()), open(os.path.join(m.HERE, "t3-wake.cursor")).read().strip())
 ')
 check "wake_thread runs the t3 gh-watch-start recorded, so a daemon cron revived with PATH=/usr/bin:/bin still sends" "'' 15|t3 thread send thr-2 -" "$got|$(grep '^t3 thread send thr-2' "$T/t3.log")"
-# retiring sends its WATCHER RETIRED line before the supervisor stops the daemon
+# retiring sends the events before it, not its own WATCHER RETIRED line, before the supervisor stops the daemon
 : > "$T/t3.log"
 got=$(py '
-log = os.path.join(m.HERE, "events.log"); open(log, "w").write(""); open(os.path.join(m.HERE, "t3-wake.cursor"), "w").write("0\n")
+log, cursor = os.path.join(m.HERE, "events.log"), os.path.join(m.HERE, "t3-wake.cursor")
 open(os.path.join(m.HERE, "t3-thread"), "w").write("thr-3\n'"$T"'/bin/t3\n"); open(m.THREADS, "w").write("o/r 5\n")
 m.save_state({"prs": {"o/r#5": {"state": "closed"}}, "author": {}, "ci": {}, "is_pr": {}, "since_by": {}, "seen": {}, "since": "2026-01-01T00:00:00Z"})
 def run():
@@ -924,11 +924,15 @@ def run():
         except SystemExit:
             return "stopped" if os.path.exists(os.path.join(m.HERE, "retired")) else "exit"
     return "retired" if os.path.exists(os.path.join(m.HERE, "retired")) else "kept"
-open("'"$T"'/t3.fail", "w"); first = [run() for _ in range(3)]; cur = open(os.path.join(m.HERE, "t3-wake.cursor")).read().strip()
-os.remove("'"$T"'/t3.fail"); print(*first, cur, run(), open(log).read().count("WATCHER RETIRED"))
+open(log, "w").write("### o/r#5 closed\n"); open(cursor, "w").write("0\n")
+open("'"$T"'/t3.fail", "w"); first = [run() for _ in range(3)]; cur = open(cursor).read().strip()
+os.remove("'"$T"'/t3.fail"); print(*first, cur, run(), open(log).read().count("WATCHER RETIRED"), end=" ")
+os.remove(os.path.join(m.HERE, "retired")); open(log, "w").write(""); open(cursor, "w").write("0\n")
+print(run(), open(log).read().count("WATCHER RETIRED"))
 ')
-check "retire_if_done: failed last sends keep the watcher and its cursor and write WATCHER RETIRED once; the next pass sends it, then retires" "kept kept kept 0 stopped 1|t3 thread send thr-3 -|1" \
-  "$got|$(grep '^t3 thread send thr-3' "$T/t3.log" | tail -1)|$(tail -n +"$(grep -n '^t3 thread send thr-3' "$T/t3.log" | tail -1 | cut -d: -f1)" "$T/t3.log" | grep -c '^WATCHER RETIRED at ')"
+check "retire_if_done: failed sends of the events before it keep the watcher and its cursor; the next pass sends them, then retires; WATCHER RETIRED is in events.log once and in no send, and alone it sends nothing" \
+  "kept kept kept 0 stopped 1 stopped 1|4|t3 thread send thr-3 -;Watcher events in $W/events.log (mergeworthy:reply):;### o/r#5 closed;|0" \
+  "$got|$(grep -c '^t3 thread send thr-3' "$T/t3.log")|$(tail -n 3 "$T/t3.log" | tr '\n' ';')|$(grep -c 'WATCHER RETIRED' "$T/t3.log")"
 # a deleted thread (t3's "was not found"), or a t3 binary gone, drops t3-thread: the watcher retires as outside T3 Code, events.log keeping the lines
 got=$(py '
 log = os.path.join(m.HERE, "events.log"); open(m.THREADS, "w").write("o/r 5\n")

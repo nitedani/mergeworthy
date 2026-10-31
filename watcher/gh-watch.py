@@ -741,7 +741,7 @@ def emit(line):
     print(line, flush=True)  # into events.log, where wake_thread or the session's Monitor delivers it (mergeworthy:reply)
 
 
-EVENT = re.compile(r'###|WATCH ERROR|WATCHER RETIRED')  # the lines gh-watch-start's Monitor delivers
+EVENT = re.compile(r'###|WATCH ERROR')  # the lines gh-watch-start's Monitor delivers
 STEWARD_REPO = 'nitedani/mergeworthy'
 WAKES = re.compile(rf'### NEW ISSUE {STEWARD_REPO}#')  # the one event a steward's dir delivers (rules step 2: a session's report of a mergeworthy fault)
 

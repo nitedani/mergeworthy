@@ -142,7 +142,7 @@ else
 fi
 rm -f "$dir/agent" "$dir/wake.pid" "$dir/wake.launch"  # from the watcher that started a headless agent per event
 rm -f "$dir/retired"  # a re-armed dir is not finished: disk-sweep's w-done deletes only a dir its watcher retired
-events="'###'*|'WATCH ERROR'*|'WATCHER RETIRED'*"  # the lines that start an event
+events="'###'*|'WATCH ERROR'*"  # the lines that start an event
 if python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import steward; sys.exit(not steward.quiet(sys.argv[2]))' "$root/hooks" "$dir"; then
   events="'### NEW ISSUE nitedani/mergeworthy#'*"  # the one event a steward's dir delivers (gh-watch.py's WAKES)
   echo "The steward's watcher delivers only a new nitedani/mergeworthy issue; its next pass reads the rest of $dir/events.log."
