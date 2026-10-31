@@ -4,6 +4,9 @@ and results (delegate_task, task_status, t3_thread_send) and T3's notices. A thr
 to it, each turn T3 continues on its own (provider-continuation)."""
 import json, os, re
 
+# T3's notice is `Delegated task <id> reached a terminal state`, or `Delegated task <id> (<title>) [<status>]:` with its result
+NOTICE = re.compile(r'Delegated task (\S+) (?:reached a terminal state|\(.*?\) \[(\w+)\]:?)')
+
 
 def under_t3():
     """The hook's session was opened by T3 Code, so T3's MCP tools (delegate_task) are its own: T3 sets T3CODE_THREAD_ID in the
@@ -21,8 +24,7 @@ def observed(lines):
         c = (e.get('message') or {}).get('content') if isinstance(e, dict) else None
         if e.get('type') == 'user' and isinstance(c, str) and not c.startswith('<'):
             # T3's own completion notice and a skill's re-invocation aren't the user: a notice marks its task terminal instead
-            # T3's notice is `Delegated task <id> reached a terminal state`, or `Delegated task <id> (<title>) [<status>]:` with its result
-            n = re.match(r'Delegated task (\S+) (?:reached a terminal state|\(.*?\) \[(\w+)\]:?)', c)
+            n = NOTICE.match(c)
             # a sub-agent whose turn ends while its own background work runs says so, and T3 continues it later: not finished
             waits = n and re.search(r"\b(?:still running|I'll (?:continue|wait|resume)|I will (?:continue|wait|resume)|I'm waiting|wakes? (?:me )?when)\b", c[n.end():n.end() + 400], re.I)
             if n: status[n.group(1)] = ('waiting' if waits else n.group(2) or 'completed', status.pop(n.group(1), ('', ''))[1])

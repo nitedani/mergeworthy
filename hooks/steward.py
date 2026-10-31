@@ -117,6 +117,10 @@ def task_done(session_id):
     return _ask(session_id, lambda c, tid: c.execute("select status from orchestration_v2_projection_subagents where child_thread_id = ?", (tid,)).fetchone()
                 == ('completed',) and not _busy(c, tid), False)
 
+def tasks(session_id):
+    """The ids of the delegated tasks T3 ran in the Claude or Codex session's thread: its launch, each message sent to it, each continuation."""
+    return _ask(session_id, lambda c, tid: [r[0] for r in c.execute("select subagent_id from orchestration_v2_projection_subagents where child_thread_id = ?", (tid,))], [])
+
 def is_task(session_id):
     """True when the Claude session is a T3 delegated task (a child agent), not a main session."""
     return _ask(session_id, lambda c, tid: bool(c.execute("select 1 from orchestration_v2_projection_subagents where child_thread_id = ?", (tid,)).fetchone()), False)

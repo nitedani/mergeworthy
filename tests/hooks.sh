@@ -1391,6 +1391,29 @@ check "BLOCK: agent-job done while the ticket's agent is still at work keeps the
   "$(python3 "$R/bin/agent-job" done "$T/jobs/t3busy-ticket.md" >/dev/null 2>"$T/aj.err"; echo $?) $(grep -c 'AGENT DONE. wakes this session' "$T/aj.err") $(python3 "$R/bin/agent-job" list | grep -c t3busy-ticket)"
 t3db "update orchestration_v2_projection_runs set status = 'completed' where run_id = 'r3'"
 check "agent-job done releases it once the agent has ended" "0 0" "$(python3 "$R/bin/agent-job" done "$T/jobs/t3busy-ticket.md" >/dev/null; echo $?) $(python3 "$R/bin/agent-job" list | grep -c t3busy-ticket)"
+# a finish whose notice reached the launcher after the agent's last entry gets no AGENT DONE: T3's for a task of the agent's thread,
+# or Claude Code's for its subagent, though a session's untimed closing line came after it; one whose agent wrote after the notice
+# (a revived run) still gets one
+note() { # text minutes-ago user|attachment: what reached the launcher, as a prompt or mid-turn
+  python3 -c 'import json,sys,time; t,ago,kind=sys.argv[1],float(sys.argv[2]),sys.argv[3]; at=time.strftime("%Y-%m-%dT%H:%M:%S.000Z",time.gmtime(time.time()-60*ago))
+print(json.dumps({"type":"user","timestamp":at,"message":{"role":"user","content":t}} if kind=="user" else {"type":"attachment","timestamp":at,"attachment":{"type":"queued_command","prompt":t}}))' "$@" >> "$T/tr.jsonl"; }
+t3db "insert into orchestration_v2_projection_provider_threads values ('p2', 'note-1', '{\"nativeThreadRef\":{\"nativeId\":\"t3note\"}}'), ('p3', 'rev-1', '{\"nativeThreadRef\":{\"nativeId\":\"t3rev\"}}')"
+t3db "insert into orchestration_v2_projection_subagents values ('node:delegated-task:note', 'orch-1', 'note-1', 'completed'), ('node:delegated-task:rev', 'orch-1', 'rev-1', 'completed')"
+mkdir -p "$JD/orch/subagents"
+for jn in t3note t3rev sub fg; do reg "Execute $T/jobs/$jn-ticket.md exactly"; done
+child_log "$JD/t3note.jsonl" "Execute $T/jobs/t3note-ticket.md exactly" 5 text; echo '{"type":"cost-state"}' >> "$JD/t3note.jsonl"; touch -d '210 seconds ago' "$JD/t3note.jsonl"  # a closing line, after the notice
+child_log "$JD/orch/subagents/agent-a5ub.jsonl" "Execute $T/jobs/sub-ticket.md exactly" 5 text; child_log "$JD/orch/subagents/agent-f6g.jsonl" "Execute $T/jobs/fg-ticket.md exactly" 5 text
+child_log "$JD/t3rev.jsonl" "Execute $T/jobs/t3rev-ticket.md exactly" 5 text; note 'Delegated task node:delegated-task:rev (rev) [interrupted]: Stopped.' 5.5 user
+python3 -c 'import json,sys,time; print(json.dumps({"type":"assistant","timestamp":time.strftime("%Y-%m-%dT%H:%M:%S.000Z",time.gmtime(time.time()-300)),"message":{"content":[{"type":"text","text":"Report written."}]}}))' >> "$JD/t3rev.jsonl"
+touch -d '5 minutes ago' "$JD/t3rev.jsonl"
+note 'Delegated task node:delegated-task:note (note) [completed]: Report written.' 4 user
+note "$(printf '<task-notification>\n<task-id>a5ub</task-id>\n<status>completed</status>\n<summary>Agent "sub" finished</summary>')" 4 attachment
+python3 -c 'import json,time; print(json.dumps({"type":"user","timestamp":time.strftime("%Y-%m-%dT%H:%M:%S.000Z",time.gmtime(time.time()-240)),"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"fg1","content":"Report written."}]},"toolUseResult":{"status":"completed","agentId":"f6g"}}))' >> "$T/tr.jsonl"  # a foreground Agent's result
+python3 -c 'import glob,json,os,re,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600, "launched": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if re.search("(t3note|t3rev|sub|fg)-ticket", open(f).read())]'
+done_events > "$T/ev12"
+check "no AGENT DONE for a finish T3's notice (t3note), Claude Code's (sub) or a foreground Agent's result (fg) told the launcher of; one for a run that wrote after its notice (t3rev)" "0 0 0 1" \
+  "$(grep -c "AGENT DONE $T/jobs/t3note-ticket.md" "$T/ev12") $(grep -c "AGENT DONE $T/jobs/sub-ticket.md" "$T/ev12") $(grep -c "AGENT DONE $T/jobs/fg-ticket.md" "$T/ev12") $(grep -c "AGENT DONE $T/jobs/t3rev-ticket.md" "$T/ev12")"
+for jn in t3note t3rev sub fg; do python3 "$R/bin/agent-job" done "$T/jobs/$jn-ticket.md" >/dev/null; done
 # a transcript belongs to one job: the earliest-started one carrying its whole task that started at or after its launch
 # (nitedani/mergeworthy#60 and its review rounds: a quick second round, fan-out agents whose transcripts start in the reverse of their
 # launch order, a repeated foreground call, a head read before its prompt was written)
