@@ -26,14 +26,16 @@ cat > "$T/bin/codex" <<EOF
 exit 0
 EOF
 printf '#!/bin/sh\necho "pnpm $*" >> "%s/calls"\n' "$T" > "$T/bin/pnpm"
-# stub systemctl: the units in $T/active are active; a restart of one in $T/breaks leaves it failed
+# stub systemctl: the units in $T/active are active; a restart of one in $T/breaks leaves it failed, of one in $T/stops
+# inactive, and one in $T/retires also writes its folder's `retired`, as its watcher does when it retires
 cat > "$T/bin/systemctl" <<EOF
 #!/bin/bash
 echo "systemctl \$*" >> "$T/calls"
 case "\$2" in
   show-environment) exit 0 ;;
-  restart) grep -qxF "\$3" "$T/breaks" && { grep -vxF "\$3" "$T/active" > "$T/active.new"; mv "$T/active.new" "$T/active"; } ;;
-  is-active) if grep -qxF "\$3" "$T/active"; then echo active; else echo failed; exit 3; fi ;;
+  restart) grep -qxF "\$3" "$T/breaks" "$T/stops" && { grep -vxF "\$3" "$T/active" > "$T/active.new"; mv "$T/active.new" "$T/active"; }
+    i=\${3#gh-watch@}; grep -qxF "\$3" "$T/retires" && touch "\$(systemd-escape --unescape --path "\${i%.service}")/retired" ;;
+  is-active) if grep -qxF "\$3" "$T/active"; then echo active; elif grep -qxF "\$3" "$T/stops"; then echo inactive; exit 3; else echo failed; exit 3; fi ;;
 esac
 EOF
 chmod +x "$T/bin/"*; export PATH="$T/bin:$PATH"
@@ -43,7 +45,7 @@ mkdir -p "$DASH" "$BAD" "$IDLE"
 printf '%s\n' "$DASH" "$BAD" "$IDLE" "$GONE" > "$HOME/.claude/gh-watch-dirs.txt"
 unit() { echo "gh-watch@$(systemd-escape --path "$1").service"; }
 printf '%s\n' "$(unit "$DASH")" "$(unit "$BAD")" "$(unit "$GONE")" > "$T/active"; unit "$BAD" > "$T/breaks"
-: > "$T/calls"
+: > "$T/stops"; : > "$T/retires"; : > "$T/calls"
 
 bash "$R/bin/mergeworthy-update" > "$T/out" 2>&1; check "a unit that doesn't come back fails the update" 1 $?
 check "the dashed folder's escaped unit restarted" 1 "$(grep -cxF "systemctl --user restart $(unit "$DASH")" "$T/calls")"
@@ -56,6 +58,13 @@ check "~/.mergeworthy/current points at the new version" "$NEW" "$(readlink "$HO
 
 : > "$T/breaks"; unit "$BAD" >> "$T/active"
 bash "$R/bin/mergeworthy-update" > "$T/out" 2>&1; check "every unit back active: exit" 0 $?
+
+# a watcher whose every thread closed retires right after its restart: it writes its folder's `retired` and stops its unit
+DONE="$W/all-merged"; QUIT="$W/stopped"; mkdir -p "$DONE" "$QUIT"; printf '%s\n' "$DONE" "$QUIT" >> "$HOME/.claude/gh-watch-dirs.txt"
+unit "$DONE" | tee -a "$T/active" "$T/stops" > "$T/retires"
+bash "$R/bin/mergeworthy-update" > "$T/out" 2>&1; rc=$?; check "a watcher that retired: exit, its state" "0 $(unit "$DONE") retired" "$rc $(grep -F "$(unit "$DONE")" "$T/out")"
+unit "$QUIT" | tee -a "$T/active" > "$T/stops"
+bash "$R/bin/mergeworthy-update" > "$T/out" 2>&1; rc=$?; check "a watcher stopped without retiring: exit, failure named" "1 failed: $(unit "$QUIT")" "$rc $(grep '^failed:' "$T/out")"
 
 # Codex only: Claude Code is on PATH but has no mergeworthy, and updating it there would fail
 touch "$T/claude-none" "$T/claude-fails" "$T/codex-has"; : > "$T/calls"

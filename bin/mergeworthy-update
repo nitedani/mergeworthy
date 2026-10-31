@@ -2,8 +2,9 @@
 # mergeworthy-update: updates the installed mergeworthy (README, Install) in each agent program that has it: Claude Code's
 # plugin, pointing ~/.mergeworthy/current at its new version folder, and Codex's; restarts every live watcher unit by the
 # name gh-watch-start gives it (gh-watch@<systemd-escape --path of its work folder>.service, never a name read back from
-# `systemctl list-units`, which drops the \x2d escapes) and prints each unit's state. Runs every step, then exits 1 naming
-# each update that failed and each unit that isn't active.
+# `systemctl list-units`, which drops the \x2d escapes) and prints each unit's state, `retired` for one its watcher stopped
+# itself after writing <work folder>/retired. Runs every step, then exits 1 naming each update that failed and each unit
+# that is neither active nor retired.
 set -u
 failed=()
 claude_root() { claude plugin list --json 2>/dev/null | python3 -c 'import json, sys; print(next((p.get("installPath") or "" for p in json.load(sys.stdin) if p["id"] == "mergeworthy@mergeworthy"), ""))' 2>/dev/null; }
@@ -22,20 +23,21 @@ if command -v claude >/dev/null && [ -n "$(claude_root)" ]; then update_claude |
 if command -v codex >/dev/null && codex plugin list 2>/dev/null | grep '^mergeworthy@mergeworthy ' | grep -vq 'not installed'; then
   update_codex || failed+=("the Codex update")
 fi
-units=()
+units=() dirs=()
 if systemctl --user show-environment >/dev/null 2>&1; then
   while IFS= read -r dir; do
     [ -d "$dir" ] || continue
     unit="gh-watch@$(systemd-escape --path "$dir").service"
     case $(systemctl --user is-active "$unit" 2>/dev/null) in active|activating|reloading) ;; *) continue;; esac
     systemctl --user restart "$unit" || true
-    units+=("$unit")
+    units+=("$unit") dirs+=("$dir")
   done < <(cat ~/.claude/gh-watch-dirs.txt 2>/dev/null)
 else echo "no systemd user manager: no watcher unit to restart"; fi
 [ ${#units[@]} -gt 0 ] && sleep 2  # a unit whose daemon can't start fails within this
-for unit in "${units[@]}"; do
-  state=$(systemctl --user is-active "$unit" 2>/dev/null || true)
+for i in "${!units[@]}"; do
+  unit=${units[i]} state=$(systemctl --user is-active "$unit" 2>/dev/null || true)
+  [ "$state" = inactive ] && [ -e "${dirs[i]}/retired" ] && state=retired  # its watcher stopped it: every thread it watched closed
   echo "$unit $state"
-  [ "$state" = active ] || failed+=("$unit")
+  case $state in active|retired) ;; *) failed+=("$unit") ;; esac
 done
 [ ${#failed[@]} = 0 ] || { printf 'failed: %s\n' "${failed[@]}" >&2; exit 1; }
