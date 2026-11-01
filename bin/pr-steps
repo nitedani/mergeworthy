@@ -134,7 +134,8 @@ import re, sys
 lines, plain = open(sys.argv[1]).read().splitlines(), lambda l: re.sub(r'[*`]', '', l).strip().lower()
 dropped, item = False, None  # only the dropped list: a counted bug may well be "a rare race"
 sep, bare = r':|\s[—–-]\s', lambda l: re.sub(r'^[\s>+-]*(\d+\.\s*)?', '', plain(l))
-name_of = lambda l: re.split(sep, bare(l), maxsplit=1)[0].strip()
+# a candidate named by a line reference ('- :67 now says …') is ruled as 'RULED: :67: …'
+name_of = lambda l: (re.match(r':\d+(-\d+)?', bare(l)) or re.split(sep, bare(l), maxsplit=1))[0].strip()
 # 'None.', 'Nothing was dropped.': an unbulleted line whose first sentence is one of these says the list is empty
 empty = lambda l: not re.match(r'\s*([-*+]|\d+\.)\s', l) and \
     re.fullmatch(r'none|nothing|nothing( was)? dropped|no candidates? dropped|no candidates were dropped', re.split(r'\.(?:\s|$)', bare(l), maxsplit=1)[0].strip())
