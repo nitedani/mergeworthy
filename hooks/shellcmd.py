@@ -154,20 +154,6 @@ def _kind(x, k):
     return None
 
 
-def _code(node, src):
-    """src with the text of every single-quoted word under node blanked: this shell never runs it (eval, source and trap aside)."""
-    code, todo = bytearray(src), [node]
-    while todo:
-        y = todo.pop()
-        if isinstance(y, list):
-            todo += y
-        elif isinstance(y, dict):
-            if y.get('Type') == 'SglQuoted':
-                code[y['Pos']['Offset']:y['End']['Offset']] = b' ' * (y['End']['Offset'] - y['Pos']['Offset'])
-            todo += [v for v in y.values() if isinstance(v, (dict, list))]
-    return bytes(code)
-
-
 class _Every:
     """Every name: what _unseen gives for a line that may set any variable."""
     def __contains__(self, name): return True
@@ -176,30 +162,46 @@ class _Every:
 EVERY = _Every()
 
 
+SETTERS = ('read', 'mapfile', 'readarray', 'unset', 'getopts', 'wait')  # builtins that set the variables they name (printf: -v's)
+ASSIGNS = ('=', '+=', '-=', '*=', '/=', '%=', '<<=', '>>=', '&=', '^=', '|=', '++', '--')
+
+
 def _unseen(tree, src):
-    """The names a command line may set where Where can't follow: every word of its source, quoted text included (`printf -v 'D'`),
-    but a plain $NAME or ${NAME}, a for loop's own name and the name of an assignment Where takes (a command of only `NAME=value`
-    words); a for loop's variable assigned anywhere still counts, as its file-name exception (Where.file) skips its value. So
-    `export D=x`, `read D`, `unset D`, `D+=x`, `${D:=x}` and a bare D all count; EVERY when the line's code (_code's) has an eval,
-    let, ((, source, trap or . command, which can set any."""
-    if re.search(r'\b(?:eval|let|source|trap)\b|\(\(|(?:^|[;&|(){\n]|\b(?:then|do|else)\b)\s*\.\s', _code(tree, src).decode(errors='replace')):
-        return EVERY
-    text, todo, assigned, loops = bytearray(src), [tree], set(), set()
+    """The names a script may set where Where can't follow, read from its syntax: a name assigned other than by a command of only
+    `NAME=value` words (export, declare, D+=x, D[1]=x, D=x cmd), one a builtin sets (read, mapfile, printf -v, unset, getopts, wait -p),
+    ${D:=x}, an arithmetic assignment ((( )), $(( )), let), and a for loop's variable assigned anywhere; EVERY when it runs eval,
+    source, . or trap, which can set any. Heredoc bodies and quoted text are words, never read as commands."""
+    names, assigned, loops, todo = set(), set(), set(), [tree]
     while todo:
         y = todo.pop()
         if isinstance(y, list):
             todo += y
-        elif isinstance(y, dict):
-            cmd, assigns = y.get('Cmd') or {}, (y.get('Cmd') or {}).get('Assigns') or []
-            taken = cmd.get('Type') == 'CallExpr' and not cmd.get('Args') and not y.get('Redirs') and \
-                not any(a.get('Index') or a.get('Append') or a.get('Naked') for a in assigns)  # Where.step's: D=x, not D[1]=x, D+=x or D=x >f
-            loop = [y['Loop']['Name']] if y.get('Type') == 'ForClause' and (y.get('Loop') or {}).get('Name') else []
-            names = ([a['Name'] for a in assigns] if taken else []) + loop
-            assigned |= {a['Name']['Value'] for a in assigns} if taken else set()
-            loops |= {n['Value'] for n in loop}
-            for n in names: text[n['Pos']['Offset']:n['End']['Offset']] = b' ' * (n['End']['Offset'] - n['Pos']['Offset'])
-            todo += [v for v in y.values() if isinstance(v, (dict, list))]
-    return frozenset(re.findall(r'\w+', re.sub(r'\$(?:\w+|\{\w+\})', ' ', text.decode(errors='replace')))) | assigned & loops
+            continue
+        if not isinstance(y, dict):
+            continue
+        cmd, t = y.get('Cmd') or {}, y.get('Type')
+        if cmd.get('Type') == 'CallExpr':
+            assigns = cmd.get('Assigns') or []
+            taken = not cmd.get('Args') and not y.get('Redirs') and not any(a.get('Index') or a.get('Append') or a.get('Naked') for a in assigns)  # Where.step's: D=x, not D[1]=x, D+=x or D=x >f
+            (assigned if taken else names).update(a['Name']['Value'] for a in assigns if a.get('Name'))
+            argv = prog([_word(w, src) for w in cmd.get('Args') or []])
+            name = os.path.basename(argv[0]) if argv else ''
+            if name in ('eval', 'source', '.', 'trap'):
+                return EVERY
+            if name in SETTERS:
+                names.update(x for x in argv[1:] if re.fullmatch(r'[A-Za-z_]\w*', x))
+            elif name == 'printf':
+                names.update(argv[i + 1] for i in range(1, len(argv) - 1) if argv[i] == '-v')
+        elif cmd.get('Type') == 'DeclClause':
+            names.update(a['Name']['Value'] if a.get('Name') else _word(a['Value'], src) for a in cmd.get('Args') or [])
+        if t == 'ParamExp' and (y.get('Exp') or {}).get('Op') in ('=', ':=') and y.get('Param'):
+            names.add(y['Param']['Value'])
+        if t in ('BinaryArithm', 'UnaryArithm') and y.get('Op') in ASSIGNS and (y.get('X') or {}).get('Type') == 'Word':
+            names.add(_word(y['X'], src))
+        if t == 'ForClause' and (y.get('Loop') or {}).get('Name'):
+            loops.add(y['Loop']['Name']['Value'])
+        todo += [v for v in y.values() if isinstance(v, (dict, list))]
+    return frozenset(names | assigned & loops)
 
 
 def _calls(node, src):
@@ -328,8 +330,10 @@ def parse(cmd, depth=0, scopes=(), loop=False):
             for x in inner: x.nested = True
             out += inner
             err = err or e
+    for x in segs: x.unseen = unseen
     if not depth:  # the whole line's names, its scripts' included, hold for each of its commands
-        for x in out: x.unseen = unseen
+        line = EVERY if any(x.unseen is EVERY for x in out) else frozenset().union(*(x.unseen for x in out))
+        for x in out: x.unseen = line
     return out, err
 
 

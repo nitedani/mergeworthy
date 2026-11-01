@@ -2270,8 +2270,13 @@ check "BLOCK: a bash -c script, quoted, gets none of the line's unexported varia
   "$(ibash "$IT" "D=$T/nogit; bash -c 'cd \"\$D\"; pwd; echo x > a.txt'") $(ibash "$IT" "D=$T/nogit; bash -c \"cd \$D; echo x > a.txt\"")"
 check "BLOCK: a variable a subshell sets other than by a plain D=… (export, read, unset, printf -v) can't be told: a relative write after its cd \$D may land in a repo whose instructions weren't read" "2 2 2 2" \
   "$(ibash "$IT" "D=$T/nogit; (export D=$I; cd \$D; echo x > a.txt)" "$T/nogit") $(ibash "$IT" "D=$T/nogit; (read D <<< $I; cd \$D; echo x > a.txt)" "$T/nogit") $(ibash "$IT" "D=$T/nogit; (unset D; cd \$D; echo x > a.txt)" "$T/nogit") $(ibash "$IT" "D=$T/nogit; (printf -v D $I; cd \$D; echo x > a.txt)" "$T/nogit")"
-check "a top-level cd to an inherited variable the line only names in text (printf 'D=%s') resolves, as on main; in a subshell it blocks, as on main" "0 2" \
+check "a cd to an inherited variable the line only names in text (printf 'D=%s') resolves, at top level and in a subshell" "0 0" \
   "$(D="$T/nogit" ibash "$IT" "printf 'D=%s\n' \"\$D\"; cd \"\$D\"; echo x > a.txt") $(D="$T/nogit" ibash "$IT" "(printf 'D=%s\n' \"\$D\"; cd \"\$D\"; echo x > a.txt)")"
+hd() { printf '%s\n' "F=$T/nogit; cat > \$F/a.md <<'EOF'" "$1" EOF; }
+check "a heredoc body or a quoted word holding the variable's name, (a; b), let, (( or ). is text: a write to \$F/a.md after F=… resolves" "0 0 0 0 0 0" \
+  "$(ibash "$IT" "$(hd 'F is a letter')") $(ibash "$IT" "$(hd 'Read it (a; b).')") $(ibash "$IT" "$(hd 'let x')") $(ibash "$IT" "$(hd 'foo(( bar')") $(ibash "$IT" "$(hd 'end).')") $(ibash "$IT" "F=$T/nogit; echo \"let it be\" > \$F/a.md")"
+check "a draft whose heredoc names Where, D, let and (a; b), then a cd to \$W/repo: passes" 0 \
+  "$(ibash "$IT" "W=$T/nogit; mkdir -p \$W/drafts; cat > \$W/a.md <<'EOF'"$'\n'"Where D is set, let it be (a; b)."$'\n'"EOF"$'\n'"cd \$W/repo && git log -1")"
 check "a variable the line sets only by a plain D=… is still followed into a subshell's cd" 0 "$(ibash "$IT" "D=$T/nogit; (cd \$D; echo x > a.txt)")"
 check "logs written outside it by a backgrounded { } group in a loop, after its cd to \$W/\$t, pass" 0 \
   "$(ibash "$IT" "W=$T/nogit; for t in a b; do { cd \$W/\$t && netns-run bash x.sh > \$W/probe/\$t.out 2> \$W/probe/\$t.err; echo \"\$t exit \$?\" >> \$W/probe/\$t.err; } & done; wait")"
