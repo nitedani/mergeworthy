@@ -112,6 +112,14 @@ def busy(session_id):
     running (T3's waiting_for_children), or, as a delegated task, is still active itself: T3 will act on it again."""
     return _ask(session_id, _busy, False)
 
+def active(tid):
+    """True while T3 thread tid has what busy() counts as active; without T3's database, False: nothing can be waited for."""
+    return _db(lambda c: _busy(c, tid), False)
+
+def delegators(tid):
+    """T3 thread tid, then the threads that delegated it, read from T3 Code's state."""
+    return _db(lambda c: _chain(c, tid), [tid]) if tid else []
+
 def task_done(session_id):
     """True when the Claude session is a T3 delegated task that completed and isn't busy: T3 won't wake it again."""
     return _ask(session_id, lambda c, tid: c.execute("select status from orchestration_v2_projection_subagents where child_thread_id = ?", (tid,)).fetchone()

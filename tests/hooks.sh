@@ -40,7 +40,8 @@ if isinstance(v, dict) and re.fullmatch(r"(\.\w+)+", q):
     print("" if v is None else v if isinstance(v, str) else json.dumps(v))
 else: sys.stdout.write(raw)' "$f" "$q" "$pg"
 EOF
-chmod +x "$T/bin/gh"; export PATH="$T/bin:$PATH" FX="$T/fx"
+printf '#!/bin/sh\nexit 1\n' > "$T/bin/systemctl"  # no systemd user manager: session-start never reaches the real one
+chmod +x "$T/bin/gh" "$T/bin/systemctl"; export PATH="$T/bin:$PATH" FX="$T/fx"
 # stub gh-watch-start (post-bash-register starts a work folder's watcher): logs its session and arguments, adds the thread, prints the Monitor
 printf '#!/bin/sh
 echo "$CLAUDE_CODE_SESSION_ID $*" >> "$T/started"; d=$1; shift; echo "$*" >> "$d/threads.txt"; echo "Arm a Monitor in this session on: tail $d/events.log"
@@ -1216,6 +1217,37 @@ printf -- '- a convention\n## Who decides\n- maint merges: ~/.mergeworthy/projec
 echo "Studied: 2026-01-01" > "$HOME/.mergeworthy/projects/o/r.study.md"
 check "BLOCK: an implementer brief whose repo study is over 30 days old, or missing; research needs none" "2 1 2 0" "$(ag "$T" 'Fix o/r#5 by skills/code/SKILL.md, notes in ~/.mergeworthy/projects/o/r.md') $(grep -c 'write the repo study first' "$T/err") $(rm "$HOME/.mergeworthy/projects/o/r.study.md"; ag "$T" 'Fix o/r#5 by skills/code/SKILL.md, notes in ~/.mergeworthy/projects/o/r.md') $(ag "$T" 'Mine session logs for o/r' research)"
 echo "Studied: $(date -u +%F)" > "$HOME/.mergeworthy/projects/o/r.study.md"
+cp "$HOME/.mergeworthy/projects/o/r.md" "$T/r.md"; yes word | head -n 2500 >> "$HOME/.mergeworthy/projects/o/r.md"
+check "BLOCK: a brief naming a project file over its 2500-word cap, with its count; research needs none; at the cap it passes" "2 1 0 0" "$(ag "$T" 'Fix o/r#5 by skills/code/SKILL.md, notes in ~/.mergeworthy/projects/o/r.md') $(grep -c 'o/r.md: 2510 words' "$T/err") $(ag "$T" 'Mine session logs for o/r' research) $(cp "$T/r.md" "$HOME/.mergeworthy/projects/o/r.md"; yes word | head -n $((2500 - $(wc -w < "$T/r.md"))) >> "$HOME/.mergeworthy/projects/o/r.md"; ag "$T" 'Fix o/r#5 by skills/code/SKILL.md, notes in ~/.mergeworthy/projects/o/r.md')"
+cp "$T/r.md" "$HOME/.mergeworthy/projects/o/r.md"; yes word | head -n 2500 >> "$HOME/.mergeworthy/projects/o/r.md"
+mkdir -p "$HOME/.mergeworthy/work/project-learn"; echo "$(date -u +%F) $(date -u +%FT%TZ) thread thread-9; 2 to sort: o/r-two o/r" > "$HOME/.mergeworthy/work/project-learn/runs.txt"
+# T3's state: the learning thread thread-9 running, a task it delegated, and another session's thread
+mkdir -p "$HOME/.t3/userdata"; python3 - "$HOME/.t3/userdata/statev2.sqlite" <<'EOF2'
+import sqlite3, sys
+c = sqlite3.connect(sys.argv[1])
+c.execute('create table orchestration_v2_projection_provider_threads (provider_thread_id text, thread_id text, payload_json text)')
+c.execute('create table orchestration_v2_projection_subagents (subagent_id text, thread_id text, child_thread_id text, status text)')
+c.execute('create table orchestration_v2_projection_runs (run_id text, thread_id text, status text)')
+c.execute("insert into orchestration_v2_projection_runs values ('r9', 'thread-9', 'running')")
+c.execute("insert into orchestration_v2_projection_subagents values ('s9', 'thread-9', 'thread:delegated-task:sort-1', 'running')")
+c.execute("""insert into orchestration_v2_projection_provider_threads values ('p9', 'thread-9', '{"nativeThreadRef":{"driver":"claudeAgent","nativeId":"sess-9"}}')"""); c.commit()
+EOF2
+OVER='Fix o/r#5 by skills/code/SKILL.md, notes in ~/.mergeworthy/projects/o/r.md'
+check "BLOCK: over the cap while the learning thread sorting that repo runs: the refusal names the thread, so the session doesn't condense alongside it" "2 1" \
+  "$(T3CODE_THREAD_ID=other-thread ag "$T" "$OVER") $(grep -c 'learning thread thread-9 started' "$T/err")"
+check "the learning thread's own agents pass the cap for the file it condenses: launched from it, or from a task it delegated" "0 0" \
+  "$(T3CODE_THREAD_ID=thread-9 ag "$T" "$OVER") $(T3CODE_THREAD_ID=thread:delegated-task:sort-1 ag "$T" "$OVER")"
+agsess() { # session_id: a brief launched from that Claude session, with no T3CODE_THREAD_ID
+  python3 -c 'import json,sys,time; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","cwd":sys.argv[1],"session_id":sys.argv[3],"tool_input":{"task":sys.argv[2],"title":sys.argv[2][:50],"role":"implementation","clientRequestId":f"ag-{time.time_ns()}-r1"}}))' "$T" "$OVER$AFX" "$1" \
+    | env -u T3CODE_THREAD_ID timeout 10 python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; grep -c 'over its 2500-word cap' "$T/err"; }
+check "the learning thread's own session, known only by its session id, passes the cap; another session is refused naming the thread" "0 1 1" \
+  "$(agsess sess-9) $(agsess sess-other) $(grep -c 'the learning thread thread-9 started' "$T/err")"
+python3 -c 'import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); c.execute("update orchestration_v2_projection_runs set status = ?", ("completed",)); c.execute("update orchestration_v2_projection_subagents set status = ?", ("completed",)); c.commit()' "$HOME/.t3/userdata/statev2.sqlite"
+check "BLOCK: once the learning thread ended, the refusal names no thread: the session condenses the file itself" "2 0 1" \
+  "$(T3CODE_THREAD_ID=other-thread ag "$T" "$OVER") $(grep -c 'the learning thread thread-9' "$T/err") $(grep -c 'condense it first' "$T/err")"
+rm "$HOME/.t3/userdata/statev2.sqlite"
+check "BLOCK: without T3's database the learning thread counts as ended" "2 0" "$(ag "$T" "$OVER") $(grep -c 'the learning thread thread-9' "$T/err")"
+rm -r "$HOME/.mergeworthy/work/project-learn"; cp "$T/r.md" "$HOME/.mergeworthy/projects/o/r.md"
 check "BLOCK: an implementation brief for that repo without code/SKILL.md, naming it" "2 1" "$(ag "$T" 'Build o/r#6 per ~/.mergeworthy/projects/o/r.md') $(grep -c 'skills/code/SKILL.md' "$T/err")"
 check "a review brief needs no code/SKILL.md" 0 "$(ag "$T" 'Review o/r#8 per ~/.mergeworthy/projects/o/r.md' review)"
 # pre-agent-dedupe: the project file's `## Agents` line `Effort: <effort>` is the effort every agent for its repo launches at

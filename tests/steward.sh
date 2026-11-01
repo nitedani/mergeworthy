@@ -51,6 +51,8 @@ check "sessions: the Claude log's hours, turns, tokens (one message's two conten
 check "sessions: the correction, with its line; the Codex log's tokens (cache reads left out) and correction" "1 1 1" "$(echo "$out" | grep -c 's1.jsonl:5'$'\t''why did you skip') $(echo "$out" | grep -c $'\t1 turns\t4000 tokens') $(echo "$out" | grep -c 'c1.jsonl:1')"
 check "sessions: text the harness injects (a skill's, isMeta) is no turn and no correction" 0 "$(echo "$out" | grep -c 's1.jsonl:6')"
 check "sessions: a log older than --since is left out" 0 "$(python3 "$R/bin/steward" sessions --since "$(iso '+1 hour')" | grep -c jsonl)"
+check "a bare date steward reads (--since) is local midnight, as before its helpers moved to gh_common: 23:00 UTC the day before at UTC+1" 2026-10-29T23:00:00Z \
+  "$(TZ=Etc/GMT-1 python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); from gh_common import epoch, iso; print(iso(epoch("2026-10-30")))' "$R/hooks")"
 
 # ---------- metrics: two PRs of the window (one merged first pass, one reworked), one of the window before, one without a badge ----------
 C1=$(iso '-3 days'); M1=$(iso '-2 days'); C10=$(iso '-8 days'); R10=$(iso '-3 days'); B10=$(iso '-2 days'); M10=$(iso '-1 days'); C9=$(iso '-1 days'); C2=$(iso '-4 days'); R2=$(iso '-3 days'); M2=$(iso '-1 days'); C3=$(iso '-7 days'); M3=$(iso '-6 days')
@@ -58,10 +60,10 @@ cat > "$T/bin/gh" <<EOF
 #!/usr/bin/env bash
 case "\$*" in
   "api user") echo '{"login":"me"}' ;;
-  *updated:*) echo '{"items":[{"number":4,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"},{"number":7,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"},{"number":9,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"},{"number":8,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"a PR the user wrote"}]}' ;;
-  *is:open*) echo '{"items":[{"number":9,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"}]}' ;;
+  *updated:*) echo '{"total_count":4,"items":[{"number":4,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"},{"number":7,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"},{"number":9,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"},{"number":8,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"a PR the user wrote"}]}' ;;
+  *is:open*) echo '{"total_count":1,"items":[{"number":9,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"}]}' ;;
   *search/issues*) cat <<'J'
-{"items":[{"number":5,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*\\nbody"},
+{"total_count":5,"items":[{"number":5,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*\\nbody"},
 {"number":6,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"},
 {"number":7,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"},
 {"number":8,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"a PR the user wrote"},
@@ -136,7 +138,7 @@ touch -d '-1 minute' "$HOME/.claude/projects/p/s1.jsonl" "$HOME/.codex/sessions/
 PATH="$T/bin:$PATH" python3 "$R/bin/steward" done "$S" 2 replies, 1 PR
 check "done: the pass's time and summary end passes.txt, and the next window starts there" "2 replies, 1 PR|0" "$(tail -1 "$S/passes.txt" | cut -d' ' -f2-)|$(python3 "$R/bin/steward" sessions "$S" | grep -c "^~")"
 # round: gh-watch-start --round on the folder with each open PR of yours (steward_line adds the mergeworthy repo for a declared folder)
-SB="$T/sbin"; mkdir -p "$SB"; cp "$R/bin/steward" "$SB/"; printf '#!/bin/sh
+SB="$T/sbin"; mkdir -p "$SB" "$T/hooks"; cp "$R/bin/steward" "$SB/"; cp "$R/hooks/gh_common.py" "$T/hooks/"; printf '#!/bin/sh
 echo "$@" > "%s/args"
 ' "$T" > "$SB/gh-watch-start"; chmod +x "$SB/gh-watch-start"
 printf '#!/bin/sh
