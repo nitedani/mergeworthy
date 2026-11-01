@@ -158,7 +158,7 @@ It parses the whole command with mvdan/sh, the parser of `shfmt` (`hooks/shellcm
 - `codex exec` when T3 Code started the session (`delegate §Reviewers`);
 - `pkill -f` and `killall`;
 - `kill` of a running agent's process: stop an agent through its task, after reading its status;
-- a foreground wait loop (`until`/`while` with `sleep`);
+- a foreground wait loop (`until`/`while` with `sleep`) by the main session: a subagent waits for its own run, which its result reports;
 - a bare `git stash`;
 - a force-push without a pinned lease;
 - with a steward declared, a `git commit` or `git push` in a mergeworthy checkout by any session but the steward and its agents.
