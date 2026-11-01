@@ -884,7 +884,8 @@ if err and (m := GUARDED.search(unquoted(cmd))):  # its words are still checked 
     block(f"{err}, so this command's `{verb}` can't be checked" if 'shell parser' in err else f"this command doesn't parse ({err}), so its `{verb}` "
           "can't be checked: split it into simple commands, a message or body in a file (`git commit -F <file>`, `--body-file`)")
 waits = re.search(r'\b(until|while)\b[^\n]*\bsleep\b', cmd) if err else any(s.loop and prog(s)[:1] and os.path.basename(prog(s)[0]) == 'sleep' for s in segs)
-if waits and not d.get('tool_input', {}).get('run_in_background'):
+# a subagent's result is its last message, so waiting for its own run is its job
+if waits and not d.get('tool_input', {}).get('run_in_background') and not by_agent():
     block('never wait in the foreground: the main session keeps working while agents and builds run. Rely on the task-completion notification, '
           'or run the wait with run_in_background (one notification when it ends)')
 # a Playwright install prunes the browser builds other sessions use from the shared ~/.cache/ms-playwright (agent.md §Machine)
