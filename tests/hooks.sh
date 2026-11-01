@@ -2290,6 +2290,8 @@ check "a child shell's source or eval (bash -c 'source f', bash -lc 'eval \"\$X\
   "$(ibash "$IT" "D=$T/nogit; bash -c 'source $T/nogit/e.sh; true'; echo x > \$D/a.txt" "$T/nogit") $(ibash "$IT" "D=$T/nogit; X=true; bash -lc 'eval \"\$X\"'; echo x > \$D/a.txt" "$T/nogit")"
 check "BLOCK: eval 'read D' runs in this shell: a write to \$D/a.txt after it can't be told" 2 \
   "$(ibash "$IT" "D=$T/nogit; eval 'read D' <<< $I; echo x > \$D/a.txt" "$T/nogit")"
+check "BLOCK: a script a child shell runs (bash -c, bash <<'EOF') inherits this shell's names: after read D, its write to \$D/a.txt can't be told" "2 2" \
+  "$(D="$T/nogit" ibash "$IT" "read D <<< $I; bash -c 'read X; echo x > \"\$D/a.txt\"'" "$T/nogit") $(D="$T/nogit" ibash "$IT" "read D <<< $I; bash <<'EOF'"$'\n'"read X"$'\n'"echo x > \"\$D/a.txt\""$'\n'"EOF" "$T/nogit")"
 check "a variable the line sets only by a plain D=… is still followed into a subshell's cd" 0 "$(ibash "$IT" "D=$T/nogit; (cd \$D; echo x > a.txt)")"
 check "logs written outside it by a backgrounded { } group in a loop, after its cd to \$W/\$t, pass" 0 \
   "$(ibash "$IT" "W=$T/nogit; for t in a b; do { cd \$W/\$t && netns-run bash x.sh > \$W/probe/\$t.out 2> \$W/probe/\$t.err; echo \"\$t exit \$?\" >> \$W/probe/\$t.err; } & done; wait")"
