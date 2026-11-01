@@ -330,7 +330,7 @@ def parse(cmd, depth=0, scopes=(), loop=False):
             for x in inner: x.nested = True
             out += inner
             err = err or e
-    for x in segs: x.unseen = unseen
+    for x in segs: x.unseen = x.unseen or unseen  # a heredoc script's commands keep its own (_segments parsed it)
     if not depth:  # the whole line's names, its scripts' included, hold for each of its commands
         line = EVERY if any(x.unseen is EVERY for x in out) else frozenset().union(*(x.unseen for x in out))
         for x in out: x.unseen = line
