@@ -2435,14 +2435,10 @@ check "an ordinary edit passes" 0 "$(sg Edit '{"file_path":"/r/src/debrief.ts"}'
 sg_tr "$T/sg.jsonl" skill:mergeworthy:delegate skill:mergeworthy:rules
 check "the Agent tool passes once delegate was opened" 0 "$(sg Agent '{"prompt":"x"}')"
 check "editing a skill passes once rules was opened" 0 "$(sg Edit '{"file_path":"/r/skills/writing/SKILL.md"}')"
-sg_agent() { # agent_id session_id: git push from a transcript that opened no skill
-  python3 -c 'import json,sys; print(json.dumps({"tool_name":"Bash","tool_input":{"command":"git push"},"cwd":sys.argv[1],"transcript_path":sys.argv[2],"agent_id":sys.argv[3],"session_id":sys.argv[4]}))' "$T" "$T/sg.jsonl" "$1" "$2" \
-    | python3 "$R/hooks/pre-skill-gate.py" 2>/dev/null; echo $?
-}
-sg_tr "$T/sg.jsonl" text; t3_child
-check "a subagent opens only what its brief names: Claude Code's (agent_id) and a T3 child pass; the main session, under T3 too, is blocked" "0 0 2 2" \
-  "$(sg_agent a1 s1) $(sg_agent '' t3-child) $(sg_agent '' s1) $(sg_agent '' t3-main)"
-rm "$HOME/.t3/userdata/statev2.sqlite"
+mkdir -p "$T/s1/subagents"; sg_tr "$T/s1/subagents/agent-a1.jsonl" skill:mergeworthy:merging skill:mergeworthy:task skill:mergeworthy:pull-request
+check "a subagent's own Skill calls count for it" 0 "$(sg_in Bash '{"command":"git push"}' "$T/sg.jsonl" a1 | python3 "$R/hooks/pre-skill-gate.py" 2>/dev/null; echo $?)"
+sg_tr "$T/s1/subagents/agent-a1.jsonl" text; sg_tr "$T/sg.jsonl" skill:mergeworthy:merging
+check "BLOCK: the parent's skills aren't in a subagent's context" 2 "$(sg_in Bash '{"command":"git push"}' "$T/sg.jsonl" a1 | python3 "$R/hooks/pre-skill-gate.py" 2>/dev/null; echo $?)"
 check "BLOCK: a gated action whose transcript can't be read, saying so; a read-only one passes" "2 1 0" "$(sg Bash '{"command":"git push"}' "$T/none.jsonl") $(grep -c "transcript.*can't be read" "$T/sg.err") $(sg Bash '{"command":"git status"}' "$T/none.jsonl")"
 old_tr() { # <transcript>: a session that opened the old catalog's core, github-threads, writing and delegating
   sg_tr "$1" skill:mergeworthy:core skill:mergeworthy:github-threads skill:mergeworthy:writing skill:mergeworthy:delegating; }
