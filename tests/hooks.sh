@@ -958,6 +958,20 @@ check "BLOCK: a loop in bash -c" 2 "$(wait_guard "bash -c 'while true; do sleep 
 check "BLOCK: a loop running bash -c or a heredoc script with a sleep" "2 2" "$(wait_guard "while true; do bash -c 'sleep 1'; done" false) $(wait_guard "$(printf 'while true; do bash <<EOF\nsleep 1\nEOF\ndone')" false)"
 check "BLOCK: a loop sent to the background in a foreground command" 2 "$(wait_guard '(until [ -s out.md ]; do sleep 20; done) & wait' false)"
 check "BLOCK: a loop with sleep in a command that doesn't parse" 2 "$(wait_guard 'until [ -s out.md ]; do sleep 20; done; echo "x' false)"
+t3_child() { # T3's state with the session t3-child in a thread main-thread delegated, and t3-main in main-thread itself
+  mkdir -p "$HOME/.t3/userdata"; python3 -c 'import sqlite3, sys; c = sqlite3.connect(sys.argv[1])
+c.execute("create table orchestration_v2_projection_provider_threads (provider_thread_id text, thread_id text, payload_json text)")
+c.execute("create table orchestration_v2_projection_subagents (subagent_id text, thread_id text, child_thread_id text)")
+c.execute("""insert into orchestration_v2_projection_provider_threads values (\x27p1\x27, \x27child-thread\x27, \x27{"nativeThreadRef":{"nativeId":"t3-child"}}\x27), (\x27p2\x27, \x27main-thread\x27, \x27{"nativeThreadRef":{"nativeId":"t3-main"}}\x27)""")
+c.execute("insert into orchestration_v2_projection_subagents values (\x27s1\x27, \x27main-thread\x27, \x27child-thread\x27)"); c.commit()' "$HOME/.t3/userdata/statev2.sqlite"; }
+agent_wait() { # agent_id session_id: a foreground until-sleep loop
+  python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"until [ -s out.md ]; do sleep 20; done"},"cwd":sys.argv[1],"agent_id":sys.argv[2],"session_id":sys.argv[3]}))' "$T" "$1" "$2" \
+    | python3 "$R/hooks/pre-bash-guard.py" 2>/dev/null; echo $?
+}
+t3_child
+check "a subagent waits in the foreground for its own run: Claude Code's (agent_id) and a T3 child pass; the main session, under T3 too, is blocked" "0 0 2 2" \
+  "$(agent_wait a1 s1) $(agent_wait '' t3-child) $(agent_wait '' s1) $(agent_wait '' t3-main)"
+rm "$HOME/.t3/userdata/statev2.sqlite"
 # ---------- pre-agent-dedupe: one agent per job ----------
 launch_in() { python3 -c 'import json,sys,time; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":sys.argv[1],"title":"t","clientRequestId":f"t-{time.time_ns()}-r1"}}))' "$1"; }
 launch() { # task text; a launch that passes runs, so the PostToolUse half registers it
@@ -2421,10 +2435,14 @@ check "an ordinary edit passes" 0 "$(sg Edit '{"file_path":"/r/src/debrief.ts"}'
 sg_tr "$T/sg.jsonl" skill:mergeworthy:delegate skill:mergeworthy:rules
 check "the Agent tool passes once delegate was opened" 0 "$(sg Agent '{"prompt":"x"}')"
 check "editing a skill passes once rules was opened" 0 "$(sg Edit '{"file_path":"/r/skills/writing/SKILL.md"}')"
-mkdir -p "$T/s1/subagents"; sg_tr "$T/s1/subagents/agent-a1.jsonl" skill:mergeworthy:merging skill:mergeworthy:task skill:mergeworthy:pull-request
-check "a subagent's own Skill calls count for it" 0 "$(sg_in Bash '{"command":"git push"}' "$T/sg.jsonl" a1 | python3 "$R/hooks/pre-skill-gate.py" 2>/dev/null; echo $?)"
-sg_tr "$T/s1/subagents/agent-a1.jsonl" text; sg_tr "$T/sg.jsonl" skill:mergeworthy:merging
-check "BLOCK: the parent's skills aren't in a subagent's context" 2 "$(sg_in Bash '{"command":"git push"}' "$T/sg.jsonl" a1 | python3 "$R/hooks/pre-skill-gate.py" 2>/dev/null; echo $?)"
+sg_agent() { # agent_id session_id: git push from a transcript that opened no skill
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"Bash","tool_input":{"command":"git push"},"cwd":sys.argv[1],"transcript_path":sys.argv[2],"agent_id":sys.argv[3],"session_id":sys.argv[4]}))' "$T" "$T/sg.jsonl" "$1" "$2" \
+    | python3 "$R/hooks/pre-skill-gate.py" 2>/dev/null; echo $?
+}
+sg_tr "$T/sg.jsonl" text; t3_child
+check "a subagent opens only what its brief names: Claude Code's (agent_id) and a T3 child pass; the main session, under T3 too, is blocked" "0 0 2 2" \
+  "$(sg_agent a1 s1) $(sg_agent '' t3-child) $(sg_agent '' s1) $(sg_agent '' t3-main)"
+rm "$HOME/.t3/userdata/statev2.sqlite"
 check "BLOCK: a gated action whose transcript can't be read, saying so; a read-only one passes" "2 1 0" "$(sg Bash '{"command":"git push"}' "$T/none.jsonl") $(grep -c "transcript.*can't be read" "$T/sg.err") $(sg Bash '{"command":"git status"}' "$T/none.jsonl")"
 old_tr() { # <transcript>: a session that opened the old catalog's core, github-threads, writing and delegating
   sg_tr "$1" skill:mergeworthy:core skill:mergeworthy:github-threads skill:mergeworthy:writing skill:mergeworthy:delegating; }

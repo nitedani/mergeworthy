@@ -83,6 +83,10 @@ def threads(session_id):
     """The T3 thread a Claude session runs in, then the threads that delegated it, read from T3 Code's state."""
     return _ask(session_id, _chain, [])
 
+def by_agent(d):
+    """A subagent's hook input d: Claude Code's (agent_id), or a T3 child's (its thread has a parent)."""
+    return bool(d.get('agent_id')) or len(threads(d.get('session_id'))) > 1
+
 def bind_watcher(wd):
     """Under T3 Code <wd>/t3-thread names the main session's thread (the last of the threads that delegated the session in
     <wd>/session), then t3's full path, for gh-watch.py's wake_thread. t3-wake.cursor starts at events.log's end when there is none

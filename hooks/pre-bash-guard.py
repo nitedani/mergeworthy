@@ -139,7 +139,7 @@ def need_watch(repo, path, why=''):
     if not covering:
         start = f"`gh-watch-start {work_folder.task_of(path) or '<your work folder>'} {repos[0]}`"
         block(f"no running watcher of this task or session covers {' or '.join(repos)} (another session's watcher wakes that session, not this one{'; ' + why if why else ''}): "
-              + (f"a subagent starts none: end your turn asking the main session to run {start}" if by_agent()
+              + (f"a subagent starts none: end your turn asking the main session to run {start}" if steward.by_agent(d)
                  else f"{start}, arm the Monitor it prints if any, then retry (mergeworthy:task step 5)"))
 
 def need_home(repo, path):
@@ -409,10 +409,6 @@ def title_setter(repo, num):
     login = ((last or {}).get('actor') or {}).get('login')
     return (login, last.get('created_at')) if login and login != me else None
 
-def by_agent():
-    """A subagent's command: Claude Code's (agent_id), or a T3 child's (its thread has a parent)."""
-    return bool(d.get('agent_id')) or len(steward.threads(d.get('session_id'))) > 1
-
 RECORDS = os.path.realpath(os.path.expanduser('~/.claude/pr-steps')) + os.sep
 push_urls = []  # where this command's pushes go (pushed()), for the watcher check
 # what this command does on GitHub (own_actions), recorded once it passed every check: the watcher logs these changes without waking the session
@@ -647,7 +643,7 @@ def check(t, has_cd):
     if p in ('docker', 'docker-compose'):
         check_compose(env, t)
     # a watcher wakes the session that started it, and a subagent's result is its last message: the main session owns the PR and its watcher
-    if p == 'gh-watch-start' and '--round' not in a and by_agent():
+    if p == 'gh-watch-start' and '--round' not in a and steward.by_agent(d):
         block("a subagent never starts a watcher: it would wake you, not the main session that owns the PR. End your turn with your result; "
               "the main session watches (mergeworthy:reply step 1)")
     # A credential file printed to the tool output lands in the transcript (an npm token, 2026-10-14)
@@ -733,7 +729,7 @@ def check(t, has_cd):
         if a[1] == 'edit' and opt(a[2:], ['--title', '-t']) and (who := title_setter(*post_target('pr', a[2:], env, run_dir))):
             block(f"{who[0]} set this PR's title ({who[1]}): it is their decision. Keep it, or ask them on the PR first (mergeworthy:pull-request step 7)")
     # A review's verdict is the reviewer's final message, which it writes itself (`codex exec -o`, an agent's output file); an agent's stdout is it too
-    if p not in ('claude', 'codex') and any(where.expand(x).endswith('.review.out') for x in written_files(t)) and not by_agent():
+    if p not in ('claude', 'codex') and any(where.expand(x).endswith('.review.out') for x in written_files(t)) and not steward.by_agent(d):
         block("a review's output is the reviewer's final message, written by the reviewer: `codex exec -o <out>`, or the agent writes <out> itself. "
               "Never write a verdict yourself (mergeworthy:delegate §Reviewers, post step 3)")
     written = [known(where.file(x)) for x in written_files(t)]
@@ -884,7 +880,8 @@ if err and (m := GUARDED.search(unquoted(cmd))):  # its words are still checked 
     block(f"{err}, so this command's `{verb}` can't be checked" if 'shell parser' in err else f"this command doesn't parse ({err}), so its `{verb}` "
           "can't be checked: split it into simple commands, a message or body in a file (`git commit -F <file>`, `--body-file`)")
 waits = re.search(r'\b(until|while)\b[^\n]*\bsleep\b', cmd) if err else any(s.loop and prog(s)[:1] and os.path.basename(prog(s)[0]) == 'sleep' for s in segs)
-if waits and not d.get('tool_input', {}).get('run_in_background'):
+# a subagent's result is its last message, so waiting for its own run is its job
+if waits and not d.get('tool_input', {}).get('run_in_background') and not steward.by_agent(d):
     block('never wait in the foreground: the main session keeps working while agents and builds run. Rely on the task-completion notification, '
           'or run the wait with run_in_background (one notification when it ends)')
 # a Playwright install prunes the browser builds other sessions use from the shared ~/.cache/ms-playwright (agent.md §Machine)
