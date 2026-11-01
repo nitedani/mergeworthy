@@ -166,6 +166,12 @@ SETTERS = ('read', 'mapfile', 'readarray', 'unset', 'getopts', 'wait')  # builti
 ASSIGNS = ('=', '+=', '-=', '*=', '/=', '%=', '<<=', '>>=', '&=', '^=', '|=', '++', '--')
 
 
+def _name(w):
+    """The variable a word names, its identifier prefix (`D=x`, `D[0]` -> D), or None for a word that names none (-r, 5)."""
+    m = re.match(r'[A-Za-z_]\w*', w)
+    return m and m[0]
+
+
 def _unseen(tree, src):
     """The names a script may set where Where can't follow, read from its syntax: a name assigned other than by a command of only
     `NAME=value` words (export, declare, D+=x, D[1]=x, D=x cmd), one a builtin sets (read, mapfile, printf -v, unset, getopts, wait -p),
@@ -189,19 +195,19 @@ def _unseen(tree, src):
             if name in ('eval', 'source', '.', 'trap'):
                 return EVERY
             if name in SETTERS:
-                names.update(x for x in argv[1:] if re.fullmatch(r'[A-Za-z_]\w*', x))
+                names.update(map(_name, argv[1:]))
             elif name == 'printf':
-                names.update(argv[i + 1] for i in range(1, len(argv) - 1) if argv[i] == '-v')
+                names.update(_name(argv[i + 1]) for i in range(1, len(argv) - 1) if argv[i] == '-v')
         elif cmd.get('Type') == 'DeclClause':
-            names.update(a['Name']['Value'] if a.get('Name') else _word(a['Value'], src) for a in cmd.get('Args') or [])
+            names.update(a['Name']['Value'] if a.get('Name') else _name(_word(a['Value'], src)) for a in cmd.get('Args') or [])
         if t == 'ParamExp' and (y.get('Exp') or {}).get('Op') in ('=', ':=') and y.get('Param'):
             names.add(y['Param']['Value'])
         if t in ('BinaryArithm', 'UnaryArithm') and y.get('Op') in ASSIGNS and (y.get('X') or {}).get('Type') == 'Word':
-            names.add(_word(y['X'], src))
+            names.add(_name(_word(y['X'], src)))
         if t == 'ForClause' and (y.get('Loop') or {}).get('Name'):
             loops.add(y['Loop']['Name']['Value'])
         todo += [v for v in y.values() if isinstance(v, (dict, list))]
-    return frozenset(names | assigned & loops)
+    return frozenset(names - {None} | assigned & loops)
 
 
 def _calls(node, src):

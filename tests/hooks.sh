@@ -2279,6 +2279,8 @@ check "a draft whose heredoc names Where, D, let and (a; b), then a cd to \$W/re
   "$(ibash "$IT" "W=$T/nogit; mkdir -p \$W/drafts; cat > \$W/a.md <<'EOF'"$'\n'"Where D is set, let it be (a; b)."$'\n'"EOF"$'\n'"cd \$W/repo && git log -1")"
 check "BLOCK: a script a shell reads from a heredoc (bash <<'EOF', cat <<'EOF' | bash) that reads an inherited D can't tell \$D: its write there may land in the repo" "2 2" \
   "$(D="$T/nogit" ibash "$IT" "bash <<'EOF'"$'\n'"read D <<< $I"$'\n'"echo x > \"\$D/a.txt\""$'\n'"EOF" "$T/nogit") $(D="$T/nogit" ibash "$IT" "cat <<'EOF' | bash"$'\n'"read D <<< $I"$'\n'"echo x > \"\$D/a.txt\""$'\n'"EOF" "$T/nogit")"
+check "BLOCK: a quoted or subscripted name sets the variable too (export \"D=…\", read 'D[0]', printf -v 'D[0]', (( D[0]=2 ))): a write to a path it starts can't be told" "2 2 2 2" \
+  "$(ibash "$IT" "D=$T/nogit; (export \"D=$I\"; cd \$D; echo x > a.txt)" "$T/nogit") $(ibash "$IT" "D=$T/nogit; read 'D[0]' <<< $I; echo x > \$D/a.txt" "$T/nogit") $(ibash "$IT" "D=$T/nogit; printf -v 'D[0]' $I; echo x > \$D/a.txt" "$T/nogit") $(ibash "$IT" "D=$T/nogit; (( D[0]=2 )); echo x > \$D/a.txt" "$T/nogit")"
 check "a variable the line sets only by a plain D=… is still followed into a subshell's cd" 0 "$(ibash "$IT" "D=$T/nogit; (cd \$D; echo x > a.txt)")"
 check "logs written outside it by a backgrounded { } group in a loop, after its cd to \$W/\$t, pass" 0 \
   "$(ibash "$IT" "W=$T/nogit; for t in a b; do { cd \$W/\$t && netns-run bash x.sh > \$W/probe/\$t.out 2> \$W/probe/\$t.err; echo \"\$t exit \$?\" >> \$W/probe/\$t.err; } & done; wait")"
