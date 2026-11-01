@@ -131,8 +131,8 @@ def _scope(kind, name='', plain=False):
 class Seg(list):
     """A simple command's argv; scopes: the (id, kind, function name) of each scope it runs in, outermost first, for Where; loop: whether it
     runs inside a while or until loop; raw: each word's source as written, None when not known (Where then expands none); unseen: the
-    names the line may set where Where can't follow (_unseen), whose values it never trusts; nested: whether it is in a script the line
-    runs (`eval`'s included), where a plain walk loses the dir (Where)."""
+    names its script, or a script running it, may set where Where can't follow (_unseen), whose values it never trusts; nested: whether
+    it is in a script the line runs (`eval`'s included), where a plain walk loses the dir (Where)."""
     scopes, loop, raw, unseen, nested = (), False, None, frozenset(), False
 
 
@@ -336,10 +336,8 @@ def parse(cmd, depth=0, scopes=(), loop=False):
             for x in inner: x.nested = True
             out += inner
             err = err or e
-    for x in segs: x.unseen = x.unseen or unseen  # a heredoc script's commands keep its own (_segments parsed it)
-    if not depth:  # the whole line's names, its scripts' included, hold for each of its commands
-        line = EVERY if any(x.unseen is EVERY for x in out) else frozenset().union(*(x.unseen for x in out))
-        for x in out: x.unseen = line
+    # a script's names hold for its own commands and the scripts it runs, never for its shell's: a child shell sets none of them (eval is EVERY)
+    for x in out: x.unseen = EVERY if EVERY in (x.unseen, unseen) else x.unseen | unseen
     return out, err
 
 
