@@ -2281,6 +2281,11 @@ check "BLOCK: a script a shell reads from a heredoc (bash <<'EOF', cat <<'EOF' |
   "$(D="$T/nogit" ibash "$IT" "bash <<'EOF'"$'\n'"read D <<< $I"$'\n'"echo x > \"\$D/a.txt\""$'\n'"EOF" "$T/nogit") $(D="$T/nogit" ibash "$IT" "cat <<'EOF' | bash"$'\n'"read D <<< $I"$'\n'"echo x > \"\$D/a.txt\""$'\n'"EOF" "$T/nogit")"
 check "BLOCK: a quoted or subscripted name sets the variable too (export \"D=…\", read 'D[0]', printf -v 'D[0]', (( D[0]=2 ))): a write to a path it starts can't be told" "2 2 2 2" \
   "$(ibash "$IT" "D=$T/nogit; (export \"D=$I\"; cd \$D; echo x > a.txt)" "$T/nogit") $(ibash "$IT" "D=$T/nogit; read 'D[0]' <<< $I; echo x > \$D/a.txt" "$T/nogit") $(ibash "$IT" "D=$T/nogit; printf -v 'D[0]' $I; echo x > \$D/a.txt" "$T/nogit") $(ibash "$IT" "D=$T/nogit; (( D[0]=2 )); echo x > \$D/a.txt" "$T/nogit")"
+echo "D=$I" > "$T/nogit/e.sh"
+check "BLOCK: a subshell that runs source, ., trap or an eval of a variable may set any variable: a relative write after its cd \$D can't be told" "2 2 2 2" \
+  "$(ibash "$IT" "D=$T/nogit; (source $T/nogit/e.sh; cd \$D; echo x > a.txt)" "$T/nogit") $(ibash "$IT" "D=$T/nogit; (. $T/nogit/e.sh; cd \$D; echo x > a.txt)" "$T/nogit") $(ibash "$IT" "D=$T/nogit; (trap 'D=$I' DEBUG; cd \$D; echo x > a.txt)" "$T/nogit") $(ibash "$IT" "D=$T/nogit; x='D=$I'; (eval \"\$x\"; cd \$D; echo x > a.txt)" "$T/nogit")"
+check "BLOCK: a variable a script the line runs sets (bash -c 'read D'), or one set by D+=… or D=… >f, can't be told in a subshell's cd \$D" "2 2 2" \
+  "$(ibash "$IT" "D=$T/nogit; (bash -c 'read D'; cd \$D; echo x > a.txt)" "$T/nogit") $(ibash "$IT" "D=$T/nogit; (D+=/../instr; cd \$D; echo x > a.txt)" "$T/nogit") $(ibash "$IT" "D=$T/nogit; (D=$I > /dev/null; cd \$D; echo x > a.txt)" "$T/nogit")"
 check "a variable the line sets only by a plain D=… is still followed into a subshell's cd" 0 "$(ibash "$IT" "D=$T/nogit; (cd \$D; echo x > a.txt)")"
 check "logs written outside it by a backgrounded { } group in a loop, after its cd to \$W/\$t, pass" 0 \
   "$(ibash "$IT" "W=$T/nogit; for t in a b; do { cd \$W/\$t && netns-run bash x.sh > \$W/probe/\$t.out 2> \$W/probe/\$t.err; echo \"\$t exit \$?\" >> \$W/probe/\$t.err; } & done; wait")"
