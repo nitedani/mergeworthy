@@ -1,0 +1,37 @@
+#!/bin/bash
+# learn-units: installs or refreshes the daily project-file learning run's units (mergeworthy-learn.service and .timer), from
+# session-start at every session (where a plugin update lands) and from mergeworthy-update. Changes a unit only when its text
+# differs, ignoring the PATH line (each caller's PATH differs; a new one is written with any other change); enables the timer
+# only when it isn't, and runs the service once then, to condense what is over the cap; restarts nothing that runs. Silent: its
+# callers print. Only where the installed copy has bin/project-learn and the systemd user manager is this HOME's.
+[ -x ~/.mergeworthy/current/bin/project-learn ] || exit 0
+[ "$(systemctl --user show-environment 2>/dev/null | sed -n 's/^HOME=//p')" = "$HOME" ] || exit 0
+d=~/.config/systemd/user changed=
+mkdir -p "$d" || exit 1
+cat > "$d/mergeworthy-learn.service.new" <<UNIT
+[Unit]
+Description=mergeworthy: the daily project-file learning run
+
+[Service]
+Type=oneshot
+Environment="PATH=$PATH"
+ExecStart=%h/.mergeworthy/current/bin/project-learn start
+UNIT
+cat > "$d/mergeworthy-learn.timer.new" <<'UNIT'
+[Unit]
+Description=mergeworthy: the daily project-file learning run, after the steward's 04:45 pass
+
+[Timer]
+OnCalendar=*-*-* 06:30
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+UNIT
+for f in "$d"/mergeworthy-learn.{service,timer}; do
+  if [ -f "$f" ] && cmp -s <(grep -v '^Environment="PATH=' "$f.new") <(grep -v '^Environment="PATH=' "$f"); then rm "$f.new"; else mv "$f.new" "$f" || exit 1; changed=1; fi
+done
+[ -n "$changed" ] && systemctl --user daemon-reload
+systemctl --user is-enabled --quiet mergeworthy-learn.timer && exit 0
+systemctl --user enable --now mergeworthy-learn.timer || exit 1
+systemctl --user start --no-block mergeworthy-learn.service

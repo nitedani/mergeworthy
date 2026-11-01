@@ -21,14 +21,15 @@ that `round` writes <folder>'s watcher files, `metrics` appends its records to <
   FOLLOW-UP MISS/TASTE verdicts, and the tokens (cache reads left out) of the local sessions that name the PR more than any other
   (unknown when none does).
 """
-import datetime, glob, json, os, re, statistics, subprocess, sys, time
+import glob, json, os, re, statistics, subprocess, sys, time
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'hooks'))
+from gh_common import BADGE, MAINTAINER, epoch, gh_pages, iso, read, search
 
 HOME = os.path.expanduser('~')
 NOW = time.time()
 CORRECTION = re.compile(r"\b(why (?:did|didn't|are|aren't|is|isn't|not|do)|not good|that's wrong|wrong|you (?:forgot|missed|skipped)|stop|revert|undo|again\?|nem jó|miért|rossz|állj|megint)\b", re.I)
 PR_URL = re.compile(r'github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)')
 EVENT = re.compile(r'^### (?:FOLLOW-UP|MAINTAINER REVIEW) ([\w.-]+/[\w.-]+#\d+(?:, #\d+)*): (\S+) by .*$', re.M)  # one commit can touch several PRs: o/r#5, #6
-BADGE = re.compile(r'\A\s*(?:<img [^>]*alt="(?:Claude|Codex)"[^>]*>\s*)+')  # an agent's post starts with its badge
 VERDICT = re.compile(r'^(\S+)\s+(MISS|TASTE|DIRECTION|WORKED)\b', re.M)
 SHA = re.compile(r'[0-9a-f]{7,40}')
 # a pass we owed: a linked prompt, or a refactor, simplify or review round
@@ -37,21 +38,6 @@ PASS = re.compile(r"(?:apply|appy)\b[^\n]{0,10}https?://|(?:do|run)\s+(?:another
                   r"|(?:simplify|refactor|re-?review|review)\s+(?:this|the|your)\s+(?:PR|pull\s+request|code|diff|changes)\b", re.I)
 # what puts a sentence to us: @mentions, a condition ("If it is from your perspective, then"), a request ("could you", "please")
 TO_US = re.compile(r"[^\w@]*(?:@[\w-]+[\s,]*(?:\([^)\n]*\)\s*)?)*(?:(?:if|when|once)\b[^,\n]*,\s*(?:then\s+)?)?(?:(?:can|could|would|will)\s+you\s+)?(?:please\s+)?", re.I)
-
-
-def iso(t):
-    return datetime.datetime.fromtimestamp(t, datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-
-
-def epoch(s):
-    return datetime.datetime.fromisoformat(s.replace('Z', '+00:00')).timestamp()
-
-
-def read(path):
-    try:
-        return open(path, errors='replace').read()
-    except OSError:
-        return ''
 
 
 def folders():
@@ -192,12 +178,11 @@ QUERY = '''query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pul
  timelineItems(itemTypes:[READY_FOR_REVIEW_EVENT],first:1){nodes{... on ReadyForReviewEvent{createdAt}}}
  reviews(first:100){nodes{author{login} authorAssociation state submittedAt comments{totalCount}}}
  commits(last:100){nodes{commit{committedDate parents{totalCount}}}}}}}'''
-MAINTAINER = ('OWNER', 'MEMBER', 'COLLABORATOR')
 
 
 def maintainer_asks(repo, num, author):
     """[time, URL] of each ask for a pass on the PR by a maintainer other than its author, from all its comments and reviews."""
-    pages = lambda path: [x for page in gh('api', '--paginate', '--slurp', f'{path}?per_page=100') for x in page]
+    pages = lambda path: gh_pages(f'{path}?per_page=100')
     posts = [(c['created_at'], c) for c in pages(f'repos/{repo}/issues/{num}/comments')] + \
             [(r['submitted_at'], r) for r in pages(f'repos/{repo}/pulls/{num}/reviews') if r.get('submitted_at')]
     return sorted([at, v['html_url']] for at, v in posts if (v.get('user') or {}).get('login') != author and v.get('author_association') in MAINTAINER
@@ -256,16 +241,6 @@ def summary(rows):
             ('median hours to merge', med([r['hours_to_merge'] for r in merged])),
             ('median tokens per merged PR', f"{med(tokens)}" + (f" ({len(tokens)} known)" if merged else '')),
             ('FOLLOW-UP MISS/TASTE', sum(r['followup_miss_taste'] for r in rows))]
-
-
-def search(q):
-    items, page = [], 1
-    while True:
-        got = gh('api', '-X', 'GET', 'search/issues', '-f', f'q={q}', '-F', 'per_page=100', '-F', f'page={page}')['items']
-        items += got
-        if len(got) < 100:
-            return items
-        page += 1
 
 
 def costs(since):

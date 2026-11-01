@@ -1,0 +1,449 @@
+#!/usr/bin/env python3
+"""project-learn list <owner/repo or its URL> [--since ISO] | mark <owner/repo> <ISO> [<sha7>@<time>...] | start: the daily project-file learning run (task §Project file).
+
+- list: from the learning mark, the study's (~/.mergeworthy/projects/<owner>/<repo>.study.md) `Learned: <time>` line, else its first
+  line `Studied: <date>` (or --since), up to now, what the repo's maintainers said or did to our work there: conversation comments,
+  reviews, inline comments, reactions on our posts (the body, comments, inline comments, review bodies), their commits on our PRs,
+  their commits on the default branch that change a file of our PRs merged in the last 60 days; and their review bodies and inline
+  comments on everyone else's PRs. Our work, on both forges, is an issue, PR or MR whose body, or one of whose comments, starts with
+  an agent's badge, whoever wrote it; a post with the badge or a commit with the agent's trailer is ours. GitHub, through gh: a
+  maintainer is a login `## Who decides` names or one GitHub shows as owner, member or collaborator. GitLab, when the project file
+  or study links the repo on a gitlab.* host, through glab: a maintainer is a login or commit author `## Who decides` names or a
+  project member who can push (access level 30 or more). One line per item,
+  `<time>\t<kind>\t<login>\t<permalink>\t<their words>`, leaving out a post or commit the project file, the study or a work folder's
+  followups-sorted.txt already cites; then the `mark` line that covers them, carrying their commits. GET calls and GraphQL queries only.
+- mark <owner/repo> <ISO> [<sha7>@<time>...]: writes the study's `Learned: <ISO>` line (under `Studied:`, which stays the full study's
+  date) and its `Commits read:` line, the listed commits of the last 7 days; refuses a time before the mark or in the future, a study
+  without `Studied:`, and a project file over its word cap (hooks/project_file.py).
+- start: the timer's run (mergeworthy-update installs it), once a day: lists each repo with a study into
+  ~/.mergeworthy/work/project-learn/lists/, marks those with nothing listed and within the cap, and starts one T3 thread that sorts
+  the rest; each run, a failed one with why, is a line of runs.txt there.
+"""
+import collections, functools, glob, json, os, re, shlex, subprocess, sys, time, urllib.parse
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'hooks'))
+import project_file
+from gh_common import BADGE, MAINTAINER, epoch, gh_pages, iso, pace, read, search, when
+
+HOME = os.path.expanduser('~')
+PROJECTS = project_file.PROJECTS
+WORK = os.path.dirname(project_file.RUNS)
+NOW = time.time()
+TRAILER = re.compile(r'^co-authored-by: (?:claude|codex)\b', re.I | re.M)  # an agent's commit, whoever pushed it
+FOLLOWUP_DAYS = 60  # the watcher's FOLLOW-UP window after a merge
+REACTION_DAYS = 14
+# a commit's date is when it was made, not pushed: commits are read from this long before the mark, and the list's mark line hands
+# those it held to the study (`Commits read:`), so one pushed late is listed once
+PUSH_LAG_DAYS = 7
+GLAB_CALLS, GLAB_GAP = collections.deque(maxlen=1), 1.2  # when the last glab call started, and the seconds before the next
+# key: what a citation of the item itself holds, its permalink or sha (None for a reaction, which has no permalink of its own)
+Item = collections.namedtuple('Item', 'at kind login assoc url text key')
+PROMPT = """Daily project-file learning run (mergeworthy `project-learn start`), in {work}. For each list below: sort every line into that \
+repo's project file by task §Project file (one line per lesson with its permalink, updating a line instead of adding one beside it; \
+praise and approval go in What worked) and its quote into the repo's study; while the project file is over {cap} words, condense it \
+(merge near-duplicates, keep the line with the strongest evidence, drop one a later line contradicts; the quotes stay in the study); \
+then run the `project-learn mark` line the list ends with, `project-learn` being `{cmd}`. The project files and studies are in \
+{projects}; post nothing, and change no file outside it.
+Lists: {lists}"""
+
+
+def paths(repo):
+    base = os.path.join(PROJECTS, *repo.split('/'))
+    return base + '.md', base + '.study.md'
+
+
+def mark_of(repo):
+    """The learning mark: the study's `Learned:` line, else the full study's `Studied:` date; None without a study."""
+    body = read(paths(repo)[1])
+    studied = re.match(r'Studied:\s*(\S+)', body)
+    m = studied and (re.search(r'^Learned: (\S+)$', body, re.M) or studied)
+    return when(m[1]) if m else None
+
+
+def gitlab_host(repo):
+    """The gitlab.* host the project file or study links the repo on, else None (GitHub)."""
+    m = re.search(r'https?://(gitlab\.[\w.-]+)/' + re.escape(repo) + r'(?![\w.-])', read(paths(repo)[0]) + read(paths(repo)[1]), re.I)
+    return m[1] if m else None
+
+
+def glab(what, *args):
+    """One glab api call's output, at most 50 calls a minute: gitlab.com allows a free plan's user 100 a minute
+    (burst_traffic_per_user_free_plan), which the sessions and watchers posting as that user share."""
+    pace(GLAB_CALLS, GLAB_GAP)
+    try:
+        r = subprocess.run(['glab', 'api', *args], capture_output=True, text=True)
+    except FileNotFoundError:
+        sys.exit("project-learn: no glab on PATH: a GitLab repo is read through glab")
+    if r.returncode:
+        sys.exit(f"project-learn: glab api {what} failed: {(r.stderr or r.stdout).strip()[:200]}")
+    return r.stdout
+
+
+def glab_pages(host, path):
+    """Every page of a GET through glab, one call a page: glab's --paginate would send them back to back."""
+    out, page = [], 1
+    while True:
+        got = json.loads(glab(path, '--hostname', host, f"{path}{'&' if '?' in path else '?'}per_page=100&page={page}"))
+        out += got
+        if len(got) < 100:
+            return out
+        page += 1
+
+
+REVIEW_REACTIONS = 'query($id:ID!){node(id:$id){... on PullRequestReview{reactions(first:100){nodes{content createdAt user{login}}}}}}'
+
+
+def graphql(query, node_id):
+    r = subprocess.run(['gh', 'api', 'graphql', '-f', f'query={query}', '-f', f'id={node_id}'], capture_output=True, text=True)
+    if r.returncode:
+        sys.exit(f"project-learn: gh api graphql failed: {r.stderr.strip()[:200]}")
+    return json.loads(r.stdout)
+
+
+def words_of(body):
+    """A post's own words on one line: no quoted lines, no code."""
+    body = re.sub(r'`[^`\n]*`', '', re.sub(r'(?ms)^\s*(```|~~~).*?^\s*\1[^\n]*$', '', body or ''))
+    return ' '.join(' '.join(l for l in body.splitlines() if not l.lstrip().startswith('>')).split())[:300]
+
+
+def our_work(body, comments):
+    """Our work, on either forge: an issue, PR or MR whose body, or one of whose comments, starts with an agent's badge, whoever
+    wrote it."""
+    return any(BADGE.match(b or '') for b in (body, *comments))
+
+
+def activity(repo, since):
+    """[Item] by anyone: on our issues and PRs (our_work) updated since 14 days before then, and the reviews on everyone else's PRs
+    updated since then. Whether a thread is ours is read from its comments, and a PR's reviews and inline comments, which are read
+    for every thread updated in that window: GitHub's search doesn't index every comment."""
+    follow, landed = followups(repo, since)
+    out = []
+    login = lambda u: (u or {}).get('login') or ''
+    item = lambda at, kind, u, assoc, url, text: Item(at, kind, login(u), assoc, url, text, url)
+    reactions = lambda api_url, url, what: [Item(x['created_at'], 'reaction', login(x['user']), None, url, f"{x['content']} on {what}", None)
+                                            for x in gh_pages(api_url.split('api.github.com/', 1)[1] + '/reactions?per_page=100')]
+    # a reaction leaves its post's issue un-updated: our posts of the two weeks before the mark are read for theirs too
+    for i in search(f'repo:{repo} updated:>={iso(since - REACTION_DAYS * 86400)[:10]}'):
+        n, pr, badged = i['number'], 'pull_request' in i, BADGE.match(i.get('body') or '')
+        comments = gh_pages(f'repos/{repo}/issues/{n}/comments?per_page=100')
+        reviews = gh_pages(f'repos/{repo}/pulls/{n}/reviews?per_page=100') if pr else []
+        inline = gh_pages(f'repos/{repo}/pulls/{n}/comments?per_page=100') if pr else []
+        ours = our_work(i.get('body'), [c.get('body') for c in comments + reviews + inline])
+        if not ours and (not pr or epoch(i['updated_at']) <= since):
+            continue
+        if badged and (i.get('reactions') or {}).get('total_count'):
+            out += reactions(i['url'], i['html_url'], 'our post')
+        for c in comments if ours else ():
+            if not BADGE.match(c.get('body') or ''):
+                out.append(item(c['created_at'], 'comment', c['user'], c.get('author_association'), c['html_url'], words_of(c['body'])))
+            elif (c.get('reactions') or {}).get('total_count'):
+                out += reactions(c['url'], c['html_url'], 'our comment')
+        kind = lambda k: k if ours else f'others-{k}'
+        for v in reviews:
+            if not v.get('submitted_at'):
+                continue
+            if not BADGE.match(v.get('body') or ''):
+                if v['state'] != 'COMMENTED' or v.get('body'):
+                    out.append(item(v['submitted_at'], kind('review'), v['user'], v.get('author_association'), v['html_url'], f"{v['state']}: {words_of(v['body'])}"))
+            elif ours:  # a review has no REST reactions endpoint; GraphQL's PullRequestReview is Reactable
+                out += [Item(x['createdAt'], 'reaction', login(x['user']), None, v['html_url'], f"{x['content']} on our review", None)
+                        for x in graphql(REVIEW_REACTIONS, v['node_id'])['data']['node']['reactions']['nodes']]
+        for c in inline:
+            if not BADGE.match(c.get('body') or ''):
+                out.append(item(c['created_at'], kind('inline'), c['user'], c.get('author_association'), c['html_url'], f"{c['path']}: {words_of(c['body'])}"))
+            elif ours and (c.get('reactions') or {}).get('total_count'):
+                out += reactions(c['url'], c['html_url'], 'our inline comment')
+        for c in pr_commits(repo, n) if pr and badged else ():
+            # a merge of the base isn't theirs to learn from, nor our earlier PR's squash or merge on a stacked base
+            if not TRAILER.search(c['commit']['message']) and len(c['parents']) < 2 and c['sha'] not in landed:
+                out.append(Item(c['commit']['committer']['date'], 'commit', login(c['author']), None,
+                            f"https://github.com/{repo}/pull/{n}/commits/{c['sha']}", c['commit']['message'].split('\n')[0], c['sha']))
+    return out + follow
+
+
+def pr_commits(repo, n):
+    """A PR's commits, all of them: GitHub's list stops at 250, so a PR with that many is read again as the compare of its base and
+    head, which pages past it."""
+    commits = gh_pages(f'repos/{repo}/pulls/{n}/commits?per_page=100')
+    if len(commits) < 250:
+        return commits
+    p = gh_pages(f'repos/{repo}/pulls/{n}')[0]
+    return [c for page in gh_pages(f"repos/{repo}/compare/{p['base']['sha']}...{p['head']['sha']}?per_page=100") for c in page['commits']]
+
+
+def landed_since(since):
+    """Since when our merged PRs' shas are read: the commits a list reads start a week before its since, the follow-ups 60 days ago."""
+    return min(since - PUSH_LAG_DAYS * 86400, NOW - FOLLOWUP_DAYS * 86400)
+
+
+def followup_items(prs, landed, commits, sign):
+    """Commits not ours that change a file of one of our merged PRs after it merged. prs: [(number, merged_at, its files: a call)];
+    landed: our PRs' merge and squash shas; commits: dicts of sha, at, login, url, title, message, parents and files (a call). Files
+    are read only for a commit not ours made after our earliest merge, a PR's once."""
+    out, prs = [], [(n, merged_at, functools.cache(theirs)) for n, merged_at, theirs in prs]
+    first = min((epoch(merged_at) for _, merged_at, _ in prs), default=float('inf'))
+    for c in commits:
+        if TRAILER.search(c['message']) or c['parents'] > 1 or c['sha'] in landed or epoch(c['at']) <= first:
+            continue  # ours, a merge, our PR landing, or made before any of our merges: nothing it changes can follow one
+        files = c['files']()
+        hit = [(n, files & theirs()) for n, merged_at, theirs in prs if epoch(merged_at) < epoch(c['at']) and files & theirs()]
+        if hit:  # one item per commit, naming every PR of ours it follows up
+            out.append(Item(iso(epoch(c['at'])), 'follow-up', c['login'], None, c['url'],
+                            f"changes {', '.join(sorted(set().union(*(f for _, f in hit))))} from {', '.join(f'{sign}{n}' for n, _ in hit)}: {c['title']}", c['sha']))
+    return out
+
+
+def followups(repo, since):
+    """Commits on the default branch since then, not ours, that change a file of one of our PRs merged in the last 60 days; and the
+    merge and squash shas of our PRs merged since landed_since(since)."""
+    merged = [i for i in search(f'repo:{repo} is:pr is:merged merged:>={iso(landed_since(since))[:10]}')
+              if BADGE.match(i.get('body') or '')]
+    prs, landed = [], set()
+    for i in merged:
+        p = gh_pages(f"repos/{repo}/pulls/{i['number']}")[0]
+        landed.add(p['merge_commit_sha'])
+        if epoch(p['merged_at']) >= NOW - FOLLOWUP_DAYS * 86400:
+            prs.append((i['number'], p['merged_at'], lambda n=i['number']: {f['filename'] for f in gh_pages(f"repos/{repo}/pulls/{n}/files?per_page=100")}))
+    if not prs:
+        return [], landed
+    files = lambda sha: lambda: {f['filename'] for f in gh_pages(f"repos/{repo}/commits/{sha}")[0].get('files') or []}
+    commits = ({'sha': c['sha'], 'at': c['commit']['committer']['date'], 'login': (c.get('author') or {}).get('login') or '', 'url': c['html_url'],
+                'title': c['commit']['message'].split('\n')[0], 'message': c['commit']['message'], 'parents': len(c['parents']), 'files': files(c['sha'])}
+               for c in gh_pages(f'repos/{repo}/commits?since={iso(since - PUSH_LAG_DAYS * 86400)}&per_page=100'))
+    return followup_items(prs, landed, commits, '#'), landed
+
+
+GITLAB_POSTS = """query($p: ID!, $after: Time!, $cursor: String) { project(fullPath: $p) { %s(updatedAfter: $after, first: 20, after: $cursor) {
+  count pageInfo { hasNextPage endCursor }
+  nodes { iid webUrl description updatedAt %s
+    notes(filter: ONLY_COMMENTS, first: 100) { pageInfo { hasNextPage } nodes { id body system createdAt author { username } position { newPath } awardEmoji { nodes { name } } } } } } } }"""
+
+
+def gitlab_posts(host, repo, kind, after):
+    """The MRs or issues (kind: mergeRequests, issues) updated after then, each with its notes, through GraphQL: 20 a request, where REST
+    needs one per post and one per note's award emoji, and gitlab.com allows a free plan's user 100 requests a minute. Only an MR has
+    awardEmoji in GraphQL; an issue has its thumbs counts alone."""
+    out, cursor = [], None
+    while True:
+        query = GITLAB_POSTS % (kind, 'awardEmoji { nodes { name } }' if kind == 'mergeRequests' else '')
+        args = ['--hostname', host, 'graphql', '-f', f'query={query}', '-f', f'p={repo}', '-f', f'after={iso(after)}'] + (['-f', f'cursor={cursor}'] if cursor else [])
+        answer = json.loads(glab(f'graphql ({kind})', *args))
+        project = (answer.get('data') or {}).get('project')
+        if project is None:  # glab exits 0 on it
+            sys.exit(f"project-learn: glab on {host} can't read {repo} (not logged in, no access, or the project moved){': ' + json.dumps(answer['errors'])[:200] if answer.get('errors') else ''}")
+        page = project[kind]
+        for m in page['nodes']:
+            if m['notes']['pageInfo']['hasNextPage']:
+                sys.exit(f"project-learn: {m["webUrl"]} has over 100 comments, more than one read covers: sort it by hand")
+        out += page['nodes']
+        if not page['pageInfo']['hasNextPage']:
+            if len(out) < page['count']:  # a reader would take the rest as nothing
+                sys.exit(f"project-learn: GitLab returned {len(out)} of the {page['count']} {kind} of {repo} updated after {iso(after)}")
+            return out
+        cursor = page['pageInfo']['endCursor']
+
+
+def gitlab_activity(host, repo, since):
+    """[Item] by anyone, as activity() reads GitHub: on our MRs and issues (our_work, from the notes GraphQL returns) updated since 14 days
+    before then, the inline notes on everyone else's MRs updated since then, and the follow-ups on our MRs merged in the last 60 days."""
+    proj, out = f"projects/{urllib.parse.quote(repo, safe='')}", []
+    follow, landed = gitlab_followups(host, proj, since)
+    get = lambda path: glab_pages(host, path)
+    at = lambda t: iso(epoch(t))
+    awards = lambda path, url, what: [Item(at(x['created_at']), 'reaction', x['user']['username'], None, url, f"{x['name']} on {what}", None)
+                                      for x in get(f"{path}/award_emoji")]  # only GitLab's REST has an award's time
+    after = since - REACTION_DAYS * 86400  # an award leaves its post un-updated, as a GitHub reaction does
+    for kind, rest in (('mergeRequests', 'merge_requests'), ('issues', 'issues')):
+        mr = kind == 'mergeRequests'
+        for m in gitlab_posts(host, repo, kind, after):
+            badged = BADGE.match(m.get('description') or '')
+            ours = our_work(m.get('description'), [n.get('body') for n in m['notes']['nodes']])
+            if not ours and (not mr or epoch(m['updatedAt']) <= since):
+                continue
+            base = f"{proj}/{rest}/{m['iid']}"
+            if badged and (not mr or m['awardEmoji']['nodes']):
+                out += awards(base, m['webUrl'], 'our MR' if mr else 'our issue')
+            for n in m['notes']['nodes']:
+                nid, inline = n['id'].rsplit('/', 1)[1], bool(n['position'])
+                url = f"{m['webUrl']}#note_{nid}"
+                if n['system']:
+                    continue
+                if not BADGE.match(n.get('body') or ''):
+                    if ours or inline:
+                        text = words_of(n['body'])
+                        k = 'others-inline' if not ours else 'inline' if inline else 'comment'
+                        out.append(Item(at(n['createdAt']), k, n['author']['username'], None, url, f"{n['position']['newPath']}: {text}" if inline else text, url))
+                elif ours and n['awardEmoji']['nodes']:
+                    out += awards(f"{base}/notes/{nid}", url, 'our inline comment' if inline else 'our comment')
+            if badged and mr and epoch(m['updatedAt']) > since:  # a push updates its MR
+                for c in get(f"{base}/commits"):
+                    # a merge of the base isn't theirs to learn from, nor our earlier MR's squash or merge on a stacked base
+                    if not TRAILER.search(c['message']) and len(c['parent_ids']) < 2 and c['id'] not in landed:
+                        out.append(Item(at(c['committed_date']), 'commit', c['author_name'], None, c['web_url'], c['title'], c['id']))
+    return out + follow
+
+
+def gitlab_maintainers(host, repo):
+    """The logins and name words of the project's members who can push (access level 30 or more, as the watcher reads it): GitLab's
+    counterpart of GitHub's association, so a first study, with no `## Who decides` yet, still finds them."""
+    members = glab_pages(host, f"projects/{urllib.parse.quote(repo, safe='')}/members/all")
+    return {w.lower() for m in members if m['access_level'] >= 30 for w in [m['username'], *m['name'].split()]}
+
+
+def gitlab_followups(host, proj, since):
+    """Commits on the default branch since then, not ours, that change a file of one of our MRs merged in the last 60 days; and the
+    merge and squash shas of our MRs merged since landed_since(since)."""
+    get = lambda path: glab_pages(host, path)
+    merged = [m for m in get(f"{proj}/merge_requests?state=merged&updated_after={iso(landed_since(since))}")
+              if BADGE.match(m.get('description') or '') and m.get('merged_at') and epoch(m['merged_at']) >= landed_since(since)]
+    landed = {sha for m in merged for sha in (m.get('merge_commit_sha'), m.get('squash_commit_sha')) if sha}
+    prs = [(m['iid'], m['merged_at'], lambda i=m['iid']: {p for d in get(f"{proj}/merge_requests/{i}/diffs") for p in (d['new_path'], d['old_path'])})
+           for m in merged if epoch(m['merged_at']) >= NOW - FOLLOWUP_DAYS * 86400]
+    if not prs:
+        return [], landed
+    files = lambda sha: lambda: {d['new_path'] for d in get(f"{proj}/repository/commits/{sha}/diff")}
+    return followup_items(prs, landed, ({'sha': c['id'], 'at': c['committed_date'], 'login': c['author_name'], 'url': c['web_url'], 'title': c['title'],
+                                         'message': c['message'], 'parents': len(c['parent_ids']), 'files': files(c['id'])}
+                                        for c in get(f"{proj}/repository/commits?since={iso(since - PUSH_LAG_DAYS * 86400)}")), '!'), landed
+
+
+def listed(repo, since, until, host=None):
+    """The maintainers' items in (since, until] that nothing has sorted yet, oldest first; host: the forge a URL named, else the one
+    the project file or study links."""
+    project, study = paths(repo)
+    sec = re.search(r'^## Who decides\n(.*?)(?=^## |\Z)', read(project), re.M | re.S)
+    named = {w.lower() for w in re.findall(r'[\w.-]*\w', sec[1] if sec else '')} | {repo.split('/')[0].lower()}
+    host = gitlab_host(repo) if host is None else None if host == 'github.com' else host
+    items = gitlab_activity(host, repo, since) if host else activity(repo, since)
+    named |= gitlab_maintainers(host, repo) if host else {i.login.lower() for i in items if i.assoc in MAINTAINER}  # one GitHub shows as a maintainer on any post here
+    cited = read(project) + read(study) + ''.join(read(f) for f in glob.glob(os.path.join(HOME, '.mergeworthy', 'work', '*', 'followups-sorted.txt')))
+    def sorted_already(key):
+        """The item itself is cited: its permalink whole (a PR's URL isn't one of its comments'), its fragment, or its commit's sha."""
+        whole = lambda x: re.search(re.escape(x) + r'(?![\w#/-])', cited)
+        if not key:
+            return False
+        if re.fullmatch(r'[0-9a-f]{40}', key):
+            return key[:7] in cited
+        return bool(whole(key) or '#' in key and whole(key.split('#', 1)[1]))
+    is_named = lambda who: who.lower() in named or bool(who.split()) and all(w in named for w in who.lower().split())  # a login, or a commit's author name
+    after = lambda i: since - PUSH_LAG_DAYS * 86400 if i.kind in ('commit', 'follow-up') else since
+    keep = [i._replace(key=None) for i in items if after(i) < epoch(i.at) <= until and is_named(i.login) and not sorted_already(i.key)]
+    return sorted(set(keep))
+
+
+def list_cmd(repo, since, host=None):
+    if since is None:
+        sys.exit(f"project-learn: {paths(repo)[1]} has no `Studied:` first line: write the repo study first (task §Repo study), or pass --since")
+    until = NOW
+    items = listed(repo, since, until, host)
+    lines = [f"# {repo}: maintainer activity on our work, and their reviews on others' PRs, after {iso(since)} up to {iso(until)}: {len(items)} items"]
+    lines += ['\t'.join([i.at, i.kind, i.login, i.url, i.text]) for i in items]
+    commits = list(dict.fromkeys(f"{i.url.rsplit('/', 1)[1][:7]}@{i.at}" for i in items if i.kind in ('commit', 'follow-up')))
+    lines.append(' '.join([f"# read whole: project-learn mark {repo} {iso(until)}", *commits]))  # the mark records the commits
+    return lines, items
+
+
+def mark(repo, at, listed_commits=()):
+    project, study = paths(repo)
+    cur = mark_of(repo)
+    if cur is None:
+        sys.exit(f"project-learn: {study} has no `Studied:` first line: write the repo study first (task §Repo study)")
+    t = when(at)
+    if t < cur:
+        sys.exit(f"project-learn: {at} is before the mark {iso(cur)}: the mark moves only forward")
+    if t > time.time() + 60:
+        sys.exit(f"project-learn: {at} is in the future: mark only up to what a list covered")
+    n = project_file.words(project) if os.path.isfile(project) else 0
+    if n > project_file.CAP:
+        sys.exit(f"project-learn: {project} has {n} words, over the {project_file.CAP}-word cap: condense it first (task §Project file), "
+                 "its quotes into the study, then mark")
+    bad = [c for c in listed_commits if not re.fullmatch(r'[0-9a-f]{7}@\S+', c)]
+    if bad:
+        sys.exit(f"project-learn: {bad[0]} isn't a listed commit (<sha7>@<time>): run the mark line a list printed")
+    first, _, rest = read(study).partition('\n')
+    old = re.search(r'^Commits read: (.*)$', rest, re.M)
+    rest = re.sub(r'^(?:Learned|Commits read): .*\n?', '', rest, flags=re.M)
+    # the commits made in the last 7 days that a list covered by this mark or an earlier one held: a later list leaves them out
+    recent = sorted({c for c in (old[1].split() if old else []) + list(listed_commits) if epoch(c.split('@', 1)[1]) > t - PUSH_LAG_DAYS * 86400})
+    with open(study + '.tmp', 'w') as f:
+        f.write(f"{first}\nLearned: {iso(t)}\n" + (f"Commits read: {' '.join(recent)}\n" if recent else '') + rest)
+    os.replace(study + '.tmp', study)
+    print(f"{study}: Learned: {iso(t)}")
+
+
+def this_command():
+    """This project-learn, with the folders it was pointed at, as the thread must run it: T3 starts the thread with its own
+    environment and PATH."""
+    env = [f"{k}={shlex.quote(v)}" for k, v in (('MERGEWORTHY_PROJECTS', PROJECTS), ('MERGEWORTHY_LEARN_DIR', WORK)) if os.environ.get(k)]
+    return ' '.join(env + [shlex.quote(os.path.abspath(sys.argv[0]))])
+
+
+def launch_thread(title, prompt):
+    """(the started T3 thread's id, None), or (None, why it couldn't start)."""
+    cmd = ['t3', 'thread', 'start', '--title', title, WORK, prompt]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True)
+        if r.returncode:  # the folder isn't a T3 project yet
+            subprocess.run(['t3', 'project', 'add', '--title', 'project-learn', WORK], capture_output=True, text=True)
+            r = subprocess.run(cmd, capture_output=True, text=True)
+    except FileNotFoundError:
+        return None, "no t3 on PATH: the learning thread needs T3 Code"
+    if r.returncode:
+        return None, f"t3 thread start failed: {' '.join((r.stderr or r.stdout).split())[:300]}"
+    return r.stdout.strip(), None
+
+
+def start():
+    today = iso(NOW)[:10]
+    if project_file.ran_today(today):
+        return print(f"project-learn: already ran today ({project_file.RUNS})")
+    os.makedirs(os.path.join(WORK, 'lists'), exist_ok=True)
+    if not os.path.isfile(os.path.join(WORK, 'scope.md')):
+        with open(os.path.join(WORK, 'scope.md'), 'w') as f:
+            f.write("Tier: 0, because the daily learning run sorts listed maintainer activity into project files and changes no repo\n")
+    need, failed = {}, []
+    for project in sorted(glob.glob(os.path.join(PROJECTS, '*', '*.md'))):
+        if project.endswith('.study.md'):
+            continue
+        repo = os.path.relpath(project, PROJECTS)[:-3]
+        since = mark_of(repo)
+        if since is None:
+            print(f"{repo}: no study with a `Studied:` line, skipped (task §Repo study)")
+            continue
+        over = project_file.words(project) > project_file.CAP
+        try:
+            lines, items = list_cmd(repo, since)
+        except (SystemExit, Exception) as e:  # one repo's failure, whatever it is, costs no other repo its day
+            e = ' '.join((str(e) if isinstance(e, SystemExit) else f"{type(e).__name__}: {e}").split())
+            failed.append(f"{repo} ({e})")
+            if not over:
+                continue
+            lines, items = [f"# {repo}: the list failed ({e}): condense the project file only; don't mark it"], []
+        out = os.path.join(WORK, 'lists', repo.replace('/', '__') + '.txt')
+        with open(out, 'w') as f:
+            f.write('\n'.join(lines) + '\n')
+        if items or over:
+            need[repo] = out
+        else:
+            mark(repo, iso(NOW))
+    thread, why = launch_thread(f'Project-file learning {today}', PROMPT.format(work=WORK, cap=project_file.CAP, cmd=this_command(), projects=PROJECTS, lists=' '.join(need.values()))) if need else (None, None)
+    print(f"project-learn: {project_file.record_run(iso(NOW), thread, list(need), failed, why)}")
+    if why or failed:
+        sys.exit(1)
+
+
+def main(a):
+    if a[:1] == ['list'] and a[1:2]:
+        since = [a[i + 1] for i in range(len(a) - 1) if a[i] == '--since']
+        # a URL names the forge, which a first study can't take from a project file not yet written
+        url = re.fullmatch(r'https?://([^/]+)/([^/]+/[^/]+?)(?:\.git)?/?', a[1])
+        repo, host = (url[2], url[1]) if url else (a[1], None)
+        return print('\n'.join(list_cmd(repo, when(since[-1]) if since else mark_of(repo), host)[0]))
+    if a[:1] == ['mark'] and len(a) >= 3:
+        return mark(a[1], a[2], a[3:])
+    if a == ['start']:
+        return start()
+    sys.exit(__doc__)
+
+
+if __name__ == '__main__':
+    main(sys.argv[1:])

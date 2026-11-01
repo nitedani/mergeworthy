@@ -3,7 +3,7 @@
 # plugin, pointing ~/.mergeworthy/current at its new version folder, and Codex's; restarts every live watcher unit by the
 # name gh-watch-start gives it (gh-watch@<systemd-escape --path of its work folder>.service, never a name read back from
 # `systemctl list-units`, which drops the \x2d escapes) and prints each unit's state, `retired` for one its watcher stopped
-# itself after writing <work folder>/retired. Runs every step, then exits 1 naming each update that failed and each unit
+# itself after writing <work folder>/retired; installs the daily project-file learning timer (mergeworthy-learn.timer). Runs every step, then exits 1 naming each update that failed and each unit
 # that is neither active nor retired.
 set -u
 failed=()
@@ -23,8 +23,16 @@ if command -v claude >/dev/null && [ -n "$(claude_root)" ]; then update_claude |
 if command -v codex >/dev/null && codex plugin list 2>/dev/null | grep '^mergeworthy@mergeworthy ' | grep -vq 'not installed'; then
   update_codex || failed+=("the Codex update")
 fi
+# the daily project-file learning run (bin/project-learn start), installed as session-start installs it, then its state printed
+install_learn() {
+  "$(dirname "$(readlink -f "$0")")/../hooks/learn-units" >/dev/null 2>&1 || return 1
+  echo "mergeworthy-learn.timer $(systemctl --user is-active mergeworthy-learn.timer)"
+  local last; last=$(tail -n 1 ~/.mergeworthy/work/project-learn/runs.txt 2>/dev/null) || true
+  echo "mergeworthy-learn last run: ${last:-none yet}"
+}
 units=() dirs=()
 if systemctl --user show-environment >/dev/null 2>&1; then
+  [ -x ~/.mergeworthy/current/bin/project-learn ] && { install_learn || failed+=("mergeworthy-learn.timer"); }
   while IFS= read -r dir; do
     [ -d "$dir" ] || continue
     unit="gh-watch@$(systemd-escape --path "$dir").service"
