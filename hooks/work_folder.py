@@ -32,9 +32,14 @@ def git_top(path):
     return next((p for p in ancestors(path) if os.path.exists(os.path.join(p, '.git'))), None)
 
 
+def real(path):
+    """path's real path, a leading ~, $HOME or ${HOME} made the home folder."""
+    return os.path.realpath(os.path.expanduser(re.sub(r'^\$(?:HOME|\{HOME\})(?=/|$)', '~', path)))
+
+
 def of(path):
     """The work folder holding path: its ancestor directly under ROOT, else None."""
-    p, root = os.path.realpath(path), os.path.realpath(ROOT)
+    p, root = real(path), os.path.realpath(ROOT)
     return os.path.join(root, p[len(root) + 1:].split('/')[0]) if p.startswith(root + '/') else None
 
 
@@ -43,7 +48,7 @@ def task_of(path):
     the <prefix>-work/ beside the checkout it is in (`fu185-work/` beside `fu185-gps-fix/`); None when there is none."""
     if wf := of(path): return wf
     home = os.path.realpath(os.path.expanduser('~'))
-    for p in ancestors(os.path.realpath(os.path.expanduser(path))):
+    for p in ancestors(real(path)):
         if p in (home, '/'): return None
         if p.endswith('-work') and os.path.isdir(p): return p
         name = os.path.basename(p)
