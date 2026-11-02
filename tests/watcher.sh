@@ -920,8 +920,8 @@ run(11, "running"); m.wake_thread(); counts.append(sends())
 os.remove(os.path.join(m.HERE, "t3-thread")); os.remove(db)
 print(*counts)
 ')
-check "wake_thread: while the user has the thread stopped (its latest run interrupted), events wait unsent; their next message's run gets them all in one wake" \
-  "True 0 1|t3 thread send thr-s -;Watcher events in $W/events.log (mergeworthy:reply):;### closed 1;### closed 2;" \
+check "wake_thread: while the user has the thread stopped (its latest run interrupted), events wait unsent and the pass reports them unsent (False), so the watcher does not retire; once they write again, one wake carries them all" \
+  "False 0 1|t3 thread send thr-s -;Watcher events in $W/events.log (mergeworthy:reply):;### closed 1;### closed 2;" \
   "$got|$(tr '\n' ';' < "$T/t3.log")"
 got=$(py '
 log = os.path.join(m.HERE, "events.log"); open(log, "w").write("### cron event\n"); open(os.path.join(m.HERE, "t3-wake.cursor"), "w").write("0\n")

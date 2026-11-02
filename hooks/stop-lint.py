@@ -2,7 +2,7 @@
 """Claude Code Stop hook. Blocks ending a turn while the task's scope.md has an open item and nothing this session armed will
 wake it, with an offer or hand-back the agent should just act on, with a claim about a PR that GitHub contradicts, after posting
 on GitHub with no live Monitor on a watcher's events.log in this session (the session is what answers the events; nothing else
-wakes it), or with a line still owed in a watcher's replies-owed.md (mergeworthy:reply).
+wakes it) unless its watch folder retired after the post, or with a line still owed in a watcher's replies-owed.md (mergeworthy:reply).
 The final message is the hook input's last_assistant_message (the transcript may not hold it yet). stop_hook_active skips only
 the check-in: every other check holds until it is met (Claude Code itself ends the turn after 8 blocks in a row)."""
 import glob, hashlib, json, os, re, subprocess, sys, time
