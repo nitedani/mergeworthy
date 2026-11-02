@@ -37,12 +37,20 @@ PUSH_LAG_DAYS = 7
 GLAB_CALLS, GLAB_GAP = collections.deque(maxlen=1), 1.2  # when the last glab call started, and the seconds before the next
 # key: what a citation of the item itself holds, its permalink or sha (None for a reaction, which has no permalink of its own)
 Item = collections.namedtuple('Item', 'at kind login assoc url text key')
+# The short ref a project file cites an item by (task §Project file), from its key, which the pattern matches whole; with its repo before
+# it for another repo's. A commit is cited by its sha, 7 characters or more.
+GH, GL = r'https://github\.com/(?P<repo>[^/]+/[^/]+)/(?:issues|pull)/(?P<n>\d+)', r'https://[^/]+/(?P<repo>.+?)/-/'
+SHORT_REF = ((GH, '#{n}'), (GH + r'#issuecomment-(?P<id>\d+)', '#{n}/c{id}'), (GH + r'#discussion_r(?P<id>\d+)', '#{n}/r{id}'),
+             (GH + r'#pullrequestreview-(?P<id>\d+)', '#{n}/v{id}'), (GL + r'merge_requests/(?P<n>\d+)', '!{n}'),
+             (GL + r'merge_requests/(?P<n>\d+)#note_(?P<id>\d+)', '!{n}/n{id}'), (GL + r'(?:issues|work_items)/(?P<n>\d+)', '#{n}'),
+             (GL + r'(?:issues|work_items)/(?P<n>\d+)#note_(?P<id>\d+)', '#{n}/n{id}'))
 PROMPT = """Daily project-file learning run (mergeworthy `project-learn start`), in {work}. For each list below: sort every line into that \
-repo's project file by task §Project file (one line per lesson with its permalink, updating a line instead of adding one beside it; \
-praise and approval go in What worked) and its quote into the repo's study; while the project file is over {cap} words, condense it \
-(merge near-duplicates, keep the line with the strongest evidence, drop one a later line contradicts; the quotes stay in the study); \
-then run the `project-learn mark` line the list ends with, `project-learn` being `{cmd}`. The project files and studies are in \
-{projects}; post nothing, and change no file outside it.
+repo's project file by task §Project file (one line per lesson citing it by its short ref, its permalink going to the study, updating \
+a line instead of adding one beside it; praise and approval go in What worked) and its quote into the repo's study; while the project \
+file is over {cap} words, condense it (merge near-duplicates, keep the line with the strongest evidence, drop one a later line \
+contradicts, turn a full link into its short ref; the quotes and full links stay in the study); then run the `project-learn mark` line \
+the list ends with, `project-learn` being `{cmd}`. The project files and studies are in {projects}; post nothing, and change no file \
+outside it.
 Lists: {lists}"""
 
 
@@ -317,13 +325,15 @@ def listed(repo, since, until, host=None):
     named |= gitlab_maintainers(host, repo) if host else {i.login.lower() for i in items if i.assoc in MAINTAINER}  # one GitHub shows as a maintainer on any post here
     cited = read(project) + read(study) + ''.join(read(f) for f in glob.glob(os.path.join(HOME, '.mergeworthy', 'work', '*', 'followups-sorted.txt')))
     def sorted_already(key):
-        """The item itself is cited: its permalink whole (a PR's URL isn't one of its comments'), its fragment, or its commit's sha."""
-        whole = lambda x: re.search(re.escape(x) + r'(?![\w#/-])', cited)
+        """The item itself is cited: its permalink whole (a PR's URL isn't one of its comments'), its fragment, its short ref
+        (SHORT_REF), or its commit's sha."""
+        whole = lambda x: re.search(r'(?<![\w/.-])' + re.escape(x) + r'(?![\w#/-])', cited)
         if not key:
             return False
         if re.fullmatch(r'[0-9a-f]{40}', key):
             return key[:7] in cited
-        return bool(whole(key) or '#' in key and whole(key.split('#', 1)[1]))
+        refs = [(m['repo'], form.format(**m.groupdict())) for pattern, form in SHORT_REF if (m := re.fullmatch(pattern, key))]
+        return any(whole(x) for x in (key, '#' in key and key.split('#', 1)[1], *(r for repo, ref in refs for r in (ref, repo + ref))) if x)
     is_named = lambda who: who.lower() in named or bool(who.split()) and all(w in named for w in who.lower().split())  # a login, or a commit's author name
     after = lambda i: since - PUSH_LAG_DAYS * 86400 if i.kind in ('commit', 'follow-up') else since
     keep = [i._replace(key=None) for i in items if after(i) < epoch(i.at) <= until and is_named(i.login) and not sorted_already(i.key)]
