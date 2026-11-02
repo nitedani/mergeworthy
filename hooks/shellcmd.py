@@ -174,7 +174,7 @@ def _name(w):
 
 def _unseen(tree, src):
     """The names a script may set where Where can't follow, read from its syntax: a name assigned other than by a command of only
-    `NAME=value` words (export, declare, D+=x, D[1]=x, D=x cmd), one a builtin sets (read, mapfile, printf -v, unset, getopts, wait -p),
+    `NAME=value` words, or those after export, readonly, local or declare (export -n D=x, typeset, D+=x, D[1]=x, D=x cmd), one a builtin sets (read, mapfile, printf -v, unset, getopts, wait -p),
     ${D:=x}, an arithmetic assignment ((( )), $(( )), let), and a for loop's variable assigned anywhere; EVERY when it runs eval,
     source, . or trap, which can set any. Heredoc bodies and quoted text are words, never read as commands."""
     names, assigned, loops, todo = set(), set(), set(), [tree]
@@ -186,10 +186,10 @@ def _unseen(tree, src):
         if not isinstance(y, dict):
             continue
         cmd, t = y.get('Cmd') or {}, y.get('Type')
+        plain = lambda assigns: not y.get('Redirs') and not any(a.get('Index') or a.get('Append') or a.get('Naked') for a in assigns)  # Where.step's: D=x, not D[1]=x, D+=x or D=x >f
         if cmd.get('Type') == 'CallExpr':
             assigns = cmd.get('Assigns') or []
-            taken = not cmd.get('Args') and not y.get('Redirs') and not any(a.get('Index') or a.get('Append') or a.get('Naked') for a in assigns)  # Where.step's: D=x, not D[1]=x, D+=x or D=x >f
-            (assigned if taken else names).update(a['Name']['Value'] for a in assigns if a.get('Name'))
+            (assigned if not cmd.get('Args') and plain(assigns) else names).update(a['Name']['Value'] for a in assigns if a.get('Name'))
             argv = prog([_word(w, src) for w in cmd.get('Args') or []])
             name = os.path.basename(argv[0]) if argv else ''
             if name in ('eval', 'source', '.', 'trap'):
@@ -199,7 +199,9 @@ def _unseen(tree, src):
             elif name == 'printf':
                 names.update(_name(argv[i + 1]) for i in range(1, len(argv) - 1) if argv[i] == '-v')
         elif cmd.get('Type') == 'DeclClause':
-            names.update(a['Name']['Value'] if a.get('Name') else _name(_word(a['Value'], src)) for a in cmd.get('Args') or [])
+            args = cmd.get('Args') or []
+            taken = cmd['Variant']['Value'] in ('export', 'readonly', 'local', 'declare') and plain(args)  # Where.step's: export D=x, not export -n D=x
+            (assigned if taken else names).update(a['Name']['Value'] if a.get('Name') else _name(_word(a['Value'], src)) for a in args)
         if t == 'ParamExp' and (y.get('Exp') or {}).get('Op') in ('=', ':=') and y.get('Param'):
             names.add(y['Param']['Value'])
         if t in ('BinaryArithm', 'UnaryArithm') and y.get('Op') in ASSIGNS and (y.get('X') or {}).get('Type') == 'Word':
@@ -438,15 +440,14 @@ class Where:
         self.dir, self.moved, self.vars, self.scopes, self.quoted, self.unseen = cwd, False, {}, [], set(), frozenset()  # each scope entered: [(id, kind, name), dir before it, whether a cd ran in it, variables before it, variables set in it, main_vars before it]
 
     def expand(self, p, strict=False):
-        """p with the plain walk's variables ($D, ${D}: main_vars), then the environment's, put in. strict: the scoped ones (vars)
-        instead, and one it can't tell (a Maybe) stays as written, and so does every $ of a word the current command quoted or escaped
-        (Seg.raw), whose $ may be literal, and every variable the line may set unseen (Seg.unseen)."""
-        if not strict:
-            return re.sub(r'\$(?:(\w+)|\{(\w+)\})', lambda m: self.main_vars.get(m[1] or m[2], os.environ.get(m[1] or m[2], m[0])), p)
+        """p with the plain walk's variables ($D, ${D}: main_vars, $PWD: main_dir), then the environment's, put in. strict: the scoped
+        ones (vars, $PWD: dir) instead, and every $ of a word the current command quoted or escaped (Seg.raw), whose $ may be literal,
+        and every variable the line may set unseen (Seg.unseen) stay as written. A value it can't tell (a Maybe, no dir) stays as written."""
         def value(m):
-            v = self.vars.get(m[1] or m[2], os.environ.get(m[1] or m[2], m[0]))
-            return m[0] if isinstance(v, Maybe) or (m[1] or m[2]) in self.unseen else v
-        return p if p in self.quoted else re.sub(r'\$(?:(\w+)|\{(\w+)\})', value, p)
+            n = m[1] or m[2]
+            v = (self.dir if strict else self.main_dir) if n == 'PWD' else (self.vars if strict else self.main_vars).get(n, os.environ.get(n, m[0]))
+            return m[0] if v is None or isinstance(v, Maybe) or strict and n in self.unseen else v
+        return p if strict and p in self.quoted else re.sub(r'\$(?:(\w+)|\{(\w+)\})', value, p)
 
     def path(self, p, base='', strict=False):
         """p resolved from base (default: the dir), or None when it can't be told (an expansion left, or no base)."""
@@ -502,11 +503,13 @@ class Where:
         return any(x[0][2] and x[0][1] == CONDITIONAL for x in self.scopes)
 
     def step(self, t):
-        if t and all(re.match(r'^\w+=', x) for x in t):
-            self.vars.update(x.split('=', 1) for x in t)
-            self.main_vars.update(x.split('=', 1) for x in t)
-            for x in t: self.changed(x.split('=', 1)[0])
-            if self.in_body(): self.func_vars.update(x.split('=', 1)[0] for x in t)
+        words = t[1:] if t[:1] in (['export'], ['readonly'], ['local'], ['declare']) else t
+        if words and all(re.match(r'^\w+=', x) for x in words):
+            for x in words:  # each value expanded as it is assigned, but one whose $ the command quoted or escaped
+                n, v = x.split('=', 1)
+                self.vars[n], self.main_vars[n] = (v, v) if x in self.quoted else (self.expand(v, True), self.expand(v))
+                self.changed(n)
+            if self.in_body(): self.func_vars.update(x.split('=', 1)[0] for x in words)
             return
         p = prog(t)
         if p[:1] and p[0] in self.funcs:  # a call runs a body here, maybe calling another: what any of them changes can't be told
@@ -522,6 +525,8 @@ class Where:
         to = a[0] if a else '~' if p[0] == 'cd' else '-'
         kinds = [x[0][1] for x in self.scopes if x[0][1] != CONDITIONAL]
         self.changed()
+        self.vars['OLDPWD'], self.main_vars['OLDPWD'] = (Maybe('') if d is None else d for d in (self.dir, self.main_dir))
+        self.changed('OLDPWD')
         nested = t.nested or bool(t.scopes)
         main = None if nested or p[0] == 'popd' or to[:1] in '-+' or self.main_dir is None else \
             _toplevel(self.main_dir) if to == TOPLEVEL else self.path(to, self.main_dir) and os.path.normpath(self.path(to, self.main_dir))
