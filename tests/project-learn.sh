@@ -197,6 +197,15 @@ check "list: with ## Who decides naming nobody, GitHub's member association make
 cp "$T/vike.md" "$P/vikejs/vike.md"
 
 check "list <GitHub URL>: the same 17 items as <owner/repo>" "17 1" "$(python3 "$R/bin/project-learn" list https://github.com/vikejs/vike | grep -vc '^#') $(cmp -s <(python3 "$R/bin/project-learn" list https://github.com/vikejs/vike | grep -v '^#') <(python3 "$R/bin/project-learn" list vikejs/vike | grep -v '^#') && echo 1 || echo 0)"
+# a project-file line cites its evidence short, in the repo's scope; the study holds the full link, or nothing
+cp "$P/vikejs/vike.study.md" "$T/vike.study.md"
+printf '%s\n' '- a comment #3636/c6529075994, an inline one #3636/r4414894877, one in full scope vikejs/vike#3651/c3651001' \
+  '- one with its full link in the study #1707/c1707002, a review #3636/v1; another repo'"'"'s number other/repo#3659/c3659001' >> "$P/vikejs/vike.md"
+echo '- "postpone": https://github.com/vikejs/vike/issues/1707#issuecomment-1707002' >> "$P/vikejs/vike.study.md"
+python3 "$R/bin/project-learn" list vikejs/vike > "$T/l"
+check "list: left out: what the project file cites by short ref alone (a comment, an inline comment, a review, one with its repo), or short with the full link in the study; another repo's same number listed" "0 0 0 0 0 1 12" \
+  "$(grep -c 6529075994 "$T/l") $(grep -c discussion_r4414894877 "$T/l") $(grep -c $'pullrequestreview-1\t' "$T/l") $(grep -c 3651001 "$T/l") $(grep -c 1707002 "$T/l") $(grep -c 3659001 "$T/l") $(grep -vc '^#' "$T/l")"
+cp "$T/vike.md" "$P/vikejs/vike.md"; cp "$T/vike.study.md" "$P/vikejs/vike.study.md"
 
 # ---------- mark: its own Learned line in the study, forward only, up to what a list covered, never over the cap ----------
 check "mark: refuses a time before the mark, and one in the future; the study untouched" "1 1 Studied: 2026-10-29|# vike study" \
@@ -336,6 +345,11 @@ check "GitLab: award emoji on our MR and on our note; the maintainer's commit on
   "$(grep -c $'\treaction\tboss\t'"$W/-/merge_requests/32"$'\tthumbsup on our MR' "$T/gl") $(grep -c $'\treaction\tboss\t.*#note_9001\tthumbsup on our comment' "$T/gl") $(grep -c $'2026-10-28T20:10:00Z\tcommit\tBoss Person\t.*/commit/c0ffee0' "$T/gl") $(grep -c $'\tothers-inline\tcarol\t.*50#note_501\t.gitlab-ci.yml: Run this in CI' "$T/gl") $(grep -c $'\tfollow-up\tcarol\t.*/commit/a70f00d.*\tchanges src/api/flow.py from !26: flow: CI fix' "$T/gl")"
 check "GitLab: left out: our badged notes, system notes, our commit, a merge, our MR's squash on master, another file, a conversation note on their MR, an issue not ours" "0 0 0 0 0 0 0 0" \
   "$(grep 'note_9001' "$T/gl" | grep -vc $'\treaction\t') $(grep -c 'note_9002\|note_9008' "$T/gl") $(grep -c aaaa111 "$T/gl") $(grep -c bbbb222 "$T/gl") $(grep -c 5afe5af "$T/gl") $(grep -c b0b0000 "$T/gl") $(grep -c note_502 "$T/gl") $(grep -c 'work_items/5' "$T/gl")"
+cp "$P/g/r.md" "$T/gr.md"; echo '- an MR note !32/n9004, an issue note #7/n9007, one with its repo g/r!26/n9006; another repo'"'"'s x/y!50/n501' >> "$P/g/r.md"
+python3 "$R/bin/project-learn" list g/r > "$T/gl2"; cp "$T/gr.md" "$P/g/r.md"
+check "GitLab: left out: what the project file cites by short ref alone (an MR note, an issue note, one with its repo); another repo's same number listed" "0 0 0 1" \
+  "$(grep -c note_9004 "$T/gl2") $(grep -c note_9007 "$T/gl2") $(grep -c note_9006 "$T/gl2") $(grep -c note_501 "$T/gl2")"
+
 # a first study: no project file or study yet names the forge, so the repo's URL does
 mkdir "$T/first"; mv "$P/g/r.md" "$P/g/r.study.md" "$T/first/"; : > "$T/gh-calls"; : > "$T/glab-calls"
 python3 "$R/bin/project-learn" list https://gitlab.com/g/r.git --since 2026-10-28T00:00:00Z > "$T/first/out" 2>&1; rc=$?
