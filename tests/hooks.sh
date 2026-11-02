@@ -2327,6 +2327,8 @@ check "BLOCK: local outside a function assigns nothing (bash refuses it): a writ
   "$(ibash "$IT" "D=$I; local D=$T/nogit; cd \$D && echo x > a.txt" "$T/nogit")"
 check "BLOCK: from outside the repo, a write to \$PWD/a.txt after a cd into it, or to \$OLDPWD/a.txt after a cd from it; one to \$OLDPWD/a.txt after a cd from outside passes" "2 2 0" \
   "$(ibash "$IT" "cd $I && echo x > \$PWD/a.txt" "$T/nogit") $(OLDPWD=$T/nogit ibash "$IT" "cd $I && cd $T/nogit && echo x > \$OLDPWD/a.txt" "$T/nogit") $(OLDPWD=$I ibash "$IT" "cd $T/nogit && cd /tmp && echo x > \$OLDPWD/a.txt")"
+check "\$PWD is the line's own PWD=…, a child shell's start dir, and after a call to a function that cds, unknown: a write to \$PWD/a.txt after PWD=<repo> blocks, in bash -c after cd <nogit> passes, after f() { cd <repo>; } blocks" "2 0 2" \
+  "$(ibash "$IT" "PWD=$I; echo x > \$PWD/a.txt" "$T/nogit") $(ibash "$IT" "cd $T/nogit; bash -c 'echo x > \$PWD/a.txt'") $(ibash "$IT" "f() { cd $I; }; cd $T/nogit; f; echo x > \$PWD/a.txt" "$T/nogit")"
 check "a cd to an inherited variable the line only names in text (printf 'D=%s') resolves, at top level and in a subshell" "0 0" \
   "$(D="$T/nogit" ibash "$IT" "printf 'D=%s\n' \"\$D\"; cd \"\$D\"; echo x > a.txt") $(D="$T/nogit" ibash "$IT" "(printf 'D=%s\n' \"\$D\"; cd \"\$D\"; echo x > a.txt)")"
 hd() { printf '%s\n' "F=$T/nogit; cat > \$F/a.md <<'EOF'" "$1" EOF; }

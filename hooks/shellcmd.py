@@ -437,17 +437,17 @@ class Where:
     `cd -` or popd loses its dir for good."""
     def __init__(self, cwd):
         self.funcs, self.func_vars, self.func_moves = set(), set(), False  # the functions the line defines, the variables their bodies set, whether one changes dir
-        self.main_dir, self.main_vars = cwd, {}
-        self.dir, self.moved, self.vars, self.scopes, self.quoted, self.unseen = cwd, False, {}, [], set(), frozenset()  # each scope entered: [(id, kind, name), dir before it, whether a cd ran in it, variables before it, variables set in it, main_vars before it]
+        self.main_dir, self.main_vars = cwd, {'PWD': cwd}
+        self.dir, self.moved, self.vars, self.scopes, self.quoted, self.unseen = cwd, False, {'PWD': cwd}, [], set(), frozenset()  # each scope entered: [(id, kind, name), dir before it, whether a cd ran in it, variables before it, variables set in it, main_vars before it]
 
     def expand(self, p, strict=False):
-        """p with the plain walk's variables ($D, ${D}: main_vars, $PWD: main_dir), then the environment's, put in. strict: the scoped
-        ones (vars, $PWD: dir) instead, and every $ of a word the current command quoted or escaped (Seg.raw), whose $ may be literal,
-        and every variable the line may set unseen (Seg.unseen) stay as written. A value it can't tell (a Maybe, no dir) stays as written."""
+        """p with the plain walk's variables ($D, ${D}: main_vars), then the environment's, put in. strict: the scoped ones (vars)
+        instead, and every $ of a word the current command quoted or escaped (Seg.raw), whose $ may be literal, and every variable the
+        line may set unseen (Seg.unseen) stay as written. A value it can't tell (a Maybe) stays as written."""
         def value(m):
             n = m[1] or m[2]
-            v = (self.dir if strict else self.main_dir) if n == 'PWD' else (self.vars if strict else self.main_vars).get(n, os.environ.get(n, m[0]))
-            return m[0] if v is None or isinstance(v, Maybe) or strict and n in self.unseen else v
+            v = (self.vars if strict else self.main_vars).get(n, os.environ.get(n, m[0]))
+            return m[0] if isinstance(v, Maybe) or strict and n in self.unseen else v
         return p if strict and p in self.quoted else re.sub(r'\$(?:(\w+)|\{(\w+)\})', value, p)
 
     def path(self, p, base='', strict=False):
@@ -488,8 +488,8 @@ class Where:
         for x in scopes[n:]:
             self.scopes.append([x, self.dir, False, dict(self.vars), set(), dict(self.main_vars)])
             if x[1] == LOOP and x[2]: self.vars[x[2]] = Maybe(''); self.changed(x[2])  # each pass gives it another of its words
-            if x[2] in (STDIN, CHILD): self.vars = {k: Maybe(v) for k, v in self.vars.items()}
             if x[2] == STDIN: self.dir = None
+            if x[2] in (STDIN, CHILD): self.vars = {k: Maybe(v) for k, v in self.vars.items()} | {'PWD': _dir(self.dir)}  # a shell's PWD is where it starts
 
     def changed(self, var=None):
         """Record a cd (var None) or an assignment of var here in the scopes it changes what they leave behind, up to the innermost
@@ -526,8 +526,7 @@ class Where:
         to = a[0] if a else '~' if p[0] == 'cd' else '-'
         kinds = [x[0][1] for x in self.scopes if x[0][1] != CONDITIONAL]
         self.changed()
-        self.vars['OLDPWD'], self.main_vars['OLDPWD'] = (Maybe('') if d is None else d for d in (self.dir, self.main_dir))
-        self.changed('OLDPWD')
+        old = self.dir, self.main_dir
         nested = t.nested or bool(t.scopes)
         main = None if nested or p[0] == 'popd' or to[:1] in '-+' or self.main_dir is None else \
             _toplevel(self.main_dir) if to == TOPLEVEL else self.path(to, self.main_dir) and os.path.normpath(self.path(to, self.main_dir))
@@ -540,6 +539,15 @@ class Where:
         else:
             self.dir = self.path(to, strict=True) and os.path.normpath(self.path(to, strict=True))
         self.main_dir = main
+        for n, dirs in (('OLDPWD', old), ('PWD', (self.dir, self.main_dir))):
+            self.vars[n], self.main_vars[n] = map(_dir, dirs)
+            self.changed(n)
+        if self.in_body(): self.func_vars.update(('PWD', 'OLDPWD'))
+
+
+def _dir(d):
+    """A dir as a variable's value: a Maybe when it can't be told (None)."""
+    return Maybe('') if d is None else d
 
 
 def _toplevel(d):
