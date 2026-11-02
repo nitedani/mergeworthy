@@ -45,7 +45,7 @@ Later work on the same thing (confirming fixes, re-rating) continues that agent;
 
 The classes are model families, never versions: the strongest class is the newest Opus your harness offers, the middle class the newest Sonnet (none offered: the strongest class), and the smallest class that has an effort setting the newest Haiku. The main session runs on the strongest class: it plans, briefs, decides, spot-checks results and approves every word to a maintainer. Never a model the user excluded, nor a model version in a prompt, skill or memory.
 - **Root causes, choosing among approaches** (`pull-request` step 5) **and implementers:** the main session's class at high effort.
-- **Drafters** (`delegate/drafter.md`), **docs authors and designers** (`delegate/designer.md`, for `design` step 4 and `pull-request` step 5's candidates): the middle class at high effort; you choose among the candidates. **Judges** (verification, every `converge` loop agent, audits, exploration): at medium.
+- **Drafters** (`delegate/drafter.md`), **docs authors, designers** (`delegate/designer.md` for `design` step 4 and `pull-request` step 5's candidates; `finality`'s branch agents) **and the debater** (`delegate/debater.md`, `design` step 3): the middle class at high effort; you choose among the candidates. **Judges** (verification, every `converge` loop agent, audits, exploration): at medium.
 - **The smallest class with an effort setting, at high effort,** only for work where nothing it writes ships: running gates, tests and a reproduction from a recipe, log mining, data processing and bookkeeping.
 
 ### Reviewers

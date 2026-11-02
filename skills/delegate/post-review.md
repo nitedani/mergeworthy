@@ -2,7 +2,7 @@
 
 Standards: `~/.mergeworthy/current/skills/writing/SKILL.md` (§Self-check is what you check). Include `delegate/agent.md`.
 
-The main session fills it at `post` step 3 and starts the reviewer `delegate §Reviewers` names. **Fast form** (`post` step 3's list): the Claims check on those posts' claims, and Refactor result after a refactor ask.
+The main session fills it at `post` step 3 and starts the reviewer `delegate §Reviewers` names. **Fast form** (`post` step 3's list): the Claims check on those posts' claims (the record check too when the main session drafted the reply), and Refactor result after a refactor ask.
 
 ```
 Review the draft <abs>/drafts/<thread>/<name>.md (kind: <kind>) before it is posted on <owner/repo#N>.
