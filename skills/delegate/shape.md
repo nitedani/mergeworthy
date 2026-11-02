@@ -10,6 +10,7 @@ Dispositions, one list:
 - **FILL:** a gap to fill (a missing test of a documented contract, a missing sibling case).
 - **DELETE-CAREFULLY:** remove only after code §Removal gate's probe.
 - **OWNER-DECISION:** owner code, a behavior or public-surface change, or anything the task doesn't authorize; it goes in the PR body's decision blocks or the report to the user, with a recommendation.
+- **NIT:** no one hits it in practice: wording, naming, a comment's phrasing, a style preference. It gets no code.
 - **KEEP:** checked and worth its price.
 
 ```
@@ -29,11 +30,11 @@ Step 1, cut what shouldn't exist. Check every line of code §Checklist. Each fin
 
 Step 2, reshape what stays: the prompt below, as written, on what step 1 keeps, with its ✅ coverage list. Its "grep the repo" means `rg`, plus a semantic search for the same work under other names (agent.md §Code search).
 
-Step 3, rate every file and function old ⇒ new: after each landing, re-rate every row with its commits, verify each implementation (behavior preserved, mutation probes still red, comments true), and say whether each decline holds.
+Step 3, rate every file and function old ⇒ new: after each landing, re-rate each row its commits changed, verify each implementation (behavior preserved, mutation probes still red, comments true), and say whether each decline holds.
 
-<Round 2 on: the previous report <path>, the ledger <path>, the commits since it <list>: steps 1–2 on what they changed, step 3 on every row.>
+<Round 2: the previous report <path>, the ledger <path>, the commits since it <list>: all three steps only on the rows they changed.>
 
-Write <report path>: `## Standards read` (above), then step 1's findings, DELETE-NOW first, then FIX, FILL, DELETE-CAREFULLY, OWNER-DECISION; the mechanism census; the 10-second pass as classes; step 2's ratings and ✅ coverage list; step 3's old ⇒ new ratings and the prior findings' closure; an honest-positive statement ("nothing worth changing" where that is the result). End the file with a line CLEAN only when your review in this run and all three steps leave nothing behavior-preserving whose value is worth its price (its should, agent.md).
+Write <report path>: `## Standards read` (above), then step 1's findings, DELETE-NOW first, then FIX, FILL, DELETE-CAREFULLY, OWNER-DECISION, NIT; the mechanism census; the 10-second pass as classes; step 2's ratings and ✅ coverage list; step 3's old ⇒ new ratings and the prior findings' closure; an honest-positive statement ("nothing worth changing" where that is the result). End the file with a line CLEAN only when your review in this run and all three steps leave nothing behavior-preserving whose value is worth its price (its should, agent.md); a NIT keeps no round from CLEAN.
 Final message: the path, counts per disposition, the three highest-value findings, the overall rating.
 
 <the prompt below, verbatim>

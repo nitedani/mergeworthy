@@ -10,7 +10,7 @@ Pasted into every brief, after the role's template.
 - **Label each review finding:**
   - `blocker`: the case the change exists for behaves wrongly (a post: a false claim, an unanswered question);
   - `should`: a bug or regression ordinary use of the edited code hits, a mechanism the change doesn't need, or any other finding its brief asks for that the nit list doesn't name;
-  - `nit`: an equal alternative, a contrived case, a rare one failing mildly, a small cost that is no regression, a request for extra compat.
+  - `nit`: an equal alternative, a contrived case, a rare one failing mildly, a small cost that is no regression, a request for extra compat, wording, naming, a comment's phrasing, a style preference.
 - **Nits** go under `## Dropped` in your output file; `CLEAN`, `NO BUGS` and `MERGE AS IS: yes` mean no blocker or should.
 - **Your final message:** the result with evidence (`path:line`, or the command and its exit code) and a `not_checked` list, at most 15 lines; the rest goes to the file the brief names.
 
