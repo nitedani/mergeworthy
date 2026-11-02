@@ -21,7 +21,7 @@ Each role's brief is a template in `~/.mergeworthy/current/skills/delegate/`, wi
    Run: `task_status` · Hook: stop-lint
 6. **Its result** (T3's notice, or the watcher's `### AGENT DONE <ticket>`). Read the final message; open two or three cited `path:line`s or re-run one command, and diff the result against your plan. A diff: write down each structural decision in it and why it's right before landing it; hardcoded lists and duplicated classifications get fixed before pushing. Then release the job.
    Run: `agent-job done <ticket>` · Hook: stop-lint, the watcher
-7. **Relay the result to the user and act on it;** an unchecked item, a deviation and each finding (by `code §Earn every line`) are yours to decide; never send the same brief again. If it fails your check or comes back blocked, redo it on your model class (reviews: §Reviewers) with what failed, never on the middle class again.
+7. **Relay the result to the user and act on it;** an unchecked item, a deviation and each finding (by `code §Earn every line`) are yours to decide; never send the same brief again. If it fails your check or comes back blocked, redo it with what failed on the main session's class (reviews: §Reviewers), whatever class it ran on.
    Open: `writing §Reports to the user`
 
 ### Brief
@@ -43,9 +43,9 @@ Later work on the same thing (confirming fixes, re-rating) continues that agent;
 
 ### Model class
 
-The classes are model families, never versions: the strongest class is the newest Opus your harness offers, the middle class the newest Sonnet, and the smallest class that has an effort setting the newest Haiku. The main session runs on the strongest class: it plans, briefs, decides, spot-checks results and approves every word to a maintainer. Never a model the user excluded, nor a model version in a prompt, skill or memory.
+The classes are model families, never versions: the strongest class is the newest Opus your harness offers, the middle class the newest Sonnet (none offered: the strongest class), and the smallest class that has an effort setting the newest Haiku. The main session runs on the strongest class: it plans, briefs, decides, spot-checks results and approves every word to a maintainer. Never a model the user excluded, nor a model version in a prompt, skill or memory.
 - **Root causes, choosing among approaches** (`pull-request` step 5) **and implementers:** the main session's class at high effort.
-- **Drafters, PR bodies, docs and designs:** the middle class at high effort. **Judges** (verification, every `converge` loop agent, audits, exploration): at medium.
+- **Drafters** (`delegate/drafter.md`), **docs authors and designers** (`delegate/designer.md`, for `design` step 4 and `pull-request` step 5's candidates): the middle class at high effort; you choose among the candidates. **Judges** (verification, every `converge` loop agent, audits, exploration): at medium.
 - **The smallest class with an effort setting, at high effort,** only for work where nothing it writes ships: running gates, tests and a reproduction from a recipe, log mining, data processing and bookkeeping.
 
 ### Reviewers
@@ -56,7 +56,7 @@ Every independent review (a post's, the Loop B review, the fresh reader, a stand
    {"task": "Follow <prompt file>; output to <out>", "role": "review", "target": {"providerInstanceId": "<id>", "options": {"<its effort option>": "<effort>"}}, "clientRequestId": "<loop>-r<N>"}
    ```
    Elsewhere, a Codex reviewer: `codex exec -c model_reasoning_effort=<effort> --sandbox danger-full-access --skip-git-repo-check -o <out> "$(cat <prompt file>)" < /dev/null`; a Claude reviewer: `claude -p --effort <effort> --permission-mode bypassPermissions < <prompt file> > <out>`.
-- **Else, a fresh agent of the middle class,** with the same prompt, when the first fails (spent credits, rate limits, errors, timeouts, no reply), then the main session's class (step 7). A report, even one its reviewer calls incomplete or partial, is no failure: its next round runs on the same company's model, counting against §Review rounds.
+- **Else, a fresh agent of the middle class,** with the same prompt, when the first fails (spent credits, rate limits, errors, timeouts, no reply); when that one fails the same way or its report fails your check, a fresh agent of the main session's class. A report, even one its reviewer calls incomplete or partial, is no failure: its next round runs on the same company's model, counting against §Review rounds.
 
 The prompt is a file with the template filled. Never write `CLEAN` yourself. Send fixes to the same reviewer (§Continue); a fresh one only when the artifact changed beyond them or needs a final cold read. Record which reviewer ran (Tier M: a `ledger.md` row); on Tier M or L work, re-review on the other company's model once it's back.
 

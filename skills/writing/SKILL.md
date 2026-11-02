@@ -119,7 +119,7 @@ A post is as long as what the reader needs to decide, act or check, and no longe
 
 ### Self-check
 
-Before the review, the drafter answers these; the post review asks the same (`delegate/post-review.md`).
+Before the review, whoever drafts answers these; the post review asks the same (`delegate/post-review.md`).
 - **Claims:** does every claim carry its source, and every attribution its permalink?
 - **Noise:** is every sentence one the reader would miss? Does every con name who hits it today, and every absolute word quote its proof?
 - **Questions:** is every question of theirs answered, quoted, and every question of ours theirs to answer, with our pick?
