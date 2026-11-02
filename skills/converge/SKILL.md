@@ -28,7 +28,7 @@ A change of at most 60 lines outside tests, docs (any `.md`), lockfiles and buil
 
 ### Batching
 
-- **Batch:** let the work land (every commit a review round or a maintainer's ask produces), each pushed after its quick gates, then converge the whole PR once before `ready`.
+- **Batch:** let the work land (every commit a review round or a maintainer's ask produces), each pushed when `merging` step 1 allows, then converge the whole PR once before `ready`.
 - **Carry the pass:** a change of 80 lines or fewer (build output aside) that adds no behavior (tests, docs, wording) gets the quick gates and lanes it touches; its loop records say `carries the pass of <sha>`, with no new Loop A, Loop B or fresh reader. After a maintainer asks for one, the shape pass runs and records instead, on the unchanged head too. Anything else gets the loops on the PR diff from its merge-base, then one fresh read.
 - **The shape pass goes stale** past 80 changed lines since its last full pass (tests, lockfiles and build output excluded; the watcher's `### SHAPE STALE`): a fresh agent runs it on the whole diff before the next "Done" reply.
 
