@@ -34,7 +34,7 @@ def git_top(path):
 
 def of(path):
     """The work folder holding path: its ancestor directly under ROOT, else None."""
-    p, root = os.path.realpath(path), os.path.realpath(ROOT)
+    p, root = os.path.realpath(os.path.expanduser(path)), os.path.realpath(ROOT)
     return os.path.join(root, p[len(root) + 1:].split('/')[0]) if p.startswith(root + '/') else None
 
 
