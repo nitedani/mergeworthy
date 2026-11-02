@@ -65,7 +65,7 @@ The plugin's options (`/plugin` → mergeworthy → Configure options; an enviro
 ### Project file
 
 `~/.mergeworthy/projects/<owner>/<repo>.md`, the one per-repo file: how the repo works and what its maintainers taught you, beyond its `AGENTS.md` / `CLAUDE.md`. Default branch: `<base>`. Keep each section to what an agent would get wrong; delete an empty one; update an entry instead of adding a near-duplicate, and delete one a later change contradicts. At most 2500 words (`wc -w`), since every agent reads it whole. Past that, pre-agent-dedupe refuses briefs: condense it by the rules above, moving quotes into the study (§Repo study), or, when the refusal names a learning thread already condensing it, wait until `t3 thread show <its id>` no longer shows it `running`, then relaunch. Only the daily learning run (`mergeworthy-learn.timer`, docs/mechanisms.md `project-learn`) runs `project-learn mark`.
-- **Gates:** the commands that must exit 0 before a PR, where to run them and how long they take. Locales, if any.
+- **Gates:** the commands that must exit 0 before a PR, where to run them and how long they take. Locales, if any. `Push: before gates` when a maintainer asked for pushes before the gates (`merging` step 1).
 - **What already guarantees things:** validation layers, generated type shields, authorizers, schema constraints, each with its file and function.
 - **Security surfaces:** what is publicly reachable, how auth is checked per call, rate limiting, where admin actions and secrets live, which changes are a team decision.
 - **Issue tracker:** anything that makes `git log --grep <issue>` miss (a migrated tracker, different numbering in commits).

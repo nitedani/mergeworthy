@@ -30,6 +30,13 @@ def missing_steps(d):
         missing.insert(0, 'approach')
     return head, missing
 
+def push_before_gates(url):
+    """The PR's project file has the `## Gates` line `Push: before gates`, bulleted or not: its maintainers take a ready PR's pushes before converge (merging step 1)."""
+    m = re.match(r'https://(?:github\.com/(.+)/pull|gitlab\.com/(.+)/-/merge_requests)/\d+$', url or '')
+    f = os.path.expanduser(f'~/.mergeworthy/projects/{m[1] or m[2]}.md') if m else ''
+    sec = re.search(r'^## Gates\n(.*?)(?=^## |\Z)', open(f, errors='replace').read(), re.M | re.S) if os.path.isfile(f) else None
+    return bool(sec and re.search(r'^(?:[-*] +)?Push: *before gates *$', sec[1], re.M))
+
 def setting(name, default):
     """MERGEWORTHY_<name> from the environment, else from ~/.mergeworthy/settings.env (written at session start from the plugin's options)."""
     f = os.path.expanduser('~/.mergeworthy/settings.env')
@@ -719,7 +726,7 @@ def check(t, has_cd):
                 if prs:  # each branch it publishes, whichever is checked out
                     for _, _, local in heads: need_approach(repo, f"this push ({'; '.join(why)})", local)
                 head, missing = missing_steps(repo)
-                if missing and any(not p['isDraft'] for p in prs):
+                if missing and any(not p['isDraft'] and not push_before_gates(p['url']) for p in prs):
                     block(f"this branch's PR is out of draft and HEAD {head[:10]} has no pr-steps {', '.join(missing)} record (approach: pull-request step 5, once per branch): run converge's pipeline on it first (each step ends with its `pr-steps <step> <output>`), or `gh pr ready --undo` while it converges")
             own['PUSHED_HEADS'] += [sha for sha, _, _ in heads if sha]
     if p in ('curl', 'wget', 'http', 'https', 'xh') and any(re.search(r'\bapi\.github\.com\b|github\.com/api/', x) for x in a) and \
