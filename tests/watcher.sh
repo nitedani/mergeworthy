@@ -903,6 +903,26 @@ print(*counts)
 check "wake_thread: while its wake is queued in T3, 4 more events send nothing (that run reads the log); once it runs, the next event sends, alone; one cancelled before it ran gets its events sent on the next pass, once" \
   "1 1 1 1 1 2 2 3 3|t3 thread send thr-q -;Watcher events in $W/events.log (mergeworthy:reply):;### event 1;t3 thread send thr-q -;Watcher events in $W/events.log (mergeworthy:reply):;### event 6;t3 thread send thr-q -;Watcher events in $W/events.log (mergeworthy:reply):;### event 7;" \
   "$got|$(tr '\n' ';' < "$T/t3.log")"
+: > "$T/t3.log"
+got=$(py '
+import sqlite3
+db = os.path.expanduser("~/.t3/userdata/statev2.sqlite"); os.makedirs(os.path.dirname(db), exist_ok=True)
+c = sqlite3.connect(db)
+c.execute("create table orchestration_v2_projection_runs (run_id text, thread_id text, status text, payload_json text)")
+c.execute("create table orchestration_v2_projection_messages (message_id text, payload_json text)")
+run = lambda n, st: (c.execute("insert into orchestration_v2_projection_runs values (?, ?, ?, ?)", (f"r{n}", "thr-s", st, json.dumps({"ordinal": n}))), c.commit())
+run(9, "completed"); run(10, "interrupted")  # ordinal 10 sorts after 9 as a number
+log = os.path.join(m.HERE, "events.log"); open(log, "w").close()
+open(os.path.join(m.HERE, "t3-thread"), "w").write("thr-s\n'"$T"'/bin/t3\n"); open(os.path.join(m.HERE, "t3-wake.cursor"), "w").write("0")
+sends = lambda: open("'"$T"'/t3.log").read().count("t3 thread send")
+open(log, "a").write("### closed 1\n"); a = m.wake_thread(); open(log, "a").write("### closed 2\n"); m.wake_thread(); counts = [a, sends()]
+run(11, "running"); m.wake_thread(); counts.append(sends())
+os.remove(os.path.join(m.HERE, "t3-thread")); os.remove(db)
+print(*counts)
+')
+check "wake_thread: while the user has the thread stopped (its latest run interrupted), events wait unsent and the pass reports them unsent (False), so the watcher does not retire; once they write again, one wake carries them all" \
+  "False 0 1|t3 thread send thr-s -;Watcher events in $W/events.log (mergeworthy:reply):;### closed 1;### closed 2;" \
+  "$got|$(tr '\n' ';' < "$T/t3.log")"
 got=$(py '
 log = os.path.join(m.HERE, "events.log"); open(log, "w").write("### cron event\n"); open(os.path.join(m.HERE, "t3-wake.cursor"), "w").write("0\n")
 open(os.path.join(m.HERE, "t3-thread"), "w").write("thr-2\n'"$T"'/bin/t3\n"); os.environ["PATH"] = "/usr/bin:/bin"
@@ -1499,5 +1519,23 @@ with contextlib.redirect_stdout(buf): m.emit_refactor_stale("o/r", "o/r#8", "new
 print(buf.getvalue().count("### SHAPE STALE"))
 ')
 check "SHAPE STALE doesn't count a committed build bundle (dist/) or tests in unit_tests/ and *_test.go" 0 "$got"
+
+# SHAPE STALE counts a PR another account opened when a pr-steps record on one of its commits shows the agent drives it
+got=$(py '
+Answer = lambda data: type("A", (), {"status": 200, "json": lambda self: data})()
+m.request = lambda path, *a, **k: Answer({"user": {"login": "owner"}, "base": {"ref": "main"}} if path.endswith("/pulls/9")
+                                         else {"commits": [{"sha": "d1", "parents": [{}]}, {"sha": "d2", "parents": [{}]}]} if "/compare/" in path
+                                         else {"files": [{"filename": "src/a.ts", "additions": 90, "deletions": 0}]})
+rec = os.path.expanduser("~/.claude/pr-steps"); os.makedirs(rec, exist_ok=True)
+counts = []
+for record in (True, False):
+    if record: open(f"{rec}/d1", "w").write("approach 9\n")
+    elif os.path.exists(f"{rec}/d1"): os.remove(f"{rec}/d1")
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf): m.emit_refactor_stale("o/r", "o/r#9", "new")
+    counts.append(buf.getvalue().count("### SHAPE STALE"))
+print(*counts)
+')
+check "SHAPE STALE fires on another account's PR with a pr-steps record on its first commit, and not without one" "1 0" "$got"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]
