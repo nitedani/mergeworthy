@@ -1995,6 +1995,14 @@ echo record > "$T/sd-cold.md"; git -C "$GD" -c user.name=t -c user.email=t@t com
 check "pr-steps small on a diff of docs alone: BLOCK naming the cold read with no Cold-read trailer, records with one" "1 1 0" "$r1 $(prsd "$T/sr1.md")"
 echo x > "$GD/pnpm-lock.yaml"; git -C "$GD" add pnpm-lock.yaml; git -C "$GD" -c user.name=t -c user.email=t@t commit -q -m lock
 check "BLOCK: pr-steps small on docs and a lockfile without a test, though a commit carries a cold read" "1 1" "$(prsd "$T/sr1.md") $(grep -c 'adds or changes no test' "$T/prsd.err")"
+# a diff of code comments alone counts as docs: the cold read's record instead of a test
+GK="$T/prsk"; mkdir -p "$GK/src"; git -C "$GK" init -q -b main; printf 'const a = 1\n// TODO: x\n/*\n * old\n */\n' > "$GK/src/a.ts"; git -C "$GK" add -A; git -C "$GK" -c user.name=t -c user.email=t@t commit -q -m a
+git -C "$GK" update-ref refs/remotes/origin/main HEAD; git -C "$GK" checkout -q -b fix; printf 'const a = 1\n// TODO: y\n/*\n * new\n */\n// added\n' > "$GK/src/a.ts"; git -C "$GK" -c user.name=t -c user.email=t@t commit -qam b
+prsk() { (cd "$GK" && bash "$R/bin/pr-steps" small "$@" 2>"$T/prsk.err" >/dev/null; echo $?); }
+r1=$(prsk "$T/sr1.md"); r1="$r1 $(grep -c 'no cold read' "$T/prsk.err")"
+git -C "$GK" -c user.name=t -c user.email=t@t commit -q --allow-empty -m c -m "Cold-read: $T/sd-cold.md"
+r2=$(prsk "$T/sr1.md"); echo '#include <a.h>' >> "$GK/src/a.ts"; git -C "$GK" -c user.name=t -c user.email=t@t commit -qam d
+check "pr-steps small on a diff of code comments alone: BLOCK naming the cold read without one, records with one, BLOCK naming a code line that starts like a comment" "1 1 0 1 1" "$r1 $r2 $(prsk "$T/sr2.md") $(grep -c 'a code line: +#include' "$T/prsk.err")"
 # ---------- pr-steps: every converge step leaves its proof; the guard needs all five ----------
 G2="$T/prs2"; mkdir -p "$G2"; git -C "$G2" init -q; git -C "$G2" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 prs2() { (cd "$G2" && bash "$R/bin/pr-steps" "$@" >/dev/null 2>&1; echo $?); }

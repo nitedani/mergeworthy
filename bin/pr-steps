@@ -79,7 +79,7 @@ last=$(grep -v '^[[:space:]]*$' "$out" | tail -n1 || true)
 sha=$(git rev-parse HEAD)
 built='(^|/)dist/'  # a committed build bundle: not code a reviewer reads
 # pr-steps small <report>: a fix of at most 60 lines outside tests, docs, lockfiles and dist/, with a test in the diff (a diff of docs
-# alone: a commit's Cold-read trailer, rules step 4), reviewed once by delegate/small-review.md, stands for verify, shape,
+# or code comments alone: a commit's Cold-read trailer, rules step 4), reviewed once by delegate/small-review.md, stands for verify, shape,
 # reverify and fresh (converge §Small fix); gates still run
 if [ "$step" = small ]; then
   pb=$(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || true)  # a stacked PR is measured against its own base
@@ -90,8 +90,12 @@ if [ "$step" = small ]; then
   n=$(git diff --numstat "$base" HEAD | awk -v r="$skip" '$3 !~ r {s+=$1+$2} END{print s+0}')
   [ "$n" -le 60 ] || { echo "$n changed lines outside tests, docs, lockfiles and dist/: past a small fix's 60, run converge steps 1-4" >&2; exit 1; }
   if ! git diff --name-only --diff-filter=AM "$base" HEAD | grep -Eq "$testre"; then
-    git diff --name-only "$base" HEAD | grep -Evq "$docs" && { echo "the diff adds or changes no test: a small fix carries a test that fails on the base and passes on the head" >&2; exit 1; }
-    python3 "$(dirname "$(realpath "$0")")/../.githooks/cold-read" "$base..HEAD" || { echo "the diff changes only docs and has no cold read: a commit of it carries a 'Cold-read: <path>' trailer naming the cold read's record (mergeworthy:rules step 4)" >&2; exit 1; }
+    # the first changed line that isn't blank or a whole-line comment (//, /*, *, # , -- , <!--), or a binary file: comments alone are docs
+    code=$(git diff --numstat "$base" HEAD | awk -v r="$docs" '$3 !~ r && $1 == "-" {print "binary " $3; exit}')
+    [ -n "$code" ] || code=$(git diff --name-only "$base" HEAD | grep -Ev "$docs" | xargs -r -d '\n' git diff -U0 "$base" HEAD -- | grep -E '^[-+]' \
+      | grep -Ev '^(\+\+\+|---) (a/|b/|/dev/null)' | grep -Ev '^[-+][[:space:]]*(//|/\*|\*([[:space:]/]|$)|(#|--)([[:space:]]|$)|<!--|$)' | head -n1 || true)
+    [ -z "$code" ] || { echo "the diff adds or changes no test: a small fix carries a test that fails on the base and passes on the head (a code line: $code)" >&2; exit 1; }
+    python3 "$(dirname "$(realpath "$0")")/../.githooks/cold-read" "$base..HEAD" || { echo "the diff changes only docs or code comments and has no cold read: a commit of it carries a 'Cold-read: <path>' trailer naming the cold read's record (mergeworthy:rules step 4)" >&2; exit 1; }
   fi
   # the verdict ends the report, before any trailing Verification or not_checked section (delegate/agent.md asks every agent for not_checked)
   verdict=$(awk '{ l = tolower($0) } l ~ /^#+[ \t]*(verification|not[ _]checked)([^a-z]|$)/ { tail = 1; next } /^#/ { tail = 0 } !tail' "$out" | grep -v '^[[:space:]]*$' | tail -n2 | tr '\n' '|')
