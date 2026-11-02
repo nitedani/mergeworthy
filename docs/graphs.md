@@ -97,15 +97,16 @@ flowchart TB
   end
   s0 -.-> r1[["task"]]
   s2 -.-> r2[["post"]]
-  s3 -.-> r3[["converge"]]
-  s4 -.-> r4[["design"]]
-  s4 -.-> r5[["merging"]]
-  s4 -.-> r6[["delegate"]]
-  s5 -.-> r7[["post"]]
-  s5 -.-> r8[["delegate"]]
-  s6 -.-> r9[["post"]]
-  s6 -.-> r10[["task"]]
-  s7 -.-> r11[["task"]]
+  s2 -.-> r3[["task"]]
+  s3 -.-> r4[["converge"]]
+  s4 -.-> r5[["design"]]
+  s4 -.-> r6[["merging"]]
+  s4 -.-> r7[["delegate"]]
+  s5 -.-> r8[["post"]]
+  s5 -.-> r9[["delegate"]]
+  s6 -.-> r10[["post"]]
+  s6 -.-> r11[["task"]]
+  s7 -.-> r12[["task"]]
   start --> g0
 ```
 
