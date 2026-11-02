@@ -9,7 +9,7 @@ Everything that reaches an external service passes these steps: comments, review
 
 ## Steps
 
-1. **Draft** in `<work folder>/drafts/<thread>/<name>.md` (never straight into a `gh` command), with the comment it answers in `<name>.parent.md`. On a thread: build the thread record in the same folder and brief a drafter; you read only its draft and its list of conflicts with past decisions. A PR or issue body: from its template (`pull-request §Body`, `open-issue` step 3). Whoever drafts reads `writing` first and runs `writing §Self-check` before the review.
+1. **Draft** in `<work folder>/drafts/<thread>/<name>.md` (never straight into a `gh` command), with the comment it answers in `<name>.parent.md`. On a thread: build the thread record in the same folder and brief a drafter; you read only its draft and its list of conflicts with past decisions. A short reply (a few sentences deciding nothing new: "Done in <sha>", a direct answer, a holding reply) you draft yourself from its comment and the code you read; the reviewer checks it against the record. A PR or issue body: from its template (`pull-request §Body`, `open-issue` step 3). Whoever drafts reads `writing` first and runs `writing §Self-check` before the review.
    Run: `thread-context <owner/repo#N> --out <work folder>/drafts/<thread>/thread-context.md` · Open: `delegate/drafter.md`; `writing` · Record: thread-context.md · Hook: gate-pass and pre-bash-guard (no record, or one without the thread's latest human comment)
 2. **Lint until it passes.** gate-pass re-runs it with the same flags.
    Run: `post-lint <draft> --kind <kind> [--repo <owner/repo>] [--draft]` (§Kinds)
