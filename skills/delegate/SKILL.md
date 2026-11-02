@@ -65,7 +65,7 @@ The prompt is a file with the template filled. Never write `CLEAN` yourself. Sen
 Every review loop:
 - **Severity:** re-rate each label (`agent.md`) yourself; nits (findings nobody hits in practice) get no code.
 - **Two rounds per head.** Round 1's prompt asks for every finding exhaustively; round 2's confirms round 1's fixes and counts only a blocker or regression, the fresh reader's too. A round that finds only nits ends the loop. Before round 2, cut what the fixes added beyond need. Name each round `<loop>-r<N>` (T3's `clientRequestId`, the Agent tool's `description`, a shell reviewer's prompt file).
-- **No third round** on a head or the fixes built on it: what round 2 leaves open goes to the user, or into the report, as it is. A new head from a maintainer's ask starts a new count, under a new loop name.
+- **No third round** on a head or the fixes built on it (pre-agent-dedupe refuses it): what round 2 leaves open goes to the user, or into the report, as it is. A new head from a maintainer's ask starts a new count, under a new loop name.
 - **Ledger:** `<work folder>/drafts/<review>.ledger.md`, one line per finding: `<id> <label> <outcome>` (fixed in <sha>, disputed: <evidence>, declined: <why>), the id `R<round>.<n>` from its first round.
 - **Stuck:** a finding the reviewer holds after two disputing replies of yours goes to the user, both sides in 2–3 lines. Rule on evidence, never to end the loop.
 - **While a round runs,** leave what it reads unchanged.

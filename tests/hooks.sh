@@ -1039,11 +1039,14 @@ python3 -c 'import json,os,time; p=os.path.expanduser("~/.claude/agent-client-re
 check "BLOCK: a clientRequestId reused later (T3 replays the old result)" 2 "$(cid r-1)"
 for i in $(seq 40); do (cid_in "c-$i" | python3 "$R/hooks/pre-agent-dedupe.py" register 2>/dev/null || echo crash) & done > "$T/cid.out"; wait
 check "40 launches registering at once: none crashes, none is lost" "0 40" "$(grep -c crash "$T/cid.out") $(python3 -c 'import json,os; print(sum(k.startswith("c-") for k in json.load(open(os.path.expanduser("~/.claude/agent-client-request-ids.json")))))')"
-rnd() { # clientRequestId task [role]
-  python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":sys.argv[2],"role":sys.argv[3],"clientRequestId":sys.argv[1]}}))' "$1" "$2" "${3:-review}" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; echo $?; }
+rnd() { # clientRequestId task [role]: a review round's exit code, registered when it passes
+  local j; j=$(python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":sys.argv[2],"role":sys.argv[3],"clientRequestId":sys.argv[1]}}))' "$1" "$2" "${3:-review}")
+  printf '%s' "$j" | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; local r=$?; [ $r = 0 ] && printf '%s' "$j" | python3 "$R/hooks/pre-agent-dedupe.py" register; echo $r; }
 agent_rnd() { # description prompt
-  python3 -c 'import json,sys; print(json.dumps({"tool_name":"Agent","tool_input":{"description":sys.argv[1],"prompt":sys.argv[2]}}))' "$1" "$2" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; echo $?; }
-check "a review launch at any round, or naming none, passes: rounds aren't capped, the loop stops when a round finds only nits" "0 0 0" "$(rnd loop-a-r7 'Follow /tmp/x/rr.md') $(rnd loop-a 'Follow /tmp/x/rr.md') $(agent_rnd fresh-r5 'Review it. Final message: exactly CLEAN, or the findings.')"
+  local j; j=$(python3 -c 'import json,sys; print(json.dumps({"tool_name":"Agent","tool_input":{"description":sys.argv[1],"prompt":sys.argv[2]}}))' "$1" "$2")
+  printf '%s' "$j" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; local r=$?; [ $r = 0 ] && printf '%s' "$j" | python3 "$R/hooks/pre-agent-dedupe.py" register; echo $r; }
+check "BLOCK: a loop's r3 with no head pinned, a trailing date no escape; its r2, a launch naming no round and another loop's r3 pass" "0 0 2 1 2 0 0" "$(rnd loop-a-r1 'Review it, round 1') $(rnd loop-a-r2 'Review it, round 2') $(rnd loop-a-r3 'Review it, round 3') $(grep -c 'delegate §Review rounds' "$T/err") $(rnd loop-a-r3-2026-11-02 'Review it, round 3 again') $(rnd loop-a 'Review it once more') $(rnd loop-b-r3 'Review it, the other loop')"
+check "BLOCK: the Agent tool's review round r3 by its description; its r2 passes" "0 0 2" "$(agent_rnd fresh-r1 'Read it. Final message: exactly CLEAN, or the findings.') $(agent_rnd fresh-r2 'Read it again. Final message: exactly CLEAN, or the findings.') $(agent_rnd fresh-r3 'Read it a third time. Final message: exactly CLEAN, or the findings.')"
 bg() { # [run_in_background]: an Agent launch's exit code, with T3CODE_THREAD_ID as the caller has it
   python3 -c 'import json,sys; t={"description":"bg","prompt":"Execute /tmp/x/bg.md"}; t.update({"run_in_background":json.loads(sys.argv[1])} if sys.argv[1:] else {}); print(json.dumps({"tool_name":"Agent","tool_input":t}))' "$@" | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
 check "BLOCK: under T3 an Agent in the background, by default or asked, naming delegate_task; in the foreground it passes" "2 1 2 0" "$(T3CODE_THREAD_ID=th bg) $(grep -c delegate_task "$T/err") $(T3CODE_THREAD_ID=th bg true) $(T3CODE_THREAD_ID=th bg false)"
@@ -1186,6 +1189,10 @@ ag() { # cwd task [role]
 printf '# Memory\n## Standing\n### Ruled out\n- **Cron jobs** (now). The user refused them.\n## Recent\n<!-- covered-until: 2099-01-01T00:00:00.000Z -->\n' > "$MR/memory.md"
 check "BLOCK: a brief pinned to an older commit of the worktree it names, with the ruled-out list" "2 1" "$(ag "$OC" "Fix it in $T/gw at $OLD") $(grep -c 'Cron jobs' "$T/err")"
 check "a brief pinned to the worktree's live head passes" 0 "$(ag "$OC" "Fix it again in $T/gw at $NEW, base $OLD")"
+r1=$(rnd gw-r1 "Review $T/gw at head $NEW"); r2=$(rnd gw-r2 "Review $T/gw at head $NEW again"); r3=$(rnd gw-r3 "Review $T/gw at head $NEW once more")
+git -C "$T/gw" commit -q --allow-empty -m fix; FIX=$(git -C "$T/gw" rev-parse HEAD); r3f=$(rnd "gw-r3-${FIX:0:7}" "Review $T/gw at head $FIX")
+git -C "$T/gw" checkout -q --detach "$OLD"; git -C "$T/gw" commit -q --allow-empty -m new; NH=$(git -C "$T/gw" rev-parse HEAD)
+check "review rounds on one head: r1 and r2 pass, BLOCK r3 on it and on a fix built on it, r3 on a new head passes" "0 0 2 2 0" "$r1 $r2 $r3 $r3f $(rnd "gw-r3-${NH:0:7}" "Review $T/gw at head $NH")"
 mkdir -p "$HOME/.mergeworthy/projects/o"; echo "- a lesson from $OLD" > "$HOME/.mergeworthy/projects/o/gwnotes.md"
 check "a project notes file the brief names is read, not pinned: its history SHAs block nothing" 0 "$(ag "$OC" "Fix it in $T/gw; notes $HOME/.mergeworthy/projects/o/gwnotes.md")"
 check "the user's own checkout is read at any commit" 0 "$(ag "$OC" "Read $T/gr at $MAINOLD once more")"
