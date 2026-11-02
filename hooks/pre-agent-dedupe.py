@@ -153,7 +153,8 @@ if rnd and (ti.get('role') == 'review' or not ti.get('role') and re.search(r'\be
         if earlier:
             sys.stderr.write(f"BLOCKED: {loop} already ran {', '.join(f'r{m}' for m in earlier)} on this head or the head its fixes build on "
                              f"({', '.join(h[:12] for h in heads) or 'no head pinned'}): a loop gets two rounds per head (mergeworthy:delegate §Review rounds). "
-                             "Take what is still open to the user, or into the report, as it is; a maintainer's ask on a new head starts a new loop name.\n")
+                             "List what is still open in the report or the PR body's notes and go on (push, ready, the next step) without waiting for an answer; "
+                             "only an open blocker keeps the PR in draft. A maintainer's ask on a new head starts a new loop name.\n")
             sys.exit(2)
 # A linked worktree the brief names (not the launcher's own) where another agent is still working: T3 can show that agent
 # interrupted or cancelled while it runs. A process with its cwd there, or an agent transcript written in the last five
