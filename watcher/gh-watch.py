@@ -14,7 +14,7 @@
   hour's budget (see "The GitHub API budget") and sends ETags; a rate-limit pause prints one WATCH ERROR per daemon.
 - Maintainers' commits pushed to a tracked PR, and 👍/👎 from you or a maintainer (write access, see maintainer) on the agent's comments.
 - WAIT PING DUE: your account's comment is the last on an open thread, and nobody else in it has replied or acted in any watched thread for WAIT_PING_HOURS (3).
-- PR head/state changes (pushes, merges, closes), CI turning red or green on open PRs, and your PR's code (tests excluded) changing by more than ~80 lines since its last shape pass (SHAPE STALE).
+- PR head/state changes (pushes, merges, closes), CI turning red or green on open PRs, and the code of a PR you opened or drive (a pr-steps record on one of its commits; tests excluded) changing by more than ~80 lines since its last shape pass (SHAPE STALE).
 - How often each thread is read depends on its state (see "How often a thread is read"); the notifications, your events feed
   and the repos' issue lists are polled once per X-Poll-Interval, the repo lists by the one daemon holding the lease for all.
 - GitLab threads in threads.txt are read by gl_watch.py (scan_gitlab), into the same events.log and replies-owed.md.
@@ -916,14 +916,16 @@ def emit_maintainer_commits(state, repo, key, old, new):
 
 
 def emit_refactor_stale(repo, key, new):
-    """Your PR's own commits changed more than ~80 lines since its last shape pass (`pr-steps shape`): the ratings
+    """A PR you opened, or another account's PR you drive (a pr-steps record on one of its commits), changed more than ~80
+    lines in its own commits since its last shape pass (`pr-steps shape`): the ratings
     describe old code. Merges of the base branch, tests, lockfiles and dist/ don't count: they aren't the PR's code to rate."""
     num = key.split('#')[1]
     try:
         pr = request(f"repos/{repo}/pulls/{num}").json()
-        if pr['user']['login'] != ME: return worked(f"shape check {key}")  # no shape pass to keep up with: checked
         commits = [{'sha': c['sha'], 'merge': len(c['parents']) > 1} for c in request(f"repos/{repo}/compare/{pr['base']['ref']}...{new}").json()['commits']]
         rec = os.path.expanduser('~/.claude/pr-steps')
+        if pr['user']['login'] != ME and not any(os.path.exists(f"{rec}/{c['sha']}") for c in commits):
+            return worked(f"shape check {key}")  # no shape pass to keep up with: checked
         idx = max((i for i, c in enumerate(commits) if os.path.exists(f"{rec}/{c['sha']}") and any(l.startswith(('shape ', 'refactor ')) for l in open(f"{rec}/{c['sha']}"))), default=-1)
         since = [c['sha'] for c in commits[idx + 1:] if not c['merge']]
         skip = re.compile(testpaths.TESTS + r'|(^|/)(pnpm-lock\.yaml|package-lock\.json|yarn\.lock)$|(^|/)dist/')

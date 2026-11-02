@@ -1519,5 +1519,23 @@ with contextlib.redirect_stdout(buf): m.emit_refactor_stale("o/r", "o/r#8", "new
 print(buf.getvalue().count("### SHAPE STALE"))
 ')
 check "SHAPE STALE doesn't count a committed build bundle (dist/) or tests in unit_tests/ and *_test.go" 0 "$got"
+
+# SHAPE STALE counts a PR another account opened when a pr-steps record on one of its commits shows the agent drives it
+got=$(py '
+Answer = lambda data: type("A", (), {"status": 200, "json": lambda self: data})()
+m.request = lambda path, *a, **k: Answer({"user": {"login": "owner"}, "base": {"ref": "main"}} if path.endswith("/pulls/9")
+                                         else {"commits": [{"sha": "d1", "parents": [{}]}, {"sha": "d2", "parents": [{}]}]} if "/compare/" in path
+                                         else {"files": [{"filename": "src/a.ts", "additions": 90, "deletions": 0}]})
+rec = os.path.expanduser("~/.claude/pr-steps"); os.makedirs(rec, exist_ok=True)
+counts = []
+for record in (True, False):
+    if record: open(f"{rec}/d1", "w").write("approach 9\n")
+    elif os.path.exists(f"{rec}/d1"): os.remove(f"{rec}/d1")
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf): m.emit_refactor_stale("o/r", "o/r#9", "new")
+    counts.append(buf.getvalue().count("### SHAPE STALE"))
+print(*counts)
+')
+check "SHAPE STALE fires on another account's PR with a pr-steps record on its first commit, and not without one" "1 0" "$got"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]
