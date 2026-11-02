@@ -2796,6 +2796,8 @@ check "BLOCK: a push to a ready PR whose head has no converge records" "2 1" "$(
 printf '## Gates\n- `pnpm test`\n- Push: before gates\n' > "$HOME/.mergeworthy/projects/vikejs/vike.md"
 check "the same push passes when the repo's project file says Push: before gates under ## Gates; gh pr ready still needs every record" "0 2 1" \
   "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK") $(bg 'gh pr ready 3675 -R vikejs/vike' "$CK") $(grep -c 'has no pr-steps verify' "$T/err")"
+printf '## Gates ([ci.yml](https://example.invalid/ci.yml))\n- Push: before gates\n' > "$HOME/.mergeworthy/projects/vikejs/vike.md"
+check "a ## Gates heading with its source after it opts in too" 0 "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK")"
 printf '## Agents\n- Push: before gates\n' > "$HOME/.mergeworthy/projects/vikejs/vike.md"
 check "BLOCK: the line under another section opts nothing in" 2 "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK")"
 rm -r "$HOME/.mergeworthy/projects/vikejs"; gql nitedani-agent nitedani-agent https://github.com/vikejs/vike/pull/3675

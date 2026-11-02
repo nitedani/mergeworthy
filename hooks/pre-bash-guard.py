@@ -34,7 +34,7 @@ def push_before_gates(url):
     """The PR's project file has the `## Gates` line `Push: before gates`, bulleted or not: its maintainers take a ready PR's pushes before converge (merging step 1)."""
     m = re.match(r'https://(?:github\.com/(.+)/pull|gitlab\.com/(.+)/-/merge_requests)/\d+$', url or '')
     f = os.path.expanduser(f'~/.mergeworthy/projects/{m[1] or m[2]}.md') if m else ''
-    sec = re.search(r'^## Gates\n(.*?)(?=^## |\Z)', open(f, errors='replace').read(), re.M | re.S) if os.path.isfile(f) else None
+    sec = re.search(r'^## Gates\b[^\n]*\n(.*?)(?=^## |\Z)', open(f, errors='replace').read(), re.M | re.S) if os.path.isfile(f) else None
     return bool(sec and re.search(r'^(?:[-*] +)?Push: *before gates *$', sec[1], re.M))
 
 def setting(name, default):
