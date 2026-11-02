@@ -494,7 +494,7 @@ rm -f "$FX/graphql" "$FX/graphql_d" "$FX/graphql_DC_504" "$FX/graphql_D_5" "$FX/
 
 # gate-pass wants the same file beside a reply draft
 GD="$T/gdrafts/x"; mkdir -p "$GD"; printf 'Agreed, option A it is.\n' > "$GD/r.md"; echo CLEAN > "$GD/r.review.out"
-gp() { touch -d "${RT:-+10 minutes}" "$GD/r.review.out"; MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GD/r.md" "$GD/r.review.out" --kind reply --parent none >"$T/gp.out" 2>&1; echo $?; }
+gp() { touch -d "${RT:-+10 minutes}" "$GD/r.review.out"; MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GD/r.md" "$GD/r.review.out" ${GPL:+--ledger "$GPL"} --kind reply --parent none >"$T/gp.out" 2>&1; echo $?; }
 check "BLOCK: gate-pass on a reply without thread-context.md" 1 "$(gp)"
 grep -c 'no thread-context.md' "$T/gp.out"
 cp "$TD/thread-context.md" "$GD/thread-context.md"; touch -d 2026-10-01T00:00:00Z "$GD/r.md"
@@ -510,6 +510,9 @@ cp "$GD/thread-context.md" "$T/gd-tc.md"; cp "$TC" "$GD/thread-context.md"; touc
 check "BLOCK: gate-pass with the parent saved after a record the thread has outgrown" "1 1" "$(gp) $(grep -c 'records the latest comment' "$T/gp.out")"
 mv "$T/gd-tc.md" "$GD/thread-context.md"; rm "$GD/r.parent.md"; touch -d '+1 minute' "$GD/r.md"
 check "gate-pass records the thread context in the gate" 1 "$(grep -c '^tc ' "$GD/r.md.gate")"
+printf 'R2.1 should: the second sentence reads twice\n' > "$GD/r.review.out"; printf 'R2.1 should listed: the report to the user\n' > "$T/gl.md"; printf 'R2.1 blocker listed: the report to the user\n' > "$T/gb.md"
+check "gate-pass: a round-2 review that isn't CLEAN passes with its ledger closing it; BLOCK without one, or with a blocker left open" "1 0 1 1" "$(gp) $(GPL="$T/gl.md" gp) $(GPL="$T/gb.md" gp) $(grep -c 'open blocker' "$T/gp.out")"
+echo CLEAN > "$GD/r.review.out"
 printf 'The test checks that "I'"'"'ll switch it once X is released" passes.\n' > "$GD/r.md"; touch -d '+2 minutes' "$GD/r.md"
 check "a quoted \"I'll\" is someone else's words, not a promise" 0 "$(gp)"
 printf 'The lint says:\n\n```\nsay what is being done ('"'"'I'"'"'ll merge …'"'"')\n```\n' > "$GD/r.md"; touch -d '+150 seconds' "$GD/r.md"
@@ -1822,6 +1825,13 @@ prs() { (cd "$G" && bash "$R/bin/pr-steps" "$@" >/dev/null 2>&1; echo $?); }
 printf '# Loop B fix log\nfixed the README\n' > "$T/fixlog.md"
 std() { for f in "$@"; do { echo '## Standards read'; bash "$R/bin/pr-steps" standards; echo '## Report'; cat "$f"; } > "$f.s" && mv "$f.s" "$f"; done; }
 printf '\n\n' > "$T/blank.md"; check "BLOCK: an output of blank lines, saying what it lacks" 1 "$(cd "$G" && bash "$R/bin/pr-steps" verify "$T/blank.md" 2>&1 | grep -c 'does not end with a line NO BUGS')"
+# a round 2 that isn't clean records with the loop's ledger closing it: every finding fixed on HEAD, declined or listed, no blocker open
+GL="$T/prl"; git init -q -b main "$GL"; gl() { git -C "$GL" -c user.name=t -c user.email=t@t "$@"; }; gl commit -q --allow-empty -m a; ON=$(gl rev-parse --short HEAD)
+gl checkout -q -b side; gl commit -q --allow-empty -m off; OFF=$(gl rev-parse --short HEAD); gl checkout -q main; gl commit -q --allow-empty -m b
+printf 'R2.1 should: the parser drops a field\n' > "$T/r2.md"; std "$T/r2.md"
+led() { printf '%s\n' "$@" > "$T/led.md"; (cd "$GL" && bash "$R/bin/pr-steps" verify "$T/r2.md" --ledger "$T/led.md" >/dev/null 2>"$T/err"; echo $?); }
+check "pr-steps verify: BLOCK a round-2 report without NO BUGS with no ledger, a round-1 ledger, a blocker left open, a fix not on HEAD; a ledger closing it records" "1 1 1 1 1 1 1 0" \
+  "$(cd "$GL" && bash "$R/bin/pr-steps" verify "$T/r2.md" >/dev/null 2>&1; echo $?) $(led 'R1.1 should listed: the PR body notes') $(grep -c 'closes round 1' "$T/err") $(led 'R2.1 blocker listed: the PR body notes') $(grep -c 'open blocker' "$T/err") $(led "R2.1 should fixed in $OFF") $(grep -c "$OFF is not in HEAD" "$T/err") $(led "R1.1 blocker fixed in $ON" 'R2.1 should listed: the PR body notes' 'R2.2 nit declined: wording')"
 check "BLOCK: a fix log recorded as the shape pass, saying what a pass needs" "1 1" "$(prs shape "$T/fixlog.md") $(cd "$G" && bash "$R/bin/pr-steps" shape "$T/fixlog.md" 2>&1 | grep -c "lacks the ✅ coverage list")"
 # a ratings report in the form a session wrote for #3609 (one rating per item, a summary of the changed ones, no ✅ list) is told all it lacks
 printf '## Files\n\n| # | File | Rating | Reason |\n|---|---|---|---|\n| 1 | `docs/headings.ts` | 9 | One entry, last. |\n| 8 | `packages/vike/package.json` | 6 | Refactor 1. |\n\n## Summary\n\n| Item | Old => new | Commit |\n|---|---|---|\n| File 8 `packages/vike/package.json` | 6 => 9 | f3e4b44bd4 |\n\nGates on f3e4b44bd4:\n- `pnpm run test:types` -> exit 0\n' > "$T/ratings.md"
