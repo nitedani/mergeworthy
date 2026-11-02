@@ -61,7 +61,7 @@ def gated_file(p, has_cd, create=False):
         p = os.path.join(cwd, p)
     gate = p + '.gate'
     if not os.path.exists(p) or not os.path.exists(gate):
-        block(f"no gate record for {p}: run post-lint + the review until CLEAN, then `gate-pass {p} <review-output>`")
+        block(f"no gate record for {p}: run post-lint + the review (mergeworthy:post steps 2-3), then `gate-pass {p} <review-output>`")
     sha = hashlib.sha256(open(p, 'rb').read()).hexdigest()
     if sha != open(gate).read().split('\n')[0].strip():
         block(f"{p} changed after its gate: review it again and re-run gate-pass")
