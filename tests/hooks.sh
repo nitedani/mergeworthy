@@ -2007,6 +2007,15 @@ r1=$(prsk "$T/sr1.md"); r1="$r1 $(grep -c 'no cold read' "$T/prsk.err")"
 git -C "$GK" -c user.name=t -c user.email=t@t commit -q --allow-empty -m c -m "Cold-read: $T/sd-cold.md"
 r2=$(prsk "$T/sr1.md"); echo '#include <a.h>' >> "$GK/src/a.ts"; git -C "$GK" -c user.name=t -c user.email=t@t commit -qam d
 check "pr-steps small on a diff of code comments alone: BLOCK naming the cold read without one, records with one, BLOCK naming a code line that starts like a comment" "1 1 0 1 1" "$r1 $r2 $(prsk "$T/sr2.md") $(grep -c 'a code line: +#include' "$T/prsk.err")"
+# a repo keeping no PR-proving test (code §Tests): the report's reproduction, red on this base and green on this head, stands for the test
+GR="$T/prsr"; mkdir -p "$GR/src"; git -C "$GR" init -q -b main; echo 'const a = 1' > "$GR/src/a.ts"; git -C "$GR" add -A; git -C "$GR" -c user.name=t -c user.email=t@t commit -q -m a
+git -C "$GR" update-ref refs/remotes/origin/main HEAD; git -C "$GR" checkout -q -b fix; echo 'const a = 2' > "$GR/src/a.ts"; git -C "$GR" -c user.name=t -c user.email=t@t commit -qam b
+prsr() { (cd "$GR" && bash "$R/bin/pr-steps" small "$@" 2>"$T/prsr.err" >/dev/null; echo $?); }
+rb=$(git -C "$GR" rev-parse --short main); rh=$(git -C "$GR" rev-parse --short HEAD)
+printf 'Reproduction: `node repro.js`: red on %s, green on %s\n## Outside this change\nNO BUGS\nMERGE AS IS: yes\n' "$rh" "$rh" > "$T/srr1.md"
+printf -- '- Reproduction: `node repro.js`: red on %s, green on %s.\n## Outside this change\nNO BUGS\nMERGE AS IS: yes\n' "$rb" "$rh" > "$T/srr2.md"
+r1=$(prsr "$T/srr1.md"); r1="$r1 $(grep -c "Reproduction: <command>.* for $rb and $rh" "$T/prsr.err")"
+check "pr-steps small without a test: BLOCK on a reproduction naming another base, naming the shas it needs; records with one red on this base and green on this head" "1 1 0" "$r1 $(prsr "$T/srr2.md")"
 # ---------- pr-steps: every converge step leaves its proof; the guard needs all five ----------
 G2="$T/prs2"; mkdir -p "$G2"; git -C "$G2" init -q; git -C "$G2" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 prs2() { (cd "$G2" && bash "$R/bin/pr-steps" "$@" >/dev/null 2>&1; echo $?); }

@@ -7,7 +7,7 @@ The main session fills it and starts the reviewer `delegate §Reviewers` names.
 ```
 You review <PR> at head <SHA> (base <SHA>) in <worktree>, as its maintainer would before merging. The project file: <project file path>. The body draft: <work folder>/drafts/<pr>/pr-body.md. Don't commit, push or comment anywhere.
 
-1. Run <the test the fix adds> on base and head: red, then green, or that is your first finding; docs or whole-line comments alone need none.
+1. Run <the test the fix adds, or a reproduction where the repo keeps none> on base and head: red, then green, or that is your first finding (a reproduction: `Reproduction: <command>: red on <base sha>, green on <head sha>`); docs or whole-line comments alone need none.
 2. Read the diff with every caller of what it changes. A finding is a bug this diff causes, a bug or UX issue in a function it edits (one the base has too included), a case of the issue it leaves unfixed, or code its maintainer would ask to change (code §Checklist); each shown by a command or `path:line`.
 3. Read the body against the head by writing §Self-check: every claim true of the head, nothing a maintainer would miss if cut.
 A defect outside the functions the diff edits is no finding: one line each under `## Outside this change`, with how to reproduce it.
