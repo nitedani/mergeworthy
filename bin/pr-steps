@@ -94,8 +94,12 @@ if [ "$step" = small ]; then
     code=$(git diff --numstat "$base" HEAD | awk -v r="$docs" '$3 !~ r && $1 == "-" {print "binary " $3; exit}')
     [ -n "$code" ] || code=$(git diff --name-only "$base" HEAD | grep -Ev "$docs" | xargs -r -d '\n' git diff -U0 "$base" HEAD -- | grep -E '^[-+]' \
       | grep -Ev '^(\+\+\+|---) (a/|b/|/dev/null)' | grep -Ev '^[-+][[:space:]]*(//|/\*|\*([[:space:]/]|$)|(#|--)([[:space:]]|$)|<!--|$)' | head -n1 || true)
-    [ -z "$code" ] || { echo "the diff adds or changes no test: a small fix carries a test that fails on the base and passes on the head (a code line: $code)" >&2; exit 1; }
-    python3 "$(dirname "$(realpath "$0")")/../.githooks/cold-read" "$base..HEAD" || { echo "the diff changes only docs or code comments and has no cold read: a commit of it carries a 'Cold-read: <path>' trailer naming the cold read's record (mergeworthy:rules step 4)" >&2; exit 1; }
+    # a repo whose habit keeps no PR-proving test (code §Tests): the review's reproduction, red on this base and green on this head
+    repro=$(sed -nE 's/^[[:space:]*>-]*Reproduction:.*: red on ([0-9a-f]{7,40}), green on ([0-9a-f]{7,40})[.[:space:]]*$/\1 \2/p' "$out" | head -n1)
+    if [ -n "$code" ] && ! { [ -n "$repro" ] && [[ $base == "${repro% *}"* && $sha == "${repro#* }"* ]]; }; then
+      echo "the diff adds or changes no test: a small fix carries a test that fails on the base and passes on the head, or, where the repo keeps no such test, its report a line 'Reproduction: <command>: red on <base sha>, green on <head sha>' for $(git rev-parse --short "$base") and $(git rev-parse --short HEAD) (a code line: $code)" >&2; exit 1
+    fi
+    [ -n "$code" ] || python3 "$(dirname "$(realpath "$0")")/../.githooks/cold-read" "$base..HEAD" || { echo "the diff changes only docs or code comments and has no cold read: a commit of it carries a 'Cold-read: <path>' trailer naming the cold read's record (mergeworthy:rules step 4)" >&2; exit 1; }
   fi
   # the verdict ends the report, before any trailing Verification or not_checked section (delegate/agent.md asks every agent for not_checked)
   verdict=$(awk '{ l = tolower($0) } l ~ /^#+[ \t]*(verification|not[ _]checked)([^a-z]|$)/ { tail = 1; next } /^#/ { tail = 0 } !tail' "$out" | grep -v '^[[:space:]]*$' | tail -n2 | tr '\n' '|')
