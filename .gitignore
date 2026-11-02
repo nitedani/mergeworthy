@@ -1,7 +1,7 @@
 __pycache__/
 *.pyc
 .pytest_cache/
-node_modules/
+node_modules
 # Claude Code installs a plugin root's lockfile with npm or bun, and refuses a pnpm one: the root keeps none
 /package-lock.json
 /pnpm-lock.yaml
