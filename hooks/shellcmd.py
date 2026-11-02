@@ -174,14 +174,14 @@ def _name(w):
 
 def _unseen(tree, src):
     """The names a script may set where Where can't follow, read from its syntax: a name assigned other than by a command of only
-    `NAME=value` words, or those after export, readonly, local or declare (export -n D=x, typeset, D+=x, D[1]=x, D=x cmd), one a builtin sets (read, mapfile, printf -v, unset, getopts, wait -p),
+    `NAME=value` words, or those after export, readonly, declare or a function's local (export -n D=x, typeset, D+=x, D[1]=x, D=x cmd), one a builtin sets (read, mapfile, printf -v, unset, getopts, wait -p),
     ${D:=x}, an arithmetic assignment ((( )), $(( )), let), and a for loop's variable assigned anywhere; EVERY when it runs eval,
     source, . or trap, which can set any. Heredoc bodies and quoted text are words, never read as commands."""
-    names, assigned, loops, todo = set(), set(), set(), [tree]
+    names, assigned, loops, todo = set(), set(), set(), [(tree, False)]  # each node, and whether it is in a function's body
     while todo:
-        y = todo.pop()
+        y, body = todo.pop()
         if isinstance(y, list):
-            todo += y
+            todo += [(x, body) for x in y]
             continue
         if not isinstance(y, dict):
             continue
@@ -200,7 +200,8 @@ def _unseen(tree, src):
                 names.update(_name(argv[i + 1]) for i in range(1, len(argv) - 1) if argv[i] == '-v')
         elif cmd.get('Type') == 'DeclClause':
             args = cmd.get('Args') or []
-            taken = cmd['Variant']['Value'] in ('export', 'readonly', 'local', 'declare') and plain(args)  # Where.step's: export D=x, not export -n D=x
+            variant = cmd['Variant']['Value']
+            taken = (variant in ('export', 'readonly', 'declare') or variant == 'local' and body) and plain(args)  # Where.step's: export D=x, not export -n D=x
             (assigned if taken else names).update(a['Name']['Value'] if a.get('Name') else _name(_word(a['Value'], src)) for a in args)
         if t == 'ParamExp' and (y.get('Exp') or {}).get('Op') in ('=', ':=') and y.get('Param'):
             names.add(y['Param']['Value'])
@@ -208,7 +209,7 @@ def _unseen(tree, src):
             names.add(_name(_word(y['X'], src)))
         if t == 'ForClause' and (y.get('Loop') or {}).get('Name'):
             loops.add(y['Loop']['Name']['Value'])
-        todo += [v for v in y.values() if isinstance(v, (dict, list))]
+        todo += [(v, body or t == 'FuncDecl') for v in y.values() if isinstance(v, (dict, list))]
     return frozenset(names - {None} | assigned & loops)
 
 
@@ -503,7 +504,7 @@ class Where:
         return any(x[0][2] and x[0][1] == CONDITIONAL for x in self.scopes)
 
     def step(self, t):
-        words = t[1:] if t[:1] in (['export'], ['readonly'], ['local'], ['declare']) else t
+        words = t[1:] if t[:1] in (['export'], ['readonly'], ['declare']) or t[:1] == ['local'] and self.in_body() else t  # local fails outside a function
         if words and all(re.match(r'^\w+=', x) for x in words):
             for x in words:  # each value expanded as it is assigned, but one whose $ the command quoted or escaped
                 n, v = x.split('=', 1)

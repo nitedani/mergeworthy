@@ -2323,6 +2323,8 @@ check "BLOCK: a subshell's export D=… sets D, and its read, unset or printf -v
   "$(ibash "$IT" "D=$T/nogit; (export D=$I; cd \$D; echo x > a.txt)" "$T/nogit") $(ibash "$IT" "D=$T/nogit; (read D <<< $I; cd \$D; echo x > a.txt)" "$T/nogit") $(ibash "$IT" "D=$T/nogit; (unset D; cd \$D; echo x > a.txt)" "$T/nogit") $(ibash "$IT" "D=$T/nogit; (printf -v D $I; cd \$D; echo x > a.txt)" "$T/nogit")"
 check "a value is expanded when it is assigned, export D=… assigns, and \$PWD is the line's dir: a write after cd \$D (D=\$A/…), to \$P/f (P=\$PWD/…), or in (cd \$D) resolves" "0 0 0" \
   "$(ibash "$IT" "A=$T; D=\$A/nogit; cd \$D && echo x > a.txt") $(ibash "$IT" "P=\$PWD/out; echo x > \$P/f" "$T/nogit") $(ibash "$IT" "export D=$T/nogit; (cd \$D && echo x > a.txt)")"
+check "BLOCK: local outside a function assigns nothing (bash refuses it): a write after cd \$D lands where D=… put it, in the repo" 2 \
+  "$(ibash "$IT" "D=$I; local D=$T/nogit; cd \$D && echo x > a.txt" "$T/nogit")"
 check "BLOCK: from outside the repo, a write to \$PWD/a.txt after a cd into it, or to \$OLDPWD/a.txt after a cd from it; one to \$OLDPWD/a.txt after a cd from outside passes" "2 2 0" \
   "$(ibash "$IT" "cd $I && echo x > \$PWD/a.txt" "$T/nogit") $(OLDPWD=$T/nogit ibash "$IT" "cd $I && cd $T/nogit && echo x > \$OLDPWD/a.txt" "$T/nogit") $(OLDPWD=$I ibash "$IT" "cd $T/nogit && cd /tmp && echo x > \$OLDPWD/a.txt")"
 check "a cd to an inherited variable the line only names in text (printf 'D=%s') resolves, at top level and in a subshell" "0 0" \
