@@ -12,6 +12,7 @@ d = json.load(sys.stdin)
 active = bool(d.get('stop_hook_active'))
 last = ''
 posted, monitor_ids, monitors, dead, commands, monitor_cmds = False, {}, set(), set(), [], []
+posted_at = ''  # the time of the session's last post, from its transcript
 wakers, opened_task, acted, delegated = {}, False, False, False  # the background commands and Monitors this session started; whether it is a task's
 last_user = ''  # the user's own last message (not a tool result or a hook's feedback)
 said = []  # every text the agent wrote, in order
@@ -87,7 +88,7 @@ for line in lines:
         for x in c if isinstance(c, list) else []:
             if not isinstance(x, dict) or x.get('type') != 'tool_use': continue
             i = x.get('input') or {}
-            if x.get('name') == 'Bash' and posts(i.get('command', '')): posted = True
+            if x.get('name') == 'Bash' and posts(i.get('command', '')): posted, posted_at = True, e.get('timestamp') or ''
             if x.get('name') == 'Bash': commands.append(i.get('command', ''))
             if x.get('name') == 'Skill' and str(i.get('skill', '')) in ('task', 'mergeworthy:task'): opened_task = True
             if x.get('name') == 'Monitor' and 'events.log' in i.get('command', ''):
@@ -271,7 +272,11 @@ paused = re.search(r'\bpause\b', last_user, re.I) is not None
 # session's turn as a live watcher's do. It has no daemon, so a post there still needs a live watcher, as any post does
 pass_dirs = {wd for wd in ((l.strip() for l in open(reg)) if os.path.exists(reg) else ()) if d.get('session_id') and steward.passed_by(wd) == d['session_id']}
 own_dirs |= pass_dirs
-if posted and watcher_on and not child and not headless and not paused and not t3_dirs and not (monitors - dead):  # a child's posts are its main session's to watch
+def retired_since(at):  # a watch dir of this session's retired after its last post (by its watcher, or by the user's ask): nothing left to wake it for
+    import datetime
+    t = datetime.datetime.fromisoformat(at.replace('Z', '+00:00')).timestamp() if at else 0
+    return any(os.path.getmtime(p) >= t for p in (os.path.join(wd, 'retired') for wd in own_dirs) if os.path.exists(p))
+if posted and watcher_on and not child and not headless and not paused and not t3_dirs and not (monitors - dead) and not retired_since(posted_at):  # a child's posts are its main session's to watch
     # under T3, a watcher of this session's that dropped its t3-thread (the thread or t3 gone) wakes nothing: its events.log says why
     dropped = [wd for wd in live_dirs if t3_chain and steward.first(os.path.join(wd, 'session')) == d.get('session_id')
                and not os.path.exists(os.path.join(wd, 't3-thread'))]
