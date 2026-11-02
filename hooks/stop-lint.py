@@ -138,7 +138,7 @@ for t in runs(r'\.mergeworthy/work|-work\b'):
     worked += [x for x in t[1:] if not x.startswith('-')] if name in (
         'cd', 'pushd', 'mkdir', 'gh-watch-start', 'gate-pass', 'pr-steps', 'memory-prep', 'post-lint', 'thread-context') else []
     worked += [t[i + 1] for i in range(len(t) - 1) if t[i] == '-C' and name == 'git' or re.fullmatch(r'\d*>>?|&>>?', t[i])]
-task_dirs = {t for p in worked if p.startswith(('/', '~')) and (t := work_folder.task_of(p))}
+task_dirs = {t for p in worked if p.startswith(('/', '~', '$HOME/', '${HOME}/')) and (t := work_folder.task_of(p))}
 # mergeworthy work (a task, a work folder, a push or post, a watcher, an agent it started) gets the hand-back check;
 # a plain question answered doesn't
 working = opened_task or acted or delegated or bool(task_dirs or monitor_cmds or t3_dirs)

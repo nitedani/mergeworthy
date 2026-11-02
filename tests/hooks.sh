@@ -3173,6 +3173,8 @@ check "the parses a stop made are kept for the session's next stop, which blocks
 mkdir -p "$HOME/.mergeworthy/work/tilde"; printf 'Tier: S, because one fix\n' > "$HOME/.mergeworthy/work/tilde/scope.md"
 tr_cmd 'cd ~/.mergeworthy/work/tilde && git push origin HEAD:fix'
 check "a session that pushed from a work folder it spelled with ~, which has a scope.md, isn't told to write one" "0 0" "$(slj 'Pushed the fix.') $(grep -c 'no work folder it used has a scope.md' "$T/err")"
+check "the same with the folder spelled \$HOME/... and \${HOME}/..." "0 0 0 0" \
+  "$(tr_cmd 'cd "$HOME/.mergeworthy/work/tilde" && git push origin HEAD:fix'; slj 'Pushed the fix.') $(grep -c 'no work folder it used has a scope.md' "$T/err") $(tr_cmd 'cd ${HOME}/.mergeworthy/work/tilde && git push origin HEAD:fix'; slj 'Pushed the fix.') $(grep -c 'no work folder it used has a scope.md' "$T/err")"
 # a plain question answered (no task, work folder, push, post, watcher or agent) is no mergeworthy work: no check-in, no hand-back check
 qa() { python3 -c 'import json,sys
 print(json.dumps({"type":"user","message":{"content":"can you access ssh the opensource machine?"}}))
