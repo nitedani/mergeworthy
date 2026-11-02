@@ -4,12 +4,12 @@
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX
 # a pushed skill change names its cold read (rules step 4); git gives the pushed refs on stdin
 refs=$(cat)
-printf '%s\n' "$refs" | "$(dirname "$0")/cold-read" || exit 1
+printf '%s' "$refs" | "$(dirname "$0")/cold-read" || exit 1
 # every pushed commit's tree already passed tests/all.sh (its record): nothing new to run
 passed=${XDG_CACHE_HOME:-$HOME/.cache}/mergeworthy/passed
 untested=$(printf '%s\n' "$refs" | while read -r _ local _ _; do
   [ -z "$local" ] || [ "$local" = 0000000000000000000000000000000000000000 ] || [ -e "$passed/$(git rev-parse "$local^{tree}")" ] || echo "$local"; done)
-[ -n "$untested" ] || exit 0
+[ -n "$refs" ] && [ -z "$untested" ] && exit 0
 # a log of its own: two pushes at once don't overwrite each other's
 log=$(mktemp "${TMPDIR:-/tmp}/mergeworthy-pre-push.XXXXXX")
 cd "$(dirname "$0")/.." && bash tests/all.sh . >"$log" 2>&1 || { echo "pre-push: tests/all.sh failed, see $log"; exit 1; }

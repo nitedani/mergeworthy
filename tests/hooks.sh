@@ -2723,6 +2723,12 @@ mkdir -p "$T/pp/tests"; cp -r "$R/.githooks" "$T/pp/"; cp "$R/tests/all.sh" "$T/
 pp() { TMPDIR="$T/pplogs" sh "$T/pp/.githooks/pre-push" </dev/null | sed -n 's/.*see //p'; }
 mkdir -p "$T/pplogs"; L1=$(pp); L2=$(pp)
 check "pre-push: two failed pushes keep two logs, each naming the install command" "2 1 1" "$(ls "$T/pplogs" | wc -l) $(grep -c 'pnpm install' "$L1") $([ -n "$L1" ] && [ "$L1" != "$L2" ] && grep -c 'pnpm install' "$L2")"
+# a pushed commit whose tree a green tests/all.sh recorded runs nothing; one not recorded runs it
+git -C "$T/pp" init -q; git -C "$T/pp" add -A; git -C "$T/pp" -c user.name=t -c user.email=t@t commit -qm pp
+pt=$(git -C "$T/pp" rev-parse 'HEAD^{tree}'); ph=$(git -C "$T/pp" rev-parse HEAD); mkdir -p "$T/ppcache/mergeworthy/passed"
+ppr() { printf 'refs/heads/x %s refs/heads/x %040d\n' "$ph" 0 | (cd "$T/pp" && XDG_CACHE_HOME="$T/ppcache" TMPDIR="$T/pplogs" sh .githooks/pre-push >/dev/null 2>&1); echo $?; }  # git runs it in the repo
+r1=$(ppr); touch "$T/ppcache/mergeworthy/passed/$pt"
+check "pre-push: a pushed tree no green run recorded runs tests/all.sh (here failing); one recorded runs nothing" "1 0" "$r1 $(ppr)"
 # ---------- fail closed: a check that can't run blocks; the vikejs/vike#3671 session ("Fix CI"), replayed command by command ----------
 # shellcmd.parse lexes the whole command as bash does: that session's commit messages and PR body spanned lines, the old
 # line-by-line split raised, and its fallback saw only `cd`, so every check after it was skipped

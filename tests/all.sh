@@ -31,7 +31,7 @@ SUITES=(
 LOGS=$(mktemp -d); trap 'rm -rf "$LOGS" "$ALL_SH_LEAKED"' EXIT
 # the tree tested: HEAD's, when the worktree holds nothing else (untracked files the tests don't read aside)
 tree=$([ -z "$(git status --porcelain --untracked-files=no 2>/dev/null)" ] && git rev-parse -q --verify 'HEAD^{tree}' 2>/dev/null || true)
-for i in "${!SUITES[@]}"; do (ALL_SH_LEAKED=$LOGS/$i.leak; : > "$ALL_SH_LEAKED"; run ${SUITES[i]} > "$LOGS/$i" 2>&1; echo $? > "$LOGS/$i.rc") & done  # a docker call is its own suite's
+for i in "${!SUITES[@]}"; do (ALL_SH_LEAKED=$LOGS/$i.leak; : > "$ALL_SH_LEAKED"; rc=0; run ${SUITES[i]} > "$LOGS/$i" 2>&1 || rc=$?; echo $rc > "$LOGS/$i.rc") & done  # a docker call is its own suite's
 wait
 failed=0
 for i in "${!SUITES[@]}"; do
