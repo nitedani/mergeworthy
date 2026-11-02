@@ -771,7 +771,9 @@ def wake_thread():
     send is retried (False), except when the thread is gone, or the t3 binary on two passes in a row (a `t3 update` relinks it for an
     instant): then t3-thread goes, and events.log alone keeps the events, as outside T3 Code. While the thread holds a wake of ours still
     queued, nothing is sent: t3-wake.held names that run and how far the events it will read go; once it starts, the cursor moves there,
-    and if it ends without starting, the next pass sends them (False until then: the thread hasn't got them)."""
+    and if it ends without starting, the next pass sends them (False until then: the thread hasn't got them). While the user has the
+    thread stopped (steward.stopped), nothing is sent, the cursor stays and the watcher doesn't retire (False): once they write in it
+    again, the next pass sends every event since in one wake."""
     tid, _, t3 = first_line(os.path.join(HERE, 't3-thread')).partition('\n')
     cursor, held = os.path.join(HERE, 't3-wake.cursor'), os.path.join(HERE, 't3-wake.held')
     if not tid:
@@ -800,6 +802,8 @@ def wake_thread():
     head = f"Watcher events in {HERE}/events.log (mergeworthy:reply):\n"
     if lines and (run := steward.queued(tid, head)):  # that wake reads every event past the session's cursor when it runs
         return hold(run, start + len(data))
+    if lines and steward.stopped(tid):  # the user stopped the thread: its events wait in events.log, sent once they write in it again
+        return False
     if lines:
         msg = head + '\n'.join(lines)
         try:

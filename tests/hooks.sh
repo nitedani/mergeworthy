@@ -196,6 +196,10 @@ check "BLOCK: the pass dir's owed reply holds the turn though no daemon runs the
 rm "$PD/passed"
 tr_cmd "gh issue comment 5 --repo o/r --body-file $WD/drafts/r.md"
 check "BLOCK: a post with no Monitor on the watcher" 2 "$(stop "$T/work")"
+python3 -c 'import json,sys; print(json.dumps({"type":"user","message":{"content":"go"}})); print(json.dumps({"type":"assistant","timestamp":sys.argv[2],"message":{"content":[{"type":"tool_use","name":"Bash","id":"t1","input":{"command":sys.argv[1]}}]}})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":"Done."}]}}))' "gh issue comment 5 --repo o/r --body-file $WD/drafts/r.md" "$(date -u -d '-10 minutes' +%FT%T.000Z)" > "$T/tr.jsonl"
+touch -d '-20 minutes' "$WD/retired"; stop "$WD" >/dev/null; r1=$(grep -c 'nothing wakes it' "$T/err"); touch "$WD/retired"; stop "$WD" >/dev/null
+check "BLOCK: a post after its watch dir retired still needs a watcher; a dir retired after the last post (the user asked to retire it) needs none" "1 0" "$r1 $(grep -c 'nothing wakes it' "$T/err")"
+rm "$WD/retired"
 # under T3 Code a live watcher whose t3-thread is the session's thread wakes it (gh-watch.py's wake_thread): no Monitor, and its owed replies are the session's
 mkdir -p "$HOME/.t3/userdata"; python3 -c 'import sqlite3, sys; c = sqlite3.connect(sys.argv[1]); c.execute("create table orchestration_v2_projection_provider_threads (provider_thread_id text, thread_id text, payload_json text)")
 c.execute("create table orchestration_v2_projection_subagents (subagent_id text, thread_id text, child_thread_id text)")
