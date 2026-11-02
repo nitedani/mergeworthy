@@ -462,8 +462,8 @@ if (os.environ.get('MERGEWORTHY_STOP_CHECKIN', 'on') != 'off' and may_wait and n
         and not re.search(r'^GENUINE-FORK:.*\Z', last.rstrip(), re.M) and checkin_due()):
     print("Before you stop, check once, unless the user asked you to stop or pause: is there work the user asked for, or that the "
           "critical path needs, that you could start now? Is anything waiting on you (a reply owed, red CI, a finished agent's result "
-          "to read, a dependency that landed)? If so, do it now, or brief a subagent for it. Otherwise end the turn without writing "
-          "anything: the user already has your answer.",
+          "to read, a dependency that landed)? If so, do it now, or brief a subagent for it. Otherwise end the turn with one short "
+          "line: what you wait on and what will wake you, or that nothing is left.",
           file=sys.stderr)
     sys.exit(2)
 sys.exit(0)
