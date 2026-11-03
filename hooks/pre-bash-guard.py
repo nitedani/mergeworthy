@@ -144,7 +144,7 @@ def need_watch(repo, path, why=''):
                 if any(l.split()[:1] in ([r] for r in repos) for l in lines(w, 'repos.txt'))
                 or any(r in repos for r, _ in threads_file.read(os.path.join(w, 'threads.txt'))[0])]
     if not covering:
-        start = f"`gh-watch-start {work_folder.task_of(path) or '<your work folder>'} {repos[0]}`"
+        start = f"`gh-watch-start {steward.home(work_folder.task_of(path)) or '<your work folder>'} {repos[0]}`"
         block(f"no running watcher of this task or session covers {' or '.join(repos)} (another session's watcher wakes that session, not this one{'; ' + why if why else ''}): "
               + (f"a subagent starts none: end your turn asking the main session to run {start}" if by_agent()
                  else f"{start}, arm the Monitor it prints if any, then retry (mergeworthy:task step 5)"))

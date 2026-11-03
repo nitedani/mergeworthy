@@ -2886,6 +2886,13 @@ sreg() { : > "$T/started"; python3 -c 'import json,sys; print(json.dumps({"sessi
     | python3 "$R/hooks/post-bash-register.py" 2>/dev/null; echo "$?:$(cat "$SWD/live/threads.txt" 2>/dev/null || echo none):$(cat "$SWD/threads.txt" 2>/dev/null || echo none):$(cat "$T/started")"; rm -f "$SWD/live/threads.txt"; }
 mkdir -p "$SWD/wt" "$SWD/live"; a=$(sreg); echo "$FPID" > "$SWD/live/gh-watch.pid"; echo "$SWD/live" >> "$HOME/.claude/gh-watch-dirs.txt"
 check "a PR from a worktree in the steward's folder starts its live dir's watcher, or joins it while it runs, not the folder's" "2:vikejs/vike 9:none:sess-s $SWD/live vikejs/vike 9|0:vikejs/vike 9:none:" "$a|$(sreg)"
+# the push that follows is checked against the same watcher: the live dir's covers it, the quiet folder's doesn't
+printf 'Tier: S, because one fix\n\n- [ ] Fix it https://github.com/vikejs/vike/issues/1\n' > "$SWD/scope.md"; : > "$SWD/repos.txt"
+git init -q -b fix-telefunc "$SWD/wt"; git -C "$SWD/wt" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; git -C "$SWD/wt" remote add upstream https://github.com/vikejs/vike.git; quick "$SWD/wt"; (cd "$SWD/wt" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
+echo 'vikejs/vike 9' > "$SWD/threads.txt"; b=$(bgs sess-s "$PUSH" "$SWD/wt") be=$(grep -c "gh-watch-start $SWD/live " "$T/err"); echo 'vikejs/vike 9' > "$SWD/live/threads.txt"
+check "a push from a worktree in the steward's folder passes while its live dir watches the PR; with only the folder listing it, blocked, naming the live dir" "0 2 1" \
+  "$(bgs sess-s "$PUSH" "$SWD/wt") $b $be"
+rm -f "$SWD/live/threads.txt" "$SWD/threads.txt"
 rm -r "$SWD"; sed -i "\|^$SWD\(/live\)\?\$|d" "$HOME/.claude/gh-watch-dirs.txt"
 # two MRs opened in one command from two work folders: the second folder needs its own watcher
 TWO="cd $CK; $MRC; cd $CK4; $MRC"
