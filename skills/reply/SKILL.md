@@ -13,7 +13,7 @@ The watcher (`task` step 5) writes each comment you owe to `events.log` and `rep
    Open: `<work folder>/events.log` · Record: `events.cursor`
 2. **Route each event** by its row of §Events.
    Open: §Events · Hook: the watcher
-3. **A comment that takes more than ~15 minutes to answer:** post a holding reply first through `post`'s fast form, carrying what you've found so far and when the answer comes, and make its owed line `holding: <URL> <ETA>`; while a drafter works, `drafting: <comment URL> <ETA>`. The ETA moves at most once (`task §Files`). Before acting on any comment, check that its reason fits the line it's anchored to; if it fits another line better, ask before changing anything.
+3. **A comment that takes more than ~15 minutes to answer:** post a holding reply first through `post`'s fast form, carrying what you've found so far and when the answer comes, and make its owed line `holding: <URL> <ETA>`; while a drafter works, `drafting: <comment URL> <ETA>`. Before acting on any comment, check that its reason fits the line it's anchored to; if it fits another line better, ask before changing anything.
    Open: `post` · Record: the line in `replies-owed.md` · Hook: stop-lint
 4. **Decide what it asks,** yourself, not an agent: an instruction, a question about your work's quality, a decision question, an acknowledgement, a 👍 or 👎, "I don't understand", a bot's finding (§Kinds of comment). An instruction on a ready PR: one that carries the pass (`converge §Batching`), do it; otherwise a holding reply with the pipeline's ETA.
    Open: §Kinds of comment

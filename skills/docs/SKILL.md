@@ -5,7 +5,7 @@ description: "Writing or changing docs a user reads (a docs page, a README, JSDo
 
 # Docs
 
-A docs change passes when a maintainer would have written it: imitating the project's own pages produces that, and the checks only confirm it. The voice is the project's, never the warm first person of a post.
+The voice is the project's, never the warm first person of a post.
 
 ## Steps
 

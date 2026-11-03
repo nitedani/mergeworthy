@@ -5,8 +5,6 @@ description: "The standard every diff meets: code, tests, comments, module shape
 
 # Code
 
-What is true of every diff. The implementer reads this before writing; whoever judges a diff (the main session, a verifier, a reviewer, the shape pass) checks it against the same sections. Write to it, so the check finds nothing.
-
 ### Before writing
 
 - Read three sibling files: note sentence length, comment density, naming and platform wording.
@@ -150,7 +148,6 @@ Every sentence about behavior in docs, a README, JSDoc, a changeset or a code co
 
 ### Checklist
 
-The implementer runs it on its own diff before handing it back; the shape pass checks every line of it (`delegate/shape.md`, step 1).
 1. **Bloat:** dead code, speculative surface, duplicate intent, defensive branches for unreachable states (→ assertions), custom test scripts left in the repo (→ delete).
 2. **Quality:** every file, function and piece of logic rated with its reason (`delegate/shape.md`, steps 2–3).
 3. **Problem variability:** every flow rated 0–10 on solution optimality, with a better alternative sketched for low scores.

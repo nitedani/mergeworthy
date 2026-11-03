@@ -2,9 +2,6 @@
 
 Standards: `~/.mergeworthy/current/skills/code/SKILL.md`. Include `delegate/agent.md`.
 
-One read-only agent, after the reviewer brief in the same run (`converge` step 2), rating whole slices with fresh eyes. This brief says how to audit; the agent decides what to flag. Three steps, in order. Step 2's prompt is the user's text and applies unchanged in every repo, whatever the project file says.
-
-Dispositions, one list:
 - **DELETE-NOW:** remove; behavior-preserving, no probe needed.
 - **FIX:** an exact behavior-preserving change.
 - **FILL:** a gap to fill (a missing test of a documented contract, a missing sibling case).
@@ -28,7 +25,7 @@ Step 1, cut what shouldn't exist. Check every line of code §Checklist. Each fin
 - When the change is to a methodology (skills, prompts, hooks): check that every named mechanism survived, and fail any compressed into generic prose.
 - A closure claim without a tree, lane or capture you observed yourself stays open. Mark unavailable evidence UNKNOWN.
 
-Step 2, reshape what stays: the prompt below, as written, on what step 1 keeps, with its ✅ coverage list. Its "grep the repo" means `rg`, plus a semantic search for the same work under other names (agent.md §Code search).
+Step 2, reshape what stays: the prompt below, the user's text, unchanged in every repo whatever the project file says.
 
 Step 3, rate every file and function old ⇒ new: after each landing, re-rate each row its commits changed, verify each implementation (behavior preserved, mutation probes still red, comments true), and say whether each decline holds.
 
@@ -39,8 +36,6 @@ Final message: the path, counts per disposition, the three highest-value finding
 
 <the prompt below, verbatim>
 ```
-
-You report; the main session puts the summary (old ⇒ new, linked to commits, plus the pass's whole-diff link) in the PR body, the full lists in a gist.
 
 ## The prompt
 
