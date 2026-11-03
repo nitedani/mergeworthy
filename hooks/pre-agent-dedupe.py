@@ -70,8 +70,8 @@ if not register and re.search(r'\.out\b', gate_text) and 'CLEAN' in gate_text:
             sys.stderr.write(f"BLOCKED: {draft} has no passing post-lint for its current text: run post-lint first, then the review.\n")
             sys.exit(2)
 # a brief the launch follows from the work folder counts here, though the tickets above skip all of ~/.mergeworthy
-briefs = gate_text + '\n' + '\n'.join(open(t).read() for t in {os.path.abspath(os.path.expanduser(m)) for m in re.findall(MD, text)}
-                               if t.startswith(mw + 'work' + os.sep) and os.path.isfile(t))
+brief_files = {os.path.abspath(os.path.expanduser(m)) for m in re.findall(MD, text)}
+briefs = gate_text + '\n' + '\n'.join(open(t).read() for t in brief_files if t.startswith(mw + 'work' + os.sep) and os.path.isfile(t))
 # A template's slot left unfilled (`<the slice's risky edges>`) reaches the agent as a rule it never got. A slot in backticks is
 # the agent's own output form, the paste-in rules (agent.md) carry slots of their own, and an HTML tag a brief quotes is no slot.
 if not register:
@@ -402,14 +402,15 @@ if not register:
                 "(its slice, subsystem, frames or topic). A new round on the same task releases the earlier job first, once its agent "
                 f"is done and you have read its result: `agent-job done {shlex.quote(j['key'][:200])}`.\n")
             sys.exit(2)
-# At most 3 agents at a time per session (delegate step 1), or the number the user gave, quoted in the task's scope.md: a job is open
-# until released or its agent finished; a memory refresh doesn't count
+# At most 3 agents at a time per session (delegate step 1), or the number the user gave, quoted in the task's scope.md (the work folder
+# of the session's cwd, else the one the briefs it launches are in): a job is open until released or its agent finished; a memory refresh doesn't count
 # A fan-out a step names (finality steps 2-3, converge's per-slice verifiers) says so on a `Fan-out:` line, in the task or its brief, and passes
 fanout = ti.get('role') != 'implementation' and re.search(r'^Fan-out: (finality step [23]|converge §Running the agents)$', briefs, re.M)
 if not register and d.get('session_id') and 'memory-refresh' not in gate_text and not fanout:
     live = [j for _, j in agent_jobs.jobs() if j.get('session') == d['session_id'] and '/memory-brief-' not in j['key']
             and 'memory-refresh' not in j.get('brief', '') and not agent_jobs.finished(j)]
-    scope = os.path.join(task_of(d.get('cwd') or '/') or '<your work folder>', 'scope.md')
+    folders = {f for t in brief_files if (f := task_of(t))}
+    scope = os.path.join(task_of(d.get('cwd') or '/') or (folders.pop() if len(folders) == 1 else '<your work folder>'), 'scope.md')
     raised = re.search(r'^Agents: ([1-9]\d*) \(user \d{4}-\d{2}-\d{2}: ".+"\)$', open(scope, errors='replace').read() if os.path.isfile(scope) else '', re.M)
     limit = int(raised[1]) if raised else 3
     if len(live) >= limit:

@@ -1087,7 +1087,7 @@ touch -d '5 minutes ago' "$HOME/.claude/projects/-cap/cap2.jsonl"
 check "BLOCK: a job whose agent finished (its transcript quiet) no longer counts; the fourth open one still blocks" "0 2" "$(cap capS 'Execute /tmp/x/cap6.md') $(cap capS 'Execute /tmp/x/cap7.md')"
 for k in cap2 cap3 cap4 cap5 cap6 mem-lines; do python3 "$R/bin/agent-job" done "/tmp/x/$k.md" >/dev/null; done; rm -r "$HOME/.claude/projects/-cap"
 # the user's raise, quoted in the task's scope.md, sets the limit; a line without the quote, or no scope.md, keeps 3
-capw() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":sys.argv[1],"cwd":sys.argv[3],"tool_input":{"task":sys.argv[2],"title":sys.argv[2][:40]}}))' "$1" "$2" "$3" > "$T/capw.json"
+capw() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":sys.argv[1],"cwd":sys.argv[3],"tool_input":{"task":sys.argv[2],"title":sys.argv[2][-40:]}}))' "$1" "$2" "$3" > "$T/capw.json"
   python3 "$R/hooks/pre-agent-dedupe.py" < "$T/capw.json" 2>"$T/err"; local rc=$?; [ $rc = 0 ] && python3 "$R/hooks/pre-agent-dedupe.py" register < "$T/capw.json"; echo $rc; }
 capn() { local w=$1 s=$2 n=$3 i out=; for i in $(seq "$n"); do out="$out $(capw "$s" "Execute /tmp/x/$s-$i.md" "$w")"; done; echo $out; }
 AW="$HOME/.mergeworthy/work"; mkdir -p "$AW/raised/repo" "$AW/unquoted/repo" "$AW/noscope/repo"
@@ -1096,7 +1096,12 @@ printf 'Tier: S, because one hook\nAgents: 5 (user 2026-11-02)\n' > "$AW/unquote
 check "BLOCK: with the user's quoted raise to 5 in scope.md, a fourth and fifth agent pass and a sixth is refused" "0 0 0 0 0 2" "$(capn "$AW/raised/repo" capR 6)"
 check "BLOCK: an Agents line without the user's quote keeps 3, and the refusal names the line for scope.md" "0 0 0 2 1" "$(capn "$AW/unquoted/repo" capU 4) $(grep -c "in $AW/unquoted/scope.md as a line .Agents: <N> (user <YYYY-MM-DD>: " "$T/err")"
 check "BLOCK: a work folder with no scope.md keeps 3" "0 0 0 2" "$(capn "$AW/noscope/repo" capN 4)"
-for s in capR capU capN; do for i in 1 2 3 4 5; do python3 "$R/bin/agent-job" done "/tmp/x/$s-$i.md" >/dev/null; done; done; rm -r "$AW/raised" "$AW/unquoted" "$AW/noscope"
+capb() { local i out=; for i in $(seq "$3"); do printf 'Do part %s.\n' "$i" > "$1/$2-$i.md"; out="$out $(capw "$2" "Execute $1/$2-$i.md" "$T")"; done; echo $out; }
+check "BLOCK: from a cwd outside the task, briefs in the folder with the raise: a fourth and fifth agent pass and a sixth is refused" "0 0 0 0 0 2" "$(capb "$AW/raised" capB 6)"
+mkdir -p "$AW/other"; printf 'Do it.\n' > "$AW/other/x.md"
+check "BLOCK: from inside another task's folder, briefs in the raised one keep that task's 3" "0 0 0 2" "$(for i in 1 2 3 4; do printf 'Do part %s.\n' "$i" > "$AW/raised/capO-$i.md"; capw capO "Execute $AW/raised/capO-$i.md" "$AW/other"; done | xargs)"
+for s in capR capU capN; do for i in 1 2 3 4 5; do python3 "$R/bin/agent-job" done "/tmp/x/$s-$i.md" >/dev/null; done; done
+for s in capB capO; do for i in 1 2 3 4 5; do t="Execute $AW/raised/$s-$i.md"; python3 "$R/bin/agent-job" done "${t: -40}" >/dev/null; done; done; rm -r "$AW/raised" "$AW/unquoted" "$AW/noscope" "$AW/other"
 # ---------- the memory file: session-memory injects its Standing digest and says when it is behind; the guards read it ----------
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.invalid GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.invalid
 OC="$T/orch"; MR="$T/mem"; LD="$HOME/.claude/projects/$(printf '%s' "$OC" | sed 's/[^A-Za-z0-9]/-/g')"; mkdir -p "$OC" "$LD"
