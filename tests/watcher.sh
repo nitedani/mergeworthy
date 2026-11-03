@@ -1211,6 +1211,15 @@ bash -c 'exec -a gh-watch-daemon sleep 30' & echo $! > "$LW/gh-watch.pid"; print
 err=$(PATH="$T/cronbin:$PATH" bash "$GI/bin/gh-watch-start" --round "$T/passwatch" o/r 7 o/r 8 < /dev/null 2>&1 >/dev/null); rc=$?
 check "gh-watch-start --round skips a thread a live dir watches, with a note, and reads the rest" "0|skipped o/r 7: $LW watches it|o/r 8" \
   "$rc|$err|$(grep -x 'o/r [78]' "$T/passwatch/threads.txt" | tr '\n' ' ' | sed 's/ $//')"
+# the steward's live dir takes a thread its quiet folder lists, though that folder's daemon runs: the line moves; another live dir's stays its
+SS="$T/swst"; mkdir -p "$SS" "$HOME/.mergeworthy"; printf 'o/r 3\no/r#9\n' > "$SS/threads.txt"; echo "$SS tid" > "$HOME/.mergeworthy/steward"; echo "$SS" >> "$HOME/.claude/gh-watch-dirs.txt"
+bash -c 'exec -a gh-watch-daemon sleep 30' & echo $! > "$SS/gh-watch.pid"
+PATH="$T/cronbin:$PATH" bash "$GI/bin/gh-watch-start" "$SS/live" o/r 9 < /dev/null > /dev/null 2>&1; a=$?
+PATH="$T/cronbin:$PATH" bash "$GI/bin/gh-watch-start" "$SS/live" o/r 7 < /dev/null > /dev/null 2>&1; b=$?
+check "gh-watch-start in the steward's live dir moves a thread only its folder lists there; one another live dir watches is refused" "0 o/r 3| o/r 9| 1 o/r 7" \
+  "$a $(tr '\n' '|' < "$SS/threads.txt") $(tr '\n' '|' < "$SS/live/threads.txt") $b $(cat "$LW/threads.txt")"
+for p in "$SS/gh-watch.pid" "$SS/live/gh-watch.pid"; do GP=$(cat "$p" 2>/dev/null); ps -o args= -p "$GP" 2>/dev/null | grep -qE '^(gh-watch-daemon|sleep) 30$' && kill "$GP"; done
+rm -r "$HOME/.mergeworthy/steward" "$SS"
 kill "$(cat "$LW/gh-watch.pid")"
 got=$(py '
 m.ROUND = True

@@ -38,14 +38,19 @@ while [ $# -gt 0 ]; do
   elif [ "${1:-}" = all ]; then line="$repo all"; file=repos.txt; shift; else line=$repo; file=repos.txt; fi
   # One watcher per thread: a second would report the same comment to a second session
   if [ "$file" = threads.txt ]; then
-    taken=
+    taken= from=()
     while read -r other; do
       [ "$other" != "$dir" ] && listed "$other/threads.txt" $line || continue
+      # the steward's live dir takes a thread its quiet folder lists: there it was only logged
+      if python3 -c 'import os, sys; sys.path.insert(0, sys.argv[1]); import steward; sys.exit(not (os.path.realpath(sys.argv[2]) == os.path.realpath(steward.live()) and steward.quiet(sys.argv[3])))' "$root/hooks" "$dir" "$other"; then
+        from+=("$other"); continue
+      fi
       opid=$(cat "$other/gh-watch.pid" 2>/dev/null || true)
       if [ -n "$opid" ] && ps -p "$opid" -o command= 2>/dev/null | grep -q gh-watch-daemon; then taken=$other; fi
     done < <(cat ~/.claude/gh-watch-dirs.txt 2>/dev/null)
     if [ -n "$taken" ] && [ -n "$round" ]; then echo "skipped $line: $taken watches it" >&2; continue; fi
     [ -z "$taken" ] || { echo "$line is already watched by $taken: use that work folder, or remove the line there first" >&2; exit 1; }
+    for other in "${from[@]}"; do listed --drop "$other/threads.txt" $line; echo "moved $line from $other"; done
   fi
   if [ "$file" = threads.txt ]; then listed "$dir/$file" $line; else grep -qxF "$line" "$dir/$file"; fi || echo "$line" >> "$dir/$file"
   # the thread covers its repo now: its bare repo line says nothing more
