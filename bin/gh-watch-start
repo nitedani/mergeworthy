@@ -12,7 +12,7 @@
 # - Prints the Monitor to arm in the session: the daemon records events in <dir>/events.log; the session that
 #   owns the threads is the one that answers them, woken by that Monitor (mergeworthy:reply). Under T3 Code the
 #   main session's thread (the root of the threads that delegated the session) and t3's path go to <dir>/t3-thread and the
-#   daemon sends it each event itself: no Monitor. The steward's folder and the dirs inside it wake only for a new mergeworthy issue (steward.quiet).
+#   daemon sends it each event itself: no Monitor. The steward's folder and the dirs inside it but <folder>/live wake only for a new mergeworthy issue (steward.quiet).
 # - --round: no daemon: one round of the watcher appends to events.log, recording what it reported, and writes the session to
 #   <dir>/passed when the round ran (mergeworthy:steward); exits with the round's status. A thread another live dir watches is
 #   skipped with a note, and the round doesn't read it. Refused, before anything changes, while the dir's daemon runs.
