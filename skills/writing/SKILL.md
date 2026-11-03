@@ -114,7 +114,7 @@ A post is as long as what the reader needs to decide, act or check, and no longe
 - **An inbox, not a log.** First the answers to their questions; then what needs them, each decision with your pick and quick options; then what moved. Rounds, reviewers, agents, hooks and models stay out unless they change what the user should do.
 - **Every reply carries thought.** When something went wrong: why, your judgment, and what changes. Restating their instruction and your next command is not a reply.
 - **Only what they need** to answer, decide or act; more when they ask; asked how to do something you can do yourself, do every step you can and hand back only the one that needs them (a login, a publish under their account), as one command. Local files as absolute paths; every PR or issue with its title and link. No narration step by step.
-- **Then the state,** checked first: each PR's state and what changed since the last report, what's running, what waits on whom, the critical path with an ETA. State unfavorable facts, mistakes and skipped steps plainly.
+- **Then the state,** checked first: each PR's state and what changed since the last report, what's running, what waits on whom, the critical path with an ETA, which moves at most once (`task §Files`). State unfavorable facts, mistakes and skipped steps plainly.
 - **A `Running:` line** lists only the agents and jobs `task_status` (or their log) showed moving in this turn; stop-lint checks it.
 
 ### Self-check

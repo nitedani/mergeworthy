@@ -120,9 +120,9 @@ worktree_paths = {p for p in path_set(text + '\n' + '\n'.join(open(t).read() for
                   if not (os.path.abspath(p) + os.sep).startswith(mw + 'current' + os.sep)}
 # A brief pinned to an older commit of a worktree it names (a linked one: the user's own checkouts are read at any
 # commit) re-runs work on code that has moved on.
+shas = set(re.findall(r'\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\b', gate_text))
+git = lambda wt, *a: subprocess.run(['git', '-C', wt, *a], capture_output=True, text=True)
 if not register:
-    shas = set(re.findall(r'\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\b', gate_text))
-    git = lambda wt, *a: subprocess.run(['git', '-C', wt, *a], capture_output=True, text=True)
     for wt in sorted(worktree_paths if shas else ()):
         head = git(wt, 'rev-parse', 'HEAD').stdout.strip() if os.path.isfile(os.path.join(wt, '.git')) else ''
         if head and not any(head.startswith(x) for x in shas):
@@ -133,6 +133,29 @@ if not register:
                 sys.stderr.write(f"BLOCKED: the brief pins {', '.join(sorted(old))} in {wt}, which has moved on to {head[:12]}. "
                                  "Pin the live head (and check the work isn't already done there)." + (f" Ruled out:\n{ruled}\n" if ruled else "\n"))
                 sys.exit(2)
+# Two rounds per loop on one head (delegate §Review rounds): a review round `<loop>-r<N>`, maybe followed by the date or head SHA
+# the reuse block above asks for, past r2 on the head an earlier round of its loop pinned, or on fixes built on it, is refused
+rnd = re.fullmatch(r'(.+)-r(\d+)', re.sub(r'(-\d{4}-\d{2}-\d{2}|-[0-9a-f]{7,40})+$', '', (cid or str(ti.get('description') or '')).strip()))
+if rnd and (ti.get('role') == 'review' or not ti.get('role') and re.search(r'\bexactly (CLEAN|NO BUGS)\b', briefs)):
+    tops = sorted({t for t in map(git_top, worktree_paths) if t})
+    heads = sorted({h for t in tops if (h := git(t, 'rev-parse', 'HEAD').stdout.strip()) and any(h.startswith(x) for x in shas)})
+    rf = os.path.expanduser('~/.claude/review-rounds.json')
+    rlock = open(rf + '.lock', 'a'); fcntl.flock(rlock, fcntl.LOCK_EX)  # held until exit
+    rounds = json.load(open(rf)) if os.path.exists(rf) else {}
+    loop, n = rnd[1], int(rnd[2])
+    if register:
+        rounds.setdefault(loop, []).append([n, heads])
+        with open(rf + '.tmp', 'w') as f: json.dump(rounds, f)
+        os.replace(rf + '.tmp', rf)
+    elif n >= 3:
+        built_on = lambda old: not old or not heads or any(git(t, 'merge-base', '--is-ancestor', o, h).returncode == 0 for t in tops for o in old for h in heads)
+        earlier = sorted({m for m, old in rounds.get(loop, []) if m < n and built_on(old)})
+        if earlier:
+            sys.stderr.write(f"BLOCKED: {loop} already ran {', '.join(f'r{m}' for m in earlier)} on this head or the head its fixes build on "
+                             f"({', '.join(h[:12] for h in heads) or 'no head pinned'}): a loop gets two rounds per head (mergeworthy:delegate §Review rounds). "
+                             "List what is still open in the report or the PR body's notes and go on (push, ready, the next step) without waiting for an answer; "
+                             "only an open blocker keeps the PR in draft. A maintainer's ask on a new head starts a new loop name.\n")
+            sys.exit(2)
 # A linked worktree the brief names (not the launcher's own) where another agent is still working: T3 can show that agent
 # interrupted or cancelled while it runs. A process with its cwd there, or an agent transcript written in the last five
 # minutes that names it, means it is alive. Only an agent's transcript counts (a main session, the steward's too, names paths
