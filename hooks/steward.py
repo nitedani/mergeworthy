@@ -23,6 +23,10 @@ def quiet(d):
     s, d = os.path.realpath(folder()), os.path.realpath(d)
     return (d == s or d.startswith(s + '/')) and d != os.path.realpath(live())
 
+def home(wf):
+    """The watch dir a thread posted from work folder wf joins: live() for the steward's folder (its PR worktrees), else wf."""
+    return live() if wf and os.path.realpath(wf) == os.path.realpath(folder()) else wf
+
 def passed_by(wd):
     """The session whose watcher round in wd passed in the last day (gh-watch-start --round writes <wd>/passed), or None."""
     try:
