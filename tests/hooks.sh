@@ -1856,11 +1856,12 @@ printf '\n\n' > "$T/blank.md"; check "BLOCK: an output of blank lines, saying wh
 GL="$T/prl"; git init -q -b main "$GL"; gl() { git -C "$GL" -c user.name=t -c user.email=t@t "$@"; }; gl commit -q --allow-empty -m a; ON=$(gl rev-parse --short HEAD)
 gl checkout -q -b side; gl commit -q --allow-empty -m off; OFF=$(gl rev-parse --short HEAD); gl checkout -q main; gl commit -q --allow-empty -m b
 printf 'R2.1 should: the parser drops a field\n' > "$T/r2.md"; std "$T/r2.md"
-led() { printf '%s\n' "$@" > "$T/led.md"; (cd "$GL" && bash "$R/bin/pr-steps" verify "$T/r2.md" --ledger "$T/led.md" >/dev/null 2>"$T/err"; echo $?); }
+LR="$T/r2.md"; led() { printf '%s\n' "$@" > "$T/led.md"; (cd "$GL" && bash "$R/bin/pr-steps" verify "$LR" --ledger "$T/led.md" >/dev/null 2>"$T/err"; echo $?); }
 check "pr-steps verify: BLOCK a round-2 report without NO BUGS with no ledger, a round-1 ledger, a blocker left open, a fix not on HEAD; a ledger closing it records" "1 1 1 1 1 1 1 0" \
   "$(cd "$GL" && bash "$R/bin/pr-steps" verify "$T/r2.md" >/dev/null 2>&1; echo $?) $(led 'R1.1 should listed: the PR body notes') $(grep -c 'closes round 1' "$T/err") $(led 'R2.1 blocker listed: the PR body notes') $(grep -c 'open blocker' "$T/err") $(led "R2.1 should fixed in $OFF") $(grep -c "$OFF is not in HEAD" "$T/err") $(led "R1.1 blocker fixed in $ON" 'R2.1 should listed: the PR body notes' 'R2.2 nit declined: wording')"
-check "pr-steps verify: a ledger's 'Round: 2' line closes a round 2 that only carries round-1 findings; without it, or with a carried finding left open, BLOCK" "0 1 1 1 1" \
-  "$(led 'Round: 2' 'R1.1 should listed: the report') $(led 'R1.1 should listed: the report') $(grep -c 'closes round 1' "$T/err") $(led 'Round: 2' 'R1.1 should disputed: x' 'R2.1 nit declined: y') $(grep -c 'R1.1 should disputed: x  <- not fixed' "$T/err")"
+cp "$T/r2.md" "$T/r2b.md"; LR="$T/r2b.md" # r2.md is recorded on this head above
+check "pr-steps verify: BLOCK a round 2 carrying only round-1 findings without a 'Round: 2' line, or with a carried finding left open; with the line it records" "1 1 1 1 0" \
+  "$(led 'R1.1 should listed: the report') $(grep -c 'closes round 1' "$T/err") $(led 'Round: 2' 'R1.1 should disputed: x' 'R2.1 nit declined: y') $(grep -c 'R1.1 should disputed: x  <- not fixed' "$T/err") $(led 'Round: 2' 'R1.1 should listed: the report')"
 check "BLOCK: a fix log recorded as the shape pass, saying what a pass needs" "1 1" "$(prs shape "$T/fixlog.md") $(cd "$G" && bash "$R/bin/pr-steps" shape "$T/fixlog.md" 2>&1 | grep -c "lacks the ✅ coverage list")"
 # a ratings report in the form a session wrote for #3609 (one rating per item, a summary of the changed ones, no ✅ list) is told all it lacks
 printf '## Files\n\n| # | File | Rating | Reason |\n|---|---|---|---|\n| 1 | `docs/headings.ts` | 9 | One entry, last. |\n| 8 | `packages/vike/package.json` | 6 | Refactor 1. |\n\n## Summary\n\n| Item | Old => new | Commit |\n|---|---|---|\n| File 8 `packages/vike/package.json` | 6 => 9 | f3e4b44bd4 |\n\nGates on f3e4b44bd4:\n- `pnpm run test:types` -> exit 0\n' > "$T/ratings.md"
