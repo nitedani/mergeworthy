@@ -11,7 +11,7 @@ import failclosed
 import agent_jobs, memory_file, project_file, steward, subprocess
 from post_words import fence_spans
 from shellcmd import branch_record, segments, prog, git_argv, rlines, Where
-from work_folder import git_top
+from work_folder import git_top, task_of
 from t3_tasks import under_t3
 register = sys.argv[1:] == ['register']
 d = json.load(sys.stdin)
@@ -402,16 +402,21 @@ if not register:
                 "(its slice, subsystem, frames or topic). A new round on the same task releases the earlier job first, once its agent "
                 f"is done and you have read its result: `agent-job done {shlex.quote(j['key'][:200])}`.\n")
             sys.exit(2)
-# At most 3 agents at a time per session (delegate step 1): a job is open until released or its agent finished; a memory refresh doesn't count
+# At most 3 agents at a time per session (delegate step 1), or the number the user gave, quoted in the task's scope.md: a job is open
+# until released or its agent finished; a memory refresh doesn't count
 # A fan-out a step names (finality steps 2-3, converge's per-slice verifiers) says so on a `Fan-out:` line, in the task or its brief, and passes
 fanout = ti.get('role') != 'implementation' and re.search(r'^Fan-out: (finality step [23]|converge §Running the agents)$', briefs, re.M)
 if not register and d.get('session_id') and 'memory-refresh' not in gate_text and not fanout:
     live = [j for _, j in agent_jobs.jobs() if j.get('session') == d['session_id'] and '/memory-brief-' not in j['key']
             and 'memory-refresh' not in j.get('brief', '') and not agent_jobs.finished(j)]
-    if len(live) >= 3:
-        sys.stderr.write(f"BLOCKED: this session already has {len(live)} agents open, and the limit is 3 at a time (mergeworthy:delegate step 1):\n"
+    scope = os.path.join(task_of(d.get('cwd') or '/') or '<your work folder>', 'scope.md')
+    raised = re.search(r'^Agents: ([1-9]\d*) \(user \d{4}-\d{2}-\d{2}: ".+"\)$', open(scope, errors='replace').read() if os.path.isfile(scope) else '', re.M)
+    limit = int(raised[1]) if raised else 3
+    if len(live) >= limit:
+        sys.stderr.write(f"BLOCKED: this session already has {len(live)} agents open, and the limit is {limit} at a time (mergeworthy:delegate step 1):\n"
                          + '\n'.join(f"{j['key'][:160]} (started {int((time.time() - j['started']) / 60)} min ago)" for j in live)
-                         + "\nContinue one with a message, or wait for one to finish, read its result and release it with `agent-job done <key>`.\n")
+                         + "\nContinue one with a message, or wait for one to finish, read its result and release it with `agent-job done <key>`. "
+                         f"A higher limit the user gave for this task goes in {scope} as a line `Agents: <N> (user <YYYY-MM-DD>: \"<their words>\")`.\n")
         sys.exit(2)
 if not register:
     os.makedirs(agent_jobs.LAUNCHED, exist_ok=True); json.dump({'launched': time.time(), 'key': key, 'task': task, 'tool_use_id': d.get('tool_use_id'),
