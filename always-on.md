@@ -20,7 +20,7 @@ How steps point: `<skill> step N` is a numbered step; `<skill> §<Heading>` is a
 | Writing or changing docs a user reads: a page, a README, JSDoc, an `llms.txt` line | `mergeworthy:docs` | profile, placement, imitate, the docs reader (5 steps) |
 | Starting, continuing or checking a subagent; writing a brief | `mergeworthy:delegate` | one agent per job, model class, the brief, its result (7 steps) |
 | A rule, mergeworthy hook or tool failed, can't be followed or was worked around; the user names a failure; a 👎; editing a skill, prompt or rules file; a `### FOLLOW-UP`; the steward's tick | `mergeworthy:rules` | fix the instance, then the rule or an issue for the steward (6 steps) |
-| Posting or editing anything on GitHub (a step sends you here) | `mergeworthy:post` | draft, lint, review to `CLEAN`, re-check, post (5 steps) |
+| Posting or editing anything on GitHub (a step sends you here) | `mergeworthy:post` | draft, lint, review (two rounds), re-check, post (5 steps) |
 | Converging a PR's head before it is ready (a step sends you here) | `mergeworthy:converge` | Loop A, Loop B, Loop A again, the fresh reader, gates (6 steps) |
 | Verifying a bug or a PR: does it break anything, reproduce-only | `mergeworthy:converge` | step 1 (Loop A), with `delegate/verifier.md` |
 | A shape pass: cut, reshape and rate a diff; a `### SHAPE STALE` event | `mergeworthy:converge` | step 2 (Loop B), with `delegate/shape.md` |

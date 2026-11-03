@@ -264,7 +264,7 @@ flowchart TB
 
 ## Posting or editing anything on GitHub (a step sends you here)
 
-Opens `mergeworthy:post` (draft, lint, review to `CLEAN`, re-check, post (5 steps)).
+Opens `mergeworthy:post` (draft, lint, review (two rounds), re-check, post (5 steps)).
 
 ```mermaid
 flowchart TB

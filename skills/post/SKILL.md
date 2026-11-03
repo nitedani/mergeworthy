@@ -1,6 +1,6 @@
 ---
 name: post
-description: "Everything that reaches GitHub or another external service (a comment, reply, inline comment, PR or issue body, an edit of any): draft, lint, review to CLEAN, re-check, post."
+description: "Everything that reaches GitHub or another external service (a comment, reply, inline comment, PR or issue body, an edit of any): draft, lint, review (two rounds), re-check, post."
 ---
 
 # Post
