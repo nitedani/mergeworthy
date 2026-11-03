@@ -21,7 +21,7 @@
 - AGENT DONE: an agent the session launched has finished (hooks/agent_jobs.py), once per finish no T3 or Claude Code notice told it of, until `agent-job done` releases its job.
 - Under T3 Code each pass's event lines also go to the session's thread (wake_thread), so it needs no Monitor; none while its last
   such message is still queued in T3, whose run reads events.log past the session's cursor.
-- The steward's folder and the dirs inside it (steward.quiet) watch nitedani/mergeworthy whole and only log: no :eyes:, no owed reply, and only
+- The steward's folder and the dirs inside it but its live dir (steward.quiet) watch nitedani/mergeworthy whole and only log: no :eyes:, no owed reply, and only
   a new issue there wakes the steward (WAKES); its next pass reads the rest of events.log.
 - Every request is counted, 304 answers too (tally; `gh-watch.py --stats` prints the rate, and once an hour a line goes to gh-watch-stats.log).
 - On Linux, main_dir's daemon starts bin/disk-sweep --delete at most once an hour, in the background (sweep_disk).

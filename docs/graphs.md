@@ -467,10 +467,11 @@ flowchart TB
     s2 --> s3
   end
   s0 -.-> r1[["code"]]
-  s1 -.-> r2[["converge"]]
-  s2 -.-> r3[["post"]]
-  s2 -.-> r4[["task"]]
-  s2 -.-> r5[["writing"]]
+  s0 -.-> r2[["converge"]]
+  s1 -.-> r3[["converge"]]
+  s2 -.-> r4[["post"]]
+  s2 -.-> r5[["task"]]
+  s2 -.-> r6[["writing"]]
   start --> g0
 ```
 

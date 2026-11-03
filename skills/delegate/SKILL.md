@@ -9,7 +9,7 @@ Each role's brief is a template in `~/.mergeworthy/current/skills/delegate/`, wi
 
 ## Steps
 
-1. **One job, one agent.** An agent already on the job gets a message, not a twin (§Continue). At most 3 agents at a time without asking the user, except the agents a step names to run together, each brief holding its exact line `Fan-out: finality step 2` (the mappers), `Fan-out: finality step 3` (the branch agents) or `Fan-out: converge §Running the agents` (one verifier per slice); they still count against an agent without it; implementers count toward the 3; only the main session starts agents. Start a browser-heavy agent only while the 1-minute load average (`uptime`) is below the core count (`nproc`). Stop an agent as soon as its question is settled.
+1. **One job, one agent.** An agent on the job gets a message, not a twin (§Continue). At most 3 agents at once, implementers included, or the number the user allowed at once for this task, first written in its work folder's scope.md: `Agents: <N> (user <YYYY-MM-DD>: "<their words>")`. Exempt: agents a step runs together, each brief holding `Fan-out: finality step 2`, `Fan-out: finality step 3` or `Fan-out: converge §Running the agents`; they still count against an agent without it. Only the main session starts agents. Start a browser-heavy agent only while the 1-minute load (`uptime`) is below `nproc`. Stop an agent once its question is settled.
    Hook: pre-agent-dedupe
 2. **Model class and effort.**
    Open: §Model class; reviews: §Reviewers; the project file's `## Agents` section overrides

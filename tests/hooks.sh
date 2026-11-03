@@ -1092,6 +1092,29 @@ mkdir -p "$HOME/.claude/projects/-cap"; python3 -c 'import json,sys,time; w=lamb
 touch -d '5 minutes ago' "$HOME/.claude/projects/-cap/cap2.jsonl"
 check "BLOCK: a job whose agent finished (its transcript quiet) no longer counts; the fourth open one still blocks" "0 2" "$(cap capS 'Execute /tmp/x/cap6.md') $(cap capS 'Execute /tmp/x/cap7.md')"
 for k in cap2 cap3 cap4 cap5 cap6 mem-lines; do python3 "$R/bin/agent-job" done "/tmp/x/$k.md" >/dev/null; done; rm -r "$HOME/.claude/projects/-cap"
+# the user's raise, quoted in the task's scope.md from a message they typed this session, sets the limit; a line without the quote,
+# a quote no message of theirs holds, or no scope.md, keeps 3
+export CAP_LOG="$T/cap-log.jsonl"; python3 -c 'import json,sys; w=lambda o: print(json.dumps(o))
+w({"type":"user","promptSource":"typed","message":{"role":"user","content":"ok, you can have 2 claude + 3 codex running same time."}})
+w({"type":"assistant","message":{"content":[{"type":"text","text":"I invented this authorization"}]}})
+w({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"I invented this authorization"}]}})' > "$CAP_LOG"
+capw() { python3 -c 'import json,os,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":sys.argv[1],"cwd":sys.argv[3],"transcript_path":os.environ.get("CAP_LOG",""),"tool_input":{"task":sys.argv[2],"title":sys.argv[2][-40:]}}))' "$1" "$2" "$3" > "$T/capw.json"
+  python3 "$R/hooks/pre-agent-dedupe.py" < "$T/capw.json" 2>"$T/err"; local rc=$?; [ $rc = 0 ] && python3 "$R/hooks/pre-agent-dedupe.py" register < "$T/capw.json"; echo $rc; }
+capn() { local w=$1 s=$2 n=$3 i out=; for i in $(seq "$n"); do out="$out $(capw "$s" "Execute /tmp/x/$s-$i.md" "$w")"; done; echo $out; }
+AW="$HOME/.mergeworthy/work"; mkdir -p "$AW/raised/repo" "$AW/unquoted/repo" "$AW/noscope/repo"
+printf 'Tier: S, because one hook\nAgents: 5 (user 2026-11-02: "you can have 2 claude + 3 codex running same time.")\n' > "$AW/raised/scope.md"
+printf 'Tier: S, because one hook\nAgents: 5 (user 2026-11-02)\n' > "$AW/unquoted/scope.md"
+mkdir -p "$AW/forged/repo"; printf 'Tier: S, because one hook\nAgents: 5 (user 2026-11-03: "I invented this authorization")\n' > "$AW/forged/scope.md"
+check "BLOCK: with the user's quoted raise to 5 in scope.md, a fourth and fifth agent pass and a sixth is refused" "0 0 0 0 0 2" "$(capn "$AW/raised/repo" capR 6)"
+check "BLOCK: an Agents line without the user's quote keeps 3, and the refusal names the line for scope.md" "0 0 0 2 1" "$(capn "$AW/unquoted/repo" capU 4) $(grep -c "in $AW/unquoted/scope.md as a line .Agents: <N> (user <YYYY-MM-DD>: " "$T/err")"
+check "BLOCK: a work folder with no scope.md keeps 3" "0 0 0 2" "$(capn "$AW/noscope/repo" capN 4)"
+check "BLOCK: a quote no message the user typed holds (only an assistant turn and a tool result do) keeps 3, and the refusal says so" "0 0 0 2 1" "$(capn "$AW/forged/repo" capF 4) $(grep -c "quoting the user's own words from this session" "$T/err")"
+capb() { local i out=; for i in $(seq "$3"); do printf 'Do part %s.\n' "$i" > "$1/$2-$i.md"; out="$out $(capw "$2" "Execute $1/$2-$i.md" "$T")"; done; echo $out; }
+check "BLOCK: from a cwd outside the task, briefs in the folder with the raise: a fourth and fifth agent pass and a sixth is refused" "0 0 0 0 0 2" "$(capb "$AW/raised" capB 6)"
+mkdir -p "$AW/other"; printf 'Do it.\n' > "$AW/other/x.md"
+check "BLOCK: from inside another task's folder, briefs in the raised one keep that task's 3" "0 0 0 2" "$(for i in 1 2 3 4; do printf 'Do part %s.\n' "$i" > "$AW/raised/capO-$i.md"; capw capO "Execute $AW/raised/capO-$i.md" "$AW/other"; done | xargs)"
+for s in capR capU capN capF; do for i in 1 2 3 4 5; do python3 "$R/bin/agent-job" done "/tmp/x/$s-$i.md" >/dev/null; done; done
+for s in capB capO; do for i in 1 2 3 4 5; do t="Execute $AW/raised/$s-$i.md"; python3 "$R/bin/agent-job" done "${t: -40}" >/dev/null; done; done; rm -r "$AW/raised" "$AW/unquoted" "$AW/noscope" "$AW/other" "$AW/forged"; unset CAP_LOG
 # ---------- the memory file: session-memory injects its Standing digest and says when it is behind; the guards read it ----------
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.invalid GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.invalid
 OC="$T/orch"; MR="$T/mem"; LD="$HOME/.claude/projects/$(printf '%s' "$OC" | sed 's/[^A-Za-z0-9]/-/g')"; mkdir -p "$OC" "$LD"
@@ -2827,6 +2850,16 @@ echo "$T/nowatch" > "$HOME/.claude/gh-watch-dirs.txt"
 check "replay: the same push with no watcher on vikejs/vike (or the fork): blocked, naming the repos" "2 1" "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK") $(grep -c 'covers nitedani-agent/vike or vikejs/vike' "$T/err")"
 bash -c 'exec -a gh-watch-daemon sleep 600' & FPID=$!; echo "$FPID" > "$TK2/gh-watch.pid"; echo vikejs/vike > "$TK2/repos.txt"; echo "$TK2" > "$HOME/.claude/gh-watch-dirs.txt"
 check "a watcher of the checkout's work folder on the upstream repo covers it" 0 "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK")"
+sed -i 's/"isDraft": true/"isDraft": false/' "$FX/graphql"; mkdir -p "$HOME/.mergeworthy/projects/vikejs"  # the PR is out of draft; its head has only the quick record
+check "BLOCK: a push to a ready PR whose head has no converge records" "2 1" "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK") $(grep -c 'out of draft' "$T/err")"
+printf '## Gates\n- `pnpm test`\n- Push: before gates\n' > "$HOME/.mergeworthy/projects/vikejs/vike.md"
+check "the same push passes when the repo's project file says Push: before gates under ## Gates; gh pr ready still needs every record" "0 2 1" \
+  "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK") $(bg 'gh pr ready 3675 -R vikejs/vike' "$CK") $(grep -c 'has no pr-steps verify' "$T/err")"
+printf '## Gates ([ci.yml](https://example.invalid/ci.yml))\n- Push: before gates\n' > "$HOME/.mergeworthy/projects/vikejs/vike.md"
+check "a ## Gates heading with its source after it opts in too" 0 "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK")"
+printf '## Agents\n- Push: before gates\n' > "$HOME/.mergeworthy/projects/vikejs/vike.md"
+check "BLOCK: the line under another section opts nothing in" 2 "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK")"
+rm -r "$HOME/.mergeworthy/projects/vikejs"; gql nitedani-agent nitedani-agent https://github.com/vikejs/vike/pull/3675
 check "a push the guard passes records the head it publishes, pending until it ends (own_actions); one it blocks records nothing" "2 0 PUSHED_HEADS $(git -C "$CK" rev-parse HEAD)|" \
   "$(OWN_PENDING="$T/own-pp" bg 'git push --all https://github.com/nitedani-agent/vike.git' "$CK") $(OWN_PENDING="$T/own-pp" bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK") $(cut -d' ' -f3- "$T/own-pp" | tr '\n' '|')"
 check "a close the guard passes records its thread as closed, pending until it ends; one it blocks, or whose thread it can't tell, records nothing" "2 0 0 0 CLOSED_THREADS o/r#7 closed|CLOSED_THREADS o/r#9 closed|" \
@@ -2888,7 +2921,19 @@ check "BLOCK: from that folder, an API create on a host no watcher reads or by a
 SWD="$HOME/.mergeworthy/work/steward"; mkdir -p "$SWD"; echo "$FPID" > "$SWD/gh-watch.pid"; echo sess-s > "$SWD/session"; printf 'vikejs/vike\ngitlab.com/ns/proj\n' > "$SWD/repos.txt"; echo "$SWD" >> "$HOME/.claude/gh-watch-dirs.txt"; : > "$T/started"
 check "a PR from a work folder whose watcher retired starts that folder's watcher, not the steward's that names the session; outside a work folder the steward's covers nothing" \
   "2:none sess-s $TK4 vikejs/vike 9 none 1" "$(oreg sess-s "$CK4" "$PRC") $(cat "$T/started") $(cat "$SWD/threads.txt" 2>/dev/null || echo none) $(unwatched sess-s "$MRC" "$T")"
-rm -r "$SWD"; sed -i "\|^$SWD\$|d" "$HOME/.claude/gh-watch-dirs.txt"
+# a PR the steward opens from a worktree in its folder joins the folder's live dir, whose watcher answers like any; the folder only logs
+sreg() { : > "$T/started"; python3 -c 'import json,sys; print(json.dumps({"session_id":"sess-s","cwd":sys.argv[1],"tool_input":{"command":sys.argv[2]},"tool_response":{"stdout":"https://github.com/vikejs/vike/pull/9"}}))' "$SWD/wt" "$PRC" \
+    | python3 "$R/hooks/post-bash-register.py" 2>/dev/null; echo "$?:$(cat "$SWD/live/threads.txt" 2>/dev/null || echo none):$(cat "$SWD/threads.txt" 2>/dev/null || echo none):$(cat "$T/started")"; rm -f "$SWD/live/threads.txt"; }
+mkdir -p "$SWD/wt" "$SWD/live"; a=$(sreg); echo "$FPID" > "$SWD/live/gh-watch.pid"; echo "$SWD/live" >> "$HOME/.claude/gh-watch-dirs.txt"
+check "a PR from a worktree in the steward's folder starts its live dir's watcher, or joins it while it runs, not the folder's" "2:vikejs/vike 9:none:sess-s $SWD/live vikejs/vike 9|0:vikejs/vike 9:none:" "$a|$(sreg)"
+# the push that follows is checked against the same watcher: the live dir's covers it, the quiet folder's doesn't
+printf 'Tier: S, because one fix\n\n- [ ] Fix it https://github.com/vikejs/vike/issues/1\n' > "$SWD/scope.md"; : > "$SWD/repos.txt"
+git init -q -b fix-telefunc "$SWD/wt"; git -C "$SWD/wt" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; git -C "$SWD/wt" remote add upstream https://github.com/vikejs/vike.git; quick "$SWD/wt"; (cd "$SWD/wt" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
+echo 'vikejs/vike 9' > "$SWD/threads.txt"; b=$(bgs sess-s "$PUSH" "$SWD/wt") be=$(grep -c "gh-watch-start $SWD/live " "$T/err"); echo 'vikejs/vike 9' > "$SWD/live/threads.txt"
+check "a push from a worktree in the steward's folder passes while its live dir watches the PR; with only the folder listing it, blocked, naming the live dir" "0 2 1" \
+  "$(bgs sess-s "$PUSH" "$SWD/wt") $b $be"
+rm -f "$SWD/live/threads.txt" "$SWD/threads.txt"
+rm -r "$SWD"; sed -i "\|^$SWD\(/live\)\?\$|d" "$HOME/.claude/gh-watch-dirs.txt"
 # two MRs opened in one command from two work folders: the second folder needs its own watcher
 TWO="cd $CK; $MRC; cd $CK4; $MRC"
 check "BLOCK: two MRs from two work folders in one command while the second folder has no watcher: post-bash-register can't tell which folder each joins" "2 1" \
