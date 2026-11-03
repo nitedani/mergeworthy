@@ -5,7 +5,7 @@ description: "Converging a PR's head before it is ready, in every tier: the desi
 
 # Converge
 
-Working a PR's head to a final state: no reviewer, agent or verifier finds anything worth changing, and every claim in the PR is backed by evidence you observed. Called by `pull-request` step 9; when done, return there. Each step ends with its `pr-steps` record, which pre-bash-guard requires before the PR leaves draft or a ready PR gets a push. Every loop runs by `delegate §Review rounds`. Subagents work read-only or in their own worktrees; only you write the PR branch's history.
+Working a PR's head to a final state: no reviewer, agent or verifier finds anything worth changing, and every claim in the PR is backed by evidence you observed. Called by `pull-request` step 9; when done, return there. Each step ends with its `pr-steps` record, which pre-bash-guard requires before the PR leaves draft or a ready PR gets a push (`merging` step 1). Every loop runs by `delegate §Review rounds`. Subagents work read-only or in their own worktrees; only you write the PR branch's history.
 
 ## Steps
 
@@ -28,7 +28,7 @@ A change of at most 60 lines outside tests, docs (any `.md`), lockfiles and buil
 
 ### Batching
 
-- **Batch:** let the work land (every commit a review round or a maintainer's ask produces), then converge the whole PR once before pushing.
+- **Batch:** let the work land (every commit a review round or a maintainer's ask produces), each pushed when `merging` step 1 allows, then converge the whole PR once before `ready`.
 - **Carry the pass:** a change of 80 lines or fewer (build output aside) that adds no behavior (tests, docs, wording) gets the quick gates and lanes it touches; its loop records say `carries the pass of <sha>`, with no new Loop A, Loop B or fresh reader. After a maintainer asks for one, the shape pass runs and records instead, on the unchanged head too. Anything else gets the loops on the PR diff from its merge-base, then one fresh read.
 - **The shape pass goes stale** past 80 changed lines since its last full pass (tests, lockfiles and build output excluded; the watcher's `### SHAPE STALE`): a fresh agent runs it on the whole diff before the next "Done" reply.
 
