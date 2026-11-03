@@ -56,16 +56,16 @@ Every independent review (a post's, the Loop B review, the fresh reader, a stand
    {"task": "Follow <prompt file>; output to <out>", "role": "review", "target": {"providerInstanceId": "<id>", "options": {"<its effort option>": "<effort>"}}, "clientRequestId": "<loop>-r<N>"}
    ```
    Elsewhere, a Codex reviewer: `codex exec -c model_reasoning_effort=<effort> --sandbox danger-full-access --skip-git-repo-check -o <out> "$(cat <prompt file>)" < /dev/null`; a Claude reviewer: `claude -p --effort <effort> --permission-mode bypassPermissions < <prompt file> > <out>`.
-- **Else, a fresh agent of the main session's class,** with the same prompt, when the first fails (spent credits, rate limits, errors, timeouts, no reply). A report, even one its reviewer calls incomplete or partial, is no failure: its next round runs on the same company's model, counting against §Review rounds.
+- **Else, a fresh agent of the main session's class,** with the same prompt, when the first fails (spent credits, rate limits, errors, timeouts, no reply). A report, even a partial one, is no failure: its next round runs on the same company's model, counting against §Review rounds.
 
-The prompt is a file with the template filled. Never write `CLEAN` yourself. Send fixes to the same reviewer (§Continue); a fresh one only when the artifact changed beyond them or needs a final cold read. Record which reviewer ran (Tier M: a `ledger.md` row); on Tier M or L work, re-review on the other company's model once it's back.
+The prompt is a file with the template filled. Never write `CLEAN` yourself. Send fixes to the same reviewer (§Continue); a fresh one only when the artifact changed beyond them or needs a final cold read. Record which reviewer ran (Tier M: a `ledger.md` row); on Tier M or L work, after a round-1 fallback, round 2 runs on the other company's model once it's back.
 
 ### Review rounds
 
 Every review loop:
-- **Severity:** re-rate each label (`agent.md`) yourself; nits (findings nobody hits in practice) get no code.
-- **Two rounds per head.** Round 1's prompt asks for every finding exhaustively; round 2's confirms round 1's fixes and counts only a blocker or regression, the fresh reader's too. A round that finds only nits ends the loop. Before round 2, cut what the fixes added beyond need. Name each round `<loop>-r<N>` (T3's `clientRequestId`, the Agent tool's `description`, a shell reviewer's prompt file).
-- **No third round** on a head or the fixes built on it (pre-agent-dedupe refuses it): what round 2 leaves open is listed in the report or the PR body's notes, and the work goes on (push, ready, the next step) without waiting for an answer; only an open blocker keeps the PR in draft. A new head from a maintainer's ask starts a new count, under a new loop name.
-- **Ledger:** `<work folder>/drafts/<review>.ledger.md`, one line per finding: `<id> <label> <outcome>` (fixed in <sha>, disputed: <evidence>, declined: <why>), the id `R<round>.<n>` from its first round.
-- **Stuck:** a finding the reviewer holds after two disputing replies of yours goes to the user, both sides in 2–3 lines. Rule on evidence, never to end the loop.
+- **Severity:** re-rate each label (`agent.md`) yourself; nits get no code.
+- **Two rounds per head.** Round 1's prompt asks for every finding exhaustively; round 2's, the fresh reader's included, confirms round 1's fixes and counts only a blocker or a should the fixes caused (a regression). Before round 2, cut what the fixes added beyond need. Name each round `<loop>-r<N>` (T3's `clientRequestId`, the Agent tool's `description`, a shell reviewer's prompt file).
+- **No third round** on a head or the fixes built on it (pre-agent-dedupe refuses it): what round 2 leaves open is `listed:` and the work goes on without waiting for an answer. A maintainer's ask after round 2 starts a new loop, its rounds `<loop>-ask<N>-r1`, `-r2`.
+- **Ledger:** `<work folder>/drafts/<review>.ledger.md`, one line per finding: `<id> <label> <outcome>`, the id `R<round>.<n>` from its first round, the outcome `fixed in <sha>` (on HEAD), `declined: <why>`, `listed: <where>` (the report or the PR body's notes) or, while a round runs, `disputed: <evidence>`. A round 2 that isn't clean is recorded by `pr-steps <step> <file> --ledger <it>` or `gate-pass … --ledger <it>` once every last-round line is fixed, declined or listed and no blocker is listed or open: an open blocker keeps the PR in draft.
+- **Stuck:** a finding round 2 still holds after your disputing reply is `declined: <your evidence>` and goes to the user, both sides in 2–3 lines. Rule on evidence, never to end the loop.
 - **While a round runs,** leave what it reads unchanged.
