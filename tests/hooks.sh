@@ -2904,7 +2904,19 @@ check "BLOCK: from that folder, an API create on a host no watcher reads or by a
 SWD="$HOME/.mergeworthy/work/steward"; mkdir -p "$SWD"; echo "$FPID" > "$SWD/gh-watch.pid"; echo sess-s > "$SWD/session"; printf 'vikejs/vike\ngitlab.com/ns/proj\n' > "$SWD/repos.txt"; echo "$SWD" >> "$HOME/.claude/gh-watch-dirs.txt"; : > "$T/started"
 check "a PR from a work folder whose watcher retired starts that folder's watcher, not the steward's that names the session; outside a work folder the steward's covers nothing" \
   "2:none sess-s $TK4 vikejs/vike 9 none 1" "$(oreg sess-s "$CK4" "$PRC") $(cat "$T/started") $(cat "$SWD/threads.txt" 2>/dev/null || echo none) $(unwatched sess-s "$MRC" "$T")"
-rm -r "$SWD"; sed -i "\|^$SWD\$|d" "$HOME/.claude/gh-watch-dirs.txt"
+# a PR the steward opens from a worktree in its folder joins the folder's live dir, whose watcher answers like any; the folder only logs
+sreg() { : > "$T/started"; python3 -c 'import json,sys; print(json.dumps({"session_id":"sess-s","cwd":sys.argv[1],"tool_input":{"command":sys.argv[2]},"tool_response":{"stdout":"https://github.com/vikejs/vike/pull/9"}}))' "$SWD/wt" "$PRC" \
+    | python3 "$R/hooks/post-bash-register.py" 2>/dev/null; echo "$?:$(cat "$SWD/live/threads.txt" 2>/dev/null || echo none):$(cat "$SWD/threads.txt" 2>/dev/null || echo none):$(cat "$T/started")"; rm -f "$SWD/live/threads.txt"; }
+mkdir -p "$SWD/wt" "$SWD/live"; a=$(sreg); echo "$FPID" > "$SWD/live/gh-watch.pid"; echo "$SWD/live" >> "$HOME/.claude/gh-watch-dirs.txt"
+check "a PR from a worktree in the steward's folder starts its live dir's watcher, or joins it while it runs, not the folder's" "2:vikejs/vike 9:none:sess-s $SWD/live vikejs/vike 9|0:vikejs/vike 9:none:" "$a|$(sreg)"
+# the push that follows is checked against the same watcher: the live dir's covers it, the quiet folder's doesn't
+printf 'Tier: S, because one fix\n\n- [ ] Fix it https://github.com/vikejs/vike/issues/1\n' > "$SWD/scope.md"; : > "$SWD/repos.txt"
+git init -q -b fix-telefunc "$SWD/wt"; git -C "$SWD/wt" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; git -C "$SWD/wt" remote add upstream https://github.com/vikejs/vike.git; quick "$SWD/wt"; (cd "$SWD/wt" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
+echo 'vikejs/vike 9' > "$SWD/threads.txt"; b=$(bgs sess-s "$PUSH" "$SWD/wt") be=$(grep -c "gh-watch-start $SWD/live " "$T/err"); echo 'vikejs/vike 9' > "$SWD/live/threads.txt"
+check "a push from a worktree in the steward's folder passes while its live dir watches the PR; with only the folder listing it, blocked, naming the live dir" "0 2 1" \
+  "$(bgs sess-s "$PUSH" "$SWD/wt") $b $be"
+rm -f "$SWD/live/threads.txt" "$SWD/threads.txt"
+rm -r "$SWD"; sed -i "\|^$SWD\(/live\)\?\$|d" "$HOME/.claude/gh-watch-dirs.txt"
 # two MRs opened in one command from two work folders: the second folder needs its own watcher
 TWO="cd $CK; $MRC; cd $CK4; $MRC"
 check "BLOCK: two MRs from two work folders in one command while the second folder has no watcher: post-bash-register can't tell which folder each joins" "2 1" \

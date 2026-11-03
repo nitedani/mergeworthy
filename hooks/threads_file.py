@@ -1,8 +1,8 @@
 """A watch dir's threads.txt, as every reader of it reads it: one thread per line, `owner/repo N` or `owner/repo#N` on GitHub,
 `gitlab.com/<path> N` or `<path>#N` for a GitLab issue and `<path> !N` or `<path>!N` for a merge request; a # after whitespace or
-at a line's start begins a comment. Lines are only read, never rewritten: hooks and gh-watch-start append to the file unlocked.
-`threads_file.py <threads.txt> <repo> <number>` exits 0 when the file lists that thread (gh-watch-start's check)."""
-import re, sys
+at a line's start begins a comment. Lines are only read, never rewritten, but by drop(): hooks and gh-watch-start append to the file unlocked.
+`threads_file.py <threads.txt> <repo> <number>` exits 0 when the file lists that thread (gh-watch-start's check); with --drop first, it drops it."""
+import os, re, sys
 
 GL = 'gitlab.com/'
 LINE = re.compile(r'(?P<repo>[\w.-]+(?:/[\w.-]+)+?)(?:\s*(?P<sep>[#!])|\s+)(?P<num>\d+)(?:\s+#.*)?')
@@ -39,5 +39,16 @@ def lists(path, repo, num):
     return (repo, str(num)) in read(path)[0]
 
 
+def drop(path, repo, num):
+    """Removes each line naming the thread from threads.txt at path: gh-watch-start moving it from the steward's folder to its live dir."""
+    keep = [l for l in open(path, errors='replace') if parse(l) != (repo, str(num))]
+    with open(path + '.tmp', 'w') as f:
+        f.writelines(keep)
+    os.replace(path + '.tmp', path)
+
+
 if __name__ == '__main__':
-    sys.exit(0 if lists(*sys.argv[1:4]) else 1)
+    if sys.argv[1] == '--drop':
+        drop(*sys.argv[2:5])
+    else:
+        sys.exit(0 if lists(*sys.argv[1:4]) else 1)

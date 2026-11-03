@@ -13,11 +13,19 @@ def folder():
     """The steward's folder: the first word of ~/.mergeworthy/steward, else ~/.mergeworthy/work/steward (mergeworthy:steward)."""
     return (read() or (os.path.expanduser('~/.mergeworthy/work/steward'),))[0]
 
+def live():
+    """The live dir, <folder>/live: the watcher a pass leaves on what it posted (mergeworthy:steward), which answers like any work folder's."""
+    return os.path.join(folder(), 'live')
+
 def quiet(d):
-    """True for the steward's folder and the watch dirs inside it: their watcher reacts to nothing, owes no reply and wakes its
-    thread only for a new mergeworthy issue (gh-watch.py's WAKES); the rest of their events.log waits for the next pass."""
+    """True for the steward's folder and the watch dirs inside it but live(): their watcher reacts to nothing, owes no reply and wakes
+    its thread only for a new mergeworthy issue (gh-watch.py's WAKES); the rest of their events.log waits for the next pass."""
     s, d = os.path.realpath(folder()), os.path.realpath(d)
-    return d == s or d.startswith(s + '/')
+    return (d == s or d.startswith(s + '/')) and d != os.path.realpath(live())
+
+def home(wf):
+    """The watch dir a thread posted from work folder wf joins: live() for the steward's folder (its PR worktrees), else wf."""
+    return live() if wf and os.path.realpath(wf) == os.path.realpath(folder()) else wf
 
 def passed_by(wd):
     """The session whose watcher round in wd passed in the last day (gh-watch-start --round writes <wd>/passed), or None."""

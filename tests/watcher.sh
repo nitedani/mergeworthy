@@ -201,13 +201,13 @@ print(*out)
 ')
 check "a note seen before the body hash, unmoved: nothing; moved: edited, as it can't be told; moved again with its body unchanged: nothing; its body changed: edited" "0 1 0 1" "$got"
 
-# a comment in the steward's folder is only logged: no :eyes:, no owed reply; the same comment in an ordinary dir gets both
+# a comment in the steward's folder is only logged: no :eyes:, no owed reply; the same comment in its live dir or an ordinary dir gets both
 got=$(py '
 m.ONCE = False
 sw = os.path.expanduser("~/.mergeworthy/steward")
 os.makedirs(os.path.dirname(sw), exist_ok=True); open(sw, "w").write(os.path.join(m.HERE, "stew") + " tid\n")
 out = []
-for d in ("stew", "plain"):
+for d in ("stew", "stew/live", "plain"):
     m.HERE = os.path.join(sys.argv[2], d); os.makedirs(m.HERE)
     eyes, buf = [], io.StringIO()
     with contextlib.redirect_stdout(buf):
@@ -215,7 +215,7 @@ for d in ("stew", "plain"):
     out += [d, buf.getvalue().count("### o/r#5 comment 8 by someone"), len(eyes), os.path.exists(os.path.join(m.HERE, "replies-owed.md"))]
 os.remove(sw); print(*out)
 ')
-check "a comment in the steward's folder is logged without :eyes: or an owed reply; in an ordinary dir it gets both" "stew 1 0 False plain 1 1 True" "$got"
+check "a comment in the steward's folder is logged without :eyes: or an owed reply; in its live dir or an ordinary dir it gets both" "stew 1 0 False stew/live 1 1 True plain 1 1 True" "$got"
 
 # a maintainer's comment carrying a refactor prompt URL its project file names is a refactor ask, recorded for pr-steps
 mkdir -p "$HOME/.mergeworthy/projects/o"
@@ -1169,16 +1169,20 @@ a=$(tpass); printf '### new\n' >> "$T/t3daemon/events.log"; b=$(tpass)
 check "a daemon with no t3-thread binds the main session's thread and t3's path from the log's end, then sends what follows" \
   "thr-p $T/bin/t3 8|thr-p $T/bin/t3 16|t3 thread send thr-p -;Watcher events in $T/t3daemon/events.log (mergeworthy:reply):;### new;" "$a|$b|$(tr '\n' ';' < "$T/t3.log")"
 rm "$T/t3daemon/t3-thread" "$T/t3daemon/t3-wake.cursor"; echo sess-plain > "$T/t3daemon/session"; c=$(tpass); rm "$T/t3daemon/session"
-echo "$T/t3daemon/live tid" > "$HOME/.mergeworthy/steward"; mkdir -p "$T/t3daemon/live"; cp "$T/t3daemon/events.log" "$T/t3daemon/live/"; echo sess-child > "$T/t3daemon/live/session"
-: > "$T/t3.log"
-check "a daemon in the steward's folder binds its session's thread and sends it only a new mergeworthy issue" "thr-p|t3 thread send thr-p -;Watcher events in $T/t3daemon/live/events.log (mergeworthy:reply):;### NEW ISSUE nitedani/mergeworthy#7 by eve;" "$(W="$T/t3daemon/live" PATH="$T/bin:/usr/bin:/bin" py '
+sdaemon() { # dir: one pass of its daemon finding a comment, a new mergeworthy issue and PR; the thread it bound|what it sent
+  : > "$T/t3.log"; W="$1" PATH="$T/bin:/usr/bin:/bin" py '
 for name in ("follow_update", "steward_line", "agent_jobs_pass", "announce"):
     setattr(m, name, lambda *a, **k: None)
 m.scan_gitlab = lambda: open(os.path.join(m.HERE, "events.log"), "a").write("### o/r#5 comment 9 by bob\n### NEW ISSUE nitedani/mergeworthy#7 by eve\n### NEW PR nitedani/mergeworthy#8 by eve\n")
 m.level = lambda: m.PAUSED; m.tick()
 print(m.first_line(os.path.join(m.HERE, "t3-thread")).split()[0])
-')|$(tr '\n' ';' < "$T/t3.log")"
-rm -r "$HOME/.mergeworthy/steward" "$T/t3daemon/live"
+'; echo "|$(tr '\n' ';' < "$T/t3.log")"; }
+SD="$T/t3daemon/live"; echo "$SD tid" > "$HOME/.mergeworthy/steward"; mkdir -p "$SD/live"
+for d in "$SD" "$SD/live"; do cp "$T/t3daemon/events.log" "$d/"; echo sess-child > "$d/session"; done
+check "a daemon in the steward's folder binds its session's thread and sends it only a new mergeworthy issue" "thr-p|t3 thread send thr-p -;Watcher events in $SD/events.log (mergeworthy:reply):;### NEW ISSUE nitedani/mergeworthy#7 by eve;" "$(sdaemon "$SD" | tr -d '\n')"
+check "a daemon in the steward's live dir sends its session's thread every event, as any work folder's does" \
+  "thr-p|t3 thread send thr-p -;Watcher events in $SD/live/events.log (mergeworthy:reply):;### o/r#5 comment 9 by bob;### NEW ISSUE nitedani/mergeworthy#7 by eve;### NEW PR nitedani/mergeworthy#8 by eve;" "$(sdaemon "$SD/live" | tr -d '\n')"
+rm -r "$HOME/.mergeworthy/steward" "$SD"
 check "a daemon whose session has no T3 thread, or that has no session, stays unbound" "unbound |unbound " "$c|$(tpass)"
 echo sess-child > "$T/t3daemon/session"; : > "$T/t3.log"; e=$(TEV='### found in the binding pass' tpass)
 check "the pass that binds the thread sends it the events that pass found" "thr-p $T/bin/t3 46|### found in the binding pass" "$e|$(tail -n1 "$T/t3.log")"
@@ -1207,6 +1211,15 @@ bash -c 'exec -a gh-watch-daemon sleep 30' & echo $! > "$LW/gh-watch.pid"; print
 err=$(PATH="$T/cronbin:$PATH" bash "$GI/bin/gh-watch-start" --round "$T/passwatch" o/r 7 o/r 8 < /dev/null 2>&1 >/dev/null); rc=$?
 check "gh-watch-start --round skips a thread a live dir watches, with a note, and reads the rest" "0|skipped o/r 7: $LW watches it|o/r 8" \
   "$rc|$err|$(grep -x 'o/r [78]' "$T/passwatch/threads.txt" | tr '\n' ' ' | sed 's/ $//')"
+# the steward's live dir takes a thread its quiet folder lists, though that folder's daemon runs: the line moves; another live dir's stays its
+SS="$T/swst"; mkdir -p "$SS" "$HOME/.mergeworthy"; printf 'o/r 3\no/r#9\n' > "$SS/threads.txt"; echo "$SS tid" > "$HOME/.mergeworthy/steward"; echo "$SS" >> "$HOME/.claude/gh-watch-dirs.txt"
+bash -c 'exec -a gh-watch-daemon sleep 30' & echo $! > "$SS/gh-watch.pid"
+PATH="$T/cronbin:$PATH" bash "$GI/bin/gh-watch-start" "$SS/live" o/r 9 < /dev/null > /dev/null 2>&1; a=$?
+PATH="$T/cronbin:$PATH" bash "$GI/bin/gh-watch-start" "$SS/live" o/r 7 < /dev/null > /dev/null 2>&1; b=$?
+check "gh-watch-start in the steward's live dir moves a thread only its folder lists there; one another live dir watches is refused" "0 o/r 3| o/r 9| 1 o/r 7" \
+  "$a $(tr '\n' '|' < "$SS/threads.txt") $(tr '\n' '|' < "$SS/live/threads.txt") $b $(cat "$LW/threads.txt")"
+for p in "$SS/gh-watch.pid" "$SS/live/gh-watch.pid"; do GP=$(cat "$p" 2>/dev/null); ps -o args= -p "$GP" 2>/dev/null | grep -qE '^(gh-watch-daemon|sleep) 30$' && kill "$GP"; done
+rm -r "$HOME/.mergeworthy/steward" "$SS"
 kill "$(cat "$LW/gh-watch.pid")"
 got=$(py '
 m.ROUND = True
@@ -1349,10 +1362,11 @@ print(a, open(os.path.join(m.HERE, "repos.txt")).read().strip())
 ')
 check "the steward's dir watches the mergeworthy repo whole while ~/.mergeworthy/steward names it" "(1, [('nitedani/mergeworthy', True), ('x/y', False)]) x/y" "$got"
 got=$(py "$WHOLE"'
-m.HERE = os.path.expanduser("~/.mergeworthy/work/steward/live"); os.makedirs(m.HERE, exist_ok=True); m.steward_line()
-print(m.repo_lines(m.HERE))
+for d in ("pass", "live"):
+    m.HERE = os.path.expanduser("~/.mergeworthy/work/steward/" + d); os.makedirs(m.HERE, exist_ok=True); m.steward_line()
+    print(m.repo_lines(m.HERE), end=" ")
 ')
-check "with no steward declared, the default steward folder's dirs watch the mergeworthy repo whole" "{'nitedani/mergeworthy': True}" "$got"
+check "with no steward declared, the default steward folder's dirs but its live dir watch the mergeworthy repo whole" "{'nitedani/mergeworthy': True} {} " "$got"
 # a --round dir has no daemon: each pass reads a list itself back to its last complete pass, though a daemon
 # polled it between (its validator, its baseline), and /agent on a thread no one lists goes to it
 mkdir -p "$WH/pass"; : > "$WH/pass/threads.txt"; : > "$WH/pass/events.log"; echo 'p/q all' > "$WH/pass/repos.txt"; echo "$WH/pass" >> "$HOME/.claude/gh-watch-dirs.txt"
