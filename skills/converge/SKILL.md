@@ -5,7 +5,7 @@ description: "Converging a PR's head before it is ready, in every tier: the desi
 
 # Converge
 
-Working a PR's head to a final state: no reviewer, agent or verifier finds anything worth changing, and every claim in the PR is backed by evidence you observed. Called by `pull-request` step 9; when done, return there. Each step ends with its `pr-steps` record, which pre-bash-guard requires before the PR leaves draft or a ready PR gets a push. Every loop runs by `delegate §Review rounds`: two rounds per head, then what is open is listed and the work goes on (`pr-steps <step> <file> --ledger <its ledger>`). Subagents work read-only or in their own worktrees; only you write the PR branch's history.
+Working a PR's head to a final state: no reviewer, agent or verifier finds anything worth changing, and every claim in the PR is backed by evidence you observed. Called by `pull-request` step 9; when done, return there. Each step ends with its `pr-steps` record, which pre-bash-guard requires before the PR leaves draft or a ready PR gets a push. Every loop runs by `delegate §Review rounds`: two rounds per head, then what is open is listed and work goes on (`pr-steps <step> <file> --ledger <its ledger>`). Subagents work read-only or in their own worktrees; only you write the PR branch's history.
 
 ## Steps
 
@@ -24,7 +24,7 @@ Working a PR's head to a final state: no reviewer, agent or verifier finds anyth
 
 ### Small fix
 
-A change of at most 60 lines outside tests, docs (any `.md`), lockfiles and build output, with a test the base fails and the head passes (docs or whole-line comments alone: a commit's `Cold-read: <rules step 4's report>` trailer), replaces steps 1–4 with one agent: `delegate/small-review.md` on the pushed head, recorded by `pr-steps small <its report>`; then step 5. Each blocker or should: a fix and round 2 (`delegate §Continue`, §Review rounds); each `## Outside this change` line: its `task §Dispositions`.
+A change of at most 60 lines outside tests, docs (any `.md`), lockfiles and build output, with a test the base fails and the head passes (a repo keeping none: a reproduction; docs or whole-line comments alone: a commit's `Cold-read: <rules step 4's report>` trailer), replaces steps 1–4 with one agent: `delegate/small-review.md` on the pushed head, recorded by `pr-steps small <its report>`; then step 5. Each blocker or should: a fix and round 2 (`delegate §Continue`, §Review rounds); each `## Outside this change` line: its `task §Dispositions`.
 
 ### Batching
 

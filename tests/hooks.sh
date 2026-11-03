@@ -196,6 +196,10 @@ check "BLOCK: the pass dir's owed reply holds the turn though no daemon runs the
 rm "$PD/passed"
 tr_cmd "gh issue comment 5 --repo o/r --body-file $WD/drafts/r.md"
 check "BLOCK: a post with no Monitor on the watcher" 2 "$(stop "$T/work")"
+python3 -c 'import json,sys; print(json.dumps({"type":"user","message":{"content":"go"}})); print(json.dumps({"type":"assistant","timestamp":sys.argv[2],"message":{"content":[{"type":"tool_use","name":"Bash","id":"t1","input":{"command":sys.argv[1]}}]}})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":"Done."}]}}))' "gh issue comment 5 --repo o/r --body-file $WD/drafts/r.md" "$(date -u -d '-10 minutes' +%FT%T.000Z)" > "$T/tr.jsonl"
+touch -d '-20 minutes' "$WD/retired"; stop "$WD" >/dev/null; r1=$(grep -c 'nothing wakes it' "$T/err"); touch "$WD/retired"; stop "$WD" >/dev/null
+check "BLOCK: a post after its watch dir retired still needs a watcher; a dir retired after the last post (the user asked to retire it) needs none" "1 0" "$r1 $(grep -c 'nothing wakes it' "$T/err")"
+rm "$WD/retired"
 # under T3 Code a live watcher whose t3-thread is the session's thread wakes it (gh-watch.py's wake_thread): no Monitor, and its owed replies are the session's
 mkdir -p "$HOME/.t3/userdata"; python3 -c 'import sqlite3, sys; c = sqlite3.connect(sys.argv[1]); c.execute("create table orchestration_v2_projection_provider_threads (provider_thread_id text, thread_id text, payload_json text)")
 c.execute("create table orchestration_v2_projection_subagents (subagent_id text, thread_id text, child_thread_id text)")
@@ -2020,6 +2024,15 @@ r1=$(prsk "$T/sr1.md"); r1="$r1 $(grep -c 'no cold read' "$T/prsk.err")"
 git -C "$GK" -c user.name=t -c user.email=t@t commit -q --allow-empty -m c -m "Cold-read: $T/sd-cold.md"
 r2=$(prsk "$T/sr1.md"); echo '#include <a.h>' >> "$GK/src/a.ts"; git -C "$GK" -c user.name=t -c user.email=t@t commit -qam d
 check "pr-steps small on a diff of code comments alone: BLOCK naming the cold read without one, records with one, BLOCK naming a code line that starts like a comment" "1 1 0 1 1" "$r1 $r2 $(prsk "$T/sr2.md") $(grep -c 'a code line: +#include' "$T/prsk.err")"
+# a repo keeping no PR-proving test (code §Tests): the report's reproduction, red on this base and green on this head, stands for the test
+GR="$T/prsr"; mkdir -p "$GR/src"; git -C "$GR" init -q -b main; echo 'const a = 1' > "$GR/src/a.ts"; git -C "$GR" add -A; git -C "$GR" -c user.name=t -c user.email=t@t commit -q -m a
+git -C "$GR" update-ref refs/remotes/origin/main HEAD; git -C "$GR" checkout -q -b fix; echo 'const a = 2' > "$GR/src/a.ts"; git -C "$GR" -c user.name=t -c user.email=t@t commit -qam b
+prsr() { (cd "$GR" && bash "$R/bin/pr-steps" small "$@" 2>"$T/prsr.err" >/dev/null; echo $?); }
+rb=$(git -C "$GR" rev-parse --short main); rh=$(git -C "$GR" rev-parse --short HEAD)
+printf 'Reproduction: `node repro.js`: red on %s, green on %s\n## Outside this change\nNO BUGS\nMERGE AS IS: yes\n' "$rh" "$rh" > "$T/srr1.md"
+printf -- '- Reproduction: `node repro.js`: red on %s, green on %s.\n## Outside this change\nNO BUGS\nMERGE AS IS: yes\n' "$rb" "$rh" > "$T/srr2.md"
+r1=$(prsr "$T/srr1.md"); r1="$r1 $(grep -c "Reproduction: <command>.* for $rb and $rh" "$T/prsr.err")"
+check "pr-steps small without a test: BLOCK on a reproduction naming another base, naming the shas it needs; records with one red on this base and green on this head" "1 1 0" "$r1 $(prsr "$T/srr2.md")"
 # ---------- pr-steps: every converge step leaves its proof; the guard needs all five ----------
 G2="$T/prs2"; mkdir -p "$G2"; git -C "$G2" init -q; git -C "$G2" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 prs2() { (cd "$G2" && bash "$R/bin/pr-steps" "$@" >/dev/null 2>&1; echo $?); }
@@ -2736,6 +2749,12 @@ mkdir -p "$T/pp/tests"; cp -r "$R/.githooks" "$T/pp/"; cp "$R/tests/all.sh" "$T/
 pp() { TMPDIR="$T/pplogs" sh "$T/pp/.githooks/pre-push" </dev/null | sed -n 's/.*see //p'; }
 mkdir -p "$T/pplogs"; L1=$(pp); L2=$(pp)
 check "pre-push: two failed pushes keep two logs, each naming the install command" "2 1 1" "$(ls "$T/pplogs" | wc -l) $(grep -c 'pnpm install' "$L1") $([ -n "$L1" ] && [ "$L1" != "$L2" ] && grep -c 'pnpm install' "$L2")"
+# a pushed commit whose tree a green tests/all.sh recorded runs nothing; one not recorded runs it
+git -C "$T/pp" init -q; git -C "$T/pp" add -A; git -C "$T/pp" -c user.name=t -c user.email=t@t commit -qm pp
+pt=$(git -C "$T/pp" rev-parse 'HEAD^{tree}'); ph=$(git -C "$T/pp" rev-parse HEAD); mkdir -p "$T/ppcache/mergeworthy/passed"
+ppr() { printf 'refs/heads/x %s refs/heads/x %040d\n' "$ph" 0 | (cd "$T/pp" && XDG_CACHE_HOME="$T/ppcache" TMPDIR="$T/pplogs" sh .githooks/pre-push >/dev/null 2>&1); echo $?; }  # git runs it in the repo
+r1=$(ppr); touch "$T/ppcache/mergeworthy/passed/$pt"
+check "pre-push: a pushed tree no green run recorded runs tests/all.sh (here failing); one recorded runs nothing" "1 0" "$r1 $(ppr)"
 # ---------- fail closed: a check that can't run blocks; the vikejs/vike#3671 session ("Fix CI"), replayed command by command ----------
 # shellcmd.parse lexes the whole command as bash does: that session's commit messages and PR body spanned lines, the old
 # line-by-line split raised, and its fallback saw only `cd`, so every check after it was skipped

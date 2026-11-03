@@ -58,6 +58,13 @@ def queued(tid, text):
         "where r.thread_id = ? and r.status = 'queued' and substr(json_extract(m.payload_json, '$.text'), 1, ?) = ?", (tid, len(text), text)).fetchone(), None)
     return r and r[0]
 
+def stopped(tid):
+    """True while the latest run of T3 thread tid is one someone stopped (status interrupted: the stop button or t3_thread_interrupt; a
+    T3 restart leaves none): a wake would restart work the user stopped. Their next message starts a new run, which ends it."""
+    r = _db(lambda c: c.execute("select status from orchestration_v2_projection_runs where thread_id = ? "
+                                "order by json_extract(payload_json, '$.ordinal') desc limit 1", (tid,)).fetchone(), None)
+    return bool(r) and r[0] == 'interrupted'
+
 def started(run_id):
     """True once T3 started the run, False while it can still start, None when it ended without starting, is gone or can't be read."""
     def ask(c):
