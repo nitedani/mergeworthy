@@ -1015,9 +1015,9 @@ cmd=$(mon)
 ( timeout 4 bash -c "$cmd" > "$M/out" 2>&1 & ); sleep 1
 printf '### ev1\n    ### a body line\nWATCH ERROR x\n' >> "$M/events.log"; sleep 2
 check "Monitor command: events within 2 s, body lines dropped" "### ev1|WATCH ERROR x|" "$(tr '\n' '|' < "$M/out")"
-cmd=$(mon '  '); : > "$M/events.log"; ( timeout 4 bash -c "$cmd" > "$M/out" 2>&1 & ); sleep 1
+cmd=$(mon '  '); : > "$M/events.log"; ( timeout 4 bash -c "$cmd" > "$M/out2" 2>&1 & ); sleep 1
 printf '### o/r#5 comment 9 by bob\nWATCH ERROR x\n### NEW ISSUE nitedani/mergeworthy#7 by eve\n### NEW PR nitedani/mergeworthy#8 by eve\n' >> "$M/events.log"; sleep 2
-check "the steward's Monitor command passes only a new mergeworthy issue" "### NEW ISSUE nitedani/mergeworthy#7 by eve|" "$(tr '\n' '|' < "$M/out")"
+check "the steward's Monitor command passes only a new mergeworthy issue" "### NEW ISSUE nitedani/mergeworthy#7 by eve|" "$(tr '\n' '|' < "$M/out2")"
 
 # A rate-limited `gh api user` prints the error JSON on stdout: it is no login. The watcher refuses to start rather than take it
 # as ME (every comment by the user's account, the agent's own gated posts too, then reads as a human's and gets an :eyes:).
