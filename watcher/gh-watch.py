@@ -466,6 +466,23 @@ if not ME:
     sys.exit("WATCH ERROR could not read your login (gh api user); set GH_WATCH_ME")  # else your own comments become events
 
 
+def own_logins():
+    """ME and the accounts ~/.mergeworthy/own-accounts lists (one login per line): the person declares which accounts their agents work as,
+    so what those do on a followed PR is ours, not someone else's. No file: only ME."""
+    try:
+        listed = open(shared_path('own-accounts')).read().split()
+    except OSError:
+        listed = []
+    return {l.lower() for l in [ME, *listed]}
+
+
+OWN = own_logins()
+
+
+def is_own(login):
+    return (login or '').lower() in OWN
+
+
 def load_state():
     try:
         s = json.load(open(STATE))
@@ -577,7 +594,7 @@ def own_change(key, prev, now):
     runs and the rest are theirs too, else None: someone else's, which wakes."""
     marks = ([own_actions.state('PUSHED_HEADS', lambda e: bool(now['head']) and e.startswith(now['head']))] if prev.get('head') != now.get('head') else []) + \
             ([own_actions.state('CLOSED_THREADS', lambda e: e == f"{key} {now['state']}")] if prev.get('state') != now['state'] else [])
-    if marks[-1:] == ['done'] and prev.get('state') != now['state'] and closer(key) != ME:
+    if marks[-1:] == ['done'] and prev.get('state') != now['state'] and not is_own(closer(key)):
         return None
     return None if not marks or None in marks else 'pending' if 'pending' in marks else 'done'
 
@@ -638,7 +655,7 @@ def is_human(u, body=None, agent_hashes=frozenset()):
 
 
 def agent_post(u, body, agent_hashes):
-    return bool(gl_watch.BADGE.match(body or '')) or u.get('login') == ME and _norm(body) in agent_hashes
+    return bool(gl_watch.BADGE.match(body or '')) or is_own(u.get('login')) and _norm(body) in agent_hashes
 
 
 def append_owed(entry, d=None):
@@ -899,7 +916,7 @@ def emit_maintainer_commits(state, repo, key, old, new):
             note_active(state, {'login': c['login']}, c['date'])
     theirs = []
     for c in commits:
-        if c['sha'] not in on_pr or c['login'] in ('', ME) or c['agent'] or is_bot(c):
+        if c['sha'] not in on_pr or not c['login'] or is_own(c['login']) or c['agent'] or is_bot(c):
             continue
         try:
             if maintainer(state, repo, c['login']):
@@ -924,7 +941,7 @@ def emit_refactor_stale(repo, key, new):
         pr = request(f"repos/{repo}/pulls/{num}").json()
         commits = [{'sha': c['sha'], 'merge': len(c['parents']) > 1} for c in request(f"repos/{repo}/compare/{pr['base']['ref']}...{new}").json()['commits']]
         rec = os.path.expanduser('~/.claude/pr-steps')
-        if pr['user']['login'] != ME and not any(os.path.exists(f"{rec}/{c['sha']}") for c in commits):
+        if not is_own(pr['user']['login']) and not any(os.path.exists(f"{rec}/{c['sha']}") for c in commits):
             return worked(f"shape check {key}")  # no shape pass to keep up with: checked
         idx = max((i for i, c in enumerate(commits) if os.path.exists(f"{rec}/{c['sha']}") and any(l.startswith(('shape ', 'refactor ')) for l in open(f"{rec}/{c['sha']}"))), default=-1)
         since = [c['sha'] for c in commits[idx + 1:] if not c['merge']]
@@ -985,7 +1002,7 @@ def scan_reactions(state, threads):
         for kind, path, comments in got:
             for c in comments:
                 counts = c.get('reactions') or {}
-                if c['user'].get('login') != ME or _norm(c.get('body')) not in agent_hashes:
+                if not is_own(c['user'].get('login')) or _norm(c.get('body')) not in agent_hashes:
                     continue
                 if kind not in lists.setdefault(key, []):
                     lists[key].append(kind)
@@ -1099,7 +1116,7 @@ def fetch_last_comment(repo, num):
 def note_active(state, user, when):
     """The latest time each person (not you, not a bot) acted in a watched thread: a comment, a review, or commits pushed to a PR."""
     login = user.get('login') or ''
-    if login and login != ME and user.get('type') != 'Bot' and not login.endswith('[bot]'):
+    if login and not is_own(login) and user.get('type') != 'Bot' and not login.endswith('[bot]'):
         active = state.setdefault('active', {})
         active[login] = max(active.get(login, ''), when)
 
@@ -1243,10 +1260,10 @@ def scan(state, jobs):
                 note_assoc(state, repo, user, user.get('assoc'))
                 if is_pr and pr_state:
                     note_refactor_ask(repo, key, user, url, body, upd, pr_state['head'])
-                if answerable(user, body, agent_hashes, kind, own=author == ME or repo_lines(HERE).get(repo)):
+                if answerable(user, body, agent_hashes, kind, own=is_own(author) or repo_lines(HERE).get(repo)):
                     handle_comment(state, repo, key, kind, cid, upd, user['login'], url, body, extra)
                 maintainer_review(key, author, kind, cid, user, url, extra, upd)
-            for r in last['renames'] if last and is_pr and author == ME else ():
+            for r in last['renames'] if last and is_pr and is_own(author) else ():
                 pr_renamed(key, [HERE], *r)
             pings.append((key, last, events))
             s = sched.setdefault(key, {'full': 0})
@@ -1326,7 +1343,7 @@ def feed_repos():
             st.setdefault('prs', {})
         except (OSError, ValueError):
             st = {'prs': {}}
-        repos |= {k.rsplit('#', 1)[0] for k in listed_threads(d) if thread_kind(st, k, now) != 'closed' and st.get('author', {}).get(k) != ME}
+        repos |= {k.rsplit('#', 1)[0] for k in listed_threads(d) if thread_kind(st, k, now) != 'closed' and st.get('author', {}).get(k) != ME}  # the created-issues feed covers only ME's own PRs
         repos |= set(repo_lines(d))
     return repos
 
@@ -1782,7 +1799,7 @@ def emit_to(d, line):
 def maintainer_review(key, author, kind, cid, user, url, state, upd):
     """A maintainer's review of your PR, other than a bare approval, goes to the steward (else here) once, for the sort of each defect it names.
     One submitted before the dir's first round start is claimed, not reported (one_round)."""
-    if kind == 'review' and author == ME and user.get('login') != ME and user.get('assoc') in MAINTAINER and state != 'APPROVED':
+    if kind == 'review' and is_own(author) and not is_own(user.get('login')) and user.get('assoc') in MAINTAINER and state != 'APPROVED':
         if before_seed(upd):
             claim(f"mreview:{cid}")
             return
@@ -1791,7 +1808,7 @@ def maintainer_review(key, author, kind, cid, user, url, state, upd):
 
 def pr_renamed(key, dirs, when, login, old, new):
     """Someone else retitled your PR, open or merged: the title is the repo's form, so it goes where a FOLLOW-UP goes, once."""
-    if login and login != ME:
+    if login and not is_own(login):
         repo, num = key.rsplit('#', 1)
         follow_emit(f"rename:{key}:{when}", dirs, f'### FOLLOW-UP {key}: https://github.com/{repo}/pull/{num}#rename-{when} by {login} renames your PR: "{old}" -> "{new}"  at {iso(time.time())}')
 
@@ -1811,7 +1828,7 @@ def followed_prs():
         except (OSError, ValueError):
             continue
         for key in listed_threads(d):
-            if st.get('prs', {}).get(key, {}).get('state') == 'merged' and st.get('author', {}).get(key) == ME:
+            if st.get('prs', {}).get(key, {}).get('state') == 'merged' and is_own(st.get('author', {}).get(key)):
                 out.setdefault(key, []).append(d)
                 old = st.get('followups', {}).get(key)  # kept by a watcher from before the shared state: its cursors save the backfill
                 if old and key not in shared_read()['followups']:
@@ -1873,7 +1890,7 @@ def follow_ups():
                 c = bk['queue'][-1]
                 sha, author, when = c['sha'], c.get('author') or {}, c['commit']['committer']['date']
                 who = author.get('login') or c['commit']['author'].get('name')  # no GitHub account is linked to the commit's email: its git name
-                mine = author.get('login') == ME or re.fullmatch(rf"(\d+\+)?{re.escape(ME)}@users\.noreply\.github\.com", c['commit']['author'].get('email') or '', re.I)
+                mine = is_own(author.get('login')) or re.fullmatch(rf"(\d+\+)?({'|'.join(map(re.escape, OWN))})@users\.noreply\.github\.com", c['commit']['author'].get('email') or '', re.I)
                 if not is_bot({**author, 'login': who}) and not mine and len(c.get('parents') or []) <= 1:
                     wanted = [k for k, e in entries.items() if when >= e['scanned'] and sha != e['merge_sha'] and claim(f"followup:{k}:{sha}", record=False)]
                     if wanted:
@@ -1891,7 +1908,7 @@ def follow_ups():
                     i = (t.get('source') or {}).get('issue') or {}
                     if t.get('event') == 'cross-referenced' and 'pull_request' in i and not is_bot(i.get('user')):
                         who = (t.get('actor') or {}).get('login') or i['user']['login']  # who wrote the reference: in another's PR, it can be your comment
-                        ours = ME in (who, i['user']['login'])  # its own claim: a later reference by someone else from that PR still wakes
+                        ours = is_own(who) or is_own(i['user']['login'])  # its own claim: a later reference by someone else from that PR still wakes
                         follow_emit(f"followup-ref{'-own' if ours else ''}:{k}:{i['html_url']}", prs[k], f"{'note:' if ours else '###'} FOLLOW-UP {k}: {i['html_url']} by {who} references your PR  at {iso(time.time())}")
                     elif t.get('event') == 'renamed':
                         pr_renamed(k, prs[k], t['created_at'], (t.get('actor') or {}).get('login'), t['rename']['from'], t['rename']['to'])
@@ -1995,7 +2012,7 @@ def retire_if_done():
         return
     fu = shared_read()['followups']  # a merged PR of yours still being followed, or not yet recorded by the shared job, keeps the watcher,
     # except in your own repo, where you are the one who follows up
-    if any(state['prs'].get(k, {}).get('state') == 'merged' and state.get('author', {}).get(k) == ME and fu.get(k, {'until': float('inf')})['until'] > time.time()
+    if any(state['prs'].get(k, {}).get('state') == 'merged' and is_own(state.get('author', {}).get(k)) and fu.get(k, {'until': float('inf')})['until'] > time.time()
            for k in (f"{r}#{n}" for r, n in threads if r.split('/')[0].lower() != ME.lower())):
         return
     prs = state['prs']
