@@ -1343,7 +1343,7 @@ def feed_repos():
             st.setdefault('prs', {})
         except (OSError, ValueError):
             st = {'prs': {}}
-        repos |= {k.rsplit('#', 1)[0] for k in listed_threads(d) if thread_kind(st, k, now) != 'closed' and not is_own(st.get('author', {}).get(k))}
+        repos |= {k.rsplit('#', 1)[0] for k in listed_threads(d) if thread_kind(st, k, now) != 'closed' and st.get('author', {}).get(k) != ME}  # the created-issues feed covers only ME's own PRs
         repos |= set(repo_lines(d))
     return repos
 
