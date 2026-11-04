@@ -91,27 +91,74 @@ def _src(n, src):
     return src[n['Pos']['Offset']:n['End']['Offset']].decode(errors='replace')
 
 
+class Word(str):
+    """A word as bash passes it (_word), with parts, each a tuple its kind leads: ('lit', text), ('var', name), ('exp', name, op, its word),
+    ('repl', name, all, pattern, replacement), ('sub', each pipeline stage's argv, None when it's anything else), ('piece',), a number, or ('opaque',)."""
+    def __new__(cls, text, parts=()):
+        w = super().__new__(cls, text)
+        w.parts = tuple(parts)
+        return w
+
+
+def _stages(s, src):
+    """The argv of each stage of the statement s, a plain pipeline with no redirect; None for anything else."""
+    c = s.get('Cmd') or {}
+    if s.get('Redirs') or s.get('Negated') or s.get('Background'):
+        return None
+    if c.get('Type') == 'CallExpr' and not c.get('Assigns'):
+        return [[_word(a, src) for a in c.get('Args') or []]]
+    if c.get('Type') != 'BinaryCmd' or c.get('Op') != '|':
+        return None
+    x, y = _stages(c['X'], src), _stages(c['Y'], src)
+    return x + y if x and y else None
+
+
+def _expansion(p, src):
+    """The part (Word.parts) of an expansion's node."""
+    t, name = p.get('Type'), (p.get('Param') or {}).get('Value')
+    if t == 'ArithmExp' or t == 'ParamExp' and p.get('Length'):
+        return ('piece',)
+    if t == 'CmdSubst' and not p.get('Backquotes'):
+        stmts = p.get('Stmts') or []
+        return ('sub', _stages(stmts[0], src) if len(stmts) == 1 else None)
+    if t != 'ParamExp' or not name or any(p.get(k) for k in ('Excl', 'Width', 'Index', 'Slice', 'Names')):
+        return ('opaque',)
+    if e := p.get('Exp'):
+        return ('exp', name, e['Op'], _word(e.get('Word') or {}, src))
+    if r := p.get('Repl'):
+        return ('repl', name, bool(r.get('All')), _word(r.get('Orig') or {}, src), _word(r.get('With') or {}, src))
+    return ('var', name)
+
+
 def _word(w, src):
     """A word as bash passes it: quotes and escapes removed; expansions and substitutions as written."""
-    out = []
+    out, parts = [], []
+    def add(text, part=None):
+        out.append(text)
+        parts.append(part or ('lit', text))
     for p in w.get('Parts') or []:
         t, v = p.get('Type'), p.get('Value', '')
         if t == 'Lit':
-            out.append(re.sub(r'\\(.)', r'\1', v.replace('\\\n', ''), flags=re.S))
+            add(re.sub(r'\\(.)', r'\1', v.replace('\\\n', ''), flags=re.S))
         elif t == 'SglQuoted':
-            out.append(v.encode('latin-1', 'backslashreplace').decode('unicode_escape', 'replace') if p.get('Dollar') else v)
+            add(v.encode('latin-1', 'backslashreplace').decode('unicode_escape', 'replace') if p.get('Dollar') else v)
         elif t == 'DblQuoted':
-            out.append(''.join(re.sub(r'\\([$`"\\])', r'\1', x.get('Value', '').replace('\\\n', '')) if x.get('Type') == 'Lit' else _src(x, src)
-                               for x in p.get('Parts') or []))
+            for x in p.get('Parts') or []:
+                if x.get('Type') == 'Lit': add(re.sub(r'\\([$`"\\])', r'\1', x.get('Value', '').replace('\\\n', '')))
+                else: add(_src(x, src), _expansion(x, src))
         else:
-            out.append(_src(p, src))
-    return ''.join(out)
+            add(_src(p, src), _expansion(p, src))
+    return Word(''.join(out), parts)
 
 
 def _assign(a, src):
     if a.get('Naked'):
         return a['Name']['Value'] if a.get('Name') else _word(a['Value'], src)
-    return a['Name']['Value'] + '=' + (_word(a['Value'], src) if a.get('Value') else _src(a['Array'], src) if a.get('Array') else '')
+    name = a['Name']['Value'] + '='
+    if a.get('Array'):
+        return Word(name + _src(a['Array'], src), [('lit', name), ('opaque',)])
+    w = _word(a.get('Value') or {}, src)
+    return Word(name + w, [('lit', name), *w.parts])
 
 
 # The kinds of scope a command runs in (Seg.scopes): a cd in an isolating one never reaches what follows it (Where)
@@ -130,7 +177,7 @@ def _scope(kind, name='', plain=False):
 
 class Seg(list):
     """A simple command's argv; scopes: the (id, kind, function name) of each scope it runs in, outermost first, for Where; loop: whether it
-    runs inside a while or until loop; raw: each word's source as written, None when not known (Where then expands none); unseen: the
+    runs inside a while or until loop; raw: each word's source as written, None when not known; unseen: the
     names its script, or a script running it, may set where Where can't follow (_unseen), whose values it never trusts; nested: whether
     it is in a script the line runs (`eval`'s included), where a plain walk loses the dir (Where)."""
     scopes, loop, raw, unseen, nested = (), False, None, frozenset(), False
@@ -431,7 +478,7 @@ class Where:
     holding an expansion it can't resolve; `cd -`, popd or a stack rotation) the dir is None until a cd to an absolute path, and a
     check that needs it blocks.
     That following is trust a plain walk doesn't give, so it is spent only where its variables are proven (strict expansion: Maybe,
-    Seg.raw's quoting, Seg.unseen): a cd nested in a scope or once the plain walk lost the dir, and a written file's name (file). The
+    Word.parts' quoting, Seg.unseen): a cd nested in a scope or once the plain walk lost the dir, and a written file's name (file). The
     plain walk (main_dir, main_vars: every NAME=value the line runs, but an isolating scope's once it is left, then the environment's)
     decides each other cd, at the top level while it knows the dir, and every other expansion, as it did before scopes: a nested cd,
     `cd -` or popd loses its dir for good."""
@@ -442,7 +489,7 @@ class Where:
 
     def expand(self, p, strict=False):
         """p with the plain walk's variables ($D, ${D}: main_vars), then the environment's, put in. strict: the scoped ones (vars)
-        instead, and every $ of a word the current command quoted or escaped (Seg.raw), whose $ may be literal, and every variable the
+        instead, and every $ of a word the current command quoted or escaped (Word.parts), which is literal, and every variable the
         line may set unseen (Seg.unseen) stay as written. A value it can't tell (a Maybe) stays as written."""
         def value(m):
             n = m[1] or m[2]
@@ -471,7 +518,7 @@ class Where:
         for t in segs:
             self.enter(t.scopes)
             self.unseen = t.unseen
-            self.quoted = {w for w in t if '$' in w} if t.raw is None else {w for w, r in zip(t, t.raw) if '$' in w and re.search(r"['\\]", r)}
+            self.quoted = {w for w in t if '$' in w and (not isinstance(w, Word) or any(x[0] == 'lit' and '$' in x[1] for x in w.parts))}
             yield t
             self.step(t)
 

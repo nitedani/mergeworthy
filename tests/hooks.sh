@@ -2363,6 +2363,12 @@ check "BLOCK: a call to a function the line defines runs its cd or assignment th
   "$(ibash "$IT" "f() { cd $I; }; cd $T/nogit; f; echo x > a.txt" "$T/nogit") $(ibash "$IT" "f() { WD=$I; }; WD=$T/nogit; f; echo x > \$WD/a.txt" "$T/nogit")"
 check "BLOCK: a word with a quoted or escaped \$ isn't expanded: a write to '\$WD/a.txt' or \\\$WD/a.txt can't be told" "2 2" \
   "$(ibash "$IT" "WD=$T/nogit; echo x > '\$WD/a.txt'") $(ibash "$IT" "WD=$T/nogit; echo x > \\\$WD/a.txt")"
+check "a word's quoted part holding no \$ leaves its expansion expanded: a write to \"\$WD\"'/a.txt' after WD=… resolves; a quote inside its substitution doesn't make a word literal, a quoted or escaped \$ does" "0 False True True" \
+  "$(ibash "$IT" "WD=$T/nogit; echo x > \"\$WD\"'/a.txt'") $(python3 - "$R/hooks" <<'PY2'
+import sys; sys.path.insert(0, sys.argv[1]); import shellcmd as s
+print(*[(w := s.Where('/'), [w.quoted for _ in w.walk(s.segments(c))])[1][0] != set() for c in ("n=$(echo $f | tr '/.' '__')", "echo x > '$WD/a.txt'", 'echo x > \\$WD/a.txt')])
+PY2
+)"
 check "BLOCK: the same text quoted in one word and written plain in another: the plain redirect into the repo isn't taken as literal" 2 \
   "$(ibash "$IT" "WD=$I; echo '\$WD/a.txt' > \$WD/a.txt" "$T/nogit")"
 check "BLOCK: a call to a function that calls one defined after it: the write after the call can't be told" 2 \
