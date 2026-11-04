@@ -476,6 +476,9 @@ class Unknown(str):
     def __bool__(self): return False
 
 
+PIECE = '\0'  # in a value, a part known only to hold no /: it may stand in a file's name, which can't change the file's folder
+SPECIALS = ('$', '!', '?', '#', 'RANDOM', 'SECONDS')  # the shell's variables that only ever hold a number
+HASHES = ('md5sum', 'sha1sum', 'sha256sum', 'sha512sum', 'b2sum', 'cksum')
 CAP = 64  # a word's values and a file's candidates: the check runs git for each folder
 UNKNOWN, CAPPED = Unknown(), Unknown(f'its word may hold more than {CAP} values: name the files, or run a command per folder')
 
@@ -528,12 +531,15 @@ class Where:
 
     def files(self, w):
         """The paths a file the current command names, word w, may be, each resolved from each of spots. An Unknown when one's folder can't be told:
-        no spots for a relative one, or a value the line doesn't list."""
+        no spots for a relative one, a piece in its folder, or a value the line doesn't list."""
         vals = self.values(w)
         if isinstance(vals, Unknown):
             return vals
         out = []
         for v in map(os.path.expanduser, vals):
+            if PIECE in os.path.dirname(v):
+                return UNKNOWN
+            v = v.replace(PIECE, '_')
             if os.path.isabs(v):
                 out.append(v)
             elif self.spots is None:
@@ -543,13 +549,14 @@ class Where:
         return CAPPED if len(out) > CAP else out
 
     def values(self, w):
-        """The values word w may hold here, what the line itself gives it; an Unknown when it doesn't list them or holds more than CAP."""
+        """The values word w may hold here, what the line itself gives it, a PIECE for each part known only to hold no /; an Unknown when it
+        doesn't list them or holds more than CAP."""
         if not isinstance(w, Word):
             v = self.expand(w, True)
             return UNKNOWN if re.search(r'[$`]', v) else (v,)
         out = ('',)
         for p in w.parts:
-            vals = (UNKNOWN if re.search(r'[$`]', p[1]) else (p[1],)) if p[0] == 'lit' else self._var(p[1]) if p[0] == 'var' else UNKNOWN
+            vals = self._part(*p)
             if isinstance(vals, Unknown):
                 return vals
             if len(out) * len(vals) > CAP:
@@ -557,8 +564,76 @@ class Where:
             out = tuple(a + b for a in out for b in vals)
         return tuple(dict.fromkeys(out))
 
+    def _part(self, kind, *a):
+        """The values a part of a word (Word.parts) may hold."""
+        if kind == 'lit': return UNKNOWN if re.search(r'[$`]', a[0]) else (a[0],)
+        if kind == 'piece': return (PIECE,)
+        if kind == 'var': return self._var(a[0])
+        if kind == 'exp': return self._exp(*a)
+        if kind == 'repl': return self._repl(*a)
+        if kind == 'sub' and a[0]: return self._sub(a[0])
+        return UNKNOWN
+
+    def _exp(self, n, op, word):
+        """${n<op><word>}: its default, or what a pattern leaves of each value; of a value it can't tell, only ${n##*/} and ${n%%/*} are known."""
+        vals = self._var(n)
+        lost = isinstance(vals, Unknown)
+        if op in ('-', ':-') and lost and n.isidentifier() and n not in self.vars and n not in os.environ and n not in self.unseen:
+            return self.values(word)
+        if op in ('-', ':-', '?', ':?'):
+            if lost or op != ':-' or '' not in vals:
+                return vals
+            other = self.values(word)
+            return other if isinstance(other, Unknown) else (*(v for v in vals if v), *other)
+        pat = self.values(word)
+        if op not in ('#', '##', '%', '%%') or isinstance(pat, Unknown) or len(pat) != 1:
+            return UNKNOWN
+        if lost:
+            return (PIECE,) if (op, pat[0]) in (('##', '*/'), ('%%', '/*')) else vals
+        return tuple(_trim(v, op, pat[0]) for v in vals)
+
+    def _repl(self, n, every, pattern, new):
+        """${n/pattern/new} or ${n//pattern/new}; of a value it can't tell, only one replacing every / with no / is known."""
+        vals, pat, to = self._var(n), self.values(pattern), self.values(new)
+        if isinstance(pat, Unknown) or isinstance(to, Unknown) or len(pat) != 1 or len(to) != 1 or pat[0][:1] in ('#', '%'):
+            return UNKNOWN
+        if isinstance(vals, Unknown):
+            return (PIECE,) if every and fnmatch.fnmatchcase('/', pat[0]) and '/' not in to[0] else vals
+        return tuple(_replaced(v, pat[0], to[0], every) for v in vals)
+
+    def _sub(self, stages):
+        """A substitution's values: basename and dirname per value; a piece for what can't print a /; else unknown, as any other command's output."""
+        t, names = stages[0], [os.path.basename(x[0]) if x else '' for x in stages]
+        if names in (['basename'], ['dirname']):
+            vals = self.values(t[1]) if len(t) == 2 and not t[1].startswith('-') else UNKNOWN
+            if names == ['basename']:
+                return (PIECE,) if isinstance(vals, Unknown) else tuple(os.path.basename(v.rstrip('/')) or v[:1] for v in vals)
+            return vals if isinstance(vals, Unknown) else tuple(os.path.dirname(v.rstrip('/')) or ('/' if v[:1] == '/' else '.') for v in vals)
+        if names == ['date']:
+            fmt = [x for x in t[1:] if x not in ('-u', '--utc')]
+            return (PIECE,) if not fmt or len(fmt) == 1 and re.fullmatch(r'\+[^/$`]*', fmt[0]) and not re.search(r'%[-_0^#]*\d*[Dxc]', fmt[0]) else UNKNOWN
+        if names == ['git']:
+            a = t[1 + len(git_globals(t)):]
+            return (PIECE,) if a[:1] == ['rev-parse'] and a[-1:] == ['HEAD'] and (len(a) == 2 or len(a) == 3 and re.fullmatch(r'--short(=\d+)?', a[1])) else UNKNOWN
+        hash_at = next((i for i, x in enumerate(names) if x in HASHES and len(stages[i]) == 1), None)
+        if hash_at is not None and set(names[hash_at + 1:]) <= {'cut', 'head', 'awk'}:
+            return (PIECE,)
+        return self._tr(stages) if names == ['echo', 'tr'] else UNKNOWN
+
+    def _tr(self, stages):
+        """$(echo <words> | tr <sets>): a piece when it can't print a /: tr adds none, and the words hold none or tr removes it."""
+        said = [self.values(x) for x in stages[0][1:] if x != '-n']
+        flag = lambda x: re.fullmatch(r'-[sd]+', x)
+        flags, sets = ''.join(filter(flag, stages[1][1:])), [x for x in stages[1][1:] if not flag(x)]
+        if not sets or len(sets) > 2 or re.search(r'[$`]', ''.join(sets)) or 'd' not in flags and '/' in ''.join(sets[1:]):
+            return UNKNOWN
+        gone = '/' in sets[0] and ('d' in flags or len(sets) == 2)
+        return (PIECE,) if gone or not any(isinstance(v, Unknown) or any('/' in y for y in v) for v in said) else UNKNOWN
+
     def _var(self, n):
         """The values variable n holds here (Seg.unseen: none it may hold unseen)."""
+        if n in SPECIALS and n not in self.vars:
+            return (PIECE,)
         v = self.vars.get(n, os.environ.get(n))
         if n in self.unseen or v is None:
             return UNKNOWN
@@ -572,13 +647,13 @@ class Where:
             if isinstance(vals, Unknown):
                 return Many('', vals)
             for v in (y for x in vals for y in (x.split() if w.splits else [x])):
-                if (w.splits or re.search(r'[*?[]', w.bare)) and re.search(r'[*?[]', v):
+                if (w.splits or re.search(r'[*?[]', w.bare)) and re.search(r'[*?[]', v) and PIECE not in v:
                     if not os.path.isabs(os.path.expanduser(v)) and self.dir is None:
                         return Many('', UNKNOWN)
                     out += glob.glob(os.path.expanduser(v), root_dir=self.dir) or [v]
                 else:
                     out.append(v)
-        return Many('', UNKNOWN if not words else CAPPED if len(out) > CAP else tuple(dict.fromkeys(out)))
+        return Many('', tuple(dict.fromkeys(out)) if words else UNKNOWN)
 
     def walk(self, segs):
         """Each of segs (parse()'s), with self moved to where it runs; self takes it once the caller is done with it."""
@@ -663,16 +738,39 @@ class Where:
 
     def _spots(self, verb, to, kinds):
         """Where a cd the dir can't follow may have gone, verb to word to, in scopes of kinds (no conditional's): each value it lists, from each
-        spot; None for a target the line doesn't list, and a relative one in a plain loop's body, whose each pass starts where the last ended."""
+        spot; None for a target the line doesn't list or a piece may name, and a relative one in a plain loop's body, whose each pass starts where the last ended."""
         vals = None if verb == 'popd' or to[:1] in '-+' or to == TOPLEVEL else self.values(to)
         if vals is None or isinstance(vals, Unknown):
             return None
         out = []
         for v in map(os.path.expanduser, vals):
-            if not os.path.isabs(v) and (self.spots is None or kinds[-1:] == [LOOP]):
+            if PIECE in v or not os.path.isabs(v) and (self.spots is None or kinds[-1:] == [LOOP]):
                 return None
             out += [os.path.normpath(os.path.join(x, v)) for x in ((v,) if os.path.isabs(v) else self.spots)]
-        return tuple(dict.fromkeys(out)) if len(out) <= CAP else None
+        return tuple(dict.fromkeys(out))
+
+
+def _trim(v, op, pat):
+    """${v<op>pat}, op one of # ## % %%: v without the shortest or longest start or end that the glob pat matches."""
+    start = op[0] == '#'
+    for i in range(len(v) + 1) if op in ('#', '%%') else range(len(v), -1, -1):
+        if fnmatch.fnmatchcase(v[:i] if start else v[i:], pat):
+            return v[i:] if start else v[:i]
+    return v
+
+
+def _replaced(v, pat, new, every):
+    """${v/pat/new}, or with every ${v//pat/new}: each longest match of the glob pat replaced, from the left."""
+    out, i = '', 0
+    while i < len(v):
+        j = next((j for j in range(len(v), i, -1) if fnmatch.fnmatchcase(v[i:j], pat)), None)
+        if j is None:
+            out, i = out + v[i], i + 1
+        else:
+            out, i = out + new, j
+            if not every:
+                break
+    return out + v[i:]
 
 
 def _dir(d):
