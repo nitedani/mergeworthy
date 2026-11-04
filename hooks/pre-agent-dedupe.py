@@ -328,7 +328,7 @@ executed = [t for t in sorted({os.path.abspath(os.path.expanduser(m)) for m in r
 exec_text = text + '\n' + '\n'.join(open(t, errors='replace').read() for t in executed)
 def brief_approach():
     """(record file, its newest line's time, the unchanged reason or '') of an implementer brief's Approach line; blocks when it has none."""
-    m = re.search(r'^[ \t>*-]*Approach:\s*(\S+\.md)(?:\s+\(unchanged:\s*([^)]*\S)\s*\))?\s*$', exec_text, re.M)
+    m = re.search(r'^[ \t>*-]*Approach:\s*(\S+\.md)\b(.*)$', exec_text, re.M)
     if not m:
         sys.stderr.write("BLOCKED: an implementer brief names the approach it builds (mergeworthy:pull-request step 5, delegate/implementer.md): "
                          "a line `Approach: <abs path of approach.md>`, recorded first by `pr-steps approach` in the PR branch's checkout the brief names\n")
@@ -339,7 +339,8 @@ def brief_approach():
     for r in sorted(recs):
         rows = [l.split() for l in open(r) if len(l.split()) >= 3]
         if rows and os.path.realpath(rows[-1][1]) == named:
-            return r, rows[-1][2], m[2] or ''
+            why = re.search(r'\(unchanged:\s*([^)]*\S)\s*\)', m[2])
+            return r, rows[-1][2], why[1] if why else ''
     sys.stderr.write(f"BLOCKED: {m[1]} is not the newest `pr-steps approach` record of a checkout this brief names: record it in the PR branch's "
                      "checkout (mergeworthy:pull-request step 5) and name that checkout in the brief\n")
     sys.exit(2)
