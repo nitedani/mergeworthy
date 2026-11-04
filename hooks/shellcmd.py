@@ -94,10 +94,11 @@ def _src(n, src):
 class Word(str):
     """A word as bash passes it (_word), with parts, each a tuple its kind leads: ('lit', text), ('var', name), ('exp', name, op, its word),
     ('repl', name, all, pattern, replacement), ('sub', each pipeline stage's argv, None when it's anything else), ('piece',), a number, or ('opaque',).
-    bare: its literal text outside quotes, where bash reads braces and globs; splits: whether an expansion stands outside double quotes."""
-    def __new__(cls, text, parts=(), bare='', splits=False):
+    bare: its literal text outside quotes, where bash reads braces and globs; splits: whether an expansion stands outside double quotes;
+    quoted: whether a part is quoted or escaped, which bash doesn't split."""
+    def __new__(cls, text, parts=(), bare='', splits=False, quoted=False):
         w = super().__new__(cls, text)
-        w.parts, w.bare, w.splits = tuple(parts), bare, splits
+        w.parts, w.bare, w.splits, w.quoted = tuple(parts), bare, splits, quoted
         return w
 
 
@@ -133,25 +134,27 @@ def _expansion(p, src):
 
 def _word(w, src):
     """A word as bash passes it: quotes and escapes removed; expansions and substitutions as written."""
-    out, parts, bare, splits = [], [], '', False
+    out, parts, bare, splits, quoted = [], [], '', False, False
     def add(text, part=None):
         out.append(text)
         parts.append(part or ('lit', text))
     for p in w.get('Parts') or []:
         t, v = p.get('Type'), p.get('Value', '')
         if t == 'Lit':
-            bare += v
+            bare, quoted = bare + v, quoted or '\\' in v
             add(re.sub(r'\\(.)', r'\1', v.replace('\\\n', ''), flags=re.S))
         elif t == 'SglQuoted':
+            quoted = True
             add(v.encode('latin-1', 'backslashreplace').decode('unicode_escape', 'replace') if p.get('Dollar') else v)
         elif t == 'DblQuoted':
+            quoted = True
             for x in p.get('Parts') or []:
                 if x.get('Type') == 'Lit': add(re.sub(r'\\([$`"\\])', r'\1', x.get('Value', '').replace('\\\n', '')))
                 else: add(_src(x, src), _expansion(x, src))
         else:
             splits = True
             add(_src(p, src), _expansion(p, src))
-    return Word(''.join(out), parts, bare, splits)
+    return Word(''.join(out), parts, bare, splits, quoted)
 
 
 def _assign(a, src):
@@ -658,6 +661,8 @@ class Where:
             vals = UNKNOWN if '{' in w.bare else self.values(w)
             if isinstance(vals, Unknown):
                 return Many('', vals)
+            if w.splits and w.quoted and any(re.search(r'\s', v) for v in vals):  # which of its spaces bash splits at can't be told from the value
+                return Many('', UNKNOWN)
             for v in (y for x in vals for y in (x.split() if w.splits else [x])):
                 if (w.splits or re.search(r'[*?[]', w.bare)) and re.search(r'[*?[]', v) and PIECE not in v:
                     if not os.path.isabs(os.path.expanduser(v)) and self.dir is None:

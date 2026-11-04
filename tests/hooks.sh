@@ -2410,6 +2410,9 @@ check "\$(echo … | tr …) is a piece only when it can't print a /: over a wor
 check "dirname is evaluated per value: a write under it from the repo's path blocks, from outside passes; a default is the value when the variable is unset" "2 0 2 0" \
   "$(ibash "$IT" "for f in $I/a; do echo x > \$(dirname \$f)/b; done" "$T/nogit") $(ibash "$IT" "for f in $T/nogit/a; do echo x > \$(dirname \$f)/b; done" "$T/nogit") $(ibash "$IT" "echo x > \${MW_UNSET:-$I}/b" "$T/nogit") $(ibash "$IT" "echo x > \${MW_UNSET:-$T/nogit}/b" "$T/nogit")"
 check "a piece reaches a check as a valid path: a file named by \$\$ under a new folder of the repo is that repo's; BLOCK: a cd to one, or a loop's glob under one, can't be told" "2 2 2" "$(ibash "$IT" "echo x > $I/new/a.\$\$" "$T/nogit") $(ibash "$IT" "cd /tmp/x.\$\$ && echo x > f" "$T/nogit") $(ibash "$IT" "for f in /tmp/x.\$\$/*; do echo x > \$f/a; done" "$T/nogit")"
+IS="$T/spaced repo"; mkdir -p "$IS"; git -C "$IS" init -q; printf 'rules\n' > "$IS/AGENTS.md"
+check "BLOCK: a loop word mixing a quoted part that holds a space with an unquoted expansion can't be told, from a variable or written out; with no space it passes" "2 2 0" \
+  "$(ibash "$IT" "R='$IS'; s=x; for f in \"\$R\"/\$s; do echo x > \"\$f\"; done" "$T/nogit") $(ibash "$IT" "s=x; for f in '$IS'/\$s; do echo x > \"\$f\"; done" "$T/nogit") $(ibash "$IT" "R=$T/nogit; s=x; for f in \"\$R\"/\$s; do echo x > \"\$f\"; done" "$T/nogit")"
 check "a call to a function no body on the line changes dir in (a logging helper) keeps the dir: a relative write after it passes" 0 \
   "$(ibash "$IT" "log() { echo \"\$@\"; }; log starting; echo x > a.txt" "$T/nogit")"
 check "BLOCK: a loop variable its body names other than as \$f (set in a branch, read, let, \${f:=…}) is no longer the loop's word: a write to it can't be told" "2 2 2 2" \
