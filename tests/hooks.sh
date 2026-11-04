@@ -2389,6 +2389,10 @@ check "BLOCK: a command named by a variable a loop's value set, or a positional 
   "$(ibash "$IT" "for f in a b; do G=\$f; \$G push; done" "$T/nogit") $(ibash "$IT" "G=\$1; \$G push" "$T/nogit")"
 check "a loop over 64 words passes; BLOCK: over 65 it can't be told, saying the cap" "0 2 1" \
   "$(ibash "$IT" "for f in $(seq -s ' ' 1 64); do echo x > \$f; done" "$T/nogit") $(ibash "$IT" "for f in $(seq -s ' ' 1 65); do echo x > \$f; done" "$T/nogit") $(grep -c 'more than 64 values' "$T/ierr")"
+check "a cd to a loop's word in a subshell holds there: a relative write lands under it, outside any repo it passes; BLOCK: under the repo; BLOCK: a relative cd in the loop's own body, whose next pass starts where it ended" "0 2 2" \
+  "$(ibash "$IT" "cd $T/nogit && for n in a b; do (cd \$n && echo hi > ../\$n-install.log; echo \"\$n \$?\"); done") $(ibash "$IT" "for n in $I b; do (cd \$n && echo x > f); done" "$T/nogit") $(ibash "$IT" "for v in a b; do cd \$v; echo x > f; done" "$T/nogit")"
+check "BLOCK: a cd in a branch over a loop's words, once it is left, can't be told; an absolute one in the loop's body lands in each word, the repo too" "2 2" \
+  "$(ibash "$IT" "for n in $T/nogit; do if true; then cd \$n; fi; done; echo x > f" "$T/nogit") $(ibash "$IT" "for v in $I $T/nogit; do cd \$v; echo x > f; done" "$T/nogit")"
 check "a call to a function no body on the line changes dir in (a logging helper) keeps the dir: a relative write after it passes" 0 \
   "$(ibash "$IT" "log() { echo \"\$@\"; }; log starting; echo x > a.txt" "$T/nogit")"
 check "BLOCK: a loop variable its body names other than as \$f (set in a branch, read, let, \${f:=…}) is no longer the loop's word: a write to it can't be told" "2 2 2 2" \

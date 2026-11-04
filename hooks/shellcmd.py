@@ -502,11 +502,13 @@ class Where:
     Word.parts' quoting, Seg.unseen): a cd nested in a scope or once the plain walk lost the dir, and a written file (files). The
     plain walk (main_dir, main_vars: every NAME=value the line runs, but an isolating scope's once it is left, then the environment's)
     decides each other cd, at the top level while it knows the dir, and every other expansion, as it did before scopes: a nested cd,
-    `cd -` or popd loses its dir for good."""
+    `cd -` or popd loses its dir for good.
+    spots: the dirs a relative write may start from, a written file's only read of where it runs: the dir when it is known, else each
+    target a cd the dir can't follow has listed (_spots), and None where a target or the dir before it can't be told."""
     def __init__(self, cwd):
         self.funcs, self.func_vars, self.func_moves = set(), set(), False  # the functions the line defines, the variables their bodies set, whether one changes dir
         self.main_dir, self.main_vars = cwd, {'PWD': cwd}
-        self.dir, self.moved, self.vars, self.scopes, self.quoted, self.unseen = cwd, False, {'PWD': cwd}, [], set(), frozenset()  # each scope entered: [(id, kind, name), dir before it, whether a cd ran in it, variables before it, variables set in it, main_vars before it]
+        self.dir, self.moved, self.vars, self.scopes, self.quoted, self.unseen, self.spots = cwd, False, {'PWD': cwd}, [], set(), frozenset(), (cwd,)  # each scope entered: [(id, kind, name), dir before it, whether a cd ran in it, variables before it, variables set in it, main_vars before it, spots before it]
 
     def expand(self, p, strict=False):
         """p with the plain walk's variables ($D, ${D}: main_vars), then the environment's, put in. strict: the scoped ones (vars)
@@ -525,17 +527,20 @@ class Where:
         return None if re.search(r'[$`]', p) else p if os.path.isabs(p) else None if base is None else os.path.join(base, p)
 
     def files(self, w):
-        """The paths a file the current command names, word w, may be, each resolved from the dir. An Unknown when one's folder can't be told:
-        no dir for a relative one, or a value the line doesn't list."""
+        """The paths a file the current command names, word w, may be, each resolved from each of spots. An Unknown when one's folder can't be told:
+        no spots for a relative one, or a value the line doesn't list."""
         vals = self.values(w)
         if isinstance(vals, Unknown):
             return vals
         out = []
         for v in map(os.path.expanduser, vals):
-            if not os.path.isabs(v) and self.dir is None:
+            if os.path.isabs(v):
+                out.append(v)
+            elif self.spots is None:
                 return UNKNOWN
-            out.append(os.path.join(self.dir or '/', v))
-        return out
+            else:
+                out += [os.path.join(x, v) for x in self.spots]
+        return CAPPED if len(out) > CAP else out
 
     def values(self, w):
         """The values word w may hold here, what the line itself gives it; an Unknown when it doesn't list them or holds more than CAP."""
@@ -588,16 +593,17 @@ class Where:
         """Leave the scopes not in scopes, innermost first, and enter the new ones."""
         n = 0
         while n < min(len(self.scopes), len(scopes)) and self.scopes[n][0] == scopes[n]: n += 1
-        for (_, kind, *_), before, moved, vars, set_in, main_vars in reversed(self.scopes[n:]):
+        for (_, kind, *_), before, moved, vars, set_in, main_vars, spots in reversed(self.scopes[n:]):
             self.dir = before if kind == ISOLATING else None if moved else self.dir
+            self.spots = spots if kind == ISOLATING else None if moved else self.spots
             self.vars = vars if kind == ISOLATING else {**self.vars, **{v: Maybe(self.vars.get(v, '')) for v in set_in}}
             self.main_vars = main_vars if kind == ISOLATING else self.main_vars
         self.funcs |= {x[2] for x in scopes[n:] if x[2] and x[1] == CONDITIONAL}
         self.scopes = self.scopes[:n]
         for x in scopes[n:]:
-            self.scopes.append([x, self.dir, False, dict(self.vars), set(), dict(self.main_vars)])
+            self.scopes.append([x, self.dir, False, dict(self.vars), set(), dict(self.main_vars), self.spots])
             if x[1] == LOOP and x[2]: self.vars[x[2]] = self._listed(x[3]); self.changed(x[2])  # each pass gives it another of its words
-            if x[2] == STDIN: self.dir = None
+            if x[2] == STDIN: self.dir, self.spots = None, None
             if x[2] in (STDIN, CHILD): self.vars = {k: Maybe(v) for k, v in self.vars.items()} | {'PWD': _dir(self.dir)}  # a shell's PWD is where it starts
 
     def changed(self, var=None):
@@ -626,7 +632,7 @@ class Where:
         p = prog(t)
         if p[:1] and p[0] in self.funcs:  # a call runs a body here, maybe calling another: what any of them changes can't be told
             if self.func_moves:
-                self.dir, self.moved = None, True
+                self.dir, self.moved, self.spots = None, True, None
                 self.changed()
             for v in self.func_vars: self.vars[v] = Maybe(self.vars.get(v, '')); self.changed(v)
             return
@@ -649,11 +655,24 @@ class Where:
             self.dir = _toplevel(self.dir)
         else:
             self.dir = self.path(to, strict=True) and os.path.normpath(self.path(to, strict=True))
-        self.main_dir = main
+        self.main_dir, self.spots = main, (self.dir,) if self.dir is not None else self._spots(p[0], to, kinds)
         for n, dirs in (('OLDPWD', old), ('PWD', (self.dir, self.main_dir))):
             self.vars[n], self.main_vars[n] = map(_dir, dirs)
             self.changed(n)
         if self.in_body(): self.func_vars.update(('PWD', 'OLDPWD'))
+
+    def _spots(self, verb, to, kinds):
+        """Where a cd the dir can't follow may have gone, verb to word to, in scopes of kinds (no conditional's): each value it lists, from each
+        spot; None for a target the line doesn't list, and a relative one in a plain loop's body, whose each pass starts where the last ended."""
+        vals = None if verb == 'popd' or to[:1] in '-+' or to == TOPLEVEL else self.values(to)
+        if vals is None or isinstance(vals, Unknown):
+            return None
+        out = []
+        for v in map(os.path.expanduser, vals):
+            if not os.path.isabs(v) and (self.spots is None or kinds[-1:] == [LOOP]):
+                return None
+            out += [os.path.normpath(os.path.join(x, v)) for x in ((v,) if os.path.isabs(v) else self.spots)]
+        return tuple(dict.fromkeys(out)) if len(out) <= CAP else None
 
 
 def _dir(d):
