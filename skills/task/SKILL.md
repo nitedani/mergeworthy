@@ -57,6 +57,7 @@ The work folder (`~/.mergeworthy/work/<task>/`, the task's checkouts inside) hol
   - `replies-owed.md`: every comment you answer (the watcher writes it). Cleared by `done: <reply URL> <what changed>`, or `done: 👍 <comment URL>` for a reaction alone; a holding reply makes it `holding: <reply URL> <ETA as an ISO time>`; while a drafter works, `drafting: <comment URL> <ETA>`.
   - `proposals-open.md`: every "OK?" you ask, and every promise you post as `PROMISED <thread>: <what> (<draft file name>)`. Each new maintainer comment is checked against it first. Cleared by the commit or link that delivers it.
   - `questions-owed.md`: each user question that needs work, with an ETA. Cleared by `done: <where you answered it>`.
+  - **A promised time** (an ETA, a PROMISED line's time) may move once. At the second, push what exists, marked not final, and say what remains, never a new time.
 - Log and artifact names include a unique pass ID; never overwrite another pass's file.
 - **Deleted when done:** 14 days after the watcher retires (every thread merged or closed, and 60 days after each merge of yours in others' repos), disk-sweep's `w-done` (`docs/mechanisms.md`) deletes it, unless a process or agent works in it, a file changed within a day, or it holds an open owed or `waiting-on.txt` line or anything no remote has (an edit, an untracked file git doesn't ignore, a stash, a commit); `~/.mergeworthy/work-kept.md` says why one stays. Nothing deletes an older `~/*-work/` folder, nor any folder with the watcher off or off Linux.
 
@@ -65,7 +66,7 @@ The plugin's options (`/plugin` → mergeworthy → Configure options; an enviro
 ### Project file
 
 `~/.mergeworthy/projects/<owner>/<repo>.md`, the one per-repo file: how the repo works and what its maintainers taught you, beyond its `AGENTS.md` / `CLAUDE.md`. Default branch: `<base>`. Keep each section to what an agent would get wrong; delete an empty one; update an entry instead of adding a near-duplicate, and delete one a later change contradicts. At most 2500 words (`wc -w`), since every agent reads it whole. Past that, pre-agent-dedupe refuses briefs: condense it by the rules above, moving quotes into the study (§Repo study), or, when the refusal names a learning thread already condensing it, wait until `t3 thread show <its id>` no longer shows it `running`, then relaunch. Only the daily learning run (`mergeworthy-learn.timer`, docs/mechanisms.md `project-learn`) runs `project-learn mark`.
-- **Gates:** the commands that must exit 0 before a PR, where to run them and how long they take. Locales, if any.
+- **Gates:** the commands that must exit 0 before a PR, where to run them and how long they take. Locales, if any. `Push: before gates` when a maintainer asked for pushes before the gates (`merging` step 1).
 - **What already guarantees things:** validation layers, generated type shields, authorizers, schema constraints, each with its file and function.
 - **Security surfaces:** what is publicly reachable, how auth is checked per call, rate limiting, where admin actions and secrets live, which changes are a team decision.
 - **Issue tracker:** anything that makes `git log --grep <issue>` miss (a migrated tracker, different numbering in commits).

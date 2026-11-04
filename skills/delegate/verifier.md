@@ -4,7 +4,7 @@ Standards: `~/.mergeworthy/current/skills/code/SKILL.md` (§Phantom gate, §Docs
 
 ## Slices
 
-A slice is a part of the PR's code one verifier can hold (core feature, backend and storage, runtime adapter, wire and client). A diff over about 1500 lines is split into slices, each with its own verifier; in a stack, each PR has its own.
+A slice is a part of the PR's code one verifier can hold (core feature, backend and storage, runtime adapter, wire and client).
 
 ## Counting
 
@@ -27,8 +27,7 @@ Base <SHA>, head <SHA>, in <worktree> (read with git show/diff at those SHAs; do
 The project file: <project file path>. Settled decisions: <decisions/*.md or the PR body>.
 
 What counts:
-- through realistic usage (code §Phantom gate's list), the head behaves wrongly where a user can see it: a regression against the base, a fix that's incomplete for the scenario its commit names, new code that behaves unlike the platform behavior it reproduces (a later reader sees an earlier reader's writes; `bodyUsed` lies), or a bug or UX issue in a function the diff edits, one the base has too included; one elsewhere goes under `## Outside this change`. Silent wrong data where the base threw is a bug, never "not a regression"; so is costing more than the base for the same request (copies, reads, allocations, time), shown by a count or a `main`-vs-head run. Code and docs that disagree are judged per code §Docs are a claim.
-- A deliberate behavior (a usage error) doesn't count.
+- through realistic usage (code §Phantom gate's list), the head behaves wrongly where a user can see it: a regression against the base, a fix that's incomplete for the scenario its commit names, new code that behaves unlike the platform behavior it reproduces (a later reader sees an earlier reader's writes; `bodyUsed` lies), or a bug or UX issue in a function the diff edits, one the base has too included; one elsewhere goes under `## Outside this change`. Silent wrong data where the base threw is a bug, never "not a regression"; so is costing more than the base for the same request where a user notices it, shown by a `main`-vs-head run (code §No regressions); a count of allocations alone is a nit.
 - A candidate counts only with a spec or script that fails on the head and either passes on the base (`main`, or the bottom PR for the top), demonstrates an incomplete fix, or shows a bug in a function the diff edits.
 
 How:

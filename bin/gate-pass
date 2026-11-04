@@ -1,13 +1,13 @@
 #!/bin/bash
-# gate-pass <draft.md> <review-output-file> [post-lint flags]: records that <draft.md> passed the posting gate.
-# Requires post-lint to pass, a current thread-context.md next to a reply/inline/proposal draft, and the review's final message to be exactly CLEAN (the reviewer writes only its verdict to that file).
+# gate-pass <draft.md> <review-output-file> [--ledger <path>] [post-lint flags]: records that <draft.md> passed the posting gate.
+# Requires post-lint to pass, a current thread-context.md next to a reply/inline/proposal draft, and the review's final message to be exactly CLEAN (the reviewer writes only its verdict to that file), or `--ledger <path>` closing its round 2 (hooks/ledger.py).
 # Writes <draft.md>.gate with the draft's sha256; the posting hook checks it, so any later edit needs a new review.
 # A status post (post-lint --kind status, post step 3) has no review: its review output is `none`, and it needs its PROMISED line.
 set -e
 d="$1"; r="$2"
-[ -f "$d" ] && { [ -f "$r" ] || [ "$r" = none ]; } || { echo "usage: gate-pass <draft.md> <review-output>|none [post-lint flags]"; exit 2; }
+[ -f "$d" ] && { [ -f "$r" ] || [ "$r" = none ]; } || { echo "usage: gate-pass <draft.md> <review-output>|none [--ledger <path>] [post-lint flags]"; exit 2; }
 # the flags given here, else those the draft last passed post-lint with (<draft>.lint), else a reply's
-shift 2; flags=("$@"); [ ${#flags[@]} -gt 0 ] || { [ -f "$d.lint" ] && read -ra flags < "$d.lint"; } || true
+shift 2; flags=(); ledger=; while [ $# -gt 0 ]; do if [ "$1" = --ledger ]; then ledger=${2:?--ledger <path>}; shift 2; else flags+=("$1"); shift; fi; done; [ ${#flags[@]} -gt 0 ] || { [ -f "$d.lint" ] && read -ra flags < "$d.lint"; } || true
 "$(dirname "$(readlink -f "$0")")/post-lint" "$d" "${flags[@]}" || { echo "post-lint failed"; exit 1; }
 kind=reply; for i in "${!flags[@]}"; do [ "${flags[$i]}" = --kind ] && kind="${flags[$((i+1))]}"; done
 [ "$r" != none ] || [ "$kind" = status ] || { echo "only a status post (post-lint --kind status) skips the review: run it (post step 3)"; exit 1; }
@@ -19,7 +19,7 @@ case "$kind" in reply|comment|inline|proposal|status)
   "$(dirname "$(readlink -f "$0")")/thread-context" --verify "$(dirname "$(readlink -f "$d")")/thread-context.md" ${parent:+--parent "$parent"} || exit 1;;
 esac
 [ "$r" = none ] && out=CLEAN || out=$(tr -d '\r' < "$r" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -v '^$' || true)
-[ "$out" = "CLEAN" ] || { echo "review is not exactly CLEAN (it has $(printf '%s\n' "$out" | wc -l) non-empty lines; last: $(printf '%s\n' "$out" | tail -1)). The reviewer's final message, alone, is the review output"; exit 1; }
+[ "$out" = "CLEAN" ] || { [ -n "$ledger" ] && python3 "$(dirname "$(readlink -f "$0")")/../hooks/ledger.py" "$ledger"; } || { echo "review is not exactly CLEAN (it has $(printf '%s\n' "$out" | wc -l) non-empty lines; last: $(printf '%s\n' "$out" | tail -1)). The reviewer's final message, alone, is the review output; after round 2, pass --ledger <the loop's ledger>"; exit 1; }
 # a posted promise is a task opened (mergeworthy:post step 4): it needs a PROMISED line naming this draft in proposals-open.md
 own=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import post_words; sys.stdout.write(post_words.uncoded(open(sys.argv[2]).read()))' "$(dirname "$(readlink -f "$0")")/../hooks" "$d" |
   sed -E 's/"[^"]*"//g; s/“[^”]*”//g; s/`[^`]*`//g; /^>/d')  # quoted text and code blocks are someone else's words or a tool's output, not a promise

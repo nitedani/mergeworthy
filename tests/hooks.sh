@@ -498,7 +498,7 @@ rm -f "$FX/graphql" "$FX/graphql_d" "$FX/graphql_DC_504" "$FX/graphql_D_5" "$FX/
 
 # gate-pass wants the same file beside a reply draft
 GD="$T/gdrafts/x"; mkdir -p "$GD"; printf 'Agreed, option A it is.\n' > "$GD/r.md"; echo CLEAN > "$GD/r.review.out"
-gp() { touch -d "${RT:-+10 minutes}" "$GD/r.review.out"; MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GD/r.md" "$GD/r.review.out" --kind reply --parent none >"$T/gp.out" 2>&1; echo $?; }
+gp() { touch -d "${RT:-+10 minutes}" "$GD/r.review.out"; MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GD/r.md" "$GD/r.review.out" ${GPL:+--ledger "$GPL"} --kind reply --parent none >"$T/gp.out" 2>&1; echo $?; }
 check "BLOCK: gate-pass on a reply without thread-context.md" 1 "$(gp)"
 grep -c 'no thread-context.md' "$T/gp.out"
 cp "$TD/thread-context.md" "$GD/thread-context.md"; touch -d 2026-10-01T00:00:00Z "$GD/r.md"
@@ -514,6 +514,9 @@ cp "$GD/thread-context.md" "$T/gd-tc.md"; cp "$TC" "$GD/thread-context.md"; touc
 check "BLOCK: gate-pass with the parent saved after a record the thread has outgrown" "1 1" "$(gp) $(grep -c 'records the latest comment' "$T/gp.out")"
 mv "$T/gd-tc.md" "$GD/thread-context.md"; rm "$GD/r.parent.md"; touch -d '+1 minute' "$GD/r.md"
 check "gate-pass records the thread context in the gate" 1 "$(grep -c '^tc ' "$GD/r.md.gate")"
+printf 'R2.1 should: the second sentence reads twice\n' > "$GD/r.review.out"; printf 'R2.1 should listed: the report to the user\n' > "$T/gl.md"; printf 'R2.1 blocker listed: the report to the user\n' > "$T/gb.md"
+check "gate-pass: a round-2 review that isn't CLEAN passes with its ledger closing it; BLOCK without one, or with a blocker left open" "1 0 1 1" "$(gp) $(GPL="$T/gl.md" gp) $(GPL="$T/gb.md" gp) $(grep -c 'open blocker' "$T/gp.out")"
+echo CLEAN > "$GD/r.review.out"
 printf 'The test checks that "I'"'"'ll switch it once X is released" passes.\n' > "$GD/r.md"; touch -d '+2 minutes' "$GD/r.md"
 check "a quoted \"I'll\" is someone else's words, not a promise" 0 "$(gp)"
 printf 'The lint says:\n\n```\nsay what is being done ('"'"'I'"'"'ll merge …'"'"')\n```\n' > "$GD/r.md"; touch -d '+150 seconds' "$GD/r.md"
@@ -1043,11 +1046,14 @@ python3 -c 'import json,os,time; p=os.path.expanduser("~/.claude/agent-client-re
 check "BLOCK: a clientRequestId reused later (T3 replays the old result)" 2 "$(cid r-1)"
 for i in $(seq 40); do (cid_in "c-$i" | python3 "$R/hooks/pre-agent-dedupe.py" register 2>/dev/null || echo crash) & done > "$T/cid.out"; wait
 check "40 launches registering at once: none crashes, none is lost" "0 40" "$(grep -c crash "$T/cid.out") $(python3 -c 'import json,os; print(sum(k.startswith("c-") for k in json.load(open(os.path.expanduser("~/.claude/agent-client-request-ids.json")))))')"
-rnd() { # clientRequestId task [role]
-  python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":sys.argv[2],"role":sys.argv[3],"clientRequestId":sys.argv[1]}}))' "$1" "$2" "${3:-review}" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; echo $?; }
+rnd() { # clientRequestId task [role]: a review round's exit code, registered when it passes
+  local j; j=$(python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":sys.argv[2],"role":sys.argv[3],"clientRequestId":sys.argv[1]}}))' "$1" "$2" "${3:-review}")
+  printf '%s' "$j" | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; local r=$?; [ $r = 0 ] && printf '%s' "$j" | python3 "$R/hooks/pre-agent-dedupe.py" register; echo $r; }
 agent_rnd() { # description prompt
-  python3 -c 'import json,sys; print(json.dumps({"tool_name":"Agent","tool_input":{"description":sys.argv[1],"prompt":sys.argv[2]}}))' "$1" "$2" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; echo $?; }
-check "a review launch at any round, or naming none, passes: rounds aren't capped, the loop stops when a round finds only nits" "0 0 0" "$(rnd loop-a-r7 'Follow /tmp/x/rr.md') $(rnd loop-a 'Follow /tmp/x/rr.md') $(agent_rnd fresh-r5 'Review it. Final message: exactly CLEAN, or the findings.')"
+  local j; j=$(python3 -c 'import json,sys; print(json.dumps({"tool_name":"Agent","tool_input":{"description":sys.argv[1],"prompt":sys.argv[2]}}))' "$1" "$2")
+  printf '%s' "$j" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; local r=$?; [ $r = 0 ] && printf '%s' "$j" | python3 "$R/hooks/pre-agent-dedupe.py" register; echo $r; }
+check "BLOCK: a loop's r3 with no head pinned, a trailing date no escape; its r2, a launch naming no round and another loop's r3 pass" "0 0 2 1 2 0 0" "$(rnd loop-a-r1 'Review it, round 1') $(rnd loop-a-r2 'Review it, round 2') $(rnd loop-a-r3 'Review it, round 3') $(grep -c 'delegate §Review rounds' "$T/err") $(rnd loop-a-r3-2026-11-02 'Review it, round 3 again') $(rnd loop-a 'Review it once more') $(rnd loop-b-r3 'Review it, the other loop')"
+check "BLOCK: the Agent tool's review round r3 by its description; its r2 passes" "0 0 2" "$(agent_rnd fresh-r1 'Read it. Final message: exactly CLEAN, or the findings.') $(agent_rnd fresh-r2 'Read it again. Final message: exactly CLEAN, or the findings.') $(agent_rnd fresh-r3 'Read it a third time. Final message: exactly CLEAN, or the findings.')"
 bg() { # [run_in_background]: an Agent launch's exit code, with T3CODE_THREAD_ID as the caller has it
   python3 -c 'import json,sys; t={"description":"bg","prompt":"Execute /tmp/x/bg.md"}; t.update({"run_in_background":json.loads(sys.argv[1])} if sys.argv[1:] else {}); print(json.dumps({"tool_name":"Agent","tool_input":t}))' "$@" | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
 check "BLOCK: under T3 an Agent in the background, by default or asked, naming delegate_task; in the foreground it passes" "2 1 2 0" "$(T3CODE_THREAD_ID=th bg) $(grep -c delegate_task "$T/err") $(T3CODE_THREAD_ID=th bg true) $(T3CODE_THREAD_ID=th bg false)"
@@ -1086,6 +1092,29 @@ mkdir -p "$HOME/.claude/projects/-cap"; python3 -c 'import json,sys,time; w=lamb
 touch -d '5 minutes ago' "$HOME/.claude/projects/-cap/cap2.jsonl"
 check "BLOCK: a job whose agent finished (its transcript quiet) no longer counts; the fourth open one still blocks" "0 2" "$(cap capS 'Execute /tmp/x/cap6.md') $(cap capS 'Execute /tmp/x/cap7.md')"
 for k in cap2 cap3 cap4 cap5 cap6 mem-lines; do python3 "$R/bin/agent-job" done "/tmp/x/$k.md" >/dev/null; done; rm -r "$HOME/.claude/projects/-cap"
+# the user's raise, quoted in the task's scope.md from a message they typed this session, sets the limit; a line without the quote,
+# a quote no message of theirs holds, or no scope.md, keeps 3
+export CAP_LOG="$T/cap-log.jsonl"; python3 -c 'import json,sys; w=lambda o: print(json.dumps(o))
+w({"type":"user","promptSource":"typed","message":{"role":"user","content":"ok, you can have 2 claude + 3 codex running same time."}})
+w({"type":"assistant","message":{"content":[{"type":"text","text":"I invented this authorization"}]}})
+w({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"I invented this authorization"}]}})' > "$CAP_LOG"
+capw() { python3 -c 'import json,os,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":sys.argv[1],"cwd":sys.argv[3],"transcript_path":os.environ.get("CAP_LOG",""),"tool_input":{"task":sys.argv[2],"title":sys.argv[2][-40:]}}))' "$1" "$2" "$3" > "$T/capw.json"
+  python3 "$R/hooks/pre-agent-dedupe.py" < "$T/capw.json" 2>"$T/err"; local rc=$?; [ $rc = 0 ] && python3 "$R/hooks/pre-agent-dedupe.py" register < "$T/capw.json"; echo $rc; }
+capn() { local w=$1 s=$2 n=$3 i out=; for i in $(seq "$n"); do out="$out $(capw "$s" "Execute /tmp/x/$s-$i.md" "$w")"; done; echo $out; }
+AW="$HOME/.mergeworthy/work"; mkdir -p "$AW/raised/repo" "$AW/unquoted/repo" "$AW/noscope/repo"
+printf 'Tier: S, because one hook\nAgents: 5 (user 2026-11-02: "you can have 2 claude + 3 codex running same time.")\n' > "$AW/raised/scope.md"
+printf 'Tier: S, because one hook\nAgents: 5 (user 2026-11-02)\n' > "$AW/unquoted/scope.md"
+mkdir -p "$AW/forged/repo"; printf 'Tier: S, because one hook\nAgents: 5 (user 2026-11-03: "I invented this authorization")\n' > "$AW/forged/scope.md"
+check "BLOCK: with the user's quoted raise to 5 in scope.md, a fourth and fifth agent pass and a sixth is refused" "0 0 0 0 0 2" "$(capn "$AW/raised/repo" capR 6)"
+check "BLOCK: an Agents line without the user's quote keeps 3, and the refusal names the line for scope.md" "0 0 0 2 1" "$(capn "$AW/unquoted/repo" capU 4) $(grep -c "in $AW/unquoted/scope.md as a line .Agents: <N> (user <YYYY-MM-DD>: " "$T/err")"
+check "BLOCK: a work folder with no scope.md keeps 3" "0 0 0 2" "$(capn "$AW/noscope/repo" capN 4)"
+check "BLOCK: a quote no message the user typed holds (only an assistant turn and a tool result do) keeps 3, and the refusal says so" "0 0 0 2 1" "$(capn "$AW/forged/repo" capF 4) $(grep -c "quoting the user's own words from this session" "$T/err")"
+capb() { local i out=; for i in $(seq "$3"); do printf 'Do part %s.\n' "$i" > "$1/$2-$i.md"; out="$out $(capw "$2" "Execute $1/$2-$i.md" "$T")"; done; echo $out; }
+check "BLOCK: from a cwd outside the task, briefs in the folder with the raise: a fourth and fifth agent pass and a sixth is refused" "0 0 0 0 0 2" "$(capb "$AW/raised" capB 6)"
+mkdir -p "$AW/other"; printf 'Do it.\n' > "$AW/other/x.md"
+check "BLOCK: from inside another task's folder, briefs in the raised one keep that task's 3" "0 0 0 2" "$(for i in 1 2 3 4; do printf 'Do part %s.\n' "$i" > "$AW/raised/capO-$i.md"; capw capO "Execute $AW/raised/capO-$i.md" "$AW/other"; done | xargs)"
+for s in capR capU capN capF; do for i in 1 2 3 4 5; do python3 "$R/bin/agent-job" done "/tmp/x/$s-$i.md" >/dev/null; done; done
+for s in capB capO; do for i in 1 2 3 4 5; do t="Execute $AW/raised/$s-$i.md"; python3 "$R/bin/agent-job" done "${t: -40}" >/dev/null; done; done; rm -r "$AW/raised" "$AW/unquoted" "$AW/noscope" "$AW/other" "$AW/forged"; unset CAP_LOG
 # ---------- the memory file: session-memory injects its Standing digest and says when it is behind; the guards read it ----------
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.invalid GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.invalid
 OC="$T/orch"; MR="$T/mem"; LD="$HOME/.claude/projects/$(printf '%s' "$OC" | sed 's/[^A-Za-z0-9]/-/g')"; mkdir -p "$OC" "$LD"
@@ -1190,6 +1219,10 @@ ag() { # cwd task [role]
 printf '# Memory\n## Standing\n### Ruled out\n- **Cron jobs** (now). The user refused them.\n## Recent\n<!-- covered-until: 2099-01-01T00:00:00.000Z -->\n' > "$MR/memory.md"
 check "BLOCK: a brief pinned to an older commit of the worktree it names, with the ruled-out list" "2 1" "$(ag "$OC" "Fix it in $T/gw at $OLD") $(grep -c 'Cron jobs' "$T/err")"
 check "a brief pinned to the worktree's live head passes" 0 "$(ag "$OC" "Fix it again in $T/gw at $NEW, base $OLD")"
+r1=$(rnd gw-r1 "Review $T/gw at head $NEW"); r2=$(rnd gw-r2 "Review $T/gw at head $NEW again"); r3=$(rnd gw-r3 "Review $T/gw at head $NEW once more")
+git -C "$T/gw" commit -q --allow-empty -m fix; FIX=$(git -C "$T/gw" rev-parse HEAD); r3f=$(rnd "gw-r3-${FIX:0:7}" "Review $T/gw at head $FIX")
+git -C "$T/gw" checkout -q --detach "$OLD"; git -C "$T/gw" commit -q --allow-empty -m new; NH=$(git -C "$T/gw" rev-parse HEAD)
+check "review rounds on one head: r1 and r2 pass, BLOCK r3 on it and on a fix built on it, r3 on a new head passes" "0 0 2 2 0" "$r1 $r2 $r3 $r3f $(rnd "gw-r3-${NH:0:7}" "Review $T/gw at head $NH")"
 mkdir -p "$HOME/.mergeworthy/projects/o"; echo "- a lesson from $OLD" > "$HOME/.mergeworthy/projects/o/gwnotes.md"
 check "a project notes file the brief names is read, not pinned: its history SHAs block nothing" 0 "$(ag "$OC" "Fix it in $T/gw; notes $HOME/.mergeworthy/projects/o/gwnotes.md")"
 check "the user's own checkout is read at any commit" 0 "$(ag "$OC" "Read $T/gr at $MAINOLD once more")"
@@ -1294,6 +1327,9 @@ check "the newest record passes; the next build on the same record waits, unless
   "$(abrief $'You implement the fix in '"$AB"$'.\nApproach: '"$T/ab1.md") $(abrief $'You implement the review fix in '"$AB"$'.\nApproach: '"$T/ab1.md") $(grep -c 'last build was briefed on the approach recorded' "$T/err") $(abrief $'You implement the review fix in '"$AB"$'.\nApproach: '"$T/ab1.md (unchanged: a test the review asked for)")"
 sleep 1; (cd "$AB" && bash "$R/bin/pr-steps" approach "$T/ab2.md" >/dev/null)
 check "a changed approach recorded after the last build passes; the record it replaced no longer does" "0 2" "$(abrief $'You implement it as a virtual module in '"$AB"$'.\nApproach: '"$T/ab2.md") $(abrief $'You implement more in '"$AB"$'.\nApproach: '"$T/ab1.md (unchanged: same)")"
+AO="$T/abo"; git init -q "$AO"; git -C "$AO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; cp "$T/approach.md" "$T/ab3.md"; (cd "$AO" && bash "$R/bin/pr-steps" approach "$T/ab3.md" >/dev/null)
+check "any text after the Approach path: on an unbuilt record it passes; on a built one it is refused as already built, not as naming no approach; an unchanged reason inside the text counts" "0 2 1 0 0" \
+  "$(abrief $'You implement the fix in '"$AO"$'.\nApproach: '"$T/ab3.md (amended: re-rated)") $(abrief $'You implement more in '"$AO"$'.\nApproach: '"$T/ab3.md (amended: re-rated)") $(grep -c 'last build was briefed on' "$T/err") $(grep -c 'a line `Approach:' "$T/err") $(abrief $'You implement the rest in '"$AO"$'.\nApproach: '"$T/ab3.md amended (unchanged: a review fix) today")"
 # the brief a launch follows from the work folder is the one checked, in each launch form: delegate_task as an implementer or in another role, and Agent
 AF="$HOME/.mergeworthy/work/apf"; mkdir -p "$AF"; printf 'You implement the fix in %s.\n' "$AB" > "$AF/brief.md"; printf 'You implement the fix in %s.\nApproach: %s (unchanged: a review fix)\n' "$AB" "$T/ab2.md" > "$AF/brief-ok.md"
 flaunch() { # tool role brief: one launch that follows the brief file
@@ -1320,13 +1356,25 @@ check "a filled brief passes with the paste-in rules (their <work folder>), an o
 check "a brief quoting a line format in backticks that holds a template's slot passes (a format, not a slot)" 0 "$(ag "$T" 'Check each `PROMISED <thread>: <what> (<draft>)` line in proposals-open.md.' review)"
 mkdir -p "$T/mem"; printf 'Next: the brief may say (git show <sha>) in a quoted ruling.\n' > "$T/mem/memory.md"; printf 'Summarize %s into the digest.\n' "$T/mem/memory.md" > "$T/mem/memory-brief-1.md"
 check "an input file the brief names (memory.md quoting <sha>) is not scanned for slots; the brief file still is" "0 2" "$(ag "$T" "Follow $T/mem/memory-brief-1.md" research) $(printf 'Sort it (git show <sha>).\n' > "$T/mem/sort-brief.md"; ag "$T" "Follow $T/mem/sort-brief.md" review)"
-# pre-agent-dedupe: a worktree another agent still works in (its process's cwd, or its fresh transcript naming it)
+# pre-agent-dedupe: a worktree a writer holds (another session's process with its cwd there, or a live writer job naming it)
+child_log() { # file brief minutes-ago last-entry(text|tool): it started a minute before its last write
+  python3 -c 'import json,sys,time; f,b,last,ago=sys.argv[1],sys.argv[2],sys.argv[3],int(sys.argv[4]); w=lambda o: open(f,"a").write(json.dumps(o)+"\n")
+at=time.strftime("%Y-%m-%dT%H:%M:%S.000Z",time.gmtime(time.time()-60*(ago+1)))
+w({"type":"queue-operation","operation":"enqueue","timestamp":at,"content":b})
+w({"type":"user","timestamp":at,"promptSource":"sdk","message":{"role":"user","content":b}})
+w({"type":"assistant","message":{"content":[{"type":"tool_use","id":"x","name":"Bash","input":{}}] if last=="tool" else [{"type":"text","text":"Report written."}]}})' "$1" "$2" "$4" "$3"
+  touch -d "$3 minutes ago" "$1"; }
 git -C "$T/gr" worktree add -q -b a "$T/aw"; AD="$HOME/.claude/projects/-aw"; AS="$AD/sess/subagents"; mkdir -p "$AD" "$AS" "$T/aw/src"
-alive() { # task [transcript_path]
-  python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","cwd":sys.argv[1],"transcript_path":sys.argv[3],"tool_input":{"task":sys.argv[2],"title":sys.argv[2][:50]}}))' "$OC" "$1" "${2:-}" \
+alive() { # task [transcript_path] [role] [session]
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","cwd":sys.argv[1],"transcript_path":sys.argv[3],"session_id":sys.argv[5] or None,"tool_input":{"task":sys.argv[2],"title":sys.argv[2][:50],**({"role":sys.argv[4]} if sys.argv[4] else {})}}))' "$OC" "$1" "${2:-}" "${3:-}" "${4:-}" \
     | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
-(cd "$T/aw/src" && exec sleep 600) & APID=$!; sleep 0.2
+wjob() { # transcript task role minutes-ago: a job the hook registered an hour ago, with its agent's transcript; `agent-job done <task>` releases it
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"wt","transcript_path":sys.argv[1],"tool_input":{"task":sys.argv[2],"title":sys.argv[2],**({"role":sys.argv[3]} if sys.argv[3] else {})}}))' "$T/wt-launcher.jsonl" "$2" "$3" | python3 "$R/hooks/pre-agent-dedupe.py" register
+  rm -f "$1"; child_log "$1" "$2" "$4" text
+  python3 -c 'import glob,json,os,sys,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600, "launched": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if json.load(open(f))["key"] == sys.argv[1]]' "$2"; }
+(cd "$T/aw/src" && CLAUDE_CODE_SESSION_ID=mine exec sleep 600) & APID=$!; sleep 0.2
 check "BLOCK: a process works in the worktree, naming its PID" "2 1" "$(alive "Run e2e in $T/aw/src") $(grep -c "$APID (sleep)" "$T/err")"
+check "a process in the worktree carrying the launcher's session id passes; one with another session's blocks, naming its PID" "0 2 1" "$(alive "Run e2e two in $T/aw/src" '' '' mine) $(alive "Run e2e three in $T/aw/src" '' '' other) $(grep -c "$APID (sleep)" "$T/err")"
 CUR=$(readlink "$HOME/.mergeworthy/current"); ln -sfn "$T/aw" "$HOME/.mergeworthy/current"; mkdir -p "$HOME/.mergeworthy/work"; ln -sfn "$T/aw" "$HOME/.mergeworthy/work/aw"
 check "an installed skill or the installed folder is no worktree a brief names, though ~/.mergeworthy/current links to the busy one; a task's folder under ~/.mergeworthy/work is" "0 0 2" "$(alive 'Follow ~/.mergeworthy/current/skills/review/SKILL.md') $(alive 'Read the skills in ~/.mergeworthy/current.') $(alive 'Run e2e in ~/.mergeworthy/work/aw/src')"
 rm "$HOME/.mergeworthy/work/aw"; ln -sfn "$CUR" "$HOME/.mergeworthy/current"
@@ -1334,7 +1382,12 @@ kill $APID; wait $APID 2>/dev/null
 echo "{\"cwd\":\"$T/aw\"}" > "$AD/main-session.jsonl"
 check "a main session's transcript naming the worktree (the steward's, say) doesn't make it busy" 0 "$(alive "Run e2e in $T/aw")"
 rm -f "$AD/main-session.jsonl"; echo "{\"cwd\":\"$T/aw\"}" > "$AS/agent.jsonl"
-check "BLOCK: an agent transcript written minutes ago names the worktree" "2 1" "$(alive "Run e2e in $T/aw") $(grep -c "$AS/agent.jsonl" "$T/err")"
+check "a fresh agent transcript that only mentions the worktree, with no writer job naming it, passes" 0 "$(alive "Run e2e in $T/aw")"
+wjob "$AS/agent.jsonl" "Implement the fix in $T/aw" '' 0
+check "BLOCK: a live writer job names the worktree, naming its transcript" "2 1" "$(alive "Run e2e in $T/aw") $(grep -c "$AS/agent.jsonl" "$T/err")"
+check "a review or research launch into a worktree a live writer job holds passes" "0 0" "$(alive "Review the fix in $T/aw" '' review) $(alive $'Topic: zzfix\nRead the fix in '"$T/aw" '' research)"
+python3 -c 'import glob,json,os; [json.dump({k: v for k, v in json.load(open(f)).items() if k not in ("role", "worktrees")}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "Implement the fix" in open(f).read()]'
+check "BLOCK: a job registered before jobs recorded their worktrees holds what its brief names" 2 "$(alive "Run e2e in $T/aw")"
 echo "Prototype report: worktree $T/aw, branch a." > "$T/aw-report.md"; printf 'Goal: e2e green.\nWork in %s.\n' "$T/aw" | tee "$T/aw-job.md" > "$T/aw-brief.md"
 check "a reference file the brief names whose text names the busy worktree passes; the brief file it says to follow, or named as a brief, blocks" "0 2 2" "$(alive "Summarize the prototype. Context: $T/aw-report.md (read first)") $(alive "Follow $T/aw-job.md exactly") $(alive "Topic: e2e. Its file: $T/aw-brief.md")"
 check "the orchestrator's own transcript naming the worktree doesn't count" 0 "$(alive "Run e2e in $T/aw once more" "$AS/agent.jsonl")"
@@ -1356,18 +1409,52 @@ EOF2
 echo "{\"cwd\":\"$T/aw\"}" > "$AD/t3review.jsonl"
 check "a fresh transcript of a T3 task that completed, with no run pending, doesn't make the worktree busy" 0 "$(alive "Review round 2 in $T/aw")"
 python3 -c 'import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); c.execute("insert into orchestration_v2_projection_runs values (?, ?, ?)", ("r2", "review-1", "queued")); c.commit()' "$HOME/.t3/userdata/statev2.sqlite"
+python3 "$R/bin/agent-job" done "Implement the fix in $T/aw" >/dev/null; wjob "$AD/t3review.jsonl" "Implement the review in $T/aw" '' 5
 check "BLOCK: the same task woken again (a run queued)" 2 "$(alive "Review round 3 in $T/aw")"
 rm -f "$AD/t3review.jsonl" "$HOME/.t3/userdata/statev2.sqlite"
+python3 "$R/bin/agent-job" done "Implement the review in $T/aw" >/dev/null
+wjob "$AS/reader.jsonl" "Review the fix again in $T/aw" review 0
+check "a writer launch into a worktree whose only live job is a reviewer passes" 0 "$(alive "Run e2e with a reviewer in $T/aw")"
+python3 "$R/bin/agent-job" done "Review the fix again in $T/aw" >/dev/null
+mkdir -p "$HOME/.mergeworthy/work/wb"; printf 'Work in %s.\n' "$T/aw" > "$HOME/.mergeworthy/work/wb/job-brief.md"
+wjob "$AS/wb.jsonl" "Follow $HOME/.mergeworthy/work/wb/job-brief.md exactly" '' 0
+check "BLOCK: a live writer job sent by a brief file in the work folder holds the worktree that file names" 2 "$(alive "Run e2e beside a work brief in $T/aw")"
+python3 "$R/bin/agent-job" done "Follow $HOME/.mergeworthy/work/wb/job-brief.md exactly" >/dev/null
+# writer calls still outstanding (launched, not registered) hold a worktree: two launches in one message, or a foreground Agent
+PW="$T/pw-launcher.jsonl"; : > "$PW"
+pw() { # tool_use_id task [role] [agent's transcript: the launch comes from that subagent]
+  python3 -c 'import json,sys; u,t,r,a,c,l=sys.argv[1:]; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","cwd":c,"tool_use_id":u,"transcript_path":l,"session_id":"pw",**({"agent_id":"pw","agent_transcript_path":a} if a else {}),"tool_input":{"task":t,"title":t,**({"role":r} if r else {})}}))' "$1" "$2" "${3:-}" "${4:-}" "$OC" "$PW" \
+    | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
+pw_back() { python3 -c 'import glob,json,os,sys,time; [json.dump({**r, "launched": time.time() - int(sys.argv[2])}, open(f, "w")) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs-launch/*")) for r in [json.load(open(f))] if r["task"] == sys.argv[1]]' "$1" "$2"; }  # task seconds: launched that long ago
+check "BLOCK: a second writer call into a worktree naming the outstanding one; a reviewer passes; the same call again gets the job's refusal" "0 2 1 0 2 1" \
+  "$(pw a "Implement alpha in $T/aw") $(pw b "Implement beta in $T/aw") $(grep -c 'Implement alpha' "$T/err") $(pw c "Review alpha in $T/aw" review) $(pw a "Implement alpha in $T/aw") $(grep -c 'already launched' "$T/err")"
+pw_back "Implement alpha in $T/aw" 3600
+check "an outstanding call whose agent never started stops holding (a crash mid-call)" 0 "$(pw g "Implement gamma in $T/aw")"
+pw_back "Implement gamma in $T/aw" 600; child_log "$AS/pw-agent.jsonl" "Implement gamma in $T/aw" 0 text
+check "an outstanding call's own agent launching into its worktree passes; another launcher is refused while that agent runs" "0 2" "$(pw d "Implement delta in $T/aw" '' "$AS/pw-agent.jsonl") $(pw e "Implement epsilon in $T/aw")"
+python3 -c 'import json,sys; print(json.dumps({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":i} for i in sys.argv[1:]]}}))' g d >> "$PW"
+check "a call that returned no longer holds" 0 "$(pw z "Implement zeta in $T/aw")"
+rm -f $(grep -l pw-launcher "$HOME"/.claude/agent-jobs-launch/*)
+# a stopped Claude subagent frees its worktree at once, by its launcher's transcript: the lines Claude Code writes (a real kill's, its ids aside)
+KN="$AS/agent-a7ef.jsonl"; wjob "$KN" "Implement more in $T/aw" '' 0
+kill_line() { # form task-id [status]: what reaches the launcher when an agent is stopped, after its prompt and before the line stopping writes in its transcript
+  python3 -c 'import json,sys,time; form,i,st=sys.argv[1:]; at=time.strftime("%Y-%m-%dT%H:%M:%S.000Z",time.gmtime(time.time()-30))
+n=f"<task-notification>\n<task-id>{i}</task-id>\n<tool-use-id>toolu_1</tool-use-id>\n<output-file>/tmp/{i}.output</output-file>\n<status>{st}</status>\n<summary>Agent \"x\" was stopped by Claude</summary>\n</task-notification>"
+print(json.dumps({"queue":{"type":"queue-operation","operation":"enqueue","timestamp":at,"content":n},"attachment":{"type":"attachment","timestamp":at,"attachment":{"type":"queued_command","prompt":n}},"user":{"type":"user","timestamp":at,"message":{"role":"user","content":n}},
+"stop":{"type":"user","timestamp":at,"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"stopped"}]},"toolUseResult":{"message":f"Successfully stopped task: {i} (x)","task_id":i,"task_type":"local_agent","command":"x"}}}[form]))' "$1" "$2" "${3:-killed}" > "$T/wt-launcher.jsonl"; }
+python3 -c 'import json,sys,time; print(json.dumps({"type":"user","timestamp":time.strftime("%Y-%m-%dT%H:%M:%S.000Z",time.gmtime(time.time()-10)),"isSidechain":True,"message":{"role":"user","content":[{"type":"text","text":"[Request interrupted by user]"}]}}))' >> "$KN"; touch "$KN"
+: > "$T/wt-launcher.jsonl"; K0=$(alive "Run e2e after a kill in $T/aw")
+kill_line queue b0th; K1=$(alive "Run e2e after a kill in $T/aw")
+kill_line queue a7ef completed; K2=$(alive "Run e2e after a kill in $T/aw")
+for form in queue attachment user stop; do kill_line $form a7ef; KF="${KF:-} $(alive "Run e2e after a $form in $T/aw")"; done
+check "BLOCK: a live subagent writer, another agent's kill, or its notice of another status; its killed notice (queued, attached or a prompt) or TaskStop's result frees the worktree at once" "2 2 2 0 0 0 0" "$K0 $K1 $K2$KF"
+python3 -c 'import json,sys,time; print(json.dumps({"type":"user","timestamp":time.strftime("%Y-%m-%dT%H:%M:%S.000Z",time.gmtime()),"isSidechain":True,"isMeta":True,"message":{"role":"user","content":[{"type":"text","text":"Continue the work."}]}}))' >> "$KN"; touch "$KN"
+check "BLOCK: a stopped subagent a message resumed" 2 "$(alive "Run e2e after a resume in $T/aw")"
+python3 "$R/bin/agent-job" done "Implement more in $T/aw" >/dev/null
 # a finished agent is reported: the watcher's AGENT DONE once per finish, and stop-lint while its job is open
 JD="$HOME/.claude/projects/-jobs"; WJ="$T/wj"; mkdir -p "$JD" "$WJ"; echo orch > "$WJ/session"
 reg() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"orch","transcript_path":sys.argv[2],"tool_input":{"task":sys.argv[1],"title":sys.argv[1][:40]}}))' "$1" "$T/tr.jsonl" \
   | python3 "$R/hooks/pre-agent-dedupe.py" register; }
-child_log() { # file brief minutes-ago last-entry(text|tool): it started a minute before its last write
-  python3 -c 'import json,sys,time; f,b,last,ago=sys.argv[1],sys.argv[2],sys.argv[3],int(sys.argv[4]); w=lambda o: open(f,"a").write(json.dumps(o)+"\n")
-w({"type":"queue-operation","operation":"enqueue","timestamp":time.strftime("%Y-%m-%dT%H:%M:%S.000Z",time.gmtime(time.time()-60*(ago+1))),"content":b})
-w({"type":"user","promptSource":"sdk","message":{"role":"user","content":b}})
-w({"type":"assistant","message":{"content":[{"type":"tool_use","id":"x","name":"Bash","input":{}}] if last=="tool" else [{"type":"text","text":"Report written."}]}})' "$1" "$2" "$4" "$3"
-  touch -d "$3 minutes ago" "$1"; }
 done_events() { GH_WATCH_ME=me python3 - "$R/watcher/gh-watch.py" "$WJ" <<'EOF2'
 import importlib.util, sys
 spec = importlib.util.spec_from_file_location('ghw', sys.argv[1]); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
@@ -1431,7 +1518,7 @@ check "a quiet agent whose T3 run is still active (waiting), whose delegated tas
 # the watcher asks T3's state on every tick for days: each lookup closes its connection, not the cycle collector
 check "T3 state lookups leave no connection open" 0 "$(python3 -c '
 import gc, os, sys; sys.path.insert(0, sys.argv[1]); import steward; gc.disable()
-for _ in range(40): steward.busy("t3busy"); steward.task_done("t3busy"); steward.is_task("t3busy"); steward.threads("t3busy"); steward.busy("nobody")
+for _ in range(40): steward.busy("t3busy"); steward.threads("t3busy"); steward.busy("nobody")
 def name(f):
     try: return os.readlink("/proc/self/fd/" + f)
     except OSError: return ""
@@ -1464,6 +1551,12 @@ done_events > "$T/ev12"
 check "no AGENT DONE for a finish T3's notice (t3note), Claude Code's (sub) or a foreground Agent's result (fg) told the launcher of; one for a run that wrote after its notice (t3rev)" "0 0 0 1" \
   "$(grep -c "AGENT DONE $T/jobs/t3note-ticket.md" "$T/ev12") $(grep -c "AGENT DONE $T/jobs/sub-ticket.md" "$T/ev12") $(grep -c "AGENT DONE $T/jobs/fg-ticket.md" "$T/ev12") $(grep -c "AGENT DONE $T/jobs/t3rev-ticket.md" "$T/ev12")"
 for jn in t3note t3rev sub fg; do python3 "$R/bin/agent-job" done "$T/jobs/$jn-ticket.md" >/dev/null; done
+# a stopped subagent's job is reported done at the kill, not after its transcript has been quiet
+reg "Execute $T/jobs/kill-ticket.md exactly"; child_log "$JD/orch/subagents/agent-k1ll.jsonl" "Execute $T/jobs/kill-ticket.md exactly" 0 text
+python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600, "launched": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "kill-ticket" in open(f).read()]'
+done_events > "$T/ev13"; kill_line queue k1ll; cat "$T/wt-launcher.jsonl" >> "$T/tr.jsonl"; done_events > "$T/ev14"
+check "AGENT DONE for a subagent at its kill, not while it runs" "0 1" "$(grep -c "AGENT DONE $T/jobs/kill-ticket.md" "$T/ev13") $(grep -c "AGENT DONE $T/jobs/kill-ticket.md" "$T/ev14")"
+python3 "$R/bin/agent-job" done "$T/jobs/kill-ticket.md" >/dev/null
 # a transcript belongs to one job: the earliest-started one carrying its whole task that started at or after its launch
 # (nitedani/mergeworthy#60 and its review rounds: a quick second round, fan-out agents whose transcripts start in the reverse of their
 # launch order, a repeated foreground call, a head read before its prompt was written)
@@ -1819,6 +1912,16 @@ prs() { (cd "$G" && bash "$R/bin/pr-steps" "$@" >/dev/null 2>&1; echo $?); }
 printf '# Loop B fix log\nfixed the README\n' > "$T/fixlog.md"
 std() { for f in "$@"; do { echo '## Standards read'; bash "$R/bin/pr-steps" standards; echo '## Report'; cat "$f"; } > "$f.s" && mv "$f.s" "$f"; done; }
 printf '\n\n' > "$T/blank.md"; check "BLOCK: an output of blank lines, saying what it lacks" 1 "$(cd "$G" && bash "$R/bin/pr-steps" verify "$T/blank.md" 2>&1 | grep -c 'does not end with a line NO BUGS')"
+# a round 2 that isn't clean records with the loop's ledger closing it: every finding fixed on HEAD, declined or listed, no blocker open
+GL="$T/prl"; git init -q -b main "$GL"; gl() { git -C "$GL" -c user.name=t -c user.email=t@t "$@"; }; gl commit -q --allow-empty -m a; ON=$(gl rev-parse --short HEAD)
+gl checkout -q -b side; gl commit -q --allow-empty -m off; OFF=$(gl rev-parse --short HEAD); gl checkout -q main; gl commit -q --allow-empty -m b
+printf 'R2.1 should: the parser drops a field\n' > "$T/r2.md"; std "$T/r2.md"
+LR="$T/r2.md"; led() { printf '%s\n' "$@" > "$T/led.md"; (cd "$GL" && bash "$R/bin/pr-steps" verify "$LR" --ledger "$T/led.md" >/dev/null 2>"$T/err"; echo $?); }
+check "pr-steps verify: BLOCK a round-2 report without NO BUGS with no ledger, a round-1 ledger, a blocker left open, a fix not on HEAD; a ledger closing it records" "1 1 1 1 1 1 1 0" \
+  "$(cd "$GL" && bash "$R/bin/pr-steps" verify "$T/r2.md" >/dev/null 2>&1; echo $?) $(led 'R1.1 should listed: the PR body notes') $(grep -c 'closes round 1' "$T/err") $(led 'R2.1 blocker listed: the PR body notes') $(grep -c 'open blocker' "$T/err") $(led "R2.1 should fixed in $OFF") $(grep -c "$OFF is not in HEAD" "$T/err") $(led "R1.1 blocker fixed in $ON" 'R2.1 should listed: the PR body notes' 'R2.2 nit declined: wording')"
+cp "$T/r2.md" "$T/r2b.md"; LR="$T/r2b.md" # r2.md is recorded on this head above
+check "pr-steps verify: BLOCK a round 2 carrying only round-1 findings without a 'Round: 2' line, or with a carried finding left open; with the line it records" "1 1 1 1 0" \
+  "$(led 'R1.1 should listed: the report') $(grep -c 'closes round 1' "$T/err") $(led 'Round: 2' 'R1.1 should disputed: x' 'R2.1 nit declined: y') $(grep -c 'R1.1 should disputed: x  <- not fixed' "$T/err") $(led 'Round: 2' 'R1.1 should listed: the report')"
 check "BLOCK: a fix log recorded as the shape pass, saying what a pass needs" "1 1" "$(prs shape "$T/fixlog.md") $(cd "$G" && bash "$R/bin/pr-steps" shape "$T/fixlog.md" 2>&1 | grep -c "lacks the ✅ coverage list")"
 # a ratings report in the form a session wrote for #3609 (one rating per item, a summary of the changed ones, no ✅ list) is told all it lacks
 printf '## Files\n\n| # | File | Rating | Reason |\n|---|---|---|---|\n| 1 | `docs/headings.ts` | 9 | One entry, last. |\n| 8 | `packages/vike/package.json` | 6 | Refactor 1. |\n\n## Summary\n\n| Item | Old => new | Commit |\n|---|---|---|\n| File 8 `packages/vike/package.json` | 6 => 9 | f3e4b44bd4 |\n\nGates on f3e4b44bd4:\n- `pnpm run test:types` -> exit 0\n' > "$T/ratings.md"
@@ -2194,7 +2297,7 @@ P="$T/pf"; mkdir -p "$P"; git -C "$P" init -q -b feat
 pf() { (cd "$P" && bash "$R/bin/pr-steps" preflight "$@" >/dev/null 2>&1; echo $?); }
 pfurl() { (cd "$P" && CHROME="$T/bin/fakechrome" FAKE_DOM="$1" bash "$R/bin/pr-steps" preflight https://app.test --host-resolver-rules=x >/dev/null 2>&1; echo $?); }
 pfedit() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"Edit","tool_input":{"file_path":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$T" | python3 "$R/hooks/pre-design-gate.py" 2>/dev/null; echo $?; }
-pfcommit() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"git commit -m x"},"cwd":sys.argv[1]}))' "$P" | python3 "$R/hooks/pre-bash-guard.py" 2>&1 >/dev/null; }
+pfcommit() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[2]},"cwd":sys.argv[1]}))' "$P" "${1:-git commit -m x}" | python3 "$R/hooks/pre-bash-guard.py" 2>&1 >/dev/null; }
 cat > "$T/bin/fakechrome" <<'EOF'
 #!/bin/bash
 [ -n "$FAKE_LOG" ] && echo "pulse=${PULSE_SERVER:-unset} $*" >> "$FAKE_LOG"
@@ -2211,9 +2314,14 @@ printf '\x89PNG\r\n\x1a\n' > "$T/pf.png"; touch -d '-20 min' "$T/pf.png"; check 
 check "BLOCK: a URL that shows Chrome's error page" 1 "$(pfurl '<div id="main-frame-error">This site can’t be reached</div>')"
 check "BLOCK: a URL that renders a blank page" 1 "$(pfurl '<html><body><div id="root"></div><script>boot()</script></body></html>')"
 check "an edit still waits after refused preflights" 2 "$(pfedit "$P/a.ts")"
+check "a commit chained after the same command's pr-steps preflight by && passes that check; after ; it still waits" "0 1" "$(pfcommit "pr-steps preflight 'none, because x' && git commit -m x" | grep -c 'pr-steps preflight') $(pfcommit "pr-steps preflight 'none, because x'; git commit -m x" | grep -c 'pr-steps preflight')"
 check "a URL that renders records the screenshot Chrome took" 0 "$(pfurl '<body><h1>Dashboard</h1></body>')"
 # pull-request step 5 before the code: edits and commits wait for the branch's approach too, a moved branch shares it only by tracking
 check "BLOCK: with its preflight, an edit and a commit there wait for the branch's approach, naming step 5" "2 1" "$(pfedit "$P/a.ts") $(pfcommit | grep -c 'rate the approaches (mergeworthy:pull-request step 5), then `pr-steps approach <work folder>/approach.md`')"
+AP="pr-steps approach $T/approach.md"; POTHER="$T/ap-other"; git init -q "$POTHER"
+check "a commit chained after the same command's pr-steps approach by && passes that check, after a cd and a git add too" "0 0 0" "$(pfcommit "$AP && git commit -m x" | grep -c 'pr-steps approach') $(pfcommit "cd $P && $AP && git add a && git commit -m x" | grep -c 'pr-steps approach') $(pfcommit "bash $R/bin/pr-steps approach $T/approach.md && git commit -m x" | grep -c 'pr-steps approach')"
+check "BLOCK: one a failed record could reach: after ;, ||, a pipe, a negation, or a ||'s other side; one recording another repo" "1 1 1 1 1 1" "$(pfcommit "$AP; git commit -m x" | grep -c 'pr-steps approach') $(pfcommit "$AP || git commit -m x" | grep -c 'pr-steps approach') $(pfcommit "$AP | tail -1 && git commit -m x" | grep -c 'pr-steps approach') $(pfcommit "! $AP && git commit -m x" | grep -c 'pr-steps approach') $(pfcommit "true || $AP && git commit -m x" | grep -c 'pr-steps approach') $(pfcommit "cd $POTHER && $AP && cd $P && git commit -m x" | grep -c 'pr-steps approach')"
+check "BLOCK: an identical record that may have failed here, then a passing one in another repo chained to a commit here, proves nothing for this repo" 1 "$(pfcommit "$AP; cd $POTHER && $AP && git -C $P commit -m x" | grep -c 'pr-steps approach')"
 (cd "$P" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 check "an edit passes once the branch has its preflight and approach" 0 "$(pfedit "$P/a.ts")"
 check "git commit passes it too" 0 "$(pfcommit | grep -c 'pr-steps preflight\|pr-steps approach')"
@@ -2290,7 +2398,7 @@ iedit() { # <transcript> <tool> <file> [extra hook input as JSON]: pre-design-ga
   python3 -c 'import json,sys; d={"tool_name":sys.argv[2],"tool_input":{("notebook_path" if sys.argv[2]=="NotebookEdit" else "file_path"):sys.argv[3]},"cwd":sys.argv[4],"transcript_path":sys.argv[1]}; d.update(json.loads(sys.argv[5])); print(json.dumps(d))' "$1" "$2" "$3" "$T" "${4:-{\}}" | python3 "$R/hooks/pre-design-gate.py" 2>"$T/ierr"; echo $?
 }
 ibash() { # <transcript> <command> [cwd]: pre-bash-guard's exit code for the command run in cwd, by default $I
-  python3 -c 'import json,sys; print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[2]},"cwd":sys.argv[3],"transcript_path":sys.argv[1]}))' "$1" "$2" "${3:-$I}" | python3 "$R/hooks/pre-bash-guard.py" 2>/dev/null; echo $?
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[2]},"cwd":sys.argv[3],"transcript_path":sys.argv[1]}))' "$1" "$2" "${3:-$I}" | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/ierr"; echo $?
 }
 IT="$T/instr.jsonl"; ir_tr "$IT"
 check "BLOCK: an edit in a repo whose root has AGENTS.md and CLAUDE.md, before reading them, naming both" "2 1" "$(iedit "$IT" Edit "$I/a.ts") $(grep -c "read this repo's instructions first.*$I/AGENTS.md, $I/CLAUDE.md" "$T/ierr")"
@@ -2320,14 +2428,58 @@ check "BLOCK: a call to a function the line defines runs its cd or assignment th
   "$(ibash "$IT" "f() { cd $I; }; cd $T/nogit; f; echo x > a.txt" "$T/nogit") $(ibash "$IT" "f() { WD=$I; }; WD=$T/nogit; f; echo x > \$WD/a.txt" "$T/nogit")"
 check "BLOCK: a word with a quoted or escaped \$ isn't expanded: a write to '\$WD/a.txt' or \\\$WD/a.txt can't be told" "2 2" \
   "$(ibash "$IT" "WD=$T/nogit; echo x > '\$WD/a.txt'") $(ibash "$IT" "WD=$T/nogit; echo x > \\\$WD/a.txt")"
+check "a word's quoted part holding no \$ leaves its expansion expanded: a write to \"\$WD\"'/a.txt' after WD=… resolves; a quote inside its substitution doesn't make a word literal, a quoted or escaped \$ does" "0 False True True" \
+  "$(ibash "$IT" "WD=$T/nogit; echo x > \"\$WD\"'/a.txt'") $(python3 - "$R/hooks" <<'PY2'
+import sys; sys.path.insert(0, sys.argv[1]); import shellcmd as s
+print(*[(w := s.Where('/'), [w.quoted for _ in w.walk(s.segments(c))])[1][0] != set() for c in ("n=$(echo $f | tr '/.' '__')", "echo x > '$WD/a.txt'", 'echo x > \\$WD/a.txt')])
+PY2
+)"
 check "BLOCK: the same text quoted in one word and written plain in another: the plain redirect into the repo isn't taken as literal" 2 \
   "$(ibash "$IT" "WD=$I; echo '\$WD/a.txt' > \$WD/a.txt" "$T/nogit")"
 check "BLOCK: a call to a function that calls one defined after it: the write after the call can't be told" 2 \
   "$(ibash "$IT" "g() { f; }; f() { cd $I; }; cd $T/nogit; g; echo x > a.txt" "$T/nogit")"
 check "BLOCK: an absolute path whose folder holds an expansion left unexpanded (its text quoted elsewhere in the command) can't be told" 2 \
   "$(ibash "$IT" "WD=${I##*/}; echo '$T/\$WD/a.txt' > $T/\$WD/a.txt" "$T/nogit")"
-check "BLOCK: a written path that is a variable a branch may have changed, or a loop's over words holding a /, can't be told" "2 2" \
-  "$(ibash "$IT" "F=$I/a.txt; if false; then F=$T/nogit/other.txt; fi; echo x > \$F" "$T/nogit") $(ibash "$IT" "D=$T/nogit; for f in a/b c; do echo x > \$D/\$f; done" "$T/nogit")"
+check "BLOCK: a written path that is a variable a branch may have changed can't be told; a loop's variable over words holding a /, into the repo, is refused by its rule; over a command's output, can't be told" "2 2 2" \
+  "$(ibash "$IT" "F=$I/a.txt; if false; then F=$T/nogit/other.txt; fi; echo x > \$F" "$T/nogit") $(ibash "$IT" "D=$I; for f in a/b c; do echo x > \$D/\$f; done" "$T/nogit") $(ibash "$IT" "D=$T/nogit; for f in \$(ls a/b); do echo x > \$D/\$f; done" "$T/nogit")"
+check "a loop's variable holds the words the line lists: a write to each, in a folder or a name, passes outside any repo, from nested loops and assignments too" "0 0 0 0" \
+  "$(ibash "$IT" "cd $T/nogit && for d in a b; do echo x > \$d/f.txt; done") $(ibash "$IT" "D=$T/nogit; for f in a/b c; do echo x > \$D/\$f; done" "$T/nogit") $(ibash "$IT" "for a in x y; do for b in \$a/1 \$a/2; do echo x > \$b; done; done" "$T/nogit") $(ibash "$IT" "for n in a b; do D=$T/nogit/\$n; echo x > \$D/f; done" "$T/nogit")"
+check "BLOCK: a loop word naming the repo, among others, or reached from it, names the repo: read its instructions" "2 1 2 2 2" \
+  "$(ibash "$IT" "cd $T/nogit && for d in $I b; do echo x > \$d/f; done") $(grep -c "follow them: $I/AGENTS.md" "$T/ierr") $(ibash "$IT" "for n in $I b; do D=\$n; echo x > \$D/f; done" "$T/nogit") $(ibash "$IT" "for a in $I y; do for b in \$a/1; do echo x > \$b; done; done" "$T/nogit") $(ibash "$IT" "L='$I b'; for d in \$L; do echo x > \$d/f; done" "$T/nogit")"
+check "BLOCK: a loop's glob matches on disk are its values, into the repo; a brace word isn't listed; after the loop its variable can't be told; a command's output can't either" "2 2 2 2" \
+  "$(ibash "$IT" "for f in $T/*/CLAUDE.md; do sed -i s/a/b/ \$f; done" "$T/nogit") $(ibash "$IT" "for d in {$I,b}; do echo x > \$d/f; done" "$T/nogit") $(ibash "$IT" "for f in a b; do :; done; echo x > \$f" "$T/nogit") $(ibash "$IT" "for f in \$(rg -l x); do sed -i s/a/b/ \$f; done" "$T/nogit")"
+check "BLOCK: a loop's listed .review.out is refused by the review rule, naming who writes it" "2 1" \
+  "$(ibash "$IT" "for f in a.review.out; do printf CLEAN > \$f; done" "$T/nogit") $(grep -c 'codex exec -o' "$T/ierr")"
+check "BLOCK: a command named by a variable a loop's value set, or a positional parameter, stays refused" "2 2" \
+  "$(ibash "$IT" "for f in a b; do G=\$f; \$G push; done" "$T/nogit") $(ibash "$IT" "G=\$1; \$G push" "$T/nogit")"
+check "a loop over 64 words passes; BLOCK: over 65 it can't be told, saying the cap" "0 2 1" \
+  "$(ibash "$IT" "for f in $(seq -s ' ' 1 64); do echo x > \$f; done" "$T/nogit") $(ibash "$IT" "for f in $(seq -s ' ' 1 65); do echo x > \$f; done" "$T/nogit") $(grep -c 'more than 64 values' "$T/ierr")"
+check "a cd to a loop's word in a subshell holds there: a relative write lands under it, outside any repo it passes; BLOCK: under the repo; BLOCK: a relative cd in the loop's own body, whose next pass starts where it ended" "0 2 2" \
+  "$(ibash "$IT" "cd $T/nogit && for n in a b; do (cd \$n && echo hi > ../\$n-install.log; echo \"\$n \$?\"); done") $(ibash "$IT" "for n in $I b; do (cd \$n && echo x > f); done" "$T/nogit") $(ibash "$IT" "for v in a b; do cd \$v; echo x > f; done" "$T/nogit")"
+check "BLOCK: a relative file from each of a cd's listed targets, past the cap, can't be told, saying the cap" "2 1" "$(ibash "$IT" "for a in $(seq -s ' ' 1 9); do (cd \$a; for b in $(seq -s ' ' 1 9); do echo x > \$b; done); done" "$T/nogit") $(grep -c 'more than 64 values' "$T/ierr")"
+check "a subshell's cd to a loop's word ends with it: a relative write after it lands where the line was" 0 "$(ibash "$IT" "for n in $I; do (cd \$n; true); echo y > g; done" "$T/nogit")"
+check "BLOCK: a cd in a branch over a loop's words, once it is left, can't be told; an absolute one in the loop's body lands in each word, the repo too" "2 2" \
+  "$(ibash "$IT" "for n in $T/nogit; do if true; then cd \$n; fi; done; echo x > f" "$T/nogit") $(ibash "$IT" "for v in $I $T/nogit; do cd \$v; echo x > f; done" "$T/nogit")"
+check "a part that can't hold a / may stand in a file's name: \$\$, \$(( )), \${#x}, \$(basename), \${f##*/}, \${f//\\//_}, \$(date +%s), \$(git rev-parse HEAD), a hash" "0 0 0 0 0 0 0 0 0" \
+  "$(ibash "$IT" "cd $T/nogit && echo x > /tmp/x.\$\$") $(ibash "$IT" "echo x > a\$((1+1))" "$T/nogit") $(ibash "$IT" "echo x > a\${#y}" "$T/nogit") $(ibash "$IT" "cd $T/nogit && for f in a/x b/y; do echo x > out-\$(basename \$f).txt; done") $(ibash "$IT" "for j in \$(ls); do echo x > ci-\${j##*/}.log; done" "$T/nogit") $(ibash "$IT" "for j in \$(ls); do echo x > ci-\${j//\\//_}.log; done" "$T/nogit") $(ibash "$IT" "echo x > \$(date -u +%Y-%m-%d_%s).log" "$T/nogit") $(ibash "$IT" "echo x > \$(git rev-parse --short HEAD).log" "$T/nogit") $(ibash "$IT" "echo x > \$(echo y | md5sum | cut -c1-8).log" "$T/nogit")"
+check "a pattern over a loop's words is evaluated per word: \${g/:/-}, n=\${b%%:*}, \${f%.md}; BLOCK: when a value lands in the repo" "0 0 2 2" \
+  "$(ibash "$IT" "for g in a:b c:d; do echo x > \${g/:/-}.log; done" "$T/nogit") $(ibash "$IT" "for b in 1:x 2:y; do n=\${b%%:*}; echo x > branch-\$n.md; done" "$T/nogit") $(ibash "$IT" "for f in $I/a.md; do echo x > \${f%.md}.log; done" "$T/nogit") $(ibash "$IT" "for f in $I:b; do echo x > \${f%%:*}/log; done" "$T/nogit")"
+check "BLOCK: a piece in a file's folder; a date format that may print a /; an unknown's pattern that leaves its /; a command's output, a hash of a named file's too" "2 2 2 2 2" \
+  "$(ibash "$IT" "echo x > \$(date +%s)/a" "$T/nogit") $(ibash "$IT" "echo x > a\$(date +%D)" "$T/nogit") $(ibash "$IT" "echo x > \$(rg -l x)" "$T/nogit") $(ibash "$IT" "for j in \$(ls); do echo x > \${j%%:*}; done" "$T/nogit") $(ibash "$IT" "echo x > \$(md5sum a/b)" "$T/nogit")"
+check "\$(echo … | tr …) is a piece only when it can't print a /: over a word with none, or one tr removes; BLOCK: over a word holding one, an unknown word, or tr adding one" "0 0 2 2 2" \
+  "$(ibash "$IT" "for f in a; do echo x > \$(echo \$f | tr a b); done" "$T/nogit") $(ibash "$IT" "for f in \$(ls); do echo x > \$(echo \$f | tr / _); done" "$T/nogit") $(ibash "$IT" "for f in a/b; do echo x > \$(echo \$f | tr a b); done" "$T/nogit") $(ibash "$IT" "for f in \$(ls); do echo x > \$(echo \$f | tr a b); done" "$T/nogit") $(ibash "$IT" "for f in a; do echo x > \$(echo \$f | tr a /); done" "$T/nogit")"
+check "dirname is evaluated per value: a write under it from the repo's path blocks, from outside passes; a default is the value when the variable is unset" "2 0 2 0" \
+  "$(ibash "$IT" "for f in $I/a; do echo x > \$(dirname \$f)/b; done" "$T/nogit") $(ibash "$IT" "for f in $T/nogit/a; do echo x > \$(dirname \$f)/b; done" "$T/nogit") $(ibash "$IT" "echo x > \${MW_UNSET:-$I}/b" "$T/nogit") $(ibash "$IT" "echo x > \${MW_UNSET:-$T/nogit}/b" "$T/nogit")"
+check "a piece reaches a check as a valid path: a file named by \$\$ under a new folder of the repo is that repo's; BLOCK: a cd to one, or a loop's glob under one, can't be told" "2 2 2" "$(ibash "$IT" "echo x > $I/new/a.\$\$" "$T/nogit") $(ibash "$IT" "cd /tmp/x.\$\$ && echo x > f" "$T/nogit") $(ibash "$IT" "for f in /tmp/x.\$\$/*; do echo x > \$f/a; done" "$T/nogit")"
+IS="$T/spaced repo"; mkdir -p "$IS"; git -C "$IS" init -q; printf 'rules\n' > "$IS/AGENTS.md"
+check "BLOCK: a loop word mixing a quoted part that holds a space with an unquoted expansion can't be told, from a variable or written out; with no space it passes" "2 2 0" \
+  "$(ibash "$IT" "R='$IS'; s=x; for f in \"\$R\"/\$s; do echo x > \"\$f\"; done" "$T/nogit") $(ibash "$IT" "s=x; for f in '$IS'/\$s; do echo x > \"\$f\"; done" "$T/nogit") $(ibash "$IT" "R=$T/nogit; s=x; for f in \"\$R\"/\$s; do echo x > \"\$f\"; done" "$T/nogit")"
+check "BLOCK: a loop value bash splits or matches when written unquoted can't be told; quoted it passes" "2 2 0" \
+  "$(ibash "$IT" "for f in \"$T/nogit/a $IS/f\"; do sed -i s/x/y/ \$f; done" "$T/nogit") $(ibash "$IT" "for f in \"$T/*/f\"; do sed -i s/x/y/ \$f; done" "$T/nogit") $(ibash "$IT" "for f in \"$T/nogit/a b\"; do sed -i s/x/y/ \"\$f\"; done" "$T/nogit")"
+check "BLOCK: a loop over an unquoted variable after IFS is set can't be told where it splits" "2" \
+  "$(ibash "$IT" "IFS=:; L=$IS:$T/nogit; for f in \$L; do echo x > \"\$f/file\"; done" "$T/nogit")"
+check "BLOCK: awk after a hash can print any path; cut and head keep it slash-free" "2 0 0" \
+  "$(ibash "$IT" "echo x > \"\$(echo x | sha256sum | awk '{print \"$I/hash\"}')\"" "$T/nogit") $(ibash "$IT" "echo x > \$(echo y | sha256sum | cut -c1-8).log" "$T/nogit") $(ibash "$IT" "echo x > \$(echo y | md5sum | head -c 8).log" "$T/nogit")"
 check "a call to a function no body on the line changes dir in (a logging helper) keeps the dir: a relative write after it passes" 0 \
   "$(ibash "$IT" "log() { echo \"\$@\"; }; log starting; echo x > a.txt" "$T/nogit")"
 check "BLOCK: a loop variable its body names other than as \$f (set in a branch, read, let, \${f:=…}) is no longer the loop's word: a write to it can't be told" "2 2 2 2" \
@@ -2810,6 +2962,16 @@ echo "$T/nowatch" > "$HOME/.claude/gh-watch-dirs.txt"
 check "replay: the same push with no watcher on vikejs/vike (or the fork): blocked, naming the repos" "2 1" "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK") $(grep -c 'covers nitedani-agent/vike or vikejs/vike' "$T/err")"
 bash -c 'exec -a gh-watch-daemon sleep 600' & FPID=$!; echo "$FPID" > "$TK2/gh-watch.pid"; echo vikejs/vike > "$TK2/repos.txt"; echo "$TK2" > "$HOME/.claude/gh-watch-dirs.txt"
 check "a watcher of the checkout's work folder on the upstream repo covers it" 0 "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK")"
+sed -i 's/"isDraft": true/"isDraft": false/' "$FX/graphql"; mkdir -p "$HOME/.mergeworthy/projects/vikejs"  # the PR is out of draft; its head has only the quick record
+check "BLOCK: a push to a ready PR whose head has no converge records" "2 1" "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK") $(grep -c 'out of draft' "$T/err")"
+printf '## Gates\n- `pnpm test`\n- Push: before gates\n' > "$HOME/.mergeworthy/projects/vikejs/vike.md"
+check "the same push passes when the repo's project file says Push: before gates under ## Gates; gh pr ready still needs every record" "0 2 1" \
+  "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK") $(bg 'gh pr ready 3675 -R vikejs/vike' "$CK") $(grep -c 'has no pr-steps verify' "$T/err")"
+printf '## Gates ([ci.yml](https://example.invalid/ci.yml))\n- Push: before gates\n' > "$HOME/.mergeworthy/projects/vikejs/vike.md"
+check "a ## Gates heading with its source after it opts in too" 0 "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK")"
+printf '## Agents\n- Push: before gates\n' > "$HOME/.mergeworthy/projects/vikejs/vike.md"
+check "BLOCK: the line under another section opts nothing in" 2 "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK")"
+rm -r "$HOME/.mergeworthy/projects/vikejs"; gql nitedani-agent nitedani-agent https://github.com/vikejs/vike/pull/3675
 check "a push the guard passes records the head it publishes, pending until it ends (own_actions); one it blocks records nothing" "2 0 PUSHED_HEADS $(git -C "$CK" rev-parse HEAD)|" \
   "$(OWN_PENDING="$T/own-pp" bg 'git push --all https://github.com/nitedani-agent/vike.git' "$CK") $(OWN_PENDING="$T/own-pp" bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK") $(cut -d' ' -f3- "$T/own-pp" | tr '\n' '|')"
 check "a close the guard passes records its thread as closed, pending until it ends; one it blocks, or whose thread it can't tell, records nothing" "2 0 0 0 CLOSED_THREADS o/r#7 closed|CLOSED_THREADS o/r#9 closed|" \
@@ -2871,7 +3033,19 @@ check "BLOCK: from that folder, an API create on a host no watcher reads or by a
 SWD="$HOME/.mergeworthy/work/steward"; mkdir -p "$SWD"; echo "$FPID" > "$SWD/gh-watch.pid"; echo sess-s > "$SWD/session"; printf 'vikejs/vike\ngitlab.com/ns/proj\n' > "$SWD/repos.txt"; echo "$SWD" >> "$HOME/.claude/gh-watch-dirs.txt"; : > "$T/started"
 check "a PR from a work folder whose watcher retired starts that folder's watcher, not the steward's that names the session; outside a work folder the steward's covers nothing" \
   "2:none sess-s $TK4 vikejs/vike 9 none 1" "$(oreg sess-s "$CK4" "$PRC") $(cat "$T/started") $(cat "$SWD/threads.txt" 2>/dev/null || echo none) $(unwatched sess-s "$MRC" "$T")"
-rm -r "$SWD"; sed -i "\|^$SWD\$|d" "$HOME/.claude/gh-watch-dirs.txt"
+# a PR the steward opens from a worktree in its folder joins the folder's live dir, whose watcher answers like any; the folder only logs
+sreg() { : > "$T/started"; python3 -c 'import json,sys; print(json.dumps({"session_id":"sess-s","cwd":sys.argv[1],"tool_input":{"command":sys.argv[2]},"tool_response":{"stdout":"https://github.com/vikejs/vike/pull/9"}}))' "$SWD/wt" "$PRC" \
+    | python3 "$R/hooks/post-bash-register.py" 2>/dev/null; echo "$?:$(cat "$SWD/live/threads.txt" 2>/dev/null || echo none):$(cat "$SWD/threads.txt" 2>/dev/null || echo none):$(cat "$T/started")"; rm -f "$SWD/live/threads.txt"; }
+mkdir -p "$SWD/wt" "$SWD/live"; a=$(sreg); echo "$FPID" > "$SWD/live/gh-watch.pid"; echo "$SWD/live" >> "$HOME/.claude/gh-watch-dirs.txt"
+check "a PR from a worktree in the steward's folder starts its live dir's watcher, or joins it while it runs, not the folder's" "2:vikejs/vike 9:none:sess-s $SWD/live vikejs/vike 9|0:vikejs/vike 9:none:" "$a|$(sreg)"
+# the push that follows is checked against the same watcher: the live dir's covers it, the quiet folder's doesn't
+printf 'Tier: S, because one fix\n\n- [ ] Fix it https://github.com/vikejs/vike/issues/1\n' > "$SWD/scope.md"; : > "$SWD/repos.txt"
+git init -q -b fix-telefunc "$SWD/wt"; git -C "$SWD/wt" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; git -C "$SWD/wt" remote add upstream https://github.com/vikejs/vike.git; quick "$SWD/wt"; (cd "$SWD/wt" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
+echo 'vikejs/vike 9' > "$SWD/threads.txt"; b=$(bgs sess-s "$PUSH" "$SWD/wt") be=$(grep -c "gh-watch-start $SWD/live " "$T/err"); echo 'vikejs/vike 9' > "$SWD/live/threads.txt"
+check "a push from a worktree in the steward's folder passes while its live dir watches the PR; with only the folder listing it, blocked, naming the live dir" "0 2 1" \
+  "$(bgs sess-s "$PUSH" "$SWD/wt") $b $be"
+rm -f "$SWD/live/threads.txt" "$SWD/threads.txt"
+rm -r "$SWD"; sed -i "\|^$SWD\(/live\)\?\$|d" "$HOME/.claude/gh-watch-dirs.txt"
 # two MRs opened in one command from two work folders: the second folder needs its own watcher
 TWO="cd $CK; $MRC; cd $CK4; $MRC"
 check "BLOCK: two MRs from two work folders in one command while the second folder has no watcher: post-bash-register can't tell which folder each joins" "2 1" \
@@ -3233,7 +3407,7 @@ check "the same answer in a session that started an agent is a hand-back" 2 "$(s
 tr_file 'I have nothing else to start. The review waits on the maintainer, and the watcher will tell me when that happens.' work
 check "'the watcher will tell me when' is no hand-back; 'Tell me when' and 'or ask me to' are" "0 2 2" "$(slj) $(slj 'Tell me when to re-check CI.') $(slj 'I can rerun it, or ask me to stop.')"
 # ---------- pre-bash-guard: a code file's 6th change on the branch waits for `pr-steps finality` ----------
-SP="$T/simp"; git init -q -b main "$SP"; sc() { git -C "$SP" -c user.name=t -c user.email=t@t commit -q "$@"; }
+SP="$T/simp"; git init -q -b main "$SP"; sc() { git -C "$SP" -c user.name=t -c user.email=t@t commit -q --trailer 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>' "$@"; }
 echo 0 > "$SP/a.py"; mkdir "$SP/tests"; echo 0 > "$SP/tests/a_test.py"; git -C "$SP" add -A; sc -m base
 git -C "$SP" update-ref refs/remotes/origin/main HEAD; git -C "$SP" checkout -q -b fix; (cd "$SP" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 for i in 1 2 3 4 5 6; do echo "d$i" >> "$SP/a.py"; sc -am "d$i"; done; echo d7 >> "$SP/a.py"; git -C "$SP" add a.py
@@ -3259,7 +3433,7 @@ for i in 7 8 9 10 11 12; do echo "p$i" >> "$SP/a.py"; git -C "$SP" add a.py; sc 
 echo p13 >> "$SP/a.py"; git -C "$SP" add a.py; r13=$(bg 'git commit -m p13' "$SP"); (cd "$SP" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null)
 check "BLOCK: a 7th change; a finality record on the head that holds the 6th unblocks it" "2 0" "$r13 $(bg 'git commit -m p13' "$SP")"
 # merges: a merge of the base, being made or in the history, is no change, and a finality record on a merge commit counts
-SM="$T/simpm"; git init -q -b main "$SM"; mc() { git -C "$SM" -c user.name=t -c user.email=t@t "$@"; }
+SM="$T/simpm"; git init -q -b main "$SM"; mc() { if [ "$1" = commit ]; then shift; git -C "$SM" -c user.name=t -c user.email=t@t commit --trailer "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" "$@"; else git -C "$SM" -c user.name=t -c user.email=t@t "$@"; fi; }
 seq 1 10 > "$SM/a.py"; git -C "$SM" add -A; mc commit -q -m base
 git -C "$SM" update-ref refs/remotes/origin/main HEAD; git -C "$SM" checkout -q -b fix; (cd "$SM" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 (cd "$SM" && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null)
@@ -3276,7 +3450,7 @@ mc commit -q -m p10; mc checkout -q -b side; for i in 1 2 3 4 5 6; do echo "s$i"
 mc checkout -q fix; mc merge -q --no-ff --no-edit side; echo f1 >> "$SM/b.py"; git -C "$SM" add b.py
 check "the commits a merge of another branch brings in are not the branch's own: its next change of their file passes" 0 "$(bg 'git commit -m f1' "$SM")"
 # a suite named test<Name> is a test: its changes are no drift (#93's demo/testRun.ts); src/util.ts is code
-SH="$TASKW/suite"; mkdir -p "$SH/demo" "$SH/src"; git init -q -b main "$SH"; hc() { git -C "$SH" -c user.name=t -c user.email=t@t commit -q "$@"; }
+SH="$TASKW/suite"; mkdir -p "$SH/demo" "$SH/src"; git init -q -b main "$SH"; hc() { git -C "$SH" -c user.name=t -c user.email=t@t commit -q --trailer 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>' "$@"; }
 echo 'export const testRun = () => {}' > "$SH/demo/testRun.ts"; echo "import { testRun } from './testRun'; testRun('pnpm run dev')" > "$SH/demo/test-dev.test.ts"; echo 'export const util = 0' > "$SH/src/util.ts"
 git -C "$SH" add -A; hc -m base; git -C "$SH" update-ref refs/remotes/origin/main HEAD; git -C "$SH" remote add origin git@gitlab.com:acme/app.git; git -C "$SH" checkout -q -b suite
 echo '[]' > "$FX/gl_projects_acme_2Fapp_merge_requests_state_opened_source_branch_suite"
@@ -3286,5 +3460,13 @@ rs=$(MERGEWORTHY_WATCHER=off bg 'git push git@gitlab.com:acme/app.git HEAD:suite
 for i in 1 2 3 4 5 6; do echo "// $i" >> "$SH/src/util.ts"; hc -am "util $i"; done; quick "$SH"
 check "a push after 6 changes to demo/testRun.ts since the review passes; after 6 to src/util.ts, blocked, naming it" "0 2 1" \
   "$rs $(MERGEWORTHY_WATCHER=off bg 'git push git@gitlab.com:acme/app.git HEAD:suite' "$SH") $(grep -c 'src/util.ts got a 6th change' "$T/err")"
+# a maintainer's commits (no agent trailer) aren't the agent's drift: blocked as a "17th change" with 14 of them brillout's
+SO="$T/simpo"; git init -q -b main "$SO"; oc() { git -C "$SO" -c user.name=t -c user.email=t@t commit -q "$@"; }; ac() { oc --trailer 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>' "$@"; }
+echo 0 > "$SO/a.py"; git -C "$SO" add -A; oc -m base; git -C "$SO" update-ref refs/remotes/origin/main HEAD; git -C "$SO" checkout -q -b fix; echo 1 >> "$SO/a.py"; ac -am reviewed
+(cd "$SO" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null)
+for i in 1 2 3 4 5 6 7 8; do echo "m$i" >> "$SO/a.py"; oc -am "m$i"; done; echo a1 >> "$SO/a.py"; git -C "$SO" add a.py
+check "8 commits without the agent's trailer on a file count nothing: the agent's next change of it passes" 0 "$(bg 'git commit -m a1' "$SO")"
+for i in 1 2 3 4 5; do echo "a$i" >> "$SO/a.py"; ac -am "a$i"; done; echo a6 >> "$SO/a.py"; git -C "$SO" add a.py
+check "BLOCK: the agent's own 6th change among them is still refused, counted as its 6th" "2 1" "$(bg 'git commit -m a6' "$SO") $(grep -c 'a.py would get a 6th change' "$T/err")"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]

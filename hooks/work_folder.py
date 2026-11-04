@@ -57,11 +57,11 @@ def task_of(path):
 
 
 def watched_by(dirs, session_id, path):
-    """The watch dirs (gh-watch-start) among dirs whose events reach the session acting at path: the task's work folder holding path;
-    outside one, the dirs whose `session` file names session_id, but the steward's (steward.quiet: it wakes only for a new mergeworthy issue).
+    """The watch dirs (gh-watch-start) among dirs whose events reach the session acting at path: the task's work folder holding path
+    (the steward's: its live dir, steward.home); outside one, the dirs whose `session` file names session_id, but the steward's (steward.quiet: it wakes only for a new mergeworthy issue).
     Another session's watcher wakes that session alone."""
     if wf := task_of(path):
-        return [w for w in dirs if os.path.realpath(w) == wf]
+        return [w for w in dirs if os.path.realpath(w) == os.path.realpath(steward.home(wf))]
     def session(w):
         try: return open(os.path.join(w, 'session')).read().strip()
         except OSError: return ''

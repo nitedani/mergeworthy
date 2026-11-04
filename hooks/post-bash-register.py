@@ -143,10 +143,10 @@ sid = d.get('session_id')
 # only a running daemon wakes anyone on the thread: a dir a steward pass read (gh-watch-start --round) has none
 live_dirs = [dr for dr in dirs if live(dr)]
 def home_of(repo, post_dir):
-    """The watcher a new thread of repo posted from post_dir joins: the task's work folder holding post_dir, though its watcher isn't
-    running (started below); elsewhere, of those reaching the session from there, one covering repo first."""
+    """The watcher a new thread of repo posted from post_dir joins: the task's work folder holding post_dir (the steward's: its live
+    dir), though its watcher isn't running (started below); elsewhere, of those reaching the session from there, one covering repo first."""
     if wf := work_folder.task_of(post_dir):
-        return wf
+        return steward.home(wf)
     mine = work_folder.watched_by(live_dirs, sid, post_dir)
     covering = [dr for dr in mine if any(l.split()[:1] == [repo] for l in lines(dr, 'repos.txt'))
                 or any(r == repo for r, _ in threads_file.read(os.path.join(dr, 'threads.txt'))[0])]
@@ -177,7 +177,7 @@ for repo, line, home in pairs:
         home = watched
     elif home and os.path.realpath(home) in map(os.path.realpath, live_dirs):
         open(os.path.join(home, 'threads.txt'), 'a').write(line + '\n')
-    elif home and watcher_on and home == plain_create(cmd, cwd):  # what pre-bash-guard let through without a running watcher
+    elif home and watcher_on and home == steward.home(plain_create(cmd, cwd)):  # what pre-bash-guard let through without a running watcher
         start(home, line)
     elif home and watcher_on:
         told.append(f"the watcher of {home} isn't running, so {line} joined none: run `gh-watch-start {home} {line}`, arm the Monitor it prints if any")

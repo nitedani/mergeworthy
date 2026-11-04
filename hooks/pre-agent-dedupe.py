@@ -10,8 +10,8 @@ sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import failclosed
 import agent_jobs, memory_file, project_file, steward, subprocess
 from post_words import fence_spans
-from shellcmd import branch_record, segments, prog, git_argv, rlines, Where
-from work_folder import git_top
+from shellcmd import branch_record, segments, prog, git_argv, rlines, transcript, Where
+from work_folder import git_top, task_of
 from t3_tasks import under_t3
 register = sys.argv[1:] == ['register']
 d = json.load(sys.stdin)
@@ -70,8 +70,8 @@ if not register and re.search(r'\.out\b', gate_text) and 'CLEAN' in gate_text:
             sys.stderr.write(f"BLOCKED: {draft} has no passing post-lint for its current text: run post-lint first, then the review.\n")
             sys.exit(2)
 # a brief the launch follows from the work folder counts here, though the tickets above skip all of ~/.mergeworthy
-briefs = gate_text + '\n' + '\n'.join(open(t).read() for t in {os.path.abspath(os.path.expanduser(m)) for m in re.findall(MD, text)}
-                               if t.startswith(mw + 'work' + os.sep) and os.path.isfile(t))
+brief_files = {os.path.abspath(os.path.expanduser(m)) for m in re.findall(MD, text)}
+briefs = gate_text + '\n' + '\n'.join(open(t).read() for t in brief_files if t.startswith(mw + 'work' + os.sep) and os.path.isfile(t))
 # A template's slot left unfilled (`<the slice's risky edges>`) reaches the agent as a rule it never got. A slot in backticks is
 # the agent's own output form, the paste-in rules (agent.md) carry slots of their own, and an HTML tag a brief quotes is no slot.
 if not register:
@@ -113,16 +113,25 @@ path_set = lambda t: {q for p in re.findall(r'(~?/[^\s`\'"()<>,;]+)', t) if (q :
 paths = path_set(gate_text)
 # A brief names a worktree in its launch text or its brief file (a ticket it says to follow, or named so), not in a reference it names
 # or an installed skill (~/.mergeworthy/current may link to a worktree of mergeworthy)
-said = {os.path.abspath(os.path.expanduser(m)) for x in re.split(r'(?<=[.!?])\s+|\n', text)
-        if re.search(r'\b(follow|execute|exactly|what it says)\b', x, re.I) for m in re.findall(MD, x)}
-worktree_paths = {p for p in path_set(text + '\n' + '\n'.join(open(t).read() for t in tickets if os.path.isfile(t)
-                                      and (t in said or re.search(r'brief|ticket|prompt', os.path.basename(t)))))
-                  if not (os.path.abspath(p) + os.sep).startswith(mw + 'current' + os.sep)}
+said_in = lambda s: {os.path.abspath(os.path.expanduser(m)) for x in re.split(r'(?<=[.!?])\s+|\n', s)
+                     if re.search(r'\b(follow|execute|exactly|what it says)\b', x, re.I) for m in re.findall(MD, x)}
+# the brief the launch executes: its own text, and each file it says to follow or names as a brief, under the work folder too
+# (`Follow ~/.mergeworthy/work/<task>/brief.md exactly`); never a reference it names, nor an installed skill or a project file
+executed_in = lambda s: [t for t in sorted({os.path.abspath(os.path.expanduser(m)) for m in re.findall(MD, s)})
+                         if os.path.isfile(t) and not t.startswith((mw + 'current' + os.sep, mw + 'projects' + os.sep))
+                         and (t in said_in(s) or re.search(r'brief|ticket|prompt', os.path.basename(t)))]
+worktree_paths_in = lambda s: {p for p in path_set(s + '\n' + '\n'.join(open(t, errors='replace').read() for t in executed_in(s)))
+                               if not (os.path.abspath(p) + os.sep).startswith(mw + 'current' + os.sep)}
+worktree_paths = worktree_paths_in(text)
+def linked(p):
+    top = git_top(p)
+    return top if top and os.path.isfile(os.path.join(top, '.git')) else None
+worktrees_in = lambda s: sorted({w for w in (linked(os.path.realpath(p)) for p in worktree_paths_in(s)) if w})
 # A brief pinned to an older commit of a worktree it names (a linked one: the user's own checkouts are read at any
 # commit) re-runs work on code that has moved on.
+shas = set(re.findall(r'\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\b', gate_text))
+git = lambda wt, *a: subprocess.run(['git', '-C', wt, *a], capture_output=True, text=True)
 if not register:
-    shas = set(re.findall(r'\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\b', gate_text))
-    git = lambda wt, *a: subprocess.run(['git', '-C', wt, *a], capture_output=True, text=True)
     for wt in sorted(worktree_paths if shas else ()):
         head = git(wt, 'rev-parse', 'HEAD').stdout.strip() if os.path.isfile(os.path.join(wt, '.git')) else ''
         if head and not any(head.startswith(x) for x in shas):
@@ -133,45 +142,29 @@ if not register:
                 sys.stderr.write(f"BLOCKED: the brief pins {', '.join(sorted(old))} in {wt}, which has moved on to {head[:12]}. "
                                  "Pin the live head (and check the work isn't already done there)." + (f" Ruled out:\n{ruled}\n" if ruled else "\n"))
                 sys.exit(2)
-# A linked worktree the brief names (not the launcher's own) where another agent is still working: T3 can show that agent
-# interrupted or cancelled while it runs. A process with its cwd there, or an agent transcript written in the last five
-# minutes that names it, means it is alive. Only an agent's transcript counts (a main session, the steward's too, names paths
-# it doesn't work in), not the launcher's own, nor that of a T3 task that completed and won't be woken again (a review round's last agent).
-if not register:
-    def linked(p):
-        top = git_top(p)
-        return top if top and os.path.isfile(os.path.join(top, '.git')) else None
-    own = linked(os.path.realpath(d.get('cwd') or '/'))
-    wts = sorted({w for w in (linked(os.path.realpath(p)) for p in worktree_paths) if w and w != own})
-    anc, p = set(), os.getpid()
-    while wts and p > 1:
-        anc.add(p)
-        try: p = int(open(f'/proc/{p}/stat').read().rsplit(')', 1)[1].split()[1])
-        except (OSError, IndexError, ValueError): break
-    procs = []
-    for e in os.listdir('/proc') if wts else ():
-        try:
-            if e.isdigit() and int(e) not in anc:
-                procs.append((e, os.readlink(f'/proc/{e}/cwd'), open(f'/proc/{e}/comm').read().strip()))
-        except OSError: pass
-    me, now, logs = os.path.realpath(d.get('transcript_path') or '/'), time.time(), []
-    for f in sorted(glob.glob(os.path.expanduser('~/.claude/projects/*/*.jsonl')) + glob.glob(os.path.expanduser('~/.claude/projects/*/*/subagents/*.jsonl'))) if wts else ():
-        try:
-            if os.path.realpath(f) != me and now - os.path.getmtime(f) < 300:
-                logs.append((f, int(now - os.path.getmtime(f)), open(f, 'rb').read()))
-        except OSError: pass
-    busy = []
-    for w in wts:
-        pids = [f'{e} ({c})' for e, cwd, c in procs if cwd == w or cwd.startswith(w + '/')]
-        named = [f'{f} (written {age}s ago)' for f, age, b in logs if re.search(re.escape(w.encode()) + rb'(?![\w.-])', b)  # the path itself, not a longer sibling
-                 and ('/subagents/' in f or steward.is_task(agent_jobs.session_id(f)))  # an agent's, not a main session's
-                 and not steward.task_done(agent_jobs.session_id(f))]
-        if pids or named:
-            busy.append(f"{w}: " + '; '.join((['processes with their cwd there: ' + ', '.join(pids)] if pids else []) + (['transcripts naming it: ' + ', '.join(named)] if named else [])))
-    if busy:
-        sys.stderr.write("BLOCKED: another agent is still working in a worktree this brief names (T3's interrupted or cancelled status doesn't mean it stopped):\n"
-                         + '\n'.join(busy) + "\nContinue that agent with a message, or wait for it to finish; a replacement goes in a fresh worktree.\n")
-        sys.exit(2)
+# Two rounds per loop on one head (delegate §Review rounds): a review round `<loop>-r<N>`, maybe followed by the date or head SHA
+# the reuse block above asks for, past r2 on the head an earlier round of its loop pinned, or on fixes built on it, is refused
+rnd = re.fullmatch(r'(.+)-r(\d+)', re.sub(r'(-\d{4}-\d{2}-\d{2}|-[0-9a-f]{7,40})+$', '', (cid or str(ti.get('description') or '')).strip()))
+if rnd and (ti.get('role') == 'review' or not ti.get('role') and re.search(r'\bexactly (CLEAN|NO BUGS)\b', briefs)):
+    tops = sorted({t for t in map(git_top, worktree_paths) if t})
+    heads = sorted({h for t in tops if (h := git(t, 'rev-parse', 'HEAD').stdout.strip()) and any(h.startswith(x) for x in shas)})
+    rf = os.path.expanduser('~/.claude/review-rounds.json')
+    rlock = open(rf + '.lock', 'a'); fcntl.flock(rlock, fcntl.LOCK_EX)  # held until exit
+    rounds = json.load(open(rf)) if os.path.exists(rf) else {}
+    loop, n = rnd[1], int(rnd[2])
+    if register:
+        rounds.setdefault(loop, []).append([n, heads])
+        with open(rf + '.tmp', 'w') as f: json.dump(rounds, f)
+        os.replace(rf + '.tmp', rf)
+    elif n >= 3:
+        built_on = lambda old: not old or not heads or any(git(t, 'merge-base', '--is-ancestor', o, h).returncode == 0 for t in tops for o in old for h in heads)
+        earlier = sorted({m for m, old in rounds.get(loop, []) if m < n and built_on(old)})
+        if earlier:
+            sys.stderr.write(f"BLOCKED: {loop} already ran {', '.join(f'r{m}' for m in earlier)} on this head or the head its fixes build on "
+                             f"({', '.join(h[:12] for h in heads) or 'no head pinned'}): a loop gets two rounds per head (mergeworthy:delegate §Review rounds). "
+                             "List what is still open in the report or the PR body's notes and go on (push, ready, the next step) without waiting for an answer; "
+                             "only an open blocker keeps the PR in draft. A maintainer's ask on a new head starts a new loop name.\n")
+            sys.exit(2)
 # A brief that writes or reviews code, docs or a post (any role but research or test) for a repo whose maintainers' notes exist
 # (delegate step 3) names the project file, so the agent reads them: by owner/repo, or by a path in that repo's checkout. A memory-refresh
 # brief reads only the session log.
@@ -289,15 +282,10 @@ if not register and ti.get('role') not in ('research', 'test') and 'memory-refre
 # pull-request step 5 is the build's input: an implementer brief names `Approach: <path>`, the newest approach record of a checkout it names
 # (pr-steps approach). A later build of that record's PR names a newer record, or the same one marked `(unchanged: <why>)`.
 BUILT = os.path.expanduser('~/.claude/approach-builds')  # per approach record: the time of the record the PR's last build was briefed on
-# the brief the launch executes: its own text, and each file it says to follow or names as a brief, under the work folder too
-# (`Follow ~/.mergeworthy/work/<task>/brief.md exactly`); never a reference it names, nor an installed skill or a project file
-executed = [t for t in sorted({os.path.abspath(os.path.expanduser(m)) for m in re.findall(MD, text)})
-            if os.path.isfile(t) and not t.startswith((mw + 'current' + os.sep, mw + 'projects' + os.sep))
-            and (t in said or re.search(r'brief|ticket|prompt', os.path.basename(t)))]
-exec_text = text + '\n' + '\n'.join(open(t, errors='replace').read() for t in executed)
+exec_text = text + '\n' + '\n'.join(open(t, errors='replace').read() for t in executed_in(text))
 def brief_approach():
     """(record file, its newest line's time, the unchanged reason or '') of an implementer brief's Approach line; blocks when it has none."""
-    m = re.search(r'^[ \t>*-]*Approach:\s*(\S+\.md)(?:\s+\(unchanged:\s*([^)]*\S)\s*\))?\s*$', exec_text, re.M)
+    m = re.search(r'^[ \t>*-]*Approach:\s*(\S+\.md)\b(.*)$', exec_text, re.M)
     if not m:
         sys.stderr.write("BLOCKED: an implementer brief names the approach it builds (mergeworthy:pull-request step 5, delegate/implementer.md): "
                          "a line `Approach: <abs path of approach.md>`, recorded first by `pr-steps approach` in the PR branch's checkout the brief names\n")
@@ -308,7 +296,8 @@ def brief_approach():
     for r in sorted(recs):
         rows = [l.split() for l in open(r) if len(l.split()) >= 3]
         if rows and os.path.realpath(rows[-1][1]) == named:
-            return r, rows[-1][2], m[2] or ''
+            why = re.search(r'\(unchanged:\s*([^)]*\S)\s*\)', m[2])
+            return r, rows[-1][2], why[1] if why else ''
     sys.stderr.write(f"BLOCKED: {m[1]} is not the newest `pr-steps approach` record of a checkout this brief names: record it in the PR branch's "
                      "checkout (mergeworthy:pull-request step 5) and name that checkout in the brief\n")
     sys.exit(2)
@@ -342,36 +331,9 @@ if root and (ti.get('role') == 'research' or re.search(r'\bresearch', f"{ti.get(
         sys.exit(2)
 # a fan-out runs several agents on one brief, each under its own title and naming its part in its task: the title is part of the job
 key = ' '.join([*tickets, str(ti.get('title') or ti.get('description') or '').strip()]).strip()
-if not key:
-    sys.exit(0)  # nothing names the job (no ticket, title or description), so no second launch of it can be told apart
 jobs = os.path.expanduser('~/.claude/agent-jobs'); os.makedirs(jobs, exist_ok=True)
-f = os.path.join(jobs, hashlib.sha256(key.encode()).hexdigest()[:16])
-# when the launch this registers began (its transcript starts after it): one record per key, as one_per_job lets one call of a key
-# pend at a time, and the key's next launch overwrites the record of a call another hook blocked
-pre = os.path.join(agent_jobs.LAUNCHED, os.path.basename(f))
-task = str(ti.get('task') or ti.get('prompt') or '')
 # one launch at a time checks the open jobs and leaves its record, so launches in one message see each other; held until exit
 lock = open(jobs + '.lock', 'a'); fcntl.flock(lock, fcntl.LOCK_EX)
-if register:
-    try: launched = json.load(open(pre))['launched']; os.remove(pre)
-    except (OSError, ValueError, KeyError, TypeError): launched = time.time()
-    json.dump({'key': key, 'started': time.time(), 'launched': launched, 'brief': task,
-               'session': d.get('session_id'), 'transcript': d.get('transcript_path')}, open(f, 'w'))
-    # an agent now runs memory-prep's brief: stop-lint's hourly repeat of the refresh order waits an hour
-    for t in tickets:
-        if os.path.basename(t).startswith('memory-brief-') and os.path.isfile(os.path.join(os.path.dirname(t), 'memory.source')):
-            open(os.path.join(os.path.dirname(t), '.memory-order-repeated'), 'w').close()
-def one_per_job(started):
-    """Blocks a second agent for this key: a key is one job, so two job files never share one."""
-    sys.stderr.write(
-        f"BLOCKED: an agent for this job is already launched ({key[:160]}, started {int((time.time() - started) / 60)} min ago). One agent per job: "
-        "read its status first (task_status, its latest runs); a turn that ended or 'waiting_for_children' means it is still alive. "
-        "Continue it with a message instead of starting another. Only when its task is terminal and you have read its result, "
-        f"release the job with `agent-job done {shlex.quote(key[:200])}`, then launch.\n")
-    sys.exit(2)
-if not register and os.path.exists(f):
-    j = json.load(open(f))
-    if time.time() - j.get('started', 0) < 24 * 3600: one_per_job(j['started'])
 def returned(path, use_id):
     """The launcher's transcript holds the call's tool_result: another hook blocked it, or it returned (then it registers)."""
     try:
@@ -391,7 +353,78 @@ if not register:
         try: r = json.load(open(os.path.join(agent_jobs.LAUNCHED, n)))
         except (OSError, ValueError): continue
         if isinstance(r, dict) and r.get('tool_use_id') and r.get('transcript') and not returned(r['transcript'], r['tool_use_id']):
-            pending.append({'key': r.get('key', ''), 'brief': r.get('task', ''), 'started': r.get('launched', 0)})
+            pending.append({'key': r.get('key', ''), 'brief': r.get('task', ''), 'started': r.get('launched', 0), 'launched': r.get('launched', 0),
+                            'role': r.get('role'), 'worktrees': r.get('worktrees', []), 'transcript': r['transcript']})
+# One writer per worktree: a writer (any role but review or research) waits for a linked worktree its brief names (not the launcher's
+# own) that holds another session's process, or that a live writer job or outstanding writer call names, whose agent isn't the launcher. T3 can show that
+# agent interrupted or cancelled while it runs, so agent_jobs.finished decides.
+READERS = ('review', 'research')
+if not register and ti.get('role') not in READERS:
+    own, sid = linked(os.path.realpath(d.get('cwd') or '/')), d.get('session_id')
+    wts = [w for w in worktrees_in(text) if w != own]
+    anc, p = set(), os.getpid()
+    while wts and p > 1:
+        anc.add(p)
+        try: p = int(open(f'/proc/{p}/stat').read().rsplit(')', 1)[1].split()[1])
+        except (OSError, IndexError, ValueError): break
+    procs = []
+    for e in os.listdir('/proc') if wts else ():
+        try:
+            if e.isdigit() and int(e) not in anc:
+                procs.append((e, os.readlink(f'/proc/{e}/cwd'), open(f'/proc/{e}/comm').read().strip()))
+        except OSError: pass
+    def launchers_own(pid):
+        try: return bool(sid) and f'CLAUDE_CODE_SESSION_ID={sid}'.encode() in open(f'/proc/{pid}/environ', 'rb').read().split(b'\0')
+        except OSError: return False
+    me, busy = os.path.realpath(transcript(d) or '/'), []
+    # a call still outstanding counts as its job will, its own key's aside (one_per_job's); one whose agent never started stops counting after LONG
+    calls = [j for j in pending if j['key'] != key and set(j['worktrees']) & set(wts) and (agent_jobs.transcript(j) or time.time() - j['started'] < agent_jobs.LONG)]
+    writers = [j for j in [j for _, j in agent_jobs.jobs()] + calls if j.get('role') not in READERS] if wts else []
+    for j in writers:
+        if 'worktrees' not in j: j['worktrees'] = worktrees_in(j.get('brief', ''))  # registered before jobs recorded theirs
+    for w in wts:
+        pids = [f'{e} ({c})' for e, cwd, c in procs if (cwd == w or cwd.startswith(w + '/')) and not launchers_own(e)]
+        held = []
+        for j in writers:
+            if w in j['worktrees'] and not agent_jobs.finished(j):
+                a = agent_jobs.transcript(j)
+                if not a or os.path.realpath(a) != me:
+                    held.append(f"{j['key'][:160]} (started {int((time.time() - j['started']) / 60)} min ago, its transcript: {a or 'not started'})")
+        if pids or held:
+            busy.append(f"{w}: " + '; '.join((['processes with their cwd there: ' + ', '.join(pids)] if pids else []) + (['live writer jobs: ' + ', '.join(held)] if held else [])))
+    if busy:
+        sys.stderr.write("BLOCKED: another writer is working in a worktree this brief names (T3's interrupted or cancelled status doesn't mean it stopped):\n"
+                         + '\n'.join(busy) + "\nContinue that agent with a message, or wait for it to finish; a replacement goes in a fresh worktree. "
+                         "A job whose agent has ended and whose result you read: `agent-job done <key>`.\n")
+        sys.exit(2)
+if not key:
+    sys.exit(0)  # nothing names the job (no ticket, title or description), so no second launch of it can be told apart
+f = os.path.join(jobs, hashlib.sha256(key.encode()).hexdigest()[:16])
+# when the launch this registers began (its transcript starts after it): one record per key, as one_per_job lets one call of a key
+# pend at a time, and the key's next launch overwrites the record of a call another hook blocked
+pre = os.path.join(agent_jobs.LAUNCHED, os.path.basename(f))
+task = str(ti.get('task') or ti.get('prompt') or '')
+if register:
+    try: launched = json.load(open(pre))['launched']; os.remove(pre)
+    except (OSError, ValueError, KeyError, TypeError): launched = time.time()
+    json.dump({'key': key, 'started': time.time(), 'launched': launched, 'brief': task, 'role': ti.get('role'), 'worktrees': worktrees_in(text),
+               'session': d.get('session_id'), 'transcript': d.get('transcript_path')}, open(f, 'w'))
+    # an agent now runs memory-prep's brief: stop-lint's hourly repeat of the refresh order waits an hour
+    for t in tickets:
+        if os.path.basename(t).startswith('memory-brief-') and os.path.isfile(os.path.join(os.path.dirname(t), 'memory.source')):
+            open(os.path.join(os.path.dirname(t), '.memory-order-repeated'), 'w').close()
+def one_per_job(started):
+    """Blocks a second agent for this key: a key is one job, so two job files never share one."""
+    sys.stderr.write(
+        f"BLOCKED: an agent for this job is already launched ({key[:160]}, started {int((time.time() - started) / 60)} min ago). One agent per job: "
+        "read its status first (task_status, its latest runs); a turn that ended or 'waiting_for_children' means it is still alive. "
+        "Continue it with a message instead of starting another. Only when its task is terminal and you have read its result, "
+        f"release the job with `agent-job done {shlex.quote(key[:200])}`, then launch.\n")
+    sys.exit(2)
+if not register and os.path.exists(f):
+    j = json.load(open(f))
+    if time.time() - j.get('started', 0) < 24 * 3600: one_per_job(j['started'])
+if not register:
     for j in pending:
         if j['key'] == key: one_per_job(j['started'])
     for j in [j for _, j in agent_jobs.jobs()] + pending if task.strip() else ():
@@ -402,18 +435,34 @@ if not register:
                 "(its slice, subsystem, frames or topic). A new round on the same task releases the earlier job first, once its agent "
                 f"is done and you have read its result: `agent-job done {shlex.quote(j['key'][:200])}`.\n")
             sys.exit(2)
-# At most 3 agents at a time per session (delegate step 1): a job is open until released or its agent finished; a memory refresh doesn't count
+# At most 3 agents at a time per session (delegate step 1), or the number the user gave, quoted in the task's scope.md (the work folder
+# of the session's cwd, else the one the briefs it launches are in): a job is open until released or its agent finished; a memory refresh doesn't count
 # A fan-out a step names (finality steps 2-3, converge's per-slice verifiers) says so on a `Fan-out:` line, in the task or its brief, and passes
 fanout = ti.get('role') != 'implementation' and re.search(r'^Fan-out: (finality step [23]|converge §Running the agents)$', briefs, re.M)
+def users_words(quote):
+    """Whether a prompt the user typed in this session (its transcript) holds quote verbatim: a tool result, hook message or
+    assistant turn doesn't count."""
+    try:
+        for l in open(d.get('transcript_path') or '', errors='replace'):
+            try: o = json.loads(l)
+            except ValueError: continue
+            if isinstance(o, dict) and memory_file.prompt(o) and any(quote in t for t in memory_file.texts(o)): return True
+    except OSError: pass
+    return False
 if not register and d.get('session_id') and 'memory-refresh' not in gate_text and not fanout:
     live = [j for _, j in agent_jobs.jobs() if j.get('session') == d['session_id'] and '/memory-brief-' not in j['key']
             and 'memory-refresh' not in j.get('brief', '') and not agent_jobs.finished(j)]
-    if len(live) >= 3:
-        sys.stderr.write(f"BLOCKED: this session already has {len(live)} agents open, and the limit is 3 at a time (mergeworthy:delegate step 1):\n"
+    folders = {f for t in brief_files if (f := task_of(t))}
+    scope = os.path.join(task_of(d.get('cwd') or '/') or (folders.pop() if len(folders) == 1 else '<your work folder>'), 'scope.md')
+    raised = re.search(r'^Agents: ([1-9]\d*) \(user \d{4}-\d{2}-\d{2}: "(.+)"\)$', open(scope, errors='replace').read() if os.path.isfile(scope) else '', re.M)
+    limit = int(raised[1]) if raised and len(live) >= 3 and users_words(raised[2]) else 3  # a transcript is read only at the cap
+    if len(live) >= limit:
+        sys.stderr.write(f"BLOCKED: this session already has {len(live)} agents open, and the limit is {limit} at a time (mergeworthy:delegate step 1):\n"
                          + '\n'.join(f"{j['key'][:160]} (started {int((time.time() - j['started']) / 60)} min ago)" for j in live)
-                         + "\nContinue one with a message, or wait for one to finish, read its result and release it with `agent-job done <key>`.\n")
+                         + "\nContinue one with a message, or wait for one to finish, read its result and release it with `agent-job done <key>`. "
+                         f"A higher limit the user gave for this task goes in {scope} as a line `Agents: <N> (user <YYYY-MM-DD>: \"<their words>\")`, quoting the user's own words from this session.\n")
         sys.exit(2)
 if not register:
-    os.makedirs(agent_jobs.LAUNCHED, exist_ok=True); json.dump({'launched': time.time(), 'key': key, 'task': task, 'tool_use_id': d.get('tool_use_id'),
+    os.makedirs(agent_jobs.LAUNCHED, exist_ok=True); json.dump({'launched': time.time(), 'key': key, 'task': task, 'role': ti.get('role'), 'worktrees': worktrees_in(text), 'tool_use_id': d.get('tool_use_id'),
                                                            'transcript': d.get('transcript_path')}, open(pre, 'w'))
 sys.exit(0)

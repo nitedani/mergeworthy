@@ -5,8 +5,6 @@ description: "The standard every diff meets: code, tests, comments, module shape
 
 # Code
 
-What is true of every diff. The implementer reads this before writing; whoever judges a diff (the main session, a verifier, a reviewer, the shape pass) checks it against the same sections. Write to it, so the check finds nothing.
-
 ### Before writing
 
 - Read three sibling files: note sentence length, comment density, naming and platform wording.
@@ -59,6 +57,7 @@ Every new public name gets a one-line "name → what it does in every case" chec
 ### No regressions
 
 Anything that works on `main` and fails on the head is a regression, experimental features included: fix it, never list it as a limitation. So is a cap our own design creates (a retry budget, one lock every writer shares) that makes realistic use fail: redesign so it succeeds. A real limit is imposed from outside, and its note names the source. So is every row of your own comparison where the head is worse than the run-to-run spread.
+- **A performance change** ships only on a maintainer's ask or a measured user-visible gain (throughput, latency); a count of allocations, bytes or ns alone is a nit. A "no regression" ask is answered by the benchmark below, not by optimizing.
 - **Code that touches a body, a buffer, a stream or cancellation** (a request or response body, `ReadableStream`, `tee()` or `clone()`, an `ArrayBuffer` or typed array, `AbortSignal`, a property patched onto a built-in object) is checked against every item below, every time: by the implementer before each commit, and by the verifier. Each answers every item by its name under `## Bodies and streams`, one line each: `- <name>: <the probe run and what it showed>`, or `- <name>: not reached, because <reason>` (the list holds even where `pr-steps verify` doesn't check it). A transport or hot path gets the same list; when unsure whether a diff touches one, it does.
   - **Cancellation** travels both ways: a cancelling consumer or aborting client stops the source; a failing source fails the consumer, never hangs it.
   - **Backpressure** holds: read on demand.
@@ -135,8 +134,8 @@ Every sentence about behavior in docs, a README, JSDoc, a changeset or a code co
 
 - **A lane** is one CI job's way of running the product: a runtime, an adapter, a transport or a build mode. The owning lane of a mechanism is the one that runs the code it lives in.
 - **Quick gates, after every commit:** format, type-check, units, and each CI job failing on a PR it updates or an open `scope.md` box links, run here as `<job>: <command> -> exit 0`; `pr-steps quick <log>` records them before a collaboration push or `gh pr create`.
-- **Full gates, before every push:** the quick gates; spellcheck and docs lint; the released-API or public-surface check; runtime-specific lanes. Build the list from the repo's CI workflows, never by hand.
-- **Heavy lanes, before every push,** on each PR's head: build, then the heavy lanes the project file lists (production-mode e2e, every adapter or transport, the examples).
+- **Full gates, before `ready`, a push to a ready PR (unless `Push: before gates`, `merging` step 1) and a merge:** the quick gates; spellcheck and docs lint; the released-API or public-surface check; runtime-specific lanes. Build the list from the repo's CI workflows, never by hand.
+- **Heavy lanes, at the same points,** on each PR's head: build, then the heavy lanes the project file lists (production-mode e2e, every adapter or transport, the examples).
 - **Gates fail closed:** a gate that errors or can't run is red. A failure that doesn't repeat is still a finding: find its cause, or file it with the logs, before calling anything green. "N passed" with a non-zero exit code is red, and so is exit 0 with no test run (a filter that matched nothing); quote the exit code and the count of tests run, never a log tail.
 - **Name the head:** every claim names the head it ran on. A known base bug that a lane shows is recorded as the base's, with the evidence that the base fails it too.
 
@@ -149,7 +148,6 @@ Every sentence about behavior in docs, a README, JSDoc, a changeset or a code co
 
 ### Checklist
 
-The implementer runs it on its own diff before handing it back; the shape pass checks every line of it (`delegate/shape.md`, step 1).
 1. **Bloat:** dead code, speculative surface, duplicate intent, defensive branches for unreachable states (→ assertions), custom test scripts left in the repo (→ delete).
 2. **Quality:** every file, function and piece of logic rated with its reason (`delegate/shape.md`, steps 2–3).
 3. **Problem variability:** every flow rated 0–10 on solution optimality, with a better alternative sketched for low scores.

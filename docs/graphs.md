@@ -263,7 +263,7 @@ flowchart TB
 
 ## Posting or editing anything on GitHub (a step sends you here)
 
-Opens `mergeworthy:post` (draft, lint, review to `CLEAN`, re-check, post (5 steps)).
+Opens `mergeworthy:post` (draft, lint, review (two rounds), re-check, post (5 steps)).
 
 ```mermaid
 flowchart TB
@@ -319,14 +319,13 @@ flowchart TB
   s2 -.-> r8[["writing"]]
   s3 -.-> r9[["delegate"]]
   s4 -.-> r10[["pull-request"]]
-  s4 -.-> r11[["task"]]
-  s4 -.-> r12[["delegate"]]
-  s4 -.-> r13[["rules"]]
-  s4 -.-> r14[["post"]]
-  s5 -.-> r15[["merging"]]
-  s5 -.-> r16[["post"]]
-  s5 -.-> r17[["finality"]]
-  s5 -.-> r18[["code"]]
+  s4 -.-> r11[["delegate"]]
+  s4 -.-> r12[["rules"]]
+  s4 -.-> r13[["post"]]
+  s5 -.-> r14[["merging"]]
+  s5 -.-> r15[["post"]]
+  s5 -.-> r16[["finality"]]
+  s5 -.-> r17[["code"]]
   start --> g0
 ```
 
@@ -360,14 +359,13 @@ flowchart TB
   s2 -.-> r8[["writing"]]
   s3 -.-> r9[["delegate"]]
   s4 -.-> r10[["pull-request"]]
-  s4 -.-> r11[["task"]]
-  s4 -.-> r12[["delegate"]]
-  s4 -.-> r13[["rules"]]
-  s4 -.-> r14[["post"]]
-  s5 -.-> r15[["merging"]]
-  s5 -.-> r16[["post"]]
-  s5 -.-> r17[["finality"]]
-  s5 -.-> r18[["code"]]
+  s4 -.-> r11[["delegate"]]
+  s4 -.-> r12[["rules"]]
+  s4 -.-> r13[["post"]]
+  s5 -.-> r14[["merging"]]
+  s5 -.-> r15[["post"]]
+  s5 -.-> r16[["finality"]]
+  s5 -.-> r17[["code"]]
   start --> g0
 ```
 
@@ -401,14 +399,13 @@ flowchart TB
   s2 -.-> r8[["writing"]]
   s3 -.-> r9[["delegate"]]
   s4 -.-> r10[["pull-request"]]
-  s4 -.-> r11[["task"]]
-  s4 -.-> r12[["delegate"]]
-  s4 -.-> r13[["rules"]]
-  s4 -.-> r14[["post"]]
-  s5 -.-> r15[["merging"]]
-  s5 -.-> r16[["post"]]
-  s5 -.-> r17[["finality"]]
-  s5 -.-> r18[["code"]]
+  s4 -.-> r11[["delegate"]]
+  s4 -.-> r12[["rules"]]
+  s4 -.-> r13[["post"]]
+  s5 -.-> r14[["merging"]]
+  s5 -.-> r15[["post"]]
+  s5 -.-> r16[["finality"]]
+  s5 -.-> r17[["code"]]
   start --> g0
 ```
 
@@ -442,14 +439,13 @@ flowchart TB
   s2 -.-> r8[["writing"]]
   s3 -.-> r9[["delegate"]]
   s4 -.-> r10[["pull-request"]]
-  s4 -.-> r11[["task"]]
-  s4 -.-> r12[["delegate"]]
-  s4 -.-> r13[["rules"]]
-  s4 -.-> r14[["post"]]
-  s5 -.-> r15[["merging"]]
-  s5 -.-> r16[["post"]]
-  s5 -.-> r17[["finality"]]
-  s5 -.-> r18[["code"]]
+  s4 -.-> r11[["delegate"]]
+  s4 -.-> r12[["rules"]]
+  s4 -.-> r13[["post"]]
+  s5 -.-> r14[["merging"]]
+  s5 -.-> r15[["post"]]
+  s5 -.-> r16[["finality"]]
+  s5 -.-> r17[["code"]]
   start --> g0
 ```
 
@@ -470,10 +466,11 @@ flowchart TB
     s2 --> s3
   end
   s0 -.-> r1[["code"]]
-  s1 -.-> r2[["converge"]]
-  s2 -.-> r3[["post"]]
-  s2 -.-> r4[["task"]]
-  s2 -.-> r5[["writing"]]
+  s0 -.-> r2[["converge"]]
+  s1 -.-> r3[["converge"]]
+  s2 -.-> r4[["post"]]
+  s2 -.-> r5[["task"]]
+  s2 -.-> r6[["writing"]]
   start --> g0
 ```
 

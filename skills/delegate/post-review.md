@@ -9,6 +9,7 @@ Review the draft <abs>/drafts/<thread>/<name>.md (kind: <kind>) before it is pos
 The comment it answers: <name>.parent.md. The thread record: <abs>/drafts/<thread>/thread-context.md. The head: <SHA> in <worktree>.
 Its length: <the `length:` line post-lint's pass printed at post step 2>. A finding that adds words names what to cut to stay within its cap.
 Check facts and noise, not word choice. Every finding, exhaustively: the sentence, what's wrong, what it should say.
+<Round 2: the previous review <its path>: confirm its findings are fixed, and report only a blocker or what the fixes broke.>
 
 - Claims: every claim against the code (file:line or a command and its output), the thread and the evidence. Every attribution (who said, proposed or agreed what) against thread-context.md's permalinks. Read it in full: a decision the draft contradicts, a settled point it repeats or a question it misses is a finding.
 - Refactor result: after a maintainer's refactor ask, the post shows the table of the newest pass recorded since (<its report>).
