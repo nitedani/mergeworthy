@@ -2254,6 +2254,7 @@ printf '\x89PNG\r\n\x1a\n' > "$T/pf.png"; touch -d '-20 min' "$T/pf.png"; check 
 check "BLOCK: a URL that shows Chrome's error page" 1 "$(pfurl '<div id="main-frame-error">This site can’t be reached</div>')"
 check "BLOCK: a URL that renders a blank page" 1 "$(pfurl '<html><body><div id="root"></div><script>boot()</script></body></html>')"
 check "an edit still waits after refused preflights" 2 "$(pfedit "$P/a.ts")"
+check "a commit chained after the same command's pr-steps preflight by && passes that check; after ; it still waits" "0 1" "$(pfcommit "pr-steps preflight 'none, because x' && git commit -m x" | grep -c 'pr-steps preflight') $(pfcommit "pr-steps preflight 'none, because x'; git commit -m x" | grep -c 'pr-steps preflight')"
 check "a URL that renders records the screenshot Chrome took" 0 "$(pfurl '<body><h1>Dashboard</h1></body>')"
 # pull-request step 5 before the code: edits and commits wait for the branch's approach too, a moved branch shares it only by tracking
 check "BLOCK: with its preflight, an edit and a commit there wait for the branch's approach, naming step 5" "2 1" "$(pfedit "$P/a.ts") $(pfcommit | grep -c 'rate the approaches (mergeworthy:pull-request step 5), then `pr-steps approach <work folder>/approach.md`')"

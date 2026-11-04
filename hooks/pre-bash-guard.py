@@ -646,10 +646,10 @@ def opened_branch(a, options=(), fields=()):
 
 NEED_DRAFT ="post from a draft file (--body-file /abs/drafts/<name>.md, -F body=@/abs/drafts/<name>.md or --input) that passed the gate"
 
-def approach_passed(after, repo):
-    """Whether a `pr-steps approach <file>` this command ran and && proved passed (Seg.after) wrote the record of repo's branch."""
-    rec = branch_record(repo, 'approach')
-    return any(r == rec and argv == prog(a) for a in after for argv, r in approaches)
+def recorded(step, after, repo):
+    """Whether a `pr-steps <step> ...` this command ran and && proved passed (Seg.after) wrote that record of repo's branch."""
+    rec = branch_record(repo, step)
+    return any(r == rec and argv == prog(a) for a in after for argv, r in records)
 
 def check(t, has_cd):
     after = getattr(t, 'after', ())
@@ -696,7 +696,7 @@ def check(t, has_cd):
         if sub in ('commit', 'push') and repo is not None:
             check_steward(repo)
         if sub == 'commit' and repo is not None and os.path.isdir(repo):  # in a folder this hook can't resolve (`cd "$(mktemp -d)"`), a commit stays local
-            if why := no_preflight(repo) or not approach_passed(after, repo) and no_approach(repo):
+            if why := not recorded('preflight', after, repo) and no_preflight(repo) or not recorded('approach', after, repo) and no_approach(repo):
                 block(why)
             check_commit_identity(overrides, repo)
             every = any(x == '--all' or re.fullmatch(r'-[a-zA-Z]*a[a-zA-Z]*', x) for x in rest)  # `git commit -a` commits the worktree's changes too
@@ -917,11 +917,11 @@ if any(prog(x)[:1] and os.path.basename(prog(x)[0]) == 'gate-pass' for x in segs
     block("run gate-pass as its own command and read its exit code, then post in the next command: this check reads the gate record before the command runs (mergeworthy:post step 4)")
 clones = {}  # folder: the repo it was cloned from, for a `git clone` in this command
 wrote = set()  # the files the simple commands walked so far write: a compose file among them isn't written yet when its check runs
-approaches = []  # (argv, the record it writes) of each `pr-steps approach <file>` walked so far
+records = []  # (argv, the record it writes) of each `pr-steps approach|preflight ...` walked so far
 for s in where.walk(segs):
     run_dir, has_cd = where.dir, where.moved
-    if run_dir is not None and (a := script(prog(s)))[:1] and os.path.basename(a[0]) == 'pr-steps' and a[1:2] == ['approach'] and a[2:]:
-        approaches.append((prog(s), branch_record(run_dir, 'approach')))
+    if run_dir is not None and (a := script(prog(s)))[:1] and os.path.basename(a[0]) == 'pr-steps' and a[1:2] in (['approach'], ['preflight']) and a[2:]:
+        records.append((prog(s), branch_record(run_dir, a[1])))
     if run_dir is not None and prog(s)[:2] == ['git', 'clone'] and (ops := [where.expand(x) for x in operands(prog(s)[2:]) if not x.startswith('-')]):
         src = ops[0] if repo_of(ops[0]) else os.path.join(run_dir, os.path.expanduser(ops[0]))
         clones[os.path.normpath(os.path.join(run_dir, ops[1] if ops[1:] else re.sub(r'(\.git)?/*$', '', ops[0]).rsplit('/', 1)[-1]))] = src
