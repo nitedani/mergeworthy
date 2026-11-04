@@ -10,6 +10,7 @@ import shellcmd
 from shellcmd import parse, segments, prog, script, opt, api_call, discussion_post, discussion_thread_of, names_discussion_mutation, env_of, origin, plain_create, PLAIN, new_post_drafts, branch_record, no_approach, no_preflight, no_instructions_read, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Where
 import own_actions, steward, post_words, testpaths, threads_file, work_folder
 from t3_tasks import under_t3
+AGENT_TRAILER = re.compile(r'^Co-Authored-By: Claude', re.M | re.I)  # a commit without it is a maintainer's
 def missing_steps(d):
     head = subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
     rec = os.path.expanduser(f'~/.claude/pr-steps/{head}')
@@ -20,7 +21,7 @@ def missing_steps(d):
         if os.path.exists(os.path.expanduser(f'~/.claude/pr-steps/{c}')):
             rec = os.path.expanduser(f'~/.claude/pr-steps/{c}'); break
         parents, _, body = subprocess.run(['git', '-C', d, 'log', '-1', '--format=%P%x00%B', c], capture_output=True, text=True).stdout.partition('\0')
-        if len(parents.split()) != 1 or re.search(r'^Co-Authored-By: Claude', body, re.M | re.I): break
+        if len(parents.split()) != 1 or AGENT_TRAILER.search(body): break
     kinds = {l.split()[0] for l in open(rec)} if head and os.path.exists(rec) else set()
     kinds |= {'fresh'} if 'review' in kinds else set()  # records made before the six steps
     kinds |= {'shape'} if {'loopb', 'refactor'} <= kinds else set()  # records made before the shape pass
@@ -433,7 +434,8 @@ def check_patches(d, pending=None, amend=False):
     """`finality` step 1 as a mechanism: a code file (no test or doc) changed by 5 commits of the branch since its first review
     (a verify, small, shape, reverify or fresh record) gets no 6th until `pr-steps finality` records the finality pass's plan on the head;
     a commit with that record, HEAD too, starts the counts over after it. Building before any review counts nothing. Only the
-    branch's own commits count (first parent): a merge commit, made or being made, is no change, nor are the commits it brings in.
+    branch's own commits count (first parent): a merge commit, made or being made, is no change, nor are the commits it brings in,
+    nor is a maintainer's (AGENT_TRAILER): the drift is the agent's.
     pending: the files the commit being made changes; None for a push, which checks the commits alone. amend: it replaces HEAD."""
     g = lambda *a: subprocess.run(['git', '-C', d, *a], capture_output=True, text=True).stdout
     base = g('symbolic-ref', '-q', '--short', 'refs/remotes/origin/HEAD').strip() or 'origin/main'
@@ -442,6 +444,7 @@ def check_patches(d, pending=None, amend=False):
     commits = g('rev-list', '--reverse', '--first-parent', 'HEAD', '--not', base).split()
     for c in commits:
         files = g('diff-tree', '--no-commit-id', '--name-only', '-r', c).split()  # none for a merge commit
+        if files and not AGENT_TRAILER.search(g('log', '-1', '--format=%B', c)): files = []
         if amend and c == commits[-1]: pending, files = sorted(set(pending or []) | set(files)), []  # the amended commit is the pending one
         for f in files if reviewed else []:
             count[f] = count.get(f, 0) + 1

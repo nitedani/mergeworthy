@@ -3336,7 +3336,7 @@ check "the same answer in a session that started an agent is a hand-back" 2 "$(s
 tr_file 'I have nothing else to start. The review waits on the maintainer, and the watcher will tell me when that happens.' work
 check "'the watcher will tell me when' is no hand-back; 'Tell me when' and 'or ask me to' are" "0 2 2" "$(slj) $(slj 'Tell me when to re-check CI.') $(slj 'I can rerun it, or ask me to stop.')"
 # ---------- pre-bash-guard: a code file's 6th change on the branch waits for `pr-steps finality` ----------
-SP="$T/simp"; git init -q -b main "$SP"; sc() { git -C "$SP" -c user.name=t -c user.email=t@t commit -q "$@"; }
+SP="$T/simp"; git init -q -b main "$SP"; sc() { git -C "$SP" -c user.name=t -c user.email=t@t commit -q --trailer 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>' "$@"; }
 echo 0 > "$SP/a.py"; mkdir "$SP/tests"; echo 0 > "$SP/tests/a_test.py"; git -C "$SP" add -A; sc -m base
 git -C "$SP" update-ref refs/remotes/origin/main HEAD; git -C "$SP" checkout -q -b fix; (cd "$SP" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 for i in 1 2 3 4 5 6; do echo "d$i" >> "$SP/a.py"; sc -am "d$i"; done; echo d7 >> "$SP/a.py"; git -C "$SP" add a.py
@@ -3362,7 +3362,7 @@ for i in 7 8 9 10 11 12; do echo "p$i" >> "$SP/a.py"; git -C "$SP" add a.py; sc 
 echo p13 >> "$SP/a.py"; git -C "$SP" add a.py; r13=$(bg 'git commit -m p13' "$SP"); (cd "$SP" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null)
 check "BLOCK: a 7th change; a finality record on the head that holds the 6th unblocks it" "2 0" "$r13 $(bg 'git commit -m p13' "$SP")"
 # merges: a merge of the base, being made or in the history, is no change, and a finality record on a merge commit counts
-SM="$T/simpm"; git init -q -b main "$SM"; mc() { git -C "$SM" -c user.name=t -c user.email=t@t "$@"; }
+SM="$T/simpm"; git init -q -b main "$SM"; mc() { if [ "$1" = commit ]; then shift; git -C "$SM" -c user.name=t -c user.email=t@t commit --trailer "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" "$@"; else git -C "$SM" -c user.name=t -c user.email=t@t "$@"; fi; }
 seq 1 10 > "$SM/a.py"; git -C "$SM" add -A; mc commit -q -m base
 git -C "$SM" update-ref refs/remotes/origin/main HEAD; git -C "$SM" checkout -q -b fix; (cd "$SM" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 (cd "$SM" && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null)
@@ -3379,7 +3379,7 @@ mc commit -q -m p10; mc checkout -q -b side; for i in 1 2 3 4 5 6; do echo "s$i"
 mc checkout -q fix; mc merge -q --no-ff --no-edit side; echo f1 >> "$SM/b.py"; git -C "$SM" add b.py
 check "the commits a merge of another branch brings in are not the branch's own: its next change of their file passes" 0 "$(bg 'git commit -m f1' "$SM")"
 # a suite named test<Name> is a test: its changes are no drift (#93's demo/testRun.ts); src/util.ts is code
-SH="$TASKW/suite"; mkdir -p "$SH/demo" "$SH/src"; git init -q -b main "$SH"; hc() { git -C "$SH" -c user.name=t -c user.email=t@t commit -q "$@"; }
+SH="$TASKW/suite"; mkdir -p "$SH/demo" "$SH/src"; git init -q -b main "$SH"; hc() { git -C "$SH" -c user.name=t -c user.email=t@t commit -q --trailer 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>' "$@"; }
 echo 'export const testRun = () => {}' > "$SH/demo/testRun.ts"; echo "import { testRun } from './testRun'; testRun('pnpm run dev')" > "$SH/demo/test-dev.test.ts"; echo 'export const util = 0' > "$SH/src/util.ts"
 git -C "$SH" add -A; hc -m base; git -C "$SH" update-ref refs/remotes/origin/main HEAD; git -C "$SH" remote add origin git@gitlab.com:acme/app.git; git -C "$SH" checkout -q -b suite
 echo '[]' > "$FX/gl_projects_acme_2Fapp_merge_requests_state_opened_source_branch_suite"
@@ -3389,5 +3389,13 @@ rs=$(MERGEWORTHY_WATCHER=off bg 'git push git@gitlab.com:acme/app.git HEAD:suite
 for i in 1 2 3 4 5 6; do echo "// $i" >> "$SH/src/util.ts"; hc -am "util $i"; done; quick "$SH"
 check "a push after 6 changes to demo/testRun.ts since the review passes; after 6 to src/util.ts, blocked, naming it" "0 2 1" \
   "$rs $(MERGEWORTHY_WATCHER=off bg 'git push git@gitlab.com:acme/app.git HEAD:suite' "$SH") $(grep -c 'src/util.ts got a 6th change' "$T/err")"
+# a maintainer's commits (no agent trailer) aren't the agent's drift: blocked as a "17th change" with 14 of them brillout's
+SO="$T/simpo"; git init -q -b main "$SO"; oc() { git -C "$SO" -c user.name=t -c user.email=t@t commit -q "$@"; }; ac() { oc --trailer 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>' "$@"; }
+echo 0 > "$SO/a.py"; git -C "$SO" add -A; oc -m base; git -C "$SO" update-ref refs/remotes/origin/main HEAD; git -C "$SO" checkout -q -b fix; echo 1 >> "$SO/a.py"; ac -am reviewed
+(cd "$SO" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null)
+for i in 1 2 3 4 5 6 7 8; do echo "m$i" >> "$SO/a.py"; oc -am "m$i"; done; echo a1 >> "$SO/a.py"; git -C "$SO" add a.py
+check "8 commits without the agent's trailer on a file count nothing: the agent's next change of it passes" 0 "$(bg 'git commit -m a1' "$SO")"
+for i in 1 2 3 4 5; do echo "a$i" >> "$SO/a.py"; ac -am "a$i"; done; echo a6 >> "$SO/a.py"; git -C "$SO" add a.py
+check "BLOCK: the agent's own 6th change among them is still refused, counted as its 6th" "2 1" "$(bg 'git commit -m a6' "$SO") $(grep -c 'a.py would get a 6th change' "$T/err")"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]
