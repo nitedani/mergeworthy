@@ -649,7 +649,7 @@ NEED_DRAFT ="post from a draft file (--body-file /abs/drafts/<name>.md, -F body=
 def recorded(step, after, repo):
     """Whether a `pr-steps <step> ...` this command ran and && proved passed (Seg.after) wrote that record of repo's branch."""
     rec = branch_record(repo, step)
-    return any(r == rec and argv == prog(a) for a in after for argv, r in records)
+    return any(records.get(id(a)) == rec for a in after)
 
 def check(t, has_cd):
     after = getattr(t, 'after', ())
@@ -917,11 +917,11 @@ if any(prog(x)[:1] and os.path.basename(prog(x)[0]) == 'gate-pass' for x in segs
     block("run gate-pass as its own command and read its exit code, then post in the next command: this check reads the gate record before the command runs (mergeworthy:post step 4)")
 clones = {}  # folder: the repo it was cloned from, for a `git clone` in this command
 wrote = set()  # the files the simple commands walked so far write: a compose file among them isn't written yet when its check runs
-records = []  # (argv, the record it writes) of each `pr-steps approach|preflight ...` walked so far
+records = {}  # each `pr-steps approach|preflight ...` walked so far, by its statement (Seg.stmt): the record it writes
 for s in where.walk(segs):
     run_dir, has_cd = where.dir, where.moved
     if run_dir is not None and (a := script(prog(s)))[:1] and os.path.basename(a[0]) == 'pr-steps' and a[1:2] in (['approach'], ['preflight']) and a[2:]:
-        records.append((prog(s), branch_record(run_dir, a[1])))
+        records[id(s.stmt)] = branch_record(run_dir, a[1])
     if run_dir is not None and prog(s)[:2] == ['git', 'clone'] and (ops := [where.expand(x) for x in operands(prog(s)[2:]) if not x.startswith('-')]):
         src = ops[0] if repo_of(ops[0]) else os.path.join(run_dir, os.path.expanduser(ops[0]))
         clones[os.path.normpath(os.path.join(run_dir, ops[1] if ops[1:] else re.sub(r'(\.git)?/*$', '', ops[0]).rsplit('/', 1)[-1]))] = src
