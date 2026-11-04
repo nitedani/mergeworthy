@@ -2237,7 +2237,7 @@ P="$T/pf"; mkdir -p "$P"; git -C "$P" init -q -b feat
 pf() { (cd "$P" && bash "$R/bin/pr-steps" preflight "$@" >/dev/null 2>&1; echo $?); }
 pfurl() { (cd "$P" && CHROME="$T/bin/fakechrome" FAKE_DOM="$1" bash "$R/bin/pr-steps" preflight https://app.test --host-resolver-rules=x >/dev/null 2>&1; echo $?); }
 pfedit() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"Edit","tool_input":{"file_path":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$T" | python3 "$R/hooks/pre-design-gate.py" 2>/dev/null; echo $?; }
-pfcommit() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"git commit -m x"},"cwd":sys.argv[1]}))' "$P" | python3 "$R/hooks/pre-bash-guard.py" 2>&1 >/dev/null; }
+pfcommit() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[2]},"cwd":sys.argv[1]}))' "$P" "${1:-git commit -m x}" | python3 "$R/hooks/pre-bash-guard.py" 2>&1 >/dev/null; }
 cat > "$T/bin/fakechrome" <<'EOF'
 #!/bin/bash
 [ -n "$FAKE_LOG" ] && echo "pulse=${PULSE_SERVER:-unset} $*" >> "$FAKE_LOG"
@@ -2257,6 +2257,9 @@ check "an edit still waits after refused preflights" 2 "$(pfedit "$P/a.ts")"
 check "a URL that renders records the screenshot Chrome took" 0 "$(pfurl '<body><h1>Dashboard</h1></body>')"
 # pull-request step 5 before the code: edits and commits wait for the branch's approach too, a moved branch shares it only by tracking
 check "BLOCK: with its preflight, an edit and a commit there wait for the branch's approach, naming step 5" "2 1" "$(pfedit "$P/a.ts") $(pfcommit | grep -c 'rate the approaches (mergeworthy:pull-request step 5), then `pr-steps approach <work folder>/approach.md`')"
+AP="pr-steps approach $T/approach.md"; POTHER="$T/ap-other"; git init -q "$POTHER"
+check "a commit chained after the same command's pr-steps approach by && passes that check, after a cd and a git add too" "0 0 0" "$(pfcommit "$AP && git commit -m x" | grep -c 'pr-steps approach') $(pfcommit "cd $P && $AP && git add a && git commit -m x" | grep -c 'pr-steps approach') $(pfcommit "bash $R/bin/pr-steps approach $T/approach.md && git commit -m x" | grep -c 'pr-steps approach')"
+check "BLOCK: one a failed record could reach: after ;, ||, a pipe, a negation, or a ||'s other side; one recording another repo" "1 1 1 1 1 1" "$(pfcommit "$AP; git commit -m x" | grep -c 'pr-steps approach') $(pfcommit "$AP || git commit -m x" | grep -c 'pr-steps approach') $(pfcommit "$AP | tail -1 && git commit -m x" | grep -c 'pr-steps approach') $(pfcommit "! $AP && git commit -m x" | grep -c 'pr-steps approach') $(pfcommit "true || $AP && git commit -m x" | grep -c 'pr-steps approach') $(pfcommit "cd $POTHER && $AP && cd $P && git commit -m x" | grep -c 'pr-steps approach')"
 (cd "$P" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 check "an edit passes once the branch has its preflight and approach" 0 "$(pfedit "$P/a.ts")"
 check "git commit passes it too" 0 "$(pfcommit | grep -c 'pr-steps preflight\|pr-steps approach')"

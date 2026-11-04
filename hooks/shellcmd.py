@@ -182,13 +182,14 @@ class Seg(list):
     """A simple command's argv; scopes: the (id, kind, function name) of each scope it runs in, outermost first, for Where; loop: whether it
     runs inside a while or until loop; raw: each word's source as written, None when not known; unseen: the
     names its script, or a script running it, may set where Where can't follow (_unseen), whose values it never trusts; nested: whether
-    it is in a script the line runs (`eval`'s included), where a plain walk loses the dir (Where)."""
-    scopes, loop, raw, unseen, nested = (), False, None, frozenset(), False
+    it is in a script the line runs (`eval`'s included), where a plain walk loses the dir (Where); after: the argv of each command that exited 0
+    if this one runs at all, being before it in a chain of && (_passed)."""
+    scopes, loop, raw, unseen, nested, after = (), False, None, frozenset(), False, ()
 
 
-def _seg(argv, scopes=(), loop=False, raw=None):
+def _seg(argv, scopes=(), loop=False, raw=None, after=()):
     s = Seg(argv)
-    s.scopes, s.loop, s.raw = scopes, loop, raw
+    s.scopes, s.loop, s.raw, s.after = scopes, loop, raw, after
     return s
 
 
@@ -263,14 +264,24 @@ def _unseen(tree, src):
     return frozenset(names - {None} | assigned & loops)
 
 
+def _passed(s, src):
+    """The argv of each command that exited 0 when statement s did: a plain command, or each side of a &&; none under a negation, pipe or ||."""
+    c = s.get('Cmd') or {}
+    if s.get('Negated'):
+        return ()
+    if c.get('Type') == 'CallExpr':
+        return ([_word(a, src) for a in c.get('Args') or []],)
+    return _passed(c['X'], src) + _passed(c['Y'], src) if c.get('Type') == 'BinaryCmd' and c.get('Op') == '&&' else ()
+
+
 def _calls(node, src):
     """(the argv of every simple command under node, in order, each a Seg; the statements each heredoc of them is read by:
     (redirect, top statement, whether it is in a loop))."""
-    segs, docs, stack = [], [], [(node, None, (), False)]
+    segs, docs, stack = [], [], [(node, None, (), False, ())]
     while stack:
-        x, top, n, loop = stack.pop()
+        x, top, n, loop, after = stack.pop()
         if isinstance(x, list):
-            stack += [(y, top, n, loop) for y in reversed(x)]
+            stack += [(y, top, n, loop, after) for y in reversed(x)]
             continue
         if not isinstance(x, dict):
             continue
@@ -284,12 +295,13 @@ def _calls(node, src):
         raws = [w for r in redirs for w in (r['Op'], _src(r['Word'], src) if r.get('Word') else '')]
         if cmd.get('Type') == 'CallExpr':
             segs.append(_seg([_assign(a, src) for a in cmd.get('Assigns') or []] + [_word(a, src) for a in cmd.get('Args') or []] + words, inner['Cmd'], loop,
-                             [_src(a, src) for a in (cmd.get('Assigns') or []) + (cmd.get('Args') or [])] + raws))
+                             [_src(a, src) for a in (cmd.get('Assigns') or []) + (cmd.get('Args') or [])] + raws, after))
         elif cmd.get('Type') == 'DeclClause':
             segs.append(_seg([cmd['Variant']['Value']] + [_assign(a, src) for a in cmd.get('Args') or []] + words, inner['Cmd'], loop,
-                             [cmd['Variant']['Value']] + [_src(a, src) for a in cmd.get('Args') or []] + raws))
+                             [cmd['Variant']['Value']] + [_src(a, src) for a in cmd.get('Args') or []] + raws, after))
         docs += [(r, top or x, loop) for r in redirs if r.get('Hdoc')]
-        stack += [(v, None if k == 'Stmts' else (top or x) if 'Cmd' in x else top, inner[k], loop)  # each statement of a list is a top statement
+        chained = _passed(x['X'], src) if x.get('Type') == 'BinaryCmd' and x.get('Op') == '&&' else ()
+        stack += [(v, None if k == 'Stmts' else (top or x) if 'Cmd' in x else top, inner[k], loop, after + chained if k == 'Y' else after)  # each statement of a list is a top statement
                   for k, v in reversed(x.items()) if isinstance(v, (dict, list)) and k not in ('Pos', 'End', 'Hdoc')]
     return segs, docs
 
