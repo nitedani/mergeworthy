@@ -552,7 +552,7 @@ class Where:
             return vals
         out = []
         for v in map(os.path.expanduser, vals):
-            if PIECE in os.path.dirname(v):
+            if PIECE in os.path.dirname(v) or getattr(w, 'splits', False) and re.search(r'[\s*?[]', v):  # bash would split or match it: other paths
                 return UNKNOWN
             v = v.replace(PIECE, '_')
             if os.path.isabs(v):

@@ -2474,6 +2474,8 @@ check "a piece reaches a check as a valid path: a file named by \$\$ under a new
 IS="$T/spaced repo"; mkdir -p "$IS"; git -C "$IS" init -q; printf 'rules\n' > "$IS/AGENTS.md"
 check "BLOCK: a loop word mixing a quoted part that holds a space with an unquoted expansion can't be told, from a variable or written out; with no space it passes" "2 2 0" \
   "$(ibash "$IT" "R='$IS'; s=x; for f in \"\$R\"/\$s; do echo x > \"\$f\"; done" "$T/nogit") $(ibash "$IT" "s=x; for f in '$IS'/\$s; do echo x > \"\$f\"; done" "$T/nogit") $(ibash "$IT" "R=$T/nogit; s=x; for f in \"\$R\"/\$s; do echo x > \"\$f\"; done" "$T/nogit")"
+check "BLOCK: a loop value bash splits or matches when written unquoted can't be told; quoted it passes" "2 2 0" \
+  "$(ibash "$IT" "for f in \"$T/nogit/a $IS/f\"; do sed -i s/x/y/ \$f; done" "$T/nogit") $(ibash "$IT" "for f in \"$T/*/f\"; do sed -i s/x/y/ \$f; done" "$T/nogit") $(ibash "$IT" "for f in \"$T/nogit/a b\"; do sed -i s/x/y/ \"\$f\"; done" "$T/nogit")"
 check "BLOCK: a loop over an unquoted variable after IFS is set can't be told where it splits" "2" \
   "$(ibash "$IT" "IFS=:; L=$IS:$T/nogit; for f in \$L; do echo x > \"\$f/file\"; done" "$T/nogit")"
 check "BLOCK: awk after a hash can print any path; cut and head keep it slash-free" "2 0 0" \
