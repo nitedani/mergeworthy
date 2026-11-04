@@ -766,6 +766,24 @@ timeline += [{"event": "renamed", "actor": {"login": "brillout"}, "rename": {"fr
 print("|".join(l for l in scan() + scan() if "renames" in l))
 ')
 check "FOLLOW-UP: another account renaming your merged PR, once; your own rename nothing" '### FOLLOW-UP o/r#5: https://github.com/o/r/pull/5#rename-2026-10-14T10:00:00Z by brillout renames your PR: "fix: a" -> "fix(core): a"' "$got"
+# an account listed in ~/.mergeworthy/own-accounts is ours: its commit, reference and rename on a followed PR are no FOLLOW-UP (a reference is the note), and without the file they are
+OWNSCAN='
+commits[:] = [com("c1aaaaaaaaaa", "agent"), com("c0merge", "me")]
+files["c1aaaaaaaaaa"] = [{"filename": "a.ts", "status": "modified", "patch": hunk(11, 11, "x", "y")}]
+timeline[:] = [{"event": "cross-referenced", "actor": {"login": "agent"}, "source": {"issue": {"html_url": "<pr-9>", "pull_request": {}, "user": {"login": "alice"}}}},
+               {"event": "renamed", "actor": {"login": "agent"}, "rename": {"from": "x", "to": "y"}, "created_at": "2026-10-14T09:00:00Z"}]
+print("|".join(scan()))
+'
+got=$(follow "m.OWN = {'me', 'agent'}$OWNSCAN")
+check "own-accounts: a listed account's commit, reference and rename on a followed PR give no FOLLOW-UP, the reference the note" "note: FOLLOW-UP o/r#5: <pr-9> by agent references your PR" "$got"
+got=$(follow "$OWNSCAN")
+check "own-accounts: without the file the same commit, reference and rename are FOLLOW-UPs" "### FOLLOW-UP o/r#5: c1aaaaaaaa by agent changes lines from your PR <c-c1aaaaaaaaaa>|### FOLLOW-UP o/r#5: <pr-9> by agent references your PR|### FOLLOW-UP o/r#5: https://github.com/o/r/pull/5#rename-2026-10-14T09:00:00Z by agent renames your PR: \"x\" -> \"y\"" "$got"
+got=$(py '
+print(sorted(m.own_logins()))
+open(m.shared_path("own-accounts"), "w").write("Agent\n\nother\n"); print(sorted(m.own_logins())); os.remove(m.shared_path("own-accounts"))
+')
+check "own-accounts: no file is only the gh login; a file adds its logins, lower-cased, blank lines ignored" "['me']
+['agent', 'me', 'other']" "$got"
 got=$(py '
 json.dump({"since": "2026-01-01T00:00:00Z", "seen": {}, "prs": {}, "ci": {}, "is_pr": {}, "since_by": {}, "closed_scan": 0}, open(m.STATE, "w"))
 open(m.THREADS, "w").write("o/r 2\no/r 3\n"); open(os.path.join(m.HERE, "events.log"), "w").close(); m.ME = "me"
@@ -997,9 +1015,9 @@ cmd=$(mon)
 ( timeout 4 bash -c "$cmd" > "$M/out" 2>&1 & ); sleep 1
 printf '### ev1\n    ### a body line\nWATCH ERROR x\n' >> "$M/events.log"; sleep 2
 check "Monitor command: events within 2 s, body lines dropped" "### ev1|WATCH ERROR x|" "$(tr '\n' '|' < "$M/out")"
-cmd=$(mon '  '); : > "$M/events.log"; ( timeout 4 bash -c "$cmd" > "$M/out" 2>&1 & ); sleep 1
+cmd=$(mon '  '); : > "$M/events.log"; ( timeout 4 bash -c "$cmd" > "$M/out2" 2>&1 & ); sleep 1
 printf '### o/r#5 comment 9 by bob\nWATCH ERROR x\n### NEW ISSUE nitedani/mergeworthy#7 by eve\n### NEW PR nitedani/mergeworthy#8 by eve\n' >> "$M/events.log"; sleep 2
-check "the steward's Monitor command passes only a new mergeworthy issue" "### NEW ISSUE nitedani/mergeworthy#7 by eve|" "$(tr '\n' '|' < "$M/out")"
+check "the steward's Monitor command passes only a new mergeworthy issue" "### NEW ISSUE nitedani/mergeworthy#7 by eve|" "$(tr '\n' '|' < "$M/out2")"
 
 # A rate-limited `gh api user` prints the error JSON on stdout: it is no login. The watcher refuses to start rather than take it
 # as ME (every comment by the user's account, the agent's own gated posts too, then reads as a human's and gets an :eyes:).
