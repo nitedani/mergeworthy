@@ -2333,7 +2333,7 @@ iedit() { # <transcript> <tool> <file> [extra hook input as JSON]: pre-design-ga
   python3 -c 'import json,sys; d={"tool_name":sys.argv[2],"tool_input":{("notebook_path" if sys.argv[2]=="NotebookEdit" else "file_path"):sys.argv[3]},"cwd":sys.argv[4],"transcript_path":sys.argv[1]}; d.update(json.loads(sys.argv[5])); print(json.dumps(d))' "$1" "$2" "$3" "$T" "${4:-{\}}" | python3 "$R/hooks/pre-design-gate.py" 2>"$T/ierr"; echo $?
 }
 ibash() { # <transcript> <command> [cwd]: pre-bash-guard's exit code for the command run in cwd, by default $I
-  python3 -c 'import json,sys; print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[2]},"cwd":sys.argv[3],"transcript_path":sys.argv[1]}))' "$1" "$2" "${3:-$I}" | python3 "$R/hooks/pre-bash-guard.py" 2>/dev/null; echo $?
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[2]},"cwd":sys.argv[3],"transcript_path":sys.argv[1]}))' "$1" "$2" "${3:-$I}" | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/ierr"; echo $?
 }
 IT="$T/instr.jsonl"; ir_tr "$IT"
 check "BLOCK: an edit in a repo whose root has AGENTS.md and CLAUDE.md, before reading them, naming both" "2 1" "$(iedit "$IT" Edit "$I/a.ts") $(grep -c "read this repo's instructions first.*$I/AGENTS.md, $I/CLAUDE.md" "$T/ierr")"
@@ -2375,8 +2375,20 @@ check "BLOCK: a call to a function that calls one defined after it: the write af
   "$(ibash "$IT" "g() { f; }; f() { cd $I; }; cd $T/nogit; g; echo x > a.txt" "$T/nogit")"
 check "BLOCK: an absolute path whose folder holds an expansion left unexpanded (its text quoted elsewhere in the command) can't be told" 2 \
   "$(ibash "$IT" "WD=${I##*/}; echo '$T/\$WD/a.txt' > $T/\$WD/a.txt" "$T/nogit")"
-check "BLOCK: a written path that is a variable a branch may have changed, or a loop's over words holding a /, can't be told" "2 2" \
-  "$(ibash "$IT" "F=$I/a.txt; if false; then F=$T/nogit/other.txt; fi; echo x > \$F" "$T/nogit") $(ibash "$IT" "D=$T/nogit; for f in a/b c; do echo x > \$D/\$f; done" "$T/nogit")"
+check "BLOCK: a written path that is a variable a branch may have changed can't be told; a loop's variable over words holding a /, into the repo, is refused by its rule; over a command's output, can't be told" "2 2 2" \
+  "$(ibash "$IT" "F=$I/a.txt; if false; then F=$T/nogit/other.txt; fi; echo x > \$F" "$T/nogit") $(ibash "$IT" "D=$I; for f in a/b c; do echo x > \$D/\$f; done" "$T/nogit") $(ibash "$IT" "D=$T/nogit; for f in \$(ls a/b); do echo x > \$D/\$f; done" "$T/nogit")"
+check "a loop's variable holds the words the line lists: a write to each, in a folder or a name, passes outside any repo, from nested loops and assignments too" "0 0 0 0" \
+  "$(ibash "$IT" "cd $T/nogit && for d in a b; do echo x > \$d/f.txt; done") $(ibash "$IT" "D=$T/nogit; for f in a/b c; do echo x > \$D/\$f; done" "$T/nogit") $(ibash "$IT" "for a in x y; do for b in \$a/1 \$a/2; do echo x > \$b; done; done" "$T/nogit") $(ibash "$IT" "for n in a b; do D=$T/nogit/\$n; echo x > \$D/f; done" "$T/nogit")"
+check "BLOCK: a loop word naming the repo, among others, or reached from it, names the repo: read its instructions" "2 1 2 2 2" \
+  "$(ibash "$IT" "cd $T/nogit && for d in $I b; do echo x > \$d/f; done") $(grep -c "follow them: $I/AGENTS.md" "$T/ierr") $(ibash "$IT" "for n in $I b; do D=\$n; echo x > \$D/f; done" "$T/nogit") $(ibash "$IT" "for a in $I y; do for b in \$a/1; do echo x > \$b; done; done" "$T/nogit") $(ibash "$IT" "L='$I b'; for d in \$L; do echo x > \$d/f; done" "$T/nogit")"
+check "BLOCK: a loop's glob matches on disk are its values, into the repo; a brace word isn't listed; after the loop its variable can't be told; a command's output can't either" "2 2 2 2" \
+  "$(ibash "$IT" "for f in $T/instr/*.md; do sed -i s/a/b/ \$f; done" "$T/nogit") $(ibash "$IT" "for d in {$I,b}; do echo x > \$d/f; done" "$T/nogit") $(ibash "$IT" "for f in a b; do :; done; echo x > \$f" "$T/nogit") $(ibash "$IT" "for f in \$(rg -l x); do sed -i s/a/b/ \$f; done" "$T/nogit")"
+check "BLOCK: a loop's listed .review.out is refused by the review rule, naming who writes it" "2 1" \
+  "$(ibash "$IT" "for f in a.review.out; do printf CLEAN > \$f; done" "$T/nogit") $(grep -c 'codex exec -o' "$T/ierr")"
+check "BLOCK: a command named by a variable a loop's value set, or a positional parameter, stays refused" "2 2" \
+  "$(ibash "$IT" "for f in a b; do G=\$f; \$G push; done" "$T/nogit") $(ibash "$IT" "G=\$1; \$G push" "$T/nogit")"
+check "a loop over 64 words passes; BLOCK: over 65 it can't be told, saying the cap" "0 2 1" \
+  "$(ibash "$IT" "for f in $(seq -s ' ' 1 64); do echo x > \$f; done" "$T/nogit") $(ibash "$IT" "for f in $(seq -s ' ' 1 65); do echo x > \$f; done" "$T/nogit") $(grep -c 'more than 64 values' "$T/ierr")"
 check "a call to a function no body on the line changes dir in (a logging helper) keeps the dir: a relative write after it passes" 0 \
   "$(ibash "$IT" "log() { echo \"\$@\"; }; log starting; echo x > a.txt" "$T/nogit")"
 check "BLOCK: a loop variable its body names other than as \$f (set in a branch, read, let, \${f:=…}) is no longer the loop's word: a write to it can't be told" "2 2 2 2" \

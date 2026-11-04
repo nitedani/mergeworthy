@@ -4,7 +4,7 @@ parse() reads a command with mvdan/sh, bash's syntax as shfmt parses it (hooks/r
 ~/.mergeworthy/pydeps): every simple command it runs, in substitutions, heredocs a shell reads, `bash -c` and `eval` too. A
 command that doesn't parse, or a parser that can't be installed, yields the command's words split roughly, with the error,
 so a hook checks what it can and blocks a guarded verb it can't check."""
-import functools, hashlib, itertools, json, os, re, subprocess, sys
+import fnmatch, functools, glob, hashlib, itertools, json, os, re, subprocess, sys
 import work_folder
 
 
@@ -93,10 +93,11 @@ def _src(n, src):
 
 class Word(str):
     """A word as bash passes it (_word), with parts, each a tuple its kind leads: ('lit', text), ('var', name), ('exp', name, op, its word),
-    ('repl', name, all, pattern, replacement), ('sub', each pipeline stage's argv, None when it's anything else), ('piece',), a number, or ('opaque',)."""
-    def __new__(cls, text, parts=()):
+    ('repl', name, all, pattern, replacement), ('sub', each pipeline stage's argv, None when it's anything else), ('piece',), a number, or ('opaque',).
+    bare: its literal text outside quotes, where bash reads braces and globs; splits: whether an expansion stands outside double quotes."""
+    def __new__(cls, text, parts=(), bare='', splits=False):
         w = super().__new__(cls, text)
-        w.parts = tuple(parts)
+        w.parts, w.bare, w.splits = tuple(parts), bare, splits
         return w
 
 
@@ -132,13 +133,14 @@ def _expansion(p, src):
 
 def _word(w, src):
     """A word as bash passes it: quotes and escapes removed; expansions and substitutions as written."""
-    out, parts = [], []
+    out, parts, bare, splits = [], [], '', False
     def add(text, part=None):
         out.append(text)
         parts.append(part or ('lit', text))
     for p in w.get('Parts') or []:
         t, v = p.get('Type'), p.get('Value', '')
         if t == 'Lit':
+            bare += v
             add(re.sub(r'\\(.)', r'\1', v.replace('\\\n', ''), flags=re.S))
         elif t == 'SglQuoted':
             add(v.encode('latin-1', 'backslashreplace').decode('unicode_escape', 'replace') if p.get('Dollar') else v)
@@ -147,8 +149,9 @@ def _word(w, src):
                 if x.get('Type') == 'Lit': add(re.sub(r'\\([$`"\\])', r'\1', x.get('Value', '').replace('\\\n', '')))
                 else: add(_src(x, src), _expansion(x, src))
         else:
+            splits = True
             add(_src(p, src), _expansion(p, src))
-    return Word(''.join(out), parts)
+    return Word(''.join(out), parts, bare, splits)
 
 
 def _assign(a, src):
@@ -167,12 +170,12 @@ _ids = itertools.count()
 STDIN, CHILD = '<<', '-c'
 
 
-def _scope(kind, name='', plain=False):
+def _scope(kind, name='', items=()):
     """A new scope of kind, for Seg.scopes; name: the function whose body it is, a for loop's variable, CHILD for the script a child
     shell runs (`bash -c`), which gets none of the line's unexported variables, so it starts with them unknown, or STDIN for the script
-    a shell reads from a heredoc or <<<, which may run after later commands of the line moved, so it starts knowing nothing; plain: the loop
-    takes it from words of plain characters (no /, $, backtick, quote or glob)."""
-    return ((next(_ids), kind, name, plain),)
+    a shell reads from a heredoc or <<<, which may run after later commands of the line moved, so it starts knowing nothing; items: the
+    words the loop's variable takes."""
+    return ((next(_ids), kind, name, items),)
 
 
 class Seg(list):
@@ -273,9 +276,9 @@ def _calls(node, src):
             continue
         loop = loop or x.get('Type') == 'WhileClause'  # shfmt's node for until too
         var = ((x.get('Loop') or {}).get('Name') or {}).get('Value', '') if x.get('Type') == 'ForClause' else ''
-        plain = bool(var) and bool(x['Loop'].get('Items')) and all(re.fullmatch(r'[\w.+@%,:=-]+', _src(w, src)) for w in x['Loop']['Items'])
+        items = tuple(_word(w, src) for w in x['Loop'].get('Items') or []) if var else ()
         name = x['Name']['Value'] if x.get('Type') == 'FuncDecl' else var
-        inner = {k: n + _scope(kind, name, plain) if (kind := _kind(x, k)) else n for k, v in x.items() if isinstance(v, (dict, list))}
+        inner = {k: n + _scope(kind, name, items) if (kind := _kind(x, k)) else n for k, v in x.items() if isinstance(v, (dict, list))}
         cmd, redirs = x.get('Cmd') or {}, x.get('Redirs') or []
         words = [w for r in redirs for w in ((r.get('N') or {}).get('Value', '') + r['Op'], _word(r.get('Word') or {}, src))]
         raws = [w for r in redirs for w in (r['Op'], _src(r['Word'], src) if r.get('Word') else '')]
@@ -468,6 +471,24 @@ class Maybe(str):
     """A value a variable may hold or not (set in a branch or loop): Where.expand leaves the variable as written."""
 
 
+class Unknown(str):
+    """What Where.values and Where.files give for a word the line doesn't list the values of; its text says why, when there is more to say."""
+    def __bool__(self): return False
+
+
+CAP = 64  # a word's values and a file's candidates: the check runs git for each folder
+UNKNOWN, CAPPED = Unknown(), Unknown(f'its word may hold more than {CAP} values: name the files, or run a command per folder')
+
+
+class Many(Maybe):
+    """A variable's value that Where.values alone reads: the values it may hold here (vals), or Unknown. As a str it is the text as written, so
+    each other reader of a Maybe sees what it saw."""
+    def __new__(cls, text, vals):
+        m = super().__new__(cls, text)
+        m.vals = vals
+        return m
+
+
 class Where:
     """Where each simple command of one command line runs, walk() taking them in order, with the variables the line set
     (`D=~/x; cd "$D"`). It follows the forms agents write: a cd or pushd to a path (`cd /abs/dir && ...`, or relative to a dir it
@@ -478,7 +499,7 @@ class Where:
     holding an expansion it can't resolve; `cd -`, popd or a stack rotation) the dir is None until a cd to an absolute path, and a
     check that needs it blocks.
     That following is trust a plain walk doesn't give, so it is spent only where its variables are proven (strict expansion: Maybe,
-    Word.parts' quoting, Seg.unseen): a cd nested in a scope or once the plain walk lost the dir, and a written file's name (file). The
+    Word.parts' quoting, Seg.unseen): a cd nested in a scope or once the plain walk lost the dir, and a written file (files). The
     plain walk (main_dir, main_vars: every NAME=value the line runs, but an isolating scope's once it is left, then the environment's)
     decides each other cd, at the top level while it knows the dir, and every other expansion, as it did before scopes: a nested cd,
     `cd -` or popd loses its dir for good."""
@@ -503,21 +524,62 @@ class Where:
         base = self.dir if base == '' else base
         return None if re.search(r'[$`]', p) else p if os.path.isabs(p) else None if base is None else os.path.join(base, p)
 
-    def file(self, p):
-        """A file the current command names, p, resolved from the dir. None when its folder can't be told: no dir, or any expansion
-        left, which may hold a / (`$F`), except in its name the variable of a for loop it is in over plain words (`$S/$w.log`) that the
-        line sets nowhere else (Seg.unseen)."""
-        p = os.path.expanduser(self.expand(p, True))
-        words = {x[0][2] for x in self.scopes if x[0][1] == LOOP and x[0][3] and x[0][2] not in self.unseen}
-        folder, name = os.path.split(p)
-        name = re.sub(r'\$(?:(\w+)|\{(\w+)\})', lambda m: '' if (m[1] or m[2]) in words else m[0], name)
-        return None if re.search(r'[$`]', folder + name) or not os.path.isabs(p) and self.dir is None else os.path.join(self.dir or '/', p)
+    def files(self, w):
+        """The paths a file the current command names, word w, may be, each resolved from the dir. An Unknown when one's folder can't be told:
+        no dir for a relative one, or a value the line doesn't list."""
+        vals = self.values(w)
+        if isinstance(vals, Unknown):
+            return vals
+        out = []
+        for v in map(os.path.expanduser, vals):
+            if not os.path.isabs(v) and self.dir is None:
+                return UNKNOWN
+            out.append(os.path.join(self.dir or '/', v))
+        return out
+
+    def values(self, w):
+        """The values word w may hold here, what the line itself gives it; an Unknown when it doesn't list them or holds more than CAP."""
+        if not isinstance(w, Word):
+            v = self.expand(w, True)
+            return UNKNOWN if re.search(r'[$`]', v) else (v,)
+        out = ('',)
+        for p in w.parts:
+            vals = (UNKNOWN if re.search(r'[$`]', p[1]) else (p[1],)) if p[0] == 'lit' else self._var(p[1]) if p[0] == 'var' else UNKNOWN
+            if isinstance(vals, Unknown):
+                return vals
+            if len(out) * len(vals) > CAP:
+                return CAPPED
+            out = tuple(a + b for a in out for b in vals)
+        return tuple(dict.fromkeys(out))
+
+    def _var(self, n):
+        """The values variable n holds here (Seg.unseen: none it may hold unseen)."""
+        v = self.vars.get(n, os.environ.get(n))
+        if n in self.unseen or v is None:
+            return UNKNOWN
+        return v.vals if isinstance(v, Many) else UNKNOWN if isinstance(v, Maybe) or re.search(r'[$`]', v) else (v,)
+
+    def _listed(self, words):
+        """What a for loop's variable holds over words: each word's values, split and matched on disk as bash does."""
+        out = []
+        for w in words:
+            vals = UNKNOWN if '{' in w.bare else self.values(w)
+            if isinstance(vals, Unknown):
+                return Many('', vals)
+            for v in (y for x in vals for y in (x.split() if w.splits else [x])):
+                if (w.splits or re.search(r'[*?[]', w.bare)) and re.search(r'[*?[]', v):
+                    if not os.path.isabs(os.path.expanduser(v)) and self.dir is None:
+                        return Many('', UNKNOWN)
+                    out += glob.glob(os.path.expanduser(v), root_dir=self.dir) or [v]
+                else:
+                    out.append(v)
+        return Many('', UNKNOWN if not words else CAPPED if len(out) > CAP else tuple(dict.fromkeys(out)))
 
     def walk(self, segs):
         """Each of segs (parse()'s), with self moved to where it runs; self takes it once the caller is done with it."""
         for t in segs:
-            self.enter(t.scopes)
             self.unseen = t.unseen
+            self.enter(t.scopes)
             self.quoted = {w for w in t if '$' in w and (not isinstance(w, Word) or any(x[0] == 'lit' and '$' in x[1] for x in w.parts))}
             yield t
             self.step(t)
@@ -534,7 +596,7 @@ class Where:
         self.scopes = self.scopes[:n]
         for x in scopes[n:]:
             self.scopes.append([x, self.dir, False, dict(self.vars), set(), dict(self.main_vars)])
-            if x[1] == LOOP and x[2]: self.vars[x[2]] = Maybe(''); self.changed(x[2])  # each pass gives it another of its words
+            if x[1] == LOOP and x[2]: self.vars[x[2]] = self._listed(x[3]); self.changed(x[2])  # each pass gives it another of its words
             if x[2] == STDIN: self.dir = None
             if x[2] in (STDIN, CHILD): self.vars = {k: Maybe(v) for k, v in self.vars.items()} | {'PWD': _dir(self.dir)}  # a shell's PWD is where it starts
 
@@ -555,7 +617,9 @@ class Where:
         if words and all(re.match(r'^\w+=', x) for x in words):
             for x in words:  # each value expanded as it is assigned, but one whose $ the command quoted or escaped
                 n, v = x.split('=', 1)
-                self.vars[n], self.main_vars[n] = (v, v) if x in self.quoted else (self.expand(v, True), self.expand(v))
+                text, vals = v if x in self.quoted else self.expand(v, True), self.values(x)
+                vals = vals if isinstance(vals, Unknown) else tuple(y[len(n) + 1:] for y in vals)
+                self.vars[n], self.main_vars[n] = text if vals == (text,) else Many(text, vals), v if x in self.quoted else self.expand(v)
                 self.changed(n)
             if self.in_body(): self.func_vars.update(x.split('=', 1)[0] for x in words)
             return
