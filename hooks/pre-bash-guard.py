@@ -7,9 +7,10 @@ import json, re, sys, os, hashlib, subprocess
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
 import shellcmd
-from shellcmd import parse, segments, prog, opt, api_call, discussion_post, discussion_thread_of, names_discussion_mutation, env_of, origin, plain_create, PLAIN, new_post_drafts, branch_record, no_approach, no_preflight, no_instructions_read, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Where
+from shellcmd import parse, segments, prog, script, opt, api_call, discussion_post, discussion_thread_of, names_discussion_mutation, env_of, origin, plain_create, PLAIN, new_post_drafts, branch_record, no_approach, no_preflight, no_instructions_read, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Where
 import own_actions, steward, post_words, testpaths, threads_file, work_folder
 from t3_tasks import under_t3
+AGENT_TRAILER = re.compile(r'^Co-Authored-By: Claude', re.M | re.I)  # a commit without it is a maintainer's
 def missing_steps(d):
     head = subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
     rec = os.path.expanduser(f'~/.claude/pr-steps/{head}')
@@ -20,7 +21,7 @@ def missing_steps(d):
         if os.path.exists(os.path.expanduser(f'~/.claude/pr-steps/{c}')):
             rec = os.path.expanduser(f'~/.claude/pr-steps/{c}'); break
         parents, _, body = subprocess.run(['git', '-C', d, 'log', '-1', '--format=%P%x00%B', c], capture_output=True, text=True).stdout.partition('\0')
-        if len(parents.split()) != 1 or re.search(r'^Co-Authored-By: Claude', body, re.M | re.I): break
+        if len(parents.split()) != 1 or AGENT_TRAILER.search(body): break
     kinds = {l.split()[0] for l in open(rec)} if head and os.path.exists(rec) else set()
     kinds |= {'fresh'} if 'review' in kinds else set()  # records made before the six steps
     kinds |= {'shape'} if {'loopb', 'refactor'} <= kinds else set()  # records made before the shape pass
@@ -51,10 +52,10 @@ def block(msg):
     print(f"BLOCKED by pre-bash-guard: {msg}", file=sys.stderr); sys.exit(2)
 
 def known(d):
-    """d, a dir a check reads (where the command runs, from Where); one Where can't tell blocks."""
-    if d is None:
+    """d, what a check reads of where the command runs (from Where); one Where can't tell (None, or an Unknown saying why) blocks."""
+    if d is None or isinstance(d, shellcmd.Unknown):
         block("can't tell which dir this command runs in (after a cd to an expansion it can't resolve, `cd -`, popd, a cd in a branch, loop or function, "
-              "or a relative cd in a loop), so its checks can't run: cd to an absolute path first (`cd /abs/dir && <command>`), or pass absolute paths")
+              "or a relative cd in a loop), so its checks can't run: cd to an absolute path first (`cd /abs/dir && <command>`), or pass absolute paths" + (f"; {d}" if d not in (None, '') else ''))
     return d
 
 def short_has(t, letter):  # -f, -9f, -fu ...
@@ -433,7 +434,8 @@ def check_patches(d, pending=None, amend=False):
     """`finality` step 1 as a mechanism: a code file (no test or doc) changed by 5 commits of the branch since its first review
     (a verify, small, shape, reverify or fresh record) gets no 6th until `pr-steps finality` records the finality pass's plan on the head;
     a commit with that record, HEAD too, starts the counts over after it. Building before any review counts nothing. Only the
-    branch's own commits count (first parent): a merge commit, made or being made, is no change, nor are the commits it brings in.
+    branch's own commits count (first parent): a merge commit, made or being made, is no change, nor are the commits it brings in,
+    nor is a maintainer's (AGENT_TRAILER): the drift is the agent's.
     pending: the files the commit being made changes; None for a push, which checks the commits alone. amend: it replaces HEAD."""
     g = lambda *a: subprocess.run(['git', '-C', d, *a], capture_output=True, text=True).stdout
     base = g('symbolic-ref', '-q', '--short', 'refs/remotes/origin/HEAD').strip() or 'origin/main'
@@ -442,6 +444,7 @@ def check_patches(d, pending=None, amend=False):
     commits = g('rev-list', '--reverse', '--first-parent', 'HEAD', '--not', base).split()
     for c in commits:
         files = g('diff-tree', '--no-commit-id', '--name-only', '-r', c).split()  # none for a merge commit
+        if files and not AGENT_TRAILER.search(g('log', '-1', '--format=%B', c)): files = []
         if amend and c == commits[-1]: pending, files = sorted(set(pending or []) | set(files)), []  # the amended commit is the pending one
         for f in files if reviewed else []:
             count[f] = count.get(f, 0) + 1
@@ -643,7 +646,13 @@ def opened_branch(a, options=(), fields=()):
 
 NEED_DRAFT ="post from a draft file (--body-file /abs/drafts/<name>.md, -F body=@/abs/drafts/<name>.md or --input) that passed the gate"
 
+def recorded(step, after, repo):
+    """Whether a `pr-steps <step> ...` this command ran and && proved passed (Seg.after) wrote that record of repo's branch."""
+    rec = branch_record(repo, step)
+    return any(records.get(id(a)) == rec for a in after)
+
 def check(t, has_cd):
+    after = getattr(t, 'after', ())
     env = env_of(t)
     t = prog(t)
     if not t: return
@@ -687,7 +696,7 @@ def check(t, has_cd):
         if sub in ('commit', 'push') and repo is not None:
             check_steward(repo)
         if sub == 'commit' and repo is not None and os.path.isdir(repo):  # in a folder this hook can't resolve (`cd "$(mktemp -d)"`), a commit stays local
-            if why := no_preflight(repo) or no_approach(repo):
+            if why := not recorded('preflight', after, repo) and no_preflight(repo) or not recorded('approach', after, repo) and no_approach(repo):
                 block(why)
             check_commit_identity(overrides, repo)
             every = any(x == '--all' or re.fullmatch(r'-[a-zA-Z]*a[a-zA-Z]*', x) for x in rest)  # `git commit -a` commits the worktree's changes too
@@ -740,11 +749,12 @@ def check(t, has_cd):
         if a[1] == 'edit' and opt(a[2:], ['--title', '-t']) and (who := title_setter(*post_target('pr', a[2:], env, run_dir))):
             block(f"{who[0]} set this PR's title ({who[1]}): it is their decision. Keep it, or ask them on the PR first (mergeworthy:pull-request step 7)")
     # A review's verdict is the reviewer's final message, which it writes itself (`codex exec -o`, an agent's output file); an agent's stdout is it too
-    if p not in ('claude', 'codex') and any(where.expand(x).endswith('.review.out') for x in written_files(t)) and not by_agent():
+    files = [where.files(x) for x in written_files(t)]
+    if p not in ('claude', 'codex') and any(f.endswith('.review.out') for f in [*map(where.expand, written_files(t)), *(f for c in files for f in c or [])]) and not by_agent():
         block("a review's output is the reviewer's final message, written by the reviewer: `codex exec -o <out>`, or the agent writes <out> itself. "
               "Never write a verdict yourself (mergeworthy:delegate §Reviewers, post step 3)")
-    written = [known(where.file(x)) for x in written_files(t)]
-    for x in written:
+    written = [f for c in files for f in known(c)]
+    for x in dict.fromkeys(map(shellcmd.folder, written)):  # the instructions check runs git, once per folder
         if why := no_instructions_read(x, d):
             block(why)
     if any(os.path.realpath(x).startswith(RECORDS) for x in written):
@@ -907,8 +917,11 @@ if any(prog(x)[:1] and os.path.basename(prog(x)[0]) == 'gate-pass' for x in segs
     block("run gate-pass as its own command and read its exit code, then post in the next command: this check reads the gate record before the command runs (mergeworthy:post step 4)")
 clones = {}  # folder: the repo it was cloned from, for a `git clone` in this command
 wrote = set()  # the files the simple commands walked so far write: a compose file among them isn't written yet when its check runs
+records = {}  # each `pr-steps approach|preflight ...` walked so far, by its statement (Seg.stmt): the record it writes
 for s in where.walk(segs):
     run_dir, has_cd = where.dir, where.moved
+    if run_dir is not None and (a := script(prog(s)))[:1] and os.path.basename(a[0]) == 'pr-steps' and a[1:2] in (['approach'], ['preflight']) and a[2:]:
+        records[id(s.stmt)] = branch_record(run_dir, a[1])
     if run_dir is not None and prog(s)[:2] == ['git', 'clone'] and (ops := [where.expand(x) for x in operands(prog(s)[2:]) if not x.startswith('-')]):
         src = ops[0] if repo_of(ops[0]) else os.path.join(run_dir, os.path.expanduser(ops[0]))
         clones[os.path.normpath(os.path.join(run_dir, ops[1] if ops[1:] else re.sub(r'(\.git)?/*$', '', ops[0]).rsplit('/', 1)[-1]))] = src
@@ -924,7 +937,7 @@ for s in where.walk(segs):
         if w & {'git', 'gh', 'glab'} and w & {'push', 'commit', 'pr', 'issue', 'api', 'release', 'mr'} or 'git' not in w and w & {'push', 'commit'}:
             block(f"`{named}` runs a command named only when it runs, with `{' '.join(words)[:80]}`: write the command out, so it can be checked")
     check(s, has_cd)
-    wrote.update(os.path.normpath(f) for f in map(where.file, written_files(prog(s))) if f)
+    wrote.update(os.path.normpath(f) for x in written_files(prog(s)) for f in where.files(x) or [])
 try:  # pending until post-bash-register sees how the command ended
     own_actions.intend(own_actions.key(d), own)
 except OSError:

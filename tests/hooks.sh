@@ -2297,7 +2297,7 @@ P="$T/pf"; mkdir -p "$P"; git -C "$P" init -q -b feat
 pf() { (cd "$P" && bash "$R/bin/pr-steps" preflight "$@" >/dev/null 2>&1; echo $?); }
 pfurl() { (cd "$P" && CHROME="$T/bin/fakechrome" FAKE_DOM="$1" bash "$R/bin/pr-steps" preflight https://app.test --host-resolver-rules=x >/dev/null 2>&1; echo $?); }
 pfedit() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"Edit","tool_input":{"file_path":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$T" | python3 "$R/hooks/pre-design-gate.py" 2>/dev/null; echo $?; }
-pfcommit() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"git commit -m x"},"cwd":sys.argv[1]}))' "$P" | python3 "$R/hooks/pre-bash-guard.py" 2>&1 >/dev/null; }
+pfcommit() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[2]},"cwd":sys.argv[1]}))' "$P" "${1:-git commit -m x}" | python3 "$R/hooks/pre-bash-guard.py" 2>&1 >/dev/null; }
 cat > "$T/bin/fakechrome" <<'EOF'
 #!/bin/bash
 [ -n "$FAKE_LOG" ] && echo "pulse=${PULSE_SERVER:-unset} $*" >> "$FAKE_LOG"
@@ -2314,9 +2314,14 @@ printf '\x89PNG\r\n\x1a\n' > "$T/pf.png"; touch -d '-20 min' "$T/pf.png"; check 
 check "BLOCK: a URL that shows Chrome's error page" 1 "$(pfurl '<div id="main-frame-error">This site can’t be reached</div>')"
 check "BLOCK: a URL that renders a blank page" 1 "$(pfurl '<html><body><div id="root"></div><script>boot()</script></body></html>')"
 check "an edit still waits after refused preflights" 2 "$(pfedit "$P/a.ts")"
+check "a commit chained after the same command's pr-steps preflight by && passes that check; after ; it still waits" "0 1" "$(pfcommit "pr-steps preflight 'none, because x' && git commit -m x" | grep -c 'pr-steps preflight') $(pfcommit "pr-steps preflight 'none, because x'; git commit -m x" | grep -c 'pr-steps preflight')"
 check "a URL that renders records the screenshot Chrome took" 0 "$(pfurl '<body><h1>Dashboard</h1></body>')"
 # pull-request step 5 before the code: edits and commits wait for the branch's approach too, a moved branch shares it only by tracking
 check "BLOCK: with its preflight, an edit and a commit there wait for the branch's approach, naming step 5" "2 1" "$(pfedit "$P/a.ts") $(pfcommit | grep -c 'rate the approaches (mergeworthy:pull-request step 5), then `pr-steps approach <work folder>/approach.md`')"
+AP="pr-steps approach $T/approach.md"; POTHER="$T/ap-other"; git init -q "$POTHER"
+check "a commit chained after the same command's pr-steps approach by && passes that check, after a cd and a git add too" "0 0 0" "$(pfcommit "$AP && git commit -m x" | grep -c 'pr-steps approach') $(pfcommit "cd $P && $AP && git add a && git commit -m x" | grep -c 'pr-steps approach') $(pfcommit "bash $R/bin/pr-steps approach $T/approach.md && git commit -m x" | grep -c 'pr-steps approach')"
+check "BLOCK: one a failed record could reach: after ;, ||, a pipe, a negation, or a ||'s other side; one recording another repo" "1 1 1 1 1 1" "$(pfcommit "$AP; git commit -m x" | grep -c 'pr-steps approach') $(pfcommit "$AP || git commit -m x" | grep -c 'pr-steps approach') $(pfcommit "$AP | tail -1 && git commit -m x" | grep -c 'pr-steps approach') $(pfcommit "! $AP && git commit -m x" | grep -c 'pr-steps approach') $(pfcommit "true || $AP && git commit -m x" | grep -c 'pr-steps approach') $(pfcommit "cd $POTHER && $AP && cd $P && git commit -m x" | grep -c 'pr-steps approach')"
+check "BLOCK: an identical record that may have failed here, then a passing one in another repo chained to a commit here, proves nothing for this repo" 1 "$(pfcommit "$AP; cd $POTHER && $AP && git -C $P commit -m x" | grep -c 'pr-steps approach')"
 (cd "$P" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 check "an edit passes once the branch has its preflight and approach" 0 "$(pfedit "$P/a.ts")"
 check "git commit passes it too" 0 "$(pfcommit | grep -c 'pr-steps preflight\|pr-steps approach')"
@@ -2393,7 +2398,7 @@ iedit() { # <transcript> <tool> <file> [extra hook input as JSON]: pre-design-ga
   python3 -c 'import json,sys; d={"tool_name":sys.argv[2],"tool_input":{("notebook_path" if sys.argv[2]=="NotebookEdit" else "file_path"):sys.argv[3]},"cwd":sys.argv[4],"transcript_path":sys.argv[1]}; d.update(json.loads(sys.argv[5])); print(json.dumps(d))' "$1" "$2" "$3" "$T" "${4:-{\}}" | python3 "$R/hooks/pre-design-gate.py" 2>"$T/ierr"; echo $?
 }
 ibash() { # <transcript> <command> [cwd]: pre-bash-guard's exit code for the command run in cwd, by default $I
-  python3 -c 'import json,sys; print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[2]},"cwd":sys.argv[3],"transcript_path":sys.argv[1]}))' "$1" "$2" "${3:-$I}" | python3 "$R/hooks/pre-bash-guard.py" 2>/dev/null; echo $?
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[2]},"cwd":sys.argv[3],"transcript_path":sys.argv[1]}))' "$1" "$2" "${3:-$I}" | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/ierr"; echo $?
 }
 IT="$T/instr.jsonl"; ir_tr "$IT"
 check "BLOCK: an edit in a repo whose root has AGENTS.md and CLAUDE.md, before reading them, naming both" "2 1" "$(iedit "$IT" Edit "$I/a.ts") $(grep -c "read this repo's instructions first.*$I/AGENTS.md, $I/CLAUDE.md" "$T/ierr")"
@@ -2423,14 +2428,58 @@ check "BLOCK: a call to a function the line defines runs its cd or assignment th
   "$(ibash "$IT" "f() { cd $I; }; cd $T/nogit; f; echo x > a.txt" "$T/nogit") $(ibash "$IT" "f() { WD=$I; }; WD=$T/nogit; f; echo x > \$WD/a.txt" "$T/nogit")"
 check "BLOCK: a word with a quoted or escaped \$ isn't expanded: a write to '\$WD/a.txt' or \\\$WD/a.txt can't be told" "2 2" \
   "$(ibash "$IT" "WD=$T/nogit; echo x > '\$WD/a.txt'") $(ibash "$IT" "WD=$T/nogit; echo x > \\\$WD/a.txt")"
+check "a word's quoted part holding no \$ leaves its expansion expanded: a write to \"\$WD\"'/a.txt' after WD=… resolves; a quote inside its substitution doesn't make a word literal, a quoted or escaped \$ does" "0 False True True" \
+  "$(ibash "$IT" "WD=$T/nogit; echo x > \"\$WD\"'/a.txt'") $(python3 - "$R/hooks" <<'PY2'
+import sys; sys.path.insert(0, sys.argv[1]); import shellcmd as s
+print(*[(w := s.Where('/'), [w.quoted for _ in w.walk(s.segments(c))])[1][0] != set() for c in ("n=$(echo $f | tr '/.' '__')", "echo x > '$WD/a.txt'", 'echo x > \\$WD/a.txt')])
+PY2
+)"
 check "BLOCK: the same text quoted in one word and written plain in another: the plain redirect into the repo isn't taken as literal" 2 \
   "$(ibash "$IT" "WD=$I; echo '\$WD/a.txt' > \$WD/a.txt" "$T/nogit")"
 check "BLOCK: a call to a function that calls one defined after it: the write after the call can't be told" 2 \
   "$(ibash "$IT" "g() { f; }; f() { cd $I; }; cd $T/nogit; g; echo x > a.txt" "$T/nogit")"
 check "BLOCK: an absolute path whose folder holds an expansion left unexpanded (its text quoted elsewhere in the command) can't be told" 2 \
   "$(ibash "$IT" "WD=${I##*/}; echo '$T/\$WD/a.txt' > $T/\$WD/a.txt" "$T/nogit")"
-check "BLOCK: a written path that is a variable a branch may have changed, or a loop's over words holding a /, can't be told" "2 2" \
-  "$(ibash "$IT" "F=$I/a.txt; if false; then F=$T/nogit/other.txt; fi; echo x > \$F" "$T/nogit") $(ibash "$IT" "D=$T/nogit; for f in a/b c; do echo x > \$D/\$f; done" "$T/nogit")"
+check "BLOCK: a written path that is a variable a branch may have changed can't be told; a loop's variable over words holding a /, into the repo, is refused by its rule; over a command's output, can't be told" "2 2 2" \
+  "$(ibash "$IT" "F=$I/a.txt; if false; then F=$T/nogit/other.txt; fi; echo x > \$F" "$T/nogit") $(ibash "$IT" "D=$I; for f in a/b c; do echo x > \$D/\$f; done" "$T/nogit") $(ibash "$IT" "D=$T/nogit; for f in \$(ls a/b); do echo x > \$D/\$f; done" "$T/nogit")"
+check "a loop's variable holds the words the line lists: a write to each, in a folder or a name, passes outside any repo, from nested loops and assignments too" "0 0 0 0" \
+  "$(ibash "$IT" "cd $T/nogit && for d in a b; do echo x > \$d/f.txt; done") $(ibash "$IT" "D=$T/nogit; for f in a/b c; do echo x > \$D/\$f; done" "$T/nogit") $(ibash "$IT" "for a in x y; do for b in \$a/1 \$a/2; do echo x > \$b; done; done" "$T/nogit") $(ibash "$IT" "for n in a b; do D=$T/nogit/\$n; echo x > \$D/f; done" "$T/nogit")"
+check "BLOCK: a loop word naming the repo, among others, or reached from it, names the repo: read its instructions" "2 1 2 2 2" \
+  "$(ibash "$IT" "cd $T/nogit && for d in $I b; do echo x > \$d/f; done") $(grep -c "follow them: $I/AGENTS.md" "$T/ierr") $(ibash "$IT" "for n in $I b; do D=\$n; echo x > \$D/f; done" "$T/nogit") $(ibash "$IT" "for a in $I y; do for b in \$a/1; do echo x > \$b; done; done" "$T/nogit") $(ibash "$IT" "L='$I b'; for d in \$L; do echo x > \$d/f; done" "$T/nogit")"
+check "BLOCK: a loop's glob matches on disk are its values, into the repo; a brace word isn't listed; after the loop its variable can't be told; a command's output can't either" "2 2 2 2" \
+  "$(ibash "$IT" "for f in $T/*/CLAUDE.md; do sed -i s/a/b/ \$f; done" "$T/nogit") $(ibash "$IT" "for d in {$I,b}; do echo x > \$d/f; done" "$T/nogit") $(ibash "$IT" "for f in a b; do :; done; echo x > \$f" "$T/nogit") $(ibash "$IT" "for f in \$(rg -l x); do sed -i s/a/b/ \$f; done" "$T/nogit")"
+check "BLOCK: a loop's listed .review.out is refused by the review rule, naming who writes it" "2 1" \
+  "$(ibash "$IT" "for f in a.review.out; do printf CLEAN > \$f; done" "$T/nogit") $(grep -c 'codex exec -o' "$T/ierr")"
+check "BLOCK: a command named by a variable a loop's value set, or a positional parameter, stays refused" "2 2" \
+  "$(ibash "$IT" "for f in a b; do G=\$f; \$G push; done" "$T/nogit") $(ibash "$IT" "G=\$1; \$G push" "$T/nogit")"
+check "a loop over 64 words passes; BLOCK: over 65 it can't be told, saying the cap" "0 2 1" \
+  "$(ibash "$IT" "for f in $(seq -s ' ' 1 64); do echo x > \$f; done" "$T/nogit") $(ibash "$IT" "for f in $(seq -s ' ' 1 65); do echo x > \$f; done" "$T/nogit") $(grep -c 'more than 64 values' "$T/ierr")"
+check "a cd to a loop's word in a subshell holds there: a relative write lands under it, outside any repo it passes; BLOCK: under the repo; BLOCK: a relative cd in the loop's own body, whose next pass starts where it ended" "0 2 2" \
+  "$(ibash "$IT" "cd $T/nogit && for n in a b; do (cd \$n && echo hi > ../\$n-install.log; echo \"\$n \$?\"); done") $(ibash "$IT" "for n in $I b; do (cd \$n && echo x > f); done" "$T/nogit") $(ibash "$IT" "for v in a b; do cd \$v; echo x > f; done" "$T/nogit")"
+check "BLOCK: a relative file from each of a cd's listed targets, past the cap, can't be told, saying the cap" "2 1" "$(ibash "$IT" "for a in $(seq -s ' ' 1 9); do (cd \$a; for b in $(seq -s ' ' 1 9); do echo x > \$b; done); done" "$T/nogit") $(grep -c 'more than 64 values' "$T/ierr")"
+check "a subshell's cd to a loop's word ends with it: a relative write after it lands where the line was" 0 "$(ibash "$IT" "for n in $I; do (cd \$n; true); echo y > g; done" "$T/nogit")"
+check "BLOCK: a cd in a branch over a loop's words, once it is left, can't be told; an absolute one in the loop's body lands in each word, the repo too" "2 2" \
+  "$(ibash "$IT" "for n in $T/nogit; do if true; then cd \$n; fi; done; echo x > f" "$T/nogit") $(ibash "$IT" "for v in $I $T/nogit; do cd \$v; echo x > f; done" "$T/nogit")"
+check "a part that can't hold a / may stand in a file's name: \$\$, \$(( )), \${#x}, \$(basename), \${f##*/}, \${f//\\//_}, \$(date +%s), \$(git rev-parse HEAD), a hash" "0 0 0 0 0 0 0 0 0" \
+  "$(ibash "$IT" "cd $T/nogit && echo x > /tmp/x.\$\$") $(ibash "$IT" "echo x > a\$((1+1))" "$T/nogit") $(ibash "$IT" "echo x > a\${#y}" "$T/nogit") $(ibash "$IT" "cd $T/nogit && for f in a/x b/y; do echo x > out-\$(basename \$f).txt; done") $(ibash "$IT" "for j in \$(ls); do echo x > ci-\${j##*/}.log; done" "$T/nogit") $(ibash "$IT" "for j in \$(ls); do echo x > ci-\${j//\\//_}.log; done" "$T/nogit") $(ibash "$IT" "echo x > \$(date -u +%Y-%m-%d_%s).log" "$T/nogit") $(ibash "$IT" "echo x > \$(git rev-parse --short HEAD).log" "$T/nogit") $(ibash "$IT" "echo x > \$(echo y | md5sum | cut -c1-8).log" "$T/nogit")"
+check "a pattern over a loop's words is evaluated per word: \${g/:/-}, n=\${b%%:*}, \${f%.md}; BLOCK: when a value lands in the repo" "0 0 2 2" \
+  "$(ibash "$IT" "for g in a:b c:d; do echo x > \${g/:/-}.log; done" "$T/nogit") $(ibash "$IT" "for b in 1:x 2:y; do n=\${b%%:*}; echo x > branch-\$n.md; done" "$T/nogit") $(ibash "$IT" "for f in $I/a.md; do echo x > \${f%.md}.log; done" "$T/nogit") $(ibash "$IT" "for f in $I:b; do echo x > \${f%%:*}/log; done" "$T/nogit")"
+check "BLOCK: a piece in a file's folder; a date format that may print a /; an unknown's pattern that leaves its /; a command's output, a hash of a named file's too" "2 2 2 2 2" \
+  "$(ibash "$IT" "echo x > \$(date +%s)/a" "$T/nogit") $(ibash "$IT" "echo x > a\$(date +%D)" "$T/nogit") $(ibash "$IT" "echo x > \$(rg -l x)" "$T/nogit") $(ibash "$IT" "for j in \$(ls); do echo x > \${j%%:*}; done" "$T/nogit") $(ibash "$IT" "echo x > \$(md5sum a/b)" "$T/nogit")"
+check "\$(echo … | tr …) is a piece only when it can't print a /: over a word with none, or one tr removes; BLOCK: over a word holding one, an unknown word, or tr adding one" "0 0 2 2 2" \
+  "$(ibash "$IT" "for f in a; do echo x > \$(echo \$f | tr a b); done" "$T/nogit") $(ibash "$IT" "for f in \$(ls); do echo x > \$(echo \$f | tr / _); done" "$T/nogit") $(ibash "$IT" "for f in a/b; do echo x > \$(echo \$f | tr a b); done" "$T/nogit") $(ibash "$IT" "for f in \$(ls); do echo x > \$(echo \$f | tr a b); done" "$T/nogit") $(ibash "$IT" "for f in a; do echo x > \$(echo \$f | tr a /); done" "$T/nogit")"
+check "dirname is evaluated per value: a write under it from the repo's path blocks, from outside passes; a default is the value when the variable is unset" "2 0 2 0" \
+  "$(ibash "$IT" "for f in $I/a; do echo x > \$(dirname \$f)/b; done" "$T/nogit") $(ibash "$IT" "for f in $T/nogit/a; do echo x > \$(dirname \$f)/b; done" "$T/nogit") $(ibash "$IT" "echo x > \${MW_UNSET:-$I}/b" "$T/nogit") $(ibash "$IT" "echo x > \${MW_UNSET:-$T/nogit}/b" "$T/nogit")"
+check "a piece reaches a check as a valid path: a file named by \$\$ under a new folder of the repo is that repo's; BLOCK: a cd to one, or a loop's glob under one, can't be told" "2 2 2" "$(ibash "$IT" "echo x > $I/new/a.\$\$" "$T/nogit") $(ibash "$IT" "cd /tmp/x.\$\$ && echo x > f" "$T/nogit") $(ibash "$IT" "for f in /tmp/x.\$\$/*; do echo x > \$f/a; done" "$T/nogit")"
+IS="$T/spaced repo"; mkdir -p "$IS"; git -C "$IS" init -q; printf 'rules\n' > "$IS/AGENTS.md"
+check "BLOCK: a loop word mixing a quoted part that holds a space with an unquoted expansion can't be told, from a variable or written out; with no space it passes" "2 2 0" \
+  "$(ibash "$IT" "R='$IS'; s=x; for f in \"\$R\"/\$s; do echo x > \"\$f\"; done" "$T/nogit") $(ibash "$IT" "s=x; for f in '$IS'/\$s; do echo x > \"\$f\"; done" "$T/nogit") $(ibash "$IT" "R=$T/nogit; s=x; for f in \"\$R\"/\$s; do echo x > \"\$f\"; done" "$T/nogit")"
+check "BLOCK: a loop value bash splits or matches when written unquoted can't be told; quoted it passes" "2 2 0" \
+  "$(ibash "$IT" "for f in \"$T/nogit/a $IS/f\"; do sed -i s/x/y/ \$f; done" "$T/nogit") $(ibash "$IT" "for f in \"$T/*/f\"; do sed -i s/x/y/ \$f; done" "$T/nogit") $(ibash "$IT" "for f in \"$T/nogit/a b\"; do sed -i s/x/y/ \"\$f\"; done" "$T/nogit")"
+check "BLOCK: a loop over an unquoted variable after IFS is set can't be told where it splits" "2" \
+  "$(ibash "$IT" "IFS=:; L=$IS:$T/nogit; for f in \$L; do echo x > \"\$f/file\"; done" "$T/nogit")"
+check "BLOCK: awk after a hash can print any path; cut and head keep it slash-free" "2 0 0" \
+  "$(ibash "$IT" "echo x > \"\$(echo x | sha256sum | awk '{print \"$I/hash\"}')\"" "$T/nogit") $(ibash "$IT" "echo x > \$(echo y | sha256sum | cut -c1-8).log" "$T/nogit") $(ibash "$IT" "echo x > \$(echo y | md5sum | head -c 8).log" "$T/nogit")"
 check "a call to a function no body on the line changes dir in (a logging helper) keeps the dir: a relative write after it passes" 0 \
   "$(ibash "$IT" "log() { echo \"\$@\"; }; log starting; echo x > a.txt" "$T/nogit")"
 check "BLOCK: a loop variable its body names other than as \$f (set in a branch, read, let, \${f:=…}) is no longer the loop's word: a write to it can't be told" "2 2 2 2" \
@@ -3358,7 +3407,7 @@ check "the same answer in a session that started an agent is a hand-back" 2 "$(s
 tr_file 'I have nothing else to start. The review waits on the maintainer, and the watcher will tell me when that happens.' work
 check "'the watcher will tell me when' is no hand-back; 'Tell me when' and 'or ask me to' are" "0 2 2" "$(slj) $(slj 'Tell me when to re-check CI.') $(slj 'I can rerun it, or ask me to stop.')"
 # ---------- pre-bash-guard: a code file's 6th change on the branch waits for `pr-steps finality` ----------
-SP="$T/simp"; git init -q -b main "$SP"; sc() { git -C "$SP" -c user.name=t -c user.email=t@t commit -q "$@"; }
+SP="$T/simp"; git init -q -b main "$SP"; sc() { git -C "$SP" -c user.name=t -c user.email=t@t commit -q --trailer 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>' "$@"; }
 echo 0 > "$SP/a.py"; mkdir "$SP/tests"; echo 0 > "$SP/tests/a_test.py"; git -C "$SP" add -A; sc -m base
 git -C "$SP" update-ref refs/remotes/origin/main HEAD; git -C "$SP" checkout -q -b fix; (cd "$SP" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 for i in 1 2 3 4 5 6; do echo "d$i" >> "$SP/a.py"; sc -am "d$i"; done; echo d7 >> "$SP/a.py"; git -C "$SP" add a.py
@@ -3384,7 +3433,7 @@ for i in 7 8 9 10 11 12; do echo "p$i" >> "$SP/a.py"; git -C "$SP" add a.py; sc 
 echo p13 >> "$SP/a.py"; git -C "$SP" add a.py; r13=$(bg 'git commit -m p13' "$SP"); (cd "$SP" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null)
 check "BLOCK: a 7th change; a finality record on the head that holds the 6th unblocks it" "2 0" "$r13 $(bg 'git commit -m p13' "$SP")"
 # merges: a merge of the base, being made or in the history, is no change, and a finality record on a merge commit counts
-SM="$T/simpm"; git init -q -b main "$SM"; mc() { git -C "$SM" -c user.name=t -c user.email=t@t "$@"; }
+SM="$T/simpm"; git init -q -b main "$SM"; mc() { if [ "$1" = commit ]; then shift; git -C "$SM" -c user.name=t -c user.email=t@t commit --trailer "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" "$@"; else git -C "$SM" -c user.name=t -c user.email=t@t "$@"; fi; }
 seq 1 10 > "$SM/a.py"; git -C "$SM" add -A; mc commit -q -m base
 git -C "$SM" update-ref refs/remotes/origin/main HEAD; git -C "$SM" checkout -q -b fix; (cd "$SM" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 (cd "$SM" && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null)
@@ -3401,7 +3450,7 @@ mc commit -q -m p10; mc checkout -q -b side; for i in 1 2 3 4 5 6; do echo "s$i"
 mc checkout -q fix; mc merge -q --no-ff --no-edit side; echo f1 >> "$SM/b.py"; git -C "$SM" add b.py
 check "the commits a merge of another branch brings in are not the branch's own: its next change of their file passes" 0 "$(bg 'git commit -m f1' "$SM")"
 # a suite named test<Name> is a test: its changes are no drift (#93's demo/testRun.ts); src/util.ts is code
-SH="$TASKW/suite"; mkdir -p "$SH/demo" "$SH/src"; git init -q -b main "$SH"; hc() { git -C "$SH" -c user.name=t -c user.email=t@t commit -q "$@"; }
+SH="$TASKW/suite"; mkdir -p "$SH/demo" "$SH/src"; git init -q -b main "$SH"; hc() { git -C "$SH" -c user.name=t -c user.email=t@t commit -q --trailer 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>' "$@"; }
 echo 'export const testRun = () => {}' > "$SH/demo/testRun.ts"; echo "import { testRun } from './testRun'; testRun('pnpm run dev')" > "$SH/demo/test-dev.test.ts"; echo 'export const util = 0' > "$SH/src/util.ts"
 git -C "$SH" add -A; hc -m base; git -C "$SH" update-ref refs/remotes/origin/main HEAD; git -C "$SH" remote add origin git@gitlab.com:acme/app.git; git -C "$SH" checkout -q -b suite
 echo '[]' > "$FX/gl_projects_acme_2Fapp_merge_requests_state_opened_source_branch_suite"
@@ -3411,5 +3460,13 @@ rs=$(MERGEWORTHY_WATCHER=off bg 'git push git@gitlab.com:acme/app.git HEAD:suite
 for i in 1 2 3 4 5 6; do echo "// $i" >> "$SH/src/util.ts"; hc -am "util $i"; done; quick "$SH"
 check "a push after 6 changes to demo/testRun.ts since the review passes; after 6 to src/util.ts, blocked, naming it" "0 2 1" \
   "$rs $(MERGEWORTHY_WATCHER=off bg 'git push git@gitlab.com:acme/app.git HEAD:suite' "$SH") $(grep -c 'src/util.ts got a 6th change' "$T/err")"
+# a maintainer's commits (no agent trailer) aren't the agent's drift: blocked as a "17th change" with 14 of them brillout's
+SO="$T/simpo"; git init -q -b main "$SO"; oc() { git -C "$SO" -c user.name=t -c user.email=t@t commit -q "$@"; }; ac() { oc --trailer 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>' "$@"; }
+echo 0 > "$SO/a.py"; git -C "$SO" add -A; oc -m base; git -C "$SO" update-ref refs/remotes/origin/main HEAD; git -C "$SO" checkout -q -b fix; echo 1 >> "$SO/a.py"; ac -am reviewed
+(cd "$SO" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null)
+for i in 1 2 3 4 5 6 7 8; do echo "m$i" >> "$SO/a.py"; oc -am "m$i"; done; echo a1 >> "$SO/a.py"; git -C "$SO" add a.py
+check "8 commits without the agent's trailer on a file count nothing: the agent's next change of it passes" 0 "$(bg 'git commit -m a1' "$SO")"
+for i in 1 2 3 4 5; do echo "a$i" >> "$SO/a.py"; ac -am "a$i"; done; echo a6 >> "$SO/a.py"; git -C "$SO" add a.py
+check "BLOCK: the agent's own 6th change among them is still refused, counted as its 6th" "2 1" "$(bg 'git commit -m a6' "$SO") $(grep -c 'a.py would get a 6th change' "$T/err")"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]
