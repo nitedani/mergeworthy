@@ -50,8 +50,9 @@ text = '\n'.join(str(ti.get(k) or '') for k in ('prompt', 'task', 'message', 'de
 # a ticket is the brief file the agent executes; a file under ~/.mergeworthy (project notes, an installed skill) is a reference
 mw = os.path.abspath(os.path.expanduser('~/.mergeworthy')) + os.sep
 MD = r'(?<![\w.~/-])(~?/[^\s`\'"]+\.md)\b'
-tickets = sorted({t for t in (os.path.abspath(os.path.expanduser(m)) for m in re.findall(MD, text))
-                  if not t.startswith(mw)})
+tickets_in = lambda s: sorted({t for t in (os.path.abspath(os.path.expanduser(m)) for m in re.findall(MD, s))
+                               if not t.startswith(mw)})
+tickets = tickets_in(text)
 # A gate review (names a review output `.out` and CLEAN) starts only on drafts that passed post-lint in their current form.
 # Reference files (project notes, installed skills) are read by the agent, not part of its brief: their history SHAs pin nothing
 gate_text = text + '\n' + '\n'.join(open(t).read() for t in tickets if os.path.isfile(t))
@@ -113,11 +114,17 @@ path_set = lambda t: {q for p in re.findall(r'(~?/[^\s`\'"()<>,;]+)', t) if (q :
 paths = path_set(gate_text)
 # A brief names a worktree in its launch text or its brief file (a ticket it says to follow, or named so), not in a reference it names
 # or an installed skill (~/.mergeworthy/current may link to a worktree of mergeworthy)
-said = {os.path.abspath(os.path.expanduser(m)) for x in re.split(r'(?<=[.!?])\s+|\n', text)
-        if re.search(r'\b(follow|execute|exactly|what it says)\b', x, re.I) for m in re.findall(MD, x)}
-worktree_paths = {p for p in path_set(text + '\n' + '\n'.join(open(t).read() for t in tickets if os.path.isfile(t)
-                                      and (t in said or re.search(r'brief|ticket|prompt', os.path.basename(t)))))
-                  if not (os.path.abspath(p) + os.sep).startswith(mw + 'current' + os.sep)}
+said_in = lambda s: {os.path.abspath(os.path.expanduser(m)) for x in re.split(r'(?<=[.!?])\s+|\n', s)
+                     if re.search(r'\b(follow|execute|exactly|what it says)\b', x, re.I) for m in re.findall(MD, x)}
+said = said_in(text)
+worktree_paths_in = lambda s: {p for p in path_set(s + '\n' + '\n'.join(open(t).read() for t in tickets_in(s) if os.path.isfile(t)
+                                                   and (t in said_in(s) or re.search(r'brief|ticket|prompt', os.path.basename(t)))))
+                               if not (os.path.abspath(p) + os.sep).startswith(mw + 'current' + os.sep)}
+worktree_paths = worktree_paths_in(text)
+def linked(p):
+    top = git_top(p)
+    return top if top and os.path.isfile(os.path.join(top, '.git')) else None
+worktrees_in = lambda s: sorted({w for w in (linked(os.path.realpath(p)) for p in worktree_paths_in(s)) if w})
 # A brief pinned to an older commit of a worktree it names (a linked one: the user's own checkouts are read at any
 # commit) re-runs work on code that has moved on.
 shas = set(re.findall(r'\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\b', gate_text))
@@ -156,16 +163,13 @@ if rnd and (ti.get('role') == 'review' or not ti.get('role') and re.search(r'\be
                              "List what is still open in the report or the PR body's notes and go on (push, ready, the next step) without waiting for an answer; "
                              "only an open blocker keeps the PR in draft. A maintainer's ask on a new head starts a new loop name.\n")
             sys.exit(2)
-# A linked worktree the brief names (not the launcher's own) where another agent is still working: T3 can show that agent
-# interrupted or cancelled while it runs. A process with its cwd there, or an agent transcript written in the last five
-# minutes that names it, means it is alive. Only an agent's transcript counts (a main session, the steward's too, names paths
-# it doesn't work in), not the launcher's own, nor that of a T3 task that completed and won't be woken again (a review round's last agent).
-if not register:
-    def linked(p):
-        top = git_top(p)
-        return top if top and os.path.isfile(os.path.join(top, '.git')) else None
-    own = linked(os.path.realpath(d.get('cwd') or '/'))
-    wts = sorted({w for w in (linked(os.path.realpath(p)) for p in worktree_paths) if w and w != own})
+# One writer per worktree: a writer (any role but review or research) waits for a linked worktree its brief names (not the launcher's
+# own) that holds another session's process, or that a live writer job names, whose agent isn't the launcher. T3 can show that
+# agent interrupted or cancelled while it runs, so agent_jobs.finished decides.
+READERS = ('review', 'research')
+if not register and ti.get('role') not in READERS:
+    own, sid = linked(os.path.realpath(d.get('cwd') or '/')), d.get('session_id')
+    wts = [w for w in worktrees_in(text) if w != own]
     anc, p = set(), os.getpid()
     while wts and p > 1:
         anc.add(p)
@@ -177,23 +181,27 @@ if not register:
             if e.isdigit() and int(e) not in anc:
                 procs.append((e, os.readlink(f'/proc/{e}/cwd'), open(f'/proc/{e}/comm').read().strip()))
         except OSError: pass
-    me, now, logs = os.path.realpath(d.get('transcript_path') or '/'), time.time(), []
-    for f in sorted(glob.glob(os.path.expanduser('~/.claude/projects/*/*.jsonl')) + glob.glob(os.path.expanduser('~/.claude/projects/*/*/subagents/*.jsonl'))) if wts else ():
-        try:
-            if os.path.realpath(f) != me and now - os.path.getmtime(f) < 300:
-                logs.append((f, int(now - os.path.getmtime(f)), open(f, 'rb').read()))
-        except OSError: pass
-    busy = []
+    def launchers_own(pid):
+        try: return bool(sid) and f'CLAUDE_CODE_SESSION_ID={sid}'.encode() in open(f'/proc/{pid}/environ', 'rb').read().split(b'\0')
+        except OSError: return False
+    me, busy = os.path.realpath(d.get('transcript_path') or '/'), []
+    writers = [j for _, j in agent_jobs.jobs() if j.get('role') not in READERS] if wts else []
+    for j in writers:
+        if 'worktrees' not in j: j['worktrees'] = worktrees_in(j.get('brief', ''))  # registered before jobs recorded theirs
     for w in wts:
-        pids = [f'{e} ({c})' for e, cwd, c in procs if cwd == w or cwd.startswith(w + '/')]
-        named = [f'{f} (written {age}s ago)' for f, age, b in logs if re.search(re.escape(w.encode()) + rb'(?![\w.-])', b)  # the path itself, not a longer sibling
-                 and ('/subagents/' in f or steward.is_task(agent_jobs.session_id(f)))  # an agent's, not a main session's
-                 and not steward.task_done(agent_jobs.session_id(f))]
-        if pids or named:
-            busy.append(f"{w}: " + '; '.join((['processes with their cwd there: ' + ', '.join(pids)] if pids else []) + (['transcripts naming it: ' + ', '.join(named)] if named else [])))
+        pids = [f'{e} ({c})' for e, cwd, c in procs if (cwd == w or cwd.startswith(w + '/')) and not launchers_own(e)]
+        held = []
+        for j in writers:
+            if w in j['worktrees'] and not agent_jobs.finished(j):
+                a = agent_jobs.transcript(j)
+                if not a or os.path.realpath(a) != me:
+                    held.append(f"{j['key'][:160]} (started {int((time.time() - j['started']) / 60)} min ago, its transcript: {a or 'not started'})")
+        if pids or held:
+            busy.append(f"{w}: " + '; '.join((['processes with their cwd there: ' + ', '.join(pids)] if pids else []) + (['live writer jobs: ' + ', '.join(held)] if held else [])))
     if busy:
-        sys.stderr.write("BLOCKED: another agent is still working in a worktree this brief names (T3's interrupted or cancelled status doesn't mean it stopped):\n"
-                         + '\n'.join(busy) + "\nContinue that agent with a message, or wait for it to finish; a replacement goes in a fresh worktree.\n")
+        sys.stderr.write("BLOCKED: another writer is working in a worktree this brief names (T3's interrupted or cancelled status doesn't mean it stopped):\n"
+                         + '\n'.join(busy) + "\nContinue that agent with a message, or wait for it to finish; a replacement goes in a fresh worktree. "
+                         "A job whose agent has ended and whose result you read: `agent-job done <key>`.\n")
         sys.exit(2)
 # A brief that writes or reviews code, docs or a post (any role but research or test) for a repo whose maintainers' notes exist
 # (delegate step 3) names the project file, so the agent reads them: by owner/repo, or by a path in that repo's checkout. A memory-refresh
@@ -378,7 +386,7 @@ lock = open(jobs + '.lock', 'a'); fcntl.flock(lock, fcntl.LOCK_EX)
 if register:
     try: launched = json.load(open(pre))['launched']; os.remove(pre)
     except (OSError, ValueError, KeyError, TypeError): launched = time.time()
-    json.dump({'key': key, 'started': time.time(), 'launched': launched, 'brief': task,
+    json.dump({'key': key, 'started': time.time(), 'launched': launched, 'brief': task, 'role': ti.get('role'), 'worktrees': worktrees_in(text),
                'session': d.get('session_id'), 'transcript': d.get('transcript_path')}, open(f, 'w'))
     # an agent now runs memory-prep's brief: stop-lint's hourly repeat of the refresh order waits an hour
     for t in tickets:

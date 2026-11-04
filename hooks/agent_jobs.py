@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""The jobs pre-agent-dedupe registered (~/.claude/agent-jobs, one JSON file each: key, started, and the task, the launcher's
-session and transcript) and whether each one's agent has finished. T3's notices miss a run that ended interrupted or failed
-and was revived, or that wrote its report without a final message, so the agent's own transcript decides: the earliest-started
+"""The jobs pre-agent-dedupe registered (~/.claude/agent-jobs, one JSON file each: key, started, and the task, role, the linked
+worktrees its brief names, the launcher's session and transcript) and whether each one's agent has finished. T3's notices miss
+a run that ended interrupted or failed and was revived, or that wrote its report without a final message, so the agent's own transcript decides: the earliest-started
 one under ~/.claude/projects or ~/.codex/sessions that started at or after the launch and whose first prompt carries the job's
 whole task (or, for a job an older hook registered with only its key and start, every ticket path in the key). pre-agent-dedupe
 lets no open job's task contain another's, so that names the agent's own.
 It has finished when that transcript has been quiet for QUIET
-seconds with no tool call pending, or for LONG seconds whatever it was doing (no foreground tool call runs ten minutes),
-while T3 Code shows no active run or background command of its thread and no agent it launched is still at work."""
+seconds with no tool call pending, for LONG seconds whatever it was doing (no foreground tool call runs ten minutes), or
+Claude Code stopped it, while T3 Code shows no active run or background command of its thread and no agent it launched is still at work."""
 import datetime, glob, hashlib, itertools, json, os, re, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
-import steward, t3_tasks
+import memory_file, steward, t3_tasks
 from shellcmd import rlines
 
 JOBS = os.path.expanduser('~/.claude/agent-jobs')
@@ -19,6 +19,7 @@ LAUNCHED = os.path.expanduser('~/.claude/agent-jobs-launch')  # <job file>: when
 LAUNCH = re.compile(rb'"name": ?"(Agent|Task|mcp__[^"]*(delegate_task|t3_thread_launch))"')  # pre-agent-dedupe's matcher
 QUIET, LONG, OPEN = 180, 660, 24 * 3600
 TASK_NOTICE = re.compile(r'<task-notification>\s*<task-id>(\w+)</task-id>')  # Claude Code's, for a background agent or command
+KILLED = re.compile(TASK_NOTICE.pattern + r'.*?<status>killed</status>', re.S)
 CODEX = '~/.codex/sessions/*/*/*/rollout-*.jsonl'  # T3 Code's Codex agents  # OPEN: pre-agent-dedupe's window, after which a job no longer counts
 
 def jobs(now=None):
@@ -152,13 +153,48 @@ def pending(path):
                 return o['type'] == 'assistant' and any(isinstance(b, dict) and b.get('type') == 'tool_use' for b in c or [] if not isinstance(c, str))
     return False
 
+def since(launcher, after):
+    """The entries of the launcher's transcript from time `after` on, last first, so only those are read."""
+    try:
+        for l in rlines(launcher or '/nonexistent'):
+            if b'"timestamp"' not in l: continue
+            try: e = json.loads(l); at = stamp(e['timestamp'])
+            except (ValueError, KeyError, TypeError, AttributeError): continue
+            if at < after: return
+            yield e
+    except OSError: pass
+
+def prompted(path):
+    """When the agent last got a prompt (its task, a message sent to it), 0 with none. Stopping it writes a text line too."""
+    for l in rlines(path):
+        if b'"user"' not in l: continue
+        try:
+            o = json.loads(l)
+            if o['type'] == 'user' and any(t.strip() and not t.startswith('[Request interrupted') for t in memory_file.texts(o)):
+                return stamp(o['timestamp'])
+        except (ValueError, KeyError, TypeError, AttributeError): continue
+    return 0
+
+def stopped(job, path):
+    """The launcher's transcript says Claude Code stopped the job's subagent (its `killed` notice, or TaskStop's result),
+    and no prompt has resumed it since."""
+    agent = re.fullmatch(r'agent-(\w+)\.jsonl', os.path.basename(path))
+    if not agent: return False
+    for e in since(job.get('transcript'), prompted(path)):
+        r = e.get('toolUseResult')
+        if isinstance(r, dict) and r.get('task_id') == agent[1]: return True
+        c = e.get('content') if e.get('type') == 'queue-operation' else (e.get('message') or {}).get('content') if e.get('type') == 'user' else (e.get('attachment') or {}).get('prompt')
+        k = isinstance(c, str) and KILLED.match(c)
+        if k and k[1] == agent[1]: return True
+    return False
+
 def finished(job, now=None, _seen=()):
     """(transcript, its mtime) when the job's agent has finished, else None. An agent whose T3 thread has an active run
     (waiting on an approval) or background command still running, or that launched agents of its own, hasn't finished."""
     p = transcript(job)
     if not p: return None
     m = os.path.getmtime(p); quiet = (now or time.time()) - m
-    if not (quiet >= LONG or (quiet >= QUIET and not pending(p))): return None
+    if not (quiet >= LONG or (quiet >= QUIET and not pending(p)) or stopped(job, p)): return None
     sid = session_id(p)
     if steward.busy(sid) or sid not in _seen and any(j.get('session') == sid and not finished(j, now, _seen + (sid,)) for _, j in jobs(now)):
         return None
@@ -176,21 +212,15 @@ def noticed(launcher, path):
     """The launcher's transcript got a notice of the agent's end after the agent last wrote: T3 Code's for a task of the agent's
     thread (its launch, a message sent to it, a continuation), or Claude Code's <task-notification> or Agent result for its
     subagent. A run revived after it, or one that ended with no notice, wrote after the last one."""
-    ids, after = steward.tasks(session_id(path)), wrote(path)
+    ids = steward.tasks(session_id(path))
     agent = re.fullmatch(r'agent-(\w+)\.jsonl', os.path.basename(path))
-    try:
-        for l in rlines(launcher or '/nonexistent'):  # last first, so only what came since the agent's last write is read
-            if b'"timestamp"' not in l: continue
-            try: e = json.loads(l); at = stamp(e['timestamp'])
-            except (ValueError, KeyError, TypeError, AttributeError): continue
-            if at < after: return False
-            r = e.get('toolUseResult')
-            if agent and isinstance(r, dict) and r.get('agentId') == agent[1] and r.get('status') == 'completed': return True
-            # delivered as a prompt, or mid-turn as a queued_command attachment
-            c = (e.get('message') or {}).get('content') if e.get('type') == 'user' else (e.get('attachment') or {}).get('prompt')
-            n, cn = isinstance(c, str) and t3_tasks.NOTICE.match(c), isinstance(c, str) and TASK_NOTICE.match(c)
-            if n and n[1] in ids or agent and cn and cn[1] == agent[1]: return True
-    except OSError: pass
+    for e in since(launcher, wrote(path)):
+        r = e.get('toolUseResult')
+        if agent and isinstance(r, dict) and r.get('agentId') == agent[1] and r.get('status') == 'completed': return True
+        # delivered as a prompt, or mid-turn as a queued_command attachment
+        c = (e.get('message') or {}).get('content') if e.get('type') == 'user' else (e.get('attachment') or {}).get('prompt')
+        n, cn = isinstance(c, str) and t3_tasks.NOTICE.match(c), isinstance(c, str) and TASK_NOTICE.match(c)
+        if n and n[1] in ids or agent and cn and cn[1] == agent[1]: return True
     return False
 
 def reported(f, mtime):
