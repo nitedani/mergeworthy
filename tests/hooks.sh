@@ -1416,6 +1416,10 @@ python3 "$R/bin/agent-job" done "Implement the review in $T/aw" >/dev/null
 wjob "$AS/reader.jsonl" "Review the fix again in $T/aw" review 0
 check "a writer launch into a worktree whose only live job is a reviewer passes" 0 "$(alive "Run e2e with a reviewer in $T/aw")"
 python3 "$R/bin/agent-job" done "Review the fix again in $T/aw" >/dev/null
+mkdir -p "$HOME/.mergeworthy/work/wb"; printf 'Work in %s.\n' "$T/aw" > "$HOME/.mergeworthy/work/wb/job-brief.md"
+wjob "$AS/wb.jsonl" "Follow $HOME/.mergeworthy/work/wb/job-brief.md exactly" '' 0
+check "BLOCK: a live writer job sent by a brief file in the work folder holds the worktree that file names" 2 "$(alive "Run e2e beside a work brief in $T/aw")"
+python3 "$R/bin/agent-job" done "Follow $HOME/.mergeworthy/work/wb/job-brief.md exactly" >/dev/null
 # a stopped Claude subagent frees its worktree at once, by its launcher's transcript: the lines Claude Code writes (a real kill's, its ids aside)
 KN="$AS/agent-a7ef.jsonl"; wjob "$KN" "Implement more in $T/aw" '' 0
 kill_line() { # form task-id [status]: what reaches the launcher when an agent is stopped, after its prompt and before the line stopping writes in its transcript

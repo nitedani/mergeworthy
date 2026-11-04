@@ -50,9 +50,8 @@ text = '\n'.join(str(ti.get(k) or '') for k in ('prompt', 'task', 'message', 'de
 # a ticket is the brief file the agent executes; a file under ~/.mergeworthy (project notes, an installed skill) is a reference
 mw = os.path.abspath(os.path.expanduser('~/.mergeworthy')) + os.sep
 MD = r'(?<![\w.~/-])(~?/[^\s`\'"]+\.md)\b'
-tickets_in = lambda s: sorted({t for t in (os.path.abspath(os.path.expanduser(m)) for m in re.findall(MD, s))
-                               if not t.startswith(mw)})
-tickets = tickets_in(text)
+tickets = sorted({t for t in (os.path.abspath(os.path.expanduser(m)) for m in re.findall(MD, text))
+                  if not t.startswith(mw)})
 # A gate review (names a review output `.out` and CLEAN) starts only on drafts that passed post-lint in their current form.
 # Reference files (project notes, installed skills) are read by the agent, not part of its brief: their history SHAs pin nothing
 gate_text = text + '\n' + '\n'.join(open(t).read() for t in tickets if os.path.isfile(t))
@@ -116,9 +115,12 @@ paths = path_set(gate_text)
 # or an installed skill (~/.mergeworthy/current may link to a worktree of mergeworthy)
 said_in = lambda s: {os.path.abspath(os.path.expanduser(m)) for x in re.split(r'(?<=[.!?])\s+|\n', s)
                      if re.search(r'\b(follow|execute|exactly|what it says)\b', x, re.I) for m in re.findall(MD, x)}
-said = said_in(text)
-worktree_paths_in = lambda s: {p for p in path_set(s + '\n' + '\n'.join(open(t).read() for t in tickets_in(s) if os.path.isfile(t)
-                                                   and (t in said_in(s) or re.search(r'brief|ticket|prompt', os.path.basename(t)))))
+# the brief the launch executes: its own text, and each file it says to follow or names as a brief, under the work folder too
+# (`Follow ~/.mergeworthy/work/<task>/brief.md exactly`); never a reference it names, nor an installed skill or a project file
+executed_in = lambda s: [t for t in sorted({os.path.abspath(os.path.expanduser(m)) for m in re.findall(MD, s)})
+                         if os.path.isfile(t) and not t.startswith((mw + 'current' + os.sep, mw + 'projects' + os.sep))
+                         and (t in said_in(s) or re.search(r'brief|ticket|prompt', os.path.basename(t)))]
+worktree_paths_in = lambda s: {p for p in path_set(s + '\n' + '\n'.join(open(t, errors='replace').read() for t in executed_in(s)))
                                if not (os.path.abspath(p) + os.sep).startswith(mw + 'current' + os.sep)}
 worktree_paths = worktree_paths_in(text)
 def linked(p):
@@ -320,12 +322,7 @@ if not register and ti.get('role') not in ('research', 'test') and 'memory-refre
 # pull-request step 5 is the build's input: an implementer brief names `Approach: <path>`, the newest approach record of a checkout it names
 # (pr-steps approach). A later build of that record's PR names a newer record, or the same one marked `(unchanged: <why>)`.
 BUILT = os.path.expanduser('~/.claude/approach-builds')  # per approach record: the time of the record the PR's last build was briefed on
-# the brief the launch executes: its own text, and each file it says to follow or names as a brief, under the work folder too
-# (`Follow ~/.mergeworthy/work/<task>/brief.md exactly`); never a reference it names, nor an installed skill or a project file
-executed = [t for t in sorted({os.path.abspath(os.path.expanduser(m)) for m in re.findall(MD, text)})
-            if os.path.isfile(t) and not t.startswith((mw + 'current' + os.sep, mw + 'projects' + os.sep))
-            and (t in said or re.search(r'brief|ticket|prompt', os.path.basename(t)))]
-exec_text = text + '\n' + '\n'.join(open(t, errors='replace').read() for t in executed)
+exec_text = text + '\n' + '\n'.join(open(t, errors='replace').read() for t in executed_in(text))
 def brief_approach():
     """(record file, its newest line's time, the unchanged reason or '') of an implementer brief's Approach line; blocks when it has none."""
     m = re.search(r'^[ \t>*-]*Approach:\s*(\S+\.md)\b(.*)$', exec_text, re.M)
