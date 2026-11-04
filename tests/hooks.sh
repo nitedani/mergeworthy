@@ -1420,6 +1420,21 @@ mkdir -p "$HOME/.mergeworthy/work/wb"; printf 'Work in %s.\n' "$T/aw" > "$HOME/.
 wjob "$AS/wb.jsonl" "Follow $HOME/.mergeworthy/work/wb/job-brief.md exactly" '' 0
 check "BLOCK: a live writer job sent by a brief file in the work folder holds the worktree that file names" 2 "$(alive "Run e2e beside a work brief in $T/aw")"
 python3 "$R/bin/agent-job" done "Follow $HOME/.mergeworthy/work/wb/job-brief.md exactly" >/dev/null
+# writer calls still outstanding (launched, not registered) hold a worktree: two launches in one message, or a foreground Agent
+PW="$T/pw-launcher.jsonl"; : > "$PW"
+pw() { # tool_use_id task [role] [agent's transcript: the launch comes from that subagent]
+  python3 -c 'import json,sys; u,t,r,a,c,l=sys.argv[1:]; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","cwd":c,"tool_use_id":u,"transcript_path":l,"session_id":"pw",**({"agent_id":"pw","agent_transcript_path":a} if a else {}),"tool_input":{"task":t,"title":t,**({"role":r} if r else {})}}))' "$1" "$2" "${3:-}" "${4:-}" "$OC" "$PW" \
+    | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
+pw_back() { python3 -c 'import glob,json,os,sys,time; [json.dump({**r, "launched": time.time() - int(sys.argv[2])}, open(f, "w")) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs-launch/*")) for r in [json.load(open(f))] if r["task"] == sys.argv[1]]' "$1" "$2"; }  # task seconds: launched that long ago
+check "BLOCK: a second writer call into a worktree naming the outstanding one; a reviewer passes; the same call again gets the job's refusal" "0 2 1 0 2 1" \
+  "$(pw a "Implement alpha in $T/aw") $(pw b "Implement beta in $T/aw") $(grep -c 'Implement alpha' "$T/err") $(pw c "Review alpha in $T/aw" review) $(pw a "Implement alpha in $T/aw") $(grep -c 'already launched' "$T/err")"
+pw_back "Implement alpha in $T/aw" 3600
+check "an outstanding call whose agent never started stops holding (a crash mid-call)" 0 "$(pw g "Implement gamma in $T/aw")"
+pw_back "Implement gamma in $T/aw" 600; child_log "$AS/pw-agent.jsonl" "Implement gamma in $T/aw" 0 text
+check "an outstanding call's own agent launching into its worktree passes; another launcher is refused while that agent runs" "0 2" "$(pw d "Implement delta in $T/aw" '' "$AS/pw-agent.jsonl") $(pw e "Implement epsilon in $T/aw")"
+python3 -c 'import json,sys; print(json.dumps({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":i} for i in sys.argv[1:]]}}))' g d >> "$PW"
+check "a call that returned no longer holds" 0 "$(pw z "Implement zeta in $T/aw")"
+rm -f $(grep -l pw-launcher "$HOME"/.claude/agent-jobs-launch/*)
 # a stopped Claude subagent frees its worktree at once, by its launcher's transcript: the lines Claude Code writes (a real kill's, its ids aside)
 KN="$AS/agent-a7ef.jsonl"; wjob "$KN" "Implement more in $T/aw" '' 0
 kill_line() { # form task-id [status]: what reaches the launcher when an agent is stopped, after its prompt and before the line stopping writes in its transcript

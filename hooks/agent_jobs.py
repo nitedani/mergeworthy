@@ -15,7 +15,7 @@ from shellcmd import rlines
 
 JOBS = os.path.expanduser('~/.claude/agent-jobs')
 REPORTED = os.path.expanduser('~/.claude/agent-jobs-reported')  # <job file>-<transcript mtime>: reported once per finish
-LAUNCHED = os.path.expanduser('~/.claude/agent-jobs-launch')  # <job file>: when pre-agent-dedupe let its launch through, its key, task, tool_use_id and launcher transcript
+LAUNCHED = os.path.expanduser('~/.claude/agent-jobs-launch')  # <job file>: when pre-agent-dedupe let its launch through, its key, task, role, worktrees, tool_use_id and launcher transcript
 LAUNCH = re.compile(rb'"name": ?"(Agent|Task|mcp__[^"]*(delegate_task|t3_thread_launch))"')  # pre-agent-dedupe's matcher
 QUIET, LONG, OPEN = 180, 660, 24 * 3600
 TASK_NOTICE = re.compile(r'<task-notification>\s*<task-id>(\w+)</task-id>')  # Claude Code's, for a background agent or command

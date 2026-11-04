@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import failclosed
 import agent_jobs, memory_file, project_file, steward, subprocess
 from post_words import fence_spans
-from shellcmd import branch_record, segments, prog, git_argv, rlines, Where
+from shellcmd import branch_record, segments, prog, git_argv, rlines, transcript, Where
 from work_folder import git_top, task_of
 from t3_tasks import under_t3
 register = sys.argv[1:] == ['register']
@@ -165,46 +165,6 @@ if rnd and (ti.get('role') == 'review' or not ti.get('role') and re.search(r'\be
                              "List what is still open in the report or the PR body's notes and go on (push, ready, the next step) without waiting for an answer; "
                              "only an open blocker keeps the PR in draft. A maintainer's ask on a new head starts a new loop name.\n")
             sys.exit(2)
-# One writer per worktree: a writer (any role but review or research) waits for a linked worktree its brief names (not the launcher's
-# own) that holds another session's process, or that a live writer job names, whose agent isn't the launcher. T3 can show that
-# agent interrupted or cancelled while it runs, so agent_jobs.finished decides.
-READERS = ('review', 'research')
-if not register and ti.get('role') not in READERS:
-    own, sid = linked(os.path.realpath(d.get('cwd') or '/')), d.get('session_id')
-    wts = [w for w in worktrees_in(text) if w != own]
-    anc, p = set(), os.getpid()
-    while wts and p > 1:
-        anc.add(p)
-        try: p = int(open(f'/proc/{p}/stat').read().rsplit(')', 1)[1].split()[1])
-        except (OSError, IndexError, ValueError): break
-    procs = []
-    for e in os.listdir('/proc') if wts else ():
-        try:
-            if e.isdigit() and int(e) not in anc:
-                procs.append((e, os.readlink(f'/proc/{e}/cwd'), open(f'/proc/{e}/comm').read().strip()))
-        except OSError: pass
-    def launchers_own(pid):
-        try: return bool(sid) and f'CLAUDE_CODE_SESSION_ID={sid}'.encode() in open(f'/proc/{pid}/environ', 'rb').read().split(b'\0')
-        except OSError: return False
-    me, busy = os.path.realpath(d.get('transcript_path') or '/'), []
-    writers = [j for _, j in agent_jobs.jobs() if j.get('role') not in READERS] if wts else []
-    for j in writers:
-        if 'worktrees' not in j: j['worktrees'] = worktrees_in(j.get('brief', ''))  # registered before jobs recorded theirs
-    for w in wts:
-        pids = [f'{e} ({c})' for e, cwd, c in procs if (cwd == w or cwd.startswith(w + '/')) and not launchers_own(e)]
-        held = []
-        for j in writers:
-            if w in j['worktrees'] and not agent_jobs.finished(j):
-                a = agent_jobs.transcript(j)
-                if not a or os.path.realpath(a) != me:
-                    held.append(f"{j['key'][:160]} (started {int((time.time() - j['started']) / 60)} min ago, its transcript: {a or 'not started'})")
-        if pids or held:
-            busy.append(f"{w}: " + '; '.join((['processes with their cwd there: ' + ', '.join(pids)] if pids else []) + (['live writer jobs: ' + ', '.join(held)] if held else [])))
-    if busy:
-        sys.stderr.write("BLOCKED: another writer is working in a worktree this brief names (T3's interrupted or cancelled status doesn't mean it stopped):\n"
-                         + '\n'.join(busy) + "\nContinue that agent with a message, or wait for it to finish; a replacement goes in a fresh worktree. "
-                         "A job whose agent has ended and whose result you read: `agent-job done <key>`.\n")
-        sys.exit(2)
 # A brief that writes or reviews code, docs or a post (any role but research or test) for a repo whose maintainers' notes exist
 # (delegate step 3) names the project file, so the agent reads them: by owner/repo, or by a path in that repo's checkout. A memory-refresh
 # brief reads only the session log.
@@ -371,16 +331,79 @@ if root and (ti.get('role') == 'research' or re.search(r'\bresearch', f"{ti.get(
         sys.exit(2)
 # a fan-out runs several agents on one brief, each under its own title and naming its part in its task: the title is part of the job
 key = ' '.join([*tickets, str(ti.get('title') or ti.get('description') or '').strip()]).strip()
+jobs = os.path.expanduser('~/.claude/agent-jobs'); os.makedirs(jobs, exist_ok=True)
+# one launch at a time checks the open jobs and leaves its record, so launches in one message see each other; held until exit
+lock = open(jobs + '.lock', 'a'); fcntl.flock(lock, fcntl.LOCK_EX)
+def returned(path, use_id):
+    """The launcher's transcript holds the call's tool_result: another hook blocked it, or it returned (then it registers)."""
+    try:
+        for l in rlines(path):  # last first: the result comes after the call
+            if use_id.encode() not in l: continue
+            try: e = json.loads(l)
+            except ValueError: continue
+            content = (e.get('message') or {}).get('content') if isinstance(e.get('message'), dict) else None
+            for b in content if isinstance(content, list) else ():
+                if isinstance(b, dict) and b.get('type') == 'tool_result' and b.get('tool_use_id') == use_id: return True
+                if isinstance(b, dict) and b.get('type') == 'tool_use' and b.get('id') == use_id: return False
+    except OSError: return True
+    return False
+if not register:
+    pending = []  # a launch let through whose call is still running, not registered yet
+    for n in os.listdir(agent_jobs.LAUNCHED) if os.path.isdir(agent_jobs.LAUNCHED) else ():
+        try: r = json.load(open(os.path.join(agent_jobs.LAUNCHED, n)))
+        except (OSError, ValueError): continue
+        if isinstance(r, dict) and r.get('tool_use_id') and r.get('transcript') and not returned(r['transcript'], r['tool_use_id']):
+            pending.append({'key': r.get('key', ''), 'brief': r.get('task', ''), 'started': r.get('launched', 0), 'launched': r.get('launched', 0),
+                            'role': r.get('role'), 'worktrees': r.get('worktrees', []), 'transcript': r['transcript']})
+# One writer per worktree: a writer (any role but review or research) waits for a linked worktree its brief names (not the launcher's
+# own) that holds another session's process, or that a live writer job or outstanding writer call names, whose agent isn't the launcher. T3 can show that
+# agent interrupted or cancelled while it runs, so agent_jobs.finished decides.
+READERS = ('review', 'research')
+if not register and ti.get('role') not in READERS:
+    own, sid = linked(os.path.realpath(d.get('cwd') or '/')), d.get('session_id')
+    wts = [w for w in worktrees_in(text) if w != own]
+    anc, p = set(), os.getpid()
+    while wts and p > 1:
+        anc.add(p)
+        try: p = int(open(f'/proc/{p}/stat').read().rsplit(')', 1)[1].split()[1])
+        except (OSError, IndexError, ValueError): break
+    procs = []
+    for e in os.listdir('/proc') if wts else ():
+        try:
+            if e.isdigit() and int(e) not in anc:
+                procs.append((e, os.readlink(f'/proc/{e}/cwd'), open(f'/proc/{e}/comm').read().strip()))
+        except OSError: pass
+    def launchers_own(pid):
+        try: return bool(sid) and f'CLAUDE_CODE_SESSION_ID={sid}'.encode() in open(f'/proc/{pid}/environ', 'rb').read().split(b'\0')
+        except OSError: return False
+    me, busy = os.path.realpath(transcript(d) or '/'), []
+    # a call still outstanding counts as its job will, its own key's aside (one_per_job's); one whose agent never started stops counting after LONG
+    calls = [j for j in pending if j['key'] != key and set(j['worktrees']) & set(wts) and (agent_jobs.transcript(j) or time.time() - j['started'] < agent_jobs.LONG)]
+    writers = [j for j in [j for _, j in agent_jobs.jobs()] + calls if j.get('role') not in READERS] if wts else []
+    for j in writers:
+        if 'worktrees' not in j: j['worktrees'] = worktrees_in(j.get('brief', ''))  # registered before jobs recorded theirs
+    for w in wts:
+        pids = [f'{e} ({c})' for e, cwd, c in procs if (cwd == w or cwd.startswith(w + '/')) and not launchers_own(e)]
+        held = []
+        for j in writers:
+            if w in j['worktrees'] and not agent_jobs.finished(j):
+                a = agent_jobs.transcript(j)
+                if not a or os.path.realpath(a) != me:
+                    held.append(f"{j['key'][:160]} (started {int((time.time() - j['started']) / 60)} min ago, its transcript: {a or 'not started'})")
+        if pids or held:
+            busy.append(f"{w}: " + '; '.join((['processes with their cwd there: ' + ', '.join(pids)] if pids else []) + (['live writer jobs: ' + ', '.join(held)] if held else [])))
+    if busy:
+        sys.stderr.write("BLOCKED: another writer is working in a worktree this brief names (T3's interrupted or cancelled status doesn't mean it stopped):\n"
+                         + '\n'.join(busy) + "\nContinue that agent with a message, or wait for it to finish; a replacement goes in a fresh worktree. "
+                         "A job whose agent has ended and whose result you read: `agent-job done <key>`.\n")
+        sys.exit(2)
 if not key:
     sys.exit(0)  # nothing names the job (no ticket, title or description), so no second launch of it can be told apart
-jobs = os.path.expanduser('~/.claude/agent-jobs'); os.makedirs(jobs, exist_ok=True)
 f = os.path.join(jobs, hashlib.sha256(key.encode()).hexdigest()[:16])
 # when the launch this registers began (its transcript starts after it): one record per key, as one_per_job lets one call of a key
 # pend at a time, and the key's next launch overwrites the record of a call another hook blocked
 pre = os.path.join(agent_jobs.LAUNCHED, os.path.basename(f))
 task = str(ti.get('task') or ti.get('prompt') or '')
-# one launch at a time checks the open jobs and leaves its record, so launches in one message see each other; held until exit
-lock = open(jobs + '.lock', 'a'); fcntl.flock(lock, fcntl.LOCK_EX)
 if register:
     try: launched = json.load(open(pre))['launched']; os.remove(pre)
     except (OSError, ValueError, KeyError, TypeError): launched = time.time()
@@ -401,26 +424,7 @@ def one_per_job(started):
 if not register and os.path.exists(f):
     j = json.load(open(f))
     if time.time() - j.get('started', 0) < 24 * 3600: one_per_job(j['started'])
-def returned(path, use_id):
-    """The launcher's transcript holds the call's tool_result: another hook blocked it, or it returned (then it registers)."""
-    try:
-        for l in rlines(path):  # last first: the result comes after the call
-            if use_id.encode() not in l: continue
-            try: e = json.loads(l)
-            except ValueError: continue
-            content = (e.get('message') or {}).get('content') if isinstance(e.get('message'), dict) else None
-            for b in content if isinstance(content, list) else ():
-                if isinstance(b, dict) and b.get('type') == 'tool_result' and b.get('tool_use_id') == use_id: return True
-                if isinstance(b, dict) and b.get('type') == 'tool_use' and b.get('id') == use_id: return False
-    except OSError: return True
-    return False
 if not register:
-    pending = []  # a launch let through whose call is still running, not registered yet
-    for n in os.listdir(agent_jobs.LAUNCHED) if os.path.isdir(agent_jobs.LAUNCHED) else ():
-        try: r = json.load(open(os.path.join(agent_jobs.LAUNCHED, n)))
-        except (OSError, ValueError): continue
-        if isinstance(r, dict) and r.get('tool_use_id') and r.get('transcript') and not returned(r['transcript'], r['tool_use_id']):
-            pending.append({'key': r.get('key', ''), 'brief': r.get('task', ''), 'started': r.get('launched', 0)})
     for j in pending:
         if j['key'] == key: one_per_job(j['started'])
     for j in [j for _, j in agent_jobs.jobs()] + pending if task.strip() else ():
@@ -459,6 +463,6 @@ if not register and d.get('session_id') and 'memory-refresh' not in gate_text an
                          f"A higher limit the user gave for this task goes in {scope} as a line `Agents: <N> (user <YYYY-MM-DD>: \"<their words>\")`, quoting the user's own words from this session.\n")
         sys.exit(2)
 if not register:
-    os.makedirs(agent_jobs.LAUNCHED, exist_ok=True); json.dump({'launched': time.time(), 'key': key, 'task': task, 'tool_use_id': d.get('tool_use_id'),
+    os.makedirs(agent_jobs.LAUNCHED, exist_ok=True); json.dump({'launched': time.time(), 'key': key, 'task': task, 'role': ti.get('role'), 'worktrees': worktrees_in(text), 'tool_use_id': d.get('tool_use_id'),
                                                            'transcript': d.get('transcript_path')}, open(pre, 'w'))
 sys.exit(0)
