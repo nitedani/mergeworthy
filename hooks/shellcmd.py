@@ -661,7 +661,7 @@ class Where:
             vals = UNKNOWN if '{' in w.bare else self.values(w)
             if isinstance(vals, Unknown):
                 return Many('', vals)
-            if w.splits and w.quoted and any(re.search(r'\s', v) for v in vals):  # which of its spaces bash splits at can't be told from the value
+            if w.splits and ('IFS' in self.vars or w.quoted and any(re.search(r'\s', v) for v in vals)):  # where bash splits it can't be told from the value
                 return Many('', UNKNOWN)
             for v in (y for x in vals for y in (x.split() if w.splits else [x])):
                 if (w.splits or re.search(r'[*?[]', w.bare)) and re.search(r'[*?[]', v) and PIECE not in v:
