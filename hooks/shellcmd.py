@@ -631,7 +631,7 @@ class Where:
             a = t[1 + len(git_globals(t)):]
             return (PIECE,) if a[:1] == ['rev-parse'] and a[-1:] == ['HEAD'] and (len(a) == 2 or len(a) == 3 and re.fullmatch(r'--short(=\d+)?', a[1])) else UNKNOWN
         hash_at = next((i for i, x in enumerate(names) if x in HASHES and len(stages[i]) == 1), None)
-        if hash_at is not None and set(names[hash_at + 1:]) <= {'cut', 'head', 'awk'}:
+        if hash_at is not None and set(names[hash_at + 1:]) <= {'cut', 'head'}:
             return (PIECE,)
         return self._tr(stages) if names == ['echo', 'tr'] else UNKNOWN
 
