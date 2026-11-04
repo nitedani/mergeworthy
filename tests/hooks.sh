@@ -1327,6 +1327,9 @@ check "the newest record passes; the next build on the same record waits, unless
   "$(abrief $'You implement the fix in '"$AB"$'.\nApproach: '"$T/ab1.md") $(abrief $'You implement the review fix in '"$AB"$'.\nApproach: '"$T/ab1.md") $(grep -c 'last build was briefed on the approach recorded' "$T/err") $(abrief $'You implement the review fix in '"$AB"$'.\nApproach: '"$T/ab1.md (unchanged: a test the review asked for)")"
 sleep 1; (cd "$AB" && bash "$R/bin/pr-steps" approach "$T/ab2.md" >/dev/null)
 check "a changed approach recorded after the last build passes; the record it replaced no longer does" "0 2" "$(abrief $'You implement it as a virtual module in '"$AB"$'.\nApproach: '"$T/ab2.md") $(abrief $'You implement more in '"$AB"$'.\nApproach: '"$T/ab1.md (unchanged: same)")"
+AO="$T/abo"; git init -q "$AO"; git -C "$AO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; cp "$T/approach.md" "$T/ab3.md"; (cd "$AO" && bash "$R/bin/pr-steps" approach "$T/ab3.md" >/dev/null)
+check "any text after the Approach path: on an unbuilt record it passes; on a built one it is refused as already built, not as naming no approach; an unchanged reason inside the text counts" "0 2 1 0 0" \
+  "$(abrief $'You implement the fix in '"$AO"$'.\nApproach: '"$T/ab3.md (amended: re-rated)") $(abrief $'You implement more in '"$AO"$'.\nApproach: '"$T/ab3.md (amended: re-rated)") $(grep -c 'last build was briefed on' "$T/err") $(grep -c 'a line `Approach:' "$T/err") $(abrief $'You implement the rest in '"$AO"$'.\nApproach: '"$T/ab3.md amended (unchanged: a review fix) today")"
 # the brief a launch follows from the work folder is the one checked, in each launch form: delegate_task as an implementer or in another role, and Agent
 AF="$HOME/.mergeworthy/work/apf"; mkdir -p "$AF"; printf 'You implement the fix in %s.\n' "$AB" > "$AF/brief.md"; printf 'You implement the fix in %s.\nApproach: %s (unchanged: a review fix)\n' "$AB" "$T/ab2.md" > "$AF/brief-ok.md"
 flaunch() { # tool role brief: one launch that follows the brief file
@@ -1353,13 +1356,25 @@ check "a filled brief passes with the paste-in rules (their <work folder>), an o
 check "a brief quoting a line format in backticks that holds a template's slot passes (a format, not a slot)" 0 "$(ag "$T" 'Check each `PROMISED <thread>: <what> (<draft>)` line in proposals-open.md.' review)"
 mkdir -p "$T/mem"; printf 'Next: the brief may say (git show <sha>) in a quoted ruling.\n' > "$T/mem/memory.md"; printf 'Summarize %s into the digest.\n' "$T/mem/memory.md" > "$T/mem/memory-brief-1.md"
 check "an input file the brief names (memory.md quoting <sha>) is not scanned for slots; the brief file still is" "0 2" "$(ag "$T" "Follow $T/mem/memory-brief-1.md" research) $(printf 'Sort it (git show <sha>).\n' > "$T/mem/sort-brief.md"; ag "$T" "Follow $T/mem/sort-brief.md" review)"
-# pre-agent-dedupe: a worktree another agent still works in (its process's cwd, or its fresh transcript naming it)
+# pre-agent-dedupe: a worktree a writer holds (another session's process with its cwd there, or a live writer job naming it)
+child_log() { # file brief minutes-ago last-entry(text|tool): it started a minute before its last write
+  python3 -c 'import json,sys,time; f,b,last,ago=sys.argv[1],sys.argv[2],sys.argv[3],int(sys.argv[4]); w=lambda o: open(f,"a").write(json.dumps(o)+"\n")
+at=time.strftime("%Y-%m-%dT%H:%M:%S.000Z",time.gmtime(time.time()-60*(ago+1)))
+w({"type":"queue-operation","operation":"enqueue","timestamp":at,"content":b})
+w({"type":"user","timestamp":at,"promptSource":"sdk","message":{"role":"user","content":b}})
+w({"type":"assistant","message":{"content":[{"type":"tool_use","id":"x","name":"Bash","input":{}}] if last=="tool" else [{"type":"text","text":"Report written."}]}})' "$1" "$2" "$4" "$3"
+  touch -d "$3 minutes ago" "$1"; }
 git -C "$T/gr" worktree add -q -b a "$T/aw"; AD="$HOME/.claude/projects/-aw"; AS="$AD/sess/subagents"; mkdir -p "$AD" "$AS" "$T/aw/src"
-alive() { # task [transcript_path]
-  python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","cwd":sys.argv[1],"transcript_path":sys.argv[3],"tool_input":{"task":sys.argv[2],"title":sys.argv[2][:50]}}))' "$OC" "$1" "${2:-}" \
+alive() { # task [transcript_path] [role] [session]
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","cwd":sys.argv[1],"transcript_path":sys.argv[3],"session_id":sys.argv[5] or None,"tool_input":{"task":sys.argv[2],"title":sys.argv[2][:50],**({"role":sys.argv[4]} if sys.argv[4] else {})}}))' "$OC" "$1" "${2:-}" "${3:-}" "${4:-}" \
     | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
-(cd "$T/aw/src" && exec sleep 600) & APID=$!; sleep 0.2
+wjob() { # transcript task role minutes-ago: a job the hook registered an hour ago, with its agent's transcript; `agent-job done <task>` releases it
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"wt","transcript_path":sys.argv[1],"tool_input":{"task":sys.argv[2],"title":sys.argv[2],**({"role":sys.argv[3]} if sys.argv[3] else {})}}))' "$T/wt-launcher.jsonl" "$2" "$3" | python3 "$R/hooks/pre-agent-dedupe.py" register
+  rm -f "$1"; child_log "$1" "$2" "$4" text
+  python3 -c 'import glob,json,os,sys,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600, "launched": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if json.load(open(f))["key"] == sys.argv[1]]' "$2"; }
+(cd "$T/aw/src" && CLAUDE_CODE_SESSION_ID=mine exec sleep 600) & APID=$!; sleep 0.2
 check "BLOCK: a process works in the worktree, naming its PID" "2 1" "$(alive "Run e2e in $T/aw/src") $(grep -c "$APID (sleep)" "$T/err")"
+check "a process in the worktree carrying the launcher's session id passes; one with another session's blocks, naming its PID" "0 2 1" "$(alive "Run e2e two in $T/aw/src" '' '' mine) $(alive "Run e2e three in $T/aw/src" '' '' other) $(grep -c "$APID (sleep)" "$T/err")"
 CUR=$(readlink "$HOME/.mergeworthy/current"); ln -sfn "$T/aw" "$HOME/.mergeworthy/current"; mkdir -p "$HOME/.mergeworthy/work"; ln -sfn "$T/aw" "$HOME/.mergeworthy/work/aw"
 check "an installed skill or the installed folder is no worktree a brief names, though ~/.mergeworthy/current links to the busy one; a task's folder under ~/.mergeworthy/work is" "0 0 2" "$(alive 'Follow ~/.mergeworthy/current/skills/review/SKILL.md') $(alive 'Read the skills in ~/.mergeworthy/current.') $(alive 'Run e2e in ~/.mergeworthy/work/aw/src')"
 rm "$HOME/.mergeworthy/work/aw"; ln -sfn "$CUR" "$HOME/.mergeworthy/current"
@@ -1367,7 +1382,12 @@ kill $APID; wait $APID 2>/dev/null
 echo "{\"cwd\":\"$T/aw\"}" > "$AD/main-session.jsonl"
 check "a main session's transcript naming the worktree (the steward's, say) doesn't make it busy" 0 "$(alive "Run e2e in $T/aw")"
 rm -f "$AD/main-session.jsonl"; echo "{\"cwd\":\"$T/aw\"}" > "$AS/agent.jsonl"
-check "BLOCK: an agent transcript written minutes ago names the worktree" "2 1" "$(alive "Run e2e in $T/aw") $(grep -c "$AS/agent.jsonl" "$T/err")"
+check "a fresh agent transcript that only mentions the worktree, with no writer job naming it, passes" 0 "$(alive "Run e2e in $T/aw")"
+wjob "$AS/agent.jsonl" "Implement the fix in $T/aw" '' 0
+check "BLOCK: a live writer job names the worktree, naming its transcript" "2 1" "$(alive "Run e2e in $T/aw") $(grep -c "$AS/agent.jsonl" "$T/err")"
+check "a review or research launch into a worktree a live writer job holds passes" "0 0" "$(alive "Review the fix in $T/aw" '' review) $(alive $'Topic: zzfix\nRead the fix in '"$T/aw" '' research)"
+python3 -c 'import glob,json,os; [json.dump({k: v for k, v in json.load(open(f)).items() if k not in ("role", "worktrees")}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "Implement the fix" in open(f).read()]'
+check "BLOCK: a job registered before jobs recorded their worktrees holds what its brief names" 2 "$(alive "Run e2e in $T/aw")"
 echo "Prototype report: worktree $T/aw, branch a." > "$T/aw-report.md"; printf 'Goal: e2e green.\nWork in %s.\n' "$T/aw" | tee "$T/aw-job.md" > "$T/aw-brief.md"
 check "a reference file the brief names whose text names the busy worktree passes; the brief file it says to follow, or named as a brief, blocks" "0 2 2" "$(alive "Summarize the prototype. Context: $T/aw-report.md (read first)") $(alive "Follow $T/aw-job.md exactly") $(alive "Topic: e2e. Its file: $T/aw-brief.md")"
 check "the orchestrator's own transcript naming the worktree doesn't count" 0 "$(alive "Run e2e in $T/aw once more" "$AS/agent.jsonl")"
@@ -1389,18 +1409,52 @@ EOF2
 echo "{\"cwd\":\"$T/aw\"}" > "$AD/t3review.jsonl"
 check "a fresh transcript of a T3 task that completed, with no run pending, doesn't make the worktree busy" 0 "$(alive "Review round 2 in $T/aw")"
 python3 -c 'import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); c.execute("insert into orchestration_v2_projection_runs values (?, ?, ?)", ("r2", "review-1", "queued")); c.commit()' "$HOME/.t3/userdata/statev2.sqlite"
+python3 "$R/bin/agent-job" done "Implement the fix in $T/aw" >/dev/null; wjob "$AD/t3review.jsonl" "Implement the review in $T/aw" '' 5
 check "BLOCK: the same task woken again (a run queued)" 2 "$(alive "Review round 3 in $T/aw")"
 rm -f "$AD/t3review.jsonl" "$HOME/.t3/userdata/statev2.sqlite"
+python3 "$R/bin/agent-job" done "Implement the review in $T/aw" >/dev/null
+wjob "$AS/reader.jsonl" "Review the fix again in $T/aw" review 0
+check "a writer launch into a worktree whose only live job is a reviewer passes" 0 "$(alive "Run e2e with a reviewer in $T/aw")"
+python3 "$R/bin/agent-job" done "Review the fix again in $T/aw" >/dev/null
+mkdir -p "$HOME/.mergeworthy/work/wb"; printf 'Work in %s.\n' "$T/aw" > "$HOME/.mergeworthy/work/wb/job-brief.md"
+wjob "$AS/wb.jsonl" "Follow $HOME/.mergeworthy/work/wb/job-brief.md exactly" '' 0
+check "BLOCK: a live writer job sent by a brief file in the work folder holds the worktree that file names" 2 "$(alive "Run e2e beside a work brief in $T/aw")"
+python3 "$R/bin/agent-job" done "Follow $HOME/.mergeworthy/work/wb/job-brief.md exactly" >/dev/null
+# writer calls still outstanding (launched, not registered) hold a worktree: two launches in one message, or a foreground Agent
+PW="$T/pw-launcher.jsonl"; : > "$PW"
+pw() { # tool_use_id task [role] [agent's transcript: the launch comes from that subagent]
+  python3 -c 'import json,sys; u,t,r,a,c,l=sys.argv[1:]; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","cwd":c,"tool_use_id":u,"transcript_path":l,"session_id":"pw",**({"agent_id":"pw","agent_transcript_path":a} if a else {}),"tool_input":{"task":t,"title":t,**({"role":r} if r else {})}}))' "$1" "$2" "${3:-}" "${4:-}" "$OC" "$PW" \
+    | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
+pw_back() { python3 -c 'import glob,json,os,sys,time; [json.dump({**r, "launched": time.time() - int(sys.argv[2])}, open(f, "w")) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs-launch/*")) for r in [json.load(open(f))] if r["task"] == sys.argv[1]]' "$1" "$2"; }  # task seconds: launched that long ago
+check "BLOCK: a second writer call into a worktree naming the outstanding one; a reviewer passes; the same call again gets the job's refusal" "0 2 1 0 2 1" \
+  "$(pw a "Implement alpha in $T/aw") $(pw b "Implement beta in $T/aw") $(grep -c 'Implement alpha' "$T/err") $(pw c "Review alpha in $T/aw" review) $(pw a "Implement alpha in $T/aw") $(grep -c 'already launched' "$T/err")"
+pw_back "Implement alpha in $T/aw" 3600
+check "an outstanding call whose agent never started stops holding (a crash mid-call)" 0 "$(pw g "Implement gamma in $T/aw")"
+pw_back "Implement gamma in $T/aw" 600; child_log "$AS/pw-agent.jsonl" "Implement gamma in $T/aw" 0 text
+check "an outstanding call's own agent launching into its worktree passes; another launcher is refused while that agent runs" "0 2" "$(pw d "Implement delta in $T/aw" '' "$AS/pw-agent.jsonl") $(pw e "Implement epsilon in $T/aw")"
+python3 -c 'import json,sys; print(json.dumps({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":i} for i in sys.argv[1:]]}}))' g d >> "$PW"
+check "a call that returned no longer holds" 0 "$(pw z "Implement zeta in $T/aw")"
+rm -f $(grep -l pw-launcher "$HOME"/.claude/agent-jobs-launch/*)
+# a stopped Claude subagent frees its worktree at once, by its launcher's transcript: the lines Claude Code writes (a real kill's, its ids aside)
+KN="$AS/agent-a7ef.jsonl"; wjob "$KN" "Implement more in $T/aw" '' 0
+kill_line() { # form task-id [status]: what reaches the launcher when an agent is stopped, after its prompt and before the line stopping writes in its transcript
+  python3 -c 'import json,sys,time; form,i,st=sys.argv[1:]; at=time.strftime("%Y-%m-%dT%H:%M:%S.000Z",time.gmtime(time.time()-30))
+n=f"<task-notification>\n<task-id>{i}</task-id>\n<tool-use-id>toolu_1</tool-use-id>\n<output-file>/tmp/{i}.output</output-file>\n<status>{st}</status>\n<summary>Agent \"x\" was stopped by Claude</summary>\n</task-notification>"
+print(json.dumps({"queue":{"type":"queue-operation","operation":"enqueue","timestamp":at,"content":n},"attachment":{"type":"attachment","timestamp":at,"attachment":{"type":"queued_command","prompt":n}},"user":{"type":"user","timestamp":at,"message":{"role":"user","content":n}},
+"stop":{"type":"user","timestamp":at,"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"stopped"}]},"toolUseResult":{"message":f"Successfully stopped task: {i} (x)","task_id":i,"task_type":"local_agent","command":"x"}}}[form]))' "$1" "$2" "${3:-killed}" > "$T/wt-launcher.jsonl"; }
+python3 -c 'import json,sys,time; print(json.dumps({"type":"user","timestamp":time.strftime("%Y-%m-%dT%H:%M:%S.000Z",time.gmtime(time.time()-10)),"isSidechain":True,"message":{"role":"user","content":[{"type":"text","text":"[Request interrupted by user]"}]}}))' >> "$KN"; touch "$KN"
+: > "$T/wt-launcher.jsonl"; K0=$(alive "Run e2e after a kill in $T/aw")
+kill_line queue b0th; K1=$(alive "Run e2e after a kill in $T/aw")
+kill_line queue a7ef completed; K2=$(alive "Run e2e after a kill in $T/aw")
+for form in queue attachment user stop; do kill_line $form a7ef; KF="${KF:-} $(alive "Run e2e after a $form in $T/aw")"; done
+check "BLOCK: a live subagent writer, another agent's kill, or its notice of another status; its killed notice (queued, attached or a prompt) or TaskStop's result frees the worktree at once" "2 2 2 0 0 0 0" "$K0 $K1 $K2$KF"
+python3 -c 'import json,sys,time; print(json.dumps({"type":"user","timestamp":time.strftime("%Y-%m-%dT%H:%M:%S.000Z",time.gmtime()),"isSidechain":True,"isMeta":True,"message":{"role":"user","content":[{"type":"text","text":"Continue the work."}]}}))' >> "$KN"; touch "$KN"
+check "BLOCK: a stopped subagent a message resumed" 2 "$(alive "Run e2e after a resume in $T/aw")"
+python3 "$R/bin/agent-job" done "Implement more in $T/aw" >/dev/null
 # a finished agent is reported: the watcher's AGENT DONE once per finish, and stop-lint while its job is open
 JD="$HOME/.claude/projects/-jobs"; WJ="$T/wj"; mkdir -p "$JD" "$WJ"; echo orch > "$WJ/session"
 reg() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"orch","transcript_path":sys.argv[2],"tool_input":{"task":sys.argv[1],"title":sys.argv[1][:40]}}))' "$1" "$T/tr.jsonl" \
   | python3 "$R/hooks/pre-agent-dedupe.py" register; }
-child_log() { # file brief minutes-ago last-entry(text|tool): it started a minute before its last write
-  python3 -c 'import json,sys,time; f,b,last,ago=sys.argv[1],sys.argv[2],sys.argv[3],int(sys.argv[4]); w=lambda o: open(f,"a").write(json.dumps(o)+"\n")
-w({"type":"queue-operation","operation":"enqueue","timestamp":time.strftime("%Y-%m-%dT%H:%M:%S.000Z",time.gmtime(time.time()-60*(ago+1))),"content":b})
-w({"type":"user","promptSource":"sdk","message":{"role":"user","content":b}})
-w({"type":"assistant","message":{"content":[{"type":"tool_use","id":"x","name":"Bash","input":{}}] if last=="tool" else [{"type":"text","text":"Report written."}]}})' "$1" "$2" "$4" "$3"
-  touch -d "$3 minutes ago" "$1"; }
 done_events() { GH_WATCH_ME=me python3 - "$R/watcher/gh-watch.py" "$WJ" <<'EOF2'
 import importlib.util, sys
 spec = importlib.util.spec_from_file_location('ghw', sys.argv[1]); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
@@ -1464,7 +1518,7 @@ check "a quiet agent whose T3 run is still active (waiting), whose delegated tas
 # the watcher asks T3's state on every tick for days: each lookup closes its connection, not the cycle collector
 check "T3 state lookups leave no connection open" 0 "$(python3 -c '
 import gc, os, sys; sys.path.insert(0, sys.argv[1]); import steward; gc.disable()
-for _ in range(40): steward.busy("t3busy"); steward.task_done("t3busy"); steward.is_task("t3busy"); steward.threads("t3busy"); steward.busy("nobody")
+for _ in range(40): steward.busy("t3busy"); steward.threads("t3busy"); steward.busy("nobody")
 def name(f):
     try: return os.readlink("/proc/self/fd/" + f)
     except OSError: return ""
@@ -1497,6 +1551,12 @@ done_events > "$T/ev12"
 check "no AGENT DONE for a finish T3's notice (t3note), Claude Code's (sub) or a foreground Agent's result (fg) told the launcher of; one for a run that wrote after its notice (t3rev)" "0 0 0 1" \
   "$(grep -c "AGENT DONE $T/jobs/t3note-ticket.md" "$T/ev12") $(grep -c "AGENT DONE $T/jobs/sub-ticket.md" "$T/ev12") $(grep -c "AGENT DONE $T/jobs/fg-ticket.md" "$T/ev12") $(grep -c "AGENT DONE $T/jobs/t3rev-ticket.md" "$T/ev12")"
 for jn in t3note t3rev sub fg; do python3 "$R/bin/agent-job" done "$T/jobs/$jn-ticket.md" >/dev/null; done
+# a stopped subagent's job is reported done at the kill, not after its transcript has been quiet
+reg "Execute $T/jobs/kill-ticket.md exactly"; child_log "$JD/orch/subagents/agent-k1ll.jsonl" "Execute $T/jobs/kill-ticket.md exactly" 0 text
+python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600, "launched": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "kill-ticket" in open(f).read()]'
+done_events > "$T/ev13"; kill_line queue k1ll; cat "$T/wt-launcher.jsonl" >> "$T/tr.jsonl"; done_events > "$T/ev14"
+check "AGENT DONE for a subagent at its kill, not while it runs" "0 1" "$(grep -c "AGENT DONE $T/jobs/kill-ticket.md" "$T/ev13") $(grep -c "AGENT DONE $T/jobs/kill-ticket.md" "$T/ev14")"
+python3 "$R/bin/agent-job" done "$T/jobs/kill-ticket.md" >/dev/null
 # a transcript belongs to one job: the earliest-started one carrying its whole task that started at or after its launch
 # (nitedani/mergeworthy#60 and its review rounds: a quick second round, fan-out agents whose transcripts start in the reverse of their
 # launch order, a repeated foreground call, a head read before its prompt was written)
