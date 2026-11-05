@@ -530,11 +530,11 @@ class Where:
     `cd -` or popd loses its dir for good.
     spots: the dirs a relative write may start from, a written file's only read of where it runs: the dir when it is known, else each
     target a cd the dir can't follow has listed (_spots), and None where a target or the dir before it can't be told.
-    A function's body is walked where it is defined, so its $1.. hold what the line's calls of it give them: two dry walks first (walk), the
-    second for a call in another body, each recording every call's words (called)."""
+    A function's body is walked where it is defined, so its $1.. and spots hold what the line's calls of it give them: two dry walks first
+    (walk), the second for a call in another body, each recording every call's spots and words (called)."""
     def __init__(self, cwd):
         self.funcs, self.func_vars, self.func_moves = set(), set(), False  # the functions the line defines, the variables their bodies set, whether one changes dir
-        self.args, self.called = {}, {}  # each function's calls, each the values of its parameters (_args): from the dry walk before this one, and seen by this walk
+        self.args, self.called = {}, {}  # each function's calls, each (its spots, the values of its parameters: _args): from the dry walk before this one, and seen by this walk
         self.main_dir, self.main_vars = cwd, {'PWD': cwd}
         self.dir, self.moved, self.vars, self.scopes, self.quoted, self.unseen, self.spots = cwd, False, {'PWD': cwd}, [], set(), frozenset(), (cwd,)  # each scope entered: [(id, kind, name), dir before it, whether a cd ran in it, variables before it, variables set in it, main_vars before it, spots before it]
 
@@ -699,6 +699,7 @@ class Where:
     def walk(self, segs):
         """Each of segs (parse()'s), with self moved to where it runs; self takes it once the caller is done with it."""
         funcs = {x[2] for t in segs for x in t.scopes if x[2] and x[1] == CONDITIONAL}
+        self.args = {f: [(None, [UNKNOWN] * CAP)] for f in funcs}  # the first dry walk knows nothing of any call
         for _ in range(2 if funcs else 0):
             dry = Where(self.dir)
             dry.funcs, dry.args = set(funcs), self.args  # one body may call a function defined after it
@@ -720,7 +721,7 @@ class Where:
         while n < min(len(self.scopes), len(scopes)) and self.scopes[n][0] == scopes[n]: n += 1
         for (_, kind, *_), before, moved, vars, set_in, main_vars, spots in reversed(self.scopes[n:]):
             self.dir = before if kind == ISOLATING else None if moved else self.dir
-            self.spots = spots if kind == ISOLATING else None if moved else self.spots
+            self.spots = None if moved and kind != ISOLATING else spots
             self.vars = vars if kind == ISOLATING else {**self.vars, **{v: Maybe(self.vars.get(v, '')) for v in set_in}}
             self.main_vars = main_vars if kind == ISOLATING else self.main_vars
         self.funcs |= {x[2] for x in scopes[n:] if x[2] and x[1] == CONDITIONAL}
@@ -728,7 +729,7 @@ class Where:
         for x in scopes[n:]:
             self.scopes.append([x, self.dir, False, dict(self.vars), set(), dict(self.main_vars), self.spots])
             if x[1] == LOOP and x[2]: self.vars[x[2]] = self._listed(x[3]); self.changed(x[2])  # each pass gives it another of its words
-            if x[1] == CONDITIONAL and x[2]: self._bind(x[2])
+            if x[1] == CONDITIONAL and x[2]: self._bind(x[2]); self._at_calls(x[2])
             if x[2] == STDIN: self.dir, self.spots = None, None
             if x[2] in (STDIN, CHILD): self.vars = {k: Maybe(v) for k, v in self.vars.items()} | {'PWD': _dir(self.dir)}  # a shell's PWD is where it starts
 
@@ -753,12 +754,20 @@ class Where:
 
     def _bind(self, f):
         """$1.. in function f's body: what any call of it gives each, '' past a call's words, nothing known without a call."""
-        calls = self.args.get(f) or [[Unknown('a value no call on this line gives')] * CAP]
+        calls = [c for _, c in self.args.get(f, ())] or [[Unknown('a value no call on this line gives')] * CAP]
         for i, n in enumerate(PARAMS):
             vals = [c[i] if i < len(c) else ('',) for c in calls]
             lost = next((v for v in vals if isinstance(v, Unknown)), None)
             self.vars[n] = Many(f'${n}', tuple(dict.fromkeys(y for v in vals for y in v)) if lost is None else lost)  # as written, for each other reader
             self.changed(n)
+
+    def _at_calls(self, f):
+        """Function f's body writes from where its calls run: every call's spots, None when one's can't be told, the definition's without a call."""
+        spots = [s for s, _ in self.args.get(f, ())]
+        spots = None if None in spots else tuple(dict.fromkeys(x for s in spots for x in s)) or self.spots
+        if spots != self.spots:
+            self.spots, self.vars['PWD'] = spots, Many('$PWD', spots or UNKNOWN)
+            self.changed('PWD')
 
     def _args(self, words):
         """The values a call's words give its parameters in turn; past a word bash may make other than one word of, none can be told."""
@@ -785,11 +794,11 @@ class Where:
         p = prog(t)
         if p[:1] == ['shift'] and self.scopes and self.scopes[-1][0][2] in self.funcs:  # any other shift is unseen
             f, a = self.scopes[-1][0][2], operands(p[1:])
-            self.args[f] = [c[int(a[0]) if a and a[0].isdigit() else 1:] for c in self.args.get(f, [])]
+            self.args[f] = [(s, c[int(a[0]) if a and a[0].isdigit() else 1:]) for s, c in self.args.get(f, [])]
             self._bind(f)
             return
         if p[:1] and p[0] in self.funcs:  # a call runs a body here, maybe calling another: what any of them changes can't be told
-            self.called.setdefault(p[0], []).append(self._args(operands(p[1:])))
+            self.called.setdefault(p[0], []).append((self.spots, self._args(operands(p[1:]))))
             if self.func_moves:
                 self.dir, self.moved, self.spots = None, True, None
                 self.changed()
@@ -814,7 +823,7 @@ class Where:
             self.dir = _toplevel(self.dir)
         else:
             self.dir = self.path(to, strict=True) and os.path.normpath(self.path(to, strict=True))
-        self.main_dir, self.spots = main, (self.dir,) if self.dir is not None else self._spots(p[0], to, kinds)
+        self.main_dir, self.spots = main, (self.dir,) if self.dir is not None and (old[0] is None or self.spots == (old[0],)) else self._spots(p[0], to, kinds)  # a body's spots aren't its dir
         for n, dirs in (('OLDPWD', old), ('PWD', (self.dir, self.main_dir))):
             self.vars[n], self.main_vars[n] = map(_dir, dirs)
             self.changed(n)
