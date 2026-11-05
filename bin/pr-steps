@@ -113,25 +113,33 @@ if [ "$step" = small ]; then
   exit 0
 fi
 # A shape record is the pass's lists (the ✅ coverage list and old ⇒ new ratings) ending CLEAN, or a small follow-up that
-# carries an earlier pass ("carries the pass of <sha>", ≤ 80 changed lines since): a fix log or a note is not a shape pass
+# carries an earlier pass ("carries the pass of <sha>", carry_holds): a fix log or a note is not a shape pass
 # A pass rates every item afresh: a row whose rating is copied ("10 =", "=", "unchanged since") is a re-rating of a delta, not a pass
 is_pass() { grep -q '✅' "$1" && grep -Eq '([0-9]+|\bnew) *(⇒|=>) *([0-9]+|removed|new|n/a)' "$1" && ! grep -Eiq '\| *([0-9]+ *)?= *\||unchanged since' "$1"; }
-# Lines the PR itself changed since an earlier head: counted from that head replayed on the base HEAD has merged, so what a merge
-# of the base brought in doesn't count; from the head itself when the replay conflicts (the resolution is change)
+# The file of each line HEAD changed since an earlier head, once per line: compared whole with that head replayed on the base HEAD has merged,
+# so what the base brought doesn't count and every move does; a conflict stays in the replay as its markers, so its resolution counts
 delta() {
   local pb B T
   pb=$(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || true)  # a stacked PR's base is its parent branch
   B=${pb:+origin/$pb}; B=${B:-$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)}
-  T=$(git merge-tree --write-tree "$(git merge-base HEAD "$B" 2>/dev/null)" "$1" 2>/dev/null) || T=$1
-  git diff --numstat "$T" HEAD | awk -v r="$built" '$3 !~ r {s+=$1+$2} END{print s+0}'
+  T=$(git merge-tree --write-tree "$(git merge-base HEAD "$B" 2>/dev/null)" "$1" 2>/dev/null | sed -n 1p || true)  # exit 1 on a conflict, with the tree first
+  git -c core.quotePath=false -c diff.noprefix=false diff --no-renames --numstat "${T:-$1}" HEAD |
+    awk -F'\t' -v r="$built" '$3 !~ r { n = $1 + $2; if (!n) n = 1; for (i = 0; i < n; i++) print $3 }'  # a binary, a mode or an empty file has no line, and is a change
 }
-# A small follow-up (≤ 80 changed lines, no new behavior) carries an earlier head's recorded step: "carries the pass of <sha>"
+# A carry of head $1's step holds for at most 80 changed lines, none outside tests and docs: a line of code may add behavior, whatever the session says
+carry_holds() {
+  local files changed code
+  files=$(delta "$1"); changed=$(printf '%s' "$files" | grep -c . || true)
+  [ "$changed" -le 80 ] || { echo "$changed lines changed since $1: too much to carry, run the $step step again (mergeworthy:converge §Batching)" >&2; exit 1; }
+  code=$(printf '%s\n' "$files" | R="$(python3 "$(dirname "$(realpath "$0")")/../hooks/testpaths.py")|[.]md\$" awk 'NF && $0 !~ ENVIRON["R"] && !f {f = $0} END {print f}')
+  [ -z "$code" ] || { echo "$code changed since $1, and a carry holds for tests and docs alone: run the $step step again (mergeworthy:converge §Batching)" >&2; exit 1; }
+}
+# A small follow-up (carry_holds) carries an earlier head's recorded step: "carries the pass of <sha>"
 carries() {
   c=$(grep -Eo 'carries the pass of [0-9a-f]{7,40}' "$out" | head -n1 | awk '{print $NF}' || true); [ -n "$c" ] || return 1
   full=$(git rev-parse "$c" 2>/dev/null) || { echo "$c is not a commit" >&2; exit 1; }
   awk -v s="$step" '$1==s' ~/.claude/pr-steps/"$full" 2>/dev/null | grep -q . || { echo "$c has no recorded $step to carry" >&2; exit 1; }
-  changed=$(delta "$full")
-  [ "$changed" -le 80 ] || { echo "$changed lines changed since $c: too much to carry, run the $step step again (converge, per push)" >&2; exit 1; }
+  carry_holds "$full"
 }
 if [ "$step" != shape ] && [ "$step" != refactor ] && [ "$step" != gates ] && [ "$step" != quick ] && [ "$step" != finality ] && carries; then :; else
 base=$(git merge-base HEAD "$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)" 2>/dev/null || true)
@@ -212,8 +220,7 @@ EOF
       at=$(awk -v f="$prev" '$2==f{t=$3} END{print t}' "$rec")
       ask=$(while read -r t h _ u; do [[ "$t" > "$at" ]] && git merge-base --is-ancestor "$h" HEAD 2>/dev/null && echo "$u"; done < <(cat ~/.claude/refactor-asks.txt 2>/dev/null) | tail -n1 || true)
       [ -z "$ask" ] || { echo "$ask asks for a refactor pass after the pass $carried carries ($at): run the pass on this head (mergeworthy:converge step 2, delegate/shape.md) and record its report, not a carry" >&2; exit 1; }
-      changed=$(delta "$full")
-      [ "$changed" -le 80 ] || { echo "$changed lines changed since $carried: the pass is stale (mergeworthy:converge §Batching), run it again" >&2; exit 1; }
+      carry_holds "$full"
     fi ;;
   gates|quick)
     grep -Eq '^.+ -> exit [0-9]+( \([0-9]+ (tests?|projects?|files?|words)\))?$' "$out" || { echo "$out lists no gate: one line per gate, '<command> -> exit <code>', run on this HEAD" >&2; exit 1; }

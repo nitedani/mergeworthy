@@ -115,6 +115,19 @@ def _stages(s, src):
     return x + y if x and y else None
 
 
+def _readers(tree, src):
+    """The argv of the stages after the first, by the first's statement, of each plain pipeline (_stages) that is a statement of the line's own list or the last side of one's && or ||."""
+    out = {}
+    for s in tree.get('Stmts') or []:
+        while (s.get('Cmd') or {}).get('Type') == 'BinaryCmd' and s['Cmd'].get('Op') in ('&&', '||'):
+            s = s['Cmd']['Y']
+        if stages := _stages(s, src):
+            while (s.get('Cmd') or {}).get('Type') == 'BinaryCmd':
+                s = s['Cmd']['X']
+            out[id(s)] = stages[1:]
+    return out
+
+
 def _expansion(p, src):
     """The part (Word.parts) of an expansion's node."""
     t, name = p.get('Type'), (p.get('Param') or {}).get('Value')
@@ -186,8 +199,9 @@ class Seg(list):
     runs inside a while or until loop; raw: each word's source as written, None when not known; unseen: the
     names its script, or a script running it, may set where Where can't follow (_unseen), whose values it never trusts; nested: whether
     it is in a script the line runs (`eval`'s included), where a plain walk loses the dir (Where); after: each statement that exited 0 if this
-    one runs at all, being before it in a chain of && (_passed); stmt: the statement it runs as, for after to name."""
-    scopes, loop, raw, unseen, nested, after, stmt = (), False, None, frozenset(), False, (), None
+    one runs at all, being before it in a chain of && (_passed); stmt: the statement it runs as, for after to name; readers: the argv of each
+    command its output is piped to, when nothing else takes its output or status (_readers), else None."""
+    scopes, loop, raw, unseen, nested, after, stmt, readers = (), False, None, frozenset(), False, (), None, None
 
 
 def _seg(argv, scopes=(), loop=False, raw=None, after=(), stmt=None):
@@ -388,6 +402,9 @@ def parse(cmd, depth=0, scopes=(), loop=False):
             raise ValueError('bash syntax error at ' + r.stderr.decode(errors='replace').strip().replace('<standard input>:', ''))
         tree = json.loads(r.stdout)
         (segs, err), unseen = _segments(tree, cmd.encode(), depth), _unseen(tree, cmd.encode())
+        if not depth:  # a script's own list may be what a substitution reads
+            readers = _readers(tree, cmd.encode())
+            for x in segs: x.readers = readers.get(id(x.stmt))
     except ValueError as e:  # also a JSON error
         segs, err, unseen = [_seg(x, _scope(CONDITIONAL)) for x in _rough(cmd)], str(e), EVERY
     except Exception as e:  # no parser: nothing is checked as parsed, and a guarded verb blocks

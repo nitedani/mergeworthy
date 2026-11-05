@@ -487,8 +487,10 @@ def pushed(git_dir, opts, env, rest):
     if len(to) < 2:  # a branch with no upstream yet: the remote git picks, the branch of the same name
         to = [next((r for r in (git('config', f'branch.{head}.pushRemote'), git('config', 'remote.pushDefault'), git('config', f'branch.{head}.remote')) if r), 'origin'), head]
     remote = pos[0] if pos else (opt(rest, ['--repo']) or [to[0]])[-1]
-    if re.search(r'[$`]', remote):
-        block(f"where this push goes ({remote}) is computed when it runs, so it can't be checked: push to a remote name or URL written out")
+    vals = where.values(remote)
+    if not vals or len(vals) > 1 or shellcmd.PIECE in vals[0]:
+        block(f"where this push goes ({remote}) is computed when it runs, so it can't be checked: push to a remote name or URL written out, or one the line assigns")
+    remote = vals[0]
     urls = git('remote', 'get-url', '--push', '--all', remote).split()
     if not urls:  # a URL, rewritten as git does: the longest url.<base>.pushInsteadOf, else insteadOf, prefix
         rules = [l.split(' ', 1) for l in git('config', '--get-regexp', r'^url\..*\.(push)?insteadof$').splitlines() if ' ' in l]
@@ -652,8 +654,10 @@ def recorded(step, after, repo):
     rec = branch_record(repo, step)
     return any(records.get(id(a)) == rec for a in after)
 
+READERS = {'grep', 'egrep', 'fgrep', 'rg', 'cut', 'head', 'tail', 'sort', 'uniq', 'wc', 'tr', 'cat'}  # print what they read: sed and awk can run commands
+
 def check(t, has_cd):
-    after = getattr(t, 'after', ())
+    after, readers = getattr(t, 'after', ()), getattr(t, 'readers', None)
     env = env_of(t)
     t = prog(t)
     if not t: return
@@ -679,8 +683,11 @@ def check(t, has_cd):
             and ('drafts/' in cmd or any('drafts/' in os.path.abspath(os.path.expanduser(x)) for x in a if not x.startswith('-'))):
         block("never set a draft's file times: the posting gate reads them. Rebuild the record instead (`thread-context <owner/repo#N> --out <its folder>/thread-context.md`), "
               "re-save the draft, and run its review again (mergeworthy:post steps 1-4)")
-    if p == 'pgrep' and any(x == '--full' or (not x.startswith('--') and short_has(x, 'f')) for x in a):
-        block("never pgrep -f: it matches its own command line and other sessions' processes; wait on the PID you started (`kill -0 <pid>`) or its port")
+    if p == 'pgrep' and any(x == '--full' or (not x.startswith('--') and short_has(x, 'f')) for x in a) and not (
+            readers is not None and {os.path.basename(r[0]) for r in readers} <= READERS
+            and any(x in ('--list-full', '--list-name', '--count') or not x.startswith('--') and any(short_has(x, c) for c in 'alc') for x in a)):
+        block("never pgrep -f to wait or kill: it matches its own command line and other sessions' processes; wait on the PID you started (`kill -0 <pid>`) or its port. "
+              "Only a listing passes: `pgrep -af <pattern>`, alone or piped to a reader (`| cut -c1-120`)")
     if p == 'killall' or (p == 'pkill' and any(x == '--full' or (not x.startswith('--') and short_has(x, 'f')) for x in a)):
         block("never pkill -f / killall: kill your own processes by PID or port")
     if p == 'kill':
@@ -697,8 +704,10 @@ def check(t, has_cd):
         if sub in ('commit', 'push') and repo is not None:
             check_steward(repo)
         if sub == 'commit' and repo is not None and os.path.isdir(repo):  # in a folder this hook can't resolve (`cd "$(mktemp -d)"`), a commit stays local
-            if why := not recorded('preflight', after, repo) and no_preflight(repo) or not recorded('approach', after, repo) and no_approach(repo):
-                block(why)
+            for step, missing in (('preflight', no_preflight), ('approach', no_approach)):
+                if not recorded(step, after, repo) and (why := missing(repo)):
+                    block(why + (f" This check runs before the line does, so the line's own `pr-steps {step}` counts only when the commit needs it to pass: "
+                                 "join them with `&&`, with no `;`, `||` or pipe on the record" if branch_record(repo, step) in records.values() else ''))
             check_commit_identity(overrides, repo)
             every = any(x == '--all' or re.fullmatch(r'-[a-zA-Z]*a[a-zA-Z]*', x) for x in rest)  # `git commit -a` commits the worktree's changes too
             check_patches(repo, subprocess.run(['git', '-C', repo, 'diff', '--name-only', *([] if every else ['--cached']), 'HEAD'], capture_output=True, text=True).stdout.split(), '--amend' in rest)
