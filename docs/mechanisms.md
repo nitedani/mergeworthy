@@ -194,7 +194,7 @@ It reads the final message from its input (`last_assistant_message`), not the tr
 
 The five checks of the final message (the hand-back, the repeated fork, the PR states, the done opening, the `Running:` list) skip a delegated child, whose message is its result. `hooks/report.py` reads what the message says (the hand-back, the done opening and the PR states from its authored text, without code, quotes and quoted lines); `hooks/forge.py` reads GitHub and GitLab, making each read once per stop; `hooks/t3_tasks.py` reads T3's delegated tasks from the transcript; `stop-lint.py` judges what they found.
 
-It skips its watcher checks, the open-box check and the refresh order while the user's last message says "pause". A turn's first stop also gets a check-in, at most once per 30 minutes per session, in a session with work that can still be waiting (a work folder it worked in, an agent it started, a Monitor) and a message not ending with a `GENUINE-FORK:` line: work to start, or anything waiting? With nothing, the session ends the turn without writing anything.
+It skips its watcher checks, the open-box check and the refresh order while the user's last message says "pause". A turn's first stop also gets a check-in, at most once per 30 minutes per session, in a session with work that can still be waiting (a work folder it worked in, an agent it started, a Monitor) and a message not ending with a `GENUINE-FORK:` line: work to start, or anything waiting? With nothing, the session ends the turn with one short line: what it waits on and what will wake it, or that nothing is left.
 
 ### `pre-monitor-guard.py` (`reply`)
 
