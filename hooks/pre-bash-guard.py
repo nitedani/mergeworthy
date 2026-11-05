@@ -651,8 +651,10 @@ def recorded(step, after, repo):
     rec = branch_record(repo, step)
     return any(records.get(id(a)) == rec for a in after)
 
+READERS = {'grep', 'egrep', 'fgrep', 'rg', 'cut', 'head', 'tail', 'sort', 'uniq', 'wc', 'tr', 'cat'}  # print what they read: sed and awk can run commands
+
 def check(t, has_cd):
-    after = getattr(t, 'after', ())
+    after, readers = getattr(t, 'after', ()), getattr(t, 'readers', None)
     env = env_of(t)
     t = prog(t)
     if not t: return
@@ -678,8 +680,11 @@ def check(t, has_cd):
             and ('drafts/' in cmd or any('drafts/' in os.path.abspath(os.path.expanduser(x)) for x in a if not x.startswith('-'))):
         block("never set a draft's file times: the posting gate reads them. Rebuild the record instead (`thread-context <owner/repo#N> --out <its folder>/thread-context.md`), "
               "re-save the draft, and run its review again (mergeworthy:post steps 1-4)")
-    if p == 'pgrep' and any(x == '--full' or (not x.startswith('--') and short_has(x, 'f')) for x in a):
-        block("never pgrep -f: it matches its own command line and other sessions' processes; wait on the PID you started (`kill -0 <pid>`) or its port")
+    if p == 'pgrep' and any(x == '--full' or (not x.startswith('--') and short_has(x, 'f')) for x in a) and not (
+            readers is not None and {os.path.basename(r[0]) for r in readers} <= READERS
+            and any(x in ('--list-full', '--list-name', '--count') or not x.startswith('--') and any(short_has(x, c) for c in 'alc') for x in a)):
+        block("never pgrep -f to wait or kill: it matches its own command line and other sessions' processes; wait on the PID you started (`kill -0 <pid>`) or its port. "
+              "Only a listing passes: `pgrep -af <pattern>`, alone or piped to a reader (`| cut -c1-120`)")
     if p == 'killall' or (p == 'pkill' and any(x == '--full' or (not x.startswith('--') and short_has(x, 'f')) for x in a)):
         block("never pkill -f / killall: kill your own processes by PID or port")
     if p == 'kill':
