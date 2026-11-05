@@ -701,8 +701,10 @@ def check(t, has_cd):
         if sub in ('commit', 'push') and repo is not None:
             check_steward(repo)
         if sub == 'commit' and repo is not None and os.path.isdir(repo):  # in a folder this hook can't resolve (`cd "$(mktemp -d)"`), a commit stays local
-            if why := not recorded('preflight', after, repo) and no_preflight(repo) or not recorded('approach', after, repo) and no_approach(repo):
-                block(why)
+            for step, missing in (('preflight', no_preflight), ('approach', no_approach)):
+                if not recorded(step, after, repo) and (why := missing(repo)):
+                    block(why + (f" This check runs before the line does, so the line's own `pr-steps {step}` counts only when the commit needs it to pass: "
+                                 "join them with `&&`, with no `;`, `||` or pipe on the record" if branch_record(repo, step) in records.values() else ''))
             check_commit_identity(overrides, repo)
             every = any(x == '--all' or re.fullmatch(r'-[a-zA-Z]*a[a-zA-Z]*', x) for x in rest)  # `git commit -a` commits the worktree's changes too
             check_patches(repo, subprocess.run(['git', '-C', repo, 'diff', '--name-only', *([] if every else ['--cached']), 'HEAD'], capture_output=True, text=True).stdout.split(), '--amend' in rest)
