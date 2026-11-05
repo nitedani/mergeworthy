@@ -618,7 +618,7 @@ class Where:
         if op in ('-', ':-') and lost and n.isidentifier() and n not in self.vars and n not in os.environ and n not in self.unseen:
             return self.values(word)
         if op in ('-', ':-', '?', ':?'):
-            if lost or op != ':-' or '' not in vals:
+            if lost or '' not in vals or op != ':-' and not (op == '-' and n in PARAMS):  # '' in a parameter may be a word the call left out
                 return vals
             other = self.values(word)
             return other if isinstance(other, Unknown) else (*(v for v in vals if v), *other)
