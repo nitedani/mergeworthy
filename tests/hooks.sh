@@ -1934,7 +1934,7 @@ GC="$T/prsc"; mkdir -p "$GC"; git -C "$GC" init -q; git -C "$GC" -c user.name=t 
 printf '| `a.ts` | 6 ⇒ 7 | x | one |\n✅ a.ts\nCLEAN\n' > "$T/two-old.md"; printf '| `a.ts` | 7 ⇒ 9 | y | two |\n✅ a.ts\nCLEAN\n' > "$T/two-new.md"
 printf 'shape %s 2026-10-15T07:00:00Z\nshape %s 2026-10-15T09:00:00Z\n' "$T/two-old.md" "$T/two-new.md" > "$HOME/.claude/pr-steps/$GA"
 echo "2026-10-15T08:04:10Z ${GA:0:10} o/r#9 https://example.invalid/o/r/pull/9#issuecomment-8" > "$HOME/.claude/refactor-asks.txt"
-printf 'x\n' > "$GC/f"; git -C "$GC" add f; git -C "$GC" -c user.name=t -c user.email=t@t commit -q -m b; printf 'carries the pass of %s: one docs line\n' "$GA" > "$T/carry-two.md"
+printf 'x\n' > "$GC/f.md"; git -C "$GC" add f.md; git -C "$GC" -c user.name=t -c user.email=t@t commit -q -m b; printf 'carries the pass of %s: one docs line\n' "$GA" > "$T/carry-two.md"
 check "a small follow-up carries the latest of two passes on a head, the one after the ask" 0 "$(cd "$GC" && bash "$R/bin/pr-steps" shape "$T/carry-two.md" >/dev/null 2>&1; echo $?)"
 rm -f "$HOME/.claude/refactor-asks.txt" "$HOME/.claude/pr-steps/$GA"
 printf '| express vike() | 5 ⇒ 8 | abc | named steps |\n✅ express vike()\nCLEAN\n' > "$T/pass.md"; std "$T/pass.md"
@@ -1944,11 +1944,11 @@ check "BLOCK: a re-rating that copies earlier ratings is not a pass, quoting the
 check "BLOCK: a pass with findings left, not ending CLEAN" 1 "$(prs shape "$T/open.md")"
 check "a pass with ratings and the ✅ list, ending CLEAN, records" 0 "$(prs shape "$T/pass.md")"
 check "pr-steps loopb and refactor are gone, pointing at shape" "1 1" "$(prs loopb "$T/pass.md") $(prs refactor "$T/pass.md")"
-A=$(git -C "$G" rev-parse HEAD); printf 'x\n' > "$G/f"; git -C "$G" add f; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m b
+A=$(git -C "$G" rev-parse HEAD); printf 'x\n' > "$G/f.md"; git -C "$G" add f.md; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m b
 printf 'carries the pass of %s: one docs line\n' "$A" > "$T/carry.md"
 check "a small follow-up carries the earlier pass" 0 "$(prs shape "$T/carry.md")"
 # a maintainer's ask for a refactor pass (the watcher's ~/.claude/refactor-asks.txt) after the carried pass needs a real pass, not a carry
-printf 'y\n' > "$G/g"; git -C "$G" add g; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m c
+printf 'y\n' > "$G/g.md"; git -C "$G" add g.md; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m c
 printf 'carries the pass of %s: one test line\n' "$A" > "$T/carry2.md"; cp "$T/carry2.md" "$T/carry3.md"
 echo "$(date -u -d '-1 day' +%FT%TZ) ${A:0:10} o/r#5 https://example.invalid/o/r/pull/5#issuecomment-1" > "$HOME/.claude/refactor-asks.txt"
 check "an ask older than the carried pass leaves the carry allowed" 0 "$(prs shape "$T/carry2.md")"
@@ -1966,9 +1966,18 @@ cp "$T/carry.md" "$T/carry-f.md"
 check "BLOCK: carrying a step the earlier head never recorded" 1 "$(prs fresh "$T/carry-f.md")"
 mkdir -p "$G/dist"; seq 1 300 > "$G/dist/a.mjs"; git -C "$G" add dist; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m bundle; cp "$T/carry.md" "$T/carry-d.md"
 check "a committed build bundle (dist/) doesn't count against a carry" 0 "$(prs shape "$T/carry-d.md")"
-seq 1 100 > "$G/big"; git -C "$G" add big; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m c
+seq 1 100 > "$G/big.md"; git -C "$G" add big.md; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m c
 printf 'carries the pass of %s: big change\n' "$A" > "$T/carry2.md"
 check "BLOCK: carrying across more than 80 changed lines" 1 "$(prs shape "$T/carry2.md")"
+# a carry holds for tests and docs: one line of code since the carried head runs the step, whichever step is carried
+GK="$T/prsk"; mkdir -p "$GK"; git -C "$GK" init -q; git -C "$GK" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; KA=$(git -C "$GK" rev-parse HEAD)
+printf 'verify %s 2026-10-15T07:00:00Z\nshape %s 2026-10-15T07:00:00Z\n' "$T/mv.md" "$T/pass.md" > "$HOME/.claude/pr-steps/$KA"; touch "$T/mv.md"
+pk() { (cd "$GK" && bash "$R/bin/pr-steps" "$1" "$2" 2>&1 >/dev/null; echo "exit $?"); }
+printf 'carries the pass of %s: tests\n' "$KA" | tee "$T/ck1.md" "$T/ck2.md" "$T/ck3.md" "$T/ck4.md" >/dev/null
+mkdir -p "$GK/tests" "$GK/docs"; echo t > "$GK/tests/a.sh"; echo d > "$GK/docs/a.md"; git -C "$GK" add tests docs; git -C "$GK" -c user.name=t -c user.email=t@t commit -q -m tests
+check "a follow-up only in tests and .md files carries the verify and shape records" "exit 0 exit 0" "$(pk verify "$T/ck1.md") $(pk shape "$T/ck2.md")"
+echo c > "$GK/app.ts"; git -C "$GK" add app.ts; git -C "$GK" -c user.name=t -c user.email=t@t commit -q -m code
+check "BLOCK: one line of code since the carried head: verify and shape are refused, naming the file and saying to run the step" "1 1 1 1" "$(pk verify "$T/ck3.md" | tail -n1 | cut -d' ' -f2) $(pk verify "$T/ck3.md" | grep -c 'app.ts changed since .*run the verify step again') $(pk shape "$T/ck4.md" | tail -n1 | cut -d' ' -f2) $(pk shape "$T/ck4.md" | grep -c 'app.ts changed since .*run the shape step again')"
 # a clean merge of the base brings in other people's lines: the PR's own patch is unchanged, so its pass carries
 MB="$T/mbase.git"; MG="$T/mclone"; git init -q --bare -b main "$MB"; git clone -q "$MB" "$MG" 2>/dev/null
 gc() { git -C "$MG" -c user.name=t -c user.email=t@t "$@"; }
@@ -1978,8 +1987,14 @@ mkdir -p "$HOME/.claude/pr-steps"; echo "verify $T/mv.md" >> "$HOME/.claude/pr-s
 gc checkout -q main; seq 1 200 > "$MG/other"; gc add other; gc commit -q -m other; gc push -q origin main; gc checkout -q fix; gc merge -q --no-edit main
 printf 'carries the pass of %s: merged main\n' "$MA" > "$T/carry-m.md"
 check "a clean merge of the base (200 lines, none the PR's) carries the earlier head's Loop A" 0 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m.md" >/dev/null 2>&1; echo $?) )"
-echo fix2 >> "$MG/f"; gc commit -qam follow-up; cp "$T/carry-m.md" "$T/carry-m2.md"
+printf 'one\ntwo\n' > "$MG/f.md"; gc add f.md; gc commit -q -m follow-up; cp "$T/carry-m.md" "$T/carry-m2.md"
 check "the merge and a 2-line follow-up after it carry: only the follow-up counts" 0 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m2.md" >/dev/null 2>&1; echo $?) )"
+# a clean merge that moves the PR's code lines leaves its own diff as it was, hunk headers, blob ids and context aside
+gc checkout -q main; seq 1 20 > "$MG/code.ts"; gc add code.ts; gc commit -q -m code; gc push -q origin main
+gc checkout -q -b fix4 main; sed -i 's/^15$/pr/' "$MG/code.ts"; gc commit -qam fix4; MD=$(git -C "$MG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$MD"
+gc checkout -q main; sed -i -e '1i top' -e 's/^13$/base/' "$MG/code.ts"; gc commit -qam moved; gc push -q origin main; gc checkout -q fix4; gc merge -q --no-edit main
+printf 'carries the pass of %s: merged main\n' "$MD" > "$T/carry-m6.md"
+check "a merge of the base that moves the PR's code lines, with other context and blob ids, carries" 0 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m6.md" >/dev/null 2>&1; echo $?) )"
 # a conflict with the base: its resolution counts only where it changes the PR's own diff, not for the base's 200 lines
 gc checkout -q main; echo a > "$MG/n.md"; gc add n.md; gc commit -q -m n; gc push -q origin main
 gc checkout -q -b fix3 main; echo pr > "$MG/n.md"; gc commit -qam fix3; MC=$(git -C "$MG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$MC"
@@ -2008,7 +2023,7 @@ CLAUDE_CODE_SESSION_ID=s-v1 prs approach "$T/apo.md" >/dev/null
 check "an approach recorded by a session on v1's catalog has no contract: 2" 0 "$(tail -n1 "$APF" | grep -c ' contract: 2$')"
 printf 'MERGE AS IS: yes\nCLEAN\n' > "$T/ofr.md"; std "$T/ofr.md"
 check "an old-contract branch still records loopb, refactor, and a fresh report without a Maintainer line" "0 0 0" "$(prs loopb "$T/olb.md") $(prs refactor "$T/pass.md") $(prs fresh "$T/ofr.md")"
-C=$(git -C "$G" rev-parse HEAD); printf 'y\n' > "$G/f2"; git -C "$G" add f2; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m d
+C=$(git -C "$G" rev-parse HEAD); printf 'y\n' > "$G/f2.md"; git -C "$G" add f2.md; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m d
 printf 'carries the pass of %s: one line\n' "$C" > "$T/carry3.md"
 check "a shape record carries an old head's loopb CLEAN and refactor pass" 0 "$(prs shape "$T/carry3.md")"
 printf 'z\n' > "$G/f3"; git -C "$G" add f3; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m e; E=$(git -C "$G" rev-parse HEAD)
