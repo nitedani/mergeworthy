@@ -945,13 +945,13 @@ def emit_refactor_stale(repo, key, new):
             return worked(f"shape check {key}")  # no shape pass to keep up with: checked
         idx = max((i for i, c in enumerate(commits) if os.path.exists(f"{rec}/{c['sha']}") and any(l.startswith(('shape ', 'refactor ')) for l in open(f"{rec}/{c['sha']}"))), default=-1)
         since = [c['sha'] for c in commits[idx + 1:] if not c['merge']]
-        skip = re.compile(testpaths.TESTS + r'|(^|/)(pnpm-lock\.yaml|package-lock\.json|yarn\.lock)$|(^|/)dist/')
+        skip = re.compile(testpaths.NOT_SHAPE)
         lines = sum(f['additions'] + f['deletions'] for sha in since for f in (request(f"repos/{repo}/commits/{sha}").json().get('files') or []) if not skip.search(f['filename']))
     except Exception as e:
         fail(f"shape check {key}", e)
         return
     worked(f"shape check {key}")
-    if lines > 80:
+    if lines > testpaths.STALE_LINES:
         last = commits[idx]['sha'][:10] if idx >= 0 else 'never'
         emit(f"### SHAPE STALE {key}: {lines} changed lines since the last shape pass ({last}): re-run it on the whole PR diff (mergeworthy:converge step 2), then `pr-steps shape`")
 
