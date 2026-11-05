@@ -116,12 +116,12 @@ fi
 # carries an earlier pass ("carries the pass of <sha>", carry_holds): a fix log or a note is not a shape pass
 # A pass rates every item afresh: a row whose rating is copied ("10 =", "=", "unchanged since") is a re-rating of a delta, not a pass
 is_pass() { grep -q '✅' "$1" && grep -Eq '([0-9]+|\bnew) *(⇒|=>) *([0-9]+|removed|new|n/a)' "$1" && ! grep -Eiq '\| *([0-9]+ *)?= *\||unchanged since' "$1"; }
-# A head's own diff against its merge-base with base $2 (no base: against head $3): each changed line after its path, without what
-# a merge or rebase moves (hunk headers, blob ids, context)
+# A head's own diff against its merge-base with base $2 (no base: against head $3): each line after its path, its context kept so
+# that moving a line past another shows, without what a merge alone moves (hunk numbers, blob ids)
 own_diff() {
-  git diff -U0 --binary --no-renames --no-color --no-ext-diff "$(git merge-base "$1" "$2" 2>/dev/null || echo "$3")" "$1" | awk '
+  git diff --binary --no-renames --no-color --no-ext-diff "$(git merge-base "$1" "$2" 2>/dev/null || echo "$3")" "$1" | awk '
     /^diff --git / { r = substr($0, 14); f = substr(r, 1, (length(r) - 3) / 2); h = 1; next }
-    /^@@ / { h = 0; next }
+    /^@@ / { h = 0; print f "\t@@"; next }
     h && /^(index|---|\+\+\+) / { next }
     { print f "\t" $0 }'
 }
