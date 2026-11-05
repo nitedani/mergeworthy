@@ -1980,10 +1980,14 @@ printf 'carries the pass of %s: merged main\n' "$MA" > "$T/carry-m.md"
 check "a clean merge of the base (200 lines, none the PR's) carries the earlier head's Loop A" 0 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m.md" >/dev/null 2>&1; echo $?) )"
 echo fix2 >> "$MG/f"; gc commit -qam follow-up; cp "$T/carry-m.md" "$T/carry-m2.md"
 check "the merge and a 2-line follow-up after it carry: only the follow-up counts" 0 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m2.md" >/dev/null 2>&1; echo $?) )"
-gc checkout -q -b fix3 main; echo pr > "$MG/a"; gc commit -qam fix3; MC=$(git -C "$MG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$MC"
-gc checkout -q main; echo base > "$MG/a"; seq 1 200 > "$MG/other2"; gc add -A; gc commit -q -m other2; gc push -q origin main; gc checkout -q fix3
-gc merge -q --no-edit main >/dev/null 2>&1; echo pr > "$MG/a"; gc commit -qam resolved; printf 'carries the pass of %s: merged main\n' "$MC" > "$T/carry-m3.md"
-check "BLOCK: a merge whose replay of the earlier head conflicts counts from that head, the base's 200 lines included" 1 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m3.md" >/dev/null 2>&1; echo $?) )"
+# a conflict with the base: its resolution counts only where it changes the PR's own diff, not for the base's 200 lines
+gc checkout -q main; echo a > "$MG/n.md"; gc add n.md; gc commit -q -m n; gc push -q origin main
+gc checkout -q -b fix3 main; echo pr > "$MG/n.md"; gc commit -qam fix3; MC=$(git -C "$MG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$MC"
+gc checkout -q main; echo base > "$MG/n.md"; seq 1 200 > "$MG/other2"; gc add -A; gc commit -q -m other2; gc push -q origin main; gc checkout -q fix3
+gc merge -q --no-edit main >/dev/null 2>&1; echo pr > "$MG/n.md"; gc commit -qam resolved; printf 'carries the pass of %s: merged main\n' "$MC" > "$T/carry-m3.md"
+check "a merge that conflicts and resolves to the PR's own change (the base's 200 lines aside) carries" 0 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m3.md" >/dev/null 2>&1; echo $?) )"
+seq 1 100 >> "$MG/n.md"; gc commit -qam 'a larger resolution'; cp "$T/carry-m3.md" "$T/carry-m5.md"
+check "BLOCK: a resolution that changes the PR's own diff by more than 80 lines counts" 1 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m5.md" >/dev/null 2>&1; echo $?) )"
 # a stacked PR's carry is measured against its own base: a merge of its parent brings in the parent's lines, not the PR's
 gc checkout -q -b parent main; echo p > "$MG/p"; gc add p; gc commit -q -m parent; gc push -q origin parent
 gc checkout -q -b child; echo c > "$MG/c"; gc add c; gc commit -q -m child; MS=$(git -C "$MG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$MS"
