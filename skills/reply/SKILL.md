@@ -38,7 +38,7 @@ The watcher (`task` step 5) writes each comment you owe to `events.log` and `rep
 | `WAIT PING DUE` | §Wait ping |
 | `### DEPENDENT of merged …`, or a release you wait on | In the same step, apply what waited on it and post the progress on the dependent PR. Check releases and unwatched PRs in `waiting-on.txt` yourself at every wakeup. |
 | `### TRACKER STALE` | `task §Umbrella`, through `post --kind tracker` |
-| `### SHAPE STALE` | `converge` step 2 on the whole diff, before the next "Done" reply |
+| `### SHAPE STALE` | `converge §Batching`'s shape pass |
 | `### AGENT DONE <ticket>` | `delegate` step 6 |
 | `### FOLLOW-UP`, `### MAINTAINER REVIEW` | `rules` step 6 (the PR's session still answers the review) |
 | `### AGENT COMMAND`, `### UNROUTED /agent` | the user typing: `task` |

@@ -1223,6 +1223,28 @@ r1=$(rnd gw-r1 "Review $T/gw at head $NEW"); r2=$(rnd gw-r2 "Review $T/gw at hea
 git -C "$T/gw" commit -q --allow-empty -m fix; FIX=$(git -C "$T/gw" rev-parse HEAD); r3f=$(rnd "gw-r3-${FIX:0:7}" "Review $T/gw at head $FIX")
 git -C "$T/gw" checkout -q --detach "$OLD"; git -C "$T/gw" commit -q --allow-empty -m new; NH=$(git -C "$T/gw" rev-parse HEAD)
 check "review rounds on one head: r1 and r2 pass, BLOCK r3 on it and on a fix built on it, r3 on a new head passes" "0 0 2 2 0" "$r1 $r2 $r3 $r3f $(rnd "gw-r3-${NH:0:7}" "Review $T/gw at head $NH")"
+git init -q -b main "$T/rh"; mkdir "$T/rh/tests"
+rh_commit() { seq "$2" >> "$T/rh/$1"; git -C "$T/rh" add .; git -C "$T/rh" commit -qm "$1"; git -C "$T/rh" rev-parse HEAD; }  # a path gets N new lines
+rh_rnd() { rnd "$1" "Review $T/rh at head $2"; }
+H0=$(rh_commit a.py 100); r12="$(rh_rnd rh-r1 "$H0") $(rh_rnd rh-r2 "$H0")"
+H80=$(rh_commit a.py 80); at80=$(rh_rnd rh-r3 "$H80")
+HT=$(rh_commit tests/a.py 200); attests=$(rh_rnd rh-r3 "$HT")
+git -C "$T/rh" checkout -qb base "$H0"; rh_commit b.py 200 >/dev/null; git -C "$T/rh" checkout -q main; git -C "$T/rh" merge -q --no-ff -m "merge the base" base; HM=$(git -C "$T/rh" rev-parse HEAD); atmerge=$(rh_rnd rh-r3 "$HM")
+check "the round cap counts as SHAPE STALE: exactly 80 lines, 200 in tests and 200 from a merge of the base stay fixes of the head, BLOCK r3 on each" "0 0 2 2 2" "$r12 $at80 $attests $atmerge"
+sed -i 1d "$T/rh/a.py"; git -C "$T/rh" commit -qam "one deletion"; H81=$(git -C "$T/rh" rev-parse HEAD); past=$(rh_rnd rh-r3 "$H81")
+HF=$(rh_commit a.py 10); onfix=$(rh_rnd rh-r4 "$HF")
+HG=$(rh_commit a.py 5); third=$(rh_rnd rh-r5 "$HG")
+HN=$(rh_commit a.py 81); onnew=$(rh_rnd rh-r5 "$HN")
+check "the 81st changed line, a deletion, makes a new head with two rounds: r3 passes, r4 on its fixes passes, BLOCK r5 within 80 lines of them, r5 81 lines past passes" "0 0 2 0" "$past $onfix $third $onnew"
+first=$(rh_rnd rh-a-r1 "$HN"); HB=$(rh_commit a.py 81); second=$(rh_rnd rh-a-r2 "$HB"); HC=$(rh_commit a.py 5)
+check "r2 past 80 lines of r1 opens a new head: r3 on r2's fixes passes, BLOCK r4 on them" "0 0 0 2" "$first $second $(rh_rnd rh-a-r3 "$HC") $(rh_rnd rh-a-r4 "$HC")"
+check "a round with no pinned head holds only against another: pinned after unpinned and unpinned after pinned pass" "0 0 0 0 0 0" "$(rnd rh-u-r1 "Review $T/rh") $(rnd rh-u-r2 "Review $T/rh") $(rh_rnd rh-u-r3 "$HC") $(rh_rnd rh-p-r1 "$HC") $(rh_rnd rh-p-r2 "$HC") $(rnd rh-p-r3 "Review $T/rh")"
+mkdir -p "$T/rh/src" "$T/rh/spec"; for f in src/m81.py:81 src/m80.py:80 tests/helper.py:1000 src/code.py:100 tests/x.py:200; do rh_commit "${f%:*}" "${f#*:}" >/dev/null; done
+rh_moved() { # loop from to lines: r1 and r2 on the head, then r3 on the rename of a file with that many new lines
+  local H; H=$(git -C "$T/rh" rev-parse HEAD); rh_rnd "$1-r1" "$H" >/dev/null; rh_rnd "$1-r2" "$H" >/dev/null; git -C "$T/rh" mv "$2" "$3"; rh_rnd "$1-r3" "$(rh_commit "$3" "$4")"; }
+check "a rename counts each side by its real path: 81 code lines moved to tests pass by the delete side, 80 BLOCK; 81 new lines in a file moved from tests or within the code pass; BLOCK 81 lines of a test moved between test paths" "0 2 0 0 2" "$(rh_moved rh-m81 src/m81.py tests/m81.py 0) $(rh_moved rh-m80 src/m80.py tests/m80.py 0) $(rh_moved rh-h tests/helper.py src/runtime.py 81) $(rh_moved rh-c src/code.py src/renamed.py 81) $(rh_moved rh-t tests/x.py spec/x.py 81)"
+HQ=$(git -C "$T/rh" rev-parse HEAD); rh_rnd rh-q-r1 "$HQ" >/dev/null; rh_rnd rh-q-r2 "$HQ" >/dev/null
+check "BLOCK: r3 on 81 new lines only in tests/café.py: a path git would quote is still a test" 2 "$(rh_rnd rh-q-r3 "$(rh_commit 'tests/café.py' 81)")"
 mkdir -p "$HOME/.mergeworthy/projects/o"; echo "- a lesson from $OLD" > "$HOME/.mergeworthy/projects/o/gwnotes.md"
 check "a project notes file the brief names is read, not pinned: its history SHAs block nothing" 0 "$(ag "$OC" "Fix it in $T/gw; notes $HOME/.mergeworthy/projects/o/gwnotes.md")"
 check "the user's own checkout is read at any commit" 0 "$(ag "$OC" "Read $T/gr at $MAINOLD once more")"
