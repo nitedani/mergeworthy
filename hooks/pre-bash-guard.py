@@ -51,11 +51,12 @@ where = Where(cwd)  # where each of the command's simple commands runs (walk), w
 def block(msg):
     print(f"BLOCKED by pre-bash-guard: {msg}", file=sys.stderr); sys.exit(2)
 
-def known(d):
-    """d, what a check reads of where the command runs (from Where); one Where can't tell (None, or an Unknown saying why) blocks."""
+def known(d, word=None):
+    """d, what a check reads of where the command runs, or of where its written file word lands (from Where); one Where can't tell (None, or an Unknown saying why) blocks."""
     if d is None or isinstance(d, shellcmd.Unknown):
-        block("can't tell which dir this command runs in (after a cd to an expansion it can't resolve, `cd -`, popd, a cd in a branch, loop or function, "
-              "or a relative cd in a loop), so its checks can't run: cd to an absolute path first (`cd /abs/dir && <command>`), or pass absolute paths" + (f"; {d}" if d not in (None, '') else ''))
+        why = d if d not in (None, '') else "after a cd to an expansion it can't resolve, `cd -`, popd, a cd in a branch, loop or function, or a relative cd in a loop"
+        block(f"can't tell which dir {'this command runs in' if word is None else f'`{word}` lands in'} ({why}), so its checks can't run: "
+              "cd to an absolute path first (`cd /abs/dir && <command>`), or pass absolute paths")
     return d
 
 def short_has(t, letter):  # -f, -9f, -fu ...
@@ -753,7 +754,7 @@ def check(t, has_cd):
     if p not in ('claude', 'codex') and any(f.endswith('.review.out') for f in [*map(where.expand, written_files(t)), *(f for c in files for f in c or [])]) and not by_agent():
         block("a review's output is the reviewer's final message, written by the reviewer: `codex exec -o <out>`, or the agent writes <out> itself. "
               "Never write a verdict yourself (mergeworthy:delegate §Reviewers, post step 3)")
-    written = [f for c in files for f in known(c)]
+    written = [f for x, c in zip(written_files(t), files) for f in known(c, x)]
     for x in dict.fromkeys(map(shellcmd.folder, written)):  # the instructions check runs git, once per folder
         if why := no_instructions_read(x, d):
             block(why)

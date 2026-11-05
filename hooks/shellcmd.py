@@ -502,7 +502,7 @@ PIECE = '\0'  # in a value, a part known only to hold no /: it may stand in a fi
 SPECIALS = ('$', '!', '?', '#', 'RANDOM', 'SECONDS')  # the shell's variables that only ever hold a number
 HASHES = ('md5sum', 'sha1sum', 'sha256sum', 'sha512sum', 'b2sum', 'cksum')
 CAP = 64  # a word's values and a file's candidates: the check runs git for each folder
-UNKNOWN, CAPPED = Unknown(), Unknown(f'its word may hold more than {CAP} values: name the files, or run a command per folder')
+UNKNOWN, CAPPED = Unknown("a value it can't read"), Unknown(f'more than {CAP} values: name the files, or run a command per folder')
 
 
 class Many(Maybe):
@@ -559,19 +559,29 @@ class Where:
         no spots for a relative one, a piece in its folder, or a value the line doesn't list."""
         vals = self.values(w)
         if isinstance(vals, Unknown):
-            return vals
+            return self._way_out(w, vals)
         out = []
         for v in map(os.path.expanduser, vals):
-            if PIECE in os.path.dirname(v) or getattr(w, 'splits', False) and re.search(r'[\s*?[]', v):  # bash would split or match it: other paths
-                return UNKNOWN
+            if PIECE in os.path.dirname(v):
+                return Unknown('a computed part stands in its folder')
+            if getattr(w, 'splits', False) and re.search(r'[\s*?[]', v):
+                return Unknown('bash would split or match its value: other paths')
             v = v.replace(PIECE, '_')
             if os.path.isabs(v):
                 out.append(v)
             elif self.spots is None:
-                return UNKNOWN
+                return Unknown()
             else:
                 out += [os.path.join(x, v) for x in self.spots]
         return CAPPED if len(out) > CAP else out
+
+    def _way_out(self, w, why):
+        """why, offering what passes when the part of word w it can't tell stands in a file's name: after other text, with no / after it."""
+        parts = getattr(w, 'parts', ())
+        i = next((i for i, p in enumerate(parts) if isinstance(self._part(*p), Unknown)), 0)
+        if not i or parts[i][0] not in ('var', 'sub') or any(p[0] == 'lit' and '/' in p[1] for p in parts[i + 1:]):
+            return why
+        return Unknown(f"{why}: if it only names the file, {f'`${{{parts[i][1]}##*/}}`' if parts[i][0] == 'var' else 'its `basename`'} passes")
 
     def values(self, w):
         """The values word w may hold here, what the line itself gives it, a PIECE for each part known only to hold no /; an Unknown when it
@@ -591,12 +601,14 @@ class Where:
 
     def _part(self, kind, *a):
         """The values a part of a word (Word.parts) may hold."""
-        if kind == 'lit': return UNKNOWN if re.search(r'[$`]', a[0]) else (a[0],)
+        if kind == 'lit': return Unknown('a quoted `$` stays as written') if re.search(r'[$`]', a[0]) else (a[0],)
         if kind == 'piece': return (PIECE,)
         if kind == 'var': return self._var(a[0])
         if kind == 'exp': return self._exp(*a)
         if kind == 'repl': return self._repl(*a)
-        if kind == 'sub' and a[0]: return self._sub(a[0])
+        if kind == 'sub':
+            vals = self._sub(a[0]) if a[0] else UNKNOWN
+            return vals if vals is not UNKNOWN else Unknown('the output of `' + ' | '.join(map(' '.join, a[0])) + '`' if a[0] else "a command's output")
         return UNKNOWN
 
     def _exp(self, n, op, word):
@@ -660,9 +672,11 @@ class Where:
         if n in SPECIALS and n not in self.vars:
             return (PIECE,)
         v = self.vars.get(n, os.environ.get(n))
-        if n in self.unseen or v is None:
-            return UNKNOWN
-        return v.vals if isinstance(v, Many) else UNKNOWN if isinstance(v, Maybe) or re.search(r'[$`]', v) else (v,)
+        if n in self.unseen: return Unknown(f"`${n}` holds a value set where it can't follow")
+        if v is None: return Unknown(f"`${n}` isn't set on this line")
+        if isinstance(v, Many): return Unknown(f'`${n}` holds {v.vals}') if isinstance(v.vals, Unknown) else v.vals
+        if isinstance(v, Maybe): return Unknown(f'`${n}` may hold another value here: a branch, loop or function sets it, or a child shell reads it')
+        return Unknown(f'`${n}` holds a `$`') if re.search(r'[$`]', v) else (v,)
 
     def _listed(self, words):
         """What a for loop's variable holds over words: each word's values, split and matched on disk as bash does."""
@@ -739,7 +753,7 @@ class Where:
 
     def _bind(self, f):
         """$1.. in function f's body: what any call of it gives each, '' past a call's words, nothing known without a call."""
-        calls = self.args.get(f) or [[UNKNOWN] * CAP]
+        calls = self.args.get(f) or [[Unknown('a value no call on this line gives')] * CAP]
         for i, n in enumerate(PARAMS):
             vals = [c[i] if i < len(c) else ('',) for c in calls]
             lost = next((v for v in vals if isinstance(v, Unknown)), None)
