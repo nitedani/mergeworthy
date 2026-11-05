@@ -534,6 +534,7 @@ class Where:
     (walk), the second for a call in another body, each recording every call's spots and words (called)."""
     def __init__(self, cwd):
         self.funcs, self.func_vars, self.func_moves = set(), set(), False  # the functions the line defines, the variables their bodies set, whether one changes dir
+        self.dry = False
         self.args, self.called = {}, {}  # each function's calls, each (its spots, the values of its parameters: _args): from the dry walk before this one, and seen by this walk
         self.main_dir, self.main_vars = cwd, {'PWD': cwd}
         self.dir, self.moved, self.vars, self.scopes, self.quoted, self.unseen, self.spots = cwd, False, {'PWD': cwd}, [], set(), frozenset(), (cwd,)  # each scope entered: [(id, kind, name), dir before it, whether a cd ran in it, variables before it, variables set in it, main_vars before it, spots before it]
@@ -702,7 +703,7 @@ class Where:
         self.args = {f: [(None, [UNKNOWN] * CAP)] for f in funcs}  # the first dry walk knows nothing of any call
         for _ in range(2 if funcs else 0):
             dry = Where(self.dir)
-            dry.funcs, dry.args = set(funcs), self.args  # one body may call a function defined after it
+            dry.dry, dry.funcs, dry.args = True, set(funcs), self.args  # one body may call a function defined after it
             for _ in dry._walk(segs): pass
             self.args = dry.called
         yield from self._walk(segs)
@@ -719,9 +720,9 @@ class Where:
         """Leave the scopes not in scopes, innermost first, and enter the new ones."""
         n = 0
         while n < min(len(self.scopes), len(scopes)) and self.scopes[n][0] == scopes[n]: n += 1
-        for (_, kind, *_), before, moved, vars, set_in, main_vars, spots in reversed(self.scopes[n:]):
+        for (_, kind, name, *_), before, moved, vars, set_in, main_vars, spots in reversed(self.scopes[n:]):
             self.dir = before if kind == ISOLATING else None if moved else self.dir
-            self.spots = None if moved and kind != ISOLATING else spots
+            self.spots = None if moved and kind != ISOLATING and not (self.dry and kind == CONDITIONAL and name) else spots  # a call's spots aren't lost to a body not yet called
             self.vars = vars if kind == ISOLATING else {**self.vars, **{v: Maybe(self.vars.get(v, '')) for v in set_in}}
             self.main_vars = main_vars if kind == ISOLATING else self.main_vars
         self.funcs |= {x[2] for x in scopes[n:] if x[2] and x[1] == CONDITIONAL}
