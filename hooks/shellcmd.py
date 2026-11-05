@@ -621,7 +621,7 @@ class Where:
             if lost or '' not in vals or op != ':-' and not (op == '-' and n in PARAMS):  # '' in a parameter may be a word the call left out
                 return vals
             other = self.values(word)
-            return other if isinstance(other, Unknown) else (*(v for v in vals if v), *other)
+            return other if isinstance(other, Unknown) else (*(v for v in vals if v or op == '-'), *other)  # ${1-x} keeps a word given empty
         pat = self.values(word)
         if op not in ('#', '##', '%', '%%') or isinstance(pat, Unknown) or len(pat) != 1:
             return UNKNOWN
