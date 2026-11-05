@@ -731,7 +731,7 @@ class Where:
             if x[1] == LOOP and x[2]: self.vars[x[2]] = self._listed(x[3]); self.changed(x[2])  # each pass gives it another of its words
             if x[1] == CONDITIONAL and x[2]: self._bind(x[2]); self._at_calls(x[2])
             if x[2] == STDIN: self.dir, self.spots = None, None
-            if x[2] in (STDIN, CHILD): self.vars = {k: Maybe(v) for k, v in self.vars.items()} | {'PWD': _dir(self.dir)}  # a shell's PWD is where it starts
+            if x[2] in (STDIN, CHILD): self.vars = {k: Maybe(v) for k, v in self.vars.items()} | {'PWD': _dir(self.dir if self.spots == (self.dir,) else None)}  # a shell's PWD is where it starts
 
     def changed(self, var=None):
         """Record a cd (var None) or an assignment of var here in the scopes it changes what they leave behind, up to the innermost
@@ -766,8 +766,8 @@ class Where:
         spots = [s for s, _ in self.args.get(f, ())]
         spots = None if None in spots else tuple(dict.fromkeys(x for s in spots for x in s)) or self.spots
         if spots != self.spots:
-            self.spots, self.vars['PWD'] = spots, Many('$PWD', spots or UNKNOWN)
-            self.changed('PWD')
+            self.spots, self.vars['PWD'], self.vars['OLDPWD'] = spots, Many('$PWD', spots or UNKNOWN), Maybe('')
+            self.changed('PWD'); self.changed('OLDPWD')
 
     def _args(self, words):
         """The values a call's words give its parameters in turn; past a word bash may make other than one word of, none can be told."""
@@ -812,13 +812,14 @@ class Where:
         to = a[0] if a else '~' if p[0] == 'cd' else '-'
         kinds = [x[0][1] for x in self.scopes if x[0][1] != CONDITIONAL]
         self.changed()
-        old = self.dir, self.main_dir
+        old, here = (self.dir, self.main_dir), self.spots == (self.dir,)
+        relative = not os.path.isabs(os.path.expanduser(self.expand(to, True)))
         nested = t.nested or bool(t.scopes)
         main = None if nested or p[0] == 'popd' or to[:1] in '-+' or self.main_dir is None else \
             _toplevel(self.main_dir) if to == TOPLEVEL else self.path(to, self.main_dir) and os.path.normpath(self.path(to, self.main_dir))
         if not nested and self.main_dir is not None:
             self.dir = main
-        elif p[0] == 'popd' or to[:1] in '-+' or to == TOPLEVEL and self.dir is None or kinds[-1:] == [LOOP] and not os.path.isabs(os.path.expanduser(self.expand(to, True))):
+        elif p[0] == 'popd' or to[:1] in '-+' or to == TOPLEVEL and self.dir is None or kinds[-1:] == [LOOP] and relative:
             self.dir = None
         elif to == TOPLEVEL:
             self.dir = _toplevel(self.dir)
@@ -829,6 +830,9 @@ class Where:
             self.vars[n], self.main_vars[n] = map(_dir, dirs)
             self.changed(n)
         if self.reaches_caller(): self.func_vars.update(('PWD', 'OLDPWD'))
+        if self.in_body():  # dir is the definition's, and a call may run elsewhere
+            for n in ('PWD', 'OLDPWD') if relative else ('OLDPWD',) if not here else ():
+                self.vars[n] = Maybe('')
 
     def _spots(self, verb, to, kinds):
         """Where a cd the dir can't follow may have gone, verb to word to, in scopes of kinds (no conditional's): each value it lists, from each
