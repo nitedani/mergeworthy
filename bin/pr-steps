@@ -137,7 +137,7 @@ carry_holds() {
   local files changed code
   files=$(delta "$1"); changed=$(printf '%s' "$files" | grep -c . || true)
   [ "$changed" -le 80 ] || { echo "$changed lines changed since $1: too much to carry, run the $step step again (mergeworthy:converge §Batching)" >&2; exit 1; }
-  code=$(printf '%s\n' "$files" | awk -v r="$(python3 "$(dirname "$(realpath "$0")")/../hooks/testpaths.py")|\\.md\$" 'NF && $0 !~ r && !f {f = $0} END {print f}')
+  code=$(printf '%s\n' "$files" | R="$(python3 "$(dirname "$(realpath "$0")")/../hooks/testpaths.py")|[.]md\$" awk 'NF && $0 !~ ENVIRON["R"] && !f {f = $0} END {print f}')
   [ -z "$code" ] || { echo "$code changed since $1, and a carry holds for tests and docs alone: run the $step step again (mergeworthy:converge §Batching)" >&2; exit 1; }
 }
 # A small follow-up (carry_holds) carries an earlier head's recorded step: "carries the pass of <sha>"
