@@ -831,8 +831,8 @@ class Where:
             self.vars[n], self.main_vars[n] = map(_dir, dirs)
             self.changed(n)
         if self.reaches_caller(): self.func_vars.update(('PWD', 'OLDPWD'))
-        if self.in_body():  # dir is the definition's, and a call may run elsewhere
-            for n in ('PWD', 'OLDPWD') if relative else ('OLDPWD',) if not here else ():
+        if not here:  # a body whose calls run elsewhere: dir is the definition's
+            for n in ('PWD', 'OLDPWD') if relative else ('OLDPWD',):
                 self.vars[n] = Maybe('')
 
     def _spots(self, verb, to, kinds):
