@@ -1934,7 +1934,7 @@ GC="$T/prsc"; mkdir -p "$GC"; git -C "$GC" init -q; git -C "$GC" -c user.name=t 
 printf '| `a.ts` | 6 ⇒ 7 | x | one |\n✅ a.ts\nCLEAN\n' > "$T/two-old.md"; printf '| `a.ts` | 7 ⇒ 9 | y | two |\n✅ a.ts\nCLEAN\n' > "$T/two-new.md"
 printf 'shape %s 2026-10-15T07:00:00Z\nshape %s 2026-10-15T09:00:00Z\n' "$T/two-old.md" "$T/two-new.md" > "$HOME/.claude/pr-steps/$GA"
 echo "2026-10-15T08:04:10Z ${GA:0:10} o/r#9 https://example.invalid/o/r/pull/9#issuecomment-8" > "$HOME/.claude/refactor-asks.txt"
-printf 'x\n' > "$GC/f"; git -C "$GC" add f; git -C "$GC" -c user.name=t -c user.email=t@t commit -q -m b; printf 'carries the pass of %s: one docs line\n' "$GA" > "$T/carry-two.md"
+printf 'x\n' > "$GC/f.md"; git -C "$GC" add f.md; git -C "$GC" -c user.name=t -c user.email=t@t commit -q -m b; printf 'carries the pass of %s: one docs line\n' "$GA" > "$T/carry-two.md"
 check "a small follow-up carries the latest of two passes on a head, the one after the ask" 0 "$(cd "$GC" && bash "$R/bin/pr-steps" shape "$T/carry-two.md" >/dev/null 2>&1; echo $?)"
 rm -f "$HOME/.claude/refactor-asks.txt" "$HOME/.claude/pr-steps/$GA"
 printf '| express vike() | 5 ⇒ 8 | abc | named steps |\n✅ express vike()\nCLEAN\n' > "$T/pass.md"; std "$T/pass.md"
@@ -1944,11 +1944,11 @@ check "BLOCK: a re-rating that copies earlier ratings is not a pass, quoting the
 check "BLOCK: a pass with findings left, not ending CLEAN" 1 "$(prs shape "$T/open.md")"
 check "a pass with ratings and the ✅ list, ending CLEAN, records" 0 "$(prs shape "$T/pass.md")"
 check "pr-steps loopb and refactor are gone, pointing at shape" "1 1" "$(prs loopb "$T/pass.md") $(prs refactor "$T/pass.md")"
-A=$(git -C "$G" rev-parse HEAD); printf 'x\n' > "$G/f"; git -C "$G" add f; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m b
+A=$(git -C "$G" rev-parse HEAD); printf 'x\n' > "$G/f.md"; git -C "$G" add f.md; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m b
 printf 'carries the pass of %s: one docs line\n' "$A" > "$T/carry.md"
 check "a small follow-up carries the earlier pass" 0 "$(prs shape "$T/carry.md")"
 # a maintainer's ask for a refactor pass (the watcher's ~/.claude/refactor-asks.txt) after the carried pass needs a real pass, not a carry
-printf 'y\n' > "$G/g"; git -C "$G" add g; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m c
+printf 'y\n' > "$G/g.md"; git -C "$G" add g.md; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m c
 printf 'carries the pass of %s: one test line\n' "$A" > "$T/carry2.md"; cp "$T/carry2.md" "$T/carry3.md"
 echo "$(date -u -d '-1 day' +%FT%TZ) ${A:0:10} o/r#5 https://example.invalid/o/r/pull/5#issuecomment-1" > "$HOME/.claude/refactor-asks.txt"
 check "an ask older than the carried pass leaves the carry allowed" 0 "$(prs shape "$T/carry2.md")"
@@ -1966,9 +1966,22 @@ cp "$T/carry.md" "$T/carry-f.md"
 check "BLOCK: carrying a step the earlier head never recorded" 1 "$(prs fresh "$T/carry-f.md")"
 mkdir -p "$G/dist"; seq 1 300 > "$G/dist/a.mjs"; git -C "$G" add dist; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m bundle; cp "$T/carry.md" "$T/carry-d.md"
 check "a committed build bundle (dist/) doesn't count against a carry" 0 "$(prs shape "$T/carry-d.md")"
-seq 1 100 > "$G/big"; git -C "$G" add big; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m c
+seq 1 100 > "$G/big.md"; git -C "$G" add big.md; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m c
 printf 'carries the pass of %s: big change\n' "$A" > "$T/carry2.md"
 check "BLOCK: carrying across more than 80 changed lines" 1 "$(prs shape "$T/carry2.md")"
+# a carry holds for tests and docs: one line of code since the carried head runs the step, whichever step is carried
+GK="$T/prsk"; mkdir -p "$GK"; git -C "$GK" init -q; git -C "$GK" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; KA=$(git -C "$GK" rev-parse HEAD)
+printf 'verify %s 2026-10-15T07:00:00Z\nshape %s 2026-10-15T07:00:00Z\n' "$T/mv.md" "$T/pass.md" > "$HOME/.claude/pr-steps/$KA"; touch "$T/mv.md"
+pk() { (cd "$GK" && bash "$R/bin/pr-steps" "$1" "$2" 2>&1 >/dev/null; echo "exit $?"); }
+printf 'carries the pass of %s: tests\n' "$KA" | tee "$T/ck1.md" "$T/ck2.md" "$T/ck3.md" "$T/ck4.md" >/dev/null
+mkdir -p "$GK/tests" "$GK/docs"; echo t > "$GK/tests/a.sh"; echo d > "$GK/docs/a.md"; git -C "$GK" add tests docs; git -C "$GK" -c user.name=t -c user.email=t@t commit -q -m tests
+check "a follow-up only in tests and .md files carries the verify and shape records" "exit 0 exit 0" "$(pk verify "$T/ck1.md") $(pk shape "$T/ck2.md")"
+echo h > "$GK/helló.md"; git -C "$GK" add .; git -C "$GK" -c user.name=t -c user.email=t@t commit -q -m accent; cp "$T/ck1.md" "$T/ck5.md"
+check "a change in a .md whose name git would quote carries" "exit 0" "$(pk verify "$T/ck5.md")"
+git -C "$GK" config diff.noprefix true; echo t > "$GK/tests/b.sh"; git -C "$GK" add tests; git -C "$GK" -c user.name=t -c user.email=t@t commit -q -m noprefix; cp "$T/ck1.md" "$T/ck6.md"
+check "with diff.noprefix set, a test-only follow-up carries" "exit 0" "$(pk verify "$T/ck6.md")"; git -C "$GK" config --unset diff.noprefix
+echo c > "$GK/app.ts"; git -C "$GK" add app.ts; git -C "$GK" -c user.name=t -c user.email=t@t commit -q -m code
+check "BLOCK: one line of code since the carried head: verify and shape are refused, naming the file and saying to run the step" "1 1 1 1" "$(pk verify "$T/ck3.md" | tail -n1 | cut -d' ' -f2) $(pk verify "$T/ck3.md" | grep -c 'app.ts changed since .*run the verify step again') $(pk shape "$T/ck4.md" | tail -n1 | cut -d' ' -f2) $(pk shape "$T/ck4.md" | grep -c 'app.ts changed since .*run the shape step again')"
 # a clean merge of the base brings in other people's lines: the PR's own patch is unchanged, so its pass carries
 MB="$T/mbase.git"; MG="$T/mclone"; git init -q --bare -b main "$MB"; git clone -q "$MB" "$MG" 2>/dev/null
 gc() { git -C "$MG" -c user.name=t -c user.email=t@t "$@"; }
@@ -1978,12 +1991,46 @@ mkdir -p "$HOME/.claude/pr-steps"; echo "verify $T/mv.md" >> "$HOME/.claude/pr-s
 gc checkout -q main; seq 1 200 > "$MG/other"; gc add other; gc commit -q -m other; gc push -q origin main; gc checkout -q fix; gc merge -q --no-edit main
 printf 'carries the pass of %s: merged main\n' "$MA" > "$T/carry-m.md"
 check "a clean merge of the base (200 lines, none the PR's) carries the earlier head's Loop A" 0 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m.md" >/dev/null 2>&1; echo $?) )"
-echo fix2 >> "$MG/f"; gc commit -qam follow-up; cp "$T/carry-m.md" "$T/carry-m2.md"
+printf 'one\ntwo\n' > "$MG/f.md"; gc add f.md; gc commit -q -m follow-up; cp "$T/carry-m.md" "$T/carry-m2.md"
 check "the merge and a 2-line follow-up after it carry: only the follow-up counts" 0 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m2.md" >/dev/null 2>&1; echo $?) )"
-gc checkout -q -b fix3 main; echo pr > "$MG/a"; gc commit -qam fix3; MC=$(git -C "$MG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$MC"
-gc checkout -q main; echo base > "$MG/a"; seq 1 200 > "$MG/other2"; gc add -A; gc commit -q -m other2; gc push -q origin main; gc checkout -q fix3
-gc merge -q --no-edit main >/dev/null 2>&1; echo pr > "$MG/a"; gc commit -qam resolved; printf 'carries the pass of %s: merged main\n' "$MC" > "$T/carry-m3.md"
-check "BLOCK: a merge whose replay of the earlier head conflicts counts from that head, the base's 200 lines included" 1 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m3.md" >/dev/null 2>&1; echo $?) )"
+# a clean merge that shifts the PR's code lines leaves HEAD equal to the replay: not one code line counts
+gc checkout -q main; seq 1 20 > "$MG/code.ts"; gc add code.ts; gc commit -q -m code; gc push -q origin main
+gc checkout -q -b fix4 main; sed -i 's/^15$/pr/' "$MG/code.ts"; gc commit -qam fix4; MD=$(git -C "$MG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$MD"
+gc checkout -q main; sed -i -e '1i top' -e 's/^5$/base/' "$MG/code.ts"; gc commit -qam moved; gc push -q origin main; gc checkout -q fix4; gc merge -q --no-edit main
+printf 'carries the pass of %s: merged main\n' "$MD" | tee "$T/carry-m6.md" "$T/carry-m7.md" >/dev/null
+check "a merge of the base far from the PR's code lines, moving them, carries" 0 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m6.md" >/dev/null 2>&1; echo $?) )"
+gc checkout -q main; sed -i 's/^13$/base/' "$MG/code.ts"; gc commit -qam beside; gc push -q origin main; gc checkout -q fix4; gc merge -q --no-edit main
+check "a merge that changes a line beside the PR's own and replays clean carries: HEAD is the replay, no one wrote a line" 0 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m7.md" >/dev/null 2>&1; echo $?) )"
+# a reviewed line moved past an unchanged one is the same added text doing something else
+gc checkout -q main; printf 'def f():\n    return\n' > "$MG/app.py"; gc add app.py; gc commit -q -m app; gc push -q origin main
+gc checkout -q -b fix5 main; printf 'def f():\n    print("reviewed")\n    return\n' > "$MG/app.py"; gc commit -qam fix5; ME=$(git -C "$MG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$ME"
+printf 'def f():\n    return\n    print("reviewed")\n' > "$MG/app.py"; gc commit -qam moved; printf 'carries the pass of %s: moved\n' "$ME" > "$T/carry-m8.md"
+check "BLOCK: a reviewed line moved past a return: the carry is refused, naming the file" "1 1" "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m8.md" >/dev/null 2>&1; echo $?) ) $( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m8.md" 2>&1 >/dev/null) | grep -c 'app.py changed since')"
+# the same edit moved to a function with the same nearby lines: only the whole tree tells them apart
+FN='    a = 1\n    b = 2\n    c = 3\n    ok = False\n    d = 4\n    e = 5\n    f = 6\n'
+gc checkout -q main; printf "def x():\n$FN\ndef y():\n$FN" > "$MG/fn.py"; gc add fn.py; gc commit -q -m fn; gc push -q origin main
+gc checkout -q -b fix6 main; printf "def x():\n${FN/False/True}\ndef y():\n$FN" > "$MG/fn.py"; gc commit -qam fix6; MF=$(git -C "$MG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$MF"
+printf "def x():\n$FN\ndef y():\n${FN/False/True}" > "$MG/fn.py"; gc commit -qam moved; printf 'carries the pass of %s: moved\n' "$MF" > "$T/carry-m9.md"
+check "BLOCK: an edit moved between two functions with identical nearby lines" 1 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m9.md" >/dev/null 2>&1; echo $?) )"
+# a change with no line in it: a mode, an empty code file
+gc checkout -q -b fix8 main; MM=$(git -C "$MG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$MM"; chmod +x "$MG/fn.py"; gc commit -qam mode; printf 'carries the pass of %s: mode\n' "$MM" | tee "$T/carry-m10.md" "$T/carry-m11.md" >/dev/null
+check "BLOCK: a mode change of a code file" 1 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m10.md" >/dev/null 2>&1; echo $?) )"
+gc checkout -q -b fix9 "$MM"; : > "$MG/empty.ts"; gc add empty.ts; gc commit -q -m empty
+check "BLOCK: an empty code file added" 1 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m11.md" >/dev/null 2>&1; echo $?) )"
+# a resolution in a code file differs from the replay's conflict markers, even one that keeps the PR's change
+gc checkout -q main; echo a > "$MG/cf.ts"; gc add cf.ts; gc commit -q -m cf; gc push -q origin main
+gc checkout -q -b fix7 main; echo pr > "$MG/cf.ts"; gc commit -qam fix7; MH=$(git -C "$MG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$MH"
+gc checkout -q main; echo base > "$MG/cf.ts"; gc commit -qam base-cf; gc push -q origin main; gc checkout -q fix7
+gc merge -q --no-edit main >/dev/null 2>&1; echo pr > "$MG/cf.ts"; gc commit -qam resolved; printf 'carries the pass of %s: merged main\n' "$MH" > "$T/carry-m12.md"
+check "BLOCK: a conflict in a code file, resolved to the PR's own change" 1 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m12.md" >/dev/null 2>&1; echo $?) )"
+# a conflict in a doc counts its region, not the base's 200 lines
+gc checkout -q main; echo a > "$MG/n.md"; gc add n.md; gc commit -q -m n; gc push -q origin main
+gc checkout -q -b fix3 main; echo pr > "$MG/n.md"; gc commit -qam fix3; MC=$(git -C "$MG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$MC"
+gc checkout -q main; echo base > "$MG/n.md"; seq 1 200 > "$MG/other2"; gc add -A; gc commit -q -m other2; gc push -q origin main; gc checkout -q fix3
+gc merge -q --no-edit main >/dev/null 2>&1; echo pr > "$MG/n.md"; gc commit -qam resolved; printf 'carries the pass of %s: merged main\n' "$MC" > "$T/carry-m3.md"
+check "a merge that conflicts in a doc and resolves to the PR's own change (the base's 200 lines aside) carries" 0 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m3.md" >/dev/null 2>&1; echo $?) )"
+seq 1 100 >> "$MG/n.md"; gc commit -qam 'a larger resolution'; cp "$T/carry-m3.md" "$T/carry-m5.md"
+check "BLOCK: a resolution in a doc past 80 lines counts" 1 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m5.md" >/dev/null 2>&1; echo $?) )"
 # a stacked PR's carry is measured against its own base: a merge of its parent brings in the parent's lines, not the PR's
 gc checkout -q -b parent main; echo p > "$MG/p"; gc add p; gc commit -q -m parent; gc push -q origin parent
 gc checkout -q -b child; echo c > "$MG/c"; gc add c; gc commit -q -m child; MS=$(git -C "$MG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$MS"
@@ -2004,7 +2051,7 @@ CLAUDE_CODE_SESSION_ID=s-v1 prs approach "$T/apo.md" >/dev/null
 check "an approach recorded by a session on v1's catalog has no contract: 2" 0 "$(tail -n1 "$APF" | grep -c ' contract: 2$')"
 printf 'MERGE AS IS: yes\nCLEAN\n' > "$T/ofr.md"; std "$T/ofr.md"
 check "an old-contract branch still records loopb, refactor, and a fresh report without a Maintainer line" "0 0 0" "$(prs loopb "$T/olb.md") $(prs refactor "$T/pass.md") $(prs fresh "$T/ofr.md")"
-C=$(git -C "$G" rev-parse HEAD); printf 'y\n' > "$G/f2"; git -C "$G" add f2; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m d
+C=$(git -C "$G" rev-parse HEAD); printf 'y\n' > "$G/f2.md"; git -C "$G" add f2.md; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m d
 printf 'carries the pass of %s: one line\n' "$C" > "$T/carry3.md"
 check "a shape record carries an old head's loopb CLEAN and refactor pass" 0 "$(prs shape "$T/carry3.md")"
 printf 'z\n' > "$G/f3"; git -C "$G" add f3; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m e; E=$(git -C "$G" rev-parse HEAD)
@@ -2176,6 +2223,9 @@ rm "$FX/user"
 # pre-bash-guard: a review's verdict is the reviewer's own output, never the main session's
 check "BLOCK: the main session writing a .review.out (echo >, tee, cp, sed -i, bash -c), naming who writes it" "2 1 2 2 2 2" "$(guard 'echo CLEAN > $D/pr-body.review.out') $(grep -c 'codex exec -o' "$T/err") $(guard "printf 'CLEAN\n' | tee /w/x.review.out") $(guard 'cp /w/r.md /w/x.review.out') $(guard 'sed -i s/a/b/ /w/x.review.out') $(guard 'bash -c "echo CLEAN >> /w/x.review.out"')"
 check "BLOCK: pgrep -f, also inside bash -c; pgrep -P passes" "2 2 0" "$(guard 'pgrep -f vite') $(guard "bash -c 'pgrep -f \"vitest run\" || echo gone'") $(guard 'pgrep -P 123')"
+check "a pgrep -f listing that only a reader consumes passes: -a, -l, --list-full, --list-name, -c, with -u, after a ; or &&, as sessions wrote them" "0 0 0 0 0 0 0 0" "$(guard "pgrep -af vite") $(guard "pgrep -lf vite | head") $(guard "pgrep -f --list-full vite | cut -c1-120 | head -3") $(guard "pgrep -f --list-name vite | sort") $(guard "pgrep -fc vite") $(guard 'pgrep -u $(id -u) -af vite | rg -v pgrep | head -3') $(guard "date; pgrep -af vite | grep -c k12; date") $(guard "cd /tmp && pgrep -af vite | cut -c1-60")"
+check "BLOCK: a pgrep -f with no listing flag, piped to a reader too" "2 2" "$(guard "pgrep -f vite | head -3") $(guard "pgrep -f vite; echo done")"
+check "BLOCK: a listing something else consumes: a condition, a loop, a substitution, kill or xargs, a redirect, a script" "2 2 2 2 2 2 2 2 2 2" "$(guard "if pgrep -af vite; then echo up; fi") $(guard "while pgrep -af vite | grep -q x; do sleep 1; done") $(guard "pgrep -af vite && echo up") $(guard "pgrep -af vite | head || echo gone") $(guard 'for p in $(pgrep -af vite); do kill $p; done') $(guard "pgrep -af vite | xargs kill") $(guard "pgrep -af vite | kill") $(guard "pgrep -af vite | awk '{system(\"kill \" \$1)}'") $(guard "pgrep -af vite > pids") $(guard "bash -c 'pgrep -af vite | head'")"
 check "BLOCK: pkill -f behind wrappers (timeout, netns-run, nice, ionice) and inside their bash -c; a plain timeout run passes" "2 2 2 0" "$(guard "timeout 200 netns-run bash -c 'pnpm build; pkill -f \"vike preview\"; true'") $(guard 'nice -n 19 ionice -c3 pkill -f vite') $(guard 'timeout -k 5 60 pkill -f vite') $(guard 'timeout 60 nice -n 19 pnpm test')"
 check "reading a .review.out, gate-pass, a claude -p reviewer's stdout and an agent writing its own output pass" "0 0 0 0" "$(guard 'cat /w/x.review.out > /w/copy.md') $(guard 'gate-pass /w/x.md /w/x.review.out') $(guard 'claude -p "$(cat /w/p.md)" > /w/x.review.out') $(guard 'echo CLEAN > /w/x.review.out' a1)"
 check "BLOCK: glab mr create, not a draft, outside a converged repo" 2 "$(glab 'glab mr create --title x')"
@@ -2315,12 +2365,16 @@ check "BLOCK: a URL that shows Chrome's error page" 1 "$(pfurl '<div id="main-fr
 check "BLOCK: a URL that renders a blank page" 1 "$(pfurl '<html><body><div id="root"></div><script>boot()</script></body></html>')"
 check "an edit still waits after refused preflights" 2 "$(pfedit "$P/a.ts")"
 check "a commit chained after the same command's pr-steps preflight by && passes that check; after ; it still waits" "0 1" "$(pfcommit "pr-steps preflight 'none, because x' && git commit -m x" | grep -c 'pr-steps preflight') $(pfcommit "pr-steps preflight 'none, because x'; git commit -m x" | grep -c 'pr-steps preflight')"
+check "a preflight on the line that the commit doesn't need says to join with &&" 1 "$(pfcommit "pr-steps preflight 'none, because x'; git commit -m x" | grep -c 'join them with `&&`')"
 check "a URL that renders records the screenshot Chrome took" 0 "$(pfurl '<body><h1>Dashboard</h1></body>')"
 # pull-request step 5 before the code: edits and commits wait for the branch's approach too, a moved branch shares it only by tracking
 check "BLOCK: with its preflight, an edit and a commit there wait for the branch's approach, naming step 5" "2 1" "$(pfedit "$P/a.ts") $(pfcommit | grep -c 'rate the approaches (mergeworthy:pull-request step 5), then `pr-steps approach <work folder>/approach.md`')"
 AP="pr-steps approach $T/approach.md"; POTHER="$T/ap-other"; git init -q "$POTHER"
 check "a commit chained after the same command's pr-steps approach by && passes that check, after a cd and a git add too" "0 0 0" "$(pfcommit "$AP && git commit -m x" | grep -c 'pr-steps approach') $(pfcommit "cd $P && $AP && git add a && git commit -m x" | grep -c 'pr-steps approach') $(pfcommit "bash $R/bin/pr-steps approach $T/approach.md && git commit -m x" | grep -c 'pr-steps approach')"
 check "BLOCK: one a failed record could reach: after ;, ||, a pipe, a negation, or a ||'s other side; one recording another repo" "1 1 1 1 1 1" "$(pfcommit "$AP; git commit -m x" | grep -c 'pr-steps approach') $(pfcommit "$AP || git commit -m x" | grep -c 'pr-steps approach') $(pfcommit "$AP | tail -1 && git commit -m x" | grep -c 'pr-steps approach') $(pfcommit "! $AP && git commit -m x" | grep -c 'pr-steps approach') $(pfcommit "true || $AP && git commit -m x" | grep -c 'pr-steps approach') $(pfcommit "cd $POTHER && $AP && cd $P && git commit -m x" | grep -c 'pr-steps approach')"
+check "a record chained to the commit by && passes whatever comes before it: a ; and a command that may fail, a cd, a redirect on the record" "0 0" "$(pfcommit "date -u; false; cd $P && $AP && git add a && git commit -m x" | grep -c 'pr-steps approach') $(pfcommit "cd $P && $AP 2>&1 && git commit -m x" | grep -c 'pr-steps approach')"
+check "BLOCK: the forms sessions sent, the record piped or followed by ;, each saying to join with &&" "1 1" "$(pfcommit "date -u; cd $P && $AP 2>&1 | tail -3; echo exit=\$?; git add a && git commit -m x" | grep -c 'join them with `&&`') $(pfcommit "cd $P; $AP 2>&1 | tail -3; git add -A; git commit -m x" | grep -c 'join them with `&&`')"
+check "with no record on the line, the refusal doesn't speak of one" 0 "$(pfcommit | grep -c 'join them with')"
 check "BLOCK: an identical record that may have failed here, then a passing one in another repo chained to a commit here, proves nothing for this repo" 1 "$(pfcommit "$AP; cd $POTHER && $AP && git -C $P commit -m x" | grep -c 'pr-steps approach')"
 (cd "$P" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 check "an edit passes once the branch has its preflight and approach" 0 "$(pfedit "$P/a.ts")"
@@ -3232,6 +3286,11 @@ bp=; for c in 'git push https://x-access-token:T@github.com/vikejs/vike.git HEAD
   bp="$bp $(bg "$c" "$OWN2")"; done
 check "BLOCK: a push to another owner's repo however written: a token in the URL, ssh://host:port, GitHub.com, an unknown host, a variable, --repo, a quoted verb before a syntax error, an array" \
   " 2 2 2 2 2 2 2 2" "$bp"
+check "a remote the line assigns a literal is checked as written out: another owner's repo for what it is, the account's own URL or remote name passes" "2 0 0 0" \
+  "$(bg 'U=https://github.com/vikejs/vike.git; git push $U HEAD:s' "$OWN2") $(grep -c 'computed when it runs' "$T/err") $(bg 'U=https://github.com/nitedani-agent/notes.git; git push "$U" HEAD:s' "$OWN2") $(bg 'R=origin; git push ${R} HEAD:s' "$OWN2")"
+pc=; for c in 'U=$(git remote get-url origin); git push $U HEAD:s' 'if true; then U=origin; fi; git push $U HEAD:s' 'for U in origin other; do git push $U HEAD:s; done' 'U=origin git push $U HEAD:s' 'git push $UNSET_REMOTE HEAD:s'; do
+  pc="$pc $(bg "$c" "$OWN2") $(grep -c 'computed when it runs' "$T/err")"; done
+check "BLOCK: a remote the line computes, may set, lists two of or never assigns, as computed" " 2 1 2 1 2 1 2 1 2 1" "$pc"
 git -C "$OWN2" config remote.origin.pushurl https://github.com/vikejs/vike.git
 check "BLOCK: a remote whose pushurl is another owner's repo" 2 "$(bg 'git push origin HEAD:s' "$OWN2")"
 git -C "$OWN2" config --unset remote.origin.pushurl; git -C "$OWN2" config url.https://github.com/vikejs/.pushInsteadOf https://github.com/nitedani-agent/
