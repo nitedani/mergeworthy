@@ -1978,6 +1978,8 @@ mkdir -p "$GK/tests" "$GK/docs"; echo t > "$GK/tests/a.sh"; echo d > "$GK/docs/a
 check "a follow-up only in tests and .md files carries the verify and shape records" "exit 0 exit 0" "$(pk verify "$T/ck1.md") $(pk shape "$T/ck2.md")"
 echo h > "$GK/helló.md"; git -C "$GK" add .; git -C "$GK" -c user.name=t -c user.email=t@t commit -q -m accent; cp "$T/ck1.md" "$T/ck5.md"
 check "a change in a .md whose name git would quote carries" "exit 0" "$(pk verify "$T/ck5.md")"
+git -C "$GK" config diff.noprefix true; echo t > "$GK/tests/b.sh"; git -C "$GK" add tests; git -C "$GK" -c user.name=t -c user.email=t@t commit -q -m noprefix; cp "$T/ck1.md" "$T/ck6.md"
+check "with diff.noprefix set, a test-only follow-up carries" "exit 0" "$(pk verify "$T/ck6.md")"; git -C "$GK" config --unset diff.noprefix
 echo c > "$GK/app.ts"; git -C "$GK" add app.ts; git -C "$GK" -c user.name=t -c user.email=t@t commit -q -m code
 check "BLOCK: one line of code since the carried head: verify and shape are refused, naming the file and saying to run the step" "1 1 1 1" "$(pk verify "$T/ck3.md" | tail -n1 | cut -d' ' -f2) $(pk verify "$T/ck3.md" | grep -c 'app.ts changed since .*run the verify step again') $(pk shape "$T/ck4.md" | tail -n1 | cut -d' ' -f2) $(pk shape "$T/ck4.md" | grep -c 'app.ts changed since .*run the shape step again')"
 # a clean merge of the base brings in other people's lines: the PR's own patch is unchanged, so its pass carries
@@ -1991,27 +1993,44 @@ printf 'carries the pass of %s: merged main\n' "$MA" > "$T/carry-m.md"
 check "a clean merge of the base (200 lines, none the PR's) carries the earlier head's Loop A" 0 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m.md" >/dev/null 2>&1; echo $?) )"
 printf 'one\ntwo\n' > "$MG/f.md"; gc add f.md; gc commit -q -m follow-up; cp "$T/carry-m.md" "$T/carry-m2.md"
 check "the merge and a 2-line follow-up after it carry: only the follow-up counts" 0 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m2.md" >/dev/null 2>&1; echo $?) )"
-# a clean merge far from the PR's code lines shifts them and changes their blob ids, and leaves its own diff as it was: not one code line counts
+# a clean merge that shifts the PR's code lines leaves HEAD equal to the replay: not one code line counts
 gc checkout -q main; seq 1 20 > "$MG/code.ts"; gc add code.ts; gc commit -q -m code; gc push -q origin main
 gc checkout -q -b fix4 main; sed -i 's/^15$/pr/' "$MG/code.ts"; gc commit -qam fix4; MD=$(git -C "$MG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$MD"
 gc checkout -q main; sed -i -e '1i top' -e 's/^5$/base/' "$MG/code.ts"; gc commit -qam moved; gc push -q origin main; gc checkout -q fix4; gc merge -q --no-edit main
 printf 'carries the pass of %s: merged main\n' "$MD" | tee "$T/carry-m6.md" "$T/carry-m7.md" >/dev/null
 check "a merge of the base far from the PR's code lines, moving them, carries" 0 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m6.md" >/dev/null 2>&1; echo $?) )"
 gc checkout -q main; sed -i 's/^13$/base/' "$MG/code.ts"; gc commit -qam beside; gc push -q origin main; gc checkout -q fix4; gc merge -q --no-edit main
-check "BLOCK: a merge of the base that changes a line beside the PR's own counts" 1 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m7.md" >/dev/null 2>&1; echo $?) )"
+check "a merge that changes a line beside the PR's own and replays clean carries: HEAD is the replay, no one wrote a line" 0 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m7.md" >/dev/null 2>&1; echo $?) )"
 # a reviewed line moved past an unchanged one is the same added text doing something else
 gc checkout -q main; printf 'def f():\n    return\n' > "$MG/app.py"; gc add app.py; gc commit -q -m app; gc push -q origin main
 gc checkout -q -b fix5 main; printf 'def f():\n    print("reviewed")\n    return\n' > "$MG/app.py"; gc commit -qam fix5; ME=$(git -C "$MG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$ME"
 printf 'def f():\n    return\n    print("reviewed")\n' > "$MG/app.py"; gc commit -qam moved; printf 'carries the pass of %s: moved\n' "$ME" > "$T/carry-m8.md"
 check "BLOCK: a reviewed line moved past a return: the carry is refused, naming the file" "1 1" "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m8.md" >/dev/null 2>&1; echo $?) ) $( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m8.md" 2>&1 >/dev/null) | grep -c 'app.py changed since')"
-# a conflict with the base: its resolution counts only where it changes the PR's own diff, not for the base's 200 lines
+# the same edit moved to a function with the same nearby lines: only the whole tree tells them apart
+FN='    a = 1\n    b = 2\n    c = 3\n    ok = False\n    d = 4\n    e = 5\n    f = 6\n'
+gc checkout -q main; printf "def x():\n$FN\ndef y():\n$FN" > "$MG/fn.py"; gc add fn.py; gc commit -q -m fn; gc push -q origin main
+gc checkout -q -b fix6 main; printf "def x():\n${FN/False/True}\ndef y():\n$FN" > "$MG/fn.py"; gc commit -qam fix6; MF=$(git -C "$MG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$MF"
+printf "def x():\n$FN\ndef y():\n${FN/False/True}" > "$MG/fn.py"; gc commit -qam moved; printf 'carries the pass of %s: moved\n' "$MF" > "$T/carry-m9.md"
+check "BLOCK: an edit moved between two functions with identical nearby lines" 1 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m9.md" >/dev/null 2>&1; echo $?) )"
+# a change with no line in it: a mode, an empty code file
+gc checkout -q -b fix8 main; MM=$(git -C "$MG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$MM"; chmod +x "$MG/fn.py"; gc commit -qam mode; printf 'carries the pass of %s: mode\n' "$MM" | tee "$T/carry-m10.md" "$T/carry-m11.md" >/dev/null
+check "BLOCK: a mode change of a code file" 1 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m10.md" >/dev/null 2>&1; echo $?) )"
+gc checkout -q -b fix9 "$MM"; : > "$MG/empty.ts"; gc add empty.ts; gc commit -q -m empty
+check "BLOCK: an empty code file added" 1 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m11.md" >/dev/null 2>&1; echo $?) )"
+# a resolution in a code file differs from the replay's conflict markers, even one that keeps the PR's change
+gc checkout -q main; echo a > "$MG/cf.ts"; gc add cf.ts; gc commit -q -m cf; gc push -q origin main
+gc checkout -q -b fix7 main; echo pr > "$MG/cf.ts"; gc commit -qam fix7; MH=$(git -C "$MG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$MH"
+gc checkout -q main; echo base > "$MG/cf.ts"; gc commit -qam base-cf; gc push -q origin main; gc checkout -q fix7
+gc merge -q --no-edit main >/dev/null 2>&1; echo pr > "$MG/cf.ts"; gc commit -qam resolved; printf 'carries the pass of %s: merged main\n' "$MH" > "$T/carry-m12.md"
+check "BLOCK: a conflict in a code file, resolved to the PR's own change" 1 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m12.md" >/dev/null 2>&1; echo $?) )"
+# a conflict in a doc counts its region, not the base's 200 lines
 gc checkout -q main; echo a > "$MG/n.md"; gc add n.md; gc commit -q -m n; gc push -q origin main
 gc checkout -q -b fix3 main; echo pr > "$MG/n.md"; gc commit -qam fix3; MC=$(git -C "$MG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$MC"
 gc checkout -q main; echo base > "$MG/n.md"; seq 1 200 > "$MG/other2"; gc add -A; gc commit -q -m other2; gc push -q origin main; gc checkout -q fix3
 gc merge -q --no-edit main >/dev/null 2>&1; echo pr > "$MG/n.md"; gc commit -qam resolved; printf 'carries the pass of %s: merged main\n' "$MC" > "$T/carry-m3.md"
-check "a merge that conflicts and resolves to the PR's own change (the base's 200 lines aside) carries" 0 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m3.md" >/dev/null 2>&1; echo $?) )"
+check "a merge that conflicts in a doc and resolves to the PR's own change (the base's 200 lines aside) carries" 0 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m3.md" >/dev/null 2>&1; echo $?) )"
 seq 1 100 >> "$MG/n.md"; gc commit -qam 'a larger resolution'; cp "$T/carry-m3.md" "$T/carry-m5.md"
-check "BLOCK: a resolution that changes the PR's own diff by more than 80 lines counts" 1 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m5.md" >/dev/null 2>&1; echo $?) )"
+check "BLOCK: a resolution in a doc past 80 lines counts" 1 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m5.md" >/dev/null 2>&1; echo $?) )"
 # a stacked PR's carry is measured against its own base: a merge of its parent brings in the parent's lines, not the PR's
 gc checkout -q -b parent main; echo p > "$MG/p"; gc add p; gc commit -q -m parent; gc push -q origin parent
 gc checkout -q -b child; echo c > "$MG/c"; gc add c; gc commit -q -m child; MS=$(git -C "$MG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$MS"
