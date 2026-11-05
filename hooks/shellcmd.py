@@ -217,6 +217,7 @@ EVERY = _Every()
 
 
 SETTERS = ('read', 'mapfile', 'readarray', 'unset', 'getopts', 'wait')  # builtins that set the variables they name (printf: -v's)
+PARAMS = tuple('123456789')
 ASSIGNS = ('=', '+=', '-=', '*=', '/=', '%=', '<<=', '>>=', '&=', '^=', '|=', '++', '--')
 
 
@@ -229,9 +230,10 @@ def _name(w):
 def _unseen(tree, src):
     """The names a script may set where Where can't follow, read from its syntax: a name assigned other than by a command of only
     `NAME=value` words, or those after export, readonly, declare or a function's local (export -n D=x, typeset, D+=x, D[1]=x, D=x cmd), one a builtin sets (read, mapfile, printf -v, unset, getopts, wait -p),
-    ${D:=x}, an arithmetic assignment ((( )), $(( )), let), and a for loop's variable assigned anywhere; EVERY when it runs eval,
+    ${D:=x}, an arithmetic assignment ((( )), $(( )), let), a for loop's variable assigned anywhere, and the parameters after `set --` or a
+    shift that isn't a statement of a function's own { }, with a number or nothing (Where.step's); EVERY when it runs eval,
     source, . or trap, which can set any. Heredoc bodies and quoted text are words, never read as commands."""
-    names, assigned, loops, todo = set(), set(), set(), [(tree, False)]  # each node, and whether it is in a function's body
+    names, assigned, loops, shifts, todo = set(), set(), set(), set(), [(tree, False)]  # each node, and whether it is in a function's body
     while todo:
         y, body = todo.pop()
         if isinstance(y, list):
@@ -248,6 +250,9 @@ def _unseen(tree, src):
             name = os.path.basename(argv[0]) if argv else ''
             if name in ('eval', 'source', '.', 'trap'):
                 return EVERY
+            if name == 'shift' and (id(y) not in shifts or len(argv) > 2 or argv[1:] and not argv[1].isdigit()) or \
+                    name == 'set' and any(x in ('-', '--') or x[:1] not in ('-', '+') and not re.fullmatch(r'[-+]\w*o', argv[i]) for i, x in enumerate(argv[1:])):
+                names.update(PARAMS)
             if name in SETTERS:
                 names.update(map(_name, argv[1:]))
             elif name == 'printf':
@@ -263,6 +268,8 @@ def _unseen(tree, src):
             names.add(_name(_word(y['X'], src)))
         if t == 'ForClause' and (y.get('Loop') or {}).get('Name'):
             loops.add(y['Loop']['Name']['Value'])
+        if t == 'FuncDecl' and y['Body']['Cmd'].get('Type') == 'Block':
+            shifts.update(map(id, y['Body']['Cmd'].get('Stmts') or []))
         todo += [(v, body or t == 'FuncDecl') for v in y.values() if isinstance(v, (dict, list))]
     return frozenset(names - {None} | assigned & loops)
 
@@ -522,9 +529,12 @@ class Where:
     decides each other cd, at the top level while it knows the dir, and every other expansion, as it did before scopes: a nested cd,
     `cd -` or popd loses its dir for good.
     spots: the dirs a relative write may start from, a written file's only read of where it runs: the dir when it is known, else each
-    target a cd the dir can't follow has listed (_spots), and None where a target or the dir before it can't be told."""
+    target a cd the dir can't follow has listed (_spots), and None where a target or the dir before it can't be told.
+    A function's body is walked where it is defined, so its $1.. hold what the line's calls of it give them: two dry walks first (walk), the
+    second for a call in another body, each recording every call's words (called)."""
     def __init__(self, cwd):
         self.funcs, self.func_vars, self.func_moves = set(), set(), False  # the functions the line defines, the variables their bodies set, whether one changes dir
+        self.args, self.called = {}, {}  # each function's calls, each the values of its parameters (_args): from the dry walk before this one, and seen by this walk
         self.main_dir, self.main_vars = cwd, {'PWD': cwd}
         self.dir, self.moved, self.vars, self.scopes, self.quoted, self.unseen, self.spots = cwd, False, {'PWD': cwd}, [], set(), frozenset(), (cwd,)  # each scope entered: [(id, kind, name), dir before it, whether a cd ran in it, variables before it, variables set in it, main_vars before it, spots before it]
 
@@ -674,6 +684,15 @@ class Where:
 
     def walk(self, segs):
         """Each of segs (parse()'s), with self moved to where it runs; self takes it once the caller is done with it."""
+        funcs = {x[2] for t in segs for x in t.scopes if x[2] and x[1] == CONDITIONAL}
+        for _ in range(2 if funcs else 0):
+            dry = Where(self.dir)
+            dry.funcs, dry.args = set(funcs), self.args  # one body may call a function defined after it
+            for _ in dry._walk(segs): pass
+            self.args = dry.called
+        yield from self._walk(segs)
+
+    def _walk(self, segs):
         for t in segs:
             self.unseen = t.unseen
             self.enter(t.scopes)
@@ -695,6 +714,7 @@ class Where:
         for x in scopes[n:]:
             self.scopes.append([x, self.dir, False, dict(self.vars), set(), dict(self.main_vars), self.spots])
             if x[1] == LOOP and x[2]: self.vars[x[2]] = self._listed(x[3]); self.changed(x[2])  # each pass gives it another of its words
+            if x[1] == CONDITIONAL and x[2]: self._bind(x[2])
             if x[2] == STDIN: self.dir, self.spots = None, None
             if x[2] in (STDIN, CHILD): self.vars = {k: Maybe(v) for k, v in self.vars.items()} | {'PWD': _dir(self.dir)}  # a shell's PWD is where it starts
 
@@ -710,6 +730,33 @@ class Where:
         """Whether the current command is in a function's body."""
         return any(x[0][2] and x[0][1] == CONDITIONAL for x in self.scopes)
 
+    def reaches_caller(self):
+        """Whether a cd here outlives the function body it is in: no isolating scope lies between them."""
+        for x in reversed(self.scopes):
+            if x[0][1] == ISOLATING: return False
+            if x[0][2] and x[0][1] == CONDITIONAL: return True
+        return False
+
+    def _bind(self, f):
+        """$1.. in function f's body: what any call of it gives each, '' past a call's words, nothing known without a call."""
+        calls = self.args.get(f) or [[UNKNOWN] * CAP]
+        for i, n in enumerate(PARAMS):
+            vals = [c[i] if i < len(c) else ('',) for c in calls]
+            lost = next((v for v in vals if isinstance(v, Unknown)), None)
+            self.vars[n] = Many(f'${n}', tuple(dict.fromkeys(y for v in vals for y in v)) if lost is None else lost)  # as written, for each other reader
+            self.changed(n)
+
+    def _args(self, words):
+        """The values a call's words give its parameters in turn; past a word bash may make other than one word of, none can be told."""
+        out = []
+        for w in words:
+            vals = self.values(w)
+            if not isinstance(w, Word) or re.search(r'[{*?[]', w.bare) or any(x[0] == 'opaque' or x[:2] in (('var', '@'), ('var', '*')) for x in w.parts) or \
+                    w.splits and ('IFS' in self.vars or isinstance(vals, Unknown) or any(not v or re.search(r'[\s*?[]', v) for v in vals)):
+                return out + [vals if isinstance(vals, Unknown) else UNKNOWN] * CAP
+            out.append(vals)
+        return out
+
     def step(self, t):
         words = t[1:] if t[:1] in (['export'], ['readonly'], ['declare']) or t[:1] == ['local'] and self.in_body() else t  # local fails outside a function
         if words and all(re.match(r'^\w+=', x) for x in words):
@@ -722,7 +769,13 @@ class Where:
             if self.in_body(): self.func_vars.update(x.split('=', 1)[0] for x in words)
             return
         p = prog(t)
+        if p[:1] == ['shift'] and self.scopes and self.scopes[-1][0][2] in self.funcs:  # any other shift is unseen
+            f, a = self.scopes[-1][0][2], operands(p[1:])
+            self.args[f] = [c[int(a[0]) if a and a[0].isdigit() else 1:] for c in self.args.get(f, [])]
+            self._bind(f)
+            return
         if p[:1] and p[0] in self.funcs:  # a call runs a body here, maybe calling another: what any of them changes can't be told
+            self.called.setdefault(p[0], []).append(self._args(operands(p[1:])))
             if self.func_moves:
                 self.dir, self.moved, self.spots = None, True, None
                 self.changed()
@@ -730,7 +783,7 @@ class Where:
             return
         if p[:1] not in (['cd'], ['pushd'], ['popd']):
             return
-        self.moved, self.func_moves = True, self.func_moves or self.in_body()
+        self.moved, self.func_moves = True, self.func_moves or self.reaches_caller()
         a = [x for x in operands(p[1:]) if x not in ('-P', '-L', '-e', '--')]
         to = a[0] if a else '~' if p[0] == 'cd' else '-'
         kinds = [x[0][1] for x in self.scopes if x[0][1] != CONDITIONAL]
@@ -751,7 +804,7 @@ class Where:
         for n, dirs in (('OLDPWD', old), ('PWD', (self.dir, self.main_dir))):
             self.vars[n], self.main_vars[n] = map(_dir, dirs)
             self.changed(n)
-        if self.in_body(): self.func_vars.update(('PWD', 'OLDPWD'))
+        if self.reaches_caller(): self.func_vars.update(('PWD', 'OLDPWD'))
 
     def _spots(self, verb, to, kinds):
         """Where a cd the dir can't follow may have gone, verb to word to, in scopes of kinds (no conditional's): each value it lists, from each
