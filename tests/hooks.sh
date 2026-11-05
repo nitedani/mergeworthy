@@ -1976,6 +1976,8 @@ pk() { (cd "$GK" && bash "$R/bin/pr-steps" "$1" "$2" 2>&1 >/dev/null; echo "exit
 printf 'carries the pass of %s: tests\n' "$KA" | tee "$T/ck1.md" "$T/ck2.md" "$T/ck3.md" "$T/ck4.md" >/dev/null
 mkdir -p "$GK/tests" "$GK/docs"; echo t > "$GK/tests/a.sh"; echo d > "$GK/docs/a.md"; git -C "$GK" add tests docs; git -C "$GK" -c user.name=t -c user.email=t@t commit -q -m tests
 check "a follow-up only in tests and .md files carries the verify and shape records" "exit 0 exit 0" "$(pk verify "$T/ck1.md") $(pk shape "$T/ck2.md")"
+echo h > "$GK/helló.md"; git -C "$GK" add .; git -C "$GK" -c user.name=t -c user.email=t@t commit -q -m accent; cp "$T/ck1.md" "$T/ck5.md"
+check "a change in a .md whose name git would quote carries" "exit 0" "$(pk verify "$T/ck5.md")"
 echo c > "$GK/app.ts"; git -C "$GK" add app.ts; git -C "$GK" -c user.name=t -c user.email=t@t commit -q -m code
 check "BLOCK: one line of code since the carried head: verify and shape are refused, naming the file and saying to run the step" "1 1 1 1" "$(pk verify "$T/ck3.md" | tail -n1 | cut -d' ' -f2) $(pk verify "$T/ck3.md" | grep -c 'app.ts changed since .*run the verify step again') $(pk shape "$T/ck4.md" | tail -n1 | cut -d' ' -f2) $(pk shape "$T/ck4.md" | grep -c 'app.ts changed since .*run the shape step again')"
 # a clean merge of the base brings in other people's lines: the PR's own patch is unchanged, so its pass carries
