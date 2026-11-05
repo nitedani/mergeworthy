@@ -3258,6 +3258,11 @@ bp=; for c in 'git push https://x-access-token:T@github.com/vikejs/vike.git HEAD
   bp="$bp $(bg "$c" "$OWN2")"; done
 check "BLOCK: a push to another owner's repo however written: a token in the URL, ssh://host:port, GitHub.com, an unknown host, a variable, --repo, a quoted verb before a syntax error, an array" \
   " 2 2 2 2 2 2 2 2" "$bp"
+check "a remote the line assigns a literal is checked as written out: another owner's repo for what it is, the account's own URL or remote name passes" "2 0 0 0" \
+  "$(bg 'U=https://github.com/vikejs/vike.git; git push $U HEAD:s' "$OWN2") $(grep -c 'computed when it runs' "$T/err") $(bg 'U=https://github.com/nitedani-agent/notes.git; git push "$U" HEAD:s' "$OWN2") $(bg 'R=origin; git push ${R} HEAD:s' "$OWN2")"
+pc=; for c in 'U=$(git remote get-url origin); git push $U HEAD:s' 'if true; then U=origin; fi; git push $U HEAD:s' 'for U in origin other; do git push $U HEAD:s; done' 'U=origin git push $U HEAD:s' 'git push $UNSET_REMOTE HEAD:s'; do
+  pc="$pc $(bg "$c" "$OWN2") $(grep -c 'computed when it runs' "$T/err")"; done
+check "BLOCK: a remote the line computes, may set, lists two of or never assigns, as computed" " 2 1 2 1 2 1 2 1 2 1" "$pc"
 git -C "$OWN2" config remote.origin.pushurl https://github.com/vikejs/vike.git
 check "BLOCK: a remote whose pushurl is another owner's repo" 2 "$(bg 'git push origin HEAD:s' "$OWN2")"
 git -C "$OWN2" config --unset remote.origin.pushurl; git -C "$OWN2" config url.https://github.com/vikejs/.pushInsteadOf https://github.com/nitedani-agent/

@@ -486,8 +486,10 @@ def pushed(git_dir, opts, env, rest):
     if len(to) < 2:  # a branch with no upstream yet: the remote git picks, the branch of the same name
         to = [next((r for r in (git('config', f'branch.{head}.pushRemote'), git('config', 'remote.pushDefault'), git('config', f'branch.{head}.remote')) if r), 'origin'), head]
     remote = pos[0] if pos else (opt(rest, ['--repo']) or [to[0]])[-1]
-    if re.search(r'[$`]', remote):
-        block(f"where this push goes ({remote}) is computed when it runs, so it can't be checked: push to a remote name or URL written out")
+    vals = where.values(remote)
+    if not vals or len(vals) > 1 or shellcmd.PIECE in vals[0]:
+        block(f"where this push goes ({remote}) is computed when it runs, so it can't be checked: push to a remote name or URL written out, or one the line assigns")
+    remote = vals[0]
     urls = git('remote', 'get-url', '--push', '--all', remote).split()
     if not urls:  # a URL, rewritten as git does: the longest url.<base>.pushInsteadOf, else insteadOf, prefix
         rules = [l.split(' ', 1) for l in git('config', '--get-regexp', r'^url\..*\.(push)?insteadof$').splitlines() if ' ' in l]
