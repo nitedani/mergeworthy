@@ -1233,8 +1233,11 @@ git -C "$T/rh" checkout -qb base "$H0"; rh_commit b.py 200 >/dev/null; git -C "$
 check "the round cap counts as SHAPE STALE: exactly 80 lines, 200 in tests and 200 from a merge of the base stay fixes of the head, BLOCK r3 on each" "0 0 2 2 2" "$r12 $at80 $attests $atmerge"
 sed -i 1d "$T/rh/a.py"; git -C "$T/rh" commit -qam "one deletion"; H81=$(git -C "$T/rh" rev-parse HEAD); past=$(rh_rnd rh-r3 "$H81")
 HF=$(rh_commit a.py 10); onfix=$(rh_rnd rh-r4 "$HF")
-HN=$(rh_commit a.py 71); onnew=$(rh_rnd rh-r4 "$HN")
-check "the 81st changed line, a deletion, makes a new head: r3 passes and holds against it, BLOCK r4 on the 10 lines of fixes, r4 passes 81 lines past it" "0 2 0" "$past $onfix $onnew"
+HG=$(rh_commit a.py 5); third=$(rh_rnd rh-r5 "$HG")
+HN=$(rh_commit a.py 81); onnew=$(rh_rnd rh-r5 "$HN")
+check "the 81st changed line, a deletion, makes a new head with two rounds: r3 passes, r4 on its fixes passes, BLOCK r5 within 80 lines of them, r5 81 lines past passes" "0 0 2 0" "$past $onfix $third $onnew"
+first=$(rh_rnd rh-a-r1 "$HN"); HB=$(rh_commit a.py 81); second=$(rh_rnd rh-a-r2 "$HB"); HC=$(rh_commit a.py 5)
+check "r2 past 80 lines of r1 opens a new head: r3 on r2's fixes passes, BLOCK r4 on them" "0 0 0 2" "$first $second $(rh_rnd rh-a-r3 "$HC") $(rh_rnd rh-a-r4 "$HC")"
 check "a round with no pinned head holds only against another: pinned after unpinned and unpinned after pinned pass" "0 0 0 0 0 0" "$(rnd rh-u-r1 "Review $T/rh") $(rnd rh-u-r2 "Review $T/rh") $(rh_rnd rh-u-r3 "$HN") $(rh_rnd rh-p-r1 "$HN") $(rh_rnd rh-p-r2 "$HN") $(rnd rh-p-r3 "Review $T/rh")"
 mkdir -p "$HOME/.mergeworthy/projects/o"; echo "- a lesson from $OLD" > "$HOME/.mergeworthy/projects/o/gwnotes.md"
 check "a project notes file the brief names is read, not pinned: its history SHAs block nothing" 0 "$(ag "$OC" "Fix it in $T/gw; notes $HOME/.mergeworthy/projects/o/gwnotes.md")"
