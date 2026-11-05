@@ -1239,6 +1239,10 @@ check "the 81st changed line, a deletion, makes a new head with two rounds: r3 p
 first=$(rh_rnd rh-a-r1 "$HN"); HB=$(rh_commit a.py 81); second=$(rh_rnd rh-a-r2 "$HB"); HC=$(rh_commit a.py 5)
 check "r2 past 80 lines of r1 opens a new head: r3 on r2's fixes passes, BLOCK r4 on them" "0 0 0 2" "$first $second $(rh_rnd rh-a-r3 "$HC") $(rh_rnd rh-a-r4 "$HC")"
 check "a round with no pinned head holds only against another: pinned after unpinned and unpinned after pinned pass" "0 0 0 0 0 0" "$(rnd rh-u-r1 "Review $T/rh") $(rnd rh-u-r2 "Review $T/rh") $(rh_rnd rh-u-r3 "$HC") $(rh_rnd rh-p-r1 "$HC") $(rh_rnd rh-p-r2 "$HC") $(rnd rh-p-r3 "Review $T/rh")"
+mkdir -p "$T/rh/src" "$T/rh/spec"; for f in src/m81.py:81 src/m80.py:80 tests/helper.py:1000 src/code.py:100 tests/x.py:200; do rh_commit "${f%:*}" "${f#*:}" >/dev/null; done
+rh_moved() { # loop from to lines: r1 and r2 on the head, then r3 on the rename of a file with that many new lines
+  local H; H=$(git -C "$T/rh" rev-parse HEAD); rh_rnd "$1-r1" "$H" >/dev/null; rh_rnd "$1-r2" "$H" >/dev/null; git -C "$T/rh" mv "$2" "$3"; rh_rnd "$1-r3" "$(rh_commit "$3" "$4")"; }
+check "a rename counts each side by its real path: 81 code lines moved to tests pass by the delete side, 80 BLOCK; 81 new lines in a file moved from tests or within the code pass; BLOCK 81 lines of a test moved between test paths" "0 2 0 0 2" "$(rh_moved rh-m81 src/m81.py tests/m81.py 0) $(rh_moved rh-m80 src/m80.py tests/m80.py 0) $(rh_moved rh-h tests/helper.py src/runtime.py 81) $(rh_moved rh-c src/code.py src/renamed.py 81) $(rh_moved rh-t tests/x.py spec/x.py 81)"
 mkdir -p "$HOME/.mergeworthy/projects/o"; echo "- a lesson from $OLD" > "$HOME/.mergeworthy/projects/o/gwnotes.md"
 check "a project notes file the brief names is read, not pinned: its history SHAs block nothing" 0 "$(ag "$OC" "Fix it in $T/gw; notes $HOME/.mergeworthy/projects/o/gwnotes.md")"
 check "the user's own checkout is read at any commit" 0 "$(ag "$OC" "Read $T/gr at $MAINOLD once more")"

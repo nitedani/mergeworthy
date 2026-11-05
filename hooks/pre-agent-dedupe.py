@@ -157,8 +157,8 @@ if rnd and (ti.get('role') == 'review' or not ti.get('role') and re.search(r'\be
         with open(rf + '.tmp', 'w') as f: json.dump(rounds, f)
         os.replace(rf + '.tmp', rf)
     elif n >= 3:
-        # first-parent and no merges: what a merge of the base brought in isn't the PR's own, as SHAPE STALE's compare leaves it out
-        own_lines = lambda t, o, h: sum(int(a) + int(b) for a, b, p in re.findall(r'^(\d+)\t(\d+)\t(.*)$', git(t, 'log', '--first-parent', '--no-merges', '--numstat', '--format=', f'{o}..{h}').stdout, re.M) if not re.search(testpaths.NOT_SHAPE, p))
+        # first-parent and no merges: what a merge of the base brought in isn't the PR's own, as SHAPE STALE's compare leaves it out; no renames: each row names a real path
+        own_lines = lambda t, o, h: sum(int(a) + int(b) for a, b, p in re.findall(r'^(\d+)\t(\d+)\t(.*)$', git(t, 'log', '--first-parent', '--no-merges', '--no-renames', '--numstat', '--format=', f'{o}..{h}').stdout, re.M) if not re.search(testpaths.NOT_SHAPE, p))
         fixes = lambda t, o, h: git(t, 'merge-base', '--is-ancestor', o, h).returncode == 0 and own_lines(t, o, h) <= testpaths.STALE_LINES
         built_on = lambda old: not old and not heads or any(fixes(t, o, h) for t in tops for o in old for h in heads)
         earlier = sorted({m for m, old in rounds.get(loop, []) if m < n and built_on(old)})
