@@ -794,7 +794,8 @@ class Where:
         p = prog(t)
         if p[:1] == ['shift'] and self.scopes and self.scopes[-1][0][2] in self.funcs:  # any other shift is unseen
             f, a = self.scopes[-1][0][2], operands(p[1:])
-            self.args[f] = [(s, c[int(a[0]) if a and a[0].isdigit() else 1:]) for s, c in self.args.get(f, [])]
+            n = int(a[0]) if a and a[0].isdigit() else 1
+            self.args[f] = [(s, c[n:] if len(c) >= n else c) for s, c in self.args.get(f, [])]  # bash's shift past the words fails and shifts nothing
             self._bind(f)
             return
         if p[:1] and p[0] in self.funcs:  # a call runs a body here, maybe calling another: what any of them changes can't be told
