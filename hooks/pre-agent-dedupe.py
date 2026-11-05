@@ -8,7 +8,7 @@ child wakes again when its background commands end, so only its terminal task st
 import datetime, fcntl, glob, hashlib, json, os, re, shlex, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import failclosed
-import agent_jobs, memory_file, project_file, steward, subprocess
+import agent_jobs, memory_file, project_file, steward, subprocess, testpaths
 from post_words import fence_spans
 from shellcmd import branch_record, segments, prog, git_argv, rlines, transcript, Where
 from work_folder import git_top, task_of
@@ -143,7 +143,7 @@ if not register:
                                  "Pin the live head (and check the work isn't already done there)." + (f" Ruled out:\n{ruled}\n" if ruled else "\n"))
                 sys.exit(2)
 # Two rounds per loop on one head (delegate §Review rounds): a review round `<loop>-r<N>`, maybe followed by the date or head SHA
-# the reuse block above asks for, past r2 on the head an earlier round of its loop pinned, or on fixes built on it, is refused
+# the reuse block above asks for, past r2 on the head an earlier round of its loop pinned, or within SHAPE STALE's count of it, is refused
 rnd = re.fullmatch(r'(.+)-r(\d+)', re.sub(r'(-\d{4}-\d{2}-\d{2}|-[0-9a-f]{7,40})+$', '', (cid or str(ti.get('description') or '')).strip()))
 if rnd and (ti.get('role') == 'review' or not ti.get('role') and re.search(r'\bexactly (CLEAN|NO BUGS)\b', briefs)):
     tops = sorted({t for t in map(git_top, worktree_paths) if t})
@@ -157,11 +157,14 @@ if rnd and (ti.get('role') == 'review' or not ti.get('role') and re.search(r'\be
         with open(rf + '.tmp', 'w') as f: json.dump(rounds, f)
         os.replace(rf + '.tmp', rf)
     elif n >= 3:
-        built_on = lambda old: not old or not heads or any(git(t, 'merge-base', '--is-ancestor', o, h).returncode == 0 for t in tops for o in old for h in heads)
+        # first-parent and no merges: what a merge of the base brought in isn't the PR's own, as SHAPE STALE's compare leaves it out
+        own_lines = lambda t, o, h: sum(int(a) + int(b) for a, b, p in re.findall(r'^(\d+)\t(\d+)\t(.*)$', git(t, 'log', '--first-parent', '--no-merges', '--numstat', '--format=', f'{o}..{h}').stdout, re.M) if not re.search(testpaths.NOT_SHAPE, p))
+        fixes = lambda t, o, h: git(t, 'merge-base', '--is-ancestor', o, h).returncode == 0 and own_lines(t, o, h) <= testpaths.STALE_LINES
+        built_on = lambda old: not old and not heads or any(fixes(t, o, h) for t in tops for o in old for h in heads)
         earlier = sorted({m for m, old in rounds.get(loop, []) if m < n and built_on(old)})
         if earlier:
-            sys.stderr.write(f"BLOCKED: {loop} already ran {', '.join(f'r{m}' for m in earlier)} on this head or the head its fixes build on "
-                             f"({', '.join(h[:12] for h in heads) or 'no head pinned'}): a loop gets two rounds per head (mergeworthy:delegate §Review rounds). "
+            sys.stderr.write(f"BLOCKED: {loop} already ran {', '.join(f'r{m}' for m in earlier)} on this head or one within {testpaths.STALE_LINES} changed lines of it "
+                             f"({', '.join(h[:12] for h in heads) or 'no head pinned'}): a loop gets two rounds on a head, and one more past those lines (mergeworthy:delegate §Review rounds). "
                              "List what is still open in the report or the PR body's notes and go on (push, ready, the next step) without waiting for an answer; "
                              "only an open blocker keeps the PR in draft. A maintainer's ask on a new head starts a new loop name.\n")
             sys.exit(2)

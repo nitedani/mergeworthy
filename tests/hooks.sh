@@ -1223,6 +1223,19 @@ r1=$(rnd gw-r1 "Review $T/gw at head $NEW"); r2=$(rnd gw-r2 "Review $T/gw at hea
 git -C "$T/gw" commit -q --allow-empty -m fix; FIX=$(git -C "$T/gw" rev-parse HEAD); r3f=$(rnd "gw-r3-${FIX:0:7}" "Review $T/gw at head $FIX")
 git -C "$T/gw" checkout -q --detach "$OLD"; git -C "$T/gw" commit -q --allow-empty -m new; NH=$(git -C "$T/gw" rev-parse HEAD)
 check "review rounds on one head: r1 and r2 pass, BLOCK r3 on it and on a fix built on it, r3 on a new head passes" "0 0 2 2 0" "$r1 $r2 $r3 $r3f $(rnd "gw-r3-${NH:0:7}" "Review $T/gw at head $NH")"
+git init -q -b main "$T/rh"; mkdir "$T/rh/tests"
+rh_commit() { seq "$2" >> "$T/rh/$1"; git -C "$T/rh" add .; git -C "$T/rh" commit -qm "$1"; git -C "$T/rh" rev-parse HEAD; }  # a path gets N new lines
+rh_rnd() { rnd "$1" "Review $T/rh at head $2"; }
+H0=$(rh_commit a.py 100); r12="$(rh_rnd rh-r1 "$H0") $(rh_rnd rh-r2 "$H0")"
+H80=$(rh_commit a.py 80); at80=$(rh_rnd rh-r3 "$H80")
+HT=$(rh_commit tests/a.py 200); attests=$(rh_rnd rh-r3 "$HT")
+git -C "$T/rh" checkout -qb base "$H0"; rh_commit b.py 200 >/dev/null; git -C "$T/rh" checkout -q main; git -C "$T/rh" merge -q --no-ff -m "merge the base" base; HM=$(git -C "$T/rh" rev-parse HEAD); atmerge=$(rh_rnd rh-r3 "$HM")
+check "the round cap counts as SHAPE STALE: exactly 80 lines, 200 in tests and 200 from a merge of the base stay fixes of the head, BLOCK r3 on each" "0 0 2 2 2" "$r12 $at80 $attests $atmerge"
+sed -i 1d "$T/rh/a.py"; git -C "$T/rh" commit -qam "one deletion"; H81=$(git -C "$T/rh" rev-parse HEAD); past=$(rh_rnd rh-r3 "$H81")
+HF=$(rh_commit a.py 10); onfix=$(rh_rnd rh-r4 "$HF")
+HN=$(rh_commit a.py 71); onnew=$(rh_rnd rh-r4 "$HN")
+check "the 81st changed line, a deletion, makes a new head: r3 passes and holds against it, BLOCK r4 on the 10 lines of fixes, r4 passes 81 lines past it" "0 2 0" "$past $onfix $onnew"
+check "a round with no pinned head holds only against another: pinned after unpinned and unpinned after pinned pass" "0 0 0 0 0 0" "$(rnd rh-u-r1 "Review $T/rh") $(rnd rh-u-r2 "Review $T/rh") $(rh_rnd rh-u-r3 "$HN") $(rh_rnd rh-p-r1 "$HN") $(rh_rnd rh-p-r2 "$HN") $(rnd rh-p-r3 "Review $T/rh")"
 mkdir -p "$HOME/.mergeworthy/projects/o"; echo "- a lesson from $OLD" > "$HOME/.mergeworthy/projects/o/gwnotes.md"
 check "a project notes file the brief names is read, not pinned: its history SHAs block nothing" 0 "$(ag "$OC" "Fix it in $T/gw; notes $HOME/.mergeworthy/projects/o/gwnotes.md")"
 check "the user's own checkout is read at any commit" 0 "$(ag "$OC" "Read $T/gr at $MAINOLD once more")"
