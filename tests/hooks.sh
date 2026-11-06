@@ -362,6 +362,19 @@ check "a failed post leaves no marker" none "$(postreg '"Error: Exit code 1\ngh:
 check "an interrupted post leaves no marker" none "$(postreg '{"stdout":"","stderr":"","interrupted":true}')"
 check "a successful post writes the marker" marker "$(postreg '{"stdout":"https://example.invalid/c","stderr":"","interrupted":false}')"
 rm "$TD/r.md.posted"
+pipereg() { # command stdout: post-bash-register on it, the draft's marker after it, then none again
+  python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[2]},"cwd":sys.argv[1],"tool_response":{"stdout":sys.argv[3],"stderr":"","interrupted":False}}))' "$T" "$1" "$2" \
+    | python3 "$R/hooks/post-bash-register.py" 2>/dev/null; [ -f "$TD/r.md.posted" ] && echo marker || echo none; rm -f "$TD/r.md.posted"; }
+PC="gh issue comment 41 --repo o/r --body-file $TD/r.md"; PRP="gh pr create --repo o/r --draft --body-file $TD/r.md"
+check "a piped post whose stdout holds no URL of it leaves no marker: gh's error, the pipe's stderr, another thread's URL" "none none none none" \
+  "$(pipereg "$PRP | tail -1" 'aborted: you must first push the current branch to a remote') $(pipereg "$PC 2>&1 | tail -1" 'gh: Not Found (HTTP 404)') $(pipereg "$PC |& tail -1" 'gh: Not Found (HTTP 404)') $(pipereg "$PC | tail -1" 'https://github.com/o/r/issues/99')"
+check "a piped post whose stdout holds its URL writes the marker: a PR, a comment, after 2>&1, a discussion comment" "marker marker marker marker" \
+  "$(pipereg "$PRP | tail -1" 'https://github.com/o/r/pull/7') $(pipereg "$PC | tail -1" 'https://github.com/o/r/issues/41#issuecomment-1') $(pipereg "$PC 2>&1 | tail -1" 'https://github.com/o/r/issues/41#issuecomment-1') $(pipereg "discussion-post d/r#5 $TD/r.md | tail -1" 'https://github.com/d/r/discussions/5#discussioncomment-1')"
+check "a piped discussion-post that printed no comment URL leaves no marker" none "$(pipereg "discussion-post d/r#5 $TD/r.md | tail -1" 'discussion-post: d/r#5 is no discussion')"
+check "a post in a child shell or eval whose output is piped reads the same: no URL of it, no marker; its URL, the marker; unpiped, the marker" "none none marker marker marker" \
+  "$(pipereg "bash -c '$PRP' | tail -1" 'aborted: you must first push the current branch to a remote') $(pipereg "eval '$PRP' | tail -1" 'aborted: you must first push the current branch to a remote') $(pipereg "bash -c '$PRP' | tail -1" 'https://github.com/o/r/pull/7') $(pipereg "eval '$PRP' | tail -1" 'https://github.com/o/r/pull/7') $(pipereg "bash -c '$PRP'" 'done')"
+check "a post that isn't piped writes the marker whatever it printed: alone, in a list, or reading a pipe" "marker marker marker" \
+  "$(pipereg "$PC" 'done') $(pipereg "$PC; echo y" 'done') $(pipereg "echo y | $PC" 'done')"
 check "a post naming its draft by a variable the command set writes the marker too, as the guard reads that path" marker \
   "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[2]},"cwd":sys.argv[1],"tool_response":{"stdout":"https://example.invalid/c"}}))' "$T" "F=$TD/r.md; gh issue comment 41 --repo o/r --body-file \"\$F\"" \
     | python3 "$R/hooks/post-bash-register.py"; [ -f "$TD/r.md.posted" ] && echo marker || echo none)"
@@ -2231,6 +2244,14 @@ check "BLOCK: a playwright install into the shared cache; into a private folder 
 echo '[]' > "$FX/repos_o_r_issues_5_timeline_per_page_100"
 guard() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2],"agent_id":sys.argv[3]}))' "$1" "$T" "${2:-}" | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?; }
 check "BLOCK: a PR title typed inline (create, edit, -t), naming the title file; a title from its file passes" "2 1 2 2 0 0" "$(guard "gh pr create --draft --title 'Fix the thing' --body-file $T/b.md") $(grep -c 'drafts/title.md.*last 10 merged titles.*pull-request step 7' "$T/err") $(guard "gh pr edit 5 --title 'Fix it'") $(guard 'gh pr edit 5 -t Fix') $(GH_WATCH_ME=me guard 'gh pr edit 5 -R o/r --title "$(cat /w/drafts/title.md)"') $(guard 'gh pr create --draft --title "$(cat /w/drafts/title.md)" --body-file /w/b.md' >/dev/null; grep -c 'typed inline' "$T/err")"
+check "a PATCH of a PR or issue setting no body, title or state passes: its base, its milestone, through {owner}/{repo} or a full URL" "0 0 0 0" "$(guard 'gh api -X PATCH repos/o/r/pulls/436 -f base=main') $(guard 'gh api -X PATCH repos/o/r/issues/5 -F milestone=3') $(guard "gh api -X PATCH 'repos/{owner}/{repo}/pulls/436' -f base=main") $(guard 'gh api -X PATCH https://api.github.com/repos/o/r/pulls/436 -f base=main')"
+pp=; for c in 'gh api -X PATCH repos/o/r/pulls/436 -f title=x' 'gh api -X PATCH repos/o/r/issues/5 -f body=x' 'gh api -X PATCH repos/o/r/pulls/436 -f base=main -f title=x' 'gh api -X PATCH repos/o/r/pulls/436 --raw-field=body=x' 'gh api -X PATCH repos/o/r/pulls/436 -f "$F"'; do
+  pp="$pp $(guard "$c") $(grep -c 'post from a draft file' "$T/err")"; done
+check "BLOCK: a PATCH of a PR or issue typing a body or title, beside another field or not, or a field name computed when it runs" " 2 1 2 1 2 1 2 1 2 1" "$pp"
+ps=; for c in 'gh api -X PATCH repos/o/r/pulls/436 -f state=closed' 'gh api -X PATCH repos/o/r/issues/5 -F state=closed' 'gh api -X PATCH repos/o/r/pulls/436 -f base=main -f state=closed' 'gh api -X PATCH https://api.github.com/repos/o/r/issues/5 --field=state=open' "gh api -X PATCH 'repos/{owner}/{repo}/pulls/436' -f state=closed"; do
+  ps="$ps $(guard "$c")"; done
+check "BLOCK: a PATCH of a PR's or issue's state, beside another field or not, keeps the draft rule" " 2 2 2 2 2" "$ps"
+check "BLOCK: no field, an --input, a POST, a PATCH of anything else and a GraphQL mutation keep the draft rule" "2 2 2 2 2" "$(guard 'gh api -X PATCH repos/o/r/pulls/436') $(guard 'gh api -X PATCH repos/o/r/pulls/436 --input /w/nogate.json') $(guard 'gh api repos/o/r/pulls -f base=main -f head=x') $(guard 'gh api -X PATCH repos/o/r/milestones/1 -f state=closed') $(guard "gh api graphql -f 'query=mutation { markPullRequestReadyForReview(input: {pullRequestId: \"P\"}) { clientMutationId } }'")"
 printf '[{"event":"renamed","actor":{"login":"brillout"},"created_at":"2026-10-14T21:50:52Z","rename":{"from":"a","to":"b"}}]' > "$FX/repos_o_r_issues_7_timeline_per_page_100"
 echo '[]' > "$FX/repos_o_r_issues_9_timeline_per_page_100"
 printf '[{"event":"renamed","actor":{"login":"brillout"},"created_at":"2026-10-14T21:50:52Z"},{"event":"renamed","actor":{"login":"me"},"created_at":"2026-10-14T22:00:00Z"}]' > "$FX/repos_o_r_issues_8_timeline_per_page_100"
@@ -2746,6 +2767,7 @@ sg_tr "$T/sg.jsonl" text
 check "BLOCK: gh api comment POST" 2 "$(sgb "gh api repos/o/r/issues/5/comments -F body=@$T/d.md")"
 check "the post block names post and writing" "mergeworthy:post mergeworthy:writing" "$(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | sort | xargs)"
 check "BLOCK: a review comment edit (PATCH)" 2 "$(sgb "gh api -X PATCH repos/o/r/pulls/comments/9 -F body=@$T/d.md")"
+check "a PATCH setting no body, title or state needs no skill opened; the same PATCH with a title or state still does" "0 2 2" "$(sgb 'gh api -X PATCH repos/o/r/pulls/436 -f base=main') $(sgb 'gh api -X PATCH repos/o/r/pulls/436 -f title=x') $(sgb 'gh api -X PATCH repos/o/r/pulls/436 -f state=closed')"
 check "BLOCK: gh pr review" 2 "$(sgb "gh pr review 5 --comment --body-file $T/d.md")"
 check "the review block names review, post and writing" "mergeworthy:post mergeworthy:review mergeworthy:writing" "$(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | sort | xargs)"
 check "BLOCK: gh issue edit of the body" 2 "$(sgb "gh issue edit 5 --body-file $T/d.md")"
@@ -3065,11 +3087,14 @@ git init -q -b fix-telefunc "$CK"; git -C "$CK" -c user.name=t -c user.email=t@t
 (cd "$CK" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 printf '[{"name":"TypeScript","bucket":"fail"},{"name":"Examples Vue/Others (ubuntu-latest)","bucket":"fail"},{"name":"Lint","bucket":"pass"}]' > "$FX/pr_checks_https___github.com_vikejs_vike_pull_3671"
 quick "$CK"
-check "replay: a CI fix whose gate log doesn't run the failing jobs: blocked, naming each failing one" "2 1 1 0" \
+check "a PR only an open scope.md box links holds no push: its failing jobs aren't asked of this head" 0 "$(MERGEWORTHY_WATCHER=off bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK")"
+mv "$FX/pr_checks_https___github.com_vikejs_vike_pull_3671" "$FX/pr_checks_https___github.com_vikejs_vike_pull_3675"
+check "replay: a CI fix whose gate log doesn't run the failing jobs of the PR it updates: blocked, naming each failing one" "2 1 1 0" \
   "$(MERGEWORTHY_WATCHER=off bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK") $(grep -c '"TypeScript"' "$T/err") $(grep -c '"Examples Vue/Others (ubuntu-latest)"' "$T/err") $(grep -c '"Lint"' "$T/err")"
 git -C "$CK" -c user.name=t -c user.email=t@t commit -q --allow-empty -m b
 quick "$CK" $'TypeScript: pnpm exec tsc --noEmit -> exit 0\nExamples Vue/Others (ubuntu-latest): pnpm -C examples/vue test -> exit 0 (12 tests)\n'
 check "the same push passes once its head's log runs each failing job" 0 "$(MERGEWORTHY_WATCHER=off bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK")"
+rm "$FX/pr_checks_https___github.com_vikejs_vike_pull_3675"
 echo "$T/nowatch" > "$HOME/.claude/gh-watch-dirs.txt"
 check "replay: the same push with no watcher on vikejs/vike (or the fork): blocked, naming the repos" "2 1" "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK") $(grep -c 'covers nitedani-agent/vike or vikejs/vike' "$T/err")"
 bash -c 'exec -a gh-watch-daemon sleep 600' & FPID=$!; echo "$FPID" > "$TK2/gh-watch.pid"; echo vikejs/vike > "$TK2/repos.txt"; echo "$TK2" > "$HOME/.claude/gh-watch-dirs.txt"
@@ -3359,6 +3384,7 @@ bp=; for c in 'git push https://x-access-token:T@github.com/vikejs/vike.git HEAD
   bp="$bp $(bg "$c" "$OWN2")"; done
 check "BLOCK: a push to another owner's repo however written: a token in the URL, ssh://host:port, GitHub.com, an unknown host, a variable, --repo, a quoted verb before a syntax error, an array" \
   " 2 2 2 2 2 2 2 2" "$bp"
+check "a push to a gist is no collaboration work: no gates asked, over https or ssh" "0 0" "$(bg 'git push https://gist.github.com/fdaaaa9b44.git HEAD:main' "$OWN2") $(bg 'git push git@gist.github.com:fdaaaa9b44.git HEAD:main' "$OWN2")"
 check "a remote the line assigns a literal is checked as written out: another owner's repo for what it is, the account's own URL or remote name passes" "2 0 0 0" \
   "$(bg 'U=https://github.com/vikejs/vike.git; git push $U HEAD:s' "$OWN2") $(grep -c 'computed when it runs' "$T/err") $(bg 'U=https://github.com/nitedani-agent/notes.git; git push "$U" HEAD:s' "$OWN2") $(bg 'R=origin; git push ${R} HEAD:s' "$OWN2")"
 pc=; for c in 'U=$(git remote get-url origin); git push $U HEAD:s' 'if true; then U=origin; fi; git push $U HEAD:s' 'for U in origin other; do git push $U HEAD:s; done' 'U=origin git push $U HEAD:s' 'git push $UNSET_REMOTE HEAD:s'; do

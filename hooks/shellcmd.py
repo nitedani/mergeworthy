@@ -200,13 +200,14 @@ class Seg(list):
     names its script, or a script running it, may set where Where can't follow (_unseen), whose values it never trusts; nested: whether
     it is in a script the line runs (`eval`'s included), where a plain walk loses the dir (Where); after: each statement that exited 0 if this
     one runs at all, being before it in a chain of && (_passed); stmt: the statement it runs as, for after to name; readers: the argv of each
-    command its output is piped to, when nothing else takes its output or status (_readers), else None."""
-    scopes, loop, raw, unseen, nested, after, stmt, readers = (), False, None, frozenset(), False, (), None, None
+    command its output is piped to, when nothing else takes its output or status (_readers), else None; piped: whether its output goes into
+    a pipe, which also hides its exit."""
+    scopes, loop, raw, unseen, nested, after, stmt, readers, piped = (), False, None, frozenset(), False, (), None, None, False
 
 
-def _seg(argv, scopes=(), loop=False, raw=None, after=(), stmt=None):
+def _seg(argv, scopes=(), loop=False, raw=None, after=(), stmt=None, piped=False):
     s = Seg(argv)
-    s.scopes, s.loop, s.raw, s.after, s.stmt = scopes, loop, raw, after, stmt
+    s.scopes, s.loop, s.raw, s.after, s.stmt, s.piped = scopes, loop, raw, after, stmt, piped
     return s
 
 
@@ -301,11 +302,11 @@ def _passed(s, src):
 def _calls(node, src):
     """(the argv of every simple command under node, in order, each a Seg; the statements each heredoc of them is read by:
     (redirect, top statement, whether it is in a loop))."""
-    segs, docs, stack = [], [], [(node, None, (), False, ())]
+    segs, docs, stack = [], [], [(node, None, (), False, (), False)]
     while stack:
-        x, top, n, loop, after = stack.pop()
+        x, top, n, loop, after, piped = stack.pop()
         if isinstance(x, list):
-            stack += [(y, top, n, loop, after) for y in reversed(x)]
+            stack += [(y, top, n, loop, after, piped) for y in reversed(x)]
             continue
         if not isinstance(x, dict):
             continue
@@ -319,13 +320,14 @@ def _calls(node, src):
         raws = [w for r in redirs for w in (r['Op'], _src(r['Word'], src) if r.get('Word') else '')]
         if cmd.get('Type') == 'CallExpr':
             segs.append(_seg([_assign(a, src) for a in cmd.get('Assigns') or []] + [_word(a, src) for a in cmd.get('Args') or []] + words, inner['Cmd'], loop,
-                             [_src(a, src) for a in (cmd.get('Assigns') or []) + (cmd.get('Args') or [])] + raws, after, x))
+                             [_src(a, src) for a in (cmd.get('Assigns') or []) + (cmd.get('Args') or [])] + raws, after, x, piped))
         elif cmd.get('Type') == 'DeclClause':
             segs.append(_seg([cmd['Variant']['Value']] + [_assign(a, src) for a in cmd.get('Args') or []] + words, inner['Cmd'], loop,
-                             [cmd['Variant']['Value']] + [_src(a, src) for a in cmd.get('Args') or []] + raws, after, x))
+                             [cmd['Variant']['Value']] + [_src(a, src) for a in cmd.get('Args') or []] + raws, after, x, piped))
         docs += [(r, top or x, loop) for r in redirs if r.get('Hdoc')]
         chained = _passed(x['X'], src) if x.get('Type') == 'BinaryCmd' and x.get('Op') == '&&' else ()
-        stack += [(v, None if k == 'Stmts' else (top or x) if 'Cmd' in x else top, inner[k], loop, after + chained if k == 'Y' else after)  # each statement of a list is a top statement
+        stack += [(v, None if k == 'Stmts' else (top or x) if 'Cmd' in x else top, inner[k], loop, after + chained if k == 'Y' else after,  # each statement of a list is a top statement
+                   piped or k == 'X' and x.get('Op') in ('|', '|&'))
                   for k, v in reversed(x.items()) if isinstance(v, (dict, list)) and k not in ('Pos', 'End', 'Hdoc')]
     return segs, docs
 
@@ -425,7 +427,7 @@ def parse(cmd, depth=0, scopes=(), loop=False):
             # a script word with no quote or escape (`bash -c "cd $W"`) had every expansion done by this shell; else the child does its own
             child = s.raw is None or script not in s or re.search(r"['\\]", s.raw[s.index(script)])
             inner, e = parse(script, depth + 1, s.scopes + (() if same else _scope(ISOLATING, STDIN if stdin else CHILD if child else '')), s.loop)
-            for x in inner: x.nested = True
+            for x in inner: x.nested, x.piped = True, x.piped or s.piped
             out += inner
             err = err or e
     # a script's names hold for its own commands and the scripts it runs, never for its shell's: a child shell sets none of them (eval is EVERY)
@@ -935,6 +937,8 @@ def opt(t, names):
 
 NO_TEXT = re.compile(r'(?:repos/[^/]+/[^/]+/(?:.+/)?(?:reactions|rerun[\w-]*|dispatches|labels|assignees|requested_reviewers)(?:/[^/]+)?'
                      r'|repos/[^/]+/[^/]+/(?:collaborators|invitations)/[^/]+|user/repository_invitations/\d+)')
+THREAD = re.compile(r'repos/[^/]+/[^/]+/(?:issues|pulls)/\d+')
+NO_TEXT_FIELD = re.compile(r'(?!body=|title=|state=)\w+=')  # a name computed when it runs may be either
 
 def graphql_posts(fields, inputs, cwd):
     """A GraphQL call posts text when its query, literal or read from a file (relative to cwd, the dir the command runs in), is a mutation other than
@@ -998,8 +1002,9 @@ def discussion_thread_of(ref):
 
 def api_call(rest, cwd=None):
     """(method, endpoint, fields, inputs, posts) of `gh api <rest>`. It posts text when it is a GraphQL mutation, or a POST,
-    PATCH or PUT that isn't a reaction, rerun, dispatch, label, assignee, review request, collaborator or invitation. cwd: where the command
-    runs, for the files a GraphQL query is read from; None when unknown, so a relative file counts as a post."""
+    PATCH or PUT that isn't a reaction, rerun, dispatch, label, assignee, review request, collaborator or invitation, nor a PATCH of an
+    issue or PR whose fields set none of body, title and state. cwd: where the command runs, for the files a GraphQL query is read from; None when
+    unknown, so a relative file counts as a post."""
     method = (opt(rest, ['-X', '--method']) or [''])[-1].upper()
     fields = opt(rest, ['-f', '--raw-field', '-F', '--field'])
     inputs = opt(rest, ['--input'])
@@ -1010,7 +1015,9 @@ def api_call(rest, cwd=None):
     if ep == 'graphql':
         posts = graphql_posts(fields, inputs, cwd)
     else:
-        posts = method in ('POST', 'PATCH', 'PUT') and not NO_TEXT.fullmatch(re.sub(r'^(?:https?://[^/]+)?/?(?:api/v3/)?', '', ep).split('?')[0])
+        path = re.sub(r'^(?:https?://[^/]+)?/?(?:api/v3/)?', '', ep).split('?')[0]
+        no_text = method == 'PATCH' and THREAD.fullmatch(path) and fields and not inputs and all(NO_TEXT_FIELD.match(v) for v in fields)
+        posts = method in ('POST', 'PATCH', 'PUT') and not NO_TEXT.fullmatch(path) and not no_text
     return method, ep, fields, inputs, posts
 
 def repo_name(r):
