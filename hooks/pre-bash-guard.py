@@ -873,6 +873,8 @@ def check(t, has_cd):
     if p == 'gh' and a and a[0] == 'api':
         rest = a[1:]
         method, ep, fields, inputs, posts = api_call(rest, run_dir)
+        if method == 'PATCH' and shellcmd.THREAD.fullmatch(shellcmd.api_path(ep)) and any(v.startswith('state=') for v in fields):
+            block("a PR's or issue's state changes with `gh pr close` / `gh issue close` (or reopen), which record the close as your own: a PATCH of `state` records nothing")
         if shellcmd.graphql_endpoint(ep) and (named := names_discussion_mutation(rest, run_dir)) is not False:
             block("post to a GitHub Discussion, or edit a comment there, with `discussion-post <discussion URL | owner/repo#N> <abs draft>` or "
                   "`discussion-post --edit <comment node id> <abs draft>`: it posts the gated draft as the comment's text, which a GraphQL call can't be checked for"
