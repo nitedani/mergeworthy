@@ -1062,6 +1062,15 @@ check "40 launches registering at once: none crashes, none is lost" "0 40" "$(gr
 rnd() { # clientRequestId task [role]: a review round's exit code, registered when it passes
   local j; j=$(python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":sys.argv[2],"role":sys.argv[3],"clientRequestId":sys.argv[1]}}))' "$1" "$2" "${3:-review}")
   printf '%s' "$j" | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; local r=$?; [ $r = 0 ] && printf '%s' "$j" | python3 "$R/hooks/pre-agent-dedupe.py" register; echo $r; }
+rev() { # target-JSON task [role]: a delegate_task's exit code under T3
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":sys.argv[2],"role":sys.argv[3],"target":json.loads(sys.argv[1])}}))' "$1" "$2" "${3:-review}" \
+    | T3CODE_THREAD_ID=th python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
+check "BLOCK: under T3 a review on claudeAgent, by instance or driver, or with no provider, naming codex and the Fallback line" "2 2 2 2 1 1" "$(rev '{"driverKind":"claudeAgent"}' 'Review it') $(rev '{"providerInstanceId":"claudeAgent"}' 'Review it') $(rev '{"providerInstanceId":"mine","driverKind":"claudeAgent"}' 'Review it') $(rev '{}' 'Review it') $(grep -c codex "$T/err") $(grep -c 'Fallback: <what failed>' "$T/err")"
+check "a review on codex, or on claudeAgent with what failed in a Fallback line, passes; an empty Fallback line is refused" "0 0 0 2" "$(rev '{"providerInstanceId":"codex"}' 'Review it') $(rev '{"driverKind":"codex"}' 'Review it') $(rev '{"providerInstanceId":"claudeAgent"}' 'Review it
+Fallback: codex failed') $(rev '{"providerInstanceId":"claudeAgent"}' 'Review it
+Fallback:
+next line')"
+check "an exploring research agent on claudeAgent passes" 0 "$(rev '{"providerInstanceId":"claudeAgent"}' 'Explore it' research)"
 agent_rnd() { # description prompt
   local j; j=$(python3 -c 'import json,sys; print(json.dumps({"tool_name":"Agent","tool_input":{"description":sys.argv[1],"prompt":sys.argv[2]}}))' "$1" "$2")
   printf '%s' "$j" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; local r=$?; [ $r = 0 ] && printf '%s' "$j" | python3 "$R/hooks/pre-agent-dedupe.py" register; echo $r; }
@@ -1329,6 +1338,7 @@ aeff() { # tool input-extra-JSON
 check "with no Effort line, any effort or none passes" "0 0" "$(aeff mcp__t3-code__delegate_task '{"target":{"options":{"effort":"high"}}}') $(aeff mcp__t3-code__delegate_task '{}')"
 printf -- '- a convention\n## Who decides\n- maint merges: ~/.mergeworthy/projects/o/r.study.md\n## Agents\n- Every agent runs at medium.\n- Effort: medium\n' > "$HOME/.mergeworthy/projects/o/r.md"
 check "BLOCK: a Codex delegate_task at high, naming the line; at medium (as options or a list of {id, value}) it passes" "2 1 0 0" "$(aeff mcp__t3-code__delegate_task '{"target":{"options":{"reasoningEffort":"high"}}}') $(grep -c 'Effort: medium.*not high' "$T/err") $(aeff mcp__t3-code__delegate_task '{"target":{"options":{"reasoningEffort":"medium"}}}') $(aeff mcp__t3-code__delegate_task '{"target":{"options":[{"id":"effort","value":"medium"}]}}')"
+check "BLOCK: under T3 a review on codex at high, and a fallback on Claude at high; medium passes" "2 2 0" "$(T3CODE_THREAD_ID=th aeff mcp__t3-code__delegate_task '{"target":{"providerInstanceId":"codex","options":{"reasoningEffort":"high"}}}') $(T3CODE_THREAD_ID=th aeff mcp__t3-code__delegate_task '{"task":"Review o/r#8 per ~/.mergeworthy/projects/o/r.md\nFallback: codex failed","target":{"options":{"effort":"high"}}}') $(T3CODE_THREAD_ID=th aeff mcp__t3-code__delegate_task '{"target":{"providerInstanceId":"codex","options":{"reasoningEffort":"medium"}}}')"
 check "BLOCK: a Claude delegate_task and an Agent at high, and a launch with no effort option" "2 2 2 1" "$(aeff mcp__t3-code__delegate_task '{"target":{"options":{"effort":"high"}}}') $(aeff Agent '{"effort":"high"}') $(aeff mcp__t3-code__delegate_task '{}') $(grep -c "harness's default" "$T/err")"
 check "an Agent at medium passes" 0 "$(aeff Agent '{"effort":"medium"}')"
 printf -- '- a convention\n## Who decides\n- maint merges: ~/.mergeworthy/projects/o/r.study.md\n## Agents\nEffort: medium\n' > "$HOME/.mergeworthy/projects/o/r.md"

@@ -2,12 +2,14 @@
 
 Standards: `~/.mergeworthy/current/skills/code/SKILL.md`. Include `delegate/agent.md`.
 
+The main session starts the reviewer `delegate §Reviewers` names.
+
 - **DELETE-NOW:** remove; behavior-preserving, no probe needed.
 - **FIX:** an exact behavior-preserving change.
 - **FILL:** a gap to fill (a missing test of a documented contract, a missing sibling case).
 - **DELETE-CAREFULLY:** remove only after code §Removal gate's probe.
 - **OWNER-DECISION:** owner code, a behavior or public-surface change, or anything the task doesn't authorize; it goes in the PR body's decision blocks or the report to the user, with a recommendation.
-- **NIT:** no one hits it in practice: wording, naming, a comment's phrasing, a style preference. It gets no code.
+- **NIT:** a nit (`agent.md`): no code.
 - **KEEP:** checked and worth its price.
 
 ```

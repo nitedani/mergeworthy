@@ -221,6 +221,7 @@ Read-only commands pass.
 
 **`pre-agent-dedupe`** registers launches that ran by ticket and title and blocks duplicate jobs (`delegate` step 1). A `clientRequestId` may retry within ten minutes; later reuse is blocked. It also blocks:
 - under T3 Code (`T3CODE_THREAD_ID` set), an `Agent` or `Task` launch without `run_in_background: false`: T3 starts a new session each turn, which ends the background agent, so its message names `delegate_task`;
+- under T3 Code, a `delegate_task` with `role: review` whose `target` names `claudeAgent` (`providerInstanceId` or `driverKind`) or no provider, unless its task has a `Fallback: <what failed>` line with text (`delegate §Reviewers`): the hook runs only under Claude Code, so that is the main session's company, and its message names `codex` and the line;
 - a brief with any role but `research` or `test` (and not a memory-refresh brief) that names a repo (`owner/repo`, its URL or a path in its checkout) but not its existing `~/.mergeworthy/projects/<owner>/<repo>.md`;
 - a brief that must name a project file (above) naming one over 2500 words (`hooks/project_file.py`), naming the learning thread when `project-learn`'s `runs.txt` says one sorts that repo and T3 shows it still active (no T3 database: ended), and letting through that thread's own agents (`T3CODE_THREAD_ID` or the session's thread, or a thread it delegated);
 - an `implementation` brief for such a repo that doesn't name `skills/code/SKILL.md`, and a brief that reads a `thread-context.md` but doesn't name `skills/writing/SKILL.md`;

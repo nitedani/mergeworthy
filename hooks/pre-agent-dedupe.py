@@ -32,6 +32,14 @@ if not register and d.get('tool_name') in ('Agent', 'Task') and under_t3() and t
     sys.stderr.write("BLOCKED: under T3 Code a background Agent stops when this turn ends (T3 starts a new session for the next one). "
                      "Launch it with delegate_task (mergeworthy:delegate step 4), or with run_in_background: false for a child that finishes within this turn.\n")
     sys.exit(2)
+# This hook runs only under Claude Code, so a review on claudeAgent, or naming no provider (it inherits), is on the main session's company
+if not register and ti.get('role') == 'review' and under_t3():
+    target = ti.get('target') or {}
+    provider = {target.get('providerInstanceId'), target.get('driverKind')} - {None, ''}
+    if (not provider or 'claudeAgent' in provider) and not re.search(r'^Fallback:[ \t]*\S', str(ti.get('task') or ''), re.M):
+        sys.stderr.write("BLOCKED: an independent check starts on another company's model (mergeworthy:delegate §Reviewers): set target.providerInstanceId to codex. "
+                         "Only when that call failed, launch on this company with a line `Fallback: <what failed>` in the task.\n")
+        sys.exit(2)
 # T3 answers a delegate_task whose clientRequestId it has seen with that earlier task's result, without running anything.
 # Reuse is allowed only within 10 minutes (a retry of the same launch).
 cid = str(ti.get('clientRequestId') or '')
