@@ -594,7 +594,7 @@ def check_workflow(what, d, commits, updates=()):
     """task steps 2-3 and pull-request steps 1 and 6 by their records, before a collaboration push (collaboration()) and every
     `gh pr create`, draft or not, whichever skills the session opened: the checkout is in the task's work folder, its scope.md
     opens with the Tier line and lists the asks as checkboxes, and each pushed head has a passing `pr-steps quick` (or `gates`)
-    log whose lines name every failing CI job of the PRs its open boxes link and of the PRs it updates, so a CI fix is reproduced here first."""
+    log whose lines name every failing CI job of the PRs it updates, so a CI fix is reproduced here first."""
     top = subprocess.run(['git', '-C', d, 'rev-parse', '--show-toplevel'], capture_output=True, text=True).stdout.strip()
     if not top:
         if what.startswith('this push'): return  # outside a work tree git itself refuses the push
@@ -606,8 +606,7 @@ def check_workflow(what, d, commits, updates=()):
     text = open(scope, errors='replace').read() if os.path.isfile(scope) else ''
     if not re.match(r'\s*Tier:\s*[0SML]\b', text) or not re.search(r'^\s*[-*] \[[ xX]\] ', text, re.M):
         block(f"{scope} needs line 1 `Tier: <0|S|M|L>, because <signals>` and a checkbox per ask, with its link (mergeworthy:task steps 2-3), before {what}")
-    prs = re.findall(r'https://github\.com/[\w.-]+/[\w.-]+/pull/\d+', '\n'.join(re.findall(r'^\s*[-*] \[ \] .*$', text, re.M))) + list(updates)
-    jobs = failing_jobs(dict.fromkeys(prs))
+    jobs = failing_jobs(dict.fromkeys(updates))
     if what.startswith('this push'):  # the PR this push updates is answered by a watcher on its repo (task step 5): upstream, origin or the fork pushed to
         urls = subprocess.run(['git', '-C', top, 'remote', '-v'], capture_output=True, text=True).stdout + ' ' + ' '.join(push_urls)
         repos = sorted({m[0] or 'gitlab.com/' + m[1] for m in re.findall(r'github\.com[:/]([\w.-]+/[\w.-]+?)(?:\.git)?(?:\s|$)|gitlab\.com[:/]([\w./-]+?)(?:\.git)?(?:\s|$)', urls)})

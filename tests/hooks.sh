@@ -3065,11 +3065,14 @@ git init -q -b fix-telefunc "$CK"; git -C "$CK" -c user.name=t -c user.email=t@t
 (cd "$CK" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 printf '[{"name":"TypeScript","bucket":"fail"},{"name":"Examples Vue/Others (ubuntu-latest)","bucket":"fail"},{"name":"Lint","bucket":"pass"}]' > "$FX/pr_checks_https___github.com_vikejs_vike_pull_3671"
 quick "$CK"
-check "replay: a CI fix whose gate log doesn't run the failing jobs: blocked, naming each failing one" "2 1 1 0" \
+check "a PR only an open scope.md box links holds no push: its failing jobs aren't asked of this head" 0 "$(MERGEWORTHY_WATCHER=off bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK")"
+mv "$FX/pr_checks_https___github.com_vikejs_vike_pull_3671" "$FX/pr_checks_https___github.com_vikejs_vike_pull_3675"
+check "replay: a CI fix whose gate log doesn't run the failing jobs of the PR it updates: blocked, naming each failing one" "2 1 1 0" \
   "$(MERGEWORTHY_WATCHER=off bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK") $(grep -c '"TypeScript"' "$T/err") $(grep -c '"Examples Vue/Others (ubuntu-latest)"' "$T/err") $(grep -c '"Lint"' "$T/err")"
 git -C "$CK" -c user.name=t -c user.email=t@t commit -q --allow-empty -m b
 quick "$CK" $'TypeScript: pnpm exec tsc --noEmit -> exit 0\nExamples Vue/Others (ubuntu-latest): pnpm -C examples/vue test -> exit 0 (12 tests)\n'
 check "the same push passes once its head's log runs each failing job" 0 "$(MERGEWORTHY_WATCHER=off bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK")"
+rm "$FX/pr_checks_https___github.com_vikejs_vike_pull_3675"
 echo "$T/nowatch" > "$HOME/.claude/gh-watch-dirs.txt"
 check "replay: the same push with no watcher on vikejs/vike (or the fork): blocked, naming the repos" "2 1" "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK") $(grep -c 'covers nitedani-agent/vike or vikejs/vike' "$T/err")"
 bash -c 'exec -a gh-watch-daemon sleep 600' & FPID=$!; echo "$FPID" > "$TK2/gh-watch.pid"; echo vikejs/vike > "$TK2/repos.txt"; echo "$TK2" > "$HOME/.claude/gh-watch-dirs.txt"
