@@ -427,7 +427,7 @@ def parse(cmd, depth=0, scopes=(), loop=False):
             # a script word with no quote or escape (`bash -c "cd $W"`) had every expansion done by this shell; else the child does its own
             child = s.raw is None or script not in s or re.search(r"['\\]", s.raw[s.index(script)])
             inner, e = parse(script, depth + 1, s.scopes + (() if same else _scope(ISOLATING, STDIN if stdin else CHILD if child else '')), s.loop)
-            for x in inner: x.nested = True
+            for x in inner: x.nested, x.piped = True, x.piped or s.piped
             out += inner
             err = err or e
     # a script's names hold for its own commands and the scripts it runs, never for its shell's: a child shell sets none of them (eval is EVERY)

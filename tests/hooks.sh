@@ -371,6 +371,8 @@ check "a piped post whose stdout holds no URL of it leaves no marker: gh's error
 check "a piped post whose stdout holds its URL writes the marker: a PR, a comment, after 2>&1, a discussion comment" "marker marker marker marker" \
   "$(pipereg "$PRP | tail -1" 'https://github.com/o/r/pull/7') $(pipereg "$PC | tail -1" 'https://github.com/o/r/issues/41#issuecomment-1') $(pipereg "$PC 2>&1 | tail -1" 'https://github.com/o/r/issues/41#issuecomment-1') $(pipereg "discussion-post d/r#5 $TD/r.md | tail -1" 'https://github.com/d/r/discussions/5#discussioncomment-1')"
 check "a piped discussion-post that printed no comment URL leaves no marker" none "$(pipereg "discussion-post d/r#5 $TD/r.md | tail -1" 'discussion-post: d/r#5 is no discussion')"
+check "a post in a child shell or eval whose output is piped reads the same: no URL of it, no marker; its URL, the marker; unpiped, the marker" "none none marker marker marker" \
+  "$(pipereg "bash -c '$PRP' | tail -1" 'aborted: you must first push the current branch to a remote') $(pipereg "eval '$PRP' | tail -1" 'aborted: you must first push the current branch to a remote') $(pipereg "bash -c '$PRP' | tail -1" 'https://github.com/o/r/pull/7') $(pipereg "eval '$PRP' | tail -1" 'https://github.com/o/r/pull/7') $(pipereg "bash -c '$PRP'" 'done')"
 check "a post that isn't piped writes the marker whatever it printed: alone, in a list, or reading a pipe" "marker marker marker" \
   "$(pipereg "$PC" 'done') $(pipereg "$PC; echo y" 'done') $(pipereg "echo y | $PC" 'done')"
 check "a post naming its draft by a variable the command set writes the marker too, as the guard reads that path" marker \
