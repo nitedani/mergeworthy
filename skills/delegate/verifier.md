@@ -2,6 +2,8 @@
 
 Standards: `~/.mergeworthy/current/skills/code/SKILL.md` (§Phantom gate, §Docs are a claim, §No regressions). Include `delegate/agent.md`.
 
+The main session starts the reviewer `delegate §Reviewers` names.
+
 ## Slices
 
 A slice is a part of the PR's code one verifier can hold (core feature, backend and storage, runtime adapter, wire and client).
