@@ -1,5 +1,5 @@
 """What bin/steward and bin/project-learn both read GitHub with: the agent's badge, a maintainer's association, times, and paged
-GET calls that exit naming the failed call."""
+GET calls that exit naming the failed call; the watcher reads own_accounts here too."""
 import collections, datetime, json, os, re, subprocess, sys, time, urllib.parse
 
 BADGE = re.compile(r'\A\s*(?:<img [^>]*alt="(?:Claude|Codex)"[^>]*>\s*)+')  # an agent's post starts with its badge
@@ -35,6 +35,11 @@ def read(path):
         return open(path, errors='replace').read()
     except OSError:
         return ''
+
+
+def own_accounts():
+    """The accounts ~/.mergeworthy/own-accounts lists (one login per line), lower-cased: those this machine's agents work as. No file: none."""
+    return {l.lower() for l in read(os.path.expanduser('~/.mergeworthy/own-accounts')).split()}
 
 
 def gh_pages(path, paginate=True):

@@ -35,6 +35,7 @@ from concurrent.futures import ThreadPoolExecutor
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))  # a watch dir runs this through a link
 sys.path.insert(1, os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'hooks'))
 import gl_watch
+from gh_common import own_accounts
 import agent_jobs, own_actions, shlex, steward, testpaths, threads_file, work_folder
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -469,11 +470,7 @@ if not ME:
 def own_logins():
     """ME and the accounts ~/.mergeworthy/own-accounts lists (one login per line): the person declares which accounts their agents work as,
     so what those do on a followed PR is ours, not someone else's. No file: only ME."""
-    try:
-        listed = open(shared_path('own-accounts')).read().split()
-    except OSError:
-        listed = []
-    return {l.lower() for l in [ME, *listed]}
+    return {ME.lower(), *own_accounts()}
 
 
 OWN = own_logins()

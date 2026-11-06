@@ -17,13 +17,13 @@ that `round` writes <folder>'s watcher files, `metrics` appends its records to <
 - metrics: the PRs the author opened (default: you; only those whose body starts with an agent's badge) settled (merged or closed)
   since --since (default: the last line of <folder>/passes.txt, else 60 days), in the window as long before it, and still open:
   outcome, hours to merge, first-pass acceptance (merged with no change request and no commit after the first maintainer review
-  but a merge of the base; unknown when its author merged it with no other maintainer's review, and left out of the count), review rounds, a maintainer's asks for a pass (a refactor, simplify or review round, or a linked prompt; quotes and code left out),
+  but a merge of the base; unknown when its author or an account in ~/.mergeworthy/own-accounts merged it with no other maintainer's review, and left out of the count), review rounds, a maintainer's asks for a pass (a refactor, simplify or review round, or a linked prompt; quotes and code left out),
   FOLLOW-UP MISS/TASTE verdicts, and the tokens (cache reads left out) of the local sessions that name the PR more than any other
   (unknown when none does).
 """
 import glob, json, os, re, statistics, subprocess, sys, time
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'hooks'))
-from gh_common import BADGE, MAINTAINER, epoch, gh_pages, iso, read, search
+from gh_common import BADGE, MAINTAINER, epoch, gh_pages, iso, own_accounts, read, search
 
 HOME = os.path.expanduser('~')
 NOW = time.time()
@@ -205,7 +205,7 @@ def own_words(body):
 def pr_record(repo, num):
     o, r = repo.split('/')
     p = gh('api', 'graphql', '-f', f'query={QUERY}', '-F', f'o={o}', '-F', f'r={r}', '-F', f'n={num}')['data']['repository']['pullRequest']
-    author = (p.get('author') or {}).get('login')
+    author, merger = (p.get('author') or {}).get('login'), (p.get('mergedBy') or {}).get('login')
     revs = [v for v in p['reviews']['nodes'] if (v.get('author') or {}).get('login') != author
             and v['authorAssociation'] in MAINTAINER and v.get('submittedAt')]
     first = min((v['submittedAt'] for v in revs), default=None)
@@ -216,7 +216,7 @@ def pr_record(repo, num):
     return {'pr': f"{repo}#{num}", 'created': p['createdAt'], 'settled': p['mergedAt'] or p['closedAt'], 'outcome': 'merged' if p['merged'] else p['state'].lower(),
             'hours_to_merge': hours(p['createdAt']), 'hours_ready_to_merge': hours(ready), 'review_rounds': len(revs),
             'change_requests': changes, 'review_comments': sum(v['comments']['totalCount'] for v in revs),
-            'commits_after_review': after, 'first_pass': None if not revs and (p.get('mergedBy') or {}).get('login') == author else bool(p['merged'] and not changes and not after)}
+            'commits_after_review': after, 'first_pass': None if not revs and (merger == author or (merger or '').lower() in own_accounts()) else bool(p['merged'] and not changes and not after)}
 
 
 def followups():

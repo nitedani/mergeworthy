@@ -63,17 +63,19 @@ case "\$*" in
   *updated:*) echo '{"total_count":4,"items":[{"number":4,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"},{"number":7,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"},{"number":9,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"},{"number":8,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"a PR the user wrote"}]}' ;;
   *is:open*) echo '{"total_count":1,"items":[{"number":9,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"}]}' ;;
   *search/issues*) cat <<'J'
-{"total_count":7,"items":[{"number":5,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*\\nbody"},
+{"total_count":8,"items":[{"number":5,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*\\nbody"},
 {"number":6,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"},
 {"number":7,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"},
 {"number":8,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"a PR the user wrote"},
 {"number":10,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"},
 {"number":11,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"},
-{"number":12,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"}]}
+{"number":12,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"},
+{"number":13,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"}]}
 J
   ;;
   *mergedBy*n=11*) echo '{"data":{"repository":{"pullRequest":{"state":"MERGED","merged":true,"createdAt":"$C1","mergedAt":"$M11","closedAt":"$M11","author":{"login":"me"},"mergedBy":{"login":"me"},"timelineItems":{"nodes":[]},"reviews":{"nodes":[{"author":{"login":"me"},"authorAssociation":"MEMBER","state":"COMMENTED","submittedAt":"$C1","comments":{"totalCount":0}}]},"commits":{"nodes":[]}}}}}' ;;
   *n=12*) echo '{"data":{"repository":{"pullRequest":{"state":"MERGED","merged":true,"createdAt":"$C1","mergedAt":"$M1","closedAt":"$M1","author":{"login":"me"},"mergedBy":{"login":"boss"},"timelineItems":{"nodes":[]},"reviews":{"nodes":[]},"commits":{"nodes":[]}}}}}' ;;
+  *n=13*) echo '{"data":{"repository":{"pullRequest":{"state":"MERGED","merged":true,"createdAt":"$C1","mergedAt":"$M1","closedAt":"$M1","author":{"login":"me"},"mergedBy":{"login":"Agent"},"timelineItems":{"nodes":[]},"reviews":{"nodes":[]},"commits":{"nodes":[]}}}}}' ;;
   *n=10*) echo '{"data":{"repository":{"pullRequest":{"state":"MERGED","merged":true,"createdAt":"$C10","mergedAt":"$M10","closedAt":"$M10","author":{"login":"me"},"timelineItems":{"nodes":[]},"reviews":{"nodes":[{"author":{"login":"boss"},"authorAssociation":"OWNER","state":"APPROVED","submittedAt":"$R10","body":"","url":"u","comments":{"totalCount":0}}]},"comments":{"nodes":[]},"commits":{"nodes":[{"commit":{"committedDate":"$C10","parents":{"totalCount":1}}},{"commit":{"committedDate":"$B10","parents":{"totalCount":2}}}]}}}}}' ;;
   *issues/9/comments*) cat "$T/c9.json" ;;
   *issues/4/comments*) echo '[[{"user":{"login":"boss"},"author_association":"OWNER","created_at":"$C9","body":"Apply https://x/refactor/SKILL.md","html_url":"https://github.com/o/r/pull/4#issuecomment-41"}]]' ;;
@@ -127,7 +129,7 @@ printf '%s\n' '{"type":"user","message":{"role":"user","content":"review https:/
 out=$(PATH="$T/bin:$PATH" python3 "$R/bin/steward" metrics "$S"); rc=$?
 rm "$HOME/.claude/projects/p/tie.jsonl"  # naming #5 and #6 once each, it is neither one's cost
 rec() { python3 -c 'import json,sys; r=[json.loads(l) for l in open(sys.argv[1])]; p=[x for x in r if x["pr"]==sys.argv[2]][-1]; print(*(p[k] for k in sys.argv[3:]))' "$S/metrics.jsonl" "$@"; }
-check "metrics: exits 0 and records the seven badge PRs (one still open), not the user's own" "0 7" "$rc $(wc -l < "$S/metrics.jsonl")"
+check "metrics: exits 0 and records the eight badge PRs (one still open), not the user's own" "0 8" "$rc $(wc -l < "$S/metrics.jsonl")"
 check "metrics: a merge with only an approval is first-pass; its tokens (no cache reads) come from the session naming it; its TASTE and the MISS of a follow-up naming it and #6 counted" "merged True 0 0 24.0 150 this 2" "$(rec o/r#5 outcome first_pass change_requests commits_after_review hours_to_merge tokens window followup_miss_taste)"
 check "metrics: a change request and a commit after it: not first-pass; the author's own review isn't a maintainer's; its MISS counted" "False 1 1 1 3 None 1" "$(rec o/r#6 first_pass review_rounds change_requests commits_after_review review_comments tokens followup_miss_taste)"
 check "metrics: its author merging after a maintainer's approval, or another maintainer merging unreviewed, is accepted; its author merging with only their own review is unknown" "True True None" "$(rec o/r#5 first_pass) $(rec o/r#12 first_pass) $(rec o/r#11 first_pass)"
@@ -136,7 +138,11 @@ check "metrics: a PR created before --since and merged after it counts in this w
 check "metrics: an open PR is listed apart" "open|Open now: 1" "$(rec o/r#9 window)|$(echo "$out" | grep '^Open now')"
 check "metrics: a maintainer's ask for a pass since the last pass is listed, one before it counted, the first of 101 comments too; a direct ask without a link counts; quoted, a non-maintainer's, an agent's, code and a question about the design aren't asks; one on a PR closed before the window counts by its own time; a request or a conditional put to us counts, the writer's own plan doesn't; a colon starts a sentence" \
   "Maintainer asks for a pass we owe since $(iso '-5 days' | cut -c1-10): 9 (1 in the window before)|- $C9 o/r#4 https://github.com/o/r/pull/4#issuecomment-41|- $C9 o/r#9 https://github.com/o/r/pull/9#issuecomment-91|- $C9 o/r#9 https://github.com/o/r/pull/9#issuecomment-92|- $C9 o/r#9 https://github.com/o/r/pull/9#issuecomment-93|- $C9 o/r#9 https://github.com/o/r/pull/9#issuecomment-94|- $C9 o/r#9 https://github.com/o/r/pull/9#issuecomment-95|- $C9 o/r#9 https://github.com/o/r/pull/9#issuecomment-96|- $C9 o/r#9 https://github.com/o/r/pull/9#issuecomment-97|- $C9 o/r#9 https://github.com/o/r/pull/9#issuecomment-98|" "$(echo "$out" | sed -n '/^Maintainer asks/,$p' | tr '\n' '|')"
-check "metrics: the side-by-side table, first-pass acceptance per window" "| first-pass acceptance (north star) | 1/1 (100%) | 3/4 (75%) (1 merged by their author) |" "$(echo "$out" | grep 'north star')"
+check "metrics: the side-by-side table, first-pass acceptance per window" "| first-pass acceptance (north star) | 1/1 (100%) | 4/5 (80%) (1 merged by their author) |" "$(echo "$out" | grep 'north star')"
+WITHOUT=$(rec o/r#13 first_pass); printf 'AGENT\n\nother\n' > "$HOME/.mergeworthy/own-accounts"
+PATH="$T/bin:$PATH" python3 "$R/bin/steward" metrics "$S" >/dev/null
+check "metrics: a merge by an account own-accounts lists counts as its author's, in any case; without the file, and for a merger it doesn't list, it is accepted" "True None True" "$WITHOUT $(rec o/r#13 first_pass) $(rec o/r#12 first_pass)"
+rm "$HOME/.mergeworthy/own-accounts"
 check "metrics: a window its authors merged alone has no acceptance to count" "| first-pass acceptance (north star) | 0/0 | 0/0 (1 merged by their author) |" "$(PATH="$T/bin:$PATH" python3 "$R/bin/steward" metrics "$S" --since "$(iso '-2 hours')" | grep 'north star')"
 
 check "sessions <folder>: the window starts at the folder's last pass" 2 "$(python3 "$R/bin/steward" sessions "$S" | grep -c "^~")"
