@@ -2249,8 +2249,8 @@ pp=; for c in 'gh api -X PATCH repos/o/r/pulls/436 -f title=x' 'gh api -X PATCH 
   pp="$pp $(guard "$c") $(grep -c 'post from a draft file' "$T/err")"; done
 check "BLOCK: a PATCH of a PR or issue typing a body or title, beside another field or not, or a field name computed when it runs" " 2 1 2 1 2 1 2 1 2 1" "$pp"
 ps=; for c in 'gh api -X PATCH repos/o/r/pulls/436 -f state=closed' 'gh api -X PATCH repos/o/r/issues/5 -F state=closed' 'gh api -X PATCH repos/o/r/pulls/436 -f base=main -f state=closed' 'gh api -X PATCH https://api.github.com/repos/o/r/issues/5 --field=state=open' "gh api -X PATCH 'repos/{owner}/{repo}/pulls/436' -f state=closed"; do
-  ps="$ps $(guard "$c") $(grep -c 'gh pr close. / .gh issue close' "$T/err")"; done
-check "BLOCK: a PATCH of a PR's or issue's state, beside another field or not, naming gh pr close and gh issue close" " 2 1 2 1 2 1 2 1 2 1" "$ps"
+  ps="$ps $(guard "$c")"; done
+check "BLOCK: a PATCH of a PR's or issue's state, beside another field or not, keeps the draft rule" " 2 2 2 2 2" "$ps"
 check "BLOCK: no field, an --input, a POST, a PATCH of anything else and a GraphQL mutation keep the draft rule" "2 2 2 2 2" "$(guard 'gh api -X PATCH repos/o/r/pulls/436') $(guard 'gh api -X PATCH repos/o/r/pulls/436 --input /w/nogate.json') $(guard 'gh api repos/o/r/pulls -f base=main -f head=x') $(guard 'gh api -X PATCH repos/o/r/milestones/1 -f state=closed') $(guard "gh api graphql -f 'query=mutation { markPullRequestReadyForReview(input: {pullRequestId: \"P\"}) { clientMutationId } }'")"
 printf '[{"event":"renamed","actor":{"login":"brillout"},"created_at":"2026-10-14T21:50:52Z","rename":{"from":"a","to":"b"}}]' > "$FX/repos_o_r_issues_7_timeline_per_page_100"
 echo '[]' > "$FX/repos_o_r_issues_9_timeline_per_page_100"

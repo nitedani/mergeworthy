@@ -1000,10 +1000,6 @@ def discussion_thread_of(ref):
     except (OSError, subprocess.TimeoutExpired): return None
     return r.stdout.strip() if r.returncode == 0 and re.fullmatch(r'[\w.-]+/[\w.-]+#\d+', r.stdout.strip()) else None
 
-def api_path(ep):
-    """The path of a `gh api` endpoint, without its host, API prefix and query."""
-    return re.sub(r'^(?:https?://[^/]+)?/?(?:api/v3/)?', '', ep).split('?')[0]
-
 def api_call(rest, cwd=None):
     """(method, endpoint, fields, inputs, posts) of `gh api <rest>`. It posts text when it is a GraphQL mutation, or a POST,
     PATCH or PUT that isn't a reaction, rerun, dispatch, label, assignee, review request, collaborator or invitation, nor a PATCH of an
@@ -1019,7 +1015,7 @@ def api_call(rest, cwd=None):
     if ep == 'graphql':
         posts = graphql_posts(fields, inputs, cwd)
     else:
-        path = api_path(ep)
+        path = re.sub(r'^(?:https?://[^/]+)?/?(?:api/v3/)?', '', ep).split('?')[0]
         no_text = method == 'PATCH' and THREAD.fullmatch(path) and fields and not inputs and all(NO_TEXT_FIELD.match(v) for v in fields)
         posts = method in ('POST', 'PATCH', 'PUT') and not NO_TEXT.fullmatch(path) and not no_text
     return method, ep, fields, inputs, posts
