@@ -935,6 +935,8 @@ def opt(t, names):
 
 NO_TEXT = re.compile(r'(?:repos/[^/]+/[^/]+/(?:.+/)?(?:reactions|rerun[\w-]*|dispatches|labels|assignees|requested_reviewers)(?:/[^/]+)?'
                      r'|repos/[^/]+/[^/]+/(?:collaborators|invitations)/[^/]+|user/repository_invitations/\d+)')
+THREAD = re.compile(r'repos/[^/]+/[^/]+/(?:issues|pulls)/\d+')
+NO_TEXT_FIELD = re.compile(r'(?!body=|title=)\w+=')  # a name computed when it runs may be either
 
 def graphql_posts(fields, inputs, cwd):
     """A GraphQL call posts text when its query, literal or read from a file (relative to cwd, the dir the command runs in), is a mutation other than
@@ -998,8 +1000,9 @@ def discussion_thread_of(ref):
 
 def api_call(rest, cwd=None):
     """(method, endpoint, fields, inputs, posts) of `gh api <rest>`. It posts text when it is a GraphQL mutation, or a POST,
-    PATCH or PUT that isn't a reaction, rerun, dispatch, label, assignee, review request, collaborator or invitation. cwd: where the command
-    runs, for the files a GraphQL query is read from; None when unknown, so a relative file counts as a post."""
+    PATCH or PUT that isn't a reaction, rerun, dispatch, label, assignee, review request, collaborator or invitation, nor a PATCH of an
+    issue or PR whose fields set neither body nor title. cwd: where the command runs, for the files a GraphQL query is read from; None when
+    unknown, so a relative file counts as a post."""
     method = (opt(rest, ['-X', '--method']) or [''])[-1].upper()
     fields = opt(rest, ['-f', '--raw-field', '-F', '--field'])
     inputs = opt(rest, ['--input'])
@@ -1010,7 +1013,9 @@ def api_call(rest, cwd=None):
     if ep == 'graphql':
         posts = graphql_posts(fields, inputs, cwd)
     else:
-        posts = method in ('POST', 'PATCH', 'PUT') and not NO_TEXT.fullmatch(re.sub(r'^(?:https?://[^/]+)?/?(?:api/v3/)?', '', ep).split('?')[0])
+        path = re.sub(r'^(?:https?://[^/]+)?/?(?:api/v3/)?', '', ep).split('?')[0]
+        no_text = method == 'PATCH' and THREAD.fullmatch(path) and fields and not inputs and all(NO_TEXT_FIELD.match(v) for v in fields)
+        posts = method in ('POST', 'PATCH', 'PUT') and not NO_TEXT.fullmatch(path) and not no_text
     return method, ep, fields, inputs, posts
 
 def repo_name(r):
