@@ -521,10 +521,11 @@ def pushed(git_dir, opts, env, rest):
 def collaboration(d, url, heads):
     """([why this push is collaboration work], [{url, isDraft} of each open PR or MR it updates]): it updates an open PR's (MR's)
     head, or goes to a repo the pushing account doesn't own, or to a host that is neither GitHub nor GitLab. A push of its own (no
-    PR, its own repo) has no why. When GitHub or GitLab can't answer, a push to the account's own repo from a checkout of no one
+    PR, its own repo) or to a gist has no why. When GitHub or GitLab can't answer, a push to the account's own repo from a checkout of no one
     else's repo is its own; anything else blocks."""
     if not heads or not (r := repo_of(url)): return [], []
     host, repo = r
+    if host == 'gist.github.com': return [], []
     hub = host == 'github.com'
     if not hub and 'gitlab' not in host: return [f"{host} is neither GitHub nor GitLab, so whether it updates a PR can't be told"], []
     owner = repo.rsplit('/', 1)[0]

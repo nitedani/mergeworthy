@@ -3347,6 +3347,7 @@ bp=; for c in 'git push https://x-access-token:T@github.com/vikejs/vike.git HEAD
   bp="$bp $(bg "$c" "$OWN2")"; done
 check "BLOCK: a push to another owner's repo however written: a token in the URL, ssh://host:port, GitHub.com, an unknown host, a variable, --repo, a quoted verb before a syntax error, an array" \
   " 2 2 2 2 2 2 2 2" "$bp"
+check "a push to a gist is no collaboration work: no gates asked, over https or ssh" "0 0" "$(bg 'git push https://gist.github.com/fdaaaa9b44.git HEAD:main' "$OWN2") $(bg 'git push git@gist.github.com:fdaaaa9b44.git HEAD:main' "$OWN2")"
 check "a remote the line assigns a literal is checked as written out: another owner's repo for what it is, the account's own URL or remote name passes" "2 0 0 0" \
   "$(bg 'U=https://github.com/vikejs/vike.git; git push $U HEAD:s' "$OWN2") $(grep -c 'computed when it runs' "$T/err") $(bg 'U=https://github.com/nitedani-agent/notes.git; git push "$U" HEAD:s' "$OWN2") $(bg 'R=origin; git push ${R} HEAD:s' "$OWN2")"
 pc=; for c in 'U=$(git remote get-url origin); git push $U HEAD:s' 'if true; then U=origin; fi; git push $U HEAD:s' 'for U in origin other; do git push $U HEAD:s; done' 'U=origin git push $U HEAD:s' 'git push $UNSET_REMOTE HEAD:s'; do
