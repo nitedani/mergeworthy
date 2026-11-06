@@ -3263,6 +3263,21 @@ ci() { # session [cwd]
 check "the check-in is per session: another session gets its own, the first not twice within 30 minutes" "2 2 0" "$(ci sess-a) $(ci sess-b) $(ci sess-a)"
 echo 1 > "$HOME/.claude/mergeworthy-stop-checkin"  # the stamp an older stop-lint shared between sessions
 check "the old shared check-in stamp file doesn't crash the per-session one" 2 "$(ci sess-c)"
+mv "$HOME/.t3/userdata/statev2.sqlite" "$T/state.bak"; python3 - "$HOME/.t3/userdata/statev2.sqlite" <<'EOF2'
+import sqlite3, sys
+c = sqlite3.connect(sys.argv[1])
+c.execute('create table orchestration_v2_projection_provider_threads (provider_thread_id text, thread_id text, payload_json text)')
+c.execute('create table orchestration_v2_projection_subagents (subagent_id text, thread_id text, child_thread_id text, status text)')
+c.execute('create table orchestration_v2_projection_runs (run_id text, thread_id text, status text)')
+c.execute("""insert into orchestration_v2_projection_provider_threads values ('p1', 'ci-wait', '{"nativeThreadRef":{"driver":"claudeAgent","nativeId":"sess-wait"}}')""")
+c.execute("insert into orchestration_v2_projection_runs values ('r1', 'ci-wait', 'running')"); c.commit()  # its own run, as at every stop
+EOF2
+t3db "insert into orchestration_v2_projection_subagents values ('s1', 'ci-wait', 'ci-child', 'running')"; CI_TASK=$(ci sess-wait)
+t3db "update orchestration_v2_projection_subagents set status = 'completed'"
+t3db "update orchestration_v2_projection_provider_threads set payload_json = json_set(payload_json, '$.pendingBackgroundTasks', json('[{\"taskId\":\"b1\",\"kind\":\"command\"}]'))"; CI_BG=$(ci sess-wait)
+t3db "update orchestration_v2_projection_provider_threads set payload_json = json_set(payload_json, '$.pendingBackgroundTasks', json('[]'))"
+check "no check-in while T3 holds a delegated task or a background command; once both ended, its own run still active, it gets the one those didn't spend" "0 0 2" "$CI_TASK $CI_BG $(ci sess-wait)"
+mv "$T/state.bak" "$HOME/.t3/userdata/statev2.sqlite"
 git init -q "$T/vkr"; git -C "$T/vkr" remote add origin https://github.com/vikejs/vike.git
 printf '{"state":"open","draft":false,"merged":false,"html_url":"https://github.com/vikejs/vike/pull/3675","head":{"sha":"abc"},"base":{"repo":{"full_name":"vikejs/vike"}}}' > "$FX/repos_vikejs_vike_pulls_3675"
 printf '{"check_runs":[{"name":"test","status":"completed","conclusion":"success"}]}' > "$FX/repos_vikejs_vike_commits_abc_check-runs_per_page_100"; cp "$FX/repos_vikejs_vike_commits_abc_check-runs_per_page_100" "$FX/repos_vikejs_vike_commits_abc_check-runs"
