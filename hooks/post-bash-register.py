@@ -70,10 +70,17 @@ segs = segments(cmd)  # a command that doesn't lex still yields its words: a pos
 # the drafts posted as new, and each posting segment's target with the dir it ran in, resolved as pre-bash-guard resolves them
 cwd = d.get('cwd') or os.getcwd()
 where, drafts, posts, discussed = Where(cwd), [], [], False
+def wrote(post, th):  # whether that posting segment can have written the thread th (threads()'s); one that names its thread, only that one
+    return post[3] == th if post[3] else (post[0] is None or post[0] == th[0]) and (post[1] is None or post[1] == th[1])
 for s in where.walk(segs):
-    drafts += [os.path.join(cwd, os.path.expanduser(where.expand(f))) for f in new_post_drafts(s)]
-    discussed = discussed or (discussion_post(s) or ('',))[0] == 'add'
-    if tg := target(s, where.dir): posts.append((tg[0], tg[1], where.dir, tg[2] if len(tg) > 2 else None))
+    new = [os.path.join(cwd, os.path.expanduser(where.expand(f))) for f in new_post_drafts(s)]
+    adds = (discussion_post(s) or ('',))[0] == 'add'
+    discussed = discussed or adds
+    post = (tg[0], tg[1], where.dir, tg[2] if len(tg) > 2 else None) if (tg := target(s, where.dir)) else None
+    if post: posts.append(post)
+    # a pipe hides the post's exit: only the URL it printed says it was created
+    if not s.piped or (post and any(wrote(post, th) for th in threads(out))) or (adds and re.search(r'github\.com/\S+/discussions/\d+#discussioncomment', out)):
+        drafts += new
 # Written here, not in pre-bash-guard: PostToolUse runs only after the command succeeded, so a post another hook blocked, or one that failed, can be retried
 if isinstance(r, dict) and not r.get('interrupted'):
     for f in drafts:
@@ -88,8 +95,6 @@ if discussed:  # gh-watch reads issues, PRs and merge requests only, so the thre
           "read the discussion for new comments yourself (`thread-context <owner/repo#N>`) until the thread is done", file=sys.stderr)
 if not posts:
     sys.exit(0)
-def wrote(post, th):  # whether that posting segment can have written the thread th (threads()'s); one that names its thread, only that one
-    return post[3] == th if post[3] else (post[0] is None or post[0] == th[0]) and (post[1] is None or post[1] == th[1])
 def posted(th):  # a URL in stdout counts only when it is the thread a posting segment wrote to
     return any(wrote(p, th) for p in posts)
 # The agent and the user may share one login, so the watcher knows a comment is the agent's by its body's hash.

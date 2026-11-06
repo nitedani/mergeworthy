@@ -200,13 +200,14 @@ class Seg(list):
     names its script, or a script running it, may set where Where can't follow (_unseen), whose values it never trusts; nested: whether
     it is in a script the line runs (`eval`'s included), where a plain walk loses the dir (Where); after: each statement that exited 0 if this
     one runs at all, being before it in a chain of && (_passed); stmt: the statement it runs as, for after to name; readers: the argv of each
-    command its output is piped to, when nothing else takes its output or status (_readers), else None."""
-    scopes, loop, raw, unseen, nested, after, stmt, readers = (), False, None, frozenset(), False, (), None, None
+    command its output is piped to, when nothing else takes its output or status (_readers), else None; piped: whether its output goes into
+    a pipe, which also hides its exit."""
+    scopes, loop, raw, unseen, nested, after, stmt, readers, piped = (), False, None, frozenset(), False, (), None, None, False
 
 
-def _seg(argv, scopes=(), loop=False, raw=None, after=(), stmt=None):
+def _seg(argv, scopes=(), loop=False, raw=None, after=(), stmt=None, piped=False):
     s = Seg(argv)
-    s.scopes, s.loop, s.raw, s.after, s.stmt = scopes, loop, raw, after, stmt
+    s.scopes, s.loop, s.raw, s.after, s.stmt, s.piped = scopes, loop, raw, after, stmt, piped
     return s
 
 
@@ -301,11 +302,11 @@ def _passed(s, src):
 def _calls(node, src):
     """(the argv of every simple command under node, in order, each a Seg; the statements each heredoc of them is read by:
     (redirect, top statement, whether it is in a loop))."""
-    segs, docs, stack = [], [], [(node, None, (), False, ())]
+    segs, docs, stack = [], [], [(node, None, (), False, (), False)]
     while stack:
-        x, top, n, loop, after = stack.pop()
+        x, top, n, loop, after, piped = stack.pop()
         if isinstance(x, list):
-            stack += [(y, top, n, loop, after) for y in reversed(x)]
+            stack += [(y, top, n, loop, after, piped) for y in reversed(x)]
             continue
         if not isinstance(x, dict):
             continue
@@ -319,13 +320,14 @@ def _calls(node, src):
         raws = [w for r in redirs for w in (r['Op'], _src(r['Word'], src) if r.get('Word') else '')]
         if cmd.get('Type') == 'CallExpr':
             segs.append(_seg([_assign(a, src) for a in cmd.get('Assigns') or []] + [_word(a, src) for a in cmd.get('Args') or []] + words, inner['Cmd'], loop,
-                             [_src(a, src) for a in (cmd.get('Assigns') or []) + (cmd.get('Args') or [])] + raws, after, x))
+                             [_src(a, src) for a in (cmd.get('Assigns') or []) + (cmd.get('Args') or [])] + raws, after, x, piped))
         elif cmd.get('Type') == 'DeclClause':
             segs.append(_seg([cmd['Variant']['Value']] + [_assign(a, src) for a in cmd.get('Args') or []] + words, inner['Cmd'], loop,
-                             [cmd['Variant']['Value']] + [_src(a, src) for a in cmd.get('Args') or []] + raws, after, x))
+                             [cmd['Variant']['Value']] + [_src(a, src) for a in cmd.get('Args') or []] + raws, after, x, piped))
         docs += [(r, top or x, loop) for r in redirs if r.get('Hdoc')]
         chained = _passed(x['X'], src) if x.get('Type') == 'BinaryCmd' and x.get('Op') == '&&' else ()
-        stack += [(v, None if k == 'Stmts' else (top or x) if 'Cmd' in x else top, inner[k], loop, after + chained if k == 'Y' else after)  # each statement of a list is a top statement
+        stack += [(v, None if k == 'Stmts' else (top or x) if 'Cmd' in x else top, inner[k], loop, after + chained if k == 'Y' else after,  # each statement of a list is a top statement
+                   piped or k == 'X' and x.get('Op') in ('|', '|&'))
                   for k, v in reversed(x.items()) if isinstance(v, (dict, list)) and k not in ('Pos', 'End', 'Hdoc')]
     return segs, docs
 

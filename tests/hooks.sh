@@ -362,6 +362,17 @@ check "a failed post leaves no marker" none "$(postreg '"Error: Exit code 1\ngh:
 check "an interrupted post leaves no marker" none "$(postreg '{"stdout":"","stderr":"","interrupted":true}')"
 check "a successful post writes the marker" marker "$(postreg '{"stdout":"https://example.invalid/c","stderr":"","interrupted":false}')"
 rm "$TD/r.md.posted"
+pipereg() { # command stdout: post-bash-register on it, the draft's marker after it, then none again
+  python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[2]},"cwd":sys.argv[1],"tool_response":{"stdout":sys.argv[3],"stderr":"","interrupted":False}}))' "$T" "$1" "$2" \
+    | python3 "$R/hooks/post-bash-register.py" 2>/dev/null; [ -f "$TD/r.md.posted" ] && echo marker || echo none; rm -f "$TD/r.md.posted"; }
+PC="gh issue comment 41 --repo o/r --body-file $TD/r.md"; PRP="gh pr create --repo o/r --draft --body-file $TD/r.md"
+check "a piped post whose stdout holds no URL of it leaves no marker: gh's error, the pipe's stderr, another thread's URL" "none none none none" \
+  "$(pipereg "$PRP | tail -1" 'aborted: you must first push the current branch to a remote') $(pipereg "$PC 2>&1 | tail -1" 'gh: Not Found (HTTP 404)') $(pipereg "$PC |& tail -1" 'gh: Not Found (HTTP 404)') $(pipereg "$PC | tail -1" 'https://github.com/o/r/issues/99')"
+check "a piped post whose stdout holds its URL writes the marker: a PR, a comment, after 2>&1, a discussion comment" "marker marker marker marker" \
+  "$(pipereg "$PRP | tail -1" 'https://github.com/o/r/pull/7') $(pipereg "$PC | tail -1" 'https://github.com/o/r/issues/41#issuecomment-1') $(pipereg "$PC 2>&1 | tail -1" 'https://github.com/o/r/issues/41#issuecomment-1') $(pipereg "discussion-post d/r#5 $TD/r.md | tail -1" 'https://github.com/d/r/discussions/5#discussioncomment-1')"
+check "a piped discussion-post that printed no comment URL leaves no marker" none "$(pipereg "discussion-post d/r#5 $TD/r.md | tail -1" 'discussion-post: d/r#5 is no discussion')"
+check "a post that isn't piped writes the marker whatever it printed: alone, in a list, or reading a pipe" "marker marker marker" \
+  "$(pipereg "$PC" 'done') $(pipereg "$PC; echo y" 'done') $(pipereg "echo y | $PC" 'done')"
 check "a post naming its draft by a variable the command set writes the marker too, as the guard reads that path" marker \
   "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[2]},"cwd":sys.argv[1],"tool_response":{"stdout":"https://example.invalid/c"}}))' "$T" "F=$TD/r.md; gh issue comment 41 --repo o/r --body-file \"\$F\"" \
     | python3 "$R/hooks/post-bash-register.py"; [ -f "$TD/r.md.posted" ] && echo marker || echo none)"
