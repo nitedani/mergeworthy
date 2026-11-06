@@ -205,8 +205,8 @@ def own_words(body):
 def pr_record(repo, num):
     o, r = repo.split('/')
     p = gh('api', 'graphql', '-f', f'query={QUERY}', '-F', f'o={o}', '-F', f'r={r}', '-F', f'n={num}')['data']['repository']['pullRequest']
-    author, merger = (p.get('author') or {}).get('login'), (p.get('mergedBy') or {}).get('login')
-    revs = [v for v in p['reviews']['nodes'] if (v.get('author') or {}).get('login') != author
+    own = {(p.get('author') or {}).get('login', '').lower(), *own_accounts()}  # the accounts of the PR's author and of this machine's agents accept nothing
+    revs = [v for v in p['reviews']['nodes'] if (v.get('author') or {}).get('login', '').lower() not in own
             and v['authorAssociation'] in MAINTAINER and v.get('submittedAt')]
     first = min((v['submittedAt'] for v in revs), default=None)
     after = sum(1 for c in p['commits']['nodes'] if first and c['commit']['committedDate'] > first and c['commit']['parents']['totalCount'] < 2)  # a merge of the base isn't rework
@@ -216,7 +216,7 @@ def pr_record(repo, num):
     return {'pr': f"{repo}#{num}", 'created': p['createdAt'], 'settled': p['mergedAt'] or p['closedAt'], 'outcome': 'merged' if p['merged'] else p['state'].lower(),
             'hours_to_merge': hours(p['createdAt']), 'hours_ready_to_merge': hours(ready), 'review_rounds': len(revs),
             'change_requests': changes, 'review_comments': sum(v['comments']['totalCount'] for v in revs),
-            'commits_after_review': after, 'first_pass': None if not revs and (merger == author or (merger or '').lower() in own_accounts()) else bool(p['merged'] and not changes and not after)}
+            'commits_after_review': after, 'first_pass': None if not revs and (p.get('mergedBy') or {}).get('login', '').lower() in own else bool(p['merged'] and not changes and not after)}
 
 
 def followups():

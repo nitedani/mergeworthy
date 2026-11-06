@@ -142,6 +142,9 @@ check "metrics: the side-by-side table, first-pass acceptance per window" "| fir
 WITHOUT=$(rec o/r#13 first_pass); printf 'AGENT\n\nother\n' > "$HOME/.mergeworthy/own-accounts"
 PATH="$T/bin:$PATH" python3 "$R/bin/steward" metrics "$S" >/dev/null
 check "metrics: a merge by an account own-accounts lists counts as its author's, in any case; without the file, and for a merger it doesn't list, it is accepted" "True None True" "$WITHOUT $(rec o/r#13 first_pass) $(rec o/r#12 first_pass)"
+printf 'boss\n' > "$HOME/.mergeworthy/own-accounts"
+PATH="$T/bin:$PATH" python3 "$R/bin/steward" metrics "$S" >/dev/null
+check "metrics: a review from an account own-accounts lists accepts nothing" "None" "$(rec o/r#5 first_pass)"
 rm "$HOME/.mergeworthy/own-accounts"
 check "metrics: a window its authors merged alone has no acceptance to count" "| first-pass acceptance (north star) | 0/0 | 0/0 (1 merged by their author) |" "$(PATH="$T/bin:$PATH" python3 "$R/bin/steward" metrics "$S" --since "$(iso '-2 hours')" | grep 'north star')"
 
