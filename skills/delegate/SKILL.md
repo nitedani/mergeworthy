@@ -50,7 +50,7 @@ The classes are model families, never versions: the strongest class is the newes
 ### Reviewers
 
 Every independent check (a post's review, each Loop A verifier, Loop B's review and shape pass, a small review, a cold read, the fresh reader, a standalone review) picks its reviewer in this order, trying the first each time: an earlier "unavailable" note (memory, a post's badge) is no check:
-- **First, a model from another company than the main session's:** on its default model, at the effort chosen per call (high; medium for a few-sentence reply). In T3 Code, one `delegate_task` per round, role `review`, the reviewer's `providerInstanceId` from `orchestrator_capabilities`:
+- **First, a model from another company than the main session's:** on its default model, at the effort chosen per call (high; medium for a verifier or a few-sentence reply). In T3 Code, one `delegate_task` per round, role `review`, the reviewer's `providerInstanceId` from `orchestrator_capabilities`:
    ```json
    {"task": "Follow <prompt file>; output to <out>", "role": "review", "target": {"providerInstanceId": "<id>", "options": {"<its effort option>": "<effort>"}}, "clientRequestId": "<loop>-r<N>"}
    ```
