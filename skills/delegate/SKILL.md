@@ -21,7 +21,7 @@ Each role's brief is a template in `~/.mergeworthy/current/skills/delegate/`, wi
    Run: `task_status` · Hook: stop-lint
 6. **Its result** (T3's notice, or the watcher's `### AGENT DONE <ticket>`). Read the final message; open two or three cited `path:line`s or re-run one command, and diff the result against your plan. A diff: write down each structural decision in it and why it's right before landing it; hardcoded lists and duplicated classifications get fixed before pushing. Then release the job.
    Run: `agent-job done <ticket>` · Hook: stop-lint, the watcher
-7. **Relay the result to the user and act on it;** an unchecked item, a deviation and each finding (by `code §Earn every line`) are yours to decide; never send the same brief again. If it fails your check or comes back blocked, redo it on your model class (reviews: §Reviewers) with what failed.
+7. **Relay the result to the user and act on it;** an unchecked item, a deviation and each finding (by `code §Earn every line`) are yours to decide; never send the same brief again. If it fails your check or comes back blocked, redo it with what failed on the main session's class (reviews: §Reviewers), whatever class it ran on.
    Open: `writing §Reports to the user`
 
 ### Brief
@@ -43,9 +43,9 @@ Later work on the same thing (confirming fixes, re-rating) continues that agent;
 
 ### Model class
 
-The classes are model families, never versions: the strongest class is the newest Opus your harness offers, and the smallest class that has an effort setting is the newest Haiku. The main session runs on the strongest class: it plans, briefs, decides, spot-checks results and approves every word to a maintainer. Never a model the user excluded, nor a model version in a prompt, skill or memory.
-- **Root causes and choosing among approaches** (`pull-request` step 5): the main session's class at high effort.
-- **Authors** (code, docs, PR bodies, replies, designs): the main session's class at high effort. **Judges** (verification, every `converge` loop agent, audits, exploration): at medium.
+The classes are model families, never versions: the strongest class is the newest Opus your harness offers, the middle class the newest Sonnet (none offered: the strongest class), and the smallest class that has an effort setting the newest Haiku. The main session runs on the strongest class: it plans, briefs, decides, spot-checks results and approves every word to a maintainer. Never a model the user excluded, nor a model version in a prompt, skill or memory.
+- **All judgment and every outward word** (root causes, choosing among approaches in `pull-request` step 5, drafters, PR bodies, replies, docs authors, designers, `finality`'s agents, the debater): the main session's class at high effort. **Judges** (verification, every `converge` loop agent, audits, exploration): the same class at medium.
+- **Implementers:** the middle class at high effort when you hand them a mechanical task: the plan decided, its acceptance criteria and short structured guidance (`delegate/implementer.md`); one that has to decide anything runs on the main session's class.
 - **The smallest class with an effort setting, at high effort,** only for work where nothing it writes ships: running gates, tests and a reproduction from a recipe, log mining, data processing and bookkeeping.
 
 ### Reviewers

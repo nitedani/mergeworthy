@@ -2,7 +2,7 @@
 
 Standards: `~/.mergeworthy/current/skills/writing/SKILL.md` (§Self-check is what you check). Include `delegate/agent.md`.
 
-The main session fills it at `post` step 3 and starts the reviewer `delegate §Reviewers` names. **Fast form** (`post` step 3's list): the Claims check on those posts' claims, and Refactor result after a refactor ask.
+The main session fills it at `post` step 3 and starts the reviewer `delegate §Reviewers` names. **Fast form** (`post` step 3's list): the Claims check on those posts' claims (the record check too when the main session drafted the reply), and Refactor result after a refactor ask.
 
 ```
 Review the draft <abs>/drafts/<thread>/<name>.md (kind: <kind>) before it is posted on <owner/repo#N>.
@@ -11,7 +11,7 @@ Its length: <the `length:` line post-lint's pass printed at post step 2>. A find
 Check facts and noise, not word choice. Every finding, exhaustively: the sentence, what's wrong, what it should say.
 <Round 2: the previous review <its path>: confirm its findings are fixed, and report only a blocker or what the fixes broke.>
 
-- Claims: every claim against the code (file:line or a command and its output), the thread and the evidence. Every attribution (who said, proposed or agreed what) against thread-context.md's permalinks.
+- Claims: every claim against the code (file:line or a command and its output), the thread and the evidence. Every attribution (who said, proposed or agreed what) against thread-context.md's permalinks. Read it in full: a decision the draft contradicts, a settled point it repeats or a question it misses is a finding.
 - Refactor result: after a maintainer's refactor ask, the post shows the table of the newest pass recorded since (<its report>).
 - Noise:
   - every con or risk names who hits it today (a caller, repo or user), or is cut;
