@@ -450,6 +450,7 @@ if (not child and may_wait and d.get('session_id') and '/plugins/cache/' in own_
     sys.exit(2)
 # Before a turn ends, one check-in (not twice in a row: on the stop after a block, stop_hook_active skips it)
 # At most once per MERGEWORTHY_STOP_CHECKIN_SECONDS (default 30 min): every extra turn re-reads the whole context from cache
+# Not while T3 holds a delegated task or background command for the session: nothing can be read yet, and its end wakes the session
 def checkin_due():
     import time
     key = re.sub(r'[^\w-]', '', d.get('session_id') or '') or hashlib.sha256(str(d.get('transcript_path')).encode()).hexdigest()[:16]
@@ -464,7 +465,7 @@ def checkin_due():
     open(f, 'w').write(str(time.time()))
     return True
 if (os.environ.get('MERGEWORTHY_STOP_CHECKIN', 'on') != 'off' and may_wait and not child and not active
-        and not re.search(r'^GENUINE-FORK:.*\Z', last.rstrip(), re.M) and checkin_due()):
+        and not re.search(r'^GENUINE-FORK:.*\Z', last.rstrip(), re.M) and not steward.pending(d.get('session_id')) and checkin_due()):
     print("Before you stop, check once, unless the user asked you to stop or pause: is there work the user asked for, or that the "
           "critical path needs, that you could start now? Is anything waiting on you (a reply owed, red CI, a finished agent's result "
           "to read, a dependency that landed)? If so, do it now, or brief a subagent for it. Otherwise end the turn without writing "
