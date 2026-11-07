@@ -149,10 +149,10 @@ echo "drafting: https://github.com/o/r/issues/1#issuecomment-9 $(date -u -d '-1 
 check "BLOCK: a drafting line past its ETA is owed again" 2 "$(stop "$WD")"
 ev0=$(cat "$WD/events.log" 2>/dev/null); printf '%s\n### gitlab.com/g/p!99 note 4041083988 by owner %s  https://gitlab.com/g/p/-/merge_requests/99#note_4041083988\n' "$ev0" "$(date -u -d '-20 minutes' +%FT%TZ)" > "$WD/events.log"
 echo "drafting: https://gitlab.com/g/p/-/merge_requests/99#note_4041083988 $(date -u -d '+150 minutes' +%FT%TZ)" > "$WD/replies-owed.md"
-d1=$(stop "$WD"); d1e=$(grep -c "that line's ETA is over 30 minutes after the comment, so it doesn't hold" "$T/err"); d1a=$(stop_active "$WD")
+d1=$(stop "$WD"); d1e=$(grep -c "that line's ETA is over 30 minutes after the comment, so it doesn't hold" "$T/err"); d1a=$(stop "$WD")
 echo "o/r 1 comment 42 by someone" > "$WD/replies-owed.md"; d1p=$(stop_active "$WD")
 echo "drafting: https://gitlab.com/g/p/-/merge_requests/99#note_4041083988 $(date -u -d '+150 minutes' +%FT%TZ)" > "$WD/replies-owed.md"
-check "a late drafting line blocks naming why when not active, and passes on the stop right after; a plain owed line still blocks then" "2 1 0 2" "$d1 $d1e $d1a $d1p"
+check "a late drafting line blocks once naming why, even when another check blocked first; a plain owed line still blocks" "2 1 0 2" "$d1 $d1e $d1a $d1p"
 echo "drafting: https://gitlab.com/g/p/-/merge_requests/99#note_4041083988 $(date -u -d '+5 minutes' +%FT%TZ)" > "$WD/replies-owed.md"
 check "a drafting line due within 30 minutes of the comment passes" 0 "$(stop "$WD")"
 printf '%s\n' "$ev0" > "$WD/events.log"

@@ -4,7 +4,7 @@ wake it, with an offer or hand-back the agent should just act on, with a claim a
 on GitHub with no live Monitor on a watcher's events.log in this session (the session is what answers the events; nothing else
 wakes it) unless its watch folder retired after the post, or with a line still owed in a watcher's replies-owed.md (mergeworthy:reply).
 The final message is the hook input's last_assistant_message (the transcript may not hold it yet). stop_hook_active skips only
-the check-in and a late `drafting:` owed line (the block before told it once): every other check holds until it is met (Claude Code itself ends the turn after 8 blocks in a row)."""
+the check-in: every other check holds until it is met, except a late `drafting:` owed line, which blocks once (Claude Code itself ends the turn after 8 blocks in a row)."""
 import glob, hashlib, json, os, re, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import failclosed
@@ -326,12 +326,16 @@ if watcher_on and not paused and not child:
                 return False
             return not late(l)
         open_owed = [l for l in owed if not l.lower().startswith('done:') and not holding(l)]
-        if active: open_owed = [l for l in open_owed if not late(l)]  # told once by the block before
-        if open_owed and late(open_owed[0]):
-            print(f"replies-owed.md in {wd}: {open_owed[0][:120]}: that line's ETA is over 30 minutes after the comment, so it doesn't hold. "
+        told_file = os.path.join(wd, 'replies-late-told')  # a late line blocks once: repeating it sent one session back 62 times
+        told = open(told_file).read().splitlines() if os.path.exists(told_file) else []
+        unseen = [l for l in open_owed if late(l) and l not in told]
+        if unseen:
+            with open(told_file, 'a') as t: t.write(unseen[0] + '\n')
+            print(f"replies-owed.md in {wd}: {unseen[0][:120]}: that line's ETA is over 30 minutes after the comment, so it doesn't hold. "
                   "Post a holding reply now, through post's fast form, with what you found so far and when the answer comes, "
                   "and write `holding: <reply url> <ETA>` (mergeworthy:reply step 3).", file=sys.stderr)
             sys.exit(2)
+        open_owed = [l for l in open_owed if not late(l)]
         if open_owed:
             print(f"replies-owed.md in {wd} still has an owed reply ({open_owed[0][:120]}). Answer it through the gate and clear the "
                   "line with 'done: <reply url> <what changed>' (mergeworthy:post step 5), or clear it with the reason no reply is owed. "
