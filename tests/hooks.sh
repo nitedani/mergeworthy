@@ -2549,14 +2549,22 @@ check "BLOCK: a variable set in a branch may or may not hold after it, nor falls
   "$(ibash "$IT" "WD=$I; if false; then WD=$T/nogit; fi; echo x > \$WD/a.txt" "$T/nogit") $(WD=$T/nogit ibash "$IT" "if true; then WD=$I; fi; echo x > \$WD/a.txt" "$T/nogit")"
 check "BLOCK: a call to a function the line defines runs its cd or assignment there, after an absolute cd too: a write after it" "2 2" \
   "$(ibash "$IT" "f() { cd $I; }; cd $T/nogit; f; echo x > a.txt" "$T/nogit") $(ibash "$IT" "f() { WD=$I; }; WD=$T/nogit; f; echo x > \$WD/a.txt" "$T/nogit")"
-check "BLOCK: a word with a quoted or escaped \$ isn't expanded: a write to '\$WD/a.txt' or \\\$WD/a.txt can't be told" "2 2" \
-  "$(ibash "$IT" "WD=$T/nogit; echo x > '\$WD/a.txt'") $(ibash "$IT" "WD=$T/nogit; echo x > \\\$WD/a.txt")"
-check "a word's quoted part holding no \$ leaves its expansion expanded: a write to \"\$WD\"'/a.txt' after WD=… resolves; a quote inside its substitution doesn't make a word literal, a quoted or escaped \$ does" "0 False True True" \
-  "$(ibash "$IT" "WD=$T/nogit; echo x > \"\$WD\"'/a.txt'") $(python3 - "$R/hooks" <<'PY2'
-import sys; sys.path.insert(0, sys.argv[1]); import shellcmd as s
-print(*[(w := s.Where('/'), [w.quoted for _ in w.walk(s.segments(c))])[1][0] != set() for c in ("n=$(echo $f | tr '/.' '__')", "echo x > '$WD/a.txt'", 'echo x > \\$WD/a.txt')])
-PY2
-)"
+check "a word with a quoted or escaped \$ isn't expanded: '\$WD/a.txt' or \\\$WD/a.txt lands under a folder named \$WD where the line runs; BLOCK: there in the repo, passes outside one" "2 2 0 0" \
+  "$(ibash "$IT" "WD=$T/nogit; echo x > '\$WD/a.txt'") $(ibash "$IT" "WD=$T/nogit; echo x > \\\$WD/a.txt") $(ibash "$IT" "WD=$I; echo x > '\$WD/a.txt'" "$T/nogit") $(ibash "$IT" "WD=$I; echo x > \\\$WD/a.txt" "$T/nogit")"
+check "a word's quoted part holding no \$ leaves its expansion expanded: a write to \"\$WD\"'/a.txt' after WD=… resolves; a quote inside its substitution doesn't make a word literal" "0 0" \
+  "$(ibash "$IT" "WD=$T/nogit; echo x > \"\$WD\"'/a.txt'") $(ibash "$IT" "cd $T/nogit && for f in a/b; do n=\$(echo \$f | tr '/.' '__'); echo x > \$n; done")"
+check "cd into \$(git rev-parse --show-toplevel)/sub resolves where the substitution runs: a write there is judged by that repo's rule" "2 1" \
+  "$(ibash "$IT" "cd $I && cd \"\$(git rev-parse --show-toplevel)/sub\" && echo x > a.txt" "$T/nogit") $(grep -c "follow them: $I/AGENTS.md" "$T/ierr")"
+check "a double-quoted bash -c, sh -c or setsid nohup bash -c script reads \$NAME from this shell, in the script's own quotes too, and its \\\$? stays the child's; BLOCK: into the repo, by its rule" "0 0 0 0 2 2" \
+  "$(ibash "$IT" "P=$T/nogit; bash -c \"echo x > \$P/a; echo \\\$? > \$P/b\"") $(ibash "$IT" "P=$T/nogit; sh -c \"echo x > \$P/a\"") $(ibash "$IT" "P=$T/nogit; setsid nohup bash -c \"\$P/run.sh \$P/e.log; echo \\\$? > \$P/e.exit\" > \$P/o.log 2>&1 < /dev/null &") $(ibash "$IT" "P=$T/nogit; bash -c \"echo x > '\$P/a'\"") $(ibash "$IT" "P=$I; bash -c \"echo x > \$P/a; echo \\\$?\"" "$T/nogit") $(ibash "$IT" "P=$I; bash -c \"echo x > '\$P/a'\"" "$T/nogit")"
+check "BLOCK: in a child shell's script, \\\$NAME and a single-quoted script's \$NAME are the child's, and a value holding a space, a \$, a ; or a wildcard is source there: can't be told" "2 2 2 2 2 2" \
+  "$(ibash "$IT" "P=$T/nogit; bash -c \"echo x > \\\$P/a\"" "$T/nogit") $(ibash "$IT" "P=$T/nogit; bash -c 'echo x > \$P/a'" "$T/nogit") $(ibash "$IT" "P='$T/nogit/a b'; bash -c \"echo x > \$P/f\"" "$T/nogit") $(ibash "$IT" "P='\$HOME'; HOME=$I bash -c \"echo x > \$P/a\"" "$T/nogit") $(ibash "$IT" "P='$T/nogit;cd $I'; bash -c \"cd \$P; echo x > f\"" "$T/nogit") $(ibash "$IT" "P='$I*'; bash -c \"cd \$P; echo x > f\"" "$T/nogit")"
+check "a function's body reads a name set before it and left alone, as written at the top level; BLOCK: into the repo, by its rule, and a call that passes the name" "0 2 2" \
+  "$(ibash "$IT" "LOG=$T/nogit/b.log; run() { echo x >> \"\$LOG\"; }; run" "$T/nogit") $(ibash "$IT" "LOG=$I/b.log; run() { echo x >> \"\$LOG\"; }; run" "$T/nogit") $(ibash "$IT" "LOG=$T/nogit/b.log; run() { echo x >> \"\$LOG\"; }; LOG=$I/b.log run" "$T/nogit")"
+check "D=\$D python3 - sets D for that command alone: D keeps its value; BLOCK: its value in the repo, by its rule, and one a shell's script reads" "0 2 2" \
+  "$(ibash "$IT" "D=$T/nogit; D=\$D python3 -; echo x > \$D/f" "$T/nogit") $(ibash "$IT" "D=$I; D=\$D python3 -; echo x > \$D/f" "$T/nogit") $(ibash "$IT" "HOME=$I sh -c 'echo x > \$HOME/f'" "$T/nogit")"
+check "BLOCK: D=<repo> export D, or readonly, declare, typeset, a function's local, keeps D after the command: can't be told" "2 2 2 2 2" \
+  "$(for v in export readonly declare typeset; do ibash "$IT" "D=$T/nogit; D=$I $v D; echo x > \$D/d" "$T/nogit"; done | tr '\n' ' ')$(ibash "$IT" "D=$T/nogit; f() { D=$I local D; echo x > \$D/d; }; f" "$T/nogit")"
 check "BLOCK: the same text quoted in one word and written plain in another: the plain redirect into the repo isn't taken as literal" 2 \
   "$(ibash "$IT" "WD=$I; echo '\$WD/a.txt' > \$WD/a.txt" "$T/nogit")"
 check "BLOCK: a call to a function that calls one defined after it: the write after the call can't be told" 2 \

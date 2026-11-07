@@ -87,19 +87,46 @@ def _deps():
     return target
 
 
+MARK = re.compile('\x01(\\d+)\x02')  # in a child shell's script (_marked), an expansion its parent does first
+_outer = {}  # each mark: the part (Word.parts) it stands for, and that part as written
+SOURCE = re.compile(r'[^\w./+@%:=,-]')  # in a value a parent puts in a script, anything but plain path text: the child shell may read it as syntax
+
+
+def _unmarked(text):
+    return MARK.sub(lambda m: _outer[int(m[1])][1], text)
+
+
 def _src(n, src):
-    return src[n['Pos']['Offset']:n['End']['Offset']].decode(errors='replace')
+    return _unmarked(src[n['Pos']['Offset']:n['End']['Offset']].decode(errors='replace'))
 
 
 class Word(str):
-    """A word as bash passes it (_word), with parts, each a tuple its kind leads: ('lit', text), ('var', name), ('exp', name, op, its word),
-    ('repl', name, all, pattern, replacement), ('sub', each pipeline stage's argv, None when it's anything else), ('piece',), a number, or ('opaque',).
-    bare: its literal text outside quotes, where bash reads braces and globs; splits: whether an expansion stands outside double quotes;
-    quoted: whether a part is quoted or escaped, which bash doesn't split."""
-    def __new__(cls, text, parts=(), bare='', splits=False, quoted=False):
-        w = super().__new__(cls, text)
-        w.parts, w.bare, w.splits, w.quoted = tuple(parts), bare, splits, quoted
+    """A word as bash passes it (_word), with parts, each a tuple its kind leads: ('lit', text), where a $ is literal, ('var', name), ('exp', name, op, its word),
+    ('repl', name, all, pattern, replacement), ('sub', each pipeline stage's argv, None when it's anything else), ('piece',), a number, ('opaque',), or ('outer', part), a part of the
+    script word its child shell reads, which the parent expanded first (_marked).
+    written: each part's text, expansions as written; bare: its literal text outside quotes, where bash reads braces and globs; splits: whether an
+    expansion stands outside double quotes; quoted: whether a part is quoted or escaped, which bash doesn't split."""
+    def __new__(cls, written, parts, bare='', splits=False, quoted=False):
+        w = super().__new__(cls, ''.join(written))
+        w.written, w.parts, w.bare, w.splits, w.quoted = tuple(written), tuple(parts), bare, splits, quoted
         return w
+
+    def __getitem__(self, i):
+        """w[n:] is the word past its first n characters, with its parts (an option's value, `--body-file=$F`); any other index is text."""
+        if not isinstance(i, slice) or i.stop is not None or i.step is not None or not i.start or i.start < 0:
+            return super().__getitem__(i)
+        n, written, parts = i.start, [], []
+        for text, part in zip(self.written, self.parts):
+            if n < len(text):
+                written.append(text[n:])
+                parts.append(part if not n else ('lit', text[n:]) if part[0] == 'lit' else ('opaque',))
+            n = max(n - len(text), 0)
+        return Word(written, parts, self.bare, self.splits, self.quoted)
+
+
+def _plain(text):
+    """text as a Word, for text no parser split (a command that doesn't parse): an expansion in it can't be read."""
+    return text if isinstance(text, Word) else Word([text], [('opaque',) if re.search(r'[$`]', text) else ('lit', text)])
 
 
 def _stages(s, src):
@@ -149,12 +176,13 @@ def _word(w, src):
     """A word as bash passes it: quotes and escapes removed; expansions and substitutions as written."""
     out, parts, bare, splits, quoted = [], [], '', False, False
     def add(text, part=None):
-        out.append(text)
-        parts.append(part or ('lit', text))
+        for i, x in enumerate([text] if part else MARK.split(text)):
+            out.append(_outer[int(x)][1] if i % 2 else x)
+            parts.append(part or (('outer', _outer[int(x)][0]) if i % 2 else ('lit', x)))
     for p in w.get('Parts') or []:
         t, v = p.get('Type'), p.get('Value', '')
         if t == 'Lit':
-            bare, quoted = bare + v, quoted or '\\' in v
+            bare, quoted, splits = bare + v, quoted or '\\' in v, splits or MARK.search(v) is not None  # its child shell splits what its parent put in
             add(re.sub(r'\\(.)', r'\1', v.replace('\\\n', ''), flags=re.S))
         elif t == 'SglQuoted':
             quoted = True
@@ -167,7 +195,7 @@ def _word(w, src):
         else:
             splits = True
             add(_src(p, src), _expansion(p, src))
-    return Word(''.join(out), parts, bare, splits, quoted)
+    return Word(out, parts, bare, splits, quoted)
 
 
 def _assign(a, src):
@@ -175,9 +203,9 @@ def _assign(a, src):
         return a['Name']['Value'] if a.get('Name') else _word(a['Value'], src)
     name = a['Name']['Value'] + '='
     if a.get('Array'):
-        return Word(name + _src(a['Array'], src), [('lit', name), ('opaque',)])
+        return Word([name, _src(a['Array'], src)], [('lit', name), ('opaque',)])
     w = _word(a.get('Value') or {}, src)
-    return Word(name + w, [('lit', name), *w.parts])
+    return Word([name, *w.written], [('lit', name), *w.parts])
 
 
 # The kinds of scope a command runs in (Seg.scopes): a cd in an isolating one never reaches what follows it (Where)
@@ -196,18 +224,18 @@ def _scope(kind, name='', items=()):
 
 class Seg(list):
     """A simple command's argv; scopes: the (id, kind, function name) of each scope it runs in, outermost first, for Where; loop: whether it
-    runs inside a while or until loop; raw: each word's source as written, None when not known; unseen: the
+    runs inside a while or until loop; unseen: the
     names its script, or a script running it, may set where Where can't follow (_unseen), whose values it never trusts; nested: whether
     it is in a script the line runs (`eval`'s included), where a plain walk loses the dir (Where); after: each statement that exited 0 if this
     one runs at all, being before it in a chain of && (_passed); stmt: the statement it runs as, for after to name; readers: the argv of each
     command its output is piped to, when nothing else takes its output or status (_readers), else None; piped: whether its output goes into
     a pipe, which also hides its exit."""
-    scopes, loop, raw, unseen, nested, after, stmt, readers, piped = (), False, None, frozenset(), False, (), None, None, False
+    scopes, loop, unseen, nested, after, stmt, readers, piped = (), False, frozenset(), False, (), None, None, False
 
 
-def _seg(argv, scopes=(), loop=False, raw=None, after=(), stmt=None, piped=False):
-    s = Seg(argv)
-    s.scopes, s.loop, s.raw, s.after, s.stmt, s.piped = scopes, loop, raw, after, stmt, piped
+def _seg(argv, scopes=(), loop=False, after=(), stmt=None, piped=False):
+    s = Seg(map(_plain, argv))
+    s.scopes, s.loop, s.after, s.stmt, s.piped = scopes, loop, after, stmt, piped
     return s
 
 
@@ -232,6 +260,7 @@ EVERY = _Every()
 
 
 SETTERS = ('read', 'mapfile', 'readarray', 'unset', 'getopts', 'wait')  # builtins that set the variables they name (printf: -v's)
+DECLARING = ('export', 'readonly', 'declare', 'typeset', 'local')  # `D=x export D` keeps D=x
 PARAMS = tuple('123456789')
 ASSIGNS = ('=', '+=', '-=', '*=', '/=', '%=', '<<=', '>>=', '&=', '^=', '|=', '++', '--')
 
@@ -244,11 +273,12 @@ def _name(w):
 
 def _unseen(tree, src):
     """The names a script may set where Where can't follow, read from its syntax: a name assigned other than by a command of only
-    `NAME=value` words, or those after export, readonly, declare or a function's local (export -n D=x, typeset, D+=x, D[1]=x, D=x cmd), one a builtin sets (read, mapfile, printf -v, unset, getopts, wait -p),
+    `NAME=value` words, or those after export, readonly, declare or a function's local (export -n D=x, typeset, D+=x, D[1]=x), a command's own `D=x` for
+    a function or a shell's script to read or a declaring builtin to keep, which `D=x cmd` for any other cmd is not, one a builtin sets (read, mapfile, printf -v, unset, getopts, wait -p),
     ${D:=x}, an arithmetic assignment ((( )), $(( )), let), a for loop's variable assigned anywhere, and the parameters after `set --` or a
     shift that isn't a statement of a function's own { }, with a number or nothing (Where.step's); EVERY when it runs eval,
     source, . or trap, which can set any. Heredoc bodies and quoted text are words, never read as commands."""
-    names, assigned, loops, shifts, todo = set(), set(), set(), set(), [(tree, False)]  # each node, and whether it is in a function's body
+    names, assigned, loops, shifts, funcs, envs, todo = set(), set(), set(), set(), set(), [], [(tree, False)]  # each node, and whether it is in a function's body
     while todo:
         y, body = todo.pop()
         if isinstance(y, list):
@@ -259,9 +289,10 @@ def _unseen(tree, src):
         cmd, t = y.get('Cmd') or {}, y.get('Type')
         plain = lambda assigns: not y.get('Redirs') and not any(a.get('Index') or a.get('Append') or a.get('Naked') for a in assigns)  # Where.step's: D=x, not D[1]=x, D+=x or D=x >f
         if cmd.get('Type') == 'CallExpr':
-            assigns = cmd.get('Assigns') or []
-            (assigned if not cmd.get('Args') and plain(assigns) else names).update(a['Name']['Value'] for a in assigns if a.get('Name'))
+            assigns = [a['Name']['Value'] for a in cmd.get('Assigns') or [] if a.get('Name')]
             argv = prog([_word(w, src) for w in cmd.get('Args') or []])
+            if cmd.get('Args'): envs.append((assigns, argv))
+            else: (assigned if plain(cmd.get('Assigns') or []) else names).update(assigns)
             name = os.path.basename(argv[0]) if argv else ''
             if name in ('eval', 'source', '.', 'trap'):
                 return EVERY
@@ -283,9 +314,12 @@ def _unseen(tree, src):
             names.add(_name(_word(y['X'], src)))
         if t == 'ForClause' and (y.get('Loop') or {}).get('Name'):
             loops.add(y['Loop']['Name']['Value'])
+        if t == 'FuncDecl':
+            funcs.add(y['Name']['Value'])
         if t == 'FuncDecl' and y['Body']['Cmd'].get('Type') == 'Block':
             shifts.update(map(id, y['Body']['Cmd'].get('Stmts') or []))
         todo += [(v, body or t == 'FuncDecl') for v in y.values() if isinstance(v, (dict, list))]
+    names.update(n for assigns, argv in envs if argv[:1] and (argv[0] in funcs or argv[0] in DECLARING) or _nested(argv) is not None or reads_stdin(argv) for n in assigns)
     return frozenset(names - {None} | assigned & loops)
 
 
@@ -317,13 +351,10 @@ def _calls(node, src):
         inner = {k: n + _scope(kind, name, items) if (kind := _kind(x, k)) else n for k, v in x.items() if isinstance(v, (dict, list))}
         cmd, redirs = x.get('Cmd') or {}, x.get('Redirs') or []
         words = [w for r in redirs for w in ((r.get('N') or {}).get('Value', '') + r['Op'], _word(r.get('Word') or {}, src))]
-        raws = [w for r in redirs for w in (r['Op'], _src(r['Word'], src) if r.get('Word') else '')]
         if cmd.get('Type') == 'CallExpr':
-            segs.append(_seg([_assign(a, src) for a in cmd.get('Assigns') or []] + [_word(a, src) for a in cmd.get('Args') or []] + words, inner['Cmd'], loop,
-                             [_src(a, src) for a in (cmd.get('Assigns') or []) + (cmd.get('Args') or [])] + raws, after, x, piped))
+            segs.append(_seg([_assign(a, src) for a in cmd.get('Assigns') or []] + [_word(a, src) for a in cmd.get('Args') or []] + words, inner['Cmd'], loop, after, x, piped))
         elif cmd.get('Type') == 'DeclClause':
-            segs.append(_seg([cmd['Variant']['Value']] + [_assign(a, src) for a in cmd.get('Args') or []] + words, inner['Cmd'], loop,
-                             [cmd['Variant']['Value']] + [_src(a, src) for a in cmd.get('Args') or []] + raws, after, x, piped))
+            segs.append(_seg([cmd['Variant']['Value']] + [_assign(a, src) for a in cmd.get('Args') or []] + words, inner['Cmd'], loop, after, x, piped))
         docs += [(r, top or x, loop) for r in redirs if r.get('Hdoc')]
         chained = _passed(x['X'], src) if x.get('Type') == 'BinaryCmd' and x.get('Op') == '&&' else ()
         stack += [(v, None if k == 'Stmts' else (top or x) if 'Cmd' in x else top, inner[k], loop, after + chained if k == 'Y' else after,  # each statement of a list is a top statement
@@ -343,6 +374,19 @@ def _segments(tree, src, depth):
             s, e = _segments(r['Hdoc'], src, depth)
         segs, err = segs + s, err or e
     return segs, err
+
+
+def _execs(t):
+    """The argv of each command a find argv t runs: what follows -exec, -execdir, -ok or -okdir, up to its ; or +."""
+    out, cmd = [], None
+    for w in t[1:]:
+        if cmd is None:
+            cmd = [] if w in ('-exec', '-execdir', '-ok', '-okdir') else None
+        elif cmd and w in (';', '+'):
+            out, cmd = out + [cmd], None
+        else:
+            cmd.append(w)
+    return out
 
 
 def reads_stdin(t):
@@ -368,12 +412,24 @@ def operands(a):
 
 def _rough(cmd):
     """Words of a command that doesn't parse: quotes dropped, split at every separator; a guarded verb still shows."""
-    return [p.split() for p in re.split(r'[;&|()\n`]+', unquoted(cmd)) if p.split()]
+    return [p.split() for p in re.split(r'[;&|()\n`]+', unquoted(_unmarked(cmd))) if p.split()]
 
 
 def unquoted(cmd):
     """cmd with its quote characters and escapes dropped: `"g"it push` reads git push."""
     return re.sub(r'[\'"\\]', '', cmd)
+
+
+def _marked(w):
+    """Script word w as its child shell reads it: each expansion in it a mark, which _word reads back as an ('outer', part), since the parent shell
+    does them before the script is read, in any quotes the script itself has (`bash -c "echo x > '$P/a'; echo \\$?"`)."""
+    out = []
+    for part, text in zip(w.parts, w.written):
+        if part[0] != 'lit':
+            _outer[len(_outer)] = part, text
+            text = f'\x01{len(_outer) - 1}\x02'
+        out.append(text)
+    return ''.join(out)
 
 
 def _nested(t):
@@ -417,16 +473,15 @@ def parse(cmd, depth=0, scopes=(), loop=False):
         out.append(s)
         t = prog(s)
         if t[:1] and os.path.basename(t[0]) == 'find':  # find -exec <command> ;
-            out += [_seg(x.split('\0'), s.scopes + _scope(ISOLATING), s.loop) for x in re.findall(r'\0-(?:exec|execdir|ok|okdir)\0(.+?)\0(?:;|\+)(?=\0|$)', '\0' + '\0'.join(t))]
+            out += [_seg(x, s.scopes + _scope(ISOLATING), s.loop) for x in _execs(t)]
         here = [s[i + 1] for i in range(len(s) - 1) if s[i] == '<<<']  # `bash <<< '<script>'`
         script = _nested(s) if depth < 4 else None
         stdin = not script and depth < 4 and here and reads_stdin(s)
         script = here[0] if stdin else script
         if script:
             same = t[:1] and os.path.basename(t[0]) == 'eval'  # eval runs its words in this shell; a child shell, in its own
-            # a script word with no quote or escape (`bash -c "cd $W"`) had every expansion done by this shell; else the child does its own
-            child = s.raw is None or script not in s or re.search(r"['\\]", s.raw[s.index(script)])
-            inner, e = parse(script, depth + 1, s.scopes + (() if same else _scope(ISOLATING, STDIN if stdin else CHILD if child else '')), s.loop)
+            inner, e = parse(_marked(script) if isinstance(script, Word) and not stdin else script, depth + 1,
+                             s.scopes + (() if same else _scope(ISOLATING, STDIN if stdin else CHILD)), s.loop)
             for x in inner: x.nested, x.piped = True, x.piped or s.piped
             out += inner
             err = err or e
@@ -505,7 +560,7 @@ def git_globals(t):
     return out
 
 
-TOPLEVEL = '$(git rev-parse --show-toplevel)'  # the one substitution Where runs itself, in `cd $(git rev-parse --show-toplevel)`
+TOPLEVEL = [['git', 'rev-parse', '--show-toplevel']]  # the one substitution Where runs itself, in a path: `cd "$(git rev-parse --show-toplevel)/sub"`
 
 
 class Maybe(str):
@@ -536,14 +591,14 @@ class Many(Maybe):
 class Where:
     """Where each simple command of one command line runs, walk() taking them in order, with the variables the line set
     (`D=~/x; cd "$D"`). It follows the forms agents write: a cd or pushd to a path (`cd /abs/dir && ...`, or relative to a dir it
-    knows), `cd $(git rev-parse --show-toplevel)` and `git -C <dir>`. A cd holds for the later commands of its scope (Seg.scopes) and
+    knows), a path holding `$(git rev-parse --show-toplevel)` and `git -C <dir>`. A cd holds for the later commands of its scope (Seg.scopes) and
     the scopes inside it; leaving an isolating scope restores the dir and the line's variables from before it, leaving a branch or
     loop makes each variable set in it a Maybe. After any other dir change (a cd in a scope that may run it or not, once the scope
     is left; a call to a function the line defines, when one of their bodies changes dir; a relative one in a loop; a target
     holding an expansion it can't resolve; `cd -`, popd or a stack rotation) the dir is None until a cd to an absolute path, and a
     check that needs it blocks.
     That following is trust a plain walk doesn't give, so it is spent only where its variables are proven (strict expansion: Maybe,
-    Word.parts' quoting, Seg.unseen): a cd nested in a scope or once the plain walk lost the dir, and a written file (files). The
+    Seg.unseen): a cd nested in a scope or once the plain walk lost the dir, and a written file (files). The
     plain walk (main_dir, main_vars: every NAME=value the line runs, but an isolating scope's once it is left, then the environment's)
     decides each other cd, at the top level while it knows the dir, and every other expansion, as it did before scopes: a nested cd,
     `cd -` or popd loses its dir for good.
@@ -556,23 +611,40 @@ class Where:
         self.dry = False
         self.args, self.called = {}, {}  # each function's calls, each (its spots, the values of its parameters: _args): from the dry walk before this one, and seen by this walk
         self.main_dir, self.main_vars = cwd, {'PWD': cwd}
-        self.dir, self.moved, self.vars, self.scopes, self.quoted, self.unseen, self.spots = cwd, False, {'PWD': cwd}, [], set(), frozenset(), (cwd,)  # each scope entered: [(id, kind, name), dir before it, whether a cd ran in it, variables before it, variables set in it, main_vars before it, spots before it]
+        self.dir, self.moved, self.vars, self.scopes, self.unseen, self.spots = cwd, False, {'PWD': cwd}, [], frozenset(), (cwd,)  # each scope entered: [(id, kind, name), dir before it, whether a cd ran in it, variables before it, variables set in it, main_vars before it, spots before it]
 
-    def expand(self, p, strict=False):
-        """p with the plain walk's variables ($D, ${D}: main_vars), then the environment's, put in. strict: the scoped ones (vars)
-        instead, and every $ of a word the current command quoted or escaped (Word.parts), which is literal, and every variable the
-        line may set unseen (Seg.unseen) stay as written. A value it can't tell (a Maybe) stays as written."""
-        def value(m):
-            n = m[1] or m[2]
-            v = (self.vars if strict else self.main_vars).get(n, os.environ.get(n, m[0]))
-            return m[0] if isinstance(v, Maybe) or strict and n in self.unseen else v
-        return p if strict and p in self.quoted else re.sub(r'\$(?:(\w+)|\{(\w+)\})', value, p)
+    def expand(self, w, strict=False):
+        """Word w with what it can read put in (_read), every other part as written."""
+        w = _plain(w)
+        return ''.join(text if (v := self._read(p, strict)) is None else v for p, text in zip(w.parts, w.written))
 
-    def path(self, p, base='', strict=False):
-        """p resolved from base (default: the dir), or None when it can't be told (an expansion left, or no base)."""
-        p = os.path.expanduser(self.expand(p, strict))
+    def path(self, w, base='', strict=False):
+        """Word w resolved from base (default: the dir), or None when it can't be told (a part it can't read, or no base)."""
         base = self.dir if base == '' else base
-        return None if re.search(r'[$`]', p) else p if os.path.isabs(p) else None if base is None else os.path.join(base, p)
+        vals = [self._read(p, strict, base) for p in _plain(w).parts]
+        if None in vals:
+            return None
+        p = os.path.expanduser(''.join(vals))
+        return p if os.path.isabs(p) else None if base is None else os.path.join(base, p)
+
+    def _read(self, part, strict, base=None):
+        """The text of a part of a word (Word.parts): a literal, or a variable the plain walk knows (main_vars), else the environment's; strict: the scoped
+        ones (vars) instead, none the line may set unseen (Seg.unseen). None for a value it can't tell (a Maybe) and any other part, but TOPLEVEL run in base."""
+        kind, x = part[0], part[1:2] and part[1]
+        if kind == 'lit': return x
+        if kind == 'outer':
+            v = self._in_parent(lambda: self._read(x, strict, base))
+            return None if v is None or SOURCE.search(v) else v
+        if kind == 'sub': return _toplevel(base) if base and x == TOPLEVEL else None
+        if kind != 'var': return None
+        v = (self.vars if strict else self.main_vars).get(x, os.environ.get(x))
+        return None if isinstance(v, Maybe) or strict and x in self.unseen else v
+
+    def _in_parent(self, read):
+        """What read gives with the variables of the shell that started the current child shell, as they stood then."""
+        vars, self.vars = self.vars, next((x[3] for x in reversed(self.scopes) if x[0][2] == CHILD), self.vars)
+        try: return read()
+        finally: self.vars = vars
 
     def files(self, w):
         """The paths a file the current command names, word w, may be, each resolved from each of spots. An Unknown when one's folder can't be told:
@@ -606,11 +678,8 @@ class Where:
     def values(self, w):
         """The values word w may hold here, what the line itself gives it, a PIECE for each part known only to hold no /; an Unknown when it
         doesn't list them or holds more than CAP."""
-        if not isinstance(w, Word):
-            v = self.expand(w, True)
-            return UNKNOWN if re.search(r'[$`]', v) else (v,)
         out = ('',)
-        for p in w.parts:
+        for p in _plain(w).parts:
             vals = self._part(*p)
             if isinstance(vals, Unknown):
                 return vals
@@ -621,8 +690,11 @@ class Where:
 
     def _part(self, kind, *a):
         """The values a part of a word (Word.parts) may hold."""
-        if kind == 'lit': return Unknown('a quoted `$` stays as written') if re.search(r'[$`]', a[0]) else (a[0],)
+        if kind == 'lit': return (a[0],)
         if kind == 'piece': return (PIECE,)
+        if kind == 'outer':
+            vals = self._in_parent(lambda: self._part(*a[0]))
+            return vals if isinstance(vals, Unknown) or not any(SOURCE.search(v) for v in vals) else Unknown('its value is script source to the child shell')
         if kind == 'var': return self._var(a[0])
         if kind == 'exp': return self._exp(*a)
         if kind == 'repl': return self._repl(*a)
@@ -696,7 +768,7 @@ class Where:
         if v is None: return Unknown(f"`${n}` isn't set on this line")
         if isinstance(v, Many): return Unknown(f'`${n}` holds {v.vals}') if isinstance(v.vals, Unknown) else v.vals
         if isinstance(v, Maybe): return Unknown(f'`${n}` may hold another value here: a branch, loop or function sets it, or a child shell reads it')
-        return Unknown(f'`${n}` holds a `$`') if re.search(r'[$`]', v) else (v,)
+        return (v,)
 
     def _listed(self, words):
         """What a for loop's variable holds over words: each word's values, split and matched on disk as bash does."""
@@ -731,7 +803,6 @@ class Where:
         for t in segs:
             self.unseen = t.unseen
             self.enter(t.scopes)
-            self.quoted = {w for w in t if '$' in w and (not isinstance(w, Word) or any(x[0] == 'lit' and '$' in x[1] for x in w.parts))}
             yield t
             self.step(t)
 
@@ -794,7 +865,7 @@ class Where:
         out = []
         for w in words:
             vals = self.values(w)
-            if not isinstance(w, Word) or re.search(r'[{*?[]', w.bare) or any(x[0] == 'opaque' or x[:2] in (('var', '@'), ('var', '*')) for x in w.parts) or \
+            if re.search(r'[{*?[]', w.bare) or any(x[0] == 'opaque' or x[:2] in (('var', '@'), ('var', '*')) for x in w.parts) or \
                     w.splits and ('IFS' in self.vars or isinstance(vals, Unknown) or any(not v or re.search(r'[\s*?[]', v) for v in vals)):
                 return out + [vals if isinstance(vals, Unknown) else UNKNOWN] * CAP
             out.append(vals)
@@ -803,11 +874,13 @@ class Where:
     def step(self, t):
         words = t[1:] if t[:1] in (['export'], ['readonly'], ['declare']) or t[:1] == ['local'] and self.in_body() else t  # local fails outside a function
         if words and all(re.match(r'^\w+=', x) for x in words):
-            for x in words:  # each value expanded as it is assigned, but one whose $ the command quoted or escaped
-                n, v = x.split('=', 1)
-                text, vals = v if x in self.quoted else self.expand(v, True), self.values(x)
+            for x in words:  # each value expanded as it is assigned
+                n = x.split('=', 1)[0]
+                v, vals = x[len(n) + 1:], self.values(x)
+                text, main = self.expand(v, True), self.expand(v)
                 vals = vals if isinstance(vals, Unknown) else tuple(y[len(n) + 1:] for y in vals)
-                self.vars[n], self.main_vars[n] = text if vals == (text,) else Many(text, vals), v if x in self.quoted else self.expand(v)
+                self.vars[n] = text if vals == (text,) else Many(text, vals)
+                self.main_vars[n] = main if None not in [self._read(p, False) for p in v.parts] else Maybe(main)
                 self.changed(n)
             if self.in_body(): self.func_vars.update(x.split('=', 1)[0] for x in words)
             return
@@ -835,16 +908,13 @@ class Where:
         old, here = (self.dir, self.main_dir), self.spots == (self.dir,)
         relative = not os.path.isabs(os.path.expanduser(self.expand(to, True)))
         nested = t.nested or bool(t.scopes)
-        main = None if nested or p[0] == 'popd' or to[:1] in '-+' or self.main_dir is None else \
-            _toplevel(self.main_dir) if to == TOPLEVEL else self.path(to, self.main_dir) and os.path.normpath(self.path(to, self.main_dir))
+        main = None if nested or p[0] == 'popd' or to[:1] in '-+' or self.main_dir is None else (q := self.path(to, self.main_dir)) and os.path.normpath(q)
         if not nested and self.main_dir is not None:
             self.dir = main
-        elif p[0] == 'popd' or to[:1] in '-+' or to == TOPLEVEL and self.dir is None or kinds[-1:] == [LOOP] and relative:
+        elif p[0] == 'popd' or to[:1] in '-+' or kinds[-1:] == [LOOP] and relative:
             self.dir = None
-        elif to == TOPLEVEL:
-            self.dir = _toplevel(self.dir)
         else:
-            self.dir = self.path(to, strict=True) and os.path.normpath(self.path(to, strict=True))
+            self.dir = (q := self.path(to, strict=True)) and os.path.normpath(q)
         self.main_dir, self.spots = main, (self.dir,) if self.dir is not None and (old[0] is None or self.spots == (old[0],)) else self._spots(p[0], to, kinds)  # a body's spots aren't its dir
         for n, dirs in (('OLDPWD', old), ('PWD', (self.dir, self.main_dir))):
             self.vars[n], self.main_vars[n] = map(_dir, dirs)
@@ -857,7 +927,7 @@ class Where:
     def _spots(self, verb, to, kinds):
         """Where a cd the dir can't follow may have gone, verb to word to, in scopes of kinds (no conditional's): each value it lists, from each
         spot; None for a target the line doesn't list or a piece may name, and a relative one in a plain loop's body, whose each pass starts where the last ended."""
-        vals = None if verb == 'popd' or to[:1] in '-+' or to == TOPLEVEL else self.values(to)
+        vals = None if verb == 'popd' or to[:1] in '-+' else self.values(to)
         if vals is None or isinstance(vals, Unknown):
             return None
         out = []
@@ -1060,7 +1130,7 @@ def api_opens(ep, rest, env, origin):
 
 def env_of(t):
     """The variables a simple command sets for itself (`GH_REPO=o/r gh ...`)."""
-    return dict(x.split('=', 1) for x in t[:len(t) - len(prog(t))] if re.match(r'^\w+=', x))
+    return {x.split('=', 1)[0]: x[x.index('=') + 1:] for x in t[:len(t) - len(prog(t))] if re.match(r'^\w+=', x)}
 
 def origin(d):
     """The origin remote's URL of the checkout at d; '' without one."""

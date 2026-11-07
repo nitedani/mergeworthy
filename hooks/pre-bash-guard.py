@@ -367,7 +367,8 @@ def check_compose(env, t):
         a = a[k:]
     if not (a[:1] == ['up'] or a[:1] == ['run'] and '--service-ports' in a): return
     for i, x in enumerate(glob):  # compose gets the paths, not the words: ~ and the variables the line set put in
-        o, eq, v = x.partition('=') if x.startswith('--') else ('', '', x)
+        o, eq, _ = x.partition('=') if x.startswith('--') else ('', '', x)
+        v = x[len(o) + 1:] if eq else x
         if eq and o in paths or not o and i and glob[i - 1] in paths:
             if (f := where.path(v)) is None:
                 block(f"can't tell the path `{v}` this compose command reads, so its ports can't be checked: write it out, or set its variable on this line")
@@ -644,7 +645,7 @@ def need_approach(d, what, branch=None):
 def opened_branch(a, options=(), fields=()):
     """The branch a PR or MR create with arguments a opens from, as it names it (the last of options, or a head= or source_branch= field
     among fields; owner:branch gives branch); None when it names none, for the checked-out one."""
-    named = opt(a, list(options)) + [v.split('=', 1)[1] for v in opt(a, list(fields)) if v.split('=', 1)[0] in ('head', 'source_branch')]
+    named = opt(a, list(options)) + [v[v.index('=') + 1:] for v in opt(a, list(fields)) if v.split('=', 1)[0] in ('head', 'source_branch')]
     return where.expand(named[-1]).split(':')[-1] if named else None
 
 NEED_DRAFT ="post from a draft file (--body-file /abs/drafts/<name>.md, -F body=@/abs/drafts/<name>.md or --input) that passed the gate"
