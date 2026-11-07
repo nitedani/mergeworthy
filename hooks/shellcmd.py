@@ -89,6 +89,7 @@ def _deps():
 
 MARK = re.compile('\x01(\\d+)\x02')  # in a child shell's script (_marked), an expansion its parent does first
 _outer = {}  # each mark: the part (Word.parts) it stands for, and that part as written
+SOURCE = re.compile(r'''[$`"'\\;&|<>()\s]''')  # in a value a parent puts in a script, what the child shell reads as syntax, not text
 
 
 def _unmarked(text):
@@ -630,7 +631,9 @@ class Where:
         ones (vars) instead, none the line may set unseen (Seg.unseen). None for a value it can't tell (a Maybe) and any other part, but TOPLEVEL run in base."""
         kind, x = part[0], part[1:2] and part[1]
         if kind == 'lit': return x
-        if kind == 'outer': return self._in_parent(lambda: self._read(x, strict, base))
+        if kind == 'outer':
+            v = self._in_parent(lambda: self._read(x, strict, base))
+            return None if v is None or SOURCE.search(v) else v
         if kind == 'sub': return _toplevel(base) if base and x == TOPLEVEL else None
         if kind != 'var': return None
         v = (self.vars if strict else self.main_vars).get(x, os.environ.get(x))
@@ -688,7 +691,9 @@ class Where:
         """The values a part of a word (Word.parts) may hold."""
         if kind == 'lit': return (a[0],)
         if kind == 'piece': return (PIECE,)
-        if kind == 'outer': return self._in_parent(lambda: self._part(*a[0]))
+        if kind == 'outer':
+            vals = self._in_parent(lambda: self._part(*a[0]))
+            return vals if isinstance(vals, Unknown) or not any(SOURCE.search(v) for v in vals) else Unknown('its value is script source to the child shell')
         if kind == 'var': return self._var(a[0])
         if kind == 'exp': return self._exp(*a)
         if kind == 'repl': return self._repl(*a)
