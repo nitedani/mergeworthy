@@ -89,7 +89,7 @@ def _deps():
 
 MARK = re.compile('\x01(\\d+)\x02')  # in a child shell's script (_marked), an expansion its parent does first
 _outer = {}  # each mark: the part (Word.parts) it stands for, and that part as written
-SOURCE = re.compile(r'''[$`"'\\;&|<>()\s]''')  # in a value a parent puts in a script, what the child shell reads as syntax, not text
+SOURCE = re.compile(r'[^\w./+@%:=,-]')  # in a value a parent puts in a script, anything but plain path text: the child shell may read it as syntax
 
 
 def _unmarked(text):
