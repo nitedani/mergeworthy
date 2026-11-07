@@ -87,13 +87,22 @@ def _deps():
     return target
 
 
+MARK = re.compile('\x01(\\d+)\x02')  # in a child shell's script (_marked), an expansion its parent does first
+_outer = {}  # each mark: the part (Word.parts) it stands for, and that part as written
+
+
+def _unmarked(text):
+    return MARK.sub(lambda m: _outer[int(m[1])][1], text)
+
+
 def _src(n, src):
-    return src[n['Pos']['Offset']:n['End']['Offset']].decode(errors='replace')
+    return _unmarked(src[n['Pos']['Offset']:n['End']['Offset']].decode(errors='replace'))
 
 
 class Word(str):
     """A word as bash passes it (_word), with parts, each a tuple its kind leads: ('lit', text), where a $ is literal, ('var', name), ('exp', name, op, its word),
-    ('repl', name, all, pattern, replacement), ('sub', each pipeline stage's argv, None when it's anything else), ('piece',), a number, or ('opaque',).
+    ('repl', name, all, pattern, replacement), ('sub', each pipeline stage's argv, None when it's anything else), ('piece',), a number, ('opaque',), or ('outer', part), a part of the
+    script word its child shell reads, which the parent expanded first (_marked).
     written: each part's text, expansions as written; bare: its literal text outside quotes, where bash reads braces and globs; splits: whether an
     expansion stands outside double quotes; quoted: whether a part is quoted or escaped, which bash doesn't split."""
     def __new__(cls, written, parts, bare='', splits=False, quoted=False):
@@ -166,12 +175,13 @@ def _word(w, src):
     """A word as bash passes it: quotes and escapes removed; expansions and substitutions as written."""
     out, parts, bare, splits, quoted = [], [], '', False, False
     def add(text, part=None):
-        out.append(text)
-        parts.append(part or ('lit', text))
+        for i, x in enumerate([text] if part else MARK.split(text)):
+            out.append(_outer[int(x)][1] if i % 2 else x)
+            parts.append(part or (('outer', _outer[int(x)][0]) if i % 2 else ('lit', x)))
     for p in w.get('Parts') or []:
         t, v = p.get('Type'), p.get('Value', '')
         if t == 'Lit':
-            bare, quoted = bare + v, quoted or '\\' in v
+            bare, quoted, splits = bare + v, quoted or '\\' in v, splits or MARK.search(v) is not None  # its child shell splits what its parent put in
             add(re.sub(r'\\(.)', r'\1', v.replace('\\\n', ''), flags=re.S))
         elif t == 'SglQuoted':
             quoted = True
@@ -213,18 +223,18 @@ def _scope(kind, name='', items=()):
 
 class Seg(list):
     """A simple command's argv; scopes: the (id, kind, function name) of each scope it runs in, outermost first, for Where; loop: whether it
-    runs inside a while or until loop; raw: each word's source as written, None when not known; unseen: the
+    runs inside a while or until loop; unseen: the
     names its script, or a script running it, may set where Where can't follow (_unseen), whose values it never trusts; nested: whether
     it is in a script the line runs (`eval`'s included), where a plain walk loses the dir (Where); after: each statement that exited 0 if this
     one runs at all, being before it in a chain of && (_passed); stmt: the statement it runs as, for after to name; readers: the argv of each
     command its output is piped to, when nothing else takes its output or status (_readers), else None; piped: whether its output goes into
     a pipe, which also hides its exit."""
-    scopes, loop, raw, unseen, nested, after, stmt, readers, piped = (), False, None, frozenset(), False, (), None, None, False
+    scopes, loop, unseen, nested, after, stmt, readers, piped = (), False, frozenset(), False, (), None, None, False
 
 
-def _seg(argv, scopes=(), loop=False, raw=None, after=(), stmt=None, piped=False):
+def _seg(argv, scopes=(), loop=False, after=(), stmt=None, piped=False):
     s = Seg(map(_plain, argv))
-    s.scopes, s.loop, s.raw, s.after, s.stmt, s.piped = scopes, loop, raw, after, stmt, piped
+    s.scopes, s.loop, s.after, s.stmt, s.piped = scopes, loop, after, stmt, piped
     return s
 
 
@@ -334,13 +344,10 @@ def _calls(node, src):
         inner = {k: n + _scope(kind, name, items) if (kind := _kind(x, k)) else n for k, v in x.items() if isinstance(v, (dict, list))}
         cmd, redirs = x.get('Cmd') or {}, x.get('Redirs') or []
         words = [w for r in redirs for w in ((r.get('N') or {}).get('Value', '') + r['Op'], _word(r.get('Word') or {}, src))]
-        raws = [w for r in redirs for w in (r['Op'], _src(r['Word'], src) if r.get('Word') else '')]
         if cmd.get('Type') == 'CallExpr':
-            segs.append(_seg([_assign(a, src) for a in cmd.get('Assigns') or []] + [_word(a, src) for a in cmd.get('Args') or []] + words, inner['Cmd'], loop,
-                             [_src(a, src) for a in (cmd.get('Assigns') or []) + (cmd.get('Args') or [])] + raws, after, x, piped))
+            segs.append(_seg([_assign(a, src) for a in cmd.get('Assigns') or []] + [_word(a, src) for a in cmd.get('Args') or []] + words, inner['Cmd'], loop, after, x, piped))
         elif cmd.get('Type') == 'DeclClause':
-            segs.append(_seg([cmd['Variant']['Value']] + [_assign(a, src) for a in cmd.get('Args') or []] + words, inner['Cmd'], loop,
-                             [cmd['Variant']['Value']] + [_src(a, src) for a in cmd.get('Args') or []] + raws, after, x, piped))
+            segs.append(_seg([cmd['Variant']['Value']] + [_assign(a, src) for a in cmd.get('Args') or []] + words, inner['Cmd'], loop, after, x, piped))
         docs += [(r, top or x, loop) for r in redirs if r.get('Hdoc')]
         chained = _passed(x['X'], src) if x.get('Type') == 'BinaryCmd' and x.get('Op') == '&&' else ()
         stack += [(v, None if k == 'Stmts' else (top or x) if 'Cmd' in x else top, inner[k], loop, after + chained if k == 'Y' else after,  # each statement of a list is a top statement
@@ -398,12 +405,24 @@ def operands(a):
 
 def _rough(cmd):
     """Words of a command that doesn't parse: quotes dropped, split at every separator; a guarded verb still shows."""
-    return [p.split() for p in re.split(r'[;&|()\n`]+', unquoted(cmd)) if p.split()]
+    return [p.split() for p in re.split(r'[;&|()\n`]+', unquoted(_unmarked(cmd))) if p.split()]
 
 
 def unquoted(cmd):
     """cmd with its quote characters and escapes dropped: `"g"it push` reads git push."""
     return re.sub(r'[\'"\\]', '', cmd)
+
+
+def _marked(w):
+    """Script word w as its child shell reads it: each expansion in it a mark, which _word reads back as an ('outer', part), since the parent shell
+    does them before the script is read, in any quotes the script itself has (`bash -c "echo x > '$P/a'; echo \\$?"`)."""
+    out = []
+    for part, text in zip(w.parts, w.written):
+        if part[0] != 'lit':
+            _outer[len(_outer)] = part, text
+            text = f'\x01{len(_outer) - 1}\x02'
+        out.append(text)
+    return ''.join(out)
 
 
 def _nested(t):
@@ -454,9 +473,8 @@ def parse(cmd, depth=0, scopes=(), loop=False):
         script = here[0] if stdin else script
         if script:
             same = t[:1] and os.path.basename(t[0]) == 'eval'  # eval runs its words in this shell; a child shell, in its own
-            # a script word with no quote or escape (`bash -c "cd $W"`) had every expansion done by this shell; else the child does its own
-            child = s.raw is None or script not in s or re.search(r"['\\]", s.raw[s.index(script)])
-            inner, e = parse(script, depth + 1, s.scopes + (() if same else _scope(ISOLATING, STDIN if stdin else CHILD if child else '')), s.loop)
+            inner, e = parse(_marked(script) if isinstance(script, Word) and not stdin else script, depth + 1,
+                             s.scopes + (() if same else _scope(ISOLATING, STDIN if stdin else CHILD)), s.loop)
             for x in inner: x.nested, x.piped = True, x.piped or s.piped
             out += inner
             err = err or e
@@ -607,10 +625,17 @@ class Where:
         ones (vars) instead, none the line may set unseen (Seg.unseen). None for a value it can't tell (a Maybe) and any other part, but TOPLEVEL run in base."""
         kind, x = part[0], part[1:2] and part[1]
         if kind == 'lit': return x
+        if kind == 'outer': return self._in_parent(lambda: self._read(x, strict, base))
         if kind == 'sub': return _toplevel(base) if base and x == TOPLEVEL else None
         if kind != 'var': return None
         v = (self.vars if strict else self.main_vars).get(x, os.environ.get(x))
         return None if isinstance(v, Maybe) or strict and x in self.unseen else v
+
+    def _in_parent(self, read):
+        """What read gives with the variables of the shell that started the current child shell, as they stood then."""
+        vars, self.vars = self.vars, next((x[3] for x in reversed(self.scopes) if x[0][2] == CHILD), self.vars)
+        try: return read()
+        finally: self.vars = vars
 
     def files(self, w):
         """The paths a file the current command names, word w, may be, each resolved from each of spots. An Unknown when one's folder can't be told:
@@ -658,6 +683,7 @@ class Where:
         """The values a part of a word (Word.parts) may hold."""
         if kind == 'lit': return (a[0],)
         if kind == 'piece': return (PIECE,)
+        if kind == 'outer': return self._in_parent(lambda: self._part(*a[0]))
         if kind == 'var': return self._var(a[0])
         if kind == 'exp': return self._exp(*a)
         if kind == 'repl': return self._repl(*a)

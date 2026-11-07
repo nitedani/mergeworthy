@@ -2539,6 +2539,10 @@ check "a word's quoted part holding no \$ leaves its expansion expanded: a write
   "$(ibash "$IT" "WD=$T/nogit; echo x > \"\$WD\"'/a.txt'") $(ibash "$IT" "cd $T/nogit && for f in a/b; do n=\$(echo \$f | tr '/.' '__'); echo x > \$n; done")"
 check "cd into \$(git rev-parse --show-toplevel)/sub resolves where the substitution runs: a write there is judged by that repo's rule" "2 1" \
   "$(ibash "$IT" "cd $I && cd \"\$(git rev-parse --show-toplevel)/sub\" && echo x > a.txt" "$T/nogit") $(grep -c "follow them: $I/AGENTS.md" "$T/ierr")"
+check "a double-quoted bash -c, sh -c or setsid nohup bash -c script reads \$NAME from this shell, in the script's own quotes too, and its \\\$? stays the child's; BLOCK: into the repo, by its rule" "0 0 0 0 2 2" \
+  "$(ibash "$IT" "P=$T/nogit; bash -c \"echo x > \$P/a; echo \\\$? > \$P/b\"") $(ibash "$IT" "P=$T/nogit; sh -c \"echo x > \$P/a\"") $(ibash "$IT" "P=$T/nogit; setsid nohup bash -c \"\$P/run.sh \$P/e.log; echo \\\$? > \$P/e.exit\" > \$P/o.log 2>&1 < /dev/null &") $(ibash "$IT" "P=$T/nogit; bash -c \"echo x > '\$P/a'\"") $(ibash "$IT" "P=$I; bash -c \"echo x > \$P/a; echo \\\$?\"" "$T/nogit") $(ibash "$IT" "P=$I; bash -c \"echo x > '\$P/a'\"" "$T/nogit")"
+check "BLOCK: in a child shell's script, \\\$NAME and a single-quoted script's \$NAME are the child's, and a value holding a space splits there: can't be told" "2 2 2" \
+  "$(ibash "$IT" "P=$T/nogit; bash -c \"echo x > \\\$P/a\"" "$T/nogit") $(ibash "$IT" "P=$T/nogit; bash -c 'echo x > \$P/a'" "$T/nogit") $(ibash "$IT" "P='$T/nogit/a b'; bash -c \"echo x > \$P/f\"" "$T/nogit")"
 check "BLOCK: the same text quoted in one word and written plain in another: the plain redirect into the repo isn't taken as literal" 2 \
   "$(ibash "$IT" "WD=$I; echo '\$WD/a.txt' > \$WD/a.txt" "$T/nogit")"
 check "BLOCK: a call to a function that calls one defined after it: the write after the call can't be told" 2 \
