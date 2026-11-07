@@ -8,7 +8,7 @@ The project file: <project file path>; its repo study: <the .study.md it links>.
 The critical-path item this unblocks: <item>.
 Approach: <abs path>
 
-Setup: git worktree add --track -b impl/<name> <dir> <the PR's branch>; install; build once.
+Setup: git worktree add --track -b impl/<name> <dir> <the PR's branch>; install; build once; pr-steps preflight <the URL, or 'none, because <why>'>; pr-steps approach <the Approach path>.
 Work only there; never stash; stage files by name.
 
 Implement exactly: <the plan, or these finding IDs from <report>>.
