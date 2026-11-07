@@ -739,6 +739,14 @@ printf '%s The build is uploaded to S3 and served from Cloudflare R2 on my M2 Ma
 check "product names like S3, R2 and M2 are not labels" 0 "$(python3 "$R/bin/post-lint" "$T/lab2.md" --kind issue --parent none 2>&1 | grep -c 'internal label')"
 printf '%s Two answers follow.\n\n- **Fetch pipeline:** not needed.\n- **The option:** it stays private, as you asked, under its current name.\n' "$B" > "$T/frag.md"
 check "a bold label with a fragment is flagged, a full sentence is not" 1 "$(python3 "$R/bin/post-lint" "$T/frag.md" --kind issue --parent none 2>&1 | grep -c 'bold label with a fragment')"
+# a plan the user asked to post as an issue (nitedani/mergeworthy#133): an issue's checks, capped at 2500 words, without the reproduction, evidence and label checks
+pl() { { printf 'Plan K1 and K2 follow.\n\n| Step | Owner |\n|---|---|\n| Build | Me |\n\n'; for i in $(seq "$1"); do echo "The plan keeps the old path for every caller today."; [ $((i % 5)) = 0 ] && echo; done; [ -z "${2:-}" ] || echo "It is $2 — rewrite."; } > "$T/plan.md"; }
+plint() { MERGEWORTHY_BADGE=off python3 "$R/bin/post-lint" "$T/plan.md" --kind "$1" --parent none 2>&1; echo "rc=$?"; }
+pl 110; check "a 1000-word plan with a table and the ids K1, K2 passes --kind plan" "rc=0" "$(plint plan | tail -1)"
+pl 110; check "the same text under --kind issue still fails" 2 "$(plint issue | grep -c 'internal label')"
+pl 290; check "a 2600-word plan fails, naming the cap" 1 "$(plint plan | grep -c 'words > 2500 for a plan')"
+pl 290; sed -i '1a ### How to reproduce' "$T/plan.md"; check "a plan's How to reproduce section counts toward its cap, and the length line names it" "1 1" "$(plint plan | grep -c 'words > 2500 for a plan') $(plint plan | grep -c 'cap 2500')"
+pl 110 dashed; check "a plan with an em dash fails, and only for that" "rc=1 1" "$(plint plan | tail -1) $(plint plan | grep -c '^em dash')"
 printf '%s Here is the PR.\n\n**Problem.** `apply()` runs one list differently per server.\n\n**Fix:** it now runs the same.\n\n**1.** The template numbered evidence item stays fine.\n\n**A fully bold sentence that the reader should not miss stays fine.**\n' "$B" > "$T/plab.md"
 check "a paragraph opening with a bold label is flagged" 2 "$(python3 "$R/bin/post-lint" "$T/plab.md" --kind pr --parent none 2>&1 | grep -c 'opening with a bold label')"
 mkdir -p "$T/cx"; printf '%s Fixed in abc1234.\n' "$B" > "$T/cx/reply.md"; printf 'model: gpt-x\nCLEAN\n' > "$T/cx/review.log"
@@ -2798,6 +2806,8 @@ sgb "post-lint $T/d.md --kind=proposal" >/dev/null
 check "a proposal's lint names design" 1 "$(grep -c '^- mergeworthy:design, for post-lint proposal' "$T/sg.err")"
 sgb "post-lint $T/d.md --kind tracker" >/dev/null
 check "a tracker's lint names task" 1 "$(grep -c '^- mergeworthy:task, for post-lint tracker' "$T/sg.err")"
+sgb "post-lint $T/d.md --kind plan" >/dev/null
+check "a plan's lint names design" 1 "$(grep -c '^- mergeworthy:design, for post-lint plan' "$T/sg.err")"
 sgb "post-lint $T/d.md --kind inline" >/dev/null
 check "an inline comment's lint counts as a reply's" 1 "$(grep -c '^- mergeworthy:reply, for post-lint reply' "$T/sg.err")"
 sg_tr "$T/sg.jsonl" skill:mergeworthy:post skill:mergeworthy:writing
