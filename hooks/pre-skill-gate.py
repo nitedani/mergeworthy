@@ -29,6 +29,7 @@ ACTIONS = {
     'post-lint pr':          ('pull-request',) + WRITE,
     'post-lint title':       ('pull-request',) + WRITE,     # pull-request step 7
     'post-lint issue':       ('open-issue',) + WRITE,
+    'post-lint plan':        ('design',) + WRITE,           # a plan the user asked to post as an issue
     'post-lint tracker':     ('task',) + WRITE,             # task step 7
     'gate-pass':             WRITE,
     'an upload':             ('evidence',),                 # a gh command with --attach, evidence step 5
