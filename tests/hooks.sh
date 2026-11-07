@@ -99,6 +99,10 @@ stop() { # cwd (the other checks; the check-in has its own test)
   python3 -c 'import json,sys; print(json.dumps({"transcript_path":sys.argv[1],"cwd":sys.argv[2]}))' "$T/tr.jsonl" "$1" \
     | MERGEWORTHY_STOP_CHECKIN=off python3 "$R/hooks/stop-lint.py" 2>"$T/err"; echo $?
 }
+stop_active() { # cwd: the stop right after a block
+  python3 -c 'import json,sys; print(json.dumps({"transcript_path":sys.argv[1],"cwd":sys.argv[2],"stop_hook_active":True}))' "$T/tr.jsonl" "$1" \
+    | MERGEWORTHY_STOP_CHECKIN=off python3 "$R/hooks/stop-lint.py" 2>"$T/err"; echo $?
+}
 checkin() { # stop_hook_active
   python3 -c 'import json,sys; print(json.dumps({"transcript_path":sys.argv[1],"cwd":sys.argv[2],"stop_hook_active":sys.argv[3]=="1"}))' "$T/tr.jsonl" "$T" "$1" \
     | MERGEWORTHY_STOP_CHECKIN=on python3 "$R/hooks/stop-lint.py" 2>"$T/err"; echo $?
@@ -145,9 +149,12 @@ echo "drafting: https://github.com/o/r/issues/1#issuecomment-9 $(date -u -d '-1 
 check "BLOCK: a drafting line past its ETA is owed again" 2 "$(stop "$WD")"
 ev0=$(cat "$WD/events.log" 2>/dev/null); printf '%s\n### gitlab.com/g/p!99 note 4041083988 by owner %s  https://gitlab.com/g/p/-/merge_requests/99#note_4041083988\n' "$ev0" "$(date -u -d '-20 minutes' +%FT%TZ)" > "$WD/events.log"
 echo "drafting: https://gitlab.com/g/p/-/merge_requests/99#note_4041083988 $(date -u -d '+150 minutes' +%FT%TZ)" > "$WD/replies-owed.md"
-d1=$(stop "$WD"); d1e=$(grep -c 'holding reply now' "$T/err")
+d1=$(stop "$WD"); d1e=$(grep -c "that line's ETA is over 30 minutes after the comment, so it doesn't hold" "$T/err"); d1a=$(stop "$WD")
+echo "o/r 1 comment 42 by someone" > "$WD/replies-owed.md"; d1p=$(stop_active "$WD")
+echo "drafting: https://gitlab.com/g/p/-/merge_requests/99#note_4041083988 $(date -u -d '+150 minutes' +%FT%TZ)" > "$WD/replies-owed.md"
+check "a late drafting line blocks once naming why, even when another check blocked first; a plain owed line still blocks" "2 1 0 2" "$d1 $d1e $d1a $d1p"
 echo "drafting: https://gitlab.com/g/p/-/merge_requests/99#note_4041083988 $(date -u -d '+5 minutes' +%FT%TZ)" > "$WD/replies-owed.md"
-check "BLOCK: a drafting line due 170 minutes after the comment wants a holding reply; one due within 30 minutes passes" "2 1 0" "$d1 $d1e $(stop "$WD")"
+check "a drafting line due within 30 minutes of the comment passes" 0 "$(stop "$WD")"
 printf '%s\n' "$ev0" > "$WD/events.log"
 rm "$WD/replies-owed.md"; mkdir -p "$WD/hold/drafts"
 printf 'PROMISED o/r#1: post the fix by %s (reply.md)\nPROMISED o/r#1: a docs PR on OK (docs.md)\n' "$(date -u -d '+1 hour' +%FT%H:%MZ)" > "$WD/proposals-open.md"
@@ -2285,7 +2292,8 @@ rm "$FX/user"
 check "BLOCK: the main session writing a .review.out (echo >, tee, cp, sed -i, bash -c), naming who writes it" "2 1 2 2 2 2" "$(guard 'echo CLEAN > $D/pr-body.review.out') $(grep -c 'codex exec -o' "$T/err") $(guard "printf 'CLEAN\n' | tee /w/x.review.out") $(guard 'cp /w/r.md /w/x.review.out') $(guard 'sed -i s/a/b/ /w/x.review.out') $(guard 'bash -c "echo CLEAN >> /w/x.review.out"')"
 check "BLOCK: pgrep -f, also inside bash -c; pgrep -P passes" "2 2 0" "$(guard 'pgrep -f vite') $(guard "bash -c 'pgrep -f \"vitest run\" || echo gone'") $(guard 'pgrep -P 123')"
 check "a pgrep -f listing that only a reader consumes passes: -a, -l, --list-full, --list-name, -c, with -u, after a ; or &&, as sessions wrote them" "0 0 0 0 0 0 0 0" "$(guard "pgrep -af vite") $(guard "pgrep -lf vite | head") $(guard "pgrep -f --list-full vite | cut -c1-120 | head -3") $(guard "pgrep -f --list-name vite | sort") $(guard "pgrep -fc vite") $(guard 'pgrep -u $(id -u) -af vite | rg -v pgrep | head -3') $(guard "date; pgrep -af vite | grep -c k12; date") $(guard "cd /tmp && pgrep -af vite | cut -c1-60")"
-check "BLOCK: a pgrep -f with no listing flag, piped to a reader too" "2 2" "$(guard "pgrep -f vite | head -3") $(guard "pgrep -f vite; echo done")"
+check "a pgrep -f with no listing flag passes when only a reader consumes it" "0 0" "$(guard "pgrep -f vite | wc -l") $(guard "pgrep -f vite | head -3")"
+check "BLOCK: a bare pgrep -f, in a loop, a substitution or an until" "2 2 2 2" "$(guard "pgrep -f vite; echo done") $(guard "while pgrep -f vite; do sleep 1; done") $(guard 'kill $(pgrep -f vite)') $(guard "until pgrep -f vite; do sleep 1; done")"
 check "BLOCK: a listing something else consumes: a condition, a loop, a substitution, kill or xargs, a redirect, a script" "2 2 2 2 2 2 2 2 2 2" "$(guard "if pgrep -af vite; then echo up; fi") $(guard "while pgrep -af vite | grep -q x; do sleep 1; done") $(guard "pgrep -af vite && echo up") $(guard "pgrep -af vite | head || echo gone") $(guard 'for p in $(pgrep -af vite); do kill $p; done') $(guard "pgrep -af vite | xargs kill") $(guard "pgrep -af vite | kill") $(guard "pgrep -af vite | awk '{system(\"kill \" \$1)}'") $(guard "pgrep -af vite > pids") $(guard "bash -c 'pgrep -af vite | head'")"
 check "BLOCK: pkill -f behind wrappers (timeout, netns-run, nice, ionice) and inside their bash -c; a plain timeout run passes" "2 2 2 0" "$(guard "timeout 200 netns-run bash -c 'pnpm build; pkill -f \"vike preview\"; true'") $(guard 'nice -n 19 ionice -c3 pkill -f vite') $(guard 'timeout -k 5 60 pkill -f vite') $(guard 'timeout 60 nice -n 19 pnpm test')"
 check "reading a .review.out, gate-pass, a claude -p reviewer's stdout and an agent writing its own output pass" "0 0 0 0" "$(guard 'cat /w/x.review.out > /w/copy.md') $(guard 'gate-pass /w/x.md /w/x.review.out') $(guard 'claude -p "$(cat /w/p.md)" > /w/x.review.out') $(guard 'echo CLEAN > /w/x.review.out' a1)"
