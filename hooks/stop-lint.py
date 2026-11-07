@@ -4,7 +4,7 @@ wake it, with an offer or hand-back the agent should just act on, with a claim a
 on GitHub with no live Monitor on a watcher's events.log in this session (the session is what answers the events; nothing else
 wakes it) unless its watch folder retired after the post, or with a line still owed in a watcher's replies-owed.md (mergeworthy:reply).
 The final message is the hook input's last_assistant_message (the transcript may not hold it yet). stop_hook_active skips only
-the check-in: every other check holds until it is met (Claude Code itself ends the turn after 8 blocks in a row)."""
+the check-in and a late `drafting:` owed line (the block before told it once): every other check holds until it is met (Claude Code itself ends the turn after 8 blocks in a row)."""
 import glob, hashlib, json, os, re, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import failclosed
@@ -309,6 +309,14 @@ if watcher_on and not paused and not child:
         import datetime
         try: events_text = open(os.path.join(wd, 'events.log'), errors='replace').read()
         except OSError: events_text = ''
+        def late(l):  # a `drafting:` line whose ETA is still ahead but over 30 minutes after its comment: it doesn't hold (reply step 3)
+            m = re.match(r'drafting:\s+(\S+)\s+(\S+)', l, re.I)
+            cid = m and re.search(r'(?:note_|issuecomment-|discussion_r|#r)(\d+)', m.group(1))
+            when = cid and re.search(rf'\b{cid.group(1)} by \S+ (\d{{4}}-\d\d-\d\dT[\d:]+Z)', events_text)
+            try:
+                eta = when and datetime.datetime.fromisoformat(m.group(2).replace('Z', '+00:00'))
+                return bool(when) and datetime.datetime.now(datetime.timezone.utc) < eta and eta - datetime.datetime.fromisoformat(when.group(1).replace('Z', '+00:00')) > datetime.timedelta(minutes=30)
+            except ValueError: return False
         def holding(l):  # `holding: <reply url> <ETA>`: a holding reply was posted; `drafting: <comment url> <ETA>`: an agent drafts the answer; ETA is an ISO time
             m = re.match(r'(holding|drafting):\s+(\S+)\s+(\S+)', l, re.I)
             try:
@@ -316,13 +324,14 @@ if watcher_on and not paused and not child:
                 if not eta or eta <= datetime.datetime.now(datetime.timezone.utc): return False
             except ValueError:
                 return False
-            # a drafting line holds only a short wait: an answer due over 30 minutes after the comment gets a holding reply (reply step 3)
-            cid = re.search(r'(?:note_|issuecomment-|discussion_r|#r)(\d+)', m.group(2))
-            when = cid and re.search(rf'\b{cid.group(1)} by \S+ (\d{{4}}-\d\d-\d\dT[\d:]+Z)', events_text)
-            if m.group(1).lower() == 'drafting' and when and eta - datetime.datetime.fromisoformat(when.group(1).replace('Z', '+00:00')) > datetime.timedelta(minutes=30):
-                return False
-            return True
+            return not late(l)
         open_owed = [l for l in owed if not l.lower().startswith('done:') and not holding(l)]
+        if active: open_owed = [l for l in open_owed if not late(l)]  # told once by the block before
+        if open_owed and late(open_owed[0]):
+            print(f"replies-owed.md in {wd}: {open_owed[0][:120]}: that line's ETA is over 30 minutes after the comment, so it doesn't hold. "
+                  "Post a holding reply now, through post's fast form, with what you found so far and when the answer comes, "
+                  "and write `holding: <reply url> <ETA>` (mergeworthy:reply step 3).", file=sys.stderr)
+            sys.exit(2)
         if open_owed:
             print(f"replies-owed.md in {wd} still has an owed reply ({open_owed[0][:120]}). Answer it through the gate and clear the "
                   "line with 'done: <reply url> <what changed>' (mergeworthy:post step 5), or clear it with the reason no reply is owed. "

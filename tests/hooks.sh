@@ -99,6 +99,10 @@ stop() { # cwd (the other checks; the check-in has its own test)
   python3 -c 'import json,sys; print(json.dumps({"transcript_path":sys.argv[1],"cwd":sys.argv[2]}))' "$T/tr.jsonl" "$1" \
     | MERGEWORTHY_STOP_CHECKIN=off python3 "$R/hooks/stop-lint.py" 2>"$T/err"; echo $?
 }
+stop_active() { # cwd: the stop right after a block
+  python3 -c 'import json,sys; print(json.dumps({"transcript_path":sys.argv[1],"cwd":sys.argv[2],"stop_hook_active":True}))' "$T/tr.jsonl" "$1" \
+    | MERGEWORTHY_STOP_CHECKIN=off python3 "$R/hooks/stop-lint.py" 2>"$T/err"; echo $?
+}
 checkin() { # stop_hook_active
   python3 -c 'import json,sys; print(json.dumps({"transcript_path":sys.argv[1],"cwd":sys.argv[2],"stop_hook_active":sys.argv[3]=="1"}))' "$T/tr.jsonl" "$T" "$1" \
     | MERGEWORTHY_STOP_CHECKIN=on python3 "$R/hooks/stop-lint.py" 2>"$T/err"; echo $?
@@ -145,9 +149,12 @@ echo "drafting: https://github.com/o/r/issues/1#issuecomment-9 $(date -u -d '-1 
 check "BLOCK: a drafting line past its ETA is owed again" 2 "$(stop "$WD")"
 ev0=$(cat "$WD/events.log" 2>/dev/null); printf '%s\n### gitlab.com/g/p!99 note 4041083988 by owner %s  https://gitlab.com/g/p/-/merge_requests/99#note_4041083988\n' "$ev0" "$(date -u -d '-20 minutes' +%FT%TZ)" > "$WD/events.log"
 echo "drafting: https://gitlab.com/g/p/-/merge_requests/99#note_4041083988 $(date -u -d '+150 minutes' +%FT%TZ)" > "$WD/replies-owed.md"
-d1=$(stop "$WD"); d1e=$(grep -c 'holding reply now' "$T/err")
+d1=$(stop "$WD"); d1e=$(grep -c "that line's ETA is over 30 minutes after the comment, so it doesn't hold" "$T/err"); d1a=$(stop_active "$WD")
+echo "o/r 1 comment 42 by someone" > "$WD/replies-owed.md"; d1p=$(stop_active "$WD")
+echo "drafting: https://gitlab.com/g/p/-/merge_requests/99#note_4041083988 $(date -u -d '+150 minutes' +%FT%TZ)" > "$WD/replies-owed.md"
+check "a late drafting line blocks naming why when not active, and passes on the stop right after; a plain owed line still blocks then" "2 1 0 2" "$d1 $d1e $d1a $d1p"
 echo "drafting: https://gitlab.com/g/p/-/merge_requests/99#note_4041083988 $(date -u -d '+5 minutes' +%FT%TZ)" > "$WD/replies-owed.md"
-check "BLOCK: a drafting line due 170 minutes after the comment wants a holding reply; one due within 30 minutes passes" "2 1 0" "$d1 $d1e $(stop "$WD")"
+check "a drafting line due within 30 minutes of the comment passes" 0 "$(stop "$WD")"
 printf '%s\n' "$ev0" > "$WD/events.log"
 rm "$WD/replies-owed.md"; mkdir -p "$WD/hold/drafts"
 printf 'PROMISED o/r#1: post the fix by %s (reply.md)\nPROMISED o/r#1: a docs PR on OK (docs.md)\n' "$(date -u -d '+1 hour' +%FT%H:%MZ)" > "$WD/proposals-open.md"
