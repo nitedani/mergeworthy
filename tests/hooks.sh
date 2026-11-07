@@ -2543,6 +2543,10 @@ check "a double-quoted bash -c, sh -c or setsid nohup bash -c script reads \$NAM
   "$(ibash "$IT" "P=$T/nogit; bash -c \"echo x > \$P/a; echo \\\$? > \$P/b\"") $(ibash "$IT" "P=$T/nogit; sh -c \"echo x > \$P/a\"") $(ibash "$IT" "P=$T/nogit; setsid nohup bash -c \"\$P/run.sh \$P/e.log; echo \\\$? > \$P/e.exit\" > \$P/o.log 2>&1 < /dev/null &") $(ibash "$IT" "P=$T/nogit; bash -c \"echo x > '\$P/a'\"") $(ibash "$IT" "P=$I; bash -c \"echo x > \$P/a; echo \\\$?\"" "$T/nogit") $(ibash "$IT" "P=$I; bash -c \"echo x > '\$P/a'\"" "$T/nogit")"
 check "BLOCK: in a child shell's script, \\\$NAME and a single-quoted script's \$NAME are the child's, and a value holding a space splits there: can't be told" "2 2 2" \
   "$(ibash "$IT" "P=$T/nogit; bash -c \"echo x > \\\$P/a\"" "$T/nogit") $(ibash "$IT" "P=$T/nogit; bash -c 'echo x > \$P/a'" "$T/nogit") $(ibash "$IT" "P='$T/nogit/a b'; bash -c \"echo x > \$P/f\"" "$T/nogit")"
+check "a function's body reads a name set before it and left alone, as written at the top level; BLOCK: into the repo, by its rule, and a call that passes the name" "0 2 2" \
+  "$(ibash "$IT" "LOG=$T/nogit/b.log; run() { echo x >> \"\$LOG\"; }; run" "$T/nogit") $(ibash "$IT" "LOG=$I/b.log; run() { echo x >> \"\$LOG\"; }; run" "$T/nogit") $(ibash "$IT" "LOG=$T/nogit/b.log; run() { echo x >> \"\$LOG\"; }; LOG=$I/b.log run" "$T/nogit")"
+check "D=\$D python3 - sets D for that command alone: D keeps its value; BLOCK: its value in the repo, by its rule, and one a shell's script reads" "0 2 2" \
+  "$(ibash "$IT" "D=$T/nogit; D=\$D python3 -; echo x > \$D/f" "$T/nogit") $(ibash "$IT" "D=$I; D=\$D python3 -; echo x > \$D/f" "$T/nogit") $(ibash "$IT" "HOME=$I sh -c 'echo x > \$HOME/f'" "$T/nogit")"
 check "BLOCK: the same text quoted in one word and written plain in another: the plain redirect into the repo isn't taken as literal" 2 \
   "$(ibash "$IT" "WD=$I; echo '\$WD/a.txt' > \$WD/a.txt" "$T/nogit")"
 check "BLOCK: a call to a function that calls one defined after it: the write after the call can't be told" 2 \

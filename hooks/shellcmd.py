@@ -271,11 +271,12 @@ def _name(w):
 
 def _unseen(tree, src):
     """The names a script may set where Where can't follow, read from its syntax: a name assigned other than by a command of only
-    `NAME=value` words, or those after export, readonly, declare or a function's local (export -n D=x, typeset, D+=x, D[1]=x, D=x cmd), one a builtin sets (read, mapfile, printf -v, unset, getopts, wait -p),
+    `NAME=value` words, or those after export, readonly, declare or a function's local (export -n D=x, typeset, D+=x, D[1]=x), a command's own `D=x` for
+    a function or a shell's script to read, which `D=x cmd` for any other cmd is not, one a builtin sets (read, mapfile, printf -v, unset, getopts, wait -p),
     ${D:=x}, an arithmetic assignment ((( )), $(( )), let), a for loop's variable assigned anywhere, and the parameters after `set --` or a
     shift that isn't a statement of a function's own { }, with a number or nothing (Where.step's); EVERY when it runs eval,
     source, . or trap, which can set any. Heredoc bodies and quoted text are words, never read as commands."""
-    names, assigned, loops, shifts, todo = set(), set(), set(), set(), [(tree, False)]  # each node, and whether it is in a function's body
+    names, assigned, loops, shifts, funcs, envs, todo = set(), set(), set(), set(), set(), [], [(tree, False)]  # each node, and whether it is in a function's body
     while todo:
         y, body = todo.pop()
         if isinstance(y, list):
@@ -286,9 +287,10 @@ def _unseen(tree, src):
         cmd, t = y.get('Cmd') or {}, y.get('Type')
         plain = lambda assigns: not y.get('Redirs') and not any(a.get('Index') or a.get('Append') or a.get('Naked') for a in assigns)  # Where.step's: D=x, not D[1]=x, D+=x or D=x >f
         if cmd.get('Type') == 'CallExpr':
-            assigns = cmd.get('Assigns') or []
-            (assigned if not cmd.get('Args') and plain(assigns) else names).update(a['Name']['Value'] for a in assigns if a.get('Name'))
+            assigns = [a['Name']['Value'] for a in cmd.get('Assigns') or [] if a.get('Name')]
             argv = prog([_word(w, src) for w in cmd.get('Args') or []])
+            if cmd.get('Args'): envs.append((assigns, argv))
+            else: (assigned if plain(cmd.get('Assigns') or []) else names).update(assigns)
             name = os.path.basename(argv[0]) if argv else ''
             if name in ('eval', 'source', '.', 'trap'):
                 return EVERY
@@ -310,9 +312,12 @@ def _unseen(tree, src):
             names.add(_name(_word(y['X'], src)))
         if t == 'ForClause' and (y.get('Loop') or {}).get('Name'):
             loops.add(y['Loop']['Name']['Value'])
+        if t == 'FuncDecl':
+            funcs.add(y['Name']['Value'])
         if t == 'FuncDecl' and y['Body']['Cmd'].get('Type') == 'Block':
             shifts.update(map(id, y['Body']['Cmd'].get('Stmts') or []))
         todo += [(v, body or t == 'FuncDecl') for v in y.values() if isinstance(v, (dict, list))]
+    names.update(n for assigns, argv in envs if argv[:1] and argv[0] in funcs or _nested(argv) is not None or reads_stdin(argv) for n in assigns)
     return frozenset(names - {None} | assigned & loops)
 
 
