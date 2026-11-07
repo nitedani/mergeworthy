@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""post-lint <draft.md> [--kind reply|status|pr|issue|inline|tracker|proposal|title] [--draft] [--parent <file>|none]: checks a draft before it is posted to GitHub.
+"""post-lint <draft.md> [--kind reply|status|pr|issue|plan|inline|tracker|proposal|title] [--draft] [--parent <file>|none]: checks a draft before it is posted to GitHub.
 Exit 1 with one line per finding. Checks: banned phrases, "stacked on" without gh stack, bare #N refs
 (must be owner/repo#N unless --repo matches), length budgets, unclassified maintainer notes, em dashes,
 process machinery in the thread, decisions not shown as code and lettered options, questions without a recommendation, and a bare "Done" answering a question.
 A reply or inline comment needs the comment it answers: <draft stem>.parent.md next to it, or --parent <file>;
 --parent none for a comment that answers nobody. --draft (with --kind pr): the body of a draft PR, which says why it is one.
 --kind status: a reply that only says what is being done and by when (post §Kinds), checked here instead of by a reviewer.
+--kind plan: a design plan the user asked to post as an issue; linted as an issue, capped at 2500 words, without the reproduction, evidence and internal-label checks.
 Settings: MERGEWORTHY_BADGE on|off|auto requires the badge always, never, or for a human account."""
 import hashlib, os, re, sys, subprocess, urllib.parse
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'hooks'))
@@ -17,7 +18,7 @@ def setting(name, default):
     saved = dict(l.strip().split('=', 1) for l in open(f) if '=' in l) if os.path.exists(f) else {}
     return os.environ.get(f'MERGEWORTHY_{name}') or saved.get(f'MERGEWORTHY_{name}', default)
 args = sys.argv[1:]
-USAGE = "usage: post-lint <draft.md> [--kind reply|status|pr|issue|inline|tracker|proposal|title] [--draft] [--repo owner/repo] [--parent <file>|none]"
+USAGE = "usage: post-lint <draft.md> [--kind reply|status|pr|issue|plan|inline|tracker|proposal|title] [--draft] [--repo owner/repo] [--parent <file>|none]"
 def arg(name, default):
     if name not in args: return default
     i = args.index(name)
@@ -26,7 +27,8 @@ def arg(name, default):
 if not args: sys.exit(USAGE)
 path = args[0]; kind = arg('--kind', 'reply'); repo = arg('--repo', None)
 status = kind == 'status'  # linted as a reply, plus the status checks below
-kind = {'comment': 'reply', 'status': 'reply'}.get(kind, kind)
+plan = kind == 'plan'  # linted as an issue, plus the plan changes below
+kind = {'comment': 'reply', 'status': 'reply', 'plan': 'issue'}.get(kind, kind)
 _repo, _why = (repo, None) if repo else post_words.draft_repo(path)  # the language only: the other repo checks keep needing --repo
 W = post_words.words(_repo)  # the words the checks look for, in the repo's language
 RATED = re.compile(r'^\s*\|.*(?:[0-9]+|\bnew) *(?:⇒|=>) *(?:[0-9]+|removed|new|n/a)', re.M)  # a row rating an item old ⇒ new (`7 ⇒ 9`, `7/10 => 9/10`, `new ⇒ 9`)
@@ -132,12 +134,12 @@ for m in re.finditer(r'\b(fundamental|impossible(?! states?\b)|unsolvable|insurm
         continue  # quoted, or scoped: "fundamental to X", "impossible for X"
     findings.append(f"{m.group(0)!r}: say what it's hard for (\"a problem for one injection point\"), or the reader takes it as unsolvable")
 # A newcomer can't decode an internal label, and a bold label with a fragment isn't a sentence (mergeworthy:writing)
-_labels = re.findall(r'(?<![\w`/#.-])([A-Z])(\d{1,2})(?![\w`])', prose)
+_labels = [] if plan else re.findall(r'(?<![\w`/#.-])([A-Z])(\d{1,2})(?![\w`])', prose)  # a plan defines its own ids
 _series = {a for a in {a for a, _ in _labels} if len({n for b, n in _labels if b == a}) > 1}  # W2 and W5: a numbered series, not S3 or R2
 for a, n in _labels:
     if a in _series:
         findings.append(f"internal label {a + n!r}: say what it is in plain words")
-for m in re.finditer(r'(?<![\w`/#.-])R\*(?![\w`])', prose):
+for m in [] if plan else re.finditer(r'(?<![\w`/#.-])R\*(?![\w`])', prose):
     findings.append("internal label 'R*': say what it is in plain words")
 # A placeholder left for later (POST_TIME, GATES_LINE) makes the reviewed draft not the posted one: fill it before the review
 for m in dict.fromkeys(re.findall(r'(?<![\w`$/.-])[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+(?![\w`])', prose)):
@@ -301,10 +303,12 @@ if kind == 'proposal' and words > 900 + extra:  # a design walkthrough (mergewor
 # Parallel, not later (task §Dispositions): work promised for "after it" or "later" is deferred, not waiting on anything named
 if kind in ('reply', 'proposal', 'inline') and (_d := re.search(r"\bI(?:'ll| will)\b[^.\n]*?\b(?:after (?:it|that|this)|later)\b", prose)):
     findings.append(f"{_d.group(0)!r} defers work: do it now, name the dependency or decision it waits on, or drop the promise (task §Dispositions)")
-decision = kind == 'issue' and re.search(r'^#+\s*Options\b', text, re.I | re.M)  # a decision issue (open-issue)
+decision = kind == 'issue' and not plan and re.search(r'^#+\s*Options\b', text, re.I | re.M)  # a decision issue (open-issue)
 if decision and words > 400 + extra:
     findings.append(f"{words} words > {400 + extra} for a decision issue (tables and code count): the options a user would see and your pick; cut the rest")
-if kind == 'issue' and not decision and chars > 400:
+if plan and words > 2500 + extra:
+    findings.append(f"{words} words > {2500 + extra} for a plan posted as an issue (tables and code count): cut what the reader doesn't need to decide, act or check (mergeworthy:writing)")
+if kind == 'issue' and not plan and not decision and chars > 400:
     findings.append(f"{chars} characters > 400 for an issue (tables, code, images and URLs not counted): keep one finding")
 # a code location the reader can't click is one they can't find (elysiajs/elysia#2018: bare `:160`, "off Bun")
 _loc = uncoded(text)
@@ -315,7 +319,7 @@ _locs += re.findall(r'\blines? \d+(?:[-–]\d+)?\b', re.sub(r'`[^`\n]*`', '', _l
 if _locs:
     findings.append(f"code location without a link: {', '.join(dict.fromkeys(_locs))}: link each to the line at a commit (a permalink), so a reader can open it")
 # a newcomer must see where it is and how to reproduce it (lexunit-ai/atotal_vagyon_borze#49 comment 6017184273)
-if kind == 'issue':
+if kind == 'issue' and not plan:
     shown = re.sub(r'^(?:<img [^>]*>[ \t]*)+\n', '', text)  # the badge is no evidence
     repro = re.search(r'^#+\s*(?:how to (?:see|reproduce)|steps to reproduce)\b.*?(?=^#+ |\Z)', shown, re.I | re.M | re.S)
     video = re.search(r'<video|\.(?:mp4|webm|mov)\b', shown, re.I)

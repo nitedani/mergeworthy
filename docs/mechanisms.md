@@ -35,7 +35,7 @@ A reference for the scripts that enforce the skills' steps; the skills name each
 
 ### `post-lint` (`post` step 2)
 
-`post-lint drafts/x.md --kind reply|status|pr|issue|inline|tracker|proposal [--repo o/r]` checks a draft before it is posted.
+`post-lint drafts/x.md --kind reply|status|pr|issue|plan|inline|tracker|proposal [--repo o/r]` checks a draft before it is posted.
 - **A reply** reads its parent comment from `drafts/x.parent.md`. Use `--parent none` when it answers nobody.
 - **A draft PR's body** takes `--kind pr --draft`: its first line under the badge must be `**State: draft** (<why>)`; without `--draft` that line is a finding. The guard checks the same line on `gh pr create`.
 - **The repo's language.** A `Language: <code>` line in the project file (`Language: hu`) makes these checks and the guard's look for that language's words: the State line, the badge's effort words, the evidence-block titles, the notes table and its kinds, the decision block, `### What you should see` and the recommendation words. The words live in `hooks/post_words.py`; without the line, or with a code it doesn't list, they are English. Without `--repo`, the language's repo is the one in `repos.txt` of the first folder above the draft that holds one (when it lists several, the one `threads.txt` names; else a finding asks for `--repo`), else the cwd's git origin. The same word dictionary holds the tracker's title and Decisions headings. Without `--repo`, the inference gives only the language; the other repo checks need `--repo`.
@@ -208,7 +208,7 @@ It puts the always-on rules into context and writes `settings.env`. A second Ses
 
 It blocks an action until every skill its always-on row names was opened with the Skill tool, or typed as `/mergeworthy:<name>`, since the session's last compaction; a subagent counts only its own. The block names each skill and its row.
 - The table is `ACTIONS` in `hooks/pre-skill-gate.py`; `post` and `writing` gate every post (`gh pr create`, `gh pr edit`, `gh issue create`, `gh pr review`, comments, `gh api` writes and `discussion-post`, `post-lint`, `gate-pass`).
-- `post-lint --kind` adds the kind's skill: `reply` (and `inline`), `proposal` → `design`, `pr` → `pull-request`, `issue` → `open-issue`, `tracker` → `task`.
+- `post-lint --kind` adds the kind's skill: `reply` (and `inline`), `proposal` and `plan` → `design`, `pr` → `pull-request`, `issue` → `open-issue`, `tracker` → `task`.
 - `gh-watch-start`: `task`. `thread-context` (building a record): `post`. Any `gh` command with `--attach`: `evidence`.
 - `gh pr ready`: `pull-request`, `merging`; `gh pr merge` and `git push`: `merging`; `gh pr create` and `gh issue create` also `task`. `pr-steps approach`: `pull-request`; the other `pr-steps` records: `converge`.
 - A gated action whose transcript can't be read is blocked.
