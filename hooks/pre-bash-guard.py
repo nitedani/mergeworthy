@@ -686,9 +686,9 @@ def check(t, has_cd):
               "re-save the draft, and run its review again (mergeworthy:post steps 1-4)")
     if p == 'pgrep' and any(x == '--full' or (not x.startswith('--') and short_has(x, 'f')) for x in a) and not (
             readers is not None and {os.path.basename(r[0]) for r in readers} <= READERS
-            and any(x in ('--list-full', '--list-name', '--count') or not x.startswith('--') and any(short_has(x, c) for c in 'alc') for x in a)):
+            and (readers or any(x in ('--list-full', '--list-name', '--count') or not x.startswith('--') and any(short_has(x, c) for c in 'alc') for x in a))):
         block("never pgrep -f to wait or kill: it matches its own command line and other sessions' processes; wait on the PID you started (`kill -0 <pid>`) or its port. "
-              "Only a listing passes: `pgrep -af <pattern>`, alone or piped to a reader (`| cut -c1-120`)")
+              "What passes: a listing (`pgrep -af <pattern>`), and any pgrep -f only a reader consumes (`pgrep -f <pattern> | wc -l`, `| head`)")
     if p == 'killall' or (p == 'pkill' and any(x == '--full' or (not x.startswith('--') and short_has(x, 'f')) for x in a)):
         block("never pkill -f / killall: kill your own processes by PID or port")
     if p == 'kill':
