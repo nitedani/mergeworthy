@@ -260,6 +260,7 @@ EVERY = _Every()
 
 
 SETTERS = ('read', 'mapfile', 'readarray', 'unset', 'getopts', 'wait')  # builtins that set the variables they name (printf: -v's)
+DECLARING = ('export', 'readonly', 'declare', 'typeset', 'local')  # `D=x export D` keeps D=x
 PARAMS = tuple('123456789')
 ASSIGNS = ('=', '+=', '-=', '*=', '/=', '%=', '<<=', '>>=', '&=', '^=', '|=', '++', '--')
 
@@ -273,7 +274,7 @@ def _name(w):
 def _unseen(tree, src):
     """The names a script may set where Where can't follow, read from its syntax: a name assigned other than by a command of only
     `NAME=value` words, or those after export, readonly, declare or a function's local (export -n D=x, typeset, D+=x, D[1]=x), a command's own `D=x` for
-    a function or a shell's script to read, which `D=x cmd` for any other cmd is not, one a builtin sets (read, mapfile, printf -v, unset, getopts, wait -p),
+    a function or a shell's script to read or a declaring builtin to keep, which `D=x cmd` for any other cmd is not, one a builtin sets (read, mapfile, printf -v, unset, getopts, wait -p),
     ${D:=x}, an arithmetic assignment ((( )), $(( )), let), a for loop's variable assigned anywhere, and the parameters after `set --` or a
     shift that isn't a statement of a function's own { }, with a number or nothing (Where.step's); EVERY when it runs eval,
     source, . or trap, which can set any. Heredoc bodies and quoted text are words, never read as commands."""
@@ -318,7 +319,7 @@ def _unseen(tree, src):
         if t == 'FuncDecl' and y['Body']['Cmd'].get('Type') == 'Block':
             shifts.update(map(id, y['Body']['Cmd'].get('Stmts') or []))
         todo += [(v, body or t == 'FuncDecl') for v in y.values() if isinstance(v, (dict, list))]
-    names.update(n for assigns, argv in envs if argv[:1] and argv[0] in funcs or _nested(argv) is not None or reads_stdin(argv) for n in assigns)
+    names.update(n for assigns, argv in envs if argv[:1] and (argv[0] in funcs or argv[0] in DECLARING) or _nested(argv) is not None or reads_stdin(argv) for n in assigns)
     return frozenset(names - {None} | assigned & loops)
 
 

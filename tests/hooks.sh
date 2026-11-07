@@ -2547,6 +2547,8 @@ check "a function's body reads a name set before it and left alone, as written a
   "$(ibash "$IT" "LOG=$T/nogit/b.log; run() { echo x >> \"\$LOG\"; }; run" "$T/nogit") $(ibash "$IT" "LOG=$I/b.log; run() { echo x >> \"\$LOG\"; }; run" "$T/nogit") $(ibash "$IT" "LOG=$T/nogit/b.log; run() { echo x >> \"\$LOG\"; }; LOG=$I/b.log run" "$T/nogit")"
 check "D=\$D python3 - sets D for that command alone: D keeps its value; BLOCK: its value in the repo, by its rule, and one a shell's script reads" "0 2 2" \
   "$(ibash "$IT" "D=$T/nogit; D=\$D python3 -; echo x > \$D/f" "$T/nogit") $(ibash "$IT" "D=$I; D=\$D python3 -; echo x > \$D/f" "$T/nogit") $(ibash "$IT" "HOME=$I sh -c 'echo x > \$HOME/f'" "$T/nogit")"
+check "BLOCK: D=<repo> export D, or readonly, declare, typeset, a function's local, keeps D after the command: can't be told" "2 2 2 2 2" \
+  "$(for v in export readonly declare typeset; do ibash "$IT" "D=$T/nogit; D=$I $v D; echo x > \$D/d" "$T/nogit"; done | tr '\n' ' ')$(ibash "$IT" "D=$T/nogit; f() { D=$I local D; echo x > \$D/d; }; f" "$T/nogit")"
 check "BLOCK: the same text quoted in one word and written plain in another: the plain redirect into the repo isn't taken as literal" 2 \
   "$(ibash "$IT" "WD=$I; echo '\$WD/a.txt' > \$WD/a.txt" "$T/nogit")"
 check "BLOCK: a call to a function that calls one defined after it: the write after the call can't be told" 2 \
