@@ -143,15 +143,29 @@ def _stages(s, src):
 
 
 def _readers(tree, src):
-    """The argv of the stages after the first, by the first's statement, of each plain pipeline (_stages) that is a statement of the line's own list or the last side of one's && or ||."""
+    """The argv of the stages after the first, by the first's statement, of each plain pipeline (_stages) that is a statement of the line's own list
+    or a side of one's && and || followed only by echo or printf of literal text; a substitution such a statement only prints (printer, a whole statement on its own) has it as a reader too."""
     out = {}
+    def first(s):
+        while (s.get('Cmd') or {}).get('Type') == 'BinaryCmd':
+            s = s['Cmd']['X']
+        return s
+    def chain(s):
+        c = s.get('Cmd') or {}
+        return chain(c['X']) + [c['Y']] if c.get('Type') == 'BinaryCmd' and c.get('Op') in ('&&', '||') else [s]
+    def printer(a):  # whether argv a is an echo, or a printf with no option before its format that may be -v, so it only prints its words
+        return a[0].parts in ((('lit', 'echo'),), (('lit', 'printf'),)) and (a[0] == 'echo' or not a[1:2] or all(p[0] == 'lit' for p in a[1].parts) and not a[1].startswith('-v'))
+    def message(s):  # whether s only prints literal text
+        return bool(a := _stages(s, src)) and len(a) == 1 and printer(a[0]) and all(p[0] == 'lit' for w in a[0] for p in w.parts)
     for s in tree.get('Stmts') or []:
-        while (s.get('Cmd') or {}).get('Type') == 'BinaryCmd' and s['Cmd'].get('Op') in ('&&', '||'):
-            s = s['Cmd']['Y']
-        if stages := _stages(s, src):
-            while (s.get('Cmd') or {}).get('Type') == 'BinaryCmd':
-                s = s['Cmd']['X']
-            out[id(s)] = stages[1:]
+        sides = chain(s)
+        for i, x in enumerate(sides):
+            if (stages := _stages(x, src)) and all(map(message, sides[i + 1:])):
+                out[id(first(x))] = stages[1:]
+            for w in (x['Cmd'].get('Args') or [])[1:] if stages and len(stages) == 1 and printer(stages[0]) else ():
+                for p in [q for part in w.get('Parts') or [] for q in (part.get('Parts') or [] if part.get('Type') == 'DblQuoted' else [part])]:
+                    if p.get('Type') == 'CmdSubst' and len(p.get('Stmts') or []) == 1 and (inner := _stages(p['Stmts'][0], src)):
+                        out[id(first(p['Stmts'][0]))] = inner[1:] + stages
     return out
 
 
