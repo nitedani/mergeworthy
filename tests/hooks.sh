@@ -132,6 +132,9 @@ echo "abcdef1234 nothing to act on" > "$WD/followups-sorted.txt"
 check "BLOCK: 'nothing to act on' is not a verdict" 2 "$(stop "$WD")"
 printf 'abcdef1234567 TASTE https://example.invalid/notes\nhttps://github.com/o/r/pull/5#pullrequestreview-71 MISS https://example.invalid/ledger\n' > "$WD/followups-sorted.txt"
 check "a verdict line in followups-sorted.txt sorts it" 0 "$(stop "$WD")"
+rv='https://github.com/o/r/pull/5#pullrequestreview-71 MISS https://example.invalid/ledger'
+sorts() { printf '%s TASTE https://example.invalid/notes\n%s\n' "$1" "$rv" > "$WD/followups-sorted.txt"; stop "$WD"; }
+check "a commit's URL and a 7-character sha sort its FOLLOW-UP; another commit's URL doesn't" "0 0 2" "$(sorts https://github.com/o/r/commit/abcdef1234) $(sorts abcdef1) $(sorts https://github.com/o/r/commit/1234567890)"
 rm "$WD/events.log" "$WD/followups-sorted.txt"
 printf '### FOLLOW-UP o/r#5: https://github.com/o/r/pull/5#rename-2026-10-14T10:00:00Z by brillout renames your PR: "fix: a" -> "fix(core): a"  at %s\n' "$F40" > "$WD/events.log"
 check "BLOCK: the watcher's PR-rename FOLLOW-UP unsorted after 30 minutes, named" "2 1" "$(stop "$WD") $(grep -c 'pull/5#rename-2026-10-14T10:00:00Z' "$T/err")"

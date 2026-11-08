@@ -23,6 +23,11 @@ check "owed: a holding line whose ETA is ahead is its session's; one past its ET
 check "owed: a sorted follow-up and a done line are not listed" "0 0" "$(echo "$out" | grep -c abcdef1234) $(echo "$out" | grep -c 'https://x 12')"
 echo '### FOLLOW-UP o/r#5: https://github.com/o/r/pull/10 by dan references your PR  at 2026-10-01T00:00:00Z' >> "$W/events.log"; echo 'https://github.com/o/r/pull/1 MISS https://x' >> "$W/followups-sorted.txt"
 check "owed: a referencing PR stays unsorted though a PR whose URL is a prefix of its URL is sorted" 1 "$(python3 "$R/bin/steward" owed | grep -c $'\tsort\to/r#5 https://github.com/o/r/pull/10$')"
+cp "$W/followups-sorted.txt" "$T/sorted"
+printf 'https://github.com/o/r/commit/9999999aaa MISS https://x\nhttps://github.com/o/r/pull/10 MISS https://x\n' >> "$W/followups-sorted.txt"; out=$(python3 "$R/bin/steward" owed)
+echo 'https://github.com/o/r/commit/1234567890 MISS https://x' > "$W/followups-sorted.txt"
+check "owed: a commit's URL and a PR's URL sort their follow-ups; another commit's URL doesn't" "0 0 1" "$(echo "$out" | grep -c 9999999aaa) $(echo "$out" | grep -c pull/10) $(python3 "$R/bin/steward" owed | grep -c 9999999aaa)"
+mv "$T/sorted" "$W/followups-sorted.txt"
 B="$HOME/.mergeworthy/work/b"; mkdir -p "$B" "$HOME/.claude/projects/q"; echo sess-b > "$B/session"; echo 'o/r#2 comment 21 by bob' > "$B/replies-owed.md"; : > "$HOME/.claude/projects/q/sess-b.jsonl"
 check "owed: a folder whose session wrote its log in the last 2 hours is left to it" 0 "$(python3 "$R/bin/steward" owed | grep -c 'comment 21')"
 touch -d '-3 hours' "$HOME/.claude/projects/q/sess-b.jsonl"
@@ -153,7 +158,7 @@ touch -d '-1 minute' "$HOME/.claude/projects/p/s1.jsonl" "$HOME/.codex/sessions/
 PATH="$T/bin:$PATH" python3 "$R/bin/steward" done "$S" 2 replies, 1 PR
 check "done: the pass's time and summary end passes.txt, and the next window starts there" "2 replies, 1 PR|0" "$(tail -1 "$S/passes.txt" | cut -d' ' -f2-)|$(python3 "$R/bin/steward" sessions "$S" | grep -c "^~")"
 # round: gh-watch-start --round on the folder with each open PR of yours (steward_line adds the mergeworthy repo for a declared folder)
-SB="$T/sbin"; mkdir -p "$SB" "$T/hooks"; cp "$R/bin/steward" "$SB/"; cp "$R/hooks/gh_common.py" "$T/hooks/"; printf '#!/bin/sh
+SB="$T/sbin"; mkdir -p "$SB" "$T/hooks"; cp "$R/bin/steward" "$SB/"; cp "$R/hooks/gh_common.py" "$R/hooks/steward.py" "$T/hooks/"; printf '#!/bin/sh
 echo "$@" > "%s/args"
 ' "$T" > "$SB/gh-watch-start"; chmod +x "$SB/gh-watch-start"
 printf '#!/bin/sh

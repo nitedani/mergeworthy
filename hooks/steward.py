@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The steward, declared in ~/.mergeworthy/steward as `<watch dir> <T3 thread id>`: the session that sorts follow-ups and owns
 the mergeworthy repo. Without the file there is none, and each main session keeps both."""
-import contextlib, os, shutil, sqlite3, time
+import contextlib, os, re, shutil, sqlite3, time
 
 def read():
     """(watch dir, T3 thread id), or None."""
@@ -34,6 +34,19 @@ def passed_by(wd):
         return open(p).read().split()[0] if time.time() - os.path.getmtime(p) < 86400 else None
     except (OSError, IndexError):
         return None
+
+def sorted_verdicts(path):
+    """{key: verdict} of a followups-sorted.txt's `<key> MISS|TASTE|DIRECTION|WORKED <link or reason>` lines (mergeworthy:rules step 6);
+    a commit's URL is keyed by its sha."""
+    try: text = open(path, errors='replace').read()
+    except OSError: return {}
+    return {re.sub(r'^https?://\S+/commit/(?=[0-9a-f]{7,40}$)', '', k): v
+            for k, v in re.findall(r'^(\S+)\s+(MISS|TASTE|DIRECTION|WORKED)\s+\S', text, re.M)}
+
+def sorted_as(ref, verdicts):
+    """The verdict of a FOLLOW-UP or review ref: its exact key, or a sha prefix of 7+ characters either way; else None."""
+    sha = lambda x: re.fullmatch(r'[0-9a-f]{7,40}', x)
+    return next((v for k, v in verdicts.items() if k == ref or sha(k) and sha(ref) and (k.startswith(ref) or ref.startswith(k))), None)
 
 # The statuses T3 Code counts as active: a run's (its orchestration_v2_projection_runs_recovery_idx) and a delegated task's (its binary's widest set)
 ACTIVE_RUNS = ('queued', 'preparing', 'starting', 'running', 'waiting')
