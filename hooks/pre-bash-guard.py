@@ -7,7 +7,7 @@ import json, re, sys, os, hashlib, subprocess
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
 import shellcmd
-from shellcmd import parse, segments, prog, script, opt, api_call, discussion_post, discussion_thread_of, names_discussion_mutation, env_of, origin, plain_create, PLAIN, new_post_drafts, branch_record, no_approach, no_preflight, no_instructions_read, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Where
+from shellcmd import parse, segments, prog, script, opt, api_call, discussion_post, discussion_thread_of, names_discussion_mutation, env_of, origin, plain_create, PLAIN, new_post_drafts, branch_record, no_approach, no_preflight, no_instructions_read, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Unseen, Where
 import own_actions, steward, post_words, testpaths, threads_file, work_folder
 from t3_tasks import under_t3
 AGENT_TRAILER = re.compile(r'^Co-Authored-By: Claude', re.M | re.I)  # a commit without it is a maintainer's
@@ -937,7 +937,7 @@ for s in where.walk(segs):
         src = ops[0] if repo_of(ops[0]) else os.path.join(run_dir, os.path.expanduser(ops[0]))
         clones[os.path.normpath(os.path.join(run_dir, ops[1] if ops[1:] else re.sub(r'(\.git)?/*$', '', ops[0]).rsplit('/', 1)[-1]))] = src
     # a command named by a variable this command set (`G="git -C x"; $G commit`) is checked as what it runs
-    if prog(s)[:1] and (v := re.fullmatch(r'\$\{?(\w+)\}?', prog(s)[0])) and where.vars.get(v[1]) is not None:
+    if prog(s)[:1] and (v := re.fullmatch(r'\$\{?(\w+)\}?', prog(s)[0])) and (x := where.vars.get(v[1])) is not None and not isinstance(x, Unseen):
         s = ((segments(where.vars[v[1]]) or [[]])[0]) + prog(s)[1:]
     # a command named by an expansion (`"${a[@]}"`, `$GIT push`), or a shell running a computed script (`sh -c "$(...)"`), runs what this
     # hook can't see: it blocks when its arguments, or the variables it names, hold a guarded verb

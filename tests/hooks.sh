@@ -2592,6 +2592,19 @@ check "a loop over 64 words passes; BLOCK: over 65 it can't be told, saying the 
   "$(ibash "$IT" "for f in $(seq -s ' ' 1 64); do echo x > \$f; done" "$T/nogit") $(ibash "$IT" "for f in $(seq -s ' ' 1 65); do echo x > \$f; done" "$T/nogit") $(grep -c 'more than 64 values' "$T/ierr")"
 check "a cd to a loop's word in a subshell holds there: a relative write lands under it, outside any repo it passes; BLOCK: under the repo; BLOCK: a relative cd in the loop's own body, whose next pass starts where it ended" "0 2 2" \
   "$(ibash "$IT" "cd $T/nogit && for n in a b; do (cd \$n && echo hi > ../\$n-install.log; echo \"\$n \$?\"); done") $(ibash "$IT" "for n in $I b; do (cd \$n && echo x > f); done" "$T/nogit") $(ibash "$IT" "for v in a b; do cd \$v; echo x > f; done" "$T/nogit")"
+check "a name a command sets where the walk can't follow is unknown only from that command on: assigned after a source, or written before a read, it holds; BLOCK: after the read" "0 0 2" \
+  "$(ibash "$IT" ". $T/nogit/env.sh; W=$T/nogit; echo x > \$W/a.txt" "$T/nogit") $(F=$T/nogit ibash "$IT" "echo x > \$F/a; read F" "$T/nogit") $(F=$T/nogit ibash "$IT" "read F; echo x > \$F/a" "$T/nogit")"
+check "a loop's body starts where its last pass ended: BLOCK: a write before its cd into the repo; a relative cd after an absolute one in the body holds" "2 0" \
+  "$(ibash "$IT" "for x in a b; do echo x > f; cd $I; done" "$T/nogit") $(ibash "$IT" "for x in a; do cd $T/nogit; cd sub; echo x > f; done" "$T/nogit")"
+check "a for loop's variable assigned outside its body holds its words in it" 0 "$(ibash "$IT" "f=x; for f in a b; do echo x > $T/nogit/\$f; done" "$T/nogit")"
+check "BLOCK: a loop's body starts with what a loop inside it binds, and what the body of a function it defines and calls sets; its own variable, which each pass binds again, holds" "2 2 0" \
+  "$(ibash "$IT" "D=$T/nogit; for x in a b; do echo x > \$D/a; for D in $I; do :; done; done" "$T/nogit") $(ibash "$IT" "D=$T/nogit; for x in a b; do echo x > \$D/a; f() { D=$I; }; f; done" "$T/nogit") $(ibash "$IT" "for D in $T/nogit; do echo x > \$D/a; for D in $I; do :; done; done" "$T/nogit")"
+check "BLOCK: a loop's body that calls a function it defines starts with what every function it defines sets, one called through another too" "2 2" \
+  "$(ibash "$IT" "D=$T/nogit; for x in a b; do echo x > \$D/a; f() { g; }; g() { D=$I; }; f; done" "$T/nogit") $(ibash "$IT" "for x in a b; do echo x > a; f() { g; }; g() { cd $I; }; f; done" "$T/nogit")"
+check "BLOCK: a loop's body that calls a function defined before it starts with what every function it defines sets, as the earlier one may call it" "2 2" \
+  "$(ibash "$IT" "D=$T/nogit; f() { g; }; for x in a b; do echo x > \$D/a; g() { read D <<< $I; }; f; done" "$T/nogit") $(ibash "$IT" "f() { g; }; for x in a b; do echo x > a; g() { cd $I; }; f; done" "$T/nogit")"
+check "a function a loop's body defines but doesn't call changes nothing at the body's start: a write before it holds" "0 0" \
+  "$(ibash "$IT" "D=$T/nogit; for x in a b; do echo x > \$D/a; f() { D=$I; }; done" "$T/nogit") $(ibash "$IT" "for x in a b; do echo x > a; f() { cd $I; }; done" "$T/nogit")"
 check "BLOCK: a relative file from each of a cd's listed targets, past the cap, can't be told, saying the cap" "2 1" "$(ibash "$IT" "for a in $(seq -s ' ' 1 9); do (cd \$a; for b in $(seq -s ' ' 1 9); do echo x > \$b; done); done" "$T/nogit") $(grep -c 'more than 64 values' "$T/ierr")"
 check "a subshell's cd to a loop's word ends with it: a relative write after it lands where the line was" 0 "$(ibash "$IT" "for n in $I; do (cd \$n; true); echo y > g; done" "$T/nogit")"
 check "BLOCK: a cd in a branch over a loop's words, once it is left, can't be told; an absolute one in the loop's body lands in each word, the repo too" "2 2" \
