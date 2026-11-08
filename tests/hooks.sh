@@ -2594,6 +2594,8 @@ check "a loop's body starts where its last pass ended: BLOCK: a write before its
 check "a for loop's variable assigned outside its body holds its words in it" 0 "$(ibash "$IT" "f=x; for f in a b; do echo x > $T/nogit/\$f; done" "$T/nogit")"
 check "BLOCK: a loop's body starts with what a loop inside it binds, and what the body of a function it defines and calls sets; its own variable, which each pass binds again, holds" "2 2 0" \
   "$(ibash "$IT" "D=$T/nogit; for x in a b; do echo x > \$D/a; for D in $I; do :; done; done" "$T/nogit") $(ibash "$IT" "D=$T/nogit; for x in a b; do echo x > \$D/a; f() { D=$I; }; f; done" "$T/nogit") $(ibash "$IT" "for D in $T/nogit; do echo x > \$D/a; for D in $I; do :; done; done" "$T/nogit")"
+check "BLOCK: a loop's body that calls a function it defines starts with what every function it defines sets, one called through another too" "2 2" \
+  "$(ibash "$IT" "D=$T/nogit; for x in a b; do echo x > \$D/a; f() { g; }; g() { D=$I; }; f; done" "$T/nogit") $(ibash "$IT" "for x in a b; do echo x > a; f() { g; }; g() { cd $I; }; f; done" "$T/nogit")"
 check "a function a loop's body defines but doesn't call changes nothing at the body's start: a write before it holds" "0 0" \
   "$(ibash "$IT" "D=$T/nogit; for x in a b; do echo x > \$D/a; f() { D=$I; }; done" "$T/nogit") $(ibash "$IT" "for x in a b; do echo x > a; f() { cd $I; }; done" "$T/nogit")"
 check "BLOCK: a relative file from each of a cd's listed targets, past the cap, can't be told, saying the cap" "2 1" "$(ibash "$IT" "for a in $(seq -s ' ' 1 9); do (cd \$a; for b in $(seq -s ' ' 1 9); do echo x > \$b; done); done" "$T/nogit") $(grep -c 'more than 64 values' "$T/ierr")"
