@@ -825,17 +825,28 @@ class Where:
         if self.in_body(): self.func_vars.update(names); self.func_any = self.func_any or every
 
     def _repeat(self, loop):
-        """Enter a loop's body, which runs again after itself: what it changes outside its own isolating scopes is unknown at its start."""
-        for t in self.segs[self.at:]:
-            if loop not in t.scopes or any(x[1] == ISOLATING for x in t.scopes[t.scopes.index(loop) + 1:]):
-                continue
-            p, names = prog(t), {x.split('=', 1)[0] for x in self._assignments(t)}
-            call = p[:1] and p[0] in self.funcs
-            for n in names | (self.func_vars if call else set()): self.vars[n] = Maybe(self.vars.get(n, '')); self.changed(n)
+        """Enter a loop's body, which runs again after itself: what it changes is unknown at its start. That is what its commands change outside
+        their own isolating scopes and function bodies, the variables of the loops inside it, and the bodies of the functions it calls."""
+        def reach(t, scope):  # the scopes inside scope that t's effects pass on their way out to it, and the one that stops them, if any
+            inner = t.scopes[t.scopes.index(scope) + 1:]
+            n = next((i for i, x in enumerate(inner) if x[1] == ISOLATING or x[1] == CONDITIONAL and x[2]), len(inner))
+            return inner[:n], inner[n:n + 1]
+        body, defined = [t for t in self.segs[self.at:] if loop in t.scopes], {}
+        for t in body:  # each function the body defines: its commands whose effects reach its caller, with the scopes they pass
+            if (stop := reach(t, loop)[1]) and stop[0][1] == CONDITIONAL and not (r := reach(t, stop[0]))[1]:
+                defined.setdefault(stop[0][2], []).append((t, r[0]))
+        def take(t, near, calls=True):
+            p = prog(t)
+            call = bool(p[:1]) and p[0] in self.funcs
+            names = {x.split('=', 1)[0] for x in self._assignments(t)} | {x[2] for x in near if x[1] == LOOP and x[2]} | (self.func_vars if call else set())
+            for n in names: self.vars[n] = Maybe(self.vars.get(n, '')); self.changed(n)
             self._took(t.sets, t.sets_any or call and self.func_any)
             if p[:1] in (['cd'], ['pushd'], ['popd']) or call and self.func_moves:
                 self.dir, self.spots, self.vars['PWD'], self.vars['OLDPWD'] = None, None, Maybe(''), Maybe('')
                 self.changed(); self.changed('PWD'); self.changed('OLDPWD')
+            for f in defined.get(p[0], []) if calls and p[:1] else (): take(*f, calls=False)
+        for t in body:
+            if not (r := reach(t, loop))[1]: take(t, r[0])
 
     def enter(self, scopes):
         """Leave the scopes not in scopes, innermost first, and enter the new ones."""
@@ -850,8 +861,10 @@ class Where:
         self.scopes = self.scopes[:n]
         for x in scopes[n:]:
             self.scopes.append([x, self.dir, False, dict(self.vars), set(), dict(self.main_vars), self.spots, self.any])
-            if x[1] == LOOP and x[2]: self.vars[x[2]] = self._listed(x[3]); self.changed(x[2])  # each pass gives it another of its words
-            if x[1] == LOOP: self._repeat(x)
+            if x[1] == LOOP:
+                words = x[2] and self._listed(x[3])  # its words are expanded once, before the first pass
+                self._repeat(x)
+                if x[2]: self.vars[x[2]] = words; self.changed(x[2])  # each pass gives it another of its words
             if x[1] == CONDITIONAL and x[2]: self._bind(x[2]); self._at_calls(x[2])
             if x[2] == STDIN: self.dir, self.spots = None, None
             if x[2] in (STDIN, CHILD): self.vars = {k: Maybe(v) for k, v in self.vars.items()} | {'PWD': _dir(self.dir if self.spots == (self.dir,) else None)}  # a shell's PWD is where it starts
