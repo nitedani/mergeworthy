@@ -377,13 +377,12 @@ if watcher_on and not paused and not child:
         try: log = open(os.path.join(wd, 'events.log'), errors='replace').read()
         except OSError: continue
         f = os.path.join(wd, 'followups-sorted.txt')
-        done = re.findall(r'^(\S+)\s+(?:MISS|TASTE|DIRECTION|WORKED)\s+\S', open(f, errors='replace').read() if os.path.exists(f) else '', re.M)
+        done = steward.sorted_verdicts(f)
         late = [k for k, at in re.findall(r'^### (?:FOLLOW-UP|MAINTAINER REVIEW) [^:\n]+: (\S+) by .*  at (\S+Z)$', log, re.M)
-                if time.time() - datetime.datetime.fromisoformat(at.replace('Z', '+00:00')).timestamp() > 1800
-                and not any(v == k or (len(v) >= 7 and k[:7] == v[:7] and (v.startswith(k) or k.startswith(v))) for v in done)]
+                if time.time() - datetime.datetime.fromisoformat(at.replace('Z', '+00:00')).timestamp() > 1800 and not steward.sorted_as(k, done)]
         if late:
             print(f"These FOLLOW-UP and MAINTAINER REVIEW events in {wd}/events.log are unsorted after 30 minutes: {', '.join(dict.fromkeys(late))}. Brief the sort "
-                  f"(mergeworthy:rules step 6) and record each as `<sha, PR or review URL> MISS|TASTE|WORKED|DIRECTION <link or reason>` in {f}.", file=sys.stderr)
+                  f"(mergeworthy:rules step 6) and record each as `<sha, commit, PR or review URL> MISS|TASTE|WORKED|DIRECTION <link or reason>` in {f}.", file=sys.stderr)
             sys.exit(2)
 # The task isn't finished while its scope.md has an open box (task step 10 walks them). A turn ends with one only when something
 # this session armed will wake it for the work (a live Monitor, a background command, an agent it launched) or with a

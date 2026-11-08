@@ -24,14 +24,13 @@ that `round` writes <folder>'s watcher files, `metrics` appends its records to <
 import glob, json, os, re, statistics, subprocess, sys, time
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'hooks'))
 from gh_common import BADGE, MAINTAINER, epoch, gh_pages, iso, own_accounts, read, search
+from steward import sorted_as, sorted_verdicts
 
 HOME = os.path.expanduser('~')
 NOW = time.time()
 CORRECTION = re.compile(r"\b(why (?:did|didn't|are|aren't|is|isn't|not|do)|not good|that's wrong|wrong|you (?:forgot|missed|skipped)|stop|revert|undo|again\?|nem jó|miért|rossz|állj|megint)\b", re.I)
 PR_URL = re.compile(r'github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)')
 EVENT = re.compile(r'^### (?:FOLLOW-UP|MAINTAINER REVIEW) ([\w.-]+/[\w.-]+#\d+(?:, #\d+)*): (\S+) by .*$', re.M)  # one commit can touch several PRs: o/r#5, #6
-VERDICT = re.compile(r'^(\S+)\s+(MISS|TASTE|DIRECTION|WORKED)\b', re.M)
-SHA = re.compile(r'[0-9a-f]{7,40}')
 # a pass we owed: a linked prompt, or a refactor, simplify or review round
 PASS = re.compile(r"(?:apply|appy)\b[^\n]{0,10}https?://|(?:do|run)\s+(?:another|one\s+more|one\s+last|a\s+new)\s+(?:round|pass|review)\b"
                   r"|look\s+for\s+(?:opportunities|ways)\s+to\s+(?:simplify|refactor)\b"
@@ -51,15 +50,6 @@ def live(d):
         return True
     except (IndexError, ValueError, OSError):
         return False
-
-
-def verdicts(d):
-    return dict(VERDICT.findall(read(os.path.join(d, 'followups-sorted.txt'))))
-
-
-def sorted_as(key, done):
-    """The verdict of a FOLLOW-UP or review key: an exact line, or a sha prefix of 7+ characters either way."""
-    return next((v for k, v in done.items() if k == key or SHA.fullmatch(k) and SHA.fullmatch(key) and (k.startswith(key) or key.startswith(k))), None)
 
 
 def idle(d):
@@ -89,7 +79,7 @@ def owed():
             l = l.strip()
             if l and not l.startswith('#') and not re.match(r'(?:[-*]\s+)?done:', l, re.I) and not waiting(l):
                 print(f"{tag}\treply\t{l}")
-        done = verdicts(d)
+        done = sorted_verdicts(os.path.join(d, 'followups-sorted.txt'))
         for key, ref in dict.fromkeys(EVENT.findall(read(os.path.join(d, 'events.log')))):
             if not sorted_as(ref, done):
                 print(f"{tag}\tsort\t{key} {ref}")
@@ -223,7 +213,7 @@ def followups():
     """{PR key: [verdicts]} from every work folder's FOLLOW-UP events and their sorted lines."""
     out = {}
     for d in folders():
-        done = verdicts(d)
+        done = sorted_verdicts(os.path.join(d, 'followups-sorted.txt'))
         for key, ref in dict.fromkeys(EVENT.findall(read(os.path.join(d, 'events.log')))):
             v = sorted_as(ref, done)
             repo = key.split('#', 1)[0]
