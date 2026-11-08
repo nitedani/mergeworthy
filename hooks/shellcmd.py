@@ -144,7 +144,7 @@ def _stages(s, src):
 
 def _readers(tree, src):
     """The argv of the stages after the first, by the first's statement, of each plain pipeline (_stages) that is a statement of the line's own list
-    or a side of one's && and || followed only by echo or printf of literal text; a substitution such a pipeline's first stage only prints (printer) has that pipeline as readers too."""
+    or a side of one's && and || followed only by echo or printf of literal text; a substitution such a statement only prints (printer, a whole statement on its own) has it as a reader too."""
     out = {}
     def first(s):
         while (s.get('Cmd') or {}).get('Type') == 'BinaryCmd':
@@ -162,10 +162,10 @@ def _readers(tree, src):
         for i, x in enumerate(sides):
             if (stages := _stages(x, src)) and all(map(message, sides[i + 1:])):
                 out[id(first(x))] = stages[1:]
-            for w in (first(x)['Cmd'].get('Args') or [])[1:] if stages and printer(stages[0]) else ():
+            for w in (x['Cmd'].get('Args') or [])[1:] if stages and len(stages) == 1 and printer(stages[0]) else ():
                 for p in [q for part in w.get('Parts') or [] for q in (part.get('Parts') or [] if part.get('Type') == 'DblQuoted' else [part])]:
                     if p.get('Type') == 'CmdSubst' and len(p.get('Stmts') or []) == 1 and (inner := _stages(p['Stmts'][0], src)):
-                        out[id(first(p['Stmts'][0]))] = inner[1:] + stages  # what reads its output: its own later stages, the printer and the printer's readers
+                        out[id(first(p['Stmts'][0]))] = inner[1:] + stages
     return out
 
 
