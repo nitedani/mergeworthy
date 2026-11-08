@@ -827,7 +827,7 @@ class Where:
     def _repeat(self, loop):
         """Enter a loop's body, which runs again after itself: what it changes is unknown at its start. That is what its commands change outside
         their own isolating scopes and function bodies, the variables of the loops inside it, the bodies of functions defined before it that it calls,
-        and, when it calls one it defines, the body of each function it defines."""
+        and, when it calls any function, the body of each function it defines."""
         def reach(t, scope):  # the scopes inside scope that t's effects pass on their way out to it, and the one that stops them, if any
             inner = t.scopes[t.scopes.index(scope) + 1:]
             n = next((i for i, x in enumerate(inner) if x[1] == ISOLATING or x[1] == CONDITIONAL and x[2]), len(inner))
@@ -849,7 +849,7 @@ class Where:
         for t in body:
             if not (r := reach(t, loop))[1]:
                 take(t, r[0])
-                calls = calls or prog(t)[:1] and prog(t)[0] in defined
+                calls = calls or prog(t)[:1] and (prog(t)[0] in defined or prog(t)[0] in self.funcs)
         for t, near in [f for fs in defined.values() for f in fs] if calls else ():
             take(t, near)
 
