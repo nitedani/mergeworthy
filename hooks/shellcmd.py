@@ -224,13 +224,13 @@ def _scope(kind, name='', items=()):
 
 class Seg(list):
     """A simple command's argv; scopes: the (id, kind, function name) of each scope it runs in, outermost first, for Where; loop: whether it
-    runs inside a while or until loop; unseen: the
-    names its script, or a script running it, may set where Where can't follow (_unseen), whose values it never trusts; nested: whether
+    runs inside a while or until loop; sets, sets_any: the names it sets where Where can't follow, and whether it may set any (_effects), which
+    Where takes from then on; nested: whether
     it is in a script the line runs (`eval`'s included), where a plain walk loses the dir (Where); after: each statement that exited 0 if this
     one runs at all, being before it in a chain of && (_passed); stmt: the statement it runs as, for after to name; readers: the argv of each
     command its output is piped to, when nothing else takes its output or status (_readers), else None; piped: whether its output goes into
     a pipe, which also hides its exit."""
-    scopes, loop, unseen, nested, after, stmt, readers, piped = (), False, frozenset(), False, (), None, None, False
+    scopes, loop, sets, sets_any, nested, after, stmt, readers, piped = (), False, frozenset(), False, False, (), None, None, False
 
 
 def _seg(argv, scopes=(), loop=False, after=(), stmt=None, piped=False):
@@ -251,14 +251,6 @@ def _kind(x, k):
     return None
 
 
-class _Every:
-    """Every name: what _unseen gives for a line that may set any variable."""
-    def __contains__(self, name): return True
-
-
-EVERY = _Every()
-
-
 SETTERS = ('read', 'mapfile', 'readarray', 'unset', 'getopts', 'wait')  # builtins that set the variables they name (printf: -v's)
 DECLARING = ('export', 'readonly', 'declare', 'typeset', 'local')  # `D=x export D` keeps D=x
 PARAMS = tuple('123456789')
@@ -271,31 +263,33 @@ def _name(w):
     return m and m[0]
 
 
-def _unseen(tree, src):
-    """The names a script may set where Where can't follow, read from its syntax: a name assigned other than by a command of only
-    `NAME=value` words, or those after export, readonly, declare or a function's local (export -n D=x, typeset, D+=x, D[1]=x), a command's own `D=x` for
-    a function or a shell's script to read or a declaring builtin to keep, which `D=x cmd` for any other cmd is not, one a builtin sets (read, mapfile, printf -v, unset, getopts, wait -p),
-    ${D:=x}, an arithmetic assignment ((( )), $(( )), let), a for loop's variable assigned anywhere, and the parameters after `set --` or a
-    shift that isn't a statement of a function's own { }, with a number or nothing (Where.step's); EVERY when it runs eval,
-    source, . or trap, which can set any. Heredoc bodies and quoted text are words, never read as commands."""
-    names, assigned, loops, shifts, funcs, envs, todo = set(), set(), set(), set(), set(), [], [(tree, False)]  # each node, and whether it is in a function's body
+def _effects(tree, src):
+    """What each statement sets where Where's walk can't follow, by its id: (the names, whether it may set any), read from its syntax. A name is set
+    so when assigned other than by a command of only `NAME=value` words, or those after export, readonly, declare or a function's local (export -n D=x,
+    typeset, D+=x, D[1]=x), by a command's own `D=x` for a function or a shell's script to read or a declaring builtin to keep, which `D=x cmd` for any
+    other cmd is not, by a builtin that sets it (read, mapfile, printf -v, unset, getopts, wait -p), ${D:=x} or an arithmetic assignment ((( )), $(( )),
+    let); the parameters after `set --` or a shift that isn't a statement of a function's own { }, with a number or nothing (Where.step's); eval,
+    source, . and trap may set any. Heredoc bodies and quoted text are words, never read as commands."""
+    out, shifts, funcs, envs, todo = {}, set(), set(), [], [(tree, None, False)]  # each node, the statement it is part of, and whether it is in a function's body
     while todo:
-        y, body = todo.pop()
+        y, stmt, body = todo.pop()
         if isinstance(y, list):
-            todo += [(x, body) for x in y]
+            todo += [(x, stmt, body) for x in y]
             continue
         if not isinstance(y, dict):
             continue
+        stmt = id(y) if 'Cmd' in y else stmt
+        names = out.setdefault(stmt, [set(), False])[0]
         cmd, t = y.get('Cmd') or {}, y.get('Type')
         plain = lambda assigns: not y.get('Redirs') and not any(a.get('Index') or a.get('Append') or a.get('Naked') for a in assigns)  # Where.step's: D=x, not D[1]=x, D+=x or D=x >f
         if cmd.get('Type') == 'CallExpr':
             assigns = [a['Name']['Value'] for a in cmd.get('Assigns') or [] if a.get('Name')]
             argv = prog([_word(w, src) for w in cmd.get('Args') or []])
-            if cmd.get('Args'): envs.append((assigns, argv))
-            else: (assigned if plain(cmd.get('Assigns') or []) else names).update(assigns)
+            if cmd.get('Args'): envs.append((stmt, assigns, argv))
+            elif not plain(cmd.get('Assigns') or []): names.update(assigns)
             name = os.path.basename(argv[0]) if argv else ''
             if name in ('eval', 'source', '.', 'trap'):
-                return EVERY
+                out[stmt][1] = True
             if name == 'shift' and (id(y) not in shifts or len(argv) > 2 or argv[1:] and not argv[1].isdigit()) or \
                     name == 'set' and any(x in ('-', '--') or x[:1] not in ('-', '+') and not re.fullmatch(r'[-+]\w*o', argv[i]) for i, x in enumerate(argv[1:])):
                 names.update(PARAMS)
@@ -306,21 +300,21 @@ def _unseen(tree, src):
         elif cmd.get('Type') == 'DeclClause':
             args = cmd.get('Args') or []
             variant = cmd['Variant']['Value']
-            taken = (variant in ('export', 'readonly', 'declare') or variant == 'local' and body) and plain(args)  # Where.step's: export D=x, not export -n D=x
-            (assigned if taken else names).update(a['Name']['Value'] if a.get('Name') else _name(_word(a['Value'], src)) for a in args)
+            if not ((variant in ('export', 'readonly', 'declare') or variant == 'local' and body) and plain(args)):  # Where.step's: export D=x, not export -n D=x
+                names.update(a['Name']['Value'] if a.get('Name') else _name(_word(a['Value'], src)) for a in args)
         if t == 'ParamExp' and (y.get('Exp') or {}).get('Op') in ('=', ':=') and y.get('Param'):
             names.add(y['Param']['Value'])
         if t in ('BinaryArithm', 'UnaryArithm') and y.get('Op') in ASSIGNS and (y.get('X') or {}).get('Type') == 'Word':
             names.add(_name(_word(y['X'], src)))
-        if t == 'ForClause' and (y.get('Loop') or {}).get('Name'):
-            loops.add(y['Loop']['Name']['Value'])
         if t == 'FuncDecl':
             funcs.add(y['Name']['Value'])
         if t == 'FuncDecl' and y['Body']['Cmd'].get('Type') == 'Block':
             shifts.update(map(id, y['Body']['Cmd'].get('Stmts') or []))
-        todo += [(v, body or t == 'FuncDecl') for v in y.values() if isinstance(v, (dict, list))]
-    names.update(n for assigns, argv in envs if argv[:1] and (argv[0] in funcs or argv[0] in DECLARING) or _nested(argv) is not None or reads_stdin(argv) for n in assigns)
-    return frozenset(names - {None} | assigned & loops)
+        todo += [(v, stmt, body or t == 'FuncDecl') for v in y.values() if isinstance(v, (dict, list))]
+    for stmt, assigns, argv in envs:
+        if argv[:1] and (argv[0] in funcs or argv[0] in DECLARING) or _nested(argv) is not None or reads_stdin(argv):
+            out[stmt][0].update(assigns)
+    return {k: (frozenset(n - {None}), a) for k, (n, a) in out.items() if k is not None and (n - {None} or a)}
 
 
 def _passed(s, src):
@@ -333,9 +327,9 @@ def _passed(s, src):
     return _passed(c['X'], src) + _passed(c['Y'], src) if c.get('Type') == 'BinaryCmd' and c.get('Op') == '&&' else ()
 
 
-def _calls(node, src):
-    """(the argv of every simple command under node, in order, each a Seg; the statements each heredoc of them is read by:
-    (redirect, top statement, whether it is in a loop))."""
+def _calls(node, src, effects={}):
+    """(the argv of every simple command under node, in order, each a Seg with its effects (_effects'), and an empty one for any other statement that
+    has one, `(( n++ ))`; the statements each heredoc of them is read by: (redirect, top statement, whether it is in a loop))."""
     segs, docs, stack = [], [], [(node, None, (), False, (), False)]
     while stack:
         x, top, n, loop, after, piped = stack.pop()
@@ -355,6 +349,9 @@ def _calls(node, src):
             segs.append(_seg([_assign(a, src) for a in cmd.get('Assigns') or []] + [_word(a, src) for a in cmd.get('Args') or []] + words, inner['Cmd'], loop, after, x, piped))
         elif cmd.get('Type') == 'DeclClause':
             segs.append(_seg([cmd['Variant']['Value']] + [_assign(a, src) for a in cmd.get('Args') or []] + words, inner['Cmd'], loop, after, x, piped))
+        elif id(x) in effects:
+            segs.append(_seg([], inner['Cmd'], loop, after, x, piped))
+        if id(x) in effects: segs[-1].sets, segs[-1].sets_any = effects[id(x)]
         docs += [(r, top or x, loop) for r in redirs if r.get('Hdoc')]
         chained = _passed(x['X'], src) if x.get('Type') == 'BinaryCmd' and x.get('Op') == '&&' else ()
         stack += [(v, None if k == 'Stmts' else (top or x) if 'Cmd' in x else top, inner[k], loop, after + chained if k == 'Y' else after,  # each statement of a list is a top statement
@@ -363,15 +360,15 @@ def _calls(node, src):
     return segs, docs
 
 
-def _segments(tree, src, depth):
+def _segments(tree, src, depth, effects):
     """(every simple command the tree runs, with each heredoc's commands: its substitutions, or all of it when a shell
     without a script reads it (`bash <<EOF`, `cat <<EOF | sh`); the error of a heredoc script that doesn't parse)."""
-    (segs, docs), err = _calls(tree, src), ''
+    (segs, docs), err = _calls(tree, src, effects), ''
     for r, top, loop in docs:
         if any(reads_stdin(a) for a in _calls(top, src)[0]) and depth < 4:
             s, e = parse(''.join(_src(p, src) for p in r['Hdoc'].get('Parts') or []), depth + 1, _scope(ISOLATING, STDIN), loop)
         else:
-            s, e = _segments(r['Hdoc'], src, depth)
+            s, e = _segments(r['Hdoc'], src, depth, effects)
         segs, err = segs + s, err or e
     return segs, err
 
@@ -459,14 +456,14 @@ def parse(cmd, depth=0, scopes=(), loop=False):
         if r.returncode:
             raise ValueError('bash syntax error at ' + r.stderr.decode(errors='replace').strip().replace('<standard input>:', ''))
         tree = json.loads(r.stdout)
-        (segs, err), unseen = _segments(tree, cmd.encode(), depth), _unseen(tree, cmd.encode())
+        segs, err = _segments(tree, cmd.encode(), depth, _effects(tree, cmd.encode()))
         if not depth:  # a script's own list may be what a substitution reads
             readers = _readers(tree, cmd.encode())
             for x in segs: x.readers = readers.get(id(x.stmt))
     except ValueError as e:  # also a JSON error
-        segs, err, unseen = [_seg(x, _scope(CONDITIONAL)) for x in _rough(cmd)], str(e), EVERY
+        segs, err = _unparsed(cmd), str(e)
     except Exception as e:  # no parser: nothing is checked as parsed, and a guarded verb blocks
-        segs, err, unseen = [_seg(x, _scope(CONDITIONAL)) for x in _rough(cmd)], f"mergeworthy's shell parser (shfmt, {REQUIREMENTS}) can't run: {e}", EVERY
+        segs, err = _unparsed(cmd), f"mergeworthy's shell parser (shfmt, {REQUIREMENTS}) can't run: {e}"
     for x in segs: x.scopes, x.loop = scopes + x.scopes, x.loop or loop
     out = []
     for s in segs:  # each command, then what it runs: find's -exec commands, a script
@@ -485,9 +482,14 @@ def parse(cmd, depth=0, scopes=(), loop=False):
             for x in inner: x.nested, x.piped = True, x.piped or s.piped
             out += inner
             err = err or e
-    # a script's names hold for its own commands and the scripts it runs, never for its shell's: a child shell sets none of them (eval is EVERY)
-    for x in out: x.unseen = EVERY if EVERY in (x.unseen, unseen) else x.unseen | unseen
     return out, err
+
+
+def _unparsed(cmd):
+    """The segments of a command that doesn't parse: _rough's, each in a conditional scope of its own and taken to set any variable."""
+    segs = [_seg(x, _scope(CONDITIONAL)) for x in _rough(cmd)]
+    for x in segs: x.sets_any = True
+    return segs
 
 
 def segments(cmd):
@@ -567,6 +569,10 @@ class Maybe(str):
     """A value a variable may hold or not (set in a branch or loop): Where.expand leaves the variable as written."""
 
 
+class Unseen(Maybe):
+    """A variable's value after a command set it where Where can't follow (Seg.sets)."""
+
+
 class Unknown(str):
     """What Where.values and Where.files give for a word the line doesn't list the values of; its text says why, when there is more to say."""
     def __bool__(self): return False
@@ -594,11 +600,11 @@ class Where:
     knows), a path holding `$(git rev-parse --show-toplevel)` and `git -C <dir>`. A cd holds for the later commands of its scope (Seg.scopes) and
     the scopes inside it; leaving an isolating scope restores the dir and the line's variables from before it, leaving a branch or
     loop makes each variable set in it a Maybe. After any other dir change (a cd in a scope that may run it or not, once the scope
-    is left; a call to a function the line defines, when one of their bodies changes dir; a relative one in a loop; a target
+    is left; a call to a function the line defines, when one of their bodies changes dir; a loop's body that changes dir, at its start; a target
     holding an expansion it can't resolve; `cd -`, popd or a stack rotation) the dir is None until a cd to an absolute path, and a
     check that needs it blocks.
     That following is trust a plain walk doesn't give, so it is spent only where its variables are proven (strict expansion: Maybe,
-    Seg.unseen): a cd nested in a scope or once the plain walk lost the dir, and a written file (files). The
+    Unseen): a cd nested in a scope or once the plain walk lost the dir, and a written file (files). The
     plain walk (main_dir, main_vars: every NAME=value the line runs, but an isolating scope's once it is left, then the environment's)
     decides each other cd, at the top level while it knows the dir, and every other expansion, as it did before scopes: a nested cd,
     `cd -` or popd loses its dir for good.
@@ -609,9 +615,10 @@ class Where:
     def __init__(self, cwd):
         self.funcs, self.func_vars, self.func_moves = set(), set(), False  # the functions the line defines, the variables their bodies set, whether one changes dir
         self.dry = False
-        self.args, self.called = {}, {}  # each function's calls, each (its spots, the values of its parameters: _args): from the dry walk before this one, and seen by this walk
+        self.args, self.called = {}, {}  # each function's calls, each (its spots, the values of its parameters: _args, the names it sets for the body): from the dry walk before this one, and seen by this walk
         self.main_dir, self.main_vars = cwd, {'PWD': cwd}
-        self.dir, self.moved, self.vars, self.scopes, self.unseen, self.spots = cwd, False, {'PWD': cwd}, [], frozenset(), (cwd,)  # each scope entered: [(id, kind, name), dir before it, whether a cd ran in it, variables before it, variables set in it, main_vars before it, spots before it]
+        self.func_any = False  # whether a body may set any variable
+        self.dir, self.moved, self.vars, self.scopes, self.any, self.spots = cwd, False, {'PWD': cwd}, [], False, (cwd,)  # any: whether a command may have set any variable; each scope entered: [(id, kind, name), dir before it, whether a cd ran in it, variables before it, variables set in it, main_vars before it, spots before it, any before it]
 
     def expand(self, w, strict=False):
         """Word w with what it can read put in (_read), every other part as written."""
@@ -629,7 +636,7 @@ class Where:
 
     def _read(self, part, strict, base=None):
         """The text of a part of a word (Word.parts): a literal, or a variable the plain walk knows (main_vars), else the environment's; strict: the scoped
-        ones (vars) instead, none the line may set unseen (Seg.unseen). None for a value it can't tell (a Maybe) and any other part, but TOPLEVEL run in base."""
+        ones (vars) instead, none set where it can't follow (Unseen, any). None for a value it can't tell (a Maybe) and any other part, but TOPLEVEL run in base."""
         kind, x = part[0], part[1:2] and part[1]
         if kind == 'lit': return x
         if kind == 'outer':
@@ -638,13 +645,14 @@ class Where:
         if kind == 'sub': return _toplevel(base) if base and x == TOPLEVEL else None
         if kind != 'var': return None
         v = (self.vars if strict else self.main_vars).get(x, os.environ.get(x))
-        return None if isinstance(v, Maybe) or strict and x in self.unseen else v
+        return None if isinstance(v, Maybe) or strict and self.any and x not in self.vars else v
 
     def _in_parent(self, read):
         """What read gives with the variables of the shell that started the current child shell, as they stood then."""
-        vars, self.vars = self.vars, next((x[3] for x in reversed(self.scopes) if x[0][2] == CHILD), self.vars)
+        was = self.vars, self.any
+        self.vars, self.any = next(((x[3], x[7]) for x in reversed(self.scopes) if x[0][2] == CHILD), was)
         try: return read()
-        finally: self.vars = vars
+        finally: self.vars, self.any = was
 
     def files(self, w):
         """The paths a file the current command names, word w, may be, each resolved from each of spots. An Unknown when one's folder can't be told:
@@ -707,7 +715,7 @@ class Where:
         """${n<op><word>}: its default, or what a pattern leaves of each value; of a value it can't tell, only ${n##*/} and ${n%%/*} are known."""
         vals = self._var(n)
         lost = isinstance(vals, Unknown)
-        if op in ('-', ':-') and lost and n.isidentifier() and n not in self.vars and n not in os.environ and n not in self.unseen:
+        if op in ('-', ':-') and lost and n.isidentifier() and n not in self.vars and n not in os.environ and not self.any:
             return self.values(word)
         if op in ('-', ':-', '?', ':?'):
             if lost or '' not in vals or op != ':-' and not (op == '-' and n in PARAMS):  # '' in a parameter may be a word the call left out
@@ -760,11 +768,11 @@ class Where:
         return (PIECE,) if gone or not any(isinstance(v, Unknown) or any('/' in y for y in v) for v in said) else UNKNOWN
 
     def _var(self, n):
-        """The values variable n holds here (Seg.unseen: none it may hold unseen)."""
+        """The values variable n holds here (none set where it can't follow: Unseen, any)."""
         if n in SPECIALS and n not in self.vars:
             return (PIECE,)
         v = self.vars.get(n, os.environ.get(n))
-        if n in self.unseen: return Unknown(f"`${n}` holds a value set where it can't follow")
+        if isinstance(v, Unseen) or self.any and n not in self.vars: return Unknown(f"`${n}` holds a value set where it can't follow")
         if v is None: return Unknown(f"`${n}` isn't set on this line")
         if isinstance(v, Many): return Unknown(f'`${n}` holds {v.vals}') if isinstance(v.vals, Unknown) else v.vals
         if isinstance(v, Maybe): return Unknown(f'`${n}` may hold another value here: a branch, loop or function sets it, or a child shell reads it')
@@ -791,7 +799,7 @@ class Where:
     def walk(self, segs):
         """Each of segs (parse()'s), with self moved to where it runs; self takes it once the caller is done with it."""
         funcs = {x[2] for t in segs for x in t.scopes if x[2] and x[1] == CONDITIONAL}
-        self.args = {f: [(None, [UNKNOWN] * CAP)] for f in funcs}  # the first dry walk knows nothing of any call
+        self.args = {f: [(None, [UNKNOWN] * CAP, ())] for f in funcs}  # the first dry walk knows nothing of any call
         for _ in range(2 if funcs else 0):
             dry = Where(self.dir)
             dry.dry, dry.funcs, dry.args = True, set(funcs), self.args  # one body may call a function defined after it
@@ -800,26 +808,50 @@ class Where:
         yield from self._walk(segs)
 
     def _walk(self, segs):
-        for t in segs:
-            self.unseen = t.unseen
+        self.segs = segs
+        for self.at, t in enumerate(segs):
             self.enter(t.scopes)
             yield t
             self.step(t)
+            self._took(t.sets, t.sets_any)
+
+    def _took(self, names, every=False):
+        """Make names, or with every each variable, unknown from here on: a command set them where it can't follow (Seg.sets)."""
+        if every:
+            self.any, self.vars = True, {k: Unseen(v) for k, v in self.vars.items()}
+        for n in names:
+            self.vars[n] = Unseen(self.vars.get(n, ''))
+            self.changed(n)
+        if self.in_body(): self.func_vars.update(names); self.func_any = self.func_any or every
+
+    def _repeat(self, loop):
+        """Enter a loop's body, which runs again after itself: what it changes outside its own isolating scopes is unknown at its start."""
+        for t in self.segs[self.at:]:
+            if loop not in t.scopes or any(x[1] == ISOLATING for x in t.scopes[t.scopes.index(loop) + 1:]):
+                continue
+            p, names = prog(t), {x.split('=', 1)[0] for x in self._assignments(t)}
+            call = p[:1] and p[0] in self.funcs
+            for n in names | (self.func_vars if call else set()): self.vars[n] = Maybe(self.vars.get(n, '')); self.changed(n)
+            self._took(t.sets, t.sets_any or call and self.func_any)
+            if p[:1] in (['cd'], ['pushd'], ['popd']) or call and self.func_moves:
+                self.dir, self.spots, self.vars['PWD'], self.vars['OLDPWD'] = None, None, Maybe(''), Maybe('')
+                self.changed(); self.changed('PWD'); self.changed('OLDPWD')
 
     def enter(self, scopes):
         """Leave the scopes not in scopes, innermost first, and enter the new ones."""
         n = 0
         while n < min(len(self.scopes), len(scopes)) and self.scopes[n][0] == scopes[n]: n += 1
-        for (_, kind, name, *_), before, moved, vars, set_in, main_vars, spots in reversed(self.scopes[n:]):
+        for (_, kind, name, *_), before, moved, vars, set_in, main_vars, spots, any_ in reversed(self.scopes[n:]):
             self.dir = before if kind == ISOLATING else None if moved else self.dir
             self.spots = None if moved and kind != ISOLATING and not (self.dry and kind == CONDITIONAL and name) else spots  # a call's spots aren't lost to a body not yet called
             self.vars = vars if kind == ISOLATING else {**self.vars, **{v: Maybe(self.vars.get(v, '')) for v in set_in}}
-            self.main_vars = main_vars if kind == ISOLATING else self.main_vars
+            self.main_vars, self.any = (main_vars, any_) if kind == ISOLATING else (self.main_vars, self.any)
         self.funcs |= {x[2] for x in scopes[n:] if x[2] and x[1] == CONDITIONAL}
         self.scopes = self.scopes[:n]
         for x in scopes[n:]:
-            self.scopes.append([x, self.dir, False, dict(self.vars), set(), dict(self.main_vars), self.spots])
+            self.scopes.append([x, self.dir, False, dict(self.vars), set(), dict(self.main_vars), self.spots, self.any])
             if x[1] == LOOP and x[2]: self.vars[x[2]] = self._listed(x[3]); self.changed(x[2])  # each pass gives it another of its words
+            if x[1] == LOOP: self._repeat(x)
             if x[1] == CONDITIONAL and x[2]: self._bind(x[2]); self._at_calls(x[2])
             if x[2] == STDIN: self.dir, self.spots = None, None
             if x[2] in (STDIN, CHILD): self.vars = {k: Maybe(v) for k, v in self.vars.items()} | {'PWD': _dir(self.dir if self.spots == (self.dir,) else None)}  # a shell's PWD is where it starts
@@ -844,8 +876,10 @@ class Where:
         return False
 
     def _bind(self, f):
-        """$1.. in function f's body: what any call of it gives each, '' past a call's words, nothing known without a call."""
-        calls = [c for _, c in self.args.get(f, ())] or [[Unknown('a value no call on this line gives')] * CAP]
+        """$1.. in function f's body: what any call of it gives each, '' past a call's words, nothing known without a call; a name a call sets for it
+        (`D=x f`) can't be told."""
+        calls = [c for _, c, _ in self.args.get(f, ())] or [[Unknown('a value no call on this line gives')] * CAP]
+        for n in {n for *_, env in self.args.get(f, ()) for n in env}: self.vars[n] = Maybe(self.vars.get(n, '')); self.changed(n)
         for i, n in enumerate(PARAMS):
             vals = [c[i] if i < len(c) else ('',) for c in calls]
             lost = next((v for v in vals if isinstance(v, Unknown)), None)
@@ -854,7 +888,7 @@ class Where:
 
     def _at_calls(self, f):
         """Function f's body writes from where its calls run: every call's spots, None when one's can't be told, the definition's without a call."""
-        spots = [s for s, _ in self.args.get(f, ())]
+        spots = [s for s, *_ in self.args.get(f, ())]
         spots = None if None in spots else tuple(dict.fromkeys(x for s in spots for x in s)) or self.spots
         if spots != self.spots:
             self.spots, self.vars['PWD'], self.vars['OLDPWD'] = spots, Many('$PWD', spots or UNKNOWN), Maybe('')
@@ -871,9 +905,13 @@ class Where:
             out.append(vals)
         return out
 
-    def step(self, t):
+    def _assignments(self, t):
+        """The NAME=value words of argv t that Where follows: a command of only those, or those after export, readonly, declare or a function's local."""
         words = t[1:] if t[:1] in (['export'], ['readonly'], ['declare']) or t[:1] == ['local'] and self.in_body() else t  # local fails outside a function
-        if words and all(re.match(r'^\w+=', x) for x in words):
+        return words if words and all(re.match(r'^\w+=', x) for x in words) else []
+
+    def step(self, t):
+        if words := self._assignments(t):
             for x in words:  # each value expanded as it is assigned
                 n = x.split('=', 1)[0]
                 v, vals = x[len(n) + 1:], self.values(x)
@@ -888,22 +926,23 @@ class Where:
         if p[:1] == ['shift'] and self.scopes and self.scopes[-1][0][2] in self.funcs:  # any other shift is unseen
             f, a = self.scopes[-1][0][2], operands(p[1:])
             n = int(a[0]) if a and a[0].isdigit() else 1
-            self.args[f] = [(s, c[n:] if len(c) >= n else c) for s, c in self.args.get(f, [])]  # bash's shift past the words fails and shifts nothing
+            self.args[f] = [(s, c[n:] if len(c) >= n else c, env) for s, c, env in self.args.get(f, [])]  # bash's shift past the words fails and shifts nothing
             self._bind(f)
             return
         if p[:1] and p[0] in self.funcs:  # a call runs a body here, maybe calling another: what any of them changes can't be told
-            self.called.setdefault(p[0], []).append((self.spots, self._args(operands(p[1:]))))
+            env = [x.split('=', 1)[0] for x in t[:len(t) - len(p)] if re.match(r'^\w+=', x)]
+            self.called.setdefault(p[0], []).append((self.spots, self._args(operands(p[1:])), env))
             if self.func_moves:
                 self.dir, self.moved, self.spots = None, True, None
                 self.changed()
             for v in self.func_vars: self.vars[v] = Maybe(self.vars.get(v, '')); self.changed(v)
+            if self.func_any: self._took((), True)
             return
         if p[:1] not in (['cd'], ['pushd'], ['popd']):
             return
         self.moved, self.func_moves = True, self.func_moves or self.reaches_caller()
         a = [x for x in operands(p[1:]) if x not in ('-P', '-L', '-e', '--')]
         to = a[0] if a else '~' if p[0] == 'cd' else '-'
-        kinds = [x[0][1] for x in self.scopes if x[0][1] != CONDITIONAL]
         self.changed()
         old, here = (self.dir, self.main_dir), self.spots == (self.dir,)
         relative = not os.path.isabs(os.path.expanduser(self.expand(to, True)))
@@ -911,11 +950,11 @@ class Where:
         main = None if nested or p[0] == 'popd' or to[:1] in '-+' or self.main_dir is None else (q := self.path(to, self.main_dir)) and os.path.normpath(q)
         if not nested and self.main_dir is not None:
             self.dir = main
-        elif p[0] == 'popd' or to[:1] in '-+' or kinds[-1:] == [LOOP] and relative:
+        elif p[0] == 'popd' or to[:1] in '-+':
             self.dir = None
         else:
             self.dir = (q := self.path(to, strict=True)) and os.path.normpath(q)
-        self.main_dir, self.spots = main, (self.dir,) if self.dir is not None and (old[0] is None or self.spots == (old[0],)) else self._spots(p[0], to, kinds)  # a body's spots aren't its dir
+        self.main_dir, self.spots = main, (self.dir,) if self.dir is not None and (old[0] is None or self.spots == (old[0],)) else self._spots(p[0], to)  # a body's spots aren't its dir
         for n, dirs in (('OLDPWD', old), ('PWD', (self.dir, self.main_dir))):
             self.vars[n], self.main_vars[n] = map(_dir, dirs)
             self.changed(n)
@@ -924,15 +963,15 @@ class Where:
             for n in ('PWD', 'OLDPWD') if relative else ('OLDPWD',):
                 self.vars[n] = Maybe('')
 
-    def _spots(self, verb, to, kinds):
-        """Where a cd the dir can't follow may have gone, verb to word to, in scopes of kinds (no conditional's): each value it lists, from each
-        spot; None for a target the line doesn't list or a piece may name, and a relative one in a plain loop's body, whose each pass starts where the last ended."""
+    def _spots(self, verb, to):
+        """Where a cd the dir can't follow may have gone, verb to word to: each value it lists, from each spot; None for a target the line
+        doesn't list or a piece may name."""
         vals = None if verb == 'popd' or to[:1] in '-+' else self.values(to)
         if vals is None or isinstance(vals, Unknown):
             return None
         out = []
         for v in map(os.path.expanduser, vals):
-            if PIECE in v or not os.path.isabs(v) and (self.spots is None or kinds[-1:] == [LOOP]):
+            if PIECE in v or not os.path.isabs(v) and self.spots is None:
                 return None
             out += [os.path.normpath(os.path.join(x, v)) for x in ((v,) if os.path.isabs(v) else self.spots)]
         return tuple(dict.fromkeys(out))
