@@ -655,7 +655,7 @@ def recorded(step, after, repo):
     rec = branch_record(repo, step)
     return any(records.get(id(a)) == rec for a in after)
 
-READERS = {'grep', 'egrep', 'fgrep', 'rg', 'cut', 'head', 'tail', 'sort', 'uniq', 'wc', 'tr', 'cat', 'echo', 'printf'}  # print what they read or are handed: sed and awk can run commands
+READERS = {'grep', 'egrep', 'fgrep', 'rg', 'cut', 'head', 'tail', 'sort', 'uniq', 'wc', 'tr', 'cat', 'echo', 'printf', 'true', ':'}  # print what they read or are handed, or do nothing with it: sed and awk can run commands
 
 def check(t, has_cd):
     after, readers = getattr(t, 'after', ()), getattr(t, 'readers', None)
@@ -688,7 +688,7 @@ def check(t, has_cd):
             readers is not None and {os.path.basename(r[0]) for r in readers} <= READERS
             and (readers or any(x in ('--list-full', '--list-name', '--count') or not x.startswith('--') and any(short_has(x, c) for c in 'alc') for x in a))):
         block("never pgrep -f to wait or kill: it matches its own command line and other sessions' processes; wait on the PID you started (`kill -0 <pid>`) or its port. "
-              "What passes: a listing (`pgrep -af <pattern>`, also `|| echo none`), and any pgrep -f only a reader consumes (`| wc -l`, `| head`, `echo \"$(pgrep -f <pattern>)\"`)")
+              "What passes: a listing (`pgrep -af <pattern>`, also `|| echo none`), and any pgrep -f only a reader consumes (`| wc -l`, `| head`, `echo \"$(pgrep -f <pattern>)\"`) or whose status only `|| true` follows")
     if p == 'killall' or (p == 'pkill' and any(x == '--full' or (not x.startswith('--') and short_has(x, 'f')) for x in a)):
         block("never pkill -f / killall: kill your own processes by PID or port")
     if p == 'kill':
