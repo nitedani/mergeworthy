@@ -7,8 +7,9 @@ A reply or inline comment needs the comment it answers: <draft stem>.parent.md n
 --parent none for a comment that answers nobody. --draft (with --kind pr): the body of a draft PR, which says why it is one.
 --kind status: a reply that only says what is being done and by when (post §Kinds), checked here instead of by a reviewer.
 --kind plan: a design plan the user asked to post as an issue; linted as an issue, capped at 2500 words, without the reproduction, evidence and internal-label checks.
+--edit-of owner/repo#N (--kind issue, pr, tracker or plan): the draft edits that live body, and fails only on findings the body doesn't already have, one for one.
 Settings: MERGEWORTHY_BADGE on|off|auto requires the badge always, never, or for a human account."""
-import hashlib, os, re, sys, subprocess, urllib.parse
+import hashlib, os, re, sys, subprocess, tempfile, urllib.parse
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'hooks'))
 import post_words
 from post_words import fence_spans, uncoded
@@ -18,14 +19,14 @@ def setting(name, default):
     saved = dict(l.strip().split('=', 1) for l in open(f) if '=' in l) if os.path.exists(f) else {}
     return os.environ.get(f'MERGEWORTHY_{name}') or saved.get(f'MERGEWORTHY_{name}', default)
 args = sys.argv[1:]
-USAGE = "usage: post-lint <draft.md> [--kind reply|status|pr|issue|plan|inline|tracker|proposal|title] [--draft] [--repo owner/repo] [--parent <file>|none]"
+USAGE = "usage: post-lint <draft.md> [--kind reply|status|pr|issue|plan|inline|tracker|proposal|title] [--draft] [--repo owner/repo] [--parent <file>|none] [--edit-of owner/repo#N]"
 def arg(name, default):
     if name not in args: return default
     i = args.index(name)
     if i + 1 >= len(args): sys.exit(USAGE)
     return args[i + 1]
 if not args: sys.exit(USAGE)
-path = args[0]; kind = arg('--kind', 'reply'); repo = arg('--repo', None)
+path = args[0]; kind = arg('--kind', 'reply'); repo = arg('--repo', None); edit_of = arg('--edit-of', None)
 status = kind == 'status'  # linted as a reply, plus the status checks below
 plan = kind == 'plan'  # linted as an issue, plus the plan changes below
 kind = {'comment': 'reply', 'status': 'reply', 'plan': 'issue'}.get(kind, kind)
@@ -62,7 +63,8 @@ def unrated(s):
     return ''.join(out), n
 WORD = r"[A-Za-z0-9][\w'’-]*"
 draft = '--draft' in args
-if kind not in ('reply', 'pr', 'issue', 'inline', 'tracker', 'proposal', 'title') or draft and kind != 'pr': sys.exit(USAGE)  # tracker: umbrella body or decisions comment, a growing list with no word budget
+if kind not in ('reply', 'pr', 'issue', 'inline', 'tracker', 'proposal', 'title') or draft and kind != 'pr' \
+        or edit_of and not (kind in ('issue', 'pr', 'tracker') and re.fullmatch(r'[\w.-]+/[\w.-]+#\d+', edit_of)): sys.exit(USAGE)  # tracker: umbrella body or decisions comment, a growing list with no word budget
 record = kind == 'tracker'  # the umbrella issue: a growing list with no word budget
 text = open(path).read()
 if kind == 'title':  # a PR title (pull-request step 7): the squash subject and changelog line, one line, no badge
@@ -470,6 +472,24 @@ if status:
         findings.append("status: a question or a decision needs the review: post it as a reply (post step 3)")
     if words > 100:
         findings.append(f"status: {words} words > 100: what is being done and by when, nothing else")
+# An edit answers for what it adds. The body comes from GitHub, so no local file can hide a finding; a finding's leading count is the one thing an edit moves
+if edit_of:
+    _o, _n = edit_of.split('#')
+    _r = subprocess.run(['gh', 'api', f'repos/{_o}/issues/{_n}', '--jq', '.body'], capture_output=True, text=True)
+    if _r.returncode != 0 or not _r.stdout.strip():
+        findings.append(f"--edit-of {edit_of}: couldn't read the live body ({_r.stderr.strip()[:80] or 'it is empty'}), so nothing is known to be there already")
+    else:
+        _i = args.index('--edit-of')
+        with tempfile.TemporaryDirectory() as _d:  # the original's own .lint files go with it
+            _orig = os.path.join(_d, 'original.md')
+            with open(_orig, 'w') as f: f.write(_r.stdout)
+            _had = subprocess.run([sys.executable, os.path.realpath(__file__), _orig, *args[1:_i], *args[_i + 2:]], capture_output=True, text=True).stdout
+        movable = lambda s: re.sub(r'^\d+', 'N', s)
+        _had, _added = [movable(l) for l in _had.splitlines()], []
+        for x in findings:
+            if movable(x) in _had: _had.remove(movable(x))
+            else: _added.append(x)
+        findings = _added
 for f in findings: print(f)
 # post step 3: the reviewer weighs each finding that adds words against this
 print(f"length: {words} words, " + (f"cap {cap}" if cap else "no cap"), file=sys.stderr)
