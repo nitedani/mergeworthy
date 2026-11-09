@@ -757,6 +757,26 @@ pl 110; check "the same text under --kind issue still fails" 2 "$(plint issue | 
 pl 290; check "a 2600-word plan fails, naming the cap" 1 "$(plint plan | grep -c 'words > 2500 for a plan')"
 pl 290; sed -i '1a ### How to reproduce' "$T/plan.md"; check "a plan's How to reproduce section counts toward its cap, and the length line names it" "1 1" "$(plint plan | grep -c 'words > 2500 for a plan') $(plint plan | grep -c 'cap 2500')"
 pl 110 dashed; check "a plan with an em dash fails, and only for that" "rc=1 1" "$(plint plan | tail -1) $(plint plan | grep -c '^em dash')"
+# ---------- post-lint --edit-of (nitedani/mergeworthy#140): an edit fails only on what it adds to the live body ----------
+EO="$T/eo"; mkdir -p "$EO" "$T/eotmp"; EOR=$'\n\n### How to reproduce\n\n1. Run it.\n\n```\nlog\n```\n'
+eolive() { python3 -c 'import json, sys; json.dump({"body": sys.argv[1]}, open(sys.argv[2], "w"))' "$1$EOR" "$FX/repos_acme_x_issues_7"; }
+eo() { printf '%s' "$1$EOR" > "$EO/e.md"; TMPDIR="$T/eotmp" MERGEWORTHY_BADGE=off python3 "$R/bin/post-lint" "$EO/e.md" --kind "${2:-issue}" --repo acme/x --parent none --edit-of 'acme/x#7' 2>&1; echo "rc=$?"; }
+eolive 'We leverage a cache here.'
+check "--edit-of: an edit keeping a finding of the live body passes" "rc=0 0" "$(eo 'We leverage a cache here. The cache is now per user.' | tail -1) $(eo 'We leverage a cache here. The cache is now per user.' | grep -c 'banned phrase')"
+check "--edit-of: an edit adding a second copy of that finding fails, naming the one it added" "rc=1 1" "$(eo 'We leverage a cache here. We leverage a queue too.' | tail -1) $(eo 'We leverage a cache here. We leverage a queue too.' | grep -c "banned phrase: 'leverage'")"
+check "--edit-of: a finding the live body doesn't have fails" "rc=1 1" "$(eo 'We leverage a cache here. It is robust.' | tail -1) $(eo 'We leverage a cache here. It is robust.' | grep -c "banned phrase: 'robust'")"
+EOL=$(printf 'The parser reads one line at a time here. %.0s' $(seq 12)); eolive "$EOL"
+check "--edit-of: a count that moved with the edit is the same finding" "rc=0" "$(eo "$EOL One more sentence." | tail -1)"
+echo '{"body":null}' > "$FX/repos_acme_x_issues_7"
+check "--edit-of: an empty live body fails, nothing dropped" "rc=1 1 1" "$(eo 'We leverage a cache here.' | tail -1) $(eo 'We leverage a cache here.' | grep -c "couldn't read the live body") $(eo 'We leverage a cache here.' | grep -c 'banned phrase')"
+rm "$FX/repos_acme_x_issues_7"
+check "--edit-of: gh failing fails, even for a clean draft" "rc=1 1" "$(eo 'The cache is per user.' | tail -1) $(eo 'The cache is per user.' | grep -c "couldn't read the live body.*HTTP 404")"
+check "--edit-of: a reply is refused as a usage error" "rc=1 1" "$(eo 'The cache is per user.' reply | tail -1) $(eo 'The cache is per user.' reply | grep -c '^usage: post-lint')"
+eolive 'The old text.'; rm -f "$EO"/e.md*; eo 'The new text.' >/dev/null; printf 'CLEAN\n' > "$EO/e.review.out"; touch -d '+1 minute' "$EO/e.review.out"
+check "--edit-of: only the draft's own .lint files are left, and the temp folder is empty" "e.md e.md.lint e.md.lint.sha e.review.out|" "$(ls "$EO" | xargs)|$(ls -A "$T/eotmp")"
+eg() { MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$EO/e.md" "$EO/e.review.out" 2>&1; echo "rc=$?"; }
+check "--edit-of survives gate-pass's re-lint from the draft's .lint" "--kind issue --repo acme/x --parent none --edit-of acme/x#7 rc=0" "$(cat "$EO/e.md.lint") $(eg | tail -1)"
+rm "$FX/repos_acme_x_issues_7"; check "gate-pass re-reads the live body: gh failing fails it" "rc=1 1" "$(eg | tail -1) $(eg | grep -c "couldn't read the live body")"
 printf '%s Here is the PR.\n\n**Problem.** `apply()` runs one list differently per server.\n\n**Fix:** it now runs the same.\n\n**1.** The template numbered evidence item stays fine.\n\n**A fully bold sentence that the reader should not miss stays fine.**\n' "$B" > "$T/plab.md"
 check "a paragraph opening with a bold label is flagged" 2 "$(python3 "$R/bin/post-lint" "$T/plab.md" --kind pr --parent none 2>&1 | grep -c 'opening with a bold label')"
 mkdir -p "$T/cx"; printf '%s Fixed in abc1234.\n' "$B" > "$T/cx/reply.md"; printf 'model: gpt-x\nCLEAN\n' > "$T/cx/review.log"
