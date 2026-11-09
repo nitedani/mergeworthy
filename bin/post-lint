@@ -472,7 +472,7 @@ if status:
         findings.append("status: a question or a decision needs the review: post it as a reply (post step 3)")
     if words > 100:
         findings.append(f"status: {words} words > 100: what is being done and by when, nothing else")
-# An edit answers for what it adds. The body comes from GitHub, so no local file can hide a finding; digits differ because counts move with any edit
+# An edit answers for what it adds. The body comes from GitHub, so no local file can hide a finding; a finding's leading count is the one thing an edit moves
 if edit_of:
     _o, _n = edit_of.split('#')
     _r = subprocess.run(['gh', 'api', f'repos/{_o}/issues/{_n}', '--jq', '.body'], capture_output=True, text=True)
@@ -484,10 +484,10 @@ if edit_of:
             _orig = os.path.join(_d, 'original.md')
             with open(_orig, 'w') as f: f.write(_r.stdout)
             _had = subprocess.run([sys.executable, os.path.realpath(__file__), _orig, *args[1:_i], *args[_i + 2:]], capture_output=True, text=True).stdout
-        digitless = lambda s: re.sub(r'\d+', 'N', s)
-        _had, _added = [digitless(l) for l in _had.splitlines()], []
+        movable = lambda s: re.sub(r'^\d+', 'N', s)
+        _had, _added = [movable(l) for l in _had.splitlines()], []
         for x in findings:
-            if digitless(x) in _had: _had.remove(digitless(x))
+            if movable(x) in _had: _had.remove(movable(x))
             else: _added.append(x)
         findings = _added
 for f in findings: print(f)

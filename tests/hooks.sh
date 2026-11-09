@@ -767,6 +767,8 @@ check "--edit-of: an edit adding a second copy of that finding fails, naming the
 check "--edit-of: a finding the live body doesn't have fails" "rc=1 1" "$(eo 'We leverage a cache here. It is robust.' | tail -1) $(eo 'We leverage a cache here. It is robust.' | grep -c "banned phrase: 'robust'")"
 EOL=$(printf 'The parser reads one line at a time here. %.0s' $(seq 12)); eolive "$EOL"
 check "--edit-of: a count that moved with the edit is the same finding" "rc=0" "$(eo "$EOL One more sentence." | tail -1)"
+eolive 'See #123.'
+check "--edit-of: a bad reference swapped for another bad one fails" "rc=1 1" "$(eo 'See #456.' | tail -1) $(eo 'See #456.' | grep -c '#456')"
 echo '{"body":null}' > "$FX/repos_acme_x_issues_7"
 check "--edit-of: an empty live body fails, nothing dropped" "rc=1 1 1" "$(eo 'We leverage a cache here.' | tail -1) $(eo 'We leverage a cache here.' | grep -c "couldn't read the live body") $(eo 'We leverage a cache here.' | grep -c 'banned phrase')"
 rm "$FX/repos_acme_x_issues_7"
