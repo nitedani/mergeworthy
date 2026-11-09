@@ -174,7 +174,9 @@ if rnd and (ti.get('role') == 'review' or not ti.get('role') and re.search(r'\be
             sys.stderr.write(f"BLOCKED: {loop} already ran {', '.join(f'r{m}' for m in earlier)} on this head or one within {testpaths.STALE_LINES} changed lines of it "
                              f"({', '.join(h[:12] for h in heads) or 'no head pinned'}): a loop gets two rounds per head, and a head past those lines is a new one (mergeworthy:delegate §Review rounds). "
                              "List what is still open in the report or the PR body's notes and go on (push, ready, the next step) without waiting for an answer; "
-                             "only an open blocker keeps the PR in draft. A maintainer's ask on a new head starts a new loop name.\n")
+                             "only an open blocker keeps the PR in draft. A maintainer's ask on a new head starts a new loop name. "
+                             "Close a round 2 that isn't clean with `pr-steps <step> <file> --ledger <ledger>` or `gate-pass ... --ledger <ledger>` on the last report: the agent's own report is the record, never one the main session writes."
+                             + ("" if heads else " An independent update of a body no Git head pins (a tracker's status lines), and not a fix to the text these rounds reviewed, is its own loop: `<loop>-u<N>-r1`, `-r2`.") + "\n")
             sys.exit(2)
 # A brief that writes or reviews code, docs or a post (any role but research or test) for a repo whose maintainers' notes exist
 # (delegate step 3) names the project file, so the agent reads them: by owner/repo, or by a path in that repo's checkout. A memory-refresh
