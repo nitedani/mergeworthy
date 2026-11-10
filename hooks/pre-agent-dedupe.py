@@ -108,21 +108,6 @@ if not register:
         sys.stderr.write("BLOCKED: the brief still has a template's placeholder; fill it with the specifics (mergeworthy:delegate §Brief):\n"
                          + '\n'.join(f"{p} (delegate/{', delegate/'.join(dict.fromkeys(fs))})" for p, fs in sorted(unfilled.items())) + '\n')
         refused()
-# A project file's `## Agents` line `Effort: <effort>`, bulleted or not, is the effort every agent for its repo runs at: a launch whose brief names
-# that file sets it (the Agent tool's `effort`, delegate_task's target.options or t3_thread_launch's modelSelection.options
-# `effort` or `reasoningEffort`); with no option the harness's default runs, which is not the repo's choice.
-if not register:
-    opts = (ti.get('target') or ti.get('modelSelection') or {}).get('options') or {}
-    opts = {o.get('id'): o.get('value') for o in opts if isinstance(o, dict)} if isinstance(opts, list) else opts
-    effort = ti.get('effort') or opts.get('effort') or opts.get('reasoningEffort')
-    for f in sorted({os.path.expanduser('~/.mergeworthy/projects/' + r + '.md') for r in re.findall(r'\.mergeworthy/projects/([\w.-]+/[\w.-]+)\.md', briefs)}):
-        sec = re.search(r'^## Agents\n(.*?)(?=^## |\Z)', open(f, errors='replace').read(), re.M | re.S) if os.path.isfile(f) else None
-        want = re.search(r'^(?:[-*] +)?Effort: *(\w+)', sec[1], re.M) if sec else None
-        if want and str(effort or '').lower() != want[1].lower():
-            sys.stderr.write(f"BLOCKED: {f}'s `## Agents` says `Effort: {want[1]}`: launch with effort {want[1]} (the Agent tool's `effort`, "
-                             f"delegate_task's target.options `effort` for Claude or `reasoningEffort` for Codex), not "
-                             + (f"{effort}.\n" if effort else "the harness's default.\n"))
-            refused()
 path_set = lambda t: {q for p in re.findall(r'(~?/[^\s`\'"()<>,;]+)', t) if (q := os.path.expanduser(p.rstrip('/.,:')))}
 paths = path_set(gate_text)
 # A brief names a worktree in its launch text or its brief file (a ticket it says to follow, or named so), not in a reference it names
@@ -187,6 +172,7 @@ if rnd and (ti.get('role') == 'review' or not ti.get('role') and re.search(r'\be
 # A brief that writes or reviews code, docs or a post (any role but research or test) for a repo whose maintainers' notes exist
 # (delegate step 3) names the project file, so the agent reads them: by owner/repo, or by a path in that repo's checkout. A memory-refresh
 # brief reads only the session log.
+missing = []
 if not register and ti.get('role') not in ('research', 'test') and 'memory-refresh' not in gate_text:
     notes = {os.path.relpath(f, os.path.expanduser('~/.mergeworthy/projects'))[:-3].lower(): f
              for f in glob.glob(os.path.expanduser('~/.mergeworthy/projects/*/*.md'))}
@@ -298,6 +284,21 @@ if not register and ti.get('role') not in ('research', 'test') and 'memory-refre
         sys.stderr.write("BLOCKED: a drafter brief carries the template's scope-word check: paste "
                          "~/.mergeworthy/current/skills/delegate/drafter.md, filled in (mergeworthy:delegate step 3)\n")
         refused()
+# A project file's `## Agents` line `Effort: <effort>`, bulleted or not, is the effort every agent for its repo runs at: a launch whose brief names
+# that file, or should name it (missing above), sets it (the Agent tool's `effort`, delegate_task's target.options or t3_thread_launch's modelSelection.options
+# `effort` or `reasoningEffort`); with no option the harness's default runs, which is not the repo's choice.
+if not register:
+    opts = (ti.get('target') or ti.get('modelSelection') or {}).get('options') or {}
+    opts = {o.get('id'): o.get('value') for o in opts if isinstance(o, dict)} if isinstance(opts, list) else opts
+    effort = ti.get('effort') or opts.get('effort') or opts.get('reasoningEffort')
+    for f in sorted({os.path.expanduser('~/.mergeworthy/projects/' + r + '.md') for r in re.findall(r'\.mergeworthy/projects/([\w.-]+/[\w.-]+)\.md', briefs)} | set(missing)):
+        sec = re.search(r'^## Agents\n(.*?)(?=^## |\Z)', open(f, errors='replace').read(), re.M | re.S) if os.path.isfile(f) else None
+        want = re.search(r'^(?:[-*] +)?Effort: *(\w+)', sec[1], re.M) if sec else None
+        if want and str(effort or '').lower() != want[1].lower():
+            sys.stderr.write(f"BLOCKED: {f}'s `## Agents` says `Effort: {want[1]}`: launch with effort {want[1]} (the Agent tool's `effort`, "
+                             f"delegate_task's target.options `effort` for Claude or `reasoningEffort` for Codex), not "
+                             + (f"{effort}.\n" if effort else "the harness's default.\n"))
+            refused()
 # pull-request step 5 is the build's input: an implementer brief names `Approach: <path>`, the newest approach record of a checkout it names
 # (pr-steps approach). A later build of that record's PR names a newer record, or the same one marked `(unchanged: <why>)`.
 BUILT = os.path.expanduser('~/.claude/approach-builds')  # per approach record: the time of the record the PR's last build was briefed on
@@ -445,8 +446,8 @@ if not register:
     j = json.load(open(f)) if os.path.exists(f) else {}
     same = [j] if time.time() - j.get('started', 0) < 24 * 3600 else [p for p in pending if p['key'] == key]
     if same: one_per_job(same[0]['started'])
-    # this job's own record contains this task too: its refusal above says it all
-    for j in [j for _, j in agent_jobs.jobs()] + pending if task.strip() and not same else ():
+    for j in [j for _, j in agent_jobs.jobs()] + pending if task.strip() else ():
+        if same and j.get('key') == key: continue  # this job's own record, refused above
         if (other := j.get('brief', '').strip()) and (other in task.strip() or task.strip() in other):
             sys.stderr.write(
                 f"BLOCKED: this task contains, or is contained in, an open job's task ({j['key'][:160]}, started {int((time.time() - j['started']) / 60)} min ago), "
@@ -454,7 +455,6 @@ if not register:
                 "(its slice, subsystem, frames or topic). A new round on the same task releases the earlier job first, once its agent "
                 f"is done and you have read its result: `agent-job done {shlex.quote(j['key'][:200])}`.\n")
             refused()
-            break
 # At most 3 agents at a time per session (delegate step 1), or the number the user gave, quoted in the task's scope.md (the work folder
 # of the session's cwd, else the one the briefs it launches are in): a job is open until released or its agent finished; a memory refresh doesn't count
 # A fan-out a step names (finality steps 2-3, converge's per-slice verifiers) says so on a `Fan-out:` line, in the task or its brief, and passes
