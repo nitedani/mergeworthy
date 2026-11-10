@@ -1311,6 +1311,8 @@ RH=$(git -C "$T/rh" rev-parse HEAD); printf 'Body.\n' > "$PD/pr-body.md"; python
 PP="$PB The head: $RH in $T/rh."; UC="Review the code in $T/rh. Final message exactly NO BUGS."
 SR="Review $T/rh at head $RH; write the report, ending MERGE AS IS: yes or no, to $T/sr.report.md and the body's verdict, exactly CLEAN or the findings, to $PD/pr-body.review.out."
 check "a post review pinning the head gets r3, BLOCK its r4; BLOCK r3 of an unpinned code review and of a small review that also reviews the PR body" "0 0 0 2 0 0 2 0 0 2" "$(jd "$PD/r.md" rnd pp-r1 "$PP") $(jd "$PD/r.md" rnd pp-r2 "$PP") $(jd "$PD/r.md" rnd pp-r3 "$PP") $(jd "$PD/r.md" rnd pp-r4 "$PP") $(rnd uc-r1 "$UC") $(rnd uc-r2 "$UC") $(rnd uc-r3 "$UC") $(jd "$T/sr.report.md" rnd sr-r1 "$SR") $(jd "$T/sr.report.md" rnd sr-r2 "$SR") $(jd "$T/sr.report.md" rnd sr-r3 "$SR")"
+WB="$HOME/.mergeworthy/work/t/briefs/post-review.md"; mkdir -p "${WB%/*}"; printf '%s\n' "$PP" > "$WB"
+check "a post review whose head-pinned brief is a work-folder file gets r3, BLOCK its r4" "0 0 0 2" "$(jd "$WB" jd "$PD/r.md" rnd wb-r1 "Follow $WB exactly.") $(jd "$WB" jd "$PD/r.md" rnd wb-r2 "Follow $WB exactly.") $(jd "$WB" jd "$PD/r.md" rnd wb-r3 "Follow $WB exactly.") $(jd "$WB" jd "$PD/r.md" rnd wb-r4 "Follow $WB exactly.")"
 mkdir -p "$T/rh/src" "$T/rh/spec"; for f in src/m81.py:81 src/m80.py:80 tests/helper.py:1000 src/code.py:100 tests/x.py:200; do rh_commit "${f%:*}" "${f#*:}" >/dev/null; done
 rh_moved() { # loop from to lines: r1 and r2 on the head, then r3 on the rename of a file with that many new lines
   local H; H=$(git -C "$T/rh" rev-parse HEAD); rh_rnd "$1-r1" "$H" >/dev/null; rh_rnd "$1-r2" "$H" >/dev/null; git -C "$T/rh" mv "$2" "$3"; rh_rnd "$1-r3" "$(rh_commit "$3" "$4")"; }

@@ -65,9 +65,8 @@ tickets = sorted({t for t in (os.path.abspath(os.path.expanduser(m)) for m in re
 gate_text = text + '\n' + '\n'.join(open(t).read() for t in tickets if os.path.isfile(t))
 # The gate names a review's output after its draft (`<name>.review.out` for `<name>.md`): when it does, that draft is
 # the one reviewed, and the files beside it (thread record, brief, parent) are not drafts
-named = {p for o in re.findall(r'(/[^\s`\'"()]*/drafts/[^\s`\'"()]+\.out)\b', gate_text) if os.path.isfile(p := re.sub(r'(\.review)?\.out$', '.md', o))}
-# a post's review: a gate review of a named draft whose brief asks for no code verdict (a small review's pr-body.review.out comes with one)
-post_review = bool(named) and 'CLEAN' in gate_text and not re.search(r'\b(NO BUGS|MERGE AS IS)\b', gate_text)
+reviewed_drafts = lambda t: {p for o in re.findall(r'(/[^\s`\'"()]*/drafts/[^\s`\'"()]+\.out)\b', t) if os.path.isfile(p := re.sub(r'(\.review)?\.out$', '.md', o))}
+named = reviewed_drafts(gate_text)
 if not register and re.search(r'\.out\b', gate_text) and 'CLEAN' in gate_text:
     for draft in sorted(named or set(re.findall(r'(/[^\s`\'"()]*/drafts/[^\s`\'"()]+\.md)\b', gate_text))):
         base = os.path.basename(draft)
@@ -172,6 +171,8 @@ if rnd and (ti.get('role') == 'review' or not ti.get('role') and re.search(r'\be
         fixes = lambda t, o, h: git(t, 'merge-base', '--is-ancestor', o, h).returncode == 0 and own_lines(t, o, h) <= testpaths.STALE_LINES
         built_on = lambda old: not old and not heads or any(fixes(t, o, h) for t in tops for o in old for h in heads)
         earlier = sorted({m for m, old in rounds.get(loop, []) if m < n and built_on(old)})
+        # a post's review: a gate review of a named draft whose brief asks for no code verdict (a small review's pr-body.review.out comes with one)
+        post_review = bool(reviewed_drafts(briefs)) and 'CLEAN' in briefs and not re.search(r'\b(NO BUGS|MERGE AS IS)\b', briefs)
         if len(earlier) >= (3 if post_review else 2):
             sys.stderr.write(f"BLOCKED: {loop} already ran {', '.join(f'r{m}' for m in earlier)} on this head or one within {testpaths.STALE_LINES} changed lines of it "
                              f"({', '.join(h[:12] for h in heads) or 'no head pinned'}): a loop gets two rounds per head, and a head past those lines is a new one"
