@@ -7,7 +7,7 @@ import json, re, sys, os, hashlib, subprocess
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
 import shellcmd
-from shellcmd import parse, segments, prog, script, opt, api_call, discussion_post, discussion_thread_of, names_discussion_mutation, env_of, origin, plain_create, PLAIN, new_post_drafts, branch_record, no_approach, no_preflight, no_instructions_read, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Unseen, Where
+from shellcmd import parse, segments, prog, script, opt, api_call, discussion_post, discussion_thread_of, names_discussion_mutation, env_of, origin, plain_create, PLAIN, new_post_drafts, branch_record, no_approach, no_preflight, no_instructions_read, by_agent, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Unseen, Where
 import own_actions, steward, post_words, testpaths, threads_file, work_folder
 from t3_tasks import under_t3
 AGENT_TRAILER = re.compile(r'^Co-Authored-By: Claude', re.M | re.I)  # a commit without it is a maintainer's
@@ -148,7 +148,7 @@ def need_watch(repo, path, why=''):
     if not covering:
         start = f"`gh-watch-start {steward.home(work_folder.task_of(path)) or '<your work folder>'} {repos[0]}`"
         block(f"no running watcher of this task or session covers {' or '.join(repos)} (another session's watcher wakes that session, not this one{'; ' + why if why else ''}): "
-              + (f"a subagent starts none: end your turn asking the main session to run {start}" if by_agent()
+              + (f"a subagent starts none: end your turn asking the main session to run {start}" if by_agent(d)
                  else f"{start}, arm the Monitor it prints if any, then retry (mergeworthy:task step 5)"))
 
 def need_home(repo, path):
@@ -419,10 +419,6 @@ def title_setter(repo, num):
     login = ((last or {}).get('actor') or {}).get('login')
     return (login, last.get('created_at')) if login and login != me else None
 
-def by_agent():
-    """A subagent's command: Claude Code's (agent_id), or a T3 child's (its thread has a parent)."""
-    return bool(d.get('agent_id')) or len(steward.threads(d.get('session_id'))) > 1
-
 RECORDS = os.path.realpath(os.path.expanduser('~/.claude/pr-steps')) + os.sep
 push_urls = []  # where this command's pushes go (pushed()), for the watcher check
 # what this command does on GitHub (own_actions), recorded once it passed every check: the watcher logs these changes without waking the session
@@ -669,7 +665,7 @@ def check(t, has_cd):
     if p in ('docker', 'docker-compose'):
         check_compose(env, t)
     # a watcher wakes the session that started it, and a subagent's result is its last message: the main session owns the PR and its watcher
-    if p == 'gh-watch-start' and '--round' not in a and by_agent():
+    if p == 'gh-watch-start' and '--round' not in a and by_agent(d):
         block("a subagent never starts a watcher: it would wake you, not the main session that owns the PR. End your turn with your result; "
               "the main session watches (mergeworthy:reply step 1)")
     # A credential file printed to the tool output lands in the transcript (an npm token, 2026-10-14)
@@ -761,7 +757,7 @@ def check(t, has_cd):
             block(f"{who[0]} set this PR's title ({who[1]}): it is their decision. Keep it, or ask them on the PR first (mergeworthy:pull-request step 7)")
     # A review's verdict is the reviewer's final message, which it writes itself (`codex exec -o`, an agent's output file); an agent's stdout is it too
     files = [where.files(x) for x in written_files(t)]
-    if p not in ('claude', 'codex') and any(f.endswith('.review.out') for f in [*map(where.expand, written_files(t)), *(f for c in files for f in c or [])]) and not by_agent():
+    if p not in ('claude', 'codex') and any(f.endswith('.review.out') for f in [*map(where.expand, written_files(t)), *(f for c in files for f in c or [])]) and not by_agent(d):
         block("a review's output is the reviewer's final message, written by the reviewer: `codex exec -o <out>`, or the agent writes <out> itself. "
               "Never write a verdict yourself (mergeworthy:delegate §Reviewers, post step 3)")
     written = [f for x, c in zip(written_files(t), files) for f in known(c, x)]
@@ -913,7 +909,7 @@ if err and (m := GUARDED.search(unquoted(cmd))):  # its words are still checked 
           "can't be checked: split it into simple commands, a message or body in a file (`git commit -F <file>`, `--body-file`)")
 waits = re.search(r'\b(until|while)\b[^\n]*\bsleep\b', cmd) if err else any(s.loop and prog(s)[:1] and os.path.basename(prog(s)[0]) == 'sleep' for s in segs)
 # a subagent's result is its last message, so waiting for its own run is its job
-if waits and not d.get('tool_input', {}).get('run_in_background') and not by_agent():
+if waits and not d.get('tool_input', {}).get('run_in_background') and not by_agent(d):
     block('never wait in the foreground: the main session keeps working while agents and builds run. Rely on the task-completion notification, '
           'or run the wait with run_in_background (one notification when it ends)')
 # a Playwright install prunes the browser builds other sessions use from the shared ~/.cache/ms-playwright (agent.md §Machine)

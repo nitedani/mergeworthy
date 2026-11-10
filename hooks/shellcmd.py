@@ -5,7 +5,7 @@ parse() reads a command with mvdan/sh, bash's syntax as shfmt parses it (hooks/r
 command that doesn't parse, or a parser that can't be installed, yields the command's words split roughly, with the error,
 so a hook checks what it can and blocks a guarded verb it can't check."""
 import fnmatch, functools, glob, hashlib, itertools, json, os, re, subprocess, sys
-import work_folder
+import steward, work_folder
 
 
 def branch_record(d, kind, branch=None):
@@ -1311,6 +1311,11 @@ def transcript(d):
     if d.get('agent_id'):  # a subagent's context holds only its own reads and skills
         path = d.get('agent_transcript_path') or os.path.join(os.path.dirname(path), d.get('session_id', ''), 'subagents', f"agent-{d['agent_id']}.jsonl")
     return path if path and os.path.isfile(path) else None
+
+
+def by_agent(d):
+    """A subagent's tool call: Claude Code's (agent_id), or a T3 child's (its thread has a parent)."""
+    return bool(d.get('agent_id')) or len(steward.threads(d.get('session_id'))) > 1
 
 
 def in_place(a):

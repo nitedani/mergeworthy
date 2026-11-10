@@ -2783,10 +2783,10 @@ for ev in sys.argv[2:]:
         w({"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": "Working on it."}]}})
 EOF
 }
-sg_in() { # <tool> <tool_input json> [transcript] [agent_id]
-  python3 -c 'import json,sys; d={"tool_name":sys.argv[1],"tool_input":json.loads(sys.argv[2]),"cwd":sys.argv[3],"session_id":"s1","transcript_path":sys.argv[4]}
+sg_in() { # <tool> <tool_input json> [transcript] [agent_id] [session_id]
+  python3 -c 'import json,sys; d={"tool_name":sys.argv[1],"tool_input":json.loads(sys.argv[2]),"cwd":sys.argv[3],"session_id":sys.argv[6],"transcript_path":sys.argv[4]}
 if sys.argv[5]: d["agent_id"]=sys.argv[5]
-print(json.dumps(d))' "$1" "$2" "$T" "${3:-$T/sg.jsonl}" "${4:-}"
+print(json.dumps(d))' "$1" "$2" "$T" "${3:-$T/sg.jsonl}" "${4:-}" "${5:-s1}"
 }
 sg() { sg_in "$@" | python3 "$R/hooks/pre-skill-gate.py" 2>"$T/sg.err"; echo $?; }
 sgb() { sg Bash "$(python3 -c 'import json,sys; print(json.dumps({"command":sys.argv[1]}))' "$1")"; }
@@ -2896,10 +2896,11 @@ check "an ordinary edit passes" 0 "$(sg Edit '{"file_path":"/r/src/debrief.ts"}'
 sg_tr "$T/sg.jsonl" skill:mergeworthy:delegate skill:mergeworthy:rules
 check "the Agent tool passes once delegate was opened" 0 "$(sg Agent '{"prompt":"x"}')"
 check "editing a skill passes once rules was opened" 0 "$(sg Edit '{"file_path":"/r/skills/writing/SKILL.md"}')"
-mkdir -p "$T/s1/subagents"; sg_tr "$T/s1/subagents/agent-a1.jsonl" skill:mergeworthy:merging skill:mergeworthy:task skill:mergeworthy:pull-request
-check "a subagent's own Skill calls count for it" 0 "$(sg_in Bash '{"command":"git push"}' "$T/sg.jsonl" a1 | python3 "$R/hooks/pre-skill-gate.py" 2>/dev/null; echo $?)"
-sg_tr "$T/s1/subagents/agent-a1.jsonl" text; sg_tr "$T/sg.jsonl" skill:mergeworthy:merging
-check "BLOCK: the parent's skills aren't in a subagent's context" 2 "$(sg_in Bash '{"command":"git push"}' "$T/sg.jsonl" a1 | python3 "$R/hooks/pre-skill-gate.py" 2>/dev/null; echo $?)"
+mkdir -p "$T/s1/subagents"; sg_tr "$T/s1/subagents/agent-a1.jsonl" text; sg_tr "$T/sg.jsonl" text; t3_child
+check "a subagent's git push passes without skills: Claude Code's (agent_id) and a T3 child's; the main session's, under T3 too, is blocked" "0 0 2 2" \
+  "$(sg Bash '{"command":"git push"}' "$T/sg.jsonl" a1) $(sg Bash '{"command":"git push"}' "$T/sg.jsonl" '' t3-child) $(sg Bash '{"command":"git push"}') $(sg Bash '{"command":"git push"}' "$T/sg.jsonl" '' t3-main)"
+rm "$HOME/.t3/userdata/statev2.sqlite"; sg_tr "$T/sg.jsonl" skill:mergeworthy:delegate
+check "BLOCK: a subagent starting an agent needs delegate in its own context, not the parent's" "2 1" "$(sg Agent '{"prompt":"x"}' "$T/sg.jsonl" a1) $(grep -c '^- mergeworthy:delegate, for starting an agent' "$T/sg.err")"
 check "BLOCK: a gated action whose transcript can't be read, saying so; a read-only one passes" "2 1 0" "$(sg Bash '{"command":"git push"}' "$T/none.jsonl") $(grep -c "transcript.*can't be read" "$T/sg.err") $(sg Bash '{"command":"git status"}' "$T/none.jsonl")"
 old_tr() { # <transcript>: a session that opened the old catalog's core, github-threads, writing and delegating
   sg_tr "$1" skill:mergeworthy:core skill:mergeworthy:github-threads skill:mergeworthy:writing skill:mergeworthy:delegating; }
