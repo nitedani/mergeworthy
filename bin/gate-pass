@@ -19,7 +19,7 @@ case "$kind" in reply|comment|inline|proposal|status)
   "$(dirname "$(readlink -f "$0")")/thread-context" --verify "$(dirname "$(readlink -f "$d")")/thread-context.md" ${parent:+--parent "$parent"} || exit 1;;
 esac
 [ "$r" = none ] && out=CLEAN || out=$(tr -d '\r' < "$r" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -v '^$' || true)
-[ "$out" = "CLEAN" ] || { [ -n "$ledger" ] && python3 "$(dirname "$(readlink -f "$0")")/../hooks/ledger.py" "$ledger"; } || { echo "review is not exactly CLEAN (it has $(printf '%s\n' "$out" | wc -l) non-empty lines; last: $(printf '%s\n' "$out" | tail -1)). The reviewer's final message, alone, is the review output; after round 2, pass --ledger <the loop's ledger>"; exit 1; }
+[ "$out" = "CLEAN" ] || { [ -n "$ledger" ] && python3 "$(dirname "$(readlink -f "$0")")/../hooks/ledger.py" --post "$ledger"; } || { echo "review is not exactly CLEAN (it has $(printf '%s\n' "$out" | wc -l) non-empty lines; last: $(printf '%s\n' "$out" | tail -1)). The reviewer's final message, alone, is the review output; after round 2, pass --ledger <the loop's ledger>"; exit 1; }
 # a posted promise is a task opened (mergeworthy:post step 4): it needs a PROMISED line naming this draft in proposals-open.md
 own=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import post_words; sys.stdout.write(post_words.uncoded(open(sys.argv[2]).read()))' "$(dirname "$(readlink -f "$0")")/../hooks" "$d" |
   sed -E 's/"[^"]*"//g; s/“[^”]*”//g; s/`[^`]*`//g; /^>/d')  # quoted text and code blocks are someone else's words or a tool's output, not a promise
