@@ -206,7 +206,7 @@ It puts the always-on rules into context and writes `settings.env`. A second Ses
 
 ### `pre-skill-gate.py` (always-on rule 1)
 
-It blocks an action until every skill its always-on row names was opened with the Skill tool, or typed as `/mergeworthy:<name>`, since the session's last compaction; a subagent counts only its own. The block names each skill and its row.
+It blocks an action until every skill its always-on row names was opened with the Skill tool, or typed as `/mergeworthy:<name>`, since the session's last compaction. A subagent's actions pass, as its brief names what it opens, except starting an agent. The block names each skill and its row.
 - The table is `ACTIONS` in `hooks/pre-skill-gate.py`; `post` and `writing` gate every post (`gh pr create`, `gh pr edit`, `gh issue create`, `gh pr review`, comments, `gh api` writes and `discussion-post`, `post-lint`, `gate-pass`).
 - `post-lint --kind` adds the kind's skill: `reply` (and `inline`), `proposal` and `plan` → `design`, `pr` → `pull-request`, `issue` → `open-issue`, `tracker` → `task`.
 - `gh-watch-start`: `task`. `thread-context` (building a record): `post`. Any `gh` command with `--attach`: `evidence`.

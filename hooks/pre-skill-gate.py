@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Claude Code PreToolUse hook (matcher: Bash, the agent launchers, the file editors). Exit 2 blocks; stderr goes to the agent.
 Always-on rule 1, run the skill, don't recall it: an action waits until every skill its always-on row names was opened
-with the Skill tool (or typed as /mergeworthy:<name>) in this session since the last compaction. The transcript
-(transcript_path, a subagent's own file for a subagent) is read back to its last compact_boundary. Read-only actions pass;
-a gated action whose transcript can't be read is blocked, as nothing shows which skills are open."""
+with the Skill tool (or typed as /mergeworthy:<name>) in this session since the last compaction. The transcript is read
+back to its last compact_boundary. A subagent opens only what its brief names, so its actions pass, except starting an agent,
+which it checks in its own transcript. Read-only actions pass; a gated action whose transcript can't be read is blocked, as
+nothing shows which skills are open."""
 import json, os, re, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
-from shellcmd import segments, prog, script, opt, api_call, git_argv, rlines, transcript, Where
+from shellcmd import segments, prog, script, opt, api_call, git_argv, rlines, transcript, by_agent, Where
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WRITE = ('post', 'writing')
@@ -172,6 +173,8 @@ def opened(path):
 def main():
     d = json.load(sys.stdin)
     acts = actions(d)
+    if acts and by_agent(d):
+        acts = [a for a in acts if a == 'starting an agent']
     if not acts:
         return 0
     path = transcript(d)
