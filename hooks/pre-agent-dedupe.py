@@ -63,11 +63,12 @@ tickets = sorted({t for t in (os.path.abspath(os.path.expanduser(m)) for m in re
 # A gate review (names a review output `.out` and CLEAN) starts only on drafts that passed post-lint in their current form.
 # Reference files (project notes, installed skills) are read by the agent, not part of its brief: their history SHAs pin nothing
 gate_text = text + '\n' + '\n'.join(open(t).read() for t in tickets if os.path.isfile(t))
+# The gate names a review's output after its draft (`<name>.review.out` for `<name>.md`): when it does, that draft is
+# the one reviewed, and the files beside it (thread record, brief, parent) are not drafts
+named = {p for o in re.findall(r'(/[^\s`\'"()]*/drafts/[^\s`\'"()]+\.out)\b', gate_text) if os.path.isfile(p := re.sub(r'(\.review)?\.out$', '.md', o))}
+# a post's review: a gate review of a named draft whose brief asks for no code verdict (a small review's pr-body.review.out comes with one)
+post_review = bool(named) and 'CLEAN' in gate_text and not re.search(r'\b(NO BUGS|MERGE AS IS)\b', gate_text)
 if not register and re.search(r'\.out\b', gate_text) and 'CLEAN' in gate_text:
-    # The gate names a review's output after its draft (`<name>.review.out` for `<name>.md`): when it does, that draft is
-    # the one reviewed, and the files beside it (thread record, brief, parent) are not drafts
-    named = {re.sub(r'(\.review)?\.out$', '.md', o) for o in re.findall(r'(/[^\s`\'"()]*/drafts/[^\s`\'"()]+\.out)\b', gate_text)}
-    named = {p for p in named if os.path.isfile(p)}
     for draft in sorted(named or set(re.findall(r'(/[^\s`\'"()]*/drafts/[^\s`\'"()]+\.md)\b', gate_text))):
         base = os.path.basename(draft)
         if not named and (base.endswith(('.parent.md', '.current.md', '.report.md')) or re.search(r'ticket|brief|prompt|research|context', base) or re.search(r'\.v\d+\.md$', base)) or not os.path.isfile(draft):
@@ -152,7 +153,7 @@ if not register:
                 sys.exit(2)
 # Two rounds per loop on one head (delegate §Review rounds): a review round `<loop>-r<N>`, maybe followed by the date or head SHA
 # the reuse block above asks for, once two earlier rounds of its loop pinned its head or one within SHAPE STALE's count of it, is refused;
-# a loop no head pins (a post's) gets a third, which confirms round 2's fixes
+# a post's review gets a third, which confirms round 2's fixes
 rnd = re.fullmatch(r'(.+)-r(\d+)', re.sub(r'(-\d{4}-\d{2}-\d{2}|-[0-9a-f]{7,40})+$', '', (cid or str(ti.get('description') or '')).strip()))
 if rnd and (ti.get('role') == 'review' or not ti.get('role') and re.search(r'\bexactly (CLEAN|NO BUGS)\b', briefs)):
     tops = sorted({t for t in map(git_top, worktree_paths) if t})
@@ -171,10 +172,10 @@ if rnd and (ti.get('role') == 'review' or not ti.get('role') and re.search(r'\be
         fixes = lambda t, o, h: git(t, 'merge-base', '--is-ancestor', o, h).returncode == 0 and own_lines(t, o, h) <= testpaths.STALE_LINES
         built_on = lambda old: not old and not heads or any(fixes(t, o, h) for t in tops for o in old for h in heads)
         earlier = sorted({m for m, old in rounds.get(loop, []) if m < n and built_on(old)})
-        if len(earlier) >= (2 if heads else 3):
+        if len(earlier) >= (3 if post_review else 2):
             sys.stderr.write(f"BLOCKED: {loop} already ran {', '.join(f'r{m}' for m in earlier)} on this head or one within {testpaths.STALE_LINES} changed lines of it "
                              f"({', '.join(h[:12] for h in heads) or 'no head pinned'}): a loop gets two rounds per head, and a head past those lines is a new one"
-                             f"{'' if heads else '; with no head pinned (a post), round 3 confirms round 2’s fixes and is the last'} (mergeworthy:delegate §Review rounds). "
+                             f"{'; a post’s review gets round 3, which confirms round 2’s fixes and is the last' if post_review else ''} (mergeworthy:delegate §Review rounds). "
                              "List what is still open in the report or the PR body's notes and go on (push, ready, the next step) without waiting for an answer; "
                              "only an open blocker keeps the PR in draft. A maintainer's ask on a new head starts a new loop name. "
                              "Close a round 2 that isn't clean with `pr-steps <step> <file> --ledger <ledger>` or `gate-pass ... --ledger <ledger>` on the last report: the agent's own report is the record, never one the main session writes."
