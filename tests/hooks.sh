@@ -1090,6 +1090,9 @@ r="$r $(lc blk-2 second 'Follow /tmp/x/life-blk.md')"; res blk-2; use blk-3
 check "a launch another hook blocked (its tool_result written) no longer counts: a retry passes at once, under another title or its own" "0 0 0" "$r $(lc blk-3 first 'Follow /tmp/x/life-blk.md')"
 fan 'Follow /tmp/x/fan.md' "the user's ask" >/dev/null; python3 "$R/hooks/pre-agent-dedupe.py" < "$T/fan.json" 2>"$T/err"
 check "the block's release command, run as printed, releases a job whose title has an apostrophe" "0 0" "$(eval "$(grep -o 'agent-job done [^\`]*' "$T/err" | sed "s|^agent-job|python3 $R/bin/agent-job|")" >/dev/null; echo $?) $(python3 "$R/bin/agent-job" list | grep -c "user's ask")"
+fan 'ov-a unrelated' ov-new >/dev/null; fan 'ov-b part' ov-b >/dev/null; fan 'ov-c part' ov-c >/dev/null
+check "BLOCK: a launch of an open job whose task also overlaps two other open jobs gets the job's refusal and both overlaps in one message" "2 1 2" "$(fan 'ov-b part and ov-c part' ov-new) $(python3 "$R/hooks/pre-agent-dedupe.py" < "$T/fan.json" 2>&1 | grep -c 'already launched') $(python3 "$R/hooks/pre-agent-dedupe.py" < "$T/fan.json" 2>&1 | grep -c 'contains, or is contained in')"
+for k in ov-new ov-b ov-c; do python3 "$R/bin/agent-job" done "$k" >/dev/null; done
 cid_in() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":"x","clientRequestId":sys.argv[1]}}))' "$1"; }
 cid() { # clientRequestId
   cid_in "$1" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; local rc=$?
@@ -1113,6 +1116,9 @@ Fallback: codex failed') $(rev '{"providerInstanceId":"claudeAgent"}' 'Review it
 Fallback:
 next line')"
 check "an exploring research agent on claudeAgent passes" 0 "$(rev '{"providerInstanceId":"claudeAgent"}' 'Explore it' research)"
+python3 -c 'import json; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":"Review it","role":"review","target":{"providerInstanceId":"claudeAgent"},"clientRequestId":"r-1"}}))' \
+  | T3CODE_THREAD_ID=th python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"
+check "BLOCK: a launch with two faults, a review on claudeAgent and a reused clientRequestId, gets both refusals in one message" "2 1 1" "$? $(grep -c 'Fallback: <what failed>' "$T/err") $(grep -c "clientRequestId 'r-1' was used before" "$T/err")"
 agent_rnd() { # description prompt
   local j; j=$(python3 -c 'import json,sys; print(json.dumps({"tool_name":"Agent","tool_input":{"description":sys.argv[1],"prompt":sys.argv[2]}}))' "$1" "$2")
   printf '%s' "$j" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; local r=$?; [ $r = 0 ] && printf '%s' "$j" | python3 "$R/hooks/pre-agent-dedupe.py" register; echo $r; }
@@ -1395,6 +1401,7 @@ check "BLOCK: a Claude delegate_task and an Agent at high, and a launch with no 
 check "an Agent at medium passes" 0 "$(aeff Agent '{"effort":"medium"}')"
 printf -- '- a convention\n## Who decides\n- maint merges: ~/.mergeworthy/projects/o/r.study.md\n## Agents\nEffort: medium\n' > "$HOME/.mergeworthy/projects/o/r.md"
 check "BLOCK: an unbulleted Effort line holds too: high or no option blocks, medium passes" "2 2 0" "$(aeff mcp__t3-code__delegate_task '{"target":{"options":{"reasoningEffort":"high"}}}') $(aeff mcp__t3-code__delegate_task '{}') $(aeff Agent '{"effort":"medium"}')"
+check "BLOCK: a brief naming o/r but not its project file gets that refusal and the file's Effort refusal in one message" "2 1 1" "$(aeff mcp__t3-code__delegate_task '{"task":"Review o/r#8","prompt":"Review o/r#8"}') $(grep -c 'name each project file' "$T/err") $(grep -c 'Effort: medium' "$T/err")"
 printf -- '- a convention\n## Who decides\n- maint merges: ~/.mergeworthy/projects/o/r.study.md\n' > "$HOME/.mergeworthy/projects/o/r.md"
 # the main session reads the code itself before briefing an implementer: a Read of a file in a checkout of that repo, in its transcript
 RD="$T/x-work/rd"; git init -q "$RD"; git -C "$RD" remote add origin git@github.com:o/r.git; mkdir -p "$RD/src"; echo 'export {}' > "$RD/src/a.ts"; git -C "$RD" add src/a.ts; echo report > "$RD/verify.md"
