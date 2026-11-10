@@ -16,6 +16,12 @@ from t3_tasks import under_t3
 register = sys.argv[1:] == ['register']
 d = json.load(sys.stdin)
 ti = d.get('tool_input', {}) or {}
+blocked = False
+def refused():
+    """After a check wrote its refusal: the PRE call runs the remaining checks, so the launch gets every refusal in one message."""
+    global blocked
+    blocked = True
+    if register: sys.exit(2)
 # T3 opens no run for a turn Claude Code starts by itself (a finished background command, a Monitor event), and refuses
 # launches from it (pingdotgg/t3code#16808): nothing ran, so no job, and the session keeps working instead of waiting
 if register and 'parent_not_active' in json.dumps(d.get('tool_response') or ''):
@@ -31,7 +37,7 @@ if register and 'parent_not_active' in json.dumps(d.get('tool_response') or ''):
 if not register and d.get('tool_name') in ('Agent', 'Task') and under_t3() and ti.get('run_in_background') is not False:
     sys.stderr.write("BLOCKED: under T3 Code a background Agent stops when this turn ends (T3 starts a new session for the next one). "
                      "Launch it with delegate_task (mergeworthy:delegate step 4), or with run_in_background: false for a child that finishes within this turn.\n")
-    sys.exit(2)
+    refused()
 # This hook runs only under Claude Code, so a review on claudeAgent, or naming no provider (it inherits), is on the main session's company
 if not register and ti.get('role') == 'review' and under_t3():
     target = ti.get('target') or {}
@@ -39,7 +45,7 @@ if not register and ti.get('role') == 'review' and under_t3():
     if (not provider or 'claudeAgent' in provider) and not re.search(r'^Fallback:[ \t]*\S', str(ti.get('task') or ''), re.M):
         sys.stderr.write("BLOCKED: an independent check starts on another company's model (mergeworthy:delegate §Reviewers): set target.providerInstanceId to codex. "
                          "Only when that call failed, launch on this company with a line `Fallback: <what failed>` in the task.\n")
-        sys.exit(2)
+        refused()
 # T3 answers a delegate_task whose clientRequestId it has seen with that earlier task's result, without running anything.
 # Reuse is allowed only within 10 minutes (a retry of the same launch).
 cid = str(ti.get('clientRequestId') or '')
@@ -49,7 +55,7 @@ if cid:
     seen = json.load(open(ids)) if os.path.exists(ids) else {}
     if cid in seen and time.time() - seen[cid] > 600:
         sys.stderr.write(f"BLOCKED: clientRequestId '{cid}' was used before; T3 would return that earlier task's result instead of running this one. Use a new id (add the date or the head SHA).\n")
-        sys.exit(2)
+        refused()
     if register:
         seen.setdefault(cid, time.time())
         with open(ids + '.tmp', 'w') as f: json.dump(seen, f)
@@ -76,7 +82,7 @@ if not register and re.search(r'\.out\b', gate_text) and 'CLEAN' in gate_text:
         except OSError: ok = False
         if not ok:
             sys.stderr.write(f"BLOCKED: {draft} has no passing post-lint for its current text: run post-lint first, then the review.\n")
-            sys.exit(2)
+            refused()
 # a brief the launch follows from the work folder counts here, though the tickets above skip all of ~/.mergeworthy
 brief_files = {os.path.abspath(os.path.expanduser(m)) for m in re.findall(MD, text)}
 briefs = gate_text + '\n' + '\n'.join(open(t).read() for t in brief_files if t.startswith(mw + 'work' + os.sep) and os.path.isfile(t))
@@ -101,22 +107,7 @@ if not register:
     if unfilled:
         sys.stderr.write("BLOCKED: the brief still has a template's placeholder; fill it with the specifics (mergeworthy:delegate §Brief):\n"
                          + '\n'.join(f"{p} (delegate/{', delegate/'.join(dict.fromkeys(fs))})" for p, fs in sorted(unfilled.items())) + '\n')
-        sys.exit(2)
-# A project file's `## Agents` line `Effort: <effort>`, bulleted or not, is the effort every agent for its repo runs at: a launch whose brief names
-# that file sets it (the Agent tool's `effort`, delegate_task's target.options or t3_thread_launch's modelSelection.options
-# `effort` or `reasoningEffort`); with no option the harness's default runs, which is not the repo's choice.
-if not register:
-    opts = (ti.get('target') or ti.get('modelSelection') or {}).get('options') or {}
-    opts = {o.get('id'): o.get('value') for o in opts if isinstance(o, dict)} if isinstance(opts, list) else opts
-    effort = ti.get('effort') or opts.get('effort') or opts.get('reasoningEffort')
-    for f in sorted({os.path.expanduser('~/.mergeworthy/projects/' + r + '.md') for r in re.findall(r'\.mergeworthy/projects/([\w.-]+/[\w.-]+)\.md', briefs)}):
-        sec = re.search(r'^## Agents\n(.*?)(?=^## |\Z)', open(f, errors='replace').read(), re.M | re.S) if os.path.isfile(f) else None
-        want = re.search(r'^(?:[-*] +)?Effort: *(\w+)', sec[1], re.M) if sec else None
-        if want and str(effort or '').lower() != want[1].lower():
-            sys.stderr.write(f"BLOCKED: {f}'s `## Agents` says `Effort: {want[1]}`: launch with effort {want[1]} (the Agent tool's `effort`, "
-                             f"delegate_task's target.options `effort` for Claude or `reasoningEffort` for Codex), not "
-                             + (f"{effort}.\n" if effort else "the harness's default.\n"))
-            sys.exit(2)
+        refused()
 path_set = lambda t: {q for p in re.findall(r'(~?/[^\s`\'"()<>,;]+)', t) if (q := os.path.expanduser(p.rstrip('/.,:')))}
 paths = path_set(gate_text)
 # A brief names a worktree in its launch text or its brief file (a ticket it says to follow, or named so), not in a reference it names
@@ -149,7 +140,7 @@ if not register:
                 ruled = memory_file.section(open(memory_file.path(root)).read(), 'Ruled out') if root and os.path.isfile(memory_file.path(root)) else ''
                 sys.stderr.write(f"BLOCKED: the brief pins {', '.join(sorted(old))} in {wt}, which has moved on to {head[:12]}. "
                                  "Pin the live head (and check the work isn't already done there)." + (f" Ruled out:\n{ruled}\n" if ruled else "\n"))
-                sys.exit(2)
+                refused()
 # Two rounds per loop on one head (delegate §Review rounds): a review round `<loop>-r<N>`, maybe followed by the date or head SHA
 # the reuse block above asks for, once two earlier rounds of its loop pinned its head or one within SHAPE STALE's count of it, is refused
 rnd = re.fullmatch(r'(.+)-r(\d+)', re.sub(r'(-\d{4}-\d{2}-\d{2}|-[0-9a-f]{7,40})+$', '', (cid or str(ti.get('description') or '')).strip()))
@@ -177,10 +168,11 @@ if rnd and (ti.get('role') == 'review' or not ti.get('role') and re.search(r'\be
                              "only an open blocker keeps the PR in draft. A maintainer's ask on a new head starts a new loop name. "
                              "Close a round 2 that isn't clean with `pr-steps <step> <file> --ledger <ledger>` or `gate-pass ... --ledger <ledger>` on the last report: the agent's own report is the record, never one the main session writes."
                              + ("" if heads else " An independent update of a body no Git head pins (a tracker's status lines), and not a fix to the text these rounds reviewed, is its own loop: `<loop>-u<N>-r1`, `-r2`.") + "\n")
-            sys.exit(2)
+            refused()
 # A brief that writes or reviews code, docs or a post (any role but research or test) for a repo whose maintainers' notes exist
 # (delegate step 3) names the project file, so the agent reads them: by owner/repo, or by a path in that repo's checkout. A memory-refresh
 # brief reads only the session log.
+missing = []
 if not register and ti.get('role') not in ('research', 'test') and 'memory-refresh' not in gate_text:
     notes = {os.path.relpath(f, os.path.expanduser('~/.mergeworthy/projects'))[:-3].lower(): f
              for f in glob.glob(os.path.expanduser('~/.mergeworthy/projects/*/*.md'))}
@@ -197,7 +189,7 @@ if not register and ti.get('role') not in ('research', 'test') and 'memory-refre
     if missing:
         sys.stderr.write("BLOCKED: the brief works on a repo with a project file; name each project file in it so the agent reads "
                          "and applies them (mergeworthy:delegate step 3):\n" + '\n'.join(missing) + '\n')
-        sys.exit(2)
+        refused()
     # every agent reads the project file whole: one over its cap is condensed before the next agent starts
     # the learning thread condensing it is waited for while it runs; its own agents, which do the condensing, pass
     over = []
@@ -212,14 +204,14 @@ if not register and ti.get('role') not in ('research', 'test') and 'memory-refre
     if over:
         sys.stderr.write(f"BLOCKED: a project file the brief names is over its {project_file.CAP}-word cap: condense it first (mergeworthy:task "
                          "§Project file), its quotes into the study, unless a learning thread already does:\n" + '\n'.join(over) + '\n')
-        sys.exit(2)
+        refused()
     # The producer reads the standard its checker uses, by path (delegate step 3): code for an implementer, writing for a drafter.
     need = [f for f, applies in (('skills/code/SKILL.md', named and ti.get('role') == 'implementation'),
                                  ('skills/writing/SKILL.md', 'thread-context.md' in gate_text)) if applies and f not in gate_text]
     if need:
         sys.stderr.write("BLOCKED: name the standard the agent writes to by its path, so it reads it before producing "
                          "(mergeworthy:delegate step 3): " + ', '.join('~/.mergeworthy/current/' + f for f in need) + '\n')
-        sys.exit(2)
+        refused()
     # The main session decides on code it read itself, not on an agent's summary: an implementation brief for a repo needs a file
     # tracked in that repo read by this session in the last three hours (Read, Grep, a cat/sed/head/grep/git show on it, gh pr diff,
     # gh api .../contents, or a WebFetch of its github.com page); a report an agent wrote inside a checkout is untracked and doesn't count
@@ -269,7 +261,7 @@ if not register and ti.get('role') not in ('research', 'test') and 'memory-refre
         if not seen:
             sys.stderr.write(f"BLOCKED: read the code this change is about yourself before briefing it ({', '.join(sorted(named))}): open the files "
                              "(no checkout: clone it, or gh pr diff / gh api), the feature's docs page and its JSDoc, and decide from them, not from an agent's report (always-on: the main session)\n")
-            sys.exit(2)
+            refused()
     # An author or the fresh reader works from the repo study (task step 4): the project file's ## Who decides links one dated within 30 days
     authors = ti.get('role') == 'implementation' or 'thread-context.md' in gate_text or 'MERGE AS IS' in gate_text
     stale = []
@@ -286,23 +278,38 @@ if not register and ti.get('role') not in ('research', 'test') and 'memory-refre
         sys.stderr.write("BLOCKED: write the repo study first (mergeworthy:task step 4, §Repo study): each project file's `## Who decides` links "
                          "~/.mergeworthy/projects/<owner>/<repo>.study.md whose first line is `Studied: <date>` within 30 days, so the author writes "
                          "what the maintainer merges:\n" + '\n'.join(stale) + '\n')
-        sys.exit(2)
+        refused()
     # A drafter (reads the thread record, isn't a review) lists each scope-word claim beside its proof: the template's line
     if 'thread-context.md' in gate_text and 'CLEAN' not in gate_text and not re.search(r'scope word', gate_text, re.I):
         sys.stderr.write("BLOCKED: a drafter brief carries the template's scope-word check: paste "
                          "~/.mergeworthy/current/skills/delegate/drafter.md, filled in (mergeworthy:delegate step 3)\n")
-        sys.exit(2)
+        refused()
+# A project file's `## Agents` line `Effort: <effort>`, bulleted or not, is the effort every agent for its repo runs at: a launch whose brief names
+# that file, or should name it (missing above), sets it (the Agent tool's `effort`, delegate_task's target.options or t3_thread_launch's modelSelection.options
+# `effort` or `reasoningEffort`); with no option the harness's default runs, which is not the repo's choice.
+if not register:
+    opts = (ti.get('target') or ti.get('modelSelection') or {}).get('options') or {}
+    opts = {o.get('id'): o.get('value') for o in opts if isinstance(o, dict)} if isinstance(opts, list) else opts
+    effort = ti.get('effort') or opts.get('effort') or opts.get('reasoningEffort')
+    for f in sorted({os.path.expanduser('~/.mergeworthy/projects/' + r + '.md') for r in re.findall(r'\.mergeworthy/projects/([\w.-]+/[\w.-]+)\.md', briefs)} | set(missing)):
+        sec = re.search(r'^## Agents\n(.*?)(?=^## |\Z)', open(f, errors='replace').read(), re.M | re.S) if os.path.isfile(f) else None
+        want = re.search(r'^(?:[-*] +)?Effort: *(\w+)', sec[1], re.M) if sec else None
+        if want and str(effort or '').lower() != want[1].lower():
+            sys.stderr.write(f"BLOCKED: {f}'s `## Agents` says `Effort: {want[1]}`: launch with effort {want[1]} (the Agent tool's `effort`, "
+                             f"delegate_task's target.options `effort` for Claude or `reasoningEffort` for Codex), not "
+                             + (f"{effort}.\n" if effort else "the harness's default.\n"))
+            refused()
 # pull-request step 5 is the build's input: an implementer brief names `Approach: <path>`, the newest approach record of a checkout it names
 # (pr-steps approach). A later build of that record's PR names a newer record, or the same one marked `(unchanged: <why>)`.
 BUILT = os.path.expanduser('~/.claude/approach-builds')  # per approach record: the time of the record the PR's last build was briefed on
 exec_text = text + '\n' + '\n'.join(open(t, errors='replace').read() for t in executed_in(text))
 def brief_approach():
-    """(record file, its newest line's time, the unchanged reason or '') of an implementer brief's Approach line; blocks when it has none."""
+    """(record file, its newest line's time, the unchanged reason or '') of an implementer brief's Approach line; refuses, giving None, when it has none."""
     m = re.search(r'^[ \t>*-]*Approach:\s*(\S+\.md)\b(.*)$', exec_text, re.M)
     if not m:
         sys.stderr.write("BLOCKED: an implementer brief names the approach it builds (mergeworthy:pull-request step 5, delegate/implementer.md): "
                          "a line `Approach: <abs path of approach.md>`, recorded first by `pr-steps approach` in the PR branch's checkout the brief names\n")
-        sys.exit(2)
+        return refused()
     named, recs = os.path.realpath(os.path.expanduser(m[1])), set()
     for p in (p for p in path_set(exec_text) if not p.startswith('//')):  # the //host/… of a URL, not a path
         if (top := git_top(p)) and (r := branch_record(top, 'approach')) and os.path.isfile(r): recs.add(r)
@@ -313,7 +320,7 @@ def brief_approach():
             return r, rows[-1][2], why[1] if why else ''
     sys.stderr.write(f"BLOCKED: {m[1]} is not the newest `pr-steps approach` record of a checkout this brief names: record it in the PR branch's "
                      "checkout (mergeworthy:pull-request step 5) and name that checkout in the brief\n")
-    sys.exit(2)
+    return refused()
 approach = brief_approach() if ti.get('role') == 'implementation' or re.search(r'^\s*You implement\b', exec_text, re.M) else None
 if approach and not register and not approach[2]:
     built = os.path.join(BUILT, os.path.basename(approach[0]))
@@ -322,7 +329,7 @@ if approach and not register and not approach[2]:
         sys.stderr.write(f"BLOCKED: this PR's last build was briefed on the approach recorded {last}, and this brief names no newer one. A changed "
                          "approach is rated and recorded first (mergeworthy:pull-request step 5); the same approach says so: "
                          "`Approach: <path> (unchanged: <why, in one line>)`\n")
-        sys.exit(2)
+        refused()
 if approach and register:
     os.makedirs(BUILT, exist_ok=True)
     open(os.path.join(BUILT, os.path.basename(approach[0])), 'w').write(approach[1])
@@ -332,16 +339,17 @@ if root and (ti.get('role') == 'research' or re.search(r'\bresearch', f"{ti.get(
     topic = re.search(r'^\s*Topic:\s*(.+?)\s*$', gate_text, re.M)
     if not topic:
         sys.stderr.write("BLOCKED: a research brief names its topic in a `Topic: <key words>` line, so the hook can search the work folder's files for research already done (mergeworthy:delegate §Brief).\n")
-        sys.exit(2)
-    words = [w.lower() for w in re.findall(r'[\w.-]{3,}', topic.group(1))]
-    checked = ' '.join(re.findall(r'^\s*Checked:\s*(.+)$', gate_text, re.M))
-    # covered = one paragraph holds every topic word: a long design doc that mentions them apart covers nothing
-    covers = lambda p: any(all(w in para for w in words) for para in re.split(r'\n\s*\n', open(p, errors='replace').read().lower()))
-    hits = [p for p in memory_file.notes(root) if p not in checked and os.path.abspath(p) not in tickets and covers(p)]
-    if hits:
-        sys.stderr.write("BLOCKED: these files already cover the topic; read them first. If one answers it, use it; "
-                         "if not, add `Checked: <file>` to the brief for each:\n" + '\n'.join(hits) + '\n')
-        sys.exit(2)
+        refused()
+    else:
+        words = [w.lower() for w in re.findall(r'[\w.-]{3,}', topic.group(1))]
+        checked = ' '.join(re.findall(r'^\s*Checked:\s*(.+)$', gate_text, re.M))
+        # covered = one paragraph holds every topic word: a long design doc that mentions them apart covers nothing
+        covers = lambda p: any(all(w in para for w in words) for para in re.split(r'\n\s*\n', open(p, errors='replace').read().lower()))
+        hits = [p for p in memory_file.notes(root) if p not in checked and os.path.abspath(p) not in tickets and covers(p)]
+        if hits:
+            sys.stderr.write("BLOCKED: these files already cover the topic; read them first. If one answers it, use it; "
+                             "if not, add `Checked: <file>` to the brief for each:\n" + '\n'.join(hits) + '\n')
+            refused()
 # a fan-out runs several agents on one brief, each under its own title and naming its part in its task: the title is part of the job
 key = ' '.join([*tickets, str(ti.get('title') or ti.get('description') or '').strip()]).strip()
 jobs = os.path.expanduser('~/.claude/agent-jobs'); os.makedirs(jobs, exist_ok=True)
@@ -409,9 +417,9 @@ if not register and ti.get('role') not in READERS:
         sys.stderr.write("BLOCKED: another writer is working in a worktree this brief names (T3's interrupted or cancelled status doesn't mean it stopped):\n"
                          + '\n'.join(busy) + "\nContinue that agent with a message, or wait for it to finish; a replacement goes in a fresh worktree. "
                          "A job whose agent has ended and whose result you read: `agent-job done <key>`.\n")
-        sys.exit(2)
+        refused()
 if not key:
-    sys.exit(0)  # nothing names the job (no ticket, title or description), so no second launch of it can be told apart
+    sys.exit(2 if blocked else 0)  # nothing names the job (no ticket, title or description), so no second launch of it can be told apart
 f = os.path.join(jobs, hashlib.sha256(key.encode()).hexdigest()[:16])
 # when the launch this registers began (its transcript starts after it): one record per key, as one_per_job lets one call of a key
 # pend at a time, and the key's next launch overwrites the record of a call another hook blocked
@@ -433,21 +441,20 @@ def one_per_job(started):
         "read its status first (task_status, its latest runs); a turn that ended or 'waiting_for_children' means it is still alive. "
         "Continue it with a message instead of starting another. Only when its task is terminal and you have read its result, "
         f"release the job with `agent-job done {shlex.quote(key[:200])}`, then launch.\n")
-    sys.exit(2)
-if not register and os.path.exists(f):
-    j = json.load(open(f))
-    if time.time() - j.get('started', 0) < 24 * 3600: one_per_job(j['started'])
+    refused()
 if not register:
-    for j in pending:
-        if j['key'] == key: one_per_job(j['started'])
+    j = json.load(open(f)) if os.path.exists(f) else {}
+    same = [j] if time.time() - j.get('started', 0) < 24 * 3600 else [p for p in pending if p['key'] == key]
+    if same: one_per_job(same[0]['started'])
     for j in [j for _, j in agent_jobs.jobs()] + pending if task.strip() else ():
+        if same and j.get('key') == key: continue  # this job's own record, refused above
         if (other := j.get('brief', '').strip()) and (other in task.strip() or task.strip() in other):
             sys.stderr.write(
                 f"BLOCKED: this task contains, or is contained in, an open job's task ({j['key'][:160]}, started {int((time.time() - j['started']) / 60)} min ago), "
                 "and an agent's transcript is told apart from another's by its task text. An agent of a fan-out names its part in its task "
                 "(its slice, subsystem, frames or topic). A new round on the same task releases the earlier job first, once its agent "
                 f"is done and you have read its result: `agent-job done {shlex.quote(j['key'][:200])}`.\n")
-            sys.exit(2)
+            refused()
 # At most 3 agents at a time per session (delegate step 1), or the number the user gave, quoted in the task's scope.md (the work folder
 # of the session's cwd, else the one the briefs it launches are in): a job is open until released or its agent finished; a memory refresh doesn't count
 # A fan-out a step names (finality steps 2-3, converge's per-slice verifiers) says so on a `Fan-out:` line, in the task or its brief, and passes
@@ -474,8 +481,8 @@ if not register and d.get('session_id') and 'memory-refresh' not in gate_text an
                          + '\n'.join(f"{j['key'][:160]} (started {int((time.time() - j['started']) / 60)} min ago)" for j in live)
                          + "\nContinue one with a message, or wait for one to finish, read its result and release it with `agent-job done <key>`. "
                          f"A higher limit the user gave for this task goes in {scope} as a line `Agents: <N> (user <YYYY-MM-DD>: \"<their words>\")`, quoting the user's own words from this session.\n")
-        sys.exit(2)
-if not register:
+        refused()
+if not register and not blocked:
     os.makedirs(agent_jobs.LAUNCHED, exist_ok=True); json.dump({'launched': time.time(), 'key': key, 'task': task, 'role': ti.get('role'), 'worktrees': worktrees_in(text), 'tool_use_id': d.get('tool_use_id'),
                                                            'transcript': d.get('transcript_path')}, open(pre, 'w'))
-sys.exit(0)
+sys.exit(2 if blocked else 0)
