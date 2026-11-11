@@ -26,8 +26,8 @@ cat > "$T/bin/codex" <<EOF
 exit 0
 EOF
 printf '#!/bin/sh\necho "pnpm $*" >> "%s/calls"\n' "$T" > "$T/bin/pnpm"
-# stub systemctl: the units in $T/active are active; a restart of one in $T/breaks leaves it failed, of one in $T/stops
-# inactive, and one in $T/retires also writes its folder's `retired`, as its watcher does when it retires
+# stub systemctl: the units in $T/active are active (is-active's last argument); a restart of one in $T/breaks leaves it
+# failed, of one in $T/stops inactive, and one in $T/retires also writes its folder's `retired`, as its watcher does when it retires
 cat > "$T/bin/systemctl" <<EOF
 #!/bin/bash
 echo "systemctl \$*" >> "$T/calls"
@@ -37,7 +37,7 @@ case "\$2" in
     i=\${3#gh-watch@}; grep -qxF "\$3" "$T/retires" && touch "\$(systemd-escape --unescape --path "\${i%.service}")/retired" ;;
   is-enabled) [ -e "$T/learn-enabled" ] ;;
   enable) touch "$T/learn-enabled" ;;
-  is-active) if grep -qxF "\$3" "$T/active"; then echo active; elif grep -qxF "\$3" "$T/stops"; then echo inactive; exit 3; else echo failed; exit 3; fi ;;
+  is-active) if grep -qxF "\${!#}" "$T/active"; then echo active; elif grep -qxF "\${!#}" "$T/stops"; then echo inactive; exit 3; else echo failed; exit 3; fi ;;
 esac
 EOF
 chmod +x "$T/bin/"*; export PATH="$T/bin:$PATH"
@@ -101,9 +101,15 @@ CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" > "$T/out" 2>&1 </dev/null
 check "session-start with no learning units: both written, the timer enabled, the service run once; nothing of it in the session's context" "1 1 1 1 0" \
   "$([ -f "$U/mergeworthy-learn.service" ] && [ -f "$U/mergeworthy-learn.timer" ] && echo 1) $(grep -c 'daemon-reload' "$T/calls") $(grep -c 'enable --now mergeworthy-learn.timer' "$T/calls") $(grep -c 'start --no-block mergeworthy-learn.service' "$T/calls") $(grep -c 'mergeworthy-learn' "$T/out")"
 : > "$T/calls"; PATH="$T/bin:/usr/local/bin:/usr/bin:/bin" CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" >/dev/null 2>&1 </dev/null
-check "session-start again, from another PATH: no unit rewritten, no daemon-reload, enable, start or restart" "0 0" "$(grep -c 'PATH=$T/bin:/usr/local/bin:/usr/bin:/bin"' "$U/mergeworthy-learn.service") $(grep -vc ' is-enabled \| show-environment$' "$T/calls")"
+check "session-start again, from another PATH: no unit rewritten, no daemon-reload, enable, start or restart" "0 0" "$(grep -c 'PATH=$T/bin:/usr/local/bin:/usr/bin:/bin"' "$U/mergeworthy-learn.service") $(grep -vc ' is-enabled \| is-active \| show-environment$' "$T/calls")"
 sed -i 's/06:30/05:00/' "$U/mergeworthy-learn.timer"; : > "$T/calls"; CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" >/dev/null 2>&1 </dev/null
 check "session-start after an update changed a unit: rewritten and reloaded, the running timer not restarted, no second first run" "1 1 0 0" \
   "$(grep -c '^OnCalendar=\*-\*-\* 06:30$' "$U/mergeworthy-learn.timer") $(grep -c 'daemon-reload' "$T/calls") $(grep -c ' restart \| enable \| start --no-block ' "$T/calls") $(grep -c 'stop' "$T/calls")"
+
+ok=0; for i in $(seq 50); do rm -rf "$U"; for j in $(seq 30); do PATH="$T/bin:/x$j:$PATH" "$R/hooks/learn-units" >/dev/null & done; wait
+  [ "$(ls -A "$U" | paste -sd' ')" = "mergeworthy-learn.service mergeworthy-learn.timer" ] && grep -q '^ExecStart=' "$U/mergeworthy-learn.service" && grep -q '^WantedBy=' "$U/mergeworthy-learn.timer" && ok=$((ok+1)); done 2>/dev/null
+check "30 runs at once, 50 times: both units complete, no temp file left" 50 "$ok"
+grep -vxF mergeworthy-learn.timer "$T/active" > "$T/active.new"; mv "$T/active.new" "$T/active"; : > "$T/calls"; "$R/hooks/learn-units" >/dev/null
+check "an enabled timer that isn't active (a reload failed it): started, the service not run" "1 0" "$(grep -cx 'systemctl --user start mergeworthy-learn.timer' "$T/calls") $(grep -c 'start --no-block mergeworthy-learn.service' "$T/calls")"
 
 [ "$fails" = 0 ] && echo "update: all cases pass" || { echo "update: $fails case(s) failed"; exit 1; }
