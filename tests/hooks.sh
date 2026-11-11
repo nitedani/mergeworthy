@@ -1210,6 +1210,7 @@ ss_mem() { python3 -c 'import json,sys; print(json.dumps({"cwd":sys.argv[1],"ses
 check "session-memory in the orchestrator's checkout, memory missing: the refresh order and an empty digest" "1 1" "$(ss_mem "$OC/sub" > "$T/ss.out"; grep -c "is behind your session log.*memory-prep prep $MR.*ONE Haiku" "$T/ss.out") $(grep -c '^### Ruled out' "$T/ss.out")"
 check "a session elsewhere gets no memory" 0 "$(ss_mem "$T" | grep -c 'standing memory\|is behind')"
 mlog "$LD/sb.jsonl" 0.5 "another program's work in the same checkout"; mlog "$LD/later.jsonl" 0.5 "carry on" thread-1
+check "under T3, a new session with no log yet gets the digest when its thread is the program's; another thread gets none" "1 0" "$(T3CODE_THREAD_ID=thread-1 ss_mem "$OC" fresh | grep -c '^### Ruled out') $(T3CODE_THREAD_ID=thread-2 ss_mem "$OC" fresh | grep -c 'standing memory\|is behind')"
 check "session B in the orchestrator's checkout gets no memory; a later session of its thread gets the order and the digest" "0 1 1" "$(ss_mem "$OC" sb | grep -c 'standing memory\|is behind') $(ss_mem "$OC" later > "$T/ss.out"; grep -c 'is behind' "$T/ss.out") $(grep -c '^### Ruled out' "$T/ss.out")"
 python3 "$R/bin/memory-prep" prep "$MR" > "$T/prep.out"
 MB=$(sed -n 's/.*brief: //p' "$T/prep.out")
