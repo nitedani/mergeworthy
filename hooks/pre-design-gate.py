@@ -4,13 +4,14 @@ An edit inside a git work tree waits until this session read the AGENTS.md and C
 command writes the same way), then for its repo and branch's `pr-steps preflight` and `pr-steps approach` records.
 At Tier M or L (first line of scope.md in the work folder: ~/.mergeworthy/work/<task>/ holding the checkout, or <repo>-work/ beside it),
 code waits for prior art (task step 6) and the design (design step 4): the work folder's prior-art.md and a decisions/*.md must exist
-before an edit inside the repo or an implementation agent. In a task's work folder, code waits for scope.md's Tier line (task step 2).
+before an edit inside the repo, or an implementation agent briefed on a checkout in it (the session's own when the brief names none).
+In a task's work folder, code waits for scope.md's Tier line (task step 2).
 The step records under ~/.claude/pr-steps are pr-steps' to write."""
 import glob, json, os, re, subprocess, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
 from shellcmd import folder, no_approach, no_preflight, no_instructions_read
-import work_folder
+import launch, work_folder
 d = json.load(sys.stdin)
 ti = d.get('tool_input', {}) or {}
 tool = d.get('tool_name', '')
@@ -25,34 +26,36 @@ if 'delegate_task' not in tool:
     if why := no_instructions_read(target, d) or no_preflight(near) or no_approach(near):
         sys.stderr.write(f"BLOCKED: {why}\n")
         sys.exit(2)
-# the edited file's repo, else the session's: an edit outside any repo is no code change (the push gate checks what leaves)
-top = subprocess.run(['git', '-C', near, 'rev-parse', '--show-toplevel'], capture_output=True, text=True).stdout.strip()
-if not top:
-    sys.exit(0)
-work = work_folder.of(top) or work_folder.of(cwd) or top + '-work'
-try:
-    tier = open(os.path.join(work, 'scope.md')).readline()
-except OSError:
-    tier = ''
-if not re.match(r'\s*Tier:\s*[0SML]\b', tier):
-    if work_folder.of(top):  # a checkout in a task's work folder: the task is triaged before its code (outside one, nothing tells the task)
-        sys.stderr.write(f"BLOCKED: {work}/scope.md has no line 1 `Tier: <0|S|M|L>, because <signals>`: triage and scope the task first (mergeworthy:task steps 2-3)\n")
-        sys.exit(2)
-    sys.exit(0)
-if not re.match(r'\s*Tier:\s*[ML]\b', tier):
-    sys.exit(0)
+def waits(near, code):
+    """Why a change at near waits for its task's triage or design, or None; code(top) says whether the change is code in that repo."""
+    # the edited file's repo, else the session's: an edit outside any repo is no code change (the push gate checks what leaves)
+    top = subprocess.run(['git', '-C', near, 'rev-parse', '--show-toplevel'], capture_output=True, text=True).stdout.strip()
+    if not top:
+        return None
+    work = work_folder.of(top) or work_folder.of(cwd) or top + '-work'
+    try:
+        tier = open(os.path.join(work, 'scope.md')).readline()
+    except OSError:
+        tier = ''
+    if not re.match(r'\s*Tier:\s*[0SML]\b', tier):
+        # a checkout in a task's work folder: the task is triaged before its code (outside one, nothing tells the task)
+        return f"{work}/scope.md has no line 1 `Tier: <0|S|M|L>, because <signals>`: triage and scope the task first (mergeworthy:task steps 2-3)" if work_folder.of(top) else None
+    if not re.match(r'\s*Tier:\s*[ML]\b', tier) or not code(top):
+        return None
+    missing = [n for n, ok in (('prior-art.md', os.path.isfile(os.path.join(work, 'prior-art.md'))),
+                              ('decisions/*.md', bool(glob.glob(os.path.join(work, 'decisions', '*.md'))))) if not ok]
+    return missing and (f"{tier.strip()} and {work} has no {' or '.join(missing)}. Before code: prior art (mergeworthy:task step 6: the web, "
+                        "every project the user names, peers) into prior-art.md, then design it twice (mergeworthy:design step 4) "
+                        "into decisions/<name>.md.")
 if 'delegate_task' in tool:
-    if str(ti.get('role') or '') != 'implementation':
-        sys.exit(0)
+    impl = str(ti.get('role') or '') == 'implementation'
+    # an implementer works in the checkouts its brief names; the session's own only when it names none
+    nears, code = (launch.parse(ti).checkouts if impl else []) or [cwd], lambda top: impl
 else:
     path = os.path.realpath(str(ti.get('file_path') or ti.get('notebook_path') or ''))
-    if not path.startswith(os.path.realpath(top) + os.sep):
-        sys.exit(0)
-missing = [n for n, ok in (('prior-art.md', os.path.isfile(os.path.join(work, 'prior-art.md'))),
-                          ('decisions/*.md', bool(glob.glob(os.path.join(work, 'decisions', '*.md'))))) if not ok]
-if missing:
-    sys.stderr.write(f"BLOCKED: {tier.strip()} and {work} has no {' or '.join(missing)}. Before code: prior art (mergeworthy:task step 6: the web, "
-                     "every project the user names, peers) into prior-art.md, then design it twice (mergeworthy:design step 4) "
-                     "into decisions/<name>.md.\n")
-    sys.exit(2)
+    nears, code = [near], lambda top: path.startswith(os.path.realpath(top) + os.sep)
+for n in nears:
+    if why := waits(n, code):
+        sys.stderr.write(f"BLOCKED: {why}\n")
+        sys.exit(2)
 sys.exit(0)

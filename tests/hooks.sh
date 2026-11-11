@@ -2554,6 +2554,12 @@ check "BLOCK: in ~/.mergeworthy/work/<task>/, a Tier M edit and an implementatio
 check "there, an artifact-root write passes" 0 "$(gate Write "{\"file_path\":\"$DW/prior-art.md\"}")"
 touch "$DW/prior-art.md"; mkdir -p "$DW/decisions"; touch "$DW/decisions/x.md"
 check "there, a Tier M edit passes once prior art and a decision exist" 0 "$(gate Edit "{\"file_path\":\"$D/a.ts\"}")"
+# #152: an implementation launch is checked in each checkout its brief names, the session's own only when it names none
+GR="$HOME/.mergeworthy/work/gate-repro"; mkdir -p "$GR"; git init -q "$GR/wt"; echo 'Tier: M, because a repro of the design gate' > "$GR/scope.md"; echo '# prior art' > "$GR/prior-art.md"
+GU="$T/user-checkout"; git init -q "$GU"; printf 'You implement it in %s.\n' "$GR/wt" > "$GR/brief.md"
+gatein() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"role":"implementation","task":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$2" | python3 "$R/hooks/pre-design-gate.py" 2>/dev/null; echo $?; }
+check "BLOCK (#152): an implementer naming a Tier M checkout with no design, from the user's checkout, from that checkout, and by a brief file; one naming no checkout is checked in its cwd" "2 2 2 2 0" \
+  "$(gatein "Implement it in $GR/wt" "$GU") $(gatein "Implement it in $GR/wt" "$GR/wt") $(gatein "Follow $GR/brief.md exactly." "$GU") $(gatein 'Implement it' "$GR/wt") $(gatein 'Implement it' "$GU")"
 # ---------- pre-design-gate and pre-bash-guard: no file change in a repo before this session read its AGENTS.md and CLAUDE.md ----------
 I="$T/instr"; mkdir -p "$I/sub"; git -C "$I" init -q; printf 'rules\n' > "$I/AGENTS.md"; printf '@AGENTS.md\n' > "$I/CLAUDE.md"
 IN="$T/instr-none"; mkdir -p "$IN"; git -C "$IN" init -q
