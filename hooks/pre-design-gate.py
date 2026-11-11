@@ -4,7 +4,7 @@ An edit inside a git work tree waits until this session read the AGENTS.md and C
 command writes the same way), then for its repo and branch's `pr-steps preflight` and `pr-steps approach` records.
 At Tier M or L (first line of scope.md in the work folder: ~/.mergeworthy/work/<task>/ holding the checkout, or <repo>-work/ beside it),
 code waits for prior art (task step 6) and the design (design step 4): the work folder's prior-art.md and a decisions/*.md must exist
-before an edit inside the repo, or an implementation agent briefed on a checkout in it (the session's own when the brief names none).
+before an edit inside the repo, or an implementation agent briefed to work in a checkout of it (the session's own when the brief says none).
 In a task's work folder, code waits for scope.md's Tier line (task step 2).
 The step records under ~/.claude/pr-steps are pr-steps' to write."""
 import glob, json, os, re, subprocess, sys
@@ -49,8 +49,8 @@ def waits(near, code):
                         "into decisions/<name>.md.")
 if 'delegate_task' in tool:
     impl = str(ti.get('role') or '') == 'implementation'
-    # an implementer works in the checkouts its brief names; the session's own only when it names none
-    nears, code = (launch.parse(ti).checkouts if impl else []) or [cwd], lambda top: impl
+    # an implementer works in the checkouts its brief says it works in; the session's own when it says none
+    nears, code = (launch.parse(ti).targets if impl else []) or [cwd], lambda top: impl
 else:
     path = os.path.realpath(str(ti.get('file_path') or ti.get('notebook_path') or ''))
     nears, code = [near], lambda top: path.startswith(os.path.realpath(top) + os.sep)

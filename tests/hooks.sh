@@ -2563,6 +2563,8 @@ GU="$T/user-checkout"; git init -q "$GU"; printf 'You implement it in %s.\n' "$G
 gatein() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"role":"implementation","task":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$2" | python3 "$R/hooks/pre-design-gate.py" 2>/dev/null; echo $?; }
 check "BLOCK (#152): an implementer naming a Tier M checkout with no design, from the user's checkout, from that checkout, and by a brief file; one naming no checkout is checked in its cwd" "2 2 2 2 0" \
   "$(gatein "Implement it in $GR/wt" "$GU") $(gatein "Implement it in $GR/wt" "$GR/wt") $(gatein "Follow $GR/brief.md exactly." "$GU") $(gatein 'Implement it' "$GR/wt") $(gatein 'Implement it' "$GU")"
+check "a checkout the brief names only for reference is not where the change goes: it passes beside a target with no Tier, and with no target the cwd decides" "0 0 2" \
+  "$(gatein "Implement in $GU. Search $GR/wt only for reference; do not edit it." "$GU") $(gatein "Implement it. Read $GR/wt for reference." "$GU") $(gatein "Implement it. Read $GR/wt for reference." "$GR/wt")"
 # ---------- pre-design-gate and pre-bash-guard: no file change in a repo before this session read its AGENTS.md and CLAUDE.md ----------
 I="$T/instr"; mkdir -p "$I/sub"; git -C "$I" init -q; printf 'rules\n' > "$I/AGENTS.md"; printf '@AGENTS.md\n' > "$I/CLAUDE.md"
 IN="$T/instr-none"; mkdir -p "$IN"; git -C "$IN" init -q

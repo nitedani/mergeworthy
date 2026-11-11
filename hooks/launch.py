@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A launch (Agent, Task, delegate_task, t3_thread_launch) parsed once: its brief, what the agent is told (the launch's own text
 plus each file it executes: one it says to follow, execute or do, or whose path names it a brief, ticket or prompt; never an
-installed skill or a project file), the other .md files it names, and the checkouts its brief names."""
+installed skill or a project file), the other .md files it names, the checkouts its brief names, and those it says it works in."""
 import os, re
 from work_folder import git_top, task_of
 
@@ -27,6 +27,12 @@ def bound(text, verbs):
             for m in re.finditer(rf'\b(?:{verbs})\b(?:\s+[^\s~/]\S*){{0,4}}\s+[`\'"]?({PATH})', c, re.I)}
 
 
+def checkouts(paths):
+    """The checkouts holding paths, outside the installed plugin."""
+    return sorted({git_top(os.path.realpath(p)) for p in paths
+                   if not p.startswith('//') and not (os.path.abspath(p) + os.sep).startswith(MW + 'current' + os.sep)} - {None})
+
+
 def own_path(f):
     """f below the checkout or work folder holding it, else its name: a checkout's own files are no brief by their folder's name."""
     base = git_top(f) or task_of(f)
@@ -46,9 +52,9 @@ class Launch:
         self.tickets = [f for f in named if not f.startswith(MW)]
         self.brief = text + '\n' + '\n'.join(open(f, errors='replace').read() for f in self.files)
         self.paths = path_set(self.brief)
-        tops = {git_top(os.path.realpath(p)) for p in self.paths
-                if not p.startswith('//') and not (os.path.abspath(p) + os.sep).startswith(MW + 'current' + os.sep)}
-        self.checkouts = sorted(tops - {None})
+        self.checkouts = checkouts(self.paths)
+        # where the change goes (`work only in <p>`, `implement the fix in <p>`), not a checkout it names for reference
+        self.targets = checkouts(bound(self.brief, r'implement|work|edit|build|fix|in the checkout'))
         self.worktrees = [c for c in self.checkouts if os.path.isfile(os.path.join(c, '.git'))]
 
 
