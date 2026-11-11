@@ -410,7 +410,7 @@ if (opened_task or acted) and not child and not paused and not headless:
 if not child and not paused:
     sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
     import datetime, time, memory_file as mf
-    try: root = mf.for_cwd(cwd_d)
+    try: root = mf.for_cwd(cwd_d, d.get('session_id'))
     except (OSError, ValueError): root = None
     stamp = root and os.path.join(root, '.memory-order-repeated')
     if root and time.time() - (os.path.getmtime(stamp) if os.path.exists(stamp) else 0) > 3600:

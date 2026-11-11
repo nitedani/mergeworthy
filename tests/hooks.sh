@@ -95,8 +95,8 @@ tr_file() { # final assistant text [work: the session started an agent, so it do
 if sys.argv[2:] == ["work"]: print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","id":"a1","input":{"prompt":"x"}}]}}))
 print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":sys.argv[1]}]}}))' "$@" > "$T/tr.jsonl"
 }
-stop() { # cwd (the other checks; the check-in has its own test)
-  python3 -c 'import json,sys; print(json.dumps({"transcript_path":sys.argv[1],"cwd":sys.argv[2]}))' "$T/tr.jsonl" "$1" \
+stop() { # cwd (the other checks; the check-in has its own test); $SID: the session's id
+  python3 -c 'import json,sys; print(json.dumps({"transcript_path":sys.argv[1],"cwd":sys.argv[2],"session_id":sys.argv[3] or None}))' "$T/tr.jsonl" "$1" "${SID:-}" \
     | MERGEWORTHY_STOP_CHECKIN=off python3 "$R/hooks/stop-lint.py" 2>"$T/err"; echo $?
 }
 stop_active() { # cwd: the stop right after a block
@@ -1206,9 +1206,15 @@ for e in '{"isMeta":true,"message":{"content":[{"type":"text","text":"Base direc
 mlog "$LD/a.jsonl" 1.5 "Delegated task node:delegated-task:x reached a terminal state."
 mlog "$LD/a.jsonl" 1.4 "RSC check-in."; mlog "$LD/a.jsonl" 1.3 "RSC check-in."
 mlog "$LD/orch.jsonl" 1 "said in the session init ran in"; mlog "$LD/c.jsonl" 1 "a child's brief"; mlog "$LD/c.jsonl" 1 "tool output" "" '{"toolUseResult":{},"promptSource":null,"message":{"content":"thread-1"}}'
-ss_mem() { python3 -c 'import json,sys; print(json.dumps({"cwd":sys.argv[1],"source":"compact"}))' "$1" | python3 "$R/hooks/session-memory.py" 2>/dev/null; }
+ss_mem() { python3 -c 'import json,sys; print(json.dumps({"cwd":sys.argv[1],"session_id":sys.argv[2],"source":"compact"}))' "$1" "${2:-orch}" | python3 "$R/hooks/session-memory.py" 2>/dev/null; }
 check "session-memory in the orchestrator's checkout, memory missing: the refresh order and an empty digest" "1 1" "$(ss_mem "$OC/sub" > "$T/ss.out"; grep -c "is behind your session log.*memory-prep prep $MR.*ONE Haiku" "$T/ss.out") $(grep -c '^### Ruled out' "$T/ss.out")"
 check "a session elsewhere gets no memory" 0 "$(ss_mem "$T" | grep -c 'standing memory\|is behind')"
+mlog "$LD/sb.jsonl" 0.5 "another program's work in the same checkout"; mlog "$LD/later.jsonl" 0.5 "carry on" thread-1
+mlog "$LD/mention.jsonl" 0.5 "Review the handoff for thread-1; this is a separate session." "" '{"promptSource":"typed"}'
+mlog "$LD/kid.jsonl" 0.5 "a brief naming thread-1"  # a T3 child whose prompt names the parent thread
+check "under T3, a child with its own thread whose prompt names the program's thread gets no digest and no order; with the program's thread id it gets both" "0 1 1" "$(T3CODE_THREAD_ID=thread-kid ss_mem "$OC" kid | grep -c 'standing memory\|is behind') $(T3CODE_THREAD_ID=thread-1 ss_mem "$OC" kid > "$T/ss.out"; grep -c 'is behind' "$T/ss.out") $(grep -c '^### Ruled out' "$T/ss.out")"
+check "under T3, a new session with no log yet gets the digest when its thread is the program's; another thread gets none" "1 0" "$(T3CODE_THREAD_ID=thread-1 ss_mem "$OC" fresh | grep -c '^### Ruled out') $(T3CODE_THREAD_ID=thread-2 ss_mem "$OC" fresh | grep -c 'standing memory\|is behind')"
+check "outside T3, only a session memory.source lists gets the memory: session B, a later session of the thread and one whose typed prompt names it get none; the init session gets the order and the digest" "0 0 0 1 1" "$(for s in sb later mention; do ss_mem "$OC" $s | grep -c 'standing memory\|is behind'; done | xargs) $(ss_mem "$OC" orch > "$T/ss.out"; grep -c 'is behind' "$T/ss.out") $(grep -c '^### Ruled out' "$T/ss.out")"
 python3 "$R/bin/memory-prep" prep "$MR" > "$T/prep.out"
 MB=$(sed -n 's/.*brief: //p' "$T/prep.out")
 check "the first prep takes the thread's last 24 hours only, from the init session and the handed-off one" "1 1 0 0 0 1" "$(grep -c 'USER\] said in the session init ran in' "$MR/memory-new.txt") $(grep -c 'USER\] never use cron' "$MR/memory-new.txt") $(grep -c 'an old ruling' "$MR/memory-new.txt") $(grep -c "another thread" "$MR/memory-new.txt") $(grep -c "a child's brief" "$MR/memory-new.txt") $(grep -c 'skills/delegate/memory-refresh.md' "$MB")"
@@ -1241,8 +1247,11 @@ echo "measured with tests/fixtures/memory.md (a real memory.md, words hashed): s
 check "each SessionStart output with a real-sized memory.md stays under 9,000 bytes; the order comes first, the digest after" "yes yes 1 1" "$([ "$ss_all" -le 9000 ] && echo yes) $([ "$ss_m" -le 9000 ] && echo yes) $(head -1 "$T/ss.out" | grep -c 'is behind') $(grep -c '^### Still intended' "$T/ss.out")"
 python3 -c 'import json; print(json.dumps({"type":"user","message":{"content":"Please pause the work"}})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":"Paused."}]}}))' > "$T/tr.jsonl"
 rm -f "$MR/.memory-order-repeated"  # left by the prep runs above
+export SID=orch
 check "the user's pause holds the refresh order too" "0 no" "$(stop "$OC") $([ -e "$MR/.memory-order-repeated" ] && echo yes || echo no)"
 tr_file "Done."
+check "outside T3, session B, a later session of the thread and one whose typed prompt names it never get the order; BLOCK: the init session does" "0 0 0 2" "$(SID=sb stop "$OC") $(SID=later stop "$OC") $(SID=mention stop "$OC") $(SID=orch stop "$OC")"
+rm "$MR/.memory-order-repeated"
 check "BLOCK: memory.md behind, covering nothing of the last 2 hours: stop-lint repeats the refresh order, running beside the work, then not within the hour" "2 1 0 0" "$(stop "$OC") $(grep -c "is behind your session log.*memory-prep prep $MR.*keep working meanwhile" "$T/err") $(grep -c "without starting other work" "$T/err") $(stop "$OC")"
 rm "$MR/.memory-order-repeated"
 python3 "$R/bin/memory-prep" prep "$MR" > "$T/prep.out"; MB=$(sed -n 's/.*brief: //p' "$T/prep.out")
@@ -1270,8 +1279,8 @@ w({"type":"user","promptSource":"sdk","entrypoint":"sdk-ts","message":{"role":"u
 w({"type":"assistant","entrypoint":"sdk-ts","message":{"content":[{"type":"text","text":"Notes written."}]}})' > "$T/tr.jsonl"
 t3stop() { python3 -c 'import json,sys; print(json.dumps({"transcript_path":sys.argv[1],"cwd":sys.argv[2],"session_id":sys.argv[3]}))' "$T/tr.jsonl" "$OC" "$1" \
   | MERGEWORTHY_STOP_CHECKIN=off python3 "$R/hooks/stop-lint.py" 2>"$T/err"; echo $?; }
-check "a T3 child whose prompt doesn't introduce it (T3's state gives it a parent thread) never gets the order; a top-level thread does" "0 2" "$(t3stop t3-child) $(t3stop t3-main)"
-rm -f "$MR/.memory-order-repeated" "$HOME/.t3/userdata/statev2.sqlite"
+check "a T3 child whose prompt doesn't introduce it (T3's state gives it a parent thread) never gets the order; a top-level thread does" "0 2" "$(T3CODE_THREAD_ID=thread:delegated-task:notes-1 t3stop t3-child) $(T3CODE_THREAD_ID=thread-1 t3stop t3-main)"
+rm -f "$MR/.memory-order-repeated" "$HOME/.t3/userdata/statev2.sqlite"; unset SID
 if [ -d "${MW_REAL_DAYS:-/nonexistent}" ]; then  # local only: the real day files are private
   python3 - "$MR/memory.md" "$MW_REAL_DAYS"/2026-10-12.md "$MW_REAL_DAYS"/2026-10-11.md <<'EOF'
 import re, sys
@@ -1288,7 +1297,7 @@ git init -q -b main "$T/gr"; git -C "$T/gr" commit -q --allow-empty -m one; OLD=
 git -C "$T/gr" worktree add -q -b w "$T/gw"; git -C "$T/gw" commit -q --allow-empty -m two; NEW=$(git -C "$T/gw" rev-parse HEAD)
 git -C "$T/gr" commit -q --allow-empty -m three; MAINOLD=$OLD
 ag() { # cwd task [role]
-  python3 -c 'import json,sys,time; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","cwd":sys.argv[1],"tool_input":{"task":sys.argv[2],"title":sys.argv[2][:50],"role":sys.argv[3],"clientRequestId":f"ag-{time.time_ns()}-r1"}}))' "$1" "$2$AFX" "${3:-implementation}" \
+  python3 -c 'import json,sys,time; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","cwd":sys.argv[1],"session_id":"orch","tool_input":{"task":sys.argv[2],"title":sys.argv[2][:50],"role":sys.argv[3],"clientRequestId":f"ag-{time.time_ns()}-r1"}}))' "$1" "$2$AFX" "${3:-implementation}" \
     | timeout 10 python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
 printf '# Memory\n## Standing\n### Ruled out\n- **Cron jobs** (now). The user refused them.\n## Recent\n<!-- covered-until: 2099-01-01T00:00:00.000Z -->\n' > "$MR/memory.md"
 check "BLOCK: a brief pinned to an older commit of the worktree it names, with the ruled-out list" "2 1" "$(ag "$OC" "Fix it in $T/gw at $OLD") $(grep -c 'Cron jobs' "$T/err")"

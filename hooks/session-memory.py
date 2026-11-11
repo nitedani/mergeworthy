@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""SessionStart hook: in a main session's checkout, the order to refresh memory.md when it is behind, then its Standing
+"""SessionStart hook: in the main session, the order to refresh memory.md when it is behind, then its Standing
 digest (mergeworthy:task step 8). A hook command of its own: Claude Code shows the model only a 2 KB preview of an output over 10,000
 characters, so the always-on rules (session-start) and this stay under it separately."""
 import json, os, sys
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import memory_file as mf
-try: cwd = json.load(sys.stdin).get('cwd') or os.getcwd()
-except ValueError: cwd = os.getcwd()
-try: root = mf.for_cwd(cwd)
+try: d = json.load(sys.stdin)
+except ValueError: d = {}
+try: root = mf.for_cwd(d.get('cwd') or os.getcwd(), d.get('session_id'))
 except (OSError, ValueError): root = None  # a broken memory.source never fails the session's start
 if root:
     if mf.behind(root):
