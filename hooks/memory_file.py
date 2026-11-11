@@ -20,9 +20,14 @@ def roots():
 def source(root):
     return json.load(open(os.path.join(root, 'memory.source')))
 
-def for_cwd(cwd):
-    """The work folder whose main session works in cwd."""
-    return next((r for r in roots() if cwd and (cwd == source(r)['cwd'] or cwd.startswith(source(r)['cwd'].rstrip('/') + '/'))), None)
+def for_cwd(cwd, sid):
+    """The work folder whose main session works in cwd, when session sid is that session or a later one of its thread."""
+    for r in roots():
+        src = source(r); log = os.path.join(src['logdir'], f'{sid}.jsonl')
+        if cwd and sid and (cwd == src['cwd'] or cwd.startswith(src['cwd'].rstrip('/') + '/')) and os.path.isfile(log) \
+                and log in thread_logs(r, os.path.getmtime(log)):
+            return r
+    return None
 
 def path(root):
     return os.path.join(root, 'memory.md')
