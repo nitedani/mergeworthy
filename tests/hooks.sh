@@ -1210,10 +1210,11 @@ ss_mem() { python3 -c 'import json,sys; print(json.dumps({"cwd":sys.argv[1],"ses
 check "session-memory in the orchestrator's checkout, memory missing: the refresh order and an empty digest" "1 1" "$(ss_mem "$OC/sub" > "$T/ss.out"; grep -c "is behind your session log.*memory-prep prep $MR.*ONE Haiku" "$T/ss.out") $(grep -c '^### Ruled out' "$T/ss.out")"
 check "a session elsewhere gets no memory" 0 "$(ss_mem "$T" | grep -c 'standing memory\|is behind')"
 mlog "$LD/sb.jsonl" 0.5 "another program's work in the same checkout"; mlog "$LD/later.jsonl" 0.5 "carry on" thread-1
+mlog "$LD/mention.jsonl" 0.5 "Review the handoff for thread-1; this is a separate session." "" '{"promptSource":"typed"}'
 mlog "$LD/kid.jsonl" 0.5 "a brief naming thread-1"  # a T3 child whose prompt names the parent thread
 check "under T3, a child with its own thread whose prompt names the program's thread gets no digest and no order; with the program's thread id it gets both" "0 1 1" "$(T3CODE_THREAD_ID=thread-kid ss_mem "$OC" kid | grep -c 'standing memory\|is behind') $(T3CODE_THREAD_ID=thread-1 ss_mem "$OC" kid > "$T/ss.out"; grep -c 'is behind' "$T/ss.out") $(grep -c '^### Ruled out' "$T/ss.out")"
 check "under T3, a new session with no log yet gets the digest when its thread is the program's; another thread gets none" "1 0" "$(T3CODE_THREAD_ID=thread-1 ss_mem "$OC" fresh | grep -c '^### Ruled out') $(T3CODE_THREAD_ID=thread-2 ss_mem "$OC" fresh | grep -c 'standing memory\|is behind')"
-check "session B in the orchestrator's checkout gets no memory; a later session of its thread gets the order and the digest" "0 1 1" "$(ss_mem "$OC" sb | grep -c 'standing memory\|is behind') $(ss_mem "$OC" later > "$T/ss.out"; grep -c 'is behind' "$T/ss.out") $(grep -c '^### Ruled out' "$T/ss.out")"
+check "outside T3, only a session memory.source lists gets the memory: session B, a later session of the thread and one whose typed prompt names it get none; the init session gets the order and the digest" "0 0 0 1 1" "$(for s in sb later mention; do ss_mem "$OC" $s | grep -c 'standing memory\|is behind'; done | xargs) $(ss_mem "$OC" orch > "$T/ss.out"; grep -c 'is behind' "$T/ss.out") $(grep -c '^### Ruled out' "$T/ss.out")"
 python3 "$R/bin/memory-prep" prep "$MR" > "$T/prep.out"
 MB=$(sed -n 's/.*brief: //p' "$T/prep.out")
 check "the first prep takes the thread's last 24 hours only, from the init session and the handed-off one" "1 1 0 0 0 1" "$(grep -c 'USER\] said in the session init ran in' "$MR/memory-new.txt") $(grep -c 'USER\] never use cron' "$MR/memory-new.txt") $(grep -c 'an old ruling' "$MR/memory-new.txt") $(grep -c "another thread" "$MR/memory-new.txt") $(grep -c "a child's brief" "$MR/memory-new.txt") $(grep -c 'skills/delegate/memory-refresh.md' "$MB")"
@@ -1249,7 +1250,7 @@ rm -f "$MR/.memory-order-repeated"  # left by the prep runs above
 export SID=orch
 check "the user's pause holds the refresh order too" "0 no" "$(stop "$OC") $([ -e "$MR/.memory-order-repeated" ] && echo yes || echo no)"
 tr_file "Done."
-check "session B in the orchestrator's checkout never gets the order; BLOCK: a later session of its thread does" "0 2" "$(SID=sb stop "$OC") $(SID=later stop "$OC")"
+check "outside T3, session B, a later session of the thread and one whose typed prompt names it never get the order; BLOCK: the init session does" "0 0 0 2" "$(SID=sb stop "$OC") $(SID=later stop "$OC") $(SID=mention stop "$OC") $(SID=orch stop "$OC")"
 rm "$MR/.memory-order-repeated"
 check "BLOCK: memory.md behind, covering nothing of the last 2 hours: stop-lint repeats the refresh order, running beside the work, then not within the hour" "2 1 0 0" "$(stop "$OC") $(grep -c "is behind your session log.*memory-prep prep $MR.*keep working meanwhile" "$T/err") $(grep -c "without starting other work" "$T/err") $(stop "$OC")"
 rm "$MR/.memory-order-repeated"
@@ -1271,7 +1272,6 @@ c.execute("""insert into orchestration_v2_projection_provider_threads values ('p
 c.execute("""insert into orchestration_v2_projection_provider_threads values ('p2', 'main-thread', '{"nativeThreadRef":{"driver":"claudeAgent","nativeId":"t3-main"}}')""")
 c.execute("insert into orchestration_v2_projection_subagents values ('s1', 'main-thread', 'thread:delegated-task:notes-1')"); c.commit()
 EOF2
-mlog "$LD/t3-main.jsonl" 0 "resume" thread-1; mlog "$LD/t3-child.jsonl" 0 "a brief naming thread-1"  # a child whose brief names the thread
 python3 -c 'import json; w=lambda o: print(json.dumps(o,separators=(",",":"))); b="Goal: ~/.mergeworthy/projects/o/r.md exists: the project notes for o/r.\n\nFacts:\n- The study: /w/guide.md"
 w({"type":"queue-operation","operation":"enqueue","sessionId":"t3-child","content":b})
 w({"parentUuid":None,"attachment":{"type":"hook_success","hookName":"SessionStart:startup","content":"## Subagent models"},"type":"attachment","entrypoint":"sdk-ts"})
@@ -1279,7 +1279,7 @@ w({"type":"user","promptSource":"sdk","entrypoint":"sdk-ts","message":{"role":"u
 w({"type":"assistant","entrypoint":"sdk-ts","message":{"content":[{"type":"text","text":"Notes written."}]}})' > "$T/tr.jsonl"
 t3stop() { python3 -c 'import json,sys; print(json.dumps({"transcript_path":sys.argv[1],"cwd":sys.argv[2],"session_id":sys.argv[3]}))' "$T/tr.jsonl" "$OC" "$1" \
   | MERGEWORTHY_STOP_CHECKIN=off python3 "$R/hooks/stop-lint.py" 2>"$T/err"; echo $?; }
-check "a T3 child whose prompt doesn't introduce it (T3's state gives it a parent thread) never gets the order; a top-level thread does" "0 2" "$(t3stop t3-child) $(t3stop t3-main)"
+check "a T3 child whose prompt doesn't introduce it (T3's state gives it a parent thread) never gets the order; a top-level thread does" "0 2" "$(T3CODE_THREAD_ID=thread:delegated-task:notes-1 t3stop t3-child) $(T3CODE_THREAD_ID=thread-1 t3stop t3-main)"
 rm -f "$MR/.memory-order-repeated" "$HOME/.t3/userdata/statev2.sqlite"; unset SID
 if [ -d "${MW_REAL_DAYS:-/nonexistent}" ]; then  # local only: the real day files are private
   python3 - "$MR/memory.md" "$MW_REAL_DAYS"/2026-10-12.md "$MW_REAL_DAYS"/2026-10-11.md <<'EOF'

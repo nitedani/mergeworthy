@@ -21,12 +21,13 @@ def source(root):
     return json.load(open(os.path.join(root, 'memory.source')))
 
 def for_cwd(cwd, sid):
-    """The work folder whose main session works in cwd, when session sid is that session or a later one of its thread: T3 Code
-    names the thread in the hook's environment, and only without it does its log show it."""
+    """The work folder whose main session works in cwd: under T3 Code, when the hook's thread is the program's; else when
+    session sid is one memory.source lists."""
+    tid = os.environ.get('T3CODE_THREAD_ID')
     for r in roots():
-        src = source(r); log = os.path.join(src['logdir'], f'{sid}.jsonl'); tid = os.environ.get('T3CODE_THREAD_ID')
+        src = source(r)
         if cwd and (cwd == src['cwd'] or cwd.startswith(src['cwd'].rstrip('/') + '/')) and (
-                tid == src['thread'] if tid else sid and os.path.isfile(log) and log in thread_logs(r, os.path.getmtime(log))):
+                tid == src['thread'] if tid else sid in src.get('sessions', ())):
             return r
     return None
 
