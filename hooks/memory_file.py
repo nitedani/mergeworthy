@@ -20,9 +20,16 @@ def roots():
 def source(root):
     return json.load(open(os.path.join(root, 'memory.source')))
 
-def for_cwd(cwd):
-    """The work folder whose main session works in cwd."""
-    return next((r for r in roots() if cwd and (cwd == source(r)['cwd'] or cwd.startswith(source(r)['cwd'].rstrip('/') + '/'))), None)
+def for_cwd(cwd, sid):
+    """The work folder whose main session works in cwd: under T3 Code, when the hook's thread is the program's; else when
+    session sid is one memory.source lists."""
+    tid = os.environ.get('T3CODE_THREAD_ID')
+    for r in roots():
+        src = source(r)
+        if cwd and (cwd == src['cwd'] or cwd.startswith(src['cwd'].rstrip('/') + '/')) and (
+                tid == src['thread'] if tid else sid in src.get('sessions', ())):
+            return r
+    return None
 
 def path(root):
     return os.path.join(root, 'memory.md')

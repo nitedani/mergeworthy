@@ -107,7 +107,7 @@ if not register:
         if head and not any(head.startswith(x) for x in shas):
             old = [x for x in shas if git(wt, 'merge-base', '--is-ancestor', x, head).returncode == 0]
             if old:
-                root = memory_file.for_cwd(d.get('cwd') or '')
+                root = memory_file.for_cwd(d.get('cwd') or '', d.get('session_id'))
                 ruled = memory_file.section(open(memory_file.path(root)).read(), 'Ruled out') if root and os.path.isfile(memory_file.path(root)) else ''
                 sys.stderr.write(f"BLOCKED: the brief pins {', '.join(sorted(old))} in {wt}, which has moved on to {head[:12]}. "
                                  "Pin the live head (and check the work isn't already done there)." + (f" Ruled out:\n{ruled}\n" if ruled else "\n"))
@@ -308,7 +308,7 @@ if approach and register:
     os.makedirs(BUILT, exist_ok=True)
     open(os.path.join(BUILT, os.path.basename(approach[0])), 'w').write(approach[1])
 # Research the program already wrote up (memory.md, the notes) is read, not redone.
-root = None if register else memory_file.for_cwd(d.get('cwd') or '')
+root = None if register else memory_file.for_cwd(d.get('cwd') or '', d.get('session_id'))
 if root and (ti.get('role') == 'research' or re.search(r'\bresearch', f"{ti.get('title') or ''} {ti.get('description') or ''}", re.I)):
     topic = re.search(r'^\s*Topic:\s*(.+?)\s*$', brief, re.M)
     if not topic:
