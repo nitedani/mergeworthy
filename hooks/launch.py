@@ -21,10 +21,11 @@ def path_set(t):
 
 
 def bound(text, verbs):
-    """The paths text puts after one of verbs in the same clause, at most four words and no other path between them
+    """The first path after one of verbs in the same clause, at most four words between them, quoted or not
     (`Follow <p> exactly`, `Read and do the brief at <p>`); a verb elsewhere in the sentence binds nothing."""
+    quote = '[`\'"(<]*'
     return {os.path.abspath(os.path.expanduser(m[1].rstrip('/.,:'))) for c in re.split(r'[.;!?,]\s+|\n', text)
-            for m in re.finditer(rf'\b(?:{verbs})\b(?:\s+[^\s~/]\S*){{0,4}}\s+[`\'"]?({PATH})', c, re.I)}
+            for m in re.finditer(rf'\b(?:{verbs})\b(?:\s+(?!{quote}~?/)\S+){{0,4}}\s+{quote}({PATH})', c, re.I)}
 
 
 def checkouts(paths):
