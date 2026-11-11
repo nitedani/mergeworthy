@@ -1460,6 +1460,14 @@ while re.search(r'<[^<>\n]+>', body): body = re.sub(r'<[^<>\n]+>', 'it', body)
 print(body)
 PY
 check "the implementer template filled as it says passes, by Agent" 0 "$(flaunch Agent '' "$AF/brief-tpl.md")"
+# a brief file the launch says to do, in the work folder's briefs/, is the brief every rule reads: its Approach, project file and standard lines count
+LB="$HOME/.mergeworthy/work/lb/briefs"; mkdir -p "$LB"
+printf 'You implement the fix in %s.\nThe project file: ~/.mergeworthy/projects/o/r.md\nStandard: ~/.mergeworthy/current/skills/code/SKILL.md%s\n' "$T/oc" "$AFX" > "$LB/impl-race.md"
+printf 'You implement the fix in %s.\nStandard: ~/.mergeworthy/current/skills/code/SKILL.md%s\n' "$T/oc" "$AFX" > "$LB/impl-noproject.md"
+lb() { python3 -c 'import json,sys,time; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","cwd":sys.argv[2],"tool_input":{"task":"Read and do the brief at "+sys.argv[1]+".","title":f"lb {time.time_ns()}","role":"implementation"}}))' "$1" "$T" \
+  | timeout 10 python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err" >/dev/null; echo $?; }
+check "a launch that says to do a work-folder brief gets no refusal for the lines the brief holds; BLOCK one whose brief lacks the project file, naming it" "0 2 1" \
+  "$(lb "$LB/impl-race.md") $(lb "$LB/impl-noproject.md") $(grep -c "$HOME/.mergeworthy/projects/o/r.md" "$T/err")"
 check "BLOCK: a drafter brief (it reads thread-context.md) without writing/SKILL.md; with it, it passes" "2 0" "$(ag "$T" 'Draft the reply from /w/drafts/x/thread-context.md' review) $(ag "$T" 'Write a reply draft by skills/writing/SKILL.md from /w/drafts/y/thread-context.md; list each claim with a scope word beside its source' review)"
 check "BLOCK: a drafter brief without the template's scope-word check, naming the template; a review of a draft (CLEAN) needs none" "2 1 0" "$(ag "$T" 'Write a reply draft by skills/writing/SKILL.md from /w/drafts/z/thread-context.md' review) $(grep -c 'delegate/drafter.md' "$T/err") $(ag "$T" 'Review /w/drafts/z/r.md against /w/drafts/z/thread-context.md by skills/writing/SKILL.md; final message CLEAN or findings' review)"
 # pre-agent-dedupe: a template's placeholder left in the brief, by the plugin's own skills/delegate templates
@@ -1469,6 +1477,13 @@ check "a filled brief passes with the paste-in rules (their <work folder>), an o
 check "a brief quoting a line format in backticks that holds a template's slot passes (a format, not a slot)" 0 "$(ag "$T" 'Check each `PROMISED <thread>: <what> (<draft>)` line in proposals-open.md.' review)"
 mkdir -p "$T/mem"; printf 'Next: the brief may say (git show <sha>) in a quoted ruling.\n' > "$T/mem/memory.md"; printf 'Summarize %s into the digest.\n' "$T/mem/memory.md" > "$T/mem/memory-brief-1.md"
 check "an input file the brief names (memory.md quoting <sha>) is not scanned for slots; the brief file still is" "0 2" "$(ag "$T" "Follow $T/mem/memory-brief-1.md" research) $(printf 'Sort it (git show <sha>).\n' > "$T/mem/sort-brief.md"; ag "$T" "Follow $T/mem/sort-brief.md" review)"
+CB="$HOME/.mergeworthy/work/rb"; mkdir -p "$CB"; printf 'Recorded output form: <sha>\n' | tee "$CB/memory.md" > "$CB/causes.md"; printf 'Sort it (git show <sha>).\n' > "$CB/sort.md"
+check "a file read for context in a sentence that also says do or follow is no brief; BLOCK a file the verb governs (do the brief at, follow ... exactly)" "0 0 0 2 2" \
+  "$(ag "$T" "Read $CB/memory.md for context and do the review." review) $(ag "$T" "Read $CB/causes.md for context and do the review." review) $(ag "$T" "Read $CB/memory.md for context and follow the reviewer instructions." review) $(ag "$T" "Read and do the brief at $CB/sort.md." review) $(ag "$T" "Follow $CB/sort.md exactly." review)"
+printf 'Context only.\n' > "$CB/plain.md"
+check "a verb binds the first path after it, quoted ones too: BLOCK following a backticked file with a slot read beside a plain one; a slot only in the backticked file read for context passes" "2 0" \
+  "$(ag "$T" "Follow \`$CB/sort.md\` and read \`$CB/plain.md\` for context." review) $(ag "$T" "Follow \`$CB/plain.md\` and read \`$CB/causes.md\` for context." review)"
+check "a file the launch says not to follow is no brief: its slot doesn't refuse a launch that follows a clean one" 0 "$(ag "$T" "Do not follow $CB/sort.md. Follow $CB/plain.md exactly." review)"
 # pre-agent-dedupe: a worktree a writer holds (another session's process with its cwd there, or a live writer job naming it)
 child_log() { # file brief minutes-ago last-entry(text|tool): it started a minute before its last write
   python3 -c 'import json,sys,time; f,b,last,ago=sys.argv[1],sys.argv[2],sys.argv[3],int(sys.argv[4]); w=lambda o: open(f,"a").write(json.dumps(o)+"\n")
@@ -2555,6 +2570,17 @@ check "BLOCK: in ~/.mergeworthy/work/<task>/, a Tier M edit and an implementatio
 check "there, an artifact-root write passes" 0 "$(gate Write "{\"file_path\":\"$DW/prior-art.md\"}")"
 touch "$DW/prior-art.md"; mkdir -p "$DW/decisions"; touch "$DW/decisions/x.md"
 check "there, a Tier M edit passes once prior art and a decision exist" 0 "$(gate Edit "{\"file_path\":\"$D/a.ts\"}")"
+# #152: an implementation launch is checked in each checkout its brief names, the session's own only when it names none
+GR="$HOME/.mergeworthy/work/gate-repro"; mkdir -p "$GR"; git init -q "$GR/wt"; echo 'Tier: M, because a repro of the design gate' > "$GR/scope.md"; echo '# prior art' > "$GR/prior-art.md"
+GU="$T/user-checkout"; git init -q "$GU"; printf 'You implement it in %s.\n' "$GR/wt" > "$GR/brief.md"
+gatein() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"role":"implementation","task":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$2" | python3 "$R/hooks/pre-design-gate.py" 2>/dev/null; echo $?; }
+check "BLOCK (#152): an implementer naming a Tier M checkout with no design, from the user's checkout, from that checkout, and by a brief file; one naming no checkout is checked in its cwd" "2 2 2 2 0" \
+  "$(gatein "Implement it in $GR/wt" "$GU") $(gatein "Implement it in $GR/wt" "$GR/wt") $(gatein "Follow $GR/brief.md exactly." "$GU") $(gatein 'Implement it' "$GR/wt") $(gatein 'Implement it' "$GU")"
+check "a checkout the brief names only for reference is not where the change goes: it passes beside a target with no Tier, and with no target the cwd decides" "0 0 2" \
+  "$(gatein "Implement in $GU. Search $GR/wt only for reference; do not edit it." "$GU") $(gatein "Implement it. Read $GR/wt for reference." "$GU") $(gatein "Implement it. Read $GR/wt for reference." "$GR/wt")"
+check "BLOCK: a backticked target with no design read beside a backticked reference; a target with no Tier and the Tier M checkout read for reference passes" "2 0" \
+  "$(gatein "Implement in \`$GR/wt\` and read \`$GU\` for reference." "$GU") $(gatein "Implement in \`$GU\` and read \`$GR/wt\` for reference." "$GU")"
+check "a checkout the brief says not to edit is no target: a Tier M one with no design beside a target with no Tier passes" 0 "$(gatein "Implement in $GU. Do not edit $GR/wt." "$GU")"
 # ---------- pre-design-gate and pre-bash-guard: no file change in a repo before this session read its AGENTS.md and CLAUDE.md ----------
 I="$T/instr"; mkdir -p "$I/sub"; git -C "$I" init -q; printf 'rules\n' > "$I/AGENTS.md"; printf '@AGENTS.md\n' > "$I/CLAUDE.md"
 IN="$T/instr-none"; mkdir -p "$IN"; git -C "$IN" init -q
