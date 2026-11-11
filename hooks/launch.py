@@ -22,10 +22,12 @@ def path_set(t):
 
 def bound(text, verbs):
     """The first path after one of verbs in the same clause, at most four words between them, quoted or not
-    (`Follow <p> exactly`, `Read and do the brief at <p>`); a verb elsewhere in the sentence binds nothing."""
+    (`Follow <p> exactly`, `Read and do the brief at <p>`); a verb elsewhere in the sentence, or one a negation comes right
+    before, a word between allowed (`Do not edit <p>`, `never ever follow <p>`), binds nothing."""
     quote = '[`\'"(<]*'
     return {os.path.abspath(os.path.expanduser(m[1].rstrip('/.,:'))) for c in re.split(r'[.;!?,]\s+|\n', text)
-            for m in re.finditer(rf'\b(?:{verbs})\b(?:\s+(?!{quote}~?/)\S+){{0,4}}\s+{quote}({PATH})', c, re.I)}
+            for m in re.finditer(rf'(?=\b(?:{verbs})\b(?!\s+not\b)(?:\s+(?!{quote}~?/)\S+){{0,4}}\s+{quote}({PATH}))', c, re.I)
+            if not re.search(r"\b(?:not|never|no|don['’]t|doesn['’]t)\s+(?:\S+\s+)?$", c[:m.start()], re.I)}
 
 
 def checkouts(paths):

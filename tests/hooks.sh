@@ -1474,6 +1474,7 @@ check "a file read for context in a sentence that also says do or follow is no b
 printf 'Context only.\n' > "$CB/plain.md"
 check "a verb binds the first path after it, quoted ones too: BLOCK following a backticked file with a slot read beside a plain one; a slot only in the backticked file read for context passes" "2 0" \
   "$(ag "$T" "Follow \`$CB/sort.md\` and read \`$CB/plain.md\` for context." review) $(ag "$T" "Follow \`$CB/plain.md\` and read \`$CB/causes.md\` for context." review)"
+check "a file the launch says not to follow is no brief: its slot doesn't refuse a launch that follows a clean one" 0 "$(ag "$T" "Do not follow $CB/sort.md. Follow $CB/plain.md exactly." review)"
 # pre-agent-dedupe: a worktree a writer holds (another session's process with its cwd there, or a live writer job naming it)
 child_log() { # file brief minutes-ago last-entry(text|tool): it started a minute before its last write
   python3 -c 'import json,sys,time; f,b,last,ago=sys.argv[1],sys.argv[2],sys.argv[3],int(sys.argv[4]); w=lambda o: open(f,"a").write(json.dumps(o)+"\n")
@@ -2570,6 +2571,7 @@ check "a checkout the brief names only for reference is not where the change goe
   "$(gatein "Implement in $GU. Search $GR/wt only for reference; do not edit it." "$GU") $(gatein "Implement it. Read $GR/wt for reference." "$GU") $(gatein "Implement it. Read $GR/wt for reference." "$GR/wt")"
 check "BLOCK: a backticked target with no design read beside a backticked reference; a target with no Tier and the Tier M checkout read for reference passes" "2 0" \
   "$(gatein "Implement in \`$GR/wt\` and read \`$GU\` for reference." "$GU") $(gatein "Implement in \`$GU\` and read \`$GR/wt\` for reference." "$GU")"
+check "a checkout the brief says not to edit is no target: a Tier M one with no design beside a target with no Tier passes" 0 "$(gatein "Implement in $GU. Do not edit $GR/wt." "$GU")"
 # ---------- pre-design-gate and pre-bash-guard: no file change in a repo before this session read its AGENTS.md and CLAUDE.md ----------
 I="$T/instr"; mkdir -p "$I/sub"; git -C "$I" init -q; printf 'rules\n' > "$I/AGENTS.md"; printf '@AGENTS.md\n' > "$I/CLAUDE.md"
 IN="$T/instr-none"; mkdir -p "$IN"; git -C "$IN" init -q
