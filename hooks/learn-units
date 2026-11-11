@@ -1,14 +1,19 @@
 #!/bin/bash
 # learn-units: installs or refreshes the daily project-file learning run's units (mergeworthy-learn.service and .timer), from
 # session-start at every session (where a plugin update lands) and from mergeworthy-update. Changes a unit only when its text
-# differs, ignoring the PATH line (each caller's PATH differs; a new one is written with any other change); enables the timer
-# only when it isn't, and runs the service once then, to condense what is over the cap; restarts nothing that runs. Silent: its
+# differs, ignoring the PATH line (each caller's PATH differs; a new one is written with any other change), by renaming a
+# complete file of its own over it, so runs at once never mix; enables the timer only when it isn't, and runs the service once
+# then, to condense what is over the cap; starts an enabled timer that isn't active; restarts nothing that runs. Silent: its
 # callers print. Only where the installed copy has bin/project-learn and the systemd user manager is this HOME's.
 [ -x ~/.mergeworthy/current/bin/project-learn ] || exit 0
 [ "$(systemctl --user show-environment 2>/dev/null | sed -n 's/^HOME=//p')" = "$HOME" ] || exit 0
 d=~/.config/systemd/user changed=
 mkdir -p "$d" || exit 1
-cat > "$d/mergeworthy-learn.service.new" <<UNIT
+write() {
+  local f=$d/$1 t; t=$(mktemp "$f.XXXXXX") && cat > "$t" || exit 1
+  if [ -f "$f" ] && cmp -s <(grep -v '^Environment="PATH=' "$t") <(grep -v '^Environment="PATH=' "$f"); then rm "$t"; else mv "$t" "$f" || exit 1; changed=1; fi
+}
+write mergeworthy-learn.service <<UNIT
 [Unit]
 Description=mergeworthy: the daily project-file learning run
 
@@ -17,7 +22,7 @@ Type=oneshot
 Environment="PATH=$PATH"
 ExecStart=%h/.mergeworthy/current/bin/project-learn start
 UNIT
-cat > "$d/mergeworthy-learn.timer.new" <<'UNIT'
+write mergeworthy-learn.timer <<'UNIT'
 [Unit]
 Description=mergeworthy: the daily project-file learning run, after the steward's 04:45 pass
 
@@ -28,10 +33,7 @@ Persistent=true
 [Install]
 WantedBy=timers.target
 UNIT
-for f in "$d"/mergeworthy-learn.{service,timer}; do
-  if [ -f "$f" ] && cmp -s <(grep -v '^Environment="PATH=' "$f.new") <(grep -v '^Environment="PATH=' "$f"); then rm "$f.new"; else mv "$f.new" "$f" || exit 1; changed=1; fi
-done
 [ -n "$changed" ] && systemctl --user daemon-reload
-systemctl --user is-enabled --quiet mergeworthy-learn.timer && exit 0
+systemctl --user is-enabled --quiet mergeworthy-learn.timer && { systemctl --user is-active --quiet mergeworthy-learn.timer || systemctl --user start mergeworthy-learn.timer; exit; }
 systemctl --user enable --now mergeworthy-learn.timer || exit 1
 systemctl --user start --no-block mergeworthy-learn.service
