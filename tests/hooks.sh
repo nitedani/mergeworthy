@@ -1451,6 +1451,14 @@ while re.search(r'<[^<>\n]+>', body): body = re.sub(r'<[^<>\n]+>', 'it', body)
 print(body)
 PY
 check "the implementer template filled as it says passes, by Agent" 0 "$(flaunch Agent '' "$AF/brief-tpl.md")"
+# a brief file the launch says to do, in the work folder's briefs/, is the brief every rule reads: its Approach, project file and standard lines count
+LB="$HOME/.mergeworthy/work/lb/briefs"; mkdir -p "$LB"
+printf 'You implement the fix in %s.\nThe project file: ~/.mergeworthy/projects/o/r.md\nStandard: ~/.mergeworthy/current/skills/code/SKILL.md%s\n' "$T/oc" "$AFX" > "$LB/impl-race.md"
+printf 'You implement the fix in %s.\nStandard: ~/.mergeworthy/current/skills/code/SKILL.md%s\n' "$T/oc" "$AFX" > "$LB/impl-noproject.md"
+lb() { python3 -c 'import json,sys,time; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","cwd":sys.argv[2],"tool_input":{"task":"Read and do the brief at "+sys.argv[1]+".","title":f"lb {time.time_ns()}","role":"implementation"}}))' "$1" "$T" \
+  | timeout 10 python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err" >/dev/null; echo $?; }
+check "a launch that says to do a work-folder brief gets no refusal for the lines the brief holds; BLOCK one whose brief lacks the project file, naming it" "0 2 1" \
+  "$(lb "$LB/impl-race.md") $(lb "$LB/impl-noproject.md") $(grep -c "$HOME/.mergeworthy/projects/o/r.md" "$T/err")"
 check "BLOCK: a drafter brief (it reads thread-context.md) without writing/SKILL.md; with it, it passes" "2 0" "$(ag "$T" 'Draft the reply from /w/drafts/x/thread-context.md' review) $(ag "$T" 'Write a reply draft by skills/writing/SKILL.md from /w/drafts/y/thread-context.md; list each claim with a scope word beside its source' review)"
 check "BLOCK: a drafter brief without the template's scope-word check, naming the template; a review of a draft (CLEAN) needs none" "2 1 0" "$(ag "$T" 'Write a reply draft by skills/writing/SKILL.md from /w/drafts/z/thread-context.md' review) $(grep -c 'delegate/drafter.md' "$T/err") $(ag "$T" 'Review /w/drafts/z/r.md against /w/drafts/z/thread-context.md by skills/writing/SKILL.md; final message CLEAN or findings' review)"
 # pre-agent-dedupe: a template's placeholder left in the brief, by the plugin's own skills/delegate templates
