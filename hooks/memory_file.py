@@ -22,12 +22,11 @@ def source(root):
 
 def for_cwd(cwd, sid):
     """The work folder whose main session works in cwd, when session sid is that session or a later one of its thread: T3 Code
-    names the thread in the hook's environment, else its log shows it."""
+    names the thread in the hook's environment, and only without it does its log show it."""
     for r in roots():
-        src = source(r); log = os.path.join(src['logdir'], f'{sid}.jsonl')
+        src = source(r); log = os.path.join(src['logdir'], f'{sid}.jsonl'); tid = os.environ.get('T3CODE_THREAD_ID')
         if cwd and (cwd == src['cwd'] or cwd.startswith(src['cwd'].rstrip('/') + '/')) and (
-                os.environ.get('T3CODE_THREAD_ID') == src['thread']
-                or sid and os.path.isfile(log) and log in thread_logs(r, os.path.getmtime(log))):
+                tid == src['thread'] if tid else sid and os.path.isfile(log) and log in thread_logs(r, os.path.getmtime(log))):
             return r
     return None
 
