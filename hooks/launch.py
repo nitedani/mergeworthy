@@ -8,7 +8,7 @@ from work_folder import git_top, task_of
 MW = os.path.abspath(os.path.expanduser('~/.mergeworthy')) + os.sep
 READ_ONLY = (MW + 'current' + os.sep, MW + 'projects' + os.sep)
 MD = r'(?<![\w.~/-])(~?/[^\s`\'"]+\.md)\b'
-SAID = re.compile(r'\b(follow|execute|do|exactly|what it says)\b', re.I)
+PATH = r'~?/[^\s`\'"()<>,;]+'
 
 
 def text_of(ti):
@@ -17,7 +17,14 @@ def text_of(ti):
 
 
 def path_set(t):
-    return {q for p in re.findall(r'(~?/[^\s`\'"()<>,;]+)', t) if (q := os.path.expanduser(p.rstrip('/.,:')))}
+    return {q for p in re.findall(f'({PATH})', t) if (q := os.path.expanduser(p.rstrip('/.,:')))}
+
+
+def bound(text, verbs):
+    """The paths text puts after one of verbs in the same clause, at most four words and no other path between them
+    (`Follow <p> exactly`, `Read and do the brief at <p>`); a verb elsewhere in the sentence binds nothing."""
+    return {os.path.abspath(os.path.expanduser(m[1].rstrip('/.,:'))) for c in re.split(r'[.;!?,]\s+|\n', text)
+            for m in re.finditer(rf'\b(?:{verbs})\b(?:\s+[^\s~/]\S*){{0,4}}\s+[`\'"]?({PATH})', c, re.I)}
 
 
 def own_path(f):
@@ -30,7 +37,7 @@ class Launch:
     def __init__(self, text):
         self.text = text
         md = lambda s: {os.path.abspath(os.path.expanduser(m)) for m in re.findall(MD, s)}
-        said = {m for x in re.split(r'(?<=[.!?])\s+|\n', text) if SAID.search(x) for m in md(x)}
+        said = bound(text, 'follow|execute|do')
         named = sorted(md(text))
         self.files = [f for f in named if os.path.isfile(f) and not f.startswith(READ_ONLY)
                       and (f in said or re.search(r'brief|ticket|prompt', own_path(f)))]

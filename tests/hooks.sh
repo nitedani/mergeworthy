@@ -1468,6 +1468,9 @@ check "a filled brief passes with the paste-in rules (their <work folder>), an o
 check "a brief quoting a line format in backticks that holds a template's slot passes (a format, not a slot)" 0 "$(ag "$T" 'Check each `PROMISED <thread>: <what> (<draft>)` line in proposals-open.md.' review)"
 mkdir -p "$T/mem"; printf 'Next: the brief may say (git show <sha>) in a quoted ruling.\n' > "$T/mem/memory.md"; printf 'Summarize %s into the digest.\n' "$T/mem/memory.md" > "$T/mem/memory-brief-1.md"
 check "an input file the brief names (memory.md quoting <sha>) is not scanned for slots; the brief file still is" "0 2" "$(ag "$T" "Follow $T/mem/memory-brief-1.md" research) $(printf 'Sort it (git show <sha>).\n' > "$T/mem/sort-brief.md"; ag "$T" "Follow $T/mem/sort-brief.md" review)"
+CB="$HOME/.mergeworthy/work/rb"; mkdir -p "$CB"; printf 'Recorded output form: <sha>\n' | tee "$CB/memory.md" > "$CB/causes.md"; printf 'Sort it (git show <sha>).\n' > "$CB/sort.md"
+check "a file read for context in a sentence that also says do or follow is no brief; BLOCK a file the verb governs (do the brief at, follow ... exactly)" "0 0 0 2 2" \
+  "$(ag "$T" "Read $CB/memory.md for context and do the review." review) $(ag "$T" "Read $CB/causes.md for context and do the review." review) $(ag "$T" "Read $CB/memory.md for context and follow the reviewer instructions." review) $(ag "$T" "Read and do the brief at $CB/sort.md." review) $(ag "$T" "Follow $CB/sort.md exactly." review)"
 # pre-agent-dedupe: a worktree a writer holds (another session's process with its cwd there, or a live writer job naming it)
 child_log() { # file brief minutes-ago last-entry(text|tool): it started a minute before its last write
   python3 -c 'import json,sys,time; f,b,last,ago=sys.argv[1],sys.argv[2],sys.argv[3],int(sys.argv[4]); w=lambda o: open(f,"a").write(json.dumps(o)+"\n")
