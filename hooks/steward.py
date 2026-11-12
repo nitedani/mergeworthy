@@ -84,7 +84,7 @@ def queued(tid, text):
 # "stop /tmp/server", and not a stop said mid-sentence
 STOP = re.compile(r"^\W*(?:(?:please|pls|ok(?:ay)?|hey|(?:can|could|would) you)[\s,]+)*(?:st+o+p+[op]*|pause|áll(?:j|jál|jatok|jon)(?:\s+(?:meg|le))?)"
                   r"(?:\s+(?:the work|work(?:ing)?|(?:right |for )?now|it|that|this|everything|all|here|immediately|what you['’]?re doing|doing (?:that|this|it)))*"
-                  r"(?:\s+(?:please|pls|until)\b|\s+for (?:a (?:bit|moment|while|minute|second)|\d+ (?:minutes?|hours?))\b|\s*(?:[.!?,;:…。！？]+(?=\s|$)|[^\w/\\.:-]*$))"
+                  r"(?:\s+(?:please|pls|until|and (?:wait|hold))\b|\s+for (?:a (?:bit|moment|while|minute|second)|\d+ (?:minutes?|hours?))\b|\s*(?:[.!?,;:…。！？]+(?=\s|$)|[^\w/\\.:-]*$))"
                   r"|\bthen\s+(?:stop|pause)\W*$", re.I)
 
 def asks_stop(text):
