@@ -43,7 +43,7 @@ How:
 
 Write <work folder>/<name>.md, exhaustively:
 - each reproduced bug with its commit, the repro inline, observed vs expected;
-- then, under `## Dropped`, every candidate you tried and dropped, one line each `<candidate>: <why>`; the main session adds `RULED: <candidate>: <ruling>` under each before `pr-steps verify` records the file (converge step 1);
+- then, under `## Dropped`, every candidate you tried and dropped, each one list item `- <candidate>: <why>`; the main session adds `RULED: <candidate>: <ruling>` under each before `pr-steps verify` records the file (converge step 1);
 - if no bug counts, what you tried under `## Tried`, then a last line NO BUGS.
 
 Final message: the count and one line each, then each reproduced-and-dropped candidate, one line each; exactly NO BUGS only when both lists are empty.

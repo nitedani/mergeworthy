@@ -151,19 +151,25 @@ case "$step" in
     unruled=$(python3 - "$out" <<'EOF'
 import re, sys
 lines, plain = open(sys.argv[1]).read().splitlines(), lambda l: re.sub(r'[*`]', '', l).strip().lower()
-dropped = False  # only the dropped list: a counted bug may well be "a rare race"
+item = re.compile(r'(\s*)([-*+]|\d+\.)\s')
+# each dropped list's outermost item indentation: a deeper item is a sub-bullet, covered by its item's RULED line
+sec, outer = None, {}  # only the dropped list: a counted bug may well be "a rare race"
+for i, l in enumerate(lines):
+    if l.startswith('#'): sec = i if 'dropped' in l.lower() else None
+    elif sec is not None and (m := item.match(l)): outer[sec] = min(outer.get(sec, len(l)), len(m[1]))
 sep, bare = r':|\s[—–-]\s', lambda l: re.sub(r'^[\s>+-]*(\d+\.\s*)?', '', plain(l))
 # a candidate named by a line reference ('- :67 now says …', '- agent.md:10 …') is ruled as 'RULED: :67: …'
 name_of = lambda l: (re.match(r'\S*:\d+(-\d+)?', bare(l)) or re.split(sep, bare(l), maxsplit=1))[0].strip()
 # 'None.', 'Nothing was dropped.': an unbulleted line whose first sentence is one of these says the list is empty
-empty = lambda l: not re.match(r'\s*([-*+]|\d+\.)\s', l) and \
+empty = lambda l: not item.match(l) and \
     re.fullmatch(r'none|nothing|nothing( was)? dropped|no candidates? dropped|no candidates were dropped', re.split(r'\.(?:\s|$)', bare(l), maxsplit=1)[0].strip())
+sec = None
 for i, l in enumerate(lines):
     if l.startswith('#'):
-        dropped = 'dropped' in l.lower()
+        sec = i if 'dropped' in l.lower() else None
         continue
-    # a sub-bullet ('**Why a nit:** …') belongs to the item above it, and that item's RULED line covers it
-    if dropped and l.strip() and not re.match(r'\s+[-*+]\s', l) and not empty(l) and not l.startswith('RULED:') and l.strip() not in ('NO BUGS', 'NO LOOP B COMMITS'):
+    m = item.match(l)  # a candidate: an outermost list item, or an unbulleted '<candidate>: <why>' line
+    if sec is not None and (len(m[1]) == outer[sec] if m else re.match(r'[^:]+:\s', plain(l))) and not empty(l) and not l.startswith('RULED:'):
         name = name_of(l)
         rulings = [r for r in lines[i + 1:] if name and r.startswith('RULED:') and name in plain(r)]
         if not rulings:

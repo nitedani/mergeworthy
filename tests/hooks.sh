@@ -2214,12 +2214,16 @@ printf 'slice 1\n## Dropped\nNone. No newly reproduced candidate downgraded as r
 printf 'slice 1\n## Dropped\n- No timeout on the retry: pre-existing, also on main\nNO BUGS\n' > "$T/vr8.md"; std "$T/vr8.md"
 printf 'slice 1\n## Dropped\n- **Retry timeout**: reproduced timeout gap.\n  - No documented usage.\nNO BUGS\n' > "$T/vr9.md"; std "$T/vr9.md"
 printf 'slice 1\n## Dropped\n- No timeout on the retry; pre-existing, also on main\nNO BUGS\n' > "$T/vr10.md"; std "$T/vr10.md"
-printf 'slice 1\n## Dropped\nNo timeout on the retry; pre-existing, also on main\nNO BUGS\n' > "$T/vr11.md"; std "$T/vr11.md"
-printf 'slice 1\n## Dropped\nNo timeout on dropped connections; pre-existing, also on main\nNO BUGS\n' > "$T/vr12.md"; std "$T/vr12.md"
+printf 'slice 1\n## Dropped\nNo timeout on the retry: pre-existing, also on main\nNO BUGS\n' > "$T/vr11.md"; std "$T/vr11.md"
+printf 'slice 1\n## Dropped\nNo timeout on dropped connections: pre-existing, also on main\nNO BUGS\n' > "$T/vr12.md"; std "$T/vr12.md"
 check "a Dropped line saying nothing was dropped needs no RULED line; a candidate opening with 'No' still does, as a list item, its sub-bullet reason or a bare line, one naming \"dropped\" too" "0 1 1 1 1 1" "$(prs verify "$T/vr7.md") $(prs verify "$T/vr8.md") $(prs verify "$T/vr9.md") $(prs verify "$T/vr10.md") $(prs verify "$T/vr11.md") $(prs verify "$T/vr12.md")"
 printf 'slice 1\n## Dropped\n- grey boxes before data: designed. Nit.\nNO BUGS\n' > "$T/vr16.md"; std "$T/vr16.md"
 printf 'slice 1\n## Dropped\n- grey boxes before data: designed. Nit.\nRULED: grey boxes before data: a bug, fixed here\nNO BUGS\n' > "$T/vr17.md"; std "$T/vr17.md"
 check "BLOCK: a dropped candidate needs a RULED line whatever its reason ('designed. Nit.'); with one, it records" "1 0" "$(prs verify "$T/vr16.md") $(prs verify "$T/vr17.md")"
+printf 'slice 1\n## Dropped\n  - grey boxes before data: designed. Nit.\n    - Why: the data arrives later.\nNO BUGS\n' > "$T/vr18.md"; std "$T/vr18.md"
+printf 'slice 1\n## Dropped\n  - grey boxes before data: designed. Nit.\n    - Why: the data arrives later.\nRULED: grey boxes before data: a bug, fixed here\nNO BUGS\n' > "$T/vr19.md"; std "$T/vr19.md"
+printf 'slice 1\n## Dropped\nNone.\nI tried the loading and error paths; both behaved correctly.\nNO BUGS\n' > "$T/vr20.md"; std "$T/vr20.md"
+check "BLOCK: an indented list's outermost items are candidates, its deeper ones covered by their item's RULED line; prose in the list without '<candidate>: ' is none" "1 0 0" "$(prs verify "$T/vr18.md") $(prs verify "$T/vr19.md") $(prs verify "$T/vr20.md")"
 # pr-steps verify: a diff that touches bodies or streams needs code §No regressions' list answered by name
 G3="$T/prs3"; mkdir -p "$G3"; git -C "$G3" init -q -b main; git -C "$G3" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 git -C "$G3" update-ref refs/remotes/origin/main HEAD; git -C "$G3" checkout -q -b fix
