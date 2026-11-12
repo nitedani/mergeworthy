@@ -79,10 +79,11 @@ def queued(tid, text):
         "where r.thread_id = ? and r.status = 'queued' and substr(json_extract(m.payload_json, '$.text'), 1, ?) = ?", (tid, len(text), text)).fetchone(), None)
     return r and r[0]
 
-# A message that opens by asking to stop or pause ("can you stop work please", "Stooooppoopp", "állj") or ends with it ("…, then pause");
-# not "don't stop", "stop-lint …", "stop using X" or a stop said mid-sentence
+# A message that opens by asking to stop or pause the work itself ("can you stop work please", "Stooooppoopp", "állj", "stop the work
+# now") or ends with it ("…, then pause"); not "don't stop", "stop-lint …", "stop the dev server" or a stop said mid-sentence
 STOP = re.compile(r"^\W*(?:(?:please|pls|ok(?:ay)?|hey|(?:can|could|would) you)[\s,]+)*(?:st+o+p+[op]*|pause|áll(?:j|jál|jatok|jon)(?:\s+(?:meg|le))?)"
-                  r"(?![\w-]|\s+(?!working)\w+ing\b|\s+(?:hook|button)\b)|\bthen\s+(?:stop|pause)\W*$", re.I)
+                  r"(?:\s+(?:the work|work(?:ing)?|(?:right |for )?now|it|that|this|everything|all|here|immediately|what you['’]?re doing|doing (?:that|this|it)))*"
+                  r"(?:\s+(?:please|pls)\b|\s*(?:[^\w\s-]|$))|\bthen\s+(?:stop|pause)\W*$", re.I)
 
 def asks_stop(text):
     return bool(STOP.search(text or ''))
