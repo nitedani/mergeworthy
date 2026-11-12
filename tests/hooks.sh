@@ -2197,7 +2197,7 @@ check "BLOCK: the branch reused with a new approach is new-contract again" 1 "$(
 printf 'slice 1\n## Tried and dropped\n- **abort leaks a listener**: Not a regression, main does the same\n- a slow path: rarely slower, noise\nNO BUGS\n' > "$T/vr0.md"
 printf 'slice 1\n- **a rare race in abort**: reproduced, fixed in abc1234\nNO BUGS\n' > "$T/vr3.md"; std "$T/vr3.md"
 check "a counted bug described as rare, outside the dropped list, needs no RULED line" 0 "$(prs verify "$T/vr3.md")"
-{ head -n4 "$T/vr0.md"; echo 'RULED: abort leaks a listener: a real leak, fixed in its own PR'; echo 'NO BUGS'; } > "$T/vr1.md"
+{ head -n4 "$T/vr0.md"; echo 'RULED: abort leaks a listener: a real leak, fixed in its own PR'; echo 'RULED: a slow path: noise, no user meets it'; echo 'NO BUGS'; } > "$T/vr1.md"
 sed 's/^NO BUGS$/NO LOOP B COMMITS/' "$T/vr0.md" > "$T/vr2.md"; std "$T/vr0.md" "$T/vr1.md"
 check "BLOCK: a dropped candidate whose reason is 'not a regression', quoting it, in verify and reverify; with a later RULED line naming it, it records" "1 1 1 0" "$(prs verify "$T/vr0.md") $(cd "$G" && bash "$R/bin/pr-steps" verify "$T/vr0.md" 2>&1 | grep -c '^- \*\*abort leaks a listener\*\*: Not a regression') $(prs reverify "$T/vr2.md") $(prs verify "$T/vr1.md")"
 printf 'slice 1\n## Tried and dropped\n- **abort leaks a listener**: Not a regression, main does the same\nRULED: abort leaks a listener: not a regression, main does the same\nNO BUGS\n' > "$T/vr4.md"; std "$T/vr4.md"
@@ -2216,9 +2216,16 @@ printf 'slice 1\n## Dropped\nNone. No newly reproduced candidate downgraded as r
 printf 'slice 1\n## Dropped\n- No timeout on the retry: pre-existing, also on main\nNO BUGS\n' > "$T/vr8.md"; std "$T/vr8.md"
 printf 'slice 1\n## Dropped\n- **Retry timeout**: reproduced timeout gap.\n  - No documented usage.\nNO BUGS\n' > "$T/vr9.md"; std "$T/vr9.md"
 printf 'slice 1\n## Dropped\n- No timeout on the retry; pre-existing, also on main\nNO BUGS\n' > "$T/vr10.md"; std "$T/vr10.md"
-printf 'slice 1\n## Dropped\nNo timeout on the retry; pre-existing, also on main\nNO BUGS\n' > "$T/vr11.md"; std "$T/vr11.md"
-printf 'slice 1\n## Dropped\nNo timeout on dropped connections; pre-existing, also on main\nNO BUGS\n' > "$T/vr12.md"; std "$T/vr12.md"
+printf 'slice 1\n## Dropped\nNo timeout on the retry: pre-existing, also on main\nNO BUGS\n' > "$T/vr11.md"; std "$T/vr11.md"
+printf 'slice 1\n## Dropped\nNo timeout on dropped connections: pre-existing, also on main\nNO BUGS\n' > "$T/vr12.md"; std "$T/vr12.md"
 check "a Dropped line saying nothing was dropped needs no RULED line; a candidate opening with 'No' still does, as a list item, its sub-bullet reason or a bare line, one naming \"dropped\" too" "0 1 1 1 1 1" "$(prs verify "$T/vr7.md") $(prs verify "$T/vr8.md") $(prs verify "$T/vr9.md") $(prs verify "$T/vr10.md") $(prs verify "$T/vr11.md") $(prs verify "$T/vr12.md")"
+printf 'slice 1\n## Dropped\n- grey boxes before data: designed. Nit.\nNO BUGS\n' > "$T/vr16.md"; std "$T/vr16.md"
+printf 'slice 1\n## Dropped\n- grey boxes before data: designed. Nit.\nRULED: grey boxes before data: a bug, fixed here\nNO BUGS\n' > "$T/vr17.md"; std "$T/vr17.md"
+check "BLOCK: a dropped candidate needs a RULED line whatever its reason ('designed. Nit.'); with one, it records" "1 0" "$(prs verify "$T/vr16.md") $(prs verify "$T/vr17.md")"
+printf 'slice 1\n## Dropped\n  - grey boxes before data: designed. Nit.\n    - Why: the data arrives later.\nNO BUGS\n' > "$T/vr18.md"; std "$T/vr18.md"
+printf 'slice 1\n## Dropped\n  - grey boxes before data: designed. Nit.\n    - Why: the data arrives later.\nRULED: grey boxes before data: a bug, fixed here\nNO BUGS\n' > "$T/vr19.md"; std "$T/vr19.md"
+printf 'slice 1\n## Dropped\nNone.\nI tried the loading and error paths; both behaved correctly.\nNO BUGS\n' > "$T/vr20.md"; std "$T/vr20.md"
+check "BLOCK: an indented list's outermost items are candidates, its deeper ones covered by their item's RULED line; prose in the list without '<candidate>: ' is none" "1 0 0" "$(prs verify "$T/vr18.md") $(prs verify "$T/vr19.md") $(prs verify "$T/vr20.md")"
 # pr-steps verify: a diff that touches bodies or streams needs code §No regressions' list answered by name
 G3="$T/prs3"; mkdir -p "$G3"; git -C "$G3" init -q -b main; git -C "$G3" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 git -C "$G3" update-ref refs/remotes/origin/main HEAD; git -C "$G3" checkout -q -b fix
