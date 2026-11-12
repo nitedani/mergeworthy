@@ -1846,6 +1846,7 @@ for e in ev:
         w({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "q1", "content": json.dumps({"threadId": "thread:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aloop-a-1", "taskId": "node:delegated-task:command%3Amcp%3Aabc%3Athread-send%3A5676", "status": "running"})}]}})
     elif e == 'continued': w({"type": "user", "message": {"content": "Delegated task node:delegated-task:provider-continuation%3Amessage%3Athread%3Athread%253Adelegated-task%253Acommand%25253Amcp%25253Aabc%25253Adelegate-task%25253Aloop-a-1%3Aordinal%3A1%3Aff (Loop A) [completed]: The e2e lanes are still running; I'll continue when they finish."}})
     elif e == 'feedback': w({"type": "user", "message": {"content": "Stop hook feedback: [stop-lint.py]: check once"}})
+    elif e == 'watcher': w({"type": "user", "message": {"content": "Watcher events in /w/events.log (mergeworthy:reply):\n### o/r#1 comment 2 by bob"}})
     elif e == 'other': w({"type": "user", "message": {"content": "Delegated task node:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aother-9 reached a terminal state."}})
     elif e == 'waiting': w({"type": "user", "message": {"content": "Delegated task node:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aloop-a-1 (Loop A) [completed]: The gates are still running; I'll continue when they finish."}})
     elif e == 'other2': w({"type": "user", "message": {"content": "Delegated task node:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aother-9 (Review round 2) [completed]:\nCLEAN"}})
@@ -1867,6 +1868,7 @@ rl_tr $'Done for now.
 
 Running:
 - Loop A on the head' user status:running feedback; check "a stop hook's feedback is not the user: a list read before it passes" 0 "$(stop "$T")"
+rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user status:running watcher; check "a watcher's events are not the user: a list read before them passes" 0 "$(stop "$T")"
 rl_tr $'Started Loop A again.
 
 Running:
@@ -3692,6 +3694,18 @@ print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text"
 check "a session that only opened the task skill gets no check-in" "0 0" "$(ci qa-2) $(grep -c 'Before you stop' "$T/err")"
 CIW="$HOME/.mergeworthy/work/ci"; mkdir -p "$CIW"; printf 'Tier: 0, because one answer\n\n- [x] answer it\n' > "$CIW/scope.md"
 check "a session in a work folder still gets the check-in" "2 1" "$(qa 'Answered.'; ci qa-3 "$CIW") $(grep -c 'Before you stop' "$T/err")"
+# a stop the user typed holds through the machine's notices after it, until they write again
+held() { python3 -c 'import json,sys
+for who, text in zip(sys.argv[1::2], sys.argv[2::2]):
+    print(json.dumps({"type": who, "message": {"content": text if who == "user" else [{"type": "text", "text": text}]}}))
+    if who == "user" and text.startswith("fix"): print(json.dumps({"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "Skill", "id": "s1", "input": {"skill": "mergeworthy:task"}}]}}))' \
+  user 'fix the thing' "$@" > "$T/tr.jsonl"; ci "held-$RANDOM" "$TASKW"; }
+check "a typed stop, then a watcher's and a finished task's notice: the turn ends with no check and no check-in, though scope.md has an open box; BLOCK: once the user writes again" "0 0 0 2" \
+  "$(held user 'can you stop work please dont waste money' assistant 'Stopped.' user $'Watcher events in /w/events.log (mergeworthy:reply):\n### o/r#1 comment 2 by bob' assistant 'Held.' user 'Delegated task node:x [completed]: done' assistant 'Held.') $(wc -c < "$T/err") \
+$(held user 'Stooooppoopp' assistant 'Stopped.') $(held user 'állj' assistant 'Stopped.' user 'ok go on' assistant 'Held.')"
+check "a stop or pause is a message that opens by asking for one, or ends with \"then pause\"" "True True True True True False False False False" \
+  "$(PYTHONPATH="$R/hooks" python3 -c 'import steward, sys; print(*(steward.asks_stop(t) for t in sys.argv[1:]))' 'stop the work now' 'Stooooooooopppppppppppp' 'Állj meg' 'Please pause the work' \
+     'make me four fox images, then pause' "don't stop" 'ne állj meg' 'stop-lint blocks too often' 'stop using sonnet')"
 tr_file $'#20 is in review.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.' work
 check "a message ending with a GENUINE-FORK line waits on the user: no check-in" 0 "$(ci qa-4)"
 tr_file "$QA2" work

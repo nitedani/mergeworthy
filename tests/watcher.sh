@@ -894,9 +894,9 @@ import sqlite3
 db = os.path.expanduser("~/.t3/userdata/statev2.sqlite"); os.makedirs(os.path.dirname(db), exist_ok=True)
 c = sqlite3.connect(db)
 c.execute("create table orchestration_v2_projection_runs (run_id text, thread_id text, status text, payload_json text)")
-c.execute("create table orchestration_v2_projection_messages (message_id text, payload_json text)")
+c.execute("create table orchestration_v2_projection_messages (message_id text, thread_id text, role text, created_at text, payload_json text)")
 def queue(mid, text):  # T3 queues a message behind the running turn of the thread
-    c.execute("insert into orchestration_v2_projection_messages values (?, ?)", (mid, json.dumps({"text": text})))
+    c.execute("insert into orchestration_v2_projection_messages (message_id, payload_json) values (?, ?)", (mid, json.dumps({"text": text})))
     c.execute("insert into orchestration_v2_projection_runs values (?, ?, ?, ?)", ("run-" + mid, "thr-q", "queued", json.dumps({"userMessageId": mid}))); c.commit()
 queue("u1", "please also look at the docs")  # a user message queued too: not a wake
 log = os.path.join(m.HERE, "events.log"); open(log, "w").close()
@@ -927,7 +927,7 @@ import sqlite3
 db = os.path.expanduser("~/.t3/userdata/statev2.sqlite"); os.makedirs(os.path.dirname(db), exist_ok=True)
 c = sqlite3.connect(db)
 c.execute("create table orchestration_v2_projection_runs (run_id text, thread_id text, status text, payload_json text)")
-c.execute("create table orchestration_v2_projection_messages (message_id text, payload_json text)")
+c.execute("create table orchestration_v2_projection_messages (message_id text, thread_id text, role text, created_at text, payload_json text)")
 run = lambda n, st: (c.execute("insert into orchestration_v2_projection_runs values (?, ?, ?, ?)", (f"r{n}", "thr-s", st, json.dumps({"ordinal": n}))), c.commit())
 run(9, "completed"); run(10, "interrupted")  # ordinal 10 sorts after 9 as a number
 log = os.path.join(m.HERE, "events.log"); open(log, "w").close()
@@ -940,6 +940,28 @@ print(*counts)
 ')
 check "wake_thread: while the user has the thread stopped (its latest run interrupted), events wait unsent and the pass reports them unsent (False), so the watcher does not retire; once they write again, one wake carries them all" \
   "False 0 1|t3 thread send thr-s -;Watcher events in $W/events.log (mergeworthy:reply):;### closed 1;### closed 2;" \
+  "$got|$(tr '\n' ';' < "$T/t3.log")"
+: > "$T/t3.log"
+got=$(py '
+import sqlite3
+db = os.path.expanduser("~/.t3/userdata/statev2.sqlite"); os.makedirs(os.path.dirname(db), exist_ok=True)
+c = sqlite3.connect(db)
+c.execute("create table orchestration_v2_projection_runs (run_id text, thread_id text, status text, payload_json text)")
+c.execute("create table orchestration_v2_projection_messages (message_id text, thread_id text, role text, created_at text, payload_json text)")
+c.execute("insert into orchestration_v2_projection_runs values (?, ?, ?, ?)", ("r1", "thr-t", "completed", json.dumps({"ordinal": 1})))
+def say(at, by, text): c.execute("insert into orchestration_v2_projection_messages values (?, ?, ?, ?, ?)", (at, "thr-t", "user", at, json.dumps({"createdBy": by, "text": text}))); c.commit()
+say("2026-11-11T07:57:32.109Z", "user", "can you stop work please dont waste money")
+say("2026-11-11T08:10:00.000Z", "agent", "Watcher events in /w/events.log (mergeworthy:reply):")  # a wake the watcher sent: no person wrote it
+log = os.path.join(m.HERE, "events.log"); open(log, "w").close()
+open(os.path.join(m.HERE, "t3-thread"), "w").write("thr-t\n'"$T"'/bin/t3\n"); open(os.path.join(m.HERE, "t3-wake.cursor"), "w").write("0")
+sends = lambda: open("'"$T"'/t3.log").read().count("t3 thread send")
+open(log, "a").write("### closed 1\n"); counts = [m.wake_thread(), sends(), m.first_line(os.path.join(m.HERE, "t3-wake.cursor"))]
+say("2026-11-11T09:00:00.000Z", "user", "ok go on"); m.wake_thread(); counts.append(sends())
+os.remove(os.path.join(m.HERE, "t3-thread")); os.remove(db)
+print(*counts)
+')
+check "wake_thread: while the latest message a person wrote in the thread asks to stop, events wait unsent and the cursor stays; their next message resumes the wakes" \
+  "False 0 0 1|t3 thread send thr-t -;Watcher events in $W/events.log (mergeworthy:reply):;### closed 1;" \
   "$got|$(tr '\n' ';' < "$T/t3.log")"
 got=$(py '
 log = os.path.join(m.HERE, "events.log"); open(log, "w").write("### cron event\n"); open(os.path.join(m.HERE, "t3-wake.cursor"), "w").write("0\n")

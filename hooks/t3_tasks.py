@@ -6,6 +6,15 @@ import json, os, re
 
 # T3's notice is `Delegated task <id> reached a terminal state`, or `Delegated task <id> (<title>) [<status>]:` with its result
 NOTICE = re.compile(r'Delegated task (\S+) (?:reached a terminal state|\(.*?\) \[(\w+)\]:?)')
+# What the harness, T3, a hook or the watcher writes into a session as a user message
+NOTICES = ('<', 'Stop hook feedback', 'Watcher events in ', 'Delegated task ', 'Skill /', 'Base directory for this skill',
+           'This session is being continued', '[Your previous response had no visible output')
+
+
+def typed(content):
+    """The text a person typed in a user entry's content, or '' for a tool result or a machine's notice."""
+    t = content if isinstance(content, str) else ' '.join(x.get('text', '') for x in content or [] if isinstance(x, dict) and x.get('type') == 'text')
+    return '' if not t.strip() or t.lstrip().startswith(NOTICES) else t
 
 
 def under_t3():
@@ -23,12 +32,12 @@ def observed(lines):
         except ValueError: continue
         c = (e.get('message') or {}).get('content') if isinstance(e, dict) else None
         if e.get('type') == 'user' and isinstance(c, str) and not c.startswith('<'):
-            # T3's own completion notice and a skill's re-invocation aren't the user: a notice marks its task terminal instead
+            # T3's own completion notice isn't the user (typed): it marks its task terminal
             n = NOTICE.match(c)
             # a sub-agent whose turn ends while its own background work runs says so, and T3 continues it later: not finished
             waits = n and re.search(r"\b(?:still running|I'll (?:continue|wait|resume)|I will (?:continue|wait|resume)|I'm waiting|wakes? (?:me )?when)\b", c[n.end():n.end() + 400], re.I)
             if n: status[n.group(1)] = ('waiting' if waits else n.group(2) or 'completed', status.pop(n.group(1), ('', ''))[1])
-            elif not c.startswith(('Skill /', 'Stop hook feedback')): seen = set()
+        if e.get('type') == 'user' and typed(c): seen = set()
         for b in c if isinstance(c, list) else []:
             if b.get('type') == 'tool_use' and re.search(r'(delegate_task|task_status|thread_send)$', b.get('name', '')):
                 titles[b['id']] = (b.get('name', '').endswith('task_status'), str((b.get('input') or {}).get('title') or ''))

@@ -4,7 +4,8 @@ wake it, with an offer or hand-back the agent should just act on, with a claim a
 on GitHub with no live Monitor on a watcher's events.log in this session (the session is what answers the events; nothing else
 wakes it) unless its watch folder retired after the post, or with a line still owed in a watcher's replies-owed.md (mergeworthy:reply).
 The final message is the hook input's last_assistant_message (the transcript may not hold it yet). stop_hook_active skips only
-the check-in: every other check holds until it is met, except a late `drafting:` owed line, which blocks once (Claude Code itself ends the turn after 8 blocks in a row)."""
+the check-in: every other check holds until it is met, except a late `drafting:` owed line, which blocks once (Claude Code itself ends the turn after 8 blocks in a row).
+While the last message the user typed asks to stop or pause (steward.asks_stop), the turn ends with no check."""
 import glob, hashlib, json, os, re, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import failclosed
@@ -14,7 +15,7 @@ last = ''
 posted, monitor_ids, monitors, dead, commands, monitor_cmds = False, {}, set(), set(), [], []
 posted_at = ''  # the time of the session's last post, from its transcript
 wakers, opened_task, acted, delegated = {}, False, False, False  # the background commands and Monitors this session started; whether it is a task's
-last_user = ''  # the user's own last message (not a tool result or a hook's feedback)
+last_user = ''  # the user's own last message (t3_tasks.typed)
 said = []  # every text the agent wrote, in order
 POST = re.compile(r'\bgh\b[^\n]*(body-file|body=@|--input|\s-F\s)')
 READ = re.compile(r'\bgh\s+api\s+graphql\b|\bgh\s+api\b[^\n]*\s(?:-X\s*|--method[\s=])GET\b')  # a field makes `gh api` a POST, but these read
@@ -75,8 +76,7 @@ for line in lines:
                 m = re.search(r'Monitor started \(task (\w+)', json.dumps(x.get('content')))
                 if m: monitors.add(m.group(1))
         typed = c if isinstance(c, str) else ' '.join(x.get('text', '') for x in c or [] if isinstance(x, dict) and x.get('type') == 'text')
-        if typed.strip() and not typed.lstrip().startswith(('<', 'Stop hook feedback')):
-            last_user = typed
+        last_user = t3_tasks.typed(typed) or last_user
         for t in texts:
             for tid in re.findall(r'<task-id>(\w+)</task-id>[\s\S]*?Monitor expired', t or ''): dead.add(tid)
             for tid, st in re.findall(r'<task-id>(\w+)</task-id>[\s\S]*?<status>(\w+)</status>', t or ''):
@@ -104,6 +104,8 @@ fin = d.get('last_assistant_message')
 if isinstance(fin, str) and fin.strip():
     if not said or said[-1].strip() != fin.strip(): said.append(fin)
     last = fin
+# The user asked to stop or pause: the turn ends as they asked, until they write again
+if steward.asks_stop(last_user): sys.exit(0)
 cwd_d = d.get('cwd') or ''
 import work_folder
 # Each stop reads the whole session's commands: their parses are kept per session (by the parser's pin and the command), so a
@@ -266,8 +268,6 @@ _env = os.path.expanduser('~/.mergeworthy/settings.env')
 watcher_on = (os.environ.get('MERGEWORTHY_WATCHER') or ('off' if 'MERGEWORTHY_WATCHER=off' in (open(_env).read() if os.path.exists(_env) else '') else 'on')) != 'off'
 # A headless run (`claude -p`, entrypoint sdk-cli) has no Monitor tool: its caller watches
 headless = any('"entrypoint":"sdk-cli"' in l for l in lines[-20:])
-# The user paused the work: nothing is to be watched or answered until they resume
-paused = re.search(r'\bpause\b', last_user, re.I) is not None
 # A steward pass's round (gh-watch-start --round, mergeworthy:steward) names its session in <dir>/passed: that dir's owed lines hold the
 # session's turn as a live watcher's do. It has no daemon, so a post there still needs a live watcher, as any post does
 pass_dirs = {wd for wd in ((l.strip() for l in open(reg)) if os.path.exists(reg) else ()) if d.get('session_id') and steward.passed_by(wd) == d['session_id']}
@@ -276,7 +276,7 @@ def retired_since(at):  # a watch dir of this session's retired after its last p
     import datetime
     t = datetime.datetime.fromisoformat(at.replace('Z', '+00:00')).timestamp() if at else 0
     return any(os.path.getmtime(p) >= t for p in (os.path.join(wd, 'retired') for wd in own_dirs) if os.path.exists(p))
-if posted and watcher_on and not child and not headless and not paused and not t3_dirs and not (monitors - dead) and not retired_since(posted_at):  # a child's posts are its main session's to watch
+if posted and watcher_on and not child and not headless and not t3_dirs and not (monitors - dead) and not retired_since(posted_at):  # a child's posts are its main session's to watch
     # under T3, a watcher of this session's that dropped its t3-thread (the thread or t3 gone) wakes nothing: its events.log says why
     dropped = [wd for wd in live_dirs if t3_chain and steward.first(os.path.join(wd, 'session')) == d.get('session_id')
                and not os.path.exists(os.path.join(wd, 't3-thread'))]
@@ -292,7 +292,7 @@ if posted and watcher_on and not child and not headless and not paused and not t
     sys.exit(2)
 # The owed-reply list: the daemon records each human comment in the live watcher's replies-owed.md; a turn
 # cannot end with a line still owed.
-if watcher_on and not paused and not child:
+if watcher_on and not child:
     for wd in sorted(own_dirs):
         f = os.path.join(wd, 'replies-owed.md')
         owed = [l.strip() for l in open(f) if l.strip() and not l.startswith('#')] if os.path.exists(f) else []
@@ -345,7 +345,7 @@ if watcher_on and not paused and not child:
             sys.exit(2)
 # A promise posted with a time (`by 2026-10-12T17:30Z`, `by 18:00 UTC`, in its PROMISED line or its draft) is kept by then: past it,
 # a line still opening with PROMISED, not cleared by the commit or link that delivers it (task §Files), blocks the turn
-if watcher_on and not paused and not child:
+if watcher_on and not child:
     import datetime, time
     BY = re.compile(r'\b(?:by|before)\s+(\d{1,2}):(\d{2})\s*(?:Z|UTC)\b|' + '|'.join(w['status']['by'] for w in post_words.WORDS.values()), re.I)
     def due(text, written):
@@ -369,7 +369,7 @@ if watcher_on and not paused and not child:
 # Each FOLLOW-UP the watcher reported is sorted by a verdict line in followups-sorted.txt within 30 minutes (mergeworthy:rules step 6),
 # by the session whose dir's events.log got it (steward.recipient chose it): the session's own dirs, and a declared steward's; the
 # steward's folder only in the pass whose round ran there (pass_dirs)
-if watcher_on and not paused and not child:
+if watcher_on and not child:
     import datetime, time
     st = steward.read()
     for wd in sorted(own_dirs | ({st[0]} if st and steward.is_steward(d.get('session_id'), cwd_d) else set())):
@@ -387,7 +387,7 @@ if watcher_on and not paused and not child:
 # The task isn't finished while its scope.md has an open box (task step 10 walks them). A turn ends with one only when something
 # this session armed will wake it for the work (a live Monitor, a background command, an agent it launched) or with a
 # GENUINE-FORK the user must answer. A session that opened `task` or pushed or posted has a scope.md (task steps 2-3).
-if (opened_task or acted) and not child and not paused and not headless:
+if (opened_task or acted) and not child and not headless:
     import agent_jobs
     folders = set(own_dirs) | task_dirs
     scopes = {f: open(os.path.join(f, 'scope.md'), errors='replace').read() for f in folders if os.path.isfile(os.path.join(f, 'scope.md'))}
@@ -407,7 +407,7 @@ if (opened_task or acted) and not child and not paused and not headless:
               "can decide ends the turn, as a GENUINE-FORK line (always-on: Every session).", file=sys.stderr)
         sys.exit(2)
 # The main session's memory.md is behind and covers nothing from the last 2 hours: the session-start order is repeated, at most hourly
-if not child and not paused:
+if not child:
     sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
     import datetime, time, memory_file as mf
     try: root = mf.for_cwd(cwd_d, d.get('session_id'))
@@ -478,7 +478,7 @@ def checkin_due():
     return True
 if (os.environ.get('MERGEWORTHY_STOP_CHECKIN', 'on') != 'off' and may_wait and not child and not active
         and not re.search(r'^GENUINE-FORK:.*\Z', last.rstrip(), re.M) and not steward.pending(d.get('session_id')) and checkin_due()):
-    print("Before you stop, check once, unless the user asked you to stop or pause: is there work the user asked for, or that the "
+    print("Before you stop, check once: is there work the user asked for, or that the "
           "critical path needs, that you could start now? Is anything waiting on you (a reply owed, red CI, a finished agent's result "
           "to read, a dependency that landed)? If so, do it now, or brief a subagent for it. Otherwise end the turn without writing "
           "anything: the user already has your answer.",
