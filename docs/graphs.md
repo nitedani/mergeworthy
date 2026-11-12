@@ -7,7 +7,7 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 | Skill | Hands over to |
 |---|---|
 | `code` | `delegate` |
-| `converge` | `design`, `finality`, `delegate`, `task`, `code`, `writing`, `pull-request`, `rules`, `post`, `merging` |
+| `converge` | `design`, `finality`, `task`, `delegate`, `code`, `writing`, `pull-request`, `rules`, `post`, `merging` |
 | `delegate` | `code`, `writing` |
 | `design` | `delegate`, `pull-request`, `code`, `finality`, `writing`, `post`, `converge` |
 | `docs` | `delegate`, `converge`, `code` |
@@ -311,8 +311,8 @@ flowchart TB
   end
   s0 -.-> r1[["design"]]
   s0 -.-> r2[["finality"]]
-  s1 -.-> r3[["delegate"]]
-  s1 -.-> r4[["task"]]
+  s1 -.-> r3[["task"]]
+  s1 -.-> r4[["delegate"]]
   s2 -.-> r5[["code"]]
   s2 -.-> r6[["delegate"]]
   s2 -.-> r7[["task"]]
@@ -351,8 +351,8 @@ flowchart TB
   end
   s0 -.-> r1[["design"]]
   s0 -.-> r2[["finality"]]
-  s1 -.-> r3[["delegate"]]
-  s1 -.-> r4[["task"]]
+  s1 -.-> r3[["task"]]
+  s1 -.-> r4[["delegate"]]
   s2 -.-> r5[["code"]]
   s2 -.-> r6[["delegate"]]
   s2 -.-> r7[["task"]]
@@ -391,8 +391,8 @@ flowchart TB
   end
   s0 -.-> r1[["design"]]
   s0 -.-> r2[["finality"]]
-  s1 -.-> r3[["delegate"]]
-  s1 -.-> r4[["task"]]
+  s1 -.-> r3[["task"]]
+  s1 -.-> r4[["delegate"]]
   s2 -.-> r5[["code"]]
   s2 -.-> r6[["delegate"]]
   s2 -.-> r7[["task"]]
@@ -431,8 +431,8 @@ flowchart TB
   end
   s0 -.-> r1[["design"]]
   s0 -.-> r2[["finality"]]
-  s1 -.-> r3[["delegate"]]
-  s1 -.-> r4[["task"]]
+  s1 -.-> r3[["task"]]
+  s1 -.-> r4[["delegate"]]
   s2 -.-> r5[["code"]]
   s2 -.-> r6[["delegate"]]
   s2 -.-> r7[["task"]]
