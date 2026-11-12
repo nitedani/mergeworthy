@@ -151,7 +151,7 @@ case "$step" in
     unruled=$(python3 - "$out" <<'EOF'
 import re, sys
 lines, plain = open(sys.argv[1]).read().splitlines(), lambda l: re.sub(r'[*`]', '', l).strip().lower()
-dropped, item = False, None  # only the dropped list: a counted bug may well be "a rare race"
+dropped = False  # only the dropped list: a counted bug may well be "a rare race"
 sep, bare = r':|\s[—–-]\s', lambda l: re.sub(r'^[\s>+-]*(\d+\.\s*)?', '', plain(l))
 # a candidate named by a line reference ('- :67 now says …', '- agent.md:10 …') is ruled as 'RULED: :67: …'
 name_of = lambda l: (re.match(r'\S*:\d+(-\d+)?', bare(l)) or re.split(sep, bare(l), maxsplit=1))[0].strip()
@@ -162,10 +162,9 @@ for i, l in enumerate(lines):
     if l.startswith('#'):
         dropped = 'dropped' in l.lower()
         continue
-    sub = re.match(r'\s+[-*+]\s', l)  # a sub-bullet ('**Why a nit:** …') belongs to the item above it
-    if not sub and l.strip() and not l.startswith('RULED:'): item = name_of(l)
-    if dropped and not empty(l) and re.search(r'no documented usage|\brare\b|not a regression|same as (on )?(main|master)|(main|master) does the same|pre-?existing|(also|too) on (main|master)|on (main|master) (too|as well)|masteren is', l, re.I) and not l.startswith('RULED:'):
-        name = item if sub and item else name_of(l)
+    # a sub-bullet ('**Why a nit:** …') belongs to the item above it, and that item's RULED line covers it
+    if dropped and l.strip() and not re.match(r'\s+[-*+]\s', l) and not empty(l) and not l.startswith('RULED:') and l.strip() not in ('NO BUGS', 'NO LOOP B COMMITS'):
+        name = name_of(l)
         rulings = [r for r in lines[i + 1:] if name and r.startswith('RULED:') and name in plain(r)]
         if not rulings:
             print(l)
@@ -174,7 +173,7 @@ for i, l in enumerate(lines):
             print(l + "  <- 'on main too' is not a ruling: start it 'a bug', or say 'outside the code this change edits', or why no user meets it (code Earn every line, no realistic usage)")
 EOF
 )
-    [ -z "$unruled" ] || { printf '%s\n' "a reproduced behavior dropped for this reason goes to the main session, which rules on it in a later line 'RULED: <candidate>: <ruling>' (mergeworthy delegate/verifier.md, What counts):" "$unruled" >&2; exit 1; }
+    [ -z "$unruled" ] || { printf '%s\n' "every dropped candidate goes to the main session, which rules on it in a later line 'RULED: <candidate>: <ruling>' (mergeworthy delegate/verifier.md, What counts):" "$unruled" >&2; exit 1; }
     # A diff that touches bodies, buffers, streams or cancellation gets code §No regressions' list answered item by item
     if [ "$step" = verify ] && [ -n "$base" ] && git diff "$base" HEAD | grep -Eq '^\+.*(ReadableStream|WritableStream|TransformStream|arrayBuffer\(|\.bytes\(|\.body\b|bodyUsed|\btee\(|\.clone\(|AbortSignal|AbortController|ArrayBuffer|(Int|Uint|Float|BigInt|BigUint)[0-9]+Array|Buffer\.|defineProperty|prototype\.[A-Za-z_]+ *=)'; then
       sec=$(awk '/^## Bodies and streams/{f=1;next} /^## /{f=0} f' "$out")
