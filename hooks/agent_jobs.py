@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """The jobs pre-agent-dedupe registered (~/.claude/agent-jobs, one JSON file each: key, started, and the task, role, the linked
-worktrees its brief names, the launcher's session and transcript) and whether each one's agent has finished. T3's notices miss
-a run that ended interrupted or failed and was revived, or that wrote its report without a final message, so the agent's own transcript decides: the earliest-started
-one under ~/.claude/projects or ~/.codex/sessions that started at or after the launch and whose first prompt carries the job's
-whole task (or, for a job an older hook registered with only its key and start, every ticket path in the key). pre-agent-dedupe
-lets no open job's task contain another's, so that names the agent's own.
+worktrees its brief names, the launcher's session and transcript, and the handle the platform returned for its agent) and whether
+each one's agent has finished. T3's notices miss a run that ended interrupted or failed and was revived, or that wrote its report
+without a final message, so the agent's own transcript decides: the one its handle names, or, for a job registered without one,
+the earliest-started one under ~/.claude/projects or ~/.codex/sessions that started at or after the launch and whose first prompt
+carries the job's whole task (or, for a job an older hook registered with only its key and start, every ticket path in the key).
 It has finished when that transcript has been quiet for QUIET
 seconds with no tool call pending, for LONG seconds whatever it was doing (no foreground tool call runs ten minutes), or
 Claude Code stopped it, while T3 Code shows no active run or background command of its thread and no agent it launched is still at work."""
@@ -96,9 +96,29 @@ def launched(job):
 def job_id(job):
     return hashlib.sha256(f"{job['key']}\0{launched(job)}".encode()).hexdigest()[:16]
 
+def handle(response):
+    """What the platform's PostToolUse result names the launched agent by: `t3:<taskId>/<childThreadId>` for T3's delegate_task,
+    `claude:<agentId>` for Claude Code's Agent tool, else None."""
+    if isinstance(response, dict) and response.get('agentId'): return f"claude:{response['agentId']}"
+    r = t3_tasks.result(response) or {}
+    return f"t3:{r['taskId']}/{r['childThreadId']}" if r.get('taskId') and r.get('childThreadId') else None
+
 _hit = {}
 def transcript(job):
-    """The agent's transcript; None until it starts."""
+    """The agent's transcript; None until it starts. By its handle: Claude Code writes a subagent's under its launcher's session
+    (or wherever that session's project directory moved), and T3 names its thread's provider session (a Claude transcript, a Codex rollout)."""
+    h = job.get('handle') or ''
+    if h.startswith('claude:'):
+        launcher, name = job.get('transcript'), f"agent-{h[len('claude:'):]}.jsonl"
+        p = launcher and f"{launcher[:-len('.jsonl')]}/subagents/{name}"
+        if p and os.path.exists(p): return p
+        moved = glob.glob(os.path.expanduser(f'~/.claude/projects/*/*/subagents/{name}'))
+        return moved[0] if moved else None
+    if h.startswith('t3:'):
+        sid = steward.native(h.rpartition('/')[2])
+        found = sid and (glob.glob(os.path.expanduser(f'~/.claude/projects/*/{sid}.jsonl'))
+                         + glob.glob(os.path.expanduser(CODEX.replace('*.jsonl', f'*-{sid}.jsonl'))))
+        return found[0] if found else None
     ns, jid = needles(job), job_id(job)
     if not ns: return None
     if os.path.exists(_hit.get(jid) or '/nonexistent'):

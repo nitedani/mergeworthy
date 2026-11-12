@@ -1788,6 +1788,43 @@ t3db "update orchestration_v2_projection_runs set status = 'completed' where run
 check "once its run ended: AGENT DONE, stop-lint names it, agent-job done releases it" "1 2 1 0" \
   "$(grep -c "AGENT DONE $T/jobs/cx-ticket.md" "$T/ev11") $(sj orch) $(grep -c cx-ticket "$T/err") $(python3 "$R/bin/agent-job" done "$T/jobs/cx-ticket.md" >/dev/null; echo $?)"
 rm -f "$HOME/.t3/userdata/statev2.sqlite"
+# two jobs of one prompt (a round released, the next launched): each finds its own agent's transcript by the handle the platform
+# returned for its launch, though the second's agent started first: a Claude Code subagent under its launcher's session, a T3
+# task's thread by its provider session (a Claude transcript, a Codex rollout)
+got=$(python3 - "$R/hooks" <<'EOF2'
+import json, os, sqlite3, subprocess, sys, time
+hooks = sys.argv[1]; sys.path.insert(0, hooks); import agent_jobs
+task, now = 'Review /work/briefs/hd.md exactly.', time.time()
+at = lambda t: time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime(t))
+tr = os.path.expanduser('~/.claude/projects/-hd/hd-launcher.jsonl')
+db = os.path.expanduser('~/.t3/userdata/statev2.sqlite'); os.makedirs(os.path.dirname(db), exist_ok=True)
+c = sqlite3.connect(db); c.execute('create table orchestration_v2_projection_provider_threads (provider_thread_id text, thread_id text, payload_json text)')
+c.executemany('insert into orchestration_v2_projection_provider_threads values (?, ?, ?)',
+              [(f'p-{t}', f'thr-{t}', json.dumps({'nativeThreadRef': {'nativeId': f'hd-s{t}'}})) for t in 'ab']); c.commit()
+def register(tool, title, response):
+    d = {'tool_name': tool, 'tool_use_id': title, 'transcript_path': tr, 'session_id': 'hd',
+         'tool_input': {'prompt': task, 'task': task, 'description': title, 'title': title}, 'tool_response': response}
+    subprocess.run(['python3', os.path.join(hooks, 'pre-agent-dedupe.py'), 'register'], input=json.dumps(d), text=True, capture_output=True)
+    return [j for _, j in agent_jobs.jobs() if title in j['key']][0]
+def log(p, start, codex=False):  # an agent's transcript, its first prompt the shared task
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    lines = ({'timestamp': at(start), 'type': 'session_meta', 'payload': {'id': 'hd-sb'}}, {'type': 'response_item', 'payload': {'role': 'user', 'content': [{'text': task}]}}) \
+            if codex else ({'type': 'user', 'timestamp': at(start), 'message': {'content': task}},)
+    open(p, 'w').write(''.join(json.dumps(o) + '\n' for o in lines))
+t3 = lambda t: [{'type': 'text', 'text': json.dumps({'taskId': f'task-{t}', 'childThreadId': f'thr-{t}', 'status': 'running'})}]
+ca, cb = register('Agent', 'hd-ca', {'isAsync': True, 'status': 'async_launched', 'agentId': 'hdca'}), register('Agent', 'hd-cb', {'agentId': 'hdcb'})
+ta, tb = register('mcp__t3-code__delegate_task', 'hd-ta', t3('a')), register('mcp__t3-code__delegate_task', 'hd-tb', t3('b'))
+sub = tr[:-len('.jsonl')] + '/subagents/agent-'
+log(sub + 'hdcb.jsonl', now + 1); log(sub + 'hdca.jsonl', now + 2)
+cm = register('Agent', 'hd-cm', {'agentId': 'hdcm'})  # its launcher's project directory moved since: found under the new one
+log(os.path.expanduser('~/.claude/projects/-hd-moved/hd-launcher/subagents/agent-hdcm.jsonl'), now + 5)
+log(os.path.expanduser('~/.claude/projects/-hd/hd-sa.jsonl'), now + 4); log(os.path.expanduser('~/.codex/sessions/2026/11/12/rollout-2026-11-12T00-00-00-hd-sb.jsonl'), now + 3, True)
+print(*(os.path.basename(agent_jobs.transcript(j) or 'None') for j in (ca, cb, ta, tb, cm)), ta['handle'])
+EOF2
+)
+check "two jobs of one prompt each find their own agent's transcript by the platform's handle: Claude Code subagents, a T3 Claude task and a T3 Codex task, and a subagent whose launcher's project directory moved" \
+  "agent-hdca.jsonl agent-hdcb.jsonl hd-sa.jsonl rollout-2026-11-12T00-00-00-hd-sb.jsonl agent-hdcm.jsonl t3:task-a/thr-a" "$got"
+rm -rf $(grep -l hd.md "$HOME"/.claude/agent-jobs/*) "$HOME/.claude/projects/-hd" "$HOME/.claude/projects/-hd-moved" "$HOME"/.codex/sessions/2026/11/12/rollout-*-hd-sb.jsonl "$HOME/.t3/userdata/statev2.sqlite"
 # a job launched by another watch dir's declared session goes to that dir, though its launcher's transcript names this one's events.log
 WS="$T/ws"; mkdir -p "$WS"; echo stew > "$WS/session"; echo $$ > "$WS/gh-watch.pid"; printf '%s\n' "$WS" >> "$HOME/.claude/gh-watch-dirs.txt"
 for i in 1 2 3; do echo "tail $WJ/events.log" >> "$T/stew-tr.jsonl"; done

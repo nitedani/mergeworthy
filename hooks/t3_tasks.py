@@ -14,6 +14,14 @@ def under_t3():
     return bool(os.environ.get('T3CODE_THREAD_ID'))
 
 
+def result(content):
+    """A T3 tool's result, the JSON object in its text (alone, or in content blocks as a PostToolUse hook gets it), else None."""
+    r = ''.join(x.get('text', '') for x in content if isinstance(x, dict)) if isinstance(content, list) else str(content or '')
+    try: r = json.loads(r)
+    except ValueError: return None
+    return r if isinstance(r, dict) else None
+
+
 def observed(lines):
     """(status, thread, seen, launched): each task's (status, title), in the order last heard of; the name of its thread; the tasks
     heard of since the user's last message; whether the session launched or messaged one (a read with task_status alone doesn't)."""
@@ -34,12 +42,10 @@ def observed(lines):
                 titles[b['id']] = (b.get('name', '').endswith('task_status'), str((b.get('input') or {}).get('title') or ''))
                 launched = launched or not titles[b['id']][0]
             elif b.get('type') == 'tool_result' and b.get('tool_use_id') in titles:
-                r = b.get('content'); r = ''.join(x.get('text', '') for x in r) if isinstance(r, list) else str(r or '')
-                try: r = json.loads(r)
-                except ValueError: continue
-                if isinstance(r, dict) and r.get('threadId') and not r.get('taskId'):  # a message sent to a task's thread runs it again
+                r = result(b.get('content')) or {}
+                if r.get('threadId') and not r.get('taskId'):  # a message sent to a task's thread runs it again
                     r = {'taskId': r['threadId'] + '#sent', 'childThreadId': r['threadId'], 'status': r.get('status') or 'running'}
-                if isinstance(r, dict) and r.get('taskId'):
+                if r.get('taskId'):
                     is_read, title = titles[b['tool_use_id']]
                     old = status.pop(r['taskId'], ('', ''))
                     status[r['taskId']] = (str(r.get('status') or ''), title or old[1])
