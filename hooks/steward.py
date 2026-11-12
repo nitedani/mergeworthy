@@ -107,6 +107,12 @@ def _chain(c, tid):
         pass
     return out
 
+def native(tid):
+    """The provider's id of the session T3 thread tid runs in (a Claude session's, a Codex rollout's), one for all its runs; None before
+    its first run starts or without T3's database."""
+    return _db(lambda c: (c.execute("select json_extract(payload_json, '$.nativeThreadRef.nativeId') from orchestration_v2_projection_provider_threads "
+                                    "where thread_id = ?", (tid,)).fetchone() or (None,))[0], None)
+
 def threads(session_id):
     """The T3 thread a Claude session runs in, then the threads that delegated it, read from T3 Code's state."""
     return _ask(session_id, _chain, [])
