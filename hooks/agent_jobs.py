@@ -105,13 +105,15 @@ def handle(response):
 
 _hit = {}
 def transcript(job):
-    """The agent's transcript; None until it starts. By its handle: Claude Code writes a subagent's under its launcher's session,
-    and T3 names its thread's provider session (a Claude transcript, a Codex rollout)."""
+    """The agent's transcript; None until it starts. By its handle: Claude Code writes a subagent's under its launcher's session
+    (or wherever that session's project directory moved), and T3 names its thread's provider session (a Claude transcript, a Codex rollout)."""
     h = job.get('handle') or ''
     if h.startswith('claude:'):
-        launcher = job.get('transcript')
-        p = launcher and f"{launcher[:-len('.jsonl')]}/subagents/agent-{h[len('claude:'):]}.jsonl"
-        return p if p and os.path.exists(p) else None
+        launcher, name = job.get('transcript'), f"agent-{h[len('claude:'):]}.jsonl"
+        p = launcher and f"{launcher[:-len('.jsonl')]}/subagents/{name}"
+        if p and os.path.exists(p): return p
+        moved = glob.glob(os.path.expanduser(f'~/.claude/projects/*/*/subagents/{name}'))
+        return moved[0] if moved else None
     if h.startswith('t3:'):
         sid = steward.native(h.rpartition('/')[2])
         found = sid and (glob.glob(os.path.expanduser(f'~/.claude/projects/*/{sid}.jsonl'))

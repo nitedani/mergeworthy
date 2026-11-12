@@ -1816,13 +1816,15 @@ ca, cb = register('Agent', 'hd-ca', {'isAsync': True, 'status': 'async_launched'
 ta, tb = register('mcp__t3-code__delegate_task', 'hd-ta', t3('a')), register('mcp__t3-code__delegate_task', 'hd-tb', t3('b'))
 sub = tr[:-len('.jsonl')] + '/subagents/agent-'
 log(sub + 'hdcb.jsonl', now + 1); log(sub + 'hdca.jsonl', now + 2)
+cm = register('Agent', 'hd-cm', {'agentId': 'hdcm'})  # its launcher's project directory moved since: found under the new one
+log(os.path.expanduser('~/.claude/projects/-hd-moved/hd-launcher/subagents/agent-hdcm.jsonl'), now + 5)
 log(os.path.expanduser('~/.claude/projects/-hd/hd-sa.jsonl'), now + 4); log(os.path.expanduser('~/.codex/sessions/2026/11/12/rollout-2026-11-12T00-00-00-hd-sb.jsonl'), now + 3, True)
-print(*(os.path.basename(agent_jobs.transcript(j) or 'None') for j in (ca, cb, ta, tb)), ta['handle'])
+print(*(os.path.basename(agent_jobs.transcript(j) or 'None') for j in (ca, cb, ta, tb, cm)), ta['handle'])
 EOF2
 )
-check "two jobs of one prompt each find their own agent's transcript by the platform's handle: Claude Code subagents, a T3 Claude task and a T3 Codex task" \
-  "agent-hdca.jsonl agent-hdcb.jsonl hd-sa.jsonl rollout-2026-11-12T00-00-00-hd-sb.jsonl t3:task-a/thr-a" "$got"
-rm -rf $(grep -l hd.md "$HOME"/.claude/agent-jobs/*) "$HOME/.claude/projects/-hd" "$HOME"/.codex/sessions/2026/11/12/rollout-*-hd-sb.jsonl "$HOME/.t3/userdata/statev2.sqlite"
+check "two jobs of one prompt each find their own agent's transcript by the platform's handle: Claude Code subagents, a T3 Claude task and a T3 Codex task, and a subagent whose launcher's project directory moved" \
+  "agent-hdca.jsonl agent-hdcb.jsonl hd-sa.jsonl rollout-2026-11-12T00-00-00-hd-sb.jsonl agent-hdcm.jsonl t3:task-a/thr-a" "$got"
+rm -rf $(grep -l hd.md "$HOME"/.claude/agent-jobs/*) "$HOME/.claude/projects/-hd" "$HOME/.claude/projects/-hd-moved" "$HOME"/.codex/sessions/2026/11/12/rollout-*-hd-sb.jsonl "$HOME/.t3/userdata/statev2.sqlite"
 # a job launched by another watch dir's declared session goes to that dir, though its launcher's transcript names this one's events.log
 WS="$T/ws"; mkdir -p "$WS"; echo stew > "$WS/session"; echo $$ > "$WS/gh-watch.pid"; printf '%s\n' "$WS" >> "$HOME/.claude/gh-watch-dirs.txt"
 for i in 1 2 3; do echo "tail $WJ/events.log" >> "$T/stew-tr.jsonl"; done
