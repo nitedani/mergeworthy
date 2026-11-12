@@ -79,12 +79,28 @@ def queued(tid, text):
         "where r.thread_id = ? and r.status = 'queued' and substr(json_extract(m.payload_json, '$.text'), 1, ?) = ?", (tid, len(text), text)).fetchone(), None)
     return r and r[0]
 
+# A message that opens by asking to stop or pause the work itself ("can you stop work please", "Stooooppoopp", "állj", "stop the work
+# now", "pause until I say continue") or ends with it ("…, then pause"); not "don't stop", "stop-lint …", "stop the dev server" or
+# "stop /tmp/server", and not a stop said mid-sentence
+STOP = re.compile(r"^\W*(?:(?:please|pls|ok(?:ay)?|hey|(?:can|could|would) you)[\s,]+)*(?:st+o+p+[op]*|pause|áll(?:j|jál|jatok|jon)(?:\s+(?:meg|le))?)"
+                  r"(?:\s+(?:the work|work(?:ing)?|(?:right |for )?now|it|that|this|everything|all|here|immediately|what you['’]?re doing|doing (?:that|this|it)))*"
+                  r"(?:\s+(?:please|pls|until|and (?:wait|hold))\b|\s+for (?:a (?:bit|moment|while|minute|second)|\d+ (?:minutes?|hours?))\b|\s*(?:[.!?,;:…。！？]+(?=\s|$)|[^\w/\\.:-]*$))"
+                  r"|\bthen\s+(?:stop|pause)\W*$", re.I)
+
+def asks_stop(text):
+    return bool(STOP.search(text or ''))
+
 def stopped(tid):
-    """True while the latest run of T3 thread tid is one someone stopped (status interrupted: the stop button or t3_thread_interrupt; a
-    T3 restart leaves none): a wake would restart work the user stopped. Their next message starts a new run, which ends it."""
-    r = _db(lambda c: c.execute("select status from orchestration_v2_projection_runs where thread_id = ? "
-                                "order by json_extract(payload_json, '$.ordinal') desc limit 1", (tid,)).fetchone(), None)
-    return bool(r) and r[0] == 'interrupted'
+    """True while the user has T3 thread tid stopped: its latest run is one someone stopped (status interrupted: the stop button or
+    t3_thread_interrupt; a T3 restart leaves none), or the latest message a person wrote in it asks to stop. A wake would restart work
+    the user stopped; their next message ends it."""
+    def ask(c):
+        r = c.execute("select status from orchestration_v2_projection_runs where thread_id = ? "
+                      "order by json_extract(payload_json, '$.ordinal') desc limit 1", (tid,)).fetchone()
+        m = c.execute("select json_extract(payload_json, '$.text') from orchestration_v2_projection_messages where thread_id = ? and role = 'user' "
+                      "and coalesce(json_extract(payload_json, '$.createdBy'), 'user') = 'user' order by created_at desc limit 1", (tid,)).fetchone()
+        return bool(r) and r[0] == 'interrupted' or bool(m) and asks_stop(m[0])
+    return _db(ask, False)
 
 def started(run_id):
     """True once T3 started the run, False while it can still start, None when it ended without starting, is gone or can't be read."""
