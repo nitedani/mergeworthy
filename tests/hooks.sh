@@ -3700,13 +3700,14 @@ for who, text in zip(sys.argv[1::2], sys.argv[2::2]):
     print(json.dumps({"type": who, "message": {"content": text if who == "user" else [{"type": "text", "text": text}]}}))
     if who == "user" and text.startswith("fix"): print(json.dumps({"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "Skill", "id": "s1", "input": {"skill": "mergeworthy:task"}}]}}))' \
   user 'fix the thing' "$@" > "$T/tr.jsonl"; ci "held-$RANDOM" "$TASKW"; }
-check "a typed stop, then a watcher's and a finished task's notice: the turn ends with no check and no check-in, though scope.md has an open box; BLOCK: once the user writes again" "0 0 0 2" \
+check "a typed stop, then a watcher's and a finished task's notice: the turn ends with no check and no check-in, though scope.md has an open box; BLOCK: once the user writes again" "0 0 0 0 0 2" \
   "$(held user 'can you stop work please dont waste money' assistant 'Stopped.' user $'Watcher events in /w/events.log (mergeworthy:reply):\n### o/r#1 comment 2 by bob' assistant 'Held.' user 'Delegated task node:x [completed]: done' assistant 'Held.') $(wc -c < "$T/err") \
-$(held user 'Stooooppoopp' assistant 'Stopped.') $(held user 'állj' assistant 'Stopped.' user 'ok go on' assistant 'Held.')"
-check "a stop or pause is a message that opens by asking for one of the work itself, or ends with \"then pause\"" "True True True True True False False False False False False" \
+$(held user 'Stooooppoopp' assistant 'Stopped.') $(held user 'pause until I say continue' assistant 'Paused.') \
+$(held user 'Please pause the work until I get back' assistant 'Paused.') $(held user 'állj' assistant 'Stopped.' user 'ok go on' assistant 'Held.')"
+check "a stop or pause is a message that opens by asking for one of the work itself, or ends with \"then pause\"" "True True True True True True True False False False False False False False False" \
   "$(PYTHONPATH="$R/hooks" python3 -c 'import steward, sys; print(*(steward.asks_stop(t) for t in sys.argv[1:]))' 'stop the work now' 'Stooooooooopppppppppppp' 'Állj meg' 'Please pause the work' \
-     'make me four fox images, then pause' "don't stop" 'ne állj meg' 'stop-lint blocks too often' 'stop using sonnet' \
-     'stop the dev server and restart it' 'pause the video at 0:12 and screenshot it')"
+     'make me four fox images, then pause' 'pause until I say continue' 'Please pause the work until I get back' "don't stop" 'ne állj meg' 'stop-lint blocks too often' 'stop using sonnet' \
+     'stop the dev server and restart it' 'pause the video at 0:12 and screenshot it' 'stop /tmp/server and restart it' 'stop ./server.sh and restart it')"
 tr_file $'#20 is in review.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.' work
 check "a message ending with a GENUINE-FORK line waits on the user: no check-in" 0 "$(ci qa-4)"
 tr_file "$QA2" work
