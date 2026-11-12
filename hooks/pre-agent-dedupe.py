@@ -2,9 +2,10 @@
 """Claude Code PreToolUse hook (matcher: Agent, Task, delegate_task, t3_thread_launch). Exit 2 blocks the launch; stderr goes to the agent.
 With the argument `register` it runs as the PostToolUse hook: only a launch that ran is registered, so one another hook blocked leaves no job.
 One agent per job: a launch is registered under its job key (the ticket files its prompt names, and its title), and a second
-launch of the same job, or of a task that contains or is contained in an open job's (the text tells the agents' transcripts
-apart, agent_jobs), is blocked until `agent-job done <key>` releases it. A turn that ended is not a finished agent: on T3 a
-child wakes again when its background commands end, so only its terminal task status (read first) releases the job."""
+launch of the same job, or of a task that contains or is contained in an open job's (the same work under another title: an agent
+already on the job gets a message, not a twin, mergeworthy:delegate step 1), is blocked until `agent-job done <key>` releases it.
+A turn that ended is not a finished agent: on T3 a child wakes again when its background commands end, so only its terminal task
+status (read first) releases the job."""
 import datetime, fcntl, glob, hashlib, json, os, re, shlex, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import failclosed
@@ -403,7 +404,7 @@ if register:
     try: launched = json.load(open(pre))['launched']; os.remove(pre)
     except (OSError, ValueError, KeyError, TypeError): launched = time.time()
     json.dump({'key': key, 'started': time.time(), 'launched': launched, 'brief': task, 'role': ti.get('role'), 'worktrees': L.worktrees,
-               'session': d.get('session_id'), 'transcript': d.get('transcript_path')}, open(f, 'w'))
+               'session': d.get('session_id'), 'transcript': d.get('transcript_path'), 'handle': agent_jobs.handle(d.get('tool_response'))}, open(f, 'w'))
     # an agent now runs memory-prep's brief: stop-lint's hourly repeat of the refresh order waits an hour
     for t in L.tickets:
         if os.path.basename(t).startswith('memory-brief-') and os.path.isfile(os.path.join(os.path.dirname(t), 'memory.source')):
@@ -425,7 +426,7 @@ if not register:
         if (other := j.get('brief', '').strip()) and (other in task.strip() or task.strip() in other):
             sys.stderr.write(
                 f"BLOCKED: this task contains, or is contained in, an open job's task ({j['key'][:160]}, started {int((time.time() - j['started']) / 60)} min ago), "
-                "and an agent's transcript is told apart from another's by its task text. An agent of a fan-out names its part in its task "
+                "so it is the same work under another title, and an agent already on the job gets a message, not a twin (mergeworthy:delegate step 1). An agent of a fan-out names its part in its task "
                 "(its slice, subsystem, frames or topic). A new round on the same task releases the earlier job first, once its agent "
                 f"is done and you have read its result: `agent-job done {shlex.quote(j['key'][:200])}`.\n")
             refused()
