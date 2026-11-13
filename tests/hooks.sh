@@ -54,7 +54,7 @@ git init -q -b fix "$TCO"; git -C "$TCO" -c user.name=t -c user.email=t@t commit
 quick() { # <checkout> [extra log lines]: records its HEAD's quick gates
   local f; f=$(mktemp "$T/quick.XXXXXX"); printf 'pnpm test -> exit 0 (3 tests)\n%s' "${2:-}" > "$f"; (cd "$1" && bash "$R/bin/pr-steps" quick "$f" >/dev/null); }
 quick "$TCO"
-printf 'Root cause: src/a.ts:3 does it\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix it | 8 | one place |\nShared assumption: the bug is in this repo\n\nChosen: Fix it\n' > "$T/approach.md"
+printf 'Root cause: src/a.ts:3 does it\nBasis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix it | 8 | one place |\nShared assumption: the bug is in this repo\n\nChosen: Fix it\n' > "$T/approach.md"
 (cd "$TCO" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 # an implementer brief names its recorded approach (pre-agent-dedupe): the briefs below that test other checks carry this one
 git init -q "$T/afx"; git -C "$T/afx" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; (cd "$T/afx" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null); AFX=$'\n'"Approach: $T/approach.md (unchanged: a test fixture)"$'\n'"Checkout: $T/afx"
@@ -2214,7 +2214,7 @@ check "a stacked PR's merge of its parent branch (200 lines) carries the earlier
 rm "$FX/pr_view_current"
 # a branch whose latest approach record has no `contract: 2` was started by a session on v1's skills: it finishes under the old records
 mkdir -p "$HOME/.mergeworthy/sessions"; echo "/p graph startup 0" > "$HOME/.mergeworthy/sessions/s-graph"; echo "/p v1 startup 0" > "$HOME/.mergeworthy/sessions/s-v1"
-printf 'Root cause: src/a.ts:3 does it\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | stays |\n| Fix it | 8 | ok |\nShared assumption: the bug is in this repo\n\nChosen: Fix it\n' > "$T/apo.md"; CLAUDE_CODE_SESSION_ID=s-graph prs approach "$T/apo.md" >/dev/null
+printf 'Root cause: src/a.ts:3 does it\nBasis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | stays |\n| Fix it | 8 | ok |\nShared assumption: the bug is in this repo\n\nChosen: Fix it\n' > "$T/apo.md"; CLAUDE_CODE_SESSION_ID=s-graph prs approach "$T/apo.md" >/dev/null
 APF=$(ls -t "$HOME"/.claude/pr-steps/approach.* | head -n1)
 check "an approach recorded by a session on the graph catalog carries contract: 2" 1 "$(tail -n1 "$APF" | grep -c ' contract: 2$')"
 printf 'nothing worth changing\nCLEAN\n' > "$T/olb.md"
@@ -2368,16 +2368,25 @@ printf 'pnpm test -> exit 0\npnpm lint -> exit 0\n' > "$T/g0.md"; printf 'pnpm t
 check "BLOCK: a test gate without its count, or with 0 tests" "1 1" "$(prs2 gates "$T/g0.md") $(prs2 gates "$T/g00.md")"
 printf 'pnpm test -> exit 0 (134 tests)\npnpm lint -> exit 0\n' > "$T/g2.md"; check "a green gates log records" 0 "$(prs2 gates "$T/g2.md")"
 check "BLOCK: gh pr ready with the five steps but no approach record" 2 "$(ready)"
-printf 'Root cause: src/a.ts:3 does it\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 5 | misses siblings |\n| Fix the shared helper | 8 | one place for all |\nShared assumption: the bug is in this repo\n\nChosen: Fix the shared helper\n' > "$T/ap.md"
-printf 'Root cause: src/a.ts:3 does it\n| Candidate | Rating | Why |\n|---|---|---|\n| Fix the shared helper | 8 | only one |\nShared assumption: the bug is in this repo\n\nChosen: Fix the shared helper\n' > "$T/ap1.md"
-printf '| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 8 | ok |\nShared assumption: the bug is in this repo\n\nChosen: Fix in place\n' > "$T/apnr.md"
-printf 'Root cause: src/a.ts:3 does it\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 6 | misses siblings |\nShared assumption: the bug is in this repo\n\nChosen: Fix in place\n' > "$T/ap6.md"
-printf 'Root cause: src/a.ts:3 does it\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 8 | ok |\nShared assumption: the bug is in this repo\n\nChosen: Rewrite\n' > "$T/apx.md"
-rc=; for c in 'Root cause: unknown yet, logged at 12:30' '- **Root cause:** src/a.ts:3 does it' 'Root cause: none, a feature'; do printf '%s\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 8 | ok |\nShared assumption: the bug is in this repo\n\nChosen: Fix in place\n' "$c" > "$T/aprc.md"; GR="$T/aprc-$((n=${n:-0}+1))"; git init -q "$GR"; git -C "$GR" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; rc="$rc $(cd "$GR" && bash "$R/bin/pr-steps" approach "$T/aprc.md" >/dev/null 2>&1; echo $?)"; done
+printf 'Root cause: src/a.ts:3 does it\nBasis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 5 | misses siblings |\n| Fix the shared helper | 8 | one place for all |\nShared assumption: the bug is in this repo\n\nChosen: Fix the shared helper\n' > "$T/ap.md"
+printf 'Root cause: src/a.ts:3 does it\nBasis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Fix the shared helper | 8 | only one |\nShared assumption: the bug is in this repo\n\nChosen: Fix the shared helper\n' > "$T/ap1.md"
+printf 'Basis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 8 | ok |\nShared assumption: the bug is in this repo\n\nChosen: Fix in place\n' > "$T/apnr.md"
+printf 'Root cause: src/a.ts:3 does it\nBasis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 6 | misses siblings |\nShared assumption: the bug is in this repo\n\nChosen: Fix in place\n' > "$T/ap6.md"
+printf 'Root cause: src/a.ts:3 does it\nBasis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 8 | ok |\nShared assumption: the bug is in this repo\n\nChosen: Rewrite\n' > "$T/apx.md"
+rc=; for c in 'Root cause: unknown yet, logged at 12:30' '- **Root cause:** src/a.ts:3 does it' 'Root cause: none, a feature'; do printf '%s\nBasis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 8 | ok |\nShared assumption: the bug is in this repo\n\nChosen: Fix in place\n' "$c" > "$T/aprc.md"; GR="$T/aprc-$((n=${n:-0}+1))"; git init -q "$GR"; git -C "$GR" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; rc="$rc $(cd "$GR" && bash "$R/bin/pr-steps" approach "$T/aprc.md" >/dev/null 2>&1; echo $?)"; done
 check "BLOCK: an approach with no Root cause line citing a path:line, or one citing a time; a bold list item or a feature records" "1 1 0 0" "$(prs2 approach "$T/apnr.md")$rc"
 check "BLOCK: an approach with one candidate" 1 "$(prs2 approach "$T/ap1.md")"
 check "BLOCK: a chosen approach rated 6" 1 "$(prs2 approach "$T/ap6.md")"
 check "BLOCK: a chosen approach that is no candidate" 1 "$(prs2 approach "$T/apx.md")"
+# the Basis line: the user's words, the goal's own failing run, a clean-cut error, or a report someone else wrote; never our own
+apb() { printf 'Root cause: %s\n%s| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | stays |\n| Fix it | 8 | ok |\nShared assumption: the bug is in this repo\n\nChosen: Fix it\n' "$1" "$2" > "$T/apb.md"; (cd "$T/apbr" && bash "$R/bin/pr-steps" approach "$T/apb.md" >/dev/null 2>&1; echo $?); }
+git init -q "$T/apbr"; git -C "$T/apbr" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a  # its own repo: a recorded approach here reaches no other check
+echo nitedani > "$FX/user"; echo '{"user":{"login":"alice"}}' > "$FX/repos_o_r_issues_5"; echo '{"user":{"login":"nitedani"}}' > "$FX/repos_o_r_issues_6"; echo '{"user":{"login":"nitedani"}}' > "$FX/repos_o_r_issues_comments_77"; echo '{"user":{"login":"nitedani"}}' > "$FX/repos_o_r_pulls_comments_78"
+check "the Basis forms record: the user's words, the goal's failing run, a clean-cut error, someone else's issue, a GitLab issue, a markdown link" "0 0 0 0 0 0" \
+  "$(apb src/a.ts:3 $'Basis: request: "fix the login"\n') $(apb src/a.ts:3 $'Basis: goal: pnpm build -> error TS2304: Cannot find name x\n') $(apb src/a.ts:3 $'Basis: clean-cut: node a.js -> TypeError: x is undefined\n') $(apb src/a.ts:3 $'Basis: https://github.com/o/r/issues/5\n') $(apb src/a.ts:3 $'Basis: https://gitlab.com/o/r/-/issues/5\n') $(apb src/a.ts:3 $'Basis: [the report](https://github.com/o/r/issues/5)\n')"
+check "BLOCK: no Basis line, a probe in no named form, our own PR, comment or review comment, an issue gh can't read, our own PR for a reshape too" "1 1 1 1 1 1 1" \
+  "$(apb src/a.ts:3 '') $(apb src/a.ts:3 $'Basis: engine-strict refuses Node 22\n') $(apb src/a.ts:3 $'Basis: https://github.com/o/r/pull/6\n') $(apb src/a.ts:3 $'Basis: https://github.com/o/r/issues/5#issuecomment-77\n') $(apb src/a.ts:3 $'Basis: https://github.com/o/r/issues/9\n') $(apb src/a.ts:3 $'Basis: https://github.com/o/r/pull/6/files#r78\n') $(apb 'none, a reshape for the goal' $'Basis: https://github.com/o/r/pull/6\n')"
+rm -f "$FX/user" "$FX/repos_o_r_issues_5" "$FX/repos_o_r_issues_6" "$FX/repos_o_r_issues_comments_77" "$FX/repos_o_r_pulls_comments_78"
 check "BLOCK: gh pr ready after refused approach records" 2 "$(ready)"
 check "an approach with three rated candidates and a chosen 8 records, with no Browser line" 0 "$(prs2 approach "$T/ap.md")"
 glab() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "${2:-$T}" | python3 "$R/hooks/pre-bash-guard.py" >/dev/null 2>&1; echo $?; }
