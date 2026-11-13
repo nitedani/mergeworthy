@@ -685,7 +685,7 @@ def check_processes(segs):
                   "Kill the PID you started (`<cmd> & pid=$!` … `kill $pid`), its children (`pkill -P $pid`), or a PID you looked up and checked in an earlier command (`kill 1234`)")
 
 def check(t, has_cd):
-    after, readers = getattr(t, 'after', ()), getattr(t, 'readers', None)
+    after = getattr(t, 'after', ())
     env = env_of(t)
     t = prog(t)
     if not t: return
