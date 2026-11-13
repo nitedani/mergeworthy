@@ -651,7 +651,38 @@ def recorded(step, after, repo):
     rec = branch_record(repo, step)
     return any(records.get(id(a)) == rec for a in after)
 
-READERS = {'grep', 'egrep', 'fgrep', 'rg', 'cut', 'head', 'tail', 'sort', 'uniq', 'wc', 'tr', 'cat', 'echo', 'printf', 'true', ':'}  # print what they read or are handed, or do nothing with it: sed and awk can run commands
+def picks(t):
+    """Whether argv t picks processes by what they look like (a name, a text, all of them), not by a PID it names or that PID's children."""
+    t = prog(t)
+    p, a = (os.path.basename(t[0]), t[1:]) if t else ('', [])
+    if p in ('pgrep', 'pidof', 'pkill', 'killall'):
+        return not any(x.startswith(('-P', '--parent')) for x in a) and not (p == 'killall' and a in (['-l'], ['--list']))  # killall -l lists signals
+    if p == 'ps':
+        return not any(x.startswith(('-p', '-q', '--pid', '--ppid')) or x.isdigit() for x in a)
+    return any(re.search(r'/proc/[*\[]', x) for x in a)
+
+def kill_targets(a):
+    """What the kill arguments a signal (PIDs, jobs, process groups): the words past its one signal (-9, -KILL, -s <sig>) and a --."""
+    a = a[2:] if a[:1] in (['-s'], ['-n']) else a[1:] if a[:1] and a[0].startswith('-') and a[0] != '--' else a
+    return a[1:] if a[:1] == ['--'] else a
+
+def check_processes(segs):
+    """Refuses the two harms of a process search: a loop waiting on one, and a signal to processes one picked."""
+    searched = any(map(picks, segs))
+    if any(s.loop and picks(s) for s in segs) or err and searched and re.search(r'\b(while|until)\b', cmd):  # rough segments know no loop
+        block("a loop on a process search (pgrep, pidof, ps, /proc/*) may never end: the search matches this command itself and other sessions' processes. "
+              "Wait on the PID you started: `<cmd> & pid=$!; wait $pid`, or `while kill -0 $pid; do sleep 5; done` in the background, or its port. One search, to look, passes")
+    started = {m[1] for s in segs for x in s if (m := re.fullmatch(r'(\w+)=\$!', x))}
+    for s in segs:
+        t = prog(s)
+        p = os.path.basename(t[0]) if t else ''
+        targets = kill_targets(t[1:]) if p == 'kill' else []
+        if p in ('pkill', 'killall') and picks(t) or '-1' in targets or searched and (
+                p == 'kill' and 'xargs' in map(os.path.basename, s[:len(s) - len(t)])
+                or any(not re.fullmatch(r'-?(\d+|%.*|\$!)', x) and not ((m := re.fullmatch(r'-?\$\{?(\w+)\}?', x)) and m[1] in started) for x in targets)
+                or p != 'kill' and any(re.search(r'\bkill\b', x) for x in t[1:])):
+            block("this signals processes a search picked (pkill, killall, or a kill of PIDs from pgrep, pidof, ps or /proc in this command, or -1, every process): they can be other sessions'. "
+                  "Kill the PID you started (`<cmd> & pid=$!` … `kill $pid`), its children (`pkill -P $pid`), or a PID you looked up and checked in an earlier command (`kill 1234`)")
 
 def check(t, has_cd):
     after, readers = getattr(t, 'after', ()), getattr(t, 'readers', None)
@@ -680,13 +711,6 @@ def check(t, has_cd):
             and ('drafts/' in cmd or any('drafts/' in os.path.abspath(os.path.expanduser(x)) for x in a if not x.startswith('-'))):
         block("never set a draft's file times: the posting gate reads them. Rebuild the record instead (`thread-context <owner/repo#N> --out <its folder>/thread-context.md`), "
               "re-save the draft, and run its review again (mergeworthy:post steps 1-4)")
-    if p == 'pgrep' and any(x == '--full' or (not x.startswith('--') and short_has(x, 'f')) for x in a) and not (
-            readers is not None and {os.path.basename(r[0]) for r in readers} <= READERS
-            and (readers or any(x in ('--list-full', '--list-name', '--count') or not x.startswith('--') and any(short_has(x, c) for c in 'alc') for x in a))):
-        block("never pgrep -f to wait or kill: it matches its own command line and other sessions' processes; wait on the PID you started (`kill -0 <pid>`) or its port. "
-              "What passes: a listing (`pgrep -af <pattern>`, also `|| echo none`), and any pgrep -f only a reader consumes (`| wc -l`, `| head`, `echo \"$(pgrep -f <pattern>)\"`) or whose status only `|| true` follows")
-    if p == 'killall' or (p == 'pkill' and any(x == '--full' or (not x.startswith('--') and short_has(x, 'f')) for x in a)):
-        block("never pkill -f / killall: kill your own processes by PID or port")
     if p == 'kill':
         for x in a:
             if x.isdigit():
@@ -907,6 +931,7 @@ if err and (m := GUARDED.search(unquoted(cmd))):  # its words are still checked 
     verb = ' '.join(m.group(0).split()[:2])
     block(f"{err}, so this command's `{verb}` can't be checked" if 'shell parser' in err else f"this command doesn't parse ({err}), so its `{verb}` "
           "can't be checked: split it into simple commands, a message or body in a file (`git commit -F <file>`, `--body-file`)")
+check_processes(segs)
 waits = re.search(r'\b(until|while)\b[^\n]*\bsleep\b', cmd) if err else any(s.loop and prog(s)[:1] and os.path.basename(prog(s)[0]) == 'sleep' for s in segs)
 # a subagent's result is its last message, so waiting for its own run is its job
 if waits and not d.get('tool_input', {}).get('run_in_background') and not by_agent(d):
