@@ -80,10 +80,11 @@ if not register and re.search(r'\.out\b', brief) and 'CLEAN' in brief:
             refused()
 # A template's slot left unfilled (`<the slice's risky edges>`) reaches the agent as a rule it never got. A slot in backticks is
 # the agent's own output form, the paste-in rules (agent.md) carry slots of their own, and an HTML tag a brief quotes is no slot.
+tdir = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'skills', 'delegate')
+pasted = {l.strip() for l in open(os.path.join(tdir, 'agent.md'))} if os.path.isfile(os.path.join(tdir, 'agent.md')) else set()
+own_brief = '\n'.join(l for l in brief.splitlines() if l.strip() not in pasted)  # the brief without the rules pasted from agent.md
 if not register:
-    tdir = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'skills', 'delegate')
-    pasted = {l.strip() for l in open(os.path.join(tdir, 'agent.md'))} if os.path.isfile(os.path.join(tdir, 'agent.md')) else set()
-    told = '\n'.join(l for l in brief.splitlines() if l.strip() not in pasted)
+    told = own_brief
     told = re.sub(r'`[^`\n]*`', '', told)  # a form the brief quotes in backticks (`PROMISED <thread>: …`) is a format, not a slot
     HTML = set('a b base body br code div em footer form h1 h2 h3 head header html i img input li link main meta nav ol p path pre script section span strong style svg table td template title tr ul'.split())
     unfilled = {}
@@ -135,7 +136,7 @@ if rnd and (ti.get('role') == 'review' or not ti.get('role') and re.search(r'\be
         built_on = lambda old: not old and not heads or any(fixes(t, o, h) for t in tops for o in old for h in heads)
         earlier = sorted({m for m, old in rounds.get(loop, []) if m < n and built_on(old)})
         # a post's review: a gate review of a named draft whose brief asks for no code verdict (a small review's pr-body.review.out comes with one)
-        post_review = bool(reviewed_drafts(brief)) and 'CLEAN' in brief and not re.search(r'\b(NO BUGS|MERGE AS IS)\b', brief)
+        post_review = bool(reviewed_drafts(brief)) and 'CLEAN' in brief and not re.search(r'\b(NO BUGS|MERGE AS IS)\b', own_brief)
         if len(earlier) >= (3 if post_review else 2):
             sys.stderr.write(f"BLOCKED: {loop} already ran {', '.join(f'r{m}' for m in earlier)} on this head or one within {testpaths.STALE_LINES} changed lines of it "
                              f"({', '.join(h[:12] for h in heads) or 'no head pinned'}): a loop gets two rounds per head, and a head past those lines is a new one"
