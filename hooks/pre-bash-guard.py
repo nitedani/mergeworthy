@@ -3,7 +3,7 @@
 Checks each simple command separately (shellcmd.parse: chains, substitutions, `bash -c`; heredoc bodies and quoted text are data).
 It fails closed: a command it can't parse, a record it can't find or a state gh can't read blocks what it guards.
 MERGEWORTHY_MERGE=reviewer blocks every `gh pr merge`."""
-import json, re, sys, os, hashlib, subprocess
+import itertools, json, re, sys, os, hashlib, subprocess
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
 import shellcmd
@@ -666,13 +666,20 @@ def kill_targets(a):
     a = a[2:] if a[:1] in (['-s'], ['-n']) else a[1:] if a[:1] and a[0].startswith('-') and a[0] != '--' else a
     return a[1:] if a[:1] == ['--'] else a
 
+def started_pids(segs):
+    """The variables holding a PID this command started: assigned `NAME=$!` by an assignment word, and NAME written nowhere else in it."""
+    words = [x for s in segs for x in itertools.takewhile(lambda x: re.match(r'\w+=', x) and not x.quoted, s[1:] if s[:1] and s[0] in shellcmd.DECLARING else s)]
+    names = [x.split('=', 1)[0] for x in words]
+    others = {n for s in segs for n in s.sets} | {c[2] for s in segs for c in s.scopes}  # read, printf -v, a for loop's variable, ...
+    return set() if any(s.sets_any for s in segs) else {n for x, n in zip(words, names) if x == n + '=$!' and names.count(n) == 1 and n not in others}
+
 def check_processes(segs):
     """Refuses the two harms of a process search: a loop waiting on one, and a signal to processes one picked."""
     searched = any(map(picks, segs))
     if any(s.loop and picks(s) for s in segs) or err and searched and re.search(r'\b(while|until)\b', cmd):  # rough segments know no loop
         block("a loop on a process search (pgrep, pidof, ps, /proc/*) may never end: the search matches this command itself and other sessions' processes. "
               "Wait on the PID you started: `<cmd> & pid=$!; wait $pid`, or `while kill -0 $pid; do sleep 5; done` in the background, or its port. One search, to look, passes")
-    started = {m[1] for s in segs for x in s if (m := re.fullmatch(r'(\w+)=\$!', x))}
+    started = started_pids(segs)
     for s in segs:
         t = prog(s)
         p = os.path.basename(t[0]) if t else ''
