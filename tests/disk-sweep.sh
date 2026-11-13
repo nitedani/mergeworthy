@@ -252,7 +252,7 @@ G -C "$T/user-clone" worktree add -q -b wt-branch "$W8/extwt/checkout"; G -C "$W
 G -C "$T/user-clone" worktree add -q --detach "$W8/extdet/checkout"; G -C "$W8/extdet/checkout" commit -q --allow-empty -m 'detached, on no branch'
 mkdir -p "$W8/extwip"; touch "$W8/extwip/retired"; G -C "$T/user-clone" worktree add -q --detach "$W8/extwip/checkout" wt-branch  # reading the user's local, unpushed branch
 G init -q "$W8/nested/repo/cache/inner"; echo w > "$W8/nested/repo/cache/inner/w"; mkdir -p "$W8/jj/proj/.jj"; for n in unread unreadlocal; do G -C "$W8/$n/repo" remote add gone "$T/no-such.git"; done; G -C "$W8/unreadlocal/repo" commit -q --allow-empty -m 'only here'
-printf '#!/bin/sh\nwhile kill -0 $PPID 2>/dev/null; do sleep 0.2; done\n' > "$T/bin/hang-ssh"; chmod +x "$T/bin/hang-ssh"  # a server that takes the connection and never answers
+printf '#!/bin/sh\ncase "$*" in *hang.invalid*) ;; *) exit 255;; esac\nwhile kill -0 $PPID 2>/dev/null; do sleep 0.2; done\n' > "$T/bin/hang-ssh"; chmod +x "$T/bin/hang-ssh"  # hang.invalid takes the connection and never answers; any other host refuses it
 git config -f "$H8/.gitconfig" core.sshCommand "$T/bin/hang-ssh"; G -C "$W8/hang/repo" remote add fork ssh://git@hang.invalid/x.git
 G init -q --bare -b main "$T/many.git"  # 45000 refs/pull/N/head, each a commit on main (a merge-commit workflow)
 python3 -c 'for i in range(1, 45001): print(f"commit refs/heads/main\nmark :{i}\ncommitter t <t@example.invalid> {1700000000 + i} +0000\ndata 2\nc\n")
@@ -279,12 +279,13 @@ G init -q --bare -b main "$T/f-origin.git"; G clone -q "$T/f-origin.git" "$T/f-o
 mkdir -p "$W8/forced"; touch "$W8/forced/retired"; G clone -q "$T/f-origin.git" "$W8/forced/repo"; G -C "$W8/forced/repo" checkout -q -b feat; G -C "$W8/forced/repo" commit -q --allow-empty -m mine; G -C "$W8/forced/repo" push -q origin feat
 G -C "$T/f-other" checkout -q -b feat main; G -C "$T/f-other" commit -q --allow-empty -m theirs; G -C "$T/f-other" push -q -f origin feat  # force-pushed past the clone's origin/feat
 sha() { G -C "$1" rev-parse HEAD | cut -c1-12; }
-HOME="$H8" dsm 'm.work_folder.TIMEOUT = 2; calls = []
+HOME="$H8" dsm 'T0 = m.work_folder.TIMEOUT; calls = []
 def fake(repo, sha):
     calls.append(repo + ":" + sha[:12])
     return None if repo == "o/none" else sha in sys.argv[3:]
 for e in sorted(os.scandir(m.work_folder.ROOT), key=lambda e: e.name):
     calls.clear()
+    m.work_folder.TIMEOUT = 2 if e.name == "hang" else T0  # only the never-answering server waits out a short timeout
     why = [w.replace(os.path.realpath(e.path), ".") for w in m.work_folder.keep(e.path, fake)]
     print(e.name, " | ".join(why) or "-", " ".join(calls), sep="\t")' "$(G -C "$W8/github/repo" rev-parse a)" "$(G -C "$W8/ghall/repo" rev-parse c)" > "$T/keep.out"
 why() { awk -F'\t' -v n="$1" '$1 == n { print $2 }' "$T/keep.out"; }
