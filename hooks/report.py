@@ -15,19 +15,23 @@ def authored(message):
 OFFER = (r"(when you say (go|so)|say the word|(do|would) you (want|like) me to|want me to|shall I\b|should I\b|if you want|if you'd (rather|like)|your call|"
          r"is yours to|up to you|or would you rather|which do you (want|prefer)|let me know (if|when|whether)|"
          r"(?:^[\s>*\-•]*|[.!?:;,]\s*|\b(?:or|and|just|please)\s+)(?:tell me (when|to|if|whether)|ask me (to|when|if)|ping me)|nothing (will|would|is going to) (notify|wake|tell) me|(won't|will not|doesn't|does not|can't) (notify|wake) me)\b")
-# A checkable fact left unchecked ("I don't know whether", "I haven't read its source"); its paragraph quoting the attempt that
-# failed ("the registry returned 404", in quotes or code too) lets it stand
+# A checkable fact left unchecked ("I don't know whether", "I haven't read its source"); its paragraph showing the attempt that
+# failed lets it stand: an error a tool printed (404, E404, "error:", timed out, in quotes or code too), or what the agent ran
+# and how it failed ("I fetched the tarball; the registry refused it")
 UNCHECKED = (r"\bI(?:\s+(?:do|did|have|could)\s*n[o']t|\s+don['’]t|['’]ve\s+not|\s+haven['’]t|\s+didn['’]t|\s+couldn['’]t|\s+could\s+not)\s+(?:yet\s+)?"
              r"(?:checked?|read|looked|inspect\w*|verif\w+|confirm\w*)\b|\bI\s+(?:do\s+not|don['’]t)\s+know\b|\bI(?:['’]m|\s+am)\s+(?:not\s+sure|unsure)\b"
              r"|\bI\s+can(?:not|['’]t)\s+tell\b(?!\s+you)|\b(?:it['’]s|it\s+is|still)\s+(?:unclear|unknown)\s+(?:whether|if)\b"
              r"|\bnem\s+(?:tudom|néztem|ellenőriztem|olvastam)\b")
-ATTEMPT = (r"\b(?:(?:fetch|download|request|clone|install|call|command|lookup|search|curl|npm|pnpm|gh)\w*\b[^.!?\n]{0,40}?\bfail(?:s|ed)?|returned\s+(?:an?\s+)?(?:error|E?[45]0\d)"
-           r"|error:|E[45]0\d|HTTP\s*[45]0\d|[45]0\d\s+(?:Not\s+Found|Forbidden|Unauthorized)|timed?\s*out|refused|denied|no\s+access|unreachable|not\s+(?:public|published))\b")
+PRINTED = r"\b(?:E[45]0\d|HTTP\s*[45]0\d|[45]0\d(?:\s+(?:Not\s+Found|Forbidden|Unauthorized))?(?=\W*$|[\s.,;:)])|returned\s+(?:an?\s+)?error|timed\s+out)\b|\berror:"
+RAN = r"\b(?:I|we)\s+(?:tried|ran|fetched|downloaded|searched|cloned|installed|requested|called|opened|queried)\b"
+FAILED = r"\b(?:fail(?:s|ed)?|refused|denied|unreachable|no\s+access|not\s+(?:public|published)|not\s+found|empty)\b"
+def tried(para):
+    return re.search(PRINTED, para, re.I) or re.search(RAN, para, re.I) and re.search(FAILED, para, re.I)
 PREFERENCE = r"\b(?:whether|if|which|what|how)\s+(?:\w+\s+)?you(?:['’]d)?\s+(?:prefer|want|like|would\s+like|choose|pick)\b"  # theirs to say
 def unchecked(message):
     message = uncoded(message, lambda block: block.replace('\n', ' '))  # a code block stays in its paragraph
     for para in re.split(r'\n\s*\n', message):
-        if re.search(ATTEMPT, para, re.I): continue  # the attempt may sit in quotes or code, which authored() drops
+        if tried(para): continue  # the attempt may sit in quotes or code, which authored() drops
         for sentence in re.split(r'(?<=[.!?])\s+|\n+', authored(para)):
             m = re.search(UNCHECKED, sentence, re.I)
             if m and not re.search(PREFERENCE, sentence, re.I): return m
