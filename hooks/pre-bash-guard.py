@@ -680,7 +680,7 @@ def check_processes(segs):
         if p in ('pkill', 'killall') and picks(t) or '-1' in targets or searched and (
                 p == 'kill' and 'xargs' in map(os.path.basename, s[:len(s) - len(t)])
                 or any(not re.fullmatch(r'-?(\d+|%.*|\$!)', x) and not ((m := re.fullmatch(r'-?\$\{?(\w+)\}?', x)) and m[1] in started) for x in targets)
-                or p != 'kill' and any(re.search(r'\bkill\b', x) for x in t[1:])):
+                or re.fullmatch(r'[gmn]?awk|perl|python[\d.]*|nodejs|node|ruby|lua|php|deno|bun', p) and any(re.search(r'\bkill\b', x) for x in t[1:])):  # a program text can signal; a word kill elsewhere only looks
             block("this signals processes a search picked (pkill, killall, or a kill of PIDs from pgrep, pidof, ps or /proc in this command, or -1, every process): they can be other sessions'. "
                   "Kill the PID you started (`<cmd> & pid=$!` … `kill $pid`), its children (`pkill -P $pid`), or a PID you looked up and checked in an earlier command (`kill 1234`)")
 
