@@ -507,10 +507,11 @@ EOF
 chmod +x "$F/gh"
 flaky() { # <path> <answer>...: gh_pages(<path>)'s first page and the waits it slept, each answer used once
   printf '%s\n' "${@:2}" > "$F/answers"; : > "$F/calls"
-  PATH="$F:$PATH" PYTHONPATH="$R/hooks" python3 -c 'import math, sys, gh_common; waits = []; gh_common.time.sleep = waits.append
+  PATH="$F:$PATH" PYTHONPATH="$R/hooks" python3 -c 'import math, sys, gh_common; waits = []; gh_common.time.sleep = waits.append; gh_common.time.time = lambda: '"$NOW"'
 try: print(gh_common.gh_pages(sys.argv[1], paginate=False), end=" ")
 finally: print([math.ceil(w) for w in waits], end="")' "$1" 2>"$F/err"; }
-limits() { echo "{\"resources\": {\"core\": {\"remaining\": $1, \"reset\": $(( $(date +%s) + $2 ))}, \"search\": {\"remaining\": $3, \"reset\": $(( $(date +%s) + $4 ))}, \"graphql\": {\"remaining\": 5000, \"reset\": 0}}}" > "$F/limits"; }
+NOW=1800000000 # the clock flaky() freezes, so the resets limits() writes are the same distance away however slowly the process starts
+limits() { echo "{\"resources\": {\"core\": {\"remaining\": $1, \"reset\": $(( NOW + $2 ))}, \"search\": {\"remaining\": $3, \"reset\": $(( NOW + $4 ))}, \"graphql\": {\"remaining\": 5000, \"reset\": 0}}}" > "$F/limits"; }
 limits 5000 3600 30 60
 OK=$'0\t{"n": 1}'
 check "gh_output: a network timeout, then a 502, then the answer: retried after 5 s and 30 s, the page returned" "[{'n': 1}] [5, 30] 3" \
