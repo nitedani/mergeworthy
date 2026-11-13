@@ -21,13 +21,16 @@ UNCHECKED = (r"\bI(?:\s+(?:do|did|have|could)\s*n[o']t|\s+don['’]t|['’]ve\s+
              r"(?:checked?|read|looked|inspect\w*|verif\w+|confirm\w*)\b|\bI\s+(?:do\s+not|don['’]t)\s+know\b|\bI(?:['’]m|\s+am)\s+(?:not\s+sure|unsure)\b"
              r"|\bI\s+can(?:not|['’]t)\s+tell\b(?!\s+you)|\b(?:it['’]s|it\s+is|still)\s+(?:unclear|unknown)\s+(?:whether|if)\b"
              r"|\bnem\s+(?:tudom|néztem|ellenőriztem|olvastam)\b")
-ATTEMPT = r"\b(?:tried\s+(?!nothing)\w+|failed|errors?|E[45]0\d|[45]0\d|timed?\s*out|refused|denied|no\s+access|unreachable|not\s+(?:public|published))\b"
+ATTEMPT = (r"\b(?:(?:fetch|download|request|clone|install|call|command|lookup|search|curl|npm|pnpm|gh)\w*\b[^.!?\n]{0,40}?\bfail(?:s|ed)?|returned\s+(?:an?\s+)?(?:error|E?[45]0\d)"
+           r"|error:|E[45]0\d|HTTP\s*[45]0\d|[45]0\d\s+(?:Not\s+Found|Forbidden|Unauthorized)|timed?\s*out|refused|denied|no\s+access|unreachable|not\s+(?:public|published))\b")
+PREFERENCE = r"\b(?:whether|if|which|what|how)\s+(?:\w+\s+)?you(?:['’]d)?\s+(?:prefer|want|like|would\s+like|choose|pick)\b"  # theirs to say
 def unchecked(message):
+    message = uncoded(message, lambda block: block.replace('\n', ' '))  # a code block stays in its paragraph
     for para in re.split(r'\n\s*\n', message):
         if re.search(ATTEMPT, para, re.I): continue  # the attempt may sit in quotes or code, which authored() drops
         for sentence in re.split(r'(?<=[.!?])\s+|\n+', authored(para)):
             m = re.search(UNCHECKED, sentence, re.I)
-            if m and not re.search(r'\b(?:whether|if|which)\s+you\b', sentence, re.I): return m  # what the user prefers is theirs to say
+            if m and not re.search(PREFERENCE, sentence, re.I): return m
 
 
 def offer(message): return re.search(OFFER, authored(message), re.I | re.M)
