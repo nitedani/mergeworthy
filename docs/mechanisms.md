@@ -165,7 +165,7 @@ It parses the whole command with mvdan/sh, the parser of `shfmt` (`hooks/shellcm
 - a `git commit` whose author isn't the pushing GitHub account (`merging` step 1);
 - `docker compose up` (or `run --service-ports`) publishing a fixed host port or a `container_name`, unless prefixed `MERGEWORTHY_HOST_PORTS=user-asked`;
 - `codex exec` when T3 Code started the session (`delegate §Reviewers`);
-- `pkill -f` and `killall`;
+- a loop on a process search (`pgrep`, `pidof`, `ps`, `/proc/*`), by any session; a signal to processes a search picked (`pkill`, `killall`, `kill -1`, a `kill` of PIDs a search in the same command found);
 - `kill` of a running agent's process: stop an agent through its task, after reading its status;
 - a foreground wait loop (`until`/`while` with `sleep`) by the main session: a subagent waits for its own run, which its result reports;
 - a bare `git stash`;
