@@ -653,7 +653,7 @@ def recorded(step, after, repo):
 
 def picks(t):
     """Whether argv t picks processes by what they look like (a name, a text, all of them), not by a PID it names or that PID's children."""
-    t = prog(t)
+    t = operands(prog(t))
     p, a = (os.path.basename(t[0]), t[1:]) if t else ('', [])
     if p in ('pgrep', 'pidof', 'pkill', 'killall'):
         return not any(x.startswith(('-P', '--parent')) for x in a) and not (p == 'killall' and a in (['-l'], ['--list']))  # killall -l lists signals
@@ -683,7 +683,7 @@ def check_processes(segs):
     for s in segs:
         t = prog(s)
         p = os.path.basename(t[0]) if t else ''
-        targets = kill_targets(t[1:]) if p == 'kill' else []
+        targets = kill_targets(operands(t[1:])) if p == 'kill' else []
         if p in ('pkill', 'killall') and picks(t) or '-1' in targets or searched and (
                 p == 'kill' and 'xargs' in map(os.path.basename, s[:len(s) - len(t)])
                 or any(not re.fullmatch(r'-?(\d+|%.*|\$!)', x) and not ((m := re.fullmatch(r'-?\$\{?(\w+)\}?', x)) and m[1] in started) for x in targets)
