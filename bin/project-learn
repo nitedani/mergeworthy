@@ -22,7 +22,7 @@
 import collections, functools, glob, json, os, re, shlex, subprocess, sys, time, urllib.parse
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'hooks'))
 import project_file
-from gh_common import BADGE, MAINTAINER, epoch, gh_pages, iso, pace, read, search, when
+from gh_common import BADGE, MAINTAINER, epoch, gh_output, gh_pages, iso, pace, read, search, when
 
 HOME = os.path.expanduser('~')
 PROJECTS = project_file.PROJECTS
@@ -101,10 +101,7 @@ REVIEW_REACTIONS = 'query($id:ID!){node(id:$id){... on PullRequestReview{reactio
 
 
 def graphql(query, node_id):
-    r = subprocess.run(['gh', 'api', 'graphql', '-f', f'query={query}', '-f', f'id={node_id}'], capture_output=True, text=True)
-    if r.returncode:
-        sys.exit(f"project-learn: gh api graphql failed: {r.stderr.strip()[:200]}")
-    return json.loads(r.stdout)
+    return json.loads(gh_output('api', 'graphql', '-f', f'query={query}', '-f', f'id={node_id}'))
 
 
 def words_of(body):

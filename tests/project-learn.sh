@@ -493,4 +493,39 @@ check "search: over 1000 with no lower bound to split from: exits saying so" "1 
 PYTHONPATH="$R/hooks" python3 -c 'from gh_common import search; search("repo:o/second updated:>=2026-01-01")' 2>"$T/err"; rc=$?
 check "search: 1001 updated in one second can't be split further: exits saying so" "1 1" "$rc $(grep -c "counts 1001 items, all updated in one second" "$T/err")"
 
+# ---------- gh_output: a stub gh answering each call from the next line of $F/answers (<exit>\t<text>), `gh api rate_limit` from $F/limits ----------
+F="$T/flaky"; mkdir -p "$F"
+cat > "$F/gh" <<EOF
+#!/usr/bin/env python3
+import sys
+if sys.argv[1:] == ['api', 'rate_limit']:
+    print(open("$F/limits").read()); sys.exit()
+open("$F/calls", "a").write(' '.join(sys.argv[1:]) + '\n')
+lines = open("$F/answers").read().splitlines(); code, text = lines[0].split('\t', 1); open("$F/answers", "w").write(''.join(l + '\n' for l in lines[1:]))
+print(text, file=sys.stderr if int(code) else sys.stdout); sys.exit(int(code))
+EOF
+chmod +x "$F/gh"
+flaky() { # <path> <answer>...: gh_pages(<path>)'s first page and the waits it slept, each answer used once
+  printf '%s\n' "${@:2}" > "$F/answers"; : > "$F/calls"
+  PATH="$F:$PATH" PYTHONPATH="$R/hooks" python3 -c 'import math, sys, gh_common; waits = []; gh_common.time.sleep = waits.append
+try: print(gh_common.gh_pages(sys.argv[1], paginate=False), end=" ")
+finally: print([math.ceil(w) for w in waits], end="")' "$1" 2>"$F/err"; }
+limits() { echo "{\"resources\": {\"core\": {\"remaining\": $1, \"reset\": $(( $(date +%s) + $2 ))}, \"search\": {\"remaining\": $3, \"reset\": $(( $(date +%s) + $4 ))}, \"graphql\": {\"remaining\": 5000, \"reset\": 0}}}" > "$F/limits"; }
+limits 5000 3600 30 60
+OK=$'0\t{"n": 1}'
+check "gh_output: a network timeout, then a 502, then the answer: retried after 5 s and 30 s, the page returned" "[{'n': 1}] [5, 30] 3" \
+  "$(flaky repos/o/x $'1\tGet "https://api.github.com/repos/o/x": dial tcp 140.82.121.5:443: i/o timeout' $'1\tgh: HTTP 502' "$OK") $(wc -l < "$F/calls")"
+check "gh_output: a network failure that outlasts its retries exits naming the call, after 3 tries" "[5, 30] 1 1 3" \
+  "$(flaky repos/o/x $'1\tgh: Server Error (HTTP 503)' $'1\tgh: Server Error (HTTP 503)' $'1\tgh: Server Error (HTTP 503)'; echo " $?") $(grep -c '^-c: gh api repos/o/x failed: gh: Server Error (HTTP 503)$' "$F/err") $(wc -l < "$F/calls")"
+limits 0 3600 0 30
+check "gh_output: a search's rate limit lifting in 30 s (the core one spent for an hour) is waited out, then the page returned" "[{'n': 1}] [31] 2" \
+  "$(flaky 'search/issues?q=x' $'1\tgh: API rate limit exceeded for user ID 1. (HTTP 403)' "$OK") $(wc -l < "$F/calls")"
+check "gh_output: the core rate limit spent for an hour exits at once, naming the reset" "[] 1 1 1" \
+  "$(flaky repos/o/x $'1\tgh: API rate limit exceeded for user ID 1. (HTTP 403)'; echo " $?") $(grep -cE '^-c: gh api repos/o/x failed: gh: API rate limit exceeded for user ID 1. \(HTTP 403\); resets at [0-9T:-]+Z$' "$F/err") $(wc -l < "$F/calls")"
+limits 4000 3600 30 60
+check "gh_output: a secondary rate limit (calls left) waits GitHub's minute, then the page returned" "[{'n': 1}] [60] 2" \
+  "$(flaky repos/o/x $'1\tgh: You have exceeded a secondary rate limit. Please wait a few minutes before you try again. (HTTP 403)' "$OK") $(wc -l < "$F/calls")"
+check "gh_output: a 404 exits at once with gh's error, no retry" "[] 1 1 1" \
+  "$(flaky repos/o/x $'1\tgh: Not Found (HTTP 404)'; echo " $?") $(grep -c '^-c: gh api repos/o/x failed: gh: Not Found (HTTP 404)$' "$F/err") $(wc -l < "$F/calls")"
+
 [ "$fails" = 0 ] && echo "project-learn: all cases pass" || { echo "project-learn: $fails case(s) failed"; exit 1; }

@@ -1,5 +1,5 @@
-"""What bin/steward and bin/project-learn both read GitHub with: the agent's badge, a maintainer's association, times, and paged
-GET calls that exit naming the failed call; the watcher reads own_accounts here too."""
+"""What bin/steward and bin/project-learn both read GitHub with: the agent's badge, a maintainer's association, times, and gh calls
+that ride out a transient failure and otherwise exit naming the failed call; the watcher reads own_accounts here too."""
 import collections, datetime, json, os, re, subprocess, sys, time, urllib.parse
 
 BADGE = re.compile(r'\A\s*(?:<img [^>]*alt="(?:Claude|Codex)"[^>]*>\s*)+')  # an agent's post starts with its badge
@@ -7,6 +7,8 @@ MAINTAINER = ('OWNER', 'MEMBER', 'COLLABORATOR')
 UPDATED = re.compile(r'(?:^| )updated:>=\S+')
 LOWER = re.compile(r'(?:^| )(?:updated|merged|closed|created):>=(\S+)')  # a search's own lower bound: each implies updated:>= it
 SEARCHES, SEARCH_WINDOW = collections.deque(maxlen=30), 60  # the start times of the last search requests: GitHub allows 30 a minute
+TRANSIENT = re.compile(r'dial tcp|i/o timeout|connection reset|TLS handshake|no such host|EOF|HTTP 50[234]')  # no answer, or a 502/503/504
+RETRY_WAITS, RESET_WAIT, SECONDARY_WAIT = (5, 30), 90, 60  # GitHub asks a secondary limit's client to wait a minute at least
 
 
 def iso(t):
@@ -42,12 +44,40 @@ def own_accounts():
     return {l.lower() for l in read(os.path.expanduser('~/.mergeworthy/own-accounts')).split()}
 
 
+def reset_wait(args):
+    """Seconds until the rate limit the call ran into lets it through: its resource's reset once spent, else SECONDARY_WAIT (a
+    secondary limit, whose Retry-After gh doesn't print); None when `gh api rate_limit` fails."""
+    r = subprocess.run(['gh', 'api', 'rate_limit'], capture_output=True, text=True)
+    if r.returncode:
+        return None
+    target = args[0] if args[0] != 'api' else next(a for a in args[1:] if not a.startswith('-'))  # `search prs`, `api search/issues?…`
+    kind = 'search' if target.startswith('search') else 'graphql' if target == 'graphql' else 'core'
+    limit = json.loads(r.stdout)['resources'][kind]
+    return max(0, limit['reset'] - time.time()) + 1 if limit['remaining'] == 0 else SECONDARY_WAIT
+
+
+def gh_output(*args, what=None):
+    """gh's output. A network failure or 502/503/504 is retried after each of RETRY_WAITS, a rate limit lifting within RESET_WAIT is
+    waited out once; any other failure exits naming the call (`what`, else gh's first two arguments), with the reset when it's later."""
+    waits, limited = list(RETRY_WAITS), False
+    while (r := subprocess.run(['gh', *args], capture_output=True, text=True)).returncode:
+        err, later = r.stderr.strip(), ''
+        if 'rate limit' in err.lower() and not limited:
+            limited, wait = True, reset_wait(args)
+            if wait is not None and wait <= RESET_WAIT:
+                time.sleep(wait)
+                continue
+            later = f"; resets at {iso(time.time() + wait)}" if wait is not None else ''
+        elif TRANSIENT.search(err) and waits:
+            time.sleep(waits.pop(0))
+            continue
+        sys.exit(f"{os.path.basename(sys.argv[0])}: gh {what or ' '.join(args[:2])} failed: {err[:200]}{later}")
+    return r.stdout
+
+
 def gh_pages(path, paginate=True):
     """Every page of a GET as one list (an object answer as a list of itself); paginate=False: its first page only."""
-    r = subprocess.run(['gh', 'api', *(['--paginate', '--slurp'] if paginate else []), path], capture_output=True, text=True)
-    if r.returncode:
-        sys.exit(f"{os.path.basename(sys.argv[0])}: gh api {path} failed: {r.stderr.strip()[:200]}")
-    pages = json.loads(r.stdout or '[]')
+    pages = json.loads(gh_output('api', *(['--paginate', '--slurp'] if paginate else []), path, what=f'api {path}') or '[]')
     return [x for p in (pages if isinstance(pages, list) else [pages]) for x in (p if isinstance(p, list) else [p])]
 
 
