@@ -651,6 +651,33 @@ def recorded(step, after, repo):
     rec = branch_record(repo, step)
     return any(records.get(id(a)) == rec for a in after)
 
+def ps_by_pid(a):
+    """Whether ps arguments a select only by PID or parent PID (-p, -q, --pid, --ppid, --quick-pid, p, q, a bare PID list). ps(1) adds the processes of
+    every other selector (-e, -A, a, x, -C, -u, -g, -t, ...) to theirs, and a number that is another selector's value is no PID."""
+    pid = other = False
+    a = list(a)
+    while a:
+        x = a.pop(0)
+        if x.startswith('--'):
+            name, eq, _ = x[2:].partition('=')
+            pids, others = ('pid', 'ppid', 'quick-pid'), ('Group', 'group', 'sid', 'tty', 'user', 'User')
+            pid, other = pid or name in pids, other or name in others or name == 'deselect'
+            if not eq and name in pids + others + ('format', 'sort', 'cols', 'columns', 'width', 'rows', 'lines', 'date-format'):
+                a = a[1:]
+        elif re.fullmatch(r'[\d,]+', x):
+            pid = True
+        elif re.fullmatch(r'[-+]\d[\d,]*', x):  # a process group, a session
+            other = True
+        elif re.fullmatch(r'-?[A-Za-z].*', x):  # a cluster of options, standard (-ef, -p1) or BSD (aux, p 1); its value ends it
+            dash = x.startswith('-')
+            selects, takes = ('AaedNCGgstuU', 'CGgpqstuUoOD') if dash else ('agTrxtU', 'pqUoOk')
+            for i, c in enumerate(x[dash:]):
+                pid, other = pid or c in 'pq', other or c in selects
+                if c in takes:
+                    a = a if x[dash + i + 1:] else a[1:]
+                    break
+    return pid and not other
+
 def picks(t):
     """Whether argv t picks processes by what they look like (a name, a text, all of them), not by a PID it names or that PID's children."""
     t = operands(prog(t))
@@ -658,7 +685,7 @@ def picks(t):
     if p in ('pgrep', 'pidof', 'pkill', 'killall'):
         return not any(x.startswith(('-P', '--parent')) for x in a) and not (p == 'killall' and a in (['-l'], ['--list']))  # killall -l lists signals
     if p == 'ps':
-        return not any(x.startswith(('-p', '-q', '--pid', '--ppid')) or x.isdigit() for x in a)
+        return not ps_by_pid(a)
     return any(re.search(r'/proc/[*\[]', x) for x in a)
 
 def kill_targets(a):
