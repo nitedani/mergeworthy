@@ -64,9 +64,9 @@ if [ "$step" = approach ]; then
   [ -n "$chosen" ] || { echo "$out has no line 'Chosen: <candidate>'" >&2; exit 1; }
   grep -Eq '^[[:space:]*>-]*Root cause:[*]*[[:space:]]+(none, .+|.*[A-Za-z0-9_-]*[/.][A-Za-z0-9_./-]*:[0-9]+)' "$out" || { echo "$out has no line 'Root cause: <why it happens, with the path:line that does it>' ('Root cause: none, <what it is>' for a feature or a reshape): rate candidates only once the cause is found, and one of them stops it there (pull-request step 5)" >&2; exit 1; }
   # the Basis line names who asked for this PR: someone else's report, request or agreed design, the user's words, or a
-  # failure of the goal's own run; a review or finding of our own is no basis for a PR in another project (task §Dispositions)
+  # failure of the goal's own run; an agent's review, finding or post is no basis for a PR in another project (task §Dispositions)
   basis=$(sed -En 's/^[[:space:]*>-]*Basis:[*]*[[:space:]]+//p' "$out" | head -n1 | sed -E 's/^\[[^]]*\]\(([^)]*)\).*/\1/; s/^<([^>]*)>.*/\1/; s/ → / -> /')
-  nobasis="$out has no 'Basis:' line in a form this check reads: 'Basis: <a URL of a report, request or agreed design someone else wrote | request: \"<the user's words>\" | goal: <the command the goal runs> -> <its failing output> | clean-cut: <a command on the goal's runtime and tools, at their defaults> -> <its error>>' (pull-request step 5)"
+  nobasis="$out has no 'Basis:' line in a form this check reads: 'Basis: <a URL of a report, request or agreed design a person wrote | request: \"<the user's words>\" | goal: <the command the goal runs> -> <its failing output> | clean-cut: <a command on the goal's runtime and tools, at their defaults> -> <its error>>' (pull-request step 5)"
   case "$basis" in
     request:\ ?*|goal:\ ?*\ -\>\ ?*|clean-cut:\ ?*\ -\>\ ?*) ;;
     https://*/-/issues/[0-9]*|https://*/-/merge_requests/[0-9]*) ;;
@@ -78,8 +78,9 @@ if [ "$step" = approach ]; then
         pullrequestreview-*) api=repos/$repo/pulls/$n/reviews/${frag#pullrequestreview-} ;;
         *) api=repos/$repo/issues/$n ;;
       esac
-      author=$(gh api "$api" --jq .user.login 2>/dev/null) && [ -n "$author" ] || { echo "Basis $u: gh api $api failed, so its author is unknown" >&2; exit 1; }
-      [ "$author" != "$(gh api user --jq .login 2>/dev/null)" ] || { echo "Basis $u was written by $author, the account posting this PR: name a report, request or agreed design someone else wrote, the user's words as 'request: \"<them>\"', or the goal's own failing run (task §Dispositions)" >&2; exit 1; } ;;
+      kind=$(gh api "$api" --jq .user.type 2>/dev/null) && [ -n "$kind" ] || { echo "Basis $u: gh api $api failed, so its author is unknown" >&2; exit 1; }
+      # an agent's post (its badge, writing §Forms) or a bot's is our own finding, whichever account posted it
+      { [ "$kind" != Bot ] && ! gh api "$api" --jq .body 2>/dev/null | head -n3 | grep -q 'src="https://github.com/\(claude\|openai\)\.png"'; } || { echo "Basis $u was written by an agent or a bot: name a report, request or agreed design a person wrote, the user's words as 'request: \"<them>\"', or the goal's own failing run (task §Dispositions)" >&2; exit 1; } ;;
     *) echo "$nobasis" >&2; exit 1 ;;
   esac
   # candidates: table rows `| name | rating 0-10 | why |`; the header and separator rows have no numeric rating
