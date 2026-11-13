@@ -23,7 +23,7 @@ that `round` writes <folder>'s watcher files, `metrics` appends its records to <
 """
 import glob, json, os, re, statistics, subprocess, sys, time
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'hooks'))
-from gh_common import BADGE, MAINTAINER, epoch, gh_pages, iso, own_accounts, read, search
+from gh_common import BADGE, MAINTAINER, epoch, gh_output, gh_pages, iso, own_accounts, read, search
 from steward import sorted_as, sorted_verdicts
 
 HOME = os.path.expanduser('~')
@@ -157,10 +157,7 @@ def sessions(since):
 
 
 def gh(*args):
-    r = subprocess.run(['gh', *args], capture_output=True, text=True)
-    if r.returncode:
-        sys.exit(f"steward: gh {' '.join(args[:2])} failed: {r.stderr.strip()[:200]}")
-    return json.loads(r.stdout or 'null')
+    return json.loads(gh_output(*args) or 'null')
 
 
 QUERY = '''query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){

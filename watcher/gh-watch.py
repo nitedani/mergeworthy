@@ -11,7 +11,7 @@
   What you caused yourself (your reference, a head you pushed, your merge or close: own_change) is a `note:` line, logged without waking you.
   Another account renaming your PR, open (the last-comment call) or merged (follow_ups' timeline), is one too (pr_renamed).
 - Machine-wide work (those two) runs in one daemon, or a --round, at a time (shared_pass). Every call goes through request(), which keeps the
-  hour's budget (see "The GitHub API budget") and sends ETags; a rate-limit pause prints one WATCH ERROR per daemon.
+  hour's budget (see "The GitHub API budget") and sends ETags; a rate-limit pause prints one `note:` line per daemon, waking nobody.
 - Maintainers' commits pushed to a tracked PR, and 👍/👎 from you or a maintainer (write access, see maintainer) on the agent's comments.
 - WAIT PING DUE: your account's comment is the last on an open thread, and nobody else in it has replied or acted in any watched thread for WAIT_PING_HOURS (3).
 - PR head/state changes (pushes, merges, closes), CI turning red or green on open PRs, and the code of a PR you opened or drive (a pr-steps record on one of its commits; tests excluded) changing by more than ~80 lines since its last shape pass (SHAPE STALE).
@@ -182,11 +182,11 @@ def iso_epoch(t):
 
 
 def announce_pause(state):
-    """One `WATCH ERROR` per pause per daemon, however many calls it stopped."""
+    """One `note:` per pause per daemon, however many calls it stopped: the pause ends by itself, so it wakes nobody."""
     until = shared_read()['pause_until']
     if until > time.time() and state.get('pause_notified') != until:
         state['pause_notified'] = until
-        emit(f"WATCH ERROR API budget: paused until {iso(until)}")
+        emit(f"note: API budget: paused until {iso(until)}")
 
 
 def prune(etags, keep=2 * 86400):

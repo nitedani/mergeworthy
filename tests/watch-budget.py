@@ -201,21 +201,22 @@ def pause_case(secondary, length=1800):
             sim.now += 10
         refused = sum(1 for e in gh.log if e[3] == 403)
         until = json.load(open(f'{T}/home/.mergeworthy/shared-watch.json'))['pause_until']
-        shown = [lines(dirs[d], 'WATCH ERROR') for d in ('d1', 'd2')]
+        shown = [lines(dirs[d], 'note: API budget') for d in ('d1', 'd2')]
         a2 = load(dirs['d1'], sim)  # a restart in the middle of the pause says nothing more
         a2.tick()
         sim.now = until + 1  # the pause is over
         gh.limited_until = 0
         a2.tick()
-        return refused, int(until - ws.T0), [len(x) for x in shown], shown[0][0] if shown[0] else '', len(lines(dirs['d1'], 'WATCH ERROR')), len(gh.log) > refused
+        woke = sum(1 for d in ('d1', 'd2') for l in open(f'{dirs[d]}/events.log') if a.EVENT.search(l))
+        return refused, int(until - ws.T0), [len(x) for x in shown], shown[0][0] if shown[0] else '', len(lines(dirs['d1'], 'note: API budget')), woke, len(gh.log) > refused
 
 
-@case("rate limit answer (403): one 403 stops every daemon; each prints one `WATCH ERROR API budget: paused until <reset>`, none more after its restart; calls resume after the reset", "(1, 1800, [1, 1], 'WATCH ERROR API budget: paused until 2026-10-09T12:30:00Z', 1, True)")
+@case("rate limit answer (403): one 403 stops every daemon; each logs one `note: API budget: paused until <reset>` and wakes nobody, none more after its restart; calls resume after the reset", "(1, 1800, [1, 1], 'note: API budget: paused until 2026-10-09T12:30:00Z', 1, 0, True)")
 def _():
     return str(pause_case(False))
 
 
-@case("secondary rate limit (403 with Retry-After 120): paused for those 120 s", "(1, 120, [1, 1], 'WATCH ERROR API budget: paused until 2026-10-09T12:02:00Z', 1, True)")
+@case("secondary rate limit (403 with Retry-After 120): paused for those 120 s", "(1, 120, [1, 1], 'note: API budget: paused until 2026-10-09T12:02:00Z', 1, 0, True)")
 def _():
     return str(pause_case(True, 120))
 
