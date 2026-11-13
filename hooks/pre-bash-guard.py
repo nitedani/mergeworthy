@@ -689,7 +689,8 @@ def picks(t):
     return any(re.search(r'/proc/[*\[]', x) for x in a)
 
 def kill_targets(a):
-    """What the kill arguments a signal (PIDs, jobs, process groups): the words past its one signal (-9, -KILL, -s <sig>) and a --."""
+    """What the kill arguments a signal (PIDs, jobs, process groups): the words past its one signal (-9, -KILL, -s <sig>) and a --; none for signal 0 and -l/-L, which send nothing."""
+    if a[:1] in (['-0'], ['-l'], ['-L']) or a[:2] in (['-s', '0'], ['-n', '0']): return []
     a = a[2:] if a[:1] in (['-s'], ['-n']) else a[1:] if a[:1] and a[0].startswith('-') and a[0] != '--' else a
     return a[1:] if a[:1] == ['--'] else a
 
