@@ -80,7 +80,7 @@ if [ "$step" = approach ]; then
       esac
       kind=$(gh api "$api" --jq .user.type 2>/dev/null) && [ -n "$kind" ] || { echo "Basis $u: gh api $api failed, so its author is unknown" >&2; exit 1; }
       # an agent's post (its badge, writing §Forms) or a bot's is our own finding, whichever account posted it
-      { [ "$kind" != Bot ] && ! gh api "$api" --jq .body 2>/dev/null | head -n3 | grep -q 'src="https://github.com/\(claude\|openai\)\.png"'; } || { echo "Basis $u was written by an agent or a bot: name a report, request or agreed design a person wrote, the user's words as 'request: \"<them>\"', or the goal's own failing run (task §Dispositions)" >&2; exit 1; } ;;
+      body=$(gh api "$api" --jq .body 2>/dev/null); case "$kind ${body:0:2000}" in Bot\ *|*'src="https://github.com/claude.png"'*|*'src="https://github.com/openai.png"'*) false ;; esac || { echo "Basis $u was written by an agent or a bot: name a report, request or agreed design a person wrote, the user's words as 'request: \"<them>\"', or the goal's own failing run (task §Dispositions)" >&2; exit 1; } ;;
     *) echo "$nobasis" >&2; exit 1 ;;
   esac
   # candidates: table rows `| name | rating 0-10 | why |`; the header and separator rows have no numeric rating
