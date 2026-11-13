@@ -3456,6 +3456,10 @@ hb=; for m in 'The fix is committed locally on `fix-telefunc`. Pushing it, or te
              'Nothing will notify me when they finish. Tell me to check, or to post the reply now.' \
              "The reply to brillout is drafted and reviewed as CLEAN, but it isn't posted yet. Do you want me to post it now that CI is green?"; do tr_file "$m" work; hb="$hb $(slj)"; done
 check "BLOCK: the session's six hand-backs, as it wrote them" " 2 2 2 2 2 2" "$hb"
+# the telefunc-room session's answer, as it wrote it, then the same with the attempt that failed, and a quoted phrase
+tr_file 'README tidied.'
+check "BLOCK: a fact left unchecked (\"I don't know whether\", \"I haven't read\"); its sentence quoting the failed attempt, or the phrase in quotes, passes" "2 2 0 0" \
+  "$(slj "stable-webrtc fixes its channel. I have read only the README, not its source, so I don't know whether it lets you open a second channel.") $(slj "That is from its README; I haven't read its source.") $(slj "I tried to fetch its tarball and the registry returned 404, so I don't know whether it exposes the connection.") $(slj 'The tool prints "I do not know" on a miss.')"
 tr_file 'README tidied.' work
 check "a hand-back a tool printed, in a ~~~ code block or an indented one, is not the agent's" "0 0" "$(slj $'The tool printed:\n\n~~~\nShould I retry?\n~~~') $(slj $'The tool printed:\n\n    Should I retry?')"
 check "the final message is the hook input's, not the transcript's last line (which may not be written yet)" "2 1" "$(slj 'Tell me when to re-check CI.') $(grep -ci 'tell me when' "$T/err")"

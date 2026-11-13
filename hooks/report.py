@@ -15,6 +15,21 @@ def authored(message):
 OFFER = (r"(when you say (go|so)|say the word|(do|would) you (want|like) me to|want me to|shall I\b|should I\b|if you want|if you'd (rather|like)|your call|"
          r"is yours to|up to you|or would you rather|which do you (want|prefer)|let me know (if|when|whether)|"
          r"(?:^[\s>*\-•]*|[.!?:;,]\s*|\b(?:or|and|just|please)\s+)(?:tell me (when|to|if|whether)|ask me (to|when|if)|ping me)|nothing (will|would|is going to) (notify|wake|tell) me|(won't|will not|doesn't|does not|can't) (notify|wake) me)\b")
+# A checkable fact left unchecked ("I don't know whether", "I haven't read its source"); its paragraph quoting the attempt that
+# failed ("the registry returned 404", in quotes or code too) lets it stand
+UNCHECKED = (r"\bI(?:\s+(?:do|did|have|could)\s*n[o']t|\s+don['’]t|['’]ve\s+not|\s+haven['’]t|\s+didn['’]t|\s+couldn['’]t|\s+could\s+not)\s+(?:yet\s+)?"
+             r"(?:checked?|read|looked|inspect\w*|verif\w+|confirm\w*)\b|\bI\s+(?:do\s+not|don['’]t)\s+know\b|\bI(?:['’]m|\s+am)\s+(?:not\s+sure|unsure)\b"
+             r"|\bI\s+can(?:not|['’]t)\s+tell\b(?!\s+you)|\b(?:it['’]s|it\s+is|still)\s+(?:unclear|unknown)\s+(?:whether|if)\b"
+             r"|\bnem\s+(?:tudom|néztem|ellenőriztem|olvastam)\b")
+ATTEMPT = r"\b(?:tried\s+(?!nothing)\w+|failed|errors?|E[45]0\d|[45]0\d|timed?\s*out|refused|denied|no\s+access|unreachable|not\s+(?:public|published))\b"
+def unchecked(message):
+    for para in re.split(r'\n\s*\n', message):
+        if re.search(ATTEMPT, para, re.I): continue  # the attempt may sit in quotes or code, which authored() drops
+        for sentence in re.split(r'(?<=[.!?])\s+|\n+', authored(para)):
+            m = re.search(UNCHECKED, sentence, re.I)
+            if m and not re.search(r'\b(?:whether|if|which)\s+you\b', sentence, re.I): return m  # what the user prefers is theirs to say
+
+
 def offer(message): return re.search(OFFER, authored(message), re.I | re.M)
 def forks(text): return {re.sub(r'\W+', ' ', f).strip().lower() for f in re.findall(r'^GENUINE-FORK:(.*)$', text, re.M)}
 

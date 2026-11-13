@@ -156,6 +156,14 @@ def handback_check():
               "or the user's global config, (c) an external maintainer's product decision or a fork you can't rank; then "
               "include a line starting 'GENUINE-FORK:' with your recommended default.", file=sys.stderr)
         sys.exit(2)
+# A checkable fact left unchecked in the reply (mergeworthy:writing §Evidence for claims)
+def unchecked_check():
+    m = report.unchecked(last)
+    if m:
+        print(f"Your last message leaves a fact unchecked (\"{m.group(0)}\"). If it can be checked (the code, a package's source, a doc, "
+              "a command), check it now and answer from what you found, also when asked to answer now. An unknown stands only with "
+              "the attempt that failed, quoted in the same paragraph (mergeworthy:writing §Evidence for claims).", file=sys.stderr)
+        sys.exit(2)
 # A fork is asked once per session: a GENUINE-FORK line already sent blocks, answered or not (it waits in questions-owed.md)
 def fork_check():
     asked = set().union(*map(report.forks, said[:-1])) if len(said) > 1 else set()
@@ -253,7 +261,7 @@ def state_check():
               "(mergeworthy:writing §Evidence for claims); then act on it (a ready PR: the reply loop; red CI: fix it).", file=sys.stderr)
         sys.exit(2)
 if not child:
-    for check in (handback_check, fork_check, running_check, done_check, state_check): check()
+    for check in (handback_check, unchecked_check, fork_check, running_check, done_check, state_check): check()
 own_dirs = set(t3_dirs)
 for wd in (l.strip() for l in open(reg)) if os.path.exists(reg) else ():
     # or a watch dir this session works through from elsewhere (its cwd is a repo, the watch dir an artifact root):
