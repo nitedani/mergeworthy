@@ -254,7 +254,7 @@ EOF
     # read on every line but a suite's test results, whose titles may quote these words: '<title>: <got> (want <want>)', ok/PASS/✓ lines
     # nor inside quoted text (`…`, "…", '…', /…/: a test's message), nor in a clause about the base ('base 70490e389 was not run')
     own=$(grep -Ev '\(want .*\)$|^[[:space:]]*(ok|not ok|PASS|FAIL|✓|✔|✗|×)[[:space:]]' "$out" |
-      sed -E "s/([[:alpha:]])'([[:alpha:]])/\1\x01\2/g; s/\`[^\`]*\`|\"[^\"]*\"|'[^']*'//g; s/\x01/'/g; s#(^|[[:space:]])/[^/]+/([[:space:][:punct:]]|\$)#\1\2#g; s/;[[:space:]]*|\.[[:space:]]+/\n/g" |
+      sed -E "s/([[:alpha:]])'([[:alpha:]])/\1\x01\2/g; s/\`[^\`]*\`|\"[^\"]*\"//g; s/(^|[[:space:]([{])'[^']*'([[:space:][:punct:]]|\$)/\1\2/g; s/\x01/'/g; s#(^|[[:space:]])/[^/]+/([[:space:][:punct:]]|\$)#\1\2#g; s/;[[:space:]]*|\.[[:space:]]+/\n/g" |
       grep -Eiv '\b(base|main)[[:space:]]+[0-9a-f]{7,}\b' || true)
     ! printf '%s\n' "$own" | grep -Eiq "$unrun" || { echo "$out says a gate didn't run ($(printf '%s\n' "$own" | grep -Eio "$unrun" | head -n1)): install what it needs and run it (code §Gates)" >&2; exit 1; }
     gl=$(grep -E ' -> exit [0-9]+' "$out" || true)
