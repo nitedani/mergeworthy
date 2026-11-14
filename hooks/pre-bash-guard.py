@@ -696,11 +696,14 @@ def kill_targets(a):
 
 def picked_vars(segs):
     """The variables that may hold PIDs a search picked: set by read, mapfile, printf -v, a for loop and the like, or assigned by an assignment
-    word whose value runs a picking search; None when a command may set any."""
+    word whose value runs a picking search or names a picked variable (`C=$B`); None when a command may set any."""
     if any(s.sets_any for s in segs): return None
     words = [x for s in segs for x in itertools.takewhile(lambda x: re.match(r'\w+=', x) and not x.quoted, s[1:] if s[:1] and s[0] in shellcmd.DECLARING else s)]
-    return ({n for s in segs for n in s.sets} | {c[2] for s in segs for c in s.scopes}
-            | {n for n, v in (x.split('=', 1) for x in words) if any(map(picks, segments(v)))})
+    assigned = [(n, v, set(re.findall(r'\$\{?(\w+)', v))) for n, v in (x.split('=', 1) for x in words)]
+    picked = {n for s in segs for n in s.sets} | {c[2] for s in segs for c in s.scopes} | {n for n, v, _ in assigned if any(map(picks, segments(v)))}
+    while grown := {n for n, _, refs in assigned if refs & picked} - picked:
+        picked |= grown
+    return picked
 
 def check_processes(segs):
     """Refuses the two harms of a process search: a loop waiting on one, and a signal to processes one picked."""
