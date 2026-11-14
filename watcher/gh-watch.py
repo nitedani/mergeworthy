@@ -1067,9 +1067,10 @@ def fetch_thread(repo, num, since, is_pr_known, author_known, prev_pr, etags, mo
             pr_state = prev_pr
         else:
             pr = resp.json()
-            # 'conflict': GitHub runs no CI on a PR that conflicts with its base, so a conflict is reported like red CI; until GitHub has computed mergeability the last known flag stays
+            # 'conflict': GitHub runs no CI on a PR that conflicts with its base, so a conflict is reported like red CI; until GitHub has computed mergeability the last known flag stays on an unchanged head
             uncomputed = pr.get('mergeable') is None or pr.get('mergeable_state') == 'unknown'
-            conflict = (prev_pr or {}).get('conflict', False) if uncomputed else pr.get('mergeable_state') == 'dirty'
+            same_head = (prev_pr or {}).get('head') == pr['head']['sha'][:10]
+            conflict = prev_pr['conflict'] if uncomputed and same_head else not uncomputed and pr.get('mergeable_state') == 'dirty'
             pr_state = {'head': pr['head']['sha'][:10], 'state': 'merged' if pr.get('merged') else pr['state'], 'conflict': conflict}
             updated, full = pr.get('updated_at') or updated, True
         if pr_state['state'] == 'open':

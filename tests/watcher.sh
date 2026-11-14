@@ -575,22 +575,23 @@ check "PR CHANGED and ISSUE CLOSED: your own merge or close, GitHub naming you, 
   "note|### DEPENDENT of merged o/r#3|### TRACKER STALE o/r#3|### PR CHANGED o/r#4|### TRACKER STALE o/r#4|note|### ISSUE CLOSED o/r#6|### ISSUE CLOSED o/r#7|### PR CHANGED o/r#8|### DEPENDENT of merged o/r#8|### TRACKER STALE o/r#8" "$got"
 
 # While GitHub hasn't computed a PR's mergeability (mergeable null, state "unknown") its last known conflict flag stays: dirty -> unknown -> dirty
-# on one head is no change, and clean -> dirty is one
+# on one head is no change, clean -> dirty is one, and a conflicting PR's new head answered uncomputed reads as no conflict
 got=$(py '
 m.paged, m.fetch_last_comment = (lambda *a, **k: []), (lambda *a: None)
 m.run_gh = lambda *a, **k: m.subprocess.CompletedProcess(a, 0, "", "")
-def changes(answers):
-    prev, n = None, 0
-    for mergeable, mstate in answers:
-        body = {"head": {"sha": "a" * 40}, "state": "open", "merged": False, "mergeable": mergeable, "mergeable_state": mstate}
+def looks(answers):
+    prev, out = None, []
+    for sha, mergeable, mstate in answers:
+        body = {"head": {"sha": sha * 40}, "state": "open", "merged": False, "mergeable": mergeable, "mergeable_state": mstate}
         m.request = lambda *a, **k: m.Resp(200, {}, json.dumps(body))
-        now = m.fetch_thread("o/r", "1", "2026-10-29T00:00:00Z", True, "me", prev, {}, "check")[3]
-        n += prev is not None and now != prev
-        prev = now
-    return n
-print(changes([(False, "dirty"), (None, "unknown"), (False, "dirty")]), changes([(True, "clean"), (False, "dirty")]))
+        prev = m.fetch_thread("o/r", "1", "2026-10-29T00:00:00Z", True, "me", prev, {}, "check")[3]
+        out.append(prev)
+    return out
+changes = lambda answers: sum(a != b for a, b in zip(looks(answers), looks(answers)[1:]))
+print(changes([("a", False, "dirty"), ("a", None, "unknown"), ("a", False, "dirty")]), changes([("a", True, "clean"), ("a", False, "dirty")]),
+      [x["conflict"] for x in looks([("a", False, "dirty"), ("b", None, "unknown")])])
 ')
-check "PR CHANGED: a PR whose mergeability GitHub hasn't computed keeps its last conflict flag; a real new conflict is one change" "0 1" "$got"
+check "PR CHANGED: a PR whose mergeability GitHub hasn't computed keeps its last conflict flag; a real new conflict is one change; a new head answered uncomputed has none" "0 1 [True, False]" "$got"
 
 # /agent commands in threads no watch dir lists: found in the watched repos' comments feeds, routed to one dir, emitted once
 AD="$T/agentdirs"; mkdir -p "$AD/alpha" "$AD/beta" "$HOME/.mergeworthy"
