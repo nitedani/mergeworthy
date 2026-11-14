@@ -424,6 +424,16 @@ push_urls = []  # where this command's pushes go (pushed()), for the watcher che
 # what this command does on GitHub (own_actions), recorded once it passed every check: the watcher logs these changes without waking the session
 own = {'PUSHED_HEADS': [], 'CLOSED_THREADS': []}  # the heads it pushes; `owner/repo#N merged|closed`
 
+indexes = {}  # a checkout's index file: its copy for this command, removed when the hook ends
+def index_copy(d):
+    """The copy of checkout d's index that this command's `git add`s stage into and its commits' dry-runs read, so the real index stays as it is."""
+    real = subprocess.run(['git', '-C', d, 'rev-parse', '--path-format=absolute', '--git-path', 'index'], capture_output=True, text=True).stdout.strip()
+    if real not in indexes:
+        import atexit, shutil, tempfile  # here, not at import: they cost every hook call ~2 ms
+        indexes[real] = os.path.join(tempfile.mkdtemp(), 'index'); atexit.register(shutil.rmtree, os.path.dirname(indexes[real]), True)
+        if os.path.exists(real): shutil.copy2(real, indexes[real])  # with its mtime, which git's check of a file changed in the same second reads
+    return indexes[real]
+
 def git_head(d):
     return subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
 
@@ -441,7 +451,7 @@ def check_patches(d, pending=None, amend=False):
     count, reviewed = {}, False
     commits = g('rev-list', '--reverse', '--first-parent', 'HEAD', '--not', base).split()
     for c in commits:
-        files = g('diff-tree', '--no-commit-id', '--name-only', '-r', c).split()  # none for a merge commit
+        files = [f for f in g('diff-tree', '--no-commit-id', '--name-only', '-r', '-z', c).split('\0') if f]  # none for a merge commit
         if files and not AGENT_TRAILER.search(g('log', '-1', '--format=%B', c)): files = []
         if amend and c == commits[-1]: pending, files = sorted(set(pending or []) | set(files)), []  # the amended commit is the pending one
         for f in files if reviewed else []:
@@ -788,8 +798,14 @@ def check(t, has_cd):
                     block(why + (f" This check runs before the line does, so the line's own `pr-steps {step}` counts only when the commit needs it to pass: "
                                  "join them with `&&`, with no `;`, `||` or pipe on the record" if branch_record(repo, step) in records.values() else ''))
             check_commit_identity(overrides, repo)
-            every = any(x == '--all' or re.fullmatch(r'-[a-zA-Z]*a[a-zA-Z]*', x) for x in rest)  # `git commit -a` commits the worktree's changes too
-            check_patches(repo, subprocess.run(['git', '-C', repo, 'diff', '--name-only', *([] if every else ['--cached']), 'HEAD'], capture_output=True, text=True).stdout.split(), '--amend' in rest)
+            out = iter(subprocess.run(['git', '-C', repo, 'commit', '--dry-run', '--porcelain', '-z', '--untracked-files=no', *operands(rest)], capture_output=True,
+                                      text=True, stdin=subprocess.DEVNULL, env={**os.environ, 'GIT_INDEX_FILE': index_copy(repo)}).stdout.split('\0'))
+            taken = set()
+            for x in out:  # `XY path`, X the index side the commit takes; a rename's next entry is its old path
+                if x[:1] not in ('', ' ', '?'): taken |= {x[3:], *([next(out, '')] if x[0] == 'R' else [])}
+            check_patches(repo, sorted(taken), '--amend' in rest)
+        if sub == 'add' and repo is not None and os.path.isdir(repo):  # what a `git commit` later in this command reads
+            subprocess.run(['git', '-C', repo, 'add', *operands(rest)], capture_output=True, stdin=subprocess.DEVNULL, env={**os.environ, 'GIT_INDEX_FILE': index_copy(repo)})
         if sub == 'push' and {'--dry-run', '-n'} & set(rest):
             sub = 'push --dry-run'  # publishes nothing
         if sub == 'push' and (repo is None or not os.path.isdir(repo)) and '--help' not in rest:
