@@ -694,12 +694,13 @@ def kill_targets(a):
     a = a[2:] if a[:1] in (['-s'], ['-n']) else a[1:] if a[:1] and a[0].startswith('-') and a[0] != '--' else a
     return a[1:] if a[:1] == ['--'] else a
 
-def started_pids(segs):
-    """The variables holding a PID this command started: assigned `NAME=$!` by an assignment word, and NAME written nowhere else in it."""
+def picked_vars(segs):
+    """The variables that may hold PIDs a search picked: set by read, mapfile, printf -v, a for loop and the like, or assigned by an assignment
+    word whose value runs a picking search; None when a command may set any."""
+    if any(s.sets_any for s in segs): return None
     words = [x for s in segs for x in itertools.takewhile(lambda x: re.match(r'\w+=', x) and not x.quoted, s[1:] if s[:1] and s[0] in shellcmd.DECLARING else s)]
-    names = [x.split('=', 1)[0] for x in words]
-    others = {n for s in segs for n in s.sets} | {c[2] for s in segs for c in s.scopes}  # read, printf -v, a for loop's variable, ...
-    return set() if any(s.sets_any for s in segs) else {n for x, n in zip(words, names) if x == n + '=$!' and names.count(n) == 1 and n not in others}
+    return ({n for s in segs for n in s.sets} | {c[2] for s in segs for c in s.scopes}
+            | {n for n, v in (x.split('=', 1) for x in words) if any(map(picks, segments(v)))})
 
 def check_processes(segs):
     """Refuses the two harms of a process search: a loop waiting on one, and a signal to processes one picked."""
@@ -707,14 +708,14 @@ def check_processes(segs):
     if any(s.loop and picks(s) for s in segs) or err and searched and re.search(r'\b(while|until)\b', cmd):  # rough segments know no loop
         block("a loop on a process search (pgrep, pidof, ps, /proc/*) may never end: the search matches this command itself and other sessions' processes. "
               "Wait on the PID you started: `<cmd> & pid=$!; wait $pid`, or `while kill -0 $pid; do sleep 5; done` in the background, or its port. One search, to look, passes")
-    started = started_pids(segs)
+    picked = picked_vars(segs)
     for s in segs:
         t = prog(s)
         p = os.path.basename(t[0]) if t else ''
         targets = kill_targets(operands(t[1:])) if p == 'kill' else []
         if p in ('pkill', 'killall') and picks(t) or '-1' in targets or searched and (
                 p == 'kill' and 'xargs' in map(os.path.basename, s[:len(s) - len(t)])
-                or any(not re.fullmatch(r'-?(\d+|%.*|\$!)', x) and not ((m := re.fullmatch(r'-?\$\{?(\w+)\}?', x)) and m[1] in started) for x in targets)
+                or any(not re.fullmatch(r'-?(\d+|%.*|\$!)', x) and not ((m := re.fullmatch(r'-?\$\{?(\w+)\}?', x)) and picked is not None and m[1] not in picked) for x in targets)
                 or re.fullmatch(r'[gmn]?awk|perl|python[\d.]*|nodejs|node|ruby|lua|php|deno|bun', p) and any(re.search(r'\bkill\b', x) for x in t[1:])):  # a program text can signal; a word kill elsewhere only looks
             block("this signals processes a search picked (pkill, killall, or a kill of PIDs from pgrep, pidof, ps or /proc in this command, or -1, every process): they can be other sessions'. "
                   "Kill the PID you started (`<cmd> & pid=$!` … `kill $pid`), its children (`pkill -P $pid`), or a PID you looked up and checked in an earlier command (`kill 1234`)")
