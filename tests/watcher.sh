@@ -574,6 +574,25 @@ print("|".join(l.split(":")[0] for l in buf.getvalue().splitlines()))
 check "PR CHANGED and ISSUE CLOSED: your own merge or close, GitHub naming you, is a log note, its DEPENDENT and TRACKER STALE still events; another merge or close an event, recorded or not" \
   "note|### DEPENDENT of merged o/r#3|### TRACKER STALE o/r#3|### PR CHANGED o/r#4|### TRACKER STALE o/r#4|note|### ISSUE CLOSED o/r#6|### ISSUE CLOSED o/r#7|### PR CHANGED o/r#8|### DEPENDENT of merged o/r#8|### TRACKER STALE o/r#8" "$got"
 
+# While GitHub hasn't computed a PR's mergeability (mergeable null, state "unknown") its last known conflict flag stays: dirty -> unknown -> dirty
+# on one head is no change, clean -> dirty is one, and a conflicting PR's new head answered uncomputed reads as no conflict
+got=$(py '
+m.paged, m.fetch_last_comment = (lambda *a, **k: []), (lambda *a: None)
+m.run_gh = lambda *a, **k: m.subprocess.CompletedProcess(a, 0, "", "")
+def looks(answers):
+    prev, out = None, []
+    for sha, mergeable, mstate in answers:
+        body = {"head": {"sha": sha * 40}, "state": "open", "merged": False, "mergeable": mergeable, "mergeable_state": mstate}
+        m.request = lambda *a, **k: m.Resp(200, {}, json.dumps(body))
+        prev = m.fetch_thread("o/r", "1", "2026-10-29T00:00:00Z", True, "me", prev, {}, "check")[3]
+        out.append(prev)
+    return out
+changes = lambda answers: sum(a != b for a, b in zip(looks(answers), looks(answers)[1:]))
+print(changes([("a", False, "dirty"), ("a", None, "unknown"), ("a", False, "dirty")]), changes([("a", True, "clean"), ("a", False, "dirty")]),
+      [x["conflict"] for x in looks([("a", False, "dirty"), ("b", None, "unknown")])])
+')
+check "PR CHANGED: a PR whose mergeability GitHub hasn't computed keeps its last conflict flag; a real new conflict is one change; a new head answered uncomputed has none" "0 1 [True, False]" "$got"
+
 # /agent commands in threads no watch dir lists: found in the watched repos' comments feeds, routed to one dir, emitted once
 AD="$T/agentdirs"; mkdir -p "$AD/alpha" "$AD/beta" "$HOME/.mergeworthy"
 printf 'o/r 1\n' > "$AD/alpha/threads.txt"; printf 'o/r 2\n' > "$AD/beta/threads.txt"
