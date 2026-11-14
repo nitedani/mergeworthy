@@ -2049,16 +2049,13 @@ check "BLOCK: a PR whose checks are still running" 2 "$(stop "$T")"
 check "agent-job lists jobs with the id file present" 0 "$(python3 "$R/bin/agent-job" list >/dev/null 2>&1; echo $?)"
 # a gate review starts only on a draft that passed post-lint in its current form
 mkdir -p "$T/drafts/lf"; printf 'Fixed in abc1234.\n' > "$T/drafts/lf/reply.md"
-printf 'Review %s and write the verdict to %s/drafts/lf/r.out; the last message is exactly CLEAN.\n' "$T/drafts/lf/reply.md" "$T" > "$T/drafts/lf/review-ticket.md"
+printf 'Review %s and write the verdict to %s/drafts/lf/reply.review.out; the last message is exactly CLEAN.\n' "$T/drafts/lf/reply.md" "$T" > "$T/drafts/lf/review-ticket.md"
 check "BLOCK: a review of a draft with no post-lint record" 2 "$(launch "Execute $T/drafts/lf/review-ticket.md")"
 printf 'x' > "$T/drafts/lf/reply.md.lint.sha"
 check "BLOCK: a review of a draft with a stale post-lint record" 2 "$(launch "Execute $T/drafts/lf/review-ticket.md")"
 python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest(), end="")' "$T/drafts/lf/reply.md" > "$T/drafts/lf/reply.md.lint.sha"
 check "a review of a draft with a current post-lint record launches" 0 "$(launch "Execute $T/drafts/lf/review-ticket.md")"
 python3 "$R/bin/agent-job" done "$T/drafts/lf/review-ticket.md" >/dev/null
-cp "$T/drafts/lf/review-ticket.md" "$T/drafts/lf/review-brief.md"
-check "a review brief kept in drafts/ is not itself a draft needing post-lint" 0 "$(launch "Execute $T/drafts/lf/review-brief.md")"
-python3 "$R/bin/agent-job" done "$T/drafts/lf/review-brief.md" >/dev/null
 printf 'thread' > "$T/drafts/lf/thread-context.md"
 printf 'Check %s against %s by skills/writing/SKILL.md; write CLEAN or findings to %s/drafts/lf/reply.review.out.\n' "$T/drafts/lf/reply.md" "$T/drafts/lf/thread-context.md" "$T" > "$T/drafts/lf/check-r1.md"
 check "a review naming <name>.review.out checks only <name>.md, not the thread record beside it" 0 "$(launch "Execute $T/drafts/lf/check-r1.md")"
@@ -2069,15 +2066,9 @@ python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read
 echo 'edited' >> "$T/drafts/lf/reply.md"
 check "BLOCK: the same review after the draft was edited" 2 "$(launch "Execute $T/drafts/lf/review-ticket.md")"
 python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest(), end="")' "$T/drafts/lf/reply.md" > "$T/drafts/lf/reply.md.lint.sha"
-printf 'Evidence.\n' > "$T/drafts/lf/research.md"
-printf 'Review %s against the evidence in %s, write the verdict to %s/drafts/lf/r2.out; the last message is exactly CLEAN.\n' "$T/drafts/lf/reply.md" "$T/drafts/lf/research.md" "$T" > "$T/drafts/lf/review2-ticket.md"
-check "the evidence file a review names is not a draft" 0 "$(launch "Execute $T/drafts/lf/review2-ticket.md")"
-printf 'Live text.\n' > "$T/drafts/lf/reply.current.md"
-printf 'Review %s against the live %s, write the verdict to %s/drafts/lf/r3.out; the last message is exactly CLEAN.\n' "$T/drafts/lf/reply.md" "$T/drafts/lf/reply.current.md" "$T" > "$T/drafts/lf/review3-ticket.md"
-check "the live copy of an edited post is not a draft" 0 "$(launch "Execute $T/drafts/lf/review3-ticket.md")"
-printf 'Findings.\n' > "$T/drafts/lf/fresh.report.md"
-printf 'Review %s and write your report to %s, the verdict to %s/drafts/lf/r4.out; the last message is exactly CLEAN.\n' "$T/drafts/lf/reply.md" "$T/drafts/lf/fresh.report.md" "$T" > "$T/drafts/lf/review4-ticket.md"
-check "a reviewer's report in drafts/ is not a draft" 0 "$(launch "Execute $T/drafts/lf/review4-ticket.md")"
+printf 'Ledger.\n' > "$T/drafts/lf/fresh.ledger.md"
+printf 'Review the diff against the ledger %s, write the verdict to %s/drafts/lf/fresh.review.out; the last message is exactly CLEAN.\n' "$T/drafts/lf/fresh.ledger.md" "$T" > "$T/drafts/lf/review2-ticket.md"
+check "a review naming a ledger and an output with no draft behind it launches; the unlinted draft its output is named after is refused" "0 2" "$(launch "Execute $T/drafts/lf/review2-ticket.md") $(printf 'x' >> "$T/drafts/lf/reply.md"; python3 "$R/bin/agent-job" done "$T/drafts/lf/review2-ticket.md" >/dev/null; printf 'Review %s against the ledger %s, write the verdict to %s/drafts/lf/reply.review.out; the last message is exactly CLEAN.\n' "$T/drafts/lf/reply.md" "$T/drafts/lf/fresh.ledger.md" "$T" > "$T/drafts/lf/review3-ticket.md"; launch "Execute $T/drafts/lf/review3-ticket.md")"
 # ---------- pr-steps: a shape record is a real pass ----------
 G="$T/prs"; mkdir -p "$G"; git -C "$G" init -q; git -C "$G" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 prs() { (cd "$G" && bash "$R/bin/pr-steps" "$@" >/dev/null 2>&1; echo $?); }

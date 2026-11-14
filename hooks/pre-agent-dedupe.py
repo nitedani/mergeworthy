@@ -64,15 +64,11 @@ if cid:
 L = launch.parse(ti)
 brief = L.brief  # every rule below reads the brief; the files it only names (project notes, installed skills) are read, so their history SHAs pin nothing
 # A gate review (names a review output `.out` and CLEAN) starts only on drafts that passed post-lint in their current form.
-# The gate names a review's output after its draft (`<name>.review.out` for `<name>.md`): when it does, that draft is
-# the one reviewed, and the files beside it (thread record, brief, parent) are not drafts
+# The gate names a review's output after its draft (`<name>.review.out` for `<name>.md`): only that draft is checked,
+# so the files a brief also names in drafts/ (thread record, ledger, parent, report) are not drafts
 reviewed_drafts = lambda t: {p for o in re.findall(r'(/[^\s`\'"()]*/drafts/[^\s`\'"()]+\.out)\b', t) if os.path.isfile(p := re.sub(r'(\.review)?\.out$', '.md', o))}
-named = reviewed_drafts(brief)
 if not register and re.search(r'\.out\b', brief) and 'CLEAN' in brief:
-    for draft in sorted(named or set(re.findall(r'(/[^\s`\'"()]*/drafts/[^\s`\'"()]+\.md)\b', brief))):
-        base = os.path.basename(draft)
-        if not named and (base.endswith(('.parent.md', '.current.md', '.report.md')) or re.search(r'ticket|brief|prompt|research|context', base) or re.search(r'\.v\d+\.md$', base)) or not os.path.isfile(draft):
-            continue
+    for draft in sorted(reviewed_drafts(brief)):
         try: ok = open(draft + '.lint.sha').read().strip() == hashlib.sha256(open(draft, 'rb').read()).hexdigest()
         except OSError: ok = False
         if not ok:
