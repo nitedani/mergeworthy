@@ -3278,8 +3278,9 @@ printf "${G}Base 70490e389 was not run: no test failed on the head.\n" > "$T/q-b
 printf "${G}Machine note: the three tests that assert /^Tailscale is not installed on this computer/ fail the same way on main 70490e389.\n" > "$T/q-main.log"
 printf "${G}Machine note: the tests asserting \`is not installed\` and 'cannot run' fail without tailscale.\n" > "$T/q-quoted.log"
 printf "${G}typecheck not run: tsc missing\n" > "$T/q-tsc.log"; printf "${G}pnpm test not installed\n" > "$T/q-plain.log"; printf "${G}Base 70490e389 was checked; head typecheck not run: tsc missing\n" > "$T/q-baseclause.log"
+printf "${G}Base 70490e389 was checked, but head typecheck not run: tsc missing\n" > "$T/q-basebut.log"; printf "${G}Base 70490e389 was checked but head typecheck not run\n" > "$T/q-basebare.log"
 printf "${G}The tests' dependencies are not installed in the workers' images.\n" > "$T/q-possessive.log"
-check "pr-steps quick records a log noting the base wasn't run, or quoting a test's message, and refuses a head gate not run in plain words (#180)" "0 0 0 1 1 1 1" "$(for f in base main quoted tsc plain baseclause possessive; do git -C "$TCO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m "q$f"; (cd "$TCO" && bash "$R/bin/pr-steps" quick "$T/q-$f.log" >/dev/null 2>&1; echo $?); done | xargs)"
+check "pr-steps quick records a log noting the base wasn't run, or quoting a test's message, and refuses a head gate not run in plain words (#180)" "0 0 0 1 1 1 1 1 1" "$(for f in base main quoted tsc plain baseclause possessive basebut basebare; do git -C "$TCO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m "q$f"; (cd "$TCO" && bash "$R/bin/pr-steps" quick "$T/q-$f.log" >/dev/null 2>&1; echo $?); done | xargs)"
 TK2="$HOME/.mergeworthy/work/vike-3671"; CK="$TK2/vike"; mkdir -p "$TK2"
 printf 'Tier: S, because one CI fix in one repo\n\n- [ ] Fix CI https://github.com/vikejs/vike/pull/3671\n' > "$TK2/scope.md"
 git init -q -b fix-telefunc "$CK"; git -C "$CK" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; git -C "$CK" remote add upstream https://github.com/vikejs/vike.git
