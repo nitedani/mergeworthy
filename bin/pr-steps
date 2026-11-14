@@ -252,9 +252,10 @@ EOF
     # a gate that can't run here is installed or run another way: CI is never where a change is first checked
     unrun="\\b(not installed|isn't installed|let CI|leave it to CI|CI will (verify|check|tell)|(can't|cannot|can not) (run|install)|(not|wasn't|weren't) run)\\b"
     # read on every line but a suite's test results, whose titles may quote these words: '<title>: <got> (want <want>)', ok/PASS/✓ lines
-    # nor on a note about the base ('base 70490e389 was not run'), nor inside quoted text (`…`, "…", '…', /…/: a test's message)
-    own=$(grep -Ev '\(want .*\)$|^[[:space:]]*(ok|not ok|PASS|FAIL|✓|✔|✗|×)[[:space:]]' "$out" | grep -Eiv '\b(base|main)[[:space:]]+[0-9a-f]{7,}\b' |
-      sed -E "s/([[:alpha:]])'([[:alpha:]])/\1\x01\2/g; s/\`[^\`]*\`|\"[^\"]*\"|'[^']*'//g; s/\x01/'/g; s#(^|[[:space:]])/[^/]+/([[:space:][:punct:]]|\$)#\1\2#g" || true)
+    # nor inside quoted text (`…`, "…", '…', /…/: a test's message), nor in a clause about the base ('base 70490e389 was not run')
+    own=$(grep -Ev '\(want .*\)$|^[[:space:]]*(ok|not ok|PASS|FAIL|✓|✔|✗|×)[[:space:]]' "$out" |
+      sed -E "s/([[:alpha:]])'([[:alpha:]])/\1\x01\2/g; s/\`[^\`]*\`|\"[^\"]*\"|'[^']*'//g; s/\x01/'/g; s#(^|[[:space:]])/[^/]+/([[:space:][:punct:]]|\$)#\1\2#g; s/;[[:space:]]*|\.[[:space:]]+/\n/g" |
+      grep -Eiv '\b(base|main)[[:space:]]+[0-9a-f]{7,}\b' || true)
     ! printf '%s\n' "$own" | grep -Eiq "$unrun" || { echo "$out says a gate didn't run ($(printf '%s\n' "$own" | grep -Eio "$unrun" | head -n1)): install what it needs and run it (code §Gates)" >&2; exit 1; }
     gl=$(grep -E ' -> exit [0-9]+' "$out" || true)
     ! grep -Eq ' -> exit [1-9][0-9]*( \(.*\))?$' "$out" || { echo "$out has a red gate: fix it on this HEAD first" >&2; exit 1; }
