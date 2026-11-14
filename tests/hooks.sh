@@ -3787,6 +3787,8 @@ for i in 1 2 3 4; do echo "p$i" >> "$SP/a.py"; sc -am "p$i"; done
 echo p5 >> "$SP/a.py"; r5=$(bg 'git commit -am p5' "$SP"); sc -am p5
 echo p6 >> "$SP/a.py"; r6=$(bg 'git commit -am p6' "$SP"); n6=$(grep -c 'a.py would get a 6th change.*finality pass' "$T/err")
 check "BLOCK: the 6th change staged by the same command, by a git add before the commit or a path on it" "2 2" "$(bg 'git add a.py && git commit -m p6' "$SP") $(bg 'git commit -m p6 a.py' "$SP")"
+echo t >> "$SP/tests/a_test.py"
+check "a commit of other paths (--only) after the same command's git add of the 6th change passes: the commit leaves it out" 0 "$(bg 'git add a.py && git commit --only -m t tests/a_test.py' "$SP")"
 git -C "$SP" checkout -q a.py; echo t >> "$SP/tests/a_test.py"; git -C "$SP" add tests
 check "a code file's 5th change on the branch passes; its 6th is refused, naming it; a test-only commit passes" "0 2 1 0" "$r5 $r6 $n6 $(bg 'git commit -m t' "$SP")"
 echo p5b >> "$SP/a.py"; git -C "$SP" add a.py

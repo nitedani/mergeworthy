@@ -424,6 +424,16 @@ push_urls = []  # where this command's pushes go (pushed()), for the watcher che
 # what this command does on GitHub (own_actions), recorded once it passed every check: the watcher logs these changes without waking the session
 own = {'PUSHED_HEADS': [], 'CLOSED_THREADS': []}  # the heads it pushes; `owner/repo#N merged|closed`
 
+indexes = {}  # a checkout's index file: its copy for this command, removed when the hook ends
+def index_copy(d):
+    """The copy of checkout d's index that this command's `git add`s stage into and its commits' dry-runs read, so the real index stays as it is."""
+    real = subprocess.run(['git', '-C', d, 'rev-parse', '--path-format=absolute', '--git-path', 'index'], capture_output=True, text=True).stdout.strip()
+    if real not in indexes:
+        import atexit, shutil, tempfile  # here, not at import: they cost every hook call ~2 ms
+        indexes[real] = os.path.join(tempfile.mkdtemp(), 'index'); atexit.register(shutil.rmtree, os.path.dirname(indexes[real]), True)
+        if os.path.exists(real): shutil.copy2(real, indexes[real])  # with its mtime, which git's check of a file changed in the same second reads
+    return indexes[real]
+
 def git_head(d):
     return subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
 
@@ -788,15 +798,14 @@ def check(t, has_cd):
                     block(why + (f" This check runs before the line does, so the line's own `pr-steps {step}` counts only when the commit needs it to pass: "
                                  "join them with `&&`, with no `;`, `||` or pipe on the record" if branch_record(repo, step) in records.values() else ''))
             check_commit_identity(overrides, repo)
-            out = iter(subprocess.run(['git', '-C', repo, 'commit', '--dry-run', '--porcelain', '-z', '--untracked-files=no', *operands(rest)],
-                                      capture_output=True, text=True, stdin=subprocess.DEVNULL).stdout.split('\0'))
-            taken = staged.get(shellcmd._toplevel(repo), set()) if staged else set()
+            out = iter(subprocess.run(['git', '-C', repo, 'commit', '--dry-run', '--porcelain', '-z', '--untracked-files=no', *operands(rest)], capture_output=True,
+                                      text=True, stdin=subprocess.DEVNULL, env={**os.environ, 'GIT_INDEX_FILE': index_copy(repo)}).stdout.split('\0'))
+            taken = set()
             for x in out:  # `XY path`, X the index side the commit takes; a rename's next entry is its old path
-                if x[:1] not in ('', ' ', '?'): taken = taken | {x[3:], *([next(out, '')] if x[0] == 'R' else [])}
+                if x[:1] not in ('', ' ', '?'): taken |= {x[3:], *([next(out, '')] if x[0] == 'R' else [])}
             check_patches(repo, sorted(taken), '--amend' in rest)
-        if sub == 'add' and repo is not None and os.path.isdir(repo):  # what a `git commit` later in this command takes too
-            out = subprocess.run(['git', '-C', repo, 'add', '--dry-run', *operands(rest)], capture_output=True, text=True, stdin=subprocess.DEVNULL).stdout
-            staged.setdefault(shellcmd._toplevel(repo), set()).update(re.findall(r"^(?:add|remove) '(.*)'$", out, re.M))
+        if sub == 'add' and repo is not None and os.path.isdir(repo):  # what a `git commit` later in this command reads
+            subprocess.run(['git', '-C', repo, 'add', *operands(rest)], capture_output=True, stdin=subprocess.DEVNULL, env={**os.environ, 'GIT_INDEX_FILE': index_copy(repo)})
         if sub == 'push' and {'--dry-run', '-n'} & set(rest):
             sub = 'push --dry-run'  # publishes nothing
         if sub == 'push' and (repo is None or not os.path.isdir(repo)) and '--help' not in rest:
@@ -1015,7 +1024,6 @@ if any(prog(x)[:1] and os.path.basename(prog(x)[0]) == 'gate-pass' for x in segs
 clones = {}  # folder: the repo it was cloned from, for a `git clone` in this command
 wrote = set()  # the files the simple commands walked so far write: a compose file among them isn't written yet when its check runs
 records = {}  # each `pr-steps approach|preflight ...` walked so far, by its statement (Seg.stmt): the record it writes
-staged = {}  # checkout: the files each `git add` walked so far stages in it
 for s in where.walk(segs):
     run_dir, has_cd = where.dir, where.moved
     if run_dir is not None and (a := script(prog(s)))[:1] and os.path.basename(a[0]) == 'pr-steps' and a[1:2] in (['approach'], ['preflight']) and a[2:]:
