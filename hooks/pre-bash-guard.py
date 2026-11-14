@@ -694,6 +694,17 @@ def kill_targets(a):
     a = a[2:] if a[:1] in (['-s'], ['-n']) else a[1:] if a[:1] and a[0].startswith('-') and a[0] != '--' else a
     return a[1:] if a[:1] == ['--'] else a
 
+def assignment_words(segs):
+    """The `NAME=value` words of every command, after export, readonly, declare, typeset or local too."""
+    return [x for s in segs for x in itertools.takewhile(lambda x: re.match(r'\w+=', x) and not x.quoted, s[1:] if s[:1] and s[0] in shellcmd.DECLARING else s)]
+
+def started_pids(segs):
+    """The variables holding a PID this command started: assigned `NAME=$!` by an assignment word, and NAME written nowhere else in it."""
+    words = assignment_words(segs)
+    names = [x.split('=', 1)[0] for x in words]
+    others = {n for s in segs for n in s.sets} | {c[2] for s in segs for c in s.scopes}  # read, printf -v, a for loop's variable, ...
+    return set() if any(s.sets_any for s in segs) else {n for x, n in zip(words, names) if x == n + '=$!' and names.count(n) == 1 and n not in others}
+
 def search_writes(segs):
     """Whether a picking search writes its output to a file: by a redirect of its own or a later stage of its pipeline (`| tee f`)."""
     for i, s in enumerate(segs):
@@ -707,8 +718,7 @@ def picked_vars(segs):
     word whose value runs a picking search or names a picked variable (`C=$B`); None when a command may set any or a search writes a file
     (a redirect, or a tee down its pipeline), which a later read brings back."""
     if any(s.sets_any for s in segs) or search_writes(segs): return None
-    words = [x for s in segs for x in itertools.takewhile(lambda x: re.match(r'\w+=', x) and not x.quoted, s[1:] if s[:1] and s[0] in shellcmd.DECLARING else s)]
-    assigned = [(n, v, set(re.findall(r'\$\{?(\w+)', v))) for n, v in (x.split('=', 1) for x in words)]
+    assigned = [(n, v, set(re.findall(r'\$\{?(\w+)', v))) for n, v in (x.split('=', 1) for x in assignment_words(segs))]
     picked = {n for s in segs for n in s.sets} | {c[2] for s in segs for c in s.scopes} | {n for n, v, _ in assigned if any(map(picks, segments(v)))}
     while grown := {n for n, _, refs in assigned if refs & picked} - picked:
         picked |= grown
@@ -720,14 +730,14 @@ def check_processes(segs):
     if any(s.loop and picks(s) for s in segs) or err and searched and re.search(r'\b(while|until)\b', cmd):  # rough segments know no loop
         block("a loop on a process search (pgrep, pidof, ps, /proc/*) may never end: the search matches this command itself and other sessions' processes. "
               "Wait on the PID you started: `<cmd> & pid=$!; wait $pid`, or `while kill -0 $pid; do sleep 5; done` in the background, or its port. One search, to look, passes")
-    picked = picked_vars(segs)
+    picked, started = picked_vars(segs), started_pids(segs)
     for s in segs:
         t = prog(s)
         p = os.path.basename(t[0]) if t else ''
         targets = kill_targets(operands(t[1:])) if p == 'kill' else []
         if p in ('pkill', 'killall') and picks(t) or '-1' in targets or searched and (
                 p == 'kill' and 'xargs' in map(os.path.basename, s[:len(s) - len(t)])
-                or any(not re.fullmatch(r'-?(\d+|%.*|\$!)', x) and not ((m := re.fullmatch(r'-?\$\{?([A-Za-z_]\w*)\}?', x)) and picked is not None and m[1] not in picked) for x in targets)
+                or any(not re.fullmatch(r'-?(\d+|%.*|\$!)', x) and not ((m := re.fullmatch(r'-?\$\{?([A-Za-z_]\w*)\}?', x)) and (m[1] in started or picked is not None and m[1] not in picked)) for x in targets)
                 or re.fullmatch(r'[gmn]?awk|perl|python[\d.]*|nodejs|node|ruby|lua|php|deno|bun', p) and any(re.search(r'\bkill\b', x) for x in t[1:])):  # a program text can signal; a word kill elsewhere only looks
             block("this signals processes a search picked (pkill, killall, or a kill of PIDs from pgrep, pidof, ps or /proc in this command, or -1, every process): they can be other sessions'. "
                   "Kill the PID you started (`<cmd> & pid=$!` … `kill $pid`), its children (`pkill -P $pid`), or a PID you looked up and checked in an earlier command (`kill 1234`)")
