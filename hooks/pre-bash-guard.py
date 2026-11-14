@@ -451,7 +451,7 @@ def check_patches(d, pending=None, amend=False):
     count, reviewed = {}, False
     commits = g('rev-list', '--reverse', '--first-parent', 'HEAD', '--not', base).split()
     for c in commits:
-        files = g('diff-tree', '--no-commit-id', '--name-only', '-r', c).split()  # none for a merge commit
+        files = [f for f in g('diff-tree', '--no-commit-id', '--name-only', '-r', '-z', c).split('\0') if f]  # none for a merge commit
         if files and not AGENT_TRAILER.search(g('log', '-1', '--format=%B', c)): files = []
         if amend and c == commits[-1]: pending, files = sorted(set(pending or []) | set(files)), []  # the amended commit is the pending one
         for f in files if reviewed else []:
