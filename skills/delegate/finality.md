@@ -8,7 +8,6 @@ The user's prompt, verbatim; `finality`'s steps say which part each agent gets. 
 - **§B** is PHASE B; **§B½** is PHASE B½; Phase C is the implementer's (`delegate/implementer.md`).
 - **§Closure** is the Owner-Safe closure paragraph at the end. *Every SETTLED decision propagated to its named surfaces*: every decision in `<work folder>/decisions/*.md` reached every place that describes it (code, tests, types, docs, PR bodies). *Owning lanes, mutations, reference captures, clean-tree scope*: the lanes that own the changed code (`code §Gates`), mutation probes (`code §Tests`), before/after screenshots, and a `git status` with only in-scope changes, each observed on the head.
 - Where PHASE C cites the old core skill's task and authority rules, read `code §Owner code and authority`.
-- *The session's model tier* is the main session's model class (`delegate §Model class`).
 - *Fresh Guardian evidence* is Loop B's latest shape report (`converge` step 2).
 - The design doc it ends with is posted through `post` (a gist counts) unless the repo keeps design docs.
 
@@ -51,11 +50,11 @@ APIs, runtimes, networks). No current design, no file or function names, no proj
 hint of how it is solved today: those anchor the branches on what exists. Pick 6 to 9 frames
 from that clean problem (the ways it fails, the people it serves, fields that solved its like),
 never from the current solution and never a fixed list. The orchestrator starts 3 isolated branch
-agents on the session’s model tier, each with the clean problem and 2 or 3 of those frames,
+agents, each with the clean problem and 2 or 3 of those frames,
 no frame given twice. Each first writes its 3 obvious
 designs, marked obvious, then 6 more beyond them, with no evaluation; no branch sees another's
 output. CONVERGE: only now does the graph come in: the orchestrator gives the assembled graph
-AND every branch’s lists to ONE converging agent on the session’s model tier. The obvious
+AND every branch’s lists to ONE converging agent. The obvious
 designs are its baseline; it ranks every
 design on merit only (correctness, cost on the fast path, behavior at the edges, simplicity;
 novelty earns nothing), flags the traps, and a non-obvious design wins only by beating the best
