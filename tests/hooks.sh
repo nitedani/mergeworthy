@@ -3791,6 +3791,9 @@ check "GitLab, BLOCK: an API PUT whose --input JSON drops the Draft prefix or se
 gll false dev e1e1e1e1 b.py false
 check "GitLab, BLOCK: a title update, --ready or an API PUT that also retargets the MR checks the new target branch, naming the MR there; staying on its own passes" "2 1 2 2 1 0" \
   "$(glb 'glab mr update 5 --title Ready --target-branch dev') $(grep -c 'gitlab.com/me/app!8, also yours and ready, changes b.py' "$T/err") $(glb 'glab mr update 5 --ready --target-branch dev') $(glb "$GPUT -f title=Ready -f target_branch=dev") $(grep -c 'gitlab.com/me/app!8, also yours and ready' "$T/err") $(glb 'glab mr update 5 --title Ready')"
+echo '{"head_pipeline":null,"draft":false}' > "$FX/gl_projects_me_2Fapp_merge_requests_5"
+check "GitLab, BLOCK: retargeting a ready MR onto an overlapping ready MR's branch (glab mr update --target-branch, an API PUT of target_branch), naming it; onto its own branch, or a draft MR's retarget, passes" "2 1 2 1 0 0 0" \
+  "$(glb 'glab mr update 5 --target-branch dev') $(grep -c 'gitlab.com/me/app!8, also yours and ready, changes b.py' "$T/err") $(glb "$GPUT -f target_branch=dev") $(grep -c 'gitlab.com/me/app!8, also yours and ready' "$T/err") $(glb 'glab mr update 5 --target-branch main') $(echo '{"head_pipeline":null,"draft":true}' > "$FX/gl_projects_me_2Fapp_merge_requests_5"; glb 'glab mr update 5 --target-branch dev') $(glb "$GPUT -f target_branch=dev")"
 echo '{"head_pipeline":null}' > "$FX/gl_projects_me_2Fapp_merge_requests_5"
 rm "$GLL" "$FX"/gl_projects_me_2Fapp_merge_requests_[58]_changes
 # a push is held to the approach of each branch it publishes, whichever is checked out

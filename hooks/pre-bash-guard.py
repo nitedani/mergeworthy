@@ -104,17 +104,18 @@ def goes_ready(p, a, env, run_dir):
     if p == 'glab' and a[:2] == ['mr', 'update'] and '--draft' not in a:
         ref = re.sub(r'^\S*/merge_requests/(\d+)\S*$', r'\1', a[2]) if a[2:3] and not a[2].startswith('-') else ''
         branch = None if ref.isdigit() else ref or subprocess.run(['git', '-C', known(run_dir), 'symbolic-ref', '--short', '-q', 'HEAD'], capture_output=True, text=True).stdout.strip()
-        title, repo = opt(a[2:], ['--title', '-t']), gitlab_repo(a[2:], run_dir)
-        if {'--ready', '-r'} & set(a) or title and not DRAFT_TITLE.match(title[-1]) and repo and mr_draft(repo, ref if ref.isdigit() else None, branch):
-            return repo, ref if ref.isdigit() else None, (opt(a[2:], ['--target-branch']) or [None])[-1], branch
+        iid, repo = ref if ref.isdigit() else None, gitlab_repo(a[2:], run_dir)
+        base, title = (opt(a[2:], ['--target-branch']) or [None])[-1], (opt(a[2:], ['--title', '-t']) or [None])[-1]
+        if {'--ready', '-r'} & set(a) or repo and mr_ready_on(repo, iid, branch, base, title):
+            return repo, iid, base, branch
         return None
     if p == 'glab' and a[:1] == ['api'] and (call := api_call(a[1:]))[0] == 'PUT' and \
             (m := re.fullmatch(r'(.*/merge_requests)/(\d+)(\?.*)?', call[1])) and (opens := api_opens(m[1], a[1:], env, run_dir)):
         f = {**api_input(call[3]), **dict(x.split('=', 1) for x in call[2] if '=' in x)}
-        if not (str(f.get('draft')).lower() == 'false' or isinstance(f.get('title'), str) and not DRAFT_TITLE.match(f['title'])): return None
+        if not {'title', 'draft', 'target_branch'} & set(f): return None
         if not opens[0]:
-            block("can't tell which project this `glab api` call acts on (a numeric id), so whether it takes an MR out of draft can't be checked: name the project by its path")
-        return (opens[0], m[2], f.get('target_branch'), None) if mr_draft(opens[0], m[2], None) else None
+            block("can't tell which project this `glab api` call acts on (a numeric id), so whether it leaves an MR ready on a branch can't be checked: name the project by its path")
+        return (opens[0], m[2], f.get('target_branch'), None) if mr_ready_on(opens[0], m[2], None, f.get('target_branch'), f.get('title'), f.get('draft')) else None
     return None
 
 def api_input(files):
@@ -129,6 +130,13 @@ def api_input(files):
             block(f"{x} isn't a JSON object this hook can read ({body!r:.80}), so whether this `glab api` call takes an MR out of draft can't be checked")
         out.update(body)
     return out
+
+def mr_ready_on(repo, iid, branch, base, title=None, draft=None):
+    """Whether an update setting these values (None: unchanged) leaves the MR ready where it was a draft, or moves a ready MR to base."""
+    if title is None and draft is None and not base: return False
+    now = mr_draft(repo, iid, branch)
+    after = str(draft).lower() == 'false' if draft is not None else not DRAFT_TITLE.match(title) if isinstance(title, str) else not now
+    return after and (now or bool(base))
 
 def mr_draft(repo, iid, branch):
     """Whether the MR iid (else the open one from branch) of repo (<host>/<path>) is a draft now; one glab can't read blocks."""
