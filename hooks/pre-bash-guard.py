@@ -31,10 +31,10 @@ def missing_steps(d):
         missing.insert(0, 'approach')
     return head, missing
 
-def check_union(d, repo, num, base=None, branch=None):
+def check_union(d, repo, num, base=None, branch=None, head=None):
     """Two ready PRs (MRs) of ours that change one file can each pass alone and break their base merged (#188): each other open, non-draft
     one of the account on this one's base (PR num's, or the branch's, or the one a create opens on base) sharing a file needs a `pr-steps union`
-    record on HEAD naming its head. repo: owner/repo on GitHub, <host>/<path> on GitLab. A file list cut short, or a new one's files git can't
+    record on head (a push's pushed commit, else HEAD) naming its head. repo: owner/repo on GitHub, <host>/<path> on GitLab. A file list cut short, or a new one's files git can't
     tell, shares every file; gh or glab not answering blocks."""
     lab = '.' in repo.split('/')[0]
     def ask(*args):
@@ -58,7 +58,7 @@ def check_union(d, repo, num, base=None, branch=None):
     if (num or branch) and this is None: return  # not ours
     if not (others := [p for p in prs if p is not this and not p['isDraft']]): return
     base = base or this['baseRefName'] if this else base or ((api('') or {}).get('default_branch') if lab else (ask('gh', 'repo', 'view', repo, '--json', 'defaultBranchRef') or {}).get('defaultBranchRef', {}).get('name')) or retry('the default branch')
-    head = git_head(d)
+    head = head or git_head(d)
     done = {s for l in (open(RECORDS + head) if os.path.exists(RECORDS + head) else []) if l.split()[:1] == ['union'] for s in l.split()[3:]}  # pairs already checked
     if not (others := [p for p in others if p['baseRefName'] == base and p['headRefOid'] not in done]): return
     def paths(p):  # None: cut short
@@ -68,7 +68,7 @@ def check_union(d, repo, num, base=None, branch=None):
         return None if c.get('overflow') else {f for x in c.get('changes') or [] for f in (x['old_path'], x['new_path'])}
     git = lambda *a: subprocess.run(['git', '-C', d, *a], capture_output=True, text=True).stdout.strip()
     ref = next(iter(git('for-each-ref', '--format=%(refname)', f'refs/remotes/*/{base}').split()), '')
-    local = set(git('diff', '--name-only', f'{ref}...HEAD').splitlines()) if ref else None  # with what this head adds to it
+    local = set(git('diff', '--name-only', f'{ref}...{head}').splitlines()) if ref else None  # with what this head adds to it
     listed = paths(this) if this else set()
     mine = None if listed is None or not this and local is None else listed | (local or set())
     for p in others:
@@ -637,7 +637,7 @@ def pushed(git_dir, opts, env, rest):
     return urls, out
 
 def collaboration(d, url, heads):
-    """([why this push is collaboration work], [{url, isDraft} of each open PR or MR it updates]): it updates an open PR's (MR's)
+    """([why this push is collaboration work], [{url, isDraft, sha: the commit pushed to it} of each open PR or MR it updates]): it updates an open PR's (MR's)
     head, or goes to a repo the pushing account doesn't own, or to a host that is neither GitHub nor GitLab. A push of its own (no
     PR, its own repo) or to a gist has no why. When GitHub or GitLab can't answer, a push to the account's own repo from a checkout of no one
     else's repo is its own; anything else blocks."""
@@ -664,7 +664,7 @@ def collaboration(d, url, heads):
     else:  # a group's project too: whether the push updates an MR decides its approach check
         import urllib.parse
         answers = [ask(['glab', 'api', '--hostname', host, f"projects/{urllib.parse.quote(repo, safe='')}/merge_requests?state=opened&source_branch={urllib.parse.quote(b)}"]) for _, b in heads]
-        data = [x for a, _ in answers for x in a] if all(isinstance(a, list) for a, _ in answers) else None
+        data = [{**x, 'sha': sha} for (a, _), (sha, _) in zip(answers, heads) for x in a if isinstance(x, dict)] if all(isinstance(a, list) for a, _ in answers) else None
         err = next((e for a, e in answers if not isinstance(a, list)), '')
     if data is None:
         others = {o[1].split('/')[0] for u in set(subprocess.run(['git', '-C', d, 'remote', '-v'], capture_output=True, text=True).stdout.split()[1::3])
@@ -672,9 +672,9 @@ def collaboration(d, url, heads):
         if login and login == owner and not others: return [], []
         block(f"{'gh' if hub else 'glab'} couldn't tell whether this push to {repo} updates a {'PR' if hub else 'MR'} ({err[:160]}), so its push gates can't be checked: retry once it answers")
     if not hub:
-        mrs = [{'url': x.get('web_url'), 'isDraft': bool(x.get('draft'))} for x in data if isinstance(x, dict)]
+        mrs = [{'url': x.get('web_url'), 'isDraft': bool(x.get('draft')), 'sha': x['sha']} for x in data]
         return [f"it updates {', '.join(p['url'] for p in mrs)}"] * bool(mrs) + [f"{repo} isn't {login}'s"] * bool(login and owner != login), mrs
-    prs = [p for i in range(len(heads)) for p in ((data['repository'].get(f'b{i}') or {}).get('associatedPullRequests') or {}).get('nodes') or []]
+    prs = [{**p, 'sha': heads[i][0]} for i in range(len(heads)) for p in ((data['repository'].get(f'b{i}') or {}).get('associatedPullRequests') or {}).get('nodes') or []]
     why = [f"it updates {', '.join(p['url'] for p in prs)}"] * bool(prs) + \
           [f"{repo} isn't {data['viewer']['login']}'s"] * (data['repository']['owner']['login'] != data['viewer']['login'])
     return why, prs
@@ -955,7 +955,7 @@ def check(t, has_cd):
                     block(f"this branch's PR is out of draft and HEAD {head[:10]} has no pr-steps {', '.join(missing)} record (approach: pull-request step 5, once per branch): run converge's pipeline on it first (each step ends with its `pr-steps <step> <output>`), or `gh pr ready --undo` while it converges")
                 for p in prs:
                     if not p['isDraft'] and not push_before_gates(p['url']) and (m := re.match(r'https://(?:github\.com/(.+)/pull|([^/]+/.+?)/-/merge_requests)/(\d+)$', p['url'] or '')):
-                        check_union(repo, m[1] or m[2], m[3])
+                        check_union(repo, m[1] or m[2], m[3], head=p['sha'] or block(f"this push's commit for {p['url']} can't be told, so its union record can't be checked: push a branch or a sha written out"))
             own['PUSHED_HEADS'] += [sha for sha, _, _ in heads if sha]
     if p in ('curl', 'wget', 'http', 'https', 'xh') and any(re.search(r'\bapi\.github\.com\b|github\.com/api/', x) for x in a) and \
             any(re.fullmatch(r'-X|--request|-d|--data[\w-]*|-F|--form|--json|-T|--upload-file|--method|POST|PATCH|PUT|DELETE|-\w*[dXFT]', x) or re.match(r'--(?:request|method)=', x) for x in a):
