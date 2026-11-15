@@ -190,7 +190,7 @@ claim_of = lambda l: re.split(r'\s[—–]\s', bare(l), maxsplit=1)[0].strip()
 # 'None.', 'Nothing was dropped.': an unbulleted line whose first sentence is one of these says the list is empty
 empty = lambda l: not item.match(l) and \
     re.fullmatch(r'none|nothing|nothing( was)? dropped|no candidates? dropped|no candidates were dropped', re.split(r'\.(?:\s|$)', bare(l), maxsplit=1)[0].strip())
-sec = None
+sec, items = None, []
 for i, l in enumerate(lines):
     if l.startswith('#'):
         sec = i if kind[i] else None
@@ -198,14 +198,20 @@ for i, l in enumerate(lines):
     # a candidate: an outermost list item, or an unbulleted '<candidate>: <why>' line; under untested claims, any unbulleted line
     m, claims = item.match(l), kind.get(sec) == 'claims'
     if sec is not None and l.strip() not in ('', 'NO BUGS', 'NO LOOP B COMMITS') and (len(m[1]) == outer[sec] if m else claims or re.match(r'[^:]+:\s', plain(l))) and not empty(l) and not l.startswith('RULED:'):
-        name = (claim_of if claims else name_of)(l)
-        # 'RULED: <name>:' exactly, so a ruling for 'focus stays after navigation' never rules 'focus stays'
-        rulings = [r for r in lines[i + 1:] if name and r.startswith('RULED:') and re.match(r'ruled:\s*' + re.escape(name) + r'\s*:', plain(r))]
-        if not rulings:
-            print(l)
-        elif all(re.search(r'not a regression|same as (on )?(main|master)|(main|master) does the same|pre-?existing|(also|too) on (main|master)|on (main|master) (too|as well)|masteren is', r.split(name, 1)[-1], re.I) and not re.search(r'outside the (files|change|code)|earn every line|no realistic usage|contrived|staged race', r, re.I)
-                 and not re.match(r'\s*(a bug|bug|fix(ed)?\b)', r.split(name, 1)[-1].lstrip(': '), re.I) for r in map(plain, rulings)):
-            print(l + "  <- 'on main too' is not a ruling: start it 'a bug', or say 'outside the code this change edits', or why no user meets it (code Earn every line, no realistic usage)")
+        items.append((i, l, (claim_of if claims else name_of)(l)))
+# a RULED line rules one earlier item: of those whose 'RULED: <name>:' it starts with, the longest name (one not yet ruled first),
+# so 'RULED: focus stays: after navigation: …' rules that claim and never 'focus stays' too
+rulings = {i: [] for i, _, _ in items}
+for j, r in enumerate(lines):
+    if not r.startswith('RULED:'): continue
+    hits = [(len(n), -len(rulings[i]), i) for i, _, n in items if i < j and n and re.match(r'ruled:\s*' + re.escape(n) + r'\s*:', plain(r))]
+    if hits: rulings[max(hits)[2]].append(plain(r))
+for i, l, name in items:
+    if not rulings[i]:
+        print(l)
+    elif all(re.search(r'not a regression|same as (on )?(main|master)|(main|master) does the same|pre-?existing|(also|too) on (main|master)|on (main|master) (too|as well)|masteren is', r.split(name, 1)[-1], re.I) and not re.search(r'outside the (files|change|code)|earn every line|no realistic usage|contrived|staged race', r, re.I)
+             and not re.match(r'\s*(a bug|bug|fix(ed)?\b)', r.split(name, 1)[-1].lstrip(': '), re.I) for r in rulings[i]):
+        print(l + "  <- 'on main too' is not a ruling: start it 'a bug', or say 'outside the code this change edits', or why no user meets it (code Earn every line, no realistic usage)")
 EOF
 )
     [ -z "$unruled" ] || { printf '%s\n' "every dropped candidate and untested claim goes to the main session, which rules on it in a later line 'RULED: <candidate>: <ruling>' (mergeworthy delegate/verifier.md, What counts):" "$unruled" >&2; exit 1; }
