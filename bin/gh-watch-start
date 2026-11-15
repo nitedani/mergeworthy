@@ -69,12 +69,12 @@ rm -f "$dir/eyes"  # the maintainer list of an older start: maintainers are read
 # Supervision, so the watcher restarts on failure and after a reboot, with no session alive:
 # systemd user service (Linux), launchd agent (macOS), else a detached daemon that cron revives.
 printf 'PATH=%s\nHOME=%s\n' "$PATH" "$HOME" > "$dir/env"
+rm -f "$dir/retired"  # a re-armed dir is not finished, and its watcher stops on finding the file: disk-sweep's w-done deletes only a dir its watcher retired
 if [ -n "$round" ]; then
   n=$(wc -l < "$dir/events.log")
   # passed: for a day stop-lint holds the session it names to the dir's owed replies; no hook counts the dir as watched
   rc=0; (cd "$dir" && python3 -u gh-watch.py --round >> events.log 2>&1) || rc=$?
   if [ "$rc" = 0 ]; then echo "${CLAUDE_CODE_SESSION_ID:-}" > "$dir/passed"; else echo "WATCH ERROR gh-watch.py --round exited $rc" >> "$dir/events.log"; fi
-  rm -f "$dir/retired"
   echo "round: $(( $(wc -l < "$dir/events.log") - n )) new lines in $dir/events.log; read it past events.cursor (mergeworthy:reply)"
   exit "$rc"
 fi
@@ -146,7 +146,6 @@ else
   echo "watcher: daemon PID $(cat "$dir/gh-watch.pid"), revived by cron"
 fi
 rm -f "$dir/agent" "$dir/wake.pid" "$dir/wake.launch"  # from the watcher that started a headless agent per event
-rm -f "$dir/retired"  # a re-armed dir is not finished: disk-sweep's w-done deletes only a dir its watcher retired
 events="'###'*|'WATCH ERROR'*"  # the lines that start an event
 if python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import steward; sys.exit(not steward.quiet(sys.argv[2]))' "$root/hooks" "$dir"; then
   events="'### NEW ISSUE nitedani/mergeworthy#'*"  # the one event a steward's dir delivers (gh-watch.py's WAKES)
