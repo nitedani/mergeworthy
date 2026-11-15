@@ -787,9 +787,10 @@ def wake_thread():
     queued, nothing is sent: t3-wake.held names that run and how far the events it will read go; once it starts, the cursor moves there,
     and if it ends without starting, the next pass sends them (False until then: the thread hasn't got them). While the user has the
     thread stopped (steward.stopped), nothing is sent, the cursor stays and the watcher doesn't retire (False): once they write in it
-    again, the next pass sends every event since in one wake."""
+    again, the next pass sends every event since in one wake. A FOLLOW-UP or MAINTAINER REVIEW still unsorted 30 minutes after its time
+    (steward.unsorted) goes again while the thread is idle, an hour after the last such send (t3-wake.resent), the gap doubling to a day."""
     tid, _, t3 = first_line(os.path.join(HERE, 't3-thread')).partition('\n')
-    cursor, held = os.path.join(HERE, 't3-wake.cursor'), os.path.join(HERE, 't3-wake.held')
+    cursor, held, resent = (os.path.join(HERE, f't3-wake.{x}') for x in ('cursor', 'held', 'resent'))
     if not tid:
         return True
     if os.path.exists(t3):
@@ -814,12 +815,19 @@ def wake_thread():
             start, data = unsent()
     lines = [l for l in data.decode(errors='replace').splitlines() if (WAKES if steward.quiet(HERE) else EVENT).match(l)]
     head = f"Watcher events in {HERE}/events.log (mergeworthy:reply):\n"
+    late = [] if steward.quiet(HERE) else [l for l, _, at in steward.unsorted(HERE, 1800) if time.time() - at < FOLLOWUP_DAYS * 86400]
+    t, _, n = first_line(resent).partition(' ')
+    if not late:
+        with contextlib.suppress(FileNotFoundError): os.remove(resent)
+    elif t and time.time() - int(t) < min(3600 << int(n) - 1, 86400) or steward.active(tid):  # a thread at work meets stop-lint at its stop
+        late = []
+    late = [l for l in late if l not in lines]
     if lines and (run := steward.queued(tid, head)):  # that wake reads every event past the session's cursor when it runs
         return hold(run, start + len(data))
-    if lines and steward.stopped(tid):  # the user stopped the thread: its events wait in events.log, sent once they write in it again
+    if (lines or late) and steward.stopped(tid):  # the user stopped the thread: its events wait in events.log, sent once they write in it again
         return False
-    if lines:
-        msg = head + '\n'.join(lines)
+    if lines or late:
+        msg = head + '\n'.join(lines + (['Unsorted after 30 minutes (mergeworthy:rules step 6):'] + late if late else []))
         try:
             r = subprocess.run([t3, 'thread', 'send', tid, '-'], input=msg, capture_output=True, text=True, timeout=60)
             err = r.returncode and (r.stderr.strip().splitlines() or [f"exit {r.returncode}"])[-1]
@@ -840,6 +848,10 @@ def wake_thread():
             fail(f"t3 thread send {tid}", err[:200])
             return False
         worked(f"t3 thread send {tid}")
+        if late:
+            with open(resent + '.tmp', 'w') as f:
+                f.write(f"{int(time.time())} {int(n or 0) + 1}\n")
+            os.replace(resent + '.tmp', resent)
     if first_line(cursor) != str(start + len(data)):
         with open(cursor + '.tmp', 'w') as f:
             f.write(f"{start + len(data)}\n")
@@ -1998,11 +2010,13 @@ def retire_if_done():
     only for an hour after it was written, for the thread about to join, an `owner/repo all` line always) has nothing left to watch:
     it writes the time to HERE/retired and disables its service, so it doesn't come back after a reboot, or stops its daemon (tick() does
     the same for a HERE/retired that someone else wrote). A reply
-    still owed in replies-owed.md keeps it: stop-lint holds a session's turn only for a live watcher's owed lines. So does an open agent
+    still owed in replies-owed.md keeps it: stop-lint holds a session's turn only for a live watcher's owed lines. So does an unsorted
+    FOLLOW-UP or MAINTAINER REVIEW, for FOLLOWUP_DAYS, which wake_thread sends again. So does an open agent
     job whose brief is in its work folder: its AGENT DONE comes here (agent_jobs_pass)."""
     repos, wf = repo_lines(HERE), work_folder.task_of(HERE)
     if (any(repos.values()) or repos and time.time() - os.path.getmtime(os.path.join(HERE, 'repos.txt')) < 3600
             or work_folder.has_open_line(os.path.join(HERE, 'replies-owed.md'), 'done:')
+            or any(time.time() - at < FOLLOWUP_DAYS * 86400 for *_, at in steward.unsorted(HERE))
             or wf and any(job_folder(j) == wf for _, j in agent_jobs.jobs())):
         return
     threads, gl = read_threads(), gl_watch.threads(THREADS)
