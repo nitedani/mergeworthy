@@ -43,9 +43,9 @@ Later work on the same thing (confirming fixes, re-rating) continues that agent.
 
 ### Model class
 
-The classes are model families, never versions: the strongest class is the newest Opus your harness offers, and the smallest class that has an effort setting is the newest Haiku. The main session runs on the strongest class: it plans, briefs, decides, spot-checks results and approves every word to a maintainer. Never a model the user excluded, nor a model version in a prompt, skill or memory.
-- **Root causes, choosing among approaches** (`pull-request` step 5) **and authors** (code, docs, PR bodies, replies, designs): the main session's class at high effort. **Audits and exploration:** at medium.
-- **The smallest class with an effort setting, at high effort,** only for work where nothing it writes ships: running gates, tests and a reproduction from a recipe, log mining, data processing and bookkeeping.
+The classes are model families, never versions: the largest is the newest Fable your harness offers, else the strongest; the strongest is the newest Opus, and the smallest with an effort setting is the newest Haiku. The main session runs on the strongest class: it plans, briefs, decides, spot-checks results and approves every word to a maintainer. Never a model the user excluded, an effort above xhigh, nor a model version in a prompt, skill or memory.
+- **Choosing among options** (`pull-request` step 5's rating, `finality` step 3's converging agent): the largest class; **root causes and authors** (code, docs, PR bodies, replies, designs): the main session's; both at high effort. **Audits and exploration:** at medium.
+- **The smallest class with an effort setting, at high effort,** only for work where nothing it writes ships: `finality` step 3's branch agents, running gates, tests and a reproduction from a recipe, log mining, data processing and bookkeeping.
 
 ### Reviewers
 
