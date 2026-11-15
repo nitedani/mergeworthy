@@ -111,25 +111,15 @@ def goes_ready(p, a, env, run_dir):
         return None
     if p == 'glab' and a[:1] == ['api'] and (call := api_call(a[1:]))[0] == 'PUT' and \
             (m := re.fullmatch(r'(.*/merge_requests)/(\d+)(\?.*)?', call[1])) and (opens := api_opens(m[1], a[1:], env, run_dir)):
-        f = {**api_input(call[3]), **dict(x.split('=', 1) for x in call[2] if '=' in x)}
+        if call[3] or any(x.partition('=')[2].startswith('@') for x in call[2]):
+            block("this `glab api` PUT to an MR takes fields from a file or stdin (--input, a value starting with @), so whether it leaves the MR ready on a branch "
+                  "can't be checked: pass them literally with -f <field>=<value>, or use `glab mr update`")
+        f = dict(x.split('=', 1) for x in call[2] if '=' in x)
         if not {'title', 'draft', 'target_branch'} & set(f): return None
         if not opens[0]:
             block("can't tell which project this `glab api` call acts on (a numeric id), so whether it leaves an MR ready on a branch can't be checked: name the project by its path")
         return (opens[0], m[2], f.get('target_branch'), None) if mr_ready_on(opens[0], m[2], None, f.get('target_branch'), f.get('title'), f.get('draft')) else None
     return None
-
-def api_input(files):
-    """The fields of a `glab api --input` JSON body; one that can't be read as a JSON object, or stdin, blocks."""
-    out = {}
-    for x in files:
-        if x == '-':
-            block("this `glab api` call reads its body from stdin, so whether it takes an MR out of draft can't be checked: pass it with --input <file>")
-        try: body = json.load(open(os.path.join(cwd, os.path.expanduser(where.expand(x)))))
-        except (OSError, ValueError) as e: body = e
-        if not isinstance(body, dict):
-            block(f"{x} isn't a JSON object this hook can read ({body!r:.80}), so whether this `glab api` call takes an MR out of draft can't be checked")
-        out.update(body)
-    return out
 
 def mr_ready_on(repo, iid, branch, base, title=None, draft=None):
     """Whether an update setting these values (None: unchanged) leaves the MR ready where it was a draft, or moves a ready MR to base."""
