@@ -3338,6 +3338,11 @@ check "BLOCK: gh pr ready, a push to a ready PR and a ready gh pr create while a
   "$(bg "$UR" "$CK") $(grep -c 'vikejs/vike#3680, also yours and ready, changes b.ts' "$T/err") $(bg "$UP" "$CK") $(bg "gh pr create -R vikejs/vike --base main --title \"\$(cat $T/title.md)\" --body-file $(gated ub "It breaks.")" "$CK") $(grep -c ', also yours and ready, changes files listed only in part' "$T/err") $(grep -c 'without the base: `git fetch <the base repo.s remote> main`' "$T/err")"
 echo "union $T/u.log 2026-11-15T00:00:00Z b0b0b0b0" >> "$HOME/.claude/pr-steps/$CH"
 check "a union record on this head naming the other's head passes them; a new head on the other PR blocks again" "0 0 2" "$(bg "$UR" "$CK") $(bg "$UP" "$CK") $(ul false main c1c1c1c1 b.ts 1; bg "$UR" "$CK")"
+ul false main c1c1c1c1 b.ts 1; sed -i 's/"baseRefName":"main"/"baseRefName":"dev"/' "$FX/pr_list_vikejs_vike"; sed -i 's/"isDraft":false,"baseRefName":"dev","headRefOid":"c1c1c1c1"/"isDraft":false,"baseRefName":"main","headRefOid":"c1c1c1c1"/' "$FX/pr_list_vikejs_vike"
+echo '{"draft":false}' > "$FX/repos_vikejs_vike_pulls_3675"
+check "BLOCK: gh pr edit --base retargeting a ready PR onto the base of an overlapping ready one, naming it; onto its own base, or a draft PR, passes" "2 1 0 0" \
+  "$(bg 'gh pr edit 3675 -R vikejs/vike --base main' "$CK") $(grep -c 'vikejs/vike#3680, also yours and ready, changes b.ts' "$T/err") $(bg 'gh pr edit 3675 -R vikejs/vike --base dev' "$CK") $(echo '{"draft":true}' > "$FX/repos_vikejs_vike_pulls_3675"; bg 'gh pr edit 3675 -R vikejs/vike --base main' "$CK")"
+rm "$FX/repos_vikejs_vike_pulls_3675"
 check "no shared file, the other a draft or on another base: passes; the list is of our own open PRs" "0 0 0 1" \
   "$(ul false main c1c1c1c1 c.ts 1; bg "$UR" "$CK") $(ul true main c1c1c1c1 b.ts 1; bg "$UR" "$CK") $(ul false dev c1c1c1c1 b.ts 1; GH_STUB_ARGS="$T/ul.args" bg "$UR" "$CK") $(grep -c 'pr list -R vikejs/vike --author @me --state open' "$T/ul.args")"
 check "BLOCK: a file list GitHub cut counts as shared; gh failing to list blocks, asking to retry" "2 2 1" "$(ul false main c1c1c1c1 z.ts 5; bg "$UR" "$CK") $(GH_STUB_403=1 bg "$UR" "$CK") $(grep -c 'retry once gh answers' "$T/err")"
@@ -3773,6 +3778,10 @@ check "GitLab, BLOCK: an overflowing change list counts as shared; glab failing 
 mv "$GLL.off" "$GLL"; gll false main e1e1e1e1 b.py false
 echo '[{"web_url":"https://gitlab.com/me/app/-/merge_requests/5","draft":true}]' > "$FX/gl_projects_me_2Fapp_merge_requests_state_opened_source_branch_mr-b"
 check "GitLab: a push to a draft MR passes beside an overlapping ready one" 0 "$(glb 'git push origin HEAD:mr-b')"
+echo '{"head_pipeline":null,"draft":true}' > "$FX/gl_projects_me_2Fapp_merge_requests_5"
+check "GitLab, BLOCK: a title update dropping the Draft prefix (glab mr update --title, glab api PUT), naming the MR; a numeric project id, which can't be told; a Draft title, or a retitle of a ready MR, passes" "2 1 2 2 1 0 0" \
+  "$(glb 'glab mr update 5 --title Ready') $(grep -c 'gitlab.com/me/app!8, also yours and ready' "$T/err") $(glb 'glab api projects/me%2Fapp/merge_requests/5 -X PUT -f title=Ready') $(glb 'glab api projects/1/merge_requests/5 -X PUT -f title=Ready') $(grep -c "can't tell which project this .glab api. call acts on" "$T/err") $(glb "glab mr update 5 --title 'Draft: Ready'") $(echo '{"head_pipeline":null,"draft":false}' > "$FX/gl_projects_me_2Fapp_merge_requests_5"; glb 'glab mr update 5 --title Ready')"
+echo '{"head_pipeline":null}' > "$FX/gl_projects_me_2Fapp_merge_requests_5"
 rm "$GLL" "$FX"/gl_projects_me_2Fapp_merge_requests_[58]_changes
 # a push is held to the approach of each branch it publishes, whichever is checked out
 git -C "$NA" checkout -q -b unrelated
