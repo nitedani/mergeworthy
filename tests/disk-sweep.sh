@@ -220,12 +220,13 @@ H8="$T/home8"; W8="$H8/.mergeworthy/work"; mkdir -p "$W8"
 G init -q --bare -b main "$T/w-origin.git"; G init -q -b main "$T/w-seed"; printf 'cache/\nnode_modules\n' > "$T/w-seed/.gitignore"; echo a > "$T/w-seed/README"
 G -C "$T/w-seed" add .gitignore README; G -C "$T/w-seed" commit -qm base; G -C "$T/w-seed" push -q "$T/w-origin.git" main
 mk() { mkdir -p "$W8/$1"; G clone -q "$T/w-origin.git" "$W8/$1/repo"; touch "$W8/$1/retired"; }
-for n in clean owed waiting questions promised untracked modified stash local stale pullref github detached outwt nested jj unread unreadlocal hang planted filter nestedtracked bare tag manytags ghall ghnone badparent badref; do mk "$n"; done
+for n in clean owed waiting questions defects promised untracked modified stash local stale pullref github detached outwt nested jj unread unreadlocal hang planted filter nestedtracked bare tag manytags ghall ghnone badparent badref; do mk "$n"; done
 mkdir -p "$W8/clean/repo/node_modules"; echo x > "$W8/clean/repo/node_modules/x"; printf '# replies owed\ndone: https://example.invalid/r answered\n- done: https://example.invalid/r2 answered\n' > "$W8/clean/replies-owed.md"
 echo 'DONE abc123 PROMISED o/r#1: the fix (d.md)' > "$W8/clean/proposals-open.md"; printf '# waits\n\ndone: o/r#2 -> o/r#1: bumped\nDONE (released) o/r#3 -> o/r#1: x\n* done: o/r#4 -> o/r#1: bumped\n' > "$W8/clean/waiting-on.txt"
 echo 'vitejs/vite#123 -> nitedani/vike-react-rsc#32: bump vite once it is released' > "$W8/waiting/waiting-on.txt"
 printf '# questions owed\nDONE how big is the cache? answered in chat\n- DONE 2026-10-26T03:27:57Z GENUINE-FORK asked: #32 (user answered: files it)\n- done: in chat, 2026-10-26\n' > "$W8/clean/questions-owed.md"
 echo '- How big is the cache? ETA 2026-10-27' > "$W8/questions/questions-owed.md"
+echo 'o/r#1: the dot leads the wrapped line' > "$W8/defects/defects-open.md"; echo '- fixed in abc1234: o/r#1: the dot' > "$W8/clean/defects-open.md"
 printf '# replies owed\nhttps://example.invalid/c1 by alice\n' > "$W8/owed/replies-owed.md"; echo 'PROMISED o/r#1: the fix (d.md)' > "$W8/promised/proposals-open.md"
 echo x > "$W8/untracked/repo/notes.txt"; echo b >> "$W8/modified/repo/README"; echo y >> "$W8/stash/repo/README"; G -C "$W8/stash/repo" stash push -q
 G -C "$W8/local/repo" commit -q --allow-empty -m 'only here'; G -C "$W8/local/repo" commit -q --allow-empty -m 'and here'
@@ -293,6 +294,7 @@ check "keep: a clean clone with an ignored node_modules, an answered reply, a de
 check "keep: an open line in replies-owed.md" "replies-owed.md has an open line" "$(why owed)"
 check "keep: an open wait in waiting-on.txt" "waiting-on.txt has an open wait" "$(why waiting)"
 check "keep: an open question in questions-owed.md, a list item" "questions-owed.md has an open line" "$(why questions)"
+check "keep: an open line in defects-open.md; a cleared one keeps nothing (clean)" "defects-open.md has an open line" "$(why defects)"
 check "keep: a PROMISED line in proposals-open.md" "proposals-open.md has an undelivered PROMISED line" "$(why promised)"
 check "keep: an untracked file" "./repo: 1 modified or untracked file(s), e.g. notes.txt" "$(why untracked)"
 check "keep: a modified file" "./repo: 1 modified or untracked file(s), e.g. README" "$(why modified)"

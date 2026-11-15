@@ -155,9 +155,24 @@ def has_open_line(path, cleared):
                                         for s in open(path, errors='replace'))
 
 
+def open_defects(folders):
+    """(file, PR, defect, line) of each open line in the folders' defects-open.md (mergeworthy:task §Files): `<owner/repo#N>: <the defect>`,
+    a GitLab MR's `gitlab.com/<path>!N: …` (`<path>!N` is on gitlab.com), after a `- ` or `* ` marker too; PR is None on a line of no such form. A blank line, a # comment
+    or one cleared as `fixed in <sha>: …` isn't open."""
+    out = []
+    for f in (os.path.join(x, 'defects-open.md') for x in folders):
+        for l in (s.strip() for s in (open(f, errors='replace') if os.path.isfile(f) else ())):
+            body = re.sub(r'^[-*] ', '', l)
+            if not l or l.startswith('#') or body.lower().startswith('fixed in '): continue
+            m = re.match(r'([\w./-]+(?:#|!)\d+):\s+(\S.*)', body)
+            pr = m and m[1].lower()
+            out.append((f, 'gitlab.com/' + pr if pr and '!' in pr and '.' not in pr.split('/')[0] else pr, m[2] if m else body, l))
+    return out
+
+
 def owed(folder):
     """The owed lists' open lines in folder (mergeworthy:task §Files), one reason each: replies-owed.md, waiting-on.txt or
-    questions-owed.md has a line has_open_line() finds; proposals-open.md, at the top or one folder down, a PROMISED line."""
+    questions-owed.md has a line has_open_line() finds, defects-open.md one open_defects() finds; proposals-open.md, at the top or one folder down, a PROMISED line."""
     why = []
     if has_open_line(os.path.join(folder, 'replies-owed.md'), 'done:'):
         why.append('replies-owed.md has an open line')
@@ -165,6 +180,8 @@ def owed(folder):
         why.append('waiting-on.txt has an open wait')
     if has_open_line(os.path.join(folder, 'questions-owed.md'), 'done'):
         why.append('questions-owed.md has an open line')
+    if open_defects([folder]):
+        why.append('defects-open.md has an open line')
     if any(l.startswith('PROMISED') for po in glob.glob(os.path.join(folder, 'proposals-open.md')) + glob.glob(os.path.join(folder, '*', 'proposals-open.md'))
            for l in open(po, errors='replace')):
         why.append('proposals-open.md has an undelivered PROMISED line')

@@ -123,6 +123,10 @@ forks $'#20 is in review.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recomme
 check "BLOCK: a GENUINE-FORK line already sent this session; one with changed options passes" "2 1 0" "$f1 $f1e $f2"
 tr_file "The watcher runs and the Monitor is armed."
 check "no replies-owed.md, cwd=watch dir" 0 "$(stop "$WD")"
+# defects-open.md (task §Files): an open line is named once at turn end; a cleared one isn't
+echo 'o/r#5: the wrapped facts line starts with "·"' > "$WD/defects-open.md"
+check "BLOCK: an open defects-open.md line is named at turn end, once; cleared, nothing" "2 1 0 0" "$(stop "$WD") $(grep -c 'the wrapped facts line starts with' "$T/err") $(stop "$WD") $(echo 'fixed in abc1234: o/r#6: the dot' > "$WD/defects-open.md"; stop "$WD")"
+rm -f "$WD/defects-open.md" "$WD/defects-told"
 F40=$(date -u -d '-40 minutes' +%FT%TZ); F10=$(date -u -d '-10 minutes' +%FT%TZ)
 printf '### FOLLOW-UP o/r#5, #6: abcdef1234 by carol changes lines from your PR  <c>  at %s\n### FOLLOW-UP o/r#5: https://github.com/o/r/pull/9 by alice references your PR  at %s\n' "$F40" "$F10" > "$WD/events.log"
 check "BLOCK: a FOLLOW-UP unsorted after 30 minutes, named; a newer one waits" "2 1 0" "$(stop "$WD") $(grep -c abcdef1234 "$T/err") $(grep -c pull/9 "$T/err")"
@@ -2450,6 +2454,15 @@ check "glab mr create --draft passes on a branch with its approach" 0 "$(MERGEWO
 check "glab mr create --wip passes there too" 0 "$(MERGEWORTHY_WATCHER=off glab 'glab mr create --wip --title x' "$G2")"
 check "gh pr ready passes once all five steps and the approach hold" 0 "$(ready)"
 check "glab mr update --ready passes there too" 0 "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"glab mr update 5 --ready"},"cwd":sys.argv[1]}))' "$G2" | python3 "$R/hooks/pre-bash-guard.py" >/dev/null 2>&1; echo $?)"
+echo 'gitlab.com/acme/app!5: the MR leaks a timer' > "$TASKW/defects-open.md"; GB="$FX/projects_acme%2Fapp_merge_requests_5"
+glready() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"glab mr update 5 --ready -R gitlab.com/acme/app"},"cwd":sys.argv[1]}))' "$G2" | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err" >/dev/null; echo $?; }
+echo '{"description": "No notes."}' > "$GB"
+check "BLOCK: glab mr update --ready with an open line for the MR and no row in its description, naming the line" "2 1" "$(glready) $(grep -c 'leaks a timer' "$T/err")"
+check "BLOCK: a line naming the MR without its host is on gitlab.com" 2 "$(echo 'acme/app!5: the MR leaks a timer' > "$TASKW/defects-open.md"; glready)"
+echo '{"description": "| Note | Kind | Blocks merge | Next |\n|---|---|---|---|\n| The MR leaks a timer | bug | yes | the next push |"}' > "$GB"
+check "with the row in the MR's description, it passes" 0 "$(glready)"
+check "BLOCK: with an open line for an MR of the project, a ready naming no MR, asking for its number" "2 1" "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"glab mr update --ready -R gitlab.com/acme/app"},"cwd":sys.argv[1]}))' "$G2" | python3 "$R/hooks/pre-bash-guard.py" >/dev/null 2>"$T/err"; echo $?) $(grep -c 'pass its number' "$T/err")"
+rm "$GB" "$TASKW/defects-open.md"
 printf 'm\n' > "$G2/m"; git -C "$G2" add m; git -c user.name=maint -c user.email=m@m -C "$G2" commit -q -m "a maintainer's tweak"
 check "a maintainer's commit on a converged head carries its steps" 0 "$(ready)"
 seq 1 81 > "$G2/m2"; git -C "$G2" add m2; git -c user.name=maint -c user.email=m@m -C "$G2" commit -q -m "a maintainer's rewrite"
@@ -3315,6 +3328,22 @@ echo "$T/nowatch" > "$HOME/.claude/gh-watch-dirs.txt"
 check "replay: the same push with no watcher on vikejs/vike (or the fork): blocked, naming the repos" "2 1" "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK") $(grep -c 'covers nitedani-agent/vike or vikejs/vike' "$T/err")"
 bash -c 'exec -a gh-watch-daemon sleep 600' & FPID=$!; echo "$FPID" > "$TK2/gh-watch.pid"; echo vikejs/vike > "$TK2/repos.txt"; echo "$TK2" > "$HOME/.claude/gh-watch-dirs.txt"
 check "a watcher of the checkout's work folder on the upstream repo covers it" 0 "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK")"
+# a known defect in the PR's own diff (defects-open.md) is in its live body's notes table before the next push or ready (#191)
+PV='git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc'; PB="$FX/repos_vikejs_vike_pulls_3675"
+echo '- vikejs/vike#3675: the wrapped facts line starts with "·"' > "$TK2/defects-open.md"
+body() { python3 -c 'import json,sys; print(json.dumps({"body": "Fixes it.\n\n| Note | Kind | Blocks merge | Next |\n|---|---|---|---|\n" + sys.argv[1]}))' "$1" > "$PB"; }
+body '| An unrelated bug | bug | yes | fixed in abc1234 |'
+check "BLOCK: a push to a PR with an open defects-open.md line and no row for it in the body, naming the line; gh pr ready too" "2 1 2 1" \
+  "$(bg "$PV" "$CK") $(grep -c 'the wrapped facts line starts with' "$T/err") $(bg 'gh pr ready 3675 -R vikejs/vike' "$CK") $(grep -c 'the wrapped facts line starts with' "$T/err")"
+body '| The wrapped facts line starts with "·" at 390 px | limitation | no | nothing, because x |'
+check "BLOCK: a row for it that isn't Kind bug, Blocks merge yes doesn't count" 2 "$(bg "$PV" "$CK")"
+body '| The wrapped facts line starts with  "·" at 390 px | Bug | Yes | the next push |'
+check "with the row in the body, the push passes and gh pr ready waits only for its records" "0 2 0" "$(bg "$PV" "$CK") $(bg 'gh pr ready 3675 -R vikejs/vike' "$CK") $(grep -c 'wrapped facts' "$T/err")"
+rm "$PB"
+check "BLOCK: a body gh can't read, with an open line, blocks the push" "2 1" "$(bg "$PV" "$CK") $(grep -c "couldn't read" "$T/err")"
+echo '- fixed in abc1234: vikejs/vike#3675: the wrapped facts line starts with "·"' > "$TK2/defects-open.md"; echo 'vikejs/vike#9: another PR' >> "$TK2/defects-open.md"
+check "a cleared line, and an open one naming another PR, hold neither the push nor ready's defects check" "0 0" "$(bg "$PV" "$CK") $(bg 'gh pr ready 3675 -R vikejs/vike' "$CK" >/dev/null; grep -c 'defects-open' "$T/err")"
+rm "$TK2/defects-open.md"
 sed -i 's/"isDraft": true/"isDraft": false/' "$FX/graphql"; mkdir -p "$HOME/.mergeworthy/projects/vikejs"  # the PR is out of draft; its head has only the quick record
 check "BLOCK: a push to a ready PR whose head has no converge records" "2 1" "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK") $(grep -c 'out of draft' "$T/err")"
 printf '## Gates\n- `pnpm test`\n- Push: before gates\n' > "$HOME/.mergeworthy/projects/vikejs/vike.md"
