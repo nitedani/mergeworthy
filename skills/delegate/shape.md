@@ -29,9 +29,9 @@ Step 1, cut what shouldn't exist. Check every line of code §Checklist. Each fin
 
 Step 2, reshape what stays: the prompt below, the user's text, unchanged in every repo whatever the project file says.
 
-Step 3, rate every file and function old ⇒ new: after each landing, re-rate each row its commits changed, verify each implementation (behavior preserved, mutation probes still red, comments true), and say whether each decline holds.
+Step 3, rate every file and function old ⇒ new: verify each implementation (behavior preserved, mutation probes still red, comments true), and say whether each decline holds.
 
-<Round 2: the previous report <path>, the ledger <path>, the commits since it <list>: all three steps only on the rows they changed; copy every other row and the ✅ list from the previous report unchanged.>
+<Round 2: the previous report <path>, the ledger <path>, the commits since <list>: all three steps on the rows they touched; rate every other row afresh (old ⇒ new, never '=' or 'unchanged since'); only a blocker or regression counts, the rest under `## Dropped`.>
 
 Write <report path>: `## Standards read` (above), then step 1's findings, DELETE-NOW first, then FIX, FILL, DELETE-CAREFULLY, OWNER-DECISION; NIT rows under `## Dropped` (agent.md); the mechanism census; the 10-second pass as classes; step 2's ratings and ✅ coverage list; step 3's old ⇒ new ratings and the prior findings' closure; an honest-positive statement ("nothing worth changing" where that is the result). End the file with a line CLEAN only when your review in this run and all three steps leave nothing behavior-preserving whose value is worth its price (its should, agent.md).
 Final message: the path, counts per disposition, the three highest-value findings, the overall rating.
