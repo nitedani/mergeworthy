@@ -1995,7 +1995,8 @@ def shared_pass(force=False):
 def retire_if_done():
     """A watcher whose every thread is merged or closed (and that covers no whole repo: a bare `owner/repo` line in repos.txt keeps it
     only for an hour after it was written, for the thread about to join, an `owner/repo all` line always) has nothing left to watch:
-    it writes the time to HERE/retired and disables its service, so it doesn't come back after a reboot, or stops its daemon. A reply
+    it writes the time to HERE/retired and disables its service, so it doesn't come back after a reboot, or stops its daemon (tick() does
+    the same for a HERE/retired that someone else wrote). A reply
     still owed in replies-owed.md keeps it: stop-lint holds a session's turn only for a live watcher's owed lines. So does an open agent
     job whose brief is in its work folder: its AGENT DONE comes here (agent_jobs_pass)."""
     repos, wf = repo_lines(HERE), work_folder.task_of(HERE)
@@ -2035,6 +2036,10 @@ def retire_if_done():
         return  # the thread didn't get the last events: the next pass sends them, then retires
     with open(os.path.join(HERE, 'retired'), 'w') as f:  # disk-sweep's w-done may delete this folder once nothing in it would be lost
         f.write(iso(time.time()) + '\n')
+    stop_watcher()
+
+
+def stop_watcher():
     # each supervisor gh-watch-start may have used, so the watcher doesn't come back after a reboot
     supervisor = os.environ.get('GH_WATCH_SUPERVISOR', '')  # set by the unit or the launchd agent gh-watch-start wrote
     if supervisor == 'systemd':
@@ -2046,8 +2051,9 @@ def retire_if_done():
         subprocess.run(['rm', '-f', os.path.expanduser(f'~/Library/LaunchAgents/{label}.plist')])
         subprocess.run(['launchctl', 'bootout', f'gui/{os.getuid()}/{label}'])
         return
-    tab = subprocess.run(['crontab', '-l'], capture_output=True, text=True)
-    if tab.returncode == 0 and f'# gh-watch {HERE}' in tab.stdout:  # cron
+    try: tab = subprocess.run(['crontab', '-l'], capture_output=True, text=True)
+    except OSError: tab = None  # no cron on this host: a bare daemon, stopped below
+    if tab and tab.returncode == 0 and f'# gh-watch {HERE}' in tab.stdout:  # cron
         kept = ''.join(l + '\n' for l in tab.stdout.splitlines() if not l.endswith(f'# gh-watch {HERE}'))
         subprocess.run(['crontab', '-'], input=kept, text=True)
     try:
@@ -2117,6 +2123,9 @@ def tick():
     """One round of a daemon. What each budget level allows: OK everything; RESERVE (below RESERVE_AT calls left) not discovery and
     follow-ups; LOW (below LOW_AT) only the notifications and the threads they name; PAUSED nothing."""
     _ticks[0] += 1
+    if os.path.exists(os.path.join(HERE, 'retired')):
+        stop_watcher()
+        return
     if not os.path.exists(os.path.join(HERE, 't3-thread')):  # started before T3 delivery or while t3 wasn't found; first, so this pass's events go too
         steward.bind_watcher(HERE)
     follow_update()

@@ -1046,6 +1046,20 @@ before = m._ticks[0]; m.tick(); m.tick()
 print(m._ticks[0] - before, [n - before for n in seen])
 ')
 check "tick() advances _ticks once per pass, before the pass's wake_thread" "2 [1, 2]" "$got"
+# a retired file someone else writes while the watcher runs: its next pass disables its unit and asks GitHub nothing
+printf '#!/bin/sh\necho "$*" >> "%s/systemctl.log"\n' "$T" > "$T/bin/systemctl"; chmod +x "$T/bin/systemctl"; rm -f "$W/retired" "$T/systemctl.log"
+got=$(GH_WATCH_SUPERVISOR=systemd py '
+calls = []; m.request = lambda *a, **k: calls.append(a); m.level = lambda: m.PAUSED
+for name in ("follow_update", "steward_line", "scan_gitlab", "agent_jobs_pass", "announce", "wake_thread"):
+    setattr(m, name, lambda *a, **k: None)
+m.tick(); before = open("'"$T"'/systemctl.log").read() if os.path.exists("'"$T"'/systemctl.log") else ""
+open(os.path.join(m.HERE, "retired"), "w").write("2026-01-01T00:00:00Z\n")
+m.tick()
+print(repr(before), len(calls), open(os.path.join(m.HERE, "retired")).read().strip())
+')
+check "tick(): a retired file written while the watcher runs disables its unit on the next pass, with no request to GitHub; the file stays" \
+  "'' 0 2026-01-01T00:00:00Z|--user disable --now gh-watch@$(systemd-escape --path "$W").service" "$got|$(cat "$T/systemctl.log")"
+rm -f "$W/retired" "$T/bin/systemctl"
 rm -f "$W/events.log" "$W/t3-wake.cursor" "$W/t3-thread" "$W/t3-gone"
 rm -f "$W/retired"
 
