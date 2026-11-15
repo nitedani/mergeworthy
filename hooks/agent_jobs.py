@@ -6,8 +6,8 @@ without a final message, so the agent's own transcript decides: the one its hand
 the earliest-started one under ~/.claude/projects or ~/.codex/sessions that started at or after the launch and whose first prompt
 carries the job's whole task (or, for a job an older hook registered with only its key and start, every ticket path in the key).
 It has finished when that transcript has been quiet for QUIET
-seconds with no tool call pending, for LONG seconds whatever it was doing (no foreground tool call runs ten minutes), or
-Claude Code stopped it, while T3 Code shows no active run or background command of its thread and no agent it launched is still at work."""
+seconds with no tool call pending, for LONG seconds whatever it was doing (no foreground tool call runs ten minutes),
+Claude Code stopped it, or its launcher was told it ended (noticed), while T3 Code shows no active run or background command of its thread and no agent it launched is still at work."""
 import datetime, glob, hashlib, itertools, json, os, re, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import memory_file, steward, t3_tasks
@@ -209,12 +209,12 @@ def stopped(job, path):
     return False
 
 def finished(job, now=None, _seen=()):
-    """(transcript, its mtime) when the job's agent has finished, else None. An agent whose T3 thread has an active run
+    """(transcript, its mtime) when the job's agent has finished, else None: quiet, stopped, or ended by a notice the launcher got. An agent whose T3 thread has an active run
     (waiting on an approval) or background command still running, or that launched agents of its own, hasn't finished."""
     p = transcript(job)
     if not p: return None
     m = os.path.getmtime(p); quiet = (now or time.time()) - m
-    if not (quiet >= LONG or (quiet >= QUIET and not pending(p)) or stopped(job, p)): return None
+    if not (quiet >= LONG or (quiet >= QUIET and not pending(p)) or stopped(job, p) or noticed(job.get('transcript'), p)): return None
     sid = session_id(p)
     if steward.busy(sid) or sid not in _seen and any(j.get('session') == sid and not finished(j, now, _seen + (sid,)) for _, j in jobs(now)):
         return None

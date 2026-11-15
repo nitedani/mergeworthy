@@ -420,7 +420,7 @@ if not register:
     if same: one_per_job(same[0]['started'])
     for j in [j for _, j in agent_jobs.jobs()] + pending if task.strip() else ():
         if same and j.get('key') == key: continue  # this job's own record, refused above
-        if (other := j.get('brief', '').strip()) and (other in task.strip() or task.strip() in other):
+        if (other := j.get('brief', '').strip()) and (other in task.strip() or task.strip() in other) and (j in pending or not agent_jobs.finished(j)):
             sys.stderr.write(
                 f"BLOCKED: this task contains, or is contained in, an open job's task ({j['key'][:160]}, started {int((time.time() - j['started']) / 60)} min ago), "
                 "so it is the same work under another title, and an agent already on the job gets a message, not a twin (mergeworthy:delegate step 1). An agent of a fan-out names its part in its task "
