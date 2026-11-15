@@ -2354,6 +2354,21 @@ printf 'Reproduction: `node repro.js`: red on %s, green on %s\n## Outside this c
 printf -- '- Reproduction: `node repro.js`: red on %s, green on %s.\n## Outside this change\nNO BUGS\nMERGE AS IS: yes\n' "$rb" "$rh" > "$T/srr2.md"
 r1=$(prsr "$T/srr1.md"); r1="$r1 $(grep -c "Reproduction: <command>.* for $rb and $rh" "$T/prsr.err")"
 check "pr-steps small without a test: BLOCK on a reproduction naming another base, naming the shas it needs; records with one red on this base and green on this head" "1 1 0" "$r1 $(prsr "$T/srr2.md")"
+# a small fix that merges the base carries all four of its records, shape too; a shape record nothing but small or a pass wrote doesn't carry
+GW="$T/prsw"; mkdir -p "$GW/src" "$GW/test"; git -C "$GW" init -q -b main; echo a > "$GW/src/a.ts"; git -C "$GW" add -A; git -C "$GW" -c user.name=t -c user.email=t@t commit -q -m a
+git -C "$GW" update-ref refs/remotes/origin/main HEAD; git -C "$GW" checkout -q -b fix; echo b > "$GW/src/a.ts"; echo t > "$GW/test/a.test.ts"; git -C "$GW" add -A; git -C "$GW" -c user.name=t -c user.email=t@t commit -qm fix
+prsw() { (cd "$GW" && bash "$R/bin/pr-steps" "$@" 2>"$T/prsw.err" >/dev/null; echo $?); }
+WS=$(git -C "$GW" rev-parse HEAD); cp "$T/sr1.md" "$T/srw.md"; r1=$(prsw small "$T/srw.md")
+git -C "$GW" checkout -q main; echo o > "$GW/other.ts"; git -C "$GW" add -A; git -C "$GW" -c user.name=t -c user.email=t@t commit -qm other
+git -C "$GW" update-ref refs/remotes/origin/main HEAD; git -C "$GW" checkout -q fix; git -C "$GW" -c user.name=t -c user.email=t@t merge -q --no-edit main
+printf 'carries the pass of %s: merged main\n' "${WS:0:12}" | tee "$T/cw1.md" "$T/cw2.md" "$T/cw3.md" "$T/cw4.md" "$T/cw5.md" "$T/cw6.md" >/dev/null
+echo "$(date -u -d '+1 minute' +%FT%TZ) ${WS:0:10} o/r#8 https://example.invalid/o/r/pull/8#issuecomment-4" > "$HOME/.claude/refactor-asks.txt"
+r2="$(prsw shape "$T/cw5.md") $(grep -c 'asks for a refactor pass' "$T/prsw.err")"; rm -f "$HOME/.claude/refactor-asks.txt"
+check "after pr-steps small and a merge of the base: verify, shape, reverify and fresh carry; a maintainer's ask after it still needs a pass" "0 1 1 0 0 0 0" \
+  "$r1 $r2 $(prsw verify "$T/cw1.md") $(prsw shape "$T/cw2.md") $(prsw reverify "$T/cw3.md") $(prsw fresh "$T/cw4.md")"
+git -C "$GW" -c user.name=t -c user.email=t@t commit -q --allow-empty -m note; WN=$(git -C "$GW" rev-parse HEAD); echo "shape $T/srw.md 2026-11-16T00:00:00Z" > "$HOME/.claude/pr-steps/$WN"
+echo t >> "$GW/test/a.test.ts"; git -C "$GW" -c user.name=t -c user.email=t@t commit -qam t; printf 'carries the pass of %s: one test line\n' "${WN:0:12}" > "$T/cw7.md"
+check "BLOCK: a shape carry of a head whose shape record is neither a pass nor small's" "1 1" "$(prsw shape "$T/cw7.md") $(grep -c 'no recorded shape pass' "$T/prsw.err")"
 # ---------- pr-steps: every converge step leaves its proof; the guard needs all five ----------
 G2="$T/prs2"; mkdir -p "$G2"; git -C "$G2" init -q; git -C "$G2" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 prs2() { (cd "$G2" && bash "$R/bin/pr-steps" "$@" >/dev/null 2>&1; echo $?); }
