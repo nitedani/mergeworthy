@@ -20,6 +20,10 @@ cat > "$T/bin/gh" <<'EOF'
 [ "$1 $2" = "config get" ] && { [ ! -f "$FX/login" ] || cat "$FX/login"; exit; }  # the login gh's own config names: $FX/login
 [ "$1 $2" = "pr view" ] && [ -n "$GH_STUB_NOHOST" ] &&{ echo 'none of the git remotes configured for this repository point to a known GitHub host' >&2; exit 1; }
 if [ "$1 $2" = "pr view" ]; then r=$3; case "$r" in -*|'') r=current;; esac; f="$FX/pr_view_$(printf '%s' "$r" | tr '/:' '__')"; [ -f "$f" ] && cat "$f" && exit 0; echo 'no pull requests found for branch "x"' >&2; exit 1; fi
+if [ "$1 $2" = "pr list" ]; then  # from $FX/pr_list_<the -R repo with / replaced by _>; none: no PRs ([], or nothing with -q)
+  [ -n "$GH_STUB_403" ] && { echo 'gh: API rate limit exceeded for user ID 1. (HTTP 403)' >&2; exit 1; }
+  s=; q=; p=; for a in "$@"; do [ "$p" = -R ] && s=$a; case "$a" in -q|--jq) q=1;; esac; p=$a; done
+  f="$FX/pr_list_$(printf '%s' "$s" | tr / _)"; if [ -f "$f" ]; then cat "$f"; elif [ -z "$q" ]; then echo '[]'; fi; exit 0; fi
 [ "$1 $2" = "pr checks" ] && [ "${3#https://github.com/}" = "$3" ] && { echo "no pull requests found for branch \"$3\"" >&2; exit 1; }
 if [ "$1 $2" = "pr checks" ]; then f="$FX/pr_checks_$(printf '%s' "$3" | tr '/:' '__')"; [ -f "$f" ] && cat "$f" && exit 1; echo "no checks reported on the 'x' branch" >&2; exit 1; fi
 [ "$1" = api ] || exit 1
@@ -3324,6 +3328,32 @@ printf '## Gates ([ci.yml](https://example.invalid/ci.yml))\n- Push: before gate
 check "a ## Gates heading with its source after it opts in too" 0 "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK")"
 printf '## Agents\n- Push: before gates\n' > "$HOME/.mergeworthy/projects/vikejs/vike.md"
 check "BLOCK: the line under another section opts nothing in" 2 "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK")"
+# two ready PRs of ours that change one file are checked merged before the second goes ready or takes a push (#188)
+CH=$(git -C "$CK" rev-parse HEAD); for k in verify shape reverify fresh gates; do echo "$k $T/x 2026-11-15T00:00:00Z" >> "$HOME/.claude/pr-steps/$CH"; done
+ul() { # the other PR's isDraft, base, head, one file and changedFiles: our open PRs on vikejs/vike, #3675 this one
+  printf '[{"number":3675,"isDraft":false,"baseRefName":"main","headRefOid":"%s","files":[{"path":"a.ts"},{"path":"b.ts"}],"changedFiles":2},{"number":3680,"isDraft":%s,"baseRefName":"%s","headRefOid":"%s","files":[{"path":"%s"}],"changedFiles":%s}]' "$CH" "$@" > "$FX/pr_list_vikejs_vike"; }
+UR='gh pr ready 3675 -R vikejs/vike'; UP='git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc'
+ul false main b0b0b0b0 b.ts 1
+check "BLOCK: gh pr ready, a push to a ready PR and a ready gh pr create while another ready PR of ours changes one of its files, naming it and the file (#188)" "2 1 2 2 1" \
+  "$(bg "$UR" "$CK") $(grep -c 'vikejs/vike#3680, also yours and ready, changes b.ts' "$T/err") $(bg "$UP" "$CK") $(bg "gh pr create -R vikejs/vike --base main --title \"\$(cat $T/title.md)\" --body-file $(gated ub "It breaks.")" "$CK") $(grep -c ', also yours and ready, changes files listed only in part' "$T/err")"
+echo "union $T/u.log 2026-11-15T00:00:00Z b0b0b0b0" >> "$HOME/.claude/pr-steps/$CH"
+check "a union record on this head naming the other's head passes them; a new head on the other PR blocks again" "0 0 2" "$(bg "$UR" "$CK") $(bg "$UP" "$CK") $(ul false main c1c1c1c1 b.ts 1; bg "$UR" "$CK")"
+check "no shared file, the other a draft or on another base: passes; the list is of our own open PRs" "0 0 0 1" \
+  "$(ul false main c1c1c1c1 c.ts 1; bg "$UR" "$CK") $(ul true main c1c1c1c1 b.ts 1; bg "$UR" "$CK") $(ul false dev c1c1c1c1 b.ts 1; GH_STUB_ARGS="$T/ul.args" bg "$UR" "$CK") $(grep -c 'pr list -R vikejs/vike --author @me --state open' "$T/ul.args")"
+check "BLOCK: a file list GitHub cut counts as shared; gh failing to list blocks, asking to retry" "2 2 1" "$(ul false main c1c1c1c1 z.ts 5; bg "$UR" "$CK") $(GH_STUB_403=1 bg "$UR" "$CK") $(grep -c 'retry once gh answers' "$T/err")"
+ul false main c1c1c1c1 b.ts 1; sed -i 's/"isDraft": false/"isDraft": true/' "$FX/graphql"
+check "a push to a draft PR passes beside an overlapping ready one" 0 "$(bg "$UP" "$CK")"
+rm "$FX/pr_list_vikejs_vike"
+# pr-steps union: a merge holding both heads and the base, with green quick gates; or the two heads' textual conflict
+U="$T/union"; git init -q -b main "$U"; printf 'a\n' > "$U/a"; printf 'b\n' > "$U/b"; git -C "$U" add a b; git -C "$U" -c user.name=t -c user.email=t@t commit -qm base; UB=$(git -C "$U" rev-parse HEAD)
+uc() { git -C "$U" checkout -q -b "$1" main; printf '%s\n' "$1" >> "$U/$2"; git -C "$U" -c user.name=t -c user.email=t@t commit -qam "$1"; git -C "$U" rev-parse HEAD; }
+UX=$(uc x a); UY=$(uc y b); UZ=$(uc z a); git -C "$U" checkout -q --detach x; git -C "$U" -c user.name=t -c user.email=t@t merge -q --no-edit y
+ups() { (cd "$U" && bash "$R/bin/pr-steps" union "$@" >/dev/null 2>"$T/err"; echo $?); }
+printf 'Union: o/r#1@%s + #2@%s on main@%s\npnpm test -> exit 0 (3 tests)\n' "${UX:0:10}" "${UY:0:10}" "${UB:0:10}" > "$T/u1.log"; cp "$T/u1.log" "$T/u2.log"
+printf 'Union: o/r#1@%s + #2@%s on main@%s\npnpm test -> exit 1 (3 tests)\n' "$UX" "$UY" "$UB" > "$T/u3.log"
+check "pr-steps union records a green merge of both heads on each head's file, naming the other; BLOCK: a red gate, a HEAD lacking one head" "1 0 1 1 1" \
+  "$(ups "$T/u3.log") $(ups "$T/u1.log") $(grep -c "^union $T/u1.log .* $UY\$" "$HOME/.claude/pr-steps/$UX") $(grep -c "^union $T/u1.log .* $UX\$" "$HOME/.claude/pr-steps/$UY") $(git -C "$U" checkout -q x; ups "$T/u2.log")"
+check "pr-steps union --conflict records two heads that conflict, refuses two that merge cleanly" "0 1 1" "$(ups --conflict "$UZ") $(grep -c "^union conflict .* $UZ\$" "$HOME/.claude/pr-steps/$UX") $(ups --conflict "$UY")"
 rm -r "$HOME/.mergeworthy/projects/vikejs"; gql nitedani-agent nitedani-agent https://github.com/vikejs/vike/pull/3675
 check "a push the guard passes records the head it publishes, pending until it ends (own_actions); one it blocks records nothing" "2 0 PUSHED_HEADS $(git -C "$CK" rev-parse HEAD)|" \
   "$(OWN_PENDING="$T/own-pp" bg 'git push --all https://github.com/nitedani-agent/vike.git' "$CK") $(OWN_PENDING="$T/own-pp" bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK") $(cut -d' ' -f3- "$T/own-pp" | tr '\n' '|')"

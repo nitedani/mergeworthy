@@ -31,6 +31,43 @@ def missing_steps(d):
         missing.insert(0, 'approach')
     return head, missing
 
+def check_union(d, slug, num, base=None):
+    """Two ready PRs of ours that change one file can each pass alone and break their base merged (#188): each other open, non-draft
+    PR of the account on this one's base (PR num's, or the one `gh pr create` opens on) sharing a file needs a `pr-steps union` record on
+    HEAD naming its head. A file list GitHub cut, or a branch whose files can't be told, shares every file; gh not answering blocks."""
+    def gh(*args):
+        try:
+            r = subprocess.run(['gh', *args], cwd=d, capture_output=True, text=True, timeout=30)
+            return json.loads(r.stdout) if r.returncode == 0 else None
+        except (OSError, subprocess.TimeoutExpired, ValueError): return None
+    retry = lambda what: block(f"gh couldn't read {what} of {slug}, so whether one of your ready PRs changes this one's files can't be checked: retry once gh answers")
+    prs = gh('pr', 'list', '-R', slug, '--author', '@me', '--state', 'open', '--limit', '100', '--json', 'number,isDraft,baseRefName,headRefOid,files,changedFiles')
+    if not isinstance(prs, list): retry('your open PRs')
+    this = next((p for p in prs if str(p['number']) == str(num)), None)
+    if num is not None and this is None: return  # not ours
+    if not (others := [p for p in prs if p is not this and not p['isDraft']]): return
+    base = this['baseRefName'] if this else base or (gh('repo', 'view', slug, '--json', 'defaultBranchRef') or {}).get('defaultBranchRef', {}).get('name') or retry('the default branch')
+    if not (others := [p for p in others if p['baseRefName'] == base]): return
+    paths = lambda p: {f['path'] for f in p['files']} if len(p['files']) >= p['changedFiles'] else None
+    git = lambda *a: subprocess.run(['git', '-C', d, *a], capture_output=True, text=True).stdout.strip()
+    ref = next(iter(git('for-each-ref', '--format=%(refname)', f'refs/remotes/*/{base}').split()), '')
+    local = set(git('diff', '--name-only', f'{ref}...HEAD').splitlines()) if ref else None  # with what this head adds to the PR
+    listed = paths(this) if this else set()
+    mine = None if listed is None or not this and local is None else listed | (local or set())
+    head = git_head(d)
+    rec = RECORDS + head
+    done = {s for l in (open(rec) if os.path.exists(rec) else []) if l.split()[:1] == ['union'] for s in l.split()[3:]}
+    for p in others:
+        theirs = paths(p)
+        shared = sorted(mine & theirs) if mine is not None and theirs is not None else None
+        if shared == [] or p['headRefOid'] in done: continue
+        n, sha = p['number'], p['headRefOid']
+        block(f"{slug}#{n}, also yours and ready, changes {', '.join(shared) if shared else 'files listed only in part'} too: merged together the two can break {base} "
+              f"without a conflict. Check them merged first: `git worktree add --detach <work folder>/union origin/{base}`; there fetch and merge this head and "
+              f"#{n}'s (`git fetch https://github.com/{slug} pull/{n}/head`), run the quick gates (code §Gates) into a log whose first line is "
+              f"`Union: {slug}#{num or '<N>'}@{head[:10]} + #{n}@{sha[:10]} on {base}@<its sha>`, then `pr-steps union <log>`; when they conflict, `pr-steps union --conflict {sha}` "
+              f"here. A red union: change this PR until it is green or conflicts, or stack it (mergeworthy:converge §Stacked PRs); tell #{n}'s session only if #{n} must change")
+
 def push_before_gates(url):
     """The PR's project file has the `## Gates` line `Push: before gates`, bulleted or not: its maintainers take a ready PR's pushes before converge (merging step 1)."""
     m = re.match(r'https://(?:github\.com/(.+)/pull|gitlab\.com/(.+)/-/merge_requests)/\d+$', url or '')
@@ -844,6 +881,9 @@ def check(t, has_cd):
                 head, missing = missing_steps(repo)
                 if missing and any(not p['isDraft'] and not push_before_gates(p['url']) for p in prs):
                     block(f"this branch's PR is out of draft and HEAD {head[:10]} has no pr-steps {', '.join(missing)} record (approach: pull-request step 5, once per branch): run converge's pipeline on it first (each step ends with its `pr-steps <step> <output>`), or `gh pr ready --undo` while it converges")
+                for p in prs:
+                    if not p['isDraft'] and not push_before_gates(p['url']) and (m := re.match(r'https://github\.com/(.+)/pull/(\d+)$', p['url'] or '')):
+                        check_union(repo, m[1], m[2])
             own['PUSHED_HEADS'] += [sha for sha, _, _ in heads if sha]
     if p in ('curl', 'wget', 'http', 'https', 'xh') and any(re.search(r'\bapi\.github\.com\b|github\.com/api/', x) for x in a) and \
             any(re.fullmatch(r'-X|--request|-d|--data[\w-]*|-F|--form|--json|-T|--upload-file|--method|POST|PATCH|PUT|DELETE|-\w*[dXFT]', x) or re.match(r'--(?:request|method)=', x) for x in a):
@@ -876,6 +916,10 @@ def check(t, has_cd):
         head, missing = missing_steps(known(run_dir))
         if missing:
             block(f"HEAD {head[:10] or '(no git repo in cwd)'} has no pr-steps {', '.join(missing)} record: run those steps of mergeworthy:converge's pipeline on the final HEAD, each ending with `pr-steps <step> <its output>` (again after a base merge); or open it with --draft")
+        if p == 'gh' and a[1] == 'ready':
+            check_union(run_dir, *post_target('pr', a[2:], env, run_dir))
+        elif p == 'gh':
+            check_union(run_dir, gh_repo(a[2:], env, run_dir), None, (opt(a[2:], ['--base', '-B']) or [None])[-1])
     if p == 'glab' and len(a) >= 2 and a[0] in ('issue', 'mr') and a[1] == 'create' and '--help' not in a and '-h' not in a:
         need_home(gitlab_repo(a[2:], run_dir), run_dir)
         if a[0] == 'mr': need_approach(run_dir, '`glab mr create`', opened_branch(a[2:], ['--source-branch', '-s']))
