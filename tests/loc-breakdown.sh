@@ -61,4 +61,9 @@ mkdir -p dist && printf 'a\nb\n' > dist/bundle.mjs && G add dist && G commit -qm
 OUT=$(python3 "$R/bin/loc-breakdown" "$HEAD..HEAD" "$T/map" --repo-dir "$P" 2>&1); rc=$?
 check dist-exit 0 "$rc"
 check dist-generated '+2 / −0' "$(row Generated)"
+# so does a file git's attributes mark linguist-generated (here .git/info/attributes: a .gitattributes would be a changed line of no feature)
+mkdir -p gen && printf 'a\nb\nc\n' > gen/api.ts && echo 'gen/** linguist-generated' > .git/info/attributes && G add -A && G commit -qm gen
+OUT=$(python3 "$R/bin/loc-breakdown" "$HEAD..HEAD" "$T/map" --repo-dir "$P" 2>&1); rc=$?
+check linguist-exit 0 "$rc"
+check linguist-generated '+5 / −0' "$(row Generated)"
 exit $((fails > 0))

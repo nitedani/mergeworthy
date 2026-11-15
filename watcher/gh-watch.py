@@ -932,7 +932,8 @@ def emit_maintainer_commits(state, repo, key, old, new):
 def emit_refactor_stale(repo, key, new):
     """A PR you opened, or another account's PR you drive (a pr-steps record on one of its commits), changed more than ~80
     lines in its own commits since its last shape pass (`pr-steps shape`): the ratings
-    describe old code. Merges of the base branch, tests, lockfiles and dist/ don't count: they aren't the PR's code to rate."""
+    describe old code. Merges of the base branch, tests, lockfiles and dist/ don't count: they aren't the PR's code to rate
+    (with no checkout here, linguist-generated isn't read)."""
     num = key.split('#')[1]
     try:
         pr = request(f"repos/{repo}/pulls/{num}").json()
