@@ -1664,9 +1664,9 @@ check "agent-job done releases it once the agent has ended" "0 0" "$(python3 "$R
 # a finish whose notice reached the launcher after the agent's last entry gets no AGENT DONE: T3's for a task of the agent's thread,
 # or Claude Code's for its subagent, though a session's untimed closing line came after it; one whose agent wrote after the notice
 # (a revived run) still gets one
-note() { # text minutes-ago user|attachment: what reached the launcher, as a prompt or mid-turn
+note() { # text minutes-ago user|attachment|result: what reached the launcher, as a prompt, mid-turn or as a tool's result
   python3 -c 'import json,sys,time; t,ago,kind=sys.argv[1],float(sys.argv[2]),sys.argv[3]; at=time.strftime("%Y-%m-%dT%H:%M:%S.000Z",time.gmtime(time.time()-60*ago))
-print(json.dumps({"type":"user","timestamp":at,"message":{"role":"user","content":t}} if kind=="user" else {"type":"attachment","timestamp":at,"attachment":{"type":"queued_command","prompt":t}}))' "$@" >> "$T/tr.jsonl"; }
+print(json.dumps({"type":"user","timestamp":at,"message":{"role":"user","content":t}} if kind=="user" else {"type":"user","timestamp":at,"toolUseResult":t,"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tu1","content":t}]}} if kind=="result" else {"type":"attachment","timestamp":at,"attachment":{"type":"queued_command","prompt":t}}))' "$@" >> "$T/tr.jsonl"; }
 t3db "insert into orchestration_v2_projection_provider_threads values ('p2', 'note-1', '{\"nativeThreadRef\":{\"nativeId\":\"t3note\"}}'), ('p3', 'rev-1', '{\"nativeThreadRef\":{\"nativeId\":\"t3rev\"}}')"
 t3db "insert into orchestration_v2_projection_subagents values ('node:delegated-task:note', 'orch-1', 'note-1', 'completed'), ('node:delegated-task:rev', 'orch-1', 'rev-1', 'completed')"
 mkdir -p "$JD/orch/subagents"
@@ -1684,6 +1684,20 @@ done_events > "$T/ev12"
 check "no AGENT DONE for a finish T3's notice (t3note), Claude Code's (sub) or a foreground Agent's result (fg) told the launcher of; one for a run that wrote after its notice (t3rev)" "0 0 0 1" \
   "$(grep -c "AGENT DONE $T/jobs/t3note-ticket.md" "$T/ev12") $(grep -c "AGENT DONE $T/jobs/sub-ticket.md" "$T/ev12") $(grep -c "AGENT DONE $T/jobs/fg-ticket.md" "$T/ev12") $(grep -c "AGENT DONE $T/jobs/t3rev-ticket.md" "$T/ev12")"
 for jn in t3note t3rev sub fg; do python3 "$R/bin/agent-job" done "$T/jobs/$jn-ticket.md" >/dev/null; done
+# a job whose end T3 told its launcher of counts as finished at once, for the twin check and the limit, though its transcript changed
+# seconds ago; one whose agent wrote after the notice (revived) still counts
+t3db "insert into orchestration_v2_projection_provider_threads values ('p4', 'tw1-1', '{\"nativeThreadRef\":{\"nativeId\":\"t3tw1\"}}'), ('p5', 'tw4-1', '{\"nativeThreadRef\":{\"nativeId\":\"t3tw4\"}}')"
+t3db "insert into orchestration_v2_projection_subagents values ('node:delegated-task:tw1', 'orch-1', 'tw1-1', 'completed'), ('node:delegated-task:tw4', 'orch-1', 'tw4-1', 'completed')"
+twj() { reg "Execute $T/jobs/$1-ticket.md exactly"; child_log "$JD/$2.jsonl" "Execute $T/jobs/$1-ticket.md exactly" 0 text
+  python3 -c 'import glob,json,os,sys,time; [json.dump({**json.load(open(f)), "session": "twn", "started": time.time() - 3600, "launched": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if sys.argv[1] + "-ticket" in open(f).read()]' "$1"; }
+twj tw1 t3tw1; twj tw2 tw2; twj tw3 tw3
+check "BLOCK: a launch whose task contains an open job's task, the job's agent written to a minute ago and no notice" 2 "$(alive "Execute $T/jobs/tw1-ticket.md exactly, as a fallback")"
+note '{"taskId":"node:delegated-task:tw1","childThreadId":"tw1-1","status":"failed"}' 0.5 result
+check "the same launch passes once delegate_task's result told the launcher that job's task failed; the limit of 3 then counts the other two" "0 0" "$(alive "Execute $T/jobs/tw1-ticket.md exactly, as a fallback") $(alive "Execute $T/jobs/tw5-ticket.md exactly" '' '' twn)"
+twj tw4 t3tw4; note 'Delegated task node:delegated-task:tw4 (tw4) [failed]: Stopped.' 3 user
+check "BLOCK: a job whose agent wrote after its notice (revived) counts: with it a fourth is refused" 2 "$(alive "Execute $T/jobs/tw5-ticket.md exactly" '' '' twn)"
+touch -d '5 minutes ago' "$JD/t3tw1.jsonl" "$JD/tw2.jsonl" "$JD/tw3.jsonl" "$JD/t3tw4.jsonl"
+for jn in tw1 tw2 tw3 tw4; do python3 "$R/bin/agent-job" done "$T/jobs/$jn-ticket.md" >/dev/null; done
 # a stopped subagent's job is reported done at the kill, not after its transcript has been quiet
 reg "Execute $T/jobs/kill-ticket.md exactly"; child_log "$JD/orch/subagents/agent-k1ll.jsonl" "Execute $T/jobs/kill-ticket.md exactly" 0 text
 python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600, "launched": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "kill-ticket" in open(f).read()]'
