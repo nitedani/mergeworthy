@@ -2101,6 +2101,14 @@ check "pr-steps verify: BLOCK a round 2 carrying only round-1 findings without a
   "$(led 'R1.1 should listed: the report') $(grep -c 'closes round 1' "$T/err") $(led 'Round: 2' 'R1.1 should disputed: x' 'R2.1 nit declined: y') $(grep -c 'R1.1 should disputed: x  <- not fixed' "$T/err") $(led 'Round: 2' 'R1.1 should listed: the report')"
 cp "$T/r2.md" "$T/r2c.md"; LR="$T/r2c.md"
 check "BLOCK: pr-steps verify with a code loop's blocker closed as fixed in r3, which only a post's ledger takes" "1 1" "$(led 'Round: 3' 'R2.1 blocker fixed in r3') $(grep -c 'open blocker' "$T/err")"
+# a claim the verifier lists as untested waits for a RULED line naming it, in round 2's ledger record as in a file ending NO BUGS (#190)
+printf '## Dropped\nNone.\n## Untested claims\n\n- `src/panel.tsx`: // The question the page opened on takes the focus as it shows. — Chrome — no probe recorded — UNVERIFIED\n' > "$T/uc.md"; std "$T/uc.md"; LR="$T/uc.md"
+{ cat "$T/uc.md"; echo 'RULED: src/panel.tsx: // The question the page opened on takes the focus as it shows.: listed: the PR body says no probe saw it'; } > "$T/uc1.md"
+{ cat "$T/uc.md"; echo 'NO BUGS'; } > "$T/uc2.md"; sed 's/^NO BUGS$/NO LOOP B COMMITS/' "$T/uc2.md" > "$T/uc3.md"
+check "BLOCK: pr-steps verify --ledger with an untested claim and no RULED line naming it, quoting it; a file ending NO BUGS, in verify and reverify; ruled, it records" "1 1 1 1 0" \
+  "$(led 'Round: 2' "R1.1 blocker fixed in $ON") $(grep -c '^- `src/panel.tsx`: // The question' "$T/err") $(cd "$GL" && bash "$R/bin/pr-steps" verify "$T/uc2.md" >/dev/null 2>&1; echo $?) $(cd "$GL" && bash "$R/bin/pr-steps" reverify "$T/uc3.md" >/dev/null 2>&1; echo $?) $(LR="$T/uc1.md"; led 'Round: 2' "R1.1 blocker fixed in $ON")"
+{ sed '/^RULED/d' "$T/uc1.md"; echo '- `src/panel.tsx`: // The answer picked keeps the focus. — Chrome — no probe recorded — UNVERIFIED'; grep '^RULED' "$T/uc1.md"; } > "$T/uc4.md"
+check "BLOCK: a RULED line naming one untested claim leaves the same file's other claim unruled" 1 "$(cd "$GL" && bash "$R/bin/pr-steps" verify "$T/uc4.md" --ledger "$T/led.md" >/dev/null 2>&1; echo $?)"
 check "BLOCK: a fix log recorded as the shape pass, saying what a pass needs" "1 1" "$(prs shape "$T/fixlog.md") $(cd "$G" && bash "$R/bin/pr-steps" shape "$T/fixlog.md" 2>&1 | grep -c "lacks the ✅ coverage list")"
 # a ratings report in the form a session wrote for #3609 (one rating per item, a summary of the changed ones, no ✅ list) is told all it lacks
 printf '## Files\n\n| # | File | Rating | Reason |\n|---|---|---|---|\n| 1 | `docs/headings.ts` | 9 | One entry, last. |\n| 8 | `packages/vike/package.json` | 6 | Refactor 1. |\n\n## Summary\n\n| Item | Old => new | Commit |\n|---|---|---|\n| File 8 `packages/vike/package.json` | 6 => 9 | f3e4b44bd4 |\n\nGates on f3e4b44bd4:\n- `pnpm run test:types` -> exit 0\n' > "$T/ratings.md"
