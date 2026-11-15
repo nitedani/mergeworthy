@@ -3334,8 +3334,8 @@ ul() { # the other PR's isDraft, base, head, one file and changedFiles: our open
   printf '[{"number":3675,"isDraft":false,"baseRefName":"main","headRefOid":"%s","files":[{"path":"a.ts"},{"path":"b.ts"}],"changedFiles":2},{"number":3680,"isDraft":%s,"baseRefName":"%s","headRefOid":"%s","files":[{"path":"%s"}],"changedFiles":%s}]' "$CH" "$@" > "$FX/pr_list_vikejs_vike"; }
 UR='gh pr ready 3675 -R vikejs/vike'; UP='git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc'
 ul false main b0b0b0b0 b.ts 1
-check "BLOCK: gh pr ready, a push to a ready PR and a ready gh pr create while another ready PR of ours changes one of its files, naming it and the file (#188)" "2 1 2 2 1" \
-  "$(bg "$UR" "$CK") $(grep -c 'vikejs/vike#3680, also yours and ready, changes b.ts' "$T/err") $(bg "$UP" "$CK") $(bg "gh pr create -R vikejs/vike --base main --title \"\$(cat $T/title.md)\" --body-file $(gated ub "It breaks.")" "$CK") $(grep -c ', also yours and ready, changes files listed only in part' "$T/err")"
+check "BLOCK: gh pr ready, a push to a ready PR and a ready gh pr create while another ready PR of ours changes one of its files, naming it and the file; a create with no base ref says to fetch it (#188)" "2 1 2 2 1 1" \
+  "$(bg "$UR" "$CK") $(grep -c 'vikejs/vike#3680, also yours and ready, changes b.ts' "$T/err") $(bg "$UP" "$CK") $(bg "gh pr create -R vikejs/vike --base main --title \"\$(cat $T/title.md)\" --body-file $(gated ub "It breaks.")" "$CK") $(grep -c ', also yours and ready, changes files listed only in part' "$T/err") $(grep -c 'without the base: `git fetch <the base repo.s remote> main`' "$T/err")"
 echo "union $T/u.log 2026-11-15T00:00:00Z b0b0b0b0" >> "$HOME/.claude/pr-steps/$CH"
 check "a union record on this head naming the other's head passes them; a new head on the other PR blocks again" "0 0 2" "$(bg "$UR" "$CK") $(bg "$UP" "$CK") $(ul false main c1c1c1c1 b.ts 1; bg "$UR" "$CK")"
 check "no shared file, the other a draft or on another base: passes; the list is of our own open PRs" "0 0 0 1" \
@@ -3752,6 +3752,28 @@ check "a GitLab project path through the API is on --hostname's or GITLAB_HOST's
 (cd "$NA" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 check "each passes once the branch has its approach record" "0 0 0 0 0 0 0 0 0 0" "$(na)"
 check "the API forms pass too" "0 0 0 0 0 0 0" "$(api_forms)"
+# GitLab: two ready MRs of ours that change one file are checked merged before the second goes ready or takes a push (#188)
+NH=$(git -C "$NA" rev-parse HEAD); for k in verify shape reverify fresh gates; do echo "$k $T/x 2026-11-15T00:00:00Z" >> "$HOME/.claude/pr-steps/$NH"; done
+GLL="$FX/gl_projects_me_2Fapp_merge_requests_state_opened_scope_created_by_me_per_page_100"
+gll() { # the other MR's draft, target branch, head, one file and overflow: our open MRs on me/app, !5 this one (branch mr-b)
+  printf '[{"iid":5,"draft":false,"target_branch":"main","source_branch":"mr-b","sha":"%s"},{"iid":8,"draft":%s,"target_branch":"%s","source_branch":"other","sha":"%s"}]' "$NH" "$1" "$2" "$3" > "$GLL"
+  printf '{"changes":[{"old_path":"a.py","new_path":"a.py"},{"old_path":"b.py","new_path":"b.py"}],"overflow":false}' > "$FX/gl_projects_me_2Fapp_merge_requests_5_changes"
+  printf '{"changes":[{"old_path":"%s","new_path":"%s"}],"overflow":%s}' "$4" "$4" "$5" > "$FX/gl_projects_me_2Fapp_merge_requests_8_changes"; }
+echo '[{"web_url":"https://gitlab.com/me/app/-/merge_requests/5","draft":false}]' > "$FX/gl_projects_me_2Fapp_merge_requests_state_opened_source_branch_mr-b"
+glb() { MERGEWORTHY_WATCHER=off bg "$1" "$NA"; }
+gll false main d0d0d0d0 b.py false
+check "GitLab, BLOCK: glab mr update --ready, -r and by the current branch, a push to a ready MR and a ready glab mr create while another ready MR of ours changes one of its files, naming it and the file (#188)" "2 1 2 2 2 2 1" \
+  "$(glb 'glab mr update 5 --ready') $(grep -c 'gitlab.com/me/app!8, also yours and ready, changes b.py' "$T/err") $(glb 'glab mr update 5 -r') $(glb 'glab mr update --ready') $(glb 'git push origin HEAD:mr-b') $(glb 'glab mr create --title x --target-branch main') $(grep -c 'gitlab.com/me/app!., also yours and ready' "$T/err")"
+echo "union $T/u.log 2026-11-15T00:00:00Z d0d0d0d0" >> "$HOME/.claude/pr-steps/$NH"
+check "GitLab: a union record naming the other's head passes them; a new head on the other MR blocks again" "0 0 2" "$(glb 'glab mr update 5 --ready') $(glb 'git push origin HEAD:mr-b') $(gll false main e1e1e1e1 b.py false; glb 'glab mr update 5 --ready')"
+check "GitLab: no shared file, the other a draft or on another target branch: passes" "0 0 0" \
+  "$(gll false main e1e1e1e1 c.py false; glb 'glab mr update 5 --ready') $(gll true main e1e1e1e1 b.py false; glb 'glab mr update 5 --ready') $(gll false dev e1e1e1e1 b.py false; glb 'glab mr update 5 --ready')"
+check "GitLab, BLOCK: an overflowing change list counts as shared; glab failing to list blocks, asking to retry" "2 2 1" \
+  "$(gll false main e1e1e1e1 z.py true; glb 'glab mr update 5 --ready') $(mv "$GLL" "$GLL.off"; glb 'glab mr update 5 --ready') $(grep -c 'glab couldn.t read your open MRs of gitlab.com/me/app.*retry once glab answers' "$T/err")"
+mv "$GLL.off" "$GLL"; gll false main e1e1e1e1 b.py false
+echo '[{"web_url":"https://gitlab.com/me/app/-/merge_requests/5","draft":true}]' > "$FX/gl_projects_me_2Fapp_merge_requests_state_opened_source_branch_mr-b"
+check "GitLab: a push to a draft MR passes beside an overlapping ready one" 0 "$(glb 'git push origin HEAD:mr-b')"
+rm "$GLL" "$FX"/gl_projects_me_2Fapp_merge_requests_[58]_changes
 # a push is held to the approach of each branch it publishes, whichever is checked out
 git -C "$NA" checkout -q -b unrelated
 echo '[{"web_url":"https://gitlab.com/me/app/-/merge_requests/6","draft":true}]' > "$FX/gl_projects_me_2Fapp_merge_requests_state_opened_source_branch_unrecorded"
