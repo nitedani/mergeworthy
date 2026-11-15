@@ -2051,8 +2051,9 @@ def stop_watcher():
         subprocess.run(['rm', '-f', os.path.expanduser(f'~/Library/LaunchAgents/{label}.plist')])
         subprocess.run(['launchctl', 'bootout', f'gui/{os.getuid()}/{label}'])
         return
-    tab = subprocess.run(['crontab', '-l'], capture_output=True, text=True)
-    if tab.returncode == 0 and f'# gh-watch {HERE}' in tab.stdout:  # cron
+    try: tab = subprocess.run(['crontab', '-l'], capture_output=True, text=True)
+    except OSError: tab = None  # no cron on this host: a bare daemon, stopped below
+    if tab and tab.returncode == 0 and f'# gh-watch {HERE}' in tab.stdout:  # cron
         kept = ''.join(l + '\n' for l in tab.stdout.splitlines() if not l.endswith(f'# gh-watch {HERE}'))
         subprocess.run(['crontab', '-'], input=kept, text=True)
     try:
