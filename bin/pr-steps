@@ -195,10 +195,12 @@ for i, l in enumerate(lines):
     if l.startswith('#'):
         sec = i if kind[i] else None
         continue
-    m = item.match(l)  # a candidate: an outermost list item, or an unbulleted '<candidate>: <why>' line
-    if sec is not None and (len(m[1]) == outer[sec] if m else re.match(r'[^:]+:\s', plain(l))) and not empty(l) and not l.startswith('RULED:'):
-        name = (claim_of if kind[sec] == 'claims' else name_of)(l)
-        rulings = [r for r in lines[i + 1:] if name and r.startswith('RULED:') and name in plain(r)]
+    # a candidate: an outermost list item, or an unbulleted '<candidate>: <why>' line; under untested claims, any unbulleted line
+    m, claims = item.match(l), kind.get(sec) == 'claims'
+    if sec is not None and l.strip() not in ('', 'NO BUGS', 'NO LOOP B COMMITS') and (len(m[1]) == outer[sec] if m else claims or re.match(r'[^:]+:\s', plain(l))) and not empty(l) and not l.startswith('RULED:'):
+        name = (claim_of if claims else name_of)(l)
+        # 'RULED: <name>:' exactly, so a ruling for 'focus stays after navigation' never rules 'focus stays'
+        rulings = [r for r in lines[i + 1:] if name and r.startswith('RULED:') and re.match(r'ruled:\s*' + re.escape(name) + r'\s*:', plain(r))]
         if not rulings:
             print(l)
         elif all(re.search(r'not a regression|same as (on )?(main|master)|(main|master) does the same|pre-?existing|(also|too) on (main|master)|on (main|master) (too|as well)|masteren is', r.split(name, 1)[-1], re.I) and not re.search(r'outside the (files|change|code)|earn every line|no realistic usage|contrived|staged race', r, re.I)
