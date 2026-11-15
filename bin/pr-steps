@@ -6,6 +6,8 @@
 # The posting hook blocks `gh pr create` (unless --draft), `gh pr ready` and pushes to a ready PR until HEAD has all five.
 # quick: the quick gates' exit codes on a head (code §Gates), which a push to a PR or another owner's repo, and `gh pr create`, need on the pushed head.
 # finality: the finality pass's pinnacle and plan (finality step 3), which a code file's 6th change on the branch needs on the head (pre-bash-guard).
+# union <log> | --conflict <sha>: two ready PRs of ours sharing a file, checked together (merging step 2): in a checkout of their merge, the log's
+# first line 'Union: <owner/repo>#<A>@<sha> + #<B>@<sha> on <base>@<sha>' and its quick gates; or, in one PR's checkout, its textual conflict with the other's head.
 set -euo pipefail
 # The first sentence of each code/SKILL.md section a checker's brief names: its file copies them under '## Standards read', proof it read them
 standards() { python3 - "$(dirname "$(realpath "$0")")/../skills/code/SKILL.md" <<'EOF'
@@ -22,11 +24,11 @@ read_standards() {
   miss=$(standards | while IFS= read -r l; do case "$sec" in *"$l"*) ;; *) printf '%s\n' "$l" ;; esac; done)
   [ -z "$miss" ] || { printf '%s\n' "$out has no '## Standards read' copying the first sentence of each code/SKILL.md section its brief names (read them before checking; the brief of this step: mergeworthy delegate/verifier.md, shape.md or fresh-reader.md). Missing:" "$miss" >&2; exit 1; }
 }
-step=${1:?usage: pr-steps <preflight|approach|small|quick|verify|shape|reverify|fresh|gates|finality> <output-file> [--ledger <path>]}; out=${2:?output file}
+step=${1:?usage: pr-steps <preflight|approach|small|quick|verify|shape|reverify|fresh|gates|finality|union> <output-file> [--ledger <path>]}; out=${2:?output file}
 ledger=; [ "${3:-}" != --ledger ] || ledger=${4:?--ledger <path>}
 ledger_ok() { [ -n "$ledger" ] && python3 "$(dirname "$(realpath "$0")")/../hooks/ledger.py" "$ledger"; }
-case "$step" in preflight|approach|small|quick|verify|shape|loopb|refactor|reverify|fresh|gates|finality) ;; review) step=fresh ;;
-  *) echo "step must be preflight, approach, small, quick, verify, shape, reverify, fresh, gates or finality" >&2; exit 1;; esac
+case "$step" in preflight|approach|small|quick|verify|shape|loopb|refactor|reverify|fresh|gates|finality|union) ;; review) step=fresh ;;
+  *) echo "step must be preflight, approach, small, quick, verify, shape, reverify, fresh, gates, finality or union" >&2; exit 1;; esac
 # preflight and approach: one record per repo and branch, the path the hooks read (hooks/shellcmd.py branch_record)
 mkdir -p ~/.claude/pr-steps
 approach=$(python3 "$(dirname "$(realpath "$0")")/../hooks/shellcmd.py" approach)
@@ -58,6 +60,20 @@ sys.exit("main-frame-error" in d or not re.sub(r"<[^>]*>|\s", "", re.sub(r"(?is)
   echo "preflight $proof $(date -u +%FT%TZ)" >> "$preflight"
   echo "recorded preflight for branch $(git symbolic-ref --short -q HEAD || echo HEAD): $proof"
   exit 0
+fi
+# each union head's record names the other's head, the one pre-bash-guard asks for
+record_union() { for h in "$1 $2" "$2 $1"; do set -- $h; echo "union $proof $(date -u +%FT%TZ) $2" >> ~/.claude/pr-steps/"$1"; done; echo "recorded union of $1 and $2"; }
+if [ "$step" = union ] && [ "$out" = --conflict ]; then
+  a=$(git rev-parse HEAD); b=$(git rev-parse -q --verify "${3:?usage: pr-steps union --conflict <the other PR head sha>}^{commit}") || { echo "$3 is no commit here: fetch the other PR's head first" >&2; exit 1; }
+  rc=0; git merge-tree --write-tree "$a" "$b" >/dev/null 2>&1 || rc=$?
+  [ "$rc" = 1 ] || { echo "HEAD and $3 merge without a conflict: run the quick gates on their merge and record its log with pr-steps union <log>" >&2; exit 1; }
+  proof=conflict; record_union "$a" "$b"; exit 0
+fi
+if [ "$step" = union ]; then
+  shas=$(head -n1 "$out" | sed -En 's/^Union: [^ ]+#[0-9]+@([0-9a-f]{7,40}) \+ #[0-9]+@([0-9a-f]{7,40}) on [^ ]+@([0-9a-f]{7,40})$/\1 \2 \3/p')
+  [ -n "$shas" ] || { echo "$out's first line is not 'Union: <owner/repo>#<A>@<sha> + #<B>@<sha> on <base>@<sha>'" >&2; exit 1; }
+  for s in $shas; do git merge-base --is-ancestor "$s" HEAD 2>/dev/null || { echo "HEAD doesn't hold $s: merge both PRs' heads onto their base, and run the gates there" >&2; exit 1; }; done
+  set -- $shas; ua=$(git rev-parse "$1"); ub=$(git rev-parse "$2")
 fi
 if [ "$step" = approach ]; then
   chosen=$(sed -n 's/^[[:space:]]*Chosen:[[:space:]]*//p' "$out" | head -n1 | sed 's/[[:space:]]*$//')
@@ -164,7 +180,7 @@ carries() {
   awk -v s="$step" '$1==s' ~/.claude/pr-steps/"$full" 2>/dev/null | grep -q . || { echo "$c has no recorded $step to carry" >&2; exit 1; }
   carry_holds "$full"
 }
-if [ "$step" != shape ] && [ "$step" != refactor ] && [ "$step" != gates ] && [ "$step" != quick ] && [ "$step" != finality ] && carries; then :; else
+if [ "$step" != shape ] && [ "$step" != refactor ] && [ "$step" != gates ] && [ "$step" != quick ] && [ "$step" != union ] && [ "$step" != finality ] && carries; then :; else
 base=$(git merge-base HEAD "$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)" 2>/dev/null || true)
 case "$step" in
   verify|reverify)
@@ -262,7 +278,7 @@ EOF
       [ -z "$ask" ] || { echo "$ask asks for a refactor pass after the pass $carried carries ($at): run the pass on this head (mergeworthy:converge step 2, delegate/shape.md) and record its report, not a carry" >&2; exit 1; }
       carry_holds "$full"
     fi ;;
-  gates|quick)
+  gates|quick|union)
     grep -Eq '^.+ -> exit [0-9]+( \([0-9]+ (tests?|projects?|files?|words)\))?$' "$out" || { echo "$out lists no gate: one line per gate, '<command> -> exit <code>', run on this HEAD; a test gate: '<command> -> exit 0 (<N> tests)'" >&2; exit 1; }
     # a gate that can't run here is installed or run another way: CI is never where a change is first checked
     unrun="\\b(not installed|isn't installed|let CI|leave it to CI|CI will (verify|check|tell)|(can't|cannot|can not) (run|install)|(not|wasn't|weren't) run)\\b"
@@ -304,6 +320,7 @@ EOF
     fi ;;
 esac
 fi
+[ "$step" != union ] || { proof=$(realpath "$out"); record_union "$ua" "$ub"; exit 0; }
 grep -qsF " $(realpath "$out") " ~/.claude/pr-steps/"$sha" && { echo "$out is already recorded for $sha: each step has its own output" >&2; exit 1; }
 mkdir -p ~/.claude/pr-steps
 echo "$step $(realpath "$out") $(date -u +%FT%TZ)" >> ~/.claude/pr-steps/$sha
