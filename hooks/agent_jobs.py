@@ -230,13 +230,16 @@ def wrote(path):
 
 def noticed(launcher, path):
     """The launcher's transcript got a notice of the agent's end after the agent last wrote: T3 Code's for a task of the agent's
-    thread (its launch, a message sent to it, a continuation), or Claude Code's <task-notification> or Agent result for its
+    thread (its launch, a message sent to it, a continuation), as a notice or a tool result with its terminal status, or Claude Code's <task-notification> or Agent result for its
     subagent. A run revived after it, or one that ended with no notice, wrote after the last one."""
     ids = steward.tasks(session_id(path))
     agent = re.fullmatch(r'agent-(\w+)\.jsonl', os.path.basename(path))
     for e in since(launcher, wrote(path)):
         r = e.get('toolUseResult')
         if agent and isinstance(r, dict) and r.get('agentId') == agent[1] and r.get('status') == 'completed': return True
+        # T3's delegate_task or task_status result naming a terminal status, as a launch that fails at once returns
+        t = t3_tasks.result(r) if isinstance(r, (str, list)) else None
+        if t and t.get('taskId') in ids and t.get('status') in ('completed', 'failed', 'cancelled', 'interrupted'): return True
         # delivered as a prompt, or mid-turn as a queued_command attachment
         c = (e.get('message') or {}).get('content') if e.get('type') == 'user' else (e.get('attachment') or {}).get('prompt')
         n, cn = isinstance(c, str) and t3_tasks.NOTICE.match(c), isinstance(c, str) and TASK_NOTICE.match(c)
