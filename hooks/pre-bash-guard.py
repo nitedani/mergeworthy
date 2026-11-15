@@ -11,13 +11,14 @@ from shellcmd import parse, segments, prog, script, opt, api_call, discussion_po
 import own_actions, steward, post_words, testpaths, threads_file, work_folder
 from t3_tasks import under_t3
 AGENT_TRAILER = re.compile(r'^Co-Authored-By: Claude', re.M | re.I)  # a commit without it is a maintainer's
-def missing_steps(d):
-    head = subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
+def missing_steps(d, head=None):
+    """(head, the converge steps it lacks): head is a push's pushed commit, else HEAD."""
+    head = head or subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
     rec = os.path.expanduser(f'~/.claude/pr-steps/{head}')
     # A maintainer's commits on top carry the last converged head's records, whatever their size: they get
     # reply §Maintainer commits' review, and the pipeline runs again only once the maintainer says they're done.
     # Only non-merge commits without the agent's Co-Authored-By: Claude trailer are skipped back over.
-    for c in subprocess.run(['git', '-C', d, 'rev-list', '--first-parent', '--max-count=100', 'HEAD'], capture_output=True, text=True).stdout.split():
+    for c in subprocess.run(['git', '-C', d, 'rev-list', '--first-parent', '--max-count=100', head or 'HEAD'], capture_output=True, text=True).stdout.split():
         if os.path.exists(os.path.expanduser(f'~/.claude/pr-steps/{c}')):
             rec = os.path.expanduser(f'~/.claude/pr-steps/{c}'); break
         parents, _, body = subprocess.run(['git', '-C', d, 'log', '-1', '--format=%P%x00%B', c], capture_output=True, text=True).stdout.partition('\0')
@@ -950,12 +951,13 @@ def check(t, has_cd):
                 check_patches(repo)
                 if prs:  # each branch it publishes, whichever is checked out
                     for _, _, local in heads: need_approach(repo, f"this push ({'; '.join(why)})", local)
-                head, missing = missing_steps(repo)
-                if missing and any(not p['isDraft'] and not push_before_gates(p['url']) for p in prs):
-                    block(f"this branch's PR is out of draft and HEAD {head[:10]} has no pr-steps {', '.join(missing)} record (approach: pull-request step 5, once per branch): run converge's pipeline on it first (each step ends with its `pr-steps <step> <output>`), or `gh pr ready --undo` while it converges")
-                for p in prs:
-                    if not p['isDraft'] and not push_before_gates(p['url']) and (m := re.match(r'https://(?:github\.com/(.+)/pull|([^/]+/.+?)/-/merge_requests)/(\d+)$', p['url'] or '')):
-                        check_union(repo, m[1] or m[2], m[3], head=p['sha'] or block(f"this push's commit for {p['url']} can't be told, so its union record can't be checked: push a branch or a sha written out"))
+                for pr in prs:
+                    if pr['isDraft'] or push_before_gates(pr['url']): continue
+                    sha = pr['sha'] or block(f"this push's commit for {pr['url']} can't be told, so its records can't be checked: push a branch or a sha written out")
+                    if (missing := missing_steps(repo, sha)[1]):
+                        block(f"{pr['url']} is out of draft and its pushed commit {sha[:10]} has no pr-steps {', '.join(missing)} record (approach: pull-request step 5, once per branch): run converge's pipeline on it first (each step ends with its `pr-steps <step> <output>`), or `gh pr ready --undo` while it converges")
+                    if m := re.match(r'https://(?:github\.com/(.+)/pull|([^/]+/.+?)/-/merge_requests)/(\d+)$', pr['url'] or ''):
+                        check_union(repo, m[1] or m[2], m[3], head=sha)
             own['PUSHED_HEADS'] += [sha for sha, _, _ in heads if sha]
     if p in ('curl', 'wget', 'http', 'https', 'xh') and any(re.search(r'\bapi\.github\.com\b|github\.com/api/', x) for x in a) and \
             any(re.fullmatch(r'-X|--request|-d|--data[\w-]*|-F|--form|--json|-T|--upload-file|--method|POST|PATCH|PUT|DELETE|-\w*[dXFT]', x) or re.match(r'--(?:request|method)=', x) for x in a):

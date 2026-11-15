@@ -3339,10 +3339,15 @@ check "BLOCK: gh pr ready, a push to a ready PR and a ready gh pr create while a
 echo "union $T/u.log 2026-11-15T00:00:00Z b0b0b0b0" >> "$HOME/.claude/pr-steps/$CH"
 check "a union record on this head naming the other's head passes them; a new head on the other PR blocks again" "0 0 2" "$(bg "$UR" "$CK") $(bg "$UP" "$CK") $(ul false main c1c1c1c1 b.ts 1; bg "$UR" "$CK")"
 # a push is checked with the union record and files of the head it publishes, not the checkout's
-git -C "$CK" checkout -q -b other; git -C "$CK" -c user.name=t -c user.email=t@t commit -q --allow-empty -m o -m 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>'; quick "$CK"; (cd "$CK" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null); git -C "$CK" checkout -q fix-telefunc
+rec5() { for k in verify shape reverify fresh gates; do echo "$k $T/x 2026-11-15T00:00:00Z" >> "$HOME/.claude/pr-steps/$1"; done; }  # the five converge records on a commit
+git -C "$CK" checkout -q -b other; git -C "$CK" -c user.name=t -c user.email=t@t commit -q --allow-empty -m o -m 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>'; quick "$CK"; rec5 "$(git -C "$CK" rev-parse HEAD)"; (cd "$CK" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null); git -C "$CK" checkout -q fix-telefunc
 ul false main b0b0b0b0 b.ts 1; UG='git push https://github.com/nitedani-agent/vike.git'
 check "BLOCK: a push of another branch to a ready PR, while HEAD holds the union record, needs that branch's own, naming the other PR; with several refs, each PR is checked on the head pushed for it" "0 2 1 2 0" \
   "$(bg "$UG HEAD:fix-telefunc" "$CK") $(bg "$UG other:fix-telefunc" "$CK") $(grep -c 'vikejs/vike#3680, also yours and ready, changes b.ts' "$T/err") $(bg "$UG other:fix-telefunc HEAD:x2" "$CK") $(bg "$UG HEAD:fix-telefunc other:x2" "$CK")"
+git -C "$CK" checkout -q -b bare; git -C "$CK" -c user.name=t -c user.email=t@t commit -q --allow-empty -m b -m 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>'; quick "$CK"; (cd "$CK" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null); git -C "$CK" checkout -q fix-telefunc
+ul false main c1c1c1c1 c.ts 1
+check "BLOCK: a push of another branch to a ready PR is held to that branch's converge records, not HEAD's: none blocks, naming its commit; its own five pass" "2 1 0" \
+  "$(bg "$UG bare:fix-telefunc" "$CK") $(grep -c "out of draft and its pushed commit $(git -C "$CK" rev-parse bare | cut -c1-10) has no pr-steps verify" "$T/err") $(rec5 "$(git -C "$CK" rev-parse bare)"; bg "$UG bare:fix-telefunc" "$CK")"
 printf '[{"number":3680,"isDraft":false,"baseRefName":"main","headRefOid":"b0b0b0b0","files":[{"path":"b.ts"}],"changedFiles":1}]' > "$FX/pr_list_vikejs_vike"
 check "a recorded pair passes a ready gh pr create though git can't tell this branch's files (no base ref)" "0 0" "$(bg "gh pr create -R vikejs/vike --base main --title \"\$(cat $T/title.md)\" --body-file $(gated ub2 'It breaks.')" "$CK") $(grep -c 'also yours and ready' "$T/err")"
 ul false main c1c1c1c1 b.ts 1; sed -i 's/"baseRefName":"main"/"baseRefName":"dev"/' "$FX/pr_list_vikejs_vike"; sed -i 's/"isDraft":false,"baseRefName":"dev","headRefOid":"c1c1c1c1"/"isDraft":false,"baseRefName":"main","headRefOid":"c1c1c1c1"/' "$FX/pr_list_vikejs_vike"
@@ -3782,7 +3787,12 @@ check "GitLab: no shared file, the other a draft or on another target branch: pa
   "$(gll false main e1e1e1e1 c.py false; glb 'glab mr update 5 --ready') $(gll true main e1e1e1e1 b.py false; glb 'glab mr update 5 --ready') $(gll false dev e1e1e1e1 b.py false; glb 'glab mr update 5 --ready')"
 check "GitLab, BLOCK: an overflowing change list counts as shared; glab failing to list blocks, asking to retry" "2 2 1" \
   "$(gll false main e1e1e1e1 z.py true; glb 'glab mr update 5 --ready') $(mv "$GLL" "$GLL.off"; glb 'glab mr update 5 --ready') $(grep -c 'glab couldn.t read your open MRs of gitlab.com/me/app.*retry once glab answers' "$T/err")"
-mv "$GLL.off" "$GLL"; gll false main e1e1e1e1 b.py false
+mv "$GLL.off" "$GLL"
+git -C "$NA" checkout -q -b gbare; git -C "$NA" -c user.name=t -c user.email=t@t commit -q --allow-empty -m b -m 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>'; quick "$NA"; (cd "$NA" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null); git -C "$NA" checkout -q mr-b
+gll false main e1e1e1e1 c.py false
+check "GitLab, BLOCK: a push of another branch to a ready MR is held to that branch's converge records, not HEAD's: none blocks; its own five pass" "2 1 0" \
+  "$(glb 'git push origin gbare:mr-b') $(grep -c 'out of draft and its pushed commit' "$T/err") $(rec5 "$(git -C "$NA" rev-parse gbare)"; glb 'git push origin gbare:mr-b')"
+gll false main e1e1e1e1 b.py false
 echo '[{"web_url":"https://gitlab.com/me/app/-/merge_requests/5","draft":true}]' > "$FX/gl_projects_me_2Fapp_merge_requests_state_opened_source_branch_mr-b"
 check "GitLab: a push to a draft MR passes beside an overlapping ready one" 0 "$(glb 'git push origin HEAD:mr-b')"
 echo '{"head_pipeline":null,"draft":true}' > "$FX/gl_projects_me_2Fapp_merge_requests_5"
