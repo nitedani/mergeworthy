@@ -839,6 +839,7 @@ with contextlib.redirect_stdout(buf): m.retire_if_done()   # every thread merged
 print(repr(buf.getvalue()))
 ')
 check "retire_if_done: stays while a merged PR is followed" "''" "$got"
+rm -f "$W/events.log"  # the FOLLOW-UPs above, unsorted, keep the watcher (retire_if_done)
 got=$(py '
 def run(threads):
     open(m.THREADS, "w").write(threads); buf = io.StringIO()
@@ -990,6 +991,71 @@ with contextlib.redirect_stdout(buf): m.wake_thread()
 print(repr(buf.getvalue()), open(os.path.join(m.HERE, "t3-wake.cursor")).read().strip())
 ')
 check "wake_thread runs the t3 gh-watch-start recorded, so a daemon cron revived with PATH=/usr/bin:/bin still sends" "'' 15|t3 thread send thr-2 -" "$got|$(grep '^t3 thread send thr-2' "$T/t3.log")"
+# a FOLLOW-UP or MAINTAINER REVIEW still unsorted 30 minutes after its time is sent again, an hour after, then doubling the gap
+: > "$T/t3.log"
+got=$(py '
+import sqlite3, datetime, time
+db = os.path.expanduser("~/.t3/userdata/statev2.sqlite"); os.makedirs(os.path.dirname(db), exist_ok=True)
+c = sqlite3.connect(db)
+c.execute("create table orchestration_v2_projection_runs (run_id text, thread_id text, status text, payload_json text)")
+c.execute("create table orchestration_v2_projection_messages (message_id text, thread_id text, role text, created_at text, payload_json text)")
+ago = lambda s: datetime.datetime.fromtimestamp(time.time() - s, datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+log, resent = os.path.join(m.HERE, "events.log"), os.path.join(m.HERE, "t3-wake.resent")
+open(log, "w").write(f"### FOLLOW-UP o/r#5: abcdef1234 by carol changes lines from your PR  <c>  at {ago(2400)}\n"
+                     f"### MAINTAINER REVIEW o/r#5: https://github.com/o/r/pull/5#pullrequestreview-71 by magne reviews your PR  at {ago(2400)}\n"
+                     f"### FOLLOW-UP o/r#5: https://github.com/o/r/pull/9 by alice references your PR  at {ago(600)}\n"
+                     f"### FOLLOW-UP o/r#4: 1234567890 by dave changes lines from your PR  <c>  at {ago(61 * 86400)}\n")
+open(os.path.join(m.HERE, "t3-thread"), "w").write("thr-u\n'"$T"'/bin/t3\n"); open(os.path.join(m.HERE, "t3-wake.cursor"), "w").write(str(os.path.getsize(log)))
+sends = lambda: open("'"$T"'/t3.log").read().count("t3 thread send")
+def back(s):  # the last re-send s seconds earlier
+    t, n = open(resent).read().split(); open(resent, "w").write(f"{int(t) - s} {n}\n")
+def run(*rows):
+    for r in rows: c.execute("insert into orchestration_v2_projection_runs values (?, ?, ?, ?)", r)
+    c.commit(); os.path.exists(resent) and os.remove(resent); m.wake_thread(); c.execute("delete from orchestration_v2_projection_runs"); c.commit()
+    return sends()
+out = []
+m.wake_thread(); m.wake_thread(); out.append(sends()); first = open("'"$T"'/t3.log").read()
+back(3599); m.wake_thread(); out.append(sends()); back(1); m.wake_thread(); out.append(sends())
+back(3600); m.wake_thread(); out.append(sends()); back(3600); m.wake_thread(); out.append(sends())
+m2 = importlib.util.module_from_spec(spec); spec.loader.exec_module(m2); m2.HERE, m2.STATE = m.HERE, m.STATE; m2.wake_thread(); out.append(sends())  # a restart keeps t3-wake.resent
+out.append(run(("r1", "thr-u", "running", json.dumps({"ordinal": 1}))))
+c.execute("insert into orchestration_v2_projection_messages (message_id, payload_json) values (?, ?)", ("w1", json.dumps({"text": "Watcher events in " + m.HERE + "/events.log (mergeworthy:reply):\n### x"})))
+out.append(run(("r2", "thr-u", "queued", json.dumps({"userMessageId": "w1", "ordinal": 2}))));
+out.append(run(("r3", "thr-u", "interrupted", json.dumps({"ordinal": 3}))))
+open(os.path.expanduser("~/.mergeworthy/steward"), "w").write(m.HERE + " thr-x\n"); out.append(run()); os.remove(os.path.expanduser("~/.mergeworthy/steward"))
+open(log, "a").write("### o/r#7 comment 1 by bob\n"); out.append(run()); both = open("'"$T"'/t3.log").read()[len(first):].split("t3 thread send")[-1]
+open(os.path.join(m.HERE, "followups-sorted.txt"), "w").write("abcdef1 TASTE https://example.invalid/notes\n")
+out.append(run()); open(os.path.join(m.HERE, "followups-sorted.txt"), "a").write("https://github.com/o/r/pull/5#pullrequestreview-71 MISS https://example.invalid/ledger\n")
+open(resent, "w").write("0 1\n"); m.wake_thread(); out.append(sends()); out.append(os.path.exists(resent))
+os.remove(os.path.join(m.HERE, "t3-thread")); os.remove(db)
+print(*out, "|", first.replace(chr(10), ";"), "|", both.replace(chr(10), ";"))
+')
+check "wake_thread: an event unsorted 30 minutes after its time is sent again, under its own line, an hour later, then 2 hours, not past 60 days nor after a restart, while the thread runs, holds a wake of ours, is stopped, or in a steward dir; with a new event in one message; a verdict ends it and its state file" \
+  "1 1 2 2 3 3 3 3 3 3 4 5 5 False | t3 thread send thr-u -;Watcher events in $W/events.log (mergeworthy:reply):;Unsorted after 30 minutes (mergeworthy:rules step 6):;### FOLLOW-UP o/r#5: abcdef1234 by carol changes lines from your PR  <c>  at X;### MAINTAINER REVIEW o/r#5: https://github.com/o/r/pull/5#pullrequestreview-71 by magne reviews your PR  at X; |  thr-u -;Watcher events in $W/events.log (mergeworthy:reply):;### o/r#7 comment 1 by bob;Unsorted after 30 minutes (mergeworthy:rules step 6):;### FOLLOW-UP o/r#5: abcdef1234 by carol changes lines from your PR  <c>  at X;### MAINTAINER REVIEW o/r#5: https://github.com/o/r/pull/5#pullrequestreview-71 by magne reviews your PR  at X;" \
+  "$(sed -E 's/  at [0-9T:-]+Z/  at X/g' <<< "$got")"
+rm "$W/followups-sorted.txt"
+# an event still unsorted keeps a watcher whose every thread is closed, for the 60 days it is followed
+got=$(py '
+import datetime, time
+ago = lambda s: datetime.datetime.fromtimestamp(time.time() - s, datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+log = os.path.join(m.HERE, "events.log"); open(m.THREADS, "w").write("o/r 5\n")
+m.save_state({"prs": {"o/r#5": {"state": "closed"}}, "author": {}, "ci": {}, "is_pr": {}, "since_by": {}, "seen": {}, "since": "2026-01-01T00:00:00Z"})
+def run():
+    with open(log, "a") as f, contextlib.redirect_stdout(f):
+        try:
+            m.retire_if_done()
+        except SystemExit:
+            pass
+    out = "retired" if os.path.exists(os.path.join(m.HERE, "retired")) else "kept"
+    os.path.exists(os.path.join(m.HERE, "retired")) and os.remove(os.path.join(m.HERE, "retired"))
+    return out
+open(log, "w").write(f"### FOLLOW-UP o/r#5: abcdef1234 by carol changes lines from your PR  <c>  at {ago(59 * 86400)}\n"); a = run()
+open(os.path.join(m.HERE, "followups-sorted.txt"), "w").write("abcdef1234 WORKED https://example.invalid/notes\n"); b = run()
+os.remove(os.path.join(m.HERE, "followups-sorted.txt")); open(log, "w").write(f"### FOLLOW-UP o/r#5: abcdef1234 by carol changes lines from your PR  <c>  at {ago(61 * 86400)}\n")
+print(a, b, run())
+')
+check "retire_if_done: an unsorted FOLLOW-UP keeps the watcher; its verdict, or 60 days past it, lets it retire" "kept retired retired" "$got"
+rm -f "$W/retired" "$W/events.log" "$W/followups-sorted.txt"
 # retiring sends the events before it, not its own WATCHER RETIRED line, before the supervisor stops the daemon
 : > "$T/t3.log"
 got=$(py '
