@@ -100,8 +100,11 @@ fi
 [ -s "$out" ] || { echo "$out is empty: run the step and save its output" >&2; exit 1; }
 last=$(grep -v '^[[:space:]]*$' "$out" | tail -n1 || true)
 sha=$(git rev-parse HEAD)
-built='(^|/)dist/'  # a committed build bundle: not code a reviewer reads
-# pr-steps small <report>: a fix of at most 60 lines outside tests, docs, lockfiles and dist/, with a test in the diff (a diff of docs
+# build output, not code a reviewer reads: those of the paths on stdin, a line each, that testpaths.generated finds
+built() { python3 "$(dirname "$(realpath "$0")")/../hooks/testpaths.py" generated; }
+# numstat lines on stdin (core.quotePath=false: check-attr reads the path as it is) whose path (field 3) isn't build output
+not_built() { local ns; ns=$(cat); printf '%s\n' "$ns" | G=$(printf '%s\n' "$ns" | cut -f3 | built) awk -F'\t' 'BEGIN { split(ENVIRON["G"], a, "\n"); for (i in a) g[a[i]] } NF && !($3 in g)'; }
+# pr-steps small <report>: a fix of at most 60 lines outside tests, docs, lockfiles and build output, with a test in the diff (a diff of docs
 # or code comments alone: a commit's Cold-read trailer, rules step 4), reviewed once by delegate/small-review.md, stands for verify, shape,
 # reverify and fresh (converge §Small fix); gates still run
 if [ "$step" = small ]; then
@@ -109,9 +112,9 @@ if [ "$step" = small ]; then
   base=$(git merge-base HEAD "${pb:+origin/$pb}" 2>/dev/null || git merge-base HEAD "$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)" 2>/dev/null) || { echo "no merge-base with the base branch" >&2; exit 1; }
   testre=$(python3 "$(dirname "$(realpath "$0")")/../hooks/testpaths.py")
   docs='\.md$|(^|/)docs?/'
-  skip="$testre|$docs|$built"'|lock\.(json|yaml)$|\.lock$|(^|/)\.changeset/'
-  n=$(git diff --numstat "$base" HEAD | awk -v r="$skip" '$3 !~ r {s+=$1+$2} END{print s+0}')
-  [ "$n" -le 60 ] || { echo "$n changed lines outside tests, docs, lockfiles and dist/: past a small fix's 60, run converge steps 1-4" >&2; exit 1; }
+  skip="$testre|$docs"'|lock\.(json|yaml)$|\.lock$|(^|/)\.changeset/'
+  n=$(git -c core.quotePath=false diff --numstat "$base" HEAD | not_built | awk -F'\t' -v r="$skip" '$3 !~ r {s+=$1+$2} END{print s+0}')
+  [ "$n" -le 60 ] || { echo "$n changed lines outside tests, docs, lockfiles and build output (dist/, linguist-generated): past a small fix's 60, run converge steps 1-4" >&2; exit 1; }
   if ! git diff --name-only --diff-filter=AM "$base" HEAD | grep -Eq "$testre"; then
     # the first changed line that isn't blank or a whole-line comment (//, /*, *, # , -- , <!--), or a binary file: comments alone are docs
     code=$(git diff --numstat "$base" HEAD | awk -v r="$docs" '$3 !~ r && $1 == "-" {print "binary " $3; exit}')
@@ -144,7 +147,7 @@ delta() {
   B=${pb:+origin/$pb}; B=${B:-$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)}
   T=$(git merge-tree --write-tree "$(git merge-base HEAD "$B" 2>/dev/null)" "$1" 2>/dev/null | sed -n 1p || true)  # exit 1 on a conflict, with the tree first
   git -c core.quotePath=false -c diff.noprefix=false diff --no-renames --numstat "${T:-$1}" HEAD |
-    awk -F'\t' -v r="$built" '$3 !~ r { n = $1 + $2; if (!n) n = 1; for (i = 0; i < n; i++) print $3 }'  # a binary, a mode or an empty file has no line, and is a change
+    not_built | awk -F'\t' '{ n = $1 + $2; if (!n) n = 1; for (i = 0; i < n; i++) print $3 }'  # a binary, a mode or an empty file has no line, and is a change
 }
 # A carry of head $1's step holds for at most 80 changed lines, none outside tests and docs: a line of code may add behavior, whatever the session says
 carry_holds() {

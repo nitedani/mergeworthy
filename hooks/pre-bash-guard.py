@@ -439,9 +439,9 @@ def git_head(d):
 
 NOT_CODE = re.compile(testpaths.TESTS + r'|(^|/)docs?/|\.md$|lock\.(json|yaml)$|\.lock$|(^|/)\.changeset/')
 def check_patches(d, pending=None, amend=False):
-    """`finality` step 1 as a mechanism: a code file (no test or doc) changed by 5 commits of the branch since its first review
-    (a verify, small, shape, reverify or fresh record) gets no 6th until `pr-steps finality` records the finality pass's plan on the head;
-    a commit with that record, HEAD too, starts the counts over after it. Building before any review counts nothing. Only the
+    """`finality` step 1 as a mechanism: a code file (no test, doc or build output: testpaths.generated)
+    changed by 5 commits of the branch since its first review (a verify, small, shape, reverify or fresh record) gets no 6th
+    until `pr-steps finality` records the finality pass's plan on the head; a commit with that record, HEAD too, starts the counts over after it. Building before any review counts nothing. Only the
     branch's own commits count (first parent): a merge commit, made or being made, is no change, nor are the commits it brings in,
     nor is a maintainer's (AGENT_TRAILER): the drift is the agent's.
     pending: the files the commit being made changes; None for a push, which checks the commits alone. amend: it replaces HEAD."""
@@ -459,7 +459,9 @@ def check_patches(d, pending=None, amend=False):
         steps = {l.split()[0] for l in open(RECORDS + c) if l.split()} if os.path.exists(RECORDS + c) else set()
         if 'finality' in steps or not reviewed and steps & {'verify', 'small', 'shape', 'reverify', 'fresh'}: count, reviewed = {}, True
     for f in (pending or []) if reviewed else []: count[f] = count.get(f, 0) + 1
-    if over := [f for f in (count if pending is None else pending) if count.get(f, 0) > 5 and not NOT_CODE.search(f)]:
+    over = [f for f in (count if pending is None else pending) if count.get(f, 0) > 5 and not NOT_CODE.search(f)]
+    gen = testpaths.generated(d, over) if over else set()
+    if over := [f for f in over if f not in gen]:
         block(f"{', '.join(over)} {'got' if pending is None else 'would get'} a {count[over[0]]}th change on this branch: patch after patch in one place is drift. "
               "Run the finality pass (mergeworthy:finality steps 2-3) on it and record its plan with `pr-steps finality <the plan>` on this head "
               "before Phase C's commits")

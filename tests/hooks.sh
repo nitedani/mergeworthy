@@ -2312,8 +2312,10 @@ printf 'x\n## Outside this change\nNone.\n\nNO BUGS\nMERGE AS IS: yes\n\n## Veri
 check "pr-steps small records a report whose verdict comes before its Verification and not_checked sections" 0 "$(prss "$T/sr5.md")"
 printf 'x\n## Outside this change\nNone.\n\n## not_checked\n- Windows\n\nNO BUGS\nMERGE AS IS: yes\n' > "$T/sr6.md"
 check "pr-steps small records a report whose verdict ends the file after its not_checked section" 0 "$(prss "$T/sr6.md")"
-mkdir -p "$GS/dist"; seq 1 300 > "$GS/dist/a.mjs"; git -C "$GS" add dist; git -C "$GS" -c user.name=t -c user.email=t@t commit -qm bundle
-check "pr-steps small doesn't count a committed build bundle (dist/)" 0 "$(prss "$T/sr2.md")"
+mkdir -p "$GS/dist" "$GS/gen"; seq 1 300 > "$GS/dist/a.mjs"; seq 1 300 > "$GS/gen/api.ts"; echo 'gen/** linguist-generated' > "$GS/.gitattributes"; git -C "$GS" add -A; git -C "$GS" -c user.name=t -c user.email=t@t commit -qm bundle
+check "pr-steps small doesn't count a committed build bundle (dist/) or a linguist-generated file" 0 "$(prss "$T/sr2.md")"
+seq 1 100 > "$GS/gen/árvíz.ts"; git -C "$GS" add gen; git -C "$GS" -c user.name=t -c user.email=t@t commit -qm gen
+check "pr-steps small doesn't count a linguist-generated file with a non-ASCII name either" 0 "$(prss "$T/sr2.md")"
 seq 1 70 >> "$GS/src/a.ts"; git -C "$GS" -c user.name=t -c user.email=t@t commit -qam d
 printf 'NO BUGS\nMERGE AS IS: yes\n- a finding after them\n' > "$T/sr4.md"
 check "BLOCK: pr-steps small on a report whose last lines aren't NO BUGS and MERGE AS IS: yes" 1 "$(prss "$T/sr4.md")"
@@ -3869,5 +3871,16 @@ for i in 1 2 3 4 5 6 7 8; do echo "m$i" >> "$SO/a.py"; oc -am "m$i"; done; echo 
 check "8 commits without the agent's trailer on a file count nothing: the agent's next change of it passes" 0 "$(bg 'git commit -m a1' "$SO")"
 for i in 1 2 3 4 5; do echo "a$i" >> "$SO/a.py"; ac -am "a$i"; done; echo a6 >> "$SO/a.py"; git -C "$SO" add a.py
 check "BLOCK: the agent's own 6th change among them is still refused, counted as its 6th" "2 1" "$(bg 'git commit -m a6' "$SO") $(grep -c 'a.py would get a 6th change' "$T/err")"
+# build output is no drift: dist/ and files .gitattributes marks linguist-generated, rebuilt with each source change; the source still counts, and so does build/ (hand-written build scripts in some repos)
+SD="$T/simpd"; git init -q -b main "$SD"; dc() { git -C "$SD" -c user.name=t -c user.email=t@t commit -q --trailer 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>' "$@"; }
+mkdir -p "$SD/swap/dist" "$SD/build" "$SD/gen"; echo 'gen/** linguist-generated' > "$SD/.gitattributes"; built() { for f in swap/dist/claude-swap.mjs gen/api.ts build/bundle.js src.ts; do echo "$1" >> "$SD/$f"; done; }
+built 0; git -C "$SD" add -A; dc -m base; git -C "$SD" update-ref refs/remotes/origin/main HEAD; git -C "$SD" checkout -q -b fix; built r; dc -am reviewed
+(cd "$SD" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null)
+for i in 1 2 3 4 5; do built "b$i"; dc -am "b$i"; done; built b6; git -C "$SD" add swap gen
+check "a build bundle's 6th rebuild passes: swap/dist/ and a linguist-generated file are build output" 0 "$(bg 'git commit -m b6' "$SD")"
+git -C "$SD" add build
+check "BLOCK: a build/ file's 6th change, naming it alone" "2 1 0" "$(bg 'git commit -m b6' "$SD") $(grep -c 'build/bundle.js would get a 6th change' "$T/err") $(grep -c 'claude-swap.mjs\|api.ts' "$T/err")"
+git -C "$SD" reset -q build; git -C "$SD" add src.ts
+check "BLOCK: the hand-written source's 6th change beside them, naming it alone" "2 1 0" "$(bg 'git commit -m b6' "$SD") $(grep -c 'src.ts would get a 6th change' "$T/err") $(grep -c 'claude-swap.mjs\|api.ts\|bundle.js' "$T/err")"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]
