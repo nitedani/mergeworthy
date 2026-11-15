@@ -3783,6 +3783,14 @@ check "GitLab: a push to a draft MR passes beside an overlapping ready one" 0 "$
 echo '{"head_pipeline":null,"draft":true}' > "$FX/gl_projects_me_2Fapp_merge_requests_5"
 check "GitLab, BLOCK: a title update dropping the Draft prefix (glab mr update --title, glab api PUT), naming the MR; a numeric project id, which can't be told; a Draft title, or a retitle of a ready MR, passes" "2 1 2 2 1 0 0" \
   "$(glb 'glab mr update 5 --title Ready') $(grep -c 'gitlab.com/me/app!8, also yours and ready' "$T/err") $(glb 'glab api projects/me%2Fapp/merge_requests/5 -X PUT -f title=Ready') $(glb 'glab api projects/1/merge_requests/5 -X PUT -f title=Ready') $(grep -c "can't tell which project this .glab api. call acts on" "$T/err") $(glb "glab mr update 5 --title 'Draft: Ready'") $(echo '{"head_pipeline":null,"draft":false}' > "$FX/gl_projects_me_2Fapp_merge_requests_5"; glb 'glab mr update 5 --title Ready')"
+echo '{"head_pipeline":null,"draft":true}' > "$FX/gl_projects_me_2Fapp_merge_requests_5"
+printf '{"title":"Ready"}' > "$T/ready.json"; printf '{"draft":false}' > "$T/undraft.json"; printf '{"title":"Draft: Ready"}' > "$T/draft.json"; printf '{"title":' > "$T/broken.json"
+GPUT='glab api projects/me%2Fapp/merge_requests/5 -X PUT'
+check "GitLab, BLOCK: an API PUT whose --input JSON drops the Draft prefix or sets draft false, naming the MR; --input from stdin, a missing file or one that isn't JSON, naming it; a Draft title passes" "2 1 2 2 1 2 1 2 1 0" \
+  "$(glb "$GPUT --input $T/ready.json") $(grep -c 'gitlab.com/me/app!8, also yours and ready' "$T/err") $(glb "$GPUT --input $T/undraft.json") $(glb "$GPUT --input -") $(grep -c 'stdin' "$T/err") $(glb "$GPUT --input $T/nofile.json") $(grep -c "$T/nofile.json" "$T/err") $(glb "$GPUT --input $T/broken.json") $(grep -c "$T/broken.json" "$T/err") $(glb "$GPUT --input $T/draft.json")"
+gll false dev e1e1e1e1 b.py false
+check "GitLab, BLOCK: a title update, --ready or an API PUT that also retargets the MR checks the new target branch, naming the MR there; staying on its own passes" "2 1 2 2 1 0" \
+  "$(glb 'glab mr update 5 --title Ready --target-branch dev') $(grep -c 'gitlab.com/me/app!8, also yours and ready, changes b.py' "$T/err") $(glb 'glab mr update 5 --ready --target-branch dev') $(glb "$GPUT -f title=Ready -f target_branch=dev") $(grep -c 'gitlab.com/me/app!8, also yours and ready' "$T/err") $(glb 'glab mr update 5 --title Ready')"
 echo '{"head_pipeline":null}' > "$FX/gl_projects_me_2Fapp_merge_requests_5"
 rm "$GLL" "$FX"/gl_projects_me_2Fapp_merge_requests_[58]_changes
 # a push is held to the approach of each branch it publishes, whichever is checked out

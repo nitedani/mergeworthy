@@ -106,16 +106,29 @@ def goes_ready(p, a, env, run_dir):
         branch = None if ref.isdigit() else ref or subprocess.run(['git', '-C', known(run_dir), 'symbolic-ref', '--short', '-q', 'HEAD'], capture_output=True, text=True).stdout.strip()
         title, repo = opt(a[2:], ['--title', '-t']), gitlab_repo(a[2:], run_dir)
         if {'--ready', '-r'} & set(a) or title and not DRAFT_TITLE.match(title[-1]) and repo and mr_draft(repo, ref if ref.isdigit() else None, branch):
-            return repo, ref if ref.isdigit() else None, None, branch
+            return repo, ref if ref.isdigit() else None, (opt(a[2:], ['--target-branch']) or [None])[-1], branch
         return None
     if p == 'glab' and a[:1] == ['api'] and (call := api_call(a[1:]))[0] == 'PUT' and \
             (m := re.fullmatch(r'(.*/merge_requests)/(\d+)(\?.*)?', call[1])) and (opens := api_opens(m[1], a[1:], env, run_dir)):
-        f = dict(x.split('=', 1) for x in call[2] if '=' in x)
-        if not (f.get('draft') == 'false' or 'title' in f and not DRAFT_TITLE.match(f['title'])): return None
+        f = {**api_input(call[3]), **dict(x.split('=', 1) for x in call[2] if '=' in x)}
+        if not (str(f.get('draft')).lower() == 'false' or isinstance(f.get('title'), str) and not DRAFT_TITLE.match(f['title'])): return None
         if not opens[0]:
             block("can't tell which project this `glab api` call acts on (a numeric id), so whether it takes an MR out of draft can't be checked: name the project by its path")
-        return (opens[0], m[2], None, None) if mr_draft(opens[0], m[2], None) else None
+        return (opens[0], m[2], f.get('target_branch'), None) if mr_draft(opens[0], m[2], None) else None
     return None
+
+def api_input(files):
+    """The fields of a `glab api --input` JSON body; one that can't be read as a JSON object, or stdin, blocks."""
+    out = {}
+    for x in files:
+        if x == '-':
+            block("this `glab api` call reads its body from stdin, so whether it takes an MR out of draft can't be checked: pass it with --input <file>")
+        try: body = json.load(open(os.path.join(cwd, os.path.expanduser(where.expand(x)))))
+        except (OSError, ValueError) as e: body = e
+        if not isinstance(body, dict):
+            block(f"{x} isn't a JSON object this hook can read ({body!r:.80}), so whether this `glab api` call takes an MR out of draft can't be checked")
+        out.update(body)
+    return out
 
 def mr_draft(repo, iid, branch):
     """Whether the MR iid (else the open one from branch) of repo (<host>/<path>) is a draft now; one glab can't read blocks."""
