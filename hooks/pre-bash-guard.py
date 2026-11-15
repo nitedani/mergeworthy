@@ -58,7 +58,9 @@ def check_union(d, repo, num, base=None, branch=None):
     if (num or branch) and this is None: return  # not ours
     if not (others := [p for p in prs if p is not this and not p['isDraft']]): return
     base = base or this['baseRefName'] if this else base or ((api('') or {}).get('default_branch') if lab else (ask('gh', 'repo', 'view', repo, '--json', 'defaultBranchRef') or {}).get('defaultBranchRef', {}).get('name')) or retry('the default branch')
-    if not (others := [p for p in others if p['baseRefName'] == base]): return
+    head = git_head(d)
+    done = {s for l in (open(RECORDS + head) if os.path.exists(RECORDS + head) else []) if l.split()[:1] == ['union'] for s in l.split()[3:]}  # pairs already checked
+    if not (others := [p for p in others if p['baseRefName'] == base and p['headRefOid'] not in done]): return
     def paths(p):  # None: cut short
         if not lab: return {f['path'] for f in p['files']} if len(p['files']) >= p['changedFiles'] else None
         c = api(f"/merge_requests/{p['number']}/changes")
@@ -69,10 +71,8 @@ def check_union(d, repo, num, base=None, branch=None):
     local = set(git('diff', '--name-only', f'{ref}...HEAD').splitlines()) if ref else None  # with what this head adds to it
     listed = paths(this) if this else set()
     mine = None if listed is None or not this and local is None else listed | (local or set())
-    head = git_head(d)
-    done = {s for l in (open(RECORDS + head) if os.path.exists(RECORDS + head) else []) if l.split()[:1] == ['union'] for s in l.split()[3:]}
     for p in others:
-        theirs = paths(p) if p['headRefOid'] not in done else set()
+        theirs = paths(p)
         shared = sorted(mine & theirs) if mine is not None and theirs is not None else None
         if shared == []: continue
         n, sha, mark = p['number'], p['headRefOid'], '!' if lab else '#'

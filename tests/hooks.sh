@@ -3338,6 +3338,8 @@ check "BLOCK: gh pr ready, a push to a ready PR and a ready gh pr create while a
   "$(bg "$UR" "$CK") $(grep -c 'vikejs/vike#3680, also yours and ready, changes b.ts' "$T/err") $(bg "$UP" "$CK") $(bg "gh pr create -R vikejs/vike --base main --title \"\$(cat $T/title.md)\" --body-file $(gated ub "It breaks.")" "$CK") $(grep -c ', also yours and ready, changes files listed only in part' "$T/err") $(grep -c 'without the base: `git fetch <the base repo.s remote> main`' "$T/err")"
 echo "union $T/u.log 2026-11-15T00:00:00Z b0b0b0b0" >> "$HOME/.claude/pr-steps/$CH"
 check "a union record on this head naming the other's head passes them; a new head on the other PR blocks again" "0 0 2" "$(bg "$UR" "$CK") $(bg "$UP" "$CK") $(ul false main c1c1c1c1 b.ts 1; bg "$UR" "$CK")"
+printf '[{"number":3680,"isDraft":false,"baseRefName":"main","headRefOid":"b0b0b0b0","files":[{"path":"b.ts"}],"changedFiles":1}]' > "$FX/pr_list_vikejs_vike"
+check "a recorded pair passes a ready gh pr create though git can't tell this branch's files (no base ref)" "0 0" "$(bg "gh pr create -R vikejs/vike --base main --title \"\$(cat $T/title.md)\" --body-file $(gated ub2 'It breaks.')" "$CK") $(grep -c 'also yours and ready' "$T/err")"
 ul false main c1c1c1c1 b.ts 1; sed -i 's/"baseRefName":"main"/"baseRefName":"dev"/' "$FX/pr_list_vikejs_vike"; sed -i 's/"isDraft":false,"baseRefName":"dev","headRefOid":"c1c1c1c1"/"isDraft":false,"baseRefName":"main","headRefOid":"c1c1c1c1"/' "$FX/pr_list_vikejs_vike"
 echo '{"draft":false}' > "$FX/repos_vikejs_vike_pulls_3675"
 check "BLOCK: gh pr edit --base retargeting a ready PR onto the base of an overlapping ready one, naming it; onto its own base, or a draft PR, passes" "2 1 0 0" \
