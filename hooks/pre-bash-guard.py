@@ -7,20 +7,21 @@ import glob, itertools, json, re, sys, os, hashlib, subprocess, urllib.parse
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
 import shellcmd
-from shellcmd import parse, segments, prog, script, opt, api_call, discussion_post, discussion_thread_of, names_discussion_mutation, env_of, origin, plain_create, PLAIN, new_post_drafts, branch_record, no_approach, no_preflight, no_instructions_read, by_agent, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Unseen, Where
+from shellcmd import parse, segments, prog, script, opt, api_call, discussion_post, discussion_thread_of, names_discussion_mutation, env_of, origin, plain_create, PLAIN, new_post_drafts, no_instructions_read, by_agent, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Unseen, Where
+from records import branch_record, commit_file, no_approach, no_preflight, STORE
 import own_actions, steward, post_words, testpaths, threads_file, work_folder
 from t3_tasks import under_t3
 AGENT_TRAILER = re.compile(r'^Co-Authored-By: Claude', re.M | re.I)  # a commit without it is a maintainer's
 def missing_steps(d, head=None):
     """(head, the converge steps it lacks): head is a push's pushed commit, else HEAD."""
     head = head or subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
-    rec = os.path.expanduser(f'~/.claude/pr-steps/{head}')
+    rec = commit_file(head)
     # A maintainer's commits on top carry the last converged head's records, whatever their size: they get
     # reply §Maintainer commits' review, and the pipeline runs again only once the maintainer says they're done.
     # Only non-merge commits without the agent's Co-Authored-By: Claude trailer are skipped back over.
     for c in subprocess.run(['git', '-C', d, 'rev-list', '--first-parent', '--max-count=100', head or 'HEAD'], capture_output=True, text=True).stdout.split():
-        if os.path.exists(os.path.expanduser(f'~/.claude/pr-steps/{c}')):
-            rec = os.path.expanduser(f'~/.claude/pr-steps/{c}'); break
+        if os.path.exists(commit_file(c)):
+            rec = commit_file(c); break
         parents, _, body = subprocess.run(['git', '-C', d, 'log', '-1', '--format=%P%x00%B', c], capture_output=True, text=True).stdout.partition('\0')
         if len(parents.split()) != 1 or AGENT_TRAILER.search(body): break
     kinds = {l.split()[0] for l in open(rec)} if head and os.path.exists(rec) else set()
@@ -449,7 +450,7 @@ def check_refactor_ask(repo, num, comment, drafts=()):
 
 def real_passes(sha):
     """The (step, report, time) shape records of sha whose report is a pass, not a carry."""
-    rec = os.path.expanduser(f'~/.claude/pr-steps/{sha}')
+    rec = commit_file(sha)
     rows = [l.split()[:3] for l in open(rec) if len(l.split()) >= 3] if sha and os.path.isfile(rec) else []
     return [r for r in rows if r[0] == 'shape' and os.path.isfile(r[1]) and 'carries the pass of' not in open(r[1], errors='replace').read()]
 
@@ -527,7 +528,7 @@ def title_setter(repo, num):
     login = ((last or {}).get('actor') or {}).get('login')
     return (login, last.get('created_at')) if login and login != me else None
 
-RECORDS = os.path.realpath(os.path.expanduser('~/.claude/pr-steps')) + os.sep
+RECORDS = os.path.realpath(STORE) + os.sep
 push_urls = []  # where this command's pushes go (pushed()), for the watcher check
 # what this command does on GitHub (own_actions), recorded once it passed every check: the watcher logs these changes without waking the session
 own = {'PUSHED_HEADS': [], 'CLOSED_THREADS': []}  # the heads it pushes; `owner/repo#N merged|closed`
@@ -556,17 +557,21 @@ def check_patches(d, pending=None, amend=False):
     g = lambda *a: subprocess.run(['git', '-C', d, *a], capture_output=True, text=True).stdout
     base = g('symbolic-ref', '-q', '--short', 'refs/remotes/origin/HEAD').strip() or 'origin/main'
     if pending is not None and g('rev-parse', '-q', '--verify', 'MERGE_HEAD').strip(): pending = []
-    count, reviewed = {}, False
     commits = g('rev-list', '--reverse', '--first-parent', 'HEAD', '--not', base).split()
+    start = None  # the commit the counts start after
     for c in commits:
-        files = [f for f in g('diff-tree', '--no-commit-id', '--name-only', '-r', '-z', c).split('\0') if f]  # none for a merge commit
-        if files and not AGENT_TRAILER.search(g('log', '-1', '--format=%B', c)): files = []
-        if amend and c == commits[-1]: pending, files = sorted(set(pending or []) | set(files)), []  # the amended commit is the pending one
-        for f in files if reviewed else []:
-            count[f] = count.get(f, 0) + 1
         steps = {l.split()[0] for l in open(RECORDS + c) if l.split()} if os.path.exists(RECORDS + c) else set()
-        if 'finality' in steps or not reviewed and steps & {'verify', 'small', 'shape', 'reverify', 'fresh'}: count, reviewed = {}, True
-    for f in (pending or []) if reviewed else []: count[f] = count.get(f, 0) + 1
+        if 'finality' in steps or not start and steps & {'verify', 'small', 'shape', 'reverify', 'fresh'}: start = c
+    if not start: return
+    count = {}
+    # per commit `\0<sha>\n<message>\0`, then `\n<file>\0<file>\0` (none for a merge commit): no part is empty, so `\0\0` is only where a commit ends
+    log = g('log', '--first-parent', '--reverse', '--no-diff-merges', '--no-renames', '--name-only', '-z', '--format=%x00%H%n%B', f'{start}..HEAD')
+    for commit in log[1:-1].split('\0\0'):
+        message, _, names = commit.partition('\0\n')
+        files = names.split('\0') if names and AGENT_TRAILER.search(message) else []
+        if amend and message.startswith(commits[-1]): pending, files = sorted(set(pending or []) | set(files)), []  # the amended commit is the pending one
+        for f in files: count[f] = count.get(f, 0) + 1
+    for f in pending or []: count[f] = count.get(f, 0) + 1
     over = [f for f in (count if pending is None else pending) if count.get(f, 0) > 5 and not NOT_CODE.search(f)]
     gen = testpaths.generated(d, over) if over else set()
     if over := [f for f in over if f not in gen]:
@@ -730,7 +735,7 @@ def check_workflow(what, d, commits, updates=()):
         repos = sorted({m[0] or 'gitlab.com/' + m[1] for m in re.findall(r'github\.com[:/]([\w.-]+/[\w.-]+?)(?:\.git)?(?:\s|$)|gitlab\.com[:/]([\w./-]+?)(?:\.git)?(?:\s|$)', urls)})
         if repos: need_watch(repos, top)  # a host no watcher reads (neither GitHub nor GitLab) has nothing to arm
     for sha in commits:
-        rec = os.path.expanduser(f'~/.claude/pr-steps/{sha}')
+        rec = commit_file(sha)
         logs = [l.split()[1] for l in (open(rec) if os.path.isfile(rec) else []) if l.split()[:1] in (['quick'], ['gates']) and len(l.split()) > 1]
         if not logs:
             block(f"{sha[:10]} has no passing gate record: run the quick gates on it (format, type-check, units, and each failing CI job's command: "
@@ -1192,10 +1197,14 @@ waits = re.search(r'\b(until|while)\b[^\n]*\bsleep\b', cmd) if err else any(s.lo
 if waits and not d.get('tool_input', {}).get('run_in_background') and not by_agent(d):
     block('never wait in the foreground: the main session keeps working while agents and builds run. Rely on the task-completion notification, '
           'or run the wait with run_in_background (one notification when it ends)')
-# a Playwright install prunes the browser builds other sessions use from the shared ~/.cache/ms-playwright (agent.md §Machine)
-if any('playwright' in ' '.join(prog(x)) and 'install' in prog(x) for x in segs) and 'PLAYWRIGHT_BROWSERS_PATH=' not in cmd:
+# a Playwright install prunes the browser builds other sessions use from the shared ~/.cache/ms-playwright (agent.md §Machine),
+# and a browser the machine already has needs none
+if any(re.fullmatch(r'(?:.*/)?playwright(?:-core)?(?:@[^/]*)?(?:/cli\.js)?', w) and prog(x)[i + 1:i + 2] == ['install'] for x in segs for i, w in enumerate(prog(x))) and 'PLAYWRIGHT_BROWSERS_PATH=' not in cmd:
     block("a Playwright install deletes the browser builds other sessions use from the shared ~/.cache/ms-playwright: "
-          "install into a folder of your own, `PLAYWRIGHT_BROWSERS_PATH=<work folder>/.pw <the same command>`, and run the tests with the same variable")
+          "Run on a browser the machine already has first: an installed Google Chrome or Edge through Playwright's `channel: 'chrome'` (or `'msedge'`), "
+          "set in a config of your own in the work folder that extends the repo's. Only when the tests need a build no installed browser gives "
+          "(Firefox, WebKit, a pinned Chromium): install into a folder of your own, `PLAYWRIGHT_BROWSERS_PATH=<work folder>/.pw <the same command>`, "
+          "and run the tests with the same variable")
 # gate-pass is read on its own: this hook checks the gate record before the command runs, so a post in the same command
 # goes out on the old record even when gate-pass then refuses the draft (and a pipe hides that refusal)
 if any(prog(x)[:1] and os.path.basename(prog(x)[0]) == 'gate-pass' for x in segs) and \

@@ -30,9 +30,9 @@ ledger=; [ "${3:-}" != --ledger ] || ledger=${4:?--ledger <path>}
 ledger_ok() { [ -n "$ledger" ] && python3 "$(dirname "$(realpath "$0")")/../hooks/ledger.py" "$ledger"; }
 case "$step" in preflight|approach|small|quick|layout|verify|shape|loopb|refactor|reverify|fresh|gates|finality|union) ;; review) step=fresh ;;
   *) echo "step must be preflight, approach, small, quick, layout, verify, shape, reverify, fresh, gates, finality or union" >&2; exit 1;; esac
-# preflight and approach: one record per repo and branch, the path the hooks read (hooks/shellcmd.py branch_record)
+# preflight and approach: one record per repo and branch, the path the hooks read (hooks/records.py branch_record)
 mkdir -p ~/.claude/pr-steps
-approach=$(python3 "$(dirname "$(realpath "$0")")/../hooks/shellcmd.py" approach)
+approach=$(python3 "$(dirname "$(realpath "$0")")/../hooks/records.py" approach)
 # A branch whose latest approach record has no `contract: 2` field was started by a session on v1's skills (before the shape
 # pass and the maintainer's fresh read): it finishes under that contract (loopb and refactor, a fresh report without a Maintainer line).
 old_pipeline() { [ -s "$approach" ] && ! tail -n1 "$approach" | grep -q ' contract: 2$'; }
@@ -40,7 +40,7 @@ case "$step" in loopb|refactor) old_pipeline || { echo "pr-steps shape replaces 
 # pr-steps preflight <app URL> [Chrome flags] | <PNG the session's browser MCP took just now> | 'none, because <why>':
 # before any code, the app runs and browser control loads it (pull-request, Check you can finish before you start)
 if [ "$step" = preflight ]; then
-  shift; preflight=$(python3 "$(dirname "$(realpath "$0")")/../hooks/shellcmd.py" preflight); proof=$preflight.png
+  shift; preflight=$(python3 "$(dirname "$(realpath "$0")")/../hooks/records.py" preflight); proof=$preflight.png
   case "$out" in
     "none, because "?*) proof=$out ;;
     http://*|https://*)

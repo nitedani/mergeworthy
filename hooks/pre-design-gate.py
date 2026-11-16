@@ -10,7 +10,8 @@ The step records under ~/.claude/pr-steps are pr-steps' to write."""
 import glob, json, os, re, subprocess, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
-from shellcmd import folder, no_approach, no_preflight, no_instructions_read
+from shellcmd import folder, no_instructions_read
+from records import no_approach, no_preflight, STORE
 import launch, work_folder
 d = json.load(sys.stdin)
 ti = d.get('tool_input', {}) or {}
@@ -19,7 +20,7 @@ cwd = d.get('cwd') or os.getcwd()
 near = cwd
 if 'delegate_task' not in tool:
     target = os.path.realpath(os.path.join(cwd, os.path.expanduser(str(ti.get('file_path') or ti.get('notebook_path') or ''))))
-    if target.startswith(os.path.realpath(os.path.expanduser('~/.claude/pr-steps')) + os.sep):
+    if target.startswith(os.path.realpath(STORE) + os.sep):
         sys.stderr.write("BLOCKED: the step records in ~/.claude/pr-steps are written by `pr-steps <step> <its output>` alone, which checks the output first\n")
         sys.exit(2)
     near = folder(target)  # a new file's folder may not exist yet

@@ -36,7 +36,7 @@ sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))  # a watch dir r
 sys.path.insert(1, os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'hooks'))
 import gl_watch
 from gh_common import own_accounts
-import agent_jobs, own_actions, shlex, steward, testpaths, threads_file, work_folder
+import agent_jobs, own_actions, records, shlex, steward, testpaths, threads_file, work_folder
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE = os.path.join(HERE, 'gh-watch-state.json')
@@ -950,7 +950,7 @@ def emit_refactor_stale(repo, key, new):
     try:
         pr = request(f"repos/{repo}/pulls/{num}").json()
         commits = [{'sha': c['sha'], 'merge': len(c['parents']) > 1} for c in request(f"repos/{repo}/compare/{pr['base']['ref']}...{new}").json()['commits']]
-        rec = os.path.expanduser('~/.claude/pr-steps')
+        rec = records.STORE
         if not is_own(pr['user']['login']) and not any(os.path.exists(f"{rec}/{c['sha']}") for c in commits):
             return worked(f"shape check {key}")  # no shape pass to keep up with: checked
         idx = max((i for i, c in enumerate(commits) if os.path.exists(f"{rec}/{c['sha']}") and any(l.startswith(('shape ', 'refactor ')) for l in open(f"{rec}/{c['sha']}"))), default=-1)

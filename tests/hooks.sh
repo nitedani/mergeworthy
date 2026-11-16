@@ -2492,10 +2492,10 @@ mkdir -p "$HOME/.config/pnpm"; echo '//registry.npmjs.org/:_authToken=x' > "$HOM
 check "BLOCK: printing a credential file; counting a line in it, or a file that isn't one, passes" "2 2 2 0 0" "$(glab "cat $HOME/.npmrc") $(glab 'cat ~/.config/pnpm/config.yaml') $(glab "grep token $HOME/.npmrc") $(glab "grep -c registry $HOME/.npmrc") $(glab "cat $T/tr.jsonl")"
 check "BLOCK: setting a draft's file time (touch -d / -r, also after a cd into drafts/); a plain touch elsewhere passes" "2 2 0 0" "$(glab "cd /w/drafts/vike-1707 && touch -d 2024-06-20T12:26:20Z proposal.parent.md") $(glab "touch -r a.md /w/drafts/x/thread-context.md") $(glab "touch /w/drafts/x/new.md") $(glab "touch -d yesterday /tmp/stamp")"
 check "BLOCK: gate-pass and a post in one command (a pipe hid its refusal); gate-pass alone passes" "2 2 0" "$(glab "gate-pass /w/drafts/19/body.md /w/drafts/19/body.review.out | tail -1 && gh issue edit 19 --body-file /w/drafts/19/body.md") $(glab "gate-pass /w/d/r.md /w/d/r.review.out; gh api repos/o/r/issues/5/comments -F body=@/w/d/r.md") $(glab "gate-pass /w/drafts/19/body.md /w/drafts/19/body.review.out")"
-check "BLOCK: a playwright install into the shared cache; into a private folder passes" "2 2 0" "$(glab "pnpm exec playwright install chromium") $(glab "cd repo && npx playwright install --with-deps") $(glab "PLAYWRIGHT_BROWSERS_PATH=/w/.pw npx playwright install chromium")"
 # pre-bash-guard: a PR title is drafted in a file, never typed inline
 echo '[]' > "$FX/repos_o_r_issues_5_timeline_per_page_100"
 guard() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2],"agent_id":sys.argv[3]}))' "$1" "$T" "${2:-}" | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?; }
+check "BLOCK: a playwright install into the shared cache, naming channel: 'chrome' before the private install; into a private folder, or the playwright packages from a package manager, pass" "2 2 2 2 1 0 0 0 0" "$(guard "pnpm exec playwright install chromium") $(guard "cd repo && npx playwright install --with-deps") $(guard "node node_modules/playwright/cli.js install chromium") $(guard "node node_modules/playwright-core/cli.js install chromium") $(grep -c "channel: 'chrome'.*PLAYWRIGHT_BROWSERS_PATH=" "$T/err") $(guard "PLAYWRIGHT_BROWSERS_PATH=/w/.pw npx playwright install chromium") $(guard "pnpm install -D @playwright/test") $(guard "pnpm add playwright") $(guard "npm i playwright")"
 check "BLOCK: a PR title typed inline (create, edit, -t), naming the title file; a title from its file passes" "2 1 2 2 0 0" "$(guard "gh pr create --draft --title 'Fix the thing' --body-file $T/b.md") $(grep -c 'drafts/title.md.*last 10 merged titles.*pull-request step 7' "$T/err") $(guard "gh pr edit 5 --title 'Fix it'") $(guard 'gh pr edit 5 -t Fix') $(GH_WATCH_ME=me guard 'gh pr edit 5 -R o/r --title "$(cat /w/drafts/title.md)"') $(guard 'gh pr create --draft --title "$(cat /w/drafts/title.md)" --body-file /w/b.md' >/dev/null; grep -c 'typed inline' "$T/err")"
 check "a PATCH of a PR or issue setting no body, title or state passes: its base, its milestone, through {owner}/{repo} or a full URL" "0 0 0 0" "$(guard 'gh api -X PATCH repos/o/r/pulls/436 -f base=main') $(guard 'gh api -X PATCH repos/o/r/issues/5 -F milestone=3') $(guard "gh api -X PATCH 'repos/{owner}/{repo}/pulls/436' -f base=main") $(guard 'gh api -X PATCH https://api.github.com/repos/o/r/pulls/436 -f base=main')"
 pp=; for c in 'gh api -X PATCH repos/o/r/pulls/436 -f title=x' 'gh api -X PATCH repos/o/r/issues/5 -f body=x' 'gh api -X PATCH repos/o/r/pulls/436 -f base=main -f title=x' 'gh api -X PATCH repos/o/r/pulls/436 --raw-field=body=x' 'gh api -X PATCH repos/o/r/pulls/436 -f "$F"'; do
@@ -2676,7 +2676,8 @@ check "BLOCK: with that PROMISED line, gh pr ready and a body edit (gh pr edit, 
 rm -rf "$WR"; sed -i "\#^$WR\$#d" "$HOME/.claude/gh-watch-dirs.txt"
 rm -f "$FX/repos_o_r_issues_7" "$FX/repos_o_r_pulls_7" "$FX/repos_o_r_pulls_7_commits_per_page_100" "$HOME/.claude/pr-steps/$AH" "$HOME/.claude/refactor-asks.txt"
 # ---------- preflight: no code in a repo and branch until the app was loaded in browser control ----------
-P="$T/pf"; mkdir -p "$P"; git -C "$P" init -q -b feat
+P="$T/pf"; mkdir -p "$P"; git -C "$P" init -q -b feat; git -C "$P" remote add origin https://github.com/o/pf.git  # a clone of a hosted repo, on a branch off its default one
+git -C "$P" -c user.name=t -c user.email=t@t commit -q --allow-empty -m base; git -C "$P" update-ref refs/remotes/origin/main HEAD; git -C "$P" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
 pf() { (cd "$P" && bash "$R/bin/pr-steps" preflight "$@" >/dev/null 2>&1; echo $?); }
 pfurl() { (cd "$P" && CHROME="$T/bin/fakechrome" FAKE_DOM="$1" bash "$R/bin/pr-steps" preflight https://app.test --host-resolver-rules=x >/dev/null 2>&1; echo $?); }
 pfedit() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"Edit","tool_input":{"file_path":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$T" | python3 "$R/hooks/pre-design-gate.py" 2>/dev/null; echo $?; }
@@ -2729,6 +2730,16 @@ git -C "$P" checkout -q -b docs
 check "none, because with its reason records" 0 "$(pf 'none, because it only changes a CLI flag')"
 check "an edit passes after it, with the branch's approach" 0 "$( (cd "$P" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null); pfedit "$P/a.ts")"
 check "preflight's Chrome runs muted and without the WSLg audio server" "2 2" "$( (cd "$P" && PULSE_SERVER=unix:/mnt/wslg/PulseServer FAKE_LOG="$T/chrome.log" CHROME="$T/bin/fakechrome" FAKE_DOM='<html><body>app</body></html>' bash "$R/bin/pr-steps" preflight https://app.test >/dev/null 2>&1); grep -c -- '--mute-audio' "$T/chrome.log") $(grep -c '^pulse=unset ' "$T/chrome.log")"
+# start records are owed only where the work can become a PR: not with no remote or only a gist, nor on a branch sharing no history with origin's default branch
+ow() { git init -q "$T/$1"; git -C "$T/$1" -c user.name=t -c user.email=t@t commit -q --allow-empty -m i; [ -z "${2:-}" ] || git -C "$T/$1" remote add origin "$2"; }
+# the commit's identity is computed (${id}), so the commit identity check, another refusal, can't answer for these
+owc() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"id=42; git -c user.name=me -c user.email=${id}+me@users.noreply.github.com commit -m x"},"cwd":sys.argv[1]}))' "$T/$1" | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/owc.err" >/dev/null; echo $?; }
+ow ow-none; ow ow-gist https://gist.github.com/abc123.git; ow ow-pics https://github.com/o/r.git
+git -C "$T/ow-pics" update-ref refs/remotes/origin/main HEAD; git -C "$T/ow-pics" checkout -q --orphan pics; git -C "$T/ow-pics" -c user.name=t -c user.email=t@t commit -q --allow-empty -m p
+check "an edit and a commit are free with no remote, with only a gist remote, and on an orphan branch of a clone with origin/main but no origin/HEAD" "0 0 0 0 0 0" \
+  "$(pfedit "$T/ow-none/a.ts") $(owc ow-none) $(pfedit "$T/ow-gist/a.ts") $(owc ow-gist) $(pfedit "$T/ow-pics/a.ts") $(owc ow-pics)"
+ow ow-unknown https://github.com/o/r.git
+check "BLOCK: with a hosted remote and neither origin/HEAD nor origin/main, an edit and a commit wait, naming git remote set-head" "2 2 1" "$(pfedit "$T/ow-unknown/a.ts") $(owc ow-unknown) $(grep -c 'git remote set-head origin -a' "$T/owc.err")"
 # ---------- under T3 Code, Codex starts through delegate_task, not a shell ----------
 cx() { # <T3CODE_THREAD_ID, empty outside T3> <command>: the guard's exit code
   python3 -c 'import json,sys; print(json.dumps({"tool_input": {"command": sys.argv[1]}, "cwd": sys.argv[2]}))' "$2" "$T" \
@@ -4084,6 +4095,15 @@ check "a merge of the base in the history is no change either: the 5th change si
 mc commit -q -m p10; mc checkout -q -b side; for i in 1 2 3 4 5 6; do echo "s$i" >> "$SM/b.py"; mc add b.py; mc commit -qm "s$i"; done
 mc checkout -q fix; mc merge -q --no-ff --no-edit side; echo f1 >> "$SM/b.py"; git -C "$SM" add b.py
 check "the commits a merge of another branch brings in are not the branch's own: its next change of their file passes" 0 "$(bg 'git commit -m f1' "$SM")"
+# a long branch: a commit 30 commits after the review starts as many git processes as one right after it (#204)
+SL="$T/simpl"; git init -q -b main "$SL"; lc() { git -C "$SL" -c user.name=t -c user.email=t@t commit -q --trailer 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>' "$@"; }
+echo 0 > "$SL/a.py"; git -C "$SL" add -A; lc -m base; git -C "$SL" update-ref refs/remotes/origin/main HEAD; git -C "$SL" checkout -q -b fix; echo 1 >> "$SL/a.py"; lc -am reviewed
+(cd "$SL" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null)
+mkdir "$T/gitn"; printf '#!/bin/sh\necho >> "%s"\nexec "%s" "$@"\n' "$T/gitn/n" "$(command -v git)" > "$T/gitn/git"; chmod +x "$T/gitn/git"
+gitn() { : > "$T/gitn/n"; echo "$(PATH="$T/gitn:$PATH" bg 'git commit -m l' "$SL") $(wc -l < "$T/gitn/n")"; }  # the commit's exit code, the git processes the guard started
+echo 2 >> "$SL/a.py"; git -C "$SL" add a.py; n1=$(gitn); lc -m l
+for i in $(seq 30); do echo 0 > "$SL/b$i.py"; git -C "$SL" add "b$i.py"; lc -m "b$i"; done; echo 3 >> "$SL/a.py"; git -C "$SL" add a.py; n31=$(gitn)
+check "a commit on a branch 30 commits longer passes with the same number of git processes" "0 0 0" "${n1% *} ${n31% *} $((${n31#* } - ${n1#* }))"
 # a suite named test<Name> is a test: its changes are no drift (#93's demo/testRun.ts); src/util.ts is code
 SH="$TASKW/suite"; mkdir -p "$SH/demo" "$SH/src"; git init -q -b main "$SH"; hc() { git -C "$SH" -c user.name=t -c user.email=t@t commit -q --trailer 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>' "$@"; }
 echo 'export const testRun = () => {}' > "$SH/demo/testRun.ts"; echo "import { testRun } from './testRun'; testRun('pnpm run dev')" > "$SH/demo/test-dev.test.ts"; echo 'export const util = 0' > "$SH/src/util.ts"

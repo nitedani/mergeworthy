@@ -65,17 +65,17 @@ cat > "$T/bin/gh" <<EOF
 #!/usr/bin/env bash
 case "\$*" in
   "api user") echo '{"login":"me"}' ;;
-  *updated:*) echo '{"total_count":4,"items":[{"number":4,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"},{"number":7,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"},{"number":9,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"},{"number":8,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"a PR the user wrote"}]}' ;;
-  *is:open*) echo '{"total_count":1,"items":[{"number":9,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"}]}' ;;
+  *updated:*) echo '{"total_count":4,"incomplete_results":false,"items":[{"number":4,"url":"https://api.github.com/repos/o/r/issues/4","repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"},{"number":7,"url":"https://api.github.com/repos/o/r/issues/7","repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"},{"number":9,"url":"https://api.github.com/repos/o/r/issues/9","repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"},{"number":8,"url":"https://api.github.com/repos/o/r/issues/8","repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"a PR the user wrote"}]}' ;;
+  *is:open*) echo '{"total_count":1,"incomplete_results":false,"items":[{"number":9,"url":"https://api.github.com/repos/o/r/issues/9","repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"}]}' ;;
   *search/issues*) cat <<'J'
-{"total_count":8,"items":[{"number":5,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*\\nbody"},
-{"number":6,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"},
-{"number":7,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"},
-{"number":8,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"a PR the user wrote"},
-{"number":10,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"},
-{"number":11,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"},
-{"number":12,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"},
-{"number":13,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"}]}
+{"total_count":8,"incomplete_results":false,"items":[{"number":5,"url":"https://api.github.com/repos/o/r/issues/5","repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*\\nbody"},
+{"number":6,"url":"https://api.github.com/repos/o/r/issues/6","repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"},
+{"number":7,"url":"https://api.github.com/repos/o/r/issues/7","repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"},
+{"number":8,"url":"https://api.github.com/repos/o/r/issues/8","repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"a PR the user wrote"},
+{"number":10,"url":"https://api.github.com/repos/o/r/issues/10","repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"},
+{"number":11,"url":"https://api.github.com/repos/o/r/issues/11","repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"},
+{"number":12,"url":"https://api.github.com/repos/o/r/issues/12","repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"},
+{"number":13,"url":"https://api.github.com/repos/o/r/issues/13","repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"}]}
 J
   ;;
   *mergedBy*n=11*) echo '{"data":{"repository":{"pullRequest":{"state":"MERGED","merged":true,"createdAt":"$C1","mergedAt":"$M11","closedAt":"$M11","author":{"login":"me"},"mergedBy":{"login":"me"},"timelineItems":{"nodes":[]},"reviews":{"nodes":[{"author":{"login":"me"},"authorAssociation":"MEMBER","state":"COMMENTED","submittedAt":"$C1","comments":{"totalCount":0}}]},"commits":{"nodes":[]}}}}}' ;;

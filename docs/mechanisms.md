@@ -104,7 +104,7 @@ A reference for the scripts that enforce the skills' steps; the skills name each
 ### `pr-steps` (`converge`, `merging`)
 
 `pr-steps <step> <output>` checks a step's output and records it, one file per step:
-- `preflight`, per repo and branch: `<app URL> [Chrome flags]` (screenshotted headlessly; an error or blank page fails), a fresh browser-MCP PNG, or `'none, because <why>'`. Edits in its work tree and `git commit` wait for it.
+- `preflight`, per repo and branch: `<app URL> [Chrome flags]` (screenshotted headlessly; an error or blank page fails), a fresh browser-MCP PNG, or `'none, because <why>'`. Edits in its work tree and `git commit` wait for it and for `approach` where the work can become a PR: not with no remote or only gist.github.com ones, nor on a branch sharing no history with origin's default branch (`origin/HEAD`, else `origin/main`); a clone that has neither waits, naming `git remote set-head origin -a`.
 - `approach`, per repo and branch: a table `| Candidate | Rating | Why |` of at least two candidates rated 0–10 and a line `Chosen: <candidate>` rated 7 or more (`pull-request` step 5).
 - `verify`: trailing `NO BUGS`.
 - `verify` (not `reverify`), `shape` and `fresh`: a `## Standards read` section holding the first sentence of code §Phantom gate, §Docs are a claim and §No regressions, which `pr-steps standards` prints: in both rounds of magne4000/universal-middleware#453 no checker opened the code skill its brief named.
