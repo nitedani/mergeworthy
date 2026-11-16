@@ -152,7 +152,7 @@ if [ "$step" = small ]; then
   exit 0
 fi
 # A shape record is the pass's lists (the ✅ coverage list and old ⇒ new ratings) ending CLEAN, or a small follow-up that
-# carries an earlier pass ("carries the pass of <sha>", carry_holds): a fix log or a note is not a shape pass
+# carries an earlier pass or small fix's review ("carries the pass of <sha>", carry_holds): a fix log or a note is not a shape pass
 # A pass rates every item afresh: a row whose rating is copied ("10 =", "=", "unchanged since") is a re-rating of a delta, not a pass
 is_pass() { grep -q '✅' "$1" && grep -Eq '([0-9]+|\bnew) *(⇒|=>) *([0-9]+|removed|new|n/a)' "$1" && ! grep -Eiq '\| *([0-9]+ *)?= *\||unchanged since' "$1"; }
 # The file of each line HEAD changed since an earlier head, once per line: compared whole with that head replayed on the base HEAD has merged,
@@ -270,7 +270,10 @@ EOF
         loopb=; while read -r f; do if [ "$(grep -v '^[[:space:]]*$' "$f" 2>/dev/null | tail -n1)" = CLEAN ]; then loopb=$f; fi; done < <(awk '$1=="loopb"{print $2}' "$rec" 2>/dev/null)
         if [ -n "$loopb" ]; then while read -r f; do if is_pass "$f"; then prev=$f; fi; done < <(awk '$1=="refactor"{print $2}' "$rec"); fi
       fi
-      [ -n "$prev" ] || { echo "$carried has no recorded shape pass with ratings to carry" >&2; exit 1; }
+      # a small fix's review, recorded by pr-steps small for verify, shape, reverify and fresh alike, is that head's shape record (converge §Small fix)
+      [ -n "$prev" ] || [ "$step" != shape ] ||
+        prev=$(awk '$1 ~ /^(verify|shape|reverify|fresh)$/ && !seen[$1 FS $2]++ && ++n[$2] == 4 {f = $2} END {print f}' "$rec" 2>/dev/null)
+      [ -n "$prev" ] || { echo "$carried has no recorded shape pass with ratings, nor a small fix's review, to carry" >&2; exit 1; }
       # a maintainer's ask for a refactor pass (the watcher's refactor-asks.txt: time, the PR's head then, the PR, the comment) made on
       # this branch after the carried pass is answered by a pass, not a carry
       at=$(awk -v f="$prev" '$2==f{t=$3} END{print t}' "$rec")
