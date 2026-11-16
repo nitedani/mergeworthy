@@ -2325,12 +2325,14 @@ mt mt15 'already on main ./src/panel.tsx:6'; mt mt16 "already on main $G4/src/pa
 mt mt19 'already on main ./src/panel.tsx:2'; mt mt20 "already on main $G4/src/panel.tsx:2"; mt mt21 'already on main since 10:30, src/panel.tsx:6'
 check "a main-too ruling citing ./path, an absolute path in the repo, a Makefile or Dockerfile line outside the changed functions records; ./path or the absolute path inside one is refused; a time is no citation" "0 0 0 0 1 1 0" \
   "$(prs4 verify "$T/mt15.md") $(prs4 verify "$T/mt16.md") $(prs4 verify "$T/mt17.md") $(prs4 verify "$T/mt18.md") $(prs4 verify "$T/mt19.md") $(prs4 verify "$T/mt20.md") $(prs4 verify "$T/mt21.md")"
-# a ruling in any of the task's files, a walk's included, is checked the same way
+# a ruling in any of the task's files, a walk's included, is checked the same way; a citation of a file this checkout doesn't track is another repo's evidence
 mkdir -p "$LW/walk"; wr() { printf -- '## Dropped\n- search padding: text overlaps\nRULED: search padding: %s\nCLEAN\n' "$1" > "$LW/walk/final.md"; printf 'slice 1: no bug\nNO BUGS\n' > "$LW/$2.md"; std "$LW/$2.md"; }
 wr 'already on main panel.tsx:2' w1; r1=$(prs4 verify "$LW/w1.md"); n1=$(grep -c 'walk/final.md: RULED: search padding: already on main panel.tsx:2  <- ' "$T/prs4.err")
 wr 'already on main panel.tsx:6' w2; r2=$(prs4 verify "$LW/w2.md"); wr 'a bug, fixed here; main has it too (panel.tsx:2)' w3; r3=$(prs4 verify "$LW/w3.md")
 check "BLOCK: a walk's RULED line saying main has it, inside a changed function, quoted; outside one, or ruled a bug, it records" "1 1 0 0" "$r1 $n1 $r2 $r3"
-rm -rf "$LW"
+mkdir -p "$LW/repo-b-walk"; printf 'b-390.png — label clipped, main too, from b.tsx:6\n' > "$LW/repo-b-walk/layout-check.md"
+wr 'already on main (web/b.tsx:2)' w4; r4=$(prs4 verify "$LW/w4.md"); wr 'already on main (web/b.tsx:2, src/panel.tsx:2)' w5; r5=$(prs4 verify "$LW/w5.md"); rm -rf "$LW"
+check "a layout line or walk ruling citing only files this checkout doesn't track belongs to another repo and records; one also citing a changed function here is refused" "0 1" "$r4 $r5"
 # a stacked PR on fix (gh's baseRefName): the place is measured from fix, so one() that fix edits is no longer this branch's
 g4 checkout -q -b kid; sed -i 's/return 2/return 22/' "$G4/src/panel.tsx"; g4 commit -q -am c; g4 update-ref refs/remotes/origin/fix fix; printf 'fix\n' > "$FX/pr_view_current"
 mt mt22 'already on main (src/panel.tsx:2)'; mt mt23 'already on main (src/panel.tsx:6)'

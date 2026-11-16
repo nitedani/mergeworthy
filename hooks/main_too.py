@@ -28,19 +28,20 @@ def changed(base):
     return out
 
 
-def why_not(text, base):
+def why_not(text, base, foreign=False):
     """None when text says nothing of main, or names a place outside the changed functions; else why it excuses nothing."""
-    return misplaced(text, base) if MAIN.search(text) else None
+    return misplaced(text, base, foreign) if MAIN.search(text) else None
 
 
-def ruled(line, why, base):
+def ruled(line, why, base, foreign=False):
     """None when a RULED line's ruling (why, after its candidate) is a bug or another reason, or says main has it from a right place; else why not."""
     if re.search(r'earn every line|no realistic usage|contrived|staged race', line, re.I) or re.match(r'\s*(a bug|bug|fix(ed)?\b)', why.lstrip(': '), re.I): return None
-    return misplaced(line, base) if MAIN.search(why) else None
+    return misplaced(line, base, foreign) if MAIN.search(why) else None
 
 
-def misplaced(text, base):
-    """None when text names a place the defect comes from, each outside the functions the branch changes; else why not."""
+def misplaced(text, base, foreign=False):
+    """None when text names a place the defect comes from, each outside the functions the branch changes; else why not.
+    foreign: text is another file's, maybe another repo's evidence in the same task, so a file HEAD doesn't track is no place here."""
     top = git('rev-parse', '--show-toplevel').strip()
     tracked, places = git('-C', top, 'ls-files').splitlines(), []
     for p, a, b in PLACE.findall(text):
@@ -49,6 +50,7 @@ def misplaced(text, base):
         # a path or a file name with an extension is a citation; a bare word (`Makefile`) only when HEAD tracks it, so `10:30` is none
         if files or '/' in p or re.search(r'\w\.\w+$', p): places.append((p, files, int(a), int(b or a)))
     if not places: return 'it names no `path:line` the defect comes from'
+    if foreign and not (places := [x for x in places if x[1]]): return None
     if not base: return "there is no merge-base with the PR's base branch to check its place against"
     funcs = changed(base)
     for p, files, a, b in places:
@@ -78,11 +80,11 @@ def task(record, base):
         lay, own = os.path.basename(f) == 'layout-check.md', os.path.samefile(f, record)
         for l in open(f, errors='replace').read().splitlines():
             if not lay:  # 'RULED: <candidate>: <ruling>', a walk's too
-                if not own and l.startswith('RULED:') and (why := ruled(l, l[6:].strip().partition(': ')[2], base)):
+                if not own and l.startswith('RULED:') and (why := ruled(l, l[6:].strip().partition(': ')[2], base, foreign=True)):
                     bad.append(f'{f}: {l}  <- main having it excuses nothing here: {why}')
             elif (m := OK.match(l.strip())) and m[2].strip(' .'):
                 bad.append(f"{f}: {l}  <- a screenshot with anything after OK: write it `{m[1]} — OK`, or each defect it shows as its own line `{m[1]} — <the defect>`")
-            elif not m and (why := why_not(l, base)):
+            elif not m and (why := why_not(l, base, foreign=not own)):
                 bad.append(f'{f}: {l}  <- main having it excuses nothing here: {why}')
     return bad
 
