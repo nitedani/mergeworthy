@@ -11,7 +11,8 @@ sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import failclosed
 import agent_jobs, launch, memory_file, project_file, steward, subprocess, testpaths
 from post_words import fence_spans
-from shellcmd import branch_record, segments, prog, git_argv, rlines, transcript, Where
+from records import branch_record
+from shellcmd import segments, prog, git_argv, rlines, transcript, Where
 from work_folder import git_top, task_of
 from t3_tasks import under_t3
 register = sys.argv[1:] == ['register']
