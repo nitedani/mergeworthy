@@ -20,6 +20,10 @@ cat > "$T/bin/gh" <<'EOF'
 [ "$1 $2" = "config get" ] && { [ ! -f "$FX/login" ] || cat "$FX/login"; exit; }  # the login gh's own config names: $FX/login
 [ "$1 $2" = "pr view" ] && [ -n "$GH_STUB_NOHOST" ] &&{ echo 'none of the git remotes configured for this repository point to a known GitHub host' >&2; exit 1; }
 if [ "$1 $2" = "pr view" ]; then r=$3; case "$r" in -*|'') r=current;; esac; f="$FX/pr_view_$(printf '%s' "$r" | tr '/:' '__')"; [ -f "$f" ] && cat "$f" && exit 0; echo 'no pull requests found for branch "x"' >&2; exit 1; fi
+if [ "$1 $2" = "pr list" ]; then  # from $FX/pr_list_<the -R repo with / replaced by _>; none: no PRs ([], or nothing with -q)
+  [ -n "$GH_STUB_403" ] && { echo 'gh: API rate limit exceeded for user ID 1. (HTTP 403)' >&2; exit 1; }
+  s=; q=; p=; for a in "$@"; do [ "$p" = -R ] && s=$a; case "$a" in -q|--jq) q=1;; esac; p=$a; done
+  f="$FX/pr_list_$(printf '%s' "$s" | tr / _)"; if [ -f "$f" ]; then cat "$f"; elif [ -z "$q" ]; then echo '[]'; fi; exit 0; fi
 [ "$1 $2" = "pr checks" ] && [ "${3#https://github.com/}" = "$3" ] && { echo "no pull requests found for branch \"$3\"" >&2; exit 1; }
 if [ "$1 $2" = "pr checks" ]; then f="$FX/pr_checks_$(printf '%s' "$3" | tr '/:' '__')"; [ -f "$f" ] && cat "$f" && exit 1; echo "no checks reported on the 'x' branch" >&2; exit 1; fi
 [ "$1" = api ] || exit 1
@@ -2105,6 +2109,22 @@ check "pr-steps verify: BLOCK a round 2 carrying only round-1 findings without a
   "$(led 'R1.1 should listed: the report') $(grep -c 'closes round 1' "$T/err") $(led 'Round: 2' 'R1.1 should disputed: x' 'R2.1 nit declined: y') $(grep -c 'R1.1 should disputed: x  <- not fixed' "$T/err") $(led 'Round: 2' 'R1.1 should listed: the report')"
 cp "$T/r2.md" "$T/r2c.md"; LR="$T/r2c.md"
 check "BLOCK: pr-steps verify with a code loop's blocker closed as fixed in r3, which only a post's ledger takes" "1 1" "$(led 'Round: 3' 'R2.1 blocker fixed in r3') $(grep -c 'open blocker' "$T/err")"
+# a claim the verifier lists as untested waits for a RULED line naming it, in round 2's ledger record as in a file ending NO BUGS (#190)
+printf '## Dropped\nNone.\n## Untested claims\n\n- `src/panel.tsx`: // The question the page opened on takes the focus as it shows. — Chrome — no probe recorded — UNVERIFIED\n' > "$T/uc.md"; std "$T/uc.md"; LR="$T/uc.md"
+{ cat "$T/uc.md"; echo 'RULED: src/panel.tsx: // The question the page opened on takes the focus as it shows.: listed: the PR body says no probe saw it'; } > "$T/uc1.md"
+{ cat "$T/uc.md"; echo 'NO BUGS'; } > "$T/uc2.md"; sed 's/^NO BUGS$/NO LOOP B COMMITS/' "$T/uc2.md" > "$T/uc3.md"
+check "BLOCK: pr-steps verify --ledger with an untested claim and no RULED line naming it, quoting it; a file ending NO BUGS, in verify and reverify; ruled, it records" "1 1 1 1 0" \
+  "$(led 'Round: 2' "R1.1 blocker fixed in $ON") $(grep -c '^- `src/panel.tsx`: // The question' "$T/err") $(cd "$GL" && bash "$R/bin/pr-steps" verify "$T/uc2.md" >/dev/null 2>&1; echo $?) $(cd "$GL" && bash "$R/bin/pr-steps" reverify "$T/uc3.md" >/dev/null 2>&1; echo $?) $(LR="$T/uc1.md"; led 'Round: 2' "R1.1 blocker fixed in $ON")"
+{ sed '/^RULED/d' "$T/uc1.md"; echo '- `src/panel.tsx`: // The answer picked keeps the focus. — Chrome — no probe recorded — UNVERIFIED'; grep '^RULED' "$T/uc1.md"; } > "$T/uc4.md"
+check "BLOCK: a RULED line naming one untested claim leaves the same file's other claim unruled" 1 "$(cd "$GL" && bash "$R/bin/pr-steps" verify "$T/uc4.md" --ledger "$T/led.md" >/dev/null 2>&1; echo $?)"
+{ sed '/^RULED/d; /^- `src/d' "$T/uc1.md"; printf -- '- `src/panel.tsx`: Focus stays — Chrome — no probe recorded — UNVERIFIED\n- `src/panel.tsx`: Focus stays after navigation — Chrome — no probe recorded — UNVERIFIED\nRULED: src/panel.tsx: Focus stays after navigation: listed: the PR body notes it\n'; } > "$T/uc5.md"
+{ sed '/^RULED/d; /^- `src/d' "$T/uc1.md"; printf 'Focus stays — Chrome — no probe recorded — UNVERIFIED\n'; } > "$T/uc6.md"
+{ cat "$T/uc6.md"; printf 'RULED: Focus stays: listed: the PR body notes it\nNO BUGS\n'; } > "$T/uc7.md"
+{ sed '/^RULED/d; /^- `src/d' "$T/uc1.md"; printf 'Focus stays — Chrome — no probe — UNVERIFIED\nFocus stays: after navigation — Chrome — no probe — UNVERIFIED\nRULED: Focus stays: after navigation: listed: the body notes it\n'; } > "$T/uc8.md"
+{ cat "$T/uc8.md"; echo 'RULED: Focus stays: listed: the body notes it'; } > "$T/uc9.md"
+printf 'slice 1\n## Dropped\n- abort leaks: rare\n- abort leaks a listener: rare\nRULED: abort leaks a listener: no realistic usage\nNO BUGS\n' > "$T/vr21.md"; std "$T/vr21.md"
+check "BLOCK: a ruling for a longer claim or candidate leaves the shorter one it starts with unruled; an unbulleted claim line needs a ruling too; ruled, a file ending NO BUGS records" "1 1 1 0" "$(LR="$T/uc5.md"; led 'Round: 2' "R1.1 blocker fixed in $ON") $(LR="$T/uc6.md"; led 'Round: 2' "R1.1 blocker fixed in $ON") $(prs verify "$T/vr21.md") $(cd "$GL" && bash "$R/bin/pr-steps" verify "$T/uc7.md" >/dev/null 2>&1; echo $?)"
+check "BLOCK: a ruling rules one item, the longest name it starts with, so 'Focus stays: after navigation' leaves 'Focus stays' unruled; each ruled once, both record" "1 0" "$(LR="$T/uc8.md"; led 'Round: 2' "R1.1 blocker fixed in $ON") $(LR="$T/uc9.md"; led 'Round: 2' "R1.1 blocker fixed in $ON")"
 check "BLOCK: a fix log recorded as the shape pass, saying what a pass needs" "1 1" "$(prs shape "$T/fixlog.md") $(cd "$G" && bash "$R/bin/pr-steps" shape "$T/fixlog.md" 2>&1 | grep -c "lacks the ✅ coverage list")"
 # a ratings report in the form a session wrote for #3609 (one rating per item, a summary of the changed ones, no ✅ list) is told all it lacks
 printf '## Files\n\n| # | File | Rating | Reason |\n|---|---|---|---|\n| 1 | `docs/headings.ts` | 9 | One entry, last. |\n| 8 | `packages/vike/package.json` | 6 | Refactor 1. |\n\n## Summary\n\n| Item | Old => new | Commit |\n|---|---|---|\n| File 8 `packages/vike/package.json` | 6 => 9 | f3e4b44bd4 |\n\nGates on f3e4b44bd4:\n- `pnpm run test:types` -> exit 0\n' > "$T/ratings.md"
@@ -2358,6 +2378,21 @@ printf 'Reproduction: `node repro.js`: red on %s, green on %s\n## Outside this c
 printf -- '- Reproduction: `node repro.js`: red on %s, green on %s.\n## Outside this change\nNO BUGS\nMERGE AS IS: yes\n' "$rb" "$rh" > "$T/srr2.md"
 r1=$(prsr "$T/srr1.md"); r1="$r1 $(grep -c "Reproduction: <command>.* for $rb and $rh" "$T/prsr.err")"
 check "pr-steps small without a test: BLOCK on a reproduction naming another base, naming the shas it needs; records with one red on this base and green on this head" "1 1 0" "$r1 $(prsr "$T/srr2.md")"
+# a small fix that merges the base carries all four of its records, shape too; a shape record nothing but small or a pass wrote doesn't carry
+GW="$T/prsw"; mkdir -p "$GW/src" "$GW/test"; git -C "$GW" init -q -b main; echo a > "$GW/src/a.ts"; git -C "$GW" add -A; git -C "$GW" -c user.name=t -c user.email=t@t commit -q -m a
+git -C "$GW" update-ref refs/remotes/origin/main HEAD; git -C "$GW" checkout -q -b fix; echo b > "$GW/src/a.ts"; echo t > "$GW/test/a.test.ts"; git -C "$GW" add -A; git -C "$GW" -c user.name=t -c user.email=t@t commit -qm fix
+prsw() { (cd "$GW" && bash "$R/bin/pr-steps" "$@" 2>"$T/prsw.err" >/dev/null; echo $?); }
+WS=$(git -C "$GW" rev-parse HEAD); cp "$T/sr1.md" "$T/srw.md"; r1=$(prsw small "$T/srw.md")
+git -C "$GW" checkout -q main; echo o > "$GW/other.ts"; git -C "$GW" add -A; git -C "$GW" -c user.name=t -c user.email=t@t commit -qm other
+git -C "$GW" update-ref refs/remotes/origin/main HEAD; git -C "$GW" checkout -q fix; git -C "$GW" -c user.name=t -c user.email=t@t merge -q --no-edit main
+printf 'carries the pass of %s: merged main\n' "${WS:0:12}" | tee "$T/cw1.md" "$T/cw2.md" "$T/cw3.md" "$T/cw4.md" "$T/cw5.md" "$T/cw6.md" >/dev/null
+echo "$(date -u -d '+1 minute' +%FT%TZ) ${WS:0:10} o/r#8 https://example.invalid/o/r/pull/8#issuecomment-4" > "$HOME/.claude/refactor-asks.txt"
+r2="$(prsw shape "$T/cw5.md") $(grep -c 'asks for a refactor pass' "$T/prsw.err")"; rm -f "$HOME/.claude/refactor-asks.txt"
+check "after pr-steps small and a merge of the base: verify, shape, reverify and fresh carry; a maintainer's ask after it still needs a pass" "0 1 1 0 0 0 0" \
+  "$r1 $r2 $(prsw verify "$T/cw1.md") $(prsw shape "$T/cw2.md") $(prsw reverify "$T/cw3.md") $(prsw fresh "$T/cw4.md")"
+git -C "$GW" -c user.name=t -c user.email=t@t commit -q --allow-empty -m note; WN=$(git -C "$GW" rev-parse HEAD); echo "shape $T/srw.md 2026-11-16T00:00:00Z" > "$HOME/.claude/pr-steps/$WN"
+echo t >> "$GW/test/a.test.ts"; git -C "$GW" -c user.name=t -c user.email=t@t commit -qam t; printf 'carries the pass of %s: one test line\n' "${WN:0:12}" > "$T/cw7.md"
+check "BLOCK: a shape carry of a head whose shape record is neither a pass nor small's" "1 1" "$(prsw shape "$T/cw7.md") $(grep -c 'no recorded shape pass' "$T/prsw.err")"
 # ---------- pr-steps: every converge step leaves its proof; the guard needs all five ----------
 G2="$T/prs2"; mkdir -p "$G2"; git -C "$G2" init -q; git -C "$G2" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 prs2() { (cd "$G2" && bash "$R/bin/pr-steps" "$@" >/dev/null 2>&1; echo $?); }
@@ -3370,6 +3405,49 @@ printf '## Gates ([ci.yml](https://example.invalid/ci.yml))\n- Push: before gate
 check "a ## Gates heading with its source after it opts in too" 0 "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK")"
 printf '## Agents\n- Push: before gates\n' > "$HOME/.mergeworthy/projects/vikejs/vike.md"
 check "BLOCK: the line under another section opts nothing in" 2 "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK")"
+# two ready PRs of ours that change one file are checked merged before the second goes ready or takes a push (#188)
+CH=$(git -C "$CK" rev-parse HEAD); for k in verify shape reverify fresh gates; do echo "$k $T/x 2026-11-15T00:00:00Z" >> "$HOME/.claude/pr-steps/$CH"; done
+ul() { # the other PR's isDraft, base, head, one file and changedFiles: our open PRs on vikejs/vike, #3675 this one
+  printf '[{"number":3675,"isDraft":false,"baseRefName":"main","headRefOid":"%s","files":[{"path":"a.ts"},{"path":"b.ts"}],"changedFiles":2},{"number":3680,"isDraft":%s,"baseRefName":"%s","headRefOid":"%s","files":[{"path":"%s"}],"changedFiles":%s}]' "$CH" "$@" > "$FX/pr_list_vikejs_vike"; }
+UR='gh pr ready 3675 -R vikejs/vike'; UP='git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc'
+ul false main b0b0b0b0 b.ts 1
+check "BLOCK: gh pr ready, a push to a ready PR and a ready gh pr create while another ready PR of ours changes one of its files, naming it and the file; a create with no base ref says to fetch it (#188)" "2 1 2 2 1 1" \
+  "$(bg "$UR" "$CK") $(grep -c 'vikejs/vike#3680, also yours and ready, changes b.ts' "$T/err") $(bg "$UP" "$CK") $(bg "gh pr create -R vikejs/vike --base main --title \"\$(cat $T/title.md)\" --body-file $(gated ub "It breaks.")" "$CK") $(grep -c ', also yours and ready, changes files listed only in part' "$T/err") $(grep -c 'without the base: `git fetch <the base repo.s remote> main`' "$T/err")"
+echo "union $T/u.log 2026-11-15T00:00:00Z b0b0b0b0" >> "$HOME/.claude/pr-steps/$CH"
+check "a union record on this head naming the other's head passes them; a new head on the other PR blocks again" "0 0 2" "$(bg "$UR" "$CK") $(bg "$UP" "$CK") $(ul false main c1c1c1c1 b.ts 1; bg "$UR" "$CK")"
+# a push is checked with the union record and files of the head it publishes, not the checkout's
+rec5() { for k in verify shape reverify fresh gates; do echo "$k $T/x 2026-11-15T00:00:00Z" >> "$HOME/.claude/pr-steps/$1"; done; }  # the five converge records on a commit
+git -C "$CK" checkout -q -b other; git -C "$CK" -c user.name=t -c user.email=t@t commit -q --allow-empty -m o -m 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>'; quick "$CK"; rec5 "$(git -C "$CK" rev-parse HEAD)"; (cd "$CK" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null); git -C "$CK" checkout -q fix-telefunc
+ul false main b0b0b0b0 b.ts 1; UG='git push https://github.com/nitedani-agent/vike.git'
+check "BLOCK: a push of another branch to a ready PR, while HEAD holds the union record, needs that branch's own, naming the other PR; with several refs, each PR is checked on the head pushed for it" "0 2 1 2 0" \
+  "$(bg "$UG HEAD:fix-telefunc" "$CK") $(bg "$UG other:fix-telefunc" "$CK") $(grep -c 'vikejs/vike#3680, also yours and ready, changes b.ts' "$T/err") $(bg "$UG other:fix-telefunc HEAD:x2" "$CK") $(bg "$UG HEAD:fix-telefunc other:x2" "$CK")"
+git -C "$CK" checkout -q -b bare; git -C "$CK" -c user.name=t -c user.email=t@t commit -q --allow-empty -m b -m 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>'; quick "$CK"; (cd "$CK" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null); git -C "$CK" checkout -q fix-telefunc
+ul false main c1c1c1c1 c.ts 1
+check "BLOCK: a push of another branch to a ready PR is held to that branch's converge records, not HEAD's: none blocks, naming its commit; its own five pass" "2 1 0" \
+  "$(bg "$UG bare:fix-telefunc" "$CK") $(grep -c "out of draft and its pushed commit $(git -C "$CK" rev-parse bare | cut -c1-10) has no pr-steps verify" "$T/err") $(rec5 "$(git -C "$CK" rev-parse bare)"; bg "$UG bare:fix-telefunc" "$CK")"
+printf '[{"number":3680,"isDraft":false,"baseRefName":"main","headRefOid":"b0b0b0b0","files":[{"path":"b.ts"}],"changedFiles":1}]' > "$FX/pr_list_vikejs_vike"
+check "a recorded pair passes a ready gh pr create though git can't tell this branch's files (no base ref)" "0 0" "$(bg "gh pr create -R vikejs/vike --base main --title \"\$(cat $T/title.md)\" --body-file $(gated ub2 'It breaks.')" "$CK") $(grep -c 'also yours and ready' "$T/err")"
+ul false main c1c1c1c1 b.ts 1; sed -i 's/"baseRefName":"main"/"baseRefName":"dev"/' "$FX/pr_list_vikejs_vike"; sed -i 's/"isDraft":false,"baseRefName":"dev","headRefOid":"c1c1c1c1"/"isDraft":false,"baseRefName":"main","headRefOid":"c1c1c1c1"/' "$FX/pr_list_vikejs_vike"
+echo '{"draft":false}' > "$FX/repos_vikejs_vike_pulls_3675"
+check "BLOCK: gh pr edit --base retargeting a ready PR onto the base of an overlapping ready one, naming it; onto its own base, or a draft PR, passes" "2 1 0 0" \
+  "$(bg 'gh pr edit 3675 -R vikejs/vike --base main' "$CK") $(grep -c 'vikejs/vike#3680, also yours and ready, changes b.ts' "$T/err") $(bg 'gh pr edit 3675 -R vikejs/vike --base dev' "$CK") $(echo '{"draft":true}' > "$FX/repos_vikejs_vike_pulls_3675"; bg 'gh pr edit 3675 -R vikejs/vike --base main' "$CK")"
+rm "$FX/repos_vikejs_vike_pulls_3675"
+check "no shared file, the other a draft or on another base: passes; the list is of our own open PRs" "0 0 0 1" \
+  "$(ul false main c1c1c1c1 c.ts 1; bg "$UR" "$CK") $(ul true main c1c1c1c1 b.ts 1; bg "$UR" "$CK") $(ul false dev c1c1c1c1 b.ts 1; GH_STUB_ARGS="$T/ul.args" bg "$UR" "$CK") $(grep -c 'pr list -R vikejs/vike --author @me --state open' "$T/ul.args")"
+check "BLOCK: a file list GitHub cut counts as shared; gh failing to list blocks, asking to retry" "2 2 1" "$(ul false main c1c1c1c1 z.ts 5; bg "$UR" "$CK") $(GH_STUB_403=1 bg "$UR" "$CK") $(grep -c 'retry once gh answers' "$T/err")"
+ul false main c1c1c1c1 b.ts 1; sed -i 's/"isDraft": false/"isDraft": true/' "$FX/graphql"
+check "a push to a draft PR passes beside an overlapping ready one" 0 "$(bg "$UP" "$CK")"
+rm "$FX/pr_list_vikejs_vike"
+# pr-steps union: a merge holding both heads and the base, with green quick gates; or the two heads' textual conflict
+U="$T/union"; git init -q -b main "$U"; printf 'a\n' > "$U/a"; printf 'b\n' > "$U/b"; git -C "$U" add a b; git -C "$U" -c user.name=t -c user.email=t@t commit -qm base; UB=$(git -C "$U" rev-parse HEAD)
+uc() { git -C "$U" checkout -q -b "$1" main; printf '%s\n' "$1" >> "$U/$2"; git -C "$U" -c user.name=t -c user.email=t@t commit -qam "$1"; git -C "$U" rev-parse HEAD; }
+UX=$(uc x a); UY=$(uc y b); UZ=$(uc z a); git -C "$U" checkout -q --detach x; git -C "$U" -c user.name=t -c user.email=t@t merge -q --no-edit y
+ups() { (cd "$U" && bash "$R/bin/pr-steps" union "$@" >/dev/null 2>"$T/err"; echo $?); }
+printf 'Union: o/r#1@%s + #2@%s on main@%s\npnpm test -> exit 0 (3 tests)\n' "${UX:0:10}" "${UY:0:10}" "${UB:0:10}" > "$T/u1.log"; cp "$T/u1.log" "$T/u2.log"
+printf 'Union: o/r#1@%s + #2@%s on main@%s\npnpm test -> exit 1 (3 tests)\n' "$UX" "$UY" "$UB" > "$T/u3.log"
+check "pr-steps union records a green merge of both heads on each head's file, naming the other; BLOCK: a red gate, a HEAD lacking one head" "1 0 1 1 1" \
+  "$(ups "$T/u3.log") $(ups "$T/u1.log") $(grep -c "^union $T/u1.log .* $UY\$" "$HOME/.claude/pr-steps/$UX") $(grep -c "^union $T/u1.log .* $UX\$" "$HOME/.claude/pr-steps/$UY") $(git -C "$U" checkout -q x; ups "$T/u2.log")"
+check "pr-steps union --conflict records two heads that conflict, refuses two that merge cleanly" "0 1 1" "$(ups --conflict "$UZ") $(grep -c "^union conflict .* $UZ\$" "$HOME/.claude/pr-steps/$UX") $(ups --conflict "$UY")"
 rm -r "$HOME/.mergeworthy/projects/vikejs"; gql nitedani-agent nitedani-agent https://github.com/vikejs/vike/pull/3675
 check "a push the guard passes records the head it publishes, pending until it ends (own_actions); one it blocks records nothing" "2 0 PUSHED_HEADS $(git -C "$CK" rev-parse HEAD)|" \
   "$(OWN_PENDING="$T/own-pp" bg 'git push --all https://github.com/nitedani-agent/vike.git' "$CK") $(OWN_PENDING="$T/own-pp" bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK") $(cut -d' ' -f3- "$T/own-pp" | tr '\n' '|')"
@@ -3768,6 +3846,48 @@ check "a GitLab project path through the API is on --hostname's or GITLAB_HOST's
 (cd "$NA" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 check "each passes once the branch has its approach record" "0 0 0 0 0 0 0 0 0 0" "$(na)"
 check "the API forms pass too" "0 0 0 0 0 0 0" "$(api_forms)"
+# GitLab: two ready MRs of ours that change one file are checked merged before the second goes ready or takes a push (#188)
+NH=$(git -C "$NA" rev-parse HEAD); for k in verify shape reverify fresh gates; do echo "$k $T/x 2026-11-15T00:00:00Z" >> "$HOME/.claude/pr-steps/$NH"; done
+GLL="$FX/gl_projects_me_2Fapp_merge_requests_state_opened_scope_created_by_me_per_page_100"
+gll() { # the other MR's draft, target branch, head, one file and overflow: our open MRs on me/app, !5 this one (branch mr-b)
+  printf '[{"iid":5,"draft":false,"target_branch":"main","source_branch":"mr-b","sha":"%s"},{"iid":8,"draft":%s,"target_branch":"%s","source_branch":"other","sha":"%s"}]' "$NH" "$1" "$2" "$3" > "$GLL"
+  printf '{"changes":[{"old_path":"a.py","new_path":"a.py"},{"old_path":"b.py","new_path":"b.py"}],"overflow":false}' > "$FX/gl_projects_me_2Fapp_merge_requests_5_changes"
+  printf '{"changes":[{"old_path":"%s","new_path":"%s"}],"overflow":%s}' "$4" "$4" "$5" > "$FX/gl_projects_me_2Fapp_merge_requests_8_changes"; }
+echo '[{"web_url":"https://gitlab.com/me/app/-/merge_requests/5","draft":false}]' > "$FX/gl_projects_me_2Fapp_merge_requests_state_opened_source_branch_mr-b"
+glb() { MERGEWORTHY_WATCHER=off bg "$1" "$NA"; }
+gll false main d0d0d0d0 b.py false
+check "GitLab, BLOCK: glab mr update --ready, -r and by the current branch, a push to a ready MR and a ready glab mr create while another ready MR of ours changes one of its files, naming it and the file (#188)" "2 1 2 2 2 2 1" \
+  "$(glb 'glab mr update 5 --ready') $(grep -c 'gitlab.com/me/app!8, also yours and ready, changes b.py' "$T/err") $(glb 'glab mr update 5 -r') $(glb 'glab mr update --ready') $(glb 'git push origin HEAD:mr-b') $(glb 'glab mr create --title x --target-branch main') $(grep -c 'gitlab.com/me/app!., also yours and ready' "$T/err")"
+echo "union $T/u.log 2026-11-15T00:00:00Z d0d0d0d0" >> "$HOME/.claude/pr-steps/$NH"
+check "GitLab: a union record naming the other's head passes them; a new head on the other MR blocks again" "0 0 2" "$(glb 'glab mr update 5 --ready') $(glb 'git push origin HEAD:mr-b') $(gll false main e1e1e1e1 b.py false; glb 'glab mr update 5 --ready')"
+check "GitLab: no shared file, the other a draft or on another target branch: passes" "0 0 0" \
+  "$(gll false main e1e1e1e1 c.py false; glb 'glab mr update 5 --ready') $(gll true main e1e1e1e1 b.py false; glb 'glab mr update 5 --ready') $(gll false dev e1e1e1e1 b.py false; glb 'glab mr update 5 --ready')"
+check "GitLab, BLOCK: an overflowing change list counts as shared; glab failing to list blocks, asking to retry" "2 2 1" \
+  "$(gll false main e1e1e1e1 z.py true; glb 'glab mr update 5 --ready') $(mv "$GLL" "$GLL.off"; glb 'glab mr update 5 --ready') $(grep -c 'glab couldn.t read your open MRs of gitlab.com/me/app.*retry once glab answers' "$T/err")"
+mv "$GLL.off" "$GLL"
+git -C "$NA" checkout -q -b gbare; git -C "$NA" -c user.name=t -c user.email=t@t commit -q --allow-empty -m b -m 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>'; quick "$NA"; (cd "$NA" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null); git -C "$NA" checkout -q mr-b
+gll false main e1e1e1e1 c.py false
+check "GitLab, BLOCK: a push of another branch to a ready MR is held to that branch's converge records, not HEAD's: none blocks; its own five pass" "2 1 0" \
+  "$(glb 'git push origin gbare:mr-b') $(grep -c 'out of draft and its pushed commit' "$T/err") $(rec5 "$(git -C "$NA" rev-parse gbare)"; glb 'git push origin gbare:mr-b')"
+gll false main e1e1e1e1 b.py false
+echo '[{"web_url":"https://gitlab.com/me/app/-/merge_requests/5","draft":true}]' > "$FX/gl_projects_me_2Fapp_merge_requests_state_opened_source_branch_mr-b"
+check "GitLab: a push to a draft MR passes beside an overlapping ready one" 0 "$(glb 'git push origin HEAD:mr-b')"
+echo '{"head_pipeline":null,"draft":true}' > "$FX/gl_projects_me_2Fapp_merge_requests_5"
+check "GitLab, BLOCK: a title update dropping the Draft prefix (glab mr update --title, glab api PUT), naming the MR; a numeric project id, which can't be told; a Draft title, or a retitle of a ready MR, passes" "2 1 2 2 1 0 0" \
+  "$(glb 'glab mr update 5 --title Ready') $(grep -c 'gitlab.com/me/app!8, also yours and ready' "$T/err") $(glb 'glab api projects/me%2Fapp/merge_requests/5 -X PUT -f title=Ready') $(glb 'glab api projects/1/merge_requests/5 -X PUT -f title=Ready') $(grep -c "can't tell which project this .glab api. call acts on" "$T/err") $(glb "glab mr update 5 --title 'Draft: Ready'") $(echo '{"head_pipeline":null,"draft":false}' > "$FX/gl_projects_me_2Fapp_merge_requests_5"; glb 'glab mr update 5 --title Ready')"
+echo '{"head_pipeline":null,"draft":true}' > "$FX/gl_projects_me_2Fapp_merge_requests_5"
+printf '{"title":"Ready"}' > "$NA/body.json"; printf '{"title":"Draft: Ready"}' > "$T/body.json"; printf false > "$T/false.txt"; printf dev > "$T/base.txt"
+GPUT='glab api projects/me%2Fapp/merge_requests/5 -X PUT'
+check "GitLab, BLOCK: an API PUT to an MR taking fields from a file or stdin (--input, relative after a cd too; a value starting with @), saying to pass them literally; literal fields stay checked, naming the MR, and a Draft title passes" "2 1 2 2 2 1 2 2 1 0" \
+  "$(MERGEWORTHY_WATCHER=off bg "cd $NA && $GPUT --input body.json" "$T") $(grep -c 'pass them literally with -f <field>=<value>, or use .glab mr update.' "$T/err") $(glb "$GPUT --input -") $(glb "$GPUT -F draft=@$T/false.txt -f target_branch=dev") $(glb "$GPUT -f title=Ready -F target_branch=@$T/base.txt") $(grep -c 'pass them literally' "$T/err") $(glb "$GPUT -f title=@$T/base.txt") $(glb "$GPUT -f title=Ready") $(grep -c 'gitlab.com/me/app!8, also yours and ready' "$T/err") $(glb "$GPUT -f 'title=Draft: Ready'")"
+gll false dev e1e1e1e1 b.py false
+check "GitLab, BLOCK: a title update, --ready or an API PUT that also retargets the MR checks the new target branch, naming the MR there; staying on its own passes" "2 1 2 2 1 0" \
+  "$(glb 'glab mr update 5 --title Ready --target-branch dev') $(grep -c 'gitlab.com/me/app!8, also yours and ready, changes b.py' "$T/err") $(glb 'glab mr update 5 --ready --target-branch dev') $(glb "$GPUT -f title=Ready -f target_branch=dev") $(grep -c 'gitlab.com/me/app!8, also yours and ready' "$T/err") $(glb 'glab mr update 5 --title Ready')"
+echo '{"head_pipeline":null,"draft":false}' > "$FX/gl_projects_me_2Fapp_merge_requests_5"
+check "GitLab, BLOCK: retargeting a ready MR onto an overlapping ready MR's branch (glab mr update --target-branch, an API PUT of target_branch), naming it; onto its own branch, or a draft MR's retarget, passes" "2 1 2 1 0 0 0" \
+  "$(glb 'glab mr update 5 --target-branch dev') $(grep -c 'gitlab.com/me/app!8, also yours and ready, changes b.py' "$T/err") $(glb "$GPUT -f target_branch=dev") $(grep -c 'gitlab.com/me/app!8, also yours and ready' "$T/err") $(glb 'glab mr update 5 --target-branch main') $(echo '{"head_pipeline":null,"draft":true}' > "$FX/gl_projects_me_2Fapp_merge_requests_5"; glb 'glab mr update 5 --target-branch dev') $(glb "$GPUT -f target_branch=dev")"
+echo '{"head_pipeline":null}' > "$FX/gl_projects_me_2Fapp_merge_requests_5"
+rm "$GLL" "$FX"/gl_projects_me_2Fapp_merge_requests_[58]_changes
 # a push is held to the approach of each branch it publishes, whichever is checked out
 git -C "$NA" checkout -q -b unrelated
 echo '[{"web_url":"https://gitlab.com/me/app/-/merge_requests/6","draft":true}]' > "$FX/gl_projects_me_2Fapp_merge_requests_state_opened_source_branch_unrecorded"

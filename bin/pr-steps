@@ -6,6 +6,8 @@
 # The posting hook blocks `gh pr create` (unless --draft), `gh pr ready` and pushes to a ready PR until HEAD has all five.
 # quick: the quick gates' exit codes on a head (code §Gates), which a push to a PR or another owner's repo, and `gh pr create`, need on the pushed head.
 # finality: the finality pass's pinnacle and plan (finality step 3), which a code file's 6th change on the branch needs on the head (pre-bash-guard).
+# union <log> | --conflict <sha>: two ready PRs of ours sharing a file, checked together (merging step 2): in a checkout of their merge, the log's
+# first line 'Union: <owner/repo>#<A>@<sha> + #<B>@<sha> on <base>@<sha>' and its quick gates; or, in one PR's checkout, its textual conflict with the other's head.
 set -euo pipefail
 # The first sentence of each code/SKILL.md section a checker's brief names: its file copies them under '## Standards read', proof it read them
 standards() { python3 - "$(dirname "$(realpath "$0")")/../skills/code/SKILL.md" <<'EOF'
@@ -22,11 +24,11 @@ read_standards() {
   miss=$(standards | while IFS= read -r l; do case "$sec" in *"$l"*) ;; *) printf '%s\n' "$l" ;; esac; done)
   [ -z "$miss" ] || { printf '%s\n' "$out has no '## Standards read' copying the first sentence of each code/SKILL.md section its brief names (read them before checking; the brief of this step: mergeworthy delegate/verifier.md, shape.md or fresh-reader.md). Missing:" "$miss" >&2; exit 1; }
 }
-step=${1:?usage: pr-steps <preflight|approach|small|quick|verify|shape|reverify|fresh|gates|finality> <output-file> [--ledger <path>]}; out=${2:?output file}
+step=${1:?usage: pr-steps <preflight|approach|small|quick|verify|shape|reverify|fresh|gates|finality|union> <output-file> [--ledger <path>]}; out=${2:?output file}
 ledger=; [ "${3:-}" != --ledger ] || ledger=${4:?--ledger <path>}
 ledger_ok() { [ -n "$ledger" ] && python3 "$(dirname "$(realpath "$0")")/../hooks/ledger.py" "$ledger"; }
-case "$step" in preflight|approach|small|quick|verify|shape|loopb|refactor|reverify|fresh|gates|finality) ;; review) step=fresh ;;
-  *) echo "step must be preflight, approach, small, quick, verify, shape, reverify, fresh, gates or finality" >&2; exit 1;; esac
+case "$step" in preflight|approach|small|quick|verify|shape|loopb|refactor|reverify|fresh|gates|finality|union) ;; review) step=fresh ;;
+  *) echo "step must be preflight, approach, small, quick, verify, shape, reverify, fresh, gates, finality or union" >&2; exit 1;; esac
 # preflight and approach: one record per repo and branch, the path the hooks read (hooks/shellcmd.py branch_record)
 mkdir -p ~/.claude/pr-steps
 approach=$(python3 "$(dirname "$(realpath "$0")")/../hooks/shellcmd.py" approach)
@@ -58,6 +60,20 @@ sys.exit("main-frame-error" in d or not re.sub(r"<[^>]*>|\s", "", re.sub(r"(?is)
   echo "preflight $proof $(date -u +%FT%TZ)" >> "$preflight"
   echo "recorded preflight for branch $(git symbolic-ref --short -q HEAD || echo HEAD): $proof"
   exit 0
+fi
+# each union head's record names the other's head, the one pre-bash-guard asks for
+record_union() { for h in "$1 $2" "$2 $1"; do set -- $h; echo "union $proof $(date -u +%FT%TZ) $2" >> ~/.claude/pr-steps/"$1"; done; echo "recorded union of $1 and $2"; }
+if [ "$step" = union ] && [ "$out" = --conflict ]; then
+  a=$(git rev-parse HEAD); b=$(git rev-parse -q --verify "${3:?usage: pr-steps union --conflict <the other PR head sha>}^{commit}") || { echo "$3 is no commit here: fetch the other PR's head first" >&2; exit 1; }
+  rc=0; git merge-tree --write-tree "$a" "$b" >/dev/null 2>&1 || rc=$?
+  [ "$rc" = 1 ] || { echo "HEAD and $3 merge without a conflict: run the quick gates on their merge and record its log with pr-steps union <log>" >&2; exit 1; }
+  proof=conflict; record_union "$a" "$b"; exit 0
+fi
+if [ "$step" = union ]; then
+  shas=$(head -n1 "$out" | sed -En 's/^Union: [^ ]+#[0-9]+@([0-9a-f]{7,40}) \+ #[0-9]+@([0-9a-f]{7,40}) on [^ ]+@([0-9a-f]{7,40})$/\1 \2 \3/p')
+  [ -n "$shas" ] || { echo "$out's first line is not 'Union: <owner/repo>#<A>@<sha> + #<B>@<sha> on <base>@<sha>'" >&2; exit 1; }
+  for s in $shas; do git merge-base --is-ancestor "$s" HEAD 2>/dev/null || { echo "HEAD doesn't hold $s: merge both PRs' heads onto their base, and run the gates there" >&2; exit 1; }; done
+  set -- $shas; ua=$(git rev-parse "$1"); ub=$(git rev-parse "$2")
 fi
 if [ "$step" = approach ]; then
   chosen=$(sed -n 's/^[[:space:]]*Chosen:[[:space:]]*//p' "$out" | head -n1 | sed 's/[[:space:]]*$//')
@@ -136,7 +152,7 @@ if [ "$step" = small ]; then
   exit 0
 fi
 # A shape record is the pass's lists (the ✅ coverage list and old ⇒ new ratings) ending CLEAN, or a small follow-up that
-# carries an earlier pass ("carries the pass of <sha>", carry_holds): a fix log or a note is not a shape pass
+# carries an earlier pass or small fix's review ("carries the pass of <sha>", carry_holds): a fix log or a note is not a shape pass
 # A pass rates every item afresh: a row whose rating is copied ("10 =", "=", "unchanged since") is a re-rating of a delta, not a pass
 is_pass() { grep -q '✅' "$1" && grep -Eq '([0-9]+|\bnew) *(⇒|=>) *([0-9]+|removed|new|n/a)' "$1" && ! grep -Eiq '\| *([0-9]+ *)?= *\||unchanged since' "$1"; }
 # The file of each line HEAD changed since an earlier head, once per line: compared whole with that head replayed on the base HEAD has merged,
@@ -164,45 +180,57 @@ carries() {
   awk -v s="$step" '$1==s' ~/.claude/pr-steps/"$full" 2>/dev/null | grep -q . || { echo "$c has no recorded $step to carry" >&2; exit 1; }
   carry_holds "$full"
 }
-if [ "$step" != shape ] && [ "$step" != refactor ] && [ "$step" != gates ] && [ "$step" != quick ] && [ "$step" != finality ] && carries; then :; else
+if [ "$step" != shape ] && [ "$step" != refactor ] && [ "$step" != gates ] && [ "$step" != quick ] && [ "$step" != union ] && [ "$step" != finality ] && carries; then :; else
 base=$(git merge-base HEAD "$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)" 2>/dev/null || true)
 case "$step" in
   verify|reverify)
     [ "$last" = "NO BUGS" ] || [ "$step" = reverify -a "$last" = "NO LOOP B COMMITS" ] || ledger_ok || { echo "$out does not end with a line NO BUGS: fix what it found for round 2; after round 2, record it with --ledger <the loop's ledger>" >&2; exit 1; }
     [ "$step" = reverify ] || read_standards
-    # A reproduced behavior dropped as harmless is the main session's call: a later `RULED: <candidate>: <ruling>` line, its own
+    # A reproduced behavior dropped as harmless, and a claim no test or probe covers, are the main session's call: a later `RULED: <candidate>: <ruling>` line, its own
     unruled=$(python3 - "$out" <<'EOF'
 import re, sys
 lines, plain = open(sys.argv[1]).read().splitlines(), lambda l: re.sub(r'[*`]', '', l).strip().lower()
 item = re.compile(r'(\s*)([-*+]|\d+\.)\s')
-# each dropped list's outermost item indentation: a deeper item is a sub-bullet, covered by its item's RULED line
-sec, outer = None, {}  # only the dropped list: a counted bug may well be "a rare race"
+# each ruled list's outermost item indentation: a deeper item is a sub-bullet, covered by its item's RULED line
+# only the dropped and untested-claims lists: a counted bug may well be "a rare race"
+ruled = lambda l: 'dropped' if 'dropped' in l.lower() else 'claims' if 'untested claims' in l.lower() else None
+sec, outer, kind = None, {}, {}
 for i, l in enumerate(lines):
-    if l.startswith('#'): sec = i if 'dropped' in l.lower() else None
+    if l.startswith('#'): kind[i] = ruled(l); sec = i if kind[i] else None
     elif sec is not None and (m := item.match(l)): outer[sec] = min(outer.get(sec, len(l)), len(m[1]))
 sep, bare = r':|\s[—–-]\s', lambda l: re.sub(r'^[\s>+-]*(\d+\.\s*)?', '', plain(l))
 # a candidate named by a line reference ('- :67 now says …', '- agent.md:10 …') is ruled as 'RULED: :67: …'
 name_of = lambda l: (re.match(r'\S*:\d+(-\d+)?', bare(l)) or re.split(sep, bare(l), maxsplit=1))[0].strip()
+# an untested claim, '<claim> — <runtime> — <probe> — <result>' (delegate/verifier.md), is ruled under its claim
+claim_of = lambda l: re.split(r'\s[—–]\s', bare(l), maxsplit=1)[0].strip()
 # 'None.', 'Nothing was dropped.': an unbulleted line whose first sentence is one of these says the list is empty
 empty = lambda l: not item.match(l) and \
     re.fullmatch(r'none|nothing|nothing( was)? dropped|no candidates? dropped|no candidates were dropped', re.split(r'\.(?:\s|$)', bare(l), maxsplit=1)[0].strip())
-sec = None
+sec, items = None, []
 for i, l in enumerate(lines):
     if l.startswith('#'):
-        sec = i if 'dropped' in l.lower() else None
+        sec = i if kind[i] else None
         continue
-    m = item.match(l)  # a candidate: an outermost list item, or an unbulleted '<candidate>: <why>' line
-    if sec is not None and (len(m[1]) == outer[sec] if m else re.match(r'[^:]+:\s', plain(l))) and not empty(l) and not l.startswith('RULED:'):
-        name = name_of(l)
-        rulings = [r for r in lines[i + 1:] if name and r.startswith('RULED:') and name in plain(r)]
-        if not rulings:
-            print(l)
-        elif all(re.search(r'not a regression|same as (on )?(main|master)|(main|master) does the same|pre-?existing|(also|too) on (main|master)|on (main|master) (too|as well)|masteren is', r.split(name, 1)[-1], re.I) and not re.search(r'outside the (files|change|code)|earn every line|no realistic usage|contrived|staged race', r, re.I)
-                 and not re.match(r'\s*(a bug|bug|fix(ed)?\b)', r.split(name, 1)[-1].lstrip(': '), re.I) for r in map(plain, rulings)):
-            print(l + "  <- 'on main too' is not a ruling: start it 'a bug', or say 'outside the code this change edits', or why no user meets it (code Earn every line, no realistic usage)")
+    # a candidate: an outermost list item, or an unbulleted '<candidate>: <why>' line; under untested claims, any unbulleted line
+    m, claims = item.match(l), kind.get(sec) == 'claims'
+    if sec is not None and l.strip() not in ('', 'NO BUGS', 'NO LOOP B COMMITS') and (len(m[1]) == outer[sec] if m else claims or re.match(r'[^:]+:\s', plain(l))) and not empty(l) and not l.startswith('RULED:'):
+        items.append((i, l, (claim_of if claims else name_of)(l)))
+# a RULED line rules one earlier item: of those whose 'RULED: <name>:' it starts with, the longest name (one not yet ruled first),
+# so 'RULED: focus stays: after navigation: …' rules that claim and never 'focus stays' too
+rulings = {i: [] for i, _, _ in items}
+for j, r in enumerate(lines):
+    if not r.startswith('RULED:'): continue
+    hits = [(len(n), -len(rulings[i]), i) for i, _, n in items if i < j and n and re.match(r'ruled:\s*' + re.escape(n) + r'\s*:', plain(r))]
+    if hits: rulings[max(hits)[2]].append(plain(r))
+for i, l, name in items:
+    if not rulings[i]:
+        print(l)
+    elif all(re.search(r'not a regression|same as (on )?(main|master)|(main|master) does the same|pre-?existing|(also|too) on (main|master)|on (main|master) (too|as well)|masteren is', r.split(name, 1)[-1], re.I) and not re.search(r'outside the (files|change|code)|earn every line|no realistic usage|contrived|staged race', r, re.I)
+             and not re.match(r'\s*(a bug|bug|fix(ed)?\b)', r.split(name, 1)[-1].lstrip(': '), re.I) for r in rulings[i]):
+        print(l + "  <- 'on main too' is not a ruling: start it 'a bug', or say 'outside the code this change edits', or why no user meets it (code Earn every line, no realistic usage)")
 EOF
 )
-    [ -z "$unruled" ] || { printf '%s\n' "every dropped candidate goes to the main session, which rules on it in a later line 'RULED: <candidate>: <ruling>' (mergeworthy delegate/verifier.md, What counts):" "$unruled" >&2; exit 1; }
+    [ -z "$unruled" ] || { printf '%s\n' "every dropped candidate and untested claim goes to the main session, which rules on it in a later line 'RULED: <candidate>: <ruling>' (mergeworthy delegate/verifier.md, What counts):" "$unruled" >&2; exit 1; }
     # A diff that touches bodies, buffers, streams or cancellation gets code §No regressions' list answered item by item
     if [ "$step" = verify ] && [ -n "$base" ] && git diff "$base" HEAD | grep -Eq '^\+.*(ReadableStream|WritableStream|TransformStream|arrayBuffer\(|\.bytes\(|\.body\b|bodyUsed|\btee\(|\.clone\(|AbortSignal|AbortController|ArrayBuffer|(Int|Uint|Float|BigInt|BigUint)[0-9]+Array|Buffer\.|defineProperty|prototype\.[A-Za-z_]+ *=)'; then
       sec=$(awk '/^## Bodies and streams/{f=1;next} /^## /{f=0} f' "$out")
@@ -242,7 +270,10 @@ EOF
         loopb=; while read -r f; do if [ "$(grep -v '^[[:space:]]*$' "$f" 2>/dev/null | tail -n1)" = CLEAN ]; then loopb=$f; fi; done < <(awk '$1=="loopb"{print $2}' "$rec" 2>/dev/null)
         if [ -n "$loopb" ]; then while read -r f; do if is_pass "$f"; then prev=$f; fi; done < <(awk '$1=="refactor"{print $2}' "$rec"); fi
       fi
-      [ -n "$prev" ] || { echo "$carried has no recorded shape pass with ratings to carry" >&2; exit 1; }
+      # a small fix's review, recorded by pr-steps small for verify, shape, reverify and fresh alike, is that head's shape record (converge §Small fix)
+      [ -n "$prev" ] || [ "$step" != shape ] ||
+        prev=$(awk '$1 ~ /^(verify|shape|reverify|fresh)$/ && !seen[$1 FS $2]++ && ++n[$2] == 4 {f = $2} END {print f}' "$rec" 2>/dev/null)
+      [ -n "$prev" ] || { echo "$carried has no recorded shape pass with ratings, nor a small fix's review, to carry" >&2; exit 1; }
       # a maintainer's ask for a refactor pass (the watcher's refactor-asks.txt: time, the PR's head then, the PR, the comment) made on
       # this branch after the carried pass is answered by a pass, not a carry
       at=$(awk -v f="$prev" '$2==f{t=$3} END{print t}' "$rec")
@@ -250,7 +281,7 @@ EOF
       [ -z "$ask" ] || { echo "$ask asks for a refactor pass after the pass $carried carries ($at): run the pass on this head (mergeworthy:converge step 2, delegate/shape.md) and record its report, not a carry" >&2; exit 1; }
       carry_holds "$full"
     fi ;;
-  gates|quick)
+  gates|quick|union)
     grep -Eq '^.+ -> exit [0-9]+( \([0-9]+ (tests?|projects?|files?|words)\))?$' "$out" || { echo "$out lists no gate: one line per gate, '<command> -> exit <code>', run on this HEAD; a test gate: '<command> -> exit 0 (<N> tests)'" >&2; exit 1; }
     # a gate that can't run here is installed or run another way: CI is never where a change is first checked
     unrun="\\b(not installed|isn't installed|let CI|leave it to CI|CI will (verify|check|tell)|(can't|cannot|can not) (run|install)|(not|wasn't|weren't) run)\\b"
@@ -292,6 +323,7 @@ EOF
     fi ;;
 esac
 fi
+[ "$step" != union ] || { proof=$(realpath "$out"); record_union "$ua" "$ub"; exit 0; }
 grep -qsF " $(realpath "$out") " ~/.claude/pr-steps/"$sha" && { echo "$out is already recorded for $sha: each step has its own output" >&2; exit 1; }
 mkdir -p ~/.claude/pr-steps
 echo "$step $(realpath "$out") $(date -u +%FT%TZ)" >> ~/.claude/pr-steps/$sha
