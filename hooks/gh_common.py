@@ -82,22 +82,28 @@ def gh_pages(path, paginate=True):
 
 
 def search(q, span=None):
-    """Every issue and PR a search matches, one request a page, paced to GitHub's 30 search requests a minute. GitHub's search returns
-    at most 1000, so a search whose first page counts more is read as the two halves of its `updated:` range instead (from the
-    query's own lower bound to a day from now, so a post updated while it reads moves to a part read later), halving until each part
-    is within 1000. Exits when it can't split (no lower bound, or a single second counting more) or a part returns fewer than it
-    counts, since a reader would take the rest as nothing. span: the (from, to) seconds this call reads."""
+    """Every issue and PR a search matches, one request a page, newest update first, paced to GitHub's 30 search requests a minute.
+    GitHub's search returns at most 1000, so a search whose first page counts more is read as the two halves of its `updated:` range
+    instead (from the query's own lower bound to a day from now, so a post updated while it reads moves to a part read later), halving
+    until each part is within 1000. A part is read whole when its distinct items equal its first page's count and no page is
+    incomplete; otherwise an update moved an item while it read, and it is read again from page 1. Exits when it can't split (no lower
+    bound, or a single second counting more) or a part is short 3 reads in a row, since a reader would take the rest as nothing.
+    span: the (from, to) seconds this call reads."""
     sub = q if span is None else f"{UPDATED.sub('', q).strip()} updated:{iso(span[0])}..{iso(span[1])}"
     def page(n):
         pace(SEARCHES, SEARCH_WINDOW)
-        return gh_pages(f"search/issues?q={urllib.parse.quote_plus(sub, safe=':<>=/')}&per_page=100&page={n}", paginate=False)[0]
-    first = page(1)
-    total, name = first['total_count'], os.path.basename(sys.argv[0])
-    if total <= 1000:
-        items = first['items'] + [i for n in range(2, -(-total // 100) + 1) for i in page(n)['items']]
-        if len(items) < total:
-            sys.exit(f"{name}: the search {sub!r} returned {len(items)} of its {total} items")
-        return items
+        return gh_pages(f"search/issues?q={urllib.parse.quote_plus(sub, safe=':<>=/')}&sort=updated&order=desc&per_page=100&page={n}", paginate=False)[0]
+    name = os.path.basename(sys.argv[0])
+    for _ in range(3):
+        first = page(1)
+        if (total := first['total_count']) > 1000:
+            break
+        pages = [first] + [page(n) for n in range(2, -(-total // 100) + 1)]
+        items = list({i['url']: i for p in pages for i in p['items']}.values())
+        if len(items) == total and not any(p['incomplete_results'] for p in pages):
+            return items
+    else:
+        sys.exit(f"{name}: the search {sub!r} returned {len(items)} of its {total} items")
     if span is None:
         if not (m := LOWER.search(q)):
             sys.exit(f"{name}: the search {q!r} counts {total} items, over the 1000 GitHub's search returns, and has no lower bound (updated:>=, merged:>=, closed:>= or created:>=) to split it from")
