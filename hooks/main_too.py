@@ -7,7 +7,7 @@ the file (all of it) or else beside it, and exits 1 when one does."""
 import os, re, subprocess, sys
 import work_folder
 
-MAIN = re.compile(r"not a regression|pre-?existing|not caused by (this|the) (pr|change)|masteren is|same as (on )?(main|master)"
+MAIN = re.compile(r"not a regression|\bexisting\b|already exists?\b|\b(default|base) branch\b|\bbaseline\b|not caused by (this|the) (pr|change)|masteren is|same as (on )?(main|master)"
                   r"|\b(on|in) (main|master)\b(?! session| thread)|\b(main|master)('s\b| (too|as well|does|has|had|shows))", re.I)
 PLACE = re.compile(r'([\w./@~+-]*[\w@~+-]\.\w+):(\d+)(?:-(\d+))?')  # src/panel.tsx:12, panel.tsx:5-6
 OK = re.compile(r'^(.+?)\s[—–-]\s+OK\b(.*)$')
