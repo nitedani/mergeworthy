@@ -7,20 +7,21 @@ import glob, itertools, json, re, sys, os, hashlib, subprocess, urllib.parse
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
 import shellcmd
-from shellcmd import parse, segments, prog, script, opt, api_call, discussion_post, discussion_thread_of, names_discussion_mutation, env_of, origin, plain_create, PLAIN, new_post_drafts, branch_record, no_approach, no_preflight, no_instructions_read, by_agent, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Unseen, Where
+from shellcmd import parse, segments, prog, script, opt, api_call, discussion_post, discussion_thread_of, names_discussion_mutation, env_of, origin, plain_create, PLAIN, new_post_drafts, no_instructions_read, by_agent, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Unseen, Where
+from records import branch_record, commit_file, no_approach, no_preflight, STORE
 import own_actions, steward, post_words, testpaths, threads_file, work_folder
 from t3_tasks import under_t3
 AGENT_TRAILER = re.compile(r'^Co-Authored-By: Claude', re.M | re.I)  # a commit without it is a maintainer's
 def missing_steps(d, head=None):
     """(head, the converge steps it lacks): head is a push's pushed commit, else HEAD."""
     head = head or subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
-    rec = os.path.expanduser(f'~/.claude/pr-steps/{head}')
+    rec = commit_file(head)
     # A maintainer's commits on top carry the last converged head's records, whatever their size: they get
     # reply §Maintainer commits' review, and the pipeline runs again only once the maintainer says they're done.
     # Only non-merge commits without the agent's Co-Authored-By: Claude trailer are skipped back over.
     for c in subprocess.run(['git', '-C', d, 'rev-list', '--first-parent', '--max-count=100', head or 'HEAD'], capture_output=True, text=True).stdout.split():
-        if os.path.exists(os.path.expanduser(f'~/.claude/pr-steps/{c}')):
-            rec = os.path.expanduser(f'~/.claude/pr-steps/{c}'); break
+        if os.path.exists(commit_file(c)):
+            rec = commit_file(c); break
         parents, _, body = subprocess.run(['git', '-C', d, 'log', '-1', '--format=%P%x00%B', c], capture_output=True, text=True).stdout.partition('\0')
         if len(parents.split()) != 1 or AGENT_TRAILER.search(body): break
     kinds = {l.split()[0] for l in open(rec)} if head and os.path.exists(rec) else set()
@@ -449,7 +450,7 @@ def check_refactor_ask(repo, num, comment, drafts=()):
 
 def real_passes(sha):
     """The (step, report, time) shape records of sha whose report is a pass, not a carry."""
-    rec = os.path.expanduser(f'~/.claude/pr-steps/{sha}')
+    rec = commit_file(sha)
     rows = [l.split()[:3] for l in open(rec) if len(l.split()) >= 3] if sha and os.path.isfile(rec) else []
     return [r for r in rows if r[0] == 'shape' and os.path.isfile(r[1]) and 'carries the pass of' not in open(r[1], errors='replace').read()]
 
@@ -527,7 +528,7 @@ def title_setter(repo, num):
     login = ((last or {}).get('actor') or {}).get('login')
     return (login, last.get('created_at')) if login and login != me else None
 
-RECORDS = os.path.realpath(os.path.expanduser('~/.claude/pr-steps')) + os.sep
+RECORDS = os.path.realpath(STORE) + os.sep
 push_urls = []  # where this command's pushes go (pushed()), for the watcher check
 # what this command does on GitHub (own_actions), recorded once it passed every check: the watcher logs these changes without waking the session
 own = {'PUSHED_HEADS': [], 'CLOSED_THREADS': []}  # the heads it pushes; `owner/repo#N merged|closed`
@@ -730,7 +731,7 @@ def check_workflow(what, d, commits, updates=()):
         repos = sorted({m[0] or 'gitlab.com/' + m[1] for m in re.findall(r'github\.com[:/]([\w.-]+/[\w.-]+?)(?:\.git)?(?:\s|$)|gitlab\.com[:/]([\w./-]+?)(?:\.git)?(?:\s|$)', urls)})
         if repos: need_watch(repos, top)  # a host no watcher reads (neither GitHub nor GitLab) has nothing to arm
     for sha in commits:
-        rec = os.path.expanduser(f'~/.claude/pr-steps/{sha}')
+        rec = commit_file(sha)
         logs = [l.split()[1] for l in (open(rec) if os.path.isfile(rec) else []) if l.split()[:1] in (['quick'], ['gates']) and len(l.split()) > 1]
         if not logs:
             block(f"{sha[:10]} has no passing gate record: run the quick gates on it (format, type-check, units, and each failing CI job's command: "
