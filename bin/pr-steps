@@ -194,7 +194,8 @@ case "$step" in
 import re, sys
 sys.path.insert(0, sys.argv[3])
 import main_too
-lines, plain = open(sys.argv[1]).read().splitlines(), lambda l: re.sub(r'[*`]', '', l).strip().lower()
+lines, clean = open(sys.argv[1]).read().splitlines(), lambda l: re.sub(r'[*`]', '', l).strip()
+plain = lambda l: clean(l).lower()
 item = re.compile(r'(\s*)([-*+]|\d+\.)\s')
 # each ruled list's outermost item indentation: a deeper item is a sub-bullet, covered by its item's RULED line
 # only the dropped and untested-claims lists: a counted bug may well be "a rare race"
@@ -225,13 +226,13 @@ for i, l in enumerate(lines):
 rulings = {i: [] for i, _, _ in items}
 for j, r in enumerate(lines):
     if not r.startswith('RULED:'): continue
-    hits = [(len(n), -len(rulings[i]), i) for i, _, n in items if i < j and n and re.match(r'ruled:\s*' + re.escape(n) + r'\s*:', plain(r))]
-    if hits: rulings[max(hits)[2]].append((plain(r), r))
+    hits = [(len(n), -len(rulings[i]), i, m.end()) for i, _, n in items if i < j and n and (m := re.match(r'ruled:\s*' + re.escape(n) + r'\s*:', plain(r)))]
+    if hits: _, _, k, end = max(hits); rulings[k].append(clean(r)[end:])  # the ruling's own text, after its candidate
 for i, l, name in items:
     if not rulings[i]:
         print(l)
     # 'main has it too' excuses a defect only where it comes from outside the functions this branch changes: the ruling names that path:line
-    elif all((bad := main_too.ruled(raw, r.split(name, 1)[-1], sys.argv[2])) for r, raw in rulings[i]):
+    elif all((bad := main_too.excuse(why, sys.argv[2])) for why in rulings[i]):
         print(l + f"  <- main having it excuses nothing here: {bad}. Start the ruling 'a bug', name the path:line the defect comes from, outside the functions this branch changes, or say why no user meets it (code Earn every line, no realistic usage)")
 EOF
 )

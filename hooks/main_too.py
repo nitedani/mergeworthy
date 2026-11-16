@@ -26,13 +26,13 @@ def changed(base):
     return out
 
 
-def ruled(line, why, base):
-    """None when a RULED line's ruling (why, after its candidate) is a bug or another reason, or says main has it from a right place; else why not."""
-    if re.search(r'earn every line|no realistic usage|contrived|staged race', line, re.I) or re.match(r'\s*(a bug|bug|fix(ed)?\b)', why.lstrip(': '), re.I): return None
-    return misplaced(line, base) if MAIN.search(why) else None
+def excuse(why, base):
+    """None when a ruling's text, after its candidate, is a bug, a reason no user meets it, or says nothing of main; else why it excuses nothing."""
+    if re.search(r'earn every line|no realistic usage|contrived|staged race', why, re.I) or re.match(r'\s*(a bug|bug|fix(ed)?\b)', why, re.I): return None
+    return place(why, base) if MAIN.search(why) else None
 
 
-def misplaced(text, base):
+def place(text, base):
     """None when text names a place the defect comes from, each outside the functions the branch changes; else why not."""
     top = git('rev-parse', '--show-toplevel').strip()
     tracked, places = git('-C', top, 'ls-files').splitlines(), []
@@ -62,7 +62,7 @@ def layout(file, base):
         m = re.match(r'(.+?)\s[—–-]\s+(OK\b)?(.*)$', l.strip())
         if not m: why = 'no layout line: write `<file name> — OK` or `<file name> — <the defect>`'
         elif m[2]: why = m[3].strip(' .') and f'a screenshot with anything after OK: write it `{m[1]} — OK`, or each defect it shows as its own line `{m[1]} — <the defect>`'
-        else: why = (w := misplaced(m[3], base)) and f'a defect left in the check names the place it comes from, `{m[1]} — <the defect>, from <path:line>`: {w}'
+        else: why = (w := place(m[3], base)) and f'a defect left in the check names the place it comes from, `{m[1]} — <the defect>, from <path:line>`: {w}'
         if why: bad.append(f'{l}  <- {why}')
     return bad
 

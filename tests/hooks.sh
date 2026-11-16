@@ -2325,6 +2325,8 @@ mt mt15 'already on main ./src/panel.tsx:6'; mt mt16 "already on main $G4/src/pa
 mt mt19 'already on main ./src/panel.tsx:2'; mt mt20 "already on main $G4/src/panel.tsx:2"; mt mt21 'already on main since 10:30, src/panel.tsx:6'
 check "a main-too ruling citing ./path, an absolute path in the repo, a Makefile or Dockerfile line outside the changed functions records; ./path or the absolute path inside one is refused; a time is no citation" "0 0 0 0 1 1 0" \
   "$(prs4 verify "$T/mt15.md") $(prs4 verify "$T/mt16.md") $(prs4 verify "$T/mt17.md") $(prs4 verify "$T/mt18.md") $(prs4 verify "$T/mt19.md") $(prs4 verify "$T/mt20.md") $(prs4 verify "$T/mt21.md")"
+printf 'slice 1\n## Dropped\n- src/panel.tsx:6 is rare\nRULED: src/panel.tsx:6: main does the same\nNO BUGS\n' > "$T/mt25.md"; printf 'slice 1\n## Dropped\n- staged race in the menu: two clicks reorder it\nRULED: staged race in the menu: main too\nNO BUGS\n' > "$T/mt26.md"; std "$T/mt25.md" "$T/mt26.md"
+check "BLOCK: a main-too ruling whose only path:line, or whose only reason no user meets it, is its candidate's name: the ruling's own text holds the place" "1 1" "$(prs4 verify "$T/mt25.md") $(prs4 verify "$T/mt26.md")"
 # only the file a step is given is read: the task's work folder also holds other changes' notes, briefs that quote a ruling, another repo's layout check
 LW="$HOME/.mergeworthy/work/lay"; mkdir -p "$LW/repo-b-walk"; printf 'slice 1: no bug\nNO BUGS\n' | tee "$LW/b2.md" "$LW/b3.md" "$LW/r2.md" >/dev/null; std "$LW/b2.md" "$LW/b3.md" "$LW/r2.md"
 printf -- '## Dropped\n- stale cache: old entries stay\nRULED: stale cache: nothing on main held these\n' > "$LW/other.md"; r1=$(prs4 verify "$LW/b2.md")
