@@ -119,9 +119,9 @@ sha=$(git rev-parse HEAD)
 # the PR's own base, its parent branch when it is stacked: the branch's changes, for a small fix and for where a defect comes from
 pb=$(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || true)
 pbase=$(git merge-base HEAD "${pb:+origin/$pb}" 2>/dev/null || git merge-base HEAD "$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)" 2>/dev/null || true)
-# evidence step 4: each screenshot of a layout check is OK or names its defect, and main's having one excuses it only from outside the branch's functions
-bad=$(python3 "$(dirname "$(realpath "$0")")/../hooks/main_too.py" layout "$out" "$pbase") ||
-  { printf '%s\n' "a layout-check.md line, one per screenshot, is '<file name> — OK' or '<file name> — <the defect>', and a defect main has too names the path:line it comes from, outside the functions this branch changes (mergeworthy:evidence step 4):" "$bad" >&2; exit 1; }
+# evidence step 4: each screenshot of a layout check is OK or names its defect; there and in the task's rulings (converge step 1), main's having one excuses it only from outside the branch's functions
+bad=$(python3 "$(dirname "$(realpath "$0")")/../hooks/main_too.py" task "$out" "$pbase") ||
+  { printf '%s\n' "a layout-check.md line, one per screenshot, is '<file name> — OK' or '<file name> — <the defect>', and a defect main has too, there or in a RULED line of the task's files, names the path:line it comes from, outside the functions this branch changes (mergeworthy:evidence step 4, converge step 1):" "$bad" >&2; exit 1; }
 # build output, not code a reviewer reads: those of the paths on stdin, a line each, that testpaths.generated finds
 built() { python3 "$(dirname "$(realpath "$0")")/../hooks/testpaths.py" generated; }
 # numstat lines on stdin (core.quotePath=false: check-attr reads the path as it is) whose path (field 3) isn't build output
@@ -233,8 +233,7 @@ for i, l, name in items:
     if not rulings[i]:
         print(l)
     # 'main has it too' excuses a defect only where it comes from outside the functions this branch changes: the ruling names that path:line
-    elif all(main_too.MAIN.search(why := r.split(name, 1)[-1]) and not re.search(r'earn every line|no realistic usage|contrived|staged race', r, re.I)
-             and not re.match(r'\s*(a bug|bug|fix(ed)?\b)', why.lstrip(': '), re.I) and (bad := main_too.misplaced(raw, sys.argv[2])) for r, raw in rulings[i]):
+    elif all((bad := main_too.ruled(raw, r.split(name, 1)[-1], sys.argv[2])) for r, raw in rulings[i]):
         print(l + f"  <- main having it excuses nothing here: {bad}. Start the ruling 'a bug', name the path:line the defect comes from, outside the functions this branch changes, or say why no user meets it (code Earn every line, no realistic usage)")
 EOF
 )

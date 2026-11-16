@@ -2,8 +2,8 @@
 """Whether main's having a defect excuses it, decided by where the defect comes from (converge step 1, evidence step 4): a ruling
 or a layout-check.md line that says main has it names the `path:line` (or `path:a-b`) it comes from, a file HEAD tracks, outside
 every function the branch changes since the PR's base (`git diff -W`), else it excuses nothing. pr-steps reads it.
-`main_too.py layout <file the step records> <base>`: prints each layout-check.md line that fails, in the task's work folder holding
-the file (all of it) or else beside it, and exits 1 when one does."""
+`main_too.py task <file the step records> <base>`: prints each layout-check.md line and each other file's RULED line that fails, in
+the task's work folder holding the file (all of it) or else the layout-check.md beside it, and exits 1 when one does."""
 import os, re, subprocess, sys
 import work_folder
 
@@ -33,6 +33,12 @@ def why_not(text, base):
     return misplaced(text, base) if MAIN.search(text) else None
 
 
+def ruled(line, why, base):
+    """None when a RULED line's ruling (why, after its candidate) is a bug or another reason, or says main has it from a right place; else why not."""
+    if re.search(r'earn every line|no realistic usage|contrived|staged race', line, re.I) or re.match(r'\s*(a bug|bug|fix(ed)?\b)', why.lstrip(': '), re.I): return None
+    return misplaced(line, base) if MAIN.search(why) else None
+
+
 def misplaced(text, base):
     """None when text names a place the defect comes from, each outside the functions the branch changes; else why not."""
     top = git('rev-parse', '--show-toplevel').strip()
@@ -55,28 +61,33 @@ def misplaced(text, base):
 
 
 def checks(record):
-    """The layout-check.md files of the task's work folder holding record, past its checkouts and node_modules; outside one, the one beside it."""
+    """The .md files of the task's work folder holding record, past its checkouts and node_modules; outside one, the layout-check.md beside it."""
     if not (root := work_folder.task_of(record)):
         yield from (f for f in [os.path.join(os.path.dirname(os.path.abspath(record)), 'layout-check.md')] if os.path.isfile(f))
         return
     for d, sub, names in os.walk(root):
         sub[:] = [s for s in sub if s != 'node_modules' and not os.path.exists(os.path.join(d, s, '.git'))]
-        if 'layout-check.md' in names: yield os.path.join(d, 'layout-check.md')
+        yield from (os.path.join(d, n) for n in names if n.endswith('.md'))
 
 
-def layout(record, base):
-    """Each failing line of the layout-check.md files the task holds, '<path>: <line>  <- <why>'."""
+def task(record, base):
+    """Each failing line of the layout-check.md files the task holds, and of the RULED lines of its other files but record (pr-steps
+    verify reads those), '<path>: <line>  <- <why>'."""
     bad = []
     for f in checks(record):
+        lay, own = os.path.basename(f) == 'layout-check.md', os.path.samefile(f, record)
         for l in open(f, errors='replace').read().splitlines():
-            if (m := OK.match(l.strip())) and m[2].strip(' .'):
+            if not lay:  # 'RULED: <candidate>: <ruling>', a walk's too
+                if not own and l.startswith('RULED:') and (why := ruled(l, l[6:].strip().partition(': ')[2], base)):
+                    bad.append(f'{f}: {l}  <- main having it excuses nothing here: {why}')
+            elif (m := OK.match(l.strip())) and m[2].strip(' .'):
                 bad.append(f"{f}: {l}  <- a screenshot with anything after OK: write it `{m[1]} — OK`, or each defect it shows as its own line `{m[1]} — <the defect>`")
             elif not m and (why := why_not(l, base)):
                 bad.append(f'{f}: {l}  <- main having it excuses nothing here: {why}')
     return bad
 
 
-if __name__ == '__main__' and sys.argv[1:2] == ['layout']:
-    bad = layout(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else '')
+if __name__ == '__main__' and sys.argv[1:2] == ['task']:
+    bad = task(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else '')
     for b in bad: print(b)
     sys.exit(1 if bad else 0)
