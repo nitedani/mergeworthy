@@ -983,6 +983,29 @@ print(*counts)
 check "wake_thread: while the latest message a person wrote in the thread asks to stop, events wait unsent and the cursor stays; their next message resumes the wakes" \
   "False 0 0 1|t3 thread send thr-t -;Watcher events in $W/events.log (mergeworthy:reply):;### closed 1;" \
   "$got|$(tr '\n' ';' < "$T/t3.log")"
+: > "$T/t3.log"
+got=$(py '
+import sqlite3
+db = os.path.expanduser("~/.t3/userdata/statev2.sqlite"); os.makedirs(os.path.dirname(db), exist_ok=True)
+c = sqlite3.connect(db)
+c.execute("create table orchestration_v2_projection_runs (run_id text, thread_id text, status text, payload_json text)")
+c.execute("create table orchestration_v2_projection_messages (message_id text, thread_id text, role text, created_at text, payload_json text)")
+c.execute("create table orchestration_v2_projection_threads (thread_id text, payload_json text)")
+c.execute("insert into orchestration_v2_projection_threads values (?, ?)", ("thr-v", "{}"))
+def settle(how): c.execute("update orchestration_v2_projection_threads set payload_json = ?", (json.dumps({"settledOverride": how}),)); c.commit()
+log = os.path.join(m.HERE, "events.log"); open(log, "w").close(); add = lambda t: open(log, "a").write(t)
+open(os.path.join(m.HERE, "t3-thread"), "w").write("thr-v\n'"$T"'/bin/t3\n"); open(os.path.join(m.HERE, "t3-wake.cursor"), "w").write("0")
+sends = lambda: open("'"$T"'/t3.log").read().count("t3 thread send")
+settle("settled"); add("### PR CHANGED o/r#5: open -> merged\n"); counts = [m.wake_thread(), sends(), m.first_line(os.path.join(m.HERE, "t3-wake.cursor"))]
+add("### o/r#5 comment 1 by bob\n    thanks\n"); m.wake_thread(); counts.append(sends())
+settle(None); add("### PR CHANGED o/r#6: open -> closed\n"); m.wake_thread(); counts.append(sends())
+settle("settled"); add("### MAINTAINER COMMITS o/r#7: abc1234\n"); m.wake_thread(); counts.append(sends())
+os.remove(os.path.join(m.HERE, "t3-thread")); os.remove(db)
+print(*counts)
+')
+check "wake_thread: a settled thread is sent nothing for an event no person caused, the cursor stays and the watcher may retire (True); a comment then sends one wake carrying both; a thread not settled, or a maintainer's commits, is sent at once" \
+  "True 0 0 1 2 3|t3 thread send thr-v -;Watcher events in $W/events.log (mergeworthy:reply):;### PR CHANGED o/r#5: open -> merged;### o/r#5 comment 1 by bob;t3 thread send thr-v -;Watcher events in $W/events.log (mergeworthy:reply):;### PR CHANGED o/r#6: open -> closed;t3 thread send thr-v -;Watcher events in $W/events.log (mergeworthy:reply):;### MAINTAINER COMMITS o/r#7: abc1234;" \
+  "$got|$(tr '\n' ';' < "$T/t3.log")"
 got=$(py '
 log = os.path.join(m.HERE, "events.log"); open(log, "w").write("### cron event\n"); open(os.path.join(m.HERE, "t3-wake.cursor"), "w").write("0\n")
 open(os.path.join(m.HERE, "t3-thread"), "w").write("thr-2\n'"$T"'/bin/t3\n"); os.environ["PATH"] = "/usr/bin:/bin"

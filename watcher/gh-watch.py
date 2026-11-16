@@ -758,6 +758,8 @@ def emit(line):
 EVENT = re.compile(r'###|WATCH ERROR')  # the lines gh-watch-start's Monitor delivers
 STEWARD_REPO = 'nitedani/mergeworthy'
 WAKES = re.compile(rf'### NEW ISSUE {STEWARD_REPO}#')  # the one event a steward's dir delivers (rules step 2: a session's report of a mergeworthy fault)
+# the events a person caused by addressing the agent: a comment to answer (its line starts with the thread), and the kinds named here
+PERSON = re.compile(r'### (?:\S+[#!]\d+ |ACK |AGENT COMMAND |UNROUTED /agent |NEW (?:ISSUE|PR) |THUMBS (?:UP|DOWN) |MAINTAINER COMMITS )')
 
 
 def unsent():
@@ -787,8 +789,11 @@ def wake_thread():
     queued, nothing is sent: t3-wake.held names that run and how far the events it will read go; once it starts, the cursor moves there,
     and if it ends without starting, the next pass sends them (False until then: the thread hasn't got them). While the user has the
     thread stopped (steward.stopped), nothing is sent, the cursor stays and the watcher doesn't retire (False): once they write in it
-    again, the next pass sends every event since in one wake. A FOLLOW-UP or MAINTAINER REVIEW still unsorted 30 minutes after its time
-    (steward.unsorted) goes again while the thread is idle, an hour after the last such send (t3-wake.resent), the gap doubling to a day."""
+    again, the next pass sends every event since in one wake. While the thread is settled (steward.settled), which any message ends,
+    nothing is sent and the cursor stays unless an unsent line is one a person caused (PERSON): that wake carries the waiting lines
+    too. The watcher may retire meanwhile (True): events.log keeps them for the session's next start. A FOLLOW-UP or MAINTAINER REVIEW
+    still unsorted 30 minutes after its time (steward.unsorted) goes again while the thread is idle and not settled, an hour after the
+    last such send (t3-wake.resent), the gap doubling to a day."""
     tid, _, t3 = first_line(os.path.join(HERE, 't3-thread')).partition('\n')
     cursor, held, resent = (os.path.join(HERE, f't3-wake.{x}') for x in ('cursor', 'held', 'resent'))
     if not tid:
@@ -824,6 +829,8 @@ def wake_thread():
     late = [l for l in late if l not in lines]
     if lines and (run := steward.queued(tid, head)):  # that wake reads every event past the session's cursor when it runs
         return hold(run, start + len(data))
+    if (lines or late) and not any(PERSON.match(l) for l in lines) and steward.settled(tid):  # what the watcher noticed by itself waits in events.log, which any message to a settled thread would end
+        return True
     if (lines or late) and steward.stopped(tid):  # the user stopped the thread: its events wait in events.log, sent once they write in it again
         return False
     if lines or late:
