@@ -11,7 +11,7 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 | `delegate` | `code`, `writing` |
 | `design` | `delegate`, `pull-request`, `code`, `finality`, `writing`, `post`, `converge` |
 | `docs` | `delegate`, `converge`, `code` |
-| `evidence` | `delegate`, `post` |
+| `evidence` | `delegate`, `converge`, `post` |
 | `finality` | `delegate`, `code`, `post`, `design`, `converge` |
 | `merging` | `code`, `converge`, `post`, `task`, `writing` |
 | `open-issue` | `pull-request`, `task`, `delegate`, `evidence`, `writing`, `post` |
@@ -493,7 +493,8 @@ flowchart TB
     s3 --> s4
   end
   s0 -.-> r1[["delegate"]]
-  s3 -.-> r2[["post"]]
+  s3 -.-> r2[["converge"]]
+  s3 -.-> r3[["post"]]
   start --> g0
 ```
 
