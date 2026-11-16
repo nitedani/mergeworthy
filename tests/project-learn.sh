@@ -54,8 +54,8 @@ cat > "$T/gh.json" <<EOF
 "repos/vikejs/vike/pulls/3600/comments": [],
 "repos/vikejs/vike/issues/3700/comments": [
   {"html_url": "https://github.com/vikejs/vike/issues/3700#issuecomment-3700001", "url": "u", "user": {"login": "brillout"}, "created_at": "2026-10-30T10:30:00Z", "author_association": "MEMBER", "body": "the claude.png in the docs is broken", "reactions": {"total_count": 0}}],
-"search:vikejs/vike:merged": {"items": [{"number": 3648, "pull_request": {}, "user": {"login": "nitedani-agent"}, "body": "$BADGED"},
-  {"number": 3660, "pull_request": {}, "user": {"login": "dgesteves"}, "body": "$BADGED"}]},
+"search:vikejs/vike:merged": {"items": [{"number": 3648, "url": "https://api.github.com/repos/vikejs/vike/issues/3648", "pull_request": {}, "user": {"login": "nitedani-agent"}, "body": "$BADGED"},
+  {"number": 3660, "url": "https://api.github.com/repos/vikejs/vike/issues/3660", "pull_request": {}, "user": {"login": "dgesteves"}, "body": "$BADGED"}]},
 "repos/vikejs/vike/pulls/3660": {"merged_at": "2026-10-29T09:00:00Z", "merge_commit_sha": "7777777777777777777777777777777777777777"},
 "repos/vikejs/vike/pulls/3660/files": [{"filename": "packages/vike/c.ts"}],
 "repos/vikejs/vike/commits/7777777777777777777777777777777777777777": {"files": [{"filename": "packages/vike/a.ts"}]},
@@ -135,10 +135,13 @@ if 'all' in v:  # GitHub's search: what the updated: range matches, at most 1000
     lo, hi = (span[1], span[2]) if span else (start[1] if start else '', '9')
     hit = [i for i in v['all'] if lo <= i['updated_at'] <= hi]
     v = {'total_count': len(hit), 'items': hit[:1000]}  # paged below
-if key.startswith('search:') and 'total_count' not in v:  # every search answer counts what it matched
-    v = {**v, 'total_count': len(v['items'])}
-if key.startswith('search:'):  # one page of 100 a request, logged with its query, its count and when
-    n = int(re.search(r'[?&]page=(\d+)', p)[1]); v = {**v, 'items': v['items'][(n - 1) * 100:n * 100]}
+if key.startswith('search:'):  # one page of 100 a request, counting what it matched, logged with its query, its count and when
+    n = int(re.search(r'[?&]page=(\d+)', p)[1])
+    if 'reads' in v:  # a part whose items move as it's read: read r's page 1 from reads[r][0], its later pages from reads[r][1]
+        r = sum(l.split('\t')[1] == '1' and f"repo:{key[7:]} " in l for l in open("$T/searches")) - (n > 1)
+        v = {'items': v['reads'][min(r, len(v['reads']) - 1)][n > 1]}
+    v = {'total_count': len(v['items']), **v, 'incomplete_results': False}
+    v['items'] = v['items'][(n - 1) * 100:n * 100]
     open("$T/searches", "a").write(f"{time.time()}\t{n}\t{v['total_count']}\t{q}\n")
 print(json.dumps([v]))
 EOF
@@ -416,7 +419,7 @@ for k in ('issues/5/comments', 'pulls/5/reviews', 'pulls/5/comments'):
     m[f'repos/o/late/{k}'] = []
 m['repos/o/late/pulls/5/commits'] = [{'sha': 'cafe' + '0' * 36, 'author': {'login': 'boss'}, 'parents': [{}],
                                       'commit': {'message': 'simplify the loop', 'committer': {'date': sys.argv[3]}}}]
-m['search:o/late:merged'] = {'items': [{'number': n, 'pull_request': {}, 'user': {'login': 'nitedani-agent'}, 'body': B} for n in (6, 7)]}
+m['search:o/late:merged'] = {'items': [{'number': n, 'url': f'https://api.github.com/repos/o/late/issues/{n}', 'pull_request': {}, 'user': {'login': 'nitedani-agent'}, 'body': B} for n in (6, 7)]}
 for n in (6, 7):  # two merged PRs of ours change src/a.ts
     m[f'repos/o/late/pulls/{n}'] = {'merged_at': sys.argv[4], 'merge_commit_sha': f'bee{n}' * 10}
     m[f'repos/o/late/pulls/{n}/files'] = [{'filename': 'src/a.ts'}]
@@ -470,11 +473,16 @@ m['search:o/huge'] = {'all': [issue(n, f'2026-{1 + n % 9:02}-{1 + n % 28:02}T{n 
 m['search:o/huge:merged'] = m['search:o/huge']
 m['search:o/short'] = {'total_count': 150, 'items': [issue(n, '2026-05-05T05:05:05Z') for n in range(120)]}
 m['search:o/second'] = {'all': [issue(n, '2026-05-05T05:05:05Z') for n in range(1001)]}
+part = [issue(n, '2026-05-05T05:05:05Z') for n in range(150)]
+m['search:o/settles'] = {'reads': [[part, part[:10] + part[11:]], [part[:10] + part[11:]] * 2]}  # #10 updated out of the part mid-read
+m['search:o/moving'] = {'reads': [[part[r:], part[r + 1:]] for r in range(3)]}  # one item updated out of the part on every read
 json.dump(m, open(sys.argv[1], 'w'))
 PY
 : > "$T/gh-calls"; : > "$T/searches"; got=$(PYTHONPATH="$R/hooks" python3 -c 'from gh_common import search; print(len({i["number"] for i in search("repo:o/huge updated:>=2025-11-01")}))')
 check "search: 2500 matches, over GitHub's 1000, read whole by halving the updated: range from its start, each part within 1000" "2500 1 1" \
   "$got $(grep -c 'updated:>=2025-11-01&' "$T/gh-calls") $(grep -q 'updated:2025-11-01T00:00:00Z\.\.' "$T/gh-calls" && echo 1)"
+check "search: every request asks for the newest update first, so an update moves an item only to page 1" "1 0" \
+  "$(grep -q 'search/issues' "$T/gh-calls" && echo 1) $(grep 'search/issues' "$T/gh-calls" | grep -vc '&sort=updated&order=desc&')"
 check "search: a part counting over 1000 costs its first page alone, split at once; no page is read twice" "0 0" \
   "$(awk -F'\t' '$3 > 1000 && $2 > 1' "$T/searches" | wc -l) $(cut -f2,4 "$T/searches" | sort | uniq -d | wc -l)"
 : > "$T/searches"; got=$(PYTHONPATH="$R/hooks" python3 -c 'import collections, gh_common; gh_common.SEARCHES = collections.deque(maxlen=5); gh_common.SEARCH_WINDOW = 1
@@ -488,6 +496,10 @@ check "search: followups()' merged search, over 1000, splits from its own merged
   "$got $(grep -c 'merged:>=2025-11-01 updated:2025-11-01T00:00:00Z\.\.' "$T/searches" | sed 's/^[1-9][0-9]*$/1/')"
 PYTHONPATH="$R/hooks" python3 -c 'from gh_common import search; search("repo:o/short updated:>=2026-01-01")' 2>"$T/err"; rc=$?
 check "search: under 1000, a read returning fewer than it counts (120 of 150) exits, so no mark moves past the rest" "1 1" "$rc $(grep -c "returned 120 of its 150 items" "$T/err")"
+: > "$T/searches"; got=$(PYTHONPATH="$R/hooks" python3 -c 'from gh_common import search; print(sorted(set(range(150)) - {i["number"] for i in search("repo:o/settles updated:>=2026-01-01")}))')
+check "search: a part that loses an item between its pages is read again from page 1, and the second, whole read is returned" "[10] 2" "$got $(awk -F'\t' '$2 == 1' "$T/searches" | wc -l)"
+: > "$T/searches"; PYTHONPATH="$R/hooks" python3 -c 'from gh_common import search; search("repo:o/moving updated:>=2026-01-01")' 2>"$T/err"; rc=$?
+check "search: a part that loses an item on each of 3 reads exits, naming the last read's count" "1 1 3" "$rc $(grep -c "returned 147 of its 148 items" "$T/err") $(awk -F'\t' '$2 == 1' "$T/searches" | wc -l)"
 PYTHONPATH="$R/hooks" python3 -c 'from gh_common import search; search("repo:o/huge is:pr")' 2>"$T/err"; rc=$?
 check "search: over 1000 with no lower bound to split from: exits saying so" "1 1" "$rc $(grep -c "counts 2500 items, over the 1000 GitHub's search returns, and has no lower bound" "$T/err")"
 PYTHONPATH="$R/hooks" python3 -c 'from gh_common import search; search("repo:o/second updated:>=2026-01-01")' 2>"$T/err"; rc=$?
