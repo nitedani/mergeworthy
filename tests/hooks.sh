@@ -2316,6 +2316,8 @@ check "BLOCK: a layout check's OK line with a defect after it, quoted, and a def
 r1=$(lay l8 'a-390.png — the label is clipped'); n1=$(grep -c 'a-390.png — the label is clipped  <- .*it names no .path:line' "$T/prs4.err"); r2=$(lay l9 $'a-390.png — OK\nAll five widths look fine.'); n2=$(grep -c '^All five widths look fine.  <- no layout line' "$T/prs4.err")
 check "BLOCK: a layout check's defect line naming no place, whatever its words, and a line of prose, each quoted; a defect that says baseline, from a line outside the changed functions, records, and from one inside is refused" "1 1 1 1 0 1" \
   "$r1 $n1 $r2 $n2 $(lay l10 "a-390.png — the label's baseline is 2px below the input's, from src/panel.tsx:6") $(lay l11 "a-390.png — the label's baseline is 2px below the input's, from src/panel.tsx:2")"
+printf 'pnpm test -> exit 0 (3 tests)\n' > "$T/q4.md"; : > "$T/gh4.args"
+check "the PR's base is looked up by a step that measures the branch's changes, a layout check's once, and not by quick" "0 0 0 1" "$(GH_STUB_ARGS="$T/gh4.args" prs4 quick "$T/q4.md") $(grep -c '^pr view' "$T/gh4.args") $(GH_STUB_ARGS="$T/gh4.args" lay l12 'a-390.png — OK') $(grep -c '^pr view' "$T/gh4.args")"
 mt mt9 'this also occurs on the default branch panel.tsx:2'; mt mt10 'the baseline has it, src/panel.tsx:2'; mt mt11 'the padding already exists (src/panel.tsx:2)'
 mt mt12 'a preexisting defect (src/panel.tsx:2)'; mt mt13 'the base branch has it too (src/panel.tsx:2)'; mt mt14 'this also occurs on the default branch panel.tsx:6'
 mt mt24 'not a bug; the existing force-push policy refuses them first'

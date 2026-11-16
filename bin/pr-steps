@@ -117,9 +117,11 @@ fi
 [ -s "$out" ] || { echo "$out is empty: run the step and save its output" >&2; exit 1; }
 last=$(grep -v '^[[:space:]]*$' "$out" | tail -n1 || true)
 sha=$(git rev-parse HEAD)
-# the PR's own base, its parent branch when it is stacked: the branch's changes, for a small fix and for where a defect comes from
-pb=$(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || true)
-pbase=$(git merge-base HEAD "${pb:+origin/$pb}" 2>/dev/null || git merge-base HEAD "$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)" 2>/dev/null || true)
+# the PR's own base, its parent branch when it is stacked: what the branch changes is measured from it
+pbase() {
+  local pb; pb=$(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || true)
+  git merge-base HEAD "${pb:+origin/$pb}" 2>/dev/null || git merge-base HEAD "$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)" 2>/dev/null || true
+}
 # build output, not code a reviewer reads: those of the paths on stdin, a line each, that testpaths.generated finds
 built() { python3 "$(dirname "$(realpath "$0")")/../hooks/testpaths.py" generated; }
 # numstat lines on stdin (core.quotePath=false: check-attr reads the path as it is) whose path (field 3) isn't build output
@@ -128,7 +130,7 @@ not_built() { local ns; ns=$(cat); printf '%s\n' "$ns" | G=$(printf '%s\n' "$ns"
 # or code comments alone: a commit's Cold-read trailer, rules step 4), reviewed once by delegate/small-review.md, stands for verify, shape,
 # reverify and fresh (converge §Small fix); gates still run
 if [ "$step" = small ]; then
-  base=$pbase; [ -n "$base" ] || { echo "no merge-base with the base branch" >&2; exit 1; }  # a stacked PR is measured against its own base
+  base=$(pbase); [ -n "$base" ] || { echo "no merge-base with the base branch" >&2; exit 1; }
   testre=$(python3 "$(dirname "$(realpath "$0")")/../hooks/testpaths.py")
   docs='\.md$|(^|/)docs?/'
   skip="$testre|$docs"'|lock\.(json|yaml)$|\.lock$|(^|/)\.changeset/'
@@ -161,10 +163,8 @@ is_pass() { grep -q '✅' "$1" && grep -Eq '([0-9]+|\bnew) *(⇒|=>) *([0-9]+|re
 # The file of each line HEAD changed since an earlier head, once per line: compared whole with that head replayed on the base HEAD has merged,
 # so what the base brought doesn't count and every move does; a conflict stays in the replay as its markers, so its resolution counts
 delta() {
-  local pb B T
-  pb=$(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || true)  # a stacked PR's base is its parent branch
-  B=${pb:+origin/$pb}; B=${B:-$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)}
-  T=$(git merge-tree --write-tree "$(git merge-base HEAD "$B" 2>/dev/null)" "$1" 2>/dev/null | sed -n 1p || true)  # exit 1 on a conflict, with the tree first
+  local T
+  T=$(git merge-tree --write-tree "$(pbase)" "$1" 2>/dev/null | sed -n 1p || true)  # exit 1 on a conflict, with the tree first
   git -c core.quotePath=false -c diff.noprefix=false diff --no-renames --numstat "${T:-$1}" HEAD |
     not_built | awk -F'\t' '{ n = $1 + $2; if (!n) n = 1; for (i = 0; i < n; i++) print $3 }'  # a binary, a mode or an empty file has no line, and is a change
 }
@@ -190,7 +190,7 @@ case "$step" in
     [ "$last" = "NO BUGS" ] || [ "$step" = reverify -a "$last" = "NO LOOP B COMMITS" ] || ledger_ok || { echo "$out does not end with a line NO BUGS: fix what it found for round 2; after round 2, record it with --ledger <the loop's ledger>" >&2; exit 1; }
     [ "$step" = reverify ] || read_standards
     # A reproduced behavior dropped as harmless, and a claim no test or probe covers, are the main session's call: a later `RULED: <candidate>: <ruling>` line, its own
-    unruled=$(python3 - "$out" "$pbase" "$(dirname "$(realpath "$0")")/../hooks" <<'EOF'
+    unruled=$(python3 - "$out" "$(pbase)" "$(dirname "$(realpath "$0")")/../hooks" <<'EOF'
 import re, sys
 sys.path.insert(0, sys.argv[3])
 import main_too
@@ -244,7 +244,7 @@ EOF
       [ -z "$miss" ] || { echo "the diff touches bodies, buffers, streams or cancellation: $out needs '## Bodies and streams' with a line '- <item>: <the probe run and what it showed>' (or 'not reached, because <reason>') for each item of code §No regressions' first bullet; missing or too short: ${miss%, }" >&2; exit 1; }
     fi ;;
   layout)
-    bad=$(python3 "$(dirname "$(realpath "$0")")/../hooks/main_too.py" layout "$out" "$pbase") ||
+    bad=$(python3 "$(dirname "$(realpath "$0")")/../hooks/main_too.py" layout "$out" "$(pbase)") ||
       { printf '%s\n' "$out is a layout check, one line per screenshot: '<file name> — OK', or a defect left unfixed as '<file name> — <the defect>, from <path:line>', the place it comes from, outside the functions this branch changes (mergeworthy:evidence step 4):" "$bad" >&2; exit 1; } ;;
   finality)
     # finality step 3: a code file's 6th change on the branch waits for this record (pre-bash-guard)
