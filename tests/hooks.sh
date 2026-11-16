@@ -2309,7 +2309,7 @@ mt mt3 'not caused by this PR, the same classes are already on main'; mt mt4 'al
 mt mt6 'main does the same, outside the code this change edits'; mt mt7 'main too, from panel.tsx:5-6'; mt mt8 'already on main (src/panel.tsx:3)'
 check "BLOCK: a main-too ruling naming a changed line, an unchanged line of a changed function, no line, an untracked file (saying so), a line past the file's end, only the words 'outside the code'; naming lines outside, it records" "1 1 1 0 1 1 1 1 1 0" \
   "$(prs4 verify "$T/mt1.md") $(grep -c 'src/panel.tsx:2 is inside a function' "$T/prs4.err") $(prs4 verify "$T/mt8.md") $(prs4 verify "$T/mt2.md") $(prs4 verify "$T/mt3.md") $(prs4 verify "$T/mt4.md") $(grep -c 'nope.tsx, which HEAD does not track' "$T/prs4.err") $(prs4 verify "$T/mt5.md") $(prs4 verify "$T/mt6.md") $(prs4 verify "$T/mt7.md")"
-LW="$HOME/.mergeworthy/work/lay"; lay() { printf '%s\n' "$2" > "$T/$1.md"; prs4 layout "$T/$1.md"; }
+lay() { printf '%s\n' "$2" > "$T/$1.md"; prs4 layout "$T/$1.md"; }
 r1=$(lay l1 'permissions-390.png — OK (…). The command wraps mid-word, its copy button at the right edge: main too.'); n1=$(grep -c 'permissions-390.png — OK (' "$T/prs4.err")
 check "BLOCK: a layout check's OK line with a defect after it, quoted, and a defect line naming a place inside a changed function; one naming a place outside, and a heading with a bare OK, record" "1 1 1 0 0" \
   "$r1 $n1 $(lay l2 'permissions-390.png — the command wraps mid-word: main too (src/panel.tsx:2)') $(lay l3 'permissions-390.png — the command wraps mid-word: main too (src/panel.tsx:6)') $(lay l4 $'# Layout check\n\npermissions-390.png — OK')"
@@ -2325,22 +2325,19 @@ mt mt15 'already on main ./src/panel.tsx:6'; mt mt16 "already on main $G4/src/pa
 mt mt19 'already on main ./src/panel.tsx:2'; mt mt20 "already on main $G4/src/panel.tsx:2"; mt mt21 'already on main since 10:30, src/panel.tsx:6'
 check "a main-too ruling citing ./path, an absolute path in the repo, a Makefile or Dockerfile line outside the changed functions records; ./path or the absolute path inside one is refused; a time is no citation" "0 0 0 0 1 1 0" \
   "$(prs4 verify "$T/mt15.md") $(prs4 verify "$T/mt16.md") $(prs4 verify "$T/mt17.md") $(prs4 verify "$T/mt18.md") $(prs4 verify "$T/mt19.md") $(prs4 verify "$T/mt20.md") $(prs4 verify "$T/mt21.md")"
-# a ruling in any of the task's files, a walk's included, is checked the same way; a citation of a file this checkout doesn't track is another repo's evidence
-mkdir -p "$LW/walk"; wr() { printf -- '## Dropped\n- search padding: text overlaps\nRULED: search padding: %s\nCLEAN\n' "$1" > "$LW/walk/final.md"; printf 'slice 1: no bug\nNO BUGS\n' > "$LW/$2.md"; std "$LW/$2.md"; }
-wr 'already on main panel.tsx:2' w1; r1=$(prs4 verify "$LW/w1.md"); n1=$(grep -c 'walk/final.md: RULED: search padding: already on main panel.tsx:2  <- ' "$T/prs4.err")
-wr 'already on main panel.tsx:6' w2; r2=$(prs4 verify "$LW/w2.md"); wr 'a bug, fixed here; main has it too (panel.tsx:2)' w3; r3=$(prs4 verify "$LW/w3.md")
-check "BLOCK: a walk's RULED line saying main has it, inside a changed function, quoted; outside one, or ruled a bug, it records" "1 1 0 0" "$r1 $n1 $r2 $r3"
-mkdir -p "$LW/repo-b-walk"; printf 'b-390.png — label clipped, main too, from b.tsx:6\n' > "$LW/repo-b-walk/layout-check.md"
-wr 'already on main panel.tsx:2' w6; touch -d '2020-01-01' "$LW/walk/final.md"; r6=$(prs4 verify "$LW/w6.md")
-check "a walk's ruling written before this branch was made is earlier work's, in a folder holding several branches: it records" "0" "$r6"
-wr 'already on main (web/b.tsx:2)' w4; r4=$(prs4 verify "$LW/w4.md"); wr 'already on main (web/b.tsx:2, src/panel.tsx:2)' w5; r5=$(prs4 verify "$LW/w5.md"); rm -rf "$LW"
-check "a layout line or walk ruling citing only files this checkout doesn't track belongs to another repo and records; one also citing a changed function here is refused" "0 1" "$r4 $r5"
+# only the file a step is given is read: the task's work folder also holds other changes' notes, briefs that quote a ruling, another repo's layout check
+LW="$HOME/.mergeworthy/work/lay"; mkdir -p "$LW/repo-b-walk"; printf 'slice 1: no bug\nNO BUGS\n' | tee "$LW/b2.md" "$LW/b3.md" "$LW/r2.md" >/dev/null; std "$LW/b2.md" "$LW/b3.md" "$LW/r2.md"
+printf -- '## Dropped\n- stale cache: old entries stay\nRULED: stale cache: nothing on main held these\n' > "$LW/other.md"; r1=$(prs4 verify "$LW/b2.md")
+printf 'The brief shows a ruling:\n```\nRULED: search padding: already on main panel.tsx:2\n```\n' > "$LW/other.md"; r2=$(prs4 verify "$LW/b3.md"); rm "$LW/other.md"
+printf 'b-390.png — label clipped, main too, from panel.tsx:2\n' > "$LW/repo-b-walk/layout-check.md"; r3=$(prs4 verify "$LW/r2.md"); rm -rf "$LW"; g4 worktree add -q --detach "$T/prs4-detached"
+check "another change's uncited main-too ruling, a fenced example of one in a brief, and another repo's layout check, each in a file of the work folder the step was not given, leave the record alone; a ruling in the file given is refused from a detached worktree as from the branch's checkout" "0 0 0 1" \
+  "$r1 $r2 $r3 $(cd "$T/prs4-detached" && bash "$R/bin/pr-steps" verify "$T/mt1.md" >/dev/null 2>&1; echo $?)"
 # a stacked PR on fix (gh's baseRefName): the place is measured from fix, so one() that fix edits is no longer this branch's
 g4 checkout -q -b kid; sed -i 's/return 2/return 22/' "$G4/src/panel.tsx"; g4 commit -q -am c; g4 update-ref refs/remotes/origin/fix fix; printf 'fix\n' > "$FX/pr_view_current"
 mt mt22 'already on main (src/panel.tsx:2)'; mt mt23 'already on main (src/panel.tsx:6)'
 check "a stacked PR: a defect it inherits from its parent's edited function records, in a RULED line and a layout line; one in a function it edits is refused" "0 1 0 1" \
   "$(prs4 verify "$T/mt22.md") $(prs4 verify "$T/mt23.md") $(lay l6 'permissions-390.png — the command wraps mid-word: main too (src/panel.tsx:2)') $(lay l7 'permissions-390.png — the command wraps mid-word: main too (src/panel.tsx:6)')"
-rm -rf "$LW" "$FX/pr_view_current"
+rm "$FX/pr_view_current"
 # pr-steps verify: a diff that touches bodies or streams needs code §No regressions' list answered by name
 G3="$T/prs3"; mkdir -p "$G3"; git -C "$G3" init -q -b main; git -C "$G3" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 git -C "$G3" update-ref refs/remotes/origin/main HEAD; git -C "$G3" checkout -q -b fix
