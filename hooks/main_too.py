@@ -4,12 +4,12 @@ that says main has it, and a defect line left in a layout check, names the `path
 tracks, outside every function the branch changes since the PR's base (`git diff -W`), else it excuses nothing. pr-steps reads it,
 in the file a step is given and no other.
 `main_too.py layout <a layout check> <base>`: prints each line of it that fails, and exits 1 when one does."""
-import os, re, subprocess, sys
+import functools, os, re, subprocess, sys
 
 MAIN = re.compile(r"not a regression|pre-?existing|\b(default|base) branch\b|\bbaseline\b|not caused by (this|the) (pr|change)|masteren is|same as (on )?(main|master)"
                   r"|\b(on|in) (main|master)\b(?! session| thread)|\b(main|master)('s\b| (too|as well|does|has|had|shows))", re.I)
-PLACE = re.compile(r'(?<![\w./@~+-])([\w./@~+-]*[\w@~+-]):(\d+)(?:-(\d+))?')  # src/panel.tsx:12, ./panel.tsx:5-6, /abs/path.ts:3, Makefile:2
-
+LINES = re.compile(r':(\d+)(?:-(\d+))?')  # the `:12` or `:5-6` a citation ends with
+WORD = re.compile(r'[\w./@~+-]*$')  # the path-like word a text ends with: src/panel.tsx, ./panel.tsx, /abs/path.ts, Makefile
 
 def git(*a):
     return subprocess.run(['git', '-c', 'core.quotePath=false', *a], capture_output=True, text=True).stdout
@@ -19,7 +19,7 @@ def changed(base):
     """{path: [(first, last)]}: HEAD's lines of each function the branch changes since base, a hunk of `git diff -W` each."""
     out, path = {}, None
     for l in git('-c', 'diff.noprefix=false', 'diff', '-U0', '-W', '--no-color', '--no-ext-diff', f'{base}...HEAD').splitlines():
-        if l.startswith('+++ '): path = l[6:] if l.startswith('+++ b/') else None
+        if l.startswith('+++ '): path = l[6:].rstrip('\t') if l.startswith('+++ b/') else None  # git ends a name holding a space with a tab
         elif path and (m := re.match(r'@@ -\S+ \+(\d+)(?:,(\d+))? @@', l)):
             a, n = int(m[1]), int(m[2] or 1)
             out.setdefault(path, []).append((a, a + max(n, 1) - 1))
@@ -32,15 +32,37 @@ def excuse(why, base):
     return place(why, base) if MAIN.search(why) else None
 
 
+@functools.cache
+def tracked():
+    """(the repo's top, {path: [the files HEAD tracks that it names]}): a file by its whole path and by each end of it after a `/`."""
+    top, ends = git('rev-parse', '--show-toplevel').strip(), {}
+    for f in git('-C', top, 'ls-files').splitlines():
+        for i, c in enumerate('/' + f):
+            if c == '/': ends.setdefault(f[i:], []).append(f)
+    return top, ends
+
+
+def cited(text):
+    """[(the words, the tracked files they name, first line, last line)]: each place text names, a `:N` or `:a-b` with a path before it."""
+    (top, ends), places = tracked(), []
+    for m in LINES.finditer(text):
+        head, a = text[:m.start()], int(m[1])
+        # the longest tracked path right before the line number, whatever characters it holds; ./x and /<repo>/x are x
+        for i in range(len(head)):
+            q, pre = head[i:], WORD.search(head[:i])[0]
+            if q in ends and (not pre or head[:i].endswith(top + '/') or os.path.normpath(pre + q) == q):
+                places.append((q, ends[q], a, int(m[2] or a)))
+                break
+        else:
+            # no tracked file: a path or a file name with an extension is still a citation, of a file HEAD doesn't track; `10:30` is none
+            p = WORD.search(head)[0]
+            if p[-1:] not in ('', '.', '/') and ('/' in p or re.search(r'\w\.\w+$', p)): places.append((p, [], a, int(m[2] or a)))
+    return places
+
+
 def place(text, base):
     """None when text names a place the defect comes from, each outside the functions the branch changes; else why not."""
-    top = git('rev-parse', '--show-toplevel').strip()
-    tracked, places = git('-C', top, 'ls-files').splitlines(), []
-    for p, a, b in PLACE.findall(text):
-        q = os.path.relpath(p, top) if os.path.isabs(p) else os.path.normpath(p)  # ./x and /<repo>/x are x
-        files = [f for f in tracked if f == q or f.endswith('/' + q)]
-        # a path or a file name with an extension is a citation; a bare word (`Makefile`) only when HEAD tracks it, so `10:30` is none
-        if files or '/' in p or re.search(r'\w\.\w+$', p): places.append((p, files, int(a), int(b or a)))
+    places = cited(text)
     if not places: return 'it names no `path:line` the defect comes from'
     if not base: return "there is no merge-base with the PR's base branch to check its place against"
     funcs = changed(base)

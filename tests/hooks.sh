@@ -2300,8 +2300,9 @@ check "BLOCK: an indented list's outermost items are candidates, its deeper ones
 # a ruling or layout line saying main has the defect names the path:line it comes from, outside every function the branch changes (#194)
 G4="$T/prs4"; git init -q -b main "$G4"; g4() { git -C "$G4" -c user.name=t -c user.email=t@t "$@"; }; mkdir -p "$G4/src"
 printf 'function one() {\n  return 1\n}\n\nfunction two() {\n  return 2\n}\n' > "$G4/src/panel.tsx"; printf 'all:\n\ttrue\n' > "$G4/Makefile"; printf 'FROM x\nRUN a\nRUN b\n' > "$G4/Dockerfile"
+mkdir -p "$G4/src/app/[id]" "$G4/src/app/(marketing)"; for f in 'app/[id]/page.tsx' 'app/(marketing)/page.tsx' 'My Panel.tsx'; do cp "$G4/src/panel.tsx" "$G4/src/$f"; done; head -n3 "$G4/src/panel.tsx" > "$G4/src/Panel.tsx"
 g4 add src Makefile Dockerfile; g4 commit -q -m a
-g4 update-ref refs/remotes/origin/main HEAD; g4 checkout -q -b fix; sed -i 's/return 1/return 11/' "$G4/src/panel.tsx"; g4 commit -q -am b
+g4 update-ref refs/remotes/origin/main HEAD; g4 checkout -q -b fix; sed -i 's/return 1/return 11/' "$G4/src/panel.tsx" "$G4"/src/app/*/page.tsx "$G4/src/My Panel.tsx"; g4 commit -q -am b
 prs4() { (cd "$G4" && bash "$R/bin/pr-steps" "$@" >/dev/null 2>"$T/prs4.err"; echo $?); }
 mt() { printf 'slice 1\n## Dropped\n- search padding: the magnifier covers the text, main too\nRULED: search padding: %s\nNO BUGS\n' "$2" > "$T/$1.md"; std "$T/$1.md"; }
 mt mt1 'not caused by this PR, the same classes are already on main (src/panel.tsx:2)'; mt mt2 'not caused by this PR, the same classes are already on main (src/panel.tsx:6)'
@@ -2331,6 +2332,13 @@ check "a main-too ruling citing ./path, an absolute path in the repo, a Makefile
   "$(prs4 verify "$T/mt15.md") $(prs4 verify "$T/mt16.md") $(prs4 verify "$T/mt17.md") $(prs4 verify "$T/mt18.md") $(prs4 verify "$T/mt19.md") $(prs4 verify "$T/mt20.md") $(prs4 verify "$T/mt21.md")"
 printf 'slice 1\n## Dropped\n- src/panel.tsx:6 is rare\nRULED: src/panel.tsx:6: main does the same\nNO BUGS\n' > "$T/mt25.md"; printf 'slice 1\n## Dropped\n- staged race in the menu: two clicks reorder it\nRULED: staged race in the menu: main too\nNO BUGS\n' > "$T/mt26.md"; std "$T/mt25.md" "$T/mt26.md"
 check "BLOCK: a main-too ruling whose only path:line, or whose only reason no user meets it, is its candidate's name: the ruling's own text holds the place" "1 1" "$(prs4 verify "$T/mt25.md") $(prs4 verify "$T/mt26.md")"
+# a citation is the longest path HEAD tracks right before the line number, whatever characters it holds
+pl() { mt "$1v" "main too, from $2"; cp "$T/$1v.md" "$T/$1r.md"; echo "$(prs4 verify "$T/$1v.md") $(prs4 reverify "$T/$1r.md") $(lay "$1l" "a-390.png — the label is clipped, from $2")"; }
+check "a place in a path holding brackets, parentheses or a space, outside the changed functions, records in verify, reverify and a layout check; BLOCK: the same paths inside one" "0 0 0 0 0 0 0 0 0 1 1 1 1 1 1 1 1 1" \
+  "$(pl pl1 'src/app/[id]/page.tsx:6') $(pl pl2 'src/app/(marketing)/page.tsx:6') $(pl pl3 'src/My Panel.tsx:6') $(pl pl4 'src/app/[id]/page.tsx:2') $(pl pl5 'src/app/(marketing)/page.tsx:2') $(pl pl6 'src/My Panel.tsx:2')"
+mt mt30 'main too, see My Panel.tsx:6'; mt mt31 'main too, see My Panel.tsx:2'; mt mt32 'main too, as in Panel.tsx:2'; mt mt33 'main too, as in Panel.tsx:6'; mt mt34 'main too, from src/app/[slug]/page.tsx:6'
+check "of two tracked files a sentence ends with, the longer name is the place: My Panel.tsx, not the 3-line Panel.tsx, outside a changed function and BLOCK inside one; Panel.tsx after other words is that file, BLOCK past its end; BLOCK: a path HEAD doesn't track ending in a tracked file's name" "0 1 0 1 1" \
+  "$(prs4 verify "$T/mt30.md") $(prs4 verify "$T/mt31.md") $(prs4 verify "$T/mt32.md") $(prs4 verify "$T/mt33.md") $(prs4 verify "$T/mt34.md")"
 # a ruling wrapped onto indented lines is one ruling: its place and its words are read across them
 mw() { for s in verify reverify one; do printf 'slice 1\n## Dropped\n- search padding: the magnifier covers the text\nRULED: search padding:%b\nNO BUGS\n' "$([ $s = one ] && printf '%s' "${2//\\n  / }" || printf '%s' "$2")" > "$T/$1-$s.md"; std "$T/$1-$s.md"; done; echo "$(prs4 verify "$T/$1-verify.md") $(prs4 reverify "$T/$1-reverify.md") $(prs4 verify "$T/$1-one.md")"; }
 printf 'slice 1\n## Dropped\n  - search padding: text overlaps\nRULED: search padding: a bug, fixed here\n  - slow path: rarely slower\nNO BUGS\n' > "$T/mw4.md"; std "$T/mw4.md"
