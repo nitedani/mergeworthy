@@ -212,6 +212,13 @@ claim_of = lambda l: re.split(r'\s[—–]\s', bare(l), maxsplit=1)[0].strip()
 # 'None.', 'Nothing was dropped.': an unbulleted line whose first sentence is one of these says the list is empty
 empty = lambda l: not item.match(l) and \
     re.fullmatch(r'none|nothing|nothing( was)? dropped|no candidates? dropped|no candidates were dropped', re.split(r'\.(?:\s|$)', bare(l), maxsplit=1)[0].strip())
+# a ruling's lines: its RULED line and the indented lines right after it, up to a blank or unindented line or a list item; text[j] joins them
+text, own = {}, set()
+for j, r in enumerate(lines):
+    if not r.startswith('RULED:'): continue
+    k = j + 1
+    while k < len(lines) and lines[k][:1] in (' ', '\t') and lines[k].strip() and not item.match(lines[k]): k += 1
+    text[j] = ' '.join(x.strip() for x in lines[j:k]); own.update(range(j, k))
 sec, items = None, []
 for i, l in enumerate(lines):
     if l.startswith('#'):
@@ -219,13 +226,12 @@ for i, l in enumerate(lines):
         continue
     # a candidate: an outermost list item, or an unbulleted '<candidate>: <why>' line; under untested claims, any unbulleted line
     m, claims = item.match(l), kind.get(sec) == 'claims'
-    if sec is not None and l.strip() not in ('', 'NO BUGS', 'NO LOOP B COMMITS') and (len(m[1]) == outer[sec] if m else claims or re.match(r'[^:]+:\s', plain(l))) and not empty(l) and not l.startswith('RULED:'):
+    if sec is not None and l.strip() not in ('', 'NO BUGS', 'NO LOOP B COMMITS') and (len(m[1]) == outer[sec] if m else claims or re.match(r'[^:]+:\s', plain(l))) and not empty(l) and i not in own:
         items.append((i, l, (claim_of if claims else name_of)(l)))
 # a RULED line rules one earlier item: of those whose 'RULED: <name>:' it starts with, the longest name (one not yet ruled first),
 # so 'RULED: focus stays: after navigation: …' rules that claim and never 'focus stays' too
 rulings = {i: [] for i, _, _ in items}
-for j, r in enumerate(lines):
-    if not r.startswith('RULED:'): continue
+for j, r in text.items():
     hits = [(len(n), -len(rulings[i]), i, m.end()) for i, _, n in items if i < j and n and (m := re.match(r'ruled:\s*' + re.escape(n) + r'\s*:', plain(r)))]
     if hits: _, _, k, end = max(hits); rulings[k].append(clean(r)[end:])  # the ruling's own text, after its candidate
 for i, l, name in items:
