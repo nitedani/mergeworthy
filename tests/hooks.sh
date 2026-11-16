@@ -2273,7 +2273,7 @@ sed 's/^NO BUGS$/NO LOOP B COMMITS/' "$T/vr0.md" > "$T/vr2.md"; std "$T/vr0.md" 
 check "BLOCK: a dropped candidate whose reason is 'not a regression', quoting it, in verify and reverify; with a later RULED line naming it, it records" "1 1 1 0" "$(prs verify "$T/vr0.md") $(cd "$G" && bash "$R/bin/pr-steps" verify "$T/vr0.md" 2>&1 | grep -c '^- \*\*abort leaks a listener\*\*: Not a regression') $(prs reverify "$T/vr2.md") $(prs verify "$T/vr1.md")"
 printf 'slice 1\n## Tried and dropped\n- **abort leaks a listener**: Not a regression, main does the same\nRULED: abort leaks a listener: not a regression, main does the same\nNO BUGS\n' > "$T/vr4.md"; std "$T/vr4.md"
 printf 'slice 1\n## Tried and dropped\n- **abort leaks a listener**: Not a regression, main does the same\nRULED: abort leaks a listener: not a regression, and only a staged race reaches it (code Earn every line)\nNO BUGS\n' > "$T/vr5.md"; std "$T/vr5.md"
-check "BLOCK: a RULED line whose only reason is that main does the same; one citing Earn every line records" "1 1 0" "$(prs verify "$T/vr4.md") $(cd "$G" && bash "$R/bin/pr-steps" verify "$T/vr4.md" 2>&1 | grep -c 'is not a ruling') $(prs verify "$T/vr5.md")"
+check "BLOCK: a RULED line whose only reason is that main does the same; one citing Earn every line records" "1 1 0" "$(prs verify "$T/vr4.md") $(cd "$G" && bash "$R/bin/pr-steps" verify "$T/vr4.md" 2>&1 | grep -c 'main having it excuses nothing here: it names no .path:line') $(prs verify "$T/vr5.md")"
 printf 'slice 1\n## Tried and dropped\n- **abort leaks a listener**: Not a regression, main does the same\nRULED: abort leaks a listener: not a regression, main does the same, a self-found defect for the report\nNO BUGS\n' > "$T/vr4s.md"; std "$T/vr4s.md"
 check "BLOCK: a RULED line calling a main-too defect in the edited code self-found: it is fixed here" 1 "$(prs verify "$T/vr4s.md")"
 printf 'slice 1\n## Tried and dropped\n- `D=~/cfg` (tilde.sh): a nit.\n  - **Why a nit:** both fail closed, and it is rare.\nRULED: `D=~/cfg` (tilde.sh): a nit, no realistic usage (code Earn every line)\nNO BUGS\n' > "$T/vr6.md"; std "$T/vr6.md"
@@ -2297,6 +2297,68 @@ printf 'slice 1\n## Dropped\n  - grey boxes before data: designed. Nit.\n    - W
 printf 'slice 1\n## Dropped\n  - grey boxes before data: designed. Nit.\n    - Why: the data arrives later.\nRULED: grey boxes before data: a bug, fixed here\nNO BUGS\n' > "$T/vr19.md"; std "$T/vr19.md"
 printf 'slice 1\n## Dropped\nNone.\nI tried the loading and error paths; both behaved correctly.\nNO BUGS\n' > "$T/vr20.md"; std "$T/vr20.md"
 check "BLOCK: an indented list's outermost items are candidates, its deeper ones covered by their item's RULED line; prose in the list without '<candidate>: ' is none" "1 0 0" "$(prs verify "$T/vr18.md") $(prs verify "$T/vr19.md") $(prs verify "$T/vr20.md")"
+# a ruling or layout line saying main has the defect names the path:line it comes from, outside every function the branch changes (#194)
+G4="$T/prs4"; git init -q -b main "$G4"; g4() { git -C "$G4" -c user.name=t -c user.email=t@t "$@"; }; mkdir -p "$G4/src"
+printf 'function one() {\n  return 1\n}\n\nfunction two() {\n  return 2\n}\n' > "$G4/src/panel.tsx"; printf 'all:\n\ttrue\n' > "$G4/Makefile"; printf 'FROM x\nRUN a\nRUN b\n' > "$G4/Dockerfile"
+mkdir -p "$G4/src/app/[id]" "$G4/src/app/(marketing)"; for f in 'app/[id]/page.tsx' 'app/(marketing)/page.tsx' 'My Panel.tsx'; do cp "$G4/src/panel.tsx" "$G4/src/$f"; done; head -n3 "$G4/src/panel.tsx" > "$G4/src/Panel.tsx"
+g4 add src Makefile Dockerfile; g4 commit -q -m a
+g4 update-ref refs/remotes/origin/main HEAD; g4 checkout -q -b fix; sed -i 's/return 1/return 11/' "$G4/src/panel.tsx" "$G4"/src/app/*/page.tsx "$G4/src/My Panel.tsx"; g4 commit -q -am b
+prs4() { (cd "$G4" && bash "$R/bin/pr-steps" "$@" >/dev/null 2>"$T/prs4.err"; echo $?); }
+mt() { printf 'slice 1\n## Dropped\n- search padding: the magnifier covers the text, main too\nRULED: search padding: %s\nNO BUGS\n' "$2" > "$T/$1.md"; std "$T/$1.md"; }
+mt mt1 'not caused by this PR, the same classes are already on main (src/panel.tsx:2)'; mt mt2 'not caused by this PR, the same classes are already on main (src/panel.tsx:6)'
+mt mt3 'not caused by this PR, the same classes are already on main'; mt mt4 'already on main (src/nope.tsx:6)'; mt mt5 'already on main (panel.tsx:60)'
+mt mt6 'main does the same, outside the code this change edits'; mt mt7 'main too, from panel.tsx:5-6'; mt mt8 'already on main (src/panel.tsx:3)'
+check "BLOCK: a main-too ruling naming a changed line, an unchanged line of a changed function, no line, an untracked file (saying so), a line past the file's end, only the words 'outside the code'; naming lines outside, it records" "1 1 1 0 1 1 1 1 1 0" \
+  "$(prs4 verify "$T/mt1.md") $(grep -c 'src/panel.tsx:2 is inside a function' "$T/prs4.err") $(prs4 verify "$T/mt8.md") $(prs4 verify "$T/mt2.md") $(prs4 verify "$T/mt3.md") $(prs4 verify "$T/mt4.md") $(grep -c 'nope.tsx, which HEAD does not track' "$T/prs4.err") $(prs4 verify "$T/mt5.md") $(prs4 verify "$T/mt6.md") $(prs4 verify "$T/mt7.md")"
+lay() { printf '%s\n' "$2" > "$T/$1.md"; prs4 layout "$T/$1.md"; }
+r1=$(lay l1 'permissions-390.png — OK (…). The command wraps mid-word, its copy button at the right edge: main too.'); n1=$(grep -c 'permissions-390.png — OK (' "$T/prs4.err")
+check "BLOCK: a layout check's OK line with a defect after it, quoted, and a defect line naming a place inside a changed function; one naming a place outside, and a heading with a bare OK, record" "1 1 1 0 0" \
+  "$r1 $n1 $(lay l2 'permissions-390.png — the command wraps mid-word: main too (src/panel.tsx:2)') $(lay l3 'permissions-390.png — the command wraps mid-word: main too (src/panel.tsx:6)') $(lay l4 $'# Layout check\n\npermissions-390.png — OK')"
+r1=$(lay l8 'a-390.png — the label is clipped'); n1=$(grep -c 'a-390.png — the label is clipped  <- .*it names no .path:line' "$T/prs4.err"); r2=$(lay l9 $'a-390.png — OK\nAll five widths look fine.'); n2=$(grep -c '^All five widths look fine.  <- no layout line' "$T/prs4.err")
+check "BLOCK: a layout check's defect line naming no place, whatever its words, and a line of prose, each quoted; a defect that says baseline, from a line outside the changed functions, records, and from one inside is refused" "1 1 1 1 0 1" \
+  "$r1 $n1 $r2 $n2 $(lay l10 "a-390.png — the label's baseline is 2px below the input's, from src/panel.tsx:6") $(lay l11 "a-390.png — the label's baseline is 2px below the input's, from src/panel.tsx:2")"
+printf 'pnpm test -> exit 0 (3 tests)\n' > "$T/q4.md"; : > "$T/gh4.args"
+check "the PR's base is looked up by a step that measures the branch's changes, a layout check's once, and not by quick" "0 0 0 1" "$(GH_STUB_ARGS="$T/gh4.args" prs4 quick "$T/q4.md") $(grep -c '^pr view' "$T/gh4.args") $(GH_STUB_ARGS="$T/gh4.args" lay l12 'a-390.png — OK') $(grep -c '^pr view' "$T/gh4.args")"
+mt mt9 'this also occurs on the default branch panel.tsx:2'; mt mt10 'the baseline has it, src/panel.tsx:2'; mt mt11 'the padding already exists on main (src/panel.tsx:2)'
+mt mt12 'a preexisting defect (src/panel.tsx:2)'; mt mt13 'the base branch has it too (src/panel.tsx:2)'; mt mt14 'this also occurs on the default branch panel.tsx:6'
+mt mt24 'not a bug; the existing force-push policy refuses them first'
+check "BLOCK: a ruling saying the default branch, the base branch or the baseline has it, that it already exists on main or is preexisting, naming a line inside a changed function; outside, it records; an existing thing named in a ruling that says nothing of main records" "1 1 1 1 1 0 0" \
+  "$(prs4 verify "$T/mt9.md") $(prs4 verify "$T/mt10.md") $(prs4 verify "$T/mt11.md") $(prs4 verify "$T/mt12.md") $(prs4 verify "$T/mt13.md") $(prs4 verify "$T/mt14.md") $(prs4 verify "$T/mt24.md")"
+mt mt27 'the padding already exists on main (src/panel.tsx:6)'; mt mt28 'the padding already exists (src/panel.tsx:2)'; for s in v r; do printf 'slice 1\n## Dropped\n- duplicate validation: the caller validates again\nRULED: duplicate validation: not a bug; validation already exists in the callee, so there is no missing validation.\nNO BUGS\n' > "$T/mt29$s.md"; std "$T/mt29$s.md"; done
+check "a ruling saying something already exists, naming no base, says nothing of main and records, in verify and reverify; already exists on main, from outside the changed functions, records" "0 0 0 0" "$(prs4 verify "$T/mt28.md") $(prs4 verify "$T/mt29v.md") $(prs4 reverify "$T/mt29r.md") $(prs4 verify "$T/mt27.md")"
+mt mt15 'already on main ./src/panel.tsx:6'; mt mt16 "already on main $G4/src/panel.tsx:6"; mt mt17 'already on main Makefile:2'; mt mt18 'already on main (Dockerfile:3)'
+mt mt19 'already on main ./src/panel.tsx:2'; mt mt20 "already on main $G4/src/panel.tsx:2"; mt mt21 'already on main since 10:30, src/panel.tsx:6'
+check "a main-too ruling citing ./path, an absolute path in the repo, a Makefile or Dockerfile line outside the changed functions records; ./path or the absolute path inside one is refused; a time is no citation" "0 0 0 0 1 1 0" \
+  "$(prs4 verify "$T/mt15.md") $(prs4 verify "$T/mt16.md") $(prs4 verify "$T/mt17.md") $(prs4 verify "$T/mt18.md") $(prs4 verify "$T/mt19.md") $(prs4 verify "$T/mt20.md") $(prs4 verify "$T/mt21.md")"
+printf 'slice 1\n## Dropped\n- src/panel.tsx:6 is rare\nRULED: src/panel.tsx:6: main does the same\nNO BUGS\n' > "$T/mt25.md"; printf 'slice 1\n## Dropped\n- staged race in the menu: two clicks reorder it\nRULED: staged race in the menu: main too\nNO BUGS\n' > "$T/mt26.md"; std "$T/mt25.md" "$T/mt26.md"
+check "BLOCK: a main-too ruling whose only path:line, or whose only reason no user meets it, is its candidate's name: the ruling's own text holds the place" "1 1" "$(prs4 verify "$T/mt25.md") $(prs4 verify "$T/mt26.md")"
+# a citation is the longest path HEAD tracks right before the line number, whatever characters it holds
+pl() { mt "$1v" "main too, from $2"; cp "$T/$1v.md" "$T/$1r.md"; echo "$(prs4 verify "$T/$1v.md") $(prs4 reverify "$T/$1r.md") $(lay "$1l" "a-390.png — the label is clipped, from $2")"; }
+check "a place in a path holding brackets, parentheses or a space, outside the changed functions, records in verify, reverify and a layout check; BLOCK: the same paths inside one" "0 0 0 0 0 0 0 0 0 1 1 1 1 1 1 1 1 1" \
+  "$(pl pl1 'src/app/[id]/page.tsx:6') $(pl pl2 'src/app/(marketing)/page.tsx:6') $(pl pl3 'src/My Panel.tsx:6') $(pl pl4 'src/app/[id]/page.tsx:2') $(pl pl5 'src/app/(marketing)/page.tsx:2') $(pl pl6 'src/My Panel.tsx:2')"
+mt mt30 'main too, see My Panel.tsx:6'; mt mt31 'main too, see My Panel.tsx:2'; mt mt32 'main too, as in Panel.tsx:2'; mt mt33 'main too, as in Panel.tsx:6'; mt mt34 'main too, from src/app/[slug]/page.tsx:6'
+check "of two tracked files a sentence ends with, the longer name is the place: My Panel.tsx, not the 3-line Panel.tsx, outside a changed function and BLOCK inside one; Panel.tsx after other words is that file, BLOCK past its end; BLOCK: a path HEAD doesn't track ending in a tracked file's name" "0 1 0 1 1" \
+  "$(prs4 verify "$T/mt30.md") $(prs4 verify "$T/mt31.md") $(prs4 verify "$T/mt32.md") $(prs4 verify "$T/mt33.md") $(prs4 verify "$T/mt34.md")"
+# a ruling wrapped onto indented lines is one ruling: its place and its words are read across them
+mw() { for s in verify reverify one; do printf 'slice 1\n## Dropped\n- search padding: the magnifier covers the text\nRULED: search padding:%b\nNO BUGS\n' "$([ $s = one ] && printf '%s' "${2//\\n  / }" || printf '%s' "$2")" > "$T/$1-$s.md"; std "$T/$1-$s.md"; done; echo "$(prs4 verify "$T/$1-verify.md") $(prs4 reverify "$T/$1-reverify.md") $(prs4 verify "$T/$1-one.md")"; }
+printf 'slice 1\n## Dropped\n  - search padding: text overlaps\nRULED: search padding: a bug, fixed here\n  - slow path: rarely slower\nNO BUGS\n' > "$T/mw4.md"; std "$T/mw4.md"
+check "BLOCK: a ruling wrapped onto indented lines, in verify, reverify and on one line alike: main's from inside a changed function, after the candidate or on the next line; from outside one, it records; an indented list's next item after a RULED line still needs its own" "1 1 1 0 0 0 1 1 1 1" \
+  "$(mw mw1 ' the same classes are\n  already on main panel.tsx:2') $(mw mw2 ' main too\n  from panel.tsx:6') $(mw mw3 '\n  main too panel.tsx:2') $(prs4 verify "$T/mw4.md")"
+wk() { printf 'slice 1: no bug\n## Dropped\nNone.\n## Dropped by the main session\n- search padding: text overlaps\nRULED: search padding: already on main %s\nNO BUGS\n' "$2" > "$T/$1.md"; std "$T/$1.md"; prs4 verify "$T/$1.md"; }
+check "BLOCK: a defect the main session saw itself and leaves, added under a second Dropped heading of the verifier's file, ruled main's from inside a changed function; from outside one, it records" "1 0" "$(wk wk1 panel.tsx:2) $(wk wk2 panel.tsx:6)"
+# only the file a step is given is read: the task's work folder also holds other changes' notes, briefs that quote a ruling, another repo's layout check
+LW="$HOME/.mergeworthy/work/lay"; mkdir -p "$LW/repo-b-walk"; printf 'slice 1: no bug\nNO BUGS\n' | tee "$LW/b2.md" "$LW/b3.md" "$LW/r2.md" >/dev/null; std "$LW/b2.md" "$LW/b3.md" "$LW/r2.md"
+printf -- '## Dropped\n- stale cache: old entries stay\nRULED: stale cache: nothing on main held these\n' > "$LW/other.md"; r1=$(prs4 verify "$LW/b2.md")
+printf 'The brief shows a ruling:\n```\nRULED: search padding: already on main panel.tsx:2\n```\n' > "$LW/other.md"; r2=$(prs4 verify "$LW/b3.md"); rm "$LW/other.md"
+printf 'b-390.png — label clipped, main too, from panel.tsx:2\n' > "$LW/repo-b-walk/layout-check.md"; r3=$(prs4 verify "$LW/r2.md"); rm -rf "$LW"; g4 worktree add -q --detach "$T/prs4-detached"
+check "another change's uncited main-too ruling, a fenced example of one in a brief, and another repo's layout check, each in a file of the work folder the step was not given, leave the record alone; a ruling in the file given is refused from a detached worktree as from the branch's checkout" "0 0 0 1" \
+  "$r1 $r2 $r3 $(cd "$T/prs4-detached" && bash "$R/bin/pr-steps" verify "$T/mt1.md" >/dev/null 2>&1; echo $?)"
+# a stacked PR on fix (gh's baseRefName): the place is measured from fix, so one() that fix edits is no longer this branch's
+g4 checkout -q -b kid; sed -i 's/return 2/return 22/' "$G4/src/panel.tsx"; g4 commit -q -am c; g4 update-ref refs/remotes/origin/fix fix; printf 'fix\n' > "$FX/pr_view_current"
+mt mt22 'already on main (src/panel.tsx:2)'; mt mt23 'already on main (src/panel.tsx:6)'
+check "a stacked PR: a defect it inherits from its parent's edited function records, in a RULED line and a layout line; one in a function it edits is refused" "0 1 0 1" \
+  "$(prs4 verify "$T/mt22.md") $(prs4 verify "$T/mt23.md") $(lay l6 'permissions-390.png — the command wraps mid-word: main too (src/panel.tsx:2)') $(lay l7 'permissions-390.png — the command wraps mid-word: main too (src/panel.tsx:6)')"
+rm "$FX/pr_view_current"
 # pr-steps verify: a diff that touches bodies or streams needs code §No regressions' list answered by name
 G3="$T/prs3"; mkdir -p "$G3"; git -C "$G3" init -q -b main; git -C "$G3" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 git -C "$G3" update-ref refs/remotes/origin/main HEAD; git -C "$G3" checkout -q -b fix
