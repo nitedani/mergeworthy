@@ -5,6 +5,7 @@
 # reverify (Loop A after Loop B's commits), fresh (the fresh reader), gates (every gate's exit code on the final head).
 # The posting hook blocks `gh pr create` (unless --draft), `gh pr ready` and pushes to a ready PR until HEAD has all five.
 # quick: the quick gates' exit codes on a head (code §Gates), which a push to a PR or another owner's repo, and `gh pr create`, need on the pushed head.
+# layout: a layout check's lines (evidence step 4), each screenshot OK or its defect with the place it comes from, outside the functions the branch changes.
 # finality: the finality pass's pinnacle and plan (finality step 3), which a code file's 6th change on the branch needs on the head (pre-bash-guard).
 # union <log> | --conflict <sha>: two ready PRs of ours sharing a file, checked together (merging step 2): in a checkout of their merge, the log's
 # first line 'Union: <owner/repo>#<A>@<sha> + #<B>@<sha> on <base>@<sha>' and its quick gates; or, in one PR's checkout, its textual conflict with the other's head.
@@ -24,11 +25,11 @@ read_standards() {
   miss=$(standards | while IFS= read -r l; do case "$sec" in *"$l"*) ;; *) printf '%s\n' "$l" ;; esac; done)
   [ -z "$miss" ] || { printf '%s\n' "$out has no '## Standards read' copying the first sentence of each code/SKILL.md section its brief names (read them before checking; the brief of this step: mergeworthy delegate/verifier.md, shape.md or fresh-reader.md). Missing:" "$miss" >&2; exit 1; }
 }
-step=${1:?usage: pr-steps <preflight|approach|small|quick|verify|shape|reverify|fresh|gates|finality|union> <output-file> [--ledger <path>]}; out=${2:?output file}
+step=${1:?usage: pr-steps <preflight|approach|small|quick|layout|verify|shape|reverify|fresh|gates|finality|union> <output-file> [--ledger <path>]}; out=${2:?output file}
 ledger=; [ "${3:-}" != --ledger ] || ledger=${4:?--ledger <path>}
 ledger_ok() { [ -n "$ledger" ] && python3 "$(dirname "$(realpath "$0")")/../hooks/ledger.py" "$ledger"; }
-case "$step" in preflight|approach|small|quick|verify|shape|loopb|refactor|reverify|fresh|gates|finality|union) ;; review) step=fresh ;;
-  *) echo "step must be preflight, approach, small, quick, verify, shape, reverify, fresh, gates, finality or union" >&2; exit 1;; esac
+case "$step" in preflight|approach|small|quick|layout|verify|shape|loopb|refactor|reverify|fresh|gates|finality|union) ;; review) step=fresh ;;
+  *) echo "step must be preflight, approach, small, quick, layout, verify, shape, reverify, fresh, gates, finality or union" >&2; exit 1;; esac
 # preflight and approach: one record per repo and branch, the path the hooks read (hooks/shellcmd.py branch_record)
 mkdir -p ~/.claude/pr-steps
 approach=$(python3 "$(dirname "$(realpath "$0")")/../hooks/shellcmd.py" approach)
@@ -185,7 +186,7 @@ carries() {
   awk -v s="$step" '$1==s' ~/.claude/pr-steps/"$full" 2>/dev/null | grep -q . || { echo "$c has no recorded $step to carry" >&2; exit 1; }
   carry_holds "$full"
 }
-if [ "$step" != shape ] && [ "$step" != refactor ] && [ "$step" != gates ] && [ "$step" != quick ] && [ "$step" != union ] && [ "$step" != finality ] && carries; then :; else
+if [ "$step" != shape ] && [ "$step" != refactor ] && [ "$step" != gates ] && [ "$step" != quick ] && [ "$step" != union ] && [ "$step" != finality ] && [ "$step" != layout ] && carries; then :; else
 base=$(git merge-base HEAD "$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)" 2>/dev/null || true)
 case "$step" in
   verify|reverify)
@@ -244,6 +245,9 @@ EOF
       miss=$(for w in Cancellation Backpressure Cap Release 'Read once' Ownership Failure Sources 'Second copy'; do printf '%s\n' "$sec" | grep -Eqi "^- \*{0,2}$w\*{0,2}: +[^ ]+ +[^ ]+ +[^ ]+" || printf '%s, ' "$w"; done)
       [ -z "$miss" ] || { echo "the diff touches bodies, buffers, streams or cancellation: $out needs '## Bodies and streams' with a line '- <item>: <the probe run and what it showed>' (or 'not reached, because <reason>') for each item of code §No regressions' first bullet; missing or too short: ${miss%, }" >&2; exit 1; }
     fi ;;
+  layout)
+    bad=$(python3 "$(dirname "$(realpath "$0")")/../hooks/main_too.py" layout "$out" "$pbase") ||
+      { printf '%s\n' "$out is a layout check, one line per screenshot: '<file name> — OK', or a defect left unfixed as '<file name> — <the defect>, from <path:line>', the place it comes from, outside the functions this branch changes (mergeworthy:evidence step 4):" "$bad" >&2; exit 1; } ;;
   finality)
     # finality step 3: a code file's 6th change on the branch waits for this record (pre-bash-guard)
     grep -Eq '^Pinnacle: +[^ ]+ +[^ ]+ +[^ ]+' "$out" && awk '/^Plan:/{p=1;next} p&&/^[0-9]+\. +[^ ]/{f=1} END{exit !f}' "$out" ||

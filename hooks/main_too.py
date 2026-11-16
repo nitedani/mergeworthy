@@ -3,7 +3,8 @@
 or a layout-check.md line that says main has it names the `path:line` (or `path:a-b`) it comes from, a file HEAD tracks, outside
 every function the branch changes since the PR's base (`git diff -W`), else it excuses nothing. pr-steps reads it.
 `main_too.py task <file the step records> <base>`: prints each layout-check.md line and each other file's RULED line that fails, in
-the task's work folder holding the file (all of it) or else the layout-check.md beside it, and exits 1 when one does."""
+the task's work folder holding the file (all of it) or else the layout-check.md beside it, and exits 1 when one does.
+`main_too.py layout <a layout check> <base>`: prints each line of it that fails, and exits 1 when one does."""
 import os, re, subprocess, sys
 import work_folder
 
@@ -91,7 +92,21 @@ def task(record, base):
     return bad
 
 
-if __name__ == '__main__' and sys.argv[1:2] == ['task']:
-    bad = task(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else '')
+def layout(file, base):
+    """Each failing line of a layout check, '<line>  <- <why>': a line is `<file name> — OK`, or `<file name> — <the defect>` naming
+    the place the defect comes from, outside the functions the branch changes; a heading or a blank line is neither."""
+    bad = []
+    for l in open(file, errors='replace').read().splitlines():
+        if not l.strip() or l.startswith('#'): continue
+        m = re.match(r'(.+?)\s[—–-]\s+(OK\b)?(.*)$', l.strip())
+        if not m: why = 'no layout line: write `<file name> — OK` or `<file name> — <the defect>`'
+        elif m[2]: why = m[3].strip(' .') and f'a screenshot with anything after OK: write it `{m[1]} — OK`, or each defect it shows as its own line `{m[1]} — <the defect>`'
+        else: why = (w := misplaced(m[3], base)) and f'a defect left in the check names the place it comes from, `{m[1]} — <the defect>, from <path:line>`: {w}'
+        if why: bad.append(f'{l}  <- {why}')
+    return bad
+
+
+if __name__ == '__main__' and sys.argv[1:2] in (['task'], ['layout']):
+    bad = (task if sys.argv[1] == 'task' else layout)(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else '')
     for b in bad: print(b)
     sys.exit(1 if bad else 0)

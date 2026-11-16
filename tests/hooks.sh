@@ -2309,18 +2309,18 @@ mt mt3 'not caused by this PR, the same classes are already on main'; mt mt4 'al
 mt mt6 'main does the same, outside the code this change edits'; mt mt7 'main too, from panel.tsx:5-6'; mt mt8 'already on main (src/panel.tsx:3)'
 check "BLOCK: a main-too ruling naming a changed line, an unchanged line of a changed function, no line, an untracked file (saying so), a line past the file's end, only the words 'outside the code'; naming lines outside, it records" "1 1 1 0 1 1 1 1 1 0" \
   "$(prs4 verify "$T/mt1.md") $(grep -c 'src/panel.tsx:2 is inside a function' "$T/prs4.err") $(prs4 verify "$T/mt8.md") $(prs4 verify "$T/mt2.md") $(prs4 verify "$T/mt3.md") $(prs4 verify "$T/mt4.md") $(grep -c 'nope.tsx, which HEAD does not track' "$T/prs4.err") $(prs4 verify "$T/mt5.md") $(prs4 verify "$T/mt6.md") $(prs4 verify "$T/mt7.md")"
-LW="$HOME/.mergeworthy/work/lay"; mkdir -p "$LW/walk/C-r2"; lay() { printf '%s\n' "$1" > "$LW/walk/C-r2/layout-check.md"; printf 'slice 1: no bug\nNO BUGS\n' > "$LW/$2.md"; std "$LW/$2.md"; }
-lay 'permissions-390.png — OK (…). The command wraps mid-word, its copy button at the right edge: main too.' l1; r1=$(prs4 verify "$LW/l1.md"); n1=$(grep -c 'permissions-390.png — OK (' "$T/prs4.err")
-lay 'permissions-390.png — the command wraps mid-word: main too (src/panel.tsx:2)' l2; r2=$(prs4 verify "$LW/l2.md")
-lay 'permissions-390.png — the command wraps mid-word: main too (src/panel.tsx:6)' l3; r3=$(prs4 verify "$LW/l3.md")
-lay 'permissions-390.png — OK' l4; printf 'pnpm test -> exit 0 (3 tests)\n' > "$LW/l4.md"; r4=$(prs4 gates "$LW/l4.md"); rm -rf "$LW"
-check "BLOCK: a layout check's OK line with a defect after it, quoted, and a main-too defect line inside a changed function, wherever the work folder holds it; one outside, and a bare OK, record" "1 1 1 0 0" "$r1 $n1 $r2 $r3 $r4"
+LW="$HOME/.mergeworthy/work/lay"; lay() { printf '%s\n' "$2" > "$T/$1.md"; prs4 layout "$T/$1.md"; }
+r1=$(lay l1 'permissions-390.png — OK (…). The command wraps mid-word, its copy button at the right edge: main too.'); n1=$(grep -c 'permissions-390.png — OK (' "$T/prs4.err")
+check "BLOCK: a layout check's OK line with a defect after it, quoted, and a defect line naming a place inside a changed function; one naming a place outside, and a heading with a bare OK, record" "1 1 1 0 0" \
+  "$r1 $n1 $(lay l2 'permissions-390.png — the command wraps mid-word: main too (src/panel.tsx:2)') $(lay l3 'permissions-390.png — the command wraps mid-word: main too (src/panel.tsx:6)') $(lay l4 $'# Layout check\n\npermissions-390.png — OK')"
+r1=$(lay l8 'a-390.png — the label is clipped'); n1=$(grep -c 'a-390.png — the label is clipped  <- .*it names no .path:line' "$T/prs4.err"); r2=$(lay l9 $'a-390.png — OK\nAll five widths look fine.'); n2=$(grep -c '^All five widths look fine.  <- no layout line' "$T/prs4.err")
+check "BLOCK: a layout check's defect line naming no place, whatever its words, and a line of prose, each quoted; a defect that says baseline, from a line outside the changed functions, records, and from one inside is refused" "1 1 1 1 0 1" \
+  "$r1 $n1 $r2 $n2 $(lay l10 "a-390.png — the label's baseline is 2px below the input's, from src/panel.tsx:6") $(lay l11 "a-390.png — the label's baseline is 2px below the input's, from src/panel.tsx:2")"
 mt mt9 'this also occurs on the default branch panel.tsx:2'; mt mt10 'the baseline has it, src/panel.tsx:2'; mt mt11 'the padding already exists (src/panel.tsx:2)'
 mt mt12 'a preexisting defect (src/panel.tsx:2)'; mt mt13 'the base branch has it too (src/panel.tsx:2)'; mt mt14 'this also occurs on the default branch panel.tsx:6'
-mkdir -p "$LW/walk/C-r2"; lay 'permissions-390.png — the command wraps mid-word, this also occurs on the default branch (src/panel.tsx:2)' l5; r5=$(prs4 verify "$LW/l5.md"); rm -rf "$LW"
 mt mt24 'not a bug; the existing force-push policy refuses them first'
-check "BLOCK: a ruling saying the default branch, the base branch or the baseline has it, that it already exists or is preexisting, naming a line inside a changed function, in a RULED line and a layout line; outside, it records; an existing thing named in a ruling that says nothing of main records" "1 1 1 1 1 0 1 0" \
-  "$(prs4 verify "$T/mt9.md") $(prs4 verify "$T/mt10.md") $(prs4 verify "$T/mt11.md") $(prs4 verify "$T/mt12.md") $(prs4 verify "$T/mt13.md") $(prs4 verify "$T/mt14.md") $r5 $(prs4 verify "$T/mt24.md")"
+check "BLOCK: a ruling saying the default branch, the base branch or the baseline has it, that it already exists or is preexisting, naming a line inside a changed function; outside, it records; an existing thing named in a ruling that says nothing of main records" "1 1 1 1 1 0 0" \
+  "$(prs4 verify "$T/mt9.md") $(prs4 verify "$T/mt10.md") $(prs4 verify "$T/mt11.md") $(prs4 verify "$T/mt12.md") $(prs4 verify "$T/mt13.md") $(prs4 verify "$T/mt14.md") $(prs4 verify "$T/mt24.md")"
 mt mt15 'already on main ./src/panel.tsx:6'; mt mt16 "already on main $G4/src/panel.tsx:6"; mt mt17 'already on main Makefile:2'; mt mt18 'already on main (Dockerfile:3)'
 mt mt19 'already on main ./src/panel.tsx:2'; mt mt20 "already on main $G4/src/panel.tsx:2"; mt mt21 'already on main since 10:30, src/panel.tsx:6'
 check "a main-too ruling citing ./path, an absolute path in the repo, a Makefile or Dockerfile line outside the changed functions records; ./path or the absolute path inside one is refused; a time is no citation" "0 0 0 0 1 1 0" \
@@ -2338,9 +2338,8 @@ check "a layout line or walk ruling citing only files this checkout doesn't trac
 # a stacked PR on fix (gh's baseRefName): the place is measured from fix, so one() that fix edits is no longer this branch's
 g4 checkout -q -b kid; sed -i 's/return 2/return 22/' "$G4/src/panel.tsx"; g4 commit -q -am c; g4 update-ref refs/remotes/origin/fix fix; printf 'fix\n' > "$FX/pr_view_current"
 mt mt22 'already on main (src/panel.tsx:2)'; mt mt23 'already on main (src/panel.tsx:6)'
-mkdir -p "$LW/walk/C-r2"; lay 'permissions-390.png — the command wraps mid-word: main too (src/panel.tsx:2)' l6; r6=$(prs4 verify "$LW/l6.md")
-lay 'permissions-390.png — the command wraps mid-word: main too (src/panel.tsx:6)' l7; r7=$(prs4 verify "$LW/l7.md")
-check "a stacked PR: a defect it inherits from its parent's edited function records, in a RULED line and a layout line; one in a function it edits is refused" "0 1 0 1" "$(prs4 verify "$T/mt22.md") $(prs4 verify "$T/mt23.md") $r6 $r7"
+check "a stacked PR: a defect it inherits from its parent's edited function records, in a RULED line and a layout line; one in a function it edits is refused" "0 1 0 1" \
+  "$(prs4 verify "$T/mt22.md") $(prs4 verify "$T/mt23.md") $(lay l6 'permissions-390.png — the command wraps mid-word: main too (src/panel.tsx:2)') $(lay l7 'permissions-390.png — the command wraps mid-word: main too (src/panel.tsx:6)')"
 rm -rf "$LW" "$FX/pr_view_current"
 # pr-steps verify: a diff that touches bodies or streams needs code §No regressions' list answered by name
 G3="$T/prs3"; mkdir -p "$G3"; git -C "$G3" init -q -b main; git -C "$G3" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
