@@ -6,7 +6,7 @@ in the file a step is given and no other.
 `main_too.py layout <a layout check> <base>`: prints each line of it that fails, and exits 1 when one does."""
 import os, re, subprocess, sys
 
-MAIN = re.compile(r"not a regression|pre-?existing|already exist(s|ed)?\b|\b(default|base) branch\b|\bbaseline\b|not caused by (this|the) (pr|change)|masteren is|same as (on )?(main|master)"
+MAIN = re.compile(r"not a regression|pre-?existing|\b(default|base) branch\b|\bbaseline\b|not caused by (this|the) (pr|change)|masteren is|same as (on )?(main|master)"
                   r"|\b(on|in) (main|master)\b(?! session| thread)|\b(main|master)('s\b| (too|as well|does|has|had|shows))", re.I)
 PLACE = re.compile(r'(?<![\w./@~+-])([\w./@~+-]*[\w@~+-]):(\d+)(?:-(\d+))?')  # src/panel.tsx:12, ./panel.tsx:5-6, /abs/path.ts:3, Makefile:2
 
