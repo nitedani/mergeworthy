@@ -9,7 +9,7 @@ import work_folder
 
 MAIN = re.compile(r"not a regression|\bexisting\b|already exists?\b|\b(default|base) branch\b|\bbaseline\b|not caused by (this|the) (pr|change)|masteren is|same as (on )?(main|master)"
                   r"|\b(on|in) (main|master)\b(?! session| thread)|\b(main|master)('s\b| (too|as well|does|has|had|shows))", re.I)
-PLACE = re.compile(r'([\w./@~+-]*[\w@~+-]\.\w+):(\d+)(?:-(\d+))?')  # src/panel.tsx:12, panel.tsx:5-6
+PLACE = re.compile(r'(?<![\w./@~+-])([\w./@~+-]*[\w@~+-]):(\d+)(?:-(\d+))?')  # src/panel.tsx:12, ./panel.tsx:5-6, /abs/path.ts:3, Makefile:2
 OK = re.compile(r'^(.+?)\s[—–-]\s+OK\b(.*)$')
 
 
@@ -35,13 +35,17 @@ def why_not(text, base):
 
 def misplaced(text, base):
     """None when text names a place the defect comes from, each outside the functions the branch changes; else why not."""
-    places = PLACE.findall(text)
+    top = git('rev-parse', '--show-toplevel').strip()
+    tracked, places = git('-C', top, 'ls-files').splitlines(), []
+    for p, a, b in PLACE.findall(text):
+        q = os.path.relpath(p, top) if os.path.isabs(p) else os.path.normpath(p)  # ./x and /<repo>/x are x
+        files = [f for f in tracked if f == q or f.endswith('/' + q)]
+        # a path or a file name with an extension is a citation; a bare word (`Makefile`) only when HEAD tracks it, so `10:30` is none
+        if files or '/' in p or re.search(r'\w\.\w+$', p): places.append((p, files, int(a), int(b or a)))
     if not places: return 'it names no `path:line` the defect comes from'
     if not base: return "there is no merge-base with origin's default branch to check its place against"
-    funcs, tracked = changed(base), git('ls-files').splitlines()
-    for p, a, b in places:
-        a, b = int(a), int(b or a)
-        files = [f for f in tracked if f == p or f.endswith('/' + p)]
+    funcs = changed(base)
+    for p, files, a, b in places:
         if not files: return f'it names {p}, which HEAD does not track'
         if all(b > len(git('show', f'HEAD:{f}').splitlines()) for f in files): return f'it names {p}:{b}, past the end of the file'
         for f in files:

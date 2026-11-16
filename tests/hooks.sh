@@ -2299,7 +2299,8 @@ printf 'slice 1\n## Dropped\nNone.\nI tried the loading and error paths; both be
 check "BLOCK: an indented list's outermost items are candidates, its deeper ones covered by their item's RULED line; prose in the list without '<candidate>: ' is none" "1 0 0" "$(prs verify "$T/vr18.md") $(prs verify "$T/vr19.md") $(prs verify "$T/vr20.md")"
 # a ruling or layout line saying main has the defect names the path:line it comes from, outside every function the branch changes (#194)
 G4="$T/prs4"; git init -q -b main "$G4"; g4() { git -C "$G4" -c user.name=t -c user.email=t@t "$@"; }; mkdir -p "$G4/src"
-printf 'function one() {\n  return 1\n}\n\nfunction two() {\n  return 2\n}\n' > "$G4/src/panel.tsx"; g4 add src; g4 commit -q -m a
+printf 'function one() {\n  return 1\n}\n\nfunction two() {\n  return 2\n}\n' > "$G4/src/panel.tsx"; printf 'all:\n\ttrue\n' > "$G4/Makefile"; printf 'FROM x\nRUN a\nRUN b\n' > "$G4/Dockerfile"
+g4 add src Makefile Dockerfile; g4 commit -q -m a
 g4 update-ref refs/remotes/origin/main HEAD; g4 checkout -q -b fix; sed -i 's/return 1/return 11/' "$G4/src/panel.tsx"; g4 commit -q -am b
 prs4() { (cd "$G4" && bash "$R/bin/pr-steps" "$@" >/dev/null 2>"$T/prs4.err"; echo $?); }
 mt() { printf 'slice 1\n## Dropped\n- search padding: the magnifier covers the text, main too\nRULED: search padding: %s\nNO BUGS\n' "$2" > "$T/$1.md"; std "$T/$1.md"; }
@@ -2319,6 +2320,10 @@ mt mt12 'the existing classes do it (src/panel.tsx:2)'; mt mt13 'the base branch
 mkdir -p "$LW/walk/C-r2"; lay 'permissions-390.png — the command wraps mid-word, this also occurs on the default branch (src/panel.tsx:2)' l5; r5=$(prs4 verify "$LW/l5.md"); rm -rf "$LW"
 check "BLOCK: a ruling saying the default branch, the base branch or the baseline has it, or that it already exists, naming a line inside a changed function, in a RULED line and a layout line; outside, it records" "1 1 1 1 1 0 1" \
   "$(prs4 verify "$T/mt9.md") $(prs4 verify "$T/mt10.md") $(prs4 verify "$T/mt11.md") $(prs4 verify "$T/mt12.md") $(prs4 verify "$T/mt13.md") $(prs4 verify "$T/mt14.md") $r5"
+mt mt15 'already on main ./src/panel.tsx:6'; mt mt16 "already on main $G4/src/panel.tsx:6"; mt mt17 'already on main Makefile:2'; mt mt18 'already on main (Dockerfile:3)'
+mt mt19 'already on main ./src/panel.tsx:2'; mt mt20 "already on main $G4/src/panel.tsx:2"; mt mt21 'already on main since 10:30, src/panel.tsx:6'
+check "a main-too ruling citing ./path, an absolute path in the repo, a Makefile or Dockerfile line outside the changed functions records; ./path or the absolute path inside one is refused; a time is no citation" "0 0 0 0 1 1 0" \
+  "$(prs4 verify "$T/mt15.md") $(prs4 verify "$T/mt16.md") $(prs4 verify "$T/mt17.md") $(prs4 verify "$T/mt18.md") $(prs4 verify "$T/mt19.md") $(prs4 verify "$T/mt20.md") $(prs4 verify "$T/mt21.md")"
 # pr-steps verify: a diff that touches bodies or streams needs code §No regressions' list answered by name
 G3="$T/prs3"; mkdir -p "$G3"; git -C "$G3" init -q -b main; git -C "$G3" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 git -C "$G3" update-ref refs/remotes/origin/main HEAD; git -C "$G3" checkout -q -b fix
