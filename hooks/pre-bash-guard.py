@@ -1194,7 +1194,7 @@ if waits and not d.get('tool_input', {}).get('run_in_background') and not by_age
           'or run the wait with run_in_background (one notification when it ends)')
 # a Playwright install prunes the browser builds other sessions use from the shared ~/.cache/ms-playwright (agent.md §Machine),
 # and a browser the machine already has needs none
-if any(re.fullmatch(r'playwright(-core)?(@[^/]*)?', os.path.basename(w)) and prog(x)[i + 1:i + 2] == ['install'] for x in segs for i, w in enumerate(prog(x))) and 'PLAYWRIGHT_BROWSERS_PATH=' not in cmd:
+if any(re.fullmatch(r'(?:.*/)?playwright(?:-core)?(?:@[^/]*)?(?:/cli\.js)?', w) and prog(x)[i + 1:i + 2] == ['install'] for x in segs for i, w in enumerate(prog(x))) and 'PLAYWRIGHT_BROWSERS_PATH=' not in cmd:
     block("a Playwright install deletes the browser builds other sessions use from the shared ~/.cache/ms-playwright: "
           "Run on a browser the machine already has first: an installed Google Chrome or Edge through Playwright's `channel: 'chrome'` (or `'msedge'`), "
           "set in a config of your own in the work folder that extends the repo's. Only when the tests need a build no installed browser gives "
