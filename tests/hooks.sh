@@ -2680,13 +2680,14 @@ check "an edit passes after it, with the branch's approach" 0 "$( (cd "$P" && ba
 check "preflight's Chrome runs muted and without the WSLg audio server" "2 2" "$( (cd "$P" && PULSE_SERVER=unix:/mnt/wslg/PulseServer FAKE_LOG="$T/chrome.log" CHROME="$T/bin/fakechrome" FAKE_DOM='<html><body>app</body></html>' bash "$R/bin/pr-steps" preflight https://app.test >/dev/null 2>&1); grep -c -- '--mute-audio' "$T/chrome.log") $(grep -c '^pulse=unset ' "$T/chrome.log")"
 # start records are owed only where the work can become a PR: not with no remote or only a gist, nor on a branch sharing no history with origin's default branch
 ow() { git init -q "$T/$1"; git -C "$T/$1" -c user.name=t -c user.email=t@t commit -q --allow-empty -m i; [ -z "${2:-}" ] || git -C "$T/$1" remote add origin "$2"; }
-owc() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"git commit -m x"},"cwd":sys.argv[1]}))' "$T/$1" | python3 "$R/hooks/pre-bash-guard.py" 2>&1 >/dev/null; }
+# the commit's identity is computed (${id}), so the commit identity check, another refusal, can't answer for these
+owc() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"id=42; git -c user.name=me -c user.email=${id}+me@users.noreply.github.com commit -m x"},"cwd":sys.argv[1]}))' "$T/$1" | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/owc.err" >/dev/null; echo $?; }
 ow ow-none; ow ow-gist https://gist.github.com/abc123.git; ow ow-pics https://github.com/o/r.git
 git -C "$T/ow-pics" update-ref refs/remotes/origin/main HEAD; git -C "$T/ow-pics" checkout -q --orphan pics; git -C "$T/ow-pics" -c user.name=t -c user.email=t@t commit -q --allow-empty -m p
 check "an edit and a commit are free with no remote, with only a gist remote, and on an orphan branch of a clone with origin/main but no origin/HEAD" "0 0 0 0 0 0" \
-  "$(pfedit "$T/ow-none/a.ts") $(owc ow-none | grep -c 'pr-steps preflight\|pr-steps approach') $(pfedit "$T/ow-gist/a.ts") $(owc ow-gist | grep -c 'pr-steps preflight\|pr-steps approach') $(pfedit "$T/ow-pics/a.ts") $(owc ow-pics | grep -c 'pr-steps preflight\|pr-steps approach')"
+  "$(pfedit "$T/ow-none/a.ts") $(owc ow-none) $(pfedit "$T/ow-gist/a.ts") $(owc ow-gist) $(pfedit "$T/ow-pics/a.ts") $(owc ow-pics)"
 ow ow-unknown https://github.com/o/r.git
-check "BLOCK: with a hosted remote and neither origin/HEAD nor origin/main, an edit and a commit wait, naming git remote set-head" "2 1" "$(pfedit "$T/ow-unknown/a.ts") $(owc ow-unknown | grep -c 'git remote set-head origin -a')"
+check "BLOCK: with a hosted remote and neither origin/HEAD nor origin/main, an edit and a commit wait, naming git remote set-head" "2 2 1" "$(pfedit "$T/ow-unknown/a.ts") $(owc ow-unknown) $(grep -c 'git remote set-head origin -a' "$T/owc.err")"
 # ---------- under T3 Code, Codex starts through delegate_task, not a shell ----------
 cx() { # <T3CODE_THREAD_ID, empty outside T3> <command>: the guard's exit code
   python3 -c 'import json,sys; print(json.dumps({"tool_input": {"command": sys.argv[1]}, "cwd": sys.argv[2]}))' "$2" "$T" \
