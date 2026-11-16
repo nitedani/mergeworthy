@@ -2490,6 +2490,7 @@ check "glab mr create --wip passes there too" 0 "$(MERGEWORTHY_WATCHER=off glab 
 check "gh pr ready passes once all five steps and the approach hold" 0 "$(ready)"
 check "glab mr update --ready passes there too" 0 "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"glab mr update 5 --ready"},"cwd":sys.argv[1]}))' "$G2" | python3 "$R/hooks/pre-bash-guard.py" >/dev/null 2>&1; echo $?)"
 echo 'gitlab.com/acme/app!5: the MR leaks a timer' > "$TASKW/defects-open.md"; GB="$FX/projects_acme%2Fapp_merge_requests_5"
+for pj in acme acme.inc; do for r in app other; do echo '[]' > "$FX/projects_${pj}%2F${r}_merge_requests_state_opened_scope_created_by_me_per_page_100"; done; done  # no other open MR of ours (check_union, #188)
 glready() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"glab mr update 5 --ready -R gitlab.com/acme/app"},"cwd":sys.argv[1]}))' "$G2" | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err" >/dev/null; echo $?; }
 echo '{"description": "No notes."}' > "$GB"
 check "BLOCK: glab mr update --ready with an open line for the MR and no row in its description, naming the line" "2 1" "$(glready) $(grep -c 'leaks a timer' "$T/err")"
@@ -2509,7 +2510,7 @@ check "a branch whose open MR is another passes; a branch with no open MR blocks
 rm "${GLB}other-branch" "${GLB}feat" "${GLB}nomr"
 echo 'acme.inc/app!5: the MR leaks a timer' > "$TASKW/defects-open.md"
 check "BLOCK: a bare path with a dotted namespace is that gitlab.com project (#197 Loop A 3)" 2 "$(glr 'glab mr update 5 --ready -R gitlab.com/acme.inc/app')"
-rm "$GB" "$TASKW/defects-open.md"
+rm "$GB" "$FX"/projects_acme*_merge_requests_state_opened_scope_created_by_me_per_page_100 "$TASKW/defects-open.md"
 printf 'm\n' > "$G2/m"; git -C "$G2" add m; git -c user.name=maint -c user.email=m@m -C "$G2" commit -q -m "a maintainer's tweak"
 check "a maintainer's commit on a converged head carries its steps" 0 "$(ready)"
 seq 1 81 > "$G2/m2"; git -C "$G2" add m2; git -c user.name=maint -c user.email=m@m -C "$G2" commit -q -m "a maintainer's rewrite"
@@ -3876,6 +3877,10 @@ echo '{"head_pipeline":null,"draft":true}' > "$FX/gl_projects_me_2Fapp_merge_req
 check "GitLab, BLOCK: a title update dropping the Draft prefix (glab mr update --title, glab api PUT), naming the MR; a numeric project id, which can't be told; a Draft title, or a retitle of a ready MR, passes" "2 1 2 2 1 0 0" \
   "$(glb 'glab mr update 5 --title Ready') $(grep -c 'gitlab.com/me/app!8, also yours and ready' "$T/err") $(glb 'glab api projects/me%2Fapp/merge_requests/5 -X PUT -f title=Ready') $(glb 'glab api projects/1/merge_requests/5 -X PUT -f title=Ready') $(grep -c "can't tell which project this .glab api. call acts on" "$T/err") $(glb "glab mr update 5 --title 'Draft: Ready'") $(echo '{"head_pipeline":null,"draft":false}' > "$FX/gl_projects_me_2Fapp_merge_requests_5"; glb 'glab mr update 5 --title Ready')"
 echo '{"head_pipeline":null,"draft":true}' > "$FX/gl_projects_me_2Fapp_merge_requests_5"
+SBM="$FX/gl_projects_me_2Fapp_merge_requests_state_opened_source_branch_mr-b"; cp "$SBM" "$T/sbm.keep"; echo '[{"iid":9,"draft":false}]' > "$SBM"  # the checked-out branch's MR is another, ready one
+check "GitLab, BLOCK: a title update takes the MR it acts on as the defects check does (mr_target): after an option's value, or by its URL whatever -R says, naming the overlap" "2 1 2 1" \
+  "$(glb 'glab mr update --milestone 6 5 --title Ready') $(grep -c 'gitlab.com/me/app!8, also yours and ready' "$T/err") $(glb 'glab mr update https://gitlab.com/me/app/-/merge_requests/5 --title Ready -R gitlab.com/me/other') $(grep -c 'gitlab.com/me/app!8, also yours and ready' "$T/err")"
+mv "$T/sbm.keep" "$SBM"
 printf '{"title":"Ready"}' > "$NA/body.json"; printf '{"title":"Draft: Ready"}' > "$T/body.json"; printf false > "$T/false.txt"; printf dev > "$T/base.txt"
 GPUT='glab api projects/me%2Fapp/merge_requests/5 -X PUT'
 check "GitLab, BLOCK: an API PUT to an MR taking fields from a file or stdin (--input, relative after a cd too; a value starting with @), saying to pass them literally; literal fields stay checked, naming the MR, and a Draft title passes" "2 1 2 2 2 1 2 2 1 0" \

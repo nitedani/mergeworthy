@@ -103,9 +103,7 @@ def goes_ready(p, a, env, run_dir):
     if p == 'glab' and a[:2] == ['mr', 'create'] and not {'--draft', '--wip'} & set(a):
         return gitlab_repo(a[2:], run_dir), None, (opt(a[2:], ['--target-branch', '-b']) or [None])[-1], None
     if p == 'glab' and a[:2] == ['mr', 'update'] and '--draft' not in a:
-        ref = re.sub(r'^\S*/merge_requests/(\d+)\S*$', r'\1', a[2]) if a[2:3] and not a[2].startswith('-') else ''
-        branch = None if ref.isdigit() else ref or subprocess.run(['git', '-C', known(run_dir), 'symbolic-ref', '--short', '-q', 'HEAD'], capture_output=True, text=True).stdout.strip()
-        iid, repo = ref if ref.isdigit() else None, gitlab_repo(a[2:], run_dir)
+        repo, iid, branch = mr_target(operands(a[2:]), run_dir)
         base, title = (opt(a[2:], ['--target-branch']) or [None])[-1], (opt(a[2:], ['--title', '-t']) or [None])[-1]
         if {'--ready', '-r'} & set(a) or repo and mr_ready_on(repo, iid, branch, base, title):
             return repo, iid, base, branch
@@ -806,10 +804,11 @@ def check_defects(thread, what):
 GLAB_UPDATE_VALUED = {'-a', '--assignee', '--attach', '-d', '--description', '--description-file', '-l', '--label', '-m', '--milestone',
                       '--reviewer', '--state', '--target-branch', '-t', '--title', '-u', '--unlabel', '-R', '--repo'}  # docs.gitlab.com/cli/mr/update
 def mr_target(a, run_dir):
-    """(repo, iid, branch) of the MR `glab mr update <a>` acts on: its positional iid, MR URL (whose project it is, whatever -R says) or
-    branch, else the checked-out branch; never an option's value. repo None when it can't be told."""
+    """(repo, iid, branch) of the MR `glab mr update <a>` acts on, for goes_ready and the defects check alike: its positional iid, MR URL
+    (whose project it is, whatever -R says) or branch, else the checked-out branch; never an option's value. repo is `<host>/<path>`, as
+    gitlab_repo gives it; None when it can't be told."""
     ref = next((x for i, x in enumerate(a) if not x.startswith('-') and not (i and a[i - 1] in GLAB_UPDATE_VALUED)), '')
-    if m := re.match(r'https?://([^/]+)/(.+?)/-/merge_requests/(\d+)', ref): return f'{m[1]}/{m[2]}'.lower(), m[3], None
+    if m := re.match(r'https?://([^/]+)/(.+?)/-/merge_requests/(\d+)', ref): return f'{m[1]}/{m[2]}', m[3], None  # gitlab_repo's form
     repo = gitlab_repo(a, run_dir)
     if ref.isdigit(): return repo, ref, None
     return repo, None, ref or subprocess.run(['git', '-C', known(run_dir), 'symbolic-ref', '--short', '-q', 'HEAD'], capture_output=True, text=True).stdout.strip()
