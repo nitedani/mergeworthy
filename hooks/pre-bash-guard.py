@@ -3,7 +3,7 @@
 Checks each simple command separately (shellcmd.parse: chains, substitutions, `bash -c`; heredoc bodies and quoted text are data).
 It fails closed: a command it can't parse, a record it can't find or a state gh can't read blocks what it guards.
 MERGEWORTHY_MERGE=reviewer blocks every `gh pr merge`."""
-import itertools, json, re, sys, os, hashlib, subprocess
+import glob, itertools, json, re, sys, os, hashlib, subprocess, urllib.parse
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
 import shellcmd
@@ -103,9 +103,7 @@ def goes_ready(p, a, env, run_dir):
     if p == 'glab' and a[:2] == ['mr', 'create'] and not {'--draft', '--wip'} & set(a):
         return gitlab_repo(a[2:], run_dir), None, (opt(a[2:], ['--target-branch', '-b']) or [None])[-1], None
     if p == 'glab' and a[:2] == ['mr', 'update'] and '--draft' not in a:
-        ref = re.sub(r'^\S*/merge_requests/(\d+)\S*$', r'\1', a[2]) if a[2:3] and not a[2].startswith('-') else ''
-        branch = None if ref.isdigit() else ref or subprocess.run(['git', '-C', known(run_dir), 'symbolic-ref', '--short', '-q', 'HEAD'], capture_output=True, text=True).stdout.strip()
-        iid, repo = ref if ref.isdigit() else None, gitlab_repo(a[2:], run_dir)
+        repo, iid, branch = mr_target(operands(a[2:]), run_dir)
         base, title = (opt(a[2:], ['--target-branch']) or [None])[-1], (opt(a[2:], ['--title', '-t']) or [None])[-1]
         if {'--ready', '-r'} & set(a) or repo and mr_ready_on(repo, iid, branch, base, title):
             return repo, iid, base, branch
@@ -766,6 +764,70 @@ def opened_branch(a, options=(), fields=()):
     named = opt(a, list(options)) + [v[v.index('=') + 1:] for v in opt(a, list(fields)) if v.split('=', 1)[0] in ('head', 'source_branch')]
     return where.expand(named[-1]).split(':')[-1] if named else None
 
+def thread_of_pr(url):
+    """`owner/repo#N` of a GitHub PR's URL, `<host>/<path>!N` of a GitLab MR's (defects-open.md's form); None for any other."""
+    if m := re.match(r'https://github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)/?$', url or ''): return f'{m[1]}#{m[2]}'.lower()
+    if m := re.match(r'https?://([^/]+)/(.+?)/-/merge_requests/(\d+)/?$', url or ''): return f'{m[1]}/{m[2]}!{m[3]}'.lower()
+
+def all_defects():
+    """Every work folder's open defects-open.md lines (work_folder.open_defects): a line names its PR, whichever session wrote it."""
+    return work_folder.open_defects(glob.glob(os.path.join(work_folder.ROOT, '*')) + glob.glob(os.path.expanduser('~/*-work')))
+
+def glab_get(repo, ep):
+    """`glab api <ep>` on repo's (<host>/<path>) project, parsed; None when glab can't read it."""
+    host, path = repo.split('/', 1)
+    try:
+        r = subprocess.run(['glab', 'api', '--hostname', host, f"projects/{urllib.parse.quote(path, safe='')}/{ep}"], capture_output=True, text=True, timeout=30)
+        return json.loads(r.stdout) if r.returncode == 0 else None
+    except (OSError, subprocess.TimeoutExpired, ValueError): return None
+
+def check_defects(thread, what):
+    """A known defect in an open PR's own diff, not yet fixed, is in its body before the next push or ready (task §Dispositions): each open
+    line of a work folder's defects-open.md naming thread (work_folder.open_defects) needs a row of the live body's notes table with Kind bug
+    and Blocks merge yes, in the repo's language (post_words), whose Note holds the line's words, case and spacing aside (cells split on unescaped pipes). A body gh or glab can't read blocks."""
+    lines = [x for x in all_defects() if x[1] == thread]
+    if not lines: return
+    repo, sep, num = re.match(r'(.+)([#!])(\d+)$', thread).groups()
+    pr = gh_json(f'repos/{repo}/pulls/{num}') if sep == '#' else glab_get(repo, f'merge_requests/{num}')
+    body = pr.get('body' if sep == '#' else 'description') if isinstance(pr, dict) else None
+    if not isinstance(body, str):
+        block(f"{'gh' if sep == '#' else 'glab'} couldn't read {thread}'s body, so whether it shows its open defects-open.md lines ({lines[0][3][:120]}) can't be checked: retry once it answers")
+    norm = lambda x: ' '.join(x.lower().split())
+    w = post_words.words(repo)  # the notes table in the repo's language (writing §Forms)
+    bug, yes = w['kinds'][0], w['yes']
+    rows = [[c.strip().replace('\\|', '|') for c in re.split(r'(?<!\\)\|', l.strip())[1:]] for l in body.splitlines() if l.strip().startswith('|')]
+    notes = [norm(c[0]) for c in rows if len(c) >= 4 and c[1].lower() == bug and c[2].lower() == yes]
+    unshown = [x for x in lines if not any(norm(x[2]) in n for n in notes)]
+    if unshown:
+        f, _, defect, line = unshown[0]
+        block(f"{f} has the open line `{line[:160]}`, and {thread}'s body has no notes-table row for it: before {what}, fix it in its own commit and clear the line "
+              f"as `fixed in <sha>: …`, or add the row `| {defect[:120].replace('|', chr(92) + '|')} | {bug} | {yes} | <Next> |` to the body (mergeworthy:task §Dispositions, writing §Forms)")
+
+def ready_defects(p, repo, num, _base, branch, what):
+    """check_defects for a PR or MR goes_ready finds this command taking out of draft (or retargeting while ready): its number, else the open
+    MR of branch (a `glab mr update` naming none), read only when a line names an MR of its project, and one glab can't find blocks there."""
+    if not repo or num is None and branch is None: return  # a create (no number, no branch) opens a PR or MR no line names yet
+    if p == 'gh': return check_defects(f'{repo}#{num}'.lower(), what)
+    if not num:
+        if not any((t or '').startswith(f'{repo}!'.lower()) for _, t, _, _ in all_defects()): return
+        mrs = glab_get(repo, f"merge_requests?state=opened&source_branch={urllib.parse.quote(branch or '')}")
+        if not (isinstance(mrs, list) and mrs and isinstance(mrs[0], dict) and str(mrs[0].get('iid', '')).isdigit()):
+            block(f"a defects-open.md line names an MR of {repo}, and glab finds no open MR from {branch or 'this checkout'}, so whether this is it can't be checked: pass the MR's number")
+        num = str(mrs[0]['iid'])
+    check_defects(f'{repo}!{num}'.lower(), what)
+
+GLAB_UPDATE_VALUED = {'-a', '--assignee', '--attach', '-d', '--description', '--description-file', '-l', '--label', '-m', '--milestone',
+                      '--reviewer', '--state', '--target-branch', '-t', '--title', '-u', '--unlabel', '-R', '--repo'}  # docs.gitlab.com/cli/mr/update
+def mr_target(a, run_dir):
+    """(repo, iid, branch) of the MR `glab mr update <a>` acts on, for goes_ready: its positional iid, MR URL
+    (whose project it is, whatever -R says) or branch, else the checked-out branch; never an option's value. repo is `<host>/<path>`, as
+    gitlab_repo gives it; None when it can't be told."""
+    ref = next((x for i, x in enumerate(a) if not x.startswith('-') and not (i and a[i - 1] in GLAB_UPDATE_VALUED)), '')
+    if m := re.match(r'https?://([^/]+)/(.+?)/-/merge_requests/(\d+)', ref): return f'{m[1]}/{m[2]}', m[3], None  # gitlab_repo's form
+    repo = gitlab_repo(a, run_dir)
+    if ref.isdigit(): return repo, ref, None
+    return repo, None, ref or subprocess.run(['git', '-C', known(run_dir), 'symbolic-ref', '--short', '-q', 'HEAD'], capture_output=True, text=True).stdout.strip()
+
 NEED_DRAFT ="post from a draft file (--body-file /abs/drafts/<name>.md, -F body=@/abs/drafts/<name>.md or --input) that passed the gate"
 
 def recorded(step, after, repo):
@@ -951,6 +1013,7 @@ def check(t, has_cd):
                 check_patches(repo)
                 if prs:  # each branch it publishes, whichever is checked out
                     for _, _, local in heads: need_approach(repo, f"this push ({'; '.join(why)})", local)
+                for pr in prs: check_defects(thread_of_pr(pr['url']), 'this push')
                 for pr in prs:
                     if pr['isDraft'] or push_before_gates(pr['url']): continue
                     sha = pr['sha'] or block(f"this push's commit for {pr['url']} can't be told, so its records can't be checked: push a branch or a sha written out")
@@ -986,6 +1049,7 @@ def check(t, has_cd):
         check_workflow('`gh pr create`', known(run_dir), [git_head(run_dir)])
         need_approach(run_dir, '`gh pr create`', opened_branch(a[2:], ['--head', '-H']))
     if ready := goes_ready(p, a, env, run_dir):
+        ready_defects(p, *ready, f"`{p} {'api' if a[:1] == ['api'] else ' '.join(a[:2])}`")
         head, missing = missing_steps(known(run_dir))
         if missing:
             block(f"HEAD {head[:10] or '(no git repo in cwd)'} has no pr-steps {', '.join(missing)} record: run those steps of mergeworthy:converge's pipeline on the final HEAD, each ending with `pr-steps <step> <its output>` (again after a base merge); or open it with --draft")

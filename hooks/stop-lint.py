@@ -351,6 +351,18 @@ if watcher_on and not child:
                   "with what you found so far and when the answer comes (`holding: <reply url> <ETA>`, mergeworthy:reply step 3).",
                   file=sys.stderr)
             sys.exit(2)
+# A known defect in an open PR's own diff (defects-open.md, task §Files) is named once at a turn's end: pre-bash-guard holds the PR's
+# next push and its ready until the line is cleared or the PR's body shows it
+if watcher_on and not child:
+    for wd in sorted(own_dirs):
+        told_file = os.path.join(wd, 'defects-told')
+        told = open(told_file).read().splitlines() if os.path.exists(told_file) else []
+        if unseen := [x for x in work_folder.open_defects([wd]) if x[3] not in told]:
+            with open(told_file, 'a') as t: t.write(''.join(x[3] + '\n' for x in unseen))
+            print(f"defects-open.md in {wd} has open lines ({'; '.join(x[3][:120] for x in unseen)}): fix each in its own commit and clear it as "
+                  "`fixed in <sha>: …`; until then, pre-bash-guard holds its PR's next push and ready while the body's notes table lacks its bug row (mergeworthy:task §Dispositions)."
+                  + ('' if all(x[1] for x in unseen) else " A line names its PR first: `<owner/repo#N>: <the defect>`, an MR `gitlab.com/<path>!N: …`."), file=sys.stderr)
+            sys.exit(2)
 # A promise posted with a time (`by 2026-10-12T17:30Z`, `by 18:00 UTC`, in its PROMISED line or its draft) is kept by then: past it,
 # a line still opening with PROMISED, not cleared by the commit or link that delivers it (task §Files), blocks the turn
 if watcher_on and not child:

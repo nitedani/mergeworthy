@@ -29,7 +29,7 @@ WORDS = {
         'effort': ('low', 'medium', 'high', 'xhigh', 'max', 'ultra'), 'effort_word': 'effort',
         'blocks': ('Approach', 'Loop A', 'Loop B', 'Refactor pass', 'Fresh read', 'Gates'),  # converge §Evidence blocks
         'note': ('Note', 'Remark'),
-        'notes': ('Note', 'Kind', 'Blocks merge', 'Next'), 'kinds': ('bug', 'limitation', 'not a regression'),
+        'notes': ('Note', 'Kind', 'Blocks merge', 'Next'), 'kinds': ('bug', 'limitation', 'not a regression'), 'yes': 'yes',  # Blocks merge
         'imposed': 'imposed by',
         'decision': 'Decision', 'picked': ('I picked (x) because …', r'\bI picked \([a-z]\)'),
         'see': 'What you should see',  # pull-request §Body
@@ -48,7 +48,7 @@ WORDS = {
         'effort': ('alacsony', 'közepes', 'magas', 'nagyon magas', 'maximális', 'ultra'), 'effort_word': 'erőfeszítés',
         'blocks': ('Megközelítés', 'Loop A', 'Loop B', 'Refaktorálás', 'Friss olvasás', 'Ellenőrzések'),
         'note': ('Megjegyzés',),
-        'notes': ('Megjegyzés', 'Fajta', 'Blokkolja a beolvasztást', 'Következő'), 'kinds': ('hiba', 'korlát', 'nem regresszió'),
+        'notes': ('Megjegyzés', 'Fajta', 'Blokkolja a beolvasztást', 'Következő'), 'kinds': ('hiba', 'korlát', 'nem regresszió'), 'yes': 'igen',
         'imposed': 'szabja meg',
         'decision': 'Döntés', 'picked': ('Az (x) lehetőséget választottam, mert …', r'\([a-z]\)[^\n]*\bválasztottam\b'),
         'see': 'Amit látni fogsz',
