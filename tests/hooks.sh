@@ -3084,6 +3084,13 @@ import sys; sys.path.insert(0, sys.argv[1]); import shellcmd as s
 print(*[s.api_call(a)[4] for a in (['-X', 'PUT', 'repos/o/r/collaborators/u', '-f', 'permission=push'], ['-X', 'PATCH', 'user/repository_invitations/7'])])
 PY2
 )"
+check "a branch's protection rule posts no text, from fields or a JSON file; a comment in a repo named protection still posts" "False False True" "$(python3 - "$R/hooks" <<'PY2'
+import sys; sys.path.insert(0, sys.argv[1]); import shellcmd as s
+print(*[s.api_call(a)[4] for a in (['-X', 'PUT', 'repos/o/r/branches/main/protection', '--input', 'rule.json'],
+                                   ['-X', 'POST', 'repos/o/r/branches/main/protection/restrictions/users', '-f', 'users[]=u'],
+                                   ['repos/o/protection/issues/1/comments', '-f', 'body=x'])])
+PY2
+)"
 check "a comment in a repo named like a no-text route still posts; a reaction by full URL doesn't" "True True False" "$(python3 - "$R/hooks" <<'PY2'
 import sys; sys.path.insert(0, sys.argv[1]); import shellcmd as s
 print(*[s.api_call(a)[4] for a in (['repos/o/collaborators/issues/1/comments', '-f', 'body=x'], ['repos/labels/r/issues/1/comments', '-f', 'body=x'],

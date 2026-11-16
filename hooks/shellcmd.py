@@ -1007,7 +1007,8 @@ def opt(t, names):
     return vals
 
 NO_TEXT = re.compile(r'(?:repos/[^/]+/[^/]+/(?:.+/)?(?:reactions|rerun[\w-]*|dispatches|labels|assignees|requested_reviewers)(?:/[^/]+)?'
-                     r'|repos/[^/]+/[^/]+/(?:collaborators|invitations)/[^/]+|user/repository_invitations/\d+)')
+                     r'|repos/[^/]+/[^/]+/(?:collaborators|invitations)/[^/]+|user/repository_invitations/\d+'
+                     r'|repos/[^/]+/[^/]+/branches/[^/]+/protection(?:/.+)?)')
 THREAD = re.compile(r'repos/[^/]+/[^/]+/(?:issues|pulls)/\d+')
 NO_TEXT_FIELD = re.compile(r'(?!body=|title=|state=)\w+=')  # a name computed when it runs may be either
 
