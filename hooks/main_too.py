@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Whether main's having a defect excuses it, decided by where the defect comes from (converge step 1, evidence step 4): a ruling
 or a layout-check.md line that says main has it names the `path:line` (or `path:a-b`) it comes from, a file HEAD tracks, outside
-every function the branch changes since base (`git diff -W`), else it excuses nothing. pr-steps reads it.
+every function the branch changes since the PR's base (`git diff -W`), else it excuses nothing. pr-steps reads it.
 `main_too.py layout <file the step records> <base>`: prints each layout-check.md line that fails, in the task's work folder holding
 the file (all of it) or else beside it, and exits 1 when one does."""
 import os, re, subprocess, sys
@@ -43,7 +43,7 @@ def misplaced(text, base):
         # a path or a file name with an extension is a citation; a bare word (`Makefile`) only when HEAD tracks it, so `10:30` is none
         if files or '/' in p or re.search(r'\w\.\w+$', p): places.append((p, files, int(a), int(b or a)))
     if not places: return 'it names no `path:line` the defect comes from'
-    if not base: return "there is no merge-base with origin's default branch to check its place against"
+    if not base: return "there is no merge-base with the PR's base branch to check its place against"
     funcs = changed(base)
     for p, files, a, b in places:
         if not files: return f'it names {p}, which HEAD does not track'

@@ -2324,6 +2324,13 @@ mt mt15 'already on main ./src/panel.tsx:6'; mt mt16 "already on main $G4/src/pa
 mt mt19 'already on main ./src/panel.tsx:2'; mt mt20 "already on main $G4/src/panel.tsx:2"; mt mt21 'already on main since 10:30, src/panel.tsx:6'
 check "a main-too ruling citing ./path, an absolute path in the repo, a Makefile or Dockerfile line outside the changed functions records; ./path or the absolute path inside one is refused; a time is no citation" "0 0 0 0 1 1 0" \
   "$(prs4 verify "$T/mt15.md") $(prs4 verify "$T/mt16.md") $(prs4 verify "$T/mt17.md") $(prs4 verify "$T/mt18.md") $(prs4 verify "$T/mt19.md") $(prs4 verify "$T/mt20.md") $(prs4 verify "$T/mt21.md")"
+# a stacked PR on fix (gh's baseRefName): the place is measured from fix, so one() that fix edits is no longer this branch's
+g4 checkout -q -b kid; sed -i 's/return 2/return 22/' "$G4/src/panel.tsx"; g4 commit -q -am c; g4 update-ref refs/remotes/origin/fix fix; printf 'fix\n' > "$FX/pr_view_current"
+mt mt22 'already on main (src/panel.tsx:2)'; mt mt23 'already on main (src/panel.tsx:6)'
+mkdir -p "$LW/walk/C-r2"; lay 'permissions-390.png — the command wraps mid-word: main too (src/panel.tsx:2)' l6; r6=$(prs4 verify "$LW/l6.md")
+lay 'permissions-390.png — the command wraps mid-word: main too (src/panel.tsx:6)' l7; r7=$(prs4 verify "$LW/l7.md")
+check "a stacked PR: a defect it inherits from its parent's edited function records, in a RULED line and a layout line; one in a function it edits is refused" "0 1 0 1" "$(prs4 verify "$T/mt22.md") $(prs4 verify "$T/mt23.md") $r6 $r7"
+rm -rf "$LW" "$FX/pr_view_current"
 # pr-steps verify: a diff that touches bodies or streams needs code §No regressions' list answered by name
 G3="$T/prs3"; mkdir -p "$G3"; git -C "$G3" init -q -b main; git -C "$G3" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 git -C "$G3" update-ref refs/remotes/origin/main HEAD; git -C "$G3" checkout -q -b fix
