@@ -2316,10 +2316,11 @@ lay 'permissions-390.png — the command wraps mid-word: main too (src/panel.tsx
 lay 'permissions-390.png — OK' l4; printf 'pnpm test -> exit 0 (3 tests)\n' > "$LW/l4.md"; r4=$(prs4 gates "$LW/l4.md"); rm -rf "$LW"
 check "BLOCK: a layout check's OK line with a defect after it, quoted, and a main-too defect line inside a changed function, wherever the work folder holds it; one outside, and a bare OK, record" "1 1 1 0 0" "$r1 $n1 $r2 $r3 $r4"
 mt mt9 'this also occurs on the default branch panel.tsx:2'; mt mt10 'the baseline has it, src/panel.tsx:2'; mt mt11 'the padding already exists (src/panel.tsx:2)'
-mt mt12 'the existing classes do it (src/panel.tsx:2)'; mt mt13 'the base branch has it too (src/panel.tsx:2)'; mt mt14 'this also occurs on the default branch panel.tsx:6'
+mt mt12 'a preexisting defect (src/panel.tsx:2)'; mt mt13 'the base branch has it too (src/panel.tsx:2)'; mt mt14 'this also occurs on the default branch panel.tsx:6'
 mkdir -p "$LW/walk/C-r2"; lay 'permissions-390.png — the command wraps mid-word, this also occurs on the default branch (src/panel.tsx:2)' l5; r5=$(prs4 verify "$LW/l5.md"); rm -rf "$LW"
-check "BLOCK: a ruling saying the default branch, the base branch or the baseline has it, or that it already exists, naming a line inside a changed function, in a RULED line and a layout line; outside, it records" "1 1 1 1 1 0 1" \
-  "$(prs4 verify "$T/mt9.md") $(prs4 verify "$T/mt10.md") $(prs4 verify "$T/mt11.md") $(prs4 verify "$T/mt12.md") $(prs4 verify "$T/mt13.md") $(prs4 verify "$T/mt14.md") $r5"
+mt mt24 'not a bug; the existing force-push policy refuses them first'
+check "BLOCK: a ruling saying the default branch, the base branch or the baseline has it, that it already exists or is preexisting, naming a line inside a changed function, in a RULED line and a layout line; outside, it records; an existing thing named in a ruling that says nothing of main records" "1 1 1 1 1 0 1 0" \
+  "$(prs4 verify "$T/mt9.md") $(prs4 verify "$T/mt10.md") $(prs4 verify "$T/mt11.md") $(prs4 verify "$T/mt12.md") $(prs4 verify "$T/mt13.md") $(prs4 verify "$T/mt14.md") $r5 $(prs4 verify "$T/mt24.md")"
 mt mt15 'already on main ./src/panel.tsx:6'; mt mt16 "already on main $G4/src/panel.tsx:6"; mt mt17 'already on main Makefile:2'; mt mt18 'already on main (Dockerfile:3)'
 mt mt19 'already on main ./src/panel.tsx:2'; mt mt20 "already on main $G4/src/panel.tsx:2"; mt mt21 'already on main since 10:30, src/panel.tsx:6'
 check "a main-too ruling citing ./path, an absolute path in the repo, a Makefile or Dockerfile line outside the changed functions records; ./path or the absolute path inside one is refused; a time is no citation" "0 0 0 0 1 1 0" \
