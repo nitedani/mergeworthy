@@ -2331,6 +2331,8 @@ wr 'already on main panel.tsx:2' w1; r1=$(prs4 verify "$LW/w1.md"); n1=$(grep -c
 wr 'already on main panel.tsx:6' w2; r2=$(prs4 verify "$LW/w2.md"); wr 'a bug, fixed here; main has it too (panel.tsx:2)' w3; r3=$(prs4 verify "$LW/w3.md")
 check "BLOCK: a walk's RULED line saying main has it, inside a changed function, quoted; outside one, or ruled a bug, it records" "1 1 0 0" "$r1 $n1 $r2 $r3"
 mkdir -p "$LW/repo-b-walk"; printf 'b-390.png — label clipped, main too, from b.tsx:6\n' > "$LW/repo-b-walk/layout-check.md"
+wr 'already on main panel.tsx:2' w6; touch -d '2020-01-01' "$LW/walk/final.md"; r6=$(prs4 verify "$LW/w6.md")
+check "a walk's ruling written before this branch was made is earlier work's, in a folder holding several branches: it records" "0" "$r6"
 wr 'already on main (web/b.tsx:2)' w4; r4=$(prs4 verify "$LW/w4.md"); wr 'already on main (web/b.tsx:2, src/panel.tsx:2)' w5; r5=$(prs4 verify "$LW/w5.md"); rm -rf "$LW"
 check "a layout line or walk ruling citing only files this checkout doesn't track belongs to another repo and records; one also citing a changed function here is refused" "0 1" "$r4 $r5"
 # a stacked PR on fix (gh's baseRefName): the place is measured from fix, so one() that fix edits is no longer this branch's

@@ -63,13 +63,15 @@ def misplaced(text, base, foreign=False):
 
 
 def checks(record):
-    """The .md files of the task's work folder holding record, past its checkouts and node_modules; outside one, the layout-check.md beside it."""
+    """The .md files of the task's work folder holding record, written since this branch was made, past its checkouts and node_modules; outside one, the layout-check.md beside it."""
     if not (root := work_folder.task_of(record)):
         yield from (f for f in [os.path.join(os.path.dirname(os.path.abspath(record)), 'layout-check.md')] if os.path.isfile(f))
         return
+    # a file older than this checkout's branch (its reflog's first line) is earlier work's, in a folder that holds several branches'
+    born = float((git('reflog', 'show', '--format=%ct', git('branch', '--show-current').strip() or 'HEAD').split() or [0])[-1])
     for d, sub, names in os.walk(root):
         sub[:] = [s for s in sub if s != 'node_modules' and not os.path.exists(os.path.join(d, s, '.git'))]
-        yield from (os.path.join(d, n) for n in names if n.endswith('.md'))
+        yield from (f for n in names if n.endswith('.md') and os.path.getmtime(f := os.path.join(d, n)) >= born)
 
 
 def task(record, base):
