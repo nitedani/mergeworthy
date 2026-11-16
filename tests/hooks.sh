@@ -4043,6 +4043,15 @@ check "a merge of the base in the history is no change either: the 5th change si
 mc commit -q -m p10; mc checkout -q -b side; for i in 1 2 3 4 5 6; do echo "s$i" >> "$SM/b.py"; mc add b.py; mc commit -qm "s$i"; done
 mc checkout -q fix; mc merge -q --no-ff --no-edit side; echo f1 >> "$SM/b.py"; git -C "$SM" add b.py
 check "the commits a merge of another branch brings in are not the branch's own: its next change of their file passes" 0 "$(bg 'git commit -m f1' "$SM")"
+# a long branch: a commit 30 commits after the review starts as many git processes as one right after it (#204)
+SL="$T/simpl"; git init -q -b main "$SL"; lc() { git -C "$SL" -c user.name=t -c user.email=t@t commit -q --trailer 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>' "$@"; }
+echo 0 > "$SL/a.py"; git -C "$SL" add -A; lc -m base; git -C "$SL" update-ref refs/remotes/origin/main HEAD; git -C "$SL" checkout -q -b fix; echo 1 >> "$SL/a.py"; lc -am reviewed
+(cd "$SL" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null)
+mkdir "$T/gitn"; printf '#!/bin/sh\necho >> "%s"\nexec "%s" "$@"\n' "$T/gitn/n" "$(command -v git)" > "$T/gitn/git"; chmod +x "$T/gitn/git"
+gitn() { : > "$T/gitn/n"; echo "$(PATH="$T/gitn:$PATH" bg 'git commit -m l' "$SL") $(wc -l < "$T/gitn/n")"; }  # the commit's exit code, the git processes the guard started
+echo 2 >> "$SL/a.py"; git -C "$SL" add a.py; n1=$(gitn); lc -m l
+for i in $(seq 30); do echo 0 > "$SL/b$i.py"; git -C "$SL" add "b$i.py"; lc -m "b$i"; done; echo 3 >> "$SL/a.py"; git -C "$SL" add a.py; n31=$(gitn)
+check "a commit on a branch 30 commits longer passes with the same number of git processes" "0 0 0" "${n1% *} ${n31% *} $((${n31#* } - ${n1#* }))"
 # a suite named test<Name> is a test: its changes are no drift (#93's demo/testRun.ts); src/util.ts is code
 SH="$TASKW/suite"; mkdir -p "$SH/demo" "$SH/src"; git init -q -b main "$SH"; hc() { git -C "$SH" -c user.name=t -c user.email=t@t commit -q --trailer 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>' "$@"; }
 echo 'export const testRun = () => {}' > "$SH/demo/testRun.ts"; echo "import { testRun } from './testRun'; testRun('pnpm run dev')" > "$SH/demo/test-dev.test.ts"; echo 'export const util = 0' > "$SH/src/util.ts"

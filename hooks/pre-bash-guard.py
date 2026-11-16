@@ -557,17 +557,21 @@ def check_patches(d, pending=None, amend=False):
     g = lambda *a: subprocess.run(['git', '-C', d, *a], capture_output=True, text=True).stdout
     base = g('symbolic-ref', '-q', '--short', 'refs/remotes/origin/HEAD').strip() or 'origin/main'
     if pending is not None and g('rev-parse', '-q', '--verify', 'MERGE_HEAD').strip(): pending = []
-    count, reviewed = {}, False
     commits = g('rev-list', '--reverse', '--first-parent', 'HEAD', '--not', base).split()
+    start = None  # the commit the counts start after
     for c in commits:
-        files = [f for f in g('diff-tree', '--no-commit-id', '--name-only', '-r', '-z', c).split('\0') if f]  # none for a merge commit
-        if files and not AGENT_TRAILER.search(g('log', '-1', '--format=%B', c)): files = []
-        if amend and c == commits[-1]: pending, files = sorted(set(pending or []) | set(files)), []  # the amended commit is the pending one
-        for f in files if reviewed else []:
-            count[f] = count.get(f, 0) + 1
         steps = {l.split()[0] for l in open(RECORDS + c) if l.split()} if os.path.exists(RECORDS + c) else set()
-        if 'finality' in steps or not reviewed and steps & {'verify', 'small', 'shape', 'reverify', 'fresh'}: count, reviewed = {}, True
-    for f in (pending or []) if reviewed else []: count[f] = count.get(f, 0) + 1
+        if 'finality' in steps or not start and steps & {'verify', 'small', 'shape', 'reverify', 'fresh'}: start = c
+    if not start: return
+    count = {}
+    # per commit `\0<sha>\n<message>\0`, then `\n<file>\0<file>\0` (none for a merge commit): no part is empty, so `\0\0` is only where a commit ends
+    log = g('log', '--first-parent', '--reverse', '--no-diff-merges', '--no-renames', '--name-only', '-z', '--format=%x00%H%n%B', f'{start}..HEAD')
+    for commit in log[1:-1].split('\0\0'):
+        message, _, names = commit.partition('\0\n')
+        files = names.split('\0') if names and AGENT_TRAILER.search(message) else []
+        if amend and message.startswith(commits[-1]): pending, files = sorted(set(pending or []) | set(files)), []  # the amended commit is the pending one
+        for f in files: count[f] = count.get(f, 0) + 1
+    for f in pending or []: count[f] = count.get(f, 0) + 1
     over = [f for f in (count if pending is None else pending) if count.get(f, 0) > 5 and not NOT_CODE.search(f)]
     gen = testpaths.generated(d, over) if over else set()
     if over := [f for f in over if f not in gen]:
