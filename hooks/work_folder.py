@@ -166,7 +166,7 @@ def open_defects(folders):
             if not l or l.startswith('#') or body.lower().startswith('fixed in '): continue
             m = re.match(r'([\w./-]+(?:#|!)\d+):\s+(\S.*)', body)
             pr = m and m[1].lower()
-            out.append((f, 'gitlab.com/' + pr if pr and '!' in pr and '.' not in pr.split('/')[0] else pr, m[2] if m else body, l))
+            out.append((f, 'gitlab.com/' + pr if pr and '!' in pr and not pr.startswith('gitlab.com/') else pr, m[2] if m else body, l))
     return out
 
 

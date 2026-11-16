@@ -2461,7 +2461,19 @@ check "BLOCK: glab mr update --ready with an open line for the MR and no row in 
 check "BLOCK: a line naming the MR without its host is on gitlab.com" 2 "$(echo 'acme/app!5: the MR leaks a timer' > "$TASKW/defects-open.md"; glready)"
 echo '{"description": "| Note | Kind | Blocks merge | Next |\n|---|---|---|---|\n| The MR leaks a timer | bug | yes | the next push |"}' > "$GB"
 check "with the row in the MR's description, it passes" 0 "$(glready)"
-check "BLOCK: with an open line for an MR of the project, a ready naming no MR, asking for its number" "2 1" "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"glab mr update --ready -R gitlab.com/acme/app"},"cwd":sys.argv[1]}))' "$G2" | python3 "$R/hooks/pre-bash-guard.py" >/dev/null 2>"$T/err"; echo $?) $(grep -c 'pass its number' "$T/err")"
+check "BLOCK: with an open line for an MR of the project, a ready naming no MR, asking for its number" "2 1" "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"glab mr update --ready -R gitlab.com/acme/app"},"cwd":sys.argv[1]}))' "$G2" | python3 "$R/hooks/pre-bash-guard.py" >/dev/null 2>"$T/err"; echo $?) $(grep -c "pass the MR's number" "$T/err")"
+# the MR the command acts on: its positional iid, URL or branch (else the checked-out one), never an option's value (#197 Loop A 1)
+glr() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$G2" | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err" >/dev/null; echo $?; }
+echo '{"description": "No notes."}' > "$GB"; echo 'gitlab.com/acme/app!5: the MR leaks a timer' > "$TASKW/defects-open.md"
+GLB="$FX/projects_acme%2Fapp_merge_requests_state_opened_source_branch_"
+echo '[{"iid": 7}]' > "${GLB}other-branch"; echo '[{"iid": 5}]' > "${GLB}feat"; echo '[]' > "${GLB}nomr"
+check "BLOCK: glab mr update naming MR 5 after an option's number, or by its URL with another -R; a branch whose MR is 5" "2 2 2" \
+  "$(glr 'glab mr update --milestone 6 5 --ready -R gitlab.com/acme/app') $(glr 'glab mr update https://gitlab.com/acme/app/-/merge_requests/5 --ready -R gitlab.com/acme/other') $(glr 'glab mr update feat --ready -R gitlab.com/acme/app')"
+check "a branch whose open MR is another passes; a branch with no open MR blocks only in a project a line names" "0 2 1 0" \
+  "$(glr 'glab mr update other-branch --ready -R gitlab.com/acme/app') $(glr 'glab mr update nomr --ready -R gitlab.com/acme/app') $(grep -c 'nomr' "$T/err") $(glr 'glab mr update nomr --ready -R gitlab.com/acme/other')"
+rm "${GLB}other-branch" "${GLB}feat" "${GLB}nomr"
+echo 'acme.inc/app!5: the MR leaks a timer' > "$TASKW/defects-open.md"
+check "BLOCK: a bare path with a dotted namespace is that gitlab.com project (#197 Loop A 3)" 2 "$(glr 'glab mr update 5 --ready -R gitlab.com/acme.inc/app')"
 rm "$GB" "$TASKW/defects-open.md"
 printf 'm\n' > "$G2/m"; git -C "$G2" add m; git -c user.name=maint -c user.email=m@m -C "$G2" commit -q -m "a maintainer's tweak"
 check "a maintainer's commit on a converged head carries its steps" 0 "$(ready)"
@@ -3339,6 +3351,11 @@ body '| The wrapped facts line starts with "·" at 390 px | limitation | no | no
 check "BLOCK: a row for it that isn't Kind bug, Blocks merge yes doesn't count" 2 "$(bg "$PV" "$CK")"
 body '| The wrapped facts line starts with  "·" at 390 px | Bug | Yes | the next push |'
 check "with the row in the body, the push passes and gh pr ready waits only for its records" "0 2 0" "$(bg "$PV" "$CK") $(bg 'gh pr ready 3675 -R vikejs/vike' "$CK") $(grep -c 'wrapped facts' "$T/err")"
+echo 'vikejs/vike#3675: a | b crashes' > "$TK2/defects-open.md"
+body '| A \| b crashes | bug | yes | fix |'
+check "a Note with an escaped pipe matches its line; BLOCK: Blocks merge yesterday, or Kind bugfix, isn't the row (#197 Loop A 2)" "0 2 2" \
+  "$(bg "$PV" "$CK") $(body '| a \| b crashes | bug | yesterday | fix |'; bg "$PV" "$CK") $(body '| a \| b crashes | bugfix | yes | fix |'; bg "$PV" "$CK")"
+echo '- vikejs/vike#3675: the wrapped facts line starts with "·"' > "$TK2/defects-open.md"
 rm "$PB"
 check "BLOCK: a body gh can't read, with an open line, blocks the push" "2 1" "$(bg "$PV" "$CK") $(grep -c "couldn't read" "$T/err")"
 echo '- fixed in abc1234: vikejs/vike#3675: the wrapped facts line starts with "·"' > "$TK2/defects-open.md"; echo 'vikejs/vike#9: another PR' >> "$TK2/defects-open.md"

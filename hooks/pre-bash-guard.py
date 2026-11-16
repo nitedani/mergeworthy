@@ -3,7 +3,7 @@
 Checks each simple command separately (shellcmd.parse: chains, substitutions, `bash -c`; heredoc bodies and quoted text are data).
 It fails closed: a command it can't parse, a record it can't find or a state gh can't read blocks what it guards.
 MERGEWORTHY_MERGE=reviewer blocks every `gh pr merge`."""
-import glob, itertools, json, re, sys, os, hashlib, subprocess
+import glob, itertools, json, re, sys, os, hashlib, subprocess, urllib.parse
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
 import shellcmd
@@ -665,32 +665,44 @@ def all_defects():
     """Every work folder's open defects-open.md lines (work_folder.open_defects): a line names its PR, whichever session wrote it."""
     return work_folder.open_defects(glob.glob(os.path.join(work_folder.ROOT, '*')) + glob.glob(os.path.expanduser('~/*-work')))
 
+def glab_get(repo, ep):
+    """`glab api <ep>` on repo's (<host>/<path>) project, parsed; None when glab can't read it."""
+    host, path = repo.split('/', 1)
+    try:
+        r = subprocess.run(['glab', 'api', '--hostname', host, f"projects/{urllib.parse.quote(path, safe='')}/{ep}"], capture_output=True, text=True, timeout=30)
+        return json.loads(r.stdout) if r.returncode == 0 else None
+    except (OSError, subprocess.TimeoutExpired, ValueError): return None
+
 def check_defects(thread, what):
     """A known defect in an open PR's own diff, not yet fixed, is in its body before the next push or ready (task §Dispositions): each open
     line of a work folder's defects-open.md naming thread (work_folder.open_defects) needs a row of the live body's notes table with Kind bug
-    and Blocks merge yes whose Note holds the line's words, case and spacing aside. A body gh or glab can't read blocks."""
+    and Blocks merge yes whose Note holds the line's words, case and spacing aside (cells split on unescaped pipes). A body gh or glab can't read blocks."""
     lines = [x for x in all_defects() if x[1] == thread]
     if not lines: return
     repo, sep, num = re.match(r'(.+)([#!])(\d+)$', thread).groups()
-    if sep == '#':
-        pr = gh_json(f'repos/{repo}/pulls/{num}'); body = pr.get('body') if isinstance(pr, dict) else None
-    else:
-        import urllib.parse
-        host, path = repo.split('/', 1)
-        try:
-            r = subprocess.run(['glab', 'api', '--hostname', host, f"projects/{urllib.parse.quote(path, safe='')}/merge_requests/{num}"], capture_output=True, text=True, timeout=30)
-            body = json.loads(r.stdout).get('description') if r.returncode == 0 else None
-        except (OSError, subprocess.TimeoutExpired, ValueError, AttributeError): body = None
+    pr = gh_json(f'repos/{repo}/pulls/{num}') if sep == '#' else glab_get(repo, f'merge_requests/{num}')
+    body = pr.get('body' if sep == '#' else 'description') if isinstance(pr, dict) else None
     if not isinstance(body, str):
         block(f"{'gh' if sep == '#' else 'glab'} couldn't read {thread}'s body, so whether it shows its open defects-open.md lines ({lines[0][3][:120]}) can't be checked: retry once it answers")
     norm = lambda x: ' '.join(x.lower().split())
-    notes = [norm(c[0]) for l in body.splitlines() if l.strip().startswith('|')
-             and len(c := [x.strip() for x in l.strip().strip('|').split('|')]) >= 4 and c[1].lower() == 'bug' and c[2].lower().startswith('yes')]
+    rows = [[c.strip().replace('\\|', '|') for c in re.split(r'(?<!\\)\|', l.strip())[1:]] for l in body.splitlines() if l.strip().startswith('|')]
+    notes = [norm(c[0]) for c in rows if len(c) >= 4 and c[1].lower() == 'bug' and c[2].lower() == 'yes']
     unshown = [x for x in lines if not any(norm(x[2]) in n for n in notes)]
     if unshown:
         f, _, defect, line = unshown[0]
         block(f"{f} has the open line `{line[:160]}`, and {thread}'s body has no notes-table row for it: before {what}, fix it in its own commit and clear the line "
-              f"as `fixed in <sha>: …`, or add the row `| {defect[:120]} | bug | yes | <Next> |` to the body (mergeworthy:task §Dispositions, writing §Forms)")
+              f"as `fixed in <sha>: …`, or add the row `| {defect[:120].replace('|', chr(92) + '|')} | bug | yes | <Next> |` to the body (mergeworthy:task §Dispositions, writing §Forms)")
+
+GLAB_UPDATE_VALUED = {'-a', '--assignee', '--attach', '-d', '--description', '--description-file', '-l', '--label', '-m', '--milestone',
+                      '--reviewer', '--state', '--target-branch', '-t', '--title', '-u', '--unlabel', '-R', '--repo'}  # docs.gitlab.com/cli/mr/update
+def mr_target(a, run_dir):
+    """(repo, iid, branch) of the MR `glab mr update <a>` acts on: its positional iid, MR URL (whose project it is, whatever -R says) or
+    branch, else the checked-out branch; never an option's value. repo None when it can't be told."""
+    ref = next((x for i, x in enumerate(a) if not x.startswith('-') and not (i and a[i - 1] in GLAB_UPDATE_VALUED)), '')
+    if m := re.match(r'https?://([^/]+)/(.+?)/-/merge_requests/(\d+)', ref): return f'{m[1]}/{m[2]}'.lower(), m[3], None
+    repo = gitlab_repo(a, run_dir)
+    if ref.isdigit(): return repo, ref, None
+    return repo, None, ref or subprocess.run(['git', '-C', known(run_dir), 'symbolic-ref', '--short', '-q', 'HEAD'], capture_output=True, text=True).stdout.strip()
 
 NEED_DRAFT ="post from a draft file (--body-file /abs/drafts/<name>.md, -F body=@/abs/drafts/<name>.md or --input) that passed the gate"
 
@@ -907,12 +919,15 @@ def check(t, has_cd):
         target = post_target('pr', a[2:], env, run_dir)
         check_refactor_ask(*target, comment=False)
         check_defects(f'{target[0]}#{target[1]}'.lower(), '`gh pr ready`')
-    if p == 'glab' and a[:2] == ['mr', 'update'] and ('--ready' in a or '-r' in a):
-        num = next((x for x in operands(a[2:]) if x.isdigit()), None)
-        if (repo := gitlab_repo(a[2:], run_dir)) and num:
-            check_defects(f'{repo}!{num}'.lower(), '`glab mr update --ready`')
-        elif repo and any((t or '').startswith(f'{repo}!'.lower()) for _, t, _, _ in all_defects()):
-            block("a defects-open.md line names an MR of this project, and this command names no MR: pass its number, so its body can be checked")
+    if p == 'glab' and a[:2] == ['mr', 'update'] and {'--ready', '-r'} & set(a):
+        repo, iid, branch = mr_target(operands(a[2:]), run_dir)
+        if repo and not iid and any((t or '').startswith(f'{repo}!'.lower()) for _, t, _, _ in all_defects()):  # a branch: its open MR, read only when a line could name it
+            mrs = glab_get(repo, f"merge_requests?state=opened&source_branch={urllib.parse.quote(branch or '')}")
+            if not (isinstance(mrs, list) and mrs and isinstance(mrs[0], dict) and str(mrs[0].get('iid', '')).isdigit()):
+                block(f"a defects-open.md line names an MR of {repo}, and glab finds no open MR from {branch or 'this checkout'}, so whether this is it can't be checked: pass the MR's number")
+            iid = str(mrs[0]['iid'])
+        if repo and iid:
+            check_defects(f'{repo}!{iid}'.lower(), '`glab mr update --ready`')
     if p == 'gh' and a[:2] == ['pr', 'create'] and '--help' not in a and '-h' not in a:
         check_workflow('`gh pr create`', known(run_dir), [git_head(run_dir)])
         need_approach(run_dir, '`gh pr create`', opened_branch(a[2:], ['--head', '-H']))
