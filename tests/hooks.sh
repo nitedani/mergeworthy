@@ -2510,6 +2510,10 @@ check "a branch whose open MR is another passes; a branch with no open MR blocks
 rm "${GLB}other-branch" "${GLB}feat" "${GLB}nomr"
 echo 'acme.inc/app!5: the MR leaks a timer' > "$TASKW/defects-open.md"
 check "BLOCK: a bare path with a dotted namespace is that gitlab.com project (#197 Loop A 3)" 2 "$(glr 'glab mr update 5 --ready -R gitlab.com/acme.inc/app')"
+# every form goes_ready takes an existing MR out of draft by reads its open lines (#197 Loop B R1)
+echo '{"description": "No notes.", "draft": true}' > "$GB"; echo 'gitlab.com/acme/app!5: the MR leaks a timer' > "$TASKW/defects-open.md"
+check "BLOCK: a title dropping Draft, an API PUT of draft=false and --ready each read MR 5's open line, naming it" "2 1 2 1 2 1" \
+  "$(glr 'glab mr update 5 --title Ready -R gitlab.com/acme/app') $(grep -c 'leaks a timer' "$T/err") $(glr 'glab api projects/acme%2Fapp/merge_requests/5 -X PUT -f draft=false') $(grep -c 'leaks a timer' "$T/err") $(glr 'glab mr update 5 --ready -R gitlab.com/acme/app') $(grep -c 'leaks a timer' "$T/err")"
 rm "$GB" "$FX"/projects_acme*_merge_requests_state_opened_scope_created_by_me_per_page_100 "$TASKW/defects-open.md"
 printf 'm\n' > "$G2/m"; git -C "$G2" add m; git -c user.name=maint -c user.email=m@m -C "$G2" commit -q -m "a maintainer's tweak"
 check "a maintainer's commit on a converged head carries its steps" 0 "$(ready)"
@@ -3391,6 +3395,11 @@ echo 'vikejs/vike#3675: a | b crashes' > "$TK2/defects-open.md"
 body '| A \| b crashes | bug | yes | fix |'
 check "a Note with an escaped pipe matches its line; BLOCK: Blocks merge yesterday, or Kind bugfix, isn't the row (#197 Loop A 2)" "0 2 2" \
   "$(bg "$PV" "$CK") $(body '| a \| b crashes | bug | yesterday | fix |'; bg "$PV" "$CK") $(body '| a \| b crashes | bugfix | yes | fix |'; bg "$PV" "$CK")"
+mkdir -p "$HOME/.mergeworthy/projects/vikejs"; printf '# vikejs/vike\n\nLanguage: hu\n' > "$HOME/.mergeworthy/projects/vikejs/vike.md"; echo 'vikejs/vike#3675: A sortörés hibás' > "$TK2/defects-open.md"
+body '| A sortörés hibás | hiba | igen | javítás |'
+check "under Language: hu, the row's kind and blocks-merge words are Hungarian, and so is the suggested row (#197 Loop B R2)" "0 2 1" \
+  "$(bg "$PV" "$CK") $(body '| Más | hiba | igen | x |'; bg "$PV" "$CK") $(grep -c '| A sortörés hibás | hiba | igen | <Next> |' "$T/err")"
+rm "$HOME/.mergeworthy/projects/vikejs/vike.md"
 echo '- vikejs/vike#3675: the wrapped facts line starts with "·"' > "$TK2/defects-open.md"
 rm "$PB"
 check "BLOCK: a body gh can't read, with an open line, blocks the push" "2 1" "$(bg "$PV" "$CK") $(grep -c "couldn't read" "$T/err")"
