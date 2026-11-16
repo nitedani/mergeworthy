@@ -100,6 +100,10 @@ fi
 [ -s "$out" ] || { echo "$out is empty: run the step and save its output" >&2; exit 1; }
 last=$(grep -v '^[[:space:]]*$' "$out" | tail -n1 || true)
 sha=$(git rev-parse HEAD)
+base=$(git merge-base HEAD "$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)" 2>/dev/null || true)
+# evidence step 4: each screenshot of a layout check is OK or names its defect, and main's having one excuses it only from outside the branch's functions
+bad=$(python3 "$(dirname "$(realpath "$0")")/../hooks/main_too.py" layout "$out" "$base") ||
+  { printf '%s\n' "a layout-check.md line, one per screenshot, is '<file name> — OK' or '<file name> — <the defect>', and a defect main has too names the path:line it comes from, outside the functions this branch changes (mergeworthy:evidence step 4):" "$bad" >&2; exit 1; }
 # build output, not code a reviewer reads: those of the paths on stdin, a line each, that testpaths.generated finds
 built() { python3 "$(dirname "$(realpath "$0")")/../hooks/testpaths.py" generated; }
 # numstat lines on stdin (core.quotePath=false: check-attr reads the path as it is) whose path (field 3) isn't build output
@@ -165,14 +169,15 @@ carries() {
   carry_holds "$full"
 }
 if [ "$step" != shape ] && [ "$step" != refactor ] && [ "$step" != gates ] && [ "$step" != quick ] && [ "$step" != finality ] && carries; then :; else
-base=$(git merge-base HEAD "$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)" 2>/dev/null || true)
 case "$step" in
   verify|reverify)
     [ "$last" = "NO BUGS" ] || [ "$step" = reverify -a "$last" = "NO LOOP B COMMITS" ] || ledger_ok || { echo "$out does not end with a line NO BUGS: fix what it found for round 2; after round 2, record it with --ledger <the loop's ledger>" >&2; exit 1; }
     [ "$step" = reverify ] || read_standards
     # A reproduced behavior dropped as harmless, and a claim no test or probe covers, are the main session's call: a later `RULED: <candidate>: <ruling>` line, its own
-    unruled=$(python3 - "$out" <<'EOF'
+    unruled=$(python3 - "$out" "$base" "$(dirname "$(realpath "$0")")/../hooks" <<'EOF'
 import re, sys
+sys.path.insert(0, sys.argv[3])
+import main_too
 lines, plain = open(sys.argv[1]).read().splitlines(), lambda l: re.sub(r'[*`]', '', l).strip().lower()
 item = re.compile(r'(\s*)([-*+]|\d+\.)\s')
 # each ruled list's outermost item indentation: a deeper item is a sub-bullet, covered by its item's RULED line
@@ -205,13 +210,14 @@ rulings = {i: [] for i, _, _ in items}
 for j, r in enumerate(lines):
     if not r.startswith('RULED:'): continue
     hits = [(len(n), -len(rulings[i]), i) for i, _, n in items if i < j and n and re.match(r'ruled:\s*' + re.escape(n) + r'\s*:', plain(r))]
-    if hits: rulings[max(hits)[2]].append(plain(r))
+    if hits: rulings[max(hits)[2]].append((plain(r), r))
 for i, l, name in items:
     if not rulings[i]:
         print(l)
-    elif all(re.search(r'not a regression|same as (on )?(main|master)|(main|master) does the same|pre-?existing|(also|too) on (main|master)|on (main|master) (too|as well)|masteren is', r.split(name, 1)[-1], re.I) and not re.search(r'outside the (files|change|code)|earn every line|no realistic usage|contrived|staged race', r, re.I)
-             and not re.match(r'\s*(a bug|bug|fix(ed)?\b)', r.split(name, 1)[-1].lstrip(': '), re.I) for r in rulings[i]):
-        print(l + "  <- 'on main too' is not a ruling: start it 'a bug', or say 'outside the code this change edits', or why no user meets it (code Earn every line, no realistic usage)")
+    # 'main has it too' excuses a defect only where it comes from outside the functions this branch changes: the ruling names that path:line
+    elif all(main_too.MAIN.search(why := r.split(name, 1)[-1]) and not re.search(r'earn every line|no realistic usage|contrived|staged race', r, re.I)
+             and not re.match(r'\s*(a bug|bug|fix(ed)?\b)', why.lstrip(': '), re.I) and (bad := main_too.misplaced(raw, sys.argv[2])) for r, raw in rulings[i]):
+        print(l + f"  <- main having it excuses nothing here: {bad}. Start the ruling 'a bug', name the path:line the defect comes from, outside the functions this branch changes, or say why no user meets it (code Earn every line, no realistic usage)")
 EOF
 )
     [ -z "$unruled" ] || { printf '%s\n' "every dropped candidate and untested claim goes to the main session, which rules on it in a later line 'RULED: <candidate>: <ruling>' (mergeworthy delegate/verifier.md, What counts):" "$unruled" >&2; exit 1; }

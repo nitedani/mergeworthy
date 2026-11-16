@@ -2265,7 +2265,7 @@ sed 's/^NO BUGS$/NO LOOP B COMMITS/' "$T/vr0.md" > "$T/vr2.md"; std "$T/vr0.md" 
 check "BLOCK: a dropped candidate whose reason is 'not a regression', quoting it, in verify and reverify; with a later RULED line naming it, it records" "1 1 1 0" "$(prs verify "$T/vr0.md") $(cd "$G" && bash "$R/bin/pr-steps" verify "$T/vr0.md" 2>&1 | grep -c '^- \*\*abort leaks a listener\*\*: Not a regression') $(prs reverify "$T/vr2.md") $(prs verify "$T/vr1.md")"
 printf 'slice 1\n## Tried and dropped\n- **abort leaks a listener**: Not a regression, main does the same\nRULED: abort leaks a listener: not a regression, main does the same\nNO BUGS\n' > "$T/vr4.md"; std "$T/vr4.md"
 printf 'slice 1\n## Tried and dropped\n- **abort leaks a listener**: Not a regression, main does the same\nRULED: abort leaks a listener: not a regression, and only a staged race reaches it (code Earn every line)\nNO BUGS\n' > "$T/vr5.md"; std "$T/vr5.md"
-check "BLOCK: a RULED line whose only reason is that main does the same; one citing Earn every line records" "1 1 0" "$(prs verify "$T/vr4.md") $(cd "$G" && bash "$R/bin/pr-steps" verify "$T/vr4.md" 2>&1 | grep -c 'is not a ruling') $(prs verify "$T/vr5.md")"
+check "BLOCK: a RULED line whose only reason is that main does the same; one citing Earn every line records" "1 1 0" "$(prs verify "$T/vr4.md") $(cd "$G" && bash "$R/bin/pr-steps" verify "$T/vr4.md" 2>&1 | grep -c 'main having it excuses nothing here: it names no .path:line') $(prs verify "$T/vr5.md")"
 printf 'slice 1\n## Tried and dropped\n- **abort leaks a listener**: Not a regression, main does the same\nRULED: abort leaks a listener: not a regression, main does the same, a self-found defect for the report\nNO BUGS\n' > "$T/vr4s.md"; std "$T/vr4s.md"
 check "BLOCK: a RULED line calling a main-too defect in the edited code self-found: it is fixed here" 1 "$(prs verify "$T/vr4s.md")"
 printf 'slice 1\n## Tried and dropped\n- `D=~/cfg` (tilde.sh): a nit.\n  - **Why a nit:** both fail closed, and it is rare.\nRULED: `D=~/cfg` (tilde.sh): a nit, no realistic usage (code Earn every line)\nNO BUGS\n' > "$T/vr6.md"; std "$T/vr6.md"
@@ -2289,6 +2289,23 @@ printf 'slice 1\n## Dropped\n  - grey boxes before data: designed. Nit.\n    - W
 printf 'slice 1\n## Dropped\n  - grey boxes before data: designed. Nit.\n    - Why: the data arrives later.\nRULED: grey boxes before data: a bug, fixed here\nNO BUGS\n' > "$T/vr19.md"; std "$T/vr19.md"
 printf 'slice 1\n## Dropped\nNone.\nI tried the loading and error paths; both behaved correctly.\nNO BUGS\n' > "$T/vr20.md"; std "$T/vr20.md"
 check "BLOCK: an indented list's outermost items are candidates, its deeper ones covered by their item's RULED line; prose in the list without '<candidate>: ' is none" "1 0 0" "$(prs verify "$T/vr18.md") $(prs verify "$T/vr19.md") $(prs verify "$T/vr20.md")"
+# a ruling or layout line saying main has the defect names the path:line it comes from, outside every function the branch changes (#194)
+G4="$T/prs4"; git init -q -b main "$G4"; g4() { git -C "$G4" -c user.name=t -c user.email=t@t "$@"; }; mkdir -p "$G4/src"
+printf 'function one() {\n  return 1\n}\n\nfunction two() {\n  return 2\n}\n' > "$G4/src/panel.tsx"; g4 add src; g4 commit -q -m a
+g4 update-ref refs/remotes/origin/main HEAD; g4 checkout -q -b fix; sed -i 's/return 1/return 11/' "$G4/src/panel.tsx"; g4 commit -q -am b
+prs4() { (cd "$G4" && bash "$R/bin/pr-steps" "$@" >/dev/null 2>"$T/prs4.err"; echo $?); }
+mt() { printf 'slice 1\n## Dropped\n- search padding: the magnifier covers the text, main too\nRULED: search padding: %s\nNO BUGS\n' "$2" > "$T/$1.md"; std "$T/$1.md"; }
+mt mt1 'not caused by this PR, the same classes are already on main (src/panel.tsx:2)'; mt mt2 'not caused by this PR, the same classes are already on main (src/panel.tsx:6)'
+mt mt3 'not caused by this PR, the same classes are already on main'; mt mt4 'already on main (src/nope.tsx:6)'; mt mt5 'already on main (panel.tsx:60)'
+mt mt6 'main does the same, outside the code this change edits'; mt mt7 'main too, from panel.tsx:5-6'; mt mt8 'already on main (src/panel.tsx:3)'
+check "BLOCK: a main-too ruling naming a changed line, an unchanged line of a changed function, no line, an untracked file (saying so), a line past the file's end, only the words 'outside the code'; naming lines outside, it records" "1 1 1 0 1 1 1 1 1 0" \
+  "$(prs4 verify "$T/mt1.md") $(grep -c 'src/panel.tsx:2 is inside a function' "$T/prs4.err") $(prs4 verify "$T/mt8.md") $(prs4 verify "$T/mt2.md") $(prs4 verify "$T/mt3.md") $(prs4 verify "$T/mt4.md") $(grep -c 'nope.tsx, which HEAD does not track' "$T/prs4.err") $(prs4 verify "$T/mt5.md") $(prs4 verify "$T/mt6.md") $(prs4 verify "$T/mt7.md")"
+LW="$HOME/.mergeworthy/work/lay"; mkdir -p "$LW/walk/C-r2"; lay() { printf '%s\n' "$1" > "$LW/walk/C-r2/layout-check.md"; printf 'slice 1: no bug\nNO BUGS\n' > "$LW/$2.md"; std "$LW/$2.md"; }
+lay 'permissions-390.png — OK (…). The command wraps mid-word, its copy button at the right edge: main too.' l1; r1=$(prs4 verify "$LW/l1.md"); n1=$(grep -c 'permissions-390.png — OK (' "$T/prs4.err")
+lay 'permissions-390.png — the command wraps mid-word: main too (src/panel.tsx:2)' l2; r2=$(prs4 verify "$LW/l2.md")
+lay 'permissions-390.png — the command wraps mid-word: main too (src/panel.tsx:6)' l3; r3=$(prs4 verify "$LW/l3.md")
+lay 'permissions-390.png — OK' l4; printf 'pnpm test -> exit 0 (3 tests)\n' > "$LW/l4.md"; r4=$(prs4 gates "$LW/l4.md"); rm -rf "$LW"
+check "BLOCK: a layout check's OK line with a defect after it, quoted, and a main-too defect line inside a changed function, wherever the work folder holds it; one outside, and a bare OK, record" "1 1 1 0 0" "$r1 $n1 $r2 $r3 $r4"
 # pr-steps verify: a diff that touches bodies or streams needs code §No regressions' list answered by name
 G3="$T/prs3"; mkdir -p "$G3"; git -C "$G3" init -q -b main; git -C "$G3" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 git -C "$G3" update-ref refs/remotes/origin/main HEAD; git -C "$G3" checkout -q -b fix
