@@ -2624,7 +2624,8 @@ check "BLOCK: with that PROMISED line, gh pr ready and a body edit (gh pr edit, 
 rm -rf "$WR"; sed -i "\#^$WR\$#d" "$HOME/.claude/gh-watch-dirs.txt"
 rm -f "$FX/repos_o_r_issues_7" "$FX/repos_o_r_pulls_7" "$FX/repos_o_r_pulls_7_commits_per_page_100" "$HOME/.claude/pr-steps/$AH" "$HOME/.claude/refactor-asks.txt"
 # ---------- preflight: no code in a repo and branch until the app was loaded in browser control ----------
-P="$T/pf"; mkdir -p "$P"; git -C "$P" init -q -b feat
+P="$T/pf"; mkdir -p "$P"; git -C "$P" init -q -b feat; git -C "$P" remote add origin https://github.com/o/pf.git  # a clone of a hosted repo, on a branch off its default one
+git -C "$P" -c user.name=t -c user.email=t@t commit -q --allow-empty -m base; git -C "$P" update-ref refs/remotes/origin/main HEAD; git -C "$P" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
 pf() { (cd "$P" && bash "$R/bin/pr-steps" preflight "$@" >/dev/null 2>&1; echo $?); }
 pfurl() { (cd "$P" && CHROME="$T/bin/fakechrome" FAKE_DOM="$1" bash "$R/bin/pr-steps" preflight https://app.test --host-resolver-rules=x >/dev/null 2>&1; echo $?); }
 pfedit() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"Edit","tool_input":{"file_path":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$T" | python3 "$R/hooks/pre-design-gate.py" 2>/dev/null; echo $?; }
@@ -2677,6 +2678,15 @@ git -C "$P" checkout -q -b docs
 check "none, because with its reason records" 0 "$(pf 'none, because it only changes a CLI flag')"
 check "an edit passes after it, with the branch's approach" 0 "$( (cd "$P" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null); pfedit "$P/a.ts")"
 check "preflight's Chrome runs muted and without the WSLg audio server" "2 2" "$( (cd "$P" && PULSE_SERVER=unix:/mnt/wslg/PulseServer FAKE_LOG="$T/chrome.log" CHROME="$T/bin/fakechrome" FAKE_DOM='<html><body>app</body></html>' bash "$R/bin/pr-steps" preflight https://app.test >/dev/null 2>&1); grep -c -- '--mute-audio' "$T/chrome.log") $(grep -c '^pulse=unset ' "$T/chrome.log")"
+# start records are owed only where the work can become a PR: not with no remote or only a gist, nor on a branch sharing no history with origin's default branch
+ow() { git init -q "$T/$1"; git -C "$T/$1" -c user.name=t -c user.email=t@t commit -q --allow-empty -m i; [ -z "${2:-}" ] || git -C "$T/$1" remote add origin "$2"; }
+owc() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"git commit -m x"},"cwd":sys.argv[1]}))' "$T/$1" | python3 "$R/hooks/pre-bash-guard.py" 2>&1 >/dev/null; }
+ow ow-none; ow ow-gist https://gist.github.com/abc123.git; ow ow-pics https://github.com/o/r.git
+git -C "$T/ow-pics" update-ref refs/remotes/origin/main HEAD; git -C "$T/ow-pics" checkout -q --orphan pics; git -C "$T/ow-pics" -c user.name=t -c user.email=t@t commit -q --allow-empty -m p
+check "an edit and a commit are free with no remote, with only a gist remote, and on an orphan branch of a clone with origin/main but no origin/HEAD" "0 0 0 0 0 0" \
+  "$(pfedit "$T/ow-none/a.ts") $(owc ow-none | grep -c 'pr-steps preflight\|pr-steps approach') $(pfedit "$T/ow-gist/a.ts") $(owc ow-gist | grep -c 'pr-steps preflight\|pr-steps approach') $(pfedit "$T/ow-pics/a.ts") $(owc ow-pics | grep -c 'pr-steps preflight\|pr-steps approach')"
+ow ow-unknown https://github.com/o/r.git
+check "BLOCK: with a hosted remote and neither origin/HEAD nor origin/main, an edit and a commit wait, naming git remote set-head" "2 1" "$(pfedit "$T/ow-unknown/a.ts") $(owc ow-unknown | grep -c 'git remote set-head origin -a')"
 # ---------- under T3 Code, Codex starts through delegate_task, not a shell ----------
 cx() { # <T3CODE_THREAD_ID, empty outside T3> <command>: the guard's exit code
   python3 -c 'import json,sys; print(json.dumps({"tool_input": {"command": sys.argv[1]}, "cwd": sys.argv[2]}))' "$2" "$T" \
