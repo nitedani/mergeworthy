@@ -1192,10 +1192,14 @@ waits = re.search(r'\b(until|while)\b[^\n]*\bsleep\b', cmd) if err else any(s.lo
 if waits and not d.get('tool_input', {}).get('run_in_background') and not by_agent(d):
     block('never wait in the foreground: the main session keeps working while agents and builds run. Rely on the task-completion notification, '
           'or run the wait with run_in_background (one notification when it ends)')
-# a Playwright install prunes the browser builds other sessions use from the shared ~/.cache/ms-playwright (agent.md §Machine)
+# a Playwright install prunes the browser builds other sessions use from the shared ~/.cache/ms-playwright (agent.md §Machine),
+# and a browser the machine already has needs none
 if any('playwright' in ' '.join(prog(x)) and 'install' in prog(x) for x in segs) and 'PLAYWRIGHT_BROWSERS_PATH=' not in cmd:
     block("a Playwright install deletes the browser builds other sessions use from the shared ~/.cache/ms-playwright: "
-          "install into a folder of your own, `PLAYWRIGHT_BROWSERS_PATH=<work folder>/.pw <the same command>`, and run the tests with the same variable")
+          "Run on a browser the machine already has first: an installed Google Chrome or Edge through Playwright's `channel: 'chrome'` (or `'msedge'`), "
+          "set in a config of your own in the work folder that extends the repo's. Only when the tests need a build no installed browser gives "
+          "(Firefox, WebKit, a pinned Chromium): install into a folder of your own, `PLAYWRIGHT_BROWSERS_PATH=<work folder>/.pw <the same command>`, "
+          "and run the tests with the same variable")
 # gate-pass is read on its own: this hook checks the gate record before the command runs, so a post in the same command
 # goes out on the old record even when gate-pass then refuses the draft (and a pipe hides that refusal)
 if any(prog(x)[:1] and os.path.basename(prog(x)[0]) == 'gate-pass' for x in segs) and \
