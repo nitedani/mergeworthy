@@ -112,6 +112,12 @@ def stopped(tid):
         return bool(r) and r[0] == 'interrupted' or bool(m) and asks_stop(m[0])
     return _db(ask, False)
 
+def settled(tid):
+    """True while T3 thread tid is settled (put away by the user, or by T3 after a week idle): any message it receives brings it back."""
+    r = _db(lambda c: c.execute("select json_extract(payload_json, '$.settledOverride') from orchestration_v2_projection_threads where thread_id = ?",
+                                (tid,)).fetchone(), None)
+    return bool(r) and r[0] == 'settled'
+
 def started(run_id):
     """True once T3 started the run, False while it can still start, None when it ended without starting, is gone or can't be read."""
     def ask(c):
