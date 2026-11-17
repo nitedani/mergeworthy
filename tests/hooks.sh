@@ -1273,6 +1273,9 @@ rm "$MR/.memory-order-repeated"
 launch "Follow $MB exactly" >/dev/null
 check "an agent launched on the brief holds the order" 0 "$(stop "$OC")"
 rm "$MR/.memory-order-repeated"; python3 "$R/bin/agent-job" done t >/dev/null
+python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":sys.argv[1]}}))' "Follow $MB exactly" | python3 "$R/hooks/pre-agent-dedupe.py" register
+check "a launch on the brief with no title or description holds the order too" 0 "$(stop "$OC")"
+rm "$MR/.memory-order-repeated"
 python3 -c 'import json; print(json.dumps({"type":"user","message":{"content":"Act as the implementation sub-agent for this task. Fix it."}})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":"Done."}]}}))' > "$T/tr.jsonl"
 check "a delegated sub-agent in the orchestrator's checkout never gets the order" 0 "$(stop "$OC")"
 # a T3 child as T3 starts one: its prompt opens with the brief, no introduction; T3's state links its thread to the parent's
@@ -1355,6 +1358,9 @@ check "BLOCK: a research brief with no Topic line" 2 "$(ag "$OC" 'Look into CSS'
 check "BLOCK: research the notes already cover, naming the file" "2 1" "$(ag "$OC" $'Look into CSS again\nTopic: tanstack client css' research) $(grep -c "$MR/css-research.md" "$T/err")"
 check "research passes once each covering file is named as checked" 0 "$(ag "$OC" $'Look into CSS once more\nTopic: tanstack client css\nChecked: '"$MR/css-research.md"' covers dev only' research)"
 check "research whose brief names the covering note under ~/.mergeworthy/work passes" 0 "$(ag "$OC" $'Look into CSS, building on '"$MR/css-research.md"$'\nTopic: tanstack client css' research)"
+printf 'Look into CSS, building on %s\nTopic: tanstack client css\n' "$MR/css-research.md" > "$MR/css-brief.md"
+check "research whose brief file names the covering note passes" 0 "$(ag "$OC" "Follow $MR/css-brief.md exactly" research)"
+rm "$MR/css-brief.md"
 check "research on a topic nothing covers passes" 0 "$(ag "$OC" $'Look into RSC\nTopic: flight streaming chunk order' research)"
 printf '# Design\n\nThe flight protocol.\n\nStreaming is out of scope.\n\nChunk order: later.\n' > "$MR/flight-design.md"
 check "a doc naming the topic's words only in separate paragraphs doesn't cover it" 0 "$(ag "$OC" $'Look into RSC\nTopic: flight streaming chunk order' research)"
