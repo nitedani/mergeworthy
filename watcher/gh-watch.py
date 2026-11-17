@@ -778,6 +778,7 @@ def unsent():
     return start, data[:data.rfind(b'\n') + 1]  # a line still being written goes with the next pass
 
 
+SEND_TIMEOUT = 60  # seconds a `t3 thread send` gets before it is stopped and T3's record decides whether it arrived
 _ticks, _t3_missing = [0], [None]  # tick() counts its passes; the pass in which the recorded t3 was first found missing
 
 
@@ -835,9 +836,17 @@ def wake_thread():
         return False
     if lines or late:
         msg = head + '\n'.join(lines + (['Unsorted after 30 minutes (mergeworthy:rules step 6):'] + late if late else []))
+        since = time.strftime('%Y-%m-%dT%H:%M:%S', time.gmtime(time.time() - 5))  # T3's created_at, UTC, a little before the send
         try:
-            r = subprocess.run([t3, 'thread', 'send', tid, '-'], input=msg, capture_output=True, text=True, timeout=60)
-            err = r.returncode and (r.stderr.strip().splitlines() or [f"exit {r.returncode}"])[-1]
+            p = subprocess.Popen([t3, 'thread', 'send', tid, '-'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            try:
+                _, out = p.communicate(msg, timeout=SEND_TIMEOUT)
+                err = p.returncode and (out.strip().splitlines() or [f"exit {p.returncode}"])[-1]
+            except subprocess.TimeoutExpired:  # SIGTERM, on which the CLI revokes the auth session it opened; a SIGKILL leaves it active (pingdotgg/t3code#36050)
+                p.terminate()
+                try: p.communicate(timeout=30)
+                except subprocess.TimeoutExpired: p.kill(); p.communicate()
+                err = '' if steward.received(tid, msg, since) else f"no answer in {SEND_TIMEOUT} s, and the thread doesn't hold the message"
             gone = deleted = err == f"Thread {tid} was not found."  # t3's answer for a deleted thread, exit 1
         except (OSError, subprocess.SubprocessError) as e:
             err, deleted, gone = str(e), False, isinstance(e, FileNotFoundError) and _t3_missing[0] is not None and _t3_missing[0] < _ticks[0]

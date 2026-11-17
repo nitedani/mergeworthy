@@ -891,6 +891,7 @@ cat > "$T/bin/t3" <<EOF
 { echo "t3 \$*"; cat; echo; } >> "$T/t3.log"
 [ ! -e "$T/t3.fail" ] || { echo 'connect ECONNREFUSED' >&2; exit 1; }
 [ ! -e "$T/t3.gone" ] || { echo "Thread \$3 was not found." >&2; exit 1; }  # t3 v0.1.4's answer for a deleted thread
+[ ! -e "$T/t3.slow" ] || { trap 'echo term >> "$T/t3.log"; exit 130' TERM; sleep 5 & wait; }  # a send T3 doesn't answer
 EOF
 chmod +x "$T/bin/t3"; : > "$T/t3.log"
 got=$(py '
@@ -907,6 +908,30 @@ print(repr(buf.getvalue()))
 ')
 check "wake_thread: one message per pass with only the event lines, a half-written line waits, nothing twice, a failed send reported and retried, none without t3-thread" \
   "'note: t3 thread send thr-1 failed: connect ECONNREFUSED\n'|t3 thread send thr-1 -;Watcher events in $W/events.log (mergeworthy:reply):;### o/r#5 comment 1 by bob;WATCH ERROR x: y;### AGENT DONE j;t3 thread send thr-1 -;Watcher events in $W/events.log (mergeworthy:reply):;### half written;t3 thread send thr-1 -;Watcher events in $W/events.log (mergeworthy:reply):;### half written;" \
+  "$got|$(tr '\n' ';' < "$T/t3.log")"
+: > "$T/t3.log"
+got=$(py '
+import sqlite3, datetime
+db = os.path.expanduser("~/.t3/userdata/statev2.sqlite"); os.makedirs(os.path.dirname(db), exist_ok=True)
+c = sqlite3.connect(db)
+c.execute("create table orchestration_v2_projection_messages (message_id text, thread_id text, role text, created_at text, payload_json text)"); c.commit()
+log = os.path.join(m.HERE, "events.log"); open(log, "w").write("### slow 1\n"); cur = os.path.join(m.HERE, "t3-wake.cursor")
+open(os.path.join(m.HERE, "t3-thread"), "w").write("thr-w\n'"$T"'/bin/t3\n"); open(cur, "w").write("0")
+m.SEND_TIMEOUT = 1; open("'"$T"'/t3.slow", "w")
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf): m.wake_thread()
+out = [buf.getvalue().count("doesn" + chr(39) + "t hold the message"), open(cur).read().strip()]
+now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+c.execute("insert into orchestration_v2_projection_messages values (?, ?, ?, ?, ?)", ("w1", "thr-w", "user", now, json.dumps({"text": "Watcher events in " + m.HERE + "/events.log (mergeworthy:reply):\n### slow 1"}))); c.commit()
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf): m.wake_thread()
+out += [buf.getvalue().count("note:"), open(cur).read().strip() == str(os.path.getsize(log))]
+os.remove("'"$T"'/t3.slow"); open(log, "a").write("### e2\n"); m.wake_thread()
+os.remove(os.path.join(m.HERE, "t3-thread")); os.remove(db)
+print(*out)
+')
+check "wake_thread: a send T3 doesn't answer in time gets SIGTERM (the CLI revokes its session), and counts as sent only once the thread holds the message; then only new lines go" \
+  "1 0 0 True|t3 thread send thr-w -;Watcher events in $W/events.log (mergeworthy:reply):;### slow 1;term;t3 thread send thr-w -;Watcher events in $W/events.log (mergeworthy:reply):;### slow 1;term;t3 thread send thr-w -;Watcher events in $W/events.log (mergeworthy:reply):;### e2;" \
   "$got|$(tr '\n' ';' < "$T/t3.log")"
 : > "$T/t3.log"
 got=$(py '
