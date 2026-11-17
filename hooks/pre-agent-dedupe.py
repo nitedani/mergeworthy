@@ -321,7 +321,7 @@ if root and (ti.get('role') == 'research' or re.search(r'\bresearch', f"{ti.get(
         checked = ' '.join(re.findall(r'^\s*Checked:\s*(.+)$', brief, re.M))
         # covered = one paragraph holds every topic word: a long design doc that mentions them apart covers nothing
         covers = lambda p: any(all(w in para for w in words) for para in re.split(r'\n\s*\n', open(p, errors='replace').read().lower()))
-        hits = [p for p in memory_file.notes(root) if p not in checked and os.path.abspath(p) not in L.tickets + L.files and covers(p)]
+        hits = [p for p in memory_file.notes(root) if p not in checked and os.path.abspath(p) not in L.files + L.refs and covers(p)]
         if hits:
             sys.stderr.write("BLOCKED: these files already cover the topic; read them first. If one answers it, use it; "
                              "if not, add `Checked: <file>` to the brief for each:\n" + '\n'.join(hits) + '\n')
@@ -407,7 +407,7 @@ if register:
     json.dump({'key': key, 'started': time.time(), 'launched': launched, 'brief': task, 'role': ti.get('role'), 'worktrees': L.worktrees,
                'session': d.get('session_id'), 'transcript': d.get('transcript_path'), 'handle': agent_jobs.handle(d.get('tool_response'))}, open(f, 'w'))
     # an agent now runs memory-prep's brief: stop-lint's hourly repeat of the refresh order waits an hour
-    for t in L.tickets:
+    for t in L.files:
         if os.path.basename(t).startswith('memory-brief-') and os.path.isfile(os.path.join(os.path.dirname(t), 'memory.source')):
             open(os.path.join(os.path.dirname(t), '.memory-order-repeated'), 'w').close()
 def one_per_job(started):
