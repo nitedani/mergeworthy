@@ -2997,6 +2997,11 @@ check "a source or . of a file the line names runs its assignments here and keep
   "$(ibash "$IT" "L=$T/nogit/logs; cd $T/nogit && source $T/nogit/ok.sh && echo x > \$L/a.log") $(ibash "$IT" "W=$T/nogit; L=\$W/logs; . \$W/ok.sh; echo x > \$L/a.log") $(ibash "$IT" "L=$T/nogit/logs; cd $T/nogit && source ./ok.sh && echo x > \$L/a.log")"
 check "BLOCK: a sourced file that sets L to a command's output, or one that can't be read, leaves \$L unknown" "2 1 2 1" \
   "$(ibash "$IT" "L=$T/nogit/logs; source $T/nogit/setl.sh; echo x > \$L/a.log" "$T/nogit") $(grep -c '`\$L` holds the output of `pwd`' "$T/ierr") $(ibash "$IT" "L=$T/nogit/logs; source $T/nogit/none.sh; echo x > \$L/a.log" "$T/nogit") $(grep -c '`\$L` holds a value set where it can.t follow' "$T/ierr")"
+mkdir -p "$T/nogit/p"; echo "L=$T/nogit" > "$T/nogit/safe.sh"; echo "L=$I" > "$T/nogit/p/safe.sh"; echo CI=1 > "$T/nogit/w.sh"; printf 'return\nL=%s\n' "$T/nogit" > "$T/nogit/ret.sh"; echo "cd $T/nogit" > "$T/nogit/cd.sh"
+check "BLOCK: a sourced file the line writes first, or one holding a return, isn't followed: \$L may still name the repo" "2 2" \
+  "$(ibash "$IT" "L=$T/nogit; printf 'L=$I\n' > $T/nogit/w.sh; source $T/nogit/w.sh; echo x > \$L/a.txt" "$T/nogit") $(ibash "$IT" "L=$I; source $T/nogit/ret.sh; echo x > \$L/a.txt" "$T/nogit")"
+check "BLOCK: a source of a name without a / (bash looks it up in PATH), or one a && may skip before a later command, isn't followed: the write may land in the repo" "2 2" \
+  "$(ibash "$IT" "L=$I; PATH=$T/nogit/p; source safe.sh; echo x > \$L/a.txt" "$T/nogit") $(ibash "$IT" "cd $I; false && source $T/nogit/cd.sh; echo x > a.txt" "$T/nogit")"
 check "BLOCK: after a source of a file it can't name, the refusal says to set \$L after it or write its value out, not to cd" "2 1 0" \
   "$(ibash "$IT" "L=$T/nogit/logs; source \$(pwd)/ok.sh; echo x > \$L/a.log" "$T/nogit") $(grep -c 'set `\$L` after it, or write its value out' "$T/ierr") $(grep -c 'cd to an absolute path first' "$T/ierr")"
 check "BLOCK: a write in a line that doesn't parse names the parse error and its usual cause, an unquoted heredoc's backticks" "2 1 1" \
