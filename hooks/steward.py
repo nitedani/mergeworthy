@@ -89,6 +89,11 @@ def queued(tid, text):
         "where r.thread_id = ? and r.status = 'queued' and substr(json_extract(m.payload_json, '$.text'), 1, ?) = ?", (tid, len(text), text)).fetchone(), None)
     return r and r[0]
 
+def received(tid, text, since):
+    """True when T3 thread tid holds a message with exactly this text, created at or after since (UTC, ISO)."""
+    return bool(_db(lambda c: c.execute("select 1 from orchestration_v2_projection_messages where thread_id = ? and created_at >= ? "
+                                        "and json_extract(payload_json, '$.text') = ? limit 1", (tid, since, text)).fetchone(), None))
+
 # A message that opens by asking to stop or pause the work itself ("can you stop work please", "Stooooppoopp", "állj", "stop the work
 # now", "pause until I say continue") or ends with it ("…, then pause"); not "don't stop", "stop-lint …", "stop the dev server" or
 # "stop /tmp/server", and not a stop said mid-sentence
