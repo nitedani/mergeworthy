@@ -2990,8 +2990,13 @@ check "BLOCK: a script a shell reads from a heredoc (bash <<'EOF', cat <<'EOF' |
 check "BLOCK: a quoted or subscripted name sets the variable too (export \"D=…\", read 'D[0]', printf -v 'D[0]', (( D[0]=2 ))): a write to a path it starts can't be told" "2 2 2 2" \
   "$(ibash "$IT" "D=$T/nogit; (export \"D=$I\"; cd \$D; echo x > a.txt)" "$T/nogit") $(ibash "$IT" "D=$T/nogit; read 'D[0]' <<< $I; echo x > \$D/a.txt" "$T/nogit") $(ibash "$IT" "D=$T/nogit; printf -v 'D[0]' $I; echo x > \$D/a.txt" "$T/nogit") $(ibash "$IT" "D=$T/nogit; (( D[0]=2 )); echo x > \$D/a.txt" "$T/nogit")"
 echo "D=$I" > "$T/nogit/e.sh"
-check "BLOCK: a subshell that runs source, ., trap or an eval of a variable may set any variable: a relative write after its cd \$D can't be told" "2 2 2 2" \
+check "BLOCK: a subshell that runs a source or . of a file setting D to the repo, a trap or an eval of a variable: a relative write after its cd \$D lands in the repo, or can't be told" "2 2 2 2" \
   "$(ibash "$IT" "D=$T/nogit; (source $T/nogit/e.sh; cd \$D; echo x > a.txt)" "$T/nogit") $(ibash "$IT" "D=$T/nogit; (. $T/nogit/e.sh; cd \$D; echo x > a.txt)" "$T/nogit") $(ibash "$IT" "D=$T/nogit; (trap 'D=$I' DEBUG; cd \$D; echo x > a.txt)" "$T/nogit") $(ibash "$IT" "D=$T/nogit; x='D=$I'; (eval \"\$x\"; cd \$D; echo x > a.txt)" "$T/nogit")"
+printf 'export PATH=/opt/bin:$PATH\nCI=1\n' > "$T/nogit/ok.sh"; echo 'L=$(pwd)/logs' > "$T/nogit/setl.sh"
+check "a source or . of a file the line names runs its assignments here and keeps the line's others: a write to \$L/a.log after it passes, from a relative name after a cd too" "0 0 0" \
+  "$(ibash "$IT" "L=$T/nogit/logs; cd $T/nogit && source $T/nogit/ok.sh && echo x > \$L/a.log") $(ibash "$IT" "W=$T/nogit; L=\$W/logs; . \$W/ok.sh; echo x > \$L/a.log") $(ibash "$IT" "L=$T/nogit/logs; cd $T/nogit && source ./ok.sh && echo x > \$L/a.log")"
+check "BLOCK: a sourced file that sets L to a command's output, or one that can't be read, leaves \$L unknown" "2 1 2 1" \
+  "$(ibash "$IT" "L=$T/nogit/logs; source $T/nogit/setl.sh; echo x > \$L/a.log" "$T/nogit") $(grep -c '`\$L` holds the output of `pwd`' "$T/ierr") $(ibash "$IT" "L=$T/nogit/logs; source $T/nogit/none.sh; echo x > \$L/a.log" "$T/nogit") $(grep -c '`\$L` holds a value set where it can.t follow' "$T/ierr")"
 check "a child shell's read D (bash -c 'read D') leaves this shell's D as it was: a subshell's cd \$D resolves; BLOCK: D+=… or D=… >f can't be told there" "0 2 2" \
   "$(ibash "$IT" "D=$T/nogit; (bash -c 'read D'; cd \$D; echo x > a.txt)" "$T/nogit") $(ibash "$IT" "D=$T/nogit; (D+=/../instr; cd \$D; echo x > a.txt)" "$T/nogit") $(ibash "$IT" "D=$T/nogit; (D=$I > /dev/null; cd \$D; echo x > a.txt)" "$T/nogit")"
 check "a child shell's source or eval (bash -c 'source f', bash -lc 'eval \"\$X\"') sets none of this shell's variables: a write to \$D/a.txt after D=… resolves" "0 0" \
