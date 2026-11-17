@@ -163,9 +163,14 @@ def block(msg):
 def known(d, word=None):
     """d, what a check reads of where the command runs, or of where its written file word lands (from Where); one Where can't tell (None, or an Unknown saying why) blocks."""
     if d is None or isinstance(d, shellcmd.Unknown):
-        why = d if d not in (None, '') else "after a cd to an expansion it can't resolve, `cd -`, popd, a cd in a branch, loop or function, or a relative cd in a loop"
-        block(f"can't tell which dir {'this command runs in' if word is None else f'`{word}` lands in'} ({why}), so its checks can't run: "
-              "cd to an absolute path first (`cd /abs/dir && <command>`), or pass absolute paths")
+        if err:
+            why, fix = err, '' if 'shell parser' in err else ": backticks or `$(` in an unquoted heredoc usually cause it, so quote its delimiter (`<<'EOF'`) or escape them"
+        elif d in (None, ''):
+            why, fix = "after a cd to an expansion it can't resolve, `cd -`, popd, a cd in a branch, loop or function, or a relative cd in a loop", \
+                ": cd to an absolute path first (`cd /abs/dir && <command>`), or pass absolute paths"
+        else:
+            why, fix = d, ''
+        block(f"can't tell which dir {'this command runs in' if word is None else f'`{word}` lands in'} ({why}), so its checks can't run{fix}")
     return d
 
 def short_has(t, letter):  # -f, -9f, -fu ...
@@ -487,7 +492,7 @@ def check_compose(env, t):
     files = {os.path.normpath(f) for f in files or map(where.path, listed.split(sep) if listed else []) if f}
     # without -f or COMPOSE_FILE, compose finds a default name in the project dir or a parent, wherever that is
     defaults = () if files or listed else {f'{b}{o}.{e}' for b in ('compose', 'docker-compose') for o in ('', '.override') for e in ('yaml', 'yml')}
-    if f := next((f for f in sorted(wrote) if f in files or os.path.basename(f) in defaults), None):
+    if f := next((f for f in sorted(where.wrote - {None}) if f in files or os.path.basename(f) in defaults), None):
         block(f"{f} is written by this same command, so its ports can't be checked yet: write it in one command, then start the stack in the next")
     try:
         r = subprocess.run(t[:n] + glob + ['config', '--format', 'json'], cwd=known(run_dir), env={**os.environ, **env}, capture_output=True, text=True, timeout=30)
@@ -1212,7 +1217,6 @@ if any(prog(x)[:1] and os.path.basename(prog(x)[0]) == 'gate-pass' for x in segs
                                         or prog(x)[1:2] == ['api'] and any(w.startswith('body=') or w in ('--input',) for w in prog(x))) or discussion_post(x) for x in segs):
     block("run gate-pass as its own command and read its exit code, then post in the next command: this check reads the gate record before the command runs (mergeworthy:post step 4)")
 clones = {}  # folder: the repo it was cloned from, for a `git clone` in this command
-wrote = set()  # the files the simple commands walked so far write: a compose file among them isn't written yet when its check runs
 records = {}  # each `pr-steps approach|preflight ...` walked so far, by its statement (Seg.stmt): the record it writes
 for s in where.walk(segs):
     run_dir, has_cd = where.dir, where.moved
@@ -1233,7 +1237,6 @@ for s in where.walk(segs):
         if w & {'git', 'gh', 'glab'} and w & {'push', 'commit', 'pr', 'issue', 'api', 'release', 'mr'} or 'git' not in w and w & {'push', 'commit'}:
             block(f"`{named}` runs a command named only when it runs, with `{' '.join(words)[:80]}`: write the command out, so it can be checked")
     check(s, has_cd)
-    wrote.update(os.path.normpath(f) for x in written_files(prog(s)) for f in where.files(x) or [])
 try:  # pending until post-bash-register sees how the command ended
     own_actions.intend(own_actions.key(d), own)
 except OSError:

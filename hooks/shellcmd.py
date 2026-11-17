@@ -541,7 +541,7 @@ class Many(Maybe):
 class Where:
     """Where each simple command of one command line runs, walk() taking them in order, with the variables the line set
     (`D=~/x; cd "$D"`). It follows the forms agents write: a cd or pushd to a path (`cd /abs/dir && ...`, or relative to a dir it
-    knows), a path holding `$(git rev-parse --show-toplevel)` and `git -C <dir>`. A cd holds for the later commands of its scope (Seg.scopes) and
+    knows), a path holding `$(git rev-parse --show-toplevel)`, `git -C <dir>` and the commands of a file a `source` or `.` names. A cd holds for the later commands of its scope (Seg.scopes) and
     the scopes inside it; leaving an isolating scope restores the dir and the line's variables from before it, leaving a branch or
     loop makes each variable set in it a Maybe. After any other dir change (a cd in a scope that may run it or not, once the scope
     is left; a call to a function the line defines, when one of their bodies changes dir; a loop's body that changes dir, at its start; a target
@@ -558,7 +558,8 @@ class Where:
     (walk), the second for a call in another body, each recording every call's spots and words (called)."""
     def __init__(self, cwd):
         self.funcs, self.func_vars, self.func_moves = set(), set(), False  # the functions the line defines, the variables their bodies set, whether one changes dir
-        self.dry = False
+        self.dry, self.depth = False, 0  # depth: the `source`s the walk is in
+        self.wrote = set()  # the files the commands walked so far write (written_files), None for one it can't place
         self.args, self.called = {}, {}  # each function's calls, each (its spots, the values of its parameters: _args, the names it sets for the body): from the dry walk before this one, and seen by this walk
         self.main_dir, self.main_vars = cwd, {'PWD': cwd}
         self.func_any = False  # whether a body may set any variable
@@ -716,7 +717,8 @@ class Where:
         if n in SPECIALS and n not in self.vars:
             return (PIECE,)
         v = self.vars.get(n, os.environ.get(n))
-        if isinstance(v, Unseen) or self.any and n not in self.vars: return Unknown(f"`${n}` holds a value set where it can't follow")
+        if isinstance(v, Unseen) or self.any and n not in self.vars:
+            return Unknown(f"`${n}` holds a value set where it can't follow" + (f" (a source, ., trap or eval may set any variable): set `${n}` after it, or write its value out" if self.any else ''))
         if v is None: return Unknown(f"`${n}` isn't set on this line")
         if isinstance(v, Many): return Unknown(f'`${n}` holds {v.vals}') if isinstance(v.vals, Unknown) else v.vals
         if isinstance(v, Maybe): return Unknown(f'`${n}` may hold another value here: a branch, loop or function sets it, or a child shell reads it')
@@ -756,8 +758,36 @@ class Where:
         for self.at, t in enumerate(segs):
             self.enter(t.scopes)
             yield t
+            for x in written_files(prog(t)):
+                self.wrote |= set(map(os.path.normpath, fs)) if (fs := self.files(x)) else {None}
             self.step(t)
-            self._took(t.sets, t.sets_any)
+            if (inner := self._sourced(t)) is None:
+                self._took(t.sets, t.sets_any)
+                continue
+            self._took(t.sets)
+            self.depth += 1
+            yield from self._walk(inner)
+            self.segs, self.depth = segs, self.depth - 1
+
+    def _sourced(self, t):
+        """The commands a `source` or `.` of one file runs in this shell, read from that file, when bash certainly runs all of it: None for a name
+        without a / (bash looks it up in PATH), a file it can't place, read or parse or that the line may have written, a file holding a return
+        or exit, past parse()'s depth, and a source after a && that a later command doesn't follow (one in a branch, loop or function holds only inside it)."""
+        p = prog(t)
+        a = operands(p[1:])
+        if not p or os.path.basename(p[0]) not in ('source', '.') or len(a) != 1 or self.depth >= 4:
+            return None
+        if t.after and (self.depth or any(not any(y is t.stmt for y in x.after) for x in self.segs[self.at + 1:])):
+            return None
+        f = self.path(a[0], strict=True)
+        f = f and os.path.normpath(f)
+        if not f or '/' not in self.expand(a[0], True) or None in self.wrote or any(f == w or f.startswith(w + '/') for w in self.wrote):
+            return None
+        try: text = open(f, errors='replace').read()
+        except OSError: return None
+        segs, err = parse(text, self.depth + 1, t.scopes, t.loop)
+        for x in segs: x.nested, x.piped = True, x.piped or t.piped
+        return None if err or any(prog(x)[:1] in (['return'], ['exit']) for x in segs) else segs
 
     def _took(self, names, every=False):
         """Make names, or with every each variable, unknown from here on: a command set them where it can't follow (Seg.sets)."""
