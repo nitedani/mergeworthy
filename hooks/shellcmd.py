@@ -716,7 +716,8 @@ class Where:
         if n in SPECIALS and n not in self.vars:
             return (PIECE,)
         v = self.vars.get(n, os.environ.get(n))
-        if isinstance(v, Unseen) or self.any and n not in self.vars: return Unknown(f"`${n}` holds a value set where it can't follow")
+        if isinstance(v, Unseen) or self.any and n not in self.vars:
+            return Unknown(f"`${n}` holds a value set where it can't follow" + (f" (a source, ., trap or eval may set any variable): set `${n}` after it, or write its value out" if self.any else ''))
         if v is None: return Unknown(f"`${n}` isn't set on this line")
         if isinstance(v, Many): return Unknown(f'`${n}` holds {v.vals}') if isinstance(v.vals, Unknown) else v.vals
         if isinstance(v, Maybe): return Unknown(f'`${n}` may hold another value here: a branch, loop or function sets it, or a child shell reads it')

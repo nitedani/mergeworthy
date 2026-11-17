@@ -163,9 +163,14 @@ def block(msg):
 def known(d, word=None):
     """d, what a check reads of where the command runs, or of where its written file word lands (from Where); one Where can't tell (None, or an Unknown saying why) blocks."""
     if d is None or isinstance(d, shellcmd.Unknown):
-        why = d if d not in (None, '') else "after a cd to an expansion it can't resolve, `cd -`, popd, a cd in a branch, loop or function, or a relative cd in a loop"
-        block(f"can't tell which dir {'this command runs in' if word is None else f'`{word}` lands in'} ({why}), so its checks can't run: "
-              "cd to an absolute path first (`cd /abs/dir && <command>`), or pass absolute paths")
+        if err:
+            why, fix = err, '' if 'shell parser' in err else ": backticks or `$(` in an unquoted heredoc usually cause it, so quote its delimiter (`<<'EOF'`) or escape them"
+        elif d in (None, ''):
+            why, fix = "after a cd to an expansion it can't resolve, `cd -`, popd, a cd in a branch, loop or function, or a relative cd in a loop", \
+                ": cd to an absolute path first (`cd /abs/dir && <command>`), or pass absolute paths"
+        else:
+            why, fix = d, ''
+        block(f"can't tell which dir {'this command runs in' if word is None else f'`{word}` lands in'} ({why}), so its checks can't run{fix}")
     return d
 
 def short_has(t, letter):  # -f, -9f, -fu ...
