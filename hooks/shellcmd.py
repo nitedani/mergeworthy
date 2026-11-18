@@ -1131,7 +1131,8 @@ def api_call(rest, cwd=None):
         posts = graphql_posts(fields, inputs, cwd)
     else:
         path = re.sub(r'^(?:https?://[^/]+)?/?(?:api/v3/)?', '', ep).split('?')[0]
-        no_text = fields and not inputs and all(field_name(v) in TEXT_FREE for v in fields)
+        merges = re.fullmatch(r'repos/[^/]+/[^/]+/(?:pulls/\d+/merge|merges)', path)  # it merges, and the merge checks run only on `gh pr merge`
+        no_text = fields and not inputs and not merges and all(field_name(v) in TEXT_FREE for v in fields)
         posts = method in ('POST', 'PATCH', 'PUT') and not NO_TEXT.fullmatch(path) and not no_text
     return method, ep, fields, inputs, posts
 

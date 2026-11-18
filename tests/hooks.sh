@@ -2530,6 +2530,8 @@ tb=; for c in '-X PATCH repos/o/r -f description=x' '-X PATCH repos/o/r -f defau
   '-X POST repos/o/r/git/commits -f message=x -f tree=abc' '-X PUT repos/o/r/contents/a.md -f message=x -f content=eA==' '-X POST repos/o/r/pulls -F issue=5 -f head=x -f base=main' '-X PUT repos/o/r/pulls/1/merge' \
   '-X PUT repos/o/r/pulls/1/merge -f merge_method=squash' '-X PATCH repos/o/r -f "$F"' '-X POST repos/o/r/git/refs -f ref=refs/heads/x --input /w/nogate.json' '-X PATCH repos/o/r'; do tb="$tb $(guard "gh api $c")"; done
 check "BLOCK: a write with a text field or one it doesn't know beside text-free ones, a visibility flip, a merge, a field name computed when it runs, an --input or no field keeps the draft rule" " 2 2 2 2 2 2 2 2 2 2 2 2 2" "$tb"
+tm=; for ep in repos/o/r 'repos/{owner}/{repo}' https://api.github.com/repos/o/r; do tm="$tm $(guard "gh api -X PUT $ep/pulls/1/merge -f sha=0123456789abcdef0123456789abcdef01234567")"; done
+check "BLOCK: a merge through gh api, by a PR's sha alone or a base and head, whatever its fields" " 2 2 2 2" "$tm $(guard 'gh api -X POST repos/o/r/merges -f base=main -f head=x')"
 check "BLOCK: the refusal names the fields not known to post no text, and none when there are none" "1 1" "$(guard 'gh api -X PATCH repos/o/r -f default_branch=main -f description=x' >/dev/null; grep -c 'post from a draft file.*TEXT_FREE): description$' "$T/err") $(guard 'gh api -X PATCH repos/o/r' >/dev/null; grep -c 'passed the gate$' "$T/err")"
 printf '[{"event":"renamed","actor":{"login":"brillout"},"created_at":"2026-10-14T21:50:52Z","rename":{"from":"a","to":"b"}}]' > "$FX/repos_o_r_issues_7_timeline_per_page_100"
 echo '[]' > "$FX/repos_o_r_issues_9_timeline_per_page_100"
