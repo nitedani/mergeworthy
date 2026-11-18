@@ -6,7 +6,7 @@ launch of the same job, or of a task that contains or is contained in an open jo
 already on the job gets a message, not a twin, mergeworthy:delegate step 1), is blocked until `agent-job done <key>` releases it.
 A turn that ended is not a finished agent: on T3 a child wakes again when its background commands end, so only its terminal task
 status (read first) releases the job."""
-import datetime, fcntl, glob, hashlib, json, os, re, shlex, sys, time
+import datetime, fcntl, glob, hashlib, itertools, json, os, re, shlex, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import failclosed
 import agent_jobs, launch, memory_file, project_file, steward, subprocess, testpaths
@@ -112,7 +112,7 @@ if not register:
                                  "Pin the live head (and check the work isn't already done there)." + (f" Ruled out:\n{ruled}\n" if ruled else "\n"))
                 refused()
 # Two rounds per loop on one head (delegate §Review rounds): a review round `<loop>-r<N>`, maybe followed by the date or head SHA
-# the reuse block above asks for, once two earlier rounds of its loop pinned its head or one within SHAPE STALE's count of it, is refused;
+# the reuse block above asks for, once the heads its brief pins show the branch hasn't moved since two earlier rounds of its loop, is refused;
 # a post's review gets a third, which confirms round 2's fixes
 rnd = re.fullmatch(r'(.+)-r(\d+)', re.sub(r'(-\d{4}-\d{2}-\d{2}|-[0-9a-f]{7,40})+$', '', (cid or str(ti.get('description') or '')).strip()))
 if rnd and (ti.get('role') == 'review' or not ti.get('role') and re.search(r'\bexactly (CLEAN|NO BUGS)\b', brief)):
@@ -132,8 +132,18 @@ if rnd and (ti.get('role') == 'review' or not ti.get('role') and re.search(r'\be
             rows = re.findall(r'^(\d+)\t(\d+)\t(.*)$', git(t, '-c', 'core.quotePath=false', 'log', '--first-parent', '--no-merges', '--no-renames', '--numstat', '--format=', f'{o}..{h}').stdout, re.M)
             gen = testpaths.generated(t, [p for _, _, p in rows])
             return sum(int(a) + int(b) for a, b, p in rows if not re.search(testpaths.NOT_SHAPE, p) and p not in gen)
-        fixes = lambda t, o, h: git(t, 'merge-base', '--is-ancestor', o, h).returncode == 0 and own_lines(t, o, h) <= testpaths.STALE_LINES
-        built_on = lambda old: not old and not heads or any(fixes(t, o, h) for t in tops for o in old for h in heads)
+        desc = lambda t, o, h: git(t, 'merge-base', '--is-ancestor', o, h).returncode == 0
+        def built_on(old):
+            # each new head built on the round's heads counts, so a pin that never moves can't stand for a branch that did
+            if not old: return not heads
+            moved = False
+            for h in heads:
+                if h in old: moved = True; continue
+                on = ((t, o) for t in tops for o in old if desc(t, o, h))
+                if (first := next(on, None)) is None: continue
+                moved = True
+                if not any(own_lines(t, o, h) <= testpaths.STALE_LINES for t, o in itertools.chain([first], on)): return False
+            return moved
         earlier = sorted({m for m, old in rounds.get(loop, []) if m < n and built_on(old)})
         # a post's review: a gate review of a named draft whose brief asks for no code verdict (a small review's pr-body.review.out comes with one)
         post_review = bool(reviewed_drafts(brief)) and 'CLEAN' in brief and not re.search(r'\b(NO BUGS|MERGE AS IS)\b', own_brief)
