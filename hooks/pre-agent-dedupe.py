@@ -53,7 +53,7 @@ if not register and ti.get('role') == 'review' and under_t3():
 cid = str(ti.get('clientRequestId') or '')
 if cid:
     ids = os.path.expanduser('~/.claude/agent-client-request-ids.json'); os.makedirs(os.path.dirname(ids), exist_ok=True)
-    lock = open(ids + '.lock', 'a'); fcntl.flock(lock, fcntl.LOCK_EX)  # held until exit: launches register at once
+    lock = open(ids + '.lock', 'a'); fcntl.flock(lock, fcntl.LOCK_EX)  # concurrent launches read and write the ids file one at a time
     seen = json.load(open(ids)) if os.path.exists(ids) else {}
     if cid in seen and time.time() - seen[cid] > 600:
         sys.stderr.write(f"BLOCKED: clientRequestId '{cid}' was used before; T3 would return that earlier task's result instead of running this one. Use a new id (add the date or the head SHA).\n")
