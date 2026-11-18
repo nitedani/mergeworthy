@@ -22,15 +22,19 @@ TASK_NOTICE = re.compile(r'<task-notification>\s*<task-id>(\w+)</task-id>')  # C
 KILLED = re.compile(TASK_NOTICE.pattern + r'.*?<status>killed</status>', re.S)
 CODEX = '~/.codex/sessions/*/*/*/rollout-*.jsonl'  # T3 Code's Codex agents  # OPEN: pre-agent-dedupe's window, after which a job no longer counts
 
-def jobs(now=None):
-    """(file name, job) for each open job: registered in the last day and not released."""
-    now, out = now or time.time(), []
+def registered():
+    """(file name, job) for each job file, open or past OPEN, skipping a file that isn't a job."""
+    out = []
     for f in sorted(os.listdir(JOBS)) if os.path.isdir(JOBS) else ():
         try: j = json.load(open(os.path.join(JOBS, f)))
         except (OSError, ValueError): continue
-        if isinstance(j, dict) and j.get('key') and now - j.get('started', 0) < OPEN:
-            out.append((f, j))
+        if isinstance(j, dict) and j.get('key'): out.append((f, j))
     return out
+
+def jobs(now=None):
+    """(file name, job) for each open job: registered in the last day and not released."""
+    now = now or time.time()
+    return [(f, j) for f, j in registered() if now - j.get('started', 0) < OPEN]
 
 def stamp(s):
     return datetime.datetime.fromisoformat(s.replace('Z', '+00:00')).timestamp()
