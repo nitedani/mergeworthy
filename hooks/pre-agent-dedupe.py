@@ -345,7 +345,6 @@ def returned(path, use_id):
     except OSError: return True
     return False
 if not register:
-    agent_jobs.prune()
     pending = []  # a launch let through whose call is still running, not registered yet
     for n in os.listdir(agent_jobs.LAUNCHED) if os.path.isdir(agent_jobs.LAUNCHED) else ():
         try: r = json.load(open(os.path.join(agent_jobs.LAUNCHED, n)))

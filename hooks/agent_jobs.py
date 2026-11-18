@@ -36,16 +36,6 @@ def jobs(now=None):
     now = now or time.time()
     return [(f, j) for f, j in registered() if now - j.get('started', 0) < OPEN]
 
-def prune(now=None):
-    """Deletes the job files and launch records past OPEN; run under pre-agent-dedupe's lock."""
-    now = now or time.time()
-    for f, j in registered():
-        if now - j.get('started', 0) >= OPEN: remove(os.path.join(JOBS, f))
-    for n in os.listdir(LAUNCHED) if os.path.isdir(LAUNCHED) else ():
-        try: r = json.load(open(os.path.join(LAUNCHED, n)))
-        except (OSError, ValueError): continue
-        if isinstance(r, dict) and now - r.get('launched', 0) >= OPEN: remove(os.path.join(LAUNCHED, n))
-
 def remove(path):
     """Deletes path; one another process deleted first is gone already."""
     try: os.remove(path)
