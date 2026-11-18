@@ -7,7 +7,7 @@ import glob, itertools, json, re, sys, os, hashlib, subprocess, urllib.parse
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
 import shellcmd
-from shellcmd import parse, segments, prog, script, opt, api_call, discussion_post, discussion_thread_of, names_discussion_mutation, env_of, origin, plain_create, PLAIN, new_post_drafts, no_instructions_read, by_agent, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Unseen, Where
+from shellcmd import parse, segments, prog, script, opt, api_call, field_name, TEXT_FREE, discussion_post, discussion_thread_of, names_discussion_mutation, env_of, origin, plain_create, PLAIN, new_post_drafts, no_instructions_read, by_agent, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Unseen, Where
 from records import branch_record, commit_file, no_approach, no_preflight, STORE
 import own_actions, steward, post_words, testpaths, threads_file, work_folder
 from t3_tasks import under_t3
@@ -1170,7 +1170,8 @@ def check(t, has_cd):
         bodies = [v[len('body=@'):] for v in opt(rest, ['-F', '--field']) if v.startswith('body=@')]
         literal = [v for v in fields if re.match(r'^(body|query)=', v) and not v.startswith('body=@') and not (ep == 'graphql' and v.startswith('query='))]
         if literal or not (bodies or inputs):
-            block(NEED_DRAFT)
+            unknown = sorted({field_name(v) for v in fields} - TEXT_FREE) if not shellcmd.graphql_endpoint(ep) else []
+            block(NEED_DRAFT + (f"; fields not known to post no text (shellcmd.TEXT_FREE): {', '.join(unknown)}" if unknown else ''))
         if method == 'POST' and (opens := api_opens(ep, rest, env, run_dir)):
             need_home([opens[0]], run_dir)
             if opens[1] == 'pr': need_approach(run_dir, '`gh api` creating a PR', opened_branch(rest, fields=['-f', '--raw-field', '-F', '--field']))
