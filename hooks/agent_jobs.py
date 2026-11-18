@@ -23,12 +23,12 @@ KILLED = re.compile(TASK_NOTICE.pattern + r'.*?<status>killed</status>', re.S)
 CODEX = '~/.codex/sessions/*/*/*/rollout-*.jsonl'  # T3 Code's Codex agents
 
 def registered():
-    """(file name, job) for each job file, open or past OPEN, skipping a file that isn't a job."""
+    """(file name, job) for each job file, open or past OPEN, skipping a file that isn't a job (a key and a numeric start)."""
     out = []
     for f in sorted(os.listdir(JOBS)) if os.path.isdir(JOBS) else ():
         try: j = json.load(open(os.path.join(JOBS, f)))
         except (OSError, ValueError): continue
-        if isinstance(j, dict) and j.get('key'): out.append((f, j))
+        if isinstance(j, dict) and j.get('key') and type(j.get('started')) in (int, float): out.append((f, j))
     return out
 
 def jobs(now=None):
