@@ -1338,6 +1338,16 @@ check "the 81st changed line, a deletion, makes a new head with two rounds: r3 p
 first=$(rh_rnd rh-a-r1 "$HN"); HB=$(rh_commit a.py 81); second=$(rh_rnd rh-a-r2 "$HB"); HC=$(rh_commit a.py 5)
 check "r2 past 80 lines of r1 opens a new head: r3 on r2's fixes passes, BLOCK r4 on them" "0 0 0 2" "$first $second $(rh_rnd rh-a-r3 "$HC") $(rh_rnd rh-a-r4 "$HC")"
 check "a round with no pinned head holds only against another: pinned after unpinned and unpinned after pinned pass" "0 0 0 0 0 0" "$(rnd rh-u-r1 "Review $T/rh") $(rnd rh-u-r2 "Review $T/rh") $(rh_rnd rh-u-r3 "$HC") $(rh_rnd rh-p-r1 "$HC") $(rh_rnd rh-p-r2 "$HC") $(rnd rh-p-r3 "Review $T/rh")"
+git init -q -b main "$T/rp"; git -C "$T/rp" worktree add -q -b feat "$T/rpf"; git -C "$T/rp" worktree add -q -b cmp "$T/rpc"
+rp_commit() { seq "$3" >> "$1/$2"; git -C "$1" add "$2"; git -C "$1" commit -qm "$2"; git -C "$1" rev-parse HEAD; }  # checkout path N: the path gets N new lines
+REL=$(rp_commit "$T/rp" a.py 10); git -C "$T/rpf" reset -q --hard "$REL"; git -C "$T/rpc" reset -q --hard "$REL"; CMP=$(rp_commit "$T/rpc" c.py 30)
+rp_rnd() { rnd "$1" "Review $T/rpf at head $2; compare it with $3."; }  # round head comparison
+F=$(rp_commit "$T/rpf" a.py 20); rpm="$(rp_rnd rp-m-r1 "$F" "the release in $T/rp at $REL")"; F=$(rp_commit "$T/rpf" a.py 1); rpm="$rpm $(rp_rnd rp-m-r2 "$F" "the release in $T/rp at $REL")"
+F=$(rp_commit "$T/rpf" a.py 200); check "issue #215: rounds also pinning the release's checkout, the branch 200 lines past r2: r3 passes" "0 0 0" "$rpm $(rp_rnd rp-m-r3 "$F" "the release in $T/rp at $REL")"
+rpn="$(rp_rnd rp-n-r1 "$F" "the release, $T/rp at $REL")"; F=$(rp_commit "$T/rpf" a.py 1); rpn="$rpn $(rp_rnd rp-n-r2 "$F" "the release, $T/rp at $REL")"
+F=$(rp_commit "$T/rpf" a.py 5); check "rounds also pinning the release's checkout, the branch within 80 lines of r2: BLOCK r3" "0 0 2" "$rpn $(rp_rnd rp-n-r3 "$F" "the release, $T/rp at $REL")"
+rpc="$(rp_rnd rp-c-r1 "$F" "the diverged branch in $T/rpc at $CMP")"; F=$(rp_commit "$T/rpf" a.py 1); rpc="$rpc $(rp_rnd rp-c-r2 "$F" "the diverged branch in $T/rpc at $CMP")"
+F=$(rp_commit "$T/rpf" a.py 200); check "rounds also pinning a diverged branch's worktree, unchanged, the branch 200 lines past r2: r3 passes" "0 0 0" "$rpc $(rp_rnd rp-c-r3 "$F" "the diverged branch in $T/rpc at $CMP")"
 RH=$(git -C "$T/rh" rev-parse HEAD); printf 'Body.\n' > "$PD/pr-body.md"; python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest(), end="")' "$PD/pr-body.md" > "$PD/pr-body.md.lint.sha"
 PP="$PB The head: $RH in $T/rh."; UC="Review the code in $T/rh. Final message exactly NO BUGS."
 SR="Review $T/rh at head $RH; write the report, ending MERGE AS IS: yes or no, to $T/sr.report.md and the body's verdict, exactly CLEAN or the findings, to $PD/pr-body.review.out."
