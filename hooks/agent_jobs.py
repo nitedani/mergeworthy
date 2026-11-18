@@ -17,20 +17,29 @@ JOBS = os.path.expanduser('~/.claude/agent-jobs')
 REPORTED = os.path.expanduser('~/.claude/agent-jobs-reported')  # <job file>-<transcript mtime>: reported once per finish
 LAUNCHED = os.path.expanduser('~/.claude/agent-jobs-launch')  # <job file>: when pre-agent-dedupe let its launch through, its key, task, role, worktrees, tool_use_id and launcher transcript
 LAUNCH = re.compile(rb'"name": ?"(Agent|Task|mcp__[^"]*(delegate_task|t3_thread_launch))"')  # pre-agent-dedupe's matcher
-QUIET, LONG, OPEN = 180, 660, 24 * 3600
+QUIET, LONG, OPEN = 180, 660, 24 * 3600  # OPEN: pre-agent-dedupe's window, after which a job no longer counts
 TASK_NOTICE = re.compile(r'<task-notification>\s*<task-id>(\w+)</task-id>')  # Claude Code's, for a background agent or command
 KILLED = re.compile(TASK_NOTICE.pattern + r'.*?<status>killed</status>', re.S)
-CODEX = '~/.codex/sessions/*/*/*/rollout-*.jsonl'  # T3 Code's Codex agents  # OPEN: pre-agent-dedupe's window, after which a job no longer counts
+CODEX = '~/.codex/sessions/*/*/*/rollout-*.jsonl'  # T3 Code's Codex agents
 
-def jobs(now=None):
-    """(file name, job) for each open job: registered in the last day and not released."""
-    now, out = now or time.time(), []
+def registered():
+    """(file name, job) for each job file, open or past OPEN, skipping a file that isn't a job (a key and a numeric start)."""
+    out = []
     for f in sorted(os.listdir(JOBS)) if os.path.isdir(JOBS) else ():
         try: j = json.load(open(os.path.join(JOBS, f)))
         except (OSError, ValueError): continue
-        if isinstance(j, dict) and j.get('key') and now - j.get('started', 0) < OPEN:
-            out.append((f, j))
+        if isinstance(j, dict) and j.get('key') and type(j.get('started')) in (int, float): out.append((f, j))
     return out
+
+def jobs(now=None):
+    """(file name, job) for each open job: registered in the last day and not released."""
+    now = now or time.time()
+    return [(f, j) for f, j in registered() if now - j.get('started', 0) < OPEN]
+
+def remove(path):
+    """Deletes path; one another process deleted first is gone already."""
+    try: os.remove(path)
+    except FileNotFoundError: pass
 
 def stamp(s):
     return datetime.datetime.fromisoformat(s.replace('Z', '+00:00')).timestamp()

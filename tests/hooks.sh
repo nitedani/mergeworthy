@@ -1149,6 +1149,9 @@ J="$HOME/.claude/agent-jobs"; mkdir -p "$J"
 printf '{"key": "/x/a.md /x/shared.md", "started": 1}' > "$J/aj1.json"; printf '{"key": "/x/b.md /x/shared.md", "started": 2}' > "$J/aj2.json"
 check "agent-job done with a path two jobs hold releases neither" "1 2" "$(python3 "$R/bin/agent-job" done /x/shared.md >/dev/null 2>&1; echo $? $(ls "$J"/aj*.json | wc -l))"
 check "agent-job done with the full key releases only that job" 1 "$(python3 "$R/bin/agent-job" done '/x/a.md /x/shared.md' >/dev/null; ls "$J"/aj*.json | wc -l)"
+printf 'not json' > "$J/aj3.json"; printf '{"key": "/x/old.md", "started": 1}' > "$J/aj4.json"; printf '{"key": "/x/bad-start.md", "started": "bad"}' > "$J/aj5.json"
+printf '{"key": "/x/open.md", "started": %s}' "$(date +%s)" > "$J/aj6.json"
+check "agent-job list skips a malformed job file and lists open jobs only" "0 0 0 1" "$(python3 "$R/bin/agent-job" list > "$T/aj.out" 2>&1; echo $?) $(grep -c /x/old.md "$T/aj.out") $(grep -c /x/bad-start.md "$T/aj.out") $(grep -c '^ *0 min  /x/open.md$' "$T/aj.out")"
 rm -f "$J"/aj*.json
 # agent-job done lists what the agent may have left running where it worked, and kills nothing
 git init -q -b main "$T/lr"; git -C "$T/lr" -c user.name=t -c user.email=t@example.invalid commit -q --allow-empty -m one
