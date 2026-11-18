@@ -328,9 +328,9 @@ if root and (ti.get('role') == 'research' or re.search(r'\bresearch', f"{ti.get(
             refused()
 # a fan-out runs several agents on one brief, each under its own title and naming its part in its task: the title is part of the job
 key = ' '.join([*L.tickets, str(ti.get('title') or ti.get('description') or '').strip()]).strip()
-jobs = os.path.expanduser('~/.claude/agent-jobs'); os.makedirs(jobs, exist_ok=True)
+os.makedirs(agent_jobs.JOBS, exist_ok=True)
 # one launch at a time checks the open jobs and leaves its record, so launches in one message see each other; held until exit
-lock = open(jobs + '.lock', 'a'); fcntl.flock(lock, fcntl.LOCK_EX)
+lock = open(agent_jobs.JOBS + '.lock', 'a'); fcntl.flock(lock, fcntl.LOCK_EX)
 def returned(path, use_id):
     """The launcher's transcript holds the call's tool_result: another hook blocked it, or it returned (then it registers)."""
     try:
@@ -400,7 +400,7 @@ if register:  # an agent now runs memory-prep's brief: stop-lint's hourly repeat
             open(os.path.join(os.path.dirname(t), '.memory-order-repeated'), 'w').close()
 if not key:
     sys.exit(2 if blocked else 0)  # nothing names the job (no ticket, title or description), so no second launch of it can be told apart
-f = os.path.join(jobs, hashlib.sha256(key.encode()).hexdigest()[:16])
+f = os.path.join(agent_jobs.JOBS, hashlib.sha256(key.encode()).hexdigest()[:16])
 # when the launch this registers began (its transcript starts after it): one record per key, as one_per_job lets one call of a key
 # pend at a time, and the key's next launch overwrites the record of a call another hook blocked
 pre = os.path.join(agent_jobs.LAUNCHED, os.path.basename(f))
@@ -420,7 +420,7 @@ def one_per_job(started):
     refused()
 if not register:
     j = json.load(open(f)) if os.path.exists(f) else {}
-    same = [j] if time.time() - j.get('started', 0) < 24 * 3600 else [p for p in pending if p['key'] == key]
+    same = [j] if time.time() - j.get('started', 0) < agent_jobs.OPEN else [p for p in pending if p['key'] == key]
     if same: one_per_job(same[0]['started'])
     for j in [j for _, j in agent_jobs.jobs()] + pending if task.strip() else ():
         if same and j.get('key') == key: continue  # this job's own record, refused above

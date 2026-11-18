@@ -2,10 +2,12 @@
 """agent-job list | done <key or ticket path>: the jobs pre-agent-dedupe registered. `done` releases a job after its agent's task
 is terminal and its result is read, so the same job can be launched again, and lists what the agent may have left running."""
 import glob, hashlib, json, os, re, subprocess, sys, time
-jobs = os.path.expanduser('~/.claude/agent-jobs'); os.makedirs(jobs, exist_ok=True)
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'hooks'))
+import agent_jobs, steward, work_folder
+os.makedirs(agent_jobs.JOBS, exist_ok=True)
 if len(sys.argv) < 2 or sys.argv[1] not in ('list', 'done'):
     sys.exit('usage: agent-job list | done <key or ticket path>')
-entries = [(f, j) for f in os.listdir(jobs) for j in [json.load(open(os.path.join(jobs, f)))] if isinstance(j, dict) and 'key' in j]
+entries = [(f, j) for f in os.listdir(agent_jobs.JOBS) for j in [json.load(open(os.path.join(agent_jobs.JOBS, f)))] if isinstance(j, dict) and 'key' in j]
 if sys.argv[1] == 'list':
     for f, j in sorted(entries, key=lambda e: e[1]['started']):
         print(f"{int((time.time() - j['started']) / 60):>5} min  {j['key']}")
@@ -42,8 +44,6 @@ def leftovers(j):
         if e not in mine and any(cwd == d or cwd.startswith(d + '/') for d in dirs):
             out.append(f"  {e}{' listening on ' + ', '.join(ports[e]) if e in ports else ''}: {cmd[:150]} (in {cwd})")
     return out
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'hooks'))
-import agent_jobs, steward, work_folder
 for f in hit:
     j = dict(entries)[f]
     # a released job is never reported: while its agent works on (a T3 run, task or background command), its result would be lost
@@ -51,8 +51,8 @@ for f in hit:
     if p and steward.busy(agent_jobs.session_id(p)):
         sys.exit(f"agent-job: the agent for {want!r} is still at work (its T3 thread has a run, a task or a background command going), "
                  "so its job stays open: T3's notice or the watcher's `### AGENT DONE` wakes this session when it ends; read its result then and release it (mergeworthy:delegate step 6)")
-    os.remove(os.path.join(jobs, f)); print('released', want)
-    for m in glob.glob(os.path.expanduser(f'~/.claude/agent-jobs-reported/{f}-*')): os.remove(m)
+    os.remove(os.path.join(agent_jobs.JOBS, f)); print('released', want)
+    for m in glob.glob(os.path.join(agent_jobs.REPORTED, f'{f}-*')): os.remove(m)
     left = leftovers(j)
     if left:
         print("still running where the agent worked; stop each one it started, by PID (agent.md §Machine), never another session's:\n" + '\n'.join(left))
