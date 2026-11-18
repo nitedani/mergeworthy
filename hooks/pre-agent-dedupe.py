@@ -12,7 +12,7 @@ import failclosed
 import agent_jobs, launch, memory_file, project_file, steward, subprocess, testpaths
 from post_words import fence_spans
 from records import branch_record
-from shellcmd import segments, prog, git_argv, rlines, transcript, Where
+from shellcmd import segments, prog, git_argv, transcript, Where
 from work_folder import git_top, task_of
 from t3_tasks import under_t3
 register = sys.argv[1:] == ['register']
@@ -331,25 +331,13 @@ key = ' '.join([*L.tickets, str(ti.get('title') or ti.get('description') or '').
 os.makedirs(agent_jobs.JOBS, exist_ok=True)
 # one launch at a time checks the open jobs and leaves its record, so launches in one message see each other; held until exit
 lock = open(agent_jobs.JOBS + '.lock', 'a'); fcntl.flock(lock, fcntl.LOCK_EX)
-def returned(path, use_id):
-    """The launcher's transcript holds the call's tool_result: another hook blocked it, or it returned (then it registers)."""
-    try:
-        for l in rlines(path):  # last first: the result comes after the call
-            if use_id.encode() not in l: continue
-            try: e = json.loads(l)
-            except ValueError: continue
-            content = (e.get('message') or {}).get('content') if isinstance(e.get('message'), dict) else None
-            for b in content if isinstance(content, list) else ():
-                if isinstance(b, dict) and b.get('type') == 'tool_result' and b.get('tool_use_id') == use_id: return True
-                if isinstance(b, dict) and b.get('type') == 'tool_use' and b.get('id') == use_id: return False
-    except OSError: return True
-    return False
 if not register:
+    agent_jobs.prune()
     pending = []  # a launch let through whose call is still running, not registered yet
     for n in os.listdir(agent_jobs.LAUNCHED) if os.path.isdir(agent_jobs.LAUNCHED) else ():
         try: r = json.load(open(os.path.join(agent_jobs.LAUNCHED, n)))
         except (OSError, ValueError): continue
-        if isinstance(r, dict) and r.get('tool_use_id') and r.get('transcript') and not returned(r['transcript'], r['tool_use_id']):
+        if isinstance(r, dict) and r.get('tool_use_id') and r.get('transcript') and not agent_jobs.returned(r['transcript'], r['tool_use_id']):
             pending.append({'key': r.get('key', ''), 'brief': r.get('task', ''), 'started': r.get('launched', 0), 'launched': r.get('launched', 0),
                             'role': r.get('role'), 'worktrees': r.get('worktrees', []), 'transcript': r['transcript']})
 # One writer per worktree: a writer (any role but review or research) waits for a linked worktree its brief names (not the launcher's
