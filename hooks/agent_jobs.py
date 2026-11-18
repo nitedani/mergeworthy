@@ -36,30 +36,20 @@ def jobs(now=None):
     now = now or time.time()
     return [(f, j) for f, j in registered() if now - j.get('started', 0) < OPEN]
 
-def returned(path, use_id):
-    """The launcher's transcript holds the call's tool_result: another hook blocked it, or it returned (then it registers)."""
-    try:
-        for l in rlines(path):  # last first: the result comes after the call
-            if use_id.encode() not in l: continue
-            try: e = json.loads(l)
-            except ValueError: continue
-            content = (e.get('message') or {}).get('content') if isinstance(e.get('message'), dict) else None
-            for b in content if isinstance(content, list) else ():
-                if isinstance(b, dict) and b.get('type') == 'tool_result' and b.get('tool_use_id') == use_id: return True
-                if isinstance(b, dict) and b.get('type') == 'tool_use' and b.get('id') == use_id: return False
-    except OSError: return True
-    return False
-
 def prune(now=None):
-    """Deletes the job files past OPEN and the launch records whose call returned; run under pre-agent-dedupe's lock."""
+    """Deletes the job files and launch records past OPEN; run under pre-agent-dedupe's lock."""
     now = now or time.time()
     for f, j in registered():
-        if now - j.get('started', 0) >= OPEN: os.remove(os.path.join(JOBS, f))
+        if now - j.get('started', 0) >= OPEN: remove(os.path.join(JOBS, f))
     for n in os.listdir(LAUNCHED) if os.path.isdir(LAUNCHED) else ():
         try: r = json.load(open(os.path.join(LAUNCHED, n)))
         except (OSError, ValueError): continue
-        if isinstance(r, dict) and r.get('tool_use_id') and r.get('transcript') and returned(r['transcript'], r['tool_use_id']):
-            os.remove(os.path.join(LAUNCHED, n))
+        if isinstance(r, dict) and now - r.get('launched', 0) >= OPEN: remove(os.path.join(LAUNCHED, n))
+
+def remove(path):
+    """Deletes path; one another process deleted first is gone already."""
+    try: os.remove(path)
+    except FileNotFoundError: pass
 
 def stamp(s):
     return datetime.datetime.fromisoformat(s.replace('Z', '+00:00')).timestamp()

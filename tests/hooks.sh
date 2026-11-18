@@ -1155,6 +1155,9 @@ rm -f "$J"/aj*.json
 printf '{"key": "/x/expired.md", "started": 1}' > "$J/aj5.json"
 check "a job file past the open window is gone after the next launch" "0 no" "$(launch 'Execute /tmp/x/prune.md') $([ -e "$J/aj5.json" ] && echo yes || echo no)"
 python3 "$R/bin/agent-job" done /tmp/x/prune.md >/dev/null; rm -f "$J"/aj*.json
+JL="$HOME/.claude/agent-jobs-launch"; mkdir -p "$JL"; printf '{"launched": 1}' > "$JL/al-old"; printf '{"launched": %s}' "$(date +%s)" > "$JL/al-new"
+check "a launch record past the open window is gone after the next launch; one under it stays" "0 no yes" "$(launch 'Execute /tmp/x/prune-launch.md') $([ -e "$JL/al-old" ] && echo yes || echo no) $([ -e "$JL/al-new" ] && echo yes || echo no)"
+python3 "$R/bin/agent-job" done /tmp/x/prune-launch.md >/dev/null; rm -f "$JL"/al-*
 # agent-job done lists what the agent may have left running where it worked, and kills nothing
 git init -q -b main "$T/lr"; git -C "$T/lr" -c user.name=t -c user.email=t@example.invalid commit -q --allow-empty -m one
 git -C "$T/lr" worktree add -q -b lw "$T/lw"; mkdir -p "$T/lw/app" "$T/lwork" "$T/lother"
