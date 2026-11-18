@@ -1170,7 +1170,7 @@ def check(t, has_cd):
         bodies = [v[len('body=@'):] for v in opt(rest, ['-F', '--field']) if v.startswith('body=@')]
         literal = [v for v in fields if re.match(r'^(body|query)=', v) and not v.startswith('body=@') and not (ep == 'graphql' and v.startswith('query='))]
         if literal or not (bodies or inputs):
-            unknown = sorted({field_name(v) for v in fields} - TEXT_FREE)
+            unknown = sorted({field_name(v) for v in fields} - TEXT_FREE) if not shellcmd.graphql_endpoint(ep) else []
             block(NEED_DRAFT + (f"; fields not known to post no text (shellcmd.TEXT_FREE): {', '.join(unknown)}" if unknown else ''))
         if method == 'POST' and (opens := api_opens(ep, rest, env, run_dir)):
             need_home([opens[0]], run_dir)

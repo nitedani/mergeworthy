@@ -1048,6 +1048,7 @@ TEXT_FREE = {
     'github_owned_allowed', 'verified_allowed',  # repos/o/r/actions/permissions/selected-actions
     'permission', 'permissions',  # collaborators, teams
     'base', 'milestone', 'labels', 'assignees', 'assignee', 'maintainer_can_modify',  # PATCH repos/o/r/issues/N and pulls/N
+    'type',  # PATCH repos/o/r/issues/N
     'reviewers', 'team_reviewers',  # repos/o/r/pulls/N/requested_reviewers
 }
 
@@ -1131,7 +1132,7 @@ def api_call(rest, cwd=None):
         posts = graphql_posts(fields, inputs, cwd)
     else:
         path = re.sub(r'^(?:https?://[^/]+)?/?(?:api/v3/)?', '', ep).split('?')[0]
-        merges = re.fullmatch(r'repos/[^/]+/[^/]+/(?:pulls/\d+/merge|merges)', path)  # it merges, and the merge checks run only on `gh pr merge`
+        merges = re.fullmatch(r'repos/[^/]+/[^/]+/(?:pulls/\d+/merge.*|merges)', path)  # it merges, and the merge checks run only on `gh pr merge`
         no_text = fields and not inputs and not merges and all(field_name(v) in TEXT_FREE for v in fields)
         posts = method in ('POST', 'PATCH', 'PUT') and not NO_TEXT.fullmatch(path) and not no_text
     return method, ep, fields, inputs, posts
