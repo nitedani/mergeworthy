@@ -448,7 +448,7 @@ dfx
 printf '{"data":{"search":{"nodes":[{"number":5,"url":"https://github.com/orgs/dorg/discussions/50","repository":{"nameWithOwner":"d/x"}},{"number":5,"url":"https://github.com/orgs/dorg/discussions/5","repository":{"nameWithOwner":"d/r"}},{"number":6,"url":"https://github.com/orgs/dorg/discussions/6","repository":{"nameWithOwner":"d/r"}}]}}}' > "$FX/graphql"
 printf '{"data":{"node":{"discussion":{"number":5,"repository":{"nameWithOwner":"d/r"}}},"updateDiscussionComment":{"comment":{"url":"https://example.invalid/d/r/discussions/5#discussioncomment-504"}}}}' > "$FX/graphql_DC_504"
 printf '{"data":{"addDiscussionComment":{"comment":{"url":"https://example.invalid/d/r/discussions/5#discussioncomment-600"}}}}' > "$FX/graphql_D_5"
-DD="$T/ddrafts/d-r-5"; mkdir -p "$DD"
+DD="$T/ddrafts/drafts/d-r-5"; mkdir -p "$DD"
 dtc() { "$R/bin/thread-context" "$1" --out "$DD/thread-context.md" --depth "${2:-0}" >/dev/null 2>"$T/dtc.err"; echo "$? $(grep -c '^- root: d/r#5 ' "$DD/thread-context.md" 2>/dev/null) $(grep -c '^- latest-human-comment: id=502 at=2026-10-05T09:30:00Z' "$DD/thread-context.md" 2>/dev/null)"; }
 check "thread-context on a discussion by its repo URL, its org URL and owner/repo#N: its root, and its latest human reply, not a bot's" "0 1 1 0 1 1 0 1 1" \
   "$(rm -f "$DD/thread-context.md"; dtc https://github.com/d/r/discussions/5) $(rm -f "$DD/thread-context.md"; dtc https://github.com/orgs/dorg/discussions/5) $(rm -f "$DD/thread-context.md"; dtc 'd/r#5')"
@@ -532,7 +532,7 @@ check "post-bash-register after discussion-post through python3: the no-watcher 
 rm -f "$FX/graphql" "$FX/graphql_d" "$FX/graphql_DC_504" "$FX/graphql_D_5" "$FX/user"; unset GATED_POSTS
 
 # gate-pass wants the same file beside a reply draft
-GD="$T/gdrafts/x"; mkdir -p "$GD"; printf 'Agreed, option A it is.\n' > "$GD/r.md"; echo CLEAN > "$GD/r.review.out"
+GD="$T/gdrafts/drafts/x"; mkdir -p "$GD"; printf 'Agreed, option A it is.\n' > "$GD/r.md"; echo CLEAN > "$GD/r.review.out"
 gp0() { MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GD/r.md" "$GD/r.review.out" ${GPL:+--ledger "$GPL"} --kind reply --parent none >"$T/gp.out" 2>&1; echo $?; }
 gp() { rv "$GD/r.review.out"; gp0; }
 check "BLOCK: gate-pass on a reply without thread-context.md" 1 "$(gp)"
@@ -788,7 +788,7 @@ pl 290; check "a 2600-word plan fails, naming the cap" 1 "$(plint plan | grep -c
 pl 290; sed -i '1a ### How to reproduce' "$T/plan.md"; check "a plan's How to reproduce section counts toward its cap, and the length line names it" "1 1" "$(plint plan | grep -c 'words > 2500 for a plan') $(plint plan | grep -c 'cap 2500')"
 pl 110 dashed; check "a plan with an em dash fails, and only for that" "rc=1 1" "$(plint plan | tail -1) $(plint plan | grep -c '^em dash')"
 # ---------- post-lint --edit-of (nitedani/mergeworthy#140): an edit fails only on what it adds to the live body ----------
-EO="$T/eo"; mkdir -p "$EO" "$T/eotmp"; EOR=$'\n\n### How to reproduce\n\n1. Run it.\n\n```\nlog\n```\n'
+EO="$T/drafts/eo"; mkdir -p "$EO" "$T/eotmp"; EOR=$'\n\n### How to reproduce\n\n1. Run it.\n\n```\nlog\n```\n'
 eolive() { python3 -c 'import json, sys; json.dump({"body": sys.argv[1]}, open(sys.argv[2], "w"))' "$1$EOR" "$FX/repos_acme_x_issues_7"; }
 eo() { printf '%s' "$1$EOR" > "$EO/e.md"; TMPDIR="$T/eotmp" MERGEWORTHY_BADGE=off python3 "$R/bin/post-lint" "$EO/e.md" --kind "${2:-issue}" --repo acme/x --parent none --edit-of 'acme/x#7' 2>&1; echo "rc=$?"; }
 eolive 'We leverage a cache here.'
@@ -918,11 +918,11 @@ check "a draft's body without its State line is flagged" 1 "$(dlint --draft)"
 check "a body that isn't a draft needs no State line" 0 "$(dlint)"
 printf '%s\n**State: draft** (my bug check is still running)\n\nDraft: waits on the release.\n\nThe fix.\n' "$B" > "$T/ds.md"
 check "under the State line, a status opener is still flagged" 1 "$(dlint --draft)"
-mkdir -p "$T/dsd"; printf '%s *Opus 5.5 (high effort) wrote this.*\n**State: draft** (my bug check is still running)\n\nRoutes after vike(app) skip the auth +middleware. This PR runs it first.\n' '<img src="https://github.com/claude.png" width="20" height="20" alt="Claude">' > "$T/dsd/pr.md"
-echo CLEAN > "$T/dsd/pr.review.out"; python3 "$R/bin/post-lint" "$T/dsd/pr.md" --kind pr --parent none --draft >/dev/null 2>&1; rv "$T/dsd/pr.review.out"
-check "gate-pass replays --draft from the .lint record (without it the State line fails)" 0 "$(bash "$R/bin/gate-pass" "$T/dsd/pr.md" "$T/dsd/pr.review.out" >/dev/null 2>&1; echo $?)"
-sed -i 's/runs it first/runs it before them/' "$T/dsd/pr.md"; touch -d '+2 minutes' "$T/dsd/pr.review.out"
-check "BLOCK: gate-pass on a draft edited after its review's launch (a trim to the ceiling), its output touched since, naming post steps 2 and 3" "1 1" "$(bash "$R/bin/gate-pass" "$T/dsd/pr.md" "$T/dsd/pr.review.out" >"$T/dsd/gp.out" 2>&1; echo $?) $(grep -c 'changed after its review.*post step 2.*post step 3' "$T/dsd/gp.out")"
+mkdir -p "$T/drafts/dsd"; printf '%s *Opus 5.5 (high effort) wrote this.*\n**State: draft** (my bug check is still running)\n\nRoutes after vike(app) skip the auth +middleware. This PR runs it first.\n' '<img src="https://github.com/claude.png" width="20" height="20" alt="Claude">' > "$T/drafts/dsd/pr.md"
+echo CLEAN > "$T/drafts/dsd/pr.review.out"; python3 "$R/bin/post-lint" "$T/drafts/dsd/pr.md" --kind pr --parent none --draft >/dev/null 2>&1; rv "$T/drafts/dsd/pr.review.out"
+check "gate-pass replays --draft from the .lint record (without it the State line fails)" 0 "$(bash "$R/bin/gate-pass" "$T/drafts/dsd/pr.md" "$T/drafts/dsd/pr.review.out" >/dev/null 2>&1; echo $?)"
+sed -i 's/runs it first/runs it before them/' "$T/drafts/dsd/pr.md"; touch -d '+2 minutes' "$T/drafts/dsd/pr.review.out"
+check "BLOCK: gate-pass on a draft edited after its review's launch (a trim to the ceiling), its output touched since, naming post steps 2 and 3" "1 1" "$(bash "$R/bin/gate-pass" "$T/drafts/dsd/pr.md" "$T/drafts/dsd/pr.review.out" >"$T/drafts/dsd/gp.out" 2>&1; echo $?) $(grep -c 'changed after its review.*post step 2.*post step 3' "$T/drafts/dsd/gp.out")"
 dguard() { # body file -> exit code of the guard on `gh pr create --draft`
   python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr create --draft --repo o/r --title \"$(cat /w/drafts/title.md)\" --body-file "+sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$TCO" \
     | MERGEWORTHY_WATCHER=off python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?
@@ -2031,7 +2031,7 @@ echo '[]' > "$FX/projects_acme%2Fapp_merge_requests_4_notes_sort_asc_order_by_cr
 check "a qualified gitlab.com/<path>!N and #N in a GitLab thread are followed as written" 2 "$(grep -Ec '^  - gitlab.com/acme/app(#3|!2) ' "$T/glctx/q.md")"
 # GitLab's note times carry a fraction (2022-01-31T15:10:44.988Z): the record writes every time in one UTC form, so gate-pass, east of
 # UTC, still refuses a review older than the note
-NA=$(date -u -d '-30 minutes' +%Y-%m-%dT%H:%M:%S); GZ="$T/gltz"; mkdir -p "$GZ"
+NA=$(date -u -d '-30 minutes' +%Y-%m-%dT%H:%M:%S); GZ="$T/drafts/gltz"; mkdir -p "$GZ"
 printf '{"iid":5,"id":505,"title":"Times","web_url":"https://gitlab.com/acme/app/-/merge_requests/5","state":"opened","updated_at":"%s.988Z","created_at":"2026-10-29T13:00:00.123Z","author":{"username":"bob"},"description":"Times."}' "$NA" > "$FX/projects_acme%2Fapp_merge_requests_5"
 printf '[{"id":21,"author":{"username":"alice"},"created_at":"%s.988Z","body":"One more thing."}]' "$NA" > "$FX/projects_acme%2Fapp_merge_requests_5_notes_sort_asc_order_by_created_at_per_page_100"
 "$R/bin/thread-context" 'gitlab.com/acme/app!5' --out "$GZ/thread-context.md" >/dev/null
@@ -2606,7 +2606,7 @@ check "BLOCK: ps selecting by user, name, group, terminal or all, a numeric valu
 check "BLOCK: pkill -f behind wrappers (timeout, netns-run, nice, ionice) and inside their bash -c; a plain timeout run passes" "2 2 2 0" "$(guard "timeout 200 netns-run bash -c 'pnpm build; pkill -f \"vike preview\"; true'") $(guard 'nice -n 19 ionice -c3 pkill -f vite') $(guard 'timeout -k 5 60 pkill -f vite') $(guard 'timeout 60 nice -n 19 pnpm test')"
 check "reading a .review.out, gate-pass, a claude -p reviewer's stdout and an agent writing its own output pass" "0 0 0 0" "$(guard 'cat /w/x.review.out > /w/copy.md') $(guard 'gate-pass /w/x.md /w/x.review.out') $(guard 'claude -p "$(cat /w/p.md)" > /w/x.review.out') $(guard 'echo CLEAN > /w/x.review.out' a1)"
 # a reviewer launched from a shell gets the same post-lint check as an agent, and its launch records the text it is handed
-SL="$T/sl"; mkdir -p "$SL"; printf 'Fixed in abc1234.\n' > "$SL/b.md"; echo CLEAN > "$SL/b.review.out"; sl_sha=$(sha256sum "$SL/b.md" | cut -d' ' -f1)
+SL="$T/drafts/sl"; mkdir -p "$SL"; printf 'Fixed in abc1234.\n' > "$SL/b.md"; echo CLEAN > "$SL/b.review.out"; sl_sha=$(sha256sum "$SL/b.md" | cut -d' ' -f1)
 check "BLOCK: codex exec -o <out> on a draft with no passing post-lint, naming post-lint" "2 1" "$(guard "codex exec --skip-git-repo-check -o $SL/b.review.out \"\$(cat $SL/p.md)\" < /dev/null") $(grep -c 'no passing post-lint' "$T/err")"
 printf %s "$sl_sha" > "$SL/b.md.lint.sha"
 check "codex exec -o <out> and claude -p > <out-r2> record the launched text, and the earlier verdict is set aside" "0 $sl_sha CLEAN 0 $sl_sha" "$(guard "codex exec --skip-git-repo-check -o $SL/b.review.out \"\$(cat $SL/p.md)\" < /dev/null") $(cut -d' ' -f1 "$SL/b.review.out.launch") $(cat "$SL/b.review.out.prev") $(guard "claude -p --effort high < $SL/p.md > $SL/b.review-r2.out") $(cut -d' ' -f1 "$SL/b.review-r2.out.launch")"
@@ -2622,6 +2622,9 @@ check "BLOCK: a reviewer's output with a computed basename in drafts/ (codex -o,
 check "BLOCK: a reviewer's output that may be one of two misnamed drafts/ outputs" 2 "$(guard "out=$T/drafts/sn/a.out; if false; then out=$T/drafts/sn/b.out; fi; codex exec --skip-git-repo-check -o \"\$out\" \"\$(cat $SL/p.md)\" < /dev/null")"
 F1="$T/drafts/r1"; mkdir -p "$F1"; printf 'Fixed.\n' > "$F1/title.md"; f1_sha=$(sha256sum "$F1/title.md" | cut -d' ' -f1); printf %s "$f1_sha" > "$F1/title.md.lint.sha"
 check "a claude -p reviewer's stderr file is a plain write: only its stdout target is its verdict, recorded" "0 $f1_sha" "$(guard "claude -p < \"$F1/prompt.md\" > \"$F1/title.review-r3.out\" 2> \"$F1/review-stderr.out\"") $(cut -d' ' -f1 "$F1/title.review-r3.out.launch" 2>&1)"
+SA="$T/standalone"; mkdir -p "$SA"; printf 'A title\n' > "$SA/title.md"
+check "a standalone reviewer's <name>.review.out outside drafts/, beside an unlinted <name>.md, passes unrecorded" "0 none" "$(guard "folder=$SA; codex exec --skip-git-repo-check -o \"\$folder/title.review.out\" \"Review the title\" < /dev/null") $([ -e "$SA/title.review.out.launch" ] && echo launch || echo none)"
+check "BLOCK: gate-pass on a review output outside drafts/, naming where drafts live" "1 1" "$(echo CLEAN > "$SA/title.review.out"; MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$SA/title.md" "$SA/title.review.out" --kind title >"$T/sa.out" 2>&1; echo $?) $(grep -c 'only a post.s review there records its launch' "$T/sa.out")"
 check "a shell-launched output naming no review output passes though it isn't one known path: a loop's variable, \$(mktemp)" "0 0" "$(guard "for f in a b; do out=$T/\$f.txt; codex exec --skip-git-repo-check -o \"\$out\" \"\$(cat $SL/p.md)\" < /dev/null; done") $(guard "codex exec --skip-git-repo-check -o \"\$(mktemp)\" \"\$(cat $SL/p.md)\" < /dev/null")"
 check "a shell-launched reviewer's output whose real path is outside drafts/ (drafts/../summary.out) passes" 0 "$(guard "codex exec --skip-git-repo-check -o $T/drafts/../summary.out \"\$(cat $SL/p.md)\" < /dev/null")"
 check "BLOCK: the main session writing a launch record or a set-aside verdict, naming the hook, or a round's output" "2 1 2 2" "$(guard "echo x > $SL/b.review.out.launch") $(grep -c 'written by the hook' "$T/err") $(guard "mv $SL/b.review.out.prev $SL/b.review.out.prev") $(guard "echo CLEAN > $SL/b.review-r3.out")"

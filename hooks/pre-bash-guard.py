@@ -1048,10 +1048,10 @@ def check(t, has_cd):
     targets = written_files(t)
     files = [where.files(x) for x in targets]
     names = [*map(where.expand, targets), *(f for c in files for f in c or [])]
-    if p not in ('claude', 'codex') and any(review_launch.draft_of(f) for f in names) and not by_agent(d):
+    if p not in ('claude', 'codex') and any(review_launch.REVIEW_OUT.fullmatch(f) for f in names) and not by_agent(d):
         block("a review's output is the reviewer's final message, written by the reviewer: `codex exec -o <out>`, or the agent writes <out> itself. "
               "Never write a verdict yourself (mergeworthy:delegate §Reviewers, post step 3)")
-    if any(review_launch.draft_of(re.sub(r'\.(launch|prev)$', '', f)) and f.endswith(('.launch', '.prev')) for f in names):
+    if any(review_launch.REVIEW_OUT.fullmatch(re.sub(r'\.(launch|prev)$', '', f)) and f.endswith(('.launch', '.prev')) for f in names):
         block("a review output's .launch and .prev are written by the hook that starts its reviewer, which records the text the reviewer is handed: "
               "launch the review again (mergeworthy:post step 3)")
     if p in ('claude', 'codex'):

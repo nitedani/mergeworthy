@@ -8,15 +8,24 @@ import hashlib, os, re, time
 FOOTER = re.compile(rb'\nHarness changes since my last note: <https://github\.com/nitedani/mergeworthy/compare/[0-9a-f]+\.\.\.[0-9a-f]+>\n\Z')
 
 
+REVIEW_OUT = re.compile(r'(.+)\.review(-r\d+)?\.out')  # a review output's name: <name>.review.out, round N <name>.review-r<N>.out
+
+
+def in_drafts(path):
+    """Whether path's real path lies in a drafts/ folder, where a post's drafts live (post step 1)."""
+    return '/drafts/' in os.path.realpath(path)
+
+
 def draft_of(out):
-    """The draft a review output is named after: <name>.md for <name>.review.out and <name>.review-r<N>.out; None for any other name."""
-    return m[1] + '.md' if (m := re.fullmatch(r'(.+)\.review(-r\d+)?\.out', out)) else None
+    """The draft a post's review output is named after: <name>.md for <name>.review.out and <name>.review-r<N>.out in a drafts/
+    folder; None for any other name or place."""
+    return m[1] + '.md' if (m := REVIEW_OUT.fullmatch(out)) and in_drafts(out) else None
 
 
 def misnamed(out):
     """Why a reviewer's output out can't be tied to its draft: a .out file whose real path is in a drafts/ folder, not named
     <name>.review.out; '' otherwise."""
-    if draft_of(out) or not re.search(r'/drafts/.*\.out\Z', os.path.realpath(out)):
+    if draft_of(out) or not in_drafts(out) or not out.endswith('.out'):
         return ''
     return (f"{out} is in drafts/ but not named after its draft, so gate-pass can't tell which text its reviewer was handed: "
             "name it <name>.review.out (round N: <name>.review-rN.out) for <name>.md, then launch the review (post step 3)")
@@ -55,8 +64,11 @@ def reviewed(out, draft):
     try: m = re.fullmatch(r'([0-9a-f]{64}) (\d+)\n?', open(out + '.launch').read())
     except OSError: m = None
     if not m:
-        return (misnamed(out) or f"{out} has no recorded review launch: start the reviewer through delegate_task, the Agent tool, "
-                f"`codex exec -o {out}` or `claude -p … > {out}`, which records the text it is handed (post step 3)"), None
+        return misnamed(out) or (
+            f"{out} is not in a drafts/ folder, and only a post's review there records its launch: keep the draft and its review "
+            "output in <work folder>/drafts/<thread>/ (post step 1), then launch the review (post step 3)" if not in_drafts(out) else
+            f"{out} has no recorded review launch: start the reviewer through delegate_task, the Agent tool, `codex exec -o {out}` "
+            f"or `claude -p … > {out}`, which records the text it is handed (post step 3)"), None
     data = open(draft, 'rb').read()
     if m[1] not in {hashlib.sha256(x).hexdigest() for x in (data, FOOTER.sub(b'', data))}:
         return (f"the draft changed after its review {out} was launched: lint it again (post step 2), then send it back to the reviewer "
