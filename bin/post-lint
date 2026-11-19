@@ -39,7 +39,7 @@ def uncollapsed(s):
     """s without its collapsed blocks: each <details> (its tag's attributes or spaces included) to its own close, the blocks nested in it with it.
     Only tags that render as HTML count: one written as an example, in code, is text."""
     out, depth, start = [], 0, 0
-    for a, b in post_words.html_tags(s, r'<details\b[^>]*>|</details\s*>'):
+    for a, b in post_words.html_tags(s, r'<details\b(?:[^>"\']|"[^"]*"|\'[^\']*\')*>|</details\s*>'):  # a quoted value may hold a >
         if s[a + 1] != '/':
             if depth == 0: out.append(s[start:a]); start = a
             depth += 1
