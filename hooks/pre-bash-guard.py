@@ -87,8 +87,8 @@ def check_union(d, repo, num, base=None, branch=None, head=None):
               f"tell {mark}{n}'s session only if {mark}{n} must change")
 
 def flag(a, *names):
-    """A boolean flag's value in argv a as gh's and glab's pflag sets it, names its long and short spellings: the last occurrence wins,
-    a bare `--x` is true and `--x=<v>` false for v false, f or 0 (any case); False when absent."""
+    """A boolean flag's value in argv a, names its long and short spellings: the last occurrence wins, a bare `--x` or `-x` is true and
+    `--x=<v>` false for v false, f or 0 (any case); False when absent. Bundled short flags (`-df`) aren't read."""
     on = False
     for n, eq, v in (x.partition('=') for x in a):
         if n in names: on = not eq or v.lower() not in ('false', 'f', '0')
