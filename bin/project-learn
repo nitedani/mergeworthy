@@ -411,12 +411,15 @@ def remote(url):
 
 
 def t3_origins():
-    """The (host, path) of each T3 Code project's origin remote, or None when T3's state can't be read."""
+    """({(host, path)} of each T3 Code project's origin remote, None), or (None, why they can't be read)."""
     roots = steward.projects()
     if roots is None:
-        return None
-    urls = (subprocess.run(['git', '-C', root, 'remote', 'get-url', 'origin'], capture_output=True, text=True).stdout.strip() for root in roots)
-    return set(filter(None, map(remote, urls)))
+        return None, "T3 Code's database can't be read: the run learns the repos of its projects"
+    try:
+        urls = [subprocess.run(['git', '-C', root, 'remote', 'get-url', 'origin'], capture_output=True, text=True).stdout.strip() for root in roots]
+    except FileNotFoundError:
+        return None, "no git on PATH: the run reads each T3 Code project's origin remote"
+    return set(filter(None, map(remote, urls))), None
 
 
 def start():
@@ -427,9 +430,8 @@ def start():
     if not os.path.isfile(os.path.join(WORK, 'scope.md')):
         with open(os.path.join(WORK, 'scope.md'), 'w') as f:
             f.write("Tier: 0, because the daily learning run sorts listed maintainer activity into project files and changes no repo\n")
-    origins = t3_origins()
-    if origins is None:
-        why = "T3 Code's database can't be read: the run learns the repos of its projects"
+    origins, why = t3_origins()
+    if why:
         print(f"project-learn: {project_file.record_run(iso(NOW), error=why)}")
         sys.exit(1)
     need, failed = {}, []

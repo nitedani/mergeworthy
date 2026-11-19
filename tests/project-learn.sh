@@ -276,6 +276,10 @@ out=$(python3 "$R/bin/project-learn" start 2>&1); rc=$?
 check "start without T3's database: exit 1, one line saying so, recorded as FAILED; nothing listed, marked or started" "1 1 1 0 0" \
   "$rc $(echo "$out" | grep -c "^project-learn: FAILED: T3 Code's database can't be read") $(echo "$out" | wc -l) $(grep -c '^Learned:' "$P/o/quiet.study.md") $(wc -l < "$T/t3-calls")"
 mv "$T/statev2.sqlite" "$HOME/.t3/userdata/statev2.sqlite"; rm "$P/o/elsewhere."* "$P/o/archived."* "$P/o/deleted."*
+mkdir "$T/nogit"; ln -s "$T/bin/gh" "$T/bin/t3" /usr/bin/python3 "$T/nogit/"; rm -f "$L/runs.txt"
+PATH="$T/nogit" /usr/bin/python3 "$R/bin/project-learn" start >/dev/null 2>"$T/err"; rc=$?
+check "start with no git on PATH: exit 1, a runs.txt line saying so; no traceback" "1 1 0" \
+  "$rc $(grep -c "^$(date -u +%F) .* FAILED: no git on PATH" "$L/runs.txt" 2>/dev/null) $(grep -c Traceback "$T/err")"
 
 # a repo whose list fails, over the cap: the thread still condenses it, its failure named
 rm "$L/runs.txt"; printf '# o/broken\n## Who decides\nboss\n' > "$P/o/broken.md"; yes word | head -n 2501 >> "$P/o/broken.md"; printf 'Studied: 2026-10-29\n' > "$P/o/broken.study.md"; : > "$T/t3-calls"
