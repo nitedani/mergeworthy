@@ -2613,11 +2613,11 @@ check "BLOCK: with an open line for an MR of the project, a ready naming no MR, 
 glr() { prhead "$G2" "$FX/glmr_view_5" https://gitlab.com/acme/app/-/merge_requests/5; python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$G2" | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err" >/dev/null; echo $?; }
 echo '{"description": "No notes."}' > "$GB"; echo 'gitlab.com/acme/app!5: the MR leaks a timer' > "$TASKW/defects-open.md"
 GLB="$FX/projects_acme%2Fapp_merge_requests_state_opened_source_branch_"
-echo '[{"iid": 7}]' > "${GLB}other-branch"; echo '[{"iid": 5}]' > "${GLB}feat"; echo '[]' > "${GLB}nomr"; prhead "$G2" "$FX/glmr_view_other-branch" https://gitlab.com/acme/app/-/merge_requests/7
+echo '[{"iid": 7}]' > "${GLB}other-branch"; echo '[{"iid": 5}]' > "${GLB}feat"; echo '[]' > "${GLB}nomr"
 check "BLOCK: glab mr update naming MR 5 after an option's number, or by its URL with another -R; a branch whose MR is 5" "2 2 2" \
   "$(glr 'glab mr update --milestone 6 5 --ready -R gitlab.com/acme/app') $(glr 'glab mr update https://gitlab.com/acme/app/-/merge_requests/5 --ready -R gitlab.com/acme/other') $(glr 'glab mr update feat --ready -R gitlab.com/acme/app')"
-check "a branch whose open MR is another passes; a branch with no open MR blocks, in a project no line names too" "0 2 1 2" \
-  "$(glr 'glab mr update other-branch --ready -R gitlab.com/acme/app') $(glr 'glab mr update nomr --ready -R gitlab.com/acme/app') $(grep -c 'nomr' "$T/err") $(glr 'glab mr update nomr --ready -R gitlab.com/acme/other')"
+check "BLOCK: glab mr update <branch> --ready, its open MR another one, asking for the MR number; a branch with no open MR, in a project no line names too" "2 1 2 1 2" \
+  "$(glr 'glab mr update other-branch --ready -R gitlab.com/acme/app') $(grep -c 'pass the MR number (`glab mr update <N> --ready`)' "$T/err") $(glr 'glab mr update nomr --ready -R gitlab.com/acme/app') $(grep -c 'nomr' "$T/err") $(glr 'glab mr update nomr --ready -R gitlab.com/acme/other')"
 rm "${GLB}other-branch" "${GLB}feat" "${GLB}nomr"
 echo 'acme.inc/app!5: the MR leaks a timer' > "$TASKW/defects-open.md"
 check "BLOCK: a bare path with a dotted namespace is that gitlab.com project (#197 Loop A 3)" 2 "$(glr 'glab mr update 5 --ready -R gitlab.com/acme.inc/app')"

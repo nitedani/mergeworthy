@@ -837,6 +837,8 @@ def ready_head(p, repo, num, branch, run_dir, a, env):
         view = ['glab', 'mr', 'view', num, '-R', f'https://{repo}', '--output', 'json']
     else:
         at = next((i for i, x in enumerate(rest) if not x.startswith('-') and not (i and rest[i - 1] in (VALUED if p == 'gh' else GLAB_UPDATE_VALUED))), None)
+        if p == 'glab' and at is not None and not re.fullmatch(r'\d+|https?://.+/-/merge_requests/\d+/?', rest[at]):
+            block("`glab mr update <branch>` picks its MR by filters (state, owner) this check can't follow: pass the MR number (`glab mr update <N> --ready`)")
         view = [p, a[0], 'view', *rest[at:at + 1 if at is not None else 0], *(['-R', r[-1]] if (r := opt(rest, ['-R', '--repo'])) else []),
                 *(['--json', 'headRefOid,url'] if p == 'gh' else ['--output', 'json'])]
         keep = [x for i, x in enumerate(rest) if i != at and not re.match(r'-R|--repo(=|$)', x) and not (i and rest[i - 1] in ('-R', '--repo'))]
