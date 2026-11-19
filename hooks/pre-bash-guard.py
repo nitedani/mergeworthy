@@ -832,10 +832,12 @@ def ready_defects(p, repo, num, _base, branch, what):
 
 def ready_head(p, repo, num, branch, run_dir, a, env):
     """The commit goes_ready's command makes ready, which its records are judged on: the head of the PR or MR it names, as `gh pr view` or
-    `glab mr view` resolve it with the command's own target, env and dir (an API PUT: the project and MR its path names), or a create's
-    opened_head. A checkout whose HEAD is another commit blocks, naming both and the command aimed at the PR's URL; a head the CLI can't read blocks."""
+    `glab mr view` resolve it with the command's own target, env and dir (an API PUT: the project and MR its path names).
+    A checkout whose HEAD is another commit blocks, naming both and the command aimed at the PR's URL; a head the CLI can't read blocks. A create opening
+    its PR or MR ready blocks: which commit it publishes (a tracking ref, another repo's branch of that name, a source GitLab picks or makes) can't be told here."""
     if num is None and branch is None:
-        return opened_head(known(run_dir), p, a)
+        block(f"`{p} {a[0]} create` opens it ready, and which commit it opens can't be told from this checkout: "
+              f"open it with --draft, then `{'gh pr ready <N>' if p == 'gh' else 'glab mr update <N> --ready'}` from its checkout")
     rest, keep = a[2:], None
     if a[0] == 'api':
         view = ['glab', 'mr', 'view', num, '-R', f'https://{repo}', '--output', 'json']
@@ -861,21 +863,6 @@ def ready_head(p, repo, num, branch, run_dir, a, env):
         block(f"`{shlex.join([p, *a])}` makes {url}'s head {sha[:10]} ready, and this checkout's HEAD is {here[:10] or '(no git repo in cwd)'}: "
               f"run it from that checkout with that head pushed (`cd <its checkout> && {retry}`)")
     return sha
-
-def opened_head(d, p, a):
-    """HEAD of the checkout a ready PR or MR create `p <a>` runs in. A create naming its source (gh's --head, glab's --source-branch, or glab's --head,
-    another project) opens it as the host has it, so it is confirmed only as the checked-out branch's upstream on a remote, at HEAD; any other blocks."""
-    git = lambda *x: subprocess.run(['git', '-C', d, *x], capture_output=True, text=True).stdout.strip()
-    here, named = git('rev-parse', 'HEAD'), opt(a[2:], ['--head', '-H'] if p == 'gh' else ['--source-branch', '-s'])
-    project = opt(a[2:], ['--head']) if p == 'glab' else []
-    if not named and not project: return here
-    cur = git('symbolic-ref', '--short', '-q', 'HEAD')
-    up = git('for-each-ref', '--format=%(upstream)', f'refs/heads/{cur}') if cur else ''
-    branch = where.expand(named[-1]) if named else cur
-    if project or branch != re.sub(r'^refs/remotes/[^/]+/', '', up) or git('rev-parse', up) != here:
-        block(f"`{p} {a[0]} create` opens {branch}{' of ' + project[-1] if project else ''}, which can't be confirmed as this checkout's HEAD {here[:10]} pushed (the checked-out branch's upstream, at HEAD): "
-              f"open it with --draft, then `{'gh pr ready <N>' if p == 'gh' else 'glab mr update <N> --ready'}` from its checkout")
-    return here
 
 GLAB_UPDATE_VALUED = {'-a', '--assignee', '--attach', '-d', '--description', '--description-file', '-l', '--label', '-m', '--milestone',
                       '--reviewer', '--state', '--target-branch', '-t', '--title', '-u', '--unlabel', '-R', '--repo'}  # docs.gitlab.com/cli/mr/update

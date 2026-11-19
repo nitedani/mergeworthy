@@ -3586,8 +3586,8 @@ ul() { # the other PR's isDraft, base, head, one file and changedFiles: our open
   printf '[{"number":3675,"isDraft":false,"baseRefName":"main","headRefOid":"%s","files":[{"path":"a.ts"},{"path":"b.ts"}],"changedFiles":2},{"number":3680,"isDraft":%s,"baseRefName":"%s","headRefOid":"%s","files":[{"path":"%s"}],"changedFiles":%s}]' "$CH" "$@" > "$FX/pr_list_vikejs_vike"; }
 prhead "$CK" "$FX/pr_view_3675" https://github.com/vikejs/vike/pull/3675; UR='gh pr ready 3675 -R vikejs/vike'; UP='git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc'
 ul false main b0b0b0b0 b.ts 1
-check "BLOCK: gh pr ready, a push to a ready PR and a ready gh pr create while another ready PR of ours changes one of its files, naming it and the file; a create with no base ref says to fetch it (#188)" "2 1 2 2 1 1" \
-  "$(bg "$UR" "$CK") $(grep -c 'vikejs/vike#3680, also yours and ready, changes b.ts' "$T/err") $(bg "$UP" "$CK") $(bg "gh pr create -R vikejs/vike --base main --title \"\$(cat $T/title.md)\" --body-file $(gated ub "It breaks.")" "$CK") $(grep -c ', also yours and ready, changes files listed only in part' "$T/err") $(grep -c 'without the base: `git fetch <the base repo.s remote> main`' "$T/err")"
+check "BLOCK: gh pr ready and a push to a ready PR while another ready PR of ours changes one of its files, naming it and the file (#188)" "2 1 2" \
+  "$(bg "$UR" "$CK") $(grep -c 'vikejs/vike#3680, also yours and ready, changes b.ts' "$T/err") $(bg "$UP" "$CK")"
 echo "union $T/u.log 2026-11-15T00:00:00Z b0b0b0b0" >> "$HOME/.claude/pr-steps/$CH"
 check "a union record on this head naming the other's head passes them; a new head on the other PR blocks again" "0 0 2" "$(bg "$UR" "$CK") $(bg "$UP" "$CK") $(ul false main c1c1c1c1 b.ts 1; bg "$UR" "$CK")"
 # a push is checked with the union record and files of the head it publishes, not the checkout's
@@ -3601,14 +3601,8 @@ ul false main c1c1c1c1 c.ts 1
 check "BLOCK: a push of another branch to a ready PR is held to that branch's converge records, not HEAD's: none blocks, naming its commit; its own five pass" "2 1 0" \
   "$(bg "$UG bare:fix-telefunc" "$CK") $(grep -c "out of draft and its pushed commit $(git -C "$CK" rev-parse bare | cut -c1-10) has no pr-steps verify" "$T/err") $(rec5 "$(git -C "$CK" rev-parse bare)"; bg "$UG bare:fix-telefunc" "$CK")"
 printf '[{"number":3680,"isDraft":false,"baseRefName":"main","headRefOid":"b0b0b0b0","files":[{"path":"b.ts"}],"changedFiles":1}]' > "$FX/pr_list_vikejs_vike"
-check "a recorded pair passes a ready gh pr create though git can't tell this branch's files (no base ref)" "0 0" "$(bg "gh pr create -R vikejs/vike --base main --title \"\$(cat $T/title.md)\" --body-file $(gated ub2 'It breaks.')" "$CK") $(grep -c 'also yours and ready' "$T/err")"
 PC="gh pr create -R vikejs/vike --base main --title \"\$(cat $T/title.md)\" --body-file $(gated ub3 'It breaks.')"
-git -C "$CK" branch -q up HEAD~1; git -C "$CK" checkout -q up; (cd "$CK" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null); git -C "$CK" checkout -q fix-telefunc
-git -C "$CK" update-ref refs/remotes/upstream/up HEAD~1; git -C "$CK" branch -q -u upstream/up
-check "BLOCK: a ready gh pr create whose source can't be confirmed as HEAD pushed: another branch, the upstream behind HEAD, the checked-out branch with no upstream at HEAD, owner:branch; saying to open it as a draft" "2 1 2 2 2 1" \
-  "$(bg "$PC --head other" "$CK") $(grep -c "opens other, which can't be confirmed.*open it with --draft, then .gh pr ready <N>. from its checkout" "$T/err") $(bg "$PC --head up" "$CK") $(bg "$PC --head fix-telefunc" "$CK") $(bg "$PC -H someone:fix-telefunc" "$CK") $(grep -c 'opens someone:fix-telefunc, which' "$T/err")"
-check "a ready gh pr create opening the checkout's upstream at HEAD passes, BLOCK: as someone's branch of that name; a draft naming owner:branch passes this check" "0 2 0" "$(git -C "$CK" update-ref refs/remotes/upstream/up HEAD; bg "$PC --head up" "$CK") $(bg "$PC -H someone:up" "$CK") $(bg "$PC --draft -H someone:fix-telefunc" "$CK" >/dev/null; grep -c "can't be confirmed" "$T/err")"
-git -C "$CK" branch -q --unset-upstream; git -C "$CK" branch -q -D up; git -C "$CK" update-ref -d refs/remotes/upstream/up
+check "BLOCK: a gh pr create opening its PR ready, every record there, saying to open it as a draft; --draft passes" "2 1 0" "$(bg "$PC" "$CK") $(grep -c "opens it ready.*open it with --draft, then .gh pr ready <N>. from its checkout" "$T/err") $(bg "gh pr create --draft -R vikejs/vike --base main --title \"\$(cat $T/title.md)\" --body-file $(gated ub4 "$(printf '%s\n**State: draft** (my bug check is still running)\n\nIt breaks.' '<img src="https://github.com/claude.png" width="20" height="20" alt="Claude">')")" "$CK")"
 ul false main c1c1c1c1 b.ts 1; sed -i 's/"baseRefName":"main"/"baseRefName":"dev"/' "$FX/pr_list_vikejs_vike"; sed -i 's/"isDraft":false,"baseRefName":"dev","headRefOid":"c1c1c1c1"/"isDraft":false,"baseRefName":"main","headRefOid":"c1c1c1c1"/' "$FX/pr_list_vikejs_vike"
 echo '{"draft":false}' > "$PB"; prhead "$CK" "$FX/pr_view_3675" https://github.com/vikejs/vike/pull/3675
 check "BLOCK: gh pr edit --base retargeting a ready PR from another checkout, naming its head" "2 1" "$(bg 'gh pr edit 3675 -R vikejs/vike --base main' "$GO") $(grep -c "https://github.com/vikejs/vike/pull/3675's head $(git -C "$CK" rev-parse --short=10 HEAD) ready" "$T/err")"
@@ -4040,12 +4034,10 @@ gll() { # the other MR's draft, target branch, head, one file and overflow: our 
 echo '[{"web_url":"https://gitlab.com/me/app/-/merge_requests/5","draft":false}]' > "$FX/gl_projects_me_2Fapp_merge_requests_state_opened_source_branch_mr-b"
 glb() { for v in 5 current https___gitlab.com_me_app_-_merge_requests_5; do prhead "$NA" "$FX/glmr_view_$v" https://gitlab.com/me/app/-/merge_requests/5; done; MERGEWORTHY_WATCHER=off bg "$1" "$NA"; }
 gll false main d0d0d0d0 b.py false
-check "GitLab, BLOCK: glab mr update --ready, -r and by the current branch, a push to a ready MR and a ready glab mr create while another ready MR of ours changes one of its files, naming it and the file (#188)" "2 1 2 2 2 2 1" \
-  "$(glb 'glab mr update 5 --ready') $(grep -c 'gitlab.com/me/app!8, also yours and ready, changes b.py' "$T/err") $(glb 'glab mr update 5 -r') $(glb 'glab mr update --ready') $(glb 'git push origin HEAD:mr-b') $(glb 'glab mr create --title x --target-branch main') $(grep -c 'gitlab.com/me/app!., also yours and ready' "$T/err")"
-git -C "$NA" update-ref refs/remotes/origin/mr-b HEAD; git -C "$NA" branch -q -u origin/mr-b
-check "GitLab, BLOCK: a ready glab mr create from another project (--head), which can't be confirmed; its upstream at HEAD alone gets past that check" "2 1 0" \
-  "$(glb 'glab mr create --title x --source-branch mr-b --head other/app') $(grep -c "opens mr-b of other/app, which can't be confirmed.*glab mr update <N> --ready. from its checkout" "$T/err") $(glb 'glab mr create --title x --source-branch mr-b' >/dev/null; grep -c "can't be confirmed" "$T/err")"
-git -C "$NA" branch -q --unset-upstream; git -C "$NA" update-ref -d refs/remotes/origin/mr-b
+check "GitLab, BLOCK: glab mr update --ready, -r and by the current branch, and a push to a ready MR while another ready MR of ours changes one of its files, naming it and the file (#188)" "2 1 2 2 2 1" \
+  "$(glb 'glab mr update 5 --ready') $(grep -c 'gitlab.com/me/app!8, also yours and ready, changes b.py' "$T/err") $(glb 'glab mr update 5 -r') $(glb 'glab mr update --ready') $(glb 'git push origin HEAD:mr-b') $(grep -c 'gitlab.com/me/app!., also yours and ready' "$T/err")"
+check "GitLab, BLOCK: a glab mr create opening its MR ready, with no push or with a source branch GitLab makes, saying to open it as a draft" "2 1 2 1" \
+  "$(glb 'glab mr create --title x --push=false --yes') $(grep -c "opens it ready.*open it with --draft, then .glab mr update <N> --ready. from its checkout" "$T/err") $(glb 'glab mr create --title x --create-source-branch --yes') $(grep -c "opens it ready.*glab mr update <N> --ready" "$T/err")"
 echo "union $T/u.log 2026-11-15T00:00:00Z d0d0d0d0" >> "$HOME/.claude/pr-steps/$NH"
 check "GitLab: a union record naming the other's head passes them; a new head on the other MR blocks again" "0 0 2" "$(glb 'glab mr update 5 --ready') $(glb 'git push origin HEAD:mr-b') $(gll false main e1e1e1e1 b.py false; glb 'glab mr update 5 --ready')"
 check "GitLab: no shared file, the other a draft or on another target branch: passes" "0 0 0" \
