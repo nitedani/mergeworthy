@@ -1178,6 +1178,11 @@ PQ="$T/rdrafts/drafts/q"; mkdir -p "$PQ"; printf 'Agreed.\n' > "$PQ/r.md"; sha25
 PQB="Review $PQ/r.md; write your final message, exactly CLEAN or the findings, to $PQ/r.review.out."
 check "a post's review gets r4 after an r3 with findings, and BLOCK its r5; BLOCK r4 after a CLEAN r3" "0 0 0 0 2 1 0 0 0 2" \
   "$(jd "$PQ/r.md" rnd q-r1 "$PQB") $(jd "$PQ/r.md" rnd q-r2 "$PQB") $(jd "$PQ/r.md" rnd q-r3 "$PQB") $(echo 'R3.1 should: the date is wrong' > "$PQ/r.review.out"; jd "$PQ/r.md" rnd q-r4 "$PQB") $(jd "$PQ/r.md" rnd q-r5 "$PQB") $(grep -c 'when round 3 found something, round 4, which confirms' "$T/err") $(jd "$PQ/r.md" rnd c-r1 "$PQB") $(jd "$PQ/r.md" rnd c-r2 "$PQB") $(jd "$PQ/r.md" rnd c-r3 "$PQB") $(echo CLEAN > "$PQ/r.review.out"; jd "$PQ/r.md" rnd c-r4 "$PQB")"
+# the third round that ran counts, whatever its number, and only a verdict written since its launch (#227)
+i227="$(jd "$PQ/r.md" rnd i-r3 "$PQB") $(jd "$PQ/r.md" rnd i-r4 "$PQB") $(jd "$PQ/r.md" rnd i-r5 "$PQB") $(echo 'R5.1 should: the date is wrong' > "$PQ/r.review.out"; jd "$PQ/r.md" rnd i-r6 "$PQB") $(jd "$PQ/r.md" rnd i-r7 "$PQB")"
+sclean="$(jd "$PQ/r.md" rnd sc-r1 "$PQB") $(jd "$PQ/r.md" rnd sc-r2 "$PQB") $(jd "$PQ/r.md" rnd sc-r3 "$PQB") $(echo CLEAN > "$PQ/r.review.out"; touch -d '-1 hour' "$PQ/r.review.out"; jd "$PQ/r.md" rnd sc-r4 "$PQB") $(grep -c 'r3 has no verdict written' "$T/err") $(grep -c 'Close r3, the last round' "$T/err")"
+sfound="$(jd "$PQ/r.md" rnd sf-r1 "$PQB") $(jd "$PQ/r.md" rnd sf-r2 "$PQB") $(jd "$PQ/r.md" rnd sf-r3 "$PQB") $(echo 'R3.1 should: old' > "$PQ/r.review.out"; touch -d '-1 hour' "$PQ/r.review.out"; jd "$PQ/r.md" rnd sf-r4 "$PQB") $(grep -c 'r3 has no verdict written' "$T/err")"
+check "a post's review gets r6 after r3, r4 and r5 found something, BLOCK its r7; BLOCK the round after a third whose output holds only a verdict older than its launch, CLEAN or not, naming the missing verdict and the last round" "0 0 0 0 2 | 0 0 0 2 1 1 | 0 0 0 2 1" "$i227 | $sclean | $sfound"
 PA="$PB
 $(cat "$R/skills/delegate/agent.md")"
 check "a post's review with agent.md pasted in still gets r3 (agent.md names NO BUGS and MERGE AS IS); its r4 is refused" "0 0 0 2" "$(jd "$PD/r.md" rnd pasted-r1 "$PA") $(jd "$PD/r.md" rnd pasted-r2 "$PA") $(jd "$PD/r.md" rnd pasted-r3 "$PA") $(jd "$PD/r.md" rnd pasted-r4 "$PA")"

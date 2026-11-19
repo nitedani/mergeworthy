@@ -151,17 +151,21 @@ if rnd and (ti.get('role') == 'review' or not ti.get('role') and re.search(r'\be
         earlier = sorted({m for m, old in rounds.get(loop, []) if m < n and built_on(old)})
         # a post's review: a gate review of a named draft whose brief asks for no code verdict (a small review's pr-body.review.out comes with one)
         post_review = bool(reviewed_drafts(brief)) and 'CLEAN' in brief and not re.search(r'\b(NO BUGS|MERGE AS IS)\b', own_brief)
-        def found(draft):  # round 3's verdict on draft, the file it wrote or the output this round reuses, isn't exactly CLEAN
-            for o in (draft[:-3] + '.review-r3.out', draft[:-3] + '.review.out'):
-                if os.path.isfile(o): return [l.strip() for l in open(o, errors='replace').read().splitlines() if l.strip()] != ['CLEAN']
-            return False
-        if len(earlier) >= (2 if not post_review else 4 if n == 4 and any(map(found, reviewed_drafts(brief))) else 3):
+        def verdict(out):  # out's non-empty lines written since its last launch; [] when its reviewer has written none
+            try: at = int(open(out + '.launch').read().split()[1])
+            except (OSError, IndexError, ValueError): return []
+            if not os.path.isfile(out) or os.path.getmtime(out) < at: return []
+            return [l.strip() for l in open(out, errors='replace').read().splitlines() if l.strip()]
+        # the round after a post review's third, when that round found something, confirms its fixes
+        verdicts = [verdict(o) for o in review_outs(brief) if review_launch.draft_of(o) in reviewed_drafts(brief)] if post_review and len(earlier) == 3 else []
+        if len(earlier) >= (2 if not post_review else 4 if verdicts and all(verdicts) and any(v != ['CLEAN'] for v in verdicts) else 3):
             sys.stderr.write(f"BLOCKED: {loop} already ran {', '.join(f'r{m}' for m in earlier)} on this head or one within {testpaths.STALE_LINES} changed lines of it "
                              f"({', '.join(h[:12] for h in heads) or 'no head pinned'}): a loop gets two rounds per head, and a head past those lines is a new one"
-                             f"{'; a post’s review gets round 3, which confirms round 2’s fixes, and, when round 3 found something, round 4, which confirms round 3’s fixes and is the last' if post_review else ''} (mergeworthy:delegate §Review rounds). "
+                             f"{'; a post’s review gets round 3, which confirms round 2’s fixes, and, when round 3 found something, round 4, which confirms round 3’s fixes and is the last' if post_review else ''}"
+                             f"{f'; r{earlier[-1]} has no verdict written to its output since its launch: let it finish, then launch again' if verdicts and not all(verdicts) else ''} (mergeworthy:delegate §Review rounds). "
                              "List what is still open in the report or the PR body's notes and go on (push, ready, the next step) without waiting for an answer; "
                              "only an open blocker keeps the PR in draft. A maintainer's ask on a new head starts a new loop name. "
-                             "Close a round 2 that isn't clean with `pr-steps <step> <file> --ledger <ledger>` or `gate-pass ... --ledger <ledger>` on the last report: the agent's own report is the record, never one the main session writes."
+                             f"Close r{earlier[-1]}, the last round, when it isn't clean, with `pr-steps <step> <file> --ledger <ledger>` or `gate-pass ... --ledger <ledger>` on its report: the agent's own report is the record, never one the main session writes."
                              + ("" if heads else " An independent update of a body no Git head pins (a tracker's status lines), and not a fix to the text these rounds reviewed, is its own loop: `<loop>-u<N>-r1`, `-r2`.") + "\n")
             refused()
 # A brief that writes or reviews code, docs or a post (any role but research or test) for a repo whose maintainers' notes exist
