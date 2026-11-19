@@ -15,13 +15,14 @@
 - mark <owner/repo> <ISO> [<sha7>@<time>...]: writes the study's `Learned: <ISO>` line (under `Studied:`, which stays the full study's
   date) and its `Commits read:` line, the listed commits of the last 7 days; refuses a time before the mark or in the future, a study
   without `Studied:`, and a project file over its word cap (hooks/project_file.py).
-- start: the timer's run (mergeworthy-update installs it), once a day: lists each repo with a study into
+- start: the timer's run (mergeworthy-update installs it), once a day: lists each repo with a study that is the origin of one of this
+  machine's T3 Code projects (neither deleted nor archived) into
   ~/.mergeworthy/work/project-learn/lists/, marks those with nothing listed and within the cap, and starts one T3 thread that sorts
   the rest; each run, a failed one with why, is a line of runs.txt there.
 """
 import collections, functools, glob, json, os, re, shlex, subprocess, sys, time, urllib.parse
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'hooks'))
-import project_file
+import project_file, steward
 from gh_common import BADGE, MAINTAINER, epoch, gh_output, gh_pages, iso, pace, read, search, when
 
 HOME = os.path.expanduser('~')
@@ -399,6 +400,15 @@ def launch_thread(title, prompt):
     return r.stdout.strip(), None
 
 
+def t3_repos():
+    """The owner/repo, lowercase, of each T3 Code project's origin remote on github.com or gitlab.com, or None when T3's state can't be read."""
+    roots = steward.projects()
+    if roots is None:
+        return None
+    urls = (subprocess.run(['git', '-C', root, 'remote', 'get-url', 'origin'], capture_output=True, text=True).stdout.strip() for root in roots)
+    return {m[1].lower() for u in urls if (m := re.fullmatch(r'(?:https://|ssh://git@|git@)(?:github|gitlab)\.com[:/]([^/]+/[^/]+?)(?:\.git)?/?', u))}
+
+
 def start():
     today = iso(NOW)[:10]
     if project_file.ran_today(today):
@@ -407,6 +417,11 @@ def start():
     if not os.path.isfile(os.path.join(WORK, 'scope.md')):
         with open(os.path.join(WORK, 'scope.md'), 'w') as f:
             f.write("Tier: 0, because the daily learning run sorts listed maintainer activity into project files and changes no repo\n")
+    repos = t3_repos()
+    if repos is None:
+        why = "T3 Code's database can't be read: the run learns the repos of its projects"
+        print(f"project-learn: {project_file.record_run(iso(NOW), error=why)}")
+        sys.exit(1)
     need, failed = {}, []
     for project in sorted(glob.glob(os.path.join(PROJECTS, '*', '*.md'))):
         if project.endswith('.study.md'):
@@ -415,6 +430,9 @@ def start():
         since = mark_of(repo)
         if since is None:
             print(f"{repo}: no study with a `Studied:` line, skipped (task §Repo study)")
+            continue
+        if repo.lower() not in repos:
+            print(f"{repo}: not the origin of a T3 Code project here, skipped")
             continue
         over = project_file.words(project) > project_file.CAP
         try:
