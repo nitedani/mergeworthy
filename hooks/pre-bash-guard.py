@@ -1056,9 +1056,15 @@ def check(t, has_cd):
               "launch the review again (mergeworthy:post step 3)")
     if p in ('claude', 'codex'):
         for w in (opt(a, ['-o', '--output-last-message']) if p == 'codex' else []) + (targets if p == 'claude' and ('-p' in a or '--print' in a) else []):
-            vals = where.files(w)  # a reviewer's output decides which verdict its launch sets aside: one path, known before it runs
-            if isinstance(vals, shellcmd.Unknown) or len(vals) != 1:
-                block(f"the reviewer's output {w} may be more than one path, or one computed when it runs: write the output path out, or assign it once")
+            vals = where.files(w)  # a launch that may set aside a verdict needs its output as one path, known before it runs
+            if isinstance(vals, shellcmd.Unknown):
+                if review_launch.draft_of(where.expand(w)):
+                    block(f"the review output {w} can't be placed: pass its absolute path, written out or assigned once")
+                continue
+            if len(vals) != 1:
+                if any(review_launch.draft_of(v) for v in vals):
+                    block(f"the reviewer's output {w} may be more than one path: write the output path out, or assign it once")
+                continue
             out = vals[0]
             if why := review_launch.misnamed(out):
                 block(why)
