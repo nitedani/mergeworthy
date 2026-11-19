@@ -873,6 +873,9 @@ printf 'List all alternatives to setTimeout and nextTick.\n' > "$T/lad.parent.md
   for n in $(seq 4 51); do echo "- mechanism number $n of the list, and yes, it leaks too"; done; printf '\n</details>\n'; } > "$T/lad2.md"
 lad() { python3 "$R/bin/post-lint" "$1" --kind reply --parent "$T/lad.parent.md" --asked-list 'List all' >"$T/la.out" 2>&1; printf '%s %s' $? "$(lagrep 'words >')"; }
 check "a requested list collapsed in '<details >', or in a block with a nested one and rows after its close, is left out whole" "0 0 0 0" "$(lad "$T/lad1.md") $(lad "$T/lad2.md")"
+{ head -1 "$T/la.md"; printf '\nUse `<details open>` to show markup expanded.\n'; tail -n +2 "$T/la.md"; } > "$T/lal.md"
+printf '%s\n' 'Compression stopped after sirv() answered. This PR runs it.' '' '<details><summary>Evidence</summary>' '' 'The syntax is `<details open>`.' '' '### What you should see' '' '**1.** Main, then this PR:' '' '```' '$ curl -sI /a.js' 'Content-Encoding: gzip' '```' '' '</details>' > "$T/lal-pr.md"
+check "a <details> tag written as an example in inline code is text: a requested list after one is still left out, and a PR body's evidence collapsed after one is still hidden" "0 0 1" "$(python3 "$R/bin/post-lint" "$T/lal.md" --kind reply --parent "$T/la51.parent.md" >"$T/la.out" 2>&1; printf '%s %s' $? "$(lagrep 'words >')") $(MERGEWORTHY_BADGE=off python3 "$R/bin/post-lint" "$T/lal-pr.md" --kind pr --parent none 2>&1 | grep -c 'pull-request §Body')"
 check "requested list: prints words wrapped over lines on one line" 1 "$(la --asked-list $'List\nall' >/dev/null; lagrep '^requested list: "List all"$')"
 check "the same lists nobody asked for are" 4 "$(python3 "$R/bin/post-lint" "$T/rp.md" --kind pr --parent none 2>&1 | grep -c 'internal label\|words >\|process in the thread')"
 printf 'The code came from Sonnet subagents, and Codex (gpt-6.1-sol) reviewed every post.\n' > "$T/pm.md"

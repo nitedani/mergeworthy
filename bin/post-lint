@@ -36,15 +36,16 @@ RATED = re.compile(r'^\s*\|.*(?:[0-9]+|\bnew) *(?:⇒|=>) *(?:[0-9]+|removed|new
 REVIEWED = re.compile(r'^\|\s*Commit\s*\|.*\|\s*Rating\s*\|', re.M)  # the commit-review table's header (reply §Maintainer commits)
 TABLE = r'(?:^[ \t]*\|[^\n]*\n?)+'
 def uncollapsed(s):
-    """s without its collapsed blocks: each <details> (its tag's attributes or spaces included) to its own close, the blocks nested in it with it."""
+    """s without its collapsed blocks: each <details> (its tag's attributes or spaces included) to its own close, the blocks nested in it with it.
+    Only tags that render as HTML count: one written as an example, in code, is text."""
     out, depth, start = [], 0, 0
-    for m in re.finditer(r'<details\b[^>]*>|</details\s*>', s):
-        if not m.group().startswith('</'):
-            if depth == 0: out.append(s[start:m.start()]); start = m.start()
+    for a, b in post_words.html_tags(s, r'<details\b[^>]*>|</details\s*>'):
+        if s[a + 1] != '/':
+            if depth == 0: out.append(s[start:a]); start = a
             depth += 1
         elif depth:
             depth -= 1
-            if depth == 0: start = m.end()
+            if depth == 0: start = b
     return ''.join(out) + s[start:]  # an unclosed block stays, as GitHub shows it
 QUOTE = re.compile(r'^\s*(?:(?:[-*]|\d+[.)])\s+)?>.*$', re.M)  # a quoted line, in a list item too: someone else's words
 VISIBLE = lambda s: uncoded(re.sub(r'<!--[\s\S]*?-->', '', s))  # what GitHub renders as text: no HTML comments, no fenced code

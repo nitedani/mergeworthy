@@ -127,6 +127,20 @@ def fence_spans(s):
     at = lambda n: lines[n] if n < len(lines) else len(s)
     return [(at(t.map[0]), at(t.map[1]), t.content) for t in _blocks(s) if t.type in ('fence', 'code_block')]
 
+def html_tags(s, tag):
+    """(start, end) of each match of the regex tag in s that renders as an HTML tag: one in inline code, a fence or behind a backslash is
+    text. markdown-it-py gives inline tokens no offsets, so each match is marked with a comment that its parse keeps next to it."""
+    found = list(re.finditer(tag, s))
+    marked = ''.join(s[m0.end() if m0 else 0:m.end()] + f'<!--mw-tag-{n}-->' for n, (m0, m) in enumerate(zip([None] + found, found)))
+    marked += s[found[-1].end():] if found else s
+    real = set()
+    for t in _blocks(marked):
+        if t.type == 'html_block': real |= {int(n) for n in re.findall(rf'(?:{tag})<!--mw-tag-(\d+)-->', t.content)}
+        for a, b in zip(t.children or [], (t.children or [])[1:]):
+            if a.type == b.type == 'html_inline' and re.fullmatch(tag, a.content) and (n := re.fullmatch(r'<!--mw-tag-(\d+)-->', b.content)):
+                real.add(int(n[1]))
+    return [m.span() for n, m in enumerate(found) if n in real]
+
 def own_blocks(s):
     """The inline text of each paragraph and heading of s, one string a block, outside any blockquote (one in a list item and a quote's
     lazy continuation lines are blockquote too): the words s's own author wrote."""
