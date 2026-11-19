@@ -1043,7 +1043,8 @@ def check(t, has_cd):
         if a[1] == 'edit' and opt(a[2:], ['--title', '-t']) and (who := title_setter(*post_target('pr', a[2:], env, run_dir))):
             block(f"{who[0]} set this PR's title ({who[1]}): it is their decision. Keep it, or ask them on the PR first (mergeworthy:pull-request step 7)")
     # A review's verdict is the reviewer's final message, which it writes itself (`codex exec -o`, an agent's output file); an agent's stdout is it too.
-    # The launch records the text the reviewer is handed (review_launch), and only the launching hook writes that record or the verdict it set aside
+    # The launch records the text the reviewer is handed (review_launch); a Bash write of that record or the verdict it set aside is refused,
+    # a workflow check of the writes this hook sees, not proof of who wrote them
     targets = written_files(t)
     files = [where.files(x) for x in targets]
     names = [*map(where.expand, targets), *(f for c in files for f in c or [])]

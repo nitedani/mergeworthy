@@ -1,6 +1,7 @@
 """The text a post's reviewer was handed. The hooks that start a reviewer (pre-agent-dedupe, pre-bash-guard) check unlinted() on its
 output while they admit the launch, and call launch() once nothing refused it; gate-pass calls reviewed(), so a verdict counts only
-for the draft's text at that launch, whatever the files' times say."""
+for the draft's text at that launch, whatever the files' times say. The record is a workflow check of what those hooks see, not proof
+of who wrote it."""
 import hashlib, os, re, time
 
 FOOTER = 'Harness changes since my last note: '  # the line gate-pass appends after the review: '\n' + FOOTER + '<compare link>\n'
