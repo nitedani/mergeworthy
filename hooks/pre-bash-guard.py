@@ -87,9 +87,17 @@ def check_union(d, repo, num, base=None, branch=None, head=None):
               f"`pr-steps union --conflict {sha}` here. A red union: change this one until it is green or conflicts, or stack it (mergeworthy:converge §Stacked PRs); "
               f"tell {mark}{n}'s session only if {mark}{n} must change")
 
+def flag(a, *names):
+    """A boolean flag's value in argv a as gh's and glab's pflag sets it, names its long and short spellings: the last occurrence wins,
+    a bare `--x` is true and `--x=<v>` false for v false, f or 0 (any case); False when absent."""
+    on = False
+    for n, eq, v in (x.partition('=') for x in a):
+        if n in names: on = not eq or v.lower() not in ('false', 'f', '0')
+    return on
+
 def pr_ready(a):
-    """Whether `gh <a>` is a `gh pr ready` taking the PR out of draft: no --undo in any spelling (--undo=true), no -h or --help."""
-    return a[:2] == ['pr', 'ready'] and not any(x in ('-h', '--help', '--undo') or re.fullmatch(r'--undo=(?!(false|0|f)$).*', x, re.I) for x in a)
+    """Whether `gh <a>` is a `gh pr ready` taking the PR out of draft: --undo not in effect, no -h or --help."""
+    return a[:2] == ['pr', 'ready'] and not flag(a, '--undo') and not {'-h', '--help'} & set(a)
 
 DRAFT_TITLE = re.compile(r'\s*(\[draft\]|\(draft\)|draft:|draft\b|\[wip\]|wip:)', re.I)  # GitLab's draft prefixes
 def goes_ready(p, a, env, run_dir):
@@ -98,19 +106,19 @@ def goes_ready(p, a, env, run_dir):
     if '--help' in a or '-h' in a: return None
     if p == 'gh' and pr_ready(a):
         return (*post_target('pr', a[2:], env, run_dir), None, None)
-    if p == 'gh' and a[:2] == ['pr', 'create'] and not {'--draft', '-d'} & set(a):
+    if p == 'gh' and a[:2] == ['pr', 'create'] and not flag(a, '--draft', '-d'):
         return gh_repo(a[2:], env, run_dir), None, (opt(a[2:], ['--base', '-B']) or [None])[-1], None
     if p == 'gh' and a[:2] == ['pr', 'edit'] and (base := opt(a[2:], ['--base', '-B'])):  # a retarget of a ready PR
         repo, n = post_target('pr', a[2:], env, run_dir)
         if not isinstance(pr := gh_json(f'repos/{repo}/pulls/{n}'), dict):
             block(f"gh couldn't read {repo}#{n}, so whether this retarget puts a ready PR on {base[-1]} can't be checked: retry once gh answers")
         return None if pr.get('draft') else (repo, n, base[-1], None)
-    if p == 'glab' and a[:2] == ['mr', 'create'] and not {'--draft', '--wip'} & set(a):
+    if p == 'glab' and a[:2] == ['mr', 'create'] and not flag(a, '--draft', '--wip'):
         return gitlab_repo(a[2:], run_dir), None, (opt(a[2:], ['--target-branch', '-b']) or [None])[-1], None
-    if p == 'glab' and a[:2] == ['mr', 'update'] and '--draft' not in a:
+    if p == 'glab' and a[:2] == ['mr', 'update'] and not flag(a, '--draft', '--wip'):
         repo, iid, branch = mr_target(operands(a[2:]), run_dir)
         base, title = (opt(a[2:], ['--target-branch']) or [None])[-1], (opt(a[2:], ['--title', '-t']) or [None])[-1]
-        if {'--ready', '-r'} & set(a) or repo and mr_ready_on(repo, iid, branch, base, title):
+        if flag(a, '--ready', '-r') or repo and mr_ready_on(repo, iid, branch, base, title):
             return repo, iid, base, branch
         return None
     if p == 'glab' and a[:1] == ['api'] and (call := api_call(a[1:]))[0] == 'PUT' and \

@@ -3588,6 +3588,7 @@ prhead "$CK" "$FX/pr_view_3675" https://github.com/vikejs/vike/pull/3675; UR='gh
 ul false main b0b0b0b0 b.ts 1
 check "BLOCK: gh pr ready and a push to a ready PR while another ready PR of ours changes one of its files, naming it and the file (#188)" "2 1 2" \
   "$(bg "$UR" "$CK") $(grep -c 'vikejs/vike#3680, also yours and ready, changes b.ts' "$T/err") $(bg "$UP" "$CK")"
+check "BLOCK: gh pr ready with --undo=true then --undo=false is a ready, the last value winning: the overlap is named" "2 1" "$(bg "$UR --undo=true --undo=false" "$CK") $(grep -c 'vikejs/vike#3680, also yours and ready' "$T/err")"
 echo "union $T/u.log 2026-11-15T00:00:00Z b0b0b0b0" >> "$HOME/.claude/pr-steps/$CH"
 check "a union record on this head naming the other's head passes them; a new head on the other PR blocks again" "0 0 2" "$(bg "$UR" "$CK") $(bg "$UP" "$CK") $(ul false main c1c1c1c1 b.ts 1; bg "$UR" "$CK")"
 # a push is checked with the union record and files of the head it publishes, not the checkout's
@@ -4036,6 +4037,7 @@ glb() { for v in 5 current https___gitlab.com_me_app_-_merge_requests_5; do prhe
 gll false main d0d0d0d0 b.py false
 check "GitLab, BLOCK: glab mr update --ready, -r and by the current branch, and a push to a ready MR while another ready MR of ours changes one of its files, naming it and the file (#188)" "2 1 2 2 2 1" \
   "$(glb 'glab mr update 5 --ready') $(grep -c 'gitlab.com/me/app!8, also yours and ready, changes b.py' "$T/err") $(glb 'glab mr update 5 -r') $(glb 'glab mr update --ready') $(glb 'git push origin HEAD:mr-b') $(grep -c 'gitlab.com/me/app!., also yours and ready' "$T/err")"
+check "GitLab, BLOCK: glab mr update N --ready=true at another head, naming it" "2 1" "$(echo '{"sha":"1111111111111111111111111111111111111111","web_url":"https://gitlab.com/me/app/-/merge_requests/6"}' > "$FX/glmr_view_6"; glb 'glab mr update 6 --ready=true --yes') $(grep -c "merge_requests/6's head 1111111111 ready" "$T/err")"
 check "GitLab, BLOCK: a glab mr create opening its MR ready, with no push or with a source branch GitLab makes, saying to open it as a draft" "2 1 2 1" \
   "$(glb 'glab mr create --title x --push=false --yes') $(grep -c "opens it ready.*open it with --draft, then .glab mr update <N> --ready. from its checkout" "$T/err") $(glb 'glab mr create --title x --create-source-branch --yes') $(grep -c "opens it ready.*glab mr update <N> --ready" "$T/err")"
 echo "union $T/u.log 2026-11-15T00:00:00Z d0d0d0d0" >> "$HOME/.claude/pr-steps/$NH"
@@ -4056,6 +4058,7 @@ echo '{"head_pipeline":null,"draft":true}' > "$FX/gl_projects_me_2Fapp_merge_req
 check "GitLab, BLOCK: a title update dropping the Draft prefix (glab mr update --title, glab api PUT), naming the MR; a numeric project id, which can't be told; a Draft title, or a retitle of a ready MR, passes" "2 1 2 2 1 0 0" \
   "$(glb 'glab mr update 5 --title Ready') $(grep -c 'gitlab.com/me/app!8, also yours and ready' "$T/err") $(glb 'glab api projects/me%2Fapp/merge_requests/5 -X PUT -f title=Ready') $(glb 'glab api projects/1/merge_requests/5 -X PUT -f title=Ready') $(grep -c "can't tell which project this .glab api. call acts on" "$T/err") $(glb "glab mr update 5 --title 'Draft: Ready'") $(echo '{"head_pipeline":null,"draft":false}' > "$FX/gl_projects_me_2Fapp_merge_requests_5"; glb 'glab mr update 5 --title Ready')"
 echo '{"head_pipeline":null,"draft":true}' > "$FX/gl_projects_me_2Fapp_merge_requests_5"
+check "GitLab: glab mr update --wip with a title keeps the MR a draft, so no ready check runs" 0 "$(glb 'glab mr update 5 --wip --title Ready')"
 SBM="$FX/gl_projects_me_2Fapp_merge_requests_state_opened_source_branch_mr-b"; cp "$SBM" "$T/sbm.keep"; echo '[{"iid":9,"draft":false}]' > "$SBM"  # the checked-out branch's MR is another, ready one
 check "GitLab, BLOCK: a title update takes the MR it acts on as the defects check does (mr_target): after an option's value, or by its URL whatever -R says, naming the overlap" "2 1 2 1" \
   "$(glb 'glab mr update --milestone 6 5 --title Ready') $(grep -c 'gitlab.com/me/app!8, also yours and ready' "$T/err") $(glb 'glab mr update https://gitlab.com/me/app/-/merge_requests/5 --title Ready -R gitlab.com/me/other') $(grep -c 'gitlab.com/me/app!8, also yours and ready' "$T/err")"
