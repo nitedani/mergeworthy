@@ -2139,6 +2139,10 @@ check "BLOCK: a duplicate of that launch, its job still open, leaves the verdict
 python3 "$R/bin/agent-job" done "$L3" >/dev/null; echo x >> "$T/drafts/lf/launch.md"
 printf 'Review %s; write exactly CLEAN or the findings to %s/drafts/lf/launch.review-r3.out.\n' "$T/drafts/lf/launch.md" "$T" > "$L3"
 check "BLOCK: a round-3 output <name>.review-r3.out checks <name>.md's post-lint" 2 "$(launch "Execute $L3")"
+printf 'A title\n' > "$T/drafts/lf/title.md"; sha256sum "$T/drafts/lf/title.md" | cut -d' ' -f1 | tr -d '\n' > "$T/drafts/lf/title.md.lint.sha"
+printf 'Review %s and write exactly CLEAN or findings to %s/drafts/lf/title.out.\n' "$T/drafts/lf/title.md" "$T" > "$T/drafts/lf/title-ticket.md"
+check "BLOCK: a review whose brief names a drafts/ output not named after its draft, naming the rename; <name>.review.out launches" "2 1 0" "$(launch_in "Execute $T/drafts/lf/title-ticket.md" | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?) $(grep -c 'name it <name>.review.out' "$T/err") $(printf 'Review %s and write exactly CLEAN or findings to %s/drafts/lf/title.review.out.\n' "$T/drafts/lf/title.md" "$T" > "$T/drafts/lf/title-ticket2.md"; launch "Execute $T/drafts/lf/title-ticket2.md")"
+python3 "$R/bin/agent-job" done "$T/drafts/lf/title-ticket2.md" >/dev/null
 # ---------- pr-steps: a shape record is a real pass ----------
 G="$T/prs"; mkdir -p "$G"; git -C "$G" init -q; git -C "$G" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 prs() { (cd "$G" && bash "$R/bin/pr-steps" "$@" >/dev/null 2>&1; echo $?); }

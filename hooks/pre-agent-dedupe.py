@@ -64,13 +64,13 @@ if cid:
         os.replace(ids + '.tmp', ids)
 L = launch.parse(ti)
 brief = L.brief  # every rule below reads the brief; the files it only names (project notes, installed skills) are read, so their history SHAs pin nothing
-# A gate review (names a review output `.out` and CLEAN) starts only on drafts that passed post-lint in their current form, and once
+# A gate review (names a review output `.out` and CLEAN) starts only with its output named after its draft and on drafts that passed post-lint in their current form, and once
 # admitted records the text it is handed (review_launch, admit); the files a brief also names in drafts/ (thread record, ledger, parent, report) are not drafts
 review_outs = lambda t: sorted(set(re.findall(r'(/[^\s`\'"()]*/drafts/[^\s`\'"()]+\.out)\b', t))) if re.search(r'\.out\b', t) and 'CLEAN' in t else []
 reviewed_drafts = lambda t: {p for o in review_outs(t) if (p := review_launch.draft_of(o)) and os.path.isfile(p)}
 if not register:
     for out in review_outs(brief):
-        if why := review_launch.unlinted(out):
+        if why := review_launch.misnamed(out) or review_launch.unlinted(out):
             sys.stderr.write(f"BLOCKED: {why}\n")
             refused()
 def admit():
