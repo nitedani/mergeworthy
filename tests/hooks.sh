@@ -19,7 +19,15 @@ cat > "$T/bin/gh" <<'EOF'
 [ -n "${GH_STUB_ARGS:-}" ] && printf '%s\n' "$*" >> "$GH_STUB_ARGS"  # each call's arguments
 [ "$1 $2" = "config get" ] && { [ ! -f "$FX/login" ] || cat "$FX/login"; exit; }  # the login gh's own config names: $FX/login
 [ "$1 $2" = "pr view" ] && [ -n "$GH_STUB_NOHOST" ] &&{ echo 'none of the git remotes configured for this repository point to a known GitHub host' >&2; exit 1; }
-if [ "$1 $2" = "pr view" ]; then r=$3; case "$r" in -*|'') r=current;; esac; f="$FX/pr_view_$(printf '%s' "$r" | tr '/:' '__')"; [ -f "$f" ] && cat "$f" && exit 0; echo 'no pull requests found for branch "x"' >&2; exit 1; fi
+[ -n "${GH_STUB_ENV:-}" ] && echo "$1 $2 GH_REPO=${GH_REPO:-}" >> "$GH_STUB_ENV"  # each call and the GH_REPO it ran with
+if [ "$1 $2" = "pr view" ]; then r=$3; case "$r" in -*|'') r=current;; esac; f="$FX/pr_view_$(printf '%s' "$r" | tr '/:' '__')"
+  [ -f "$f" ] || { echo 'no pull requests found for branch "x"' >&2; exit 1; }
+  q=; p=; for a in "$@"; do [ "$p" = --jq ] && q=$a; p=$a; done  # --jq .a on a JSON object answers that field
+  python3 -c 'import json, sys
+raw = open(sys.argv[1]).read()
+try: v = json.loads(raw)
+except ValueError: v = None
+print(v.get(sys.argv[2][1:], "") if sys.argv[2] and isinstance(v, dict) else raw, end="" if not (sys.argv[2] and isinstance(v, dict)) else "\n")' "$f" "$q"; exit 0; fi
 if [ "$1 $2" = "pr list" ]; then  # from $FX/pr_list_<the -R repo with / replaced by _>; none: no PRs ([], or nothing with -q)
   [ -n "$GH_STUB_403" ] && { echo 'gh: API rate limit exceeded for user ID 1. (HTTP 403)' >&2; exit 1; }
   s=; q=; p=; for a in "$@"; do [ "$p" = -R ] && s=$a; case "$a" in -q|--jq) q=1;; esac; p=$a; done
@@ -62,13 +70,12 @@ printf 'Root cause: src/a.ts:3 does it\nBasis: request: "fix it"\n| Candidate | 
 (cd "$TCO" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 # an implementer brief names its recorded approach (pre-agent-dedupe): the briefs below that test other checks carry this one
 git init -q "$T/afx"; git -C "$T/afx" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; (cd "$T/afx" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null); AFX=$'\n'"Approach: $T/approach.md (unchanged: a test fixture)"$'\n'"Checkout: $T/afx"
-prhead() { # <checkout> <fixture file>: the PR (head.sha) or MR (sha) the fixture answers for has the checkout's HEAD as its head, as ready_head reads it
+prhead() { # <checkout> <view fixture> <url>: `gh pr view` (headRefOid, url) or `glab mr view` (glmr_view_*: sha, web_url) answers the PR or MR at url with the checkout's HEAD as its head, as ready_head reads it
   python3 -c 'import json, os, sys
-f, h = sys.argv[1:]; v = json.load(open(f)) if os.path.exists(f) else {}
-for x in v if isinstance(v, list) else [v]:
-    if "merge_requests" in f: x["sha"] = h
-    else: x.setdefault("head", {})["sha"] = h
-json.dump(v, open(f, "w"))' "$2" "$(git -C "$1" rev-parse HEAD)"; }
+f, h, u = sys.argv[1:]; v = json.load(open(f)) if os.path.exists(f) else {}
+v = v if isinstance(v, dict) else {"number": v}
+v.update({"sha": h, "web_url": u} if os.path.basename(f).startswith("glmr_") else {"headRefOid": h, "url": u})
+json.dump(v, open(f, "w"))' "$2" "$(git -C "$1" rev-parse HEAD)" "$3"; }
 check() { # name want got
   echo "$1: $3 (want $2)"; [ "$2" = "$3" ] || fails=$((fails+1))
 }
@@ -1982,6 +1989,7 @@ rl_tr $'The example is:\n\n- ```text\n  example output\n  ```\n\nRunning:\n- Loo
 # stop-lint: a message opening with "done" names no linked PR or MR that is still a draft or not green
 cat > "$T/bin/glab" <<'EOF2'
 #!/usr/bin/env bash
+if [ "$1 $2" = "mr view" ]; then r=$3; case "$r" in -*|'') r=current;; esac; f="$FX/glmr_view_$(printf '%s' "$r" | tr '/:' '__')"; [ -f "$f" ] && cat "$f" && exit 0; echo 'glab: 404 Not Found' >&2; exit 1; fi  # `glab mr view [<ref>]` from $FX/glmr_view_<ref>, or glmr_view_current
 [ "$1" = api ] && [ "$2" = --hostname ] || exit 1
 f="$FX/$(printf '%s' "$4" | tr '/?&=' '____')"; [ -f "$f" ] && cat "$f" || exit 1
 EOF2
@@ -2420,7 +2428,7 @@ seq 1 5 >> "$GS/src/a.ts"; git -C "$GS" -c user.name=t -c user.email=t@t commit 
 r1=$(prss "$T/sr1.md"); echo t > "$GS/test/a.test.ts"; seq 1 300 > "$GS/README.md"; git -C "$GS" add -A; git -C "$GS" -c user.name=t -c user.email=t@t commit -qm c
 r2=$(prss "$T/sr0.md")
 check "pr-steps small: BLOCK with no test in the diff, BLOCK on a report with findings, records with both (docs not counted)" "1 1 0" "$r1 $r2 $(prss "$T/sr2.md")"
-check "after pr-steps small, gh pr ready lacks only the approach and the gates" "approach, gates" "$(prhead "$GS" "$FX/repos_o_r_pulls_5"; python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr ready 5 -R o/r"},"cwd":sys.argv[1]}))' "$GS" | python3 "$R/hooks/pre-bash-guard.py" 2>&1 | grep -o 'no pr-steps [a-z, ]* record' | sed 's/no pr-steps //; s/ record//')"
+check "after pr-steps small, gh pr ready lacks only the approach and the gates" "approach, gates" "$(prhead "$GS" "$FX/pr_view_5" https://github.com/o/r/pull/5; python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr ready 5 -R o/r"},"cwd":sys.argv[1]}))' "$GS" | python3 "$R/hooks/pre-bash-guard.py" 2>&1 | grep -o 'no pr-steps [a-z, ]* record' | sed 's/no pr-steps //; s/ record//')"
 printf 'x\n## Outside this change\nNone.\n\nNO BUGS\nMERGE AS IS: yes\n\n## Verification\n- ran it\n\n## not_checked\n- Windows\n' > "$T/sr5.md"
 check "pr-steps small records a report whose verdict comes before its Verification and not_checked sections" 0 "$(prss "$T/sr5.md")"
 printf 'x\n## Outside this change\nNone.\n\n## not_checked\n- Windows\n\nNO BUGS\nMERGE AS IS: yes\n' > "$T/sr6.md"
@@ -2485,7 +2493,7 @@ check "BLOCK: a shape carry of a head whose shape record is neither a pass nor s
 # ---------- pr-steps: every converge step leaves its proof; the guard needs all five ----------
 G2="$T/prs2"; mkdir -p "$G2"; git -C "$G2" init -q; git -C "$G2" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 prs2() { (cd "$G2" && bash "$R/bin/pr-steps" "$@" >/dev/null 2>&1; echo $?); }
-ready() { prhead "$G2" "$FX/repos_o_r_pulls_5"; python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr ready 5 -R o/r"},"cwd":sys.argv[1]}))' "$G2" | python3 "$R/hooks/pre-bash-guard.py" >/dev/null 2>&1; echo $?; }
+ready() { prhead "$G2" "$FX/pr_view_5" https://github.com/o/r/pull/5; python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr ready 5 -R o/r"},"cwd":sys.argv[1]}))' "$G2" | python3 "$R/hooks/pre-bash-guard.py" >/dev/null 2>&1; echo $?; }
 check "BLOCK: gh pr ready with no step recorded" 2 "$(ready)"
 printf 'slice 1: no bug that counts\n' > "$T/v0.md"
 check "BLOCK: a Loop A output without NO BUGS" 1 "$(prs2 verify "$T/v0.md")"
@@ -2591,10 +2599,10 @@ check "glab mr create --wip passes there too" 0 "$(MERGEWORTHY_WATCHER=off glab 
 check "gh pr ready passes once all five steps and the approach hold" 0 "$(ready)"
 GB="$FX/projects_acme%2Fapp_merge_requests_5"
 for pj in acme acme.inc; do for r in app other; do echo '[]' > "$FX/projects_${pj}%2F${r}_merge_requests_state_opened_scope_created_by_me_per_page_100"; done; done  # no other open MR of ours (check_union, #188)
-check "glab mr update --ready passes there too" 0 "$(prhead "$G2" "$GB"; python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"glab mr update 5 --ready -R gitlab.com/acme/app"},"cwd":sys.argv[1]}))' "$G2" | python3 "$R/hooks/pre-bash-guard.py" >/dev/null 2>&1; echo $?)"
-check "BLOCK: glab mr update --ready from another checkout, naming the MR's head" "2 1" "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"glab mr update 5 --ready -R gitlab.com/acme/app"},"cwd":sys.argv[1]}))' "$TCO" | python3 "$R/hooks/pre-bash-guard.py" >/dev/null 2>"$T/err"; echo $?) $(grep -c "gitlab.com/acme/app!5's head $(git -C "$G2" rev-parse --short=10 HEAD) ready, and this checkout's HEAD is $(git -C "$TCO" rev-parse --short=10 HEAD)" "$T/err")"
+check "glab mr update --ready passes there too" 0 "$(prhead "$G2" "$FX/glmr_view_5" https://gitlab.com/acme/app/-/merge_requests/5; python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"glab mr update 5 --ready -R gitlab.com/acme/app"},"cwd":sys.argv[1]}))' "$G2" | python3 "$R/hooks/pre-bash-guard.py" >/dev/null 2>&1; echo $?)"
+check "BLOCK: glab mr update --ready from another checkout, naming the MR's head" "2 1" "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"glab mr update 5 --ready -R gitlab.com/acme/app"},"cwd":sys.argv[1]}))' "$TCO" | python3 "$R/hooks/pre-bash-guard.py" >/dev/null 2>"$T/err"; echo $?) $(grep -c "https://gitlab.com/acme/app/-/merge_requests/5's head $(git -C "$G2" rev-parse --short=10 HEAD) ready, and this checkout's HEAD is $(git -C "$TCO" rev-parse --short=10 HEAD)" "$T/err")"
 echo 'gitlab.com/acme/app!5: the MR leaks a timer' > "$TASKW/defects-open.md"
-glready() { prhead "$G2" "$GB"; python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"glab mr update 5 --ready -R gitlab.com/acme/app"},"cwd":sys.argv[1]}))' "$G2" | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err" >/dev/null; echo $?; }
+glready() { prhead "$G2" "$FX/glmr_view_5" https://gitlab.com/acme/app/-/merge_requests/5; python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"glab mr update 5 --ready -R gitlab.com/acme/app"},"cwd":sys.argv[1]}))' "$G2" | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err" >/dev/null; echo $?; }
 echo '{"description": "No notes."}' > "$GB"
 check "BLOCK: glab mr update --ready with an open line for the MR and no row in its description, naming the line" "2 1" "$(glready) $(grep -c 'leaks a timer' "$T/err")"
 check "BLOCK: a line naming the MR without its host is on gitlab.com" 2 "$(echo 'acme/app!5: the MR leaks a timer' > "$TASKW/defects-open.md"; glready)"
@@ -2602,10 +2610,10 @@ echo '{"description": "| Note | Kind | Blocks merge | Next |\n|---|---|---|---|\
 check "with the row in the MR's description, it passes" 0 "$(glready)"
 check "BLOCK: with an open line for an MR of the project, a ready naming no MR, asking for its number" "2 1" "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"glab mr update --ready -R gitlab.com/acme/app"},"cwd":sys.argv[1]}))' "$G2" | python3 "$R/hooks/pre-bash-guard.py" >/dev/null 2>"$T/err"; echo $?) $(grep -c "pass the MR's number" "$T/err")"
 # the MR the command acts on: its positional iid, URL or branch (else the checked-out one), never an option's value (#197 Loop A 1)
-glr() { prhead "$G2" "$GB"; python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$G2" | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err" >/dev/null; echo $?; }
+glr() { prhead "$G2" "$FX/glmr_view_5" https://gitlab.com/acme/app/-/merge_requests/5; python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$G2" | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err" >/dev/null; echo $?; }
 echo '{"description": "No notes."}' > "$GB"; echo 'gitlab.com/acme/app!5: the MR leaks a timer' > "$TASKW/defects-open.md"
 GLB="$FX/projects_acme%2Fapp_merge_requests_state_opened_source_branch_"
-echo '[{"iid": 7}]' > "${GLB}other-branch"; echo '[{"iid": 5}]' > "${GLB}feat"; echo '[]' > "${GLB}nomr"; prhead "$G2" "${GLB}other-branch"; prhead "$G2" "${GLB}feat"
+echo '[{"iid": 7}]' > "${GLB}other-branch"; echo '[{"iid": 5}]' > "${GLB}feat"; echo '[]' > "${GLB}nomr"; prhead "$G2" "$FX/glmr_view_other-branch" https://gitlab.com/acme/app/-/merge_requests/7
 check "BLOCK: glab mr update naming MR 5 after an option's number, or by its URL with another -R; a branch whose MR is 5" "2 2 2" \
   "$(glr 'glab mr update --milestone 6 5 --ready -R gitlab.com/acme/app') $(glr 'glab mr update https://gitlab.com/acme/app/-/merge_requests/5 --ready -R gitlab.com/acme/other') $(glr 'glab mr update feat --ready -R gitlab.com/acme/app')"
 check "a branch whose open MR is another passes; a branch with no open MR blocks, in a project no line names too" "0 2 1 2" \
@@ -2632,11 +2640,19 @@ check "a head recorded before the shape pass (loopb and refactor) counts as shap
 GO="$T/prs2-other"; git init -q "$GO"; git -C "$GO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m o; H=$(git -C "$G2" rev-parse HEAD)
 rdy() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$2" | GH_STUB_ARGS="$T/rdy.args" python3 "$R/hooks/pre-bash-guard.py" >/dev/null 2>"$T/err"; echo $?; }
 check "BLOCK: gh pr ready from another checkout, naming the PR's head, this HEAD and the cd" "2 1" \
-  "$(rdy 'gh pr ready 5 -R o/r' "$GO") $(grep -c "o/r#5's head ${H:0:10} ready, and this checkout's HEAD is $(git -C "$GO" rev-parse --short=10 HEAD).*cd <its checkout> && gh pr ready 5 -R o/r" "$T/err")"
+  "$(rdy 'gh pr ready 5 -R o/r' "$GO") $(grep -c "https://github.com/o/r/pull/5's head ${H:0:10} ready, and this checkout's HEAD is $(git -C "$GO" rev-parse --short=10 HEAD).*cd <its checkout> && gh pr ready https://github.com/o/r/pull/5\`" "$T/err")"
 git -C "$G2" -c user.name=t -c user.email=t@t commit -q --allow-empty -m local -m 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>'
-check "BLOCK: the PR's checkout with an unpushed commit on its head" "2 1" "$(rdy 'gh pr ready 5 -R o/r' "$G2") $(grep -c "o/r#5's head ${H:0:10} ready" "$T/err")"
-git -C "$G2" reset -q --hard "$H"; rm "$FX/repos_o_r_pulls_5"
-check "BLOCK: a PR gh can't read, asking to retry" "2 1" "$(rdy 'gh pr ready 5 -R o/r' "$G2") $(grep -c "gh couldn't read o/r#5's head.*retry once gh answers" "$T/err")"
+check "BLOCK: the PR's checkout with an unpushed commit on its head" "2 1" "$(rdy 'gh pr ready 5 -R o/r' "$G2") $(grep -c "https://github.com/o/r/pull/5's head ${H:0:10} ready" "$T/err")"
+git -C "$G2" reset -q --hard "$H"
+# the PR is the one gh itself resolves, with the command's target, env and dir
+: > "$T/rdy.args"; git -C "$G2" remote add origin https://github.com/fork/r.git
+check "a fork's checkout at the PR's head passes a bare gh pr ready N, read as gh resolves it (its default repo); -R with a host reads through that host" "0 1 0 1" \
+  "$(rdy 'gh pr ready 5' "$G2") $(grep -cx 'pr view 5 --json headRefOid,url' "$T/rdy.args") $(rdy 'gh pr ready 5 -R ghe.example/o/r' "$G2") $(grep -cx 'pr view 5 -R ghe.example/o/r --json headRefOid,url' "$T/rdy.args")"
+git -C "$G2" remote remove origin
+check "BLOCK: GH_REPO=o/r gh pr ready N from another checkout reads the PR with GH_REPO, and the retry names its URL" "2 1 1" \
+  "$(GH_STUB_ENV="$T/rdy.env" rdy 'GH_REPO=o/r gh pr ready 5' "$GO") $(grep -cx 'pr view GH_REPO=o/r' "$T/rdy.env") $(grep -c 'cd <its checkout> && gh pr ready https://github.com/o/r/pull/5`' "$T/err")"
+rm "$FX/pr_view_5"
+check "BLOCK: a PR gh can't read, asking to retry" "2 1" "$(rdy 'gh pr ready 5 -R o/r' "$G2") $(grep -c "couldn't read the head this command makes ready.*retry once gh answers" "$T/err")"
 : > "$T/rdy.args"
 check "gh pr ready --undo and -h never read the PR" "0 0 0" "$(rdy 'gh pr ready 5 -R o/r --undo' "$GO") $(rdy 'gh pr ready 5 -R o/r -h' "$GO") $(grep -c 'pulls/5' "$T/rdy.args")"
 # pre-bash-guard: `gh pr merge` waits for a PR that is up to date with its base and whose CI ran after the base last touched its files; never --admin
@@ -3530,7 +3546,7 @@ check "a watcher of the checkout's work folder on the upstream repo covers it" 0
 # a known defect in the PR's own diff (defects-open.md) is in its live body's notes table before the next push or ready (#191)
 PV='git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc'; PB="$FX/repos_vikejs_vike_pulls_3675"
 echo '- vikejs/vike#3675: the wrapped facts line starts with "·"' > "$TK2/defects-open.md"
-body() { python3 -c 'import json,sys; print(json.dumps({"body": "Fixes it.\n\n| Note | Kind | Blocks merge | Next |\n|---|---|---|---|\n" + sys.argv[1]}))' "$1" > "$PB"; prhead "$CK" "$PB"; }
+body() { python3 -c 'import json,sys; print(json.dumps({"body": "Fixes it.\n\n| Note | Kind | Blocks merge | Next |\n|---|---|---|---|\n" + sys.argv[1]}))' "$1" > "$PB"; prhead "$CK" "$FX/pr_view_3675" https://github.com/vikejs/vike/pull/3675; }
 body '| An unrelated bug | bug | yes | fixed in abc1234 |'
 check "BLOCK: a push to a PR with an open defects-open.md line and no row for it in the body, naming the line; gh pr ready too" "2 1 2 1" \
   "$(bg "$PV" "$CK") $(grep -c 'the wrapped facts line starts with' "$T/err") $(bg 'gh pr ready 3675 -R vikejs/vike' "$CK") $(grep -c 'the wrapped facts line starts with' "$T/err")"
@@ -3557,7 +3573,7 @@ sed -i 's/"isDraft": true/"isDraft": false/' "$FX/graphql"; mkdir -p "$HOME/.mer
 check "BLOCK: a push to a ready PR whose head has no converge records" "2 1" "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK") $(grep -c 'out of draft' "$T/err")"
 printf '## Gates\n- `pnpm test`\n- Push: before gates\n' > "$HOME/.mergeworthy/projects/vikejs/vike.md"
 check "the same push passes when the repo's project file says Push: before gates under ## Gates; gh pr ready still needs every record" "0 2 1" \
-  "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK") $(prhead "$CK" "$PB"; bg 'gh pr ready 3675 -R vikejs/vike' "$CK") $(grep -c 'has no pr-steps verify' "$T/err")"
+  "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK") $(prhead "$CK" "$FX/pr_view_3675" https://github.com/vikejs/vike/pull/3675; bg 'gh pr ready 3675 -R vikejs/vike' "$CK") $(grep -c 'has no pr-steps verify' "$T/err")"
 printf '## Gates ([ci.yml](https://example.invalid/ci.yml))\n- Push: before gates\n' > "$HOME/.mergeworthy/projects/vikejs/vike.md"
 check "a ## Gates heading with its source after it opts in too" 0 "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK")"
 printf '## Agents\n- Push: before gates\n' > "$HOME/.mergeworthy/projects/vikejs/vike.md"
@@ -3566,7 +3582,7 @@ check "BLOCK: the line under another section opts nothing in" 2 "$(bg 'git push 
 CH=$(git -C "$CK" rev-parse HEAD); for k in verify shape reverify fresh gates; do echo "$k $T/x 2026-11-15T00:00:00Z" >> "$HOME/.claude/pr-steps/$CH"; done
 ul() { # the other PR's isDraft, base, head, one file and changedFiles: our open PRs on vikejs/vike, #3675 this one
   printf '[{"number":3675,"isDraft":false,"baseRefName":"main","headRefOid":"%s","files":[{"path":"a.ts"},{"path":"b.ts"}],"changedFiles":2},{"number":3680,"isDraft":%s,"baseRefName":"%s","headRefOid":"%s","files":[{"path":"%s"}],"changedFiles":%s}]' "$CH" "$@" > "$FX/pr_list_vikejs_vike"; }
-prhead "$CK" "$PB"; UR='gh pr ready 3675 -R vikejs/vike'; UP='git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc'
+prhead "$CK" "$FX/pr_view_3675" https://github.com/vikejs/vike/pull/3675; UR='gh pr ready 3675 -R vikejs/vike'; UP='git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc'
 ul false main b0b0b0b0 b.ts 1
 check "BLOCK: gh pr ready, a push to a ready PR and a ready gh pr create while another ready PR of ours changes one of its files, naming it and the file; a create with no base ref says to fetch it (#188)" "2 1 2 2 1 1" \
   "$(bg "$UR" "$CK") $(grep -c 'vikejs/vike#3680, also yours and ready, changes b.ts' "$T/err") $(bg "$UP" "$CK") $(bg "gh pr create -R vikejs/vike --base main --title \"\$(cat $T/title.md)\" --body-file $(gated ub "It breaks.")" "$CK") $(grep -c ', also yours and ready, changes files listed only in part' "$T/err") $(grep -c 'without the base: `git fetch <the base repo.s remote> main`' "$T/err")"
@@ -3590,17 +3606,17 @@ check "BLOCK: a ready gh pr create opening another branch than the checked-out o
 check "a ready gh pr create opening the checkout's upstream at HEAD passes" 0 "$(git -C "$CK" branch -q -f up HEAD; bg "$PC --head up" "$CK")"
 git -C "$CK" branch -q --unset-upstream; git -C "$CK" branch -q -D up
 ul false main c1c1c1c1 b.ts 1; sed -i 's/"baseRefName":"main"/"baseRefName":"dev"/' "$FX/pr_list_vikejs_vike"; sed -i 's/"isDraft":false,"baseRefName":"dev","headRefOid":"c1c1c1c1"/"isDraft":false,"baseRefName":"main","headRefOid":"c1c1c1c1"/' "$FX/pr_list_vikejs_vike"
-echo '{"draft":false}' > "$PB"; prhead "$CK" "$PB"
-check "BLOCK: gh pr edit --base retargeting a ready PR from another checkout, naming its head" "2 1" "$(bg 'gh pr edit 3675 -R vikejs/vike --base main' "$GO") $(grep -c "vikejs/vike#3675's head $(git -C "$CK" rev-parse --short=10 HEAD) ready" "$T/err")"
+echo '{"draft":false}' > "$PB"; prhead "$CK" "$FX/pr_view_3675" https://github.com/vikejs/vike/pull/3675
+check "BLOCK: gh pr edit --base retargeting a ready PR from another checkout, naming its head" "2 1" "$(bg 'gh pr edit 3675 -R vikejs/vike --base main' "$GO") $(grep -c "https://github.com/vikejs/vike/pull/3675's head $(git -C "$CK" rev-parse --short=10 HEAD) ready" "$T/err")"
 check "BLOCK: gh pr edit --base retargeting a ready PR onto the base of an overlapping ready one, naming it; onto its own base, or a draft PR, passes" "2 1 0 0" \
   "$(bg 'gh pr edit 3675 -R vikejs/vike --base main' "$CK") $(grep -c 'vikejs/vike#3680, also yours and ready, changes b.ts' "$T/err") $(bg 'gh pr edit 3675 -R vikejs/vike --base dev' "$CK") $(echo '{"draft":true}' > "$FX/repos_vikejs_vike_pulls_3675"; bg 'gh pr edit 3675 -R vikejs/vike --base main' "$CK")"
-echo '{}' > "$PB"; prhead "$CK" "$PB"
+rm "$PB"
 check "no shared file, the other a draft or on another base: passes; the list is of our own open PRs" "0 0 0 1" \
   "$(ul false main c1c1c1c1 c.ts 1; bg "$UR" "$CK") $(ul true main c1c1c1c1 b.ts 1; bg "$UR" "$CK") $(ul false dev c1c1c1c1 b.ts 1; GH_STUB_ARGS="$T/ul.args" bg "$UR" "$CK") $(grep -c 'pr list -R vikejs/vike --author @me --state open' "$T/ul.args")"
 check "BLOCK: a file list GitHub cut counts as shared; gh failing to list blocks, asking to retry" "2 2 1" "$(ul false main c1c1c1c1 z.ts 5; bg "$UR" "$CK") $(GH_STUB_403=1 bg "$UR" "$CK") $(grep -c 'retry once gh answers' "$T/err")"
 ul false main c1c1c1c1 b.ts 1; sed -i 's/"isDraft": false/"isDraft": true/' "$FX/graphql"
 check "a push to a draft PR passes beside an overlapping ready one" 0 "$(bg "$UP" "$CK")"
-rm "$FX/pr_list_vikejs_vike" "$PB"
+rm "$FX/pr_list_vikejs_vike" "$FX/pr_view_3675"
 # pr-steps union: a merge holding both heads and the base, with green quick gates; or the two heads' textual conflict
 U="$T/union"; git init -q -b main "$U"; printf 'a\n' > "$U/a"; printf 'b\n' > "$U/b"; git -C "$U" add a b; git -C "$U" -c user.name=t -c user.email=t@t commit -qm base; UB=$(git -C "$U" rev-parse HEAD)
 uc() { git -C "$U" checkout -q -b "$1" main; printf '%s\n' "$1" >> "$U/$2"; git -C "$U" -c user.name=t -c user.email=t@t commit -qam "$1"; git -C "$U" rev-parse HEAD; }
@@ -3971,6 +3987,7 @@ check "BLOCK: a shell running a computed script that holds a guarded verb" 2 "$(
 cat > "$T/bin/glab" <<'EOF'
 #!/usr/bin/env bash
 [ "$1 $2 $3" = "config get user" ] && { [ ! -f "$FX/gl_login" ] || cat "$FX/gl_login"; exit; }
+if [ "$1 $2" = "mr view" ]; then r=$3; case "$r" in -*|'') r=current;; esac; f="$FX/glmr_view_$(printf '%s' "$r" | tr '/:' '__')"; [ -f "$f" ] && cat "$f" && exit 0; echo 'glab: 404 Not Found' >&2; exit 1; fi  # as above
 [ "$1" = api ] || exit 1
 f="$FX/gl_$(printf '%s' "$4" | tr '/?&=%' '_____')"
 [ -f "$f" ] && cat "$f" || { echo 'glab: 404 Not found (HTTP 404)' >&2; exit 1; }
@@ -4017,7 +4034,7 @@ gll() { # the other MR's draft, target branch, head, one file and overflow: our 
   printf '{"changes":[{"old_path":"a.py","new_path":"a.py"},{"old_path":"b.py","new_path":"b.py"}],"overflow":false}' > "$FX/gl_projects_me_2Fapp_merge_requests_5_changes"
   printf '{"changes":[{"old_path":"%s","new_path":"%s"}],"overflow":%s}' "$4" "$4" "$5" > "$FX/gl_projects_me_2Fapp_merge_requests_8_changes"; }
 echo '[{"web_url":"https://gitlab.com/me/app/-/merge_requests/5","draft":false}]' > "$FX/gl_projects_me_2Fapp_merge_requests_state_opened_source_branch_mr-b"
-glb() { prhead "$NA" "$FX/gl_projects_me_2Fapp_merge_requests_5"; prhead "$NA" "$FX/gl_projects_me_2Fapp_merge_requests_state_opened_source_branch_mr-b"; MERGEWORTHY_WATCHER=off bg "$1" "$NA"; }
+glb() { for v in 5 current https___gitlab.com_me_app_-_merge_requests_5; do prhead "$NA" "$FX/glmr_view_$v" https://gitlab.com/me/app/-/merge_requests/5; done; MERGEWORTHY_WATCHER=off bg "$1" "$NA"; }
 gll false main d0d0d0d0 b.py false
 check "GitLab, BLOCK: glab mr update --ready, -r and by the current branch, a push to a ready MR and a ready glab mr create while another ready MR of ours changes one of its files, naming it and the file (#188)" "2 1 2 2 2 2 1" \
   "$(glb 'glab mr update 5 --ready') $(grep -c 'gitlab.com/me/app!8, also yours and ready, changes b.py' "$T/err") $(glb 'glab mr update 5 -r') $(glb 'glab mr update --ready') $(glb 'git push origin HEAD:mr-b') $(glb 'glab mr create --title x --target-branch main') $(grep -c 'gitlab.com/me/app!., also yours and ready' "$T/err")"
@@ -4045,7 +4062,7 @@ check "GitLab, BLOCK: a title update takes the MR it acts on as the defects chec
 mv "$T/sbm.keep" "$SBM"
 printf '{"title":"Ready"}' > "$NA/body.json"; printf '{"title":"Draft: Ready"}' > "$T/body.json"; printf false > "$T/false.txt"; printf dev > "$T/base.txt"
 GPUT='glab api projects/me%2Fapp/merge_requests/5 -X PUT'
-check "GitLab, BLOCK: an API PUT taking an MR out of draft from another checkout, naming its head" "2 1" "$(prhead "$NA" "$FX/gl_projects_me_2Fapp_merge_requests_5"; MERGEWORTHY_WATCHER=off bg "$GPUT -f draft=false" "$TCO") $(grep -c "gitlab.com/me/app!5's head $(git -C "$NA" rev-parse --short=10 HEAD) ready" "$T/err")"
+check "GitLab, BLOCK: an API PUT taking an MR out of draft from another checkout, naming its head" "2 1" "$(prhead "$NA" "$FX/glmr_view_5" https://gitlab.com/me/app/-/merge_requests/5; MERGEWORTHY_WATCHER=off bg "$GPUT -f draft=false" "$TCO") $(grep -c "https://gitlab.com/me/app/-/merge_requests/5's head $(git -C "$NA" rev-parse --short=10 HEAD) ready" "$T/err")"
 check "GitLab, BLOCK: an API PUT to an MR taking fields from a file or stdin (--input, relative after a cd too; a value starting with @), saying to pass them literally; literal fields stay checked, naming the MR, and a Draft title passes" "2 1 2 2 2 1 2 2 1 0" \
   "$(MERGEWORTHY_WATCHER=off bg "cd $NA && $GPUT --input body.json" "$T") $(grep -c 'pass them literally with -f <field>=<value>, or use .glab mr update.' "$T/err") $(glb "$GPUT --input -") $(glb "$GPUT -F draft=@$T/false.txt -f target_branch=dev") $(glb "$GPUT -f title=Ready -F target_branch=@$T/base.txt") $(grep -c 'pass them literally' "$T/err") $(glb "$GPUT -f title=@$T/base.txt") $(glb "$GPUT -f title=Ready") $(grep -c 'gitlab.com/me/app!8, also yours and ready' "$T/err") $(glb "$GPUT -f 'title=Draft: Ready'")"
 gll false dev e1e1e1e1 b.py false
