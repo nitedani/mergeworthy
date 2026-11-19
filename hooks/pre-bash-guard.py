@@ -3,7 +3,7 @@
 Checks each simple command separately (shellcmd.parse: chains, substitutions, `bash -c`; heredoc bodies and quoted text are data).
 It fails closed: a command it can't parse, a record it can't find or a state gh can't read blocks what it guards.
 MERGEWORTHY_MERGE=reviewer blocks every `gh pr merge`."""
-import glob, itertools, json, re, sys, os, hashlib, subprocess, urllib.parse
+import glob, itertools, json, re, sys, os, hashlib, shlex, subprocess, urllib.parse
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
 import shellcmd
@@ -826,6 +826,39 @@ def ready_defects(p, repo, num, _base, branch, what):
         num = str(mrs[0]['iid'])
     check_defects(f'{repo}!{num}'.lower(), what)
 
+def ready_head(p, repo, num, branch, run_dir, a):
+    """The commit goes_ready's command makes ready, which its records are judged on: PR or MR num's head (else the open MR of branch) as its host
+    has it, or a create's opened_head. A checkout whose HEAD is another commit blocks, naming both, as do a head the host can't tell and a project that can't be told."""
+    if num is None and branch is None:
+        return opened_head(known(run_dir), opened_branch(a[2:], ['--head', '-H'] if p == 'gh' else ['--source-branch', '-s']), f'`{p} {a[0]} create`')
+    if p == 'gh':
+        sha, cli, thread = ((gh_json(f'repos/{repo}/pulls/{num}') or {}).get('head') or {}).get('sha'), 'gh', f'{repo}#{num}'
+    elif not repo:
+        block("can't tell which GitLab project this command acts on, so which commit it makes ready can't be checked: pass -R <host>/<path>")
+    else:
+        mr = glab_get(repo, f'merge_requests/{num}' if num else f"merge_requests?state=opened&source_branch={urllib.parse.quote(branch)}")
+        mr = (mr or [None])[0] if isinstance(mr, list) else mr
+        sha, cli, thread = mr.get('sha') if isinstance(mr, dict) else None, 'glab', f"{repo}!{num or branch}"
+    if not sha:
+        block(f"{cli} couldn't read {thread}'s head, so which commit this command makes ready can't be checked: retry once {cli} answers")
+    if sha != (here := git_head(known(run_dir))):
+        block(f"`{shlex.join([p, *a])}` makes {thread}'s head {sha[:10]} ready, and this checkout's HEAD is {here[:10] or '(no git repo in cwd)'}: "
+              f"run it from {thread}'s checkout with that head pushed (`cd <its checkout> && {shlex.join([p, *a])}`)")
+    return sha
+
+def opened_head(d, branch, what):
+    """HEAD of the checkout a PR or MR create runs in, when the branch it opens from (None: the checked-out one) is that checkout's branch or
+    its upstream, which then must be at HEAD; any other branch blocks, as the create's records are judged in its own checkout."""
+    git = lambda *x: subprocess.run(['git', '-C', d, *x], capture_output=True, text=True).stdout.strip()
+    here, cur = git('rev-parse', 'HEAD'), git('symbolic-ref', '--short', '-q', 'HEAD')
+    up = git('for-each-ref', '--format=%(upstream)', f'refs/heads/{cur}') if cur else ''
+    if branch in (None, cur): return here
+    if branch != re.sub(r'^refs/(remotes/[^/]+|heads)/', '', up):
+        block(f"{what} opens {branch}, and this checkout is on {cur or 'a detached HEAD'}: run it from {branch}'s checkout (`cd <its checkout> && <the command>`), so the records judged are that branch's")
+    if (pushed := git('rev-parse', up)) != here:
+        block(f"{what} opens {branch} at {pushed[:10]}, and this checkout's HEAD is {here[:10]}: push HEAD to {branch} first, so the records judged are the PR's head")
+    return here
+
 GLAB_UPDATE_VALUED = {'-a', '--assignee', '--attach', '-d', '--description', '--description-file', '-l', '--label', '-m', '--milestone',
                       '--reviewer', '--state', '--target-branch', '-t', '--title', '-u', '--unlabel', '-R', '--repo'}  # docs.gitlab.com/cli/mr/update
 def mr_target(a, run_dir):
@@ -1060,11 +1093,11 @@ def check(t, has_cd):
         need_approach(run_dir, '`gh pr create`', opened_branch(a[2:], ['--head', '-H']))
     if ready := goes_ready(p, a, env, run_dir):
         ready_defects(p, *ready, f"`{p} {'api' if a[:1] == ['api'] else ' '.join(a[:2])}`")
-        head, missing = missing_steps(known(run_dir))
+        head, missing = missing_steps(known(run_dir), ready_head(p, ready[0], ready[1], ready[3], run_dir, a))
         if missing:
-            block(f"HEAD {head[:10] or '(no git repo in cwd)'} has no pr-steps {', '.join(missing)} record: run those steps of mergeworthy:converge's pipeline on the final HEAD, each ending with `pr-steps <step> <its output>` (again after a base merge); or open it with --draft")
+            block(f"HEAD {head[:10]} has no pr-steps {', '.join(missing)} record: run those steps of mergeworthy:converge's pipeline on the final HEAD, each ending with `pr-steps <step> <its output>` (again after a base merge); or open it with --draft")
         if ready[0]:  # no GitLab project: nothing to list
-            check_union(run_dir, *ready)
+            check_union(run_dir, *ready, head=head)
     if p == 'glab' and len(a) >= 2 and a[0] in ('issue', 'mr') and a[1] == 'create' and '--help' not in a and '-h' not in a:
         need_home(gitlab_repo(a[2:], run_dir), run_dir)
         if a[0] == 'mr': need_approach(run_dir, '`glab mr create`', opened_branch(a[2:], ['--source-branch', '-s']))
