@@ -35,9 +35,9 @@ def missing_steps(d, head=None):
 
 def check_union(d, repo, num, base=None, branch=None, head=None):
     """Two ready PRs (MRs) of ours that change one file can each pass alone and break their base merged (#188): each other open, non-draft
-    one of the account on this one's base (PR num's, or the branch's, or the one a create opens on base) sharing a file needs a `pr-steps union`
-    record on head (a push's pushed commit, else HEAD) naming its head. repo: owner/repo on GitHub, <host>/<path> on GitLab. A file list cut short, or a new one's files git can't
-    tell, shares every file; gh or glab not answering blocks."""
+    one of the account on this one's base (PR num's, or the branch's) sharing a file needs a `pr-steps union`
+    record on head (a push's pushed commit, else HEAD) naming its head. repo: owner/repo on GitHub, <host>/<path> on GitLab. A file list cut short
+    shares every file; gh or glab not answering blocks."""
     lab = '.' in repo.split('/')[0]
     def ask(*args):
         try:
@@ -57,9 +57,9 @@ def check_union(d, repo, num, base=None, branch=None, head=None):
         prs = ask('gh', 'pr', 'list', '-R', repo, '--author', '@me', '--state', 'open', '--limit', '100', '--json', 'number,isDraft,baseRefName,headRefName,headRefOid,files,changedFiles')
     if not isinstance(prs, list): retry(f'your open {kind}s')
     this = next((p for p in prs if str(p['number']) == str(num) or num is None and branch and p['headRefName'] == branch), None)
-    if (num or branch) and this is None: return  # not ours
+    if this is None: return  # not ours
     if not (others := [p for p in prs if p is not this and not p['isDraft']]): return
-    base = base or this['baseRefName'] if this else base or ((api('') or {}).get('default_branch') if lab else (ask('gh', 'repo', 'view', repo, '--json', 'defaultBranchRef') or {}).get('defaultBranchRef', {}).get('name')) or retry('the default branch')
+    base = base or this['baseRefName']
     head = head or git_head(d)
     done = {s for l in (open(RECORDS + head) if os.path.exists(RECORDS + head) else []) if l.split()[:1] == ['union'] for s in l.split()[3:]}  # pairs already checked
     if not (others := [p for p in others if p['baseRefName'] == base and p['headRefOid'] not in done]): return
@@ -71,17 +71,16 @@ def check_union(d, repo, num, base=None, branch=None, head=None):
     git = lambda *a: subprocess.run(['git', '-C', d, *a], capture_output=True, text=True).stdout.strip()
     ref = next(iter(git('for-each-ref', '--format=%(refname)', f'refs/remotes/*/{base}').split()), '')
     local = set(git('diff', '--name-only', f'{ref}...{head}').splitlines()) if ref else None  # with what this head adds to it
-    listed = paths(this) if this else set()
-    mine = None if listed is None or not this and local is None else listed | (local or set())
+    listed = paths(this)
+    mine = None if listed is None else listed | (local or set())
     for p in others:
         theirs = paths(p)
         shared = sorted(mine & theirs) if mine is not None and theirs is not None else None
         if shared == []: continue
         n, sha, mark = p['number'], p['headRefOid'], '!' if lab else '#'
         what = ', '.join(shared) if shared else 'files listed only in part'
-        unfetched = f" (git can't tell this branch's files without the base: `git fetch <the base repo's remote> {base}`)" if not this and local is None else ''
         fetch = f"git fetch https://{repo} merge-requests/{n}/head" if lab else f"git fetch https://github.com/{repo} pull/{n}/head"
-        block(f"{repo}{mark}{n}, also yours and ready, changes {what} too{unfetched}: merged together the two can break {base} without a conflict. Check them merged first: "
+        block(f"{repo}{mark}{n}, also yours and ready, changes {what} too: merged together the two can break {base} without a conflict. Check them merged first: "
               f"`git worktree add --detach <work folder>/union origin/{base}`; there fetch and merge this head and {mark}{n}'s (`{fetch}`), run the quick gates (code §Gates) "
               f"into a log whose first line is `Union: {repo}#{num or '<N>'}@{head[:10]} + #{n}@{sha[:10]} on {base}@<its sha>`, then `pr-steps union <log>`; when they conflict, "
               f"`pr-steps union --conflict {sha}` here. A red union: change this one until it is green or conflicts, or stack it (mergeworthy:converge §Stacked PRs); "
@@ -101,20 +100,21 @@ def pr_ready(a):
 
 DRAFT_TITLE = re.compile(r'\s*(\[draft\]|\(draft\)|draft:|draft\b|\[wip\]|wip:)', re.I)  # GitLab's draft prefixes
 def goes_ready(p, a, env, run_dir):
-    """(repo, number, base, branch) of the PR or MR this command opens ready or takes out of draft, with the base it ends on (None: its own),
-    for the records check and check_union alike; None for any other command. A push to a ready PR is gated where pushes are."""
+    """(repo, number, base, branch) of the PR or MR this command takes out of draft, with the base it ends on (None: its own),
+    for the records check and check_union alike; None for any other command. A push to a ready PR is gated where pushes are.
+    A create opening its PR or MR ready blocks: which commit it publishes (a tracking ref, another repo's branch of that name, a source GitLab
+    picks or makes) can't be told here."""
     if '--help' in a or '-h' in a: return None
+    if (p, *a[:2]) in (('gh', 'pr', 'create'), ('glab', 'mr', 'create')) and not flag(a, '--draft', '-d' if p == 'gh' else '--wip'):
+        block(f"`{p} {a[0]} create` opens it ready, and which commit it opens can't be told from this checkout: "
+              f"open it with --draft, then `{'gh pr ready <N>' if p == 'gh' else 'glab mr update <N> --ready'}` from its checkout")
     if p == 'gh' and pr_ready(a):
         return (*post_target('pr', a[2:], env, run_dir), None, None)
-    if p == 'gh' and a[:2] == ['pr', 'create'] and not flag(a, '--draft', '-d'):
-        return gh_repo(a[2:], env, run_dir), None, (opt(a[2:], ['--base', '-B']) or [None])[-1], None
     if p == 'gh' and a[:2] == ['pr', 'edit'] and (base := opt(a[2:], ['--base', '-B'])):  # a retarget of a ready PR
         repo, n = post_target('pr', a[2:], env, run_dir)
         if not isinstance(pr := gh_json(f'repos/{repo}/pulls/{n}'), dict):
             block(f"gh couldn't read {repo}#{n}, so whether this retarget puts a ready PR on {base[-1]} can't be checked: retry once gh answers")
         return None if pr.get('draft') else (repo, n, base[-1], None)
-    if p == 'glab' and a[:2] == ['mr', 'create'] and not flag(a, '--draft', '--wip'):
-        return gitlab_repo(a[2:], run_dir), None, (opt(a[2:], ['--target-branch', '-b']) or [None])[-1], None
     if p == 'glab' and a[:2] == ['mr', 'update'] and not flag(a, '--draft', '--wip'):
         repo, iid, branch = mr_target(operands(a[2:]), run_dir)
         base, title = (opt(a[2:], ['--target-branch']) or [None])[-1], (opt(a[2:], ['--title', '-t']) or [None])[-1]
@@ -828,7 +828,7 @@ def check_defects(thread, what):
 def ready_defects(p, repo, num, _base, branch, what):
     """check_defects for a PR or MR goes_ready finds this command taking out of draft (or retargeting while ready): its number, else the open
     MR of branch (a `glab mr update` naming none), read only when a line names an MR of its project, and one glab can't find blocks there."""
-    if not repo or num is None and branch is None: return  # a create (no number, no branch) opens a PR or MR no line names yet
+    if not repo: return
     if p == 'gh': return check_defects(f'{repo}#{num}'.lower(), what)
     if not num:
         if not any((t or '').startswith(f'{repo}!'.lower()) for _, t, _, _ in all_defects()): return
@@ -838,14 +838,10 @@ def ready_defects(p, repo, num, _base, branch, what):
         num = str(mrs[0]['iid'])
     check_defects(f'{repo}!{num}'.lower(), what)
 
-def ready_head(p, repo, num, branch, run_dir, a, env):
+def ready_head(p, repo, num, run_dir, a, env):
     """The commit goes_ready's command makes ready, which its records are judged on: the head of the PR or MR it names, as `gh pr view` or
     `glab mr view` resolve it with the command's own target, env and dir (an API PUT: the project and MR its path names).
-    A checkout whose HEAD is another commit blocks, naming both and the command aimed at the PR's URL; a head the CLI can't read blocks. A create opening
-    its PR or MR ready blocks: which commit it publishes (a tracking ref, another repo's branch of that name, a source GitLab picks or makes) can't be told here."""
-    if num is None and branch is None:
-        block(f"`{p} {a[0]} create` opens it ready, and which commit it opens can't be told from this checkout: "
-              f"open it with --draft, then `{'gh pr ready <N>' if p == 'gh' else 'glab mr update <N> --ready'}` from its checkout")
+    A checkout whose HEAD is another commit blocks, naming both and the command aimed at the PR's URL; a head the CLI can't read blocks."""
     rest, keep = a[2:], None
     if a[0] == 'api':
         view = ['glab', 'mr', 'view', num, '-R', f'https://{repo}', '--output', 'json']
@@ -1106,9 +1102,9 @@ def check(t, has_cd):
         need_approach(run_dir, '`gh pr create`', opened_branch(a[2:], ['--head', '-H']))
     if ready := goes_ready(p, a, env, run_dir):
         ready_defects(p, *ready, f"`{p} {'api' if a[:1] == ['api'] else ' '.join(a[:2])}`")
-        head, missing = missing_steps(known(run_dir), ready_head(p, ready[0], ready[1], ready[3], run_dir, a, env))
+        head, missing = missing_steps(known(run_dir), ready_head(p, ready[0], ready[1], run_dir, a, env))
         if missing:
-            block(f"HEAD {head[:10]} has no pr-steps {', '.join(missing)} record: run those steps of mergeworthy:converge's pipeline on the final HEAD, each ending with `pr-steps <step> <its output>` (again after a base merge); or open it with --draft")
+            block(f"HEAD {head[:10]} has no pr-steps {', '.join(missing)} record: run those steps of mergeworthy:converge's pipeline on the final HEAD, each ending with `pr-steps <step> <its output>` (again after a base merge)")
         if ready[0]:  # no GitLab project: nothing to list
             check_union(run_dir, *ready, head=head)
     if p == 'glab' and len(a) >= 2 and a[0] in ('issue', 'mr') and a[1] == 'create' and '--help' not in a and '-h' not in a:
@@ -1177,16 +1173,14 @@ def check(t, has_cd):
                 block(NEED_DRAFT)
             if sub == 'create':
                 need_home(gh_repo(rest, env, run_dir), run_dir)
-            if a[0] == 'pr' and sub == 'create':  # a draft's body says why on its State line, a ready PR's has none (pull-request step 7)
-                draft = '--draft' in rest or '-d' in rest
+            if a[0] == 'pr' and sub == 'create':  # a draft's body says why on its State line (pull-request step 7); goes_ready refused a ready create
                 w = post_words.words(gh_repo(rest, env, run_dir))
                 for f in files:
                     f = os.path.join(cwd, os.path.expanduser(where.expand(f)))
                     lines = [l.strip() for l in open(f).read().split('\n') if l.strip()] if os.path.exists(f) else []
                     lead = lines[1:2] if lines[:1] and lines[0].startswith('<img') else lines[:1]  # under the badge
-                    if lines and draft != bool(post_words.state_line(w).match((lead or [''])[0])):
-                        block(f"{f}: a draft PR's body starts, right under the badge, with '**{w['state'][0]}: {w['state'][1]}** (<why it's a draft, in plain words>)' (post-lint --kind pr --draft)" if draft else
-                              f"{f}: this PR isn't a draft: remove the State line, or open it with --draft")
+                    if lines and not post_words.state_line(w).match((lead or [''])[0]):
+                        block(f"{f}: a draft PR's body starts, right under the badge, with '**{w['state'][0]}: {w['state'][1]}** (<why it's a draft, in plain words>)' (post-lint --kind pr --draft)")
             # a comment or body edit on a PR with a refactor ask: the target post_target resolves (gh issue too: an issue number that is a PR)
             target = post_target(a[0], rest, env, run_dir) if sub != 'create' else (None, None)
             if sub in ('comment', 'edit') and files:
