@@ -273,10 +273,11 @@ check "start the same day after a run whose thread started though one repo's lis
 printf '%s\n' "$(date -u +%F) $(date -u +%FT%TZ) no thread: nothing to sort; 0 to sort; FAILED: vikejs/vike (gh failed)" > "$L/runs.txt"; : > "$T/t3-calls"
 check "start the same day after a run whose lists failed and started no thread: runs again, its thread started" "0 1" "$(python3 "$R/bin/project-learn" start | grep -c already) $(grep -c '^t3 thread start ' "$T/t3-calls")"
 
-mv "$HOME/.t3/userdata/statev2.sqlite" "$T/statev2.sqlite"; rm "$L/runs.txt"; : > "$T/t3-calls"; rm "$P/o/quiet.study.md"; printf 'Studied: 2026-10-29\n' > "$P/o/quiet.study.md"
+mv "$HOME/.t3/userdata/statev2.sqlite" "$T/statev2.sqlite"; rm -r "$L/runs.txt" "$L/lists"; : > "$T/t3-calls"; : > "$T/gh-calls"; rm "$P/o/quiet.study.md"; printf 'Studied: 2026-10-29\n' > "$P/o/quiet.study.md"
 out=$(python3 "$R/bin/project-learn" start 2>&1); rc=$?
-check "start without T3's database: exit 1, one line saying so, recorded as FAILED; nothing listed, marked or started" "1 1 1 0 0" \
-  "$rc $(echo "$out" | grep -c "^project-learn: FAILED: T3 Code's database can't be read") $(echo "$out" | wc -l) $(grep -c '^Learned:' "$P/o/quiet.study.md") $(wc -l < "$T/t3-calls")"
+check "start without T3's database: exit 1, one line saying so, a runs.txt line saying so; nothing fetched, listed, marked or started" "1 1 1 1 0 0 0 0" \
+  "$rc $(echo "$out" | grep -c "^project-learn: FAILED: T3 Code's database can't be read") $(echo "$out" | wc -l) $(grep -c "^$(date -u +%F) .* FAILED: T3 Code's database can't be read" "$L/runs.txt") \
+$(wc -l < "$T/gh-calls") $(ls "$L/lists" | wc -l) $(grep -c '^Learned:' "$P/o/quiet.study.md") $(wc -l < "$T/t3-calls")"
 mv "$T/statev2.sqlite" "$HOME/.t3/userdata/statev2.sqlite"; rm "$P/o/elsewhere."* "$P/o/archived."* "$P/o/deleted."*
 mkdir "$T/nogit"; ln -s "$T/bin/gh" "$T/bin/t3" /usr/bin/python3 "$T/nogit/"; rm -f "$L/runs.txt"
 PATH="$T/nogit" /usr/bin/python3 "$R/bin/project-learn" start >/dev/null 2>"$T/err"; rc=$?
