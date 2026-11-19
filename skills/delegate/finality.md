@@ -44,21 +44,51 @@ Subsystem: <name and paths>
 Mappers are read-only; graphs are artifacts.
 
 PHASE B — IMAGINE.
-Diverge first, then converge. DIVERGE: write the problem clean, as its users would state it: what
+Diverge first, then converge; mixing them kills the ideas, because the critic strangles the generator.
+DIVERGE: write the problem clean, as its users would state it: what
 must happen, what it may never cost, and the facts of the outside world it lives in (platform
 APIs, runtimes, networks). No current design, no file or function names, no project terms, no
-hint of how it is solved today: those anchor the branches on what exists. Pick 6 to 9 frames
-from that clean problem (the ways it fails, the people it serves, fields that solved its like),
-never from the current solution and never a fixed list. The orchestrator starts 3 isolated branch
-agents, each with the clean problem and 2 or 3 of those frames,
-no frame given twice. Each first writes its 3 obvious
-designs, marked obvious, then 6 more beyond them, with no evaluation; no branch sees another's
-output. CONVERGE: only now does the graph come in: the orchestrator gives the assembled graph
-AND every branch’s lists to ONE converging agent. The obvious
-designs are its baseline; it ranks every
-design on merit only (correctness, cost on the fast path, behavior at the edges, simplicity;
-novelty earns nothing), flags the traps, and a non-obvious design wins only by beating the best
-obvious one. From that it derives the PINNACLE design — the shape this feature would have if
+hint of how it is solved today: those anchor the branches on what exists. Pick 6 to 9 frames:
+4 to 6 from the table below tagged code or design, at least 1 tagged wild, and 1 or 2 drawn from
+that clean problem itself (the ways it fails, the people it serves, a field that solved its like),
+never from the current solution. Vary the picks between runs, so a re-run finds other designs.
+The orchestrator starts 3 branch agents in parallel, each with only the clean problem, the
+vantage prompts of 2 or 3 of those frames (no frame given twice) and this instruction, verbatim:
+"You are in DIVERGENT mode: a generator, not a critic. For each frame, design as its persona:
+first the 3 obvious designs a senior engineer would give in thirty seconds, marked obvious, then
+6 more past them, into the awkward middle nobody walks into. Each design is one or two sentences
+and a one-line rationale. Do not evaluate, rank or hedge."
+No branch sees another's output: branches that see each other anchor each other, and the run
+collapses into one wider thought. Breadth means different underlying assumptions; ten variations
+of one design are decoration. Diverging is done when new designs repeat the shape of earlier ones.
+| Frame | Vantage prompt | Tags |
+|---|---|---|
+| hardware engineer | You think in latency, memory layout and physical limits. Re-ask this as a firmware problem: what do the bus, the cache and the timing budget say? | code, wild |
+| regulator | You audit systems for compliance and failure modes. What must be provable, traceable or refusable here? | design |
+| 10-year-old | You have never seen software. Describe naive, unencumbered approaches; ignore convention. | wild |
+| attacker | You are out to break it. Find how the obvious design is exploited, fails or is sabotaged, then invert each attack into a design. | code, design |
+| biology | Transplant a mechanism from biology (immune systems, plasticity, cell signaling, evolution) and force-fit it onto this problem. | wild |
+| logistics | Take queues, batching, just-in-time, hub-and-spoke, returns and last-mile, and apply them literally. | code, design |
+| game designer | What are the loops, rewards, friction, save states and skips? Treat the user as a player. | design |
+| markets | Treat it as a market: buyers, sellers, market-makers. What would an auction or a clearing house be here? | design, wild |
+| inversion | Ask how to guarantee the goal fails, then negate each answer back. | code, design |
+| $0, one hour | No money, no team, one hour: the crudest version that still does the load-bearing thing. | code |
+| infinite budget, ten years | Unlimited compute and engineers for a decade: the maximalist version. | design, wild |
+| no load-bearing assumption | Name what everyone treats as fixed (the framework, the store, request-response, the network). It is gone: what is possible now? | code, design, wild |
+| speedrunner | Find the glitches, skips and out-of-bounds tricks: the abusive but legal path. | code, wild |
+| ant colony | No planner: many simple agents, local rules, trails. How does it solve itself? | code, wild |
+| 3am on-call | You are paged at 3am when this breaks. What design never pages you? | code, design |
+(Frames adapted from github.com/UditAkhourii/adhd, MIT.)
+CONVERGE: only now does the graph come in: the orchestrator gives the assembled graph
+AND every branch’s lists to ONE converging agent. It clusters every design by its underlying
+angle, not its wording ("remove the server", "cache-shaped", "batch window"); the obvious
+designs are its baseline. It ranks every design on merit only (correctness, cost on the fast
+path, behavior at the edges, simplicity; novelty earns nothing) and flags each trap with its
+one-line reason (a hidden cost, a false economy, won't scale, premature abstraction). It
+deepens the top 3 that aren't traps: how each works in 4 to 8 sentences, its load-bearing risk,
+the first concrete step, and 3 to 5 child designs (variations, hybrids, what it unlocks). A
+non-obvious design wins only by beating the best obvious one; it commits to one, never "here
+are the options". From that it derives the PINNACLE design — the shape this feature would have if
 designed today, from scratch, knowing everything the graph knows, with NO obligation to the
 current file layout.
 Design pressures:
