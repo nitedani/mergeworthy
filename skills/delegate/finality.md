@@ -52,10 +52,10 @@ hint of how it is solved today: those anchor the branches on what exists. Pick 6
 1 or 2 drawn from that clean problem itself (the ways it fails, the people it serves, a field that
 solved its like), never from the current solution, each with a vantage prompt you write; the rest
 from the table below, mostly tagged code or design and at least 1 tagged wild (a row with both
-tags counts for both). The orchestrator starts 3 branch agents in parallel, each with only the
+tags counts for both). The orchestrator starts 3 branch agents in parallel, each given as design input only the
 clean problem, the names and vantage prompts of 2 or 3 of those frames (no frame given twice) and
 this instruction, verbatim:
-"You are in DIVERGENT mode: a generator, not a critic. For each frame, design as its persona:
+"You are in DIVERGENT mode: a generator, not a critic. For each frame, under its name, design as its persona:
 first the 3 obvious designs a senior engineer would give in thirty seconds from its vantage,
 marked obvious, then 6 more past them, each changing an assumption, a responsibility or a
 mechanism of those first 3, into the awkward middle nobody walks into. Each design is one or two sentences
@@ -80,18 +80,18 @@ of one design are decoration.
 | speedrunner | Find the glitches, skips and out-of-bounds tricks: the abusive but legal path to what the users want. | code, wild |
 | ant colony | No planner: many simple agents, local rules, trails. How does it solve itself? | code, wild |
 | 3am on-call | You are paged at 3am when this breaks. What design never pages you? | code, design |
-(Frames adapted from github.com/UditAkhourii/adhd, MIT.)
+(The frames and this phase's method are adapted from github.com/UditAkhourii/adhd, Copyright (c) 2026 ADHD contributors, under the MIT license in `delegate/adhd-LICENSE.txt`.)
 CONVERGE: only now does the graph come in: the orchestrator gives the clean problem, the
 assembled graph AND every branch’s lists, labeled by frame, to ONE converging agent. It clusters every design by its underlying
 angle, not its wording ("remove the server", "cache-shaped", "batch window"); the obvious
-designs are its baseline. A design that breaks what the clean problem says it may never cost is out,
+designs are its baseline. A design that breaks what the clean problem says must happen or may never cost is out,
 with its one-line reason. It ranks every other design on merit only (correctness, cost on the fast
 path, behavior at the edges, simplicity; novelty earns nothing) and flags each trap with its
 one-line reason (a hidden cost, a false economy, won't scale, premature abstraction). It
-deepens the top 3 that aren't traps: how each works in 4 to 8 sentences, its load-bearing risk,
-the first concrete step, and 3 to 5 child designs (variations, hybrids, what it unlocks), ranked like the rest. A
+deepens the best 3 that aren't traps (fewer when fewer remain): how each works in 4 to 8 sentences, its load-bearing risk,
+the first concrete step, and 3 to 5 child designs (variations, hybrids, what it unlocks), judged and ranked like the rest. A
 non-obvious design wins only by beating the best obvious one; it commits to one, never "here
-are the options". From that it derives the PINNACLE design — the shape this feature would have if
+are the options". When no design remains, it names the limits that rule them all out instead of a pinnacle, and the orchestrator brings them to the user. From that it derives the PINNACLE design — the shape this feature would have if
 designed today, from scratch, knowing everything the graph knows, with NO obligation to the
 current file layout.
 Design pressures:
