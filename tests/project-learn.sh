@@ -235,7 +235,7 @@ c.execute("create table projection_projects (project_id text primary key, worksp
 for i, (url, deleted, archived) in enumerate((('https://github.com/vikejs/vike.git', None, None), ('git@github.com:o/quiet.git', None, None),
         ('https://github.com/o/broken', None, None), ('ssh://git@gitlab.com/g/r.git', None, None), ('git@github.com:o/big', None, None),
         ('https://github.com/o/archived.git', None, '2026-11-01T00:00:00Z'), ('https://github.com/o/deleted.git', '2026-11-01T00:00:00Z', None), (None, None, None),
-        ('https://user@github.com/o/userinfo.git', None, None), ('https://gitlab.example.com/o/selfhost.git', None, None), ('https://github.com/o/forge.git', None, None))):
+        ('https://user@github.com/o/userinfo.git', None, None), ('https://gitlab.example.com/o/selfhost.git', None, None), ('https://github.com/o/forge.git', None, None), ('git@github.com:o/nostudy.git', None, None))):
     ws = os.path.join(sys.argv[2], str(i)); os.makedirs(ws)
     if url:
         subprocess.run(['git', 'init', '-q', ws], check=True); subprocess.run(['git', '-C', ws, 'remote', 'add', 'origin', url], check=True)
@@ -245,6 +245,7 @@ PY
 printf '# o/quiet\n## Who decides\nboss\n' > "$P/o/quiet.md"; printf 'Studied: 2026-10-29\n' > "$P/o/quiet.study.md"
 printf '# o/nostudy\n' > "$P/o/nostudy.md"
 for r in elsewhere archived deleted; do printf '# o/%s\n## Who decides\nboss\n' $r > "$P/o/$r.md"; printf 'Studied: 2026-10-29\n' > "$P/o/$r.study.md"; done
+printf 'Studied: 2026-10-32\n' > "$P/o/elsewhere.study.md"  # a date no one parses: only a covered repo's study is read
 touch "$T/t3-down"
 check "start with T3 down: exit 1, a runs.txt line saying it failed and why" "1 1" \
   "$(python3 "$R/bin/project-learn" start >/dev/null 2>&1; echo $?) $(grep -c "^$(date -u +%F) .* FAILED: t3 thread start failed: server not reachable" "$L/runs.txt")"
@@ -261,7 +262,7 @@ check "start: the prompt names this project-learn by its path for the mark (T3 s
   "$(grep -c "\`project-learn\` being \`$R/bin/project-learn\`" "$T/prompt") $(grep -c "studies are in $P;" "$T/prompt")"
 check "start: the day's run recorded with its thread and the repos it sorts" 1 "$(grep -c "^$(date -u +%F) .* thread thread-1; 1 to sort: vikejs/vike$" "$L/runs.txt")"
 check "start: a repo without a study is skipped, saying so" 1 "$(echo "$out" | grep -c '^o/nostudy: no study')"
-check "start: studied repos that aren't T3 projects here (none, archived, deleted) are skipped, saying so, unmarked, not in runs.txt" "1 1 1 0 0" \
+check "start: studied repos that aren't T3 projects here (none, one with a date that doesn't parse, archived, deleted) are skipped, saying so, unmarked, not in runs.txt" "1 1 1 0 0" \
   "$(echo "$out" | grep -c '^o/elsewhere: not the origin of a T3 Code project here, skipped$') $(echo "$out" | grep -c '^o/archived: not the origin') $(echo "$out" | grep -c '^o/deleted: not the origin') \
 $(cat "$P/o/elsewhere.study.md" "$P/o/archived.study.md" "$P/o/deleted.study.md" | grep -c '^Learned:') $(grep -cE 'elsewhere|archived|deleted' "$L/runs.txt")"
 : > "$T/t3-calls"

@@ -437,12 +437,12 @@ def start():
         if project.endswith('.study.md'):
             continue
         repo = os.path.relpath(project, PROJECTS)[:-3]
+        if ((gitlab_host(repo) or 'github.com').lower(), repo.lower()) not in origins:  # the host its list reads
+            print(f"{repo}: not the origin of a T3 Code project here, skipped")
+            continue
         since = mark_of(repo)
         if since is None:
             print(f"{repo}: no study with a `Studied:` line, skipped (task §Repo study)")
-            continue
-        if ((gitlab_host(repo) or 'github.com').lower(), repo.lower()) not in origins:  # the host its list reads
-            print(f"{repo}: not the origin of a T3 Code project here, skipped")
             continue
         over = project_file.words(project) > project_file.CAP
         try:
