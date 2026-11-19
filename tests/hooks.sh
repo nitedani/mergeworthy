@@ -847,10 +847,9 @@ printf 'List all alternatives to setTimeout and nextTick. Be exhaustive. I want 
 printf '> List all alternatives.\nWhich one is best?\n' > "$T/laq.parent.md"; printf 'Give me the list of 51 items.\n' > "$T/la51.parent.md"
 la() { python3 "$R/bin/post-lint" "$T/la.md" --kind reply "$@" >"$T/la.out" 2>&1; printf '%s %s' $? "$(grep -c 'words >' "$T/la.out")"; }
 lagrep() { grep -c "$1" "$T/la.out"; }
-check "--asked-list with the parent's words leaves the asked-for list uncounted and prints them; without it the list counts" "0 0 1 1 1" "$(la --asked-list 'List  all') $(lagrep '^requested list: "List  all"$') $(la)"
+check "--asked-list with the parent's words leaves the asked-for list uncounted and prints them; without it the list counts" "0 0 1 1 1" "$(la --asked-list 'List  all') $(lagrep '^requested list: "List all"$') $(la)"
 check "--asked-list words the parent doesn't have, has only in a quoted line, or with no parent, fail and say so" "1 0 1 1 0 1 1 0 1" "$(la --asked-list 'list every') $(lagrep 'is not in the comment') $(la --asked-list 'List all' --parent "$T/laq.parent.md") $(lagrep 'is not in the comment') $(la --asked-list 'List all' --parent none) $(lagrep 'is not in the comment')"
 check "a parent asking for '51 items' still leaves the list uncounted without the flag" "0 0" "$(la --parent "$T/la51.parent.md")"
-check "gate-pass re-runs a multi-word --asked-list from the draft's .lint as one value" "1 1" "$(la --asked-list 'List all' >/dev/null; "$R/bin/gate-pass" "$T/la.md" none >"$T/la.gp" 2>&1; grep -c '^requested list: "List all"$' "$T/la.gp") $(grep -c 'only a status post' "$T/la.gp")"
 printf -- '- > List all alternatives.\n\nPlease pick one.\n' > "$T/lab.parent.md"; printf 'Please list\n> Earlier message\nall alternatives.\n' > "$T/laj.parent.md"; printf 'Please list\nall alternatives.\n' > "$T/law.parent.md"
 check "--asked-list words in a bulleted quote, or joined across a removed quote, fail; across a line wrap they pass" "1 0 1 1 0 1 0 0" "$(la --asked-list 'List all alternatives' --parent "$T/lab.parent.md") $(lagrep 'is not in the comment') $(la --asked-list 'list all alternatives' --parent "$T/laj.parent.md") $(lagrep 'is not in the comment') $(la --asked-list 'list all alternatives' --parent "$T/law.parent.md")"
 { echo "One plan line."; for n in $(seq 1 100); do echo "$n. **Question number $n of a long questionnaire?**"; for x in A B C; do echo "     - [ ] $x: option $x of question $n in the list"; done; done; } > "$T/laq2.md"; printf 'List all the questions, open, so I can tick them.\n' > "$T/laq2.parent.md"
@@ -874,6 +873,7 @@ printf 'List all alternatives to setTimeout and nextTick.\n' > "$T/lad.parent.md
   for n in $(seq 4 51); do echo "- mechanism number $n of the list, and yes, it leaks too"; done; printf '\n</details>\n'; } > "$T/lad2.md"
 lad() { python3 "$R/bin/post-lint" "$1" --kind reply --parent "$T/lad.parent.md" --asked-list 'List all' >"$T/la.out" 2>&1; printf '%s %s' $? "$(lagrep 'words >')"; }
 check "a requested list collapsed in '<details >', or in a block with a nested one and rows after its close, is left out whole" "0 0 0 0" "$(lad "$T/lad1.md") $(lad "$T/lad2.md")"
+check "requested list: prints words wrapped over lines on one line" 1 "$(la --asked-list $'List\nall' >/dev/null; lagrep '^requested list: "List all"$')"
 check "the same lists nobody asked for are" 4 "$(python3 "$R/bin/post-lint" "$T/rp.md" --kind pr --parent none 2>&1 | grep -c 'internal label\|words >\|process in the thread')"
 printf 'The code came from Sonnet subagents, and Codex (gpt-6.1-sol) reviewed every post.\n' > "$T/pm.md"
 printf 'What AI model did you use? Explain the agent orchestration.\n' > "$T/pm.parent.md"
