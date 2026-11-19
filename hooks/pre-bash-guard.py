@@ -9,7 +9,7 @@ import failclosed
 import shellcmd
 from shellcmd import parse, segments, prog, script, opt, api_call, field_name, TEXT_FREE, discussion_post, discussion_thread_of, names_discussion_mutation, env_of, origin, plain_create, PLAIN, new_post_drafts, no_instructions_read, by_agent, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Unseen, Where
 from records import branch_record, commit_file, no_approach, no_preflight, STORE
-import own_actions, steward, post_words, testpaths, threads_file, work_folder
+import own_actions, review_launch, steward, post_words, testpaths, threads_file, work_folder
 from t3_tasks import under_t3
 AGENT_TRAILER = re.compile(r'^Co-Authored-By: Claude', re.M | re.I)  # a commit without it is a maintainer's
 def missing_steps(d, head=None):
@@ -958,7 +958,7 @@ def check(t, has_cd):
             p in ('grep', 'rg') and any(re.fullmatch(r'-\w*[clqL]\w*|--count|--quiet|--files-with-matches', x) for x in a)):
         block("that file holds credentials, and printing it puts them in the transcript. Check a setting without its value "
               "(`grep -c '^//registry' <file>`, `npm config get registry`), or ask the user")
-    # The posting gate compares draft, parent, thread record and review by their times: setting a time makes a stale record pass
+    # thread-context --verify compares the thread record's time with the parent's: setting a time makes a stale record pass
     if p == 'touch' and any(x in ('-d', '-t', '-r') or x.startswith(('--date', '--reference')) or (re.fullmatch(r'-[a-z]+', x) and set(x[1:]) & set('dtr')) for x in a) \
             and ('drafts/' in cmd or any('drafts/' in os.path.abspath(os.path.expanduser(x)) for x in a if not x.startswith('-'))):
         block("never set a draft's file times: the posting gate reads them. Rebuild the record instead (`thread-context <owner/repo#N> --out <its folder>/thread-context.md`), "
@@ -1042,11 +1042,20 @@ def check(t, has_cd):
                   'and pass --title "$(cat <that file>)" (mergeworthy:pull-request step 7)')
         if a[1] == 'edit' and opt(a[2:], ['--title', '-t']) and (who := title_setter(*post_target('pr', a[2:], env, run_dir))):
             block(f"{who[0]} set this PR's title ({who[1]}): it is their decision. Keep it, or ask them on the PR first (mergeworthy:pull-request step 7)")
-    # A review's verdict is the reviewer's final message, which it writes itself (`codex exec -o`, an agent's output file); an agent's stdout is it too
+    # A review's verdict is the reviewer's final message, which it writes itself (`codex exec -o`, an agent's output file); an agent's stdout is it too.
+    # The launch records the text the reviewer is handed (review_launch), and only the launching hook writes that record or the verdict it set aside
     files = [where.files(x) for x in written_files(t)]
-    if p not in ('claude', 'codex') and any(f.endswith('.review.out') for f in [*map(where.expand, written_files(t)), *(f for c in files for f in c or [])]) and not by_agent(d):
+    names = [*map(where.expand, written_files(t)), *(f for c in files for f in c or [])]
+    if p not in ('claude', 'codex') and any(review_launch.draft_of(f) for f in names) and not by_agent(d):
         block("a review's output is the reviewer's final message, written by the reviewer: `codex exec -o <out>`, or the agent writes <out> itself. "
               "Never write a verdict yourself (mergeworthy:delegate §Reviewers, post step 3)")
+    if any(review_launch.draft_of(re.sub(r'\.(launch|prev)$', '', f)) and f.endswith(('.launch', '.prev')) for f in names):
+        block("a review output's .launch and .prev are written by the hook that starts its reviewer, which records the text the reviewer is handed: "
+              "launch the review again (mergeworthy:post step 3)")
+    if p in ('claude', 'codex'):
+        for out in (opt(a, ['-o', '--output-last-message']) if p == 'codex' else []) + (written_files(t) if p == 'claude' and ('-p' in a or '--print' in a) else []):
+            if review_launch.draft_of(out) and (why := review_launch.launch(where.path(out) or block(f"the review output {out} can't be placed: pass its absolute path"))):
+                block(why)
     written = [f for x, c in zip(written_files(t), files) for f in known(c, x)]
     for x in dict.fromkeys(map(shellcmd.folder, written)):  # the instructions check runs git, once per folder
         if why := no_instructions_read(x, d):
