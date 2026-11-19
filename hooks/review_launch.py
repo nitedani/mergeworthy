@@ -14,8 +14,9 @@ def draft_of(out):
 
 
 def misnamed(out):
-    """Why a reviewer's output out can't be tied to its draft: a .out file in a drafts/ folder not named <name>.review.out; '' otherwise."""
-    if draft_of(out) or not re.search(r'/drafts/.*\.out\Z', out):
+    """Why a reviewer's output out can't be tied to its draft: a .out file whose real path is in a drafts/ folder, not named
+    <name>.review.out; '' otherwise."""
+    if draft_of(out) or not re.search(r'/drafts/.*\.out\Z', os.path.realpath(out)):
         return ''
     return (f"{out} is in drafts/ but not named after its draft, so gate-pass can't tell which text its reviewer was handed: "
             "name it <name>.review.out (round N: <name>.review-rN.out) for <name>.md, then launch the review (post step 3)")
