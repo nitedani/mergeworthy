@@ -142,12 +142,14 @@ def html_tags(s, tag):
     return [m.span() for n, m in enumerate(found) if n in real]
 
 def own_blocks(s):
-    """The inline text of each paragraph and heading of s, one string a block, outside any blockquote (one in a list item and a quote's
-    lazy continuation lines are blockquote too): the words s's own author wrote."""
+    """The displayed text of each paragraph and heading of s (`List **all**` reads "List all"), one string a block, outside any blockquote
+    (one in a list item and a quote's lazy continuation lines are blockquote too): the words s's own author wrote."""
+    shown = {'text': lambda c: c.content, 'code_inline': lambda c: c.content, 'softbreak': lambda c: '\n', 'hardbreak': lambda c: '\n'}
     tokens, quoted, out = _blocks(s), 0, []
     for prev, t in zip([None] + tokens, tokens):
         quoted += {'blockquote_open': 1, 'blockquote_close': -1}.get(t.type, 0)
-        if t.type == 'inline' and not quoted and prev.type in ('paragraph_open', 'heading_open'): out.append(t.content)
+        if t.type == 'inline' and not quoted and prev.type in ('paragraph_open', 'heading_open'):
+            out.append(''.join(shown.get(c.type, lambda c: '')(c) for c in t.children))
     return out
 def uncoded(s, keep=lambda block: ''):  # s with each code block replaced by keep(block)
     out, last = [], 0
