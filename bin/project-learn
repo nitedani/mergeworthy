@@ -15,13 +15,14 @@
 - mark <owner/repo> <ISO> [<sha7>@<time>...]: writes the study's `Learned: <ISO>` line (under `Studied:`, which stays the full study's
   date) and its `Commits read:` line, the listed commits of the last 7 days; refuses a time before the mark or in the future, a study
   without `Studied:`, and a project file over its word cap (hooks/project_file.py).
-- start: the timer's run (mergeworthy-update installs it), once a day: lists each repo with a study into
+- start: the timer's run (mergeworthy-update installs it), once a day: lists each repo with a study that is the origin of one of this
+  machine's T3 Code projects (neither deleted nor archived) into
   ~/.mergeworthy/work/project-learn/lists/, marks those with nothing listed and within the cap, and starts one T3 thread that sorts
   the rest; each run, a failed one with why, is a line of runs.txt there.
 """
 import collections, functools, glob, json, os, re, shlex, subprocess, sys, time, urllib.parse
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'hooks'))
-import project_file
+import project_file, steward
 from gh_common import BADGE, MAINTAINER, epoch, gh_output, gh_pages, iso, pace, read, search, when
 
 HOME = os.path.expanduser('~')
@@ -399,6 +400,31 @@ def launch_thread(title, prompt):
     return r.stdout.strip(), None
 
 
+def remote(url):
+    """(host, path) of a git remote's URL (scheme://[user@]host/path or scp-like [user@]host:path), lowercase, without .git; None for a local path or one that doesn't parse."""
+    if '://' not in url:
+        if ':' not in url:
+            return None
+        url = 'ssh://' + url.replace(':', '/', 1)
+    try:
+        u = urllib.parse.urlsplit(url)
+        return u.hostname and (u.hostname, re.sub(r'\.git$', '', u.path.strip('/')).lower())
+    except ValueError:  # a URL no forge study can match (a bracketed IPv6 host)
+        return None
+
+
+def t3_origins():
+    """({(host, path)} of each T3 Code project's origin remote, None), or (None, why they can't be read)."""
+    roots = steward.projects()
+    if roots is None:
+        return None, "T3 Code's database can't be read: the run learns the repos of its projects"
+    try:
+        urls = [subprocess.run(['git', '-C', root, 'remote', 'get-url', 'origin'], capture_output=True, text=True).stdout.strip() for root in roots]
+    except OSError as e:
+        return None, f"git can't run ({e.strerror}): the run reads each T3 Code project's origin remote"
+    return set(filter(None, map(remote, urls))), None
+
+
 def start():
     today = iso(NOW)[:10]
     if project_file.ran_today(today):
@@ -407,11 +433,18 @@ def start():
     if not os.path.isfile(os.path.join(WORK, 'scope.md')):
         with open(os.path.join(WORK, 'scope.md'), 'w') as f:
             f.write("Tier: 0, because the daily learning run sorts listed maintainer activity into project files and changes no repo\n")
+    origins, why = t3_origins()
+    if why:
+        print(f"project-learn: {project_file.record_run(iso(NOW), error=why)}")
+        sys.exit(1)
     need, failed = {}, []
     for project in sorted(glob.glob(os.path.join(PROJECTS, '*', '*.md'))):
         if project.endswith('.study.md'):
             continue
         repo = os.path.relpath(project, PROJECTS)[:-3]
+        if ((gitlab_host(repo) or 'github.com').lower(), repo.lower()) not in origins:  # the host its list reads
+            print(f"{repo}: not the origin of a T3 Code project here, skipped")
+            continue
         since = mark_of(repo)
         if since is None:
             print(f"{repo}: no study with a `Studied:` line, skipped (task §Repo study)")

@@ -74,6 +74,10 @@ def _db(ask, default):
     finally:
         c.close()
 
+def projects():
+    """The workspace folders of T3 Code's projects neither deleted nor archived, or None when its state can't be read."""
+    return _db(lambda c: [r[0] for r in c.execute("select workspace_root from projection_projects where deleted_at is null and archived_at is null")], None)
+
 def _ask(session_id, ask, default):
     """ask(connection, the T3 thread a Claude session runs in), or default without that thread or on an error."""
     def run(c):
