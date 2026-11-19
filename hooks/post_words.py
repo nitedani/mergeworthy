@@ -129,8 +129,10 @@ def fence_spans(s):
 
 def html_tags(s, tag):
     """(start, end) of each match of the regex tag in s that renders as an HTML tag: one in inline code, a fence or behind a backslash is
-    text. markdown-it-py gives inline tokens no offsets, so each match is marked with a comment that its parse keeps next to it."""
-    found = list(re.finditer(tag, s))
+    text, and one inside an HTML comment is hidden. markdown-it-py gives inline tokens no offsets, so each match is marked with a comment
+    that its parse keeps next to it."""
+    comments = [m.span() for m in re.finditer(r'<!--.*?-->', s, re.S)]
+    found = [m for m in re.finditer(tag, s) if not any(a < m.start() < b for a, b in comments)]
     if not found: return []
     marked = ''.join(s[m0.end() if m0 else 0:m.end()] + f'<!--mw-tag-{n}-->' for n, (m0, m) in enumerate(zip([None] + found, found)))
     marked += s[found[-1].end():]
