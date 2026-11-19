@@ -857,6 +857,8 @@ check "--asked-list words in a bulleted quote, or joined across a removed quote,
 check "--asked-list leaves out only collapsed lists: an open questionnaire it names is counted" "1 1" "$(python3 "$R/bin/post-lint" "$T/laq2.md" --kind proposal --asked-list 'List all the questions' >"$T/la.out" 2>&1; echo $?) $(lagrep 'words >')"
 LO="$T/laold"; mkdir -p "$LO"; cp "$T/la.md" "$LO/r.md"; printf 'Give me the list of 51 items.\n' > "$LO/reader's-parent's.md"; printf '%s\n' "--kind reply --parent $LO/reader's-parent's.md" > "$LO/r.md.lint"
 check "gate-pass replays a .lint saved before the JSON record, two apostrophes in its parent's path, by its old whitespace split" "1 0" "$("$R/bin/gate-pass" "$LO/r.md" none >"$T/la.gp" 2>&1; grep -c 'only a status post' "$T/la.gp") $(grep -c 'post-lint failed' "$T/la.gp")"
+NB="$LO/reader"$'\u00a0'"parent.md"; printf 'Give me the list of 51 items.\n' > "$NB"; printf '%s\n' "--kind reply --parent $NB" > "$LO/r.md.lint"
+check "gate-pass replays an old .lint whose parent path has a no-break space, the path intact" "1 0" "$("$R/bin/gate-pass" "$LO/r.md" none >"$T/la.gp" 2>&1; grep -c 'only a status post' "$T/la.gp") $(grep -c 'post-lint failed' "$T/la.gp")"
 chmod 000 "$LO/r.md.lint"
 check "BLOCK: gate-pass can't read the draft's .lint: it says so instead of dropping the flags" "1 1" "$("$R/bin/gate-pass" "$LO/r.md" none >"$T/la.gp" 2>&1; echo $?) $(grep -c "can't read the flags" "$T/la.gp")"
 chmod 644 "$LO/r.md.lint"
