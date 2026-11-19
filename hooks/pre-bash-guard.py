@@ -831,7 +831,7 @@ def ready_head(p, repo, num, branch, run_dir, a, env):
     `glab mr view` resolve it with the command's own target, env and dir (an API PUT: the project and MR its path names), or a create's
     opened_head. A checkout whose HEAD is another commit blocks, naming both and the command aimed at the PR's URL; a head the CLI can't read blocks."""
     if num is None and branch is None:
-        return opened_head(known(run_dir), opened_branch(a[2:], ['--head', '-H'] if p == 'gh' else ['--source-branch', '-s']), f'`{p} {a[0]} create`')
+        return opened_head(known(run_dir), p, a)
     rest, keep = a[2:], None
     if a[0] == 'api':
         view = ['glab', 'mr', 'view', num, '-R', f'https://{repo}', '--output', 'json']
@@ -853,17 +853,19 @@ def ready_head(p, repo, num, branch, run_dir, a, env):
               f"run it from that checkout with that head pushed (`cd <its checkout> && {retry}`)")
     return sha
 
-def opened_head(d, branch, what):
-    """HEAD of the checkout a PR or MR create runs in, when the branch it opens from (None: the checked-out one) is that checkout's branch or
-    its upstream, which then must be at HEAD; any other branch blocks, as the create's records are judged in its own checkout."""
+def opened_head(d, p, a):
+    """HEAD of the checkout a ready PR or MR create `p <a>` runs in. A create naming its source (gh's --head, glab's --source-branch, or glab's --head,
+    another project) opens it as the host has it, so it is confirmed only as the checked-out branch's upstream on a remote, at HEAD; any other blocks."""
     git = lambda *x: subprocess.run(['git', '-C', d, *x], capture_output=True, text=True).stdout.strip()
-    here, cur = git('rev-parse', 'HEAD'), git('symbolic-ref', '--short', '-q', 'HEAD')
+    here, named = git('rev-parse', 'HEAD'), opt(a[2:], ['--head', '-H'] if p == 'gh' else ['--source-branch', '-s'])
+    project = opt(a[2:], ['--head']) if p == 'glab' else []
+    if not named and not project: return here
+    cur = git('symbolic-ref', '--short', '-q', 'HEAD')
     up = git('for-each-ref', '--format=%(upstream)', f'refs/heads/{cur}') if cur else ''
-    if branch in (None, cur): return here
-    if branch != re.sub(r'^refs/(remotes/[^/]+|heads)/', '', up):
-        block(f"{what} opens {branch}, and this checkout is on {cur or 'a detached HEAD'}: run it from {branch}'s checkout (`cd <its checkout> && <the command>`), so the records judged are that branch's")
-    if (pushed := git('rev-parse', up)) != here:
-        block(f"{what} opens {branch} at {pushed[:10]}, and this checkout's HEAD is {here[:10]}: push HEAD to {branch} first, so the records judged are the PR's head")
+    branch = where.expand(named[-1]) if named else cur
+    if project or branch != re.sub(r'^refs/remotes/[^/]+/', '', up) or git('rev-parse', up) != here:
+        block(f"`{p} {a[0]} create` opens {branch}{' of ' + project[-1] if project else ''}, which can't be confirmed as this checkout's HEAD {here[:10]} pushed (the checked-out branch's upstream, at HEAD): "
+              f"open it with --draft, then `{'gh pr ready <N>' if p == 'gh' else 'glab mr update <N> --ready'}` from its checkout")
     return here
 
 GLAB_UPDATE_VALUED = {'-a', '--assignee', '--attach', '-d', '--description', '--description-file', '-l', '--label', '-m', '--milestone',
