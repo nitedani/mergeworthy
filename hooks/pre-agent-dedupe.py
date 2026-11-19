@@ -117,7 +117,7 @@ if not register:
                 refused()
 # Two rounds per loop on one head (delegate §Review rounds): a review round `<loop>-r<N>`, maybe followed by the date or head SHA
 # the reuse block above asks for, once the heads its brief pins show the branch hasn't moved since two earlier rounds of its loop, is refused;
-# a post's review gets a third, which confirms round 2's fixes
+# a post's review gets a third, which confirms round 2's fixes, and a fourth, which confirms round 3's when round 3 found something
 rnd = re.fullmatch(r'(.+)-r(\d+)', re.sub(r'(-\d{4}-\d{2}-\d{2}|-[0-9a-f]{7,40})+$', '', (cid or str(ti.get('description') or '')).strip()))
 if rnd and (ti.get('role') == 'review' or not ti.get('role') and re.search(r'\bexactly (CLEAN|NO BUGS)\b', brief)):
     tops = L.checkouts
@@ -151,10 +151,14 @@ if rnd and (ti.get('role') == 'review' or not ti.get('role') and re.search(r'\be
         earlier = sorted({m for m, old in rounds.get(loop, []) if m < n and built_on(old)})
         # a post's review: a gate review of a named draft whose brief asks for no code verdict (a small review's pr-body.review.out comes with one)
         post_review = bool(reviewed_drafts(brief)) and 'CLEAN' in brief and not re.search(r'\b(NO BUGS|MERGE AS IS)\b', own_brief)
-        if len(earlier) >= (3 if post_review else 2):
+        def found(draft):  # round 3's verdict on draft, the file it wrote or the output this round reuses, isn't exactly CLEAN
+            for o in (draft[:-3] + '.review-r3.out', draft[:-3] + '.review.out'):
+                if os.path.isfile(o): return [l.strip() for l in open(o, errors='replace').read().splitlines() if l.strip()] != ['CLEAN']
+            return False
+        if len(earlier) >= (2 if not post_review else 4 if n == 4 and any(map(found, reviewed_drafts(brief))) else 3):
             sys.stderr.write(f"BLOCKED: {loop} already ran {', '.join(f'r{m}' for m in earlier)} on this head or one within {testpaths.STALE_LINES} changed lines of it "
                              f"({', '.join(h[:12] for h in heads) or 'no head pinned'}): a loop gets two rounds per head, and a head past those lines is a new one"
-                             f"{'; a post’s review gets round 3, which confirms round 2’s fixes and is the last' if post_review else ''} (mergeworthy:delegate §Review rounds). "
+                             f"{'; a post’s review gets round 3, which confirms round 2’s fixes, and, when round 3 found something, round 4, which confirms round 3’s fixes and is the last' if post_review else ''} (mergeworthy:delegate §Review rounds). "
                              "List what is still open in the report or the PR body's notes and go on (push, ready, the next step) without waiting for an answer; "
                              "only an open blocker keeps the PR in draft. A maintainer's ask on a new head starts a new loop name. "
                              "Close a round 2 that isn't clean with `pr-steps <step> <file> --ledger <ledger>` or `gate-pass ... --ledger <ledger>` on the last report: the agent's own report is the record, never one the main session writes."
