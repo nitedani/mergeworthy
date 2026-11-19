@@ -401,13 +401,16 @@ def launch_thread(title, prompt):
 
 
 def remote(url):
-    """(host, path) of a git remote's URL (scheme://[user@]host/path or scp-like [user@]host:path), lowercase, without .git; None for a local path."""
+    """(host, path) of a git remote's URL (scheme://[user@]host/path or scp-like [user@]host:path), lowercase, without .git; None for a local path or one that doesn't parse."""
     if '://' not in url:
         if ':' not in url:
             return None
         url = 'ssh://' + url.replace(':', '/', 1)
-    u = urllib.parse.urlsplit(url)
-    return u.hostname and (u.hostname, re.sub(r'\.git$', '', u.path.strip('/')).lower())
+    try:
+        u = urllib.parse.urlsplit(url)
+        return u.hostname and (u.hostname, re.sub(r'\.git$', '', u.path.strip('/')).lower())
+    except ValueError:  # a URL no forge study can match (a bracketed IPv6 host)
+        return None
 
 
 def t3_origins():
@@ -417,8 +420,8 @@ def t3_origins():
         return None, "T3 Code's database can't be read: the run learns the repos of its projects"
     try:
         urls = [subprocess.run(['git', '-C', root, 'remote', 'get-url', 'origin'], capture_output=True, text=True).stdout.strip() for root in roots]
-    except FileNotFoundError:
-        return None, "no git on PATH: the run reads each T3 Code project's origin remote"
+    except OSError as e:
+        return None, f"git can't run ({e.strerror}): the run reads each T3 Code project's origin remote"
     return set(filter(None, map(remote, urls))), None
 
 

@@ -235,7 +235,7 @@ c.execute("create table projection_projects (project_id text primary key, worksp
 for i, (url, deleted, archived) in enumerate((('https://github.com/vikejs/vike.git', None, None), ('git@github.com:o/quiet.git', None, None),
         ('https://github.com/o/broken', None, None), ('ssh://git@gitlab.com/g/r.git', None, None), ('git@github.com:o/big', None, None),
         ('https://github.com/o/archived.git', None, '2026-11-01T00:00:00Z'), ('https://github.com/o/deleted.git', '2026-11-01T00:00:00Z', None), (None, None, None),
-        ('https://user@github.com/o/userinfo.git', None, None), ('https://gitlab.example.com/o/selfhost.git', None, None), ('https://github.com/o/forge.git', None, None), ('git@github.com:o/nostudy.git', None, None))):
+        ('https://user@github.com/o/userinfo.git', None, None), ('https://gitlab.example.com/o/selfhost.git', None, None), ('https://github.com/o/forge.git', None, None), ('git@github.com:o/nostudy.git', None, None), ('git@[2001:db8::1]:group/repo.git', None, None))):
     ws = os.path.join(sys.argv[2], str(i)); os.makedirs(ws)
     if url:
         subprocess.run(['git', 'init', '-q', ws], check=True); subprocess.run(['git', '-C', ws, 'remote', 'add', 'origin', url], check=True)
@@ -281,8 +281,8 @@ $(wc -l < "$T/gh-calls") $(ls "$L/lists" | wc -l) $(grep -c '^Learned:' "$P/o/qu
 mv "$T/statev2.sqlite" "$HOME/.t3/userdata/statev2.sqlite"; rm "$P/o/elsewhere."* "$P/o/archived."* "$P/o/deleted."*
 mkdir "$T/nogit"; ln -s "$T/bin/gh" "$T/bin/t3" /usr/bin/python3 "$T/nogit/"; rm -f "$L/runs.txt"
 PATH="$T/nogit" /usr/bin/python3 "$R/bin/project-learn" start >/dev/null 2>"$T/err"; rc=$?
-check "start with no git on PATH: exit 1, a runs.txt line saying so; no traceback" "1 1 0" \
-  "$rc $(grep -c "^$(date -u +%F) .* FAILED: no git on PATH" "$L/runs.txt" 2>/dev/null) $(grep -c Traceback "$T/err")"
+check "start with no git on PATH: exit 1, a runs.txt line saying git can't run; no traceback" "1 1 0" \
+  "$rc $(grep -c "^$(date -u +%F) .* FAILED: git can't run (No such file or directory)" "$L/runs.txt" 2>/dev/null) $(grep -c Traceback "$T/err")"
 
 # a repo whose list fails, over the cap: the thread still condenses it, its failure named
 rm "$L/runs.txt"; printf '# o/broken\n## Who decides\nboss\n' > "$P/o/broken.md"; yes word | head -n 2501 >> "$P/o/broken.md"; printf 'Studied: 2026-10-29\n' > "$P/o/broken.study.md"; : > "$T/t3-calls"
