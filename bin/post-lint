@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""post-lint <draft.md> [--kind reply|status|pr|issue|plan|inline|tracker|proposal|title] [--draft] [--parent <file>|none]: checks a draft before it is posted to GitHub.
+"""post-lint <draft.md> [--kind reply|status|pr|issue|plan|inline|tracker|proposal|title] [--draft] [--parent <file>|none] [--asked-list "<words>"]: checks a draft before it is posted to GitHub.
 Exit 1 with one line per finding. Checks: banned phrases, "stacked on" without gh stack, bare #N refs
 (must be owner/repo#N unless --repo matches), length budgets, unclassified maintainer notes, em dashes,
 process machinery in the thread, decisions not shown as code and lettered options, questions without a recommendation, and a bare "Done" answering a question.
 A reply or inline comment needs the comment it answers: <draft stem>.parent.md next to it, or --parent <file>;
---parent none for a comment that answers nobody. --draft (with --kind pr): the body of a draft PR, which says why it is one.
+--parent none for a comment that answers nobody. --asked-list "<words>": the parent's own words asking for the whole list, which leave its collapsed lists uncounted. --draft (with --kind pr): the body of a draft PR, which says why it is one.
 --kind status: a reply that only says what is being done and by when (post §Kinds), checked here instead of by a reviewer.
 --kind plan: a design plan the user asked to post as an issue; linted as an issue, capped at 2500 words, without the reproduction, evidence and internal-label checks.
 --edit-of owner/repo#N (--kind issue, pr, tracker or plan): the draft edits that live body, and fails only on findings the body doesn't already have, one for one.
 Settings: MERGEWORTHY_BADGE on|off|auto requires the badge always, never, or for a human account."""
 import hashlib, os, re, sys, subprocess, tempfile, urllib.parse
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'hooks'))
-import post_words
+import lint_flags, post_words
 from post_words import fence_spans, uncoded
 def setting(name, default):
     """MERGEWORTHY_<name> from the environment, else from ~/.mergeworthy/settings.env (written at session start from the plugin's options)."""
@@ -19,7 +19,7 @@ def setting(name, default):
     saved = dict(l.strip().split('=', 1) for l in open(f) if '=' in l) if os.path.exists(f) else {}
     return os.environ.get(f'MERGEWORTHY_{name}') or saved.get(f'MERGEWORTHY_{name}', default)
 args = sys.argv[1:]
-USAGE = "usage: post-lint <draft.md> [--kind reply|status|pr|issue|plan|inline|tracker|proposal|title] [--draft] [--repo owner/repo] [--parent <file>|none] [--edit-of owner/repo#N]"
+USAGE = "usage: post-lint <draft.md> [--kind reply|status|pr|issue|plan|inline|tracker|proposal|title] [--draft] [--repo owner/repo] [--parent <file>|none] [--asked-list <words>] [--edit-of owner/repo#N]"
 def arg(name, default):
     if name not in args: return default
     i = args.index(name)
@@ -35,6 +35,7 @@ W = post_words.words(_repo)  # the words the checks look for, in the repo's lang
 RATED = re.compile(r'^\s*\|.*(?:[0-9]+|\bnew) *(?:⇒|=>) *(?:[0-9]+|removed|new|n/a)', re.M)  # a row rating an item old ⇒ new (`7 ⇒ 9`, `7/10 => 9/10`, `new ⇒ 9`)
 REVIEWED = re.compile(r'^\|\s*Commit\s*\|.*\|\s*Rating\s*\|', re.M)  # the commit-review table's header (reply §Maintainer commits)
 TABLE = r'(?:^[ \t]*\|[^\n]*\n?)+'
+QUOTE = re.compile(r'^\s*(?:(?:[-*]|\d+[.)])\s+)?>.*$', re.M)  # a quoted line, in a list item too: someone else's words
 VISIBLE = lambda s: uncoded(re.sub(r'<!--[\s\S]*?-->', '', s))  # what GitHub renders as text: no HTML comments, no fenced code
 BOUND = 45  # words a rated row's rendered cell, or its table's header in all, leaves out of the count: #3609's longest rating reason is 45
 def cells(l):  # a table line's cells as GitHub splits them: an escaped \| stays inside its cell
@@ -74,7 +75,7 @@ if kind == 'title':  # a PR title (pull-request step 7): the squash subject and 
           (["a title ends without a period"] if lines and lines[0].rstrip().endswith('.') else [])
     for f in bad: print(f)
     if not bad:
-        open(path + '.lint', 'w').write(' '.join(args[1:]))
+        lint_flags.save(path, args[1:])
         open(path + '.lint.sha', 'w').write(hashlib.sha256(open(path, 'rb').read()).hexdigest())
     sys.exit(1 if bad else 0)
 # An issue draft's first line may be its title ("Title: …"): the budget is for the body
@@ -92,17 +93,27 @@ if _m:
 # The author's prose, which the checks below lint: no code (fenced, inline), quotes of others or HTML comments. The count has its
 # own rules: a PR body's adds prose-like code lines; every other post's reads its own text, code included (see Reading cost).
 prose = re.sub(r'<!--.*?-->', '', text, flags=re.S)
-# A reader who asked for the full lists (a refactor prompt's ratings, "100 questions with A/B/C choices") gets them, collapsed in <details>: not linted or counted
+# A reader who asked for the full lists (a refactor prompt's ratings, "100 questions with A/B/C choices") gets them, collapsed in <details>
+# or open as a questionnaire: not linted or counted. So do the collapsed ones the parent asks for in the words --asked-list names (the post
+# review checks they ask for it), found in one paragraph of the parent outside its quotes
 _rp = arg('--parent', None); _rp = (re.sub(r'\.md$', '', path) + '.parent.md') if _rp is None else (None if _rp == 'none' else _rp)
-_asked_list = bool(_rp and os.path.exists(_rp) and re.search(r'\brefactor this pr\b|\bold rating\b|\bratings?\b.*\blists?\b|\b\d+\s+(?:questions|items|options)\b|\bquestions?\b.*\b(?:checkbox|choices)\b', open(_rp).read(), re.I | re.S))
+_parent = open(_rp).read() if _rp and os.path.exists(_rp) else ''
+_asked_wording = bool(re.search(r'\brefactor this pr\b|\bold rating\b|\bratings?\b.*\blists?\b|\b\d+\s+(?:questions|items|options)\b|\bquestions?\b.*\b(?:checkbox|choices)\b', _parent, re.I | re.S))
+if (_asked := arg('--asked-list', None)) is not None:
+    _flat = lambda s: ' '.join(s.split()).lower()
+    if not _asked.strip() or not any(_flat(_asked) in _flat(p) for p in re.split(r'\n\s*\n', QUOTE.sub('', _parent))):
+        sys.exit(f'--asked-list: "{_asked}" is not in the comment this answers (outside its quoted lines); name the words of it that ask for the whole list')
+    print(f'requested list: "{_asked}"', file=sys.stderr)
+_asked_list = _asked_wording or _asked is not None
 if _asked_list:
     prose = re.sub(r'<details>.*?</details>', '', prose, flags=re.S)
+if _asked_wording:
     prose = re.sub(r'(?m)^\s*(?:- \[[ xX]\] .*|\d+\. \*\*.*|\*Why it matters:.*)$', '', prose)
 # The converge steps' runs, collapsed (converge step 5), are evidence: never linted; only a PR body's count reads this prose, so a reply counts them
 prose = re.sub(rf'<details>\s*<summary>(?:{post_words.alt(W["blocks"])})[^<]*</summary>.*?</details>', '', prose, flags=re.S)
 code = '\n'.join(inner for _, _, inner in fence_spans(prose))
 prose = uncoded(prose)
-prose = re.sub(r'^\s*(?:[-*]\s+)?>.*$', '', prose, flags=re.M)
+prose = QUOTE.sub('', prose)
 prose = re.sub(r'`[^`\n]*`', 'CODE', prose)
 # A PR body counts, outside its evidence blocks, the prose moved into a table or a code block (mergeworthy:writing): a sentence-long cell
 # (more than 15 words besides numbers and inline code) or a row's only cell, except a rated row's and its header's first BOUND words a
@@ -209,10 +220,11 @@ if kind == 'tracker':
 # requested lists, quotes of others, and rated rows with their header (up to BOUND words a cell) are left out
 if kind != 'pr':
     counted = re.sub(r'<!--.*?-->', '', text, flags=re.S)
-    if _asked_list:  # the lists the reader asked for: collapsed, or open as a questionnaire (GitHub closes <details> on every box ticked)
+    if _asked_list:  # the lists the reader asked for, collapsed
         counted = re.sub(r'<details>.*?</details>', '', counted, flags=re.S)
+    if _asked_wording:  # or open as a questionnaire (GitHub closes <details> on every box ticked)
         counted = re.sub(r'(?m)^\s*(?:- \[[ xX]\] .*|\d+\. \*\*.*|\*Why it matters:.*)$', '', counted)
-    counted = re.sub(r'^\s*(?:[-*]\s+)?>.*$', '', counted, flags=re.M)              # quotes of others
+    counted = QUOTE.sub('', counted)              # quotes of others
     counted, n_rated = unrated(counted)  # the cap below counts the rated rows of this same text
     counted = re.sub(r'^\s*\|[\s:|-]+\|\s*$', '', counted, flags=re.M)            # table separator rows
     counted = re.sub(r'!\[[^\]]*\]\([^)]*\)', '', counted)
@@ -316,7 +328,7 @@ if kind == 'issue' and not plan and not decision and chars > 400:
     findings.append(f"{chars} characters > 400 for an issue (tables, code, images and URLs not counted): keep one finding")
 # a code location the reader can't click is one they can't find (elysiajs/elysia#2018: bare `:160`, "off Bun")
 _loc = uncoded(text)
-_loc = re.sub(r'^\s*(?:[-*]\s+)?>.*$', '', _loc, flags=re.M)
+_loc = QUOTE.sub('', _loc)
 _loc = re.sub(r'\[(?:[^\[\]]|\[[^\]]*\])*\]\([^)]*\)', '', _loc)  # linked text, `[x](url)` included
 _locs = re.findall(r'[\w./-]+\.(?:[cm]?[jt]sx?|py|rs|go|vue|svelte|java|rb|php|css|html?|json|ya?ml|toml):\d+(?:-\d+)?\b', _loc)
 _locs += re.findall(r'\blines? \d+(?:[-–]\d+)?\b', re.sub(r'`[^`\n]*`', '', _loc))  # "line 1" in inline code quotes a message, not a place
@@ -495,6 +507,6 @@ for f in findings: print(f)
 # post step 3: the reviewer weighs each finding that adds words against this
 print(f"length: {words} words, " + (f"cap {cap}" if cap else "no cap"), file=sys.stderr)
 if not findings:  # gate-pass re-runs post-lint with the flags this draft passed with
-    with open(path + '.lint', 'w') as f: f.write(' '.join(args[1:]))
+    lint_flags.save(path, args[1:])
     with open(path + '.lint.sha', 'w') as f: f.write(hashlib.sha256(open(path, 'rb').read()).hexdigest())  # pre-agent-dedupe: no review of an unlinted draft
 sys.exit(1 if findings else 0)

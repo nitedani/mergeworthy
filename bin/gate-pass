@@ -7,7 +7,7 @@ set -e
 d="$1"; r="$2"
 [ -f "$d" ] && { [ -f "$r" ] || [ "$r" = none ]; } || { echo "usage: gate-pass <draft.md> <review-output>|none [--ledger <path>] [post-lint flags]"; exit 2; }
 # the flags given here, else those the draft last passed post-lint with (<draft>.lint), else a reply's
-shift 2; flags=(); ledger=; while [ $# -gt 0 ]; do if [ "$1" = --ledger ]; then ledger=${2:?--ledger <path>}; shift 2; else flags+=("$1"); shift; fi; done; [ ${#flags[@]} -gt 0 ] || { [ -f "$d.lint" ] && read -ra flags < "$d.lint"; } || true
+shift 2; flags=(); ledger=; while [ $# -gt 0 ]; do if [ "$1" = --ledger ]; then ledger=${2:?--ledger <path>}; shift 2; else flags+=("$1"); shift; fi; done; [ ${#flags[@]} -gt 0 ] || { [ -f "$d.lint" ] && { mapfile -d '' -t flags < <(python3 "$(dirname "$(readlink -f "$0")")/../hooks/lint_flags.py" "$d"); wait $! || { echo "can't read the flags $d.lint saved"; exit 1; }; }; } || true
 "$(dirname "$(readlink -f "$0")")/post-lint" "$d" "${flags[@]}" || { echo "post-lint failed"; exit 1; }
 kind=reply; for i in "${!flags[@]}"; do [ "${flags[$i]}" = --kind ] && kind="${flags[$((i+1))]}"; done
 [ "$r" != none ] || [ "$kind" = status ] || { echo "only a status post (post-lint --kind status) skips the review: run it (post step 3)"; exit 1; }
