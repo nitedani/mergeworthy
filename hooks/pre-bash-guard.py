@@ -1056,6 +1056,8 @@ def check(t, has_cd):
     if p in ('claude', 'codex'):
         for w in (opt(a, ['-o', '--output-last-message']) if p == 'codex' else []) + (targets if p == 'claude' and ('-p' in a or '--print' in a) else []):
             out = where.path(w)
+            if out and (why := review_launch.misnamed(out)):
+                block(why)
             if out is None and review_launch.draft_of(where.expand(w)):
                 block(f"the review output {w} can't be placed: pass its absolute path")
             if out and review_launch.draft_of(out):

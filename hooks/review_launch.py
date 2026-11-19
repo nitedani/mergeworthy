@@ -16,6 +16,14 @@ def draft_of(out):
     return m[1] + '.md' if (m := re.fullmatch(r'(.+)\.review(-r\d+)?\.out', out)) else None
 
 
+def misnamed(out):
+    """Why a reviewer's output out can't be tied to its draft: a .out file in a drafts/ folder not named <name>.review.out; '' otherwise."""
+    if draft_of(out) or not re.search(r'/drafts/.*\.out\Z', out):
+        return ''
+    return (f"{out} is in drafts/ but not named after its draft, so gate-pass can't tell which text its reviewer was handed: "
+            "name it <name>.review.out (round N: <name>.review-rN.out) for <name>.md, then launch the review (post step 3)")
+
+
 def unlinted(out):
     """Why a reviewer can't start on out's draft: it has no passing post-lint for its current text; '' when it has, or out names no
     draft that exists."""
@@ -44,13 +52,14 @@ def launch(out):
 
 
 def reviewed(out, draft):
-    """Why a gate refuses out's verdict for draft: no launch recorded, or another text launched; '' when the reviewer was handed
-    draft's text, footer aside."""
-    try: sha = open(out + '.launch').read().split()[0]
-    except (OSError, IndexError):
-        return (f"{out} has no recorded review launch: start the reviewer through delegate_task, the Agent tool, `codex exec -o {out}` "
-                f"or `claude -p … > {out}`, which records the text it is handed (post step 3)")
-    if sha != hashlib.sha256(unfooted(open(draft, 'rb').read())).hexdigest():
+    """(why, epoch): why a gate refuses out's verdict for draft (no valid launch record, or another text launched; '' when its reviewer
+    was handed draft's text, footer aside), and the epoch of that launch (None without a valid record)."""
+    try: m = re.fullmatch(r'([0-9a-f]{64}) (\d+)\n?', open(out + '.launch').read())
+    except OSError: m = None
+    if not m:
+        return (misnamed(out) or f"{out} has no recorded review launch: start the reviewer through delegate_task, the Agent tool, "
+                f"`codex exec -o {out}` or `claude -p … > {out}`, which records the text it is handed (post step 3)"), None
+    if m[1] != hashlib.sha256(unfooted(open(draft, 'rb').read())).hexdigest():
         return (f"the draft changed after its review {out} was launched: lint it again (post step 2), then send it back to the reviewer "
-                "(post step 3)")
-    return ''
+                "(post step 3)"), int(m[2])
+    return '', int(m[2])
