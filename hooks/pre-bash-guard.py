@@ -1056,12 +1056,13 @@ def check(t, has_cd):
               "launch the review again (mergeworthy:post step 3)")
     if p in ('claude', 'codex'):
         for w in (opt(a, ['-o', '--output-last-message']) if p == 'codex' else []) + (targets if p == 'claude' and ('-p' in a or '--print' in a) else []):
-            out = where.path(w)
-            if out and (why := review_launch.misnamed(out)):
+            vals = where.files(w)  # a reviewer's output decides which verdict its launch sets aside: one path, known before it runs
+            if isinstance(vals, shellcmd.Unknown) or len(vals) != 1:
+                block(f"the reviewer's output {w} may be more than one path, or one computed when it runs: write the output path out, or assign it once")
+            out = vals[0]
+            if why := review_launch.misnamed(out):
                 block(why)
-            if out is None and review_launch.draft_of(where.expand(w)):
-                block(f"the review output {w} can't be placed: pass its absolute path")
-            if out and review_launch.draft_of(out):
+            if review_launch.draft_of(out):
                 if why := review_launch.unlinted(out): block(why)
                 launches.append(out)  # recorded once every segment of the command passed
     written = [f for x, c in zip(targets, files) for f in known(c, x)]
