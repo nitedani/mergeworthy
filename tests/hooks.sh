@@ -864,6 +864,8 @@ printf 'List all "fast" and '"'"'slow'"'"' paths, please.\n' > "$T/la.parent.md"
 check "a saved --asked-list with spaces and both quotes round-trips through gate-pass's re-lint" "1 1" "$("$R/bin/gate-pass" "$T/la.md" none >"$T/la.gp" 2>&1; grep -cF "requested list: \"List all \"fast\" and 'slow' paths\"" "$T/la.gp") $(grep -c 'only a status post' "$T/la.gp")"
 printf '1. > List all alternatives.\n' > "$T/lao.parent.md"
 check "--asked-list words only in an ordered-list quote fail" "1 0 1" "$(la --asked-list 'List all alternatives' --parent "$T/lao.parent.md") $(lagrep 'is not in the comment')"
+lamd() { printf "$1" > "$T/lamd.parent.md"; la --asked-list "$2" --parent "$T/lamd.parent.md" | cut -d' ' -f1; }
+check "--asked-list reads the parent as Markdown renders it: words in a '+ >' or '1. >' quote, a quote's lazy continuation, or across a heading and a paragraph fail; across a wrapped line of one paragraph they pass" "1 1 1 1 0" "$(lamd '+ > List all alternatives.\n' 'List all alternatives') $(lamd '1. > List all alternatives.\n' 'List all alternatives') $(lamd '> An example:\nList all alternatives.\n' 'List all alternatives') $(lamd '# List\nall alternatives are shown below.\n' 'List all alternatives') $(lamd 'Please list\nall alternatives.\n' 'list all alternatives')"
 check "the same lists nobody asked for are" 4 "$(python3 "$R/bin/post-lint" "$T/rp.md" --kind pr --parent none 2>&1 | grep -c 'internal label\|words >\|process in the thread')"
 printf 'The code came from Sonnet subagents, and Codex (gpt-6.1-sol) reviewed every post.\n' > "$T/pm.md"
 printf 'What AI model did you use? Explain the agent orchestration.\n' > "$T/pm.parent.md"

@@ -95,13 +95,13 @@ if _m:
 prose = re.sub(r'<!--.*?-->', '', text, flags=re.S)
 # A reader who asked for the full lists (a refactor prompt's ratings, "100 questions with A/B/C choices") gets them, collapsed in <details>
 # or open as a questionnaire: not linted or counted. So do the collapsed ones the parent asks for in the words --asked-list names (the post
-# review checks they ask for it), found in one paragraph of the parent outside its quotes
+# review checks they ask for it), found in one paragraph or heading of the parent outside its quotes
 _rp = arg('--parent', None); _rp = (re.sub(r'\.md$', '', path) + '.parent.md') if _rp is None else (None if _rp == 'none' else _rp)
 _parent = open(_rp).read() if _rp and os.path.exists(_rp) else ''
 _asked_wording = bool(re.search(r'\brefactor this pr\b|\bold rating\b|\bratings?\b.*\blists?\b|\b\d+\s+(?:questions|items|options)\b|\bquestions?\b.*\b(?:checkbox|choices)\b', _parent, re.I | re.S))
 if (_asked := arg('--asked-list', None)) is not None:
     _flat = lambda s: ' '.join(s.split()).lower()
-    if not _asked.strip() or not any(_flat(_asked) in _flat(p) for p in re.split(r'\n\s*\n', QUOTE.sub('', _parent))):
+    if not _asked.strip() or not any(_flat(_asked) in _flat(b) for b in post_words.own_blocks(_parent)):
         sys.exit(f'--asked-list: "{_asked}" is not in the comment this answers (outside its quoted lines); name the words of it that ask for the whole list')
     print(f'requested list: "{_asked}"', file=sys.stderr)
 _asked_list = _asked_wording or _asked is not None
