@@ -9,7 +9,7 @@ status (read first) releases the job."""
 import datetime, fcntl, glob, hashlib, itertools, json, os, re, shlex, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import failclosed
-import agent_jobs, launch, memory_file, project_file, steward, subprocess, testpaths
+import agent_jobs, launch, memory_file, project_file, review_launch, steward, subprocess, testpaths
 from post_words import fence_spans
 from records import branch_record
 from shellcmd import segments, prog, git_argv, rlines, transcript, Where
@@ -64,16 +64,14 @@ if cid:
         os.replace(ids + '.tmp', ids)
 L = launch.parse(ti)
 brief = L.brief  # every rule below reads the brief; the files it only names (project notes, installed skills) are read, so their history SHAs pin nothing
-# A gate review (names a review output `.out` and CLEAN) starts only on drafts that passed post-lint in their current form.
-# The gate names a review's output after its draft (`<name>.review.out` for `<name>.md`): only that draft is checked,
-# so the files a brief also names in drafts/ (thread record, ledger, parent, report) are not drafts
-reviewed_drafts = lambda t: {p for o in re.findall(r'(/[^\s`\'"()]*/drafts/[^\s`\'"()]+\.out)\b', t) if os.path.isfile(p := re.sub(r'(\.review)?\.out$', '.md', o))}
+# A gate review (names a review output `.out` and CLEAN) starts only on drafts that passed post-lint in their current form, and
+# records the text it is handed (review_launch); the files a brief also names in drafts/ (thread record, ledger, parent, report) are not drafts
+review_outs = lambda t: sorted(set(re.findall(r'(/[^\s`\'"()]*/drafts/[^\s`\'"()]+\.out)\b', t)))
+reviewed_drafts = lambda t: {p for o in review_outs(t) if (p := review_launch.draft_of(o)) and os.path.isfile(p)}
 if not register and re.search(r'\.out\b', brief) and 'CLEAN' in brief:
-    for draft in sorted(reviewed_drafts(brief)):
-        try: ok = open(draft + '.lint.sha').read().strip() == hashlib.sha256(open(draft, 'rb').read()).hexdigest()
-        except OSError: ok = False
-        if not ok:
-            sys.stderr.write(f"BLOCKED: {draft} has no passing post-lint for its current text: run post-lint first, then the review.\n")
+    for out in review_outs(brief):
+        if why := review_launch.launch(out):
+            sys.stderr.write(f"BLOCKED: {why}\n")
             refused()
 # A template's slot left unfilled (`<the slice's risky edges>`) reaches the agent as a rule it never got. A slot in backticks is
 # the agent's own output form, the paste-in rules (agent.md) carry slots of their own, and an HTML tag a brief quotes is no slot.

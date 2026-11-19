@@ -2111,6 +2111,13 @@ python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read
 printf 'Ledger.\n' > "$T/drafts/lf/fresh.ledger.md"
 printf 'Review the diff against the ledger %s, write the verdict to %s/drafts/lf/fresh.review.out; the last message is exactly CLEAN.\n' "$T/drafts/lf/fresh.ledger.md" "$T" > "$T/drafts/lf/review2-ticket.md"
 check "a review naming a ledger and an output with no draft behind it launches; the unlinted draft its output is named after is refused" "0 2" "$(launch "Execute $T/drafts/lf/review2-ticket.md") $(printf 'x' >> "$T/drafts/lf/reply.md"; python3 "$R/bin/agent-job" done "$T/drafts/lf/review2-ticket.md" >/dev/null; printf 'Review %s against the ledger %s, write the verdict to %s/drafts/lf/reply.review.out; the last message is exactly CLEAN.\n' "$T/drafts/lf/reply.md" "$T/drafts/lf/fresh.ledger.md" "$T" > "$T/drafts/lf/review3-ticket.md"; launch "Execute $T/drafts/lf/review3-ticket.md")"
+# the launch records the text the reviewer is handed, and a verdict an earlier launch left is set aside
+L3="$T/drafts/lf/launch-r3.md"; printf 'Retitled the PR.\n' > "$T/drafts/lf/launch.md"; sha=$(sha256sum "$T/drafts/lf/launch.md" | cut -d' ' -f1); printf %s "$sha" > "$T/drafts/lf/launch.md.lint.sha"; echo CLEAN > "$T/drafts/lf/launch.review.out"
+printf 'Review %s; write exactly CLEAN or the findings to %s/drafts/lf/launch.review.out.\n' "$T/drafts/lf/launch.md" "$T" > "$L3"
+check "a review launch records the draft's sha256 and moves the earlier verdict to .prev" "0 $sha CLEAN no-out" "$(launch "Execute $L3") $(cut -d' ' -f1 "$T/drafts/lf/launch.review.out.launch") $(cat "$T/drafts/lf/launch.review.out.prev") $([ -e "$T/drafts/lf/launch.review.out" ] && echo out || echo no-out)"
+python3 "$R/bin/agent-job" done "$L3" >/dev/null; echo x >> "$T/drafts/lf/launch.md"
+printf 'Review %s; write exactly CLEAN or the findings to %s/drafts/lf/launch.review-r3.out.\n' "$T/drafts/lf/launch.md" "$T" > "$L3"
+check "BLOCK: a round-3 output <name>.review-r3.out checks <name>.md's post-lint" 2 "$(launch "Execute $L3")"
 # ---------- pr-steps: a shape record is a real pass ----------
 G="$T/prs"; mkdir -p "$G"; git -C "$G" init -q; git -C "$G" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 prs() { (cd "$G" && bash "$R/bin/pr-steps" "$@" >/dev/null 2>&1; echo $?); }
