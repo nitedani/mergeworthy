@@ -11,11 +11,10 @@ shift 2; flags=(); ledger=; while [ $# -gt 0 ]; do if [ "$1" = --ledger ]; then 
 "$(dirname "$(readlink -f "$0")")/post-lint" "$d" "${flags[@]}" || { echo "post-lint failed"; exit 1; }
 kind=reply; for i in "${!flags[@]}"; do [ "${flags[$i]}" = --kind ] && kind="${flags[$((i+1))]}"; done
 [ "$r" != none ] || [ "$kind" = status ] || { echo "only a status post (post-lint --kind status) skips the review: run it (post step 3)"; exit 1; }
-# the reviewer was handed the text that gets posted (its launch recorded it): a draft edited since (a trim to the length ceiling) is reviewed again.
-# The line gate-pass appends below is not part of that text
+# the reviewer was handed the text that gets posted (its launch recorded it), the footer gate-pass appends below aside: a draft edited
+# since (a trim to the length ceiling) is reviewed again
 if [ "$r" != none ]; then
-  why=$(python3 -c 'import re, sys; sys.path.insert(0, sys.argv[1]); import review_launch
-sys.stdout.write(review_launch.reviewed(sys.argv[2], re.sub(rb"\nHarness changes since my last note: [^\n]*\n$", b"", open(sys.argv[3], "rb").read())))' "$(dirname "$(readlink -f "$0")")/../hooks" "$r" "$d") || why="the review check failed"
+  why=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import review_launch; sys.stdout.write(review_launch.reviewed(sys.argv[2], sys.argv[3]))' "$(dirname "$(readlink -f "$0")")/../hooks" "$r" "$d") || why="the review check failed"
   [ -z "$why" ] || { echo "$d: $why"; exit 1; }
 fi
 # a reply, inline comment or proposal is drafted from the whole thread: thread-context.md (post step 1) next to the draft, newer than the comment it answers
