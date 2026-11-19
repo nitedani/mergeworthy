@@ -2592,6 +2592,7 @@ check "gh pr ready passes once all five steps and the approach hold" 0 "$(ready)
 GB="$FX/projects_acme%2Fapp_merge_requests_5"
 for pj in acme acme.inc; do for r in app other; do echo '[]' > "$FX/projects_${pj}%2F${r}_merge_requests_state_opened_scope_created_by_me_per_page_100"; done; done  # no other open MR of ours (check_union, #188)
 check "glab mr update --ready passes there too" 0 "$(prhead "$G2" "$GB"; python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"glab mr update 5 --ready -R gitlab.com/acme/app"},"cwd":sys.argv[1]}))' "$G2" | python3 "$R/hooks/pre-bash-guard.py" >/dev/null 2>&1; echo $?)"
+check "BLOCK: glab mr update --ready from another checkout, naming the MR's head" "2 1" "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"glab mr update 5 --ready -R gitlab.com/acme/app"},"cwd":sys.argv[1]}))' "$TCO" | python3 "$R/hooks/pre-bash-guard.py" >/dev/null 2>"$T/err"; echo $?) $(grep -c "gitlab.com/acme/app!5's head $(git -C "$G2" rev-parse --short=10 HEAD) ready, and this checkout's HEAD is $(git -C "$TCO" rev-parse --short=10 HEAD)" "$T/err")"
 echo 'gitlab.com/acme/app!5: the MR leaks a timer' > "$TASKW/defects-open.md"
 glready() { prhead "$G2" "$GB"; python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"glab mr update 5 --ready -R gitlab.com/acme/app"},"cwd":sys.argv[1]}))' "$G2" | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err" >/dev/null; echo $?; }
 echo '{"description": "No notes."}' > "$GB"
@@ -3583,8 +3584,14 @@ check "BLOCK: a push of another branch to a ready PR is held to that branch's co
   "$(bg "$UG bare:fix-telefunc" "$CK") $(grep -c "out of draft and its pushed commit $(git -C "$CK" rev-parse bare | cut -c1-10) has no pr-steps verify" "$T/err") $(rec5 "$(git -C "$CK" rev-parse bare)"; bg "$UG bare:fix-telefunc" "$CK")"
 printf '[{"number":3680,"isDraft":false,"baseRefName":"main","headRefOid":"b0b0b0b0","files":[{"path":"b.ts"}],"changedFiles":1}]' > "$FX/pr_list_vikejs_vike"
 check "a recorded pair passes a ready gh pr create though git can't tell this branch's files (no base ref)" "0 0" "$(bg "gh pr create -R vikejs/vike --base main --title \"\$(cat $T/title.md)\" --body-file $(gated ub2 'It breaks.')" "$CK") $(grep -c 'also yours and ready' "$T/err")"
+PC="gh pr create -R vikejs/vike --base main --title \"\$(cat $T/title.md)\" --body-file $(gated ub3 'It breaks.')"; git -C "$CK" branch -q up HEAD~1; git -C "$CK" checkout -q up; (cd "$CK" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null); git -C "$CK" checkout -q fix-telefunc; git -C "$CK" branch -q -u up
+check "BLOCK: a ready gh pr create opening another branch than the checked-out one, or its upstream behind HEAD, naming them; the checked-out branch, as owner:branch too, passes" "2 1 2 1 0 0" \
+  "$(bg "$PC --head other" "$CK") $(grep -c 'opens other, and this checkout is on fix-telefunc' "$T/err") $(bg "$PC --head up" "$CK") $(grep -c "opens up at $(git -C "$CK" rev-parse --short=10 up), and this checkout's HEAD is $(git -C "$CK" rev-parse --short=10 HEAD)" "$T/err") $(bg "$PC --head fix-telefunc" "$CK") $(bg "$PC -H nitedani-agent:fix-telefunc" "$CK")"
+check "a ready gh pr create opening the checkout's upstream at HEAD passes" 0 "$(git -C "$CK" branch -q -f up HEAD; bg "$PC --head up" "$CK")"
+git -C "$CK" branch -q --unset-upstream; git -C "$CK" branch -q -D up
 ul false main c1c1c1c1 b.ts 1; sed -i 's/"baseRefName":"main"/"baseRefName":"dev"/' "$FX/pr_list_vikejs_vike"; sed -i 's/"isDraft":false,"baseRefName":"dev","headRefOid":"c1c1c1c1"/"isDraft":false,"baseRefName":"main","headRefOid":"c1c1c1c1"/' "$FX/pr_list_vikejs_vike"
 echo '{"draft":false}' > "$PB"; prhead "$CK" "$PB"
+check "BLOCK: gh pr edit --base retargeting a ready PR from another checkout, naming its head" "2 1" "$(bg 'gh pr edit 3675 -R vikejs/vike --base main' "$GO") $(grep -c "vikejs/vike#3675's head $(git -C "$CK" rev-parse --short=10 HEAD) ready" "$T/err")"
 check "BLOCK: gh pr edit --base retargeting a ready PR onto the base of an overlapping ready one, naming it; onto its own base, or a draft PR, passes" "2 1 0 0" \
   "$(bg 'gh pr edit 3675 -R vikejs/vike --base main' "$CK") $(grep -c 'vikejs/vike#3680, also yours and ready, changes b.ts' "$T/err") $(bg 'gh pr edit 3675 -R vikejs/vike --base dev' "$CK") $(echo '{"draft":true}' > "$FX/repos_vikejs_vike_pulls_3675"; bg 'gh pr edit 3675 -R vikejs/vike --base main' "$CK")"
 echo '{}' > "$PB"; prhead "$CK" "$PB"
@@ -4038,6 +4045,7 @@ check "GitLab, BLOCK: a title update takes the MR it acts on as the defects chec
 mv "$T/sbm.keep" "$SBM"
 printf '{"title":"Ready"}' > "$NA/body.json"; printf '{"title":"Draft: Ready"}' > "$T/body.json"; printf false > "$T/false.txt"; printf dev > "$T/base.txt"
 GPUT='glab api projects/me%2Fapp/merge_requests/5 -X PUT'
+check "GitLab, BLOCK: an API PUT taking an MR out of draft from another checkout, naming its head" "2 1" "$(prhead "$NA" "$FX/gl_projects_me_2Fapp_merge_requests_5"; MERGEWORTHY_WATCHER=off bg "$GPUT -f draft=false" "$TCO") $(grep -c "gitlab.com/me/app!5's head $(git -C "$NA" rev-parse --short=10 HEAD) ready" "$T/err")"
 check "GitLab, BLOCK: an API PUT to an MR taking fields from a file or stdin (--input, relative after a cd too; a value starting with @), saying to pass them literally; literal fields stay checked, naming the MR, and a Draft title passes" "2 1 2 2 2 1 2 2 1 0" \
   "$(MERGEWORTHY_WATCHER=off bg "cd $NA && $GPUT --input body.json" "$T") $(grep -c 'pass them literally with -f <field>=<value>, or use .glab mr update.' "$T/err") $(glb "$GPUT --input -") $(glb "$GPUT -F draft=@$T/false.txt -f target_branch=dev") $(glb "$GPUT -f title=Ready -F target_branch=@$T/base.txt") $(grep -c 'pass them literally' "$T/err") $(glb "$GPUT -f title=@$T/base.txt") $(glb "$GPUT -f title=Ready") $(grep -c 'gitlab.com/me/app!8, also yours and ready' "$T/err") $(glb "$GPUT -f 'title=Draft: Ready'")"
 gll false dev e1e1e1e1 b.py false
