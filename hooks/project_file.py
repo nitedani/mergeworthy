@@ -33,8 +33,8 @@ def record_run(at, thread=None, repos=(), failed=(), error=None):
 
 
 def ran_today(today):
-    """A run today other than one whose thread couldn't start, which the next start retries."""
-    return any(l.startswith(today) and not re.match(r'\S+ \S+ FAILED: ', l) for l in _runs())
+    """A run today that started its thread or failed nowhere; the next start retries any other."""
+    return any(l.startswith(today) and (re.match(r'\S+ \S+ thread ', l) or 'FAILED: ' not in l) for l in _runs())
 
 
 def learning_thread(repo):

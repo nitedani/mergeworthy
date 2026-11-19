@@ -270,6 +270,8 @@ check "start again the same day: nothing listed, no thread" "already 0" "$(pytho
 
 printf '%s\n' "$(date -u +%F) $(date -u +%FT%TZ) thread thread-2; 1 to sort: vikejs/vike; FAILED: o/other (gh failed)" > "$L/runs.txt"; : > "$T/t3-calls"
 check "start the same day after a run whose thread started though one repo's list failed: no second thread" "already 0" "$(python3 "$R/bin/project-learn" start | grep -o already) $(wc -l < "$T/t3-calls")"
+printf '%s\n' "$(date -u +%F) $(date -u +%FT%TZ) no thread: nothing to sort; 0 to sort; FAILED: vikejs/vike (gh failed)" > "$L/runs.txt"; : > "$T/t3-calls"
+check "start the same day after a run whose lists failed and started no thread: runs again, its thread started" "0 1" "$(python3 "$R/bin/project-learn" start | grep -c already) $(grep -c '^t3 thread start ' "$T/t3-calls")"
 
 mv "$HOME/.t3/userdata/statev2.sqlite" "$T/statev2.sqlite"; rm "$L/runs.txt"; : > "$T/t3-calls"; rm "$P/o/quiet.study.md"; printf 'Studied: 2026-10-29\n' > "$P/o/quiet.study.md"
 out=$(python3 "$R/bin/project-learn" start 2>&1); rc=$?
