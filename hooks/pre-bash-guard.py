@@ -1044,8 +1044,9 @@ def check(t, has_cd):
             block(f"{who[0]} set this PR's title ({who[1]}): it is their decision. Keep it, or ask them on the PR first (mergeworthy:pull-request step 7)")
     # A review's verdict is the reviewer's final message, which it writes itself (`codex exec -o`, an agent's output file); an agent's stdout is it too.
     # The launch records the text the reviewer is handed (review_launch), and only the launching hook writes that record or the verdict it set aside
-    files = [where.files(x) for x in written_files(t)]
-    names = [*map(where.expand, written_files(t)), *(f for c in files for f in c or [])]
+    targets = written_files(t)
+    files = [where.files(x) for x in targets]
+    names = [*map(where.expand, targets), *(f for c in files for f in c or [])]
     if p not in ('claude', 'codex') and any(review_launch.draft_of(f) for f in names) and not by_agent(d):
         block("a review's output is the reviewer's final message, written by the reviewer: `codex exec -o <out>`, or the agent writes <out> itself. "
               "Never write a verdict yourself (mergeworthy:delegate §Reviewers, post step 3)")
@@ -1053,10 +1054,13 @@ def check(t, has_cd):
         block("a review output's .launch and .prev are written by the hook that starts its reviewer, which records the text the reviewer is handed: "
               "launch the review again (mergeworthy:post step 3)")
     if p in ('claude', 'codex'):
-        for out in (opt(a, ['-o', '--output-last-message']) if p == 'codex' else []) + (written_files(t) if p == 'claude' and ('-p' in a or '--print' in a) else []):
-            if review_launch.draft_of(out) and (why := review_launch.launch(where.path(out) or block(f"the review output {out} can't be placed: pass its absolute path"))):
+        for w in (opt(a, ['-o', '--output-last-message']) if p == 'codex' else []) + (targets if p == 'claude' and ('-p' in a or '--print' in a) else []):
+            out = where.path(w)
+            if out is None and review_launch.draft_of(where.expand(w)):
+                block(f"the review output {w} can't be placed: pass its absolute path")
+            if out and review_launch.draft_of(out) and (why := review_launch.launch(out)):
                 block(why)
-    written = [f for x, c in zip(written_files(t), files) for f in known(c, x)]
+    written = [f for x, c in zip(targets, files) for f in known(c, x)]
     for x in dict.fromkeys(map(shellcmd.folder, written)):  # the instructions check runs git, once per folder
         if why := no_instructions_read(x, d):
             block(why)
