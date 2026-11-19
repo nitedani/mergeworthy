@@ -11,8 +11,13 @@ shift 2; flags=(); ledger=; while [ $# -gt 0 ]; do if [ "$1" = --ledger ]; then 
 "$(dirname "$(readlink -f "$0")")/post-lint" "$d" "${flags[@]}" || { echo "post-lint failed"; exit 1; }
 kind=reply; for i in "${!flags[@]}"; do [ "${flags[$i]}" = --kind ] && kind="${flags[$((i+1))]}"; done
 [ "$r" != none ] || [ "$kind" = status ] || { echo "only a status post (post-lint --kind status) skips the review: run it (post step 3)"; exit 1; }
-# the reviewer saw the text that gets posted: a draft edited after its review (a trim to the length ceiling) is reviewed again
-[ "$r" = none ] || [ "$r" -nt "$d" ] || { echo "$d changed after its review $r: lint it again (post step 2), then send it back to the reviewer (post step 3)"; exit 1; }
+# the reviewer was handed the text that gets posted (its launch recorded it): a draft edited since (a trim to the length ceiling) is reviewed again.
+# The line gate-pass appends below is not part of that text
+if [ "$r" != none ]; then
+  why=$(python3 -c 'import re, sys; sys.path.insert(0, sys.argv[1]); import review_launch
+sys.stdout.write(review_launch.reviewed(sys.argv[2], re.sub(rb"\nHarness changes since my last note: [^\n]*\n$", b"", open(sys.argv[3], "rb").read())))' "$(dirname "$(readlink -f "$0")")/../hooks" "$r" "$d") || why="the review check failed"
+  [ -z "$why" ] || { echo "$d: $why"; exit 1; }
+fi
 # a reply, inline comment or proposal is drafted from the whole thread: thread-context.md (post step 1) next to the draft, newer than the comment it answers
 case "$kind" in reply|comment|inline|proposal|status)
   parent="${d%.md}.parent.md"; [ -f "$parent" ] || parent=""
@@ -38,9 +43,7 @@ shown=$(cat "$hs" 2>/dev/null | head -c 40 | tr -d '[:space:]' || true)
 case "$kind" in reply|comment|proposal)
   # once per draft: a second gate-pass on the same draft (after a re-review) keeps the line it already has
   if [ -n "$repo" ] && [ -f "$hs" ] && [ -n "$installed" ] && [ "$shown" != "$installed" ] && ! grep -q '^Harness changes since my last note: ' "$d"; then
-    ref=$(mktemp); touch -r "$d" "$ref"  # gate-pass's own line is not an edit after the review: the draft keeps its time
     printf '\nHarness changes since my last note: <https://github.com/nitedani/mergeworthy/compare/%s...%s>\n' "$shown" "$installed" >> "$d"
-    touch -r "$ref" "$d"; rm -f "$ref"
   fi;;
 esac
 sha256sum "$d" | cut -d' ' -f1 > "$d.gate"
@@ -48,9 +51,9 @@ sha256sum "$d" | cut -d' ' -f1 > "$d.gate"
 # its hash goes into the gate record, so the posting hook can tell it from one made after the review
 tcf="$(dirname "$(readlink -f "$d")")/thread-context.md"
 if [ -f "$tcf" ]; then
-  # the review checked the draft against the record: it must postdate the record's latest human comment (a status post: the draft)
-  at=$(sed -n 's/^- latest-human-comment: id=[0-9]* at=\([0-9TZ:-]*\).*/\1/p' "$tcf" | head -1); seen=$([ "$r" = none ] && echo "$d" || echo "$r")
-  [ "${at:-0}" != 0 ] && [ "$(date -d "$at" +%s 2>/dev/null || echo 0)" -ge "$(stat -c %Y "$seen")" ] && { rm -f "$d.gate"; echo "thread-context.md records a human comment ($at) newer than the review: re-read it, revise the draft if it changes anything, and review again (mergeworthy:post step 1)"; exit 1; }
+  # the review checked the draft against the record: its launch must postdate the record's latest human comment (a status post: the draft)
+  at=$(sed -n 's/^- latest-human-comment: id=[0-9]* at=\([0-9TZ:-]*\).*/\1/p' "$tcf" | head -1); seen=$([ "$r" = none ] && stat -c %Y "$d" || cut -d' ' -f2 "$r.launch")
+  [ "${at:-0}" != 0 ] && [ "$(date -d "$at" +%s 2>/dev/null || echo 0)" -ge "$seen" ] && { rm -f "$d.gate"; echo "thread-context.md records a human comment ($at) newer than the review: re-read it, revise the draft if it changes anything, and review again (mergeworthy:post step 1)"; exit 1; }
   echo "tc $(sha256sum "$tcf" | cut -d' ' -f1)" >> "$d.gate"
 fi
 echo "gate passed: $d"

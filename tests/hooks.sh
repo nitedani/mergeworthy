@@ -65,6 +65,10 @@ git init -q "$T/afx"; git -C "$T/afx" -c user.name=t -c user.email=t@t commit -q
 check() { # name want got
   echo "$1: $3 (want $2)"; [ "$2" = "$3" ] || fails=$((fails+1))
 }
+rl() { python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import review_launch; sys.exit(review_launch.launch(sys.argv[2]) or 0)' "$R/hooks" "$1"; }  # <out>: its review launched through the hook
+rv() { # <dir>/<name>.review.out: its reviewer launched on <name>.md's current text (at RT, else now), then writing back the verdict <out> holds
+  local v; v=$(cat "$1"); sha256sum "${1%.review.out}.md" | cut -d' ' -f1 | tr -d '\n' > "${1%.review.out}.md.lint.sha"; rl "$1" || return
+  [ -z "${RT:-}" ] || echo "$(cut -d' ' -f1 "$1.launch") $(date -d "$RT" +%s)" > "$1.launch"; printf '%s\n' "$v" > "$1"; }
 
 # ---------- session-start: the rules arrive framed as the user's instructions ----------
 ss_first=$(CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" 2>/dev/null </dev/null | head -1)
@@ -459,7 +463,7 @@ dfx many 2026-10-05T11:00:00Z
 "$R/bin/thread-context" 'd/r#5' --out "$T/d101.md" --depth 0 >/dev/null
 check "a discussion's 101 comments are all read, from both pages" "1 1" "$(grep -c '^https://example.invalid/d/r/discussions/5#discussioncomment-1$' "$T/d101.md") $(grep -c '^https://example.invalid/d/r/discussions/5#discussioncomment-101$' "$T/d101.md")"
 rm -f "$FX/graphql_DC_501"; dfx; dtc 'd/r#5' >/dev/null
-printf 'Set Z first, and then Y works.\n' > "$DD/r.md"; echo CLEAN > "$DD/r.review.out"; touch -d '+10 minutes' "$DD/r.review.out"
+printf 'Set Z first, and then Y works.\n' > "$DD/r.md"; echo CLEAN > "$DD/r.review.out"; rv "$DD/r.review.out"
 export GATED_POSTS="$T/dgated.txt"
 check "gate-pass takes a reply drafted beside the discussion's record" 0 "$(MERGEWORTHY_BADGE=off "$R/bin/gate-pass" "$DD/r.md" "$DD/r.review.out" --kind reply --parent none >"$T/dgp.out" 2>&1; echo $?)"
 hk() { # hook command: the hook (pre-bash-guard or post-bash-register) on that command run in $T; its exit code, stderr in $T/err
@@ -529,11 +533,13 @@ rm -f "$FX/graphql" "$FX/graphql_d" "$FX/graphql_DC_504" "$FX/graphql_D_5" "$FX/
 
 # gate-pass wants the same file beside a reply draft
 GD="$T/gdrafts/x"; mkdir -p "$GD"; printf 'Agreed, option A it is.\n' > "$GD/r.md"; echo CLEAN > "$GD/r.review.out"
-gp() { touch -d "${RT:-+10 minutes}" "$GD/r.review.out"; MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GD/r.md" "$GD/r.review.out" ${GPL:+--ledger "$GPL"} --kind reply --parent none >"$T/gp.out" 2>&1; echo $?; }
+gp0() { MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GD/r.md" "$GD/r.review.out" ${GPL:+--ledger "$GPL"} --kind reply --parent none >"$T/gp.out" 2>&1; echo $?; }
+gp() { rv "$GD/r.review.out"; gp0; }
 check "BLOCK: gate-pass on a reply without thread-context.md" 1 "$(gp)"
 grep -c 'no thread-context.md' "$T/gp.out"
 cp "$TD/thread-context.md" "$GD/thread-context.md"; touch -d 2026-10-01T00:00:00Z "$GD/r.md"
 check "BLOCK: gate-pass with a thread-context.md holding a human comment newer than the review" "1 1" "$(RT=2026-10-01T12:00:00Z gp) $(grep -c 'newer than the review' "$T/gp.out")"
+check "BLOCK: the same once its review output is touched: the review's launch counts, not the output's time" "1 1" "$(touch "$GD/r.review.out"; gp0) $(grep -c 'newer than the review' "$T/gp.out")"
 check "gate-pass passes a draft saved before a human comment the review's record holds (a PR body gated before the thread's comments)" 0 "$(gp)"
 touch -d 2026-10-03T00:00:00Z "$GD/r.md"
 check "gate-pass passes with a thread-context.md made after the draft whose comments all predate it" 0 "$(gp)"
@@ -551,6 +557,15 @@ printf 'Round: 3\nR2.1 blocker fixed in r3\n' > "$T/g3.md"; printf 'R2.1 blocker
 check "gate-pass: a post's blocker fixed in r3, the round that confirmed it, closes; BLOCK it before round 3 completed" "0 1 1" "$(GPL="$T/g3.md" gp) $(GPL="$T/g3x.md" gp) $(grep -c 'open blocker' "$T/gp.out")"
 echo CLEAN > "$GD/r.review.out"
 printf 'The test checks that "I'"'"'ll switch it once X is released" passes.\n' > "$GD/r.md"; touch -d '+2 minutes' "$GD/r.md"
+# the verdict counts for the text its reviewer was handed, whatever the files' times say (#200)
+TT="$T/gt/drafts/x"; mkdir -p "$TT"; printf 'The watcher stops when two sessions share one folder\n' > "$TT/b.md"; echo CLEAN > "$TT/b.review.out"
+tg() { MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$TT/b.md" "$TT/b.review.out" --kind title >"$T/tg.out" 2>&1; echo $?; }
+check "BLOCK: a verdict with no recorded launch, naming the review launch" "1 1" "$(tg) $(grep -c 'no recorded review launch' "$T/tg.out")"
+rv "$TT/b.review.out"; cp "$TT/b.md" "$T/tg.md"; echo extra >> "$TT/b.md"; cp "$T/tg.md" "$TT/b.md"; touch -d '+1 minute' "$TT/b.md"
+check "a draft restored to the text its reviewer was handed passes, though saved after the verdict (#200)" 0 "$(tg)"
+printf 'The watcher stops when three sessions share one folder\n' > "$TT/b.md"; touch -d '+2 minutes' "$TT/b.review.out"
+check "BLOCK: a draft edited after its review's launch, its output touched since" "1 1" "$(tg) $(grep -c 'changed after its review' "$T/tg.out")"
+check "BLOCK: a review launched again over an earlier CLEAN, until its own verdict lands" "2 0" "$(rv "$TT/b.review.out"; rl "$TT/b.review.out"; tg) $(echo CLEAN > "$TT/b.review.out"; tg)"
 check "a quoted \"I'll\" is someone else's words, not a promise" 0 "$(gp)"
 printf 'The lint says:\n\n```\nsay what is being done ('"'"'I'"'"'ll merge …'"'"')\n```\n' > "$GD/r.md"; touch -d '+150 seconds' "$GD/r.md"
 check "an \"I'll\" inside a fenced code block is a tool's output, not a promise" 0 "$(gp)"
@@ -714,7 +729,7 @@ S="$T/mwsrc"; git init -q "$S"; for m in one two three; do git -C "$S" -c user.n
 mkdir -p "$HOME/.mergeworthy/harness-shown"; h1=$(git -C "$S" rev-parse --short=7 HEAD~2); h3=$(git -C "$S" rev-parse --short=7 HEAD); echo "$h1" > "$HOME/.mergeworthy/harness-shown/acme"
 printf 'Fixed the bug.\n' > "$T/hs.md"
 check "post-lint doesn't ask a reply to list the commits" 0 "$(MERGEWORTHY_BADGE=off MERGEWORTHY_SRC="$S" python3 "$R/bin/post-lint" "$T/hs.md" --kind reply --repo acme/x --parent none >/dev/null 2>&1; echo $?)"
-hg() { printf 'Agreed, option A it is.\n' > "$GD/r.md"; touch -d '+1 minute' "$GD/r.md"; touch -d '+10 minutes' "$GD/r.review.out"; MERGEWORTHY_SRC="$S" MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GD/r.md" "$GD/r.review.out" --kind "${2:-reply}" --repo "$1" --parent none >"$T/gp.out" 2>&1; echo $?; }
+hg() { printf 'Agreed, option A it is.\n' > "$GD/r.md"; touch -d '+1 minute' "$GD/r.md"; rv "$GD/r.review.out"; MERGEWORTHY_SRC="$S" MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GD/r.md" "$GD/r.review.out" --kind "${2:-reply}" --repo "$1" --parent none >"$T/gp.out" 2>&1; echo $?; }
 check "gate-pass of an inline comment adds no line and records nothing" "0 0 $h1" "$(hg acme/x inline) $(grep -c 'Harness changes' "$GD/r.md") $(cat "$HOME/.mergeworthy/harness-shown/acme")"
 check "gate-pass appends the compare link after the review, gates the draft with it, and records the installed commit" "0 1 yes $h3" "$(hg acme/x) $(grep -cxF "Harness changes since my last note: <https://github.com/nitedani/mergeworthy/compare/$h1...$h3>" "$GD/r.md") $([ "$(sha256sum "$GD/r.md" | cut -d' ' -f1)" = "$(head -1 "$GD/r.md.gate")" ] && echo yes) $(cat "$HOME/.mergeworthy/harness-shown/acme")"
 check "gating that draft again passes post-lint with the line, and adds none" "0 1" "$(MERGEWORTHY_SRC="$S" MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GD/r.md" "$GD/r.review.out" --kind reply --repo acme/x --parent none >"$T/gp.out" 2>&1; echo $?) $(grep -c 'Harness changes' "$GD/r.md")"
@@ -784,8 +799,8 @@ check "--edit-of: an empty live body fails, nothing dropped" "rc=1 1 1" "$(eo 'W
 rm "$FX/repos_acme_x_issues_7"
 check "--edit-of: gh failing fails, even for a clean draft" "rc=1 1" "$(eo 'The cache is per user.' | tail -1) $(eo 'The cache is per user.' | grep -c "couldn't read the live body.*HTTP 404")"
 check "--edit-of: a reply is refused as a usage error" "rc=1 1" "$(eo 'The cache is per user.' reply | tail -1) $(eo 'The cache is per user.' reply | grep -c '^usage: post-lint')"
-eolive 'The old text.'; rm -f "$EO"/e.md*; eo 'The new text.' >/dev/null; printf 'CLEAN\n' > "$EO/e.review.out"; touch -d '+1 minute' "$EO/e.review.out"
-check "--edit-of: only the draft's own .lint files are left, and the temp folder is empty" "e.md e.md.lint e.md.lint.sha e.review.out|" "$(ls "$EO" | xargs)|$(ls -A "$T/eotmp")"
+eolive 'The old text.'; rm -f "$EO"/e.md*; eo 'The new text.' >/dev/null; printf 'CLEAN\n' > "$EO/e.review.out"; rv "$EO/e.review.out"
+check "--edit-of: only the draft's own .lint files are left, and the temp folder is empty" "e.md e.md.lint e.md.lint.sha e.review.out e.review.out.launch e.review.out.prev|" "$(ls "$EO" | xargs)|$(ls -A "$T/eotmp")"
 eg() { MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$EO/e.md" "$EO/e.review.out" 2>&1; echo "rc=$?"; }
 check "--edit-of survives gate-pass's re-lint from the draft's .lint" "--kind issue --repo acme/x --parent none --edit-of acme/x#7 rc=0" "$(cat "$EO/e.md.lint") $(eg | tail -1)"
 rm "$FX/repos_acme_x_issues_7"; check "gate-pass re-reads the live body: gh failing fails it" "rc=1 1" "$(eg | tail -1) $(eg | grep -c "couldn't read the live body")"
@@ -899,10 +914,10 @@ check "a body that isn't a draft needs no State line" 0 "$(dlint)"
 printf '%s\n**State: draft** (my bug check is still running)\n\nDraft: waits on the release.\n\nThe fix.\n' "$B" > "$T/ds.md"
 check "under the State line, a status opener is still flagged" 1 "$(dlint --draft)"
 mkdir -p "$T/dsd"; printf '%s *Opus 5.5 (high effort) wrote this.*\n**State: draft** (my bug check is still running)\n\nRoutes after vike(app) skip the auth +middleware. This PR runs it first.\n' '<img src="https://github.com/claude.png" width="20" height="20" alt="Claude">' > "$T/dsd/pr.md"
-echo CLEAN > "$T/dsd/review.out"; touch -d '+1 minute' "$T/dsd/review.out"; python3 "$R/bin/post-lint" "$T/dsd/pr.md" --kind pr --parent none --draft >/dev/null 2>&1
-check "gate-pass replays --draft from the .lint record (without it the State line fails)" 0 "$(bash "$R/bin/gate-pass" "$T/dsd/pr.md" "$T/dsd/review.out" >/dev/null 2>&1; echo $?)"
-touch -d '+2 minutes' "$T/dsd/pr.md"
-check "BLOCK: gate-pass on a draft edited after its review (a trim to the ceiling), naming post steps 2 and 3" "1 1" "$(bash "$R/bin/gate-pass" "$T/dsd/pr.md" "$T/dsd/review.out" >"$T/dsd/gp.out" 2>&1; echo $?) $(grep -c 'changed after its review.*post step 2.*post step 3' "$T/dsd/gp.out")"
+echo CLEAN > "$T/dsd/pr.review.out"; python3 "$R/bin/post-lint" "$T/dsd/pr.md" --kind pr --parent none --draft >/dev/null 2>&1; rv "$T/dsd/pr.review.out"
+check "gate-pass replays --draft from the .lint record (without it the State line fails)" 0 "$(bash "$R/bin/gate-pass" "$T/dsd/pr.md" "$T/dsd/pr.review.out" >/dev/null 2>&1; echo $?)"
+sed -i 's/runs it first/runs it before them/' "$T/dsd/pr.md"; touch -d '+2 minutes' "$T/dsd/pr.review.out"
+check "BLOCK: gate-pass on a draft edited after its review's launch (a trim to the ceiling), its output touched since, naming post steps 2 and 3" "1 1" "$(bash "$R/bin/gate-pass" "$T/dsd/pr.md" "$T/dsd/pr.review.out" >"$T/dsd/gp.out" 2>&1; echo $?) $(grep -c 'changed after its review.*post step 2.*post step 3' "$T/dsd/gp.out")"
 dguard() { # body file -> exit code of the guard on `gh pr create --draft`
   python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr create --draft --repo o/r --title \"$(cat /w/drafts/title.md)\" --body-file "+sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$TCO" \
     | MERGEWORTHY_WATCHER=off python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?
@@ -963,7 +978,7 @@ check "gh pr create --draft without --repo takes the language of GH_REPO, not of
 check "gh pr create --draft accepts the Hungarian State line under Language: hu, and blocks it without" "0 2" "$(hdguard "$T/hdg.md") $(printf '# acme/hu\n' > "$HUP"; hdguard "$T/hdg.md")"
 # without --repo (the livekit session's calls), the language comes from the draft's watch dir: the repos.txt above it
 LK="$T/lkw"; mkdir -p "$LK/drafts"; cp "$T/hu0.md" "$LK/drafts/mr.md"; echo CLEAN > "$LK/drafts/mr.review.out"; printf '# acme/hu\n\nLanguage: hu\n' > "$HUP"
-lkgp() { (cd "$T" && MERGEWORTHY_BADGE=on python3 "$R/bin/post-lint" "$LK/drafts/mr.md" --kind pr --draft >/dev/null 2>&1; touch -d '+1 minute' "$LK/drafts/mr.review.out"; MERGEWORTHY_BADGE=on GATED_POSTS="$T/gp.txt" bash "$R/bin/gate-pass" "$LK/drafts/mr.md" "$LK/drafts/mr.review.out" >"$T/lk.out" 2>&1; echo $?); }  # gate-pass reruns post-lint with the flags it passed with
+lkgp() { (cd "$T" && MERGEWORTHY_BADGE=on python3 "$R/bin/post-lint" "$LK/drafts/mr.md" --kind pr --draft >/dev/null 2>&1; rv "$LK/drafts/mr.review.out"; MERGEWORTHY_BADGE=on GATED_POSTS="$T/gp.txt" bash "$R/bin/gate-pass" "$LK/drafts/mr.md" "$LK/drafts/mr.review.out" >"$T/lk.out" 2>&1; echo $?); }  # gate-pass reruns post-lint with the flags it passed with
 echo 'gitlab.com/acme/hu' > "$LK/repos.txt"
 check "a Hungarian draft linted and gate-passed with --kind pr --draft and no --repo passes: its watch dir's repos.txt names the repo" 0 "$(lkgp)"
 printf 'gitlab.com/acme/hu\nacme/en\n' > "$LK/repos.txt"; printf 'acme/en 3\n' > "$LK/threads.txt"
@@ -2015,7 +2030,7 @@ NA=$(date -u -d '-30 minutes' +%Y-%m-%dT%H:%M:%S); GZ="$T/gltz"; mkdir -p "$GZ"
 printf '{"iid":5,"id":505,"title":"Times","web_url":"https://gitlab.com/acme/app/-/merge_requests/5","state":"opened","updated_at":"%s.988Z","created_at":"2026-10-29T13:00:00.123Z","author":{"username":"bob"},"description":"Times."}' "$NA" > "$FX/projects_acme%2Fapp_merge_requests_5"
 printf '[{"id":21,"author":{"username":"alice"},"created_at":"%s.988Z","body":"One more thing."}]' "$NA" > "$FX/projects_acme%2Fapp_merge_requests_5_notes_sort_asc_order_by_created_at_per_page_100"
 "$R/bin/thread-context" 'gitlab.com/acme/app!5' --out "$GZ/thread-context.md" >/dev/null
-printf 'Agreed, option A it is.\n' > "$GZ/r.md"; echo CLEAN > "$GZ/r.review.out"; touch -d '-3 hours' "$GZ/r.md"; touch -d '-1 hour' "$GZ/r.review.out"
+printf 'Agreed, option A it is.\n' > "$GZ/r.md"; echo CLEAN > "$GZ/r.review.out"; touch -d '-3 hours' "$GZ/r.md"; RT='-1 hour' rv "$GZ/r.review.out"
 check "BLOCK: a GitLab note at a fractional time, newer than the review, under TZ=Europe/Budapest; the record writes its time and the body's as UTC seconds" "1 1 1 1" \
   "$(TZ=Europe/Budapest MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GZ/r.md" "$GZ/r.review.out" --kind reply --parent none >"$T/gz.out" 2>&1; echo $?) $(grep -c 'newer than the review' "$T/gz.out") $(grep -c "^- latest-human-comment: id=21 at=${NA}Z " "$GZ/thread-context.md") $(grep -c '^### 2026-10-29T13:00:00Z @bob' "$GZ/thread-context.md")"
 echo '{"state":"open","draft":false,"head":{"sha":"h1"}}' > "$FX/repos_o_r_pulls_7"
