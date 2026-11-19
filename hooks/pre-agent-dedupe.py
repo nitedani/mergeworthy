@@ -64,15 +64,19 @@ if cid:
         os.replace(ids + '.tmp', ids)
 L = launch.parse(ti)
 brief = L.brief  # every rule below reads the brief; the files it only names (project notes, installed skills) are read, so their history SHAs pin nothing
-# A gate review (names a review output `.out` and CLEAN) starts only on drafts that passed post-lint in their current form, and
-# records the text it is handed (review_launch); the files a brief also names in drafts/ (thread record, ledger, parent, report) are not drafts
-review_outs = lambda t: sorted(set(re.findall(r'(/[^\s`\'"()]*/drafts/[^\s`\'"()]+\.out)\b', t)))
+# A gate review (names a review output `.out` and CLEAN) starts only on drafts that passed post-lint in their current form, and once
+# admitted records the text it is handed (review_launch, admit); the files a brief also names in drafts/ (thread record, ledger, parent, report) are not drafts
+review_outs = lambda t: sorted(set(re.findall(r'(/[^\s`\'"()]*/drafts/[^\s`\'"()]+\.out)\b', t))) if re.search(r'\.out\b', t) and 'CLEAN' in t else []
 reviewed_drafts = lambda t: {p for o in review_outs(t) if (p := review_launch.draft_of(o)) and os.path.isfile(p)}
-if not register and re.search(r'\.out\b', brief) and 'CLEAN' in brief:
+if not register:
     for out in review_outs(brief):
-        if why := review_launch.launch(out):
+        if why := review_launch.unlinted(out):
             sys.stderr.write(f"BLOCKED: {why}\n")
             refused()
+def admit():
+    """The PRE call's end: a launch nothing refused records each review output its brief names, setting aside an earlier verdict."""
+    if not register and not blocked:
+        for out in review_outs(brief): review_launch.launch(out)
 # A template's slot left unfilled (`<the slice's risky edges>`) reaches the agent as a rule it never got. A slot in backticks is
 # the agent's own output form, the paste-in rules (agent.md) carry slots of their own, and an HTML tag a brief quotes is no slot.
 tdir = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'skills', 'delegate')
@@ -407,6 +411,7 @@ if register:  # an agent now runs memory-prep's brief: stop-lint's hourly repeat
         if os.path.basename(t).startswith('memory-brief-') and os.path.isfile(os.path.join(os.path.dirname(t), 'memory.source')):
             open(os.path.join(os.path.dirname(t), '.memory-order-repeated'), 'w').close()
 if not key:
+    admit()
     sys.exit(2 if blocked else 0)  # nothing names the job (no ticket, title or description), so no second launch of it can be told apart
 f = os.path.join(agent_jobs.JOBS, hashlib.sha256(key.encode()).hexdigest()[:16])
 # when the launch this registers began (its transcript starts after it): one record per key, as one_per_job lets one call of a key
@@ -466,6 +471,7 @@ if not register and d.get('session_id') and 'memory-refresh' not in brief and no
                          + "\nContinue one with a message, or wait for one to finish, read its result and release it with `agent-job done <key>`. "
                          f"A higher limit the user gave for this task goes in {scope} as a line `Agents: <N> (user <YYYY-MM-DD>: \"<their words>\")`, quoting the user's own words from this session.\n")
         refused()
+admit()
 if not register and not blocked:
     os.makedirs(agent_jobs.LAUNCHED, exist_ok=True); json.dump({'launched': time.time(), 'key': key, 'task': task, 'role': ti.get('role'), 'worktrees': L.worktrees, 'tool_use_id': d.get('tool_use_id'),
                                                            'transcript': d.get('transcript_path')}, open(pre, 'w'))

@@ -1058,8 +1058,9 @@ def check(t, has_cd):
             out = where.path(w)
             if out is None and review_launch.draft_of(where.expand(w)):
                 block(f"the review output {w} can't be placed: pass its absolute path")
-            if out and review_launch.draft_of(out) and (why := review_launch.launch(out)):
-                block(why)
+            if out and review_launch.draft_of(out):
+                if why := review_launch.unlinted(out): block(why)
+                launches.append(out)  # recorded once every segment of the command passed
     written = [f for x, c in zip(targets, files) for f in known(c, x)]
     for x in dict.fromkeys(map(shellcmd.folder, written)):  # the instructions check runs git, once per folder
         if why := no_instructions_read(x, d):
@@ -1231,6 +1232,7 @@ if any(prog(x)[:1] and os.path.basename(prog(x)[0]) == 'gate-pass' for x in segs
                                         or prog(x)[1:2] == ['api'] and any(w.startswith('body=') or w in ('--input',) for w in prog(x))) or discussion_post(x) for x in segs):
     block("run gate-pass as its own command and read its exit code, then post in the next command: this check reads the gate record before the command runs (mergeworthy:post step 4)")
 clones = {}  # folder: the repo it was cloned from, for a `git clone` in this command
+launches = []  # the review outputs of the reviewers this command starts (check)
 records = {}  # each `pr-steps approach|preflight ...` walked so far, by its statement (Seg.stmt): the record it writes
 for s in where.walk(segs):
     run_dir, has_cd = where.dir, where.moved
@@ -1251,6 +1253,8 @@ for s in where.walk(segs):
         if w & {'git', 'gh', 'glab'} and w & {'push', 'commit', 'pr', 'issue', 'api', 'release', 'mr'} or 'git' not in w and w & {'push', 'commit'}:
             block(f"`{named}` runs a command named only when it runs, with `{' '.join(words)[:80]}`: write the command out, so it can be checked")
     check(s, has_cd)
+for out in launches:
+    review_launch.launch(out)
 try:  # pending until post-bash-register sees how the command ended
     own_actions.intend(own_actions.key(d), own)
 except OSError:

@@ -1,5 +1,6 @@
-"""The text a post's reviewer was handed. The hooks that start a reviewer (pre-agent-dedupe, pre-bash-guard) call launch() on its
-output; gate-pass calls reviewed(), so a verdict counts only for the draft's text at that launch, whatever the files' times say."""
+"""The text a post's reviewer was handed. The hooks that start a reviewer (pre-agent-dedupe, pre-bash-guard) check unlinted() on its
+output while they admit the launch, and call launch() once nothing refused it; gate-pass calls reviewed(), so a verdict counts only
+for the draft's text at that launch, whatever the files' times say."""
 import hashlib, os, re, time
 
 FOOTER = 'Harness changes since my last note: '  # the line gate-pass appends after the review: '\n' + FOOTER + '<compare link>\n'
@@ -15,23 +16,31 @@ def draft_of(out):
     return m[1] + '.md' if (m := re.fullmatch(r'(.+)\.review(-r\d+)?\.out', out)) else None
 
 
-def launch(out):
-    """Records that a reviewer starts on out's draft: refuses (returns why) unless the draft passed post-lint in its current text, moves
-    a verdict an earlier launch left in out to <out>.prev, and writes <out>.launch as `<sha256 of the draft without its footer> <epoch>`.
-    '' when out names no draft that exists, or the launch is recorded."""
+def unlinted(out):
+    """Why a reviewer can't start on out's draft: it has no passing post-lint for its current text; '' when it has, or out names no
+    draft that exists."""
     draft = draft_of(out)
     if not draft or not os.path.isfile(draft):
         return ''
-    data = open(draft, 'rb').read()
     try: lint = open(draft + '.lint.sha').read().strip()
     except OSError: lint = ''
-    if lint != hashlib.sha256(data).hexdigest():
+    if lint != hashlib.sha256(open(draft, 'rb').read()).hexdigest():
         return f"{draft} has no passing post-lint for its current text: run post-lint first, then the review."
+    return ''
+
+
+def launch(out):
+    """Records that a reviewer the hook admitted (unlinted(out) passed, and nothing else refused it) starts on out's draft: moves a
+    verdict an earlier launch left in out to <out>.prev, and writes <out>.launch as `<sha256 of the draft without its footer> <epoch>`.
+    Nothing when out names no draft that exists."""
+    draft = draft_of(out)
+    if not draft or not os.path.isfile(draft):
+        return
+    sha = hashlib.sha256(unfooted(open(draft, 'rb').read())).hexdigest()
     if os.path.exists(out):
         os.replace(out, out + '.prev')
     with open(out + '.launch', 'w') as f:
-        f.write(f'{hashlib.sha256(unfooted(data)).hexdigest()} {int(time.time())}\n')
-    return ''
+        f.write(f'{sha} {int(time.time())}\n')
 
 
 def reviewed(out, draft):
