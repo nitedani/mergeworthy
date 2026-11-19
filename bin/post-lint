@@ -35,6 +35,17 @@ W = post_words.words(_repo)  # the words the checks look for, in the repo's lang
 RATED = re.compile(r'^\s*\|.*(?:[0-9]+|\bnew) *(?:⇒|=>) *(?:[0-9]+|removed|new|n/a)', re.M)  # a row rating an item old ⇒ new (`7 ⇒ 9`, `7/10 => 9/10`, `new ⇒ 9`)
 REVIEWED = re.compile(r'^\|\s*Commit\s*\|.*\|\s*Rating\s*\|', re.M)  # the commit-review table's header (reply §Maintainer commits)
 TABLE = r'(?:^[ \t]*\|[^\n]*\n?)+'
+def uncollapsed(s):
+    """s without its collapsed blocks: each <details> (its tag's attributes or spaces included) to its own close, the blocks nested in it with it."""
+    out, depth, start = [], 0, 0
+    for m in re.finditer(r'<details\b[^>]*>|</details\s*>', s):
+        if not m.group().startswith('</'):
+            if depth == 0: out.append(s[start:m.start()]); start = m.start()
+            depth += 1
+        elif depth:
+            depth -= 1
+            if depth == 0: start = m.end()
+    return ''.join(out) + s[start:]  # an unclosed block stays, as GitHub shows it
 QUOTE = re.compile(r'^\s*(?:(?:[-*]|\d+[.)])\s+)?>.*$', re.M)  # a quoted line, in a list item too: someone else's words
 VISIBLE = lambda s: uncoded(re.sub(r'<!--[\s\S]*?-->', '', s))  # what GitHub renders as text: no HTML comments, no fenced code
 BOUND = 45  # words a rated row's rendered cell, or its table's header in all, leaves out of the count: #3609's longest rating reason is 45
@@ -106,7 +117,7 @@ if (_asked := arg('--asked-list', None)) is not None:
     print(f'requested list: "{_asked}"', file=sys.stderr)
 _asked_list = _asked_wording or _asked is not None
 if _asked_list:
-    prose = re.sub(r'<details>.*?</details>', '', prose, flags=re.S)
+    prose = uncollapsed(prose)
 if _asked_wording:
     prose = re.sub(r'(?m)^\s*(?:- \[[ xX]\] .*|\d+\. \*\*.*|\*Why it matters:.*)$', '', prose)
 # The converge steps' runs, collapsed (converge step 5), are evidence: never linted; only a PR body's count reads this prose, so a reply counts them
@@ -221,7 +232,7 @@ if kind == 'tracker':
 if kind != 'pr':
     counted = re.sub(r'<!--.*?-->', '', text, flags=re.S)
     if _asked_list:  # the lists the reader asked for, collapsed
-        counted = re.sub(r'<details>.*?</details>', '', counted, flags=re.S)
+        counted = uncollapsed(counted)
     if _asked_wording:  # or open as a questionnaire (GitHub closes <details> on every box ticked)
         counted = re.sub(r'(?m)^\s*(?:- \[[ xX]\] .*|\d+\. \*\*.*|\*Why it matters:.*)$', '', counted)
     counted = QUOTE.sub('', counted)              # quotes of others
@@ -299,7 +310,7 @@ if kind == 'pr' and re.match(r'\s*(Draft|Depends|Blocked|Waiting|Stacked|WIP|Sta
 # pull-request §Body's template: a ready PR's body shows what you should see, as numbered evidence (a request and its
 # response, an image) outside the collapsed blocks (magne4000/universal-middleware#432 comment 6111310596)
 if kind == 'pr' and not draft:
-    _open = re.sub(r'<details\b.*?</details>', '', text, flags=re.S)
+    _open = uncollapsed(text)
     _see = re.search(rf'^###\s+{re.escape(W["see"])}\s*$(.*?)(?=^###\s|\Z)', _open, re.M | re.S)
     if not _see or not re.search(r'^\*\*1\.\*\*', _see.group(1), re.M) or not re.search(r'```|!\[|<img\b', _see.group(1)):
         findings.append(f"pull-request §Body: the body has '### {W['see']}' with numbered items (**1.** …), each showing the evidence itself: a real request and response, or an image")

@@ -866,6 +866,12 @@ printf '1. > List all alternatives.\n' > "$T/lao.parent.md"
 check "--asked-list words only in an ordered-list quote fail" "1 0 1" "$(la --asked-list 'List all alternatives' --parent "$T/lao.parent.md") $(lagrep 'is not in the comment')"
 lamd() { printf "$1" > "$T/lamd.parent.md"; la --asked-list "$2" --parent "$T/lamd.parent.md" | cut -d' ' -f1; }
 check "--asked-list reads the parent as Markdown renders it: words in a '+ >' or '1. >' quote, a quote's lazy continuation, or across a heading and a paragraph fail; across a wrapped line of one paragraph they pass" "1 1 1 1 0" "$(lamd '+ > List all alternatives.\n' 'List all alternatives') $(lamd '1. > List all alternatives.\n' 'List all alternatives') $(lamd '> An example:\nList all alternatives.\n' 'List all alternatives') $(lamd '# List\nall alternatives are shown below.\n' 'List all alternatives') $(lamd 'Please list\nall alternatives.\n' 'list all alternatives')"
+printf 'List all alternatives to setTimeout and nextTick.\n' > "$T/lad.parent.md"; sed 's/<details>/<details >/' "$T/la.md" > "$T/lad1.md"
+{ printf '%s\n\nHere is the whole list.\n\n<details><summary>All 51</summary>\n\n<details><summary>The first 3</summary>\n\n' '<img src="https://github.com/claude.png" width="20" height="20" alt="Claude"> *Claude Opus 5.5 (medium effort) wrote this.*'
+  for n in 1 2 3; do echo "- mechanism number $n of the list, and yes, it leaks too"; done; printf '\n</details>\n\n'
+  for n in $(seq 4 51); do echo "- mechanism number $n of the list, and yes, it leaks too"; done; printf '\n</details>\n'; } > "$T/lad2.md"
+lad() { python3 "$R/bin/post-lint" "$1" --kind reply --parent "$T/lad.parent.md" --asked-list 'List all' >"$T/la.out" 2>&1; printf '%s %s' $? "$(lagrep 'words >')"; }
+check "a requested list collapsed in '<details >', or in a block with a nested one and rows after its close, is left out whole" "0 0 0 0" "$(lad "$T/lad1.md") $(lad "$T/lad2.md")"
 check "the same lists nobody asked for are" 4 "$(python3 "$R/bin/post-lint" "$T/rp.md" --kind pr --parent none 2>&1 | grep -c 'internal label\|words >\|process in the thread')"
 printf 'The code came from Sonnet subagents, and Codex (gpt-6.1-sol) reviewed every post.\n' > "$T/pm.md"
 printf 'What AI model did you use? Explain the agent orchestration.\n' > "$T/pm.parent.md"
