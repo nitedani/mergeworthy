@@ -20,6 +20,7 @@ cat > "$T/bin/gh" <<'EOF'
 [ "$1 $2" = "config get" ] && { [ ! -f "$FX/login" ] || cat "$FX/login"; exit; }  # the login gh's own config names: $FX/login
 [ "$1 $2" = "pr view" ] && [ -n "$GH_STUB_NOHOST" ] &&{ echo 'none of the git remotes configured for this repository point to a known GitHub host' >&2; exit 1; }
 [ -n "${GH_STUB_ENV:-}" ] && echo "$1 $2 GH_REPO=${GH_REPO:-}" >> "$GH_STUB_ENV"  # each call and the GH_REPO it ran with
+[ "$1 $2" = "pr view" ] && [ -n "${GH_STUB_403:-}" ] && { echo 'gh: API rate limit exceeded for user ID 1. (HTTP 403)' >&2; exit 1; }
 if [ "$1 $2" = "pr view" ]; then r=$3; case "$r" in -*|'') r=current;; esac; f="$FX/pr_view_$(printf '%s' "$r" | tr '/:' '__')"
   [ -f "$f" ] || { echo 'no pull requests found for branch "x"' >&2; exit 1; }
   q=; p=; for a in "$@"; do [ "$p" = --jq ] && q=$a; p=$a; done  # --jq .a on a JSON object answers that field
@@ -2652,7 +2653,8 @@ git -C "$G2" remote remove origin
 check "BLOCK: GH_REPO=o/r gh pr ready N from another checkout reads the PR with GH_REPO, and the retry names its URL" "2 1 1" \
   "$(GH_STUB_ENV="$T/rdy.env" rdy 'GH_REPO=o/r gh pr ready 5' "$GO") $(grep -cx 'pr view GH_REPO=o/r' "$T/rdy.env") $(grep -c 'cd <its checkout> && gh pr ready https://github.com/o/r/pull/5`' "$T/err")"
 rm "$FX/pr_view_5"
-check "BLOCK: a PR gh can't read, asking to retry" "2 1" "$(rdy 'gh pr ready 5 -R o/r' "$G2") $(grep -c "couldn't read the head this command makes ready.*retry once gh answers" "$T/err")"
+check "BLOCK: a PR gh can't read, asking to retry" "2 1" "$(GH_STUB_403=1 rdy 'gh pr ready 5 -R o/r' "$G2") $(grep -c "couldn't read the head this command makes ready.*retry once gh answers" "$T/err")"
+check "BLOCK: a number gh finds no PR for, saying to check the repository and number" "2 1 0" "$(rdy 'gh pr ready 1 -R o/r' "$G2") $(grep -c "finds no PR (no pull requests found.*name no PR this account can see, so check them" "$T/err") $(grep -c 'retry once' "$T/err")"
 : > "$T/rdy.args"
 check "gh pr ready --undo and -h never read the PR" "0 0 0" "$(rdy 'gh pr ready 5 -R o/r --undo' "$GO") $(rdy 'gh pr ready 5 -R o/r -h' "$GO") $(grep -c 'pulls/5' "$T/rdy.args")"
 # pre-bash-guard: `gh pr merge` waits for a PR that is up to date with its base and whose CI ran after the base last touched its files; never --admin

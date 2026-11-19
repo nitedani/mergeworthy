@@ -845,7 +845,10 @@ def ready_head(p, repo, num, branch, run_dir, a, env):
     try:
         r = subprocess.run(view, cwd=known(run_dir), env={**os.environ, **env}, capture_output=True, text=True, timeout=30)
         pr = json.loads(r.stdout) if r.returncode == 0 else None
-    except (OSError, subprocess.TimeoutExpired, ValueError): pr = None
+    except (OSError, subprocess.TimeoutExpired, ValueError): r, pr = None, None
+    kind = 'PR' if p == 'gh' else 'MR'
+    if r and r.returncode and re.search(r'Could not resolve to a (PullRequest|Repository)|no (pull|merge) requests? found|\b404\b', r.stderr, re.I):
+        block(f"`{shlex.join(view)}` finds no {kind} ({r.stderr.strip().splitlines()[0][:200]}): the repository and the number or URL name no {kind} this account can see, so check them")
     sha, url = (pr.get(k) for k in (('headRefOid', 'url') if p == 'gh' else ('sha', 'web_url'))) if isinstance(pr, dict) else (None, None)
     if not (sha and url):
         block(f"`{shlex.join(view)}` couldn't read the head this command makes ready, so it can't be checked: retry once {p} answers")
