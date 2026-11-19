@@ -80,6 +80,10 @@ json.dump(v, open(f, "w"))' "$2" "$(git -C "$1" rev-parse HEAD)" "$3"; }
 check() { # name want got
   echo "$1: $3 (want $2)"; [ "$2" = "$3" ] || fails=$((fails+1))
 }
+rl() { python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import review_launch; sys.exit(review_launch.launch(sys.argv[2]) or 0)' "$R/hooks" "$1"; }  # <out>: its review launched through the hook
+rv() { # <dir>/<name>.review.out: its reviewer launched on <name>.md's current text (at RT, else now), then writing back the verdict <out> holds
+  local v; v=$(cat "$1"); sha256sum "${1%.review.out}.md" | cut -d' ' -f1 | tr -d '\n' > "${1%.review.out}.md.lint.sha"; rl "$1" || return
+  [ -z "${RT:-}" ] || echo "$(cut -d' ' -f1 "$1.launch") $(date -d "$RT" +%s)" > "$1.launch"; printf '%s\n' "$v" > "$1"; }
 
 # ---------- session-start: the rules arrive framed as the user's instructions ----------
 ss_first=$(CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" 2>/dev/null </dev/null | head -1)
@@ -459,7 +463,7 @@ dfx
 printf '{"data":{"search":{"nodes":[{"number":5,"url":"https://github.com/orgs/dorg/discussions/50","repository":{"nameWithOwner":"d/x"}},{"number":5,"url":"https://github.com/orgs/dorg/discussions/5","repository":{"nameWithOwner":"d/r"}},{"number":6,"url":"https://github.com/orgs/dorg/discussions/6","repository":{"nameWithOwner":"d/r"}}]}}}' > "$FX/graphql"
 printf '{"data":{"node":{"discussion":{"number":5,"repository":{"nameWithOwner":"d/r"}}},"updateDiscussionComment":{"comment":{"url":"https://example.invalid/d/r/discussions/5#discussioncomment-504"}}}}' > "$FX/graphql_DC_504"
 printf '{"data":{"addDiscussionComment":{"comment":{"url":"https://example.invalid/d/r/discussions/5#discussioncomment-600"}}}}' > "$FX/graphql_D_5"
-DD="$T/ddrafts/d-r-5"; mkdir -p "$DD"
+DD="$T/ddrafts/drafts/d-r-5"; mkdir -p "$DD"
 dtc() { "$R/bin/thread-context" "$1" --out "$DD/thread-context.md" --depth "${2:-0}" >/dev/null 2>"$T/dtc.err"; echo "$? $(grep -c '^- root: d/r#5 ' "$DD/thread-context.md" 2>/dev/null) $(grep -c '^- latest-human-comment: id=502 at=2026-10-05T09:30:00Z' "$DD/thread-context.md" 2>/dev/null)"; }
 check "thread-context on a discussion by its repo URL, its org URL and owner/repo#N: its root, and its latest human reply, not a bot's" "0 1 1 0 1 1 0 1 1" \
   "$(rm -f "$DD/thread-context.md"; dtc https://github.com/d/r/discussions/5) $(rm -f "$DD/thread-context.md"; dtc https://github.com/orgs/dorg/discussions/5) $(rm -f "$DD/thread-context.md"; dtc 'd/r#5')"
@@ -474,7 +478,7 @@ dfx many 2026-10-05T11:00:00Z
 "$R/bin/thread-context" 'd/r#5' --out "$T/d101.md" --depth 0 >/dev/null
 check "a discussion's 101 comments are all read, from both pages" "1 1" "$(grep -c '^https://example.invalid/d/r/discussions/5#discussioncomment-1$' "$T/d101.md") $(grep -c '^https://example.invalid/d/r/discussions/5#discussioncomment-101$' "$T/d101.md")"
 rm -f "$FX/graphql_DC_501"; dfx; dtc 'd/r#5' >/dev/null
-printf 'Set Z first, and then Y works.\n' > "$DD/r.md"; echo CLEAN > "$DD/r.review.out"; touch -d '+10 minutes' "$DD/r.review.out"
+printf 'Set Z first, and then Y works.\n' > "$DD/r.md"; echo CLEAN > "$DD/r.review.out"; rv "$DD/r.review.out"
 export GATED_POSTS="$T/dgated.txt"
 check "gate-pass takes a reply drafted beside the discussion's record" 0 "$(MERGEWORTHY_BADGE=off "$R/bin/gate-pass" "$DD/r.md" "$DD/r.review.out" --kind reply --parent none >"$T/dgp.out" 2>&1; echo $?)"
 hk() { # hook command: the hook (pre-bash-guard or post-bash-register) on that command run in $T; its exit code, stderr in $T/err
@@ -543,12 +547,14 @@ check "post-bash-register after discussion-post through python3: the no-watcher 
 rm -f "$FX/graphql" "$FX/graphql_d" "$FX/graphql_DC_504" "$FX/graphql_D_5" "$FX/user"; unset GATED_POSTS
 
 # gate-pass wants the same file beside a reply draft
-GD="$T/gdrafts/x"; mkdir -p "$GD"; printf 'Agreed, option A it is.\n' > "$GD/r.md"; echo CLEAN > "$GD/r.review.out"
-gp() { touch -d "${RT:-+10 minutes}" "$GD/r.review.out"; MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GD/r.md" "$GD/r.review.out" ${GPL:+--ledger "$GPL"} --kind reply --parent none >"$T/gp.out" 2>&1; echo $?; }
+GD="$T/gdrafts/drafts/x"; mkdir -p "$GD"; printf 'Agreed, option A it is.\n' > "$GD/r.md"; echo CLEAN > "$GD/r.review.out"
+gp0() { MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GD/r.md" "$GD/r.review.out" ${GPL:+--ledger "$GPL"} --kind reply --parent none >"$T/gp.out" 2>&1; echo $?; }
+gp() { rv "$GD/r.review.out"; gp0; }
 check "BLOCK: gate-pass on a reply without thread-context.md" 1 "$(gp)"
 grep -c 'no thread-context.md' "$T/gp.out"
 cp "$TD/thread-context.md" "$GD/thread-context.md"; touch -d 2026-10-01T00:00:00Z "$GD/r.md"
 check "BLOCK: gate-pass with a thread-context.md holding a human comment newer than the review" "1 1" "$(RT=2026-10-01T12:00:00Z gp) $(grep -c 'newer than the review' "$T/gp.out")"
+check "BLOCK: the same once its review output is touched: the review's launch counts, not the output's time" "1 1" "$(touch "$GD/r.review.out"; gp0) $(grep -c 'newer than the review' "$T/gp.out")"
 check "gate-pass passes a draft saved before a human comment the review's record holds (a PR body gated before the thread's comments)" 0 "$(gp)"
 touch -d 2026-10-03T00:00:00Z "$GD/r.md"
 check "gate-pass passes with a thread-context.md made after the draft whose comments all predate it" 0 "$(gp)"
@@ -566,6 +572,16 @@ printf 'Round: 3\nR2.1 blocker fixed in r3\n' > "$T/g3.md"; printf 'R2.1 blocker
 check "gate-pass: a post's blocker fixed in r3, the round that confirmed it, closes; BLOCK it before round 3 completed" "0 1 1" "$(GPL="$T/g3.md" gp) $(GPL="$T/g3x.md" gp) $(grep -c 'open blocker' "$T/gp.out")"
 echo CLEAN > "$GD/r.review.out"
 printf 'The test checks that "I'"'"'ll switch it once X is released" passes.\n' > "$GD/r.md"; touch -d '+2 minutes' "$GD/r.md"
+# the verdict counts for the text its reviewer was handed, whatever the files' times say (#200)
+TT="$T/gt/drafts/x"; mkdir -p "$TT"; printf 'The watcher stops when two sessions share one folder\n' > "$TT/b.md"; echo CLEAN > "$TT/b.review.out"
+tg() { MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$TT/b.md" "$TT/b.review.out" --kind title >"$T/tg.out" 2>&1; echo $?; }
+check "BLOCK: a verdict with no recorded launch, naming the review launch" "1 1" "$(tg) $(grep -c 'no recorded review launch' "$T/tg.out")"
+check "BLOCK: a verdict in drafts/ not named after its draft, naming the rename" "1 1" "$(echo CLEAN > "$TT/review.out"; MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$TT/b.md" "$TT/review.out" --kind title >"$T/tg.out" 2>&1; echo $?) $(grep -c 'name it <name>.review.out' "$T/tg.out")"
+rv "$TT/b.review.out"; cp "$TT/b.md" "$T/tg.md"; echo extra >> "$TT/b.md"; cp "$T/tg.md" "$TT/b.md"; touch -d '+1 minute' "$TT/b.md"
+check "a draft restored to the text its reviewer was handed passes, though saved after the verdict (#200)" 0 "$(tg)"
+printf 'The watcher stops when three sessions share one folder\n' > "$TT/b.md"; touch -d '+2 minutes' "$TT/b.review.out"
+check "BLOCK: a draft edited after its review's launch, its output touched since" "1 1" "$(tg) $(grep -c 'changed after its review' "$T/tg.out")"
+check "BLOCK: a review launched again over an earlier CLEAN, until its own verdict lands" "2 0" "$(rv "$TT/b.review.out"; rl "$TT/b.review.out"; tg) $(echo CLEAN > "$TT/b.review.out"; tg)"
 check "a quoted \"I'll\" is someone else's words, not a promise" 0 "$(gp)"
 printf 'The lint says:\n\n```\nsay what is being done ('"'"'I'"'"'ll merge …'"'"')\n```\n' > "$GD/r.md"; touch -d '+150 seconds' "$GD/r.md"
 check "an \"I'll\" inside a fenced code block is a tool's output, not a promise" 0 "$(gp)"
@@ -729,12 +745,16 @@ S="$T/mwsrc"; git init -q "$S"; for m in one two three; do git -C "$S" -c user.n
 mkdir -p "$HOME/.mergeworthy/harness-shown"; h1=$(git -C "$S" rev-parse --short=7 HEAD~2); h3=$(git -C "$S" rev-parse --short=7 HEAD); echo "$h1" > "$HOME/.mergeworthy/harness-shown/acme"
 printf 'Fixed the bug.\n' > "$T/hs.md"
 check "post-lint doesn't ask a reply to list the commits" 0 "$(MERGEWORTHY_BADGE=off MERGEWORTHY_SRC="$S" python3 "$R/bin/post-lint" "$T/hs.md" --kind reply --repo acme/x --parent none >/dev/null 2>&1; echo $?)"
-hg() { printf 'Agreed, option A it is.\n' > "$GD/r.md"; touch -d '+1 minute' "$GD/r.md"; touch -d '+10 minutes' "$GD/r.review.out"; MERGEWORTHY_SRC="$S" MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GD/r.md" "$GD/r.review.out" --kind "${2:-reply}" --repo "$1" --parent none >"$T/gp.out" 2>&1; echo $?; }
+hg() { printf 'Agreed, option A it is.\n' > "$GD/r.md"; touch -d '+1 minute' "$GD/r.md"; rv "$GD/r.review.out"; MERGEWORTHY_SRC="$S" MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GD/r.md" "$GD/r.review.out" --kind "${2:-reply}" --repo "$1" --parent none >"$T/gp.out" 2>&1; echo $?; }
 check "gate-pass of an inline comment adds no line and records nothing" "0 0 $h1" "$(hg acme/x inline) $(grep -c 'Harness changes' "$GD/r.md") $(cat "$HOME/.mergeworthy/harness-shown/acme")"
 check "gate-pass appends the compare link after the review, gates the draft with it, and records the installed commit" "0 1 yes $h3" "$(hg acme/x) $(grep -cxF "Harness changes since my last note: <https://github.com/nitedani/mergeworthy/compare/$h1...$h3>" "$GD/r.md") $([ "$(sha256sum "$GD/r.md" | cut -d' ' -f1)" = "$(head -1 "$GD/r.md.gate")" ] && echo yes) $(cat "$HOME/.mergeworthy/harness-shown/acme")"
 check "gating that draft again passes post-lint with the line, and adds none" "0 1" "$(MERGEWORTHY_SRC="$S" MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GD/r.md" "$GD/r.review.out" --kind reply --repo acme/x --parent none >"$T/gp.out" 2>&1; echo $?) $(grep -c 'Harness changes' "$GD/r.md")"
 echo "$h1" > "$HOME/.mergeworthy/harness-shown/acme"  # a gate-pass that appended the line, then failed before recording it
 check "a draft that already has the line gets no second one" "0 1" "$(MERGEWORTHY_SRC="$S" MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GD/r.md" "$GD/r.review.out" --kind reply --repo acme/x --parent none >/dev/null 2>&1; echo $?) $(grep -c '^Harness changes since my last note: ' "$GD/r.md")"
+sed -i 's/option A it is/option B it is/' "$GD/r.md"; "$R/bin/post-lint" "$GD/r.md" --kind reply --repo acme/x --parent none >/dev/null 2>&1; echo CLEAN > "$GD/r.review.out"; rv "$GD/r.review.out"
+check "that draft, its prose edited with the line kept, relinted and reviewed again, passes with the line once" "0 1" "$(MERGEWORTHY_SRC="$S" MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GD/r.md" "$GD/r.review.out" --kind reply --repo acme/x --parent none >"$T/gp.out" 2>&1; echo $?) $(grep -c '^Harness changes since my last note: ' "$GD/r.md")"
+sed -i -E 's#(compare/)[0-9a-f]+\.\.\.#\11234567...#' "$GD/r.md"
+check "BLOCK: that draft with the compare link's commit edited after its review" "1 1" "$(MERGEWORTHY_SRC="$S" MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GD/r.md" "$GD/r.review.out" --kind reply --repo acme/x --parent none >"$T/gp.out" 2>&1; echo $?) $(grep -c 'changed after its review' "$T/gp.out")"
 check "the next reply, nothing new since, gets no line; another owner's repo none" "0 0 0 0" "$(hg acme/x) $(grep -c 'Harness changes' "$GD/r.md") $(hg other/x) $(grep -c 'Harness changes' "$GD/r.md")"
 
 check "a badge followed on its line by an italic model line passes, model names included" 0 "$(printf '%s\n\nFixed the bug.\n' '<img src="https://github.com/claude.png" width="20" height="20" alt="Claude"><img src="https://github.com/openai.png" width="20" height="20" alt="Codex"> *Opus 5.5 (medium effort) wrote this; a second Opus 5.5 (high effort) reviewed it; GPT-6.1-Sol (Codex, high effort) reviewed it.*' > "$T/ml.md"; MERGEWORTHY_BADGE=on python3 "$R/bin/post-lint" "$T/ml.md" --kind reply --parent none >/dev/null 2>&1; echo $?)"
@@ -783,7 +803,7 @@ pl 290; check "a 2600-word plan fails, naming the cap" 1 "$(plint plan | grep -c
 pl 290; sed -i '1a ### How to reproduce' "$T/plan.md"; check "a plan's How to reproduce section counts toward its cap, and the length line names it" "1 1" "$(plint plan | grep -c 'words > 2500 for a plan') $(plint plan | grep -c 'cap 2500')"
 pl 110 dashed; check "a plan with an em dash fails, and only for that" "rc=1 1" "$(plint plan | tail -1) $(plint plan | grep -c '^em dash')"
 # ---------- post-lint --edit-of (nitedani/mergeworthy#140): an edit fails only on what it adds to the live body ----------
-EO="$T/eo"; mkdir -p "$EO" "$T/eotmp"; EOR=$'\n\n### How to reproduce\n\n1. Run it.\n\n```\nlog\n```\n'
+EO="$T/drafts/eo"; mkdir -p "$EO" "$T/eotmp"; EOR=$'\n\n### How to reproduce\n\n1. Run it.\n\n```\nlog\n```\n'
 eolive() { python3 -c 'import json, sys; json.dump({"body": sys.argv[1]}, open(sys.argv[2], "w"))' "$1$EOR" "$FX/repos_acme_x_issues_7"; }
 eo() { printf '%s' "$1$EOR" > "$EO/e.md"; TMPDIR="$T/eotmp" MERGEWORTHY_BADGE=off python3 "$R/bin/post-lint" "$EO/e.md" --kind "${2:-issue}" --repo acme/x --parent none --edit-of 'acme/x#7' 2>&1; echo "rc=$?"; }
 eolive 'We leverage a cache here.'
@@ -799,8 +819,8 @@ check "--edit-of: an empty live body fails, nothing dropped" "rc=1 1 1" "$(eo 'W
 rm "$FX/repos_acme_x_issues_7"
 check "--edit-of: gh failing fails, even for a clean draft" "rc=1 1" "$(eo 'The cache is per user.' | tail -1) $(eo 'The cache is per user.' | grep -c "couldn't read the live body.*HTTP 404")"
 check "--edit-of: a reply is refused as a usage error" "rc=1 1" "$(eo 'The cache is per user.' reply | tail -1) $(eo 'The cache is per user.' reply | grep -c '^usage: post-lint')"
-eolive 'The old text.'; rm -f "$EO"/e.md*; eo 'The new text.' >/dev/null; printf 'CLEAN\n' > "$EO/e.review.out"; touch -d '+1 minute' "$EO/e.review.out"
-check "--edit-of: only the draft's own .lint files are left, and the temp folder is empty" "e.md e.md.lint e.md.lint.sha e.review.out|" "$(ls "$EO" | xargs)|$(ls -A "$T/eotmp")"
+eolive 'The old text.'; rm -f "$EO"/e.md*; eo 'The new text.' >/dev/null; printf 'CLEAN\n' > "$EO/e.review.out"; rv "$EO/e.review.out"
+check "--edit-of: only the draft's own .lint files are left, and the temp folder is empty" "e.md e.md.lint e.md.lint.sha e.review.out e.review.out.launch e.review.out.prev|" "$(ls "$EO" | xargs)|$(ls -A "$T/eotmp")"
 eg() { MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$EO/e.md" "$EO/e.review.out" 2>&1; echo "rc=$?"; }
 check "--edit-of survives gate-pass's re-lint from the draft's .lint" "--kind issue --repo acme/x --parent none --edit-of acme/x#7 rc=0" "$(cat "$EO/e.md.lint") $(eg | tail -1)"
 rm "$FX/repos_acme_x_issues_7"; check "gate-pass re-reads the live body: gh failing fails it" "rc=1 1" "$(eg | tail -1) $(eg | grep -c "couldn't read the live body")"
@@ -913,11 +933,11 @@ check "a draft's body without its State line is flagged" 1 "$(dlint --draft)"
 check "a body that isn't a draft needs no State line" 0 "$(dlint)"
 printf '%s\n**State: draft** (my bug check is still running)\n\nDraft: waits on the release.\n\nThe fix.\n' "$B" > "$T/ds.md"
 check "under the State line, a status opener is still flagged" 1 "$(dlint --draft)"
-mkdir -p "$T/dsd"; printf '%s *Opus 5.5 (high effort) wrote this.*\n**State: draft** (my bug check is still running)\n\nRoutes after vike(app) skip the auth +middleware. This PR runs it first.\n' '<img src="https://github.com/claude.png" width="20" height="20" alt="Claude">' > "$T/dsd/pr.md"
-echo CLEAN > "$T/dsd/review.out"; touch -d '+1 minute' "$T/dsd/review.out"; python3 "$R/bin/post-lint" "$T/dsd/pr.md" --kind pr --parent none --draft >/dev/null 2>&1
-check "gate-pass replays --draft from the .lint record (without it the State line fails)" 0 "$(bash "$R/bin/gate-pass" "$T/dsd/pr.md" "$T/dsd/review.out" >/dev/null 2>&1; echo $?)"
-touch -d '+2 minutes' "$T/dsd/pr.md"
-check "BLOCK: gate-pass on a draft edited after its review (a trim to the ceiling), naming post steps 2 and 3" "1 1" "$(bash "$R/bin/gate-pass" "$T/dsd/pr.md" "$T/dsd/review.out" >"$T/dsd/gp.out" 2>&1; echo $?) $(grep -c 'changed after its review.*post step 2.*post step 3' "$T/dsd/gp.out")"
+mkdir -p "$T/drafts/dsd"; printf '%s *Opus 5.5 (high effort) wrote this.*\n**State: draft** (my bug check is still running)\n\nRoutes after vike(app) skip the auth +middleware. This PR runs it first.\n' '<img src="https://github.com/claude.png" width="20" height="20" alt="Claude">' > "$T/drafts/dsd/pr.md"
+echo CLEAN > "$T/drafts/dsd/pr.review.out"; python3 "$R/bin/post-lint" "$T/drafts/dsd/pr.md" --kind pr --parent none --draft >/dev/null 2>&1; rv "$T/drafts/dsd/pr.review.out"
+check "gate-pass replays --draft from the .lint record (without it the State line fails)" 0 "$(bash "$R/bin/gate-pass" "$T/drafts/dsd/pr.md" "$T/drafts/dsd/pr.review.out" >/dev/null 2>&1; echo $?)"
+sed -i 's/runs it first/runs it before them/' "$T/drafts/dsd/pr.md"; touch -d '+2 minutes' "$T/drafts/dsd/pr.review.out"
+check "BLOCK: gate-pass on a draft edited after its review's launch (a trim to the ceiling), its output touched since, naming post steps 2 and 3" "1 1" "$(bash "$R/bin/gate-pass" "$T/drafts/dsd/pr.md" "$T/drafts/dsd/pr.review.out" >"$T/drafts/dsd/gp.out" 2>&1; echo $?) $(grep -c 'changed after its review.*post step 2.*post step 3' "$T/drafts/dsd/gp.out")"
 dguard() { # body file -> exit code of the guard on `gh pr create --draft`
   python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr create --draft --repo o/r --title \"$(cat /w/drafts/title.md)\" --body-file "+sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$TCO" \
     | MERGEWORTHY_WATCHER=off python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?
@@ -978,7 +998,7 @@ check "gh pr create --draft without --repo takes the language of GH_REPO, not of
 check "gh pr create --draft accepts the Hungarian State line under Language: hu, and blocks it without" "0 2" "$(hdguard "$T/hdg.md") $(printf '# acme/hu\n' > "$HUP"; hdguard "$T/hdg.md")"
 # without --repo (the livekit session's calls), the language comes from the draft's watch dir: the repos.txt above it
 LK="$T/lkw"; mkdir -p "$LK/drafts"; cp "$T/hu0.md" "$LK/drafts/mr.md"; echo CLEAN > "$LK/drafts/mr.review.out"; printf '# acme/hu\n\nLanguage: hu\n' > "$HUP"
-lkgp() { (cd "$T" && MERGEWORTHY_BADGE=on python3 "$R/bin/post-lint" "$LK/drafts/mr.md" --kind pr --draft >/dev/null 2>&1; touch -d '+1 minute' "$LK/drafts/mr.review.out"; MERGEWORTHY_BADGE=on GATED_POSTS="$T/gp.txt" bash "$R/bin/gate-pass" "$LK/drafts/mr.md" "$LK/drafts/mr.review.out" >"$T/lk.out" 2>&1; echo $?); }  # gate-pass reruns post-lint with the flags it passed with
+lkgp() { (cd "$T" && MERGEWORTHY_BADGE=on python3 "$R/bin/post-lint" "$LK/drafts/mr.md" --kind pr --draft >/dev/null 2>&1; rv "$LK/drafts/mr.review.out"; MERGEWORTHY_BADGE=on GATED_POSTS="$T/gp.txt" bash "$R/bin/gate-pass" "$LK/drafts/mr.md" "$LK/drafts/mr.review.out" >"$T/lk.out" 2>&1; echo $?); }  # gate-pass reruns post-lint with the flags it passed with
 echo 'gitlab.com/acme/hu' > "$LK/repos.txt"
 check "a Hungarian draft linted and gate-passed with --kind pr --draft and no --repo passes: its watch dir's repos.txt names the repo" 0 "$(lkgp)"
 printf 'gitlab.com/acme/hu\nacme/en\n' > "$LK/repos.txt"; printf 'acme/en 3\n' > "$LK/threads.txt"
@@ -2027,11 +2047,11 @@ echo '[]' > "$FX/projects_acme%2Fapp_merge_requests_4_notes_sort_asc_order_by_cr
 check "a qualified gitlab.com/<path>!N and #N in a GitLab thread are followed as written" 2 "$(grep -Ec '^  - gitlab.com/acme/app(#3|!2) ' "$T/glctx/q.md")"
 # GitLab's note times carry a fraction (2022-01-31T15:10:44.988Z): the record writes every time in one UTC form, so gate-pass, east of
 # UTC, still refuses a review older than the note
-NA=$(date -u -d '-30 minutes' +%Y-%m-%dT%H:%M:%S); GZ="$T/gltz"; mkdir -p "$GZ"
+NA=$(date -u -d '-30 minutes' +%Y-%m-%dT%H:%M:%S); GZ="$T/drafts/gltz"; mkdir -p "$GZ"
 printf '{"iid":5,"id":505,"title":"Times","web_url":"https://gitlab.com/acme/app/-/merge_requests/5","state":"opened","updated_at":"%s.988Z","created_at":"2026-10-29T13:00:00.123Z","author":{"username":"bob"},"description":"Times."}' "$NA" > "$FX/projects_acme%2Fapp_merge_requests_5"
 printf '[{"id":21,"author":{"username":"alice"},"created_at":"%s.988Z","body":"One more thing."}]' "$NA" > "$FX/projects_acme%2Fapp_merge_requests_5_notes_sort_asc_order_by_created_at_per_page_100"
 "$R/bin/thread-context" 'gitlab.com/acme/app!5' --out "$GZ/thread-context.md" >/dev/null
-printf 'Agreed, option A it is.\n' > "$GZ/r.md"; echo CLEAN > "$GZ/r.review.out"; touch -d '-3 hours' "$GZ/r.md"; touch -d '-1 hour' "$GZ/r.review.out"
+printf 'Agreed, option A it is.\n' > "$GZ/r.md"; echo CLEAN > "$GZ/r.review.out"; touch -d '-3 hours' "$GZ/r.md"; RT='-1 hour' rv "$GZ/r.review.out"
 check "BLOCK: a GitLab note at a fractional time, newer than the review, under TZ=Europe/Budapest; the record writes its time and the body's as UTC seconds" "1 1 1 1" \
   "$(TZ=Europe/Budapest MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GZ/r.md" "$GZ/r.review.out" --kind reply --parent none >"$T/gz.out" 2>&1; echo $?) $(grep -c 'newer than the review' "$T/gz.out") $(grep -c "^- latest-human-comment: id=21 at=${NA}Z " "$GZ/thread-context.md") $(grep -c '^### 2026-10-29T13:00:00Z @bob' "$GZ/thread-context.md")"
 echo '{"state":"open","draft":false,"head":{"sha":"h1"}}' > "$FX/repos_o_r_pulls_7"
@@ -2127,6 +2147,23 @@ python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read
 printf 'Ledger.\n' > "$T/drafts/lf/fresh.ledger.md"
 printf 'Review the diff against the ledger %s, write the verdict to %s/drafts/lf/fresh.review.out; the last message is exactly CLEAN.\n' "$T/drafts/lf/fresh.ledger.md" "$T" > "$T/drafts/lf/review2-ticket.md"
 check "a review naming a ledger and an output with no draft behind it launches; the unlinted draft its output is named after is refused" "0 2" "$(launch "Execute $T/drafts/lf/review2-ticket.md") $(printf 'x' >> "$T/drafts/lf/reply.md"; python3 "$R/bin/agent-job" done "$T/drafts/lf/review2-ticket.md" >/dev/null; printf 'Review %s against the ledger %s, write the verdict to %s/drafts/lf/reply.review.out; the last message is exactly CLEAN.\n' "$T/drafts/lf/reply.md" "$T/drafts/lf/fresh.ledger.md" "$T" > "$T/drafts/lf/review3-ticket.md"; launch "Execute $T/drafts/lf/review3-ticket.md")"
+# the launch records the text the reviewer is handed, and a verdict an earlier launch left is set aside
+L3="$T/drafts/lf/launch-r3.md"; printf 'Retitled the PR.\n' > "$T/drafts/lf/launch.md"; sha=$(sha256sum "$T/drafts/lf/launch.md" | cut -d' ' -f1); printf %s "$sha" > "$T/drafts/lf/launch.md.lint.sha"; echo CLEAN > "$T/drafts/lf/launch.review.out"
+printf 'Review %s; write exactly CLEAN or the findings to %s/drafts/lf/launch.review.out.\n' "$T/drafts/lf/launch.md" "$T" > "$L3"
+check "a review launch records the draft's sha256 and moves the earlier verdict to .prev" "0 $sha CLEAN no-out" "$(launch "Execute $L3") $(cut -d' ' -f1 "$T/drafts/lf/launch.review.out.launch") $(cat "$T/drafts/lf/launch.review.out.prev") $([ -e "$T/drafts/lf/launch.review.out" ] && echo out || echo no-out)"
+check "BLOCK: a duplicate of that launch, its job still open, leaves the verdict its reviewer wrote in place" "2 CLEAN" "$(echo CLEAN > "$T/drafts/lf/launch.review.out"; launch "Execute $L3") $(cat "$T/drafts/lf/launch.review.out")"
+python3 "$R/bin/agent-job" done "$L3" >/dev/null; echo x >> "$T/drafts/lf/launch.md"
+printf 'Review %s; write exactly CLEAN or the findings to %s/drafts/lf/launch.review-r3.out.\n' "$T/drafts/lf/launch.md" "$T" > "$L3"
+check "BLOCK: a round-3 output <name>.review-r3.out checks <name>.md's post-lint" 2 "$(launch "Execute $L3")"
+printf 'A title\n' > "$T/drafts/lf/title.md"; sha256sum "$T/drafts/lf/title.md" | cut -d' ' -f1 | tr -d '\n' > "$T/drafts/lf/title.md.lint.sha"
+printf 'Review %s and write exactly CLEAN or findings to %s/drafts/lf/title.out.\n' "$T/drafts/lf/title.md" "$T" > "$T/drafts/lf/title-ticket.md"
+check "BLOCK: a review whose brief names a drafts/ output not named after its draft, naming the rename; <name>.review.out launches" "2 1 0" "$(launch_in "Execute $T/drafts/lf/title-ticket.md" | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?) $(grep -c 'name it <name>.review.out' "$T/err") $(printf 'Review %s and write exactly CLEAN or findings to %s/drafts/lf/title.review.out.\n' "$T/drafts/lf/title.md" "$T" > "$T/drafts/lf/title-ticket2.md"; launch "Execute $T/drafts/lf/title-ticket2.md")"
+python3 "$R/bin/agent-job" done "$T/drafts/lf/title-ticket2.md" >/dev/null
+CT="$T/drafts/ctx"; mkdir -p "$CT"; printf 'A title\n' > "$CT/title.md"; sha256sum "$CT/title.md" | cut -d' ' -f1 | tr -d '\n' > "$CT/title.md.lint.sha"; echo 'R1.1 should: old' > "$CT/title.review-small-r1.out"; echo CLEAN > "$CT/title.review-r3.out"
+printf 'Review %s, reading the earlier verdicts %s and %s; write exactly CLEAN or the findings.\n' "$CT/title.md" "$CT/title.review-small-r1.out" "$CT/title.review-r3.out" > "$CT/ticket.md"
+check "a review whose task names its output (output to <out>) and whose brief cites earlier verdicts launches, recording only that output and leaving the cited files" "0 launch none none R1.1 should: old CLEAN" "$(launch "Execute $CT/ticket.md; output to $CT/title.review.out") $([ -e "$CT/title.review.out.launch" ] && echo launch || echo none) $(ls "$CT"/title.review-small-r1.out.* "$CT"/title.review-r3.out.* 2>/dev/null | wc -l | sed 's/^0$/none/') $([ -e "$CT/title.review-r3.out.prev" ] && echo prev || echo none) $(cat "$CT/title.review-small-r1.out") $(cat "$CT/title.review-r3.out")"
+python3 "$R/bin/agent-job" done "$CT/ticket.md" >/dev/null
+check "BLOCK: a review whose task names a drafts/ output not named after its draft (output to drafts/title.out), naming the rename" "2 1" "$(launch_in "Execute $CT/ticket.md; output to $CT/title.out" | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?) $(grep -c 'name it <name>.review.out' "$T/err")"
 # ---------- pr-steps: a shape record is a real pass ----------
 G="$T/prs"; mkdir -p "$G"; git -C "$G" init -q; git -C "$G" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 prs() { (cd "$G" && bash "$R/bin/pr-steps" "$@" >/dev/null 2>&1; echo $?); }
@@ -2593,6 +2630,29 @@ check "a kill that sends no signal (-0, -s 0, -n 0, -l, -L) after a process sear
 check "BLOCK: ps selecting by user, name, group, terminal or all, a numeric value or a -p beside it too; ps by PIDs or parent PIDs alone passes" "2 2 2 2 2 2 2 0 0 0 0 0 0 0 0" "$(guard 'p=$(ps -u 1000 -o pid=); kill $p' a1) $(guard 'while ps -u 1000 -o pid= | grep -q 123; do sleep 1; done' a1) $(guard 'p=$(ps -p 1 -C node -o pid=); kill $p' a1) $(guard 'while ps -p 1 -e; do sleep 1; done' a1) $(guard 'while ps -g 5 -o pid=; do sleep 1; done' a1) $(guard 'while ps -t 1 -o pid=; do sleep 1; done' a1) $(guard 'while ps -p 1 ax; do sleep 1; done' a1) $(guard 'while ps -p1,2 -o pid=; do sleep 1; done' a1) $(guard 'while ps --ppid 1 -o pid=; do sleep 1; done' a1) $(guard 'while ps -q 1; do sleep 1; done' a1) $(guard 'while ps 1234; do sleep 1; done' a1) $(guard 'while ps -fp 1234; do sleep 1; done' a1) $(guard 'while ps -o pid= -p $pid; do sleep 5; done' a1) $(guard 'while ps -p "$pid" -o user,args; do sleep 5; done' a1) $(guard 'while ps --pid 1 --format args; do sleep 1; done' a1)"
 check "BLOCK: pkill -f behind wrappers (timeout, netns-run, nice, ionice) and inside their bash -c; a plain timeout run passes" "2 2 2 0" "$(guard "timeout 200 netns-run bash -c 'pnpm build; pkill -f \"vike preview\"; true'") $(guard 'nice -n 19 ionice -c3 pkill -f vite') $(guard 'timeout -k 5 60 pkill -f vite') $(guard 'timeout 60 nice -n 19 pnpm test')"
 check "reading a .review.out, gate-pass, a claude -p reviewer's stdout and an agent writing its own output pass" "0 0 0 0" "$(guard 'cat /w/x.review.out > /w/copy.md') $(guard 'gate-pass /w/x.md /w/x.review.out') $(guard 'claude -p "$(cat /w/p.md)" > /w/x.review.out') $(guard 'echo CLEAN > /w/x.review.out' a1)"
+# a reviewer launched from a shell gets the same post-lint check as an agent, and its launch records the text it is handed
+SL="$T/drafts/sl"; mkdir -p "$SL"; printf 'Fixed in abc1234.\n' > "$SL/b.md"; echo CLEAN > "$SL/b.review.out"; sl_sha=$(sha256sum "$SL/b.md" | cut -d' ' -f1)
+check "BLOCK: codex exec -o <out> on a draft with no passing post-lint, naming post-lint" "2 1" "$(guard "codex exec --skip-git-repo-check -o $SL/b.review.out \"\$(cat $SL/p.md)\" < /dev/null") $(grep -c 'no passing post-lint' "$T/err")"
+printf %s "$sl_sha" > "$SL/b.md.lint.sha"
+check "codex exec -o <out> and claude -p > <out-r2> record the launched text, and the earlier verdict is set aside" "0 $sl_sha CLEAN 0 $sl_sha" "$(guard "codex exec --skip-git-repo-check -o $SL/b.review.out \"\$(cat $SL/p.md)\" < /dev/null") $(cut -d' ' -f1 "$SL/b.review.out.launch") $(cat "$SL/b.review.out.prev") $(guard "claude -p --effort high < $SL/p.md > $SL/b.review-r2.out") $(cut -d' ' -f1 "$SL/b.review-r2.out.launch")"
+check "codex exec -o \"\$out\" and claude -p > \"\$out\", the output in a variable, record their launch" "0 $sl_sha 0 $sl_sha" "$(guard "out=$SL/b.review-r4.out; codex exec --skip-git-repo-check -o \"\$out\" \"\$(cat $SL/p.md)\" < /dev/null") $(cut -d' ' -f1 "$SL/b.review-r4.out.launch" 2>&1) $(guard "out=$SL/b.review-r5.out; claude -p < $SL/p.md > \"\$out\"") $(cut -d' ' -f1 "$SL/b.review-r5.out.launch" 2>&1)"
+mkdir -p "$T/drafts/amb"; for n in a b; do printf 'Draft %s.\n' "$n" > "$T/drafts/amb/$n.md"; sha256sum "$T/drafts/amb/$n.md" | cut -d' ' -f1 | tr -d '\n' > "$T/drafts/amb/$n.md.lint.sha"; echo CLEAN > "$T/drafts/amb/$n.review.out"; done
+check "BLOCK: a reviewer's output that may be one of two paths (a reassignment in an untaken branch), naming the fix; both verdicts stay in place" "2 1 CLEAN CLEAN" "$(guard "out=$T/drafts/amb/a.review.out; if false; then out=$T/drafts/amb/b.review.out; fi; codex exec --skip-git-repo-check -o \"\$out\" \"\$(cat $SL/p.md)\" < /dev/null") $(grep -c 'pass its absolute path, written out or assigned once' "$T/err") $(cat "$T/drafts/amb/a.review.out") $(cat "$T/drafts/amb/b.review.out")"
+check "BLOCK: a reviewer's launch in a command another segment of which is refused leaves its earlier verdict and records nothing" "2 CLEAN none" "$(echo CLEAN > "$SL/b.review-r6.out"; guard "codex exec --skip-git-repo-check -o $SL/b.review-r6.out \"\$(cat $SL/p.md)\" < /dev/null; gh pr create --draft --title Fix --body-file /w/b.md") $(cat "$SL/b.review-r6.out") $([ -e "$SL/b.review-r6.out.launch" ] && echo launch || echo none)"
+mkdir -p "$T/drafts/sn"; printf 'Fixed.\n' > "$T/drafts/sn/body.md"
+check "BLOCK: a shell-launched reviewer writing a drafts/ output not named after its draft (codex -o review.out, claude -p > body.out), naming the rename" "2 1 2 1" "$(guard "codex exec --skip-git-repo-check -o $T/drafts/sn/review.out \"\$(cat $SL/p.md)\" < /dev/null") $(grep -c 'name it <name>.review.out' "$T/err") $(guard "claude -p < $SL/p.md > $T/drafts/sn/body.out") $(grep -c 'name it <name>.review.out' "$T/err")"
+check "BLOCK: a loop's reviewers writing several review outputs, naming the fix" "2 1" "$(guard "for f in a b; do codex exec --skip-git-repo-check -o $T/drafts/amb/\$f.review.out \"\$(cat $SL/p.md)\" < /dev/null; done") $(grep -c 'pass its absolute path, written out or assigned once' "$T/err")"
+printf 'src/a' > "$T/review-key"
+check "BLOCK: a reviewer's output with a computed basename in drafts/ (codex -o, claude -p >), naming the fix" "2 1 2" "$(guard "stem=\$(cat $T/review-key); codex exec --skip-git-repo-check -o \"$T/drafts/amb/\${stem##*/}.review.out\" \"\$(cat $SL/p.md)\" < /dev/null") $(grep -c 'pass its absolute path, written out or assigned once' "$T/err") $(guard "stem=\$(cat $T/review-key); claude -p < $SL/p.md > \"$T/drafts/amb/\${stem##*/}.review.out\"")"
+check "BLOCK: a reviewer's output that may be one of two misnamed drafts/ outputs" 2 "$(guard "out=$T/drafts/sn/a.out; if false; then out=$T/drafts/sn/b.out; fi; codex exec --skip-git-repo-check -o \"\$out\" \"\$(cat $SL/p.md)\" < /dev/null")"
+F1="$T/drafts/r1"; mkdir -p "$F1"; printf 'Fixed.\n' > "$F1/title.md"; f1_sha=$(sha256sum "$F1/title.md" | cut -d' ' -f1); printf %s "$f1_sha" > "$F1/title.md.lint.sha"
+check "a claude -p reviewer's stderr file is a plain write: only its stdout target is its verdict, recorded" "0 $f1_sha" "$(guard "claude -p < \"$F1/prompt.md\" > \"$F1/title.review-r3.out\" 2> \"$F1/review-stderr.out\"") $(cut -d' ' -f1 "$F1/title.review-r3.out.launch" 2>&1)"
+SA="$T/standalone"; mkdir -p "$SA"; printf 'A title\n' > "$SA/title.md"
+check "a standalone reviewer's <name>.review.out outside drafts/, beside an unlinted <name>.md, passes unrecorded" "0 none" "$(guard "folder=$SA; codex exec --skip-git-repo-check -o \"\$folder/title.review.out\" \"Review the title\" < /dev/null") $([ -e "$SA/title.review.out.launch" ] && echo launch || echo none)"
+check "BLOCK: gate-pass on a review output outside drafts/, naming where drafts live" "1 1" "$(echo CLEAN > "$SA/title.review.out"; MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$SA/title.md" "$SA/title.review.out" --kind title >"$T/sa.out" 2>&1; echo $?) $(grep -c 'only a post.s review there records its launch' "$T/sa.out")"
+check "a shell-launched output naming no review output passes though it isn't one known path: a loop's variable, \$(mktemp)" "0 0" "$(guard "for f in a b; do out=$T/\$f.txt; codex exec --skip-git-repo-check -o \"\$out\" \"\$(cat $SL/p.md)\" < /dev/null; done") $(guard "codex exec --skip-git-repo-check -o \"\$(mktemp)\" \"\$(cat $SL/p.md)\" < /dev/null")"
+check "a shell-launched reviewer's output whose real path is outside drafts/ (drafts/../summary.out) passes" 0 "$(guard "codex exec --skip-git-repo-check -o $T/drafts/../summary.out \"\$(cat $SL/p.md)\" < /dev/null")"
+check "BLOCK: the main session writing a launch record or a set-aside verdict, naming the hook, or a round's output" "2 1 2 2" "$(guard "echo x > $SL/b.review.out.launch") $(grep -c 'written by the hook' "$T/err") $(guard "mv $SL/b.review.out.prev $SL/b.review.out.prev") $(guard "echo CLEAN > $SL/b.review-r3.out")"
 check "BLOCK: glab mr create, not a draft, outside a converged repo" 2 "$(glab 'glab mr create --title x')"
 check "BLOCK: glab mr update --ready outside a converged repo" 2 "$(glab 'glab mr update 5 --ready')"
 check "glab mr create --draft passes on a branch with its approach" 0 "$(MERGEWORTHY_WATCHER=off glab 'glab mr create --draft --title x' "$G2")"
