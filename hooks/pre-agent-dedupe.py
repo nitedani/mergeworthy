@@ -65,8 +65,10 @@ if cid:
 L = launch.parse(ti)
 brief = L.brief  # every rule below reads the brief; the files it only names (project notes, installed skills) are read, so their history SHAs pin nothing
 # A gate review (names a review output `.out` and CLEAN) starts only with its output named after its draft and on drafts that passed post-lint in their current form, and once
-# admitted records the text it is handed (review_launch, admit); the files a brief also names in drafts/ (thread record, ledger, parent, report) are not drafts
-review_outs = lambda t: sorted(set(re.findall(r'(/[^\s`\'"()]*/drafts/[^\s`\'"()]+\.out)\b', t))) if re.search(r'\.out\b', t) and 'CLEAN' in t else []
+# admitted records the text it is handed (review_launch, admit). Its outputs are the paths its task or prompt names after `output to` (delegate §Reviewers);
+# a launch with no such clause: every drafts/ `.out` its brief names, the files it also names there (thread record, ledger, parent, report) not being drafts
+said_outs = [p.rstrip('.,;:') for c in re.findall(r'\boutput to (/[^\s`\'"()]+(?: and /[^\s`\'"()]+)*)', str(ti.get('task') or ti.get('prompt') or '')) for p in c.split(' and ')]
+review_outs = lambda t: (sorted(set(said_outs)) or sorted(set(re.findall(r'(/[^\s`\'"()]*/drafts/[^\s`\'"()]+\.out)\b', t)))) if re.search(r'\.out\b', t) and 'CLEAN' in t else []
 reviewed_drafts = lambda t: {p for o in review_outs(t) if (p := review_launch.draft_of(o)) and os.path.isfile(p)}
 if not register:
     for out in review_outs(brief):
