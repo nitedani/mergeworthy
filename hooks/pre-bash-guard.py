@@ -1055,7 +1055,9 @@ def check(t, has_cd):
         block("a review output's .launch and .prev are written by the hook that starts its reviewer, which records the text the reviewer is handed: "
               "launch the review again (mergeworthy:post step 3)")
     if p in ('claude', 'codex'):
-        for w in (opt(a, ['-o', '--output-last-message']) if p == 'codex' else []) + (targets if p == 'claude' and ('-p' in a or '--print' in a) else []):
+        # the verdict is codex's -o file, or claude's stdout: another descriptor's file is a plain write
+        stdout = [t[i + 1] for i, x in enumerate(t[:-1]) if re.fullmatch(r'1?>>?|1?>\||&>>?', x) and not t[i + 1].startswith('/dev/')]
+        for w in (opt(a, ['-o', '--output-last-message']) if p == 'codex' else []) + (stdout if p == 'claude' and ('-p' in a or '--print' in a) else []):
             # only an output that is one fully known path is recorded or name-checked; any other that may land in drafts/ is refused
             vals, paths = where.values(w), where.files(w)
             if isinstance(vals, shellcmd.Unknown) or isinstance(paths, shellcmd.Unknown) or len(vals) != 1 or len(paths) != 1 or shellcmd.PIECE in vals[0]:
