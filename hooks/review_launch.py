@@ -4,12 +4,8 @@ for the draft's text at that launch, whatever the files' times say. The record i
 of who wrote it."""
 import hashlib, os, re, time
 
-FOOTER = 'Harness changes since my last note: '  # the line gate-pass appends after the review: '\n' + FOOTER + '<compare link>\n'
-
-
-def unfooted(data):
-    """The bytes of a draft without the footer line gate-pass appended to it, which no reviewer reads."""
-    return re.sub(rb'\n' + re.escape(FOOTER.encode()) + rb'<\S+>\n\Z', b'', data)
+# the line gate-pass appends to a draft after its review, in gate-pass's own format
+FOOTER = re.compile(rb'\nHarness changes since my last note: <https://github\.com/nitedani/mergeworthy/compare/[0-9a-f]+\.\.\.[0-9a-f]+>\n\Z')
 
 
 def draft_of(out):
@@ -40,12 +36,12 @@ def unlinted(out):
 
 def launch(out):
     """Records that a reviewer the hook admitted (unlinted(out) passed, and nothing else refused it) starts on out's draft: moves a
-    verdict an earlier launch left in out to <out>.prev, and writes <out>.launch as `<sha256 of the draft without its footer> <epoch>`.
+    verdict an earlier launch left in out to <out>.prev, and writes <out>.launch as `<sha256 of the draft> <epoch>`.
     Nothing when out names no draft that exists."""
     draft = draft_of(out)
     if not draft or not os.path.isfile(draft):
         return
-    sha = hashlib.sha256(unfooted(open(draft, 'rb').read())).hexdigest()
+    sha = hashlib.sha256(open(draft, 'rb').read()).hexdigest()
     if os.path.exists(out):
         os.replace(out, out + '.prev')
     with open(out + '.launch', 'w') as f:
@@ -54,13 +50,14 @@ def launch(out):
 
 def reviewed(out, draft):
     """(why, epoch): why a gate refuses out's verdict for draft (no valid launch record, or another text launched; '' when its reviewer
-    was handed draft's text, footer aside), and the epoch of that launch (None without a valid record)."""
+    was handed draft's bytes, or them before one FOOTER line), and the epoch of that launch (None without a valid record)."""
     try: m = re.fullmatch(r'([0-9a-f]{64}) (\d+)\n?', open(out + '.launch').read())
     except OSError: m = None
     if not m:
         return (misnamed(out) or f"{out} has no recorded review launch: start the reviewer through delegate_task, the Agent tool, "
                 f"`codex exec -o {out}` or `claude -p … > {out}`, which records the text it is handed (post step 3)"), None
-    if m[1] != hashlib.sha256(unfooted(open(draft, 'rb').read())).hexdigest():
+    data = open(draft, 'rb').read()
+    if m[1] not in {hashlib.sha256(x).hexdigest() for x in (data, FOOTER.sub(b'', data))}:
         return (f"the draft changed after its review {out} was launched: lint it again (post step 2), then send it back to the reviewer "
                 "(post step 3)"), int(m[2])
     return '', int(m[2])
