@@ -1056,16 +1056,14 @@ def check(t, has_cd):
               "launch the review again (mergeworthy:post step 3)")
     if p in ('claude', 'codex'):
         for w in (opt(a, ['-o', '--output-last-message']) if p == 'codex' else []) + (targets if p == 'claude' and ('-p' in a or '--print' in a) else []):
-            vals = where.files(w)  # a launch that may set aside a verdict needs its output as one path, known before it runs
-            if isinstance(vals, shellcmd.Unknown):
-                if review_launch.draft_of(where.expand(w)):
+            # only an output that is one fully known path is recorded or name-checked; any other that may land in drafts/ is refused
+            vals, paths = where.values(w), where.files(w)
+            if isinstance(vals, shellcmd.Unknown) or isinstance(paths, shellcmd.Unknown) or len(vals) != 1 or len(paths) != 1 or shellcmd.PIECE in vals[0]:
+                seen = [where.expand(w), *([] if isinstance(vals, shellcmd.Unknown) else vals), *([] if isinstance(paths, shellcmd.Unknown) else paths)]
+                if any(re.search(r'(^|/)drafts/', x) for x in seen):
                     block(f"the review output {w} can't be placed: pass its absolute path, written out or assigned once")
                 continue
-            if len(vals) != 1:
-                if any(review_launch.draft_of(v) for v in vals):
-                    block(f"the reviewer's output {w} may be more than one path: write the output path out, or assign it once")
-                continue
-            out = vals[0]
+            out = paths[0]
             if why := review_launch.misnamed(out):
                 block(why)
             if review_launch.draft_of(out):

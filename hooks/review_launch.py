@@ -1,5 +1,5 @@
 """The text a post's reviewer was handed. The hooks that start a reviewer (pre-agent-dedupe, pre-bash-guard) check unlinted() on its
-output while they admit the launch, and call launch() once nothing refused it; gate-pass calls reviewed(), so a verdict counts only
+output while they admit the launch, and call launch() once the launching hook admitted it; gate-pass calls reviewed(), so a verdict counts only
 for the draft's text at that launch, whatever the files' times say. The record is a workflow check of what those hooks see, not proof
 of who wrote it."""
 import hashlib, os, re, time
@@ -36,8 +36,8 @@ def unlinted(out):
 
 
 def launch(out):
-    """Records that a reviewer the hook admitted (unlinted(out) passed, and nothing else refused it) starts on out's draft: moves a
-    verdict an earlier launch left in out to <out>.prev, and writes <out>.launch as `<sha256 of the draft> <epoch>`.
+    """Records, once the launching hook admitted it (unlinted(out) passed), that a reviewer starts on out's draft: moves a verdict
+    an earlier launch left in out to <out>.prev, and writes <out>.launch as `<sha256 of the draft> <epoch>`.
     Nothing when out names no draft that exists."""
     draft = draft_of(out)
     if not draft or not os.path.isfile(draft):
