@@ -234,7 +234,8 @@ c = sqlite3.connect(sys.argv[1])
 c.execute("create table projection_projects (project_id text primary key, workspace_root text not null, deleted_at text, archived_at text)")
 for i, (url, deleted, archived) in enumerate((('https://github.com/vikejs/vike.git', None, None), ('git@github.com:o/quiet.git', None, None),
         ('https://github.com/o/broken', None, None), ('ssh://git@gitlab.com/g/r.git', None, None), ('git@github.com:o/big', None, None),
-        ('https://github.com/o/archived.git', None, '2026-11-01T00:00:00Z'), ('https://github.com/o/deleted.git', '2026-11-01T00:00:00Z', None), (None, None, None))):
+        ('https://github.com/o/archived.git', None, '2026-11-01T00:00:00Z'), ('https://github.com/o/deleted.git', '2026-11-01T00:00:00Z', None), (None, None, None),
+        ('https://user@github.com/o/userinfo.git', None, None), ('https://gitlab.example.com/o/selfhost.git', None, None), ('https://github.com/o/forge.git', None, None))):
     ws = os.path.join(sys.argv[2], str(i)); os.makedirs(ws)
     if url:
         subprocess.run(['git', 'init', '-q', ws], check=True); subprocess.run(['git', '-C', ws, 'remote', 'add', 'origin', url], check=True)
@@ -430,6 +431,14 @@ mkdir "$T/noglab"; ln -s "$T/bin/gh" "$T/bin/t3" /usr/bin/python3 /usr/bin/touch
 rm -f "$L/runs.txt" "$T/prompt"; PATH="$T/noglab" /usr/bin/python3 "$R/bin/project-learn" start >/dev/null 2>"$T/err"; rc=$?
 check "start with no glab on PATH: the GitLab repo FAILED saying so; vike still goes to the thread; no traceback" "1 1 1 0" \
   "$rc $(grep -c "; 1 to sort: vikejs/vike; FAILED: g/r (project-learn: no glab on PATH" "$L/runs.txt") $(tail -n1 "$T/prompt" | grep -cx "Lists: $L/lists/vikejs__vike.txt") $(grep -c Traceback "$T/err")"
+
+# a study is covered by an origin on the forge its listing reads: a GitHub origin with a user, a self-hosted GitLab origin; a GitHub origin doesn't cover a study read on GitLab
+for r in userinfo selfhost forge; do printf '# o/%s\n## Who decides\nboss\n' $r > "$P/o/$r.md"; printf 'Studied: 2026-10-29\n' > "$P/o/$r.study.md"; done
+echo '- https://gitlab.example.com/o/selfhost' >> "$P/o/selfhost.md"; echo '- https://gitlab.com/o/forge' >> "$P/o/forge.md"
+rm -f "$L/runs.txt"; : > "$T/gh-calls"; : > "$T/glab-calls"; out=$(python3 "$R/bin/project-learn" start 2>/dev/null)
+check "start: a GitHub origin with a user in its URL covers its study; a self-hosted GitLab origin covers its study, read on that host; a GitHub origin doesn't cover a study read on gitlab.com" "1 1 1 0" \
+  "$(grep -c userinfo "$T/gh-calls" | sed 's/^[1-9][0-9]*$/1/') $(grep -c '^api --hostname gitlab.example.com .*selfhost' "$T/glab-calls" | sed 's/^[1-9][0-9]*$/1/') $(echo "$out" | grep -c '^o/forge: not the origin') $(grep -c forge "$T/glab-calls")"
+rm "$P/o/userinfo."* "$P/o/selfhost."* "$P/o/forge."*
 
 # a maintainer's commit made before the mark and pushed after it: listed once (its date is when it was made, not pushed)
 printf '# o/late\n## Who decides\nboss merges.\n' > "$P/o/late.md"; lm=$(date -u -d '-1 hour' +%FT%TZ); printf 'Studied: 2026-10-01\nLearned: %s\n' "$lm" > "$P/o/late.study.md"
