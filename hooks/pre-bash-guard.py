@@ -87,12 +87,16 @@ def check_union(d, repo, num, base=None, branch=None, head=None):
               f"`pr-steps union --conflict {sha}` here. A red union: change this one until it is green or conflicts, or stack it (mergeworthy:converge §Stacked PRs); "
               f"tell {mark}{n}'s session only if {mark}{n} must change")
 
+def pr_ready(a):
+    """Whether `gh <a>` is a `gh pr ready` taking the PR out of draft: no --undo in any spelling (--undo=true), no -h or --help."""
+    return a[:2] == ['pr', 'ready'] and not any(x in ('-h', '--help', '--undo') or re.fullmatch(r'--undo=(?!(false|0|f)$).*', x, re.I) for x in a)
+
 DRAFT_TITLE = re.compile(r'\s*(\[draft\]|\(draft\)|draft:|draft\b|\[wip\]|wip:)', re.I)  # GitLab's draft prefixes
 def goes_ready(p, a, env, run_dir):
     """(repo, number, base, branch) of the PR or MR this command opens ready or takes out of draft, with the base it ends on (None: its own),
     for the records check and check_union alike; None for any other command. A push to a ready PR is gated where pushes are."""
     if '--help' in a or '-h' in a: return None
-    if p == 'gh' and a[:2] == ['pr', 'ready'] and '--undo' not in a:
+    if p == 'gh' and pr_ready(a):
         return (*post_target('pr', a[2:], env, run_dir), None, None)
     if p == 'gh' and a[:2] == ['pr', 'create'] and not {'--draft', '-d'} & set(a):
         return gh_repo(a[2:], env, run_dir), None, (opt(a[2:], ['--base', '-B']) or [None])[-1], None
@@ -1100,7 +1104,7 @@ def check(t, has_cd):
             block(why)
     if any(os.path.realpath(x).startswith(RECORDS) for x in written):
         block("the step records in ~/.claude/pr-steps are written by `pr-steps <step> <its output>` alone, which checks the output first")
-    if p == 'gh' and a[:2] == ['pr', 'ready'] and '--undo' not in a:
+    if p == 'gh' and pr_ready(a):
         check_refactor_ask(*post_target('pr', a[2:], env, run_dir), comment=False)
     if p == 'gh' and a[:2] == ['pr', 'create'] and '--help' not in a and '-h' not in a:
         check_workflow('`gh pr create`', known(run_dir), [git_head(run_dir)])

@@ -2656,7 +2656,7 @@ rm "$FX/pr_view_5"
 check "BLOCK: a PR gh can't read, asking to retry" "2 1" "$(GH_STUB_403=1 rdy 'gh pr ready 5 -R o/r' "$G2") $(grep -c "couldn't read the head this command makes ready.*retry once gh answers" "$T/err")"
 check "BLOCK: a number gh finds no PR for, saying to check the repository and number" "2 1 0" "$(rdy 'gh pr ready 1 -R o/r' "$G2") $(grep -c "finds no PR (no pull requests found.*name no PR this account can see, so check them" "$T/err") $(grep -c 'retry once' "$T/err")"
 : > "$T/rdy.args"
-check "gh pr ready --undo and -h never read the PR" "0 0 0" "$(rdy 'gh pr ready 5 -R o/r --undo' "$GO") $(rdy 'gh pr ready 5 -R o/r -h' "$GO") $(grep -c 'pulls/5' "$T/rdy.args")"
+check "gh pr ready --undo, --undo=true, -h and --help, with no PR of the checkout too, never read the PR" "0 0 0 0 0" "$(rdy 'gh pr ready 5 -R o/r --undo' "$GO") $(rdy 'gh pr ready --undo=true 5 -R o/r' "$GO") $(rdy 'gh pr ready -h' "$GO") $(rdy 'gh pr ready --help' "$GO") $(grep -c 'pr view' "$T/rdy.args")"
 # pre-bash-guard: `gh pr merge` waits for a PR that is up to date with its base and whose CI ran after the base last touched its files; never --admin
 M='gh pr merge 41 -R o/r --squash --delete-branch --subject "Fix it (#41)" --body ""'
 mpr() { # mergeStateStatus, when its last check completed
