@@ -16,7 +16,7 @@ deleted.
   and isn't busy.
 - w-done, once a day: a folder directly under ~/.mergeworthy/work but the steward's, whole, once T3 deleted the thread its t3-thread
   names, or, with no settled, archived or unanswered thread, once its watcher retired and it is untouched for 8 days, its watcher's own files aside,
-  which a 24-hour change doesn't count either; its watchers stop first; a repo in it with a worktree outside keeps it; then `git worktree
+  which a 24-hour change doesn't count either; a watcher still running in it keeps it (busy); a repo in it with a worktree outside keeps it; then `git worktree
   prune` in each repo outside it that had a worktree in it; ~/.mergeworthy/work-kept.md lists each finished folder that stays, and why.
 - w-merged, once a day: each worktree in the steward's folder whose branch is merged (into origin/main with a commit of its own, or
   squash-merged: gone from origin, GitHub showing a merged PR headed at its tip), with no uncommitted change, untouched for 8 days
@@ -367,35 +367,12 @@ def thread_state(folder):
     return 'deleted' if re.match(rf'Thread {re.escape(tid)} (?:is no longer available|was not found)\.', r.stderr.strip()) else 'unknown'
 
 
-def stop_watchers(folder):
-    """Stop the watchers whose watch dir is folder or a folder directly in it, as gh-watch.py's stop_watcher does on Linux: disable the
-    systemd unit, drop the cron lines, SIGTERM the daemon gh-watch.pid names while it works in that dir; then wait up to 10 s for them."""
-    dirs = [d for d in [folder] + sorted(e.path for e in os.scandir(folder) if e.is_dir(follow_symlinks=False)) if os.path.isfile(os.path.join(d, 'gh-watch.pid'))]
-    for d in dirs:
-        authorized(d)
-        if os.path.isfile(os.path.join(HOME, '.config', 'systemd', 'user', 'gh-watch@.service')):
-            esc = subprocess.run(['systemd-escape', '--path', d], capture_output=True, text=True).stdout.strip()
-            subprocess.run(['systemctl', '--user', 'disable', '--now', f'gh-watch@{esc}.service'], capture_output=True)
-        tab = subprocess.run(['crontab', '-l'], capture_output=True, text=True) if shutil.which('crontab') else None
-        if tab and not tab.returncode and f'# gh-watch {d}' in tab.stdout:
-            subprocess.run(['crontab', '-'], input=''.join(l + '\n' for l in tab.stdout.splitlines() if not l.endswith(f'# gh-watch {d}')), text=True)
-        try:
-            pid = int(open(os.path.join(d, 'gh-watch.pid')).read().strip())
-            if os.readlink(f'/proc/{pid}/cwd') == os.path.realpath(d):  # not a PID since reused elsewhere
-                os.kill(pid, 15)
-        except (OSError, ValueError):
-            pass
-    for _ in range(100):
-        if not any(in_use(d) for d in dirs):
-            return
-        time.sleep(0.1)
-
-
 def sweep_work():
     """Once a day, w-done: each folder directly under work_folder.ROOT but the steward's whose T3 thread is deleted (thread_state), or whose
     watcher retired and that is untouched for IDLE outside its watcher's files (watcher_file) while no such thread is settled, archived or unanswered:
-    once no such file changed in 24 hours and no repo in it lends a worktree outside it (work_folder.lent), its watchers stop and it is
-    deleted whole through delete(); ~/.mergeworthy/work-kept.md (a dry run: stdout) lists each finished folder that stays, and why."""
+    once no such file changed in 24 hours and no repo in it lends a worktree outside it (work_folder.lent), it is deleted whole through
+    delete(), which keeps it while a watcher still runs there (busy); ~/.mergeworthy/work-kept.md (a dry run: stdout) lists each finished
+    folder that stays, and why."""
     root = work_folder.ROOT
     if not due('work', DAY) or os.path.islink(root) or not os.path.isdir(root):
         return
@@ -423,8 +400,6 @@ def sweep_work():
         except Exception as err:  # this folder stays; the next ones and the other rules still run
             why = [f'check failed: {err}']
         if not why:
-            if not DRY:
-                stop_watchers(e.path)
             if refused := delete(e.path, e.path, dev, 'w-done', vcs=False, skip=skip):
                 why = [refused]
             elif not DRY:

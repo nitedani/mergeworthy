@@ -220,7 +220,7 @@ check "the home-wide walk runs at most once a day" kept "$(there "$H7/proj/app/d
 check "caches: pnpm, npm (stale _cacache) and pip by their own commands; stale tool-cache and cargo entries go, a fresh one, an unnamed ~/.cache folder an old Playwright browser and an old entry read today stay" "npm cache clean --force|pip cache purge|pnpm store prune| removed removed removed kept kept kept kept" "$(sort -u "$T/tools.log" | tr '\n' '|') $(there "$H7/.cache/yarn/stale") $(there "$H7/.cargo/registry/cache/idx") $(there "$H7/.cargo/git/checkouts/c") $(there "$H7/.cache/yarn/fresh") $(there "$H7/.cache/drafts") $(there "$H7/.cache/ms-playwright/chromium_headless_shell-1200") $(there "$H7/.cache/yarn/readnow")"
 check "a weekly report names the stale folder no rule covers, and deletes nothing" "1 0 kept" "$(cat "$H7/.mergeworthy/disk-report.md" 2>/dev/null | grep -c "$H7/old-stuff") $(cat "$H7/.mergeworthy/disk-report.md" 2>/dev/null | grep -c "$H7/.cache/yarn") $(there "$H7/old-stuff/sub/big")"
 
-# w-done over a whole sweep: the dry run, then a deleting one, with a fake t3 (deleted, not found, settled, archived, live), systemctl and crontab
+# w-done over a whole sweep: the dry run, then a deleting one, with a fake t3 (deleted, not found, settled, archived, live)
 cat > "$T/bin/t3" <<'EOF'
 #!/bin/sh
 # stub t3: `t3 thread show <id> --json --messages 0` answers by the id's prefix, as T3's CLI does for a deleted or unknown thread
@@ -234,13 +234,11 @@ case "$3" in
   *) echo 'T3 is not running' >&2; exit 1;;
 esac
 EOF
-printf '#!/bin/sh\necho "$*" >> "%s/systemctl.log"\n' "$T" > "$T/bin/systemctl"
-printf '#!/bin/sh\n# stub crontab: -l prints %s/crontab.txt, - replaces it\ncase "$1" in -l) cat "%s/crontab.txt" 2>/dev/null || exit 1;; -) cat > "%s/crontab.txt";; esac\n' "$T" "$T" "$T" > "$T/bin/crontab"
-chmod +x "$T/bin/t3" "$T/bin/systemctl" "$T/bin/crontab"
+chmod +x "$T/bin/t3"
 H9="$T/home9"; W9="$H9/.mergeworthy/work"; mkdir -p "$W9" "$H9/.claude/agent-jobs" "$H9/.config/systemd/user"; : > "$H9/.config/systemd/user/gh-watch@.service"
 G init -q --bare -b main "$T/w-origin.git"; G init -q -b main "$T/w-seed"; printf 'node_modules\n' > "$T/w-seed/.gitignore"; G -C "$T/w-seed" add .gitignore; G -C "$T/w-seed" commit -qm base; G -C "$T/w-seed" push -q "$T/w-origin.git" main
 mk() { G clone -q "file://$T/w-origin.git" "$W9/$1/repo"; [ -z "${2:-}" ] || printf '%s\n%s\n' "$2" "${3:-}" > "$W9/$1/t3-thread"; }  # file://: no git object hard-linked across folders aged apart
-mk deleted del-1 "$T/bin/t3"; mk settled set-1; mk archived arc-1; mk liveold live-1; mk liveyoung live-2; mk live live-3; mk noold; mk noyoung; mk busy del-2; mk fresh del-3; mk lender del-4; mk broken bad-1; mk unknown err-1; mk steward del-9; mk t3dir live-4; mk noanswer err-2
+mk deleted del-1 "$T/bin/t3"; mk settled set-1; mk archived arc-1; mk liveold live-1; mk liveyoung live-2; mk live live-3; mk noold; mk noyoung; mk busy del-2; mk fresh del-3; mk lender del-4; mk broken bad-1; mk unknown err-1; mk steward del-9; mk t3dir live-4; mk noanswer err-2; mk watched del-6
 mkdir -p "$W9/notfound"; echo nf-1 > "$W9/notfound/t3-gone"
 echo x > "$W9/deleted/repo/notes.txt"; G -C "$W9/deleted/repo" commit -q --allow-empty -m 'only here'  # an uncommitted file and a commit on no remote
 G -C "$W9/lender/repo" worktree add -q -b side "$T/lent-wt"
@@ -253,14 +251,13 @@ mkdir -p "$W9/t3dir/t3-carry" "$W9/t3dir/gh-watch-fix"; echo 999999999 > "$W9/t3
 echo x > "$W9/t3dir/t3-carry/fix.py"; echo x > "$W9/t3dir/gh-watch-fix/fix.py"; touch -d '3 days ago' "$W9/t3dir/t3-carry/fix.py" "$W9/t3dir/gh-watch-fix/fix.py"  # checkouts with a watcher file's name, edited 3 days ago
 echo 999999999 > "$W9/noold/gh-watch.pid"; : > "$W9/noold/events.log"; : > "$W9/noold/gh-watch-state.json"  # a stopped watcher's files, written now
 touch "$W9/fresh/repo/README"; bash -c "cd '$W9/busy' && exec sleep 600" & BUSY=$!
-bash -c "cd '$W9/deleted' && exec sleep 600" & WATCH=$!; sleep 0.2; echo "$WATCH" > "$W9/deleted/gh-watch.pid"; : > "$W9/deleted/gh-watch-state.json"  # its watcher, still running
-printf '*/5 * * * * gh-watch-start x # gh-watch %s\n@daily other job\n' "$W9/deleted" > "$T/crontab.txt"; : > "$T/systemctl.log"
+bash -c "cd '$W9/watched' && exec sleep 600" & WATCH=$!; sleep 0.2; echo "$WATCH" > "$W9/watched/gh-watch.pid"; : > "$W9/watched/gh-watch-state.json"  # its watcher, not yet stopped
 HOME="$H9" python3 "$R/bin/disk-sweep" > "$T/dry9.out" 2>&1
 check "a dry run prints w-done's deletions and the kept folders' rows, and deletes nothing" "1 1 kept no" "$(grep -c "^[^ ]* [0-9][0-9]* $W9/notfound w-done$" "$T/dry9.out") $(grep -c "^- $W9/settled: " "$T/dry9.out") $(there "$W9/notfound") $([ -e "$H9/.mergeworthy/work-kept.md" ] && echo yes || echo no)"
 HOME="$H9" python3 "$R/bin/disk-sweep" --delete > "$T/run9.out" 2>&1
 KEPT="$H9/.mergeworthy/work-kept.md"; row() { grep -cx -- "- $W9/$1: $2" "$KEPT"; }
 check "w-done deletes the folder of a thread T3 deleted, its uncommitted file and local-only commit with it, logged before and after" "removed deleting|deleted|" "$(there "$W9/deleted") $(grep "^[^ ]* [0-9][0-9]* $W9/deleted w-done " "$H9/.mergeworthy/disk-sweep.log" | cut -d' ' -f5 | tr '\n' '|')"
-check "its running watcher is stopped first: the unit disabled, the cron lines dropped, the daemon ended" "1 @daily other job| gone" "$(grep -cx -- "--user disable --now gh-watch@$(systemd-escape --path "$W9/deleted").service" "$T/systemctl.log") $(tr '\n' '|' < "$T/crontab.txt") $(kill -0 "$WATCH" 2>/dev/null && echo alive || echo gone)"
+check "the sweep stops no watcher: a deleted thread's folder whose watcher still runs there stays this run, its row naming it busy, the watcher alive" "kept 1 alive" "$(there "$W9/watched") $(row watched 'a process or agent job works in it') $(kill -0 "$WATCH" 2>/dev/null && echo alive || echo gone)"
 check "a thread t3 calls not found (t3-gone) is deleted too" removed "$(there "$W9/notfound")"
 check "a settled or archived thread keeps its folder, its row saying T3 decides" "kept kept 1 1" "$(there "$W9/settled") $(there "$W9/archived") $(row settled 'its T3 thread is settled or archived; it goes once T3 deletes the thread') $(row archived 'its T3 thread is settled or archived; it goes once T3 deletes the thread')"
 check "a retired folder untouched for 8 days goes, with a live thread or none, its watcher's fresh files aside; 7 days stays, its row naming the date" "removed removed kept kept 1" "$(there "$W9/liveold") $(there "$W9/noold") $(there "$W9/liveyoung") $(there "$W9/noyoung") $(row noyoung "its watcher retired; deleted no sooner than $YOUNG if left untouched")"
@@ -271,10 +268,12 @@ check "a deleted thread's folder stays while a process works in it or a file cha
 check "a folder whose repo has a worktree outside it stays, its row naming it" "kept 1" "$(there "$W9/lender") $(row lender "$W9/lender/repo: its worktree $(readlink -f "$T")/lent-wt is outside the folder")"
 check "a folder whose check fails stays with that reason; t3 giving no answer and the steward's folder keep theirs, with no row" "kept 1 kept kept 0" "$(there "$W9/broken") $(grep -c "^- $W9/broken: check failed: " "$KEPT") $(there "$W9/unknown") $(there "$W9/steward") $(grep -c "$W9/unknown:\|$W9/steward:" "$KEPT")"
 check "a deleted folder's worktree of a repo outside: that repo's entry is pruned, so its branch can be checked out there" "removed 1 0" "$(there "$W9/fix") $(G -C "$T/user9" worktree list | wc -l) $(G -C "$T/user9" switch -q fix-1 2>&1 | wc -l)"
-check "the deleting run's rows are the dry run's, but the folder whose watcher it stopped" same "$([ "$(grep '^- ' "$T/dry9.out" | grep -v "$W9/deleted:")" = "$(grep '^- ' "$KEPT")" ] && echo same)"
+check "the deleting run's rows are the dry run's" same "$([ "$(grep '^- ' "$T/dry9.out")" = "$(grep '^- ' "$KEPT")" ] && echo same)"
 ln -s "$W9" "$T/w9link"
 check "delete() through a symlinked path deletes nothing and says why" "a symlink on its path kept" "$(dsm 'm.DRY = False; p = sys.argv[3]; print(m.delete(p, p, os.lstat(p).st_dev, "w-done", vcs=False))' "$T/w9link/settled") $(there "$W9/settled")"
-kill "$BUSY"; wait "$BUSY" "$WATCH" 2>/dev/null
+kill "$BUSY" "$WATCH"; wait "$BUSY" "$WATCH" 2>/dev/null
+rm "$H9/.mergeworthy/disk-sweep.work"; HOME="$H9" python3 "$R/bin/disk-sweep" --delete > /dev/null 2>&1
+check "once the watcher stopped itself, the next day's sweep deletes the folder" removed "$(there "$W9/watched")"
 
 # c-ignored: Rust's target, a project's .pnpm-store, .venv and .mypy_cache go when git ignores them, and stay when it tracks them
 HB="$T/homeb"; B="$HB/b-work"; mkdir -p "$HB/.mergeworthy"
