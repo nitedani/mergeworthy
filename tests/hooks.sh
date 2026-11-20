@@ -1519,6 +1519,12 @@ check "BLOCK: an implementation brief whose session read only an agent's report 
 python3 -c 'import json,sys; print(json.dumps({"type":"assistant","timestamp":sys.argv[1],"message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":sys.argv[2]}}]}}))' "$now" "D=$RD; cd \"\$D\" && sed -n 1,80p src/a.ts" > "$T/tr-var.jsonl"
 python3 -c 'import json,sys; print(json.dumps({"type":"assistant","timestamp":sys.argv[1],"message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":sys.argv[2]}}]}}))' "$now" "D=$RD; git -C \"\$D\" show HEAD:src/a.ts" > "$T/tr-gshow.jsonl"
 check "a read in a checkout named by a variable the command set (cd \"\$D\" && sed, git -C \"\$D\" show) passes too" "0 0" "$(agt "$B" "$T/tr-var.jsonl") $(agt "$B" "$T/tr-gshow.jsonl")"
+# the check reads the transcript's end, not all of it: a 2 GB prefix before a call older than 3 hours, under a 400 MB memory cap
+truncate -s 2G "$T/tr-big.jsonl"; printf '\n' >> "$T/tr-big.jsonl"
+python3 -c 'import json,sys; print(json.dumps({"type":"assistant","timestamp":sys.argv[1],"message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"ls"}}]}}))' "$(date -u -d '-4 hours' +%FT%T.000Z)" >> "$T/tr-big.jsonl"
+cat "$T/tr-read.jsonl" >> "$T/tr-big.jsonl"
+check "a session transcript with a 2 GB start passes on its recent read under a 400 MB memory cap" 0 "$(ulimit -v 409600; agt "$B" "$T/tr-big.jsonl")"
+rm "$T/tr-big.jsonl"
 # #87: a walk up from '' (a brief's `//`) or from '//' (a `cat //`) ends at the root instead of looping until the hook's timeout
 python3 -c 'import json,sys; [print(json.dumps({"type":"assistant","timestamp":sys.argv[1],"message":{"content":[{"type":"tool_use","name":n,"input":i}]}})) for n, i in (("Read",{"file_path":sys.argv[2]}),("Bash",{"command":"cat //"}))]' "$now" "$RD/src/a.ts" > "$T/tr-root.jsonl"
 check "a brief with a // TODO line, a session that ran cat //, and both (#87), launched outside a checkout, pass in time" "0 0 0" \
