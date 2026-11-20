@@ -133,7 +133,7 @@ if [ "$step" = small ]; then
   base=$(pbase); [ -n "$base" ] || { echo "no merge-base with the base branch" >&2; exit 1; }
   testre=$(python3 "$(dirname "$(realpath "$0")")/../hooks/testpaths.py")
   docs='\.md$|(^|/)docs?/'
-  skip="$testre|$docs"'|lock\.(json|yaml)$|\.lock$|(^|/)\.changeset/'
+  skip=$(python3 "$(dirname "$(realpath "$0")")/../hooks/testpaths.py" not-code)
   n=$(git -c core.quotePath=false diff --numstat "$base" HEAD | not_built | awk -F'\t' -v r="$skip" '$3 !~ r {s+=$1+$2} END{print s+0}')
   [ "$n" -le 60 ] || { echo "$n changed lines outside tests, docs, lockfiles and build output (dist/, linguist-generated): past a small fix's 60, run converge steps 1-4" >&2; exit 1; }
   if ! git diff --name-only --diff-filter=AM "$base" HEAD | grep -Eq "$testre"; then

@@ -44,9 +44,10 @@ if not register and d.get('tool_name') in ('Agent', 'Task') and under_t3() and t
 if not register and ti.get('role') == 'review' and under_t3():
     target = ti.get('target') or {}
     provider = {target.get('providerInstanceId'), target.get('driverKind')} - {None, ''}
-    if (not provider or 'claudeAgent' in provider) and not re.search(r'^Fallback:[ \t]*\S', str(ti.get('task') or ''), re.M):
+    # the fallback keeps the first review's prompt, so its claim may sit in the brief file the task names
+    if (not provider or 'claudeAgent' in provider) and not re.search(r'\bFallback:[ \t]*\S', launch.Launch(str(ti.get('task') or '')).brief):
         sys.stderr.write("BLOCKED: an independent check starts on another company's model (mergeworthy:delegate §Reviewers): set target.providerInstanceId to codex. "
-                         "Only when that call failed, launch on this company with a line `Fallback: <what failed>` in the task.\n")
+                         "Only when that call failed, launch on this company with `Fallback: <what failed>` in the task or the brief file it names.\n")
         refused()
 # T3 answers a delegate_task whose clientRequestId it has seen with that earlier task's result, without running anything.
 # Reuse is allowed only within 10 minutes (a retry of the same launch).
