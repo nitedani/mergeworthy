@@ -40,12 +40,14 @@ if not register and d.get('tool_name') in ('Agent', 'Task') and under_t3() and t
     sys.stderr.write("BLOCKED: under T3 Code a background Agent stops when this turn ends (T3 starts a new session for the next one). "
                      "Launch it with delegate_task (mergeworthy:delegate step 4), or with run_in_background: false for a child that finishes within this turn.\n")
     refused()
+L = launch.parse(ti)
+brief = L.brief  # every rule below reads the brief; the files it only names (project notes, installed skills) are read, so their history SHAs pin nothing
 # This hook runs only under Claude Code, so a review on claudeAgent, or naming no provider (it inherits), is on the main session's company
 if not register and ti.get('role') == 'review' and under_t3():
     target = ti.get('target') or {}
     provider = {target.get('providerInstanceId'), target.get('driverKind')} - {None, ''}
-    # the fallback keeps the first review's prompt, so its claim may sit in the brief file the task names
-    if (not provider or 'claudeAgent' in provider) and not re.search(r'\bFallback:[ \t]*\S', launch.Launch(str(ti.get('task') or '')).brief):
+    # the fallback keeps the first review's prompt, so its claim may sit in the brief file the task names; a quoted bare label (`Fallback:`) claims nothing
+    if (not provider or 'claudeAgent' in provider) and not re.search(r'\bFallback:[ \t]*[^\s`]', brief):
         sys.stderr.write("BLOCKED: an independent check starts on another company's model (mergeworthy:delegate §Reviewers): set target.providerInstanceId to codex. "
                          "Only when that call failed, launch on this company with `Fallback: <what failed>` in the task or the brief file it names.\n")
         refused()
@@ -63,8 +65,6 @@ if cid:
         seen.setdefault(cid, time.time())
         with open(ids + '.tmp', 'w') as f: json.dump(seen, f)
         os.replace(ids + '.tmp', ids)
-L = launch.parse(ti)
-brief = L.brief  # every rule below reads the brief; the files it only names (project notes, installed skills) are read, so their history SHAs pin nothing
 # A gate review (names a review output `.out` and CLEAN) starts only with its output named after its draft and on drafts that passed post-lint in their current form, and once
 # admitted records the text it is handed (review_launch, admit). Its outputs are the paths its task or prompt names after `output to` (delegate §Reviewers);
 # a launch with no such clause: every drafts/ `.out` its brief names, the files it also names there (thread record, ledger, parent, report) not being drafts
