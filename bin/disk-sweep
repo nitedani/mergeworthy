@@ -396,9 +396,9 @@ def sweep_work():
     root = work_folder.ROOT
     if not due('work', DAY) or os.path.islink(root) or not os.path.isdir(root):
         return
-    dev, rows, own = os.lstat(root).st_dev, [], os.path.realpath(steward.folder())
+    dev, rows = os.lstat(root).st_dev, []
     for e in sorted(os.scandir(root), key=lambda e: e.name):
-        if not e.is_dir(follow_symlinks=False) or os.path.realpath(e.path) == own:
+        if not e.is_dir(follow_symlinks=False) or steward.in_folder(e.path):
             continue
         skip, linked = watcher_file(e.path), []
         try:

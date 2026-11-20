@@ -13,6 +13,12 @@ def folder():
     """The steward's folder: the first word of ~/.mergeworthy/steward, else ~/.mergeworthy/work/steward (mergeworthy:steward)."""
     return (read() or (os.path.expanduser('~/.mergeworthy/work/steward'),))[0]
 
+def in_folder(path):
+    """True for the steward's folder or a dir in it (<S>, <S>/live): disk-sweep's w-done keeps it, and its watchers don't stop when T3
+    deletes the steward's thread, since T3 can settle and then delete that thread while the steward's PRs are open."""
+    own, p = os.path.realpath(folder()), os.path.realpath(path)
+    return p == own or p.startswith(own + os.sep)
+
 def live():
     """The live dir, <folder>/live: the watcher a pass leaves on what it posted (mergeworthy:steward), which answers like any work folder's."""
     return os.path.join(folder(), 'live')

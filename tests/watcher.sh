@@ -1022,13 +1022,17 @@ def run(name, tid):
     m.tick(); os.remove(os.path.join(m.HERE, name))
     return "stopped" if os.path.exists(log) else "runs"
 out = [run("t3-thread", t) for t in ("thr-s", "thr-a", "thr-d", "thr-none")] + [run("t3-gone", "thr-d")]
+steward_file = os.path.expanduser("~/.mergeworthy/steward"); os.makedirs(os.path.dirname(steward_file), exist_ok=True)
+open(steward_file, "w").write(m.HERE + " thr-d\n"); here = m.HERE
+out.append(run("t3-thread", "thr-d")); m.HERE = os.path.join(here, "live"); os.makedirs(m.HERE); out.append(run("t3-thread", "thr-d"))
+shutil.rmtree(m.HERE); m.HERE = here; os.remove(steward_file)
 os.remove(db); here = m.HERE; m.HERE = os.path.join(here, "gone"); os.makedirs(m.HERE); shutil.rmtree(m.HERE)
 with contextlib.suppress(FileNotFoundError): os.remove(log)
 m.tick(); m.HERE = here
 print(*out, "stopped" if os.path.exists(log) else "runs")
 ')
-check "tick(): a thread T3 deleted, in t3-thread or t3-gone, or one T3 has no row for, stops the watcher, a settled or archived one doesn't; a watch dir that is gone stops it too" \
-  "runs runs stopped stopped stopped stopped" "$got"
+check "tick(): a thread T3 deleted, in t3-thread or t3-gone, or one T3 has no row for, stops the watcher, a settled or archived one doesn't, nor the steward's <S> and <S>/live on its deleted thread; a watch dir that is gone stops it too" \
+  "runs runs stopped stopped stopped runs runs stopped" "$got"
 rm -f "$T/bin/systemctl" "$T/systemctl.log"
 rm -f "$W/events.log" "$W/t3-wake.cursor" "$W/t3-thread" "$W/t3-gone"
 rm -f "$W/retired"
