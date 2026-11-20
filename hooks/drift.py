@@ -24,7 +24,7 @@ def over(d, head='HEAD', pending=None, amend=False):
         if 'finality' in steps or not start and steps & {'verify', 'small', 'shape', 'reverify', 'fresh'}: start = c
     if not start: return {}
     count = {}
-    # per commit `\0<sha>\n<message>\0`, then `\n<file>\0<file>\0` (none for a merge commit): no part is empty, so `\0\0` is only where a commit ends
+    # git prints `\0<sha>\n<message>\0` per commit, then `\n` and `<file>\0` for each file it changed (none for a merge): `\0\0` is where a commit ends
     log = g('log', '--first-parent', '--reverse', '--no-diff-merges', '--no-renames', '--name-only', '-z', '--format=%x00%H%n%B', f'{start}..{head}')
     for commit in log[1:-1].split('\0\0'):
         message, _, names = commit.partition('\0\n')
