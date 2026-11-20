@@ -37,16 +37,17 @@ REVIEWED = re.compile(r'^\|\s*Commit\s*\|.*\|\s*Rating\s*\|', re.M)  # the commi
 TABLE = r'(?:^[ \t]*\|[^\n]*\n?)+'
 def uncollapsed(s):
     """s without its collapsed blocks: each <details> (its tag's attributes or spaces included) to its own close, the blocks nested in it with it.
-    Only tags that render as HTML count: one written as an example, in code, is text."""
-    out, depth, start = [], 0, 0
+    A <details open> block shows expanded, so it stays, a collapsed one inside it still left out. Only tags that render as HTML count: one
+    written as an example, in code, is text."""
+    out, opened, start = [], [], 0  # opened: for each block not yet closed, whether it is collapsed
     for a, b in post_words.html_tags(s, r'<details\b(?:[^>"\']|"[^"]*"|\'[^\']*\')*>|</details\s*>'):  # a quoted value may hold a >
         if s[a + 1] != '/':
-            if depth == 0: out.append(s[start:a]); start = a
-            depth += 1
-        elif depth:
-            depth -= 1
-            if depth == 0: start = b
-    return ''.join(out) + s[start:]  # an unclosed block stays in the text, from its <details> on, so it is linted and counted
+            collapsed = not re.search(r'\sopen(?=[\s=/>])', re.sub(r'"[^"]*"|\'[^\']*\'', '', s[a:b]))
+            if collapsed and not any(opened): out.append(s[start:a]); start = a
+            opened.append(collapsed)
+        elif opened:
+            if opened.pop() and not any(opened): start = b
+    return ''.join(out) + s[start:]  # an unclosed collapsed block stays in the text, from its <details> on, so it is linted and counted
 QUOTE = re.compile(r'^\s*(?:(?:[-*]|\d+[.)])\s+)?>.*$', re.M)  # a quoted line, in a list item too: someone else's words
 VISIBLE = lambda s: uncoded(re.sub(r'<!--[\s\S]*?-->', '', s))  # what GitHub renders as text: no HTML comments, no fenced code
 BOUND = 45  # words a rated row's rendered cell, or its table's header in all, leaves out of the count: #3609's longest rating reason is 45
