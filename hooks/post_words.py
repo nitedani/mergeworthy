@@ -186,11 +186,11 @@ def shows_evidence(s, title):
     anywhere in it: a fence or code block, a Markdown image, or an HTML token that isn't a comment with `<img` anywhere in it (an attribute
     value too). A fence's contents, inline code and an HTML comment are none of these tokens."""
     see = _section(without_details(s), title) or []
-    def lines(inline):  # a paragraph's rendered lines, split at its line breaks, without the empty text tokens markdown-it adds
+    def lines(inline):  # a paragraph's rendered lines, split at its line breaks, without empty text tokens or a line's leading spaces and tabs, unrendered
         line = []
         for c in inline.children:
             if _breaks(c): yield line; line = []
-            elif c.type != 'text' or c.content: line.append((c.type, c.content))
+            elif c.type != 'text' or c.content.strip(' \t') or line and c.content: line.append((c.type, c.content))
         yield line
     item = any(p.type == 'paragraph_open' and p.level == 0 and any(l[:3] == [('strong_open', ''), ('text', '1.'), ('strong_close', '')] for l in lines(t))
                for p, t in zip(see, see[1:]))
