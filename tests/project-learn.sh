@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Tests for bin/project-learn (the daily project-file learning run). Usage: tests/project-learn.sh [repo root]
+# Tests for bin/project-learn (what task step 4 learns). Usage: tests/project-learn.sh [repo root]
 # Temp HOME with project files and studies; a stub gh answering GET paths and GraphQL queries from recorded vikejs/vike responses
-# (trimmed), a stub t3.
+# (trimmed).
 set -u
 R=$(readlink -f "${1:-$(dirname "$0")/..}")
-T=$(mktemp -d); trap 'rm -rf "$T"' EXIT; export HOME="$T/home"; P="$HOME/.mergeworthy/projects"; L="$HOME/.mergeworthy/work/project-learn"
+T=$(mktemp -d); trap 'rm -rf "$T"' EXIT; export HOME="$T/home"; P="$HOME/.mergeworthy/projects"
 mkdir -p "$P/vikejs" "$P/o" "$HOME/.mergeworthy/work/a" "$T/bin"
 fails=0
 check() { echo "$1: $3 (want $2)"; [ "$2" = "$3" ] || fails=$((fails+1)); }
@@ -145,15 +145,6 @@ if key.startswith('search:'):  # one page of 100 a request, counting what it mat
     open("$T/searches", "a").write(f"{time.time()}\t{n}\t{v['total_count']}\t{q}\n")
 print(json.dumps([v]))
 EOF
-cat > "$T/bin/t3" <<EOF
-#!/bin/sh
-echo "t3 \$*" >> "$T/t3-calls"
-[ -e "$T/t3-down" ] && { echo "server not reachable" >&2; exit 1; }
-case "\$2" in
-  add) touch "$T/t3-project" ;;
-  start) [ -e "$T/t3-project" ] || exit 1; printf '%s\n' "\$6" > "$T/prompt"; echo thread-1 ;;
-esac
-EOF
 chmod +x "$T/bin/"*; export PATH="$T/bin:/usr/bin:/bin"  # no real t3 or gh is ever reachable
 
 # ---------- list: each kind a maintainer leaves on our work, and their reviews on others' PRs, after the mark, not yet sorted ----------
@@ -225,71 +216,6 @@ check "mark again: one Learned line, moved in place" "1 2" "$(grep -c '^Learned:
 check "mark: refuses a time before the Learned line, though after Studied" 1 "$(python3 "$R/bin/project-learn" mark vikejs/vike 2026-10-29T12:00:00Z >/dev/null 2>&1; echo $?)"
 printf 'Studied: 2026-10-29\n' > "$P/vikejs/vike.study.md"
 check "with no Learned line, a full study's date is the mark, at that day's start" "after 2026-10-29T00:00:00Z" "$(TZ=Etc/GMT-1 python3 "$R/bin/project-learn" list vikejs/vike | head -n1 | grep -o 'after [^ ]*')"
-
-# ---------- start: once a day; a repo with nothing new is marked without a thread; the rest go to one T3 thread ----------
-# this machine's T3 Code projects, each a workspace whose origin remote is its repo: only these are learned
-mkdir -p "$HOME/.t3/userdata"; python3 - "$HOME/.t3/userdata/statev2.sqlite" "$T/ws" <<'PY'
-import os, sqlite3, subprocess, sys
-c = sqlite3.connect(sys.argv[1])
-c.execute("create table projection_projects (project_id text primary key, workspace_root text not null, deleted_at text, archived_at text)")
-for i, (url, deleted, archived) in enumerate((('https://github.com/vikejs/vike.git', None, None), ('git@github.com:o/quiet.git', None, None),
-        ('https://github.com/o/broken', None, None), ('ssh://git@gitlab.com/g/r.git', None, None), ('git@github.com:o/big', None, None),
-        ('https://github.com/o/archived.git', None, '2026-11-01T00:00:00Z'), ('https://github.com/o/deleted.git', '2026-11-01T00:00:00Z', None), (None, None, None),
-        ('https://user@github.com/o/userinfo.git', None, None), ('https://gitlab.example.com/o/selfhost.git', None, None), ('https://github.com/o/forge.git', None, None), ('git@github.com:o/nostudy.git', None, None), ('git@[2001:db8::1]:group/repo.git', None, None))):
-    ws = os.path.join(sys.argv[2], str(i)); os.makedirs(ws)
-    if url:
-        subprocess.run(['git', 'init', '-q', ws], check=True); subprocess.run(['git', '-C', ws, 'remote', 'add', 'origin', url], check=True)
-    c.execute("insert into projection_projects values (?, ?, ?, ?)", (f"p{i}", ws, deleted, archived))
-c.commit()
-PY
-printf '# o/quiet\n## Who decides\nboss\n' > "$P/o/quiet.md"; printf 'Studied: 2026-10-29\n' > "$P/o/quiet.study.md"
-printf '# o/nostudy\n' > "$P/o/nostudy.md"
-for r in elsewhere archived deleted; do printf '# o/%s\n## Who decides\nboss\n' $r > "$P/o/$r.md"; printf 'Studied: 2026-10-29\n' > "$P/o/$r.study.md"; done
-printf 'Studied: 2026-10-32\n' > "$P/o/elsewhere.study.md"  # a date no one parses: only a covered repo's study is read
-touch "$T/t3-down"
-check "start with T3 down: exit 1, a runs.txt line saying it failed and why" "1 1" \
-  "$(python3 "$R/bin/project-learn" start >/dev/null 2>&1; echo $?) $(grep -c "^$(date -u +%F) .* FAILED: t3 thread start failed: server not reachable" "$L/runs.txt")"
-rm "$T/t3-down"; mv "$T/bin/t3" "$T/t3.off"
-check "start with no t3 on PATH: exit 1, a runs.txt line saying so" "1 1" \
-  "$(python3 "$R/bin/project-learn" start >/dev/null 2>&1; echo $?) $(grep -c "FAILED: no t3 on PATH" "$L/runs.txt")"
-mv "$T/t3.off" "$T/bin/t3"; : > "$T/t3-calls"
-out=$(python3 "$R/bin/project-learn" start); rc=$?
-check "start after a failed run the same day: runs; o/quiet marked to now without a thread, its Studied kept; vike's list waits for the thread" "0 Studied: 2026-10-29 1 0" \
-  "$rc $(head -n1 "$P/o/quiet.study.md") $(grep -c "^Learned: $(date -u +%F)T" "$P/o/quiet.study.md") $(grep -c '^Learned:' "$P/vikejs/vike.study.md")"
-check "start: one thread, started after adding the folder as a T3 project, its prompt naming the cap and vike's list" "1 1 1 1" \
-  "$(grep -c "^t3 project add --title project-learn $L$" "$T/t3-calls") $(grep -c "^t3 thread start --title Project-file learning $(date -u +%F) $L " "$T/t3-calls" | sed 's/^2$/1/') $(grep -c 'over 2500 words' "$T/prompt") $(tail -n1 "$T/prompt" | grep -cx "Lists: $L/lists/vikejs__vike.txt")"
-check "start: the prompt names this project-learn by its path for the mark (T3 starts the thread with its own PATH) and the projects folder" "1 1" \
-  "$(grep -c "\`project-learn\` being \`$R/bin/project-learn\`" "$T/prompt") $(grep -c "studies are in $P;" "$T/prompt")"
-check "start: the day's run recorded with its thread and the repos it sorts" 1 "$(grep -c "^$(date -u +%F) .* thread thread-1; 1 to sort: vikejs/vike$" "$L/runs.txt")"
-check "start: a repo without a study is skipped, saying so" 1 "$(echo "$out" | grep -c '^o/nostudy: no study')"
-check "start: studied repos that aren't T3 projects here (none, one with a date that doesn't parse, archived, deleted) are skipped, saying so, unmarked, not in runs.txt" "1 1 1 0 0" \
-  "$(echo "$out" | grep -c '^o/elsewhere: not the origin of a T3 Code project here, skipped$') $(echo "$out" | grep -c '^o/archived: not the origin') $(echo "$out" | grep -c '^o/deleted: not the origin') \
-$(cat "$P/o/elsewhere.study.md" "$P/o/archived.study.md" "$P/o/deleted.study.md" | grep -c '^Learned:') $(grep -cE 'elsewhere|archived|deleted' "$L/runs.txt")"
-: > "$T/t3-calls"
-check "start again the same day: nothing listed, no thread" "already 0" "$(python3 "$R/bin/project-learn" start | grep -o already) $(wc -l < "$T/t3-calls")"
-
-printf '%s\n' "$(date -u +%F) $(date -u +%FT%TZ) thread thread-2; 1 to sort: vikejs/vike; FAILED: o/other (gh failed)" > "$L/runs.txt"; : > "$T/t3-calls"
-check "start the same day after a run whose thread started though one repo's list failed: no second thread" "already 0" "$(python3 "$R/bin/project-learn" start | grep -o already) $(wc -l < "$T/t3-calls")"
-printf '%s\n' "$(date -u +%F) $(date -u +%FT%TZ) no thread: nothing to sort; 0 to sort; FAILED: vikejs/vike (gh failed)" > "$L/runs.txt"; : > "$T/t3-calls"
-check "start the same day after a run whose lists failed and started no thread: runs again, its thread started" "0 1" "$(python3 "$R/bin/project-learn" start | grep -c already) $(grep -c '^t3 thread start ' "$T/t3-calls")"
-
-mv "$HOME/.t3/userdata/statev2.sqlite" "$T/statev2.sqlite"; rm -r "$L/runs.txt" "$L/lists"; : > "$T/t3-calls"; : > "$T/gh-calls"; rm "$P/o/quiet.study.md"; printf 'Studied: 2026-10-29\n' > "$P/o/quiet.study.md"
-out=$(python3 "$R/bin/project-learn" start 2>&1); rc=$?
-check "start without T3's database: exit 1, one line saying so, a runs.txt line saying so; nothing fetched, listed, marked or started" "1 1 1 1 0 0 0 0" \
-  "$rc $(echo "$out" | grep -c "^project-learn: FAILED: T3 Code's database can't be read") $(echo "$out" | wc -l) $(grep -c "^$(date -u +%F) .* FAILED: T3 Code's database can't be read" "$L/runs.txt") \
-$(wc -l < "$T/gh-calls") $(ls "$L/lists" | wc -l) $(grep -c '^Learned:' "$P/o/quiet.study.md") $(wc -l < "$T/t3-calls")"
-mv "$T/statev2.sqlite" "$HOME/.t3/userdata/statev2.sqlite"; rm "$P/o/elsewhere."* "$P/o/archived."* "$P/o/deleted."*
-mkdir "$T/nogit"; ln -s "$T/bin/gh" "$T/bin/t3" /usr/bin/python3 "$T/nogit/"; rm -f "$L/runs.txt"
-PATH="$T/nogit" /usr/bin/python3 "$R/bin/project-learn" start >/dev/null 2>"$T/err"; rc=$?
-check "start with no git on PATH: exit 1, a runs.txt line saying git can't run; no traceback" "1 1 0" \
-  "$rc $(grep -c "^$(date -u +%F) .* FAILED: git can't run (No such file or directory)" "$L/runs.txt" 2>/dev/null) $(grep -c Traceback "$T/err")"
-
-# a repo whose list fails, over the cap: the thread still condenses it, its failure named
-rm "$L/runs.txt"; printf '# o/broken\n## Who decides\nboss\n' > "$P/o/broken.md"; yes word | head -n 2501 >> "$P/o/broken.md"; printf 'Studied: 2026-10-29\n' > "$P/o/broken.study.md"; : > "$T/t3-calls"
-python3 "$R/bin/project-learn" start >/dev/null 2>&1; rc=$?
-check "start: an over-cap repo whose list fails goes to the thread to condense, its list saying so; the run names the failure and exits 1" "1 1 1 1" \
-  "$rc $(tail -n1 "$T/prompt" | grep -cx "Lists: $L/lists/o__broken.txt $L/lists/vikejs__vike.txt") $(head -n1 "$L/lists/o__broken.txt" | grep -c "^# o/broken: the list failed (.*unexpected gh.*): condense the project file only; don't mark it$") $(grep -c "^$(date -u +%F) .* thread thread-1; 2 to sort: o/broken vikejs/vike; FAILED: o/broken (" "$L/runs.txt")"
-rm "$P/o/broken.md" "$P/o/broken.study.md"
 
 # ---------- GitLab: the project file names the repo's GitLab URL, so glab reads it; invented answers in the shapes glab gives ----------
 # (the award emoji are made up in the shape of the empty answers glab gives)
@@ -428,26 +354,6 @@ check "GitLab: 11 items, ending with the mark that covers them" "11 1" "$(grep -
 python3 -c 'import json,sys; m=json.load(open(sys.argv[1])); m["graphql:mergeRequests"]=m["graphql:issues"]={"data":{"project":None}}; json.dump(m,open(sys.argv[1],"w"))' "$T/glab.json"
 python3 "$R/bin/project-learn" list g/r >/dev/null 2>"$T/err"; rc=$?
 check "GitLab: a null project fails the list naming the repo and why, no traceback" "1 1 0" "$rc $(grep -c "glab on gitlab.com can't read g/r (not logged in" "$T/err") $(grep -c Traceback "$T/err")"
-rm -f "$L/runs.txt" "$T/prompt"; python3 "$R/bin/project-learn" start >/dev/null 2>"$T/err"; rc=$?
-check "start: a GitLab repo glab can't read is FAILED in runs.txt with why; vike still goes to the thread; no traceback" "1 1 1 0" \
-  "$rc $(grep -c "^$(date -u +%F) .* thread thread-1; 1 to sort: vikejs/vike; FAILED: g/r (project-learn: glab on gitlab.com can't read" "$L/runs.txt") $(tail -n1 "$T/prompt" | grep -cx "Lists: $L/lists/vikejs__vike.txt") $(grep -c Traceback "$T/err")"
-python3 -c 'import json,sys; m=json.load(open(sys.argv[1])); m["graphql:mergeRequests"]="an answer of an unexpected shape"; json.dump(m,open(sys.argv[1],"w"))' "$T/glab.json"
-rm -f "$L/runs.txt" "$T/prompt"; python3 "$R/bin/project-learn" start >/dev/null 2>"$T/err"; rc=$?
-check "start: any exception in one repo's list (here an answer of an unexpected shape) is that repo's FAILED line; vike still goes to the thread" "1 1 1 0" \
-  "$rc $(grep -c "; 1 to sort: vikejs/vike; FAILED: g/r (AttributeError: " "$L/runs.txt") $(tail -n1 "$T/prompt" | grep -cx "Lists: $L/lists/vikejs__vike.txt") $(grep -c Traceback "$T/err")"
-mkdir "$T/noglab"; ln -s "$T/bin/gh" "$T/bin/t3" /usr/bin/python3 /usr/bin/touch /usr/bin/git "$T/noglab/"  # every command start runs, but glab
-rm -f "$L/runs.txt" "$T/prompt"; PATH="$T/noglab" /usr/bin/python3 "$R/bin/project-learn" start >/dev/null 2>"$T/err"; rc=$?
-check "start with no glab on PATH: the GitLab repo FAILED saying so; vike still goes to the thread; no traceback" "1 1 1 0" \
-  "$rc $(grep -c "; 1 to sort: vikejs/vike; FAILED: g/r (project-learn: no glab on PATH" "$L/runs.txt") $(tail -n1 "$T/prompt" | grep -cx "Lists: $L/lists/vikejs__vike.txt") $(grep -c Traceback "$T/err")"
-
-# a study is covered by an origin on the forge its listing reads: a GitHub origin with a user, a self-hosted GitLab origin; a GitHub origin doesn't cover a study read on GitLab
-for r in userinfo selfhost forge; do printf '# o/%s\n## Who decides\nboss\n' $r > "$P/o/$r.md"; printf 'Studied: 2026-10-29\n' > "$P/o/$r.study.md"; done
-echo '- https://gitlab.example.com/o/selfhost' >> "$P/o/selfhost.md"; echo '- https://gitlab.com/o/forge' >> "$P/o/forge.md"
-rm -f "$L/runs.txt"; : > "$T/gh-calls"; : > "$T/glab-calls"; out=$(python3 "$R/bin/project-learn" start 2>/dev/null)
-check "start: a GitHub origin with a user in its URL covers its study; a self-hosted GitLab origin covers its study, read on that host; a GitHub origin doesn't cover a study read on gitlab.com" "1 1 1 0" \
-  "$(grep -c userinfo "$T/gh-calls" | sed 's/^[1-9][0-9]*$/1/') $(grep -c '^api --hostname gitlab.example.com .*selfhost' "$T/glab-calls" | sed 's/^[1-9][0-9]*$/1/') $(echo "$out" | grep -c '^o/forge: not the origin') $(grep -c forge "$T/glab-calls")"
-rm "$P/o/userinfo."* "$P/o/selfhost."* "$P/o/forge."*
-
 # a maintainer's commit made before the mark and pushed after it: listed once (its date is when it was made, not pushed)
 printf '# o/late\n## Who decides\nboss merges.\n' > "$P/o/late.md"; lm=$(date -u -d '-1 hour' +%FT%TZ); printf 'Studied: 2026-10-01\nLearned: %s\n' "$lm" > "$P/o/late.study.md"
 python3 - "$T/gh.json" "$(date -u -d '-30 min' +%FT%TZ)" "$(date -u -d '-3 hours' +%FT%TZ)" "$(date -u -d '-2 days' +%FT%TZ)" "$(date -u -d '-5 days' +%FT%TZ)" <<'PY'
@@ -488,23 +394,19 @@ check "list only prints: no file under ~/.mergeworthy outside the projects folde
 check "mark: Commits read keeps the listed commits of the last 7 days, the study's earlier ones too, dropping one 9 days old" "0 1 1" "$(grep -c 1111111 "$P/o/late.study.md") $(grep -c '^Commits read: .*cafe000@' "$P/o/late.study.md") $(grep -c '^Commits read: .*fffffff@' "$P/o/late.study.md")"
 rm "$P/o/late.md" "$P/o/late.study.md"
 
-# a trial run on copies: both folders through the environment, relative, from another directory; the thread runs in the learn folder
+# a trial run on copies: the projects folder through the environment, relative, from another directory; mark moves the copy's study
 C="$T/cwd"; mkdir -p "$C/rel/projects/vikejs"; cp "$T/vike.md" "$C/rel/projects/vikejs/vike.md"; printf 'Studied: 2026-10-29\n' > "$C/rel/projects/vikejs/vike.study.md"
-cp "$P/vikejs/vike.study.md" "$T/vike.study.real"; rm -f "$L/runs.txt" "$T/prompt"
-(cd "$C" && MERGEWORTHY_PROJECTS=rel/projects MERGEWORTHY_LEARN_DIR=rel/learn python3 "$R/bin/project-learn" start >/dev/null 2>&1)
-cmd=$(sed -n 's/.*`project-learn` being `\([^`]*\)`.*/\1/p' "$T/prompt")
-(cd "$C/rel/learn" && bash -c "$cmd $(tail -n1 lists/vikejs__vike.txt | cut -d' ' -f5-)" >/dev/null 2>&1)
-check "start from another directory with relative MERGEWORTHY_PROJECTS and MERGEWORTHY_LEARN_DIR: runs.txt and the list in the learn folder, none in HOME's; the prompt names both folders absolute; the thread's mark, run from the learn folder, moves the copy's study, not the real one" "1 1 0 1 1 1" \
-  "$(grep -c 'thread thread-1; 1 to sort: vikejs/vike' "$C/rel/learn/runs.txt" 2>/dev/null) $(tail -n1 "$T/prompt" | grep -cx "Lists: $C/rel/learn/lists/vikejs__vike.txt") $(ls "$L/runs.txt" 2>/dev/null | wc -l) \
-$(grep -cF "being \`MERGEWORTHY_PROJECTS=$C/rel/projects MERGEWORTHY_LEARN_DIR=$C/rel/learn $R/bin/project-learn\`. The project files and studies are in $C/rel/projects;" "$T/prompt") $(grep -c '^Learned: ' "$C/rel/projects/vikejs/vike.study.md") $(cmp -s "$P/vikejs/vike.study.md" "$T/vike.study.real" && echo 1 || echo 0)"
+cp "$P/vikejs/vike.study.md" "$T/vike.study.real"
+(cd "$C" && MERGEWORTHY_PROJECTS=rel/projects python3 "$R/bin/project-learn" mark vikejs/vike "$(date -u +%FT%TZ)" >/dev/null 2>&1)
+check "mark from another directory with a relative MERGEWORTHY_PROJECTS moves the copy's study, not the real one" "1 1" \
+  "$(grep -c '^Learned: ' "$C/rel/projects/vikejs/vike.study.md") $(cmp -s "$P/vikejs/vike.study.md" "$T/vike.study.real" && echo 1)"
 
 # a search that matched more than GitHub returns (it stops at 1000): the list fails rather than treat the rest as nothing
 printf '# o/big\n## Who decides\nboss merges.\n' > "$P/o/big.md"; printf 'Studied: 2026-10-29\n' > "$P/o/big.study.md"
 python3 -c 'import json,sys; m=json.load(open(sys.argv[1])); m["search:o/big"]={"total_count":1500,"items":[]}; m["search:o/big:merged"]={"items":[]}; json.dump(m,open(sys.argv[1],"w"))' "$T/gh.json"
 python3 "$R/bin/project-learn" list o/big >/dev/null 2>"$T/err"; rc=$?
-rm -f "$L/runs.txt"; python3 "$R/bin/project-learn" start >/dev/null 2>&1
-check "list: a search GitHub cuts short (0 of 1500) in every part down to one second fails, saying so; start records it under FAILED and leaves its mark" "1 1 1 0" \
-  "$rc $(grep -c "counts 1500 items, all updated in one second (GitHub's search stops at 1000)" "$T/err") $(grep -c 'FAILED: .*o/big (project-learn: the search' "$L/runs.txt") $(grep -c '^Learned:' "$P/o/big.study.md")"
+check "list: a search GitHub cuts short (0 of 1500) in every part down to one second fails, saying so, and leaves the mark" "1 1 0" \
+  "$rc $(grep -c "counts 1500 items, all updated in one second (GitHub's search stops at 1000)" "$T/err") $(grep -c '^Learned:' "$P/o/big.study.md")"
 rm "$P/o/big.md" "$P/o/big.study.md"
 python3 - "$T/gh.json" <<'PY'
 import json, sys

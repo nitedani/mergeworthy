@@ -21,7 +21,7 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 | `review` | `delegate`, `code`, `post`, `writing` |
 | `rules` | `task`, `open-issue`, `delegate`, `reply` |
 | `steward` | `rules`, `delegate`, `writing` |
-| `task` | `post`, `pull-request`, `design`, `reply`, `review`, `open-issue`, `docs`, `writing`, `delegate` |
+| `task` | `delegate`, `post`, `pull-request`, `design`, `reply`, `review`, `open-issue`, `docs`, `writing` |
 | `writing` | nothing |
 
 ## Any multi-step or GitHub task, first; an `/ai` or `/agent` command
@@ -34,15 +34,15 @@ flowchart TB
   subgraph g0["Steps"]
     s0["10 rules: Read the task and every<br/>link in it, Triage, Scope…"]
   end
-  s0 -.-> r1[["post"]]
-  s0 -.-> r2[["pull-request"]]
-  s0 -.-> r3[["design"]]
-  s0 -.-> r4[["reply"]]
-  s0 -.-> r5[["review"]]
-  s0 -.-> r6[["open-issue"]]
-  s0 -.-> r7[["docs"]]
-  s0 -.-> r8[["writing"]]
-  s0 -.-> r9[["delegate"]]
+  s0 -.-> r1[["delegate"]]
+  s0 -.-> r2[["post"]]
+  s0 -.-> r3[["pull-request"]]
+  s0 -.-> r4[["design"]]
+  s0 -.-> r5[["reply"]]
+  s0 -.-> r6[["review"]]
+  s0 -.-> r7[["open-issue"]]
+  s0 -.-> r8[["docs"]]
+  s0 -.-> r9[["writing"]]
   start --> g0
 ```
 
