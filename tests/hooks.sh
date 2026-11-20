@@ -3395,13 +3395,15 @@ check "compose up with Docker-assigned ports passes" 0 "$(dc_guard "DC_FX=$T/ass
 check "compose up on the usual ports when the user asked passes" 0 "$(dc_guard "MERGEWORTHY_HOST_PORTS=user-asked DC_FX=$T/fixed.json docker compose -p x up -d")"
 echo '{"name":"b","services":{"web":{"ports":[{"target":80}]},"db":{},"init":{}}}' > "$T/mem.json"
 echo '{"name":"a","services":{"web":{"ports":[{"target":80}]},"db":{},"init":{}}}' > "$T/mem-a.json"
-printf 'a-web-1\ta\tweb\na-db-1\ta\tdb\nc-db-1\tc\tdb\n' > "$T/ps-same"  # a: b's services, from another folder; c: only db
-printf 'a-init-1\ta\tinit\n' > "$T/ps-same.exited"  # a one-shot service that ran and exited
-printf 'c-db-1\tc\tdb\n' > "$T/ps-other"
+printf 'a-web-1\ta\tweb\t/w/a/compose.yaml\na-db-1\ta\tdb\t/w/a/compose.yaml\nc-db-1\tc\tdb\t/w/c/compose.yaml\n' > "$T/ps-same"  # a: b's services, from another folder; c: only db
+printf 'a-init-1\ta\tinit\t/w/a/compose.yaml\n' > "$T/ps-same.exited"  # a one-shot service that ran and exited
+printf 'a-web-1\ta\tweb\t%s\na-db-1\ta\tdb\t%s\n' "$T/mem.json" "$T/mem.json" > "$T/ps-files"  # b's files, without its one-shot service
+printf 'c-db-1\tc\tdb\t/w/c/compose.yaml\n' > "$T/ps-other"
 printf 'a-web-1\t2GiB / 40GiB\na-db-1\t1024MiB / 40GiB\nc-db-1\t2.5GiB / 40GiB\n' > "$T/stats"
 MEM_UP="DC_STATS=$T/stats docker compose -f $T/mem.json -p b up -d"
 check "BLOCK: compose up when MemAvailable less a running project with its services, from another folder and with a one-shot service exited, is under the headroom, naming it" "2 1 1" "$(MI=$T/mem-tight dc_guard "DC_PS=$T/ps-same $MEM_UP") $(grep -c 'expected peak 3.0 GB.*headroom 4.0 GB' "$T/err") $(grep -c 'a 3.0 GB, c 2.5 GB' "$T/err")"
-check "compose up passes on the same memory when the running projects have other services" 0 "$(MI=$T/mem-tight dc_guard "DC_PS=$T/ps-other $MEM_UP")"
+check "BLOCK: compose up when MemAvailable less a running project from its files, started without one of its services, is under the headroom" "2 1" "$(MI=$T/mem-tight dc_guard "DC_PS=$T/ps-files $MEM_UP") $(grep -c 'expected peak 3.0 GB' "$T/err")"
+check "compose up passes on the same memory when the running projects have other services and other files" 0 "$(MI=$T/mem-tight dc_guard "DC_PS=$T/ps-other $MEM_UP")"
 check "compose up passes when the running project with its services is the one it starts" 0 "$(MI=$T/mem-tight dc_guard "DC_PS=$T/ps-same DC_STATS=$T/stats docker compose -f $T/mem-a.json -p a up -d")"
 check "compose up passes when docker stats fails" 0 "$(MI=$T/mem-tight dc_guard "DC_PS=$T/ps-same docker compose -f $T/mem.json -p b up -d")"
 check "compose up the machine can't hold passes when the user asked" 0 "$(MI=$T/mem-tight dc_guard "MERGEWORTHY_STACK_MEMORY=user-asked DC_PS=$T/ps-same $MEM_UP")"
