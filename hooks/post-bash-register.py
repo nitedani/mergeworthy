@@ -11,7 +11,7 @@ import hashlib, json, os, re, shlex, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
 from shellcmd import segments, prog, new_post_drafts, Where, opened, plain_create, opt, repo_name, discussion_post, discussion_thread_of
-import own_actions, steward, threads_file, work_folder
+import lint_flags, own_actions, steward, threads_file, work_folder
 d = json.load(sys.stdin)
 # the pushes, merges and closes pre-bash-guard let this command make are its own once it succeeded; a failed command's go
 own_actions.settle(own_actions.key(d), d.get('hook_event_name') != 'PostToolUseFailure')
@@ -127,9 +127,7 @@ for s in segs:
     for f in body_files(s):
         f = os.path.expanduser(f[len('body='):] if f.startswith('body=') else f)
         f = f[1:] if f.startswith('@') else f
-        try:
-            flags = open(f + '.lint').read().split()
-        except OSError:
+        if (flags := lint_flags.load(f)) is None:
             continue
         if flags[flags.index('--kind') + 1:][:1] == ['proposal'] and os.path.exists(f + '.posted'):
             open(os.path.expanduser('~/.claude/proposal-rounds.txt'), 'a').write(f'{tg[0]}#{tg[1]} {int(time.time())}\n')
