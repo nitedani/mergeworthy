@@ -4219,6 +4219,8 @@ rm -rf "$KF"; forks '#20 is in review.' 'a'; slj >/dev/null
 python3 -c 'import glob,json,sys; sys.path.insert(0, sys.argv[1]); import report; [p]=glob.glob(sys.argv[2] + "/*.json"); k=json.load(open(p)); k["facts"]["forks_before_last"]=dict.fromkeys(report.forks(sys.argv[3]), 1); json.dump(k, open(p, "w"))' "$R/hooks" "$KF" "$F"
 rm -rf "$T/hk2"; mkdir "$T/hk2"; cp -r "$R/hooks" "$T/hk2/hooks"; echo "# another version" >> "$T/hk2/hooks/transcript_facts.py"
 check "the kept facts are what the next stop reads; another version of the code reads every line again" "2 0" "$(slj "$F") $(R="$T/hk2" slj "$F")"
+keep() { rm -rf "$KF"; forks '#20 is in review.' 'a'; slj >/dev/null; for p in "$KF"/*.json; do printf '%s' "$1" > "$p"; done; slj "$F"; }
+check "a kept file left empty or cut short is read again from the start" "0 0" "$(keep '') $(keep '{"version": "')"
 mkdir -p "$HOME/.mergeworthy/work/tilde"; printf 'Tier: S, because one fix\n' > "$HOME/.mergeworthy/work/tilde/scope.md"
 tr_cmd 'cd ~/.mergeworthy/work/tilde && git push origin HEAD:fix'
 check "a session that pushed from a work folder it spelled with ~, which has a scope.md, isn't told to write one" "0 0" "$(slj 'Pushed the fix.') $(grep -c 'no work folder it used has a scope.md' "$T/err")"
