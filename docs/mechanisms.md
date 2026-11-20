@@ -170,7 +170,7 @@ It parses the whole command with mvdan/sh, the parser of `shfmt` (`hooks/shellcm
 - `--delete-branch` while PRs are based on the branch;
 - a `git commit` whose author isn't the pushing GitHub account (`merging` step 1);
 - `docker compose up` (or `run --service-ports`) publishing a fixed host port or a `container_name`, unless prefixed `MERGEWORTHY_HOST_PORTS=user-asked`;
-- `docker compose up` when MemAvailable, less the memory of a running project with the same services (from any folder), would leave under 10% of MemTotal, unless prefixed `MERGEWORTHY_STACK_MEMORY=user-asked`; a docker that fails or takes over 10 s, or an unreadable /proc/meminfo, lets the stack through;
+- `docker compose up` when MemAvailable, less the memory of a running project of the same stack (started from the same files, or with the same services from any folder), would leave under 10% of MemTotal, unless prefixed `MERGEWORTHY_STACK_MEMORY=user-asked`; a docker that fails or takes over 10 s, or an unreadable /proc/meminfo, lets the stack through;
 - `codex exec` when T3 Code started the session (`delegate §Reviewers`);
 - a loop on a process search (`pgrep`, `pidof`, `ps`, `/proc/*`), by any session; a signal to processes a search picked (`pkill`, `killall`, `kill -1`, a `kill` of PIDs a search in the same command found);
 - `kill` of a running agent's process: stop an agent through its task, after reading its status;
