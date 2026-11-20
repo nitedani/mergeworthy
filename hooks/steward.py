@@ -49,13 +49,13 @@ def sorted_as(ref, verdicts):
     return next((v for k, v in verdicts.items() if k == ref or sha(k) and sha(ref) and (k.startswith(ref) or ref.startswith(k))), None)
 
 def unsorted(wd, older=0):
-    """(line, key, epoch) of each FOLLOW-UP and MAINTAINER REVIEW in wd's events.log more than older seconds old with no verdict in its
+    """(line, key, epoch) of each MAINTAINER REVIEW in wd's events.log more than older seconds old with no verdict in its
     followups-sorted.txt (mergeworthy:rules step 6)."""
     try: log = open(os.path.join(wd, 'events.log'), errors='replace').read()
     except OSError: return []
     done = sorted_verdicts(os.path.join(wd, 'followups-sorted.txt'))
     events = ((m[0], m[1], datetime.datetime.fromisoformat(m[2].replace('Z', '+00:00')).timestamp())
-              for m in re.finditer(r'^### (?:FOLLOW-UP|MAINTAINER REVIEW) [^:\n]+: (\S+) by .*  at (\S+Z)$', log, re.M))
+              for m in re.finditer(r'^### MAINTAINER REVIEW [^:\n]+: (\S+) by .*  at (\S+Z)$', log, re.M))
     return [e for e in dict.fromkeys(events) if time.time() - e[2] > older and not sorted_as(e[1], done)]
 
 # The statuses T3 Code counts as active: a run's (its orchestration_v2_projection_runs_recovery_idx) and a delegated task's (its binary's widest set)
@@ -126,6 +126,11 @@ def settled(tid):
     r = _db(lambda c: c.execute("select json_extract(payload_json, '$.settledOverride') from orchestration_v2_projection_threads where thread_id = ?",
                                 (tid,)).fetchone(), None)
     return bool(r) and r[0] == 'settled'
+
+def deleted(tid):
+    """True once T3 deleted thread tid: its row holds a deleted_at, or T3 has no row for it; False without a thread or T3's database."""
+    return bool(tid) and _db(lambda c: (lambda r: r is None or r[0] is not None)(
+        c.execute("select deleted_at from orchestration_v2_projection_threads where thread_id = ?", (tid,)).fetchone()), False)
 
 def started(run_id):
     """True once T3 started the run, False while it can still start, None when it ended without starting, is gone or can't be read."""

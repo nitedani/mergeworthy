@@ -231,7 +231,7 @@ flowchart TB
   start --> g0
 ```
 
-## A rule, mergeworthy hook or tool failed, can't be followed or was worked around; the user names a failure; a 👎; editing a skill, prompt or rules file; a `### FOLLOW-UP`; the steward's tick
+## A rule, mergeworthy hook or tool failed, can't be followed or was worked around; the user names a failure; a 👎; editing a skill, prompt or rules file; a `### MAINTAINER REVIEW`; the steward's tick
 
 Opens `mergeworthy:rules` (fix the instance, then the rule or an issue for the steward (6 steps)).
 

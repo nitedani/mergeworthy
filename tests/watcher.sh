@@ -650,153 +650,7 @@ check "/agent: beta gets the named, the unrouted (main_dir) and the cross-refere
 check "discovery lists both comment feeds of the watched repo in a pass after something moved in it (and the first), sorted by update, with since; a pass with nothing moved reads none" "feeds: 4 True" "$(grep '^feeds' "$T/agentcalls")"
 check "a routed thread joins its dir's threads.txt, an unrouted one does not" "o/r 1 o/r 407|o/r 2 o/r 408 o/r 410|" "$(echo $(cat "$AD/alpha/threads.txt"))|$(echo $(cat "$AD/beta/threads.txt"))|"
 
-# FOLLOW-UP: commits by others to the lines of your merged PR, and PRs that reference it: each once, to the dirs that list the PR
-rm -rf "$HOME/.mergeworthy/shared-watch.json"*
-follow() { rm -f "$HOME/.mergeworthy/shared-watch.json" "$HOME/.mergeworthy/agent-commands.seen" "$W/replies-owed.md"; : > "$W/events.log"; py '
-import time, datetime, re
-m.ONCE = False
-open(m.THREADS, "w").write("o/r 5\n")
-iso = lambda t: datetime.datetime.fromtimestamp(t, datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-now = time.time()
-MERGED = iso(now - 86400 * '"${2:-1}"')
-BASE = "main"  # the branch the PR merged into
-hunk = lambda old, new, a, b: f"@@ -{old},2 +{new},2 @@\n-{a}\n+{b}\n ctx"
-com = lambda sha, who, parents=1, when=now - 3600, bot=False: {"sha": sha, "author": {"login": who, "type": "Bot" if bot else "User"}, "parents": [{}] * parents, "html_url": f"<c-{sha}>", "commit": {"committer": {"date": iso(when)}, "author": {"name": who}}}
-commits = [com("c1aaaaaaaaaa", "alice"), com("c2bbbbbbbbbb", "alice"), com("c3cccccccccc", "me"), com("c4dddddddddd", "bob", 2), com("c5eeeeeeeeee", "carol"), com("c6ffffffffff", "dependabot[bot]", bot=True), com("c0merge", "me")]
-files = {  # commit -> files
-    "c1aaaaaaaaaa": [{"filename": "z.ts", "status": "modified", "patch": hunk(11, 11, "x", "y")}],      # the newest: old line 11 of the renamed file, inside the PR lines 11-12
-    "c2bbbbbbbbbb": [{"filename": "a.ts", "status": "modified", "patch": hunk(40, 40, "x", "y")}, {"filename": "b.ts", "status": "modified", "patch": hunk(11, 11, "x", "y")}],  # far away; another file
-    "c3cccccccccc": [{"filename": "a.ts", "status": "modified", "patch": hunk(11, 11, "x", "y")}],      # yours
-    "c4dddddddddd": [{"filename": "a.ts", "status": "modified", "patch": hunk(11, 11, "x", "y")}],      # a merge commit
-    "c5eeeeeeeeee": [{"filename": "z.ts", "previous_filename": "a.ts", "status": "renamed"}],           # a rename
-    "c6ffffffffff": [{"filename": "a.ts", "status": "modified", "patch": hunk(11, 11, "x", "y")}],      # a bot
-}
-timeline = [
-    {"event": "cross-referenced", "source": {"issue": {"html_url": "<pr-9>", "pull_request": {}, "user": {"login": "alice"}}}},
-    {"event": "cross-referenced", "source": {"issue": {"html_url": "<issue-8>", "user": {"login": "alice"}}}},         # an issue, not a PR
-    {"event": "cross-referenced", "source": {"issue": {"html_url": "<pr-7>", "pull_request": {}, "user": {"login": "me"}}}},   # yours
-    {"event": "cross-referenced", "actor": {"login": "me"}, "source": {"issue": {"html_url": "<pr-4>", "pull_request": {}, "user": {"login": "alice"}}}},   # your comment in hers
-    {"event": "cross-referenced", "actor": {"login": "alice"}, "source": {"issue": {"html_url": "<pr-4>", "pull_request": {}, "user": {"login": "alice"}}}},   # hers, later, in the same PR
-    {"event": "cross-referenced", "source": {"issue": {"html_url": "<pr-6>", "pull_request": {}, "user": {"login": "dep[bot]", "type": "Bot"}}}},
-]
-calls = []
-Answer = lambda data: type("A", (), {"status": 200, "json": lambda self: data, "next": lambda self: None})()
-def fake_request(path, *a, **k):
-    calls.append(path)
-    if path.endswith("/pulls/5"):
-        return Answer({"merged_at": MERGED, "merge_commit_sha": "c0merge", "base": {"ref": BASE}})
-    if path == "repos/o/r":
-        return Answer({"default_branch": "main"})
-    if path.startswith("repos/o/r/commits?sha=gone&"):  # a branch deleted after the merge
-        raise RuntimeError(f"gh api {path}: HTTP 404 {{\"message\":\"Not Found\"}}")
-    if path.startswith("repos/o/r/commits?"):
-        return Answer(commits)
-    return Answer({"files": files[path.rsplit("/", 1)[1]]})
-def fake_paged(path, *a, **k):
-    calls.append(path)
-    if "/pulls/5/files" in path:
-        return [{"filename": "a.ts", "status": "modified", "patch": "@@ -10,3 +10,4 @@\n a\n-b\n+B\n+B2\n c"}]
-    if "/timeline" in path:
-        return timeline
-    return commits
-m.request, m.paged = fake_request, fake_paged
-m.followed_prs = lambda: {"o/r#5": [m.HERE]}
-record = lambda: m.shared_read()["followups"]["o/r#5"]
-def scan():
-    before = open(os.path.join(m.HERE, "events.log")).read()
-    m.follow_ups()
-    return [re.sub(r"  at \d{4}-\d\d-\d\dT[\d:]+Z$", "", l).replace("  <", " <") for l in open(os.path.join(m.HERE, "events.log")).read()[len(before):].splitlines() if l]
-'"$1"'
-'; }
-got=$(follow '
-first = scan()
-second = scan()   # an hour later
-print("first=" + "|".join(first)); print("second=" + "|".join(second))
-print("recorded=" + str(sorted(record()["files"].items())))
-')
-check "FOLLOW-UP: overlap and rename and the referencing PR once; non-overlap, own commit, merge commit, issue, bots nothing; own PR and own reference only logged, a later one by another from that PR an event; no repeat" "first=### FOLLOW-UP o/r#5: c5eeeeeeee by carol changes lines from your PR <c-c5eeeeeeeeee>|### FOLLOW-UP o/r#5: c1aaaaaaaa by alice changes lines from your PR <c-c1aaaaaaaaaa>|### FOLLOW-UP o/r#5: <pr-9> by alice references your PR|note: FOLLOW-UP o/r#5: <pr-7> by me references your PR|note: FOLLOW-UP o/r#5: <pr-4> by me references your PR|### FOLLOW-UP o/r#5: <pr-4> by alice references your PR
-second=
-recorded=[('z.ts', [[11, 12]])]" "$got"
-got=$(follow '
-BASE = "gone"
-listed = m.request  # another PR followed on main left an ETag for that list: a request that may use it gets a 304
-m.request = lambda path, *a, **k: type("A", (), {"status": 304})() if "sha=main&" in path and not k.get("fresh") else listed(path, *a, **k)
-out = io.StringIO()
-with contextlib.redirect_stdout(out):
-    first = scan()
-    second = scan()
-print("errors=" + str(out.getvalue().count("WATCH ERROR")), "base=" + record()["base"], "listed=" + ",".join(c.split("?sha=")[1].split("&")[0] for c in calls if "/commits?" in c), "backlog=" + ",".join(m.shared_read()["backlog"]))
-print("first=" + "|".join(first)); print("second=" + "|".join(second))
-')
-check "FOLLOW-UP: a PR whose base branch was deleted after the merge is followed on the default branch from the next pass, with no WATCH ERROR" "errors=0 base=main listed=gone,main backlog=
-first=
-second=### FOLLOW-UP o/r#5: c5eeeeeeee by carol changes lines from your PR <c-c5eeeeeeeeee>|### FOLLOW-UP o/r#5: c1aaaaaaaa by alice changes lines from your PR <c-c1aaaaaaaaaa>|### FOLLOW-UP o/r#5: <pr-9> by alice references your PR|note: FOLLOW-UP o/r#5: <pr-7> by me references your PR|note: FOLLOW-UP o/r#5: <pr-4> by me references your PR|### FOLLOW-UP o/r#5: <pr-4> by alice references your PR" "$got"
-got=$(follow '
-BASE = "gone"   # a pass that ran out of calls on page 1 left the rest of the list, and the branch is deleted before the next
-m.shared_update(lambda s: s["followups"].__setitem__("o/r#5", m.follow_record("o/r#5")))
-m.shared_update(lambda s: s["backlog"].__setitem__("o/r@gone", {"since": MERGED, "floor": MERGED, "started": iso(now - 7200), "next": f"repos/o/r/commits?sha=gone&since={MERGED}&per_page=100&page=2", "queue": [], "fresh": True, "keys": ["o/r#5"]}))
-out = io.StringIO()
-with contextlib.redirect_stdout(out):
-    first = scan()
-    second = scan()
-print("errors=" + str(out.getvalue().count("WATCH ERROR")), "base=" + record()["base"], "backlog=" + ",".join(m.shared_read()["backlog"]))
-print("second=" + "|".join(second))
-')
-check "FOLLOW-UP: a backlog resumed past page 1 of a deleted base branch moves to the default branch too, with no WATCH ERROR" "errors=0 base=main backlog=
-second=### FOLLOW-UP o/r#5: c5eeeeeeee by carol changes lines from your PR <c-c5eeeeeeeeee>|### FOLLOW-UP o/r#5: c1aaaaaaaa by alice changes lines from your PR <c-c1aaaaaaaaaa>|### FOLLOW-UP o/r#5: <pr-9> by alice references your PR|note: FOLLOW-UP o/r#5: <pr-7> by me references your PR|note: FOLLOW-UP o/r#5: <pr-4> by me references your PR|### FOLLOW-UP o/r#5: <pr-4> by alice references your PR" "$got"
-joined() { follow '
-BASE = "'"$1"'"   # another PR followed on main stopped at its timeline: its backlog of the list is drained, its validator saved
-m.shared_update(lambda s: s["backlog"].__setitem__("o/r@main", {"since": iso(now - 86400 * 2), "floor": iso(now - 86400 * 2), "started": iso(now - 600), "next": None, "queue": [], "fresh": False, "keys": ["o/r#6"]}))
-listed = m.request
-m.request = lambda path, *a, **k: type("A", (), {"status": 304})() if "sha=main&" in path and not k.get("fresh") else listed(path, *a, **k)
-print("|".join(l for l in scan() + scan() if "changes lines" in l))
-'; }
-check "FOLLOW-UP: a PR joining a group whose backlog another PR drained reads the list itself, a new one and one moved off a deleted base alike" "new: ### FOLLOW-UP o/r#5: c5eeeeeeee by carol changes lines from your PR <c-c5eeeeeeeeee>|### FOLLOW-UP o/r#5: c1aaaaaaaa by alice changes lines from your PR <c-c1aaaaaaaaaa>
-moved: ### FOLLOW-UP o/r#5: c5eeeeeeee by carol changes lines from your PR <c-c5eeeeeeeeee>|### FOLLOW-UP o/r#5: c1aaaaaaaa by alice changes lines from your PR <c-c1aaaaaaaaaa>" "new: $(joined main)
-moved: $(joined gone)"
-got=$(follow '
-sd = os.path.join(os.path.dirname(m.HERE), "stew"); os.makedirs(sd, exist_ok=True); open(os.path.join(sd, "events.log"), "w").close()
-open(os.path.expanduser("~/.mergeworthy/steward"), "w").write(sd + " t1\n")
-open(os.path.join(sd, "gh-watch.pid"), "w").write("999999999")
-out = scan(); print(len(out), end=" ")
-open(os.path.join(sd, "gh-watch.pid"), "w").write(str(os.getpid()))
-for p in ("shared-watch.json", "agent-commands.seen"): os.remove(os.path.expanduser("~/.mergeworthy/" + p)) if os.path.exists(os.path.expanduser("~/.mergeworthy/" + p)) else None
-out = scan(); os.remove(os.path.expanduser("~/.mergeworthy/steward"))
-print(len(out), sum(l.startswith("### FOLLOW-UP") for l in open(os.path.join(sd, "events.log"))))
-')
-check "FOLLOW-UP: a declared steward whose watcher isn't running leaves them to the PR's dirs (the notes too); while it runs, they go to its watch dir instead" "6 0 4" "$got"
-got=$(follow '
-sd = os.path.join(os.path.dirname(m.HERE), "stew2"); os.makedirs(sd, exist_ok=True); open(os.path.join(sd, "events.log"), "w").close()
-open(os.path.expanduser("~/.mergeworthy/steward"), "w").write(sd + " t1\n"); open(os.path.join(sd, "gh-watch.pid"), "w").write(str(os.getpid()))
-mt = {"login": "magne", "assoc": "MEMBER"}
-m.maintainer_review("o/r#5", "me", "review", 71, mt, "<rv71>", "COMMENTED", "2026-10-14T10:00:00Z")
-m.maintainer_review("o/r#5", "me", "review", 71, mt, "<rv71>", "COMMENTED", "2026-10-14T10:00:00Z")
-m.maintainer_review("o/r#5", "me", "review", 72, mt, "<rv72>", "APPROVED", "2026-10-14T10:00:00Z")
-m.maintainer_review("o/r#5", "me", "review", 73, {"login": "rando", "assoc": "NONE"}, "<rv73>", "COMMENTED", "2026-10-14T10:00:00Z")
-m.maintainer_review("o/r#6", "other", "review", 74, mt, "<rv74>", "CHANGES_REQUESTED", "2026-10-14T10:00:00Z")
-m.maintainer_review("o/r#5", "me", "comment", 75, mt, "<c75>", "", "2026-10-14T10:00:00Z")
-os.remove(os.path.expanduser("~/.mergeworthy/steward"))
-print("|".join(l.split("  at ")[0] for l in open(os.path.join(sd, "events.log")).read().splitlines()))
-')
-check "MAINTAINER REVIEW: a maintainer's review of your PR goes to the steward once; an approval, a non-maintainer, another's PR and a comment don't" "### MAINTAINER REVIEW o/r#5: <rv71> by magne reviews your PR" "$got"
-got=$(follow '
-timeline += [{"event": "renamed", "actor": {"login": "brillout"}, "rename": {"from": "fix: a", "to": "fix(core): a"}, "created_at": "2026-10-14T10:00:00Z"},
-             {"event": "renamed", "actor": {"login": "me"}, "rename": {"from": "x", "to": "y"}, "created_at": "2026-10-14T09:00:00Z"}]
-print("|".join(l for l in scan() + scan() if "renames" in l))
-')
-check "FOLLOW-UP: another account renaming your merged PR, once; your own rename nothing" '### FOLLOW-UP o/r#5: https://github.com/o/r/pull/5#rename-2026-10-14T10:00:00Z by brillout renames your PR: "fix: a" -> "fix(core): a"' "$got"
-# an account listed in ~/.mergeworthy/own-accounts is ours: its commit, reference and rename on a followed PR are no FOLLOW-UP (a reference is the note), and without the file they are
-OWNSCAN='
-commits[:] = [com("c1aaaaaaaaaa", "agent"), com("c0merge", "me")]
-files["c1aaaaaaaaaa"] = [{"filename": "a.ts", "status": "modified", "patch": hunk(11, 11, "x", "y")}]
-timeline[:] = [{"event": "cross-referenced", "actor": {"login": "agent"}, "source": {"issue": {"html_url": "<pr-9>", "pull_request": {}, "user": {"login": "alice"}}}},
-               {"event": "renamed", "actor": {"login": "agent"}, "rename": {"from": "x", "to": "y"}, "created_at": "2026-10-14T09:00:00Z"}]
-print("|".join(scan()))
-'
-got=$(follow "m.OWN = {'me', 'agent'}$OWNSCAN")
-check "own-accounts: a listed account's commit, reference and rename on a followed PR give no FOLLOW-UP, the reference the note" "note: FOLLOW-UP o/r#5: <pr-9> by agent references your PR" "$got"
-got=$(follow "$OWNSCAN")
-check "own-accounts: without the file the same commit, reference and rename are FOLLOW-UPs" "### FOLLOW-UP o/r#5: c1aaaaaaaa by agent changes lines from your PR <c-c1aaaaaaaaaa>|### FOLLOW-UP o/r#5: <pr-9> by agent references your PR|### FOLLOW-UP o/r#5: https://github.com/o/r/pull/5#rename-2026-10-14T09:00:00Z by agent renames your PR: \"x\" -> \"y\"" "$got"
+rm -rf "$HOME/.mergeworthy/shared-watch.json"* "$W/replies-owed.md"
 got=$(py '
 print(sorted(m.own_logins()))
 open(m.shared_path("own-accounts"), "w").write("Agent\n\nother\n"); print(sorted(m.own_logins())); os.remove(m.shared_path("own-accounts"))
@@ -813,33 +667,8 @@ m.scan_reactions = lambda *a: None
 m.run_scan(); m.run_scan(True)
 print("|".join(l.split("  at ")[0] for l in open(os.path.join(m.HERE, "events.log")).read().splitlines()))
 ')
-check "FOLLOW-UP: another account renaming your open PR, once; on another's PR or by you nothing" '### FOLLOW-UP o/r#2: https://github.com/o/r/pull/2#rename-2026-10-14T10:00:00Z by brillout renames your PR: "fix: b" -> "fix(core): b"' "$got"
-got=$(follow '
-scan()
-n = len(calls); scan()
-print("calls on a due recheck without new commits: " + str(len(calls) - n))
-' 1)
-check "FOLLOW-UP: a due check is the commit list and the timeline: the commits' files were all read (or skipped) already" "calls on a due recheck without new commits: 2" "$got"
-got=$(follow '
-out = scan()
-print(len(out), len(record()["files"]), "commits?" in "".join(calls), "o/r#5" in m.shared_read()["followups"])
-' 70)
-check "FOLLOW-UP: a PR merged before the window (60 days) is never followed: no events, no commit calls, a marker only" "0 0 False True" "$got"
-got=$(follow '
-scan()
-m.shared_update(lambda s: s["followups"]["o/r#5"].update(until=now - 1))   # the window ends
-n = len(calls); out = scan()
-print(len(out), len(calls) - n, len(record()["files"]))
-')
-check "FOLLOW-UP: a PR whose window has ended stops: no events, no API calls, lines dropped" "0 0 0" "$got"
-got=$(follow '
-scan(); m.save_state({"prs": {"o/r#5": {"state": "merged"}}, "author": {"o/r#5": "me"}, "ci": {}, "is_pr": {}, "since_by": {}, "seen": {}, "since": "2026-01-01T00:00:00Z"})
-buf = io.StringIO()
-with contextlib.redirect_stdout(buf): m.retire_if_done()   # every thread merged, but one is still followed: the watcher stays
-print(repr(buf.getvalue()))
-')
-check "retire_if_done: stays while a merged PR is followed" "''" "$got"
-rm -f "$W/events.log"  # the FOLLOW-UPs above, unsorted, keep the watcher (retire_if_done)
+check "MAINTAINER REVIEW: another account renaming your open PR, once; on another's PR or by you nothing" '### MAINTAINER REVIEW o/r#2: https://github.com/o/r/pull/2#rename-2026-10-14T10:00:00Z by brillout renames your PR: "fix: b" -> "fix(core): b"' "$got"
+rm -f "$W/events.log"  # the rename above, unsorted, keeps the watcher (retire_if_done)
 got=$(py '
 def run(threads):
     open(m.THREADS, "w").write(threads); buf = io.StringIO()
@@ -851,7 +680,7 @@ def run(threads):
     return buf.getvalue().count("WATCHER RETIRED")
 print(run("Me/r 5\n"), run("Me/r 5\no/r 6\n"))
 ')
-check "retire_if_done: a merged PR of yours in your own repo doesn't keep the watcher for follow-ups; one in another repo does" "1 0" "$got"
+check "retire_if_done: a merged PR of yours still followed, in your own repo or another's, doesn't keep the watcher" "1 1" "$got"
 got=$(py '
 def run(owed):
     open(m.THREADS, "w").write("Me/r 5\n"); open(os.path.join(m.HERE, "replies-owed.md"), "w").write(owed); buf = io.StringIO()
@@ -1039,7 +868,7 @@ with contextlib.redirect_stdout(buf): m.wake_thread()
 print(repr(buf.getvalue()), open(os.path.join(m.HERE, "t3-wake.cursor")).read().strip())
 ')
 check "wake_thread runs the t3 gh-watch-start recorded, so a daemon cron revived with PATH=/usr/bin:/bin still sends" "'' 15|t3 thread send thr-2 -" "$got|$(grep '^t3 thread send thr-2' "$T/t3.log")"
-# a FOLLOW-UP or MAINTAINER REVIEW still unsorted 30 minutes after its time is sent again, an hour after, then doubling the gap
+# a MAINTAINER REVIEW still unsorted 30 minutes after its time is sent again, an hour after, then doubling the gap
 : > "$T/t3.log"
 got=$(py '
 import sqlite3, datetime, time
@@ -1049,10 +878,10 @@ c.execute("create table orchestration_v2_projection_runs (run_id text, thread_id
 c.execute("create table orchestration_v2_projection_messages (message_id text, thread_id text, role text, created_at text, payload_json text)")
 ago = lambda s: datetime.datetime.fromtimestamp(time.time() - s, datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 log, resent = os.path.join(m.HERE, "events.log"), os.path.join(m.HERE, "t3-wake.resent")
-open(log, "w").write(f"### FOLLOW-UP o/r#5: abcdef1234 by carol changes lines from your PR  <c>  at {ago(2400)}\n"
+open(log, "w").write(f"### MAINTAINER REVIEW o/r#5: abcdef1234 by carol reviews your PR  at {ago(2400)}\n"
                      f"### MAINTAINER REVIEW o/r#5: https://github.com/o/r/pull/5#pullrequestreview-71 by magne reviews your PR  at {ago(2400)}\n"
-                     f"### FOLLOW-UP o/r#5: https://github.com/o/r/pull/9 by alice references your PR  at {ago(600)}\n"
-                     f"### FOLLOW-UP o/r#4: 1234567890 by dave changes lines from your PR  <c>  at {ago(61 * 86400)}\n")
+                     f"### MAINTAINER REVIEW o/r#5: https://github.com/o/r/pull/9 by alice reviews your PR  at {ago(600)}\n"
+                     f"### MAINTAINER REVIEW o/r#4: 1234567890 by dave reviews your PR  at {ago(61 * 86400)}\n")
 open(os.path.join(m.HERE, "t3-thread"), "w").write("thr-u\n'"$T"'/bin/t3\n"); open(os.path.join(m.HERE, "t3-wake.cursor"), "w").write(str(os.path.getsize(log)))
 sends = lambda: open("'"$T"'/t3.log").read().count("t3 thread send")
 def back(s):  # the last re-send s seconds earlier
@@ -1079,10 +908,10 @@ os.remove(os.path.join(m.HERE, "t3-thread")); os.remove(db)
 print(*out, "|", first.replace(chr(10), ";"), "|", both.replace(chr(10), ";"))
 ')
 check "wake_thread: an event unsorted 30 minutes after its time is sent again, under its own line, an hour later, then 2 hours, not past 60 days nor after a restart, while the thread runs, holds a wake of ours, is stopped, or in a steward dir; with a new event in one message; a verdict ends it and its state file" \
-  "1 1 2 2 3 3 3 3 3 3 4 5 5 False | t3 thread send thr-u -;Watcher events in $W/events.log (mergeworthy:reply):;Unsorted after 30 minutes (mergeworthy:rules step 6):;### FOLLOW-UP o/r#5: abcdef1234 by carol changes lines from your PR  <c>  at X;### MAINTAINER REVIEW o/r#5: https://github.com/o/r/pull/5#pullrequestreview-71 by magne reviews your PR  at X; |  thr-u -;Watcher events in $W/events.log (mergeworthy:reply):;### o/r#7 comment 1 by bob;Unsorted after 30 minutes (mergeworthy:rules step 6):;### FOLLOW-UP o/r#5: abcdef1234 by carol changes lines from your PR  <c>  at X;### MAINTAINER REVIEW o/r#5: https://github.com/o/r/pull/5#pullrequestreview-71 by magne reviews your PR  at X;" \
+  "1 1 2 2 3 3 3 3 3 3 4 5 5 False | t3 thread send thr-u -;Watcher events in $W/events.log (mergeworthy:reply):;Unsorted after 30 minutes (mergeworthy:rules step 6):;### MAINTAINER REVIEW o/r#5: abcdef1234 by carol reviews your PR  at X;### MAINTAINER REVIEW o/r#5: https://github.com/o/r/pull/5#pullrequestreview-71 by magne reviews your PR  at X; |  thr-u -;Watcher events in $W/events.log (mergeworthy:reply):;### o/r#7 comment 1 by bob;Unsorted after 30 minutes (mergeworthy:rules step 6):;### MAINTAINER REVIEW o/r#5: abcdef1234 by carol reviews your PR  at X;### MAINTAINER REVIEW o/r#5: https://github.com/o/r/pull/5#pullrequestreview-71 by magne reviews your PR  at X;" \
   "$(sed -E 's/  at [0-9T:-]+Z/  at X/g' <<< "$got")"
 rm "$W/followups-sorted.txt"
-# an event still unsorted keeps a watcher whose every thread is closed, for the 60 days it is followed
+# an event still unsorted keeps a watcher whose every thread is closed, for the 30 minutes stop-lint gives to sort it
 got=$(py '
 import datetime, time
 ago = lambda s: datetime.datetime.fromtimestamp(time.time() - s, datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -1097,12 +926,13 @@ def run():
     out = "retired" if os.path.exists(os.path.join(m.HERE, "retired")) else "kept"
     os.path.exists(os.path.join(m.HERE, "retired")) and os.remove(os.path.join(m.HERE, "retired"))
     return out
-open(log, "w").write(f"### FOLLOW-UP o/r#5: abcdef1234 by carol changes lines from your PR  <c>  at {ago(59 * 86400)}\n"); a = run()
+open(log, "w").write(f"### MAINTAINER REVIEW o/r#5: abcdef1234 by carol reviews your PR  at {ago(600)}\n"); a = run()
 open(os.path.join(m.HERE, "followups-sorted.txt"), "w").write("abcdef1234 WORKED https://example.invalid/notes\n"); b = run()
-os.remove(os.path.join(m.HERE, "followups-sorted.txt")); open(log, "w").write(f"### FOLLOW-UP o/r#5: abcdef1234 by carol changes lines from your PR  <c>  at {ago(61 * 86400)}\n")
-print(a, b, run())
+os.remove(os.path.join(m.HERE, "followups-sorted.txt")); open(log, "w").write(f"### MAINTAINER REVIEW o/r#5: abcdef1234 by carol reviews your PR  at {ago(3600)}\n"); c = run()
+open(log, "w").write(f"### FOLLOW-UP o/r#5: abcdef1234 by carol changes lines from your PR  <c>  at {ago(600)}\n")
+print(a, b, c, run(), *(j[0] for j in m.JOBS))
 ')
-check "retire_if_done: an unsorted FOLLOW-UP keeps the watcher; its verdict, or 60 days past it, lets it retire" "kept retired retired" "$got"
+check "retire_if_done: an unsorted MAINTAINER REVIEW keeps the watcher; its verdict, or 30 minutes past it, lets it retire; a FOLLOW-UP, which no shared job makes any more, keeps nothing" "kept retired retired retired feeds discovery" "$got"
 rm -f "$W/retired" "$W/events.log" "$W/followups-sorted.txt"
 # retiring sends the events before it, not its own WATCHER RETIRED line, before the supervisor stops the daemon
 : > "$T/t3.log"
@@ -1174,6 +1004,32 @@ print(repr(before), len(calls), open(os.path.join(m.HERE, "retired")).read().str
 check "tick(): a retired file written while the watcher runs disables its unit on the next pass, with no request to GitHub; the file stays" \
   "'' 0 2026-01-01T00:00:00Z|--user disable --now gh-watch@$(systemd-escape --path "$W").service" "$got|$(cat "$T/systemctl.log")"
 rm -f "$W/retired" "$T/bin/systemctl"
+# a thread T3 deleted (a tombstone or no row), or the watch dir gone: the next pass stops the watcher; a settled or archived thread doesn't
+printf '#!/bin/sh\necho "$*" >> "%s/systemctl.log"\n' "$T" > "$T/bin/systemctl"; chmod +x "$T/bin/systemctl"
+got=$(GH_WATCH_SUPERVISOR=systemd py '
+import shutil, sqlite3
+db = os.path.expanduser("~/.t3/userdata/statev2.sqlite"); os.makedirs(os.path.dirname(db), exist_ok=True)
+c = sqlite3.connect(db); c.execute("create table orchestration_v2_projection_threads (thread_id text, archived_at text, deleted_at text, payload_json text)")
+c.executemany("insert into orchestration_v2_projection_threads values (?, ?, ?, ?)", [("thr-s", None, None, json.dumps({"settledOverride": "settled"})), ("thr-a", "2026-01-01T00:00:00Z", None, "{}"), ("thr-d", None, "2026-01-01T00:00:00Z", "{}")]); c.commit()
+m.request = lambda *a, **k: None; m.level = lambda: m.PAUSED
+for name in ("follow_update", "steward_line", "scan_gitlab", "agent_jobs_pass", "announce", "wake_thread"):
+    setattr(m, name, lambda *a, **k: None)
+m.steward.bind_watcher = lambda wd: None
+log = "'"$T"'/systemctl.log"
+def run(name, tid):
+    with contextlib.suppress(FileNotFoundError): os.remove(log)
+    open(os.path.join(m.HERE, name), "w").write(tid + "\n")
+    m.tick(); os.remove(os.path.join(m.HERE, name))
+    return "stopped" if os.path.exists(log) else "runs"
+out = [run("t3-thread", t) for t in ("thr-s", "thr-a", "thr-d", "thr-none")] + [run("t3-gone", "thr-d")]
+os.remove(db); here = m.HERE; m.HERE = os.path.join(here, "gone"); os.makedirs(m.HERE); shutil.rmtree(m.HERE)
+with contextlib.suppress(FileNotFoundError): os.remove(log)
+m.tick(); m.HERE = here
+print(*out, "stopped" if os.path.exists(log) else "runs")
+')
+check "tick(): a thread T3 deleted, in t3-thread or t3-gone, or one T3 has no row for, stops the watcher, a settled or archived one doesn't; a watch dir that is gone stops it too" \
+  "runs runs stopped stopped stopped stopped" "$got"
+rm -f "$T/bin/systemctl" "$T/systemctl.log"
 rm -f "$W/events.log" "$W/t3-wake.cursor" "$W/t3-thread" "$W/t3-gone"
 rm -f "$W/retired"
 
