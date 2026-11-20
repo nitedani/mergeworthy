@@ -286,15 +286,19 @@ check "c-ignored deletes an ignored target, .pnpm-store, .venv and .mypy_cache, 
 # w-merged: the steward's worktrees whose branch is merged, or squash-merged as GitHub shows, go after 8 untouched days with their notes
 HS="$T/homes"; S="$HS/.mergeworthy/work/steward"; mkdir -p "$S" "$HS/.claude/agent-jobs"
 G init -q --bare -b main "$T/s-origin.git"; git config -f "$HS/.gitconfig" url."$T/s-origin.git".insteadOf https://github.com/o/s.git
-HOME="$HS" G clone -q https://github.com/o/s.git "$S/repo" 2>/dev/null; G -C "$S/repo" commit -q --allow-empty -m base; HOME="$HS" G -C "$S/repo" push -q origin main
-for n in merged squashed open recent busy nopr; do G -C "$S/repo" worktree add -q -b "$n" "$S/$n" main; G -C "$S/$n" commit -q --allow-empty -m "$n"; mkdir -p "$S/$n-notes"; echo x > "$S/$n-notes/r.md"; done
-G -C "$S/repo" merge -q --no-edit merged recent busy >/dev/null; HOME="$HS" G -C "$S/repo" push -q origin main
+HOME="$HS" G clone -q https://github.com/o/s.git "$S/repo" 2>/dev/null; echo a > "$S/repo/f"; G -C "$S/repo" add f; G -C "$S/repo" commit -qm base; HOME="$HS" G -C "$S/repo" push -q origin main
+for n in merged squashed open recent busy nopr mdirty; do G -C "$S/repo" worktree add -q -b "$n" "$S/$n" main; G -C "$S/$n" commit -q --allow-empty -m "$n"; mkdir -p "$S/$n-notes"; echo x > "$S/$n-notes/r.md"; done
+for n in held helddirty; do G -C "$S/repo" worktree add -q -b "$n" "$S/$n" main; done; echo b > "$S/helddirty/f"; echo b > "$S/mdirty/f"  # never committed; an edited tracked file
+G -C "$S/repo" merge -q --no-ff --no-edit merged recent busy mdirty >/dev/null; G -C "$S/repo" commit -q --allow-empty -m later  # a merge commit, as GitHub makes
+HOME="$HS" G -C "$S/repo" push -q origin main
 HOME="$HS" G -C "$S/open" push -q origin open; HOME="$HS" G -C "$S/repo" fetch -q origin
 SQ=$(G -C "$S/squashed" rev-parse HEAD)
 printf '#!/bin/sh\n# stub gh: `gh api repos/o/s/commits/<sha>/pulls`: a merged PR headed at the squashed worktree'"'"'s tip, none for any other\ncase "$2" in */%s/pulls) echo '"'"'[{"merged_at":"2026-01-01T00:00:00Z","head":{"sha":"%s"}}]'"'"';; *) echo "[]";; esac\n' "$SQ" "$SQ" > "$T/bin/gh"
 chmod +x "$T/bin/gh"; find "$S" -exec touch -h -d '9 days ago' {} +; touch -d '2 days ago' "$S/recent-notes/r.md"
 bash -c "cd '$S/busy' && exec sleep 600" & SB=$!; sleep 0.2
 HOME="$HS" python3 "$R/bin/disk-sweep" --delete 2>/dev/null; kill "$SB"; wait "$SB" 2>/dev/null
+check "w-merged keeps a worktree that never got a commit of its own (on main's line), clean or with an edited tracked file, and a merged one with an uncommitted edit" \
+  "kept kept kept 3" "$(there "$S/held") $(there "$S/helddirty") $(there "$S/mdirty") $(G -C "$S/repo" branch --list held helddirty mdirty | wc -l)"
 check "w-merged: a merged and a squash-merged worktree go with their notes and branches, logged; unmerged, a PR GitHub doesn't show, notes touched 2 days ago or a process working there keep theirs" \
   "removed removed removed removed 0 4 kept kept kept kept" \
   "$(there "$S/merged") $(there "$S/merged-notes") $(there "$S/squashed") $(there "$S/squashed-notes") $(G -C "$S/repo" branch --list merged squashed | wc -l) $(grep -c ' w-merged deleted$' "$HS/.mergeworthy/disk-sweep.log") $(there "$S/open") $(there "$S/nopr") $(there "$S/recent") $(there "$S/busy")"

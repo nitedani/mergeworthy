@@ -18,8 +18,9 @@ deleted.
   names, or, with no settled, archived or unanswered thread, once its watcher retired and it is untouched for 8 days, its watcher's own files aside,
   which a 24-hour change doesn't count either; its watchers stop first; a repo in it with a worktree outside keeps it; then `git worktree
   prune` in each repo outside it that had a worktree in it; ~/.mergeworthy/work-kept.md lists each finished folder that stays, and why.
-- w-merged, once a day: each worktree in the steward's folder whose branch is merged (into origin/main, or squash-merged: gone from
-  origin, GitHub showing a merged PR headed at its tip), untouched for 8 days with its <name>-notes/ folder; both go, then its branch.
+- w-merged, once a day: each worktree in the steward's folder whose branch is merged (into origin/main with a commit of its own, or
+  squash-merged: gone from origin, GitHub showing a merged PR headed at its tip), with no uncommitted change, untouched for 8 days
+  with its <name>-notes/ folder; both go, then its branch.
 - h-ignored, once a day: the same folders in any git repo up to 5 levels below HOME (hidden folders and the work folders
   aside), each unused for 14 days (neither written nor read).
 - k-cache, once a day: `pnpm store prune`, `pip cache purge`, `npm cache clean --force` when ~/.npm/_cacache is unused for
@@ -440,13 +441,16 @@ def sweep_work():
 
 
 def merged(tree):
-    """Whether worktree tree's HEAD is merged: origin/HEAD (else origin/main) reaches it, or its branch is gone from origin and GitHub
-    shows a merged pull request headed at that commit (a squash merge); False on any answer missing, the watchers' shared pause too."""
+    """Whether worktree tree's HEAD is merged: origin/HEAD (else origin/main) reaches it off its first-parent line (a HEAD on that line is
+    a base commit the branch never added to), or its branch is gone from origin and GitHub shows a merged pull request headed at that
+    commit (a squash merge); False on any answer missing, the watchers' shared pause too."""
     g = lambda *a: work_folder.git(tree, *a)
     head, branch = g('rev-parse', 'HEAD').stdout.strip(), g('symbolic-ref', '-q', '--short', 'HEAD').stdout.strip()
     base = next((r for r in ('origin/HEAD', 'origin/main') if not g('rev-parse', '-q', '--verify', r).returncode), None)
-    if not head or base and not g('merge-base', '--is-ancestor', head, base).returncode:
-        return bool(head)
+    if not head:
+        return False
+    if base and not g('merge-base', '--is-ancestor', head, base).returncode:
+        return head not in g('rev-list', '--first-parent', base).stdout.split()
     url = g('config', 'remote.origin.url').stdout.strip()
     hub = work_folder.GITHUB.match(url)
     if not branch or not hub:
@@ -468,8 +472,8 @@ def merged(tree):
 
 
 def sweep_steward():
-    """Once a day, w-merged: each linked worktree directly in the steward's folder whose HEAD is merged (merged()) and that, with its
-    <name>-notes/ beside it, is untouched for IDLE, deleted through delete(), then that notes folder; then `git worktree prune` and
+    """Once a day, w-merged: each linked worktree directly in the steward's folder whose HEAD is merged (merged()), with no uncommitted
+    change, and that, with its <name>-notes/ beside it, is untouched for IDLE, deleted through delete(), then that notes folder; then `git worktree prune` and
     `git branch -D <its branch>` in its repo."""
     top = steward.folder()
     if not due('steward', DAY) or os.path.islink(top) or not os.path.isdir(top):
@@ -480,6 +484,9 @@ def sweep_steward():
         if not e.is_dir(follow_symlinks=False) or not os.path.isfile(os.path.join(e.path, '.git')):
             continue
         if any(newest(p, lambda rel: False) > NOW - IDLE for p in (e.path, notes) if os.path.isdir(p) and not os.path.islink(p)) or not merged(e.path):
+            continue
+        status = work_folder.git(e.path, 'status', '--porcelain')
+        if status.returncode or status.stdout.strip():  # an uncommitted change: git worktree remove itself refuses it
             continue
         common, branch = work_folder.common_dir(e.path), work_folder.git(e.path, 'symbolic-ref', '-q', '--short', 'HEAD').stdout.strip()
         if delete(e.path, e.path, dev, 'w-merged', vcs=False):
