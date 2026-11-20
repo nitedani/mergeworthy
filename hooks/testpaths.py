@@ -16,9 +16,12 @@ def generated(repo, paths, source=None):
     """The paths (from the top of checkout repo, as git diff prints them) that are build output: GENERATED, or
     `linguist-generated` (set or true) in its .gitattributes, those of commit source when given."""
     import re, subprocess  # here: the hooks that import this for TESTS alone don't pay for them
-    git = lambda *a, **k: subprocess.run(['git', '-C', repo, *a], capture_output=True, text=True, **k).stdout
-    a = git('-C', git('rev-parse', '--show-toplevel').strip() or '.', 'check-attr', *(['--source', source] if source else []), '--stdin', '-z', 'linguist-generated',
-        input='\0'.join(paths)).split('\0')  # path, attribute, value, ...
+    git = lambda *a, **k: subprocess.run(['git', '-C', repo, *a], capture_output=True, text=True, **k)
+    top = git('rev-parse', '--show-toplevel').stdout.strip() or '.'
+    attrs = lambda *src: git('-C', top, 'check-attr', *src, '--stdin', '-z', 'linguist-generated', input='\0'.join(paths))
+    r = attrs(*(['--source', source] if source else []))
+    if r.returncode: r = attrs()  # Git before 2.40 has no --source: the checkout's attributes, as before it
+    a = r.stdout.split('\0')  # path, attribute, value, ...
     return {p for p in paths if re.search(GENERATED, p)} | {p for p, v in zip(a[0::3], a[2::3]) if v in ('set', 'true')}
 
 if __name__ == '__main__':  # no argument: TESTS; `not-code`: NOT_CODE; `generated`: those of the paths on stdin (a line each) in the checkout here

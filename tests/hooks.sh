@@ -4323,6 +4323,10 @@ git -C "$SH" checkout -q -b gen suite; echo 'src/util.ts linguist-generated' > "
 echo '[]' > "$FX/gl_projects_acme_2Fapp_merge_requests_state_opened_source_branch_gen"; git -C "$SH" checkout -q -b plain suite~6
 check "BLOCK: a push of the drifting file the checkout alone marks generated; a push of a branch that marks it generated itself passes" "2 0" \
   "$rc $(MERGEWORTHY_WATCHER=off bg 'git push git@gitlab.com:acme/app.git gen' "$SH")"
+# a Git without check-attr --source (before 2.40) reads the checkout's attributes: pushing the checked-out branch that marks it generated passes
+mkdir "$T/git239"; printf '#!/bin/sh\ncase " $* " in *" check-attr --source "*) echo "error: unknown option %s" >&2; exit 129;; esac\nexec "%s" "$@"\n' "'source'" "$(command -v git)" > "$T/git239/git"; chmod +x "$T/git239/git"
+git -C "$SH" checkout -q gen
+check "with a Git that has no check-attr --source, a push of the checked-out branch that marks its file generated passes" 0 "$(PATH="$T/git239:$PATH" MERGEWORTHY_WATCHER=off bg 'git push git@gitlab.com:acme/app.git gen' "$SH")"
 # a maintainer's commits (no agent trailer) aren't the agent's drift: blocked as a "17th change" with 14 of them brillout's
 SO="$T/simpo"; git init -q -b main "$SO"; oc() { git -C "$SO" -c user.name=t -c user.email=t@t commit -q "$@"; }; ac() { oc --trailer 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>' "$@"; }
 echo 0 > "$SO/a.py"; git -C "$SO" add -A; oc -m base; git -C "$SO" update-ref refs/remotes/origin/main HEAD; git -C "$SO" checkout -q -b fix; echo 1 >> "$SO/a.py"; ac -am reviewed
