@@ -15,7 +15,7 @@ One finding a newcomer can find, reproduce and judge. An umbrella issue is `task
    Run: `gh issue list --state all --search "<keyword>"`; `git log --oneline origin/<base> -- <files>`
 2. **Reproduce it on today's `<base>`** from a clean start. Trace both ends: where it starts in the code (`delegate/agent.md` §Code search), and where a user meets it. What you can't reproduce isn't filed.
    Open: `evidence` steps 1–4 · Record: the evidence files
-3. **The body,** by `writing §Forms` (issue body), or the project file's `Issue template:` path filled in. A decision issue (a change to what a legitimate user sees or can do) adds `### Options`: what a user sees under each, then your pick and its reason.
+3. **The body,** by `writing §Forms` (issue body), or the project file's `Issue template:` headings in order, each with its answer, the steps and evidence under the one asking for them. A decision issue (a change to what a legitimate user sees or can do) adds `### Options` after the reproduction: what a user sees under each, then your pick and its reason.
 
    ```markdown
    <What breaks and where, in a user's words, as plain fact.>

@@ -23,7 +23,7 @@ From a request to the skill that delivers it. Each step names what to open or ru
    Record: prior-art.md, precedent.md · Hook: pre-design-gate (Tier M/L: no code before prior-art.md)
 7. **Tier L: the umbrella issue** and its Decisions comment, before the first PR, through `post` with `--kind tracker`; write `owner/repo N` to `<work folder>/umbrella.txt`.
    Open: §Umbrella · Record: umbrella.txt · Hook: post-lint `--kind tracker`; the watcher's `### TRACKER STALE`
-8. **Memory.** Work that spans a compaction or a day: `memory-prep init <work folder> <T3 thread id>` once, from your checkout (the id from `t3_thread_list`; skip outside T3 Code). At each start and compaction the `session-memory` hook prints `memory.md`'s Standing part (rulings, ruled out, superseded, still intended), and, when it is behind this session's log, an order to refresh it before resuming; stop-lint's hourly repeat runs beside your work.
+8. **Memory.** Work that spans a compaction or a day: `memory-prep init <work folder> <T3 thread id>` once, from your checkout (the id from `t3_thread_list`; skip outside T3 Code).
    Record: memory.md · Hook: session-memory, stop-lint
 9. **Go to the deliverable's skill:** a change or a takeover → `pull-request`; a design question or proposal → `design`; a comment to answer → `reply`; a review of someone else's PR → `review`; an issue → `open-issue`; docs alone → `docs`; a plain answer or research (Tier 0) → answer it by `writing §Reports to the user`. Each agent and PR you start names the critical-path item it unblocks (`delegate` step 3).
    Hook: pre-skill-gate
@@ -84,7 +84,7 @@ Writes a missing project file from the repo's own record, every line quoted or l
 - **What already guarantees things, the security surfaces:** one `code_research` per section (`delegate/agent.md` §Code search), else read the code.
 - **Who decides:** who merged the last 100 PRs and who wrote most of each area (`gh pr list --state merged --limit 100 --json number,author,mergedBy`; `git shortlog -sn origin/<base> -- <area>`).
 - **What they ask for:** every review and comment those people left on the last 30 merged or closed outside PRs (`gh api repos/<owner>/<repo>/pulls/<N>/comments`, `gh pr view <N> --comments`), and what they said or did on our badged PRs and issues and in their reviews of others' PRs (`project-learn list <the repo's URL> --since <YYYY-MM-DD, 60 days ago>`; don't run the `mark` line it ends with), sorted into what they ask for, cut and rewrite, each cited, into the project file's sections.
-- **The forms they merge:** the last 10 merged PR titles and the last 5 changesets or changelog entries, quoted, with the form each follows; their PR and bug-issue templates as ``PR template: <path>: `<heading>`, …`` and `Issue template:` alike, else `none`.
+- **The forms they merge:** the last 10 merged PR titles and the last 5 changesets or changelog entries, quoted, with the form each follows; their PR and bug-report issue templates as ``PR template: <path from the root>: `<heading>`, …`` (every heading, in order; a YAML form's fields as `### <label>`) and `Issue template:` alike, else `none`.
 - The full study (the data and every quote) goes to `~/.mergeworthy/projects/<owner>/<repo>.study.md`, first line `Studied: <ISO date>`, then a `Learned: <time>` line that only the learning run writes, linked from `## Who decides`; the main session adds each fresh reader's "New to the study" lines to it (`converge` step 4).
 
 ### Umbrella
