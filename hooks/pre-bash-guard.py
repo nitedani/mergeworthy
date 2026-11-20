@@ -1036,7 +1036,9 @@ def check(t, has_cd):
                 block(f"this push ({'; '.join(why)}) publishes a commit computed when it runs, so its records can't be checked: push a branch or a sha written out")
             if why:  # a push of its own (no PR, its own repo) is free; collaboration runs the task's records first
                 check_workflow(f"this push ({'; '.join(why)})", repo, [sha for sha, _, _ in heads], [p['url'] for p in prs])
-                for sha, _, local in heads: block_drift(drift.over(repo, sha), local or sha)
+                for sha, _, local in heads:  # named by what it publishes: its branch when that branch is the commit pushed, else the commit
+                    tip = subprocess.run(['git', '-C', repo, 'rev-parse', '-q', '--verify', f'refs/heads/{local}'], capture_output=True, text=True).stdout.strip()
+                    block_drift(drift.over(repo, sha), local if tip == sha else sha)
                 if prs:  # each branch it publishes, whichever is checked out
                     for _, _, local in heads: need_approach(repo, f"this push ({'; '.join(why)})", local)
                 for pr in prs: check_defects(thread_of_pr(pr['url']), 'this push')

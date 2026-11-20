@@ -4323,6 +4323,10 @@ git -C "$SH" checkout -q -b gen suite; echo 'src/util.ts linguist-generated' > "
 echo '[]' > "$FX/gl_projects_acme_2Fapp_merge_requests_state_opened_source_branch_gen"; git -C "$SH" checkout -q -b plain suite~6
 check "BLOCK: a push of the drifting file the checkout alone marks generated; a push of a branch that marks it generated itself passes" "2 0" \
   "$rc $(MERGEWORTHY_WATCHER=off bg 'git push git@gitlab.com:acme/app.git gen' "$SH")"
+# a commit pushed to another branch (`<sha>:plain`) is named by its sha: the finality record goes on it, not on plain's tip
+echo '[]' > "$FX/gl_projects_acme_2Fapp_merge_requests_state_opened_source_branch_plain"; SU=$(git -C "$SH" rev-parse suite)
+check "BLOCK: a push of a drifting commit to another branch, naming the commit to record on" "2 1" \
+  "$(MERGEWORTHY_WATCHER=off bg "git push git@gitlab.com:acme/app.git $SU:plain" "$SH") $(grep -c "src/util.ts got a 6th change on $SU: .*with $SU checked out" "$T/err")"
 # a Git without check-attr --source (before 2.40) reads the checkout's attributes: pushing the checked-out branch that marks it generated passes
 mkdir "$T/git239"; printf '#!/bin/sh\ncase " $* " in *" check-attr --source "*) echo "error: unknown option %s" >&2; exit 129;; esac\nexec "%s" "$@"\n' "'source'" "$(command -v git)" > "$T/git239/git"; chmod +x "$T/git239/git"
 git -C "$SH" checkout -q gen
