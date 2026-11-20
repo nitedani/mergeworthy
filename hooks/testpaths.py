@@ -12,12 +12,12 @@ GENERATED = r'(^|/)dist/'
 NOT_SHAPE = TESTS + r'|(^|/)(pnpm-lock\.yaml|package-lock\.json|yarn\.lock)$|' + GENERATED
 STALE_LINES = 80
 
-def generated(repo, paths):
+def generated(repo, paths, source=None):
     """The paths (from the top of checkout repo, as git diff prints them) that are build output: GENERATED, or
-    `linguist-generated` (set or true) in its .gitattributes."""
+    `linguist-generated` (set or true) in its .gitattributes, those of commit source when given."""
     import re, subprocess  # here: the hooks that import this for TESTS alone don't pay for them
     git = lambda *a, **k: subprocess.run(['git', '-C', repo, *a], capture_output=True, text=True, **k).stdout
-    a = git('-C', git('rev-parse', '--show-toplevel').strip() or '.', 'check-attr', '--stdin', '-z', 'linguist-generated',
+    a = git('-C', git('rev-parse', '--show-toplevel').strip() or '.', 'check-attr', *(['--source', source] if source else []), '--stdin', '-z', 'linguist-generated',
         input='\0'.join(paths)).split('\0')  # path, attribute, value, ...
     return {p for p in paths if re.search(GENERATED, p)} | {p for p, v in zip(a[0::3], a[2::3]) if v in ('set', 'true')}
 

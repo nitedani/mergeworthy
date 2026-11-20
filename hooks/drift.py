@@ -33,5 +33,5 @@ def over(d, head='HEAD', pending=None, amend=False):
         for f in files: count[f] = count.get(f, 0) + 1
     for f in pending or []: count[f] = count.get(f, 0) + 1
     hot = [f for f in (count if pending is None else pending) if count.get(f, 0) > 5 and not re.search(testpaths.NOT_CODE, f)]
-    gen = testpaths.generated(d, hot) if hot else set()
+    gen = testpaths.generated(d, hot, head if pending is None else None) if hot else set()  # a push's own attributes, a commit's checkout
     return {f: count[f] for f in hot if f not in gen}
