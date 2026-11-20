@@ -101,6 +101,7 @@ _rp = arg('--parent', None); _rp = (re.sub(r'\.md$', '', path) + '.parent.md') i
 parent_text = open(_rp).read() if _rp and os.path.exists(_rp) else ''
 _asked_wording = bool(re.search(r'\brefactor this pr\b|\bold rating\b|\bratings?\b.*\blists?\b|\b\d+\s+(?:questions|items|options)\b|\bquestions?\b.*\b(?:checkbox|choices)\b', parent_text, re.I | re.S))
 if (asked_words := arg('--asked-list', None)) is not None:
+    if status: sys.exit('--asked-list goes with --kind reply or another reviewed kind: a status post skips the review that confirms its words')
     _flat = lambda s: ' '.join(s.split()).lower()
     if not asked_words.strip() or not any(_flat(asked_words) in _flat(b) for b in post_words.own_blocks(parent_text)):
         sys.exit(f'--asked-list: "{asked_words}" is not in the comment this answers (outside its quoted lines); name the words of it that ask for the whole list')
