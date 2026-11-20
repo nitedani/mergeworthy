@@ -145,12 +145,15 @@ def html_tags(s, tag):
     return [m.span() for n, m in enumerate(found) if n in real]
 
 def section(s, title, level='h3'):
-    """The block tokens of s's section under its rendered heading `title` (an h3 unless level says), up to the next heading of that level
-    or a higher one; None when no such heading renders."""
+    """The block tokens of s's section under its top-level heading (not in a blockquote or a list) that shows `title` (its text, emphasis
+    markers and inline HTML left out; an h3 unless level says), up to the next top-level heading of that level or a higher one; None when
+    no such heading renders."""
     tokens = _blocks(s)
+    heading = lambda t: t.type == 'heading_open' and t.level == 0
+    shown = lambda inline: ''.join(c.content for c in inline.children if c.type == 'text').strip()
     for i, t in enumerate(tokens):
-        if t.type == 'heading_open' and t.tag == level and tokens[i + 1].content.strip() == title:
-            end = next((j for j in range(i + 3, len(tokens)) if tokens[j].type == 'heading_open' and tokens[j].tag <= level), len(tokens))
+        if heading(t) and t.tag == level and shown(tokens[i + 1]) == title:
+            end = next((j for j in range(i + 3, len(tokens)) if heading(tokens[j]) and tokens[j].tag <= level), len(tokens))
             return tokens[i + 3:end]
     return None
 
