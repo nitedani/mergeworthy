@@ -617,8 +617,8 @@ def pushed(git_dir, opts, env, rest):
     out = []
     for spec in pos[1:] or ([] if '--tags' in rest else ['HEAD']):
         src, _, dst = spec.lstrip('+').partition(':')
-        if not src or src.startswith('refs/tags/') or run('show-ref', '--verify', '-q', f'refs/tags/{src}').returncode == 0:
-            continue  # a delete (:dst), or a tag
+        if not src or src.startswith('refs/tags/') or dst.startswith('refs/tags/') or run('show-ref', '--verify', '-q', f'refs/tags/{src}').returncode == 0:
+            continue  # a delete (:dst), or a tag, pushed or made
         sha = git('rev-parse', '--verify', '-q', f'{src}^{{commit}}')
         if not sha and not re.search(r'[$`]', src):  # a commit computed when it runs is checked only if the push is collaboration
             block(f"`{src}` in this push names no commit here, so what it publishes can't be checked: push a branch or commit of this checkout")

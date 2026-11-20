@@ -4331,6 +4331,10 @@ check "BLOCK: a push of a drifting commit to another branch, naming the commit t
 mkdir "$T/git239"; printf '#!/bin/sh\ncase " $* " in *" check-attr --source "*) echo "error: unknown option %s" >&2; exit 129;; esac\nexec "%s" "$@"\n' "'source'" "$(command -v git)" > "$T/git239/git"; chmod +x "$T/git239/git"
 git -C "$SH" checkout -q gen
 check "with a Git that has no check-attr --source, a push of the checked-out branch that marks its file generated passes" 0 "$(PATH="$T/git239:$PATH" MERGEWORTHY_WATCHER=off bg 'git push git@gitlab.com:acme/app.git gen' "$SH")"
+# a push that makes a tag of a drifting branch or commit publishes no branch: no drift refusal
+git -C "$SH" checkout -q other; for v in 1 2; do echo '[]' > "$FX/gl_projects_acme_2Fapp_merge_requests_state_opened_source_branch_refs_tags_review-v$v"; done
+check "a push of a drifting branch, or its commit, to a new tag passes" "0 0" \
+  "$(MERGEWORTHY_WATCHER=off bg 'git push origin suite:refs/tags/review-v1' "$SH") $(MERGEWORTHY_WATCHER=off bg "git push origin $SU:refs/tags/review-v2" "$SH")"
 # a maintainer's commits (no agent trailer) aren't the agent's drift: blocked as a "17th change" with 14 of them brillout's
 SO="$T/simpo"; git init -q -b main "$SO"; oc() { git -C "$SO" -c user.name=t -c user.email=t@t commit -q "$@"; }; ac() { oc --trailer 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>' "$@"; }
 echo 0 > "$SO/a.py"; git -C "$SO" add -A; oc -m base; git -C "$SO" update-ref refs/remotes/origin/main HEAD; git -C "$SO" checkout -q -b fix; echo 1 >> "$SO/a.py"; ac -am reviewed
