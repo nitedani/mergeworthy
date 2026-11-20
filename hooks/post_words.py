@@ -129,18 +129,18 @@ def fence_spans(s):
 
 def html_tags(s, tag):
     """(start, end) of each match of the regex tag in s that renders as an HTML tag: one in inline code, a fence or behind a backslash is
-    text, and one inside an HTML comment is hidden. markdown-it-py gives inline tokens no offsets, so each match is marked with a comment
-    that its parse keeps next to it."""
-    comments = [m.span() for m in re.finditer(r'<!--.*?-->', s, re.S)]
-    found = [m for m in re.finditer(tag, s) if not any(a < m.start() < b for a, b in comments)]
+    text, and one in an HTML comment (a comment token of the parse) is hidden. markdown-it-py gives inline tokens no offsets, so each match
+    is marked with a processing instruction that its parse keeps next to it (a comment marker would end an enclosing comment early)."""
+    found = list(re.finditer(tag, s))
     if not found: return []
-    marked = ''.join(s[m0.end() if m0 else 0:m.end()] + f'<!--mw-tag-{n}-->' for n, (m0, m) in enumerate(zip([None] + found, found)))
+    marked = ''.join(s[m0.end() if m0 else 0:m.end()] + f'<?mw-tag-{n}?>' for n, (m0, m) in enumerate(zip([None] + found, found)))
     marked += s[found[-1].end():]
     real = set()
     for t in _blocks(marked):
-        if t.type == 'html_block': real |= {int(n) for n in re.findall(rf'(?:{tag})<!--mw-tag-(\d+)-->', t.content)}
+        if t.type == 'html_block' and not t.content.startswith('<!--'):
+            real |= {int(n) for n in re.findall(rf'(?:{tag})<\?mw-tag-(\d+)\?>', t.content)}
         for a, b in zip(t.children or [], (t.children or [])[1:]):
-            if a.type == b.type == 'html_inline' and re.fullmatch(tag, a.content) and (n := re.fullmatch(r'<!--mw-tag-(\d+)-->', b.content)):
+            if a.type == b.type == 'html_inline' and re.fullmatch(tag, a.content) and (n := re.fullmatch(r'<\?mw-tag-(\d+)\?>', b.content)):
                 real.add(int(n[1]))
     return [m.span() for n, m in enumerate(found) if n in real]
 

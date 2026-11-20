@@ -892,6 +892,9 @@ printf '%s\n' 'The formatter now preserves comment delimiters.' '' 'The opener i
 printf '%s\n' 'The PR template now folds its example output.' '' '### What you should see' '' '**1.** Run the request.' '' '<!--' '<details>' '' '```sh' 'curl -sI /a.js' '```' '' '</details>' '-->' > "$T/lsee-a2.md"
 lseef() { MERGEWORTHY_BADGE=off python3 "$R/bin/post-lint" "$T/$1" --kind pr --parent none 2>&1 | grep -c 'pull-request §Body'; }
 check "a ready PR body's evidence is read from its rendered tokens: inline-code '<!--' and '-->' around a shown section hide nothing; an output only in an HTML comment is none" "0 1" "$(lseef lsee-a1.md) $(lseef lsee-a2.md)"
+lsec_vis=$'### What you should see\n\n**1.** Run the request.\n\n```sh\ncurl -sI /a.js\nHTTP/2 200\n```'
+lsec() { printf 'The cache now keeps the response headers.\n\n%s\n' "$1" > "$T/lsec.md"; MERGEWORTHY_BADGE=off python3 "$R/bin/post-lint" "$T/lsec.md" --kind pr --parent none 2>&1 | grep -c 'pull-request §Body'; }
+check "inline-code '<!--' and '-->' around a collapsed evidence section hide nothing: its <details> still collapses it" 1 "$(lsec "The opener is \`<!--\`."$'\n\n'"<details><summary>Example</summary>"$'\n\n'"$lsec_vis"$'\n\n'"</details>"$'\n\n'"The closer is \`-->\`.")"
 check "requested list: prints words wrapped over lines on one line" 1 "$(la --asked-list $'List\nall' >/dev/null; lagrep '^requested list: "List all"$')"
 check "the same lists nobody asked for are" 4 "$(python3 "$R/bin/post-lint" "$T/rp.md" --kind pr --parent none 2>&1 | grep -c 'internal label\|words >\|process in the thread')"
 printf 'The code came from Sonnet subagents, and Codex (gpt-6.1-sol) reviewed every post.\n' > "$T/pm.md"
