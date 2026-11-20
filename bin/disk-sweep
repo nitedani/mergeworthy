@@ -15,7 +15,7 @@ deleted.
 - c-node_modules: outside any repo in a work folder, a node_modules whose parent is idle (node_modules and nested repos aside)
   and isn't busy.
 - w-done, once a day: a folder directly under ~/.mergeworthy/work but the steward's, whole, once T3 deleted the thread its t3-thread
-  names, or, with no settled or archived thread, once its watcher retired and it is untouched for 8 days, its watcher's own files aside,
+  names, or, with no settled, archived or unanswered thread, once its watcher retired and it is untouched for 8 days, its watcher's own files aside,
   which a 24-hour change doesn't count either; its watchers stop first; a repo in it with a worktree outside keeps it; then `git worktree
   prune` in each repo outside it that had a worktree in it; ~/.mergeworthy/work-kept.md lists each finished folder that stays, and why.
 - w-merged, once a day: each worktree in the steward's folder whose branch is merged (into origin/main, or squash-merged: gone from
@@ -345,23 +345,25 @@ def watcher_file(folder):
 def thread_state(folder):
     """What T3 says of the thread folder/t3-thread (else t3-gone) names, through the t3 recorded beside it or on PATH: 'deleted' when
     `t3 thread show` answers that it is no longer available or not found, 'settled' while it is settled or archived, 'live' otherwise;
-    None without a thread, a t3 or an answer."""
+    'unknown' without a t3 or an answer (T3 down, or over 60 s), None without a thread."""
     try:
         lines = open(os.path.join(folder, 't3-thread')).read().split('\n')
     except OSError:
         lines = [steward.first(os.path.join(folder, 't3-gone'))]
     tid, t3 = lines[0].strip(), (lines[1:] or [''])[0].strip()
     t3 = t3 if os.access(t3, os.X_OK) else shutil.which('t3')
-    if not tid or not t3:
+    if not tid:
         return None
+    if not t3:
+        return 'unknown'
     try:
         r = subprocess.run([t3, 'thread', 'show', tid, '--json', '--messages', '0'], capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=60)
         if not r.returncode:
             thread = json.loads(r.stdout)['thread']
             return 'settled' if thread.get('settled') or thread.get('archived') else 'live'
     except (OSError, subprocess.TimeoutExpired, ValueError, KeyError, TypeError):
-        return None
-    return 'deleted' if re.match(rf'Thread {re.escape(tid)} (?:is no longer available|was not found)\.', r.stderr.strip()) else None
+        return 'unknown'
+    return 'deleted' if re.match(rf'Thread {re.escape(tid)} (?:is no longer available|was not found)\.', r.stderr.strip()) else 'unknown'
 
 
 def stop_watchers(folder):
@@ -390,7 +392,7 @@ def stop_watchers(folder):
 
 def sweep_work():
     """Once a day, w-done: each folder directly under work_folder.ROOT but the steward's whose T3 thread is deleted (thread_state), or whose
-    watcher retired and that is untouched for IDLE outside its watcher's files (watcher_file) while no such thread is settled or archived:
+    watcher retired and that is untouched for IDLE outside its watcher's files (watcher_file) while no such thread is settled, archived or unanswered:
     once no such file changed in 24 hours and no repo in it lends a worktree outside it (work_folder.lent), its watchers stop and it is
     deleted whole through delete(); ~/.mergeworthy/work-kept.md (a dry run: stdout) lists each finished folder that stays, and why."""
     root = work_folder.ROOT
@@ -408,6 +410,9 @@ def sweep_work():
                 continue
             if state != 'deleted':
                 if not os.path.isfile(os.path.join(e.path, 'retired')):
+                    continue
+                if state == 'unknown':  # it may be settled: kept until T3 answers
+                    rows.append(f'- {e.path}: T3 gave no answer about its thread; kept this run')
                     continue
                 if (at := newest(e.path, skip) + IDLE) > NOW:
                     rows.append(f'- {e.path}: its watcher retired; deleted no sooner than {iso(at)} if left untouched')

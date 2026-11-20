@@ -240,13 +240,13 @@ chmod +x "$T/bin/t3" "$T/bin/systemctl" "$T/bin/crontab"
 H9="$T/home9"; W9="$H9/.mergeworthy/work"; mkdir -p "$W9" "$H9/.claude/agent-jobs" "$H9/.config/systemd/user"; : > "$H9/.config/systemd/user/gh-watch@.service"
 G init -q --bare -b main "$T/w-origin.git"; G init -q -b main "$T/w-seed"; printf 'node_modules\n' > "$T/w-seed/.gitignore"; G -C "$T/w-seed" add .gitignore; G -C "$T/w-seed" commit -qm base; G -C "$T/w-seed" push -q "$T/w-origin.git" main
 mk() { G clone -q "file://$T/w-origin.git" "$W9/$1/repo"; [ -z "${2:-}" ] || printf '%s\n%s\n' "$2" "${3:-}" > "$W9/$1/t3-thread"; }  # file://: no git object hard-linked across folders aged apart
-mk deleted del-1 "$T/bin/t3"; mk settled set-1; mk archived arc-1; mk liveold live-1; mk liveyoung live-2; mk live live-3; mk noold; mk noyoung; mk busy del-2; mk fresh del-3; mk lender del-4; mk broken bad-1; mk unknown err-1; mk steward del-9; mk t3dir live-4
+mk deleted del-1 "$T/bin/t3"; mk settled set-1; mk archived arc-1; mk liveold live-1; mk liveyoung live-2; mk live live-3; mk noold; mk noyoung; mk busy del-2; mk fresh del-3; mk lender del-4; mk broken bad-1; mk unknown err-1; mk steward del-9; mk t3dir live-4; mk noanswer err-2
 mkdir -p "$W9/notfound"; echo nf-1 > "$W9/notfound/t3-gone"
 echo x > "$W9/deleted/repo/notes.txt"; G -C "$W9/deleted/repo" commit -q --allow-empty -m 'only here'  # an uncommitted file and a commit on no remote
 G -C "$W9/lender/repo" worktree add -q -b side "$T/lent-wt"
 G clone -q "$T/w-origin.git" "$T/user9"; mkdir -p "$W9/fix"; echo del-5 > "$W9/fix/t3-thread"; G -C "$T/user9" worktree add -q -b fix-1 "$W9/fix/fix-1" origin/main
 for n in live; do mkdir -p "$W9/$n/repo/node_modules" "$W9/$n/drafts/node_modules"; echo x > "$W9/$n/repo/node_modules/x"; echo x > "$W9/$n/drafts/node_modules/x"; done
-for n in settled archived liveold liveyoung noold noyoung t3dir; do date -u -d '20 days ago' +%FT%TZ > "$W9/$n/retired"; done
+for n in settled archived liveold liveyoung noold noyoung t3dir noanswer; do date -u -d '20 days ago' +%FT%TZ > "$W9/$n/retired"; done
 find "$W9" -exec touch -h -d '9 days ago' {} +; find "$W9/liveyoung" "$W9/noyoung" -exec touch -h -d '7 days ago' {} +
 YOUNG=$(date -u -d "@$(( $(stat -c %Y "$W9/noyoung/repo/.gitignore") + 8 * 86400 ))" +%FT%TZ)
 mkdir -p "$W9/t3dir/t3-carry" "$W9/t3dir/gh-watch-fix"; echo 999999999 > "$W9/t3dir/gh-watch.pid"
@@ -265,6 +265,7 @@ check "a thread t3 calls not found (t3-gone) is deleted too" removed "$(there "$
 check "a settled or archived thread keeps its folder, its row saying T3 decides" "kept kept 1 1" "$(there "$W9/settled") $(there "$W9/archived") $(row settled 'its T3 thread is settled or archived; it goes once T3 deletes the thread') $(row archived 'its T3 thread is settled or archived; it goes once T3 deletes the thread')"
 check "a retired folder untouched for 8 days goes, with a live thread or none, its watcher's fresh files aside; 7 days stays, its row naming the date" "removed removed kept kept 1" "$(there "$W9/liveold") $(there "$W9/noold") $(there "$W9/liveyoung") $(there "$W9/noyoung") $(row noyoung "its watcher retired; deleted no sooner than $YOUNG if left untouched")"
 check "a retired folder whose checkouts are named t3-* and gh-watch* stays 8 days after their edit: only the watcher's own top-level files are aside" "kept 1" "$(there "$W9/t3dir") $(grep -c "^- $W9/t3dir: its watcher retired; deleted no sooner than " "$KEPT")"
+check "a retired folder whose thread t3 gives no answer about stays this run, its row saying so" "kept 1" "$(there "$W9/noanswer") $(row noanswer 'T3 gave no answer about its thread; kept this run')"
 check "a live thread without a retired watcher keeps its folder, with no row; c-ignored and c-node_modules sweep its build folders" "kept 0 removed removed" "$(there "$W9/live/repo") $(grep -c "$W9/live:" "$KEPT") $(there "$W9/live/repo/node_modules") $(there "$W9/live/drafts/node_modules")"
 check "a deleted thread's folder stays while a process works in it or a file changed in 24 hours, its row naming the cause" "kept 1 kept 1" "$(there "$W9/busy") $(row busy 'a process or agent job works in it') $(there "$W9/fresh") $(row fresh 'a file changed in the last 24 hours')"
 check "a folder whose repo has a worktree outside it stays, its row naming it" "kept 1" "$(there "$W9/lender") $(row lender "$W9/lender/repo: its worktree $(readlink -f "$T")/lent-wt is outside the folder")"
