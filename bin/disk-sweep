@@ -332,10 +332,13 @@ def newest(top, skip):
 
 
 def watcher_file(folder):
-    """skip() of the files a watcher writes in its watch dir: folder, or a folder in it, holding gh-watch.pid."""
+    """skip() of the files a watcher writes in its watch dir (folder, or a folder directly in it, holding gh-watch.pid): only files at
+    that dir's top level, never a directory or anything in one, so a checkout named t3-* or gh-watch* counts like any other."""
     def skip(rel):
-        name = os.path.basename(rel)
-        return (name in WATCHER or name.startswith(('gh-watch', 't3-'))) and os.path.isfile(os.path.join(folder, os.path.dirname(rel), 'gh-watch.pid'))
+        name, where = os.path.basename(rel), os.path.dirname(rel)
+        path = os.path.join(folder, rel)
+        return ((name in WATCHER or name.startswith(('gh-watch', 't3-'))) and os.sep not in where
+                and os.path.isfile(os.path.join(folder, where, 'gh-watch.pid')) and os.path.isfile(path) and not os.path.islink(path))
     return skip
 
 
