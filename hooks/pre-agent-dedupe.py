@@ -245,8 +245,9 @@ if not register and ti.get('role') not in ('research', 'test') and 'memory-refre
                     out += [p for a in w[1:] if not a.startswith('-') and (os.sep in a or '.' in a) and (p := where.path(a))]
             return out
         since, seen = time.time() - 3 * 3600, False
-        for l in reversed(open(d['transcript_path'], errors='replace').readlines()[-4000:]):
-            if seen or '"tool_use"' not in l: continue
+        for l in itertools.islice(rlines(d['transcript_path']), 4001):  # the last 4,000 lines: rlines yields b'' first after a final newline
+            if seen: break
+            if b'"tool_use"' not in l: continue
             try: e = json.loads(l)
             except ValueError: continue
             try: t = datetime.datetime.fromisoformat(e.get('timestamp', '').replace('Z', '+00:00')).timestamp()
