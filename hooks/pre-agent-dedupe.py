@@ -118,36 +118,31 @@ if not register:
                 refused()
 # Two rounds per loop on one head (delegate §Review rounds): a review round `<loop>-r<N>`, maybe followed by the date or head SHA
 # the reuse block above asks for, once the heads its brief pins show the branch hasn't moved since two earlier rounds of its loop, is refused;
-# a post's review is refused only on the text the loop's previous round was handed and answered, since editing a post moves no head
+# a post's review is refused only once gate-pass's own check (review_launch.answers) already passes every draft it reviews
 rnd = re.fullmatch(r'(.+)-r(\d+)', re.sub(r'(-\d{4}-\d{2}-\d{2}|-[0-9a-f]{7,40})+$', '', (cid or str(ti.get('description') or '')).strip()))
-if rnd and (ti.get('role') == 'review' or not ti.get('role') and re.search(r'\bexactly (CLEAN|NO BUGS)\b', brief)):
+review = rnd and (ti.get('role') == 'review' or not ti.get('role') and re.search(r'\bexactly (CLEAN|NO BUGS)\b', brief))
+# a post's review: a gate review of a named draft whose brief asks for no code verdict (a small review's pr-body.review.out comes with one)
+post_review = review and bool(reviewed_drafts(brief)) and 'CLEAN' in brief and not re.search(r'\b(NO BUGS|MERGE AS IS)\b', own_brief)
+if post_review and not register:
+    led = re.search(r'(/[^\s`\'"()]+\.ledger\.md)\b', brief)  # the ledger the brief names, else the one beside the draft
+    ledger = lambda dr: led[1] if led else dr[:-3] + '.ledger.md' if os.path.isfile(dr[:-3] + '.ledger.md') else None
+    passes = [(o, dr, ledger(dr)) for o in review_outs(brief) if (dr := review_launch.draft_of(o)) in reviewed_drafts(brief)]
+    if all(not review_launch.answers(o, dr, lg)[0] for o, dr, lg in passes):
+        sys.stderr.write("BLOCKED: gate-pass already passes every draft this post review reads, so a round on them reviews nothing new "
+                         "(mergeworthy:delegate §Review rounds): post it, or edit the draft first. It passes with:\n"
+                         + ''.join(f"gate-pass {dr} {o}{f' --ledger {lg}' if lg else ''}\n" for o, dr, lg in passes))
+        refused()
+elif review and not post_review:
     tops = L.checkouts
     heads = sorted({h for t in tops if (h := git(t, 'rev-parse', 'HEAD').stdout.strip()) and any(h.startswith(x) for x in shas)})
     rf = os.path.expanduser('~/.claude/review-rounds.json')
     rlock = open(rf + '.lock', 'a'); fcntl.flock(rlock, fcntl.LOCK_EX)  # held until exit
     rounds = json.load(open(rf)) if os.path.exists(rf) else {}
     loop, n = rnd[1], int(rnd[2])
-    # a post's review: a gate review of a named draft whose brief asks for no code verdict (a small review's pr-body.review.out comes with one)
-    post_review = bool(reviewed_drafts(brief)) and 'CLEAN' in brief and not re.search(r'\b(NO BUGS|MERGE AS IS)\b', own_brief)
     if register:
-        # with the outputs of the drafts it reviews, whose launches the loop's next post round compares its text with
-        rounds.setdefault(loop, []).append([n, heads, [o for o in review_outs(brief) if review_launch.draft_of(o) in reviewed_drafts(brief)]])
+        rounds.setdefault(loop, []).append([n, heads])
         with open(rf + '.tmp', 'w') as f: json.dump(rounds, f)
         os.replace(rf + '.tmp', rf)
-    elif post_review:
-        # the previous round's outputs (an entry recorded without them, before they were: the outputs this brief names); until this
-        # launch is admitted, each one's .launch still holds the text that round was handed
-        prev = next((e for e in reversed(rounds.get(loop, [])) if e[0] < n), None)
-        outs = [o for o in (prev[2] if prev and len(prev) > 2 else []) if os.path.isfile(review_launch.draft_of(o) or '')] \
-            or [o for o in review_outs(brief) if review_launch.draft_of(o) in reviewed_drafts(brief)]
-        def answered(out):  # handed the draft's current text, and its verdict written since
-            why, at = review_launch.reviewed(out, review_launch.draft_of(out))
-            return not why and os.path.isfile(out) and os.path.getmtime(out) >= at and open(out, errors='replace').read().strip() != ''
-        if prev and all(answered(o) for o in outs):
-            sys.stderr.write(f"BLOCKED: {loop}-r{prev[0]} already reviewed this text of {', '.join(review_launch.draft_of(o) for o in outs)} and wrote its verdict: "
-                             "a post's next round reviews a changed draft (mergeworthy:delegate §Review rounds). Fix its findings in the draft, "
-                             f"or close r{prev[0]}, when it isn't clean, with `gate-pass ... --ledger <ledger>` on its report.\n")
-            refused()
     elif n >= 3:
         # first-parent and no merges: what a merge of the base brought in isn't the PR's own, as SHAPE STALE's compare leaves it out; no renames: each row names a real path
         def own_lines(t, o, h):

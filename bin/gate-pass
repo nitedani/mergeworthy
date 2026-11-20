@@ -11,19 +11,16 @@ shift 2; flags=(); ledger=; while [ $# -gt 0 ]; do if [ "$1" = --ledger ]; then 
 "$(dirname "$(readlink -f "$0")")/post-lint" "$d" "${flags[@]}" || { echo "post-lint failed"; exit 1; }
 kind=reply; for i in "${!flags[@]}"; do [ "${flags[$i]}" = --kind ] && kind="${flags[$((i+1))]}"; done
 [ "$r" != none ] || [ "$kind" = status ] || { echo "only a status post (post-lint --kind status) skips the review: run it (post step 3)"; exit 1; }
-# the reviewer was handed the text that gets posted (its launch recorded it), the footer gate-pass appends below aside: a draft edited
-# since (a trim to the length ceiling) is reviewed again
-if [ "$r" != none ]; then
-  launched=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import review_launch
-why, at = review_launch.reviewed(sys.argv[2], sys.argv[3]); print(why or at); sys.exit(1 if why else 0)' "$(dirname "$(readlink -f "$0")")/../hooks" "$r" "$d") || { echo "$d: $launched"; exit 1; }
-fi
 # a reply, inline comment or proposal is drafted from the whole thread: thread-context.md (post step 1) next to the draft, newer than the comment it answers
 case "$kind" in reply|comment|inline|proposal|status)
   parent="${d%.md}.parent.md"; [ -f "$parent" ] || parent=""
   "$(dirname "$(readlink -f "$0")")/thread-context" --verify "$(dirname "$(readlink -f "$d")")/thread-context.md" ${parent:+--parent "$parent"} || exit 1;;
 esac
-[ "$r" = none ] && out=CLEAN || out=$(tr -d '\r' < "$r" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -v '^$' || true)
-[ "$out" = "CLEAN" ] || { [ -n "$ledger" ] && python3 "$(dirname "$(readlink -f "$0")")/../hooks/ledger.py" --post "$ledger"; } || { echo "review is not exactly CLEAN (it has $(printf '%s\n' "$out" | wc -l) non-empty lines; last: $(printf '%s\n' "$out" | tail -1)). The reviewer's final message, alone, is the review output; after round 2, pass --ledger <the loop's ledger>"; exit 1; }
+# the review lets this text be posted (review_launch.answers, which pre-agent-dedupe asks too): a draft edited since its launch, such as
+# a trim to the length ceiling, is reviewed again; the footer appended below is no edit
+launched=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import review_launch
+why, at = review_launch.answers(None if sys.argv[2] == "none" else sys.argv[2], sys.argv[3], sys.argv[4] or None); print(why or at); sys.exit(1 if why else 0)' \
+  "$(dirname "$(readlink -f "$0")")/../hooks" "$r" "$d" "$ledger") || { echo "$launched"; exit 1; }
 # a posted promise is a task opened (mergeworthy:post step 4): it needs a PROMISED line naming this draft in proposals-open.md
 own=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import post_words; sys.stdout.write(post_words.uncoded(open(sys.argv[2]).read()))' "$(dirname "$(readlink -f "$0")")/../hooks" "$d" |
   sed -E 's/"[^"]*"//g; s/“[^”]*”//g; s/`[^`]*`//g; /^>/d')  # quoted text and code blocks are someone else's words or a tool's output, not a promise
@@ -49,12 +46,7 @@ sha256sum "$d" | cut -d' ' -f1 > "$d.gate"
 # the draft was written from the thread's record, and the reviewer had the same file;
 # its hash goes into the gate record, so the posting hook can tell it from one made after the review
 tcf="$(dirname "$(readlink -f "$d")")/thread-context.md"
-if [ -f "$tcf" ]; then
-  # the review checked the draft against the record: its launch must postdate the record's latest human comment (a status post: the draft)
-  at=$(sed -n 's/^- latest-human-comment: id=[0-9]* at=\([0-9TZ:-]*\).*/\1/p' "$tcf" | head -1); seen=$([ "$r" = none ] && stat -c %Y "$d" || echo "$launched")
-  [ "${at:-0}" != 0 ] && [ "$(date -d "$at" +%s 2>/dev/null || echo 0)" -ge "$seen" ] && { rm -f "$d.gate"; echo "thread-context.md records a human comment ($at) newer than the review: re-read it, revise the draft if it changes anything, and review again (mergeworthy:post step 1)"; exit 1; }
-  echo "tc $(sha256sum "$tcf" | cut -d' ' -f1)" >> "$d.gate"
-fi
+[ -f "$tcf" ] && echo "tc $(sha256sum "$tcf" | cut -d' ' -f1)" >> "$d.gate"
 echo "gate passed: $d"
 # the draft now links every mergeworthy commit up to the installed one: record it as shown
 case "$kind" in reply|comment|proposal) [ -n "$repo" ] && [ -f "$hs" ] && [ -n "$installed" ] && echo "$installed" > "$hs";; esac
