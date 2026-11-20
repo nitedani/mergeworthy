@@ -8,7 +8,7 @@ a later round up to the completed one that confirmed the fix, closes a finding t
 Used by pr-steps and gate-pass (`--ledger`); else it prints what stands and exits 1."""
 import re, subprocess, sys
 
-LINE = re.compile(r'^[\s>*-]*`?(?:R(\d+)\.\d+|[^\s`]+)`?\s+`?(blocker|should|nit)`?\s+(.*?)\s*$', re.I)
+LINE = re.compile(r'^(?!\s*#)[\s>*-]*`?(?:R(\d+)\.\d+|[^\s`]+)`?\s+`?(blocker|should|nit)`?:?(?=\s|$)\s*(.*?)\s*$', re.I)
 ROUND = re.compile(r'^[\s>*-]*`?Round:\s*(\d+)', re.I | re.M)
 
 
