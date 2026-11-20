@@ -220,31 +220,27 @@ check "the home-wide walk runs at most once a day" kept "$(there "$H7/proj/app/d
 check "caches: pnpm, npm (stale _cacache) and pip by their own commands; stale tool-cache and cargo entries go, a fresh one, an unnamed ~/.cache folder an old Playwright browser and an old entry read today stay" "npm cache clean --force|pip cache purge|pnpm store prune| removed removed removed kept kept kept kept" "$(sort -u "$T/tools.log" | tr '\n' '|') $(there "$H7/.cache/yarn/stale") $(there "$H7/.cargo/registry/cache/idx") $(there "$H7/.cargo/git/checkouts/c") $(there "$H7/.cache/yarn/fresh") $(there "$H7/.cache/drafts") $(there "$H7/.cache/ms-playwright/chromium_headless_shell-1200") $(there "$H7/.cache/yarn/readnow")"
 check "a weekly report names the stale folder no rule covers, and deletes nothing" "1 0 kept" "$(cat "$H7/.mergeworthy/disk-report.md" 2>/dev/null | grep -c "$H7/old-stuff") $(cat "$H7/.mergeworthy/disk-report.md" 2>/dev/null | grep -c "$H7/.cache/yarn") $(there "$H7/old-stuff/sub/big")"
 
-# w-done over a whole sweep: the dry run, then a deleting one, with a fake t3 (deleted, not found, settled, archived, live)
-cat > "$T/bin/t3" <<'EOF'
-#!/bin/sh
-# stub t3: `t3 thread show <id> --json --messages 0` answers by the id's prefix, as T3's CLI does for a deleted or unknown thread
-case "$3" in
-  del-*) echo "Thread $3 is no longer available." >&2; exit 1;;
-  nf-*) echo "Thread $3 was not found." >&2; exit 1;;
-  set-*) echo "{\"thread\":{\"threadId\":\"$3\",\"settled\":true,\"settledAt\":\"2026-01-01T00:00:00.000Z\",\"archived\":false},\"messages\":[]}";;
-  arc-*) echo "{\"thread\":{\"threadId\":\"$3\",\"settled\":false,\"archived\":true},\"messages\":[]}";;
-  live-*) echo "{\"thread\":{\"threadId\":\"$3\",\"settled\":false,\"archived\":false},\"messages\":[]}";;
-  bad-*) echo '{"thread":null,"messages":[]}';;
-  *) echo 'T3 is not running' >&2; exit 1;;
-esac
-EOF
-chmod +x "$T/bin/t3"
-H9="$T/home9"; W9="$H9/.mergeworthy/work"; mkdir -p "$W9" "$H9/.claude/agent-jobs" "$H9/.config/systemd/user"; : > "$H9/.config/systemd/user/gh-watch@.service"
+# w-done over a whole sweep: the dry run, then a deleting one, with T3's database as a fixture (deleted, no row, settled, auto-settled,
+# archived, live; a row it can't read for err-*)
+H9="$T/home9"; mkdir -p "$H9/.t3/userdata"; python3 - "$H9/.t3/userdata/statev2.sqlite" <<'DB'
+import json, sqlite3, sys
+c = sqlite3.connect(sys.argv[1])
+c.execute("create table orchestration_v2_projection_threads (thread_id text primary key, archived_at text, deleted_at text, payload_json text not null)")
+at, row = "2026-01-01T00:00:00.000Z", lambda tid, archived=None, deleted=None, **p: (tid, archived, deleted, json.dumps({"settledOverride": None, "settledAt": None, **p}))
+rows = [row(f"del-{i}", deleted=at) for i in (1, 2, 3, 4, 5, 6, 9)] + [row("set-1", settledOverride="settled", settledAt=at), row("aset-1", settledAt=at), row("arc-1", archived=at)]
+rows += [row(f"live-{i}") for i in (1, 2, 3, 4)] + [(f"err-{i}", None, None, "not json") for i in (1, 2)]  # json_extract fails on these: the database can't say
+c.executemany("insert into orchestration_v2_projection_threads values (?, ?, ?, ?)", rows); c.commit()
+DB
+W9="$H9/.mergeworthy/work"; mkdir -p "$W9" "$H9/.claude/agent-jobs" "$H9/.config/systemd/user"; : > "$H9/.config/systemd/user/gh-watch@.service"
 G init -q --bare -b main "$T/w-origin.git"; G init -q -b main "$T/w-seed"; printf 'node_modules\n' > "$T/w-seed/.gitignore"; G -C "$T/w-seed" add .gitignore; G -C "$T/w-seed" commit -qm base; G -C "$T/w-seed" push -q "$T/w-origin.git" main
 mk() { G clone -q "file://$T/w-origin.git" "$W9/$1/repo"; [ -z "${2:-}" ] || printf '%s\n%s\n' "$2" "${3:-}" > "$W9/$1/t3-thread"; }  # file://: no git object hard-linked across folders aged apart
-mk deleted del-1 "$T/bin/t3"; mk settled set-1; mk archived arc-1; mk liveold live-1; mk liveyoung live-2; mk live live-3; mk noold; mk noyoung; mk busy del-2; mk fresh del-3; mk lender del-4; mk broken bad-1; mk unknown err-1; mk steward del-9; mk t3dir live-4; mk noanswer err-2; mk watched del-6
+mk deleted del-1; mk settled set-1; mk autoset aset-1; mk archived arc-1; mk liveold live-1; mk liveyoung live-2; mk live live-3; mk noold; mk noyoung; mk busy del-2; mk fresh del-3; mk lender del-4; mk unknown err-1; mk steward del-9; mk t3dir live-4; mk noanswer err-2; mk watched del-6
 mkdir -p "$W9/notfound"; echo nf-1 > "$W9/notfound/t3-gone"
 echo x > "$W9/deleted/repo/notes.txt"; G -C "$W9/deleted/repo" commit -q --allow-empty -m 'only here'  # an uncommitted file and a commit on no remote
 G -C "$W9/lender/repo" worktree add -q -b side "$T/lent-wt"
 G clone -q "$T/w-origin.git" "$T/user9"; mkdir -p "$W9/fix"; echo del-5 > "$W9/fix/t3-thread"; G -C "$T/user9" worktree add -q -b fix-1 "$W9/fix/fix-1" origin/main
 for n in live; do mkdir -p "$W9/$n/repo/node_modules" "$W9/$n/drafts/node_modules"; echo x > "$W9/$n/repo/node_modules/x"; echo x > "$W9/$n/drafts/node_modules/x"; done
-for n in settled archived liveold liveyoung noold noyoung t3dir noanswer; do date -u -d '20 days ago' +%FT%TZ > "$W9/$n/retired"; done
+for n in settled autoset archived liveold liveyoung noold noyoung t3dir noanswer; do date -u -d '20 days ago' +%FT%TZ > "$W9/$n/retired"; done
 find "$W9" -exec touch -h -d '9 days ago' {} +; find "$W9/liveyoung" "$W9/noyoung" -exec touch -h -d '7 days ago' {} +
 YOUNG=$(date -u -d "@$(( $(stat -c %Y "$W9/noyoung/repo/.gitignore") + 8 * 86400 ))" +%FT%TZ)
 mkdir -p "$W9/t3dir/t3-carry" "$W9/t3dir/gh-watch-fix"; echo 999999999 > "$W9/t3dir/gh-watch.pid"
@@ -258,15 +254,17 @@ HOME="$H9" python3 "$R/bin/disk-sweep" --delete > "$T/run9.out" 2>&1
 KEPT="$H9/.mergeworthy/work-kept.md"; row() { grep -cx -- "- $W9/$1: $2" "$KEPT"; }
 check "w-done deletes the folder of a thread T3 deleted, its uncommitted file and local-only commit with it, logged before and after" "removed deleting|deleted|" "$(there "$W9/deleted") $(grep "^[^ ]* [0-9][0-9]* $W9/deleted w-done " "$H9/.mergeworthy/disk-sweep.log" | cut -d' ' -f5 | tr '\n' '|')"
 check "the sweep stops no watcher: a deleted thread's folder whose watcher still runs there stays this run, its row naming it busy, the watcher alive" "kept 1 alive" "$(there "$W9/watched") $(row watched 'a process or agent job works in it') $(kill -0 "$WATCH" 2>/dev/null && echo alive || echo gone)"
-check "a thread t3 calls not found (t3-gone) is deleted too" removed "$(there "$W9/notfound")"
-check "a settled or archived thread keeps its folder, its row saying T3 decides" "kept kept 1 1" "$(there "$W9/settled") $(there "$W9/archived") $(row settled 'its T3 thread is settled or archived; it goes once T3 deletes the thread') $(row archived 'its T3 thread is settled or archived; it goes once T3 deletes the thread')"
+check "a thread T3's database has no row for (here in t3-gone) is deleted too" removed "$(there "$W9/notfound")"
+check "a settled thread (settledOverride, or only a settledAt as T3 auto-settles) or an archived one keeps its folder, its row saying T3 decides" "kept kept kept 1 1 1" "$(there "$W9/settled") $(there "$W9/autoset") $(there "$W9/archived") $(row settled 'its T3 thread is settled or archived; it goes once T3 deletes the thread') $(row autoset 'its T3 thread is settled or archived; it goes once T3 deletes the thread') $(row archived 'its T3 thread is settled or archived; it goes once T3 deletes the thread')"
 check "a retired folder untouched for 8 days goes, with a live thread or none, its watcher's fresh files aside; 7 days stays, its row naming the date" "removed removed kept kept 1" "$(there "$W9/liveold") $(there "$W9/noold") $(there "$W9/liveyoung") $(there "$W9/noyoung") $(row noyoung "its watcher retired; deleted no sooner than $YOUNG if left untouched")"
 check "a retired folder whose checkouts are named t3-* and gh-watch* stays 8 days after their edit: only the watcher's own top-level files are aside" "kept 1" "$(there "$W9/t3dir") $(grep -c "^- $W9/t3dir: its watcher retired; deleted no sooner than " "$KEPT")"
-check "a retired folder whose thread t3 gives no answer about stays this run, its row saying so" "kept 1" "$(there "$W9/noanswer") $(row noanswer 'T3 gave no answer about its thread; kept this run')"
+check "a retired folder whose thread T3's database can't answer about stays this run, its row saying so" "kept 1" "$(there "$W9/noanswer") $(row noanswer 'T3 gave no answer about its thread; kept this run')"
 check "a live thread without a retired watcher keeps its folder, with no row; c-ignored and c-node_modules sweep its build folders" "kept 0 removed removed" "$(there "$W9/live/repo") $(grep -c "$W9/live:" "$KEPT") $(there "$W9/live/repo/node_modules") $(there "$W9/live/drafts/node_modules")"
 check "a deleted thread's folder stays while a process works in it or a file changed in 24 hours, its row naming the cause" "kept 1 kept 1" "$(there "$W9/busy") $(row busy 'a process or agent job works in it') $(there "$W9/fresh") $(row fresh 'a file changed in the last 24 hours')"
 check "a folder whose repo has a worktree outside it stays, its row naming it" "kept 1" "$(there "$W9/lender") $(row lender "$W9/lender/repo: its worktree $(readlink -f "$T")/lent-wt is outside the folder")"
-check "a folder whose check fails stays with that reason; t3 giving no answer and the steward's folder keep theirs, with no row" "kept 1 kept kept 0" "$(there "$W9/broken") $(grep -c "^- $W9/broken: check failed: " "$KEPT") $(there "$W9/unknown") $(there "$W9/steward") $(grep -c "$W9/unknown:\|$W9/steward:" "$KEPT")"
+check "an unretired folder T3's database can't answer about and the steward's folder keep theirs, with no row" "kept kept 0" "$(there "$W9/unknown") $(there "$W9/steward") $(grep -c "$W9/unknown:\|$W9/steward:" "$KEPT")"
+check "a folder whose check fails stays with that reason, and the next folders are still checked" 2 \
+  "$(HOME="$H9" dsm 'm.DRY = True; real = m.thread_state; m.thread_state = lambda f: 1 / 0 if f.endswith("/archived") else real(f); m.sweep_work()' | grep -c "^- $W9/archived: check failed: division by zero$\|^- $W9/settled: its T3")"
 check "a deleted folder's worktree of a repo outside: that repo's entry is pruned, so its branch can be checked out there" "removed 1 0" "$(there "$W9/fix") $(G -C "$T/user9" worktree list | wc -l) $(G -C "$T/user9" switch -q fix-1 2>&1 | wc -l)"
 check "the deleting run's rows are the dry run's" same "$([ "$(grep '^- ' "$T/dry9.out")" = "$(grep '^- ' "$KEPT")" ] && echo same)"
 ln -s "$W9" "$T/w9link"

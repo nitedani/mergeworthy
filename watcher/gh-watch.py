@@ -1934,8 +1934,7 @@ def tick():
     """One round of a daemon. What each budget level allows: OK everything; RESERVE (below RESERVE_AT calls left) not discovery and
     follow-ups; LOW (below LOW_AT) only the notifications and the threads they name; PAUSED nothing."""
     _ticks[0] += 1
-    tid = steward.first(os.path.join(HERE, 't3-thread')) or steward.first(os.path.join(HERE, 't3-gone'))
-    if os.path.exists(os.path.join(HERE, 'retired')) or not os.path.isdir(HERE) or steward.deleted(tid) and not steward.in_folder(HERE):  # disk-sweep deletes the folder of a deleted thread, but the steward's
+    if os.path.exists(os.path.join(HERE, 'retired')) or not os.path.isdir(HERE) or steward.thread_state(steward.thread_of(HERE)) == 'deleted' and not steward.in_folder(HERE):  # disk-sweep deletes the folder of a deleted thread, but the steward's
         stop_watcher()
         return
     if not os.path.exists(os.path.join(HERE, 't3-thread')):  # started before T3 delivery or while t3 wasn't found; first, so this pass's events go too

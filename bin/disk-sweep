@@ -14,10 +14,11 @@ deleted.
 - c-ignored: in an idle repo or worktree that isn't busy, the folders git ignores named in BUILD.
 - c-node_modules: outside any repo in a work folder, a node_modules whose parent is idle (node_modules and nested repos aside)
   and isn't busy.
-- w-done, once a day: a folder directly under ~/.mergeworthy/work but the steward's, whole, once T3 deleted the thread its t3-thread
-  names, or, with no settled, archived or unanswered thread, once its watcher retired and it is untouched for 8 days, its watcher's own files aside,
-  which a 24-hour change doesn't count either; a watcher still running in it keeps it (busy); a repo in it with a worktree outside keeps it; then `git worktree
-  prune` in each repo outside it that had a worktree in it; ~/.mergeworthy/work-kept.md lists each finished folder that stays, and why.
+- w-done, once a day: a folder directly under ~/.mergeworthy/work but the steward's, whole, once T3's database shows the thread its
+  t3-thread names deleted (steward.thread_state), or, with no settled, archived or unanswered thread, once its watcher retired and it is
+  untouched for 8 days, its watcher's own files aside, which a 24-hour change doesn't count either; a watcher still running in it keeps
+  it (busy); a repo in it with a worktree outside keeps it; then `git worktree prune` in each repo outside it that had a worktree in it;
+  ~/.mergeworthy/work-kept.md lists each finished folder that stays, and why.
 - w-merged, once a day: each worktree in the steward's folder whose branch is merged (into origin/main with a commit of its own, or
   squash-merged: gone from origin, GitHub showing a merged PR headed at its tip), with no uncommitted change, untouched for 8 days
   with its <name>-notes/ folder; both go, then its branch.
@@ -344,27 +345,10 @@ def watcher_file(folder):
 
 
 def thread_state(folder):
-    """What T3 says of the thread folder/t3-thread (else t3-gone) names, through the t3 recorded beside it or on PATH: 'deleted' when
-    `t3 thread show` answers that it is no longer available or not found, 'settled' while it is settled or archived, 'live' otherwise;
-    'unknown' without a t3 or an answer (T3 down, or over 60 s), None without a thread."""
-    try:
-        lines = open(os.path.join(folder, 't3-thread')).read().split('\n')
-    except OSError:
-        lines = [steward.first(os.path.join(folder, 't3-gone'))]
-    tid, t3 = lines[0].strip(), (lines[1:] or [''])[0].strip()
-    t3 = t3 if os.access(t3, os.X_OK) else shutil.which('t3')
-    if not tid:
-        return None
-    if not t3:
-        return 'unknown'
-    try:
-        r = subprocess.run([t3, 'thread', 'show', tid, '--json', '--messages', '0'], capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=60)
-        if not r.returncode:
-            thread = json.loads(r.stdout)['thread']
-            return 'settled' if thread.get('settled') or thread.get('archived') else 'live'
-    except (OSError, subprocess.TimeoutExpired, ValueError, KeyError, TypeError):
-        return 'unknown'
-    return 'deleted' if re.match(rf'Thread {re.escape(tid)} (?:is no longer available|was not found)\.', r.stderr.strip()) else 'unknown'
+    """steward.thread_state of the thread folder/t3-thread (else t3-gone) names, as the watcher's tick reads it: 'deleted', 'settled' or
+    'live'; 'unknown' when T3's database can't be read; None without a thread."""
+    tid = steward.thread_of(folder)
+    return steward.thread_state(tid) or 'unknown' if tid else None
 
 
 def sweep_work():
@@ -389,7 +373,7 @@ def sweep_work():
             if state != 'deleted':
                 if not os.path.isfile(os.path.join(e.path, 'retired')):
                     continue
-                if state == 'unknown':  # it may be settled: kept until T3 answers
+                if state == 'unknown':  # it may be settled: kept until T3's database can be read
                     rows.append(f'- {e.path}: T3 gave no answer about its thread; kept this run')
                     continue
                 if (at := newest(e.path, skip) + IDLE) > NOW:
@@ -448,8 +432,8 @@ def merged(tree):
 
 def sweep_steward():
     """Once a day, w-merged: each linked worktree directly in the steward's folder whose HEAD is merged (merged()), with no uncommitted
-    change, and that, with its <name>-notes/ beside it, is untouched for IDLE, deleted through delete(), then that notes folder; then `git worktree prune` and
-    `git branch -D <its branch>` in its repo."""
+    change, and that, with its <name>-notes/ beside it, is untouched for IDLE, deleted through delete(), then that notes folder; then
+    `git worktree prune` and `git branch -D <its branch>` in its repo."""
     top = steward.folder()
     if not due('steward', DAY) or os.path.islink(top) or not os.path.isdir(top):
         return

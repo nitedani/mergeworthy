@@ -129,10 +129,24 @@ def settled(tid):
                                 (tid,)).fetchone(), None)
     return bool(r) and r[0] == 'settled'
 
-def deleted(tid):
-    """True once T3 deleted thread tid: its row holds a deleted_at, or T3 has no row for it; False without a thread or T3's database."""
-    return bool(tid) and _db(lambda c: (lambda r: r is None or r[0] is not None)(
-        c.execute("select deleted_at from orchestration_v2_projection_threads where thread_id = ?", (tid,)).fetchone()), False)
+def thread_of(wd):
+    """The T3 thread a watch dir is bound to: its t3-thread, else the t3-gone T3 once reported not found; '' without either."""
+    return first(os.path.join(wd, 't3-thread')) or first(os.path.join(wd, 't3-gone'))
+
+def thread_state(tid):
+    """What T3's database says of thread tid, the one reader of it for the watcher's tick and disk-sweep's w-done: 'deleted' once its
+    row holds a deleted_at or T3 has no row for it, 'settled' while it is settled as T3 counts it (settledOverride 'settled' or a
+    settledAt, ThreadPullRequestService) or archived (archived_at), else 'live'; None without a thread or when the database can't be read."""
+    if not tid:
+        return None
+    row = _db(lambda c: [c.execute("select deleted_at, archived_at, json_extract(payload_json, '$.settledOverride'), json_extract(payload_json, '$.settledAt')"
+                                   " from orchestration_v2_projection_threads where thread_id = ?", (tid,)).fetchone()], None)
+    if row is None:
+        return None
+    if row[0] is None or row[0][0] is not None:
+        return 'deleted'
+    _, archived, override, settled_at = row[0]
+    return 'settled' if archived is not None or override == 'settled' or settled_at is not None else 'live'
 
 def started(run_id):
     """True once T3 started the run, False while it can still start, None when it ended without starting, is gone or can't be read."""
