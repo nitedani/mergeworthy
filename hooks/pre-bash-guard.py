@@ -617,8 +617,8 @@ def pushed(git_dir, opts, env, rest):
     out = []
     for spec in pos[1:] or ([] if '--tags' in rest else ['HEAD']):
         src, _, dst = spec.lstrip('+').partition(':')
-        if not src or src.startswith('refs/tags/') or dst.startswith('refs/tags/') or run('show-ref', '--verify', '-q', f'refs/tags/{src}').returncode == 0:
-            continue  # a delete (:dst), or a tag, pushed or made
+        if not src or src.startswith('refs/tags/') or run('show-ref', '--verify', '-q', f'refs/tags/{src}').returncode == 0:
+            continue  # a delete (:dst), or a tag
         sha = git('rev-parse', '--verify', '-q', f'{src}^{{commit}}')
         if not sha and not re.search(r'[$`]', src):  # a commit computed when it runs is checked only if the push is collaboration
             block(f"`{src}` in this push names no commit here, so what it publishes can't be checked: push a branch or commit of this checkout")
@@ -1036,7 +1036,8 @@ def check(t, has_cd):
                 block(f"this push ({'; '.join(why)}) publishes a commit computed when it runs, so its records can't be checked: push a branch or a sha written out")
             if why:  # a push of its own (no PR, its own repo) is free; collaboration runs the task's records first
                 check_workflow(f"this push ({'; '.join(why)})", repo, [sha for sha, _, _ in heads], [p['url'] for p in prs])
-                for sha, _, local in heads:  # named by what it publishes: its branch when that branch is the commit pushed, else the commit
+                for sha, branch, local in heads:  # named by what it publishes: its branch when that branch is the commit pushed, else the commit
+                    if branch.startswith('refs/tags/'): continue  # a tag it makes is no branch's drift
                     tip = subprocess.run(['git', '-C', repo, 'rev-parse', '-q', '--verify', f'refs/heads/{local}'], capture_output=True, text=True).stdout.strip()
                     block_drift(drift.over(repo, sha), local if tip == sha else sha)
                 if prs:  # each branch it publishes, whichever is checked out

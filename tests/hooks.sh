@@ -4335,6 +4335,9 @@ check "with a Git that has no check-attr --source, a push of the checked-out bra
 git -C "$SH" checkout -q other; for v in 1 2; do echo '[]' > "$FX/gl_projects_acme_2Fapp_merge_requests_state_opened_source_branch_refs_tags_review-v$v"; done
 check "a push of a drifting branch, or its commit, to a new tag passes" "0 0" \
   "$(MERGEWORTHY_WATCHER=off bg 'git push origin suite:refs/tags/review-v1' "$SH") $(MERGEWORTHY_WATCHER=off bg "git push origin $SU:refs/tags/review-v2" "$SH")"
+echo '[]' > "$FX/gl_projects_acme_2Fapp_merge_requests_state_opened_source_branch_refs_tags_review-v3"
+check "BLOCK: a push that makes a tag of a commit without a gate record: the records check still runs" "2 1" \
+  "$(MERGEWORTHY_WATCHER=off bg 'git push origin other:refs/tags/review-v3' "$SH") $(grep -c 'has no passing gate record' "$T/err")"
 # a maintainer's commits (no agent trailer) aren't the agent's drift: blocked as a "17th change" with 14 of them brillout's
 SO="$T/simpo"; git init -q -b main "$SO"; oc() { git -C "$SO" -c user.name=t -c user.email=t@t commit -q "$@"; }; ac() { oc --trailer 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>' "$@"; }
 echo 0 > "$SO/a.py"; git -C "$SO" add -A; oc -m base; git -C "$SO" update-ref refs/remotes/origin/main HEAD; git -C "$SO" checkout -q -b fix; echo 1 >> "$SO/a.py"; ac -am reviewed
