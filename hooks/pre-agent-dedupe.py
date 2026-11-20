@@ -127,7 +127,8 @@ if rnd and (ti.get('role') == 'review' or not ti.get('role') and re.search(r'\be
     rounds = json.load(open(rf)) if os.path.exists(rf) else {}
     loop, n = rnd[1], int(rnd[2])
     if register:
-        rounds.setdefault(loop, []).append([n, heads])
+        # with the outputs of the drafts it reviews, where the round after a post review's third reads that round's verdict
+        rounds.setdefault(loop, []).append([n, heads, [o for o in review_outs(brief) if review_launch.draft_of(o) in reviewed_drafts(brief)]])
         with open(rf + '.tmp', 'w') as f: json.dump(rounds, f)
         os.replace(rf + '.tmp', rf)
     elif n >= 3:
@@ -148,7 +149,7 @@ if rnd and (ti.get('role') == 'review' or not ti.get('role') and re.search(r'\be
                 moved = True
                 if not any(own_lines(t, o, h) <= testpaths.STALE_LINES for t, o in itertools.chain([first], on)): return False
             return moved
-        earlier = sorted({m for m, old in rounds.get(loop, []) if m < n and built_on(old)})
+        earlier = sorted({m for m, old, *_ in rounds.get(loop, []) if m < n and built_on(old)})
         # a post's review: a gate review of a named draft whose brief asks for no code verdict (a small review's pr-body.review.out comes with one)
         post_review = bool(reviewed_drafts(brief)) and 'CLEAN' in brief and not re.search(r'\b(NO BUGS|MERGE AS IS)\b', own_brief)
         def verdict(out):  # out's non-empty lines written since its last launch; [] when its reviewer has written none
@@ -156,8 +157,10 @@ if rnd and (ti.get('role') == 'review' or not ti.get('role') and re.search(r'\be
             except (OSError, IndexError, ValueError): return []
             if not os.path.isfile(out) or os.path.getmtime(out) < at: return []
             return [l.strip() for l in open(out, errors='replace').read().splitlines() if l.strip()]
-        # the round after a post review's third, when that round found something, confirms its fixes
-        verdicts = [verdict(o) for o in review_outs(brief) if review_launch.draft_of(o) in reviewed_drafts(brief)] if post_review and len(earlier) == 3 else []
+        # the round after a post review's third, when that round found something, confirms its fixes: the verdict is in the outputs the
+        # third's launch named (an entry recorded without them: no verdict)
+        outs = next((e[2] for e in reversed(rounds.get(loop, [])) if e[0] == earlier[-1] and len(e) > 2), []) if len(earlier) == 3 else []
+        verdicts = ([verdict(o) for o in outs] or [[]]) if post_review and len(earlier) == 3 else []
         if len(earlier) >= (2 if not post_review else 4 if verdicts and all(verdicts) and any(v != ['CLEAN'] for v in verdicts) else 3):
             sys.stderr.write(f"BLOCKED: {loop} already ran {', '.join(f'r{m}' for m in earlier)} on this head or one within {testpaths.STALE_LINES} changed lines of it "
                              f"({', '.join(h[:12] for h in heads) or 'no head pinned'}): a loop gets two rounds per head, and a head past those lines is a new one"

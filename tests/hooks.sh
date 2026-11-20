@@ -1183,6 +1183,15 @@ i227="$(jd "$PQ/r.md" rnd i-r3 "$PQB") $(jd "$PQ/r.md" rnd i-r4 "$PQB") $(jd "$P
 sclean="$(jd "$PQ/r.md" rnd sc-r1 "$PQB") $(jd "$PQ/r.md" rnd sc-r2 "$PQB") $(jd "$PQ/r.md" rnd sc-r3 "$PQB") $(echo CLEAN > "$PQ/r.review.out"; touch -d '-1 hour' "$PQ/r.review.out"; jd "$PQ/r.md" rnd sc-r4 "$PQB") $(grep -c 'r3 has no verdict written' "$T/err") $(grep -c 'Close r3, the last round' "$T/err")"
 sfound="$(jd "$PQ/r.md" rnd sf-r1 "$PQB") $(jd "$PQ/r.md" rnd sf-r2 "$PQB") $(jd "$PQ/r.md" rnd sf-r3 "$PQB") $(echo 'R3.1 should: old' > "$PQ/r.review.out"; touch -d '-1 hour' "$PQ/r.review.out"; jd "$PQ/r.md" rnd sf-r4 "$PQB") $(grep -c 'r3 has no verdict written' "$T/err")"
 check "a post's review gets r6 after r3, r4 and r5 found something, BLOCK its r7; BLOCK the round after a third whose output holds only a verdict older than its launch, CLEAN or not, naming the missing verdict and the last round" "0 0 0 0 2 | 0 0 0 2 1 1 | 0 0 0 2 1" "$i227 | $sclean | $sfound"
+# the third round's verdict is in the outputs its own launch named, not in those the next round's brief names (#227)
+PU="$T/rdrafts/drafts/u"; mkdir -p "$PU"; for f in r s; do printf 'Agreed.\n' > "$PU/$f.md"; sha256sum "$PU/$f.md" | cut -d' ' -f1 | tr -d '\n' > "$PU/$f.md.lint.sha"; done
+ub() { echo "Review $PU/r.md; write your final message, exactly CLEAN or the findings, to $PU/$1."; }
+unfin="$(jd "$PU/r.md" rnd ua-r1 "$(ub r.review.out)") $(jd "$PU/r.md" rnd ua-r2 "$(ub r.review.out)") $(echo 'R2.1 should: old' > "$PU/r.review.out"; jd "$PU/r.md" rnd ua-r3 "$(ub r.review-r3.out)") $(jd "$PU/r.md" rnd ua-r4 "$(ub r.review.out)") $(grep -c 'r3 has no verdict written' "$T/err")"
+rm -f "$PU"/r.review*
+othr="$(jd "$PU/r.md" rnd ub-r1 "$(ub r.review.out)") $(jd "$PU/r.md" rnd ub-r2 "$(ub r.review.out)") $(jd "$PU/r.md" rnd ub-r3 "$(ub r.review-r3.out)") $(echo 'R3.1 should: the date' > "$PU/r.review-r3.out"; jd "$PU/r.md" rnd ub-r4 "$(ub r.review-r4.out)")"
+rm -f "$PU"/r.review*
+both="$(jd "$PU/s.md" rnd us-r1 "Review $PU/s.md; write your final message, exactly CLEAN or the findings, to $PU/s.review.out.") $(echo 'R1.1 should: other' > "$PU/s.review.out"; jd "$PU/r.md" rnd uc-r1 "$(ub r.review.out)") $(jd "$PU/r.md" rnd uc-r2 "$(ub r.review.out)") $(jd "$PU/r.md" rnd uc-r3 "$(ub r.review.out)") $(echo CLEAN > "$PU/r.review.out"; jd "$PU/r.md" rnd uc-r4 "$(ub r.review.out) Review $PU/s.md too; write that verdict to $PU/s.review.out.")"
+check "the round after a third reads the outputs the third's launch named: BLOCK it while r3's own output has no verdict, though the next brief's holds r2's findings; it passes on r3's findings in its own file; BLOCK it after a CLEAN r3 whose next brief adds another draft with findings" "0 0 0 2 1 | 0 0 0 0 | 0 0 0 0 2" "$unfin | $othr | $both"
 PA="$PB
 $(cat "$R/skills/delegate/agent.md")"
 check "a post's review with agent.md pasted in still gets r3 (agent.md names NO BUGS and MERGE AS IS); its r4 is refused" "0 0 0 2" "$(jd "$PD/r.md" rnd pasted-r1 "$PA") $(jd "$PD/r.md" rnd pasted-r2 "$PA") $(jd "$PD/r.md" rnd pasted-r3 "$PA") $(jd "$PD/r.md" rnd pasted-r4 "$PA")"
