@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """What a Claude Code session's transcript says so far, for stop-lint: read(path) -> Facts. The facts of the lines a stop read are
-kept per transcript (~/.claude/mergeworthy-folds), so the next stop reads only the lines written since; when the kept facts may not
-match the file (another version of this code, a replaced, shrunk or rewritten file, an unreadable keep), every line is read again."""
+kept per transcript (~/.claude/mergeworthy-folds), so the next stop reads only the lines written since (Claude Code only appends);
+when the kept facts may not match the file (another version of this code, a replaced or shrunk file, one whose first 4 KiB or the
+64 KiB before the kept offset changed, an unreadable keep), every line is read again."""
 import collections, hashlib, json, os, re, time
 import report, t3_tasks
 
