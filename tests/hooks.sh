@@ -888,6 +888,10 @@ lsee() { { printf '%s\n\n' 'The PR template now folds its example output.'
   case $1 in fence) echo '````markdown'; lsee_sample; echo '````';; comment) echo '<!--'; lsee_sample; echo '-->';; visible) lsee_inner;; collapsed) lsee_sample;; esac
   } > "$T/lsee.md"; MERGEWORTHY_BADGE=off python3 "$R/bin/post-lint" "$T/lsee.md" --kind pr --parent none 2>&1 | grep -c 'pull-request §Body'; }
 check "a ready PR body's evidence section counts only where it renders: in a Markdown fence, an HTML comment or a collapsed block it is missing; shown, its code block is the output" "1 1 0 1" "$(lsee fence) $(lsee comment) $(lsee visible) $(lsee collapsed)"
+printf '%s\n' 'The formatter now preserves comment delimiters.' '' 'The opener is `<!--`.' '' '### What you should see' '' '**1.** Run the request.' '' '```sh' 'curl -sI /a.js' '```' '' 'The closer is `-->`.' > "$T/lsee-a1.md"
+printf '%s\n' 'The PR template now folds its example output.' '' '### What you should see' '' '**1.** Run the request.' '' '<!--' '<details>' '' '```sh' 'curl -sI /a.js' '```' '' '</details>' '-->' > "$T/lsee-a2.md"
+lseef() { MERGEWORTHY_BADGE=off python3 "$R/bin/post-lint" "$T/$1" --kind pr --parent none 2>&1 | grep -c 'pull-request §Body'; }
+check "a ready PR body's evidence is read from its rendered tokens: inline-code '<!--' and '-->' around a shown section hide nothing; an output only in an HTML comment is none" "0 1" "$(lseef lsee-a1.md) $(lseef lsee-a2.md)"
 check "requested list: prints words wrapped over lines on one line" 1 "$(la --asked-list $'List\nall' >/dev/null; lagrep '^requested list: "List all"$')"
 check "the same lists nobody asked for are" 4 "$(python3 "$R/bin/post-lint" "$T/rp.md" --kind pr --parent none 2>&1 | grep -c 'internal label\|words >\|process in the thread')"
 printf 'The code came from Sonnet subagents, and Codex (gpt-6.1-sol) reviewed every post.\n' > "$T/pm.md"

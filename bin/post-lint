@@ -313,13 +313,15 @@ if kind == 'pr' and re.match(r'\s*(Draft|Depends|Blocked|Waiting|Stacked|WIP|Sta
 # pull-request §Body's template: a ready PR's body shows what you should see, as numbered evidence (a request and its
 # response, an image) outside the collapsed blocks (magne4000/universal-middleware#432 comment 6111310596)
 if kind == 'pr' and not draft:
-    _open = uncollapsed(text)
-    # the heading and its items count where they render, not in fenced code or an HTML comment (blanked, offsets kept); the output test
-    # reads the section as written, its code blocks included
-    _blank = lambda t: re.sub(r'[^\n]', ' ', t)
-    _shown = re.sub(r'<!--[\s\S]*?-->', lambda m: _blank(m[0]), uncoded(_open, keep=_blank))
-    _see = re.search(rf'^###\s+{re.escape(W["see"])}\s*$(.*?)(?=^###\s|\Z)', _shown, re.M | re.S)
-    if not _see or not re.search(r'^\*\*1\.\*\*', _see.group(1), re.M) or not re.search(r'```|!\[|<img\b', _open[_see.start(1):_see.end(1)]):
+    # the heading, its **1.** item and the output (a code block or an image) each count as they render in that section: an HTML comment,
+    # a fence's contents and inline code supply none of them
+    _see = post_words.section(uncollapsed(text), W['see']) or []
+    _shown = lambda t: [(c.type, c.content) for c in t.children if c.type != 'text' or c.content]  # markdown-it adds empty text tokens
+    _item = any(t.type == 'inline' and _shown(t)[:3] == [('strong_open', ''), ('text', '1.'), ('strong_close', '')] for t in _see)
+    _img = lambda t: t.type in ('html_block', 'html_inline') and not t.content.lstrip().startswith('<!--') and re.search(r'<img\b', t.content, re.I)
+    _output = any(t.type in ('fence', 'code_block') or _img(t) or t.type == 'inline' and any(c.type == 'image' or _img(c) for c in t.children)
+                  for t in _see)
+    if not (_item and _output):
         findings.append(f"pull-request §Body: the body has '### {W['see']}' with numbered items (**1.** …), each showing the evidence itself: a real request and response, or an image")
 # A PR's screenshots and videos come in base/head pairs: screenshots in a before/after table, videos under Before/After labels (evidence step 4)
 _ls = text.split('\n')

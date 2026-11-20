@@ -144,6 +144,16 @@ def html_tags(s, tag):
                 real.add(int(n[1]))
     return [m.span() for n, m in enumerate(found) if n in real]
 
+def section(s, title, level='h3'):
+    """The block tokens of s's section under its rendered heading `title` (an h3 unless level says), up to the next heading of that level
+    or a higher one; None when no such heading renders."""
+    tokens = _blocks(s)
+    for i, t in enumerate(tokens):
+        if t.type == 'heading_open' and t.tag == level and tokens[i + 1].content.strip() == title:
+            end = next((j for j in range(i + 3, len(tokens)) if tokens[j].type == 'heading_open' and tokens[j].tag <= level), len(tokens))
+            return tokens[i + 3:end]
+    return None
+
 def own_blocks(s):
     """The displayed text of each paragraph and heading of s (`List **all**` reads "List all"), one string a block, outside any blockquote
     (one in a list item and a quote's lazy continuation lines are blockquote too): the words s's own author wrote."""
