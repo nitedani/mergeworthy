@@ -286,11 +286,22 @@ if kind == 'pr' and re.match(r'\s*(Draft|Depends|Blocked|Waiting|Stacked|WIP|Sta
     findings.append(f"the PR body opens with its status ({_first.strip()[:40]!r}): open with what's broken and what this PR changes, in a user's words; status goes after")
 # pull-request §Body's template: a ready PR's body shows what you should see, as numbered evidence (a request and its
 # response, an image) outside the collapsed blocks (magne4000/universal-middleware#432 comment 6111310596)
+# A repo with a PR template (its project file's `PR template:` line) gets its headings kept and the evidence under any of them (#235)
 if kind == 'pr' and not draft:
     _open = re.sub(r'<details\b.*?</details>', '', text, flags=re.S)
-    _see = re.search(rf'^###\s+{re.escape(W["see"])}\s*$(.*?)(?=^###\s|\Z)', _open, re.M | re.S)
-    if not _see or not re.search(r'^\*\*1\.\*\*', _see.group(1), re.M) or not re.search(r'```|!\[|<img\b', _see.group(1)):
-        findings.append(f"pull-request §Body: the body has '### {W['see']}' with numbered items (**1.** …), each showing the evidence itself: a real request and response, or an image")
+    _tpl = post_words.template(_repo, 'PR')
+    if _tpl is None:
+        findings.append(f"the project file for {_repo} has no 'PR template:' line: add `PR template: <path>: `## <heading>`, …` from the repo's "
+                        "template (where GitHub reads it: .github/, the root, docs/ or .github/PULL_REQUEST_TEMPLATE/), or `PR template: none` (task §Repo study)")
+        _tpl = []
+    for h in _tpl:
+        if not re.search(rf'^{re.escape(h)}\s*$', _open, re.M):
+            findings.append(f"pull-request §Body: keep the repo's PR template heading '{h}' as written")
+    _heads = rf'###\s+{re.escape(W["see"])}' + ''.join(f'|{re.escape(h)}' for h in _tpl)
+    _see = [m.group(1) for m in re.finditer(rf'^(?:{_heads})\s*$(.*?)(?=^{"#{1,6}" if _tpl else "###"}\s|\Z)', _open, re.M | re.S)][:None if _tpl else 1]
+    if not any(re.search(r'^\*\*1\.\*\*', s, re.M) and re.search(r'```|!\[|<img\b', s) for s in _see):
+        findings.append(f"pull-request §Body: the body has '### {W['see']}'" + (" or a template heading" if _tpl else "")
+                        + " with numbered items (**1.** …), each showing the evidence itself: a real request and response, or an image")
 # A PR's screenshots and videos come in base/head pairs: screenshots in a before/after table, videos under Before/After labels (evidence step 4)
 _ls = text.split('\n')
 _prev = lambda k: next((l.strip() for l in reversed(_ls[:k]) if l.strip()), '')
