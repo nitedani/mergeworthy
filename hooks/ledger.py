@@ -3,12 +3,12 @@
 R<round>.<n> from a finding's first round, and a line `Round: <N>` naming the last completed round) closes a round 2 or later whose
 verdict wasn't clean: the completed round is the larger of `Round: <N>` and the highest id round, each finding of every round is
 `fixed in <sha>` with the sha in the checkout's HEAD history, `declined: <why>` or `listed: <where>`, and no blocker of any round
-is listed or open; a row whose id (a word with a digit) isn't R<round>.<n> stands too. With --post (gate-pass: a post's draft has
-no sha) `fixed in r<N>`, a later round up to the completed one that confirmed the fix, closes a finding too.
-Used by pr-steps and gate-pass (`--ledger`); else it prints what stands and exits 1."""
+is listed or open; a row whose id (a word starting with a letter, with a digit) isn't R<round>.<n> stands too. With --post
+(gate-pass: a post's draft has no sha) `fixed in r<N>`, a later round up to the completed one that confirmed the fix, closes a finding
+too. Used by pr-steps and gate-pass (`--ledger`); else it prints what stands and exits 1."""
 import re, subprocess, sys
 
-LINE = re.compile(r'^[\s>*-]*`?(?:R(\d+)\.\d+|[^\s`]*\d[^\s`]*)`?\s+`?(blocker|should|nit)`?:?(?=\s|$)\s*(.*?)\s*$', re.I)
+LINE = re.compile(r'^[\s>*-]*`?(?:R(\d+)\.\d+|[a-z][^\s`]*\d[^\s`]*)`?\s+`?(blocker|should|nit)`?:?(?=\s|$)\s*(.*?)\s*$', re.I)
 ROUND = re.compile(r'^[\s>*-]*`?Round:\s*(\d+)', re.I | re.M)
 
 

@@ -571,8 +571,8 @@ check "gate-pass: a round-2 review that isn't CLEAN passes with its ledger closi
 printf 'Round: 3\nR2.1 blocker fixed in r3\n' > "$T/g3.md"; printf 'R2.1 blocker fixed in r3\n' > "$T/g3x.md"
 check "gate-pass: a post's blocker fixed in r3, the round that confirmed it, closes; BLOCK it before round 3 completed" "0 1 1" "$(GPL="$T/g3.md" gp) $(GPL="$T/g3x.md" gp) $(grep -c 'open blocker' "$T/gp.out")"
 gf() { printf 'Round: 2\nR1.1 should fixed in r2\n%s\n' "$1" > "$T/gf.md"; GPL="$T/gf.md" gp; }
-check "BLOCK: gate-pass with a ledger row whose id isn't R<round>.<n>, naming the id form, with a colon after its label too; a row with no outcome is open; prose and a heading, in a list or quote too, are no row" "1 1 1 1 1 1 0 0 0 0" \
-  "$(gf 'F2.1 blocker listed: still open') $(grep -c 'F2.1 blocker listed: still open  <- its id is not R<round>.<n>' "$T/gp.out") $(gf 'F2.1 blocker: still open') $(grep -c 'F2.1 blocker: still open  <- its id is not' "$T/gp.out") $(gf 'R2.1 blocker') $(grep -c 'R2.1 blocker  <- an open blocker' "$T/gp.out") $(gf '# Should this wait?') $(gf '> # Should this wait?') $(gf '- # Should this wait?') $(gf 'This should stay as written.')"
+check "BLOCK: gate-pass with a ledger row whose id isn't R<round>.<n>, naming the id form, with a colon after its label too; a row with no outcome is open; prose, a numbered note and a heading, in a list or quote too, are no row" "1 1 1 1 1 1 0 0 0 0 0" \
+  "$(gf 'F2.1 blocker listed: still open') $(grep -c 'F2.1 blocker listed: still open  <- its id is not R<round>.<n>' "$T/gp.out") $(gf 'F2.1 blocker: still open') $(grep -c 'F2.1 blocker: still open  <- its id is not' "$T/gp.out") $(gf 'R2.1 blocker') $(grep -c 'R2.1 blocker  <- an open blocker' "$T/gp.out") $(gf '# Should this wait?') $(gf '> # Should this wait?') $(gf '- # Should this wait?') $(gf 'This should stay as written.') $(gf '1. Should we keep this?')"
 echo CLEAN > "$GD/r.review.out"
 printf 'The test checks that "I'"'"'ll switch it once X is released" passes.\n' > "$GD/r.md"; touch -d '+2 minutes' "$GD/r.md"
 # the verdict counts for the text its reviewer was handed, whatever the files' times say (#200)
