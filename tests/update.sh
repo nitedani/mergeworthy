@@ -86,4 +86,23 @@ check "the old learning timer: exit, disabled and stopped, both units removed, s
 : > "$T/calls"; bash "$R/bin/mergeworthy-update" > "$T/out" 2>&1
 check "a second update: nothing of the learning timer" "0 0" "$(grep -c 'mergeworthy-learn\|daemon-reload' "$T/calls") $(grep -c 'mergeworthy-learn' "$T/out")"
 
+# the first update after this change runs the old script, which repoints current, then calls the new tree's hooks/learn-units:
+# its learning steps (aed81c9, before the daily run was removed), verbatim but the repoint, which is update_claude's
+PRE="$T/cache/pre"; mkdir -p "$PRE/bin" "$NEW/bin" "$NEW/hooks" "$HOME/.local/bin"
+cat > "$PRE/bin/mergeworthy-update" <<'OLD'
+#!/bin/bash
+set -u; failed=()
+ln -sfn "$NEW" ~/.mergeworthy/current.tmp && mv -T ~/.mergeworthy/current.tmp ~/.mergeworthy/current
+install_learn() {
+  "$(dirname "$(readlink -f "$0")")/../hooks/learn-units" >/dev/null 2>&1 || return 1
+  echo "mergeworthy-learn.timer $(systemctl --user is-active mergeworthy-learn.timer)"
+}
+[ -x ~/.mergeworthy/current/bin/project-learn ] && { install_learn || failed+=("mergeworthy-learn.timer"); }
+[ ${#failed[@]} = 0 ] || { echo "failed: ${failed[*]}"; exit 1; }
+OLD
+cp "$R/hooks/learn-units" "$NEW/hooks/"; printf '#!/bin/sh\n' > "$NEW/bin/project-learn"; chmod +x "$PRE/bin/mergeworthy-update" "$NEW/bin/project-learn"
+ln -sfn "$PRE" "$HOME/.mergeworthy/current"; ln -s "$HOME/.mergeworthy/current/bin/mergeworthy-update" "$HOME/.local/bin/mergeworthy-update"
+: > "$U/mergeworthy-learn.timer"; : > "$U/mergeworthy-learn.service"; NEW="$NEW" bash "$HOME/.local/bin/mergeworthy-update" > "$T/out" 2>&1; rc=$?
+check "the old script's update to this version: exit, both learning units removed, no failure named" "0 0 0" "$rc $(ls "$U" | grep -c mergeworthy-learn) $(grep -c '^failed:' "$T/out")"
+
 [ "$fails" = 0 ] && echo "update: all cases pass" || { echo "update: $fails case(s) failed"; exit 1; }

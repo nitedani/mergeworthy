@@ -23,13 +23,8 @@ if command -v claude >/dev/null && [ -n "$(claude_root)" ]; then update_claude |
 if command -v codex >/dev/null && codex plugin list 2>/dev/null | grep '^mergeworthy@mergeworthy ' | grep -vq 'not installed'; then
   update_codex || failed+=("the Codex update")
 fi
-# the daily learning run is gone (task step 4 learns on demand): its installed timer and service go
-remove_learn() {
-  local u=~/.config/systemd/user
-  [ -e "$u/mergeworthy-learn.timer" ] || [ -e "$u/mergeworthy-learn.service" ] || return 0
-  systemctl --user disable --now mergeworthy-learn.timer >/dev/null 2>&1
-  rm -f "$u/mergeworthy-learn.timer" "$u/mergeworthy-learn.service" && systemctl --user daemon-reload && echo "mergeworthy-learn.timer removed"
-}
+# the daily learning run is gone (task step 4 learns on demand): its installed timer and service go (hooks/learn-units, a migration)
+remove_learn() { "$(dirname "$(readlink -f "$0")")/../hooks/learn-units"; }
 units=() dirs=()
 if systemctl --user show-environment >/dev/null 2>&1; then
   remove_learn || failed+=("removing mergeworthy-learn.timer")
