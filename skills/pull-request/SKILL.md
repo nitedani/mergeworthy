@@ -71,7 +71,8 @@ Closes #N
 ```
 
 - `Closes #N` only if the change fixes what the issue reported; otherwise `Refs #N`, leave the issue open, and comment your findings there.
-- **What you should see** is the review: numbered items, each a before/after pair (`evidence` step 4: screenshots in a table, videos as two paragraphs) or a request and response, outside any `<details>`, in sequence: the defect's pair first, then what your change could have broken and didn't, each showing base and head the same. Non-UI changes show real requests and responses; hot paths, transports and streams a `main`/head benchmark table.
+- **What you should see** is the review: numbered items, each a before/after pair (`evidence` step 4) or a request and response, outside any `<details>`, in sequence: the defect's pair first, then what your change could have broken and didn't, each showing base and head the same.
+- **A project file's `PR template:` path** replaces this form: that file filled in, headings and checkboxes kept, numbered items under its testing heading, else its last.
 - The evidence blocks of `converge §Evidence blocks` come after it.
 
 ### Inline comments
