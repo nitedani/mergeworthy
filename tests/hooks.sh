@@ -570,6 +570,8 @@ printf 'R2.1 should: the second sentence reads twice\n' > "$GD/r.review.out"; pr
 check "gate-pass: a round-2 review that isn't CLEAN passes with its ledger closing it; BLOCK without one, or with a blocker left open" "1 0 1 1" "$(gp) $(GPL="$T/gl.md" gp) $(GPL="$T/gb.md" gp) $(grep -c 'open blocker' "$T/gp.out")"
 printf 'Round: 3\nR2.1 blocker fixed in r3\n' > "$T/g3.md"; printf 'R2.1 blocker fixed in r3\n' > "$T/g3x.md"
 check "gate-pass: a post's blocker fixed in r3, the round that confirmed it, closes; BLOCK it before round 3 completed" "0 1 1" "$(GPL="$T/g3.md" gp) $(GPL="$T/g3x.md" gp) $(grep -c 'open blocker' "$T/gp.out")"
+printf 'Round: 2\nR1.1 should fixed in r2\nF2.1 blocker listed: still open\n' > "$T/gf.md"
+check "BLOCK: gate-pass with a ledger row whose id isn't R<round>.<n>, naming the id form" "1 1" "$(GPL="$T/gf.md" gp) $(grep -c 'F2.1 blocker listed: still open  <- its id is not R<round>.<n>' "$T/gp.out")"
 echo CLEAN > "$GD/r.review.out"
 printf 'The test checks that "I'"'"'ll switch it once X is released" passes.\n' > "$GD/r.md"; touch -d '+2 minutes' "$GD/r.md"
 # the verdict counts for the text its reviewer was handed, whatever the files' times say (#200)
