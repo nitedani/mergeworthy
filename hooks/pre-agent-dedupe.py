@@ -158,8 +158,9 @@ if rnd and (ti.get('role') == 'review' or not ti.get('role') and re.search(r'\be
             if not os.path.isfile(out) or os.path.getmtime(out) < at: return []
             return [l.strip() for l in open(out, errors='replace').read().splitlines() if l.strip()]
         # the round after a post review's third, when that round found something, confirms its fixes: the verdict is in the outputs the
-        # third's launch named (an entry recorded without them: no verdict)
-        outs = next((e[2] for e in reversed(rounds.get(loop, [])) if e[0] == earlier[-1] and len(e) > 2), []) if len(earlier) == 3 else []
+        # third's launch named (an entry recorded without them, before they were: the outputs this brief names)
+        third = next((e for e in reversed(rounds.get(loop, [])) if e[0] == earlier[-1]), []) if len(earlier) == 3 else []
+        outs = third[2] if len(third) > 2 else [o for o in review_outs(brief) if review_launch.draft_of(o) in reviewed_drafts(brief)]
         verdicts = ([verdict(o) for o in outs] or [[]]) if post_review and len(earlier) == 3 else []
         if len(earlier) >= (2 if not post_review else 4 if verdicts and all(verdicts) and any(v != ['CLEAN'] for v in verdicts) else 3):
             sys.stderr.write(f"BLOCKED: {loop} already ran {', '.join(f'r{m}' for m in earlier)} on this head or one within {testpaths.STALE_LINES} changed lines of it "
