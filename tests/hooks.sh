@@ -4199,6 +4199,26 @@ check "BLOCK: the same with the failed job on the second page of the pipeline's 
 tr_cmd 'cd /tmp/x && git push origin HEAD:fix'
 check "a session that pushed, with no scope.md in a work folder it used, is told to write one (stop-lint reads its git commands)" "2 1" "$(slj 'Pushed the fix.') $(grep -c 'no work folder it used has a scope.md' "$T/err")"
 check "the parses a stop made are kept for the session's next stop, which blocks the same" "1 2" "$(ls "$HOME/.claude/mergeworthy-parses/s-fc.json" | wc -l) $(slj 'Pushed the fix.')"
+# a stop reads only what the transcript gained since the last stop, and blocks as a read of every line does: each pair is the stop
+# from the kept facts, then from none
+KF="$HOME/.claude/mergeworthy-folds"; F='GENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.'
+twice() { local a; a=$(slj "$@"); rm -rf "$KF"; echo "$a $(slj "$@")"; }
+say() { python3 -c 'import json,sys; sys.stdout.write(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":sys.argv[1]}]}}) + sys.argv[2])' "$1" "${2-$'\n'}" >> "$T/tr.jsonl"; }
+rm -rf "$KF"; forks "$F"; k1=$(slj); say '#21 is ready.'
+check "a fork sent before the kept facts' last stop is still sent once: blocks, as a read of every line" "0 1 2 2" "$k1 $(ls "$KF" | wc -l) $(twice "$F")"
+rm -rf "$KF"; forks '#20 is in review.'; slj >/dev/null; h=$(say "$F" ''; tail -c 40 "$T/tr.jsonl"); python3 -c 'import sys; p=sys.argv[1]; b=open(p,"rb").read(); open(p,"wb").write(b[:-40])' "$T/tr.jsonl"
+k1=$(slj); printf '%s\n' "$h" >> "$T/tr.jsonl"; say 'Done.'
+check "a last line written halfway at a stop is read whole at the next" "0 2 2" "$k1 $(twice "$F")"
+rm -rf "$KF"; forks "$F" 'a'; slj >/dev/null; forks 'b'
+check "a transcript rewritten shorter is read from its start" "0 0" "$(twice "$F")"
+rm -rf "$KF"; forks "$F" 'a'; slj >/dev/null; forks 'bb' 'c' 'some longer text than before'
+check "a transcript rewritten in place is read from its start" "0 0" "$(twice "$F")"
+rm -rf "$KF"; pad=$(printf 'x%.0s' $(seq 70000)); forks "${pad:0:5000}" "$F" "$pad"; slj >/dev/null; forks "${pad:0:5000}" "${F/GENUINE-FORK/genuine-fork}" "$pad" && mv "$T/tr.jsonl" "$T/tr2.jsonl"; cp "$T/tr2.jsonl" "$T/tr.jsonl"
+check "a transcript replaced by another file, with the same start and end, is read from its start" "0 0" "$(twice "$F")"
+rm -rf "$KF"; forks '#20 is in review.' 'a'; slj >/dev/null
+python3 -c 'import glob,json,sys; sys.path.insert(0, sys.argv[1]); import report; [p]=glob.glob(sys.argv[2] + "/*.json"); k=json.load(open(p)); k["facts"]["forks_before_last"]=dict.fromkeys(report.forks(sys.argv[3]), 1); json.dump(k, open(p, "w"))' "$R/hooks" "$KF" "$F"
+rm -rf "$T/hk2"; mkdir "$T/hk2"; cp -r "$R/hooks" "$T/hk2/hooks"; echo "# another version" >> "$T/hk2/hooks/transcript_facts.py"
+check "the kept facts are what the next stop reads; another version of the code reads every line again" "2 0" "$(slj "$F") $(R="$T/hk2" slj "$F")"
 mkdir -p "$HOME/.mergeworthy/work/tilde"; printf 'Tier: S, because one fix\n' > "$HOME/.mergeworthy/work/tilde/scope.md"
 tr_cmd 'cd ~/.mergeworthy/work/tilde && git push origin HEAD:fix'
 check "a session that pushed from a work folder it spelled with ~, which has a scope.md, isn't told to write one" "0 0" "$(slj 'Pushed the fix.') $(grep -c 'no work folder it used has a scope.md' "$T/err")"
