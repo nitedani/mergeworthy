@@ -4255,8 +4255,9 @@ SQ="$T/simpq"; git init -q -b main "$SQ"; qc() { git -C "$SQ" -c user.name=t -c 
 echo 0 > "$SQ/a file.py"; echo 0 > "$SQ/ár.py"; git -C "$SQ" add -A; qc -m base; git -C "$SQ" update-ref refs/remotes/origin/main HEAD; git -C "$SQ" checkout -q -b fix
 echo 1 | tee -a "$SQ/a file.py" >> "$SQ/ár.py"; qc -am reviewed
 (cd "$SQ" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null)
+echo q0 >> "$SQ/ár.py"; qc -am q0
 for i in 1 2 3 4 5 6; do echo "q$i" | tee -a "$SQ/a file.py" >> "$SQ/ár.py"; [ $i = 6 ] && git -C "$SQ" add -A || qc -am "q$i"; done
-check "BLOCK: a staged 6th change to files named with a space and a non-ASCII letter, naming both" "2 1 1" "$(bg 'git commit -m q6' "$SQ") $(grep -c 'a file.py' "$T/err") $(grep -c 'ár.py' "$T/err")"
+check "BLOCK: a staged 6th and 7th change to files named with a space and a non-ASCII letter, naming each with its count" "2 1" "$(bg 'git commit -m q6' "$SQ") $(grep -c 'a file.py would get a 6th change, ár.py a 7th on this branch' "$T/err")"
 git -C "$SP" checkout -q a.py; echo t >> "$SP/tests/a_test.py"; git -C "$SP" add tests
 check "a code file's 5th change on the branch passes; its 6th is refused, naming it; a test-only commit passes" "0 2 1 0" "$r5 $r6 $n6 $(bg 'git commit -m t' "$SP")"
 echo p5b >> "$SP/a.py"; git -C "$SP" add a.py
