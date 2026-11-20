@@ -898,6 +898,7 @@ check "inline-code '<!--' and '-->' around a collapsed evidence section hide not
 lsec_item='**1.** Run the request.'; lsec_out=$'```sh\ncurl -sI /a.js\nHTTP/2 200\n```'
 check "the evidence heading counts only at the top level: a quoted one claims no item or output, and neither steals nor ends a real section" "1 0 0" "$(lsec "> ### What you should see"$'\n\n'"$lsec_item"$'\n\n'"$lsec_out") $(lsec "> ### What you should see"$'\n\n'"$lsec_vis") $(lsec "### What you should see"$'\n\n'"$lsec_item"$'\n\n'"> ### What you should see"$'\n\n'"$lsec_out")"
 check "the evidence heading is matched on the text it shows: emphasized, or followed by an HTML comment" "0 0" "$(lsec "### **What you should see**"$'\n\n'"$lsec_item"$'\n\n'"$lsec_out") $(lsec "### What you should see <!-- output -->"$'\n\n'"$lsec_item"$'\n\n'"$lsec_out")"
+check "the **1.** item counts at the start of any rendered line of a paragraph: after a hard line break too" 0 "$(lsec "### What you should see"$'\n\n'"Run the smoke checks.  "$'\n'"$lsec_item"$'\n\n'"$lsec_out")"
 check "requested list: prints words wrapped over lines on one line" 1 "$(la --asked-list $'List\nall' >/dev/null; lagrep '^requested list: "List all"$')"
 check "the same lists nobody asked for are" 4 "$(python3 "$R/bin/post-lint" "$T/rp.md" --kind pr --parent none 2>&1 | grep -c 'internal label\|words >\|process in the thread')"
 printf 'The code came from Sonnet subagents, and Codex (gpt-6.1-sol) reviewed every post.\n' > "$T/pm.md"

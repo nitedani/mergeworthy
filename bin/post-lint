@@ -316,8 +316,14 @@ if kind == 'pr' and not draft:
     # the heading, its **1.** item and the output (a code block or an image) each count as they render in that section: an HTML comment,
     # a fence's contents and inline code supply none of them
     _see = post_words.section(uncollapsed(text), W['see']) or []
-    _shown = lambda t: [(c.type, c.content) for c in t.children if c.type != 'text' or c.content]  # markdown-it adds empty text tokens
-    _item = any(t.type == 'inline' and _shown(t)[:3] == [('strong_open', ''), ('text', '1.'), ('strong_close', '')] for t in _see)
+    def _lines(inline):  # a paragraph's rendered lines, split at soft and hard breaks, without the empty text tokens markdown-it adds
+        line = []
+        for c in inline.children:
+            if c.type in ('softbreak', 'hardbreak'): yield line; line = []
+            elif c.type != 'text' or c.content: line.append((c.type, c.content))
+        yield line
+    _item = any(p.type == 'paragraph_open' and p.level == 0 and any(l[:3] == [('strong_open', ''), ('text', '1.'), ('strong_close', '')] for l in _lines(t))
+                for p, t in zip(_see, _see[1:]))
     _img = lambda t: t.type in ('html_block', 'html_inline') and not t.content.lstrip().startswith('<!--') and re.search(r'<img\b', t.content, re.I)
     _output = any(t.type in ('fence', 'code_block') or _img(t) or t.type == 'inline' and any(c.type == 'image' or _img(c) for c in t.children)
                   for t in _see)
