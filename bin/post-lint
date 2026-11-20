@@ -48,7 +48,7 @@ def uncollapsed(s):
         elif opened:
             if opened.pop() and not any(opened): start = b
     return ''.join(out) + s[start:]  # an unclosed collapsed block stays in the text, from its <details> on, so it is linted and counted
-QUOTE = re.compile(r'^\s*(?:(?:[-*]|\d+[.)])\s+)?>.*$', re.M)  # a quoted line, in a list item too: someone else's words
+QUOTE = re.compile(r'^\s*(?:[-*]\s+)?>.*$', re.M)  # a quoted line, a bulleted one too: someone else's words
 VISIBLE = lambda s: uncoded(re.sub(r'<!--[\s\S]*?-->', '', s))  # what GitHub renders as text: no HTML comments, no fenced code
 BOUND = 45  # words a rated row's rendered cell, or its table's header in all, leaves out of the count: #3609's longest rating reason is 45
 def cells(l):  # a table line's cells as GitHub splits them: an escaped \| stays inside its cell
