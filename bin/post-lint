@@ -35,21 +35,6 @@ W = post_words.words(_repo)  # the words the checks look for, in the repo's lang
 RATED = re.compile(r'^\s*\|.*(?:[0-9]+|\bnew) *(?:⇒|=>) *(?:[0-9]+|removed|new|n/a)', re.M)  # a row rating an item old ⇒ new (`7 ⇒ 9`, `7/10 => 9/10`, `new ⇒ 9`)
 REVIEWED = re.compile(r'^\|\s*Commit\s*\|.*\|\s*Rating\s*\|', re.M)  # the commit-review table's header (reply §Maintainer commits)
 TABLE = r'(?:^[ \t]*\|[^\n]*\n?)+'
-def without_details(s, hides=lambda tag: True):
-    """s without the <details> blocks whose opening tag hides() picks (every one unless it says), each from that tag (its attributes or
-    spaces included) to its own close, the blocks nested in it with it; a block it doesn't pick stays, those it picks inside it still go.
-    Only tags that render as HTML count: one written as an example, in code, is text."""
-    out, opened, start = [], [], 0  # opened: for each block not yet closed, whether it is hidden
-    for a, b in post_words.html_tags(s, r'<details\b(?:[^>"\']|"[^"]*"|\'[^\']*\')*>|</details\s*>'):  # a quoted value may hold a >
-        if s[a + 1] != '/':
-            hidden = bool(hides(s[a:b]))
-            if hidden and not any(opened): out.append(s[start:a]); start = a
-            opened.append(hidden)
-        elif opened:
-            if opened.pop() and not any(opened): start = b
-    return ''.join(out) + s[start:]  # an unclosed hidden block stays in the text, from its <details> on, so it is linted and counted
-# a <details open> block shows expanded, so only the collapsed ones are hidden from a reader
-uncollapsed = lambda s: without_details(s, lambda tag: not re.search(r'\sopen(?=[\s=/>])', re.sub(r'"[^"]*"|\'[^\']*\'', '', tag)))
 QUOTE = re.compile(r'^\s*(?:[-*]\s+)?>.*$', re.M)  # a quoted line, a bulleted one too: someone else's words
 VISIBLE = lambda s: uncoded(re.sub(r'<!--[\s\S]*?-->', '', s))  # what GitHub renders as text: no HTML comments, no fenced code
 BOUND = 45  # words a rated row's rendered cell, or its table's header in all, leaves out of the count: #3609's longest rating reason is 45
@@ -123,7 +108,7 @@ if (asked_words := arg('--asked-list', None)) is not None:
 def without_requested(s):
     """s without the lists the reader asked for: collapsed, under the wordings or --asked-list; open as a questionnaire, under the
     wordings only (GitHub closes <details> on every box ticked)"""
-    if _asked_wording or asked_words is not None: s = uncollapsed(s)
+    if _asked_wording or asked_words is not None: s = post_words.uncollapsed(s)
     if _asked_wording: s = re.sub(r'(?m)^\s*(?:- \[[ xX]\] .*|\d+\. \*\*.*|\*Why it matters:.*)$', '', s)
     return s
 prose = without_requested(prose)
@@ -313,21 +298,7 @@ if kind == 'pr' and re.match(r'\s*(Draft|Depends|Blocked|Waiting|Stacked|WIP|Sta
 # pull-request §Body's template: a ready PR's body shows what you should see, as numbered evidence (a request and its
 # response, an image) outside the collapsed blocks (magne4000/universal-middleware#432 comment 6111310596)
 if kind == 'pr' and not draft:
-    # the heading, its **1.** item and the output (a code block or an image) each count as they render in that section, outside every
-    # <details> block, open or collapsed: an HTML comment, a fence's contents and inline code supply none of them
-    _see = post_words.section(without_details(text), W['see']) or []
-    def _lines(inline):  # a paragraph's rendered lines, split at soft and hard breaks, without the empty text tokens markdown-it adds
-        line = []
-        for c in inline.children:
-            if c.type in ('softbreak', 'hardbreak'): yield line; line = []
-            elif c.type != 'text' or c.content: line.append((c.type, c.content))
-        yield line
-    _item = any(p.type == 'paragraph_open' and p.level == 0 and any(l[:3] == [('strong_open', ''), ('text', '1.'), ('strong_close', '')] for l in _lines(t))
-                for p, t in zip(_see, _see[1:]))
-    _img = lambda t: t.type in ('html_block', 'html_inline') and not t.content.lstrip().startswith('<!--') and re.search(r'<img\b', t.content, re.I)
-    _output = any(t.type in ('fence', 'code_block') or _img(t) or t.type == 'inline' and any(c.type == 'image' or _img(c) for c in t.children)
-                  for t in _see)
-    if not (_item and _output):
+    if not post_words.shows_evidence(text, W['see']):
         findings.append(f"pull-request §Body: the body has '### {W['see']}' with numbered items (**1.** …), each showing the evidence itself: a real request and response, or an image")
 # A PR's screenshots and videos come in base/head pairs: screenshots in a before/after table, videos under Before/After labels (evidence step 4)
 _ls = text.split('\n')

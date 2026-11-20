@@ -1,4 +1,5 @@
-"""The words a post's checks look for, per language (post-lint, pre-bash-guard), and what in a post renders as code. A repo's language is the `Language: <code>` line of
+"""What a post shows its reader, read from markdown-it's parse (code, comments, collapsed and open <details>, quotes, own paragraphs, the
+evidence section), and the words a post's checks look for, per language (post-lint, pre-bash-guard). A repo's language is the `Language: <code>` line of
 its project file (~/.mergeworthy/projects/<owner>/<repo>.md); without one, or with a code not listed here, it is English."""
 import os, re
 
@@ -127,7 +128,7 @@ def fence_spans(s):
     at = lambda n: lines[n] if n < len(lines) else len(s)
     return [(at(t.map[0]), at(t.map[1]), t.content) for t in _blocks(s) if t.type in ('fence', 'code_block')]
 
-def html_tags(s, tag):
+def _html_tags(s, tag):
     """(start, end) of each match of the regex tag in s that renders as an HTML tag: one in inline code, a fence or behind a backslash is
     text, and one in an HTML comment (a comment token of the parse) is hidden. markdown-it-py gives inline tokens no offsets, so each match
     is marked with a processing instruction that its parse keeps next to it (a comment marker would end an enclosing comment early)."""
@@ -144,18 +145,52 @@ def html_tags(s, tag):
                 real.add(int(n[1]))
     return [m.span() for n, m in enumerate(found) if n in real]
 
-def section(s, title, level='h3'):
-    """The block tokens of s's section under its top-level heading (not in a blockquote or a list) that shows `title` (its text, emphasis
-    markers and inline HTML left out; an h3 unless level says), up to the next top-level heading of that level or a higher one; None when
-    no such heading renders."""
+def _section(s, title):
+    """The block tokens of s's section under its top-level h3 (not in a blockquote or a list) that shows `title` (its text, emphasis
+    markers and inline HTML left out), up to the next top-level h3 or higher heading; None when no such heading renders."""
     tokens = _blocks(s)
     heading = lambda t: t.type == 'heading_open' and t.level == 0
     shown = lambda inline: ''.join(c.content for c in inline.children if c.type == 'text').strip()
     for i, t in enumerate(tokens):
-        if heading(t) and t.tag == level and shown(tokens[i + 1]) == title:
-            end = next((j for j in range(i + 3, len(tokens)) if heading(tokens[j]) and tokens[j].tag <= level), len(tokens))
+        if heading(t) and t.tag == 'h3' and shown(tokens[i + 1]) == title:
+            end = next((j for j in range(i + 3, len(tokens)) if heading(tokens[j]) and tokens[j].tag <= 'h3'), len(tokens))
             return tokens[i + 3:end]
     return None
+
+def without_details(s, hides=lambda tag: True):
+    """s without the <details> blocks whose opening tag hides() picks (every one unless it says), each from that tag (its attributes or
+    spaces included) to its own close, the blocks nested in it with it; a block it doesn't pick stays, those it picks inside it still go.
+    Only tags that render as HTML count: one written as an example, in code, is text."""
+    out, opened, start = [], [], 0  # opened: for each block not yet closed, whether it is hidden
+    for a, b in _html_tags(s, r'<details\b(?:[^>"\']|"[^"]*"|\'[^\']*\')*>|</details\s*>'):  # a quoted value may hold a >
+        if s[a + 1] != '/':
+            hidden = bool(hides(s[a:b]))
+            if hidden and not any(opened): out.append(s[start:a]); start = a
+            opened.append(hidden)
+        elif opened:
+            if opened.pop() and not any(opened): start = b
+    return ''.join(out) + s[start:]  # an unclosed hidden block stays in the text, from its <details> on, so it is linted and counted
+
+def uncollapsed(s):
+    """s without its collapsed <details> blocks: a <details open> block shows expanded, so only the collapsed ones are hidden from a reader."""
+    return without_details(s, lambda tag: not re.search(r'\sopen(?=[\s=/>])', re.sub(r'"[^"]*"|\'[^\']*\'', '', tag)))
+
+def shows_evidence(s, title):
+    """Whether s shows, under its top-level h3 `title`, a **1.** item and its output (a code block or an image), each as it renders in that
+    section outside every <details> block, open or collapsed: an HTML comment, a fence's contents and inline code supply none of them."""
+    see = _section(without_details(s), title) or []
+    def lines(inline):  # a paragraph's rendered lines, split at soft and hard breaks, without the empty text tokens markdown-it adds
+        line = []
+        for c in inline.children:
+            if c.type in ('softbreak', 'hardbreak'): yield line; line = []
+            elif c.type != 'text' or c.content: line.append((c.type, c.content))
+        yield line
+    item = any(p.type == 'paragraph_open' and p.level == 0 and any(l[:3] == [('strong_open', ''), ('text', '1.'), ('strong_close', '')] for l in lines(t))
+               for p, t in zip(see, see[1:]))
+    img = lambda t: t.type in ('html_block', 'html_inline') and not t.content.lstrip().startswith('<!--') and re.search(r'<img\b', t.content, re.I)
+    output = any(t.type in ('fence', 'code_block') or img(t) or t.type == 'inline' and any(c.type == 'image' or img(c) for c in t.children)
+                 for t in see)
+    return item and output
 
 def own_blocks(s):
     """The displayed text of each paragraph and heading of s (`List **all**` reads "List all"), one string a block, outside any blockquote
