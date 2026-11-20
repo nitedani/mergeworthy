@@ -1003,7 +1003,7 @@ def check(t, has_cd):
             taken = set()
             for x in out:  # `XY path`, X the index side the commit takes; a rename's next entry is its old path
                 if x[:1] not in ('', ' ', '?'): taken |= {x[3:], *([next(out, '')] if x[0] == 'R' else [])}
-            block_drift(drift.over(repo, sorted(taken), '--amend' in rest), 'would get')
+            block_drift(drift.over(repo, pending=sorted(taken), amend='--amend' in rest), 'would get')
         if sub == 'add' and repo is not None and os.path.isdir(repo):  # what a `git commit` later in this command reads
             subprocess.run(['git', '-C', repo, 'add', *operands(rest)], capture_output=True, stdin=subprocess.DEVNULL, env={**os.environ, 'GIT_INDEX_FILE': index_copy(repo)})
         if sub == 'push' and {'--dry-run', '-n'} & set(rest):
@@ -1036,7 +1036,7 @@ def check(t, has_cd):
                 block(f"this push ({'; '.join(why)}) publishes a commit computed when it runs, so its records can't be checked: push a branch or a sha written out")
             if why:  # a push of its own (no PR, its own repo) is free; collaboration runs the task's records first
                 check_workflow(f"this push ({'; '.join(why)})", repo, [sha for sha, _, _ in heads], [p['url'] for p in prs])
-                block_drift(drift.over(repo), 'got')
+                for sha, _, _ in heads: block_drift(drift.over(repo, sha), 'got')
                 if prs:  # each branch it publishes, whichever is checked out
                     for _, _, local in heads: need_approach(repo, f"this push ({'; '.join(why)})", local)
                 for pr in prs: check_defects(thread_of_pr(pr['url']), 'this push')

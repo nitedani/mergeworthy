@@ -10,13 +10,14 @@ from records import commit_file
 AGENT_TRAILER = re.compile(r'^Co-Authored-By: Claude', re.M | re.I)  # a commit without it is a maintainer's
 
 
-def over(d, pending=None, amend=False):
-    """{code file: its count} of checkout d's files past 5 changes. pending: the files the commit being made changes, which alone
-    are judged, each counted once more; None for a push, which judges the commits alone. amend: that commit replaces HEAD."""
+def over(d, head='HEAD', pending=None, amend=False):
+    """{code file: its count} of checkout d's files past 5 changes on the branch at head. pending: the files the commit being made
+    changes, which alone are judged, each counted once more; None for a push, which judges the commits alone. amend: that commit
+    replaces HEAD."""
     g = lambda *a: subprocess.run(['git', '-C', d, *a], capture_output=True, text=True).stdout
     base = g('symbolic-ref', '-q', '--short', 'refs/remotes/origin/HEAD').strip() or 'origin/main'
     if pending is not None and g('rev-parse', '-q', '--verify', 'MERGE_HEAD').strip(): pending = []
-    commits = g('rev-list', '--reverse', '--first-parent', 'HEAD', '--not', base).split()
+    commits = g('rev-list', '--reverse', '--first-parent', head, '--not', base).split()
     start = None  # the commit the counts start after
     for c in commits:
         steps = {l.split()[0] for l in open(commit_file(c)) if l.split()} if os.path.exists(commit_file(c)) else set()
@@ -24,7 +25,7 @@ def over(d, pending=None, amend=False):
     if not start: return {}
     count = {}
     # per commit `\0<sha>\n<message>\0`, then `\n<file>\0<file>\0` (none for a merge commit): no part is empty, so `\0\0` is only where a commit ends
-    log = g('log', '--first-parent', '--reverse', '--no-diff-merges', '--no-renames', '--name-only', '-z', '--format=%x00%H%n%B', f'{start}..HEAD')
+    log = g('log', '--first-parent', '--reverse', '--no-diff-merges', '--no-renames', '--name-only', '-z', '--format=%x00%H%n%B', f'{start}..{head}')
     for commit in log[1:-1].split('\0\0'):
         message, _, names = commit.partition('\0\n')
         files = names.split('\0') if names and AGENT_TRAILER.search(message) else []

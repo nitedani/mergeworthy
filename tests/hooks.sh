@@ -4311,6 +4311,11 @@ rs=$(MERGEWORTHY_WATCHER=off bg 'git push git@gitlab.com:acme/app.git HEAD:suite
 for i in 1 2 3 4 5 6; do echo "// $i" >> "$SH/src/util.ts"; hc -am "util $i"; done; quick "$SH"
 check "a push after 6 changes to demo/testRun.ts since the review passes; after 6 to src/util.ts, blocked, naming it" "0 2 1" \
   "$rs $(MERGEWORTHY_WATCHER=off bg 'git push git@gitlab.com:acme/app.git HEAD:suite' "$SH") $(grep -c 'src/util.ts got a 6th change' "$T/err")"
+# the push judges the commits it publishes, not HEAD: a clean branch pushed from a drifting HEAD, a drifting one from a clean HEAD
+git -C "$SH" branch other suite~6; echo '[]' > "$FX/gl_projects_acme_2Fapp_merge_requests_state_opened_source_branch_other"; ro=$(MERGEWORTHY_WATCHER=off bg 'git push git@gitlab.com:acme/app.git other' "$SH")
+git -C "$SH" checkout -q other
+check "a push of a branch without drift from a drifting HEAD passes; BLOCK: a push of the drifting branch from a clean HEAD, naming its file" "0 2 1" \
+  "$ro $(MERGEWORTHY_WATCHER=off bg 'git push git@gitlab.com:acme/app.git suite' "$SH") $(grep -c 'src/util.ts got a 6th change' "$T/err")"
 # a maintainer's commits (no agent trailer) aren't the agent's drift: blocked as a "17th change" with 14 of them brillout's
 SO="$T/simpo"; git init -q -b main "$SO"; oc() { git -C "$SO" -c user.name=t -c user.email=t@t commit -q "$@"; }; ac() { oc --trailer 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>' "$@"; }
 echo 0 > "$SO/a.py"; git -C "$SO" add -A; oc -m base; git -C "$SO" update-ref refs/remotes/origin/main HEAD; git -C "$SO" checkout -q -b fix; echo 1 >> "$SO/a.py"; ac -am reviewed
