@@ -3405,6 +3405,7 @@ check "compose up passes on the same memory with no running project from its fil
 check "compose up passes when the running same-files project is the one it starts" 0 "$(MI=$T/mem-tight dc_guard "DC_PS=$T/ps-self DC_STATS=$T/stats docker compose -f $T/mem-a.json -p a up -d")"
 check "compose up passes when docker stats fails" 0 "$(MI=$T/mem-tight dc_guard "DC_PS=$T/ps-same docker compose -f $T/mem.json -p b up -d")"
 check "compose up the machine can't hold passes when the user asked" 0 "$(MI=$T/mem-tight dc_guard "MERGEWORTHY_STACK_MEMORY=user-asked DC_PS=$T/ps-same $MEM_UP")"
+check "BLOCK: compose up the machine can't hold, on the usual ports the user asked for" "2 1" "$(MI=$T/mem-tight dc_guard "MERGEWORTHY_HOST_PORTS=user-asked DC_PS=$T/ps-same $MEM_UP") $(grep -c 'expected peak 3.0 GB' "$T/err")"
 check "BLOCK: compose up whose config fails (its ports can't be checked)" 2 "$(dc_guard "DC_FX=$T/missing.json docker compose -p x up -d")"
 cp "$T/assigned.json" "$HOME/assigned.json"
 check "compose up with a file under ~ passes" 0 "$(dc_guard 'docker compose -f ~/assigned.json -p x up -d')"

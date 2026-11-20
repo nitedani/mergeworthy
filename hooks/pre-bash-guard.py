@@ -484,7 +484,7 @@ def check_compose(env, t):
     netns-run doesn't isolate what the Docker daemon publishes. A config that can't be read blocks (the stack wouldn't start either).
     Then an `up` starts only while the machine's memory holds it (check_stack_memory)."""
     n = 2 if os.path.basename(t[0]) == 'docker' else 1
-    if t[1:n] not in ([], ['compose']) or env.get('MERGEWORTHY_HOST_PORTS') == 'user-asked': return
+    if t[1:n] not in ([], ['compose']): return
     keep, paths = ('-f', '--file', '-p', '--project-name', '--profile', '--project-directory', '--env-file'), ('-f', '--file', '--project-directory', '--env-file')
     a, glob, files = t[n:], [], []
     while a and a[0].startswith('-'):
@@ -516,7 +516,7 @@ def check_compose(env, t):
         block(f"`{' '.join(t[:n] + glob)} config` failed ({r.stderr.strip()[:200]}), so its ports can't be checked: fix the config, then start it")
     bad = [f"{s} container_name {c['container_name']}" for s, c in svcs.items() if c.get('container_name')] + \
           [f"{s} host port {p['published']}" for s, c in svcs.items() for p in c.get('ports') or [] if p.get('published')]
-    if bad:
+    if bad and env.get('MERGEWORTHY_HOST_PORTS') != 'user-asked':
         block(f"this stack takes what another session's stack needs ({', '.join(bad)}), and netns-run doesn't isolate ports Docker publishes. "
               "Start it with a unique project name (-p or COMPOSE_PROJECT_NAME) and the override the project file's Running the app → Start names "
               "(`ports: !override [\"<container port>\"]` for Docker-assigned ports, found with `docker compose port <svc> <port>`; `ports: !reset []` where the host needs none; "
