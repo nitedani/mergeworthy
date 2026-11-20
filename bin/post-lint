@@ -120,11 +120,13 @@ if (asked_words := arg('--asked-list', None)) is not None:
     if not asked_words.strip() or not any(_flat(asked_words) in _flat(b) for b in post_words.own_blocks(parent_text)):
         sys.exit(f'--asked-list: "{asked_words}" is not in the comment this answers (outside its quoted lines); name the words of it that ask for the whole list')
     print(f'requested list: "{" ".join(asked_words.split())}"', file=sys.stderr)  # one line for the post review
-_asked_list = _asked_wording or asked_words is not None
-if _asked_list:
-    prose = uncollapsed(prose)
-if _asked_wording:
-    prose = re.sub(r'(?m)^\s*(?:- \[[ xX]\] .*|\d+\. \*\*.*|\*Why it matters:.*)$', '', prose)
+def without_requested(s):
+    """s without the lists the reader asked for: collapsed, under the wordings or --asked-list; open as a questionnaire, under the
+    wordings only (GitHub closes <details> on every box ticked)"""
+    if _asked_wording or asked_words is not None: s = uncollapsed(s)
+    if _asked_wording: s = re.sub(r'(?m)^\s*(?:- \[[ xX]\] .*|\d+\. \*\*.*|\*Why it matters:.*)$', '', s)
+    return s
+prose = without_requested(prose)
 # The converge steps' runs, collapsed (converge step 5), are evidence: never linted; only a PR body's count reads this prose, so a reply counts them
 prose = re.sub(rf'<details>\s*<summary>(?:{post_words.alt(W["blocks"])})[^<]*</summary>.*?</details>', '', prose, flags=re.S)
 code = '\n'.join(inner for _, _, inner in fence_spans(prose))
@@ -235,11 +237,7 @@ if kind == 'tracker':
 # Reading cost (mergeworthy:writing §Length): every post but a PR body is counted from its own text, code and collapsed sections included;
 # requested lists, quotes of others, and rated rows with their header (up to BOUND words a cell) are left out
 if kind != 'pr':
-    counted = re.sub(r'<!--.*?-->', '', text, flags=re.S)
-    if _asked_list:  # the lists the reader asked for, collapsed
-        counted = uncollapsed(counted)
-    if _asked_wording:  # or open as a questionnaire (GitHub closes <details> on every box ticked)
-        counted = re.sub(r'(?m)^\s*(?:- \[[ xX]\] .*|\d+\. \*\*.*|\*Why it matters:.*)$', '', counted)
+    counted = without_requested(re.sub(r'<!--.*?-->', '', text, flags=re.S))  # the lists the reader asked for
     counted = QUOTE.sub('', counted)              # quotes of others
     counted, n_rated = unrated(counted)  # the cap below counts the rated rows of this same text
     counted = re.sub(r'^\s*\|[\s:|-]+\|\s*$', '', counted, flags=re.M)            # table separator rows
