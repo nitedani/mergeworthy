@@ -9,9 +9,8 @@ import failclosed
 import shellcmd
 from shellcmd import parse, segments, prog, script, opt, api_call, field_name, TEXT_FREE, discussion_post, discussion_thread_of, names_discussion_mutation, env_of, origin, plain_create, PLAIN, new_post_drafts, no_instructions_read, by_agent, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Unseen, Where
 from records import branch_record, commit_file, no_approach, no_preflight, STORE
-import own_actions, review_launch, steward, post_words, testpaths, threads_file, work_folder
+import drift, own_actions, review_launch, steward, post_words, threads_file, work_folder
 from t3_tasks import under_t3
-AGENT_TRAILER = re.compile(r'^Co-Authored-By: Claude', re.M | re.I)  # a commit without it is a maintainer's
 def missing_steps(d, head=None):
     """(head, the converge steps it lacks): head is a push's pushed commit, else HEAD."""
     head = head or subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
@@ -23,7 +22,7 @@ def missing_steps(d, head=None):
         if os.path.exists(commit_file(c)):
             rec = commit_file(c); break
         parents, _, body = subprocess.run(['git', '-C', d, 'log', '-1', '--format=%P%x00%B', c], capture_output=True, text=True).stdout.partition('\0')
-        if len(parents.split()) != 1 or AGENT_TRAILER.search(body): break
+        if len(parents.split()) != 1 or drift.AGENT_TRAILER.search(body): break
     kinds = {l.split()[0] for l in open(rec)} if head and os.path.exists(rec) else set()
     kinds |= {'fresh'} if 'review' in kinds else set()  # records made before the six steps
     kinds |= {'shape'} if {'loopb', 'refactor'} <= kinds else set()  # records made before the shape pass
@@ -563,38 +562,13 @@ def index_copy(d):
 def git_head(d):
     return subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
 
-NOT_CODE = re.compile(testpaths.TESTS + r'|(^|/)docs?/|\.md$|lock\.(json|yaml)$|\.lock$|(^|/)\.changeset/')
-def check_patches(d, pending=None, amend=False):
-    """`finality` step 1 as a mechanism: a code file (no test, doc or build output: testpaths.generated)
-    changed by 5 commits of the branch since its first review (a verify, small, shape, reverify or fresh record) gets no 6th
-    until `pr-steps finality` records the finality pass's plan on the head; a commit with that record, HEAD too, starts the counts over after it. Building before any review counts nothing. Only the
-    branch's own commits count (first parent): a merge commit, made or being made, is no change, nor are the commits it brings in,
-    nor is a maintainer's (AGENT_TRAILER): the drift is the agent's.
-    pending: the files the commit being made changes; None for a push, which checks the commits alone. amend: it replaces HEAD."""
-    g = lambda *a: subprocess.run(['git', '-C', d, *a], capture_output=True, text=True).stdout
-    base = g('symbolic-ref', '-q', '--short', 'refs/remotes/origin/HEAD').strip() or 'origin/main'
-    if pending is not None and g('rev-parse', '-q', '--verify', 'MERGE_HEAD').strip(): pending = []
-    commits = g('rev-list', '--reverse', '--first-parent', 'HEAD', '--not', base).split()
-    start = None  # the commit the counts start after
-    for c in commits:
-        steps = {l.split()[0] for l in open(RECORDS + c) if l.split()} if os.path.exists(RECORDS + c) else set()
-        if 'finality' in steps or not start and steps & {'verify', 'small', 'shape', 'reverify', 'fresh'}: start = c
-    if not start: return
-    count = {}
-    # per commit `\0<sha>\n<message>\0`, then `\n<file>\0<file>\0` (none for a merge commit): no part is empty, so `\0\0` is only where a commit ends
-    log = g('log', '--first-parent', '--reverse', '--no-diff-merges', '--no-renames', '--name-only', '-z', '--format=%x00%H%n%B', f'{start}..HEAD')
-    for commit in log[1:-1].split('\0\0'):
-        message, _, names = commit.partition('\0\n')
-        files = names.split('\0') if names and AGENT_TRAILER.search(message) else []
-        if amend and message.startswith(commits[-1]): pending, files = sorted(set(pending or []) | set(files)), []  # the amended commit is the pending one
-        for f in files: count[f] = count.get(f, 0) + 1
-    for f in pending or []: count[f] = count.get(f, 0) + 1
-    over = [f for f in (count if pending is None else pending) if count.get(f, 0) > 5 and not NOT_CODE.search(f)]
-    gen = testpaths.generated(d, over) if over else set()
-    if over := [f for f in over if f not in gen]:
-        block(f"{', '.join(over)} {'got' if pending is None else 'would get'} a {count[over[0]]}th change on this branch: patch after patch in one place is drift. "
-              "Run the finality pass (mergeworthy:finality steps 2-3) on it and record its plan with `pr-steps finality <the plan>` on this head "
-              "before Phase C's commits")
+def block_drift(hot, pushed=None):
+    """Blocks on the files drift.over found ({file: its count}); pushed: the branch or commit a push publishes, None for a commit."""
+    if not hot: return
+    (first, n), *rest = hot.items()
+    block(f"{first} {'got' if pushed else 'would get'} a {n}th change{''.join(f', {f} a {c}th' for f, c in rest)} on {pushed or 'this branch'}: "
+          "patch after patch in one place is drift. Run the finality pass (mergeworthy:finality steps 2-3) on it and record its plan with "
+          f"`pr-steps finality <the plan>` {f'with {pushed} checked out' if pushed else 'on this head'} before Phase C's commits")
 
 def repo_of(url):
     """(host, repo path) of a remote URL in each form git takes (scheme://[user@]host[:port]/path, [user@]host:path); an ssh host
@@ -1029,7 +1003,7 @@ def check(t, has_cd):
             taken = set()
             for x in out:  # `XY path`, X the index side the commit takes; a rename's next entry is its old path
                 if x[:1] not in ('', ' ', '?'): taken |= {x[3:], *([next(out, '')] if x[0] == 'R' else [])}
-            check_patches(repo, sorted(taken), '--amend' in rest)
+            block_drift(drift.over(repo, pending=sorted(taken), amend='--amend' in rest))
         if sub == 'add' and repo is not None and os.path.isdir(repo):  # what a `git commit` later in this command reads
             subprocess.run(['git', '-C', repo, 'add', *operands(rest)], capture_output=True, stdin=subprocess.DEVNULL, env={**os.environ, 'GIT_INDEX_FILE': index_copy(repo)})
         if sub == 'push' and {'--dry-run', '-n'} & set(rest):
@@ -1062,7 +1036,10 @@ def check(t, has_cd):
                 block(f"this push ({'; '.join(why)}) publishes a commit computed when it runs, so its records can't be checked: push a branch or a sha written out")
             if why:  # a push of its own (no PR, its own repo) is free; collaboration runs the task's records first
                 check_workflow(f"this push ({'; '.join(why)})", repo, [sha for sha, _, _ in heads], [p['url'] for p in prs])
-                check_patches(repo)
+                for sha, branch, local in heads:  # named by what it publishes: its branch when that branch is the commit pushed, else the commit
+                    if branch.startswith('refs/tags/'): continue  # a tag it makes is no branch's drift
+                    tip = subprocess.run(['git', '-C', repo, 'rev-parse', '-q', '--verify', f'refs/heads/{local}'], capture_output=True, text=True).stdout.strip()
+                    block_drift(drift.over(repo, sha), local if tip == sha else sha)
                 if prs:  # each branch it publishes, whichever is checked out
                     for _, _, local in heads: need_approach(repo, f"this push ({'; '.join(why)})", local)
                 for pr in prs: check_defects(thread_of_pr(pr['url']), 'this push')

@@ -2489,9 +2489,9 @@ git -C "$GS" update-ref refs/remotes/origin/main HEAD; git -C "$GS" checkout -q 
 prss() { (cd "$GS" && bash "$R/bin/pr-steps" small "$@" 2>"$T/prss.err" >/dev/null; echo $?); }
 printf 'x\n## Outside this change\nNO BUGS\nMERGE AS IS: yes\n' > "$T/sr1.md"; cp "$T/sr1.md" "$T/sr2.md"; cp "$T/sr1.md" "$T/sr3.md"; printf 'a finding\n' > "$T/sr0.md"
 seq 1 5 >> "$GS/src/a.ts"; git -C "$GS" -c user.name=t -c user.email=t@t commit -qam b
-r1=$(prss "$T/sr1.md"); echo t > "$GS/test/a.test.ts"; seq 1 300 > "$GS/README.md"; git -C "$GS" add -A; git -C "$GS" -c user.name=t -c user.email=t@t commit -qm c
+r1=$(prss "$T/sr1.md"); echo t > "$GS/test/a.test.ts"; seq 1 300 > "$GS/README.md"; seq 1 300 > "$GS/pnpm-lock.yaml"; mkdir "$GS/.changeset"; seq 1 300 > "$GS/.changeset/config.json"; git -C "$GS" add -A; git -C "$GS" -c user.name=t -c user.email=t@t commit -qm c
 r2=$(prss "$T/sr0.md")
-check "pr-steps small: BLOCK with no test in the diff, BLOCK on a report with findings, records with both (docs not counted)" "1 1 0" "$r1 $r2 $(prss "$T/sr2.md")"
+check "pr-steps small: BLOCK with no test in the diff, BLOCK on a report with findings, records with both (docs, a lockfile and a changeset not counted)" "1 1 0" "$r1 $r2 $(prss "$T/sr2.md")"
 check "after pr-steps small, gh pr ready lacks only the approach and the gates" "approach, gates" "$(prhead "$GS" "$FX/pr_view_5" https://github.com/o/r/pull/5; python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr ready 5 -R o/r"},"cwd":sys.argv[1]}))' "$GS" | python3 "$R/hooks/pre-bash-guard.py" 2>&1 | grep -o 'no pr-steps [a-z, ]* record' | sed 's/no pr-steps //; s/ record//')"
 printf 'x\n## Outside this change\nNone.\n\nNO BUGS\nMERGE AS IS: yes\n\n## Verification\n- ran it\n\n## not_checked\n- Windows\n' > "$T/sr5.md"
 check "pr-steps small records a report whose verdict comes before its Verification and not_checked sections" 0 "$(prss "$T/sr5.md")"
@@ -4257,8 +4257,9 @@ SQ="$T/simpq"; git init -q -b main "$SQ"; qc() { git -C "$SQ" -c user.name=t -c 
 echo 0 > "$SQ/a file.py"; echo 0 > "$SQ/ár.py"; git -C "$SQ" add -A; qc -m base; git -C "$SQ" update-ref refs/remotes/origin/main HEAD; git -C "$SQ" checkout -q -b fix
 echo 1 | tee -a "$SQ/a file.py" >> "$SQ/ár.py"; qc -am reviewed
 (cd "$SQ" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null)
+echo q0 >> "$SQ/ár.py"; qc -am q0
 for i in 1 2 3 4 5 6; do echo "q$i" | tee -a "$SQ/a file.py" >> "$SQ/ár.py"; [ $i = 6 ] && git -C "$SQ" add -A || qc -am "q$i"; done
-check "BLOCK: a staged 6th change to files named with a space and a non-ASCII letter, naming both" "2 1 1" "$(bg 'git commit -m q6' "$SQ") $(grep -c 'a file.py' "$T/err") $(grep -c 'ár.py' "$T/err")"
+check "BLOCK: a staged 6th and 7th change to files named with a space and a non-ASCII letter, naming each with its count" "2 1" "$(bg 'git commit -m q6' "$SQ") $(grep -c 'a file.py would get a 6th change, ár.py a 7th on this branch' "$T/err")"
 git -C "$SP" checkout -q a.py; echo t >> "$SP/tests/a_test.py"; git -C "$SP" add tests
 check "a code file's 5th change on the branch passes; its 6th is refused, naming it; a test-only commit passes" "0 2 1 0" "$r5 $r6 $n6 $(bg 'git commit -m t' "$SP")"
 echo p5b >> "$SP/a.py"; git -C "$SP" add a.py
@@ -4312,6 +4313,37 @@ rs=$(MERGEWORTHY_WATCHER=off bg 'git push git@gitlab.com:acme/app.git HEAD:suite
 for i in 1 2 3 4 5 6; do echo "// $i" >> "$SH/src/util.ts"; hc -am "util $i"; done; quick "$SH"
 check "a push after 6 changes to demo/testRun.ts since the review passes; after 6 to src/util.ts, blocked, naming it" "0 2 1" \
   "$rs $(MERGEWORTHY_WATCHER=off bg 'git push git@gitlab.com:acme/app.git HEAD:suite' "$SH") $(grep -c 'src/util.ts got a 6th change' "$T/err")"
+# the push judges the commits it publishes, not HEAD: a clean branch pushed from a drifting HEAD, a drifting one from a clean HEAD
+git -C "$SH" branch other suite~6; echo '[]' > "$FX/gl_projects_acme_2Fapp_merge_requests_state_opened_source_branch_other"; ro=$(MERGEWORTHY_WATCHER=off bg 'git push git@gitlab.com:acme/app.git other' "$SH")
+git -C "$SH" checkout -q other
+check "a push of a branch without drift from a drifting HEAD passes; BLOCK: a push of the drifting branch from a clean HEAD, naming its file and the branch to record on" "0 2 1" \
+  "$ro $(MERGEWORTHY_WATCHER=off bg 'git push git@gitlab.com:acme/app.git suite' "$SH") $(grep -c 'src/util.ts got a 6th change on suite: .*pr-steps finality <the plan>` with suite checked out' "$T/err")"
+# whether a pushed file is build output is read from the pushed commit's .gitattributes, not the checkout's
+echo 'src/util.ts linguist-generated' > "$SH/.gitattributes"; git -C "$SH" add .gitattributes; git -C "$SH" -c user.name=t -c user.email=t@t commit -qm attr
+rc=$(MERGEWORTHY_WATCHER=off bg 'git push git@gitlab.com:acme/app.git suite' "$SH")
+git -C "$SH" checkout -q -b gen suite; echo 'src/util.ts linguist-generated' > "$SH/.gitattributes"; git -C "$SH" add .gitattributes; git -C "$SH" -c user.name=t -c user.email=t@t commit -qm attr; quick "$SH"
+echo '[]' > "$FX/gl_projects_acme_2Fapp_merge_requests_state_opened_source_branch_gen"; git -C "$SH" checkout -q -b plain suite~6
+check "BLOCK: a push of the drifting file the checkout alone marks generated; a push of a branch that marks it generated itself passes" "2 0" \
+  "$rc $(MERGEWORTHY_WATCHER=off bg 'git push git@gitlab.com:acme/app.git gen' "$SH")"
+# a commit pushed to another branch (`<sha>:plain`) is named by its sha: the finality record goes on it, not on plain's tip
+echo '[]' > "$FX/gl_projects_acme_2Fapp_merge_requests_state_opened_source_branch_plain"; SU=$(git -C "$SH" rev-parse suite)
+check "BLOCK: a push of a drifting commit to another branch, naming the commit to record on" "2 1" \
+  "$(MERGEWORTHY_WATCHER=off bg "git push git@gitlab.com:acme/app.git $SU:plain" "$SH") $(grep -c "src/util.ts got a 6th change on $SU: .*with $SU checked out" "$T/err")"
+# a Git without check-attr --source (before 2.40) reads the checkout's attributes: pushing the checked-out branch that marks it generated passes
+mkdir "$T/git239"; printf '#!/bin/sh\ncase " $* " in *" check-attr --source "*) echo "error: unknown option %s" >&2; exit 129;; esac\nexec "%s" "$@"\n' "'source'" "$(command -v git)" > "$T/git239/git"; chmod +x "$T/git239/git"
+git -C "$SH" checkout -q gen
+check "with a Git that has no check-attr --source, a push of the checked-out branch that marks its file generated passes" 0 "$(PATH="$T/git239:$PATH" MERGEWORTHY_WATCHER=off bg 'git push git@gitlab.com:acme/app.git gen' "$SH")"
+# a push that makes a tag of a drifting branch or commit publishes no branch: no drift refusal
+git -C "$SH" checkout -q other; for v in 1 2; do echo '[]' > "$FX/gl_projects_acme_2Fapp_merge_requests_state_opened_source_branch_refs_tags_review-v$v"; done
+check "a push of a drifting branch, or its commit, to a new tag passes" "0 0" \
+  "$(MERGEWORTHY_WATCHER=off bg 'git push origin suite:refs/tags/review-v1' "$SH") $(MERGEWORTHY_WATCHER=off bg "git push origin $SU:refs/tags/review-v2" "$SH")"
+echo '[]' > "$FX/gl_projects_acme_2Fapp_merge_requests_state_opened_source_branch_refs_tags_review-v3"
+check "BLOCK: a push that makes a tag of a commit without a gate record: the records check still runs" "2 1" \
+  "$(MERGEWORTHY_WATCHER=off bg 'git push origin other:refs/tags/review-v3' "$SH") $(grep -c 'has no passing gate record' "$T/err")"
+# a tag beside a branch skips drift for the tag alone: the branch pushed with it is still judged
+for v in 4 5; do echo '[]' > "$FX/gl_projects_acme_2Fapp_merge_requests_state_opened_source_branch_refs_tags_review-v$v"; done
+check "a push of a clean branch with a tag of the drifting one passes; BLOCK: a push of the drifting branch with a tag, naming its file" "0 2 1" \
+  "$(MERGEWORTHY_WATCHER=off bg 'git push origin plain suite:refs/tags/review-v4' "$SH") $(MERGEWORTHY_WATCHER=off bg 'git push origin suite plain:refs/tags/review-v5' "$SH") $(grep -c 'src/util.ts got a 6th change on suite' "$T/err")"
 # a maintainer's commits (no agent trailer) aren't the agent's drift: blocked as a "17th change" with 14 of them brillout's
 SO="$T/simpo"; git init -q -b main "$SO"; oc() { git -C "$SO" -c user.name=t -c user.email=t@t commit -q "$@"; }; ac() { oc --trailer 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>' "$@"; }
 echo 0 > "$SO/a.py"; git -C "$SO" add -A; oc -m base; git -C "$SO" update-ref refs/remotes/origin/main HEAD; git -C "$SO" checkout -q -b fix; echo 1 >> "$SO/a.py"; ac -am reviewed
