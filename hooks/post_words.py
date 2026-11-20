@@ -116,7 +116,7 @@ def state_line(w):
     return re.compile(rf'^\*\*{re.escape(w["state"][0])}: {re.escape(w["state"][1])}\*\* \(.*\S.*\)$')
 
 def _blocks(s):
-    """s's block tokens as CommonMark renders it, read by markdown-it-py: the one place mergeworthy decides how Markdown renders."""
+    """s's block tokens as CommonMark parses it, read by markdown-it-py: the parse every Markdown query in this module shares."""
     try: from markdown_it import MarkdownIt
     except ImportError as e:  # raised, not sys.exit: failclosed turns it into a hook's block (exit 2), where an exit 1 lets the action through
         raise ImportError("mergeworthy reads Markdown with markdown-it-py: install it (apt install python3-markdown-it, or pip install markdown-it-py)") from e
@@ -146,8 +146,9 @@ def _html_tags(s, tag):
     return [m.span() for n, m in enumerate(found) if n in real]
 
 def _section(s, title):
-    """The block tokens of s's section under its top-level h3 (not in a blockquote or a list) that shows `title` (its text, emphasis
-    markers and inline HTML left out), up to the next top-level h3 or higher heading; None when no such heading renders."""
+    """The block tokens of s's section under its first top-level h3 (not in a blockquote or a list) whose plain text tokens, joined and
+    stripped, equal `title` (emphasis markers, inline HTML and inline code are no text tokens, so a title written in code doesn't match),
+    up to the next top-level h3 or higher heading; None when no heading matches."""
     tokens = _blocks(s)
     heading = lambda t: t.type == 'heading_open' and t.level == 0
     shown = lambda inline: ''.join(c.content for c in inline.children if c.type == 'text').strip()
@@ -176,8 +177,10 @@ def uncollapsed(s):
     return without_details(s, lambda tag: not re.search(r'\sopen(?=[\s=/>])', re.sub(r'"[^"]*"|\'[^\']*\'', '', tag)))
 
 def shows_evidence(s, title):
-    """Whether s shows, under its top-level h3 `title`, a **1.** item and its output (a code block or an image), each as it renders in that
-    section outside every <details> block, open or collapsed: an HTML comment, a fence's contents and inline code supply none of them."""
+    """Whether s's section under the top-level h3 `title` (_section), read after removing each paired <details> block, open or collapsed (an
+    unclosed one stays, as without_details leaves it), holds a top-level paragraph with a line starting with a bold `1.`, and an output
+    anywhere in it: a fence or code block, a Markdown image, or an HTML token that isn't a comment with `<img` anywhere in it (an attribute
+    value too). A fence's contents, inline code and an HTML comment are none of these tokens."""
     see = _section(without_details(s), title) or []
     def lines(inline):  # a paragraph's rendered lines, split at soft and hard breaks, without the empty text tokens markdown-it adds
         line = []
