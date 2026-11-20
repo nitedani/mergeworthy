@@ -789,9 +789,9 @@ def wake_thread():
     queued, nothing is sent: t3-wake.held names that run and how far the events it will read go; once it starts, the cursor moves there,
     and if it ends without starting, the next pass sends them (False until then: the thread hasn't got them). While the user has the
     thread stopped (steward.stopped), nothing is sent, the cursor stays and the watcher doesn't retire (False): once they write in it
-    again, the next pass sends every event since in one wake. While the thread is settled (steward.settled), which any message ends,
-    nothing is sent and the cursor stays unless an unsent line is one a person caused (PERSON): that wake carries the waiting lines
-    too. The watcher may retire meanwhile (True): events.log keeps them for the session's next start. A MAINTAINER REVIEW
+    again, the next pass sends every event since in one wake. While the thread is settled, by hand or by T3, or archived
+    (steward.settled), which any message ends, nothing is sent and the cursor stays unless an unsent line is one a person caused
+    (PERSON): that wake carries the waiting lines too. The watcher may retire meanwhile (True): events.log keeps them for the session's next start. A MAINTAINER REVIEW
     still unsorted 30 minutes after its time (steward.unsorted) goes again while the thread is idle and not settled, an hour after the
     last such send (t3-wake.resent), the gap doubling to a day."""
     tid, _, t3 = first_line(os.path.join(HERE, 't3-thread')).partition('\n')

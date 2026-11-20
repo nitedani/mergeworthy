@@ -844,8 +844,8 @@ db = os.path.expanduser("~/.t3/userdata/statev2.sqlite"); os.makedirs(os.path.di
 c = sqlite3.connect(db)
 c.execute("create table orchestration_v2_projection_runs (run_id text, thread_id text, status text, payload_json text)")
 c.execute("create table orchestration_v2_projection_messages (message_id text, thread_id text, role text, created_at text, payload_json text)")
-c.execute("create table orchestration_v2_projection_threads (thread_id text, payload_json text)")
-c.execute("insert into orchestration_v2_projection_threads values (?, ?)", ("thr-v", "{}"))
+c.execute("create table orchestration_v2_projection_threads (thread_id text, archived_at text, deleted_at text, payload_json text)")
+c.execute("insert into orchestration_v2_projection_threads values (?, ?, ?, ?)", ("thr-v", None, None, "{}"))
 def settle(how): c.execute("update orchestration_v2_projection_threads set payload_json = ?", (json.dumps({"settledOverride": how}),)); c.commit()
 log = os.path.join(m.HERE, "events.log"); open(log, "w").close(); add = lambda t: open(log, "a").write(t)
 open(os.path.join(m.HERE, "t3-thread"), "w").write("thr-v\n'"$T"'/bin/t3\n"); open(os.path.join(m.HERE, "t3-wake.cursor"), "w").write("0")
@@ -854,11 +854,15 @@ settle("settled"); add("### PR CHANGED o/r#5: open -> merged\n"); counts = [m.wa
 add("### o/r#5 comment 1 by bob\n    thanks\n"); m.wake_thread(); counts.append(sends())
 settle(None); add("### PR CHANGED o/r#6: open -> closed\n"); m.wake_thread(); counts.append(sends())
 settle("settled"); add("### MAINTAINER COMMITS o/r#7: abc1234\n"); m.wake_thread(); counts.append(sends())
+c.execute("update orchestration_v2_projection_threads set payload_json = ?", (json.dumps({"settledOverride": None, "settledAt": "2026-01-01T00:00:00Z"}),)); c.commit()
+add("### PR CHANGED o/r#8: open -> merged\n"); m.wake_thread(); counts.append(sends())  # auto-settled by T3: a settledAt, no settledOverride
+c.execute("update orchestration_v2_projection_threads set payload_json = ?, archived_at = ?", ("{}", "2026-01-01T00:00:00Z")); c.commit()
+add("### PR CHANGED o/r#9: open -> merged\n"); m.wake_thread(); counts.append(sends())
 os.remove(os.path.join(m.HERE, "t3-thread")); os.remove(db)
 print(*counts)
 ')
-check "wake_thread: a settled thread is sent nothing for an event no person caused, the cursor stays and the watcher may retire (True); a comment then sends one wake carrying both; a thread not settled, or a maintainer's commits, is sent at once" \
-  "True 0 0 1 2 3|t3 thread send thr-v -;Watcher events in $W/events.log (mergeworthy:reply):;### PR CHANGED o/r#5: open -> merged;### o/r#5 comment 1 by bob;t3 thread send thr-v -;Watcher events in $W/events.log (mergeworthy:reply):;### PR CHANGED o/r#6: open -> closed;t3 thread send thr-v -;Watcher events in $W/events.log (mergeworthy:reply):;### MAINTAINER COMMITS o/r#7: abc1234;" \
+check "wake_thread: a settled thread is sent nothing for an event no person caused, the cursor stays and the watcher may retire (True); a comment then sends one wake carrying both; a thread not settled, or a maintainer's commits, is sent at once; one T3 auto-settled (a settledAt only) or archived is sent nothing either" \
+  "True 0 0 1 2 3 3 3|t3 thread send thr-v -;Watcher events in $W/events.log (mergeworthy:reply):;### PR CHANGED o/r#5: open -> merged;### o/r#5 comment 1 by bob;t3 thread send thr-v -;Watcher events in $W/events.log (mergeworthy:reply):;### PR CHANGED o/r#6: open -> closed;t3 thread send thr-v -;Watcher events in $W/events.log (mergeworthy:reply):;### MAINTAINER COMMITS o/r#7: abc1234;" \
   "$got|$(tr '\n' ';' < "$T/t3.log")"
 got=$(py '
 log = os.path.join(m.HERE, "events.log"); open(log, "w").write("### cron event\n"); open(os.path.join(m.HERE, "t3-wake.cursor"), "w").write("0\n")

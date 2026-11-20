@@ -124,10 +124,9 @@ def stopped(tid):
     return _db(ask, False)
 
 def settled(tid):
-    """True while T3 thread tid is settled (put away by the user, or by T3 after a week idle): any message it receives brings it back."""
-    r = _db(lambda c: c.execute("select json_extract(payload_json, '$.settledOverride') from orchestration_v2_projection_threads where thread_id = ?",
-                                (tid,)).fetchone(), None)
-    return bool(r) and r[0] == 'settled'
+    """True while T3 thread tid is settled, by the user or by T3 after a week idle, or archived (thread_state): any message it receives
+    brings it back."""
+    return thread_state(tid) == 'settled'
 
 def thread_of(wd):
     """The T3 thread a watch dir is bound to: its t3-thread, else the t3-gone T3 once reported not found; '' without either."""
