@@ -176,16 +176,20 @@ def uncollapsed(s):
     """s without its collapsed <details> blocks: a <details open> block shows expanded, so only the collapsed ones are hidden from a reader."""
     return without_details(s, lambda tag: not re.search(r'\sopen(?=[\s=/>])', re.sub(r'"[^"]*"|\'[^\']*\'', '', tag)))
 
+def _breaks(c):
+    """Whether inline token c renders as a line break: a soft or hard break, or an HTML <br> (<br/>, <br />, in any case)."""
+    return c.type in ('softbreak', 'hardbreak') or c.type == 'html_inline' and re.fullmatch(r'<br\s*/?>', c.content, re.I) is not None
+
 def shows_evidence(s, title):
     """Whether s's section under the top-level h3 `title` (_section), read after removing each paired <details> block, open or collapsed (an
     unclosed one stays, as without_details leaves it), holds a top-level paragraph with a line starting with a bold `1.`, and an output
     anywhere in it: a fence or code block, a Markdown image, or an HTML token that isn't a comment with `<img` anywhere in it (an attribute
     value too). A fence's contents, inline code and an HTML comment are none of these tokens."""
     see = _section(without_details(s), title) or []
-    def lines(inline):  # a paragraph's rendered lines, split at soft and hard breaks, without the empty text tokens markdown-it adds
+    def lines(inline):  # a paragraph's rendered lines, split at its line breaks, without the empty text tokens markdown-it adds
         line = []
         for c in inline.children:
-            if c.type in ('softbreak', 'hardbreak'): yield line; line = []
+            if _breaks(c): yield line; line = []
             elif c.type != 'text' or c.content: line.append((c.type, c.content))
         yield line
     item = any(p.type == 'paragraph_open' and p.level == 0 and any(l[:3] == [('strong_open', ''), ('text', '1.'), ('strong_close', '')] for l in lines(t))
@@ -198,12 +202,12 @@ def shows_evidence(s, title):
 def own_blocks(s):
     """The displayed text of each paragraph and heading of s (`List **all**` reads "List all"), one string a block, outside any blockquote
     (one in a list item and a quote's lazy continuation lines are blockquote too): the words s's own author wrote."""
-    shown = {'text': lambda c: c.content, 'code_inline': lambda c: c.content, 'softbreak': lambda c: '\n', 'hardbreak': lambda c: '\n'}
+    shown = lambda c: '\n' if _breaks(c) else c.content if c.type in ('text', 'code_inline') else ''
     tokens, quoted, out = _blocks(s), 0, []
     for prev, t in zip([None] + tokens, tokens):
         quoted += {'blockquote_open': 1, 'blockquote_close': -1}.get(t.type, 0)
         if t.type == 'inline' and not quoted and prev.type in ('paragraph_open', 'heading_open'):
-            out.append(''.join(shown.get(c.type, lambda c: '')(c) for c in t.children))
+            out.append(''.join(shown(c) for c in t.children))
     return out
 def uncoded(s, keep=lambda block: ''):  # s with each code block replaced by keep(block)
     out, last = [], 0
