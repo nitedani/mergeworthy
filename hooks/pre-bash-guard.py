@@ -562,13 +562,13 @@ def index_copy(d):
 def git_head(d):
     return subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
 
-def block_drift(hot, verb):
-    """Blocks on the files drift.over found ({file: its count}); verb: 'got' for a push, 'would get' for a commit."""
+def block_drift(hot, pushed=None):
+    """Blocks on the files drift.over found ({file: its count}); pushed: the branch or commit a push publishes, None for a commit."""
     if not hot: return
     (first, n), *rest = hot.items()
-    block(f"{first} {verb} a {n}th change{''.join(f', {f} a {c}th' for f, c in rest)} on this branch: patch after patch in one place is drift. "
-          "Run the finality pass (mergeworthy:finality steps 2-3) on it and record its plan with `pr-steps finality <the plan>` on this head "
-          "before Phase C's commits")
+    block(f"{first} {'got' if pushed else 'would get'} a {n}th change{''.join(f', {f} a {c}th' for f, c in rest)} on {pushed or 'this branch'}: "
+          "patch after patch in one place is drift. Run the finality pass (mergeworthy:finality steps 2-3) on it and record its plan with "
+          f"`pr-steps finality <the plan>` {f'with {pushed} checked out' if pushed else 'on this head'} before Phase C's commits")
 
 def repo_of(url):
     """(host, repo path) of a remote URL in each form git takes (scheme://[user@]host[:port]/path, [user@]host:path); an ssh host
@@ -1003,7 +1003,7 @@ def check(t, has_cd):
             taken = set()
             for x in out:  # `XY path`, X the index side the commit takes; a rename's next entry is its old path
                 if x[:1] not in ('', ' ', '?'): taken |= {x[3:], *([next(out, '')] if x[0] == 'R' else [])}
-            block_drift(drift.over(repo, pending=sorted(taken), amend='--amend' in rest), 'would get')
+            block_drift(drift.over(repo, pending=sorted(taken), amend='--amend' in rest))
         if sub == 'add' and repo is not None and os.path.isdir(repo):  # what a `git commit` later in this command reads
             subprocess.run(['git', '-C', repo, 'add', *operands(rest)], capture_output=True, stdin=subprocess.DEVNULL, env={**os.environ, 'GIT_INDEX_FILE': index_copy(repo)})
         if sub == 'push' and {'--dry-run', '-n'} & set(rest):
@@ -1036,7 +1036,7 @@ def check(t, has_cd):
                 block(f"this push ({'; '.join(why)}) publishes a commit computed when it runs, so its records can't be checked: push a branch or a sha written out")
             if why:  # a push of its own (no PR, its own repo) is free; collaboration runs the task's records first
                 check_workflow(f"this push ({'; '.join(why)})", repo, [sha for sha, _, _ in heads], [p['url'] for p in prs])
-                for sha, _, _ in heads: block_drift(drift.over(repo, sha), 'got')
+                for sha, _, local in heads: block_drift(drift.over(repo, sha), local or sha)
                 if prs:  # each branch it publishes, whichever is checked out
                     for _, _, local in heads: need_approach(repo, f"this push ({'; '.join(why)})", local)
                 for pr in prs: check_defects(thread_of_pr(pr['url']), 'this push')

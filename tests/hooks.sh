@@ -4314,8 +4314,8 @@ check "a push after 6 changes to demo/testRun.ts since the review passes; after 
 # the push judges the commits it publishes, not HEAD: a clean branch pushed from a drifting HEAD, a drifting one from a clean HEAD
 git -C "$SH" branch other suite~6; echo '[]' > "$FX/gl_projects_acme_2Fapp_merge_requests_state_opened_source_branch_other"; ro=$(MERGEWORTHY_WATCHER=off bg 'git push git@gitlab.com:acme/app.git other' "$SH")
 git -C "$SH" checkout -q other
-check "a push of a branch without drift from a drifting HEAD passes; BLOCK: a push of the drifting branch from a clean HEAD, naming its file" "0 2 1" \
-  "$ro $(MERGEWORTHY_WATCHER=off bg 'git push git@gitlab.com:acme/app.git suite' "$SH") $(grep -c 'src/util.ts got a 6th change' "$T/err")"
+check "a push of a branch without drift from a drifting HEAD passes; BLOCK: a push of the drifting branch from a clean HEAD, naming its file and the branch to record on" "0 2 1" \
+  "$ro $(MERGEWORTHY_WATCHER=off bg 'git push git@gitlab.com:acme/app.git suite' "$SH") $(grep -c 'src/util.ts got a 6th change on suite: .*pr-steps finality <the plan>` with suite checked out' "$T/err")"
 # whether a pushed file is build output is read from the pushed commit's .gitattributes, not the checkout's
 echo 'src/util.ts linguist-generated' > "$SH/.gitattributes"; git -C "$SH" add .gitattributes; git -C "$SH" -c user.name=t -c user.email=t@t commit -qm attr
 rc=$(MERGEWORTHY_WATCHER=off bg 'git push git@gitlab.com:acme/app.git suite' "$SH")
