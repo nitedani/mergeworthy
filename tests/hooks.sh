@@ -902,6 +902,7 @@ check "a ready PR body's evidence is read from its rendered tokens: inline-code 
 lsec_vis=$'### What you should see\n\n**1.** Run the request.\n\n```sh\ncurl -sI /a.js\nHTTP/2 200\n```'
 lsec() { printf 'The cache now keeps the response headers.\n\n%s\n' "$1" > "$T/lsec.md"; lspr "$T/lsec.md"; }
 check "inline-code '<!--' and '-->' around a collapsed evidence section hide nothing: its <details> still collapses it" "1 1" "$(lsec "The opener is \`<!--\`."$'\n\n'"<details><summary>Example</summary>"$'\n\n'"$lsec_vis"$'\n\n'"</details>"$'\n\n'"The closer is \`-->\`.")"
+check "a <details> opened on an HTML comment's closing line is real: a PR body's evidence collapsed in it is hidden" "1 1" "$(lsec "<!-- End of template note --> <details><summary>Smoke test</summary>"$'\n\n'"$lsec_vis"$'\n\n'"</details>")"
 lsec_item='**1.** Run the request.'; lsec_out=$'```sh\ncurl -sI /a.js\nHTTP/2 200\n```'
 check "the evidence heading counts only at the top level: a quoted one claims no item or output, and neither steals nor ends a real section" "1 1 0 0 0 0" "$(lsec "> ### What you should see"$'\n\n'"$lsec_item"$'\n\n'"$lsec_out") $(lsec "> ### What you should see"$'\n\n'"$lsec_vis") $(lsec "### What you should see"$'\n\n'"$lsec_item"$'\n\n'"> ### What you should see"$'\n\n'"$lsec_out")"
 check "the evidence heading is matched on the text it shows: emphasized, or followed by an HTML comment" "0 0 0 0" "$(lsec "### **What you should see**"$'\n\n'"$lsec_item"$'\n\n'"$lsec_out") $(lsec "### What you should see <!-- output -->"$'\n\n'"$lsec_item"$'\n\n'"$lsec_out")"
