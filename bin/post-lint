@@ -314,8 +314,12 @@ if kind == 'pr' and re.match(r'\s*(Draft|Depends|Blocked|Waiting|Stacked|WIP|Sta
 # response, an image) outside the collapsed blocks (magne4000/universal-middleware#432 comment 6111310596)
 if kind == 'pr' and not draft:
     _open = uncollapsed(text)
-    _see = re.search(rf'^###\s+{re.escape(W["see"])}\s*$(.*?)(?=^###\s|\Z)', _open, re.M | re.S)
-    if not _see or not re.search(r'^\*\*1\.\*\*', _see.group(1), re.M) or not re.search(r'```|!\[|<img\b', _see.group(1)):
+    # the heading and its items count where they render, not in fenced code or an HTML comment (blanked, offsets kept); the output test
+    # reads the section as written, its code blocks included
+    _blank = lambda t: re.sub(r'[^\n]', ' ', t)
+    _shown = re.sub(r'<!--[\s\S]*?-->', lambda m: _blank(m[0]), uncoded(_open, keep=_blank))
+    _see = re.search(rf'^###\s+{re.escape(W["see"])}\s*$(.*?)(?=^###\s|\Z)', _shown, re.M | re.S)
+    if not _see or not re.search(r'^\*\*1\.\*\*', _see.group(1), re.M) or not re.search(r'```|!\[|<img\b', _open[_see.start(1):_see.end(1)]):
         findings.append(f"pull-request §Body: the body has '### {W['see']}' with numbered items (**1.** …), each showing the evidence itself: a real request and response, or an image")
 # A PR's screenshots and videos come in base/head pairs: screenshots in a before/after table, videos under Before/After labels (evidence step 4)
 _ls = text.split('\n')
