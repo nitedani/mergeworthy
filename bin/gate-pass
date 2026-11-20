@@ -9,8 +9,10 @@ d="$1"; r="$2"
 # the flags given here, else those the draft last passed post-lint with (<draft>.lint), else a reply's
 shift 2; flags=(); ledger=; while [ $# -gt 0 ]; do if [ "$1" = --ledger ]; then ledger=${2:?--ledger <path>}; shift 2; else flags+=("$1"); shift; fi; done
 if [ ${#flags[@]} -eq 0 ] && [ -f "$d.lint" ]; then
-  mapfile -d '' -t flags < <(python3 "$(dirname "$(readlink -f "$0")")/../hooks/lint_flags.py" "$d")
-  wait $! || { echo "can't read the flags $d.lint saved"; exit 1; }
+  # decoded once to a file, so the decoder's own status is checked, then read one NUL-ended flag at a time: Bash 3.2 (macOS) has no mapfile
+  saved=$(mktemp)
+  python3 "$(dirname "$(readlink -f "$0")")/../hooks/lint_flags.py" "$d" > "$saved" || { rm -f "$saved"; echo "can't read the flags $d.lint saved"; exit 1; }
+  while IFS= read -r -d '' f; do flags+=("$f"); done < "$saved"; rm -f "$saved"
 fi
 "$(dirname "$(readlink -f "$0")")/post-lint" "$d" "${flags[@]}" || { echo "post-lint failed"; exit 1; }
 kind=reply; for i in "${!flags[@]}"; do [ "${flags[$i]}" = --kind ] && kind="${flags[$((i+1))]}"; done
