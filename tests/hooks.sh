@@ -2487,9 +2487,9 @@ git -C "$GS" update-ref refs/remotes/origin/main HEAD; git -C "$GS" checkout -q 
 prss() { (cd "$GS" && bash "$R/bin/pr-steps" small "$@" 2>"$T/prss.err" >/dev/null; echo $?); }
 printf 'x\n## Outside this change\nNO BUGS\nMERGE AS IS: yes\n' > "$T/sr1.md"; cp "$T/sr1.md" "$T/sr2.md"; cp "$T/sr1.md" "$T/sr3.md"; printf 'a finding\n' > "$T/sr0.md"
 seq 1 5 >> "$GS/src/a.ts"; git -C "$GS" -c user.name=t -c user.email=t@t commit -qam b
-r1=$(prss "$T/sr1.md"); echo t > "$GS/test/a.test.ts"; seq 1 300 > "$GS/README.md"; git -C "$GS" add -A; git -C "$GS" -c user.name=t -c user.email=t@t commit -qm c
+r1=$(prss "$T/sr1.md"); echo t > "$GS/test/a.test.ts"; seq 1 300 > "$GS/README.md"; seq 1 300 > "$GS/pnpm-lock.yaml"; mkdir "$GS/.changeset"; seq 1 300 > "$GS/.changeset/config.json"; git -C "$GS" add -A; git -C "$GS" -c user.name=t -c user.email=t@t commit -qm c
 r2=$(prss "$T/sr0.md")
-check "pr-steps small: BLOCK with no test in the diff, BLOCK on a report with findings, records with both (docs not counted)" "1 1 0" "$r1 $r2 $(prss "$T/sr2.md")"
+check "pr-steps small: BLOCK with no test in the diff, BLOCK on a report with findings, records with both (docs, a lockfile and a changeset not counted)" "1 1 0" "$r1 $r2 $(prss "$T/sr2.md")"
 check "after pr-steps small, gh pr ready lacks only the approach and the gates" "approach, gates" "$(prhead "$GS" "$FX/pr_view_5" https://github.com/o/r/pull/5; python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr ready 5 -R o/r"},"cwd":sys.argv[1]}))' "$GS" | python3 "$R/hooks/pre-bash-guard.py" 2>&1 | grep -o 'no pr-steps [a-z, ]* record' | sed 's/no pr-steps //; s/ record//')"
 printf 'x\n## Outside this change\nNone.\n\nNO BUGS\nMERGE AS IS: yes\n\n## Verification\n- ran it\n\n## not_checked\n- Windows\n' > "$T/sr5.md"
 check "pr-steps small records a report whose verdict comes before its Verification and not_checked sections" 0 "$(prss "$T/sr5.md")"

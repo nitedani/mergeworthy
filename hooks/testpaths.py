@@ -4,6 +4,8 @@ test and then an uppercase letter, - or _ (pytest's test_*.py, a shared suite li
 pytest's conftest.py, and *_test.* (Go, pytest). A POSIX ERE that Python's re reads the same: pr-steps matches it in mawk, which
 has no \\w."""
 TESTS = r'(^|/)(tests?|__tests__|e2e|specs?|[A-Za-z0-9_.-]*_tests?)/|\.(test|spec)\.|(^|/)\.test[A-Za-z-]*\.|(^|/)test[A-Z_-][^/]*$|(^|/)conftest\.py$|_test\.[A-Za-z]+$'
+# What is no code, for the finality counter and pr-steps small's line count: tests, docs, lockfiles and changesets
+NOT_CODE = TESTS + r'|(^|/)docs?/|\.md$|lock\.(json|yaml)$|\.lock$|(^|/)\.changeset/'
 # Build output: a dist/ path segment (a committed build bundle), plus what generated() finds marked in .gitattributes
 GENERATED = r'(^|/)dist/'
 # What a shape pass doesn't rate, and the changed lines past which the code it rated is new work: SHAPE STALE's count, and the round cap's
@@ -19,7 +21,8 @@ def generated(repo, paths):
         input='\0'.join(paths)).split('\0')  # path, attribute, value, ...
     return {p for p in paths if re.search(GENERATED, p)} | {p for p, v in zip(a[0::3], a[2::3]) if v in ('set', 'true')}
 
-if __name__ == '__main__':  # no argument: TESTS; `generated`: those of the paths on stdin (a line each) in the checkout here
+if __name__ == '__main__':  # no argument: TESTS; `not-code`: NOT_CODE; `generated`: those of the paths on stdin (a line each) in the checkout here
     import sys
     if sys.argv[1:] == ['generated']: print(*sorted(generated('.', sys.stdin.read().splitlines())), sep='\n')
+    elif sys.argv[1:] == ['not-code']: print(NOT_CODE)
     else: print(TESTS)

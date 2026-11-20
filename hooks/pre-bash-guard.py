@@ -563,7 +563,6 @@ def index_copy(d):
 def git_head(d):
     return subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
 
-NOT_CODE = re.compile(testpaths.TESTS + r'|(^|/)docs?/|\.md$|lock\.(json|yaml)$|\.lock$|(^|/)\.changeset/')
 def check_patches(d, pending=None, amend=False):
     """`finality` step 1 as a mechanism: a code file (no test, doc or build output: testpaths.generated)
     changed by 5 commits of the branch since its first review (a verify, small, shape, reverify or fresh record) gets no 6th
@@ -589,7 +588,7 @@ def check_patches(d, pending=None, amend=False):
         if amend and message.startswith(commits[-1]): pending, files = sorted(set(pending or []) | set(files)), []  # the amended commit is the pending one
         for f in files: count[f] = count.get(f, 0) + 1
     for f in pending or []: count[f] = count.get(f, 0) + 1
-    over = [f for f in (count if pending is None else pending) if count.get(f, 0) > 5 and not NOT_CODE.search(f)]
+    over = [f for f in (count if pending is None else pending) if count.get(f, 0) > 5 and not re.search(testpaths.NOT_CODE, f)]
     gen = testpaths.generated(d, over) if over else set()
     if over := [f for f in over if f not in gen]:
         block(f"{', '.join(over)} {'got' if pending is None else 'would get'} a {count[over[0]]}th change on this branch: patch after patch in one place is drift. "
