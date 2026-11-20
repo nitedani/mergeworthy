@@ -15,6 +15,6 @@ Sort each defect once:
 - DIRECTION: the maintainer chose differently, no fault in ours. The reason in a line.
 Confirm the review's words say the change your line describes.
 
-Write <work folder>/followup-<the review URL's number, or rename-<time>>.md.
+Write <work folder>/followup-<id>.md (<id>: from #pullrequestreview-<id>, or rename-<time>).
 Final message: one line per defect, `<review URL> MISS|TASTE|WORKED|DIRECTION <the line or reason>`.
 ```
