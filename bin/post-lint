@@ -113,14 +113,14 @@ prose = re.sub(r'<!--.*?-->', '', text, flags=re.S)
 # ones the parent asks for in the words --asked-list names (the post review checks they ask for it), found in one paragraph or heading of the
 # parent outside its quotes
 _rp = arg('--parent', None); _rp = (re.sub(r'\.md$', '', path) + '.parent.md') if _rp is None else (None if _rp == 'none' else _rp)
-_parent = open(_rp).read() if _rp and os.path.exists(_rp) else ''
-_asked_wording = bool(re.search(r'\brefactor this pr\b|\bold rating\b|\bratings?\b.*\blists?\b|\b\d+\s+(?:questions|items|options)\b|\bquestions?\b.*\b(?:checkbox|choices)\b', _parent, re.I | re.S))
-if (_asked := arg('--asked-list', None)) is not None:
+parent_text = open(_rp).read() if _rp and os.path.exists(_rp) else ''
+_asked_wording = bool(re.search(r'\brefactor this pr\b|\bold rating\b|\bratings?\b.*\blists?\b|\b\d+\s+(?:questions|items|options)\b|\bquestions?\b.*\b(?:checkbox|choices)\b', parent_text, re.I | re.S))
+if (asked_words := arg('--asked-list', None)) is not None:
     _flat = lambda s: ' '.join(s.split()).lower()
-    if not _asked.strip() or not any(_flat(_asked) in _flat(b) for b in post_words.own_blocks(_parent)):
-        sys.exit(f'--asked-list: "{_asked}" is not in the comment this answers (outside its quoted lines); name the words of it that ask for the whole list')
-    print(f'requested list: "{" ".join(_asked.split())}"', file=sys.stderr)  # one line for the post review
-_asked_list = _asked_wording or _asked is not None
+    if not asked_words.strip() or not any(_flat(asked_words) in _flat(b) for b in post_words.own_blocks(parent_text)):
+        sys.exit(f'--asked-list: "{asked_words}" is not in the comment this answers (outside its quoted lines); name the words of it that ask for the whole list')
+    print(f'requested list: "{" ".join(asked_words.split())}"', file=sys.stderr)  # one line for the post review
+_asked_list = _asked_wording or asked_words is not None
 if _asked_list:
     prose = uncollapsed(prose)
 if _asked_wording:
