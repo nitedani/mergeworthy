@@ -4338,6 +4338,10 @@ check "a push of a drifting branch, or its commit, to a new tag passes" "0 0" \
 echo '[]' > "$FX/gl_projects_acme_2Fapp_merge_requests_state_opened_source_branch_refs_tags_review-v3"
 check "BLOCK: a push that makes a tag of a commit without a gate record: the records check still runs" "2 1" \
   "$(MERGEWORTHY_WATCHER=off bg 'git push origin other:refs/tags/review-v3' "$SH") $(grep -c 'has no passing gate record' "$T/err")"
+# a tag beside a branch skips drift for the tag alone: the branch pushed with it is still judged
+for v in 4 5; do echo '[]' > "$FX/gl_projects_acme_2Fapp_merge_requests_state_opened_source_branch_refs_tags_review-v$v"; done
+check "a push of a clean branch with a tag of the drifting one passes; BLOCK: a push of the drifting branch with a tag, naming its file" "0 2 1" \
+  "$(MERGEWORTHY_WATCHER=off bg 'git push origin plain suite:refs/tags/review-v4' "$SH") $(MERGEWORTHY_WATCHER=off bg 'git push origin suite plain:refs/tags/review-v5' "$SH") $(grep -c 'src/util.ts got a 6th change on suite' "$T/err")"
 # a maintainer's commits (no agent trailer) aren't the agent's drift: blocked as a "17th change" with 14 of them brillout's
 SO="$T/simpo"; git init -q -b main "$SO"; oc() { git -C "$SO" -c user.name=t -c user.email=t@t commit -q "$@"; }; ac() { oc --trailer 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>' "$@"; }
 echo 0 > "$SO/a.py"; git -C "$SO" add -A; oc -m base; git -C "$SO" update-ref refs/remotes/origin/main HEAD; git -C "$SO" checkout -q -b fix; echo 1 >> "$SO/a.py"; ac -am reviewed
