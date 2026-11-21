@@ -109,3 +109,8 @@ def state_claims(message):
 
 
 def linked_repos(message): return re.findall(r'github\.com/([\w.-]+/[\w.-]+)/pull/\d+', message)
+
+
+def numbered_links(text):
+    """(repo, number) of each PR or issue the text names by its URL or as owner/repo#N, in the text's order."""
+    return [(r1 or r2, n) for r1, r2, n in re.findall(r'(?:https://github\.com/([\w.-]+/[\w.-]+)/(?:pull|issues)/|(?<![\w/])([\w.-]+/[\w.-]+)#)(\d+)\b', text)]
