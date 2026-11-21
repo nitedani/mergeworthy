@@ -3,20 +3,24 @@ testpaths.NOT_CODE, not build output: testpaths.generated) the branch's own comm
 review (a verify, small, shape, reverify or fresh record); a `pr-steps finality` record on a commit, HEAD too, starts the counts
 over after it. Building before any review counts nothing. Only the branch's own commits count (first parent): a merge commit,
 made or being made, is no change, nor are the commits it brings in, nor is a maintainer's (AGENT_TRAILER): the drift is the agent's.
-pr-steps notes each record in the repo's drift log by the commit's identity, which a rebase, a cherry-pick and an amend keep and
-a squash doesn't, and which every branch and worktree of the repo shares: a squashed branch counts nothing until its next review."""
+pr-steps notes each record in the repo's drift log by the commit's identity (identities), which every branch and worktree of the
+repo shares: a squashed branch counts nothing until its next review."""
 import hashlib, os, re, subprocess, sys
 import testpaths
 from records import STORE
 
 AGENT_TRAILER = re.compile(r'^Co-Authored-By: Claude', re.M | re.I)  # a commit without it is a maintainer's
-ID = '%at %s'  # the git format identity() reads
 
 
-def identity(line):
-    """The identity of the commit whose ID line is line: its author time and a hash of its subject."""
-    at, _, subject = line.partition(' ')
-    return f'{at}:{hashlib.sha256(subject.encode()).hexdigest()[:12]}'
+def identities(d, *revs):
+    """{sha: identity} of the commits `git log revs` lists in checkout d that change something: the `git patch-id --stable` of
+    that change, which a rebase without conflicts, a cherry-pick and an amend of the message alone keep, and a squash or any
+    change to the content doesn't. A commit missing from it (a merge, an empty commit) is its own SHA."""
+    log = subprocess.Popen(['git', '-C', d, 'log', '-p', '--no-diff-merges', '--no-renames', '--no-color', '--no-show-signature',
+                            '--format=commit %H', *revs], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    ids = subprocess.run(['git', '-C', d, 'patch-id', '--stable'], stdin=log.stdout, capture_output=True, text=True).stdout
+    log.stdout.close(); log.wait()
+    return {sha: pid for pid, sha in map(str.split, ids.splitlines())}
 
 
 def log_path(d):
@@ -27,8 +31,8 @@ def log_path(d):
 
 def note(d, kind, proof):
     """Notes a kind of record (review, finality) with its proof file on checkout d's HEAD."""
-    line = subprocess.run(['git', '-C', d, 'log', '-1', f'--format={ID}'], capture_output=True, text=True).stdout.rstrip('\n')
-    with open(log_path(d), 'a') as f: f.write(f'{kind} {identity(line)} {proof}\n')
+    sha = subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
+    with open(log_path(d), 'a') as f: f.write(f'{kind} {identities(d, "-1", sha).get(sha, sha)} {proof}\n')
 
 
 def over(d, head='HEAD', pending=None, amend=False):
@@ -44,12 +48,15 @@ def over(d, head='HEAD', pending=None, amend=False):
     g = lambda *a: subprocess.run(['git', '-C', d, *a], capture_output=True, text=True).stdout
     base = g('symbolic-ref', '-q', '--short', 'refs/remotes/origin/HEAD').strip() or 'origin/main'
     if pending is not None and g('rev-parse', '-q', '--verify', 'MERGE_HEAD').strip(): pending = []
-    # git prints `\0<sha>\n<ID line>\n<message>\0` per commit, then `\n` and `<file>\0` for each file it changed (none for a merge): `\0\0` is where a commit ends
-    log = g('log', '--first-parent', '--reverse', '--no-diff-merges', '--no-renames', '--name-only', '-z', f'--format=%x00%H%n{ID}%n%B', head, '--not', base)
+    # git prints `\0<sha>\n<message>\0` per commit, then `\n` and `<file>\0` for each file it changed (none for a merge): `\0\0` is where a commit ends
+    log = g('log', '--first-parent', '--reverse', '--no-diff-merges', '--no-renames', '--no-show-signature', '--encoding=UTF-8', '--name-only', '-z',
+            '--format=%x00%H%n%B', head, '--not', base)
     commits = [c.partition('\0\n') for c in log[1:-1].split('\0\0')] if log else []
+    ids = identities(d, '--first-parent', head, '--not', base)
     start = None  # the index of the commit the counts start after
     for i, (message, _, _) in enumerate(commits):
-        kinds = noted.get(identity(message.split('\n')[1]), set())
+        sha = message[:message.find('\n')]
+        kinds = noted.get(ids.get(sha, sha), set())
         if 'finality' in kinds or start is None and 'review' in kinds: start = i
     if start is None: return {}
     count = {}

@@ -4446,7 +4446,7 @@ git -C "$SD" add build
 check "BLOCK: a build/ file's 6th change, naming it alone" "2 1 0" "$(bg 'git commit -m b6' "$SD") $(grep -c 'build/bundle.js would get a 6th change' "$T/err") $(grep -c 'claude-swap.mjs\|api.ts' "$T/err")"
 git -C "$SD" reset -q build; git -C "$SD" add src.ts
 check "BLOCK: the hand-written source's 6th change beside them, naming it alone" "2 1 0" "$(bg 'git commit -m b6' "$SD") $(grep -c 'src.ts would get a 6th change' "$T/err") $(grep -c 'claude-swap.mjs\|api.ts\|bundle.js' "$T/err")"
-# the anchors are commit identities in one log per repo: a rebase and an amend keep them, a squash doesn't, and every worktree reads them
+# the anchors are the commits' patch-ids in one log per repo: a rebase and an amend of the message keep them, a squash doesn't, and every worktree reads them
 SR="$T/simpr"; git init -q -b main "$SR"; rc() { git -C "$1" -c user.name=t -c user.email=t@t commit -q --trailer 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>' "${@:2}"; }
 echo 0 > "$SR/a.py"; git -C "$SR" add -A; rc "$SR" -m base; git -C "$SR" update-ref refs/remotes/origin/main HEAD; git -C "$SR" checkout -q -b fix; echo 1 >> "$SR/a.py"; rc "$SR" -am reviewed
 (cd "$SR" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null)
@@ -4454,8 +4454,8 @@ for i in 1 2 3 4 5; do echo "r$i" >> "$SR/a.py"; rc "$SR" -am "r$i"; done
 git -C "$SR" worktree add -q -b impl "$T/simpw" fix~5; (cd "$T/simpw" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 for i in 1 2 3 4 5; do echo "w$i" >> "$T/simpw/a.py"; rc "$T/simpw" -am "w$i"; done; echo w6 >> "$T/simpw/a.py"; git -C "$T/simpw" add a.py
 check "BLOCK: an implementer's worktree on another branch, made from the reviewed head, counts its 6th change" "2 1" "$(bg 'git commit -m w6' "$T/simpw") $(grep -c 'a.py would get a 6th change' "$T/err")"
-(cd "$SR" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null); echo r5b >> "$SR/a.py"; rc "$SR" --amend --no-edit -a; echo r6 >> "$SR/a.py"; git -C "$SR" add a.py
-check "an amend of the head holding the finality record keeps it: the next change passes" 0 "$(bg 'git commit -m r6' "$SR")"
+(cd "$SR" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null); rc "$SR" --amend -m 'Edited subject'; echo r6 >> "$SR/a.py"; git -C "$SR" add a.py
+check "an amend of the subject of the head holding the finality record keeps it: the next change passes" 0 "$(bg 'git commit -m r6' "$SR")"
 for i in 6 7 8 9 10; do echo "r$i" >> "$SR/a.py"; rc "$SR" -am "r$i"; done
 git -C "$SR" checkout -q main; echo 0 > "$SR/b.py"; git -C "$SR" add b.py; rc "$SR" -m main1; git -C "$SR" update-ref refs/remotes/origin/main HEAD; git -C "$SR" checkout -q fix; git -C "$SR" rebase -q origin/main
 echo r11 >> "$SR/a.py"; git -C "$SR" add a.py
@@ -4463,5 +4463,20 @@ check "BLOCK: a rebase keeps the finality record: the 6th change since it is ref
 git -C "$SR" reset -q --soft origin/main; rc "$SR" -m squashed; for i in 1 2 3 4 5; do echo "s$i" >> "$SR/a.py"; rc "$SR" -am "s$i"; done; echo s6 >> "$SR/a.py"; git -C "$SR" add a.py; rs=$(bg 'git commit -m s6' "$SR")
 (cd "$SR" && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null); for i in 6 7 8 9 10; do echo "s$i" >> "$SR/a.py"; rc "$SR" -am "s$i"; done; echo s11 >> "$SR/a.py"; git -C "$SR" add a.py
 check "a squash of the reviewed branch counts nothing; BLOCK: the 6th change since its next review" "0 2" "$rs $(bg 'git commit -m s11' "$SR")"
+# an autosquash keeps the reviewed commit's subject and author, and still counts nothing until the next review
+SA="$T/simpa"; git init -q -b main "$SA"; echo 0 > "$SA/a.py"; git -C "$SA" add -A; rc "$SA" -m base; git -C "$SA" update-ref refs/remotes/origin/main HEAD; git -C "$SA" checkout -q -b fix
+echo 1 >> "$SA/a.py"; rc "$SA" -am reviewed; (cd "$SA" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null)
+echo 2 >> "$SA/a.py"; rc "$SA" -a --fixup=HEAD; git -C "$SA" -c sequence.editor=true rebase -q -i --autosquash origin/main
+for i in 1 2 3 4 5; do echo "a$i" >> "$SA/a.py"; rc "$SA" -am "a$i"; done; echo a6 >> "$SA/a.py"; git -C "$SA" add a.py
+check "a fixup autosquashed into the reviewed commit counts nothing until the next review" 0 "$(bg 'git commit -m a6' "$SA")"
+# git's log output encoding and signature display don't change the identity: a Latin-1 subject and a signed commit hold their review
+for e in latin signed; do SE="$T/simpe-$e"; git init -q -b main "$SE"; echo 0 > "$SE/a.py"; git -C "$SE" add -A; rc "$SE" -m base; git -C "$SE" update-ref refs/remotes/origin/main HEAD; git -C "$SE" checkout -q -b fix
+  if [ $e = latin ]; then git -C "$SE" config i18n.commitEncoding ISO-8859-1; git -C "$SE" config i18n.logOutputEncoding ISO-8859-1; echo 1 >> "$SE/a.py"; rc "$SE" -am "$(printf 'review Caf\xe9')"
+  else ssh-keygen -q -t ed25519 -N '' -C t@t -f "$T/sign" <<< y >/dev/null; echo "t@t $(cat "$T/sign.pub")" > "$T/signers"; git -C "$SE" config gpg.format ssh; git -C "$SE" config user.signingkey "$T/sign"
+    git -C "$SE" config gpg.ssh.allowedSignersFile "$T/signers"; git -C "$SE" config log.showSignature true; echo 1 >> "$SE/a.py"; rc "$SE" -S -am reviewed; fi
+  (cd "$SE" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null); rec=$?
+  for i in 1 2 3 4 5; do echo "e$i" >> "$SE/a.py"; rc "$SE" -am "e$i"; done; echo e6 >> "$SE/a.py"; git -C "$SE" add a.py
+  check "the review of a commit with git's $e output records; BLOCK: the 6th change since it" "0 2 1" "$rec $(bg 'git commit -m e6' "$SE") $(grep -c 'a.py would get a 6th change' "$T/err")"
+done
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]
