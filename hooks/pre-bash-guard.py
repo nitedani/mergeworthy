@@ -219,7 +219,7 @@ def check_badge_models(p):
     try: ran = transcript_facts.read(path).recent_models()
     except OSError: return
     # claude-sonnet: an agent launched on the alias, any version; claude-haiku-4-5-20251001: a dated snapshot of claude-haiku-4-5
-    if missing := sorted(m for f, m in named if not any(r in (f, m) or r.startswith(m + '-') for r in ran)):
+    if missing := sorted(m for f, m in named if not any(r == f or re.fullmatch(re.escape(m) + r'(-\d{8})?', r) for r in ran)):
         block(f"{p}'s badge names {', '.join(missing)}, which this session didn't run on or launch an agent on in the last day; it ran {', '.join(sorted(ran)) or 'no Claude model'}: "
               "name the models that worked on this post (mergeworthy:writing, the badge), then post-lint it, run its review again (mergeworthy:post step 3) and gate-pass it")
 
