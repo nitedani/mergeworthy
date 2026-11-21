@@ -1345,6 +1345,14 @@ shl() { # session tool_use_id: a foreground Agent call of the shared job from th
 check "BLOCK: one agent per job across sessions: another session's launch of a job whose call is still outstanding is refused, and the reservation stays the first call's" "0 2 1 1" \
   "$(shl a sh-1) $(shl b sh-2) $(grep -c 'already launched' "$T/err") $(grep -l '"sh-1"' "$HOME"/.claude/agent-jobs-launch/* | wc -l)"
 rm -f $(grep -l shared-brief "$HOME"/.claude/agent-jobs-launch/*)
+# the same work from two sessions under two titles: session A's call is still outstanding when session B launches it
+twl() { # session tool_use_id description: a foreground Agent call of the shared task from that session's launcher
+  python3 -c 'import json,sys; print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","id":sys.argv[1],"name":"Agent","input":{}}]}}))' "$2" >> "$T/sh-$1.jsonl"
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"Agent","session_id":sys.argv[1],"tool_use_id":sys.argv[2],"transcript_path":sys.argv[3],"tool_input":{"prompt":"Trace why the cache loses a cold write.","description":sys.argv[4],"run_in_background":False}}))' "sh$1" "$2" "$T/sh-$1.jsonl" "$3" \
+    | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
+check "BLOCK: the same task from another session under another title while the first call is outstanding, as the same work" "0 2 1" \
+  "$(twl a tw-x Trace) $(twl b tw-y Investigate) $(grep -c 'contains, or is contained in' "$T/err")"
+rm -f $(grep -l 'cache loses a cold write' "$HOME"/.claude/agent-jobs-launch/*)
 # a launcher lost after admission: three calls with no result in its transcript, whose agents (its subagents) finished 25 minutes ago
 LD2="$HOME/.claude/projects/-fin"; mkdir -p "$LD2/launcher/subagents"; FL="$LD2/launcher.jsonl"; : > "$FL"
 fin_pre() { # tool_use_id task: an admitted foreground Agent call of session capF2 whose launcher got no result
