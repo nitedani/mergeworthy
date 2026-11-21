@@ -478,7 +478,7 @@ def users_words(quote):
     except OSError: pass
     return False
 if not register and d.get('session_id') and 'memory-refresh' not in brief and not fanout:
-    live = [j for _, j in agent_jobs.jobs() if j.get('session') == d['session_id'] and '/memory-brief-' not in j['key']
+    live = [j for _, j in agent_jobs.jobs() if j.get('session') == d['session_id'] and '/memory-brief-' not in j.get('brief', '')
             and 'memory-refresh' not in j.get('brief', '') and not agent_jobs.finished(j)]
     folders = {f for t in L.files + L.refs if (f := task_of(t))}
     scope = os.path.join(task_of(d.get('cwd') or '/') or (folders.pop() if len(folders) == 1 else '<your work folder>'), 'scope.md')
