@@ -4593,6 +4593,16 @@ SC2="$T/simpc2"; git clone -q -b fix "$SC" "$SC2"; git -C "$SC2" remote set-head
 rc2=$(cd "$SC2" && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null 2>&1; echo $?)
 for i in 1 2 3 4 5; do echo "c$i" >> "$SC2/a.py"; rc "$SC2" -am "c$i"; done; echo c6 >> "$SC2/a.py"; git -C "$SC2" add a.py
 check "a review run again in a second clone of its commit is refused as recorded and notes nothing; BLOCK: the 6th change since it there" "1 0 2" "$rc2 $(git -C "$SC2" notes --ref=drift list | wc -l) $(bg 'git commit -m c6' "$SC2")"
+# a stacked top branch with its own finality merges up its bottom branch, whose newer commit holds a finality: only the top's own
+# first-parent commits anchor, so its count runs from its own finality and its 3rd change since then passes
+SPC="$T/simppc"; fx "$SPC"; git -C "$SPC" branch -m fix low; echo 1 > "$SPC/b.py"; git -C "$SPC" add b.py; GIT_COMMITTER_DATE=2026-01-01T00:00:01Z rc "$SPC" -m L1
+git -C "$SPC" checkout -q -b top; pre "$SPC"; n=2
+for i in 1 2 3; do echo "t$i" >> "$SPC/a.py"; GIT_COMMITTER_DATE=2026-01-01T00:00:0${n}Z rc "$SPC" -am "T$i"; n=$((n+1)); [ $i = 1 ] && pre "$SPC" reverify "$T/rv.md"; done
+(cd "$SPC" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null)
+git -C "$SPC" checkout -q low; pre "$SPC"; echo 2 >> "$SPC/b.py"; GIT_COMMITTER_DATE=2026-01-01T00:00:06Z rc "$SPC" -am L2; pre "$SPC" reverify "$T/rv.md"; (cd "$SPC" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null)
+git -C "$SPC" checkout -q top; for i in 4 5; do echo "t$i" >> "$SPC/a.py"; GIT_COMMITTER_DATE=2026-01-01T00:00:0${n}Z rc "$SPC" -am "T$i"; n=$((n+1)); done
+GIT_COMMITTER_DATE=2026-01-01T00:00:09Z git -C "$SPC" -c user.name=t -c user.email=t@t merge -q --no-edit low; echo t6 >> "$SPC/a.py"; git -C "$SPC" add a.py
+check "a stacked top branch that merged up its bottom branch, whose newer commit holds a finality, counts from its own finality: its 3rd change since then passes" 0 "$(bg 'git commit -m T6' "$SPC")"
 # a review whose report is named across two lines records like any other
 SN="$T/simpn"; fx "$SN"
 echo 1 >> "$SN/a.py"; rc "$SN" -am reviewed; cp "$T/rv.md" "$T/moved report"$'\n'"v1"
