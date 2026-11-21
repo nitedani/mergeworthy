@@ -91,9 +91,10 @@ def _plain(text):
 
 
 def _stages(s, src):
-    """The argv of each stage of the statement s, a plain pipeline with no redirect; None for anything else."""
+    """The argv of each stage of the statement s, a plain pipeline with no redirect but 2>/dev/null, which leaves its output as it is; None for anything else."""
     c = s.get('Cmd') or {}
-    if s.get('Redirs') or s.get('Negated') or s.get('Background'):
+    quiet = lambda r: (r.get('N') or {}).get('Value') == '2' and r['Op'] == '>' and _word(r.get('Word') or {}, src).parts == (('lit', '/dev/null'),)
+    if not all(map(quiet, s.get('Redirs') or [])) or s.get('Negated') or s.get('Background'):
         return None
     if c.get('Type') == 'CallExpr' and not c.get('Assigns'):
         return [[_word(a, src) for a in c.get('Args') or []]]
