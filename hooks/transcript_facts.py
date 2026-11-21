@@ -3,7 +3,7 @@
 kept per transcript (~/.claude/mergeworthy-folds), so the next stop reads only the lines written since (Claude Code only appends);
 when the kept facts may not match the file (another version of this code, a replaced or shrunk file, one whose first 4 KiB or the
 64 KiB before the kept offset changed, an unreadable keep), every line is read again."""
-import collections, hashlib, json, os, re, time
+import collections, datetime, hashlib, json, os, re, time
 import report, t3_tasks
 
 _DIR = os.path.expanduser('~/.claude/mergeworthy-folds')
@@ -47,7 +47,8 @@ class Facts:
         self.last, self.last_user = j.get('last', ''), j.get('last_user', '')  # the agent's last text; the user's own last message (t3_tasks.typed)
         self.forks_before_last = j.get('forks_before_last', {})  # the GENUINE-FORK lines of every text the agent wrote but the last
         self.child_opening, self.head_lines = j.get('child_opening', False), j.get('head_lines', 0)  # the first 20 lines open a sub-agent's brief
-        self.models = j.get('models', {})  # the Claude model ids the session ran on or launched an agent on
+        self.models = j.get('models', {})  # each Claude model id the session ran on or launched an agent on: the time of its last line
+        self.at = j.get('at', '')  # the time of the transcript's latest line
         self.tail_sdk = collections.deque(j.get('tail_sdk', []), maxlen=20)  # for each of the last 20 lines: the SDK CLI wrote it
         self.tasks = t3_tasks.Observer(j.get('tasks'))
 
@@ -63,8 +64,13 @@ class Facts:
             last = fin
         return before, last
 
-    def ran(self, model):
-        if isinstance(model, str) and model.startswith('claude-'): self.models[model] = 1
+    def ran(self, model, at):
+        if isinstance(model, str) and model.startswith('claude-'): self.models[model] = at
+
+    def recent_models(self, hours=24):
+        """The ids of self.models last seen in the hours before the transcript's latest line; one with no time counts."""
+        since = datetime.datetime.fromisoformat(self.at) - datetime.timedelta(hours=hours) if self.at else None
+        return {m for m, at in self.models.items() if not (since and at) or datetime.datetime.fromisoformat(at) >= since}
 
     def feed(self, line):
         if self.head_lines < 20:
@@ -78,6 +84,7 @@ class Facts:
             return  # one bad or half-written line must not disable the check
         if not isinstance(e, dict): return
         self.tasks.feed(e)
+        self.at = e.get('timestamp') or self.at
         c = (e.get('message') or {}).get('content')
         if e.get('type') == 'user':
             texts = [c] if isinstance(c, str) else [x.get('text', '') if x.get('type') == 'text' else json.dumps(x.get('content')) for x in c or [] if isinstance(x, dict)]
@@ -95,12 +102,13 @@ class Facts:
                     self.wakers[tid[0] or tid[1]] = 1
             self.opened_task = self.opened_task or '<command-name>/mergeworthy:task</command-name>' in typed
         if e.get('type') == 'assistant':
-            self.ran((e.get('message') or {}).get('model'))
+            at = e.get('timestamp') or ''
+            self.ran((e.get('message') or {}).get('model'), at)
             for x in c if isinstance(c, list) else []:
                 if not isinstance(x, dict) or x.get('type') != 'tool_use': continue
                 i = x.get('input') or {}
-                if x.get('name') in ('Agent', 'Task'): self.ran(f"claude-{i['model']}" if i.get('model') in ('opus', 'sonnet', 'haiku', 'fable') else i.get('model'))  # an alias: the family, any version
-                if x.get('name', '').endswith('delegate_task'): self.ran((i.get('target') or {}).get('model'))
+                if x.get('name') in ('Agent', 'Task'): self.ran(f"claude-{i['model']}" if i.get('model') in ('opus', 'sonnet', 'haiku', 'fable') else i.get('model'), at)  # an alias: the family, any version
+                if x.get('name', '').endswith('delegate_task'): self.ran((i.get('target') or {}).get('model'), at)
                 if x.get('name') == 'Bash' and posts(i.get('command', '')): self.posted, self.posted_at = True, e.get('timestamp') or ''
                 if x.get('name') == 'Bash': self.commands.append(i.get('command', ''))
                 if x.get('name') == 'Skill' and str(i.get('skill', '')) in ('task', 'mergeworthy:task'): self.opened_task = True
