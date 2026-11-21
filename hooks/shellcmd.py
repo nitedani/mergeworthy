@@ -525,6 +525,7 @@ class Unknown(str):
 
 
 PIECE = '\0'  # in a value, a part known only to hold no /: it may stand in a file's name, which can't change the file's folder
+NEW = '\3'  # in a value, the name of a file or folder the line makes: neither . nor .., so it may stand in a folder too
 SPECIALS = ('$', '!', '?', '#', 'RANDOM', 'SECONDS')  # the shell's variables that only ever hold a number
 HASHES = ('md5sum', 'sha1sum', 'sha256sum', 'sha512sum', 'b2sum', 'cksum')
 CAP = 64  # a word's values and a file's candidates: the check runs git for each folder
@@ -609,6 +610,8 @@ class Where:
             return self._way_out(w, vals)
         out = []
         for v in map(os.path.expanduser, vals):
+            if not v:  # bash opens no file of an empty name
+                continue
             if PIECE in os.path.dirname(v):
                 return Unknown('a computed part stands in its folder')
             if getattr(w, 'splits', False) and re.search(r'[\s*?[]', v):
@@ -620,7 +623,7 @@ class Where:
                 return Unknown()
             else:
                 out += [os.path.join(x, v) for x in self.spots]
-        return CAPPED if len(out) > CAP else out
+        return CAPPED if len(out) > CAP else [x.replace(NEW, '_') for x in out]
 
     def _way_out(self, w, why):
         """why, offering what passes when the part of word w it can't tell stands in a file's name: after other text, with no / after it."""
@@ -689,13 +692,8 @@ class Where:
         """A substitution's values: basename and dirname per value; the place mktemp makes, and the one realpath, readlink -f or pwd prints; a
         piece for what can't print a /; else unknown, as any other command's output."""
         t, names = stages[0], [os.path.basename(x[0]) if x else '' for x in stages]
-        opts, a = [x for x in t[1:] if x[:1] == '-'], [x for x in t[1:] if x[:1] != '-']
-        if names == ['mktemp']:
-            return self._mktemp(t[1:])
-        if names == ['pwd'] and not a and opts in ([], ['-L'], ['-P']):
-            return self._resolved(None) if opts == ['-P'] else self.spots or UNKNOWN
-        if names in (['realpath'], ['readlink']) and len(a) == 1 and (set(opts) <= {'-e', '-m', '-q'} if names == ['realpath'] else opts in (['-f'], ['-e'], ['-m'])):
-            return self._resolved(a[0])
+        if names in (['mktemp'], ['pwd'], ['realpath'], ['readlink']):
+            return self._place(names[0], self._argv(t[1:], ('-p', '--tmpdir=', '--suffix=') if names == ['mktemp'] else ()))
         if names in (['basename'], ['dirname']):
             vals = self.values(t[1]) if len(t) == 2 and not t[1].startswith('-') else UNKNOWN
             if names == ['basename']:
@@ -722,36 +720,75 @@ class Where:
         gone = '/' in sets[0] and ('d' in flags or len(sets) == 2)
         return (PIECE,) if gone or not any(isinstance(v, Unknown) or any('/' in y for y in v) for v in said) else UNKNOWN
 
-    def _resolved(self, w):
-        """$(realpath w): the place word w names from each of spots (None: the spots themselves); unknown when a link lies on its way, which may lead anywhere."""
-        vals = ('.',) if w is None else self.values(w)
+    def _place(self, name, argv):
+        """$(<name> <argv>), argv as _argv gives it: the place mktemp makes, or realpath, readlink -f or pwd prints, with '' for the nothing a
+        failing mktemp, realpath or readlink prints."""
+        if argv is None:
+            return UNKNOWN
+        opts, ops = argv
+        if name == 'pwd':
+            return UNKNOWN if ops or opts not in ([], ['-L'], ['-P']) else self._resolved(('.',)) if opts == ['-P'] else self.spots or UNKNOWN
+        vals = self._mktemp(opts, ops) if name == 'mktemp' else UNKNOWN if len(ops) != 1 or not (
+            set(opts) <= {'-e', '-m', '-q'} if name == 'realpath' else opts in (['-f'], ['-e'], ['-m'])) else self._resolved(ops[0])
+        return vals if isinstance(vals, Unknown) else (*vals, '')
+
+    def _argv(self, a, takes=()):
+        """A command's words a as (its options, each operand's values), options ending at --; an option in takes is (it, the values of its
+        value: the next word, or the rest of the word for one ending in =). None where bash may pass other words: a computed option, or a word
+        that may split, match or vanish, or read as an option."""
+        opts, ops, it, end = [], [], iter(a), False
+        for w in it:
+            if end or w[:1] != '-':
+                vals = self.values(w)
+                if self._splits(w, vals) or not end and not isinstance(vals, Unknown) and any(v[:1] == '-' for v in vals):
+                    return None
+                ops.append(vals)
+                continue
+            k = next((k for k in takes if w == k or k[-1] == '=' and w.startswith(k)), None)
+            if w.parts[0][0] != 'lit' or not w.written[0].startswith(k or w) or k is None and len(w.parts) > 1:
+                return None
+            if k:
+                v = next(it, None) if w == k else w[len(k):]
+                vals = None if v is None else self.values(v)
+                if vals is None or self._splits(v, vals):
+                    return None
+                opts.append((k, vals))
+            elif w == '--':
+                end = True
+            else:
+                opts.append(str(w))
+        return opts, ops
+
+    def _resolved(self, vals):
+        """What realpath prints for vals, relative ones from each of spots; unknown when a link lies on its way, which may lead anywhere."""
         if isinstance(vals, Unknown) or any(PIECE in v for v in vals) or self.spots is None and not all(os.path.isabs(os.path.expanduser(v)) for v in vals):
             return UNKNOWN
         out = [os.path.join(x, os.path.expanduser(v)) for v in vals for x in self.spots or ('/',)]
         return tuple(dict.fromkeys(map(os.path.normpath, out))) if all(os.path.realpath(p) == os.path.normpath(p) for p in out) else UNKNOWN
 
-    def _mktemp(self, a):
-        """$(mktemp a): the path it makes, its Xs as written: its template, from where it runs; with no template, -p, --tmpdir or -t, its template
-        or tmp.XXXXXXXXXX in -p's dir, else in ${TMPDIR:-/tmp}."""
-        at, under, t, names, it = None, False, False, [], iter(a)
-        for x in it:
-            if x == '-p' or x.startswith('--tmpdir='):
-                at, under = self.values(next(it, '') if x == '-p' else x[len('--tmpdir='):]), True
-            elif re.fullmatch(r'-[dqu]*t|--tmpdir', x):
-                under, t = True, t or x != '--tmpdir'
-            elif x[:1] != '-':
-                names.append(x)
-            elif not re.fullmatch(r'-[dqu]+|--(directory|dry-run|quiet|suffix=[^/]*)', x):
+    def _mktemp(self, opts, ops):
+        """$(mktemp ...) over its options and operands (_argv's): a new name in the folder its template names from where it runs; with no
+        template, -p, --tmpdir or -t, in -p's dir, else in ${TMPDIR:-/tmp}."""
+        at, under, t = None, not ops, False
+        for o in opts:
+            name = o[0] if isinstance(o, tuple) else o
+            if name in ('-p', '--tmpdir='):
+                at, under = o[1], True
+            elif re.fullmatch(r'-[dqu]*t|--tmpdir', name):
+                under, t = True, t or name != '--tmpdir'
+            elif name != '--suffix=' and not re.fullmatch(r'-[dqu]+|--(directory|dry-run|quiet)', name):
                 return UNKNOWN
-        if len(names) > 1 or t and at is not None:  # -t takes $TMPDIR before -p's dir
+        if len(ops) > 1 or t and at is not None:  # -t takes $TMPDIR before -p's dir
             return UNKNOWN
-        vals = self.values(names[0]) if names else ('tmp.XXXXXXXXXX',)
-        if names and not under or isinstance(vals, Unknown):
+        vals = ops[0] if ops else ('tmp.XXXXXXXXXX',)
+        if isinstance(vals, Unknown):
             return vals
-        dirs = self._exp('TMPDIR', ':-', _plain('/tmp')) if at is None else at
-        if isinstance(dirs, Unknown) or '' in dirs or any(os.path.isabs(v) for v in vals):
-            return UNKNOWN
-        return tuple(os.path.join(d, v) for d in dirs for v in vals)
+        if under:
+            dirs = self._exp('TMPDIR', ':-', _plain('/tmp')) if at is None else at
+            if isinstance(dirs, Unknown) or '' in dirs or any(os.path.isabs(v) for v in vals):
+                return UNKNOWN
+            vals = [os.path.join(d, v) for d in dirs for v in vals]
+        return tuple(dict.fromkeys(os.path.join(os.path.dirname(v), NEW) for v in vals))
 
     def _var(self, n):
         """The values variable n holds here (none set where it can't follow: Unseen, any)."""
@@ -935,11 +972,15 @@ class Where:
         out = []
         for w in words:
             vals = self.values(w)
-            if re.search(r'[{*?[]', w.bare) or any(x[0] == 'opaque' or x[:2] in (('var', '@'), ('var', '*')) for x in w.parts) or \
-                    w.splits and ('IFS' in self.vars or isinstance(vals, Unknown) or any(not v or re.search(r'[\s*?[]', v) for v in vals)):
+            if self._splits(w, vals):
                 return out + [vals if isinstance(vals, Unknown) else UNKNOWN] * CAP
             out.append(vals)
         return out
+
+    def _splits(self, w, vals):
+        """Whether bash may make other than one word of word w, which holds vals: a brace or glob, $@, or an unquoted value that may split, match or vanish."""
+        return bool(re.search(r'[{*?[]', w.bare) or any(x[0] == 'opaque' or x[:2] in (('var', '@'), ('var', '*')) for x in w.parts) or
+                    w.splits and ('IFS' in self.vars or isinstance(vals, Unknown) or any(not v or re.search(r'[\s*?[]', v) for v in vals)))
 
     def _assignments(self, t):
         """The NAME=value words of argv t that Where follows: a command of only those, or those after export, readonly, declare or a function's local."""

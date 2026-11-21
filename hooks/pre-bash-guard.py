@@ -661,7 +661,7 @@ def pushed(git_dir, opts, env, rest):
         to = [next((r for r in (git('config', f'branch.{head}.pushRemote'), git('config', 'remote.pushDefault'), git('config', f'branch.{head}.remote')) if r), 'origin'), head]
     remote = pos[0] if pos else (opt(rest, ['--repo']) or [to[0]])[-1]
     vals = where.values(remote)
-    if not vals or len(vals) > 1 or shellcmd.PIECE in vals[0]:
+    if not vals or len(vals) > 1 or shellcmd.PIECE in vals[0] or shellcmd.NEW in vals[0]:
         block(f"where this push goes ({remote}) is computed when it runs, so it can't be checked: push to a remote name or URL written out, or one the line assigns")
     remote = vals[0]
     urls = git('remote', 'get-url', '--push', '--all', remote).split()
@@ -1139,7 +1139,7 @@ def check(t, has_cd):
         for w in (opt(a, ['-o', '--output-last-message']) if p == 'codex' else []) + (stdout if p == 'claude' and ('-p' in a or '--print' in a) else []):
             # only an output that is one fully known path is recorded or name-checked; any other that may land in drafts/ is refused
             vals, paths = where.values(w), where.files(w)
-            if isinstance(vals, shellcmd.Unknown) or isinstance(paths, shellcmd.Unknown) or len(vals) != 1 or len(paths) != 1 or shellcmd.PIECE in vals[0]:
+            if isinstance(vals, shellcmd.Unknown) or isinstance(paths, shellcmd.Unknown) or len(vals) != 1 or len(paths) != 1 or shellcmd.PIECE in vals[0] or shellcmd.NEW in vals[0]:
                 seen = [where.expand(w), *([] if isinstance(vals, shellcmd.Unknown) else vals), *([] if isinstance(paths, shellcmd.Unknown) else paths)]
                 if any(re.search(r'(^|/)drafts/', x) for x in seen):
                     block(f"the review output {w} can't be placed: pass its absolute path, written out or assigned once")
