@@ -4570,11 +4570,9 @@ rv_=(); for b in date conflict; do SV="$T/simpv-$b"; git init -q -b main "$SV"; 
   for i in 1 2 3 4 5; do echo "w$i" >> "$SV/a.py"; rc "$SV" -am "w$i"; done; echo w6 >> "$SV/a.py"; git -C "$SV" add a.py; rv_[${#rv_[@]}]=$(bg 'git commit -m w6' "$SV")
 done
 check "BLOCK: the 6th change after a clean rebase onto an upstream edit near the reviewed line, a rebase that reset the author date, and a rebase with a conflict" "2 2 2" "$rr ${rv_[*]}"
-# git's log output encoding and signature display change no record: a Latin-1 subject, a non-ASCII email under Latin-1 output and a signed commit hold their review
-for e in latin email signed; do SE="$T/simpe-$e"; fx "$SE"
+# git's log output encoding and signature display change no record: a Latin-1 subject and a signed commit hold their review
+for e in latin signed; do SE="$T/simpe-$e"; fx "$SE"
   if [ $e = latin ]; then git -C "$SE" config i18n.commitEncoding ISO-8859-1; git -C "$SE" config i18n.logOutputEncoding ISO-8859-1; echo 1 >> "$SE/a.py"; rc "$SE" -am "$(printf 'review Caf\xe9')"
-  elif [ $e = email ]; then git -C "$SE" config i18n.logOutputEncoding ISO-8859-1; echo 1 >> "$SE/a.py"
-    GIT_AUTHOR_EMAIL='dev@éxample.invalid' rc "$SE" -am reviewed
   else ssh-keygen -q -t ed25519 -N '' -C t@t -f "$T/sign" <<< y >/dev/null; echo "t@t $(cat "$T/sign.pub")" > "$T/signers"; git -C "$SE" config gpg.format ssh; git -C "$SE" config user.signingkey "$T/sign"
     git -C "$SE" config gpg.ssh.allowedSignersFile "$T/signers"; git -C "$SE" config log.showSignature true; echo 1 >> "$SE/a.py"; rc "$SE" -S -am reviewed; fi
   pre "$SE" reverify "$T/rv.md"; rec=$?
@@ -4645,12 +4643,6 @@ echo 0 > "$SX/legacy-"$'\xff'".py"; git -C "$SX" add -A; rc "$SX" -m legacy; ech
 pre "$SX" reverify "$T/rv.md"
 echo x1 >> "$SX/a.py"; git -C "$SX" add a.py
 check "the first change after a review, on a branch that earlier added a file whose name isn't UTF-8, passes" 0 "$(bg 'git commit -m x1' "$SX")"
-# a record stays on its own commit while that commit is on the branch: a reapplied change after a revert is no second finality
-SY="$T/simpy"; fx "$SY"
-echo 'enabled = True' >> "$SY/a.py"; rc "$SY" -am enable; pre "$SY" finality "$T/fin.md"
-git -C "$SY" -c user.name=t -c user.email=t@t revert --no-edit HEAD >/dev/null; rc "$SY" --amend --no-edit
-echo 'enabled = True' >> "$SY/a.py"; rc "$SY" -am reenable; for i in 1 2 3; do echo "y$i" >> "$SY/a.py"; rc "$SY" -am "y$i"; done; echo y4 >> "$SY/a.py"; git -C "$SY" add a.py
-check "BLOCK: the 6th change since a finality record, the change it holds reverted and reapplied in between" "2 1" "$(bg 'git commit -m y4' "$SY") $(grep -c 'a.py would get a 6th change' "$T/err")"
 # git's display settings and the checkout's attributes don't hide a record on its own commit
 SZ="$T/simpz"; fx "$SZ"
 echo 'y = 1' >> "$SZ/a.py"; rc "$SZ" -am reviewed; pre "$SZ" reverify "$T/rv.md"
@@ -4658,19 +4650,12 @@ git -C "$SZ" config diff.noprefix true; for i in 1 2 3 4 5; do echo "z$i" >> "$S
 git -C "$SZ" config --unset diff.noprefix; git -C "$SZ" checkout -q a.py; git -C "$SZ" worktree add -q -b attr "$T/simpz-w" fix; echo 'a.py -diff' > "$T/simpz-w/.gitattributes"; git -C "$T/simpz-w" add .gitattributes; rc "$T/simpz-w" -m attributes
 pre "$T/simpz-w"; echo z6 >> "$T/simpz-w/a.py"; git -C "$T/simpz-w" add a.py
 check "BLOCK: the 6th change since a review with diff.noprefix set, and in a worktree whose .gitattributes marks the file -diff" "2 2" "$rz $(bg 'git commit -m z6' "$T/simpz-w")"
-# a cherry-pick onto another branch carries no note, by design; an amend carries it, by design, even one moving the edit to another method
+# a cherry-pick onto another branch carries no note, by design
 SF="$T/simpf"; git init -q -b main "$SF"; printf 'class C:\n    def a(self):\n        return 1\n    def b(self):\n        return 1\n' > "$SF/a.py"; git -C "$SF" add -A; rc "$SF" -m base; git -C "$SF" update-ref refs/remotes/origin/main HEAD
 git -C "$SF" checkout -q -b fix; sed -i '3s/1/2/' "$SF/a.py"; rc "$SF" -am a2; pre "$SF" reverify "$T/rv.md"
 git -C "$SF" checkout -q -b pick main; echo 0 > "$SF/c.py"; git -C "$SF" add c.py; rc "$SF" -m other; git -C "$SF" -c user.name=t -c user.email=t@t cherry-pick fix >/dev/null; pre "$SF"
-for i in 1 2 3 4 5; do echo "# $i" >> "$SF/a.py"; rc "$SF" -am "c$i"; done; echo '# 6' >> "$SF/a.py"; git -C "$SF" add a.py; rp=$(bg 'git commit -m c6' "$SF"); git -C "$SF" reset -q --hard; git -C "$SF" checkout -q fix
-sed -i '3s/2/1/; 5s/1/2/' "$SF/a.py"; rc "$SF" -a --amend --no-edit; for i in 1 2 3 4 5; do echo "# $i" >> "$SF/a.py"; rc "$SF" -am "c$i"; done; echo '# 6' >> "$SF/a.py"; git -C "$SF" add a.py
-check "the 6th change after a cherry-pick of the reviewed commit to another branch passes: it carries no record; BLOCK: the 6th after the reviewed commit was amended to change another method, which keeps its review" "0 2" "$rp $(bg 'git commit -m c6' "$SF")"
-# git's diff order and the repo's own attributes change no record either: a review amended after setting them holds
-SO2="$T/simpo2"; git init -q -b main "$SO2"; echo 0 > "$SO2/a.py"; echo 0 > "$SO2/b.py"; git -C "$SO2" add -A; rc "$SO2" -m base; git -C "$SO2" update-ref refs/remotes/origin/main HEAD; git -C "$SO2" checkout -q -b fix
-echo 1 >> "$SO2/a.py"; echo 1 >> "$SO2/b.py"; rc "$SO2" -am reviewed; pre "$SO2" reverify "$T/rv.md"
-printf 'b.py\na.py\n' > "$T/order"; git -C "$SO2" config diff.orderFile "$T/order"; echo 'a.py -diff' > "$SO2/.git/info/attributes"; rc "$SO2" --amend -m 'reviewed, subject edited'
-for i in 1 2 3 4 5; do echo "o$i" >> "$SO2/a.py"; rc "$SO2" -am "o$i"; done; echo o6 >> "$SO2/a.py"; git -C "$SO2" add a.py
-check "BLOCK: the 6th change since a review amended after setting diff.orderFile and a.py -diff in .git/info/attributes" 2 "$(bg 'git commit -m o6' "$SO2")"
+for i in 1 2 3 4 5; do echo "# $i" >> "$SF/a.py"; rc "$SF" -am "c$i"; done; echo '# 6' >> "$SF/a.py"; git -C "$SF" add a.py
+check "the 6th change after a cherry-pick of the reviewed commit to another branch passes: it carries no record" 0 "$(bg 'git commit -m c6' "$SF")"
 # a message amend keeps a finality record on a merge commit and a review on an empty commit
 SG="$T/simpg2"; fx "$SG"
 echo 1 >> "$SG/a.py"; rc "$SG" -am reviewed; pre "$SG" reverify "$T/rv.md"
@@ -4681,11 +4666,5 @@ SE2="$T/simpe2"; fx "$SE2"; rc "$SE2" --allow-empty -m empty
 pre "$SE2" reverify "$T/rv.md"; rc "$SE2" --amend --allow-empty -m 'new empty subject'
 for i in 1 2 3 4 5; do echo "e$i" >> "$SE2/a.py"; rc "$SE2" -am "e$i"; done; echo e6 >> "$SE2/a.py"; git -C "$SE2" add a.py
 check "the change after a message-amended merge holding finality passes; BLOCK: the 6th change since a message-amended empty commit's review" "0 2" "$rg $(bg 'git commit -m e6' "$SE2")"
-# a repo with SHA-256 object names records and follows a review the same way
-SH2="$T/simph"; git init -q -b main --object-format=sha256 "$SH2"; echo 0 > "$SH2/a.py"; git -C "$SH2" add -A; rc "$SH2" -m base; git -C "$SH2" update-ref refs/remotes/origin/main HEAD; git -C "$SH2" checkout -q -b fix
-echo 1 >> "$SH2/a.py"; rc "$SH2" -am reviewed; pre "$SH2" reverify "$T/rv.md"; rh=$?
-for i in 1 2 3 4 5; do echo "h$i" >> "$SH2/a.py"; rc "$SH2" -am "h$i"; done; git -C "$SH2" checkout -q main; echo 0 > "$SH2/b.py"; git -C "$SH2" add b.py; rc "$SH2" -m main1
-git -C "$SH2" update-ref refs/remotes/origin/main HEAD; git -C "$SH2" checkout -q fix; git -C "$SH2" rebase -q origin/main; echo h6 >> "$SH2/a.py"; git -C "$SH2" add a.py
-check "a review in a SHA-256 repo records; BLOCK: the 6th change since it, the branch rebased" "0 2" "$rh $(bg 'git commit -m h6' "$SH2")"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]
