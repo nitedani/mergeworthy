@@ -4003,6 +4003,42 @@ check "replay: 'PR #3675 is still a draft' while the maintainer had marked it re
   "$(slj "I'm watching #3675 for replies. PR #3675 is still a draft with CI green. It waits on brillout." 0 s-fc "$T/vkr") $(grep -c 'is a draft, you say.*ready for review' "$T/err")"
 check "a PR state that matches GitHub passes; a conditional is no claim" "0 0" "$(slj 'https://github.com/vikejs/vike/pull/3675 is ready for review, and its CI is green.') $(slj 'Once vikejs/vike#3675 is merged, I will update the docs.')"
 check "BLOCK: a PR state claimed about a PR gh can't read" "2 1" "$(slj 'PR o/r#99 is still a draft.') $(grep -c "gh couldn't read that PR" "$T/err")"
+# A bare #N is looked up in the repos the session linked a PR or issue N of, newest first, before the checkout's remotes
+tr_said() { python3 - "$T/tr.jsonl" "$@" <<'PY'
+import json, sys
+out = open(sys.argv[1], 'w')
+for role, text in zip(sys.argv[2::2], sys.argv[3::2]):
+    out.write(json.dumps({"type": role, "message": {"content": text if role == 'user' else [{"type": "text", "text": text}]}}) + '\n')
+PY
+}
+pr12() { # repo state merged: its PR 12, with green checks
+  printf '{"state":"%s","draft":false,"merged":%s,"html_url":"https://example.invalid/%s/pull/12","head":{"sha":"s12"},"base":{"repo":{"full_name":"%s"}}}' "$2" "$3" "$1" "$1" > "$FX/repos_$(printf '%s' "$1" | tr / _)_pulls_12"
+  printf '{"check_runs":[{"name":"test","status":"completed","conclusion":"success"}]}' > "$FX/repos_$(printf '%s' "$1" | tr / _)_commits_s12_check-runs_per_page_100"; }
+pr12 acme/widgets closed true
+check "a bare #12 the session linked by URL earlier, in a checkout of another repo, is that PR: merged passes; open blocks with GitHub's state" "0 2 1" \
+  "$(tr_said user 'Merge https://github.com/acme/widgets/pull/12 please.' assistant '#12 is merged.'; slj '#12 is merged.' 0 s-fc "$T/vkr") $(pr12 acme/widgets open false; slj '#12 is merged.' 0 s-fc "$T/vkr") $(grep -c 'widgets/pull/12 is merged, you say.*GitHub says open' "$T/err")"
+pr12 acme/widgets closed true
+check "a bare #12 the session linked as acme/widgets#12 is that PR; a #13 it never linked still can't be read" "0 2 1" \
+  "$(tr_said assistant 'Opened acme/widgets#12.' assistant '#12 is merged.'; slj '#12 is merged.' 0 s-fc "$T/vkr") $(tr_said assistant 'Opened acme/widgets#12.' assistant '#13 is merged.'; slj '#13 is merged.' 0 s-fc "$T/vkr") $(grep -c "gh couldn't read that PR" "$T/err")"
+pr12 acme/gadgets open false
+check "two repos linked with the same #12: the newest link is the one checked" "2 1 0" \
+  "$(tr_said user 'See acme/widgets#12.' user 'Now https://github.com/acme/gadgets/issues/12 and its PR.' assistant '#12 is merged.'; slj '#12 is merged.' 0 s-fc "$T/vkr") $(grep -c 'gadgets/pull/12' "$T/err") $(tr_said user 'Now https://github.com/acme/gadgets/pull/12.' user 'See acme/widgets#12.' assistant '#12 is merged.'; slj '#12 is merged.' 0 s-fc "$T/vkr")"
+M12='For https://github.com/acme/gadgets/pull/12, #12 is merged.'; pr12 acme/widgets open false; pr12 acme/gadgets closed true
+check "a bare #12 in a message linking a PR 12 by URL is that PR, not one the session linked earlier, before and after the transcript holds the message" "0 0 2 2" \
+  "$(tr_said user 'See https://github.com/acme/widgets/pull/12.'; slj "$M12" 0 s-fc "$T/vkr") $(tr_said user 'See https://github.com/acme/widgets/pull/12.' assistant "$M12"; slj "$M12" 0 s-fc "$T/vkr") $(pr12 acme/widgets closed true; pr12 acme/gadgets open false; tr_said user 'See https://github.com/acme/widgets/pull/12.'; slj "$M12" 0 s-fc "$T/vkr") $(tr_said user 'See https://github.com/acme/widgets/pull/12.' assistant "$M12"; slj "$M12" 0 s-fc "$T/vkr")"
+M99=$'#12 is merged.\nAlso see https://github.com/acme/gadgets/pull/99 for the follow-up.'; pr12 acme/widgets open false; pr12 acme/gadgets closed true
+check "a final link to another number (gadgets/pull/99) doesn't outrank the session's link to the #12 claimed, before and after the transcript holds the message" "2 2 0 0" \
+  "$(tr_said user 'See https://github.com/acme/widgets/pull/12.'; slj "$M99" 0 s-fc "$T/vkr") $(tr_said user 'See https://github.com/acme/widgets/pull/12.' assistant "$M99"; slj "$M99" 0 s-fc "$T/vkr") $(pr12 acme/widgets closed true; pr12 acme/gadgets open false; tr_said user 'See https://github.com/acme/widgets/pull/12.'; slj "$M99" 0 s-fc "$T/vkr") $(tr_said user 'See https://github.com/acme/widgets/pull/12.' assistant "$M99"; slj "$M99" 0 s-fc "$T/vkr")"
+M12s='For acme/gadgets#12, #12 is merged.'; pr12 acme/widgets open false; pr12 acme/gadgets closed true
+check "a bare #12 in a message naming acme/gadgets#12 is that PR, before and after the transcript holds the message" "0 0 2 2" \
+  "$(tr_said user 'See https://github.com/acme/widgets/pull/12.'; slj "$M12s" 0 s-fc "$T/vkr") $(tr_said user 'See https://github.com/acme/widgets/pull/12.' assistant "$M12s"; slj "$M12s" 0 s-fc "$T/vkr") $(pr12 acme/widgets closed true; pr12 acme/gadgets open false; tr_said user 'See https://github.com/acme/widgets/pull/12.'; slj "$M12s" 0 s-fc "$T/vkr") $(tr_said user 'See https://github.com/acme/widgets/pull/12.' assistant "$M12s"; slj "$M12s" 0 s-fc "$T/vkr")"
+check "a T3 notice naming another repo's #12 is no session link: the bare #12 is the one the user linked" "0 0" \
+  "$(tr_said user 'Merge https://github.com/acme/widgets/pull/12 please.' user 'Delegated task q (Other work) [completed]: acme/gadgets#12.'; slj '#12 is merged.' 0 s-fc "$T/vkr") $(grep -c gadgets "$T/err")"
+check "a user message opening with a <https://…> autolink is typed text: the bare #12 is the PR it links" 0 \
+  "$(tr_said user '<https://github.com/acme/widgets/pull/12> is the one to merge.'; slj '#12 is merged.' 0 s-fc "$T/vkr")"
+git init -q "$T/gdg"; git -C "$T/gdg" remote add origin https://github.com/acme/gadgets.git; pr12 acme/gadgets closed true; tr_file 'x'
+check "BLOCK: acme/missing#12 is looked up in acme/missing only: its 404 can't be read, though the checkout's acme/gadgets#12 is merged" "2 1" \
+  "$(slj 'acme/missing#12 is merged.' 0 s-fc "$T/gdg") $(grep -c "gh couldn't read that PR" "$T/err")"
 check "BLOCK: a done message linking a PR gh can't read" "2 1" "$(slj 'All done: https://github.com/o/r/pull/404 has the fix.') $(grep -c "couldn't read it" "$T/err")"
 TK4="$HOME/.mergeworthy/work/fc-task"; mkdir -p "$TK4"; printf 'Tier: S, because one fix\n\n- [ ] Fix CI https://github.com/o/r/pull/71\n' > "$TK4/scope.md"
 uf() { python3 - "$T/tr.jsonl" "$@" <<'PY'

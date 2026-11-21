@@ -6,15 +6,16 @@ import json, os, re
 
 # T3's notice is `Delegated task <id> reached a terminal state`, or `Delegated task <id> (<title>) [<status>]:` with its result
 NOTICE = re.compile(r'Delegated task (\S+) (?:reached a terminal state|\(.*?\) \[(\w+)\]:?)')
-# What the harness, T3, a hook or the watcher writes into a session as a user message
-NOTICES = ('<', 'Stop hook feedback', 'Watcher events in ', 'Delegated task ', 'Skill /', 'Base directory for this skill',
+# What the harness, T3, a hook or the watcher writes into a session as a user message: a tag (`<task-notification>`), not an autolink (`<https://…>`)
+TAG = re.compile(r'<[A-Za-z][\w-]*[\s>/]')
+NOTICES = ('Stop hook feedback', 'Watcher events in ', 'Delegated task ', 'Skill /', 'Base directory for this skill',
            'This session is being continued', '[Your previous response had no visible output')
 
 
 def typed(content):
     """The text a person typed in a user entry's content, or '' for a tool result or a machine's notice."""
     t = content if isinstance(content, str) else ' '.join(x.get('text', '') for x in content or [] if isinstance(x, dict) and x.get('type') == 'text')
-    return '' if not t.strip() or t.lstrip().startswith(NOTICES) else t
+    return '' if not t.strip() or t.lstrip().startswith(NOTICES) or TAG.match(t.lstrip()) else t
 
 
 def under_t3():
