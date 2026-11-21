@@ -15,16 +15,22 @@ AGENT_TRAILER = re.compile(r'^Co-Authored-By: Claude', re.M | re.I)  # a commit 
 REVIEW = {'verify', 'small', 'shape', 'reverify', 'fresh', 'review'}  # the record steps, and the note kind, that are a review
 
 
+def log(d, *args):
+    """`git log args` in checkout d, with signature display, which would add its own lines to any format, pinned off, read as any
+    filename's bytes: every history read of the count goes through it."""
+    return subprocess.run(['git', '-C', d, '-c', 'log.showSignature=false', 'log', *args], capture_output=True, encoding='utf-8',
+                          errors='surrogateescape').stdout
+
+
 def over(d, head='HEAD', pending=None, amend=False):
     """{code file: its count} of checkout d's files past 5 changes on the branch at head. pending: the files the commit being made
     changes, which alone are judged, each counted once more; None for a push, which judges the commits alone. amend: that commit
     replaces HEAD."""
-    g = lambda *a: subprocess.run(['git', '-C', d, *a], capture_output=True, encoding='utf-8', errors='surrogateescape').stdout  # any filename's bytes
+    g = lambda *a: subprocess.run(['git', '-C', d, *a], capture_output=True, text=True).stdout
     base = g('symbolic-ref', '-q', '--short', 'refs/remotes/origin/HEAD').strip() or 'origin/main'
     if pending is not None and g('rev-parse', '-q', '--verify', 'MERGE_HEAD').strip(): pending = []
     # git prints `\0<sha>\n<its drift note>` per commit: the kinds pr-steps noted on it, one a line
-    commits = [c.split('\n', 1) for c in g('-c', 'log.showSignature=false', 'log', '--first-parent', '--reverse', '--no-notes', '--notes=drift', '--format=%x00%H%n%N',
-                                            head, '--not', base).split('\0')[1:]]
+    commits = [c.split('\n', 1) for c in log(d, '--first-parent', '--reverse', '--no-notes', '--notes=drift', '--format=%x00%H%n%N', head, '--not', base).split('\0')[1:]]
     start = None  # the commit the counts start after
     for c, note in commits:
         steps = set(note.split()) | ({l.split()[0] for l in open(commit_file(c)) if l.split()} if os.path.exists(commit_file(c)) else set())
@@ -32,8 +38,8 @@ def over(d, head='HEAD', pending=None, amend=False):
     if not start: return {}
     count = {}
     # git prints `\0<sha>\n<message>\0` per commit, then `\n` and `<file>\0` for each file it changed (none for a merge): `\0\0` is where a commit ends
-    log = g('-c', 'log.showSignature=false', 'log', '--first-parent', '--reverse', '--no-diff-merges', '--no-renames', '--name-only', '-z', '--format=%x00%H%n%B', f'{start}..{head}')
-    for commit in log[1:-1].split('\0\0'):
+    changes = log(d, '--first-parent', '--reverse', '--no-diff-merges', '--no-renames', '--name-only', '-z', '--format=%x00%H%n%B', f'{start}..{head}')
+    for commit in changes[1:-1].split('\0\0'):
         message, _, names = commit.partition('\0\n')
         files = names.split('\0') if names and AGENT_TRAILER.search(message) else []
         if amend and message.startswith(commits[-1][0]): pending, files = sorted(set(pending or []) | set(files)), []  # the amended commit is the pending one
