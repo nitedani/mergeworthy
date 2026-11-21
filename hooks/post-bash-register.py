@@ -69,7 +69,7 @@ def target(t, d):
 segs = segments(cmd)  # a command that doesn't lex still yields its words: a post in it is still registered
 # the drafts posted as new, and each posting segment's target with the dir it ran in, resolved as pre-bash-guard resolves them
 cwd = d.get('cwd') or os.getcwd()
-where, drafts, posts, discussed = Where(cwd), [], [], False
+where, drafts, posts, creates, discussed = Where(cwd), [], [], [], False
 def wrote(post, th):  # whether that posting segment can have written the thread th (threads()'s); one that names its thread, only that one
     return post[3] == th if post[3] else (post[0] is None or post[0] == th[0]) and (post[1] is None or post[1] == th[1])
 for s in where.walk(segs):
@@ -78,6 +78,7 @@ for s in where.walk(segs):
     discussed = discussed or adds
     post = (tg[0], tg[1], where.dir, tg[2] if len(tg) > 2 else None) if (tg := target(s, where.dir)) else None
     if post: posts.append(post)
+    if post and (o := opened(s, where.dir)): creates.append((o[0], post))
     # a pipe hides the post's exit: only the URL it printed says it was created
     if not s.piped or (post and any(wrote(post, th) for th in threads(out))) or (adds and re.search(r'github\.com/\S+/discussions/\d+#discussioncomment', out)):
         drafts += new
@@ -159,7 +160,7 @@ def home_of(repo, post_dir):
 _env = os.path.expanduser('~/.mergeworthy/settings.env')  # MERGEWORTHY_WATCHER as stop-lint reads it
 watcher_on = (os.environ.get('MERGEWORTHY_WATCHER') or ('off' if 'MERGEWORTHY_WATCHER=off' in (open(_env).read() if os.path.exists(_env) else '') else 'on')) != 'off'
 START = os.environ.get('GH_WATCH_START') or os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'bin', 'gh-watch-start')
-told = []  # what the session must do after a start: arm the Monitor, or start it by hand
+told = []  # what the session must do: arm the Monitor a start printed, or start a watcher by hand
 def start(home, line):
     """Starts or revives home's watcher with the thread, as this session's (its T3 thread, else the Monitor it prints)."""
     r = subprocess.run([START, home, *line.split()], capture_output=True, text=True, timeout=120, stdin=subprocess.DEVNULL,
@@ -171,6 +172,12 @@ def start(home, line):
 # each thread in stdout joins the one watcher every posting segment it fits leads to; one whose watcher would be a guess joins
 # none, and the agent is told
 found = [f for f in dict.fromkeys(threads(out)) if posted(f)]
+# a create whose output kept no URL (`| tail -1`, `--jq .number`) names no thread to register: the agent registers it
+for repo, p in creates:
+    if watcher_on and not any(wrote(p, f) for f in found):
+        h, mr = (home_of(repo, p[2]) if p[2] else None) or '<work folder>', not repo or repo.startswith('gitlab.com/')
+        told.append(f"the output named no new thread, so the one opened on {repo or 'its repo'} joined no watcher: run `gh-watch-start {h} "
+                    f"{repo or '<owner/repo>'} <N>` with its number{' (`!<N>` for an MR)' if mr else ''}, arm the Monitor it prints if any")
 pairs, lost = [], []
 for repo, num, line in found:
     fits = [p for p in posts if wrote(p, (repo, num, line))]
