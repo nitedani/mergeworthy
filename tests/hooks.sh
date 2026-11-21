@@ -4034,6 +4034,8 @@ check "a bare #12 in a message naming acme/gadgets#12 is that PR, before and aft
   "$(tr_said user 'See https://github.com/acme/widgets/pull/12.'; slj "$M12s" 0 s-fc "$T/vkr") $(tr_said user 'See https://github.com/acme/widgets/pull/12.' assistant "$M12s"; slj "$M12s" 0 s-fc "$T/vkr") $(pr12 acme/widgets closed true; pr12 acme/gadgets open false; tr_said user 'See https://github.com/acme/widgets/pull/12.'; slj "$M12s" 0 s-fc "$T/vkr") $(tr_said user 'See https://github.com/acme/widgets/pull/12.' assistant "$M12s"; slj "$M12s" 0 s-fc "$T/vkr")"
 check "a T3 notice naming another repo's #12 is no session link: the bare #12 is the one the user linked" "0 0" \
   "$(tr_said user 'Merge https://github.com/acme/widgets/pull/12 please.' user 'Delegated task q (Other work) [completed]: acme/gadgets#12.'; slj '#12 is merged.' 0 s-fc "$T/vkr") $(grep -c gadgets "$T/err")"
+check "a user message opening with a <https://…> autolink is typed text: the bare #12 is the PR it links" 0 \
+  "$(tr_said user '<https://github.com/acme/widgets/pull/12> is the one to merge.'; slj '#12 is merged.' 0 s-fc "$T/vkr")"
 git init -q "$T/gdg"; git -C "$T/gdg" remote add origin https://github.com/acme/gadgets.git; pr12 acme/gadgets closed true; tr_file 'x'
 check "BLOCK: acme/missing#12 is looked up in acme/missing only: its 404 can't be read, though the checkout's acme/gadgets#12 is merged" "2 1" \
   "$(slj 'acme/missing#12 is merged.' 0 s-fc "$T/gdg") $(grep -c "gh couldn't read that PR" "$T/err")"
