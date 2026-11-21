@@ -181,7 +181,8 @@ def state_check():
     for claim, key, sentence in claims:
         if key not in states:
             pr, why = None, ''
-            repos = [key[0]] if key[0] else list(dict.fromkeys(url_repos + linked.get(key[1], []) + forge.remotes(d.get('cwd') or '.')))
+            named = [r for r, n in report.numbered_links(last) if n == key[1]] + linked.get(key[1], [])  # the message's own, then the session's
+            repos = [key[0]] if key[0] else list(dict.fromkeys(named + url_repos + forge.remotes(d.get('cwd') or '.')))
             for repo in repos:
                 pr, why = forge.pull(repo, key[1])
                 if pr is not None or 'HTTP 404' not in (why or ''): break
