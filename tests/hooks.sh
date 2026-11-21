@@ -1193,8 +1193,9 @@ python3 -c 'import json; print(json.dumps({"tool_name":"mcp__t3-code__delegate_t
 check "BLOCK: a launch with two faults, a review on claudeAgent and a reused clientRequestId, gets both refusals in one message" "2 1 1" "$? $(grep -c 'Fallback: <what failed>' "$T/err") $(grep -c "clientRequestId 'r-1' was used before" "$T/err")"
 CX="$T/cx"; mkdir -p "$CX/profiles/a" "$CX/profiles/b" "$CX/profiles/active"; touch "$CX/profiles/a/auth.json" "$CX/profiles/b/auth.json"; now=$(date +%s)
 lim() { printf '{"a":{"until":%s},"b":{"until":%s}}' "$1" "$2" > "$CX/profiles/limited.json"; }  # claude-swap's Codex limit state: the accounts' resets
-lim $((now + 3600)) $((now + 7200)); export CODEX_HOME="$CX"
-check "BLOCK: a review on codex while claude-swap reads every saved Codex account as used up, naming the soonest reset; one on claudeAgent or no provider passes without a Fallback line" "2 1 0 0" "$(rev '{"providerInstanceId":"codex"}' 'Review it') $(grep -c "until $(date -d @$((now + 3600)) +%H:%M)" "$T/err") $(rev '{"providerInstanceId":"claudeAgent"}' 'Review it') $(rev '{}' 'Review it')"
+lim $(date -d 'today 23:59:59' +%s) $((now + 4 * 86400)); export CODEX_HOME="$CX"; r="$(rev '{"providerInstanceId":"codex"}' 'Review it') $(grep -c 'until 23:59,' "$T/err")"
+lim $((now + 3 * 86400)) $((now + 4 * 86400)); r="$r $(rev '{"providerInstanceId":"codex"}' 'Review it') $(grep -c "until $(LC_ALL=C date -d @$((now + 3 * 86400)) '+%a %H:%M')," "$T/err")"
+check "BLOCK: a review on codex while claude-swap reads every saved Codex account as used up, naming the soonest reset, with its day when not today; one on claudeAgent or no provider passes without a Fallback line" "2 1 2 1 0 0" "$r $(rev '{"providerInstanceId":"claudeAgent"}' 'Review it') $(rev '{}' 'Review it')"
 printf '{"a":{"until":%s}}' $((now + 3600)) > "$CX/profiles/limited.json"; r="$(rev '{"driverKind":"codex"}' 'Review it') $(rev '{"providerInstanceId":"claudeAgent"}' 'Review it')"
 lim $((now - 60)) $((now + 3600)); r="$r $(rev '{"providerInstanceId":"codex"}' 'Review it') $(rev '{"providerInstanceId":"claudeAgent"}' 'Review it')"
 rm "$CX/profiles/limited.json"; r="$r $(rev '{"providerInstanceId":"codex"}' 'Review it') $(rev '{"providerInstanceId":"claudeAgent"}' 'Review it')"

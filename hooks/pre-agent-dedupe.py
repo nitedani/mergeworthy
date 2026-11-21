@@ -55,7 +55,8 @@ if not register and ti.get('role') == 'review' and under_t3():
     provider = {target.get('providerInstanceId'), target.get('driverKind')} - {None, ''}
     reset = codex_reset()
     if reset and 'codex' in provider:
-        sys.stderr.write(f"BLOCKED: claude-swap reads every saved Codex account as used up until {time.strftime('%H:%M', time.localtime(reset))}, so this launch would fail. "
+        at = time.localtime(reset)
+        sys.stderr.write(f"BLOCKED: claude-swap reads every saved Codex account as used up until {time.strftime('%H:%M' if at[:3] == time.localtime()[:3] else '%a %H:%M', at)}, so this launch would fail. "
                          "Launch the review on this company (target.providerInstanceId claudeAgent); it needs no Fallback line while that holds.\n")
         refused()
     # the fallback keeps the first review's prompt, so its claim may sit in the brief file the task names; `<what failed>` is the form, no claim
