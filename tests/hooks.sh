@@ -4544,15 +4544,14 @@ git -C "$SE" config gpg.format ssh; git -C "$SE" config user.signingkey "$T/sign
 echo s5 >> "$SE/a.py"; rc "$SE" -am reviewed; (cd "$SE" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null)
 for i in 1 2 3 4 5; do echo "e$i" >> "$SE/a.py"; rc "$SE" -S -am "e$i"; done; echo e6 >> "$SE/a.py"; git -C "$SE" add a.py
 check "BLOCK: the 6th change after five signed edits, with log.showSignature true" 2 "$(bg 'git commit -m e6' "$SE")"
-# a second clone of a reviewed commit, which git clone gives no notes, gets the review's note from the same pr-steps run there, refused as
-# recorded already: a rebase in that clone keeps the review
+# a second clone of a reviewed commit, which git clone gives no notes, reads the review from its record on that commit, as main does; the
+# same pr-steps run there is refused as recorded already and notes nothing
 SC="$T/simpc"; git init -q -b main "$SC"; echo 0 > "$SC/a.py"; git -C "$SC" add -A; rc "$SC" -m base; git -C "$SC" update-ref refs/remotes/origin/main HEAD; git -C "$SC" checkout -q -b fix
 echo c >> "$SC/a.py"; rc "$SC" -am reviewed; (cd "$SC" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null)
-SC2="$T/simpc2"; git clone -q -b fix "$SC" "$SC2"; (cd "$SC2" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
+SC2="$T/simpc2"; git clone -q -b fix "$SC" "$SC2"; git -C "$SC2" remote set-head origin main; (cd "$SC2" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 rc2=$(cd "$SC2" && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null 2>&1; echo $?)
-git -C "$SC2" checkout -q -b up origin/main; echo 0 > "$SC2/b.py"; git -C "$SC2" add b.py; rc "$SC2" -m up; git -C "$SC2" update-ref refs/remotes/origin/main HEAD; git -C "$SC2" checkout -q fix; git -C "$SC2" rebase -q origin/main
 for i in 1 2 3 4 5; do echo "c$i" >> "$SC2/a.py"; rc "$SC2" -am "c$i"; done; echo c6 >> "$SC2/a.py"; git -C "$SC2" add a.py
-check "a review run again in a second clone of its commit is refused as recorded and notes it there; BLOCK: the 6th change after a rebase in that clone" "1 review 2" "$rc2 $(git -C "$SC2" notes --ref=drift show HEAD~5) $(bg 'git commit -m c6' "$SC2")"
+check "a review run again in a second clone of its commit is refused as recorded and notes nothing; BLOCK: the 6th change since it there" "1 0 2" "$rc2 $(git -C "$SC2" notes --ref=drift list | wc -l) $(bg 'git commit -m c6' "$SC2")"
 # a review whose report is named across two lines records like any other
 SN="$T/simpn"; git init -q -b main "$SN"; echo 0 > "$SN/a.py"; git -C "$SN" add -A; rc "$SN" -m base; git -C "$SN" update-ref refs/remotes/origin/main HEAD; git -C "$SN" checkout -q -b fix
 echo 1 >> "$SN/a.py"; rc "$SN" -am reviewed; cp "$T/rv.md" "$T/moved report"$'\n'"v1"

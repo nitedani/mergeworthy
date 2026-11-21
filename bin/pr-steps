@@ -134,16 +134,10 @@ drift_note() {
   # a note is a commit, which needs an identity: pr-steps' own, which no half-set or useConfigOnly identity can fail
   git -c user.name=pr-steps -c user.email=pr-steps@localhost notes --ref="$ref" append -m "$k" "$sha" || { echo "$failed" >&2; exit 1; }
 }
-# recorded_as <step>: whether $out is recorded on $sha as that step, the same report's earlier record
-recorded_as() { S="$1 $(realpath "$out") " awk 'index($0, ENVIRON["S"]) == 1 { f = 1 } END { exit !f }' ~/.claude/pr-steps/"$sha" 2>/dev/null; }
-# record <step> <line>...: records $out on $sha as a line per step named, after its drift note as <step>. An output recorded already is
-# refused; recorded as this same step (its first line), in another clone of this commit, it gets this clone's note first
+# record <step> <line>...: records $out on $sha as a line per step named, after its drift note as <step>; an output recorded already is refused
 record() {
   local step=$1; shift
-  if grep -qsF " $(realpath "$out") " ~/.claude/pr-steps/"$sha"; then
-    if recorded_as "$1"; then drift_note "$step"; fi
-    echo "$out is already recorded for $sha: each step has its own output" >&2; exit 1
-  fi
+  grep -qsF " $(realpath "$out") " ~/.claude/pr-steps/"$sha" && { echo "$out is already recorded for $sha: each step has its own output" >&2; exit 1; }
   drift_note "$step"
   for k in "$@"; do echo "$k $(realpath "$out") $(date -u +%FT%TZ)" >> ~/.claude/pr-steps/"$sha"; done
 }
