@@ -98,7 +98,7 @@ def memory_launch(task):
     session-memory order's launch) or of the memory-refresh template. A brief that cites one anywhere else is other work."""
     m = re.match(r'\s*(?:follow|execute|do)\s+[`\'"]?([^\s`\'"]+)', task, re.I)
     p = m and os.path.expanduser(m[1].rstrip('.,;:'))
-    if p and (p.endswith('skills/delegate/memory-refresh.md') or re.fullmatch(r'memory-brief-\d*\.md', os.path.basename(p))
+    if p and (('/' + p).endswith('/skills/delegate/memory-refresh.md') or re.fullmatch(r'memory-brief-\d*\.md', os.path.basename(p))
               and os.path.isfile(os.path.join(os.path.dirname(p), 'memory.source'))):
         return p
     return None

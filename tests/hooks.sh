@@ -1309,6 +1309,12 @@ capt() { # session title task: a launch that passes runs, so the PostToolUse hal
 check "BLOCK: a launch whose title, not its task, names the memory-refresh template counts, and the fourth agent is refused" "0 0 0 2" \
   "$(capt capY 'Did agents follow skills/delegate/memory-refresh.md?' 'Read the archived instructions and summarize what changed between the two versions.') $(cap capY 'Execute /tmp/x/capy1.md') $(cap capY 'Execute /tmp/x/capy2.md') $(cap capY 'Execute /tmp/x/capy3.md')"
 for k in capy1 capy2; do python3 "$R/bin/agent-job" done "/tmp/x/$k.md" >/dev/null; done; python3 "$R/bin/agent-job" done 'Did agents follow skills/delegate/memory-refresh.md?' >/dev/null
+FX="$T/fixtures/example-skills/delegate"; mkdir -p "$FX"; printf 'Reproduce the fixture failures and summarize what broke.\n' > "$FX/memory-refresh.md"
+mkdir -p "$HOME/.mergeworthy/projects/widget"; printf -- '- a convention\n' > "$HOME/.mergeworthy/projects/widget/example.md"
+agv() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"orchv","tool_input":{"task":sys.argv[1],"title":sys.argv[2]}}))' "$1" "$2" | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo "$? $(grep -c 'projects/widget/example.md' "$T/err")"; }
+check "a launch following a lookalike template path (example-skills/delegate/memory-refresh.md) is ordinary work: it counts against the cap, and one for a repo names its project file" "0 0 0 2 2 1" \
+  "$(cap capV "Follow $FX/memory-refresh.md exactly.") $(cap capV 'Execute /tmp/x/capv1.md') $(cap capV 'Execute /tmp/x/capv2.md') $(cap capV 'Execute /tmp/x/capv3.md') $(agv "Follow $FX/memory-refresh.md exactly for widget/example#17." lookalike)"
+for k in capv1 capv2 "$FX/memory-refresh.md"; do python3 "$R/bin/agent-job" done "$([ "${k#/}" = "$k" ] && echo "/tmp/x/$k.md" || echo "$k")" >/dev/null; done
 PL="$T/pend-launcher.jsonl"; : > "$PL"
 pend() { # tool_use_id task: a PreToolUse-only Agent call of session capP, its call still running in the launcher's transcript
   python3 -c 'import json,sys; print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","id":sys.argv[1],"name":"Agent","input":{}}]}}))' "$1" >> "$PL"
