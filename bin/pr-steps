@@ -127,7 +127,8 @@ pbase() {
 # amend or a rebase copies the note
 drift_note() {
   local k; case "$1" in verify|shape|reverify|fresh|small) k=review ;; finality) k=finality ;; *) return 0 ;; esac
-  { git config --get-all notes.rewriteRef | grep -qxF refs/notes/drift || git config --add notes.rewriteRef refs/notes/drift; } &&
+  # the repo's own value: a global one is the recorder's alone, which another home amending this checkout doesn't have
+  { git config --local --get-all notes.rewriteRef | grep -qxF refs/notes/drift || git config --local --add notes.rewriteRef refs/notes/drift; } &&
     # a note is a commit, which needs an identity: pr-steps' own, which no half-set or useConfigOnly identity can fail
     { git notes --ref=drift show "$sha" 2>/dev/null | grep -qxF "$k" || git -c user.name=pr-steps -c user.email=pr-steps@localhost notes --ref=drift append -m "$k" "$sha"; } ||
     { echo "the drift note of $out on $sha could not be written (git's error above), so nothing is recorded: fix that, then run the same pr-steps again" >&2; exit 1; }

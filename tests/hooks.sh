@@ -4485,6 +4485,11 @@ git -C "$SR" reset -q --soft origin/main; rc "$SR" -m squashed; for i in 1 2 3 4
 (cd "$SR" && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null); for i in 6 7 8 9 10; do echo "s$i" >> "$SR/a.py"; rc "$SR" -am "s$i"; done; echo s11 >> "$SR/a.py"; git -C "$SR" add a.py
 check "a squash of the reviewed branch by a reset and a commit counts nothing; BLOCK: the 6th change since its next review" "0 2" "$rs $(bg 'git commit -m s11' "$SR")"
 check "pr-steps adds refs/notes/drift to notes.rewriteRef beside the value it had" "refs/notes/commits refs/notes/drift" "$(git -C "$SR" config --get-all notes.rewriteRef | tr '\n' ' ' | sed 's/ $//')"
+# a recorder whose global config alone has the rewriteRef still adds it to the repo, so an amend from a home without it keeps the note
+SG="$T/simpg"; git init -q -b main "$SG"; echo 0 > "$SG/a.py"; git -C "$SG" add -A; rc "$SG" -m base; git -C "$SG" update-ref refs/remotes/origin/main HEAD; git -C "$SG" checkout -q -b fix; echo g >> "$SG/a.py"; rc "$SG" -am reviewed
+printf '[notes]\n\trewriteRef = refs/notes/drift\n' > "$T/gcfg"; (cd "$SG" && export GIT_CONFIG_GLOBAL="$T/gcfg" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null)
+rc "$SG" --amend -m 'reviewed, subject edited'; for i in 1 2 3 4 5; do echo "g$i" >> "$SG/a.py"; rc "$SG" -am "g$i"; done; echo g6 >> "$SG/a.py"; git -C "$SG" add a.py
+check "a recorder with notes.rewriteRef in its global config alone adds it to the repo; BLOCK: the 6th change after an amend from another home" "refs/notes/drift 2" "$(git -C "$SG" config --local --get-all notes.rewriteRef) $(bg 'git commit -m g6' "$SG")"
 # a squash in a rebase joins the reviewed commit's note onto the squashed commit, by design: a fixup and an empty commit squashed into it keep its review
 for q in fixup empty; do SA="$T/simpa-$q"; git init -q -b main "$SA"; echo 0 > "$SA/a.py"; git -C "$SA" add -A; rc "$SA" -m base; git -C "$SA" update-ref refs/remotes/origin/main HEAD; git -C "$SA" checkout -q -b fix
   echo 1 >> "$SA/a.py"; rc "$SA" -am reviewed; (cd "$SA" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null)
