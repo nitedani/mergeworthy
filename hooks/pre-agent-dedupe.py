@@ -435,33 +435,34 @@ def returned(path, use_id):
 fanout = ti.get('role') != 'implementation' and re.search(r'^Fan-out: (finality step [23]|converge §Running the agents)$', brief, re.M)
 capped = bool(d.get('session_id')) and not refresh and not fanout  # the 3-agent cap applies to this launch
 READERS = ('review', 'research')
-pending = []  # a launch let through whose call is still running, not registered yet
+def bears_on(r):
+    """Whether a pending record can change this launch's verdict, from its stored fields alone: the union of what the checks
+    below read (one agent per job: its key, or a task containing or contained in this one; the cap: this session's calls but
+    memory refreshes; one writer per worktree: a shared worktree). It only keeps returned() and the transcript searches off the
+    rest: another session's other calls are read by that session's launches, and each check still applies its own test."""
+    rt, mine = str(r.get('task') or '').strip(), task.strip()
+    return (r.get('key') == key or bool(rt and mine and (rt in mine or mine in rt))
+            or capped and r.get('session') == d.get('session_id') and not is_refresh(r)
+            or ti.get('role') not in READERS and bool(set(r.get('worktrees') or []) & set(L.worktrees)))
+calls_out = []  # the launches let through whose call hasn't returned, not registered yet
 for n in os.listdir(agent_jobs.LAUNCHED) if os.path.isdir(agent_jobs.LAUNCHED) else ():
     try: r = json.load(open(os.path.join(agent_jobs.LAUNCHED, n)))
     except (OSError, ValueError): continue
-    # only a call that can change this launch's verdict is read on, from its stored fields before any transcript: one from any
-    # session of this launch's key or whose task contains or is contained in this one's (one agent per job), this session's
-    # calls but memory refreshes while the cap applies, and, for a writer, those sharing a worktree (one writer per worktree);
-    # another session's other calls are read, and their transcripts searched, by that session's launches
-    if not isinstance(r, dict): continue
-    rt, mine = str(r.get('task') or '').strip(), task.strip()
-    rrefresh = is_refresh(r)
-    if not (r.get('key') == key or rt and mine and (rt in mine or mine in rt)
-            or capped and r.get('session') == d.get('session_id') and not rrefresh
-            or ti.get('role') not in READERS and set(r.get('worktrees') or []) & set(L.worktrees)): continue
+    if not isinstance(r, dict) or not bears_on(r): continue
     if r.get('tool_use_id') and r.get('transcript') and not returned(r['transcript'], r['tool_use_id']):
-        j = {'key': r.get('key', ''), 'brief': r.get('task', ''), 'started': r.get('launched', 0), 'launched': r.get('launched', 0),
-             'role': r.get('role'), 'worktrees': r.get('worktrees', []), 'transcript': r['transcript'], 'session': r.get('session'),
-             'refresh': rrefresh}
+        call = {'key': r.get('key', ''), 'brief': r.get('task', ''), 'started': r.get('launched', 0), 'launched': r.get('launched', 0),
+                'role': r.get('role'), 'worktrees': r.get('worktrees', []), 'transcript': r['transcript'], 'session': r.get('session'),
+                'refresh': is_refresh(r)}
         # past LONG with no result in the launcher's transcript, a call whose agent never started (a crash mid-call) or has
         # finished (its launcher lost) is over: its record goes, so the launches after this one don't search the transcripts for it again
-        if time.time() - j['started'] >= agent_jobs.LONG and (not agent_jobs.transcript(j) or agent_jobs.finished(j)):
+        if time.time() - call['started'] >= agent_jobs.LONG and (not agent_jobs.transcript(call) or agent_jobs.finished(call)):
             agent_jobs.remove(os.path.join(agent_jobs.LAUNCHED, n)); continue
-        pending.append(j)
+        calls_out.append(call)
     # a call that returned (another hook blocked it, or no PostToolUse call matched it) or that names no call counts for nothing:
     # a day on, past any call's PostToolUse, its record goes, so no later launch searches its launcher's transcript again
     elif time.time() - r.get('launched', 0) >= agent_jobs.OPEN:
         agent_jobs.remove(os.path.join(agent_jobs.LAUNCHED, n))
+registered = [j for _, j in agent_jobs.jobs()]  # the open jobs, read once for the checks below
 # One writer per worktree: a writer (any role but review or research) waits for a linked worktree its brief names (not the launcher's
 # own) that holds another session's process, or that a live writer job or outstanding writer call names, whose agent isn't the launcher. T3 can show that
 # agent interrupted or cancelled while it runs, so agent_jobs.finished decides.
@@ -484,8 +485,8 @@ if ti.get('role') not in READERS:
         except OSError: return False
     me, busy = os.path.realpath(transcript(d) or '/'), []
     # a call still outstanding counts as its job will, its own key's aside (one_per_job's)
-    calls = [j for j in pending if j['key'] != key and set(j['worktrees']) & set(wts)]
-    writers = [j for j in [j for _, j in agent_jobs.jobs()] + calls if j.get('role') not in READERS] if wts else []
+    writer_calls = [c for c in calls_out if c['key'] != key and set(c['worktrees']) & set(wts)]
+    writers = [j for j in registered + writer_calls if j.get('role') not in READERS] if wts else []
     for j in writers:
         if 'worktrees' not in j: j['worktrees'] = launch.Launch(j.get('brief', '')).worktrees  # registered before jobs recorded theirs
     for w in wts:
@@ -514,12 +515,12 @@ def one_per_job(started):
         "Continue it with a message instead of starting another. Only when its task is terminal and you have read its result, "
         f"release the job with `agent-job done {shlex.quote(key[:200])}`, then launch.\n")
     refused()
-j = json.load(open(job_file)) if os.path.exists(job_file) else {}
-same = [j] if time.time() - j.get('started', 0) < agent_jobs.OPEN else [p for p in pending if p['key'] == key]
+this_job = json.load(open(job_file)) if os.path.exists(job_file) else {}
+same = [this_job] if time.time() - this_job.get('started', 0) < agent_jobs.OPEN else [c for c in calls_out if c['key'] == key]
 if same: one_per_job(same[0]['started'])
-for j in [j for _, j in agent_jobs.jobs()] + pending if task.strip() else ():
+for j in registered + calls_out if task.strip() else ():
     if same and j.get('key') == key: continue  # this job's own record, refused above
-    if (other := j.get('brief', '').strip()) and (other in task.strip() or task.strip() in other) and (j in pending or not agent_jobs.finished(j)):
+    if (other := j.get('brief', '').strip()) and (other in task.strip() or task.strip() in other) and (j in calls_out or not agent_jobs.finished(j)):
         sys.stderr.write(
             f"BLOCKED: this task contains, or is contained in, an open job's task ({j['key'][:160]}, started {int((time.time() - j['started']) / 60)} min ago), "
             "so it is the same work under another title, and an agent already on the job gets a message, not a twin (mergeworthy:delegate step 1). An agent of a fan-out names its part in its task "
@@ -540,10 +541,9 @@ def users_words(quote):
     except OSError: pass
     return False
 if capped:
-    calls = [j for j in pending if j.get('session') == d['session_id']]
     # session, then refresh, then finished: a refresh never counts, so its transcript isn't searched
-    live = [j for _, j in agent_jobs.jobs() if j.get('session') == d['session_id'] and not is_refresh(j) and not agent_jobs.finished(j)] \
-        + [j for j in calls if not j['refresh']]
+    live = [j for j in registered if j.get('session') == d['session_id'] and not is_refresh(j) and not agent_jobs.finished(j)] \
+        + [c for c in calls_out if c.get('session') == d['session_id'] and not c['refresh']]
     folders = {f for t in L.files + L.refs if (f := task_of(t))}
     scope = os.path.join(task_of(d.get('cwd') or '/') or (folders.pop() if len(folders) == 1 else '<your work folder>'), 'scope.md')
     raised = re.search(r'^Agents: ([1-9]\d*) \(user \d{4}-\d{2}-\d{2}: "(.+)"\)$', open(scope, errors='replace').read() if os.path.isfile(scope) else '', re.M)
