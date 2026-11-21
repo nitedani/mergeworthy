@@ -1324,6 +1324,10 @@ check "a launch following a memory brief memory-prep already replaced is ordinar
   "$(cap capW "Follow $MG/memory-brief-1.md exactly.") $(cap capW 'Execute /tmp/x/capw1.md') $(cap capW 'Execute /tmp/x/capw2.md') $(cap capW 'Execute /tmp/x/capw3.md') $([ -e "$MG/.memory-order-repeated" ] && echo yes || echo no) $(agv "Follow $MG/memory-brief-1.md exactly for widget/example#17." replaced)"
 for k in capw1 capw2; do python3 "$R/bin/agent-job" done "/tmp/x/$k.md" >/dev/null; done; python3 "$R/bin/agent-job" done "$(python3 -c 'import sys; print(sys.argv[1][:40])' "Follow $MG/memory-brief-1.md exactly.")" >/dev/null
 rm -r "$MG" "$HOME/.mergeworthy/projects/widget"
+MD="$HOME/.mergeworthy/work/memdecided"; mkdir -p "$MD"; : > "$MD/memory.source"; printf 'Merge memory-new.txt into memory.md.\n' > "$MD/memory-brief-1.md"
+check "a memory brief memory-prep replaces while its launch runs still gets the marker its admission decided" "0 yes" \
+  "$(cap_in capD "Follow $MD/memory-brief-1.md exactly." | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; rm "$MD/memory-brief-1.md"; cap_in capD "Follow $MD/memory-brief-1.md exactly." | python3 "$R/hooks/pre-agent-dedupe.py" register) $([ -e "$MD/.memory-order-repeated" ] && echo yes || echo no)"
+python3 "$R/bin/agent-job" done "$(python3 -c 'import sys; print(sys.argv[1][:40])' "Follow $MD/memory-brief-1.md exactly.")" >/dev/null; rm -r "$MD"
 PL="$T/pend-launcher.jsonl"; : > "$PL"
 pend() { # tool_use_id task: a PreToolUse-only Agent call of session capP, its call still running in the launcher's transcript
   python3 -c 'import json,sys; print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","id":sys.argv[1],"name":"Agent","input":{}}]}}))' "$1" >> "$PL"

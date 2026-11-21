@@ -106,6 +106,10 @@ def memory_launch(task):
               and os.path.isfile(p) and os.path.isfile(os.path.join(os.path.dirname(p), 'memory.source'))):
         return p
     return None
+def is_refresh(r):
+    """A pending call's or job's memory-refresh decision, as its admission recorded it. A record main's hook wrote has none and
+    is classified from its task: one OPEN window (24 h) after the release that installs this, no such record is left."""
+    return r.get('refresh', bool(memory_launch(r.get('task') or r.get('brief') or '')))
 # a fan-out runs several agents on one brief, each under its own title and naming its part in its task: the title is part of the job
 key = ' '.join([*L.tickets, str(ti.get('title') or ti.get('description') or '').strip()]).strip()
 job_file = os.path.join(agent_jobs.JOBS, hashlib.sha256(key.encode()).hexdigest()[:16])
@@ -113,7 +117,8 @@ job_file = os.path.join(agent_jobs.JOBS, hashlib.sha256(key.encode()).hexdigest(
 # pend at a time, and the key's next launch overwrites the record of a call another hook blocked
 pre = os.path.join(agent_jobs.LAUNCHED, os.path.basename(job_file))
 task = str(ti.get('task') or ti.get('prompt') or '')
-refresh = bool(memory_launch(task))  # decided here, at admission, and stored on the pending call and the job
+memory = memory_launch(task)  # decided here, at admission, and stored on the pending call; `refresh` on the job too
+refresh = bool(memory)
 if register:  # the launch ran: record it, with no admission check (the PRE call decided)
     if cid:
         os.makedirs(os.path.dirname(CIDS), exist_ok=True)
@@ -131,15 +136,17 @@ if register:  # the launch ran: record it, with no admission check (the PRE call
     if implementer and (approach := brief_approach(strict=False)):
         os.makedirs(BUILT, exist_ok=True)
         open(os.path.join(BUILT, os.path.basename(approach[0])), 'w').write(approach[1])
-    if (t := memory_launch(task)) and os.path.basename(t).startswith('memory-brief-'):  # an agent now runs memory-prep's brief: stop-lint's hourly repeat of the refresh order waits an hour
-        open(os.path.join(os.path.dirname(t), '.memory-order-repeated'), 'w').close()
     if key:  # nothing names the job (no ticket, title or description) otherwise, so no second launch of it can be told apart
         os.makedirs(agent_jobs.JOBS, exist_ok=True)
         lock = open(agent_jobs.JOBS + '.lock', 'a'); fcntl.flock(lock, fcntl.LOCK_EX)
-        try: rec = json.load(open(pre)); launched = rec['launched']; refresh = rec.get('refresh', refresh); os.remove(pre)
+        try:  # the admission's decision, from its pending record
+            rec = json.load(open(pre)); launched = rec['launched']; refresh = is_refresh(rec); memory = rec.get('memory', memory); os.remove(pre)
         except (OSError, ValueError, KeyError, TypeError): launched = time.time()
         json.dump({'key': key, 'started': time.time(), 'launched': launched, 'brief': task, 'role': ti.get('role'), 'worktrees': L.worktrees, 'refresh': refresh,
                    'session': d.get('session_id'), 'transcript': d.get('transcript_path'), 'handle': agent_jobs.handle(d.get('tool_response'))}, open(job_file, 'w'))
+    # an agent now runs memory-prep's brief: stop-lint's hourly repeat of the refresh order waits an hour (its folder may be gone by now)
+    if memory and os.path.basename(memory).startswith('memory-brief-') and os.path.isdir(os.path.dirname(memory)):
+        open(os.path.join(os.path.dirname(memory), '.memory-order-repeated'), 'w').close()
     sys.exit(0)
 # T3 starts a new Claude session for each turn, and Claude Code's background agents end with the session that launched them;
 # the Agent tool runs in the background unless run_in_background is false
@@ -435,7 +442,7 @@ for n in os.listdir(agent_jobs.LAUNCHED) if os.path.isdir(agent_jobs.LAUNCHED) e
     # another session's other calls are read, and their transcripts searched, by that session's launches
     if not isinstance(r, dict): continue
     rt, mine = str(r.get('task') or '').strip(), task.strip()
-    rrefresh = r.get('refresh', bool(memory_launch(rt)))
+    rrefresh = is_refresh(r)
     if not (r.get('key') == key or rt and mine and (rt in mine or mine in rt)
             or capped and r.get('session') == d.get('session_id') and not rrefresh
             or ti.get('role') not in READERS and set(r.get('worktrees') or []) & set(L.worktrees)): continue
@@ -527,10 +534,9 @@ def users_words(quote):
     return False
 if capped:
     calls = [j for j in pending if j.get('session') == d['session_id']]
-    # session, then refresh, then finished: a refresh never counts, so its transcript isn't searched; a job registered before
-    # jobs recorded `refresh` is classified from its task
-    live = [j for _, j in agent_jobs.jobs() if j.get('session') == d['session_id'] and not j.get('refresh', memory_launch(j.get('brief', '')))
-            and not agent_jobs.finished(j)] + [j for j in calls if not j['refresh']]
+    # session, then refresh, then finished: a refresh never counts, so its transcript isn't searched
+    live = [j for _, j in agent_jobs.jobs() if j.get('session') == d['session_id'] and not is_refresh(j) and not agent_jobs.finished(j)] \
+        + [j for j in calls if not j['refresh']]
     folders = {f for t in L.files + L.refs if (f := task_of(t))}
     scope = os.path.join(task_of(d.get('cwd') or '/') or (folders.pop() if len(folders) == 1 else '<your work folder>'), 'scope.md')
     raised = re.search(r'^Agents: ([1-9]\d*) \(user \d{4}-\d{2}-\d{2}: "(.+)"\)$', open(scope, errors='replace').read() if os.path.isfile(scope) else '', re.M)
@@ -544,5 +550,5 @@ if capped:
 admit()
 if not blocked:
     os.makedirs(agent_jobs.LAUNCHED, exist_ok=True); json.dump({'launched': time.time(), 'key': key, 'task': task, 'role': ti.get('role'), 'worktrees': L.worktrees, 'tool_use_id': d.get('tool_use_id'),
-                                                           'transcript': d.get('transcript_path'), 'session': d.get('session_id'), 'refresh': refresh}, open(pre, 'w'))
+                                                           'transcript': d.get('transcript_path'), 'session': d.get('session_id'), 'refresh': refresh, 'memory': memory}, open(pre, 'w'))
 sys.exit(2 if blocked else 0)
