@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Claude Code PreToolUse hook (matcher: Agent, Task, delegate_task, t3_thread_launch). Exit 2 blocks the launch; stderr goes to the agent.
 With the argument `register` it runs as the PostToolUse hook: only a launch that ran is registered, so one another hook blocked leaves no job.
-The PreToolUse call decides; the PostToolUse call only records what ran and never refuses.
+The PreToolUse call decides; the PostToolUse call only records what ran and makes no admission check (a failure writing its
+records still fails it).
 One agent per job: a launch is registered under its job key (the ticket files its prompt names, and its title), and a second
 launch of the same job, or of a task that contains or is contained in an open job's (the same work under another title: an agent
 already on the job gets a message, not a twin, mergeworthy:delegate step 1), is blocked until `agent-job done <key>` releases it.
@@ -107,7 +108,7 @@ job_file = os.path.join(agent_jobs.JOBS, hashlib.sha256(key.encode()).hexdigest(
 # pend at a time, and the key's next launch overwrites the record of a call another hook blocked
 pre = os.path.join(agent_jobs.LAUNCHED, os.path.basename(job_file))
 task = str(ti.get('task') or ti.get('prompt') or '')
-if register:  # the launch ran: record it, and refuse nothing (the PRE call decided)
+if register:  # the launch ran: record it, with no admission check (the PRE call decided)
     if cid:
         os.makedirs(os.path.dirname(CIDS), exist_ok=True)
         lock = open(CIDS + '.lock', 'a'); fcntl.flock(lock, fcntl.LOCK_EX)  # concurrent launches read and write the ids file one at a time
@@ -497,6 +498,7 @@ for j in [j for _, j in agent_jobs.jobs()] + pending if task.strip() else ():
 # of the session's cwd, else the one the briefs it launches are in): a job is open until released or its agent finished, and a launch let through
 # counts until its call registers or returns, so launches in one message see each other; a memory refresh doesn't count
 # A fan-out a step names (finality steps 2-3, converge's per-slice verifiers) says so on a `Fan-out:` line, in the task or its brief, and passes
+# the cap; the fan-out agents already open still count against an ordinary launch
 fanout = ti.get('role') != 'implementation' and re.search(r'^Fan-out: (finality step [23]|converge §Running the agents)$', brief, re.M)
 def users_words(quote):
     """Whether a prompt the user typed in this session (its transcript) holds quote verbatim: a tool result, hook message or

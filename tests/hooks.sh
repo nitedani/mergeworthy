@@ -1148,8 +1148,11 @@ launch_in 'Execute /tmp/x/blocked.md' | python3 "$R/hooks/pre-agent-dedupe.py" >
 check "a launch another hook blocked (never ran) leaves no job" 0 "$(launch 'Execute /tmp/x/blocked.md')"
 refused() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":sys.argv[1],"title":"t"},"tool_response":[{"type":"text","text":"code: parent_not_active"}]}))' "$1" | python3 "$R/hooks/pre-agent-dedupe.py" register; }
 check "a launch T3 refused (parent_not_active) says what to do and leaves no job" "1 0" "$(refused 'Execute /tmp/x/refused.md' | grep -c 'do the step yourself') $(launch 'Execute /tmp/x/refused.md')"
-post_only() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"Agent","session_id":"po","tool_input":{"prompt":sys.argv[1],"description":"po impl"},"tool_response":{"agentId":"abc"}}))' "$1" | python3 "$R/hooks/pre-agent-dedupe.py" register 2>"$T/err"; echo "$? $(python3 "$R/bin/agent-job" list | grep -c 'po impl')"; }
-check "the PostToolUse call registers a launch that ran and refuses nothing, though its brief now lacks what the PreToolUse call checks (an Approach line)" "0 1 0" "$(post_only 'You implement the fix in /tmp/nowhere.') $(grep -c BLOCKED "$T/err")"
+# an implementer brief file in the work folder, admitted with its recorded Approach, then edited while the call runs
+PB="$HOME/.mergeworthy/work/po/brief.md"; mkdir -p "${PB%/*}"; printf 'You implement the fix in %s.%s\n' "$T/afx" "$AFX" > "$PB"
+po() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"Agent","session_id":"po","tool_input":{"prompt":sys.argv[1],"description":"po impl","run_in_background":False},"tool_response":{"agentId":"abc"}}))' "Follow $PB exactly" | python3 "$R/hooks/pre-agent-dedupe.py" "$@" 2>"$T/err"; echo $?; }
+check "a launch admitted with its Approach line, whose brief loses that line before the call ends, is registered, and its PostToolUse call refuses nothing" "0 0 1 0" "$(po) $(sed -i '/^Approach:/d' "$PB"; po register) $(python3 "$R/bin/agent-job" list | grep -c 'po impl') $(grep -c BLOCKED "$T/err")"
+rm -r "${PB%/*}"
 python3 "$R/bin/agent-job" done 'po impl' >/dev/null
 python3 "$R/bin/agent-job" done /tmp/x/ticket-check.md >/dev/null
 check "after agent-job done the ticket launches again" 0 "$(launch 'Execute /tmp/x/ticket-check.md')"
