@@ -594,11 +594,11 @@ class Where:
         return None if isinstance(v, Maybe) or strict and self.any and x not in self.vars else v
 
     def _in_parent(self, read):
-        """What read gives with the variables of the shell that started the current child shell, as they stood then."""
-        was = self.vars, self.any
-        self.vars, self.any = next(((x[3], x[7]) for x in reversed(self.scopes) if x[0][2] == CHILD), was)
+        """What read gives in the shell that started the current child shell, with its variables, dir and spots as they stood then."""
+        was = self.vars, self.any, self.dir, self.spots
+        self.vars, self.any, self.dir, self.spots = next(((x[3], x[7], x[1], x[6]) for x in reversed(self.scopes) if x[0][2] == CHILD), was)
         try: return read()
-        finally: self.vars, self.any = was
+        finally: self.vars, self.any, self.dir, self.spots = was
 
     def files(self, w):
         """The paths a file the current command names, word w, may be, each resolved from each of spots. An Unknown when one's folder can't be told:
