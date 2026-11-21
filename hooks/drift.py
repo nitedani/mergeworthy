@@ -1,12 +1,12 @@
 """The drift count behind pre-bash-guard's finality trigger (`finality` step 1 as a mechanism): which code files (not
-testpaths.NOT_CODE, not build output: testpaths.generated) the branch's own commits changed more than 5 times since its first
-review (a verify, small, shape, reverify or fresh record); a `pr-steps finality` record on a commit, HEAD too, starts the counts
-over after it. Building before any review counts nothing. Only the branch's own commits count (first parent): a merge commit,
-made or being made, is no change, nor are the commits it brings in, nor is a maintainer's (AGENT_TRAILER): the drift is the agent's.
-A record is the commit's pr-steps record, or the note pr-steps adds beside it under refs/notes/drift, which every worktree of the
-repo reads. pr-steps puts refs/notes/drift in the repo's notes.rewriteRef, so git copies the note onto the commit an amend or a
-rebase makes (a rebase with conflicts too), and onto the commit a squash or fixup in a rebase joins it into. A cherry-pick, or a
-squash made by a reset and a new commit, carries no note: that commit has no record until its next review."""
+testpaths.NOT_CODE, not build output: testpaths.generated) the branch's own commits changed more than LIMIT times after its anchor:
+the last commit recorded as a finality, else the first recorded as a review (records.py NOTE_KIND). Building before any review counts
+nothing. Only the branch's own commits count (first parent): a merge commit is no change, nor are the commits it brings in (the guard
+passes none for a merge being made), nor is a maintainer's (AGENT_TRAILER): the drift is the agent's.
+A record is the commit's pr-steps record, or its note under records.py DRIFT_REF, which pr-steps writes first and every worktree of the
+repo reads. pr-steps puts DRIFT_REF in the repo's notes.rewriteRef, so git copies the note onto the commit an amend or a rebase makes
+(a rebase with conflicts too), and onto the commit a squash or fixup in a rebase joins it into. A cherry-pick, or a squash made by a
+reset and a new commit, carries no note: that commit has no record until its next review."""
 import os, re, subprocess
 import testpaths
 from records import base_ref, commit_file, DRIFT_REF, LIMIT, NOTE_KIND

@@ -6,7 +6,9 @@
 # The posting hook blocks `gh pr create` (unless --draft), `gh pr ready` and pushes to a ready PR until HEAD has all five.
 # quick: the quick gates' exit codes on a head (code §Gates), which a push to a PR or another owner's repo, and `gh pr create`, need on the pushed head.
 # layout: a layout check's lines (evidence step 4), each screenshot OK or its defect with the place it comes from, outside the functions the branch changes.
-# finality: the finality pass's pinnacle and plan (finality step 3), which a code file's 6th change on the branch needs on the head (pre-bash-guard).
+# finality: the finality pass's pinnacle and plan (finality step 3), which a code file's change past the drift limit on the branch needs on the head
+# (pre-bash-guard; hooks/records.py LIMIT). A review (verify, shape, reverify, fresh, small) or a finality is also a note of its kind on the head under
+# the drift ref (records.py DRIFT_REF, NOTE_KIND), written before the record, which git carries through an amend or a rebase (hooks/drift.py).
 # union <log> | --conflict <sha>: two ready PRs of ours sharing a file, checked together (merging step 2): in a checkout of their merge, the log's
 # first line 'Union: <owner/repo>#<A>@<sha> + #<B>@<sha> on <base>@<sha>' and its quick gates; or, in one PR's checkout, its textual conflict with the other's head.
 set -euo pipefail
@@ -122,9 +124,8 @@ pbase() {
   local pb; pb=$(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || true)
   git merge-base HEAD "${pb:+origin/$pb}" 2>/dev/null || git merge-base HEAD "$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)" 2>/dev/null || true
 }
-# drift_note <step>: notes a review or finality step on $sha under the drift ref, its kind once (hooks/records.py DRIFT_REF, NOTE_KIND),
-# which the drift count anchors on (hooks/drift.py); the repo's notes.rewriteRef gets the drift ref beside any value it has, so an amend
-# or a rebase copies the note. A note it can't write exits, recording nothing
+# drift_note <step>: the step's note on $sha, its kind once; the repo's notes.rewriteRef gets the drift ref beside any value it has, which
+# is what makes an amend or a rebase copy the note. A note it can't write exits, recording nothing
 drift_note() {
   local ref k; read -r ref k <<< "$(python3 "$(dirname "$(realpath "$0")")/../hooks/records.py" drift-note "$1")"; [ -n "$k" ] || return 0
   local failed="the drift note of $out on $sha could not be written (git's error above), so nothing is recorded: fix that, then run the same pr-steps again"
