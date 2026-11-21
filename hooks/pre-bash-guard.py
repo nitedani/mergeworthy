@@ -9,7 +9,7 @@ import failclosed
 import shellcmd
 from shellcmd import parse, segments, prog, script, opt, api_call, field_name, TEXT_FREE, discussion_post, discussion_thread_of, names_discussion_mutation, env_of, origin, plain_create, PLAIN, new_post_drafts, no_instructions_read, by_agent, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Unseen, Where
 from records import branch_record, commit_file, no_approach, no_preflight, STORE
-import drift, own_actions, review_launch, steward, post_words, threads_file, work_folder
+import drift, own_actions, review_launch, steward, post_words, threads_file, transcript_facts, work_folder
 from t3_tasks import under_t3
 def missing_steps(d, head=None):
     """(head, the converge steps it lacks): head is a push's pushed commit, else HEAD."""
@@ -199,10 +199,23 @@ def gated_file(p, has_cd, create=False):
     sha = hashlib.sha256(open(p, 'rb').read()).hexdigest()
     if sha != open(gate).read().split('\n')[0].strip():
         block(f"{p} changed after its gate: review it again and re-run gate-pass")
+    check_badge_models(p)
     if create:  # a new comment/issue/PR from this exact draft: only once (edits may repeat); post-bash-register writes .posted once it succeeded
         posted = p + '.posted'
         if os.path.exists(posted) and open(posted).read().strip() == sha:
             block(f"{p} was already posted: edit that post instead (PATCH / gh … edit)")
+
+def check_badge_models(p):
+    """The Claude models p's badge names (`Claude Opus 5.5`) are ones this session ran on or launched an agent on, as its transcript says."""
+    first = re.sub(r'\ATitle:[^\n]*\n', '', open(p, errors='replace').read()).lstrip().split('\n', 1)[0]
+    line = re.sub(r'\]\([^)]*\)', ']', first.split('*', 1)[1]) if first.startswith('<img') and '*' in first else ''  # link targets aren't model names
+    named = {f"claude-{f.lower()}-{v.replace('.', '-')}" for f, v in re.findall(r'\b(Opus|Sonnet|Haiku|Fable) (\d+(?:\.\d+)*)\b', line)}
+    if not named: return
+    try: ran = set(transcript_facts.read(d['transcript_path']).models)
+    except (KeyError, TypeError, OSError): return
+    if named - ran:
+        block(f"{p}'s badge names {', '.join(sorted(named - ran))}, which this session never ran on or launched an agent on; it ran {', '.join(sorted(ran)) or 'no Claude model'}: "
+              "name the models that worked on this post (mergeworthy:writing, the badge), then post-lint and gate-pass it again")
 
 def local_login():
     """The account gh is logged in as, from its own config (no network); '' when gh can't say."""

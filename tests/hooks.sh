@@ -390,6 +390,18 @@ grep -o 'records the latest comment.*' "$T/err" | sed "s#$T#<T>#g; s/ (mergewort
 check "BLOCK: a thread-context.md regenerated after the gate needs a new review" 2 "$(tcguard)"
 sha256sum "$TD/r.md" | cut -d' ' -f1 > "$TD/r.md.gate"; tcbind "$TD/r.md"
 check "the regenerated thread-context.md passes once gated again" 0 "$(tcguard)"
+# a badge names only Claude models the session ran or launched: its transcript says which
+bmguard() { # <badge model line> <transcript line>...: a post to #41 from $TD/r.md under that badge, the session's transcript holding those lines
+  printf '<img src="https://github.com/claude.png" width="20" height="20" alt="Claude"> *%s wrote this.*\n\nAgreed, option A it is.\n' "$1" > "$TD/r.md"; shift
+  sha256sum "$TD/r.md" | cut -d' ' -f1 > "$TD/r.md.gate"; tcbind "$TD/r.md"; rm -f "$TD/r.md.posted"; printf '%s\n' "$@" > "$T/bm.jsonl"
+  python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh issue comment 41 --repo o/r --body-file "+sys.argv[2]},"cwd":sys.argv[1],"transcript_path":sys.argv[3]}))' "$T" "$TD/r.md" "$T/bm.jsonl" > "$T/in.json"
+  python3 "$R/hooks/pre-bash-guard.py" < "$T/in.json" 2>"$T/err"; echo $?; }
+BM_RAN='{"type":"assistant","message":{"model":"claude-opus-5-5","content":[{"type":"text","text":"Drafted."}]}}'
+BM_DELEGATED='{"type":"assistant","message":{"model":"claude-opus-5-5","content":[{"type":"tool_use","id":"d1","name":"mcp__t3-code__delegate_task","input":{"task":"x","target":{"provider":"claudeAgent","model":"claude-sonnet-5-5"}}}]}}'
+check "a badge naming the model the session ran passes" 0 "$(bmguard 'Claude Opus 5.5 (high effort)' "$BM_RAN")"
+check "a badge naming a model the session launched only through delegate_task passes" 0 "$(bmguard 'Opus 5.5 (high effort) and Sonnet 5.5 (high effort)' "$BM_DELEGATED")"
+check "BLOCK: a badge naming a Claude model that never ran, saying which ran" "2 1" "$(bmguard 'Claude Fable 5.2 (high effort)' "$BM_RAN") $(grep -c 'names claude-fable-5-2, which this session never ran.*claude-opus-5-5' "$T/err")"
+printf 'Agreed, option A it is.\n' > "$TD/r.md"; sha256sum "$TD/r.md" | cut -d' ' -f1 > "$TD/r.md.gate"; tcbind "$TD/r.md"
 # the .posted marker: written once the post succeeded (PostToolUse), so a post another hook blocked, or that failed, can be retried
 postreg() { # tool_response json: post-bash-register after `gh issue comment 41 ... --body-file $TD/r.md`
   python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh issue comment 41 --repo o/r --body-file "+sys.argv[2]},"cwd":sys.argv[1],"tool_response":json.loads(sys.argv[3])}))' "$T" "$TD/r.md" "$1" \

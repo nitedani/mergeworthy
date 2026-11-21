@@ -47,6 +47,7 @@ class Facts:
         self.last, self.last_user = j.get('last', ''), j.get('last_user', '')  # the agent's last text; the user's own last message (t3_tasks.typed)
         self.forks_before_last = j.get('forks_before_last', {})  # the GENUINE-FORK lines of every text the agent wrote but the last
         self.child_opening, self.head_lines = j.get('child_opening', False), j.get('head_lines', 0)  # the first 20 lines open a sub-agent's brief
+        self.models = j.get('models', {})  # the Claude model ids the session ran on or launched an agent on
         self.tail_sdk = collections.deque(j.get('tail_sdk', []), maxlen=20)  # for each of the last 20 lines: the SDK CLI wrote it
         self.tasks = t3_tasks.Observer(j.get('tasks'))
 
@@ -61,6 +62,9 @@ class Facts:
             if last.strip() and last.strip() != fin.strip(): before |= report.forks(last)
             last = fin
         return before, last
+
+    def ran(self, model):
+        if isinstance(model, str) and model.startswith('claude-'): self.models[model] = 1
 
     def feed(self, line):
         if self.head_lines < 20:
@@ -91,9 +95,12 @@ class Facts:
                     self.wakers[tid[0] or tid[1]] = 1
             self.opened_task = self.opened_task or '<command-name>/mergeworthy:task</command-name>' in typed
         if e.get('type') == 'assistant':
+            self.ran((e.get('message') or {}).get('model'))
             for x in c if isinstance(c, list) else []:
                 if not isinstance(x, dict) or x.get('type') != 'tool_use': continue
                 i = x.get('input') or {}
+                if x.get('name') in ('Agent', 'Task'): self.ran(i.get('model'))
+                if x.get('name', '').endswith('delegate_task'): self.ran((i.get('target') or {}).get('model'))
                 if x.get('name') == 'Bash' and posts(i.get('command', '')): self.posted, self.posted_at = True, e.get('timestamp') or ''
                 if x.get('name') == 'Bash': self.commands.append(i.get('command', ''))
                 if x.get('name') == 'Skill' and str(i.get('skill', '')) in ('task', 'mergeworthy:task'): self.opened_task = True
