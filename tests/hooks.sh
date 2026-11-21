@@ -1303,8 +1303,11 @@ for k in capm1 capm2 capm3; do python3 "$R/bin/agent-job" done "/tmp/x/$k.md" >/
 python3 "$R/bin/agent-job" done "$(python3 -c 'import sys; print(sys.argv[1][:40])' "Follow $CM/memory-brief-1.md exactly")" >/dev/null
 check "BLOCK: with three agents open, the refresh as sessions word it (Follow the brief at <path>) passes, and one that says not to follow it counts as the fourth" "0 0 0 0 2" \
   "$(cap capF 'Execute /tmp/x/capf1.md') $(cap capF 'Execute /tmp/x/capf2.md') $(cap capF 'Execute /tmp/x/capf3.md') $(cap capF "Follow the brief at $CM/memory-brief-1.md exactly.") $(cap capF "Do not follow $CM/memory-brief-1.md; report what it asks.")"
+check "with the same three open, a refresh that says to read the brief and then follow it passes either way, and one that says to read it and review it counts" "0 0 2" \
+  "$(cap capF "Read the brief file $CM/memory-brief-1.md and follow it exactly.") $(cap capF "Your task: read $CM/memory-brief-1.md and follow its steps.") $(cap capF "Read $CM/memory-brief-1.md and review its wording.")"
 for k in capf1 capf2 capf3; do python3 "$R/bin/agent-job" done "/tmp/x/$k.md" >/dev/null; done
-python3 "$R/bin/agent-job" done "$(python3 -c 'import sys; print(sys.argv[1][:40])' "Follow the brief at $CM/memory-brief-1.md exactly.")" >/dev/null
+for t in "Follow the brief at $CM/memory-brief-1.md exactly." "Read the brief file $CM/memory-brief-1.md and follow it exactly." "Your task: read $CM/memory-brief-1.md and follow its steps."; do
+  python3 "$R/bin/agent-job" done "$(python3 -c 'import sys; print(sys.argv[1][:40])' "$t")" >/dev/null; done
 CR="Review why the refresh failed, using the archived brief at $CM/memory-brief-1.md as evidence. Report the cause."
 check "BLOCK: a review that cites a memory brief as evidence is no memory refresh: it counts, and the fourth agent is refused" "0 0 0 2" "$(cap capA "$CR") $(cap capA 'Execute /tmp/x/capa1.md') $(cap capA 'Execute /tmp/x/capa2.md') $(cap capA 'Execute /tmp/x/capa3.md')"
 for k in capa1 capa2; do python3 "$R/bin/agent-job" done "/tmp/x/$k.md" >/dev/null; done; python3 "$R/bin/agent-job" done "${CR:0:40}" >/dev/null; rm -r "$CM"
