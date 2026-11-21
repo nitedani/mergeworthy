@@ -287,9 +287,9 @@ if kind == 'pr' and re.match(r'\s*(Draft|Depends|Blocked|Waiting|Stacked|WIP|Sta
 def template_headings(kind, body, where, step):
     """The headings of the repo's PR or issue template (kind 'PR' or 'Issue'), [] without one; a heading the body drops, and a project
     file without the `<kind> template:` line, are findings (#235)."""
-    tpl = post_words.template(_repo, kind)
+    tpl = post_words.template(repo, kind)
     if tpl is None:
-        findings.append(f"the project file for {_repo} has no '{kind} template:' line: add `{kind} template: <path>: `## <heading>`, …` "
+        findings.append(f"the project file for {repo} has no '{kind} template:' line: add `{kind} template: <path>: `## <heading>`, …` "
                         f"from the repo's template, where GitHub reads it ({where}), or `{kind} template: none` (task §Repo study)")
     for h in tpl or []:
         if not re.search(rf'^{re.escape(h)}\s*$', body, re.M):

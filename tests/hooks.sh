@@ -1001,6 +1001,8 @@ tpl() { python3 "$R/bin/post-lint" "$T/${2:-tpl}.md" --kind pr --repo "$1" --par
 check "a template repo's body with its headings and numbered evidence under one passes; without a project file it needs What you should see" "0 1" "$(tpl acme/tpl) $(tpl acme/en)"
 check "PR template: none, like no project file, passes What you should see and fails the template body, asking for no line" "0 1 0 0" "$(tpl acme/none see) $(tpl acme/none) $(tpl acme/none see "no 'PR template:' line") $(tpl acme/en see "no 'PR template:' line")"
 check "BLOCK: a project file without a PR template: line asks for it, beside today's check" "1 0" "$(tpl acme/noline see "no 'PR template:' line") $(tpl acme/noline see)"
+TW="$T/tplw"; mkdir -p "$TW/drafts"; cp "$T/see.md" "$TW/drafts/see.md"; echo acme/noline > "$TW/repos.txt"
+check "without --repo the template check doesn't run, though repos.txt names a repo whose project file lacks the line" 0 "$(cd "$T" && python3 "$R/bin/post-lint" "$TW/drafts/see.md" --kind pr --parent none 2>&1 | grep -c "no 'PR template:' line")"
 check "BLOCK: a template repo's body that drops a template heading" 1 "$(sed 's/^## Why$/## Motivation/' "$T/tpl.md" > "$T/tpd.md"; tpl acme/tpl tpd)"
 check "BLOCK: a template repo's body without numbered evidence" 1 "$(sed 's/^\*\*1\.\*\* //' "$T/tpl.md" > "$T/tpd.md"; tpl acme/tpl tpd)"
 printf '%s\nUploads stall on big files.\n\n### Description\n\nA 50 MB upload never finishes.\n\n### Reproduction\n\n1. Open /upload.\n2. Pick a 50 MB file.\n\n```\nPOST /upload -> pending\n```\n' "$B" > "$T/tpi.md"
