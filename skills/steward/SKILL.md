@@ -9,7 +9,7 @@ Before posting, `gh-watch-start <S>/live <owner/repo>`, all a pass leaves runnin
 
 ## Steps
 
-1. **What came since the last pass:** one watcher round; while a daemon watches `<S>`, its `events.log` past `events.cursor` instead. Watchers in `<S>` except `<S>/live`, which answers like any work folder's, only log: no 👀, owed reply or wake, but a new nitedani/mergeworthy issue: fix it then. Sort new FOLLOW-UP, MAINTAINER REVIEW and MAINTAINER COMMITS in `<S>`'s `events.log` files, and each `sort` line of `steward owed`, by `rules` step 6; report the rest under its owning session or user.
+1. **What came since the last pass:** one watcher round; while a daemon watches `<S>`, its `events.log` past `events.cursor` instead. Watchers in `<S>` except `<S>/live`, which answers like any work folder's, only log: no 👀, owed reply or wake, but a new nitedani/mergeworthy issue: fix it then. Sort new MAINTAINER REVIEWs in `<S>`'s `events.log` files, and each `sort` line of `steward owed`, by `rules` step 6 (a MAINTAINER COMMITS copy only logs: the PR's session answers it); report the rest under its owning session or user.
    Run: `steward round <S>`; `steward owed` · Record: each `events.cursor` in `<S>`
 2. **The numbers:** first-pass acceptance is the goal; hours to merge and tokens per merged PR are guardrails.
    Run: `steward metrics <S>` · Record: `<S>/metrics.jsonl`

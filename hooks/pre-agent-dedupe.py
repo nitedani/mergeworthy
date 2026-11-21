@@ -9,7 +9,7 @@ status (read first) releases the job."""
 import datetime, fcntl, glob, hashlib, itertools, json, os, re, shlex, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import failclosed
-import agent_jobs, launch, memory_file, project_file, review_launch, steward, subprocess, testpaths
+import agent_jobs, launch, memory_file, project_file, review_launch, subprocess, testpaths
 from post_words import fence_spans
 from records import branch_record
 from shellcmd import segments, prog, git_argv, rlines, transcript, Where
@@ -205,20 +205,12 @@ if not register and ti.get('role') not in ('research', 'test') and 'memory-refre
         sys.stderr.write("BLOCKED: the brief works on a repo with a project file; name each project file in it so the agent reads "
                          "and applies them (mergeworthy:delegate step 3):\n" + '\n'.join(missing) + '\n')
         refused()
-    # every agent reads the project file whole: one over its cap is condensed before the next agent starts
-    # the learning thread condensing it is waited for while it runs; its own agents, which do the condensing, pass
-    over = []
-    for r in sorted(named):
-        n = project_file.words(notes[r])
-        if n > project_file.CAP:
-            t = project_file.learning_thread(r)
-            if t and t[0] in steward.threads(d.get('session_id')) + steward.delegators(os.environ.get('T3CODE_THREAD_ID', '')):
-                continue
-            live = t and steward.active(t[0])
-            over.append(f"{notes[r]}: {n} words" + (f"; the learning thread {t[0]} started {t[1]} condenses it: wait for it (`t3 thread show`), don't condense alongside it" if live else ''))
+    # every agent reads the project file whole: one over its cap is condensed before the next agent starts, but by the learning sort,
+    # whose brief (delegate/learn-sort.md) condenses it
+    over = [] if 'delegate/learn-sort.md' in brief else [f"{notes[r]}: {n} words" for r in sorted(named) if (n := project_file.words(notes[r])) > project_file.CAP]
     if over:
         sys.stderr.write(f"BLOCKED: a project file the brief names is over its {project_file.CAP}-word cap: condense it first (mergeworthy:task "
-                         "§Project file), its quotes into the study, unless a learning thread already does:\n" + '\n'.join(over) + '\n')
+                         "§Project file), its quotes into the study, or brief the learning sort (delegate/learn-sort.md):\n" + '\n'.join(over) + '\n')
         refused()
     # The producer reads the standard its checker uses, by path (delegate step 3): code for an implementer, writing for a drafter.
     need = [f for f, applies in (('skills/code/SKILL.md', named and ti.get('role') == 'implementation'),

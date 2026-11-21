@@ -1,6 +1,6 @@
 ---
 name: rules
-description: "A rule, mergeworthy hook or tool failed, can't be followed or was worked around; the user names a failure; a 👎; editing a skill, prompt or rules file; the steward's tick, its FOLLOW-UPs and MAINTAINER REVIEWs: fix the instance, then the rule, or an issue for the steward."
+description: "A rule, mergeworthy hook or tool failed, can't be followed or was worked around; the user names a failure; a 👎; editing a skill, prompt or rules file; the steward's tick, its MAINTAINER REVIEWs: fix the instance, then the rule, or an issue for the steward."
 ---
 
 # Rules
@@ -17,7 +17,7 @@ description: "A rule, mergeworthy hook or tool failed, can't be followed or was 
    Open: `delegate §Reviewers`; `delegate/reviewer.md` (cold-read variant) · Record: its report
 5. **Ship it.** `tests/all.sh .` exits 0, then commit and push in the same step (`git config core.hooksPath .githooks` makes the pre-push hook enforce it), and confirm CI is green. Run `mergeworthy-update` (every installed copy, the watchers), check its version, and probe the failure again there. Never edit an installed or running copy.
    Run: `tests/all.sh .` · Record: the commit, the CI run · Hook: the pre-push hook
-6. **Follow-ups.** Every session whose `events.log` receives a `### FOLLOW-UP` or a `### MAINTAINER REVIEW` (each defect the review names) sorts it: the watcher sends it to the steward's while its watcher runs, else to each session watching the PR. Within 30 minutes of its time (the steward: its next pass), brief the sort, then write one line `<sha, PR or review URL> MISS|TASTE|WORKED|DIRECTION <link or reason>` in your own work folder's `followups-sorted.txt` ("nothing to act on" is no verdict). TASTE and WORKED: the line goes into the project file once `git show <sha>` confirms the commit makes that change (for a review, once its quoted words say it); then, in the same step, find each of our open PRs that breaks the line (`gh search prs --author <our login> --state open --repo <repo>` for every repo that maintainer merges or publishes), fix each through `reply`'s instruction row, and list the PRs checked under the line in `followups-sorted.txt`. MISS: steps 2–5 (step 2 decides whether you fix the rule or open an issue). DIRECTION: the line alone.
+6. **Follow-ups.** The watcher writes a `### MAINTAINER REVIEW` once, to the steward's watch dir while the steward's watcher runs, else to the watch dir that read the PR, whose session sorts it. Within 30 minutes of its time (the steward: its next pass), brief one sort per review (`delegate/followup-sort.md`), then write one line per defect, `<review URL> MISS|TASTE|WORKED|DIRECTION <link or reason>` (a rename: `<PR URL>#rename-<time>`), in your own work folder's `followups-sorted.txt` ("nothing to act on" is no verdict). TASTE and WORKED: the line goes into the project file once the review's words say it; then find each of our open PRs that breaks the line (`gh search prs --author <our login> --state open --repo <repo>` for every repo that maintainer merges or publishes), fix each through `reply`'s instruction row, and list the PRs checked under the line in `followups-sorted.txt`. MISS: steps 2–5. DIRECTION: the line alone.
    Open: `delegate/followup-sort.md`; `task §Project file` · Record: followups-sorted.txt · Hook: stop-lint (30 minutes), gh-watch's T3 re-send
 
 ### Editing

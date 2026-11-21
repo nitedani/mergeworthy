@@ -73,7 +73,7 @@ def events(dirs):
 
 
 def simulate(restart_at=1800, hours=5400):
-    """Seven daemons for 90 minutes (the follow-ups run every 30); at restart_at every one of them is stopped and started again (a plugin update).
+    """Seven daemons for 90 minutes; at restart_at every one of them is stopped and started again (a plugin update).
     -> (gh, events per dir, the events expected, errors)"""
     fresh_home()
     sim = ws.Sim()
@@ -101,15 +101,13 @@ detail_counts = collections.Counter(p for t, m, p, s, r in gh.log if re.fullmatc
 print(f"measured over the simulated 90 minutes: core calls {core}, graphql calls {graphql}, 304 answers {sum(1 for e in gh.log if e[3] == 304)}, commit-detail reads {sum(detail_counts.values())} of {len(detail_counts)} commits")
 check("simulation: no daemon crashed", [], [e[1].strip().splitlines()[-1] for e in errors])
 check(f"seven daemons and a restart for 90 minutes: counted calls within {BUDGET}", True, core <= BUDGET)
-check("every commit's detail read at most once, restart included", 1, max(detail_counts.values(), default=0))
-check("events: each FOLLOW-UP, comment and /agent command arrives once, in the right dir; none for a bot's commit or a dependency bump", want, got)
+check("no commit's detail is read: follow-ups are project-learn's", 0, sum(detail_counts.values()))
+check("events: each comment and /agent command arrives once, in the right dir; no FOLLOW-UP", want, got)
 restart_core = gh.count("core", upto=ws.T0 + 2300) - gh.count("core", upto=ws.T0 + 1800)
 print(f"measured: core calls in the 500 s after the restart: {restart_core}")
 check("a restart of all seven costs few calls: counted calls in the 500 s after it are at most 8", True, restart_core <= 8)
 
 
-bots = {c['sha'] for cs in gh.commits.values() for c in cs if c['author']['login'].endswith('[bot]')}
-check("a bot's commit is never read", 0, sum(1 for p in detail_counts if p.rsplit('/', 1)[1] in bots))
 
 
 # ---------- 2. the cases below each start from a fresh machine ----------
@@ -175,16 +173,17 @@ def two_rounds(m, sim):
 
 
 ok_paths, reserve_paths, low_paths = calls_of(two_rounds, 4000), calls_of(two_rounds, 1400), calls_of(two_rounds, 400)
+discovery = lambda p: p.startswith('search/') or bool(re.fullmatch(r'repos/[^/]+/[^/]+/(issues|pulls)/comments', p.split('?')[0]))
 
 
-@case("budget: with 1400 calls left the shared work (discovery, follow-ups) does nothing and the daemon's own threads are still scanned", "False True")
+@case("budget: with 1400 calls left the shared work (discovery) does nothing and the daemon's own threads are still scanned", "False True")
 def _():
-    return f"{any(p.endswith('/commits') or p.startswith('search/') for p in reserve_paths)} {any(p.endswith('/issues/101/comments') for p in reserve_paths)}"
+    return f"{any(discovery(p) for p in reserve_paths)} {any(p.endswith('/issues/101/comments') for p in reserve_paths)}"
 
 
 @case("budget: with 4000 left the same rounds do the shared work (control)", True)
 def _():
-    return any(p.endswith('/commits') for p in ok_paths)
+    return any(discovery(p) for p in ok_paths)
 
 
 @case("budget: with 400 left only the notifications fast path is called", ["notifications"])
@@ -332,103 +331,6 @@ def _():
         mark = len(gh.log)
         load(dirs['d2'], sim).shared_pass()
         return len(gh.log) - mark
-
-
-@case("noise: a hunk that only changes dependency versions in package.json or a lockfile touches none of your lines; a script change, an added dependency, the same bump in source code, and a bump with a script change in the same hunk, and a changed alias target or file: path do; an alias version bump does not", "[] [] [] [] [11] [11] [11] [11] [11] [11] []")
-def _():
-    with world() as (sim, gh, dirs):
-        m = load(dirs['d1'], sim)
-        bump = '@@ -10,3 +10,3 @@\n ctx\n-    "vite": ">=7.0.1",\n+    "vite": ">=7.1.0",\n ctx'
-        lock = '@@ -10,4 +10,4 @@\n ctx\n-  /vite@7.0.1:\n-    resolution: {integrity: sha512-AAA}\n+  /vite@7.1.0:\n+    resolution: {integrity: sha512-BBB}\n ctx'
-        script = '@@ -10,3 +10,3 @@\n ctx\n-    "build": "tsc",\n+    "build": "tsc -b",\n ctx'
-        added = '@@ -10,2 +10,3 @@\n ctx\n+    "react": "^18.0.0",\n ctx'
-        alias = '@@ -10,3 +10,3 @@\n ctx\n-    "vite": "npm:vite@7.0.0",\n+    "vite": "npm:other@7.1.0",\n ctx'
-        path = '@@ -10,3 +10,3 @@\n ctx\n-    "a": "file:../a",\n+    "a": "file:../b",\n ctx'
-        mixed = bump.replace(' ctx\n-    "vite"', ' ctx\n-    "build": "tsc",\n+    "build": "tsc -b",\n-    "vite"', 1)
-        return ' '.join(str(x) for x in [
-            m.patch_lines(bump, 'packages/vike/package.json')[0], m.patch_lines(lock, 'pnpm-lock.yaml')[0], m.patch_lines(lock, 'a/package-lock.json')[0], m.patch_lines(lock, 'yarn.lock')[0],
-            m.patch_lines(script, 'package.json')[0][:1], m.patch_lines(added, 'package.json')[0][:1], m.patch_lines(bump, 'src/a.ts')[0][:1], m.patch_lines(mixed, 'package.json')[0][:1], m.patch_lines(alias, 'package.json')[0][:1], m.patch_lines(path, 'package.json')[0][:1], m.patch_lines(alias.replace('other@', 'vite@'), 'package.json')[0]])
-
-
-@case("follow-ups: a backlog of 120 commits is read 40 calls a pass, oldest commit first, each commit's detail once", "True True True")
-def _():
-    with world() as (sim, gh, dirs):
-        for i in range(120):  # human commits after PR 50 merged, none touching its lines
-            gh.commit('vikejs/vike', 'alice', [{'filename': f'src/late{i}.ts', 'status': 'modified', 'patch': ws.TS(100)}], when=ws.T0 - 4 * ws.DAY + i * 600)
-        json.dump({'prs': {'vikejs/vike#50': {'state': 'merged'}}, 'author': {'vikejs/vike#50': 'me'}}, open(f"{dirs['d1']}/gh-watch-state.json", 'w'))
-        m = load(dirs['d1'], sim)
-        m.JOBS = tuple(j for j in m.JOBS if j[0] == 'followups')
-        per_pass, order = [], []
-        for _ in range(6):
-            mark = len(gh.log)
-            m.shared_pass()
-            new = [e for e in gh.log[mark:] if e[3] != 304]
-            per_pass.append(len(new))
-            order += [e[2].rsplit('/', 1)[1] for e in new if re.fullmatch(r'repos/vikejs/vike/commits/[0-9a-f]{40}', e[2])]
-            sim.now += 700
-        date = {c['sha']: c['commit']['committer']['date'] for c in gh.commits['vikejs/vike']}
-        first_pass = [date[s] for s in order[:35]]
-        return f"{max(per_pass) <= 40} {first_pass == sorted(first_pass)} {len(order) == len(set(order))}"
-
-
-@case("an update keeps what the old per-dir state knew: a PR followed there is taken over with its cursor, and is not recorded again", "True 0")
-def _():
-    with world() as (sim, gh, dirs):
-        cursor = ws.iso(ws.T0 - 600)
-        old = {'merge_sha': gh.prs[('vikejs/vike', 50)]['merge_commit_sha'], 'base': 'main', 'scanned': cursor, 'checked': ws.T0 - 700, 'until': ws.T0 + 50 * ws.DAY, 'files': {'packages/50/a.ts': [[11, 11]]}}
-        json.dump({'prs': {'vikejs/vike#50': {'state': 'merged'}}, 'author': {'vikejs/vike#50': 'me'}, 'followups': {'vikejs/vike#50': old}}, open(f"{dirs['d1']}/gh-watch-state.json", 'w'))
-        m = load(dirs['d1'], sim)
-        m.JOBS = tuple(j for j in m.JOBS if j[0] == 'followups')
-        m.shared_pass()
-        record = m.shared_read()['followups']['vikejs/vike#50']
-        return f"{record['scanned'] != gh.prs[('vikejs/vike', 50)]['merged_at']} {len([e for e in gh.log if e[2].endswith('/pulls/50')])}"
-
-
-@case("follow-ups: a backlog of 4100 commits (41 pages, more than a pass) is listed across passes, then read oldest first; a later repo is served meanwhile", "True True")
-def _():
-    with world() as (sim, gh, dirs):
-        gh.commits['vikejs/vike'] = []
-        for i in range(4100):
-            gh.commit('vikejs/vike', 'alice', [{'filename': 'packages/50/a.ts', 'status': 'modified', 'patch': ws.TS(11)}], when=ws.T0 - 4 * ws.DAY + i * 60)
-        json.dump({'prs': {'vikejs/vike#50': {'state': 'merged'}, 'vikejs/vike-react#8': {'state': 'merged'}}, 'author': {'vikejs/vike#50': 'me', 'vikejs/vike-react#8': 'me'}}, open(f"{dirs['d1']}/gh-watch-state.json", 'w'))
-        open(f"{dirs['d1']}/threads.txt", 'a').write('vikejs/vike-react 8\n')
-        m = load(dirs['d1'], sim)
-        m.JOBS = tuple(j for j in m.JOBS if j[0] == 'followups')
-        for _ in range(4):
-            m.shared_pass()
-            sim.now += 700
-        details = [e for e in gh.log if re.fullmatch(r'repos/vikejs/vike/commits/[0-9a-f]{40}', e[2])]
-        return f"{bool(details)} {'vikejs/vike-react#8' in m.shared_read()['followups'] and m.shared_read()['followups']['vikejs/vike-react#8']['checked'] > 0}"
-
-
-@case("follow-ups: a commit whose author has no GitHub account is still reported, by its commit author name; your own (by noreply email) and a bot's are not", "True True False False")
-def _():
-    with world(names=['d1']) as (sim, gh, dirs):
-        gh.commits['vikejs/vike'] = []
-        shas = []
-        for i, (name, email) in enumerate([('Alice', 'alice@example.com'), ('Alice', 'alice@example.com'), ('Me', '12+me@users.noreply.github.com'), ('x[bot]', 'x@bots')]):
-            shas.append(gh.commit('vikejs/vike', 'alice', [{'filename': 'packages/50/a.ts', 'status': 'modified', 'patch': ws.TS(11)}], when=ws.T0 - 100 + i))
-            c = next(c for c in gh.commits['vikejs/vike'] if c['sha'] == shas[-1])
-            c['author'] = None
-            c['commit']['author'] = {'name': name, 'email': email}
-        json.dump({'prs': {'vikejs/vike#50': {'state': 'merged'}}, 'author': {'vikejs/vike#50': 'me'}}, open(f"{dirs['d1']}/gh-watch-state.json", 'w'))
-        m = load(dirs['d1'], sim)
-        m.JOBS = tuple(j for j in m.JOBS if j[0] == 'followups')
-        m.shared_pass()
-        out = lines(dirs['d1'])
-        return ' '.join(str(any(s[:10] in l for l in out)) for s in shas)
-
-
-@case("follow-ups: a merged PR of yours that a dir watches only through waiting-on.txt is followed too", True)
-def _():
-    with world(names=['d1']) as (sim, gh, dirs):
-        json.dump({'prs': {'vikejs/vike#50': {'state': 'merged'}}, 'author': {'vikejs/vike#50': 'me'}}, open(f"{dirs['d1']}/gh-watch-state.json", 'w'))
-        open(f"{dirs['d1']}/threads.txt", 'w').write('vikejs/vike 101\n')
-        open(f"{dirs['d1']}/waiting-on.txt", 'w').write('vikejs/vike#50 -> something: act (releases #1)\n')
-        m = load(dirs['d1'], sim)
-        m.JOBS = tuple(j for j in m.JOBS if j[0] == 'followups')
-        m.shared_pass()
-        return 'vikejs/vike#50' in m.shared_read()['followups']
 
 
 @case("a renamed repo's old path (301 Moved Permanently) is followed to its new one, so its items come back", [6106953944])

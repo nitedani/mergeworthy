@@ -151,20 +151,20 @@ echo 'o/r#5: the wrapped facts line starts with "·"' > "$WD/defects-open.md"
 check "BLOCK: an open defects-open.md line is named at turn end, once; cleared, nothing" "2 1 0 0" "$(stop "$WD") $(grep -c 'the wrapped facts line starts with' "$T/err") $(stop "$WD") $(echo 'fixed in abc1234: o/r#6: the dot' > "$WD/defects-open.md"; stop "$WD")"
 rm -f "$WD/defects-open.md" "$WD/defects-told"
 F40=$(date -u -d '-40 minutes' +%FT%TZ); F10=$(date -u -d '-10 minutes' +%FT%TZ)
-printf '### FOLLOW-UP o/r#5, #6: abcdef1234 by carol changes lines from your PR  <c>  at %s\n### FOLLOW-UP o/r#5: https://github.com/o/r/pull/9 by alice references your PR  at %s\n' "$F40" "$F10" > "$WD/events.log"
-check "BLOCK: a FOLLOW-UP unsorted after 30 minutes, named; a newer one waits" "2 1 0" "$(stop "$WD") $(grep -c abcdef1234 "$T/err") $(grep -c pull/9 "$T/err")"
+printf '### MAINTAINER REVIEW o/r#5: abcdef1234 by carol reviews your PR  at %s\n### MAINTAINER REVIEW o/r#5: https://github.com/o/r/pull/9 by alice reviews your PR  at %s\n' "$F40" "$F10" > "$WD/events.log"
+check "BLOCK: a MAINTAINER REVIEW unsorted after 30 minutes, named; a newer one waits" "2 1 0" "$(stop "$WD") $(grep -c abcdef1234 "$T/err") $(grep -c pull/9 "$T/err")"
 printf '### MAINTAINER REVIEW o/r#5: https://github.com/o/r/pull/5#pullrequestreview-71 by magne reviews your PR  at %s\n' "$F40" >> "$WD/events.log"
-check "BLOCK: a MAINTAINER REVIEW unsorted after 30 minutes, named" "2 1" "$(stop "$WD") $(grep -c pullrequestreview-71 "$T/err")"
+check "BLOCK: another MAINTAINER REVIEW unsorted after 30 minutes, named" "2 1" "$(stop "$WD") $(grep -c pullrequestreview-71 "$T/err")"
 echo "abcdef1234 nothing to act on" > "$WD/followups-sorted.txt"
 check "BLOCK: 'nothing to act on' is not a verdict" 2 "$(stop "$WD")"
 printf 'abcdef1234567 TASTE https://example.invalid/notes\nhttps://github.com/o/r/pull/5#pullrequestreview-71 MISS https://example.invalid/ledger\n' > "$WD/followups-sorted.txt"
 check "a verdict line in followups-sorted.txt sorts it" 0 "$(stop "$WD")"
 rv='https://github.com/o/r/pull/5#pullrequestreview-71 MISS https://example.invalid/ledger'
 sorts() { printf '%s TASTE https://example.invalid/notes\n%s\n' "$1" "$rv" > "$WD/followups-sorted.txt"; stop "$WD"; }
-check "a commit's URL and a 7-character sha sort its FOLLOW-UP; another commit's URL doesn't" "0 0 2" "$(sorts https://github.com/o/r/commit/abcdef1234) $(sorts abcdef1) $(sorts https://github.com/o/r/commit/1234567890)"
+check "a commit's URL and a 7-character sha sort its event; another commit's URL doesn't" "0 0 2" "$(sorts https://github.com/o/r/commit/abcdef1234) $(sorts abcdef1) $(sorts https://github.com/o/r/commit/1234567890)"
 rm "$WD/events.log" "$WD/followups-sorted.txt"
-printf '### FOLLOW-UP o/r#5: https://github.com/o/r/pull/5#rename-2026-10-14T10:00:00Z by brillout renames your PR: "fix: a" -> "fix(core): a"  at %s\n' "$F40" > "$WD/events.log"
-check "BLOCK: the watcher's PR-rename FOLLOW-UP unsorted after 30 minutes, named" "2 1" "$(stop "$WD") $(grep -c 'pull/5#rename-2026-10-14T10:00:00Z' "$T/err")"
+printf '### MAINTAINER REVIEW o/r#5: https://github.com/o/r/pull/5#rename-2026-10-14T10:00:00Z by brillout renames your PR: "fix: a" -> "fix(core): a"  at %s\n' "$F40" > "$WD/events.log"
+check "BLOCK: the watcher's PR-rename MAINTAINER REVIEW unsorted after 30 minutes, named" "2 1" "$(stop "$WD") $(grep -c 'pull/5#rename-2026-10-14T10:00:00Z' "$T/err")"
 rm "$WD/events.log"
 echo "o/r 1 comment 42 by someone" > "$WD/replies-owed.md"
 check "control: open owed line, cwd=watch dir" 2 "$(stop "$WD")"
@@ -1521,34 +1521,10 @@ echo "Studied: $(date -u +%F)" > "$HOME/.mergeworthy/projects/o/r.study.md"
 cp "$HOME/.mergeworthy/projects/o/r.md" "$T/r.md"; yes word | head -n 2500 >> "$HOME/.mergeworthy/projects/o/r.md"
 check "BLOCK: a brief naming a project file over its 2500-word cap, with its count; research needs none; at the cap it passes" "2 1 0 0" "$(ag "$T" 'Fix o/r#5 by skills/code/SKILL.md, notes in ~/.mergeworthy/projects/o/r.md') $(grep -c 'o/r.md: 2510 words' "$T/err") $(ag "$T" 'Mine session logs for o/r' research) $(cp "$T/r.md" "$HOME/.mergeworthy/projects/o/r.md"; yes word | head -n $((2500 - $(wc -w < "$T/r.md"))) >> "$HOME/.mergeworthy/projects/o/r.md"; ag "$T" 'Fix o/r#5 by skills/code/SKILL.md, notes in ~/.mergeworthy/projects/o/r.md')"
 cp "$T/r.md" "$HOME/.mergeworthy/projects/o/r.md"; yes word | head -n 2500 >> "$HOME/.mergeworthy/projects/o/r.md"
-mkdir -p "$HOME/.mergeworthy/work/project-learn"; echo "$(date -u +%F) $(date -u +%FT%TZ) thread thread-9; 2 to sort: o/r-two o/r" > "$HOME/.mergeworthy/work/project-learn/runs.txt"
-# T3's state: the learning thread thread-9 running, a task it delegated, and another session's thread
-mkdir -p "$HOME/.t3/userdata"; python3 - "$HOME/.t3/userdata/statev2.sqlite" <<'EOF2'
-import sqlite3, sys
-c = sqlite3.connect(sys.argv[1])
-c.execute('create table orchestration_v2_projection_provider_threads (provider_thread_id text, thread_id text, payload_json text)')
-c.execute('create table orchestration_v2_projection_subagents (subagent_id text, thread_id text, child_thread_id text, status text)')
-c.execute('create table orchestration_v2_projection_runs (run_id text, thread_id text, status text)')
-c.execute("insert into orchestration_v2_projection_runs values ('r9', 'thread-9', 'running')")
-c.execute("insert into orchestration_v2_projection_subagents values ('s9', 'thread-9', 'thread:delegated-task:sort-1', 'running')")
-c.execute("""insert into orchestration_v2_projection_provider_threads values ('p9', 'thread-9', '{"nativeThreadRef":{"driver":"claudeAgent","nativeId":"sess-9"}}')"""); c.commit()
-EOF2
 OVER='Fix o/r#5 by skills/code/SKILL.md, notes in ~/.mergeworthy/projects/o/r.md'
-check "BLOCK: over the cap while the learning thread sorting that repo runs: the refusal names the thread, so the session doesn't condense alongside it" "2 1" \
-  "$(T3CODE_THREAD_ID=other-thread ag "$T" "$OVER") $(grep -c 'learning thread thread-9 started' "$T/err")"
-check "the learning thread's own agents pass the cap for the file it condenses: launched from it, or from a task it delegated" "0 0" \
-  "$(T3CODE_THREAD_ID=thread-9 ag "$T" "$OVER") $(T3CODE_THREAD_ID=thread:delegated-task:sort-1 ag "$T" "$OVER")"
-agsess() { # session_id: a brief launched from that Claude session, with no T3CODE_THREAD_ID
-  python3 -c 'import json,sys,time; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","cwd":sys.argv[1],"session_id":sys.argv[3],"tool_input":{"task":sys.argv[2],"title":sys.argv[2][:50],"role":"implementation","clientRequestId":f"ag-{time.time_ns()}-r1"}}))' "$T" "$OVER$AFX" "$1" \
-    | env -u T3CODE_THREAD_ID timeout 10 python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; grep -c 'over its 2500-word cap' "$T/err"; }
-check "the learning thread's own session, known only by its session id, passes the cap; another session is refused naming the thread" "0 1 1" \
-  "$(agsess sess-9) $(agsess sess-other) $(grep -c 'the learning thread thread-9 started' "$T/err")"
-python3 -c 'import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); c.execute("update orchestration_v2_projection_runs set status = ?", ("completed",)); c.execute("update orchestration_v2_projection_subagents set status = ?", ("completed",)); c.commit()' "$HOME/.t3/userdata/statev2.sqlite"
-check "BLOCK: once the learning thread ended, the refusal names no thread: the session condenses the file itself" "2 0 1" \
-  "$(T3CODE_THREAD_ID=other-thread ag "$T" "$OVER") $(grep -c 'the learning thread thread-9' "$T/err") $(grep -c 'condense it first' "$T/err")"
-rm "$HOME/.t3/userdata/statev2.sqlite"
-check "BLOCK: without T3's database the learning thread counts as ended" "2 0" "$(ag "$T" "$OVER") $(grep -c 'the learning thread thread-9' "$T/err")"
-rm -r "$HOME/.mergeworthy/work/project-learn"; cp "$T/r.md" "$HOME/.mergeworthy/projects/o/r.md"
+check "a learning sort's brief (delegate/learn-sort.md) passes the cap for the file it condenses; another brief is refused" "0 2" \
+  "$(ag "$T" "Follow ~/.mergeworthy/current/skills/delegate/learn-sort.md for o/r by ~/.mergeworthy/current/skills/code/SKILL.md, notes in ~/.mergeworthy/projects/o/r.md") $(ag "$T" "$OVER")"
+cp "$T/r.md" "$HOME/.mergeworthy/projects/o/r.md"
 check "BLOCK: an implementation brief for that repo without code/SKILL.md, naming it" "2 1" "$(ag "$T" 'Build o/r#6 per ~/.mergeworthy/projects/o/r.md') $(grep -c 'skills/code/SKILL.md' "$T/err")"
 check "a review brief needs no code/SKILL.md" 0 "$(ag "$T" 'Review o/r#8 per ~/.mergeworthy/projects/o/r.md' review)"
 # pre-agent-dedupe: the project file's `## Agents` line `Effort: <effort>` is the effort every agent for its repo launches at
@@ -1634,9 +1610,9 @@ check "BLOCK: a brief with a template's placeholder unfilled, naming it and its 
 check "BLOCK: a slot of a template's code block indented in a list item (delegate/SKILL.md's reviewer launch)" "2 1" "$(ag "$T" $'Review the diff.\n{"target": {"options": {"<its effort option>": "high"}}}' review) $(grep -c '<its effort option> (delegate/SKILL.md)' "$T/err")"
 check "a filled brief passes with the paste-in rules (their <work folder>), an output form in backticks and a quoted HTML tag" 0 "$(ag "$T" "$(printf 'Verify the slice: try the edges: the abort path.\nFinal message: the gates as `<command> -> exit <code>`; check the <head> tags.\n'; cat "$R/skills/delegate/agent.md")" review)"
 check "a brief quoting a line format in backticks that holds a template's slot passes (a format, not a slot)" 0 "$(ag "$T" 'Check each `PROMISED <thread>: <what> (<draft>)` line in proposals-open.md.' review)"
-mkdir -p "$T/mem"; printf 'Next: the brief may say (git show <sha>) in a quoted ruling.\n' > "$T/mem/memory.md"; printf 'Summarize %s into the digest.\n' "$T/mem/memory.md" > "$T/mem/memory-brief-1.md"
-check "an input file the brief names (memory.md quoting <sha>) is not scanned for slots; the brief file still is" "0 2" "$(ag "$T" "Follow $T/mem/memory-brief-1.md" research) $(printf 'Sort it (git show <sha>).\n' > "$T/mem/sort-brief.md"; ag "$T" "Follow $T/mem/sort-brief.md" review)"
-CB="$HOME/.mergeworthy/work/rb"; mkdir -p "$CB"; printf 'Recorded output form: <sha>\n' | tee "$CB/memory.md" > "$CB/causes.md"; printf 'Sort it (git show <sha>).\n' > "$CB/sort.md"
+mkdir -p "$T/mem"; printf 'Next: the brief may say (git diff <base>...<head SHA>) in a quoted ruling.\n' > "$T/mem/memory.md"; printf 'Summarize %s into the digest.\n' "$T/mem/memory.md" > "$T/mem/memory-brief-1.md"
+check "an input file the brief names (memory.md quoting <head SHA>) is not scanned for slots; the brief file still is" "0 2" "$(ag "$T" "Follow $T/mem/memory-brief-1.md" research) $(printf 'Sort it (git diff <base>...<head SHA>).\n' > "$T/mem/sort-brief.md"; ag "$T" "Follow $T/mem/sort-brief.md" review)"
+CB="$HOME/.mergeworthy/work/rb"; mkdir -p "$CB"; printf 'Recorded output form: <head SHA>\n' | tee "$CB/memory.md" > "$CB/causes.md"; printf 'Sort it (git diff <base>...<head SHA>).\n' > "$CB/sort.md"
 check "a file read for context in a sentence that also says do or follow is no brief; BLOCK a file the verb governs (do the brief at, follow ... exactly)" "0 0 0 2 2" \
   "$(ag "$T" "Read $CB/memory.md for context and do the review." review) $(ag "$T" "Read $CB/causes.md for context and do the review." review) $(ag "$T" "Read $CB/memory.md for context and follow the reviewer instructions." review) $(ag "$T" "Read and do the brief at $CB/sort.md." review) $(ag "$T" "Follow $CB/sort.md exactly." review)"
 printf 'Context only.\n' > "$CB/plain.md"
@@ -3521,14 +3497,14 @@ check "the steward's agent is found in JSON written with spaces" 0 "$(sg "git -C
 mv "$HOME/.t3/userdata/statev2.sqlite" "$T/state.bak"
 check "without T3's database, the session its watch dir's session file names is the steward; another isn't" "0 2" "$(sg "git -C $T/mwc push $T/elsewhere.git HEAD:main" steward-session "$T") $(sg "git -C $T/mwc push $T/elsewhere.git HEAD:main" other-session "$T")"
 mv "$T/state.bak" "$HOME/.t3/userdata/statev2.sqlite"
-printf '### FOLLOW-UP o/r#5: abcdef1234 by carol changes lines from your PR  <c>  at %s\n' "$(date -u -d '-40 minutes' +%FT%TZ)" > "$SW/events.log"; : > "$WD/events.log"; echo "$WD" > "$HOME/.claude/gh-watch-dirs.txt"
+printf '### MAINTAINER REVIEW o/r#5: abcdef1234 by carol reviews your PR  at %s\n' "$(date -u -d '-40 minutes' +%FT%TZ)" > "$SW/events.log"; : > "$WD/events.log"; echo "$WD" > "$HOME/.claude/gh-watch-dirs.txt"
 tr_file "Done."
 stop_in() { python3 -c 'import json,sys; print(json.dumps({"transcript_path":sys.argv[1],"cwd":sys.argv[2],"session_id":sys.argv[3]}))' "$T/tr.jsonl" "$1" "$2" \
   | MERGEWORTHY_STOP_CHECKIN=off python3 "$R/hooks/stop-lint.py" 2>"$T/err"; echo $?; }  # cwd session
 s1=$(stop_in "$SW" steward-session); echo "$SW" >> "$HOME/.claude/gh-watch-dirs.txt"; echo steward-session > "$SW/passed"
-check "with a steward, its unsorted FOLLOW-UP waits for its pass, then blocks it, not an orchestrator" "0 2 0" "$s1 $(stop_in "$SW" steward-session) $(stop "$WD")"
+check "with a steward, its unsorted MAINTAINER REVIEW waits for its pass, then blocks it, not an orchestrator" "0 2 0" "$s1 $(stop_in "$SW" steward-session) $(stop "$WD")"
 cp "$SW/events.log" "$WD/events.log"
-check "a FOLLOW-UP that fell back to the orchestrator's dir (no steward watcher ran) blocks the orchestrator" 2 "$(stop "$WD")"
+check "a MAINTAINER REVIEW that fell back to the orchestrator's dir (no steward watcher ran) blocks the orchestrator" 2 "$(stop "$WD")"
 echo 'abcdef1234 WORKED https://github.com/o/r/pull/5#issuecomment-1' > "$SW/followups-sorted.txt"
 check "a WORKED verdict sorts it" 0 "$(stop_in "$SW" steward-session)"
 echo "$WD" > "$HOME/.claude/gh-watch-dirs.txt"

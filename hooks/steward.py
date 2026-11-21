@@ -13,6 +13,12 @@ def folder():
     """The steward's folder: the first word of ~/.mergeworthy/steward, else ~/.mergeworthy/work/steward (mergeworthy:steward)."""
     return (read() or (os.path.expanduser('~/.mergeworthy/work/steward'),))[0]
 
+def in_folder(path):
+    """True for the steward's folder or a dir in it (<S>, <S>/live): disk-sweep's w-done keeps it, and its watchers don't stop when T3
+    deletes the steward's thread, since T3 can settle and then delete that thread while the steward's PRs are open."""
+    own, p = os.path.realpath(folder()), os.path.realpath(path)
+    return p == own or p.startswith(own + os.sep)
+
 def live():
     """The live dir, <folder>/live: the watcher a pass leaves on what it posted (mergeworthy:steward), which answers like any work folder's."""
     return os.path.join(folder(), 'live')
@@ -49,13 +55,13 @@ def sorted_as(ref, verdicts):
     return next((v for k, v in verdicts.items() if k == ref or sha(k) and sha(ref) and (k.startswith(ref) or ref.startswith(k))), None)
 
 def unsorted(wd, older=0):
-    """(line, key, epoch) of each FOLLOW-UP and MAINTAINER REVIEW in wd's events.log more than older seconds old with no verdict in its
+    """(line, key, epoch) of each MAINTAINER REVIEW in wd's events.log more than older seconds old with no verdict in its
     followups-sorted.txt (mergeworthy:rules step 6)."""
     try: log = open(os.path.join(wd, 'events.log'), errors='replace').read()
     except OSError: return []
     done = sorted_verdicts(os.path.join(wd, 'followups-sorted.txt'))
     events = ((m[0], m[1], datetime.datetime.fromisoformat(m[2].replace('Z', '+00:00')).timestamp())
-              for m in re.finditer(r'^### (?:FOLLOW-UP|MAINTAINER REVIEW) [^:\n]+: (\S+) by .*  at (\S+Z)$', log, re.M))
+              for m in re.finditer(r'^### MAINTAINER REVIEW [^:\n]+: (\S+) by .*  at (\S+Z)$', log, re.M))
     return [e for e in dict.fromkeys(events) if time.time() - e[2] > older and not sorted_as(e[1], done)]
 
 # The statuses T3 Code counts as active: a run's (its orchestration_v2_projection_runs_recovery_idx) and a delegated task's (its binary's widest set)
@@ -73,10 +79,6 @@ def _db(ask, default):
         return default
     finally:
         c.close()
-
-def projects():
-    """The workspace folders of T3 Code's projects neither deleted nor archived, or None when its state can't be read."""
-    return _db(lambda c: [r[0] for r in c.execute("select workspace_root from projection_projects where deleted_at is null and archived_at is null")], None)
 
 def _ask(session_id, ask, default):
     """ask(connection, the T3 thread a Claude session runs in), or default without that thread or on an error."""
@@ -122,10 +124,28 @@ def stopped(tid):
     return _db(ask, False)
 
 def settled(tid):
-    """True while T3 thread tid is settled (put away by the user, or by T3 after a week idle): any message it receives brings it back."""
-    r = _db(lambda c: c.execute("select json_extract(payload_json, '$.settledOverride') from orchestration_v2_projection_threads where thread_id = ?",
-                                (tid,)).fetchone(), None)
-    return bool(r) and r[0] == 'settled'
+    """True while T3 thread tid is settled, by the user or by T3 after a week idle, or archived (thread_state): any message it receives
+    brings it back."""
+    return thread_state(tid) == 'settled'
+
+def thread_of(wd):
+    """The T3 thread a watch dir is bound to: its t3-thread, else the t3-gone T3 once reported not found; '' without either."""
+    return first(os.path.join(wd, 't3-thread')) or first(os.path.join(wd, 't3-gone'))
+
+def thread_state(tid):
+    """What T3's database says of thread tid, the one reader of it for the watcher's tick and disk-sweep's w-done: 'deleted' once its
+    row holds a deleted_at or T3 has no row for it, 'settled' while it is settled as T3 counts it (settledOverride 'settled' or a
+    settledAt, ThreadPullRequestService) or archived (archived_at), else 'live'; None without a thread or when the database can't be read."""
+    if not tid:
+        return None
+    row = _db(lambda c: [c.execute("select deleted_at, archived_at, json_extract(payload_json, '$.settledOverride'), json_extract(payload_json, '$.settledAt')"
+                                   " from orchestration_v2_projection_threads where thread_id = ?", (tid,)).fetchone()], None)
+    if row is None:
+        return None
+    if row[0] is None or row[0][0] is not None:
+        return 'deleted'
+    _, archived, override, settled_at = row[0]
+    return 'settled' if archived is not None or override == 'settled' or settled_at is not None else 'live'
 
 def started(run_id):
     """True once T3 started the run, False while it can still start, None when it ended without starting, is gone or can't be read."""
