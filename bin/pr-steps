@@ -122,16 +122,16 @@ pbase() {
   local pb; pb=$(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || true)
   git merge-base HEAD "${pb:+origin/$pb}" 2>/dev/null || git merge-base HEAD "$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)" 2>/dev/null || true
 }
-# drift_note <step>: notes a review or finality step recorded on $sha under refs/notes/drift, once, which the drift count anchors on
-# (hooks/drift.py); the repo's notes.rewriteRef gets refs/notes/drift beside any value it has, so an amend or a rebase copies the note
+# drift_note <step>: notes a review or finality step on $sha under refs/notes/drift, once, which the drift count anchors on (hooks/drift.py),
+# before its record, which a failed note leaves unwritten; the repo's notes.rewriteRef gets refs/notes/drift beside any value it has, so an
+# amend or a rebase copies the note
 drift_note() {
   local k id=(); case "$1" in verify|shape|reverify|fresh|small) k=review ;; finality) k=finality ;; *) return 0 ;; esac
   [ -n "$(git config user.email)" ] || id=(-c user.name=pr-steps -c user.email=pr-steps@localhost)  # a note is a commit, which needs an identity
-  git config --get-all notes.rewriteRef | grep -qxF refs/notes/drift || git config --add notes.rewriteRef refs/notes/drift || return
-  git notes --ref=drift show "$sha" 2>/dev/null | grep -qxF "$k" || git "${id[@]}" notes --ref=drift append -m "$k" "$sha"
+  { git config --get-all notes.rewriteRef | grep -qxF refs/notes/drift || git config --add notes.rewriteRef refs/notes/drift; } &&
+    { git notes --ref=drift show "$sha" 2>/dev/null | grep -qxF "$k" || git "${id[@]}" notes --ref=drift append -m "$k" "$sha"; } ||
+    { echo "the drift note of $out on $sha could not be written (git's error above), so nothing is recorded: fix that, then run the same pr-steps again" >&2; exit 1; }
 }
-# unrecord <size>: takes back the record just appended to $sha's file, which was <size> bytes before it, when its drift note failed
-unrecord() { local f=~/.claude/pr-steps/"$sha"; head -c "$1" "$f" > "$f.tmp" && mv "$f.tmp" "$f"; echo "the drift note of $out on $sha could not be written (git's error above), so it is not recorded: fix that, then run the same pr-steps again" >&2; exit 1; }
 # recorded_as <step>: whether $out is recorded on $sha as that step, the same report's earlier record
 recorded_as() { S="$1 $(realpath "$out") " awk 'index($0, ENVIRON["S"]) == 1 { f = 1 } END { exit !f }' ~/.claude/pr-steps/"$sha" 2>/dev/null; }
 # build output, not code a reviewer reads: those of the paths on stdin, a line each, that testpaths.generated finds
@@ -163,11 +163,10 @@ if [ "$step" = small ]; then
   # the verdict ends the report, before any trailing Verification or not_checked section (delegate/agent.md asks every agent for not_checked)
   verdict=$(awk '{ l = tolower($0) } l ~ /^#+[ \t]*(verification|not[ _]checked)([^a-z]|$)/ { tail = 1; next } /^#/ { tail = 0 } !tail' "$out" | grep -v '^[[:space:]]*$' | tail -n2 | tr '\n' '|')
   [ "$(grep -v '^[[:space:]]*$' "$out" | tail -n2 | tr '\n' '|')" = 'NO BUGS|MERGE AS IS: yes|' ] || [ "$verdict" = 'NO BUGS|MERGE AS IS: yes|' ] || ledger_ok || { echo "$out does not end with NO BUGS and MERGE AS IS: yes: fix what it found and send the same reviewer round 2 checking that fix; after round 2, record it with --ledger <the loop's ledger>" >&2; exit 1; }
-  # a retry of the same record writes a note its first run failed to
+  # the same record, made in another clone of this commit, still notes it in this one
   grep -qsF " $(realpath "$out") " ~/.claude/pr-steps/"$sha" && { ! recorded_as verify || drift_note small; echo "$out is already recorded for $sha" >&2; exit 1; }
-  size=$(( $( { cat ~/.claude/pr-steps/"$sha" 2>/dev/null || true; } | wc -c) ))
+  drift_note small
   for k in verify shape reverify fresh; do echo "$k $(realpath "$out") $(date -u +%FT%TZ)" >> ~/.claude/pr-steps/"$sha"; done
-  drift_note small || unrecord "$size"
   echo "recorded small fix ($n lines) for $sha: verify, shape, reverify, fresh; run the gates next"
   exit 0
 fi
@@ -355,8 +354,7 @@ esac
 fi
 [ "$step" != union ] || { proof=$(realpath "$out"); record_union "$ua" "$ub"; exit 0; }
 grep -qsF " $(realpath "$out") " ~/.claude/pr-steps/"$sha" && { ! recorded_as "$step" || drift_note "$step"; echo "$out is already recorded for $sha: each step has its own output" >&2; exit 1; }
+drift_note "$step"
 mkdir -p ~/.claude/pr-steps
-size=$(( $( { cat ~/.claude/pr-steps/"$sha" 2>/dev/null || true; } | wc -c) ))
 echo "$step $(realpath "$out") $(date -u +%FT%TZ)" >> ~/.claude/pr-steps/$sha
-drift_note "$step" || unrecord "$size"
 echo "recorded $step for $sha"

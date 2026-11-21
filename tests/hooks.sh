@@ -4541,10 +4541,20 @@ check "a review recorded where git has no identity records its note; BLOCK: the 
 dn=; for c in 'git notes --ref=drift append -m finality HEAD' 'git notes --ref refs/notes/drift add -f -m finality HEAD' 'git -c core.notesRef=refs/notes/drift notes remove HEAD' \
   'git update-ref refs/notes/drift HEAD' "git push $T/notes.git refs/notes/drift" 'git notes --ref=drift show HEAD' 'git notes append -m mine HEAD'; do dn="$dn $(bg "$c" "$SN")$(grep -c 'refs/notes/drift are written by .pr-steps <step>' "$T/err")"; done
 check "BLOCK: git notes add, append and remove on refs/notes/drift, update-ref and a push of it, naming pr-steps; git notes show of it and a note on another ref pass" " 21 21 21 21 21 00 00" "$dn"
-chmod a-w "$SN/.git/refs/notes"; f1=$(cd "$SN" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null 2>&1; echo $?); chmod u+w "$SN/.git/refs/notes"
-f1r=$(grep -c '^finality ' "$HOME/.claude/pr-steps/$(git -C "$SN" rev-parse HEAD)")
-f2=$(cd "$SN" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null 2>&1; echo $?); f6=$(bg 'git commit -m n6' "$SN"); (cd "$SN" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null 2>&1)
-check "a finality record whose drift note can't be written fails and keeps no record; its retry records it and lets the 6th change pass, with one note" "1 0 0 0 1" "$([ "$f1" = 0 ] || echo 1) $f1r $f2 $f6 $(git -C "$SN" notes --ref=drift show HEAD | grep -cx finality)"
+# a finality whose drift note can't be written records nothing, even where its record's folder is read-only too, and the 6th change stays refused
+SNF="$HOME/.claude/pr-steps/$(git -C "$SN" rev-parse HEAD)"; chmod a-w "$SN/.git/refs/notes" "$HOME/.claude/pr-steps"
+f1=$(cd "$SN" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null 2>&1; echo $?); chmod u+w "$SN/.git/refs/notes" "$HOME/.claude/pr-steps"
+check "BLOCK: a finality whose drift note can't be written fails, records nothing and leaves the 6th change refused" "1 0 2" "$([ "$f1" = 0 ] || echo 1) $(grep -c '^finality ' "$SNF") $(bg 'git commit -m n6' "$SN")"
+# a finality waiting on the drift notes' lock while another worktree records quick on the same commit leaves that record whole
+git -C "$SN" worktree add -q --detach "$T/simpn2" HEAD; git -C "$SN" config core.filesRefLockTimeout 2000; : > "$SN/.git/refs/notes/drift.lock"
+(cd "$SN" && exec bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null 2>&1) & fp=$!
+for _ in $(seq 50); do grep -q '^finality ' "$SNF" && break; kill -0 $fp 2>/dev/null || break; sleep 0.1; done; quick "$T/simpn2"; wait $fp; f2=$?
+rm "$SN/.git/refs/notes/drift.lock"; git -C "$SN" config --unset core.filesRefLockTimeout
+check "a finality whose note waits on a held lock fails and records nothing; quick, recorded meanwhile from another worktree, stays" "1 0 1" "$([ "$f2" = 0 ] || echo 1) $(grep -c '^finality ' "$SNF") $(grep -c '^quick ' "$SNF")"
+# a finality whose record can't be appended after its note: the same pr-steps again records it, its note written once, and the 6th change passes
+chmod a-w "$SNF"; f3=$(cd "$SN" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null 2>&1; echo $?); chmod u+w "$SNF"
+f4=$(cd "$SN" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null 2>&1; echo $?)
+check "a finality whose record append fails, run again, records once with one note; the 6th change passes" "1 0 1 1 0" "$([ "$f3" = 0 ] || echo 1) $f4 $(grep -c '^finality ' "$SNF") $(git -C "$SN" notes --ref=drift show HEAD | grep -cx finality) $(bg 'git commit -m n6' "$SN")"
 # under a 1 KiB file-size limit a finality record either records whole or anchors nothing: its exit and the next change's verdict agree
 rc "$SN" -m n6; for i in 1 2 3 4; do echo "u$i" >> "$SN/a.py"; rc "$SN" -am "u$i"; done; echo u5 >> "$SN/a.py"; git -C "$SN" add a.py
 fu=$(cd "$SN" && bash -c 'ulimit -f 1; bash "$@"' bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null 2>&1; echo $?); vu=$(bg 'git commit -m u5' "$SN")
