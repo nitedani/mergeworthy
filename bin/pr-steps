@@ -126,10 +126,10 @@ pbase() {
 # before its record, which a failed note leaves unwritten; the repo's notes.rewriteRef gets refs/notes/drift beside any value it has, so an
 # amend or a rebase copies the note
 drift_note() {
-  local k id=(); case "$1" in verify|shape|reverify|fresh|small) k=review ;; finality) k=finality ;; *) return 0 ;; esac
-  [ -n "$(git config user.email)" ] || id=(-c user.name=pr-steps -c user.email=pr-steps@localhost)  # a note is a commit, which needs an identity
+  local k; case "$1" in verify|shape|reverify|fresh|small) k=review ;; finality) k=finality ;; *) return 0 ;; esac
   { git config --get-all notes.rewriteRef | grep -qxF refs/notes/drift || git config --add notes.rewriteRef refs/notes/drift; } &&
-    { git notes --ref=drift show "$sha" 2>/dev/null | grep -qxF "$k" || git "${id[@]}" notes --ref=drift append -m "$k" "$sha"; } ||
+    # a note is a commit, which needs an identity: pr-steps' own, which no half-set or useConfigOnly identity can fail
+    { git notes --ref=drift show "$sha" 2>/dev/null | grep -qxF "$k" || git -c user.name=pr-steps -c user.email=pr-steps@localhost notes --ref=drift append -m "$k" "$sha"; } ||
     { echo "the drift note of $out on $sha could not be written (git's error above), so nothing is recorded: fix that, then run the same pr-steps again" >&2; exit 1; }
 }
 # recorded_as <step>: whether $out is recorded on $sha as that step, the same report's earlier record
