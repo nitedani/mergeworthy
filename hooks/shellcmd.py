@@ -166,7 +166,7 @@ def _scope(kind, name='', items=()):
     """A new scope of kind, for Seg.scopes; name: the function whose body it is, a for loop's variable, CHILD for the script a child
     shell runs (`bash -c`), which gets none of the line's unexported variables, so it starts with them unknown, or STDIN for the script
     a shell reads from a heredoc or <<<, which may run after later commands of the line moved, so it starts knowing nothing; items: the
-    words the loop's variable takes, or a child shell's $1.."""
+    words the loop's variable takes, or a child shell's $0 and arguments (None where they can't be told)."""
     return ((next(_ids), kind, name, items),)
 
 
@@ -421,7 +421,8 @@ def parse(cmd, depth=0, scopes=(), loop=False):
         script = here[0] if stdin else script
         if script:
             same = t[:1] and os.path.basename(t[0]) == 'eval'  # eval runs its words in this shell; a child shell, in its own
-            args = next((t[i + 2:] for i, x in enumerate(t) if x is script), ()) if os.path.basename(t[0]) in SHELLS else ()  # after its $0
+            wrapped = {os.path.basename(x) for x in s[:len(s) - len(t)]}  # xargs, parallel and watch add words or join them into a script
+            args = next((operands(t[i + 1:]) for i, x in enumerate(t) if x is script), None) if os.path.basename(t[0]) in SHELLS and not wrapped & {'xargs', 'parallel', 'watch'} else None
             inner, e = parse(_marked(script) if isinstance(script, Word) and not stdin else script, depth + 1,
                              s.scopes + (() if same else _scope(ISOLATING, STDIN) if stdin else _scope(ISOLATING, CHILD, args)), s.loop)
             for x in inner: x.nested, x.piped = True, x.piped or s.piped
@@ -887,7 +888,7 @@ class Where:
             if x[1] == CONDITIONAL and x[2]: self._bind(x[2]); self._at_calls(x[2])
             if x[2] == STDIN: self.dir, self.spots = None, None
             if x[2] in (STDIN, CHILD):
-                args = self._args(x[3])
+                args = [Unknown('a word the command starting this shell may give it')] * CAP if x[3] is None else self._args(x[3])[1:]  # past its $0
                 self.vars = {k: Maybe(v) for k, v in self.vars.items()} | {'PWD': _dir(self.dir if self.spots == (self.dir,) else None)}  # a shell's PWD is where it starts
                 if x[2] == CHILD: self.vars |= {n: Many(f'${n}', args[i] if i < len(args) else ('',)) for i, n in enumerate(PARAMS)}
 
