@@ -422,8 +422,9 @@ for n in os.listdir(agent_jobs.LAUNCHED) if os.path.isdir(agent_jobs.LAUNCHED) e
              'role': r.get('role'), 'worktrees': r.get('worktrees', []), 'transcript': r['transcript'], 'session': r.get('session'),
              'refresh': r.get('refresh', memory_refresh(r.get('task', '')))}
         # past LONG with no result in the launcher's transcript, a call whose agent never started (a crash mid-call) or has
-        # finished (its launcher lost) is over
-        if time.time() - j['started'] >= agent_jobs.LONG and (not agent_jobs.transcript(j) or agent_jobs.finished(j)): continue
+        # finished (its launcher lost) is over: its record goes, so the launches after this one don't search the transcripts for it again
+        if time.time() - j['started'] >= agent_jobs.LONG and (not agent_jobs.transcript(j) or agent_jobs.finished(j)):
+            agent_jobs.remove(os.path.join(agent_jobs.LAUNCHED, n)); continue
         pending.append(j)
 # One writer per worktree: a writer (any role but review or research) waits for a linked worktree its brief names (not the launcher's
 # own) that holds another session's process, or that a live writer job or outstanding writer call names, whose agent isn't the launcher. T3 can show that
