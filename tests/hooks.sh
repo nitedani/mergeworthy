@@ -4545,5 +4545,22 @@ git -C "$SZ" config diff.noprefix true; for i in 1 2 3 4 5; do echo "z$i" >> "$S
 git -C "$SZ" config --unset diff.noprefix; git -C "$SZ" checkout -q a.py; git -C "$SZ" worktree add -q -b attr "$T/simpz-w" fix; echo 'a.py -diff' > "$T/simpz-w/.gitattributes"; git -C "$T/simpz-w" add .gitattributes; rc "$T/simpz-w" -m attributes
 (cd "$T/simpz-w" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null); echo z6 >> "$T/simpz-w/a.py"; git -C "$T/simpz-w" add a.py
 check "BLOCK: the 6th change since a review with diff.noprefix set, and in a worktree whose .gitattributes marks the file -diff" "2 2" "$rz $(bg 'git commit -m z6' "$T/simpz-w")"
+# a record follows its commit through a cherry-pick onto another branch, but not to the same edit amended into another function
+SF="$T/simpf"; git init -q -b main "$SF"; printf 'def a():\n    return 1\ndef b():\n    return 1\n' > "$SF/a.py"; git -C "$SF" add -A; rc "$SF" -m base; git -C "$SF" update-ref refs/remotes/origin/main HEAD
+git -C "$SF" checkout -q -b fix; sed -i '2s/1/2/' "$SF/a.py"; rc "$SF" -am a2; (cd "$SF" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null)
+git -C "$SF" checkout -q -b pick main; git -C "$SF" -c user.name=t -c user.email=t@t cherry-pick fix >/dev/null; (cd "$SF" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
+for i in 1 2 3 4 5; do echo "# $i" >> "$SF/a.py"; rc "$SF" -am "c$i"; done; echo '# 6' >> "$SF/a.py"; git -C "$SF" add a.py; rp=$(bg 'git commit -m c6' "$SF"); git -C "$SF" reset -q --hard; git -C "$SF" checkout -q fix
+sed -i '2s/2/1/; 4s/1/2/' "$SF/a.py"; rc "$SF" -a --amend --no-edit; for i in 1 2 3 4 5; do echo "# $i" >> "$SF/a.py"; rc "$SF" -am "c$i"; done; echo '# 6' >> "$SF/a.py"; git -C "$SF" add a.py
+check "BLOCK: the 6th change after a cherry-pick of the reviewed commit; the reviewed edit amended to another function counts nothing" "2 0" "$rp $(bg 'git commit -m c6' "$SF")"
+# a message amend keeps a finality record on a merge commit and a review on an empty commit
+SG="$T/simpg"; git init -q -b main "$SG"; echo 0 > "$SG/a.py"; git -C "$SG" add -A; rc "$SG" -m base; git -C "$SG" update-ref refs/remotes/origin/main HEAD; git -C "$SG" checkout -q -b fix
+echo 1 >> "$SG/a.py"; rc "$SG" -am reviewed; (cd "$SG" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null)
+for i in 1 2 3 4 5; do echo "g$i" >> "$SG/a.py"; rc "$SG" -am "g$i"; done; git -C "$SG" checkout -q main; echo 0 > "$SG/b.py"; git -C "$SG" add b.py; rc "$SG" -m main1; git -C "$SG" update-ref refs/remotes/origin/main HEAD
+git -C "$SG" checkout -q fix; git -C "$SG" -c user.name=t -c user.email=t@t merge -q --no-edit origin/main; (cd "$SG" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null); rc "$SG" --amend -m 'clarify the merge subject'
+echo g6 >> "$SG/a.py"; git -C "$SG" add a.py; rg=$(bg 'git commit -m g6' "$SG")
+SE2="$T/simpe2"; git init -q -b main "$SE2"; echo 0 > "$SE2/a.py"; git -C "$SE2" add -A; rc "$SE2" -m base; git -C "$SE2" update-ref refs/remotes/origin/main HEAD; git -C "$SE2" checkout -q -b fix; rc "$SE2" --allow-empty -m empty
+(cd "$SE2" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null); rc "$SE2" --amend --allow-empty -m 'new empty subject'
+for i in 1 2 3 4 5; do echo "e$i" >> "$SE2/a.py"; rc "$SE2" -am "e$i"; done; echo e6 >> "$SE2/a.py"; git -C "$SE2" add a.py
+check "the change after a message-amended merge holding finality passes; BLOCK: the 6th change since a message-amended empty commit's review" "0 2" "$rg $(bg 'git commit -m e6' "$SE2")"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]
