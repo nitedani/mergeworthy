@@ -4390,6 +4390,16 @@ for i in 1 2 3 4 5; do echo "p$i" >> "$SM/a.py"; mc commit -qam "p$i"; done
 base_edit() { mc checkout -q main; sed -i "$1s/.*/main$1/" "$SM/a.py"; mc commit -qam "main$1"; git -C "$SM" update-ref refs/remotes/origin/main HEAD; mc checkout -q fix; mc merge -q --no-commit origin/main >/dev/null; }
 base_edit 1
 check "committing a merge of the base is no change, though the branch changed its file 5 times" 0 "$(bg 'git commit --no-edit' "$SM")"
+# so is one bringing in a base edit of a file changed 5 times since a review on the branch's own commit
+SM2="$T/simpm2"; git init -q -b main "$SM2"; seq 1 10 > "$SM2/a.py"; git -C "$SM2" add -A; git -C "$SM2" -c user.name=t -c user.email=t@t commit -q -m base
+git -C "$SM2" update-ref refs/remotes/origin/main HEAD; git -C "$SM2" checkout -q -b fix; echo r >> "$SM2/a.py"; git -C "$SM2" -c user.name=t -c user.email=t@t commit -qam reviewed
+(cd "$SM2" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null)
+for i in 1 2 3 4 5; do echo "m$i" >> "$SM2/a.py"; git -C "$SM2" -c user.name=t -c user.email=t@t commit -qam "m$i" --trailer "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"; done
+git -C "$SM2" checkout -q main; sed -i 1s/.*/main1/ "$SM2/a.py"; git -C "$SM2" -c user.name=t -c user.email=t@t commit -qam main1; git -C "$SM2" update-ref refs/remotes/origin/main HEAD
+git -C "$SM2" checkout -q fix; git -C "$SM2" -c user.name=t -c user.email=t@t merge -q --no-commit origin/main >/dev/null
+check "committing a merge that brings in a base edit of a file changed 5 times since the review is no change" 0 "$(bg 'git commit --no-edit' "$SM2")"
+git -C "$SM2" -c user.name=t -c user.email=t@t commit -q --no-edit; echo m6 >> "$SM2/a.py"; git -C "$SM2" add a.py
+check "BLOCK: the change after that merge is the 6th" 2 "$(bg 'git commit -m m6' "$SM2")"
 mc commit -q --no-edit; (cd "$SM" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null)
 for i in 6 7 8; do echo "p$i" >> "$SM/a.py"; mc commit -qam "p$i"; done; echo p9 >> "$SM/a.py"; git -C "$SM" add a.py
 check "a finality record on a merge commit starts the counts over" 0 "$(bg 'git commit -m p9' "$SM")"
