@@ -1252,7 +1252,8 @@ def check(t, has_cd):
                 check_finality(*target, files)
             if sub != 'create':
                 check_context(f'{target[0]}#{target[1]}' if all(target) else None, files)
-            for f in files: gated_file(f, has_cd, create=f in new_post_drafts(t))
+            edit_last = sub == 'comment' and '--edit-last' in rest and '--create-if-none' not in rest  # --create-if-none may create
+            for f in files: gated_file(f, has_cd, create=f in new_post_drafts(t) and not edit_last)
     if p == 'gh' and a[:2] in (['pr', 'close'], ['issue', 'close']) and '--help' not in a and '-h' not in a:  # one it can't tell wakes as before
         ref = next((x for i, x in enumerate(a[2:]) if not x.startswith('-') and (i == 0 or a[1 + i] not in VALUED)), None)
         if t_ := thread_of_ref(gh_repo(a[2:], env, run_dir) if run_dir is not None or opt(a[2:], ['--repo', '-R']) else None, ref):
