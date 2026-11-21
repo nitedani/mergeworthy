@@ -122,6 +122,13 @@ pbase() {
   local pb; pb=$(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || true)
   git merge-base HEAD "${pb:+origin/$pb}" 2>/dev/null || git merge-base HEAD "$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)" 2>/dev/null || true
 }
+# drift_note <step>: notes a review or finality step recorded on $sha in the repo's drift log, which the drift count anchors on (hooks/drift.py)
+drift_note() {
+  local k; case "$1" in verify|shape|reverify|fresh|small) k=review ;; finality) k=finality ;; *) return 0 ;; esac
+  python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import drift; drift.note(".", *sys.argv[2:])' "$(dirname "$(realpath "$0")")/../hooks" "$k" "$sha"
+}
+# recorded_as <step>: whether $out is recorded on $sha as that step, the same report's earlier record
+recorded_as() { S="$1 $(realpath "$out") " awk 'index($0, ENVIRON["S"]) == 1 { f = 1 } END { exit !f }' ~/.claude/pr-steps/"$sha" 2>/dev/null; }
 # build output, not code a reviewer reads: those of the paths on stdin, a line each, that testpaths.generated finds
 built() { python3 "$(dirname "$(realpath "$0")")/../hooks/testpaths.py" generated; }
 # numstat lines on stdin (core.quotePath=false: check-attr reads the path as it is) whose path (field 3) isn't build output
@@ -151,8 +158,10 @@ if [ "$step" = small ]; then
   # the verdict ends the report, before any trailing Verification or not_checked section (delegate/agent.md asks every agent for not_checked)
   verdict=$(awk '{ l = tolower($0) } l ~ /^#+[ \t]*(verification|not[ _]checked)([^a-z]|$)/ { tail = 1; next } /^#/ { tail = 0 } !tail' "$out" | grep -v '^[[:space:]]*$' | tail -n2 | tr '\n' '|')
   [ "$(grep -v '^[[:space:]]*$' "$out" | tail -n2 | tr '\n' '|')" = 'NO BUGS|MERGE AS IS: yes|' ] || [ "$verdict" = 'NO BUGS|MERGE AS IS: yes|' ] || ledger_ok || { echo "$out does not end with NO BUGS and MERGE AS IS: yes: fix what it found and send the same reviewer round 2 checking that fix; after round 2, record it with --ledger <the loop's ledger>" >&2; exit 1; }
-  grep -qsF " $(realpath "$out") " ~/.claude/pr-steps/"$sha" && { echo "$out is already recorded for $sha" >&2; exit 1; }
+  # a retry of the same record writes a note its first run failed to
+  grep -qsF " $(realpath "$out") " ~/.claude/pr-steps/"$sha" && { ! recorded_as verify || drift_note small; echo "$out is already recorded for $sha" >&2; exit 1; }
   for k in verify shape reverify fresh; do echo "$k $(realpath "$out") $(date -u +%FT%TZ)" >> ~/.claude/pr-steps/"$sha"; done
+  drift_note small
   echo "recorded small fix ($n lines) for $sha: verify, shape, reverify, fresh; run the gates next"
   exit 0
 fi
@@ -339,7 +348,8 @@ EOF
 esac
 fi
 [ "$step" != union ] || { proof=$(realpath "$out"); record_union "$ua" "$ub"; exit 0; }
-grep -qsF " $(realpath "$out") " ~/.claude/pr-steps/"$sha" && { echo "$out is already recorded for $sha: each step has its own output" >&2; exit 1; }
+grep -qsF " $(realpath "$out") " ~/.claude/pr-steps/"$sha" && { ! recorded_as "$step" || drift_note "$step"; echo "$out is already recorded for $sha: each step has its own output" >&2; exit 1; }
 mkdir -p ~/.claude/pr-steps
 echo "$step $(realpath "$out") $(date -u +%FT%TZ)" >> ~/.claude/pr-steps/$sha
+drift_note "$step"
 echo "recorded $step for $sha"
