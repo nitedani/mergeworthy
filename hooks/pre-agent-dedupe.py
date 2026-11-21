@@ -92,15 +92,16 @@ def brief_approach(strict=True):
         refused()
     return None
 implementer = ti.get('role') == 'implementation' or re.search(r'^\s*You implement\b', brief, re.M)
-def memory_briefs(text):
-    """The memory-prep briefs (memory-brief-<N>.md beside memory.source) a launch's own text follows, executes or does: the
-    session-memory order's launch. A brief that only cites one, as evidence or for context, is other work."""
-    return [f for f in sorted(launch.bound(text, 'follow|execute|do')) if re.fullmatch(r'memory-brief-\d*\.md', os.path.basename(f))
-            and os.path.isfile(os.path.join(os.path.dirname(f), 'memory.source'))]
-def memory_refresh(text):
-    """A memory-refresh launch, which the 3-agent cap leaves out: one following memory-prep's brief, or the memory-refresh template."""
-    return bool(memory_briefs(text)) or bool(re.search(r'\b(?:follow|execute|do)\s+(?:\S+\s+){0,4}?[`\'"]?\S*skills/delegate/memory-refresh\.md\b', text, re.I))
-refresh = memory_refresh(L.text)  # decided here, at admission, and stored on the pending call and the job
+def memory_launch(task):
+    """The file a memory-refresh launch runs, which the 3-agent cap leaves out, else None: its task or prompt (never its title)
+    starts with Follow, Execute or Do and the path of memory-prep's brief (a memory-brief-<N>.md beside memory.source, the
+    session-memory order's launch) or of the memory-refresh template. A brief that cites one anywhere else is other work."""
+    m = re.match(r'\s*(?:follow|execute|do)\s+[`\'"]?([^\s`\'"]+)', task, re.I)
+    p = m and os.path.expanduser(m[1].rstrip('.,;:'))
+    if p and (p.endswith('skills/delegate/memory-refresh.md') or re.fullmatch(r'memory-brief-\d*\.md', os.path.basename(p))
+              and os.path.isfile(os.path.join(os.path.dirname(p), 'memory.source'))):
+        return p
+    return None
 # a fan-out runs several agents on one brief, each under its own title and naming its part in its task: the title is part of the job
 key = ' '.join([*L.tickets, str(ti.get('title') or ti.get('description') or '').strip()]).strip()
 job_file = os.path.join(agent_jobs.JOBS, hashlib.sha256(key.encode()).hexdigest()[:16])
@@ -108,6 +109,7 @@ job_file = os.path.join(agent_jobs.JOBS, hashlib.sha256(key.encode()).hexdigest(
 # pend at a time, and the key's next launch overwrites the record of a call another hook blocked
 pre = os.path.join(agent_jobs.LAUNCHED, os.path.basename(job_file))
 task = str(ti.get('task') or ti.get('prompt') or '')
+refresh = bool(memory_launch(task))  # decided here, at admission, and stored on the pending call and the job
 if register:  # the launch ran: record it, with no admission check (the PRE call decided)
     if cid:
         os.makedirs(os.path.dirname(CIDS), exist_ok=True)
@@ -125,7 +127,7 @@ if register:  # the launch ran: record it, with no admission check (the PRE call
     if implementer and (approach := brief_approach(strict=False)):
         os.makedirs(BUILT, exist_ok=True)
         open(os.path.join(BUILT, os.path.basename(approach[0])), 'w').write(approach[1])
-    for t in memory_briefs(L.text):  # an agent now runs memory-prep's brief: stop-lint's hourly repeat of the refresh order waits an hour
+    if (t := memory_launch(task)) and os.path.basename(t).startswith('memory-brief-'):  # an agent now runs memory-prep's brief: stop-lint's hourly repeat of the refresh order waits an hour
         open(os.path.join(os.path.dirname(t), '.memory-order-repeated'), 'w').close()
     if key:  # nothing names the job (no ticket, title or description) otherwise, so no second launch of it can be told apart
         os.makedirs(agent_jobs.JOBS, exist_ok=True)
@@ -423,7 +425,7 @@ for n in os.listdir(agent_jobs.LAUNCHED) if os.path.isdir(agent_jobs.LAUNCHED) e
     if isinstance(r, dict) and r.get('tool_use_id') and r.get('transcript') and not returned(r['transcript'], r['tool_use_id']):
         j = {'key': r.get('key', ''), 'brief': r.get('task', ''), 'started': r.get('launched', 0), 'launched': r.get('launched', 0),
              'role': r.get('role'), 'worktrees': r.get('worktrees', []), 'transcript': r['transcript'], 'session': r.get('session'),
-             'refresh': r.get('refresh', memory_refresh(r.get('task', '')))}
+             'refresh': r.get('refresh', bool(memory_launch(r.get('task', ''))))}
         # past LONG with no result in the launcher's transcript, a call whose agent never started (a crash mid-call) or has
         # finished (its launcher lost) is over: its record goes, so the launches after this one don't search the transcripts for it again
         if time.time() - j['started'] >= agent_jobs.LONG and (not agent_jobs.transcript(j) or agent_jobs.finished(j)):
@@ -514,7 +516,7 @@ if d.get('session_id') and not refresh and not fanout:
     calls = [j for j in pending if j.get('session') == d['session_id']]
     # a job registered before jobs recorded `refresh` is classified from its task
     live = [j for j in [j for _, j in agent_jobs.jobs() if j.get('session') == d['session_id'] and not agent_jobs.finished(j)] + calls
-            if not j.get('refresh', memory_refresh(j.get('brief', '')))]
+            if not j.get('refresh', memory_launch(j.get('brief', '')))]
     folders = {f for t in L.files + L.refs if (f := task_of(t))}
     scope = os.path.join(task_of(d.get('cwd') or '/') or (folders.pop() if len(folders) == 1 else '<your work folder>'), 'scope.md')
     raised = re.search(r'^Agents: ([1-9]\d*) \(user \d{4}-\d{2}-\d{2}: "(.+)"\)$', open(scope, errors='replace').read() if os.path.isfile(scope) else '', re.M)

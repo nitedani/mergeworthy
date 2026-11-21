@@ -1303,6 +1303,12 @@ python3 "$R/bin/agent-job" done "$(python3 -c 'import sys; print(sys.argv[1][:40
 CR="Review why the refresh failed, using the archived brief at $CM/memory-brief-1.md as evidence. Report the cause."
 check "BLOCK: a review that cites a memory brief as evidence is no memory refresh: it counts, and the fourth agent is refused" "0 0 0 2" "$(cap capA "$CR") $(cap capA 'Execute /tmp/x/capa1.md') $(cap capA 'Execute /tmp/x/capa2.md') $(cap capA 'Execute /tmp/x/capa3.md')"
 for k in capa1 capa2; do python3 "$R/bin/agent-job" done "/tmp/x/$k.md" >/dev/null; done; python3 "$R/bin/agent-job" done "${CR:0:40}" >/dev/null; rm -r "$CM"
+capt() { # session title task: a launch that passes runs, so the PostToolUse half registers it
+  local j; j=$(python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":sys.argv[1],"tool_input":{"title":sys.argv[2],"task":sys.argv[3]}}))' "$@")
+  printf '%s' "$j" | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; local rc=$?; [ $rc = 0 ] && printf '%s' "$j" | python3 "$R/hooks/pre-agent-dedupe.py" register; echo $rc; }
+check "BLOCK: a launch whose title, not its task, names the memory-refresh template counts, and the fourth agent is refused" "0 0 0 2" \
+  "$(capt capY 'Did agents follow skills/delegate/memory-refresh.md?' 'Read the archived instructions and summarize what changed between the two versions.') $(cap capY 'Execute /tmp/x/capy1.md') $(cap capY 'Execute /tmp/x/capy2.md') $(cap capY 'Execute /tmp/x/capy3.md')"
+for k in capy1 capy2; do python3 "$R/bin/agent-job" done "/tmp/x/$k.md" >/dev/null; done; python3 "$R/bin/agent-job" done 'Did agents follow skills/delegate/memory-refresh.md?' >/dev/null
 PL="$T/pend-launcher.jsonl"; : > "$PL"
 pend() { # tool_use_id task: a PreToolUse-only Agent call of session capP, its call still running in the launcher's transcript
   python3 -c 'import json,sys; print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","id":sys.argv[1],"name":"Agent","input":{}}]}}))' "$1" >> "$PL"
