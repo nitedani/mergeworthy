@@ -90,8 +90,8 @@ def answers(out, draft, ledger_file=None):
         beside = os.path.splitext(draft)[0] + '.ledger.md'
         ledger_file = ledger_file or (beside if os.path.isfile(beside) else None)
         found = ledger.problems(ledger_file, post=True) if ledger_file else []
-        if ledger_file and not found and os.path.exists(out) and os.path.getmtime(ledger_file) < os.path.getmtime(out):
-            found = [f'{ledger_file} was last written before the verdict in {out}: add its findings, then pass it']
+        if ledger_file and not found and (not verdict or os.path.getmtime(ledger_file) < os.path.getmtime(out)):
+            found = [f'{out} holds no verdict yet: wait for its reviewer, or launch the round again' if not verdict else f'{ledger_file} was last written before the verdict in {out}: add its findings, then pass it']
         if not ledger_file or found:
             return ((f'the ledger leaves this round open (mergeworthy:delegate §Review rounds):\n' + '\n'.join(found) + '\n' if found else '')
                     + f"review is not exactly CLEAN (it has {len(verdict)} non-empty lines; last: {verdict[-1] if verdict else ''}). The reviewer's "
