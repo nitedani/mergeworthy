@@ -211,8 +211,9 @@ def check_badge_models(p):
     line = re.sub(r'\]\([^)]*\)', ']', first.split('*', 1)[1]) if first.startswith('<img') and '*' in first else ''  # link targets aren't model names
     named = {(f"claude-{f.lower()}", f"claude-{f.lower()}-{v.replace('.', '-')}") for f, v in re.findall(r'\bClaude ([A-Z][a-z]+) (\d+(?:\.\d+)*)\b', line)}
     if not named: return
-    try: ran = transcript_facts.read(d['transcript_path']).recent_models()
-    except (KeyError, TypeError, OSError): return
+    if not (path := shellcmd.transcript(d)): return  # a native subagent's post: its own transcript
+    try: ran = transcript_facts.read(path).recent_models()
+    except OSError: return
     # claude-sonnet: an agent launched on the alias, any version; claude-haiku-4-5-20251001: a dated snapshot of claude-haiku-4-5
     if missing := sorted(m for f, m in named if not any(r in (f, m) or r.startswith(m + '-') for r in ran)):
         block(f"{p}'s badge names {', '.join(missing)}, which this session never ran on or launched an agent on; it ran {', '.join(sorted(ran)) or 'no Claude model'}: "
