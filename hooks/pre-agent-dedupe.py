@@ -350,9 +350,11 @@ if ti.get('role') not in ('research', 'test') and 'memory-refresh' not in brief:
                          "~/.mergeworthy/projects/<owner>/<repo>.study.md whose first line is `Studied: <date>` within 30 days, so the author writes "
                          "what the maintainer merges:\n" + '\n'.join(stale) + '\n')
         refused()
-    # A drafter (drafts a reply, as delegate/drafter.md's "Draft a reply on", and isn't a review) lists each scope-word claim beside
-    # its proof: the template's line. A design or review brief that reads the thread record drafts no reply.
-    drafter = re.search(r'\bdraft (?:a|the) reply\b|\breply draft\b', brief, re.I)
+    # A drafter lists each scope-word claim beside its proof: the template's line. A drafter reads the thread record and writes a
+    # file under drafts/ beside it, in no review, research or design role and with no CLEAN verdict; a design or review brief
+    # that reads the record, or one writing elsewhere, drafts no reply.
+    outs = [p for p in re.findall(r'/[^\s`\'"()]*/drafts/(?:[^\s`\'"()/]+/)*[^\s`\'"()/]+\.\w+', brief) if not os.path.basename(p).startswith('thread-context')]
+    drafter = re.search(r'thread-context[\w.-]*\.md\b', brief) and outs and ti.get('role') not in ('review', 'research', 'design')
     if drafter and 'CLEAN' not in brief and not re.search(r'scope word', brief, re.I):
         sys.stderr.write("BLOCKED: a drafter brief carries the template's scope-word check: paste "
                          "~/.mergeworthy/current/skills/delegate/drafter.md, filled in (mergeworthy:delegate step 3)\n")
