@@ -1320,6 +1320,11 @@ pend exp-1 'Execute /tmp/x/exp1.md' >/dev/null
 python3 -c 'import glob,json,os,time; [json.dump({**r, "launched": time.time() - 661}, open(f, "w")) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs-launch/*")) for r in [json.load(open(f))] if r.get("tool_use_id") == "exp-1"]'
 check "a call 11 minutes on whose agent never started is dropped at the next launch, its record with it, so no later launch searches for it again" "0 0" "$(pend exp-2 'Execute /tmp/x/exp2.md') $(grep -l '"exp-1"' "$HOME"/.claude/agent-jobs-launch/* | wc -l)"
 rm -f $(grep -l pend-launcher "$HOME"/.claude/agent-jobs-launch/*)
+pend exp-a 'Execute /tmp/x/expa.md' >/dev/null
+python3 -c 'import glob,json,os,time; [json.dump({**r, "launched": time.time() - 661}, open(f, "w")) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs-launch/*")) for r in [json.load(open(f))] if r.get("tool_use_id") == "exp-a"]'
+check "a launch reads only its own session's pending calls and those sharing its worktrees: another session's launch leaves this session's expired call alone, this session's next launch drops it" "0 1 0 0" \
+  "$(cap capQ 'Execute /tmp/x/expq.md') $(grep -l '"exp-a"' "$HOME"/.claude/agent-jobs-launch/* | wc -l) $(pend exp-b 'Execute /tmp/x/expb.md') $(grep -l '"exp-a"' "$HOME"/.claude/agent-jobs-launch/* | wc -l)"
+rm -f $(grep -l pend-launcher "$HOME"/.claude/agent-jobs-launch/*); python3 "$R/bin/agent-job" done /tmp/x/expq.md >/dev/null
 # a launcher lost after admission: three calls with no result in its transcript, whose agents (its subagents) finished 25 minutes ago
 LD2="$HOME/.claude/projects/-fin"; mkdir -p "$LD2/launcher/subagents"; FL="$LD2/launcher.jsonl"; : > "$FL"
 fin_pre() { # tool_use_id task: an admitted foreground Agent call of session capF2 whose launcher got no result
