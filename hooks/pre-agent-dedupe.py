@@ -94,12 +94,13 @@ def brief_approach(strict=True):
 implementer = ti.get('role') == 'implementation' or re.search(r'^\s*You implement\b', brief, re.M)
 def memory_launch(task):
     """The file a memory-refresh launch runs, which the 3-agent cap leaves out, else None: its task or prompt (never its title)
-    starts with Follow, Execute or Do and the path of memory-prep's brief (a memory-brief-<N>.md beside memory.source, the
-    session-memory order's launch) or of the memory-refresh template. A brief that cites one anywhere else is other work."""
+    starts with Follow, Execute or Do and the path of memory-prep's brief (an existing memory-brief-<N>.md beside memory.source,
+    the session-memory order's launch; prep deletes the one it replaces) or of the memory-refresh template (a whole
+    skills/delegate/memory-refresh.md path). A brief that cites one anywhere else is other work."""
     m = re.match(r'\s*(?:follow|execute|do)\s+[`\'"]?([^\s`\'"]+)', task, re.I)
     p = m and os.path.expanduser(m[1].rstrip('.,;:'))
     if p and (('/' + p).endswith('/skills/delegate/memory-refresh.md') or re.fullmatch(r'memory-brief-\d*\.md', os.path.basename(p))
-              and os.path.isfile(os.path.join(os.path.dirname(p), 'memory.source'))):
+              and os.path.isfile(p) and os.path.isfile(os.path.join(os.path.dirname(p), 'memory.source'))):
         return p
     return None
 # a fan-out runs several agents on one brief, each under its own title and naming its part in its task: the title is part of the job

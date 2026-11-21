@@ -1315,6 +1315,11 @@ agv() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code
 check "a launch following a lookalike template path (example-skills/delegate/memory-refresh.md) is ordinary work: it counts against the cap, and one for a repo names its project file" "0 0 0 2 2 1" \
   "$(cap capV "Follow $FX/memory-refresh.md exactly.") $(cap capV 'Execute /tmp/x/capv1.md') $(cap capV 'Execute /tmp/x/capv2.md') $(cap capV 'Execute /tmp/x/capv3.md') $(agv "Follow $FX/memory-refresh.md exactly for widget/example#17." lookalike)"
 for k in capv1 capv2 "$FX/memory-refresh.md"; do python3 "$R/bin/agent-job" done "$([ "${k#/}" = "$k" ] && echo "/tmp/x/$k.md" || echo "$k")" >/dev/null; done
+MG="$HOME/.mergeworthy/work/memgone"; mkdir -p "$MG"; : > "$MG/memory.source"  # memory-prep replaced memory-brief-1.md: only its folder's memory.source is left
+check "a launch following a memory brief memory-prep already replaced is ordinary work: it counts against the cap, stamps no marker, and one for a repo names its project file" "0 0 0 2 no 2 1" \
+  "$(cap capW "Follow $MG/memory-brief-1.md exactly.") $(cap capW 'Execute /tmp/x/capw1.md') $(cap capW 'Execute /tmp/x/capw2.md') $(cap capW 'Execute /tmp/x/capw3.md') $([ -e "$MG/.memory-order-repeated" ] && echo yes || echo no) $(agv "Follow $MG/memory-brief-1.md exactly for widget/example#17." replaced)"
+for k in capw1 capw2; do python3 "$R/bin/agent-job" done "/tmp/x/$k.md" >/dev/null; done; python3 "$R/bin/agent-job" done "$(python3 -c 'import sys; print(sys.argv[1][:40])' "Follow $MG/memory-brief-1.md exactly.")" >/dev/null
+rm -r "$MG" "$HOME/.mergeworthy/projects/widget"
 PL="$T/pend-launcher.jsonl"; : > "$PL"
 pend() { # tool_use_id task: a PreToolUse-only Agent call of session capP, its call still running in the launcher's transcript
   python3 -c 'import json,sys; print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","id":sys.argv[1],"name":"Agent","input":{}}]}}))' "$1" >> "$PL"
