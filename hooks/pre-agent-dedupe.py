@@ -252,9 +252,9 @@ elif review and int(rnd[2]) >= 3:
         refused()
 # A brief that writes or reviews code, docs or a post (any role but research or test) for a repo whose maintainers' notes exist
 # (delegate step 3) names the project file, so the agent reads them: by owner/repo, or by a path in that repo's checkout. A memory-refresh
-# brief reads only the session log.
+# launch (memory_launch) reads only the session log; a brief that only mentions the template is other work.
 missing = []
-if ti.get('role') not in ('research', 'test') and 'memory-refresh' not in brief:
+if ti.get('role') not in ('research', 'test') and not refresh:
     notes = {os.path.relpath(f, os.path.expanduser('~/.mergeworthy/projects'))[:-3].lower(): f
              for f in glob.glob(os.path.expanduser('~/.mergeworthy/projects/*/*.md'))}
     named = {r for r in notes if re.search(r'(?<![\w.-])' + re.escape(r) + r'(?!\.md)(?:\.git)?(?![\w.-])', brief, re.I)}
