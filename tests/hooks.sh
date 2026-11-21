@@ -1325,6 +1325,15 @@ python3 -c 'import glob,json,os,time; [json.dump({**r, "launched": time.time() -
 check "a launch reads only its own session's pending calls and those sharing its worktrees: another session's launch leaves this session's expired call alone, this session's next launch drops it" "0 1 0 0" \
   "$(cap capQ 'Execute /tmp/x/expq.md') $(grep -l '"exp-a"' "$HOME"/.claude/agent-jobs-launch/* | wc -l) $(pend exp-b 'Execute /tmp/x/expb.md') $(grep -l '"exp-a"' "$HOME"/.claude/agent-jobs-launch/* | wc -l)"
 rm -f $(grep -l pend-launcher "$HOME"/.claude/agent-jobs-launch/*); python3 "$R/bin/agent-job" done /tmp/x/expq.md >/dev/null
+# one job from two sessions: session A's call of the job is still outstanding when session B launches the same job
+SB="$T/shared-brief.md"; printf 'Trace the shared worker.\n' > "$SB"; : > "$T/sh-a.jsonl"; : > "$T/sh-b.jsonl"
+shl() { # session tool_use_id: a foreground Agent call of the shared job from that session's launcher
+  python3 -c 'import json,sys; print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","id":sys.argv[1],"name":"Agent","input":{}}]}}))' "$2" >> "$T/sh-$1.jsonl"
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"Agent","session_id":sys.argv[1],"tool_use_id":sys.argv[2],"transcript_path":sys.argv[3],"tool_input":{"prompt":"Follow "+sys.argv[4]+" exactly","description":"trace-shared-worker","run_in_background":False}}))' "sh$1" "$2" "$T/sh-$1.jsonl" "$SB" \
+    | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
+check "BLOCK: one agent per job across sessions: another session's launch of a job whose call is still outstanding is refused, and the reservation stays the first call's" "0 2 1 1" \
+  "$(shl a sh-1) $(shl b sh-2) $(grep -c 'already launched' "$T/err") $(grep -l '"sh-1"' "$HOME"/.claude/agent-jobs-launch/* | wc -l)"
+rm -f $(grep -l shared-brief "$HOME"/.claude/agent-jobs-launch/*)
 # a launcher lost after admission: three calls with no result in its transcript, whose agents (its subagents) finished 25 minutes ago
 LD2="$HOME/.claude/projects/-fin"; mkdir -p "$LD2/launcher/subagents"; FL="$LD2/launcher.jsonl"; : > "$FL"
 fin_pre() { # tool_use_id task: an admitted foreground Agent call of session capF2 whose launcher got no result

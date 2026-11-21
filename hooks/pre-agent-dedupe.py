@@ -420,9 +420,11 @@ pending = []  # a launch let through whose call is still running, not registered
 for n in os.listdir(agent_jobs.LAUNCHED) if os.path.isdir(agent_jobs.LAUNCHED) else ():
     try: r = json.load(open(os.path.join(agent_jobs.LAUNCHED, n)))
     except (OSError, ValueError): continue
-    # only this session's calls (the cap, one agent per job, the same task) and those sharing a worktree (one writer per worktree)
-    # bear on this launch: another session's calls are read, and their transcripts searched, by that session's launches
-    if not isinstance(r, dict) or not (r.get('session') == d.get('session_id') or set(r.get('worktrees') or []) & set(L.worktrees)): continue
+    # only this session's calls (the cap, the same task), a call of this launch's key from any session (one agent per job) and
+    # those sharing a worktree (one writer per worktree) bear on this launch: another session's other calls are read, and their
+    # transcripts searched, by that session's launches
+    if not isinstance(r, dict) or not (r.get('key') == key or r.get('session') == d.get('session_id')
+                                       or set(r.get('worktrees') or []) & set(L.worktrees)): continue
     if r.get('tool_use_id') and r.get('transcript') and not returned(r['transcript'], r['tool_use_id']):
         j = {'key': r.get('key', ''), 'brief': r.get('task', ''), 'started': r.get('launched', 0), 'launched': r.get('launched', 0),
              'role': r.get('role'), 'worktrees': r.get('worktrees', []), 'transcript': r['transcript'], 'session': r.get('session'),
