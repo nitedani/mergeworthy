@@ -166,7 +166,7 @@ def _scope(kind, name='', items=()):
     """A new scope of kind, for Seg.scopes; name: the function whose body it is, a for loop's variable, CHILD for the script a child
     shell runs (`bash -c`), which gets none of the line's unexported variables, so it starts with them unknown, or STDIN for the script
     a shell reads from a heredoc or <<<, which may run after later commands of the line moved, so it starts knowing nothing; items: the
-    words the loop's variable takes."""
+    words the loop's variable takes, or a child shell's $1.."""
     return ((next(_ids), kind, name, items),)
 
 
@@ -421,8 +421,9 @@ def parse(cmd, depth=0, scopes=(), loop=False):
         script = here[0] if stdin else script
         if script:
             same = t[:1] and os.path.basename(t[0]) == 'eval'  # eval runs its words in this shell; a child shell, in its own
+            args = next((t[i + 2:] for i, x in enumerate(t) if x is script), ()) if os.path.basename(t[0]) in SHELLS else ()  # after its $0
             inner, e = parse(_marked(script) if isinstance(script, Word) and not stdin else script, depth + 1,
-                             s.scopes + (() if same else _scope(ISOLATING, STDIN if stdin else CHILD)), s.loop)
+                             s.scopes + (() if same else _scope(ISOLATING, STDIN) if stdin else _scope(ISOLATING, CHILD, args)), s.loop)
             for x in inner: x.nested, x.piped = True, x.piped or s.piped
             out += inner
             err = err or e
@@ -684,8 +685,16 @@ class Where:
         return tuple(_replaced(v, pat[0], to[0], every) for v in vals)
 
     def _sub(self, stages):
-        """A substitution's values: basename and dirname per value; a piece for what can't print a /; else unknown, as any other command's output."""
+        """A substitution's values: basename and dirname per value; the place mktemp makes, and the one realpath, readlink -f or pwd prints; a
+        piece for what can't print a /; else unknown, as any other command's output."""
         t, names = stages[0], [os.path.basename(x[0]) if x else '' for x in stages]
+        opts, a = [x for x in t[1:] if x[:1] == '-'], [x for x in t[1:] if x[:1] != '-']
+        if names == ['mktemp']:
+            return self._mktemp(t[1:])
+        if names == ['pwd'] and not a and opts in ([], ['-L'], ['-P']):
+            return self._resolved(None) if opts == ['-P'] else self.spots or UNKNOWN
+        if names in (['realpath'], ['readlink']) and len(a) == 1 and (set(opts) <= {'-e', '-m', '-q'} if names == ['realpath'] else opts in (['-f'], ['-e'], ['-m'])):
+            return self._resolved(a[0])
         if names in (['basename'], ['dirname']):
             vals = self.values(t[1]) if len(t) == 2 and not t[1].startswith('-') else UNKNOWN
             if names == ['basename']:
@@ -711,6 +720,37 @@ class Where:
             return UNKNOWN
         gone = '/' in sets[0] and ('d' in flags or len(sets) == 2)
         return (PIECE,) if gone or not any(isinstance(v, Unknown) or any('/' in y for y in v) for v in said) else UNKNOWN
+
+    def _resolved(self, w):
+        """$(realpath w): the place word w names from each of spots (None: the spots themselves); unknown when a link lies on its way, which may lead anywhere."""
+        vals = ('.',) if w is None else self.values(w)
+        if isinstance(vals, Unknown) or any(PIECE in v for v in vals) or self.spots is None and not all(os.path.isabs(os.path.expanduser(v)) for v in vals):
+            return UNKNOWN
+        out = [os.path.join(x, os.path.expanduser(v)) for v in vals for x in self.spots or ('/',)]
+        return tuple(dict.fromkeys(map(os.path.normpath, out))) if all(os.path.realpath(p) == os.path.normpath(p) for p in out) else UNKNOWN
+
+    def _mktemp(self, a):
+        """$(mktemp a): the path it makes, its Xs as written: its template, from where it runs; with no template, -p, --tmpdir or -t, its template
+        or tmp.XXXXXXXXXX in -p's dir, else in ${TMPDIR:-/tmp}."""
+        at, under, t, names, it = None, False, False, [], iter(a)
+        for x in it:
+            if x == '-p' or x.startswith('--tmpdir='):
+                at, under = self.values(next(it, '') if x == '-p' else x[len('--tmpdir='):]), True
+            elif re.fullmatch(r'-[dqu]*t|--tmpdir', x):
+                under, t = True, t or x != '--tmpdir'
+            elif x[:1] != '-':
+                names.append(x)
+            elif not re.fullmatch(r'-[dqu]+|--(directory|dry-run|quiet|suffix=[^/]*)', x):
+                return UNKNOWN
+        if len(names) > 1 or t and at is not None:  # -t takes $TMPDIR before -p's dir
+            return UNKNOWN
+        vals = self.values(names[0]) if names else ('tmp.XXXXXXXXXX',)
+        if names and not under or isinstance(vals, Unknown):
+            return vals
+        dirs = self._exp('TMPDIR', ':-', _plain('/tmp')) if at is None else at
+        if isinstance(dirs, Unknown) or '' in dirs or any(os.path.isabs(v) for v in vals):
+            return UNKNOWN
+        return tuple(os.path.join(d, v) for d in dirs for v in vals)
 
     def _var(self, n):
         """The values variable n holds here (none set where it can't follow: Unseen, any)."""
@@ -846,7 +886,10 @@ class Where:
                 if x[2]: self.vars[x[2]] = words; self.changed(x[2])  # each pass gives it another of its words
             if x[1] == CONDITIONAL and x[2]: self._bind(x[2]); self._at_calls(x[2])
             if x[2] == STDIN: self.dir, self.spots = None, None
-            if x[2] in (STDIN, CHILD): self.vars = {k: Maybe(v) for k, v in self.vars.items()} | {'PWD': _dir(self.dir if self.spots == (self.dir,) else None)}  # a shell's PWD is where it starts
+            if x[2] in (STDIN, CHILD):
+                args = self._args(x[3])
+                self.vars = {k: Maybe(v) for k, v in self.vars.items()} | {'PWD': _dir(self.dir if self.spots == (self.dir,) else None)}  # a shell's PWD is where it starts
+                if x[2] == CHILD: self.vars |= {n: Many(f'${n}', args[i] if i < len(args) else ('',)) for i, n in enumerate(PARAMS)}
 
     def changed(self, var=None):
         """Record a cd (var None) or an assignment of var here in the scopes it changes what they leave behind, up to the innermost
