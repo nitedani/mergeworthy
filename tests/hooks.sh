@@ -4446,7 +4446,7 @@ git -C "$SD" add build
 check "BLOCK: a build/ file's 6th change, naming it alone" "2 1 0" "$(bg 'git commit -m b6' "$SD") $(grep -c 'build/bundle.js would get a 6th change' "$T/err") $(grep -c 'claude-swap.mjs\|api.ts' "$T/err")"
 git -C "$SD" reset -q build; git -C "$SD" add src.ts
 check "BLOCK: the hand-written source's 6th change beside them, naming it alone" "2 1 0" "$(bg 'git commit -m b6' "$SD") $(grep -c 'src.ts would get a 6th change' "$T/err") $(grep -c 'claude-swap.mjs\|api.ts\|bundle.js' "$T/err")"
-# the anchors are the commits' patch-ids in one log per repo: a rebase and an amend of the message keep them, a squash doesn't, and every worktree reads them
+# the anchors are the commits' changed lines in one log per repo: a rebase and an amend of the message keep them, a squash doesn't, and every worktree reads them
 SR="$T/simpr"; git init -q -b main "$SR"; rc() { git -C "$1" -c user.name=t -c user.email=t@t commit -q --trailer 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>' "${@:2}"; }
 echo 0 > "$SR/a.py"; git -C "$SR" add -A; rc "$SR" -m base; git -C "$SR" update-ref refs/remotes/origin/main HEAD; git -C "$SR" checkout -q -b fix; echo 1 >> "$SR/a.py"; rc "$SR" -am reviewed
 (cd "$SR" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null)
@@ -4469,6 +4469,18 @@ echo 1 >> "$SA/a.py"; rc "$SA" -am reviewed; (cd "$SA" && bash "$R/bin/pr-steps"
 echo 2 >> "$SA/a.py"; rc "$SA" -a --fixup=HEAD; git -C "$SA" -c sequence.editor=true rebase -q -i --autosquash origin/main
 for i in 1 2 3 4 5; do echo "a$i" >> "$SA/a.py"; rc "$SA" -am "a$i"; done; echo a6 >> "$SA/a.py"; git -C "$SA" add a.py
 check "a fixup autosquashed into the reviewed commit counts nothing until the next review" 0 "$(bg 'git commit -m a6' "$SA")"
+# a fixup of whitespace alone is a change too; a clean rebase onto an upstream edit two lines above the reviewed line, which moves it, keeps the review
+SW="$T/simpw2"; git init -q -b main "$SW"; seq 1 12 | sed 's/.*/v& = &/' > "$SW/a.py"; git -C "$SW" add -A; rc "$SW" -m base; git -C "$SW" update-ref refs/remotes/origin/main HEAD
+git -C "$SW" checkout -q -b fix; echo 'v = "a b"' >> "$SW/a.py"; sed -i 's/^v6 = 6$/v6 = 66/' "$SW/a.py"; rc "$SW" -am reviewed
+(cd "$SW" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null)
+for i in 1 2 3 4 5; do echo "w$i" >> "$SW/a.py"; rc "$SW" -am "w$i"; done
+git -C "$SW" checkout -q main; sed -i 's/^v4 = 4$/v4 = 44\nv4b = 4/' "$SW/a.py"; rc "$SW" -am up; git -C "$SW" update-ref refs/remotes/origin/main HEAD; git -C "$SW" checkout -q fix; git -C "$SW" rebase -q origin/main
+echo w6 >> "$SW/a.py"; git -C "$SW" add a.py; rr=$(bg 'git commit -m w6' "$SW")
+SV="$T/simpv"; git init -q -b main "$SV"; echo 0 > "$SV/a.py"; git -C "$SV" add -A; rc "$SV" -m base; git -C "$SV" update-ref refs/remotes/origin/main HEAD; git -C "$SV" checkout -q -b fix
+echo 'v = "a b"' >> "$SV/a.py"; rc "$SV" -am reviewed; (cd "$SV" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null)
+sed -i 's/^v = "a b"$/v = "ab"/' "$SV/a.py"; rc "$SV" -a --fixup=HEAD; git -C "$SV" -c sequence.editor=true rebase -q -i --autosquash origin/main
+for i in 1 2 3 4 5; do echo "w$i" >> "$SV/a.py"; rc "$SV" -am "w$i"; done; echo w6 >> "$SV/a.py"; git -C "$SV" add a.py
+check "BLOCK: the 6th change after a clean rebase onto an upstream edit near the reviewed line; a whitespace fixup autosquashed into it counts nothing" "2 0" "$rr $(bg 'git commit -m w6' "$SV")"
 # git's log output encoding and signature display don't change the identity: a Latin-1 subject and a signed commit hold their review
 for e in latin signed; do SE="$T/simpe-$e"; git init -q -b main "$SE"; echo 0 > "$SE/a.py"; git -C "$SE" add -A; rc "$SE" -m base; git -C "$SE" update-ref refs/remotes/origin/main HEAD; git -C "$SE" checkout -q -b fix
   if [ $e = latin ]; then git -C "$SE" config i18n.commitEncoding ISO-8859-1; git -C "$SE" config i18n.logOutputEncoding ISO-8859-1; echo 1 >> "$SE/a.py"; rc "$SE" -am "$(printf 'review Caf\xe9')"

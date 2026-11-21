@@ -13,14 +13,19 @@ AGENT_TRAILER = re.compile(r'^Co-Authored-By: Claude', re.M | re.I)  # a commit 
 
 
 def identities(d, *revs):
-    """{sha: identity} of the commits `git log revs` lists in checkout d that change something: the `git patch-id --stable` of
-    that change, which a rebase without conflicts, a cherry-pick and an amend of the message alone keep, and a squash or any
-    change to the content doesn't. A commit missing from it (a merge, an empty commit) is its own SHA."""
-    log = subprocess.Popen(['git', '-C', d, 'log', '-p', '--no-diff-merges', '--no-renames', '--no-color', '--no-show-signature',
-                            '--format=commit %H', *revs], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-    ids = subprocess.run(['git', '-C', d, 'patch-id', '--stable'], stdin=log.stdout, capture_output=True, text=True).stdout
-    log.stdout.close(); log.wait()
-    return {sha: pid for pid, sha in map(str.split, ids.splitlines())}
+    """{sha: identity} of the commits `git log revs` lists in checkout d that change something: the sha256 of the lines it
+    changes, whitespace included, with their files but not their positions or the lines around them. An amend of the message
+    alone, a cherry-pick and a rebase that leaves those lines alone keep it; any change to them, a squash or a whitespace fixup
+    too, doesn't. A commit missing from it (a merge, an empty commit) is its own SHA."""
+    log = subprocess.run(['git', '-C', d, 'log', '-p', '-U0', '--no-color', '--full-index', '--binary', '--no-renames', '--no-textconv',
+                          '--no-diff-merges', '--no-show-signature', '--format=%x00%H', *revs], capture_output=True).stdout
+    ids = {}
+    for commit in log.split(b'\0')[1:]:
+        sha, _, diff = commit.partition(b'\n')
+        # a hunk header's positions and an index line's blob ids change with lines the commit doesn't change
+        lines = [b'@@' if l.startswith(b'@@') else l for l in diff.split(b'\n') if not l.startswith(b'index ')]
+        if diff.strip(): ids[sha.decode()] = hashlib.sha256(b'\n'.join(lines)).hexdigest()
+    return ids
 
 
 def log_path(d):
