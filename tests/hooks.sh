@@ -4531,7 +4531,10 @@ check "the first change after a review whose report is named across two lines pa
 # a finality report pr-steps refuses, here as already recorded for another step, notes nothing
 { cat "$T/fin.md"; echo 'NO LOOP B COMMITS'; } > "$T/fin2.md"; (cd "$SN" && bash "$R/bin/pr-steps" reverify "$T/fin2.md" >/dev/null)
 check "BLOCK: a refused finality report leaves the 6th change refused" "1 2" "$(cd "$SN" && bash "$R/bin/pr-steps" finality "$T/fin2.md" >/dev/null 2>&1; echo $?) $(bg 'git commit -m n6' "$SN")"
-# a finality record whose note failed is noted by its retry, which still says it is recorded, once
+# a drift note comes from pr-steps alone: git commands writing refs/notes/drift are refused, reading it and other notes refs pass
+dn=; for c in 'git notes --ref=drift append -m finality HEAD' 'git notes --ref refs/notes/drift add -f -m finality HEAD' 'git -c core.notesRef=refs/notes/drift notes remove HEAD' \
+  'git update-ref refs/notes/drift HEAD' "git push $T/notes.git refs/notes/drift" 'git notes --ref=drift show HEAD' 'git notes append -m mine HEAD'; do dn="$dn $(bg "$c" "$SN")$(grep -c 'refs/notes/drift are written by .pr-steps <step>' "$T/err")"; done
+check "BLOCK: git notes add, append and remove on refs/notes/drift, update-ref and a push of it, naming pr-steps; git notes show of it and a note on another ref pass" " 21 21 21 21 21 00 00" "$dn"
 chmod a-w "$SN/.git/refs/notes"; f1=$(cd "$SN" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null 2>&1; echo $?); chmod u+w "$SN/.git/refs/notes"
 f2=$(cd "$SN" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null 2>&1; echo $?); f6=$(bg 'git commit -m n6' "$SN"); (cd "$SN" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null 2>&1)
 check "a finality record whose drift note can't be written fails; its retry exits as already recorded and lets the 6th change pass, with one note" "1 1 0 1" "$([ "$f1" = 0 ] || echo 1) $f2 $f6 $(git -C "$SN" notes --ref=drift show HEAD | grep -cx finality)"

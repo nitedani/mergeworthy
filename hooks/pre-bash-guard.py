@@ -605,6 +605,16 @@ def title_setter(repo, num):
     return (login, last.get('created_at')) if login and login != me else None
 
 RECORDS = os.path.realpath(STORE) + os.sep
+
+def writes_drift_notes(overrides, sub, rest):
+    """Whether git subcommand sub with arguments rest (and -c overrides) writes refs/notes/drift, where pr-steps notes drift records."""
+    if sub == 'notes':
+        refs = opt(rest, ['--ref']) or [overrides.get('core.notesRef', '')]
+        verb = next((x for x in rest if not x.startswith('-') and x not in refs), 'list')
+        full = lambda r: r if r.startswith('refs/') else 'refs/' + r if r.startswith('notes/') else 'refs/notes/' + r  # as git reads --ref
+        return verb in ('add', 'append', 'edit', 'copy', 'merge', 'remove', 'prune') and 'refs/notes/drift' in map(full, filter(None, refs))
+    if sub == 'update-ref': return 'refs/notes/drift' in rest
+    return sub == 'push' and ('--mirror' in rest or any(re.search(r'(^|[:+])refs/notes/(drift|\*)(:|$)', x) for x in rest))
 push_urls = []  # where this command's pushes go (pushed()), for the watcher check
 # what this command does on GitHub (own_actions), recorded once it passed every check: the watcher logs these changes without waking the session
 own = {'PUSHED_HEADS': [], 'CLOSED_THREADS': []}  # the heads it pushes; `owner/repo#N merged|closed`
@@ -1156,6 +1166,8 @@ def check(t, has_cd):
             block(why)
     if any(os.path.realpath(x).startswith(RECORDS) for x in written):
         block("the step records in ~/.claude/pr-steps are written by `pr-steps <step> <its output>` alone, which checks the output first")
+    if p == 'git' and writes_drift_notes(*git_argv(t, where)[1:]):
+        block("the drift records in refs/notes/drift are written by `pr-steps <step> <its output>` alone, which checks the output first")
     if p == 'gh' and pr_ready(a):
         check_refactor_ask(*post_target('pr', a[2:], env, run_dir), comment=False)
     if p == 'gh' and a[:2] == ['pr', 'create'] and '--help' not in a and '-h' not in a:
