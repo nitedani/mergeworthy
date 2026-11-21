@@ -6,7 +6,7 @@ wakes it) unless its watch folder retired after the post, or with a line still o
 The final message is the hook input's last_assistant_message (the transcript may not hold it yet). stop_hook_active skips only
 the check-in: every other check holds until it is met, except a late `drafting:` owed line, which blocks once (Claude Code itself ends the turn after 8 blocks in a row).
 While the last message the user typed asks to stop or pause (steward.asks_stop), the turn ends with no check."""
-import glob, hashlib, json, os, re, subprocess, sys, time
+import glob, hashlib, itertools, json, os, re, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import failclosed, transcript_facts
 d = json.load(sys.stdin)
@@ -23,7 +23,7 @@ except (KeyError, TypeError, OSError):
               "Re-check it yourself: anything owed, unfinished or unwatched, do now; then end the turn.", file=sys.stderr)
         sys.exit(2)
     facts = transcript_facts.Facts()
-import forge, post_words, report, steward
+import forge, post_words, report, steward, t3_tasks
 from shellcmd import segments, prog, git_argv, Where
 # A T3 Code delegated child (its thread has a parent in T3's state, or its prompt says so): its result is its last message, and the main session owns replies and next steps
 t3_chain = steward.threads(d.get('session_id'))  # its T3 thread, then the threads that delegated it; [] outside T3 Code
@@ -159,13 +159,30 @@ def done_check():
 # A sentence whose subject is a PR (`#N`, `owner/repo#N`, its URL, `PR #N`, `CI on #N`) and that states its live state (a draft,
 # ready, merged, CI green or red) is checked against GitHub now: the PR may have moved since the agent last looked (a maintainer
 # marks it ready, CI finishes), and the user acts on what the report says. "My reply to #12 is a draft" has another subject.
+def session_links():
+    """{number: the repos whose PR or issue of that number the text the user typed (t3_tasks.typed: no notice or tool result) or the agent wrote linked, newest first}, from the
+    transcript's last 4,000 lines: a bare #N means the one the session named."""
+    links = {}
+    try:
+        for l in itertools.islice(shellcmd.rlines(d['transcript_path']), 4001):  # rlines yields b'' first after a final newline
+            if not re.search(rb'[\w.-]/[\w.-]+(?:#|/pull/|/issues/)\d', l): continue
+            try: e = json.loads(l)
+            except ValueError: continue
+            m = e.get('message') if isinstance(e, dict) and e.get('type') in ('user', 'assistant') else None
+            c = m.get('content') if isinstance(m, dict) else None
+            texts = [t3_tasks.typed(c)] if e['type'] == 'user' else [x.get('text') or '' for x in c if isinstance(x, dict) and x.get('type') == 'text'] if isinstance(c, list) else []
+            for repo, n in reversed([link for t in texts for link in report.numbered_links(t)]): links.setdefault(n, []).append(repo)
+    except (KeyError, TypeError, OSError): pass  # no transcript: the message's links and the checkout's remotes still hold
+    return links
 def state_check():
-    url_repos = report.linked_repos(last)
+    url_repos, claims = report.linked_repos(last), report.state_claims(last)
+    linked = session_links() if any(not key[0] for _, key, _ in claims) else {}
     states, wrong = {}, []
-    for claim, key, sentence in report.state_claims(last):
+    for claim, key, sentence in claims:
         if key not in states:
             pr, why = None, ''
-            repos = list(dict.fromkeys(([key[0]] if key[0] else []) + url_repos + forge.remotes(d.get('cwd') or '.')))
+            named = [r for r, n in report.numbered_links(last) if n == key[1]] + linked.get(key[1], [])  # the message's own, then the session's
+            repos = [key[0]] if key[0] else list(dict.fromkeys(named + url_repos + forge.remotes(d.get('cwd') or '.')))
             for repo in repos:
                 pr, why = forge.pull(repo, key[1])
                 if pr is not None or 'HTTP 404' not in (why or ''): break
