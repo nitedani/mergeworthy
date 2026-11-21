@@ -5,7 +5,7 @@ over after it. Building before any review counts nothing. Only the branch's own 
 made or being made, is no change, nor are the commits it brings in, nor is a maintainer's (AGENT_TRAILER): the drift is the agent's.
 pr-steps notes each record in the repo's drift log by the commit's identity (identities), which every branch and worktree of the
 repo shares: a squashed branch counts nothing until its next review."""
-import hashlib, os, re, subprocess, sys
+import hashlib, os, re, subprocess
 import testpaths
 from records import STORE
 
@@ -29,10 +29,9 @@ def log_path(d):
     return os.path.join(STORE, 'drift.' + hashlib.sha256(os.path.realpath(common).encode()).hexdigest()[:40])
 
 
-def note(d, kind, proof):
-    """Notes a kind of record (review, finality) with its proof file on checkout d's HEAD."""
-    sha = subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
-    with open(log_path(d), 'a') as f: f.write(f'{kind} {identities(d, "-1", sha).get(sha, sha)} {proof}\n')
+def note(d, kind, sha):
+    """Notes a kind of record (review, finality) that bin/pr-steps accepted on commit sha of checkout d."""
+    with open(log_path(d), 'a') as f: f.write(f'{kind} {identities(d, "-1", sha).get(sha, sha)}\n')
 
 
 def over(d, head='HEAD', pending=None, amend=False):
@@ -68,7 +67,3 @@ def over(d, head='HEAD', pending=None, amend=False):
     hot = [f for f in (count if pending is None else pending) if count.get(f, 0) > 5 and not re.search(testpaths.NOT_CODE, f)]
     gen = testpaths.generated(d, hot, head if pending is None else None) if hot else set()  # a push's own attributes, a commit's checkout
     return {f: count[f] for f in hot if f not in gen}
-
-
-if __name__ == '__main__':  # bin/pr-steps: drift.py note <review|finality> <proof file>, on the checkout's HEAD
-    note(os.getcwd(), *sys.argv[2:4])

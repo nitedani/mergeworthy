@@ -122,8 +122,8 @@ pbase() {
   local pb; pb=$(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || true)
   git merge-base HEAD "${pb:+origin/$pb}" 2>/dev/null || git merge-base HEAD "$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)" 2>/dev/null || true
 }
-# the drift log's note of this HEAD's record (hooks/drift.py), which the drift count anchors on
-drift() { python3 "$(dirname "$(realpath "$0")")/../hooks/drift.py" "$@"; }
+# drift_note <review|finality>: notes the record just accepted on $sha in the repo's drift log, which the drift count anchors on (hooks/drift.py)
+drift_note() { python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import drift; drift.note(".", *sys.argv[2:])' "$(dirname "$(realpath "$0")")/../hooks" "$1" "$sha"; }
 # build output, not code a reviewer reads: those of the paths on stdin, a line each, that testpaths.generated finds
 built() { python3 "$(dirname "$(realpath "$0")")/../hooks/testpaths.py" generated; }
 # numstat lines on stdin (core.quotePath=false: check-attr reads the path as it is) whose path (field 3) isn't build output
@@ -155,7 +155,7 @@ if [ "$step" = small ]; then
   [ "$(grep -v '^[[:space:]]*$' "$out" | tail -n2 | tr '\n' '|')" = 'NO BUGS|MERGE AS IS: yes|' ] || [ "$verdict" = 'NO BUGS|MERGE AS IS: yes|' ] || ledger_ok || { echo "$out does not end with NO BUGS and MERGE AS IS: yes: fix what it found and send the same reviewer round 2 checking that fix; after round 2, record it with --ledger <the loop's ledger>" >&2; exit 1; }
   grep -qsF " $(realpath "$out") " ~/.claude/pr-steps/"$sha" && { echo "$out is already recorded for $sha" >&2; exit 1; }
   for k in verify shape reverify fresh; do echo "$k $(realpath "$out") $(date -u +%FT%TZ)" >> ~/.claude/pr-steps/"$sha"; done
-  drift note review "$(realpath "$out")"
+  drift_note review
   echo "recorded small fix ($n lines) for $sha: verify, shape, reverify, fresh; run the gates next"
   exit 0
 fi
@@ -345,5 +345,5 @@ fi
 grep -qsF " $(realpath "$out") " ~/.claude/pr-steps/"$sha" && { echo "$out is already recorded for $sha: each step has its own output" >&2; exit 1; }
 mkdir -p ~/.claude/pr-steps
 echo "$step $(realpath "$out") $(date -u +%FT%TZ)" >> ~/.claude/pr-steps/$sha
-case "$step" in verify|shape|reverify|fresh) drift note review "$(realpath "$out")" ;; finality) drift note finality "$(realpath "$out")" ;; esac
+case "$step" in verify|shape|reverify|fresh) drift_note review ;; finality) drift_note finality ;; esac
 echo "recorded $step for $sha"

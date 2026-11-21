@@ -4478,5 +4478,12 @@ for e in latin signed; do SE="$T/simpe-$e"; git init -q -b main "$SE"; echo 0 > 
   for i in 1 2 3 4 5; do echo "e$i" >> "$SE/a.py"; rc "$SE" -am "e$i"; done; echo e6 >> "$SE/a.py"; git -C "$SE" add a.py
   check "the review of a commit with git's $e output records; BLOCK: the 6th change since it" "0 2 1" "$rec $(bg 'git commit -m e6' "$SE") $(grep -c 'a.py would get a 6th change' "$T/err")"
 done
+# only pr-steps writes the drift log, after its check: a report named across two lines keeps it readable, and drift.py has no writer of its own
+SN="$T/simpn"; git init -q -b main "$SN"; echo 0 > "$SN/a.py"; git -C "$SN" add -A; rc "$SN" -m base; git -C "$SN" update-ref refs/remotes/origin/main HEAD; git -C "$SN" checkout -q -b fix
+echo 1 >> "$SN/a.py"; rc "$SN" -am reviewed; cp "$T/rv.md" "$T/moved report"$'\n'"v1"; printf 'no plan\n' > "$T/noplan.md"
+(cd "$SN" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && bash "$R/bin/pr-steps" reverify "$T/moved report"$'\n'"v1" >/dev/null)
+echo n1 >> "$SN/a.py"; git -C "$SN" add a.py; rn=$(bg 'git commit -m n1' "$SN"); rc "$SN" -m n1
+for i in 2 3 4 5; do echo "n$i" >> "$SN/a.py"; rc "$SN" -am "n$i"; done; (cd "$SN" && python3 "$R/hooks/drift.py" note finality "$T/noplan.md" 2>/dev/null); echo n6 >> "$SN/a.py"; git -C "$SN" add a.py
+check "the first change after a review whose report is named across two lines passes; BLOCK: its 6th, after drift.py was run as a writer" "0 2" "$rn $(bg 'git commit -m n6' "$SN")"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]
