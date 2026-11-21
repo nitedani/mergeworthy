@@ -23,7 +23,7 @@ except (KeyError, TypeError, OSError):
               "Re-check it yourself: anything owed, unfinished or unwatched, do now; then end the turn.", file=sys.stderr)
         sys.exit(2)
     facts = transcript_facts.Facts()
-import forge, post_words, report, steward
+import forge, post_words, report, steward, t3_tasks
 from shellcmd import segments, prog, git_argv, Where
 # A T3 Code delegated child (its thread has a parent in T3's state, or its prompt says so): its result is its last message, and the main session owns replies and next steps
 t3_chain = steward.threads(d.get('session_id'))  # its T3 thread, then the threads that delegated it; [] outside T3 Code
@@ -160,7 +160,7 @@ def done_check():
 # ready, merged, CI green or red) is checked against GitHub now: the PR may have moved since the agent last looked (a maintainer
 # marks it ready, CI finishes), and the user acts on what the report says. "My reply to #12 is a draft" has another subject.
 def session_links():
-    """{number: the repos whose PR or issue of that number the session's user or agent text linked, newest first}, from the
+    """{number: the repos whose PR or issue of that number the text the user typed (t3_tasks.typed: no notice or tool result) or the agent wrote linked, newest first}, from the
     transcript's last 4,000 lines: a bare #N means the one the session named."""
     links = {}
     try:
@@ -170,7 +170,7 @@ def session_links():
             except ValueError: continue
             m = e.get('message') if isinstance(e, dict) and e.get('type') in ('user', 'assistant') else None
             c = m.get('content') if isinstance(m, dict) else None
-            texts = [c] if isinstance(c, str) else [x.get('text') or '' for x in c if isinstance(x, dict) and x.get('type') == 'text'] if isinstance(c, list) else []
+            texts = [t3_tasks.typed(c)] if e['type'] == 'user' else [x.get('text') or '' for x in c if isinstance(x, dict) and x.get('type') == 'text'] if isinstance(c, list) else []
             for repo, n in reversed([link for t in texts for link in report.numbered_links(t)]): links.setdefault(n, []).append(repo)
     except (KeyError, TypeError, OSError): pass  # no transcript: the message's links and the checkout's remotes still hold
     return links
