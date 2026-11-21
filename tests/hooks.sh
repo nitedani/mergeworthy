@@ -4526,6 +4526,12 @@ for e in latin email signed; do SE="$T/simpe-$e"; git init -q -b main "$SE"; ech
   for i in 1 2 3 4 5; do echo "e$i" >> "$SE/a.py"; rc "$SE" -am "e$i"; done; echo e6 >> "$SE/a.py"; git -C "$SE" add a.py
   check "the review of a commit with git's $e output records; BLOCK: the 6th change since it" "0 2 1" "$rec $(bg 'git commit -m e6' "$SE") $(grep -c 'a.py would get a 6th change' "$T/err")"
 done
+# signature display, here on five signed edits after the review, adds nothing to what the count reads
+SE="$T/simpe-signed5"; git init -q -b main "$SE"; echo 0 > "$SE/a.py"; git -C "$SE" add -A; rc "$SE" -m base; git -C "$SE" update-ref refs/remotes/origin/main HEAD; git -C "$SE" checkout -q -b fix
+git -C "$SE" config gpg.format ssh; git -C "$SE" config user.signingkey "$T/sign"; git -C "$SE" config gpg.ssh.allowedSignersFile "$T/signers"; git -C "$SE" config log.showSignature true
+echo s5 >> "$SE/a.py"; rc "$SE" -am reviewed; (cd "$SE" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null)
+for i in 1 2 3 4 5; do echo "e$i" >> "$SE/a.py"; rc "$SE" -S -am "e$i"; done; echo e6 >> "$SE/a.py"; git -C "$SE" add a.py
+check "BLOCK: the 6th change after five signed edits, with log.showSignature true" 2 "$(bg 'git commit -m e6' "$SE")"
 # a review whose report is named across two lines records like any other
 SN="$T/simpn"; git init -q -b main "$SN"; echo 0 > "$SN/a.py"; git -C "$SN" add -A; rc "$SN" -m base; git -C "$SN" update-ref refs/remotes/origin/main HEAD; git -C "$SN" checkout -q -b fix
 echo 1 >> "$SN/a.py"; rc "$SN" -am reviewed; cp "$T/rv.md" "$T/moved report"$'\n'"v1"

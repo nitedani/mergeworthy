@@ -23,7 +23,7 @@ def over(d, head='HEAD', pending=None, amend=False):
     base = g('symbolic-ref', '-q', '--short', 'refs/remotes/origin/HEAD').strip() or 'origin/main'
     if pending is not None and g('rev-parse', '-q', '--verify', 'MERGE_HEAD').strip(): pending = []
     # git prints `\0<sha>\n<its drift note>` per commit: the kinds pr-steps noted on it, one a line
-    commits = [c.split('\n', 1) for c in g('log', '--first-parent', '--reverse', '--no-notes', '--notes=drift', '--format=%x00%H%n%N',
+    commits = [c.split('\n', 1) for c in g('-c', 'log.showSignature=false', 'log', '--first-parent', '--reverse', '--no-notes', '--notes=drift', '--format=%x00%H%n%N',
                                             head, '--not', base).split('\0')[1:]]
     start = None  # the commit the counts start after
     for c, note in commits:
@@ -32,7 +32,7 @@ def over(d, head='HEAD', pending=None, amend=False):
     if not start: return {}
     count = {}
     # git prints `\0<sha>\n<message>\0` per commit, then `\n` and `<file>\0` for each file it changed (none for a merge): `\0\0` is where a commit ends
-    log = g('log', '--first-parent', '--reverse', '--no-diff-merges', '--no-renames', '--name-only', '-z', '--format=%x00%H%n%B', f'{start}..{head}')
+    log = g('-c', 'log.showSignature=false', 'log', '--first-parent', '--reverse', '--no-diff-merges', '--no-renames', '--name-only', '-z', '--format=%x00%H%n%B', f'{start}..{head}')
     for commit in log[1:-1].split('\0\0'):
         message, _, names = commit.partition('\0\n')
         files = names.split('\0') if names and AGENT_TRAILER.search(message) else []
