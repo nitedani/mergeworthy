@@ -4485,5 +4485,10 @@ echo 1 >> "$SN/a.py"; rc "$SN" -am reviewed; cp "$T/rv.md" "$T/moved report"$'\n
 echo n1 >> "$SN/a.py"; git -C "$SN" add a.py; rn=$(bg 'git commit -m n1' "$SN"); rc "$SN" -m n1
 for i in 2 3 4 5; do echo "n$i" >> "$SN/a.py"; rc "$SN" -am "n$i"; done; (cd "$SN" && python3 "$R/hooks/drift.py" note finality "$T/noplan.md" 2>/dev/null); echo n6 >> "$SN/a.py"; git -C "$SN" add a.py
 check "the first change after a review whose report is named across two lines passes; BLOCK: its 6th, after drift.py was run as a writer" "0 2" "$rn $(bg 'git commit -m n6' "$SN")"
+# a finality record whose note failed is noted by its retry, once, after a row a failed write tore
+DL=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import drift; print(drift.log_path(sys.argv[2]))' "$R/hooks" "$SN"); chmod a-w "$DL"
+f1=$(cd "$SN" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null 2>&1; echo $?); chmod u+w "$DL"; printf finali >> "$DL"
+f2=$(cd "$SN" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null 2>&1; echo $?); (cd "$SN" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null 2>&1)
+check "a finality record whose drift note can't be written fails; its retry records and lets the 6th change pass, with one note in the log" "1 0 0 1" "$([ "$f1" = 0 ] || echo 1) $f2 $(bg 'git commit -m n6' "$SN") $(grep -c '^finality ' "$DL")"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]

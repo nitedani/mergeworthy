@@ -153,9 +153,9 @@ if [ "$step" = small ]; then
   # the verdict ends the report, before any trailing Verification or not_checked section (delegate/agent.md asks every agent for not_checked)
   verdict=$(awk '{ l = tolower($0) } l ~ /^#+[ \t]*(verification|not[ _]checked)([^a-z]|$)/ { tail = 1; next } /^#/ { tail = 0 } !tail' "$out" | grep -v '^[[:space:]]*$' | tail -n2 | tr '\n' '|')
   [ "$(grep -v '^[[:space:]]*$' "$out" | tail -n2 | tr '\n' '|')" = 'NO BUGS|MERGE AS IS: yes|' ] || [ "$verdict" = 'NO BUGS|MERGE AS IS: yes|' ] || ledger_ok || { echo "$out does not end with NO BUGS and MERGE AS IS: yes: fix what it found and send the same reviewer round 2 checking that fix; after round 2, record it with --ledger <the loop's ledger>" >&2; exit 1; }
+  drift_note review  # before the duplicate check: a retry of a record whose note failed notes it
   grep -qsF " $(realpath "$out") " ~/.claude/pr-steps/"$sha" && { echo "$out is already recorded for $sha" >&2; exit 1; }
   for k in verify shape reverify fresh; do echo "$k $(realpath "$out") $(date -u +%FT%TZ)" >> ~/.claude/pr-steps/"$sha"; done
-  drift_note review
   echo "recorded small fix ($n lines) for $sha: verify, shape, reverify, fresh; run the gates next"
   exit 0
 fi
@@ -342,8 +342,8 @@ EOF
 esac
 fi
 [ "$step" != union ] || { proof=$(realpath "$out"); record_union "$ua" "$ub"; exit 0; }
+case "$step" in verify|shape|reverify|fresh) drift_note review ;; finality) drift_note finality ;; esac  # before the duplicate check, as for small
 grep -qsF " $(realpath "$out") " ~/.claude/pr-steps/"$sha" && { echo "$out is already recorded for $sha: each step has its own output" >&2; exit 1; }
 mkdir -p ~/.claude/pr-steps
 echo "$step $(realpath "$out") $(date -u +%FT%TZ)" >> ~/.claude/pr-steps/$sha
-case "$step" in verify|shape|reverify|fresh) drift_note review ;; finality) drift_note finality ;; esac
 echo "recorded $step for $sha"

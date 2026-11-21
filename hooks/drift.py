@@ -30,8 +30,12 @@ def log_path(d):
 
 
 def note(d, kind, sha):
-    """Notes a kind of record (review, finality) that bin/pr-steps accepted on commit sha of checkout d."""
-    with open(log_path(d), 'a') as f: f.write(f'{kind} {identities(d, "-1", sha).get(sha, sha)}\n')
+    """Notes a kind of record (review, finality) that bin/pr-steps accepted on commit sha of checkout d, once: a retry of the same
+    record notes it after a failed write, its row whole on a line of its own."""
+    row = f'{kind} {identities(d, "-1", sha).get(sha, sha)}'
+    with open(log_path(d), 'a+') as f:
+        f.seek(0); rows = f.read()
+        if row not in rows.splitlines(): f.write(('\n' if rows and not rows.endswith('\n') else '') + row + '\n')
 
 
 def over(d, head='HEAD', pending=None, amend=False):
@@ -41,8 +45,7 @@ def over(d, head='HEAD', pending=None, amend=False):
     noted = {}
     if os.path.exists(path := log_path(d)):
         for l in open(path):
-            kind, ident = l.split()[:2]
-            noted.setdefault(ident, set()).add(kind)
+            if len(row := l.split()) == 2: noted.setdefault(row[1], set()).add(row[0])  # a row a failed write tore is skipped
     if not noted: return {}
     g = lambda *a: subprocess.run(['git', '-C', d, *a], capture_output=True, text=True).stdout
     base = g('symbolic-ref', '-q', '--short', 'refs/remotes/origin/HEAD').strip() or 'origin/main'
