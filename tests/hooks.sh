@@ -411,6 +411,11 @@ check "BLOCK: a badge naming a model of any Claude family that never ran, Mythos
 check "an edit of a post from a draft whose badge names a model this session never ran passes: the edit keeps the post's credit" 0 "$(BMCMD='gh pr edit 41 --repo o/r --body-file' bmguard 'Claude Fable 5.2 (high effort)' "$BM_RAN")"
 printf '%s\n' '{"type":"assistant","message":{"model":"claude-sonnet-5-5","content":[{"type":"text","text":"Drafted."}]}}' > "$T/bm-agent.jsonl"
 check "a native subagent's post is checked against its own transcript: its Sonnet badge passes though its parent ran only Opus" 0 "$(BMAGENT="$T/bm-agent.jsonl" bmguard 'Claude Sonnet 5.5 (high effort)' "$BM_RAN")"
+python3 -c 'import json,sys; json.dump({"body": sys.argv[2]}, open(sys.argv[1], "w"))' "$TD/r.json" "$(printf '<img src="https://github.com/claude.png" width="20" height="20" alt="Claude"> *Claude Fable 5.2 (high effort) wrote this.*\n\nAgreed, option A it is.')"
+sha256sum "$TD/r.json" | cut -d' ' -f1 > "$TD/r.json.gate"; tcbind "$TD/r.json"; printf '%s\n' "$BM_RAN" > "$T/bm.jsonl"
+python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh api repos/o/r/issues/41/comments --input "+sys.argv[2]},"cwd":sys.argv[1],"transcript_path":sys.argv[3]}))' "$T" "$TD/r.json" "$T/bm.jsonl" > "$T/in.json"
+check "BLOCK: a request file (--input) whose JSON body's badge names a model that never ran" "2 1" "$(python3 "$R/hooks/pre-bash-guard.py" < "$T/in.json" 2>"$T/err"; echo $?) $(grep -c 'names claude-fable-5-2, which' "$T/err")"
+rm -f "$TD/r.json" "$TD/r.json.gate"
 BM_OLD='{"type":"assistant","timestamp":"2026-11-16T13:09:31Z","message":{"model":"claude-fable-5-2","content":[{"type":"text","text":"Done."}]}}'
 BM_NOW='{"type":"assistant","timestamp":"2026-11-21T10:00:00Z","message":{"model":"claude-opus-5-5","content":[{"type":"text","text":"Drafted."}]}}'
 check "BLOCK: a badge naming a model the session last ran over a day before its latest line" "2 1" "$(bmguard 'Claude Fable 5.2 (high effort)' "$BM_OLD" "$BM_NOW") $(grep -c 'names claude-fable-5-2, which.*it ran claude-opus-5-5:' "$T/err")"

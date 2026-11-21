@@ -207,7 +207,11 @@ def gated_file(p, has_cd, create=False):
 
 def check_badge_models(p):
     """The Claude models p's badge names (`Claude Opus 5.5`) are ones this session ran on or launched an agent on in the last day, as its transcript says."""
-    first = re.sub(r'\ATitle:[^\n]*\n', '', open(p, errors='replace').read()).lstrip().split('\n', 1)[0]
+    text = open(p, errors='replace').read()
+    try: req = json.loads(text)
+    except ValueError: req = None
+    text = req['body'] if isinstance(req, dict) and isinstance(req.get('body'), str) else text  # a request file (--input): its body is the post
+    first = re.sub(r'\ATitle:[^\n]*\n', '', text).lstrip().split('\n', 1)[0]
     line = re.sub(r'\]\([^)]*\)', ']', first.split('*', 1)[1]) if first.startswith('<img') and '*' in first else ''  # link targets aren't model names
     named = {(f"claude-{f.lower()}", f"claude-{f.lower()}-{v.replace('.', '-')}") for f, v in re.findall(r'\bClaude ([A-Z][a-z]+) (\d+(?:\.\d+)*)\b', line)}
     if not named: return
