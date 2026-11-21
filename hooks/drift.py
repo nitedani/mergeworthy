@@ -9,7 +9,7 @@ rebase makes (a rebase with conflicts too), and onto the commit a squash or fixu
 squash made by a reset and a new commit, carries no note: that commit has no record until its next review."""
 import os, re, subprocess
 import testpaths
-from records import commit_file, DRIFT_REF, LIMIT, NOTE_KIND
+from records import base_ref, commit_file, DRIFT_REF, LIMIT, NOTE_KIND
 
 AGENT_TRAILER = re.compile(r'^Co-Authored-By: Claude', re.M | re.I)  # a commit without it is a maintainer's
 
@@ -41,9 +41,8 @@ def over(d, head='HEAD', pending=None, amend=False):
     """{code file: its count} of checkout d's files past LIMIT changes on the branch at head. pending: the files the commit being made
     changes, which alone are judged, each counted once more; None for a push, which judges the commits alone. amend: that commit
     replaces HEAD."""
-    g = lambda *a: subprocess.run(['git', '-C', d, *a], capture_output=True, text=True).stdout
-    base = g('symbolic-ref', '-q', '--short', 'refs/remotes/origin/HEAD').strip() or 'origin/main'
-    if pending is not None and g('rev-parse', '-q', '--verify', 'MERGE_HEAD').strip(): pending = []
+    base = base_ref(d)
+    if not base: return {}
     # git prints `\0<sha>\n<its drift note>` per commit: the kinds pr-steps noted on it, one a line
     commits = [c.split('\n', 1) for c in log(d, '--first-parent', '--reverse', '--no-notes', f'--notes={DRIFT_REF}', '--format=%x00%H%n%N', head, '--not', base).split('\0')[1:]]
     start = anchor(commits)
@@ -52,9 +51,9 @@ def over(d, head='HEAD', pending=None, amend=False):
     # git prints `\0<sha>\n<message>\0` per commit, then `\n` and `<file>\0` for each file it changed (none for a merge): `\0\0` is where a commit ends
     changes = log(d, '--first-parent', '--reverse', '--no-diff-merges', '--no-renames', '--name-only', '-z', '--format=%x00%H%n%B', f'{start}..{head}')
     for commit in changes[1:-1].split('\0\0'):
-        message, _, names = commit.partition('\0\n')
-        files = names.split('\0') if names and AGENT_TRAILER.search(message) else []
-        if amend and message.startswith(commits[-1][0]): pending, files = sorted(set(pending or []) | set(files)), []  # the amended commit is the pending one
+        entry, _, names = commit.partition('\0\n')  # the sha and message
+        files = names.split('\0') if names and AGENT_TRAILER.search(entry) else []
+        if amend and entry.startswith(commits[-1][0]): pending, files = sorted(set(pending or []) | set(files)), []  # the amended commit is the pending one
         for f in files: count[f] = count.get(f, 0) + 1
     for f in pending or []: count[f] = count.get(f, 0) + 1
     hot = [f for f in (count if pending is None else pending) if count.get(f, 0) > LIMIT and not re.search(testpaths.NOT_CODE, f)]

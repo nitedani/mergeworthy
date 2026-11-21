@@ -1073,7 +1073,8 @@ def check(t, has_cd):
             taken = set()
             for x in out:  # `XY path`, X the index side the commit takes; a rename's next entry is its old path
                 if x[:1] not in ('', ' ', '?'): taken |= {x[3:], *([next(out, '')] if x[0] == 'R' else [])}
-            block_drift(drift.over(repo, pending=sorted(taken), amend='--amend' in rest))
+            merging = subprocess.run(['git', '-C', repo, 'rev-parse', '-q', '--verify', 'MERGE_HEAD'], capture_output=True).returncode == 0
+            block_drift(drift.over(repo, pending=[] if merging else sorted(taken), amend='--amend' in rest))  # a merge being made is no change
         if sub == 'add' and repo is not None and os.path.isdir(repo):  # what a `git commit` later in this command reads
             subprocess.run(['git', '-C', repo, 'add', *operands(rest)], capture_output=True, stdin=subprocess.DEVNULL, env={**os.environ, 'GIT_INDEX_FILE': index_copy(repo)})
         if sub == 'push' and {'--dry-run', '-n'} & set(rest):
