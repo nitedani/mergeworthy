@@ -79,8 +79,8 @@ def reviewed(out, draft):
 
 def answers(out, draft, ledger_file=None):
     """(why, epoch): why the review in out doesn't let draft be posted, gate-pass's review rule ('' when it does), with its launch's epoch.
-    The reviewer was handed draft's text (reviewed()); its verdict is exactly CLEAN, or ledger_file closes the round (ledger.problems, a post's
-    rules); the launch postdates the latest human comment thread-context.md beside draft records. out None: a status post, which has no
+    The reviewer was handed draft's text (reviewed()); its verdict is exactly CLEAN, or ledger_file, written after it, closes the round (ledger.problems, a
+    post's rules); the launch postdates the latest human comment thread-context.md beside draft records. out None: a status post, which has no
     review and is checked by draft's own time. Writes nothing."""
     why, at = reviewed(out, draft) if out else ('', int(os.path.getmtime(draft)))
     if why: return f'{draft}: {why}', at
@@ -88,6 +88,8 @@ def answers(out, draft, ledger_file=None):
     except OSError: verdict = []  # its reviewer hasn't written yet
     if verdict != ['CLEAN']:
         found = ledger.problems(ledger_file, post=True) if ledger_file else []
+        if ledger_file and not found and os.path.exists(out) and os.path.getmtime(ledger_file) < os.path.getmtime(out):
+            found = [f'{ledger_file} was last written before the verdict in {out}: add its findings, then pass it']
         if not ledger_file or found:
             return ((f'the ledger leaves this round open (mergeworthy:delegate §Review rounds):\n' + '\n'.join(found) + '\n' if found else '')
                     + f"review is not exactly CLEAN (it has {len(verdict)} non-empty lines; last: {verdict[-1] if verdict else ''}). The reviewer's "

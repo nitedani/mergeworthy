@@ -549,7 +549,7 @@ rm -f "$FX/graphql" "$FX/graphql_d" "$FX/graphql_DC_504" "$FX/graphql_D_5" "$FX/
 # gate-pass wants the same file beside a reply draft
 GD="$T/gdrafts/drafts/x"; mkdir -p "$GD"; printf 'Agreed, option A it is.\n' > "$GD/r.md"; echo CLEAN > "$GD/r.review.out"
 gp0() { MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GD/r.md" "$GD/r.review.out" ${GPL:+--ledger "$GPL"} --kind reply --parent none >"$T/gp.out" 2>&1; echo $?; }
-gp() { rv "$GD/r.review.out"; gp0; }
+gp() { rv "$GD/r.review.out"; [ -z "${GPL:-}" ] || touch -c "$GPL"; gp0; }  # a ledger is written after the verdict it closes
 check "BLOCK: gate-pass on a reply without thread-context.md" 1 "$(gp)"
 grep -c 'no thread-context.md' "$T/gp.out"
 cp "$TD/thread-context.md" "$GD/thread-context.md"; touch -d 2026-10-01T00:00:00Z "$GD/r.md"
@@ -1215,6 +1215,8 @@ gr="$gr $(grep -c -- "^gate-pass $GD/r.md $GD/r.review.out --ledger $GD/r.ledger
 cp "$GD/thread-context.md" "$T/gd-tc2.md"; sed -i "s/^- latest-human-comment: id=\([0-9]*\) at=[^ ]*/- latest-human-comment: id=\1 at=$(date -u -d '+1 hour' +%Y-%m-%dT%H:%M:%SZ)/" "$GD/thread-context.md"
 gr="$gr $(jd "$GD/r.md" rnd gr-r4 "$GB")"; mv "$T/gd-tc2.md" "$GD/thread-context.md"; rm -f "$GD/r.ledger.md"
 check "a round-1 decline: r2 passes, BLOCK r3 once the beside-the-draft ledger closes r2, printing the gate-pass that then exits 0; a human comment newer than the review admits a round on the same text" "0 0 2 1 0 0" "$gr"
+lb="$(pe "$GD/r.md" 'Edit lb.'; printf 'Round: 2\nR1.1 should declined: the wording is quoted from the issue\nR2.1 should declined: the same\n' > "$GD/r.ledger.md"; jd "$GD/r.md" rnd lb-r3 "$GB") $(pv "$GD/r.review.out" 'R3.1 blocker: the claim about the date is false'; MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GD/r.md" "$GD/r.review.out" --ledger "$GD/r.ledger.md" --kind reply --parent none >"$T/gp.out" 2>&1; echo $?) $(jd "$GD/r.md" rnd lb-r4 "$GB")"; rm -f "$GD/r.ledger.md"
+check "a ledger last written before the verdict it would close leaves that round open: gate-pass refuses, a round on the same text passes" "0 1 0" "$lb"
 bg() { # [run_in_background]: an Agent launch's exit code, with T3CODE_THREAD_ID as the caller has it
   python3 -c 'import json,sys; t={"description":"bg","prompt":"Execute /tmp/x/bg.md"}; t.update({"run_in_background":json.loads(sys.argv[1])} if sys.argv[1:] else {}); print(json.dumps({"tool_name":"Agent","tool_input":t}))' "$@" | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
 check "BLOCK: under T3 an Agent in the background, by default or asked, naming delegate_task; in the foreground it passes" "2 1 2 0" "$(T3CODE_THREAD_ID=th bg) $(grep -c delegate_task "$T/err") $(T3CODE_THREAD_ID=th bg true) $(T3CODE_THREAD_ID=th bg false)"
