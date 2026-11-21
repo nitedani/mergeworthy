@@ -390,6 +390,38 @@ grep -o 'records the latest comment.*' "$T/err" | sed "s#$T#<T>#g; s/ (mergewort
 check "BLOCK: a thread-context.md regenerated after the gate needs a new review" 2 "$(tcguard)"
 sha256sum "$TD/r.md" | cut -d' ' -f1 > "$TD/r.md.gate"; tcbind "$TD/r.md"
 check "the regenerated thread-context.md passes once gated again" 0 "$(tcguard)"
+# a badge names only Claude models the session ran or launched: its transcript says which
+bmguard() { # <badge model line> <transcript line>...: a post to #41 ($BMCMD, else a new comment) from $TD/r.md under that badge, the session's transcript holding those lines; $BMAGENT: a native subagent's own transcript, posting
+  printf '<img src="https://github.com/claude.png" width="20" height="20" alt="Claude"> *%s wrote this.*\n\nAgreed, option A it is.\n' "$1" > "$TD/r.md"; shift
+  sha256sum "$TD/r.md" | cut -d' ' -f1 > "$TD/r.md.gate"; tcbind "$TD/r.md"; rm -f "$TD/r.md.posted"; printf '%s\n' "$@" > "$T/bm.jsonl"
+  python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[4]+" "+sys.argv[2]},"cwd":sys.argv[1],"transcript_path":sys.argv[3],**({"agent_id":"a1","agent_transcript_path":sys.argv[5]} if sys.argv[5] else {})}))' "$T" "$TD/r.md" "$T/bm.jsonl" "${BMCMD:-gh issue comment 41 --repo o/r --body-file}" "${BMAGENT:-}" > "$T/in.json"
+  python3 "$R/hooks/pre-bash-guard.py" < "$T/in.json" 2>"$T/err"; echo $?; }
+BM_RAN='{"type":"assistant","message":{"model":"claude-opus-5-5","content":[{"type":"text","text":"Drafted."}]}}'
+BM_DELEGATED='{"type":"assistant","message":{"model":"claude-opus-5-5","content":[{"type":"tool_use","id":"d1","name":"mcp__t3-code__delegate_task","input":{"task":"x","target":{"provider":"claudeAgent","model":"claude-sonnet-5-5"}}}]}}'
+check "a badge naming the model the session ran passes" 0 "$(bmguard 'Claude Opus 5.5 (high effort)' "$BM_RAN")"
+check "a badge naming a model the session launched only through delegate_task passes" 0 "$(bmguard 'Claude Opus 5.5 (high effort) and Claude Sonnet 5.5 (high effort)' "$BM_DELEGATED")"
+BM_ALIAS='{"type":"assistant","message":{"model":"claude-opus-5-5","content":[{"type":"tool_use","id":"a1","name":"Agent","input":{"prompt":"x","model":"sonnet"}}]}}'
+check "a badge naming a Sonnet version in a session that launched an Agent on the sonnet alias passes" 0 "$(bmguard 'Claude Opus 5.5 (high effort) and Claude Sonnet 5.5 (high effort)' "$BM_ALIAS")"
+check "BLOCK: a badge naming a Claude model that never ran, saying which ran and that the changed draft is reviewed again" "2 1 1" "$(bmguard 'Claude Fable 5.2 (high effort)' "$BM_RAN") $(grep -c 'names claude-fable-5-2, which this session didn.t run.*in the last day; it ran claude-opus-5-5' "$T/err") $(grep -c 'run its review again (mergeworthy:post step 3) and gate-pass it' "$T/err")"
+BM_BAD_TARGET='{"type":"assistant","message":{"model":"claude-opus-5-5","content":[{"type":"tool_use","id":"d2","name":"mcp__t3-code__delegate_task","input":{"task":"x","target":"claude-sonnet-5-5"}}]}}'
+check "a delegate request whose target is a string, not an object, is skipped: the badge naming the session's model passes" 0 "$(bmguard 'Claude Opus 5.5 (high effort)' "$BM_BAD_TARGET")"
+BM_SNAPSHOT='{"type":"assistant","message":{"model":"claude-haiku-4-5-20251001","content":[{"type":"text","text":"Drafted."}]}}'
+check "a badge naming the model whose dated snapshot the session ran passes" 0 "$(bmguard 'Claude Haiku 4.5 (high effort)' "$BM_SNAPSHOT")"
+check "BLOCK: a badge naming a model of any Claude family that never ran, Mythos too" "2 1" "$(bmguard 'Claude Mythos 5.2 (high effort)' "$BM_RAN") $(grep -c 'names claude-mythos-5-2, which' "$T/err")"
+check "an edit of a post from a draft whose badge names a model this session never ran passes: the edit keeps the post's credit" 0 "$(BMCMD='gh pr edit 41 --repo o/r --body-file' bmguard 'Claude Fable 5.2 (high effort)' "$BM_RAN")"
+printf '%s\n' '{"type":"assistant","message":{"model":"claude-sonnet-5-5","content":[{"type":"text","text":"Drafted."}]}}' > "$T/bm-agent.jsonl"
+check "a native subagent's post is checked against its own transcript: its Sonnet badge passes though its parent ran only Opus" 0 "$(BMAGENT="$T/bm-agent.jsonl" bmguard 'Claude Sonnet 5.5 (high effort)' "$BM_RAN")"
+python3 -c 'import json,sys; json.dump({"body": sys.argv[2]}, open(sys.argv[1], "w"))' "$TD/r.json" "$(printf '<img src="https://github.com/claude.png" width="20" height="20" alt="Claude"> *Claude Fable 5.2 (high effort) wrote this.*\n\nAgreed, option A it is.')"
+sha256sum "$TD/r.json" | cut -d' ' -f1 > "$TD/r.json.gate"; tcbind "$TD/r.json"; printf '%s\n' "$BM_RAN" > "$T/bm.jsonl"
+python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh api repos/o/r/issues/41/comments --input "+sys.argv[2]},"cwd":sys.argv[1],"transcript_path":sys.argv[3]}))' "$T" "$TD/r.json" "$T/bm.jsonl" > "$T/in.json"
+check "BLOCK: a request file (--input) whose JSON body's badge names a model that never ran" "2 1" "$(python3 "$R/hooks/pre-bash-guard.py" < "$T/in.json" 2>"$T/err"; echo $?) $(grep -c 'names claude-fable-5-2, which' "$T/err")"
+rm -f "$TD/r.json" "$TD/r.json.gate"
+check "a comment's --edit-last edit keeps the post's credit, while --create-if-none may create, so its badge is checked" "0 2 1" "$(BMCMD='gh issue comment 41 --repo o/r --edit-last --body-file' bmguard 'Claude Fable 5.2 (high effort)' "$BM_RAN") $(BMCMD='gh issue comment 41 --repo o/r --edit-last --create-if-none --body-file' bmguard 'Claude Fable 5.2 (high effort)' "$BM_RAN") $(grep -c 'names claude-fable-5-2, which' "$T/err")"
+check "BLOCK: a badge naming a version only a longer id of the session's starts with (Claude Sonnet 5, the session ran claude-sonnet-5-5)" "2 1" "$(bmguard 'Claude Sonnet 5 (high effort)' '{"type":"assistant","message":{"model":"claude-sonnet-5-5","content":[{"type":"text","text":"Drafted."}]}}') $(grep -c 'names claude-sonnet-5, which' "$T/err")"
+BM_OLD='{"type":"assistant","timestamp":"2026-11-16T13:09:31Z","message":{"model":"claude-fable-5-2","content":[{"type":"text","text":"Done."}]}}'
+BM_NOW='{"type":"assistant","timestamp":"2026-11-21T10:00:00Z","message":{"model":"claude-opus-5-5","content":[{"type":"text","text":"Drafted."}]}}'
+check "BLOCK: a badge naming a model the session last ran over a day before its latest line" "2 1" "$(bmguard 'Claude Fable 5.2 (high effort)' "$BM_OLD" "$BM_NOW") $(grep -c 'names claude-fable-5-2, which.*it ran claude-opus-5-5:' "$T/err")"
+printf 'Agreed, option A it is.\n' > "$TD/r.md"; sha256sum "$TD/r.md" | cut -d' ' -f1 > "$TD/r.md.gate"; tcbind "$TD/r.md"
 # the .posted marker: written once the post succeeded (PostToolUse), so a post another hook blocked, or that failed, can be retried
 postreg() { # tool_response json: post-bash-register after `gh issue comment 41 ... --body-file $TD/r.md`
   python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh issue comment 41 --repo o/r --body-file "+sys.argv[2]},"cwd":sys.argv[1],"tool_response":json.loads(sys.argv[3])}))' "$T" "$TD/r.md" "$1" \
