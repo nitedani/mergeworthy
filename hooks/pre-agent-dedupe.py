@@ -40,12 +40,27 @@ if not register and d.get('tool_name') in ('Agent', 'Task') and under_t3() and t
     sys.stderr.write("BLOCKED: under T3 Code a background Agent stops when this turn ends (T3 starts a new session for the next one). "
                      "Launch it with delegate_task (mergeworthy:delegate step 4), or with run_in_background: false for a child that finishes within this turn.\n")
     refused()
+def codex_reset():
+    """The soonest reset while claude-swap reads every saved Codex account as used up ($CODEX_HOME/profiles/limited.json), else None."""
+    profiles = os.path.join(os.environ.get('CODEX_HOME') or os.path.expanduser('~/.codex'), 'profiles')
+    try:
+        limited = json.load(open(os.path.join(profiles, 'limited.json')))
+        until = [float((limited.get(a) or {}).get('until') or 0) for a in os.listdir(profiles) if os.path.isfile(os.path.join(profiles, a, 'auth.json'))]
+    except (OSError, ValueError, AttributeError, TypeError):
+        return None
+    return min(until) if until and min(until) > time.time() else None
 # This hook runs only under Claude Code, so a review on claudeAgent, or naming no provider (it inherits), is on the main session's company
 if not register and ti.get('role') == 'review' and under_t3():
     target = ti.get('target') or {}
     provider = {target.get('providerInstanceId'), target.get('driverKind')} - {None, ''}
-    # the fallback keeps the first review's prompt, so its claim may sit in the brief file the task names
-    if (not provider or 'claudeAgent' in provider) and not re.search(r'\bFallback:[ \t]*\S', launch.Launch(str(ti.get('task') or '')).brief):
+    reset = codex_reset()
+    if reset and 'codex' in provider:
+        at = time.localtime(reset)
+        sys.stderr.write(f"BLOCKED: claude-swap reads every saved Codex account as used up until {time.strftime('%H:%M' if at[:3] == time.localtime()[:3] else '%a %H:%M', at)}, so this launch would fail. "
+                         "Launch the review on this company (target.providerInstanceId claudeAgent); it needs no Fallback line while that holds.\n")
+        refused()
+    # the fallback keeps the first review's prompt, so its claim may sit in the brief file the task names; `<what failed>` is the form, no claim
+    elif not reset and (not provider or 'claudeAgent' in provider) and not re.search(r'\bFallback:[ \t]*[^\s<]', launch.Launch(str(ti.get('task') or '')).brief):
         sys.stderr.write("BLOCKED: an independent check starts on another company's model (mergeworthy:delegate §Reviewers): set target.providerInstanceId to codex. "
                          "Only when that call failed, launch on this company with `Fallback: <what failed>` in the task or the brief file it names.\n")
         refused()

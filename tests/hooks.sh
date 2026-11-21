@@ -1185,10 +1185,22 @@ Fallback:
 next line')"
 printf 'Fallback: codex stopped round 2\nReview it\n' > "$T/fx/fb-brief.md"; printf 'Review it\n' > "$T/fx/plain-brief.md"
 check "a review on claudeAgent passes with a Fallback sentence inside a task line, or a Fallback line in the brief file it names; one whose brief file has none is refused" "0 0 2" "$(rev '{"providerInstanceId":"claudeAgent"}' 'Review it. Fallback: codex stopped round 1') $(rev '{"providerInstanceId":"claudeAgent"}' "Follow $T/fx/fb-brief.md") $(rev '{"providerInstanceId":"claudeAgent"}' "Follow $T/fx/plain-brief.md")"
+printf 'Review the change.\nIf the independent reviewer fails, record `Fallback: <what failed>` in the task.\n' > "$T/fx/fb-slot-brief.md"
+check "BLOCK: a review on claudeAgent whose task, or the brief file it names, only quotes the \`Fallback: <what failed>\` form" "2 2" "$(rev '{"providerInstanceId":"claudeAgent"}' 'Review the change. If the independent reviewer fails, record `Fallback: <what failed>` in the task.') $(rev '{"providerInstanceId":"claudeAgent"}' "Follow $T/fx/fb-slot-brief.md")"
 check "an exploring research agent on claudeAgent passes" 0 "$(rev '{"providerInstanceId":"claudeAgent"}' 'Explore it' research)"
 python3 -c 'import json; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":"Review it","role":"review","target":{"providerInstanceId":"claudeAgent"},"clientRequestId":"r-1"}}))' \
   | T3CODE_THREAD_ID=th python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"
 check "BLOCK: a launch with two faults, a review on claudeAgent and a reused clientRequestId, gets both refusals in one message" "2 1 1" "$? $(grep -c 'Fallback: <what failed>' "$T/err") $(grep -c "clientRequestId 'r-1' was used before" "$T/err")"
+CX="$T/cx"; mkdir -p "$CX/profiles/a" "$CX/profiles/b" "$CX/profiles/active"; touch "$CX/profiles/a/auth.json" "$CX/profiles/b/auth.json"; now=$(date +%s)
+lim() { printf '{"a":{"until":%s},"b":{"until":%s}}' "$1" "$2" > "$CX/profiles/limited.json"; }  # claude-swap's Codex limit state: the accounts' resets
+lim $(date -d 'today 23:59:59' +%s) $((now + 4 * 86400)); export CODEX_HOME="$CX"; r="$(rev '{"providerInstanceId":"codex"}' 'Review it') $(grep -c 'until 23:59,' "$T/err")"
+lim $((now + 3 * 86400)) $((now + 4 * 86400)); r="$r $(rev '{"providerInstanceId":"codex"}' 'Review it') $(grep -c "until $(LC_ALL=C date -d @$((now + 3 * 86400)) '+%a %H:%M')," "$T/err")"
+check "BLOCK: a review on codex while claude-swap reads every saved Codex account as used up, naming the soonest reset, with its day when not today; one on claudeAgent or no provider passes without a Fallback line" "2 1 2 1 0 0" "$r $(rev '{"providerInstanceId":"claudeAgent"}' 'Review it') $(rev '{}' 'Review it')"
+printf '{"a":{"until":%s}}' $((now + 3600)) > "$CX/profiles/limited.json"; r="$(rev '{"driverKind":"codex"}' 'Review it') $(rev '{"providerInstanceId":"claudeAgent"}' 'Review it')"
+lim $((now - 60)) $((now + 3600)); r="$r $(rev '{"providerInstanceId":"codex"}' 'Review it') $(rev '{"providerInstanceId":"claudeAgent"}' 'Review it')"
+rm "$CX/profiles/limited.json"; r="$r $(rev '{"providerInstanceId":"codex"}' 'Review it') $(rev '{"providerInstanceId":"claudeAgent"}' 'Review it')"
+check "a Codex account with room (none in limited.json, a reset past) or no limited.json: a review on codex passes, one on claudeAgent without a Fallback line is refused" "0 2 0 2 0 2" "$r"
+unset CODEX_HOME
 agent_rnd() { # description prompt
   local j; j=$(python3 -c 'import json,sys; print(json.dumps({"tool_name":"Agent","tool_input":{"description":sys.argv[1],"prompt":sys.argv[2]}}))' "$1" "$2")
   printf '%s' "$j" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; local r=$?; [ $r = 0 ] && printf '%s' "$j" | python3 "$R/hooks/pre-agent-dedupe.py" register; echo $r; }
