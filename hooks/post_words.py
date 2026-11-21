@@ -64,12 +64,25 @@ WORDS = {
     },
 }
 
-def language(repo):
-    """The language code of a repo (owner/repo, or gitlab.com/<namespace>/<project>)."""
+def project_line(repo, key):
+    """The rest of the project file's `<key>:` line, bulleted or not, for a repo (owner/repo, or gitlab.com/<namespace>/<project>):
+    '' when the file has no such line, None without a project file."""
     p = os.path.expanduser(f"~/.mergeworthy/projects/{re.sub(r'^gitlab[.]com/', '', repo or '')}.md")
-    try: m = re.search(r'^\s*(?:[-*]\s+)?Language:\s*(\w+)', open(p).read(), re.M) if repo else None
-    except OSError: m = None
-    return m[1] if m and m[1] in WORDS else 'en'
+    try: text = open(p).read() if repo else None
+    except OSError: text = None
+    m = text and re.search(rf'^[ \t]*(?:[-*]\s+)?{key}:[ \t]*(.*)', text, re.M)
+    return None if text is None else m[1].strip() if m else ''
+
+def language(repo):
+    """The language code of a repo."""
+    m = re.match(r'\w+', project_line(repo, 'Language') or '')
+    return m[0] if m and m[0] in WORDS else 'en'
+
+def template(repo, kind):
+    """The headings a body keeps, as the project file's `<kind> template: <path>: `## Why`, `## How`` line quotes them (kind: 'PR' or
+    'Issue'): [] with `none` or without a project file, None when the project file has no such line."""
+    line = project_line(repo, f'{kind} template')
+    return None if line == '' else re.findall(r'`(#{1,6} [^`]+)`', line or '')
 
 def words(repo):
     return WORDS[language(repo)]
