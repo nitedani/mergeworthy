@@ -4531,6 +4531,12 @@ check "the first change after a review whose report is named across two lines pa
 # a finality report pr-steps refuses, here as already recorded for another step, notes nothing
 { cat "$T/fin.md"; echo 'NO LOOP B COMMITS'; } > "$T/fin2.md"; (cd "$SN" && bash "$R/bin/pr-steps" reverify "$T/fin2.md" >/dev/null)
 check "BLOCK: a refused finality report leaves the 6th change refused" "1 2" "$(cd "$SN" && bash "$R/bin/pr-steps" finality "$T/fin2.md" >/dev/null 2>&1; echo $?) $(bg 'git commit -m n6' "$SN")"
+# a checkout with no git identity still gets its note, which an amend then carries
+SI="$T/simpi"; git init -q -b main "$SI"; echo 0 > "$SI/a.py"; git -C "$SI" add -A; rc "$SI" -m base; git -C "$SI" update-ref refs/remotes/origin/main HEAD; git -C "$SI" checkout -q -b fix; echo 1 >> "$SI/a.py"; rc "$SI" -am reviewed
+(cd "$SI" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
+ri=$(cd "$SI" && env -u GIT_AUTHOR_NAME -u GIT_AUTHOR_EMAIL -u GIT_COMMITTER_NAME -u GIT_COMMITTER_EMAIL -u EMAIL GIT_CONFIG_GLOBAL=/dev/null bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null 2>&1; echo $?)
+rc "$SI" --amend -m 'reviewed, subject edited'; for i in 1 2 3 4 5; do echo "i$i" >> "$SI/a.py"; rc "$SI" -am "i$i"; done; echo i6 >> "$SI/a.py"; git -C "$SI" add a.py
+check "a review recorded where git has no identity records its note; BLOCK: the 6th change since it, its subject amended" "0 2" "$ri $(bg 'git commit -m i6' "$SI")"
 # a drift note comes from pr-steps alone: git commands writing refs/notes/drift are refused, reading it and other notes refs pass
 dn=; for c in 'git notes --ref=drift append -m finality HEAD' 'git notes --ref refs/notes/drift add -f -m finality HEAD' 'git -c core.notesRef=refs/notes/drift notes remove HEAD' \
   'git update-ref refs/notes/drift HEAD' "git push $T/notes.git refs/notes/drift" 'git notes --ref=drift show HEAD' 'git notes append -m mine HEAD'; do dn="$dn $(bg "$c" "$SN")$(grep -c 'refs/notes/drift are written by .pr-steps <step>' "$T/err")"; done
