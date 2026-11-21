@@ -3802,6 +3802,9 @@ sreg() { : > "$T/started"; python3 -c 'import json,sys; print(json.dumps({"sessi
     | python3 "$R/hooks/post-bash-register.py" 2>/dev/null; echo "$?:$(cat "$SWD/live/threads.txt" 2>/dev/null || echo none):$(cat "$SWD/threads.txt" 2>/dev/null || echo none):$(cat "$T/started")"; rm -f "$SWD/live/threads.txt"; }
 mkdir -p "$SWD/wt" "$SWD/live"; a=$(sreg); echo "$FPID" > "$SWD/live/gh-watch.pid"; echo "$SWD/live" >> "$HOME/.claude/gh-watch-dirs.txt"
 check "a PR from a worktree in the steward's folder starts its live dir's watcher, or joins it while it runs, not the folder's" "2:vikejs/vike 9:none:sess-s $SWD/live vikejs/vike 9|0:vikejs/vike 9:none:" "$a|$(sreg)"
+check "BLOCK: that PR's create with its output filtered (no URL) joins no watcher, naming the live dir to register it in" "2:none:none:1" \
+  "$(python3 -c 'import json,sys; print(json.dumps({"session_id":"sess-s","cwd":sys.argv[1],"tool_input":{"command":sys.argv[2]},"tool_response":{"stdout":"  - Event subscriptions are in preview"}}))' "$SWD/wt" "$PRC 2>&1 | tail -1" \
+    | python3 "$R/hooks/post-bash-register.py" 2>"$T/err"; echo "$?:$(cat "$SWD/live/threads.txt" 2>/dev/null || echo none):$(cat "$SWD/threads.txt" 2>/dev/null || echo none):$(grep -c "run \`gh-watch-start $SWD/live vikejs/vike <N>\`" "$T/err")")"
 # the push that follows is checked against the same watcher: the live dir's covers it, the quiet folder's doesn't
 printf 'Tier: S, because one fix\n\n- [ ] Fix it https://github.com/vikejs/vike/issues/1\n' > "$SWD/scope.md"; : > "$SWD/repos.txt"
 git init -q -b fix-telefunc "$SWD/wt"; git -C "$SWD/wt" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; git -C "$SWD/wt" remote add upstream https://github.com/vikejs/vike.git; quick "$SWD/wt"; (cd "$SWD/wt" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
@@ -3834,8 +3837,8 @@ check "every signal naming the public host passes: GH_REPO github.com with GH_HO
   "$(GH_REPO=github.com/vikejs/vike GH_HOST=github.com bgs sess-b "$GHE" "$CK4") $(GITLAB_HOST=gitlab.com GL_HOST=https://gitlab.com bgs sess-b "$GIC" "$CK4")"
 check "the same creates on github.com and gitlab.com pass: gh api, with --hostname github.com, gh -R OWNER/REPO and github.com/OWNER/REPO, glab -R PATH and gitlab.com/PATH" "0 0 0 0 0 0" \
   "$(bgs sess-b "$GHE" "$CK4") $(bgs sess-b "gh api --hostname github.com repos/vikejs/vike/issues -f title=x -F body=@$T/h1.md" "$CK4") $(bgs sess-b "gh issue create -R vikejs/vike --title x --body-file $T/h1.md" "$CK4") $(bgs sess-b "gh issue create -R github.com/vikejs/vike --title x --body-file $T/h1.md" "$CK4") $(bgs sess-b 'glab issue create -R ns/proj --title x' "$CK4") $(bgs sess-b "$GIC" "$CK4")"
-check "a create alone, after cd /abs &&, with 2>&1 or with --title \"\$(cat <file>)\" passes and starts the folder's watcher; after exec > file it starts none" \
-  "0 0 0 0|2:sess-b $TK4 vikejs/vike 9|2:sess-b $TK4 vikejs/vike 9|2:sess-b $TK4 vikejs/vike 9|0:" \
+check "a create alone, after cd /abs &&, with 2>&1 or with --title \"\$(cat <file>)\" passes and starts the folder's watcher; after exec > file it starts none, saying to register it" \
+  "0 0 0 0|2:sess-b $TK4 vikejs/vike 9|2:sess-b $TK4 vikejs/vike 9|2:sess-b $TK4 vikejs/vike 9|2:" \
   "$(bgs sess-b "$MRC" "$CK4") $(bgs sess-b "cd $CK4 && $MRC" "$T") $(bgs sess-b "$MRC 2>&1" "$CK4") $(bgs sess-b "glab mr create --draft -R gitlab.com/ns/proj --title \"\$(cat $T/h1.md)\"" "$CK4")|$(areg "$PRC" https://github.com/vikejs/vike/pull/9)|$(areg "cd $CK4 && $PRC" https://github.com/vikejs/vike/pull/9)|$(areg "$PRC 2>&1" https://github.com/vikejs/vike/pull/9)|$(areg "exec > $T/create.log; $GIC" '')"
 check "a create whose repository names the host (-R github.com/OWNER/REPO, --repo with its URL, --repo=) starts the folder's watcher as -R OWNER/REPO does" \
   "2:sess-b $TK4 vikejs/vike 9|2:sess-b $TK4 vikejs/vike 9|2:sess-b $TK4 vikejs/vike 9|2:sess-b $TK4 vikejs/vike 9" \
