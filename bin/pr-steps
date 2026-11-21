@@ -122,15 +122,15 @@ pbase() {
   local pb; pb=$(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || true)
   git merge-base HEAD "${pb:+origin/$pb}" 2>/dev/null || git merge-base HEAD "$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)" 2>/dev/null || true
 }
-# drift_note <step>: notes a review or finality step on $sha under refs/notes/drift, once, which the drift count anchors on (hooks/drift.py),
-# before its record, which a failed note leaves unwritten; the repo's notes.rewriteRef gets refs/notes/drift beside any value it has, so an
-# amend or a rebase copies the note
+# drift_note <step>: notes a review or finality step on $sha under the drift ref, its kind once (hooks/records.py DRIFT_REF, NOTE_KIND),
+# which the drift count anchors on (hooks/drift.py), before its record, which a failed note leaves unwritten; the repo's notes.rewriteRef
+# gets the drift ref beside any value it has, so an amend or a rebase copies the note
 drift_note() {
-  local k; case "$1" in verify|shape|reverify|fresh|small) k=review ;; finality) k=finality ;; *) return 0 ;; esac
+  local ref k; read -r ref k <<< "$(python3 "$(dirname "$(realpath "$0")")/../hooks/records.py" drift-note "$1")"; [ -n "$k" ] || return 0
   # the repo's own value: a global one is the recorder's alone, which another home amending this checkout doesn't have
-  { git config --local --get-all notes.rewriteRef | grep -qxF refs/notes/drift || git config --local --add notes.rewriteRef refs/notes/drift; } &&
+  { git config --local --get-all notes.rewriteRef | grep -qxF "$ref" || git config --local --add notes.rewriteRef "$ref"; } &&
     # a note is a commit, which needs an identity: pr-steps' own, which no half-set or useConfigOnly identity can fail
-    { git notes --ref=drift show "$sha" 2>/dev/null | grep -qxF "$k" || git -c user.name=pr-steps -c user.email=pr-steps@localhost notes --ref=drift append -m "$k" "$sha"; } ||
+    { git notes --ref="$ref" show "$sha" 2>/dev/null | grep -qxF "$k" || git -c user.name=pr-steps -c user.email=pr-steps@localhost notes --ref="$ref" append -m "$k" "$sha"; } ||
     { echo "the drift note of $out on $sha could not be written (git's error above), so nothing is recorded: fix that, then run the same pr-steps again" >&2; exit 1; }
 }
 # recorded_as <step>: whether $out is recorded on $sha as that step, the same report's earlier record

@@ -9,10 +9,9 @@ rebase makes (a rebase with conflicts too), and onto the commit a squash or fixu
 squash made by a reset and a new commit, carries no note: that commit has no record until its next review."""
 import os, re, subprocess
 import testpaths
-from records import commit_file
+from records import commit_file, DRIFT_REF, LIMIT, NOTE_KIND
 
 AGENT_TRAILER = re.compile(r'^Co-Authored-By: Claude', re.M | re.I)  # a commit without it is a maintainer's
-REVIEW = {'verify', 'small', 'shape', 'reverify', 'fresh', 'review'}  # the record steps, and the note kind, that are a review
 
 
 def log(d, *args):
@@ -23,9 +22,9 @@ def log(d, *args):
 
 
 def steps(sha, note):
-    """What is recorded on commit sha: the kinds its drift note holds and the steps its pr-steps record holds."""
+    """The kinds recorded on commit sha: those its drift note holds, and those of the steps its pr-steps record holds (NOTE_KIND)."""
     rec = commit_file(sha)
-    return set(note.split()) | ({l.split()[0] for l in open(rec) if l.split()} if os.path.exists(rec) else set())
+    return set(note.split()) | ({NOTE_KIND.get(l.split()[0], l.split()[0]) for l in open(rec) if l.split()} if os.path.exists(rec) else set())
 
 
 def anchor(commits):
@@ -34,19 +33,19 @@ def anchor(commits):
     start = None
     for c, note in commits:
         recorded = steps(c, note)
-        if 'finality' in recorded or (start is None and recorded & REVIEW): start = c
+        if 'finality' in recorded or (start is None and 'review' in recorded): start = c
     return start
 
 
 def over(d, head='HEAD', pending=None, amend=False):
-    """{code file: its count} of checkout d's files past 5 changes on the branch at head. pending: the files the commit being made
+    """{code file: its count} of checkout d's files past LIMIT changes on the branch at head. pending: the files the commit being made
     changes, which alone are judged, each counted once more; None for a push, which judges the commits alone. amend: that commit
     replaces HEAD."""
     g = lambda *a: subprocess.run(['git', '-C', d, *a], capture_output=True, text=True).stdout
     base = g('symbolic-ref', '-q', '--short', 'refs/remotes/origin/HEAD').strip() or 'origin/main'
     if pending is not None and g('rev-parse', '-q', '--verify', 'MERGE_HEAD').strip(): pending = []
     # git prints `\0<sha>\n<its drift note>` per commit: the kinds pr-steps noted on it, one a line
-    commits = [c.split('\n', 1) for c in log(d, '--first-parent', '--reverse', '--no-notes', '--notes=drift', '--format=%x00%H%n%N', head, '--not', base).split('\0')[1:]]
+    commits = [c.split('\n', 1) for c in log(d, '--first-parent', '--reverse', '--no-notes', f'--notes={DRIFT_REF}', '--format=%x00%H%n%N', head, '--not', base).split('\0')[1:]]
     start = anchor(commits)
     if not start: return {}
     count = {}
@@ -58,6 +57,6 @@ def over(d, head='HEAD', pending=None, amend=False):
         if amend and message.startswith(commits[-1][0]): pending, files = sorted(set(pending or []) | set(files)), []  # the amended commit is the pending one
         for f in files: count[f] = count.get(f, 0) + 1
     for f in pending or []: count[f] = count.get(f, 0) + 1
-    hot = [f for f in (count if pending is None else pending) if count.get(f, 0) > 5 and not re.search(testpaths.NOT_CODE, f)]
+    hot = [f for f in (count if pending is None else pending) if count.get(f, 0) > LIMIT and not re.search(testpaths.NOT_CODE, f)]
     gen = testpaths.generated(d, hot, head if pending is None else None) if hot else set()  # a push's own attributes, a commit's checkout
     return {f: count[f] for f in hot if f not in gen}
