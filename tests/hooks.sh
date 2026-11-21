@@ -4023,6 +4023,9 @@ check "a bare #12 the session linked as acme/widgets#12 is that PR; a #13 it nev
 pr12 acme/gadgets open false
 check "two repos linked with the same #12: the newest link is the one checked" "2 1 0" \
   "$(tr_said user 'See acme/widgets#12.' user 'Now https://github.com/acme/gadgets/issues/12 and its PR.' assistant '#12 is merged.'; slj '#12 is merged.' 0 s-fc "$T/vkr") $(grep -c 'gadgets/pull/12' "$T/err") $(tr_said user 'Now https://github.com/acme/gadgets/pull/12.' user 'See acme/widgets#12.' assistant '#12 is merged.'; slj '#12 is merged.' 0 s-fc "$T/vkr")"
+M12='For https://github.com/acme/gadgets/pull/12, #12 is merged.'; pr12 acme/widgets open false; pr12 acme/gadgets closed true
+check "a bare #12 in a message linking a PR 12 by URL is that PR, not one the session linked earlier, before and after the transcript holds the message" "0 0 2 2" \
+  "$(tr_said user 'See https://github.com/acme/widgets/pull/12.'; slj "$M12" 0 s-fc "$T/vkr") $(tr_said user 'See https://github.com/acme/widgets/pull/12.' assistant "$M12"; slj "$M12" 0 s-fc "$T/vkr") $(pr12 acme/widgets closed true; pr12 acme/gadgets open false; tr_said user 'See https://github.com/acme/widgets/pull/12.'; slj "$M12" 0 s-fc "$T/vkr") $(tr_said user 'See https://github.com/acme/widgets/pull/12.' assistant "$M12"; slj "$M12" 0 s-fc "$T/vkr")"
 check "BLOCK: a done message linking a PR gh can't read" "2 1" "$(slj 'All done: https://github.com/o/r/pull/404 has the fix.') $(grep -c "couldn't read it" "$T/err")"
 TK4="$HOME/.mergeworthy/work/fc-task"; mkdir -p "$TK4"; printf 'Tier: S, because one fix\n\n- [ ] Fix CI https://github.com/o/r/pull/71\n' > "$TK4/scope.md"
 uf() { python3 - "$T/tr.jsonl" "$@" <<'PY'
