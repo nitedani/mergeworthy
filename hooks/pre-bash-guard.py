@@ -9,7 +9,7 @@ import failclosed
 import shellcmd
 from shellcmd import parse, segments, prog, script, opt, api_call, field_name, TEXT_FREE, discussion_post, discussion_thread_of, names_discussion_mutation, env_of, origin, plain_create, PLAIN, new_post_drafts, no_instructions_read, by_agent, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Unseen, Where
 from records import branch_record, commit_file, no_approach, no_preflight, STORE
-import drift, own_actions, review_launch, steward, post_words, threads_file, work_folder
+import drift, own_actions, review_launch, steward, post_words, threads_file, transcript_facts, work_folder
 from t3_tasks import under_t3
 def missing_steps(d, head=None):
     """(head, the converge steps it lacks): head is a push's pushed commit, else HEAD."""
@@ -200,9 +200,28 @@ def gated_file(p, has_cd, create=False):
     if sha != open(gate).read().split('\n')[0].strip():
         block(f"{p} changed after its gate: review it again and re-run gate-pass")
     if create:  # a new comment/issue/PR from this exact draft: only once (edits may repeat); post-bash-register writes .posted once it succeeded
+        check_badge_models(p)  # an edit keeps the post's credit
         posted = p + '.posted'
         if os.path.exists(posted) and open(posted).read().strip() == sha:
             block(f"{p} was already posted: edit that post instead (PATCH / gh … edit)")
+
+def check_badge_models(p):
+    """The Claude models p's badge names (`Claude Opus 5.5`) are ones this session ran on or launched an agent on in the last day, as its transcript says."""
+    text = open(p, errors='replace').read()
+    try: req = json.loads(text)
+    except ValueError: req = None
+    text = req['body'] if isinstance(req, dict) and isinstance(req.get('body'), str) else text  # a request file (--input): its body is the post
+    first = re.sub(r'\ATitle:[^\n]*\n', '', text).lstrip().split('\n', 1)[0]
+    line = re.sub(r'\]\([^)]*\)', ']', first.split('*', 1)[1]) if first.startswith('<img') and '*' in first else ''  # link targets aren't model names
+    named = {(f"claude-{f.lower()}", f"claude-{f.lower()}-{v.replace('.', '-')}") for f, v in re.findall(r'\bClaude ([A-Z][a-z]+) (\d+(?:\.\d+)*)\b', line)}
+    if not named: return
+    if not (path := shellcmd.transcript(d)): return  # a native subagent's post: its own transcript
+    try: ran = transcript_facts.read(path).recent_models()
+    except OSError: return
+    # claude-sonnet: an agent launched on the alias, any version; claude-haiku-4-5-20251001: a dated snapshot of claude-haiku-4-5
+    if missing := sorted(m for f, m in named if not any(r == f or re.fullmatch(re.escape(m) + r'(-\d{8})?', r) for r in ran)):
+        block(f"{p}'s badge names {', '.join(missing)}, which this session didn't run on or launch an agent on in the last day; it ran {', '.join(sorted(ran)) or 'no Claude model'}: "
+              "name the models that worked on this post (mergeworthy:writing, the badge), then post-lint it, run its review again (mergeworthy:post step 3) and gate-pass it")
 
 def local_login():
     """The account gh is logged in as, from its own config (no network); '' when gh can't say."""
@@ -1233,7 +1252,8 @@ def check(t, has_cd):
                 check_finality(*target, files)
             if sub != 'create':
                 check_context(f'{target[0]}#{target[1]}' if all(target) else None, files)
-            for f in files: gated_file(f, has_cd, create=f in new_post_drafts(t))
+            edit_last = sub == 'comment' and '--edit-last' in rest and '--create-if-none' not in rest  # --create-if-none may create
+            for f in files: gated_file(f, has_cd, create=f in new_post_drafts(t) and not edit_last)
     if p == 'gh' and a[:2] in (['pr', 'close'], ['issue', 'close']) and '--help' not in a and '-h' not in a:  # one it can't tell wakes as before
         ref = next((x for i, x in enumerate(a[2:]) if not x.startswith('-') and (i == 0 or a[1 + i] not in VALUED)), None)
         if t_ := thread_of_ref(gh_repo(a[2:], env, run_dir) if run_dir is not None or opt(a[2:], ['--repo', '-R']) else None, ref):
