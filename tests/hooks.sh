@@ -1295,7 +1295,7 @@ wait $LPID $WPID $OPID 2>/dev/null
 cap_in() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":sys.argv[1],"tool_input":{"task":sys.argv[2],"title":sys.argv[2][:40]}}))' "$1" "$2"; }
 cap() { cap_in "$1" "$2" | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; local rc=$?; [ $rc = 0 ] && cap_in "$1" "$2" | python3 "$R/hooks/pre-agent-dedupe.py" register; echo $rc; }
 check "BLOCK: a fourth agent open at once in one session, naming the three" "0 0 0 2 3" "$(cap capS 'Execute /tmp/x/cap1.md') $(cap capS 'Execute /tmp/x/cap2.md') $(cap capS 'Execute /tmp/x/cap3.md') $(cap capS 'Execute /tmp/x/cap4.md') $(grep -c '^/tmp/x/cap[123].md' "$T/err")"
-check "another session, and a memory refresh in this one, pass" "0 0" "$(cap capT 'Execute /tmp/x/cap5.md') $(cap capS 'Follow skills/delegate/memory-refresh.md on /tmp/x/mem-lines.md')"
+check "another session, and a memory refresh in this one, pass" "0 0" "$(cap capT 'Execute /tmp/x/cap5.md') $(cap capS 'Follow ~/.mergeworthy/current/skills/delegate/memory-refresh.md on /tmp/x/mem-lines.md')"
 CM="$HOME/.mergeworthy/work/capmem"; mkdir -p "$CM"; : > "$CM/memory.source"; printf 'Merge memory-new.txt into memory.md.\n' > "$CM/memory-brief-1.md"
 check "a running memory refresh under ~/.mergeworthy/work leaves the session its 3 other agents" "0 0 0 0" "$(cap capM "Follow $CM/memory-brief-1.md exactly") $(cap capM 'Execute /tmp/x/capm1.md') $(cap capM 'Execute /tmp/x/capm2.md') $(cap capM 'Execute /tmp/x/capm3.md')"
 for k in capm1 capm2 capm3; do python3 "$R/bin/agent-job" done "/tmp/x/$k.md" >/dev/null; done
@@ -1309,12 +1309,16 @@ capt() { # session title task: a launch that passes runs, so the PostToolUse hal
 check "BLOCK: a launch whose title, not its task, names the memory-refresh template counts, and the fourth agent is refused" "0 0 0 2" \
   "$(capt capY 'Did agents follow skills/delegate/memory-refresh.md?' 'Read the archived instructions and summarize what changed between the two versions.') $(cap capY 'Execute /tmp/x/capy1.md') $(cap capY 'Execute /tmp/x/capy2.md') $(cap capY 'Execute /tmp/x/capy3.md')"
 for k in capy1 capy2; do python3 "$R/bin/agent-job" done "/tmp/x/$k.md" >/dev/null; done; python3 "$R/bin/agent-job" done 'Did agents follow skills/delegate/memory-refresh.md?' >/dev/null
-FX="$T/fixtures/example-skills/delegate"; mkdir -p "$FX"; printf 'Reproduce the fixture failures and summarize what broke.\n' > "$FX/memory-refresh.md"
+FX="$T/fixtures/skills/delegate"; mkdir -p "$FX"; printf 'Reproduce the fixture failures and summarize what broke.\n' > "$FX/memory-refresh.md"
 mkdir -p "$HOME/.mergeworthy/projects/widget"; printf -- '- a convention\n' > "$HOME/.mergeworthy/projects/widget/example.md"
 agv() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"orchv","tool_input":{"task":sys.argv[1],"title":sys.argv[2]}}))' "$1" "$2" | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo "$? $(grep -c 'projects/widget/example.md' "$T/err")"; }
-check "a launch following a lookalike template path (example-skills/delegate/memory-refresh.md) is ordinary work: it counts against the cap, and one for a repo names its project file" "0 0 0 2 2 1" \
+check "a launch following a skills/delegate/memory-refresh.md that isn't the installed template (a fixture's) is ordinary work: it counts against the cap, and one for a repo names its project file" "0 0 0 2 2 1" \
   "$(cap capV "Follow $FX/memory-refresh.md exactly.") $(cap capV 'Execute /tmp/x/capv1.md') $(cap capV 'Execute /tmp/x/capv2.md') $(cap capV 'Execute /tmp/x/capv3.md') $(agv "Follow $FX/memory-refresh.md exactly for widget/example#17." lookalike)"
 for k in capv1 capv2 "$FX/memory-refresh.md"; do python3 "$R/bin/agent-job" done "$([ "${k#/}" = "$k" ] && echo "/tmp/x/$k.md" || echo "$k")" >/dev/null; done
+capc() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","cwd":sys.argv[1],"session_id":"capC","tool_input":{"task":sys.argv[2],"title":"relative"}}))' "$1" "$2" | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
+check "BLOCK: a relative skills/delegate/memory-refresh.md read from a cwd that isn't the installed folder is ordinary work, refused as a fourth agent" "0 0 0 2" \
+  "$(cap capC 'Execute /tmp/x/capc1.md') $(cap capC 'Execute /tmp/x/capc2.md') $(cap capC 'Execute /tmp/x/capc3.md') $(capc "$T" 'Follow skills/delegate/memory-refresh.md on /tmp/x/mem-lines.md')"
+for k in capc1 capc2 capc3; do python3 "$R/bin/agent-job" done "/tmp/x/$k.md" >/dev/null; done
 MG="$HOME/.mergeworthy/work/memgone"; mkdir -p "$MG"; : > "$MG/memory.source"  # memory-prep replaced memory-brief-1.md: only its folder's memory.source is left
 check "a launch following a memory brief memory-prep already replaced is ordinary work: it counts against the cap, stamps no marker, and one for a repo names its project file" "0 0 0 2 no 2 1" \
   "$(cap capW "Follow $MG/memory-brief-1.md exactly.") $(cap capW 'Execute /tmp/x/capw1.md') $(cap capW 'Execute /tmp/x/capw2.md') $(cap capW 'Execute /tmp/x/capw3.md') $([ -e "$MG/.memory-order-repeated" ] && echo yes || echo no) $(agv "Follow $MG/memory-brief-1.md exactly for widget/example#17." replaced)"
@@ -1598,7 +1602,7 @@ check "a brief with an https URL finishes (its //host is not a path), and the UR
 git init -q "$HOME/occ"; git -C "$HOME/occ" remote add origin git@github.com:o/r.git; mkdir -p "$HOME/occ/src"
 check "BLOCK: the repo as git@github.com:o/r.git, and a ~/ path in its checkout" "2 2" "$(ag "$T" 'Fix git@github.com:o/r.git') $(ag "$T" 'Fix the bug in ~/occ/src')"
 check "a brief that writes nothing to the repo (role research or test) needs no notes; a review does" "0 0 2" "$(ag "$T" 'Mine session logs for o/r' research) $(ag "$T" 'Run the tests of o/r' test) $(ag "$T" 'Review o/r#7' review)"
-check "a brief naming the notes file passes; one naming another repo or none passes; a memory-refresh brief passes" "0 0 0 0" "$(ag "$T" 'Fix o/r#5 by skills/code/SKILL.md, notes in ~/.mergeworthy/projects/o/r.md') $(ag "$T" 'Fix o/r-two#5') $(ag "$T" 'Tidy the README') $(ag "$T" 'Follow skills/delegate/memory-refresh.md on o/r#5 lines')"
+check "a brief naming the notes file passes; one naming another repo or none passes; a memory-refresh brief passes" "0 0 0 0" "$(ag "$T" 'Fix o/r#5 by skills/code/SKILL.md, notes in ~/.mergeworthy/projects/o/r.md') $(ag "$T" 'Fix o/r-two#5') $(ag "$T" 'Tidy the README') $(ag "$T" 'Follow ~/.mergeworthy/current/skills/delegate/memory-refresh.md on o/r#5 lines')"
 check "BLOCK: a brief for a repo that only mentions memory-refresh.md mid-text still names its project file; the real memory-refresh launch passes" "2 0" "$(ag "$T" 'Fix o/r#5 by skills/code/SKILL.md: pre-agent-dedupe misreads skills/delegate/memory-refresh.md briefs.') $(ag "$T" 'Follow ~/.mergeworthy/current/skills/delegate/memory-refresh.md on the o/r#5 session lines')"
 printf -- '- a convention\n## Who decides\n- maint merges. Study: [r.study.md](r.study.md)\n' > "$HOME/.mergeworthy/projects/o/r.md"
 check "a study linked relative to the project file counts" 0 "$(ag "$T" 'Fix o/r#5 by skills/code/SKILL.md, notes in ~/.mergeworthy/projects/o/r.md')"

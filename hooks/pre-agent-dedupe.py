@@ -95,11 +95,14 @@ implementer = ti.get('role') == 'implementation' or re.search(r'^\s*You implemen
 def memory_launch(task):
     """The file a memory-refresh launch runs, which the 3-agent cap leaves out, else None: its task or prompt (never its title)
     starts with Follow, Execute or Do and the path of memory-prep's brief (an existing memory-brief-<N>.md beside memory.source,
-    the session-memory order's launch; prep deletes the one it replaces) or of the memory-refresh template (a whole
-    skills/delegate/memory-refresh.md path). A brief that cites one anywhere else is other work."""
+    the session-memory order's launch; prep deletes the one it replaces) or of the installed memory-refresh template (the
+    file ~/.mergeworthy/current/skills/delegate/memory-refresh.md or this hook's own copy resolves to; a relative path is
+    read from the launch's cwd). Any other file of that name, and a brief that cites one anywhere else, is other work."""
     m = re.match(r'\s*(?:follow|execute|do)\s+[`\'"]?([^\s`\'"]+)', task, re.I)
-    p = m and os.path.expanduser(m[1].rstrip('.,;:'))
-    if p and (('/' + p).endswith('/skills/delegate/memory-refresh.md') or re.fullmatch(r'memory-brief-\d*\.md', os.path.basename(p))
+    p = m and os.path.join(d.get('cwd') or '/', os.path.expanduser(m[1].rstrip('.,;:')))
+    templates = {os.path.realpath(os.path.expanduser('~/.mergeworthy/current/skills/delegate/memory-refresh.md')),
+                 os.path.realpath(os.path.join(tdir, 'memory-refresh.md'))}
+    if p and (os.path.realpath(p) in templates or re.fullmatch(r'memory-brief-\d*\.md', os.path.basename(p))
               and os.path.isfile(p) and os.path.isfile(os.path.join(os.path.dirname(p), 'memory.source'))):
         return p
     return None
