@@ -7,7 +7,7 @@ pr-steps notes each record in the repo's drift log, which every branch and workt
 time and email (KEY) and identity (identities). A record anchors its own commit; once that SHA has left the branch, it anchors the
 one commit on the branch with its KEY and identity, and none when two share them. So a record follows its commit through an amend of
 the message (a merge's and an empty commit's too), a cherry-pick and a rebase that leaves its changed lines and their function lines
-alone, and stays behind on a squash, any change to those lines, a whitespace fixup too, and a rebase of a merge or an empty commit."""
+alone, and stays behind on a squash and on any change to those lines or their function line, a whitespace fixup too."""
 import hashlib, os, re, subprocess
 import testpaths
 from records import STORE
