@@ -9,7 +9,7 @@ status (read first) releases the job."""
 import datetime, fcntl, glob, hashlib, itertools, json, os, re, shlex, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import failclosed
-import agent_jobs, launch, memory_file, project_file, review_launch, steward, subprocess, testpaths
+import agent_jobs, launch, memory_file, project_file, review_launch, subprocess, testpaths
 from post_words import fence_spans
 from records import branch_record
 from shellcmd import segments, prog, git_argv, rlines, transcript, Where
@@ -40,12 +40,27 @@ if not register and d.get('tool_name') in ('Agent', 'Task') and under_t3() and t
     sys.stderr.write("BLOCKED: under T3 Code a background Agent stops when this turn ends (T3 starts a new session for the next one). "
                      "Launch it with delegate_task (mergeworthy:delegate step 4), or with run_in_background: false for a child that finishes within this turn.\n")
     refused()
+def codex_reset():
+    """The soonest reset while claude-swap reads every saved Codex account as used up ($CODEX_HOME/profiles/limited.json), else None."""
+    profiles = os.path.join(os.environ.get('CODEX_HOME') or os.path.expanduser('~/.codex'), 'profiles')
+    try:
+        limited = json.load(open(os.path.join(profiles, 'limited.json')))
+        until = [float((limited.get(a) or {}).get('until') or 0) for a in os.listdir(profiles) if os.path.isfile(os.path.join(profiles, a, 'auth.json'))]
+    except (OSError, ValueError, AttributeError, TypeError):
+        return None
+    return min(until) if until and min(until) > time.time() else None
 # This hook runs only under Claude Code, so a review on claudeAgent, or naming no provider (it inherits), is on the main session's company
 if not register and ti.get('role') == 'review' and under_t3():
     target = ti.get('target') or {}
     provider = {target.get('providerInstanceId'), target.get('driverKind')} - {None, ''}
-    # the fallback keeps the first review's prompt, so its claim may sit in the brief file the task names
-    if (not provider or 'claudeAgent' in provider) and not re.search(r'\bFallback:[ \t]*\S', launch.Launch(str(ti.get('task') or '')).brief):
+    reset = codex_reset()
+    if reset and 'codex' in provider:
+        at = time.localtime(reset)
+        sys.stderr.write(f"BLOCKED: claude-swap reads every saved Codex account as used up until {time.strftime('%H:%M' if at[:3] == time.localtime()[:3] else '%a %H:%M', at)}, so this launch would fail. "
+                         "Launch the review on this company (target.providerInstanceId claudeAgent); it needs no Fallback line while that holds.\n")
+        refused()
+    # the fallback keeps the first review's prompt, so its claim may sit in the brief file the task names; `<what failed>` is the form, no claim
+    elif not reset and (not provider or 'claudeAgent' in provider) and not re.search(r'\bFallback:[ \t]*[^\s<]', launch.Launch(str(ti.get('task') or '')).brief):
         sys.stderr.write("BLOCKED: an independent check starts on another company's model (mergeworthy:delegate §Reviewers): set target.providerInstanceId to codex. "
                          "Only when that call failed, launch on this company with `Fallback: <what failed>` in the task or the brief file it names.\n")
         refused()
@@ -118,9 +133,20 @@ if not register:
                 refused()
 # Two rounds per loop on one head (delegate §Review rounds): a review round `<loop>-r<N>`, maybe followed by the date or head SHA
 # the reuse block above asks for, once the heads its brief pins show the branch hasn't moved since two earlier rounds of its loop, is refused;
-# a post's review gets a third, which confirms round 2's fixes, and a fourth, which confirms round 3's when round 3 found something
+# a post's review is refused only once gate-pass's own check (review_launch.answers) already passes every draft it reviews
 rnd = re.fullmatch(r'(.+)-r(\d+)', re.sub(r'(-\d{4}-\d{2}-\d{2}|-[0-9a-f]{7,40})+$', '', (cid or str(ti.get('description') or '')).strip()))
-if rnd and (ti.get('role') == 'review' or not ti.get('role') and re.search(r'\bexactly (CLEAN|NO BUGS)\b', brief)):
+review = rnd and (ti.get('role') == 'review' or not ti.get('role') and re.search(r'\bexactly (CLEAN|NO BUGS)\b', brief))
+# a post's review: a gate review of a named draft whose brief asks for no code verdict (a small review's pr-body.review.out comes with one)
+post_review = review and bool(reviewed_drafts(brief)) and not re.search(r'\b(NO BUGS|MERGE AS IS)\b', own_brief)
+if post_review and not register:
+    led = re.search(r'(/[^\s`\'"()]+\.ledger\.md)\b', brief)  # the ledger the brief names; answers() defaults to the one beside the draft
+    passes = [(o, dr, led and led[1]) for o in review_outs(brief) if (dr := review_launch.draft_of(o)) in reviewed_drafts(brief)]
+    if all(not review_launch.answers(o, dr, lg) for o, dr, lg in passes):
+        sys.stderr.write("BLOCKED: gate-pass already passes every draft this post review reads, so a round on them reviews nothing new "
+                         "(mergeworthy:delegate §Review rounds): post it, or edit the draft first. It passes with:\n"
+                         + ''.join(f"gate-pass {dr} {o}{f' --ledger {lg}' if lg else ''}\n" for o, dr, lg in passes))
+        refused()
+elif review and not post_review:
     tops = L.checkouts
     heads = sorted({h for t in tops if (h := git(t, 'rev-parse', 'HEAD').stdout.strip()) and any(h.startswith(x) for x in shas)})
     rf = os.path.expanduser('~/.claude/review-rounds.json')
@@ -128,8 +154,7 @@ if rnd and (ti.get('role') == 'review' or not ti.get('role') and re.search(r'\be
     rounds = json.load(open(rf)) if os.path.exists(rf) else {}
     loop, n = rnd[1], int(rnd[2])
     if register:
-        # with the outputs of the drafts it reviews, where the round after a post review's third reads that round's verdict
-        rounds.setdefault(loop, []).append([n, heads, [o for o in review_outs(brief) if review_launch.draft_of(o) in reviewed_drafts(brief)]])
+        rounds.setdefault(loop, []).append([n, heads])
         with open(rf + '.tmp', 'w') as f: json.dump(rounds, f)
         os.replace(rf + '.tmp', rf)
     elif n >= 3:
@@ -151,27 +176,13 @@ if rnd and (ti.get('role') == 'review' or not ti.get('role') and re.search(r'\be
                 if not any(own_lines(t, o, h) <= testpaths.STALE_LINES for t, o in itertools.chain([first], on)): return False
             return moved
         earlier = sorted({m for m, old, *_ in rounds.get(loop, []) if m < n and built_on(old)})
-        # a post's review: a gate review of a named draft whose brief asks for no code verdict (a small review's pr-body.review.out comes with one)
-        post_review = bool(reviewed_drafts(brief)) and 'CLEAN' in brief and not re.search(r'\b(NO BUGS|MERGE AS IS)\b', own_brief)
-        def verdict(out):  # out's non-empty lines written since its last launch; [] when its reviewer has written none
-            try: at = int(open(out + '.launch').read().split()[1])
-            except (OSError, IndexError, ValueError): return []
-            if not os.path.isfile(out) or os.path.getmtime(out) < at: return []
-            return [l.strip() for l in open(out, errors='replace').read().splitlines() if l.strip()]
-        # the round after a post review's third, when that round found something, confirms its fixes: the verdict is in the outputs the
-        # third's launch named (an entry recorded without them, before they were: the outputs this brief names)
-        third = next((e for e in reversed(rounds.get(loop, [])) if e[0] == earlier[-1]), []) if len(earlier) == 3 else []
-        outs = third[2] if len(third) > 2 else [o for o in review_outs(brief) if review_launch.draft_of(o) in reviewed_drafts(brief)]
-        verdicts = ([verdict(o) for o in outs] or [[]]) if post_review and len(earlier) == 3 else []
-        if len(earlier) >= (2 if not post_review else 4 if verdicts and all(verdicts) and any(v != ['CLEAN'] for v in verdicts) else 3):
+        if len(earlier) >= 2:
             sys.stderr.write(f"BLOCKED: {loop} already ran {', '.join(f'r{m}' for m in earlier)} on this head or one within {testpaths.STALE_LINES} changed lines of it "
-                             f"({', '.join(h[:12] for h in heads) or 'no head pinned'}): a loop gets two rounds per head, and a head past those lines is a new one"
-                             f"{'; a post’s review gets round 3, which confirms round 2’s fixes, and, when round 3 found something, round 4, which confirms round 3’s fixes and is the last' if post_review else ''}"
-                             f"{f'; r{earlier[-1]} has no verdict written to its output since its launch: let it finish, then launch again' if verdicts and not all(verdicts) else ''} (mergeworthy:delegate §Review rounds). "
+                             f"({', '.join(h[:12] for h in heads) or 'no head pinned'}): a loop gets two rounds per head, and a head past those lines is a new one "
+                             "(mergeworthy:delegate §Review rounds). "
                              "List what is still open in the report or the PR body's notes and go on (push, ready, the next step) without waiting for an answer; "
                              "only an open blocker keeps the PR in draft. A maintainer's ask on a new head starts a new loop name. "
-                             f"Close r{earlier[-1]}, the last round, when it isn't clean, with `pr-steps <step> <file> --ledger <ledger>` or `gate-pass ... --ledger <ledger>` on its report: the agent's own report is the record, never one the main session writes."
-                             + ("" if heads else " An independent update of a body no Git head pins (a tracker's status lines), and not a fix to the text these rounds reviewed, is its own loop: `<loop>-u<N>-r1`, `-r2`.") + "\n")
+                             f"Close r{earlier[-1]}, the last round, when it isn't clean, with `pr-steps <step> <file> --ledger <ledger>` or `gate-pass ... --ledger <ledger>` on its report: the agent's own report is the record, never one the main session writes.\n")
             refused()
 # A brief that writes or reviews code, docs or a post (any role but research or test) for a repo whose maintainers' notes exist
 # (delegate step 3) names the project file, so the agent reads them: by owner/repo, or by a path in that repo's checkout. A memory-refresh
@@ -194,20 +205,12 @@ if not register and ti.get('role') not in ('research', 'test') and 'memory-refre
         sys.stderr.write("BLOCKED: the brief works on a repo with a project file; name each project file in it so the agent reads "
                          "and applies them (mergeworthy:delegate step 3):\n" + '\n'.join(missing) + '\n')
         refused()
-    # every agent reads the project file whole: one over its cap is condensed before the next agent starts
-    # the learning thread condensing it is waited for while it runs; its own agents, which do the condensing, pass
-    over = []
-    for r in sorted(named):
-        n = project_file.words(notes[r])
-        if n > project_file.CAP:
-            t = project_file.learning_thread(r)
-            if t and t[0] in steward.threads(d.get('session_id')) + steward.delegators(os.environ.get('T3CODE_THREAD_ID', '')):
-                continue
-            live = t and steward.active(t[0])
-            over.append(f"{notes[r]}: {n} words" + (f"; the learning thread {t[0]} started {t[1]} condenses it: wait for it (`t3 thread show`), don't condense alongside it" if live else ''))
+    # every agent reads the project file whole: one over its cap is condensed before the next agent starts, but by the learning sort,
+    # whose brief (delegate/learn-sort.md) condenses it
+    over = [] if 'delegate/learn-sort.md' in brief else [f"{notes[r]}: {n} words" for r in sorted(named) if (n := project_file.words(notes[r])) > project_file.CAP]
     if over:
         sys.stderr.write(f"BLOCKED: a project file the brief names is over its {project_file.CAP}-word cap: condense it first (mergeworthy:task "
-                         "§Project file), its quotes into the study, unless a learning thread already does:\n" + '\n'.join(over) + '\n')
+                         "§Project file), its quotes into the study, or brief the learning sort (delegate/learn-sort.md):\n" + '\n'.join(over) + '\n')
         refused()
     # The producer reads the standard its checker uses, by path (delegate step 3): code for an implementer, writing for a drafter.
     need = [f for f, applies in (('skills/code/SKILL.md', named and ti.get('role') == 'implementation'),

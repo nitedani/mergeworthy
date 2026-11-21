@@ -7,13 +7,17 @@
 set -u
 R=$(readlink -f "${1:-$(dirname "$0")/..}")
 # in /tmp whatever TMPDIR says: disk-sweep refuses --delete for a HOME under the account home
-T=$(mktemp -d -p /tmp); export HOME="$T/home" DOCKER_LOG="$T/docker.log"; mkdir -p "$HOME/.claude/agent-jobs" "$T/bin"
+T=$(mktemp -d -p /tmp); export HOME="$T/home" DOCKER_LOG="$T/docker.log" DOCKER_ROOT="$T"; mkdir -p "$HOME/.claude/agent-jobs" "$T/bin"
 cat > "$T/bin/docker" <<'EOF'
 #!/bin/sh
 # stub docker: records each call; the prunes report what they reclaimed as Docker prints it, or fail when DOCKER_FAIL is set
 echo "$*" >> "$DOCKER_LOG"
 case "$1 $2" in
   *" prune") [ -z "${DOCKER_FAIL:-}" ] || { echo 'cannot prune: daemon is shutting down' >&2; exit 1; } ;;
+esac
+case "$1 $2 $3" in
+  "info --format "*) echo "$DOCKER_ROOT"; exit 0 ;;
+  "builder prune --help") echo '      --max-used-space bytes   Maximum amount of disk space allowed to keep for cache'; exit 0 ;;
 esac
 case "$1 $2" in
   "image prune") echo 'Total reclaimed space: 1.5MB' ;;
@@ -57,7 +61,7 @@ sleep 0.2  # the sleep's cwd is set
 
 python3 "$R/bin/disk-sweep" > "$T/dry.out" 2> "$T/dry.err"; rc=$?
 check "without --delete it exits 0" 0 "$rc"
-check "without --delete it prints the clean worktree's node_modules and Docker's two prunes, with unknown sizes" "1 2 0" "$(grep -c " $WF/clean/node_modules c-ignored$" "$T/dry.out") $(grep -c '^[^ ]* ? docker:[a-z]* d-docker$' "$T/dry.out") $(wc -c < "$T/dry.err")"
+check "without --delete it prints the clean worktree's node_modules and Docker's three prunes, with unknown sizes" "1 3 0" "$(grep -c " $WF/clean/node_modules c-ignored$" "$T/dry.out") $(grep -c '^[^ ]* ? docker:[a-z]* d-docker$' "$T/dry.out") $(wc -c < "$T/dry.err")"
 check "without --delete it deletes nothing, writes no log, calls no docker" "kept kept kept no 0" "$(there "$WF/clean/node_modules") $(there "$WF/drafts/node_modules") $(there "$HOME/.t3/worktrees/p/t3wt/node_modules") $([ -e "$HOME/.mergeworthy/disk-sweep.log" ] && echo yes || echo no) $(wc -l < "$DOCKER_LOG")"
 check "a second sweep while one runs is refused" "1 1" "$(flock "$HOME/.mergeworthy/disk-sweep.lock" python3 "$R/bin/disk-sweep" 2>"$T/lock.err" >/dev/null; echo $?) $(grep -c 'another sweep is running' "$T/lock.err")"
 : > "$DOCKER_LOG"
@@ -159,10 +163,11 @@ check "from_daemon: the daemon's tree on the main watch dir yes; another main di
 # the prunes through the guarded entry, from the daemon's tree with this test's install and watch dir: what the daemon's sweep runs
 PRUNE='m.INSTALLED, m.main_watch_dir, m.DRY = sys.argv[2], lambda: sys.argv[3], False; print(m.prune_docker())'
 : > "$DOCKER_LOG"; got=$(daemon "$PRUNE" "$I/bin/disk-sweep")
-check "Docker from the daemon's tree: version, then every unused image and the build cache older than 14 days; never containers or volumes" "0 version|image prune -a -f --filter until=336h|builder prune -f --filter until=336h|" "$got $(tr '\n' '|' < "$DOCKER_LOG")"
-check "Docker's reclaimed sizes are logged" "1500000 docker:image|2000000000 docker:builder|" "$(grep d-docker "$LOG" | cut -d' ' -f2,3 | tr '\n' '|')"
+CAP=$(( $(df -B1 --output=size "$T" | tail -1) / 10 ))
+check "Docker from the daemon's tree: version, every unused image and the build cache older than 14 days, then the build cache down to a tenth of the filesystem holding Docker's root dir; never containers or volumes" "0 version|image prune -a -f --filter until=336h|builder prune -f --filter until=336h|info --format {{.DockerRootDir}}|builder prune --help|builder prune -f --max-used-space $CAP|" "$got $(tr '\n' '|' < "$DOCKER_LOG")"
+check "Docker's reclaimed sizes are logged" "1500000 docker:image|2000000000 docker:builder|2000000000 docker:builder|" "$(grep d-docker "$LOG" | cut -d' ' -f2,3 | tr '\n' '|')"
 got=$(DOCKER_FAIL=1 daemon "$PRUNE" "$I/bin/disk-sweep" 2> "$T/prune.err")
-check "a prune that fails returns 1, its stderr reported, no log line written" "1 2 2" "$got $(grep -c 'daemon is shutting down' "$T/prune.err") $(grep -c d-docker "$LOG")"
+check "a prune that fails returns 1, its stderr reported, no log line written" "1 2 3" "$got $(grep -c 'daemon is shutting down' "$T/prune.err") $(grep -c d-docker "$LOG")"
 
 # a dry run selects as a deleting run does: not a node_modules whose repo a process holds a file in, or starts working in while it runs
 H5="$T/home5"; D="$H5/d-work"; mkdir -p "$H5/.mergeworthy"
@@ -215,156 +220,85 @@ check "the home-wide walk runs at most once a day" kept "$(there "$H7/proj/app/d
 check "caches: pnpm, npm (stale _cacache) and pip by their own commands; stale tool-cache and cargo entries go, a fresh one, an unnamed ~/.cache folder an old Playwright browser and an old entry read today stay" "npm cache clean --force|pip cache purge|pnpm store prune| removed removed removed kept kept kept kept" "$(sort -u "$T/tools.log" | tr '\n' '|') $(there "$H7/.cache/yarn/stale") $(there "$H7/.cargo/registry/cache/idx") $(there "$H7/.cargo/git/checkouts/c") $(there "$H7/.cache/yarn/fresh") $(there "$H7/.cache/drafts") $(there "$H7/.cache/ms-playwright/chromium_headless_shell-1200") $(there "$H7/.cache/yarn/readnow")"
 check "a weekly report names the stale folder no rule covers, and deletes nothing" "1 0 kept" "$(cat "$H7/.mergeworthy/disk-report.md" 2>/dev/null | grep -c "$H7/old-stuff") $(cat "$H7/.mergeworthy/disk-report.md" 2>/dev/null | grep -c "$H7/.cache/yarn") $(there "$H7/old-stuff/sub/big")"
 
-# w-done: what keep() finds in a retired work folder under ~/.mergeworthy/work, with local bare repos as the remotes and a fake GitHub
-H8="$T/home8"; W8="$H8/.mergeworthy/work"; mkdir -p "$W8"
-G init -q --bare -b main "$T/w-origin.git"; G init -q -b main "$T/w-seed"; printf 'cache/\nnode_modules\n' > "$T/w-seed/.gitignore"; echo a > "$T/w-seed/README"
-G -C "$T/w-seed" add .gitignore README; G -C "$T/w-seed" commit -qm base; G -C "$T/w-seed" push -q "$T/w-origin.git" main
-mk() { mkdir -p "$W8/$1"; G clone -q "$T/w-origin.git" "$W8/$1/repo"; touch "$W8/$1/retired"; }
-for n in clean owed waiting questions defects promised untracked modified stash local stale pullref github detached outwt nested jj unread unreadlocal hang planted filter nestedtracked bare tag manytags ghall ghnone badparent badref; do mk "$n"; done
-mkdir -p "$W8/clean/repo/node_modules"; echo x > "$W8/clean/repo/node_modules/x"; printf '# replies owed\ndone: https://example.invalid/r answered\n- done: https://example.invalid/r2 answered\n' > "$W8/clean/replies-owed.md"
-echo 'DONE abc123 PROMISED o/r#1: the fix (d.md)' > "$W8/clean/proposals-open.md"; printf '# waits\n\ndone: o/r#2 -> o/r#1: bumped\nDONE (released) o/r#3 -> o/r#1: x\n* done: o/r#4 -> o/r#1: bumped\n' > "$W8/clean/waiting-on.txt"
-echo 'vitejs/vite#123 -> nitedani/vike-react-rsc#32: bump vite once it is released' > "$W8/waiting/waiting-on.txt"
-printf '# questions owed\nDONE how big is the cache? answered in chat\n- DONE 2026-10-26T03:27:57Z GENUINE-FORK asked: #32 (user answered: files it)\n- done: in chat, 2026-10-26\n' > "$W8/clean/questions-owed.md"
-echo '- How big is the cache? ETA 2026-10-27' > "$W8/questions/questions-owed.md"
-echo 'o/r#1: the dot leads the wrapped line' > "$W8/defects/defects-open.md"; echo '- fixed in abc1234: o/r#1: the dot' > "$W8/clean/defects-open.md"
-printf '# replies owed\nhttps://example.invalid/c1 by alice\n' > "$W8/owed/replies-owed.md"; echo 'PROMISED o/r#1: the fix (d.md)' > "$W8/promised/proposals-open.md"
-echo x > "$W8/untracked/repo/notes.txt"; echo b >> "$W8/modified/repo/README"; echo y >> "$W8/stash/repo/README"; G -C "$W8/stash/repo" stash push -q
-G -C "$W8/local/repo" commit -q --allow-empty -m 'only here'; G -C "$W8/local/repo" commit -q --allow-empty -m 'and here'
-G -C "$W8/stale/repo" checkout -q -b gone; G -C "$W8/stale/repo" commit -q --allow-empty -m gone; G -C "$W8/stale/repo" push -q origin gone
-git -C "$T/w-origin.git" update-ref -d refs/heads/gone  # deleted on the remote; the clone's origin/gone stays
-G -C "$W8/pullref/repo" checkout -q -b fix; G -C "$W8/pullref/repo" commit -q --allow-empty -m fix; G -C "$W8/pullref/repo" push -q origin fix fix:refs/pull/1/head
-git -C "$T/w-origin.git" update-ref -d refs/heads/fix  # squash-merged: the branch is gone, the pull request's head stays
-git config -f "$H8/.gitconfig" url."$T/w-origin.git".insteadOf https://github.com/o/r.git; G -C "$W8/github/repo" remote set-url origin https://github.com/o/r.git
-git config -f "$H8/.gitconfig" url."$T/gone.git".insteadOf https://github.com/o/gone.git; G -C "$W8/manytags/repo" remote set-url origin https://github.com/o/gone.git
-for i in $(seq 1 30); do [ "$i" = 16 ] && G -C "$W8/manytags/repo" checkout -q -b side origin/main; G -C "$W8/manytags/repo" commit -q --allow-empty -m "t$i"; G -C "$W8/manytags/repo" tag "t$i"; done  # two lines of tags; the remote can't be read
-MT=$(G -C "$W8/manytags/repo" rev-parse main side | sort | head -1 | cut -c1-12)
-git config -f "$H8/.gitconfig" --add url."$T/w-origin.git".insteadOf https://github.com/o/none.git; G -C "$W8/ghnone/repo" remote set-url origin https://github.com/o/none.git
-G -C "$W8/ghnone/repo" checkout -q -b d; G -C "$W8/ghnone/repo" commit -q --allow-empty -m d  # GitHub gives no answer for o/none (paused, or gh can't answer)
-G -C "$W8/badparent/repo" checkout -q -b side; G -C "$W8/badparent/repo" commit -q --allow-empty -m first; BP=$(G -C "$W8/badparent/repo" rev-parse HEAD)
-G -C "$W8/badparent/repo" commit -q --allow-empty -m second; G -C "$W8/badparent/repo" checkout -q main; rm "$W8/badparent/repo/.git/objects/${BP:0:2}/${BP:2}"  # a tip whose parent is gone: rev-list fails
-G -C "$W8/badref/repo" checkout -q -b mine; G -C "$W8/badref/repo" commit -q --allow-empty -m 'only here'; G -C "$W8/badref/repo" checkout -q -b gone main
-G -C "$W8/badref/repo" commit -q --allow-empty -m lost; BR=$(G -C "$W8/badref/repo" rev-parse HEAD); G -C "$W8/badref/repo" checkout -q main; rm "$W8/badref/repo/.git/objects/${BR:0:2}/${BR:2}"  # one branch's tip is gone
-G -C "$W8/ghall/repo" remote set-url origin https://github.com/o/r.git; G -C "$W8/ghall/repo" checkout -q -b c; G -C "$W8/ghall/repo" commit -q --allow-empty -m c
-G -C "$W8/github/repo" checkout -q -b a; G -C "$W8/github/repo" commit -q --allow-empty -m a; G -C "$W8/github/repo" checkout -q -b b main; G -C "$W8/github/repo" commit -q --allow-empty -m b
-G -C "$W8/detached/repo" worktree add -q --detach "$W8/detached/wt"; G -C "$W8/detached/wt" commit -q --allow-empty -m detached
-G -C "$W8/outwt/repo" worktree add -q -b side "$T/outside-wt"
-G clone -q "$T/w-origin.git" "$T/user-clone"; mkdir -p "$W8/extwt" "$W8/extdet"; touch "$W8/extwt/retired" "$W8/extdet/retired"
-G -C "$T/user-clone" worktree add -q -b wt-branch "$W8/extwt/checkout"; G -C "$W8/extwt/checkout" commit -q --allow-empty -m 'on the clone outside'
-G -C "$T/user-clone" worktree add -q --detach "$W8/extdet/checkout"; G -C "$W8/extdet/checkout" commit -q --allow-empty -m 'detached, on no branch'
-mkdir -p "$W8/extwip"; touch "$W8/extwip/retired"; G -C "$T/user-clone" worktree add -q --detach "$W8/extwip/checkout" wt-branch  # reading the user's local, unpushed branch
-G init -q "$W8/nested/repo/cache/inner"; echo w > "$W8/nested/repo/cache/inner/w"; mkdir -p "$W8/jj/proj/.jj"; for n in unread unreadlocal; do G -C "$W8/$n/repo" remote add gone "$T/no-such.git"; done; G -C "$W8/unreadlocal/repo" commit -q --allow-empty -m 'only here'
-printf '#!/bin/sh\ncase "$*" in *hang.invalid*) ;; *) exit 255;; esac\nwhile kill -0 $PPID 2>/dev/null; do sleep 0.2; done\n' > "$T/bin/hang-ssh"; chmod +x "$T/bin/hang-ssh"  # hang.invalid takes the connection and never answers; any other host refuses it
-git config -f "$H8/.gitconfig" core.sshCommand "$T/bin/hang-ssh"; G -C "$W8/hang/repo" remote add fork ssh://git@hang.invalid/x.git
-G init -q --bare -b main "$T/many.git"  # 45000 refs/pull/N/head, each a commit on main (a merge-commit workflow)
-python3 -c 'for i in range(1, 45001): print(f"commit refs/heads/main\nmark :{i}\ncommitter t <t@example.invalid> {1700000000 + i} +0000\ndata 2\nc\n")
-for i in range(1, 45001): print(f"reset refs/pull/{i}/head\nfrom :{i}\n")' | git -C "$T/many.git" fast-import --quiet
-mkdir -p "$W8/manyrefs"; touch "$W8/manyrefs/retired"; G clone -q "$T/many.git" "$W8/manyrefs/repo"; G -C "$W8/manyrefs/repo" checkout -q -b feat; G -C "$W8/manyrefs/repo" commit -q --allow-empty -m mine
-PL="$W8/planted/repo"; G -C "$PL" config core.fsmonitor "touch $T/PWNED-fsmonitor; false"; G -C "$PL" remote add evil ssh://example.invalid/x.git; G -C "$PL" config core.sshCommand "touch $T/PWNED-sshCommand; false"
-FR="$W8/filter/repo/cache/x"; G init -q "$FR"; echo 'f filter=evil' > "$FR/.gitattributes"; echo hi > "$FR/f"; G -C "$FR" add .gitattributes f; G -C "$FR" commit -qm f  # an extracted archive's repo, in an ignored folder
-G -C "$FR" config filter.evil.clean "touch $T/PWNED-filter; cat"; rm "$FR/.git/index"; G -C "$FR" read-tree HEAD  # the index has no stat data, as after an extraction
-G init -q "$FR/vendor/y"; echo z > "$FR/vendor/y/z"  # a repo inside it: git doesn't run there either
-G -C "$W8/clean/repo" tag -a v1 -m v1; G -C "$W8/clean/repo" push -q origin v1  # a pushed tag
-G -C "$W8/tag/repo" commit -q --allow-empty -m 'tagged only'; G -C "$W8/tag/repo" tag keepme; G -C "$W8/tag/repo" commit -q --allow-empty -m 'tagged too'
-G -C "$W8/tag/repo" tag -a pre-rebase -m 'before the rebase'; TAG2=$(G -C "$W8/tag/repo" rev-parse --short=12 'pre-rebase^{commit}')
-G -C "$W8/tag/repo" reset -q --hard origin/main  # only the tags hold those commits now
-G init -q --bare "$W8/bare/backup.git"; G init -q "$W8/nestedtracked/repo/sub/inner"; echo w > "$W8/nestedtracked/repo/sub/inner/w"
-G init -q --bare -b main "$T/p-origin.git"; G -C "$T/p-origin.git" config uploadpack.allowFilter true; G clone -q "$T/p-origin.git" "$T/p-seed" 2>/dev/null
-echo a > "$T/p-seed/a"; G -C "$T/p-seed" add a; G -C "$T/p-seed" commit -qm base; G -C "$T/p-seed" push -q origin main
-for i in 1 2 3; do G -C "$T/p-seed" checkout -q -b "pr$i" main; echo "$i" > "$T/p-seed/f$i"; G -C "$T/p-seed" add "f$i"; G -C "$T/p-seed" commit -qm "pr$i"; G -C "$T/p-seed" push -q origin "pr$i:refs/pull/$i/head"; done
-mkdir -p "$W8/partial"; touch "$W8/partial/retired"; G clone -q --filter=blob:none "file://$T/p-origin.git" "$W8/partial/repo"  # a partial clone: git fetches what it lacks on demand
-packs() { ls "$1/.git/objects/pack/" | grep -c '\.pack$'; }; PACKS=$(packs "$W8/partial/repo")
-G init -q --bare -b main "$T/b-origin.git"; G clone -q "$T/b-origin.git" "$T/b-other" 2>/dev/null; for i in 1 2 3; do G -C "$T/b-other" commit -q --allow-empty -m "c$i"; done; G -C "$T/b-other" push -q origin main
-mkdir -p "$W8/behind"; touch "$W8/behind/retired"; G clone -q "$T/b-origin.git" "$W8/behind/repo"; G -C "$W8/behind/repo" checkout -q -b feat; G -C "$W8/behind/repo" commit -q --allow-empty -m mine
-G -C "$T/b-other" commit -q --allow-empty -m moved; G -C "$T/b-other" push -q origin main  # the remote moved on after the clone's last fetch
-G init -q --bare -b main "$T/f-origin.git"; G clone -q "$T/f-origin.git" "$T/f-other" 2>/dev/null; G -C "$T/f-other" commit -q --allow-empty -m base; G -C "$T/f-other" push -q origin main
-mkdir -p "$W8/forced"; touch "$W8/forced/retired"; G clone -q "$T/f-origin.git" "$W8/forced/repo"; G -C "$W8/forced/repo" checkout -q -b feat; G -C "$W8/forced/repo" commit -q --allow-empty -m mine; G -C "$W8/forced/repo" push -q origin feat
-G -C "$T/f-other" checkout -q -b feat main; G -C "$T/f-other" commit -q --allow-empty -m theirs; G -C "$T/f-other" push -q -f origin feat  # force-pushed past the clone's origin/feat
-sha() { G -C "$1" rev-parse HEAD | cut -c1-12; }
-HOME="$H8" dsm 'T0 = m.work_folder.TIMEOUT; calls = []
-def fake(repo, sha):
-    calls.append(repo + ":" + sha[:12])
-    return None if repo == "o/none" else sha in sys.argv[3:]
-for e in sorted(os.scandir(m.work_folder.ROOT), key=lambda e: e.name):
-    calls.clear()
-    m.work_folder.TIMEOUT = 2 if e.name == "hang" else T0  # only the never-answering server waits out a short timeout
-    why = [w.replace(os.path.realpath(e.path), ".") for w in m.work_folder.keep(e.path, fake)]
-    print(e.name, " | ".join(why) or "-", " ".join(calls), sep="\t")' "$(G -C "$W8/github/repo" rev-parse a)" "$(G -C "$W8/ghall/repo" rev-parse c)" > "$T/keep.out"
-why() { awk -F'\t' -v n="$1" '$1 == n { print $2 }' "$T/keep.out"; }
-check "keep: a clean clone with an ignored node_modules, an answered reply, a delivered promise, cleared waits and answered questions, list items among them, loses nothing, and asks GitHub nothing" "-|" "$(why clean)|$(awk -F'\t' '$1 == "clean" { print $3 }' "$T/keep.out")"
-check "keep: an open line in replies-owed.md" "replies-owed.md has an open line" "$(why owed)"
-check "keep: an open wait in waiting-on.txt" "waiting-on.txt has an open wait" "$(why waiting)"
-check "keep: an open question in questions-owed.md, a list item" "questions-owed.md has an open line" "$(why questions)"
-check "keep: an open line in defects-open.md; a cleared one keeps nothing (clean)" "defects-open.md has an open line" "$(why defects)"
-check "keep: a PROMISED line in proposals-open.md" "proposals-open.md has an undelivered PROMISED line" "$(why promised)"
-check "keep: an untracked file" "./repo: 1 modified or untracked file(s), e.g. notes.txt" "$(why untracked)"
-check "keep: a modified file" "./repo: 1 modified or untracked file(s), e.g. README" "$(why modified)"
-check "keep: a stash" "./repo: 1 stash(es)" "$(why stash)"
-check "keep: a branch with commits on no remote: the row names its tip" "./repo: commit(s) on no remote, e.g. $(sha "$W8/local/repo")" "$(why local)"
-check "keep: a branch deleted on the remote, its stale tracking ref left" "./repo: commit(s) on no remote, e.g. $(sha "$W8/stale/repo")" "$(why stale)"
-check "keep: a squash-merged branch whose remote branch is gone, its commit held by the pull request's head ref" "-" "$(why pullref)"
-check "keep: two tips on no remote with a GitHub remote, GitHub confirming one: the row names the other" "./repo: commit(s) on no remote, e.g. $(sha "$W8/github/repo"), nor confirmed by GitHub" "$(why github)"
-check "keep: a detached HEAD in a worktree of its repo" 1 "$(why detached | grep -c "commit(s) on no remote, e.g. $(sha "$W8/detached/wt")$")"
-check "keep: a worktree of its repo outside the folder" "./repo: its worktree $(readlink -f "$T")/outside-wt is outside the folder" "$(why outwt)"
-check "keep: a worktree on a branch of a repo outside loses nothing, the branch stays there" "- yes" "$(why extwt) $(G -C "$T/user-clone" rev-parse -q --verify wt-branch >/dev/null && echo yes)"
-check "keep: a detached HEAD in a worktree of a repo outside, on none of its refs" "./checkout: commit $(sha "$W8/extdet/checkout") is on no branch, tag or remote-tracking ref of $(readlink -f "$T")/user-clone/.git" "$(why extdet)"
-check "keep: a detached worktree of an outside repo's local, unpushed branch loses nothing" - "$(why extwip)"
-check "keep: a repo in an ignored folder: no git runs in it" "./repo/cache/inner: a repo inside an ignored folder; check it by hand" "$(why nested)"
-check "keep: a repo in an ignored folder whose config names a clean filter, a repo inside it: the filter never runs, one reason" "0 ./repo/cache/x: a repo inside an ignored folder; check it by hand" "$(ls "$T" | grep -c PWNED-filter) $(why filter)"
-check "keep: a repo nested in a path its enclosing repo does not ignore is checked like any other" "./repo: 1 modified or untracked file(s), e.g. sub/inner/ | ./repo/sub/inner: 1 modified or untracked file(s), e.g. w" "$(why nestedtracked)"
-check "keep: commits only a local tag holds, lightweight or annotated" "./repo: commit(s) on no remote, e.g. $TAG2" "$(why tag)"
-check "keep: a partial clone loses nothing and fetches nothing" "- $PACKS" "$(why partial) $(packs "$W8/partial/repo")"
-check "keep: 30 tags on commits no remote holds, the remote unreadable: one GitHub call, one row" "./repo: commit(s) on no remote, e.g. $MT, nor confirmed by GitHub (not read: origin)|1" "$(why manytags)|$(awk -F'\t' '$1 == "manytags" { print $3 }' "$T/keep.out" | wc -w)"
-check "keep: a commit no remote holds that GitHub confirms" - "$(why ghall)"
-check "keep: a commit no remote holds, GitHub giving no answer" "./repo: commit(s) on no remote, e.g. $(sha "$W8/ghnone/repo"), nor confirmed by GitHub" "$(why ghnone)"
-check "keep: a branch whose history git can't walk keeps the folder" 1 "$(why badparent | grep -c '^./repo: git rev-list failed: ')"
-check "keep: a branch whose tip object is gone, beside one with a commit only here: the folder stays" 1 "$(why badref | grep -c '^./repo: git for-each-ref failed: ')"
-check "keep: a clone behind its remote: the row names the commit only it has, not main's old tip" "./repo: commit(s) on no remote, e.g. $(sha "$W8/behind/repo")" "$(why behind)"
-check "keep: a branch force-pushed past the clone's tracking ref: the row names its tip" "./repo: commit(s) on no remote, e.g. $(sha "$W8/forced/repo")" "$(why forced)"
-check "keep: a bare repo" "./backup.git: a bare repo; check it by hand" "$(why bare)"
-check "keep: another version-control system's data" "./proj: .jj data" "$(why jj)"
-check "keep: a checkout's own core.fsmonitor and core.sshCommand never run" "0 -" "$(ls "$T" | grep -c 'PWNED-[fs][sh]') $(why planted)"
-check "keep: a remote that can't be read, every tip on another, loses nothing" - "$(why unread)"
-check "keep: a commit on no remote, with a remote that can't be read: the reason names it" "./repo: commit(s) on no remote, e.g. $(sha "$W8/unreadlocal/repo") (not read: gone)" "$(why unreadlocal)"
-check "keep: a remote that never answers is unread after the timeout" - "$(why hang)"
-check "keep: a remote with 45000 refs, its commits local: a commit only here keeps the folder" "./repo: commit(s) on no remote, e.g. $(sha "$W8/manyrefs/repo")" "$(why manyrefs)"
-
-# github_has: gh api's status line; nothing asked while the watchers' shared pause holds
-cat > "$T/bin/gh" <<'EOF'
-#!/bin/sh
-# stub gh: `gh api -i repos/<r>/commits/<sha>`: 200 for sha c0ffee, 404 for repo o/missing, no answer for sha down, else 422
-echo "$*" >> "$GH_LOG"
-case "$3" in */down) exit 1;; repos/o/missing/*) echo 'HTTP/2.0 404 Not Found';; */c0ffee) echo 'HTTP/2.0 200 OK';; *) echo 'HTTP/2.0 422 Unprocessable Entity';; esac
-EOF
-chmod +x "$T/bin/gh"; export GH_LOG="$T/gh.log"; : > "$GH_LOG"
-H6="$T/home6"; mkdir -p "$H6/.mergeworthy"
-check "github_has: 200 True, 422 and 404 False, no answer None" "True False False None" "$(HOME="$H6" dsm 'print(*(m.github_has(r, s) for r, s in (("o/r", "c0ffee"), ("o/r", "bad"), ("o/missing", "c0ffee"), ("o/r", "down"))))')"
-echo "{\"pause_until\": $(( $(date +%s) + 600 ))}" > "$H6/.mergeworthy/shared-watch.json"; : > "$GH_LOG"
-check "github_has: None while the shared pause holds, gh not called" "None 0" "$(HOME="$H6" dsm 'print(m.github_has("o/r", "c0ffee"))') $(wc -l < "$GH_LOG")"
-
-# a whole sweep: the dry run, then a deleting one, over a retired clean folder, a retired one with an untracked file, and a live one
-H9="$T/home9"; W9="$H9/.mergeworthy/work"; mkdir -p "$W9" "$H9/.claude/agent-jobs"
-mkdir -p "$W9/broken/proposals-open.md"  # its check fails: open() on a folder
-for n in done kept live; do G clone -q "$T/w-origin.git" "$W9/$n/repo"; mkdir -p "$W9/$n/repo/node_modules" "$W9/$n/drafts/node_modules"; echo x > "$W9/$n/repo/node_modules/x"; echo x > "$W9/$n/drafts/node_modules/x"; done
-for n in young untimed busy fresh; do G clone -q "$T/w-origin.git" "$W9/$n/repo"; done; G clone -q "$T/w-origin.git" "$T/user9"; mkdir -p "$W9/fix"
-G -C "$T/user9" worktree add -q -b fix-1 "$W9/fix/fix-1" origin/main; G -C "$W9/fix/fix-1" commit -q --allow-empty -m fix; G -C "$W9/fix/fix-1" push -q origin fix-1
- echo x > "$W9/kept/repo/notes.txt"
-Y=$(( $(date +%s) - 2 * 86400 )); date -u -d "@$Y" +%FT%TZ > "$W9/young/retired"; : > "$W9/untimed/retired"  # retired 2 days ago; a marker with no time
-for n in broken done kept fix busy fresh; do date -u -d '20 days ago' +%FT%TZ > "$W9/$n/retired"; done; age "$H9"; touch -d '20 days ago' "$W9/untimed/retired"
-touch "$W9/fresh/repo/README"; bash -c "cd '$W9/busy' && exec sleep 600" & BUSY=$!; sleep 0.2  # a file changed now; a watcher still running there, as its daemon's cwd and PID file show
-echo "$BUSY" > "$W9/busy/gh-watch.pid"; touch -d '2 days ago' "$W9/busy/gh-watch.pid"
+# w-done over a whole sweep: the dry run, then a deleting one, with T3's database as a fixture (deleted, no row, settled, auto-settled,
+# archived, live; a row it can't read for err-*)
+H9="$T/home9"; mkdir -p "$H9/.t3/userdata"; python3 - "$H9/.t3/userdata/statev2.sqlite" <<'DB'
+import json, sqlite3, sys
+c = sqlite3.connect(sys.argv[1])
+c.execute("create table orchestration_v2_projection_threads (thread_id text primary key, archived_at text, deleted_at text, payload_json text not null)")
+at, row = "2026-01-01T00:00:00.000Z", lambda tid, archived=None, deleted=None, **p: (tid, archived, deleted, json.dumps({"settledOverride": None, "settledAt": None, **p}))
+rows = [row(f"del-{i}", deleted=at) for i in (1, 2, 3, 4, 5, 6, 9)] + [row("set-1", settledOverride="settled", settledAt=at), row("aset-1", settledAt=at), row("arc-1", archived=at)]
+rows += [row(f"live-{i}") for i in (1, 2, 3, 4)] + [(f"err-{i}", None, None, "not json") for i in (1, 2)]  # json_extract fails on these: the database can't say
+c.executemany("insert into orchestration_v2_projection_threads values (?, ?, ?, ?)", rows); c.commit()
+DB
+W9="$H9/.mergeworthy/work"; mkdir -p "$W9" "$H9/.claude/agent-jobs" "$H9/.config/systemd/user"; : > "$H9/.config/systemd/user/gh-watch@.service"
+G init -q --bare -b main "$T/w-origin.git"; G init -q -b main "$T/w-seed"; printf 'node_modules\n' > "$T/w-seed/.gitignore"; G -C "$T/w-seed" add .gitignore; G -C "$T/w-seed" commit -qm base; G -C "$T/w-seed" push -q "$T/w-origin.git" main
+mk() { G clone -q "file://$T/w-origin.git" "$W9/$1/repo"; [ -z "${2:-}" ] || printf '%s\n%s\n' "$2" "${3:-}" > "$W9/$1/t3-thread"; }  # file://: no git object hard-linked across folders aged apart
+mk deleted del-1; mk settled set-1; mk autoset aset-1; mk archived arc-1; mk liveold live-1; mk liveyoung live-2; mk live live-3; mk noold; mk noyoung; mk busy del-2; mk fresh del-3; mk lender del-4; mk unknown err-1; mk steward del-9; mk t3dir live-4; mk noanswer err-2; mk watched del-6
+mkdir -p "$W9/notfound"; echo nf-1 > "$W9/notfound/t3-gone"
+echo x > "$W9/deleted/repo/notes.txt"; G -C "$W9/deleted/repo" commit -q --allow-empty -m 'only here'  # an uncommitted file and a commit on no remote
+G -C "$W9/lender/repo" worktree add -q -b side "$T/lent-wt"
+G clone -q "$T/w-origin.git" "$T/user9"; mkdir -p "$W9/fix"; echo del-5 > "$W9/fix/t3-thread"; G -C "$T/user9" worktree add -q -b fix-1 "$W9/fix/fix-1" origin/main
+for n in live; do mkdir -p "$W9/$n/repo/node_modules" "$W9/$n/drafts/node_modules"; echo x > "$W9/$n/repo/node_modules/x"; echo x > "$W9/$n/drafts/node_modules/x"; done
+for n in settled autoset archived liveold liveyoung noold noyoung t3dir noanswer; do date -u -d '20 days ago' +%FT%TZ > "$W9/$n/retired"; done
+find "$W9" -exec touch -h -d '9 days ago' {} +; find "$W9/liveyoung" "$W9/noyoung" -exec touch -h -d '7 days ago' {} +
+YOUNG=$(date -u -d "@$(( $(stat -c %Y "$W9/noyoung/repo/.gitignore") + 8 * 86400 ))" +%FT%TZ)
+mkdir -p "$W9/t3dir/t3-carry" "$W9/t3dir/gh-watch-fix"; echo 999999999 > "$W9/t3dir/gh-watch.pid"
+echo x > "$W9/t3dir/t3-carry/fix.py"; echo x > "$W9/t3dir/gh-watch-fix/fix.py"; touch -d '3 days ago' "$W9/t3dir/t3-carry/fix.py" "$W9/t3dir/gh-watch-fix/fix.py"  # checkouts with a watcher file's name, edited 3 days ago
+echo 999999999 > "$W9/noold/gh-watch.pid"; : > "$W9/noold/events.log"; : > "$W9/noold/gh-watch-state.json"  # a stopped watcher's files, written now
+touch "$W9/fresh/repo/README"; bash -c "cd '$W9/busy' && exec sleep 600" & BUSY=$!
+bash -c "cd '$W9/watched' && exec sleep 600" & WATCH=$!; sleep 0.2; echo "$WATCH" > "$W9/watched/gh-watch.pid"; : > "$W9/watched/gh-watch-state.json"  # its watcher, not yet stopped
 HOME="$H9" python3 "$R/bin/disk-sweep" > "$T/dry9.out" 2>&1
-check "a dry run prints w-done's deletion and the kept folder's row, and deletes nothing" "1 1 kept no" "$(grep -c "^[^ ]* [0-9][0-9]* $W9/done w-done$" "$T/dry9.out") $(grep -c "^- $W9/kept: " "$T/dry9.out") $(there "$W9/done") $([ -e "$H9/.mergeworthy/work-kept.md" ] && echo yes || echo no)"
+check "a dry run prints w-done's deletions and the kept folders' rows, and deletes nothing" "1 1 kept no" "$(grep -c "^[^ ]* [0-9][0-9]* $W9/notfound w-done$" "$T/dry9.out") $(grep -c "^- $W9/settled: " "$T/dry9.out") $(there "$W9/notfound") $([ -e "$H9/.mergeworthy/work-kept.md" ] && echo yes || echo no)"
 HOME="$H9" python3 "$R/bin/disk-sweep" --delete > "$T/run9.out" 2>&1
-kill "$BUSY"; wait "$BUSY" 2>/dev/null
-check "w-done deletes a retired folder holding nothing to lose, logged before and after" "removed deleting|deleted|" "$(there "$W9/done") $(grep "^[^ ]* [0-9][0-9]* $W9/done w-done " "$H9/.mergeworthy/disk-sweep.log" | cut -d' ' -f5 | tr '\n' '|')"
-check "a folder whose check fails stays with that reason, and the sweep goes on" "kept 1" "$(there "$W9/broken") $(grep -c "^- $W9/broken: check failed: " "$H9/.mergeworthy/work-kept.md")"
+KEPT="$H9/.mergeworthy/work-kept.md"; row() { grep -cx -- "- $W9/$1: $2" "$KEPT"; }
+check "w-done deletes the folder of a thread T3 deleted, its uncommitted file and local-only commit with it, logged before and after" "removed deleting|deleted|" "$(there "$W9/deleted") $(grep "^[^ ]* [0-9][0-9]* $W9/deleted w-done " "$H9/.mergeworthy/disk-sweep.log" | cut -d' ' -f5 | tr '\n' '|')"
+check "the sweep stops no watcher: a deleted thread's folder whose watcher still runs there stays this run, its row naming it busy, the watcher alive" "kept 1 alive" "$(there "$W9/watched") $(row watched 'a process or agent job works in it') $(kill -0 "$WATCH" 2>/dev/null && echo alive || echo gone)"
+check "a thread T3's database has no row for (here in t3-gone) is deleted too" removed "$(there "$W9/notfound")"
+check "a settled thread (settledOverride, or only a settledAt as T3 auto-settles) or an archived one keeps its folder, its row saying T3 decides" "kept kept kept 1 1 1" "$(there "$W9/settled") $(there "$W9/autoset") $(there "$W9/archived") $(row settled 'its T3 thread is settled or archived; it goes once T3 deletes the thread') $(row autoset 'its T3 thread is settled or archived; it goes once T3 deletes the thread') $(row archived 'its T3 thread is settled or archived; it goes once T3 deletes the thread')"
+check "a retired folder untouched for 8 days goes, with a live thread or none, its watcher's fresh files aside; 7 days stays, its row naming the date" "removed removed kept kept 1" "$(there "$W9/liveold") $(there "$W9/noold") $(there "$W9/liveyoung") $(there "$W9/noyoung") $(row noyoung "its watcher retired; deleted no sooner than $YOUNG if left untouched")"
+check "a retired folder whose checkouts are named t3-* and gh-watch* stays 8 days after their edit: only the watcher's own top-level files are aside" "kept 1" "$(there "$W9/t3dir") $(grep -c "^- $W9/t3dir: its watcher retired; deleted no sooner than " "$KEPT")"
+check "a retired folder whose thread T3's database can't answer about stays this run, its row saying so" "kept 1" "$(there "$W9/noanswer") $(row noanswer 'T3 gave no answer about its thread; kept this run')"
+check "a live thread without a retired watcher keeps its folder, with no row; c-ignored and c-node_modules sweep its build folders" "kept 0 removed removed" "$(there "$W9/live/repo") $(grep -c "$W9/live:" "$KEPT") $(there "$W9/live/repo/node_modules") $(there "$W9/live/drafts/node_modules")"
+check "a deleted thread's folder stays while a process works in it or a file changed in 24 hours, its row naming the cause" "kept 1 kept 1" "$(there "$W9/busy") $(row busy 'a process or agent job works in it') $(there "$W9/fresh") $(row fresh 'a file changed in the last 24 hours')"
+check "a folder whose repo has a worktree outside it stays, its row naming it" "kept 1" "$(there "$W9/lender") $(row lender "$W9/lender/repo: its worktree $(readlink -f "$T")/lent-wt is outside the folder")"
+check "an unretired folder T3's database can't answer about and the steward's folder keep theirs, with no row" "kept kept 0" "$(there "$W9/unknown") $(there "$W9/steward") $(grep -c "$W9/unknown:\|$W9/steward:" "$KEPT")"
+check "a folder whose check fails stays with that reason, and the next folders are still checked" 2 \
+  "$(HOME="$H9" dsm 'm.DRY = True; real = m.thread_state; m.thread_state = lambda f: 1 / 0 if f.endswith("/archived") else real(f); m.sweep_work()' | grep -c "^- $W9/archived: check failed: division by zero$\|^- $W9/settled: its T3")"
 check "a deleted folder's worktree of a repo outside: that repo's entry is pruned, so its branch can be checked out there" "removed 1 0" "$(there "$W9/fix") $(G -C "$T/user9" worktree list | wc -l) $(G -C "$T/user9" switch -q fix-1 2>&1 | wc -l)"
-check "a folder retired 2 days ago stays, its row saying when it may go; a marker without a time counts from its mtime, 20 days ago" "kept 1 removed" "$(there "$W9/young/repo/README") $(grep -cx -- "- $W9/young: retired at $(date -u -d "@$Y" +%FT%TZ); deleted no sooner than $(date -u -d "@$(( Y + 14 * 86400 ))" +%FT%TZ)" "$H9/.mergeworthy/work-kept.md") $(there "$W9/untimed")"
-check "a folder delete() refuses: its row names the cause, a running watcher in it or a file changed in 24 hours" "1 1" "$(grep -cx -- "- $W9/busy: a process or agent job works in it" "$H9/.mergeworthy/work-kept.md") $(grep -cx -- "- $W9/fresh: a file changed in the last 24 hours, a mount or an unreadable folder" "$H9/.mergeworthy/work-kept.md")"
+check "the deleting run's rows are the dry run's" same "$([ "$(grep '^- ' "$T/dry9.out")" = "$(grep '^- ' "$KEPT")" ] && echo same)"
 ln -s "$W9" "$T/w9link"
-check "delete() through a symlinked path deletes nothing and says why" "a symlink on its path kept" "$(dsm 'm.DRY = False; p = sys.argv[3]; print(m.delete(p, p, os.lstat(p).st_dev, "w-done", vcs=False))' "$T/w9link/kept") $(there "$W9/kept")"
-check "a retired folder that would lose something stays, its row in work-kept.md as the dry run printed it" "kept 5 same" "$(there "$W9/kept/repo/notes.txt") $(grep -c '^- ' "$H9/.mergeworthy/work-kept.md") $([ "$(grep '^- ' "$T/dry9.out")" = "$(grep '^- ' "$H9/.mergeworthy/work-kept.md")" ] && echo same)"
-check "a folder whose watcher didn't retire: w-done leaves it, c-ignored and c-node_modules sweep its build folders" "kept 0 removed removed" "$(there "$W9/live/repo/README") $(grep -c "$W9/live" "$H9/.mergeworthy/work-kept.md") $(there "$W9/live/repo/node_modules") $(there "$W9/live/drafts/node_modules")"
+check "delete() through a symlinked path deletes nothing and says why" "a symlink on its path kept" "$(dsm 'm.DRY = False; p = sys.argv[3]; print(m.delete(p, p, os.lstat(p).st_dev, "w-done", vcs=False))' "$T/w9link/settled") $(there "$W9/settled")"
+kill "$BUSY" "$WATCH"; wait "$BUSY" "$WATCH" 2>/dev/null
+rm "$H9/.mergeworthy/disk-sweep.work"; HOME="$H9" python3 "$R/bin/disk-sweep" --delete > /dev/null 2>&1
+check "once the watcher stopped itself, the next day's sweep deletes the folder" removed "$(there "$W9/watched")"
+
+# c-ignored: Rust's target, a project's .pnpm-store, .venv and .mypy_cache go when git ignores them, and stay when it tracks them
+HB="$T/homeb"; B="$HB/b-work"; mkdir -p "$HB/.mergeworthy"
+for n in ign trk; do G init -q "$B/$n"; for d in target .pnpm-store .venv .mypy_cache; do mkdir -p "$B/$n/$d"; echo x > "$B/$n/$d/f"; done; done
+printf 'target/\n.pnpm-store/\n.venv/\n.mypy_cache/\n' > "$B/ign/.gitignore"; G -C "$B/ign" add .gitignore; G -C "$B/ign" commit -qm base; G -C "$B/trk" add -A; G -C "$B/trk" commit -qm base; age "$B"
+HOME="$HB" python3 "$R/bin/disk-sweep" --delete 2>/dev/null
+check "c-ignored deletes an ignored target, .pnpm-store, .venv and .mypy_cache, and keeps tracked ones" "removed removed removed removed kept kept kept kept" "$(for n in ign trk; do for d in target .pnpm-store .venv .mypy_cache; do there "$B/$n/$d"; done; done | tr '\n' ' ' | sed 's/ $//')"
+
+# w-merged: the steward's worktrees whose branch is merged, or squash-merged as GitHub shows, go after 8 untouched days with their notes
+HS="$T/homes"; S="$HS/.mergeworthy/work/steward"; mkdir -p "$S" "$HS/.claude/agent-jobs"
+G init -q --bare -b main "$T/s-origin.git"; git config -f "$HS/.gitconfig" url."$T/s-origin.git".insteadOf https://github.com/o/s.git
+HOME="$HS" G clone -q https://github.com/o/s.git "$S/repo" 2>/dev/null; echo a > "$S/repo/f"; G -C "$S/repo" add f; G -C "$S/repo" commit -qm base; HOME="$HS" G -C "$S/repo" push -q origin main
+for n in merged squashed open recent busy nopr mdirty; do G -C "$S/repo" worktree add -q -b "$n" "$S/$n" main; G -C "$S/$n" commit -q --allow-empty -m "$n"; mkdir -p "$S/$n-notes"; echo x > "$S/$n-notes/r.md"; done
+for n in held helddirty; do G -C "$S/repo" worktree add -q -b "$n" "$S/$n" main; done; echo b > "$S/helddirty/f"; echo b > "$S/mdirty/f"  # never committed; an edited tracked file
+G -C "$S/repo" merge -q --no-ff --no-edit merged recent busy mdirty >/dev/null; G -C "$S/repo" commit -q --allow-empty -m later  # a merge commit, as GitHub makes
+HOME="$HS" G -C "$S/repo" push -q origin main
+HOME="$HS" G -C "$S/open" push -q origin open; HOME="$HS" G -C "$S/repo" fetch -q origin
+SQ=$(G -C "$S/squashed" rev-parse HEAD)
+printf '#!/bin/sh\n# stub gh: `gh api repos/o/s/commits/<sha>/pulls`: a merged PR headed at the squashed worktree'"'"'s tip, none for any other\ncase "$2" in */%s/pulls) echo '"'"'[{"merged_at":"2026-01-01T00:00:00Z","head":{"sha":"%s"}}]'"'"';; *) echo "[]";; esac\n' "$SQ" "$SQ" > "$T/bin/gh"
+chmod +x "$T/bin/gh"; find "$S" -exec touch -h -d '9 days ago' {} +; touch -d '2 days ago' "$S/recent-notes/r.md"
+bash -c "cd '$S/busy' && exec sleep 600" & SB=$!; sleep 0.2
+HOME="$HS" python3 "$R/bin/disk-sweep" --delete 2>/dev/null; kill "$SB"; wait "$SB" 2>/dev/null
+check "w-merged keeps a worktree that never got a commit of its own (on main's line), clean or with an edited tracked file, and a merged one with an uncommitted edit" \
+  "kept kept kept 3" "$(there "$S/held") $(there "$S/helddirty") $(there "$S/mdirty") $(G -C "$S/repo" branch --list held helddirty mdirty | wc -l)"
+check "w-merged: a merged and a squash-merged worktree go with their notes and branches, logged; unmerged, a PR GitHub doesn't show, notes touched 2 days ago or a process working there keep theirs" \
+  "removed removed removed removed 0 4 kept kept kept kept" \
+  "$(there "$S/merged") $(there "$S/merged-notes") $(there "$S/squashed") $(there "$S/squashed-notes") $(G -C "$S/repo" branch --list merged squashed | wc -l) $(grep -c ' w-merged deleted$' "$HS/.mergeworthy/disk-sweep.log") $(there "$S/open") $(there "$S/nopr") $(there "$S/recent") $(there "$S/busy")"
 
 # tests/all.sh, on a root whose first suite leaves a child that calls docker after the suite exits
 F="$T/allsh"; mkdir -p "$F/node_modules/typescript" "$F/cli/node_modules" "$F/docs" "$F/tests"; cp -r "$R/tests/refuse" "$F/tests/"

@@ -35,8 +35,6 @@ case "\$2" in
   show-environment) echo "HOME=\$HOME" ;;
   restart) grep -qxF "\$3" "$T/breaks" "$T/stops" && { grep -vxF "\$3" "$T/active" > "$T/active.new"; mv "$T/active.new" "$T/active"; }
     i=\${3#gh-watch@}; grep -qxF "\$3" "$T/retires" && touch "\$(systemd-escape --unescape --path "\${i%.service}")/retired" ;;
-  is-enabled) [ -e "$T/learn-enabled" ] ;;
-  enable) touch "$T/learn-enabled" ;;
   is-active) if grep -qxF "\${!#}" "$T/active"; then echo active; elif grep -qxF "\${!#}" "$T/stops"; then echo inactive; exit 3; else echo failed; exit 3; fi ;;
 esac
 EOF
@@ -80,36 +78,31 @@ bash "$R/bin/mergeworthy-update" > "$T/out" 2>&1; check "a failed Claude Code up
 check "a failed Claude Code update: Codex updated, units restarted, failure named" "1 2 failed: the Claude Code update" \
   "$(grep -c '^pnpm' "$T/calls") $(grep -c 'restart gh-watch@' "$T/calls") $(grep '^failed:' "$T/out")"
 
-# the learning timer: installed where the installed copy has bin/project-learn, its service started only the first time
-rm "$T/claude-fails"; mkdir -p "$NEW/bin"; printf '#!/bin/sh\n' > "$NEW/bin/project-learn"; chmod +x "$NEW/bin/project-learn"
-echo mergeworthy-learn.timer >> "$T/active"; : > "$T/calls"
-bash "$R/bin/mergeworthy-update" > "$T/out" 2>&1; rc=$?; U="$HOME/.config/systemd/user"
-check "the learning timer: exit, enabled, its service started once, daily after the steward's pass, catching up after a reboot" "0 1 1 1 1" \
-  "$rc $(grep -c 'enable --now mergeworthy-learn.timer' "$T/calls") $(grep -c 'start --no-block mergeworthy-learn.service' "$T/calls") $(grep -c '^OnCalendar=\*-\*-\* 06:30$' "$U/mergeworthy-learn.timer") $(grep -c '^Persistent=true$' "$U/mergeworthy-learn.timer")"
-check "the service runs the installed copy's project-learn start" 1 "$(grep -cxF 'ExecStart=%h/.mergeworthy/current/bin/project-learn start' "$U/mergeworthy-learn.service")"
+# the old daily learning run's timer and service: an update disables and removes them; with none installed it does nothing
+rm "$T/claude-fails"; U="$HOME/.config/systemd/user"; mkdir -p "$U"; : > "$U/mergeworthy-learn.timer"; : > "$U/mergeworthy-learn.service"; : > "$T/calls"
+bash "$R/bin/mergeworthy-update" > "$T/out" 2>&1; rc=$?
+check "the old learning timer: exit, disabled and stopped, both units removed, systemd reloaded, said so" "0 1 0 1 1" \
+  "$rc $(grep -c 'disable --now mergeworthy-learn.timer' "$T/calls") $(ls "$U" | grep -c mergeworthy-learn) $(grep -c 'daemon-reload' "$T/calls") $(grep -cx 'mergeworthy-learn.timer removed' "$T/out")"
 : > "$T/calls"; bash "$R/bin/mergeworthy-update" > "$T/out" 2>&1
-check "a second update: no new first run, no daemon-reload for unchanged units" "0 0" "$(grep -c 'start --no-block mergeworthy-learn' "$T/calls") $(grep -c 'daemon-reload' "$T/calls")"
+check "a second update: nothing of the learning timer" "0 0" "$(grep -c 'mergeworthy-learn\|daemon-reload' "$T/calls") $(grep -c 'mergeworthy-learn' "$T/out")"
 
-check "the learning run's last state printed: none yet" 1 "$(grep -cx 'mergeworthy-learn last run: none yet' "$T/out")"
-mkdir -p "$HOME/.mergeworthy/work/project-learn"; printf '%s\n' '2026-10-30 2026-10-30T06:30:01Z thread t-1; 1 to sort: o/r' '2026-10-31 2026-10-31T06:30:02Z FAILED: t3 thread start failed: server not reachable' > "$HOME/.mergeworthy/work/project-learn/runs.txt"
-bash "$R/bin/mergeworthy-update" > "$T/out" 2>&1
-check "the learning run's last state printed: a failed run with why" 1 "$(grep -cx 'mergeworthy-learn last run: 2026-10-31 2026-10-31T06:30:02Z FAILED: t3 thread start failed: server not reachable' "$T/out")"
-
-# session-start installs the units too, where every plugin update lands: the same first run, then nothing until a unit's text changes
-rm -rf "$U" "$T/learn-enabled"; : > "$T/calls"
-CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" > "$T/out" 2>&1 </dev/null
-check "session-start with no learning units: both written, the timer enabled, the service run once; nothing of it in the session's context" "1 1 1 1 0" \
-  "$([ -f "$U/mergeworthy-learn.service" ] && [ -f "$U/mergeworthy-learn.timer" ] && echo 1) $(grep -c 'daemon-reload' "$T/calls") $(grep -c 'enable --now mergeworthy-learn.timer' "$T/calls") $(grep -c 'start --no-block mergeworthy-learn.service' "$T/calls") $(grep -c 'mergeworthy-learn' "$T/out")"
-: > "$T/calls"; PATH="$T/bin:/usr/local/bin:/usr/bin:/bin" CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" >/dev/null 2>&1 </dev/null
-check "session-start again, from another PATH: no unit rewritten, no daemon-reload, enable, start or restart" "0 0" "$(grep -c 'PATH=$T/bin:/usr/local/bin:/usr/bin:/bin"' "$U/mergeworthy-learn.service") $(grep -vc ' is-enabled \| is-active \| show-environment$' "$T/calls")"
-sed -i 's/06:30/05:00/' "$U/mergeworthy-learn.timer"; : > "$T/calls"; CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" >/dev/null 2>&1 </dev/null
-check "session-start after an update changed a unit: rewritten and reloaded, the running timer not restarted, no second first run" "1 1 0 0" \
-  "$(grep -c '^OnCalendar=\*-\*-\* 06:30$' "$U/mergeworthy-learn.timer") $(grep -c 'daemon-reload' "$T/calls") $(grep -c ' restart \| enable \| start --no-block ' "$T/calls") $(grep -c 'stop' "$T/calls")"
-
-ok=0; for i in $(seq 50); do rm -rf "$U"; for j in $(seq 30); do PATH="$T/bin:/x$j:$PATH" "$R/hooks/learn-units" >/dev/null & done; wait
-  [ "$(ls -A "$U" | paste -sd' ')" = "mergeworthy-learn.service mergeworthy-learn.timer" ] && grep -q '^ExecStart=' "$U/mergeworthy-learn.service" && grep -q '^WantedBy=' "$U/mergeworthy-learn.timer" && ok=$((ok+1)); done 2>/dev/null
-check "30 runs at once, 50 times: both units complete, no temp file left" 50 "$ok"
-grep -vxF mergeworthy-learn.timer "$T/active" > "$T/active.new"; mv "$T/active.new" "$T/active"; : > "$T/calls"; "$R/hooks/learn-units" >/dev/null
-check "an enabled timer that isn't active (a reload failed it): started, the service not run" "1 0" "$(grep -cx 'systemctl --user start mergeworthy-learn.timer' "$T/calls") $(grep -c 'start --no-block mergeworthy-learn.service' "$T/calls")"
+# the first update after this change runs the old script, which repoints current, then calls the new tree's hooks/learn-units:
+# its learning steps (aed81c9, before the daily run was removed), verbatim but the repoint, which is update_claude's
+PRE="$T/cache/pre"; mkdir -p "$PRE/bin" "$NEW/bin" "$NEW/hooks" "$HOME/.local/bin"
+cat > "$PRE/bin/mergeworthy-update" <<'OLD'
+#!/bin/bash
+set -u; failed=()
+ln -sfn "$NEW" ~/.mergeworthy/current.tmp && mv -T ~/.mergeworthy/current.tmp ~/.mergeworthy/current
+install_learn() {
+  "$(dirname "$(readlink -f "$0")")/../hooks/learn-units" >/dev/null 2>&1 || return 1
+  echo "mergeworthy-learn.timer $(systemctl --user is-active mergeworthy-learn.timer)"
+}
+[ -x ~/.mergeworthy/current/bin/project-learn ] && { install_learn || failed+=("mergeworthy-learn.timer"); }
+[ ${#failed[@]} = 0 ] || { echo "failed: ${failed[*]}"; exit 1; }
+OLD
+cp "$R/hooks/learn-units" "$NEW/hooks/"; printf '#!/bin/sh\n' > "$NEW/bin/project-learn"; chmod +x "$PRE/bin/mergeworthy-update" "$NEW/bin/project-learn"
+ln -sfn "$PRE" "$HOME/.mergeworthy/current"; ln -s "$HOME/.mergeworthy/current/bin/mergeworthy-update" "$HOME/.local/bin/mergeworthy-update"
+: > "$U/mergeworthy-learn.timer"; : > "$U/mergeworthy-learn.service"; NEW="$NEW" bash "$HOME/.local/bin/mergeworthy-update" > "$T/out" 2>&1; rc=$?
+check "the old script's update to this version: exit, both learning units removed, no failure named" "0 0 0" "$rc $(ls "$U" | grep -c mergeworthy-learn) $(grep -c '^failed:' "$T/out")"
 
 [ "$fails" = 0 ] && echo "update: all cases pass" || { echo "update: $fails case(s) failed"; exit 1; }

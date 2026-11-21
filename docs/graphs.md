@@ -21,7 +21,7 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 | `review` | `delegate`, `code`, `post`, `writing` |
 | `rules` | `task`, `open-issue`, `delegate`, `reply` |
 | `steward` | `rules`, `delegate`, `writing` |
-| `task` | `post`, `pull-request`, `design`, `reply`, `review`, `open-issue`, `docs`, `writing`, `delegate` |
+| `task` | `delegate`, `post`, `pull-request`, `design`, `reply`, `review`, `open-issue`, `docs`, `writing` |
 | `writing` | nothing |
 
 ## Any multi-step or GitHub task, first; an `/ai` or `/agent` command
@@ -34,15 +34,15 @@ flowchart TB
   subgraph g0["Steps"]
     s0["10 rules: Read the task and every<br/>link in it, Triage, Scope…"]
   end
-  s0 -.-> r1[["post"]]
-  s0 -.-> r2[["pull-request"]]
-  s0 -.-> r3[["design"]]
-  s0 -.-> r4[["reply"]]
-  s0 -.-> r5[["review"]]
-  s0 -.-> r6[["open-issue"]]
-  s0 -.-> r7[["docs"]]
-  s0 -.-> r8[["writing"]]
-  s0 -.-> r9[["delegate"]]
+  s0 -.-> r1[["delegate"]]
+  s0 -.-> r2[["post"]]
+  s0 -.-> r3[["pull-request"]]
+  s0 -.-> r4[["design"]]
+  s0 -.-> r5[["reply"]]
+  s0 -.-> r6[["review"]]
+  s0 -.-> r7[["open-issue"]]
+  s0 -.-> r8[["docs"]]
+  s0 -.-> r9[["writing"]]
   start --> g0
 ```
 
@@ -231,7 +231,7 @@ flowchart TB
   start --> g0
 ```
 
-## A rule, mergeworthy hook or tool failed, can't be followed or was worked around; the user names a failure; a 👎; editing a skill, prompt or rules file; a `### FOLLOW-UP`; the steward's tick
+## A rule, mergeworthy hook or tool failed, can't be followed or was worked around; the user names a failure; a 👎; editing a skill, prompt or rules file; a `### MAINTAINER REVIEW`; the steward's tick
 
 Opens `mergeworthy:rules` (fix the instance, then the rule or an issue for the steward (6 steps)).
 
@@ -255,8 +255,8 @@ flowchart TB
   s1 -.-> r2[["open-issue"]]
   s2 -.-> r3[["delegate"]]
   s3 -.-> r4[["delegate"]]
-  s5 -.-> r5[["reply"]]
-  s5 -.-> r6[["delegate"]]
+  s5 -.-> r5[["delegate"]]
+  s5 -.-> r6[["reply"]]
   s5 -.-> r7[["task"]]
   start --> g0
 ```

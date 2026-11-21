@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""project-learn list <owner/repo or its URL> [--since ISO] | mark <owner/repo> <ISO> [<sha7>@<time>...] | start: the daily project-file learning run (task §Project file).
+"""project-learn list <owner/repo or its URL> [--since ISO] | mark <owner/repo> <ISO> [<sha7>@<time>...]: what a repo's maintainers taught us
+since the last learning, which task step 4 sorts into the project file (task §Project file).
 
 - list: from the learning mark, the study's (~/.mergeworthy/projects/<owner>/<repo>.study.md) `Learned: <time>` line, else its first
   line `Studied: <date>` (or --since), up to now, what the repo's maintainers said or did to our work there: conversation comments,
@@ -15,22 +16,17 @@
 - mark <owner/repo> <ISO> [<sha7>@<time>...]: writes the study's `Learned: <ISO>` line (under `Studied:`, which stays the full study's
   date) and its `Commits read:` line, the listed commits of the last 7 days; refuses a time before the mark or in the future, a study
   without `Studied:`, and a project file over its word cap (hooks/project_file.py).
-- start: the timer's run (mergeworthy-update installs it), once a day: lists each repo with a study that is the origin of one of this
-  machine's T3 Code projects (neither deleted nor archived) into
-  ~/.mergeworthy/work/project-learn/lists/, marks those with nothing listed and within the cap, and starts one T3 thread that sorts
-  the rest; each run, a failed one with why, is a line of runs.txt there.
 """
-import collections, functools, glob, json, os, re, shlex, subprocess, sys, time, urllib.parse
+import collections, functools, glob, json, os, re, subprocess, sys, time, urllib.parse
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'hooks'))
-import project_file, steward
+import project_file
 from gh_common import BADGE, MAINTAINER, epoch, gh_output, gh_pages, iso, pace, read, search, when
 
 HOME = os.path.expanduser('~')
 PROJECTS = project_file.PROJECTS
-WORK = os.path.dirname(project_file.RUNS)
 NOW = time.time()
 TRAILER = re.compile(r'^co-authored-by: (?:claude|codex)\b', re.I | re.M)  # an agent's commit, whoever pushed it
-FOLLOWUP_DAYS = 60  # the watcher's FOLLOW-UP window after a merge
+FOLLOWUP_DAYS = 60  # how long after a merge our PR's files are followed
 REACTION_DAYS = 14
 # a commit's date is when it was made, not pushed: commits are read from this long before the mark, and the list's mark line hands
 # those it held to the study (`Commits read:`), so one pushed late is listed once
@@ -45,16 +41,6 @@ SHORT_REF = ((GH, '#{n}'), (GH + r'#issuecomment-(?P<id>\d+)', '#{n}/c{id}'), (G
              (GH + r'#pullrequestreview-(?P<id>\d+)', '#{n}/v{id}'), (GL + r'merge_requests/(?P<n>\d+)', '!{n}'),
              (GL + r'merge_requests/(?P<n>\d+)#note_(?P<id>\d+)', '!{n}/n{id}'), (GL + r'(?:issues|work_items)/(?P<n>\d+)', '#{n}'),
              (GL + r'(?:issues|work_items)/(?P<n>\d+)#note_(?P<id>\d+)', '#{n}/n{id}'))
-PROMPT = """Daily project-file learning run (mergeworthy `project-learn start`), in {work}. For each list below: sort every line into that \
-repo's project file by task §Project file (one line per lesson citing it by its short ref, its permalink going to the study, updating \
-a line instead of adding one beside it; praise and approval go in What worked) and its quote into the repo's study; while the project \
-file is over {cap} words, condense it (merge near-duplicates, keep the line with the strongest evidence, drop one a later line \
-contradicts, turn a full link into its short ref; the quotes and full links stay in the study); then run the `project-learn mark` line \
-the list ends with, `project-learn` being `{cmd}`. The project files and studies are in {projects}; post nothing, and change no file \
-outside it.
-Lists: {lists}"""
-
-
 def paths(repo):
     base = os.path.join(PROJECTS, *repo.split('/'))
     return base + '.md', base + '.study.md'
@@ -378,99 +364,6 @@ def mark(repo, at, listed_commits=()):
     print(f"{study}: Learned: {iso(t)}")
 
 
-def this_command():
-    """This project-learn, with the folders it was pointed at, as the thread must run it: T3 starts the thread with its own
-    environment and PATH."""
-    env = [f"{k}={shlex.quote(v)}" for k, v in (('MERGEWORTHY_PROJECTS', PROJECTS), ('MERGEWORTHY_LEARN_DIR', WORK)) if os.environ.get(k)]
-    return ' '.join(env + [shlex.quote(os.path.abspath(sys.argv[0]))])
-
-
-def launch_thread(title, prompt):
-    """(the started T3 thread's id, None), or (None, why it couldn't start)."""
-    cmd = ['t3', 'thread', 'start', '--title', title, WORK, prompt]
-    try:
-        r = subprocess.run(cmd, capture_output=True, text=True)
-        if r.returncode:  # the folder isn't a T3 project yet
-            subprocess.run(['t3', 'project', 'add', '--title', 'project-learn', WORK], capture_output=True, text=True)
-            r = subprocess.run(cmd, capture_output=True, text=True)
-    except FileNotFoundError:
-        return None, "no t3 on PATH: the learning thread needs T3 Code"
-    if r.returncode:
-        return None, f"t3 thread start failed: {' '.join((r.stderr or r.stdout).split())[:300]}"
-    return r.stdout.strip(), None
-
-
-def remote(url):
-    """(host, path) of a git remote's URL (scheme://[user@]host/path or scp-like [user@]host:path), lowercase, without .git; None for a local path or one that doesn't parse."""
-    if '://' not in url:
-        if ':' not in url:
-            return None
-        url = 'ssh://' + url.replace(':', '/', 1)
-    try:
-        u = urllib.parse.urlsplit(url)
-        return u.hostname and (u.hostname, re.sub(r'\.git$', '', u.path.strip('/')).lower())
-    except ValueError:  # a URL no forge study can match (a bracketed IPv6 host)
-        return None
-
-
-def t3_origins():
-    """({(host, path)} of each T3 Code project's origin remote, None), or (None, why they can't be read)."""
-    roots = steward.projects()
-    if roots is None:
-        return None, "T3 Code's database can't be read: the run learns the repos of its projects"
-    try:
-        urls = [subprocess.run(['git', '-C', root, 'remote', 'get-url', 'origin'], capture_output=True, text=True).stdout.strip() for root in roots]
-    except OSError as e:
-        return None, f"git can't run ({e.strerror}): the run reads each T3 Code project's origin remote"
-    return set(filter(None, map(remote, urls))), None
-
-
-def start():
-    today = iso(NOW)[:10]
-    if project_file.ran_today(today):
-        return print(f"project-learn: already ran today ({project_file.RUNS})")
-    os.makedirs(os.path.join(WORK, 'lists'), exist_ok=True)
-    if not os.path.isfile(os.path.join(WORK, 'scope.md')):
-        with open(os.path.join(WORK, 'scope.md'), 'w') as f:
-            f.write("Tier: 0, because the daily learning run sorts listed maintainer activity into project files and changes no repo\n")
-    origins, why = t3_origins()
-    if why:
-        print(f"project-learn: {project_file.record_run(iso(NOW), error=why)}")
-        sys.exit(1)
-    need, failed = {}, []
-    for project in sorted(glob.glob(os.path.join(PROJECTS, '*', '*.md'))):
-        if project.endswith('.study.md'):
-            continue
-        repo = os.path.relpath(project, PROJECTS)[:-3]
-        if ((gitlab_host(repo) or 'github.com').lower(), repo.lower()) not in origins:  # the host its list reads
-            print(f"{repo}: not the origin of a T3 Code project here, skipped")
-            continue
-        since = mark_of(repo)
-        if since is None:
-            print(f"{repo}: no study with a `Studied:` line, skipped (task §Repo study)")
-            continue
-        over = project_file.words(project) > project_file.CAP
-        try:
-            lines, items = list_cmd(repo, since)
-        except (SystemExit, Exception) as e:  # one repo's failure, whatever it is, costs no other repo its day
-            e = ' '.join((str(e) if isinstance(e, SystemExit) else f"{type(e).__name__}: {e}").split())
-            failed.append(f"{repo} ({e})")
-            if not over:
-                continue
-            lines, items = [f"# {repo}: the list failed ({e}): condense the project file only; don't mark it"], []
-        out = os.path.join(WORK, 'lists', repo.replace('/', '__') + '.txt')
-        with open(out, 'w') as f:
-            f.write('\n'.join(lines) + '\n')
-        if items or over:
-            need[repo] = out
-        else:
-            mark(repo, iso(NOW))
-    thread, why = launch_thread(f'Project-file learning {today}', PROMPT.format(work=WORK, cap=project_file.CAP, cmd=this_command(), projects=PROJECTS, lists=' '.join(need.values()))) if need else (None, None)
-    print(f"project-learn: {project_file.record_run(iso(NOW), thread, list(need), failed, why)}")
-    if why or failed:
-        sys.exit(1)
-
-
 def main(a):
     if a[:1] == ['list'] and a[1:2]:
         since = [a[i + 1] for i in range(len(a) - 1) if a[i] == '--since']
@@ -480,8 +373,6 @@ def main(a):
         return print('\n'.join(list_cmd(repo, when(since[-1]) if since else mark_of(repo), host)[0]))
     if a[:1] == ['mark'] and len(a) >= 3:
         return mark(a[1], a[2], a[3:])
-    if a == ['start']:
-        return start()
     sys.exit(__doc__)
 
 
