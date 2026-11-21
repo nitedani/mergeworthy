@@ -418,9 +418,13 @@ for n in os.listdir(agent_jobs.LAUNCHED) if os.path.isdir(agent_jobs.LAUNCHED) e
     try: r = json.load(open(os.path.join(agent_jobs.LAUNCHED, n)))
     except (OSError, ValueError): continue
     if isinstance(r, dict) and r.get('tool_use_id') and r.get('transcript') and not returned(r['transcript'], r['tool_use_id']):
-        pending.append({'key': r.get('key', ''), 'brief': r.get('task', ''), 'started': r.get('launched', 0), 'launched': r.get('launched', 0),
-                        'role': r.get('role'), 'worktrees': r.get('worktrees', []), 'transcript': r['transcript'], 'session': r.get('session'),
-                        'refresh': r.get('refresh', memory_refresh(r.get('task', '')))})
+        j = {'key': r.get('key', ''), 'brief': r.get('task', ''), 'started': r.get('launched', 0), 'launched': r.get('launched', 0),
+             'role': r.get('role'), 'worktrees': r.get('worktrees', []), 'transcript': r['transcript'], 'session': r.get('session'),
+             'refresh': r.get('refresh', memory_refresh(r.get('task', '')))}
+        # past LONG with no result in the launcher's transcript, a call whose agent never started (a crash mid-call) or has
+        # finished (its launcher lost) is over
+        if time.time() - j['started'] >= agent_jobs.LONG and (not agent_jobs.transcript(j) or agent_jobs.finished(j)): continue
+        pending.append(j)
 # One writer per worktree: a writer (any role but review or research) waits for a linked worktree its brief names (not the launcher's
 # own) that holds another session's process, or that a live writer job or outstanding writer call names, whose agent isn't the launcher. T3 can show that
 # agent interrupted or cancelled while it runs, so agent_jobs.finished decides.
@@ -443,8 +447,8 @@ if ti.get('role') not in READERS:
         try: return bool(sid) and f'CLAUDE_CODE_SESSION_ID={sid}'.encode() in open(f'/proc/{pid}/environ', 'rb').read().split(b'\0')
         except OSError: return False
     me, busy = os.path.realpath(transcript(d) or '/'), []
-    # a call still outstanding counts as its job will, its own key's aside (one_per_job's); one whose agent never started stops counting after LONG
-    calls = [j for j in pending if j['key'] != key and set(j['worktrees']) & set(wts) and (agent_jobs.transcript(j) or time.time() - j['started'] < agent_jobs.LONG)]
+    # a call still outstanding counts as its job will, its own key's aside (one_per_job's)
+    calls = [j for j in pending if j['key'] != key and set(j['worktrees']) & set(wts)]
     writers = [j for j in [j for _, j in agent_jobs.jobs()] + calls if j.get('role') not in READERS] if wts else []
     for j in writers:
         if 'worktrees' not in j: j['worktrees'] = launch.Launch(j.get('brief', '')).worktrees  # registered before jobs recorded theirs
@@ -502,8 +506,7 @@ def users_words(quote):
     except OSError: pass
     return False
 if d.get('session_id') and not refresh and not fanout:
-    # a call whose agent never started stops counting after LONG, as for the writer check
-    calls = [j for j in pending if j.get('session') == d['session_id'] and (time.time() - j['started'] < agent_jobs.LONG or agent_jobs.transcript(j))]
+    calls = [j for j in pending if j.get('session') == d['session_id']]
     # a job registered before jobs recorded `refresh` is classified from its task
     live = [j for j in [j for _, j in agent_jobs.jobs() if j.get('session') == d['session_id'] and not agent_jobs.finished(j)] + calls
             if not j.get('refresh', memory_refresh(j.get('brief', '')))]

@@ -1187,7 +1187,8 @@ use key-1 key-2; r="$(lc key-1 keyed 'Check the cost.') $(lc key-2 keyed 'Check 
 check "BLOCK: two calls with one key and different tasks in one message: the second, until the first's call returned" "0 2 0" "$r $(lc key-3 keyed 'Check the security.')"
 use long-1 long-2; r=$(lc long-1 first 'Follow /tmp/x/life-long.md')
 python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "launched": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs-launch/*")) if "life-long" in open(f).read()]'  # a foreground agent still at work an hour later
-check "BLOCK: a launch whose call hasn't returned, an hour on, still counts" "0 2" "$r $(lc long-2 second 'Follow /tmp/x/life-long.md')"
+mkdir -p "$HOME/.claude/projects/-ll"; python3 -c 'import json,time; at=time.strftime("%Y-%m-%dT%H:%M:%S.000Z",time.gmtime(time.time()-3000)); print(json.dumps({"type":"user","timestamp":at,"message":{"role":"user","content":"Follow /tmp/x/life-long.md"}})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","id":"b","name":"Bash","input":{}}]}}))' > "$HOME/.claude/projects/-ll/ll.jsonl"  # its transcript, a tool call running
+check "BLOCK: a launch whose call hasn't returned, an hour on, still counts" "0 2" "$r $(lc long-2 second 'Follow /tmp/x/life-long.md')"; rm -r "$HOME/.claude/projects/-ll"
 use blk-1; r=$(lc blk-1 first 'Follow /tmp/x/life-blk.md'); res blk-1; use blk-2
 r="$r $(lc blk-2 second 'Follow /tmp/x/life-blk.md')"; res blk-2; use blk-3
 check "a launch another hook blocked (its tool_result written) no longer counts: a retry passes at once, under another title or its own" "0 0 0" "$r $(lc blk-3 first 'Follow /tmp/x/life-blk.md')"
@@ -1306,6 +1307,29 @@ pend() { # tool_use_id task: a PreToolUse-only Agent call of session capP, its c
     | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
 check "BLOCK: with one open job, three launches in one message whose calls haven't registered yet: the third, naming the two before it" "0 0 0 2 2" "$(cap capP 'Execute /tmp/x/capp0.md') $(pend capp-1 'Execute /tmp/x/capp1.md') $(pend capp-2 'Execute /tmp/x/capp2.md') $(pend capp-3 'Execute /tmp/x/capp3.md') $(grep -c '^/tmp/x/capp[12].md' "$T/err")"
 python3 "$R/bin/agent-job" done /tmp/x/capp0.md >/dev/null; rm -f $(grep -l pend-launcher "$HOME"/.claude/agent-jobs-launch/*)
+# a launcher lost after admission: three calls with no result in its transcript, whose agents (its subagents) finished 25 minutes ago
+LD2="$HOME/.claude/projects/-fin"; mkdir -p "$LD2/launcher/subagents"; FL="$LD2/launcher.jsonl"; : > "$FL"
+fin_pre() { # tool_use_id task: an admitted foreground Agent call of session capF2 whose launcher got no result
+  python3 -c 'import json,sys; print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","id":sys.argv[1],"name":"Agent","input":{}}]}}))' "$1" >> "$FL"
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"Agent","session_id":"capF2","tool_use_id":sys.argv[1],"transcript_path":sys.argv[3],"tool_input":{"prompt":sys.argv[2],"description":sys.argv[1],"run_in_background":False}}))' "$1" "$2" "$FL" \
+    | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
+r="$(fin_pre fin-1 'Execute /tmp/x/fin1.md') $(fin_pre fin-2 'Execute /tmp/x/fin2.md') $(fin_pre fin-3 'Execute /tmp/x/fin3.md')"
+python3 - "$FL" <<'PY'
+import glob, json, os, sys, time
+now = time.time()
+for f in glob.glob(os.path.expanduser('~/.claude/agent-jobs-launch/*')):
+    r = json.load(open(f))
+    if r.get('transcript') != sys.argv[1]: continue
+    r['launched'] = now - 1500; json.dump(r, open(f, 'w'))
+    at = time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime(now - 1495))
+    c = os.path.join(os.path.dirname(sys.argv[1]), 'launcher', 'subagents', f"agent-{r['tool_use_id']}.jsonl")
+    with open(c, 'w') as o:
+        o.write(json.dumps({'type': 'user', 'timestamp': at, 'message': {'role': 'user', 'content': r['task']}}) + '\n')
+        o.write(json.dumps({'type': 'assistant', 'timestamp': at, 'message': {'content': [{'type': 'text', 'text': 'Done.'}]}}) + '\n')
+    os.utime(c, (now - 1490, now - 1490))
+PY
+check "a launch after three calls whose agents finished with no result reaching the launcher passes: a finished agent holds no slot" "0 0 0 0" "$r $(fin_pre fin-4 'Execute /tmp/x/fin4.md')"
+rm -rf "$LD2"; rm -f $(grep -l '"capF2"' "$HOME"/.claude/agent-jobs-launch/*)
 check "a fifth brief naming its fan-out step passes; one naming another step does not" "0 2" "$(cap capS $'Execute /tmp/x/cap8.md\nFan-out: converge §Running the agents') $(cap capS $'Execute /tmp/x/cap9.md\nFan-out: review step 2')"
 cap_impl() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"capS","tool_input":{"task":sys.argv[1],"title":"impl","role":"implementation"}}))' "$1$AFX" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; echo $?; }
 check "BLOCK: an implementation brief carrying the fan-out line still counts" 2 "$(cap_impl $'Execute /tmp/x/cap10.md\nFan-out: converge §Running the agents')"
