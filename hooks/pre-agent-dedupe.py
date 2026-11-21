@@ -119,7 +119,17 @@ pre = os.path.join(agent_jobs.LAUNCHED, os.path.basename(job_file))
 task = str(ti.get('task') or ti.get('prompt') or '')
 memory = memory_launch(task)  # decided here, at admission, and stored on the pending call; `refresh` on the job too
 refresh = bool(memory)
-if register:  # the launch ran: record it, with no admission check (the PRE call decided)
+if register:  # the launch ran: record what its admission decided, from its pending record, with no admission check
+    rec = {}
+    if key:  # nothing names the job (no ticket, title or description) otherwise, so no second launch of it can be told apart
+        os.makedirs(agent_jobs.JOBS, exist_ok=True)
+        lock = open(agent_jobs.JOBS + '.lock', 'a'); fcntl.flock(lock, fcntl.LOCK_EX)
+        try: rec = json.load(open(pre)); launched = rec['launched']; refresh = is_refresh(rec); memory = rec.get('memory', memory); os.remove(pre)
+        except (OSError, ValueError, KeyError, TypeError): rec, launched = {}, time.time()
+        json.dump({'key': key, 'started': time.time(), 'launched': launched, 'brief': task, 'role': ti.get('role'), 'worktrees': L.worktrees, 'refresh': refresh,
+                   'session': d.get('session_id'), 'transcript': d.get('transcript_path'), 'handle': agent_jobs.handle(d.get('tool_response'))}, open(job_file, 'w'))
+        lock.close()  # released before the files below take their own locks, as the PRE call takes them in the other order
+    # a launch with no pending record (keyless, or one its admission didn't get to write) is read from its tool input now
     if cid:
         os.makedirs(os.path.dirname(CIDS), exist_ok=True)
         lock = open(CIDS + '.lock', 'a'); fcntl.flock(lock, fcntl.LOCK_EX)  # concurrent launches read and write the ids file one at a time
@@ -130,20 +140,12 @@ if register:  # the launch ran: record it, with no admission check (the PRE call
     if review and not post_review:
         rlock = open(ROUNDS + '.lock', 'a'); fcntl.flock(rlock, fcntl.LOCK_EX)
         rounds = json.load(open(ROUNDS)) if os.path.exists(ROUNDS) else {}
-        rounds.setdefault(rnd[1], []).append([int(rnd[2]), round_heads()[1]])
+        rounds.setdefault(rnd[1], []).append([int(rnd[2]), rec['heads'] if 'heads' in rec else round_heads()[1]])
         with open(ROUNDS + '.tmp', 'w') as o: json.dump(rounds, o)
         os.replace(ROUNDS + '.tmp', ROUNDS)
-    if implementer and (approach := brief_approach(strict=False)):
+    if implementer and (approach := rec['approach'] if 'approach' in rec else brief_approach(strict=False)):
         os.makedirs(BUILT, exist_ok=True)
         open(os.path.join(BUILT, os.path.basename(approach[0])), 'w').write(approach[1])
-    if key:  # nothing names the job (no ticket, title or description) otherwise, so no second launch of it can be told apart
-        os.makedirs(agent_jobs.JOBS, exist_ok=True)
-        lock = open(agent_jobs.JOBS + '.lock', 'a'); fcntl.flock(lock, fcntl.LOCK_EX)
-        try:  # the admission's decision, from its pending record
-            rec = json.load(open(pre)); launched = rec['launched']; refresh = is_refresh(rec); memory = rec.get('memory', memory); os.remove(pre)
-        except (OSError, ValueError, KeyError, TypeError): launched = time.time()
-        json.dump({'key': key, 'started': time.time(), 'launched': launched, 'brief': task, 'role': ti.get('role'), 'worktrees': L.worktrees, 'refresh': refresh,
-                   'session': d.get('session_id'), 'transcript': d.get('transcript_path'), 'handle': agent_jobs.handle(d.get('tool_response'))}, open(job_file, 'w'))
     # an agent now runs memory-prep's brief: stop-lint's hourly repeat of the refresh order waits an hour (its folder may be gone by now)
     if memory and os.path.basename(memory).startswith('memory-brief-') and os.path.isdir(os.path.dirname(memory)):
         open(os.path.join(os.path.dirname(memory), '.memory-order-repeated'), 'w').close()
@@ -550,5 +552,7 @@ if capped:
 admit()
 if not blocked:
     os.makedirs(agent_jobs.LAUNCHED, exist_ok=True); json.dump({'launched': time.time(), 'key': key, 'task': task, 'role': ti.get('role'), 'worktrees': L.worktrees, 'tool_use_id': d.get('tool_use_id'),
-                                                           'transcript': d.get('transcript_path'), 'session': d.get('session_id'), 'refresh': refresh, 'memory': memory}, open(pre, 'w'))
+                                                           'transcript': d.get('transcript_path'), 'session': d.get('session_id'), 'refresh': refresh, 'memory': memory,
+                                                           **({'approach': list(approach[:2])} if approach else {}),
+                                                           **({'heads': round_heads()[1]} if review and not post_review else {})}, open(pre, 'w'))
 sys.exit(2 if blocked else 0)

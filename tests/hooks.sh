@@ -1151,7 +1151,8 @@ check "a launch T3 refused (parent_not_active) says what to do and leaves no job
 # an implementer brief file in the work folder, admitted with its recorded Approach, then edited while the call runs
 PB="$HOME/.mergeworthy/work/po/brief.md"; mkdir -p "${PB%/*}"; printf 'You implement the fix in %s.%s\n' "$T/afx" "$AFX" > "$PB"
 po() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"Agent","session_id":"po","tool_input":{"prompt":sys.argv[1],"description":"po impl","run_in_background":False},"tool_response":{"agentId":"abc"}}))' "Follow $PB exactly" | python3 "$R/hooks/pre-agent-dedupe.py" "$@" 2>"$T/err"; echo $?; }
-check "a launch admitted with its Approach line, whose brief loses that line before the call ends, is registered, and its PostToolUse call refuses nothing" "0 0 1 0" "$(po) $(sed -i '/^Approach:/d' "$PB"; po register) $(python3 "$R/bin/agent-job" list | grep -c 'po impl') $(grep -c BLOCKED "$T/err")"
+check "a launch admitted with its Approach line, whose brief loses that line before the call ends, is registered with the build its admission decided, and its PostToolUse call refuses nothing" "0 0 1 0 1" \
+  "$(rm -rf "$HOME/.claude/approach-builds"; po) $(sed -i '/^Approach:/d' "$PB"; po register) $(python3 "$R/bin/agent-job" list | grep -c 'po impl') $(grep -c BLOCKED "$T/err") $(ls "$HOME/.claude/approach-builds" 2>/dev/null | wc -l)"
 rm -r "${PB%/*}"
 python3 "$R/bin/agent-job" done 'po impl' >/dev/null
 python3 "$R/bin/agent-job" done /tmp/x/ticket-check.md >/dev/null
