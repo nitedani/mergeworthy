@@ -99,7 +99,7 @@ class Facts:
             for x in c if isinstance(c, list) else []:
                 if not isinstance(x, dict) or x.get('type') != 'tool_use': continue
                 i = x.get('input') or {}
-                if x.get('name') in ('Agent', 'Task'): self.ran(i.get('model'))
+                if x.get('name') in ('Agent', 'Task'): self.ran(f"claude-{i['model']}" if i.get('model') in ('opus', 'sonnet', 'haiku', 'fable') else i.get('model'))  # an alias: the family, any version
                 if x.get('name', '').endswith('delegate_task'): self.ran((i.get('target') or {}).get('model'))
                 if x.get('name') == 'Bash' and posts(i.get('command', '')): self.posted, self.posted_at = True, e.get('timestamp') or ''
                 if x.get('name') == 'Bash': self.commands.append(i.get('command', ''))

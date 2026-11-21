@@ -400,6 +400,8 @@ BM_RAN='{"type":"assistant","message":{"model":"claude-opus-5-5","content":[{"ty
 BM_DELEGATED='{"type":"assistant","message":{"model":"claude-opus-5-5","content":[{"type":"tool_use","id":"d1","name":"mcp__t3-code__delegate_task","input":{"task":"x","target":{"provider":"claudeAgent","model":"claude-sonnet-5-5"}}}]}}'
 check "a badge naming the model the session ran passes" 0 "$(bmguard 'Claude Opus 5.5 (high effort)' "$BM_RAN")"
 check "a badge naming a model the session launched only through delegate_task passes" 0 "$(bmguard 'Opus 5.5 (high effort) and Sonnet 5.5 (high effort)' "$BM_DELEGATED")"
+BM_ALIAS='{"type":"assistant","message":{"model":"claude-opus-5-5","content":[{"type":"tool_use","id":"a1","name":"Agent","input":{"prompt":"x","model":"sonnet"}}]}}'
+check "a badge naming a Sonnet version in a session that launched an Agent on the sonnet alias passes" 0 "$(bmguard 'Opus 5.5 (high effort) and Sonnet 5.5 (high effort)' "$BM_ALIAS")"
 check "BLOCK: a badge naming a Claude model that never ran, saying which ran" "2 1" "$(bmguard 'Claude Fable 5.2 (high effort)' "$BM_RAN") $(grep -c 'names claude-fable-5-2, which this session never ran.*claude-opus-5-5' "$T/err")"
 printf 'Agreed, option A it is.\n' > "$TD/r.md"; sha256sum "$TD/r.md" | cut -d' ' -f1 > "$TD/r.md.gate"; tcbind "$TD/r.md"
 # the .posted marker: written once the post succeeded (PostToolUse), so a post another hook blocked, or that failed, can be retried

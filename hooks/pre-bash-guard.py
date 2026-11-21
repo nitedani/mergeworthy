@@ -209,12 +209,12 @@ def check_badge_models(p):
     """The Claude models p's badge names (`Claude Opus 5.5`) are ones this session ran on or launched an agent on, as its transcript says."""
     first = re.sub(r'\ATitle:[^\n]*\n', '', open(p, errors='replace').read()).lstrip().split('\n', 1)[0]
     line = re.sub(r'\]\([^)]*\)', ']', first.split('*', 1)[1]) if first.startswith('<img') and '*' in first else ''  # link targets aren't model names
-    named = {f"claude-{f.lower()}-{v.replace('.', '-')}" for f, v in re.findall(r'\b(Opus|Sonnet|Haiku|Fable) (\d+(?:\.\d+)*)\b', line)}
+    named = {(f"claude-{f.lower()}", f"claude-{f.lower()}-{v.replace('.', '-')}") for f, v in re.findall(r'\b(Opus|Sonnet|Haiku|Fable) (\d+(?:\.\d+)*)\b', line)}
     if not named: return
     try: ran = set(transcript_facts.read(d['transcript_path']).models)
     except (KeyError, TypeError, OSError): return
-    if named - ran:
-        block(f"{p}'s badge names {', '.join(sorted(named - ran))}, which this session never ran on or launched an agent on; it ran {', '.join(sorted(ran)) or 'no Claude model'}: "
+    if missing := sorted(m for f, m in named if not {f, m} & ran):  # claude-sonnet: an agent launched on the alias, any version
+        block(f"{p}'s badge names {', '.join(missing)}, which this session never ran on or launched an agent on; it ran {', '.join(sorted(ran)) or 'no Claude model'}: "
               "name the models that worked on this post (mergeworthy:writing, the badge), then post-lint and gate-pass it again")
 
 def local_login():
