@@ -4497,11 +4497,14 @@ echo 1 >> "$SN/a.py"; rc "$SN" -am reviewed; cp "$T/rv.md" "$T/moved report"$'\n
 echo n1 >> "$SN/a.py"; git -C "$SN" add a.py; rn=$(bg 'git commit -m n1' "$SN"); rc "$SN" -m n1
 for i in 2 3 4 5; do echo "n$i" >> "$SN/a.py"; rc "$SN" -am "n$i"; done; (cd "$SN" && python3 "$R/hooks/drift.py" note finality "$T/noplan.md" 2>/dev/null); echo n6 >> "$SN/a.py"; git -C "$SN" add a.py
 check "the first change after a review whose report is named across two lines passes; BLOCK: its 6th, after drift.py was run as a writer" "0 2" "$rn $(bg 'git commit -m n6' "$SN")"
-# a finality record whose note failed is noted by its retry, once, after a row a failed write tore
+# a finality report pr-steps refuses, here as already recorded for another step, notes nothing
+{ cat "$T/fin.md"; echo 'NO LOOP B COMMITS'; } > "$T/fin2.md"; (cd "$SN" && bash "$R/bin/pr-steps" reverify "$T/fin2.md" >/dev/null)
+check "BLOCK: a refused finality report leaves the 6th change refused" "1 2" "$(cd "$SN" && bash "$R/bin/pr-steps" finality "$T/fin2.md" >/dev/null 2>&1; echo $?) $(bg 'git commit -m n6' "$SN")"
+# a finality record whose note failed is noted by its retry, which still says it is recorded, once, after a row a failed write tore
 DL=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import drift; print(drift.log_path(sys.argv[2]))' "$R/hooks" "$SN"); chmod a-w "$DL"
 f1=$(cd "$SN" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null 2>&1; echo $?); chmod u+w "$DL"; printf finali >> "$DL"
 f2=$(cd "$SN" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null 2>&1; echo $?); f6=$(bg 'git commit -m n6' "$SN"); (cd "$SN" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null 2>&1)
-check "a finality record whose drift note can't be written fails; its retry records and lets the 6th change pass, with one note in the log" "1 0 0 1" "$([ "$f1" = 0 ] || echo 1) $f2 $f6 $(grep -c '^finality ' "$DL")"
+check "a finality record whose drift note can't be written fails; its retry exits as already recorded and lets the 6th change pass, with one note in the log" "1 1 0 1" "$([ "$f1" = 0 ] || echo 1) $f2 $f6 $(grep -c '^finality ' "$DL")"
 # a file named with a byte that isn't UTF-8, changed before the review, reads like any other
 SX="$T/simpx"; git init -q -b main "$SX"; echo 0 > "$SX/a.py"; git -C "$SX" add -A; rc "$SX" -m base; git -C "$SX" update-ref refs/remotes/origin/main HEAD; git -C "$SX" checkout -q -b fix
 echo 0 > "$SX/legacy-"$'\xff'".py"; git -C "$SX" add -A; rc "$SX" -m legacy; echo 1 >> "$SX/a.py"; rc "$SX" -am reviewed
