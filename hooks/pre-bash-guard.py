@@ -615,6 +615,9 @@ def writes_drift_notes(overrides, sub, rest):
         return verb in ('add', 'append', 'edit', 'copy', 'merge', 'remove', 'prune') and DRIFT_REF in map(full, filter(None, refs))
     if sub == 'update-ref': return DRIFT_REF in rest
     return sub == 'push' and ('--mirror' in rest or any(re.search(rf'(^|[:+])({re.escape(DRIFT_REF)}|refs/notes/\*)(:|$)', x) for x in rest))
+def block_record_write(store):
+    """Blocks a write to one of pr-steps' record stores, named by store, other than pr-steps' own."""
+    block(f"the {store} are written by `pr-steps <step> <its output>` alone, which checks the output first")
 push_urls = []  # where this command's pushes go (pushed()), for the watcher check
 # what this command does on GitHub (own_actions), recorded once it passed every check: the watcher logs these changes without waking the session
 own = {'PUSHED_HEADS': [], 'CLOSED_THREADS': []}  # the heads it pushes; `owner/repo#N merged|closed`
@@ -1060,6 +1063,7 @@ def check(t, has_cd):
                           "and when two run the same job keep the one with the most progress")
     if p == 'git':
         repo, overrides, sub, rest = git_argv(t, where)
+        if writes_drift_notes(overrides, sub, rest): block_record_write(f'drift records in {DRIFT_REF}')
         if sub in ('commit', 'push') and repo is not None:
             check_steward(repo)
         if sub == 'commit' and repo is not None and os.path.isdir(repo):  # in a folder this hook can't resolve (`cd "$(mktemp -d)"`), a commit stays local
@@ -1166,9 +1170,7 @@ def check(t, has_cd):
         if why := no_instructions_read(x, d):
             block(why)
     if any(os.path.realpath(x).startswith(RECORDS) for x in written):
-        block("the step records in ~/.claude/pr-steps are written by `pr-steps <step> <its output>` alone, which checks the output first")
-    if p == 'git' and writes_drift_notes(*git_argv(t, where)[1:]):
-        block(f"the drift records in {DRIFT_REF} are written by `pr-steps <step> <its output>` alone, which checks the output first")
+        block_record_write('step records in ~/.claude/pr-steps')
     if p == 'gh' and pr_ready(a):
         check_refactor_ask(*post_target('pr', a[2:], env, run_dir), comment=False)
     if p == 'gh' and a[:2] == ['pr', 'create'] and '--help' not in a and '-h' not in a:
