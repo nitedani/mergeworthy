@@ -420,21 +420,29 @@ def returned(path, use_id):
                 if isinstance(b, dict) and b.get('type') == 'tool_use' and b.get('id') == use_id: return False
     except OSError: return True
     return False
+# A fan-out a step names (finality steps 2-3, converge's per-slice verifiers) says so on a `Fan-out:` line, in the task or its brief, and passes
+# the cap; the fan-out agents already open still count against an ordinary launch
+fanout = ti.get('role') != 'implementation' and re.search(r'^Fan-out: (finality step [23]|converge §Running the agents)$', brief, re.M)
+capped = bool(d.get('session_id')) and not refresh and not fanout  # the 3-agent cap applies to this launch
+READERS = ('review', 'research')
 pending = []  # a launch let through whose call is still running, not registered yet
 for n in os.listdir(agent_jobs.LAUNCHED) if os.path.isdir(agent_jobs.LAUNCHED) else ():
     try: r = json.load(open(os.path.join(agent_jobs.LAUNCHED, n)))
     except (OSError, ValueError): continue
-    # only this session's calls (the cap), a call from any session of this launch's key or whose task contains or is contained in
-    # this one's (one agent per job, its stored task read here with no transcript) and those sharing a worktree (one writer per
-    # worktree) bear on this launch: another session's other calls are read, and their transcripts searched, by that session's launches
+    # only a call that can change this launch's verdict is read on, from its stored fields before any transcript: one from any
+    # session of this launch's key or whose task contains or is contained in this one's (one agent per job), this session's
+    # calls but memory refreshes while the cap applies, and, for a writer, those sharing a worktree (one writer per worktree);
+    # another session's other calls are read, and their transcripts searched, by that session's launches
     if not isinstance(r, dict): continue
     rt, mine = str(r.get('task') or '').strip(), task.strip()
-    if not (r.get('key') == key or r.get('session') == d.get('session_id') or rt and mine and (rt in mine or mine in rt)
-            or set(r.get('worktrees') or []) & set(L.worktrees)): continue
+    rrefresh = r.get('refresh', bool(memory_launch(rt)))
+    if not (r.get('key') == key or rt and mine and (rt in mine or mine in rt)
+            or capped and r.get('session') == d.get('session_id') and not rrefresh
+            or ti.get('role') not in READERS and set(r.get('worktrees') or []) & set(L.worktrees)): continue
     if r.get('tool_use_id') and r.get('transcript') and not returned(r['transcript'], r['tool_use_id']):
         j = {'key': r.get('key', ''), 'brief': r.get('task', ''), 'started': r.get('launched', 0), 'launched': r.get('launched', 0),
              'role': r.get('role'), 'worktrees': r.get('worktrees', []), 'transcript': r['transcript'], 'session': r.get('session'),
-             'refresh': r.get('refresh', bool(memory_launch(r.get('task', ''))))}
+             'refresh': rrefresh}
         # past LONG with no result in the launcher's transcript, a call whose agent never started (a crash mid-call) or has
         # finished (its launcher lost) is over: its record goes, so the launches after this one don't search the transcripts for it again
         if time.time() - j['started'] >= agent_jobs.LONG and (not agent_jobs.transcript(j) or agent_jobs.finished(j)):
@@ -443,7 +451,6 @@ for n in os.listdir(agent_jobs.LAUNCHED) if os.path.isdir(agent_jobs.LAUNCHED) e
 # One writer per worktree: a writer (any role but review or research) waits for a linked worktree its brief names (not the launcher's
 # own) that holds another session's process, or that a live writer job or outstanding writer call names, whose agent isn't the launcher. T3 can show that
 # agent interrupted or cancelled while it runs, so agent_jobs.finished decides.
-READERS = ('review', 'research')
 if ti.get('role') not in READERS:
     own, sid = git_top(os.path.realpath(d.get('cwd') or '/')), d.get('session_id')
     wts = [w for w in L.worktrees if w != own]
@@ -507,10 +514,7 @@ for j in [j for _, j in agent_jobs.jobs()] + pending if task.strip() else ():
         refused()
 # At most 3 agents at a time per session (delegate step 1), or the number the user gave, quoted in the task's scope.md (the work folder
 # of the session's cwd, else the one the briefs it launches are in): a job is open until released or its agent finished, and a launch let through
-# counts until its call registers or returns, so launches in one message see each other; a memory refresh doesn't count
-# A fan-out a step names (finality steps 2-3, converge's per-slice verifiers) says so on a `Fan-out:` line, in the task or its brief, and passes
-# the cap; the fan-out agents already open still count against an ordinary launch
-fanout = ti.get('role') != 'implementation' and re.search(r'^Fan-out: (finality step [23]|converge §Running the agents)$', brief, re.M)
+# counts until its call registers or returns, so launches in one message see each other; a memory refresh doesn't count (`capped`)
 def users_words(quote):
     """Whether a prompt the user typed in this session (its transcript) holds quote verbatim: a tool result, hook message or
     assistant turn doesn't count."""
@@ -521,11 +525,12 @@ def users_words(quote):
             if isinstance(o, dict) and memory_file.prompt(o) and any(quote in t for t in memory_file.texts(o)): return True
     except OSError: pass
     return False
-if d.get('session_id') and not refresh and not fanout:
+if capped:
     calls = [j for j in pending if j.get('session') == d['session_id']]
-    # a job registered before jobs recorded `refresh` is classified from its task
-    live = [j for j in [j for _, j in agent_jobs.jobs() if j.get('session') == d['session_id'] and not agent_jobs.finished(j)] + calls
-            if not j.get('refresh', memory_launch(j.get('brief', '')))]
+    # session, then refresh, then finished: a refresh never counts, so its transcript isn't searched; a job registered before
+    # jobs recorded `refresh` is classified from its task
+    live = [j for _, j in agent_jobs.jobs() if j.get('session') == d['session_id'] and not j.get('refresh', memory_launch(j.get('brief', '')))
+            and not agent_jobs.finished(j)] + [j for j in calls if not j['refresh']]
     folders = {f for t in L.files + L.refs if (f := task_of(t))}
     scope = os.path.join(task_of(d.get('cwd') or '/') or (folders.pop() if len(folders) == 1 else '<your work folder>'), 'scope.md')
     raised = re.search(r'^Agents: ([1-9]\d*) \(user \d{4}-\d{2}-\d{2}: "(.+)"\)$', open(scope, errors='replace').read() if os.path.isfile(scope) else '', re.M)
