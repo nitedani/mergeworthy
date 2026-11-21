@@ -403,6 +403,8 @@ check "a badge naming a model the session launched only through delegate_task pa
 BM_ALIAS='{"type":"assistant","message":{"model":"claude-opus-5-5","content":[{"type":"tool_use","id":"a1","name":"Agent","input":{"prompt":"x","model":"sonnet"}}]}}'
 check "a badge naming a Sonnet version in a session that launched an Agent on the sonnet alias passes" 0 "$(bmguard 'Claude Opus 5.5 (high effort) and Claude Sonnet 5.5 (high effort)' "$BM_ALIAS")"
 check "BLOCK: a badge naming a Claude model that never ran, saying which ran" "2 1" "$(bmguard 'Claude Fable 5.2 (high effort)' "$BM_RAN") $(grep -c 'names claude-fable-5-2, which this session never ran.*claude-opus-5-5' "$T/err")"
+BM_BAD_TARGET='{"type":"assistant","message":{"model":"claude-opus-5-5","content":[{"type":"tool_use","id":"d2","name":"mcp__t3-code__delegate_task","input":{"task":"x","target":"claude-sonnet-5-5"}}]}}'
+check "a delegate request whose target is a string, not an object, is skipped: the badge naming the session's model passes" 0 "$(bmguard 'Claude Opus 5.5 (high effort)' "$BM_BAD_TARGET")"
 BM_SNAPSHOT='{"type":"assistant","message":{"model":"claude-haiku-4-5-20251001","content":[{"type":"text","text":"Drafted."}]}}'
 check "a badge naming the model whose dated snapshot the session ran passes" 0 "$(bmguard 'Claude Haiku 4.5 (high effort)' "$BM_SNAPSHOT")"
 check "BLOCK: a badge naming a model of any Claude family that never ran, Mythos too" "2 1" "$(bmguard 'Claude Mythos 5.2 (high effort)' "$BM_RAN") $(grep -c 'names claude-mythos-5-2, which' "$T/err")"

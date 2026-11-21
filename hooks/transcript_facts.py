@@ -106,9 +106,9 @@ class Facts:
             self.ran((e.get('message') or {}).get('model'), at)
             for x in c if isinstance(c, list) else []:
                 if not isinstance(x, dict) or x.get('type') != 'tool_use': continue
-                i = x.get('input') or {}
+                i = x.get('input') if isinstance(x.get('input'), dict) else {}
                 if x.get('name') in ('Agent', 'Task'): self.ran(f"claude-{i['model']}" if i.get('model') in ('opus', 'sonnet', 'haiku', 'fable') else i.get('model'), at)  # an alias: the family, any version
-                if x.get('name', '').endswith('delegate_task'): self.ran((i.get('target') or {}).get('model'), at)
+                if x.get('name', '').endswith('delegate_task') and isinstance(t := i.get('target'), dict): self.ran(t.get('model'), at)
                 if x.get('name') == 'Bash' and posts(i.get('command', '')): self.posted, self.posted_at = True, e.get('timestamp') or ''
                 if x.get('name') == 'Bash': self.commands.append(i.get('command', ''))
                 if x.get('name') == 'Skill' and str(i.get('skill', '')) in ('task', 'mergeworthy:task'): self.opened_task = True
