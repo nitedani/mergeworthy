@@ -4490,5 +4490,11 @@ DL=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import drift; prin
 f1=$(cd "$SN" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null 2>&1; echo $?); chmod u+w "$DL"; printf finali >> "$DL"
 f2=$(cd "$SN" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null 2>&1; echo $?); (cd "$SN" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null 2>&1)
 check "a finality record whose drift note can't be written fails; its retry records and lets the 6th change pass, with one note in the log" "1 0 0 1" "$([ "$f1" = 0 ] || echo 1) $f2 $(bg 'git commit -m n6' "$SN") $(grep -c '^finality ' "$DL")"
+# a file named with a byte that isn't UTF-8, changed before the review, reads like any other
+SX="$T/simpx"; git init -q -b main "$SX"; echo 0 > "$SX/a.py"; git -C "$SX" add -A; rc "$SX" -m base; git -C "$SX" update-ref refs/remotes/origin/main HEAD; git -C "$SX" checkout -q -b fix
+echo 0 > "$SX/legacy-"$'\xff'".py"; git -C "$SX" add -A; rc "$SX" -m legacy; echo 1 >> "$SX/a.py"; rc "$SX" -am reviewed
+(cd "$SX" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null)
+echo x1 >> "$SX/a.py"; git -C "$SX" add a.py
+check "the first change after a review, on a branch that earlier added a file whose name isn't UTF-8, passes" 0 "$(bg 'git commit -m x1' "$SX")"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]

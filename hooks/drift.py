@@ -47,7 +47,7 @@ def over(d, head='HEAD', pending=None, amend=False):
         for l in open(path):
             if len(row := l.split()) == 2: noted.setdefault(row[1], set()).add(row[0])  # a row a failed write tore is skipped
     if not noted: return {}
-    g = lambda *a: subprocess.run(['git', '-C', d, *a], capture_output=True, text=True).stdout
+    g = lambda *a: subprocess.run(['git', '-C', d, *a], capture_output=True, encoding='utf-8', errors='surrogateescape').stdout  # any filename's bytes
     base = g('symbolic-ref', '-q', '--short', 'refs/remotes/origin/HEAD').strip() or 'origin/main'
     if pending is not None and g('rev-parse', '-q', '--verify', 'MERGE_HEAD').strip(): pending = []
     # git prints `\0<sha>\n<message>\0` per commit, then `\n` and `<file>\0` for each file it changed (none for a merge): `\0\0` is where a commit ends
