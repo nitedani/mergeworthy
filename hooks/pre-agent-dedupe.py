@@ -2,7 +2,9 @@
 """Claude Code PreToolUse hook (matcher: Agent, Task, delegate_task, t3_thread_launch). Exit 2 blocks the launch; stderr goes to the agent.
 With the argument `register` it runs as the PostToolUse hook: only a launch that ran is registered, so one another hook blocked leaves no job.
 The PreToolUse call decides; the PostToolUse call only records what ran and makes no admission check (a failure writing its
-records still fails it).
+records still fails it). An admitted launch leaves its decision as a pending record in agent_jobs.LAUNCHED (when it was let
+through, its key, task, role, worktrees, tool_use_id, launcher transcript, session, `refresh` and the `memory` brief it
+follows, an implementer's `approach` and a review round's `heads`), which the PostToolUse call turns into the job.
 One agent per job: a launch is registered under its job key (the ticket files its prompt names, and its title), and a second
 launch of the same job, or of a task that contains or is contained in an open job's (the same work under another title: an agent
 already on the job gets a message, not a twin, mergeworthy:delegate step 1), is blocked until `agent-job done <key>` releases it.
@@ -22,7 +24,7 @@ d = json.load(sys.stdin)
 ti = d.get('tool_input', {}) or {}
 blocked = False
 def refused():
-    """After a check wrote its refusal: the PRE call runs the remaining checks, so the launch gets every refusal in one message."""
+    """After a check wrote its refusal: the remaining checks still run, so the launch gets every refusal in one message."""
     global blocked
     blocked = True
 # T3 opens no run for a turn Claude Code starts by itself (a finished background command, a Monitor event), and refuses
@@ -129,17 +131,19 @@ def locked_update(path, change):
         os.replace(path + '.tmp', path)
 memory = memory_launch(task)  # decided here, at admission, and stored on the pending call; `refresh` on the job too
 refresh = bool(memory)
-if register:  # the launch ran: record what its admission decided, from its pending record, with no admission check
-    rec = {}
+def register_launch():
+    """The PostToolUse call: the launch ran, so it records what its admission decided (from its pending record, which becomes
+    the job) and makes no admission check. A launch with no pending record (keyless, or one its admission didn't get to write)
+    is read from its tool input now."""
+    rec, ran_refresh, ran_memory = {}, refresh, memory
     if key:  # nothing names the job (no ticket, title or description) otherwise, so no second launch of it can be told apart
         os.makedirs(agent_jobs.JOBS, exist_ok=True)
         with open(agent_jobs.JOBS + '.lock', 'a') as jobs_lock:  # released before the files below take their own locks
             fcntl.flock(jobs_lock, fcntl.LOCK_EX)
-            try: rec = json.load(open(pre)); launched = rec['launched']; refresh = is_refresh(rec); memory = rec.get('memory', memory); os.remove(pre)
+            try: rec = json.load(open(pre)); launched = rec['launched']; ran_refresh = is_refresh(rec); ran_memory = rec.get('memory', memory); os.remove(pre)
             except (OSError, ValueError, KeyError, TypeError): rec, launched = {}, time.time()
-            json.dump({'key': key, 'started': time.time(), 'launched': launched, 'brief': task, 'role': ti.get('role'), 'worktrees': L.worktrees, 'refresh': refresh,
+            json.dump({'key': key, 'started': time.time(), 'launched': launched, 'brief': task, 'role': ti.get('role'), 'worktrees': L.worktrees, 'refresh': ran_refresh,
                        'session': d.get('session_id'), 'transcript': d.get('transcript_path'), 'handle': agent_jobs.handle(d.get('tool_response'))}, open(job_file, 'w'))
-    # a launch with no pending record (keyless, or one its admission didn't get to write) is read from its tool input now
     if cid: locked_update(CIDS, lambda seen: seen.setdefault(cid, time.time()))
     if review and not post_review:
         locked_update(ROUNDS, lambda rounds: rounds.setdefault(rnd[1], []).append([int(rnd[2]), rec['heads'] if 'heads' in rec else round_heads()[1]]))
@@ -147,8 +151,10 @@ if register:  # the launch ran: record what its admission decided, from its pend
         os.makedirs(BUILT, exist_ok=True)
         open(os.path.join(BUILT, os.path.basename(approach[0])), 'w').write(approach[1])
     # an agent now runs memory-prep's brief: stop-lint's hourly repeat of the refresh order waits an hour (its folder may be gone by now)
-    if memory and os.path.basename(memory).startswith('memory-brief-') and os.path.isdir(os.path.dirname(memory)):
-        open(os.path.join(os.path.dirname(memory), '.memory-order-repeated'), 'w').close()
+    if ran_memory and os.path.basename(ran_memory).startswith('memory-brief-') and os.path.isdir(os.path.dirname(ran_memory)):
+        open(os.path.join(os.path.dirname(ran_memory), '.memory-order-repeated'), 'w').close()
+if register:
+    register_launch()
     sys.exit(0)
 # T3 starts a new Claude session for each turn, and Claude Code's background agents end with the session that launched them;
 # the Agent tool runs in the background unless run_in_background is false
