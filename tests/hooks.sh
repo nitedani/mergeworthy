@@ -4028,6 +4028,9 @@ check "a bare #12 in a message linking a PR 12 by URL is that PR, not one the se
   "$(tr_said user 'See https://github.com/acme/widgets/pull/12.'; slj "$M12" 0 s-fc "$T/vkr") $(tr_said user 'See https://github.com/acme/widgets/pull/12.' assistant "$M12"; slj "$M12" 0 s-fc "$T/vkr") $(pr12 acme/widgets closed true; pr12 acme/gadgets open false; tr_said user 'See https://github.com/acme/widgets/pull/12.'; slj "$M12" 0 s-fc "$T/vkr") $(tr_said user 'See https://github.com/acme/widgets/pull/12.' assistant "$M12"; slj "$M12" 0 s-fc "$T/vkr")"
 check "a T3 notice naming another repo's #12 is no session link: the bare #12 is the one the user linked" "0 0" \
   "$(tr_said user 'Merge https://github.com/acme/widgets/pull/12 please.' user 'Delegated task q (Other work) [completed]: acme/gadgets#12.'; slj '#12 is merged.' 0 s-fc "$T/vkr") $(grep -c gadgets "$T/err")"
+git init -q "$T/gdg"; git -C "$T/gdg" remote add origin https://github.com/acme/gadgets.git; pr12 acme/gadgets closed true; tr_file 'x'
+check "BLOCK: acme/missing#12 is looked up in acme/missing only: its 404 can't be read, though the checkout's acme/gadgets#12 is merged" "2 1" \
+  "$(slj 'acme/missing#12 is merged.' 0 s-fc "$T/gdg") $(grep -c "gh couldn't read that PR" "$T/err")"
 check "BLOCK: a done message linking a PR gh can't read" "2 1" "$(slj 'All done: https://github.com/o/r/pull/404 has the fix.') $(grep -c "couldn't read it" "$T/err")"
 TK4="$HOME/.mergeworthy/work/fc-task"; mkdir -p "$TK4"; printf 'Tier: S, because one fix\n\n- [ ] Fix CI https://github.com/o/r/pull/71\n' > "$TK4/scope.md"
 uf() { python3 - "$T/tr.jsonl" "$@" <<'PY'
