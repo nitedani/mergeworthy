@@ -13,13 +13,11 @@ import testpaths
 from records import STORE
 
 AGENT_TRAILER = re.compile(r'^Co-Authored-By: Claude', re.M | re.I)  # a commit without it is a maintainer's
-
-
 KEY = '%at:%ae'  # a commit's author time and email, which an amend, a cherry-pick and a rebase keep
 # the diff identities() hashes, the same in every checkout: no attributes (the empty tree's, none of the user's or the system's),
 # no display settings, the default prefixes and algorithm
-DIFF = ['-c', 'core.attributesFile=/dev/null', '-c', 'core.quotePath=true', '--attr-source=4b825dc642cb6eb9a060e54bf8d69288fbee4904']
-PATCH = ['-p', '-U0', '--no-color', '--full-index', '--no-renames', '--no-relative', '--no-ext-diff', '--no-textconv', '--diff-algorithm=myers',
+EMPTY_TREE = {40: '4b825dc642cb6eb9a060e54bf8d69288fbee4904', 64: '6ef19b41225c5369f1c104d45d8d85efa9b057b53b14b4b9b939dd74decc5321'}  # by SHA-1's and SHA-256's length
+PATCH =['-p', '-U0', '--no-color', '--full-index', '--no-renames', '--no-relative', '--no-ext-diff', '--no-textconv', '--diff-algorithm=myers',
          '--indent-heuristic', '--src-prefix=a/', '--dst-prefix=b/', '--no-diff-merges', '--no-show-signature']
 
 
@@ -27,7 +25,8 @@ def identities(d, shas):
     """{sha: (KEY, identity)} of commits shas of checkout d, from one git call. The identity is the sha256 of each file's changed
     lines, whitespace included, under each hunk's function line (the line git names after its numbers) but not its numbers, a binary
     file by its old and new blob ids; for a commit with no patch (an empty commit, a merge), of its tree and its parents."""
-    log = subprocess.run(['git', *DIFF, '-C', d, 'log', '--no-walk=unsorted', *PATCH, f'--format=%x00%H {KEY} %T %P', *shas],
+    log = subprocess.run(['git', '-c', 'core.attributesFile=/dev/null', '-c', 'core.quotePath=true', f'--attr-source={EMPTY_TREE[len(shas[0])]}',
+                          '-C', d, 'log', '--no-walk=unsorted', *PATCH, f'--format=%x00%H {KEY} %T %P', *shas],
                          capture_output=True, env={**os.environ, 'GIT_ATTR_NOSYSTEM': '1'}).stdout
     ids = {}
     for commit in log.split(b'\0')[1:]:
@@ -79,8 +78,8 @@ def over(d, head='HEAD', pending=None, amend=False):
     noted = {}  # {sha: its records' kinds}: a record's own commit, or the one commit rewritten from it once its SHA left the branch
     for kind, sha, _, _ in notes:
         if sha in keys: noted.setdefault(sha, set()).add(kind)
-    gone = [n for n in notes if n[1] not in keys]
-    if like := [sha for sha, key in keys.items() if key in {n[2] for n in gone}]:  # only the commits a rewrite can have made
+    gone = [n for n in notes if n[1] not in keys]; gone_keys = {n[2] for n in gone}
+    if like := [sha for sha, key in keys.items() if key in gone_keys]:  # only the commits a rewrite can have made
         twins = {}
         for sha, key_ident in identities(d, like).items(): twins.setdefault(key_ident, []).append(sha)
         for kind, _, key, ident in gone:

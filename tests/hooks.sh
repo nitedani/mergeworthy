@@ -4562,5 +4562,11 @@ SE2="$T/simpe2"; git init -q -b main "$SE2"; echo 0 > "$SE2/a.py"; git -C "$SE2"
 (cd "$SE2" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null); rc "$SE2" --amend --allow-empty -m 'new empty subject'
 for i in 1 2 3 4 5; do echo "e$i" >> "$SE2/a.py"; rc "$SE2" -am "e$i"; done; echo e6 >> "$SE2/a.py"; git -C "$SE2" add a.py
 check "the change after a message-amended merge holding finality passes; BLOCK: the 6th change since a message-amended empty commit's review" "0 2" "$rg $(bg 'git commit -m e6' "$SE2")"
+# a repo with SHA-256 object names records and follows a review the same way
+SH2="$T/simph"; git init -q -b main --object-format=sha256 "$SH2"; echo 0 > "$SH2/a.py"; git -C "$SH2" add -A; rc "$SH2" -m base; git -C "$SH2" update-ref refs/remotes/origin/main HEAD; git -C "$SH2" checkout -q -b fix
+echo 1 >> "$SH2/a.py"; rc "$SH2" -am reviewed; (cd "$SH2" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null); rh=$?
+for i in 1 2 3 4 5; do echo "h$i" >> "$SH2/a.py"; rc "$SH2" -am "h$i"; done; git -C "$SH2" checkout -q main; echo 0 > "$SH2/b.py"; git -C "$SH2" add b.py; rc "$SH2" -m main1
+git -C "$SH2" update-ref refs/remotes/origin/main HEAD; git -C "$SH2" checkout -q fix; git -C "$SH2" rebase -q origin/main; echo h6 >> "$SH2/a.py"; git -C "$SH2" add a.py
+check "a review in a SHA-256 repo records; BLOCK: the 6th change since it, the branch rebased" "0 2" "$rh $(bg 'git commit -m h6' "$SH2")"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]
