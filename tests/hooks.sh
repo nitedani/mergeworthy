@@ -4521,8 +4521,11 @@ echo 0 > "$SR/a.py"; git -C "$SR" add -A; rc "$SR" -m base; git -C "$SR" update-
 git -C "$SR" config notes.rewriteRef refs/notes/commits; (cd "$SR" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null)
 for i in 1 2 3 4 5; do echo "r$i" >> "$SR/a.py"; rc "$SR" -am "r$i"; done
 git -C "$SR" worktree add -q -b impl "$T/simpw" fix~5; (cd "$T/simpw" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
-for i in 1 2 3 4 5; do echo "w$i" >> "$T/simpw/a.py"; rc "$T/simpw" -am "w$i"; done; echo w6 >> "$T/simpw/a.py"; git -C "$T/simpw" add a.py
-check "BLOCK: an implementer's worktree on another branch, made from the reviewed head, counts its 6th change" "2 1" "$(bg 'git commit -m w6' "$T/simpw") $(grep -c 'a.py would get a 6th change' "$T/err")"
+for i in 1 2 3 4 5; do echo "w$i" >> "$T/simpw/a.py"; rc "$T/simpw" -am "w$i"; done
+# rebased inside the worktree onto a newer main, the reviewed commit has a new SHA, so only its note can count the review there
+git -C "$SR" checkout -q main; echo 0 > "$SR/c.py"; git -C "$SR" add c.py; rc "$SR" -m main0; git -C "$SR" update-ref refs/remotes/origin/main HEAD; git -C "$SR" checkout -q fix
+git -C "$T/simpw" rebase -q origin/main; echo w6 >> "$T/simpw/a.py"; git -C "$T/simpw" add a.py
+check "BLOCK: an implementer's worktree on another branch, made from the reviewed head and rebased there onto a newer main, counts its 6th change" "2 1" "$(bg 'git commit -m w6' "$T/simpw") $(grep -c 'a.py would get a 6th change' "$T/err")"
 (cd "$SR" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null); rc "$SR" --amend -m 'Edited subject'; echo r6 >> "$SR/a.py"; git -C "$SR" add a.py
 check "an amend of the subject of the head holding the finality record keeps it: the next change passes" 0 "$(bg 'git commit -m r6' "$SR")"
 for i in 6 7 8 9 10; do echo "r$i" >> "$SR/a.py"; rc "$SR" -am "r$i"; done
