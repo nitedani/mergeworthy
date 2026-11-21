@@ -122,10 +122,12 @@ pbase() {
   local pb; pb=$(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || true)
   git merge-base HEAD "${pb:+origin/$pb}" 2>/dev/null || git merge-base HEAD "$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)" 2>/dev/null || true
 }
-# drift_note <step>: notes a review or finality step recorded on $sha in the repo's drift log, which the drift count anchors on (hooks/drift.py)
+# drift_note <step>: notes a review or finality step recorded on $sha under refs/notes/drift, once, which the drift count anchors on
+# (hooks/drift.py); the repo's notes.rewriteRef gets refs/notes/drift beside any value it has, so an amend or a rebase copies the note
 drift_note() {
   local k; case "$1" in verify|shape|reverify|fresh|small) k=review ;; finality) k=finality ;; *) return 0 ;; esac
-  python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import drift; drift.note(".", *sys.argv[2:])' "$(dirname "$(realpath "$0")")/../hooks" "$k" "$sha"
+  git config --get-all notes.rewriteRef | grep -qxF refs/notes/drift || git config --add notes.rewriteRef refs/notes/drift
+  git notes --ref=drift show "$sha" 2>/dev/null | grep -qxF "$k" || git notes --ref=drift append -m "$k" "$sha"
 }
 # recorded_as <step>: whether $out is recorded on $sha as that step, the same report's earlier record
 recorded_as() { S="$1 $(realpath "$out") " awk 'index($0, ENVIRON["S"]) == 1 { f = 1 } END { exit !f }' ~/.claude/pr-steps/"$sha" 2>/dev/null; }
