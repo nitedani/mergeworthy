@@ -1379,6 +1379,27 @@ print(n)' "$@"; }
 check "an own call aged 11 minutes with no agent transcript is left unread by a fan-out launch and dropped by the next ordinary one (exit, its record left)" "0 0 1 0 0" \
   "$(yc y-1 'Execute /tmp/x/y3-old.md'; y3old age >/dev/null) $(yc y-2 "$(printf 'Execute /tmp/x/y3-fan.md\nFan-out: converge §Running the agents')") $(y3old) $(yc y-3 'Execute /tmp/x/y3-ord.md') $(y3old)"
 rm -f $(grep -l 'y3-' "$HOME"/.claude/agent-jobs-launch/*)
+# a call that returned without registering (another hook blocked it) counts for nothing; a day on, the next launch it bears on drops its record
+: > "$T/r5.jsonl"
+rc5() { # tool_use_id prompt: a foreground Agent call of session r5 whose result is already in the launcher's transcript
+  python3 -c 'import json,sys; print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","id":sys.argv[1],"name":"Agent","input":{}}]}}))' "$1" >> "$T/r5.jsonl"
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"Agent","session_id":"r5","tool_use_id":sys.argv[1],"transcript_path":sys.argv[2],"tool_input":{"prompt":sys.argv[3],"description":sys.argv[1],"run_in_background":False}}))' "$1" "$T/r5.jsonl" "$2" \
+    | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; local rc=$?
+  python3 -c 'import json,sys; print(json.dumps({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":sys.argv[1],"content":"blocked"}]}}))' "$1" >> "$T/r5.jsonl"; echo $rc; }
+r5left() { python3 -c 'import json,os,sys,time
+d=os.path.expanduser("~/.claude/agent-jobs-launch"); out=[]
+for w, age in (("r5-day", 25*3600), ("r5-hour", 3600)):
+    n=0
+    for f in os.listdir(d):
+        p=os.path.join(d,f); r=json.load(open(p))
+        if w in r.get("task",""):
+            n+=1
+            if sys.argv[1:]: r["launched"]=time.time()-age; json.dump(r,open(p,"w"))
+    out.append(str(n))
+print(" ".join(out))' "$@"; }
+check "a returned call's record goes once it is a day old, and one an hour old stays (exits, then the day's and the hour's records left)" "0 0 0 0 1" \
+  "$(rc5 r5-a 'Execute /tmp/x/r5-day.md') $(rc5 r5-b 'Execute /tmp/x/r5-hour.md'; r5left age >/dev/null) $(rc5 r5-c 'Execute /tmp/x/r5-next.md') $(r5left)"
+rm -f $(grep -l 'r5-' "$HOME"/.claude/agent-jobs-launch/*)
 # a launcher lost after admission: three calls with no result in its transcript, whose agents (its subagents) finished 25 minutes ago
 LD2="$HOME/.claude/projects/-fin"; mkdir -p "$LD2/launcher/subagents"; FL="$LD2/launcher.jsonl"; : > "$FL"
 fin_pre() { # tool_use_id task: an admitted foreground Agent call of session capF2 whose launcher got no result

@@ -114,7 +114,7 @@ def is_refresh(r):
 key = ' '.join([*L.tickets, str(ti.get('title') or ti.get('description') or '').strip()]).strip()
 job_file = os.path.join(agent_jobs.JOBS, hashlib.sha256(key.encode()).hexdigest()[:16])
 # when the launch this registers began (its transcript starts after it): one record per key, as one_per_job lets one call of a key
-# pend at a time, and the key's next launch overwrites the record of a call another hook blocked
+# pend at a time; the record of a call another hook blocked is overwritten by the key's next launch, or goes a day on (the pending loop)
 pre = os.path.join(agent_jobs.LAUNCHED, os.path.basename(job_file))
 task = str(ti.get('task') or ti.get('prompt') or '')
 memory = memory_launch(task)  # decided here, at admission, and stored on the pending call; `refresh` on the job too
@@ -457,6 +457,10 @@ for n in os.listdir(agent_jobs.LAUNCHED) if os.path.isdir(agent_jobs.LAUNCHED) e
         if time.time() - j['started'] >= agent_jobs.LONG and (not agent_jobs.transcript(j) or agent_jobs.finished(j)):
             agent_jobs.remove(os.path.join(agent_jobs.LAUNCHED, n)); continue
         pending.append(j)
+    # a call that returned (another hook blocked it, or no PostToolUse call matched it) or that names no call counts for nothing:
+    # a day on, past any call's PostToolUse, its record goes, so no later launch searches its launcher's transcript again
+    elif time.time() - r.get('launched', 0) >= agent_jobs.OPEN:
+        agent_jobs.remove(os.path.join(agent_jobs.LAUNCHED, n))
 # One writer per worktree: a writer (any role but review or research) waits for a linked worktree its brief names (not the launcher's
 # own) that holds another session's process, or that a live writer job or outstanding writer call names, whose agent isn't the launcher. T3 can show that
 # agent interrupted or cancelled while it runs, so agent_jobs.finished decides.
