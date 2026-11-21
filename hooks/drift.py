@@ -22,6 +22,22 @@ def log(d, *args):
                           errors='surrogateescape').stdout
 
 
+def steps(sha, note):
+    """What is recorded on commit sha: the kinds its drift note holds and the steps its pr-steps record holds."""
+    rec = commit_file(sha)
+    return set(note.split()) | ({l.split()[0] for l in open(rec) if l.split()} if os.path.exists(rec) else set())
+
+
+def anchor(commits):
+    """The commit the count starts after, of the branch's (sha, drift note) pairs oldest first: the last finality, else the first review;
+    None for neither. Any first-parent commit's note counts, a merge's or an empty commit's too, as git log prints it with no diff."""
+    start = None
+    for c, note in commits:
+        recorded = steps(c, note)
+        if 'finality' in recorded or (start is None and recorded & REVIEW): start = c
+    return start
+
+
 def over(d, head='HEAD', pending=None, amend=False):
     """{code file: its count} of checkout d's files past 5 changes on the branch at head. pending: the files the commit being made
     changes, which alone are judged, each counted once more; None for a push, which judges the commits alone. amend: that commit
@@ -31,10 +47,7 @@ def over(d, head='HEAD', pending=None, amend=False):
     if pending is not None and g('rev-parse', '-q', '--verify', 'MERGE_HEAD').strip(): pending = []
     # git prints `\0<sha>\n<its drift note>` per commit: the kinds pr-steps noted on it, one a line
     commits = [c.split('\n', 1) for c in log(d, '--first-parent', '--reverse', '--no-notes', '--notes=drift', '--format=%x00%H%n%N', head, '--not', base).split('\0')[1:]]
-    start = None  # the commit the counts start after
-    for c, note in commits:
-        steps = set(note.split()) | ({l.split()[0] for l in open(commit_file(c)) if l.split()} if os.path.exists(commit_file(c)) else set())
-        if 'finality' in steps or not start and steps & REVIEW: start = c
+    start = anchor(commits)
     if not start: return {}
     count = {}
     # git prints `\0<sha>\n<message>\0` per commit, then `\n` and `<file>\0` for each file it changed (none for a merge): `\0\0` is where a commit ends
