@@ -103,7 +103,7 @@ Learning runs on demand: `task` step 4 runs `project-learn list` whenever work s
 
 `post-bash-register` counts each posted `--kind proposal` draft per thread in `~/.claude/proposal-rounds.txt`. Before the third proposal, refresh the thread map with its invariants (`design` step 7) and update the thread's WIP comment from it (`design §WIP comment`).
 
-`pre-bash-guard` refuses a commit or push that gives a code file (no test or doc) its 6th change among the branch's own commits since its first review record, until `pr-steps finality <plan>` records the finality pass's pinnacle and plan (`finality` step 3) on the head; that record starts the counts over.
+`pre-bash-guard` refuses a commit or push that gives a code file (no test or doc) its 6th change (one past `LIMIT`, 5, in `hooks/records.py`) among the branch's own commits since its first review record, until `pr-steps finality <plan>` records the finality pass's pinnacle and plan (`finality` step 3) on the head; that record starts the counts over. `pr-steps` also notes each review and finality under `refs/notes/drift` and adds that ref to the repo's `notes.rewriteRef`, so the record moves with its commit through an amend and a rebase (one with conflicts too) and onto the commit a rebase's squash or fixup makes of it; a cherry-pick, or a squash made by a reset and a new commit, carries none.
 
 ### `pr-steps` (`converge`, `merging`)
 

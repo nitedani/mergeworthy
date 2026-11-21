@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
 import shellcmd
 from shellcmd import parse, segments, prog, script, opt, api_call, field_name, TEXT_FREE, discussion_post, discussion_thread_of, names_discussion_mutation, env_of, origin, plain_create, PLAIN, new_post_drafts, no_instructions_read, by_agent, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Unseen, Where
-from records import branch_record, commit_file, no_approach, no_preflight, STORE
+from records import branch_record, commit_file, DRIFT_REF, no_approach, no_preflight, STORE
 import drift, own_actions, review_launch, steward, post_words, threads_file, transcript_facts, work_folder
 from t3_tasks import under_t3
 def missing_steps(d, head=None):
@@ -605,6 +605,19 @@ def title_setter(repo, num):
     return (login, last.get('created_at')) if login and login != me else None
 
 RECORDS = os.path.realpath(STORE) + os.sep
+
+def writes_drift_notes(overrides, sub, rest):
+    """Whether git subcommand sub with arguments rest (and -c overrides) writes DRIFT_REF, where pr-steps notes drift records."""
+    if sub == 'notes':
+        refs = opt(rest, ['--ref']) or [overrides.get('core.notesRef', '')]
+        verb = next((x for x in rest if not x.startswith('-') and x not in refs), 'list')
+        full = lambda r: r if r.startswith('refs/') else 'refs/' + r if r.startswith('notes/') else 'refs/notes/' + r  # as git reads --ref
+        return verb in ('add', 'append', 'edit', 'copy', 'merge', 'remove', 'prune') and DRIFT_REF in map(full, filter(None, refs))
+    if sub == 'update-ref': return DRIFT_REF in rest
+    return sub == 'push' and ('--mirror' in rest or any(re.search(rf'(^|[:+])({re.escape(DRIFT_REF)}|refs/notes/\*)(:|$)', x) for x in rest))
+def block_record_write(store):
+    """Blocks a write to one of pr-steps' record stores, named by store, other than pr-steps' own."""
+    block(f"the {store} are written by `pr-steps <step> <its output>` alone, which checks the output first")
 push_urls = []  # where this command's pushes go (pushed()), for the watcher check
 # what this command does on GitHub (own_actions), recorded once it passed every check: the watcher logs these changes without waking the session
 own = {'PUSHED_HEADS': [], 'CLOSED_THREADS': []}  # the heads it pushes; `owner/repo#N merged|closed`
@@ -1050,6 +1063,7 @@ def check(t, has_cd):
                           "and when two run the same job keep the one with the most progress")
     if p == 'git':
         repo, overrides, sub, rest = git_argv(t, where)
+        if writes_drift_notes(overrides, sub, rest): block_record_write(f'drift records in {DRIFT_REF}')
         if sub in ('commit', 'push') and repo is not None:
             check_steward(repo)
         if sub == 'commit' and repo is not None and os.path.isdir(repo):  # in a folder this hook can't resolve (`cd "$(mktemp -d)"`), a commit stays local
@@ -1063,7 +1077,8 @@ def check(t, has_cd):
             taken = set()
             for x in out:  # `XY path`, X the index side the commit takes; a rename's next entry is its old path
                 if x[:1] not in ('', ' ', '?'): taken |= {x[3:], *([next(out, '')] if x[0] == 'R' else [])}
-            block_drift(drift.over(repo, pending=sorted(taken), amend='--amend' in rest))
+            merging = subprocess.run(['git', '-C', repo, 'rev-parse', '-q', '--verify', 'MERGE_HEAD'], capture_output=True).returncode == 0
+            block_drift(drift.over(repo, pending=[] if merging else sorted(taken), amend='--amend' in rest))  # a merge being made is no change
         if sub == 'add' and repo is not None and os.path.isdir(repo):  # what a `git commit` later in this command reads
             subprocess.run(['git', '-C', repo, 'add', *operands(rest)], capture_output=True, stdin=subprocess.DEVNULL, env={**os.environ, 'GIT_INDEX_FILE': index_copy(repo)})
         if sub == 'push' and {'--dry-run', '-n'} & set(rest):
@@ -1155,7 +1170,7 @@ def check(t, has_cd):
         if why := no_instructions_read(x, d):
             block(why)
     if any(os.path.realpath(x).startswith(RECORDS) for x in written):
-        block("the step records in ~/.claude/pr-steps are written by `pr-steps <step> <its output>` alone, which checks the output first")
+        block_record_write('step records in ~/.claude/pr-steps')
     if p == 'gh' and pr_ready(a):
         check_refactor_ask(*post_target('pr', a[2:], env, run_dir), comment=False)
     if p == 'gh' and a[:2] == ['pr', 'create'] and '--help' not in a and '-h' not in a:

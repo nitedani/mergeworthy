@@ -2672,6 +2672,7 @@ seq 1 5 >> "$GS/src/a.ts"; git -C "$GS" -c user.name=t -c user.email=t@t commit 
 r1=$(prss "$T/sr1.md"); echo t > "$GS/test/a.test.ts"; seq 1 300 > "$GS/README.md"; seq 1 300 > "$GS/pnpm-lock.yaml"; mkdir "$GS/.changeset"; seq 1 300 > "$GS/.changeset/config.json"; git -C "$GS" add -A; git -C "$GS" -c user.name=t -c user.email=t@t commit -qm c
 r2=$(prss "$T/sr0.md")
 check "pr-steps small: BLOCK with no test in the diff, BLOCK on a report with findings, records with both (docs, a lockfile and a changeset not counted)" "1 1 0" "$r1 $r2 $(prss "$T/sr2.md")"
+check "pr-steps small records its report as verify, shape, reverify and fresh, and notes it as a review" "verify shape reverify fresh|review" "$(cut -d' ' -f1 "$HOME/.claude/pr-steps/$(git -C "$GS" rev-parse HEAD)" | xargs)|$(git -C "$GS" notes --ref=drift show HEAD)"
 check "after pr-steps small, gh pr ready lacks only the approach and the gates" "approach, gates" "$(prhead "$GS" "$FX/pr_view_5" https://github.com/o/r/pull/5; python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr ready 5 -R o/r"},"cwd":sys.argv[1]}))' "$GS" | python3 "$R/hooks/pre-bash-guard.py" 2>&1 | grep -o 'no pr-steps [a-z, ]* record' | sed 's/no pr-steps //; s/ record//')"
 printf 'x\n## Outside this change\nNone.\n\nNO BUGS\nMERGE AS IS: yes\n\n## Verification\n- ran it\n\n## not_checked\n- Windows\n' > "$T/sr5.md"
 check "pr-steps small records a report whose verdict comes before its Verification and not_checked sections" 0 "$(prss "$T/sr5.md")"
@@ -4564,6 +4565,16 @@ for i in 1 2 3 4 5; do echo "p$i" >> "$SM/a.py"; mc commit -qam "p$i"; done
 base_edit() { mc checkout -q main; sed -i "$1s/.*/main$1/" "$SM/a.py"; mc commit -qam "main$1"; git -C "$SM" update-ref refs/remotes/origin/main HEAD; mc checkout -q fix; mc merge -q --no-commit origin/main >/dev/null; }
 base_edit 1
 check "committing a merge of the base is no change, though the branch changed its file 5 times" 0 "$(bg 'git commit --no-edit' "$SM")"
+# so is one bringing in a base edit of a file changed 5 times since a review on the branch's own commit
+SM2="$T/simpm2"; git init -q -b main "$SM2"; seq 1 10 > "$SM2/a.py"; git -C "$SM2" add -A; git -C "$SM2" -c user.name=t -c user.email=t@t commit -q -m base
+git -C "$SM2" update-ref refs/remotes/origin/main HEAD; git -C "$SM2" checkout -q -b fix; echo r >> "$SM2/a.py"; git -C "$SM2" -c user.name=t -c user.email=t@t commit -qam reviewed
+(cd "$SM2" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null)
+for i in 1 2 3 4 5; do echo "m$i" >> "$SM2/a.py"; git -C "$SM2" -c user.name=t -c user.email=t@t commit -qam "m$i" --trailer "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"; done
+git -C "$SM2" checkout -q main; sed -i 1s/.*/main1/ "$SM2/a.py"; git -C "$SM2" -c user.name=t -c user.email=t@t commit -qam main1; git -C "$SM2" update-ref refs/remotes/origin/main HEAD
+git -C "$SM2" checkout -q fix; git -C "$SM2" -c user.name=t -c user.email=t@t merge -q --no-commit origin/main >/dev/null
+check "committing a merge that brings in a base edit of a file changed 5 times since the review is no change" 0 "$(bg 'git commit --no-edit' "$SM2")"
+git -C "$SM2" -c user.name=t -c user.email=t@t commit -q --no-edit; echo m6 >> "$SM2/a.py"; git -C "$SM2" add a.py
+check "BLOCK: the change after that merge is the 6th" 2 "$(bg 'git commit -m m6' "$SM2")"
 mc commit -q --no-edit; (cd "$SM" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null)
 for i in 6 7 8; do echo "p$i" >> "$SM/a.py"; mc commit -qam "p$i"; done; echo p9 >> "$SM/a.py"; git -C "$SM" add a.py
 check "a finality record on a merge commit starts the counts over" 0 "$(bg 'git commit -m p9' "$SM")"
@@ -4642,5 +4653,167 @@ git -C "$SD" add build
 check "BLOCK: a build/ file's 6th change, naming it alone" "2 1 0" "$(bg 'git commit -m b6' "$SD") $(grep -c 'build/bundle.js would get a 6th change' "$T/err") $(grep -c 'claude-swap.mjs\|api.ts' "$T/err")"
 git -C "$SD" reset -q build; git -C "$SD" add src.ts
 check "BLOCK: the hand-written source's 6th change beside them, naming it alone" "2 1 0" "$(bg 'git commit -m b6' "$SD") $(grep -c 'src.ts would get a 6th change' "$T/err") $(grep -c 'claude-swap.mjs\|api.ts\|bundle.js' "$T/err")"
+# a record is also a note under refs/notes/drift, which git copies through an amend and a rebase and every worktree reads; a squash made by a reset and a commit has none
+# rc <repo> <commit args>: an agent commit; its Fixture trailer gives each fixture's commits their own SHAs, so no two share a record
+rc() { git -C "$1" -c user.name=t -c user.email=t@t commit -q --trailer 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>' --trailer "Fixture: ${1##*/}" "${@:2}"; }
+# fx <dir>: a repo on main with a.py, origin/main at its base, on a new branch fix
+fx() { git init -q -b main "$1"; echo 0 > "$1/a.py"; git -C "$1" add -A; rc "$1" -m base; git -C "$1" update-ref refs/remotes/origin/main HEAD; git -C "$1" checkout -q -b fix; }
+# pre <dir> [<step> <out>]: its preflight and approach, then that step recorded on HEAD
+pre() { (cd "$1" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && { [ -z "${2:-}" ] || bash "$R/bin/pr-steps" "$2" "$3" >/dev/null; }); }
+SR="$T/simpr"; fx "$SR"; echo 1 >> "$SR/a.py"; rc "$SR" -am reviewed
+git -C "$SR" config notes.rewriteRef refs/notes/commits; pre "$SR" reverify "$T/rv.md"
+for i in 1 2 3 4 5; do echo "r$i" >> "$SR/a.py"; rc "$SR" -am "r$i"; done
+git -C "$SR" worktree add -q -b impl "$T/simpw" fix~5; pre "$T/simpw"
+for i in 1 2 3 4 5; do echo "w$i" >> "$T/simpw/a.py"; rc "$T/simpw" -am "w$i"; done
+# rebased inside the worktree onto a newer main, the reviewed commit has a new SHA, so only its note can count the review there
+git -C "$SR" checkout -q main; echo 0 > "$SR/c.py"; git -C "$SR" add c.py; rc "$SR" -m main0; git -C "$SR" update-ref refs/remotes/origin/main HEAD; git -C "$SR" checkout -q fix
+git -C "$T/simpw" rebase -q origin/main; echo w6 >> "$T/simpw/a.py"; git -C "$T/simpw" add a.py
+check "BLOCK: an implementer's worktree on another branch, made from the reviewed head and rebased there onto a newer main, counts its 6th change" "2 1" "$(bg 'git commit -m w6' "$T/simpw") $(grep -c 'a.py would get a 6th change' "$T/err")"
+(cd "$SR" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null); rc "$SR" --amend -m 'Edited subject'; echo r6 >> "$SR/a.py"; git -C "$SR" add a.py
+check "an amend of the subject of the head holding the finality record keeps it: the next change passes" 0 "$(bg 'git commit -m r6' "$SR")"
+for i in 6 7 8 9 10; do echo "r$i" >> "$SR/a.py"; rc "$SR" -am "r$i"; done
+git -C "$SR" checkout -q main; echo 0 > "$SR/b.py"; git -C "$SR" add b.py; rc "$SR" -m main1; git -C "$SR" update-ref refs/remotes/origin/main HEAD; git -C "$SR" checkout -q fix; git -C "$SR" rebase -q origin/main
+echo r11 >> "$SR/a.py"; git -C "$SR" add a.py
+check "BLOCK: a rebase keeps the finality record: the 6th change since it is refused" "2 1" "$(bg 'git commit -m r11' "$SR") $(grep -c 'a.py would get a 6th change' "$T/err")"
+git -C "$SR" reset -q --soft origin/main; rc "$SR" -m squashed; for i in 1 2 3 4 5; do echo "s$i" >> "$SR/a.py"; rc "$SR" -am "s$i"; done; echo s6 >> "$SR/a.py"; git -C "$SR" add a.py; rs=$(bg 'git commit -m s6' "$SR")
+(cd "$SR" && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null); for i in 6 7 8 9 10; do echo "s$i" >> "$SR/a.py"; rc "$SR" -am "s$i"; done; echo s11 >> "$SR/a.py"; git -C "$SR" add a.py
+check "a squash of the reviewed branch by a reset and a commit counts nothing; BLOCK: the 6th change since its next review" "0 2" "$rs $(bg 'git commit -m s11' "$SR")"
+check "pr-steps adds refs/notes/drift to notes.rewriteRef beside the value it had" "refs/notes/commits refs/notes/drift" "$(git -C "$SR" config --get-all notes.rewriteRef | tr '\n' ' ' | sed 's/ $//')"
+# a recorder whose global config alone has the rewriteRef still adds it to the repo, so an amend from a home without it keeps the note
+SG="$T/simpg"; fx "$SG"; echo g >> "$SG/a.py"; rc "$SG" -am reviewed
+printf '[notes]\n\trewriteRef = refs/notes/drift\n' > "$T/gcfg"; (cd "$SG" && export GIT_CONFIG_GLOBAL="$T/gcfg" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null)
+rc "$SG" --amend -m 'reviewed, subject edited'; for i in 1 2 3 4 5; do echo "g$i" >> "$SG/a.py"; rc "$SG" -am "g$i"; done; echo g6 >> "$SG/a.py"; git -C "$SG" add a.py
+check "a recorder with notes.rewriteRef in its global config alone adds it to the repo; BLOCK: the 6th change after an amend from another home" "refs/notes/drift 2" "$(git -C "$SG" config --local --get-all notes.rewriteRef) $(bg 'git commit -m g6' "$SG")"
+# a squash in a rebase joins the reviewed commit's note onto the squashed commit, by design: a fixup and an empty commit squashed into it keep its review
+for q in fixup empty; do SA="$T/simpa-$q"; fx "$SA"
+  echo 1 >> "$SA/a.py"; rc "$SA" -am reviewed; pre "$SA" reverify "$T/rv.md"
+  if [ $q = fixup ]; then echo 2 >> "$SA/a.py"; rc "$SA" -a --fixup=HEAD; git -C "$SA" -c sequence.editor=true rebase -q -i --autosquash origin/main
+  else rc "$SA" --allow-empty -m 'why the change'; git -C "$SA" -c sequence.editor="sed -i 2s/^pick/squash/" -c core.editor=true rebase -q -i --keep-empty origin/main; fi
+  for i in 1 2 3 4 5; do echo "a$i" >> "$SA/a.py"; rc "$SA" -am "a$i"; done; echo a6 >> "$SA/a.py"; git -C "$SA" add a.py
+  check "BLOCK: the 6th change after a$([ $q = empty ] && echo 'n') $q commit was squashed into the reviewed commit, which keeps its review by design" "1 2" "$(git -C "$SA" rev-list --count origin/main..HEAD~5) $(bg 'git commit -m a6' "$SA")"
+done
+# a clean rebase onto an upstream edit two lines above the reviewed line, which moves it, keeps the review; so do a rebase that resets the author date and one with a conflict
+SW="$T/simpw2"; git init -q -b main "$SW"; seq 1 12 | sed 's/.*/v& = &/' > "$SW/a.py"; git -C "$SW" add -A; rc "$SW" -m base; git -C "$SW" update-ref refs/remotes/origin/main HEAD
+git -C "$SW" checkout -q -b fix; echo 'v = "a b"' >> "$SW/a.py"; sed -i 's/^v6 = 6$/v6 = 66/' "$SW/a.py"; rc "$SW" -am reviewed
+pre "$SW" reverify "$T/rv.md"
+for i in 1 2 3 4 5; do echo "w$i" >> "$SW/a.py"; rc "$SW" -am "w$i"; done
+git -C "$SW" checkout -q main; sed -i 's/^v4 = 4$/v4 = 44\nv4b = 4/' "$SW/a.py"; rc "$SW" -am up; git -C "$SW" update-ref refs/remotes/origin/main HEAD; git -C "$SW" checkout -q fix; git -C "$SW" rebase -q origin/main
+echo w6 >> "$SW/a.py"; git -C "$SW" add a.py; rr=$(bg 'git commit -m w6' "$SW")
+rv_=(); for b in date conflict; do SV="$T/simpv-$b"; git init -q -b main "$SV"; echo 'v = 1' > "$SV/a.py"; git -C "$SV" add -A; rc "$SV" -m base; git -C "$SV" update-ref refs/remotes/origin/main HEAD; git -C "$SV" checkout -q -b fix
+  sed -i 's/^v = 1$/v = 2/' "$SV/a.py"; GIT_AUTHOR_DATE=2021-01-01T00:00:00Z rc "$SV" -am reviewed
+  pre "$SV" reverify "$T/rv.md"
+  git -C "$SV" checkout -q main; if [ $b = date ]; then echo 0 > "$SV/b.py"; git -C "$SV" add b.py; else sed -i 's/^v = 1$/v = 3/' "$SV/a.py"; fi; rc "$SV" -am up
+  git -C "$SV" update-ref refs/remotes/origin/main HEAD; git -C "$SV" checkout -q fix
+  if [ $b = date ]; then git -C "$SV" rebase -q --reset-author-date origin/main
+  else git -C "$SV" rebase -q origin/main >/dev/null 2>&1; echo 'v = 4' > "$SV/a.py"; git -C "$SV" add a.py; GIT_EDITOR=true git -C "$SV" -c user.name=t -c user.email=t@t rebase --continue >/dev/null 2>&1; fi
+  for i in 1 2 3 4 5; do echo "w$i" >> "$SV/a.py"; rc "$SV" -am "w$i"; done; echo w6 >> "$SV/a.py"; git -C "$SV" add a.py; rv_[${#rv_[@]}]=$(bg 'git commit -m w6' "$SV")
+done
+check "BLOCK: the 6th change after a clean rebase onto an upstream edit near the reviewed line, a rebase that reset the author date, and a rebase with a conflict" "2 2 2" "$rr ${rv_[*]}"
+# git's log output encoding and signature display change no record: a Latin-1 subject and a signed commit hold their review
+for e in latin signed; do SE="$T/simpe-$e"; fx "$SE"
+  if [ $e = latin ]; then git -C "$SE" config i18n.commitEncoding ISO-8859-1; git -C "$SE" config i18n.logOutputEncoding ISO-8859-1; echo 1 >> "$SE/a.py"; rc "$SE" -am "$(printf 'review Caf\xe9')"
+  else ssh-keygen -q -t ed25519 -N '' -C t@t -f "$T/sign" <<< y >/dev/null; echo "t@t $(cat "$T/sign.pub")" > "$T/signers"; git -C "$SE" config gpg.format ssh; git -C "$SE" config user.signingkey "$T/sign"
+    git -C "$SE" config gpg.ssh.allowedSignersFile "$T/signers"; git -C "$SE" config log.showSignature true; echo 1 >> "$SE/a.py"; rc "$SE" -S -am reviewed; fi
+  pre "$SE" reverify "$T/rv.md"; rec=$?
+  for i in 1 2 3 4 5; do echo "e$i" >> "$SE/a.py"; rc "$SE" -am "e$i"; done; echo e6 >> "$SE/a.py"; git -C "$SE" add a.py
+  check "the review of a commit with git's $e output records; BLOCK: the 6th change since it" "0 2 1" "$rec $(bg 'git commit -m e6' "$SE") $(grep -c 'a.py would get a 6th change' "$T/err")"
+done
+# signature display, here on five signed edits after the review, adds nothing to what the count reads
+SE="$T/simpe-signed5"; fx "$SE"
+git -C "$SE" config gpg.format ssh; git -C "$SE" config user.signingkey "$T/sign"; git -C "$SE" config gpg.ssh.allowedSignersFile "$T/signers"; git -C "$SE" config log.showSignature true
+echo s5 >> "$SE/a.py"; rc "$SE" -am reviewed; pre "$SE" reverify "$T/rv.md"
+for i in 1 2 3 4 5; do echo "e$i" >> "$SE/a.py"; rc "$SE" -S -am "e$i"; done; echo e6 >> "$SE/a.py"; git -C "$SE" add a.py
+check "BLOCK: the 6th change after five signed edits, with log.showSignature true" 2 "$(bg 'git commit -m e6' "$SE")"
+# a second clone of a reviewed commit, which git clone gives no notes, reads the review from its record on that commit, as main does; the
+# same pr-steps run there is refused as recorded already and notes nothing
+SC="$T/simpc"; fx "$SC"
+echo c >> "$SC/a.py"; rc "$SC" -am reviewed; pre "$SC" reverify "$T/rv.md"
+SC2="$T/simpc2"; git clone -q -b fix "$SC" "$SC2"; git -C "$SC2" remote set-head origin main; pre "$SC2"
+rc2=$(cd "$SC2" && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null 2>&1; echo $?)
+for i in 1 2 3 4 5; do echo "c$i" >> "$SC2/a.py"; rc "$SC2" -am "c$i"; done; echo c6 >> "$SC2/a.py"; git -C "$SC2" add a.py
+check "a review run again in a second clone of its commit is refused as recorded and notes nothing; BLOCK: the 6th change since it there" "1 0 2" "$rc2 $(git -C "$SC2" notes --ref=drift list | wc -l) $(bg 'git commit -m c6' "$SC2")"
+# a stacked top branch with its own finality merges up its bottom branch, whose newer commit holds a finality: only the top's own
+# first-parent commits anchor, so its count runs from its own finality and its 3rd change since then passes
+SPC="$T/simppc"; fx "$SPC"; git -C "$SPC" branch -m fix low; echo 1 > "$SPC/b.py"; git -C "$SPC" add b.py; GIT_COMMITTER_DATE=2026-01-01T00:00:01Z rc "$SPC" -m L1
+git -C "$SPC" checkout -q -b top; pre "$SPC"; n=2
+for i in 1 2 3; do echo "t$i" >> "$SPC/a.py"; GIT_COMMITTER_DATE=2026-01-01T00:00:0${n}Z rc "$SPC" -am "T$i"; n=$((n+1)); [ $i = 1 ] && pre "$SPC" reverify "$T/rv.md"; done
+(cd "$SPC" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null)
+git -C "$SPC" checkout -q low; pre "$SPC"; echo 2 >> "$SPC/b.py"; GIT_COMMITTER_DATE=2026-01-01T00:00:06Z rc "$SPC" -am L2; pre "$SPC" reverify "$T/rv.md"; (cd "$SPC" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null)
+git -C "$SPC" checkout -q top; for i in 4 5; do echo "t$i" >> "$SPC/a.py"; GIT_COMMITTER_DATE=2026-01-01T00:00:0${n}Z rc "$SPC" -am "T$i"; n=$((n+1)); done
+GIT_COMMITTER_DATE=2026-01-01T00:00:09Z git -C "$SPC" -c user.name=t -c user.email=t@t merge -q --no-edit low; echo t6 >> "$SPC/a.py"; git -C "$SPC" add a.py
+check "a stacked top branch that merged up its bottom branch, whose newer commit holds a finality, counts from its own finality: its 3rd change since then passes" 0 "$(bg 'git commit -m T6' "$SPC")"
+# a review whose report is named across two lines records like any other
+SN="$T/simpn"; fx "$SN"
+echo 1 >> "$SN/a.py"; rc "$SN" -am reviewed; cp "$T/rv.md" "$T/moved report"$'\n'"v1"
+pre "$SN" reverify "$T/moved report"$'\n'"v1"
+echo n1 >> "$SN/a.py"; git -C "$SN" add a.py; rn=$(bg 'git commit -m n1' "$SN"); rc "$SN" -m n1
+for i in 2 3 4 5; do echo "n$i" >> "$SN/a.py"; rc "$SN" -am "n$i"; done; echo n6 >> "$SN/a.py"; git -C "$SN" add a.py
+check "the first change after a review whose report is named across two lines passes; BLOCK: its 6th" "0 2" "$rn $(bg 'git commit -m n6' "$SN")"
+# a finality report pr-steps refuses, here as already recorded for another step, notes nothing
+{ cat "$T/fin.md"; echo 'NO LOOP B COMMITS'; } > "$T/fin2.md"; (cd "$SN" && bash "$R/bin/pr-steps" reverify "$T/fin2.md" >/dev/null)
+check "BLOCK: a refused finality report leaves the 6th change refused" "1 2" "$(cd "$SN" && bash "$R/bin/pr-steps" finality "$T/fin2.md" >/dev/null 2>&1; echo $?) $(bg 'git commit -m n6' "$SN")"
+# a checkout with no git identity still gets its note, which an amend then carries
+SI="$T/simpi"; fx "$SI"; echo 1 >> "$SI/a.py"; rc "$SI" -am reviewed
+pre "$SI"
+ri=$(cd "$SI" && env -u GIT_AUTHOR_NAME -u GIT_AUTHOR_EMAIL -u GIT_COMMITTER_NAME -u GIT_COMMITTER_EMAIL -u EMAIL GIT_CONFIG_GLOBAL=/dev/null bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null 2>&1; echo $?)
+rc "$SI" --amend -m 'reviewed, subject edited'; for i in 1 2 3 4 5; do echo "i$i" >> "$SI/a.py"; rc "$SI" -am "i$i"; done; echo i6 >> "$SI/a.py"; git -C "$SI" add a.py
+check "a review recorded where git has no identity records its note; BLOCK: the 6th change since it, its subject amended" "0 2" "$ri $(bg 'git commit -m i6' "$SI")"
+# so does one whose repo sets an email alone under user.useConfigOnly
+SJ="$T/simpj"; fx "$SJ"; echo j >> "$SJ/a.py"; rc "$SJ" -am reviewed
+git -C "$SJ" config user.email j@j; git -C "$SJ" config user.useConfigOnly true; pre "$SJ"
+rj=$(cd "$SJ" && env -u GIT_AUTHOR_NAME -u GIT_AUTHOR_EMAIL -u GIT_COMMITTER_NAME -u GIT_COMMITTER_EMAIL -u EMAIL GIT_CONFIG_GLOBAL=/dev/null bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null 2>&1; echo $?)
+rc "$SJ" --amend -m 'reviewed, subject edited'; for i in 1 2 3 4 5; do echo "j$i" >> "$SJ/a.py"; rc "$SJ" -am "j$i"; done; echo j6 >> "$SJ/a.py"; git -C "$SJ" add a.py
+check "a review recorded where the repo sets user.email alone under user.useConfigOnly records its note; BLOCK: the 6th change since it, its subject amended" "0 2" "$rj $(bg 'git commit -m j6' "$SJ")"
+# a drift note comes from pr-steps alone: git commands writing refs/notes/drift are refused, reading it and other notes refs pass
+dn=; for c in 'git notes --ref=drift append -m finality HEAD' 'git notes --ref refs/notes/drift add -f -m finality HEAD' 'git -c core.notesRef=refs/notes/drift notes remove HEAD' \
+  'git update-ref refs/notes/drift HEAD' "git push $T/notes.git refs/notes/drift" 'git notes --ref=drift show HEAD' 'git notes append -m mine HEAD'; do dn="$dn $(bg "$c" "$SN")$(grep -c 'refs/notes/drift are written by .pr-steps <step>' "$T/err")"; done
+check "BLOCK: git notes add, append and remove on refs/notes/drift, update-ref and a push of it, naming pr-steps; git notes show of it and a note on another ref pass" " 21 21 21 21 21 00 00" "$dn"
+# a finality whose drift note can't be written records nothing, even where its record's folder is read-only too, and the 6th change stays refused
+SNF="$HOME/.claude/pr-steps/$(git -C "$SN" rev-parse HEAD)"; chmod a-w "$SN/.git/refs/notes" "$HOME/.claude/pr-steps"
+f1=$(cd "$SN" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null 2>&1; echo $?); chmod u+w "$SN/.git/refs/notes" "$HOME/.claude/pr-steps"
+check "BLOCK: a finality whose drift note can't be written fails, records nothing and leaves the 6th change refused" "1 0 2" "$([ "$f1" = 0 ] || echo 1) $(grep -c '^finality ' "$SNF") $(bg 'git commit -m n6' "$SN")"
+# a finality waiting on the drift notes' lock while another worktree records quick on the same commit leaves that record whole
+git -C "$SN" worktree add -q --detach "$T/simpn2" HEAD; git -C "$SN" config core.filesRefLockTimeout 2000; : > "$SN/.git/refs/notes/drift.lock"
+(cd "$SN" && exec bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null 2>&1) & fp=$!
+for _ in $(seq 50); do grep -q '^finality ' "$SNF" && break; kill -0 $fp 2>/dev/null || break; sleep 0.1; done; quick "$T/simpn2"; wait $fp; f2=$?
+rm "$SN/.git/refs/notes/drift.lock"; git -C "$SN" config --unset core.filesRefLockTimeout
+check "a finality whose note waits on a held lock fails and records nothing; quick, recorded meanwhile from another worktree, stays" "1 0 1" "$([ "$f2" = 0 ] || echo 1) $(grep -c '^finality ' "$SNF") $(grep -c '^quick ' "$SNF")"
+# a finality whose record can't be appended after its note: the same pr-steps again records it, its note written once, and the 6th change passes
+chmod a-w "$SNF"; f3=$(cd "$SN" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null 2>&1; echo $?); chmod u+w "$SNF"
+f4=$(cd "$SN" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null 2>&1; echo $?)
+check "a finality whose record append fails, run again, records once with one note; the 6th change passes" "1 0 1 1 0" "$([ "$f3" = 0 ] || echo 1) $f4 $(grep -c '^finality ' "$SNF") $(git -C "$SN" notes --ref=drift show HEAD | grep -cx finality) $(bg 'git commit -m n6' "$SN")"
+# under a 1 KiB file-size limit a finality record either records whole or anchors nothing: its exit and the next change's verdict agree
+rc "$SN" -m n6; for i in 1 2 3 4; do echo "u$i" >> "$SN/a.py"; rc "$SN" -am "u$i"; done; echo u5 >> "$SN/a.py"; git -C "$SN" add a.py
+fu=$(cd "$SN" && bash -c 'ulimit -f 1; bash "$@"' bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null 2>&1; echo $?); vu=$(bg 'git commit -m u5' "$SN")
+check "a finality record under a 1 KiB file-size limit: recorded and the 6th passes, or refused and the 6th is refused" yes "$({ [ "$fu" = 0 ] && [ "$vu" = 0 ]; } || { [ "$fu" != 0 ] && [ "$vu" = 2 ]; } && echo yes || echo "no: $fu $vu")"
+# a file named with a byte that isn't UTF-8, changed before the review, reads like any other
+SX="$T/simpx"; fx "$SX"
+echo 0 > "$SX/legacy-"$'\xff'".py"; git -C "$SX" add -A; rc "$SX" -m legacy; echo 1 >> "$SX/a.py"; rc "$SX" -am reviewed
+pre "$SX" reverify "$T/rv.md"
+echo x1 >> "$SX/a.py"; git -C "$SX" add a.py
+check "the first change after a review, on a branch that earlier added a file whose name isn't UTF-8, passes" 0 "$(bg 'git commit -m x1' "$SX")"
+# git's display settings and the checkout's attributes don't hide a record on its own commit
+SZ="$T/simpz"; fx "$SZ"
+echo 'y = 1' >> "$SZ/a.py"; rc "$SZ" -am reviewed; pre "$SZ" reverify "$T/rv.md"
+git -C "$SZ" config diff.noprefix true; for i in 1 2 3 4 5; do echo "z$i" >> "$SZ/a.py"; rc "$SZ" -am "z$i"; done; echo z6 >> "$SZ/a.py"; git -C "$SZ" add a.py; rz=$(bg 'git commit -m z6' "$SZ")
+git -C "$SZ" config --unset diff.noprefix; git -C "$SZ" checkout -q a.py; git -C "$SZ" worktree add -q -b attr "$T/simpz-w" fix; echo 'a.py -diff' > "$T/simpz-w/.gitattributes"; git -C "$T/simpz-w" add .gitattributes; rc "$T/simpz-w" -m attributes
+pre "$T/simpz-w"; echo z6 >> "$T/simpz-w/a.py"; git -C "$T/simpz-w" add a.py
+check "BLOCK: the 6th change since a review with diff.noprefix set, and in a worktree whose .gitattributes marks the file -diff" "2 2" "$rz $(bg 'git commit -m z6' "$T/simpz-w")"
+# a cherry-pick onto another branch carries no note, by design
+SF="$T/simpf"; git init -q -b main "$SF"; printf 'class C:\n    def a(self):\n        return 1\n    def b(self):\n        return 1\n' > "$SF/a.py"; git -C "$SF" add -A; rc "$SF" -m base; git -C "$SF" update-ref refs/remotes/origin/main HEAD
+git -C "$SF" checkout -q -b fix; sed -i '3s/1/2/' "$SF/a.py"; rc "$SF" -am a2; pre "$SF" reverify "$T/rv.md"
+git -C "$SF" checkout -q -b pick main; echo 0 > "$SF/c.py"; git -C "$SF" add c.py; rc "$SF" -m other; git -C "$SF" -c user.name=t -c user.email=t@t cherry-pick fix >/dev/null; pre "$SF"
+for i in 1 2 3 4 5; do echo "# $i" >> "$SF/a.py"; rc "$SF" -am "c$i"; done; echo '# 6' >> "$SF/a.py"; git -C "$SF" add a.py
+check "the 6th change after a cherry-pick of the reviewed commit to another branch passes: it carries no record" 0 "$(bg 'git commit -m c6' "$SF")"
+# a message amend keeps a finality record on a merge commit and a review on an empty commit
+SG="$T/simpg2"; fx "$SG"
+echo 1 >> "$SG/a.py"; rc "$SG" -am reviewed; pre "$SG" reverify "$T/rv.md"
+for i in 1 2 3 4 5; do echo "g$i" >> "$SG/a.py"; rc "$SG" -am "g$i"; done; git -C "$SG" checkout -q main; echo 0 > "$SG/b.py"; git -C "$SG" add b.py; rc "$SG" -m main1; git -C "$SG" update-ref refs/remotes/origin/main HEAD
+git -C "$SG" checkout -q fix; git -C "$SG" -c user.name=t -c user.email=t@t merge -q --no-edit origin/main; (cd "$SG" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null); rc "$SG" --amend -m 'clarify the merge subject'
+echo g6 >> "$SG/a.py"; git -C "$SG" add a.py; rg=$(bg 'git commit -m g6' "$SG")
+SE2="$T/simpe2"; fx "$SE2"; rc "$SE2" --allow-empty -m empty
+pre "$SE2" reverify "$T/rv.md"; rc "$SE2" --amend --allow-empty -m 'new empty subject'
+for i in 1 2 3 4 5; do echo "e$i" >> "$SE2/a.py"; rc "$SE2" -am "e$i"; done; echo e6 >> "$SE2/a.py"; git -C "$SE2" add a.py
+check "the change after a message-amended merge holding finality passes; BLOCK: the 6th change since a message-amended empty commit's review" "0 2" "$rg $(bg 'git commit -m e6' "$SE2")"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]
