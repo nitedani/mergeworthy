@@ -122,12 +122,12 @@ if not register:
 rnd = re.fullmatch(r'(.+)-r(\d+)', re.sub(r'(-\d{4}-\d{2}-\d{2}|-[0-9a-f]{7,40})+$', '', (cid or str(ti.get('description') or '')).strip()))
 review = rnd and (ti.get('role') == 'review' or not ti.get('role') and re.search(r'\bexactly (CLEAN|NO BUGS)\b', brief))
 # a post's review: a gate review of a named draft whose brief asks for no code verdict (a small review's pr-body.review.out comes with one)
-post_review = review and bool(reviewed_drafts(brief)) and 'CLEAN' in brief and not re.search(r'\b(NO BUGS|MERGE AS IS)\b', own_brief)
+post_review = review and bool(reviewed_drafts(brief)) and not re.search(r'\b(NO BUGS|MERGE AS IS)\b', own_brief)
 if post_review and not register:
     led = re.search(r'(/[^\s`\'"()]+\.ledger\.md)\b', brief)  # the ledger the brief names, else the one beside the draft
     ledger = lambda dr: led[1] if led else dr[:-3] + '.ledger.md' if os.path.isfile(dr[:-3] + '.ledger.md') else None
     passes = [(o, dr, ledger(dr)) for o in review_outs(brief) if (dr := review_launch.draft_of(o)) in reviewed_drafts(brief)]
-    if all(not review_launch.answers(o, dr, lg)[0] for o, dr, lg in passes):
+    if all(not review_launch.answers(o, dr, lg) for o, dr, lg in passes):
         sys.stderr.write("BLOCKED: gate-pass already passes every draft this post review reads, so a round on them reviews nothing new "
                          "(mergeworthy:delegate §Review rounds): post it, or edit the draft first. It passes with:\n"
                          + ''.join(f"gate-pass {dr} {o}{f' --ledger {lg}' if lg else ''}\n" for o, dr, lg in passes))

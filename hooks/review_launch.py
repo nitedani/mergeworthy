@@ -78,12 +78,12 @@ def reviewed(out, draft):
 
 
 def answers(out, draft, ledger_file=None):
-    """(why, epoch): why the review in out doesn't let draft be posted, gate-pass's review rule ('' when it does), with its launch's epoch.
+    """Why the review in out doesn't let draft be posted, gate-pass's review rule ('' when it does).
     The reviewer was handed draft's text (reviewed()); its verdict is exactly CLEAN, or ledger_file, written after it, closes the round (ledger.problems, a
     post's rules); the launch postdates the latest human comment thread-context.md beside draft records. out None: a status post, which has no
     review and is checked by draft's own time. Writes nothing."""
     why, at = reviewed(out, draft) if out else ('', int(os.path.getmtime(draft)))
-    if why: return f'{draft}: {why}', at
+    if why: return f'{draft}: {why}'
     try: verdict = [l.strip() for l in open(out, errors='replace').read().splitlines() if l.strip()] if out else ['CLEAN']
     except OSError: verdict = []  # its reviewer hasn't written yet
     if verdict != ['CLEAN']:
@@ -93,7 +93,7 @@ def answers(out, draft, ledger_file=None):
         if not ledger_file or found:
             return ((f'the ledger leaves this round open (mergeworthy:delegate §Review rounds):\n' + '\n'.join(found) + '\n' if found else '')
                     + f"review is not exactly CLEAN (it has {len(verdict)} non-empty lines; last: {verdict[-1] if verdict else ''}). The reviewer's "
-                    "final message, alone, is the review output; after round 2, pass --ledger <the loop's ledger>"), at
+                    "final message, alone, is the review output; after round 2, pass --ledger <the loop's ledger>")
     try: tc = open(os.path.join(os.path.dirname(os.path.realpath(draft)), 'thread-context.md')).read()
     except OSError: tc = ''
     if (m := re.search(r'^- latest-human-comment: id=\d* at=([0-9TZ:-]+)', tc, re.M)):
@@ -101,5 +101,5 @@ def answers(out, draft, ledger_file=None):
         except ValueError: human = 0
         if human >= at:
             return (f'thread-context.md records a human comment ({m[1]}) newer than the review: re-read it, revise the draft if it changes '
-                    'anything, and review again (mergeworthy:post step 1)'), at
-    return '', at
+                    'anything, and review again (mergeworthy:post step 1)')
+    return ''

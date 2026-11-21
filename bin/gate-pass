@@ -18,9 +18,9 @@ case "$kind" in reply|comment|inline|proposal|status)
 esac
 # the review lets this text be posted (review_launch.answers, which pre-agent-dedupe asks too): a draft edited since its launch, such as
 # a trim to the length ceiling, is reviewed again; the footer appended below is no edit
-launched=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import review_launch
-why, at = review_launch.answers(None if sys.argv[2] == "none" else sys.argv[2], sys.argv[3], sys.argv[4] or None); print(why or at); sys.exit(1 if why else 0)' \
-  "$(dirname "$(readlink -f "$0")")/../hooks" "$r" "$d" "$ledger") || { echo "$launched"; exit 1; }
+why=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import review_launch
+why = review_launch.answers(None if sys.argv[2] == "none" else sys.argv[2], sys.argv[3], sys.argv[4] or None); print(why); sys.exit(1 if why else 0)' \
+  "$(dirname "$(readlink -f "$0")")/../hooks" "$r" "$d" "$ledger") || { echo "$why"; exit 1; }
 # a posted promise is a task opened (mergeworthy:post step 4): it needs a PROMISED line naming this draft in proposals-open.md
 own=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import post_words; sys.stdout.write(post_words.uncoded(open(sys.argv[2]).read()))' "$(dirname "$(readlink -f "$0")")/../hooks" "$d" |
   sed -E 's/"[^"]*"//g; s/“[^”]*”//g; s/`[^`]*`//g; /^>/d')  # quoted text and code blocks are someone else's words or a tool's output, not a promise
