@@ -22,12 +22,19 @@ def path_set(t):
 
 def bound(text, verbs):
     """The first path after one of verbs in the same clause, at most four words between them, quoted or not
-    (`Follow <p> exactly`, `Read and do the brief at <p>`); a verb elsewhere in the sentence, or one a negation comes right
-    before, a word between allowed (`Do not edit <p>`, `never ever follow <p>`), binds nothing."""
-    quote = '[`\'"(<]*'
-    return {os.path.abspath(os.path.expanduser(m[1].rstrip('/.,:'))) for c in re.split(r'[.;!?,]\s+|\n', text)
-            for m in re.finditer(rf'(?=\b(?:{verbs})\b(?!\s+not\b)(?:\s+(?!{quote}~?/)\S+){{0,4}}\s+{quote}({PATH}))', c, re.I)
-            if not re.search(r"\b(?:not|never|no|don['’]t|doesn['’]t)\s+(?:\S+\s+)?$", c[:m.start()], re.I)}
+    (`Follow <p> exactly`, `Read and do the brief at <p>`), or the path the clause says to read and then to <verb> (`Read <p>
+    and follow it`, `read <p> and follow its steps`); a verb elsewhere in the sentence, or one a negation comes right before,
+    a word between allowed (`Do not edit <p>`, `never ever follow <p>`, `Read <p> and don't follow it`), binds nothing."""
+    quote, neg = '[`\'"(<]*', r"\b(?:not|never|no|don['’]t|doesn['’]t)\s+(?:\S+\s+)?$"
+    lead = lambda v: rf'\b(?:{v})\b(?!\s+not\b)(?:\s+(?!{quote}~?/)\S+){{0,4}}\s+{quote}({PATH})'
+    said = set()
+    for c in re.split(r'[.;!?,]\s+|\n', text):
+        said |= {m[1] for m in re.finditer(rf'(?={lead(verbs)})', c, re.I) if not re.search(neg, c[:m.start()], re.I)}
+        for m in re.finditer(lead('read'), c, re.I):
+            then = re.search(rf'\b(?:{verbs})\s+(?:it|its steps|them)\b', c[m.end():], re.I)
+            if then and not re.search(neg, c[:m.start()], re.I) and not re.search(neg, c[m.end():m.end() + then.start()], re.I):
+                said.add(m[1])
+    return {os.path.abspath(os.path.expanduser(p.rstrip('/.,:'))) for p in said}
 
 
 def checkouts(paths):

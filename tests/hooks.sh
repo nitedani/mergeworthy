@@ -1148,6 +1148,13 @@ launch_in 'Execute /tmp/x/blocked.md' | python3 "$R/hooks/pre-agent-dedupe.py" >
 check "a launch another hook blocked (never ran) leaves no job" 0 "$(launch 'Execute /tmp/x/blocked.md')"
 refused() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":sys.argv[1],"title":"t"},"tool_response":[{"type":"text","text":"code: parent_not_active"}]}))' "$1" | python3 "$R/hooks/pre-agent-dedupe.py" register; }
 check "a launch T3 refused (parent_not_active) says what to do and leaves no job" "1 0" "$(refused 'Execute /tmp/x/refused.md' | grep -c 'do the step yourself') $(launch 'Execute /tmp/x/refused.md')"
+# an implementer brief file in the work folder, admitted with its recorded Approach, then edited while the call runs
+PB="$HOME/.mergeworthy/work/po/brief.md"; mkdir -p "${PB%/*}"; printf 'You implement the fix in %s.%s\n' "$T/afx" "$AFX" > "$PB"
+po() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"Agent","session_id":"po","tool_input":{"prompt":sys.argv[1],"description":"po impl","run_in_background":False},"tool_response":{"agentId":"abc"}}))' "Follow $PB exactly" | python3 "$R/hooks/pre-agent-dedupe.py" "$@" 2>"$T/err"; echo $?; }
+check "a launch admitted with its Approach line, whose brief loses that line before the call ends, is registered with the build its admission decided, and its PostToolUse call refuses nothing" "0 0 1 0 1" \
+  "$(rm -rf "$HOME/.claude/approach-builds"; po) $(sed -i '/^Approach:/d' "$PB"; po register) $(python3 "$R/bin/agent-job" list | grep -c 'po impl') $(grep -c BLOCKED "$T/err") $(ls "$HOME/.claude/approach-builds" 2>/dev/null | wc -l)"
+rm -r "${PB%/*}"
+python3 "$R/bin/agent-job" done 'po impl' >/dev/null
 python3 "$R/bin/agent-job" done /tmp/x/ticket-check.md >/dev/null
 check "after agent-job done the ticket launches again" 0 "$(launch 'Execute /tmp/x/ticket-check.md')"
 check "agent-job done takes a ticket path relative to the cwd" 0 "$(mkdir -p /tmp/x && touch /tmp/x/ticket-check.md && cd /tmp/x && python3 "$R/bin/agent-job" done ticket-check.md >/dev/null; echo $?)"
@@ -1184,7 +1191,8 @@ use key-1 key-2; r="$(lc key-1 keyed 'Check the cost.') $(lc key-2 keyed 'Check 
 check "BLOCK: two calls with one key and different tasks in one message: the second, until the first's call returned" "0 2 0" "$r $(lc key-3 keyed 'Check the security.')"
 use long-1 long-2; r=$(lc long-1 first 'Follow /tmp/x/life-long.md')
 python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "launched": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs-launch/*")) if "life-long" in open(f).read()]'  # a foreground agent still at work an hour later
-check "BLOCK: a launch whose call hasn't returned, an hour on, still counts" "0 2" "$r $(lc long-2 second 'Follow /tmp/x/life-long.md')"
+mkdir -p "$HOME/.claude/projects/-ll"; python3 -c 'import json,time; at=time.strftime("%Y-%m-%dT%H:%M:%S.000Z",time.gmtime(time.time()-3000)); print(json.dumps({"type":"user","timestamp":at,"message":{"role":"user","content":"Follow /tmp/x/life-long.md"}})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","id":"b","name":"Bash","input":{}}]}}))' > "$HOME/.claude/projects/-ll/ll.jsonl"  # its transcript, a tool call running
+check "BLOCK: a launch whose call hasn't returned, an hour on, still counts" "0 2" "$r $(lc long-2 second 'Follow /tmp/x/life-long.md')"; rm -r "$HOME/.claude/projects/-ll"
 use blk-1; r=$(lc blk-1 first 'Follow /tmp/x/life-blk.md'); res blk-1; use blk-2
 r="$r $(lc blk-2 second 'Follow /tmp/x/life-blk.md')"; res blk-2; use blk-3
 check "a launch another hook blocked (its tool_result written) no longer counts: a retry passes at once, under another title or its own" "0 0 0" "$r $(lc blk-3 first 'Follow /tmp/x/life-blk.md')"
@@ -1288,7 +1296,120 @@ wait $LPID $WPID $OPID 2>/dev/null
 cap_in() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":sys.argv[1],"tool_input":{"task":sys.argv[2],"title":sys.argv[2][:40]}}))' "$1" "$2"; }
 cap() { cap_in "$1" "$2" | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; local rc=$?; [ $rc = 0 ] && cap_in "$1" "$2" | python3 "$R/hooks/pre-agent-dedupe.py" register; echo $rc; }
 check "BLOCK: a fourth agent open at once in one session, naming the three" "0 0 0 2 3" "$(cap capS 'Execute /tmp/x/cap1.md') $(cap capS 'Execute /tmp/x/cap2.md') $(cap capS 'Execute /tmp/x/cap3.md') $(cap capS 'Execute /tmp/x/cap4.md') $(grep -c '^/tmp/x/cap[123].md' "$T/err")"
-check "another session, and a memory refresh in this one, pass" "0 0" "$(cap capT 'Execute /tmp/x/cap5.md') $(cap capS 'Follow skills/delegate/memory-refresh.md on /tmp/x/mem-lines.md')"
+check "another session, and a memory refresh in this one, pass" "0 0" "$(cap capT 'Execute /tmp/x/cap5.md') $(cap capS 'Follow ~/.mergeworthy/current/skills/delegate/memory-refresh.md on /tmp/x/mem-lines.md')"
+CM="$HOME/.mergeworthy/work/capmem"; mkdir -p "$CM"; : > "$CM/memory.source"; printf 'Merge memory-new.txt into memory.md.\n' > "$CM/memory-brief-1.md"
+check "a running memory refresh under ~/.mergeworthy/work leaves the session its 3 other agents" "0 0 0 0" "$(cap capM "Follow $CM/memory-brief-1.md exactly") $(cap capM 'Execute /tmp/x/capm1.md') $(cap capM 'Execute /tmp/x/capm2.md') $(cap capM 'Execute /tmp/x/capm3.md')"
+for k in capm1 capm2 capm3; do python3 "$R/bin/agent-job" done "/tmp/x/$k.md" >/dev/null; done
+python3 "$R/bin/agent-job" done "$(python3 -c 'import sys; print(sys.argv[1][:40])' "Follow $CM/memory-brief-1.md exactly")" >/dev/null
+check "BLOCK: with three agents open, the refresh as sessions word it (Follow the brief at <path>) passes, and one that says not to follow it counts as the fourth" "0 0 0 0 2" \
+  "$(cap capF 'Execute /tmp/x/capf1.md') $(cap capF 'Execute /tmp/x/capf2.md') $(cap capF 'Execute /tmp/x/capf3.md') $(cap capF "Follow the brief at $CM/memory-brief-1.md exactly.") $(cap capF "Do not follow $CM/memory-brief-1.md; report what it asks.")"
+check "with the same three open, a refresh that says to read the brief and then follow it passes either way, and one that says to read it and review it counts" "0 0 2" \
+  "$(cap capF "Read the brief file $CM/memory-brief-1.md and follow it exactly.") $(cap capF "Your task: read $CM/memory-brief-1.md and follow its steps.") $(cap capF "Read $CM/memory-brief-1.md and review its wording.")"
+for k in capf1 capf2 capf3; do python3 "$R/bin/agent-job" done "/tmp/x/$k.md" >/dev/null; done
+for t in "Follow the brief at $CM/memory-brief-1.md exactly." "Read the brief file $CM/memory-brief-1.md and follow it exactly." "Your task: read $CM/memory-brief-1.md and follow its steps."; do
+  python3 "$R/bin/agent-job" done "$(python3 -c 'import sys; print(sys.argv[1][:40])' "$t")" >/dev/null; done
+CR="Review why the refresh failed, using the archived brief at $CM/memory-brief-1.md as evidence. Report the cause."
+check "BLOCK: a review that cites a memory brief as evidence is no memory refresh: it counts, and the fourth agent is refused" "0 0 0 2" "$(cap capA "$CR") $(cap capA 'Execute /tmp/x/capa1.md') $(cap capA 'Execute /tmp/x/capa2.md') $(cap capA 'Execute /tmp/x/capa3.md')"
+for k in capa1 capa2; do python3 "$R/bin/agent-job" done "/tmp/x/$k.md" >/dev/null; done; python3 "$R/bin/agent-job" done "${CR:0:40}" >/dev/null; rm -r "$CM"
+capt() { # session title task: a launch that passes runs, so the PostToolUse half registers it
+  local j; j=$(python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":sys.argv[1],"tool_input":{"title":sys.argv[2],"task":sys.argv[3]}}))' "$@")
+  printf '%s' "$j" | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; local rc=$?; [ $rc = 0 ] && printf '%s' "$j" | python3 "$R/hooks/pre-agent-dedupe.py" register; echo $rc; }
+check "BLOCK: a launch whose title, not its task, names the memory-refresh template counts, and the fourth agent is refused" "0 0 0 2" \
+  "$(capt capY 'Did agents follow skills/delegate/memory-refresh.md?' 'Read the archived instructions and summarize what changed between the two versions.') $(cap capY 'Execute /tmp/x/capy1.md') $(cap capY 'Execute /tmp/x/capy2.md') $(cap capY 'Execute /tmp/x/capy3.md')"
+for k in capy1 capy2; do python3 "$R/bin/agent-job" done "/tmp/x/$k.md" >/dev/null; done; python3 "$R/bin/agent-job" done 'Did agents follow skills/delegate/memory-refresh.md?' >/dev/null
+FX="$T/fixtures/skills/delegate"; mkdir -p "$FX"; printf 'Reproduce the fixture failures and summarize what broke.\n' > "$FX/memory-refresh.md"
+mkdir -p "$HOME/.mergeworthy/projects/widget"; printf -- '- a convention\n' > "$HOME/.mergeworthy/projects/widget/example.md"
+agv() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"orchv","tool_input":{"task":sys.argv[1],"title":sys.argv[2]}}))' "$1" "$2" | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo "$? $(grep -c 'projects/widget/example.md' "$T/err")"; }
+check "a launch following a skills/delegate/memory-refresh.md that isn't the installed template (a fixture's) is ordinary work: it counts against the cap, and one for a repo names its project file" "0 0 0 2 2 1" \
+  "$(cap capV "Follow $FX/memory-refresh.md exactly.") $(cap capV 'Execute /tmp/x/capv1.md') $(cap capV 'Execute /tmp/x/capv2.md') $(cap capV 'Execute /tmp/x/capv3.md') $(agv "Follow $FX/memory-refresh.md exactly for widget/example#17." lookalike)"
+for k in capv1 capv2 "$FX/memory-refresh.md"; do python3 "$R/bin/agent-job" done "$([ "${k#/}" = "$k" ] && echo "/tmp/x/$k.md" || echo "$k")" >/dev/null; done
+capc() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","cwd":sys.argv[1],"session_id":"capC","tool_input":{"task":sys.argv[2],"title":"relative"}}))' "$1" "$2" | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
+check "BLOCK: a relative skills/delegate/memory-refresh.md read from a cwd that isn't the installed folder is ordinary work, refused as a fourth agent" "0 0 0 2" \
+  "$(cap capC 'Execute /tmp/x/capc1.md') $(cap capC 'Execute /tmp/x/capc2.md') $(cap capC 'Execute /tmp/x/capc3.md') $(capc "$T" 'Follow skills/delegate/memory-refresh.md on /tmp/x/mem-lines.md')"
+for k in capc1 capc2 capc3; do python3 "$R/bin/agent-job" done "/tmp/x/$k.md" >/dev/null; done
+MG="$HOME/.mergeworthy/work/memgone"; mkdir -p "$MG"; : > "$MG/memory.source"  # memory-prep replaced memory-brief-1.md: only its folder's memory.source is left
+check "a launch following a memory brief memory-prep already replaced is ordinary work: it counts against the cap, stamps no marker, and one for a repo names its project file" "0 0 0 2 no 2 1" \
+  "$(cap capW "Follow $MG/memory-brief-1.md exactly.") $(cap capW 'Execute /tmp/x/capw1.md') $(cap capW 'Execute /tmp/x/capw2.md') $(cap capW 'Execute /tmp/x/capw3.md') $([ -e "$MG/.memory-order-repeated" ] && echo yes || echo no) $(agv "Follow $MG/memory-brief-1.md exactly for widget/example#17." replaced)"
+for k in capw1 capw2; do python3 "$R/bin/agent-job" done "/tmp/x/$k.md" >/dev/null; done; python3 "$R/bin/agent-job" done "$(python3 -c 'import sys; print(sys.argv[1][:40])' "Follow $MG/memory-brief-1.md exactly.")" >/dev/null
+rm -r "$MG" "$HOME/.mergeworthy/projects/widget"
+MD="$HOME/.mergeworthy/work/memdecided"; mkdir -p "$MD"; : > "$MD/memory.source"; printf 'Merge memory-new.txt into memory.md.\n' > "$MD/memory-brief-1.md"
+check "a memory brief memory-prep replaces while its launch runs still gets the marker its admission decided" "0 yes" \
+  "$(cap_in capD "Follow $MD/memory-brief-1.md exactly." | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; rm "$MD/memory-brief-1.md"; cap_in capD "Follow $MD/memory-brief-1.md exactly." | python3 "$R/hooks/pre-agent-dedupe.py" register) $([ -e "$MD/.memory-order-repeated" ] && echo yes || echo no)"
+python3 "$R/bin/agent-job" done "$(python3 -c 'import sys; print(sys.argv[1][:40])' "Follow $MD/memory-brief-1.md exactly.")" >/dev/null; rm -r "$MD"
+fgcall() { # session tool_use_id launcher prompt [description]: a foreground Agent call, its tool_use in the launcher's transcript, through PreToolUse only
+  python3 -c 'import json,sys; print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","id":sys.argv[1],"name":"Agent","input":{}}]}}))' "$2" >> "$3"
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"Agent","session_id":sys.argv[1],"tool_use_id":sys.argv[2],"transcript_path":sys.argv[3],"tool_input":{"prompt":sys.argv[4],"description":sys.argv[5],"run_in_background":False}}))' "$1" "$2" "$3" "$4" "${5:-$2}" \
+    | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
+result() { python3 -c 'import json,sys; print(json.dumps({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":sys.argv[1],"content":"blocked"}]}}))' "$1" >> "$2"; }  # tool_use_id launcher
+recs() { # word... [--age seconds...]: the pending records whose task holds each word, each aged by its seconds when given
+  python3 -c 'import json,os,sys,time
+a=sys.argv[1:]; words=a[:a.index("--age")] if "--age" in a else a; ages=a[len(words)+1:]
+d=os.path.expanduser("~/.claude/agent-jobs-launch"); out=[]
+for i, w in enumerate(words):
+    n=0
+    for f in os.listdir(d):
+        p=os.path.join(d,f); r=json.load(open(p))
+        if w in r.get("task",""):
+            n+=1
+            if ages: r["launched"]=time.time()-float(ages[i]); json.dump(r,open(p,"w"))
+    out.append(str(n))
+print(" ".join(out))' "$@"; }
+PL="$T/pend-launcher.jsonl"; : > "$PL"
+pend() { fgcall capP "$1" "$PL" "$2"; }  # tool_use_id task: a call of session capP still running in the launcher's transcript
+check "BLOCK: with one open job, three launches in one message whose calls haven't registered yet: the third, naming the two before it" "0 0 0 2 2" "$(cap capP 'Execute /tmp/x/capp0.md') $(pend capp-1 'Execute /tmp/x/capp1.md') $(pend capp-2 'Execute /tmp/x/capp2.md') $(pend capp-3 'Execute /tmp/x/capp3.md') $(grep -c '^/tmp/x/capp[12].md' "$T/err")"
+python3 "$R/bin/agent-job" done /tmp/x/capp0.md >/dev/null; rm -f $(grep -l pend-launcher "$HOME"/.claude/agent-jobs-launch/*)
+pend exp-1 'Execute /tmp/x/exp1.md' >/dev/null
+python3 -c 'import glob,json,os,time; [json.dump({**r, "launched": time.time() - 661}, open(f, "w")) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs-launch/*")) for r in [json.load(open(f))] if r.get("tool_use_id") == "exp-1"]'
+check "a call 11 minutes on whose agent never started is dropped at the next launch, its record with it, so no later launch searches for it again" "0 0" "$(pend exp-2 'Execute /tmp/x/exp2.md') $(grep -l '"exp-1"' "$HOME"/.claude/agent-jobs-launch/* | wc -l)"
+rm -f $(grep -l pend-launcher "$HOME"/.claude/agent-jobs-launch/*)
+pend exp-a 'Execute /tmp/x/expa.md' >/dev/null
+python3 -c 'import glob,json,os,time; [json.dump({**r, "launched": time.time() - 661}, open(f, "w")) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs-launch/*")) for r in [json.load(open(f))] if r.get("tool_use_id") == "exp-a"]'
+check "a launch reads only its own session's pending calls and those sharing its worktrees: another session's launch leaves this session's expired call alone, this session's next launch drops it" "0 1 0 0" \
+  "$(cap capQ 'Execute /tmp/x/expq.md') $(grep -l '"exp-a"' "$HOME"/.claude/agent-jobs-launch/* | wc -l) $(pend exp-b 'Execute /tmp/x/expb.md') $(grep -l '"exp-a"' "$HOME"/.claude/agent-jobs-launch/* | wc -l)"
+rm -f $(grep -l pend-launcher "$HOME"/.claude/agent-jobs-launch/*); python3 "$R/bin/agent-job" done /tmp/x/expq.md >/dev/null
+# one job from two sessions: session A's call of the job is still outstanding when session B launches the same job
+SB="$T/shared-brief.md"; printf 'Trace the shared worker.\n' > "$SB"; : > "$T/sh-a.jsonl"; : > "$T/sh-b.jsonl"
+shl() { fgcall "sh$1" "$2" "$T/sh-$1.jsonl" "Follow $SB exactly" trace-shared-worker; }  # session tool_use_id: the shared job from that session
+check "BLOCK: one agent per job across sessions: another session's launch of a job whose call is still outstanding is refused, and the reservation stays the first call's" "0 2 1 1" \
+  "$(shl a sh-1) $(shl b sh-2) $(grep -c 'already launched' "$T/err") $(grep -l '"sh-1"' "$HOME"/.claude/agent-jobs-launch/* | wc -l)"
+rm -f $(grep -l shared-brief "$HOME"/.claude/agent-jobs-launch/*)
+# the same work from two sessions under two titles: session A's call is still outstanding when session B launches it
+twl() { fgcall "sh$1" "$2" "$T/sh-$1.jsonl" 'Trace why the cache loses a cold write.' "$3"; }  # session tool_use_id description: the shared task
+check "BLOCK: the same task from another session under another title while the first call is outstanding, as the same work" "0 2 1" \
+  "$(twl a tw-x Trace) $(twl b tw-y Investigate) $(grep -c 'contains, or is contained in' "$T/err")"
+rm -f $(grep -l 'cache loses a cold write' "$HOME"/.claude/agent-jobs-launch/*)
+# a launch the cap doesn't apply to (a fan-out) reads none of its session's other calls, so it searches no transcript for them
+: > "$T/y3.jsonl"
+yc() { fgcall y3 "$1" "$T/y3.jsonl" "$2"; }  # tool_use_id prompt: a call of session y3, left outstanding
+check "an own call aged 11 minutes with no agent transcript is left unread by a fan-out launch and dropped by the next ordinary one (exit, its record left)" "0 0 1 0 0" \
+  "$(yc y-1 'Execute /tmp/x/y3-old.md'; recs y3-old --age 661 >/dev/null) $(yc y-2 "$(printf 'Execute /tmp/x/y3-fan.md\nFan-out: converge §Running the agents')") $(recs y3-old) $(yc y-3 'Execute /tmp/x/y3-ord.md') $(recs y3-old)"
+rm -f $(grep -l 'y3-' "$HOME"/.claude/agent-jobs-launch/*)
+# a call that returned without registering (another hook blocked it) counts for nothing; a day on, the next launch it bears on drops its record
+: > "$T/r5.jsonl"
+rc5() { fgcall r5 "$1" "$T/r5.jsonl" "$2"; result "$1" "$T/r5.jsonl"; }  # tool_use_id prompt: a call of session r5, its result already in the launcher's transcript
+check "a returned call's record goes once it is a day old, and one an hour old stays (exits, then the day's and the hour's records left)" "0 0 0 0 1" \
+  "$(rc5 r5-a 'Execute /tmp/x/r5-day.md') $(rc5 r5-b 'Execute /tmp/x/r5-hour.md'; recs r5-day r5-hour --age 90000 3600 >/dev/null) $(rc5 r5-c 'Execute /tmp/x/r5-next.md') $(recs r5-day r5-hour)"
+rm -f $(grep -l 'r5-' "$HOME"/.claude/agent-jobs-launch/*)
+# a launcher lost after admission: three calls with no result in its transcript, whose agents (its subagents) finished 25 minutes ago
+LD2="$HOME/.claude/projects/-fin"; mkdir -p "$LD2/launcher/subagents"; FL="$LD2/launcher.jsonl"; : > "$FL"
+fin_pre() { fgcall capF2 "$1" "$FL" "$2"; }  # tool_use_id task: an admitted call of session capF2 whose launcher got no result
+r="$(fin_pre fin-1 'Execute /tmp/x/fin1.md') $(fin_pre fin-2 'Execute /tmp/x/fin2.md') $(fin_pre fin-3 'Execute /tmp/x/fin3.md')"
+python3 - "$FL" <<'PY'
+import glob, json, os, sys, time
+now = time.time()
+for f in glob.glob(os.path.expanduser('~/.claude/agent-jobs-launch/*')):
+    r = json.load(open(f))
+    if r.get('transcript') != sys.argv[1]: continue
+    r['launched'] = now - 1500; json.dump(r, open(f, 'w'))
+    at = time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime(now - 1495))
+    c = os.path.join(os.path.dirname(sys.argv[1]), 'launcher', 'subagents', f"agent-{r['tool_use_id']}.jsonl")
+    with open(c, 'w') as o:
+        o.write(json.dumps({'type': 'user', 'timestamp': at, 'message': {'role': 'user', 'content': r['task']}}) + '\n')
+        o.write(json.dumps({'type': 'assistant', 'timestamp': at, 'message': {'content': [{'type': 'text', 'text': 'Done.'}]}}) + '\n')
+    os.utime(c, (now - 1490, now - 1490))
+PY
+check "a launch after three calls whose agents finished with no result reaching the launcher passes: a finished agent holds no slot" "0 0 0 0" "$r $(fin_pre fin-4 'Execute /tmp/x/fin4.md')"
+rm -rf "$LD2"; rm -f $(grep -l '"capF2"' "$HOME"/.claude/agent-jobs-launch/*)
 check "a fifth brief naming its fan-out step passes; one naming another step does not" "0 2" "$(cap capS $'Execute /tmp/x/cap8.md\nFan-out: converge §Running the agents') $(cap capS $'Execute /tmp/x/cap9.md\nFan-out: review step 2')"
 cap_impl() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"capS","tool_input":{"task":sys.argv[1],"title":"impl","role":"implementation"}}))' "$1$AFX" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; echo $?; }
 check "BLOCK: an implementation brief carrying the fan-out line still counts" 2 "$(cap_impl $'Execute /tmp/x/cap10.md\nFan-out: converge §Running the agents')"
@@ -1511,7 +1632,8 @@ check "a brief with an https URL finishes (its //host is not a path), and the UR
 git init -q "$HOME/occ"; git -C "$HOME/occ" remote add origin git@github.com:o/r.git; mkdir -p "$HOME/occ/src"
 check "BLOCK: the repo as git@github.com:o/r.git, and a ~/ path in its checkout" "2 2" "$(ag "$T" 'Fix git@github.com:o/r.git') $(ag "$T" 'Fix the bug in ~/occ/src')"
 check "a brief that writes nothing to the repo (role research or test) needs no notes; a review does" "0 0 2" "$(ag "$T" 'Mine session logs for o/r' research) $(ag "$T" 'Run the tests of o/r' test) $(ag "$T" 'Review o/r#7' review)"
-check "a brief naming the notes file passes; one naming another repo or none passes; a memory-refresh brief passes" "0 0 0 0" "$(ag "$T" 'Fix o/r#5 by skills/code/SKILL.md, notes in ~/.mergeworthy/projects/o/r.md') $(ag "$T" 'Fix o/r-two#5') $(ag "$T" 'Tidy the README') $(ag "$T" 'Follow skills/delegate/memory-refresh.md on o/r#5 lines')"
+check "a brief naming the notes file passes; one naming another repo or none passes; a memory-refresh brief passes" "0 0 0 0" "$(ag "$T" 'Fix o/r#5 by skills/code/SKILL.md, notes in ~/.mergeworthy/projects/o/r.md') $(ag "$T" 'Fix o/r-two#5') $(ag "$T" 'Tidy the README') $(ag "$T" 'Follow ~/.mergeworthy/current/skills/delegate/memory-refresh.md on o/r#5 lines')"
+check "BLOCK: a brief for a repo that only mentions memory-refresh.md mid-text still names its project file; the real memory-refresh launch passes" "2 0" "$(ag "$T" 'Fix o/r#5 by skills/code/SKILL.md: pre-agent-dedupe misreads skills/delegate/memory-refresh.md briefs.') $(ag "$T" 'Follow ~/.mergeworthy/current/skills/delegate/memory-refresh.md on the o/r#5 session lines')"
 printf -- '- a convention\n## Who decides\n- maint merges. Study: [r.study.md](r.study.md)\n' > "$HOME/.mergeworthy/projects/o/r.md"
 check "a study linked relative to the project file counts" 0 "$(ag "$T" 'Fix o/r#5 by skills/code/SKILL.md, notes in ~/.mergeworthy/projects/o/r.md')"
 printf -- '- a convention\n## Who decides\n- maint merges: ~/.mergeworthy/projects/o/r.study.md\n' > "$HOME/.mergeworthy/projects/o/r.md"
@@ -1575,6 +1697,8 @@ check "the newest record passes; the next build on the same record waits, unless
   "$(abrief $'You implement the fix in '"$AB"$'.\nApproach: '"$T/ab1.md") $(abrief $'You implement the review fix in '"$AB"$'.\nApproach: '"$T/ab1.md") $(grep -c 'last build was briefed on the approach recorded' "$T/err") $(abrief $'You implement the review fix in '"$AB"$'.\nApproach: '"$T/ab1.md (unchanged: a test the review asked for)")"
 sleep 1; (cd "$AB" && bash "$R/bin/pr-steps" approach "$T/ab2.md" >/dev/null)
 check "a changed approach recorded after the last build passes; the record it replaced no longer does" "0 2" "$(abrief $'You implement it as a virtual module in '"$AB"$'.\nApproach: '"$T/ab2.md") $(abrief $'You implement more in '"$AB"$'.\nApproach: '"$T/ab1.md (unchanged: same)")"
+check "BLOCK: an Approach that isn't the newest record, naming each checkout's newest record; one naming no checkout with a record says so" "2 1 2 1" \
+  "$(abrief $'You implement more in '"$AB"$'.\nApproach: '"$T/ab1.md") $(grep -c "newest: $AB: $T/ab2.md" "$T/err") $(abrief $'You implement more in /tmp/nowhere-x.\nApproach: '"$T/ab1.md") $(grep -c 'no checkout this brief names has a record' "$T/err")"
 AO="$T/abo"; git init -q "$AO"; git -C "$AO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; cp "$T/approach.md" "$T/ab3.md"; (cd "$AO" && bash "$R/bin/pr-steps" approach "$T/ab3.md" >/dev/null)
 check "any text after the Approach path: on an unbuilt record it passes; on a built one it is refused as already built, not as naming no approach; an unchanged reason inside the text counts" "0 2 1 0 0" \
   "$(abrief $'You implement the fix in '"$AO"$'.\nApproach: '"$T/ab3.md (amended: re-rated)") $(abrief $'You implement more in '"$AO"$'.\nApproach: '"$T/ab3.md (amended: re-rated)") $(grep -c 'last build was briefed on' "$T/err") $(grep -c 'a line `Approach:' "$T/err") $(abrief $'You implement the rest in '"$AO"$'.\nApproach: '"$T/ab3.md amended (unchanged: a review fix) today")"
@@ -1604,7 +1728,22 @@ lb() { python3 -c 'import json,sys,time; print(json.dumps({"tool_name":"mcp__t3-
 check "a launch that says to do a work-folder brief gets no refusal for the lines the brief holds; BLOCK one whose brief lacks the project file, naming it" "0 2 1" \
   "$(lb "$LB/impl-race.md") $(lb "$LB/impl-noproject.md") $(grep -c "$HOME/.mergeworthy/projects/o/r.md" "$T/err")"
 check "BLOCK: a drafter brief (it reads thread-context.md) without writing/SKILL.md; with it, it passes" "2 0" "$(ag "$T" 'Draft the reply from /w/drafts/x/thread-context.md' review) $(ag "$T" 'Write a reply draft by skills/writing/SKILL.md from /w/drafts/y/thread-context.md; list each claim with a scope word beside its source' review)"
-check "BLOCK: a drafter brief without the template's scope-word check, naming the template; a review of a draft (CLEAN) needs none" "2 1 0" "$(ag "$T" 'Write a reply draft by skills/writing/SKILL.md from /w/drafts/z/thread-context.md' review) $(grep -c 'delegate/drafter.md' "$T/err") $(ag "$T" 'Review /w/drafts/z/r.md against /w/drafts/z/thread-context.md by skills/writing/SKILL.md; final message CLEAN or findings' review)"
+agn() { # cwd task: a launch with no role
+  python3 -c 'import json,sys,time; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","cwd":sys.argv[1],"session_id":"orch","tool_input":{"task":sys.argv[2],"title":sys.argv[2][:50],"clientRequestId":f"ag-{time.time_ns()}-r1"}}))' "$1" "$2$AFX" \
+    | timeout 10 python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
+check "BLOCK: a drafter brief (it writes its draft beside the thread record) without the template's scope-word check, naming the template; a review of a draft (CLEAN) needs none" "2 1 0" "$(agn "$T" 'Write a reply draft by skills/writing/SKILL.md from /w/drafts/z/thread-context.md to /w/drafts/z/r.md') $(grep -c 'delegate/drafter.md' "$T/err") $(ag "$T" 'Review /w/drafts/z/r.md against /w/drafts/z/thread-context.md by skills/writing/SKILL.md; final message CLEAN or findings' review)"
+# delegate/drafter.md's template filled, with its standards line, and the same without its scope-word sentence
+python3 - "$R/skills/delegate/drafter.md" "$T/dtpl" <<'PY'
+import re, sys
+body = re.search(r'```\n(.*?)```', open(sys.argv[1]).read(), re.S)[1].replace('<abs>', '/w')
+while re.search(r'<[^<>\n]+>', body): body = re.sub(r'<[^<>\n]+>', 'it', body)
+body += 'Standards: ~/.mergeworthy/current/skills/writing/SKILL.md\n'
+open(sys.argv[2] + '-scope.md', 'w').write(body)
+open(sys.argv[2] + '-noscope.md', 'w').write(re.sub(r' Then list there each claim with a scope word[^\n]*', '', body))
+PY
+WS='~/.mergeworthy/current/skills/writing/SKILL.md'
+check "a design, review or research launch that reads the thread record passes without the scope-word check; BLOCK any other brief naming the record without it (a summary citing a draft, one writing under another thread's drafts/, a reply saved by a relative name), and drafter.md filled without its scope-word line; with it, it passes" "0 0 0 0 2 2 2 2 0" \
+  "$(ag "$T" "Design question: read /w/x/thread-context.md and $WS, then rate two designs. Write the ranking to /w/x/design.md." design) $(ag "$T" "Review the fix against /w/x/thread-context.md by $WS; report the findings." review) $(ag "$T" "Collect what /w/x/thread-context.md decided, by $WS." research) $(ag "$T" 'Review the reply draft at /w/reply.md for jargon and accuracy. Return findings.' review) $(agn "$T" "Read $WS. Summarize the decisions in /w/drafts/issue/thread-context.md compared with /w/drafts/issue/answer.md; write the summary to /w/status.md.") $(agn "$T" "Read $WS. Summarize the decisions in /w/drafts/issue/thread-context.md; write the summary to /w/drafts/other/summary.md.") $(agn "$T" "Read /w/drafts/issue/thread-context.md. Draft a reply to the maintainer and save it as answer.md next to the thread record. Read $WS.") $(agn "$T" "$(cat "$T/dtpl-noscope.md")") $(agn "$T" "$(cat "$T/dtpl-scope.md")")"
 # pre-agent-dedupe: a template's placeholder left in the brief, by the plugin's own skills/delegate templates
 check "BLOCK: a brief with a template's placeholder unfilled, naming it and its template" "2 1" "$(ag "$T" $'Verify the slice.\n- try the edges: <the slice\'s risky edges>, each Recurring misses line' review) $(grep -c "<the slice's risky edges> (delegate/verifier.md)" "$T/err")"
 check "BLOCK: a slot of a template's code block indented in a list item (delegate/SKILL.md's reviewer launch)" "2 1" "$(ag "$T" $'Review the diff.\n{"target": {"options": {"<its effort option>": "high"}}}' review) $(grep -c '<its effort option> (delegate/SKILL.md)' "$T/err")"
