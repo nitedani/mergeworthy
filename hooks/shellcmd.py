@@ -841,7 +841,7 @@ class Where:
             self.enter(t.scopes)
             yield t
             for x in written_files(prog(t)):
-                self.wrote |= set(map(os.path.normpath, fs)) if (fs := self.files(x)) else {None}
+                self.wrote |= {None} if isinstance(fs := self.files(x), Unknown) else set(map(os.path.normpath, fs))  # an empty name writes nothing
             self.step(t)
             if (inner := self._sourced(t)) is None:
                 self._took(t.sets, t.sets_any)
