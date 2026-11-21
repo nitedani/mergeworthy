@@ -993,6 +993,26 @@ check "status under Language: hu: actions that share a stem with an observation 
 check "status under Language: hu: a past verb, an observation (a prefixed one too), a result, a verb outside the list, a claim, a relative time and no deadline are findings; listed actions, prefixed ones too, are not" "1 1 1 1 1 1 1 1 0 0 0 0 0 0 0 0 1 1 1" "$(slh 'says neither' "Megnéztem a naplót. Átnézem $FUT-ig.") $(slh 'says neither' "Látom az eltérést. Átnézem $FUT-ig.") $(slh 'says neither' "Észreveszem az eltérést. Átnézem $FUT-ig.") $(slh 'says neither' "Észlelem az eltérést. Átnézem $FUT-ig.") $(slh 'says neither' "Megtalálom az eltérést. Átnézem $FUT-ig.") $(slh 'says neither' "Sikeresek a tesztek. Átnézem $FUT-ig.") $(slh 'says neither' "Zöldek a tesztek. Átnézem $FUT-ig.") $(slh 'says neither' "Gondolom, rendben van. Átnézem $FUT-ig.") $(slh 'says neither' "Megnézem a naplót. Átnézem $FUT-ig.") $(slh 'says neither' "Kijavítom a hibát. Átnézem $FUT-ig.") $(slh 'says neither' "Elküldöm a választ. Átnézem $FUT-ig.") $(slh 'says neither' "Frissítem a leírást. Átnézem $FUT-ig.") $(slh 'says neither' "Letöltöm a csomagot. Átnézem $FUT-ig.") $(slh 'says neither' "Áttekintem a kódot. Átnézem $FUT-ig.") $(slh 'says neither' "Ráfuttatjuk a teszteket az ágra. Átnézem $FUT-ig.") $(slh 'says neither' "Dolgozom rajta. Írok a karbantartónak. Átnézem $FUT-ig.") $(slh 'is a claim' "Átnézem, mert elbukott, $FUT-ig.") $(slh 'relative time' "Átnézem holnap, a többit $FUT-ig.") $(slh "say by when, as an ISO time in UTC ('2026-10-28T16:00Z-ig')" 'Átnézem a javítást.')"
 printf '%s\nA feltöltés elakad nagy fájloknál. Ez az MR darabokban küldi a fájlt.\n\n### Amit látni fogsz\n\n**1.** Egy 50 MB-os fájl feltöltése:\n\n```\nPOST /upload -> 201\n```\n' "$B" > "$T/hus.md"
 check "a ready Hungarian body's evidence heading passes under Language: hu, not without it" "0 1" "$(python3 "$R/bin/post-lint" "$T/hus.md" --kind pr --repo acme/hu --parent none 2>&1 | grep -c 'pull-request §Body') $(python3 "$R/bin/post-lint" "$T/hus.md" --kind pr --repo acme/en --parent none 2>&1 | grep -c 'pull-request §Body')"
+TPP="$HOME/.mergeworthy/projects/acme"; printf '# acme/tpl\n\n## PR conventions\n- PR template: .github/PULL_REQUEST_TEMPLATE.md: `## Why`, `## How`\n- Issue template: .github/ISSUE_TEMPLATE/bug.yml: `### Description`, `### Reproduction`\n' > "$TPP/tpl.md"
+printf '# acme/none\n\n## PR conventions\n- PR template: none\n- Issue template: none\n' > "$TPP/none.md"; printf '# acme/noline\n\n## PR conventions\n- Squash.\n' > "$TPP/noline.md"
+printf '%s\n## Why\n\nUploads stall on big files.\n\n## How\n\nThis PR sends the file in chunks.\n\n**1.** A 50 MB upload:\n\n```\nPOST /upload -> 201\n```\n' "$B" > "$T/tpl.md"
+sed 's/^## How$/### What you should see/; /^## Why$/d' "$T/tpl.md" > "$T/see.md"
+tpl() { python3 "$R/bin/post-lint" "$T/${2:-tpl}.md" --kind pr --repo "$1" --parent none 2>&1 | grep -c "${3:-pull-request §Body}"; }
+check "a template repo's body with its headings and numbered evidence under one passes; without a project file it needs What you should see" "0 1" "$(tpl acme/tpl) $(tpl acme/en)"
+check "PR template: none, like no project file, passes What you should see and fails the template body, asking for no line" "0 1 0 0" "$(tpl acme/none see) $(tpl acme/none) $(tpl acme/none see "no 'PR template:' line") $(tpl acme/en see "no 'PR template:' line")"
+check "BLOCK: a project file without a PR template: line asks for it, beside today's check" "1 0" "$(tpl acme/noline see "no 'PR template:' line") $(tpl acme/noline see)"
+TW="$T/tplw"; mkdir -p "$TW/drafts"; cp "$T/see.md" "$TW/drafts/see.md"; echo acme/noline > "$TW/repos.txt"
+check "without --repo the template check doesn't run, though repos.txt names a repo whose project file lacks the line" 0 "$(cd "$T" && python3 "$R/bin/post-lint" "$TW/drafts/see.md" --kind pr --parent none 2>&1 | grep -c "no 'PR template:' line")"
+check "BLOCK: a template repo's body that drops a template heading" 1 "$(sed 's/^## Why$/## Motivation/' "$T/tpl.md" > "$T/tpd.md"; tpl acme/tpl tpd)"
+check "BLOCK: a template repo's body without numbered evidence" 1 "$(sed 's/^\*\*1\.\*\* //' "$T/tpl.md" > "$T/tpd.md"; tpl acme/tpl tpd)"
+printf '%s\nUploads stall on big files.\n\n### Description\n\nA 50 MB upload never finishes.\n\n### Reproduction\n\n1. Open /upload.\n2. Pick a 50 MB file.\n\n```\nPOST /upload -> pending\n```\n' "$B" > "$T/tpi.md"
+sed 's/^### Reproduction$/### How to reproduce/; /^### Description$/d' "$T/tpi.md" > "$T/rep.md"
+tpi() { python3 "$R/bin/post-lint" "$T/${2:-tpi}.md" --kind issue --repo "$1" --parent none 2>&1 | grep -c "${3:-open-issue}"; }
+check "a template repo's issue with its headings and steps under one passes; without a project file it needs How to reproduce" "0 1" "$(tpi acme/tpl) $(tpi acme/en)"
+check "Issue template: none, like no project file, passes How to reproduce and fails the template issue, asking for no line" "0 1 0 0" "$(tpi acme/none rep) $(tpi acme/none) $(tpi acme/none rep "no 'Issue template:' line") $(tpi acme/en rep "no 'Issue template:' line")"
+check "BLOCK: a project file without an Issue template: line asks for it, beside today's check" "1 0" "$(tpi acme/noline rep "no 'Issue template:' line") $(tpi acme/noline rep)"
+check "BLOCK: a template repo's issue that drops a template heading" 1 "$(sed 's/^### Description$/### Summary/' "$T/tpi.md" > "$T/tpd.md"; tpi acme/tpl tpd)"
+check "BLOCK: a template repo's issue with more than 3 steps under its heading, shown only in a still" 1 "$(sed 's/^2\. Pick a 50 MB file\.$/2. Pick a file.\n3. Press Upload.\n4. Wait.\n\n![](https:\/\/x\/s.png)/; /^```/,/^```/d' "$T/tpi.md" > "$T/tpd.md"; tpi acme/tpl tpd 'only in stills')"
 hdguard() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr create --draft --repo acme/hu --title \"$(cat /w/drafts/title.md)\" --body-file "+sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$TCO" \
     | MERGEWORTHY_WATCHER=off python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?; }
 printf '%s\n**Állapot: piszkozat** (a CI futtatója nem működik)\n\nA feltöltés elakad nagy fájloknál.\n' "$B" > "$T/hdg.md"; sha256sum "$T/hdg.md" | cut -d' ' -f1 > "$T/hdg.md.gate"
@@ -1512,6 +1532,12 @@ check "BLOCK: an implementation brief whose session read only an agent's report 
 python3 -c 'import json,sys; print(json.dumps({"type":"assistant","timestamp":sys.argv[1],"message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":sys.argv[2]}}]}}))' "$now" "D=$RD; cd \"\$D\" && sed -n 1,80p src/a.ts" > "$T/tr-var.jsonl"
 python3 -c 'import json,sys; print(json.dumps({"type":"assistant","timestamp":sys.argv[1],"message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":sys.argv[2]}}]}}))' "$now" "D=$RD; git -C \"\$D\" show HEAD:src/a.ts" > "$T/tr-gshow.jsonl"
 check "a read in a checkout named by a variable the command set (cd \"\$D\" && sed, git -C \"\$D\" show) passes too" "0 0" "$(agt "$B" "$T/tr-var.jsonl") $(agt "$B" "$T/tr-gshow.jsonl")"
+# the check reads the transcript's end, not all of it: a 2 GB prefix before a call older than 3 hours, under a 400 MB memory cap
+truncate -s 2G "$T/tr-big.jsonl"; printf '\n' >> "$T/tr-big.jsonl"
+python3 -c 'import json,sys; print(json.dumps({"type":"assistant","timestamp":sys.argv[1],"message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"ls"}}]}}))' "$(date -u -d '-4 hours' +%FT%T.000Z)" >> "$T/tr-big.jsonl"
+cat "$T/tr-read.jsonl" >> "$T/tr-big.jsonl"
+check "a session transcript with a 2 GB start passes on its recent read under a 400 MB memory cap" 0 "$(ulimit -v 409600; agt "$B" "$T/tr-big.jsonl")"
+rm "$T/tr-big.jsonl"
 # #87: a walk up from '' (a brief's `//`) or from '//' (a `cat //`) ends at the root instead of looping until the hook's timeout
 python3 -c 'import json,sys; [print(json.dumps({"type":"assistant","timestamp":sys.argv[1],"message":{"content":[{"type":"tool_use","name":n,"input":i}]}})) for n, i in (("Read",{"file_path":sys.argv[2]}),("Bash",{"command":"cat //"}))]' "$now" "$RD/src/a.ts" > "$T/tr-root.jsonl"
 check "a brief with a // TODO line, a session that ran cat //, and both (#87), launched outside a checkout, pass in time" "0 0 0" \
@@ -3375,15 +3401,32 @@ check "BLOCK: kill of an agent's claude process" 2 "$(kill_guard $APID)"
 check "kill of an ordinary process passes" 0 "$(kill_guard $OPID)"
 kill $(ps -o pid= --ppid $APID) $APID $OPID 2>/dev/null
 # ---------- pre-bash-guard: a compose stack takes no fixed host port or container name ----------
-printf '#!/bin/sh\ncase " $* " in *" config "*) f=$DC_FX; while [ $# -gt 0 ]; do case "$1" in -f) f=$2;; --file=*) f=${1#--file=};; esac; shift; done; [ -f "$f" ] && cat "$f";; esac\n' > "$T/bin/docker"; chmod +x "$T/bin/docker"
+printf '#!/bin/sh\ncase " $* " in *" config "*) f=$DC_FX; while [ $# -gt 0 ]; do case "$1" in -f) f=$2;; --file=*) f=${1#--file=};; esac; shift; done; [ -f "$f" ] && cat "$f";; *" ps "*) cat "$DC_PS"; case " $* " in *" -a "*) cat "$DC_PS.exited" 2>/dev/null || :;; esac;; *" stats "*) cat "$DC_STATS";; esac\n' > "$T/bin/docker"; chmod +x "$T/bin/docker"
 echo '{"services":{"db":{"ports":[{"target":5432,"published":"5432"}]}}}' > "$T/fixed.json"
 echo '{"services":{"web":{"container_name":"web","ports":[{"target":80}]}}}' > "$T/named.json"
 echo '{"services":{"web":{"ports":[{"target":80}]}}}' > "$T/assigned.json"
-dc_guard() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$T" | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?; }
+printf 'MemTotal: 41943040 kB\nMemAvailable: 31457280 kB\n' > "$T/mem-roomy"  # 40 GB, 30 available
+printf 'MemTotal: 41943040 kB\nMemAvailable: 6291456 kB\n' > "$T/mem-tight"  # 40 GB, 6 available: a 4 GB headroom
+dc_guard() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$T" | MERGEWORTHY_MEMINFO=${MI:-$T/mem-roomy} python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?; }
 check "BLOCK: compose up publishing a fixed host port" 2 "$(dc_guard "DC_FX=$T/fixed.json docker compose -p x up -d")"
 check "BLOCK: compose up with a container_name" 2 "$(dc_guard "DC_FX=$T/named.json docker compose -p x up -d")"
 check "compose up with Docker-assigned ports passes" 0 "$(dc_guard "DC_FX=$T/assigned.json docker compose -p x up -d")"
 check "compose up on the usual ports when the user asked passes" 0 "$(dc_guard "MERGEWORTHY_HOST_PORTS=user-asked DC_FX=$T/fixed.json docker compose -p x up -d")"
+echo '{"name":"b","services":{"web":{"ports":[{"target":80}]},"db":{},"init":{}}}' > "$T/mem.json"
+echo '{"name":"a","services":{"web":{"ports":[{"target":80}]},"db":{},"init":{}}}' > "$T/mem-a.json"
+printf 'a-web-1\ta\tweb\t/w/a/compose.yaml\na-db-1\ta\tdb\t/w/a/compose.yaml\nc-db-1\tc\tdb\t/w/c/compose.yaml\n' > "$T/ps-same"  # a: b's services, from another folder; c: only db
+printf 'a-init-1\ta\tinit\t/w/a/compose.yaml\n' > "$T/ps-same.exited"  # a one-shot service that ran and exited
+printf 'a-web-1\ta\tweb\t%s\na-db-1\ta\tdb\t%s\n' "$T/mem.json" "$T/mem.json" > "$T/ps-files"  # b's files, without its one-shot service
+printf 'c-db-1\tc\tdb\t/w/c/compose.yaml\n' > "$T/ps-other"
+printf 'a-web-1\t2GiB / 40GiB\na-db-1\t1024MiB / 40GiB\nc-db-1\t2.5GiB / 40GiB\n' > "$T/stats"
+MEM_UP="DC_STATS=$T/stats docker compose -f $T/mem.json -p b up -d"
+check "BLOCK: compose up when MemAvailable less a running project with its services, from another folder and with a one-shot service exited, is under the headroom, naming it" "2 1 1" "$(MI=$T/mem-tight dc_guard "DC_PS=$T/ps-same $MEM_UP") $(grep -c 'expected peak 3.0 GB.*headroom 4.0 GB' "$T/err") $(grep -c 'a 3.0 GB, c 2.5 GB' "$T/err")"
+check "BLOCK: compose up when MemAvailable less a running project from its files, started without one of its services, is under the headroom" "2 1" "$(MI=$T/mem-tight dc_guard "DC_PS=$T/ps-files $MEM_UP") $(grep -c 'expected peak 3.0 GB' "$T/err")"
+check "compose up passes on the same memory when the running projects have other services and other files" 0 "$(MI=$T/mem-tight dc_guard "DC_PS=$T/ps-other $MEM_UP")"
+check "compose up passes when the running project with its services is the one it starts" 0 "$(MI=$T/mem-tight dc_guard "DC_PS=$T/ps-same DC_STATS=$T/stats docker compose -f $T/mem-a.json -p a up -d")"
+check "compose up passes when docker stats fails" 0 "$(MI=$T/mem-tight dc_guard "DC_PS=$T/ps-same docker compose -f $T/mem.json -p b up -d")"
+check "compose up the machine can't hold passes when the user asked" 0 "$(MI=$T/mem-tight dc_guard "MERGEWORTHY_STACK_MEMORY=user-asked DC_PS=$T/ps-same $MEM_UP")"
+check "BLOCK: compose up the machine can't hold, on the usual ports the user asked for" "2 1" "$(MI=$T/mem-tight dc_guard "MERGEWORTHY_HOST_PORTS=user-asked DC_PS=$T/ps-same $MEM_UP") $(grep -c 'expected peak 3.0 GB' "$T/err")"
 check "BLOCK: compose up whose config fails (its ports can't be checked)" 2 "$(dc_guard "DC_FX=$T/missing.json docker compose -p x up -d")"
 cp "$T/assigned.json" "$HOME/assigned.json"
 check "compose up with a file under ~ passes" 0 "$(dc_guard 'docker compose -f ~/assigned.json -p x up -d')"
@@ -3772,6 +3815,9 @@ sreg() { : > "$T/started"; python3 -c 'import json,sys; print(json.dumps({"sessi
     | python3 "$R/hooks/post-bash-register.py" 2>/dev/null; echo "$?:$(cat "$SWD/live/threads.txt" 2>/dev/null || echo none):$(cat "$SWD/threads.txt" 2>/dev/null || echo none):$(cat "$T/started")"; rm -f "$SWD/live/threads.txt"; }
 mkdir -p "$SWD/wt" "$SWD/live"; a=$(sreg); echo "$FPID" > "$SWD/live/gh-watch.pid"; echo "$SWD/live" >> "$HOME/.claude/gh-watch-dirs.txt"
 check "a PR from a worktree in the steward's folder starts its live dir's watcher, or joins it while it runs, not the folder's" "2:vikejs/vike 9:none:sess-s $SWD/live vikejs/vike 9|0:vikejs/vike 9:none:" "$a|$(sreg)"
+check "BLOCK: that PR's create with its output filtered (no URL) joins no watcher, naming the live dir to register it in" "2:none:none:1" \
+  "$(python3 -c 'import json,sys; print(json.dumps({"session_id":"sess-s","cwd":sys.argv[1],"tool_input":{"command":sys.argv[2]},"tool_response":{"stdout":"  - Event subscriptions are in preview"}}))' "$SWD/wt" "$PRC 2>&1 | tail -1" \
+    | python3 "$R/hooks/post-bash-register.py" 2>"$T/err"; echo "$?:$(cat "$SWD/live/threads.txt" 2>/dev/null || echo none):$(cat "$SWD/threads.txt" 2>/dev/null || echo none):$(grep -c "run \`gh-watch-start $SWD/live vikejs/vike <N>\`" "$T/err")")"
 # the push that follows is checked against the same watcher: the live dir's covers it, the quiet folder's doesn't
 printf 'Tier: S, because one fix\n\n- [ ] Fix it https://github.com/vikejs/vike/issues/1\n' > "$SWD/scope.md"; : > "$SWD/repos.txt"
 git init -q -b fix-telefunc "$SWD/wt"; git -C "$SWD/wt" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; git -C "$SWD/wt" remote add upstream https://github.com/vikejs/vike.git; quick "$SWD/wt"; (cd "$SWD/wt" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
@@ -3804,8 +3850,8 @@ check "every signal naming the public host passes: GH_REPO github.com with GH_HO
   "$(GH_REPO=github.com/vikejs/vike GH_HOST=github.com bgs sess-b "$GHE" "$CK4") $(GITLAB_HOST=gitlab.com GL_HOST=https://gitlab.com bgs sess-b "$GIC" "$CK4")"
 check "the same creates on github.com and gitlab.com pass: gh api, with --hostname github.com, gh -R OWNER/REPO and github.com/OWNER/REPO, glab -R PATH and gitlab.com/PATH" "0 0 0 0 0 0" \
   "$(bgs sess-b "$GHE" "$CK4") $(bgs sess-b "gh api --hostname github.com repos/vikejs/vike/issues -f title=x -F body=@$T/h1.md" "$CK4") $(bgs sess-b "gh issue create -R vikejs/vike --title x --body-file $T/h1.md" "$CK4") $(bgs sess-b "gh issue create -R github.com/vikejs/vike --title x --body-file $T/h1.md" "$CK4") $(bgs sess-b 'glab issue create -R ns/proj --title x' "$CK4") $(bgs sess-b "$GIC" "$CK4")"
-check "a create alone, after cd /abs &&, with 2>&1 or with --title \"\$(cat <file>)\" passes and starts the folder's watcher; after exec > file it starts none" \
-  "0 0 0 0|2:sess-b $TK4 vikejs/vike 9|2:sess-b $TK4 vikejs/vike 9|2:sess-b $TK4 vikejs/vike 9|0:" \
+check "a create alone, after cd /abs &&, with 2>&1 or with --title \"\$(cat <file>)\" passes and starts the folder's watcher; after exec > file it starts none, saying to register it" \
+  "0 0 0 0|2:sess-b $TK4 vikejs/vike 9|2:sess-b $TK4 vikejs/vike 9|2:sess-b $TK4 vikejs/vike 9|2:" \
   "$(bgs sess-b "$MRC" "$CK4") $(bgs sess-b "cd $CK4 && $MRC" "$T") $(bgs sess-b "$MRC 2>&1" "$CK4") $(bgs sess-b "glab mr create --draft -R gitlab.com/ns/proj --title \"\$(cat $T/h1.md)\"" "$CK4")|$(areg "$PRC" https://github.com/vikejs/vike/pull/9)|$(areg "cd $CK4 && $PRC" https://github.com/vikejs/vike/pull/9)|$(areg "$PRC 2>&1" https://github.com/vikejs/vike/pull/9)|$(areg "exec > $T/create.log; $GIC" '')"
 check "a create whose repository names the host (-R github.com/OWNER/REPO, --repo with its URL, --repo=) starts the folder's watcher as -R OWNER/REPO does" \
   "2:sess-b $TK4 vikejs/vike 9|2:sess-b $TK4 vikejs/vike 9|2:sess-b $TK4 vikejs/vike 9|2:sess-b $TK4 vikejs/vike 9" \
@@ -4192,6 +4238,28 @@ check "BLOCK: the same with the failed job on the second page of the pipeline's 
 tr_cmd 'cd /tmp/x && git push origin HEAD:fix'
 check "a session that pushed, with no scope.md in a work folder it used, is told to write one (stop-lint reads its git commands)" "2 1" "$(slj 'Pushed the fix.') $(grep -c 'no work folder it used has a scope.md' "$T/err")"
 check "the parses a stop made are kept for the session's next stop, which blocks the same" "1 2" "$(ls "$HOME/.claude/mergeworthy-parses/s-fc.json" | wc -l) $(slj 'Pushed the fix.')"
+# a stop reads only what the transcript gained since the last stop, and blocks as a read of every line does: each pair is the stop
+# from the kept facts, then from none
+KF="$HOME/.claude/mergeworthy-folds"; F='GENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.'
+twice() { local a; a=$(slj "$@"); rm -rf "$KF"; echo "$a $(slj "$@")"; }
+say() { python3 -c 'import json,sys; sys.stdout.write(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":sys.argv[1]}]}}) + sys.argv[2])' "$1" "${2-$'\n'}" >> "$T/tr.jsonl"; }
+rm -rf "$KF"; forks "$F"; k1=$(slj); say '#21 is ready.'
+check "a fork sent before the kept facts' last stop is still sent once: blocks, as a read of every line" "0 1 2 2" "$k1 $(ls "$KF" | wc -l) $(twice "$F")"
+rm -rf "$KF"; forks '#20 is in review.'; slj >/dev/null; h=$(say "$F" ''; tail -c 40 "$T/tr.jsonl"); python3 -c 'import sys; p=sys.argv[1]; b=open(p,"rb").read(); open(p,"wb").write(b[:-40])' "$T/tr.jsonl"
+k1=$(slj); printf '%s\n' "$h" >> "$T/tr.jsonl"; say 'Done.'
+check "a last line written halfway at a stop is read whole at the next" "0 2 2" "$k1 $(twice "$F")"
+rm -rf "$KF"; forks "$F" 'a'; slj >/dev/null; forks 'b'
+check "a transcript rewritten shorter is read from its start" "0 0" "$(twice "$F")"
+rm -rf "$KF"; forks "$F" 'a'; slj >/dev/null; forks 'bb' 'c' 'some longer text than before'
+check "a transcript rewritten in place is read from its start" "0 0" "$(twice "$F")"
+rm -rf "$KF"; pad=$(printf 'x%.0s' $(seq 70000)); forks "${pad:0:5000}" "$F" "$pad"; slj >/dev/null; forks "${pad:0:5000}" "${F/GENUINE-FORK/genuine-fork}" "$pad" && mv "$T/tr.jsonl" "$T/tr2.jsonl"; cp "$T/tr2.jsonl" "$T/tr.jsonl"
+check "a transcript replaced by another file, with the same start and end, is read from its start" "0 0" "$(twice "$F")"
+rm -rf "$KF"; forks '#20 is in review.' 'a'; slj >/dev/null
+python3 -c 'import glob,json,sys; sys.path.insert(0, sys.argv[1]); import report; [p]=glob.glob(sys.argv[2] + "/*.json"); k=json.load(open(p)); k["facts"]["forks_before_last"]=dict.fromkeys(report.forks(sys.argv[3]), 1); json.dump(k, open(p, "w"))' "$R/hooks" "$KF" "$F"
+rm -rf "$T/hk2"; mkdir "$T/hk2"; cp -r "$R/hooks" "$T/hk2/hooks"; echo "# another version" >> "$T/hk2/hooks/transcript_facts.py"
+check "the kept facts are what the next stop reads; another version of the code reads every line again" "2 0" "$(slj "$F") $(R="$T/hk2" slj "$F")"
+keep() { rm -rf "$KF"; forks '#20 is in review.' 'a'; slj >/dev/null; for p in "$KF"/*.json; do printf '%s' "$1" > "$p"; done; slj "$F"; }
+check "a kept file left empty or cut short is read again from the start" "0 0" "$(keep '') $(keep '{"version": "')"
 mkdir -p "$HOME/.mergeworthy/work/tilde"; printf 'Tier: S, because one fix\n' > "$HOME/.mergeworthy/work/tilde/scope.md"
 tr_cmd 'cd ~/.mergeworthy/work/tilde && git push origin HEAD:fix'
 check "a session that pushed from a work folder it spelled with ~, which has a scope.md, isn't told to write one" "0 0" "$(slj 'Pushed the fix.') $(grep -c 'no work folder it used has a scope.md' "$T/err")"

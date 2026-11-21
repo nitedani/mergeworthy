@@ -481,9 +481,10 @@ def api_opens(ep, rest, env, d):
 
 def check_compose(env, t):
     """delegate/agent.md §Machine, own ports: a compose stack you start publishes no fixed host port and pins no container name;
-    netns-run doesn't isolate what the Docker daemon publishes. A config that can't be read blocks (the stack wouldn't start either)."""
+    netns-run doesn't isolate what the Docker daemon publishes. A config that can't be read blocks (the stack wouldn't start either).
+    Then an `up` starts only while the machine's memory holds it (check_stack_memory)."""
     n = 2 if os.path.basename(t[0]) == 'docker' else 1
-    if t[1:n] not in ([], ['compose']) or env.get('MERGEWORTHY_HOST_PORTS') == 'user-asked': return
+    if t[1:n] not in ([], ['compose']): return
     keep, paths = ('-f', '--file', '-p', '--project-name', '--profile', '--project-directory', '--env-file'), ('-f', '--file', '--project-directory', '--env-file')
     a, glob, files = t[n:], [], []
     while a and a[0].startswith('-'):
@@ -507,18 +508,58 @@ def check_compose(env, t):
         block(f"{f} is written by this same command, so its ports can't be checked yet: write it in one command, then start the stack in the next")
     try:
         r = subprocess.run(t[:n] + glob + ['config', '--format', 'json'], cwd=known(run_dir), env={**os.environ, **env}, capture_output=True, text=True, timeout=30)
-        svcs = json.loads(r.stdout)['services'] if r.returncode == 0 else {}
+        cfg = json.loads(r.stdout) if r.returncode == 0 else {'services': {}}
+        svcs = cfg['services']
     except (OSError, ValueError, KeyError, subprocess.TimeoutExpired) as e:
         block(f"`{' '.join(t[:n] + glob)} config` couldn't be read ({e}), so its ports can't be checked: fix the config, then start it")
     if r.returncode != 0:
         block(f"`{' '.join(t[:n] + glob)} config` failed ({r.stderr.strip()[:200]}), so its ports can't be checked: fix the config, then start it")
     bad = [f"{s} container_name {c['container_name']}" for s, c in svcs.items() if c.get('container_name')] + \
           [f"{s} host port {p['published']}" for s, c in svcs.items() for p in c.get('ports') or [] if p.get('published')]
-    if bad:
+    if bad and env.get('MERGEWORTHY_HOST_PORTS') != 'user-asked':
         block(f"this stack takes what another session's stack needs ({', '.join(bad)}), and netns-run doesn't isolate ports Docker publishes. "
               "Start it with a unique project name (-p or COMPOSE_PROJECT_NAME) and the override the project file's Running the app → Start names "
               "(`ports: !override [\"<container port>\"]` for Docker-assigned ports, found with `docker compose port <svc> <port>`; `ports: !reset []` where the host needs none; "
               "`container_name: !reset null`) (mergeworthy delegate/agent.md, Machine). Only when the user asked for the stack on its usual ports: prefix MERGEWORTHY_HOST_PORTS=user-asked")
+    if a[:1] == ['up'] and env.get('MERGEWORTHY_STACK_MEMORY') != 'user-asked':
+        pd = next((x.partition('=')[2] or glob[i + 1] for i, x in enumerate(glob) if x.split('=')[0] == '--project-directory'), None)
+        check_stack_memory(env, files or compose_defaults(pd or known(run_dir)), set(svcs), cfg.get('name'))
+
+def compose_defaults(d):
+    """The files compose reads without -f or COMPOSE_FILE: the first default name in d or its nearest parent holding one, with that dir's override."""
+    while True:
+        found = [[f for f in (f'{b}{o}.{e}' for b in ('compose', 'docker-compose') for e in ('yaml', 'yml')) if os.path.isfile(os.path.join(d, f))][:1]
+                 for o in ('', '.override')]
+        if found[0]: return {os.path.join(d, f) for f in found[0] + found[1]}
+        if d == (d := os.path.dirname(d)): return set()
+
+def check_stack_memory(env, files, svcs, name):
+    """delegate/agent.md §Machine, compute memory: MemAvailable less the stack's expected peak keeps 10% of MemTotal. The peak is the largest running
+    compose project of the same stack, other than this one (`name`): started from the same files, or with the same services (its exited one-shot ones
+    included) from any folder or worktree; swap is no condition, as it stays used after memory frees. A docker that fails or hangs counts no peak."""
+    try: mem = {k: int(v.split()[0]) * 1024 for k, v in (l.split(':', 1) for l in open(os.environ.get('MERGEWORTHY_MEMINFO') or '/proc/meminfo'))}
+    except (OSError, ValueError, IndexError): return
+    def docker(*a):
+        try: r = subprocess.run(['docker', *a], env={**os.environ, **env}, capture_output=True, text=True, timeout=10)
+        except (OSError, subprocess.TimeoutExpired): return []
+        return [l.split('\t') for l in r.stdout.splitlines()] if r.returncode == 0 else []
+    ps = [c for c in docker('ps', '-a', '--filter', 'label=com.docker.compose.project', '--format',
+                            '{{.Names}}\t{{.Label "com.docker.compose.project"}}\t{{.Label "com.docker.compose.service"}}\t{{.Label "com.docker.compose.project.config_files"}}') if len(c) == 4]
+    used = {c[0]: c[1] for c in docker('stats', '--no-stream', '--format', '{{.Name}}\t{{.MemUsage}}') if len(c) == 2} if ps else {}
+    size = lambda u: float(m[1]) * 1024 ** 'BKMGT'.index(m[2].upper() or 'B') if (m := re.match(r'([\d.]+)\s*([kKMGT]?)i?B', u)) else 0
+    projects, services, same = {}, {}, set()
+    for c, p, s, cf in ps:
+        projects[p] = projects.get(p, 0) + size(used.get(c, ''))
+        services.setdefault(p, set()).add(s)
+        if {os.path.normpath(f) for f in cf.split(',')} == files: same.add(p)
+    src = max((p for p in projects if p != name and (p in same or services[p] == svcs)), key=projects.get, default=None)
+    peak, room = projects.get(src, 0), mem['MemTotal'] / 10
+    if mem['MemAvailable'] - peak >= room: return
+    gb = lambda b: f'{b / 2 ** 30:.1f} GB'
+    block(f"the machine can't hold this stack: MemAvailable {gb(mem['MemAvailable'])} less its expected peak {gb(peak)}{f' (running {src}, the same stack)' if src else ''} "
+          f"leaves under the headroom {gb(room)} (10% of MemTotal). Running compose projects: {', '.join(f'{p} {gb(m)}' for p, m in sorted(projects.items(), key=lambda x: -x[1]) if m) or 'none'}. "
+          "Bring down a stack whose run ended (`docker compose -p <name> down`), yours first, or wait for one to end (mergeworthy delegate/agent.md, Machine). "
+          "Only when the user asked for this stack anyway: prefix MERGEWORTHY_STACK_MEMORY=user-asked")
 
 def check_steward(repo):
     """A declared steward owns the mergeworthy repo: other sessions report a problem to it instead of committing."""

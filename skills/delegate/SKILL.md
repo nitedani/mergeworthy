@@ -57,7 +57,7 @@ Every independent check (a post's review, each Loop A verifier, Loop B's review 
    Elsewhere, a Codex reviewer: `codex exec -c model_reasoning_effort=<effort> --sandbox danger-full-access --skip-git-repo-check -o <out> "$(cat <prompt file>)" < /dev/null`; a Claude reviewer: `claude -p --effort <effort> --permission-mode bypassPermissions < <prompt file> > <out>`.
 - **Else, a fresh agent of the main session's class,** with the same prompt and a task line `Fallback: <what failed>`, when the first fails (spent credits, rate limits, errors, timeouts, no reply). A report, even a partial one, is no failure: its next round runs on the same company's model, counting against §Review rounds.
 
-The prompt is a file with the template filled. Never write `CLEAN` yourself. Send fixes to the same reviewer (§Continue); a fresh one only when the artifact changed beyond them or needs a final cold read. Record which reviewer ran (Tier M: a `ledger.md` row); on Tier M or L work, after a round-1 fallback, round 2 runs on the other company's model once it's back.
+The prompt is a file with the template filled. Never write `CLEAN` yourself. Send fixes to the same reviewer (§Continue); a fresh one only when the artifact changed beyond them or needs a final cold read. Record which reviewer ran (Tier M: a `ledger.md` row); on Tier M or L work, after a round-1 fallback, round 2 runs on the other company's model once back.
 
 ### Review rounds
 

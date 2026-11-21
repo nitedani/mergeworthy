@@ -31,25 +31,33 @@ def result(content):
     return r if isinstance(r, dict) else None
 
 
-def observed(lines):
-    """(status, thread, seen, launched): each task's (status, title), in the order last heard of; the name of its thread; the tasks
-    heard of since the user's last message; whether the session launched or messaged one (a read with task_status alone doesn't)."""
-    titles, status, launched, seen, thread = {}, {}, False, set(), {}
-    for line in lines:
-        try: e = json.loads(line)
-        except ValueError: continue
-        c = (e.get('message') or {}).get('content') if isinstance(e, dict) else None
+class Observer:
+    """Fed each entry of a session's transcript in turn, result() is (status, thread, seen, launched): each task's (status, title),
+    in the order last heard of; the name of its thread; the tasks heard of since the user's last message; whether the session
+    launched or messaged one (a read with task_status alone doesn't). json() is what it has seen, as Observer(j) takes it back."""
+    def __init__(self, j=None):
+        j = j or {}
+        self.titles, self.status, self.thread = j.get('titles', {}), j.get('status', {}), j.get('thread', {})
+        self.seen, self.launched = set(j.get('seen', ())), j.get('launched', False)
+
+    def json(self):
+        return {'titles': self.titles, 'status': self.status, 'thread': self.thread, 'seen': sorted(self.seen), 'launched': self.launched}
+
+    def feed(self, e):
+        titles, status, thread = self.titles, self.status, self.thread
+        c = (e.get('message') or {}).get('content')
         if e.get('type') == 'user' and isinstance(c, str) and not c.startswith('<'):
             # T3's own completion notice isn't the user (typed): it marks its task terminal
             n = NOTICE.match(c)
             # a sub-agent whose turn ends while its own background work runs says so, and T3 continues it later: not finished
             waits = n and re.search(r"\b(?:still running|I'll (?:continue|wait|resume)|I will (?:continue|wait|resume)|I'm waiting|wakes? (?:me )?when)\b", c[n.end():n.end() + 400], re.I)
             if n: status[n.group(1)] = ('waiting' if waits else n.group(2) or 'completed', status.pop(n.group(1), ('', ''))[1])
-        if e.get('type') == 'user' and typed(c): seen = set()
+        if e.get('type') == 'user' and typed(c): self.seen = set()
         for b in c if isinstance(c, list) else []:
+            if not isinstance(b, dict): continue
             if b.get('type') == 'tool_use' and re.search(r'(delegate_task|task_status|thread_send)$', b.get('name', '')):
                 titles[b['id']] = (b.get('name', '').endswith('task_status'), str((b.get('input') or {}).get('title') or ''))
-                launched = launched or not titles[b['id']][0]
+                self.launched = self.launched or not titles[b['id']][0]
             elif b.get('type') == 'tool_result' and b.get('tool_use_id') in titles:
                 r = result(b.get('content')) or {}
                 if r.get('threadId') and not r.get('taskId'):  # a message sent to a task's thread runs it again
@@ -59,8 +67,10 @@ def observed(lines):
                     old = status.pop(r['taskId'], ('', ''))
                     status[r['taskId']] = (str(r.get('status') or ''), title or old[1])
                     thread[r['taskId']] = str(r.get('childThreadId') or r.get('threadId') or thread.get(r['taskId']) or r['taskId'])  # a follow-up message is a new task of its thread
-                    seen.add(r['taskId'])
-    def name_of(i):
-        m = re.search(r'%25253A([^%]+)%3Aordinal', i)  # a continuation's id holds its thread's, encoded twice
-        return (m[1] if m else thread.get(i, i).rsplit('%3A', 1)[-1]).lower()
-    return status, {i: name_of(i) for i in status}, seen, launched
+                    self.seen.add(r['taskId'])
+
+    def result(self):
+        def name_of(i):
+            m = re.search(r'%25253A([^%]+)%3Aordinal', i)  # a continuation's id holds its thread's, encoded twice
+            return (m[1] if m else self.thread.get(i, i).rsplit('%3A', 1)[-1]).lower()
+        return {i: tuple(s) for i, s in self.status.items()}, {i: name_of(i) for i in self.status}, self.seen, self.launched
