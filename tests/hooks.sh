@@ -4662,13 +4662,13 @@ for i in 1 2 3 4 5; do echo "# $i" >> "$SF/a.py"; rc "$SF" -am "c$i"; done; echo
 sed -i '3s/2/1/; 5s/1/2/' "$SF/a.py"; rc "$SF" -a --amend --no-edit; for i in 1 2 3 4 5; do echo "# $i" >> "$SF/a.py"; rc "$SF" -am "c$i"; done; echo '# 6' >> "$SF/a.py"; git -C "$SF" add a.py
 check "the 6th change after a cherry-pick of the reviewed commit to another branch passes: it carries no record; BLOCK: the 6th after the reviewed commit was amended to change another method, which keeps its review" "0 2" "$rp $(bg 'git commit -m c6' "$SF")"
 # git's diff order and the repo's own attributes change no record either: a review amended after setting them holds
-SO2="$T/simpo"; git init -q -b main "$SO2"; echo 0 > "$SO2/a.py"; echo 0 > "$SO2/b.py"; git -C "$SO2" add -A; rc "$SO2" -m base; git -C "$SO2" update-ref refs/remotes/origin/main HEAD; git -C "$SO2" checkout -q -b fix
+SO2="$T/simpo2"; git init -q -b main "$SO2"; echo 0 > "$SO2/a.py"; echo 0 > "$SO2/b.py"; git -C "$SO2" add -A; rc "$SO2" -m base; git -C "$SO2" update-ref refs/remotes/origin/main HEAD; git -C "$SO2" checkout -q -b fix
 echo 1 >> "$SO2/a.py"; echo 1 >> "$SO2/b.py"; rc "$SO2" -am reviewed; (cd "$SO2" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null)
 printf 'b.py\na.py\n' > "$T/order"; git -C "$SO2" config diff.orderFile "$T/order"; echo 'a.py -diff' > "$SO2/.git/info/attributes"; rc "$SO2" --amend -m 'reviewed, subject edited'
 for i in 1 2 3 4 5; do echo "o$i" >> "$SO2/a.py"; rc "$SO2" -am "o$i"; done; echo o6 >> "$SO2/a.py"; git -C "$SO2" add a.py
 check "BLOCK: the 6th change since a review amended after setting diff.orderFile and a.py -diff in .git/info/attributes" 2 "$(bg 'git commit -m o6' "$SO2")"
 # a message amend keeps a finality record on a merge commit and a review on an empty commit
-SG="$T/simpg"; git init -q -b main "$SG"; echo 0 > "$SG/a.py"; git -C "$SG" add -A; rc "$SG" -m base; git -C "$SG" update-ref refs/remotes/origin/main HEAD; git -C "$SG" checkout -q -b fix
+SG="$T/simpg2"; git init -q -b main "$SG"; echo 0 > "$SG/a.py"; git -C "$SG" add -A; rc "$SG" -m base; git -C "$SG" update-ref refs/remotes/origin/main HEAD; git -C "$SG" checkout -q -b fix
 echo 1 >> "$SG/a.py"; rc "$SG" -am reviewed; (cd "$SG" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null)
 for i in 1 2 3 4 5; do echo "g$i" >> "$SG/a.py"; rc "$SG" -am "g$i"; done; git -C "$SG" checkout -q main; echo 0 > "$SG/b.py"; git -C "$SG" add b.py; rc "$SG" -m main1; git -C "$SG" update-ref refs/remotes/origin/main HEAD
 git -C "$SG" checkout -q fix; git -C "$SG" -c user.name=t -c user.email=t@t merge -q --no-edit origin/main; (cd "$SG" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null); rc "$SG" --amend -m 'clarify the merge subject'
