@@ -928,10 +928,9 @@ class Where:
                 if x[2]: self.vars[x[2]] = words; self.changed(x[2])  # each pass gives it another of its words
             if x[1] == CONDITIONAL and x[2]: self._bind(x[2]); self._at_calls(x[2])
             if x[2] == STDIN: self.dir, self.spots = None, None
-            if x[2] in (STDIN, CHILD):
-                args = [Unknown('a word the command starting this shell may give it')] * CAP if x[3] is None else self._args(x[3])[1:]  # past its $0
-                self.vars = {k: Maybe(v) for k, v in self.vars.items()} | {'PWD': _dir(self.dir if self.spots == (self.dir,) else None)}  # a shell's PWD is where it starts
-                if x[2] == CHILD: self.vars |= {n: Many(f'${n}', args[i] if i < len(args) else ('',)) for i, n in enumerate(PARAMS)}
+            if x[2] == CHILD: args = [Unknown('a word the command starting this shell may give it')] * CAP if x[3] is None else self._args(x[3])[1:]  # past its $0
+            if x[2] in (STDIN, CHILD): self.vars = {k: Maybe(v) for k, v in self.vars.items()} | {'PWD': _dir(self.dir if self.spots == (self.dir,) else None)}  # a shell's PWD is where it starts
+            if x[2] == CHILD: self.vars |= {n: Many(f'${n}', args[i] if i < len(args) else ('',)) for i, n in enumerate(PARAMS)}
 
     def changed(self, var=None):
         """Record a cd (var None) or an assignment of var here in the scopes it changes what they leave behind, up to the innermost
