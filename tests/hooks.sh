@@ -1296,6 +1296,13 @@ CM="$HOME/.mergeworthy/work/capmem"; mkdir -p "$CM"; : > "$CM/memory.source"; pr
 check "a running memory refresh under ~/.mergeworthy/work leaves the session its 3 other agents" "0 0 0 0" "$(cap capM "Follow $CM/memory-brief-1.md exactly") $(cap capM 'Execute /tmp/x/capm1.md') $(cap capM 'Execute /tmp/x/capm2.md') $(cap capM 'Execute /tmp/x/capm3.md')"
 for k in capm1 capm2 capm3; do python3 "$R/bin/agent-job" done "/tmp/x/$k.md" >/dev/null; done
 python3 "$R/bin/agent-job" done "$(python3 -c 'import sys; print(sys.argv[1][:40])' "Follow $CM/memory-brief-1.md exactly")" >/dev/null; rm -r "$CM"
+PL="$T/pend-launcher.jsonl"; : > "$PL"
+pend() { # tool_use_id task: a PreToolUse-only Agent call of session capP, its call still running in the launcher's transcript
+  python3 -c 'import json,sys; print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","id":sys.argv[1],"name":"Agent","input":{}}]}}))' "$1" >> "$PL"
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"Agent","session_id":"capP","tool_use_id":sys.argv[1],"transcript_path":sys.argv[3],"tool_input":{"prompt":sys.argv[2],"description":sys.argv[1],"run_in_background":False}}))' "$1" "$2" "$PL" \
+    | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
+check "BLOCK: with one open job, three launches in one message whose calls haven't registered yet: the third, naming the two before it" "0 0 0 2 2" "$(cap capP 'Execute /tmp/x/capp0.md') $(pend capp-1 'Execute /tmp/x/capp1.md') $(pend capp-2 'Execute /tmp/x/capp2.md') $(pend capp-3 'Execute /tmp/x/capp3.md') $(grep -c '^/tmp/x/capp[12].md' "$T/err")"
+python3 "$R/bin/agent-job" done /tmp/x/capp0.md >/dev/null; rm -f $(grep -l pend-launcher "$HOME"/.claude/agent-jobs-launch/*)
 check "a fifth brief naming its fan-out step passes; one naming another step does not" "0 2" "$(cap capS $'Execute /tmp/x/cap8.md\nFan-out: converge §Running the agents') $(cap capS $'Execute /tmp/x/cap9.md\nFan-out: review step 2')"
 cap_impl() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"capS","tool_input":{"task":sys.argv[1],"title":"impl","role":"implementation"}}))' "$1$AFX" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; echo $?; }
 check "BLOCK: an implementation brief carrying the fan-out line still counts" 2 "$(cap_impl $'Execute /tmp/x/cap10.md\nFan-out: converge §Running the agents')"

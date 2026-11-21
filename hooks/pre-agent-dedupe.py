@@ -407,7 +407,7 @@ for n in os.listdir(agent_jobs.LAUNCHED) if os.path.isdir(agent_jobs.LAUNCHED) e
     except (OSError, ValueError): continue
     if isinstance(r, dict) and r.get('tool_use_id') and r.get('transcript') and not returned(r['transcript'], r['tool_use_id']):
         pending.append({'key': r.get('key', ''), 'brief': r.get('task', ''), 'started': r.get('launched', 0), 'launched': r.get('launched', 0),
-                        'role': r.get('role'), 'worktrees': r.get('worktrees', []), 'transcript': r['transcript']})
+                        'role': r.get('role'), 'worktrees': r.get('worktrees', []), 'transcript': r['transcript'], 'session': r.get('session')})
 # One writer per worktree: a writer (any role but review or research) waits for a linked worktree its brief names (not the launcher's
 # own) that holds another session's process, or that a live writer job or outstanding writer call names, whose agent isn't the launcher. T3 can show that
 # agent interrupted or cancelled while it runs, so agent_jobs.finished decides.
@@ -474,7 +474,8 @@ for j in [j for _, j in agent_jobs.jobs()] + pending if task.strip() else ():
             f"is done and you have read its result: `agent-job done {shlex.quote(j['key'][:200])}`.\n")
         refused()
 # At most 3 agents at a time per session (delegate step 1), or the number the user gave, quoted in the task's scope.md (the work folder
-# of the session's cwd, else the one the briefs it launches are in): a job is open until released or its agent finished; a memory refresh doesn't count
+# of the session's cwd, else the one the briefs it launches are in): a job is open until released or its agent finished, and a launch let through
+# counts until its call registers or returns, so launches in one message see each other; a memory refresh doesn't count
 # A fan-out a step names (finality steps 2-3, converge's per-slice verifiers) says so on a `Fan-out:` line, in the task or its brief, and passes
 fanout = ti.get('role') != 'implementation' and re.search(r'^Fan-out: (finality step [23]|converge §Running the agents)$', brief, re.M)
 def users_words(quote):
@@ -488,8 +489,10 @@ def users_words(quote):
     except OSError: pass
     return False
 if d.get('session_id') and 'memory-refresh' not in brief and not fanout:
-    live = [j for _, j in agent_jobs.jobs() if j.get('session') == d['session_id'] and '/memory-brief-' not in j.get('brief', '')
-            and 'memory-refresh' not in j.get('brief', '') and not agent_jobs.finished(j)]
+    # a call whose agent never started stops counting after LONG, as for the writer check
+    calls = [j for j in pending if j.get('session') == d['session_id'] and (time.time() - j['started'] < agent_jobs.LONG or agent_jobs.transcript(j))]
+    live = [j for j in [j for _, j in agent_jobs.jobs() if not agent_jobs.finished(j)] + calls if j.get('session') == d['session_id']
+            and '/memory-brief-' not in j.get('brief', '') and 'memory-refresh' not in j.get('brief', '')]
     folders = {f for t in L.files + L.refs if (f := task_of(t))}
     scope = os.path.join(task_of(d.get('cwd') or '/') or (folders.pop() if len(folders) == 1 else '<your work folder>'), 'scope.md')
     raised = re.search(r'^Agents: ([1-9]\d*) \(user \d{4}-\d{2}-\d{2}: "(.+)"\)$', open(scope, errors='replace').read() if os.path.isfile(scope) else '', re.M)
@@ -503,5 +506,5 @@ if d.get('session_id') and 'memory-refresh' not in brief and not fanout:
 admit()
 if not blocked:
     os.makedirs(agent_jobs.LAUNCHED, exist_ok=True); json.dump({'launched': time.time(), 'key': key, 'task': task, 'role': ti.get('role'), 'worktrees': L.worktrees, 'tool_use_id': d.get('tool_use_id'),
-                                                           'transcript': d.get('transcript_path')}, open(pre, 'w'))
+                                                           'transcript': d.get('transcript_path'), 'session': d.get('session_id')}, open(pre, 'w'))
 sys.exit(2 if blocked else 0)
