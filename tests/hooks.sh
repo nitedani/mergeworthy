@@ -4532,5 +4532,18 @@ echo 0 > "$SX/legacy-"$'\xff'".py"; git -C "$SX" add -A; rc "$SX" -m legacy; ech
 (cd "$SX" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null)
 echo x1 >> "$SX/a.py"; git -C "$SX" add a.py
 check "the first change after a review, on a branch that earlier added a file whose name isn't UTF-8, passes" 0 "$(bg 'git commit -m x1' "$SX")"
+# a record stays on its own commit while that commit is on the branch: a reapplied change after a revert is no second finality
+SY="$T/simpy"; git init -q -b main "$SY"; echo 0 > "$SY/a.py"; git -C "$SY" add -A; rc "$SY" -m base; git -C "$SY" update-ref refs/remotes/origin/main HEAD; git -C "$SY" checkout -q -b fix
+echo 'enabled = True' >> "$SY/a.py"; rc "$SY" -am enable; (cd "$SY" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null)
+git -C "$SY" -c user.name=t -c user.email=t@t revert --no-edit HEAD >/dev/null; rc "$SY" --amend --no-edit
+echo 'enabled = True' >> "$SY/a.py"; rc "$SY" -am reenable; for i in 1 2 3; do echo "y$i" >> "$SY/a.py"; rc "$SY" -am "y$i"; done; echo y4 >> "$SY/a.py"; git -C "$SY" add a.py
+check "BLOCK: the 6th change since a finality record, the change it holds reverted and reapplied in between" "2 1" "$(bg 'git commit -m y4' "$SY") $(grep -c 'a.py would get a 6th change' "$T/err")"
+# git's display settings and the checkout's attributes don't hide a record on its own commit
+SZ="$T/simpz"; git init -q -b main "$SZ"; echo 0 > "$SZ/a.py"; git -C "$SZ" add -A; rc "$SZ" -m base; git -C "$SZ" update-ref refs/remotes/origin/main HEAD; git -C "$SZ" checkout -q -b fix
+echo 'y = 1' >> "$SZ/a.py"; rc "$SZ" -am reviewed; (cd "$SZ" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null)
+git -C "$SZ" config diff.noprefix true; for i in 1 2 3 4 5; do echo "z$i" >> "$SZ/a.py"; rc "$SZ" -am "z$i"; done; echo z6 >> "$SZ/a.py"; git -C "$SZ" add a.py; rz=$(bg 'git commit -m z6' "$SZ")
+git -C "$SZ" config --unset diff.noprefix; git -C "$SZ" checkout -q a.py; git -C "$SZ" worktree add -q -b attr "$T/simpz-w" fix; echo 'a.py -diff' > "$T/simpz-w/.gitattributes"; git -C "$T/simpz-w" add .gitattributes; rc "$T/simpz-w" -m attributes
+(cd "$T/simpz-w" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null); echo z6 >> "$T/simpz-w/a.py"; git -C "$T/simpz-w" add a.py
+check "BLOCK: the 6th change since a review with diff.noprefix set, and in a worktree whose .gitattributes marks the file -diff" "2 2" "$rz $(bg 'git commit -m z6' "$T/simpz-w")"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]
