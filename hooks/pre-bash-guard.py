@@ -220,8 +220,8 @@ def check_badge_models(p):
     except OSError: return
     # claude-sonnet: an agent launched on the alias, any version; claude-haiku-4-5-20251001: a dated snapshot of claude-haiku-4-5
     if missing := sorted(m for f, m in named if not any(r in (f, m) or r.startswith(m + '-') for r in ran)):
-        block(f"{p}'s badge names {', '.join(missing)}, which this session never ran on or launched an agent on; it ran {', '.join(sorted(ran)) or 'no Claude model'}: "
-              "name the models that worked on this post (mergeworthy:writing, the badge), then post-lint and gate-pass it again")
+        block(f"{p}'s badge names {', '.join(missing)}, which this session didn't run on or launch an agent on in the last day; it ran {', '.join(sorted(ran)) or 'no Claude model'}: "
+              "name the models that worked on this post (mergeworthy:writing, the badge), then post-lint it, run its review again (mergeworthy:post step 3) and gate-pass it")
 
 def local_login():
     """The account gh is logged in as, from its own config (no network); '' when gh can't say."""
