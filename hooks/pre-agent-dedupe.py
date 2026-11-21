@@ -91,6 +91,15 @@ def brief_approach(strict=True):
         refused()
     return None
 implementer = ti.get('role') == 'implementation' or re.search(r'^\s*You implement\b', brief, re.M)
+def memory_briefs(text):
+    """The memory-prep briefs (memory-brief-<N>.md beside memory.source) a launch's own text follows, executes or does: the
+    session-memory order's launch. A brief that only cites one, as evidence or for context, is other work."""
+    return [f for f in sorted(launch.bound(text, 'follow|execute|do')) if re.fullmatch(r'memory-brief-\d*\.md', os.path.basename(f))
+            and os.path.isfile(os.path.join(os.path.dirname(f), 'memory.source'))]
+def memory_refresh(text):
+    """A memory-refresh launch, which the 3-agent cap leaves out: one following memory-prep's brief, or the memory-refresh template."""
+    return bool(memory_briefs(text)) or bool(re.search(r'\b(?:follow|execute|do)\s+(?:\S+\s+){0,4}?[`\'"]?\S*skills/delegate/memory-refresh\.md\b', text, re.I))
+refresh = memory_refresh(L.text)  # decided here, at admission, and stored on the pending call and the job
 # a fan-out runs several agents on one brief, each under its own title and naming its part in its task: the title is part of the job
 key = ' '.join([*L.tickets, str(ti.get('title') or ti.get('description') or '').strip()]).strip()
 job_file = os.path.join(agent_jobs.JOBS, hashlib.sha256(key.encode()).hexdigest()[:16])
@@ -115,15 +124,14 @@ if register:  # the launch ran: record it, and refuse nothing (the PRE call deci
     if implementer and (approach := brief_approach(strict=False)):
         os.makedirs(BUILT, exist_ok=True)
         open(os.path.join(BUILT, os.path.basename(approach[0])), 'w').write(approach[1])
-    for t in L.files:  # an agent now runs memory-prep's brief: stop-lint's hourly repeat of the refresh order waits an hour
-        if os.path.basename(t).startswith('memory-brief-') and os.path.isfile(os.path.join(os.path.dirname(t), 'memory.source')):
-            open(os.path.join(os.path.dirname(t), '.memory-order-repeated'), 'w').close()
+    for t in memory_briefs(L.text):  # an agent now runs memory-prep's brief: stop-lint's hourly repeat of the refresh order waits an hour
+        open(os.path.join(os.path.dirname(t), '.memory-order-repeated'), 'w').close()
     if key:  # nothing names the job (no ticket, title or description) otherwise, so no second launch of it can be told apart
         os.makedirs(agent_jobs.JOBS, exist_ok=True)
         lock = open(agent_jobs.JOBS + '.lock', 'a'); fcntl.flock(lock, fcntl.LOCK_EX)
-        try: launched = json.load(open(pre))['launched']; os.remove(pre)
+        try: rec = json.load(open(pre)); launched = rec['launched']; refresh = rec.get('refresh', refresh); os.remove(pre)
         except (OSError, ValueError, KeyError, TypeError): launched = time.time()
-        json.dump({'key': key, 'started': time.time(), 'launched': launched, 'brief': task, 'role': ti.get('role'), 'worktrees': L.worktrees,
+        json.dump({'key': key, 'started': time.time(), 'launched': launched, 'brief': task, 'role': ti.get('role'), 'worktrees': L.worktrees, 'refresh': refresh,
                    'session': d.get('session_id'), 'transcript': d.get('transcript_path'), 'handle': agent_jobs.handle(d.get('tool_response'))}, open(job_file, 'w'))
     sys.exit(0)
 # T3 starts a new Claude session for each turn, and Claude Code's background agents end with the session that launched them;
@@ -411,7 +419,8 @@ for n in os.listdir(agent_jobs.LAUNCHED) if os.path.isdir(agent_jobs.LAUNCHED) e
     except (OSError, ValueError): continue
     if isinstance(r, dict) and r.get('tool_use_id') and r.get('transcript') and not returned(r['transcript'], r['tool_use_id']):
         pending.append({'key': r.get('key', ''), 'brief': r.get('task', ''), 'started': r.get('launched', 0), 'launched': r.get('launched', 0),
-                        'role': r.get('role'), 'worktrees': r.get('worktrees', []), 'transcript': r['transcript'], 'session': r.get('session')})
+                        'role': r.get('role'), 'worktrees': r.get('worktrees', []), 'transcript': r['transcript'], 'session': r.get('session'),
+                        'refresh': r.get('refresh', memory_refresh(r.get('task', '')))})
 # One writer per worktree: a writer (any role but review or research) waits for a linked worktree its brief names (not the launcher's
 # own) that holds another session's process, or that a live writer job or outstanding writer call names, whose agent isn't the launcher. T3 can show that
 # agent interrupted or cancelled while it runs, so agent_jobs.finished decides.
@@ -492,11 +501,12 @@ def users_words(quote):
             if isinstance(o, dict) and memory_file.prompt(o) and any(quote in t for t in memory_file.texts(o)): return True
     except OSError: pass
     return False
-if d.get('session_id') and 'memory-refresh' not in brief and not fanout:
+if d.get('session_id') and not refresh and not fanout:
     # a call whose agent never started stops counting after LONG, as for the writer check
     calls = [j for j in pending if j.get('session') == d['session_id'] and (time.time() - j['started'] < agent_jobs.LONG or agent_jobs.transcript(j))]
-    live = [j for j in [j for _, j in agent_jobs.jobs() if not agent_jobs.finished(j)] + calls if j.get('session') == d['session_id']
-            and '/memory-brief-' not in j.get('brief', '') and 'memory-refresh' not in j.get('brief', '')]
+    # a job registered before jobs recorded `refresh` is classified from its task
+    live = [j for j in [j for _, j in agent_jobs.jobs() if j.get('session') == d['session_id'] and not agent_jobs.finished(j)] + calls
+            if not j.get('refresh', memory_refresh(j.get('brief', '')))]
     folders = {f for t in L.files + L.refs if (f := task_of(t))}
     scope = os.path.join(task_of(d.get('cwd') or '/') or (folders.pop() if len(folders) == 1 else '<your work folder>'), 'scope.md')
     raised = re.search(r'^Agents: ([1-9]\d*) \(user \d{4}-\d{2}-\d{2}: "(.+)"\)$', open(scope, errors='replace').read() if os.path.isfile(scope) else '', re.M)
@@ -510,5 +520,5 @@ if d.get('session_id') and 'memory-refresh' not in brief and not fanout:
 admit()
 if not blocked:
     os.makedirs(agent_jobs.LAUNCHED, exist_ok=True); json.dump({'launched': time.time(), 'key': key, 'task': task, 'role': ti.get('role'), 'worktrees': L.worktrees, 'tool_use_id': d.get('tool_use_id'),
-                                                           'transcript': d.get('transcript_path'), 'session': d.get('session_id')}, open(pre, 'w'))
+                                                           'transcript': d.get('transcript_path'), 'session': d.get('session_id'), 'refresh': refresh}, open(pre, 'w'))
 sys.exit(2 if blocked else 0)
