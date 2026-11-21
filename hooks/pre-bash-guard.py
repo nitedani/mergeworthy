@@ -199,8 +199,8 @@ def gated_file(p, has_cd, create=False):
     sha = hashlib.sha256(open(p, 'rb').read()).hexdigest()
     if sha != open(gate).read().split('\n')[0].strip():
         block(f"{p} changed after its gate: review it again and re-run gate-pass")
-    check_badge_models(p)
     if create:  # a new comment/issue/PR from this exact draft: only once (edits may repeat); post-bash-register writes .posted once it succeeded
+        check_badge_models(p)  # an edit keeps the post's credit
         posted = p + '.posted'
         if os.path.exists(posted) and open(posted).read().strip() == sha:
             block(f"{p} was already posted: edit that post instead (PATCH / gh … edit)")

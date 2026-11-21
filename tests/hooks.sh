@@ -391,10 +391,10 @@ check "BLOCK: a thread-context.md regenerated after the gate needs a new review"
 sha256sum "$TD/r.md" | cut -d' ' -f1 > "$TD/r.md.gate"; tcbind "$TD/r.md"
 check "the regenerated thread-context.md passes once gated again" 0 "$(tcguard)"
 # a badge names only Claude models the session ran or launched: its transcript says which
-bmguard() { # <badge model line> <transcript line>...: a post to #41 from $TD/r.md under that badge, the session's transcript holding those lines
+bmguard() { # <badge model line> <transcript line>...: a post to #41 ($BMCMD, else a new comment) from $TD/r.md under that badge, the session's transcript holding those lines
   printf '<img src="https://github.com/claude.png" width="20" height="20" alt="Claude"> *%s wrote this.*\n\nAgreed, option A it is.\n' "$1" > "$TD/r.md"; shift
   sha256sum "$TD/r.md" | cut -d' ' -f1 > "$TD/r.md.gate"; tcbind "$TD/r.md"; rm -f "$TD/r.md.posted"; printf '%s\n' "$@" > "$T/bm.jsonl"
-  python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh issue comment 41 --repo o/r --body-file "+sys.argv[2]},"cwd":sys.argv[1],"transcript_path":sys.argv[3]}))' "$T" "$TD/r.md" "$T/bm.jsonl" > "$T/in.json"
+  python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[4]+" "+sys.argv[2]},"cwd":sys.argv[1],"transcript_path":sys.argv[3]}))' "$T" "$TD/r.md" "$T/bm.jsonl" "${BMCMD:-gh issue comment 41 --repo o/r --body-file}" > "$T/in.json"
   python3 "$R/hooks/pre-bash-guard.py" < "$T/in.json" 2>"$T/err"; echo $?; }
 BM_RAN='{"type":"assistant","message":{"model":"claude-opus-5-5","content":[{"type":"text","text":"Drafted."}]}}'
 BM_DELEGATED='{"type":"assistant","message":{"model":"claude-opus-5-5","content":[{"type":"tool_use","id":"d1","name":"mcp__t3-code__delegate_task","input":{"task":"x","target":{"provider":"claudeAgent","model":"claude-sonnet-5-5"}}}]}}'
@@ -408,6 +408,7 @@ check "a delegate request whose target is a string, not an object, is skipped: t
 BM_SNAPSHOT='{"type":"assistant","message":{"model":"claude-haiku-4-5-20251001","content":[{"type":"text","text":"Drafted."}]}}'
 check "a badge naming the model whose dated snapshot the session ran passes" 0 "$(bmguard 'Claude Haiku 4.5 (high effort)' "$BM_SNAPSHOT")"
 check "BLOCK: a badge naming a model of any Claude family that never ran, Mythos too" "2 1" "$(bmguard 'Claude Mythos 5.2 (high effort)' "$BM_RAN") $(grep -c 'names claude-mythos-5-2, which' "$T/err")"
+check "an edit of a post from a draft whose badge names a model this session never ran passes: the edit keeps the post's credit" 0 "$(BMCMD='gh pr edit 41 --repo o/r --body-file' bmguard 'Claude Fable 5.2 (high effort)' "$BM_RAN")"
 BM_OLD='{"type":"assistant","timestamp":"2026-11-16T13:09:31Z","message":{"model":"claude-fable-5-2","content":[{"type":"text","text":"Done."}]}}'
 BM_NOW='{"type":"assistant","timestamp":"2026-11-21T10:00:00Z","message":{"model":"claude-opus-5-5","content":[{"type":"text","text":"Drafted."}]}}'
 check "BLOCK: a badge naming a model the session last ran over a day before its latest line" "2 1" "$(bmguard 'Claude Fable 5.2 (high effort)' "$BM_OLD" "$BM_NOW") $(grep -c 'names claude-fable-5-2, which.*it ran claude-opus-5-5:' "$T/err")"
