@@ -1333,11 +1333,26 @@ MD="$HOME/.mergeworthy/work/memdecided"; mkdir -p "$MD"; : > "$MD/memory.source"
 check "a memory brief memory-prep replaces while its launch runs still gets the marker its admission decided" "0 yes" \
   "$(cap_in capD "Follow $MD/memory-brief-1.md exactly." | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; rm "$MD/memory-brief-1.md"; cap_in capD "Follow $MD/memory-brief-1.md exactly." | python3 "$R/hooks/pre-agent-dedupe.py" register) $([ -e "$MD/.memory-order-repeated" ] && echo yes || echo no)"
 python3 "$R/bin/agent-job" done "$(python3 -c 'import sys; print(sys.argv[1][:40])' "Follow $MD/memory-brief-1.md exactly.")" >/dev/null; rm -r "$MD"
-PL="$T/pend-launcher.jsonl"; : > "$PL"
-pend() { # tool_use_id task: a PreToolUse-only Agent call of session capP, its call still running in the launcher's transcript
-  python3 -c 'import json,sys; print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","id":sys.argv[1],"name":"Agent","input":{}}]}}))' "$1" >> "$PL"
-  python3 -c 'import json,sys; print(json.dumps({"tool_name":"Agent","session_id":"capP","tool_use_id":sys.argv[1],"transcript_path":sys.argv[3],"tool_input":{"prompt":sys.argv[2],"description":sys.argv[1],"run_in_background":False}}))' "$1" "$2" "$PL" \
+fgcall() { # session tool_use_id launcher prompt [description]: a foreground Agent call, its tool_use in the launcher's transcript, through PreToolUse only
+  python3 -c 'import json,sys; print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","id":sys.argv[1],"name":"Agent","input":{}}]}}))' "$2" >> "$3"
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"Agent","session_id":sys.argv[1],"tool_use_id":sys.argv[2],"transcript_path":sys.argv[3],"tool_input":{"prompt":sys.argv[4],"description":sys.argv[5],"run_in_background":False}}))' "$1" "$2" "$3" "$4" "${5:-$2}" \
     | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
+result() { python3 -c 'import json,sys; print(json.dumps({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":sys.argv[1],"content":"blocked"}]}}))' "$1" >> "$2"; }  # tool_use_id launcher
+recs() { # word... [--age seconds...]: the pending records whose task holds each word, each aged by its seconds when given
+  python3 -c 'import json,os,sys,time
+a=sys.argv[1:]; words=a[:a.index("--age")] if "--age" in a else a; ages=a[len(words)+1:]
+d=os.path.expanduser("~/.claude/agent-jobs-launch"); out=[]
+for i, w in enumerate(words):
+    n=0
+    for f in os.listdir(d):
+        p=os.path.join(d,f); r=json.load(open(p))
+        if w in r.get("task",""):
+            n+=1
+            if ages: r["launched"]=time.time()-float(ages[i]); json.dump(r,open(p,"w"))
+    out.append(str(n))
+print(" ".join(out))' "$@"; }
+PL="$T/pend-launcher.jsonl"; : > "$PL"
+pend() { fgcall capP "$1" "$PL" "$2"; }  # tool_use_id task: a call of session capP still running in the launcher's transcript
 check "BLOCK: with one open job, three launches in one message whose calls haven't registered yet: the third, naming the two before it" "0 0 0 2 2" "$(cap capP 'Execute /tmp/x/capp0.md') $(pend capp-1 'Execute /tmp/x/capp1.md') $(pend capp-2 'Execute /tmp/x/capp2.md') $(pend capp-3 'Execute /tmp/x/capp3.md') $(grep -c '^/tmp/x/capp[12].md' "$T/err")"
 python3 "$R/bin/agent-job" done /tmp/x/capp0.md >/dev/null; rm -f $(grep -l pend-launcher "$HOME"/.claude/agent-jobs-launch/*)
 pend exp-1 'Execute /tmp/x/exp1.md' >/dev/null
@@ -1351,65 +1366,30 @@ check "a launch reads only its own session's pending calls and those sharing its
 rm -f $(grep -l pend-launcher "$HOME"/.claude/agent-jobs-launch/*); python3 "$R/bin/agent-job" done /tmp/x/expq.md >/dev/null
 # one job from two sessions: session A's call of the job is still outstanding when session B launches the same job
 SB="$T/shared-brief.md"; printf 'Trace the shared worker.\n' > "$SB"; : > "$T/sh-a.jsonl"; : > "$T/sh-b.jsonl"
-shl() { # session tool_use_id: a foreground Agent call of the shared job from that session's launcher
-  python3 -c 'import json,sys; print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","id":sys.argv[1],"name":"Agent","input":{}}]}}))' "$2" >> "$T/sh-$1.jsonl"
-  python3 -c 'import json,sys; print(json.dumps({"tool_name":"Agent","session_id":sys.argv[1],"tool_use_id":sys.argv[2],"transcript_path":sys.argv[3],"tool_input":{"prompt":"Follow "+sys.argv[4]+" exactly","description":"trace-shared-worker","run_in_background":False}}))' "sh$1" "$2" "$T/sh-$1.jsonl" "$SB" \
-    | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
+shl() { fgcall "sh$1" "$2" "$T/sh-$1.jsonl" "Follow $SB exactly" trace-shared-worker; }  # session tool_use_id: the shared job from that session
 check "BLOCK: one agent per job across sessions: another session's launch of a job whose call is still outstanding is refused, and the reservation stays the first call's" "0 2 1 1" \
   "$(shl a sh-1) $(shl b sh-2) $(grep -c 'already launched' "$T/err") $(grep -l '"sh-1"' "$HOME"/.claude/agent-jobs-launch/* | wc -l)"
 rm -f $(grep -l shared-brief "$HOME"/.claude/agent-jobs-launch/*)
 # the same work from two sessions under two titles: session A's call is still outstanding when session B launches it
-twl() { # session tool_use_id description: a foreground Agent call of the shared task from that session's launcher
-  python3 -c 'import json,sys; print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","id":sys.argv[1],"name":"Agent","input":{}}]}}))' "$2" >> "$T/sh-$1.jsonl"
-  python3 -c 'import json,sys; print(json.dumps({"tool_name":"Agent","session_id":sys.argv[1],"tool_use_id":sys.argv[2],"transcript_path":sys.argv[3],"tool_input":{"prompt":"Trace why the cache loses a cold write.","description":sys.argv[4],"run_in_background":False}}))' "sh$1" "$2" "$T/sh-$1.jsonl" "$3" \
-    | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
+twl() { fgcall "sh$1" "$2" "$T/sh-$1.jsonl" 'Trace why the cache loses a cold write.' "$3"; }  # session tool_use_id description: the shared task
 check "BLOCK: the same task from another session under another title while the first call is outstanding, as the same work" "0 2 1" \
   "$(twl a tw-x Trace) $(twl b tw-y Investigate) $(grep -c 'contains, or is contained in' "$T/err")"
 rm -f $(grep -l 'cache loses a cold write' "$HOME"/.claude/agent-jobs-launch/*)
 # a launch the cap doesn't apply to (a fan-out) reads none of its session's other calls, so it searches no transcript for them
 : > "$T/y3.jsonl"
-yc() { # tool_use_id prompt: a foreground Agent call from session y3, left outstanding
-  python3 -c 'import json,sys; print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","id":sys.argv[1],"name":"Agent","input":{}}]}}))' "$1" >> "$T/y3.jsonl"
-  python3 -c 'import json,sys; print(json.dumps({"tool_name":"Agent","session_id":"y3","tool_use_id":sys.argv[1],"transcript_path":sys.argv[2],"tool_input":{"prompt":sys.argv[3],"description":sys.argv[1],"run_in_background":False}}))' "$1" "$T/y3.jsonl" "$2" \
-    | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
-y3old() { python3 -c 'import json,os,sys,time
-d=os.path.expanduser("~/.claude/agent-jobs-launch"); n=0
-for f in os.listdir(d):
-    p=os.path.join(d,f); r=json.load(open(p))
-    if "y3-old" in r.get("task",""):
-        n+=1
-        if sys.argv[1:]: r["launched"]=time.time()-661; json.dump(r,open(p,"w"))
-print(n)' "$@"; }
+yc() { fgcall y3 "$1" "$T/y3.jsonl" "$2"; }  # tool_use_id prompt: a call of session y3, left outstanding
 check "an own call aged 11 minutes with no agent transcript is left unread by a fan-out launch and dropped by the next ordinary one (exit, its record left)" "0 0 1 0 0" \
-  "$(yc y-1 'Execute /tmp/x/y3-old.md'; y3old age >/dev/null) $(yc y-2 "$(printf 'Execute /tmp/x/y3-fan.md\nFan-out: converge §Running the agents')") $(y3old) $(yc y-3 'Execute /tmp/x/y3-ord.md') $(y3old)"
+  "$(yc y-1 'Execute /tmp/x/y3-old.md'; recs y3-old --age 661 >/dev/null) $(yc y-2 "$(printf 'Execute /tmp/x/y3-fan.md\nFan-out: converge §Running the agents')") $(recs y3-old) $(yc y-3 'Execute /tmp/x/y3-ord.md') $(recs y3-old)"
 rm -f $(grep -l 'y3-' "$HOME"/.claude/agent-jobs-launch/*)
 # a call that returned without registering (another hook blocked it) counts for nothing; a day on, the next launch it bears on drops its record
 : > "$T/r5.jsonl"
-rc5() { # tool_use_id prompt: a foreground Agent call of session r5 whose result is already in the launcher's transcript
-  python3 -c 'import json,sys; print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","id":sys.argv[1],"name":"Agent","input":{}}]}}))' "$1" >> "$T/r5.jsonl"
-  python3 -c 'import json,sys; print(json.dumps({"tool_name":"Agent","session_id":"r5","tool_use_id":sys.argv[1],"transcript_path":sys.argv[2],"tool_input":{"prompt":sys.argv[3],"description":sys.argv[1],"run_in_background":False}}))' "$1" "$T/r5.jsonl" "$2" \
-    | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; local rc=$?
-  python3 -c 'import json,sys; print(json.dumps({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":sys.argv[1],"content":"blocked"}]}}))' "$1" >> "$T/r5.jsonl"; echo $rc; }
-r5left() { python3 -c 'import json,os,sys,time
-d=os.path.expanduser("~/.claude/agent-jobs-launch"); out=[]
-for w, age in (("r5-day", 25*3600), ("r5-hour", 3600)):
-    n=0
-    for f in os.listdir(d):
-        p=os.path.join(d,f); r=json.load(open(p))
-        if w in r.get("task",""):
-            n+=1
-            if sys.argv[1:]: r["launched"]=time.time()-age; json.dump(r,open(p,"w"))
-    out.append(str(n))
-print(" ".join(out))' "$@"; }
+rc5() { fgcall r5 "$1" "$T/r5.jsonl" "$2"; result "$1" "$T/r5.jsonl"; }  # tool_use_id prompt: a call of session r5, its result already in the launcher's transcript
 check "a returned call's record goes once it is a day old, and one an hour old stays (exits, then the day's and the hour's records left)" "0 0 0 0 1" \
-  "$(rc5 r5-a 'Execute /tmp/x/r5-day.md') $(rc5 r5-b 'Execute /tmp/x/r5-hour.md'; r5left age >/dev/null) $(rc5 r5-c 'Execute /tmp/x/r5-next.md') $(r5left)"
+  "$(rc5 r5-a 'Execute /tmp/x/r5-day.md') $(rc5 r5-b 'Execute /tmp/x/r5-hour.md'; recs r5-day r5-hour --age 90000 3600 >/dev/null) $(rc5 r5-c 'Execute /tmp/x/r5-next.md') $(recs r5-day r5-hour)"
 rm -f $(grep -l 'r5-' "$HOME"/.claude/agent-jobs-launch/*)
 # a launcher lost after admission: three calls with no result in its transcript, whose agents (its subagents) finished 25 minutes ago
 LD2="$HOME/.claude/projects/-fin"; mkdir -p "$LD2/launcher/subagents"; FL="$LD2/launcher.jsonl"; : > "$FL"
-fin_pre() { # tool_use_id task: an admitted foreground Agent call of session capF2 whose launcher got no result
-  python3 -c 'import json,sys; print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","id":sys.argv[1],"name":"Agent","input":{}}]}}))' "$1" >> "$FL"
-  python3 -c 'import json,sys; print(json.dumps({"tool_name":"Agent","session_id":"capF2","tool_use_id":sys.argv[1],"transcript_path":sys.argv[3],"tool_input":{"prompt":sys.argv[2],"description":sys.argv[1],"run_in_background":False}}))' "$1" "$2" "$FL" \
-    | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
+fin_pre() { fgcall capF2 "$1" "$FL" "$2"; }  # tool_use_id task: an admitted call of session capF2 whose launcher got no result
 r="$(fin_pre fin-1 'Execute /tmp/x/fin1.md') $(fin_pre fin-2 'Execute /tmp/x/fin2.md') $(fin_pre fin-3 'Execute /tmp/x/fin3.md')"
 python3 - "$FL" <<'PY'
 import glob, json, os, sys, time
