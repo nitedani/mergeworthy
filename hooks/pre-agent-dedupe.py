@@ -109,14 +109,16 @@ def memory_launch(task):
             return p
     return None
 def is_refresh(r):
-    """A pending call's or job's memory-refresh decision, as its admission recorded it. A record main's hook wrote has none and
-    is classified from its task: one OPEN window (24 h) after the release that installs this, no such record is left."""
+    """A pending call's or job's memory-refresh decision, as its admission recorded it. A job main's hook registered has none
+    and is classified from its task; jobs() drops such a job one OPEN window (24 h) after the release that installs this, and
+    main's pending records name no session, so the cap never asks about them."""
     return r.get('refresh', bool(memory_launch(r.get('task') or r.get('brief') or '')))
 # a fan-out runs several agents on one brief, each under its own title and naming its part in its task: the title is part of the job
 key = ' '.join([*L.tickets, str(ti.get('title') or ti.get('description') or '').strip()]).strip()
 job_file = os.path.join(agent_jobs.JOBS, hashlib.sha256(key.encode()).hexdigest()[:16])
 # when the launch this registers began (its transcript starts after it): one record per key, as one_per_job lets one call of a key
-# pend at a time; the record of a call another hook blocked is overwritten by the key's next launch, or goes a day on (the pending loop)
+# pend at a time; the record of a call another hook blocked is overwritten by the key's next launch, or removed a day on by the
+# next launch that reads it (the pending loop)
 pre = os.path.join(agent_jobs.LAUNCHED, os.path.basename(job_file))
 task = str(ti.get('task') or ti.get('prompt') or '')
 def locked_update(path, change):
@@ -135,14 +137,14 @@ def register_launch():
     """The PostToolUse call: the launch ran, so it records what its admission decided (from its pending record, which becomes
     the job) and makes no admission check. A launch with no pending record (keyless, or one its admission didn't get to write)
     is read from its tool input now."""
-    rec, ran_refresh, ran_memory = {}, refresh, memory
+    rec, ran_memory = {}, memory
     if key:  # nothing names the job (no ticket, title or description) otherwise, so no second launch of it can be told apart
         os.makedirs(agent_jobs.JOBS, exist_ok=True)
         with open(agent_jobs.JOBS + '.lock', 'a') as jobs_lock:  # released before the files below take their own locks
             fcntl.flock(jobs_lock, fcntl.LOCK_EX)
-            try: rec = json.load(open(pre)); launched = rec['launched']; ran_refresh = is_refresh(rec); ran_memory = rec.get('memory', memory); os.remove(pre)
+            try: rec = json.load(open(pre)); launched = rec['launched']; ran_memory = rec.get('memory', memory); os.remove(pre)
             except (OSError, ValueError, KeyError, TypeError): rec, launched = {}, time.time()
-            json.dump({'key': key, 'started': time.time(), 'launched': launched, 'brief': task, 'role': ti.get('role'), 'worktrees': L.worktrees, 'refresh': ran_refresh,
+            json.dump({'key': key, 'started': time.time(), 'launched': launched, 'brief': task, 'role': ti.get('role'), 'worktrees': L.worktrees, 'refresh': bool(ran_memory),
                        'session': d.get('session_id'), 'transcript': d.get('transcript_path'), 'handle': agent_jobs.handle(d.get('tool_response'))}, open(job_file, 'w'))
     if cid: locked_update(CIDS, lambda seen: seen.setdefault(cid, time.time()))
     if review and not post_review:
@@ -189,10 +191,7 @@ if ti.get('role') == 'review' and under_t3():
 # T3 answers a delegate_task whose clientRequestId it has seen with that earlier task's result, without running anything.
 # Reuse is allowed only within 10 minutes (a retry of the same launch).
 if cid:
-    os.makedirs(os.path.dirname(CIDS), exist_ok=True)
-    with open(CIDS + '.lock', 'a') as held:  # read between the PostToolUse calls' writes (locked_update)
-        fcntl.flock(held, fcntl.LOCK_EX)
-        seen = json.load(open(CIDS)) if os.path.exists(CIDS) else {}
+    seen = json.load(open(CIDS)) if os.path.exists(CIDS) else {}
     if cid in seen and time.time() - seen[cid] > 600:
         sys.stderr.write(f"BLOCKED: clientRequestId '{cid}' was used before; T3 would return that earlier task's result instead of running this one. Use a new id (add the date or the head SHA).\n")
         refused()
