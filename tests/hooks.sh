@@ -4469,7 +4469,8 @@ check "BLOCK: a build/ file's 6th change, naming it alone" "2 1 0" "$(bg 'git co
 git -C "$SD" reset -q build; git -C "$SD" add src.ts
 check "BLOCK: the hand-written source's 6th change beside them, naming it alone" "2 1 0" "$(bg 'git commit -m b6' "$SD") $(grep -c 'src.ts would get a 6th change' "$T/err") $(grep -c 'claude-swap.mjs\|api.ts\|bundle.js' "$T/err")"
 # a record is also a note under refs/notes/drift, which git copies through an amend and a rebase and every worktree reads; a squash made by a reset and a commit has none
-SR="$T/simpr"; git init -q -b main "$SR"; rc() { git -C "$1" -c user.name=t -c user.email=t@t commit -q --trailer 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>' "${@:2}"; }
+# rc <repo> <commit args>: an agent commit; its Fixture trailer gives each fixture's commits their own SHAs, so no two share a record
+SR="$T/simpr"; git init -q -b main "$SR"; rc() { git -C "$1" -c user.name=t -c user.email=t@t commit -q --trailer 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>' --trailer "Fixture: ${1##*/}" "${@:2}"; }
 echo 0 > "$SR/a.py"; git -C "$SR" add -A; rc "$SR" -m base; git -C "$SR" update-ref refs/remotes/origin/main HEAD; git -C "$SR" checkout -q -b fix; echo 1 >> "$SR/a.py"; rc "$SR" -am reviewed
 git -C "$SR" config notes.rewriteRef refs/notes/commits; (cd "$SR" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null)
 for i in 1 2 3 4 5; do echo "r$i" >> "$SR/a.py"; rc "$SR" -am "r$i"; done
@@ -4533,6 +4534,15 @@ git -C "$SE" config gpg.format ssh; git -C "$SE" config user.signingkey "$T/sign
 echo s5 >> "$SE/a.py"; rc "$SE" -am reviewed; (cd "$SE" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null)
 for i in 1 2 3 4 5; do echo "e$i" >> "$SE/a.py"; rc "$SE" -S -am "e$i"; done; echo e6 >> "$SE/a.py"; git -C "$SE" add a.py
 check "BLOCK: the 6th change after five signed edits, with log.showSignature true" 2 "$(bg 'git commit -m e6' "$SE")"
+# a second clone of a reviewed commit, which git clone gives no notes, gets the review's note from the same pr-steps run there, refused as
+# recorded already: a rebase in that clone keeps the review
+SC="$T/simpc"; git init -q -b main "$SC"; echo 0 > "$SC/a.py"; git -C "$SC" add -A; rc "$SC" -m base; git -C "$SC" update-ref refs/remotes/origin/main HEAD; git -C "$SC" checkout -q -b fix
+echo c >> "$SC/a.py"; rc "$SC" -am reviewed; (cd "$SC" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null)
+SC2="$T/simpc2"; git clone -q -b fix "$SC" "$SC2"; (cd "$SC2" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
+rc2=$(cd "$SC2" && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null 2>&1; echo $?)
+git -C "$SC2" checkout -q -b up origin/main; echo 0 > "$SC2/b.py"; git -C "$SC2" add b.py; rc "$SC2" -m up; git -C "$SC2" update-ref refs/remotes/origin/main HEAD; git -C "$SC2" checkout -q fix; git -C "$SC2" rebase -q origin/main
+for i in 1 2 3 4 5; do echo "c$i" >> "$SC2/a.py"; rc "$SC2" -am "c$i"; done; echo c6 >> "$SC2/a.py"; git -C "$SC2" add a.py
+check "a review run again in a second clone of its commit is refused as recorded and notes it there; BLOCK: the 6th change after a rebase in that clone" "1 review 2" "$rc2 $(git -C "$SC2" notes --ref=drift show HEAD~5) $(bg 'git commit -m c6' "$SC2")"
 # a review whose report is named across two lines records like any other
 SN="$T/simpn"; git init -q -b main "$SN"; echo 0 > "$SN/a.py"; git -C "$SN" add -A; rc "$SN" -m base; git -C "$SN" update-ref refs/remotes/origin/main HEAD; git -C "$SN" checkout -q -b fix
 echo 1 >> "$SN/a.py"; rc "$SN" -am reviewed; cp "$T/rv.md" "$T/moved report"$'\n'"v1"

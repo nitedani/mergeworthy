@@ -123,18 +123,30 @@ pbase() {
   git merge-base HEAD "${pb:+origin/$pb}" 2>/dev/null || git merge-base HEAD "$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)" 2>/dev/null || true
 }
 # drift_note <step>: notes a review or finality step on $sha under the drift ref, its kind once (hooks/records.py DRIFT_REF, NOTE_KIND),
-# which the drift count anchors on (hooks/drift.py), before its record, which a failed note leaves unwritten; the repo's notes.rewriteRef
-# gets the drift ref beside any value it has, so an amend or a rebase copies the note
+# which the drift count anchors on (hooks/drift.py); the repo's notes.rewriteRef gets the drift ref beside any value it has, so an amend
+# or a rebase copies the note. A note it can't write exits, recording nothing
 drift_note() {
   local ref k; read -r ref k <<< "$(python3 "$(dirname "$(realpath "$0")")/../hooks/records.py" drift-note "$1")"; [ -n "$k" ] || return 0
+  local failed="the drift note of $out on $sha could not be written (git's error above), so nothing is recorded: fix that, then run the same pr-steps again"
   # the repo's own value: a global one is the recorder's alone, which another home amending this checkout doesn't have
-  { git config --local --get-all notes.rewriteRef | grep -qxF "$ref" || git config --local --add notes.rewriteRef "$ref"; } &&
-    # a note is a commit, which needs an identity: pr-steps' own, which no half-set or useConfigOnly identity can fail
-    { git notes --ref="$ref" show "$sha" 2>/dev/null | grep -qxF "$k" || git -c user.name=pr-steps -c user.email=pr-steps@localhost notes --ref="$ref" append -m "$k" "$sha"; } ||
-    { echo "the drift note of $out on $sha could not be written (git's error above), so nothing is recorded: fix that, then run the same pr-steps again" >&2; exit 1; }
+  if ! git config --local --get-all notes.rewriteRef | grep -qxF "$ref"; then git config --local --add notes.rewriteRef "$ref" || { echo "$failed" >&2; exit 1; }; fi
+  if git notes --ref="$ref" show "$sha" 2>/dev/null | grep -qxF "$k"; then return 0; fi
+  # a note is a commit, which needs an identity: pr-steps' own, which no half-set or useConfigOnly identity can fail
+  git -c user.name=pr-steps -c user.email=pr-steps@localhost notes --ref="$ref" append -m "$k" "$sha" || { echo "$failed" >&2; exit 1; }
 }
 # recorded_as <step>: whether $out is recorded on $sha as that step, the same report's earlier record
 recorded_as() { S="$1 $(realpath "$out") " awk 'index($0, ENVIRON["S"]) == 1 { f = 1 } END { exit !f }' ~/.claude/pr-steps/"$sha" 2>/dev/null; }
+# record <step> <line>...: records $out on $sha as a line per step named, after its drift note as <step>. An output recorded already is
+# refused; recorded as this same step (its first line), in another clone of this commit, it gets this clone's note first
+record() {
+  local step=$1; shift
+  if grep -qsF " $(realpath "$out") " ~/.claude/pr-steps/"$sha"; then
+    if recorded_as "$1"; then drift_note "$step"; fi
+    echo "$out is already recorded for $sha: each step has its own output" >&2; exit 1
+  fi
+  drift_note "$step"
+  for k in "$@"; do echo "$k $(realpath "$out") $(date -u +%FT%TZ)" >> ~/.claude/pr-steps/"$sha"; done
+}
 # build output, not code a reviewer reads: those of the paths on stdin, a line each, that testpaths.generated finds
 built() { python3 "$(dirname "$(realpath "$0")")/../hooks/testpaths.py" generated; }
 # numstat lines on stdin (core.quotePath=false: check-attr reads the path as it is) whose path (field 3) isn't build output
@@ -164,10 +176,7 @@ if [ "$step" = small ]; then
   # the verdict ends the report, before any trailing Verification or not_checked section (delegate/agent.md asks every agent for not_checked)
   verdict=$(awk '{ l = tolower($0) } l ~ /^#+[ \t]*(verification|not[ _]checked)([^a-z]|$)/ { tail = 1; next } /^#/ { tail = 0 } !tail' "$out" | grep -v '^[[:space:]]*$' | tail -n2 | tr '\n' '|')
   [ "$(grep -v '^[[:space:]]*$' "$out" | tail -n2 | tr '\n' '|')" = 'NO BUGS|MERGE AS IS: yes|' ] || [ "$verdict" = 'NO BUGS|MERGE AS IS: yes|' ] || ledger_ok || { echo "$out does not end with NO BUGS and MERGE AS IS: yes: fix what it found and send the same reviewer round 2 checking that fix; after round 2, record it with --ledger <the loop's ledger>" >&2; exit 1; }
-  # the same record, made in another clone of this commit, still notes it in this one
-  grep -qsF " $(realpath "$out") " ~/.claude/pr-steps/"$sha" && { ! recorded_as verify || drift_note small; echo "$out is already recorded for $sha" >&2; exit 1; }
-  drift_note small
-  for k in verify shape reverify fresh; do echo "$k $(realpath "$out") $(date -u +%FT%TZ)" >> ~/.claude/pr-steps/"$sha"; done
+  record small verify shape reverify fresh
   echo "recorded small fix ($n lines) for $sha: verify, shape, reverify, fresh; run the gates next"
   exit 0
 fi
@@ -354,8 +363,5 @@ EOF
 esac
 fi
 [ "$step" != union ] || { proof=$(realpath "$out"); record_union "$ua" "$ub"; exit 0; }
-grep -qsF " $(realpath "$out") " ~/.claude/pr-steps/"$sha" && { ! recorded_as "$step" || drift_note "$step"; echo "$out is already recorded for $sha: each step has its own output" >&2; exit 1; }
-drift_note "$step"
-mkdir -p ~/.claude/pr-steps
-echo "$step $(realpath "$out") $(date -u +%FT%TZ)" >> ~/.claude/pr-steps/$sha
+record "$step" "$step"
 echo "recorded $step for $sha"
