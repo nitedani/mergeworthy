@@ -117,32 +117,32 @@ job_file = os.path.join(agent_jobs.JOBS, hashlib.sha256(key.encode()).hexdigest(
 # pend at a time; the record of a call another hook blocked is overwritten by the key's next launch, or goes a day on (the pending loop)
 pre = os.path.join(agent_jobs.LAUNCHED, os.path.basename(job_file))
 task = str(ti.get('task') or ti.get('prompt') or '')
+def locked_update(path, change):
+    """Applies change to the JSON object in path (an empty one while it is missing) and writes it back, under path's lock:
+    concurrent launches update it one at a time."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path + '.lock', 'a') as held:
+        fcntl.flock(held, fcntl.LOCK_EX)
+        data = json.load(open(path)) if os.path.exists(path) else {}
+        change(data)
+        with open(path + '.tmp', 'w') as o: json.dump(data, o)
+        os.replace(path + '.tmp', path)
 memory = memory_launch(task)  # decided here, at admission, and stored on the pending call; `refresh` on the job too
 refresh = bool(memory)
 if register:  # the launch ran: record what its admission decided, from its pending record, with no admission check
     rec = {}
     if key:  # nothing names the job (no ticket, title or description) otherwise, so no second launch of it can be told apart
         os.makedirs(agent_jobs.JOBS, exist_ok=True)
-        lock = open(agent_jobs.JOBS + '.lock', 'a'); fcntl.flock(lock, fcntl.LOCK_EX)
-        try: rec = json.load(open(pre)); launched = rec['launched']; refresh = is_refresh(rec); memory = rec.get('memory', memory); os.remove(pre)
-        except (OSError, ValueError, KeyError, TypeError): rec, launched = {}, time.time()
-        json.dump({'key': key, 'started': time.time(), 'launched': launched, 'brief': task, 'role': ti.get('role'), 'worktrees': L.worktrees, 'refresh': refresh,
-                   'session': d.get('session_id'), 'transcript': d.get('transcript_path'), 'handle': agent_jobs.handle(d.get('tool_response'))}, open(job_file, 'w'))
-        lock.close()  # released before the files below take their own locks, as the PRE call takes them in the other order
+        with open(agent_jobs.JOBS + '.lock', 'a') as jobs_lock:  # released before the files below take their own locks
+            fcntl.flock(jobs_lock, fcntl.LOCK_EX)
+            try: rec = json.load(open(pre)); launched = rec['launched']; refresh = is_refresh(rec); memory = rec.get('memory', memory); os.remove(pre)
+            except (OSError, ValueError, KeyError, TypeError): rec, launched = {}, time.time()
+            json.dump({'key': key, 'started': time.time(), 'launched': launched, 'brief': task, 'role': ti.get('role'), 'worktrees': L.worktrees, 'refresh': refresh,
+                       'session': d.get('session_id'), 'transcript': d.get('transcript_path'), 'handle': agent_jobs.handle(d.get('tool_response'))}, open(job_file, 'w'))
     # a launch with no pending record (keyless, or one its admission didn't get to write) is read from its tool input now
-    if cid:
-        os.makedirs(os.path.dirname(CIDS), exist_ok=True)
-        lock = open(CIDS + '.lock', 'a'); fcntl.flock(lock, fcntl.LOCK_EX)  # concurrent launches read and write the ids file one at a time
-        seen = json.load(open(CIDS)) if os.path.exists(CIDS) else {}
-        seen.setdefault(cid, time.time())
-        with open(CIDS + '.tmp', 'w') as o: json.dump(seen, o)
-        os.replace(CIDS + '.tmp', CIDS)
+    if cid: locked_update(CIDS, lambda seen: seen.setdefault(cid, time.time()))
     if review and not post_review:
-        rlock = open(ROUNDS + '.lock', 'a'); fcntl.flock(rlock, fcntl.LOCK_EX)
-        rounds = json.load(open(ROUNDS)) if os.path.exists(ROUNDS) else {}
-        rounds.setdefault(rnd[1], []).append([int(rnd[2]), rec['heads'] if 'heads' in rec else round_heads()[1]])
-        with open(ROUNDS + '.tmp', 'w') as o: json.dump(rounds, o)
-        os.replace(ROUNDS + '.tmp', ROUNDS)
+        locked_update(ROUNDS, lambda rounds: rounds.setdefault(rnd[1], []).append([int(rnd[2]), rec['heads'] if 'heads' in rec else round_heads()[1]]))
     if implementer and (approach := rec['approach'] if 'approach' in rec else brief_approach(strict=False)):
         os.makedirs(BUILT, exist_ok=True)
         open(os.path.join(BUILT, os.path.basename(approach[0])), 'w').write(approach[1])
@@ -184,8 +184,9 @@ if ti.get('role') == 'review' and under_t3():
 # Reuse is allowed only within 10 minutes (a retry of the same launch).
 if cid:
     os.makedirs(os.path.dirname(CIDS), exist_ok=True)
-    lock = open(CIDS + '.lock', 'a'); fcntl.flock(lock, fcntl.LOCK_EX)  # concurrent launches read and write the ids file one at a time
-    seen = json.load(open(CIDS)) if os.path.exists(CIDS) else {}
+    with open(CIDS + '.lock', 'a') as held:  # read between the PostToolUse calls' writes (locked_update)
+        fcntl.flock(held, fcntl.LOCK_EX)
+        seen = json.load(open(CIDS)) if os.path.exists(CIDS) else {}
     if cid in seen and time.time() - seen[cid] > 600:
         sys.stderr.write(f"BLOCKED: clientRequestId '{cid}' was used before; T3 would return that earlier task's result instead of running this one. Use a new id (add the date or the head SHA).\n")
         refused()
@@ -415,7 +416,7 @@ if root and (ti.get('role') == 'research' or re.search(r'\bresearch', f"{ti.get(
             refused()
 os.makedirs(agent_jobs.JOBS, exist_ok=True)
 # one launch at a time checks the open jobs and leaves its record, so launches in one message see each other; held until exit
-lock = open(agent_jobs.JOBS + '.lock', 'a'); fcntl.flock(lock, fcntl.LOCK_EX)
+jobs_lock = open(agent_jobs.JOBS + '.lock', 'a'); fcntl.flock(jobs_lock, fcntl.LOCK_EX)
 def returned(path, use_id):
     """The launcher's transcript holds the call's tool_result: another hook blocked it, or it returned (then it registers)."""
     try:
