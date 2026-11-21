@@ -79,14 +79,16 @@ def reviewed(out, draft):
 
 def answers(out, draft, ledger_file=None):
     """Why the review in out doesn't let draft be posted, gate-pass's review rule ('' when it does).
-    The reviewer was handed draft's text (reviewed()); its verdict is exactly CLEAN, or ledger_file, written after it, closes the round (ledger.problems, a
-    post's rules); the launch postdates the latest human comment thread-context.md beside draft records. out None: a status post, which has no
-    review and is checked by draft's own time. Writes nothing."""
+    The reviewer was handed draft's text (reviewed()); its verdict is exactly CLEAN, or ledger_file (default: <name>.ledger.md beside draft,
+    if any), written after it, closes the round (ledger.problems, a post's rules); the launch postdates the latest human comment
+    thread-context.md beside draft records. out None: a status post, which has no review and is checked by draft's own time. Writes nothing."""
     why, at = reviewed(out, draft) if out else ('', int(os.path.getmtime(draft)))
     if why: return f'{draft}: {why}'
     try: verdict = [l.strip() for l in open(out, errors='replace').read().splitlines() if l.strip()] if out else ['CLEAN']
     except OSError: verdict = []  # its reviewer hasn't written yet
     if verdict != ['CLEAN']:
+        beside = os.path.splitext(draft)[0] + '.ledger.md'
+        ledger_file = ledger_file or (beside if os.path.isfile(beside) else None)
         found = ledger.problems(ledger_file, post=True) if ledger_file else []
         if ledger_file and not found and os.path.exists(out) and os.path.getmtime(ledger_file) < os.path.getmtime(out):
             found = [f'{ledger_file} was last written before the verdict in {out}: add its findings, then pass it']

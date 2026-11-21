@@ -1,6 +1,6 @@
 #!/bin/bash
 # gate-pass <draft.md> <review-output-file> [--ledger <path>] [post-lint flags]: records that <draft.md> passed the posting gate.
-# Requires post-lint to pass, a current thread-context.md next to a reply/inline/proposal draft, and the review's final message to be exactly CLEAN (the reviewer writes only its verdict to that file), or `--ledger <path>` closing its round 2 (hooks/ledger.py).
+# Requires post-lint to pass, a current thread-context.md next to a reply/inline/proposal draft, and the review's final message to be exactly CLEAN (the reviewer writes only its verdict to that file), or `--ledger <path>` (default: <name>.ledger.md beside the draft) closing its round 2 (hooks/ledger.py).
 # Writes <draft.md>.gate with the draft's sha256; the posting hook checks it, so any later edit needs a new review.
 # A status post (post-lint --kind status, post step 3) has no review: its review output is `none`, and it needs its PROMISED line.
 set -e
