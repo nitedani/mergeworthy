@@ -533,11 +533,11 @@ UNKNOWN, CAPPED = Unknown("a value it can't read"), Unknown(f'more than {CAP} va
 
 
 class Many(Maybe):
-    """A variable's value that Where.values alone reads: the values it may hold here (vals), or Unknown. As a str it is the text as written, so
-    each other reader of a Maybe sees what it saw."""
-    def __new__(cls, text, vals):
+    """A variable's value that Where.values alone reads: the values it may hold here (vals), or Unknown; ok: (the statement that set it, the
+    values it holds once that statement exited 0), or None. As a str it is the text as written, so each other reader of a Maybe sees what it saw."""
+    def __new__(cls, text, vals, ok=None):
         m = super().__new__(cls, text)
-        m.vals = vals
+        m.vals, m.ok = vals, ok
         return m
 
 
@@ -562,6 +562,7 @@ class Where:
     def __init__(self, cwd):
         self.funcs, self.func_vars, self.func_moves = set(), set(), False  # the functions the line defines, the variables their bodies set, whether one changes dir
         self.dry, self.depth = False, 0  # depth: the `source`s the walk is in
+        self.after, self.passed = (), False  # the current command's Seg.after; whether the values read are of a command that exited 0
         self.wrote = set()  # the files the commands walked so far write (written_files), None for one it can't place
         self.args, self.called = {}, {}  # each function's calls, each (its spots, the values of its parameters: _args, the names it sets for the body): from the dry walk before this one, and seen by this walk
         self.main_dir, self.main_vars = cwd, {'PWD': cwd}
@@ -730,7 +731,7 @@ class Where:
             return UNKNOWN if ops or opts not in ([], ['-L'], ['-P']) else self._resolved(('.',)) if opts == ['-P'] else self.spots or UNKNOWN
         vals = self._mktemp(opts, ops) if name == 'mktemp' else UNKNOWN if len(ops) != 1 or not (
             set(opts) <= {'-e', '-m', '-q'} if name == 'realpath' else opts in (['-f'], ['-e'], ['-m'])) else self._resolved(ops[0])
-        return vals if isinstance(vals, Unknown) else (*vals, '')
+        return vals if isinstance(vals, Unknown) or self.passed else (*vals, '')
 
     def _argv(self, a, takes=()):
         """A command's words a as (its options, each operand's values), options ending at --; an option in takes is (it, the values of its
@@ -798,6 +799,7 @@ class Where:
         if isinstance(v, Unseen) or self.any and n not in self.vars:
             return Unknown(f"`${n}` holds a value set where it can't follow" + (f" (a source, ., trap or eval may set any variable): set `${n}` after it, or write its value out" if self.any else ''))
         if v is None: return Unknown(f"`${n}` isn't set on this line")
+        if isinstance(v, Many) and v.ok and any(x is v.ok[0] for x in self.after): return v.ok[1]
         if isinstance(v, Many): return Unknown(f'`${n}` holds {v.vals}') if isinstance(v.vals, Unknown) else v.vals
         if isinstance(v, Maybe): return Unknown(f'`${n}` may hold another value here: a branch, loop or function sets it, or a child shell reads it')
         return (v,)
@@ -834,6 +836,7 @@ class Where:
     def _walk(self, segs):
         self.segs = segs
         for self.at, t in enumerate(segs):
+            self.after = t.after
             self.enter(t.scopes)
             yield t
             for x in written_files(prog(t)):
@@ -994,7 +997,10 @@ class Where:
                 v, vals = x[len(n) + 1:], self.values(x)
                 text, main = self.expand(v, True), self.expand(v)
                 vals = vals if isinstance(vals, Unknown) else tuple(y[len(n) + 1:] for y in vals)
-                self.vars[n] = text if vals == (text,) else Many(text, vals)
+                self.passed = words is t and len(t) == 1  # D=$(x) exits as x does: what runs only after it exited 0 reads x's output
+                ok = self.passed and self.values(v)
+                self.passed = False
+                self.vars[n] = text if vals == (text,) else Many(text, vals, ok and not isinstance(ok, Unknown) and ok != vals and (t.stmt, ok) or None)
                 self.main_vars[n] = main if None not in [self._read(p, False) for p in v.parts] else Maybe(main)
                 self.changed(n)
             if self.in_body(): self.func_vars.update(x.split('=', 1)[0] for x in words)
