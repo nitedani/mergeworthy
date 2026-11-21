@@ -75,17 +75,19 @@ def brief_approach(strict=True):
                              "a line `Approach: <abs path of approach.md>`, recorded first by `pr-steps approach` in the PR branch's checkout the brief names\n")
             refused()
         return None
-    named, recs = os.path.realpath(os.path.expanduser(m[1])), set()
+    named, recs, newest = os.path.realpath(os.path.expanduser(m[1])), {}, []
     for p in (p for p in paths if not p.startswith('//')):  # the //host/… of a URL, not a path
-        if (top := git_top(p)) and (r := branch_record(top, 'approach')) and os.path.isfile(r): recs.add(r)
-    for r in sorted(recs):
+        if (top := git_top(p)) and (r := branch_record(top, 'approach')) and os.path.isfile(r): recs[r] = top
+    for r, top in sorted(recs.items()):
         rows = [l.split() for l in open(r) if len(l.split()) >= 3]
         if rows and os.path.realpath(rows[-1][1]) == named:
             why = re.search(r'\(unchanged:\s*([^)]*\S)\s*\)', m[2])
             return r, rows[-1][2], why[1] if why else ''
+        if rows: newest.append(f"{top}: {rows[-1][1]}")
     if strict:
-        sys.stderr.write(f"BLOCKED: {m[1]} is not the newest `pr-steps approach` record of a checkout this brief names: record it in the PR branch's "
-                         "checkout (mergeworthy:pull-request step 5) and name that checkout in the brief\n")
+        sys.stderr.write(f"BLOCKED: {m[1]} is not the newest `pr-steps approach` record of a checkout this brief names "
+                         + (f"(newest: {'; '.join(newest)})" if newest else "(no checkout this brief names has a record)")
+                         + ": name the newest one, or record this one in the PR branch's checkout (mergeworthy:pull-request step 5) and name that checkout in the brief\n")
         refused()
     return None
 implementer = ti.get('role') == 'implementation' or re.search(r'^\s*You implement\b', brief, re.M)
