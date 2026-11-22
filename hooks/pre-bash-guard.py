@@ -764,15 +764,18 @@ def pushed(git_dir, opts, env, rest):
     push_urls.extend(urls)
     if all(repo_of(u) is None for u in urls):
         return urls, []  # a local path publishes nothing a reviewer or CI sees
-    out = []
-    for spec in pos[1:] or ([] if '--tags' in rest else ['HEAD']):
+    out, configured = [], [] if pos[1:] or '--tags' in rest else git('config', '--get-all', f'remote.{remote}.push').split()
+    if any('*' in x or x.lstrip('+') == ':' for x in configured) or not (pos[1:] or configured or '--tags' in rest) and git('config', 'push.default') == 'matching':
+        block(f"which branches this push updates comes from git's config (a pattern in remote.{remote}.push, or push.default=matching), so it can't be told: "
+              "name the branch (`git push <remote> HEAD:<branch>`)")
+    for spec in pos[1:] or configured or ([] if '--tags' in rest else ['HEAD']):
         src, _, dst = spec.lstrip('+').partition(':')
         if not src or src.startswith('refs/tags/') or run('show-ref', '--verify', '-q', f'refs/tags/{src}').returncode == 0:
             continue  # a delete (:dst), or a tag
         sha = git('rev-parse', '--verify', '-q', f'{src}^{{commit}}')
         if not sha and not re.search(r'[$`]', src):  # a commit computed when it runs is checked only if the push is collaboration
             block(f"`{src}` in this push names no commit here, so what it publishes can't be checked: push a branch or commit of this checkout")
-        branch = dst or (to[1] if not pos[1:] else head if src == 'HEAD' else src)
+        branch = dst or (to[1] if not pos[1:] and not configured else head if src == 'HEAD' else src)
         if re.search(r'[$`]', branch):
             block(f"the branch this push updates ({branch}) is computed when it runs, so whether it is a PR's can't be told: write it out")
         local = re.sub(r'^refs/heads/', '', src)
