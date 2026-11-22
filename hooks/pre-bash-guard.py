@@ -160,10 +160,10 @@ def push_before_gates(url):
 
 # What runs only on the owner's ask: the words of a sentence that asks for it, the project file's `## Merging` order that stands in for one,
 # and the reply that asks for it
-ASKED_FOR = {'merge': (r'merge(?!d\b)\w*', r'Merge each PR as soon as it is ready\b', 'merge'),
-             'push': (r'push(?!\w*\s+(?:for|back)\b)\w*|releas(?!ed\b)\w*|publish(?!ed\b)\w*', r'Push to {branch}(?!\S)', 'push'),  # a release asked for pushes its version commit
-             'release': (r'releas(?!ed\b)\w*|publish(?!ed\b)\w*', None, 'release'),
-             'ask-first': (r'update(?!d\b)\w*|restart\w*|frissít\w*', None, 'update')}
+ASKED_FOR = {'merge': (r'merge\w*', r'Merge each PR as soon as it is ready\b', 'merge'),
+             'push': (r'push(?!\w*\s+(?:for|back)\b)\w*|releas\w*|publish\w*', r'Push to {branch}(?!\S)', 'push'),  # a release asked for pushes its version commit
+             'release': (r'releas\w*|publish\w*', None, 'release'),
+             'ask-first': (r'update\w*|restart\w*|frissít\w*', None, 'update')}
 NEGATED = re.compile(r"\b(?:don'?t|\w+n['’]t|do not|never|not|no|who|why|ne|nem|majd|várj|varj|wait|later|after|once|when|until|if|ha|miután)\b", re.I)
 # an ask opens a clause, after a list bullet, a please, a "let's" or a "can you" at most; "merge conflicts", "release notes" and "update plan"
 # name a thing, not the action
@@ -177,9 +177,9 @@ PR_REF = re.compile(r'(?:github\.com/([\w.-]+/[\w.-]+)/pull/|gitlab\.com/([\w./-
 def asks(text, kind, repo=None, num=None, branch=None):
     """Whether text (a message the user typed) asks for kind on its target, read by the clauses (split at commas, semicolons and an "and"
     before a word) of each sentence holding kind's words, once URLs, `(Re-invocation of` lines and the word mergeworthy are taken out: False
-    when a clause negates them or puts them off, naming the target or none; True when a clause opens with them, the sentence is no question,
-    and the clause names the target: PR num of repo when it (else the text) names PRs, the branch pushed when it names a branch (`to
-    <branch>`, `<branch> branch`); else None."""
+    when a clause negates them or puts them off, naming the target or none; True when a clause opens with them in no past form (-ed), the
+    sentence is no question, and the clause names the target: PR num of repo when it (else the text) names PRs, the branch pushed when it
+    names a branch (`to <branch>`, `<branch> branch`); else None."""
     refs = lambda t: [((m[1] or m[2] or m[3] or '').lower(), m[4]) for m in PR_REF.finditer(t)]
     bare = lambda t: re.sub(r'https?://\S+|\bmergeworthy\w*|^\s*\(Re-invocation of .*', ' ', t, flags=re.I)
     words = rf'\b(?:{ASKED_FOR[kind][0]})\b{MENTION}'
@@ -194,7 +194,7 @@ def asks(text, kind, repo=None, num=None, branch=None):
         held = [c for c in clauses if NEGATED.search(bare(c))]
         if any(not named(c) or hits(named(c)) for c in held): return False
         found = found or not s.rstrip().endswith('?') and any(
-            c not in held and re.match(LEAD + words, bare(c).strip(), re.I) and (not (t := named(c) or (refs(text) if kind == 'merge' else [])) or hits(t)) for c in clauses) or None
+            c not in held and re.match(LEAD + r'(?!\w*ed\b)' + words, bare(c).strip(), re.I) and (not (t := named(c) or (refs(text) if kind == 'merge' else [])) or hits(t)) for c in clauses) or None
     return found
 
 def last_typed():
