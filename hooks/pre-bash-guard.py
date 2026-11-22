@@ -174,23 +174,26 @@ except OSError: ASK_FIRST = []  # the machine's commands that restart what other
 PR_REF = re.compile(r'(?:github\.com/([\w.-]+/[\w.-]+)/pull/|gitlab\.com/([\w./-]+?)/-/merge_requests/|\b([\w.-]+/[\w./-]*[\w-])[#!]|[#!])(\d+)\b')  # a PR, an MR (!N)
 
 def asks(text, kind, repo=None, num=None, branch=None):
-    """Whether text (a message the user typed) asks for kind on its target, once URLs, `(Re-invocation of` lines and the word mergeworthy are
-    taken out: False when a sentence holding kind's words negates them or puts them off; True when a clause of one (split at commas,
-    semicolons and an "and" before a word) opens with them, the sentence is no question, and the clause names the target: PR num of repo
-    when it (else the text) names PRs, the branch pushed when it names a branch (`to <branch>`, `<branch> branch`); else None."""
+    """Whether text (a message the user typed) asks for kind on its target, read by the clauses (split at commas, semicolons and an "and"
+    before a word) of each sentence holding kind's words, once URLs, `(Re-invocation of` lines and the word mergeworthy are taken out: False
+    when a clause negates them or puts them off, naming the target or none; True when a clause opens with them, the sentence is no question,
+    and the clause names the target: PR num of repo when it (else the text) names PRs, the branch pushed when it names a branch (`to
+    <branch>`, `<branch> branch`); else None."""
     refs = lambda t: [((m[1] or m[2] or m[3] or '').lower(), m[4]) for m in PR_REF.finditer(t)]
     bare = lambda t: re.sub(r'https?://\S+|\bmergeworthy\w*|^\s*\(Re-invocation of .*', ' ', t, flags=re.I)
     words = rf'\b(?:{ASKED_FOR[kind][0]})\b{MENTION}'
-    def aims(c):
-        if kind == 'merge': return not refs(text) or any(r in ('', (repo or '').lower()) and n == str(num) for r, n in refs(c) or refs(text))
-        named = {x.lower() for x in re.findall(r'\bto\s+(?:the\s+)?(?:branch\s+)?([\w./-]+)|([\w./-]+)\s+branch\b', c, re.I) for x in x if x} - {'the', 'a', 'this', 'that'}
-        return kind != 'push' or not named or (branch or '').lower() in named
+    def named(c):  # the targets clause c names: a merge's PRs as (repo, number), a push's branches
+        if kind == 'merge': return refs(c)
+        return {x.lower() for x in re.findall(r'\bto\s+(?:the\s+)?(?:branch\s+)?([\w./-]*[\w-])|([\w./-]*[\w-])\s+branch\b', c, re.I) for x in x if x} - {'the', 'a', 'this', 'that'} if kind == 'push' else set()
+    def hits(t): return any(r in ('', (repo or '').lower()) and n == str(num) for r, n in t) if kind == 'merge' else (branch or '').lower() in t
     found = None
     for s in re.split(r'(?<=[.!?])\s+|\n', text):
         if not re.search(words, bare(s), re.I): continue
-        if NEGATED.search(bare(s)): return False
         clauses = re.split(r'[,;]|\b(?:and|és)\b(?!\s*(?:[#!]\d|https?:|[\w.-]+/[\w./-]*[#!]\d))', s)
-        found = found or not s.rstrip().endswith('?') and any(re.match(LEAD + words, bare(c).strip(), re.I) and aims(c) for c in clauses) or None
+        held = [c for c in clauses if NEGATED.search(bare(c))]
+        if any(not named(c) or hits(named(c)) for c in held): return False
+        found = found or not s.rstrip().endswith('?') and any(
+            c not in held and re.match(LEAD + words, bare(c).strip(), re.I) and (not (t := named(c) or (refs(text) if kind == 'merge' else [])) or hits(t)) for c in clauses) or None
     return found
 
 def last_typed():

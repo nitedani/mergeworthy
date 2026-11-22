@@ -4830,14 +4830,14 @@ sed -i '/^## Merging/,$d' "$HOME/.mergeworthy/projects/o/r.md"; mpr CLEAN 2026-1
 printf '{"total_commits":1,"commits":[{"sha":"b1","commit":{"committer":{"date":"2026-10-28T12:00:00Z"}}}]}' > "$FX/repos_o_r_compare_hd...main"; printf '{"files":[{"filename":"b.py"}]}' > "$FX/repos_o_r_commits_b1"
 said 'looks good'
 check "BLOCK: a merge nobody asked for, naming the way out" "2 1" "$(lg "$M") $(grep -c "needs their ask.*reply \`merge\` (mergeworthy:merging steps 3-4)" "$T/err")"
-said 'thanks'; check "a merge the user's last message asks for passes: merge, mergeld, the PR's URL with merge and release" "0 0 0" \
-  "$(said 'merge it'; lg "$M") $(said 'mergeld kerlek'; lg "$M") $(said 'https://github.com/o/r/pull/41 merge and release'; lg "$M")"
-check "BLOCK: an ask naming another PR (in its own sentence or clause, or another repo's), a question (a URL ending it too), a negation (English, Hungarian), an older ask, a mention, an ask put off, a T3 scheduled prompt" "2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2" \
+said 'thanks'; check "a merge the user's last message asks for passes: merge, mergeld, the PR's URL with merge and release, beside another PR held back" "0 0 0 0" \
+  "$(said "Don't merge #40. Merge #41."; lg "$M") $(said 'merge it'; lg "$M") $(said 'mergeld kerlek'; lg "$M") $(said 'https://github.com/o/r/pull/41 merge and release'; lg "$M")"
+check "BLOCK: an ask naming another PR (in its own sentence or clause, or another repo's), a question (a URL ending it too), a negation (English, Hungarian), an older ask, a mention, an ask put off, a T3 scheduled prompt" "2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2" \
   "$(said 'merge #40'; lg "$M") $(said 'is #41 merged?'; lg "$M") $(said "don't merge it yet"; lg "$M") $(said 'ne mergeld'; lg "$M") $(said 'nem kell mergelni'; lg "$M") $(said 'majd en mergelem'; lg "$M") \
-$(said 'Review #41. Merge #40.'; lg "$M") $(said 'Merge #40, and review #41.'; lg "$M") $(said 'Merge https://github.com/o/r/pull/41?'; lg "$M") $(said 'Merge https://github.com/o/pkg/pull/41'; lg "$M") $(said 'merge it' 'wait, not yet'; lg "$M") $(said 'Resolve the merge conflicts.'; lg "$M") $(said 'Merge #41 after I review it.'; lg "$M") $(said 'the merge went fine'; lg "$M") $(said 'thanks' '[T3 Code: scheduled task "zqs-check" sent this prompt.] Goal: merge and land PR #41'; lg "$M") $(said 'land PR #23'; lg "$M")"
+$(said 'Review #41. Merge #40.'; lg "$M") $(said 'Merge #40, and review #41.'; lg "$M") $(said 'Merge it, but not before CI passes.'; lg "$M") $(said 'Merge https://github.com/o/r/pull/41?'; lg "$M") $(said 'Merge https://github.com/o/pkg/pull/41'; lg "$M") $(said 'merge it' 'wait, not yet'; lg "$M") $(said 'Resolve the merge conflicts.'; lg "$M") $(said 'Merge #41 after I review it.'; lg "$M") $(said 'the merge went fine'; lg "$M") $(said 'thanks' '[T3 Code: scheduled task "zqs-check" sent this prompt.] Goal: merge and land PR #41'; lg "$M") $(said 'land PR #23'; lg "$M")"
 printf '## Merging\n- Merge each PR as soon as it is ready (gates, CI)\n' >> "$HOME/.mergeworthy/projects/o/r.md"
-check "a merge under the project file's standing order passes with no ask; BLOCK: the user's last message holding it back wins over the order" "0 2 2" \
-  "$(said 'thanks'; lg "$M") $(said 'Dont merge pr when ready, I want to see it.'; lg "$M") $(said 'ne mergeld'; lg "$M")"
+check "a merge under the project file's standing order passes with no ask, or with another PR held back; BLOCK: the user's last message holding it back wins over the order" "0 0 2 2 2" \
+  "$(said 'thanks'; lg "$M") $(said "Don't merge #40."; lg "$M") $(said 'Dont merge pr when ready, I want to see it.'; lg "$M") $(said 'ne mergeld'; lg "$M") $(said "Don't merge #41."; lg "$M")"
 sed -i '/^## Merging/,$d' "$HOME/.mergeworthy/projects/o/r.md"
 said 'looks good'
 check "BLOCK: gh release create and npm publish unasked; asked, or a dry run, or a repo with no project file, they pass; BLOCK: release notes asked for" "2 2 0 0 2 2 2 0 0" \
@@ -4854,8 +4854,8 @@ gql nitedani-agent nitedani-agent; mkdir -p "$HOME/.mergeworthy/projects/nitedan
 said 'looks good'
 check "BLOCK: a push to the default branch unasked, naming it; to another branch, or asked, it passes" "2 1 0 0" \
   "$(lg 'git push origin HEAD:main' "$OWN") $(grep -c 'this push to main lands on nitedani-agent/notes' "$T/err") $(lg 'git push origin HEAD:scratch' "$OWN") $(said 'push it to main'; lg 'git push origin HEAD:main' "$OWN")"
-check "BLOCK: a push to the default branch asked for as another branch's; asked for by its name, it passes" "2 2 0" \
-  "$(said 'Push the feature branch.'; lg 'git push origin HEAD:main' "$OWN") $(said 'Push to scratch.'; lg 'git push origin HEAD:main' "$OWN") $(said 'Push to branch main, and open the PR.'; lg 'git push origin HEAD:main' "$OWN")"
+check "BLOCK: a push to the default branch asked for as another branch's; asked for by its name, it passes, beside another branch held back" "2 2 0 0" \
+  "$(said 'Push the feature branch.'; lg 'git push origin HEAD:main' "$OWN") $(said 'Push to scratch.'; lg 'git push origin HEAD:main' "$OWN") $(said 'Push to branch main, and open the PR.'; lg 'git push origin HEAD:main' "$OWN") $(said "Don't push the scratch branch. Push to main."; lg 'git push origin HEAD:main' "$OWN")"
 said 'looks good'; git -C "$OWN" config remote.origin.push refs/heads/scratch:refs/heads/main
 check "BLOCK: a push whose remote.<name>.push sends it to the default branch, named or bare; a pattern there or push.default=matching, as untellable" "2 2 2 1 2 1" \
   "$(lg 'git push origin' "$OWN") $(lg 'git push' "$OWN") $(git -C "$OWN" config remote.origin.push 'refs/heads/*:refs/heads/*'; lg 'git push origin' "$OWN") $(grep -c "comes from git's config" "$T/err") \
