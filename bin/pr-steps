@@ -179,13 +179,29 @@ fi
 # carries an earlier pass or small fix's review ("carries the pass of <sha>", carry_holds): a fix log or a note is not a shape pass
 # A pass rates every item afresh: a row whose rating is copied ("10 =", "=", "unchanged since") is a re-rating of a delta, not a pass
 is_pass() { grep -q '✅' "$1" && grep -Eq '([0-9]+|\bnew) *(⇒|=>) *([0-9]+|removed|new|n/a)' "$1" && ! grep -Eiq '\| *([0-9]+ *)?= *\||unchanged since' "$1"; }
+# The lines between two trees, a binary, mode or empty file counting one
+span() { git diff --numstat "$1" "$2" | awk '{ s += $1 + $2 + 1 } END { print s + 0 }'; }
 # The file of each line HEAD changed since an earlier head, once per line: compared whole with that head replayed on the base HEAD has merged,
 # so what the base brought doesn't count and every move does; a conflict stays in the replay as its markers, so its resolution counts
 delta() {
-  local T
-  T=$(git merge-tree --write-tree "$(pbase)" "$1" 2>/dev/null | sed -n 1p || true)  # exit 1 on a conflict, with the tree first
-  git -c core.quotePath=false -c diff.noprefix=false diff --no-renames --numstat "${T:-$1}" HEAD |
-    not_built | awk -F'\t' '{ n = $1 + $2; if (!n) n = 1; for (i = 0; i < n; i++) print $3 }'  # a binary, a mode or an empty file has no line, and is a change
+  local b c d h k m n pb M T r=
+  b=$(pbase); pb=$(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || true)
+  [ -n "$pb" ] || { pb=$(git symbolic-ref -q --short refs/remotes/origin/HEAD || true); pb=${pb#origin/}; }
+  m=$(git merge-base "$b" "$1" 2>/dev/null || true)
+  # a squash of a branch $1 merged leaves git no merge base inside it: replay from the commit of $1 nearest the base that a merged PR's head
+  # shares with it, which holds that branch; only PRs merged into this PR's base branch count; gh failing leaves the merge base
+  if [ -n "$m" ]; then n=$(span "$m" "$b")
+    for h in $(gh pr list --state merged --base "${pb:-main}" --limit 30 --json headRefOid -q '.[].headRefOid' 2>/dev/null || true); do
+      c=$(git merge-base "$1" "$h" 2>/dev/null) && ! git merge-base --is-ancestor "$c" "$b" || continue
+      k=$(span "$c" "$b"); [ "$k" -ge "$n" ] || { n=$k; r=$c; }
+    done
+  fi
+  M=$(git -c core.quotePath=false merge-tree --write-tree --name-only ${r:+--merge-base="$r"} "$b" "$1" 2>/dev/null || true)  # exit 1 on a conflict, with the tree first, then the conflicted files
+  [ -n "$M" ] || [ -z "$r" ] || M=$(git -c core.quotePath=false merge-tree --write-tree --name-only "$b" "$1" 2>/dev/null || true)  # a git without --merge-base replays as before
+  T=$(sed -n 1p <<< "$M"); d=$(git -c core.quotePath=false -c diff.noprefix=false diff --no-renames --numstat "${T:-$1}" HEAD |
+    not_built | awk -F'\t' '{ n = $1 + $2; if (!n) n = 1; for (i = 0; i < n; i++) print $3 }')  # a binary, a mode or an empty file has no line, and is a change
+  printf '%s\n' "$d"
+  sed -n '2,/^$/p' <<< "$M" | grep -vxF -e "$d" -e '' | sed 's/^/0\t0\t/' | not_built | cut -f3 || true  # a conflict whose written tree has no markers (modify/delete) still changed its file
 }
 # A carry of head $1's step holds for at most 80 changed lines, none outside tests and docs: a line of code may add behavior, whatever the session says
 carry_holds() {
