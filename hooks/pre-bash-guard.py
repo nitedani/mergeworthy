@@ -163,7 +163,7 @@ def push_before_gates(url):
 ASKED_FOR = {'merge': (r'merge(?!d\b)\w*', r'Merge each PR as soon as it is ready\b', 'merge'),
              'push': (r'push(?!\w*\s+(?:for|back)\b)\w*|releas\w*|publish\w*', r'Push to {branch}(?!\S)', 'push'),  # a release asked for pushes its version commit
              'release': (r'releas\w*|publish\w*', None, 'release'),
-             'ask-first': (r'update\w*|restart\w*|frissít\w*', None, 'update')}
+             'ask-first': (r'update(?!d\b)\w*|restart\w*|frissít\w*', None, 'update')}
 NEGATED = re.compile(r"\b(?:don'?t|\w+n['’]t|do not|never|not|no|who|why|ne|nem|majd|várj|varj|wait|later|after|once|when|until|if|ha|miután)\b", re.I)
 # an ask opens a clause, after a please or a "can you" at most; "merge conflicts", "release notes" and "update plan" name a thing, not the action
 LEAD = r"(?:^|[,;:]|\b(?:and|és|then|aztán)\b)\s*(?:(?:please|pls|ok(?:ay)?|now|just|(?:can|could|would) you|go ahead and|you can|kérlek|kerlek|most)\W+)*"

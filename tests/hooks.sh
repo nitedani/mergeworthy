@@ -4865,8 +4865,8 @@ printf 't3-update\nsystemctl --user (re)?start (t3code|t3-update)\n' > "$HOME/.m
 check "BLOCK: an ask-first command unasked, at any command position and inside ssh's remote command, naming the list; a mention passes" "2 1 2 2 2 0" \
   "$(lg "ssh collab@opensource 'export PATH=x; t3-update; echo \"exit \$?\"'") $(grep -c "is on this machine's ~/.mergeworthy/ask-first list.*ask the owner to reply \`update\`" "$T/err") \
 $(lg 't3-update 2>&1 | tail -5') $(lg 'systemctl --user restart t3code') $(lg 'ssh -p 22 h t3-update') $(lg 'echo t3-update')"
-check "an ask-first command the user's last message asks for passes, over ssh too; BLOCK: a question, a negation or a mention" "0 0 2 2 2" \
-  "$(said 'update t3'; lg "ssh collab@opensource 'export PATH=x; t3-update'") $(lg 't3-update') $(said 'should we update t3?'; lg 't3-update') $(said 'ne frissítsd még'; lg 't3-update') $(said 'Review the update plan.'; lg 't3-update')"
+check "an ask-first command the user's last message asks for passes, over ssh too; BLOCK: a question, a negation, a mention or a past 'updated'" "0 0 2 2 2 2" \
+  "$(said 'update t3'; lg "ssh collab@opensource 'export PATH=x; t3-update'") $(lg 't3-update') $(said 'should we update t3?'; lg 't3-update') $(said 'ne frissítsd még'; lg 't3-update') $(said 'Review the update plan.'; lg 't3-update') $(said $'Claude Code 2.1.319\nupdated 6 d ago'; lg 't3-update')"
 rt() { # command [cwd]: refused unasked, then passing once the user replies as the refusal says
   said 'looks good'; local a; a=$(lg "$@"); said "$(grep -o 'reply `[a-z]*`' "$T/err" | tr -d '`' | cut -d' ' -f2)"; echo "$a $(lg "$@")"; }
 mkdir -p "$HOME/.mergeworthy/projects/nitedani-agent"; echo '# notes' > "$HOME/.mergeworthy/projects/nitedani-agent/notes.md"
