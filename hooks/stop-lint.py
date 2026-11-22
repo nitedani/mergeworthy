@@ -103,10 +103,12 @@ def ratings(wf):  # the rating records at any depth of wf, outside the checkouts
 def best_check():
     if not BEST.search(last_user): return
     for wf in sorted(task_dirs):
-        rated = list(ratings(wf))
-        if rated and not any(r in last for r in rated):
-            print(f"This asks whether a design is the best one, and {wf} holds its ratings ({', '.join(rated)}): read them, and answer "
-                  "from them, naming any rating you overturn and with what evidence.", file=sys.stderr)
+        kinds = {}  # approach.md, converge.md, rating.md or decisions/: each kind present is named by one of its files
+        for r in ratings(wf): kinds.setdefault('decisions/' if os.path.basename(os.path.dirname(r)) == 'decisions' else os.path.basename(r), []).append(r)
+        unnamed = [r for rs in kinds.values() if not any(r in last for r in rs) for r in rs]
+        if unnamed:
+            print(f"This asks whether a design is the best one, and {wf} holds ratings of a kind your message names no file of ({', '.join(unnamed)}): "
+                  "read them, and answer from them, naming one file of each kind (approach.md, decisions/, converge.md, rating.md) and any rating you overturn, with what evidence.", file=sys.stderr)
             sys.exit(2)
 # A checkable fact left unchecked in the reply (mergeworthy:writing §Evidence for claims)
 def unchecked_check():

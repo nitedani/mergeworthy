@@ -4106,6 +4106,9 @@ check "BLOCK: a \"best solution?\" answer naming none of the work folder's ratin
 BD="$HOME/.mergeworthy/work/deep"; mkdir -p "$BD/pr/finality" "$HOME/.mergeworthy/work/unrated/repo/.git" "$HOME/.mergeworthy/work/unrated/repo/docs/decisions"; echo '| K7 | 2 | splits |' > "$BD/pr/finality/converge.md"; echo '# ADR 1' > "$HOME/.mergeworthy/work/unrated/repo/docs/decisions/1.md"
 check "BLOCK: a \"best solution?\" answer when the only rating is two folders down (pr/finality/converge.md); a checkout's own docs/decisions/ is no rating" "2 0" \
   "$(slj 'Yes.' 0 s-best "$BD") $(slj 'Yes.' 0 s-best "$HOME/.mergeworthy/work/unrated")"
+echo '| B | 8 | ok |' > "$BD/pr/approach.md"
+check "BLOCK: a \"best solution?\" answer naming pr/approach.md alone while pr/finality/converge.md also rates it, naming the one left; naming both passes" "2 1 0" \
+  "$(slj 'Yes, one scheduler is best. See pr/approach.md.' 0 s-best "$BD") $(grep -c 'names no file of (pr/finality/converge.md)' "$T/err") $(slj 'Yes: pr/approach.md rates it 8, and pr/finality/converge.md rates K7 2.' 0 s-best "$BD")"
 # the telefunc-room session's answer, as it wrote it, then the same with the attempt that failed, and a quoted phrase
 tr_file 'README tidied.'
 check "BLOCK: a fact left unchecked (\"I don't know whether\", \"I haven't read\"); its sentence quoting the failed attempt, or the phrase in quotes, passes" "2 2 0 0" \
