@@ -109,6 +109,7 @@ if [ "$step" = approach ]; then
   [ -n "$rating" ] || { echo "Chosen '$chosen' is not a row of the candidates table" >&2; exit 1; }
   [ "$rating" -ge 7 ] || { echo "the chosen approach is rated $rating: 6 or below is not ready to build (pull-request step 5); find a better candidate or stop" >&2; exit 1; }
   grep -Eq '^[[:space:]*>-]*Shared assumption:[*]*[[:space:]]+[^[:space:]]+[[:space:]]+[^[:space:]]+' "$out" || { echo "$out has no line 'Shared assumption: <what every other candidate takes for granted>', which one candidate drops (pull-request §Rating)" >&2; exit 1; }
+  grep -Eq '^[[:space:]*>-]*Probe:[*]*[[:space:]]+[^[:space:]].*[[:space:]]->[[:space:]]*[^[:space:]]' "$out" || { echo "$out has no line 'Probe: <the run that tried to break the shared assumption> -> <its result>': run one before Chosen (pull-request step 5)" >&2; exit 1; }
   # the contract is the one this session's loaded skills follow (session-start's record): a session on v1's catalog, or one
   # with no record, still records loopb and refactor, so its branch gets no `contract: 2`
   catalog=$(cut -d' ' -f2 ~/.mergeworthy/sessions/"$(basename "${CLAUDE_CODE_SESSION_ID:-none}")" 2>/dev/null || true)
