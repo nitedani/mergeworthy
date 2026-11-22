@@ -183,9 +183,9 @@ def asks(text, kind, repo=None, num=None, branch=None):
     refs = lambda t: [((m[1] or m[2] or m[3] or '').lower(), m[4]) for m in PR_REF.finditer(t)]
     bare = lambda t: re.sub(r'https?://\S+|\bmergeworthy\w*|^\s*\(Re-invocation of .*', ' ', t, flags=re.I)
     words = rf'\b(?:{ASKED_FOR[kind][0]})\b{MENTION}'
-    def named(c):  # the targets clause c names: a merge's PRs as (repo, number), a push's branches
+    def named(c):  # the targets clause c names: a merge's PRs as (repo, number), a push's branches, as words or `inline code`
         if kind == 'merge': return refs(c)
-        return {x for x in re.findall(r'\bto\s+(?:the\s+)?(?:branch\s+)?([\w./-]*[\w-])|([\w./-]*[\w-])\s+branch\b', c, re.I) for x in x if x and x.lower() not in ('the', 'a', 'this', 'that')} if kind == 'push' else set()
+        return {x for x in re.findall(r'\bto\s+(?:the\s+)?(?:branch\s+)?([\w./-]*[\w-])|([\w./-]*[\w-])\s+branch\b', c.replace('`', ''), re.I) for x in x if x and x.lower() not in ('the', 'a', 'this', 'that')} if kind == 'push' else set()
     def hits(t): return any(r in ('', (repo or '').lower()) and n == str(num) for r, n in t) if kind == 'merge' else (branch or '') in t  # git's branch names are case-sensitive
     found = None
     for s in re.split(r'(?<=[.!?])\s+|\n', text):

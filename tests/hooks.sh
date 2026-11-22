@@ -4939,14 +4939,16 @@ check "BLOCK: a push to the default branch unasked, naming it, or told of as pas
 $(said 'Pushed to main.'; lg 'git push origin HEAD:main' "$OWN") $(lg 'git push origin HEAD:scratch' "$OWN") $(said 'push it to main'; lg 'git push origin HEAD:main' "$OWN")"
 check "BLOCK: a push to the default branch asked for as another branch's, or by its name in another case; asked for by its name, it passes, beside another branch held back" "2 2 2 0 0" \
   "$(said 'Push the feature branch.'; lg 'git push origin HEAD:main' "$OWN") $(said 'Push to scratch.'; lg 'git push origin HEAD:main' "$OWN") $(said 'Push to MAIN.'; lg 'git push origin HEAD:main' "$OWN") $(said 'Push to branch main, and open the PR.'; lg 'git push origin HEAD:main' "$OWN") $(said "Don't push the scratch branch. Push to main."; lg 'git push origin HEAD:main' "$OWN")"
+check "BLOCK: a push to the default branch asked for as another branch's in inline code; asked for by its name, it passes" "2 2 2 0" \
+  "$(said 'Push to scratch.'; lg 'git push origin HEAD:main' "$OWN") $(said 'Push to `scratch`.'; lg 'git push origin HEAD:main' "$OWN") $(said 'Push to MAIN.'; lg 'git push origin HEAD:main' "$OWN") $(said 'Push to main.'; lg 'git push origin HEAD:main' "$OWN")"
 said 'looks good'; git -C "$OWN" config remote.origin.push refs/heads/scratch:refs/heads/main
 check "BLOCK: a push whose remote.<name>.push sends it to the default branch, named or bare; a pattern there or push.default=matching, as untellable" "2 2 2 1 2 1" \
   "$(lg 'git push origin' "$OWN") $(lg 'git push' "$OWN") $(git -C "$OWN" config remote.origin.push 'refs/heads/*:refs/heads/*'; lg 'git push origin' "$OWN") $(grep -c "comes from git's config" "$T/err") \
 $(git -C "$OWN" config --unset remote.origin.push; git -C "$OWN" config push.default matching; lg 'git push' "$OWN") $(grep -c "comes from git's config" "$T/err")"
 git -C "$OWN" config --unset push.default
 said 'looks good'; printf '## Merging\n- Push to main once the gates pass\n' >> "$HOME/.mergeworthy/projects/nitedani-agent/notes.md"
-check "a push to the default branch under the project file's \`- Push to main\` order passes; without a project file it is unchanged" "0 0" \
-  "$(lg 'git push origin HEAD:main' "$OWN") $(rm "$HOME/.mergeworthy/projects/nitedani-agent/notes.md"; lg 'git push origin HEAD:main' "$OWN")"
+check "a push to the default branch under the project file's \`- Push to main\` order passes, with another branch held back as words or inline code; without a project file it is unchanged" "0 0 0 0" \
+  "$(lg 'git push origin HEAD:main' "$OWN") $(said "Don't push to scratch."; lg 'git push origin HEAD:main' "$OWN") $(said 'Don’t push to `scratch`.'; lg 'git push origin HEAD:main' "$OWN") $(said 'looks good'; rm "$HOME/.mergeworthy/projects/nitedani-agent/notes.md"; lg 'git push origin HEAD:main' "$OWN")"
 check "a push git's config can't tell, to a repo with no project file, passes as before: push.default=matching, a pattern in remote.<name>.push" "0 0" \
   "$(git -C "$OWN" config push.default matching; lg 'git push' "$OWN") $(git -C "$OWN" config --unset push.default; git -C "$OWN" config remote.origin.push 'refs/heads/*:refs/heads/*'; lg 'git push origin' "$OWN")"
 git -C "$OWN" config --unset remote.origin.push
