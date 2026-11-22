@@ -184,17 +184,17 @@ span() { git diff --numstat "$1" "$2" | awk '{ s += $1 + $2 + 1 } END { print s 
 # The file of each line HEAD changed since an earlier head, once per line: compared whole with that head replayed on the base HEAD has merged,
 # so what the base brought doesn't count and every move does; a conflict stays in the replay as its markers, so its resolution counts
 delta() {
-  local b c h k m n T
+  local b c h k m n r T
   b=$(pbase); m=$(git merge-base "$b" "$1" 2>/dev/null || true)
   # a squash of a branch $1 merged leaves git no merge base inside it: replay from the commit of $1 nearest the base that a merged PR's head
   # shares with it, which holds that branch; gh failing leaves the merge base
   if [ -n "$m" ]; then n=$(span "$m" "$b")
     for h in $(gh pr list --state merged --limit 30 --json headRefOid -q '.[].headRefOid' 2>/dev/null || true); do
       c=$(git merge-base "$1" "$h" 2>/dev/null) && ! git merge-base --is-ancestor "$c" "$b" || continue
-      k=$(span "$c" "$b"); [ "$k" -ge "$n" ] || { n=$k; m=$c; }
+      k=$(span "$c" "$b"); [ "$k" -ge "$n" ] || { n=$k; r=$c; }
     done
   fi
-  T=$(git merge-tree --write-tree ${m:+--merge-base="$m"} "$b" "$1" 2>/dev/null | sed -n 1p || true)  # exit 1 on a conflict, with the tree first
+  T=$(git merge-tree --write-tree ${r:+--merge-base="$r"} "$b" "$1" 2>/dev/null | sed -n 1p || true)  # exit 1 on a conflict, with the tree first
   git -c core.quotePath=false -c diff.noprefix=false diff --no-renames --numstat "${T:-$1}" HEAD |
     not_built | awk -F'\t' '{ n = $1 + $2; if (!n) n = 1; for (i = 0; i < n; i++) print $3 }'  # a binary, a mode or an empty file has no line, and is a change
 }

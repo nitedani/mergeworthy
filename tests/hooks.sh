@@ -2551,6 +2551,16 @@ sc checkout -q c1; sc cherry-pick "$SF" >/dev/null; SV=$(git -C "$SG" rev-parse 
 sc merge -q --no-edit main >/dev/null 2>&1; sed -i 's/^guard2$/20/' "$SG/z.ts"; sc commit -qam dropguard
 check "BLOCK: a merge of main dropping the PR's own guard after a cherry-pick of a main commit is refused" 1 "$(sk "$SV" s6)"
 rm "$FX/pr_list_"
+# a criss-cross merge has two merge bases, which git merges itself: the replay leaves them to git unless a merged PR's head replaces them
+XG="$T/xclone"; git init -q -b main "$XG"; xc() { git -C "$XG" -c user.name=t -c user.email=t@t "$@"; }
+seq 1 12 > "$XG/f"; xc add f; xc commit -q -m x; xc checkout -q -b a1; sed -i 's/^5$/a/' "$XG/f"; GIT_COMMITTER_DATE='2099-01-02T00:00:00Z' xc commit -q -am a1; xc checkout -q main; xc checkout -q -b b1; sed -i 's/^5$/b/' "$XG/f"; xc commit -q -am b1
+xc checkout -q -b a a1; xc merge -q --no-commit b1 >/dev/null 2>&1; seq 1 12 | sed '5s/.*/a/' > "$XG/f"; xc add -A; xc commit -q -m am
+xc checkout -q -b b b1; xc merge -q --no-commit a1 >/dev/null 2>&1; seq 1 12 | sed '5s/.*/a/' > "$XG/f"; xc add -A; xc commit -q -m bm
+xc checkout -q a; sed -i 's/^4$/A4/' "$XG/f"; xc commit -q -am A; XA=$(git -C "$XG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$XA"
+xc checkout -q b; sed -i 's/^9$/B9/' "$XG/f"; xc commit -q -am B; xc update-ref refs/remotes/origin/main b; xc symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+xc checkout -q a; xc reset -q --hard "$(xc commit-tree -p "$XA" -p b -m merged "$(git -C "$XG" merge-tree --write-tree "$(git -C "$XG" rev-parse b)" "$XA" | sed -n 1p)")"
+printf 'carries the pass of %s: merged main\n' "$XA" > "$T/xk.md"
+check "a merge of main into a head with two merge bases carries, as git's own replay of both gives HEAD's tree" 0 "$( (cd "$XG" && bash "$R/bin/pr-steps" verify "$T/xk.md" >/dev/null 2>&1; echo $?) )"
 # a branch whose latest approach record has no `contract: 2` was started by a session on v1's skills: it finishes under the old records
 mkdir -p "$HOME/.mergeworthy/sessions"; echo "/p graph startup 0" > "$HOME/.mergeworthy/sessions/s-graph"; echo "/p v1 startup 0" > "$HOME/.mergeworthy/sessions/s-v1"
 printf 'Root cause: src/a.ts:3 does it\nBasis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | stays |\n| Fix it | 8 | ok |\nShared assumption: the bug is in this repo\n\nChosen: Fix it\n' > "$T/apo.md"; CLAUDE_CODE_SESSION_ID=s-graph prs approach "$T/apo.md" >/dev/null
