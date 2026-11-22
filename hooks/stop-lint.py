@@ -88,8 +88,8 @@ def handback_check():
     if working and offer and 'GENUINE-FORK' not in last:
         print(f"Your last message hands the next step back (\"{offer.group(0)}\"). If it is your own recommendation or in scope, "
               "do it now; if it waits on something (CI, an agent, a reply), arm a Monitor or a background command that wakes you when it lands, "
-              "and continue then. Ask only for (a) irreversible actions on shared state you didn't create, (b) money, credentials "
-              "or the user's global config, (c) an external maintainer's product decision or a fork you can't rank; then "
+              "and continue then. Ask only for (a) a merge, a push to a default branch or a release, or irreversible actions on shared state "
+              "you didn't create, (b) money, credentials or the user's global config, (c) an external maintainer's product decision or a fork you can't rank; then "
               "include a line starting 'GENUINE-FORK:' with your recommended default.", file=sys.stderr)
         sys.exit(2)
 # A checkable fact left unchecked in the reply (mergeworthy:writing §Evidence for claims)
