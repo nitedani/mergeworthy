@@ -4818,5 +4818,43 @@ SE2="$T/simpe2"; fx "$SE2"; rc "$SE2" --allow-empty -m empty
 pre "$SE2" reverify "$T/rv.md"; rc "$SE2" --amend --allow-empty -m 'new empty subject'
 for i in 1 2 3 4 5; do echo "e$i" >> "$SE2/a.py"; rc "$SE2" -am "e$i"; done; echo e6 >> "$SE2/a.py"; git -C "$SE2" add a.py
 check "the change after a message-amended merge holding finality passes; BLOCK: the 6th change since a message-amended empty commit's review" "0 2" "$rg $(bg 'git commit -m e6' "$SE2")"
+# ---------- pre-bash-guard: a merge, a push to the default branch or a release, in a repo with a project file, and a command ~/.mergeworthy/ask-first lists, run on the owner's ask ----------
+# the ask: the message the user last typed (not a T3 prompt or a tool result), a sentence with the words that is no question and has no negation; or the project file's `## Merging` order
+said() { # the messages the user typed, in order: the session's transcript, a tool result after them
+  python3 -c 'import json,sys
+for m in sys.argv[1:]: print(json.dumps({"type":"user","message":{"role":"user","content":m}})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":"ok"}]}}))
+print(json.dumps({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"merge it"}]}}))' "$@" > "$T/ask.jsonl"; }
+lg() { # command [cwd]: pre-bash-guard's exit code with $T/ask.jsonl as the session's transcript, its message in $T/err
+  python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2],"transcript_path":sys.argv[3]}))' "$1" "${2:-$T}" "$T/ask.jsonl" | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?; }
+sed -i '/^## Merging/,$d' "$HOME/.mergeworthy/projects/o/r.md"; mpr CLEAN 2026-10-28T13:00:00Z
+printf '{"total_commits":1,"commits":[{"sha":"b1","commit":{"committer":{"date":"2026-10-28T12:00:00Z"}}}]}' > "$FX/repos_o_r_compare_hd...main"; printf '{"files":[{"filename":"b.py"}]}' > "$FX/repos_o_r_commits_b1"
+said 'looks good'
+check "BLOCK: a merge nobody asked for, naming the way out" "2 1" "$(lg "$M") $(grep -c "needs their ask.*reply \`merge\` (mergeworthy:merging steps 3-4)" "$T/err")"
+said 'thanks'; check "a merge the user's last message asks for passes: merge, mergeld, the PR's URL with merge and release" "0 0 0" \
+  "$(said 'merge it'; lg "$M") $(said 'mergeld kerlek'; lg "$M") $(said 'https://github.com/o/r/pull/41 merge and release'; lg "$M")"
+check "BLOCK: an ask naming another PR, a question, a negation (English, Hungarian), an older ask, a T3 scheduled prompt" "2 2 2 2 2 2 2 2 2" \
+  "$(said 'merge #40'; lg "$M") $(said 'is #41 merged?'; lg "$M") $(said "don't merge it yet"; lg "$M") $(said 'ne mergeld'; lg "$M") $(said 'nem kell mergelni'; lg "$M") $(said 'majd en mergelem'; lg "$M") \
+$(said 'merge it' 'wait, not yet'; lg "$M") $(said 'thanks' '[T3 Code: scheduled task "zqs-check" sent this prompt.] Goal: merge and land PR #41'; lg "$M") $(said 'land PR #23'; lg "$M")"
+printf '## Merging\n- Merge each PR as soon as it is ready (gates, CI)\n' >> "$HOME/.mergeworthy/projects/o/r.md"
+check "a merge under the project file's standing order passes with no ask" 0 "$(said 'thanks'; lg "$M")"
+sed -i '/^## Merging/,$d' "$HOME/.mergeworthy/projects/o/r.md"
+said 'looks good'
+check "BLOCK: gh release create and npm publish unasked; asked, or a dry run, or a repo with no project file, they pass" "2 2 0 0 2 0 0" \
+  "$(lg 'gh release create v1.2.0 -R o/r') $(lg 'npm publish' "$TCO") $(lg 'npm publish --dry-run' "$TCO") $(lg 'gh release create v1.2.0 -R lo/none') \
+$(said 'release notes kellenek, ne publisholj'; lg 'pnpm publish' "$TCO") $(said 'release 1.2.0 please'; lg 'gh release create v1.2.0 -R o/r') $(lg 'pnpm publish' "$TCO")"
+gql nitedani-agent nitedani-agent; mkdir -p "$HOME/.mergeworthy/projects/nitedani-agent"; echo '# notes' > "$HOME/.mergeworthy/projects/nitedani-agent/notes.md"; echo '{"default_branch":"main"}' > "$FX/repos_nitedani-agent_notes"
+said 'looks good'
+check "BLOCK: a push to the default branch unasked, naming it; to another branch, or asked, it passes" "2 1 0 0" \
+  "$(lg 'git push origin HEAD:main' "$OWN") $(grep -c 'this push to main lands on nitedani-agent/notes' "$T/err") $(lg 'git push origin HEAD:scratch' "$OWN") $(said 'push it to main'; lg 'git push origin HEAD:main' "$OWN")"
+said 'looks good'; printf '## Merging\n- Push to main once the gates pass\n' >> "$HOME/.mergeworthy/projects/nitedani-agent/notes.md"
+check "a push to the default branch under the project file's \`- Push to main\` order passes; without a project file it is unchanged" "0 0" \
+  "$(lg 'git push origin HEAD:main' "$OWN") $(rm "$HOME/.mergeworthy/projects/nitedani-agent/notes.md"; lg 'git push origin HEAD:main' "$OWN")"
+printf 't3-update\nsystemctl --user (re)?start (t3code|t3-update)\n' > "$HOME/.mergeworthy/ask-first"; said 'is the t3 fix built yet?'
+check "BLOCK: an ask-first command unasked, at any command position and inside ssh's remote command, naming the list; a mention passes" "2 1 2 2 2 0" \
+  "$(lg "ssh collab@opensource 'export PATH=x; t3-update; echo \"exit \$?\"'") $(grep -c "is on this machine's ~/.mergeworthy/ask-first list.*ask the owner for the update" "$T/err") \
+$(lg 't3-update 2>&1 | tail -5') $(lg 'systemctl --user restart t3code') $(lg 'ssh -p 22 h t3-update') $(lg 'echo t3-update')"
+check "an ask-first command the user's last message asks for passes, over ssh too; BLOCK: a question or a negation" "0 0 2 2" \
+  "$(said 'update t3'; lg "ssh collab@opensource 'export PATH=x; t3-update'") $(lg 't3-update') $(said 'should we update t3?'; lg 't3-update') $(said 'ne frissítsd még'; lg 't3-update')"
+rm "$HOME/.mergeworthy/ask-first"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]
