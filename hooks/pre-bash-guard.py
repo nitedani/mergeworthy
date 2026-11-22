@@ -158,11 +158,12 @@ def push_before_gates(url):
     sec = re.search(r'^## Gates\b[^\n]*\n(.*?)(?=^## |\Z)', open(f, errors='replace').read(), re.M | re.S) if os.path.isfile(f) else None
     return bool(sec and re.search(r'^(?:[-*] +)?Push: *before gates *$', sec[1], re.M))
 
-# What runs only on the owner's ask: the words of a sentence that asks for it, and the project file's `## Merging` order that stands in for one
-ASKED_FOR = {'merge': (r'merge(?!d\b)\w*', r'Merge each PR as soon as it is ready\b'),
-             'push': (r'push(?!\w*\s+(?:for|back)\b)\w*|releas\w*|publish\w*', r'Push to {branch}(?!\S)'),  # a release asked for pushes its version commit
-             'release': (r'releas\w*|publish\w*', None),
-             'ask-first': (r'update\w*|restart\w*|frissít\w*', None)}
+# What runs only on the owner's ask: the words of a sentence that asks for it, the project file's `## Merging` order that stands in for one,
+# and the reply that asks for it
+ASKED_FOR = {'merge': (r'merge(?!d\b)\w*', r'Merge each PR as soon as it is ready\b', 'merge'),
+             'push': (r'push(?!\w*\s+(?:for|back)\b)\w*|releas\w*|publish\w*', r'Push to {branch}(?!\S)', 'push'),  # a release asked for pushes its version commit
+             'release': (r'releas\w*|publish\w*', None, 'release'),
+             'ask-first': (r'update\w*|restart\w*|frissít\w*', None, 'update')}
 NEGATED = re.compile(r"\b(?:don'?t|\w+n['’]t|do not|never|not|no|who|why|ne|nem|majd|várj|varj|wait|later|after|once|when|until|if|ha|miután)\b", re.I)
 # an ask opens a clause, after a please or a "can you" at most; "merge conflicts", "release notes" and "update plan" name a thing, not the action
 LEAD = r"(?:^|[,;:]|\b(?:and|és|then|aztán)\b)\s*(?:(?:please|pls|ok(?:ay)?|now|just|(?:can|could|would) you|go ahead and|you can|kérlek|kerlek|most)\W+)*"
@@ -206,7 +207,8 @@ def need_ask(kind, what, repo=None, num=None, branch=None):
     """Blocks what (a landing on repo's default branch, or an ask-first command) unless the message the user last typed asks for it, or
     holds it back in no sentence while repo's project file holds kind's `## Merging` order; a landing on a repo with no project file passes."""
     repo = re.sub(r'^gitlab\.com/', '', repo or '') or None  # a GitLab project's project file is named by its path
-    order, text = ASKED_FOR[kind][1], project_file(repo)
+    _, order, reply = ASKED_FOR[kind]
+    text = project_file(repo)
     if text is None and kind != 'ask-first': return
     sec = re.search(r'^## Merging\b[^\n]*\n(.*?)(?=^## |\Z)', text or '', re.M | re.S)
     asked = asks(last_typed(), kind, repo, num, branch)
@@ -214,9 +216,9 @@ def need_ask(kind, what, repo=None, num=None, branch=None):
         return
     if kind == 'ask-first':
         block(f"{what} is on this machine's ~/.mergeworthy/ask-first list: it runs only when the message the user last typed asks for it "
-              "(your own scheduled prompt, scope or goal is no ask). Say what it would restart and ask the owner for the update")
+              "(your own scheduled prompt, scope or goal is no ask). Say what it would restart and ask the owner to reply `update`")
     block(f"{what} lands on {repo}, which is the owner's: it needs their ask, in the message they last typed or the project file's "
-          "`## Merging` order (your own scheduled prompt, scope or goal is none). Say it's ready and ask the owner to reply `merge` (mergeworthy:merging steps 3-4)")
+          f"`## Merging` order (your own scheduled prompt, scope or goal is none). Say it's ready and ask the owner to reply `{reply}` (mergeworthy:merging steps 3-4)")
 
 def default_branch(host, repo):
     """repo's default branch on host (GitHub, else GitLab); blocks when its API can't answer."""
