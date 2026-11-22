@@ -2994,6 +2994,7 @@ check "BLOCK: a number gh finds no PR for, saying to check the repository and nu
 : > "$T/rdy.args"
 check "gh pr ready --undo, --undo=true, -h and --help, with no PR of the checkout too, never read the PR" "0 0 0 0 0" "$(rdy 'gh pr ready 5 -R o/r --undo' "$GO") $(rdy 'gh pr ready --undo=true 5 -R o/r' "$GO") $(rdy 'gh pr ready -h' "$GO") $(rdy 'gh pr ready --help' "$GO") $(grep -c 'pr view' "$T/rdy.args")"
 # pre-bash-guard: `gh pr merge` waits for a PR that is up to date with its base and whose CI ran after the base last touched its files; never --admin
+printf '## Merging\n- Merge each PR as soon as it is ready\n' >> "$HOME/.mergeworthy/projects/o/r.md"  # the owner's standing order: the checks below are on the merge's form
 M='gh pr merge 41 -R o/r --squash --delete-branch --subject "Fix it (#41)" --body ""'
 mpr() { # mergeStateStatus, when its last check completed
   printf '{"url":"https://github.com/o/r/pull/41","headRefName":"fix","headRefOid":"hd","baseRefName":"main","mergeStateStatus":"%s","changedFiles":1,"files":[{"path":"a.py"}],"statusCheckRollup":[{"completedAt":"%s"}],"commits":[{"authors":[%s]}]}' "$1" "$2" "${3:-}" > "$FX/pr_view_41"; }
@@ -4590,6 +4591,8 @@ check "a typed stop, then a watcher's and a finished task's notice: the turn end
   "$(held user 'can you stop work please dont waste money' assistant 'Stopped.' user $'Watcher events in /w/events.log (mergeworthy:reply):\n### o/r#1 comment 2 by bob' assistant 'Held.' user 'Delegated task node:x [completed]: done' assistant 'Held.') $(wc -c < "$T/err") \
 $(held user 'Stooooppoopp' assistant 'Stopped.') $(held user 'pause until I say continue' assistant 'Paused.') \
 $(held user 'Please pause the work until I get back' assistant 'Paused.') $(held user 'stop 🙏' assistant 'Stopped.') $(held user 'állj' assistant 'Stopped.' user 'ok go on' assistant 'Held.')"
+check "BLOCK: a stop in what a T3 scheduled task or another agent sent is no stop the user typed" 2 \
+  "$(held user '[T3 Code: the agent in T3 thread "t" sent this message, not the user.] Check the open PRs, then pause' assistant 'Stopped.')"
 check "a stop or pause is a message that opens by asking for one of the work itself, or ends with \"then pause\"" "True True True True True True True True True True False False False False False False False False False False" \
   "$(PYTHONPATH="$R/hooks" python3 -c 'import steward, sys; print(*(steward.asks_stop(t) for t in sys.argv[1:]))' 'stop the work now' 'Stooooooooopppppppppppp' 'Állj meg' 'Please pause the work' \
      'make me four fox images, then pause' 'pause until I say continue' 'Please pause the work until I get back' 'stop…' 'pause 🙏' 'pause and wait for my approval' "don't stop" 'ne állj meg' 'stop-lint blocks too often' 'stop using sonnet' \
@@ -4895,5 +4898,71 @@ SE2="$T/simpe2"; fx "$SE2"; rc "$SE2" --allow-empty -m empty
 pre "$SE2" reverify "$T/rv.md"; rc "$SE2" --amend --allow-empty -m 'new empty subject'
 for i in 1 2 3 4 5; do echo "e$i" >> "$SE2/a.py"; rc "$SE2" -am "e$i"; done; echo e6 >> "$SE2/a.py"; git -C "$SE2" add a.py
 check "the change after a message-amended merge holding finality passes; BLOCK: the 6th change since a message-amended empty commit's review" "0 2" "$rg $(bg 'git commit -m e6' "$SE2")"
+# ---------- pre-bash-guard: a merge, a push to the default branch or a release, in a repo with a project file, and a command ~/.mergeworthy/ask-first lists, run on the owner's ask ----------
+# the ask: the message the user last typed (not a T3 prompt or a tool result), a sentence with the words that is no question and has no negation; or the project file's `## Merging` order
+said() { # the messages the user typed, in order: the session's transcript, a tool result after them
+  python3 -c 'import json,sys
+for m in sys.argv[1:]: print(json.dumps({"type":"user","message":{"role":"user","content":m}})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":"ok"}]}}))
+print(json.dumps({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"merge it"}]}}))' "$@" > "$T/ask.jsonl"; }
+lg() { # command [cwd]: pre-bash-guard's exit code with $T/ask.jsonl as the session's transcript, its message in $T/err
+  python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2],"transcript_path":sys.argv[3]}))' "$1" "${2:-$T}" "$T/ask.jsonl" | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?; }
+sed -i '/^## Merging/,$d' "$HOME/.mergeworthy/projects/o/r.md"; mpr CLEAN 2026-10-28T13:00:00Z
+printf '{"total_commits":1,"commits":[{"sha":"b1","commit":{"committer":{"date":"2026-10-28T12:00:00Z"}}}]}' > "$FX/repos_o_r_compare_hd...main"; printf '{"files":[{"filename":"b.py"}]}' > "$FX/repos_o_r_commits_b1"
+said 'looks good'
+check "BLOCK: a merge nobody asked for, naming the way out" "2 1" "$(lg "$M") $(grep -c "needs their ask.*reply \`merge\` (mergeworthy:merging steps 3-4)" "$T/err")"
+said 'thanks'; check "a merge the user's last message asks for passes: merge, mergeld, the PR's URL with merge and release, beside another PR held back, after let's, a bullet, I want you to, kérlek" "0 0 0 0 0 0 0 0" \
+  "$(said "Don't merge #40. Merge #41."; lg "$M") $(said 'merge it'; lg "$M") $(said 'Let’s merge #41.'; lg "$M") $(said '- Merge #41.'; lg "$M") $(said 'I want you to merge #41.'; lg "$M") $(said 'kérlek mergeld'; lg "$M") $(said 'mergeld kerlek'; lg "$M") $(said 'https://github.com/o/r/pull/41 merge and release'; lg "$M")"
+check "BLOCK: an ask naming another PR (in its own sentence or clause, or another repo's), a question (a URL ending it too), a negation (English, Hungarian), an older ask, a mention, an ask put off, a T3 scheduled prompt" "2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2" \
+  "$(said 'merge #40'; lg "$M") $(said 'is #41 merged?'; lg "$M") $(said "don't merge it yet"; lg "$M") $(said 'ne mergeld'; lg "$M") $(said 'nem kell mergelni'; lg "$M") $(said 'majd en mergelem'; lg "$M") \
+$(said 'Review #41. Merge #40.'; lg "$M") $(said 'Merge #40, and review #41.'; lg "$M") $(said 'Merge it, but not before CI passes.'; lg "$M") $(said 'Merge https://github.com/o/r/pull/41?'; lg "$M") $(said 'Merge https://github.com/o/pkg/pull/41'; lg "$M") $(said 'merge it' 'wait, not yet'; lg "$M") $(said 'Resolve the merge conflicts.'; lg "$M") $(said 'Merge #41 after I review it.'; lg "$M") $(said 'the merge went fine'; lg "$M") $(said 'thanks' '[T3 Code: scheduled task "zqs-check" sent this prompt.] Goal: merge and land PR #41'; lg "$M") $(said 'land PR #23'; lg "$M")"
+printf '## Merging\n- Merge each PR as soon as it is ready (gates, CI)\n' >> "$HOME/.mergeworthy/projects/o/r.md"
+check "a merge under the project file's standing order passes with no ask, or with another PR held back; BLOCK: the user's last message holding it back wins over the order, a past 'merged' too" "0 0 2 2 2 2" \
+  "$(said 'thanks'; lg "$M") $(said "Don't merge #40."; lg "$M") $(said 'Dont merge pr when ready, I want to see it.'; lg "$M") $(said 'ne mergeld'; lg "$M") $(said "Don't merge #41."; lg "$M") $(said "I don't want it merged yet."; lg "$M")"
+sed -i '/^## Merging/,$d' "$HOME/.mergeworthy/projects/o/r.md"
+said 'looks good'
+check "BLOCK: gh release create and npm publish unasked; asked, or a dry run, or a repo with no project file, they pass; BLOCK: release notes asked for, a past 'released' or 'published', one held back as 'released' or 'published'" "2 2 0 0 2 2 2 0 0 2 2 2 2" \
+  "$(lg 'gh release create v1.2.0 -R o/r') $(lg 'npm publish' "$TCO") $(lg 'npm publish --dry-run' "$TCO") $(lg 'gh release create v1.2.0 -R lo/none') \
+$(said 'release notes kellenek, ne publisholj'; lg 'pnpm publish' "$TCO") $(said 'Write release notes for v1.2.0.'; lg 'gh release create v1.2.0 -R o/r') $(said 'Release notes for v1.2.0, please.'; lg 'gh release create v1.2.0 -R o/r') $(said 'release 1.2.0 please'; lg 'gh release create v1.2.0 -R o/r') $(lg 'pnpm publish' "$TCO") \
+$(said 'Released v1.2.0 yesterday.'; lg 'gh release create v1.2.0 -R o/r') $(said 'Published v1.2.0 yesterday.'; lg 'pnpm publish' "$TCO") \
+$(said 'Release v1.2.0. It must not be released until I approve it.'; lg 'gh release create v1.2.0 -R o/r') $(said 'Publish v1.2.0. It must not be published until I approve it.'; lg 'pnpm publish' "$TCO")"
+said 'looks good'
+check "BLOCK: a publish from a project file's repo named by -C, --dir= or --prefix, or past a --filter; from a dir of no repo it passes" "2 2 2 2 0" \
+  "$(lg "pnpm -C $TCO publish") $(lg "pnpm --dir=$TCO publish -r") $(lg "npm --prefix $TCO publish") $(lg 'pnpm --filter x publish' "$TCO") $(lg "pnpm -C $T publish" "$TCO")"
+check "BLOCK: a publish whose -C after publish names a project file's repo; one whose -C there names a dir of no repo passes" "2 0" "$(lg "pnpm publish -C $TCO") $(lg "pnpm publish -C $T" "$TCO")"
+check "GitLab: BLOCK: glab mr merge, its alias accept, and glab release create unasked, naming the MR; asked, they pass" "2 1 2 2 0 0" \
+  "$(said 'looks good'; lg 'glab mr merge 41 -R o/r') $(grep -c 'merging gitlab.com/o/r!41 lands on o/r' "$T/err") $(lg 'glab mr accept 41 -R o/r') $(lg 'glab release create v1.2.0 -R o/r') $(said 'merge it'; lg 'glab mr merge 41 -R o/r') $(said 'release it'; lg 'glab release create v1.2.0 -R o/r')"
+check "GitLab, BLOCK: an ask naming another MR as <path>!N or !N" "2 2 0" "$(said 'Merge o/r!40.'; lg 'glab mr merge 41 -R o/r') $(said 'merge !40'; lg 'glab mr merge 41 -R o/r') $(said 'merge !41'; lg 'glab mr merge 41 -R o/r')"
+gql nitedani-agent nitedani-agent; mkdir -p "$HOME/.mergeworthy/projects/nitedani-agent"; echo '# notes' > "$HOME/.mergeworthy/projects/nitedani-agent/notes.md"; echo '{"default_branch":"main"}' > "$FX/repos_nitedani-agent_notes"
+said 'looks good'
+check "BLOCK: a push to the default branch unasked, naming it, or told of as past; to another branch, or asked, it passes" "2 1 2 2 2 0 0" \
+  "$(lg 'git push origin HEAD:main' "$OWN") $(grep -c 'this push to main lands on nitedani-agent/notes' "$T/err") $(said 'Released and pushed.'; lg 'git push origin HEAD:main' "$OWN") $(said 'Published and pushed to main.'; lg 'git push origin HEAD:main' "$OWN") \
+$(said 'Pushed to main.'; lg 'git push origin HEAD:main' "$OWN") $(lg 'git push origin HEAD:scratch' "$OWN") $(said 'push it to main'; lg 'git push origin HEAD:main' "$OWN")"
+check "BLOCK: a push to the default branch asked for as another branch's, or by its name in another case; asked for by its name, it passes, beside another branch held back" "2 2 2 0 0" \
+  "$(said 'Push the feature branch.'; lg 'git push origin HEAD:main' "$OWN") $(said 'Push to scratch.'; lg 'git push origin HEAD:main' "$OWN") $(said 'Push to MAIN.'; lg 'git push origin HEAD:main' "$OWN") $(said 'Push to branch main, and open the PR.'; lg 'git push origin HEAD:main' "$OWN") $(said "Don't push the scratch branch. Push to main."; lg 'git push origin HEAD:main' "$OWN")"
+check "BLOCK: a push to the default branch asked for as another branch's in inline code; asked for by its name, it passes" "2 2 2 0" \
+  "$(said 'Push to scratch.'; lg 'git push origin HEAD:main' "$OWN") $(said 'Push to `scratch`.'; lg 'git push origin HEAD:main' "$OWN") $(said 'Push to MAIN.'; lg 'git push origin HEAD:main' "$OWN") $(said 'Push to main.'; lg 'git push origin HEAD:main' "$OWN")"
+said 'looks good'; git -C "$OWN" config remote.origin.push refs/heads/scratch:refs/heads/main
+check "BLOCK: a push whose remote.<name>.push sends it to the default branch, named or bare; a pattern there or push.default=matching, as untellable" "2 2 2 1 2 1" \
+  "$(lg 'git push origin' "$OWN") $(lg 'git push' "$OWN") $(git -C "$OWN" config remote.origin.push 'refs/heads/*:refs/heads/*'; lg 'git push origin' "$OWN") $(grep -c "comes from git's config" "$T/err") \
+$(git -C "$OWN" config --unset remote.origin.push; git -C "$OWN" config push.default matching; lg 'git push' "$OWN") $(grep -c "comes from git's config" "$T/err")"
+git -C "$OWN" config --unset push.default
+said 'looks good'; printf '## Merging\n- Push to main once the gates pass\n' >> "$HOME/.mergeworthy/projects/nitedani-agent/notes.md"
+check "a push to the default branch under the project file's \`- Push to main\` order passes, with another branch held back as words or inline code; without a project file it is unchanged" "0 0 0 0" \
+  "$(lg 'git push origin HEAD:main' "$OWN") $(said "Don't push to scratch."; lg 'git push origin HEAD:main' "$OWN") $(said 'Don’t push to `scratch`.'; lg 'git push origin HEAD:main' "$OWN") $(said 'looks good'; rm "$HOME/.mergeworthy/projects/nitedani-agent/notes.md"; lg 'git push origin HEAD:main' "$OWN")"
+check "a push git's config can't tell, to a repo with no project file, passes as before: push.default=matching, a pattern in remote.<name>.push" "0 0" \
+  "$(git -C "$OWN" config push.default matching; lg 'git push' "$OWN") $(git -C "$OWN" config --unset push.default; git -C "$OWN" config remote.origin.push 'refs/heads/*:refs/heads/*'; lg 'git push origin' "$OWN")"
+git -C "$OWN" config --unset remote.origin.push
+printf 't3-update\nsystemctl --user (re)?start (t3code|t3-update)\n' > "$HOME/.mergeworthy/ask-first"; said 'is the t3 fix built yet?'
+check "BLOCK: an ask-first command unasked, at any command position and inside ssh's remote command, naming the list; a mention passes" "2 1 2 2 2 0" \
+  "$(lg "ssh collab@opensource 'export PATH=x; t3-update; echo \"exit \$?\"'") $(grep -c "is on this machine's ~/.mergeworthy/ask-first list.*ask the owner to reply \`update\`" "$T/err") \
+$(lg 't3-update 2>&1 | tail -5') $(lg 'systemctl --user restart t3code') $(lg 'ssh -p 22 h t3-update') $(lg 'echo t3-update')"
+check "an ask-first command the user's last message asks for passes, over ssh too; BLOCK: a question, a negation, a mention or a past 'updated'" "0 0 2 2 2 2" \
+  "$(said 'update t3'; lg "ssh collab@opensource 'export PATH=x; t3-update'") $(lg 't3-update') $(said 'should we update t3?'; lg 't3-update') $(said 'ne frissítsd még'; lg 't3-update') $(said 'Review the update plan.'; lg 't3-update') $(said $'Claude Code 2.1.319\nupdated 6 d ago'; lg 't3-update')"
+rt() { # command [cwd]: refused unasked, then passing once the user replies as the refusal says
+  said 'looks good'; local a; a=$(lg "$@"); said "$(grep -o 'reply `[a-z]*`' "$T/err" | tr -d '`' | cut -d' ' -f2)"; echo "$a $(lg "$@")"; }
+mkdir -p "$HOME/.mergeworthy/projects/nitedani-agent"; echo '# notes' > "$HOME/.mergeworthy/projects/nitedani-agent/notes.md"
+check "the reply each refusal asks the owner for lets that command through: a merge, a push to the default branch, a release, an ask-first command" "2 0 2 0 2 0 2 0" \
+  "$(rt "$M") $(rt 'git push origin HEAD:main' "$OWN") $(rt 'gh release create v1.2.0 -R o/r') $(rt 't3-update')"
+rm "$HOME/.mergeworthy/ask-first" "$HOME/.mergeworthy/projects/nitedani-agent/notes.md"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]

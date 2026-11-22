@@ -10,7 +10,7 @@ import shellcmd
 from shellcmd import parse, segments, prog, script, opt, api_call, field_name, TEXT_FREE, discussion_post, discussion_thread_of, names_discussion_mutation, env_of, origin, plain_create, PLAIN, new_post_drafts, no_instructions_read, by_agent, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Unseen, Where
 from records import branch_record, commit_file, DRIFT_REF, no_approach, no_preflight, STORE
 import drift, own_actions, review_launch, steward, post_words, threads_file, transcript_facts, work_folder
-from t3_tasks import under_t3
+from t3_tasks import under_t3, typed
 def missing_steps(d, head=None):
     """(head, the converge steps it lacks): head is a push's pushed commit, else HEAD."""
     head = head or subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
@@ -157,6 +157,109 @@ def push_before_gates(url):
     f = os.path.expanduser(f'~/.mergeworthy/projects/{m[1] or m[2]}.md') if m else ''
     sec = re.search(r'^## Gates\b[^\n]*\n(.*?)(?=^## |\Z)', open(f, errors='replace').read(), re.M | re.S) if os.path.isfile(f) else None
     return bool(sec and re.search(r'^(?:[-*] +)?Push: *before gates *$', sec[1], re.M))
+
+# What runs only on the owner's ask: the words of a sentence that asks for it, the project file's `## Merging` order that stands in for one,
+# and the reply that asks for it
+ASKED_FOR = {'merge': (r'merge\w*', r'Merge each PR as soon as it is ready\b', 'merge'),
+             'push': (r'push(?!\w*\s+(?:for|back)\b)\w*|releas\w*|publish\w*', r'Push to {branch}(?!\S)', 'push'),  # a release asked for pushes its version commit
+             'release': (r'releas\w*|publish\w*', None, 'release'),
+             'ask-first': (r'update\w*|restart\w*|frissít\w*', None, 'update')}
+NEGATED = re.compile(r"\b(?:don'?t|\w+n['’]t|do not|never|not|no|who|why|ne|nem|majd|várj|varj|wait|later|after|once|when|until|if|ha|miután)\b", re.I)
+# an ask opens a clause, after a list bullet, a please, a "let's" or a "can you" at most; "merge conflicts", "release notes" and "update plan"
+# name a thing, not the action
+LEAD = r"(?:[-*•]\s*)?(?:(?:please|pls|ok(?:ay)?|now|just|then|aztán|let['’]?s|let us|i want you to|i'd like you to|(?:can|could|would) you|go ahead and|you can|kérlek|kerlek|most)\W+)*"
+MENTION = r'(?!\s+(?:conflicts?|requests?|notes?|plans?|queue)\b)'
+try: ASK_FIRST = [l.strip() for l in open(os.path.expanduser('~/.mergeworthy/ask-first')) if l.strip() and not l.startswith('#')]
+except OSError: ASK_FIRST = []  # the machine's commands that restart what others use, one pattern a line
+
+PR_REF = re.compile(r'(?:github\.com/([\w.-]+/[\w.-]+)/pull/|gitlab\.com/([\w./-]+?)/-/merge_requests/|\b([\w.-]+/[\w./-]*[\w-])[#!]|[#!])(\d+)\b')  # a PR, an MR (!N)
+
+def asks(text, kind, repo=None, num=None, branch=None):
+    """Whether text (a message the user typed) asks for kind on its target, read by the clauses (split at commas, semicolons and an "and"
+    before a word) of each sentence holding kind's words, once URLs, `(Re-invocation of` lines and the word mergeworthy are taken out: False
+    when a clause negates them or puts them off, naming the target or none; True when a clause opens with them in no past form (-ed), the
+    sentence is no question, and the clause names the target: PR num of repo when it (else the text) names PRs, the branch pushed when it
+    names a branch (`to <branch>`, `<branch> branch`); else None."""
+    refs = lambda t: [((m[1] or m[2] or m[3] or '').lower(), m[4]) for m in PR_REF.finditer(t)]
+    bare = lambda t: re.sub(r'https?://\S+|\bmergeworthy\w*|^\s*\(Re-invocation of .*', ' ', t, flags=re.I)
+    words = rf'\b(?:{ASKED_FOR[kind][0]})\b{MENTION}'
+    def named(c):  # the targets clause c names: a merge's PRs as (repo, number), a push's branches, as words or `inline code`
+        if kind == 'merge': return refs(c)
+        return {x for x in re.findall(r'\bto\s+(?:the\s+)?(?:branch\s+)?([\w./-]*[\w-])|([\w./-]*[\w-])\s+branch\b', c.replace('`', ''), re.I) for x in x if x and x.lower() not in ('the', 'a', 'this', 'that')} if kind == 'push' else set()
+    def hits(t): return any(r in ('', (repo or '').lower()) and n == str(num) for r, n in t) if kind == 'merge' else (branch or '') in t  # git's branch names are case-sensitive
+    found = None
+    for s in re.split(r'(?<=[.!?])\s+|\n', text):
+        if not re.search(words, bare(s), re.I): continue
+        clauses = re.split(r'[,;]|\b(?:and|és)\b(?!\s*(?:[#!]\d|https?:|[\w.-]+/[\w./-]*[#!]\d))', s)
+        held = [c for c in clauses if NEGATED.search(bare(c))]
+        if any(not named(c) or hits(named(c)) for c in held): return False
+        found = found or not s.rstrip().endswith('?') and any(
+            c not in held and re.match(LEAD + r'(?!\w*ed\b)' + words, bare(c).strip(), re.I) and (not (t := named(c) or (refs(text) if kind == 'merge' else [])) or hits(t)) for c in clauses) or None
+    return found
+
+def last_typed():
+    """The message the user last typed in this session (t3_tasks.typed); '' with none."""
+    try:
+        for l in shellcmd.rlines(d.get('transcript_path') or ''):
+            if b'"user"' not in l: continue
+            try: e = json.loads(l)
+            except ValueError: continue
+            if isinstance(e, dict) and e.get('type') == 'user' and not e.get('isSidechain') and not e.get('isMeta') and (t := typed((e.get('message') or {}).get('content'))):
+                return t
+    except OSError: pass
+    return ''
+
+def project_file(repo):
+    """The text of repo's project file (owner/repo, or a GitLab project's path), None without one."""
+    try: return open(os.path.expanduser(f'~/.mergeworthy/projects/{repo}.md'), errors='replace').read() if repo else None
+    except OSError: return None
+
+def need_ask(kind, what, repo=None, num=None, branch=None):
+    """Blocks what (a landing on repo's default branch, or an ask-first command) unless the message the user last typed asks for it, or
+    holds it back in no sentence while repo's project file holds kind's `## Merging` order; a landing on a repo with no project file passes."""
+    repo = re.sub(r'^gitlab\.com/', '', repo or '') or None  # a GitLab project's project file is named by its path
+    _, order, reply = ASKED_FOR[kind]
+    text = project_file(repo)
+    if text is None and kind != 'ask-first': return
+    sec = re.search(r'^## Merging\b[^\n]*\n(.*?)(?=^## |\Z)', text or '', re.M | re.S)
+    asked = asks(last_typed(), kind, repo, num, branch)
+    if asked or asked is None and order and sec and re.search(r'^[-*] +' + order.format(branch=re.escape(branch or '')), sec[1], re.M):
+        return
+    if kind == 'ask-first':
+        block(f"{what} is on this machine's ~/.mergeworthy/ask-first list: it runs only when the message the user last typed asks for it "
+              "(your own scheduled prompt, scope or goal is no ask). Say what it would restart and ask the owner to reply `update`")
+    block(f"{what} lands on {repo}, which is the owner's: it needs their ask, in the message they last typed or the project file's "
+          f"`## Merging` order (your own scheduled prompt, scope or goal is none). Say it's ready and ask the owner to reply `{reply}` (mergeworthy:merging steps 3-4)")
+
+def default_branch(host, repo):
+    """repo's default branch on host (GitHub, else GitLab); blocks when its API can't answer."""
+    a = ['gh', 'api', f'repos/{repo}'] if host == 'github.com' else ['glab', 'api', '--hostname', host, f"projects/{urllib.parse.quote(repo, safe='')}"]
+    try: return json.loads(subprocess.run(a, capture_output=True, text=True, timeout=20).stdout)['default_branch']
+    except (OSError, subprocess.TimeoutExpired, ValueError, KeyError, TypeError):
+        block(f"{a[0]} couldn't read {repo}'s default branch, so whether this push lands on it can't be told: retry once {a[0]} answers")
+
+def publish_dir(p, a):
+    """The dir an `npm|pnpm <a>` publishes from (its -C, --dir or --prefix, before or after `publish`, else where it runs), None when it runs
+    no publish."""
+    valued, pkg, ops, i = {'npm': ('--prefix', '-w', '--workspace'), 'pnpm': ('-C', '--dir', '--filter', '-F')}[p], '.', [], 0
+    while i < len(a):
+        k, eq, v = a[i].partition('=')
+        if k in valued and not eq: v, i = (a[i + 1] if i + 1 < len(a) else ''), i + 1
+        if k in ('-C', '--dir', '--prefix'): pkg = v
+        elif not k.startswith('-'): ops.append(k)
+        i += 1
+    return os.path.join(known(run_dir), os.path.expanduser(where.expand(pkg))) if ops[:1] == ['publish'] else None
+
+def ask_first(t):
+    """Blocks t when it, or a command an `ssh <host> '<command>'` runs there, is one the machine's ask-first list names, unasked."""
+    remote = []
+    if os.path.basename(t[0]) == 'ssh':
+        i = 1
+        while i < len(t) and t[i].startswith('-'): i += 2 if re.fullmatch(r'-[BbcDEeFIiJLlmOoPpQRSWw]', t[i]) else 1
+        remote = [prog(x) for x in segments(' '.join(t[i + 1:]))] if t[i + 1:] else []
+    for c in [t, *remote]:
+        line = ' '.join([os.path.basename(c[0]), *c[1:]]) if c else ''
+        if line and any(re.match(rf'(?:{p})(?!\S)', line) for p in ASK_FIRST): need_ask('ask-first', f'`{line[:80]}`')
 
 def setting(name, default):
     """MERGEWORTHY_<name> from the environment, else from ~/.mergeworthy/settings.env (written at session start from the plugin's options)."""
@@ -655,10 +758,10 @@ def repo_of(url):
     return host, m[2]
 
 def pushed(git_dir, opts, env, rest):
-    """([remote URLs], [(commit, branch it updates, local branch it publishes)]) of a `git push <rest>` run in git_dir with the command's other global options
-    (opts) and env: the remote's push URLs (pushurl, pushInsteadOf), or the URL given; no commits for a delete, tags only, or
-    a local path."""
-    if '--delete' in rest or '-d' in rest: return [], []
+    """([remote URLs], [(commit, branch it updates, local branch it publishes)], why the branches can't be told or '') of a `git push <rest>`
+    run in git_dir with the command's other global options (opts) and env: the remote's push URLs (pushurl, pushInsteadOf), or the URL given;
+    no commits for a delete, tags only, or a local path."""
+    if '--delete' in rest or '-d' in rest: return [], [], ''
     if {'--all', '--branches', '--mirror'} & set(rest):
         block("push one branch, named (`git push <remote URL> <branch>`): each pushed head's records are checked (mergeworthy:merging step 1)")
     pos, skip = [], False
@@ -686,23 +789,27 @@ def pushed(git_dir, opts, env, rest):
             block(f"`{remote}` is neither a remote of this checkout nor a URL or path, so where this push goes can't be told")
     push_urls.extend(urls)
     if all(repo_of(u) is None for u in urls):
-        return urls, []  # a local path publishes nothing a reviewer or CI sees
-    out = []
-    for spec in pos[1:] or ([] if '--tags' in rest else ['HEAD']):
+        return urls, [], ''  # a local path publishes nothing a reviewer or CI sees
+    out, configured = [], [] if pos[1:] or '--tags' in rest else git('config', '--get-all', f'remote.{remote}.push').split()
+    untold = any('*' in x or x.lstrip('+') == ':' for x in configured) or not (pos[1:] or configured or '--tags' in rest) and git('config', 'push.default') == 'matching'
+    untold = untold and (f"which branches this push updates comes from git's config (a pattern in remote.{remote}.push, or push.default=matching), "
+                         "so whether it lands on the default branch can't be told: name the branch (`git push <remote> HEAD:<branch>`)")
+    configured = [] if untold else configured
+    for spec in pos[1:] or configured or ([] if '--tags' in rest else ['HEAD']):
         src, _, dst = spec.lstrip('+').partition(':')
         if not src or src.startswith('refs/tags/') or run('show-ref', '--verify', '-q', f'refs/tags/{src}').returncode == 0:
             continue  # a delete (:dst), or a tag
         sha = git('rev-parse', '--verify', '-q', f'{src}^{{commit}}')
         if not sha and not re.search(r'[$`]', src):  # a commit computed when it runs is checked only if the push is collaboration
             block(f"`{src}` in this push names no commit here, so what it publishes can't be checked: push a branch or commit of this checkout")
-        branch = dst or (to[1] if not pos[1:] else head if src == 'HEAD' else src)
+        branch = dst or (to[1] if not pos[1:] and not configured else head if src == 'HEAD' else src)
         if re.search(r'[$`]', branch):
             block(f"the branch this push updates ({branch}) is computed when it runs, so whether it is a PR's can't be told: write it out")
         local = re.sub(r'^refs/heads/', '', src)
         if src == 'HEAD': local = head or 'HEAD'
         elif run('show-ref', '--verify', '-q', f'refs/heads/{local}').returncode: local = branch  # a commit, not a branch: the one it updates
         out.append((sha, re.sub(r'^refs/heads/', '', branch), re.sub(r'^refs/heads/', '', local)))
-    return urls, out
+    return urls, out, untold or ''
 
 def collaboration(d, url, heads):
     """([why this push is collaboration work], [{url, isDraft, sha: the commit pushed to it} of each open PR or MR it updates]): it updates an open PR's (MR's)
@@ -1031,6 +1138,14 @@ def check(t, has_cd):
     t = prog(t)
     if not t: return
     p, a = os.path.basename(t[0]), t[1:]
+    if ASK_FIRST: ask_first(t)
+    if p in ('gh', 'glab') and a[:2] == ['release', 'create'] and '--help' not in a and '-h' not in a:
+        need_ask('release', f'`{p} release create`', gh_repo(a[2:], env, run_dir) if p == 'gh' else gitlab_repo(a[2:], run_dir))
+    if p == 'glab' and a[:1] == ['mr'] and a[1:2] in (['merge'], ['accept']) and '--help' not in a and '-h' not in a:
+        mr = mr_target(a[2:], run_dir)
+        need_ask('merge', f"merging {mr[0]}!{mr[1] or mr[2]}", mr[0], mr[1])
+    if p in ('npm', 'pnpm') and (pkg := publish_dir(p, a)) and '--dry-run' not in a:
+        need_ask('release', f'`{p} publish`', (repo_of(origin(pkg)) or (None, None))[1])
     if p == 'codex' and ('exec' in a or a[:1] == ['e']) and under_t3():
         block("under T3 Code, start Codex through T3, where the user sees it: delegate_task with target {providerInstanceId: codex, "
               "model: <the review model from orchestrator_capabilities>}, the prompt file's path in the task, a new delegate_task per review round (mergeworthy:delegate §Reviewers)")
@@ -1105,7 +1220,11 @@ def check(t, has_cd):
             if {'--git-dir', '--work-tree'} & {x.split('=')[0] for x in git_globals(t)} or {'GIT_DIR', 'GIT_WORK_TREE'} & set(env):
                 block("push from the checkout itself (cd or -C, without --git-dir, --work-tree, GIT_DIR or GIT_WORK_TREE), so what it publishes can be checked")
             g = git_globals(t)
-            urls, heads = pushed(repo, [x for i, x in enumerate(g) if x != '-C' and g[i - 1:i] != ['-C']], {**os.environ, **env}, rest)
+            urls, heads, untold = pushed(repo, [x for i, x in enumerate(g) if x != '-C' and g[i - 1:i] != ['-C']], {**os.environ, **env}, rest)
+            for host, path in filter(None, map(repo_of, urls)):
+                if not heads or project_file(path) is None: continue
+                if untold: block(untold)
+                if (main := default_branch(host, path)) in [b for _, b, _ in heads]: need_ask('push', f'this push to {main}', path, branch=main)
             why, prs = [sum(x, []) for x in zip(*[collaboration(repo, u, [h[:2] for h in heads]) for u in urls])] or ([], [])
             if why and not all(sha for sha, _, _ in heads):
                 block(f"this push ({'; '.join(why)}) publishes a commit computed when it runs, so its records can't be checked: push a branch or a sha written out")
@@ -1214,6 +1333,7 @@ def check(t, has_cd):
             newer = [gh('api', f"repos/{slug}/commits/{c['sha']}")['files'] for c in moved['commits'] if c['commit']['committer']['date'] > green]
         except (OSError, subprocess.TimeoutExpired, ValueError, KeyError, TypeError) as e:
             block(f"gh couldn't read this PR's merge state ({type(e).__name__}: {e}), so whether its base moved can't be checked: retry once gh answers")
+        need_ask('merge', f"merging {pr['url']}", slug, pr['url'].rstrip('/').rsplit('/', 1)[1])
         if body[0].strip() and (bad := unproven_trailers(body[0], commits)):
             block(f"the squash body holds only `Co-authored-by: <name> <email>` lines naming human authors of the PR's commits, copied from `gh pr view <N> --json commits` "
                   f"(mergeworthy:merging step 4); not one: {bad[0]!r}")
