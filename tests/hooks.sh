@@ -4846,6 +4846,8 @@ $(said 'release notes kellenek, ne publisholj'; lg 'pnpm publish' "$TCO") $(said
 said 'looks good'
 check "BLOCK: a publish from a project file's repo named by -C, --dir= or --prefix, or past a --filter; from a dir of no repo it passes" "2 2 2 2 0" \
   "$(lg "pnpm -C $TCO publish") $(lg "pnpm --dir=$TCO publish -r") $(lg "npm --prefix $TCO publish") $(lg 'pnpm --filter x publish' "$TCO") $(lg "pnpm -C $T publish" "$TCO")"
+check "GitLab: BLOCK: glab mr merge and glab release create unasked, naming the MR; asked, they pass" "2 1 2 0 0" \
+  "$(said 'looks good'; lg 'glab mr merge 41 -R o/r') $(grep -c 'merging gitlab.com/o/r!41 lands on o/r' "$T/err") $(lg 'glab release create v1.2.0 -R o/r') $(said 'merge it'; lg 'glab mr merge 41 -R o/r') $(said 'release it'; lg 'glab release create v1.2.0 -R o/r')"
 gql nitedani-agent nitedani-agent; mkdir -p "$HOME/.mergeworthy/projects/nitedani-agent"; echo '# notes' > "$HOME/.mergeworthy/projects/nitedani-agent/notes.md"; echo '{"default_branch":"main"}' > "$FX/repos_nitedani-agent_notes"
 said 'looks good'
 check "BLOCK: a push to the default branch unasked, naming it; to another branch, or asked, it passes" "2 1 0 0" \

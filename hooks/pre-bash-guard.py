@@ -205,10 +205,11 @@ def project_file(repo):
 def need_ask(kind, what, repo=None, num=None, branch=None):
     """Blocks what (a landing on repo's default branch, or an ask-first command) unless the message the user last typed asks for it, or
     holds it back in no sentence while repo's project file holds kind's `## Merging` order; a landing on a repo with no project file passes."""
+    repo = re.sub(r'^gitlab\.com/', '', repo or '') or None  # a GitLab project's project file is named by its path
     order, text = ASKED_FOR[kind][1], project_file(repo)
     if text is None and kind != 'ask-first': return
     sec = re.search(r'^## Merging\b[^\n]*\n(.*?)(?=^## |\Z)', text or '', re.M | re.S)
-    asked = asks(last_typed(), kind, re.sub(r'^gitlab\.com/', '', repo or ''), num, branch)
+    asked = asks(last_typed(), kind, repo, num, branch)
     if asked or asked is None and order and sec and re.search(r'^[-*] +' + order.format(branch=re.escape(branch or '')), sec[1], re.M):
         return
     if kind == 'ask-first':
@@ -1122,8 +1123,11 @@ def check(t, has_cd):
     if not t: return
     p, a = os.path.basename(t[0]), t[1:]
     if ASK_FIRST: ask_first(t)
-    if p == 'gh' and a[:2] == ['release', 'create'] and '--help' not in a and '-h' not in a:
-        need_ask('release', '`gh release create`', gh_repo(a[2:], env, run_dir))
+    if p in ('gh', 'glab') and a[:2] == ['release', 'create'] and '--help' not in a and '-h' not in a:
+        need_ask('release', f'`{p} release create`', gh_repo(a[2:], env, run_dir) if p == 'gh' else gitlab_repo(a[2:], run_dir))
+    if p == 'glab' and a[:2] == ['mr', 'merge'] and '--help' not in a and '-h' not in a:
+        mr = mr_target(a[2:], run_dir)
+        need_ask('merge', f"merging {mr[0]}!{mr[1] or mr[2]}", mr[0], mr[1])
     if p in ('npm', 'pnpm') and (pkg := publish_dir(p, a)) and '--dry-run' not in a:
         need_ask('release', f'`{p} publish`', (repo_of(origin(pkg)) or (None, None))[1])
     if p == 'codex' and ('exec' in a or a[:1] == ['e']) and under_t3():
