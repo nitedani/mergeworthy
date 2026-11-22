@@ -2925,6 +2925,7 @@ check "BLOCK: a number gh finds no PR for, saying to check the repository and nu
 : > "$T/rdy.args"
 check "gh pr ready --undo, --undo=true, -h and --help, with no PR of the checkout too, never read the PR" "0 0 0 0 0" "$(rdy 'gh pr ready 5 -R o/r --undo' "$GO") $(rdy 'gh pr ready --undo=true 5 -R o/r' "$GO") $(rdy 'gh pr ready -h' "$GO") $(rdy 'gh pr ready --help' "$GO") $(grep -c 'pr view' "$T/rdy.args")"
 # pre-bash-guard: `gh pr merge` waits for a PR that is up to date with its base and whose CI ran after the base last touched its files; never --admin
+printf '## Merging\n- Merge each PR as soon as it is ready\n' >> "$HOME/.mergeworthy/projects/o/r.md"  # the owner's standing order: the checks below are on the merge's form
 M='gh pr merge 41 -R o/r --squash --delete-branch --subject "Fix it (#41)" --body ""'
 mpr() { # mergeStateStatus, when its last check completed
   printf '{"url":"https://github.com/o/r/pull/41","headRefName":"fix","headRefOid":"hd","baseRefName":"main","mergeStateStatus":"%s","changedFiles":1,"files":[{"path":"a.py"}],"statusCheckRollup":[{"completedAt":"%s"}],"commits":[{"authors":[%s]}]}' "$1" "$2" "${3:-}" > "$FX/pr_view_41"; }
