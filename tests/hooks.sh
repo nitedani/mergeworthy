@@ -4103,6 +4103,9 @@ BW="$HOME/.mergeworthy/work/best"; mkdir -p "$BW/strict-pr" "$HOME/.mergeworthy/
 python3 -c 'import json; print(json.dumps({"type":"user","message":{"content":"Is this the best solution?"}}))' > "$T/tr.jsonl"
 check "BLOCK: a \"best solution?\" answer naming none of the work folder's rating files, naming it; one naming strict-pr/rating.md, or with no rating file, passes" "2 1 0 0" \
   "$(slj 'Yes: one URL watcher for the whole page, shared by all stores.' 0 s-best "$BW") $(grep -c 'strict-pr/rating.md' "$T/err") $(slj 'No: strict-pr/rating.md rates C3, one shared loop, 4, and nothing since overturns it.' 0 s-best "$BW") $(slj 'Yes: one URL watcher for the whole page.' 0 s-best "$HOME/.mergeworthy/work/unrated")"
+BD="$HOME/.mergeworthy/work/deep"; mkdir -p "$BD/pr/finality" "$HOME/.mergeworthy/work/unrated/repo/.git" "$HOME/.mergeworthy/work/unrated/repo/docs/decisions"; echo '| K7 | 2 | splits |' > "$BD/pr/finality/converge.md"; echo '# ADR 1' > "$HOME/.mergeworthy/work/unrated/repo/docs/decisions/1.md"
+check "BLOCK: a \"best solution?\" answer when the only rating is two folders down (pr/finality/converge.md); a checkout's own docs/decisions/ is no rating" "2 0" \
+  "$(slj 'Yes.' 0 s-best "$BD") $(slj 'Yes.' 0 s-best "$HOME/.mergeworthy/work/unrated")"
 # the telefunc-room session's answer, as it wrote it, then the same with the attempt that failed, and a quoted phrase
 tr_file 'README tidied.'
 check "BLOCK: a fact left unchecked (\"I don't know whether\", \"I haven't read\"); its sentence quoting the failed attempt, or the phrase in quotes, passes" "2 2 0 0" \

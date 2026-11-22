@@ -95,10 +95,15 @@ def handback_check():
 # A "best solution?" asked about work whose ratings this session's work folder holds is answered from them
 BEST = re.compile(r"\b(best|better|ideal|optimal|right|cleanest|pinnacle)\b[^.?!\n]{0,40}\b(solution|approach|design|way|fix|option|code)s?\b[^.!\n]*\?"
                   r"|\b(solution|approach|design|fix|code)\b[^.?!\n]{0,30}\b(best|better|ideal|optimal|right)\b[^.!\n]*\?", re.I)
+def ratings(wf):  # the rating records at any depth of wf, outside the checkouts in it (a repo's own docs/decisions/ are no rating)
+    for root, dirs, files in os.walk(wf):
+        dirs[:] = sorted(x for x in dirs if not os.path.exists(os.path.join(root, x, '.git')))
+        yield from (os.path.relpath(os.path.join(root, f), wf) for f in sorted(files)
+                    if f in ('approach.md', 'converge.md', 'rating.md') or f.endswith('.md') and os.path.basename(root) == 'decisions')
 def best_check():
     if not BEST.search(last_user): return
     for wf in sorted(task_dirs):
-        rated = [os.path.relpath(f, wf) for g in ('approach.md', 'decisions/*.md', '*/converge.md', '*/rating.md') for f in sorted(glob.glob(os.path.join(wf, g)))]
+        rated = list(ratings(wf))
         if rated and not any(r in last for r in rated):
             print(f"This asks whether a design is the best one, and {wf} holds its ratings ({', '.join(rated)}): read them, and answer "
                   "from them, naming any rating you overturn and with what evidence.", file=sys.stderr)
