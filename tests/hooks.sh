@@ -2534,7 +2534,7 @@ echo "$P25" > "$FX/pr_list_"
 check "a merge of main after the squash of a branch the PR merged, tree unchanged, carries (#251)" 0 "$(sk "$SA" s1)"
 check "BLOCK: the same carry with gh failing is refused: no merged PR's head to replay from" 1 "$(GH_STUB_403=1 sk "$SA" s2)"
 # a git without merge-tree's --merge-base (2.43) replays as before: the unchanged-tree carry of #251 is refused, not compared with the bare old head
-mkdir -p "$T/shim"; printf '#!/bin/bash\ncase " $* " in *" merge-tree "*" --merge-base="*) exit 129;; esac\nexec %s "$@"\n' "$(command -v git)" > "$T/shim/git"; chmod +x "$T/shim/git"
+mkdir -p "$T/shim"; printf '#!/bin/bash\ncase " $* " in *" merge-tree "*) echo "$*" >> "$T/merge-tree.log";; esac\ncase " $* " in *" merge-tree "*" --merge-base="*) exit 129;; esac\nexec %s "$@"\n' "$(command -v git)" > "$T/shim/git"; chmod +x "$T/shim/git"
 check "BLOCK: a git that rejects --merge-base refuses the #251 carry as cd254f8 did" 1 "$(PATH="$T/shim:$PATH" sk "$SA" s2b)"
 sc checkout -q main; sed -i 's/^5$/other/' "$SG/z.ts"; sc commit -qam other; sc push -q origin main; sc checkout -q p26; sc merge -q --no-edit main >/dev/null 2>&1
 check "main moving on after the squash, merged in, carries" 0 "$(sk "$SA" s3)"
@@ -2571,15 +2571,16 @@ dc checkout -q main; sed -i 's/^3$/main/' "$DG/f.ts"; dc commit -q -am main; dc 
 dc checkout -q gone; dc merge -q --no-edit main >/dev/null 2>&1; dc checkout -q main -- f.ts; dc add -A; dc commit -q --no-edit; printf 'carries the pass of %s: merged main\n' "$DA" > "$T/dk.md"
 check "BLOCK: a merge keeping main's file over the reviewed deletion is refused, naming the file" "1 1" "$( (cd "$DG" && bash "$R/bin/pr-steps" verify "$T/dk.md" >/dev/null 2>&1; echo $?) ) $( (cd "$DG" && bash "$R/bin/pr-steps" verify "$T/dk.md" 2>&1 >/dev/null) | grep -c 'f.ts changed since')"
 # a criss-cross merge has two merge bases, which git merges itself: the replay leaves them to git unless a merged PR's head replaces them
-XG="$T/xclone"; git init -q -b main "$XG"; xc() { git -C "$XG" -c user.name=t -c user.email=t@t "$@"; }
-seq 1 12 > "$XG/f"; xc add f; xc commit -q -m x; xc checkout -q -b a1; sed -i 's/^5$/a/' "$XG/f"; GIT_COMMITTER_DATE='2099-01-02T00:00:00Z' xc commit -q -am a1; xc checkout -q main; xc checkout -q -b b1; sed -i 's/^5$/b/' "$XG/f"; xc commit -q -am b1
-xc checkout -q -b a a1; xc merge -q --no-commit b1 >/dev/null 2>&1; seq 1 12 | sed '5s/.*/a/' > "$XG/f"; xc add -A; xc commit -q -m am
-xc checkout -q -b b b1; xc merge -q --no-commit a1 >/dev/null 2>&1; seq 1 12 | sed '5s/.*/a/' > "$XG/f"; xc add -A; xc commit -q -m bm
-xc checkout -q a; sed -i 's/^4$/A4/' "$XG/f"; xc commit -q -am A; XA=$(git -C "$XG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$XA"
-xc checkout -q b; sed -i 's/^9$/B9/' "$XG/f"; xc commit -q -am B; xc update-ref refs/remotes/origin/main b; xc symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+XG="$T/xclone"; git init -q -b main "$XG"; xc() { git -C "$XG" -c user.name=t -c user.email=t@t "$@"; }; xl() { seq 1 120 | sed "5,104s/.*/$1/"; }
+seq 1 120 > "$XG/f.md"; xc add f.md; xc commit -q -m x; xc checkout -q -b a1; xl a > "$XG/f.md"; GIT_COMMITTER_DATE='2099-01-02T00:00:00Z' xc commit -q -am a1; xc checkout -q main; xc checkout -q -b b1; xl b > "$XG/f.md"; xc commit -q -am b1
+xc checkout -q -b a a1; xc merge -q --no-commit b1 >/dev/null 2>&1; xl a > "$XG/f.md"; xc add -A; xc commit -q -m am
+xc checkout -q -b b b1; xc merge -q --no-commit a1 >/dev/null 2>&1; xl a > "$XG/f.md"; xc add -A; xc commit -q -m bm
+xc checkout -q a; sed -i 's/^4$/A4/' "$XG/f.md"; xc commit -q -am A; XA=$(git -C "$XG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$XA"
+xc checkout -q b; sed -i 's/^110$/B110/' "$XG/f.md"; xc commit -q -am B; xc update-ref refs/remotes/origin/main b; xc symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
 xc checkout -q a; xc reset -q --hard "$(xc commit-tree -p "$XA" -p b -m merged "$(git -C "$XG" merge-tree --write-tree "$(git -C "$XG" rev-parse b)" "$XA" | sed -n 1p)")"
 printf 'carries the pass of %s: merged main\n' "$XA" > "$T/xk.md"
-check "a merge of main into a head with two merge bases carries, as git's own replay of both gives HEAD's tree" 0 "$( (cd "$XG" && bash "$R/bin/pr-steps" verify "$T/xk.md" >/dev/null 2>&1; echo $?) )"
+: > "$T/merge-tree.log"
+check "a merge of main into a head with two merge bases carries, the replay leaving git both bases (no --merge-base)" "0 0" "$( (cd "$XG" && PATH="$T/shim:$PATH" bash "$R/bin/pr-steps" verify "$T/xk.md" >/dev/null 2>&1; echo $?) ) $(grep -c -e --merge-base "$T/merge-tree.log")"
 # a branch whose latest approach record has no `contract: 2` was started by a session on v1's skills: it finishes under the old records
 mkdir -p "$HOME/.mergeworthy/sessions"; echo "/p graph startup 0" > "$HOME/.mergeworthy/sessions/s-graph"; echo "/p v1 startup 0" > "$HOME/.mergeworthy/sessions/s-v1"
 printf 'Root cause: src/a.ts:3 does it\nBasis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | stays |\n| Fix it | 8 | ok |\nShared assumption: the bug is in this repo\n\nChosen: Fix it\n' > "$T/apo.md"; CLAUDE_CODE_SESSION_ID=s-graph prs approach "$T/apo.md" >/dev/null
