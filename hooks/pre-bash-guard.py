@@ -168,12 +168,14 @@ try: ASK_FIRST = [l.strip() for l in open(os.path.expanduser('~/.mergeworthy/ask
 except OSError: ASK_FIRST = []  # the machine's commands that restart what others use, one pattern a line
 
 def asks(text, kind, num=None):
-    """text (a message the user typed) asks for kind: a sentence holding its words, not a question and with no negation, once URLs,
-    `(Re-invocation of` lines and the word mergeworthy are taken out; when it names PRs, PR num is one of them."""
+    """Whether text (a message the user typed) asks for kind, once URLs, `(Re-invocation of` lines and the word mergeworthy are taken out:
+    False when a sentence holding its words negates them; True when one holds them and is no question, and PR num is one the text names, if
+    it names any; else None."""
     nums = re.findall(r'(?:/pull/|/merge_requests/|#)(\d+)\b', text)
     text = re.sub(r'https?://\S+|\bmergeworthy\w*|^\(Re-invocation of .*', ' ', text, flags=re.I | re.M)
-    return (num is None or not nums or str(num) in nums) and any(
-        re.search(rf'\b(?:{ASKED_FOR[kind][0]})', s, re.I) and not s.rstrip().endswith('?') and not NEGATED.search(s) for s in re.split(r'(?<=[.!?\n])\s*', text))
+    said = [s for s in re.split(r'(?<=[.!?\n])\s*', text) if re.search(rf'\b(?:{ASKED_FOR[kind][0]})', s, re.I)]
+    if any(NEGATED.search(s) for s in said): return False
+    return (num is None or not nums or str(num) in nums) and any(not s.rstrip().endswith('?') for s in said) or None
 
 def last_typed():
     """The message the user last typed in this session (t3_tasks.typed); '' with none."""
@@ -193,12 +195,13 @@ def project_file(repo):
     except OSError: return None
 
 def need_ask(kind, what, repo=None, num=None, branch=None):
-    """Blocks what (a landing on repo's default branch, or an ask-first command) unless repo's project file holds kind's `## Merging` order
-    or the message the user last typed asks for it; a landing on a repo with no project file passes."""
+    """Blocks what (a landing on repo's default branch, or an ask-first command) unless the message the user last typed asks for it, or
+    holds it back in no sentence while repo's project file holds kind's `## Merging` order; a landing on a repo with no project file passes."""
     order, text = ASKED_FOR[kind][1], project_file(repo)
     if text is None and kind != 'ask-first': return
     sec = re.search(r'^## Merging\b[^\n]*\n(.*?)(?=^## |\Z)', text or '', re.M | re.S)
-    if order and sec and re.search(r'^[-*] +' + order.format(branch=re.escape(branch or '')), sec[1], re.M) or asks(last_typed(), kind, num):
+    asked = asks(last_typed(), kind, num)
+    if asked or asked is None and order and sec and re.search(r'^[-*] +' + order.format(branch=re.escape(branch or '')), sec[1], re.M):
         return
     if kind == 'ask-first':
         block(f"{what} is on this machine's ~/.mergeworthy/ask-first list: it runs only when the message the user last typed asks for it "

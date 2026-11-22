@@ -4836,7 +4836,8 @@ check "BLOCK: an ask naming another PR, a question, a negation (English, Hungari
   "$(said 'merge #40'; lg "$M") $(said 'is #41 merged?'; lg "$M") $(said "don't merge it yet"; lg "$M") $(said 'ne mergeld'; lg "$M") $(said 'nem kell mergelni'; lg "$M") $(said 'majd en mergelem'; lg "$M") \
 $(said 'merge it' 'wait, not yet'; lg "$M") $(said 'thanks' '[T3 Code: scheduled task "zqs-check" sent this prompt.] Goal: merge and land PR #41'; lg "$M") $(said 'land PR #23'; lg "$M")"
 printf '## Merging\n- Merge each PR as soon as it is ready (gates, CI)\n' >> "$HOME/.mergeworthy/projects/o/r.md"
-check "a merge under the project file's standing order passes with no ask" 0 "$(said 'thanks'; lg "$M")"
+check "a merge under the project file's standing order passes with no ask; BLOCK: the user's last message holding it back wins over the order" "0 2 2" \
+  "$(said 'thanks'; lg "$M") $(said 'Dont merge pr when ready, I want to see it.'; lg "$M") $(said 'ne mergeld'; lg "$M")"
 sed -i '/^## Merging/,$d' "$HOME/.mergeworthy/projects/o/r.md"
 said 'looks good'
 check "BLOCK: gh release create and npm publish unasked; asked, or a dry run, or a repo with no project file, they pass" "2 2 0 0 2 0 0" \
