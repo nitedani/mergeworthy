@@ -171,7 +171,7 @@ MENTION = r'(?!\s+(?:conflicts?|requests?|notes?|plans?|queue)\b)'
 try: ASK_FIRST = [l.strip() for l in open(os.path.expanduser('~/.mergeworthy/ask-first')) if l.strip() and not l.startswith('#')]
 except OSError: ASK_FIRST = []  # the machine's commands that restart what others use, one pattern a line
 
-PR_REF = re.compile(r'(?:github\.com/([\w.-]+/[\w.-]+)/pull/|gitlab\.com/([\w./-]+?)/-/merge_requests/|\b([\w.-]+/[\w.-]+)#|#)(\d+)\b')
+PR_REF = re.compile(r'(?:github\.com/([\w.-]+/[\w.-]+)/pull/|gitlab\.com/([\w./-]+?)/-/merge_requests/|\b([\w.-]+/[\w./-]*[\w-])[#!]|[#!])(\d+)\b')  # a PR, an MR (!N)
 
 def asks(text, kind, repo=None, num=None, branch=None):
     """Whether text (a message the user typed) asks for kind on its target, each sentence read once URLs, `(Re-invocation of` lines and the
@@ -1130,7 +1130,7 @@ def check(t, has_cd):
     if ASK_FIRST: ask_first(t)
     if p in ('gh', 'glab') and a[:2] == ['release', 'create'] and '--help' not in a and '-h' not in a:
         need_ask('release', f'`{p} release create`', gh_repo(a[2:], env, run_dir) if p == 'gh' else gitlab_repo(a[2:], run_dir))
-    if p == 'glab' and a[:2] == ['mr', 'merge'] and '--help' not in a and '-h' not in a:
+    if p == 'glab' and a[:1] == ['mr'] and a[1:2] in (['merge'], ['accept']) and '--help' not in a and '-h' not in a:
         mr = mr_target(a[2:], run_dir)
         need_ask('merge', f"merging {mr[0]}!{mr[1] or mr[2]}", mr[0], mr[1])
     if p in ('npm', 'pnpm') and (pkg := publish_dir(p, a)) and '--dry-run' not in a:
