@@ -167,15 +167,20 @@ NEGATED = re.compile(r"\b(?:don'?t|\w+n['’]t|do not|never|not|no|who|why|ne|ne
 try: ASK_FIRST = [l.strip() for l in open(os.path.expanduser('~/.mergeworthy/ask-first')) if l.strip() and not l.startswith('#')]
 except OSError: ASK_FIRST = []  # the machine's commands that restart what others use, one pattern a line
 
-def asks(text, kind, num=None):
-    """Whether text (a message the user typed) asks for kind, once URLs, `(Re-invocation of` lines and the word mergeworthy are taken out:
-    False when a sentence holding its words negates them; True when one holds them and is no question, and PR num is one the text names, if
-    it names any; else None."""
-    nums = re.findall(r'(?:/pull/|/merge_requests/|#)(\d+)\b', text)
-    text = re.sub(r'https?://\S+|\bmergeworthy\w*|^\(Re-invocation of .*', ' ', text, flags=re.I | re.M)
-    said = [s for s in re.split(r'(?<=[.!?\n])\s*', text) if re.search(rf'\b(?:{ASKED_FOR[kind][0]})', s, re.I)]
-    if any(NEGATED.search(s) for s in said): return False
-    return (num is None or not nums or str(num) in nums) and any(not s.rstrip().endswith('?') for s in said) or None
+PR_REF = re.compile(r'(?:github\.com/([\w.-]+/[\w.-]+)/pull/|gitlab\.com/([\w./-]+?)/-/merge_requests/|\b([\w.-]+/[\w.-]+)#|#)(\d+)\b')
+
+def asks(text, kind, repo=None, num=None, branch=None):
+    """Whether text (a message the user typed) asks for kind on its target, each sentence read once URLs, `(Re-invocation of` lines and the
+    word mergeworthy are taken out: False when one holding kind's words negates them; True when one holds them, is no question and names the
+    target: PR num of repo when it (else the text) names PRs, the branch pushed when it names a branch; else None."""
+    refs = lambda t: [((m[1] or m[2] or m[3] or '').lower(), m[4]) for m in PR_REF.finditer(t)]
+    def aims(s):
+        if kind == 'merge': return not refs(text) or any(r in ('', (repo or '').lower()) and n == str(num) for r, n in refs(s) or refs(text))
+        return kind != 'push' or not re.search(r'\bbranch', s, re.I) or bool(re.search(rf'\b{re.escape(branch or "")}\b', s))
+    said = [(s, b) for s in re.split(r'(?<=[.!?])\s+|\n', text)
+            if re.search(rf'\b(?:{ASKED_FOR[kind][0]})', b := re.sub(r'https?://\S+|\bmergeworthy\w*|^\(Re-invocation of .*', ' ', s, flags=re.I), re.I)]
+    if any(NEGATED.search(b) for _, b in said): return False
+    return any(not b.rstrip().endswith('?') and aims(s) for s, b in said) or None
 
 def last_typed():
     """The message the user last typed in this session (t3_tasks.typed); '' with none."""
@@ -200,7 +205,7 @@ def need_ask(kind, what, repo=None, num=None, branch=None):
     order, text = ASKED_FOR[kind][1], project_file(repo)
     if text is None and kind != 'ask-first': return
     sec = re.search(r'^## Merging\b[^\n]*\n(.*?)(?=^## |\Z)', text or '', re.M | re.S)
-    asked = asks(last_typed(), kind, num)
+    asked = asks(last_typed(), kind, re.sub(r'^gitlab\.com/', '', repo or ''), num, branch)
     if asked or asked is None and order and sec and re.search(r'^[-*] +' + order.format(branch=re.escape(branch or '')), sec[1], re.M):
         return
     if kind == 'ask-first':

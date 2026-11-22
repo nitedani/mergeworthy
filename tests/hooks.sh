@@ -4832,9 +4832,9 @@ said 'looks good'
 check "BLOCK: a merge nobody asked for, naming the way out" "2 1" "$(lg "$M") $(grep -c "needs their ask.*reply \`merge\` (mergeworthy:merging steps 3-4)" "$T/err")"
 said 'thanks'; check "a merge the user's last message asks for passes: merge, mergeld, the PR's URL with merge and release" "0 0 0" \
   "$(said 'merge it'; lg "$M") $(said 'mergeld kerlek'; lg "$M") $(said 'https://github.com/o/r/pull/41 merge and release'; lg "$M")"
-check "BLOCK: an ask naming another PR, a question, a negation (English, Hungarian), an older ask, a T3 scheduled prompt" "2 2 2 2 2 2 2 2 2" \
+check "BLOCK: an ask naming another PR (in its own sentence, or another repo's), a question, a negation (English, Hungarian), an older ask, a T3 scheduled prompt" "2 2 2 2 2 2 2 2 2 2 2" \
   "$(said 'merge #40'; lg "$M") $(said 'is #41 merged?'; lg "$M") $(said "don't merge it yet"; lg "$M") $(said 'ne mergeld'; lg "$M") $(said 'nem kell mergelni'; lg "$M") $(said 'majd en mergelem'; lg "$M") \
-$(said 'merge it' 'wait, not yet'; lg "$M") $(said 'thanks' '[T3 Code: scheduled task "zqs-check" sent this prompt.] Goal: merge and land PR #41'; lg "$M") $(said 'land PR #23'; lg "$M")"
+$(said 'Review #41. Merge #40.'; lg "$M") $(said 'Merge https://github.com/o/pkg/pull/41'; lg "$M") $(said 'merge it' 'wait, not yet'; lg "$M") $(said 'thanks' '[T3 Code: scheduled task "zqs-check" sent this prompt.] Goal: merge and land PR #41'; lg "$M") $(said 'land PR #23'; lg "$M")"
 printf '## Merging\n- Merge each PR as soon as it is ready (gates, CI)\n' >> "$HOME/.mergeworthy/projects/o/r.md"
 check "a merge under the project file's standing order passes with no ask; BLOCK: the user's last message holding it back wins over the order" "0 2 2" \
   "$(said 'thanks'; lg "$M") $(said 'Dont merge pr when ready, I want to see it.'; lg "$M") $(said 'ne mergeld'; lg "$M")"
@@ -4847,6 +4847,7 @@ gql nitedani-agent nitedani-agent; mkdir -p "$HOME/.mergeworthy/projects/nitedan
 said 'looks good'
 check "BLOCK: a push to the default branch unasked, naming it; to another branch, or asked, it passes" "2 1 0 0" \
   "$(lg 'git push origin HEAD:main' "$OWN") $(grep -c 'this push to main lands on nitedani-agent/notes' "$T/err") $(lg 'git push origin HEAD:scratch' "$OWN") $(said 'push it to main'; lg 'git push origin HEAD:main' "$OWN")"
+check "BLOCK: a push to the default branch asked for as another branch's" 2 "$(said 'Push the feature branch.'; lg 'git push origin HEAD:main' "$OWN")"
 said 'looks good'; printf '## Merging\n- Push to main once the gates pass\n' >> "$HOME/.mergeworthy/projects/nitedani-agent/notes.md"
 check "a push to the default branch under the project file's \`- Push to main\` order passes; without a project file it is unchanged" "0 0" \
   "$(lg 'git push origin HEAD:main' "$OWN") $(rm "$HOME/.mergeworthy/projects/nitedani-agent/notes.md"; lg 'git push origin HEAD:main' "$OWN")"
