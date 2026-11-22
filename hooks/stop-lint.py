@@ -92,6 +92,24 @@ def handback_check():
               "you didn't create, (b) money, credentials or the user's global config, (c) an external maintainer's product decision or a fork you can't rank; then "
               "include a line starting 'GENUINE-FORK:' with your recommended default.", file=sys.stderr)
         sys.exit(2)
+# A "best solution?" asked about work whose ratings this session's work folder holds is answered from them
+BEST = re.compile(r"\b(best|better|ideal|optimal|right|cleanest|pinnacle)\b[^.?!\n]{0,40}\b(solution|approach|design|way|fix|option|code)s?\b[^.!\n]*\?"
+                  r"|\b(solution|approach|design|fix|code)\b[^.?!\n]{0,30}\b(best|better|ideal|optimal|right)\b[^.!\n]*\?", re.I)
+def ratings(wf):  # the rating records at any depth of wf, outside the checkouts in it (a repo's own docs/decisions/ are no rating)
+    for root, dirs, files in os.walk(wf):
+        dirs[:] = sorted(x for x in dirs if not os.path.exists(os.path.join(root, x, '.git')))
+        yield from (os.path.relpath(os.path.join(root, f), wf) for f in sorted(files)
+                    if f in ('approach.md', 'converge.md', 'rating.md') or f.endswith('.md') and os.path.basename(root) == 'decisions')
+def best_check():
+    if not BEST.search(last_user): return
+    for wf in sorted(task_dirs):
+        kinds = {}  # approach.md, converge.md, rating.md or decisions/: each kind present is named by one of its files
+        for r in ratings(wf): kinds.setdefault('decisions/' if os.path.basename(os.path.dirname(r)) == 'decisions' else os.path.basename(r), []).append(r)
+        unnamed = [r for rs in kinds.values() if not any(r in last for r in rs) for r in rs]
+        if unnamed:
+            print(f"This asks whether a design is the best one, and {wf} holds ratings of a kind your message names no file of ({', '.join(unnamed)}): "
+                  "read them, and answer from them, naming one file of each kind (approach.md, decisions/, converge.md, rating.md) and any rating you overturn, with what evidence.", file=sys.stderr)
+            sys.exit(2)
 # A checkable fact left unchecked in the reply (mergeworthy:writing §Evidence for claims)
 def unchecked_check():
     m = report.unchecked(last)
@@ -213,7 +231,7 @@ def state_check():
               "(mergeworthy:writing §Evidence for claims); then act on it (a ready PR: the reply loop; red CI: fix it).", file=sys.stderr)
         sys.exit(2)
 if not child:
-    for check in (handback_check, unchecked_check, fork_check, running_check, done_check, state_check): check()
+    for check in (handback_check, best_check, unchecked_check, fork_check, running_check, done_check, state_check): check()
 own_dirs = set(t3_dirs)
 for wd in (l.strip() for l in open(reg)) if os.path.exists(reg) else ():
     # or a watch dir this session works through from elsewhere (its cwd is a repo, the watch dir an artifact root):

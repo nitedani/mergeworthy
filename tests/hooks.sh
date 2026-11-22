@@ -32,7 +32,8 @@ print(v.get(sys.argv[2][1:], "") if sys.argv[2] and isinstance(v, dict) else raw
 if [ "$1 $2" = "pr list" ]; then  # from $FX/pr_list_<the -R repo with / replaced by _>; none: no PRs ([], or nothing with -q)
   [ -n "$GH_STUB_403" ] && { echo 'gh: API rate limit exceeded for user ID 1. (HTTP 403)' >&2; exit 1; }
   s=; q=; p=; for a in "$@"; do [ "$p" = -R ] && s=$a; case "$a" in -q|--jq) q=1;; esac; p=$a; done
-  f="$FX/pr_list_$(printf '%s' "$s" | tr / _)"; if [ -f "$f" ]; then cat "$f"; elif [ -z "$q" ]; then echo '[]'; fi; exit 0; fi
+  f="$FX/pr_list_$(printf '%s' "$s" | tr / _)"; p=; for a in "$@"; do [ "$p" = --base ] && [ -f "${f}_base_$a" ] && f="${f}_base_$a"; p=$a; done  # a --base answers from $f_base_<branch> when it exists
+  if [ -f "$f" ]; then cat "$f"; elif [ -z "$q" ]; then echo '[]'; fi; exit 0; fi
 [ "$1 $2" = "pr checks" ] && [ "${3#https://github.com/}" = "$3" ] && { echo "no pull requests found for branch \"$3\"" >&2; exit 1; }
 if [ "$1 $2" = "pr checks" ]; then f="$FX/pr_checks_$(printf '%s' "$3" | tr '/:' '__')"; [ -f "$f" ] && cat "$f" && exit 1; echo "no checks reported on the 'x' branch" >&2; exit 1; fi
 [ "$1" = api ] || exit 1
@@ -67,7 +68,7 @@ git init -q -b fix "$TCO"; git -C "$TCO" -c user.name=t -c user.email=t@t commit
 quick() { # <checkout> [extra log lines]: records its HEAD's quick gates
   local f; f=$(mktemp "$T/quick.XXXXXX"); printf 'pnpm test -> exit 0 (3 tests)\n%s' "${2:-}" > "$f"; (cd "$1" && bash "$R/bin/pr-steps" quick "$f" >/dev/null); }
 quick "$TCO"
-printf 'Root cause: src/a.ts:3 does it\nBasis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix it | 8 | one place |\nShared assumption: the bug is in this repo\n\nChosen: Fix it\n' > "$T/approach.md"
+printf 'Root cause: src/a.ts:3 does it\nBasis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix it | 8 | one place |\nShared assumption: the bug is in this repo\nProbe: rg -l a.ts -> only src/a.ts\n\nChosen: Fix it\n' > "$T/approach.md"
 (cd "$TCO" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 # an implementer brief names its recorded approach (pre-agent-dedupe): the briefs below that test other checks carry this one
 git init -q "$T/afx"; git -C "$T/afx" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; (cd "$T/afx" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null); AFX=$'\n'"Approach: $T/approach.md (unchanged: a test fixture)"$'\n'"Checkout: $T/afx"
@@ -2520,9 +2521,75 @@ gc checkout -q parent; seq 1 200 > "$MG/p"; gc commit -qam parent2; gc push -q o
 printf 'carries the pass of %s: merged parent\n' "$MS" > "$T/carry-m4.md"; echo parent > "$FX/pr_view_current"
 check "a stacked PR's merge of its parent branch (200 lines) carries the earlier head's Loop A" 0 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m4.md" >/dev/null 2>&1; echo $?) )"
 rm "$FX/pr_view_current"
+# a squash of a branch the PR merged: git's merge base is the old main, so the replay conflicts; the carry replays from the commit of the head that a merged PR's head shares with it
+SB="$T/sbase.git"; SG="$T/sclone"; git init -q --bare -b main "$SB"; git clone -q "$SB" "$SG" 2>/dev/null
+sc() { git -C "$SG" -c user.name=t -c user.email=t@t "$@"; }
+sk() { printf 'carries the pass of %s: merged main\n' "$1" > "$T/sk-$2.md"; (cd "$SG" && bash "$R/bin/pr-steps" verify "$T/sk-$2.md" >/dev/null 2>&1; echo $?); }
+seq 1 50 > "$SG/app.ts"; seq 1 50 > "$SG/z.ts"; sc add -A; sc commit -q -m base; sc push -q origin main; sc remote set-head origin main >/dev/null
+sc checkout -q -b p25; seq 1 120 > "$SG/lib.ts"; sc add -A; sc commit -q -m p25; P25=$(git -C "$SG" rev-parse HEAD)
+sc checkout -q -b p26 main; sc merge -q --no-edit p25; sed -i 's/^60$/p26/' "$SG/lib.ts"; sc commit -qam p26; SA=$(git -C "$SG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$SA"
+sc checkout -q main; sc merge -q --squash p25; sc commit -q -m 'p25 (#25)'; sc push -q origin main
+sc checkout -q p26; sc merge -q --no-edit main >/dev/null 2>&1; sc checkout -q --ours -- .; sc add -A; sc commit -q --no-edit
+echo "$P25" > "$FX/pr_list_"
+check "a merge of main after the squash of a branch the PR merged, tree unchanged, carries (#251)" 0 "$(sk "$SA" s1)"
+check "BLOCK: the same carry with gh failing is refused: no merged PR's head to replay from" 1 "$(GH_STUB_403=1 sk "$SA" s2)"
+# a git without merge-tree's --merge-base (2.43) replays as before: the unchanged-tree carry of #251 is refused, not compared with the bare old head
+mkdir -p "$T/shim"; printf '#!/bin/bash\ncase " $* " in *" merge-tree "*) echo "$*" >> "$T/merge-tree.log";; esac\ncase " $* " in *" merge-tree "*" --merge-base="*) exit 129;; esac\nexec %s "$@"\n' "$(command -v git)" > "$T/shim/git"; chmod +x "$T/shim/git"
+check "BLOCK: a git that rejects --merge-base refuses the #251 carry as cd254f8 did" 1 "$(PATH="$T/shim:$PATH" sk "$SA" s2b)"
+sc checkout -q main; sed -i 's/^5$/other/' "$SG/z.ts"; sc commit -qam other; sc push -q origin main; sc checkout -q p26; sc merge -q --no-edit main >/dev/null 2>&1
+check "main moving on after the squash, merged in, carries" 0 "$(sk "$SA" s3)"
+sc checkout -q -b q25 main; seq 1 90 > "$SG/q.ts"; sc add -A; sc commit -q -m q25
+sc checkout -q -b q26 main; sc merge -q --no-edit q25; sed -i 's/^40$/q26/' "$SG/q.ts"; sc commit -qam q26; SQ=$(git -C "$SG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$SQ"
+sc checkout -q q25; sed -i 's/^80$/q25more/' "$SG/q.ts"; sc commit -qam more; git -C "$SG" rev-parse HEAD > "$FX/pr_list_"
+sc checkout -q main; sc merge -q --squash q25; sc commit -q -m 'q25 (#27)'; sc push -q origin main
+sc checkout -q q26; sc merge -q --no-edit main >/dev/null 2>&1 || { sc checkout -q --theirs -- q.ts; sed -i 's/^40$/q26/' "$SG/q.ts"; sc add -A; sc commit -q --no-edit; }
+check "the merged sibling having grown a commit after the PR merged it carries" 0 "$(sk "$SQ" s4)"
+# a merge that reverts what main fixed leaves the tree unchanged, and the replay from a merged head must not hide it
+sc checkout -q -b r1 main; echo pr > "$SG/r.md"; sc add -A; sc commit -q -m r1; SR=$(git -C "$SG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$SR"
+sc checkout -q main; sed -i 's/^7$/fix/' "$SG/app.ts"; sc commit -qam fix; sc push -q origin main; sc checkout -q r1; sc merge -q -s ours --no-edit main
+check "BLOCK: a merge with -s ours that reverts main's fix is refused" 1 "$(sk "$SR" s5)"
+# a PR with its own guard, cherry-picking a main commit, drops the guard in the merge of main: the merged head of main's commit is no replay point
+sc checkout -q -b c1 main; sed -i 's/^20$/guard2/' "$SG/z.ts"; sc commit -qam guard2
+sc checkout -q main; seq 1 200 > "$SG/big.ts"; sc add -A; sc commit -q -m big; sc push -q origin main; SF=$(git -C "$SG" rev-parse HEAD); echo "$SF" > "$FX/pr_list_"
+sc checkout -q c1; sc cherry-pick "$SF" >/dev/null; SV=$(git -C "$SG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$SV"
+sc merge -q --no-edit main >/dev/null 2>&1; sed -i 's/^guard2$/20/' "$SG/z.ts"; sc commit -qam dropguard
+check "BLOCK: a merge of main dropping the PR's own guard after a cherry-pick of a main commit is refused" 1 "$(sk "$SV" s6)"
+rm "$FX/pr_list_"
+# a PR merged into another branch says nothing about this PR's base: its head is no replay point, though it holds the reviewed head
+OG="$T/obase.git"; OC="$T/oclone"; git init -q --bare -b main "$OG"; git clone -q "$OG" "$OC" 2>/dev/null; oc() { git -C "$OC" -c user.name=t -c user.email=t@t "$@"; }
+echo g > "$OC/guard.ts"; oc add -A; oc commit -q -m base; oc push -q origin main; oc remote set-head origin main >/dev/null
+oc checkout -q -b topic; echo guard2 > "$OC/guard.ts"; seq 1 200 > "$OC/big.ts"; oc add -A; oc commit -q -m topic; OA=$(git -C "$OC" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$OA"
+oc checkout -q -b beyond; echo more > "$OC/more.ts"; oc add -A; oc commit -q -m beyond; git -C "$OC" rev-parse HEAD | tee "$FX/pr_list_" > "$FX/pr_list__base_topic"; : > "$FX/pr_list__base_main"
+oc checkout -q main; seq 1 200 > "$OC/big.ts"; oc add -A; oc commit -q -m big; oc push -q origin main
+oc checkout -q topic; oc merge -q --no-edit main >/dev/null 2>&1; echo g > "$OC/guard.ts"; oc commit -q -am dropguard; printf 'carries the pass of %s: merged main\n' "$OA" > "$T/ok.md"
+check "BLOCK: a carry is refused when only a PR merged into another branch holds the reviewed head, naming the guard it lost" "1 1" "$( (cd "$OC" && bash "$R/bin/pr-steps" verify "$T/ok.md" >/dev/null 2>&1; echo $?) ) $( (cd "$OC" && bash "$R/bin/pr-steps" verify "$T/ok.md" 2>&1 >/dev/null) | grep -c 'guard.ts changed')"
+rm "$FX/pr_list_" "$FX/pr_list__base_topic" "$FX/pr_list__base_main"
+# a modify/delete conflict written into the tree without markers: keeping main's file over the PR's reviewed deletion is a change
+DG="$T/dclone"; git init -q -b main "$DG"; dc() { git -C "$DG" -c user.name=t -c user.email=t@t "$@"; }
+seq 1 20 > "$DG/f.ts"; dc add -A; dc commit -q -m base; dc checkout -q -b gone; dc rm -q f.ts; dc commit -q -m gone; DA=$(git -C "$DG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$DA"
+dc checkout -q main; sed -i 's/^3$/main/' "$DG/f.ts"; dc commit -q -am main; dc update-ref refs/remotes/origin/main main; dc symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+dc checkout -q gone; dc merge -q --no-edit main >/dev/null 2>&1; dc checkout -q main -- f.ts; dc add -A; dc commit -q --no-edit; printf 'carries the pass of %s: merged main\n' "$DA" > "$T/dk.md"
+check "BLOCK: a merge keeping main's file over the reviewed deletion is refused, naming the file" "1 1" "$( (cd "$DG" && bash "$R/bin/pr-steps" verify "$T/dk.md" >/dev/null 2>&1; echo $?) ) $( (cd "$DG" && bash "$R/bin/pr-steps" verify "$T/dk.md" 2>&1 >/dev/null) | grep -c 'f.ts changed since')"
+# the same conflict in a linguist-generated file is build output, which no carry counts
+DH="$T/hclone"; git init -q -b main "$DH"; dh() { git -C "$DH" -c user.name=t -c user.email=t@t "$@"; }
+seq 1 20 > "$DH/f.ts"; printf 'f.ts linguist-generated\n' > "$DH/.gitattributes"; dh add -A; dh commit -q -m base; dh checkout -q -b gone; dh rm -q f.ts; dh commit -q -m gone; DB=$(git -C "$DH" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$DB"
+dh checkout -q main; sed -i 's/^3$/main/' "$DH/f.ts"; dh commit -q -am main; dh update-ref refs/remotes/origin/main main; dh symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+dh checkout -q gone; dh merge -q --no-edit main >/dev/null 2>&1; dh checkout -q main -- f.ts; dh add -A; dh commit -q --no-edit; printf 'carries the pass of %s: merged main\n' "$DB" > "$T/hk.md"
+check "a merge keeping main's generated file over its deletion carries" 0 "$( (cd "$DH" && bash "$R/bin/pr-steps" verify "$T/hk.md" >/dev/null 2>&1; echo $?) )"
+# a criss-cross merge has two merge bases, which git merges itself: the replay leaves them to git unless a merged PR's head replaces them
+XG="$T/xclone"; git init -q -b main "$XG"; xc() { git -C "$XG" -c user.name=t -c user.email=t@t "$@"; }; xl() { seq 1 120 | sed "5,104s/.*/$1/"; }
+seq 1 120 > "$XG/f.md"; xc add f.md; xc commit -q -m x; xc checkout -q -b a1; xl a > "$XG/f.md"; GIT_COMMITTER_DATE='2099-01-02T00:00:00Z' xc commit -q -am a1; xc checkout -q main; xc checkout -q -b b1; xl b > "$XG/f.md"; xc commit -q -am b1
+xc checkout -q -b a a1; xc merge -q --no-commit b1 >/dev/null 2>&1; xl a > "$XG/f.md"; xc add -A; xc commit -q -m am
+xc checkout -q -b b b1; xc merge -q --no-commit a1 >/dev/null 2>&1; xl a > "$XG/f.md"; xc add -A; xc commit -q -m bm
+xc checkout -q a; sed -i 's/^4$/A4/' "$XG/f.md"; xc commit -q -am A; XA=$(git -C "$XG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$XA"
+xc checkout -q b; sed -i 's/^110$/B110/' "$XG/f.md"; xc commit -q -am B; xc update-ref refs/remotes/origin/main b; xc symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+xc checkout -q a; xc reset -q --hard "$(xc commit-tree -p "$XA" -p b -m merged "$(git -C "$XG" merge-tree --write-tree "$(git -C "$XG" rev-parse b)" "$XA" | sed -n 1p)")"
+printf 'carries the pass of %s: merged main\n' "$XA" > "$T/xk.md"
+: > "$T/merge-tree.log"
+check "a merge of main into a head with two merge bases carries, the replay leaving git both bases (no --merge-base)" "0 0" "$( (cd "$XG" && PATH="$T/shim:$PATH" bash "$R/bin/pr-steps" verify "$T/xk.md" >/dev/null 2>&1; echo $?) ) $(grep -c -e --merge-base "$T/merge-tree.log")"
 # a branch whose latest approach record has no `contract: 2` was started by a session on v1's skills: it finishes under the old records
 mkdir -p "$HOME/.mergeworthy/sessions"; echo "/p graph startup 0" > "$HOME/.mergeworthy/sessions/s-graph"; echo "/p v1 startup 0" > "$HOME/.mergeworthy/sessions/s-v1"
-printf 'Root cause: src/a.ts:3 does it\nBasis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | stays |\n| Fix it | 8 | ok |\nShared assumption: the bug is in this repo\n\nChosen: Fix it\n' > "$T/apo.md"; CLAUDE_CODE_SESSION_ID=s-graph prs approach "$T/apo.md" >/dev/null
+printf 'Root cause: src/a.ts:3 does it\nBasis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | stays |\n| Fix it | 8 | ok |\nShared assumption: the bug is in this repo\nProbe: rg -l a.ts -> only src/a.ts\n\nChosen: Fix it\n' > "$T/apo.md"; CLAUDE_CODE_SESSION_ID=s-graph prs approach "$T/apo.md" >/dev/null
 APF=$(ls -t "$HOME"/.claude/pr-steps/approach.* | head -n1)
 check "an approach recorded by a session on the graph catalog carries contract: 2" 1 "$(tail -n1 "$APF" | grep -c ' contract: 2$')"
 printf 'nothing worth changing\nCLEAN\n' > "$T/olb.md"
@@ -2756,18 +2823,20 @@ printf 'pnpm test -> exit 0\npnpm lint -> exit 0\n' > "$T/g0.md"; printf 'pnpm t
 check "BLOCK: a test gate without its count, or with 0 tests" "1 1" "$(prs2 gates "$T/g0.md") $(prs2 gates "$T/g00.md")"
 printf 'pnpm test -> exit 0 (134 tests)\npnpm lint -> exit 0\n' > "$T/g2.md"; check "a green gates log records" 0 "$(prs2 gates "$T/g2.md")"
 check "BLOCK: gh pr ready with the five steps but no approach record" 2 "$(ready)"
-printf 'Root cause: src/a.ts:3 does it\nBasis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 5 | misses siblings |\n| Fix the shared helper | 8 | one place for all |\nShared assumption: the bug is in this repo\n\nChosen: Fix the shared helper\n' > "$T/ap.md"
-printf 'Root cause: src/a.ts:3 does it\nBasis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Fix the shared helper | 8 | only one |\nShared assumption: the bug is in this repo\n\nChosen: Fix the shared helper\n' > "$T/ap1.md"
-printf 'Basis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 8 | ok |\nShared assumption: the bug is in this repo\n\nChosen: Fix in place\n' > "$T/apnr.md"
-printf 'Root cause: src/a.ts:3 does it\nBasis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 6 | misses siblings |\nShared assumption: the bug is in this repo\n\nChosen: Fix in place\n' > "$T/ap6.md"
-printf 'Root cause: src/a.ts:3 does it\nBasis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 8 | ok |\nShared assumption: the bug is in this repo\n\nChosen: Rewrite\n' > "$T/apx.md"
-rc=; for c in 'Root cause: unknown yet, logged at 12:30' '- **Root cause:** src/a.ts:3 does it' 'Root cause: none, a feature'; do printf '%s\nBasis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 8 | ok |\nShared assumption: the bug is in this repo\n\nChosen: Fix in place\n' "$c" > "$T/aprc.md"; GR="$T/aprc-$((n=${n:-0}+1))"; git init -q "$GR"; git -C "$GR" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; rc="$rc $(cd "$GR" && bash "$R/bin/pr-steps" approach "$T/aprc.md" >/dev/null 2>&1; echo $?)"; done
+printf 'Root cause: src/a.ts:3 does it\nBasis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 5 | misses siblings |\n| Fix the shared helper | 8 | one place for all |\nShared assumption: the bug is in this repo\nProbe: rg -l a.ts -> only src/a.ts\n\nChosen: Fix the shared helper\n' > "$T/ap.md"
+printf 'Root cause: src/a.ts:3 does it\nBasis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Fix the shared helper | 8 | only one |\nShared assumption: the bug is in this repo\nProbe: rg -l a.ts -> only src/a.ts\n\nChosen: Fix the shared helper\n' > "$T/ap1.md"
+printf 'Basis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 8 | ok |\nShared assumption: the bug is in this repo\nProbe: rg -l a.ts -> only src/a.ts\n\nChosen: Fix in place\n' > "$T/apnr.md"
+printf 'Root cause: src/a.ts:3 does it\nBasis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 6 | misses siblings |\nShared assumption: the bug is in this repo\nProbe: rg -l a.ts -> only src/a.ts\n\nChosen: Fix in place\n' > "$T/ap6.md"
+printf 'Root cause: src/a.ts:3 does it\nBasis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 8 | ok |\nShared assumption: the bug is in this repo\nProbe: rg -l a.ts -> only src/a.ts\n\nChosen: Rewrite\n' > "$T/apx.md"
+rc=; for c in 'Root cause: unknown yet, logged at 12:30' '- **Root cause:** src/a.ts:3 does it' 'Root cause: none, a feature'; do printf '%s\nBasis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 8 | ok |\nShared assumption: the bug is in this repo\nProbe: rg -l a.ts -> only src/a.ts\n\nChosen: Fix in place\n' "$c" > "$T/aprc.md"; GR="$T/aprc-$((n=${n:-0}+1))"; git init -q "$GR"; git -C "$GR" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; rc="$rc $(cd "$GR" && bash "$R/bin/pr-steps" approach "$T/aprc.md" >/dev/null 2>&1; echo $?)"; done
 check "BLOCK: an approach with no Root cause line citing a path:line, or one citing a time; a bold list item or a feature records" "1 1 0 0" "$(prs2 approach "$T/apnr.md")$rc"
 check "BLOCK: an approach with one candidate" 1 "$(prs2 approach "$T/ap1.md")"
 check "BLOCK: a chosen approach rated 6" 1 "$(prs2 approach "$T/ap6.md")"
 check "BLOCK: a chosen approach that is no candidate" 1 "$(prs2 approach "$T/apx.md")"
+grep -v '^Probe:' "$T/ap.md" > "$T/apnp.md"; sed 's/^Probe:.*/Probe:   -> nothing/' "$T/ap.md" > "$T/apne.md"
+check "BLOCK: an approach with no Probe line, naming pull-request step 5, or with no run before its ->" "1 1 1" "$(prs2 approach "$T/apnp.md") $(cd "$G2" && bash "$R/bin/pr-steps" approach "$T/apnp.md" 2>&1 | grep -c "Probe: <the run.*pull-request step 5") $(prs2 approach "$T/apne.md")"
 # the Basis line: the user's words, the goal's own failing run, a clean-cut error, or a report someone else wrote; never our own
-apb() { printf 'Root cause: %s\n%s| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | stays |\n| Fix it | 8 | ok |\nShared assumption: the bug is in this repo\n\nChosen: Fix it\n' "$1" "$2" > "$T/apb.md"; (cd "$T/apbr" && bash "$R/bin/pr-steps" approach "$T/apb.md" >/dev/null 2>&1; echo $?); }
+apb() { printf 'Root cause: %s\n%s| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | stays |\n| Fix it | 8 | ok |\nShared assumption: the bug is in this repo\nProbe: rg -l a.ts -> only src/a.ts\n\nChosen: Fix it\n' "$1" "$2" > "$T/apb.md"; (cd "$T/apbr" && bash "$R/bin/pr-steps" approach "$T/apb.md" >/dev/null 2>&1; echo $?); }
 git init -q "$T/apbr"; git -C "$T/apbr" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a  # its own repo: a recorded approach here reaches no other check
 echo '{"user":{"login":"nitedani","type":"User"},"body":"The login page fails."}' > "$FX/repos_o_r_issues_5"; echo '{"user":{"login":"nitedani","type":"User"},"body":"<img src=\"https://github.com/claude.png\" width=\"20\" height=\"20\" alt=\"Claude\"> *Claude wrote this.*\n\nA finding."}' > "$FX/repos_o_r_issues_6"; echo '{"user":{"login":"nitedani-agent","type":"User"},"body":"<img src=\"https://github.com/claude.png\" width=\"20\" height=\"20\" alt=\"Claude\"> *Claude wrote this.*\n\nA finding."}' > "$FX/repos_o_r_issues_comments_77"; echo '{"user":{"login":"renovate[bot]","type":"Bot"},"body":"Update x"}' > "$FX/repos_o_r_pulls_comments_78"
 check "the Basis forms record: the user's words, the goal's failing run, a clean-cut error, a person's issue (the posting account's own included), a GitLab issue, a markdown link" "0 0 0 0 0 0" \
@@ -4097,6 +4166,17 @@ hb=; for m in 'The fix is committed locally on `fix-telefunc`. Pushing it, or te
              'Nothing will notify me when they finish. Tell me to check, or to post the reply now.' \
              "The reply to brillout is drafted and reviewed as CLEAN, but it isn't posted yet. Do you want me to post it now that CI is green?"; do tr_file "$m" work; hb="$hb $(slj)"; done
 check "BLOCK: the session's six hand-backs, as it wrote them" " 2 2 2 2 2 2" "$hb"
+# a "best solution?" in a work folder holding ratings is answered from them (the zqs session, nitedani/mergeworthy#252)
+BW="$HOME/.mergeworthy/work/best"; mkdir -p "$BW/strict-pr" "$HOME/.mergeworthy/work/unrated"; echo '| C3: one shared loop | 4 | splits |' > "$BW/strict-pr/rating.md"
+python3 -c 'import json; print(json.dumps({"type":"user","message":{"content":"Is this the best solution?"}}))' > "$T/tr.jsonl"
+check "BLOCK: a \"best solution?\" answer naming none of the work folder's rating files, naming it; one naming strict-pr/rating.md, or with no rating file, passes" "2 1 0 0" \
+  "$(slj 'Yes: one URL watcher for the whole page, shared by all stores.' 0 s-best "$BW") $(grep -c 'strict-pr/rating.md' "$T/err") $(slj 'No: strict-pr/rating.md rates C3, one shared loop, 4, and nothing since overturns it.' 0 s-best "$BW") $(slj 'Yes: one URL watcher for the whole page.' 0 s-best "$HOME/.mergeworthy/work/unrated")"
+BD="$HOME/.mergeworthy/work/deep"; mkdir -p "$BD/pr/finality" "$HOME/.mergeworthy/work/unrated/repo/.git" "$HOME/.mergeworthy/work/unrated/repo/docs/decisions"; echo '| K7 | 2 | splits |' > "$BD/pr/finality/converge.md"; echo '# ADR 1' > "$HOME/.mergeworthy/work/unrated/repo/docs/decisions/1.md"
+check "BLOCK: a \"best solution?\" answer when the only rating is two folders down (pr/finality/converge.md); a checkout's own docs/decisions/ is no rating" "2 0" \
+  "$(slj 'Yes.' 0 s-best "$BD") $(slj 'Yes.' 0 s-best "$HOME/.mergeworthy/work/unrated")"
+echo '| B | 8 | ok |' > "$BD/pr/approach.md"
+check "BLOCK: a \"best solution?\" answer naming pr/approach.md alone while pr/finality/converge.md also rates it, naming the one left; naming both passes" "2 1 0" \
+  "$(slj 'Yes, one scheduler is best. See pr/approach.md.' 0 s-best "$BD") $(grep -c 'names no file of (pr/finality/converge.md)' "$T/err") $(slj 'Yes: pr/approach.md rates it 8, and pr/finality/converge.md rates K7 2.' 0 s-best "$BD")"
 # the telefunc-room session's answer, as it wrote it, then the same with the attempt that failed, and a quoted phrase
 tr_file 'README tidied.'
 check "BLOCK: a fact left unchecked (\"I don't know whether\", \"I haven't read\"); its sentence quoting the failed attempt, or the phrase in quotes, passes" "2 2 0 0" \
