@@ -165,8 +165,9 @@ ASKED_FOR = {'merge': (r'merge(?!d\b)\w*', r'Merge each PR as soon as it is read
              'release': (r'releas\w*|publish\w*', None, 'release'),
              'ask-first': (r'update(?!d\b)\w*|restart\w*|frissít\w*', None, 'update')}
 NEGATED = re.compile(r"\b(?:don'?t|\w+n['’]t|do not|never|not|no|who|why|ne|nem|majd|várj|varj|wait|later|after|once|when|until|if|ha|miután)\b", re.I)
-# an ask opens a clause, after a please or a "can you" at most; "merge conflicts", "release notes" and "update plan" name a thing, not the action
-LEAD = r"(?:(?:please|pls|ok(?:ay)?|now|just|then|aztán|(?:can|could|would) you|go ahead and|you can|kérlek|kerlek|most)\W+)*"
+# an ask opens a clause, after a list bullet, a please, a "let's" or a "can you" at most; "merge conflicts", "release notes" and "update plan"
+# name a thing, not the action
+LEAD = r"(?:[-*•]\s*)?(?:(?:please|pls|ok(?:ay)?|now|just|then|aztán|let['’]?s|let us|i want you to|i'd like you to|(?:can|could|would) you|go ahead and|you can|kérlek|kerlek|most)\W+)*"
 MENTION = r'(?!\s+(?:conflicts?|requests?|notes?|plans?|queue)\b)'
 try: ASK_FIRST = [l.strip() for l in open(os.path.expanduser('~/.mergeworthy/ask-first')) if l.strip() and not l.startswith('#')]
 except OSError: ASK_FIRST = []  # the machine's commands that restart what others use, one pattern a line
