@@ -2570,6 +2570,12 @@ seq 1 20 > "$DG/f.ts"; dc add -A; dc commit -q -m base; dc checkout -q -b gone; 
 dc checkout -q main; sed -i 's/^3$/main/' "$DG/f.ts"; dc commit -q -am main; dc update-ref refs/remotes/origin/main main; dc symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
 dc checkout -q gone; dc merge -q --no-edit main >/dev/null 2>&1; dc checkout -q main -- f.ts; dc add -A; dc commit -q --no-edit; printf 'carries the pass of %s: merged main\n' "$DA" > "$T/dk.md"
 check "BLOCK: a merge keeping main's file over the reviewed deletion is refused, naming the file" "1 1" "$( (cd "$DG" && bash "$R/bin/pr-steps" verify "$T/dk.md" >/dev/null 2>&1; echo $?) ) $( (cd "$DG" && bash "$R/bin/pr-steps" verify "$T/dk.md" 2>&1 >/dev/null) | grep -c 'f.ts changed since')"
+# the same conflict in a linguist-generated file is build output, which no carry counts
+DH="$T/hclone"; git init -q -b main "$DH"; dh() { git -C "$DH" -c user.name=t -c user.email=t@t "$@"; }
+seq 1 20 > "$DH/f.ts"; printf 'f.ts linguist-generated\n' > "$DH/.gitattributes"; dh add -A; dh commit -q -m base; dh checkout -q -b gone; dh rm -q f.ts; dh commit -q -m gone; DB=$(git -C "$DH" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$DB"
+dh checkout -q main; sed -i 's/^3$/main/' "$DH/f.ts"; dh commit -q -am main; dh update-ref refs/remotes/origin/main main; dh symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+dh checkout -q gone; dh merge -q --no-edit main >/dev/null 2>&1; dh checkout -q main -- f.ts; dh add -A; dh commit -q --no-edit; printf 'carries the pass of %s: merged main\n' "$DB" > "$T/hk.md"
+check "a merge keeping main's generated file over its deletion carries" 0 "$( (cd "$DH" && bash "$R/bin/pr-steps" verify "$T/hk.md" >/dev/null 2>&1; echo $?) )"
 # a criss-cross merge has two merge bases, which git merges itself: the replay leaves them to git unless a merged PR's head replaces them
 XG="$T/xclone"; git init -q -b main "$XG"; xc() { git -C "$XG" -c user.name=t -c user.email=t@t "$@"; }; xl() { seq 1 120 | sed "5,104s/.*/$1/"; }
 seq 1 120 > "$XG/f.md"; xc add f.md; xc commit -q -m x; xc checkout -q -b a1; xl a > "$XG/f.md"; GIT_COMMITTER_DATE='2099-01-02T00:00:00Z' xc commit -q -am a1; xc checkout -q main; xc checkout -q -b b1; xl b > "$XG/f.md"; xc commit -q -am b1

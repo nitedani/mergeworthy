@@ -201,7 +201,7 @@ delta() {
   T=$(sed -n 1p <<< "$M"); d=$(git -c core.quotePath=false -c diff.noprefix=false diff --no-renames --numstat "${T:-$1}" HEAD |
     not_built | awk -F'\t' '{ n = $1 + $2; if (!n) n = 1; for (i = 0; i < n; i++) print $3 }')  # a binary, a mode or an empty file has no line, and is a change
   printf '%s\n' "$d"
-  sed -n '2,/^$/p' <<< "$M" | grep -vxF -e "$d" -e '' || true  # a conflict whose written tree has no markers (modify/delete) still changed its file
+  sed -n '2,/^$/p' <<< "$M" | grep -vxF -e "$d" -e '' | sed 's/^/0\t0\t/' | not_built | cut -f3 || true  # a conflict whose written tree has no markers (modify/delete) still changed its file
 }
 # A carry of head $1's step holds for at most 80 changed lines, none outside tests and docs: a line of code may add behavior, whatever the session says
 carry_holds() {
