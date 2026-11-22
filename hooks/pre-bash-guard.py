@@ -185,8 +185,8 @@ def asks(text, kind, repo=None, num=None, branch=None):
     words = rf'\b(?:{ASKED_FOR[kind][0]})\b{MENTION}'
     def named(c):  # the targets clause c names: a merge's PRs as (repo, number), a push's branches
         if kind == 'merge': return refs(c)
-        return {x.lower() for x in re.findall(r'\bto\s+(?:the\s+)?(?:branch\s+)?([\w./-]*[\w-])|([\w./-]*[\w-])\s+branch\b', c, re.I) for x in x if x} - {'the', 'a', 'this', 'that'} if kind == 'push' else set()
-    def hits(t): return any(r in ('', (repo or '').lower()) and n == str(num) for r, n in t) if kind == 'merge' else (branch or '').lower() in t
+        return {x for x in re.findall(r'\bto\s+(?:the\s+)?(?:branch\s+)?([\w./-]*[\w-])|([\w./-]*[\w-])\s+branch\b', c, re.I) for x in x if x and x.lower() not in ('the', 'a', 'this', 'that')} if kind == 'push' else set()
+    def hits(t): return any(r in ('', (repo or '').lower()) and n == str(num) for r, n in t) if kind == 'merge' else (branch or '') in t  # git's branch names are case-sensitive
     found = None
     for s in re.split(r'(?<=[.!?])\s+|\n', text):
         if not re.search(words, bare(s), re.I): continue
