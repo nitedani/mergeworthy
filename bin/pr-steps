@@ -184,7 +184,7 @@ span() { git diff --numstat "$1" "$2" | awk '{ s += $1 + $2 + 1 } END { print s 
 # The file of each line HEAD changed since an earlier head, once per line: compared whole with that head replayed on the base HEAD has merged,
 # so what the base brought doesn't count and every move does; a conflict stays in the replay as its markers, so its resolution counts
 delta() {
-  local b c h k m n pb r T
+  local b c d h k m n pb r M T
   b=$(pbase); pb=$(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || true)
   [ -n "$pb" ] || { pb=$(git symbolic-ref -q --short refs/remotes/origin/HEAD || true); pb=${pb#origin/}; }
   m=$(git merge-base "$b" "$1" 2>/dev/null || true)
@@ -196,10 +196,12 @@ delta() {
       k=$(span "$c" "$b"); [ "$k" -ge "$n" ] || { n=$k; r=$c; }
     done
   fi
-  T=$(git merge-tree --write-tree ${r:+--merge-base="$r"} "$b" "$1" 2>/dev/null | sed -n 1p || true)  # exit 1 on a conflict, with the tree first
-  [ -n "$T" ] || [ -z "$r" ] || T=$(git merge-tree --write-tree "$b" "$1" 2>/dev/null | sed -n 1p || true)  # a git without --merge-base replays as before
-  git -c core.quotePath=false -c diff.noprefix=false diff --no-renames --numstat "${T:-$1}" HEAD |
-    not_built | awk -F'\t' '{ n = $1 + $2; if (!n) n = 1; for (i = 0; i < n; i++) print $3 }'  # a binary, a mode or an empty file has no line, and is a change
+  M=$(git -c core.quotePath=false merge-tree --write-tree --name-only ${r:+--merge-base="$r"} "$b" "$1" 2>/dev/null || true)  # exit 1 on a conflict, with the tree first, then the conflicted files
+  [ -n "$M" ] || [ -z "$r" ] || M=$(git -c core.quotePath=false merge-tree --write-tree --name-only "$b" "$1" 2>/dev/null || true)  # a git without --merge-base replays as before
+  T=$(sed -n 1p <<< "$M"); d=$(git -c core.quotePath=false -c diff.noprefix=false diff --no-renames --numstat "${T:-$1}" HEAD |
+    not_built | awk -F'\t' '{ n = $1 + $2; if (!n) n = 1; for (i = 0; i < n; i++) print $3 }')  # a binary, a mode or an empty file has no line, and is a change
+  printf '%s\n' "$d"
+  sed -n '2,/^$/p' <<< "$M" | grep -vxF -e "$d" -e '' || true  # a conflict whose written tree has no markers (modify/delete) still changed its file
 }
 # A carry of head $1's step holds for at most 80 changed lines, none outside tests and docs: a line of code may add behavior, whatever the session says
 carry_holds() {

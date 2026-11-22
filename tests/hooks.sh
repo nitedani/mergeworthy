@@ -2564,6 +2564,12 @@ oc checkout -q main; seq 1 200 > "$OC/big.ts"; oc add -A; oc commit -q -m big; o
 oc checkout -q topic; oc merge -q --no-edit main >/dev/null 2>&1; echo g > "$OC/guard.ts"; oc commit -q -am dropguard; printf 'carries the pass of %s: merged main\n' "$OA" > "$T/ok.md"
 check "BLOCK: a carry is refused when only a PR merged into another branch holds the reviewed head, naming the guard it lost" "1 1" "$( (cd "$OC" && bash "$R/bin/pr-steps" verify "$T/ok.md" >/dev/null 2>&1; echo $?) ) $( (cd "$OC" && bash "$R/bin/pr-steps" verify "$T/ok.md" 2>&1 >/dev/null) | grep -c 'guard.ts changed')"
 rm "$FX/pr_list_" "$FX/pr_list__base_topic" "$FX/pr_list__base_main"
+# a modify/delete conflict written into the tree without markers: keeping main's file over the PR's reviewed deletion is a change
+DG="$T/dclone"; git init -q -b main "$DG"; dc() { git -C "$DG" -c user.name=t -c user.email=t@t "$@"; }
+seq 1 20 > "$DG/f.ts"; dc add -A; dc commit -q -m base; dc checkout -q -b gone; dc rm -q f.ts; dc commit -q -m gone; DA=$(git -C "$DG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$DA"
+dc checkout -q main; sed -i 's/^3$/main/' "$DG/f.ts"; dc commit -q -am main; dc update-ref refs/remotes/origin/main main; dc symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+dc checkout -q gone; dc merge -q --no-edit main >/dev/null 2>&1; dc checkout -q main -- f.ts; dc add -A; dc commit -q --no-edit; printf 'carries the pass of %s: merged main\n' "$DA" > "$T/dk.md"
+check "BLOCK: a merge keeping main's file over the reviewed deletion is refused, naming the file" "1 1" "$( (cd "$DG" && bash "$R/bin/pr-steps" verify "$T/dk.md" >/dev/null 2>&1; echo $?) ) $( (cd "$DG" && bash "$R/bin/pr-steps" verify "$T/dk.md" 2>&1 >/dev/null) | grep -c 'f.ts changed since')"
 # a criss-cross merge has two merge bases, which git merges itself: the replay leaves them to git unless a merged PR's head replaces them
 XG="$T/xclone"; git init -q -b main "$XG"; xc() { git -C "$XG" -c user.name=t -c user.email=t@t "$@"; }
 seq 1 12 > "$XG/f"; xc add f; xc commit -q -m x; xc checkout -q -b a1; sed -i 's/^5$/a/' "$XG/f"; GIT_COMMITTER_DATE='2099-01-02T00:00:00Z' xc commit -q -am a1; xc checkout -q main; xc checkout -q -b b1; sed -i 's/^5$/b/' "$XG/f"; xc commit -q -am b1
