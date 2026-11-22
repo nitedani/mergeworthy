@@ -2520,6 +2520,37 @@ gc checkout -q parent; seq 1 200 > "$MG/p"; gc commit -qam parent2; gc push -q o
 printf 'carries the pass of %s: merged parent\n' "$MS" > "$T/carry-m4.md"; echo parent > "$FX/pr_view_current"
 check "a stacked PR's merge of its parent branch (200 lines) carries the earlier head's Loop A" 0 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m4.md" >/dev/null 2>&1; echo $?) )"
 rm "$FX/pr_view_current"
+# a squash of a branch the PR merged: git's merge base is the old main, so the replay conflicts; the carry replays from the commit of the head that a merged PR's head shares with it
+SB="$T/sbase.git"; SG="$T/sclone"; git init -q --bare -b main "$SB"; git clone -q "$SB" "$SG" 2>/dev/null
+sc() { git -C "$SG" -c user.name=t -c user.email=t@t "$@"; }
+sk() { printf 'carries the pass of %s: merged main\n' "$1" > "$T/sk-$2.md"; (cd "$SG" && bash "$R/bin/pr-steps" verify "$T/sk-$2.md" >/dev/null 2>&1; echo $?); }
+seq 1 50 > "$SG/app.ts"; seq 1 50 > "$SG/z.ts"; sc add -A; sc commit -q -m base; sc push -q origin main; sc remote set-head origin main >/dev/null
+sc checkout -q -b p25; seq 1 120 > "$SG/lib.ts"; sc add -A; sc commit -q -m p25; P25=$(git -C "$SG" rev-parse HEAD)
+sc checkout -q -b p26 main; sc merge -q --no-edit p25; sed -i 's/^60$/p26/' "$SG/lib.ts"; sc commit -qam p26; SA=$(git -C "$SG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$SA"
+sc checkout -q main; sc merge -q --squash p25; sc commit -q -m 'p25 (#25)'; sc push -q origin main
+sc checkout -q p26; sc merge -q --no-edit main >/dev/null 2>&1; sc checkout -q --ours -- .; sc add -A; sc commit -q --no-edit
+echo "$P25" > "$FX/pr_list_"
+check "a merge of main after the squash of a branch the PR merged, tree unchanged, carries (#251)" 0 "$(sk "$SA" s1)"
+check "BLOCK: the same carry with gh failing is refused: no merged PR's head to replay from" 1 "$(GH_STUB_403=1 sk "$SA" s2)"
+sc checkout -q main; sed -i 's/^5$/other/' "$SG/z.ts"; sc commit -qam other; sc push -q origin main; sc checkout -q p26; sc merge -q --no-edit main >/dev/null 2>&1
+check "main moving on after the squash, merged in, carries" 0 "$(sk "$SA" s3)"
+sc checkout -q -b q25 main; seq 1 90 > "$SG/q.ts"; sc add -A; sc commit -q -m q25
+sc checkout -q -b q26 main; sc merge -q --no-edit q25; sed -i 's/^40$/q26/' "$SG/q.ts"; sc commit -qam q26; SQ=$(git -C "$SG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$SQ"
+sc checkout -q q25; sed -i 's/^80$/q25more/' "$SG/q.ts"; sc commit -qam more; git -C "$SG" rev-parse HEAD > "$FX/pr_list_"
+sc checkout -q main; sc merge -q --squash q25; sc commit -q -m 'q25 (#27)'; sc push -q origin main
+sc checkout -q q26; sc merge -q --no-edit main >/dev/null 2>&1 || { sc checkout -q --theirs -- q.ts; sed -i 's/^40$/q26/' "$SG/q.ts"; sc add -A; sc commit -q --no-edit; }
+check "the merged sibling having grown a commit after the PR merged it carries" 0 "$(sk "$SQ" s4)"
+# a merge that reverts what main fixed leaves the tree unchanged, and the replay from a merged head must not hide it
+sc checkout -q -b r1 main; echo pr > "$SG/r.md"; sc add -A; sc commit -q -m r1; SR=$(git -C "$SG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$SR"
+sc checkout -q main; sed -i 's/^7$/fix/' "$SG/app.ts"; sc commit -qam fix; sc push -q origin main; sc checkout -q r1; sc merge -q -s ours --no-edit main
+check "BLOCK: a merge with -s ours that reverts main's fix is refused" 1 "$(sk "$SR" s5)"
+# a PR with its own guard, cherry-picking a main commit, drops the guard in the merge of main: the merged head of main's commit is no replay point
+sc checkout -q -b c1 main; sed -i 's/^20$/guard2/' "$SG/z.ts"; sc commit -qam guard2
+sc checkout -q main; seq 1 200 > "$SG/big.ts"; sc add -A; sc commit -q -m big; sc push -q origin main; SF=$(git -C "$SG" rev-parse HEAD); echo "$SF" > "$FX/pr_list_"
+sc checkout -q c1; sc cherry-pick "$SF" >/dev/null; SV=$(git -C "$SG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$SV"
+sc merge -q --no-edit main >/dev/null 2>&1; sed -i 's/^guard2$/20/' "$SG/z.ts"; sc commit -qam dropguard
+check "BLOCK: a merge of main dropping the PR's own guard after a cherry-pick of a main commit is refused" 1 "$(sk "$SV" s6)"
+rm "$FX/pr_list_"
 # a branch whose latest approach record has no `contract: 2` was started by a session on v1's skills: it finishes under the old records
 mkdir -p "$HOME/.mergeworthy/sessions"; echo "/p graph startup 0" > "$HOME/.mergeworthy/sessions/s-graph"; echo "/p v1 startup 0" > "$HOME/.mergeworthy/sessions/s-v1"
 printf 'Root cause: src/a.ts:3 does it\nBasis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | stays |\n| Fix it | 8 | ok |\nShared assumption: the bug is in this repo\n\nChosen: Fix it\n' > "$T/apo.md"; CLAUDE_CODE_SESSION_ID=s-graph prs approach "$T/apo.md" >/dev/null
