@@ -745,10 +745,10 @@ def repo_of(url):
     return host, m[2]
 
 def pushed(git_dir, opts, env, rest):
-    """([remote URLs], [(commit, branch it updates, local branch it publishes)]) of a `git push <rest>` run in git_dir with the command's other global options
-    (opts) and env: the remote's push URLs (pushurl, pushInsteadOf), or the URL given; no commits for a delete, tags only, or
-    a local path."""
-    if '--delete' in rest or '-d' in rest: return [], []
+    """([remote URLs], [(commit, branch it updates, local branch it publishes)], why the branches can't be told or '') of a `git push <rest>`
+    run in git_dir with the command's other global options (opts) and env: the remote's push URLs (pushurl, pushInsteadOf), or the URL given;
+    no commits for a delete, tags only, or a local path."""
+    if '--delete' in rest or '-d' in rest: return [], [], ''
     if {'--all', '--branches', '--mirror'} & set(rest):
         block("push one branch, named (`git push <remote URL> <branch>`): each pushed head's records are checked (mergeworthy:merging step 1)")
     pos, skip = [], False
@@ -776,11 +776,12 @@ def pushed(git_dir, opts, env, rest):
             block(f"`{remote}` is neither a remote of this checkout nor a URL or path, so where this push goes can't be told")
     push_urls.extend(urls)
     if all(repo_of(u) is None for u in urls):
-        return urls, []  # a local path publishes nothing a reviewer or CI sees
+        return urls, [], ''  # a local path publishes nothing a reviewer or CI sees
     out, configured = [], [] if pos[1:] or '--tags' in rest else git('config', '--get-all', f'remote.{remote}.push').split()
-    if any('*' in x or x.lstrip('+') == ':' for x in configured) or not (pos[1:] or configured or '--tags' in rest) and git('config', 'push.default') == 'matching':
-        block(f"which branches this push updates comes from git's config (a pattern in remote.{remote}.push, or push.default=matching), so it can't be told: "
-              "name the branch (`git push <remote> HEAD:<branch>`)")
+    untold = any('*' in x or x.lstrip('+') == ':' for x in configured) or not (pos[1:] or configured or '--tags' in rest) and git('config', 'push.default') == 'matching'
+    untold = untold and (f"which branches this push updates comes from git's config (a pattern in remote.{remote}.push, or push.default=matching), "
+                         "so whether it lands on the default branch can't be told: name the branch (`git push <remote> HEAD:<branch>`)")
+    configured = [] if untold else configured
     for spec in pos[1:] or configured or ([] if '--tags' in rest else ['HEAD']):
         src, _, dst = spec.lstrip('+').partition(':')
         if not src or src.startswith('refs/tags/') or run('show-ref', '--verify', '-q', f'refs/tags/{src}').returncode == 0:
@@ -795,7 +796,7 @@ def pushed(git_dir, opts, env, rest):
         if src == 'HEAD': local = head or 'HEAD'
         elif run('show-ref', '--verify', '-q', f'refs/heads/{local}').returncode: local = branch  # a commit, not a branch: the one it updates
         out.append((sha, re.sub(r'^refs/heads/', '', branch), re.sub(r'^refs/heads/', '', local)))
-    return urls, out
+    return urls, out, untold or ''
 
 def collaboration(d, url, heads):
     """([why this push is collaboration work], [{url, isDraft, sha: the commit pushed to it} of each open PR or MR it updates]): it updates an open PR's (MR's)
@@ -1206,10 +1207,11 @@ def check(t, has_cd):
             if {'--git-dir', '--work-tree'} & {x.split('=')[0] for x in git_globals(t)} or {'GIT_DIR', 'GIT_WORK_TREE'} & set(env):
                 block("push from the checkout itself (cd or -C, without --git-dir, --work-tree, GIT_DIR or GIT_WORK_TREE), so what it publishes can be checked")
             g = git_globals(t)
-            urls, heads = pushed(repo, [x for i, x in enumerate(g) if x != '-C' and g[i - 1:i] != ['-C']], {**os.environ, **env}, rest)
+            urls, heads, untold = pushed(repo, [x for i, x in enumerate(g) if x != '-C' and g[i - 1:i] != ['-C']], {**os.environ, **env}, rest)
             for host, path in filter(None, map(repo_of, urls)):
-                if heads and project_file(path) is not None and (main := default_branch(host, path)) in [b for _, b, _ in heads]:
-                    need_ask('push', f'this push to {main}', path, branch=main)
+                if not heads or project_file(path) is None: continue
+                if untold: block(untold)
+                if (main := default_branch(host, path)) in [b for _, b, _ in heads]: need_ask('push', f'this push to {main}', path, branch=main)
             why, prs = [sum(x, []) for x in zip(*[collaboration(repo, u, [h[:2] for h in heads]) for u in urls])] or ([], [])
             if why and not all(sha for sha, _, _ in heads):
                 block(f"this push ({'; '.join(why)}) publishes a commit computed when it runs, so its records can't be checked: push a branch or a sha written out")

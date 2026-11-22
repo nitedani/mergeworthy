@@ -4861,6 +4861,9 @@ git -C "$OWN" config --unset push.default
 said 'looks good'; printf '## Merging\n- Push to main once the gates pass\n' >> "$HOME/.mergeworthy/projects/nitedani-agent/notes.md"
 check "a push to the default branch under the project file's \`- Push to main\` order passes; without a project file it is unchanged" "0 0" \
   "$(lg 'git push origin HEAD:main' "$OWN") $(rm "$HOME/.mergeworthy/projects/nitedani-agent/notes.md"; lg 'git push origin HEAD:main' "$OWN")"
+check "a push git's config can't tell, to a repo with no project file, passes as before: push.default=matching, a pattern in remote.<name>.push" "0 0" \
+  "$(git -C "$OWN" config push.default matching; lg 'git push' "$OWN") $(git -C "$OWN" config --unset push.default; git -C "$OWN" config remote.origin.push 'refs/heads/*:refs/heads/*'; lg 'git push origin' "$OWN")"
+git -C "$OWN" config --unset remote.origin.push
 printf 't3-update\nsystemctl --user (re)?start (t3code|t3-update)\n' > "$HOME/.mergeworthy/ask-first"; said 'is the t3 fix built yet?'
 check "BLOCK: an ask-first command unasked, at any command position and inside ssh's remote command, naming the list; a mention passes" "2 1 2 2 2 0" \
   "$(lg "ssh collab@opensource 'export PATH=x; t3-update; echo \"exit \$?\"'") $(grep -c "is on this machine's ~/.mergeworthy/ask-first list.*ask the owner to reply \`update\`" "$T/err") \
