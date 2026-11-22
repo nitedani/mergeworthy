@@ -184,7 +184,7 @@ span() { git diff --numstat "$1" "$2" | awk '{ s += $1 + $2 + 1 } END { print s 
 # The file of each line HEAD changed since an earlier head, once per line: compared whole with that head replayed on the base HEAD has merged,
 # so what the base brought doesn't count and every move does; a conflict stays in the replay as its markers, so its resolution counts
 delta() {
-  local b c d h k m n pb r M T
+  local b c d h k m n pb M T r=
   b=$(pbase); pb=$(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || true)
   [ -n "$pb" ] || { pb=$(git symbolic-ref -q --short refs/remotes/origin/HEAD || true); pb=${pb#origin/}; }
   m=$(git merge-base "$b" "$1" 2>/dev/null || true)
