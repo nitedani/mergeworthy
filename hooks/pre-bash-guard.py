@@ -163,7 +163,10 @@ ASKED_FOR = {'merge': (r'merge(?!d\b)\w*', r'Merge each PR as soon as it is read
              'push': (r'push(?!\w*\s+(?:for|back)\b)\w*|releas\w*|publish\w*', r'Push to {branch}(?!\S)'),  # a release asked for pushes its version commit
              'release': (r'releas\w*|publish\w*', None),
              'ask-first': (r'update\w*|restart\w*|frissít\w*', None)}
-NEGATED = re.compile(r"\b(?:don'?t|\w+n['’]t|do not|never|not|no|who|why|ne|nem|majd|várj|varj|wait|later)\b", re.I)
+NEGATED = re.compile(r"\b(?:don'?t|\w+n['’]t|do not|never|not|no|who|why|ne|nem|majd|várj|varj|wait|later|after|once|when|until|if|ha|miután)\b", re.I)
+# an ask opens a clause, after a please or a "can you" at most; "merge conflicts", "release notes" and "update plan" name a thing, not the action
+LEAD = r"(?:^|[,;:]|\b(?:and|és|then|aztán)\b)\s*(?:(?:please|pls|ok(?:ay)?|now|just|(?:can|could|would) you|go ahead and|you can|kérlek|kerlek|most)\W+)*"
+MENTION = r'(?!\s+(?:conflicts?|requests?|notes?|plans?|queue)\b)'
 try: ASK_FIRST = [l.strip() for l in open(os.path.expanduser('~/.mergeworthy/ask-first')) if l.strip() and not l.startswith('#')]
 except OSError: ASK_FIRST = []  # the machine's commands that restart what others use, one pattern a line
 
@@ -171,16 +174,16 @@ PR_REF = re.compile(r'(?:github\.com/([\w.-]+/[\w.-]+)/pull/|gitlab\.com/([\w./-
 
 def asks(text, kind, repo=None, num=None, branch=None):
     """Whether text (a message the user typed) asks for kind on its target, each sentence read once URLs, `(Re-invocation of` lines and the
-    word mergeworthy are taken out: False when one holding kind's words negates them; True when one holds them, is no question and names the
+    word mergeworthy are taken out: False when one holding kind's words negates them or puts them off; True when one opens a clause with them, is no question and names the
     target: PR num of repo when it (else the text) names PRs, the branch pushed when it names a branch; else None."""
     refs = lambda t: [((m[1] or m[2] or m[3] or '').lower(), m[4]) for m in PR_REF.finditer(t)]
     def aims(s):
         if kind == 'merge': return not refs(text) or any(r in ('', (repo or '').lower()) and n == str(num) for r, n in refs(s) or refs(text))
         return kind != 'push' or not re.search(r'\bbranch', s, re.I) or bool(re.search(rf'\b{re.escape(branch or "")}\b', s))
     said = [(s, b) for s in re.split(r'(?<=[.!?])\s+|\n', text)
-            if re.search(rf'\b(?:{ASKED_FOR[kind][0]})', b := re.sub(r'https?://\S+|\bmergeworthy\w*|^\(Re-invocation of .*', ' ', s, flags=re.I), re.I)]
+            if re.search(rf'\b(?:{ASKED_FOR[kind][0]})\b{MENTION}', b := re.sub(r'https?://\S+|\bmergeworthy\w*|^\(Re-invocation of .*', ' ', s, flags=re.I), re.I)]
     if any(NEGATED.search(b) for _, b in said): return False
-    return any(not b.rstrip().endswith('?') and aims(s) for s, b in said) or None
+    return any(not b.rstrip().endswith('?') and re.search(rf'{LEAD}\b(?:{ASKED_FOR[kind][0]})\b{MENTION}', b.strip(), re.I) and aims(s) for s, b in said) or None
 
 def last_typed():
     """The message the user last typed in this session (t3_tasks.typed); '' with none."""
