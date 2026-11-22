@@ -92,6 +92,17 @@ def handback_check():
               "or the user's global config, (c) an external maintainer's product decision or a fork you can't rank; then "
               "include a line starting 'GENUINE-FORK:' with your recommended default.", file=sys.stderr)
         sys.exit(2)
+# A "best solution?" asked about work whose ratings this session's work folder holds is answered from them
+BEST = re.compile(r"\b(best|better|ideal|optimal|right|cleanest|pinnacle)\b[^.?!\n]{0,40}\b(solution|approach|design|way|fix|option|code)s?\b[^.!\n]*\?"
+                  r"|\b(solution|approach|design|fix|code)\b[^.?!\n]{0,30}\b(best|better|ideal|optimal|right)\b[^.!\n]*\?", re.I)
+def best_check():
+    if not BEST.search(last_user): return
+    for wf in sorted(task_dirs):
+        rated = [os.path.relpath(f, wf) for g in ('approach.md', 'decisions/*.md', '*/converge.md', '*/rating.md') for f in sorted(glob.glob(os.path.join(wf, g)))]
+        if rated and not any(r in last for r in rated):
+            print(f"This asks whether a design is the best one, and {wf} holds its ratings ({', '.join(rated)}): read them, and answer "
+                  "from them, naming any rating you overturn and with what evidence.", file=sys.stderr)
+            sys.exit(2)
 # A checkable fact left unchecked in the reply (mergeworthy:writing §Evidence for claims)
 def unchecked_check():
     m = report.unchecked(last)
@@ -213,7 +224,7 @@ def state_check():
               "(mergeworthy:writing §Evidence for claims); then act on it (a ready PR: the reply loop; red CI: fix it).", file=sys.stderr)
         sys.exit(2)
 if not child:
-    for check in (handback_check, unchecked_check, fork_check, running_check, done_check, state_check): check()
+    for check in (handback_check, best_check, unchecked_check, fork_check, running_check, done_check, state_check): check()
 own_dirs = set(t3_dirs)
 for wd in (l.strip() for l in open(reg)) if os.path.exists(reg) else ():
     # or a watch dir this session works through from elsewhere (its cwd is a repo, the watch dir an artifact root):

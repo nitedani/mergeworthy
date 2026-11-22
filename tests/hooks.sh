@@ -4098,6 +4098,11 @@ hb=; for m in 'The fix is committed locally on `fix-telefunc`. Pushing it, or te
              'Nothing will notify me when they finish. Tell me to check, or to post the reply now.' \
              "The reply to brillout is drafted and reviewed as CLEAN, but it isn't posted yet. Do you want me to post it now that CI is green?"; do tr_file "$m" work; hb="$hb $(slj)"; done
 check "BLOCK: the session's six hand-backs, as it wrote them" " 2 2 2 2 2 2" "$hb"
+# a "best solution?" in a work folder holding ratings is answered from them (the zqs session, nitedani/mergeworthy#252)
+BW="$HOME/.mergeworthy/work/best"; mkdir -p "$BW/strict-pr" "$HOME/.mergeworthy/work/unrated"; echo '| C3: one shared loop | 4 | splits |' > "$BW/strict-pr/rating.md"
+python3 -c 'import json; print(json.dumps({"type":"user","message":{"content":"Is this the best solution?"}}))' > "$T/tr.jsonl"
+check "BLOCK: a \"best solution?\" answer naming none of the work folder's rating files, naming it; one naming strict-pr/rating.md, or with no rating file, passes" "2 1 0 0" \
+  "$(slj 'Yes: one URL watcher for the whole page, shared by all stores.' 0 s-best "$BW") $(grep -c 'strict-pr/rating.md' "$T/err") $(slj 'No: strict-pr/rating.md rates C3, one shared loop, 4, and nothing since overturns it.' 0 s-best "$BW") $(slj 'Yes: one URL watcher for the whole page.' 0 s-best "$HOME/.mergeworthy/work/unrated")"
 # the telefunc-room session's answer, as it wrote it, then the same with the attempt that failed, and a quoted phrase
 tr_file 'README tidied.'
 check "BLOCK: a fact left unchecked (\"I don't know whether\", \"I haven't read\"); its sentence quoting the failed attempt, or the phrase in quotes, passes" "2 2 0 0" \
