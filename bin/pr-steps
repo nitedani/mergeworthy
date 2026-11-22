@@ -197,6 +197,7 @@ delta() {
     done
   fi
   T=$(git merge-tree --write-tree ${r:+--merge-base="$r"} "$b" "$1" 2>/dev/null | sed -n 1p || true)  # exit 1 on a conflict, with the tree first
+  [ -n "$T" ] || [ -z "$r" ] || T=$(git merge-tree --write-tree "$b" "$1" 2>/dev/null | sed -n 1p || true)  # a git without --merge-base replays as before
   git -c core.quotePath=false -c diff.noprefix=false diff --no-renames --numstat "${T:-$1}" HEAD |
     not_built | awk -F'\t' '{ n = $1 + $2; if (!n) n = 1; for (i = 0; i < n; i++) print $3 }'  # a binary, a mode or an empty file has no line, and is a change
 }

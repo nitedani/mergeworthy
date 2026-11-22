@@ -2533,6 +2533,9 @@ sc checkout -q p26; sc merge -q --no-edit main >/dev/null 2>&1; sc checkout -q -
 echo "$P25" > "$FX/pr_list_"
 check "a merge of main after the squash of a branch the PR merged, tree unchanged, carries (#251)" 0 "$(sk "$SA" s1)"
 check "BLOCK: the same carry with gh failing is refused: no merged PR's head to replay from" 1 "$(GH_STUB_403=1 sk "$SA" s2)"
+# a git without merge-tree's --merge-base (2.43) replays as before: the unchanged-tree carry of #251 is refused, not compared with the bare old head
+mkdir -p "$T/shim"; printf '#!/bin/bash\ncase " $* " in *" merge-tree "*" --merge-base="*) exit 129;; esac\nexec %s "$@"\n' "$(command -v git)" > "$T/shim/git"; chmod +x "$T/shim/git"
+check "BLOCK: a git that rejects --merge-base refuses the #251 carry as cd254f8 did" 1 "$(PATH="$T/shim:$PATH" sk "$SA" s2b)"
 sc checkout -q main; sed -i 's/^5$/other/' "$SG/z.ts"; sc commit -qam other; sc push -q origin main; sc checkout -q p26; sc merge -q --no-edit main >/dev/null 2>&1
 check "main moving on after the squash, merged in, carries" 0 "$(sk "$SA" s3)"
 sc checkout -q -b q25 main; seq 1 90 > "$SG/q.ts"; sc add -A; sc commit -q -m q25
