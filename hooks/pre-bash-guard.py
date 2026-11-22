@@ -228,14 +228,16 @@ def default_branch(host, repo):
         block(f"{a[0]} couldn't read {repo}'s default branch, so whether this push lands on it can't be told: retry once {a[0]} answers")
 
 def publish_dir(p, a):
-    """The dir an `npm|pnpm <a>` publishes from (its -C, --dir or --prefix, else where it runs), None when it runs no publish."""
-    valued, pkg, i = {'npm': ('--prefix', '-w', '--workspace'), 'pnpm': ('-C', '--dir', '--filter', '-F')}[p], '.', 0
+    """The dir an `npm|pnpm <a>` publishes from (its -C, --dir or --prefix, before or after `publish`, else where it runs), None when it runs
+    no publish."""
+    valued, pkg, ops, i = {'npm': ('--prefix', '-w', '--workspace'), 'pnpm': ('-C', '--dir', '--filter', '-F')}[p], '.', [], 0
     while i < len(a):
         k, eq, v = a[i].partition('=')
         if k in valued and not eq: v, i = (a[i + 1] if i + 1 < len(a) else ''), i + 1
         if k in ('-C', '--dir', '--prefix'): pkg = v
-        elif not k.startswith('-'): return os.path.join(known(run_dir), os.path.expanduser(where.expand(pkg))) if k == 'publish' else None
+        elif not k.startswith('-'): ops.append(k)
         i += 1
+    return os.path.join(known(run_dir), os.path.expanduser(where.expand(pkg))) if ops[:1] == ['publish'] else None
 
 def ask_first(t):
     """Blocks t when it, or a command an `ssh <host> '<command>'` runs there, is one the machine's ask-first list names, unasked."""
