@@ -32,7 +32,8 @@ print(v.get(sys.argv[2][1:], "") if sys.argv[2] and isinstance(v, dict) else raw
 if [ "$1 $2" = "pr list" ]; then  # from $FX/pr_list_<the -R repo with / replaced by _>; none: no PRs ([], or nothing with -q)
   [ -n "$GH_STUB_403" ] && { echo 'gh: API rate limit exceeded for user ID 1. (HTTP 403)' >&2; exit 1; }
   s=; q=; p=; for a in "$@"; do [ "$p" = -R ] && s=$a; case "$a" in -q|--jq) q=1;; esac; p=$a; done
-  f="$FX/pr_list_$(printf '%s' "$s" | tr / _)"; if [ -f "$f" ]; then cat "$f"; elif [ -z "$q" ]; then echo '[]'; fi; exit 0; fi
+  f="$FX/pr_list_$(printf '%s' "$s" | tr / _)"; p=; for a in "$@"; do [ "$p" = --base ] && [ -f "${f}_base_$a" ] && f="${f}_base_$a"; p=$a; done  # a --base answers from $f_base_<branch> when it exists
+  if [ -f "$f" ]; then cat "$f"; elif [ -z "$q" ]; then echo '[]'; fi; exit 0; fi
 [ "$1 $2" = "pr checks" ] && [ "${3#https://github.com/}" = "$3" ] && { echo "no pull requests found for branch \"$3\"" >&2; exit 1; }
 if [ "$1 $2" = "pr checks" ]; then f="$FX/pr_checks_$(printf '%s' "$3" | tr '/:' '__')"; [ -f "$f" ] && cat "$f" && exit 1; echo "no checks reported on the 'x' branch" >&2; exit 1; fi
 [ "$1" = api ] || exit 1
@@ -2551,6 +2552,15 @@ sc checkout -q c1; sc cherry-pick "$SF" >/dev/null; SV=$(git -C "$SG" rev-parse 
 sc merge -q --no-edit main >/dev/null 2>&1; sed -i 's/^guard2$/20/' "$SG/z.ts"; sc commit -qam dropguard
 check "BLOCK: a merge of main dropping the PR's own guard after a cherry-pick of a main commit is refused" 1 "$(sk "$SV" s6)"
 rm "$FX/pr_list_"
+# a PR merged into another branch says nothing about this PR's base: its head is no replay point, though it holds the reviewed head
+OG="$T/obase.git"; OC="$T/oclone"; git init -q --bare -b main "$OG"; git clone -q "$OG" "$OC" 2>/dev/null; oc() { git -C "$OC" -c user.name=t -c user.email=t@t "$@"; }
+echo g > "$OC/guard.ts"; oc add -A; oc commit -q -m base; oc push -q origin main; oc remote set-head origin main >/dev/null
+oc checkout -q -b topic; echo guard2 > "$OC/guard.ts"; seq 1 200 > "$OC/big.ts"; oc add -A; oc commit -q -m topic; OA=$(git -C "$OC" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$OA"
+oc checkout -q -b beyond; echo more > "$OC/more.ts"; oc add -A; oc commit -q -m beyond; git -C "$OC" rev-parse HEAD | tee "$FX/pr_list_" > "$FX/pr_list__base_topic"; : > "$FX/pr_list__base_main"
+oc checkout -q main; seq 1 200 > "$OC/big.ts"; oc add -A; oc commit -q -m big; oc push -q origin main
+oc checkout -q topic; oc merge -q --no-edit main >/dev/null 2>&1; echo g > "$OC/guard.ts"; oc commit -q -am dropguard; printf 'carries the pass of %s: merged main\n' "$OA" > "$T/ok.md"
+check "BLOCK: a carry is refused when only a PR merged into another branch holds the reviewed head, naming the guard it lost" "1 1" "$( (cd "$OC" && bash "$R/bin/pr-steps" verify "$T/ok.md" >/dev/null 2>&1; echo $?) ) $( (cd "$OC" && bash "$R/bin/pr-steps" verify "$T/ok.md" 2>&1 >/dev/null) | grep -c 'guard.ts changed')"
+rm "$FX/pr_list_" "$FX/pr_list__base_topic" "$FX/pr_list__base_main"
 # a criss-cross merge has two merge bases, which git merges itself: the replay leaves them to git unless a merged PR's head replaces them
 XG="$T/xclone"; git init -q -b main "$XG"; xc() { git -C "$XG" -c user.name=t -c user.email=t@t "$@"; }
 seq 1 12 > "$XG/f"; xc add f; xc commit -q -m x; xc checkout -q -b a1; sed -i 's/^5$/a/' "$XG/f"; GIT_COMMITTER_DATE='2099-01-02T00:00:00Z' xc commit -q -am a1; xc checkout -q main; xc checkout -q -b b1; sed -i 's/^5$/b/' "$XG/f"; xc commit -q -am b1
