@@ -4920,9 +4920,10 @@ check "a merge under the project file's standing order passes with no ask, or wi
   "$(said 'thanks'; lg "$M") $(said "Don't merge #40."; lg "$M") $(said 'Dont merge pr when ready, I want to see it.'; lg "$M") $(said 'ne mergeld'; lg "$M") $(said "Don't merge #41."; lg "$M")"
 sed -i '/^## Merging/,$d' "$HOME/.mergeworthy/projects/o/r.md"
 said 'looks good'
-check "BLOCK: gh release create and npm publish unasked; asked, or a dry run, or a repo with no project file, they pass; BLOCK: release notes asked for" "2 2 0 0 2 2 2 0 0" \
+check "BLOCK: gh release create and npm publish unasked; asked, or a dry run, or a repo with no project file, they pass; BLOCK: release notes asked for, a past 'released' or 'published'" "2 2 0 0 2 2 2 0 0 2 2" \
   "$(lg 'gh release create v1.2.0 -R o/r') $(lg 'npm publish' "$TCO") $(lg 'npm publish --dry-run' "$TCO") $(lg 'gh release create v1.2.0 -R lo/none') \
-$(said 'release notes kellenek, ne publisholj'; lg 'pnpm publish' "$TCO") $(said 'Write release notes for v1.2.0.'; lg 'gh release create v1.2.0 -R o/r') $(said 'Release notes for v1.2.0, please.'; lg 'gh release create v1.2.0 -R o/r') $(said 'release 1.2.0 please'; lg 'gh release create v1.2.0 -R o/r') $(lg 'pnpm publish' "$TCO")"
+$(said 'release notes kellenek, ne publisholj'; lg 'pnpm publish' "$TCO") $(said 'Write release notes for v1.2.0.'; lg 'gh release create v1.2.0 -R o/r') $(said 'Release notes for v1.2.0, please.'; lg 'gh release create v1.2.0 -R o/r') $(said 'release 1.2.0 please'; lg 'gh release create v1.2.0 -R o/r') $(lg 'pnpm publish' "$TCO") \
+$(said 'Released v1.2.0 yesterday.'; lg 'gh release create v1.2.0 -R o/r') $(said 'Published v1.2.0 yesterday.'; lg 'pnpm publish' "$TCO")"
 said 'looks good'
 check "BLOCK: a publish from a project file's repo named by -C, --dir= or --prefix, or past a --filter; from a dir of no repo it passes" "2 2 2 2 0" \
   "$(lg "pnpm -C $TCO publish") $(lg "pnpm --dir=$TCO publish -r") $(lg "npm --prefix $TCO publish") $(lg 'pnpm --filter x publish' "$TCO") $(lg "pnpm -C $T publish" "$TCO")"

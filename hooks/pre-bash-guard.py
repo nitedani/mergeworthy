@@ -161,8 +161,8 @@ def push_before_gates(url):
 # What runs only on the owner's ask: the words of a sentence that asks for it, the project file's `## Merging` order that stands in for one,
 # and the reply that asks for it
 ASKED_FOR = {'merge': (r'merge(?!d\b)\w*', r'Merge each PR as soon as it is ready\b', 'merge'),
-             'push': (r'push(?!\w*\s+(?:for|back)\b)\w*|releas\w*|publish\w*', r'Push to {branch}(?!\S)', 'push'),  # a release asked for pushes its version commit
-             'release': (r'releas\w*|publish\w*', None, 'release'),
+             'push': (r'push(?!\w*\s+(?:for|back)\b)\w*|releas(?!ed\b)\w*|publish(?!ed\b)\w*', r'Push to {branch}(?!\S)', 'push'),  # a release asked for pushes its version commit
+             'release': (r'releas(?!ed\b)\w*|publish(?!ed\b)\w*', None, 'release'),
              'ask-first': (r'update(?!d\b)\w*|restart\w*|frissít\w*', None, 'update')}
 NEGATED = re.compile(r"\b(?:don'?t|\w+n['’]t|do not|never|not|no|who|why|ne|nem|majd|várj|varj|wait|later|after|once|when|until|if|ha|miután)\b", re.I)
 # an ask opens a clause, after a list bullet, a please, a "let's" or a "can you" at most; "merge conflicts", "release notes" and "update plan"
