@@ -224,6 +224,16 @@ def default_branch(host, repo):
     except (OSError, subprocess.TimeoutExpired, ValueError, KeyError, TypeError):
         block(f"{a[0]} couldn't read {repo}'s default branch, so whether this push lands on it can't be told: retry once {a[0]} answers")
 
+def publish_dir(p, a):
+    """The dir an `npm|pnpm <a>` publishes from (its -C, --dir or --prefix, else where it runs), None when it runs no publish."""
+    valued, pkg, i = {'npm': ('--prefix', '-w', '--workspace'), 'pnpm': ('-C', '--dir', '--filter', '-F')}[p], '.', 0
+    while i < len(a):
+        k, eq, v = a[i].partition('=')
+        if k in valued and not eq: v, i = (a[i + 1] if i + 1 < len(a) else ''), i + 1
+        if k in ('-C', '--dir', '--prefix'): pkg = v
+        elif not k.startswith('-'): return os.path.join(known(run_dir), os.path.expanduser(where.expand(pkg))) if k == 'publish' else None
+        i += 1
+
 def ask_first(t):
     """Blocks t when it, or a command an `ssh <host> '<command>'` runs there, is one the machine's ask-first list names, unasked."""
     remote = []
@@ -1114,8 +1124,8 @@ def check(t, has_cd):
     if ASK_FIRST: ask_first(t)
     if p == 'gh' and a[:2] == ['release', 'create'] and '--help' not in a and '-h' not in a:
         need_ask('release', '`gh release create`', gh_repo(a[2:], env, run_dir))
-    if p in ('npm', 'pnpm') and next((x for x in a if not x.startswith('-')), None) == 'publish' and '--dry-run' not in a:
-        need_ask('release', f'`{p} publish`', (repo_of(origin(known(run_dir))) or (None, None))[1])
+    if p in ('npm', 'pnpm') and (pkg := publish_dir(p, a)) and '--dry-run' not in a:
+        need_ask('release', f'`{p} publish`', (repo_of(origin(pkg)) or (None, None))[1])
     if p == 'codex' and ('exec' in a or a[:1] == ['e']) and under_t3():
         block("under T3 Code, start Codex through T3, where the user sees it: delegate_task with target {providerInstanceId: codex, "
               "model: <the review model from orchestrator_capabilities>}, the prompt file's path in the task, a new delegate_task per review round (mergeworthy:delegate §Reviewers)")
