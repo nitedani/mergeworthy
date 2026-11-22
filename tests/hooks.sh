@@ -2766,8 +2766,8 @@ check "BLOCK: an approach with no Root cause line citing a path:line, or one cit
 check "BLOCK: an approach with one candidate" 1 "$(prs2 approach "$T/ap1.md")"
 check "BLOCK: a chosen approach rated 6" 1 "$(prs2 approach "$T/ap6.md")"
 check "BLOCK: a chosen approach that is no candidate" 1 "$(prs2 approach "$T/apx.md")"
-grep -v '^Probe:' "$T/ap.md" > "$T/apnp.md"
-check "BLOCK: an approach with no Probe line, naming pull-request step 5" "1 1" "$(prs2 approach "$T/apnp.md") $(cd "$G2" && bash "$R/bin/pr-steps" approach "$T/apnp.md" 2>&1 | grep -c "Probe: <the run.*pull-request step 5")"
+grep -v '^Probe:' "$T/ap.md" > "$T/apnp.md"; sed 's/^Probe:.*/Probe:   -> nothing/' "$T/ap.md" > "$T/apne.md"
+check "BLOCK: an approach with no Probe line, naming pull-request step 5, or with no run before its ->" "1 1 1" "$(prs2 approach "$T/apnp.md") $(cd "$G2" && bash "$R/bin/pr-steps" approach "$T/apnp.md" 2>&1 | grep -c "Probe: <the run.*pull-request step 5") $(prs2 approach "$T/apne.md")"
 # the Basis line: the user's words, the goal's own failing run, a clean-cut error, or a report someone else wrote; never our own
 apb() { printf 'Root cause: %s\n%s| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | stays |\n| Fix it | 8 | ok |\nShared assumption: the bug is in this repo\nProbe: rg -l a.ts -> only src/a.ts\n\nChosen: Fix it\n' "$1" "$2" > "$T/apb.md"; (cd "$T/apbr" && bash "$R/bin/pr-steps" approach "$T/apb.md" >/dev/null 2>&1; echo $?); }
 git init -q "$T/apbr"; git -C "$T/apbr" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a  # its own repo: a recorded approach here reaches no other check
