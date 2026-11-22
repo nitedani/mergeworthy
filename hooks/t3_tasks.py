@@ -9,7 +9,7 @@ NOTICE = re.compile(r'Delegated task (\S+) (?:reached a terminal state|\(.*?\) \
 # What the harness, T3, a hook or the watcher writes into a session as a user message: a tag (`<task-notification>`), not an autolink (`<https://…>`)
 TAG = re.compile(r'<[A-Za-z][\w-]*[\s>/]')
 NOTICES = ('Stop hook feedback', 'Watcher events in ', 'Delegated task ', 'Skill /', 'Base directory for this skill',
-           'This session is being continued', '[Your previous response had no visible output')
+           'This session is being continued', '[Your previous response had no visible output', '[T3 Code: ')
 
 
 def typed(content):
