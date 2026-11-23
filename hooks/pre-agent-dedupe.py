@@ -5,12 +5,11 @@ The PreToolUse call decides; the PostToolUse call only records what ran and make
 records still fails it). An admitted launch leaves its decision as a pending record in agent_jobs.LAUNCHED (when it was let
 through, its key, task, role, worktrees, tool_use_id, launcher transcript, session, `refresh` and the `memory` brief it
 follows, an implementer's `approach` and a review round's `heads`), which the PostToolUse call turns into the job.
-One agent per job: a launch is registered under its job key (the ticket files its prompt names, and its title), and a second
-launch of the same job, or of a task that contains or is contained in an open job's (the same work under another title: an agent
-already on the job gets a message, not a twin, mergeworthy:delegate step 1), is blocked until `agent-job done <key>` releases it.
-A turn that ended is not a finished agent: on T3 a child wakes again when its background commands end. The containment check
-counts a job until its agent has finished (agent_jobs.finished); a same-key job counts until `agent-job done` releases it, or for
-OPEN (a day)."""
+One agent per job: a launch is registered under its job key (the ticket files its prompt names, and its title). A second launch
+of the same key is blocked until `agent-job done <key>` releases the job, or for OPEN (a day); a task that contains or is contained
+in an open job's (the same work under another title: an agent already on the job gets a message, not a twin, mergeworthy:delegate
+step 1) is blocked until that job's agent has finished (agent_jobs.finished). A turn that ended is not a finished agent: on T3 a
+child wakes again when its background commands end."""
 import datetime, fcntl, functools, glob, hashlib, itertools, json, os, re, shlex, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import failclosed
