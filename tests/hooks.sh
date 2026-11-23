@@ -7,6 +7,7 @@ set -u
 R=$(readlink -f "${1:-$(dirname "$0")/..}")
 export MERGEWORTHY_PYDEPS=${MERGEWORTHY_PYDEPS:-$HOME/.mergeworthy/pydeps}  # the shell parser the hooks run, installed once outside the temp HOME
 unset T3CODE_THREAD_ID  # a run from a T3 session tests the same hooks as one outside it; the T3 cases set it
+unset MERGEWORTHY_EXCLUDE_MODELS CLAUDE_CODE_SUBAGENT_MODEL  # nor do the caller's own model settings reach the hooks; the exclude_models cases set them
 T=$(mktemp -d); export HOME="$T/home"; mkdir -p "$HOME/.claude" "$T/bin" "$T/fx"
 cat > "$T/bin/gh" <<'EOF'
 #!/usr/bin/env bash
@@ -1667,14 +1668,23 @@ check "BLOCK: a brief naming o/r but not its project file gets that refusal and 
 printf '{"type":"assistant","message":{"model":"claude-fable-5-2","content":[]}}\n' > "$T/xm-fable.jsonl"
 printf '{"type":"assistant","message":{"model":"claude-opus-5-5","content":[]}}\n' > "$T/xm-opus.jsonl"
 printf '{"type":"assistant","message":{"model":"claude-fable-5-2","content":[]}}\n{"type":"user","message":{"content":[{"type":"tool_result","content":"said assistant"}]}}\n{"type":"assistant","message":{"model":"claude-opus-5-5","content":[]}}\n' > "$T/xm-switched.jsonl"
-xm() { # tool extra-input-JSON transcript
-  python3 -c 'import json,sys; print(json.dumps({"tool_name":sys.argv[1],"transcript_path":sys.argv[3],"tool_input":{"task":"rate the approaches","prompt":"rate the approaches","description":"rate","run_in_background":False,**json.loads(sys.argv[2])}}))' "$1" "$2" "$3" \
+printf '{"type":"assistant","message":{"model":"claude-fable-5-2","content":[]}}\n{"type":"assistant","message":{"model":"<synthetic>","content":[]}}\n{"type":"user","message":{"content":[{"type":"tool_result","content":"done"}]}}\n' > "$T/xm-synthetic.jsonl"
+printf '{"type":"assistant","message":{"model":"us.anthropic.claude-fable-5-2","content":[]}}\n' > "$T/xm-bedrock.jsonl"
+xm() { # tool extra-input-JSON transcript; a t3_thread_launch gets its own title and message
+  python3 -c 'import json,sys; base = {"title":"rate","message":"rate the approaches"} if sys.argv[1].endswith("t3_thread_launch") else {"task":"rate the approaches","prompt":"rate the approaches","description":"rate","run_in_background":False}
+print(json.dumps({"tool_name":sys.argv[1],"transcript_path":sys.argv[3],"tool_input":{**base,**json.loads(sys.argv[2])}}))' "$1" "$2" "$3" \
     | timeout 10 python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
-xm_all() { echo "$(xm Agent '{"model":"fable"}' "$T/xm-opus.jsonl") $(xm mcp__t3-code__delegate_task '{"target":{"providerInstanceId":"claudeAgent","model":"claude-fable-5-2"}}' "$T/xm-opus.jsonl") $(xm mcp__t3-code__t3_thread_launch '{"modelSelection":{"provider":"claudeAgent","model":"claude-fable-5-2"}}' "$T/xm-opus.jsonl") $(xm mcp__t3-code__delegate_task '{}' "$T/xm-fable.jsonl") $(xm mcp__t3-code__delegate_task '{"target":{"providerInstanceId":"claude_2"}}' "$T/xm-opus.jsonl")"; }
+xm_all() { echo "$(xm Agent '{"model":"fable"}' "$T/xm-opus.jsonl") $(xm mcp__t3-code__delegate_task '{"target":{"providerInstanceId":"claudeAgent","model":"claude-fable-5-2"}}' "$T/xm-opus.jsonl") $(xm mcp__t3-code__t3_thread_launch '{"modelSelection":{"instanceId":"claudeAgent","model":"claude-fable-5-2"}}' "$T/xm-opus.jsonl") $(xm mcp__t3-code__delegate_task '{}' "$T/xm-fable.jsonl") $(xm mcp__t3-code__delegate_task '{"target":{"providerInstanceId":"claude_2"}}' "$T/xm-opus.jsonl")"; }
 check "with exclude_models empty, every Fable launch, named or inherited, passes" "0 0 0 0 0" "$(xm_all)"
 printf 'MERGEWORTHY_EXCLUDE_MODELS=fable\n' > "$HOME/.mergeworthy/settings.env"
 check "BLOCK: with exclude_models fable, an Agent on the alias, a delegate_task and a t3_thread_launch on its id, a model-less delegate_task from a Fable session and one on another Claude instance, naming opus" "2 2 2 2 2 1" "$(xm_all) $(xm Agent '{"model":"fable"}' "$T/xm-opus.jsonl" >/dev/null; grep -c 'runs on fable, a model family the user excluded (exclude_models: fable). Launch it on opus' "$T/err")"
 check "with exclude_models fable, a model-less delegate_task and Agent from an Opus session, one from a session switched from Fable to Opus, and one on codex pass" "0 0 0 0" "$(xm mcp__t3-code__delegate_task '{}' "$T/xm-opus.jsonl") $(xm Agent '{}' "$T/xm-opus.jsonl") $(xm mcp__t3-code__delegate_task '{"target":{"providerInstanceId":"claudeAgent"}}' "$T/xm-switched.jsonl") $(xm mcp__t3-code__delegate_task '{"target":{"providerInstanceId":"codex"}}' "$T/xm-fable.jsonl")"
+mkdir -p "$HOME/.claude/agents"; printf -- '---\nname: fable-check\nmodel: fable\n---\nCheck it.\n' > "$HOME/.claude/agents/fable-check.md"
+check "BLOCK: with exclude_models fable, a model-less Agent from an Opus session whose subagent_type definition names fable, one under CLAUDE_CODE_SUBAGENT_MODEL fable, a model-less delegate_task past a <synthetic> answer and one from a us.anthropic.claude-fable session" "2 2 2 2" \
+  "$(xm Agent '{"subagent_type":"fable-check"}' "$T/xm-opus.jsonl") $(CLAUDE_CODE_SUBAGENT_MODEL=fable xm Agent '{}' "$T/xm-opus.jsonl") $(xm mcp__t3-code__delegate_task '{}' "$T/xm-synthetic.jsonl") $(xm Agent '{}' "$T/xm-bedrock.jsonl")"
+rm -r "$HOME/.claude/agents"
+check "BLOCK: a refusal names the class below the excluded one or that none is left, in the blocked tool's model field, and keeps a non-Claude launch's provider" "2 1 2 1 2 1" \
+  "$(MERGEWORTHY_EXCLUDE_MODELS=haiku xm Agent '{"model":"haiku"}' "$T/xm-opus.jsonl") $(grep -c 'No Claude class below haiku is left' "$T/err") $(xm mcp__t3-code__t3_thread_launch '{"modelSelection":{"instanceId":"claudeAgent","model":"claude-fable-5-2"}}' "$T/xm-opus.jsonl") $(grep -c "t3_thread_launch's modelSelection.model the newest claude-opus id" "$T/err") $(MERGEWORTHY_EXCLUDE_MODELS=gpt xm mcp__t3-code__delegate_task '{"target":{"providerInstanceId":"codex","model":"gpt-5.5"}}' "$T/xm-opus.jsonl") $(grep -c "another family's model on codex" "$T/err")"
 rm -f "$HOME/.mergeworthy/settings.env"
 printf -- '- a convention\n## Who decides\n- maint merges: ~/.mergeworthy/projects/o/r.study.md\n' > "$HOME/.mergeworthy/projects/o/r.md"
 # the main session reads the code itself before briefing an implementer: a Read of a file in a checkout of that repo, in its transcript
