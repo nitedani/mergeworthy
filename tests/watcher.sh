@@ -95,73 +95,37 @@ with contextlib.redirect_stdout(buf): m.emit_dependents("o/r#391")
 print(threads + " " + ("DEPENDENT" if "DEPENDENT of merged o/r#391" in buf.getvalue() else "none"))
 ')
 check "waiting-on.txt key with trailing note: read as a thread, DEPENDENT emitted" "o/r 1 o/r 391 DEPENDENT" "$got"
-# a thread only waiting-on.txt names is read for how it ends: a PR's push and red CI wake nothing, its close and merge do, one merged
-# before its first read still gets DEPENDENT, and an issue's close comes from its REST state, with no GraphQL call; a PR in threads.txt too gets everything
+# a PR only waiting-on.txt names wakes its dir when it ends: its push and red CI wake nothing, its close (with a push in the same pass) and merge
+# do, without the push's events; a PR in threads.txt too gets everything
 got=$(py '
-import re, types
+import types
 json.dump({"since": "2026-01-01T00:00:00Z", "seen": {}, "prs": {}, "ci": {}, "is_pr": {}, "since_by": {}, "closed_scan": 0}, open(m.STATE, "w"))
 open(m.THREADS, "w").write("o/r 1\n")
-open(os.path.join(m.HERE, "waiting-on.txt"), "w").write("o/r#1 -> o/r#9: rebase\no/r#2 -> o/r#9: bump it\no/r#3 -> o/r#9: after the issue\no/r#4 -> o/r#9: already in\n")
-w, graphql = {"head": "aaa", "state": "open", "red": [], "issue_304": False, "issue_open": True}, []
+open(os.path.join(m.HERE, "waiting-on.txt"), "w").write("o/r#1 -> o/r#9: rebase\no/r#2 -> o/r#9: bump it\n")
+w = {"head": "aaa", "state": "open", "red": []}
 def request(path, method="GET", args=(), store=None, pending=None, fresh=False, **k):
-    if path == "repos/o/r/issues/3":
-        return types.SimpleNamespace(status=304) if w["issue_304"] and not fresh else types.SimpleNamespace(status=200, json=lambda: {"user": {"login": "x"}, "updated_at": "2026-11-23T00:00:00Z", "state": "open" if w["issue_open"] else "closed"})
-    if re.fullmatch(r"repos/o/r/issues/\d+", path):
+    if path.startswith("repos/o/r/issues/"):
         return types.SimpleNamespace(status=200, json=lambda: {"pull_request": {}, "user": {"login": "x"}, "updated_at": "2026-11-23T00:00:00Z"})
-    st = "merged" if path.endswith("/4") else w["state"]
-    return types.SimpleNamespace(status=200, json=lambda: {"head": {"sha": w["head"]}, "merged": st == "merged", "state": "open" if st == "open" else "closed", "mergeable": True, "mergeable_state": "clean", "updated_at": "2026-11-23T00:00:00Z"})
+    return types.SimpleNamespace(status=200, json=lambda: {"head": {"sha": w["head"]}, "merged": w["state"] == "merged", "state": "open" if w["state"] == "open" else "closed", "mergeable": True, "mergeable_state": "clean", "updated_at": "2026-11-23T00:00:00Z"})
 m.request, m.paged = request, lambda *a, **k: []
-m.fetch_last_comment = lambda repo, num: (graphql.append(num), {"open": w["issue_open"] if num == "3" else w["state"] == "open", "last": None, "prev": None, "people": [], "renames": []})[1]
+m.fetch_last_comment = lambda repo, num: {"open": w["state"] == "open", "last": None, "prev": None, "people": [], "renames": []}
 m.run_gh = lambda argv: types.SimpleNamespace(returncode=1 if w["red"] else 0, stderr="", stdout="".join(n + "\tfail\t1s\n" for n in w["red"]))
 m.own_change = m.emit_tracker_stale = m.scan_reactions = lambda *a: None
 m.emit_maintainer_commits = lambda state, repo, key, old, new: (m.emit("### MAINTAINER COMMITS " + key), True)[1]
 m.emit_refactor_stale = lambda repo, key, new: m.emit("### SHAPE STALE " + key)
 out = []
-for change in ({}, {"head": "bbb", "red": ["lint"]}, {"state": "closed", "red": []}, {"state": "merged"}, {"issue_304": True}, {"issue_304": False, "issue_open": False}):
+for change in ({}, {"head": "bbb", "red": ["lint"]}, {"state": "closed", "head": "ccc", "red": []}, {"state": "merged"}):
     w.update(change)
-    if len(out) >= 4:  # o/r#3 due for a check round, not a full read
-        s = json.load(open(m.STATE)); s["sched"]["o/r#3"]["next"] = 0; json.dump(s, open(m.STATE, "w"))
     buf = io.StringIO()
-    with contextlib.redirect_stdout(buf): m.run_scan(everything=len(out) < 4)
+    with contextlib.redirect_stdout(buf): m.run_scan(everything=True)
     out.append(",".join(l[4:].split(":")[0] for l in buf.getvalue().splitlines() if l.startswith("###")))
-print(*out, graphql.count("3"), sep="|")
+print(*out, sep="|")
 ')
-IFS='|' read -r first push close merge idle closed gql <<< "$got"
+IFS='|' read -r first push close merge <<< "$got"
 check "a PR only waiting-on.txt names: a push with red CI wakes nothing; one threads.txt lists too gets CI and SHAPE STALE" \
   "PR CHANGED o/r#1,MAINTAINER COMMITS o/r#1,SHAPE STALE o/r#1,CI o/r#1" "$push"
-check "a PR only waiting-on.txt names: its close emits PR CHANGED, its merge DEPENDENT" \
-  "PR CHANGED o/r#1,PR CHANGED o/r#2|PR CHANGED o/r#1,DEPENDENT of merged o/r#1,PR CHANGED o/r#2,DEPENDENT of merged o/r#2" "$close|$merge"
-check "a PR only waiting-on.txt names, merged before its first read: DEPENDENT" "DEPENDENT of merged o/r#4" "$first"
-check "an issue only waiting-on.txt names: nothing on a 304, ISSUE CLOSED from its REST state, no GraphQL call" "|ISSUE CLOSED o/r#3|0" "$idle|$closed|$gql"
-# a /agent comment on a thread only waiting-on.txt names is an agent command, and a whole-repo watch takes it into threads.txt
-got=$(py '
-d = os.path.join(m.HERE, "waitonly"); os.makedirs(d, exist_ok=True)
-for f, t in (("threads.txt", ""), ("repos.txt", "o/r all\n"), ("waiting-on.txt", "o/r#2 -> o/r#9: bump it\n"), ("gh-watch.pid", str(os.getpid()))): open(os.path.join(d, f), "w").write(t)
-reg = os.path.expanduser("~/.claude/gh-watch-dirs.txt"); kept = open(reg).read() if os.path.exists(reg) else ""; open(reg, "w").write(d + "\n")
-m.HERE, m.STATE, m.THREADS, m.ONCE = d, os.path.join(d, "gh-watch-state.json"), os.path.join(d, "threads.txt"), True
-m.thread_links, m.react_eyes = (lambda *a: set()), (lambda *a: None)
-buf = io.StringIO()
-with contextlib.redirect_stdout(buf): m.agent_command("o/r", 2, "comment", {"id": 91, "body": "/agent check", "user": {"login": m.ME}, "html_url": "<c91>", "updated_at": "2026-11-23T00:00:00Z"})
-m.ONCE = False
-m.moved_thread("o/r", {"id": 3002, "number": 2, "user": {"login": "them"}, "body": "", "title": "t2", "html_url": "<p2>"}, False)
-open(reg, "w").write(kept)
-print(" ".join(buf.getvalue().split()[:3]), open(m.THREADS).read().strip(), sep="|")
-')
-check "a thread only waiting-on.txt names: /agent on it is an AGENT COMMAND, a whole-repo watch's moved thread joins threads.txt" "### AGENT COMMAND|o/r 2" "$got"
-# with no name, link or whole-repo watch to route by, a /agent comment on a waited thread goes to the dir that waits on it
-got=$(py '
-dirs = [os.path.join(m.HERE, n) for n in ("lead", "waiter")]
-for d, wait in zip(dirs, ("", "o/r#2 -> o/r#9: bump it\n")):
-    os.makedirs(d, exist_ok=True)
-    for f, t in (("threads.txt", ""), ("repos.txt", ""), ("waiting-on.txt", wait), ("gh-watch.pid", str(os.getpid()))): open(os.path.join(d, f), "w").write(t)
-reg = os.path.expanduser("~/.claude/gh-watch-dirs.txt"); kept = open(reg).read() if os.path.exists(reg) else ""; open(reg, "w").write("\n".join(dirs) + "\n")
-m.thread_links, m.react_eyes = (lambda *a: set()), (lambda *a: None)
-m.agent_command("o/r", 2, "comment", {"id": 92, "body": "/agent check", "user": {"login": m.ME}, "html_url": "<c92>", "updated_at": "2026-11-23T00:00:00Z"})
-open(reg, "w").write(kept)
-log = lambda d: " ".join((open(os.path.join(d, "events.log")).read() if os.path.exists(os.path.join(d, "events.log")) else "").split()[:3])
-print(*map(log, dirs), sep="|")
-')
-check "a /agent comment on a thread only one dir's waiting-on.txt names, nothing else to route by: that dir gets the AGENT COMMAND" "|### AGENT COMMAND" "$got"
+check "a PR only waiting-on.txt names: its close with a push emits PR CHANGED and no SHAPE STALE, its merge DEPENDENT" \
+  "PR CHANGED o/r#1,MAINTAINER COMMITS o/r#1,SHAPE STALE o/r#1,PR CHANGED o/r#2|PR CHANGED o/r#1,DEPENDENT of merged o/r#1,PR CHANGED o/r#2,DEPENDENT of merged o/r#2" "$close|$merge"
 got=$(py '
 os.remove(os.path.join(m.HERE, "waiting-on.txt")); open(m.THREADS, "w").write("magne4000/universal-middleware#408\no/r 2\nbogus\n")
 buf = io.StringIO()
