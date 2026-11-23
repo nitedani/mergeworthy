@@ -9,7 +9,7 @@ import failclosed
 import shellcmd
 from shellcmd import parse, segments, prog, script, opt, api_call, field_name, TEXT_FREE, discussion_post, discussion_thread_of, names_discussion_mutation, env_of, origin, plain_create, PLAIN, new_post_drafts, no_instructions_read, by_agent, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Unseen, Where
 from records import branch_record, commit_file, DRIFT_REF, no_approach, no_preflight, STORE
-import drift, own_actions, review_launch, steward, post_words, threads_file, transcript_facts, work_folder
+import drift, options, own_actions, review_launch, steward, post_words, threads_file, transcript_facts, work_folder
 from t3_tasks import under_t3, typed
 def missing_steps(d, head=None):
     """(head, the converge steps it lacks): head is a push's pushed commit, else HEAD."""
@@ -261,11 +261,6 @@ def ask_first(t):
         line = ' '.join([os.path.basename(c[0]), *c[1:]]) if c else ''
         if line and any(re.match(rf'(?:{p})(?!\S)', line) for p in ASK_FIRST): need_ask('ask-first', f'`{line[:80]}`')
 
-def setting(name, default):
-    """MERGEWORTHY_<name> from the environment, else from ~/.mergeworthy/settings.env (written at session start from the plugin's options)."""
-    f = os.path.expanduser('~/.mergeworthy/settings.env')
-    saved = dict(l.strip().split('=', 1) for l in open(f) if '=' in l) if os.path.exists(f) else {}
-    return os.environ.get(f'MERGEWORTHY_{name}') or saved.get(f'MERGEWORTHY_{name}', default)
 d = json.load(sys.stdin)
 cmd = d.get('tool_input', {}).get('command', '')
 cwd = d.get('cwd') or os.getcwd()
@@ -381,7 +376,7 @@ def need_watch(repo, path, why=''):
     """A push, or opening an issue or PR outside a task's work folder (need_home), needs the live loop (mergeworthy:task step 5): a running
     watcher of the task's work folder holding path, or of this session, must cover the repo. A comment on an existing thread isn't blocked
     here: post-bash-register adds that thread, and stop-lint requires a watcher's Monitor after any post."""
-    if setting('WATCHER', 'on') != 'on': return
+    if options.setting('WATCHER', 'on') != 'on': return
     repos = [repo] if isinstance(repo, str) else [r for r in repo if r]
     if not repos:
         block("can't tell which repo this acts on, so the watcher check can't run: pass -R <owner/repo>")
@@ -1309,7 +1304,7 @@ def check(t, has_cd):
         need_home([opens[0]], run_dir)
         if opens[1] == 'pr': need_approach(run_dir, '`glab api` creating an MR', opened_branch(a[1:], fields=['-f', '--raw-field', '-F', '--field']))
     if p == 'gh' and len(a) >= 2 and a[0] == 'pr' and a[1] == 'merge':
-        if setting('MERGE', 'on-request-squash') == 'reviewer':
+        if options.setting('MERGE', 'on-request-squash') == 'reviewer':
             block('never merge: the reviewer merges this repo\'s PRs (MERGEWORTHY_MERGE=reviewer)')
         rest = a[2:]
         subj, body = opt(rest, ['--subject', '-t']), opt(rest, ['--body', '-b'])

@@ -1663,6 +1663,19 @@ check "an Agent at medium passes" 0 "$(aeff Agent '{"effort":"medium"}')"
 printf -- '- a convention\n## Who decides\n- maint merges: ~/.mergeworthy/projects/o/r.study.md\n## Agents\nEffort: medium\n' > "$HOME/.mergeworthy/projects/o/r.md"
 check "BLOCK: an unbulleted Effort line holds too: high or no option blocks, medium passes" "2 2 0" "$(aeff mcp__t3-code__delegate_task '{"target":{"options":{"reasoningEffort":"high"}}}') $(aeff mcp__t3-code__delegate_task '{}') $(aeff Agent '{"effort":"medium"}')"
 check "BLOCK: a brief naming o/r but not its project file gets that refusal and the file's Effort refusal in one message" "2 1 1" "$(aeff mcp__t3-code__delegate_task '{"task":"Review o/r#8","prompt":"Review o/r#8"}') $(grep -c 'name each project file' "$T/err") $(grep -c 'Effort: medium' "$T/err")"
+# pre-agent-dedupe: no launch runs on a model family the exclude_models option names; one naming no model runs on its session's, its transcript's newest answer's
+printf '{"type":"assistant","message":{"model":"claude-fable-5-2","content":[]}}\n' > "$T/xm-fable.jsonl"
+printf '{"type":"assistant","message":{"model":"claude-opus-5-5","content":[]}}\n' > "$T/xm-opus.jsonl"
+printf '{"type":"assistant","message":{"model":"claude-fable-5-2","content":[]}}\n{"type":"user","message":{"content":[{"type":"tool_result","content":"said assistant"}]}}\n{"type":"assistant","message":{"model":"claude-opus-5-5","content":[]}}\n' > "$T/xm-switched.jsonl"
+xm() { # tool extra-input-JSON transcript
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":sys.argv[1],"transcript_path":sys.argv[3],"tool_input":{"task":"rate the approaches","prompt":"rate the approaches","description":"rate","run_in_background":False,**json.loads(sys.argv[2])}}))' "$1" "$2" "$3" \
+    | timeout 10 python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
+xm_all() { echo "$(xm Agent '{"model":"fable"}' "$T/xm-opus.jsonl") $(xm mcp__t3-code__delegate_task '{"target":{"providerInstanceId":"claudeAgent","model":"claude-fable-5-2"}}' "$T/xm-opus.jsonl") $(xm mcp__t3-code__t3_thread_launch '{"modelSelection":{"provider":"claudeAgent","model":"claude-fable-5-2"}}' "$T/xm-opus.jsonl") $(xm mcp__t3-code__delegate_task '{}' "$T/xm-fable.jsonl") $(xm mcp__t3-code__delegate_task '{"target":{"providerInstanceId":"claude_2"}}' "$T/xm-opus.jsonl")"; }
+check "with exclude_models empty, every Fable launch, named or inherited, passes" "0 0 0 0 0" "$(xm_all)"
+printf 'MERGEWORTHY_EXCLUDE_MODELS=fable\n' > "$HOME/.mergeworthy/settings.env"
+check "BLOCK: with exclude_models fable, an Agent on the alias, a delegate_task and a t3_thread_launch on its id, a model-less delegate_task from a Fable session and one on another Claude instance, naming opus" "2 2 2 2 2 1" "$(xm_all) $(xm Agent '{"model":"fable"}' "$T/xm-opus.jsonl" >/dev/null; grep -c 'runs on fable, a model family the user excluded (exclude_models: fable). Launch it on opus' "$T/err")"
+check "with exclude_models fable, a model-less delegate_task and Agent from an Opus session, one from a session switched from Fable to Opus, and one on codex pass" "0 0 0 0" "$(xm mcp__t3-code__delegate_task '{}' "$T/xm-opus.jsonl") $(xm Agent '{}' "$T/xm-opus.jsonl") $(xm mcp__t3-code__delegate_task '{"target":{"providerInstanceId":"claudeAgent"}}' "$T/xm-switched.jsonl") $(xm mcp__t3-code__delegate_task '{"target":{"providerInstanceId":"codex"}}' "$T/xm-fable.jsonl")"
+rm -f "$HOME/.mergeworthy/settings.env"
 printf -- '- a convention\n## Who decides\n- maint merges: ~/.mergeworthy/projects/o/r.study.md\n' > "$HOME/.mergeworthy/projects/o/r.md"
 # the main session reads the code itself before briefing an implementer: a Read of a file in a checkout of that repo, in its transcript
 RD="$T/x-work/rd"; git init -q "$RD"; git -C "$RD" remote add origin git@github.com:o/r.git; mkdir -p "$RD/src"; echo 'export {}' > "$RD/src/a.ts"; git -C "$RD" add src/a.ts; echo report > "$RD/verify.md"

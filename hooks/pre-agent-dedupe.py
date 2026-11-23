@@ -13,7 +13,7 @@ status (read first) releases the job."""
 import datetime, fcntl, glob, hashlib, itertools, json, os, re, shlex, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import failclosed
-import agent_jobs, launch, memory_file, project_file, review_launch, subprocess, testpaths
+import agent_jobs, launch, memory_file, options, project_file, review_launch, subprocess, testpaths
 from post_words import fence_spans
 from records import branch_record
 from shellcmd import segments, prog, git_argv, rlines, transcript, Where
@@ -392,6 +392,29 @@ for pf in sorted({os.path.expanduser('~/.mergeworthy/projects/' + r + '.md') for
         sys.stderr.write(f"BLOCKED: {pf}'s `## Agents` says `Effort: {want[1]}`: launch with effort {want[1]} (the Agent tool's `effort`, "
                          f"delegate_task's target.options `effort` for Claude or `reasoningEffort` for Codex), not "
                          + (f"{effort}.\n" if effort else "the harness's default.\n"))
+        refused()
+# A launch never runs on a model family the user excluded (the exclude_models option). One naming no model runs on its session's, as the
+# transcript's newest answer shows (a delegate_task does on no provider or claudeAgent); another Claude instance's default can't be told.
+CLASSES = ('fable', 'opus', 'sonnet', 'haiku')  # mergeworthy:delegate §Model class, largest first
+family = lambda m: (re.match(r'(?:claude-)?([a-z]+)', m.lower()) or [None, None])[1]
+def session_model():
+    for l in rlines(path) if (path := transcript(d)) else ():
+        if b'"assistant"' not in l: continue
+        try: e = json.loads(l)
+        except ValueError: continue
+        if e.get('type') == 'assistant' and (m := (e.get('message') or {}).get('model')): return str(m)
+    return ''
+if excluded := {f for x in re.split(r'[,\s]+', options.setting('EXCLUDE_MODELS')) if (f := family(x))}:
+    sel = ti.get('target') or ti.get('modelSelection') or {}
+    model = str(ti.get('model') or sel.get('model') or '')
+    instance = {str(sel.get(k)) for k in ('providerInstanceId', 'driverKind', 'instanceId', 'provider') if sel.get(k)} - {'claudeAgent'}
+    if model in ('', 'inherit') and not instance: model = session_model()
+    if family(model) in excluded if model else (not instance or any('claude' in i.lower() for i in instance)) and excluded & set(CLASSES):
+        use = next((c for c in CLASSES[CLASSES.index(family(model)) + 1 if family(model) in CLASSES else 1:] if c not in excluded), None)
+        on = f"runs on {model}," if model else f"names no model on {min(instance or ['this session'])}, so it may run on"
+        sys.stderr.write(f"BLOCKED: this launch {on} a model family the user excluded (exclude_models: {', '.join(sorted(excluded))}). "
+                         + (f"Launch it on {use} (mergeworthy:delegate §Model class): the Agent tool's model `{use}`, delegate_task's target.model the newest "
+                            f"claude-{use} id orchestrator_capabilities lists.\n" if use else "No Claude class is left: ask the user which model to use.\n"))
         refused()
 approach = brief_approach() if implementer else None
 if approach and not approach[2]:

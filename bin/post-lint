@@ -11,13 +11,8 @@ A reply or inline comment needs the comment it answers: <draft stem>.parent.md n
 Settings: MERGEWORTHY_BADGE on|off|auto requires the badge always, never, or for a human account."""
 import hashlib, os, re, sys, subprocess, tempfile, urllib.parse
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'hooks'))
-import post_words
+import options, post_words
 from post_words import fence_spans, uncoded
-def setting(name, default):
-    """MERGEWORTHY_<name> from the environment, else from ~/.mergeworthy/settings.env (written at session start from the plugin's options)."""
-    f = os.path.expanduser('~/.mergeworthy/settings.env')
-    saved = dict(l.strip().split('=', 1) for l in open(f) if '=' in l) if os.path.exists(f) else {}
-    return os.environ.get(f'MERGEWORTHY_{name}') or saved.get(f'MERGEWORTHY_{name}', default)
 args = sys.argv[1:]
 USAGE = "usage: post-lint <draft.md> [--kind reply|status|pr|issue|plan|inline|tracker|proposal|title] [--draft] [--repo owner/repo] [--parent <file>|none] [--edit-of owner/repo#N]"
 def arg(name, default):
@@ -395,7 +390,7 @@ for row in re.findall(r'^\|(?:[^|\n]*\|){3}([^|\n]*)\|\s*$', text, flags=re.M):
 for m in re.finditer(r"[^.\n]*\b(left for later|for later|a later PR|follow-up issue)\b[^.\n]*", prose, re.I):
     findings.append(f"deferral {m.group(0).strip()[:70]!r}: do it now and link it, or drop the promise (task §Dispositions)")
 has_badge = _m is not None
-badge = setting('BADGE', 'on')  # auto: only a human account (`gh api user` type User, not Bot) needs it
+badge = options.setting('BADGE', 'on')  # auto: only a human account (`gh api user` type User, not Bot) needs it
 if kind != 'tracker' and not has_badge and not _label and (badge == 'on' or badge == 'auto' and
         subprocess.run(['gh', 'api', 'user', '--jq', '.type'], capture_output=True, text=True).stdout.strip() == 'User'):
     findings.append("missing badge: start the post with the icon of each agent that worked on it, then a line break; no label")

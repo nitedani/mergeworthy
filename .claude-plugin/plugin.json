@@ -43,6 +43,12 @@
         "off"
       ],
       "default": "on"
+    },
+    "exclude_models": {
+      "type": "string",
+      "title": "Excluded models",
+      "description": "model families no agent is launched on, comma-separated (e.g. fable); empty: none",
+      "default": ""
     }
   }
 }
