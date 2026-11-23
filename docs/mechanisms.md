@@ -131,7 +131,7 @@ Learning runs on demand: `task` step 4 runs `project-learn list` whenever work s
 
 The daemon reports to `<dir>/events.log` and never starts an agent.
 - **Comments.** Answer reported comments from the owed list; reactions follow the detection schedule (`reply`).
-- **Thread events.** On watched threads it reports pushes, merges and closes (`### PR CHANGED`), CI results (`### CI`), and 👍/👎 on the agent's comments (`### THUMBS UP` / `### THUMBS DOWN`). GitLab threads get only comments, an MR's `### PR CHANGED` and `### CI`, and an issue's `### ISSUE CHANGED`.
+- **Thread events.** On `threads.txt` threads it reports pushes, merges and closes (`### PR CHANGED`), CI results (`### CI`), and 👍/👎 on the agent's comments (`### THUMBS UP` / `### THUMBS DOWN`). GitLab threads get only comments, an MR's `### PR CHANGED` and `### CI`, and an issue's `### ISSUE CHANGED`.
 - **Other events:**
     - `### ACK`: an acknowledgement that answers your last open proposal;
     - `### MAINTAINER COMMITS`: commits a maintainer pushed to your PR;

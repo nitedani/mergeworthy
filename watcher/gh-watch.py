@@ -14,6 +14,7 @@
 - Maintainers' commits pushed to a tracked PR, and 👍/👎 from you or a maintainer (write access, see maintainer) on the agent's comments.
 - WAIT PING DUE: your account's comment is the last on an open thread, and nobody else in it has replied or acted in any watched thread for WAIT_PING_HOURS (3).
 - PR head/state changes (pushes, merges, closes), CI turning red or green on open PRs, and the code of a PR you opened or drive (a pr-steps record on one of its commits; tests excluded) changing by more than ~80 lines since its last shape pass (SHAPE STALE).
+  A thread only waiting-on.txt names gets only the events of how it ends (a merge, close or reopen), not those of its pushes, CI or comments.
 - How often each thread is read depends on its state (see "How often a thread is read"); the notifications, your events feed
   and the repos' issue lists are polled once per X-Poll-Interval, the repo lists by the one daemon holding the lease for all.
 - GitLab threads in threads.txt are read by gl_watch.py (scan_gitlab), into the same events.log and replies-owed.md.
@@ -1082,7 +1083,8 @@ def fetch_thread(repo, num, since, is_pr_known, author_known, prev_pr, etags, mo
     A list that answers 304 has nothing new (comments, reviews), and an unchanged PR keeps its previous state.
     mode 'check' first asks for the PR (or the issue) itself, with its validator: its body shows its comment counts and update time,
     so a 304 means nothing happened in the thread (a comment, review, push, merge or close changes it), and only CI is then asked
-    for. Anything else reads the thread in full. updated_at is None while the PR or issue answered 304."""
+    for. mode 'wait' reads only the PR or issue itself, and a changed issue's open state. Anything else reads the thread in full.
+    updated_at is None while the PR or issue answered 304."""
     is_pr, author, pending, updated = is_pr_known, author_known, {}, None
     full, fresh = mode == 'full', not upd_known  # a thread whose update time isn't known yet can't use a 304
     if is_pr is None or author is None:
@@ -1101,7 +1103,7 @@ def fetch_thread(repo, num, since, is_pr_known, author_known, prev_pr, etags, mo
             conflict = prev_pr['conflict'] if uncomputed and same_head else not uncomputed and pr.get('mergeable_state') == 'dirty'
             pr_state = {'head': pr['head']['sha'][:10], 'state': 'merged' if pr.get('merged') else pr['state'], 'conflict': conflict}
             updated, full = pr.get('updated_at') or updated, True
-        if pr_state['state'] == 'open':
+        if pr_state['state'] == 'open' and mode != 'wait':
             r = run_gh(['pr', 'checks', num, '-R', repo])
             if r.returncode not in (0, 1, 8) and 'no checks reported' not in r.stderr:  # 1 = some failed, 8 = some pending
                 raise RuntimeError(f"gh pr checks {num} -R {repo}: {r.stderr.strip()[:200]}")
@@ -1111,7 +1113,9 @@ def fetch_thread(repo, num, since, is_pr_known, author_known, prev_pr, etags, mo
         if resp.status != 304:
             updated, full = resp.json().get('updated_at'), True
     events, last = [], None
-    if full:
+    if mode == 'wait':
+        last = None if is_pr or not full else fetch_last_comment(repo, num)
+    elif full:
         for c in paged(f"repos/{repo}/issues/{num}/comments?since={stable_since(since)}&per_page=100", etags, pending):
             events.append(('comment', c['id'], c['updated_at'], {**c['user'], 'assoc': c.get('author_association')}, c['html_url'], c.get('body') or '', ''))
         if is_pr:
@@ -1213,7 +1217,8 @@ def plan(state, threads, lvl=OK, everything=False):
             out.append((repo, num, 'full', a))
         elif s and lvl <= RESERVE and (everything or now >= s['next']):
             out.append((repo, num, 'full' if everything or now - s['full'] >= FULL[thread_kind(state, key, now)] else 'check', a))
-    return out
+    waits = {k for _, k in waiting_keys()} - {f"{r}#{n}" for r, n in threads_file.read(THREADS)[0]}
+    return [(r, n, 'wait' if f"{r}#{n}" in waits else mode, a) for r, n, mode, a in out]
 
 
 def scan(state, jobs):
@@ -1228,8 +1233,8 @@ def scan(state, jobs):
     sched = state.setdefault('sched', {})
     with ThreadPoolExecutor(max_workers=8) as ex:
         futs = {ex.submit(fetch_thread, repo, num, since(f"{repo}#{num}"), state['is_pr'].get(f"{repo}#{num}"), state.setdefault('author', {}).get(f"{repo}#{num}"), state['prs'].get(f"{repo}#{num}"),
-                          state['etag'], mode, f"{repo}#{num}" in state['upd']): (repo, num, a) for repo, num, mode, a in jobs}
-        for fut, (repo, num, a) in futs.items():
+                          state['etag'], mode, f"{repo}#{num}" in state['upd']): (repo, num, a, mode == 'wait') for repo, num, mode, a in jobs}
+        for fut, (repo, num, a, wait) in futs.items():
             key = f"{repo}#{num}"
             try:
                 is_pr, author, events, pr_state, red, last, validators, full, updated = fut.result()
@@ -1265,13 +1270,13 @@ def scan(state, jobs):
                 if mine == 'pending':  # the push, merge or close still runs: compare again next pass
                     pr_state = prev
                     state['etag'].pop(f"repos/{repo}/pulls/{num}", None)
-                elif prev and prev != pr_state:
+                elif prev and prev != pr_state and not (wait and prev['state'] == pr_state['state']):
                     emit(f"{'note:' if mine else '###'} PR CHANGED {key}: {prev} -> {pr_state}")  # a note is logged, and wakes no one
                     if pr_state['state'] == 'merged' and prev.get('state') != 'merged':
                         emit_dependents(key)
                     if pr_state['state'] in ('merged', 'closed') and prev.get('state') != pr_state['state']:
                         emit_tracker_stale(key, pr_state['state'])
-                    if prev.get('head') != pr_state['head']:
+                    if prev.get('head') != pr_state['head'] and not wait:
                         reported = emit_maintainer_commits(state, repo, key, prev['head'], pr_state['head'])
                         emit_refactor_stale(repo, key, pr_state['head'])
                         if not reported:  # as after a failed read: the old head and no validator, so the next look compares again
@@ -1293,13 +1298,14 @@ def scan(state, jobs):
                 maintainer_review(key, author, kind, cid, user, url, extra, upd)
             for r in last['renames'] if last and is_pr and is_own(author) else ():
                 pr_renamed(key, [HERE], *r)
-            pings.append((key, last, events))
             s = sched.setdefault(key, {'full': 0})
             s['act'] = a
             worked(key)
             if full:
                 s['full'] = now
-            read.append((repo, num, full))
+            if not wait:  # reactions and wait pings are for the threads this dir answers in
+                read.append((repo, num, full))
+                pings.append((key, last, events))
             s['next'] = now + spread(key, CHECK[thread_kind(state, key, now)])
     for key, last, events in pings:  # after every thread's activity is noted: someone busy in another thread is mid-review
         emit_wait_ping(state, key, last, events)

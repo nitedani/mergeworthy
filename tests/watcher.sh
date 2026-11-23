@@ -95,6 +95,43 @@ with contextlib.redirect_stdout(buf): m.emit_dependents("o/r#391")
 print(threads + " " + ("DEPENDENT" if "DEPENDENT of merged o/r#391" in buf.getvalue() else "none"))
 ')
 check "waiting-on.txt key with trailing note: read as a thread, DEPENDENT emitted" "o/r 1 o/r 391 DEPENDENT" "$got"
+# a thread only waiting-on.txt names is read for how it ends: a PR's push and red CI wake nothing, its close and merge do, and an
+# issue's check round that answers 304 makes no GraphQL call; a PR in threads.txt too gets everything
+got=$(py '
+import re, types
+json.dump({"since": "2026-01-01T00:00:00Z", "seen": {}, "prs": {}, "ci": {}, "is_pr": {}, "since_by": {}, "closed_scan": 0}, open(m.STATE, "w"))
+open(m.THREADS, "w").write("o/r 1\n")
+open(os.path.join(m.HERE, "waiting-on.txt"), "w").write("o/r#1 -> o/r#9: rebase\no/r#2 -> o/r#9: bump it\no/r#3 -> o/r#9: after the issue\n")
+w, calls = {"head": "aaa", "state": "open", "red": [], "issue_304": False}, []
+def request(path, method="GET", args=(), store=None, pending=None, fresh=False, **k):
+    calls.append(path)
+    if path == "repos/o/r/issues/3":
+        return types.SimpleNamespace(status=304) if w["issue_304"] and not fresh else types.SimpleNamespace(status=200, json=lambda: {"user": {"login": "x"}, "updated_at": "2026-11-23T00:00:00Z"})
+    if re.fullmatch(r"repos/o/r/issues/\d+", path):
+        return types.SimpleNamespace(status=200, json=lambda: {"pull_request": {}, "user": {"login": "x"}, "updated_at": "2026-11-23T00:00:00Z"})
+    return types.SimpleNamespace(status=200, json=lambda: {"head": {"sha": w["head"]}, "merged": w["state"] == "merged", "state": "open" if w["state"] == "open" else "closed", "mergeable": True, "mergeable_state": "clean", "updated_at": "2026-11-23T00:00:00Z"})
+m.request, m.paged = request, lambda *a, **k: []
+m.fetch_last_comment = lambda repo, num: (calls.append("graphql " + num), {"open": True, "last": None, "prev": None, "people": [], "renames": []})[1]
+m.run_gh = lambda argv: types.SimpleNamespace(returncode=1 if w["red"] else 0, stderr="", stdout="".join(n + "\tfail\t1s\n" for n in w["red"]))
+m.own_change = m.emit_tracker_stale = m.scan_reactions = lambda *a: None
+m.emit_maintainer_commits = lambda state, repo, key, old, new: (m.emit("### MAINTAINER COMMITS " + key), True)[1]
+m.emit_refactor_stale = lambda repo, key, new: m.emit("### SHAPE STALE " + key)
+out = []
+for change in ({}, {"head": "bbb", "red": ["lint"]}, {"state": "closed", "red": []}, {"state": "merged"}, {"issue_304": True}):
+    w.update(change); calls.clear()
+    if w["issue_304"]:  # o/r#3 due for a check round, not a full read
+        s = json.load(open(m.STATE)); s["sched"]["o/r#3"]["next"] = 0; json.dump(s, open(m.STATE, "w"))
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf): m.run_scan(everything=not w["issue_304"])
+    out.append(",".join(l[4:].split(":")[0] for l in buf.getvalue().splitlines() if l.startswith("###")))
+print(*out[1:4], calls.count("graphql 3"), sep="|")
+')
+IFS='|' read -r push close merge idle <<< "$got"
+check "a PR only waiting-on.txt names: a push with red CI wakes nothing; one threads.txt lists too gets CI and SHAPE STALE" \
+  "PR CHANGED o/r#1,MAINTAINER COMMITS o/r#1,SHAPE STALE o/r#1,CI o/r#1" "$push"
+check "a PR only waiting-on.txt names: its close emits PR CHANGED, its merge DEPENDENT" \
+  "PR CHANGED o/r#1,PR CHANGED o/r#2|PR CHANGED o/r#1,DEPENDENT of merged o/r#1,PR CHANGED o/r#2,DEPENDENT of merged o/r#2" "$close|$merge"
+check "an issue only waiting-on.txt names: a check round its issue answers 304 makes no GraphQL call" 0 "$idle"
 got=$(py '
 os.remove(os.path.join(m.HERE, "waiting-on.txt")); open(m.THREADS, "w").write("magne4000/universal-middleware#408\no/r 2\nbogus\n")
 buf = io.StringIO()
