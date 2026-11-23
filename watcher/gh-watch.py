@@ -1250,7 +1250,7 @@ def scan(state, jobs):
                 state['upd'][key] = iso_epoch(updated)
             if last:
                 state.setdefault('open', {})
-                closed = not is_pr and state['open'].get(key) and not last['open']
+                closed = not is_pr and not last['open'] and (state['open'].get(key) or key in waits and key not in state['open'])  # a waited issue closed before its first read too
                 mine = closed and own_change(key, {'state': 'open'}, {'state': 'closed'})
                 if mine == 'pending':  # the close's command still runs: read the issue again next pass
                     state['etag'].pop(f"repos/{repo}/issues/{num}", None)
@@ -1278,6 +1278,10 @@ def scan(state, jobs):
                         if not reported:  # as after a failed read: the old head and no validator, so the next look compares again
                             pr_state = {**pr_state, 'head': prev['head']}
                             state['etag'].pop(f"repos/{repo}/pulls/{num}", None)
+                elif not prev and key in waits and pr_state['state'] != 'open':  # ended before its first read: the end its dir waits for
+                    emit(f"### PR CHANGED {key}: {prev} -> {pr_state}")
+                    if pr_state['state'] == 'merged':
+                        emit_dependents(key)
                 state['prs'][key] = pr_state
             if red is not None:
                 if red != state['ci'].get(key, []) and (key in state['ci'] or not SEED) and key not in waits:  # red already when a seeding round first reads it

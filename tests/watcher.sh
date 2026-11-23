@@ -126,6 +126,31 @@ check "a PR only waiting-on.txt names: a push with red CI wakes nothing; one thr
   "PR CHANGED o/r#1,MAINTAINER COMMITS o/r#1,SHAPE STALE o/r#1,CI o/r#1" "$push"
 check "a PR only waiting-on.txt names: its close with a push emits PR CHANGED and no SHAPE STALE, its merge DEPENDENT" \
   "PR CHANGED o/r#1,MAINTAINER COMMITS o/r#1,SHAPE STALE o/r#1,PR CHANGED o/r#2|PR CHANGED o/r#1,DEPENDENT of merged o/r#1,PR CHANGED o/r#2,DEPENDENT of merged o/r#2" "$close|$merge"
+# a PR or issue only waiting-on.txt names that ended before its first read is reported once; one threads.txt lists stays seeded silently
+got=$(py '
+import types
+json.dump({"since": "2026-01-01T00:00:00Z", "seen": {}, "prs": {}, "ci": {}, "is_pr": {}, "since_by": {}, "closed_scan": 0}, open(m.STATE, "w"))
+open(m.THREADS, "w").write("o/r 4\n")
+open(os.path.join(m.HERE, "waiting-on.txt"), "w").write("o/r#2 -> o/r#9: bump it\no/r#3 -> o/r#9: rebase\no/r#5 -> o/r#9: retry\n")
+ended = {"2": "merged", "4": "merged", "5": "closed"}
+def request(path, method="GET", args=(), store=None, pending=None, fresh=False, **k):
+    num = path.rsplit("/", 1)[1]
+    if path.startswith("repos/o/r/issues/"):
+        return types.SimpleNamespace(status=200, json=lambda: {**({} if num == "3" else {"pull_request": {}}), "state": "closed", "user": {"login": "x"}, "updated_at": "2026-11-23T00:00:00Z"})
+    return types.SimpleNamespace(status=200, json=lambda: {"head": {"sha": "aaa"}, "merged": ended[num] == "merged", "state": "closed", "mergeable": True, "mergeable_state": "clean", "updated_at": "2026-11-23T00:00:00Z"})
+m.request, m.paged = request, lambda *a, **k: []
+m.fetch_last_comment = lambda repo, num: {"open": False, "last": None, "prev": None, "people": [], "renames": []}
+m.run_gh = lambda argv: types.SimpleNamespace(returncode=0, stderr="", stdout="")
+m.own_change = m.emit_tracker_stale = m.scan_reactions = lambda *a: None
+out = []
+for _ in range(2):
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf): m.run_scan(everything=True)
+    out.append(",".join(sorted(l[4:].split(":")[0] for l in buf.getvalue().splitlines() if l.startswith("###"))))
+print(*out, sep="|")
+')
+check "a PR or issue only waiting-on.txt names, ended before its first read: PR CHANGED (and DEPENDENT when merged) or ISSUE CLOSED, once" \
+  "DEPENDENT of merged o/r#2,ISSUE CLOSED o/r#3,PR CHANGED o/r#2,PR CHANGED o/r#5|" "$got"
 got=$(py '
 os.remove(os.path.join(m.HERE, "waiting-on.txt")); open(m.THREADS, "w").write("magne4000/universal-middleware#408\no/r 2\nbogus\n")
 buf = io.StringIO()
