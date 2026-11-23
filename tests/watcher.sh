@@ -440,11 +440,17 @@ m.request = lambda p, *a, **k: m.Resp(200, {}, json.dumps({"base": {"ref": "main
 state = {"since": "2026-10-29T00:00:00Z", "since_by": {}, "is_pr": {}, "prs": {"o/r#2": {"head": "old", "state": "open"}}, "etag": {}, "ci": {}}
 buf = io.StringIO()
 with contextlib.redirect_stdout(buf): m.scan(state, [("o/r", "2", "full", 0)])
-os.remove(os.path.join(m.HERE, "waiting-on.txt"))
 print(open(os.path.join(stew, "events.log")).read().strip(), buf.getvalue().count("MAINTAINER COMMITS"), state.get("active", {}).get("boss"), sep="|")
+m.steward.recipient = lambda *a: [m.HERE.rstrip("/")]  # the steward is the dir that waits: its copy still comes, once
+log = os.path.join(m.HERE, "events.log"); open(log, "w").close()
+state["prs"]["o/r#2"]["head"], state["etag"] = "old", {}
+with contextlib.redirect_stdout(io.StringIO()): m.scan(state, [("o/r", "2", "full", 0)])
+print(open(log).read().count("### MAINTAINER COMMITS o/r#2: bbbbbbbbbb"))
+os.remove(log); os.remove(os.path.join(m.HERE, "waiting-on.txt"))
 ')
-check "a maintainer push to a PR only waiting-on.txt names: the steward gets its copy and their activity is noted; this dir gets no event" \
-  "### MAINTAINER COMMITS o/r#2: bbbbbbbbbb|0|2026-10-29T00:00:00Z" "$got"
+check "a maintainer push to a PR only waiting-on.txt names: the steward gets its copy, also when it is the waiting dir, and their activity is noted; this dir gets no event" \
+  "### MAINTAINER COMMITS o/r#2: bbbbbbbbbb|0|2026-10-29T00:00:00Z
+1" "$got"
 got=$(py '
 m.agent_post_hashes, m.emit_refactor_stale, m.emit_wait_ping = (lambda: set()), (lambda *a: None), (lambda *a: None)
 m.fetch_thread = lambda *a: (True, "me", [], {"head": "new", "state": "open"}, None, None, {}, True, None)

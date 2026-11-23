@@ -951,7 +951,7 @@ def emit_maintainer_commits(state, repo, key, old, new, here=True):
             return False
         worked(f"permission {repo} {c['login']}")
     if theirs:
-        if (s := steward.recipient([])) and s[0] != HERE.rstrip('/') and not ONCE:  # a copy for the steward's follow-up sort
+        if (s := steward.recipient([])) and (s[0] != HERE.rstrip('/') or not here) and not ONCE:  # a copy for the steward's follow-up sort, which here's own event covers only when here
             emit_to(s[0], f"### MAINTAINER COMMITS {key}: {' '.join(theirs)}")
     if theirs and here:
         emit(f"### MAINTAINER COMMITS {key}: {' '.join(theirs)}: review each one in a table (| Commit | What it does, and the idea behind it | Rating |, one short sentence each; rated N/10 with a short reason next to anything below 10, e.g. 9/10 (Vite's built-ins differ); an emoji only where it's funny; 10/10 only when nothing could be better), as requested (mergeworthy:reply §Maintainer commits)")
