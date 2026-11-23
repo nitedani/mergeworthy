@@ -95,6 +95,86 @@ with contextlib.redirect_stdout(buf): m.emit_dependents("o/r#391")
 print(threads + " " + ("DEPENDENT" if "DEPENDENT of merged o/r#391" in buf.getvalue() else "none"))
 ')
 check "waiting-on.txt key with trailing note: read as a thread, DEPENDENT emitted" "o/r 1 o/r 391 DEPENDENT" "$got"
+# a PR only waiting-on.txt names wakes its dir when it ends: its push and red CI wake nothing, its close (with a push in the same pass) and merge
+# do, without the push's events; a PR in threads.txt too gets everything
+got=$(py '
+import types
+json.dump({"since": "2026-01-01T00:00:00Z", "seen": {}, "prs": {}, "ci": {}, "is_pr": {}, "since_by": {}, "closed_scan": 0}, open(m.STATE, "w"))
+open(m.THREADS, "w").write("o/r 1\n")
+open(os.path.join(m.HERE, "waiting-on.txt"), "w").write("o/r#1 -> o/r#9: rebase\no/r#2 -> o/r#9: bump it\n")
+w = {"head": "aaa", "state": "open", "red": []}
+def request(path, method="GET", args=(), store=None, pending=None, fresh=False, **k):
+    if path.startswith("repos/o/r/issues/"):
+        return types.SimpleNamespace(status=200, json=lambda: {"pull_request": {}, "user": {"login": "x"}, "updated_at": "2026-11-23T00:00:00Z"})
+    return types.SimpleNamespace(status=200, json=lambda: {"head": {"sha": w["head"]}, "merged": w["state"] == "merged", "state": "open" if w["state"] == "open" else "closed", "mergeable": True, "mergeable_state": "clean", "updated_at": "2026-11-23T00:00:00Z"})
+m.request, m.paged = request, lambda *a, **k: []
+m.fetch_last_comment = lambda repo, num: {"open": w["state"] == "open", "last": None, "prev": None, "people": [], "renames": []}
+m.run_gh = lambda argv: types.SimpleNamespace(returncode=1 if w["red"] else 0, stderr="", stdout="".join(n + "\tfail\t1s\n" for n in w["red"]))
+m.own_change = m.emit_tracker_stale = m.scan_reactions = lambda *a: None
+m.emit_maintainer_commits = lambda state, repo, key, old, new, here=True: (here and m.emit("### MAINTAINER COMMITS " + key), True)[1]
+m.emit_refactor_stale = lambda repo, key, new: m.emit("### SHAPE STALE " + key)
+out = []
+for change in ({}, {"head": "bbb", "red": ["lint"]}, {"state": "closed", "head": "ccc", "red": []}, {"state": "merged"}):
+    w.update(change)
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf): m.run_scan(everything=True)
+    out.append(",".join(l[4:].split(":")[0] for l in buf.getvalue().splitlines() if l.startswith("###")))
+print(*out, sep="|")
+')
+IFS='|' read -r first push close merge <<< "$got"
+check "a PR only waiting-on.txt names: a push with red CI wakes nothing; one threads.txt lists too gets CI and SHAPE STALE" \
+  "PR CHANGED o/r#1,MAINTAINER COMMITS o/r#1,SHAPE STALE o/r#1,CI o/r#1" "$push"
+check "a PR only waiting-on.txt names: its close with a push emits PR CHANGED and no SHAPE STALE, its merge DEPENDENT" \
+  "PR CHANGED o/r#1,MAINTAINER COMMITS o/r#1,SHAPE STALE o/r#1,PR CHANGED o/r#2|PR CHANGED o/r#1,DEPENDENT of merged o/r#1,PR CHANGED o/r#2,DEPENDENT of merged o/r#2" "$close|$merge"
+# a PR or issue only waiting-on.txt names that ended before its first read is reported once; one threads.txt lists stays seeded silently
+got=$(py '
+import types
+json.dump({"since": "2026-01-01T00:00:00Z", "seen": {}, "prs": {}, "ci": {}, "is_pr": {}, "since_by": {}, "closed_scan": 0}, open(m.STATE, "w"))
+open(m.THREADS, "w").write("o/r 4\n")
+open(os.path.join(m.HERE, "waiting-on.txt"), "w").write("o/r#2 -> o/r#9: bump it\no/r#3 -> o/r#9: rebase\no/r#5 -> o/r#9: retry\n")
+ended = {"2": "merged", "4": "merged", "5": "closed"}
+def request(path, method="GET", args=(), store=None, pending=None, fresh=False, **k):
+    num = path.rsplit("/", 1)[1]
+    if path.startswith("repos/o/r/issues/"):
+        return types.SimpleNamespace(status=200, json=lambda: {**({} if num == "3" else {"pull_request": {}}), "state": "closed", "user": {"login": "x"}, "updated_at": "2026-11-23T00:00:00Z"})
+    return types.SimpleNamespace(status=200, json=lambda: {"head": {"sha": "aaa"}, "merged": ended[num] == "merged", "state": "closed", "mergeable": True, "mergeable_state": "clean", "updated_at": "2026-11-23T00:00:00Z"})
+m.request, m.paged = request, lambda *a, **k: []
+m.fetch_last_comment = lambda repo, num: {"open": False, "last": None, "prev": None, "people": [], "renames": []}
+m.run_gh = lambda argv: types.SimpleNamespace(returncode=0, stderr="", stdout="")
+m.own_change = m.emit_tracker_stale = m.scan_reactions = lambda *a: None
+out = []
+for _ in range(2):
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf): m.run_scan(everything=True)
+    out.append(",".join(sorted(l[4:].split(":")[0] for l in buf.getvalue().splitlines() if l.startswith("###"))))
+print(*out, sep="|")
+')
+check "a PR or issue only waiting-on.txt names, ended before its first read: PR CHANGED (and DEPENDENT when merged) or ISSUE CLOSED, once" \
+  "DEPENDENT of merged o/r#2,ISSUE CLOSED o/r#3,PR CHANGED o/r#2,PR CHANGED o/r#5|" "$got"
+# a PR only waiting-on.txt names whose CI turned red while it only waited: once threads.txt lists it too, the next scan reports the red
+got=$(py '
+import types
+json.dump({"since": "2026-01-01T00:00:00Z", "seen": {}, "prs": {}, "ci": {}, "is_pr": {}, "since_by": {}, "closed_scan": 0}, open(m.STATE, "w"))
+open(m.THREADS, "w").write("")
+open(os.path.join(m.HERE, "waiting-on.txt"), "w").write("o/r#2 -> o/r#9: bump it\n")
+w = {"red": []}
+def request(path, method="GET", args=(), store=None, pending=None, fresh=False, **k):
+    if path.startswith("repos/o/r/issues/"):
+        return types.SimpleNamespace(status=200, json=lambda: {"pull_request": {}, "user": {"login": "x"}, "updated_at": "2026-11-23T00:00:00Z"})
+    return types.SimpleNamespace(status=200, json=lambda: {"head": {"sha": "aaa"}, "merged": False, "state": "open", "mergeable": True, "mergeable_state": "clean", "updated_at": "2026-11-23T00:00:00Z"})
+m.request, m.paged = request, lambda *a, **k: []
+m.fetch_last_comment = lambda repo, num: {"open": True, "last": None, "prev": None, "people": [], "renames": []}
+m.run_gh = lambda argv: types.SimpleNamespace(returncode=1 if w["red"] else 0, stderr="", stdout="".join(n + "\tfail\t1s\n" for n in w["red"]))
+m.own_change = m.emit_tracker_stale = m.scan_reactions = lambda *a: None
+out = []
+for red, threads in (([], ""), (["lint"], ""), (["lint"], "o/r 2\n")):
+    w["red"] = red; open(m.THREADS, "w").write(threads)
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf): m.run_scan(everything=True)
+    out.append(",".join(l[4:].split(":")[0] for l in buf.getvalue().splitlines() if l.startswith("###")))
+print(*out, sep="|")
+')
+check "a PR only waiting-on.txt names turning red: nothing while it only waits; the first scan after threads.txt lists it reports the red" "||CI o/r#2" "$got"
 got=$(py '
 os.remove(os.path.join(m.HERE, "waiting-on.txt")); open(m.THREADS, "w").write("magne4000/universal-middleware#408\no/r 2\nbogus\n")
 buf = io.StringIO()
@@ -349,6 +429,28 @@ out = buf.getvalue()
 print(*after, out.count("note: permission o/r boss failed (o/r#1): "), out.count("### MAINTAINER COMMITS o/r#1: aaaaaaaaaa"), state["prs"]["o/r#1"]["head"])
 ')
 check "maintainer commits: a failed permission lookup keeps the old head and drops the PR's validator; the next look reports them once" "old False 1 1 new" "$got"
+# a maintainer's push to a PR only waiting-on.txt names: no event here, but the steward's copy and the activity a wait ping reads stay
+got=$(py '
+import json
+m.agent_post_hashes, m.emit_refactor_stale, m.emit_wait_ping, m.maintainer = (lambda: set()), (lambda *a: None), (lambda *a: None), (lambda *a: True)
+stew = os.path.join(m.HERE, "stew"); os.makedirs(stew, exist_ok=True); m.steward.recipient = lambda *a: [stew]
+open(m.THREADS, "w").write(""); open(os.path.join(m.HERE, "waiting-on.txt"), "w").write("o/r#2 -> o/r#9: bump it\n")
+m.fetch_thread = lambda *a: (True, "them", [], {"head": "new", "state": "open"}, None, None, {}, True, None)
+m.request = lambda p, *a, **k: m.Resp(200, {}, json.dumps({"base": {"ref": "main"}} if "/pulls/" in p else {"commits": [{"sha": "b" * 40, "author": {"login": "boss"}, "commit": {"message": "human fix", "committer": {"date": "2026-10-29T00:00:00Z"}}}]}))
+state = {"since": "2026-10-29T00:00:00Z", "since_by": {}, "is_pr": {}, "prs": {"o/r#2": {"head": "old", "state": "open"}}, "etag": {}, "ci": {}}
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf): m.scan(state, [("o/r", "2", "full", 0)])
+print(open(os.path.join(stew, "events.log")).read().strip(), buf.getvalue().count("MAINTAINER COMMITS"), state.get("active", {}).get("boss"), sep="|")
+m.steward.recipient = lambda *a: [m.HERE.rstrip("/")]  # the steward is the dir that waits: its copy still comes, once
+log = os.path.join(m.HERE, "events.log"); open(log, "w").close()
+state["prs"]["o/r#2"]["head"], state["etag"] = "old", {}
+with contextlib.redirect_stdout(io.StringIO()): m.scan(state, [("o/r", "2", "full", 0)])
+print(open(log).read().count("### MAINTAINER COMMITS o/r#2: bbbbbbbbbb"))
+os.remove(log); os.remove(os.path.join(m.HERE, "waiting-on.txt"))
+')
+check "a maintainer push to a PR only waiting-on.txt names: the steward gets its copy, also when it is the waiting dir, and their activity is noted; this dir gets no event" \
+  "### MAINTAINER COMMITS o/r#2: bbbbbbbbbb|0|2026-10-29T00:00:00Z
+1" "$got"
 got=$(py '
 m.agent_post_hashes, m.emit_refactor_stale, m.emit_wait_ping = (lambda: set()), (lambda *a: None), (lambda *a: None)
 m.fetch_thread = lambda *a: (True, "me", [], {"head": "new", "state": "open"}, None, None, {}, True, None)
@@ -523,7 +625,7 @@ check "a thread read that fails once and then works writes a note and no WATCH E
 
 # A PR whose head moved to a commit this machine pushed (pre-bash-guard records it) only logs the change; another head wakes the session
 got=$(PUSHED_HEADS="$T/pushed" py '
-m.agent_post_hashes, m.emit_refactor_stale, m.emit_wait_ping, m.emit_maintainer_commits = (lambda: set()), (lambda *a: None), (lambda *a: None), (lambda *a: True)
+m.agent_post_hashes, m.emit_refactor_stale, m.emit_wait_ping, m.emit_maintainer_commits = (lambda: set()), (lambda *a: None), (lambda *a: None), (lambda *a, **k: True)
 open(os.environ["PUSHED_HEADS"], "w").write("4f206bcab8deb5cb38e338c855b9cbf2478e7e7e\n")
 heads = {"1": "4f206bcab8", "2": "9a9a9a9a9a"}
 m.fetch_thread = lambda repo, num, *a: (True, "me", [], {"head": heads[num], "state": "open", "conflict": False}, None, None, {}, True, None)
@@ -537,7 +639,7 @@ check "PR CHANGED: a head this machine pushed is a log note, another head an eve
 # A change whose push, merge or close still runs (own_actions pending) is held, its old state kept, until the command ends:
 # succeeded, a note; failed (dropped) or pending past PENDING_TTL, an event like anyone's
 got=$(OWN_PENDING="$T/opend" PUSHED_HEADS="$T/opushed" CLOSED_THREADS="$T/oclosed" py '
-m.agent_post_hashes, m.emit_refactor_stale, m.emit_wait_ping, m.emit_maintainer_commits = (lambda: set()), (lambda *a: None), (lambda *a: None), (lambda *a: True)
+m.agent_post_hashes, m.emit_refactor_stale, m.emit_wait_ping, m.emit_maintainer_commits = (lambda: set()), (lambda *a: None), (lambda *a: None), (lambda *a, **k: True)
 now = int(m.time.time())
 open(os.environ["OWN_PENDING"], "w").write(f"{now} k1 PUSHED_HEADS aaaaaaaaaa11\n{now - 4000} k2 PUSHED_HEADS bbbbbbbbbb22\n{now} k3 PUSHED_HEADS cccccccccc33\n")
 heads = {"1": "aaaaaaaaaa", "2": "bbbbbbbbbb", "3": "cccccccccc"}
@@ -573,6 +675,25 @@ print("|".join(l.split(":")[0] for l in buf.getvalue().splitlines()))
 ')
 check "PR CHANGED and ISSUE CLOSED: your own merge or close, GitHub naming you, is a log note, its DEPENDENT and TRACKER STALE still events; another merge or close an event, recorded or not" \
   "note|### DEPENDENT of merged o/r#3|### TRACKER STALE o/r#3|### PR CHANGED o/r#4|### TRACKER STALE o/r#4|note|### ISSUE CLOSED o/r#6|### ISSUE CLOSED o/r#7|### PR CHANGED o/r#8|### DEPENDENT of merged o/r#8|### TRACKER STALE o/r#8" "$got"
+# The same for a PR only waiting-on.txt names that merged or closed before its first read: your own merge or close a note, its
+# DEPENDENT still an event, another's close an event, and one whose close still runs left unsaved until its command ends
+got=$(OWN_PENDING="$T/wpend" CLOSED_THREADS="$T/wclosed" py '
+m.agent_post_hashes, m.emit_refactor_stale, m.emit_wait_ping, m.emit_tracker_stale = (lambda: set()), (lambda *a: None), (lambda *a: None), (lambda *a: None)
+m.emit_dependents = lambda key: print(f"### DEPENDENT of merged {key}")
+open(os.environ["CLOSED_THREADS"], "w").write("o/r#3 merged\no/r#4 closed\no/r#5 closed\n")
+open(os.environ["OWN_PENDING"], "w").write(f"{int(m.time.time())} k6 CLOSED_THREADS o/r#6 closed\n")
+open(m.THREADS, "w").write(""); open(os.path.join(m.HERE, "waiting-on.txt"), "w").write("".join(f"o/r#{n} -> o/r#9: go on\n" for n in "3456"))
+prs, closers = {"3": "merged", "4": "closed", "5": "closed", "6": "closed"}, {"3": "me", "4": "me", "5": "maint", "6": "me"}
+m.request = lambda path, *a, **k: m.Resp(200, {}, json.dumps({"closed_by": {"login": closers[path.rsplit("/", 1)[1]]}}))
+m.fetch_thread = lambda repo, num, *a: (True, "me", [], {"head": "a1", "state": prs[num], "conflict": False}, None, None, {}, True, None)
+state = {"since": "2026-10-29T00:00:00Z", "since_by": {}, "is_pr": {}, "prs": {}, "etag": {}, "ci": {}}
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf): m.scan(state, [("o/r", n, "full", 0) for n in prs])
+os.remove(os.path.join(m.HERE, "waiting-on.txt"))
+print("|".join(l.split(":")[0] for l in buf.getvalue().splitlines()), sorted(state["prs"]))
+')
+check "a PR only waiting-on.txt names, ended before its first read: your own merge or close a note, its DEPENDENT an event; another close an event; a close still running unsaved" \
+  "note|### DEPENDENT of merged o/r#3|note|### PR CHANGED o/r#5 ['o/r#3', 'o/r#4', 'o/r#5']" "$got"
 
 # While GitHub hasn't computed a PR's mergeability (mergeable null, state "unknown") its last known conflict flag stays: dirty -> unknown -> dirty
 # on one head is no change, clean -> dirty is one, and a conflicting PR's new head answered uncomputed reads as no conflict
