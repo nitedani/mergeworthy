@@ -148,6 +148,20 @@ open(reg, "w").write(kept)
 print(" ".join(buf.getvalue().split()[:3]), open(m.THREADS).read().strip(), sep="|")
 ')
 check "a thread only waiting-on.txt names: /agent on it is an AGENT COMMAND, a whole-repo watch's moved thread joins threads.txt" "### AGENT COMMAND|o/r 2" "$got"
+# with no name, link or whole-repo watch to route by, a /agent comment on a waited thread goes to the dir that waits on it
+got=$(py '
+dirs = [os.path.join(m.HERE, n) for n in ("lead", "waiter")]
+for d, wait in zip(dirs, ("", "o/r#2 -> o/r#9: bump it\n")):
+    os.makedirs(d, exist_ok=True)
+    for f, t in (("threads.txt", ""), ("repos.txt", ""), ("waiting-on.txt", wait), ("gh-watch.pid", str(os.getpid()))): open(os.path.join(d, f), "w").write(t)
+reg = os.path.expanduser("~/.claude/gh-watch-dirs.txt"); kept = open(reg).read() if os.path.exists(reg) else ""; open(reg, "w").write("\n".join(dirs) + "\n")
+m.thread_links, m.react_eyes = (lambda *a: set()), (lambda *a: None)
+m.agent_command("o/r", 2, "comment", {"id": 92, "body": "/agent check", "user": {"login": m.ME}, "html_url": "<c92>", "updated_at": "2026-11-23T00:00:00Z"})
+open(reg, "w").write(kept)
+log = lambda d: " ".join((open(os.path.join(d, "events.log")).read() if os.path.exists(os.path.join(d, "events.log")) else "").split()[:3])
+print(*map(log, dirs), sep="|")
+')
+check "a /agent comment on a thread only one dir's waiting-on.txt names, nothing else to route by: that dir gets the AGENT COMMAND" "|### AGENT COMMAND" "$got"
 got=$(py '
 os.remove(os.path.join(m.HERE, "waiting-on.txt")); open(m.THREADS, "w").write("magne4000/universal-middleware#408\no/r 2\nbogus\n")
 buf = io.StringIO()

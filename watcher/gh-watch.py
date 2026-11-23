@@ -1538,11 +1538,15 @@ def thread_links(repo, num):
 
 
 def route_agent_command(repo, num, name):
-    """-> (watch dir, routed). The dir named `name` (its folder's name); else the dir listing most of the threads this one
-    links to or is linked from (a tie goes to main_dir); else a dir watching its repo whole; else main_dir, unrouted."""
+    """-> (watch dir, routed). The dir named `name` (its folder's name); else a dir whose waiting-on.txt waits on this thread;
+    else the dir listing most of the threads this one links to or is linked from (a tie goes to main_dir); else a dir watching
+    its repo whole; else main_dir, unrouted."""
     dirs = live_dirs()
     for d in dirs:
         if name and os.path.basename(d.rstrip('/')).lower() == name.lower():
+            return d, True
+    for d in dirs:
+        if any(key == f"{repo}#{num}" for _, key in waiting_keys(d)):
             return d, True
     links = thread_links(repo, num)
     score = {d: len(links & watched_threads(d)) for d in dirs}
@@ -1569,7 +1573,7 @@ def claim(sk, record=True):
 
 def agent_command(repo, num, kind, c):
     """Your comment, or a new issue's or PR's body (kind 'body'), starting with /agent on a thread no live watch dir lists (a listed
-    thread's own scan reports it) goes to one dir's events.log, once: `/agent <name>` to the dir of that name, else the dir that lists
+    thread's own scan reports it) goes to one dir's events.log, once: `/agent <name>` to the dir of that name, else a dir that waits on it, else the dir that lists
     a thread this one links to or is linked from, else a dir watching its repo whole, else main_dir (UNROUTED). You and the agent post as one account: a gated post is not a command.
     -> True once it routed the command; None when there was nothing to route (not a command, listed, claimed already)."""
     key, body, cid = f"{repo}#{num}", c.get('body') or '', c.get('id')
