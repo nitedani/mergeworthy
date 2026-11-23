@@ -84,7 +84,7 @@ class Brief:
         self.files = [f for f in named if os.path.isfile(f) and not f.startswith(READ_ONLY)
                       and (f in said or re.search(r'brief|ticket|prompt', own_path(f)))]
         self.refs = [f for f in named if f not in self.files]
-        # the job's key: a file outside ~/.mergeworthy it names (project notes and installed skills are read by every job)
+        # the job's key: the files it names outside ~/.mergeworthy (no project file, installed skill or work folder file is a ticket)
         self.tickets = [f for f in named if not f.startswith(MW)]
         self.brief = text + '\n' + '\n'.join(open(f, errors='replace').read() for f in self.files)
         self.paths = path_set(self.brief)

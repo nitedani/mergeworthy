@@ -12,7 +12,7 @@ if sys.argv[1] == 'list':
     sys.exit(0)
 want = ' '.join(sys.argv[2:]).strip()
 entries = agent_jobs.registered()  # a job past OPEN still releases
-# the exact key; a single ticket path only when one job holds it, so one release never drops another agent's job
+# the exact key, else one word of it (a ticket path) only when one job holds it, so one release never drops another agent's job
 def find(w): return [f for f, j in entries if j['key'] == w] or [f for f, j in entries if w in j['key'].split()]
 hit = find(want) or (find(os.path.abspath(want)) if os.path.exists(want) else [])  # a ticket path relative to the cwd
 if not hit:

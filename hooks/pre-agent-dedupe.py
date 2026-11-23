@@ -8,12 +8,13 @@ follows, an implementer's `approach` and a review round's `heads`), which the Po
 One agent per job: a launch is registered under its job key (the ticket files its prompt names, and its title), and a second
 launch of the same job, or of a task that contains or is contained in an open job's (the same work under another title: an agent
 already on the job gets a message, not a twin, mergeworthy:delegate step 1), is blocked until `agent-job done <key>` releases it.
-A turn that ended is not a finished agent: on T3 a child wakes again when its background commands end, so only its terminal task
-status (read first) releases the job."""
-import datetime, fcntl, glob, hashlib, itertools, json, os, re, shlex, sys, time
+A turn that ended is not a finished agent: on T3 a child wakes again when its background commands end. The containment check
+counts a job until its agent has finished (agent_jobs.finished); a same-key job counts until `agent-job done` releases it, or for
+OPEN (a day)."""
+import datetime, fcntl, functools, glob, hashlib, itertools, json, os, re, shlex, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import failclosed
-import agent_jobs, launch, memory_file, project_file, review_launch, subprocess, testpaths
+import agent_jobs, launch, memory_file, project_file, review_launch, testpaths
 from post_words import fence_spans
 from records import branch_record
 from shellcmd import segments, prog, git_argv, rlines, Where
@@ -35,7 +36,6 @@ if register and 'parent_not_active' in json.dumps(req.response or ''):
         "edits, preparing the push or the body: delegate step 7); only an independent review and a post wait for a run. "
         "Keep the brief, launch it in the next run, and add no status line on each wake."}}))
     sys.exit(0)
-CIDS = os.path.expanduser('~/.claude/agent-client-request-ids.json')
 L = launch.Brief(req.text)
 brief = L.brief  # every rule below reads the brief; the files it only names (project notes, installed skills) are read, so their history SHAs pin nothing
 paths = L.paths
@@ -50,14 +50,13 @@ pasted = {l.strip() for l in open(os.path.join(tdir, 'agent.md'))} if os.path.is
 own_brief = '\n'.join(l for l in brief.splitlines() if l.strip() not in pasted)  # the brief without the rules pasted from agent.md
 shas = set(re.findall(r'\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\b', brief))
 git = lambda wt, *a: subprocess.run(['git', '-C', wt, *a], capture_output=True, text=True)
-ROUNDS = os.path.expanduser('~/.claude/review-rounds.json')
+@functools.cache  # each checkout's HEAD read once per call of the hook
 def round_heads():
     """The checkouts a round's brief names and their heads that its pins equal."""
     tops = L.checkouts
     return tops, sorted({h for t in tops if (h := git(t, 'rev-parse', 'HEAD').stdout.strip()) and any(h.startswith(x) for x in shas)})
 # pull-request step 5 is the build's input: an implementer brief names `Approach: <path>`, the newest approach record of a checkout it names
 # (pr-steps approach). A later build of that record's PR names a newer record, or the same one marked `(unchanged: <why>)`.
-BUILT = os.path.expanduser('~/.claude/approach-builds')  # per approach record: the time of the record the PR's last build was briefed on
 def brief_approach(strict=True):
     """(record file, its newest line's time, the unchanged reason or '') of an implementer brief's Approach line; when it has none,
     None, refusing first when strict (the PRE call)."""
@@ -120,11 +119,6 @@ class Kinds:
         self.fanout = not self.implementation and bool(re.search(r'^Fan-out: (finality step [23]|converge §Running the agents)$', brief, re.M))
         self.writer = req.role not in READERS
 k = Kinds(req, brief)
-def is_refresh(r):
-    """A pending call's or job's memory-refresh decision, as its admission recorded it. A job main's hook registered has none
-    and is classified from its task; jobs() drops such a job one OPEN window (24 h) after the release that installs this, and
-    main's pending records name no session, so the cap never asks about them."""
-    return r.get('refresh', bool(memory_launch(r.get('task') or r.get('brief') or '')))
 # a fan-out runs several agents on one brief, each under its own title and naming its part in its task: the title is part of the job
 key = ' '.join([*L.tickets, req.title]).strip()
 job_file = os.path.join(agent_jobs.JOBS, hashlib.sha256(key.encode()).hexdigest()[:16])
@@ -132,16 +126,6 @@ job_file = os.path.join(agent_jobs.JOBS, hashlib.sha256(key.encode()).hexdigest(
 # pend at a time; the record of a call another hook blocked is overwritten by the key's next launch, or removed a day on by the
 # next launch that reads it (the pending loop)
 pre = os.path.join(agent_jobs.LAUNCHED, os.path.basename(job_file))
-def locked_update(path, change):
-    """Applies change to the JSON object in path (an empty one while it is missing) and writes it back, under path's lock:
-    concurrent launches update it one at a time."""
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path + '.lock', 'a') as held:
-        fcntl.flock(held, fcntl.LOCK_EX)
-        data = json.load(open(path)) if os.path.exists(path) else {}
-        change(data)
-        with open(path + '.tmp', 'w') as o: json.dump(data, o)
-        os.replace(path + '.tmp', path)
 def register_launch():
     """The PostToolUse call: the launch ran, so it records what its admission decided (from its pending record, which becomes
     the job) and makes no admission check. A launch with no pending record (keyless, or one its admission didn't get to write)
@@ -155,12 +139,12 @@ def register_launch():
             except (OSError, ValueError, KeyError, TypeError): rec, launched = {}, time.time()
             json.dump({'key': key, 'started': time.time(), 'launched': launched, 'brief': req.task, 'role': req.role, 'worktrees': L.worktrees, 'refresh': bool(ran_memory),
                        'session': req.session, 'transcript': req.transcript, 'handle': agent_jobs.handle(req.response)}, open(job_file, 'w'))
-    if req.client_id: locked_update(CIDS, lambda seen: seen.setdefault(req.client_id, time.time()))
+    if req.client_id: agent_jobs.locked_update(agent_jobs.CIDS, lambda seen: seen.setdefault(req.client_id, time.time()))
     if k.review and not k.post_review:
-        locked_update(ROUNDS, lambda rounds: rounds.setdefault(k.round[0], []).append([k.round[1], rec['heads'] if 'heads' in rec else round_heads()[1]]))
+        agent_jobs.locked_update(agent_jobs.ROUNDS, lambda rounds: rounds.setdefault(k.round[0], []).append([k.round[1], rec['heads'] if 'heads' in rec else round_heads()[1]]))
     if k.builds and (approach := rec['approach'] if 'approach' in rec else brief_approach(strict=False)):
-        os.makedirs(BUILT, exist_ok=True)
-        open(os.path.join(BUILT, os.path.basename(approach[0])), 'w').write(approach[1])
+        os.makedirs(agent_jobs.BUILT, exist_ok=True)
+        open(os.path.join(agent_jobs.BUILT, os.path.basename(approach[0])), 'w').write(approach[1])
     # an agent now runs memory-prep's brief: stop-lint's hourly repeat of the refresh order waits an hour (its folder may be gone by now)
     if ran_memory and os.path.basename(ran_memory).startswith('memory-brief-') and os.path.isdir(os.path.dirname(ran_memory)):
         open(os.path.join(os.path.dirname(ran_memory), '.memory-order-repeated'), 'w').close()
@@ -198,7 +182,7 @@ if req.role == 'review' and req.t3:
 # T3 answers a delegate_task whose clientRequestId it has seen with that earlier task's result, without running anything.
 # Reuse is allowed only within 10 minutes (a retry of the same launch).
 if req.client_id:
-    seen = json.load(open(CIDS)) if os.path.exists(CIDS) else {}
+    seen = json.load(open(agent_jobs.CIDS)) if os.path.exists(agent_jobs.CIDS) else {}
     if req.client_id in seen and time.time() - seen[req.client_id] > 600:
         sys.stderr.write(f"BLOCKED: clientRequestId '{req.client_id}' was used before; T3 would return that earlier task's result instead of running this one. Use a new id (add the date or the head SHA).\n")
         refused()
@@ -247,8 +231,8 @@ if k.post_review:
         refused()
 elif k.review and k.round[1] >= 3:
     tops, heads = round_heads()
-    rlock = open(ROUNDS + '.lock', 'a'); fcntl.flock(rlock, fcntl.LOCK_EX)  # held until exit
-    rounds = json.load(open(ROUNDS)) if os.path.exists(ROUNDS) else {}
+    rlock = open(agent_jobs.ROUNDS + '.lock', 'a'); fcntl.flock(rlock, fcntl.LOCK_EX)  # held until exit
+    rounds = json.load(open(agent_jobs.ROUNDS)) if os.path.exists(agent_jobs.ROUNDS) else {}
     loop, n = k.round
     # first-parent and no merges: what a merge of the base brought in isn't the PR's own, as SHAPE STALE's compare leaves it out; no renames: each row names a real path
     def own_lines(t, o, h):
@@ -397,7 +381,7 @@ for pf in sorted({os.path.expanduser('~/.mergeworthy/projects/' + r + '.md') for
         refused()
 approach = brief_approach() if k.builds else None
 if approach and not approach[2]:
-    built = os.path.join(BUILT, os.path.basename(approach[0]))
+    built = os.path.join(agent_jobs.BUILT, os.path.basename(approach[0]))
     last = open(built).read().strip() if os.path.isfile(built) else ''
     if last >= approach[1]:
         sys.stderr.write(f"BLOCKED: this PR's last build was briefed on the approach recorded {last}, and this brief names no newer one. A changed "
@@ -445,7 +429,7 @@ def bears_on(r):
     rest: another session's other calls are read by that session's launches, and each check still applies its own test."""
     rt, mine = str(r.get('task') or '').strip(), req.task.strip()
     return (r.get('key') == key or bool(rt and mine and (rt in mine or mine in rt))
-            or capped and r.get('session') == req.session and not is_refresh(r)
+            or capped and r.get('session') == req.session and not r.get('refresh')
             or k.writer and bool(set(r.get('worktrees') or []) & set(L.worktrees)))
 calls_out = []  # the launches let through whose call hasn't returned, not registered yet
 for n in os.listdir(agent_jobs.LAUNCHED) if os.path.isdir(agent_jobs.LAUNCHED) else ():
@@ -455,7 +439,7 @@ for n in os.listdir(agent_jobs.LAUNCHED) if os.path.isdir(agent_jobs.LAUNCHED) e
     if r.get('tool_use_id') and r.get('transcript') and not returned(r['transcript'], r['tool_use_id']):
         call = {'key': r.get('key', ''), 'brief': r.get('task', ''), 'started': r.get('launched', 0), 'launched': r.get('launched', 0),
                 'role': r.get('role'), 'worktrees': r.get('worktrees', []), 'transcript': r['transcript'], 'session': r.get('session'),
-                'refresh': is_refresh(r)}
+                'refresh': r.get('refresh')}
         # past LONG with no result in the launcher's transcript, a call whose agent never started (a crash mid-call) or has
         # finished (its launcher lost) is over: its record goes, so the launches after this one don't search the transcripts for it again
         if time.time() - call['started'] >= agent_jobs.LONG and (not agent_jobs.transcript(call) or agent_jobs.finished(call)):
@@ -545,7 +529,7 @@ def users_words(quote):
     return False
 if capped:
     # session, then refresh, then finished: a refresh never counts, so its transcript isn't searched
-    live = [j for j in registered if j.get('session') == req.session and not is_refresh(j) and not agent_jobs.finished(j)] \
+    live = [j for j in registered if j.get('session') == req.session and not j.get('refresh') and not agent_jobs.finished(j)] \
         + [c for c in calls_out if c.get('session') == req.session and not c['refresh']]
     folders = {f for t in L.files + L.refs if (f := task_of(t))}
     scope = os.path.join(task_of(req.cwd or '/') or (folders.pop() if len(folders) == 1 else '<your work folder>'), 'scope.md')
