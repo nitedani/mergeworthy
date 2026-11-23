@@ -402,7 +402,7 @@ def session_model():
         if b'"assistant"' not in l: continue
         try: e = json.loads(l)
         except ValueError: continue
-        if e.get('type') == 'assistant' and (m := (e.get('message') or {}).get('model')): return str(m)
+        if e.get('type') == 'assistant' and (m := (e.get('message') or {}).get('model')) and m != '<synthetic>': return str(m)
     return ''
 if excluded := {f for x in re.split(r'[,\s]+', options.setting('EXCLUDE_MODELS')) if (f := family(x))}:
     sel = ti.get('target') or ti.get('modelSelection') or {}
