@@ -396,7 +396,10 @@ for pf in sorted({os.path.expanduser('~/.mergeworthy/projects/' + r + '.md') for
 # A launch never runs on a model family the user excluded (the exclude_models option). One naming no model runs on its session's, as the
 # transcript's newest answer shows (a delegate_task does on no provider or claudeAgent); another Claude instance's default can't be told.
 CLASSES = ('fable', 'opus', 'sonnet', 'haiku')  # mergeworthy:delegate §Model class, largest first
-family = lambda m: (re.match(r'(?:claude-)?([a-z]+)', m.lower()) or [None, None])[1]
+def family(m):
+    """An alias's or id's model family: its first word naming a class (us.anthropic.claude-opus-4-8 is opus), else its first word."""
+    words = re.findall(r'[a-z]+', m.lower())
+    return next((w for w in words if w in CLASSES), words[0] if words else None)
 def session_model():
     for l in rlines(path) if (path := transcript(d)) else ():
         if b'"assistant"' not in l: continue
