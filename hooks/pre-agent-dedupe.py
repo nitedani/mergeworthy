@@ -119,6 +119,10 @@ class Kinds:
         self.fanout = not self.implementation and bool(re.search(r'^Fan-out: (finality step [23]|converge §Running the agents)$', brief, re.M))
         self.writer = req.role not in READERS
 k = Kinds(req, brief)
+def is_refresh(r):
+    """A pending call's or job's memory-refresh decision, as its admission recorded it; a job a hook before `refresh` registered,
+    still open after an update, is classified from its task."""
+    return r['refresh'] if 'refresh' in r else bool(memory_launch(r.get('task') or r.get('brief') or ''))
 # a fan-out runs several agents on one brief, each under its own title and naming its part in its task: the title is part of the job
 key = ' '.join([*L.tickets, req.title]).strip()
 job_file = os.path.join(agent_jobs.JOBS, hashlib.sha256(key.encode()).hexdigest()[:16])
@@ -429,7 +433,7 @@ def bears_on(r):
     rest: another session's other calls are read by that session's launches, and each check still applies its own test."""
     rt, mine = str(r.get('task') or '').strip(), req.task.strip()
     return (r.get('key') == key or bool(rt and mine and (rt in mine or mine in rt))
-            or capped and r.get('session') == req.session and not r.get('refresh')
+            or capped and r.get('session') == req.session and not is_refresh(r)
             or k.writer and bool(set(r.get('worktrees') or []) & set(L.worktrees)))
 calls_out = []  # the launches let through whose call hasn't returned, not registered yet
 for n in os.listdir(agent_jobs.LAUNCHED) if os.path.isdir(agent_jobs.LAUNCHED) else ():
@@ -439,7 +443,7 @@ for n in os.listdir(agent_jobs.LAUNCHED) if os.path.isdir(agent_jobs.LAUNCHED) e
     if r.get('tool_use_id') and r.get('transcript') and not returned(r['transcript'], r['tool_use_id']):
         call = {'key': r.get('key', ''), 'brief': r.get('task', ''), 'started': r.get('launched', 0), 'launched': r.get('launched', 0),
                 'role': r.get('role'), 'worktrees': r.get('worktrees', []), 'transcript': r['transcript'], 'session': r.get('session'),
-                'refresh': r.get('refresh')}
+                'refresh': is_refresh(r)}
         # past LONG with no result in the launcher's transcript, a call whose agent never started (a crash mid-call) or has
         # finished (its launcher lost) is over: its record goes, so the launches after this one don't search the transcripts for it again
         if time.time() - call['started'] >= agent_jobs.LONG and (not agent_jobs.transcript(call) or agent_jobs.finished(call)):
@@ -529,7 +533,7 @@ def users_words(quote):
     return False
 if capped:
     # session, then refresh, then finished: a refresh never counts, so its transcript isn't searched
-    live = [j for j in registered if j.get('session') == req.session and not j.get('refresh') and not agent_jobs.finished(j)] \
+    live = [j for j in registered if j.get('session') == req.session and not is_refresh(j) and not agent_jobs.finished(j)] \
         + [c for c in calls_out if c.get('session') == req.session and not c['refresh']]
     folders = {f for t in L.files + L.refs if (f := task_of(t))}
     scope = os.path.join(task_of(req.cwd or '/') or (folders.pop() if len(folders) == 1 else '<your work folder>'), 'scope.md')

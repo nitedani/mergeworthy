@@ -1309,6 +1309,9 @@ check "with the same three open, a refresh that says to read the brief and then 
 for k in capf1 capf2 capf3; do python3 "$R/bin/agent-job" done "/tmp/x/$k.md" >/dev/null; done
 for t in "Follow the brief at $CM/memory-brief-1.md exactly." "Read the brief file $CM/memory-brief-1.md and follow it exactly." "Your task: read $CM/memory-brief-1.md and follow its steps."; do
   python3 "$R/bin/agent-job" done "$(python3 -c 'import sys; print(sys.argv[1][:40])' "$t")" >/dev/null; done
+python3 -c 'import json,sys,time; json.dump({"key":"legacy refresh","started":time.time(),"launched":time.time(),"brief":sys.argv[2],"role":None,"worktrees":[],"session":"capU","transcript":None,"handle":None},open(sys.argv[1],"w"))' "$J/legacy" "Follow the brief at $CM/memory-brief-1.md exactly."
+check "an open memory refresh a hook before \`refresh\` registered still leaves the session its 3 other agents" "0 0 0" "$(cap capU 'Execute /tmp/x/capu1.md') $(cap capU 'Execute /tmp/x/capu2.md') $(cap capU 'Execute /tmp/x/capu3.md')"
+for k in capu1 capu2 capu3; do python3 "$R/bin/agent-job" done "/tmp/x/$k.md" >/dev/null; done; rm -f "$J/legacy"
 CR="Review why the refresh failed, using the archived brief at $CM/memory-brief-1.md as evidence. Report the cause."
 check "BLOCK: a review that cites a memory brief as evidence is no memory refresh: it counts, and the fourth agent is refused" "0 0 0 2" "$(cap capA "$CR") $(cap capA 'Execute /tmp/x/capa1.md') $(cap capA 'Execute /tmp/x/capa2.md') $(cap capA 'Execute /tmp/x/capa3.md')"
 for k in capa1 capa2; do python3 "$R/bin/agent-job" done "/tmp/x/$k.md" >/dev/null; done; python3 "$R/bin/agent-job" done "${CR:0:40}" >/dev/null; rm -r "$CM"
