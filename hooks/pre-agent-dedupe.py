@@ -428,17 +428,27 @@ def unnamed_model():
     m = (subagent_model(str(ti.get('subagent_type') or '')) or os.environ.get('CLAUDE_CODE_SUBAGENT_MODEL', '')) if native else ''
     return session_model() if m in ('', 'inherit') else m
 native = d.get('tool_name') in ('Agent', 'Task')
+MODEL_FIELD = {'Agent': "the Agent tool's model", 'Task': "the Task tool's model", 'delegate_task': "delegate_task's target.model",
+               't3_thread_launch': "t3_thread_launch's modelSelection.model"}
 if excluded := {f for x in re.split(r'[,\s]+', options.setting('EXCLUDE_MODELS')) if (f := family(x))}:
     sel = ti.get('target') or ti.get('modelSelection') or {}
     model = str(ti.get('model') or sel.get('model') or '')
     instance = {str(sel.get(k)) for k in ('providerInstanceId', 'driverKind', 'instanceId', 'provider') if sel.get(k)} - {'claudeAgent'}
     if model in ('', 'inherit') and not instance: model = unnamed_model()
-    if family(model) in excluded if model else (not instance or any('claude' in i.lower() for i in instance)) and excluded & set(CLASSES):
-        use = next((c for c in CLASSES[CLASSES.index(family(model)) + 1 if family(model) in CLASSES else 1:] if c not in excluded), None)
-        on = f"runs on {model}," if model else f"names no model on {min(instance or ['this session'])}, so it may run on"
-        sys.stderr.write(f"BLOCKED: this launch {on} a model family the user excluded (exclude_models: {', '.join(sorted(excluded))}). "
-                         + (f"Launch it on {use} (mergeworthy:delegate §Model class): the Agent tool's model `{use}`, delegate_task's target.model the newest "
-                            f"claude-{use} id orchestrator_capabilities lists.\n" if use else "No Claude class is left: ask the user which model to use.\n"))
+    fam, provider = family(model), min(instance, default='')
+    unknown = not model and (not instance or any('claude' in i.lower() for i in instance)) and excluded & set(CLASSES)
+    if fam in excluded or unknown:
+        field = MODEL_FIELD[d.get('tool_name', '').rsplit('__', 1)[-1]]
+        below = CLASSES[CLASSES.index(fam) + 1:] if fam in CLASSES else CLASSES
+        use = next((c for c in below if c not in excluded), None)
+        on = f"runs on {model}," if model else f"names no model on {provider or 'this session'}, so it may run on"
+        if fam and fam not in CLASSES:
+            retry = f"Launch it on another family's model on {provider or 'the same provider'}: {field} one orchestrator_capabilities lists there."
+        elif not use:
+            retry = f"No Claude class {f'below {fam} ' if fam else ''}is left: ask the user which model to use."
+        else:
+            retry = f"Launch it on {use} (mergeworthy:delegate §Model class): {field} " + (f"`{use}`." if native else f"the newest claude-{use} id orchestrator_capabilities lists.")
+        sys.stderr.write(f"BLOCKED: this launch {on} a model family the user excluded (exclude_models: {', '.join(sorted(excluded))}). {retry}\n")
         refused()
 approach = brief_approach() if implementer else None
 if approach and not approach[2]:
