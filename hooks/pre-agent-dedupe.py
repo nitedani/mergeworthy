@@ -49,7 +49,7 @@ pasted = {l.strip() for l in open(os.path.join(tdir, 'agent.md'))} if os.path.is
 own_brief = '\n'.join(l for l in brief.splitlines() if l.strip() not in pasted)  # the brief without the rules pasted from agent.md
 shas = set(re.findall(r'\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\b', brief))
 git = lambda wt, *a: subprocess.run(['git', '-C', wt, *a], capture_output=True, text=True)
-@functools.cache  # each checkout's HEAD read once per call of the hook
+@functools.cache  # computed once per call of the hook: the round check and the pending record share it
 def round_heads():
     """The checkouts a round's brief names and their heads that its pins equal."""
     tops = L.checkouts
