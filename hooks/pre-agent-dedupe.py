@@ -393,8 +393,9 @@ for pf in sorted({os.path.expanduser('~/.mergeworthy/projects/' + r + '.md') for
                          f"delegate_task's target.options `effort` for Claude or `reasoningEffort` for Codex), not "
                          + (f"{effort}.\n" if effort else "the harness's default.\n"))
         refused()
-# A launch never runs on a model family the user excluded (the exclude_models option). One naming no model runs on its session's, as the
-# transcript's newest answer shows (a delegate_task does on no provider or claudeAgent); another Claude instance's default can't be told.
+# A launch never runs on a model family the user excluded (the exclude_models option). An Agent or Task naming no model runs on its
+# subagent_type definition's, else CLAUDE_CODE_SUBAGENT_MODEL, else its session's, as the transcript's newest answer shows (a
+# delegate_task does on no provider or claudeAgent); another Claude instance's default can't be told.
 CLASSES = ('fable', 'opus', 'sonnet', 'haiku')  # mergeworthy:delegate §Model class, largest first
 def family(m):
     """An alias's or id's model family: its first word naming a class (us.anthropic.claude-opus-4-8 is opus), else its first word."""
@@ -407,11 +408,31 @@ def session_model():
         except ValueError: continue
         if e.get('type') == 'assistant' and (m := (e.get('message') or {}).get('model')) and m != '<synthetic>': return str(m)
     return ''
+def subagent_model(name):
+    """The `model` the subagent definition called name declares ('' for none), as Claude Code finds it: in the .claude/agents
+    nearest the cwd, then ~/.claude/agents (code.claude.com/docs/en/sub-agents#choose-subagent-scope)."""
+    if not name: return ''
+    top, dirs = os.path.realpath(d.get('cwd') or '/'), []
+    while True:
+        dirs.append(os.path.join(top, '.claude', 'agents'))
+        if top == os.path.dirname(top): break
+        top = os.path.dirname(top)
+    for f in itertools.chain(*(sorted(glob.glob(os.path.join(x, '*.md'))) for x in [*dirs, os.path.expanduser('~/.claude/agents')])):
+        front = (re.match(r'---\n(.*?)^---', open(f, errors='replace').read(), re.M | re.S) or [None, ''])[1]
+        key = lambda k: (re.search(rf'^{k}:[ \t]*["\']?([^"\'\n]*?)["\']?[ \t]*$', front, re.M) or [None, ''])[1]
+        if key('name') == name: return key('model')
+    return ''
+def unnamed_model():
+    """The model a launch naming none runs on, in Claude Code's order for an Agent or Task (code.claude.com/docs/en/sub-agents#choose-a-model):
+    its subagent_type definition's `model`, then CLAUDE_CODE_SUBAGENT_MODEL; else, and for `inherit`, the session's."""
+    m = (subagent_model(str(ti.get('subagent_type') or '')) or os.environ.get('CLAUDE_CODE_SUBAGENT_MODEL', '')) if native else ''
+    return session_model() if m in ('', 'inherit') else m
+native = d.get('tool_name') in ('Agent', 'Task')
 if excluded := {f for x in re.split(r'[,\s]+', options.setting('EXCLUDE_MODELS')) if (f := family(x))}:
     sel = ti.get('target') or ti.get('modelSelection') or {}
     model = str(ti.get('model') or sel.get('model') or '')
     instance = {str(sel.get(k)) for k in ('providerInstanceId', 'driverKind', 'instanceId', 'provider') if sel.get(k)} - {'claudeAgent'}
-    if model in ('', 'inherit') and not instance: model = session_model()
+    if model in ('', 'inherit') and not instance: model = unnamed_model()
     if family(model) in excluded if model else (not instance or any('claude' in i.lower() for i in instance)) and excluded & set(CLASSES):
         use = next((c for c in CLASSES[CLASSES.index(family(model)) + 1 if family(model) in CLASSES else 1:] if c not in excluded), None)
         on = f"runs on {model}," if model else f"names no model on {min(instance or ['this session'])}, so it may run on"
