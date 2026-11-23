@@ -919,8 +919,9 @@ def emit_tracker_stale(key, ended):
 AGENT_TRAILER = re.compile(r'^co-authored-by: claude\b', re.I | re.M)  # an agent's commit, whoever pushed it (the project files' definition)
 
 
-def emit_maintainer_commits(state, repo, key, old, new):
+def emit_maintainer_commits(state, repo, key, old, new, here=True):
     """A maintainer's commits pushed to a tracked PR: reviewing them was requested ("Review each of my commit as I push them").
+    here=False (a PR this dir only waits on) keeps their activity and the steward's copy, without this dir's event.
     -> False when a call failed, so the caller reads them again."""
     try:
         commits = [{'sha': c['sha'][:10], 'login': (c.get('author') or {}).get('login') or '', 'date': c['commit']['committer']['date'], 'agent': bool(AGENT_TRAILER.search(c['commit'].get('message') or ''))}
@@ -952,6 +953,7 @@ def emit_maintainer_commits(state, repo, key, old, new):
     if theirs:
         if (s := steward.recipient([])) and s[0] != HERE.rstrip('/') and not ONCE:  # a copy for the steward's follow-up sort
             emit_to(s[0], f"### MAINTAINER COMMITS {key}: {' '.join(theirs)}")
+    if theirs and here:
         emit(f"### MAINTAINER COMMITS {key}: {' '.join(theirs)}: review each one in a table (| Commit | What it does, and the idea behind it | Rating |, one short sentence each; rated N/10 with a short reason next to anything below 10, e.g. 9/10 (Vite's built-ins differ); an emoji only where it's funny; 10/10 only when nothing could be better), as requested (mergeworthy:reply §Maintainer commits)")
     return True
 
@@ -1266,15 +1268,17 @@ def scan(state, jobs):
                 if mine == 'pending':  # the push, merge or close still runs: compare again next pass
                     pr_state = prev
                     state['etag'].pop(f"repos/{repo}/pulls/{num}", None)
-                elif prev and prev != pr_state and not (key in waits and prev.get('state') == pr_state['state']):
-                    emit(f"{'note:' if mine else '###'} PR CHANGED {key}: {prev} -> {pr_state}")  # a note is logged, and wakes no one
+                elif prev and prev != pr_state:
+                    if key not in waits or prev.get('state') != pr_state['state']:
+                        emit(f"{'note:' if mine else '###'} PR CHANGED {key}: {prev} -> {pr_state}")  # a note is logged, and wakes no one
                     if pr_state['state'] == 'merged' and prev.get('state') != 'merged':
                         emit_dependents(key)
                     if pr_state['state'] in ('merged', 'closed') and prev.get('state') != pr_state['state']:
                         emit_tracker_stale(key, pr_state['state'])
-                    if prev.get('head') != pr_state['head'] and key not in waits:
-                        reported = emit_maintainer_commits(state, repo, key, prev['head'], pr_state['head'])
-                        emit_refactor_stale(repo, key, pr_state['head'])
+                    if prev.get('head') != pr_state['head']:
+                        reported = emit_maintainer_commits(state, repo, key, prev['head'], pr_state['head'], here=key not in waits)
+                        if key not in waits:
+                            emit_refactor_stale(repo, key, pr_state['head'])
                         if not reported:  # as after a failed read: the old head and no validator, so the next look compares again
                             pr_state = {**pr_state, 'head': prev['head']}
                             state['etag'].pop(f"repos/{repo}/pulls/{num}", None)

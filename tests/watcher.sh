@@ -111,7 +111,7 @@ m.request, m.paged = request, lambda *a, **k: []
 m.fetch_last_comment = lambda repo, num: {"open": w["state"] == "open", "last": None, "prev": None, "people": [], "renames": []}
 m.run_gh = lambda argv: types.SimpleNamespace(returncode=1 if w["red"] else 0, stderr="", stdout="".join(n + "\tfail\t1s\n" for n in w["red"]))
 m.own_change = m.emit_tracker_stale = m.scan_reactions = lambda *a: None
-m.emit_maintainer_commits = lambda state, repo, key, old, new: (m.emit("### MAINTAINER COMMITS " + key), True)[1]
+m.emit_maintainer_commits = lambda state, repo, key, old, new, here=True: (here and m.emit("### MAINTAINER COMMITS " + key), True)[1]
 m.emit_refactor_stale = lambda repo, key, new: m.emit("### SHAPE STALE " + key)
 out = []
 for change in ({}, {"head": "bbb", "red": ["lint"]}, {"state": "closed", "head": "ccc", "red": []}, {"state": "merged"}):
@@ -405,6 +405,22 @@ out = buf.getvalue()
 print(*after, out.count("note: permission o/r boss failed (o/r#1): "), out.count("### MAINTAINER COMMITS o/r#1: aaaaaaaaaa"), state["prs"]["o/r#1"]["head"])
 ')
 check "maintainer commits: a failed permission lookup keeps the old head and drops the PR's validator; the next look reports them once" "old False 1 1 new" "$got"
+# a maintainer's push to a PR only waiting-on.txt names: no event here, but the steward's copy and the activity a wait ping reads stay
+got=$(py '
+import json
+m.agent_post_hashes, m.emit_refactor_stale, m.emit_wait_ping, m.maintainer = (lambda: set()), (lambda *a: None), (lambda *a: None), (lambda *a: True)
+stew = os.path.join(m.HERE, "stew"); os.makedirs(stew, exist_ok=True); m.steward.recipient = lambda *a: [stew]
+open(m.THREADS, "w").write(""); open(os.path.join(m.HERE, "waiting-on.txt"), "w").write("o/r#2 -> o/r#9: bump it\n")
+m.fetch_thread = lambda *a: (True, "them", [], {"head": "new", "state": "open"}, None, None, {}, True, None)
+m.request = lambda p, *a, **k: m.Resp(200, {}, json.dumps({"base": {"ref": "main"}} if "/pulls/" in p else {"commits": [{"sha": "b" * 40, "author": {"login": "boss"}, "commit": {"message": "human fix", "committer": {"date": "2026-10-29T00:00:00Z"}}}]}))
+state = {"since": "2026-10-29T00:00:00Z", "since_by": {}, "is_pr": {}, "prs": {"o/r#2": {"head": "old", "state": "open"}}, "etag": {}, "ci": {}}
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf): m.scan(state, [("o/r", "2", "full", 0)])
+os.remove(os.path.join(m.HERE, "waiting-on.txt"))
+print(open(os.path.join(stew, "events.log")).read().strip(), buf.getvalue().count("MAINTAINER COMMITS"), state.get("active", {}).get("boss"), sep="|")
+')
+check "a maintainer push to a PR only waiting-on.txt names: the steward gets its copy and their activity is noted; this dir gets no event" \
+  "### MAINTAINER COMMITS o/r#2: bbbbbbbbbb|0|2026-10-29T00:00:00Z" "$got"
 got=$(py '
 m.agent_post_hashes, m.emit_refactor_stale, m.emit_wait_ping = (lambda: set()), (lambda *a: None), (lambda *a: None)
 m.fetch_thread = lambda *a: (True, "me", [], {"head": "new", "state": "open"}, None, None, {}, True, None)
@@ -579,7 +595,7 @@ check "a thread read that fails once and then works writes a note and no WATCH E
 
 # A PR whose head moved to a commit this machine pushed (pre-bash-guard records it) only logs the change; another head wakes the session
 got=$(PUSHED_HEADS="$T/pushed" py '
-m.agent_post_hashes, m.emit_refactor_stale, m.emit_wait_ping, m.emit_maintainer_commits = (lambda: set()), (lambda *a: None), (lambda *a: None), (lambda *a: True)
+m.agent_post_hashes, m.emit_refactor_stale, m.emit_wait_ping, m.emit_maintainer_commits = (lambda: set()), (lambda *a: None), (lambda *a: None), (lambda *a, **k: True)
 open(os.environ["PUSHED_HEADS"], "w").write("4f206bcab8deb5cb38e338c855b9cbf2478e7e7e\n")
 heads = {"1": "4f206bcab8", "2": "9a9a9a9a9a"}
 m.fetch_thread = lambda repo, num, *a: (True, "me", [], {"head": heads[num], "state": "open", "conflict": False}, None, None, {}, True, None)
@@ -593,7 +609,7 @@ check "PR CHANGED: a head this machine pushed is a log note, another head an eve
 # A change whose push, merge or close still runs (own_actions pending) is held, its old state kept, until the command ends:
 # succeeded, a note; failed (dropped) or pending past PENDING_TTL, an event like anyone's
 got=$(OWN_PENDING="$T/opend" PUSHED_HEADS="$T/opushed" CLOSED_THREADS="$T/oclosed" py '
-m.agent_post_hashes, m.emit_refactor_stale, m.emit_wait_ping, m.emit_maintainer_commits = (lambda: set()), (lambda *a: None), (lambda *a: None), (lambda *a: True)
+m.agent_post_hashes, m.emit_refactor_stale, m.emit_wait_ping, m.emit_maintainer_commits = (lambda: set()), (lambda *a: None), (lambda *a: None), (lambda *a, **k: True)
 now = int(m.time.time())
 open(os.environ["OWN_PENDING"], "w").write(f"{now} k1 PUSHED_HEADS aaaaaaaaaa11\n{now - 4000} k2 PUSHED_HEADS bbbbbbbbbb22\n{now} k3 PUSHED_HEADS cccccccccc33\n")
 heads = {"1": "aaaaaaaaaa", "2": "bbbbbbbbbb", "3": "cccccccccc"}
