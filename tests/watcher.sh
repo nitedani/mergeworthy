@@ -675,6 +675,25 @@ print("|".join(l.split(":")[0] for l in buf.getvalue().splitlines()))
 ')
 check "PR CHANGED and ISSUE CLOSED: your own merge or close, GitHub naming you, is a log note, its DEPENDENT and TRACKER STALE still events; another merge or close an event, recorded or not" \
   "note|### DEPENDENT of merged o/r#3|### TRACKER STALE o/r#3|### PR CHANGED o/r#4|### TRACKER STALE o/r#4|note|### ISSUE CLOSED o/r#6|### ISSUE CLOSED o/r#7|### PR CHANGED o/r#8|### DEPENDENT of merged o/r#8|### TRACKER STALE o/r#8" "$got"
+# The same for a PR only waiting-on.txt names that merged or closed before its first read: your own merge or close a note, its
+# DEPENDENT still an event, another's close an event, and one whose close still runs left unsaved until its command ends
+got=$(OWN_PENDING="$T/wpend" CLOSED_THREADS="$T/wclosed" py '
+m.agent_post_hashes, m.emit_refactor_stale, m.emit_wait_ping, m.emit_tracker_stale = (lambda: set()), (lambda *a: None), (lambda *a: None), (lambda *a: None)
+m.emit_dependents = lambda key: print(f"### DEPENDENT of merged {key}")
+open(os.environ["CLOSED_THREADS"], "w").write("o/r#3 merged\no/r#4 closed\no/r#5 closed\n")
+open(os.environ["OWN_PENDING"], "w").write(f"{int(m.time.time())} k6 CLOSED_THREADS o/r#6 closed\n")
+open(m.THREADS, "w").write(""); open(os.path.join(m.HERE, "waiting-on.txt"), "w").write("".join(f"o/r#{n} -> o/r#9: go on\n" for n in "3456"))
+prs, closers = {"3": "merged", "4": "closed", "5": "closed", "6": "closed"}, {"3": "me", "4": "me", "5": "maint", "6": "me"}
+m.request = lambda path, *a, **k: m.Resp(200, {}, json.dumps({"closed_by": {"login": closers[path.rsplit("/", 1)[1]]}}))
+m.fetch_thread = lambda repo, num, *a: (True, "me", [], {"head": "a1", "state": prs[num], "conflict": False}, None, None, {}, True, None)
+state = {"since": "2026-10-29T00:00:00Z", "since_by": {}, "is_pr": {}, "prs": {}, "etag": {}, "ci": {}}
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf): m.scan(state, [("o/r", n, "full", 0) for n in prs])
+os.remove(os.path.join(m.HERE, "waiting-on.txt"))
+print("|".join(l.split(":")[0] for l in buf.getvalue().splitlines()), sorted(state["prs"]))
+')
+check "a PR only waiting-on.txt names, ended before its first read: your own merge or close a note, its DEPENDENT an event; another close an event; a close still running unsaved" \
+  "note|### DEPENDENT of merged o/r#3|note|### PR CHANGED o/r#5 ['o/r#3', 'o/r#4', 'o/r#5']" "$got"
 
 # While GitHub hasn't computed a PR's mergeability (mergeable null, state "unknown") its last known conflict flag stays: dirty -> unknown -> dirty
 # on one head is no change, clean -> dirty is one, and a conflicting PR's new head answered uncomputed reads as no conflict

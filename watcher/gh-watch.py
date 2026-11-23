@@ -1264,9 +1264,11 @@ def scan(state, jobs):
             state['since_by'][key] = started
             if pr_state:
                 prev = state['prs'].get(key)
-                mine = prev and prev != pr_state and own_change(key, prev, pr_state)
+                ended = not prev and key in waits and pr_state['state'] != 'open'  # ended before its first read: the end its dir waits for
+                was = {**pr_state, 'state': 'open'} if ended else prev
+                mine = was and was != pr_state and own_change(key, was, pr_state)
                 if mine == 'pending':  # the push, merge or close still runs: compare again next pass
-                    pr_state = prev
+                    pr_state = prev or pr_state  # the saved state stays as it was
                     state['etag'].pop(f"repos/{repo}/pulls/{num}", None)
                 elif prev and prev != pr_state:
                     if key not in waits or prev.get('state') != pr_state['state']:
@@ -1282,11 +1284,12 @@ def scan(state, jobs):
                         if not reported:  # as after a failed read: the old head and no validator, so the next look compares again
                             pr_state = {**pr_state, 'head': prev['head']}
                             state['etag'].pop(f"repos/{repo}/pulls/{num}", None)
-                elif not prev and key in waits and pr_state['state'] != 'open':  # ended before its first read: the end its dir waits for
-                    emit(f"### PR CHANGED {key}: {prev} -> {pr_state}")
+                elif ended:
+                    emit(f"{'note:' if mine else '###'} PR CHANGED {key}: {prev} -> {pr_state}")
                     if pr_state['state'] == 'merged':
                         emit_dependents(key)
-                state['prs'][key] = pr_state
+                if mine != 'pending':
+                    state['prs'][key] = pr_state
             if red is not None and key not in waits:  # unsaved: once threads.txt lists it, a red is news
                 if red != state['ci'].get(key, []) and (key in state['ci'] or not SEED):  # red already when a seeding round first reads it
                     emit(f"### CI {key}: red={red}: fix it, or if it is not this PR's doing, say why on the PR now with the evidence (mergeworthy:reply §Events)" if red else f"### CI {key}: no longer red")
