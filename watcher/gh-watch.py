@@ -1287,8 +1287,8 @@ def scan(state, jobs):
                     if pr_state['state'] == 'merged':
                         emit_dependents(key)
                 state['prs'][key] = pr_state
-            if red is not None:
-                if red != state['ci'].get(key, []) and (key in state['ci'] or not SEED) and key not in waits:  # red already when a seeding round first reads it
+            if red is not None and key not in waits:  # unsaved: once threads.txt lists it, a red is news
+                if red != state['ci'].get(key, []) and (key in state['ci'] or not SEED):  # red already when a seeding round first reads it
                     emit(f"### CI {key}: red={red}: fix it, or if it is not this PR's doing, say why on the PR now with the evidence (mergeworthy:reply §Events)" if red else f"### CI {key}: no longer red")
                 state['ci'][key] = red
             agent_hashes = agent_post_hashes()  # read after the fetch: a post gated while it ran is the agent's

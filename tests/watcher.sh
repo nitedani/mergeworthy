@@ -151,6 +151,30 @@ print(*out, sep="|")
 ')
 check "a PR or issue only waiting-on.txt names, ended before its first read: PR CHANGED (and DEPENDENT when merged) or ISSUE CLOSED, once" \
   "DEPENDENT of merged o/r#2,ISSUE CLOSED o/r#3,PR CHANGED o/r#2,PR CHANGED o/r#5|" "$got"
+# a PR only waiting-on.txt names whose CI turned red while it only waited: once threads.txt lists it too, the next scan reports the red
+got=$(py '
+import types
+json.dump({"since": "2026-01-01T00:00:00Z", "seen": {}, "prs": {}, "ci": {}, "is_pr": {}, "since_by": {}, "closed_scan": 0}, open(m.STATE, "w"))
+open(m.THREADS, "w").write("")
+open(os.path.join(m.HERE, "waiting-on.txt"), "w").write("o/r#2 -> o/r#9: bump it\n")
+w = {"red": []}
+def request(path, method="GET", args=(), store=None, pending=None, fresh=False, **k):
+    if path.startswith("repos/o/r/issues/"):
+        return types.SimpleNamespace(status=200, json=lambda: {"pull_request": {}, "user": {"login": "x"}, "updated_at": "2026-11-23T00:00:00Z"})
+    return types.SimpleNamespace(status=200, json=lambda: {"head": {"sha": "aaa"}, "merged": False, "state": "open", "mergeable": True, "mergeable_state": "clean", "updated_at": "2026-11-23T00:00:00Z"})
+m.request, m.paged = request, lambda *a, **k: []
+m.fetch_last_comment = lambda repo, num: {"open": True, "last": None, "prev": None, "people": [], "renames": []}
+m.run_gh = lambda argv: types.SimpleNamespace(returncode=1 if w["red"] else 0, stderr="", stdout="".join(n + "\tfail\t1s\n" for n in w["red"]))
+m.own_change = m.emit_tracker_stale = m.scan_reactions = lambda *a: None
+out = []
+for red, threads in (([], ""), (["lint"], ""), (["lint"], "o/r 2\n")):
+    w["red"] = red; open(m.THREADS, "w").write(threads)
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf): m.run_scan(everything=True)
+    out.append(",".join(l[4:].split(":")[0] for l in buf.getvalue().splitlines() if l.startswith("###")))
+print(*out, sep="|")
+')
+check "a PR only waiting-on.txt names turning red: nothing while it only waits; the first scan after threads.txt lists it reports the red" "||CI o/r#2" "$got"
 got=$(py '
 os.remove(os.path.join(m.HERE, "waiting-on.txt")); open(m.THREADS, "w").write("magne4000/universal-middleware#408\no/r 2\nbogus\n")
 buf = io.StringIO()
