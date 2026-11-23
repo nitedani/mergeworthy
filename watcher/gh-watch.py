@@ -14,7 +14,7 @@
 - Maintainers' commits pushed to a tracked PR, and 👍/👎 from you or a maintainer (write access, see maintainer) on the agent's comments.
 - WAIT PING DUE: your account's comment is the last on an open thread, and nobody else in it has replied or acted in any watched thread for WAIT_PING_HOURS (3).
 - PR head/state changes (pushes, merges, closes), CI turning red or green on open PRs, and the code of a PR you opened or drive (a pr-steps record on one of its commits; tests excluded) changing by more than ~80 lines since its last shape pass (SHAPE STALE).
-  A thread only waiting-on.txt names gets only the events of how it ends (a merge, close or reopen), not those of its pushes, CI or comments.
+  A thread only waiting-on.txt names gets only the events of how it ends (a merge or close, and a PR's reopen), not those of its pushes, CI or comments.
 - How often each thread is read depends on its state (see "How often a thread is read"); the notifications, your events feed
   and the repos' issue lists are polled once per X-Poll-Interval, the repo lists by the one daemon holding the lease for all.
 - GitLab threads in threads.txt are read by gl_watch.py (scan_gitlab), into the same events.log and replies-owed.md.
@@ -1083,13 +1083,13 @@ def fetch_thread(repo, num, since, is_pr_known, author_known, prev_pr, etags, mo
     A list that answers 304 has nothing new (comments, reviews), and an unchanged PR keeps its previous state.
     mode 'check' first asks for the PR (or the issue) itself, with its validator: its body shows its comment counts and update time,
     so a 304 means nothing happened in the thread (a comment, review, push, merge or close changes it), and only CI is then asked
-    for. mode 'wait' reads only the PR or issue itself, and a changed issue's open state. Anything else reads the thread in full.
+    for. mode 'wait' reads only the PR or issue itself. Anything else reads the thread in full.
     updated_at is None while the PR or issue answered 304."""
-    is_pr, author, pending, updated = is_pr_known, author_known, {}, None
+    is_pr, author, pending, updated, is_open = is_pr_known, author_known, {}, None, None
     full, fresh = mode == 'full', not upd_known  # a thread whose update time isn't known yet can't use a 304
     if is_pr is None or author is None:
         issue = request(f"repos/{repo}/issues/{num}").json()
-        is_pr, author, updated, full = 'pull_request' in issue, (issue.get('user') or {}).get('login'), issue.get('updated_at'), True
+        is_pr, author, updated, full, is_open = 'pull_request' in issue, (issue.get('user') or {}).get('login'), issue.get('updated_at'), True, issue.get('state') == 'open'
     pr_state = red = None
     if is_pr:
         resp = request(f"repos/{repo}/pulls/{num}", store=etags, pending=pending, fresh=fresh or not prev_pr)
@@ -1111,10 +1111,11 @@ def fetch_thread(repo, num, since, is_pr_known, author_known, prev_pr, etags, mo
     elif not full or updated is None:
         resp = request(f"repos/{repo}/issues/{num}", store=etags, pending=pending, fresh=fresh)
         if resp.status != 304:
-            updated, full = resp.json().get('updated_at'), True
+            issue = resp.json()
+            updated, full, is_open = issue.get('updated_at'), True, issue.get('state') == 'open'
     events, last = [], None
     if mode == 'wait':
-        last = None if is_pr or not full else fetch_last_comment(repo, num)
+        last = None if is_pr or is_open is None else {'open': is_open}
     elif full:
         for c in paged(f"repos/{repo}/issues/{num}/comments?since={stable_since(since)}&per_page=100", etags, pending):
             events.append(('comment', c['id'], c['updated_at'], {**c['user'], 'assoc': c.get('author_association')}, c['html_url'], c.get('body') or '', ''))
@@ -1282,6 +1283,8 @@ def scan(state, jobs):
                         if not reported:  # as after a failed read: the old head and no validator, so the next look compares again
                             pr_state = {**pr_state, 'head': prev['head']}
                             state['etag'].pop(f"repos/{repo}/pulls/{num}", None)
+                elif not prev and pr_state['state'] == 'merged':  # merged before its first read: what waits on it is still to do
+                    emit_dependents(key)
                 state['prs'][key] = pr_state
             if red is not None:
                 if red != state['ci'].get(key, []) and (key in state['ci'] or not SEED):  # red already when a seeding round first reads it
@@ -1377,7 +1380,7 @@ def feed_repos():
             st.setdefault('prs', {})
         except (OSError, ValueError):
             st = {'prs': {}}
-        repos |= {k.rsplit('#', 1)[0] for k in listed_threads(d) if thread_kind(st, k, now) != 'closed' and st.get('author', {}).get(k) != ME}  # the created-issues feed covers only ME's own PRs
+        repos |= {k.rsplit('#', 1)[0] for k in watched_threads(d) if thread_kind(st, k, now) != 'closed' and st.get('author', {}).get(k) != ME}  # the created-issues feed covers only ME's own PRs
         repos |= set(repo_lines(d))
     return repos
 
@@ -1471,7 +1474,7 @@ def repo_feeds():
     """A shared job (shared_pass): once per poll interval for the whole machine, your own threads in all repos (one request) and the
     threads of others you watch, repo by repo. The notifications lag GitHub by 20-30 s and only name threads you are subscribed to;
     these name every watched thread at once, whoever wrote and whatever happened (a comment, a review, a push, a merge)."""
-    watched = set().union(*(listed_threads(d) for d in dict.fromkeys(live_dirs() + [HERE])))
+    watched = set().union(*(watched_threads(d) for d in dict.fromkeys(live_dirs() + [HERE])))
     poll_feed(OWN_FEED, lambda i: i['repository']['full_name'], watched, 50)
     for repo in sorted(feed_repos()):
         poll_feed(f"repos/{repo}/issues?state=all&sort=updated&direction=desc&per_page=30", lambda i, repo=repo: repo, watched, 30)
@@ -1509,9 +1512,13 @@ def repo_lines(d):
 
 
 def listed_threads(d):
+    """The threads watch dir d answers in: its threads.txt."""
+    return {f"{r}#{n}" for r, n in threads_file.read(os.path.join(d, 'threads.txt'))[0] if not r.startswith(gl_watch.HOST)}
+
+
+def watched_threads(d):
     """The threads watch dir d scans: its threads.txt and the PRs its waiting-on.txt waits on."""
-    listed = {f"{r}#{n}" for r, n in threads_file.read(os.path.join(d, 'threads.txt'))[0] if not r.startswith(gl_watch.HOST)}
-    return listed | {key for _, key in waiting_keys(d)}
+    return listed_threads(d) | {key for _, key in waiting_keys(d)}
 
 
 def thread_links(repo, num):
@@ -1538,7 +1545,7 @@ def route_agent_command(repo, num, name):
         if name and os.path.basename(d.rstrip('/')).lower() == name.lower():
             return d, True
     links = thread_links(repo, num)
-    score = {d: len(links & listed_threads(d)) for d in dirs}
+    score = {d: len(links & watched_threads(d)) for d in dirs}
     best = max(score.values(), default=0)
     if best:
         top = [d for d in dirs if score[d] == best]
@@ -1593,7 +1600,7 @@ def watched_repos():
     """Every repo a live watch dir lists a thread or a whole-repo line for (and this dir's own)."""
     repos = set()
     for d in dict.fromkeys(live_dirs() + [HERE]):
-        repos |= {t.rsplit('#', 1)[0] for t in listed_threads(d)} | set(repo_lines(d))
+        repos |= {t.rsplit('#', 1)[0] for t in watched_threads(d)} | set(repo_lines(d))
     return repos
 
 
