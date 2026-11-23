@@ -50,13 +50,6 @@ pasted = {l.strip() for l in open(os.path.join(tdir, 'agent.md'))} if os.path.is
 own_brief = '\n'.join(l for l in brief.splitlines() if l.strip() not in pasted)  # the brief without the rules pasted from agent.md
 shas = set(re.findall(r'\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\b', brief))
 git = lambda wt, *a: subprocess.run(['git', '-C', wt, *a], capture_output=True, text=True)
-# Two rounds per loop on one head (delegate §Review rounds): a review round `<loop>-r<N>`, maybe followed by the date or head SHA
-# the reuse block below asks for, once the heads its brief pins show the branch hasn't moved since two earlier rounds of its loop, is refused;
-# a post's review is refused only once gate-pass's own check (review_launch.answers) already passes every draft it reviews
-rnd = re.fullmatch(r'(.+)-r(\d+)', re.sub(r'(-\d{4}-\d{2}-\d{2}|-[0-9a-f]{7,40})+$', '', req.round_name))
-review = rnd and (req.role == 'review' or not req.role and re.search(r'\bexactly (CLEAN|NO BUGS)\b', brief))
-# a post's review: a gate review of a named draft whose brief asks for no code verdict (a small review's pr-body.review.out comes with one)
-post_review = review and bool(reviewed_drafts(brief)) and not re.search(r'\b(NO BUGS|MERGE AS IS)\b', own_brief)
 ROUNDS = os.path.expanduser('~/.claude/review-rounds.json')
 def round_heads():
     """The checkouts a round's brief names and their heads that its pins equal."""
@@ -90,7 +83,6 @@ def brief_approach(strict=True):
                          + ": name the newest one, or record this one in the PR branch's checkout (mergeworthy:pull-request step 5) and name that checkout in the brief\n")
         refused()
     return None
-implementer = req.role == 'implementation' or re.search(r'^\s*You implement\b', brief, re.M)
 def memory_launch(task):
     """The file a memory-refresh launch runs, which the 3-agent cap leaves out, else None: its task or prompt (never its title)
     says to follow, execute or do (launch.bound: `Follow the brief at <path>`, not `Do not follow <path>`) the path of
@@ -105,6 +97,29 @@ def memory_launch(task):
                 and os.path.isfile(p) and os.path.isfile(os.path.join(os.path.dirname(p), 'memory.source')):
             return p
     return None
+READERS = ('review', 'research')
+class Kinds:
+    """What kind of launch this is, each guessed once from its role and its brief."""
+    def __init__(self, req, brief):
+        self.implementation = req.role == 'implementation'
+        self.builds = bool(self.implementation or re.search(r'^\s*You implement\b', brief, re.M))  # what the Approach checks read
+        # Two rounds per loop on one head (delegate §Review rounds): a review round `<loop>-r<N>`, maybe followed by the date or head SHA
+        # the reuse block below asks for, once the heads its brief pins show the branch hasn't moved since two earlier rounds of its loop, is refused;
+        # a post's review is refused only once gate-pass's own check (review_launch.answers) already passes every draft it reviews
+        rnd = re.fullmatch(r'(.+)-r(\d+)', re.sub(r'(-\d{4}-\d{2}-\d{2}|-[0-9a-f]{7,40})+$', '', req.round_name))
+        self.round = (rnd[1], int(rnd[2])) if rnd else None
+        self.review = bool(rnd and (req.role == 'review' or not req.role and re.search(r'\bexactly (CLEAN|NO BUGS)\b', brief)))
+        # a post's review: a gate review of a named draft whose brief asks for no code verdict (a small review's pr-body.review.out comes with one)
+        self.post_review = self.review and bool(reviewed_drafts(brief)) and not re.search(r'\b(NO BUGS|MERGE AS IS)\b', own_brief)
+        self.drafter = 'thread-context.md' in brief  # it reads the thread record
+        self.author = self.implementation or self.drafter or 'MERGE AS IS' in brief
+        self.research = req.role == 'research' or bool(re.search(r'\bresearch', f"{req.title} {req.description}", re.I))
+        self.refresh = memory_launch(req.task)  # decided here, at admission, and stored on the pending call; `refresh` on the job too
+        # A fan-out a step names (finality steps 2-3, converge's per-slice verifiers) says so on a `Fan-out:` line, in the task or its brief, and passes
+        # the cap; the fan-out agents already open still count against an ordinary launch
+        self.fanout = not self.implementation and bool(re.search(r'^Fan-out: (finality step [23]|converge §Running the agents)$', brief, re.M))
+        self.writer = req.role not in READERS
+k = Kinds(req, brief)
 def is_refresh(r):
     """A pending call's or job's memory-refresh decision, as its admission recorded it. A job main's hook registered has none
     and is classified from its task; jobs() drops such a job one OPEN window (24 h) after the release that installs this, and
@@ -127,25 +142,23 @@ def locked_update(path, change):
         change(data)
         with open(path + '.tmp', 'w') as o: json.dump(data, o)
         os.replace(path + '.tmp', path)
-memory = memory_launch(req.task)  # decided here, at admission, and stored on the pending call; `refresh` on the job too
-refresh = bool(memory)
 def register_launch():
     """The PostToolUse call: the launch ran, so it records what its admission decided (from its pending record, which becomes
     the job) and makes no admission check. A launch with no pending record (keyless, or one its admission didn't get to write)
     is read from its tool input now."""
-    rec, ran_memory = {}, memory
+    rec, ran_memory = {}, k.refresh
     if key:  # nothing names the job (no ticket, title or description) otherwise, so no second launch of it can be told apart
         os.makedirs(agent_jobs.JOBS, exist_ok=True)
         with open(agent_jobs.JOBS + '.lock', 'a') as jobs_lock:  # released before the files below take their own locks
             fcntl.flock(jobs_lock, fcntl.LOCK_EX)
-            try: rec = json.load(open(pre)); launched = rec['launched']; ran_memory = rec.get('memory', memory); os.remove(pre)
+            try: rec = json.load(open(pre)); launched = rec['launched']; ran_memory = rec.get('memory', k.refresh); os.remove(pre)
             except (OSError, ValueError, KeyError, TypeError): rec, launched = {}, time.time()
             json.dump({'key': key, 'started': time.time(), 'launched': launched, 'brief': req.task, 'role': req.role, 'worktrees': L.worktrees, 'refresh': bool(ran_memory),
                        'session': req.session, 'transcript': req.transcript, 'handle': agent_jobs.handle(req.response)}, open(job_file, 'w'))
     if req.client_id: locked_update(CIDS, lambda seen: seen.setdefault(req.client_id, time.time()))
-    if review and not post_review:
-        locked_update(ROUNDS, lambda rounds: rounds.setdefault(rnd[1], []).append([int(rnd[2]), rec['heads'] if 'heads' in rec else round_heads()[1]]))
-    if implementer and (approach := rec['approach'] if 'approach' in rec else brief_approach(strict=False)):
+    if k.review and not k.post_review:
+        locked_update(ROUNDS, lambda rounds: rounds.setdefault(k.round[0], []).append([k.round[1], rec['heads'] if 'heads' in rec else round_heads()[1]]))
+    if k.builds and (approach := rec['approach'] if 'approach' in rec else brief_approach(strict=False)):
         os.makedirs(BUILT, exist_ok=True)
         open(os.path.join(BUILT, os.path.basename(approach[0])), 'w').write(approach[1])
     # an agent now runs memory-prep's brief: stop-lint's hourly repeat of the refresh order waits an hour (its folder may be gone by now)
@@ -224,7 +237,7 @@ for wt in sorted(paths if shas else ()):
             sys.stderr.write(f"BLOCKED: the brief pins {', '.join(sorted(old))} in {wt}, which has moved on to {head[:12]}. "
                              "Pin the live head (and check the work isn't already done there)." + (f" Ruled out:\n{ruled}\n" if ruled else "\n"))
             refused()
-if post_review:
+if k.post_review:
     led = re.search(r'(/[^\s`\'"()]+\.ledger\.md)\b', brief)  # the ledger the brief names; answers() defaults to the one beside the draft
     passes = [(o, dr, led and led[1]) for o in review_outs(brief) if (dr := review_launch.draft_of(o)) in reviewed_drafts(brief)]
     if all(not review_launch.answers(o, dr, lg) for o, dr, lg in passes):
@@ -232,11 +245,11 @@ if post_review:
                          "(mergeworthy:delegate §Review rounds): post it, or edit the draft first. It passes with:\n"
                          + ''.join(f"gate-pass {dr} {o}{f' --ledger {lg}' if lg else ''}\n" for o, dr, lg in passes))
         refused()
-elif review and int(rnd[2]) >= 3:
+elif k.review and k.round[1] >= 3:
     tops, heads = round_heads()
     rlock = open(ROUNDS + '.lock', 'a'); fcntl.flock(rlock, fcntl.LOCK_EX)  # held until exit
     rounds = json.load(open(ROUNDS)) if os.path.exists(ROUNDS) else {}
-    loop, n = rnd[1], int(rnd[2])
+    loop, n = k.round
     # first-parent and no merges: what a merge of the base brought in isn't the PR's own, as SHAPE STALE's compare leaves it out; no renames: each row names a real path
     def own_lines(t, o, h):
         rows = re.findall(r'^(\d+)\t(\d+)\t(.*)$', git(t, '-c', 'core.quotePath=false', 'log', '--first-parent', '--no-merges', '--no-renames', '--numstat', '--format=', f'{o}..{h}').stdout, re.M)
@@ -267,7 +280,7 @@ elif review and int(rnd[2]) >= 3:
 # (delegate step 3) names the project file, so the agent reads them: by owner/repo, or by a path in that repo's checkout. A memory-refresh
 # launch (memory_launch) reads only the session log; a brief that only mentions the template is other work.
 missing = []
-if req.role not in ('research', 'test') and not refresh:
+if req.role not in ('research', 'test') and not k.refresh:
     notes = {os.path.relpath(f, os.path.expanduser('~/.mergeworthy/projects'))[:-3].lower(): f
              for f in glob.glob(os.path.expanduser('~/.mergeworthy/projects/*/*.md'))}
     named = {r for r in notes if re.search(r'(?<![\w.-])' + re.escape(r) + r'(?!\.md)(?:\.git)?(?![\w.-])', brief, re.I)}
@@ -292,8 +305,8 @@ if req.role not in ('research', 'test') and not refresh:
                          "§Project file), its quotes into the study, or brief the learning sort (delegate/learn-sort.md):\n" + '\n'.join(over) + '\n')
         refused()
     # The producer reads the standard its checker uses, by path (delegate step 3): code for an implementer, writing for a drafter.
-    need = [f for f, applies in (('skills/code/SKILL.md', named and req.role == 'implementation'),
-                                 ('skills/writing/SKILL.md', 'thread-context.md' in brief)) if applies and f not in brief]
+    need = [f for f, applies in (('skills/code/SKILL.md', named and k.implementation),
+                                 ('skills/writing/SKILL.md', k.drafter)) if applies and f not in brief]
     if need:
         sys.stderr.write("BLOCKED: name the standard the agent writes to by its path, so it reads it before producing "
                          "(mergeworthy:delegate step 3): " + ', '.join('~/.mergeworthy/current/' + f for f in need) + '\n')
@@ -301,7 +314,7 @@ if req.role not in ('research', 'test') and not refresh:
     # The main session decides on code it read itself, not on an agent's summary: an implementation brief for a repo needs a file
     # tracked in that repo read by this session in the last three hours (Read, Grep, a cat/sed/head/grep/git show on it, gh pr diff,
     # gh api .../contents, or a WebFetch of its github.com page); a report an agent wrote inside a checkout is untracked and doesn't count
-    if req.role == 'implementation' and named and req.transcript and os.path.isfile(req.transcript):
+    if k.implementation and named and req.transcript and os.path.isfile(req.transcript):
         origin = {}
         def repo_of(p):
             top = git_top(p)
@@ -350,9 +363,8 @@ if req.role not in ('research', 'test') and not refresh:
                              "(no checkout: clone it, or gh pr diff / gh api), the feature's docs page and its JSDoc, and decide from them, not from an agent's report (always-on: the main session)\n")
             refused()
     # An author or the fresh reader works from the repo study (task step 4): the project file's ## Who decides links one dated within 30 days
-    authors = req.role == 'implementation' or 'thread-context.md' in brief or 'MERGE AS IS' in brief
     stale = []
-    for r in sorted(named) if authors else ():
+    for r in sorted(named) if k.author else ():
         sec = re.search(r'^## Who decides\n(.*?)(?=^## |\Z)', open(notes[r], errors='replace').read(), re.M | re.S)
         # a link relative to the project file counts too (`[r.study.md](r.study.md)`)
         cands = [os.path.join(os.path.dirname(notes[r]), os.path.expanduser(c)) for c in re.findall(r'[^\s()\[\]`]+\.study\.md', sec[1])] if sec else []
@@ -368,7 +380,7 @@ if req.role not in ('research', 'test') and not refresh:
         refused()
     # A drafter (reads the thread record, isn't a review) lists each scope-word claim beside its proof: the template's line.
     # A launch in the review, research or design role reads the record without drafting.
-    if 'thread-context.md' in brief and 'CLEAN' not in brief and req.role not in ('review', 'research', 'design') \
+    if k.drafter and 'CLEAN' not in brief and req.role not in ('review', 'research', 'design') \
             and not re.search(r'scope word', brief, re.I):
         sys.stderr.write("BLOCKED: a drafter brief carries the template's scope-word check: paste "
                          "~/.mergeworthy/current/skills/delegate/drafter.md, filled in (mergeworthy:delegate step 3)\n")
@@ -383,7 +395,7 @@ for pf in sorted({os.path.expanduser('~/.mergeworthy/projects/' + r + '.md') for
                          f"delegate_task's target.options `effort` for Claude or `reasoningEffort` for Codex), not "
                          + (f"{req.effort}.\n" if req.effort else "the harness's default.\n"))
         refused()
-approach = brief_approach() if implementer else None
+approach = brief_approach() if k.builds else None
 if approach and not approach[2]:
     built = os.path.join(BUILT, os.path.basename(approach[0]))
     last = open(built).read().strip() if os.path.isfile(built) else ''
@@ -394,7 +406,7 @@ if approach and not approach[2]:
         refused()
 # Research the program already wrote up (memory.md, the notes) is read, not redone.
 root = memory_file.for_cwd(req.cwd, req.session)
-if root and (req.role == 'research' or re.search(r'\bresearch', f"{req.title} {req.description}", re.I)):
+if root and k.research:
     topic = re.search(r'^\s*Topic:\s*(.+?)\s*$', brief, re.M)
     if not topic:
         sys.stderr.write("BLOCKED: a research brief names its topic in a `Topic: <key words>` line, so the hook can search the work folder's files for research already done (mergeworthy:delegate §Brief).\n")
@@ -425,11 +437,7 @@ def returned(path, use_id):
                 if isinstance(b, dict) and b.get('type') == 'tool_use' and b.get('id') == use_id: return False
     except OSError: return True
     return False
-# A fan-out a step names (finality steps 2-3, converge's per-slice verifiers) says so on a `Fan-out:` line, in the task or its brief, and passes
-# the cap; the fan-out agents already open still count against an ordinary launch
-fanout = req.role != 'implementation' and re.search(r'^Fan-out: (finality step [23]|converge §Running the agents)$', brief, re.M)
-capped = bool(req.session) and not refresh and not fanout  # the 3-agent cap applies to this launch
-READERS = ('review', 'research')
+capped = bool(req.session) and not k.refresh and not k.fanout  # the 3-agent cap applies to this launch
 def bears_on(r):
     """Whether a pending record can change this launch's verdict, from its stored fields alone: the union of what the checks
     below read (one agent per job: its key, or a task containing or contained in this one; the cap: this session's calls but
@@ -438,7 +446,7 @@ def bears_on(r):
     rt, mine = str(r.get('task') or '').strip(), req.task.strip()
     return (r.get('key') == key or bool(rt and mine and (rt in mine or mine in rt))
             or capped and r.get('session') == req.session and not is_refresh(r)
-            or req.role not in READERS and bool(set(r.get('worktrees') or []) & set(L.worktrees)))
+            or k.writer and bool(set(r.get('worktrees') or []) & set(L.worktrees)))
 calls_out = []  # the launches let through whose call hasn't returned, not registered yet
 for n in os.listdir(agent_jobs.LAUNCHED) if os.path.isdir(agent_jobs.LAUNCHED) else ():
     try: r = json.load(open(os.path.join(agent_jobs.LAUNCHED, n)))
@@ -461,7 +469,7 @@ registered = [j for _, j in agent_jobs.jobs()]  # the open jobs, read once for t
 # One writer per worktree: a writer (any role but review or research) waits for a linked worktree its brief names (not the launcher's
 # own) that holds another session's process, or that a live writer job or outstanding writer call names, whose agent isn't the launcher. T3 can show that
 # agent interrupted or cancelled while it runs, so agent_jobs.finished decides.
-if req.role not in READERS:
+if k.writer:
     own, sid = git_top(os.path.realpath(req.cwd or '/')), req.session
     wts = [w for w in L.worktrees if w != own]
     anc, p = set(), os.getpid()
@@ -552,7 +560,7 @@ if capped:
 admit()
 if not blocked:
     os.makedirs(agent_jobs.LAUNCHED, exist_ok=True); json.dump({'launched': time.time(), 'key': key, 'task': req.task, 'role': req.role, 'worktrees': L.worktrees, 'tool_use_id': req.tool_use_id,
-                                                           'transcript': req.transcript, 'session': req.session, 'refresh': refresh, 'memory': memory,
+                                                           'transcript': req.transcript, 'session': req.session, 'refresh': bool(k.refresh), 'memory': k.refresh,
                                                            **({'approach': list(approach[:2])} if approach else {}),
-                                                           **({'heads': round_heads()[1]} if review and not post_review else {})}, open(pre, 'w'))
+                                                           **({'heads': round_heads()[1]} if k.review and not k.post_review else {})}, open(pre, 'w'))
 sys.exit(2 if blocked else 0)
