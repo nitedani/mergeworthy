@@ -16,12 +16,10 @@ import failclosed
 import agent_jobs, launch, memory_file, project_file, review_launch, subprocess, testpaths
 from post_words import fence_spans
 from records import branch_record
-from shellcmd import segments, prog, git_argv, rlines, transcript, Where
+from shellcmd import segments, prog, git_argv, rlines, Where
 from work_folder import git_top, task_of
-from t3_tasks import under_t3
 register = sys.argv[1:] == ['register']
-d = json.load(sys.stdin)
-ti = d.get('tool_input', {}) or {}
+req = launch.Request(json.load(sys.stdin))
 blocked = False
 def refused():
     """After a check wrote its refusal: the remaining checks still run, so the launch gets every refusal in one message."""
@@ -29,7 +27,7 @@ def refused():
     blocked = True
 # T3 opens no run for a turn Claude Code starts by itself (a finished background command, a Monitor event), and refuses
 # launches from it (pingdotgg/t3code#16808): nothing ran, so no job, and the session keeps working instead of waiting
-if register and 'parent_not_active' in json.dumps(d.get('tool_response') or ''):
+if register and 'parent_not_active' in json.dumps(req.response or ''):
     print(json.dumps({'hookSpecificOutput': {'hookEventName': 'PostToolUse', 'additionalContext':
         "T3 refused this launch: a background event started this turn, and T3 opened no run for it, so it refuses agent "
         "launches and the user doesn't see this turn in the thread. The next user message, scheduled task or finished agent "
@@ -37,15 +35,14 @@ if register and 'parent_not_active' in json.dumps(d.get('tool_response') or ''):
         "edits, preparing the push or the body: delegate step 7); only an independent review and a post wait for a run. "
         "Keep the brief, launch it in the next run, and add no status line on each wake."}}))
     sys.exit(0)
-cid = str(ti.get('clientRequestId') or '')
 CIDS = os.path.expanduser('~/.claude/agent-client-request-ids.json')
-L = launch.parse(ti)
+L = launch.Brief(req.text)
 brief = L.brief  # every rule below reads the brief; the files it only names (project notes, installed skills) are read, so their history SHAs pin nothing
 paths = L.paths
 # A gate review (names a review output `.out` and CLEAN) starts only with its output named after its draft and on drafts that passed post-lint in their current form, and once
 # admitted records the text it is handed (review_launch, admit). Its outputs are the paths its task or prompt names after `output to` (delegate §Reviewers);
 # a launch with no such clause: every drafts/ `.out` its brief names, the files it also names there (thread record, ledger, parent, report) not being drafts
-said_outs = [p.rstrip('.,;:') for c in re.findall(r'\boutput to (/[^\s`\'"()]+(?: and /[^\s`\'"()]+)*)', str(ti.get('task') or ti.get('prompt') or '')) for p in c.split(' and ')]
+said_outs = [p.rstrip('.,;:') for c in re.findall(r'\boutput to (/[^\s`\'"()]+(?: and /[^\s`\'"()]+)*)', req.task) for p in c.split(' and ')]
 review_outs = lambda t: (sorted(set(said_outs)) or sorted(set(re.findall(r'(/[^\s`\'"()]*/drafts/[^\s`\'"()]+\.out)\b', t)))) if re.search(r'\.out\b', t) and 'CLEAN' in t else []
 reviewed_drafts = lambda t: {p for o in review_outs(t) if (p := review_launch.draft_of(o)) and os.path.isfile(p)}
 tdir = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'skills', 'delegate')
@@ -56,8 +53,8 @@ git = lambda wt, *a: subprocess.run(['git', '-C', wt, *a], capture_output=True, 
 # Two rounds per loop on one head (delegate §Review rounds): a review round `<loop>-r<N>`, maybe followed by the date or head SHA
 # the reuse block below asks for, once the heads its brief pins show the branch hasn't moved since two earlier rounds of its loop, is refused;
 # a post's review is refused only once gate-pass's own check (review_launch.answers) already passes every draft it reviews
-rnd = re.fullmatch(r'(.+)-r(\d+)', re.sub(r'(-\d{4}-\d{2}-\d{2}|-[0-9a-f]{7,40})+$', '', (cid or str(ti.get('description') or '')).strip()))
-review = rnd and (ti.get('role') == 'review' or not ti.get('role') and re.search(r'\bexactly (CLEAN|NO BUGS)\b', brief))
+rnd = re.fullmatch(r'(.+)-r(\d+)', re.sub(r'(-\d{4}-\d{2}-\d{2}|-[0-9a-f]{7,40})+$', '', req.round_name))
+review = rnd and (req.role == 'review' or not req.role and re.search(r'\bexactly (CLEAN|NO BUGS)\b', brief))
 # a post's review: a gate review of a named draft whose brief asks for no code verdict (a small review's pr-body.review.out comes with one)
 post_review = review and bool(reviewed_drafts(brief)) and not re.search(r'\b(NO BUGS|MERGE AS IS)\b', own_brief)
 ROUNDS = os.path.expanduser('~/.claude/review-rounds.json')
@@ -93,7 +90,7 @@ def brief_approach(strict=True):
                          + ": name the newest one, or record this one in the PR branch's checkout (mergeworthy:pull-request step 5) and name that checkout in the brief\n")
         refused()
     return None
-implementer = ti.get('role') == 'implementation' or re.search(r'^\s*You implement\b', brief, re.M)
+implementer = req.role == 'implementation' or re.search(r'^\s*You implement\b', brief, re.M)
 def memory_launch(task):
     """The file a memory-refresh launch runs, which the 3-agent cap leaves out, else None: its task or prompt (never its title)
     says to follow, execute or do (launch.bound: `Follow the brief at <path>`, not `Do not follow <path>`) the path of
@@ -114,13 +111,12 @@ def is_refresh(r):
     main's pending records name no session, so the cap never asks about them."""
     return r.get('refresh', bool(memory_launch(r.get('task') or r.get('brief') or '')))
 # a fan-out runs several agents on one brief, each under its own title and naming its part in its task: the title is part of the job
-key = ' '.join([*L.tickets, str(ti.get('title') or ti.get('description') or '').strip()]).strip()
+key = ' '.join([*L.tickets, req.title]).strip()
 job_file = os.path.join(agent_jobs.JOBS, hashlib.sha256(key.encode()).hexdigest()[:16])
 # when the launch this registers began (its transcript starts after it): one record per key, as one_per_job lets one call of a key
 # pend at a time; the record of a call another hook blocked is overwritten by the key's next launch, or removed a day on by the
 # next launch that reads it (the pending loop)
 pre = os.path.join(agent_jobs.LAUNCHED, os.path.basename(job_file))
-task = str(ti.get('task') or ti.get('prompt') or '')
 def locked_update(path, change):
     """Applies change to the JSON object in path (an empty one while it is missing) and writes it back, under path's lock:
     concurrent launches update it one at a time."""
@@ -131,7 +127,7 @@ def locked_update(path, change):
         change(data)
         with open(path + '.tmp', 'w') as o: json.dump(data, o)
         os.replace(path + '.tmp', path)
-memory = memory_launch(task)  # decided here, at admission, and stored on the pending call; `refresh` on the job too
+memory = memory_launch(req.task)  # decided here, at admission, and stored on the pending call; `refresh` on the job too
 refresh = bool(memory)
 def register_launch():
     """The PostToolUse call: the launch ran, so it records what its admission decided (from its pending record, which becomes
@@ -144,9 +140,9 @@ def register_launch():
             fcntl.flock(jobs_lock, fcntl.LOCK_EX)
             try: rec = json.load(open(pre)); launched = rec['launched']; ran_memory = rec.get('memory', memory); os.remove(pre)
             except (OSError, ValueError, KeyError, TypeError): rec, launched = {}, time.time()
-            json.dump({'key': key, 'started': time.time(), 'launched': launched, 'brief': task, 'role': ti.get('role'), 'worktrees': L.worktrees, 'refresh': bool(ran_memory),
-                       'session': d.get('session_id'), 'transcript': d.get('transcript_path'), 'handle': agent_jobs.handle(d.get('tool_response'))}, open(job_file, 'w'))
-    if cid: locked_update(CIDS, lambda seen: seen.setdefault(cid, time.time()))
+            json.dump({'key': key, 'started': time.time(), 'launched': launched, 'brief': req.task, 'role': req.role, 'worktrees': L.worktrees, 'refresh': bool(ran_memory),
+                       'session': req.session, 'transcript': req.transcript, 'handle': agent_jobs.handle(req.response)}, open(job_file, 'w'))
+    if req.client_id: locked_update(CIDS, lambda seen: seen.setdefault(req.client_id, time.time()))
     if review and not post_review:
         locked_update(ROUNDS, lambda rounds: rounds.setdefault(rnd[1], []).append([int(rnd[2]), rec['heads'] if 'heads' in rec else round_heads()[1]]))
     if implementer and (approach := rec['approach'] if 'approach' in rec else brief_approach(strict=False)):
@@ -160,7 +156,7 @@ if register:
     sys.exit(0)
 # T3 starts a new Claude session for each turn, and Claude Code's background agents end with the session that launched them;
 # the Agent tool runs in the background unless run_in_background is false
-if d.get('tool_name') in ('Agent', 'Task') and under_t3() and ti.get('run_in_background') is not False:
+if req.tool in ('Agent', 'Task') and req.t3 and req.background:
     sys.stderr.write("BLOCKED: under T3 Code a background Agent stops when this turn ends (T3 starts a new session for the next one). "
                      "Launch it with delegate_task (mergeworthy:delegate step 4), or with run_in_background: false for a child that finishes within this turn.\n")
     refused()
@@ -174,26 +170,24 @@ def codex_reset():
         return None
     return min(until) if until and min(until) > time.time() else None
 # This hook runs only under Claude Code, so a review on claudeAgent, or naming no provider (it inherits), is on the main session's company
-if ti.get('role') == 'review' and under_t3():
-    target = ti.get('target') or {}
-    provider = {target.get('providerInstanceId'), target.get('driverKind')} - {None, ''}
+if req.role == 'review' and req.t3:
     reset = codex_reset()
-    if reset and 'codex' in provider:
+    if reset and 'codex' in req.providers:
         at = time.localtime(reset)
         sys.stderr.write(f"BLOCKED: claude-swap reads every saved Codex account as used up until {time.strftime('%H:%M' if at[:3] == time.localtime()[:3] else '%a %H:%M', at)}, so this launch would fail. "
                          "Launch the review on this company (target.providerInstanceId claudeAgent); it needs no Fallback line while that holds.\n")
         refused()
     # the fallback keeps the first review's prompt, so its claim may sit in the brief file the task names; `<what failed>` is the form, no claim
-    elif not reset and (not provider or 'claudeAgent' in provider) and not re.search(r'\bFallback:[ \t]*[^\s<]', launch.Launch(str(ti.get('task') or '')).brief):
+    elif not reset and (not req.providers or 'claudeAgent' in req.providers) and not re.search(r'\bFallback:[ \t]*[^\s<]', launch.Brief(req.task).brief):
         sys.stderr.write("BLOCKED: an independent check starts on another company's model (mergeworthy:delegate §Reviewers): set target.providerInstanceId to codex. "
                          "Only when that call failed, launch on this company with `Fallback: <what failed>` in the task or the brief file it names.\n")
         refused()
 # T3 answers a delegate_task whose clientRequestId it has seen with that earlier task's result, without running anything.
 # Reuse is allowed only within 10 minutes (a retry of the same launch).
-if cid:
+if req.client_id:
     seen = json.load(open(CIDS)) if os.path.exists(CIDS) else {}
-    if cid in seen and time.time() - seen[cid] > 600:
-        sys.stderr.write(f"BLOCKED: clientRequestId '{cid}' was used before; T3 would return that earlier task's result instead of running this one. Use a new id (add the date or the head SHA).\n")
+    if req.client_id in seen and time.time() - seen[req.client_id] > 600:
+        sys.stderr.write(f"BLOCKED: clientRequestId '{req.client_id}' was used before; T3 would return that earlier task's result instead of running this one. Use a new id (add the date or the head SHA).\n")
         refused()
 for out in review_outs(brief):
     if why := review_launch.misnamed(out) or review_launch.unlinted(out):
@@ -225,7 +219,7 @@ for wt in sorted(paths if shas else ()):
     if head and not any(head.startswith(x) for x in shas):
         old = [x for x in shas if git(wt, 'merge-base', '--is-ancestor', x, head).returncode == 0]
         if old:
-            root = memory_file.for_cwd(d.get('cwd') or '', d.get('session_id'))
+            root = memory_file.for_cwd(req.cwd, req.session)
             ruled = memory_file.section(open(memory_file.path(root)).read(), 'Ruled out') if root and os.path.isfile(memory_file.path(root)) else ''
             sys.stderr.write(f"BLOCKED: the brief pins {', '.join(sorted(old))} in {wt}, which has moved on to {head[:12]}. "
                              "Pin the live head (and check the work isn't already done there)." + (f" Ruled out:\n{ruled}\n" if ruled else "\n"))
@@ -273,7 +267,7 @@ elif review and int(rnd[2]) >= 3:
 # (delegate step 3) names the project file, so the agent reads them: by owner/repo, or by a path in that repo's checkout. A memory-refresh
 # launch (memory_launch) reads only the session log; a brief that only mentions the template is other work.
 missing = []
-if ti.get('role') not in ('research', 'test') and not refresh:
+if req.role not in ('research', 'test') and not refresh:
     notes = {os.path.relpath(f, os.path.expanduser('~/.mergeworthy/projects'))[:-3].lower(): f
              for f in glob.glob(os.path.expanduser('~/.mergeworthy/projects/*/*.md'))}
     named = {r for r in notes if re.search(r'(?<![\w.-])' + re.escape(r) + r'(?!\.md)(?:\.git)?(?![\w.-])', brief, re.I)}
@@ -298,7 +292,7 @@ if ti.get('role') not in ('research', 'test') and not refresh:
                          "§Project file), its quotes into the study, or brief the learning sort (delegate/learn-sort.md):\n" + '\n'.join(over) + '\n')
         refused()
     # The producer reads the standard its checker uses, by path (delegate step 3): code for an implementer, writing for a drafter.
-    need = [f for f, applies in (('skills/code/SKILL.md', named and ti.get('role') == 'implementation'),
+    need = [f for f, applies in (('skills/code/SKILL.md', named and req.role == 'implementation'),
                                  ('skills/writing/SKILL.md', 'thread-context.md' in brief)) if applies and f not in brief]
     if need:
         sys.stderr.write("BLOCKED: name the standard the agent writes to by its path, so it reads it before producing "
@@ -307,7 +301,7 @@ if ti.get('role') not in ('research', 'test') and not refresh:
     # The main session decides on code it read itself, not on an agent's summary: an implementation brief for a repo needs a file
     # tracked in that repo read by this session in the last three hours (Read, Grep, a cat/sed/head/grep/git show on it, gh pr diff,
     # gh api .../contents, or a WebFetch of its github.com page); a report an agent wrote inside a checkout is untracked and doesn't count
-    if ti.get('role') == 'implementation' and named and d.get('transcript_path') and os.path.isfile(d['transcript_path']):
+    if req.role == 'implementation' and named and req.transcript and os.path.isfile(req.transcript):
         origin = {}
         def repo_of(p):
             top = git_top(p)
@@ -333,7 +327,7 @@ if ti.get('role') not in ('research', 'test') and not refresh:
                     out += [p for a in w[1:] if not a.startswith('-') and (os.sep in a or '.' in a) and (p := where.path(a))]
             return out
         since, seen = time.time() - 3 * 3600, False
-        for l in itertools.islice(rlines(d['transcript_path']), 4001):  # the last 4,000 lines: rlines yields b'' first after a final newline
+        for l in itertools.islice(rlines(req.transcript), 4001):  # the last 4,000 lines: rlines yields b'' first after a final newline
             if seen: break
             if b'"tool_use"' not in l: continue
             try: e = json.loads(l)
@@ -356,7 +350,7 @@ if ti.get('role') not in ('research', 'test') and not refresh:
                              "(no checkout: clone it, or gh pr diff / gh api), the feature's docs page and its JSDoc, and decide from them, not from an agent's report (always-on: the main session)\n")
             refused()
     # An author or the fresh reader works from the repo study (task step 4): the project file's ## Who decides links one dated within 30 days
-    authors = ti.get('role') == 'implementation' or 'thread-context.md' in brief or 'MERGE AS IS' in brief
+    authors = req.role == 'implementation' or 'thread-context.md' in brief or 'MERGE AS IS' in brief
     stale = []
     for r in sorted(named) if authors else ():
         sec = re.search(r'^## Who decides\n(.*?)(?=^## |\Z)', open(notes[r], errors='replace').read(), re.M | re.S)
@@ -374,24 +368,20 @@ if ti.get('role') not in ('research', 'test') and not refresh:
         refused()
     # A drafter (reads the thread record, isn't a review) lists each scope-word claim beside its proof: the template's line.
     # A launch in the review, research or design role reads the record without drafting.
-    if 'thread-context.md' in brief and 'CLEAN' not in brief and ti.get('role') not in ('review', 'research', 'design') \
+    if 'thread-context.md' in brief and 'CLEAN' not in brief and req.role not in ('review', 'research', 'design') \
             and not re.search(r'scope word', brief, re.I):
         sys.stderr.write("BLOCKED: a drafter brief carries the template's scope-word check: paste "
                          "~/.mergeworthy/current/skills/delegate/drafter.md, filled in (mergeworthy:delegate step 3)\n")
         refused()
 # A project file's `## Agents` line `Effort: <effort>`, bulleted or not, is the effort every agent for its repo runs at: a launch whose brief names
-# that file, or should name it (missing above), sets it (the Agent tool's `effort`, delegate_task's target.options or t3_thread_launch's modelSelection.options
-# `effort` or `reasoningEffort`); with no option the harness's default runs, which is not the repo's choice.
-opts = (ti.get('target') or ti.get('modelSelection') or {}).get('options') or {}
-opts = {o.get('id'): o.get('value') for o in opts if isinstance(o, dict)} if isinstance(opts, list) else opts
-effort = ti.get('effort') or opts.get('effort') or opts.get('reasoningEffort')
+# that file, or should name it (missing above), sets it; with no option the harness's default runs, which is not the repo's choice.
 for pf in sorted({os.path.expanduser('~/.mergeworthy/projects/' + r + '.md') for r in re.findall(r'\.mergeworthy/projects/([\w.-]+/[\w.-]+)\.md', brief)} | set(missing)):
     sec = re.search(r'^## Agents\n(.*?)(?=^## |\Z)', open(pf, errors='replace').read(), re.M | re.S) if os.path.isfile(pf) else None
     want = re.search(r'^(?:[-*] +)?Effort: *(\w+)', sec[1], re.M) if sec else None
-    if want and str(effort or '').lower() != want[1].lower():
+    if want and str(req.effort or '').lower() != want[1].lower():
         sys.stderr.write(f"BLOCKED: {pf}'s `## Agents` says `Effort: {want[1]}`: launch with effort {want[1]} (the Agent tool's `effort`, "
                          f"delegate_task's target.options `effort` for Claude or `reasoningEffort` for Codex), not "
-                         + (f"{effort}.\n" if effort else "the harness's default.\n"))
+                         + (f"{req.effort}.\n" if req.effort else "the harness's default.\n"))
         refused()
 approach = brief_approach() if implementer else None
 if approach and not approach[2]:
@@ -403,8 +393,8 @@ if approach and not approach[2]:
                          "`Approach: <path> (unchanged: <why, in one line>)`\n")
         refused()
 # Research the program already wrote up (memory.md, the notes) is read, not redone.
-root = memory_file.for_cwd(d.get('cwd') or '', d.get('session_id'))
-if root and (ti.get('role') == 'research' or re.search(r'\bresearch', f"{ti.get('title') or ''} {ti.get('description') or ''}", re.I)):
+root = memory_file.for_cwd(req.cwd, req.session)
+if root and (req.role == 'research' or re.search(r'\bresearch', f"{req.title} {req.description}", re.I)):
     topic = re.search(r'^\s*Topic:\s*(.+?)\s*$', brief, re.M)
     if not topic:
         sys.stderr.write("BLOCKED: a research brief names its topic in a `Topic: <key words>` line, so the hook can search the work folder's files for research already done (mergeworthy:delegate §Brief).\n")
@@ -437,18 +427,18 @@ def returned(path, use_id):
     return False
 # A fan-out a step names (finality steps 2-3, converge's per-slice verifiers) says so on a `Fan-out:` line, in the task or its brief, and passes
 # the cap; the fan-out agents already open still count against an ordinary launch
-fanout = ti.get('role') != 'implementation' and re.search(r'^Fan-out: (finality step [23]|converge §Running the agents)$', brief, re.M)
-capped = bool(d.get('session_id')) and not refresh and not fanout  # the 3-agent cap applies to this launch
+fanout = req.role != 'implementation' and re.search(r'^Fan-out: (finality step [23]|converge §Running the agents)$', brief, re.M)
+capped = bool(req.session) and not refresh and not fanout  # the 3-agent cap applies to this launch
 READERS = ('review', 'research')
 def bears_on(r):
     """Whether a pending record can change this launch's verdict, from its stored fields alone: the union of what the checks
     below read (one agent per job: its key, or a task containing or contained in this one; the cap: this session's calls but
     memory refreshes; one writer per worktree: a shared worktree). It only keeps returned() and the transcript searches off the
     rest: another session's other calls are read by that session's launches, and each check still applies its own test."""
-    rt, mine = str(r.get('task') or '').strip(), task.strip()
+    rt, mine = str(r.get('task') or '').strip(), req.task.strip()
     return (r.get('key') == key or bool(rt and mine and (rt in mine or mine in rt))
-            or capped and r.get('session') == d.get('session_id') and not is_refresh(r)
-            or ti.get('role') not in READERS and bool(set(r.get('worktrees') or []) & set(L.worktrees)))
+            or capped and r.get('session') == req.session and not is_refresh(r)
+            or req.role not in READERS and bool(set(r.get('worktrees') or []) & set(L.worktrees)))
 calls_out = []  # the launches let through whose call hasn't returned, not registered yet
 for n in os.listdir(agent_jobs.LAUNCHED) if os.path.isdir(agent_jobs.LAUNCHED) else ():
     try: r = json.load(open(os.path.join(agent_jobs.LAUNCHED, n)))
@@ -471,8 +461,8 @@ registered = [j for _, j in agent_jobs.jobs()]  # the open jobs, read once for t
 # One writer per worktree: a writer (any role but review or research) waits for a linked worktree its brief names (not the launcher's
 # own) that holds another session's process, or that a live writer job or outstanding writer call names, whose agent isn't the launcher. T3 can show that
 # agent interrupted or cancelled while it runs, so agent_jobs.finished decides.
-if ti.get('role') not in READERS:
-    own, sid = git_top(os.path.realpath(d.get('cwd') or '/')), d.get('session_id')
+if req.role not in READERS:
+    own, sid = git_top(os.path.realpath(req.cwd or '/')), req.session
     wts = [w for w in L.worktrees if w != own]
     anc, p = set(), os.getpid()
     while wts and p > 1:
@@ -488,12 +478,12 @@ if ti.get('role') not in READERS:
     def launchers_own(pid):
         try: return bool(sid) and f'CLAUDE_CODE_SESSION_ID={sid}'.encode() in open(f'/proc/{pid}/environ', 'rb').read().split(b'\0')
         except OSError: return False
-    me, busy = os.path.realpath(transcript(d) or '/'), []
+    me, busy = os.path.realpath(req.caller or '/'), []
     # a call still outstanding counts as its job will, its own key's aside (one_per_job's)
     writer_calls = [c for c in calls_out if c['key'] != key and set(c['worktrees']) & set(wts)]
     writers = [j for j in registered + writer_calls if j.get('role') not in READERS] if wts else []
     for j in writers:
-        if 'worktrees' not in j: j['worktrees'] = launch.Launch(j.get('brief', '')).worktrees  # registered before jobs recorded theirs
+        if 'worktrees' not in j: j['worktrees'] = launch.Brief(j.get('brief', '')).worktrees  # registered before jobs recorded theirs
     for w in wts:
         pids = [f'{e} ({c})' for e, cwd, c in procs if (cwd == w or cwd.startswith(w + '/')) and not launchers_own(e)]
         held = []
@@ -523,9 +513,9 @@ def one_per_job(started):
 this_job = json.load(open(job_file)) if os.path.exists(job_file) else {}
 same = [this_job] if time.time() - this_job.get('started', 0) < agent_jobs.OPEN else [c for c in calls_out if c['key'] == key]
 if same: one_per_job(same[0]['started'])
-for j in registered + calls_out if task.strip() else ():
+for j in registered + calls_out if req.task.strip() else ():
     if same and j.get('key') == key: continue  # this job's own record, refused above
-    if (other := j.get('brief', '').strip()) and (other in task.strip() or task.strip() in other) and (j in calls_out or not agent_jobs.finished(j)):
+    if (other := j.get('brief', '').strip()) and (other in req.task.strip() or req.task.strip() in other) and (j in calls_out or not agent_jobs.finished(j)):
         sys.stderr.write(
             f"BLOCKED: this task contains, or is contained in, an open job's task ({j['key'][:160]}, started {int((time.time() - j['started']) / 60)} min ago), "
             "so it is the same work under another title, and an agent already on the job gets a message, not a twin (mergeworthy:delegate step 1). An agent of a fan-out names its part in its task "
@@ -539,7 +529,7 @@ def users_words(quote):
     """Whether a prompt the user typed in this session (its transcript) holds quote verbatim: a tool result, hook message or
     assistant turn doesn't count."""
     try:
-        for l in open(d.get('transcript_path') or '', errors='replace'):
+        for l in open(req.transcript or '', errors='replace'):
             try: o = json.loads(l)
             except ValueError: continue
             if isinstance(o, dict) and memory_file.prompt(o) and any(quote in t for t in memory_file.texts(o)): return True
@@ -547,10 +537,10 @@ def users_words(quote):
     return False
 if capped:
     # session, then refresh, then finished: a refresh never counts, so its transcript isn't searched
-    live = [j for j in registered if j.get('session') == d['session_id'] and not is_refresh(j) and not agent_jobs.finished(j)] \
-        + [c for c in calls_out if c.get('session') == d['session_id'] and not c['refresh']]
+    live = [j for j in registered if j.get('session') == req.session and not is_refresh(j) and not agent_jobs.finished(j)] \
+        + [c for c in calls_out if c.get('session') == req.session and not c['refresh']]
     folders = {f for t in L.files + L.refs if (f := task_of(t))}
-    scope = os.path.join(task_of(d.get('cwd') or '/') or (folders.pop() if len(folders) == 1 else '<your work folder>'), 'scope.md')
+    scope = os.path.join(task_of(req.cwd or '/') or (folders.pop() if len(folders) == 1 else '<your work folder>'), 'scope.md')
     raised = re.search(r'^Agents: ([1-9]\d*) \(user \d{4}-\d{2}-\d{2}: "(.+)"\)$', open(scope, errors='replace').read() if os.path.isfile(scope) else '', re.M)
     limit = int(raised[1]) if raised and len(live) >= 3 and users_words(raised[2]) else 3  # a transcript is read only at the cap
     if len(live) >= limit:
@@ -561,8 +551,8 @@ if capped:
         refused()
 admit()
 if not blocked:
-    os.makedirs(agent_jobs.LAUNCHED, exist_ok=True); json.dump({'launched': time.time(), 'key': key, 'task': task, 'role': ti.get('role'), 'worktrees': L.worktrees, 'tool_use_id': d.get('tool_use_id'),
-                                                           'transcript': d.get('transcript_path'), 'session': d.get('session_id'), 'refresh': refresh, 'memory': memory,
+    os.makedirs(agent_jobs.LAUNCHED, exist_ok=True); json.dump({'launched': time.time(), 'key': key, 'task': req.task, 'role': req.role, 'worktrees': L.worktrees, 'tool_use_id': req.tool_use_id,
+                                                           'transcript': req.transcript, 'session': req.session, 'refresh': refresh, 'memory': memory,
                                                            **({'approach': list(approach[:2])} if approach else {}),
                                                            **({'heads': round_heads()[1]} if review and not post_review else {})}, open(pre, 'w'))
 sys.exit(2 if blocked else 0)
