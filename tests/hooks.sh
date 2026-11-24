@@ -14,7 +14,7 @@ cat > "$T/bin/gh" <<'EOF'
 # ...and `gh pr view [<ref>] --json number` from $FX/pr_view_<ref with / and : replaced by _>, or $FX/pr_view_current without a ref (none: gh's "no pull requests found")
 # ...and `gh pr checks <url> --json name,bucket` from $FX/pr_checks_<url with / and : replaced by _> (none: "no checks reported"; a URL not on github.com: gh's "no pull requests found")
 # A `--jq .a.b` on a fixture holding a JSON object answers that field, as gh does; any other fixture is the answer as it stands, its
-# first JSON page alone without --paginate
+# first JSON page alone without --paginate, and every page as one array of them with --paginate --slurp
 [ -n "${GH_STUB_PWD:-}" ] && echo "$1 $2 $PWD" >> "$GH_STUB_PWD"  # each call and where it ran, for a check that must run gh in the command's dir
 [ -n "${GH_STUB_ARGS:-}" ] && printf '%s\n' "$*" >> "$GH_STUB_ARGS"  # each call's arguments
 [ "$1 $2" = "config get" ] && { [ ! -f "$FX/login" ] || cat "$FX/login"; exit; }  # the login gh's own config names: $FX/login
@@ -37,14 +37,21 @@ if [ "$1 $2" = "pr list" ]; then  # from $FX/pr_list_<the -R repo with / replace
 [ "$1 $2" = "pr checks" ] && [ "${3#https://github.com/}" = "$3" ] && { echo "no pull requests found for branch \"$3\"" >&2; exit 1; }
 if [ "$1 $2" = "pr checks" ]; then f="$FX/pr_checks_$(printf '%s' "$3" | tr '/:' '__')"; [ -f "$f" ] && cat "$f" && exit 1; echo "no checks reported on the 'x' branch" >&2; exit 1; fi
 [ "$1" = api ] || exit 1
+[ "$2 $3" = "--hostname github.com" ] && set -- api "${@:4}"  # --hostname github.com: the same fixtures
 f="$FX/$(printf '%s' "$2" | tr '/?&=' '____')"
 for a in "$@"; do case "$a" in o=*|id=*) [ -f "${f}_${a#*=}" ] && f="${f}_${a#*=}";; esac; done  # graphql: $FX/graphql_<owner> or $FX/graphql_<node id> answers for it
 # GH_STUB_403=1 rate-limits every call, GH_STUB_403=<path> that path's; `gh api rate_limit` answers, as GitHub's doesn't count
 [ -n "$GH_STUB_403" ] && [ "$2" != rate_limit ] && { [ "$GH_STUB_403" = 1 ] || [ "$GH_STUB_403" = "$2" ]; } && { echo 'gh: API rate limit exceeded for user ID 1. (HTTP 403)' >&2; exit 1; }
+[ -f "$f.hang" ] && exec sleep 30  # $FX/<path>.hang: gh hangs past the caller's timeout
+[ -f "$f" ] || [ ! -f "$f.err" ] || { cat "$f.err" >&2; exit 1; }  # $FX/<path>.err, with no $FX/<path>: gh fails, printing it
 [ -f "$f" ] || { printf '{"message":"Not Found","status":"404"}'; echo 'gh: Not Found (HTTP 404)' >&2; exit 1; }  # gh prints the error's JSON body too
-q=; pg=; while [ $# -gt 0 ]; do [ "$1" = --jq ] && q=$2; [ "$1" = --paginate ] && pg=1; shift; done
+q=; pg=; sl=; while [ $# -gt 0 ]; do [ "$1" = --jq ] && q=$2; [ "$1" = --paginate ] && pg=1; [ "$1" = --slurp ] && sl=1; shift; done
 python3 -c 'import json, re, sys
 raw = open(sys.argv[1]).read(); q = sys.argv[2]
+if sys.argv[4]:  # --slurp: every page, as one array of them
+    pages, at = [], 0
+    while raw[at:].strip(): page, at = json.JSONDecoder().raw_decode(raw, len(raw) - len(raw[at:].lstrip())); pages.append(page)
+    raw = json.dumps(pages)
 if not sys.argv[3] and raw.lstrip()[:1] in ("{", "["):  # a fixture of several JSON pages: without --paginate, gh reads the first
     try: raw = raw[:json.JSONDecoder().raw_decode(raw.lstrip())[1] + len(raw) - len(raw.lstrip())]
     except ValueError: pass
@@ -53,7 +60,7 @@ except ValueError: v = None
 if isinstance(v, dict) and re.fullmatch(r"(\.\w+)+", q):
     for k in q.split(".")[1:]: v = v.get(k) if isinstance(v, dict) else None
     print("" if v is None else v if isinstance(v, str) else json.dumps(v))
-else: sys.stdout.write(raw)' "$f" "$q" "$pg"
+else: sys.stdout.write(raw)' "$f" "$q" "$pg" "$sl"
 EOF
 printf '#!/bin/sh\nexit 1\n' > "$T/bin/systemctl"  # no systemd user manager: session-start never reaches the real one
 chmod +x "$T/bin/gh" "$T/bin/systemctl"; export PATH="$T/bin:$PATH" FX="$T/fx"
@@ -3055,16 +3062,23 @@ check "BLOCK: a PR gh can't read, asking to retry" "2 1" "$(GH_STUB_403=1 rdy 'g
 check "BLOCK: a number gh finds no PR for, saying to check the repository and number" "2 1 0" "$(rdy 'gh pr ready 1 -R o/r' "$G2") $(grep -c "finds no PR (no pull requests found.*name no PR this account can see, so check them" "$T/err") $(grep -c 'retry once' "$T/err")"
 : > "$T/rdy.args"
 check "gh pr ready --undo, --undo=true, -h and --help, with no PR of the checkout too, never read the PR" "0 0 0 0 0" "$(rdy 'gh pr ready 5 -R o/r --undo' "$GO") $(rdy 'gh pr ready --undo=true 5 -R o/r' "$GO") $(rdy 'gh pr ready -h' "$GO") $(rdy 'gh pr ready --help' "$GO") $(grep -c 'pr view' "$T/rdy.args")"
-# pre-bash-guard: `gh pr merge` waits for a PR that is up to date with its base and whose CI ran after the base last touched its files; never --admin
+# pre-bash-guard: `gh pr merge` waits for a PR that is up to date with its base and whose CI ran after the base last touched its files; --admin only past rules the owner may bypass (below, with the ask)
 printf '## Merging\n- Merge each PR as soon as it is ready\n' >> "$HOME/.mergeworthy/projects/o/r.md"  # the owner's standing order: the checks below are on the merge's form
 M='gh pr merge 41 -R o/r --squash --delete-branch --subject "Fix it (#41)" --body ""'
 mpr() { # mergeStateStatus, when its last check completed
-  printf '{"url":"https://github.com/o/r/pull/41","headRefName":"fix","headRefOid":"hd","baseRefName":"main","mergeStateStatus":"%s","changedFiles":1,"files":[{"path":"a.py"}],"statusCheckRollup":[{"completedAt":"%s"}],"commits":[{"authors":[%s]}]}' "$1" "$2" "${3:-}" > "$FX/pr_view_41"; }
+  printf '{"url":"https://github.com/o/r/pull/41","headRefName":"fix","headRefOid":"hd","baseRefName":"main","mergeStateStatus":"%s","changedFiles":1,"files":[{"path":"a.py"}],"statusCheckRollup":[{"name":"ci","conclusion":"SUCCESS","completedAt":"%s"}],"commits":[{"authors":[%s]}]}' "$1" "$2" "${3:-}" > "$FX/pr_view_41"; }
 printf '{"total_commits":1,"commits":[{"sha":"b1","commit":{"committer":{"date":"2026-10-28T12:00:00Z"}}}]}' > "$FX/repos_o_r_compare_hd...main"
 printf '{"files":[{"filename":"a.py"}]}' > "$FX/repos_o_r_commits_b1"
 mpr CLEAN 2026-10-28T13:00:00Z
 check "a PR up to date with its base, CI run after the base's last commit, merges" 0 "$(guard "$M")"
-check "BLOCK: --admin, naming it" "2 1" "$(guard "$M --admin") $(grep -c 'never `gh pr merge --admin`' "$T/err")"
+printf '{"login":"me"}' > "$FX/user"; printf '{"owner":{"login":"o","type":"User"}}' > "$FX/repos_o_r"
+check "BLOCK: --admin on a repo of another login, naming it" "2 1" "$(guard "$M --admin") $(grep -c "\`gh pr merge --admin\` bypasses main's rules.*Here o/r is o's, not me's" "$T/err")"
+rm "$FX/user" "$FX/repos_o_r"
+check "BLOCK: a merge through gh api's PUT .../pulls/<N>/merge, by -X or --method, with fields or --input, naming gh pr merge; reading whether it merged passes" "2 1 2 2 0" \
+  "$(guard 'gh api -X PUT repos/o/r/pulls/41/merge -f merge_method=squash') $(grep -c 'merge with `gh pr merge`, where the merge checks run' "$T/err") $(guard 'gh api --method put /repos/o/r/pulls/41/merge --input m.json') $(guard "gh api -X PUT 'repos/{owner}/{repo}/pulls/41/merge'") $(guard 'gh api repos/o/r/pulls/41/merge')"
+echo '{"query":"mutation($id: ID!) { mergePullRequest(input: {pullRequestId: $id}) { clientMutationId } }","variables":{"id":"PR_1"}}' > "$T/mpr.json"
+check "BLOCK: a merge through gh api's POST .../merges or GraphQL's mergePullRequest, inline or from --input, with the same message; a GraphQL read passes, one searching for the word too" "2 1 2 2 1 0 0" \
+  "$(guard 'gh api -X POST repos/o/r/merges -f base=main -f head=fix') $(grep -c 'merge with `gh pr merge`, where the merge checks run' "$T/err") $(guard "gh api graphql -f query='mutation { mergePullRequest(input: {pullRequestId: \"PR_1\"}) { clientMutationId } }'") $(guard "gh api graphql --input $T/mpr.json") $(grep -c 'merge with `gh pr merge`, where the merge checks run' "$T/err") $(guard "gh api graphql -f query='{ viewer { login } }'") $(guard "gh api graphql -f query='query { search(query: \"mergePullRequest\", type: ISSUE, first: 1) { issueCount } }'")"
 check "a merge the guard passes records its PR as merged, pending until it ends (own_actions); one it blocks records nothing" "2 0 CLOSED_THREADS o/r#41 merged|" \
   "$(OWN_PENDING="$T/own-pm" guard "$M --admin") $(OWN_PENDING="$T/own-pm" guard "$M") $(cut -d' ' -f3- "$T/own-pm" | tr '\n' '|')"
 mpr BEHIND 2026-10-28T13:00:00Z
@@ -4981,6 +4995,51 @@ printf '## Merging\n- Merge each PR as soon as it is ready (gates, CI)\n' >> "$H
 check "a merge under the project file's standing order passes with no ask, or with another PR held back; BLOCK: the user's last message holding it back wins over the order, a past 'merged' too" "0 0 2 2 2 2" \
   "$(said 'thanks'; lg "$M") $(said "Don't merge #40."; lg "$M") $(said 'Dont merge pr when ready, I want to see it.'; lg "$M") $(said 'ne mergeld'; lg "$M") $(said "Don't merge #41."; lg "$M") $(said "I don't want it merged yet."; lg "$M")"
 sed -i '/^## Merging/,$d' "$HOME/.mergeworthy/projects/o/r.md"
+# --admin merges past the base's rules only on the owner's own user repo, every rule on the base from a ruleset GitHub lets them always bypass, no
+# classic protection, and on their ask: the typed one, or the project file's order; a repo with no project file has no standing order
+adm() { # login, repo owner, owner type, the ruleset's current_user_can_bypass
+  printf '{"login":"%s"}' "$1" > "$FX/user"; printf '{"owner":{"login":"%s","type":"%s"}}' "$2" "$3" > "$FX/repos_o_r"
+  printf '[{"type":"update","ruleset_id":7}]' > "$FX/repos_o_r_rules_branches_main_per_page_100"; printf '{"name":"carry","current_user_can_bypass":"%s"}' "$4" > "$FX/repos_o_r_rulesets_7"
+  echo 'gh: Branch not protected (HTTP 404)' > "$FX/repos_o_r_branches_main_protection.err"; }
+MA="$M --admin"; adm o o User always
+check "an --admin merge on the owner's own repo, its ruleset always bypassable, no classic protection, asked for as merge #41, passes; with the project file's order too" "0 0" \
+  "$(said 'merge #41'; lg "$MA") $(said 'looks good'; printf '## Merging\n- Merge each PR as soon as it is ready\n' >> "$HOME/.mergeworthy/projects/o/r.md"; lg "$MA"; sed -i '/^## Merging/,$d' "$HOME/.mergeworthy/projects/o/r.md")"
+said 'merge #41'
+check "an --admin merge with GH_HOST naming another host reads the login, repo, rules and protection from github.com" "0 5 5" \
+  "$(rm -f "$T/args"; GH_HOST=github.example.com GH_STUB_ARGS="$T/args" lg "$MA") $(grep -cE '^api (--hostname github.com )?(user|repos/o/r|repos/o/r/(rules|rulesets|branches)/.*)$' "$T/args") $(grep -cE '^api --hostname github.com (user|repos/o/r|repos/o/r/(rules|rulesets|branches)/.*)$' "$T/args")"
+check "BLOCK: --admin on an organization's repo, past a ruleset bypassable never or for pull requests only, or classic protection, naming why" "2 1 2 1 2 1 2 1" \
+  "$(adm o o Organization always; lg "$MA") $(grep -c 'o/r belongs to the organization o: merge once the PR meets them' "$T/err") \
+$(adm o o User never; lg "$MA") $(grep -c 'ruleset 7 (carry) lets o bypass it never, not always' "$T/err") \
+$(adm o o User pull_requests_only; lg "$MA") $(grep -c 'bypass it pull_requests_only, not always' "$T/err") \
+$(adm o o User always; echo '{}' > "$FX/repos_o_r_branches_main_protection"; lg "$MA") $(grep -c 'main has classic branch protection, past which the guard lets no --admin merge' "$T/err"; rm "$FX/repos_o_r_branches_main_protection")"
+check "BLOCK: --admin when reading the base's classic protection fails other than with GitHub's 'Branch not protected', saying to retry" "2 1" \
+  "$(mv "$FX/repos_o_r_branches_main_protection.err" "$T/bnp"; lg "$MA") $(grep -c "gh couldn't read main's branch protection: retry once gh answers" "$T/err"; mv "$T/bnp" "$FX/repos_o_r_branches_main_protection.err")"
+check "BLOCK: --admin=true, and --admin=false then --admin, read as --admin; --admin then --admin=false is a plain merge" "2 2 0" \
+  "$(adm o o Organization always; lg "$M --admin=true") $(lg "$M --admin=false --admin") $(lg "$M --admin --admin=false"; adm o o User always)"
+MR="${MA#gh }"; MR="${MR/ -R o\/r/}"
+check "BLOCK: -R or --repo before pr merge reaches the merge checks with its repo" "2 2 2 1" \
+  "$(adm o o Organization always; lg "gh -R o/r $MR") $(lg "gh --repo o/r $MR") $(lg "gh --repo=o/r $MR") $(grep -c 'o/r belongs to the organization o' "$T/err"; adm o o User always)"
+check "BLOCK: --admin on a PR off github.com, naming its host" "2 1" \
+  "$(sed -i 's|https://github.com/o/r/pull/41|https://github.example.com/o/r/pull/41|' "$FX/pr_view_41"; lg "$MA") $(grep -c 'pull/41 is on github.example.com' "$T/err"; sed -i 's|github.example.com|github.com|' "$FX/pr_view_41")"
+check "BLOCK: --admin on a response of another shape (the repo with no owner, a rules page an object, a rule with no ruleset_id, a ruleset a string), naming the read to retry" "2 1 2 1 2 1 2 1" \
+  "$(echo '{}' > "$FX/repos_o_r"; lg "$MA") $(grep -c "gh couldn't read the login or o/r: retry once gh answers" "$T/err"; adm o o User always) \
+$(echo '{}' > "$FX/repos_o_r_rules_branches_main_per_page_100"; lg "$MA") $(grep -c "gh couldn't read main's rules: retry" "$T/err") \
+$(echo '[{}]' > "$FX/repos_o_r_rules_branches_main_per_page_100"; lg "$MA") $(grep -c "gh couldn't read main's rules: retry" "$T/err"; adm o o User always) \
+$(echo '"x"' > "$FX/repos_o_r_rulesets_7"; lg "$MA") $(grep -c "gh couldn't read ruleset 7: retry" "$T/err"; adm o o User always)"
+sed 's/"statusCheckRollup":\[/&{"name":"lint","conclusion":"NEUTRAL"},{"context":"e2e","state":"PENDING"},{"name":"docs","conclusion":"","status":"IN_PROGRESS"},{"name":"t","conclusion":"FAILURE"},/' "$FX/pr_view_41" > "$T/pv"
+check "BLOCK: --admin while a check on the head failed or is pending, naming each; a neutral one passes" "2 1" \
+  "$(cp "$FX/pr_view_41" "$T/pv41"; cp "$T/pv" "$FX/pr_view_41"; lg "$MA") $(grep -c "its head's checks haven't all succeeded (e2e pending, docs pending, t failure)" "$T/err"; mv "$T/pv41" "$FX/pr_view_41")"
+mv "$HOME/.mergeworthy/projects/o/r.md" "$T/or.md"
+check "with no project file, BLOCK: --admin unasked, or asked for another PR; a plain merge unasked passes, and --admin asked for passes" "2 1 2 0 0" \
+  "$(said 'looks good'; lg "$MA") $(grep -c "merging https://github.com/o/r/pull/41 past its base's rules (--admin) lands on o/r.*reply \`merge\`" "$T/err") $(said 'merge #40'; lg "$MA") $(said 'looks good'; lg "$M") $(said 'merge #41'; lg "$MA")"
+mv "$T/or.md" "$HOME/.mergeworthy/projects/o/r.md"; rm "$FX/user"
+check "BLOCK: --admin when gh can't read the login, saying to retry" "2 1" "$(lg "$MA") $(grep -c "gh couldn't read the login or o/r: retry once gh answers" "$T/err")"
+echo '{"login":"o"}' > "$FX/user"; printf '[{"type":"update","ruleset_id":7}][{"type":"deletion","ruleset_id":8}]' > "$FX/repos_o_r_rules_branches_main_per_page_100"; printf '{"name":"maint","current_user_can_bypass":"never"}' > "$FX/repos_o_r_rulesets_8"
+check "BLOCK: --admin past a ruleset that only the second page of the base's rules names" "2 1" "$(lg "$MA") $(grep -c 'ruleset 8 (maint) lets o bypass it never, not always' "$T/err")"
+rm "$FX/repos_o_r_rulesets_8"
+touch "$FX/repos_o_r_rules_branches_main_per_page_100.hang"
+check "BLOCK: --admin when gh hangs reading the base's rules, saying to retry" "2 1" "$(lg "$MA") $(grep -c "gh couldn't read main's rules: retry once gh answers" "$T/err")"
+rm "$FX/user" "$FX/repos_o_r_rules_branches_main_per_page_100.hang" "$FX/repos_o_r_branches_main_protection.err" "$FX/repos_o_r" "$FX/repos_o_r_rules_branches_main_per_page_100" "$FX/repos_o_r_rulesets_7"
 said 'looks good'
 check "BLOCK: gh release create and npm publish unasked; asked, or a dry run, or a repo with no project file, they pass; BLOCK: release notes asked for, a past 'released' or 'published', one held back as 'released' or 'published'" "2 2 0 0 2 2 2 0 0 2 2 2 2" \
   "$(lg 'gh release create v1.2.0 -R o/r') $(lg 'npm publish' "$TCO") $(lg 'npm publish --dry-run' "$TCO") $(lg 'gh release create v1.2.0 -R lo/none') \

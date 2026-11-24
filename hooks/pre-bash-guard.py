@@ -214,13 +214,14 @@ def project_file(repo):
     try: return open(os.path.expanduser(f'~/.mergeworthy/projects/{repo}.md'), errors='replace').read() if repo else None
     except OSError: return None
 
-def need_ask(kind, what, repo=None, num=None, branch=None):
+def need_ask(kind, what, repo=None, num=None, branch=None, strict=False):
     """Blocks what (a landing on repo's default branch, or an ask-first command) unless the message the user last typed asks for it, or
-    holds it back in no sentence while repo's project file holds kind's `## Merging` order; a landing on a repo with no project file passes."""
+    holds it back in no sentence while repo's project file holds kind's `## Merging` order; a landing on a repo with no project file passes,
+    unless strict (a merge past the base's rules)."""
     repo = re.sub(r'^gitlab\.com/', '', repo or '') or None  # a GitLab project's project file is named by its path
     _, order, reply = ASKED_FOR[kind]
     text = project_file(repo)
-    if text is None and kind != 'ask-first': return
+    if text is None and kind != 'ask-first' and not strict: return
     sec = re.search(r'^## Merging\b[^\n]*\n(.*?)(?=^## |\Z)', text or '', re.M | re.S)
     asked = asks(last_typed(), kind, repo, num, branch)
     if asked or asked is None and order and sec and re.search(r'^[-*] +' + order.format(branch=re.escape(branch or '')), sec[1], re.M):
@@ -230,6 +231,34 @@ def need_ask(kind, what, repo=None, num=None, branch=None):
               "(your own scheduled prompt, scope or goal is no ask). Say what it would restart and ask the owner to reply `update`")
     block(f"{what} lands on {repo}, which is the owner's: it needs their ask, in the message they last typed or the project file's "
           f"`## Merging` order (your own scheduled prompt, scope or goal is none). Say it's ready and ask the owner to reply `{reply}` (mergeworthy:merging steps 3-4)")
+
+def own_bypass(pr, run):
+    """Why an admin merge of pr (`gh pr view`'s JSON) isn't the owner's to make, None when it is: pr is on github.com, every check on its head succeeded,
+    gh's login owns its repo as a user (not an org), every rule on its base is from a ruleset GitHub says it may always bypass, no classic protection. run: `gh <args>`."""
+    host, slug, base = pr['url'].split('/')[2], '/'.join(pr['url'].split('/')[3:5]), pr['baseRefName']
+    if host != 'github.com': return f"{pr['url']} is on {host}, whose rules and logins the guard doesn't read"
+    if bad := [f"{c.get('name') or c.get('context')} {(c.get('conclusion') or c.get('state') or 'pending').lower()}" for c in pr['statusCheckRollup'] if (c.get('conclusion') or c.get('state')) not in ('SUCCESS', 'NEUTRAL', 'SKIPPED')]:
+        return f"its head's checks haven't all succeeded ({', '.join(bad)}): merge once they have"
+    def call(*path):  # None when gh hangs or can't start
+        try: return run('api', '--hostname', 'github.com', *path)
+        except (OSError, subprocess.TimeoutExpired): return None
+    def get(*path):
+        try: return json.loads(r.stdout) if (r := call(*path)) and r.returncode == 0 else None
+        except ValueError: return None
+    unread, meet = "gh couldn't read {}: retry once gh answers", ': merge once the PR meets them'
+    branch, what = urllib.parse.quote(base, safe=''), f'the login or {slug}'
+    try:  # a response failed, or missing what's read here, is one gh didn't answer
+        me, owner = get('user')['login'], get(f'repos/{slug}')['owner']
+        if owner['login'] != me: return f"{slug} is {owner['login']}'s, not {me}'s" + meet
+        if owner['type'] != 'User': return f"{slug} belongs to the organization {owner['login']}" + meet
+        what, pages = f"{base}'s rules", get(f'repos/{slug}/rules/branches/{branch}?per_page=100', '--paginate', '--slurp')
+        for rid in sorted({r['ruleset_id'] for page in pages for r in (page if isinstance(page, list) else [None])}):
+            what, rs = f'ruleset {rid}', get(f'repos/{slug}/rulesets/{rid}')
+            if rs.get('current_user_can_bypass') != 'always': return f"ruleset {rid} ({rs.get('name')}) lets {me} bypass it {rs.get('current_user_can_bypass') or 'never'}, not always" + meet
+    except (KeyError, TypeError, AttributeError): return unread.format(what)
+    r = call(f'repos/{slug}/branches/{branch}/protection')
+    if r and r.returncode == 0: return f"{base} has classic branch protection, past which the guard lets no --admin merge" + meet
+    if not r or 'Branch not protected' not in r.stderr: return unread.format(f"{base}'s branch protection")
 
 def default_branch(host, repo):
     """repo's default branch on host (GitHub, else GitLab); blocks when its API can't answer."""
@@ -1138,6 +1167,8 @@ def check(t, has_cd):
     t = prog(t)
     if not t: return
     p, a = os.path.basename(t[0]), t[1:]
+    if p == 'gh' and a[:1] in (['-R'], ['--repo']) and len(a) > 2: a = a[2:] + a[:2]  # gh takes -R before the subcommand too
+    elif p == 'gh' and a and re.fullmatch(r'-R.+|--repo=.+', a[0]): a = a[1:] + a[:1]
     if ASK_FIRST: ask_first(t)
     if p in ('gh', 'glab') and a[:2] == ['release', 'create'] and '--help' not in a and '-h' not in a:
         need_ask('release', f'`{p} release create`', gh_repo(a[2:], env, run_dir) if p == 'gh' else gitlab_repo(a[2:], run_dir))
@@ -1318,12 +1349,11 @@ def check(t, has_cd):
         num = m.group(1) if (m := re.fullmatch(r'(?:\S*/pull/)?(\d+)(?:/\S*)?', sel)) else ''
         if not ('--squash' in rest or '-s' in rest) or not subj or not re.search(r' \(#' + (num or r'\d+') + r'\)$', subj[-1]) or len(body) != 1:
             block('squash-merge as the repo asks, by default `gh pr merge <N> --squash --delete-branch --subject "<exact PR title> (#<N>)" --body ""`; re-read the repo\'s AGENTS.md first')
-        if '--admin' in rest:
-            block("never `gh pr merge --admin`: it bypasses the base's branch protection. Merge once the PR meets it")
         repo = opt(rest, ['-R', '--repo'])
-        def gh(*args):  # in the dir and with the env the merge runs in
-            r = subprocess.run(['gh', *args], cwd=known(run_dir), env={**os.environ, **env}, capture_output=True, text=True, timeout=20)
-            return json.loads(r.stdout) if r.returncode == 0 else None
+        def run(*args):  # gh in the dir and with the env the merge runs in
+            return subprocess.run(['gh', *args], cwd=known(run_dir), env={**os.environ, **env}, capture_output=True, text=True, timeout=20)
+        def gh(*args):
+            return json.loads(r.stdout) if (r := run(*args)).returncode == 0 else None
         try:
             pr = gh('pr', 'view', *([sel] if sel else []), *(['-R', repo[-1]] if repo else []), '--json', 'url,headRefName,headRefOid,baseRefName,mergeStateStatus,changedFiles,files,statusCheckRollup,commits')
             slug, commits = '/'.join(pr['url'].split('/')[3:5]), pr['commits']
@@ -1333,7 +1363,10 @@ def check(t, has_cd):
             newer = [gh('api', f"repos/{slug}/commits/{c['sha']}")['files'] for c in moved['commits'] if c['commit']['committer']['date'] > green]
         except (OSError, subprocess.TimeoutExpired, ValueError, KeyError, TypeError) as e:
             block(f"gh couldn't read this PR's merge state ({type(e).__name__}: {e}), so whether its base moved can't be checked: retry once gh answers")
-        need_ask('merge', f"merging {pr['url']}", slug, pr['url'].rstrip('/').rsplit('/', 1)[1])
+        admin = flag(rest, '--admin')
+        if admin and (why := own_bypass(pr, run)):
+            block(f"`gh pr merge --admin` bypasses {pr['baseRefName']}'s rules: only on the owner's own repo, where GitHub lets them always bypass every rule on it, and on their ask. Here {why}")
+        need_ask('merge', f"merging {pr['url']}" + (' past its base\'s rules (--admin)' if admin else ''), slug, pr['url'].rstrip('/').rsplit('/', 1)[1], strict=admin)
         if body[0].strip() and (bad := unproven_trailers(body[0], commits)):
             block(f"the squash body holds only `Co-authored-by: <name> <email>` lines naming human authors of the PR's commits, copied from `gh pr view <N> --json commits` "
                   f"(mergeworthy:merging step 4); not one: {bad[0]!r}")
@@ -1396,6 +1429,9 @@ def check(t, has_cd):
     if p == 'gh' and a and a[0] == 'api':
         rest = a[1:]
         method, ep, fields, inputs, posts = api_call(rest, run_dir)
+        if (method in ('PUT', 'POST') and re.search(r'(?:^|/)repos/[^/]+/[^/]+/(?:pulls/\d+/merge|merges)/?(?:\?|$)', ep)
+                or shellcmd.graphql_endpoint(ep) and names_discussion_mutation(rest, run_dir, re.compile(r'\bmergePullRequest\s*\('))):
+            block("merge with `gh pr merge`, where the merge checks run (its squash form, the base's rules, the owner's ask), never `gh api` PUT .../pulls/<N>/merge, POST .../merges or GraphQL's mergePullRequest")
         if shellcmd.graphql_endpoint(ep) and (named := names_discussion_mutation(rest, run_dir)) is not False:
             block("post to a GitHub Discussion, or edit a comment there, with `discussion-post <discussion URL | owner/repo#N> <abs draft>` or "
                   "`discussion-post --edit <comment node id> <abs draft>`: it posts the gated draft as the comment's text, which a GraphQL call can't be checked for"
