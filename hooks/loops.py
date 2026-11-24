@@ -1,11 +1,13 @@
-"""Review loops (delegate §Review rounds): pre-agent-dedupe asks admit() whether round `<loop>-r<N>` of a code review may run, and
-records a round that ran with register(); pr-steps and gate-pass ask close() whether a loop's ledger closes it. A round is refused once the heads its brief pins show the branch hasn't moved since four
-earlier rounds of its loop, and, after an earlier one there, when the ledger its brief names doesn't show the last round brought a
-fixed blocker or should."""
+"""Review loops (delegate §Review rounds): pre-agent-dedupe and pre-bash-guard ask admit() whether round `<loop>-r<N>` of a code
+review may run, and record a round that ran with register(); pr-steps and gate-pass ask close() whether a loop's ledger closes it,
+and pr-steps asks open_seats() whether a step's other reviewers closed. A round is refused once the heads its brief pins show the
+branch hasn't moved since four earlier rounds of its loop, after an earlier one there when the ledger its brief names doesn't show
+the last round brought a fixed blocker or should or a declined blocker, and as a fresh reader's second."""
 import fcntl, itertools, json, os, re, subprocess, sys
 import ledger, testpaths
 
-LOOPS = os.path.expanduser('~/.claude/review-loops.json')  # {loop: {'rounds': [[n, the heads its brief pinned]], 'threads': the T3 threads its rounds ran in}}
+# {loop: {'rounds': [[n, the heads its brief pinned]], 'threads': the T3 threads or Claude agents its rounds ran in, 'outs': its reports, 'seated': a step's seat}}
+LOOPS = os.path.expanduser('~/.claude/review-loops.json')
 # what a loop recorded before review-loops.json: rounds {loop: [[n, heads]]}, threads {loop: [thread]}
 OLD = {'rounds': os.path.expanduser('~/.claude/review-rounds.json'), 'threads': os.path.expanduser('~/.claude/review-threads.json')}
 
@@ -41,7 +43,7 @@ def record(loop, loops=None):
 
 
 def threads(loop):
-    """The T3 threads an earlier review round of loop ran in."""
+    """The T3 threads or Claude agents an earlier review round of loop ran in."""
     return record(loop)['threads']
 
 
