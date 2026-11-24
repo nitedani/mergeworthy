@@ -1,0 +1,6 @@
+{
+  "name": "mergeworthy",
+  "description": "Work with an AI coding agent through GitHub like a coworker.",
+  "skills": "./skills/",
+  "hooks": "./hooks/codex.json"
+}

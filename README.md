@@ -21,10 +21,13 @@ The installer finds the coding agents on this machine and asks which to install 
 | Agent | Gets | Updates |
 |---|---|---|
 | Claude Code | the skills, the hooks, the `bin/` commands and the always-on rules | automatically |
-| Codex | the skills, and the always-on rules in `~/.codex/AGENTS.md` | re-run `npx mergeworthy` |
+| Codex | skills, always-on rules and the shell command guard | re-run `npx mergeworthy`, then review the hooks in `/hooks` |
+| Antigravity | skills, always-on rules and the shell command guard | install the Mergeworthy plugin in the Antigravity profile |
 | Others, through [skills.sh](https://skills.sh) | the skills | `npx skills update` |
 
 The hooks and the `bin/` commands read Markdown with Python's markdown-it-py: install it first (`sudo apt install python3-markdown-it`, or `pip install markdown-it-py`).
+
+In Codex, open `/hooks` and trust the installed hooks to activate the rules and guard. In the standalone Antigravity CLI, run `agy plugin install https://github.com/nitedani/mergeworthy`. For an isolated T3 provider, put the plugin in that instance's Antigravity profile. The Claude-only transcript checks, native edit hooks and automatic watcher registration require separate provider support.
 
 Run `npx mergeworthy` again to change the options or add an agent; `npx mergeworthy uninstall` removes mergeworthy.
 

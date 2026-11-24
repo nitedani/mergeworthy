@@ -1,0 +1,23 @@
+{
+  "mergeworthy": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "python3 ./hooks/provider-hook.py antigravity start",
+        "timeout": 30
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "^run_command$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ./hooks/provider-hook.py antigravity guard",
+            "timeout": 600
+          }
+        ]
+      }
+    ]
+  }
+}

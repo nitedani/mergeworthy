@@ -177,14 +177,23 @@ def codex_reset():
 if ti.get('role') == 'review' and under_t3():
     target = ti.get('target') or {}
     provider = {target.get('providerInstanceId'), target.get('driverKind')} - {None, ''}
+    authors = set(re.findall(r'^Author provider: (claude|codex|antigravity)\s*$', brief, re.M))
+    if authors:
+        known_drivers = {'claudeAgent': 'claude', 'codex': 'codex', 'antigravity': 'antigravity'}
+        driver = target.get('driverKind') or target.get('providerInstanceId')
+        reviewer = known_drivers.get(driver)
+        if not reviewer or reviewer in authors:
+            sys.stderr.write("BLOCKED: review needs an explicit target.driverKind from agent-targets, different from every Author provider in its brief.\n")
+            refused()
     reset = codex_reset()
     if reset and 'codex' in provider:
         at = time.localtime(reset)
         sys.stderr.write(f"BLOCKED: claude-swap reads every saved Codex account as used up until {time.strftime('%H:%M' if at[:3] == time.localtime()[:3] else '%a %H:%M', at)}, so this launch would fail. "
-                         "Launch the review on this company (target.providerInstanceId claudeAgent); it needs no Fallback line while that holds.\n")
+                         + ("Select another eligible provider with agent-targets.\n" if authors else
+                            "Launch the review on this company (target.providerInstanceId claudeAgent); it needs no Fallback line while that holds.\n"))
         refused()
     # the fallback keeps the first review's prompt, so its claim may sit in the brief file the task names; `<what failed>` is the form, no claim
-    elif not reset and (not provider or 'claudeAgent' in provider) and not re.search(r'\bFallback:[ \t]*[^\s<]', launch.Launch(str(ti.get('task') or '')).brief):
+    elif not authors and not reset and (not provider or 'claudeAgent' in provider) and not re.search(r'\bFallback:[ \t]*[^\s<]', launch.Launch(str(ti.get('task') or '')).brief):
         sys.stderr.write("BLOCKED: an independent check starts on another company's model (mergeworthy:delegate §Reviewers): set target.providerInstanceId to codex. "
                          "Only when that call failed, launch on this company with `Fallback: <what failed>` in the task or the brief file it names.\n")
         refused()
