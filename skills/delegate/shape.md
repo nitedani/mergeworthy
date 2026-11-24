@@ -27,7 +27,7 @@ Step 1, cut what shouldn't exist. Check every line of code §Checklist. Each fin
 - When the change is to a methodology (skills, prompts, hooks): check that every named mechanism survived, and fail any compressed into generic prose.
 - A closure claim without a tree, lane or capture you observed yourself stays open. Mark unavailable evidence UNKNOWN.
 
-Step 2, reshape what stays: the prompt below, the user's text, unchanged in every repo whatever the project file says.
+Step 2, reshape what stays: the prompt below, the user's text, unchanged in every repo whatever the project file says; its "until" ends with this round (`delegate §Review rounds`).
 
 Step 3, rate every file and function old ⇒ new: verify each implementation (behavior preserved, mutation probes still red, comments true), and say whether each decline holds.
 
