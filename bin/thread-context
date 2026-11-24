@@ -54,11 +54,14 @@ def api_json(path, paginate=False, cmd=('gh', 'api'), args=()):
     return out if paginate else (out[0] if out else None)
 
 def lifts(cmd, path, err):
-    """When the rate limit gh's error names lets the call through, as the end of its message; '' for another error, or when gh can't tell."""
+    """When the spent rate limit gh's error names resets, as the end of its message; '' for another error, for a limit with requests
+    left (the snapshot can't tell which limit stopped the call), and when `gh api rate_limit` can't say: the error stays as gh gave it."""
     if cmd[0] != 'gh' or 'rate limit' not in err.lower(): return ''
-    reset = gh_common.limit_reset(['api', path])
-    if reset is None: return ''
-    return f'; it resets at {gh_common.iso(reset)}: retry then' if reset else '; a secondary rate limit: retry in a minute or more'
+    kind = 'graphql' if path == 'graphql' else 'search' if path.startswith('search') else 'core'
+    try:
+        limit = json.loads(subprocess.run(['gh', 'api', 'rate_limit'], capture_output=True, text=True, timeout=5, check=True).stdout)['resources'][kind]
+        return f'; it resets at {gh_common.iso(limit["reset"])}: retry then' if limit['remaining'] == 0 else ''
+    except Exception: return ''  # failed, hung or odd (a proxy's sign-in page, a missing key)
 
 def fetch(path, paginate=False, cmd=('gh', 'api'), args=()):
     """api_json, raising Unreadable (naming the request) when nothing is there."""

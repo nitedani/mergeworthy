@@ -368,9 +368,19 @@ tc_fx repos_o_r_issues_45_comments_per_page_100 '[{"id":105,"user":{"login":"mai
 check "a ref and a rejection inside a code block in a list item are code: not followed, not in the ledger" "0 0" "$(grep -c '^  - o/r#42 ' "$T/ctx/tc45.md") $(grep -c '\[reject\]' "$T/ctx/tc45.md")"
 # a rate limit isn't a missing thread (nitedani/mergeworthy#260): the failure names gh's error and when the limit lifts
 tc_fx rate_limit '{"resources":{"core":{"remaining":0,"reset":1795000000},"graphql":{"remaining":4000,"reset":1795000000},"search":{"remaining":30,"reset":1795000000}}}'
-tclimit() { GH_STUB_403=$1 "$R/bin/thread-context" "$2" --out "$T/ctx/rl.md" >/dev/null 2>"$T/rl.err"; echo "$? $(grep -cF "thread-context: cannot read $2: $3" "$T/rl.err")"; }
-check "BLOCK: a rate limit on REST, then on GraphQL behind a missing issue, is named with when it lifts; a missing thread is still none" "1 1 1 1 1 1" \
-  "$(tclimit 1 o/r#41 '`gh api repos/o/r/issues/41` failed: gh: API rate limit exceeded for user ID 1. (HTTP 403); it resets at 2026-11-18T11:06:40Z: retry then') $(tclimit graphql o/r#47 '`gh api graphql` failed: gh: API rate limit exceeded for user ID 1. (HTTP 403); a secondary rate limit: retry in a minute or more') $(tclimit '' o/r#47 'gh read no issue, PR or discussion at o/r#47')"
+tclimit() { GH_STUB_403=$1 "$R/bin/thread-context" "$2" --out "$T/ctx/rl.md" >/dev/null 2>"$T/rl.err"; echo "$? $(grep -cxF "thread-context: cannot read $2: $3" "$T/rl.err")"; }
+RL403='gh: API rate limit exceeded for user ID 1. (HTTP 403)'
+check "BLOCK: a rate limit on REST, then on GraphQL behind a missing issue, is named, with its reset once spent; a missing thread is still none" "1 1 1 1 1 1" \
+  "$(tclimit 1 o/r#41 "\`gh api repos/o/r/issues/41\` failed: $RL403; it resets at 2026-11-18T11:06:40Z: retry then") $(tclimit graphql o/r#47 "\`gh api graphql\` failed: $RL403") $(tclimit '' o/r#47 'gh read no issue, PR or discussion at o/r#47')"
+mkdir -p "$T/rlbin"; cat > "$T/rlbin/gh" <<EOF
+#!/bin/sh
+# gh, but \`gh api rate_limit\` answers as \$RL says: html (a proxy's sign-in page), empty (no resources), hang
+[ "\$1 \$2" = "api rate_limit" ] && case "\$RL" in html) echo '<html>Sign in</html>'; exit 0;; empty) echo '{}'; exit 0;; hang) exec sleep 60;; esac
+exec "$T/bin/gh" "\$@"
+EOF
+chmod +x "$T/rlbin/gh"
+rlodd() { (export RL=$1 PATH="$T/rlbin:$PATH"; tclimit 1 o/r#41 "\`gh api repos/o/r/issues/41\` failed: $RL403"); }
+check "BLOCK: a reset lookup that answers a page, no resources or nothing in time leaves the rate-limit error as gh gave it" "1 1 1 1 1 1" "$(rlodd html) $(rlodd empty) $(rlodd hang)"
 rm "$FX/rate_limit"
 
 # the guard: a post on the thread needs thread-context.md in the draft's folder, current

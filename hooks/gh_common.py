@@ -44,23 +44,16 @@ def own_accounts():
     return {l.lower() for l in read(os.path.expanduser('~/.mergeworthy/own-accounts')).split()}
 
 
-def limit_reset(args):
-    """When the rate limit the call ran into resets, in epoch seconds: its resource's reset once spent, else 0 (a secondary limit,
-    whose Retry-After gh doesn't print); None when `gh api rate_limit` fails."""
+def reset_wait(args):
+    """Seconds until the rate limit the call ran into lets it through: its resource's reset once spent, else SECONDARY_WAIT (a
+    secondary limit, whose Retry-After gh doesn't print); None when `gh api rate_limit` fails."""
     r = subprocess.run(['gh', 'api', 'rate_limit'], capture_output=True, text=True)
     if r.returncode:
         return None
     target = args[0] if args[0] != 'api' else next(a for a in args[1:] if not a.startswith('-'))  # `search prs`, `api search/issues?…`
     kind = 'search' if target.startswith('search') else 'graphql' if target == 'graphql' else 'core'
     limit = json.loads(r.stdout)['resources'][kind]
-    return limit['reset'] if limit['remaining'] == 0 else 0
-
-
-def reset_wait(args):
-    """Seconds until the rate limit the call ran into lets it through: to its reset, or SECONDARY_WAIT for a secondary limit; None
-    when `gh api rate_limit` fails."""
-    reset = limit_reset(args)
-    return None if reset is None else max(0, reset - time.time()) + 1 if reset else SECONDARY_WAIT
+    return max(0, limit['reset'] - time.time()) + 1 if limit['remaining'] == 0 else SECONDARY_WAIT
 
 
 def gh_output(*args, what=None):
