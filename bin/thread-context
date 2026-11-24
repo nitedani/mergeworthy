@@ -193,7 +193,8 @@ def thread_ref(s):
     """parse_ref, and an organization's discussion URL; exits 2 on anything else, 1 on an organization's URL gh finds no discussion at or can't search."""
     try: rf = parse_ref(s) or org_discussion(s)
     except Unreadable as e: die_unreadable(s, e)
-    if rf and '/discussions/' in s: DISCUSSIONS.add(f'{rf[0]}#{rf[2]}')
+    if rf and re.fullmatch(r'(?:(?:https?://)?github\.com/orgs/[\w.-]+|(?:https?://github\.com/(?!orgs/))?[\w.-]+/[\w.-]+)/discussions/\d+(?:[/#?].*)?', s.strip()):
+        DISCUSSIONS.add(f'{rf[0]}#{rf[2]}')  # its route is a discussion's, not a word elsewhere in the URL
     if rf: return rf
     if re.search(r'github\.com/orgs/', s): die(f'thread-context: gh found no discussion at {s}: pass it as <owner/repo>#N, the repo its discussions are in')
     die(USAGE, 2)

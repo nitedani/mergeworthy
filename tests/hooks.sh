@@ -529,6 +529,10 @@ check "BLOCK: --ref on an organization's discussion URL while GitHub rate-limits
   "$(GH_STUB_403=1 "$R/bin/thread-context" --ref https://github.com/orgs/dorg/discussions/5 >/dev/null 2>"$T/ref.err"; echo $?) $(grep -c '^thread-context: cannot read https://github.com/orgs/dorg/discussions/5: `gh api graphql` failed: gh: API rate limit exceeded' "$T/ref.err") $(grep -c Traceback "$T/ref.err")"
 check "a discussion's URL, an organization's too, is read while REST is rate-limited; owner/repo#N still asks REST first" "0 0 1" \
   "$(for r in https://github.com/d/r/discussions/5 https://github.com/orgs/dorg/discussions/5 'd/r#5'; do GH_STUB_403=repos/d/r/issues/5 "$R/bin/thread-context" --items "$r" >/dev/null 2>&1; printf '%s ' $?; done | sed 's/ $//')"
+tc_fx repos_o_discussions_issues_41 '{"number":41,"id":1,"title":"In a repo named discussions","html_url":"https://example.invalid/o/discussions/issues/41","state":"open","updated_at":"2026-10-01T10:00:00Z","created_at":"2026-09-30T10:00:00Z","user":{"login":"maint"},"body":"Hi."}'
+tc_fx repos_o_discussions_issues_41_comments_per_page_100 '[]'; tc_fx repos_o_discussions_issues_41_timeline_per_page_100 '[]'
+check "an issue URL is read as an issue when its repo is named discussions or its query names a discussion" "0 0" \
+  "$(for r in https://github.com/o/discussions/issues/41 'https://github.com/o/r/issues/41?next=/o/r/discussions/42'; do "$R/bin/thread-context" --items "$r" >/dev/null 2>&1; printf '%s ' $?; done | sed 's/ $//')"
 python3 "$T/dfx.py" replies '' '' "$FX/graphql_DC_501" > "$FX/graphql_d"
 "$R/bin/thread-context" 'd/r#5' --out "$T/d101.md" --depth 0 >/dev/null
 check "a comment's 101 replies, over two pages, are all read: the first and the newest, in the record and in --items" "1 1 1 101" "$(grep -c '^https://example.invalid/d/r/discussions/5#discussioncomment-1001$' "$T/d101.md") $(grep -c '^https://example.invalid/d/r/discussions/5#discussioncomment-1101$' "$T/d101.md") $(grep -c '^- latest-human-comment: id=1101 ' "$T/d101.md") $("$R/bin/thread-context" --items 'd/r#5' | python3 -c 'import json,sys; print(sum(x["kind"] == "reply" for x in json.load(sys.stdin)))')"
