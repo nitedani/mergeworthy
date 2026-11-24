@@ -142,16 +142,33 @@ KINDS = {
 }
 
 
-def close(path, kind='code', checkout='.'):
+ID = re.compile(r'[\s>*-]*`?(R\d+\.\d+)')
+
+
+def reports_of(report):
+    """report and every report its loop recorded (register's outs)."""
+    report = os.path.realpath(report)
+    return sorted({report} | {o for r in _json(LOOPS).values() if isinstance(r, dict) and report in r.get('outs', []) for o in r['outs']})
+
+
+def close(path, kind='code', checkout='.', reports=()):
     """What leaves the loop of the ledger at path open, [] when it closes: each finding of every round is the kind's fix (a code
     fix's sha in checkout's HEAD history), `declined: <why>` or `listed: <where>`, no blocker is listed or open, the completed round
-    leaves the loop closed by the kind's rule, and every row's id (a word starting with a letter, with a digit) is R<round>.<n>."""
+    leaves the loop closed by the kind's rule, every row's id (a word starting with a letter, with a digit) is R<round>.<n>, and
+    each finding `R<round>.<n> <label>` the seat's reports hold has its row, with that label."""
     fix, still_open, confirms = KINDS[kind]
     try: rows, lines, last = ledger.read(path)
     except OSError as e: return [f'{path}: {e.strerror}']
     misnamed = [f'{m[0].strip()}  <- its id is not R<round>.<n>' for m in lines if not m[1]]
-    if not rows: return misnamed + [f"{path} has no '<id> <label> <outcome>' lines (R<round>.<n> blocker|should|nit {fix}|declined: <why>|listed: <where>)"]
-    out = misnamed + [w for w in [still_open(rows, last, path)] if w]
+    ruled = {ID.match(m[0])[1]: m[2].lower() for m in rows}
+    unbound = []
+    for rp in reports:
+        try: said = [m for m in map(ledger.LINE.match, open(rp, errors='replace').read().splitlines()) if m and m[1]]
+        except OSError: continue
+        unbound += [f"{rp}: {m[0].strip()}  <- {'its ledger row says ' + ruled[i] if i in ruled else 'no ledger row'}: the ledger keeps the seat's id and label, its ruling the outcome"
+                    for m in said if ruled.get(i := ID.match(m[0])[1]) != m[2].lower()]
+    if not rows: return misnamed + unbound + [f"{path} has no '<id> <label> <outcome>' lines (R<round>.<n> blocker|should|nit {fix}|declined: <why>|listed: <where>)"]
+    out = misnamed + unbound + [w for w in [still_open(rows, last, path)] if w]
     for m in rows:
         fixed = ledger.FIXED.match(m[3])
         confirmed = confirms and (r := re.match(r'fixed in r(\d+)\b', m[3])) and int(m[1]) < int(r[1]) <= last
@@ -167,9 +184,11 @@ def close(path, kind='code', checkout='.'):
 
 if __name__ == '__main__' and sys.argv[1:2] == ['seats']:  # loops.py seats <report> <record file>: open_seats, a line each
     print(*open_seats(sys.argv[2], [l.split()[1] for l in open(sys.argv[3]) if len(l.split()) > 1] if os.path.isfile(sys.argv[3]) else []), sep='\n')
-elif __name__ == '__main__':  # loops.py close [--post] <ledger> [<checkout>]: exits 0 when the ledger closes its loop, else prints what stands
-    post = sys.argv[2:3] == ['--post']
-    found = close(*sys.argv[2 + post:3 + post], kind='post' if post else 'code', checkout=(sys.argv[3 + post:4 + post] or ['.'])[0])
+elif __name__ == '__main__':  # loops.py close [--post] <ledger> [<checkout>] [--report <the last round's report>]: exits 0 when the ledger closes its loop, else prints what stands
+    a, rep = sys.argv[2:], []
+    if '--report' in a: i = a.index('--report'); rep = reports_of(a[i + 1]); del a[i:i + 2]
+    post = a[:1] == ['--post']
+    found = close(a[post], kind='post' if post else 'code', checkout=(a[post + 1:post + 2] or ['.'])[0], reports=rep)
     if found:
         print('the ledger leaves this round open (mergeworthy:delegate §Review rounds):\n' + '\n'.join(found), file=sys.stderr)
     sys.exit(1 if found else 0)

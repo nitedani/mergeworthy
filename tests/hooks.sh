@@ -635,7 +635,7 @@ cp "$GD/thread-context.md" "$T/gd-tc.md"; cp "$TC" "$GD/thread-context.md"; touc
 check "BLOCK: gate-pass with the parent saved after a record the thread has outgrown" "1 1" "$(gp) $(grep -c 'records the latest comment' "$T/gp.out")"
 mv "$T/gd-tc.md" "$GD/thread-context.md"; rm "$GD/r.parent.md"; touch -d '+1 minute' "$GD/r.md"
 check "gate-pass records the thread context in the gate" 1 "$(grep -c '^tc ' "$GD/r.md.gate")"
-printf 'R2.1 should: the second sentence reads twice\n' > "$GD/r.review.out"; printf 'R2.1 should listed: the report to the user\n' > "$T/gl.md"; printf 'R2.1 blocker listed: the report to the user\n' > "$T/gb.md"
+printf 'should: the second sentence reads twice\n' > "$GD/r.review.out"; printf 'R2.1 should listed: the report to the user\n' > "$T/gl.md"; printf 'R2.1 blocker listed: the report to the user\n' > "$T/gb.md"
 check "gate-pass: a round-2 review that isn't CLEAN passes with its ledger closing it; BLOCK without one, or with a blocker left open" "1 0 1 1" "$(gp) $(GPL="$T/gl.md" gp) $(GPL="$T/gb.md" gp) $(grep -c 'open blocker' "$T/gp.out")"
 printf 'Round: 3\nR2.1 blocker fixed in r3\n' > "$T/g3.md"; printf 'R2.1 blocker fixed in r3\n' > "$T/g3x.md"
 check "gate-pass: a post's blocker fixed in r3, the round that confirmed it, closes; BLOCK it before round 3 completed" "0 1 1" "$(GPL="$T/g3.md" gp) $(GPL="$T/g3x.md" gp) $(grep -c 'open blocker' "$T/gp.out")"
@@ -2493,7 +2493,7 @@ printf '\n\n' > "$T/blank.md"; check "BLOCK: an output of blank lines, saying wh
 # a round 2 that isn't clean records with the loop's ledger closing it: every finding fixed on HEAD, declined or listed, no blocker open
 GL="$T/prl"; git init -q -b main "$GL"; gl() { git -C "$GL" -c user.name=t -c user.email=t@t "$@"; }; gl commit -q --allow-empty -m a; ON=$(gl rev-parse --short HEAD)
 gl checkout -q -b side; gl commit -q --allow-empty -m off; OFF=$(gl rev-parse --short HEAD); gl checkout -q main; gl commit -q --allow-empty -m b
-printf 'R2.1 should: the parser drops a field\n' > "$T/r2.md"; std "$T/r2.md"
+printf 'should: the parser drops a field\n' > "$T/r2.md"; std "$T/r2.md"
 LR="$T/r2.md"; led() { printf '%s\n' "$@" > "$T/led.md"; (cd "$GL" && bash "$R/bin/pr-steps" verify "$LR" --ledger "$T/led.md" >/dev/null 2>"$T/err"; echo $?); }
 check "pr-steps verify: BLOCK a round-2 report without NO BUGS with no ledger, a round-1 ledger with a fixed should, a blocker left open, a fix not on HEAD; a ledger closing it records" "1 1 1 1 1 1 1 0" \
   "$(cd "$GL" && bash "$R/bin/pr-steps" verify "$T/r2.md" >/dev/null 2>&1; echo $?) $(led "R1.1 should fixed in $ON") $(grep -c 'closes round 1, which brought a blocker or should fixed' "$T/err") $(led 'R2.1 blocker listed: the PR body notes') $(grep -c 'open blocker' "$T/err") $(led "R2.1 should fixed in $OFF") $(grep -c "$OFF is not in HEAD" "$T/err") $(led "R1.1 blocker fixed in $ON" 'R2.1 should listed: the PR body notes' 'R2.2 nit declined: wording')"
@@ -2518,6 +2518,8 @@ check "pr-steps verify --ledger: a round 1 bringing only nits or declined findin
   "$(lr n1 'R1.1 nit declined: wording') $(lr d1 'R1.1 should declined: the case needs a staged race' 'R1.2 nit listed: the report') $(lr f2 "R1.1 should fixed in $ON" 'Round: 2' "R2.1 should fixed in $ON") $(grep -c 'closes round 2, which brought a blocker or should fixed in a commit: the loop gets its next round first' "$T/err") $(lr f4 "R4.1 should fixed in $ON")"
 cp "$T/r2.md" "$T/r2c.md"; LR="$T/r2c.md"
 check "BLOCK: pr-steps verify with a code loop's blocker closed as fixed in r3, which only a post's ledger takes" "1 1" "$(led 'Round: 3' 'R2.1 blocker fixed in r3') $(grep -c 'open blocker' "$T/err")"
+printf 'R2.1 blocker: the parser drops a field\nR2.2 should: a second one\n' > "$T/rb.md"; std "$T/rb.md"; bl() { cp "$T/rb.md" "$T/rb-$1.md"; LR="$T/rb-$1.md"; shift; led "$@"; }
+check "BLOCK: pr-steps verify --ledger missing a finding the report holds, or re-labelling one, naming each; the seat's ids and labels with the rulings as outcomes record" "1 1 1 1 0" "$(bl m 'Round: 2' 'R2.1 blocker fixed in '"$ON") $(grep -c 'R2.2 should: a second one  <- no ledger row' "$T/err") $(bl l 'Round: 2' 'R2.1 should declined: rare' 'R2.2 should declined: rare') $(grep -c 'R2.1 blocker: the parser drops a field  <- its ledger row says should' "$T/err") $(bl ok 'Round: 4' "R2.1 blocker fixed in $ON" 'R2.2 should declined: a nit, rare')"
 # a claim the verifier lists as untested waits for a RULED line naming it, in round 2's ledger record as in a file ending NO BUGS (#190)
 printf '## Dropped\nNone.\n## Untested claims\n\n- `src/panel.tsx`: // The question the page opened on takes the focus as it shows. — Chrome — no probe recorded — UNVERIFIED\n' > "$T/uc.md"; std "$T/uc.md"; LR="$T/uc.md"
 { cat "$T/uc.md"; echo 'RULED: src/panel.tsx: // The question the page opened on takes the focus as it shows.: listed: the PR body says no probe saw it'; } > "$T/uc1.md"

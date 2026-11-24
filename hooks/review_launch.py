@@ -89,7 +89,7 @@ def answers(out, draft, ledger_file=None):
     if verdict != ['CLEAN']:
         beside = os.path.splitext(draft)[0] + '.ledger.md'
         ledger_file = ledger_file or (beside if os.path.isfile(beside) else None)
-        found = loops.close(ledger_file, 'post') if ledger_file else []
+        found = loops.close(ledger_file, 'post', reports=[out]) if ledger_file else []
         if ledger_file and not found and (not verdict or os.path.getmtime(ledger_file) < os.path.getmtime(out)):
             found = [f'{out} holds no verdict yet: wait for its reviewer, or launch the round again' if not verdict else f'{ledger_file} was last written before the verdict in {out}: add its findings, then pass it']
         if not ledger_file or found:
