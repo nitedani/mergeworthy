@@ -12,7 +12,7 @@ Settings: MERGEWORTHY_BADGE on|off|auto requires the badge always, never, or for
 import hashlib, os, re, sys, subprocess, tempfile, urllib.parse
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'hooks'))
 import post_words
-from post_words import fence_spans, sections, uncoded
+from post_words import fence_spans, uncoded
 def setting(name, default):
     """MERGEWORTHY_<name> from the environment, else from ~/.mergeworthy/settings.env (written at session start from the plugin's options)."""
     f = os.path.expanduser('~/.mergeworthy/settings.env')
@@ -101,7 +101,7 @@ if _asked_list:
 # The converge steps' runs, collapsed (converge step 5), are evidence: never linted; only a PR body's count reads this prose, so a reply counts them
 prose = re.sub(rf'<details>\s*<summary>(?:{post_words.alt(W["blocks"])})[^<]*</summary>.*?</details>', '', prose, flags=re.S)
 REPRO = r'#+ (?:how to (?:see|reproduce)|steps to reproduce)'  # an issue's reproduction heading, its whole text (open-issue)
-repro_spans = lambda s, heads=(): sections(s, re.compile('|'.join([REPRO, *heads]), re.I).fullmatch)
+repro_spans = lambda s, heads=(): post_words.sections(s, re.compile('|'.join([REPRO, *heads]), re.I).fullmatch)
 decision = kind == 'issue' and not plan and re.search(r'^#+\s*Options\b', text, re.I | re.M)  # a decision issue (open-issue)
 finding = kind == 'issue' and not plan and not decision
 # an issue's reproduction steps a newcomer needs are required, not part of its budget
@@ -215,9 +215,8 @@ if kind == 'tracker':
         ref = r'(?:[\w.-]+/[\w.-]+)?#\d+(?!\d)'
         for m in re.finditer(rf'^\s*- \[x\] (~~)?({ref})(?:(?:,| and) {ref})*(?!(?:~~)? \()(?!(?:,| and) {ref})', text, flags=re.M):  # a ticked item (or a group of them) says how it ended
             findings.append(f"tracker: say how {m.group(2)} ended, in parentheses right after it, e.g. '{m.group(2)} (merged)' (task §Umbrella)")
-# Reading cost (mergeworthy:writing §Length): every post but a PR body and a finding issue is counted from its own text, code and collapsed
-# sections included; requested lists, an issue's reproduction, quotes of others, and rated rows with their header (up to BOUND words a
-# cell) are left out
+# Reading cost (mergeworthy:writing §Length): every other post is counted from its own text, code and collapsed sections included;
+# requested lists, an issue's reproduction, quotes of others, and rated rows with their header (up to BOUND words a cell) are left out
 if kind != 'pr' and not finding:
     counted = steps_out(re.sub(r'<!--.*?-->', '', text, flags=re.S))
     if _asked_list:  # the lists the reader asked for: collapsed, or open as a questionnaire (GitHub closes <details> on every box ticked)
