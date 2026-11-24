@@ -563,7 +563,7 @@ for j in registered + calls_out if task.strip() else ():
         sys.stderr.write(
             f"BLOCKED: this task contains, or is contained in, an open job's task ({j['key'][:160]}, started {int((time.time() - j['started']) / 60)} min ago), "
             "so it is the same work under another title, and an agent already on the job gets a message, not a twin (mergeworthy:delegate step 1). An agent of a fan-out names its part in its task "
-            "(its slice, subsystem, frames or topic). A new round on the same task releases the earlier job first, once its agent "
+            "(its slice, subsystem, frames or topic). A later review round continues its reviewer (delegate §Continue); other work on the same task releases the earlier job first, once its agent "
             f"is done and you have read its result: `agent-job done {shlex.quote(j['key'][:200])}`.\n")
         refused()
 # At most 3 agents at a time per session (delegate step 1), or the number the user gave, quoted in the task's scope.md (the work folder
