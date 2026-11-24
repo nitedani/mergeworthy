@@ -4947,6 +4947,8 @@ check "BLOCK: --admin=true, and --admin=false then --admin, read as --admin; --a
 MR="${MA#gh }"; MR="${MR/ -R o\/r/}"
 check "BLOCK: -R or --repo before pr merge reaches the merge checks with its repo" "2 2 2 1" \
   "$(adm o o Organization always; lg "gh -R o/r $MR") $(lg "gh --repo o/r $MR") $(lg "gh --repo=o/r $MR") $(grep -c 'o/r belongs to the organization o' "$T/err"; adm o o User always)"
+check "BLOCK: --admin on a PR off github.com, naming its host" "2 1" \
+  "$(sed -i 's|https://github.com/o/r/pull/41|https://github.example.com/o/r/pull/41|' "$FX/pr_view_41"; lg "$MA") $(grep -c 'pull/41 is on github.example.com' "$T/err"; sed -i 's|github.example.com|github.com|' "$FX/pr_view_41")"
 mv "$HOME/.mergeworthy/projects/o/r.md" "$T/or.md"
 check "with no project file, BLOCK: --admin unasked, or asked for another PR; a plain merge unasked passes, and --admin asked for passes" "2 1 2 0 0" \
   "$(said 'looks good'; lg "$MA") $(grep -c "merging https://github.com/o/r/pull/41 past its base's rules (--admin) lands on o/r.*reply \`merge\`" "$T/err") $(said 'merge #40'; lg "$MA") $(said 'looks good'; lg "$M") $(said 'merge #41'; lg "$MA")"
