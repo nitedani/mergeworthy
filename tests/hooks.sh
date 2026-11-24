@@ -1106,6 +1106,39 @@ printf '%s CI runs no tests.\n\n### How to reproduce\n\n1. Run the backend tests
 check "no screen: the command and output pass" 0 "$(ilint "$T/i4.md" 'evidence')"
 { printf '%s Who picks the payout account?\n\n### How to reproduce\n\n1. Open /invoices\n\n![list](/abs/list.png)\n\n### Options\n\n' "$B"; printf 'word %.0s' $(seq 120); echo; } > "$T/i5.md"
 check "a decision issue gets a word budget, not 400 characters" 0 "$(ilint "$T/i5.md" 'for an issue\|decision issue')"
+# a finding issue counts its prose as a PR body does: a log in a code block isn't counted, prose moved into code or a table is, and its reproduction section is required, not counted
+printf '# acme/bug\n\n## PR conventions\n- PR template: none\n- Issue template: .github/ISSUE_TEMPLATE/bug.yml: `### Area`, `### Steps to reproduce`, `### Expected behavior`, `### Actual behavior`, `### Impact`\n' > "$TPP/bug.md"
+ibug() { printf '%s### Area\n\napps/server\n\n### %s\n\n1. A delegated Claude child awaits a Monitor.\n2. It ends while a wake run is mid-request.\n\n### Expected behavior\n\nThe task waits for the wake'\''s text.\n%b\n### Actual behavior\n\nIt completes with stale text, then the detach kills the wake:\n\n```\n14:47:32.381 background tasks []\n14:47:32.398 task completed\n14:47:32.426 query.close\n14:47:32.429 wake failed\n```\n\n### Impact\n\nMajor degradation or frequent failure\n' "$B" "${3:-Steps to reproduce}" "$2" > "$T/$1.md"; }
+S=('The wake run had already sent its request when the task ended.' 'The detach then closed the query under it.' 'Nothing in the log says why the wake failed.' 'A user sees the child finish with an old answer.' 'The parent thread then acts on that answer as if it were new.' 'The next wake starts from the stale state again.' 'Only a restart of the thread clears it.')
+ibug ilog ''; ibug ilong "\n${S[*]}\n"; ibug icode "\n\`\`\`\n$(printf '%s\\n' "${S[@]}")\`\`\`\n"; ibug itab "\n| Why |\n|---|\n$(printf '| %s |\\n' "${S[@]}")"
+ibug isee "\n### How to see\n\n${S[*]}\n" 'How to reproduce'
+check "a templated issue with a four-line log and Steps to reproduce passes the 400 characters, with and without its project file" "0 0" "$(tpi acme/bug ilog '400 for an issue') $(ilint "$T/ilog.md" '400 for an issue')"
+check "BLOCK: the same issue with seven sentences more under Expected behavior" 1 "$(ilint "$T/ilong.md" '400 for an issue')"
+check "BLOCK: those sentences moved into a code block" 1 "$(ilint "$T/icode.md" '400 for an issue')"
+check "BLOCK: those sentences moved into a one-column table" 1 "$(ilint "$T/itab.md" '400 for an issue')"
+check "the 400-character finding says a URL counts three characters" 1 "$(ilint "$T/ilong.md" 'a URL as three characters and a Markdown image as none)')"
+check "a How to see section's prose isn't counted, as How to reproduce's isn't" 0 "$(ilint "$T/isee.md" '400 for an issue')"
+{ printf '%s Who picks the payout account?\n\n### How to reproduce\n\n1. Open /invoices\n\n![list](/abs/list.png)\n\n### Options\n\n```\n' "$B"; printf 'get(a) -> b\n%.0s' $(seq 150); printf '```\n'; } > "$T/i6.md"
+check "BLOCK: a decision issue's code counts toward its 400 words" 1 "$(ilint "$T/i6.md" 'decision issue')"
+# the reproduction section as it renders: a '#' line in code is no heading, a subheading stays in it, and a heading matches by its whole text
+printf '%s The worker test run fails on a clean checkout.\n\n### How to reproduce\n\n```sh\n# Run this on the worker\npnpm test\n```\n\n### Actual behavior\n\nThe worker exits before any test file is loaded.\nThe runner then reports every suite as skipped.\nNothing in the output names the missing option.\nA second run on the same checkout fails the same way.\n' "$B" > "$T/r1.md"
+check "a shell comment in the reproduction's code is no heading, so the short issue passes" 0 "$(ilint "$T/r1.md" '400 for an issue')"
+{ printf '%s The worker test run fails on a clean checkout.\n\n### How to reproduce\n\n1. Run pnpm test\n\n### Actual behavior\n\n```\n### How to reproduce\n' "$B"; printf '%s\n' "${S[@]}" 'The worker never says which option it rejected.' 'A second run on the same checkout fails the same way.'; printf '```\n'; } > "$T/r2.md"
+check "BLOCK: a reproduction heading inside code exempts nothing" 1 "$(ilint "$T/r2.md" '400 for an issue')"
+printf '%s The worker test run fails.\n\n```sh\n# How to reproduce\npnpm test\n```\n' "$B" > "$T/r3.md"
+check "BLOCK: a reproduction heading inside code is no reproduction section" 1 "$(ilint "$T/r3.md" 'no .### How to reproduce')"
+printf '%s The worker drops the job after a restart.\n\n### How to reproduce\n\n1. Queue a job\n\n#### Restart the worker\n\n%s\n\n![queue](/abs/queue.png)\n' "$B" "${S[*]}" > "$T/r4.md"
+check "a subheading stays in its reproduction section" 0 "$(ilint "$T/r4.md" '400 for an issue')"
+printf '%s The worker drops the job after a restart.\n\n### How to reproduce\n\n1. Queue a job, restart the worker\n\n### How to see the expected result\n\n%s\n\n![queue](/abs/queue.png)\n' "$B" "${S[*]}" > "$T/r5.md"
+check "BLOCK: a heading that only starts like a reproduction heading is counted" 1 "$(ilint "$T/r5.md" '400 for an issue')"
+printf '%s### Description\n\nThe server drops the upgrade header behind a proxy.\n\n### Reproduction\n\n%s\n\n![proxy](/abs/proxy.png)\n' "$B" "${S[*]} ${S[*]}" > "$T/r6.md"
+check "a template's Reproduction section isn't counted either" 0 "$(tpi acme/tpl r6 '400 for an issue')"
+{ printf '%s Who picks the payout account?\n\n### How to reproduce\n\n```\n' "$B"; printf 'check object %s unreadable expected account\n' $(seq 70); printf '```\n\n### Options\n\n(a) The typed account. (b) The winning account. I recommend (a).\n'; } > "$T/r7.md"
+check "a decision issue's reproduction stays out of its 400 words" 0 "$(ilint "$T/r7.md" 'decision issue')"
+# the still-image check counts each reproduction action once: a subsection inside a template heading's span, or a numbered line in code, adds none
+printf '%s### Description\n\nThe upload stalls.\n\n#### How to reproduce\n\n1. Open /upload\n2. Pick a 50 MB file\n\n![upload](/abs/upload.png)\n' "$B" > "$T/r8.md"
+printf '%s Totals skip the last row.\n\n### How to reproduce\n\n1. Import this file\n2. Open /report\n\n```md\n# Expense report\n1. Taxi\n2. Hotel\n```\n\n![report](/abs/report.png)\n' "$B" > "$T/r9.md"
+check "two actions in a template's nested reproduction, or beside a numbered fixture in code, are two steps" "0 0" "$(tpi acme/tpl r8 'record a video') $(ilint "$T/r9.md" 'record a video')"
 # ---------- pre-bash-guard: no foreground waits ----------
 wait_guard() { # command background(true|false)
   python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1],"run_in_background":sys.argv[2]=="true"},"cwd":sys.argv[3]}))' "$1" "$2" "$T" \

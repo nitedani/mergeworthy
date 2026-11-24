@@ -127,15 +127,26 @@ def state_line(w):
     """The draft State line: **<label>: <word>** (<why>)."""
     return re.compile(rf'^\*\*{re.escape(w["state"][0])}: {re.escape(w["state"][1])}\*\* \(.*\S.*\)$')
 
-def fence_spans(s):
-    """(start, end, inner) of each fenced or indented code block in s as CommonMark renders it, read by markdown-it-py: the block's lines,
-    its closing fence included, and the code it shows. The one place mergeworthy decides what renders as code."""
+def _blocks(s):
+    """s's block tokens as CommonMark renders it, read by markdown-it-py, and at(n): where its line n starts in s."""
     try: from markdown_it import MarkdownIt
     except ImportError as e:  # raised, not sys.exit: failclosed turns it into a hook's block (exit 2), where an exit 1 lets the action through
         raise ImportError("mergeworthy reads Markdown with markdown-it-py: install it (apt install python3-markdown-it, or pip install markdown-it-py)") from e
     lines = [0] + [m.end() for m in re.finditer(r'\r\n?|\n', s)]  # where markdown-it's lines start
-    at = lambda n: lines[n] if n < len(lines) else len(s)
-    return [(at(t.map[0]), at(t.map[1]), t.content) for t in MarkdownIt('commonmark').parse(s) if t.type in ('fence', 'code_block')]
+    return MarkdownIt('commonmark').parse(s), lambda n: lines[n] if n < len(lines) else len(s)
+
+def fence_spans(s):
+    """(start, end, inner) of each fenced or indented code block in s as CommonMark renders it: the block's lines, its closing fence
+    included, and the code it shows. The one place mergeworthy decides what renders as code."""
+    toks, at = _blocks(s)
+    return [(at(t.map[0]), at(t.map[1]), t.content) for t in toks if t.type in ('fence', 'code_block')]
+
+def sections(s, pick):
+    """(start, end) of each section of s whose heading pick('### <text>') accepts, as CommonMark renders it: from the heading to the next
+    heading of the same or a higher level (a '#' line in code is no heading)."""
+    toks, at = _blocks(s)
+    heads = [(int(t.tag[1]), at(t.map[0]), f"{'#' * int(t.tag[1])} {toks[i + 1].content.strip()}") for i, t in enumerate(toks) if t.type == 'heading_open']
+    return [(a, next((b for m, b, _ in heads[i + 1:] if m <= n), len(s))) for i, (n, a, h) in enumerate(heads) if pick(h)]
 def uncoded(s, keep=lambda block: ''):  # s with each code block replaced by keep(block)
     out, last = [], 0
     for a, b, _ in fence_spans(s): out += [s[last:a], keep(s[a:b])]; last = b
