@@ -12,7 +12,7 @@ Settings: MERGEWORTHY_BADGE on|off|auto requires the badge always, never, or for
 import hashlib, os, re, sys, subprocess, tempfile, urllib.parse
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'hooks'))
 import post_words
-from post_words import fence_spans, uncoded
+from post_words import fence_spans, sections, uncoded
 def setting(name, default):
     """MERGEWORTHY_<name> from the environment, else from ~/.mergeworthy/settings.env (written at session start from the plugin's options)."""
     f = os.path.expanduser('~/.mergeworthy/settings.env')
@@ -100,11 +100,16 @@ if _asked_list:
     prose = re.sub(r'(?m)^\s*(?:- \[[ xX]\] .*|\d+\. \*\*.*|\*Why it matters:.*)$', '', prose)
 # The converge steps' runs, collapsed (converge step 5), are evidence: never linted; only a PR body's count reads this prose, so a reply counts them
 prose = re.sub(rf'<details>\s*<summary>(?:{post_words.alt(W["blocks"])})[^<]*</summary>.*?</details>', '', prose, flags=re.S)
-REPRO = r'#+\s*(?:how to (?:see|reproduce)|steps to reproduce)\b'  # an issue's reproduction section (open-issue)
+REPRO = r'#+ (?:how to (?:see|reproduce)|steps to reproduce)'  # an issue's reproduction heading, its whole text (open-issue)
+repro_spans = lambda s, tpl=(): sections(s, re.compile('|'.join([REPRO] + [re.escape(h) for h in tpl]), re.I).fullmatch)
 decision = kind == 'issue' and not plan and re.search(r'^#+\s*Options\b', text, re.I | re.M)  # a decision issue (open-issue)
 finding = kind == 'issue' and not plan and not decision
 # a finding issue's reproduction steps a newcomer needs are required, not part of its budget
-steps_out = lambda s: re.sub(rf'^{REPRO}.*?(?=^#+ |\Z)', '', s, flags=re.S | re.M | re.I) if finding else s
+def steps_out(s):
+    out, last = [], 0
+    for a, b in repro_spans(s) if finding else []:
+        if a >= last: out.append(s[last:a]); last = b  # a reproduction subsection is inside its parent's span
+    return ''.join(out) + s[last:]
 code = '\n'.join(inner for _, _, inner in fence_spans(steps_out(prose)))
 prose = uncoded(prose)
 prose = re.sub(r'^\s*(?:[-*]\s+)?>.*$', '', prose, flags=re.M)
@@ -342,8 +347,7 @@ if _locs:
 if kind == 'issue' and not plan:
     shown = re.sub(r'^(?:<img [^>]*>[ \t]*)+\n', '', text)  # the badge is no evidence
     _tpl = template_headings('Issue', shown, "its bug template in .github/ISSUE_TEMPLATE/; a form's labels render as `### <label>`", 'open-issue step 3')
-    _heads = REPRO + ''.join(f'|{re.escape(h)}\\s*$' for h in _tpl)
-    repro = [m.group(0) for m in re.finditer(rf'^(?:{_heads}).*?(?=^#+ |\Z)', shown, re.I | re.M | re.S)][:None if _tpl else 1]
+    repro = [shown[a:b] for a, b in repro_spans(shown, _tpl)][:None if _tpl else 1]
     video = re.search(r'<video|\.(?:mp4|webm|mov)\b', shown, re.I)
     still = re.search(r'<img|\.(?:png|jpe?g|gif|webp)\b', shown, re.I)
     steps = len(re.findall(r'^\s*\d+\.\s', ''.join(repro), re.M))

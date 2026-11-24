@@ -1119,6 +1119,17 @@ check "BLOCK: those sentences moved into a one-column table" 1 "$(ilint "$T/itab
 check "a How to see section's prose isn't counted, as How to reproduce's isn't" 0 "$(ilint "$T/isee.md" '400 for an issue')"
 { printf '%s Who picks the payout account?\n\n### How to reproduce\n\n1. Open /invoices\n\n![list](/abs/list.png)\n\n### Options\n\n```\n' "$B"; printf 'get(a) -> b\n%.0s' $(seq 150); printf '```\n'; } > "$T/i6.md"
 check "BLOCK: a decision issue's code counts toward its 400 words" 1 "$(ilint "$T/i6.md" 'decision issue')"
+# the reproduction section as it renders: a '#' line in code is no heading, a subheading stays in it, and a heading matches by its whole text
+printf '%s The worker test run fails on a clean checkout.\n\n### How to reproduce\n\n```sh\n# Run this on the worker\npnpm test\n```\n\n### Actual behavior\n\nThe worker exits before any test file is loaded.\nThe runner then reports every suite as skipped.\nNothing in the output names the missing option.\nA second run on the same checkout fails the same way.\n' "$B" > "$T/r1.md"
+check "a shell comment in the reproduction's code is no heading, so the short issue passes" 0 "$(ilint "$T/r1.md" '400 for an issue')"
+{ printf '%s The worker test run fails on a clean checkout.\n\n### How to reproduce\n\n1. Run pnpm test\n\n### Actual behavior\n\n```\n### How to reproduce\n' "$B"; printf '%s\n' "${S[@]}" 'The worker never says which option it rejected.' 'A second run on the same checkout fails the same way.'; printf '```\n'; } > "$T/r2.md"
+check "BLOCK: a reproduction heading inside code exempts nothing" 1 "$(ilint "$T/r2.md" '400 for an issue')"
+printf '%s The worker test run fails.\n\n```sh\n# How to reproduce\npnpm test\n```\n' "$B" > "$T/r3.md"
+check "BLOCK: a reproduction heading inside code is no reproduction section" 1 "$(ilint "$T/r3.md" 'no .### How to reproduce')"
+printf '%s The worker drops the job after a restart.\n\n### How to reproduce\n\n1. Queue a job\n\n#### Restart the worker\n\n%s\n\n![queue](/abs/queue.png)\n' "$B" "${S[*]}" > "$T/r4.md"
+check "a subheading stays in its reproduction section" 0 "$(ilint "$T/r4.md" '400 for an issue')"
+printf '%s The worker drops the job after a restart.\n\n### How to reproduce\n\n1. Queue a job, restart the worker\n\n### How to see the expected result\n\n%s\n\n![queue](/abs/queue.png)\n' "$B" "${S[*]}" > "$T/r5.md"
+check "BLOCK: a heading that only starts like a reproduction heading is counted" 1 "$(ilint "$T/r5.md" '400 for an issue')"
 # ---------- pre-bash-guard: no foreground waits ----------
 wait_guard() { # command background(true|false)
   python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1],"run_in_background":sys.argv[2]=="true"},"cwd":sys.argv[3]}))' "$1" "$2" "$T" \
