@@ -41,6 +41,7 @@ f="$FX/$(printf '%s' "$2" | tr '/?&=' '____')"
 for a in "$@"; do case "$a" in o=*|id=*) [ -f "${f}_${a#*=}" ] && f="${f}_${a#*=}";; esac; done  # graphql: $FX/graphql_<owner> or $FX/graphql_<node id> answers for it
 [ -n "$GH_STUB_403" ] && { echo 'gh: API rate limit exceeded for user ID 1. (HTTP 403)' >&2; exit 1; }
 [ -f "$f.hang" ] && exec sleep 30  # $FX/<path>.hang: gh hangs past the caller's timeout
+[ -f "$f" ] || [ ! -f "$f.err" ] || { cat "$f.err" >&2; exit 1; }  # $FX/<path>.err, with no $FX/<path>: gh fails, printing it
 [ -f "$f" ] || { printf '{"message":"Not Found","status":"404"}'; echo 'gh: Not Found (HTTP 404)' >&2; exit 1; }  # gh prints the error's JSON body too
 q=; pg=; sl=; while [ $# -gt 0 ]; do [ "$1" = --jq ] && q=$2; [ "$1" = --paginate ] && pg=1; [ "$1" = --slurp ] && sl=1; shift; done
 python3 -c 'import json, re, sys
@@ -4932,7 +4933,8 @@ sed -i '/^## Merging/,$d' "$HOME/.mergeworthy/projects/o/r.md"
 # classic protection, and on their ask: the typed one, or the project file's order; a repo with no project file has no standing order
 adm() { # login, repo owner, owner type, the ruleset's current_user_can_bypass
   printf '{"login":"%s"}' "$1" > "$FX/user"; printf '{"owner":{"login":"%s","type":"%s"}}' "$2" "$3" > "$FX/repos_o_r"
-  printf '[{"type":"update","ruleset_id":7}]' > "$FX/repos_o_r_rules_branches_main_per_page_100"; printf '{"name":"carry","current_user_can_bypass":"%s"}' "$4" > "$FX/repos_o_r_rulesets_7"; }
+  printf '[{"type":"update","ruleset_id":7}]' > "$FX/repos_o_r_rules_branches_main_per_page_100"; printf '{"name":"carry","current_user_can_bypass":"%s"}' "$4" > "$FX/repos_o_r_rulesets_7"
+  echo 'gh: Branch not protected (HTTP 404)' > "$FX/repos_o_r_branches_main_protection.err"; }
 MA="$M --admin"; adm o o User always
 check "an --admin merge on the owner's own repo, its ruleset always bypassable, no classic protection, asked for as merge #41, passes; with the project file's order too" "0 0" \
   "$(said 'merge #41'; lg "$MA") $(said 'looks good'; printf '## Merging\n- Merge each PR as soon as it is ready\n' >> "$HOME/.mergeworthy/projects/o/r.md"; lg "$MA"; sed -i '/^## Merging/,$d' "$HOME/.mergeworthy/projects/o/r.md")"
@@ -4941,7 +4943,9 @@ check "BLOCK: --admin on an organization's repo, past a ruleset bypassable never
   "$(adm o o Organization always; lg "$MA") $(grep -c 'o/r belongs to the organization o: merge once the PR meets them' "$T/err") \
 $(adm o o User never; lg "$MA") $(grep -c 'ruleset 7 (carry) lets o bypass it never, not always' "$T/err") \
 $(adm o o User pull_requests_only; lg "$MA") $(grep -c 'bypass it pull_requests_only, not always' "$T/err") \
-$(adm o o User always; echo '{}' > "$FX/repos_o_r_branches_main_protection"; lg "$MA") $(grep -c 'main has classic branch protection' "$T/err"; rm "$FX/repos_o_r_branches_main_protection")"
+$(adm o o User always; echo '{}' > "$FX/repos_o_r_branches_main_protection"; lg "$MA") $(grep -c 'main has classic branch protection, past which the guard lets no --admin merge' "$T/err"; rm "$FX/repos_o_r_branches_main_protection")"
+check "BLOCK: --admin when reading the base's classic protection fails other than with GitHub's 'Branch not protected', saying to retry" "2 1" \
+  "$(mv "$FX/repos_o_r_branches_main_protection.err" "$T/bnp"; lg "$MA") $(grep -c "gh couldn't read main's branch protection: retry once gh answers" "$T/err"; mv "$T/bnp" "$FX/repos_o_r_branches_main_protection.err")"
 check "BLOCK: --admin=true, and --admin=false then --admin, read as --admin; --admin then --admin=false is a plain merge" "2 2 0" \
   "$(adm o o Organization always; lg "$M --admin=true") $(lg "$M --admin=false --admin") $(lg "$M --admin --admin=false"; adm o o User always)"
 MR="${MA#gh }"; MR="${MR/ -R o\/r/}"
@@ -4959,7 +4963,7 @@ check "BLOCK: --admin past a ruleset that only the second page of the base's rul
 rm "$FX/repos_o_r_rulesets_8"
 touch "$FX/repos_o_r_rules_branches_main_per_page_100.hang"
 check "BLOCK: --admin when gh hangs reading the base's rules, saying to retry" "2 1" "$(lg "$MA") $(grep -c "gh couldn't read main's rules: retry once gh answers" "$T/err")"
-rm "$FX/user" "$FX/repos_o_r_rules_branches_main_per_page_100.hang" "$FX/repos_o_r" "$FX/repos_o_r_rules_branches_main_per_page_100" "$FX/repos_o_r_rulesets_7"
+rm "$FX/user" "$FX/repos_o_r_rules_branches_main_per_page_100.hang" "$FX/repos_o_r_branches_main_protection.err" "$FX/repos_o_r" "$FX/repos_o_r_rules_branches_main_per_page_100" "$FX/repos_o_r_rulesets_7"
 said 'looks good'
 check "BLOCK: gh release create and npm publish unasked; asked, or a dry run, or a repo with no project file, they pass; BLOCK: release notes asked for, a past 'released' or 'published', one held back as 'released' or 'published'" "2 2 0 0 2 2 2 0 0 2 2 2 2" \
   "$(lg 'gh release create v1.2.0 -R o/r') $(lg 'npm publish' "$TCO") $(lg 'npm publish --dry-run' "$TCO") $(lg 'gh release create v1.2.0 -R lo/none') \

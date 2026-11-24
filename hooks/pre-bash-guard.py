@@ -255,8 +255,8 @@ def own_bypass(pr, run):
         if not (rs := get(f'repos/{slug}/rulesets/{rid}')): return unread.format(f'ruleset {rid}')
         if rs.get('current_user_can_bypass') != 'always': return f"ruleset {rid} ({rs.get('name')}) lets {me['login']} bypass it {rs.get('current_user_can_bypass') or 'never'}, not always" + meet
     r = call(f'repos/{slug}/branches/{branch}/protection')
-    if r and r.returncode == 0: return f"{base} has classic branch protection, which grants no bypass" + meet
-    if not r or '(HTTP 404)' not in r.stderr: return unread.format(f"{base}'s branch protection")
+    if r and r.returncode == 0: return f"{base} has classic branch protection, past which the guard lets no --admin merge" + meet
+    if not r or 'Branch not protected' not in r.stderr: return unread.format(f"{base}'s branch protection")
 
 def default_branch(host, repo):
     """repo's default branch on host (GitHub, else GitLab); blocks when its API can't answer."""
