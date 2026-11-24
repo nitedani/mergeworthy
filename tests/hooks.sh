@@ -3003,7 +3003,7 @@ check "gh pr ready --undo, --undo=true, -h and --help, with no PR of the checkou
 printf '## Merging\n- Merge each PR as soon as it is ready\n' >> "$HOME/.mergeworthy/projects/o/r.md"  # the owner's standing order: the checks below are on the merge's form
 M='gh pr merge 41 -R o/r --squash --delete-branch --subject "Fix it (#41)" --body ""'
 mpr() { # mergeStateStatus, when its last check completed
-  printf '{"url":"https://github.com/o/r/pull/41","headRefName":"fix","headRefOid":"hd","baseRefName":"main","mergeStateStatus":"%s","changedFiles":1,"files":[{"path":"a.py"}],"statusCheckRollup":[{"completedAt":"%s"}],"commits":[{"authors":[%s]}]}' "$1" "$2" "${3:-}" > "$FX/pr_view_41"; }
+  printf '{"url":"https://github.com/o/r/pull/41","headRefName":"fix","headRefOid":"hd","baseRefName":"main","mergeStateStatus":"%s","changedFiles":1,"files":[{"path":"a.py"}],"statusCheckRollup":[{"name":"ci","conclusion":"SUCCESS","completedAt":"%s"}],"commits":[{"authors":[%s]}]}' "$1" "$2" "${3:-}" > "$FX/pr_view_41"; }
 printf '{"total_commits":1,"commits":[{"sha":"b1","commit":{"committer":{"date":"2026-10-28T12:00:00Z"}}}]}' > "$FX/repos_o_r_compare_hd...main"
 printf '{"files":[{"filename":"a.py"}]}' > "$FX/repos_o_r_commits_b1"
 mpr CLEAN 2026-10-28T13:00:00Z
@@ -4958,6 +4958,9 @@ check "BLOCK: --admin on a response of another shape (the repo with no owner, a 
 $(echo '{}' > "$FX/repos_o_r_rules_branches_main_per_page_100"; lg "$MA") $(grep -c "gh couldn't read main's rules: retry" "$T/err") \
 $(echo '[{}]' > "$FX/repos_o_r_rules_branches_main_per_page_100"; lg "$MA") $(grep -c "gh couldn't read main's rules: retry" "$T/err"; adm o o User always) \
 $(echo '"x"' > "$FX/repos_o_r_rulesets_7"; lg "$MA") $(grep -c "gh couldn't read ruleset 7: retry" "$T/err"; adm o o User always)"
+sed 's/"statusCheckRollup":\[/&{"name":"lint","conclusion":"NEUTRAL"},{"context":"e2e","state":"PENDING"},{"name":"docs","conclusion":"","status":"IN_PROGRESS"},{"name":"t","conclusion":"FAILURE"},/' "$FX/pr_view_41" > "$T/pv"
+check "BLOCK: --admin while a check on the head failed or is pending, naming each; a neutral one passes" "2 1" \
+  "$(cp "$FX/pr_view_41" "$T/pv41"; cp "$T/pv" "$FX/pr_view_41"; lg "$MA") $(grep -c "its head's checks haven't all succeeded (e2e pending, docs pending, t failure)" "$T/err"; mv "$T/pv41" "$FX/pr_view_41")"
 mv "$HOME/.mergeworthy/projects/o/r.md" "$T/or.md"
 check "with no project file, BLOCK: --admin unasked, or asked for another PR; a plain merge unasked passes, and --admin asked for passes" "2 1 2 0 0" \
   "$(said 'looks good'; lg "$MA") $(grep -c "merging https://github.com/o/r/pull/41 past its base's rules (--admin) lands on o/r.*reply \`merge\`" "$T/err") $(said 'merge #40'; lg "$MA") $(said 'looks good'; lg "$M") $(said 'merge #41'; lg "$MA")"
