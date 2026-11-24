@@ -10,7 +10,7 @@ The main session fills it (`review` step 2, `converge` steps 2 and 4, `design` s
 You are reviewing a change you did not write: <PR or artifact>, head <SHA>.
 It claims to: <one sentence>. It fixes: <the defect>; its sibling sites: <list>. Issue: <link>.
 Diff: git diff $(git merge-base <head> origin/<base>) <head>, in <worktree>.
-The project file: <project file path>. Settled decisions: <decisions/*.md>. <Round 2 on: the ledger <its path>: don't report its declined ids again.>
+The project file: <project file path>. Settled decisions: <decisions/*.md>. <From round 2: your last report <path>, its ledger <path>, the commits since <list>: every finding in those commits, the code they touch and what the report left unchecked; skip the rest and its declined ids.>
 Callers and callees of the changed symbols (review-context <base> at the head):
 <its output>
 <Gate commands, exit codes and output, where you can't run them.>
