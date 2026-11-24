@@ -39,7 +39,8 @@ if [ "$1 $2" = "pr checks" ]; then f="$FX/pr_checks_$(printf '%s' "$3" | tr '/:'
 [ "$1" = api ] || exit 1
 f="$FX/$(printf '%s' "$2" | tr '/?&=' '____')"
 for a in "$@"; do case "$a" in o=*|id=*) [ -f "${f}_${a#*=}" ] && f="${f}_${a#*=}";; esac; done  # graphql: $FX/graphql_<owner> or $FX/graphql_<node id> answers for it
-[ -n "$GH_STUB_403" ] && { echo 'gh: API rate limit exceeded for user ID 1. (HTTP 403)' >&2; exit 1; }
+# GH_STUB_403=1 rate-limits every call, GH_STUB_403=<path> that path's; `gh api rate_limit` answers, as GitHub's doesn't count
+[ -n "$GH_STUB_403" ] && [ "$2" != rate_limit ] && { [ "$GH_STUB_403" = 1 ] || [ "$GH_STUB_403" = "$2" ]; } && { echo 'gh: API rate limit exceeded for user ID 1. (HTTP 403)' >&2; exit 1; }
 [ -f "$f" ] || { printf '{"message":"Not Found","status":"404"}'; echo 'gh: Not Found (HTTP 404)' >&2; exit 1; }  # gh prints the error's JSON body too
 q=; pg=; while [ $# -gt 0 ]; do [ "$1" = --jq ] && q=$2; [ "$1" = --paginate ] && pg=1; shift; done
 python3 -c 'import json, re, sys
@@ -365,6 +366,26 @@ tc_fx repos_o_r_issues_45 '{"number":45,"id":5,"title":"Code in a list","html_ur
 tc_fx repos_o_r_issues_45_comments_per_page_100 '[{"id":105,"user":{"login":"maint"},"created_at":"2026-10-02T09:30:00Z","html_url":"https://example.invalid/o/r/issues/45#c105","body":"- The bot said:\n  ```\n  I disagree with the rename.\n  ```"}]'
 "$R/bin/thread-context" o/r#45 --out "$T/ctx/tc45.md" >/dev/null
 check "a ref and a rejection inside a code block in a list item are code: not followed, not in the ledger" "0 0" "$(grep -c '^  - o/r#42 ' "$T/ctx/tc45.md") $(grep -c '\[reject\]' "$T/ctx/tc45.md")"
+# a rate limit isn't a missing thread (nitedani/mergeworthy#260): the failure names gh's error and when the limit lifts
+tc_fx rate_limit '{"resources":{"core":{"remaining":0,"reset":1795000000},"graphql":{"remaining":4000,"reset":1795000000},"search":{"remaining":30,"reset":1795000000}}}'
+tclimit() { GH_STUB_403=$1 "$R/bin/thread-context" "$2" --out "$T/ctx/rl.md" >/dev/null 2>"$T/rl.err"; echo "$? $(grep -cxF "thread-context: cannot read $2: $3" "$T/rl.err")"; }
+RL403='gh: API rate limit exceeded for user ID 1. (HTTP 403)'
+check "BLOCK: a rate limit on REST, then on GraphQL behind a missing issue, is named, with its reset once spent; a missing thread is still none" "1 1 1 1 1 1" \
+  "$(tclimit 1 o/r#41 "\`gh api repos/o/r/issues/41\` failed: $RL403; it resets at 2026-11-18T11:06:40Z: retry then") $(tclimit graphql o/r#47 "\`gh api graphql\` failed: $RL403") $(tclimit '' o/r#47 'gh read no issue, PR or discussion at o/r#47')"
+mkdir -p "$T/rlbin"; cat > "$T/rlbin/gh" <<EOF
+#!/bin/sh
+# gh, but \`gh api rate_limit\` answers as \$RL says: html (a proxy's sign-in page), empty (no resources), hang; RL=two: GraphQL fails with two errors
+[ "\$1 \$2 \$RL" = "api graphql two" ] && { printf '%s\\n' "$RL403" 'gh: Could not resolve to a Discussion with the number of 47.' >&2; exit 1; }
+[ "\$1 \$2" = "api rate_limit" ] && case "\$RL" in html) echo '<html>Sign in</html>'; exit 0;; empty) echo '{}'; exit 0;; hang) exec sleep 60;; esac
+exec "$T/bin/gh" "\$@"
+EOF
+chmod +x "$T/rlbin/gh"
+rlodd() { (export RL=$1 PATH="$T/rlbin:$PATH"; tclimit 1 o/r#41 "\`gh api repos/o/r/issues/41\` failed: $RL403"); }
+check "BLOCK: a reset lookup that answers a page, no resources or nothing in time leaves the rate-limit error as gh gave it" "1 1 1 1 1 1" "$(rlodd html) $(rlodd empty) $(rlodd hang)"
+check "BLOCK: GraphQL's rate limit before a NOT_FOUND is no missing thread: both errors are named" "1 1" "$(export RL=two PATH="$T/rlbin:$PATH"; tclimit '' o/r#47 "\`gh api graphql\` failed: $RL403; gh: Could not resolve to a Discussion with the number of 47.")"
+rlasks() { rm -f "$T/rl.calls"; GH_STUB_ENV="$T/rl.calls" GH_STUB_403=$1 "$R/bin/thread-context" o/r#41 --depth 1 --out "$T/ctx/rl.md" >/dev/null 2>&1; echo "$? $(grep -c '^api rate_limit ' "$T/rl.calls")"; }
+check "the reset is looked up only for the error thread-context dies with, not for a linked thread it skips" "0 0 1 1" "$(rlasks repos/o/r/issues/42) $(rlasks repos/o/r/issues/41)"
+rm "$FX/rate_limit"
 
 # the guard: a post on the thread needs thread-context.md in the draft's folder, current
 TD="$T/tdrafts/o-r-41"; mkdir -p "$TD"
@@ -504,6 +525,14 @@ check "the discussion's replies are in the transcript, each naming the comment i
 check "an organization's discussion URL in the thread is followed as the thread it names" "0 1 1 1" "$(dtc 'd/r#5' 1) $(grep -c '^  - d/r#6 .*linked from d/r#5)$' "$DD/thread-context.md")"
 check "--ref names a discussion URL's thread, an organization's too; one gh finds none at fails" "d/r#5 d/r#5 1" \
   "$("$R/bin/thread-context" --ref https://github.com/d/r/discussions/5) $("$R/bin/thread-context" --ref https://github.com/orgs/dorg/discussions/5) $("$R/bin/thread-context" --ref https://github.com/orgs/dorg/discussions/7 >/dev/null 2>&1; echo $?)"
+check "BLOCK: --ref on an organization's discussion URL while GitHub rate-limits names the limit" "1 1 0" \
+  "$(GH_STUB_403=1 "$R/bin/thread-context" --ref https://github.com/orgs/dorg/discussions/5 >/dev/null 2>"$T/ref.err"; echo $?) $(grep -c '^thread-context: cannot read https://github.com/orgs/dorg/discussions/5: `gh api graphql` failed: gh: API rate limit exceeded' "$T/ref.err") $(grep -c Traceback "$T/ref.err")"
+check "a discussion's URL, an organization's too, is read while REST is rate-limited; owner/repo#N still asks REST first" "0 0 1" \
+  "$(for r in https://github.com/d/r/discussions/5 https://github.com/orgs/dorg/discussions/5 'd/r#5'; do GH_STUB_403=repos/d/r/issues/5 "$R/bin/thread-context" --items "$r" >/dev/null 2>&1; printf '%s ' $?; done | sed 's/ $//')"
+tc_fx repos_o_discussions_issues_41 '{"number":41,"id":1,"title":"In a repo named discussions","html_url":"https://example.invalid/o/discussions/issues/41","state":"open","updated_at":"2026-10-01T10:00:00Z","created_at":"2026-09-30T10:00:00Z","user":{"login":"maint"},"body":"Hi."}'
+tc_fx repos_o_discussions_issues_41_comments_per_page_100 '[]'; tc_fx repos_o_discussions_issues_41_timeline_per_page_100 '[]'
+check "an issue URL is read as an issue when its repo is named discussions or its query names a discussion" "0 0" \
+  "$(for r in https://github.com/o/discussions/issues/41 'https://github.com/o/r/issues/41?next=/o/r/discussions/42'; do "$R/bin/thread-context" --items "$r" >/dev/null 2>&1; printf '%s ' $?; done | sed 's/ $//')"
 python3 "$T/dfx.py" replies '' '' "$FX/graphql_DC_501" > "$FX/graphql_d"
 "$R/bin/thread-context" 'd/r#5' --out "$T/d101.md" --depth 0 >/dev/null
 check "a comment's 101 replies, over two pages, are all read: the first and the newest, in the record and in --items" "1 1 1 101" "$(grep -c '^https://example.invalid/d/r/discussions/5#discussioncomment-1001$' "$T/d101.md") $(grep -c '^https://example.invalid/d/r/discussions/5#discussioncomment-1101$' "$T/d101.md") $(grep -c '^- latest-human-comment: id=1101 ' "$T/d101.md") $("$R/bin/thread-context" --items 'd/r#5' | python3 -c 'import json,sys; print(sum(x["kind"] == "reply" for x in json.load(sys.stdin)))')"
