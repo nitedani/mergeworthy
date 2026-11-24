@@ -1356,7 +1356,7 @@ def check(t, has_cd):
             newer = [gh('api', f"repos/{slug}/commits/{c['sha']}")['files'] for c in moved['commits'] if c['commit']['committer']['date'] > green]
         except (OSError, subprocess.TimeoutExpired, ValueError, KeyError, TypeError) as e:
             block(f"gh couldn't read this PR's merge state ({type(e).__name__}: {e}), so whether its base moved can't be checked: retry once gh answers")
-        admin = '--admin' in rest
+        admin = flag(rest, '--admin')
         if admin and (why := own_bypass(slug, pr['baseRefName'], run)):
             block(f"`gh pr merge --admin` bypasses {pr['baseRefName']}'s rules: only on the owner's own repo, where GitHub lets them always bypass every rule on it, and on their ask. Here {why}")
         need_ask('merge', f"merging {pr['url']}" + (' past its base\'s rules (--admin)' if admin else ''), slug, pr['url'].rstrip('/').rsplit('/', 1)[1], strict=admin)
