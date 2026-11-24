@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A review loop's ledger (delegate §Review rounds): `<id> <label> <outcome>` lines, ids R<round>.<n> from a finding's first round,
 and a line `Round: <N>` naming the last completed round, the larger of it and the highest id round. loops.close says whether it
-closes its loop; loops.admit asks last_round whether a code round may follow."""
+closes its loop; loops.admit asks owed whether a code round may follow."""
 import re
 
 LINE = re.compile(r'^[\s>*-]*`?(?:R(\d+)\.\d+|[a-z][^\s`]*\d[^\s`]*)`?\s+`?(blocker|should|nit)`?:?(?=\s|$)\s*(.*?)\s*$', re.I)
@@ -17,12 +17,9 @@ def read(path):
     return rows, lines, max([int(m[1]) for m in rows] + [int(n) for n in ROUND.findall(text)], default=0)
 
 
-def fixed_in(rows, n):
-    """Whether round n brought a blocker or should `fixed in <sha>`: only such a round earns a code loop its next round."""
-    return any(int(m[1]) == n and m[2].lower() != 'nit' and FIXED.match(m[3]) for m in rows)
-
-
-def last_round(path):
-    """(the ledger's completed round, whether it brought a blocker or should `fixed in <sha>`)."""
-    rows, _, last = read(path)
-    return last, fixed_in(rows, last)
+def owed(rows, n):
+    """What earns a code loop its next round after round n: 'fixed' when it brought a blocker or should `fixed in <sha>`, else
+    'declined' when it brought a blocker `declined:`, which goes back to its seat once (delegate §Stuck), else ''."""
+    of_n = [m for m in rows if int(m[1]) == n]
+    return 'fixed' if any(m[2].lower() != 'nit' and FIXED.match(m[3]) for m in of_n) else \
+        'declined' if any(m[2].lower() == 'blocker' and m[3].startswith('declined:') for m in of_n) else ''

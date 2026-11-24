@@ -112,23 +112,24 @@ def admit(loop, n, tops, heads, led):
             if not any(own_lines(t, o, h) <= testpaths.STALE_LINES for t, o in itertools.chain([first], on)): return False
         return moved
     earlier = sorted({m for m, old, *_ in record(loop)['rounds'] if m < n and built_on(old)})
-    try: last, kept = ledger.last_round(led) if led and os.path.isfile(led) else (0, False)
+    try: rows, _, last = ledger.read(led) if led and os.path.isfile(led) else ([], [], 0)
     except OSError as e: return f"the ledger {led} can't be read ({e.strerror}), so no round of {loop} is admitted: fix it, or name the loop's ledger (mergeworthy:delegate §Review rounds).\n"
+    kept = ledger.owed(rows, last)
     close = f"Close the loop with `pr-steps <step> <file> --ledger {led or '<ledger>'}` on r{earlier[-1]}'s report when it isn't clean: the agent's own report is the record, never one the main session writes.\n" if earlier else ''
     if len(earlier) >= 4:
         return (f"{loop} already ran {', '.join(f'r{m}' for m in earlier)} on this head or one within {testpaths.STALE_LINES} changed lines of it "
                 f"({', '.join(h[:12] for h in heads) or 'no head pinned'}): a loop gets four rounds per head, and a head past those lines is a new one "
                 "(mergeworthy:delegate §Review rounds). "
                 + (f"The ledger {led} shows round {last} still brought a blocker or should fixed in a commit: the area keeps taking patches, so its next step is "
-                   "the finality pass (mergeworthy:finality step 1, recorded by `pr-steps finality <file>`), not another round. " if kept else "")
+                   "the finality pass (mergeworthy:finality step 1, recorded by `pr-steps finality <file>`), not another round. " if kept == 'fixed' else "")
                 + "List what is still open in the report or the PR body's notes and go on (push, ready, the next step) without waiting for an answer; "
                 "only an open blocker keeps the PR in draft. A maintainer's ask on a new head starts a new loop name. " + close)
     if earlier and not kept:
         return (f"{loop}-r{n} follows r{earlier[-1]} on this head or one within {testpaths.STALE_LINES} changed lines of it, and a loop gets its next round only "
-                "while its last round brought a blocker or should you kept and fixed (mergeworthy:delegate §Review rounds), but "
+                "while its last round brought a blocker or should you kept and fixed, or a blocker you declined (mergeworthy:delegate §Review rounds), but "
                 + ("the brief names no `<work folder>/drafts/<review>.ledger.md` to show it: name the loop's ledger in the brief, or end the loop. " if not led else
                    f"{led} doesn't exist: name the loop's ledger, or end the loop. " if not os.path.isfile(led) else
-                   f"the ledger {led} shows round {last} brought none `fixed in <sha>`: the loop ends there. ")
+                   f"the ledger {led} shows round {last} brought none `fixed in <sha>`, and no blocker `declined:`: the loop ends there. ")
                 + close)
     return ''
 
@@ -136,8 +137,10 @@ def admit(loop, n, tops, heads, led):
 # per kind of loop: the fix outcome that closes a finding, why the completed round leaves the loop open ('' when it doesn't), and
 # whether a later round confirming the fix closes it (a post's draft has no sha)
 KINDS = {
-    'code': ('fixed in <sha>', lambda rows, last, p: f'{p} closes round {last}, which brought a blocker or should fixed in a commit: the loop gets its next round first'
-             if last < 4 and ledger.fixed_in(rows, last) else '', False),
+    'code': ('fixed in <sha>', lambda rows, last, p: '' if last >= 4 else {
+        'fixed': f'{p} closes round {last}, which brought a blocker or should fixed in a commit: the loop gets its next round first',
+        'declined': f'{p} closes round {last}, which declined a blocker: send it back to its seat once, in the next round, before the loop closes (mergeworthy:delegate §Stuck)',
+    }.get(ledger.owed(rows, last), ''), False),
     'post': ('fixed in r<N>', lambda rows, last, p: '' if last >= 2 else f'{p} closes round {last}: a verdict that is not clean gets round 2 first', True),
 }
 
