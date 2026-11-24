@@ -30,11 +30,14 @@ def die(msg, code=1):
 ABSENT = re.compile(r'HTTP 404|404 Not Found|Could not resolve to ')  # gh's REST 404, glab's, and GraphQL's NOT_FOUND
 
 class Unreadable(Exception):
-    """A request load() needs failed: the thread can't be read whole, so nothing is recorded or cached from it."""
+    """A request load() needs failed: the thread can't be read whole, so nothing is recorded or cached from it. limited: the gh
+    resource ('core', 'graphql' or 'search') whose rate limit stopped it, else None."""
+    def __init__(self, msg, limited=None):
+        super().__init__(msg); self.limited = limited
 
 def api_json(path, paginate=False, cmd=('gh', 'api'), args=()):
     """JSON from `<cmd> <path> <args>`, gh api by default (pages flattened into one list); None when nothing is there (a 404, or
-    GraphQL resolving nothing); Unreadable naming the call and its error when it fails otherwise, with when a rate limit lifts."""
+    GraphQL resolving nothing); Unreadable naming the call and its error when it fails otherwise."""
     call = f'`{" ".join(cmd)} {path}` failed'
     try:
         r = subprocess.run([*cmd, path, *args] + (['--paginate'] if paginate else []), capture_output=True, text=True, timeout=120)
@@ -43,7 +46,8 @@ def api_json(path, paginate=False, cmd=('gh', 'api'), args=()):
     if r.returncode != 0:
         err = (r.stderr.strip().splitlines() or [f'exit {r.returncode}'])[-1]
         if ABSENT.search(err): return None
-        raise Unreadable(f'{call}: {err}{lifts(cmd, path, err)}')
+        kind = 'graphql' if path == 'graphql' else 'search' if path.startswith('search') else 'core'
+        raise Unreadable(f'{call}: {err}', kind if cmd[0] == 'gh' and 'rate limit' in err.lower() else None)
     dec, s, i, out = json.JSONDecoder(), r.stdout, 0, []
     while i < len(s):
         while i < len(s) and s[i].isspace(): i += 1
@@ -53,15 +57,17 @@ def api_json(path, paginate=False, cmd=('gh', 'api'), args=()):
         out += v if isinstance(v, list) else [v]
     return out if paginate else (out[0] if out else None)
 
-def lifts(cmd, path, err):
-    """When the spent rate limit gh's error names resets, as the end of its message; '' for another error, for a limit with requests
-    left (the snapshot can't tell which limit stopped the call), and when `gh api rate_limit` can't say: the error stays as gh gave it."""
-    if cmd[0] != 'gh' or 'rate limit' not in err.lower(): return ''
-    kind = 'graphql' if path == 'graphql' else 'search' if path.startswith('search') else 'core'
-    try:
-        limit = json.loads(subprocess.run(['gh', 'api', 'rate_limit'], capture_output=True, text=True, timeout=5, check=True).stdout)['resources'][kind]
-        return f'; it resets at {gh_common.iso(limit["reset"])}: retry then' if limit['remaining'] == 0 else ''
-    except Exception: return ''  # failed, hung or odd (a proxy's sign-in page, a missing key)
+def cannot(s, e):
+    """Exits naming the reference s and why it can't be read (Unreadable e): gh's error, and when the spent rate limit it ran into resets.
+    The reset is left out for a limit with requests left (the snapshot can't tell which limit stopped the call), and when `gh api
+    rate_limit` can't say: the error stays as gh gave it."""
+    reset = ''
+    if e.limited:
+        try:
+            limit = json.loads(subprocess.run(['gh', 'api', 'rate_limit'], capture_output=True, text=True, timeout=5, check=True).stdout)['resources'][e.limited]
+            if limit['remaining'] == 0: reset = f'; it resets at {gh_common.iso(limit["reset"])}: retry then'
+        except Exception: pass  # failed, hung or odd (a proxy's sign-in page, a missing key)
+    die(f'thread-context: cannot read {s}: {e}{reset}')
 
 def fetch(path, paginate=False, cmd=('gh', 'api'), args=()):
     """api_json, raising Unreadable (naming the request) when nothing is there."""
@@ -188,7 +194,7 @@ def thread_ref(s):
     """parse_ref, and an organization's discussion URL; exits 2 on anything else, 1 on an organization's URL gh finds no discussion at
     or can't search."""
     try: rf = parse_ref(s) or org_discussion(s)
-    except Unreadable as e: die(f'thread-context: cannot read {s}: {e}')
+    except Unreadable as e: cannot(s, e)
     if rf: return rf
     if re.search(r'github\.com/orgs/', s): die(f'thread-context: gh found no discussion at {s}: pass it as <owner/repo>#N, the repo its discussions are in')
     die(USAGE, 2)
@@ -246,7 +252,7 @@ def crawl(root, depth, cap):
         nxt = []
         for (ref, via), t in zip(level, loaded):
             if isinstance(t, Unreadable):
-                if d == 0: die(f'thread-context: cannot read {ref}: {t}')
+                if d == 0: cannot(ref, t)
                 continue
             if len(order) >= cap: left.append(ref); continue
             order.append((t, d, via))
@@ -362,7 +368,7 @@ def main(argv):
         rf = thread_ref(opt(argv[0]) or '')
         if argv[0] == '--ref': print(f'{rf[0]}{rf[1]}{rf[2]}'); return
         t = tryload(f'{rf[0]}{rf[1]}{rf[2]}')
-        if isinstance(t, Unreadable): die(f'thread-context: cannot read {opt(argv[0])}: {t}')
+        if isinstance(t, Unreadable): cannot(opt(argv[0]), t)
         if argv[0] == '--items': print(json.dumps(t['items'])); return
         lh = latest_human(t)
         print(f'{lh[1]} {lh[0]}' if lh else '0 0'); return

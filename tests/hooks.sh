@@ -381,6 +381,8 @@ EOF
 chmod +x "$T/rlbin/gh"
 rlodd() { (export RL=$1 PATH="$T/rlbin:$PATH"; tclimit 1 o/r#41 "\`gh api repos/o/r/issues/41\` failed: $RL403"); }
 check "BLOCK: a reset lookup that answers a page, no resources or nothing in time leaves the rate-limit error as gh gave it" "1 1 1 1 1 1" "$(rlodd html) $(rlodd empty) $(rlodd hang)"
+rlasks() { rm -f "$T/rl.calls"; GH_STUB_ENV="$T/rl.calls" GH_STUB_403=$1 "$R/bin/thread-context" o/r#41 --depth 1 --out "$T/ctx/rl.md" >/dev/null 2>&1; echo "$? $(grep -c '^api rate_limit ' "$T/rl.calls")"; }
+check "the reset is looked up only for the error thread-context dies with, not for a linked thread it skips" "0 0 1 1" "$(rlasks repos/o/r/issues/42) $(rlasks repos/o/r/issues/41)"
 rm "$FX/rate_limit"
 
 # the guard: a post on the thread needs thread-context.md in the draft's folder, current
