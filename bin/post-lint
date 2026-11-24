@@ -90,7 +90,7 @@ _m = BADGE.match(text.lstrip())
 if _m:
     text = text.lstrip()[_m.end():].lstrip()
 # The author's prose, which the checks below lint: no code (fenced, inline), quotes of others or HTML comments. The count has its
-# own rules: a PR body's adds prose-like code lines; every other post's reads its own text, code included (see Reading cost).
+# own rules: a PR body's and a finding issue's add prose-like code lines; every other post's reads its own text, code included.
 prose = re.sub(r'<!--.*?-->', '', text, flags=re.S)
 # A reader who asked for the full lists (a refactor prompt's ratings, "100 questions with A/B/C choices") gets them, collapsed in <details>: not linted or counted
 _rp = arg('--parent', None); _rp = (re.sub(r'\.md$', '', path) + '.parent.md') if _rp is None else (None if _rp == 'none' else _rp)
@@ -100,14 +100,23 @@ if _asked_list:
     prose = re.sub(r'(?m)^\s*(?:- \[[ xX]\] .*|\d+\. \*\*.*|\*Why it matters:.*)$', '', prose)
 # The converge steps' runs, collapsed (converge step 5), are evidence: never linted; only a PR body's count reads this prose, so a reply counts them
 prose = re.sub(rf'<details>\s*<summary>(?:{post_words.alt(W["blocks"])})[^<]*</summary>.*?</details>', '', prose, flags=re.S)
-code = '\n'.join(inner for _, _, inner in fence_spans(prose))
+REPRO = r'#+ (?:how to (?:see|reproduce)|steps to reproduce)'  # an issue's reproduction heading, its whole text (open-issue)
+repro_spans = lambda s, heads=(): post_words.sections(s, re.compile('|'.join([REPRO, *heads]), re.I).fullmatch)
+decision = kind == 'issue' and not plan and re.search(r'^#+\s*Options\b', text, re.I | re.M)  # a decision issue (open-issue)
+finding = kind == 'issue' and not plan and not decision
+outer = lambda spans: [(a, b) for i, (a, b) in enumerate(spans) if all(a >= e for _, e in spans[:i])]  # a reproduction subsection is inside its parent's span
+def steps_out(s):  # an issue's reproduction steps a newcomer needs are required, not part of its budget; a template's Reproduction field too
+    out, last = [], 0
+    for a, b in outer(repro_spans(s, [r'#+ reproduction'])) if kind == 'issue' and not plan else []: out.append(s[last:a]); last = b
+    return ''.join(out) + s[last:]
+code = '\n'.join(inner for _, _, inner in fence_spans(steps_out(prose)))
 prose = uncoded(prose)
 prose = re.sub(r'^\s*(?:[-*]\s+)?>.*$', '', prose, flags=re.M)
 prose = re.sub(r'`[^`\n]*`', 'CODE', prose)
-# A PR body counts, outside its evidence blocks, the prose moved into a table or a code block (mergeworthy:writing): a sentence-long cell
-# (more than 15 words besides numbers and inline code) or a row's only cell, except a rated row's and its header's first BOUND words a
+# A PR body and a finding issue count, outside evidence blocks, the prose moved into a table or a code block (mergeworthy:writing): a sentence-long
+# cell (more than 15 words besides numbers and inline code) or a row's only cell, except a rated row's and its header's first BOUND words a
 # cell (unrated()), and a code line of six or more words with no flag, path, code symbol or `->` that isn't mostly numbers
-long_cells, (unrated_prose, n_rated) = [], unrated(prose)
+long_cells, (unrated_prose, n_rated) = [], unrated(steps_out(prose))
 for l in re.findall(r'^\s*\|(.*)$', unrated_prose, flags=re.M):
     row = cells('|' + l)
     if not re.fullmatch(r'[\s:|-]*', l):  # a separator row
@@ -205,10 +214,10 @@ if kind == 'tracker':
         ref = r'(?:[\w.-]+/[\w.-]+)?#\d+(?!\d)'
         for m in re.finditer(rf'^\s*- \[x\] (~~)?({ref})(?:(?:,| and) {ref})*(?!(?:~~)? \()(?!(?:,| and) {ref})', text, flags=re.M):  # a ticked item (or a group of them) says how it ended
             findings.append(f"tracker: say how {m.group(2)} ended, in parentheses right after it, e.g. '{m.group(2)} (merged)' (task §Umbrella)")
-# Reading cost (mergeworthy:writing §Length): every post but a PR body is counted from its own text, code and collapsed sections included;
-# requested lists, quotes of others, and rated rows with their header (up to BOUND words a cell) are left out
-if kind != 'pr':
-    counted = re.sub(r'<!--.*?-->', '', text, flags=re.S)
+# Reading cost (mergeworthy:writing §Length): every other post is counted from its own text, code and collapsed sections included;
+# requested lists, an issue's reproduction, quotes of others, and rated rows with their header (up to BOUND words a cell) are left out
+if kind != 'pr' and not finding:
+    counted = steps_out(re.sub(r'<!--.*?-->', '', text, flags=re.S))
     if _asked_list:  # the lists the reader asked for: collapsed, or open as a questionnaire (GitHub closes <details> on every box ticked)
         counted = re.sub(r'<details>.*?</details>', '', counted, flags=re.S)
         counted = re.sub(r'(?m)^\s*(?:- \[[ xX]\] .*|\d+\. \*\*.*|\*Why it matters:.*)$', '', counted)
@@ -219,8 +228,6 @@ if kind != 'pr':
     counted = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', counted)
     counted = re.sub(r'https?://\S+', 'URL', counted)
     counted = re.sub(r'^(?:<img [^>]*>[ \t]*)+\n', '', counted)            # the badge
-    if kind == 'issue' and not plan:  # the reproduction steps a newcomer needs are required, not part of the budget
-        counted = re.sub(r'^#+\s*How to reproduce\b.*?(?=^#+ |\Z)', '', counted, flags=re.S | re.M | re.I)
 words = len(re.findall(r"[A-Za-z0-9][\w'’-]*", counted))
 chars = len(re.sub(r'\s+', ' ', counted).strip())
 sentences = len(re.findall(r'[.!?](?=\s|$)', re.sub(r'\b(e\.g|i\.e|etc|vs)\.', '', counted).strip())) or 1
@@ -319,15 +326,14 @@ if kind == 'proposal' and words > 900 + extra:  # a design walkthrough (mergewor
 # Parallel, not later (task §Dispositions): work promised for "after it" or "later" is deferred, not waiting on anything named
 if kind in ('reply', 'proposal', 'inline') and (_d := re.search(r"\bI(?:'ll| will)\b[^.\n]*?\b(?:after (?:it|that|this)|later)\b", prose)):
     findings.append(f"{_d.group(0)!r} defers work: do it now, name the dependency or decision it waits on, or drop the promise (task §Dispositions)")
-decision = kind == 'issue' and not plan and re.search(r'^#+\s*Options\b', text, re.I | re.M)  # a decision issue (open-issue)
 if decision and words > 400 + extra:
     findings.append(f"{words} words > {400 + extra} for a decision issue (tables and code count): the options a user would see and your pick; cut the rest")
 if plan:
     cap = 2500 + extra
 if plan and words > cap:
     findings.append(f"{words} words > {cap} for a plan posted as an issue (tables and code count): cut what the reader doesn't need to decide, act or check (mergeworthy:writing)")
-if kind == 'issue' and not plan and not decision and chars > 400:
-    findings.append(f"{chars} characters > 400 for an issue (tables, code, images and URLs not counted): keep one finding")
+if finding and chars > 400:
+    findings.append(f"{chars} characters > 400 for an issue (prose counts, in a table or code block too, a URL as three characters and a Markdown image as none): keep one finding")
 # a code location the reader can't click is one they can't find (elysiajs/elysia#2018: bare `:160`, "off Bun")
 _loc = uncoded(text)
 _loc = re.sub(r'^\s*(?:[-*]\s+)?>.*$', '', _loc, flags=re.M)
@@ -340,11 +346,10 @@ if _locs:
 if kind == 'issue' and not plan:
     shown = re.sub(r'^(?:<img [^>]*>[ \t]*)+\n', '', text)  # the badge is no evidence
     _tpl = template_headings('Issue', shown, "its bug template in .github/ISSUE_TEMPLATE/; a form's labels render as `### <label>`", 'open-issue step 3')
-    _heads = r'#+\s*(?:how to (?:see|reproduce)|steps to reproduce)\b' + ''.join(f'|{re.escape(h)}\\s*$' for h in _tpl)
-    repro = [m.group(0) for m in re.finditer(rf'^(?:{_heads}).*?(?=^#+ |\Z)', shown, re.I | re.M | re.S)][:None if _tpl else 1]
+    repro = [shown[a:b] for a, b in outer(repro_spans(shown, [re.escape(h) for h in _tpl]))][:None if _tpl else 1]
     video = re.search(r'<video|\.(?:mp4|webm|mov)\b', shown, re.I)
     still = re.search(r'<img|\.(?:png|jpe?g|gif|webp)\b', shown, re.I)
-    steps = len(re.findall(r'^\s*\d+\.\s', ''.join(repro), re.M))
+    steps = len(re.findall(r'^\s*\d+\.\s', uncoded(''.join(repro)), re.M))  # each action once; a numbered line in code is none
     if not repro:
         findings.append("an issue with no '### How to reproduce'" + (" or template heading" if _tpl else "")
                         + ": the role or URL, each action, what you see, so a newcomer reaches it (open-issue)")
