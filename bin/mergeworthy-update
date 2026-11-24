@@ -17,10 +17,24 @@ update_claude() {
   echo "~/.mergeworthy/current -> $new"
 }
 update_codex() {
-  if command -v pnpm >/dev/null; then pnpm dlx mergeworthy --yes --agents codex; else npx -y mergeworthy --yes --agents codex; fi
+  local plugins source
+  plugins=$(codex plugin list --json) || return 1
+  source=$(python3 -c '
+import json, sys
+plugins = json.load(sys.stdin)["installed"]
+mergeworthy = next((p for p in plugins if p["pluginId"] == "mergeworthy@mergeworthy" and p["enabled"]), None)
+if mergeworthy is not None:
+    print(mergeworthy["marketplaceSource"]["sourceType"])
+' <<< "$plugins") || return 1
+  case "$source" in
+    '') return 0 ;;
+    git) codex plugin marketplace upgrade mergeworthy ;;
+    local) codex plugin add mergeworthy@mergeworthy ;;
+    *) echo "Unknown Codex Mergeworthy marketplace source: $source" >&2; return 1 ;;
+  esac
 }
 if command -v claude >/dev/null && [ -n "$(claude_root)" ]; then update_claude || failed+=("the Claude Code update"); fi
-if command -v codex >/dev/null && codex plugin list 2>/dev/null | grep '^mergeworthy@mergeworthy ' | grep -vq 'not installed'; then
+if command -v codex >/dev/null; then
   update_codex || failed+=("the Codex update")
 fi
 # the daily learning run is gone (task step 4 learns on demand): its installed timer and service go (hooks/learn-units, a migration)
