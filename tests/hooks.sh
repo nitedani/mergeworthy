@@ -4953,6 +4953,11 @@ check "BLOCK: -R or --repo before pr merge reaches the merge checks with its rep
   "$(adm o o Organization always; lg "gh -R o/r $MR") $(lg "gh --repo o/r $MR") $(lg "gh --repo=o/r $MR") $(grep -c 'o/r belongs to the organization o' "$T/err"; adm o o User always)"
 check "BLOCK: --admin on a PR off github.com, naming its host" "2 1" \
   "$(sed -i 's|https://github.com/o/r/pull/41|https://github.example.com/o/r/pull/41|' "$FX/pr_view_41"; lg "$MA") $(grep -c 'pull/41 is on github.example.com' "$T/err"; sed -i 's|github.example.com|github.com|' "$FX/pr_view_41")"
+check "BLOCK: --admin on a response of another shape (the repo with no owner, a rules page an object, a rule with no ruleset_id, a ruleset a string), naming the read to retry" "2 1 2 1 2 1 2 1" \
+  "$(echo '{}' > "$FX/repos_o_r"; lg "$MA") $(grep -c "gh couldn't read the login or o/r: retry once gh answers" "$T/err"; adm o o User always) \
+$(echo '{}' > "$FX/repos_o_r_rules_branches_main_per_page_100"; lg "$MA") $(grep -c "gh couldn't read main's rules: retry" "$T/err") \
+$(echo '[{}]' > "$FX/repos_o_r_rules_branches_main_per_page_100"; lg "$MA") $(grep -c "gh couldn't read main's rules: retry" "$T/err"; adm o o User always) \
+$(echo '"x"' > "$FX/repos_o_r_rulesets_7"; lg "$MA") $(grep -c "gh couldn't read ruleset 7: retry" "$T/err"; adm o o User always)"
 mv "$HOME/.mergeworthy/projects/o/r.md" "$T/or.md"
 check "with no project file, BLOCK: --admin unasked, or asked for another PR; a plain merge unasked passes, and --admin asked for passes" "2 1 2 0 0" \
   "$(said 'looks good'; lg "$MA") $(grep -c "merging https://github.com/o/r/pull/41 past its base's rules (--admin) lands on o/r.*reply \`merge\`" "$T/err") $(said 'merge #40'; lg "$MA") $(said 'looks good'; lg "$M") $(said 'merge #41'; lg "$MA")"

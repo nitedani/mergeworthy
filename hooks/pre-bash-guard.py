@@ -245,15 +245,16 @@ def own_bypass(pr, run):
         try: return json.loads(r.stdout) if (r := call(*path)) and r.returncode == 0 else None
         except ValueError: return None
     unread, meet = "gh couldn't read {}: retry once gh answers", ': merge once the PR meets them'
-    me, repo = get('user'), get(f'repos/{slug}')
-    if not me or not repo: return unread.format(f'the login or {slug}')
-    if repo['owner']['login'] != me['login']: return f"{slug} is {repo['owner']['login']}'s, not {me['login']}'s" + meet
-    if repo['owner']['type'] != 'User': return f"{slug} belongs to the organization {repo['owner']['login']}" + meet
-    branch = urllib.parse.quote(base, safe='')
-    if (pages := get(f'repos/{slug}/rules/branches/{branch}?per_page=100', '--paginate', '--slurp')) is None: return unread.format(f"{base}'s rules")
-    for rid in sorted({r['ruleset_id'] for page in pages for r in page}):
-        if not (rs := get(f'repos/{slug}/rulesets/{rid}')): return unread.format(f'ruleset {rid}')
-        if rs.get('current_user_can_bypass') != 'always': return f"ruleset {rid} ({rs.get('name')}) lets {me['login']} bypass it {rs.get('current_user_can_bypass') or 'never'}, not always" + meet
+    branch, what = urllib.parse.quote(base, safe=''), f'the login or {slug}'
+    try:  # a response failed, or missing what's read here, is one gh didn't answer
+        me, owner = get('user')['login'], get(f'repos/{slug}')['owner']
+        if owner['login'] != me: return f"{slug} is {owner['login']}'s, not {me}'s" + meet
+        if owner['type'] != 'User': return f"{slug} belongs to the organization {owner['login']}" + meet
+        what, pages = f"{base}'s rules", get(f'repos/{slug}/rules/branches/{branch}?per_page=100', '--paginate', '--slurp')
+        for rid in sorted({r['ruleset_id'] for page in pages for r in (page if isinstance(page, list) else [None])}):
+            what, rs = f'ruleset {rid}', get(f'repos/{slug}/rulesets/{rid}')
+            if rs.get('current_user_can_bypass') != 'always': return f"ruleset {rid} ({rs.get('name')}) lets {me} bypass it {rs.get('current_user_can_bypass') or 'never'}, not always" + meet
+    except (KeyError, TypeError, AttributeError): return unread.format(what)
     r = call(f'repos/{slug}/branches/{branch}/protection')
     if r and r.returncode == 0: return f"{base} has classic branch protection, past which the guard lets no --admin merge" + meet
     if not r or 'Branch not protected' not in r.stderr: return unread.format(f"{base}'s branch protection")
