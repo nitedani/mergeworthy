@@ -9,7 +9,7 @@ A reply or inline comment needs the comment it answers: <draft stem>.parent.md n
 --kind plan: a design plan the user asked to post as an issue; linted as an issue, capped at 2500 words, without the reproduction, evidence and internal-label checks.
 --edit-of owner/repo#N (--kind issue, pr, tracker or plan): the draft edits that live body, and fails only on findings the body doesn't already have, one for one.
 Settings: MERGEWORTHY_BADGE on|off|auto requires the badge always, never, or for a human account."""
-import hashlib, os, re, sys, subprocess, tempfile, urllib.parse
+import hashlib, os, re, sys, subprocess, tempfile, time, urllib.parse
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'hooks'))
 import post_words
 from post_words import fence_spans, uncoded
@@ -178,32 +178,49 @@ if '—' in prose:
     findings.append("em dash (—): rewrite the sentence")
 for m in re.finditer(r'\bstacked on\b[^\n]*|\bstack(s|ed)? on (top of )?([\w.-]+/[\w.-]+)?#\d+[^\n]*', prose, flags=re.I):
     findings.append(f"'stacked on' claim ({m.group(0)[:60]!r}): only with gh stack; otherwise write 'depends on #N'")
-# each #N is asked once per run, and one found to exist is never asked again: an issue or PR isn't deleted
+# each #N is asked once per run, and one found to exist isn't asked again for a day (one line per hit: <host>/<repo>#N <epoch>)
 _refs = os.path.join(os.environ.get('XDG_CACHE_HOME') or os.path.expanduser('~/.cache'), 'mergeworthy', 'refs')
+_host = 'gitlab.com' if repo and repo.startswith('gitlab.com/') else os.environ.get('GH_HOST') or 'github.com'
+_now = int(time.time())
+_exists = set()
 try:
-    _exists = set(open(_refs).read().split())
+    for _line in open(_refs, errors='replace'):
+        _k, _, _t = _line.partition(' ')
+        if _t.strip().isdigit() and _now - int(_t) < 86400:
+            _exists.add(_k)
 except OSError:
-    _exists = set()
-_asked = set()
+    pass
+_found = {}  # N -> its finding, or None: each occurrence keeps its finding, as --edit-of compares them one for one
 for m in re.finditer(r'(?<![\w/.-])#(\d+)\b', prose):
+    n = m.group(1)
     if not repo:
-        findings.append(f"bare #{m.group(1)}: write owner/repo#{m.group(1)} (or pass --repo when it's the same repo)")
-    elif f'{repo}#{m.group(1)}' not in _exists and m.group(1) not in _asked:
-        _asked.add(m.group(1))
+        findings.append(f"bare #{n}: write owner/repo#{n} (or pass --repo when it's the same repo)")
+        continue
+    _key = f'{_host}/{repo}#{n}'
+    if _key in _exists:
+        continue
+    if n not in _found:
         _gl = repo.startswith('gitlab.com/')  # GitLab's #N is an issue of the same project too
-        _r = subprocess.run(['glab', 'api', '--hostname', 'gitlab.com', f"projects/{urllib.parse.quote(repo[len('gitlab.com/'):], safe='')}/issues/{m.group(1)}"] if _gl else
-                            ['gh', 'api', f'repos/{repo}/issues/{m.group(1)}', '--silent'], capture_output=True, text=True)
-        if _r.returncode == 0:
+        try:
+            _r = subprocess.run(['glab', 'api', '--hostname', 'gitlab.com', f"projects/{urllib.parse.quote(repo[len('gitlab.com/'):], safe='')}/issues/{n}"] if _gl else
+                                ['gh', 'api', f'repos/{repo}/issues/{n}', '--silent'], capture_output=True, text=True, timeout=30)
+            _code, _err = _r.returncode, _r.stderr
+        except (OSError, subprocess.TimeoutExpired) as e:
+            _code, _err = None, str(e)
+        if _code == 0:
+            _found[n] = None
             try:
                 os.makedirs(os.path.dirname(_refs), exist_ok=True)
                 with open(_refs, 'a') as f:
-                    f.write(f'{repo}#{m.group(1)}\n')
+                    f.write(f'{_key} {_now}\n')
             except OSError:
                 pass
-        elif 'HTTP 404' in _r.stderr:
-            findings.append(f"bare #{m.group(1)} doesn't exist in {repo}: another repo's item? write owner/repo#{m.group(1)}")
-        else:  # a rate limit or an outage proves nothing about the reference
-            findings.append(f"bare #{m.group(1)}: couldn't check it in {repo} ({_r.stderr.strip()[:80]}); rerun post-lint when the API answers")
+        elif 'HTTP 404' in _err:
+            _found[n] = f"bare #{n} doesn't exist in {repo}: another repo's item? write owner/repo#{n}"
+        else:  # a rate limit, an outage or a missing CLI proves nothing about the reference
+            _found[n] = f"bare #{n}: couldn't check it in {repo} ({_err.strip()[:80]}); rerun post-lint when the API answers"
+    if _found[n]:
+        findings.append(_found[n])
 # the umbrella issue's format (mergeworthy:task §Umbrella; reference nitedani/vike-react-rsc#9)
 if kind == 'tracker':
     head = re.sub(r'^\s*(?:<img [^>]*>[ \t]*)+\n\s*', '', text)  # after the agent badge
