@@ -214,13 +214,14 @@ def project_file(repo):
     try: return open(os.path.expanduser(f'~/.mergeworthy/projects/{repo}.md'), errors='replace').read() if repo else None
     except OSError: return None
 
-def need_ask(kind, what, repo=None, num=None, branch=None):
+def need_ask(kind, what, repo=None, num=None, branch=None, strict=False):
     """Blocks what (a landing on repo's default branch, or an ask-first command) unless the message the user last typed asks for it, or
-    holds it back in no sentence while repo's project file holds kind's `## Merging` order; a landing on a repo with no project file passes."""
+    holds it back in no sentence while repo's project file holds kind's `## Merging` order; a landing on a repo with no project file passes,
+    unless strict (a merge past the base's rules)."""
     repo = re.sub(r'^gitlab\.com/', '', repo or '') or None  # a GitLab project's project file is named by its path
     _, order, reply = ASKED_FOR[kind]
     text = project_file(repo)
-    if text is None and kind != 'ask-first': return
+    if text is None and kind != 'ask-first' and not strict: return
     sec = re.search(r'^## Merging\b[^\n]*\n(.*?)(?=^## |\Z)', text or '', re.M | re.S)
     asked = asks(last_typed(), kind, repo, num, branch)
     if asked or asked is None and order and sec and re.search(r'^[-*] +' + order.format(branch=re.escape(branch or '')), sec[1], re.M):
@@ -230,6 +231,27 @@ def need_ask(kind, what, repo=None, num=None, branch=None):
               "(your own scheduled prompt, scope or goal is no ask). Say what it would restart and ask the owner to reply `update`")
     block(f"{what} lands on {repo}, which is the owner's: it needs their ask, in the message they last typed or the project file's "
           f"`## Merging` order (your own scheduled prompt, scope or goal is none). Say it's ready and ask the owner to reply `{reply}` (mergeworthy:merging steps 3-4)")
+
+def own_bypass(slug, base, run):
+    """Why an admin merge into slug's base isn't the owner's to make, None when it is: gh's login owns slug as a user (not an org), every
+    rule on base comes from a ruleset GitHub says it may always bypass, and base has no classic branch protection. run: `gh <args>`."""
+    def get(*path):
+        r = run('api', *path)
+        try: return json.loads(r.stdout) if r.returncode == 0 else None
+        except ValueError: return None
+    unread, meet = "gh couldn't read {}: retry once gh answers", ': merge once the PR meets them'
+    me, repo = get('user'), get(f'repos/{slug}')
+    if not me or not repo: return unread.format(f'the login or {slug}')
+    if repo['owner']['login'] != me['login']: return f"{slug} is {repo['owner']['login']}'s, not {me['login']}'s" + meet
+    if repo['owner']['type'] != 'User': return f"{slug} belongs to the organization {repo['owner']['login']}" + meet
+    branch = urllib.parse.quote(base, safe='')
+    if (rules := get(f'repos/{slug}/rules/branches/{branch}?per_page=100')) is None: return unread.format(f"{base}'s rules")
+    for rid in sorted({r['ruleset_id'] for r in rules}):
+        if not (rs := get(f'repos/{slug}/rulesets/{rid}')): return unread.format(f'ruleset {rid}')
+        if rs.get('current_user_can_bypass') != 'always': return f"ruleset {rid} ({rs.get('name')}) lets {me['login']} bypass it {rs.get('current_user_can_bypass') or 'never'}, not always" + meet
+    r = run('api', f'repos/{slug}/branches/{branch}/protection')
+    if r.returncode == 0: return f"{base} has classic branch protection, which grants no bypass" + meet
+    if '(HTTP 404)' not in r.stderr: return unread.format(f"{base}'s branch protection")
 
 def default_branch(host, repo):
     """repo's default branch on host (GitHub, else GitLab); blocks when its API can't answer."""
@@ -1318,12 +1340,11 @@ def check(t, has_cd):
         num = m.group(1) if (m := re.fullmatch(r'(?:\S*/pull/)?(\d+)(?:/\S*)?', sel)) else ''
         if not ('--squash' in rest or '-s' in rest) or not subj or not re.search(r' \(#' + (num or r'\d+') + r'\)$', subj[-1]) or len(body) != 1:
             block('squash-merge as the repo asks, by default `gh pr merge <N> --squash --delete-branch --subject "<exact PR title> (#<N>)" --body ""`; re-read the repo\'s AGENTS.md first')
-        if '--admin' in rest:
-            block("never `gh pr merge --admin`: it bypasses the base's branch protection. Merge once the PR meets it")
         repo = opt(rest, ['-R', '--repo'])
-        def gh(*args):  # in the dir and with the env the merge runs in
-            r = subprocess.run(['gh', *args], cwd=known(run_dir), env={**os.environ, **env}, capture_output=True, text=True, timeout=20)
-            return json.loads(r.stdout) if r.returncode == 0 else None
+        def run(*args):  # gh in the dir and with the env the merge runs in
+            return subprocess.run(['gh', *args], cwd=known(run_dir), env={**os.environ, **env}, capture_output=True, text=True, timeout=20)
+        def gh(*args):
+            return json.loads(r.stdout) if (r := run(*args)).returncode == 0 else None
         try:
             pr = gh('pr', 'view', *([sel] if sel else []), *(['-R', repo[-1]] if repo else []), '--json', 'url,headRefName,headRefOid,baseRefName,mergeStateStatus,changedFiles,files,statusCheckRollup,commits')
             slug, commits = '/'.join(pr['url'].split('/')[3:5]), pr['commits']
@@ -1333,7 +1354,10 @@ def check(t, has_cd):
             newer = [gh('api', f"repos/{slug}/commits/{c['sha']}")['files'] for c in moved['commits'] if c['commit']['committer']['date'] > green]
         except (OSError, subprocess.TimeoutExpired, ValueError, KeyError, TypeError) as e:
             block(f"gh couldn't read this PR's merge state ({type(e).__name__}: {e}), so whether its base moved can't be checked: retry once gh answers")
-        need_ask('merge', f"merging {pr['url']}", slug, pr['url'].rstrip('/').rsplit('/', 1)[1])
+        admin = '--admin' in rest
+        if admin and (why := own_bypass(slug, pr['baseRefName'], run)):
+            block(f"`gh pr merge --admin` bypasses {pr['baseRefName']}'s rules: only on the owner's own repo, where GitHub lets them always bypass every rule on it, and on their ask. Here {why}")
+        need_ask('merge', f"merging {pr['url']}" + (' past its base\'s rules (--admin)' if admin else ''), slug, pr['url'].rstrip('/').rsplit('/', 1)[1], strict=admin)
         if body[0].strip() and (bad := unproven_trailers(body[0], commits)):
             block(f"the squash body holds only `Co-authored-by: <name> <email>` lines naming human authors of the PR's commits, copied from `gh pr view <N> --json commits` "
                   f"(mergeworthy:merging step 4); not one: {bad[0]!r}")
