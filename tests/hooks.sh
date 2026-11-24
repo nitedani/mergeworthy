@@ -4944,6 +4944,9 @@ $(adm o o User pull_requests_only; lg "$MA") $(grep -c 'bypass it pull_requests_
 $(adm o o User always; echo '{}' > "$FX/repos_o_r_branches_main_protection"; lg "$MA") $(grep -c 'main has classic branch protection' "$T/err"; rm "$FX/repos_o_r_branches_main_protection")"
 check "BLOCK: --admin=true, and --admin=false then --admin, read as --admin; --admin then --admin=false is a plain merge" "2 2 0" \
   "$(adm o o Organization always; lg "$M --admin=true") $(lg "$M --admin=false --admin") $(lg "$M --admin --admin=false"; adm o o User always)"
+MR="${MA#gh }"; MR="${MR/ -R o\/r/}"
+check "BLOCK: -R or --repo before pr merge reaches the merge checks with its repo" "2 2 2 1" \
+  "$(adm o o Organization always; lg "gh -R o/r $MR") $(lg "gh --repo o/r $MR") $(lg "gh --repo=o/r $MR") $(grep -c 'o/r belongs to the organization o' "$T/err"; adm o o User always)"
 mv "$HOME/.mergeworthy/projects/o/r.md" "$T/or.md"
 check "with no project file, BLOCK: --admin unasked, or asked for another PR; a plain merge unasked passes, and --admin asked for passes" "2 1 2 0 0" \
   "$(said 'looks good'; lg "$MA") $(grep -c "merging https://github.com/o/r/pull/41 past its base's rules (--admin) lands on o/r.*reply \`merge\`" "$T/err") $(said 'merge #40'; lg "$MA") $(said 'looks good'; lg "$M") $(said 'merge #41'; lg "$MA")"

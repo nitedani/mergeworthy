@@ -1162,6 +1162,8 @@ def check(t, has_cd):
     t = prog(t)
     if not t: return
     p, a = os.path.basename(t[0]), t[1:]
+    if p == 'gh' and a[:1] in (['-R'], ['--repo']) and len(a) > 2: a = a[2:] + a[:2]  # gh takes -R before the subcommand too
+    elif p == 'gh' and a and re.fullmatch(r'-R.+|--repo=.+', a[0]): a = a[1:] + a[:1]
     if ASK_FIRST: ask_first(t)
     if p in ('gh', 'glab') and a[:2] == ['release', 'create'] and '--help' not in a and '-h' not in a:
         need_ask('release', f'`{p} release create`', gh_repo(a[2:], env, run_dir) if p == 'gh' else gitlab_repo(a[2:], run_dir))
