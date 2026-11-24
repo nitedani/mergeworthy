@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # pr-steps <step> <output-file>: records that a converge step ran on the current HEAD, after checking its output proves it.
-# verify, reverify, small, shape and fresh take `--ledger <path>` for a round 2 whose verdict isn't clean: the loop's ledger closes it (hooks/ledger.py).
+# verify, reverify, small, shape and fresh take `--ledger <path>` for a last round whose verdict isn't clean: the loop's ledger closes it (hooks/ledger.py).
 # Steps, in pipeline order (mergeworthy:converge): verify (Loop A), shape (Loop B: the review and the shape pass),
 # reverify (Loop A after Loop B's commits), fresh (the fresh reader), gates (every gate's exit code on the final head).
 # The posting hook blocks `gh pr create` (unless --draft), `gh pr ready` and pushes to a ready PR until HEAD has all five.
@@ -171,7 +171,7 @@ if [ "$step" = small ]; then
   fi
   # the verdict ends the report, before any trailing Verification or not_checked section (delegate/agent.md asks every agent for not_checked)
   verdict=$(awk '{ l = tolower($0) } l ~ /^#+[ \t]*(verification|not[ _]checked)([^a-z]|$)/ { tail = 1; next } /^#/ { tail = 0 } !tail' "$out" | grep -v '^[[:space:]]*$' | tail -n2 | tr '\n' '|')
-  [ "$(grep -v '^[[:space:]]*$' "$out" | tail -n2 | tr '\n' '|')" = 'NO BUGS|MERGE AS IS: yes|' ] || [ "$verdict" = 'NO BUGS|MERGE AS IS: yes|' ] || ledger_ok || { echo "$out does not end with NO BUGS and MERGE AS IS: yes: fix what it found and send the same reviewer round 2 checking that fix; after round 2, record it with --ledger <the loop's ledger>" >&2; exit 1; }
+  [ "$(grep -v '^[[:space:]]*$' "$out" | tail -n2 | tr '\n' '|')" = 'NO BUGS|MERGE AS IS: yes|' ] || [ "$verdict" = 'NO BUGS|MERGE AS IS: yes|' ] || ledger_ok || { echo "$out does not end with NO BUGS and MERGE AS IS: yes: fix what it found and send the same reviewer the next round; after its last round, record it with --ledger <the loop's ledger>" >&2; exit 1; }
   record small verify shape reverify fresh
   echo "recorded small fix ($n lines) for $sha: verify, shape, reverify, fresh; run the gates next"
   exit 0
@@ -223,7 +223,7 @@ if [ "$step" != shape ] && [ "$step" != refactor ] && [ "$step" != gates ] && [ 
 base=$(git merge-base HEAD "$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)" 2>/dev/null || true)
 case "$step" in
   verify|reverify)
-    [ "$last" = "NO BUGS" ] || [ "$step" = reverify -a "$last" = "NO LOOP B COMMITS" ] || ledger_ok || { echo "$out does not end with a line NO BUGS: fix what it found for round 2; after round 2, record it with --ledger <the loop's ledger>" >&2; exit 1; }
+    [ "$last" = "NO BUGS" ] || [ "$step" = reverify -a "$last" = "NO LOOP B COMMITS" ] || ledger_ok || { echo "$out does not end with a line NO BUGS: fix what it found for the next round; after its last round, record it with --ledger <the loop's ledger>" >&2; exit 1; }
     [ "$step" = reverify ] || read_standards
     # A reproduced behavior dropped as harmless, and a claim no test or probe covers, are the main session's call: a later `RULED: <candidate>: <ruling>` line, its own
     unruled=$(python3 - "$out" "$(pbase)" "$(dirname "$(realpath "$0")")/../hooks" <<'EOF'
@@ -297,14 +297,14 @@ EOF
   fresh)
     read_standards
     grep -Eq '^Maintainer: @?[A-Za-z0-9-]+' "$out" || old_pipeline || { echo "$out has no line 'Maintainer: <login>': the fresh reader reviews as the maintainer who decides, citing what they said or did (mergeworthy delegate/fresh-reader.md)" >&2; exit 1; }
-    grep -qx 'MERGE AS IS: yes' "$out" || ledger_ok || { echo "$out has no line 'MERGE AS IS: yes': the fresh reader, as this repo's maintainer, would not merge it exactly as it is; what it lists stands between the PR and a yes, until round 2's ledger closes it (--ledger <path>)" >&2; exit 1; }
+    grep -qx 'MERGE AS IS: yes' "$out" || ledger_ok || { echo "$out has no line 'MERGE AS IS: yes': the fresh reader, as this repo's maintainer, would not merge it exactly as it is; what it lists stands between the PR and a yes, until its last round's ledger closes it (--ledger <path>)" >&2; exit 1; }
     # a yes is the maintainer merging this head: a note it adds (a body word) goes through the body's post review, no new reader
     ;;
   shape|refactor)
     if is_pass "$out"; then
       [ "$step" = refactor ] || old_pipeline || read_standards
       [ "$step" = refactor ] ||
-      [ "$last" = CLEAN ] || ledger_ok || { echo "$out does not end with a line CLEAN: land what its review and shape pass found worth changing, then continue the same agent for round 2; after round 2, record it with --ledger <the loop's ledger> (mergeworthy:converge step 2)" >&2; exit 1; }
+      [ "$last" = CLEAN ] || ledger_ok || { echo "$out does not end with a line CLEAN: land what its review and shape pass found worth changing, then continue the same agent for the next round; after its last round, record it with --ledger <the loop's ledger> (mergeworthy:converge step 2)" >&2; exit 1; }
     else
       carried=$(grep -Eo 'carries the pass of [0-9a-f]{7,40}' "$out" | head -n1 | awk '{print $NF}' || true)
       copied=$(grep -Eio '\| *([0-9]+ *)?= *\||unchanged since' "$out" | head -n1 || true)
