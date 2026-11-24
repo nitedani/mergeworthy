@@ -1420,6 +1420,8 @@ def check(t, has_cd):
     if p == 'gh' and a and a[0] == 'api':
         rest = a[1:]
         method, ep, fields, inputs, posts = api_call(rest, run_dir)
+        if method == 'PUT' and re.search(r'(?:^|/)repos/[^/]+/[^/]+/pulls/\d+/merge/?(?:\?|$)', ep):
+            block("merge with `gh pr merge`, where the merge checks run (its squash form, the base's rules, the owner's ask), never `gh api` PUT .../pulls/<N>/merge")
         if shellcmd.graphql_endpoint(ep) and (named := names_discussion_mutation(rest, run_dir)) is not False:
             block("post to a GitHub Discussion, or edit a comment there, with `discussion-post <discussion URL | owner/repo#N> <abs draft>` or "
                   "`discussion-post --edit <comment node id> <abs draft>`: it posts the gated draft as the comment's text, which a GraphQL call can't be checked for"
