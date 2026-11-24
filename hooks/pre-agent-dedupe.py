@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Claude Code PreToolUse hook (matcher: Agent, Task, delegate_task, t3_thread_launch, t3_thread_send). Exit 2 blocks the launch; stderr goes to the agent.
-A t3_thread_send is a launch only as a later review round sent to a thread an earlier round of its loop ran in; any other send passes untouched.
+A t3_thread_send is a launch only as a later review round sent to a thread an earlier round of its loop ran in (review_transport); any other send passes untouched.
 With the argument `register` it runs as the PostToolUse hook: only a launch that ran is registered, so one another hook blocked leaves no job.
 The PreToolUse call decides; the PostToolUse call only records what ran and makes no admission check (a failure writing its
 records still fails it). An admitted launch leaves its decision as a pending record in agent_jobs.LAUNCHED (when it was let
@@ -14,12 +14,11 @@ status (read first) releases the job."""
 import datetime, fcntl, glob, hashlib, itertools, json, os, re, shlex, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import failclosed
-import agent_jobs, launch, loops, memory_file, project_file, review_launch, subprocess
+import agent_jobs, launch, loops, memory_file, project_file, review_launch, review_transport, subprocess
 from post_words import fence_spans
 from records import branch_record
 from shellcmd import segments, prog, git_argv, rlines, transcript, Where
 from work_folder import git_top, task_of
-import t3_tasks
 from t3_tasks import under_t3
 register = sys.argv[1:] == ['register']
 d = json.load(sys.stdin)
@@ -31,13 +30,9 @@ def refused():
     blocked = True
 cid = str(ti.get('clientRequestId') or '')
 CIDS = os.path.expanduser('~/.claude/agent-client-request-ids.json')
-sent = str(d.get('tool_name') or '').endswith('t3_thread_send')
-if sent:
-    # a later round sent to a thread an earlier round of its loop ran in (delegate §Continue) is checked and counted as that round,
-    # its message the task, its round name the title
-    m = loops.round_of(cid)
-    if str(ti.get('threadId') or '') not in (loops.threads(m[1]) if m and int(m[2]) >= 2 else []): sys.exit(0)
-    ti = {'task': str(ti.get('message') or ''), 'title': cid, 'role': 'review', 'clientRequestId': cid, 'threadId': ti['threadId']}
+# a later round sent to a thread an earlier round of its loop ran in is checked and counted as that round; any other send passes untouched
+if not (launched := review_transport.as_launch(d.get('tool_name'), ti)): sys.exit(0)
+ti, sent = launched
 # a sent round is a new task of the agent an open job of its thread holds, so its job takes that one's place, never its twin
 same_agent = lambda j: sent and str(j.get('handle') or '').endswith('/' + ti['threadId'])
 # T3 opens no run for a turn Claude Code starts by itself (a finished background command, a Monitor event), and refuses
@@ -65,7 +60,7 @@ own_brief = '\n'.join(l for l in brief.splitlines() if l.strip() not in pasted) 
 shas = set(re.findall(r'\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\b', brief))
 git = lambda wt, *a: subprocess.run(['git', '-C', wt, *a], capture_output=True, text=True)
 # Rounds per loop on one head (loops.admit); a post's review is refused only once gate-pass's own check (review_launch.answers) already passes every draft it reviews
-rnd = loops.round_of(cid or str(ti.get('description') or ''))
+rnd = loops.round_of(review_transport.round_name(ti))
 review = rnd and (ti.get('role') == 'review' or not ti.get('role') and re.search(r'\bexactly (CLEAN|NO BUGS)\b', brief))
 # a post's review: a gate review of a named draft whose brief asks for no code verdict (a small review's pr-body.review.out comes with one)
 post_review = review and bool(reviewed_drafts(brief)) and not re.search(r'\b(NO BUGS|MERGE AS IS)\b', own_brief)
@@ -149,7 +144,7 @@ def register_launch():
     if cid: loops.locked_update(CIDS, lambda seen: seen.setdefault(cid, time.time()))
     if review:
         loops.register(rnd[1], int(rnd[2]), None if post_review else rec['heads'] if 'heads' in rec else round_heads()[1],
-                       ti.get('threadId') or (t3_tasks.result(d.get('tool_response')) or {}).get('childThreadId'), post_review)
+                       review_transport.thread(ti, d.get('tool_response')), post_review)
     if implementer and (approach := rec['approach'] if 'approach' in rec else brief_approach(strict=False)):
         os.makedirs(BUILT, exist_ok=True)
         open(os.path.join(BUILT, os.path.basename(approach[0])), 'w').write(approach[1])
