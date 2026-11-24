@@ -3774,6 +3774,14 @@ check "BLOCK: compose up reading a default-named file the same command writes in
 printf 'See #7.\n' > "$T/ref.md"
 check "post-lint: a 404 reference doesn't exist" 1 "$(python3 "$R/bin/post-lint" "$T/ref.md" --kind reply --repo o/r --parent none 2>&1 | grep -c "doesn't exist in o/r")"
 check "post-lint: a rate-limited check says it couldn't check, not that it doesn't exist" "1 0" "$(GH_STUB_403=1 python3 "$R/bin/post-lint" "$T/ref.md" --kind reply --repo o/r --parent none 2>&1 | grep -c "couldn't check it") $(GH_STUB_403=1 python3 "$R/bin/post-lint" "$T/ref.md" --kind reply --repo o/r --parent none 2>&1 | grep -c "doesn't exist")"
+mkdir -p "$T/plfx"; echo '{}' > "$T/plfx/repos_o_r_issues_8"; printf 'See #8, then #8 and #8 again.\n' > "$T/ref8.md"; : > "$T/ref8.args"
+plref() { XDG_CACHE_HOME="$T/plcache" FX="$T/plfx" GH_STUB_ARGS="$T/ref8.args" python3 "$R/bin/post-lint" "$T/ref8.md" --kind reply --repo o/r --parent none >/dev/null 2>&1; grep -c 'issues/8' "$T/ref8.args"; }
+check "post-lint: a reference named three times is asked once" 1 "$(plref)"
+check "post-lint: a reference found once is not asked again in a later run" 1 "$(plref)"
+sed -i 's/ [0-9]*$/ 1/' "$T/plcache/mergeworthy/refs"
+check "post-lint: a reference found more than a day ago is asked again" 2 "$(plref)"
+eolive 'See #9.'
+check "post-lint --edit-of: an edit adding a second mention of a reference that doesn't exist fails" "rc=1 1" "$(eo 'See #9 and #9 again.' | tail -1) $(eo 'See #9 and #9 again.' | grep -c "#9 doesn't exist in acme/x")"
 
 # ---------- the steward: ~/.mergeworthy/steward owns the mergeworthy repo and the follow-ups ----------
 SW="$T/steward"; mkdir -p "$SW" "$T/mwc"; git init -q "$T/mwc"; git -C "$T/mwc" remote add origin https://github.com/nitedani/mergeworthy.git
