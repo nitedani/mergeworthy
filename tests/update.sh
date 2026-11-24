@@ -19,20 +19,13 @@ case "\$*" in
 esac
 exit 0
 EOF
-# stub codex: an enabled Git install unless the fixture marks it disabled or local
+# stub codex: lists mergeworthy installed while $T/codex-has exists; pnpm records the installer run
 cat > "$T/bin/codex" <<EOF
 #!/bin/sh
-echo "codex \$*" >> "$T/calls"
-case "\$*" in
-  "plugin list --json")
-    if [ ! -e "$T/codex-has" ]; then echo '{"installed":[]}'; exit 0; fi
-    enabled=true; [ ! -e "$T/codex-disabled" ] || enabled=false
-    source=git; [ ! -e "$T/codex-local" ] || source=local
-    printf '{"installed":[{"pluginId":"mergeworthy@mergeworthy","enabled":%s,"marketplaceSource":{"sourceType":"%s"}}]}\n' "\$enabled" "\$source" ;;
-  "plugin marketplace upgrade mergeworthy") [ ! -e "$T/codex-upgrade-fails" ] || exit 1 ;;
-esac
+[ "\$*" = "plugin list" ] && [ -e "$T/codex-has" ] && echo "mergeworthy@mergeworthy (installed)"
 exit 0
 EOF
+printf '#!/bin/sh\necho "pnpm $*" >> "%s/calls"\n' "$T" > "$T/bin/pnpm"
 # stub systemctl: the units in $T/active are active (is-active's last argument); a restart of one in $T/breaks leaves it
 # failed, of one in $T/stops inactive, and one in $T/retires also writes its folder's `retired`, as its watcher does when it retires
 cat > "$T/bin/systemctl" <<EOF
@@ -76,26 +69,14 @@ bash "$R/bin/mergeworthy-update" > "$T/out" 2>&1; rc=$?; check "a watcher stoppe
 # Codex only: Claude Code is on PATH but has no mergeworthy, and updating it there would fail
 touch "$T/claude-none" "$T/claude-fails" "$T/codex-has"; : > "$T/calls"
 bash "$R/bin/mergeworthy-update" > "$T/out" 2>&1; check "mergeworthy only in Codex: exit" 0 $?
-codex_changes() { grep '^codex plugin \(marketplace upgrade\|add\)' "$T/calls" | paste -sd'|'; }
-codex_add='codex plugin add mergeworthy@mergeworthy'
-codex_upgrade='codex plugin marketplace upgrade mergeworthy'
-check "mergeworthy only in Codex: Claude Code not updated, Codex updated" "|$codex_upgrade" \
-  "$(grep '^claude plugin \(marketplace \)\?update' "$T/calls" | paste -sd'|')|$(codex_changes)"
-
-touch "$T/codex-local"; : > "$T/calls"
-bash "$R/bin/mergeworthy-update" > "$T/out" 2>&1; check "a local Codex marketplace is reinstalled directly" "0 $codex_add" "$? $(codex_changes)"
-rm "$T/codex-local"; touch "$T/codex-disabled"; : > "$T/calls"
-bash "$R/bin/mergeworthy-update" > "$T/out" 2>&1; check "a disabled Codex plugin stays disabled" "0 " "$? $(codex_changes)"
-rm "$T/codex-disabled"; touch "$T/codex-upgrade-fails"; : > "$T/calls"
-bash "$R/bin/mergeworthy-update" > "$T/out" 2>&1; check "a failed Codex marketplace upgrade leaves the installed plugin alone" \
-  "1 $codex_upgrade failed: the Codex update" "$? $(codex_changes) $(grep '^failed:' "$T/out")"
-rm "$T/codex-upgrade-fails"
+check "mergeworthy only in Codex: Claude Code not updated, Codex updated" "|pnpm dlx mergeworthy --yes --agents codex" \
+  "$(grep '^claude plugin \(marketplace \)\?update' "$T/calls" | paste -sd'|')|$(grep '^pnpm' "$T/calls")"
 
 # in both, Claude Code's update fails: Codex is still updated, the watchers restarted, and the failure named at the end
 rm "$T/claude-none"; : > "$T/calls"
 bash "$R/bin/mergeworthy-update" > "$T/out" 2>&1; check "a failed Claude Code update: exit" 1 $?
 check "a failed Claude Code update: Codex updated, units restarted, failure named" "1 2 failed: the Claude Code update" \
-  "$(grep -cxF "$codex_upgrade" "$T/calls") $(grep -c 'restart gh-watch@' "$T/calls") $(grep '^failed:' "$T/out")"
+  "$(grep -c '^pnpm' "$T/calls") $(grep -c 'restart gh-watch@' "$T/calls") $(grep '^failed:' "$T/out")"
 
 # the old daily learning run's timer and service: an update disables and removes them; with none installed it does nothing
 rm "$T/claude-fails"; U="$HOME/.config/systemd/user"; mkdir -p "$U"; : > "$U/mergeworthy-learn.timer"; : > "$U/mergeworthy-learn.service"; : > "$T/calls"

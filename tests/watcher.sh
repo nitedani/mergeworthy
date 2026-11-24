@@ -10,11 +10,9 @@ T=$(mktemp -d -p /tmp); export HOME="$T/home"; mkdir -p "$HOME/.claude" "$T/bin"
 printf '#!/bin/sh\necho "gh stub: $*" >&2; exit 1\n' > "$T/bin/gh"
 cat > "$T/bin/codex" <<EOF
 #!/bin/sh
-# Codex's native marketplace and plugin installation.
+# stub codex: the plugin is never listed as installed; the marketplace lists the checkout as its root
 case "\$*" in
-  "plugin marketplace add --json nitedani/mergeworthy") echo '{"marketplaceName":"mergeworthy","alreadyAdded":false}' ;;
-  "plugin marketplace list --json") echo '{"marketplaces":[{"name":"mergeworthy","marketplaceSource":{"sourceType":"git"}}]}' ;;
-  "plugin add mergeworthy@mergeworthy") echo installed ;;
+  "plugin marketplace list") echo "mergeworthy $R" ;;
 esac
 exit 0
 EOF
@@ -27,17 +25,8 @@ check() { echo "$1: $3 (want $2)"; [ "$2" = "$3" ] || fails=$((fails+1)); }
 if [ -d "$R/cli/node_modules" ]; then
 mkdir -p "$T/pkg/cli"; cp "$R/cli/index.mjs" "$R/cli/package.json" "$T/pkg/cli/"
 ln -s "$R/cli/node_modules" "$T/pkg/cli/node_modules"
-mkdir -p "$HOME/.codex"
-cat > "$HOME/.codex/AGENTS.md" <<'DOC'
-Keep this instruction.
-
-<!-- mergeworthy:begin (written by npx mergeworthy; re-run it to update) -->
-Old instructions.
-<!-- mergeworthy:end -->
-DOC
 node "$T/pkg/cli/index.mjs" install --agents codex --yes >"$T/out" 2>&1; check "install --agents codex --yes exit" 0 $?
-grep -q 'mergeworthy:begin' "$HOME/.codex/AGENTS.md"; check "the native plugin replaces only its old AGENTS.md block" 1 $?
-grep -q 'Keep this instruction.' "$HOME/.codex/AGENTS.md"; check "the existing Codex instructions remain" 0 $?
+grep -q 'mergeworthy:begin' "$HOME/.codex/AGENTS.md" 2>/dev/null; check "AGENTS.md has the block after install" 0 $?
 node "$T/pkg/cli/index.mjs" uninstall --agents codex --yes >"$T/out" 2>&1; check "uninstall --agents codex --yes exit" 0 $?
 grep -q 'mergeworthy:begin' "$HOME/.codex/AGENTS.md" 2>/dev/null; check "AGENTS.md block gone after uninstall" 1 $?
 else
