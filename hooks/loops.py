@@ -1,8 +1,8 @@
 """Review loops (delegate §Review rounds): pre-agent-dedupe asks admit() whether round `<loop>-r<N>` of a code review may run, and
-records a round that ran with register(). A round is refused once the heads its brief pins show the branch hasn't moved since four
+records a round that ran with register(); pr-steps and gate-pass ask close() whether a loop's ledger closes it. A round is refused once the heads its brief pins show the branch hasn't moved since four
 earlier rounds of its loop, and, after an earlier one there, when the ledger its brief names doesn't show the last round brought a
 fixed blocker or should."""
-import fcntl, itertools, json, os, re, subprocess
+import fcntl, itertools, json, os, re, subprocess, sys
 import ledger, testpaths
 
 LOOPS = os.path.expanduser('~/.claude/review-loops.json')  # {loop: {'rounds': [[n, the heads its brief pinned]], 'threads': the T3 threads its rounds ran in}}
@@ -99,3 +99,43 @@ def admit(loop, n, tops, heads, led):
                    f"the ledger {led} shows round {last} brought none `fixed in <sha>`: the loop ends there. ")
                 + close)
     return ''
+
+
+# per kind of loop: the fix outcome that closes a finding, why the completed round leaves the loop open ('' when it doesn't), and
+# whether a later round confirming the fix closes it (a post's draft has no sha)
+KINDS = {
+    'code': ('fixed in <sha>', lambda rows, last, p: f'{p} closes round {last}, which brought a blocker or should fixed in a commit: the loop gets its next round first'
+             if last < 4 and ledger.fixed_in(rows, last) else '', False),
+    'post': ('fixed in r<N>', lambda rows, last, p: '' if last >= 2 else f'{p} closes round {last}: a verdict that is not clean gets round 2 first', True),
+}
+
+
+def close(path, kind='code', checkout='.'):
+    """What leaves the loop of the ledger at path open, [] when it closes: each finding of every round is the kind's fix (a code
+    fix's sha in checkout's HEAD history), `declined: <why>` or `listed: <where>`, no blocker is listed or open, the completed round
+    leaves the loop closed by the kind's rule, and every row's id (a word starting with a letter, with a digit) is R<round>.<n>."""
+    fix, still_open, confirms = KINDS[kind]
+    try: rows, lines, last = ledger.read(path)
+    except OSError as e: return [f'{path}: {e.strerror}']
+    misnamed = [f'{m[0].strip()}  <- its id is not R<round>.<n>' for m in lines if not m[1]]
+    if not rows: return misnamed + [f"{path} has no '<id> <label> <outcome>' lines (R<round>.<n> blocker|should|nit {fix}|declined: <why>|listed: <where>)"]
+    out = misnamed + [w for w in [still_open(rows, last, path)] if w]
+    for m in rows:
+        fixed = ledger.FIXED.match(m[3])
+        confirmed = confirms and (r := re.match(r'fixed in r(\d+)\b', m[3])) and int(m[1]) < int(r[1]) <= last
+        closed = confirmed or fixed and subprocess.run(['git', '-C', checkout, 'merge-base', '--is-ancestor', fixed[1], 'HEAD'], capture_output=True).returncode == 0
+        if fixed and not closed:
+            out.append(f'{m[0].strip()}  <- {fixed[1]} is not in HEAD\'s history')
+        elif m[2].lower() == 'blocker' and not closed and not m[3].startswith('declined:'):
+            out.append(f'{m[0].strip()}  <- an open blocker keeps the PR in draft')
+        elif not closed and not re.match(r'(declined|listed):\s*\S', m[3]):
+            out.append(f'{m[0].strip()}  <- not {fix}, declined: <why> or listed: <where>')
+    return out
+
+
+if __name__ == '__main__':  # loops.py close [--post] <ledger> [<checkout>]: exits 0 when the ledger closes its loop, else prints what stands
+    post = sys.argv[2:3] == ['--post']
+    found = close(*sys.argv[2 + post:3 + post], kind='post' if post else 'code', checkout=(sys.argv[3 + post:4 + post] or ['.'])[0])
+    if found:
+        print('the ledger leaves this round open (mergeworthy:delegate §Review rounds):\n' + '\n'.join(found), file=sys.stderr)
+    sys.exit(1 if found else 0)
