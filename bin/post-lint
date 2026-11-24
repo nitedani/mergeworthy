@@ -178,16 +178,31 @@ if '—' in prose:
     findings.append("em dash (—): rewrite the sentence")
 for m in re.finditer(r'\bstacked on\b[^\n]*|\bstack(s|ed)? on (top of )?([\w.-]+/[\w.-]+)?#\d+[^\n]*', prose, flags=re.I):
     findings.append(f"'stacked on' claim ({m.group(0)[:60]!r}): only with gh stack; otherwise write 'depends on #N'")
+# each #N is asked once per run, and one found to exist is never asked again: an issue or PR isn't deleted
+_refs = os.path.join(os.environ.get('XDG_CACHE_HOME') or os.path.expanduser('~/.cache'), 'mergeworthy', 'refs')
+try:
+    _exists = set(open(_refs).read().split())
+except OSError:
+    _exists = set()
+_asked = set()
 for m in re.finditer(r'(?<![\w/.-])#(\d+)\b', prose):
     if not repo:
         findings.append(f"bare #{m.group(1)}: write owner/repo#{m.group(1)} (or pass --repo when it's the same repo)")
-    else:
+    elif f'{repo}#{m.group(1)}' not in _exists and m.group(1) not in _asked:
+        _asked.add(m.group(1))
         _gl = repo.startswith('gitlab.com/')  # GitLab's #N is an issue of the same project too
         _r = subprocess.run(['glab', 'api', '--hostname', 'gitlab.com', f"projects/{urllib.parse.quote(repo[len('gitlab.com/'):], safe='')}/issues/{m.group(1)}"] if _gl else
                             ['gh', 'api', f'repos/{repo}/issues/{m.group(1)}', '--silent'], capture_output=True, text=True)
-        if _r.returncode != 0 and 'HTTP 404' in _r.stderr:
+        if _r.returncode == 0:
+            try:
+                os.makedirs(os.path.dirname(_refs), exist_ok=True)
+                with open(_refs, 'a') as f:
+                    f.write(f'{repo}#{m.group(1)}\n')
+            except OSError:
+                pass
+        elif 'HTTP 404' in _r.stderr:
             findings.append(f"bare #{m.group(1)} doesn't exist in {repo}: another repo's item? write owner/repo#{m.group(1)}")
-        elif _r.returncode != 0:  # a rate limit or an outage proves nothing about the reference
+        else:  # a rate limit or an outage proves nothing about the reference
             findings.append(f"bare #{m.group(1)}: couldn't check it in {repo} ({_r.stderr.strip()[:80]}); rerun post-lint when the API answers")
 # the umbrella issue's format (mergeworthy:task §Umbrella; reference nitedani/vike-react-rsc#9)
 if kind == 'tracker':
