@@ -240,7 +240,7 @@ def own_bypass(pr, run):
     if bad := [f"{c.get('name') or c.get('context')} {(c.get('conclusion') or c.get('state') or 'pending').lower()}" for c in pr['statusCheckRollup'] if (c.get('conclusion') or c.get('state')) not in ('SUCCESS', 'NEUTRAL', 'SKIPPED')]:
         return f"its head's checks haven't all succeeded ({', '.join(bad)}): merge once they have"
     def call(*path):  # None when gh hangs or can't start
-        try: return run('api', *path)
+        try: return run('api', '--hostname', 'github.com', *path)
         except (OSError, subprocess.TimeoutExpired): return None
     def get(*path):
         try: return json.loads(r.stdout) if (r := call(*path)) and r.returncode == 0 else None

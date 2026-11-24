@@ -37,6 +37,7 @@ if [ "$1 $2" = "pr list" ]; then  # from $FX/pr_list_<the -R repo with / replace
 [ "$1 $2" = "pr checks" ] && [ "${3#https://github.com/}" = "$3" ] && { echo "no pull requests found for branch \"$3\"" >&2; exit 1; }
 if [ "$1 $2" = "pr checks" ]; then f="$FX/pr_checks_$(printf '%s' "$3" | tr '/:' '__')"; [ -f "$f" ] && cat "$f" && exit 1; echo "no checks reported on the 'x' branch" >&2; exit 1; fi
 [ "$1" = api ] || exit 1
+[ "$2 $3" = "--hostname github.com" ] && set -- api "${@:4}"  # --hostname github.com: the same fixtures
 f="$FX/$(printf '%s' "$2" | tr '/?&=' '____')"
 for a in "$@"; do case "$a" in o=*|id=*) [ -f "${f}_${a#*=}" ] && f="${f}_${a#*=}";; esac; done  # graphql: $FX/graphql_<owner> or $FX/graphql_<node id> answers for it
 [ -n "$GH_STUB_403" ] && { echo 'gh: API rate limit exceeded for user ID 1. (HTTP 403)' >&2; exit 1; }
@@ -4942,6 +4943,8 @@ MA="$M --admin"; adm o o User always
 check "an --admin merge on the owner's own repo, its ruleset always bypassable, no classic protection, asked for as merge #41, passes; with the project file's order too" "0 0" \
   "$(said 'merge #41'; lg "$MA") $(said 'looks good'; printf '## Merging\n- Merge each PR as soon as it is ready\n' >> "$HOME/.mergeworthy/projects/o/r.md"; lg "$MA"; sed -i '/^## Merging/,$d' "$HOME/.mergeworthy/projects/o/r.md")"
 said 'merge #41'
+check "an --admin merge with GH_HOST naming another host reads the login, repo, rules and protection from github.com" "0 5 5" \
+  "$(rm -f "$T/args"; GH_HOST=github.example.com GH_STUB_ARGS="$T/args" lg "$MA") $(grep -cE '^api (--hostname github.com )?(user|repos/o/r|repos/o/r/(rules|rulesets|branches)/.*)$' "$T/args") $(grep -cE '^api --hostname github.com (user|repos/o/r|repos/o/r/(rules|rulesets|branches)/.*)$' "$T/args")"
 check "BLOCK: --admin on an organization's repo, past a ruleset bypassable never or for pull requests only, or classic protection, naming why" "2 1 2 1 2 1 2 1" \
   "$(adm o o Organization always; lg "$MA") $(grep -c 'o/r belongs to the organization o: merge once the PR meets them' "$T/err") \
 $(adm o o User never; lg "$MA") $(grep -c 'ruleset 7 (carry) lets o bypass it never, not always' "$T/err") \
