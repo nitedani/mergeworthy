@@ -15,6 +15,7 @@ Threads are cached by updated_at under ~/.cache/mergeworthy/threads/.
 import json, os, re, subprocess, sys, datetime, urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 sys.path[:0] = [os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), d) for d in ('watcher', 'hooks')]
+import gh_common
 import gl_watch  # BADGE: what an agent's post starts with
 from post_words import uncoded
 
@@ -26,28 +27,41 @@ USAGE = "usage: thread-context <owner/repo#N | gitlab.com/<path>!N | discussion 
 def die(msg, code=1):
     print(msg, file=sys.stderr); sys.exit(code)
 
+ABSENT = re.compile(r'HTTP 404|404 Not Found|Could not resolve to ')  # gh's REST 404, glab's, and GraphQL's NOT_FOUND
+
+class Unreadable(Exception):
+    """A request load() needs failed: the thread can't be read whole, so nothing is recorded or cached from it."""
+
 def api_json(path, paginate=False, cmd=('gh', 'api'), args=()):
-    """JSON from `<cmd> <path> <args>`, gh api by default (pages flattened into one list); None when the call fails (404, offline)."""
-    cmd = [*cmd, path, *args] + (['--paginate'] if paginate else [])
+    """JSON from `<cmd> <path> <args>`, gh api by default (pages flattened into one list); None when nothing is there (a 404, or
+    GraphQL resolving nothing); Unreadable naming the call and its error when it fails otherwise, with when a rate limit lifts."""
+    call = f'`{" ".join(cmd)} {path}` failed'
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    if r.returncode != 0: return None
+        r = subprocess.run([*cmd, path, *args] + (['--paginate'] if paginate else []), capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise Unreadable(f'{call}: {e}')
+    if r.returncode != 0:
+        err = (r.stderr.strip().splitlines() or [f'exit {r.returncode}'])[-1]
+        if ABSENT.search(err): return None
+        raise Unreadable(f'{call}: {err}{lifts(cmd, path, err)}')
     dec, s, i, out = json.JSONDecoder(), r.stdout, 0, []
     while i < len(s):
         while i < len(s) and s[i].isspace(): i += 1
         if i >= len(s): break
         try: v, i = dec.raw_decode(s, i)
-        except ValueError: return None
+        except ValueError: raise Unreadable(f'{call}: its answer is not JSON')
         out += v if isinstance(v, list) else [v]
     return out if paginate else (out[0] if out else None)
 
-class Unreadable(Exception):
-    """A request load() needs failed: the thread can't be read whole, so nothing is recorded or cached from it."""
+def lifts(cmd, path, err):
+    """When the rate limit gh's error names lets the call through, as the end of its message; '' for another error, or when gh can't tell."""
+    if cmd[0] != 'gh' or 'rate limit' not in err.lower(): return ''
+    reset = gh_common.limit_reset(['api', path])
+    if reset is None: return ''
+    return f'; it resets at {gh_common.iso(reset)}: retry then' if reset else '; a secondary rate limit: retry in a minute or more'
 
 def fetch(path, paginate=False, cmd=('gh', 'api'), args=()):
-    """api_json, raising Unreadable (naming the request) when the call fails."""
+    """api_json, raising Unreadable (naming the request) when nothing is there."""
     v = api_json(path, paginate, cmd, args)
     if v is None: raise Unreadable(f'`{" ".join(cmd)} {path}` failed')
     return v
@@ -168,8 +182,10 @@ def org_discussion(s):
     return (hit['repository']['nameWithOwner'], '#', int(m[2])) if hit else None
 
 def thread_ref(s):
-    """parse_ref, and an organization's discussion URL; exits 2 on anything else, 1 on an organization's URL gh finds no discussion at."""
-    rf = parse_ref(s) or org_discussion(s)
+    """parse_ref, and an organization's discussion URL; exits 2 on anything else, 1 on an organization's URL gh finds no discussion at
+    or can't search."""
+    try: rf = parse_ref(s) or org_discussion(s)
+    except Unreadable as e: die(f'thread-context: cannot read {s}: {e}')
     if rf: return rf
     if re.search(r'github\.com/orgs/', s): die(f'thread-context: gh found no discussion at {s}: pass it as <owner/repo>#N, the repo its discussions are in')
     die(USAGE, 2)
@@ -186,7 +202,9 @@ def refs(text, repo):
     out, gl = [], repo.startswith(gl_watch.HOST)
     for m in re.finditer(r'https?://github\.com/((?!orgs/)[\w.-]+/[\w.-]+)/(?:issues|pull|discussions)/(\d+)', text): out.append(f'{m[1]}#{m[2]}')
     for m in re.finditer(r'https?://github\.com/orgs/[\w.-]+/discussions/\d+', text):
-        if rf := org_discussion(m[0]): out.append(f'{rf[0]}#{rf[2]}')
+        try: rf = org_discussion(m[0])
+        except Unreadable: continue  # as crawl skips a linked thread it can't read
+        if rf: out.append(f'{rf[0]}#{rf[2]}')
     for m in re.finditer(r'https?://gitlab\.com/([\w.-]+(?:/[\w.-]+)+)/-/(issues|merge_requests)/(\d+)', text):
         out.append(f"{gl_watch.HOST}{m[1]}{'!' if m[2] == 'merge_requests' else '#'}{m[3]}")
     text = re.sub(r'https?://\S+', ' ', text)

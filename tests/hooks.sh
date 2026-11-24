@@ -39,7 +39,8 @@ if [ "$1 $2" = "pr checks" ]; then f="$FX/pr_checks_$(printf '%s' "$3" | tr '/:'
 [ "$1" = api ] || exit 1
 f="$FX/$(printf '%s' "$2" | tr '/?&=' '____')"
 for a in "$@"; do case "$a" in o=*|id=*) [ -f "${f}_${a#*=}" ] && f="${f}_${a#*=}";; esac; done  # graphql: $FX/graphql_<owner> or $FX/graphql_<node id> answers for it
-[ -n "$GH_STUB_403" ] && { echo 'gh: API rate limit exceeded for user ID 1. (HTTP 403)' >&2; exit 1; }
+# GH_STUB_403=1 rate-limits every call, GH_STUB_403=<path> that path's; `gh api rate_limit` answers, as GitHub's doesn't count
+[ -n "$GH_STUB_403" ] && [ "$2" != rate_limit ] && { [ "$GH_STUB_403" = 1 ] || [ "$GH_STUB_403" = "$2" ]; } && { echo 'gh: API rate limit exceeded for user ID 1. (HTTP 403)' >&2; exit 1; }
 [ -f "$f" ] || { printf '{"message":"Not Found","status":"404"}'; echo 'gh: Not Found (HTTP 404)' >&2; exit 1; }  # gh prints the error's JSON body too
 q=; pg=; while [ $# -gt 0 ]; do [ "$1" = --jq ] && q=$2; [ "$1" = --paginate ] && pg=1; shift; done
 python3 -c 'import json, re, sys
@@ -365,6 +366,12 @@ tc_fx repos_o_r_issues_45 '{"number":45,"id":5,"title":"Code in a list","html_ur
 tc_fx repos_o_r_issues_45_comments_per_page_100 '[{"id":105,"user":{"login":"maint"},"created_at":"2026-10-02T09:30:00Z","html_url":"https://example.invalid/o/r/issues/45#c105","body":"- The bot said:\n  ```\n  I disagree with the rename.\n  ```"}]'
 "$R/bin/thread-context" o/r#45 --out "$T/ctx/tc45.md" >/dev/null
 check "a ref and a rejection inside a code block in a list item are code: not followed, not in the ledger" "0 0" "$(grep -c '^  - o/r#42 ' "$T/ctx/tc45.md") $(grep -c '\[reject\]' "$T/ctx/tc45.md")"
+# a rate limit isn't a missing thread (nitedani/mergeworthy#260): the failure names gh's error and when the limit lifts
+tc_fx rate_limit '{"resources":{"core":{"remaining":0,"reset":1795000000},"graphql":{"remaining":4000,"reset":1795000000},"search":{"remaining":30,"reset":1795000000}}}'
+tclimit() { GH_STUB_403=$1 "$R/bin/thread-context" "$2" --out "$T/ctx/rl.md" >/dev/null 2>"$T/rl.err"; echo "$? $(grep -cF "thread-context: cannot read $2: $3" "$T/rl.err")"; }
+check "BLOCK: a rate limit on REST, then on GraphQL behind a missing issue, is named with when it lifts; a missing thread is still none" "1 1 1 1 1 1" \
+  "$(tclimit 1 o/r#41 '`gh api repos/o/r/issues/41` failed: gh: API rate limit exceeded for user ID 1. (HTTP 403); it resets at 2026-11-18T11:06:40Z: retry then') $(tclimit graphql o/r#47 '`gh api graphql` failed: gh: API rate limit exceeded for user ID 1. (HTTP 403); a secondary rate limit: retry in a minute or more') $(tclimit '' o/r#47 'gh read no issue, PR or discussion at o/r#47')"
+rm "$FX/rate_limit"
 
 # the guard: a post on the thread needs thread-context.md in the draft's folder, current
 TD="$T/tdrafts/o-r-41"; mkdir -p "$TD"
@@ -504,6 +511,8 @@ check "the discussion's replies are in the transcript, each naming the comment i
 check "an organization's discussion URL in the thread is followed as the thread it names" "0 1 1 1" "$(dtc 'd/r#5' 1) $(grep -c '^  - d/r#6 .*linked from d/r#5)$' "$DD/thread-context.md")"
 check "--ref names a discussion URL's thread, an organization's too; one gh finds none at fails" "d/r#5 d/r#5 1" \
   "$("$R/bin/thread-context" --ref https://github.com/d/r/discussions/5) $("$R/bin/thread-context" --ref https://github.com/orgs/dorg/discussions/5) $("$R/bin/thread-context" --ref https://github.com/orgs/dorg/discussions/7 >/dev/null 2>&1; echo $?)"
+check "BLOCK: --ref on an organization's discussion URL while GitHub rate-limits names the limit" "1 1 0" \
+  "$(GH_STUB_403=1 "$R/bin/thread-context" --ref https://github.com/orgs/dorg/discussions/5 >/dev/null 2>"$T/ref.err"; echo $?) $(grep -c '^thread-context: cannot read https://github.com/orgs/dorg/discussions/5: `gh api graphql` failed: gh: API rate limit exceeded' "$T/ref.err") $(grep -c Traceback "$T/ref.err")"
 python3 "$T/dfx.py" replies '' '' "$FX/graphql_DC_501" > "$FX/graphql_d"
 "$R/bin/thread-context" 'd/r#5' --out "$T/d101.md" --depth 0 >/dev/null
 check "a comment's 101 replies, over two pages, are all read: the first and the newest, in the record and in --items" "1 1 1 101" "$(grep -c '^https://example.invalid/d/r/discussions/5#discussioncomment-1001$' "$T/d101.md") $(grep -c '^https://example.invalid/d/r/discussions/5#discussioncomment-1101$' "$T/d101.md") $(grep -c '^- latest-human-comment: id=1101 ' "$T/d101.md") $("$R/bin/thread-context" --items 'd/r#5' | python3 -c 'import json,sys; print(sum(x["kind"] == "reply" for x in json.load(sys.stdin)))')"
