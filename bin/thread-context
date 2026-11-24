@@ -44,10 +44,11 @@ def api_json(path, paginate=False, cmd=('gh', 'api'), args=()):
     except (OSError, subprocess.TimeoutExpired) as e:
         raise Unreadable(f'{call}: {e}')
     if r.returncode != 0:
-        err = (r.stderr.strip().splitlines() or [f'exit {r.returncode}'])[-1]
-        if ABSENT.search(err): return None
+        err = '; '.join(l.strip() for l in r.stderr.splitlines() if l.strip()) or f'exit {r.returncode}'  # GraphQL's errors, one a line
+        limited = 'rate limit' in err.lower()
+        if ABSENT.search(err) and not limited: return None
         kind = 'graphql' if path == 'graphql' else 'search' if path.startswith('search') else 'core'
-        raise Unreadable(f'{call}: {err}', kind if cmd[0] == 'gh' and 'rate limit' in err.lower() else None)
+        raise Unreadable(f'{call}: {err}', kind if limited and cmd[0] == 'gh' else None)
     dec, s, i, out = json.JSONDecoder(), r.stdout, 0, []
     while i < len(s):
         while i < len(s) and s[i].isspace(): i += 1

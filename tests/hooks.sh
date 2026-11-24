@@ -374,13 +374,15 @@ check "BLOCK: a rate limit on REST, then on GraphQL behind a missing issue, is n
   "$(tclimit 1 o/r#41 "\`gh api repos/o/r/issues/41\` failed: $RL403; it resets at 2026-11-18T11:06:40Z: retry then") $(tclimit graphql o/r#47 "\`gh api graphql\` failed: $RL403") $(tclimit '' o/r#47 'gh read no issue, PR or discussion at o/r#47')"
 mkdir -p "$T/rlbin"; cat > "$T/rlbin/gh" <<EOF
 #!/bin/sh
-# gh, but \`gh api rate_limit\` answers as \$RL says: html (a proxy's sign-in page), empty (no resources), hang
+# gh, but \`gh api rate_limit\` answers as \$RL says: html (a proxy's sign-in page), empty (no resources), hang; RL=two: GraphQL fails with two errors
+[ "\$1 \$2 \$RL" = "api graphql two" ] && { printf '%s\\n' "$RL403" 'gh: Could not resolve to a Discussion with the number of 47.' >&2; exit 1; }
 [ "\$1 \$2" = "api rate_limit" ] && case "\$RL" in html) echo '<html>Sign in</html>'; exit 0;; empty) echo '{}'; exit 0;; hang) exec sleep 60;; esac
 exec "$T/bin/gh" "\$@"
 EOF
 chmod +x "$T/rlbin/gh"
 rlodd() { (export RL=$1 PATH="$T/rlbin:$PATH"; tclimit 1 o/r#41 "\`gh api repos/o/r/issues/41\` failed: $RL403"); }
 check "BLOCK: a reset lookup that answers a page, no resources or nothing in time leaves the rate-limit error as gh gave it" "1 1 1 1 1 1" "$(rlodd html) $(rlodd empty) $(rlodd hang)"
+check "BLOCK: GraphQL's rate limit before a NOT_FOUND is no missing thread: both errors are named" "1 1" "$(export RL=two PATH="$T/rlbin:$PATH"; tclimit '' o/r#47 "\`gh api graphql\` failed: $RL403; gh: Could not resolve to a Discussion with the number of 47.")"
 rlasks() { rm -f "$T/rl.calls"; GH_STUB_ENV="$T/rl.calls" GH_STUB_403=$1 "$R/bin/thread-context" o/r#41 --depth 1 --out "$T/ctx/rl.md" >/dev/null 2>&1; echo "$? $(grep -c '^api rate_limit ' "$T/rl.calls")"; }
 check "the reset is looked up only for the error thread-context dies with, not for a linked thread it skips" "0 0 1 1" "$(rlasks repos/o/r/issues/42) $(rlasks repos/o/r/issues/41)"
 rm "$FX/rate_limit"
