@@ -6,7 +6,7 @@ checkout's HEAD history, `declined: <why>` or `listed: <where>`, no blocker of a
 brought no blocker or should `fixed in <sha>` or is round 4 or later; a row whose id (a word starting with a letter, with a digit)
 isn't R<round>.<n> stands too. With --post (gate-pass: a post's draft has no sha) the completed round is round 2 or later instead,
 and `fixed in r<N>`, a later round up to the completed one that confirmed the fix, closes a finding too. Used by pr-steps and
-gate-pass (`--ledger`), and by pre-agent-dedupe to refuse a code round after the last one (last_round); else it prints what stands
+gate-pass (`--ledger`), and by loops.admit to refuse a code round after the last one (last_round); else it prints what stands
 and exits 1."""
 import re, subprocess, sys
 
