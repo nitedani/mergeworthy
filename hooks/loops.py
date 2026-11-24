@@ -81,7 +81,8 @@ def admit(loop, n, tops, heads, led):
             if not any(own_lines(t, o, h) <= testpaths.STALE_LINES for t, o in itertools.chain([first], on)): return False
         return moved
     earlier = sorted({m for m, old, *_ in record(loop)['rounds'] if m < n and built_on(old)})
-    last, kept = ledger.last_round(led) if led and os.path.isfile(led) else (0, False)
+    try: last, kept = ledger.last_round(led) if led and os.path.isfile(led) else (0, False)
+    except OSError as e: return f"the ledger {led} can't be read ({e.strerror}), so no round of {loop} is admitted: fix it, or name the loop's ledger (mergeworthy:delegate §Review rounds).\n"
     close = f"Close the loop with `pr-steps <step> <file> --ledger {led or '<ledger>'}` on r{earlier[-1]}'s report when it isn't clean: the agent's own report is the record, never one the main session writes.\n" if earlier else ''
     if len(earlier) >= 4:
         return (f"{loop} already ran {', '.join(f'r{m}' for m in earlier)} on this head or one within {testpaths.STALE_LINES} changed lines of it "

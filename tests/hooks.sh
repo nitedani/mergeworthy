@@ -1687,6 +1687,8 @@ nl="$nl $(rnd rh-l-r2 "Review $T/rh at head $HL; ledger $NL") $(grep -c "the led
 printf 'R1.1 should fixed in abc1234\nRound: 2\nR2.1 should fixed in abc1234\n' > "$NL"; nl="$nl $(rnd rh-l-r2 "Review $T/rh at head $HL; ledger $NL") $(rnd rh-l-r3 "Review $T/rh at head $HL; ledger $NL")"
 printf 'Round: 3\nR1.1 should fixed in abc1234\nR2.1 should fixed in abc1234\nR3.1 nit declined: wording\n' > "$NL"
 check "BLOCK r2 naming no ledger, or one whose round 1 brought only nits and declined findings, naming the pr-steps that closes it; r2 and r3 after a round with a fixed should pass; BLOCK r4 after a nits-only r3" "0 2 1 2 1 1 0 0 2" "$nl $(rnd rh-l-r4 "Review $T/rh at head $HL; ledger $NL")"
+chmod 000 "$NL"; nr="$(rnd rh-l-r5 "Review $T/rh at head $HL; ledger $NL") $(grep -c "the ledger $NL can't be read" "$T/err") $(grep -c Traceback "$T/err")"; chmod 644 "$NL"
+check "BLOCK a round whose ledger can't be read, naming it, with no crash" "2 1 0" "$nr"
 # under T3 a later review round continues its reviewer's thread (delegate §Continue): t3_thread_send counts as that round
 t3r() { # tool clientRequestId thread text: a delegate_task round (T3 returns thread as its childThreadId) or a t3_thread_send to thread; exit code, registered when it passes
   local j; j=$(python3 -c 'import json,sys; t,c,th,x=sys.argv[1:]; ti={"task":x,"role":"review","clientRequestId":c} if t=="delegate_task" else {"threadId":th,"message":x,"mode":"queue","clientRequestId":c}
