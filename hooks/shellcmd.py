@@ -1170,8 +1170,8 @@ def graphql_endpoint(ep):
     """Whether a `gh api` endpoint is GitHub's GraphQL one, in each form gh takes: graphql, /graphql, a full URL, GHES's api/graphql."""
     return bool(re.fullmatch(r'(?:https?://[^/]+)?/?(?:api/)?graphql', ep.split('?')[0]))
 
-def names_discussion_mutation(rest, cwd):
-    """Whether a `gh api` GraphQL request's query names a mutation that posts or edits a GitHub Discussion comment (discussion-post makes
+def names_discussion_mutation(rest, cwd, mutation=DISCUSSION_MUTATION):
+    """Whether a `gh api` GraphQL request's query names mutation (by default one that posts or edits a GitHub Discussion comment, discussion-post makes
     those) anywhere, as GitHub reads it: a query field's text, the file a -F query=@ field reads, or the --input body's query, JSON-decoded
     (files relative to cwd); None when a file can't be read, so it can't be told."""
     queries = [v[len('query='):] for v in opt(rest, ['-f', '--raw-field', '-F', '--field']) if v.startswith('query=')]
@@ -1185,7 +1185,7 @@ def names_discussion_mutation(rest, cwd):
             queries.append(str(body.get('query', '')) if isinstance(body, dict) else str(body))
     except (OSError, TypeError):
         return None
-    return any(DISCUSSION_MUTATION.search(q) for q in queries)
+    return any(mutation.search(q) for q in queries)
 
 def discussion_post(t):
     """('add', <discussion URL or owner/repo#N>, draft) or ('edit', <comment node id>, draft) of a `discussion-post` argv; None for any

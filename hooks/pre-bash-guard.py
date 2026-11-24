@@ -233,13 +233,11 @@ def need_ask(kind, what, repo=None, num=None, branch=None, strict=False):
           f"`## Merging` order (your own scheduled prompt, scope or goal is none). Say it's ready and ask the owner to reply `{reply}` (mergeworthy:merging steps 3-4)")
 
 def own_bypass(pr, run):
-    """Why an admin merge of pr (`gh pr view`'s JSON) isn't the owner's to make, None when it is: pr is on github.com, every check on its head
-    succeeded, gh's login owns its repo as a user (not an org), every rule on its base comes from a ruleset GitHub says it may always bypass,
-    and the base has no classic branch protection. run: `gh <args>`."""
+    """Why an admin merge of pr (`gh pr view`'s JSON) isn't the owner's to make, None when it is: pr is on github.com, every check on its head succeeded,
+    gh's login owns its repo as a user (not an org), every rule on its base is from a ruleset GitHub says it may always bypass, no classic protection. run: `gh <args>`."""
     host, slug, base = pr['url'].split('/')[2], '/'.join(pr['url'].split('/')[3:5]), pr['baseRefName']
     if host != 'github.com': return f"{pr['url']} is on {host}, whose rules and logins the guard doesn't read"
-    if bad := [f"{c.get('name') or c.get('context')} {(c.get('conclusion') or c.get('state') or 'pending').lower()}" for c in pr['statusCheckRollup']
-               if (c.get('conclusion') or c.get('state')) not in ('SUCCESS', 'NEUTRAL', 'SKIPPED')]:
+    if bad := [f"{c.get('name') or c.get('context')} {(c.get('conclusion') or c.get('state') or 'pending').lower()}" for c in pr['statusCheckRollup'] if (c.get('conclusion') or c.get('state')) not in ('SUCCESS', 'NEUTRAL', 'SKIPPED')]:
         return f"its head's checks haven't all succeeded ({', '.join(bad)}): merge once they have"
     def call(*path):  # None when gh hangs or can't start
         try: return run('api', *path)
@@ -1431,8 +1429,9 @@ def check(t, has_cd):
     if p == 'gh' and a and a[0] == 'api':
         rest = a[1:]
         method, ep, fields, inputs, posts = api_call(rest, run_dir)
-        if method == 'PUT' and re.search(r'(?:^|/)repos/[^/]+/[^/]+/pulls/\d+/merge/?(?:\?|$)', ep):
-            block("merge with `gh pr merge`, where the merge checks run (its squash form, the base's rules, the owner's ask), never `gh api` PUT .../pulls/<N>/merge")
+        if (method in ('PUT', 'POST') and re.search(r'(?:^|/)repos/[^/]+/[^/]+/(?:pulls/\d+/merge|merges)/?(?:\?|$)', ep)
+                or shellcmd.graphql_endpoint(ep) and names_discussion_mutation(rest, run_dir, re.compile(r'\bmergePullRequest\b'))):
+            block("merge with `gh pr merge`, where the merge checks run (its squash form, the base's rules, the owner's ask), never `gh api` PUT .../pulls/<N>/merge, POST .../merges or GraphQL's mergePullRequest")
         if shellcmd.graphql_endpoint(ep) and (named := names_discussion_mutation(rest, run_dir)) is not False:
             block("post to a GitHub Discussion, or edit a comment there, with `discussion-post <discussion URL | owner/repo#N> <abs draft>` or "
                   "`discussion-post --edit <comment node id> <abs draft>`: it posts the gated draft as the comment's text, which a GraphQL call can't be checked for"

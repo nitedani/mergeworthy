@@ -3013,6 +3013,9 @@ check "BLOCK: --admin on a repo of another login, naming it" "2 1" "$(guard "$M 
 rm "$FX/user" "$FX/repos_o_r"
 check "BLOCK: a merge through gh api's PUT .../pulls/<N>/merge, by -X or --method, with fields or --input, naming gh pr merge; reading whether it merged passes" "2 1 2 2 0" \
   "$(guard 'gh api -X PUT repos/o/r/pulls/41/merge -f merge_method=squash') $(grep -c 'merge with `gh pr merge`, where the merge checks run' "$T/err") $(guard 'gh api --method put /repos/o/r/pulls/41/merge --input m.json') $(guard "gh api -X PUT 'repos/{owner}/{repo}/pulls/41/merge'") $(guard 'gh api repos/o/r/pulls/41/merge')"
+echo '{"query":"mutation($id: ID!) { mergePullRequest(input: {pullRequestId: $id}) { clientMutationId } }","variables":{"id":"PR_1"}}' > "$T/mpr.json"
+check "BLOCK: a merge through gh api's POST .../merges or GraphQL's mergePullRequest, inline or from --input, with the same message; a GraphQL read passes" "2 1 2 2 1 0" \
+  "$(guard 'gh api -X POST repos/o/r/merges -f base=main -f head=fix') $(grep -c 'merge with `gh pr merge`, where the merge checks run' "$T/err") $(guard "gh api graphql -f query='mutation { mergePullRequest(input: {pullRequestId: \"PR_1\"}) { clientMutationId } }'") $(guard "gh api graphql --input $T/mpr.json") $(grep -c 'merge with `gh pr merge`, where the merge checks run' "$T/err") $(guard "gh api graphql -f query='{ viewer { login } }'")"
 check "a merge the guard passes records its PR as merged, pending until it ends (own_actions); one it blocks records nothing" "2 0 CLOSED_THREADS o/r#41 merged|" \
   "$(OWN_PENDING="$T/own-pm" guard "$M --admin") $(OWN_PENDING="$T/own-pm" guard "$M") $(cut -d' ' -f3- "$T/own-pm" | tr '\n' '|')"
 mpr BEHIND 2026-10-28T13:00:00Z
