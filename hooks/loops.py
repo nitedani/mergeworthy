@@ -5,8 +5,9 @@ fixed blocker or should."""
 import fcntl, itertools, json, os, re, subprocess
 import ledger, testpaths
 
-ROUNDS = os.path.expanduser('~/.claude/review-rounds.json')  # {loop: [[n, the heads its brief pinned]]}
-THREADS = os.path.expanduser('~/.claude/review-threads.json')  # {loop: the T3 threads its review rounds ran in}
+LOOPS = os.path.expanduser('~/.claude/review-loops.json')  # {loop: {'rounds': [[n, the heads its brief pinned]], 'threads': the T3 threads its rounds ran in}}
+# what a loop recorded before review-loops.json: rounds {loop: [[n, heads]]}, threads {loop: [thread]}
+OLD = {'rounds': os.path.expanduser('~/.claude/review-rounds.json'), 'threads': os.path.expanduser('~/.claude/review-threads.json')}
 
 
 def round_of(name):
@@ -26,20 +27,31 @@ def locked_update(path, change):
         os.replace(path + '.tmp', path)
 
 
+def _json(path):
+    try: data = json.load(open(path))
+    except (OSError, ValueError): return {}
+    return data if isinstance(data, dict) else {}
+
+
+def record(loop, loops=None):
+    """loop's record in loops (default: review-loops.json), else what the files before it hold for loop."""
+    r = (_json(LOOPS) if loops is None else loops).get(loop)
+    if isinstance(r, dict): return r
+    return {k: _json(path).get(loop, []) for k, path in OLD.items()}
+
+
 def threads(loop):
     """The T3 threads an earlier review round of loop ran in."""
-    try: return json.load(open(THREADS)).get(loop, [])
-    except (OSError, ValueError, AttributeError): return []
+    return record(loop)['threads']
 
 
 def register(loop, n, heads, thread=None, post=False):
     """Records round n of loop that ran: the thread it ran in, and, for a code review, the heads its brief pinned."""
-    if thread:
-        def ran_in(loops):
-            if thread not in loops.setdefault(loop, []): loops[loop].append(thread)
-        locked_update(THREADS, ran_in)
-    if not post:
-        locked_update(ROUNDS, lambda rounds: rounds.setdefault(loop, []).append([n, heads]))
+    def ran(loops):
+        r = loops[loop] = record(loop, loops)
+        if thread and thread not in r['threads']: r['threads'].append(thread)
+        if not post: r['rounds'].append([n, heads])
+    if thread or not post: locked_update(LOOPS, ran)
 
 
 git = lambda wt, *a: subprocess.run(['git', '-C', wt, *a], capture_output=True, text=True)
@@ -50,8 +62,7 @@ def admit(loop, n, tops, heads, led):
     """Why round n (2 or later) of code review loop is refused, '' when it may run: tops are the checkouts its brief names, heads
     their heads its pins equal, led the ledger path it names (None). Holds the rounds' lock until the process exits."""
     global _lock
-    _lock = open(ROUNDS + '.lock', 'a'); fcntl.flock(_lock, fcntl.LOCK_EX)
-    rounds = json.load(open(ROUNDS)) if os.path.exists(ROUNDS) else {}
+    _lock = open(LOOPS + '.lock', 'a'); fcntl.flock(_lock, fcntl.LOCK_EX)
     # first-parent and no merges: what a merge of the base brought in isn't the PR's own, as SHAPE STALE's compare leaves it out; no renames: each row names a real path
     def own_lines(t, o, h):
         rows = re.findall(r'^(\d+)\t(\d+)\t(.*)$', git(t, '-c', 'core.quotePath=false', 'log', '--first-parent', '--no-merges', '--no-renames', '--numstat', '--format=', f'{o}..{h}').stdout, re.M)
@@ -69,7 +80,7 @@ def admit(loop, n, tops, heads, led):
             moved = True
             if not any(own_lines(t, o, h) <= testpaths.STALE_LINES for t, o in itertools.chain([first], on)): return False
         return moved
-    earlier = sorted({m for m, old, *_ in rounds.get(loop, []) if m < n and built_on(old)})
+    earlier = sorted({m for m, old, *_ in record(loop)['rounds'] if m < n and built_on(old)})
     last, kept = ledger.last_round(led) if led and os.path.isfile(led) else (0, False)
     close = f"Close the loop with `pr-steps <step> <file> --ledger {led or '<ledger>'}` on r{earlier[-1]}'s report when it isn't clean: the agent's own report is the record, never one the main session writes.\n" if earlier else ''
     if len(earlier) >= 4:
