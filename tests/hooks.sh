@@ -1106,6 +1106,19 @@ printf '%s CI runs no tests.\n\n### How to reproduce\n\n1. Run the backend tests
 check "no screen: the command and output pass" 0 "$(ilint "$T/i4.md" 'evidence')"
 { printf '%s Who picks the payout account?\n\n### How to reproduce\n\n1. Open /invoices\n\n![list](/abs/list.png)\n\n### Options\n\n' "$B"; printf 'word %.0s' $(seq 120); echo; } > "$T/i5.md"
 check "a decision issue gets a word budget, not 400 characters" 0 "$(ilint "$T/i5.md" 'for an issue\|decision issue')"
+# a finding issue counts its prose as a PR body does: a log in a code block isn't counted, prose moved into code or a table is, and its reproduction section is required, not counted
+printf '# acme/bug\n\n## PR conventions\n- PR template: none\n- Issue template: .github/ISSUE_TEMPLATE/bug.yml: `### Area`, `### Steps to reproduce`, `### Expected behavior`, `### Actual behavior`, `### Impact`\n' > "$TPP/bug.md"
+ibug() { printf '%s### Area\n\napps/server\n\n### %s\n\n1. A delegated Claude child awaits a Monitor.\n2. It ends while a wake run is mid-request.\n\n### Expected behavior\n\nThe task waits for the wake'\''s text.\n%b\n### Actual behavior\n\nIt completes with stale text, then the detach kills the wake:\n\n```\n14:47:32.381 background tasks []\n14:47:32.398 task completed\n14:47:32.426 query.close\n14:47:32.429 wake failed\n```\n\n### Impact\n\nMajor degradation or frequent failure\n' "$B" "${3:-Steps to reproduce}" "$2" > "$T/$1.md"; }
+S=('The wake run had already sent its request when the task ended.' 'The detach then closed the query under it.' 'Nothing in the log says why the wake failed.' 'A user sees the child finish with an old answer.' 'The parent thread then acts on that answer as if it were new.' 'The next wake starts from the stale state again.' 'Only a restart of the thread clears it.')
+ibug ilog ''; ibug ilong "\n${S[*]}\n"; ibug icode "\n\`\`\`\n$(printf '%s\\n' "${S[@]}")\`\`\`\n"; ibug itab "\n| Why |\n|---|\n$(printf '| %s |\\n' "${S[@]}")"
+ibug isee "\n### How to see\n\n${S[*]}\n" 'How to reproduce'
+check "a templated issue with a four-line log and Steps to reproduce passes the 400 characters, with and without its project file" "0 0" "$(tpi acme/bug ilog '400 for an issue') $(ilint "$T/ilog.md" '400 for an issue')"
+check "BLOCK: the same issue with seven sentences more under Expected behavior" 1 "$(ilint "$T/ilong.md" '400 for an issue')"
+check "BLOCK: those sentences moved into a code block" 1 "$(ilint "$T/icode.md" '400 for an issue')"
+check "BLOCK: those sentences moved into a one-column table" 1 "$(ilint "$T/itab.md" '400 for an issue')"
+check "a How to see section's prose isn't counted, as How to reproduce's isn't" 0 "$(ilint "$T/isee.md" '400 for an issue')"
+{ printf '%s Who picks the payout account?\n\n### How to reproduce\n\n1. Open /invoices\n\n![list](/abs/list.png)\n\n### Options\n\n```\n' "$B"; printf 'get(a) -> b\n%.0s' $(seq 150); printf '```\n'; } > "$T/i6.md"
+check "BLOCK: a decision issue's code counts toward its 400 words" 1 "$(ilint "$T/i6.md" 'decision issue')"
 # ---------- pre-bash-guard: no foreground waits ----------
 wait_guard() { # command background(true|false)
   python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1],"run_in_background":sys.argv[2]=="true"},"cwd":sys.argv[3]}))' "$1" "$2" "$T" \
