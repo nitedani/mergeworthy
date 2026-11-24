@@ -1430,7 +1430,7 @@ def check(t, has_cd):
         rest = a[1:]
         method, ep, fields, inputs, posts = api_call(rest, run_dir)
         if (method in ('PUT', 'POST') and re.search(r'(?:^|/)repos/[^/]+/[^/]+/(?:pulls/\d+/merge|merges)/?(?:\?|$)', ep)
-                or shellcmd.graphql_endpoint(ep) and names_discussion_mutation(rest, run_dir, re.compile(r'\bmergePullRequest\b'))):
+                or shellcmd.graphql_endpoint(ep) and names_discussion_mutation(rest, run_dir, re.compile(r'\bmergePullRequest\s*\('))):
             block("merge with `gh pr merge`, where the merge checks run (its squash form, the base's rules, the owner's ask), never `gh api` PUT .../pulls/<N>/merge, POST .../merges or GraphQL's mergePullRequest")
         if shellcmd.graphql_endpoint(ep) and (named := names_discussion_mutation(rest, run_dir)) is not False:
             block("post to a GitHub Discussion, or edit a comment there, with `discussion-post <discussion URL | owner/repo#N> <abs draft>` or "
