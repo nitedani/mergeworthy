@@ -1179,7 +1179,7 @@ def check(t, has_cd):
         need_ask('release', f'`{p} publish`', (repo_of(origin(pkg)) or (None, None))[1])
     if p == 'codex' and ('exec' in a or a[:1] == ['e']) and under_t3():
         block("under T3 Code, start Codex through T3, where the user sees it: delegate_task with target {providerInstanceId: codex, "
-              "model: <the review model from orchestrator_capabilities>}, the prompt file's path in the task, a new delegate_task per review round (mergeworthy:delegate §Reviewers)")
+              "model: <the review model from orchestrator_capabilities>}, the prompt file's path in the task; a later round goes to its thread by t3_thread_send (mergeworthy:delegate §Reviewers, §Continue)")
     if p in ('docker', 'docker-compose'):
         check_compose(env, t)
     # a watcher wakes the session that started it, and a subagent's result is its last message: the main session owns the PR and its watcher

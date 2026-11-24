@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Claude Code PreToolUse hook (matcher: Agent, Task, delegate_task, t3_thread_launch). Exit 2 blocks the launch; stderr goes to the agent.
+"""Claude Code PreToolUse hook (matcher: Agent, Task, delegate_task, t3_thread_launch, t3_thread_send). Exit 2 blocks the launch; stderr goes to the agent.
+A t3_thread_send is a launch only as a later review round sent to a thread an earlier round of its loop ran in; any other send passes untouched.
 With the argument `register` it runs as the PostToolUse hook: only a launch that ran is registered, so one another hook blocked leaves no job.
 The PreToolUse call decides; the PostToolUse call only records what ran and makes no admission check (a failure writing its
 records still fails it). An admitted launch leaves its decision as a pending record in agent_jobs.LAUNCHED (when it was let
@@ -18,6 +19,7 @@ from post_words import fence_spans
 from records import branch_record
 from shellcmd import segments, prog, git_argv, rlines, transcript, Where
 from work_folder import git_top, task_of
+import t3_tasks
 from t3_tasks import under_t3
 register = sys.argv[1:] == ['register']
 d = json.load(sys.stdin)
@@ -27,6 +29,22 @@ def refused():
     """After a check wrote its refusal: the remaining checks still run, so the launch gets every refusal in one message."""
     global blocked
     blocked = True
+cid = str(ti.get('clientRequestId') or '')
+CIDS = os.path.expanduser('~/.claude/agent-client-request-ids.json')
+# A review round `<loop>-r<N>`, maybe followed by the date or head SHA the reuse block below asks for
+round_of = lambda name: re.fullmatch(r'(.+)-r(\d+)', re.sub(r'(-\d{4}-\d{2}-\d{2}|-[0-9a-f]{7,40})+$', '', name.strip()))
+THREADS = os.path.expanduser('~/.claude/review-threads.json')  # {loop: the T3 threads its review rounds ran in}
+sent = str(d.get('tool_name') or '').endswith('t3_thread_send')
+if sent:
+    # a later round sent to a thread an earlier round of its loop ran in (delegate §Continue) is checked and counted as that round,
+    # its message the task, its round name the title
+    m = round_of(cid)
+    try: ran = json.load(open(THREADS)).get(m[1], []) if m and int(m[2]) >= 2 else []
+    except (OSError, ValueError, AttributeError): ran = []
+    if str(ti.get('threadId') or '') not in ran: sys.exit(0)
+    ti = {'task': str(ti.get('message') or ''), 'title': cid, 'role': 'review', 'clientRequestId': cid, 'threadId': ti['threadId']}
+# a sent round is a new task of the agent an open job of its thread holds, so its job takes that one's place, never its twin
+same_agent = lambda j: sent and str(j.get('handle') or '').endswith('/' + ti['threadId'])
 # T3 opens no run for a turn Claude Code starts by itself (a finished background command, a Monitor event), and refuses
 # launches from it (pingdotgg/t3code#16808): nothing ran, so no job, and the session keeps working instead of waiting
 if register and 'parent_not_active' in json.dumps(d.get('tool_response') or ''):
@@ -37,8 +55,6 @@ if register and 'parent_not_active' in json.dumps(d.get('tool_response') or ''):
         "edits, preparing the push or the body: delegate step 7); only an independent review and a post wait for a run. "
         "Keep the brief, launch it in the next run, and add no status line on each wake."}}))
     sys.exit(0)
-cid = str(ti.get('clientRequestId') or '')
-CIDS = os.path.expanduser('~/.claude/agent-client-request-ids.json')
 L = launch.parse(ti)
 brief = L.brief  # every rule below reads the brief; the files it only names (project notes, installed skills) are read, so their history SHAs pin nothing
 paths = L.paths
@@ -53,11 +69,10 @@ pasted = {l.strip() for l in open(os.path.join(tdir, 'agent.md'))} if os.path.is
 own_brief = '\n'.join(l for l in brief.splitlines() if l.strip() not in pasted)  # the brief without the rules pasted from agent.md
 shas = set(re.findall(r'\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\b', brief))
 git = lambda wt, *a: subprocess.run(['git', '-C', wt, *a], capture_output=True, text=True)
-# Rounds per loop on one head (delegate §Review rounds): a review round `<loop>-r<N>`, maybe followed by the date or head SHA
-# the reuse block below asks for, is refused once the heads its brief pins show the branch hasn't moved since four earlier rounds of
-# its loop, and, after an earlier one there, when the ledger its brief names doesn't show the last round brought a fixed blocker or should;
+# Rounds per loop on one head (delegate §Review rounds): a review round is refused once the heads its brief pins show the branch
+# hasn't moved since four earlier rounds of its loop, and, after an earlier one there, when the ledger its brief names doesn't show the last round brought a fixed blocker or should;
 # a post's review is refused only once gate-pass's own check (review_launch.answers) already passes every draft it reviews
-rnd = re.fullmatch(r'(.+)-r(\d+)', re.sub(r'(-\d{4}-\d{2}-\d{2}|-[0-9a-f]{7,40})+$', '', (cid or str(ti.get('description') or '')).strip()))
+rnd = round_of(cid or str(ti.get('description') or ''))
 review = rnd and (ti.get('role') == 'review' or not ti.get('role') and re.search(r'\bexactly (CLEAN|NO BUGS)\b', brief))
 # a post's review: a gate review of a named draft whose brief asks for no code verdict (a small review's pr-body.review.out comes with one)
 post_review = review and bool(reviewed_drafts(brief)) and not re.search(r'\b(NO BUGS|MERGE AS IS)\b', own_brief)
@@ -143,11 +158,17 @@ def register_launch():
         os.makedirs(agent_jobs.JOBS, exist_ok=True)
         with open(agent_jobs.JOBS + '.lock', 'a') as jobs_lock:  # released before the files below take their own locks
             fcntl.flock(jobs_lock, fcntl.LOCK_EX)
+            for f, j in agent_jobs.jobs():
+                if same_agent(j): agent_jobs.remove(os.path.join(agent_jobs.JOBS, f))
             try: rec = json.load(open(pre)); launched = rec['launched']; ran_memory = rec.get('memory', memory); os.remove(pre)
             except (OSError, ValueError, KeyError, TypeError): rec, launched = {}, time.time()
             json.dump({'key': key, 'started': time.time(), 'launched': launched, 'brief': task, 'role': ti.get('role'), 'worktrees': L.worktrees, 'refresh': bool(ran_memory),
-                       'session': d.get('session_id'), 'transcript': d.get('transcript_path'), 'handle': agent_jobs.handle(d.get('tool_response'))}, open(job_file, 'w'))
+                       'session': d.get('session_id'), 'transcript': d.get('transcript_path'), 'handle': agent_jobs.handle(d.get('tool_response'), ti.get('threadId'))}, open(job_file, 'w'))
     if cid: locked_update(CIDS, lambda seen: seen.setdefault(cid, time.time()))
+    if review and (thread := ti.get('threadId') or (t3_tasks.result(d.get('tool_response')) or {}).get('childThreadId')):
+        def ran_in(loops):
+            if thread not in loops.setdefault(rnd[1], []): loops[rnd[1]].append(thread)
+        locked_update(THREADS, ran_in)
     if review and not post_review:
         locked_update(ROUNDS, lambda rounds: rounds.setdefault(rnd[1], []).append([int(rnd[2]), rec['heads'] if 'heads' in rec else round_heads()[1]]))
     if implementer and (approach := rec['approach'] if 'approach' in rec else brief_approach(strict=False)):
@@ -175,7 +196,7 @@ def codex_reset():
         return None
     return min(until) if until and min(until) > time.time() else None
 # This hook runs only under Claude Code, so a review on claudeAgent, or naming no provider (it inherits), is on the main session's company
-if ti.get('role') == 'review' and under_t3():
+if ti.get('role') == 'review' and under_t3() and not sent:  # a continued round runs on its thread's model
     target = ti.get('target') or {}
     provider = {target.get('providerInstanceId'), target.get('driverKind')} - {None, ''}
     reset = codex_reset()
@@ -398,7 +419,7 @@ if ti.get('role') not in ('research', 'test') and not refresh:
 opts = (ti.get('target') or ti.get('modelSelection') or {}).get('options') or {}
 opts = {o.get('id'): o.get('value') for o in opts if isinstance(o, dict)} if isinstance(opts, list) else opts
 effort = ti.get('effort') or opts.get('effort') or opts.get('reasoningEffort')
-for pf in sorted({os.path.expanduser('~/.mergeworthy/projects/' + r + '.md') for r in re.findall(r'\.mergeworthy/projects/([\w.-]+/[\w.-]+)\.md', brief)} | set(missing)):
+for pf in sorted({os.path.expanduser('~/.mergeworthy/projects/' + r + '.md') for r in re.findall(r'\.mergeworthy/projects/([\w.-]+/[\w.-]+)\.md', brief)} | set(missing)) if not sent else ():  # a send keeps its thread's effort
     sec = re.search(r'^## Agents\n(.*?)(?=^## |\Z)', open(pf, errors='replace').read(), re.M | re.S) if os.path.isfile(pf) else None
     want = re.search(r'^(?:[-*] +)?Effort: *(\w+)', sec[1], re.M) if sec else None
     if want and str(effort or '').lower() != want[1].lower():
@@ -480,7 +501,7 @@ for n in os.listdir(agent_jobs.LAUNCHED) if os.path.isdir(agent_jobs.LAUNCHED) e
     # a day on, past any call's PostToolUse, its record goes, so no later launch searches its launcher's transcript again
     elif time.time() - r.get('launched', 0) >= agent_jobs.OPEN:
         agent_jobs.remove(os.path.join(agent_jobs.LAUNCHED, n))
-registered = [j for _, j in agent_jobs.jobs()]  # the open jobs, read once for the checks below
+registered = [j for _, j in agent_jobs.jobs() if not same_agent(j)]  # the open jobs, read once for the checks below
 # One writer per worktree: a writer (any role but review or research) waits for a linked worktree its brief names (not the launcher's
 # own) that holds another session's process, or that a live writer job or outstanding writer call names, whose agent isn't the launcher. T3 can show that
 # agent interrupted or cancelled while it runs, so agent_jobs.finished decides.

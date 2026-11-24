@@ -1687,6 +1687,25 @@ nl="$nl $(rnd rh-l-r2 "Review $T/rh at head $HL; ledger $NL") $(grep -c "the led
 printf 'R1.1 should fixed in abc1234\nRound: 2\nR2.1 should fixed in abc1234\n' > "$NL"; nl="$nl $(rnd rh-l-r2 "Review $T/rh at head $HL; ledger $NL") $(rnd rh-l-r3 "Review $T/rh at head $HL; ledger $NL")"
 printf 'Round: 3\nR1.1 should fixed in abc1234\nR2.1 should fixed in abc1234\nR3.1 nit declined: wording\n' > "$NL"
 check "BLOCK r2 naming no ledger, or one whose round 1 brought only nits and declined findings, naming the pr-steps that closes it; r2 and r3 after a round with a fixed should pass; BLOCK r4 after a nits-only r3" "0 2 1 2 1 1 0 0 2" "$nl $(rnd rh-l-r4 "Review $T/rh at head $HL; ledger $NL")"
+# under T3 a later review round continues its reviewer's thread (delegate §Continue): t3_thread_send counts as that round
+t3r() { # tool clientRequestId thread text: a delegate_task round (T3 returns thread as its childThreadId) or a t3_thread_send to thread; exit code, registered when it passes
+  local j; j=$(python3 -c 'import json,sys; t,c,th,x=sys.argv[1:]; ti={"task":x,"role":"review","clientRequestId":c} if t=="delegate_task" else {"threadId":th,"message":x,"mode":"queue","clientRequestId":c}
+r={"taskId":"task-"+c,"status":"running",**({"childThreadId":th} if t=="delegate_task" else {"threadId":th,"runId":"run-"+c})}
+print(json.dumps({"tool_name":"mcp__t3-code__"+t,"tool_input":ti,"tool_response":[{"type":"text","text":json.dumps(r)}]}))' "$@")
+  printf '%s' "$j" | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; local r=$?; [ $r = 0 ] && printf '%s' "$j" | python3 "$R/hooks/pre-agent-dedupe.py" register; echo $r; }
+git init -q -b main "$T/ct"; git -C "$T/ct" commit -q --allow-empty -m one; CH=$(git -C "$T/ct" rev-parse HEAD)
+ct="$(t3r delegate_task ct-r1 th-ct "Review $T/ct at head $CH, round 1. Ledger: $CL") $(for i in 2 3 4 5; do t3r t3_thread_send ct-r$i th-ct "Round $i: review $T/ct at head $CH. Ledger: $CL"; done | xargs) $(grep -c 'ct already ran r1, r2, r3, r4 on this head' "$T/err")"
+job() { python3 -c 'import json,os,sys; print(*[j.get("handle") for f in os.listdir(sys.argv[1]) for j in [json.load(open(os.path.join(sys.argv[1], f)))] if j.get("key") == sys.argv[2]] or ["none"])' "$HOME/.claude/agent-jobs" "$1"; }
+check "a round sent to its reviewer's thread counts and is capped like a launched one: r2 to r4 by t3_thread_send pass, registered as jobs of that thread, BLOCK r5 naming the cap" "0 0 0 0 2 1 t3:task-ct-r4/th-ct" "$ct $(job ct-r4)"
+nrounds() { python3 -c 'import json,os,sys; print(len(json.load(open(os.path.expanduser("~/.claude/review-rounds.json"))).get(sys.argv[1], [])))' "$1"; }
+refused_send=$(printf '%s' '{"tool_name":"mcp__t3-code__t3_thread_send","tool_input":{"threadId":"th-other","message":"Go on."},"tool_response":"parent_not_active"}' | python3 "$R/hooks/pre-agent-dedupe.py" register | wc -c)
+check "a send to a thread no round of the loop ran in, or without a round name, is untouched: it passes past the cap, counts no round, registers no job, and T3 refusing it is no refused launch" "0 0 4 none none 0" "$(t3r t3_thread_send ct-r6 th-other "Round 6: review $T/ct at head $CH. Ledger: $CL") $(t3r t3_thread_send note th-ct "Review $T/ct at head $CH once more. Ledger: $CL") $(nrounds ct) $(job ct-r6) $(job note) $refused_send"
+QD="$T/rdrafts/drafts/q"; mkdir -p "$QD"; pe "$QD/r.md" 'Agreed.'; QB="Review $QD/r.md; write your final message, exactly CLEAN or the findings, to $QD/r.review.out."
+cq="$(t3r delegate_task cq-r1 th-q "$QB") $(pv "$QD/r.review.out" 'R1.1 should: the date'; pe "$QD/r.md" 'Fixed the date.'; t3r t3_thread_send cq-r2 th-q "Round 2: $QB")"
+[ "$(cut -d' ' -f1 "$QD/r.review.out.launch")" = "$(sha256sum "$QD/r.md" | cut -d' ' -f1)" ] && cq="$cq launched" || cq="$cq stale"
+cq="$cq $(cat "$QD/r.review.out.prev") $(pv "$QD/r.review.out" CLEAN; python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import review_launch; print(review_launch.answers(sys.argv[2], sys.argv[3]) or "passes")' "$R/hooks" "$QD/r.review.out" "$QD/r.md")"
+check "a post round sent to its reviewer's thread records the draft it was handed, so gate-pass's review check passes its CLEAN" "0 0 launched R1.1 should: the date passes" "$cq"
+check "the sent round's job takes the place of its thread's open job" "none t3:task-cq-r2/th-q" "$(job "$QD/r.md") $(job "$QD/r.md cq-r2")"
 mkdir -p "$HOME/.mergeworthy/projects/o"; echo "- a lesson from $OLD" > "$HOME/.mergeworthy/projects/o/gwnotes.md"
 check "a project notes file the brief names is read, not pinned: its history SHAs block nothing" 0 "$(ag "$OC" "Fix it in $T/gw; notes $HOME/.mergeworthy/projects/o/gwnotes.md")"
 check "the user's own checkout is read at any commit" 0 "$(ag "$OC" "Read $T/gr at $MAINOLD once more")"
