@@ -1717,6 +1717,7 @@ print(json.dumps({"tool_name":t,"tool_input":ti,"tool_response":{"agentId":to} i
 sm="$(smr Agent sm-r1 a-sm "Review $T/ct at head $CH; final message exactly NO BUGS. Ledger: $CL") $(for i in 2 3 4 5; do smr SendMessage sm-r$i a-sm "Round $i: review $T/ct at head $CH; final message exactly NO BUGS. Ledger: $CL"; done | xargs) $(grep -c 'sm already ran r1, r2, r3, r4 on this head' "$T/err") $(job sm-r4)"
 check "a round sent by SendMessage to its reviewer's agent counts and is capped like a launched one: r2 to r4 pass as jobs of that agent, BLOCK r5 naming the cap" "0 0 0 0 2 1 claude:a-sm" "$sm"
 check "a SendMessage to an agent no round of the loop ran in, or without a round name, is untouched: it passes past the cap and registers no job" "0 0 none none" "$(smr SendMessage sm-r6 a-other "Round 6: review $T/ct at head $CH. Ledger: $CL") $(smr SendMessage note a-sm "Review $T/ct once more") $(job sm-r6) $(job note)"
+check "BLOCK: a fresh reader's round 2, launched or sent, naming that it runs once" "0 2 1 2" "$(t3r delegate_task fresh-codex-r1 th-fr "Review $T/ct at head $CH; end MERGE AS IS: yes or no. Ledger: $CL") $(t3r delegate_task fresh-codex-r2 th-fr2 "Review $T/ct at head $CH; end MERGE AS IS: yes or no. Ledger: $CL") $(grep -c 'the fresh reader runs once' "$T/err") $(t3r t3_thread_send fresh-codex-r2 th-fr "Round 2: review $T/ct at head $CH; MERGE AS IS. Ledger: $CL")"
 mkdir -p "$HOME/.mergeworthy/projects/o"; echo "- a lesson from $OLD" > "$HOME/.mergeworthy/projects/o/gwnotes.md"
 check "a project notes file the brief names is read, not pinned: its history SHAs block nothing" 0 "$(ag "$OC" "Fix it in $T/gw; notes $HOME/.mergeworthy/projects/o/gwnotes.md")"
 check "the user's own checkout is read at any commit" 0 "$(ag "$OC" "Read $T/gr at $MAINOLD once more")"
@@ -2499,6 +2500,19 @@ check "pr-steps verify: BLOCK a round-2 report without NO BUGS with no ledger, a
 cp "$T/r2.md" "$T/r2b.md"; LR="$T/r2b.md" # r2.md is recorded on this head above
 check "pr-steps verify: BLOCK a round 2 carrying only round-1 findings without a 'Round: 2' line, or with a carried finding left open; with the line it records" "1 1 1 1 0" \
   "$(led "R1.1 should fixed in $ON") $(grep -c 'closes round 1' "$T/err") $(led 'Round: 2' 'R1.1 should disputed: x' 'R2.1 nit declined: y') $(grep -c 'R1.1 should disputed: x  <- not fixed' "$T/err") $(led 'Round: 2' "R1.1 should fixed in $ON")"
+# a step whose round 1 seats two reviewers at once (delegate §Reviewers) is recorded once both seats' reports are
+GS="$T/seats"; git init -q -b main "$GS"; git -C "$GS" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; SH=$(git -C "$GS" rev-parse HEAD)
+fo() { # clientRequestId target-JSON task: a review delegate_task under T3, registered when it passes
+  local j; j=$(python3 -c 'import json,sys; c,t,x=sys.argv[1:]; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":x,"role":"review","target":json.loads(t),"clientRequestId":c},"tool_response":[{"type":"text","text":json.dumps({"taskId":"t-"+c,"childThreadId":"th-"+c})}]}))' "$@")
+  printf '%s' "$j" | T3CODE_THREAD_ID=th python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; local r=$?; [ $r = 0 ] && printf '%s' "$j" | T3CODE_THREAD_ID=th python3 "$R/hooks/pre-agent-dedupe.py" register; echo $r; }
+FO="Fan-out: converge §Running the agents"
+fs="$(fo vs-codex-r1 '{"providerInstanceId":"codex"}' "Review $GS at head $SH; output to $T/vs-codex.md
+$FO") $(fo vs-claude-r1 '{"providerInstanceId":"claudeAgent"}' "Review $GS at head $SH; output to $T/vs-claude.md
+$FO") $(fo vx-claude-r1 '{"providerInstanceId":"claudeAgent"}' "Review $GS at head $SH; output to $T/vx-claude.md")"
+check "a round 1 seating its step's reviewers at once takes this company's agent as its second seat without a Fallback line; without the Fan-out line it is refused" "0 0 2" "$fs"
+for f in vs-codex vs-claude; do printf 'Checked it.\nNO BUGS\n' > "$T/$f.md"; std "$T/$f.md"; done
+fs="$(cd "$GS" && bash "$R/bin/pr-steps" verify "$T/vs-codex.md" 2>&1 | grep -c 'one seat of verify.*vs-claude') $(grep -c '^verify ' ~/.claude/pr-steps/"$SH") $(cd "$GS" && bash "$R/bin/pr-steps" verify "$T/vs-claude.md" >/dev/null 2>&1; echo $?) $(grep -c '^verify ' ~/.claude/pr-steps/"$SH")"
+check "pr-steps verify records a seated step once every seat's report is: the first seat's report records as a seat, naming the other, the second's records verify" "1 0 0 1" "$fs"
 lr() { cp "$T/r2.md" "$T/r2-$1.md"; LR="$T/r2-$1.md"; shift; led "$@"; }  # a report of its own per ledger that records
 check "pr-steps verify --ledger: a round 1 bringing only nits or declined findings closes the loop; BLOCK a round 2 with a fixed should, it gets round 3; round 4 closes with a fixed should" "0 0 1 1 0" \
   "$(lr n1 'R1.1 nit declined: wording') $(lr d1 'R1.1 should declined: the case needs a staged race' 'R1.2 nit listed: the report') $(lr f2 "R1.1 should fixed in $ON" 'Round: 2' "R2.1 should fixed in $ON") $(grep -c 'closes round 2, which brought a blocker or should fixed in a commit: the loop gets its next round first' "$T/err") $(lr f4 "R4.1 should fixed in $ON")"

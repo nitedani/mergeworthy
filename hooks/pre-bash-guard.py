@@ -1301,7 +1301,7 @@ def check(t, has_cd):
     if p in ('claude', 'codex'):
         # the verdict is codex's -o file, or claude's stdout: another descriptor's file is a plain write
         stdout = [t[i + 1] for i, x in enumerate(t[:-1]) if re.fullmatch(r'1?>>?|1?>\||&>>?', x) and not t[i + 1].startswith('/dev/')]
-        post = False
+        post, outs = False, []
         for w in (opt(a, ['-o', '--output-last-message']) if p == 'codex' else []) + (stdout if p == 'claude' and ('-p' in a or '--print' in a) else []):
             # only an output that is one fully known path is recorded or name-checked; any other that may land in drafts/ is refused
             vals, paths = where.values(w), where.files(w)
@@ -1310,7 +1310,7 @@ def check(t, has_cd):
                 if any(re.search(r'(^|/)drafts/', x) for x in seen):
                     block(f"the review output {w} can't be placed: pass its absolute path, written out or assigned once")
                 continue
-            out = paths[0]
+            out = paths[0]; outs.append(out)
             if why := review_launch.misnamed(out):
                 block(why)
             if review_launch.draft_of(out):
@@ -1321,7 +1321,7 @@ def check(t, has_cd):
         if (p == 'codex' and ('exec' in a or a[:1] == ['e']) or '-p' in a or '--print' in a) and not post and (r := review_transport.shell_round(' '.join(t))):
             L = launch.Launch(r[1])
             if int(r[0][2]) >= 2 and (why := loops.admit(r[0][1], int(r[0][2]), *loops.pinned(L), loops.ledger_named(L.brief))): block(why)
-            rounds.append((r[0][1], int(r[0][2]), loops.pinned(L)[1]))
+            rounds.append((r[0][1], int(r[0][2]), loops.pinned(L)[1], None, False, outs, bool(re.search(loops.FANOUT, r[1], re.M))))
     written = [f for x, c in zip(targets, files) for f in known(c, x)]
     for x in dict.fromkeys(map(shellcmd.folder, written)):  # the instructions check runs git, once per folder
         if why := no_instructions_read(x, d):

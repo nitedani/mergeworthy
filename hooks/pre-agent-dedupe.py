@@ -140,7 +140,7 @@ def register_launch():
     if cid: loops.locked_update(CIDS, lambda seen: seen.setdefault(cid, time.time()))
     if review:
         loops.register(rnd[1], int(rnd[2]), None if post_review else rec['heads'] if 'heads' in rec else loops.pinned(L)[1],
-                       review_transport.thread(ti, d.get('tool_response')), post_review)
+                       review_transport.thread(ti, d.get('tool_response')), post_review, said_outs, bool(re.search(loops.FANOUT, brief, re.M)))
     if implementer and (approach := rec['approach'] if 'approach' in rec else brief_approach(strict=False)):
         os.makedirs(BUILT, exist_ok=True)
         open(os.path.join(BUILT, os.path.basename(approach[0])), 'w').write(approach[1])
@@ -175,8 +175,9 @@ if ti.get('role') == 'review' and under_t3() and not sent:  # a continued round 
         sys.stderr.write(f"BLOCKED: claude-swap reads every saved Codex account as used up until {time.strftime('%H:%M' if at[:3] == time.localtime()[:3] else '%a %H:%M', at)}, so this launch would fail. "
                          "Launch the review on this company (target.providerInstanceId claudeAgent); it needs no Fallback line while that holds.\n")
         refused()
-    # the fallback keeps the first review's prompt, so its claim may sit in the brief file the task names; `<what failed>` is the form, no claim
-    elif not reset and (not provider or 'claudeAgent' in provider) and not re.search(r'\bFallback:[ \t]*[^\s<]', launch.Launch(str(ti.get('task') or '')).brief):
+    # the fallback keeps the first review's prompt, so its claim may sit in the brief file the task names; `<what failed>` is the form, no claim.
+    # A round 1 seating its step's reviewers at once takes a fresh agent of this company as its second seat (delegate §Reviewers)
+    elif not reset and (not provider or 'claudeAgent' in provider) and not (rnd and rnd[2] == '1' and re.search(loops.FANOUT, brief, re.M)) and not re.search(r'\bFallback:[ \t]*[^\s<]', launch.Launch(str(ti.get('task') or '')).brief):
         sys.stderr.write("BLOCKED: an independent check starts on another company's model (mergeworthy:delegate §Reviewers): set target.providerInstanceId to codex. "
                          "Only when that call failed, launch on this company with `Fallback: <what failed>` in the task or the brief file it names.\n")
         refused()

@@ -45,13 +45,29 @@ def threads(loop):
     return record(loop)['threads']
 
 
-def register(loop, n, heads, thread=None, post=False):
-    """Records round n of loop that ran: the thread it ran in, and, for a code review, the heads its brief pinned."""
+FANOUT = r'^Fan-out: converge §Running the agents$'  # a round 1 seating a step's reviewers at once (delegate §Reviewers)
+
+
+def register(loop, n, heads, thread=None, post=False, outs=(), seated=False):
+    """Records round n of loop that ran: the thread it ran in, and, for a code review, the heads its brief pinned, the reports it
+    writes (outs) and whether it is one of its step's seats (seated: its round 1 brief's FANOUT line)."""
     def ran(loops):
         r = loops[loop] = record(loop, loops)
         if thread and thread not in r['threads']: r['threads'].append(thread)
-        if not post: r['rounds'].append([n, heads])
+        if not post:
+            r['rounds'].append([n, heads])
+            r['outs'] = sorted(set(r.get('outs', [])) | {os.path.realpath(o) for o in outs})
+            r['seated'] = r.get('seated') or seated
     if thread or not post: locked_update(LOOPS, ran)
+
+
+def open_seats(report, recorded):
+    """The other seats of report's step, loops `<step-or-slice>-<provider>` seated with its loop, none of whose reports is in
+    recorded (the outputs pr-steps recorded on the head): a step closes only once every seat's loop did."""
+    loops, report = _json(LOOPS), os.path.realpath(report)
+    stems = {l.rsplit('-', 1)[0] for l, r in loops.items() if isinstance(r, dict) and r.get('seated') and report in r.get('outs', [])}
+    return sorted(l for l, r in loops.items() if isinstance(r, dict) and r.get('seated') and l.rsplit('-', 1)[0] in stems
+                  and report not in r.get('outs', []) and not set(r.get('outs', [])) & set(recorded))
 
 
 git = lambda wt, *a: subprocess.run(['git', '-C', wt, *a], capture_output=True, text=True)
@@ -75,6 +91,8 @@ def admit(loop, n, tops, heads, led):
     """Why round n (2 or later) of code review loop is refused, '' when it may run: tops are the checkouts its brief names, heads
     their heads its pins equal, led the ledger path it names (None). Holds the rounds' lock until the process exits."""
     global _lock
+    if re.fullmatch(r'fresh(-[^-]+)?', loop):
+        return f"{loop}-r{n}: the fresh reader runs once (mergeworthy:converge step 4); its findings go back to the loops that own them, `<slice>-fresh` (mergeworthy:delegate §Review rounds).\n"
     _lock = open(LOOPS + '.lock', 'a'); fcntl.flock(_lock, fcntl.LOCK_EX)
     # first-parent and no merges: what a merge of the base brought in isn't the PR's own, as SHAPE STALE's compare leaves it out; no renames: each row names a real path
     def own_lines(t, o, h):
@@ -147,7 +165,9 @@ def close(path, kind='code', checkout='.'):
     return out
 
 
-if __name__ == '__main__':  # loops.py close [--post] <ledger> [<checkout>]: exits 0 when the ledger closes its loop, else prints what stands
+if __name__ == '__main__' and sys.argv[1:2] == ['seats']:  # loops.py seats <report> <record file>: open_seats, a line each
+    print(*open_seats(sys.argv[2], [l.split()[1] for l in open(sys.argv[3]) if len(l.split()) > 1] if os.path.isfile(sys.argv[3]) else []), sep='\n')
+elif __name__ == '__main__':  # loops.py close [--post] <ledger> [<checkout>]: exits 0 when the ledger closes its loop, else prints what stands
     post = sys.argv[2:3] == ['--post']
     found = close(*sys.argv[2 + post:3 + post], kind='post' if post else 'code', checkout=(sys.argv[3 + post:4 + post] or ['.'])[0])
     if found:
