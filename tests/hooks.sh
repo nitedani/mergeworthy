@@ -40,6 +40,7 @@ if [ "$1 $2" = "pr checks" ]; then f="$FX/pr_checks_$(printf '%s' "$3" | tr '/:'
 f="$FX/$(printf '%s' "$2" | tr '/?&=' '____')"
 for a in "$@"; do case "$a" in o=*|id=*) [ -f "${f}_${a#*=}" ] && f="${f}_${a#*=}";; esac; done  # graphql: $FX/graphql_<owner> or $FX/graphql_<node id> answers for it
 [ -n "$GH_STUB_403" ] && { echo 'gh: API rate limit exceeded for user ID 1. (HTTP 403)' >&2; exit 1; }
+[ -f "$f.hang" ] && exec sleep 30  # $FX/<path>.hang: gh hangs past the caller's timeout
 [ -f "$f" ] || { printf '{"message":"Not Found","status":"404"}'; echo 'gh: Not Found (HTTP 404)' >&2; exit 1; }  # gh prints the error's JSON body too
 q=; pg=; while [ $# -gt 0 ]; do [ "$1" = --jq ] && q=$2; [ "$1" = --paginate ] && pg=1; shift; done
 python3 -c 'import json, re, sys
@@ -4942,7 +4943,9 @@ check "with no project file, BLOCK: --admin unasked, or asked for another PR; a 
   "$(said 'looks good'; lg "$MA") $(grep -c "merging https://github.com/o/r/pull/41 past its base's rules (--admin) lands on o/r.*reply \`merge\`" "$T/err") $(said 'merge #40'; lg "$MA") $(said 'looks good'; lg "$M") $(said 'merge #41'; lg "$MA")"
 mv "$T/or.md" "$HOME/.mergeworthy/projects/o/r.md"; rm "$FX/user"
 check "BLOCK: --admin when gh can't read the login, saying to retry" "2 1" "$(lg "$MA") $(grep -c "gh couldn't read the login or o/r: retry once gh answers" "$T/err")"
-rm "$FX/repos_o_r" "$FX/repos_o_r_rules_branches_main_per_page_100" "$FX/repos_o_r_rulesets_7"
+echo '{"login":"o"}' > "$FX/user"; touch "$FX/repos_o_r_rules_branches_main_per_page_100.hang"
+check "BLOCK: --admin when gh hangs reading the base's rules, saying to retry" "2 1" "$(lg "$MA") $(grep -c "gh couldn't read main's rules: retry once gh answers" "$T/err")"
+rm "$FX/user" "$FX/repos_o_r_rules_branches_main_per_page_100.hang" "$FX/repos_o_r" "$FX/repos_o_r_rules_branches_main_per_page_100" "$FX/repos_o_r_rulesets_7"
 said 'looks good'
 check "BLOCK: gh release create and npm publish unasked; asked, or a dry run, or a repo with no project file, they pass; BLOCK: release notes asked for, a past 'released' or 'published', one held back as 'released' or 'published'" "2 2 0 0 2 2 2 0 0 2 2 2 2" \
   "$(lg 'gh release create v1.2.0 -R o/r') $(lg 'npm publish' "$TCO") $(lg 'npm publish --dry-run' "$TCO") $(lg 'gh release create v1.2.0 -R lo/none') \

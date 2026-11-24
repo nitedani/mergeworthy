@@ -235,9 +235,11 @@ def need_ask(kind, what, repo=None, num=None, branch=None, strict=False):
 def own_bypass(slug, base, run):
     """Why an admin merge into slug's base isn't the owner's to make, None when it is: gh's login owns slug as a user (not an org), every
     rule on base comes from a ruleset GitHub says it may always bypass, and base has no classic branch protection. run: `gh <args>`."""
+    def call(*path):  # None when gh hangs or can't start
+        try: return run('api', *path)
+        except (OSError, subprocess.TimeoutExpired): return None
     def get(*path):
-        r = run('api', *path)
-        try: return json.loads(r.stdout) if r.returncode == 0 else None
+        try: return json.loads(r.stdout) if (r := call(*path)) and r.returncode == 0 else None
         except ValueError: return None
     unread, meet = "gh couldn't read {}: retry once gh answers", ': merge once the PR meets them'
     me, repo = get('user'), get(f'repos/{slug}')
@@ -249,9 +251,9 @@ def own_bypass(slug, base, run):
     for rid in sorted({r['ruleset_id'] for r in rules}):
         if not (rs := get(f'repos/{slug}/rulesets/{rid}')): return unread.format(f'ruleset {rid}')
         if rs.get('current_user_can_bypass') != 'always': return f"ruleset {rid} ({rs.get('name')}) lets {me['login']} bypass it {rs.get('current_user_can_bypass') or 'never'}, not always" + meet
-    r = run('api', f'repos/{slug}/branches/{branch}/protection')
-    if r.returncode == 0: return f"{base} has classic branch protection, which grants no bypass" + meet
-    if '(HTTP 404)' not in r.stderr: return unread.format(f"{base}'s branch protection")
+    r = call(f'repos/{slug}/branches/{branch}/protection')
+    if r and r.returncode == 0: return f"{base} has classic branch protection, which grants no bypass" + meet
+    if not r or '(HTTP 404)' not in r.stderr: return unread.format(f"{base}'s branch protection")
 
 def default_branch(host, repo):
     """repo's default branch on host (GitHub, else GitLab); blocks when its API can't answer."""
