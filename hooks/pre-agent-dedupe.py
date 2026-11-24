@@ -13,7 +13,7 @@ status (read first) releases the job."""
 import datetime, fcntl, glob, hashlib, itertools, json, os, re, shlex, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import failclosed
-import agent_jobs, launch, memory_file, project_file, review_launch, subprocess, testpaths
+import agent_jobs, launch, ledger, memory_file, project_file, review_launch, subprocess, testpaths
 from post_words import fence_spans
 from records import branch_record
 from shellcmd import segments, prog, git_argv, rlines, transcript, Where
@@ -53,8 +53,9 @@ pasted = {l.strip() for l in open(os.path.join(tdir, 'agent.md'))} if os.path.is
 own_brief = '\n'.join(l for l in brief.splitlines() if l.strip() not in pasted)  # the brief without the rules pasted from agent.md
 shas = set(re.findall(r'\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\b', brief))
 git = lambda wt, *a: subprocess.run(['git', '-C', wt, *a], capture_output=True, text=True)
-# Two rounds per loop on one head (delegate §Review rounds): a review round `<loop>-r<N>`, maybe followed by the date or head SHA
-# the reuse block below asks for, once the heads its brief pins show the branch hasn't moved since two earlier rounds of its loop, is refused;
+# Rounds per loop on one head (delegate §Review rounds): a review round `<loop>-r<N>`, maybe followed by the date or head SHA
+# the reuse block below asks for, is refused once the heads its brief pins show the branch hasn't moved since four earlier rounds of
+# its loop, and, after an earlier one there, when the ledger its brief names doesn't show the last round brought a fixed blocker or should;
 # a post's review is refused only once gate-pass's own check (review_launch.answers) already passes every draft it reviews
 rnd = re.fullmatch(r'(.+)-r(\d+)', re.sub(r'(-\d{4}-\d{2}-\d{2}|-[0-9a-f]{7,40})+$', '', (cid or str(ti.get('description') or '')).strip()))
 review = rnd and (ti.get('role') == 'review' or not ti.get('role') and re.search(r'\bexactly (CLEAN|NO BUGS)\b', brief))
@@ -238,7 +239,7 @@ if post_review:
                          "(mergeworthy:delegate §Review rounds): post it, or edit the draft first. It passes with:\n"
                          + ''.join(f"gate-pass {dr} {o}{f' --ledger {lg}' if lg else ''}\n" for o, dr, lg in passes))
         refused()
-elif review and int(rnd[2]) >= 3:
+elif review and int(rnd[2]) >= 2:
     tops, heads = round_heads()
     rlock = open(ROUNDS + '.lock', 'a'); fcntl.flock(rlock, fcntl.LOCK_EX)  # held until exit
     rounds = json.load(open(ROUNDS)) if os.path.exists(ROUNDS) else {}
@@ -261,13 +262,25 @@ elif review and int(rnd[2]) >= 3:
             if not any(own_lines(t, o, h) <= testpaths.STALE_LINES for t, o in itertools.chain([first], on)): return False
         return moved
     earlier = sorted({m for m, old, *_ in rounds.get(loop, []) if m < n and built_on(old)})
-    if len(earlier) >= 2:
+    led = re.search(r'(/[^\s`\'"()]+\.ledger\.md)\b', brief)
+    last, kept = ledger.last_round(led[1]) if led and os.path.isfile(led[1]) else (0, False)
+    close = f"Close the loop with `pr-steps <step> <file> --ledger {led[1] if led else '<ledger>'}` on r{earlier[-1]}'s report when it isn't clean: the agent's own report is the record, never one the main session writes.\n" if earlier else ''
+    if len(earlier) >= 4:
         sys.stderr.write(f"BLOCKED: {loop} already ran {', '.join(f'r{m}' for m in earlier)} on this head or one within {testpaths.STALE_LINES} changed lines of it "
-                         f"({', '.join(h[:12] for h in heads) or 'no head pinned'}): a loop gets two rounds per head, and a head past those lines is a new one "
+                         f"({', '.join(h[:12] for h in heads) or 'no head pinned'}): a loop gets four rounds per head, and a head past those lines is a new one "
                          "(mergeworthy:delegate §Review rounds). "
-                         "List what is still open in the report or the PR body's notes and go on (push, ready, the next step) without waiting for an answer; "
-                         "only an open blocker keeps the PR in draft. A maintainer's ask on a new head starts a new loop name. "
-                         f"Close r{earlier[-1]}, the last round, when it isn't clean, with `pr-steps <step> <file> --ledger <ledger>` or `gate-pass ... --ledger <ledger>` on its report: the agent's own report is the record, never one the main session writes.\n")
+                         + (f"The ledger {led[1]} shows round {last} still brought a blocker or should fixed in a commit: the area keeps taking patches, so its next step is "
+                            "the finality pass (mergeworthy:finality step 1, recorded by `pr-steps finality <file>`), not another round. " if kept else "")
+                         + "List what is still open in the report or the PR body's notes and go on (push, ready, the next step) without waiting for an answer; "
+                         "only an open blocker keeps the PR in draft. A maintainer's ask on a new head starts a new loop name. " + close)
+        refused()
+    elif earlier and not kept:
+        sys.stderr.write(f"BLOCKED: {loop}-r{n} follows r{earlier[-1]} on this head or one within {testpaths.STALE_LINES} changed lines of it, and a loop gets its next round only "
+                         "while its last round brought a blocker or should you kept and fixed (mergeworthy:delegate §Review rounds), but "
+                         + ("the brief names no `<work folder>/drafts/<review>.ledger.md` to show it: name the loop's ledger in the brief, or end the loop. " if not led else
+                            f"{led[1]} doesn't exist: name the loop's ledger, or end the loop. " if not os.path.isfile(led[1]) else
+                            f"the ledger {led[1]} shows round {last} brought none `fixed in <sha>`: the loop ends there. ")
+                         + close)
         refused()
 # A brief that writes or reviews code, docs or a post (any role but research or test) for a repo whose maintainers' notes exist
 # (delegate step 3) names the project file, so the agent reads them: by owner/repo, or by a path in that repo's checkout. A memory-refresh

@@ -1632,48 +1632,61 @@ ag() { # cwd task [role]
 printf '# Memory\n## Standing\n### Ruled out\n- **Cron jobs** (now). The user refused them.\n## Recent\n<!-- covered-until: 2099-01-01T00:00:00.000Z -->\n' > "$MR/memory.md"
 check "BLOCK: a brief pinned to an older commit of the worktree it names, with the ruled-out list" "2 1" "$(ag "$OC" "Fix it in $T/gw at $OLD") $(grep -c 'Cron jobs' "$T/err")"
 check "a brief pinned to the worktree's live head passes" 0 "$(ag "$OC" "Fix it again in $T/gw at $NEW, base $OLD")"
-r1=$(rnd gw-r1 "Review $T/gw at head $NEW"); r2=$(rnd gw-r2 "Review $T/gw at head $NEW again"); r3=$(rnd gw-r3 "Review $T/gw at head $NEW once more")
-git -C "$T/gw" commit -q --allow-empty -m fix; FIX=$(git -C "$T/gw" rev-parse HEAD); r3f=$(rnd "gw-r3-${FIX:0:7}" "Review $T/gw at head $FIX")
+# a code round names its loop's ledger; this one's last round brought a fixed should, so the loop goes on
+CL="$HOME/.mergeworthy/work/cl/drafts/loop.ledger.md"; mkdir -p "${CL%/*}"; printf 'R1.1 should fixed in abc1234\n' > "$CL"
+crnd() { rnd "$1" "$2 Ledger: $CL"; }
+r14=$(for i in 1 2 3 4; do crnd gw-r$i "Review $T/gw at head $NEW, round $i"; done | xargs); r5=$(crnd gw-r5 "Review $T/gw at head $NEW once more")
+r5n=$(grep -c 'a loop gets four rounds per head' "$T/err"); r5p=$(grep -c "pr-steps <step> <file> --ledger $CL" "$T/err"); r5z=$(grep -c 'the area keeps taking patches, so its next step is the finality pass (mergeworthy:finality step 1, recorded by `pr-steps finality <file>`)' "$T/err")
+git -C "$T/gw" commit -q --allow-empty -m fix; FIX=$(git -C "$T/gw" rev-parse HEAD); r5f=$(crnd "gw-r5-${FIX:0:7}" "Review $T/gw at head $FIX")
 git -C "$T/gw" checkout -q --detach "$OLD"; git -C "$T/gw" commit -q --allow-empty -m new; NH=$(git -C "$T/gw" rev-parse HEAD)
-check "review rounds on one head: r1 and r2 pass, BLOCK r3 on it and on a fix built on it, r3 on a new head passes" "0 0 2 2 0" "$r1 $r2 $r3 $r3f $(rnd "gw-r3-${NH:0:7}" "Review $T/gw at head $NH")"
+check "review rounds on one head: r1 to r4 pass, BLOCK r5 on it, naming the cap, the pr-steps that closes the ledger and, as round 4 brought a fixed should, the finality pass, and on a fix built on it; r5 on a new head passes" "0 0 0 0 2 1 1 1 2 0" "$r14 $r5 $r5n $r5p $r5z $r5f $(crnd "gw-r5-${NH:0:7}" "Review $T/gw at head $NH")"
 git init -q -b main "$T/rh"; mkdir "$T/rh/tests"
 rh_commit() { seq "$2" >> "$T/rh/$1"; git -C "$T/rh" add .; git -C "$T/rh" commit -qm "$1"; git -C "$T/rh" rev-parse HEAD; }  # a path gets N new lines
-rh_rnd() { rnd "$1" "Review $T/rh at head $2"; }
-H0=$(rh_commit a.py 100); r12="$(rh_rnd rh-r1 "$H0") $(rh_rnd rh-r2 "$H0")"
-H80=$(rh_commit a.py 80); at80=$(rh_rnd rh-r3 "$H80")
-HT=$(rh_commit tests/a.py 200); attests=$(rh_rnd rh-r3 "$HT")
-git -C "$T/rh" checkout -qb base "$H0"; rh_commit b.py 200 >/dev/null; git -C "$T/rh" checkout -q main; git -C "$T/rh" merge -q --no-ff -m "merge the base" base; HM=$(git -C "$T/rh" rev-parse HEAD); atmerge=$(rh_rnd rh-r3 "$HM")
-check "the round cap counts as SHAPE STALE: exactly 80 lines, 200 in tests and 200 from a merge of the base stay fixes of the head, BLOCK r3 on each" "0 0 2 2 2" "$r12 $at80 $attests $atmerge"
-sed -i 1d "$T/rh/a.py"; git -C "$T/rh" commit -qam "one deletion"; H81=$(git -C "$T/rh" rev-parse HEAD); past=$(rh_rnd rh-r3 "$H81")
-HF=$(rh_commit a.py 10); onfix=$(rh_rnd rh-r4 "$HF")
-HG=$(rh_commit a.py 5); third=$(rh_rnd rh-r5 "$HG")
-HN=$(rh_commit a.py 81); onnew=$(rh_rnd rh-r5 "$HN")
-check "the 81st changed line, a deletion, makes a new head with two rounds: r3 passes, r4 on its fixes passes, BLOCK r5 within 80 lines of them, r5 81 lines past passes" "0 0 2 0" "$past $onfix $third $onnew"
-first=$(rh_rnd rh-a-r1 "$HN"); HB=$(rh_commit a.py 81); second=$(rh_rnd rh-a-r2 "$HB"); HC=$(rh_commit a.py 5)
-check "r2 past 80 lines of r1 opens a new head: r3 on r2's fixes passes, BLOCK r4 on them" "0 0 0 2" "$first $second $(rh_rnd rh-a-r3 "$HC") $(rh_rnd rh-a-r4 "$HC")"
-check "a round with no pinned head holds only against another: pinned after unpinned and unpinned after pinned pass" "0 0 0 0 0 0" "$(rnd rh-u-r1 "Review $T/rh") $(rnd rh-u-r2 "Review $T/rh") $(rh_rnd rh-u-r3 "$HC") $(rh_rnd rh-p-r1 "$HC") $(rh_rnd rh-p-r2 "$HC") $(rnd rh-p-r3 "Review $T/rh")"
+rh_rnd() { crnd "$1" "Review $T/rh at head $2"; }
+H0=$(rh_commit a.py 100); r14=$(for i in 1 2 3 4; do rh_rnd rh-r$i "$H0"; done | xargs)
+H80=$(rh_commit a.py 80); at80=$(rh_rnd rh-r5 "$H80")
+HT=$(rh_commit tests/a.py 200); attests=$(rh_rnd rh-r5 "$HT")
+git -C "$T/rh" checkout -qb base "$H0"; rh_commit b.py 200 >/dev/null; git -C "$T/rh" checkout -q main; git -C "$T/rh" merge -q --no-ff -m "merge the base" base; HM=$(git -C "$T/rh" rev-parse HEAD); atmerge=$(rh_rnd rh-r5 "$HM")
+check "the round cap counts as SHAPE STALE: exactly 80 lines, 200 in tests and 200 from a merge of the base stay fixes of the head, BLOCK r5 on each" "0 0 0 0 2 2 2" "$r14 $at80 $attests $atmerge"
+sed -i 1d "$T/rh/a.py"; git -C "$T/rh" commit -qam "one deletion"; H81=$(git -C "$T/rh" rev-parse HEAD); past=$(rh_rnd rh-r5 "$H81")
+onfix=$(for i in 6 7 8; do rh_rnd rh-r$i "$(rh_commit a.py 5)"; done | xargs)
+HG=$(rh_commit a.py 5); fifth=$(rh_rnd rh-r9 "$HG")
+HN=$(rh_commit a.py 81); onnew=$(rh_rnd rh-r9 "$HN")
+check "the 81st changed line, a deletion, makes a new head with four rounds: r5 passes, r6 to r8 on its fixes pass, BLOCK r9 within 80 lines of them, r9 81 lines past passes" "0 0 0 0 2 0" "$past $onfix $fifth $onnew"
+first=$(rh_rnd rh-a-r1 "$HN"); HB=$(rh_commit a.py 81); second=$(rnd rh-a-r2 "Review $T/rh at head $HB"); HC=$(rh_commit a.py 5)
+check "r2 past 80 lines of r1 opens a new head, so it passes naming no ledger: r3 to r5 on r2's fixes pass, BLOCK r6 on them" "0 0 0 0 0 2" "$first $second $(for i in 3 4 5 6; do rh_rnd rh-a-r$i "$HC"; done | xargs)"
+check "a round with no pinned head holds only against another: pinned after unpinned and unpinned after pinned pass" "0 0 0 0 0 0" "$(crnd rh-u-r1 "Review $T/rh") $(crnd rh-u-r2 "Review $T/rh") $(rh_rnd rh-u-r3 "$HC") $(rh_rnd rh-p-r1 "$HC") $(rh_rnd rh-p-r2 "$HC") $(crnd rh-p-r3 "Review $T/rh")"
 git init -q -b main "$T/rp"; git -C "$T/rp" worktree add -q -b feat "$T/rpf"; git -C "$T/rp" worktree add -q -b cmp "$T/rpc"
 rp_commit() { seq "$3" >> "$1/$2"; git -C "$1" add "$2"; git -C "$1" commit -qm "$2"; git -C "$1" rev-parse HEAD; }  # checkout path N: the path gets N new lines
 REL=$(rp_commit "$T/rp" a.py 10); git -C "$T/rpf" reset -q --hard "$REL"; git -C "$T/rpc" reset -q --hard "$REL"; CMP=$(rp_commit "$T/rpc" c.py 30)
-rp_rnd() { rnd "$1" "Review $T/rpf at head $2; compare it with $3."; }  # round head comparison
+rp_rnd() { crnd "$1" "Review $T/rpf at head $2; compare it with $3."; }  # round head comparison
 F=$(rp_commit "$T/rpf" a.py 20); rpm="$(rp_rnd rp-m-r1 "$F" "the release in $T/rp at $REL")"; F=$(rp_commit "$T/rpf" a.py 1); rpm="$rpm $(rp_rnd rp-m-r2 "$F" "the release in $T/rp at $REL")"
 F=$(rp_commit "$T/rpf" a.py 200); check "issue #215: rounds also pinning the release's checkout, the branch 200 lines past r2: r3 passes" "0 0 0" "$rpm $(rp_rnd rp-m-r3 "$F" "the release in $T/rp at $REL")"
-rpn="$(rp_rnd rp-n-r1 "$F" "the release, $T/rp at $REL")"; F=$(rp_commit "$T/rpf" a.py 1); rpn="$rpn $(rp_rnd rp-n-r2 "$F" "the release, $T/rp at $REL")"
-F=$(rp_commit "$T/rpf" a.py 5); check "rounds also pinning the release's checkout, the branch within 80 lines of r2: BLOCK r3" "0 0 2" "$rpn $(rp_rnd rp-n-r3 "$F" "the release, $T/rp at $REL")"
+rpn="$(rp_rnd rp-n-r1 "$F" "the release, $T/rp at $REL")"; for i in 2 3 4; do F=$(rp_commit "$T/rpf" a.py 1); rpn="$rpn $(rp_rnd rp-n-r$i "$F" "the release, $T/rp at $REL")"; done
+F=$(rp_commit "$T/rpf" a.py 5); check "rounds also pinning the release's checkout, the branch within 80 lines of r4: BLOCK r5" "0 0 0 0 2" "$rpn $(rp_rnd rp-n-r5 "$F" "the release, $T/rp at $REL")"
 rpc="$(rp_rnd rp-c-r1 "$F" "the diverged branch in $T/rpc at $CMP")"; F=$(rp_commit "$T/rpf" a.py 1); rpc="$rpc $(rp_rnd rp-c-r2 "$F" "the diverged branch in $T/rpc at $CMP")"
 F=$(rp_commit "$T/rpf" a.py 200); check "rounds also pinning a diverged branch's worktree, unchanged, the branch 200 lines past r2: r3 passes" "0 0 0" "$rpc $(rp_rnd rp-c-r3 "$F" "the diverged branch in $T/rpc at $CMP")"
 RH=$(git -C "$T/rh" rev-parse HEAD); printf 'Body.\n' > "$PD/pr-body.md"; python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest(), end="")' "$PD/pr-body.md" > "$PD/pr-body.md.lint.sha"
 PP="$PB The head: $RH in $T/rh."; UC="Review the code in $T/rh. Final message exactly NO BUGS."
 SR="Review $T/rh at head $RH; write the report, ending MERGE AS IS: yes or no, to $T/sr.report.md and the body's verdict, exactly CLEAN or the findings, to $PD/pr-body.review.out."
-check "a post review pinning the head gets r2 to r6, each on a changed draft, the head unchanged; BLOCK r7 on the text a CLEAN r6 answered, r7 on a changed draft passes; BLOCK r3 of an unpinned code review and of a small review that also reviews the PR body" "0 0 0 0 0 0 2 0 0 0 2 0 0 2" "$(pe "$PD/r.md" 'Pinned 1.'; jd "$PD/r.md" rnd pp-r1 "$PP") $(for i in 2 3 4 5 6; do pv "$PD/r.review.out" "R$((i-1)).1 should: x"; pe "$PD/r.md" "Pinned $i."; printf ' '; jd "$PD/r.md" rnd pp-r$i "$PP"; done | xargs) $(pv "$PD/r.review.out" CLEAN; jd "$PD/r.md" rnd pp-r7 "$PP") $(pe "$PD/r.md" 'Pinned 7.'; jd "$PD/r.md" rnd pp-r7 "$PP") $(rnd uc-r1 "$UC") $(rnd uc-r2 "$UC") $(rnd uc-r3 "$UC") $(jd "$T/sr.report.md" rnd sr-r1 "$SR") $(jd "$T/sr.report.md" rnd sr-r2 "$SR") $(jd "$T/sr.report.md" rnd sr-r3 "$SR")"
+check "a post review pinning the head gets r2 to r6, each on a changed draft, the head unchanged; BLOCK r7 on the text a CLEAN r6 answered, r7 on a changed draft passes" "0 0 0 0 0 0 2 0" "$(pe "$PD/r.md" 'Pinned 1.'; jd "$PD/r.md" rnd pp-r1 "$PP") $(for i in 2 3 4 5 6; do pv "$PD/r.review.out" "R$((i-1)).1 should: x"; pe "$PD/r.md" "Pinned $i."; printf ' '; jd "$PD/r.md" rnd pp-r$i "$PP"; done | xargs) $(pv "$PD/r.review.out" CLEAN; jd "$PD/r.md" rnd pp-r7 "$PP") $(pe "$PD/r.md" 'Pinned 7.'; jd "$PD/r.md" rnd pp-r7 "$PP")"
+check "BLOCK r5 of an unpinned code review and of a small review that also reviews the PR body" "0 0 0 0 2 0 0 0 0 2" "$(for i in 1 2 3 4 5; do crnd uc-r$i "$UC"; done | xargs) $(for i in 1 2 3 4 5; do jd "$T/sr.report.md" crnd sr-r$i "$SR"; done | xargs)"
+NF="$HOME/.mergeworthy/work/cl/drafts/r4nits.ledger.md"; printf 'R1.1 should fixed in abc1234\nRound: 4\nR4.1 nit declined: wording\n' > "$NF"
+check "BLOCK r5 after a round 4 that brought only nits, naming no finality pass" "0 0 0 0 2 0" "$(for i in 1 2 3 4; do crnd uf-r$i "$UC"; done | xargs) $(rnd uf-r5 "$UC Ledger: $NF") $(grep -c 'finality pass' "$T/err")"
 WB="$HOME/.mergeworthy/work/t/briefs/post-review.md"; mkdir -p "${WB%/*}"; printf '%s\n' "$PP" > "$WB"
 check "a post review whose head-pinned brief is a work-folder file gets r3 on a changed draft, BLOCK its r4 on the text r3 answered" "0 0 0 2" "$(jd "$WB" jd "$PD/r.md" rnd wb-r1 "Follow $WB exactly.") $(pv "$PD/r.review.out" 'R1.1 should: x'; pe "$PD/r.md" 'Brief 2.'; jd "$WB" jd "$PD/r.md" rnd wb-r2 "Follow $WB exactly.") $(pv "$PD/r.review.out" 'R2.1 should: x'; pe "$PD/r.md" 'Brief 3.'; jd "$WB" jd "$PD/r.md" rnd wb-r3 "Follow $WB exactly.") $(pv "$PD/r.review.out" CLEAN; jd "$WB" jd "$PD/r.md" rnd wb-r4 "Follow $WB exactly.")"
 mkdir -p "$T/rh/src" "$T/rh/spec"; for f in src/m81.py:81 src/m80.py:80 tests/helper.py:1000 src/code.py:100 tests/x.py:200; do rh_commit "${f%:*}" "${f#*:}" >/dev/null; done
-rh_moved() { # loop from to lines: r1 and r2 on the head, then r3 on the rename of a file with that many new lines
-  local H; H=$(git -C "$T/rh" rev-parse HEAD); rh_rnd "$1-r1" "$H" >/dev/null; rh_rnd "$1-r2" "$H" >/dev/null; git -C "$T/rh" mv "$2" "$3"; rh_rnd "$1-r3" "$(rh_commit "$3" "$4")"; }
+rh_moved() { # loop from to lines: r1 to r4 on the head, then r5 on the rename of a file with that many new lines
+  local H i; H=$(git -C "$T/rh" rev-parse HEAD); for i in 1 2 3 4; do rh_rnd "$1-r$i" "$H" >/dev/null; done; git -C "$T/rh" mv "$2" "$3"; rh_rnd "$1-r5" "$(rh_commit "$3" "$4")"; }
 check "a rename counts each side by its real path: 81 code lines moved to tests pass by the delete side, 80 BLOCK; 81 new lines in a file moved from tests or within the code pass; BLOCK 81 lines of a test moved between test paths" "0 2 0 0 2" "$(rh_moved rh-m81 src/m81.py tests/m81.py 0) $(rh_moved rh-m80 src/m80.py tests/m80.py 0) $(rh_moved rh-h tests/helper.py src/runtime.py 81) $(rh_moved rh-c src/code.py src/renamed.py 81) $(rh_moved rh-t tests/x.py spec/x.py 81)"
-HQ=$(git -C "$T/rh" rev-parse HEAD); rh_rnd rh-q-r1 "$HQ" >/dev/null; rh_rnd rh-q-r2 "$HQ" >/dev/null
-check "BLOCK: r3 on 81 new lines only in tests/café.py: a path git would quote is still a test" 2 "$(rh_rnd rh-q-r3 "$(rh_commit 'tests/café.py' 81)")"
+HQ=$(git -C "$T/rh" rev-parse HEAD); for i in 1 2 3 4; do rh_rnd rh-q-r$i "$HQ" >/dev/null; done
+check "BLOCK: r5 on 81 new lines only in tests/café.py: a path git would quote is still a test" 2 "$(rh_rnd rh-q-r5 "$(rh_commit 'tests/café.py' 81)")"
+HL=$(rh_commit a.py 100); NL="$HOME/.mergeworthy/work/cl/drafts/nits.ledger.md"; printf 'R1.1 nit declined: wording\nR1.2 should declined: a staged race\n' > "$NL"
+nl="$(rnd rh-l-r1 "Review $T/rh at head $HL") $(rnd rh-l-r2 "Review $T/rh at head $HL") $(grep -c 'the brief names no `<work folder>/drafts/<review>.ledger.md`' "$T/err")"
+nl="$nl $(rnd rh-l-r2 "Review $T/rh at head $HL; ledger $NL") $(grep -c "the ledger $NL shows round 1 brought none \`fixed in <sha>\`: the loop ends there" "$T/err") $(grep -c "pr-steps <step> <file> --ledger $NL" "$T/err")"
+printf 'R1.1 should fixed in abc1234\nRound: 2\nR2.1 should fixed in abc1234\n' > "$NL"; nl="$nl $(rnd rh-l-r2 "Review $T/rh at head $HL; ledger $NL") $(rnd rh-l-r3 "Review $T/rh at head $HL; ledger $NL")"
+printf 'Round: 3\nR1.1 should fixed in abc1234\nR2.1 should fixed in abc1234\nR3.1 nit declined: wording\n' > "$NL"
+check "BLOCK r2 naming no ledger, or one whose round 1 brought only nits and declined findings, naming the pr-steps that closes it; r2 and r3 after a round with a fixed should pass; BLOCK r4 after a nits-only r3" "0 2 1 2 1 1 0 0 2" "$nl $(rnd rh-l-r4 "Review $T/rh at head $HL; ledger $NL")"
 mkdir -p "$HOME/.mergeworthy/projects/o"; echo "- a lesson from $OLD" > "$HOME/.mergeworthy/projects/o/gwnotes.md"
 check "a project notes file the brief names is read, not pinned: its history SHAs block nothing" 0 "$(ag "$OC" "Fix it in $T/gw; notes $HOME/.mergeworthy/projects/o/gwnotes.md")"
 check "the user's own checkout is read at any commit" 0 "$(ag "$OC" "Read $T/gr at $MAINOLD once more")"
@@ -2451,11 +2464,14 @@ GL="$T/prl"; git init -q -b main "$GL"; gl() { git -C "$GL" -c user.name=t -c us
 gl checkout -q -b side; gl commit -q --allow-empty -m off; OFF=$(gl rev-parse --short HEAD); gl checkout -q main; gl commit -q --allow-empty -m b
 printf 'R2.1 should: the parser drops a field\n' > "$T/r2.md"; std "$T/r2.md"
 LR="$T/r2.md"; led() { printf '%s\n' "$@" > "$T/led.md"; (cd "$GL" && bash "$R/bin/pr-steps" verify "$LR" --ledger "$T/led.md" >/dev/null 2>"$T/err"; echo $?); }
-check "pr-steps verify: BLOCK a round-2 report without NO BUGS with no ledger, a round-1 ledger, a blocker left open, a fix not on HEAD; a ledger closing it records" "1 1 1 1 1 1 1 0" \
-  "$(cd "$GL" && bash "$R/bin/pr-steps" verify "$T/r2.md" >/dev/null 2>&1; echo $?) $(led 'R1.1 should listed: the PR body notes') $(grep -c 'closes round 1' "$T/err") $(led 'R2.1 blocker listed: the PR body notes') $(grep -c 'open blocker' "$T/err") $(led "R2.1 should fixed in $OFF") $(grep -c "$OFF is not in HEAD" "$T/err") $(led "R1.1 blocker fixed in $ON" 'R2.1 should listed: the PR body notes' 'R2.2 nit declined: wording')"
+check "pr-steps verify: BLOCK a round-2 report without NO BUGS with no ledger, a round-1 ledger with a fixed should, a blocker left open, a fix not on HEAD; a ledger closing it records" "1 1 1 1 1 1 1 0" \
+  "$(cd "$GL" && bash "$R/bin/pr-steps" verify "$T/r2.md" >/dev/null 2>&1; echo $?) $(led "R1.1 should fixed in $ON") $(grep -c 'closes round 1, which brought a blocker or should fixed' "$T/err") $(led 'R2.1 blocker listed: the PR body notes') $(grep -c 'open blocker' "$T/err") $(led "R2.1 should fixed in $OFF") $(grep -c "$OFF is not in HEAD" "$T/err") $(led "R1.1 blocker fixed in $ON" 'R2.1 should listed: the PR body notes' 'R2.2 nit declined: wording')"
 cp "$T/r2.md" "$T/r2b.md"; LR="$T/r2b.md" # r2.md is recorded on this head above
 check "pr-steps verify: BLOCK a round 2 carrying only round-1 findings without a 'Round: 2' line, or with a carried finding left open; with the line it records" "1 1 1 1 0" \
-  "$(led 'R1.1 should listed: the report') $(grep -c 'closes round 1' "$T/err") $(led 'Round: 2' 'R1.1 should disputed: x' 'R2.1 nit declined: y') $(grep -c 'R1.1 should disputed: x  <- not fixed' "$T/err") $(led 'Round: 2' 'R1.1 should listed: the report')"
+  "$(led "R1.1 should fixed in $ON") $(grep -c 'closes round 1' "$T/err") $(led 'Round: 2' 'R1.1 should disputed: x' 'R2.1 nit declined: y') $(grep -c 'R1.1 should disputed: x  <- not fixed' "$T/err") $(led 'Round: 2' "R1.1 should fixed in $ON")"
+lr() { cp "$T/r2.md" "$T/r2-$1.md"; LR="$T/r2-$1.md"; shift; led "$@"; }  # a report of its own per ledger that records
+check "pr-steps verify --ledger: a round 1 bringing only nits or declined findings closes the loop; BLOCK a round 2 with a fixed should, it gets round 3; round 4 closes with a fixed should" "0 0 1 1 0" \
+  "$(lr n1 'R1.1 nit declined: wording') $(lr d1 'R1.1 should declined: the case needs a staged race' 'R1.2 nit listed: the report') $(lr f2 "R1.1 should fixed in $ON" 'Round: 2' "R2.1 should fixed in $ON") $(grep -c 'closes round 2, which brought a blocker or should fixed in a commit: the loop gets its next round first' "$T/err") $(lr f4 "R4.1 should fixed in $ON")"
 cp "$T/r2.md" "$T/r2c.md"; LR="$T/r2c.md"
 check "BLOCK: pr-steps verify with a code loop's blocker closed as fixed in r3, which only a post's ledger takes" "1 1" "$(led 'Round: 3' 'R2.1 blocker fixed in r3') $(grep -c 'open blocker' "$T/err")"
 # a claim the verifier lists as untested waits for a RULED line naming it, in round 2's ledger record as in a file ending NO BUGS (#190)
