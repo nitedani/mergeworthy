@@ -1116,6 +1116,7 @@ check "a templated issue with a four-line log and Steps to reproduce passes the 
 check "BLOCK: the same issue with seven sentences more under Expected behavior" 1 "$(ilint "$T/ilong.md" '400 for an issue')"
 check "BLOCK: those sentences moved into a code block" 1 "$(ilint "$T/icode.md" '400 for an issue')"
 check "BLOCK: those sentences moved into a one-column table" 1 "$(ilint "$T/itab.md" '400 for an issue')"
+check "the 400-character finding says a URL counts three characters" 1 "$(ilint "$T/ilong.md" 'a URL as three characters and a Markdown image as none)')"
 check "a How to see section's prose isn't counted, as How to reproduce's isn't" 0 "$(ilint "$T/isee.md" '400 for an issue')"
 { printf '%s Who picks the payout account?\n\n### How to reproduce\n\n1. Open /invoices\n\n![list](/abs/list.png)\n\n### Options\n\n```\n' "$B"; printf 'get(a) -> b\n%.0s' $(seq 150); printf '```\n'; } > "$T/i6.md"
 check "BLOCK: a decision issue's code counts toward its 400 words" 1 "$(ilint "$T/i6.md" 'decision issue')"
