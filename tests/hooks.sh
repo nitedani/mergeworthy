@@ -1134,6 +1134,10 @@ printf '%s### Description\n\nThe server drops the upgrade header behind a proxy.
 check "a template's Reproduction section isn't counted either" 0 "$(tpi acme/tpl r6 '400 for an issue')"
 { printf '%s Who picks the payout account?\n\n### How to reproduce\n\n```\n' "$B"; printf 'check object %s unreadable expected account\n' $(seq 70); printf '```\n\n### Options\n\n(a) The typed account. (b) The winning account. I recommend (a).\n'; } > "$T/r7.md"
 check "a decision issue's reproduction stays out of its 400 words" 0 "$(ilint "$T/r7.md" 'decision issue')"
+# the still-image check counts each reproduction action once: a subsection inside a template heading's span, or a numbered line in code, adds none
+printf '%s### Description\n\nThe upload stalls.\n\n#### How to reproduce\n\n1. Open /upload\n2. Pick a 50 MB file\n\n![upload](/abs/upload.png)\n' "$B" > "$T/r8.md"
+printf '%s Totals skip the last row.\n\n### How to reproduce\n\n1. Import this file\n2. Open /report\n\n```md\n# Expense report\n1. Taxi\n2. Hotel\n```\n\n![report](/abs/report.png)\n' "$B" > "$T/r9.md"
+check "two actions in a template's nested reproduction, or beside a numbered fixture in code, are two steps" "0 0" "$(tpi acme/tpl r8 'record a video') $(ilint "$T/r9.md" 'record a video')"
 # ---------- pre-bash-guard: no foreground waits ----------
 wait_guard() { # command background(true|false)
   python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1],"run_in_background":sys.argv[2]=="true"},"cwd":sys.argv[3]}))' "$1" "$2" "$T" \
