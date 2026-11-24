@@ -47,17 +47,19 @@ The classes are model families, never versions: the largest is the newest Fable 
 - **Choosing among options** (`pull-request` step 5's rating, `finality` step 3's converging agent): the largest class; **root causes and authors** (code, docs, PR bodies, replies, designs): the main session's; both at high effort. **Audits and exploration:** at medium.
 - **The smallest class with an effort setting, at high effort,** only for work where nothing it writes ships: `finality` step 3's branch agents, running gates, tests and a reproduction from a recipe, log mining, data processing and bookkeeping.
 
+In T3, save `orchestrator_capabilities` as `catalog.json`. Pass each `agent-targets` target to `delegate_task`. Finality and design panels request `--count 3`; launch available targets and record gaps. Keep `--previous <selection.json>` within a loop. Apply project `--effort` and exclude a failed provider with `--exclude`.
+
 ### Reviewers
 
 Every independent check (a post's review, each Loop A verifier, Loop B's review and shape pass, a small review, a cold read, the fresh reader, a standalone review) picks its reviewer in this order, trying the first each time: an earlier "unavailable" note (memory, a post's badge) is no check:
-- **First, a model from another company than the main session's:** on its default model, at the effort chosen per call (high; medium for a verifier or a few-sentence reply). In T3 Code, one `delegate_task` per round, role `review`, the reviewer's `providerInstanceId` from `orchestrator_capabilities`:
+- **Use a different company from every author.** Name each in an `Author provider: <claude|codex|antigravity>` line. In T3, pass each as `--author` to `agent-targets review <catalog.json>`, then use its target with role `review`, id `<loop>-r<N>`.
    ```json
-   {"task": "Follow <prompt file>; output to <out>", "role": "review", "target": {"providerInstanceId": "<id>", "options": {"<its effort option>": "<effort>"}}, "clientRequestId": "<loop>-r<N>"}
+   {"role": "review", "target": <target from agent-targets>}
    ```
    Elsewhere, a Codex reviewer: `codex exec -c model_reasoning_effort=<effort> --sandbox danger-full-access --skip-git-repo-check -o <out> "$(cat <prompt file>)" < /dev/null`; a Claude reviewer: `claude -p --effort <effort> --permission-mode bypassPermissions < <prompt file> > <out>`.
-- **Else, a fresh agent of the main session's class,** with the same prompt and a task line `Fallback: <what failed>`, when the first fails (spent credits, rate limits, errors, timeouts, no reply). A report, even a partial one, is no failure: its next round runs on the same company's model, counting against §Review rounds.
+- **Else, keep the independent check waiting** until a different company is eligible again. A report, even a partial one, is no failure: its next round runs on the same company's model, counting against §Review rounds.
 
-The prompt is a file with the template filled. Never write `CLEAN` yourself. Send fixes to the same reviewer (§Continue); a fresh one only when the artifact changed beyond them or needs a final cold read. Record which reviewer ran (Tier M: a `ledger.md` row); on Tier M or L work, after a round-1 fallback, round 2 runs on the other company's model once back.
+Fill the prompt template. Never write `CLEAN` yourself. Keep the reviewer for the loop (§Continue) while eligible; use a fresh one for a cold read. Record the reviewer (Tier M: a `ledger.md` row).
 
 ### Review rounds
 

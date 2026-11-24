@@ -1442,9 +1442,43 @@ def no_instructions_read(path, d):
         return ''
     t = transcript(d)
     names = {os.path.basename(g).encode() for f in need for g in (f, os.path.realpath(f))}  # a symlink's target too
-    seen = files_read(t, names) if t else set()
+    if t and d.get('mergeworthy_provider') == 'codex':
+        seen = codex_instructions_read(t, need)
+    else:
+        seen = files_read(t, names) if t else set()
     unread = [f for f in need if os.path.realpath(f) not in seen]
     return f"read this repo's instructions first, with the Read tool, and follow them: {', '.join(unread)}" if unread else ''
+
+
+def codex_instructions_read(transcript_path, required):
+    """Recognize Codex-injected instructions and completed local file reads."""
+    remaining = {os.path.realpath(f): open(f, errors='replace').read().strip() for f in required}
+    seen = set()
+    for line in rlines(transcript_path):
+        if not any(marker in line for marker in (b'"compacted"', b'"agents_md"', b'"exec_command_end"')):
+            continue
+        try:
+            item = json.loads(line)
+        except ValueError:
+            continue
+        if item.get('type') == 'compacted':
+            break
+        payload = item.get('payload') or {}
+        if payload.get('type') == 'exec_command_end' and payload.get('exit_code') == 0:
+            cwd = payload.get('cwd')
+            if isinstance(cwd, str):
+                seen.update(os.path.realpath(os.path.join(cwd, entry['path'])) for entry in payload.get('parsed_cmd', [])
+                            if entry.get('type') == 'read' and isinstance(entry.get('path'), str))
+        if payload.get('role') == 'user':
+            provenance = (payload.get('internal_chat_message_metadata_passthrough') or {}).get('content_item_metadata', [])
+            for block, meta in zip(payload.get('content', []), provenance):
+                if (meta.get('provenance') or {}).get('type') != 'agents_md':
+                    continue
+                text = block.get('text', '')
+                seen.update(file for file, expected in remaining.items() if expected and expected in text)
+        if remaining.keys() <= seen:
+            break
+    return seen
 
 
 def files_read(path, names):

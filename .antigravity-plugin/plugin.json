@@ -1,0 +1,9 @@
+{
+  "$schema": "https://antigravity.google/schemas/v1/plugin.json",
+  "name": "mergeworthy",
+  "displayName": "Mergeworthy",
+  "description": "Work with an AI coding agent through GitHub like a coworker.",
+  "version": "0.1.0",
+  "logo": "docs/icon.svg",
+  "repository": "https://github.com/nitedani/mergeworthy"
+}

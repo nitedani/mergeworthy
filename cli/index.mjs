@@ -2,7 +2,7 @@
 // npx mergeworthy [install|uninstall] [--yes] [--agents claude,codex,other] [--source <owner/repo or path>]
 // Installs mergeworthy into the coding agents on this machine through each agent's own plugin system, so updates come
 // from that system: Claude Code (skills, hooks, commands, options; auto-update on), Codex (skills, and the always-on
-// rules in ~/.codex/AGENTS.md), and any other agent through skills.sh (skills only).
+// hooks and rules), and any other agent through skills.sh (skills only).
 import * as p from '@clack/prompts'
 import { execFileSync, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
@@ -74,30 +74,25 @@ function uninstallClaude() {
 }
 
 // ---------- Codex ----------
-function codexHasPlugin() {
-  try { return run('codex', ['plugin', 'list']).split('\n').some((l) => l.startsWith(`${ID} `) && !l.includes('not installed')) } catch { return false }
-}
-function writeAgentsBlock(text) {
+function removeLegacyAgentsBlock() {
   const f = path.join(CODEX_DIR, 'AGENTS.md')
-  let old = readText(f)
+  const old = readText(f)
   const a = old.indexOf(BEGIN), b = old.indexOf(END)
-  if (a >= 0 && b > a) old = old.slice(0, a) + old.slice(b + END.length).replace(/^\n/, '')
-  fs.writeFileSync(f, text ? `${old.trimEnd()}${old.trim() ? '\n\n' : ''}${BEGIN}\n${text.trim()}\n${END}\n` : old)
+  if (a >= 0 && b > a) fs.writeFileSync(f, old.slice(0, a) + old.slice(b + END.length).replace(/^\n/, ''))
 }
 function installCodex() {
-  fs.mkdirSync(CODEX_DIR, { recursive: true })
-  try { run('codex', ['plugin', 'marketplace', 'add', SOURCE]) } catch (e) { if (!/already/i.test(String(e))) throw e }
-  try { run('codex', ['plugin', 'marketplace', 'upgrade', NAME]) } catch {}
-  if (!codexHasPlugin()) run('codex', ['plugin', 'add', ID])
-  // Codex doesn't run plugin hooks, so the always-on rules go into its AGENTS.md
-  const root = run('codex', ['plugin', 'marketplace', 'list']).split('\n').find((l) => l.includes(NAME))?.match(/(\/\S+)/)?.[1]
-  const text = root && readText(path.join(root, 'always-on.md'))
-  if (text) writeAgentsBlock(text)
+  const { marketplaceName, alreadyAdded } = JSON.parse(run('codex', ['plugin', 'marketplace', 'add', '--json', SOURCE]))
+  if (marketplaceName !== NAME) throw new Error(`Expected the ${NAME} marketplace, got ${marketplaceName}.`)
+  const { marketplaces } = JSON.parse(run('codex', ['plugin', 'marketplace', 'list', '--json']))
+  const market = marketplaces.find(({ name }) => name === NAME)
+  if (alreadyAdded && market?.marketplaceSource?.sourceType === 'git') run('codex', ['plugin', 'marketplace', 'upgrade', NAME])
+  run('codex', ['plugin', 'add', ID])
+  removeLegacyAgentsBlock()
 }
 function uninstallCodex() {
   try { run('codex', ['plugin', 'remove', ID]) } catch {}
   try { run('codex', ['plugin', 'marketplace', 'remove', NAME]) } catch {}
-  writeAgentsBlock('')
+  removeLegacyAgentsBlock()
 }
 
 // ---------- Other agents (skills.sh) ----------
@@ -109,7 +104,7 @@ async function main() {
   p.intro(uninstall ? `Uninstall ${NAME}` : NAME)
   const agents = [
     has('claude') && { value: 'claude', label: 'Claude Code', hint: 'skills, hooks, commands, options; updates itself' },
-    has('codex') && { value: 'codex', label: 'Codex', hint: 'skills and the always-on rules; re-run to update' },
+    has('codex') && { value: 'codex', label: 'Codex', hint: 'skills, rules and shell hook; re-run to update' },
     { value: 'other', label: 'Other agents (skills.sh)', hint: 'skills only; you pick the agents next' },
   ].filter(Boolean)
   const only = args.includes('--agents') ? args[args.indexOf('--agents') + 1].split(',') : null
@@ -139,7 +134,7 @@ async function main() {
   if (targets.includes('claude')) {
     s.start('Claude Code'); installClaude(values); s.stop('Claude Code: installed, auto-update on')
   }
-  if (targets.includes('codex')) { s.start('Codex'); installCodex(); s.stop('Codex: installed, always-on rules in ~/.codex/AGENTS.md') }
+  if (targets.includes('codex')) { s.start('Codex'); installCodex(); s.stop('Codex: installed. Review and trust the hooks in /hooks.') }
   if (targets.includes('other')) skillsSh('add')
   p.outro('Done. New sessions load it; run this again to change the options or add an agent.')
 }
