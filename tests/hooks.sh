@@ -14,7 +14,7 @@ cat > "$T/bin/gh" <<'EOF'
 # ...and `gh pr view [<ref>] --json number` from $FX/pr_view_<ref with / and : replaced by _>, or $FX/pr_view_current without a ref (none: gh's "no pull requests found")
 # ...and `gh pr checks <url> --json name,bucket` from $FX/pr_checks_<url with / and : replaced by _> (none: "no checks reported"; a URL not on github.com: gh's "no pull requests found")
 # A `--jq .a.b` on a fixture holding a JSON object answers that field, as gh does; any other fixture is the answer as it stands, its
-# first JSON page alone without --paginate
+# first JSON page alone without --paginate, and every page as one array of them with --paginate --slurp
 [ -n "${GH_STUB_PWD:-}" ] && echo "$1 $2 $PWD" >> "$GH_STUB_PWD"  # each call and where it ran, for a check that must run gh in the command's dir
 [ -n "${GH_STUB_ARGS:-}" ] && printf '%s\n' "$*" >> "$GH_STUB_ARGS"  # each call's arguments
 [ "$1 $2" = "config get" ] && { [ ! -f "$FX/login" ] || cat "$FX/login"; exit; }  # the login gh's own config names: $FX/login
@@ -42,9 +42,13 @@ for a in "$@"; do case "$a" in o=*|id=*) [ -f "${f}_${a#*=}" ] && f="${f}_${a#*=
 [ -n "$GH_STUB_403" ] && { echo 'gh: API rate limit exceeded for user ID 1. (HTTP 403)' >&2; exit 1; }
 [ -f "$f.hang" ] && exec sleep 30  # $FX/<path>.hang: gh hangs past the caller's timeout
 [ -f "$f" ] || { printf '{"message":"Not Found","status":"404"}'; echo 'gh: Not Found (HTTP 404)' >&2; exit 1; }  # gh prints the error's JSON body too
-q=; pg=; while [ $# -gt 0 ]; do [ "$1" = --jq ] && q=$2; [ "$1" = --paginate ] && pg=1; shift; done
+q=; pg=; sl=; while [ $# -gt 0 ]; do [ "$1" = --jq ] && q=$2; [ "$1" = --paginate ] && pg=1; [ "$1" = --slurp ] && sl=1; shift; done
 python3 -c 'import json, re, sys
 raw = open(sys.argv[1]).read(); q = sys.argv[2]
+if sys.argv[4]:  # --slurp: every page, as one array of them
+    pages, at = [], 0
+    while raw[at:].strip(): page, at = json.JSONDecoder().raw_decode(raw, len(raw) - len(raw[at:].lstrip())); pages.append(page)
+    raw = json.dumps(pages)
 if not sys.argv[3] and raw.lstrip()[:1] in ("{", "["):  # a fixture of several JSON pages: without --paginate, gh reads the first
     try: raw = raw[:json.JSONDecoder().raw_decode(raw.lstrip())[1] + len(raw) - len(raw.lstrip())]
     except ValueError: pass
@@ -53,7 +57,7 @@ except ValueError: v = None
 if isinstance(v, dict) and re.fullmatch(r"(\.\w+)+", q):
     for k in q.split(".")[1:]: v = v.get(k) if isinstance(v, dict) else None
     print("" if v is None else v if isinstance(v, str) else json.dumps(v))
-else: sys.stdout.write(raw)' "$f" "$q" "$pg"
+else: sys.stdout.write(raw)' "$f" "$q" "$pg" "$sl"
 EOF
 printf '#!/bin/sh\nexit 1\n' > "$T/bin/systemctl"  # no systemd user manager: session-start never reaches the real one
 chmod +x "$T/bin/gh" "$T/bin/systemctl"; export PATH="$T/bin:$PATH" FX="$T/fx"
@@ -4943,7 +4947,10 @@ check "with no project file, BLOCK: --admin unasked, or asked for another PR; a 
   "$(said 'looks good'; lg "$MA") $(grep -c "merging https://github.com/o/r/pull/41 past its base's rules (--admin) lands on o/r.*reply \`merge\`" "$T/err") $(said 'merge #40'; lg "$MA") $(said 'looks good'; lg "$M") $(said 'merge #41'; lg "$MA")"
 mv "$T/or.md" "$HOME/.mergeworthy/projects/o/r.md"; rm "$FX/user"
 check "BLOCK: --admin when gh can't read the login, saying to retry" "2 1" "$(lg "$MA") $(grep -c "gh couldn't read the login or o/r: retry once gh answers" "$T/err")"
-echo '{"login":"o"}' > "$FX/user"; touch "$FX/repos_o_r_rules_branches_main_per_page_100.hang"
+echo '{"login":"o"}' > "$FX/user"; printf '[{"type":"update","ruleset_id":7}][{"type":"deletion","ruleset_id":8}]' > "$FX/repos_o_r_rules_branches_main_per_page_100"; printf '{"name":"maint","current_user_can_bypass":"never"}' > "$FX/repos_o_r_rulesets_8"
+check "BLOCK: --admin past a ruleset that only the second page of the base's rules names" "2 1" "$(lg "$MA") $(grep -c 'ruleset 8 (maint) lets o bypass it never, not always' "$T/err")"
+rm "$FX/repos_o_r_rulesets_8"
+touch "$FX/repos_o_r_rules_branches_main_per_page_100.hang"
 check "BLOCK: --admin when gh hangs reading the base's rules, saying to retry" "2 1" "$(lg "$MA") $(grep -c "gh couldn't read main's rules: retry once gh answers" "$T/err")"
 rm "$FX/user" "$FX/repos_o_r_rules_branches_main_per_page_100.hang" "$FX/repos_o_r" "$FX/repos_o_r_rules_branches_main_per_page_100" "$FX/repos_o_r_rulesets_7"
 said 'looks good'

@@ -247,8 +247,8 @@ def own_bypass(slug, base, run):
     if repo['owner']['login'] != me['login']: return f"{slug} is {repo['owner']['login']}'s, not {me['login']}'s" + meet
     if repo['owner']['type'] != 'User': return f"{slug} belongs to the organization {repo['owner']['login']}" + meet
     branch = urllib.parse.quote(base, safe='')
-    if (rules := get(f'repos/{slug}/rules/branches/{branch}?per_page=100')) is None: return unread.format(f"{base}'s rules")
-    for rid in sorted({r['ruleset_id'] for r in rules}):
+    if (pages := get(f'repos/{slug}/rules/branches/{branch}?per_page=100', '--paginate', '--slurp')) is None: return unread.format(f"{base}'s rules")
+    for rid in sorted({r['ruleset_id'] for page in pages for r in page}):
         if not (rs := get(f'repos/{slug}/rulesets/{rid}')): return unread.format(f'ruleset {rid}')
         if rs.get('current_user_can_bypass') != 'always': return f"ruleset {rid} ({rs.get('name')}) lets {me['login']} bypass it {rs.get('current_user_can_bypass') or 'never'}, not always" + meet
     r = call(f'repos/{slug}/branches/{branch}/protection')
