@@ -1130,6 +1130,8 @@ printf '%s The worker drops the job after a restart.\n\n### How to reproduce\n\n
 check "a subheading stays in its reproduction section" 0 "$(ilint "$T/r4.md" '400 for an issue')"
 printf '%s The worker drops the job after a restart.\n\n### How to reproduce\n\n1. Queue a job, restart the worker\n\n### How to see the expected result\n\n%s\n\n![queue](/abs/queue.png)\n' "$B" "${S[*]}" > "$T/r5.md"
 check "BLOCK: a heading that only starts like a reproduction heading is counted" 1 "$(ilint "$T/r5.md" '400 for an issue')"
+printf '%s### Description\n\nThe server drops the upgrade header behind a proxy.\n\n### Reproduction\n\n%s\n\n![proxy](/abs/proxy.png)\n' "$B" "${S[*]} ${S[*]}" > "$T/r6.md"
+check "a template's Reproduction section isn't counted either" 0 "$(tpi acme/tpl r6 '400 for an issue')"
 # ---------- pre-bash-guard: no foreground waits ----------
 wait_guard() { # command background(true|false)
   python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1],"run_in_background":sys.argv[2]=="true"},"cwd":sys.argv[3]}))' "$1" "$2" "$T" \
