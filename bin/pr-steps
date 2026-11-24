@@ -204,11 +204,10 @@ delta() {
   printf '%s\n' "$d"
   sed -n '2,/^$/p' <<< "$M" | grep -vxF -e "$d" -e '' | sed 's/^/0\t0\t/' | not_built | cut -f3 || true  # a conflict whose written tree has no markers (modify/delete) still changed its file
 }
-# A carry of head $1's step holds for at most 80 changed lines, none outside tests and docs: a line of code may add behavior, whatever the session says
+# A carry of head $1's step holds for at most STALE_LINES changed lines, tests and docs included, none outside them: a line of code may add behavior, whatever the session says
 carry_holds() {
   local files changed code
-  files=$(delta "$1"); changed=$(printf '%s' "$files" | grep -c . || true)
-  [ "$changed" -le 80 ] || { echo "$changed lines changed since $1: too much to carry, run the $step step again (mergeworthy:converge §Batching)" >&2; exit 1; }
+  files=$(delta "$1"); ! changed=$(printf '%s\n' "$files" | awk 'NF {print "1\t0\t" $0}' | python3 "$(dirname "$(realpath "$0")")/../hooks/testpaths.py" moved '') || { echo "$changed lines changed since $1: too much to carry, run the $step step again (mergeworthy:converge §Batching)" >&2; exit 1; }
   code=$(printf '%s\n' "$files" | R="$(python3 "$(dirname "$(realpath "$0")")/../hooks/testpaths.py")|[.]md\$" awk 'NF && $0 !~ ENVIRON["R"] && !f {f = $0} END {print f}')
   [ -z "$code" ] || { echo "$code changed since $1, and a carry holds for tests and docs alone: run the $step step again (mergeworthy:converge §Batching)" >&2; exit 1; }
 }

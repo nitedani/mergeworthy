@@ -12,6 +12,12 @@ GENERATED = r'(^|/)dist/'
 NOT_SHAPE = TESTS + r'|(^|/)(pnpm-lock\.yaml|package-lock\.json|yarn\.lock)$|' + GENERATED
 STALE_LINES = 80
 
+def moved(rows, exclude=NOT_SHAPE):
+    """The changed lines of rows ((added, deleted, path) since a reviewed head) that move its code: those of the paths exclude
+    (a regex; '' for none) doesn't match. Past STALE_LINES the head is a new one: SHAPE STALE, the round cap, a carry."""
+    import re
+    return sum(int(a) + int(d) for a, d, p in rows if not (exclude and re.search(exclude, p)))
+
 def generated(repo, paths, source=None):
     """The paths (from the top of checkout repo, as git diff prints them) that are build output: GENERATED, or
     `linguist-generated` (set or true) in its .gitattributes, those of commit source when given."""
@@ -24,8 +30,12 @@ def generated(repo, paths, source=None):
     a = r.stdout.split('\0')  # path, attribute, value, ...
     return {p for p in paths if re.search(GENERATED, p)} | {p for p, v in zip(a[0::3], a[2::3]) if v in ('set', 'true')}
 
-if __name__ == '__main__':  # no argument: TESTS; `not-code`: NOT_CODE; `generated`: those of the paths on stdin (a line each) in the checkout here
+if __name__ == '__main__':  # no argument: TESTS; `not-code`: NOT_CODE; `generated`: those of the paths on stdin (a line each) in the checkout here;
+    # `moved [<exclude>]`: exits 0 when the numstat rows on stdin move the code past STALE_LINES (printing their count), else 1
     import sys
     if sys.argv[1:] == ['generated']: print(*sorted(generated('.', sys.stdin.read().splitlines())), sep='\n')
+    elif sys.argv[1:2] == ['moved']:
+        n = moved([l.split('\t', 2) for l in sys.stdin.read().splitlines() if l.count('\t') >= 2], *sys.argv[2:3])
+        print(n); sys.exit(0 if n > STALE_LINES else 1)
     elif sys.argv[1:] == ['not-code']: print(NOT_CODE)
     else: print(TESTS)

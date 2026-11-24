@@ -67,7 +67,7 @@ def admit(loop, n, tops, heads, led):
     def own_lines(t, o, h):
         rows = re.findall(r'^(\d+)\t(\d+)\t(.*)$', git(t, '-c', 'core.quotePath=false', 'log', '--first-parent', '--no-merges', '--no-renames', '--numstat', '--format=', f'{o}..{h}').stdout, re.M)
         gen = testpaths.generated(t, [p for _, _, p in rows])
-        return sum(int(a) + int(b) for a, b, p in rows if not re.search(testpaths.NOT_SHAPE, p) and p not in gen)
+        return testpaths.moved([r for r in rows if r[2] not in gen])
     desc = lambda t, o, h: git(t, 'merge-base', '--is-ancestor', o, h).returncode == 0
     def built_on(old):
         # each new head built on the round's heads counts, so a pin that never moves can't stand for a branch that did
