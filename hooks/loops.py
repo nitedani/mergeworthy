@@ -20,7 +20,7 @@ def locked_update(path, change):
     concurrent launches update it one at a time."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path + '.lock', 'a') as held:
-        fcntl.flock(held, fcntl.LOCK_EX)
+        if not (_lock and path == LOOPS): fcntl.flock(held, fcntl.LOCK_EX)  # a shell round admitted in this process holds it already
         data = json.load(open(path)) if os.path.exists(path) else {}
         change(data)
         with open(path + '.tmp', 'w') as o: json.dump(data, o)
@@ -55,6 +55,19 @@ def register(loop, n, heads, thread=None, post=False):
 
 
 git = lambda wt, *a: subprocess.run(['git', '-C', wt, *a], capture_output=True, text=True)
+SHA = r'\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\b'
+
+
+def pinned(L):
+    """(the checkouts launch L's brief names, their heads that its pinned SHAs equal)."""
+    shas = set(re.findall(SHA, L.brief))
+    return L.checkouts, sorted({h for t in L.checkouts if (h := git(t, 'rev-parse', 'HEAD').stdout.strip()) and any(h.startswith(x) for x in shas)})
+
+
+def ledger_named(brief):
+    """The ledger path a round's brief names, else None."""
+    m = re.search(r'(/[^\s`\'"()]+\.ledger\.md)\b', brief)
+    return m and m[1]
 _lock = None
 
 

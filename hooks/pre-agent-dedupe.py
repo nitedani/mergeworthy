@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Claude Code PreToolUse hook (matcher: Agent, Task, delegate_task, t3_thread_launch, t3_thread_send). Exit 2 blocks the launch; stderr goes to the agent.
-A t3_thread_send is a launch only as a later review round sent to a thread an earlier round of its loop ran in (review_transport); any other send passes untouched.
+"""Claude Code PreToolUse hook (matcher: Agent, Task, SendMessage, delegate_task, t3_thread_launch, t3_thread_send). Exit 2 blocks the launch; stderr goes to the agent.
+A t3_thread_send or SendMessage is a launch only as a later review round sent to a reviewer an earlier round of its loop ran in (review_transport); any other send passes untouched.
 With the argument `register` it runs as the PostToolUse hook: only a launch that ran is registered, so one another hook blocked leaves no job.
 The PreToolUse call decides; the PostToolUse call only records what ran and makes no admission check (a failure writing its
 records still fails it). An admitted launch leaves its decision as a pending record in agent_jobs.LAUNCHED (when it was let
@@ -34,7 +34,7 @@ CIDS = os.path.expanduser('~/.claude/agent-client-request-ids.json')
 if not (launched := review_transport.as_launch(d.get('tool_name'), ti)): sys.exit(0)
 ti, sent = launched
 # a sent round is a new task of the agent an open job of its thread holds, so its job takes that one's place, never its twin
-same_agent = lambda j: sent and str(j.get('handle') or '').endswith('/' + ti['threadId'])
+same_agent = lambda j: sent and re.split(r'[:/]', str(j.get('handle') or ''))[-1] == ti['threadId']
 # T3 opens no run for a turn Claude Code starts by itself (a finished background command, a Monitor event), and refuses
 # launches from it (pingdotgg/t3code#16808): nothing ran, so no job, and the session keeps working instead of waiting
 if register and 'parent_not_active' in json.dumps(d.get('tool_response') or ''):
@@ -57,17 +57,13 @@ reviewed_drafts = lambda t: {p for o in review_outs(t) if (p := review_launch.dr
 tdir = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'skills', 'delegate')
 pasted = {l.strip() for l in open(os.path.join(tdir, 'agent.md'))} if os.path.isfile(os.path.join(tdir, 'agent.md')) else set()
 own_brief = '\n'.join(l for l in brief.splitlines() if l.strip() not in pasted)  # the brief without the rules pasted from agent.md
-shas = set(re.findall(r'\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\b', brief))
+shas = set(re.findall(loops.SHA, brief))
 git = lambda wt, *a: subprocess.run(['git', '-C', wt, *a], capture_output=True, text=True)
 # Rounds per loop on one head (loops.admit); a post's review is refused only once gate-pass's own check (review_launch.answers) already passes every draft it reviews
 rnd = loops.round_of(review_transport.round_name(ti))
 review = rnd and (ti.get('role') == 'review' or not ti.get('role') and re.search(r'\bexactly (CLEAN|NO BUGS)\b', brief))
 # a post's review: a gate review of a named draft whose brief asks for no code verdict (a small review's pr-body.review.out comes with one)
 post_review = review and bool(reviewed_drafts(brief)) and not re.search(r'\b(NO BUGS|MERGE AS IS)\b', own_brief)
-def round_heads():
-    """The checkouts a round's brief names and their heads that its pins equal."""
-    tops = L.checkouts
-    return tops, sorted({h for t in tops if (h := git(t, 'rev-parse', 'HEAD').stdout.strip()) and any(h.startswith(x) for x in shas)})
 # pull-request step 5 is the build's input: an implementer brief names `Approach: <path>`, the newest approach record of a checkout it names
 # (pr-steps approach). A later build of that record's PR names a newer record, or the same one marked `(unchanged: <why>)`.
 BUILT = os.path.expanduser('~/.claude/approach-builds')  # per approach record: the time of the record the PR's last build was briefed on
@@ -140,10 +136,10 @@ def register_launch():
             try: rec = json.load(open(pre)); launched = rec['launched']; ran_memory = rec.get('memory', memory); os.remove(pre)
             except (OSError, ValueError, KeyError, TypeError): rec, launched = {}, time.time()
             json.dump({'key': key, 'started': time.time(), 'launched': launched, 'brief': task, 'role': ti.get('role'), 'worktrees': L.worktrees, 'refresh': bool(ran_memory),
-                       'session': d.get('session_id'), 'transcript': d.get('transcript_path'), 'handle': agent_jobs.handle(d.get('tool_response'), ti.get('threadId'))}, open(job_file, 'w'))
+                       'session': d.get('session_id'), 'transcript': d.get('transcript_path'), 'handle': agent_jobs.handle(d.get('tool_response'), ti.get('threadId')) or (sent and d.get('tool_name') == 'SendMessage' and f"claude:{ti['threadId']}") or None}, open(job_file, 'w'))
     if cid: loops.locked_update(CIDS, lambda seen: seen.setdefault(cid, time.time()))
     if review:
-        loops.register(rnd[1], int(rnd[2]), None if post_review else rec['heads'] if 'heads' in rec else round_heads()[1],
+        loops.register(rnd[1], int(rnd[2]), None if post_review else rec['heads'] if 'heads' in rec else loops.pinned(L)[1],
                        review_transport.thread(ti, d.get('tool_response')), post_review)
     if implementer and (approach := rec['approach'] if 'approach' in rec else brief_approach(strict=False)):
         os.makedirs(BUILT, exist_ok=True)
@@ -235,8 +231,7 @@ if post_review:
                          + ''.join(f"gate-pass {dr} {o}{f' --ledger {lg}' if lg else ''}\n" for o, dr, lg in passes))
         refused()
 elif review and int(rnd[2]) >= 2:
-    led = re.search(r'(/[^\s`\'"()]+\.ledger\.md)\b', brief)
-    if why := loops.admit(rnd[1], int(rnd[2]), *round_heads(), led and led[1]):
+    if why := loops.admit(rnd[1], int(rnd[2]), *loops.pinned(L), loops.ledger_named(brief)):
         sys.stderr.write(f"BLOCKED: {why}")
         refused()
 # A brief that writes or reviews code, docs or a post (any role but research or test) for a repo whose maintainers' notes exist
@@ -534,5 +529,5 @@ if not blocked:
     os.makedirs(agent_jobs.LAUNCHED, exist_ok=True); json.dump({'launched': time.time(), 'key': key, 'task': task, 'role': ti.get('role'), 'worktrees': L.worktrees, 'tool_use_id': d.get('tool_use_id'),
                                                            'transcript': d.get('transcript_path'), 'session': d.get('session_id'), 'refresh': refresh, 'memory': memory,
                                                            **({'approach': list(approach[:2])} if approach else {}),
-                                                           **({'heads': round_heads()[1]} if review and not post_review else {})}, open(pre, 'w'))
+                                                           **({'heads': loops.pinned(L)[1]} if review and not post_review else {})}, open(pre, 'w'))
 sys.exit(2 if blocked else 0)

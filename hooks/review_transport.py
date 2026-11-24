@@ -1,18 +1,24 @@
-"""How a review round reaches its reviewer, for pre-agent-dedupe: a launch (Agent, Task, delegate_task, t3_thread_launch) is a round
-by its name; a t3_thread_send is one only as a later round `<loop>-r<N>` sent to a thread an earlier round of that loop ran in
-(delegate §Continue), its message the task and its round name the title; any other send is no launch."""
+"""How a review round reaches its reviewer: a launch (Agent, Task, delegate_task, t3_thread_launch) is a round by its name; a send
+(T3's t3_thread_send, Claude Code's SendMessage) is one only as a later round `<loop>-r<N>` sent to a reviewer an earlier round
+of that loop ran in (delegate §Continue), its message the task and its round name the title; any other send is no launch. A shell
+reviewer (`codex exec`, its `resume`, `claude -p`) is a round by its prompt file's name, `<loop>-r<N>.md`."""
+import os, re
 import loops, t3_tasks
 
 
 def as_launch(tool, ti):
     """(the tool input as the launch it is, whether it was sent to a running reviewer); None for a send that is no review round."""
-    if not str(tool or '').endswith('t3_thread_send'):
+    tool = str(tool or '')
+    if tool.endswith('t3_thread_send'):
+        name, seat = str(ti.get('clientRequestId') or ''), str(ti.get('threadId') or '')
+    elif tool == 'SendMessage':
+        name, seat = str(ti.get('summary') or ''), str(ti.get('to') or '')
+    else:
         return ti, False
-    cid, thread = str(ti.get('clientRequestId') or ''), str(ti.get('threadId') or '')
-    m = loops.round_of(cid)
-    if thread not in (loops.threads(m[1]) if m and int(m[2]) >= 2 else []):
+    m = loops.round_of(name)
+    if not seat or seat not in (loops.threads(m[1]) if m and int(m[2]) >= 2 else []):
         return None
-    return {'task': str(ti.get('message') or ''), 'title': cid, 'role': 'review', 'clientRequestId': cid, 'threadId': thread}, True
+    return {'task': str(ti.get('message') or ''), 'title': name, 'role': 'review', 'clientRequestId': name, 'threadId': seat}, True
 
 
 def round_name(ti):
@@ -21,5 +27,14 @@ def round_name(ti):
 
 
 def thread(ti, response):
-    """The T3 thread a round ran in: the one it was sent to, or the childThreadId T3's result names; None on Claude Code."""
-    return ti.get('threadId') or (t3_tasks.result(response) or {}).get('childThreadId')
+    """The reviewer a round ran in, which a later round is sent to: the one it was sent to, T3's childThreadId, or Claude Code's agentId."""
+    return ti.get('threadId') or (t3_tasks.result(response) or {}).get('childThreadId') \
+        or (response.get('agentId') if isinstance(response, dict) else None)
+
+
+def shell_round(command):
+    """(the round `<loop>-r<N>` a shell reviewer's command names by its prompt file, that file's text), else None."""
+    for f in re.findall(r'(?<![\w.~/-])(~?/[^\s`\'"()<>$]+\.md)\b', command):
+        if (m := loops.round_of(os.path.basename(f)[:-3])) and os.path.isfile(p := os.path.expanduser(f)):
+            return m, open(p, errors='replace').read()
+    return None

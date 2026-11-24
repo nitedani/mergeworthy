@@ -9,7 +9,7 @@ import failclosed
 import shellcmd
 from shellcmd import parse, segments, prog, script, opt, api_call, field_name, TEXT_FREE, discussion_post, discussion_thread_of, names_discussion_mutation, env_of, origin, plain_create, PLAIN, new_post_drafts, no_instructions_read, by_agent, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Unseen, Where
 from records import branch_record, commit_file, DRIFT_REF, no_approach, no_preflight, STORE
-import drift, own_actions, review_launch, steward, post_words, threads_file, transcript_facts, work_folder
+import drift, launch, loops, own_actions, review_launch, review_transport, steward, post_words, threads_file, transcript_facts, work_folder
 from t3_tasks import under_t3, typed
 def missing_steps(d, head=None):
     """(head, the converge steps it lacks): head is a push's pushed commit, else HEAD."""
@@ -1301,6 +1301,7 @@ def check(t, has_cd):
     if p in ('claude', 'codex'):
         # the verdict is codex's -o file, or claude's stdout: another descriptor's file is a plain write
         stdout = [t[i + 1] for i, x in enumerate(t[:-1]) if re.fullmatch(r'1?>>?|1?>\||&>>?', x) and not t[i + 1].startswith('/dev/')]
+        post = False
         for w in (opt(a, ['-o', '--output-last-message']) if p == 'codex' else []) + (stdout if p == 'claude' and ('-p' in a or '--print' in a) else []):
             # only an output that is one fully known path is recorded or name-checked; any other that may land in drafts/ is refused
             vals, paths = where.values(w), where.files(w)
@@ -1315,6 +1316,12 @@ def check(t, has_cd):
             if review_launch.draft_of(out):
                 if why := review_launch.unlinted(out): block(why)
                 launches.append(out)  # recorded once every segment of the command passed
+                post = True
+        # a code review's round, named by its prompt file, is admitted and counted as an agent's is (loops); a post's counts none
+        if (p == 'codex' and ('exec' in a or a[:1] == ['e']) or '-p' in a or '--print' in a) and not post and (r := review_transport.shell_round(' '.join(t))):
+            L = launch.Launch(r[1])
+            if int(r[0][2]) >= 2 and (why := loops.admit(r[0][1], int(r[0][2]), *loops.pinned(L), loops.ledger_named(L.brief))): block(why)
+            rounds.append((r[0][1], int(r[0][2]), loops.pinned(L)[1]))
     written = [f for x, c in zip(targets, files) for f in known(c, x)]
     for x in dict.fromkeys(map(shellcmd.folder, written)):  # the instructions check runs git, once per folder
         if why := no_instructions_read(x, d):
@@ -1491,7 +1498,7 @@ if any(prog(x)[:1] and os.path.basename(prog(x)[0]) == 'gate-pass' for x in segs
                                         or prog(x)[1:2] == ['api'] and any(w.startswith('body=') or w in ('--input',) for w in prog(x))) or discussion_post(x) for x in segs):
     block("run gate-pass as its own command and read its exit code, then post in the next command: this check reads the gate record before the command runs (mergeworthy:post step 4)")
 clones = {}  # folder: the repo it was cloned from, for a `git clone` in this command
-launches = []  # the review outputs of the reviewers this command starts (check)
+launches, rounds = [], []  # the review outputs of the reviewers this command starts, and their code review rounds (check)
 records = {}  # each `pr-steps approach|preflight ...` walked so far, by its statement (Seg.stmt): the record it writes
 for s in where.walk(segs):
     run_dir, has_cd = where.dir, where.moved
@@ -1514,6 +1521,8 @@ for s in where.walk(segs):
     check(s, has_cd)
 for out in launches:
     review_launch.launch(out)
+for r in rounds:
+    loops.register(*r)
 try:  # pending until post-bash-register sees how the command ended
     own_actions.intend(own_actions.key(d), own)
 except OSError:
