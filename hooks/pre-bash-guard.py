@@ -204,15 +204,6 @@ def last_typed():
             if b'"user"' not in l: continue
             try: e = json.loads(l)
             except ValueError: continue
-            if d.get('mergeworthy_provider') == 'codex':
-                p = e.get('payload') or {}
-                if e.get('type') == 'response_item' and p.get('type') == 'message' and p.get('role') == 'user':
-                    metadata = p.get('internal_chat_message_metadata_passthrough') or {}
-                    text = ' '.join(item.get('text', '') for item, source in
-                                    zip(p.get('content', []), metadata.get('content_item_metadata', []))
-                                    if (source.get('provenance') or {}).get('type') == 'user')
-                    if t := typed(text): return t
-                continue
             if isinstance(e, dict) and e.get('type') == 'user' and not e.get('isSidechain') and not e.get('isMeta') and (t := typed((e.get('message') or {}).get('content'))):
                 return t
     except OSError: pass
@@ -355,7 +346,7 @@ def check_badge_models(p):
     first = re.sub(r'\ATitle:[^\n]*\n', '', text).lstrip().split('\n', 1)[0]
     line = re.sub(r'\]\([^)]*\)', ']', first.split('*', 1)[1]) if first.startswith('<img') and '*' in first else ''  # link targets aren't model names
     named = {(f"claude-{f.lower()}", f"claude-{f.lower()}-{v.replace('.', '-')}") for f, v in re.findall(r'\bClaude ([A-Z][a-z]+) (\d+(?:\.\d+)*)\b', line)}
-    if not named or d.get('mergeworthy_provider') in ('codex', 'antigravity'): return
+    if not named: return
     if not (path := shellcmd.transcript(d)): return  # a native subagent's post: its own transcript
     try: ran = transcript_facts.read(path).recent_models()
     except OSError: return
