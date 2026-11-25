@@ -210,12 +210,13 @@ def busy(session_id):
     return _ask(session_id, _busy, False)
 
 def ended(session_id, at):
-    """When the Claude session's T3 turn that was running at epoch `at` ended (epoch seconds): T3 delivers a notice due then once
+    """When the Claude session's T3 turn that had started and was running at epoch `at` ended (epoch seconds): T3 delivers a notice due then once
     that turn ends. None while it still runs; 0 without the thread, such a turn or T3's database. Later turns don't count."""
     def ask(c, tid):
         ts = lambda v: datetime.datetime.fromisoformat(v.replace('Z', '+00:00')).timestamp()
-        for status, req, done in c.execute("select status, requested_at, completed_at from orchestration_v2_projection_runs where thread_id = ?", (tid,)):
-            if req and ts(req) <= at and (not done or ts(done) >= at):
+        for status, start, done in c.execute("select status, json_extract(payload_json, '$.startedAt'), completed_at from orchestration_v2_projection_runs "
+                                             "where thread_id = ? and json_valid(payload_json)", (tid,)):
+            if start and ts(start) <= at and (not done or ts(done) >= at):  # a run that started: a queued or cancelled one never held it
                 return None if status in ACTIVE_RUNS else ts(done) if done else 0
         return 0
     return _ask(session_id, ask, 0)
