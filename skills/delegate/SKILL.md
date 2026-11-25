@@ -34,10 +34,10 @@ Each role's brief is a template in `~/.mergeworthy/current/skills/delegate/`, wi
 
 ### Continue
 
-Later work on the same thing continues that agent.
+Later work on the same thing continues that agent, a review round only as a fix check (§Reviewers).
 - **Claude Code:** `SendMessage` to its agent id; a `claude -p` reviewer launched with `--session-id <uuid>`: `claude -p --resume <uuid>`.
-- **T3 Code:** `t3_thread_send` to its `childThreadId`, mode `queue`, asking it to write its result to a file a background wait watches; a review round's `clientRequestId` is `<loop>-r<N>`.
-- **Codex in a shell:** `codex exec resume -c sandbox_mode=danger-full-access <session id> "<what changed>"` (the id `codex exec` printed, never `--last`).
+- **T3 Code:** `t3_thread_send` to its `childThreadId`, mode `queue`, asking for its result in a file a background wait watches; a review round's `clientRequestId` is `<loop>-r<N>`.
+- **Codex in a shell:** `codex exec resume -c sandbox_mode=danger-full-access <session id> "<what changed>"` (the id `codex exec` printed).
 - **An agent is alive until its transcript and processes are quiet,** whatever T3 shows: a turn that ended, `waiting_for_children`, or a cancel that finds "no interruptible run" mean it wakes when its background commands end, and `t3_queue_promote_to_steer` can revive a run T3 calls `interrupted` or `cancelled`. Continue a stuck agent with a message; a replacement goes in a fresh worktree. When two agents run one job, keep the one with the most progress.
 
 ### Model class
@@ -49,21 +49,21 @@ The classes are model families, never versions: the largest is the newest Fable 
 ### Reviewers
 
 Every independent check picks its reviewer in this order, trying the first each time: an earlier "unavailable" note (memory, a post's badge) is no check:
-- **First, a model from another company than the main session's:** on its default model, at the effort chosen per call (high; medium for a verifier or a few-sentence reply). In T3 Code, round 1 is a `delegate_task`, role `review`, the reviewer's `providerInstanceId` from `orchestrator_capabilities`:
+- **First, a model from another company than the main session's:** on its default model, at the effort chosen per call (high; medium for a verifier or a few-sentence reply). In T3 Code, a round is a `delegate_task`, role `review`, the reviewer's `providerInstanceId` from `orchestrator_capabilities`:
    ```json
-   {"task": "Follow <prompt file>; output to <out>", "role": "review", "target": {"providerInstanceId": "<id>", "options": {"<its effort option>": "<effort>"}}, "clientRequestId": "<loop>-r1"}
+   {"task": "Follow <prompt file>; output to <out>", "role": "review", "target": {"providerInstanceId": "<id>", "options": {"<its effort option>": "<effort>"}}, "clientRequestId": "<loop>-r<N>"}
    ```
    Elsewhere, a Codex reviewer: `codex exec -c model_reasoning_effort=<effort> --sandbox danger-full-access --skip-git-repo-check -o <out> "$(cat <prompt file>)" < /dev/null`; a Claude reviewer: `claude -p --session-id <uuid> --effort <effort> --permission-mode bypassPermissions < <prompt file> > <out>`.
 - **Else, a fresh agent of the main session's class,** with the same prompt and a task line `Fallback: <what failed>`, when the first fails (spent credits, rate limits, errors, no reply in its time budget). A report, even partial, is no failure.
-- **Round 1 of a code loop** (each Loop A slice, Loop B, the fresh reader) runs two seats at once, each its own loop `<loop>-<seat>-r1` (`Fan-out: converge §Running the agents`, `Seats: <both>`): the first above, and a third company's (your scope.md line `Reviewer: <providerInstanceId or CLI>`), else a fresh agent of your class. Rule on both; each Loop A or B seat its last round earns continues, never a fresh reader.
+- **Round 1 of a code loop** (each Loop A slice, Loop B, the fresh reader) runs two seats at once, each its own loop `<loop>-<seat>-r1` (`Fan-out: converge §Running the agents`, `Seats: <both>`): the first above, and a third company's (your scope.md line `Reviewer: <providerInstanceId or CLI>`), else a fresh agent of your class. Rule on both. Later rounds: fresh reviewers, alternating companies where available, same loop and count, given the ledger and commits since, not the reports.
 
-The prompt is a file with the template filled. Never write `CLEAN` yourself. Send fixes to the same reviewer (§Continue); a new one only for its context, a failed run, a stale shape pass (`converge`) or a final cold read. Record which reviewer ran (Tier M: a `ledger.md` row).
+The prompt is a file with the template filled. Never write `CLEAN` yourself. Only a fix check of its own findings (`Review: <step> [<part>] fix-check`) continues a reviewer active within 50 minutes (§Continue). Record which reviewer ran (Tier M: a `ledger.md` row).
 
 ### Review rounds
 
 Every review loop:
 - **Severity:** re-rate each label (`agent.md`) in its outcome; nits get no code.
-- **Rounds per head** for code and docs (a post's end once gate-pass passes: `post` step 3). Round 1 hunts every finding; a later round hunts what changed since and what it left unchecked. Rounds go on while the last brought a blocker or should you fixed, or a blocker you declined (§Stuck), and end at the first bringing neither, or at round 4, whose fixes get only the gates; a round 4 bringing a fix means `finality`. Then open findings are `listed:`; work goes on. Before the next round, cut what fixes added beyond need.
+- **Rounds per head** for code and docs (a post's end once gate-pass passes: `post` step 3). Round 1 hunts every finding; a later round hunts what changed since and what the reports left unchecked. Rounds go on while the last brought a blocker or should you fixed, or a blocker you declined (§Stuck), and end at the first bringing neither, or at round 4, whose fixes get only the gates; a round 4 bringing a fix means `finality`. Then open findings are `listed:`; work goes on. Before the next round, cut what fixes added beyond need.
 - **A head past 80 of the PR's own changed lines** since a round's pinned head (`converge §Batching`'s exclusions, base merges too) starts the count again; round numbers go on.
 - **Names:** round `<loop>-r<N>` (T3's `clientRequestId`, Agent's `description`, `SendMessage`'s `summary`, a prompt file) of loop `<step-or-slice>-<seat>` (its company, `codex`; a second on one company `claude2`), `<slice>-reverify` (`converge` step 3), `<slice>-recheck` (converge step 2) and `<slice-or-step>-fresh` (a fresh reader's), on the seat reverify would pick, within its four, or `<loop>-ask<N>` (a maintainer's ask).
 - **Ledger:** `<work folder>/drafts/<review>.ledger.md` (a post's: beside it; not `ledger.md`), one line per finding: `<id> <label> <outcome>`, the seat's id `R<round>.<n>` and label, the outcome `fixed in <sha>` (on HEAD; a post: `fixed in r<N>`, the confirming round), `declined: <why>`, `listed: <where>` or, mid-round, `disputed: <evidence>`. `Round: <N>` names the last completed round. Each seat keeps its own ledger, its rows ending `seen by: <seat tags>`. A last round not clean is recorded by `pr-steps <step> <file> --ledger <it>` or `gate-pass … --ledger <it>`: an open or listed blocker keeps the PR in draft.

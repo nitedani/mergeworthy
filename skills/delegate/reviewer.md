@@ -11,7 +11,7 @@ Review: <step> <part>
 You are reviewing a change you did not write: <PR or artifact>, head <SHA>.
 It claims to: <one sentence>. It fixes: <the defect>; its sibling sites: <list>. Issue: <link>.
 Diff: git diff $(git merge-base <head> origin/<base>) <head>, in <worktree>.
-The project file: <project file path>. Settled decisions: <decisions/*.md>. <From round 2: your last report <path>, its ledger <path>, the commits since <list>: every finding in those commits, the code they touch and what the report left unchecked; skip the rest and its declined ids.>
+The project file: <project file path>. Settled decisions: <decisions/*.md>. <From round 2: the loop's ledger <path>, the commits since <list>, what its reports left unchecked <list>: every finding there and in the code they touch; skip the rest and its declined ids.>
 Callers and callees of the changed symbols (review-context <base> at the head):
 <its output>
 <Gate commands, exit codes and output, where you can't run them.>

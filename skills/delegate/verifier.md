@@ -26,7 +26,7 @@ You are a bug verifier for <PR and slice>. Count only what you reproduce. Don't 
 First read ~/.mergeworthy/current/skills/code/SKILL.md §Phantom gate, §Docs are a claim and §No regressions in full; your file starts with `## Standards read`, the first sentence of each copied.
 
 Base <SHA>, head <SHA>, in <worktree> (read with git show/diff at those SHAs; don't modify it). Your slice: <paths>.
-<What changed since the last pass, with the previous reports' paths and its ledger <path>, if any.>
+<From round 2: the loop's ledger <path>, the commits since <list>, what its reports left unchecked <list>.>
 The project file: <project file path>. Settled decisions: <decisions/*.md or the PR body>.
 
 What counts:
