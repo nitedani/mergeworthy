@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""A launch (Agent, Task, delegate_task, t3_thread_launch) parsed once: its brief, what the agent is told (the launch's own text
-plus each file it executes: one it says to follow, execute or do, or whose path names it a brief, ticket or prompt; never an
-installed skill or a project file), the other .md files it names, the checkouts its brief names, and those it says it works in."""
+"""A launch (Agent, Task, delegate_task, t3_thread_launch) parsed once: what the hook reads of its input (Request), and its
+brief, what the agent is told (the launch's own text plus each file it executes: one it says to follow, execute or do, or whose
+path names it a brief, ticket or prompt; never an installed skill or a project file), the other .md files it names, the
+checkouts its brief names, and those it says it works in."""
 import os, re
+from shellcmd import transcript
+from t3_tasks import under_t3
 from work_folder import git_top, task_of
 
 MW = os.path.abspath(os.path.expanduser('~/.mergeworthy')) + os.sep
@@ -49,7 +52,30 @@ def own_path(f):
     return os.path.relpath(f, base) if base else os.path.basename(f)
 
 
-class Launch:
+class Request:
+    """What the hook reads of a launch's hook input, whichever tool made it (its PostToolUse call's adds the response)."""
+    def __init__(self, d):
+        ti = d.get('tool_input', {}) or {}
+        self.tool, self.t3, self.text = d.get('tool_name'), under_t3(), text_of(ti)
+        self.task = str(ti.get('task') or ti.get('prompt') or '')  # delegate_task's task, the Agent tool's prompt
+        self.description = str(ti.get('description') or '')
+        self.title = str(ti.get('title') or self.description).strip()  # the Agent tool names its launch by its description
+        self.client_id = str(ti.get('clientRequestId') or '')
+        self.round_name = (self.client_id or self.description).strip()
+        self.role, self.background = ti.get('role'), ti.get('run_in_background') is not False
+        target = ti.get('target') or {}
+        self.providers = {target.get('providerInstanceId'), target.get('driverKind')} - {None, ''}
+        # the Agent tool's `effort`, delegate_task's target.options or t3_thread_launch's modelSelection.options, as a list of
+        # {id, value} or an object, `effort` or `reasoningEffort`
+        opts = (ti.get('target') or ti.get('modelSelection') or {}).get('options') or {}
+        opts = {o.get('id'): o.get('value') for o in opts if isinstance(o, dict)} if isinstance(opts, list) else opts
+        self.effort = ti.get('effort') or opts.get('effort') or opts.get('reasoningEffort')
+        self.session, self.transcript, self.cwd = d.get('session_id'), d.get('transcript_path'), d.get('cwd') or ''
+        self.caller = transcript(d)  # the transcript of the session or subagent making the call
+        self.tool_use_id, self.response = d.get('tool_use_id'), d.get('tool_response')
+
+
+class Brief:
     def __init__(self, text):
         self.text = text
         md = lambda s: {os.path.abspath(os.path.expanduser(m)) for m in re.findall(MD, s)}
@@ -58,7 +84,7 @@ class Launch:
         self.files = [f for f in named if os.path.isfile(f) and not f.startswith(READ_ONLY)
                       and (f in said or re.search(r'brief|ticket|prompt', own_path(f)))]
         self.refs = [f for f in named if f not in self.files]
-        # the job's key: a file outside ~/.mergeworthy it names (project notes and installed skills are read by every job)
+        # the job's key: the files it names outside ~/.mergeworthy (no project file, installed skill or work folder file is a ticket)
         self.tickets = [f for f in named if not f.startswith(MW)]
         self.brief = text + '\n' + '\n'.join(open(f, errors='replace').read() for f in self.files)
         self.paths = path_set(self.brief)
@@ -69,4 +95,4 @@ class Launch:
 
 
 def parse(ti):
-    return Launch(text_of(ti))
+    return Brief(text_of(ti))
