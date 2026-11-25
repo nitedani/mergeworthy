@@ -2492,6 +2492,11 @@ printf 'Review %s, reading the earlier verdicts %s and %s; write exactly CLEAN o
 check "a review whose task names its output (output to <out>) and whose brief cites earlier verdicts launches, recording only that output and leaving the cited files" "0 launch none none R1.1 should: old CLEAN" "$(launch "Execute $CT/ticket.md; output to $CT/title.review.out") $([ -e "$CT/title.review.out.launch" ] && echo launch || echo none) $(ls "$CT"/title.review-small-r1.out.* "$CT"/title.review-r3.out.* 2>/dev/null | wc -l | sed 's/^0$/none/') $([ -e "$CT/title.review-r3.out.prev" ] && echo prev || echo none) $(cat "$CT/title.review-small-r1.out") $(cat "$CT/title.review-r3.out")"
 python3 "$R/bin/agent-job" done "$CT/ticket.md" >/dev/null
 check "BLOCK: a review whose task names a drafts/ output not named after its draft (output to drafts/title.out), naming the rename" "2 1" "$(launch_in "Execute $CT/ticket.md; output to $CT/title.out" | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?) $(grep -c 'name it <name>.review.out' "$T/err")"
+FB="$T/drafts/fb"; mkdir -p "$FB"; printf 'The parser keeps empty fields.\n' > "$FB/pr-body.md"
+fbl() { launch "Review $FB/pr-body.md at its head, the body verdict exactly CLEAN or the findings; output to $T/fresh-$1.report.md and $FB/$2"; }
+fb="$(fbl claude pr-body-claude.review.out)"; pe "$FB/pr-body.md" 'Linted.'; fb="$fb $(fbl codex pr-body.review.out) $(fbl claude2 pr-body-claude2.review.out)"
+for v in pr-body.review.out pr-body-claude2.review.out; do echo CLEAN > "$FB/$v"; fb="$fb $(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import review_launch; print(review_launch.answers(sys.argv[2], sys.argv[3]) or "passes")' "$R/hooks" "$FB/$v" "$FB/pr-body.md")"; done
+check "a second fresh seat's pr-body-<seat>.review.out is a verdict on pr-body.md: BLOCK it while pr-body.md has no post-lint; once linted, both seats' CLEAN pass gate-pass's review check" "2 0 0 passes passes" "$fb"
 # ---------- pr-steps: a shape record is a real pass ----------
 G="$T/prs"; mkdir -p "$G"; git -C "$G" init -q; git -C "$G" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 prs() { (cd "$G" && bash "$R/bin/pr-steps" "$@" >/dev/null 2>&1; echo $?); }

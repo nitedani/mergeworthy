@@ -19,8 +19,10 @@ def in_drafts(path):
 
 def draft_of(out):
     """The draft a post's review output is named after: <name>.md for <name>.review.out and <name>.review-r<N>.out in a drafts/
-    folder; None for any other name or place."""
-    return m[1] + '.md' if (m := REVIEW_OUT.fullmatch(out)) and in_drafts(out) else None
+    folder, or for a second seat's <name>-<seat>.review.out while only <name>.md exists (converge step 4); None for any other name or place."""
+    if not ((m := REVIEW_OUT.fullmatch(out)) and in_drafts(out)): return None
+    seat = re.fullmatch(r'(.+)-[^-/]+', m[1])
+    return seat[1] + '.md' if seat and not os.path.isfile(m[1] + '.md') and os.path.isfile(seat[1] + '.md') else m[1] + '.md'
 
 
 def misnamed(out):
