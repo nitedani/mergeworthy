@@ -264,9 +264,10 @@ def close(path, kind='code', checkout='.', reports=(), loop=None):
     misnamed = [f'{line}  <- its id is not R<round>.<n>' for line in others]
     ruled = {r.id: r.label for r in rows}
     unbound = []
-    for rp in reports:
-        try: said = [r for r in ledger.rows(open(rp, errors='replace').read()) if r.id]
+    for rp in reports:  # a path, or (its name, its text)
+        try: said = [r for r in ledger.rows(rp[1] if isinstance(rp, tuple) else open(rp, errors='replace').read()) if r.id]
         except OSError: continue
+        rp = rp[0] if isinstance(rp, tuple) else rp
         unbound += [f"{rp}: {r.line}  <- {'its ledger row says ' + ruled[r.id] if r.id in ruled else 'no ledger row'}: the ledger keeps the seat's id and label, its ruling the outcome"
                     for r in said if ruled.get(r.id) != r.label]
     if not rows: return misnamed + unbound + [f"{path} has no '<id> <label> <outcome>' lines (R<round>.<n> blocker|should|nit {fix}|declined: <why>|listed: <where>)"]

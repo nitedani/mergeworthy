@@ -1,9 +1,9 @@
 """The text a post's reviewer was handed. The hooks that start a reviewer (pre-agent-dedupe, pre-bash-guard) check unlinted() on its
 output while they admit the launch, call set_aside() once the launching hook admitted it and launch() once it ran; gate-pass and pre-agent-dedupe call answers(), which
-adds the verdict, ledger and freshness rules to reviewed(), so a verdict counts only for the draft's text at that launch, whatever the files' times say. The record is a workflow check of what those hooks see, not proof
+adds the verdict, ledger and freshness rules to reviewed(), over every seat's verdict on that text, so a verdict counts only for the draft's text at that launch, whatever the files' times say. The record is a workflow check of what those hooks see, not proof
 of who wrote it."""
 import datetime, hashlib, os, re, time
-import loops
+import loops, review_journal
 
 # the line gate-pass appends to a draft after its review, in gate-pass's own format
 FOOTER = re.compile(rb'\nHarness changes since my last note: <https://github\.com/nitedani/mergeworthy/compare/[0-9a-f]+\.\.\.[0-9a-f]+>\n\Z')
@@ -49,12 +49,13 @@ def unlinted(out):
 
 def set_aside(out):
     """Before a reviewer the launching hook admitted (unlinted(out) passed) starts on out's draft: the sha256 of the draft it is
-    handed, once an earlier launch's verdict in out moved to <out>.prev; None when out names no draft that exists."""
+    handed, once an earlier launch's verdict in out moved to the draft's post journal; None when out names no draft that exists."""
     draft = draft_of(out)
     if not draft or not os.path.isfile(draft):
         return None
     if os.path.exists(out):
-        os.replace(out, out + '.prev')
+        review_journal.append(review_journal.post_of(draft), {'ev': 'verdict', 'out': os.path.realpath(out), 'text': open(out, errors='replace').read()})
+        os.remove(out)
     return hashlib.sha256(open(draft, 'rb').read()).hexdigest()
 
 
@@ -64,6 +65,7 @@ def launch(out, sha):
     if sha:
         with open(out + '.launch', 'w') as f:
             f.write(f'{sha} {int(time.time())}\n')
+        review_journal.append(review_journal.post_of(draft_of(out)), {'ev': 'post', 'out': os.path.realpath(out), 'sha': sha})
 
 
 def reviewed(out, draft):
@@ -87,22 +89,29 @@ def reviewed(out, draft):
 def answers(out, draft, ledger_file=None):
     """Why the review in out doesn't let draft be posted, gate-pass's review rule ('' when it does).
     The reviewer was handed draft's text (reviewed()); its verdict is exactly CLEAN, or ledger_file (default: <name>.ledger.md beside draft,
-    if any), written after it, closes the round (loops.close, a post's rules, with a row for each finding of the verdict and of the one
-    set_aside() moved); the launch postdates the latest human comment
+    if any), written after it, closes the round (loops.close, a post's rules, with a row for each finding of the verdict, of every
+    other seat's verdict on the same text and of every earlier verdict set_aside() kept in the post's journal); the launch postdates the latest human comment
     thread-context.md beside draft records. out None: a status post, which has no review and is checked by draft's own time. Writes nothing."""
     why, at = reviewed(out, draft) if out else ('', int(os.path.getmtime(draft)))
     if why: return f'{draft}: {why}'
-    try: verdict = [l.strip() for l in open(out, errors='replace').read().splitlines() if l.strip()] if out else ['CLEAN']
+    said = lambda o: [l.strip() for l in open(o, errors='replace').read().splitlines() if l.strip()]
+    try: verdict = said(out) if out else ['CLEAN']
     except OSError: verdict = []  # its reviewer hasn't written yet
-    if verdict != ['CLEAN']:
+    # every seat of the post loop on this text: the other outputs whose last launch was handed the same draft text
+    events = review_journal.events(review_journal.post_of(draft)) if out else []
+    last = {e['out']: e['sha'] for e in events if e['ev'] == 'post'}
+    seats = sorted(o for o, sha in last.items() if o != os.path.realpath(out or '') and sha == last.get(os.path.realpath(out or '')) and os.path.isfile(o))
+    if verdict != ['CLEAN'] or any(said(o) != ['CLEAN'] for o in seats):
         beside = os.path.splitext(draft)[0] + '.ledger.md'
         ledger_file = ledger_file or (beside if os.path.isfile(beside) else None)
-        found = loops.close(ledger_file, 'post', reports=[out] + [out + '.prev'] * os.path.isfile(out + '.prev')) if ledger_file else []
+        found = loops.close(ledger_file, 'post', reports=[out, *seats] + [(f"{e['out']} (round set aside)", e['text']) for e in events if e['ev'] == 'verdict']) if ledger_file else []
         if ledger_file and not found and (not verdict or os.path.getmtime(ledger_file) < os.path.getmtime(out)):
             found = [f'{out} holds no verdict yet: wait for its reviewer, or launch the round again' if not verdict else f'{ledger_file} was last written before the verdict in {out}: add its findings, then pass it']
         if not ledger_file or found:
             return ((f'the ledger leaves this round open (mergeworthy:delegate §Review rounds):\n' + '\n'.join(found) + '\n' if found else '')
-                    + f"review is not exactly CLEAN (it has {len(verdict)} non-empty lines; last: {verdict[-1] if verdict else ''}). The reviewer's "
+                    + (f"review is not exactly CLEAN (it has {len(verdict)} non-empty lines; last: {verdict[-1] if verdict else ''}). " if verdict != ['CLEAN'] else
+                       f"another seat's verdict on this text is not exactly CLEAN ({', '.join(o for o in seats if said(o) != ['CLEAN'])}). ")
+                    + "The reviewer's "
                     "final message, alone, is the review output; after round 2, pass --ledger <the loop's ledger>")
     try: tc = open(os.path.join(os.path.dirname(os.path.realpath(draft)), 'thread-context.md')).read()
     except OSError: tc = ''

@@ -1295,8 +1295,8 @@ def check(t, has_cd):
     if p not in ('claude', 'codex') and any(review_launch.REVIEW_OUT.fullmatch(f) for f in names) and not by_agent(d):
         block("a review's output is the reviewer's final message, written by the reviewer: `codex exec -o <out>`, or the agent writes <out> itself. "
               "Never write a verdict yourself (mergeworthy:delegate §Reviewers, post step 3)")
-    if any(review_launch.REVIEW_OUT.fullmatch(re.sub(r'\.(launch|prev)$', '', f)) and f.endswith(('.launch', '.prev')) for f in names):
-        block("a review output's .launch and .prev are written by the hook that starts its reviewer, which records the text the reviewer is handed: "
+    if any(review_launch.REVIEW_OUT.fullmatch(f[:-len('.launch')]) and f.endswith('.launch') for f in names):
+        block("a review output's .launch is written by the hook that starts its reviewer, which records the text the reviewer is handed: "
               "launch the review again (mergeworthy:post step 3)")
     if p in ('claude', 'codex'):
         # the verdict is codex's -o file, or claude's stdout: another descriptor's file is a plain write

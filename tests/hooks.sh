@@ -93,6 +93,7 @@ known() { # name want got: a replay case the hooks still decide wrongly (finalit
 }
 }
 rl() { python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import review_launch; review_launch.launch(sys.argv[2], review_launch.set_aside(sys.argv[2]))' "$R/hooks" "$1"; }  # <out>: its review launched through the hook
+aside() { python3 -c 'import os,sys; sys.path.insert(0, sys.argv[1]); import review_journal, review_launch; o=os.path.realpath(sys.argv[2]); print(*[e["text"].strip() for e in review_journal.events(review_journal.post_of(review_launch.draft_of(sys.argv[2]))) if e["ev"] == "verdict" and e["out"] == o][-1:])' "$R/hooks" "$1"; }  # <out>: the last verdict a new round set aside
 rv() { # <dir>/<name>.review.out: its reviewer launched on <name>.md's current text (at RT, else now), then writing back the verdict <out> holds
   local v; v=$(cat "$1"); sha256sum "${1%.review.out}.md" | cut -d' ' -f1 | tr -d '\n' > "${1%.review.out}.md.lint.sha"; rl "$1" || return
   [ -z "${RT:-}" ] || echo "$(cut -d' ' -f1 "$1.launch") $(date -d "$RT" +%s)" > "$1.launch"; printf '%s\n' "$v" > "$1"; }
@@ -648,7 +649,7 @@ check "BLOCK: gate-pass with a ledger row whose id isn't R<round>.<n>, naming th
 PV="$T/pvl/drafts/pr"; mkdir -p "$PV"; printf 'The parser keeps empty fields.\n' > "$PV/pr-body.md"; rl "$PV/pr-body.review.out"; echo 'R1.1 blocker: the body gives the wrong response format.' > "$PV/pr-body.review.out"
 echo 'The reply format is JSON.' >> "$PV/pr-body.md"; rl "$PV/pr-body.review.out"; echo 'R2.1 nit: phrasing.' > "$PV/pr-body.review.out"
 pans() { local want=$1; shift; printf '%s\n' "$@" > "$PV/pr-body.ledger.md"; touch -d '+1 minute' "$PV/pr-body.ledger.md"; python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import review_launch; print(review_launch.answers(sys.argv[2], sys.argv[3]) or "passes")' "$R/hooks" "$PV/pr-body.review.out" "$PV/pr-body.md" | grep -cF "$want"; }
-check "BLOCK: a post ledger with no row for a finding of the earlier verdict the launch set aside (.prev), naming it; with the row it passes" "1 1" "$(pans 'R1.1 blocker: the body gives the wrong response format.  <- no ledger row' 'Round: 2' 'R2.1 nit declined: matches house style') $(pans passes 'Round: 2' 'R1.1 blocker fixed in r2' 'R2.1 nit declined: matches house style')"
+check "BLOCK: a post ledger with no row for a finding of the earlier verdict the launch set aside, naming it; with the row it passes" "1 1" "$(pans 'R1.1 blocker: the body gives the wrong response format.  <- no ledger row' 'Round: 2' 'R2.1 nit declined: matches house style') $(pans passes 'Round: 2' 'R1.1 blocker fixed in r2' 'R2.1 nit declined: matches house style')"
 echo CLEAN > "$GD/r.review.out"
 printf 'The test checks that "I'"'"'ll switch it once X is released" passes.\n' > "$GD/r.md"; touch -d '+2 minutes' "$GD/r.md"
 # the verdict counts for the text its reviewer was handed, whatever the files' times say (#200)
@@ -899,7 +900,7 @@ rm "$FX/repos_acme_x_issues_7"
 check "--edit-of: gh failing fails, even for a clean draft" "rc=1 1" "$(eo 'The cache is per user.' | tail -1) $(eo 'The cache is per user.' | grep -c "couldn't read the live body.*HTTP 404")"
 check "--edit-of: a reply is refused as a usage error" "rc=1 1" "$(eo 'The cache is per user.' reply | tail -1) $(eo 'The cache is per user.' reply | grep -c '^usage: post-lint')"
 eolive 'The old text.'; rm -f "$EO"/e.md*; eo 'The new text.' >/dev/null; printf 'CLEAN\n' > "$EO/e.review.out"; rv "$EO/e.review.out"
-check "--edit-of: only the draft's own .lint files are left, and the temp folder is empty" "e.md e.md.lint e.md.lint.sha e.review.out e.review.out.launch e.review.out.prev|" "$(ls "$EO" | xargs)|$(ls -A "$T/eotmp")"
+check "--edit-of: only the draft's own .lint files are left, and the temp folder is empty" "e.md e.md.lint e.md.lint.sha e.review.out e.review.out.launch|" "$(ls "$EO" | xargs)|$(ls -A "$T/eotmp")"
 eg() { MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$EO/e.md" "$EO/e.review.out" 2>&1; echo "rc=$?"; }
 check "--edit-of survives gate-pass's re-lint from the draft's .lint" "--kind issue --repo acme/x --parent none --edit-of acme/x#7 rc=0" "$(cat "$EO/e.md.lint") $(eg | tail -1)"
 rm "$FX/repos_acme_x_issues_7"; check "gate-pass re-reads the live body: gh failing fails it" "rc=1 1" "$(eg | tail -1) $(eg | grep -c "couldn't read the live body")"
@@ -1721,7 +1722,7 @@ CTL="$RLD/ct.ledger.md"; ct="$(t3r delegate_task ct-r1 th-ct "Review $T/ct at he
 job() { python3 -c 'import json,os,sys; print(*[j.get("handle") for f in os.listdir(sys.argv[1]) for j in [json.load(open(os.path.join(sys.argv[1], f)))] if j.get("key") == sys.argv[2]] or ["none"])' "$HOME/.claude/agent-jobs" "$1"; }
 check "a round sent to its reviewer's thread counts and is capped like a launched one: r2 to r4 by t3_thread_send pass, registered as jobs of that thread, BLOCK r5 naming the cap" "0 0 0 0 2 1 t3:task-ct-r4/th-ct" "$ct $(job ct-r4)"
 nrounds() { python3 -c 'import json,os,sys; print(len(json.load(open(os.path.expanduser("~/.claude/review-loops.json"))).get(sys.argv[1], {}).get("rounds", [])))' "$1"; }
-jrounds() { python3 -c 'import glob,json,os,sys; print(sum(json.loads(l)["loop"] == sys.argv[1] for f in glob.glob(os.path.expanduser("~/.claude/review-journal/*/*.jsonl")) for l in open(f) if l.strip()))' "$1"; }
+jrounds() { python3 -c 'import glob,json,os,sys; print(sum(json.loads(l).get("loop") == sys.argv[1] for f in glob.glob(os.path.expanduser("~/.claude/review-journal/*/*.jsonl")) for l in open(f) if l.strip()))' "$1"; }
 git init -q -b main "$T/jw"; git -C "$T/jw" commit -q --allow-empty -m one; JH=$(git -C "$T/jw" rev-parse HEAD); mkdir -p "$HOME/.claude/review-journal"
 jw="$(chmod 555 "$HOME/.claude/review-journal"; t3r delegate_task jw-r1 th-jw "Review $T/jw at head $JH" 2>/dev/null; chmod 755 "$HOME/.claude/review-journal") $(nrounds jw) $(jrounds jw)"
 jw="$jw $(touch "$HOME/.claude/review-loops.json.lock"; chmod 000 "$HOME/.claude/review-loops.json.lock"; t3r delegate_task jx-r1 th-jx "Review $T/jw at head $JH" 2>/dev/null; chmod 644 "$HOME/.claude/review-loops.json.lock") $(nrounds jx) $(jrounds jx)"
@@ -1733,13 +1734,13 @@ check "a loop recorded before review-loops.json keeps its rounds and threads: BL
 QD="$T/rdrafts/drafts/q"; mkdir -p "$QD"; pe "$QD/r.md" 'Agreed.'; QB="Review $QD/r.md; write your final message, exactly CLEAN or the findings, to $QD/r.review.out."
 cq="$(t3r delegate_task cq-r1 th-q "$QB") $(pv "$QD/r.review.out" 'R1.1 should: the date'; pe "$QD/r.md" 'Fixed the date.'; t3r t3_thread_send cq-r2 th-q "Round 2: $QB")"
 [ "$(cut -d' ' -f1 "$QD/r.review.out.launch")" = "$(sha256sum "$QD/r.md" | cut -d' ' -f1)" ] && cq="$cq launched" || cq="$cq stale"
-cq="$cq $(cat "$QD/r.review.out.prev") $(pv "$QD/r.review.out" CLEAN; python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import review_launch; print(review_launch.answers(sys.argv[2], sys.argv[3]) or "passes")' "$R/hooks" "$QD/r.review.out" "$QD/r.md")"
+cq="$cq $(aside "$QD/r.review.out") $(pv "$QD/r.review.out" CLEAN; python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import review_launch; print(review_launch.answers(sys.argv[2], sys.argv[3]) or "passes")' "$R/hooks" "$QD/r.review.out" "$QD/r.md")"
 check "a post round sent to its reviewer's thread records the draft it was handed, so gate-pass's review check passes its CLEAN" "0 0 launched R1.1 should: the date passes" "$cq"
 check "the sent round's job takes the place of its thread's open job" "none t3:task-cq-r2/th-q" "$(job "$QD/r.md") $(job "$QD/r.md cq-r2")"
 PQ="$T/rdrafts/drafts/pq"; mkdir -p "$PQ"; pe "$PQ/r.md" 'Agreed.'; PQB="Review $PQ/r.md; write your final message, exactly CLEAN or the findings, to $PQ/r.review.out."
 pq="$(t3r delegate_task pq-r1 th-pq "$PQB") $(pv "$PQ/r.review.out" 'R1.1 blocker: the wrong response format'; pe "$PQ/r.md" 'One word.'; t3r t3_thread_send pq-r2 th-pq "Round 2: $PQB")"
 pq="$pq $(pv "$PQ/r.review.out" 'R2.1 should: the date'; pe "$PQ/r.md" 'Fixed the date.'; t3r t3_thread_send pq-r3 th-pq "Round 3: $PQB") $(pv "$PQ/r.review.out" 'R3.1 nit: phrasing'; printf '%s\n' 'Round: 3' 'R2.1 should fixed in r3' 'R3.1 nit declined: house style' > "$PQ/r.ledger.md"; python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import review_launch; print("refused" if review_launch.answers(sys.argv[2], sys.argv[3]) else "passes")' "$R/hooks" "$PQ/r.review.out" "$PQ/r.md")"
-known "gate-pass's review check refuses a round-3 post ledger without a row for round 1's blocker" "0 0 0 refused" "$pq"
+check "gate-pass's review check refuses a round-3 post ledger without a row for round 1's blocker" "0 0 0 refused" "$pq"
 smr() { # tool round to text: an Agent launch (Claude Code returns agent to as its agentId) or a SendMessage to agent to; exit code, registered when it passes
   local j; j=$(python3 -c 'import json,sys; t,c,to,x=sys.argv[1:]; ti={"description":c,"prompt":x,"run_in_background":False} if t=="Agent" else {"to":to,"summary":c,"message":x}
 print(json.dumps({"tool_name":t,"tool_input":ti,"tool_response":{"agentId":to} if t=="Agent" else {"success":True}}))' "$@")
@@ -2522,7 +2523,7 @@ check "a review naming a ledger and an output with no draft behind it launches; 
 # the launch records the text the reviewer is handed, and a verdict an earlier launch left is set aside
 L3="$T/drafts/lf/launch-r3.md"; printf 'Retitled the PR.\n' > "$T/drafts/lf/launch.md"; sha=$(sha256sum "$T/drafts/lf/launch.md" | cut -d' ' -f1); printf %s "$sha" > "$T/drafts/lf/launch.md.lint.sha"; echo CLEAN > "$T/drafts/lf/launch.review.out"
 printf 'Review %s; write exactly CLEAN or the findings to %s/drafts/lf/launch.review.out.\n' "$T/drafts/lf/launch.md" "$T" > "$L3"
-check "a review launch records the draft's sha256 and moves the earlier verdict to .prev" "0 $sha CLEAN no-out" "$(launch "Execute $L3") $(cut -d' ' -f1 "$T/drafts/lf/launch.review.out.launch") $(cat "$T/drafts/lf/launch.review.out.prev") $([ -e "$T/drafts/lf/launch.review.out" ] && echo out || echo no-out)"
+check "a review launch records the draft's sha256 and sets the earlier verdict aside in the post's journal" "0 $sha CLEAN no-out" "$(launch "Execute $L3") $(cut -d' ' -f1 "$T/drafts/lf/launch.review.out.launch") $(aside "$T/drafts/lf/launch.review.out") $([ -e "$T/drafts/lf/launch.review.out" ] && echo out || echo no-out)"
 check "BLOCK: a duplicate of that launch, its job still open, leaves the verdict its reviewer wrote in place" "2 CLEAN" "$(echo CLEAN > "$T/drafts/lf/launch.review.out"; launch "Execute $L3") $(cat "$T/drafts/lf/launch.review.out")"
 python3 "$R/bin/agent-job" done "$L3" >/dev/null; echo x >> "$T/drafts/lf/launch.md"
 printf 'Review %s; write exactly CLEAN or the findings to %s/drafts/lf/launch.review-r3.out.\n' "$T/drafts/lf/launch.md" "$T" > "$L3"
@@ -2542,7 +2543,7 @@ fb="$(fbl claude pr-body-claude.review.out)"; pe "$FB/pr-body.md" 'Linted.'; fb=
 for v in pr-body.review.out pr-body-claude2.review.out; do echo CLEAN > "$FB/$v"; fb="$fb $(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import review_launch; print(review_launch.answers(sys.argv[2], sys.argv[3]) or "passes")' "$R/hooks" "$FB/$v" "$FB/pr-body.md")"; done
 check "a second fresh seat's pr-body-<seat>.review.out is a verdict on pr-body.md: BLOCK it while pr-body.md has no post-lint; once linted, both seats' CLEAN pass gate-pass's review check" "2 0 0 passes passes" "$fb"
 printf 'R1.1 blocker: the body claims a guarantee the code lacks.\n' > "$FB/pr-body-claude2.review.out"
-known "gate-pass's review check refuses one body seat's CLEAN while the other seat's verdict on the same body holds a blocker" refused "$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import review_launch; print("refused" if review_launch.answers(sys.argv[2], sys.argv[3]) else "passes")' "$R/hooks" "$FB/pr-body.review.out" "$FB/pr-body.md")"
+check "gate-pass's review check refuses one body seat's CLEAN while the other seat's verdict on the same body holds a blocker" refused "$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import review_launch; print("refused" if review_launch.answers(sys.argv[2], sys.argv[3]) else "passes")' "$R/hooks" "$FB/pr-body.review.out" "$FB/pr-body.md")"
 # ---------- pr-steps: a shape record is a real pass ----------
 G="$T/prs"; mkdir -p "$G"; git -C "$G" init -q; git -C "$G" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 prs() { (cd "$G" && bash "$R/bin/pr-steps" "$@" >/dev/null 2>&1; echo $?); }
@@ -3135,7 +3136,7 @@ ran() { local r; r=$(guard "$1"); [ "$r" = 0 ] && bashed PostToolUse "$1"; echo 
 SL="$T/drafts/sl"; mkdir -p "$SL"; printf 'Fixed in abc1234.\n' > "$SL/b.md"; echo CLEAN > "$SL/b.review.out"; sl_sha=$(sha256sum "$SL/b.md" | cut -d' ' -f1)
 check "BLOCK: codex exec -o <out> on a draft with no passing post-lint, naming post-lint" "2 1" "$(guard "codex exec --skip-git-repo-check -o $SL/b.review.out \"\$(cat $SL/p.md)\" < /dev/null") $(grep -c 'no passing post-lint' "$T/err")"
 printf %s "$sl_sha" > "$SL/b.md.lint.sha"
-check "codex exec -o <out> and claude -p > <out-r2> record the launched text, and the earlier verdict is set aside" "0 $sl_sha CLEAN 0 $sl_sha" "$(ran "codex exec --skip-git-repo-check -o $SL/b.review.out \"\$(cat $SL/p.md)\" < /dev/null") $(cut -d' ' -f1 "$SL/b.review.out.launch") $(cat "$SL/b.review.out.prev") $(ran "claude -p --effort high < $SL/p.md > $SL/b.review-r2.out") $(cut -d' ' -f1 "$SL/b.review-r2.out.launch")"
+check "codex exec -o <out> and claude -p > <out-r2> record the launched text, and the earlier verdict is set aside" "0 $sl_sha CLEAN 0 $sl_sha" "$(ran "codex exec --skip-git-repo-check -o $SL/b.review.out \"\$(cat $SL/p.md)\" < /dev/null") $(cut -d' ' -f1 "$SL/b.review.out.launch") $(aside "$SL/b.review.out") $(ran "claude -p --effort high < $SL/p.md > $SL/b.review-r2.out") $(cut -d' ' -f1 "$SL/b.review-r2.out.launch")"
 check "codex exec -o \"\$out\" and claude -p > \"\$out\", the output in a variable, record their launch" "0 $sl_sha 0 $sl_sha" "$(ran "out=$SL/b.review-r4.out; codex exec --skip-git-repo-check -o \"\$out\" \"\$(cat $SL/p.md)\" < /dev/null") $(cut -d' ' -f1 "$SL/b.review-r4.out.launch" 2>&1) $(ran "out=$SL/b.review-r5.out; claude -p < $SL/p.md > \"\$out\"") $(cut -d' ' -f1 "$SL/b.review-r5.out.launch" 2>&1)"
 mkdir -p "$T/drafts/amb"; for n in a b; do printf 'Draft %s.\n' "$n" > "$T/drafts/amb/$n.md"; sha256sum "$T/drafts/amb/$n.md" | cut -d' ' -f1 | tr -d '\n' > "$T/drafts/amb/$n.md.lint.sha"; echo CLEAN > "$T/drafts/amb/$n.review.out"; done
 check "BLOCK: a reviewer's output that may be one of two paths (a reassignment in an untaken branch), naming the fix; both verdicts stay in place" "2 1 CLEAN CLEAN" "$(guard "out=$T/drafts/amb/a.review.out; if false; then out=$T/drafts/amb/b.review.out; fi; codex exec --skip-git-repo-check -o \"\$out\" \"\$(cat $SL/p.md)\" < /dev/null") $(grep -c 'pass its absolute path, written out or assigned once' "$T/err") $(cat "$T/drafts/amb/a.review.out") $(cat "$T/drafts/amb/b.review.out")"
@@ -3160,7 +3161,7 @@ check "a standalone reviewer's <name>.review.out outside drafts/, beside an unli
 check "BLOCK: gate-pass on a review output outside drafts/, naming where drafts live" "1 1" "$(echo CLEAN > "$SA/title.review.out"; MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$SA/title.md" "$SA/title.review.out" --kind title >"$T/sa.out" 2>&1; echo $?) $(grep -c 'only a post.s review there records its launch' "$T/sa.out")"
 check "a shell-launched output naming no review output passes though it isn't one known path: a loop's variable, \$(mktemp)" "0 0" "$(guard "for f in a b; do out=$T/\$f.txt; codex exec --skip-git-repo-check -o \"\$out\" \"\$(cat $SL/p.md)\" < /dev/null; done") $(guard "codex exec --skip-git-repo-check -o \"\$(mktemp)\" \"\$(cat $SL/p.md)\" < /dev/null")"
 check "a shell-launched reviewer's output whose real path is outside drafts/ (drafts/../summary.out) passes" 0 "$(guard "codex exec --skip-git-repo-check -o $T/drafts/../summary.out \"\$(cat $SL/p.md)\" < /dev/null")"
-check "BLOCK: the main session writing a launch record or a set-aside verdict, naming the hook, or a round's output" "2 1 2 2" "$(guard "echo x > $SL/b.review.out.launch") $(grep -c 'written by the hook' "$T/err") $(guard "mv $SL/b.review.out.prev $SL/b.review.out.prev") $(guard "echo CLEAN > $SL/b.review-r3.out")"
+check "BLOCK: the main session writing a launch record, naming the hook, or a round's output" "2 1 2" "$(guard "echo x > $SL/b.review.out.launch") $(grep -c 'written by the hook' "$T/err") $(guard "echo CLEAN > $SL/b.review-r3.out")"
 check "BLOCK: glab mr create, not a draft, outside a converged repo" 2 "$(glab 'glab mr create --title x')"
 check "BLOCK: glab mr update --ready outside a converged repo" 2 "$(glab 'glab mr update 5 --ready')"
 check "glab mr create --draft passes on a branch with its approach" 0 "$(MERGEWORTHY_WATCHER=off glab 'glab mr create --draft --title x' "$G2")"

@@ -28,6 +28,11 @@ def events(change):
     except OSError: return []
 
 
+def post_of(draft):
+    """The journal file of a post's review loops on draft: each seat's launches (`post`) and the verdicts a new round set aside (`verdict`)."""
+    return os.path.join(JOURNAL, 'posts', hashlib.sha256(os.path.realpath(draft).encode()).hexdigest()[:16] + '.jsonl')
+
+
 def seat_of(handle):
     """The loops whose rounds ran in the reviewer handle (a T3 thread, a Claude agent), each with its first round's event."""
     found = {}
