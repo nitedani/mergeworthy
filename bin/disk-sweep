@@ -25,8 +25,8 @@ deleted.
 - h-ignored, once a day: the same folders in any git repo up to 5 levels below HOME (hidden folders and the work folders
   aside), each unused for 14 days (neither written nor read).
 - h-cargo, once a day: a cargo build folder (CACHEDIR.TAG beside .rustc_info.json) up to 5 levels below HOME, in a git repo or not
-  (in a repo: one git ignores, holding no tracked file; hidden folders and the work folders aside), whole, unused for 7 days (neither written nor read), unless its parent is
-  busy or h-ignored takes it.
+  (in a repo: one git ignores, holding no tracked file; hidden folders and the work folders aside), whole, unused for 7 days (neither written nor read), unless h-ignored takes it or
+  its repo, else its parent (itself directly in HOME), is busy.
 - k-cache, once a day: `pnpm store prune`, `pip cache purge`, `npm cache clean --force` when ~/.npm/_cacache is unused for
   14 days, and each entry of the named tool caches (CACHES: cargo's, and ~/.cache/yarn, node-gyp, go-build and the like) unused for 14 days (neither written nor read), not busy.
 - d-docker: `docker image prune -a` (every unused image) and `docker builder prune`, with `-f --filter until=336h`, each by its
@@ -539,7 +539,7 @@ def sweep_home():
                 continue
             if all(os.path.isfile(os.path.join(e.path, f)) for f in CARGO):
                 if e.path not in taken and (not repo or ignored(repo, e.path)):
-                    delete(e.path, d, dev, 'h-cargo', WEEK)
+                    delete(e.path, repo or (e.path if d == HOME else d), dev, 'h-cargo', WEEK)
             elif e.name not in BUILD:
                 stack.append((e.path, depth + 1, repo))
 
