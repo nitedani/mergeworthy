@@ -44,17 +44,16 @@ WRAP = 1500  # Read cuts longer lines
 cov = mf.covered(root)
 # the first run covers the last 24 hours, never more
 after = cov or (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=24)).strftime('%Y-%m-%dT%H:%M:%S.000Z')
-entries, until, said = [], ('', 0), set()
-for p in mf.thread_logs(root, dt.datetime.fromisoformat(after.split('#')[0].replace('Z', '+00:00')).timestamp() - 60):
+entries, until, said = [], '', set()
+for p in mf.thread_logs(root, dt.datetime.fromisoformat(after.replace('Z', '+00:00')).timestamp() - 60):
     last = []  # an assistant turn's text: only its last block is kept, mid-turn narration is dropped
-    lines = open(p, errors='replace').readlines()
-    for l, at in zip(lines, mf.positions(lines)):
-        if not at or at <= mf.position(after):
+    for l in open(p, errors='replace'):
+        m = re.search(r'"timestamp":"([0-9T:.\-]+Z)"', l)
+        if not m or m.group(1) <= after:
             continue
         try: o = json.loads(l)
         except ValueError: continue
-        # each entry is headed by its line's position, which the refresh copies into read-through and covered-until
-        until = max(until, at); t = f'{at[0]}#{at[1]}'; c = (o.get('message') or {}).get('content')
+        t = m.group(1); until = max(until, t); c = (o.get('message') or {}).get('content')
         if mf.prompt(o):
             entries += last[-1:]; last = []
             for x in mf.texts(o):
@@ -68,9 +67,8 @@ for p in mf.thread_logs(root, dt.datetime.fromisoformat(after.split('#')[0].repl
 if not entries:
     print(f'memory: nothing new after {after}'); sys.exit(0)
 new = os.path.join(root, 'memory-new.txt')
-until = f'{until[0]}#{until[1]}'
-# by position: entries of one second keep the log's order (agy's steps carry whole seconds)
-text = '\n\n'.join([x for _, x in sorted(entries, key=lambda e: mf.position(e[0]))] + [f'[{until} END] the logs are read through here'])
+# by time only: entries of one time keep the log's order (agy's steps carry whole seconds, so a prompt and its answer often share one)
+text = '\n\n'.join([x for _, x in sorted(entries, key=lambda e: e[0])] + [f'[{until} END] the logs are read through here'])
 text = '\n'.join(l[i:i + WRAP] for l in text.split('\n') for i in range(0, len(l) or 1, WRAP))
 open(new, 'w').write(text + '\n')
 # the run notes each chunk it read here; memory.md never counts as covered past them

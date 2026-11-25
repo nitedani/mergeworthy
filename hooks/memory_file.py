@@ -2,10 +2,9 @@
 """The memory file (mergeworthy:task step 8): <work folder>/memory.md fills what the built-in compaction summary loses. Its Standing part
 (rulings in force, ruled out, superseded, still intended) is carried forward until replaced; its Recent part covers the
 last 24 hours. One Haiku merges new log lines into it (`memory-prep`), and it records the last log line it covered in
-`<!-- covered-until: <log position> -->`: a log line's timestamp and `#<n>`, its number among a log's lines of that timestamp
-(agy's whole seconds put several lines in one); a bare timestamp, as runs before positions wrote, covers every line of it. A root is listed in ~/.mergeworthy/memory-roots.txt and has memory.source
+`<!-- covered-until: <log timestamp> -->`. A root is listed in ~/.mergeworthy/memory-roots.txt and has memory.source
 (`memory-prep init`): the main session's cwd, T3 thread id, session id and session-log dir."""
-import json, math, os, re, time
+import json, os, re, time
 
 COVERED = re.compile(r'<!-- covered-until: (\S+) -->')
 READ = re.compile(r'read-through: (\S+)')
@@ -38,25 +37,11 @@ def path(root):
 def notes_path(root):
     return os.path.join(root, 'memory-notes.txt')
 
-def position(marker):
-    """A covered-until or read-through position as (timestamp, n), in log order; a bare timestamp is past every line of it."""
-    t, _, n = marker.partition('#')
-    return t, int(n) if n.isdigit() else math.inf
-
-def positions(lines):
-    """Each log line's position, None for one with no timestamp: its timestamp and its number among the lines of it so far."""
-    seen = {}
-    for l in lines:
-        m = TS.search(l if isinstance(l, bytes) else l.encode())
-        t = m and m[1].decode()
-        if t: seen[t] = seen.get(t, 0) + 1
-        yield t and (t, seen[t])
-
 def covered(root):
     """What memory.md covers: its covered-until, never past the last chunk its run noted as read (delegate/memory-refresh.md)."""
     m = COVERED.findall(open(path(root), errors='replace').read()) if os.path.isfile(path(root)) else []
     n = READ.findall(open(notes_path(root), errors='replace').read()) if os.path.isfile(notes_path(root)) else []
-    return min(m[-1], n[-1], key=position) if m and n else (m[-1] if m else '')
+    return min(m[-1], n[-1]) if m and n else (m[-1] if m else '')
 
 def prompt(o):
     """A user turn's prompt as the log records it: typed by the user or sent through the SDK (T3 Code), never a skill body,
@@ -103,22 +88,20 @@ def thread_logs(root, since=0.0):
     json.dump(cache, open(cache_f, 'w'))
     return out
 
-def last_position(p):
-    """A log's last timestamped line's position, read from its end: back far enough that an earlier timestamp shows, so the
-    lines of the last one are all counted."""
+def last_ts(p):
+    """A log's latest timestamp, read from its end."""
     with open(p, 'rb') as f:
         f.seek(0, 2); end = f.tell(); n = 1 << 16
         while True:
-            start = max(0, end - n); f.seek(start); lines = f.read().split(b'\n')[1 if start else 0:]
-            found = [x for x in positions(lines) if x]
-            if start == 0 or (found and found[0][0] != found[-1][0]): return found[-1] if found else ('', 0)
+            f.seek(max(0, end - n)); found = TS.findall(f.read())
+            if found or n >= end: return found[-1].decode() if found else ''
             n *= 4
 
 def behind(root):
     """True when the orchestrator's log has lines after what memory.md covers."""
     cov = covered(root)
     since = os.path.getmtime(path(root)) - 60 if cov else time.time() - 86400  # the first run covers the last 24 hours
-    return any(last_position(p) > position(cov) for p in thread_logs(root, since))
+    return any(last_ts(p) > cov for p in thread_logs(root, since))
 
 def order(root, live=False):
     """The order to refresh memory.md: at session start it waits, since the context was just summarized; repeated by stop-lint

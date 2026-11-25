@@ -13,7 +13,7 @@ ROOT = os.path.dirname(HERE)
 TOOLS = {'run_command': 'Bash', 'read_file': 'Read', 'write_file': 'Write', 'edit_file': 'Edit'}
 OWN_AGENTS = ('swarm',)
 KEEP = 14 * 86400
-DIR = os.path.expanduser('~/.mergeworthy/agy')  # each conversation's Claude Code transcript (.jsonl) and queued checks (.post)
+DIR = os.path.expanduser('~/.mergeworthy/agy')  # each conversation's Claude Code transcript (.jsonl), queued checks (.post), step times (.seen)
 HEADER = re.compile(r'\A(?:(?:Created|Completed) At: .*\n)*')
 STARTED = re.compile(r'^Tool is running as a background task with task id: (\S+)$', re.M)
 FINISHED = re.compile(r'content=Task id "([^"]+)" finished with \w+:\n(.*?)(?:\n\nLog: \S+)?\n</SYSTEM_MESSAGE>', re.S)
@@ -92,42 +92,55 @@ def steps(path):
     return out
 
 
-def claude_transcript(agy_steps, cwd, session):
+def stamp(us):
+    """Microseconds since the epoch as Claude Code writes a time: UTC, with its fraction."""
+    s, f = divmod(us, 10 ** 6)
+    return time.strftime('%Y-%m-%dT%H:%M:%S', time.gmtime(s)) + f'.{f:06d}Z'
+
+
+def claude_transcript(agy_steps, cwd, session, seen):
     """agy's transcript steps as Claude Code transcript entries: a typed request, each model text and tool call, each call's result, a
     Stop hook's continuation reason, and a compaction (agy's CHECKPOINT step) as compact_boundary. A background command's result
     and its end are Claude Code's: a started task, then a <task-notification>; the start's result is an error until the task ended with
     success, so a read through it (`sleep 5; cat AGENTS.md`) counts for shellcmd.files_read only then. A call agy logged no result for (declined, cancelled)
-    failed with no result once a later step shows it ended, as Claude Code records one. Returns the entries and the outcome of each
-    call that ended, by its step (a background command's once its task finished)."""
-    calls, tasks, ends, out = {}, {}, {}, []
+    failed with no result once a later step shows it ended, as Claude Code records one. Each entry's time is when an event first
+    showed its step (seen, microseconds by step), and at least a microsecond after the entry before it: agy's own times are whole
+    seconds, which can't order a conversation's entries, nor a handoff's after the conversation it continues, for memory-prep's
+    covered-until. Returns the entries and the outcome of each call that ended, by its step (a background command's once its task
+    finished)."""
+    calls, tasks, ends, out, last = {}, {}, {}, [], 0
+    def at():
+        nonlocal last
+        last = max(seen[n], last + 1)
+        return stamp(last)
     for s in agy_steps:
-        at, n = s.get('created_at'), s['step_index']
+        n = s['step_index']
         for gone in sorted(k for k in calls if k < n):
             calls.pop(gone)
             o = ends[gone] = {'failed': True, 'output': '', 'error': 'The call ended with no result.'}
-            out.append({'type': 'user', 'timestamp': at, 'message': {'role': 'user', 'content': [
+            out.append({'type': 'user', 'timestamp': at(), 'message': {'role': 'user', 'content': [
                 {'type': 'tool_result', 'tool_use_id': call_id(session, gone), 'is_error': True, 'content': o['error']}]}})
         if s.get('type') == 'USER_INPUT':
             m = re.search(r'<USER_REQUEST>\n?(.*?)\n?</USER_REQUEST>', s.get('content') or '', re.S)
-            out.append({'type': 'user', 'timestamp': at, 'cwd': cwd, 'promptSource': 'typed',
+            out.append({'type': 'user', 'timestamp': at(), 'cwd': cwd, 'promptSource': 'typed',
                         'message': {'role': 'user', 'content': m[1] if m else s.get('content') or ''}})
         elif s.get('type') == 'CHECKPOINT':
-            out.append({'type': 'system', 'subtype': 'compact_boundary', 'timestamp': at})
+            out.append({'type': 'system', 'subtype': 'compact_boundary', 'timestamp': at()})
         elif s.get('type') == 'SYSTEM_MESSAGE' and (m := FINISHED.search(s.get('content') or '')):
             o = outcome('run_command', {'content': m[2]})
             if m[1] in tasks:
                 k, start = tasks.pop(m[1])
                 ends[k], start['is_error'] = o, o['failed']
-            out.append({'type': 'user', 'timestamp': at, 'message': {'role': 'user', 'content': (
+            out.append({'type': 'user', 'timestamp': at(), 'message': {'role': 'user', 'content': (
                 f"<task-notification>\n<task-id>{task_id(m[1])}</task-id>\n<status>{'failed' if o['failed'] else 'completed'}</status>\n<summary>{o['output']}</summary>\n</task-notification>")}})
         elif s.get('type') == 'SYSTEM_MESSAGE':
-            out.append({'type': 'user', 'timestamp': at, 'message': {'role': 'user', 'content': f"Stop hook feedback:\n{s.get('content') or ''}"}})
+            out.append({'type': 'user', 'timestamp': at(), 'message': {'role': 'user', 'content': f"Stop hook feedback:\n{s.get('content') or ''}"}})
         elif s.get('type') == 'PLANNER_RESPONSE':
             text = [{'type': 'text', 'text': s['content']}] if s.get('content') else []
             for i, c in enumerate(s.get('tool_calls') or []):
                 calls[n + 1 + i] = c
                 text.append({'type': 'tool_use', 'id': call_id(session, n + 1 + i), 'name': claude_name(c.get('name', '')), 'input': claude_input(c.get('name'), c.get('args'))})
-            out.append({'type': 'assistant', 'timestamp': at, 'cwd': cwd, 'message': {'role': 'assistant', 'model': s.get('model'), 'content': text}})
+            out.append({'type': 'assistant', 'timestamp': at(), 'cwd': cwd, 'message': {'role': 'assistant', 'model': s.get('model'), 'content': text}})
         elif n in calls:
             c = calls.pop(n)
             if bg := started(s):
@@ -137,9 +150,9 @@ def claude_transcript(agy_steps, cwd, session):
                 bad, text = o['failed'], o['error'] or o['output']
             result = {'type': 'tool_result', 'tool_use_id': call_id(session, n), 'is_error': bad, 'content': text}
             if bg: tasks[bg] = n, result
-            out.append({'type': 'user', 'timestamp': at, 'message': {'role': 'user', 'content': [result]}})
+            out.append({'type': 'user', 'timestamp': at(), 'message': {'role': 'user', 'content': [result]}})
             if c.get('name') == 'read_file' and not bad and whole(s) and (k := skill_of((c.get('args') or {}).get('Path'))):
-                out.append({'type': 'assistant', 'timestamp': at, 'cwd': cwd, 'message': {'role': 'assistant', 'content': [
+                out.append({'type': 'assistant', 'timestamp': at(), 'cwd': cwd, 'message': {'role': 'assistant', 'content': [
                     {'type': 'tool_use', 'id': f'{call_id(session, n)}-skill', 'name': 'Skill', 'input': {'skill': f'mergeworthy:{k}'}}]}})
     return out, ends
 
@@ -157,8 +170,16 @@ class Event:
         self.transcript = os.path.join(DIR, f'{self.session}.jsonl')
         self.pending = os.path.join(DIR, f'{self.session}.post')
         self.steps = steps(d['transcriptPath']) if os.path.isfile(d.get('transcriptPath') or '') else []
-        entries, self.outcomes = claude_transcript(self.steps, d.get('cwd'), self.session)
         os.makedirs(DIR, exist_ok=True)
+        times = os.path.join(DIR, f'{self.session}.seen')
+        try: seen = {int(k): v for k, v in json.load(open(times)).items()}
+        except (OSError, ValueError, AttributeError): seen = {}  # a conversation from before step times: its steps are seen now
+        now = time.time_ns() // 1000
+        if new := {s['step_index']: now for s in self.steps if s['step_index'] not in seen}:
+            seen.update(new)
+            with open(f'{times}.{os.getpid()}', 'w') as f: json.dump(seen, f)
+            os.replace(f'{times}.{os.getpid()}', times)
+        entries, self.outcomes = claude_transcript(self.steps, d.get('cwd'), self.session, seen)
         tmp = f'{self.transcript}.{os.getpid()}'
         with open(tmp, 'w') as f:
             f.writelines(line(e) for e in entries)

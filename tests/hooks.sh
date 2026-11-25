@@ -1586,7 +1586,7 @@ check "outside T3, only a session memory.source lists gets the memory: session B
 python3 "$R/bin/memory-prep" prep "$MR" > "$T/prep.out"
 MB=$(sed -n 's/.*brief: //p' "$T/prep.out")
 check "the first prep takes the thread's last 24 hours only, from the init session and the handed-off one" "1 1 0 0 0 1" "$(grep -c 'USER\] said in the session init ran in' "$MR/memory-new.txt") $(grep -c 'USER\] never use cron' "$MR/memory-new.txt") $(grep -c 'an old ruling' "$MR/memory-new.txt") $(grep -c "another thread" "$MR/memory-new.txt") $(grep -c "a child's brief" "$MR/memory-new.txt") $(grep -c 'skills/delegate/memory-refresh.md' "$MB")"
-check "prep drops the harness's entries (skill bodies, hook feedback, summaries, notifications, T3's own) and repeats" "0 0 0 1 1" "$(grep -c 'harness entry\|Base directory' "$MR/memory-new.txt") $(grep -c 'Delegated task' "$MR/memory-new.txt") $(grep -c 'Context handoff' "$MR/memory-new.txt") $(grep -c 'RSC check-in' "$MR/memory-new.txt") $(grep -c '^\[20[0-9T:.-]*Z#[0-9]* END\]' "$MR/memory-new.txt")"
+check "prep drops the harness's entries (skill bodies, hook feedback, summaries, notifications, T3's own) and repeats" "0 0 0 1 1" "$(grep -c 'harness entry\|Base directory' "$MR/memory-new.txt") $(grep -c 'Delegated task' "$MR/memory-new.txt") $(grep -c 'Context handoff' "$MR/memory-new.txt") $(grep -c 'RSC check-in' "$MR/memory-new.txt") $(grep -c '^\[20[0-9T:.-]*Z END\]' "$MR/memory-new.txt")"
 UNTIL=$(sed -n 's/^\[\(.*\) END\].*/\1/p' "$MR/memory-new.txt")
 echo "read-through: $UNTIL" >> "$MR/memory-notes.txt"
 printf '# Memory\n## Standing\n### Rulings in force\n- **No cron** (now). "never use cron".\n### Ruled out\n- **Cron jobs** (now). The user refused them.\n### Superseded\n- **Day files → one memory file** (now).\n### Still intended\n- **Ship it** (now).\n## Recent\n- now: refreshed.\n<!-- covered-until: %s -->\n' "$UNTIL" > "$MR/memory.md"
@@ -5311,8 +5311,9 @@ check "agy: two SessionStarts at once among 1500 expired records both record the
 # a conversation reopened after its catalog record expired (agy runs no SessionStart for session/load or resume) gets it back
 rm -f "$SD/c1"; agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$LS]}"; agy_ev PreToolUse "{\"id\":\"l\",$(echo "$LS" | cut -c2-)" 2 >/dev/null
 check "agy: the first event of a conversation with no catalog record records the skill graph, as resumed" "graph resume" "$(cut -d' ' -f2,3 "$SD/c1" 2>/dev/null)"
-# the memory file of an Antigravity session (task step 8): init and prep read its conversation's transcript
-MW="$T/agy-mem"; now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+# the memory file of an Antigravity session (task step 8): init and prep read its conversation's transcript; c1's earlier steps
+# start over without their step times, as a conversation from before them does
+rm -f "$HOME/.mergeworthy/agy/c1.seen"; MW="$T/agy-mem"; now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 python3 -c 'import json, sys
 for s in [{"type": "USER_INPUT", "source": "USER_EXPLICIT", "content": "<USER_REQUEST>\nremember the cache plan\n</USER_REQUEST>"},
           {"type": "PLANNER_RESPONSE", "content": "Noted: the cache plan."}]:
@@ -5334,18 +5335,43 @@ agy_ev Stop "" 0 0 >/dev/null
 (cd "$AGR" && CLAUDE_CODE_SESSION_ID= ANTIGRAVITY_CONVERSATION_ID=c1 python3 "$R/bin/memory-prep" init "$MW" thread-agy >/dev/null 2>&1 && python3 "$R/bin/memory-prep" prep "$MW" >/dev/null 2>&1)
 check "agy: memory-prep keeps the order of prompts and answers that share one second" "Zebra configuration is enabled.|Zebra enabled.|Actually, zebra configuration is disabled.|Acknowledged, zebra disabled." \
   "$(sed -n 's/^\[[^]]* \(USER\|ASSISTANT\)\] //p' "$MW/memory-new.txt" 2>/dev/null | paste -sd'|')"
-# a refresh that stops after the ruling's answer (its chunk's last header, as delegate/memory-refresh.md writes it) leaves the
-# correction in that same second to the next one; one that read to the last entry, or a bare timestamp as earlier runs wrote, covers it
-mem_at() { echo "read-through: $1" >> "$MW/memory-notes.txt"; printf '# Memory\n<!-- covered-until: %s -->\n' "$1" > "$MW/memory.md"
-  b=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import memory_file as mf; print(mf.behind(sys.argv[2]))' "$R/hooks" "$MW")
-  echo "$b $(python3 "$R/bin/memory-prep" prep "$MW" | grep -c 'nothing new') $(sed -n 's/^\[[^]]* \(USER\|ASSISTANT\)\] //p' "$MW/memory-new.txt" | paste -sd'|')"; }
-hd() { sed -n 's/^\[\([^ ]*\) \(USER\|ASSISTANT\)\] .*/\1/p' "$MW/memory-new.txt" | sed -n "$1p"; }
-h2=$(hd 2); h4=$(hd 4)
+# each entry's time is when an event first showed its step, a microsecond apart at least: a refresh that stops after the ruling's
+# answer (its chunk's last header, as delegate/memory-refresh.md writes it) leaves the correction to the next one; one that read to
+# the last entry covers it
+mem_at() { echo "read-through: $2" >> "$1/memory-notes.txt"; printf '# Memory\n<!-- covered-until: %s -->\n' "$2" > "$1/memory.md"
+  b=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import memory_file as mf; print(mf.behind(sys.argv[2]))' "$R/hooks" "$1")
+  echo "$b $(python3 "$R/bin/memory-prep" prep "$1" | grep -c 'nothing new') $(sed -n 's/^\[[^]]* \(USER\|ASSISTANT\)\] //p' "$1/memory-new.txt" | paste -sd'|')"; }
+hd() { sed -n 's/^\[\([^ ]*\) \(USER\|ASSISTANT\)\] .*/\1/p' "$1/memory-new.txt" | sed -n "$2p"; }
+h2=$(hd "$MW" 2); h4=$(hd "$MW" 4)
 check "agy: memory stopped at the ruling's answer: behind, and the next prep has the correction and its answer" \
-  "True 0 Actually, zebra configuration is disabled.|Acknowledged, zebra disabled." "$(mem_at "$h2")"
-check "agy: memory read to the last entry of that second, or covered to it by a bare timestamp: not behind, nothing new" "False 1|False 1" \
-  "$(mem_at "$h4" | cut -d' ' -f1,2)|$(mem_at "$now" | cut -d' ' -f1,2)"
+  "True 0 Actually, zebra configuration is disabled.|Acknowledged, zebra disabled." "$(mem_at "$MW" "$h2")"
+check "agy: memory read to the last entry of that second: not behind, nothing new" "False 1" "$(mem_at "$MW" "$h4" | cut -d' ' -f1,2)"
 sed -i "\|^$MW\$|d" "$HOME/.mergeworthy/memory-roots.txt"
+# a T3 handoff continues a conversation in a new one, in the same second of agy's: the memory reads both in the order they were seen
+st() { # <file> <type:content>...: agy's steps, all in one second
+  f=$1; shift; python3 -c 'import json, sys
+for i, a in enumerate(sys.argv[2:]):
+    t, c = a.split(":", 1)
+    print(json.dumps({"step_index": i, "status": "DONE", "created_at": sys.argv[1], "type": t, "source": "USER_EXPLICIT",
+                      "content": f"<USER_REQUEST>\n{c}\n</USER_REQUEST>" if t == "USER_INPUT" else c}))' "$now" "$@" > "$f"; }
+ev2() { python3 -c 'import json, sys; print(json.dumps({"conversationId": sys.argv[1], "cwd": sys.argv[2], "transcriptPath": sys.argv[3], "hookEventName": "Stop", "executionNum": 0}))' "$1" "$AGR" "$AG/$1.jsonl" | python3 "$R/hooks/agy.py" Stop >/dev/null; }
+OLD=("USER_INPUT:Former instruction" "PLANNER_RESPONSE:Former answer" "USER_INPUT:Later former instruction" "PLANNER_RESPONSE:Later former answer")
+hand() { printf 'USER_INPUT:Context handoff (manual_context):\nThread: %s' "$1"; }  # T3's handoff to a new conversation, naming the thread
+hinit() { (cd "$AGR" && CLAUDE_CODE_SESSION_ID= ANTIGRAVITY_CONVERSATION_ID=$2 python3 "$R/bin/memory-prep" init "$1" "$3" >/dev/null 2>&1 && python3 "$R/bin/memory-prep" prep "$1" >/dev/null 2>&1); }
+MH="$T/agy-mem-hand"; st "$AG/hold.jsonl" "${OLD[@]}"; ev2 hold; st "$AG/hnew.jsonl" "$(hand thread-hand)" "PLANNER_RESPONSE:Unread new answer"; ev2 hnew; hinit "$MH" hold thread-hand
+check "agy: the first prep after a handoff in the same second: the old conversation's entries, then the new one's answer" \
+  "Former instruction|Former answer|Later former instruction|Later former answer|Unread new answer" "$(sed -n 's/^\[[^]]* \(USER\|ASSISTANT\)\] //p' "$MH/memory-new.txt" | paste -sd'|')"
+check "agy: a refresh that stopped after the old conversation's answer: behind, and the next prep has the rest of both conversations" \
+  "True 0 Later former instruction|Later former answer|Unread new answer" "$(mem_at "$MH" "$(hd "$MH" 2)")"
+MH3="$T/agy-mem-hand3"; st "$AG/hold3.jsonl" "${OLD[@]}"; ev2 hold3; hinit "$MH3" hold3 thread-hand3; h4=$(hd "$MH3" 4); mem_at "$MH3" "$h4" >/dev/null
+st "$AG/hnew3.jsonl" "$(hand thread-hand3)" "PLANNER_RESPONSE:Unread new answer"; ev2 hnew3
+check "agy: a refresh that read the old conversation to its end before the handoff: behind, and the next prep has the new answer" \
+  "True 0 Unread new answer" "$(mem_at "$MH3" "$h4")"
+times() { python3 -c 'import json, sys; print(" ".join(json.loads(l)["timestamp"] for l in open(sys.argv[1])))' "$HOME/.mergeworthy/agy/hold.jsonl"; }
+t1=$(times); ev2 hold
+check "agy: rebuilding the transcript at a later event keeps every entry's time, each after the one before" "same yes" \
+  "$([ "$t1" = "$(times)" ] && echo same || echo changed) $(python3 -c 'import sys; t = sys.argv[1].split(); print("yes" if t == sorted(set(t)) and len(t) == 4 else "no")' "$t1")"
+sed -i "\|^$MH\$|d; \|^$MH3\$|d" "$HOME/.mergeworthy/memory-roots.txt"
 # what a queued check says without blocking (additionalContext) reaches the model too: T3 refusing a launch (parent_not_active)
 DT='{"name":"mcp_t3-code_delegate_task","args":{"task":"Research the cache","title":"agy refused"}}'; DR='{"type":"GENERIC","content":"code: parent_not_active"}'
 pna() { rm -f "$HOME/.mergeworthy/agy/c1.post"; agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$DT]}"; agy_ev PostToolUse "{\"id\":\"d\",$(echo "$DT" | cut -c2-)" 2 >/dev/null; }
