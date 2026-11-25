@@ -1,6 +1,6 @@
 """How a review round reaches its reviewer: a launch (Agent, Task, delegate_task, t3_thread_launch) is a round by its name; a send
-(T3's t3_thread_send, Claude Code's SendMessage) is one only as a later round `<loop>-r<N>` sent to a reviewer an earlier round
-of that loop ran in (delegate §Continue), its message the task and its round name the title; any other send is no launch. A shell
+(T3's t3_thread_send, Claude Code's SendMessage) is one only as a round `<loop>-r<N>` that continues the reviewer it is sent to
+(loops.continues, delegate §Continue), its message the task and its round name the title; any other send is no launch. A shell
 reviewer (`codex exec`, its `resume`, `claude -p`) is a round by its prompt file's name, `<loop>-r<N>.md`."""
 import os, re
 import loops, t3_tasks
@@ -16,7 +16,7 @@ def as_launch(tool, ti):
     else:
         return ti, False
     m = loops.round_of(name)
-    if not seat or seat not in (loops.threads(m[1]) if m and int(m[2]) >= 2 else []):
+    if not seat or not (m and loops.continues(m[1], int(m[2]), seat)):
         return None
     return {'task': str(ti.get('message') or ''), 'title': name, 'role': 'review', 'clientRequestId': name, 'threadId': seat}, True
 

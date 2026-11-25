@@ -47,6 +47,14 @@ def threads(loop):
     return record(loop)['threads']
 
 
+def continues(loop, n, seat):
+    """Whether round n of loop, sent to the reviewer seat, continues it: a later round of a loop that ran there, or round 1 of
+    `<slice>-reverify`, `-recheck` or `-fresh` sent to a seat of that slice, or of `<loop>-ask<N>` sent to that loop's (delegate §Review rounds)."""
+    if n >= 2: return seat in threads(loop)
+    m = re.fullmatch(r'(.+)-(?:(reverify|recheck|fresh)|ask\d+)', loop)
+    return bool(m) and any((l.rsplit('-', 1)[0] if m[2] else l) == m[1] and seat in threads(l) for l in {*_json(LOOPS), *_json(OLD['threads'])})
+
+
 FANOUT = r'^Fan-out: converge §Running the agents$'  # a round 1 seating a step's reviewers at once (delegate §Reviewers)
 
 
