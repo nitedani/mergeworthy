@@ -11,7 +11,9 @@ def record(session_id, root, source):
     line = ' '.join([os.path.basename(os.path.realpath(root)), catalog, source or '-', time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())])
     sd = os.path.expanduser('~/.mergeworthy/sessions'); os.makedirs(sd, exist_ok=True)
     for f in os.listdir(sd):
-        if os.path.getmtime(os.path.join(sd, f)) < time.time() - 30 * 86400: os.remove(os.path.join(sd, f))
+        try:
+            if os.path.getmtime(os.path.join(sd, f)) < time.time() - 30 * 86400: os.remove(os.path.join(sd, f))
+        except FileNotFoundError: pass  # another session's start took it
     open(os.path.join(sd, os.path.basename(session_id)), 'w').write(line + '\n')
 
 

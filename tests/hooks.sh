@@ -5258,6 +5258,11 @@ rm -rf "$HOME/.local/bin"; agt "$U"; agy_ev SessionStart >/dev/null
 check "agy: SessionStart links the bin/ commands an agy session runs (pr-steps, gate-pass, gh-watch-start) through ~/.mergeworthy/current" \
   "$HOME/.mergeworthy/current/bin/pr-steps $HOME/.mergeworthy/current/bin/gate-pass $HOME/.mergeworthy/current/bin/gh-watch-start" \
   "$(readlink "$HOME/.local/bin/pr-steps") $(readlink "$HOME/.local/bin/gate-pass") $(readlink "$HOME/.local/bin/gh-watch-start")"
+# two sessions starting at once both record their catalog while both clear the same expired records
+SD="$HOME/.mergeworthy/sessions"; mkdir -p "$SD"; for i in $(seq 1500); do : > "$SD/old-$i"; done; touch -d 2000-01-01 "$SD"/old-*; rm -f "$SD/ag-a" "$SD/ag-b"
+for c in ag-a ag-b; do echo "{\"conversationId\":\"$c\",\"hookEventName\":\"SessionStart\"}" | python3 "$R/hooks/agy.py" SessionStart > "$T/$c.out" & done; wait
+check "agy: two SessionStarts at once among 1500 expired records both record the skill graph, with no error" "graph graph 0 0" \
+  "$(cut -d' ' -f2 "$SD/ag-a" 2>/dev/null || echo none) $(cut -d' ' -f2 "$SD/ag-b" 2>/dev/null || echo none) $(ls "$SD" | grep -c '^old-') $(cat "$T/ag-a.out" "$T/ag-b.out" | grep -c Error)"
 # a conversation's files go at a SessionStart once all of them are untouched for 14 days
 AD="$HOME/.mergeworthy/agy"; touch "$AD/old-conv.jsonl" "$AD/old-conv.post" "$AD/new-conv.jsonl" "$AD/new-conv.post"
 touch -d 2000-01-01 "$AD/old-conv.jsonl" "$AD/old-conv.post" "$AD/new-conv.post"; touch -d '13 days ago' "$AD/new-conv.jsonl"
