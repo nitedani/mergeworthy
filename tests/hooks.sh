@@ -4863,11 +4863,12 @@ for i in 1 2 3 4 5; do echo "g$i" >> "$SG/upstream.py"; rc "$SG" -am "g$i"; done
 check "BLOCK: a file a merge of main brought in before a 3-step plan, at its 6th change, naming it with no plan budget" "2 1" \
   "$(bg 'git commit -m g6' "$SG") $(grep -c 'upstream.py would get a 6th change on' "$T/err")"
 # a plan's steps end at its next heading: a numbered list under a later heading adds none
-SN="$T/simpht"; fx "$SN"; echo 1 >> "$SN/a.py"; rc "$SN" -am reviewed; pre "$SN" reverify "$T/rv.md"
-printf 'Pinnacle: one rule decides which lines a counts\nPlan:\n1. fold the patches\n\n## Tests\n1. a case\n2. another case\n' > "$T/fint.md"; (cd "$SN" && bash "$R/bin/pr-steps" finality "$T/fint.md" >/dev/null)
-for i in 1 2 3 4 5 6; do echo "n$i" >> "$SN/a.py"; rc "$SN" -am "n$i"; done; echo n7 >> "$SN/a.py"; git -C "$SN" add a.py
-check "BLOCK: after a 1-step plan followed by a numbered ## Tests list, the planned file's 7th change, naming a budget of 6" "2 1" \
-  "$(bg 'git commit -m n7' "$SN") $(grep -c 'a.py would get a 7th change (its recorded plan allows 6)' "$T/err")"
+# a plan's steps are its lines numbered 1, 2, 3… in turn: a later list restarting at 1 ends them; headings, fences and other lines don't
+# pn <dir> <plan text>: the plan lines of the finality note that text records on a reviewed head
+pn() { fx "$1"; echo 1 >> "$1/a.py"; rc "$1" -am reviewed; pre "$1" reverify "$T/rv.md"; printf 'Pinnacle: one rule decides which lines a counts\nPlan:\n%s' "$2" > "$1.md"
+  (cd "$1" && bash "$R/bin/pr-steps" finality "$1.md" >/dev/null); git -C "$1" notes --ref=drift show HEAD | grep '^plan'; }
+check "a 1-step plan, then an indented ## Tests heading with its own 1. and 2., records plan 1; a 2-step plan with a fenced column-one # comment between its steps records plan 2" "plan 1 plan 2" \
+  "$(pn "$T/plansteps-heading" $'1. fold the patches\n\n  ## Tests\n1. a case\n2. another case\n') $(pn "$T/plansteps-fence" $'1. fold the patches\n```sh\n# comment\n```\n2. drop the special case\n')"
 git -C "$SR" reset -q --soft origin/main; rc "$SR" -m squashed; for i in 1 2 3 4 5; do echo "s$i" >> "$SR/a.py"; rc "$SR" -am "s$i"; done; echo s6 >> "$SR/a.py"; git -C "$SR" add a.py; rs=$(bg 'git commit -m s6' "$SR")
 (cd "$SR" && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null); for i in 6 7 8 9 10; do echo "s$i" >> "$SR/a.py"; rc "$SR" -am "s$i"; done; echo s11 >> "$SR/a.py"; git -C "$SR" add a.py
 check "a squash of the reviewed branch by a reset and a commit counts nothing; BLOCK: the 6th change since its next review" "0 2" "$rs $(bg 'git commit -m s11' "$SR")"

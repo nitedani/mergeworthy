@@ -294,8 +294,8 @@ EOF
       { printf '%s\n' "$out is a layout check, one line per screenshot: '<file name> — OK', or a defect left unfixed as '<file name> — <the defect>, from <path:line>', the place it comes from, outside the functions this branch changes (mergeworthy:evidence step 4):" "$bad" >&2; exit 1; } ;;
   finality)
     # finality step 3: a code file's 6th change on the branch waits for this record (pre-bash-guard)
-    # the numbered steps of its 'Plan:', up to the next heading, which drift_note writes into the finality's note
-    plan=$(awk '/^Plan:/{p=1;next} p&&/^#/{exit} p&&/^[0-9]+\. +[^ ]/{n++} END{print n+0}' "$out")
+    # its 'Plan:' steps, numbered 1, 2, 3… until a number out of turn, which drift_note writes into the finality's note
+    plan=$(awk '/^Plan:/{p=1;next} p&&/^[0-9]+\. +[^ ]/{if ($0+0 != n+1) exit; n++} END{print n+0}' "$out")
     grep -Eq '^Pinnacle: +[^ ]+ +[^ ]+ +[^ ]+' "$out" && [ "$plan" -gt 0 ] ||
       { echo "$out needs a line 'Pinnacle: <the design>' and a line 'Plan:' followed by the ranked convergence plan, one numbered line '1. <step>' per step (mergeworthy finality step 3)" >&2; exit 1; } ;;
   loopb)
