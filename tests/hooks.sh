@@ -1781,7 +1781,6 @@ dra() { local j; j=$(python3 -c 'import json,sys; print(json.dumps({"tool_name":
 DFL="$RLD/dfix.ledger.md"; DF="Review: docs
 Read $T/page.txt and two sibling pages, $T/a.txt and $T/b.txt. Nothing else. Write $HOME/.mergeworthy/work/cl/dfix.docs-read.md."; df=$(dra dfix-codex-r1 "$DF"); printf 'R1.1 should fixed in %s\n' "$CH" > "$DFL"
 check "a docs reader whose brief names no checkout earns round 2 by a should fixed in the launcher's checkout" "0 0" "$df $(jd dfix-codex-r1 dra dfix-codex-r2 "$DF Ledger: $DFL")"
-check "a docs reader whose brief names no checkout earns round 2 by a should fixed in the launcher's checkout" "0 0" "$df $(dra dfix-codex-r2 "$DF Ledger: $DFL")"
 PH="$T/perfhome"; python3 - "$PH" <<'EOF2'
 import json, os, sys
 c = os.path.join(sys.argv[1], '.claude'); os.makedirs(os.path.join(c, 'review-journal', 'r'))
