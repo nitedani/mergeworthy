@@ -71,6 +71,11 @@ def task_id(agy_id):
     return re.sub(r'\W', '', agy_id)
 
 
+def whole(step):
+    """Whether a read_file result shows the whole file: agy's "Showing lines 1-N of N" (a line range or a long file shows fewer)."""
+    return bool(re.match(r'Showing lines 1-(\d+) of \1\n', output(step) + '\n'))
+
+
 def skill_of(path):
     """The mergeworthy skill whose SKILL.md path is, else None: agy opens a skill by reading it."""
     m = re.search(r'/skills/([\w-]+)/SKILL\.md$', path or '')
@@ -116,7 +121,7 @@ def claude_transcript(agy_steps, cwd, session):
             text = f'Command running in background with ID: {task_id(bg)}' if bg else s.get('error') or output(s)
             out.append({'type': 'user', 'timestamp': at, 'message': {'role': 'user', 'content': [
                 {'type': 'tool_result', 'tool_use_id': call_id(session, n), 'is_error': bad, 'content': text}]}})
-            if c.get('name') == 'read_file' and not bad and (k := skill_of((c.get('args') or {}).get('Path'))):
+            if c.get('name') == 'read_file' and not bad and whole(s) and (k := skill_of((c.get('args') or {}).get('Path'))):
                 out.append({'type': 'assistant', 'timestamp': at, 'cwd': cwd, 'message': {'role': 'assistant', 'content': [
                     {'type': 'tool_use', 'id': f'{call_id(session, n)}-skill', 'name': 'Skill', 'input': {'skill': f'mergeworthy:{k}'}}]}})
     return out

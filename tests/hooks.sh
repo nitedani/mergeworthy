@@ -5184,11 +5184,15 @@ SKILL="{\"name\":\"read_file\",\"args\":{\"Path\":\"$R/agy/skills/merging/SKILL.
 agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PUSH]}"
 check "agy: a push before mergeworthy:merging is open is denied in agy's form, naming the skill, exit 0" "deny 1 0" \
   "$(agy_ev PreToolUse "{\"id\":\"call_0\",$(echo "$PUSH" | cut -c2-)" 2 | python3 -c 'import json, sys; o = sys.stdin.read(); v = json.loads(o.rsplit(" ", 1)[0]); print(v["decision"], v["reason"].count("mergeworthy:merging"), o.rsplit(" ", 1)[1].strip())')"
-agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$SKILL]}" '{"type":"GENERIC","content":"Created At: x\n1: ---"}' "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PUSH]}"
-check "agy: once agy read merging's SKILL.md the skill gate passes the push" 0 "$(agy_ev PreToolUse "{\"id\":\"call_1\",$(echo "$PUSH" | cut -c2-)" 4 | grep -c 'pre-skill-gate')"
+# agy opens a skill by reading its SKILL.md whole: "Showing lines 1-N of N"; a line range shows fewer
+SKILL1="{\"name\":\"read_file\",\"args\":{\"Path\":\"$R/agy/skills/merging/SKILL.md\",\"StartLine\":1,\"EndLine\":1}}"
+skread() { agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$1]}" "{\"type\":\"GENERIC\",\"content\":\"Created At: x\\n$2\"}" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PUSH]}"
+  agy_ev PreToolUse "{\"id\":\"call_1\",$(echo "$PUSH" | cut -c2-)" 4 | python3 -c 'import json, sys; v = json.loads(sys.stdin.read().rsplit(" ", 1)[0]); print(v["decision"] + ":" + str(v.get("reason", "").count("- mergeworthy:merging,")))'; }
+check "agy: a push with merging's SKILL.md unread, read as a line range (1 of 70 lines), and read whole: denied for the skill, still denied for it, and allowed" "deny:1 deny:1 allow:0" \
+  "$(agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PUSH]}"; agy_ev PreToolUse "{\"id\":\"call_0\",$(echo "$PUSH" | cut -c2-)" 2 | python3 -c 'import json, sys; v = json.loads(sys.stdin.read().rsplit(" ", 1)[0]); print(v["decision"] + ":" + str(v.get("reason", "").count("- mergeworthy:merging,")))') $(skread "$SKILL1" 'Showing lines 1-1 of 70\n1: ---') $(skread "$SKILL" 'Showing lines 1-70 of 70\n1: ---')"
 agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$SKILL]}" '{"type":"GENERIC","status":"ERROR","error":"file does not exist","content":"x"}' "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PUSH]}"
 check "agy: a read of SKILL.md that failed opens nothing" 1 "$(agy_ev PreToolUse "{\"id\":\"call_1\",$(echo "$PUSH" | cut -c2-)" 4 | grep -c 'mergeworthy:merging')"
-agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$SKILL]}" '{"type":"GENERIC","content":"1: ---"}' '{"type":"CHECKPOINT","source":"SYSTEM","content":"# Resuming from a compaction"}' "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PUSH]}"
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$SKILL]}" '{"type":"GENERIC","content":"Showing lines 1-1 of 1\n1: ---"}' '{"type":"CHECKPOINT","source":"SYSTEM","content":"# Resuming from a compaction"}' "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PUSH]}"
 check "agy: a compaction (agy's CHECKPOINT step) closes the skills read before it" 1 "$(agy_ev PreToolUse "{\"id\":\"call_1\",$(echo "$PUSH" | cut -c2-)" 4 | grep -c 'mergeworthy:merging')"
 W="{\"name\":\"write_file\",\"args\":{\"Path\":\"$AGR/x.txt\",\"Content\":\"x\"}}"; RA="{\"name\":\"read_file\",\"args\":{\"Path\":\"$AGR/AGENTS.md\"}}"
 agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$W]}"
