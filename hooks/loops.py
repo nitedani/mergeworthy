@@ -6,7 +6,7 @@ the last round brought a fixed blocker or should or a declined blocker, and as a
 import fcntl, itertools, json, os, re, subprocess, sys
 import ledger, testpaths
 
-# {loop: {'rounds': [[n, the heads its brief pinned]], 'threads': the T3 threads or Claude agents its rounds ran in, 'outs': its reports, 'seated': a step's seat, 'step': the step pr-steps recorded it for}}
+# {loop: {'rounds': [[n, the heads its brief pinned, the reports it wrote]], 'threads': the T3 threads or Claude agents its rounds ran in, 'outs': its reports, 'seated': a step's seat, 'step': the step pr-steps recorded it for}}
 LOOPS = os.path.expanduser('~/.claude/review-loops.json')
 # what a loop recorded before review-loops.json: rounds {loop: [[n, heads]]}, threads {loop: [thread]}
 OLD = {'rounds': os.path.expanduser('~/.claude/review-rounds.json'), 'threads': os.path.expanduser('~/.claude/review-threads.json')}
@@ -65,7 +65,7 @@ def register(loop, n, heads, thread=None, post=False, outs=(), seated=False):
         r = loops[loop] = record(loop, loops)
         if thread and thread not in r['threads']: r['threads'].append(thread)
         if not post:
-            r['rounds'].append([n, heads])
+            r['rounds'].append([n, heads, sorted({os.path.realpath(o) for o in outs})])
             r['outs'] = sorted(set(r.get('outs', [])) | {os.path.realpath(o) for o in outs})
             r['seated'] = r.get('seated') or seated
     if thread or not post: locked_update(LOOPS, ran)
@@ -168,10 +168,11 @@ KINDS = {
 ID = re.compile(r'[\s>*-]*`?(R\d+\.\d+)')
 
 
-def reports_of(report):
-    """report and every report its loop recorded (register's outs)."""
+def reports_of(report, checkout='.'):
+    """report and the reports of its loop's other rounds on checkout's lineage (each head they pinned is in its HEAD's history)."""
     report = os.path.realpath(report)
-    return sorted({report} | {o for r in _json(LOOPS).values() if isinstance(r, dict) and report in r.get('outs', []) for o in r['outs']})
+    rounds = [x for r in _json(LOOPS).values() if isinstance(r, dict) and report in r.get('outs', []) for x in r['rounds']]
+    return sorted({report} | {o for _, hs, *outs in rounds if hs and all(git(checkout, 'merge-base', '--is-ancestor', h, 'HEAD').returncode == 0 for h in hs) for o in (outs or [[]])[0]})
 
 
 def close(path, kind='code', checkout='.', reports=()):
@@ -208,10 +209,11 @@ def close(path, kind='code', checkout='.', reports=()):
 if __name__ == '__main__' and sys.argv[1:2] == ['seats']:  # loops.py seats <report> <record file> <step>: open_seats, a line each
     print(*open_seats(sys.argv[2], [l.split()[1] for l in open(sys.argv[3]) if len(l.split()) > 1] if os.path.isfile(sys.argv[3]) else [], sys.argv[4]), sep='\n')
 elif __name__ == '__main__':  # loops.py close [--post|--fresh] <ledger> [<checkout>] [--report <the last round's report>]: exits 0 when the ledger closes its loop, else prints what stands
-    a, rep = sys.argv[2:], []
-    if '--report' in a: i = a.index('--report'); rep = reports_of(a[i + 1]); del a[i:i + 2]
+    a, rep = sys.argv[2:], None
+    if '--report' in a: i = a.index('--report'); rep = a[i + 1]; del a[i:i + 2]
     kind = {'--post': 'post', '--fresh': 'fresh'}.get(a[0], 'code'); flag = kind != 'code'
-    found = close(a[flag], kind=kind, checkout=(a[flag + 1:flag + 2] or ['.'])[0], reports=rep)
+    checkout = (a[flag + 1:flag + 2] or ['.'])[0]
+    found = close(a[flag], kind=kind, checkout=checkout, reports=reports_of(rep, checkout) if rep else [])
     if found:
         print('the ledger leaves this round open (mergeworthy:delegate §Review rounds):\n' + '\n'.join(found), file=sys.stderr)
     sys.exit(1 if found else 0)
