@@ -2708,6 +2708,10 @@ CLAUDE_CODE_SESSION_ID=s-none prs approach "$T/apo.md" >/dev/null
 check "an approach recorded by a session with no catalog record has no contract: 2" 0 "$(tail -n1 "$APF" | grep -c ' contract: 2$')"
 CLAUDE_CODE_SESSION_ID=s-v1 prs approach "$T/apo.md" >/dev/null
 check "an approach recorded by a session on v1's catalog has no contract: 2" 0 "$(tail -n1 "$APF" | grep -c ' contract: 2$')"
+echo '{"conversationId":"ag-conv","hookEventName":"SessionStart"}' | python3 "$R/hooks/agy.py" SessionStart >/dev/null
+CLAUDE_CODE_SESSION_ID= ANTIGRAVITY_CONVERSATION_ID=ag-conv prs approach "$T/apo.md" >/dev/null
+check "an approach recorded by an Antigravity session (its SessionStart records the catalog it loaded) carries contract: 2" 1 "$(tail -n1 "$APF" | grep -c ' contract: 2$')"
+CLAUDE_CODE_SESSION_ID=s-v1 prs approach "$T/apo.md" >/dev/null
 printf 'MERGE AS IS: yes\nCLEAN\n' > "$T/ofr.md"; std "$T/ofr.md"
 check "an old-contract branch still records loopb, refactor, and a fresh report without a Maintainer line" "0 0 0" "$(prs loopb "$T/olb.md") $(prs refactor "$T/pass.md") $(prs fresh "$T/ofr.md")"
 C=$(git -C "$G" rev-parse HEAD); printf 'y\n' > "$G/f2.md"; git -C "$G" add f2.md; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m d

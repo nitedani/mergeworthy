@@ -10,14 +10,7 @@ root=$(python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.cl
 agy_link=$([ -n "$root" ] && [ -f "$root/always-on.md" ] && "$root/hooks/agy-link" 2>&1)
 # The skill catalog this session loaded is the one in its own plugin folder ($CLAUDE_PLUGIN_ROOT), at start, resume and
 # compaction alike: pre-skill-gate reads it to tell a session still on the old skills from one on the skill graph
-[ -t 0 ] || python3 -c 'import json, os, select, sys, time
-d = json.loads(sys.stdin.read() or "{}") if select.select([sys.stdin], [], [], 1)[0] else {}; sid = d.get("session_id"); root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
-if sid and root:
-    catalog = "graph" if os.path.isfile(os.path.join(root, "skills", "task", "SKILL.md")) else "v1"
-    line = " ".join([os.path.basename(os.path.realpath(root)), catalog, d.get("source") or "-", time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())])
-    sd = os.path.expanduser("~/.mergeworthy/sessions"); os.makedirs(sd, exist_ok=True)
-    [os.remove(os.path.join(sd, f)) for f in os.listdir(sd) if os.path.getmtime(os.path.join(sd, f)) < time.time() - 30 * 86400]
-    open(os.path.expanduser("~/.mergeworthy/sessions/" + os.path.basename(sid)), "w").write(line + "\n")'
+[ -t 0 ] || python3 "$(dirname "$(readlink -f "$0")")/session_catalog.py"
 # Every tool in bin/ is on PATH through the stable path
 [ -n "$root" ] && [ -f "$root/always-on.md" ] && "$root/hooks/bin-links"
 # Framed like CLAUDE.md: the harness labels this output "hook success", which a model reads as a log line

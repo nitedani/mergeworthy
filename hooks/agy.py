@@ -6,6 +6,8 @@ transcript, ~/.mergeworthy/agy/<conversation>.jsonl, kept until the conversation
 result reaches agy's transcript only after its PostToolUse, so a PostToolUse hook runs at the conversation's next event, which shows its
 message by refusing that event's tool (or, at Stop, by continuing). agy's own subagents (swarm) run no hooks, so they are refused."""
 import json, os, re, subprocess, sys, time
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import session_catalog
 HERE = os.path.dirname(os.path.realpath(__file__))
 ROOT = os.path.dirname(HERE)
 TOOLS = {'run_command': 'Bash', 'read_file': 'Read', 'write_file': 'Write', 'edit_file': 'Edit'}
@@ -199,6 +201,7 @@ def main(name, d):
     if name == 'SessionStart':
         prune(ev.dir)
         subprocess.run([os.path.join(HERE, 'bin-links')])
+        session_catalog.record(ev.session, ROOT, 'startup')
         text = '\n'.join(run('SessionStart', {**ev.base('SessionStart'), 'source': 'startup'})[1])
         return {'injectSteps': [{'systemMessage': {'systemMessage': text}}] if text else []}
     c = d.get('toolCall') or {}
