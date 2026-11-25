@@ -3,7 +3,7 @@ review may run, and record a round that ran with register(); pr-steps and gate-p
 and pr-steps asks open_seats() whether a step's other reviewers closed. A round is refused once the heads its brief pins show the
 branch hasn't moved since four earlier rounds of its loop, after an earlier one there when the ledger its brief names doesn't show
 the last round brought a fixed blocker or should or a declined blocker, and as a fresh reader's second."""
-import fcntl, itertools, json, os, re, subprocess, sys
+import fcntl, glob, itertools, json, os, re, subprocess, sys
 import ledger, review_journal, testpaths
 
 # {loop: {'rounds': [[n, the heads its brief pinned, the reports it wrote]], 'threads': the T3 threads or Claude agents its rounds ran in, 'outs': its reports, 'seated': a step's seat, 'step': the step pr-steps recorded it for}}
@@ -66,14 +66,21 @@ CAP = 4  # rounds per loop on one head (delegate §Review rounds)
 FANOUT = r'^Fan-out: converge §Running the agents$'  # a round 1 seating a step's reviewers at once (delegate §Reviewers)
 
 
-def register(loop, n, heads, thread=None, post=False, outs=(), seated=False, checkouts=(), led=None):
+def declared(brief):
+    """(the step a round's brief declares by its line `Review: <step> [<part>]`, the seats its line `Seats: <seat>, …` does), each None without."""
+    st, se = re.search(r'^[ \t>*-]*Review:[ \t]*(' + '|'.join(STEPS) + r')\b', brief, re.M), re.search(r'^[ \t>*-]*Seats:[ \t]*(.+)$', brief, re.M)
+    return st and st[1], se and [x for x in re.split(r'[\s,]+', se[1]) if x] or None
+
+
+def register(loop, n, heads, thread=None, post=False, outs=(), seated=False, checkouts=(), led=None, step=None, seats=None):
     """Records round n of loop that ran: the thread it ran in, and, for a code review, the heads its brief pinned, the reports it
     writes (outs) and whether it is one of its step's seats (seated: its round 1 brief's FANOUT line), in review-loops.json and in
-    the journal of each change its brief names (checkouts), with the ledger it names (led)."""
+    the journal of each change its brief names (checkouts), with the ledger it names (led), the step its `Review:` line declares
+    and the seats its `Seats:` line does."""
     failed = []  # each record is written though the other's write failed, then the first failure is raised
     if not post:
         for c in dict.fromkeys(filter(None, map(review_journal.change_of, checkouts))):
-            try: review_journal.append(c, {'ev': 'round', 'loop': loop, 'n': n, 'heads': heads, 'outs': sorted({os.path.realpath(o) for o in outs}), 'thread': thread, 'seated': seated, 'checkouts': list(checkouts), 'ledger': led})
+            try: review_journal.append(c, {'ev': 'round', 'loop': loop, 'n': n, 'heads': heads, 'outs': sorted({os.path.realpath(o) for o in outs}), 'thread': thread, 'seated': seated, 'checkouts': list(checkouts), 'ledger': led, 'step': step, 'seats': seats})
             except OSError as e: failed.append(e)
     def ran(loops):
         r = loops[loop] = record(loop, loops)
@@ -109,21 +116,35 @@ def settle(key, ran):
         for r in held['rounds']: register(*r)
 
 
-def open_seats(report, recorded, step):
-    """The other seats of report's step, loops `<step-or-slice>-<provider>` seated with its loop (its slice's, or any whose round 1
-    pinned the same head) that no other step recorded, none of whose reports is in recorded (the outputs pr-steps recorded on the
-    head); records report's loop as step's: a step closes only once every seat's loop did."""
-    report, found = os.path.realpath(report), []
-    def seen(loops):
-        seats = {l: r for l, r in loops.items() if isinstance(r, dict) and r.get('seated')}
-        mine = [l for l, r in seats.items() if report in r.get('outs', [])]
-        first = lambda r: {h for n, hs, *_ in r['rounds'] if n == 1 for h in hs or ()}
-        stems, heads = {l.rsplit('-', 1)[0] for l in mine}, set().union(*map(first, (seats[l] for l in mine)))
-        for l in mine: seats[l]['step'] = step
-        found[:] = sorted(l for l, r in seats.items() if l not in mine and r.get('step', step) == step
-                          and (l.rsplit('-', 1)[0] in stems or first(r) & heads) and not set(r.get('outs', [])) & set(recorded))
-    locked_update(LOOPS, seen)
+STEPS = ('verify', 'reverify', 'shape', 'fresh', 'small', 'post', 'docs')  # what a loop checks (its brief's `Review: <step>`)
+
+
+def lineage(checkout):
+    """{loop: {'rounds': [[n, heads, outs]], 'first': its round 1's event}} of the loops in the journal of checkout's change whose
+    rounds' pinned heads are all in its HEAD's history (rounds that pinned none left out)."""
+    found = {}
+    for e in review_journal.events(review_journal.change_of(checkout) or ''):
+        if e['heads'] and all(desc(checkout, h, 'HEAD') for h in e['heads']):
+            r = found.setdefault(e['loop'], {'rounds': [], 'first': e})
+            r['rounds'].append([e['n'], e['heads'], e['outs']])
     return found
+
+
+def step_of(loop, first):
+    """The step a loop checks: its round 1's `Review: <step>`, else its name's `<step-or-slice>` (a slice's: verify)."""
+    stem = loop.rsplit('-', 1)[0]
+    return first.get('step') or (stem if stem in STEPS else 'verify')
+
+
+def open_seats(report, recorded, step, checkout='.'):
+    """The other seats of report's step on checkout's lineage, each still open: a loop whose round 1 seated it (its FANOUT line
+    or `Seats:`) checking step, or one its round 1's `Seats: <seat>, …` declares that never ran, none of whose reports is in
+    recorded (the outputs pr-steps recorded on the head). A step closes only once every seat's loop did."""
+    report, on = os.path.realpath(report), lineage(checkout)
+    mine = [l for l, r in on.items() if any(report in outs for _, _, outs in r['rounds'])]
+    named = {f"{l.rsplit('-', 1)[0]}-{s}" for l in mine for s in on[l]['first'].get('seats') or ()}
+    seats = {l for l, r in on.items() if (r['first'].get('seated') or r['first'].get('seats')) and step_of(l, r['first']) == step} | named
+    return sorted(l for l in seats - set(mine) if not (l in on and {o for _, _, outs in on[l]['rounds'] for o in outs} & set(recorded)))
 
 
 git = lambda wt, *a: subprocess.run(['git', '-C', wt, *a], capture_output=True, text=True)
@@ -217,18 +238,19 @@ KINDS = {
 }
 
 
-def loop_of(report):
-    """The loop a round of which wrote report, else None."""
-    report = os.path.realpath(report)
-    return next((l for l, r in _json(LOOPS).items() if isinstance(r, dict) and report in r.get('outs', [])), None)
-
-
 def reports_of(report, checkout='.'):
-    """report and the reports of its loop's other rounds on checkout's lineage (each head they pinned is in its HEAD's history),
-    leaving out a post's verdict (a fresh reader's body verdict), which its post loop's ledger closes."""
+    """report and the reports of its loop's other rounds on checkout's lineage (lineage), leaving out a post's verdict (a fresh
+    reader's body verdict), which its post loop's ledger closes."""
     import review_launch
-    rounds = record(loop)['rounds'] if (loop := loop_of(report)) else []
-    return sorted({os.path.realpath(report)} | {o for _, hs, *outs in rounds if hs and all(desc(checkout, h, 'HEAD') for h in hs) for o in (outs or [[]])[0] if not review_launch.draft_of(o)})
+    report = os.path.realpath(report)
+    rounds = next((r['rounds'] for r in lineage(checkout).values() if any(report in outs for _, _, outs in r['rounds'])), [])
+    return sorted({report} | {o for _, _, outs in rounds for o in outs if not review_launch.draft_of(o)})
+
+
+def loop_of(report, checkout='.'):
+    """The loop a round of which on checkout's lineage wrote report, else None."""
+    report = os.path.realpath(report)
+    return next((l for l, r in lineage(checkout).items() if any(report in outs for _, _, outs in r['rounds'])), None)
 
 
 def close(path, kind='code', checkout='.', reports=(), loop=None):
@@ -263,14 +285,18 @@ def close(path, kind='code', checkout='.', reports=(), loop=None):
     return out
 
 
-if __name__ == '__main__' and sys.argv[1:2] == ['seats']:  # loops.py seats <report> <record file> <step>: open_seats, a line each
+if __name__ == '__main__' and sys.argv[1:2] == ['seats']:  # loops.py seats <report> <record file> <step>: open_seats, a line each; exits 1 for a report of a round off HEAD's lineage
+    rp = os.path.realpath(sys.argv[2])
+    repo = os.path.dirname(review_journal.change_of('.') or '/-/-')  # every branch's journal of this repo
+    if any(rp in e['outs'] for f in glob.glob(os.path.join(repo, '*.jsonl')) for e in review_journal.events(f)) and not loop_of(rp):
+        sys.exit(f"{sys.argv[2]} is the report of a round pinned to a head that isn't in HEAD's history: review this head, then record its report (mergeworthy:delegate §Review rounds)")
     print(*open_seats(sys.argv[2], [l.split()[1] for l in open(sys.argv[3]) if len(l.split()) > 1] if os.path.isfile(sys.argv[3]) else [], sys.argv[4]), sep='\n')
 elif __name__ == '__main__':  # loops.py close [--post|--fresh] <ledger> [<checkout>] [--report <the last round's report>]: exits 0 when the ledger closes its loop, else prints what stands
     a, rep = sys.argv[2:], None
     if '--report' in a: i = a.index('--report'); rep = a[i + 1]; del a[i:i + 2]
     kind = {'--post': 'post', '--fresh': 'fresh'}.get(a[0], 'code'); flag = kind != 'code'
     checkout = (a[flag + 1:flag + 2] or ['.'])[0]
-    found = close(a[flag], kind=kind, checkout=checkout, reports=reports_of(rep, checkout) if rep else [], loop=rep and loop_of(rep))
+    found = close(a[flag], kind=kind, checkout=checkout, reports=reports_of(rep, checkout) if rep else [], loop=rep and loop_of(rep, checkout))
     if found:
         print('the ledger leaves this round open (mergeworthy:delegate §Review rounds):\n' + '\n'.join(found), file=sys.stderr)
     sys.exit(1 if found else 0)

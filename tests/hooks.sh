@@ -2580,11 +2580,19 @@ seat() { for s in "$@"; do fo "$s-r1" "{\"providerInstanceId\":\"${s#*-}\"}" "Re
 $FO" >/dev/null; printf 'Checked it.\nNO BUGS\n' > "$T/$s.md"; std "$T/$s.md"; done; }
 seat alpha-codex alpha-claude beta-codex beta-claude
 fs=$(for s in alpha-codex alpha-claude beta-codex beta-claude; do (cd "$GM" && bash "$R/bin/pr-steps" verify "$T/$s.md" >/dev/null 2>&1); grep -c '^verify ' ~/.claude/pr-steps/"$MH"; done | xargs); seat shape-codex shape-claude
-check "pr-steps verify waits for every seat of every slice on the head: verify records with the fourth report; a later step's seat on that head waits only for its own step's" "0 0 0 1 shape-claude" "$fs $(python3 "$R/hooks/loops.py" seats "$T/shape-codex.md" "$T/none" shape | xargs)"
+check "pr-steps verify waits for every seat of every slice on the head: verify records with the fourth report; a later step's seat on that head waits only for its own step's" "0 0 0 1 shape-claude" "$fs $(cd "$GM" && python3 "$R/hooks/loops.py" seats "$T/shape-codex.md" "$T/none" shape | xargs)"
 GN="$T/seats3"; git init -q -b main "$GN"; git -C "$GN" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; NH=$(git -C "$GN" rev-parse HEAD)
 for s in vn-codex vn-claude shape-codex shape-claude; do fo "$s-r1" "{\"providerInstanceId\":\"${s#*-}\"}" "Review $GN at head $NH; output to $T/$s-n.md
 $FO" >/dev/null; printf 'Checked it.\nNO BUGS\n' > "$T/$s-n.md"; std "$T/$s-n.md"; done
-known "verify records once its own two seats' reports do, while Loop B's seats on that head are still open" 1 "$(for s in vn-codex vn-claude; do (cd "$GN" && bash "$R/bin/pr-steps" verify "$T/$s-n.md" >/dev/null 2>&1); done; grep -c '^verify ' ~/.claude/pr-steps/"$NH")"
+check "verify records once its own two seats' reports do, while Loop B's seats on that head are still open" 1 "$(for s in vn-codex vn-claude; do (cd "$GN" && bash "$R/bin/pr-steps" verify "$T/$s-n.md" >/dev/null 2>&1); done; grep -c '^verify ' ~/.claude/pr-steps/"$NH")"
+GD="$T/seats4"; git init -q -b main "$GD"; git -C "$GD" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; DH=$(git -C "$GD" rev-parse HEAD)
+fo dc-codex-r1 '{"providerInstanceId":"codex"}' "Review: verify dc
+Seats: codex, claude2
+Review $GD at head $DH; output to $T/dc-codex.md" >/dev/null; printf 'Checked it.\nNO BUGS\n' > "$T/dc-codex.md"; std "$T/dc-codex.md"
+check "a round 1 declaring its step's seats holds the step for a declared seat that never ran" "1 0" "$(cd "$GD" && bash "$R/bin/pr-steps" verify "$T/dc-codex.md" 2>&1 | grep -c 'one seat of verify.*dc-claude2') $(grep -c '^verify ' ~/.claude/pr-steps/"$DH")"
+git -C "$GD" commit -q --allow-empty -m b; git -C "$GD" checkout -q -b off "$DH"; git -C "$GD" commit -q --allow-empty -m off
+fo dd-codex-r1 '{"providerInstanceId":"codex"}' "Review $GD at head $(git -C "$GD" rev-parse off); output to $T/dd-codex.md" >/dev/null; git -C "$GD" checkout -q main; printf 'Checked it.\nNO BUGS\n' > "$T/dd-codex.md"; std "$T/dd-codex.md"
+check "BLOCK: pr-steps verify on a report whose round pinned a head off HEAD's history, naming it" "1 1" "$(cd "$GD" && bash "$R/bin/pr-steps" verify "$T/dd-codex.md" >/dev/null 2>"$T/err"; echo $?) $(grep -c "isn't in HEAD's history" "$T/err")"
 for p in pa pb; do git init -q -b main "$T/$p"; git -C "$T/$p" -c user.name=t -c user.email=$p@t commit -q --allow-empty -m $p; done; PA=$(git -C "$T/pa" rev-parse HEAD); PBH=$(git -C "$T/pb" rev-parse HEAD)
 printf 'R1.1 should: the parser drops a field\n' > "$T/a-first.md"; printf 'R1.1 nit: wording\nR1.2 should: the date\n' > "$T/b-first.md"; printf 'R2.1 nit: phrasing\n' > "$T/b-second.md"; std "$T/b-second.md"
 printf '%s\n' 'R1.1 nit declined: wording' "R1.2 should fixed in $PBH" > "$T/b.ledger.md"
