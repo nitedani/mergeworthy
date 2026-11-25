@@ -251,6 +251,9 @@ elif review:
     # a routed round counts in its seat's loop of its slice, a `Continues: <loop>` one in the loop it takes over
     routed = re.fullmatch(loops.ROUTED, rnd[1])
     owners = [l for l in here if routed and l.rsplit('-', 1)[0] == routed[1] and not re.fullmatch(loops.ROUTED, l)] + re.findall(r'^[ \t>*-]*Continues:[ \t]*(\S+)', brief, re.M)
+    if sent and (why := review_transport.fix_check(rnd[0], brief, review_transport.last_active(d.get('tool_name'), ti['threadId'], d.get('transcript_path')))):
+        sys.stderr.write(f"BLOCKED: {why}")
+        refused()
     if why := (rnd[2] == '1' and not sent and not owners and loops.third_seat(rnd[1], tops, brief)) or loops.admit(rnd[1], int(rnd[2]), tops, heads, led, owners):
         sys.stderr.write(f"BLOCKED: {why}")
         refused()

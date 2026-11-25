@@ -1179,7 +1179,7 @@ def check(t, has_cd):
         need_ask('release', f'`{p} publish`', (repo_of(origin(pkg)) or (None, None))[1])
     if p == 'codex' and ('exec' in a or a[:1] == ['e']) and under_t3():
         block("under T3 Code, start Codex through T3, where the user sees it: delegate_task with target {providerInstanceId: codex, "
-              "model: <the review model from orchestrator_capabilities>}, the prompt file's path in the task; a later round goes to its thread by t3_thread_send (mergeworthy:delegate §Reviewers, §Continue)")
+              "model: <the review model from orchestrator_capabilities>}, the prompt file's path in the task; a later round to a fresh reviewer, a fix check of its findings to its thread by t3_thread_send (mergeworthy:delegate §Reviewers, §Continue)")
     if p in ('docker', 'docker-compose'):
         check_compose(env, t)
     # a watcher wakes the session that started it, and a subagent's result is its last message: the main session owns the PR and its watcher
@@ -1321,6 +1321,7 @@ def check(t, has_cd):
         if (p == 'codex' and ('exec' in a or a[:1] == ['e']) or '-p' in a or '--print' in a) and not post and (r := review_transport.shell_round(' '.join(t))):
             L = launch.Launch(r[1])
             owners = re.findall(r'^[ \t>*-]*Continues:[ \t]*(\S+)', L.brief, re.M)
+            if (f := review_transport.resumed(t)) is not None and (why := review_transport.fix_check(r[0][0], L.brief, f and os.path.getmtime(f))): block(why)
             if why := (r[0][2] == '1' and not owners and loops.third_seat(r[0][1], L.checkouts, L.brief)) or loops.admit(r[0][1], int(r[0][2]), *loops.pinned(L), loops.ledger_named(L.brief), owners): block(why)
             rounds.append((r[0][1], int(r[0][2]), loops.pinned(L)[1], None, False, outs, bool(re.search(loops.FANOUT, r[1], re.M)), L.checkouts, loops.ledger_named(L.brief), *loops.declared(L.brief)))
     written = [f for x, c in zip(targets, files) for f in known(c, x)]
