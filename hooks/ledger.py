@@ -5,13 +5,14 @@ closes its loop; loops.admit asks owed whether a code round may follow."""
 import re
 from typing import NamedTuple
 
-LINE = re.compile(r'^[\s>*-]*`?(?:(R(\d+)\.\d+)|[a-z][^\s`]*\d[^\s`]*)`?\s+`?(blocker|should|nit)`?:?(?=\s|$)\s*(.*?)\s*$', re.I)
+LINE = re.compile(r'^[\s>*-]*`?(?:((?:[a-z][\w-]*:)?R(\d+)\.\d+)|[a-z][^\s`]*\d[^\s`]*)`?\s+`?(blocker|should|nit)`?:?(?=\s|$)\s*(.*?)\s*$', re.I)
 ROUND = re.compile(r'^[\s>*-]*`?Round:\s*(\d+)', re.I | re.M)
 FIXED = re.compile(r'fixed in ([0-9a-f]{7,40})\b')
 
 
 class Row(NamedTuple):
-    """A finding line: the line, its id R<round>.<n> (None for an id of another form), its round, label and outcome."""
+    """A finding line: the line, its id R<round>.<n>, a post's second seat's first (`<seat>:R<round>.<n>`; None for an id of another
+    form), its round, label and outcome."""
     line: str
     id: str
     round: int

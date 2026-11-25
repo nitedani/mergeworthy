@@ -236,6 +236,11 @@ def admit(loop, n, tops, heads, led, owners=()):
     if earlier and led and os.path.isfile(led) and last < earlier[-1]:
         return (f"{loop}-r{n} follows r{earlier[-1]}, but the ledger {led} shows round {last} as its last: rule r{earlier[-1]}'s findings in it first "
                 f"(each `R{earlier[-1]}.<n> <label> <outcome>`, then `Round: {earlier[-1]}`), then send the round (mergeworthy:delegate §Review rounds).\n")
+    import review_launch
+    said = [o for m, _, outs in rounds_of(loop, tops) if m in earlier for o in outs if not review_launch.draft_of(o)]
+    if led and os.path.isfile(led) and (missing := unruled(rows, said)):
+        return (f"{loop}-r{n} follows r{earlier[-1]}, but the ledger {led} doesn't rule every finding of its loop's reports:\n" + '\n'.join(missing)
+                + "\nRule each (`R<round>.<n> <label> <outcome>`), then send the round (mergeworthy:delegate §Review rounds).\n")
     if earlier and not kept:
         return (f"{loop}-r{n} follows r{earlier[-1]} on this head or one within {testpaths.STALE_LINES} changed lines of it, and a loop gets its next round only "
                 "while its last round brought a blocker or should you kept and fixed, or a blocker you declined (mergeworthy:delegate §Review rounds), but "
@@ -274,6 +279,20 @@ def loop_of(report, checkout='.'):
     return next((l for l, r in lineage(checkout).items() if any(report in outs for _, _, outs in r['rounds'])), None)
 
 
+def unruled(rows, reports):
+    """Each finding `R<round>.<n> <label>` of reports (a path, or (its name, its text, its seat)) that has no row among the ledger's
+    rows with its id, the seat's first (`<seat>:R<round>.<n>`) where it has one, and label, a line each: what admit and close both refuse."""
+    ruled, out = {r.id: r.label for r in rows}, []
+    for rp in reports:
+        name, text, seat = rp if isinstance(rp, tuple) else (rp, None, '')
+        try: said = [r for r in ledger.rows(open(name, errors='replace').read() if text is None else text) if r.id]
+        except OSError: continue
+        key = lambda r: f'{seat}:{r.id}' if f'{seat}:{r.id}' in ruled else r.id
+        out += [f"{name}: {r.line}  <- {'its ledger row says ' + ruled[key(r)] if key(r) in ruled else 'no ledger row'}: the ledger keeps the seat's id and label, its ruling the outcome"
+                for r in said if ruled.get(key(r)) != r.label]
+    return out
+
+
 def close(path, kind='code', checkout='.', reports=(), loop=None):
     """What leaves the loop of the ledger at path open, [] when it closes: each finding of every round is the kind's fix (a code
     fix's sha in checkout's HEAD history), `declined: <why>` or `listed: <where>`, no blocker is listed or open, the completed round
@@ -283,14 +302,7 @@ def close(path, kind='code', checkout='.', reports=(), loop=None):
     try: rows, others, last = ledger.read(path)
     except OSError as e: return [f'{path}: {e.strerror}']
     misnamed = [f'{line}  <- its id is not R<round>.<n>' for line in others]
-    ruled = {r.id: r.label for r in rows}
-    unbound = []
-    for rp in reports:  # a path, or (its name, its text)
-        try: said = [r for r in ledger.rows(rp[1] if isinstance(rp, tuple) else open(rp, errors='replace').read()) if r.id]
-        except OSError: continue
-        rp = rp[0] if isinstance(rp, tuple) else rp
-        unbound += [f"{rp}: {r.line}  <- {'its ledger row says ' + ruled[r.id] if r.id in ruled else 'no ledger row'}: the ledger keeps the seat's id and label, its ruling the outcome"
-                    for r in said if ruled.get(r.id) != r.label]
+    unbound = unruled(rows, reports)
     if not rows: return misnamed + unbound + [f"{path} has no '<id> <label> <outcome>' lines (R<round>.<n> blocker|should|nit {fix}|declined: <why>|listed: <where>)"]
     reached = lambda sha: desc(checkout, sha, 'HEAD')
     # the rounds loop ran on HEAD, as admit counts them; the round number for a ledger whose loop isn't named

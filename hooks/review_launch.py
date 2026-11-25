@@ -25,6 +25,13 @@ def draft_of(out):
     return seat[1] + '.md' if seat and not os.path.isfile(m[1] + '.md') and os.path.isfile(seat[1] + '.md') else m[1] + '.md'
 
 
+def seat_tag(out):
+    """The seat a post's review output is of, which its ledger rows name first (`<seat>:R<round>.<n>`): a second seat's `<seat>` of
+    <name>-<seat>.review.out (and its -r<N>), '' for any other."""
+    draft, m = draft_of(out), REVIEW_OUT.fullmatch(out)
+    return m[1][len(draft) - 2:] if draft and len(m[1]) > len(draft) - 3 else ''
+
+
 def misnamed(out):
     """Why a reviewer's output out can't be tied to its draft: a .out file whose real path is in a drafts/ folder, not named
     <name>.review.out; '' otherwise."""
@@ -90,21 +97,27 @@ def answers(out, draft, ledger_file=None):
     """Why the review in out doesn't let draft be posted, gate-pass's review rule ('' when it does).
     The reviewer was handed draft's text (reviewed()); its verdict is exactly CLEAN, or ledger_file (default: <name>.ledger.md beside draft,
     if any), written after it, closes the round (loops.close, a post's rules, with a row for each finding of the verdict, of every
-    other seat's verdict on the same text and of every earlier verdict set_aside() kept in the post's journal); the launch postdates the latest human comment
+    other seat's verdict on the same text, which waits for each seat launched on it, of an earlier text's verdict at another output
+    and of every earlier verdict set_aside() kept in the post's journal); the launch postdates the latest human comment
     thread-context.md beside draft records. out None: a status post, which has no review and is checked by draft's own time. Writes nothing."""
     why, at = reviewed(out, draft) if out else ('', int(os.path.getmtime(draft)))
     if why: return f'{draft}: {why}'
     said = lambda o: [l.strip() for l in open(o, errors='replace').read().splitlines() if l.strip()]
     try: verdict = said(out) if out else ['CLEAN']
     except OSError: verdict = []  # its reviewer hasn't written yet
-    # every seat of the post loop on this text: the other outputs whose last launch was handed the same draft text
+    # every seat of the post loop on this text: the other outputs whose last launch was handed the same draft text; the rest
+    # hold the verdicts of earlier texts (a later round's <name>.review-r<N>.out beside them)
     events = review_journal.events(review_journal.post_of(draft)) if out else []
     last = {e['out']: e['sha'] for e in events if e['ev'] == 'post'}
-    seats = sorted(o for o, sha in last.items() if o != os.path.realpath(out or '') and sha == last.get(os.path.realpath(out or '')) and os.path.isfile(o))
+    others = [o for o in sorted(last) if o != os.path.realpath(out or '')]
+    seats = [o for o in others if last[o] == last.get(os.path.realpath(out or ''))]
+    if waiting := [o for o in seats if not os.path.isfile(o) or not said(o)]:
+        return f"{draft}: {', '.join(waiting)} was launched on this text and holds no verdict yet: wait for its reviewer, or launch it again"
     if verdict != ['CLEAN'] or any(said(o) != ['CLEAN'] for o in seats):
         beside = os.path.splitext(draft)[0] + '.ledger.md'
         ledger_file = ledger_file or (beside if os.path.isfile(beside) else None)
-        found = loops.close(ledger_file, 'post', reports=[out, *seats] + [(f"{e['out']} (round set aside)", e['text']) for e in events if e['ev'] == 'verdict']) if ledger_file else []
+        reports = [(o, open(o, errors='replace').read(), seat_tag(o)) for o in [out, *seats, *(o for o in others if o not in seats and os.path.isfile(o))] if os.path.isfile(o)]
+        found = loops.close(ledger_file, 'post', reports=reports + [(f"{e['out']} (round set aside)", e['text'], seat_tag(e['out'])) for e in events if e['ev'] == 'verdict']) if ledger_file else []
         if ledger_file and not found and (not verdict or os.path.getmtime(ledger_file) < os.path.getmtime(out)):
             found = [f'{out} holds no verdict yet: wait for its reviewer, or launch the round again' if not verdict else f'{ledger_file} was last written before the verdict in {out}: add its findings, then pass it']
         if not ledger_file or found:
