@@ -32,7 +32,7 @@ Step 2, reshape what stays: the prompt below, the user's text, unchanged in ever
 
 Step 3, rate every file and function old ⇒ new: verify each implementation (behavior preserved, mutation probes still red, comments true), and say whether each decline holds.
 
-<From round 2: the loop's ledger <path>, the commits since <list>, what its reports left unchecked <list>: every finding there and in the code they touch; skip the rest and its declined ids; rerate the rows they touch.>
+<From round 2: the loop's ledger <path>, the commits since <list>, what its reports left unchecked <list>: every finding there and in the code they touch; skip the rest and its declined shoulds; rate every file afresh.>
 
 Write <report path>: `## Standards read` (above), then step 1's findings, DELETE-NOW first, then FIX, FILL, DELETE-CAREFULLY, OWNER-DECISION; NIT rows under `## Dropped` (agent.md); the mechanism census; the 10-second pass as classes; step 2's ratings and ✅ coverage list; step 3's old ⇒ new ratings and the prior findings' closure; an honest-positive statement ("nothing worth changing" where that is the result). End the file with a line CLEAN only when your review in this run and all three steps leave nothing behavior-preserving whose value is worth its price (its should, agent.md).
 Final message: the path, counts per disposition, the three highest-value findings, the overall rating.
