@@ -51,19 +51,14 @@ def output(step):
     return m[1] if (m := re.search(r'\nCommand output:\n(.*)\Z', text, re.S)) else '' if text.startswith('Command exited with code') else text
 
 
-def finished(agy_steps):
-    """Each ended background task's result text, by task id, from agy's message that it finished."""
-    return {m[1]: m[2] for s in agy_steps if s.get('type') == 'SYSTEM_MESSAGE' and (m := FINISHED.search(s.get('content') or ''))}
+def outcome(name, step):
+    """How call name ended, from its result step (or agy's message that its task finished): whether it failed, its output, agy's error."""
+    return {'failed': failed(name, step), 'output': output(step), 'error': step.get('error') or ''}
 
 
 def started(step):
     """The task id of a background command's result step (agy's RUNNING step naming its task), else None."""
     return m[1] if step.get('status') == 'RUNNING' and (m := STARTED.search(step.get('content') or '')) else None
-
-
-def ended(step, ends):
-    """A call's result step once the call ended: a background command's from ends, else None."""
-    return step if not (t := started(step)) else {'status': 'DONE', 'content': ends[t]} if t in ends else None
 
 
 def task_id(agy_id):
@@ -94,8 +89,9 @@ def steps(path):
 def claude_transcript(agy_steps, cwd, session):
     """agy's transcript steps as Claude Code transcript entries: a typed request, each model text and tool call, each call's result, a
     Stop hook's continuation reason, and a compaction (agy's CHECKPOINT step) as compact_boundary. A background command's result
-    and its end are Claude Code's: a started task, then a <task-notification>."""
-    calls, out = {}, []
+    and its end are Claude Code's: a started task, then a <task-notification>. Returns the entries and the outcome of each call that
+    ended, by its step (a background command's once its task finished)."""
+    calls, tasks, ends, out = {}, {}, {}, []
     for s in agy_steps:
         at, n = s.get('created_at'), s['step_index']
         if s.get('type') == 'USER_INPUT':
@@ -104,9 +100,10 @@ def claude_transcript(agy_steps, cwd, session):
         elif s.get('type') == 'CHECKPOINT':
             out.append({'type': 'system', 'subtype': 'compact_boundary', 'timestamp': at})
         elif s.get('type') == 'SYSTEM_MESSAGE' and (m := FINISHED.search(s.get('content') or '')):
-            status = 'failed' if failed('run_command', {'content': m[2]}) else 'completed'
+            o = outcome('run_command', {'content': m[2]})
+            if m[1] in tasks: ends[tasks.pop(m[1])] = o
             out.append({'type': 'user', 'timestamp': at, 'message': {'role': 'user', 'content': (
-                f"<task-notification>\n<task-id>{task_id(m[1])}</task-id>\n<status>{status}</status>\n<summary>{output({'content': m[2]})}</summary>\n</task-notification>")}})
+                f"<task-notification>\n<task-id>{task_id(m[1])}</task-id>\n<status>{'failed' if o['failed'] else 'completed'}</status>\n<summary>{o['output']}</summary>\n</task-notification>")}})
         elif s.get('type') == 'SYSTEM_MESSAGE':
             out.append({'type': 'user', 'timestamp': at, 'message': {'role': 'user', 'content': f"Stop hook feedback:\n{s.get('content') or ''}"}})
         elif s.get('type') == 'PLANNER_RESPONSE':
@@ -117,14 +114,17 @@ def claude_transcript(agy_steps, cwd, session):
             out.append({'type': 'assistant', 'timestamp': at, 'cwd': cwd, 'message': {'role': 'assistant', 'model': s.get('model'), 'content': text}})
         elif n in calls:
             c = calls.pop(n)
-            bad = not (bg := started(s)) and failed(c.get('name'), s)
-            text = f'Command running in background with ID: {task_id(bg)}' if bg else s.get('error') or output(s)
+            if bg := started(s):
+                tasks[bg], bad, text = n, False, f'Command running in background with ID: {task_id(bg)}'
+            else:
+                o = ends[n] = outcome(c.get('name'), s)
+                bad, text = o['failed'], o['error'] or o['output']
             out.append({'type': 'user', 'timestamp': at, 'message': {'role': 'user', 'content': [
                 {'type': 'tool_result', 'tool_use_id': call_id(session, n), 'is_error': bad, 'content': text}]}})
             if c.get('name') == 'read_file' and not bad and whole(s) and (k := skill_of((c.get('args') or {}).get('Path'))):
                 out.append({'type': 'assistant', 'timestamp': at, 'cwd': cwd, 'message': {'role': 'assistant', 'content': [
                     {'type': 'tool_use', 'id': f'{call_id(session, n)}-skill', 'name': 'Skill', 'input': {'skill': f'mergeworthy:{k}'}}]}})
-    return out
+    return out, ends
 
 
 class Event:
@@ -136,10 +136,11 @@ class Event:
         self.transcript = os.path.join(self.dir, f'{self.session}.jsonl')
         self.pending = os.path.join(self.dir, f'{self.session}.post')
         self.steps = steps(d['transcriptPath']) if os.path.isfile(d.get('transcriptPath') or '') else []
+        entries, self.outcomes = claude_transcript(self.steps, d.get('cwd'), self.session)
         os.makedirs(self.dir, exist_ok=True)
         tmp = f'{self.transcript}.{os.getpid()}'
         with open(tmp, 'w') as f:
-            f.writelines(json.dumps(e) + '\n' for e in claude_transcript(self.steps, d.get('cwd'), self.session))
+            f.writelines(json.dumps(e) + '\n' for e in entries)
         os.replace(tmp, self.transcript)
 
     def base(self, event):
@@ -168,17 +169,15 @@ def run(event, d):
 
 
 def settle(ev):
-    """Runs the PostToolUse hooks of each earlier call that ended in agy's transcript (a background command, once its task
-    finished): their messages."""
+    """Runs the PostToolUse hooks of each earlier call that has an outcome (a background command, once its task finished): their
+    messages."""
     try: waiting = [json.loads(l) for l in open(ev.pending)]
     except OSError: return []
-    ends, errs = finished(ev.steps), []
-    done = {s['step_index']: r for s in ev.steps if (r := ended(s, ends))}
+    errs, done = [], ev.outcomes
     for p in (p for p in waiting if p['step'] in done):
-        s = done[p['step']]
-        bad = failed(p['name'], s)
-        d = {**ev.base('PostToolUseFailure' if bad else 'PostToolUse'), 'cwd': p['cwd'], **ev.call(p['name'], p['args'], p['step'])}
-        d['tool_response'] = {'stdout': output(s), 'stderr': s.get('error') or '', 'interrupted': False} if p['name'] == 'run_command' else output(s)
+        o = done[p['step']]
+        d = {**ev.base('PostToolUseFailure' if o['failed'] else 'PostToolUse'), 'cwd': p['cwd'], **ev.call(p['name'], p['args'], p['step'])}
+        d['tool_response'] = {'stdout': o['output'], 'stderr': o['error'], 'interrupted': False} if p['name'] == 'run_command' else o['output']
         errs += [f"mergeworthy's check after your earlier call {p['name']} (step {p['step']}): {e}" for e in run(d['hook_event_name'], d)[0]]
     rest = [p for p in waiting if p['step'] not in done]
     with open(f'{ev.pending}.{os.getpid()}', 'w') as f: f.writelines(json.dumps(p) + '\n' for p in rest)
