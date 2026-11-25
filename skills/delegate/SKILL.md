@@ -43,19 +43,19 @@ Later work on the same thing (confirming fixes, re-rating) continues that agent.
 
 ### Model class
 
-The classes are model families, never versions: the largest is the newest Fable your harness offers, else the strongest; the strongest is the newest Opus, and the smallest with an effort setting is the newest Haiku. The main session runs on the strongest class: it plans, briefs, decides, spot-checks results and approves every word to a maintainer. Never a model the user excluded, an effort above xhigh, nor a model version in a prompt, skill or memory.
-- **Choosing among options** (`pull-request` step 5's rating, `finality` step 3's converging agent): the largest class; **root causes and authors** (code, docs, PR bodies, replies, designs): the main session's; both at high effort. **Audits and exploration:** at medium.
+The classes are model families, never versions: the largest is the newest Fable your harness offers, else the strongest; the strongest is the newest Opus, and the smallest with an effort setting is the newest Haiku. The main session plans, briefs, decides, spot-checks results and approves every word to a maintainer. Never a model the user excluded, an effort above xhigh, nor a model version in a prompt, skill or memory.
+- **Choosing among options** (`pull-request` step 5's rating, `finality` step 3's converging agent): the largest class; **root causes and authors** (code, docs, PR bodies, replies, designs): the strongest; both at high effort. **Audits and exploration:** at medium.
 - **The smallest class with an effort setting, at high effort,** only for work where nothing it writes ships: `finality` step 3's branch agents, running gates, tests and a reproduction from a recipe, log mining, data processing and bookkeeping.
 
 ### Reviewers
 
 Every independent check (every review, verifier and shape pass, a cold read and the fresh reader) picks its reviewer in this order, trying the first each time: an earlier "unavailable" note (memory, a post's badge) is no check:
-- **First, a model from another company than the main session's:** on its default model, at the effort chosen per call (high; medium for a verifier or a few-sentence reply). In T3 Code, one `delegate_task` per round, role `review`, the reviewer's `providerInstanceId` from `orchestrator_capabilities`:
+- **First, a model from another company than Claude's:** on its default model, at the effort chosen per call (high; medium for a verifier or a few-sentence reply). In T3 Code, one `delegate_task` per round, role `review`, the reviewer's `providerInstanceId` from `orchestrator_capabilities`:
    ```json
    {"task": "Follow <prompt file>; output to <out>", "role": "review", "target": {"providerInstanceId": "<id>", "options": {"<its effort option>": "<effort>"}}, "clientRequestId": "<loop>-r<N>"}
    ```
    Elsewhere, a Codex reviewer: `codex exec -c model_reasoning_effort=<effort> --sandbox danger-full-access --skip-git-repo-check -o <out> "$(cat <prompt file>)" < /dev/null`; a Claude reviewer: `claude -p --effort <effort> --permission-mode bypassPermissions < <prompt file> > <out>`.
-- **Else, a fresh agent of the main session's class,** with the same prompt and a task line `Fallback: <what failed>`, when the first fails (spent credits, rate limits, errors, timeouts, no reply). A report, even a partial one, is no failure: its next round runs on the same company's model, counting against §Review rounds.
+- **Else, a fresh agent of the strongest class,** with the same prompt and a task line `Fallback: <what failed>`, when the first fails (spent credits, rate limits, errors, timeouts, no reply). A report, even a partial one, is no failure: its next round runs on the same company's model, counting against §Review rounds.
 
 The prompt is a file with the template filled. Never write `CLEAN` yourself. Send fixes to the same reviewer (§Continue); a fresh one only when the artifact changed beyond them or needs a final cold read. Record which reviewer ran (Tier M: a `ledger.md` row); on Tier M or L work, after a round-1 fallback, round 2 runs on the other company's model once back.
 
