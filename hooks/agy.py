@@ -29,9 +29,10 @@ def claude_input(name, args):
     return {k: v for k, v in a.items() if k != 'toolSummary'}
 
 
-def call_id(step):
-    """A tool call's id in both records: agy's transcript names no call ids, but its call's result is the step the hooks' stepIdx names."""
-    return f'agy-{step}'
+def call_id(session, step):
+    """A tool call's id in both records, unique across conversations: agy's transcript names no call ids, but its call's result is the
+    step the hooks' stepIdx names."""
+    return f'agy-{session}-{step}'
 
 
 def failed(name, step):
@@ -76,7 +77,7 @@ def steps(path):
     return out
 
 
-def claude_transcript(agy_steps, cwd):
+def claude_transcript(agy_steps, cwd, session):
     """agy's transcript steps as Claude Code transcript entries: a typed request, each model text and tool call, each call's result, a
     Stop hook's continuation reason, and a compaction (agy's CHECKPOINT step) as compact_boundary. A background command's result
     and its end are Claude Code's: a started task, then a <task-notification>."""
@@ -98,7 +99,7 @@ def claude_transcript(agy_steps, cwd):
             text = [{'type': 'text', 'text': s['content']}] if s.get('content') else []
             for i, c in enumerate(s.get('tool_calls') or []):
                 calls[n + 1 + i] = c
-                text.append({'type': 'tool_use', 'id': call_id(n + 1 + i), 'name': claude_name(c.get('name', '')), 'input': claude_input(c.get('name'), c.get('args'))})
+                text.append({'type': 'tool_use', 'id': call_id(session, n + 1 + i), 'name': claude_name(c.get('name', '')), 'input': claude_input(c.get('name'), c.get('args'))})
             out.append({'type': 'assistant', 'timestamp': at, 'cwd': cwd, 'message': {'role': 'assistant', 'model': s.get('model'), 'content': text}})
         elif n in calls:
             c = calls.pop(n)
@@ -106,10 +107,10 @@ def claude_transcript(agy_steps, cwd):
             bad = not bg and failed(c.get('name'), s)
             text = f'Command running in background with ID: {task_id(bg[1])}' if bg else s.get('error') or output(s)
             out.append({'type': 'user', 'timestamp': at, 'message': {'role': 'user', 'content': [
-                {'type': 'tool_result', 'tool_use_id': call_id(n), 'is_error': bad, 'content': text}]}})
+                {'type': 'tool_result', 'tool_use_id': call_id(session, n), 'is_error': bad, 'content': text}]}})
             if c.get('name') == 'read_file' and not bad and (k := skill_of((c.get('args') or {}).get('Path'))):
                 out.append({'type': 'assistant', 'timestamp': at, 'cwd': cwd, 'message': {'role': 'assistant', 'content': [
-                    {'type': 'tool_use', 'id': f'{call_id(n)}-skill', 'name': 'Skill', 'input': {'skill': f'mergeworthy:{k}'}}]}})
+                    {'type': 'tool_use', 'id': f'{call_id(session, n)}-skill', 'name': 'Skill', 'input': {'skill': f'mergeworthy:{k}'}}]}})
     return out
 
 
@@ -125,14 +126,14 @@ class Event:
         os.makedirs(self.dir, exist_ok=True)
         tmp = f'{self.transcript}.{os.getpid()}'
         with open(tmp, 'w') as f:
-            f.writelines(json.dumps(e) + '\n' for e in claude_transcript(self.steps, d.get('cwd')))
+            f.writelines(json.dumps(e) + '\n' for e in claude_transcript(self.steps, d.get('cwd'), self.session))
         os.replace(tmp, self.transcript)
 
     def base(self, event):
         return {'session_id': self.session, 'transcript_path': self.transcript, 'cwd': self.d.get('cwd'), 'hook_event_name': event}
 
     def call(self, name, args, step):
-        return {'tool_name': claude_name(name), 'tool_input': claude_input(name, args), 'tool_use_id': call_id(step)}
+        return {'tool_name': claude_name(name), 'tool_input': claude_input(name, args), 'tool_use_id': call_id(self.session, step)}
 
 
 def matched(event, tool):

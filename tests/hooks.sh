@@ -5206,6 +5206,15 @@ agy_ev Stop "" 0 0 >/dev/null
 check "agy: a background command stays pending, not failed, while it runs; once its task finished with exit 0 it is settled as a success" "1 False 0 | 0 o/r bg" \
   "$b1 | $(wc -l < "$HOME/.mergeworthy/agy/c1.post") $(cat "$PUSHED_HEADS" 2>/dev/null)"
 check "agy: its end is Claude Code's <task-notification>, not Stop feedback" 1 "$(grep -c '<task-notification>.*<status>completed</status>' "$HOME/.mergeworthy/agy/c1.jsonl")"
+# step numbers restart in each conversation: one conversation's command never settles another's at the same step
+rm -f "$OWN_PENDING" "$PUSHED_HEADS" "$HOME/.mergeworthy/agy/c1.post"
+python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import agy, own_actions
+own_actions.intend(agy.Event("PreToolUse", {"conversationId": "session-A"}).call("run_command", {}, 2)["tool_use_id"], {"PUSHED_HEADS": ["fixture-owner fixture-head"]})' "$R/hooks"
+PF='{"name":"run_command","args":{"CommandLine":"printf ok"}}'
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PF]}"; agy_ev PostToolUse "{\"id\":\"p\",$(echo "$PF" | cut -c2-)" 2 >/dev/null
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PF]}" '{"type":"GENERIC","content":"Command exited with code 0.\n\nCommand output:\nok\n"}' '{"type":"PLANNER_RESPONSE","content":"Done."}'
+agy_ev Stop "" 0 0 >/dev/null
+check "agy: conversation c1's command at step 2 leaves session-A's pending action at step 2 pending" "1 0" "$(grep -c 'fixture-head' "$OWN_PENDING") $(cat "$PUSHED_HEADS" 2>/dev/null | wc -l)"
 unset OWN_PENDING PUSHED_HEADS
 agt "$U" '{"type":"PLANNER_RESPONSE","content":"Hello."}'
 check "agy: a Stop no check refuses ends the turn ({})" '{} 0' "$(MERGEWORTHY_STOP_CHECKIN=off agy_ev Stop "" 0 0)"
