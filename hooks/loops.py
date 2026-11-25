@@ -63,9 +63,11 @@ def register(loop, n, heads, thread=None, post=False, outs=(), seated=False, che
     """Records round n of loop that ran: the thread it ran in, and, for a code review, the heads its brief pinned, the reports it
     writes (outs) and whether it is one of its step's seats (seated: its round 1 brief's FANOUT line), in review-loops.json and in
     the journal of each change its brief names (checkouts)."""
+    failed = []  # each record is written though the other's write failed, then the first failure is raised
     if not post:
         for c in dict.fromkeys(filter(None, map(review_journal.change_of, checkouts))):
-            review_journal.append(c, {'ev': 'round', 'loop': loop, 'n': n, 'heads': heads, 'outs': sorted({os.path.realpath(o) for o in outs}), 'thread': thread, 'seated': seated})
+            try: review_journal.append(c, {'ev': 'round', 'loop': loop, 'n': n, 'heads': heads, 'outs': sorted({os.path.realpath(o) for o in outs}), 'thread': thread, 'seated': seated})
+            except OSError as e: failed.append(e)
     def ran(loops):
         r = loops[loop] = record(loop, loops)
         if thread and thread not in r['threads']: r['threads'].append(thread)
@@ -73,7 +75,10 @@ def register(loop, n, heads, thread=None, post=False, outs=(), seated=False, che
             r['rounds'].append([n, heads, sorted({os.path.realpath(o) for o in outs})])
             r['outs'] = sorted(set(r.get('outs', [])) | {os.path.realpath(o) for o in outs})
             r['seated'] = r.get('seated') or seated
-    if thread or not post: locked_update(LOOPS, ran)
+    try:
+        if thread or not post: locked_update(LOOPS, ran)
+    except OSError as e: failed.append(e)
+    if failed: raise failed[0]
 
 
 def open_seats(report, recorded, step):
