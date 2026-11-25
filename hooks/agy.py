@@ -2,9 +2,9 @@
 """Antigravity (agy) hook event argv[1], from the plugin in agy/: runs the hooks hooks/hooks.json gives Claude Code for that event and
 tool, and prints their verdict as agy's JSON on stdout, always (agy lets a tool through on an empty stdout). Each hook reads what it
 would under Claude Code: agy's tools under their Claude names and arguments, and agy's transcript rewritten as a Claude Code
-transcript, ~/.mergeworthy/agy/<conversation>.jsonl, kept until the conversation's files are untouched for 14 days. A tool's result reaches agy's transcript only after its PostToolUse, so a
-PostToolUse hook runs at the conversation's next event, which shows its message by refusing that event's tool (or, at Stop, by
-continuing). agy's own subagents (swarm) run no hooks, so they are refused."""
+transcript, ~/.mergeworthy/agy/<conversation>.jsonl, kept until the conversation's files are untouched for 14 days. A tool's
+result reaches agy's transcript only after its PostToolUse, so a PostToolUse hook runs at the conversation's next event, which shows its
+message by refusing that event's tool (or, at Stop, by continuing). agy's own subagents (swarm) run no hooks, so they are refused."""
 import json, os, re, subprocess, sys, time
 HERE = os.path.dirname(os.path.realpath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -52,10 +52,14 @@ def finished(agy_steps):
     return {m[1]: m[2] for s in agy_steps if s.get('type') == 'SYSTEM_MESSAGE' and (m := FINISHED.search(s.get('content') or ''))}
 
 
+def started(step):
+    """The task id of a background command's result step (agy's RUNNING step naming its task), else None."""
+    return m[1] if step.get('status') == 'RUNNING' and (m := STARTED.search(step.get('content') or '')) else None
+
+
 def ended(step, ends):
-    """A call's result step once the call ended: a background command's (a RUNNING step naming its task) from ends, else None."""
-    m = step.get('status') == 'RUNNING' and STARTED.search(step.get('content') or '')
-    return step if not m else {'status': 'DONE', 'content': ends[m[1]]} if m[1] in ends else None
+    """A call's result step once the call ended: a background command's from ends, else None."""
+    return step if not (t := started(step)) else {'status': 'DONE', 'content': ends[t]} if t in ends else None
 
 
 def task_id(agy_id):
@@ -104,9 +108,8 @@ def claude_transcript(agy_steps, cwd, session):
             out.append({'type': 'assistant', 'timestamp': at, 'cwd': cwd, 'message': {'role': 'assistant', 'model': s.get('model'), 'content': text}})
         elif n in calls:
             c = calls.pop(n)
-            bg = s.get('status') == 'RUNNING' and STARTED.search(s.get('content') or '')
-            bad = not bg and failed(c.get('name'), s)
-            text = f'Command running in background with ID: {task_id(bg[1])}' if bg else s.get('error') or output(s)
+            bad = not (bg := started(s)) and failed(c.get('name'), s)
+            text = f'Command running in background with ID: {task_id(bg)}' if bg else s.get('error') or output(s)
             out.append({'type': 'user', 'timestamp': at, 'message': {'role': 'user', 'content': [
                 {'type': 'tool_result', 'tool_use_id': call_id(session, n), 'is_error': bad, 'content': text}]}})
             if c.get('name') == 'read_file' and not bad and (k := skill_of((c.get('args') or {}).get('Path'))):
