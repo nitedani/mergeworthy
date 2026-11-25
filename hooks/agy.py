@@ -5,7 +5,7 @@ would under Claude Code: agy's tools under their Claude names and arguments, and
 transcript, ~/.mergeworthy/agy/<conversation>.jsonl, kept until the conversation's files are untouched for 14 days. A tool's
 result reaches agy's transcript only after its PostToolUse, so a PostToolUse hook runs at the conversation's next event, which shows its
 message by refusing that event's tool (or, at Stop, by continuing). agy's own subagents (swarm) run no hooks, so they are refused."""
-import json, os, re, subprocess, sys, time
+import datetime, json, os, re, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import session_catalog
 HERE = os.path.dirname(os.path.realpath(__file__))
@@ -13,6 +13,7 @@ ROOT = os.path.dirname(HERE)
 TOOLS = {'run_command': 'Bash', 'read_file': 'Read', 'write_file': 'Write', 'edit_file': 'Edit'}
 OWN_AGENTS = ('swarm',)
 KEEP = 14 * 86400
+LIVE = 600  # a step first seen within this many seconds of agy's time for it is timed when seen; an older one keeps agy's time
 DIR = os.path.expanduser('~/.mergeworthy/agy')  # each conversation's Claude Code transcript (.jsonl), queued checks (.post), step times (.seen)
 HEADER = re.compile(r'\A(?:(?:Created|Completed) At: .*\n)*')
 STARTED = re.compile(r'^Tool is running as a background task with task id: (\S+)$', re.M)
@@ -98,13 +99,21 @@ def stamp(us):
     return time.strftime('%Y-%m-%dT%H:%M:%S', time.gmtime(s)) + f'.{f:06d}Z'
 
 
+def first_seen(step, now):
+    """The time to record for a step an event shows for the first time (microseconds): now, when that is within LIVE of agy's own
+    time for it; else agy's time, so a reopened or migrated conversation's old steps keep their age for every reader of the times."""
+    try: own = int(datetime.datetime.fromisoformat(step['created_at'].replace('Z', '+00:00')).timestamp() * 10 ** 6)
+    except (KeyError, AttributeError, TypeError, ValueError): return now
+    return now if now - own <= LIVE * 10 ** 6 else own
+
+
 def claude_transcript(agy_steps, cwd, session, seen):
     """agy's transcript steps as Claude Code transcript entries: a typed request, each model text and tool call, each call's result, a
     Stop hook's continuation reason, and a compaction (agy's CHECKPOINT step) as compact_boundary. A background command's result
     and its end are Claude Code's: a started task, then a <task-notification>; the start's result is an error until the task ended with
     success, so a read through it (`sleep 5; cat AGENTS.md`) counts for shellcmd.files_read only then. A call agy logged no result for (declined, cancelled)
     failed with no result once a later step shows it ended, as Claude Code records one. Each entry's time is when an event first
-    showed its step (seen, microseconds by step), and at least a microsecond after the entry before it: agy's own times are whole
+    showed its step (seen, microseconds by step; first_seen), and at least a microsecond after the entry before it: agy's own times are whole
     seconds, which can't order a conversation's entries, nor a handoff's after the conversation it continues, for memory-prep's
     covered-until. Returns the entries and the outcome of each call that ended, by its step (a background command's once its task
     finished)."""
@@ -175,7 +184,7 @@ class Event:
         try: seen = {int(k): v for k, v in json.load(open(times)).items()}
         except (OSError, ValueError, AttributeError): seen = {}  # a conversation from before step times: its steps are seen now
         now = time.time_ns() // 1000
-        if new := {s['step_index']: now for s in self.steps if s['step_index'] not in seen}:
+        if new := {s['step_index']: first_seen(s, now) for s in self.steps if s['step_index'] not in seen}:
             seen.update(new)
             with open(f'{times}.{os.getpid()}', 'w') as f: json.dump(seen, f)
             os.replace(f'{times}.{os.getpid()}', times)

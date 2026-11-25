@@ -5372,6 +5372,61 @@ t1=$(times); ev2 hold
 check "agy: rebuilding the transcript at a later event keeps every entry's time, each after the one before" "same yes" \
   "$([ "$t1" = "$(times)" ] && echo same || echo changed) $(python3 -c 'import sys; t = sys.argv[1].split(); print("yes" if t == sorted(set(t)) and len(t) == 4 else "no")' "$t1")"
 sed -i "\|^$MH\$|d; \|^$MH3\$|d" "$HOME/.mergeworthy/memory-roots.txt"
+# a step first seen more than 10 minutes after agy's own time for it (a conversation reopened, pruned or from before step times)
+# keeps agy's time: old history stays old for the memory and for every hook that reads a time
+sta() { # <conversation> <ago>|<type:content>...: agy's steps, each at its own time (`date -d` relative, e.g. "-2 days")
+  c=$1; shift; python3 -c 'import json, subprocess, sys
+for i, a in enumerate(sys.argv[1:]):
+    ago, t, c = a.split("|", 1)[0], *a.split("|", 1)[1].split(":", 1)
+    at = subprocess.run(["date", "-u", "-d", ago, "+%Y-%m-%dT%H:%M:%SZ"], capture_output=True, text=True).stdout.strip()
+    step = {"step_index": i, "status": "DONE", "created_at": at, "type": t, "source": "USER_EXPLICIT"}
+    if t == "USER_INPUT": step["content"] = f"<USER_REQUEST>\n{c}\n</USER_REQUEST>"
+    elif t == "PLANNER_RESPONSE" and c.startswith("{"): step["tool_calls"] = [json.loads(c)]
+    else: step["content"] = c
+    print(json.dumps(step))' "$@" > "$AG/$c.jsonl"; }
+D2=$(date -u -d '-2 days' +%FT%TZ); M160=$(date -u -d '-160 minutes' +%FT%TZ)  # fixed once: a conversation's steps keep their times when its log grows
+OLDX=("$D2|USER_INPUT:Two-day-old ruling" "$D2|PLANNER_RESPONSE:Two-day-old answer")
+NEWX=("now|USER_INPUT:Today's ruling" "now|PLANNER_RESPONSE:Today's answer")
+lines() { sed -n 's/^\[[^]]* \(USER\|ASSISTANT\)\] //p' "$1/memory-new.txt" | paste -sd'|'; }
+MO="$T/agy-mem-old"; sta hage "${OLDX[@]}" "${NEWX[@]}"; ev2 hage; hinit "$MO" hage thread-age
+check "agy: the first refresh of a conversation with a two-day-old exchange and no step times takes the last 24 hours only" \
+  "Today's ruling|Today's answer" "$(lines "$MO")"
+MC="$T/agy-mem-cov"; sta hcov "${OLDX[@]}" "$M160|USER_INPUT:Recent ruling" "$M160|PLANNER_RESPONSE:Recent answer"; ev2 hcov; hinit "$MC" hcov thread-cov
+cov=$(sed -n 4p "$AG/hcov.jsonl" | python3 -c 'import json, sys; print(json.load(sys.stdin)["created_at"])')
+rm "$HOME/.mergeworthy/agy/hcov.seen"; ev2 hcov
+b1=$(echo "read-through: $cov" >> "$MC/memory-notes.txt"; printf '# Memory\n<!-- covered-until: %s -->\n' "$cov" > "$MC/memory.md"
+  python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import memory_file as mf; print(mf.behind(sys.argv[2]))' "$R/hooks" "$MC")
+sta hcov "${OLDX[@]}" "$M160|USER_INPUT:Recent ruling" "$M160|PLANNER_RESPONSE:Recent answer" "${NEWX[@]}"; rm "$HOME/.mergeworthy/agy/hcov.seen"; ev2 hcov
+check "agy: a conversation covered to its fourth step and rebuilt with no step times: not behind; with today's exchange appended, prep has only that" \
+  "False True 0 Today's ruling|Today's answer" "$b1 $(mem_at "$MC" "$cov")"
+# pruned (no step times) and reopened, its 17-day-old exchange covered through 16 days ago: its Stop ends the turn, with no refresh order
+MP="$T/agy-mem-pruned"; sta hpr "-17 days|USER_INPUT:Old work" "-17 days|PLANNER_RESPONSE:Old work done"; ev2 hpr; hinit "$MP" hpr thread-pr
+printf '# Memory\n<!-- covered-until: %s -->\n' "$(date -u -d '-16 days' +%FT%TZ)" > "$MP/memory.md"; echo "read-through: $(date -u -d '-16 days' +%FT%TZ)" > "$MP/memory-notes.txt"
+rm "$HOME/.mergeworthy/agy/hpr.seen"
+check "agy: a pruned conversation reopened with its old exchange covered: Stop ends the turn ({})" '{} 0' \
+  "$(python3 -c 'import json, sys; print(json.dumps({"conversationId": "hpr", "cwd": sys.argv[1], "transcriptPath": sys.argv[2], "hookEventName": "Stop", "executionNum": 0}))' "$AGR" "$AG/hpr.jsonl" \
+    | MERGEWORTHY_STOP_CHECKIN=off python3 "$R/hooks/agy.py" Stop | tr -d '\n'; echo " ${PIPESTATUS[1]}")"
+sed -i "\|^$MO\$|d; \|^$MC\$|d; \|^$MP\$|d" "$HOME/.mergeworthy/memory-roots.txt"
+# a post two days ago from a watch dir that retired an hour ago needs no watcher at today's Stop
+WR="$T/agy-retired"; mkdir -p "$WR/drafts"; echo "$WR" >> "$HOME/.claude/gh-watch-dirs.txt"; touch -d '-1 hour' "$WR/retired"
+GP="{\"name\":\"run_command\",\"args\":{\"CommandLine\":\"gh issue comment 5 --repo o/r --body-file $WR/drafts/r.md\"}}"
+sta hret "-2 days|USER_INPUT:Post the reply" "-2 days|PLANNER_RESPONSE:$GP" "-2 days|GENERIC:Command exited with code 0.
+
+Command output:
+https://github.com/o/r/issues/5#issuecomment-1" "${NEWX[@]}"; ev2 hret
+check "agy: a post two days before its watch dir retired, read at today's Stop: no watcher asked for" 0 \
+  "$(python3 -c 'import json, sys; print(json.dumps({"transcript_path": sys.argv[1], "cwd": sys.argv[2], "session_id": "hret"}))' "$HOME/.mergeworthy/agy/hret.jsonl" "$WR" \
+    | MERGEWORTHY_STOP_CHECKIN=off python3 "$R/hooks/stop-lint.py" 2>&1 | grep -c 'nothing wakes it')"
+sed -i "\|^$WR\$|d" "$HOME/.claude/gh-watch-dirs.txt"
+# the implementation gate's three hours: a read of the tracked source four hours ago is too old, one 100 seconds ago is not
+GR="$T/x-work/agy-rd"; git init -q "$GR"; git -C "$GR" remote add origin git@github.com:o/r.git; mkdir -p "$GR/src"; echo 'export {}' > "$GR/src/a.ts"; git -C "$GR" add src/a.ts
+RS="{\"name\":\"read_file\",\"args\":{\"Path\":\"$GR/src/a.ts\"}}"
+gate() { sta "$1" "$2|USER_INPUT:Read the source" "$2|PLANNER_RESPONSE:$RS" "$2|GENERIC:Showing lines 1-1 of 1
+1: export {}" "${NEWX[@]}"; ev2 "$1"
+  python3 -c 'import json, sys; print(json.dumps({"tool_name": "mcp__t3-code__delegate_task", "cwd": sys.argv[1], "transcript_path": sys.argv[3], "tool_input": {"task": sys.argv[2], "title": sys.argv[2][:50], "role": "implementation"}}))' "$T" 'Build o/r#9 by skills/code/SKILL.md per ~/.mergeworthy/projects/o/r.md' "$HOME/.mergeworthy/agy/$1.jsonl" \
+    | timeout 10 python3 "$R/hooks/pre-agent-dedupe.py" 2>&1 | grep -c 'read the code this change is about yourself'; }
+check "agy: an implementation brief after a read of the source four hours ago is refused for it; after one 100 seconds ago it isn't" "1 0" \
+  "$(gate hgate4 '-4 hours') $(gate hgate0 '-100 seconds')"
 # what a queued check says without blocking (additionalContext) reaches the model too: T3 refusing a launch (parent_not_active)
 DT='{"name":"mcp_t3-code_delegate_task","args":{"task":"Research the cache","title":"agy refused"}}'; DR='{"type":"GENERIC","content":"code: parent_not_active"}'
 pna() { rm -f "$HOME/.mergeworthy/agy/c1.post"; agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$DT]}"; agy_ev PostToolUse "{\"id\":\"d\",$(echo "$DT" | cut -c2-)" 2 >/dev/null; }
