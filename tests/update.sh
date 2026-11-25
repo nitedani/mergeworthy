@@ -80,7 +80,12 @@ if [ -d "$R/cli/node_modules" ]; then
   check "a copied plugin folder at the link's path: the install exits 0, warns naming it, keeps it and installs Codex too" "0 1 yes 1" \
     "$rc $(grep -c 'loads a copy of mergeworthy' "$T/out") $([ -d "$(prof antigravity)/mergeworthy" ] && [ ! -L "$(prof antigravity)/mergeworthy" ] && echo yes || echo no) $(grep -c '^codex plugin add' "$T/calls")"
   rm -rf "$HOME/.codex"
-  rmdir "$(prof antigravity)/mergeworthy"; ln -sfn "$NEW" "$HOME/.mergeworthy/current"
+  rmdir "$(prof antigravity)/mergeworthy"
+  # an ~/.local/bin it can't write is a warning too
+  rm "$HOME/.local/bin/gate-pass"; : > "$NEW/bin/zz-linked"; ln -s x "$HOME/.local/bin/zz-linked"; chmod a-w "$HOME/.local/bin"; : > "$T/calls"; node "$R/cli/index.mjs" --yes --agents claude,codex > "$T/out" 2>&1; rc=$?; chmod u+w "$HOME/.local/bin"
+  check "an unwritable ~/.local/bin: the install exits 0, warns naming it, links the antigravity instance and installs Codex too" "0 1 $HOME/.mergeworthy/current/agy 1" \
+    "$rc $(grep -c 'local/bin/gate-pass.*Permission denied' "$T/out") $(readlink "$(prof antigravity)/mergeworthy") $(grep -c '^codex plugin add' "$T/calls")"
+  rm -rf "$HOME/.codex"; rm "$NEW/bin/zz-linked" "$HOME/.local/bin/zz-linked"; ln -sfn "$NEW" "$HOME/.mergeworthy/current"
 fi
 rm -r "$HOME/.t3/userdata/providers"; echo '{"providerInstances":{"antigravity":{"driver":"codex"}}}' > "$HOME/.t3/userdata/settings.json"
 bash "$R/bin/mergeworthy-update" > "$T/out" 2>&1; check "an instance \`antigravity\` on another driver gets no link" no "$([ -e "$HOME/.t3/userdata/providers" ] && echo yes || echo no)"

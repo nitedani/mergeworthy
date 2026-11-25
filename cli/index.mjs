@@ -65,14 +65,16 @@ function installClaude(values) {
     fs.mkdirSync(path.join(HOME, '.mergeworthy'), { recursive: true })
     fs.rmSync(path.join(HOME, '.mergeworthy', 'current'), { force: true })
     fs.symlinkSync(installed.installPath, path.join(HOME, '.mergeworthy', 'current'))
-    // the commands in its bin/ on PATH, as session-start keeps them
-    const bins = path.join(installed.installPath, 'hooks', 'bin-links')
-    if (fs.existsSync(bins)) run(bins, [])
-    // and T3 Code's Antigravity instance loads the plugin's agy/ through it, as session-start and mergeworthy-update keep it; what
-    // keeps it from that (a copied plugin there) is a warning
-    const link = path.join(installed.installPath, 'hooks', 'agy-link')
-    const r = fs.existsSync(link) ? spawnSync(link, [], { encoding: 'utf8' }) : { status: 0 }
-    if (r.status !== 0) return (r.stderr || r.stdout || `${link} failed`).trim()
+    // the commands in its bin/ on PATH, as session-start keeps them, and T3 Code's Antigravity instance loading the plugin's agy/
+    // through it, as session-start and mergeworthy-update keep it; what keeps either from that (an unwritable ~/.local/bin, a
+    // copied plugin) is a warning
+    const warnings = []
+    for (const step of ['bin-links', 'agy-link']) {
+      const file = path.join(installed.installPath, 'hooks', step)
+      const r = fs.existsSync(file) ? spawnSync(file, [], { encoding: 'utf8' }) : { status: 0 }
+      if (r.status !== 0) warnings.push((r.stderr || r.stdout || `${file} failed`).trim())
+    }
+    return warnings.join('\n')
   }
 }
 function uninstallClaude() {
