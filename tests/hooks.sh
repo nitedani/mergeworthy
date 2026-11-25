@@ -104,6 +104,12 @@ CLAUDE_PLUGIN_ROOT="$R" CLAUDE_PLUGIN_OPTION_BADGE=off bash "$R/hooks/session-st
 check "session-start writes the options it is given" 'MERGEWORTHY_BADGE=off' "$(cat "$HOME/.mergeworthy/settings.env")"
 rm -f "$HOME/.mergeworthy/settings.env"
 check "session-start still carries the always-on rules" yes "$(CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" 2>/dev/null </dev/null | grep -q '^## Always-on rules (mergeworthy)' && echo yes || echo no)"
+# an installed version older than the session's plugin (no hooks/bin-links): its bin/ commands still go on PATH
+OLDV="$T/old-install"; mkdir -p "$OLDV/bin"; touch "$OLDV/always-on.md"; : > "$OLDV/bin/old-only-tool"
+mkdir -p "$HOME/.claude/plugins"; echo "{\"plugins\":{\"mergeworthy@mergeworthy\":[{\"installPath\":\"$OLDV\"}]}}" > "$HOME/.claude/plugins/installed_plugins.json"
+echo '{"session_id":"sid-old","source":"resume"}' | CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" >/dev/null 2>"$T/err"
+check "session-start under an installed version without bin-links links that version's commands, with no error" "$HOME/.mergeworthy/current/bin/old-only-tool 0" "$(readlink "$HOME/.local/bin/old-only-tool") $(grep -c 'No such file' "$T/err")"
+rm "$HOME/.claude/plugins/installed_plugins.json" "$HOME/.local/bin/old-only-tool"; CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" >/dev/null 2>&1 </dev/null
 mkdir -p "$HOME/.t3/userdata" "$T/agybin"; printf '#!/bin/sh\n' > "$T/agybin/agy"; chmod +x "$T/agybin/agy"
 PATH="$T/agybin:$PATH" CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" >/dev/null 2>&1 </dev/null
 check "session-start links the agy plugin into T3's antigravity instance" "$HOME/.mergeworthy/current/agy" "$(readlink "$HOME/.t3/userdata/providers/antigravity/$(printf antigravity | sha256sum | cut -d' ' -f1)/config/plugins/mergeworthy")"
