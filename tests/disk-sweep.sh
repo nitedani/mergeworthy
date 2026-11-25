@@ -220,6 +220,19 @@ check "the home-wide walk runs at most once a day" kept "$(there "$H7/proj/app/d
 check "caches: pnpm, npm (stale _cacache) and pip by their own commands; stale tool-cache and cargo entries go, a fresh one, an unnamed ~/.cache folder an old Playwright browser and an old entry read today stay" "npm cache clean --force|pip cache purge|pnpm store prune| removed removed removed kept kept kept kept" "$(sort -u "$T/tools.log" | tr '\n' '|') $(there "$H7/.cache/yarn/stale") $(there "$H7/.cargo/registry/cache/idx") $(there "$H7/.cargo/git/checkouts/c") $(there "$H7/.cache/yarn/fresh") $(there "$H7/.cache/drafts") $(there "$H7/.cache/ms-playwright/chromium_headless_shell-1200") $(there "$H7/.cache/yarn/readnow")"
 check "a weekly report names the stale folder no rule covers, and deletes nothing" "1 0 kept" "$(cat "$H7/.mergeworthy/disk-report.md" 2>/dev/null | grep -c "$H7/old-stuff") $(cat "$H7/.mergeworthy/disk-report.md" 2>/dev/null | grep -c "$H7/.cache/yarn") $(there "$H7/old-stuff/sub/big")"
 
+# h-cargo: a cargo build folder under home, in a repo or not, goes after 7 unused days; a fresh one, a pytest cache's lone CACHEDIR.TAG
+# or one whose project a process works in stays, and a repo's ignored target that h-ignored takes is listed once
+HC="$T/homec"; mkdir -p "$HC/.mergeworthy"
+for p in loose/target fresh/target busy/target repo/target; do mkdir -p "$HC/$p/debug"; echo x > "$HC/$p/debug/x"; echo 'Signature: 8a477f597d28d172789f06886806bc55' > "$HC/$p/CACHEDIR.TAG"; echo '{}' > "$HC/$p/.rustc_info.json"; done
+mkdir -p "$HC/py/cache"; echo 'Signature: 8a477f597d28d172789f06886806bc55' > "$HC/py/cache/CACHEDIR.TAG"; echo x > "$HC/py/cache/v"
+G init -q "$HC/repo"; echo target/ > "$HC/repo/.gitignore"; G -C "$HC/repo" add .gitignore; G -C "$HC/repo" commit -qm base
+find "$HC" -exec touch -h -d '15 days ago' {} +; find "$HC/loose" -exec touch -h -d '8 days ago' {} +; find "$HC/fresh" -exec touch -h -d '2 days ago' {} +
+bash -c "cd '$HC/busy' && exec sleep 600" & CB=$!; sleep 0.2
+HOME="$HC" python3 "$R/bin/disk-sweep" > "$T/dryc.out" 2>/dev/null
+check "a dry run lists a repo's ignored cargo target once, as h-ignored's" "1 1" "$(grep -c " $HC/repo/target " "$T/dryc.out") $(grep -c " $HC/repo/target h-ignored$" "$T/dryc.out")"
+HOME="$HC" python3 "$R/bin/disk-sweep" --delete 2>/dev/null; kill "$CB"; wait "$CB" 2>/dev/null
+check "h-cargo deletes a cargo target outside any repo unused for 7 days, logged; a 2-day-old one, a lone CACHEDIR.TAG and a busy project's stay" "removed 1 kept kept kept removed" "$(there "$HC/loose/target") $(grep -c " $HC/loose/target h-cargo deleted$" "$HC/.mergeworthy/disk-sweep.log") $(there "$HC/fresh/target") $(there "$HC/py/cache") $(there "$HC/busy/target") $(there "$HC/repo/target")"
+
 # w-done over a whole sweep: the dry run, then a deleting one, with T3's database as a fixture (deleted, no row, settled, auto-settled,
 # archived, live; a row it can't read for err-*)
 H9="$T/home9"; mkdir -p "$H9/.t3/userdata"; python3 - "$H9/.t3/userdata/statev2.sqlite" <<'DB'

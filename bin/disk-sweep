@@ -24,6 +24,9 @@ deleted.
   with its <name>-notes/ folder; both go, then its branch.
 - h-ignored, once a day: the same folders in any git repo up to 5 levels below HOME (hidden folders and the work folders
   aside), each unused for 14 days (neither written nor read).
+- h-cargo, once a day: a cargo build folder (CACHEDIR.TAG beside .rustc_info.json) up to 5 levels below HOME, in a git repo or not
+  (hidden folders and the work folders aside), whole, unused for 7 days (neither written nor read), unless its parent is
+  busy or h-ignored takes it.
 - k-cache, once a day: `pnpm store prune`, `pip cache purge`, `npm cache clean --force` when ~/.npm/_cacache is unused for
   14 days, and each entry of the named tool caches (CACHES: cargo's, and ~/.cache/yarn, node-gyp, go-build and the like) unused for 14 days (neither written nor read), not busy.
 - d-docker: `docker image prune -a` (every unused image) and `docker builder prune`, with `-f --filter until=336h`, each by its
@@ -41,6 +44,8 @@ DRY = True
 HOME, NOW = os.path.expanduser('~'), time.time()
 DAY = 86400
 OLD = 14 * DAY  # the round-7 rules: unused for 14 days (neither written nor read)
+WEEK = 7 * DAY  # h-cargo's: a Rust build grows by gigabytes a day
+CARGO = ('CACHEDIR.TAG', '.rustc_info.json')  # both in a cargo target dir; the tag alone also marks pytest, ruff and uv caches
 VCS = {'.git', '.hg', '.svn', '.jj'}  # a checkout's commits and edits, which no build restores
 BUILD = {'node_modules', 'dist', 'build', '.next', '.vite', '.turbo', '.svelte-kit', 'coverage', 'test-results', 'playwright-report', 'target', '.pnpm-store', '.venv', '.mypy_cache'}  # never .cache: projects keep dumps and reports there
 IDLE = 8 * DAY  # w-done's fallback: a folder its retired watcher left untouched this long
@@ -136,7 +141,7 @@ def measure(path, dev, age=DAY, vcs=True, skip=None):
 
 
 def used(st, age):
-    """Whether a file was written within age of the start, or, for the 14-day rules, also read (relatime updates atime about once a day):
+    """Whether a file was written within age of the start, or, for the rules longer than a day, also read (relatime updates atime about once a day):
     a browser build or a tool's binary is only read once installed."""
     return max(st.st_mtime, st.st_atime) > NOW - age if age > DAY else st.st_mtime > NOW - age
 
@@ -273,7 +278,7 @@ def delete(path, owner, dev, rule, age=DAY, vcs=True, skip=None):
         return 'a symlink on its path'
     nbytes = measure(path, dev, age, vcs, skip)
     if nbytes is None:
-        recent = 'a file changed in the last 24 hours' if age == DAY else 'a file used in the last 14 days'
+        recent = 'a file changed in the last 24 hours' if age == DAY else f'a file used in the last {age // DAY} days'
         return f"{recent}, {'version-control data, ' if vcs else ''}a mount or an unreadable folder"
     if busy(owner):  # a process or a job may have started in owner since its selection
         return 'a process or agent job works in it'
@@ -475,15 +480,18 @@ def sweep_files():
 
 
 def sweep_repo(repo, dev, rule, age):
-    """In an idle repo that isn't busy, the folders git ignores named in BUILD, each unused for age (used())."""
+    """In an idle repo that isn't busy, the folders git ignores named in BUILD, each unused for age (used()); the ones it deleted
+    (a dry run: would)."""
     listed = git(repo, 'ls-files', '-z', '-o', '-i', '--exclude-standard', '--directory')
     ignored = {p.rstrip('/') for p in listed.stdout.split('\0') if p}
+    taken = set()
     if listed.returncode or busy(repo) or changed(repo, lambda rel: rel == '.git' or rel in ignored):
-        return
+        return taken
     for rel in ignored:
         p = os.path.join(repo, rel)
-        if os.path.basename(p) in BUILD and os.path.isdir(p) and not os.path.islink(p):
-            delete(p, repo, dev, rule, age)
+        if os.path.basename(p) in BUILD and os.path.isdir(p) and not os.path.islink(p) and delete(p, repo, dev, rule, age) is None:
+            taken.add(p)
+    return taken
 
 
 def due(name, period):
@@ -502,16 +510,17 @@ def due(name, period):
 
 
 def sweep_home():
-    """Once a day, h-ignored: build output unused for 14 days (neither written nor read) in the git repos up to 5 levels below HOME, outside hidden
-    folders and the work folders (sweep_files has those)."""
+    """Once a day, below HOME outside hidden folders and the work folders (sweep_files has those), up to 5 levels down: h-ignored, build
+    output unused for 14 days (neither written nor read) in the git repos, then h-cargo, each cargo build folder (CARGO) in a repo or
+    not, unused for 7 days, that h-ignored didn't take."""
     if not due('home', DAY):
         return
-    dev, stack = os.lstat(HOME).st_dev, [(HOME, 0)]
+    dev, stack, taken = os.lstat(HOME).st_dev, [(HOME, 0, False)], set()
     while stack:
-        d, depth = stack.pop()
-        if d != HOME and os.path.lexists(os.path.join(d, '.git')):
-            sweep_repo(d, dev, 'h-ignored', OLD)
-            continue
+        d, depth, in_repo = stack.pop()
+        if not in_repo and d != HOME and os.path.lexists(os.path.join(d, '.git')):
+            taken |= sweep_repo(d, dev, 'h-ignored', OLD)
+            in_repo = True
         if depth == 5:
             continue
         try:
@@ -519,10 +528,13 @@ def sweep_home():
         except OSError:
             continue
         for e in entries:
-            if e.name.startswith('.') or e.name in BUILD or d == HOME and e.name.endswith('-work'):
+            if e.name.startswith('.') or d == HOME and e.name.endswith('-work') or not e.is_dir(follow_symlinks=False) or e.stat(follow_symlinks=False).st_dev != dev:
                 continue
-            if e.is_dir(follow_symlinks=False) and e.stat(follow_symlinks=False).st_dev == dev:
-                stack.append((e.path, depth + 1))
+            if all(os.path.isfile(os.path.join(e.path, f)) for f in CARGO):
+                if e.path not in taken:
+                    delete(e.path, d, dev, 'h-cargo', WEEK)
+            elif e.name not in BUILD:
+                stack.append((e.path, depth + 1, in_repo))
 
 
 CACHES = ('.cargo/registry/cache', '.cargo/git/checkouts', '.cache/node-gyp', '.cache/typescript', '.cache/yarn', '.cache/go-build')  # named tool caches only: other ~/.cache folders hold drafts and records, and browser binaries
