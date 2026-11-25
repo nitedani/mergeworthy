@@ -1309,6 +1309,9 @@ check "BLOCK: under Antigravity a launch with no target, naming claudeAgent; a r
   "$(impl '{}' antigravity) $(grep -c 'set target.providerInstanceId to claudeAgent' "$T/err") $(MERGEWORTHY_HOST=antigravity rev '{}' 'Review it') $(grep -c 'to codex' "$T/err") $(impl '{"providerInstanceId":"antigravity_2"}') $(impl '{"driverKind":"antigravity"}') $(impl '{"providerInstanceId":"antigravity"}' antigravity)"
 check "under Antigravity a launch on claudeAgent passes, and so does one with no target under Claude Code; a review on claude_2 (a Claude instance) still needs its Fallback line" "0 0 2" \
   "$(impl '{"providerInstanceId":"claudeAgent"}' antigravity) $(impl '{}') $(rev '{"providerInstanceId":"claude_2"}' 'Review it')"
+echo '{"providerInstances":{"antigravity":{"driver":"codex"},"antigravity_2":{"driver":"antigravity"}}}' > "$HOME/.t3/userdata/settings.json"
+check "BLOCK: a target naming the antigravity driver alone, while the instance id antigravity runs Codex, as the Antigravity instance does" "2 2" \
+  "$(impl '{"driverKind":"antigravity"}') $(impl '{"providerInstanceId":"antigravity_2"}')"
 rm "$HOME/.t3/userdata/settings.json"
 check "an exploring research agent on claudeAgent passes" 0 "$(rev '{"providerInstanceId":"claudeAgent"}' 'Explore it' research)"
 python3 -c 'import json; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":"Review it","role":"review","target":{"providerInstanceId":"claudeAgent"},"clientRequestId":"r-1"}}))' \

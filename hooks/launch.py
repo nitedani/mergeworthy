@@ -5,7 +5,7 @@ path names it a brief, ticket or prompt; never an installed skill or a project f
 checkouts its brief names, and those it says it works in."""
 import os, re
 from shellcmd import transcript
-from t3_tasks import under_t3
+from t3_tasks import driver, under_t3
 from work_folder import git_top, task_of
 
 MW = os.path.abspath(os.path.expanduser('~/.mergeworthy')) + os.sep
@@ -65,6 +65,9 @@ class Request:
         self.role, self.background = ti.get('role'), ti.get('run_in_background') is not False
         target = ti.get('target') or {}
         self.providers = {target.get('providerInstanceId'), target.get('driverKind')} - {None, ''}
+        # the drivers it runs on, as T3 Code picks them: the named instance's, else any instance of the driver it names
+        k = target.get('driverKind')
+        self.drivers = {driver(i, k)} if (i := target.get('providerInstanceId')) else {k} if k else set()
         # the Agent tool's `effort`, delegate_task's target.options or t3_thread_launch's modelSelection.options, as a list of
         # {id, value} or an object, `effort` or `reasoningEffort`
         opts = (ti.get('target') or ti.get('modelSelection') or {}).get('options') or {}

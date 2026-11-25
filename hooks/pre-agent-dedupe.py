@@ -13,7 +13,7 @@ child wakes again when its background commands end."""
 import datetime, fcntl, functools, glob, hashlib, itertools, json, os, re, shlex, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import failclosed
-import agent_jobs, launch, memory_file, project_file, review_launch, t3_tasks, testpaths
+import agent_jobs, launch, memory_file, project_file, review_launch, testpaths
 from post_words import fence_spans
 from records import branch_record
 from shellcmd import segments, prog, git_argv, rlines, Where
@@ -171,7 +171,7 @@ def codex_reset():
     return min(until) if until and min(until) > time.time() else None
 # Delegated agents run on Claude, reviews first on Codex (mergeworthy:delegate §Model class, §Reviewers), whichever host the session runs
 # on: a delegate_task with no target runs on the launching session's provider, Antigravity's under hooks/agy.py (MERGEWORTHY_HOST)
-drivers = {t3_tasks.driver(p) for p in req.providers} or {'antigravity' if os.environ.get('MERGEWORTHY_HOST') == 'antigravity' else 'claudeAgent'}
+drivers = req.drivers or {'antigravity' if os.environ.get('MERGEWORTHY_HOST') == 'antigravity' else 'claudeAgent'}
 if req.t3 and str(req.tool).endswith('delegate_task') and 'antigravity' in drivers:
     sys.stderr.write("BLOCKED: no delegated agent runs on Antigravity (mergeworthy:delegate §Model class, §Reviewers)"
                      + ("; with no target this launch would run on this session's Antigravity" if not req.providers else '')

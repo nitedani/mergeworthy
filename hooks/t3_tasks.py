@@ -24,11 +24,11 @@ def under_t3():
     return bool(os.environ.get('T3CODE_THREAD_ID'))
 
 
-def driver(instance):
-    """The driver T3 Code runs provider instance `instance` with (claudeAgent, codex, antigravity), from its settings; else the id itself, as
-    a built-in instance's id is its driver's."""
+def driver(instance, kind=None):
+    """The driver T3 Code runs provider instance `instance` with (claudeAgent, codex, antigravity), from its settings; else the driver
+    `kind` the launch names, else the id itself, as a built-in instance's id is its driver's."""
     try: return json.load(open(os.path.expanduser('~/.t3/userdata/settings.json')))['providerInstances'][instance]['driver']
-    except (OSError, ValueError, KeyError, TypeError): return instance
+    except (OSError, ValueError, KeyError, TypeError): return kind or instance
 
 
 def result(content):
