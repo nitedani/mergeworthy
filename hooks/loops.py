@@ -114,7 +114,7 @@ def settle(key, ran):
     try: held = json.load(open(p := os.path.join(PENDING, key + '.json'))); os.remove(p)
     except (OSError, ValueError): return
     if ran:
-        for out, sha in held['launches'].items(): review_launch.launch(out, sha)
+        for out, aside in held["launches"].items(): review_launch.launch(out, aside)
         for r in held['rounds']: register(*r)
 
 

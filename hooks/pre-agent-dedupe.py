@@ -153,7 +153,7 @@ def register_launch():
         try: rec = json.load(open(nokey)); os.remove(nokey)
         except (OSError, ValueError): rec = {}
     if cid: loops.locked_update(CIDS, lambda seen: seen.setdefault(cid, time.time()))
-    for out, sha in rec.get('launches', {}).items(): review_launch.launch(out, sha)
+    for out, aside in rec.get('launches', {}).items(): review_launch.launch(out, aside)
     if review:
         loops.register(rnd[1], int(rnd[2]), None if post_review else rec['heads'] if 'heads' in rec else heads,
                        review_transport.thread(ti, d.get('tool_response')), post_review, said_outs, bool(re.search(loops.FANOUT, brief, re.M)), tops, led, step, seats, fills, None if sent else 'claudeAgent' if not provider or 'claudeAgent' in provider else min(provider))

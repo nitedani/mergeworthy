@@ -55,23 +55,25 @@ def unlinted(out):
 
 
 def set_aside(out):
-    """Before a reviewer the launching hook admitted (unlinted(out) passed) starts on out's draft: the sha256 of the draft it is
-    handed, once an earlier launch's verdict in out moved to the draft's post journal; None when out names no draft that exists."""
+    """Before a reviewer the launching hook admitted (unlinted(out) passed) starts on out's draft: (the sha256 of the draft it is
+    handed, the epoch of now, its launch), once an earlier launch's verdict in out moved to the draft's post journal; None when out
+    names no draft that exists."""
     draft = draft_of(out)
     if not draft or not os.path.isfile(draft):
         return None
     if os.path.exists(out):
         review_journal.append(review_journal.post_of(draft), {'ev': 'verdict', 'out': os.path.realpath(out), 'text': open(out, errors='replace').read()})
         os.remove(out)
-    return hashlib.sha256(open(draft, 'rb').read()).hexdigest()
+    return hashlib.sha256(open(draft, 'rb').read()).hexdigest(), int(time.time())
 
 
-def launch(out, sha):
-    """Records, once the reviewer's launch ran, that it started on the draft text whose sha256 set_aside() returned: writes
-    <out>.launch as `<sha> <epoch>`. Nothing for sha None."""
-    if sha:
+def launch(out, aside):
+    """Records, once the reviewer's launch ran, that it started on the draft text set_aside() returned (aside: its sha256 and
+    launch epoch): writes <out>.launch as `<sha> <epoch>`. Nothing for aside None."""
+    if aside:
+        sha, at = aside
         with open(out + '.launch', 'w') as f:
-            f.write(f'{sha} {int(time.time())}\n')
+            f.write(f'{sha} {at}\n')
         review_journal.append(review_journal.post_of(draft_of(out)), {'ev': 'post', 'out': os.path.realpath(out), 'sha': sha})
 
 
