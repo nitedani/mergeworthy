@@ -2458,6 +2458,12 @@ check "pr-steps verify: BLOCK a round 2 carrying only round-1 findings without a
   "$(led 'R1.1 should listed: the report') $(grep -c 'closes round 1' "$T/err") $(led 'Round: 2' 'R1.1 should disputed: x' 'R2.1 nit declined: y') $(grep -c 'R1.1 should disputed: x  <- not fixed' "$T/err") $(led 'Round: 2' 'R1.1 should listed: the report')"
 cp "$T/r2.md" "$T/r2c.md"; LR="$T/r2c.md"
 check "BLOCK: pr-steps verify with a code loop's blocker closed as fixed in r3, which only a post's ledger takes" "1 1" "$(led 'Round: 3' 'R2.1 blocker fixed in r3') $(grep -c 'open blocker' "$T/err")"
+# a finding on a post's draft closes as `fixed in <draft>.md` (relative to the ledger) while gate-pass's record holds the draft's text
+mkdir -p "$T/d"; printf 'body\n' > "$T/d/b.md"; cp "$T/r2.md" "$T/r2d.md"; LR="$T/r2d.md"
+check "BLOCK: a finding fixed in a draft with no gate, a draft edited after its gate, a missing draft; gated, it records" "1 1 1 1 1 0" \
+  "$(led 'R2.1 blocker fixed in d/b.md') $(grep -c 'd/b.md has no gate-pass record' "$T/err") $(sha256sum "$T/d/b.md" | cut -d' ' -f1 > "$T/d/b.md.gate"; echo more >> "$T/d/b.md"; led 'R2.1 blocker fixed in d/b.md') $(grep -c 'has no gate-pass record of its current text' "$T/err") $(led 'R2.1 should fixed in d/gone.md') $(sha256sum "$T/d/b.md" | cut -d' ' -f1 > "$T/d/b.md.gate"; led 'R2.1 blocker fixed in d/b.md')"
+printf 'Maintainer: nitedani\nR1.1 blocker: the body claims too much\nMERGE AS IS: no\n' > "$T/frl.md"; std "$T/frl.md"; printf 'Round: 2\nR1.1 blocker fixed in d/b.md\n' > "$T/frl.ledger.md"
+check "pr-steps fresh: a body finding fixed in the gated pr-body.md records a report without a yes" 0 "$(cd "$GL" && bash "$R/bin/pr-steps" fresh "$T/frl.md" --ledger "$T/frl.ledger.md" >/dev/null 2>&1; echo $?)"
 # a claim the verifier lists as untested waits for a RULED line naming it, in round 2's ledger record as in a file ending NO BUGS (#190)
 printf '## Dropped\nNone.\n## Untested claims\n\n- `src/panel.tsx`: // The question the page opened on takes the focus as it shows. — Chrome — no probe recorded — UNVERIFIED\n' > "$T/uc.md"; std "$T/uc.md"; LR="$T/uc.md"
 { cat "$T/uc.md"; echo 'RULED: src/panel.tsx: // The question the page opened on takes the focus as it shows.: listed: the PR body says no probe saw it'; } > "$T/uc1.md"

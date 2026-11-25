@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # pr-steps <step> <output-file>: records that a converge step ran on the current HEAD, after checking its output proves it.
-# verify, reverify, small, shape and fresh take `--ledger <path>` for a round 2 whose verdict isn't clean: the loop's ledger closes it (hooks/ledger.py).
+# verify, reverify, small, shape and fresh take `--ledger <path>` for a round 2 whose verdict isn't clean: the loop's ledger closes it (hooks/ledger.py), a finding on a post's draft by its gate-pass record.
 # Steps, in pipeline order (mergeworthy:converge): verify (Loop A), shape (Loop B: the review and the shape pass),
 # reverify (Loop A after Loop B's commits), fresh (the fresh reader), gates (every gate's exit code on the final head).
 # The posting hook blocks `gh pr create` (unless --draft), `gh pr ready` and pushes to a ready PR until HEAD has all five.
