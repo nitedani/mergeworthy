@@ -2466,7 +2466,9 @@ printf 'Maintainer: nitedani\nR1.1 blocker: the body claims too much\nMERGE AS I
 check "pr-steps fresh: a body finding fixed in the gated pr-body.md records a report without a yes" 0 "$(cd "$GL" && bash "$R/bin/pr-steps" fresh "$T/frl.md" --ledger "$T/frl.ledger.md" >/dev/null 2>&1; echo $?)"
 pl() { printf '%s\n' "$@" > "$T/pl.md"; (cd "$GL" && python3 "$R/hooks/ledger.py" --post "$T/pl.md" 2>/dev/null; echo $?); }
 check "BLOCK: a post's own ledger (gate-pass --post) closing a finding by a gated draft, which only its confirming round closes" 1 "$(pl 'Round: 2' 'R1.1 blocker fixed in d/b.md')"
-check "BLOCK: a draft named like a round or a sha (fixed in r3.md, fixed in <sha>.md) with no draft or gate behind it" "1 1" "$(pl 'Round: 3' 'R1.1 blocker fixed in r3.md') $(cp "$T/r2.md" "$T/r2e.md"; LR="$T/r2e.md"; led "R2.1 blocker fixed in $ON.md")"
+mkdir -p "$T/$ON"; printf 'body\n' > "$T/$ON/pr-body.md"; echo stale > "$T/$ON/pr-body.md.gate"
+check "BLOCK: a draft named like a round or a sha (fixed in r3.md, <sha>.md, r3/pr-body.md, <sha>/pr-body.md) closes only through its gate; a sha or round ending a sentence (fixed in <sha>., fixed in r3.) closes" "1 1 1 1 0 0" \
+  "$(pl 'Round: 3' 'R1.1 blocker fixed in r3.md') $(cp "$T/r2.md" "$T/r2e.md"; LR="$T/r2e.md"; led "R2.1 blocker fixed in $ON.md") $(pl 'Round: 3' 'R1.1 blocker fixed in r3/pr-body.md') $(LR="$T/r2e.md"; led "R2.1 blocker fixed in $ON/pr-body.md") $(pl 'Round: 3' 'R1.1 blocker fixed in r3.') $(cp "$T/r2.md" "$T/r2f.md"; LR="$T/r2f.md"; led "R2.1 blocker fixed in $ON.")"
 # a claim the verifier lists as untested waits for a RULED line naming it, in round 2's ledger record as in a file ending NO BUGS (#190)
 printf '## Dropped\nNone.\n## Untested claims\n\n- `src/panel.tsx`: // The question the page opened on takes the focus as it shows. — Chrome — no probe recorded — UNVERIFIED\n' > "$T/uc.md"; std "$T/uc.md"; LR="$T/uc.md"
 { cat "$T/uc.md"; echo 'RULED: src/panel.tsx: // The question the page opened on takes the focus as it shows.: listed: the PR body says no probe saw it'; } > "$T/uc1.md"
