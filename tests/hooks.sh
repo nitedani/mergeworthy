@@ -14,7 +14,7 @@ cat > "$T/bin/gh" <<'EOF'
 # ...and `gh pr view [<ref>] --json number` from $FX/pr_view_<ref with / and : replaced by _>, or $FX/pr_view_current without a ref (none: gh's "no pull requests found")
 # ...and `gh pr checks <url> --json name,bucket` from $FX/pr_checks_<url with / and : replaced by _> (none: "no checks reported"; a URL not on github.com: gh's "no pull requests found")
 # A `--jq .a.b` on a fixture holding a JSON object answers that field, as gh does; any other fixture is the answer as it stands, its
-# first JSON page alone without --paginate
+# first JSON page alone without --paginate, and every page as one array of them with --paginate --slurp
 [ -n "${GH_STUB_PWD:-}" ] && echo "$1 $2 $PWD" >> "$GH_STUB_PWD"  # each call and where it ran, for a check that must run gh in the command's dir
 [ -n "${GH_STUB_ARGS:-}" ] && printf '%s\n' "$*" >> "$GH_STUB_ARGS"  # each call's arguments
 [ "$1 $2" = "config get" ] && { [ ! -f "$FX/login" ] || cat "$FX/login"; exit; }  # the login gh's own config names: $FX/login
@@ -37,13 +37,21 @@ if [ "$1 $2" = "pr list" ]; then  # from $FX/pr_list_<the -R repo with / replace
 [ "$1 $2" = "pr checks" ] && [ "${3#https://github.com/}" = "$3" ] && { echo "no pull requests found for branch \"$3\"" >&2; exit 1; }
 if [ "$1 $2" = "pr checks" ]; then f="$FX/pr_checks_$(printf '%s' "$3" | tr '/:' '__')"; [ -f "$f" ] && cat "$f" && exit 1; echo "no checks reported on the 'x' branch" >&2; exit 1; fi
 [ "$1" = api ] || exit 1
+[ "$2 $3" = "--hostname github.com" ] && set -- api "${@:4}"  # --hostname github.com: the same fixtures
 f="$FX/$(printf '%s' "$2" | tr '/?&=' '____')"
 for a in "$@"; do case "$a" in o=*|id=*) [ -f "${f}_${a#*=}" ] && f="${f}_${a#*=}";; esac; done  # graphql: $FX/graphql_<owner> or $FX/graphql_<node id> answers for it
-[ -n "$GH_STUB_403" ] && { echo 'gh: API rate limit exceeded for user ID 1. (HTTP 403)' >&2; exit 1; }
+# GH_STUB_403=1 rate-limits every call, GH_STUB_403=<path> that path's; `gh api rate_limit` answers, as GitHub's doesn't count
+[ -n "$GH_STUB_403" ] && [ "$2" != rate_limit ] && { [ "$GH_STUB_403" = 1 ] || [ "$GH_STUB_403" = "$2" ]; } && { echo 'gh: API rate limit exceeded for user ID 1. (HTTP 403)' >&2; exit 1; }
+[ -f "$f.hang" ] && exec sleep 30  # $FX/<path>.hang: gh hangs past the caller's timeout
+[ -f "$f" ] || [ ! -f "$f.err" ] || { cat "$f.err" >&2; exit 1; }  # $FX/<path>.err, with no $FX/<path>: gh fails, printing it
 [ -f "$f" ] || { printf '{"message":"Not Found","status":"404"}'; echo 'gh: Not Found (HTTP 404)' >&2; exit 1; }  # gh prints the error's JSON body too
-q=; pg=; while [ $# -gt 0 ]; do [ "$1" = --jq ] && q=$2; [ "$1" = --paginate ] && pg=1; shift; done
+q=; pg=; sl=; while [ $# -gt 0 ]; do [ "$1" = --jq ] && q=$2; [ "$1" = --paginate ] && pg=1; [ "$1" = --slurp ] && sl=1; shift; done
 python3 -c 'import json, re, sys
 raw = open(sys.argv[1]).read(); q = sys.argv[2]
+if sys.argv[4]:  # --slurp: every page, as one array of them
+    pages, at = [], 0
+    while raw[at:].strip(): page, at = json.JSONDecoder().raw_decode(raw, len(raw) - len(raw[at:].lstrip())); pages.append(page)
+    raw = json.dumps(pages)
 if not sys.argv[3] and raw.lstrip()[:1] in ("{", "["):  # a fixture of several JSON pages: without --paginate, gh reads the first
     try: raw = raw[:json.JSONDecoder().raw_decode(raw.lstrip())[1] + len(raw) - len(raw.lstrip())]
     except ValueError: pass
@@ -52,7 +60,7 @@ except ValueError: v = None
 if isinstance(v, dict) and re.fullmatch(r"(\.\w+)+", q):
     for k in q.split(".")[1:]: v = v.get(k) if isinstance(v, dict) else None
     print("" if v is None else v if isinstance(v, str) else json.dumps(v))
-else: sys.stdout.write(raw)' "$f" "$q" "$pg"
+else: sys.stdout.write(raw)' "$f" "$q" "$pg" "$sl"
 EOF
 printf '#!/bin/sh\nexit 1\n' > "$T/bin/systemctl"  # no systemd user manager: session-start never reaches the real one
 chmod +x "$T/bin/gh" "$T/bin/systemctl"; export PATH="$T/bin:$PATH" FX="$T/fx"
@@ -365,6 +373,26 @@ tc_fx repos_o_r_issues_45 '{"number":45,"id":5,"title":"Code in a list","html_ur
 tc_fx repos_o_r_issues_45_comments_per_page_100 '[{"id":105,"user":{"login":"maint"},"created_at":"2026-10-02T09:30:00Z","html_url":"https://example.invalid/o/r/issues/45#c105","body":"- The bot said:\n  ```\n  I disagree with the rename.\n  ```"}]'
 "$R/bin/thread-context" o/r#45 --out "$T/ctx/tc45.md" >/dev/null
 check "a ref and a rejection inside a code block in a list item are code: not followed, not in the ledger" "0 0" "$(grep -c '^  - o/r#42 ' "$T/ctx/tc45.md") $(grep -c '\[reject\]' "$T/ctx/tc45.md")"
+# a rate limit isn't a missing thread (nitedani/mergeworthy#260): the failure names gh's error and when the limit lifts
+tc_fx rate_limit '{"resources":{"core":{"remaining":0,"reset":1795000000},"graphql":{"remaining":4000,"reset":1795000000},"search":{"remaining":30,"reset":1795000000}}}'
+tclimit() { GH_STUB_403=$1 "$R/bin/thread-context" "$2" --out "$T/ctx/rl.md" >/dev/null 2>"$T/rl.err"; echo "$? $(grep -cxF "thread-context: cannot read $2: $3" "$T/rl.err")"; }
+RL403='gh: API rate limit exceeded for user ID 1. (HTTP 403)'
+check "BLOCK: a rate limit on REST, then on GraphQL behind a missing issue, is named, with its reset once spent; a missing thread is still none" "1 1 1 1 1 1" \
+  "$(tclimit 1 o/r#41 "\`gh api repos/o/r/issues/41\` failed: $RL403; it resets at 2026-11-18T11:06:40Z: retry then") $(tclimit graphql o/r#47 "\`gh api graphql\` failed: $RL403") $(tclimit '' o/r#47 'gh read no issue, PR or discussion at o/r#47')"
+mkdir -p "$T/rlbin"; cat > "$T/rlbin/gh" <<EOF
+#!/bin/sh
+# gh, but \`gh api rate_limit\` answers as \$RL says: html (a proxy's sign-in page), empty (no resources), hang; RL=two: GraphQL fails with two errors
+[ "\$1 \$2 \$RL" = "api graphql two" ] && { printf '%s\\n' "$RL403" 'gh: Could not resolve to a Discussion with the number of 47.' >&2; exit 1; }
+[ "\$1 \$2" = "api rate_limit" ] && case "\$RL" in html) echo '<html>Sign in</html>'; exit 0;; empty) echo '{}'; exit 0;; hang) exec sleep 60;; esac
+exec "$T/bin/gh" "\$@"
+EOF
+chmod +x "$T/rlbin/gh"
+rlodd() { (export RL=$1 PATH="$T/rlbin:$PATH"; tclimit 1 o/r#41 "\`gh api repos/o/r/issues/41\` failed: $RL403"); }
+check "BLOCK: a reset lookup that answers a page, no resources or nothing in time leaves the rate-limit error as gh gave it" "1 1 1 1 1 1" "$(rlodd html) $(rlodd empty) $(rlodd hang)"
+check "BLOCK: GraphQL's rate limit before a NOT_FOUND is no missing thread: both errors are named" "1 1" "$(export RL=two PATH="$T/rlbin:$PATH"; tclimit '' o/r#47 "\`gh api graphql\` failed: $RL403; gh: Could not resolve to a Discussion with the number of 47.")"
+rlasks() { rm -f "$T/rl.calls"; GH_STUB_ENV="$T/rl.calls" GH_STUB_403=$1 "$R/bin/thread-context" o/r#41 --depth 1 --out "$T/ctx/rl.md" >/dev/null 2>&1; echo "$? $(grep -c '^api rate_limit ' "$T/rl.calls")"; }
+check "the reset is looked up only for the error thread-context dies with, not for a linked thread it skips" "0 0 1 1" "$(rlasks repos/o/r/issues/42) $(rlasks repos/o/r/issues/41)"
+rm "$FX/rate_limit"
 
 # the guard: a post on the thread needs thread-context.md in the draft's folder, current
 TD="$T/tdrafts/o-r-41"; mkdir -p "$TD"
@@ -504,6 +532,14 @@ check "the discussion's replies are in the transcript, each naming the comment i
 check "an organization's discussion URL in the thread is followed as the thread it names" "0 1 1 1" "$(dtc 'd/r#5' 1) $(grep -c '^  - d/r#6 .*linked from d/r#5)$' "$DD/thread-context.md")"
 check "--ref names a discussion URL's thread, an organization's too; one gh finds none at fails" "d/r#5 d/r#5 1" \
   "$("$R/bin/thread-context" --ref https://github.com/d/r/discussions/5) $("$R/bin/thread-context" --ref https://github.com/orgs/dorg/discussions/5) $("$R/bin/thread-context" --ref https://github.com/orgs/dorg/discussions/7 >/dev/null 2>&1; echo $?)"
+check "BLOCK: --ref on an organization's discussion URL while GitHub rate-limits names the limit" "1 1 0" \
+  "$(GH_STUB_403=1 "$R/bin/thread-context" --ref https://github.com/orgs/dorg/discussions/5 >/dev/null 2>"$T/ref.err"; echo $?) $(grep -c '^thread-context: cannot read https://github.com/orgs/dorg/discussions/5: `gh api graphql` failed: gh: API rate limit exceeded' "$T/ref.err") $(grep -c Traceback "$T/ref.err")"
+check "a discussion's URL, an organization's too, is read while REST is rate-limited; owner/repo#N still asks REST first" "0 0 1" \
+  "$(for r in https://github.com/d/r/discussions/5 https://github.com/orgs/dorg/discussions/5 'd/r#5'; do GH_STUB_403=repos/d/r/issues/5 "$R/bin/thread-context" --items "$r" >/dev/null 2>&1; printf '%s ' $?; done | sed 's/ $//')"
+tc_fx repos_o_discussions_issues_41 '{"number":41,"id":1,"title":"In a repo named discussions","html_url":"https://example.invalid/o/discussions/issues/41","state":"open","updated_at":"2026-10-01T10:00:00Z","created_at":"2026-09-30T10:00:00Z","user":{"login":"maint"},"body":"Hi."}'
+tc_fx repos_o_discussions_issues_41_comments_per_page_100 '[]'; tc_fx repos_o_discussions_issues_41_timeline_per_page_100 '[]'
+check "an issue URL is read as an issue when its repo is named discussions or its query names a discussion" "0 0" \
+  "$(for r in https://github.com/o/discussions/issues/41 'https://github.com/o/r/issues/41?next=/o/r/discussions/42'; do "$R/bin/thread-context" --items "$r" >/dev/null 2>&1; printf '%s ' $?; done | sed 's/ $//')"
 python3 "$T/dfx.py" replies '' '' "$FX/graphql_DC_501" > "$FX/graphql_d"
 "$R/bin/thread-context" 'd/r#5' --out "$T/d101.md" --depth 0 >/dev/null
 check "a comment's 101 replies, over two pages, are all read: the first and the newest, in the record and in --items" "1 1 1 101" "$(grep -c '^https://example.invalid/d/r/discussions/5#discussioncomment-1001$' "$T/d101.md") $(grep -c '^https://example.invalid/d/r/discussions/5#discussioncomment-1101$' "$T/d101.md") $(grep -c '^- latest-human-comment: id=1101 ' "$T/d101.md") $("$R/bin/thread-context" --items 'd/r#5' | python3 -c 'import json,sys; print(sum(x["kind"] == "reply" for x in json.load(sys.stdin)))')"
@@ -1106,6 +1142,39 @@ printf '%s CI runs no tests.\n\n### How to reproduce\n\n1. Run the backend tests
 check "no screen: the command and output pass" 0 "$(ilint "$T/i4.md" 'evidence')"
 { printf '%s Who picks the payout account?\n\n### How to reproduce\n\n1. Open /invoices\n\n![list](/abs/list.png)\n\n### Options\n\n' "$B"; printf 'word %.0s' $(seq 120); echo; } > "$T/i5.md"
 check "a decision issue gets a word budget, not 400 characters" 0 "$(ilint "$T/i5.md" 'for an issue\|decision issue')"
+# a finding issue counts its prose as a PR body does: a log in a code block isn't counted, prose moved into code or a table is, and its reproduction section is required, not counted
+printf '# acme/bug\n\n## PR conventions\n- PR template: none\n- Issue template: .github/ISSUE_TEMPLATE/bug.yml: `### Area`, `### Steps to reproduce`, `### Expected behavior`, `### Actual behavior`, `### Impact`\n' > "$TPP/bug.md"
+ibug() { printf '%s### Area\n\napps/server\n\n### %s\n\n1. A delegated Claude child awaits a Monitor.\n2. It ends while a wake run is mid-request.\n\n### Expected behavior\n\nThe task waits for the wake'\''s text.\n%b\n### Actual behavior\n\nIt completes with stale text, then the detach kills the wake:\n\n```\n14:47:32.381 background tasks []\n14:47:32.398 task completed\n14:47:32.426 query.close\n14:47:32.429 wake failed\n```\n\n### Impact\n\nMajor degradation or frequent failure\n' "$B" "${3:-Steps to reproduce}" "$2" > "$T/$1.md"; }
+S=('The wake run had already sent its request when the task ended.' 'The detach then closed the query under it.' 'Nothing in the log says why the wake failed.' 'A user sees the child finish with an old answer.' 'The parent thread then acts on that answer as if it were new.' 'The next wake starts from the stale state again.' 'Only a restart of the thread clears it.')
+ibug ilog ''; ibug ilong "\n${S[*]}\n"; ibug icode "\n\`\`\`\n$(printf '%s\\n' "${S[@]}")\`\`\`\n"; ibug itab "\n| Why |\n|---|\n$(printf '| %s |\\n' "${S[@]}")"
+ibug isee "\n### How to see\n\n${S[*]}\n" 'How to reproduce'
+check "a templated issue with a four-line log and Steps to reproduce passes the 400 characters, with and without its project file" "0 0" "$(tpi acme/bug ilog '400 for an issue') $(ilint "$T/ilog.md" '400 for an issue')"
+check "BLOCK: the same issue with seven sentences more under Expected behavior" 1 "$(ilint "$T/ilong.md" '400 for an issue')"
+check "BLOCK: those sentences moved into a code block" 1 "$(ilint "$T/icode.md" '400 for an issue')"
+check "BLOCK: those sentences moved into a one-column table" 1 "$(ilint "$T/itab.md" '400 for an issue')"
+check "the 400-character finding says a URL counts three characters" 1 "$(ilint "$T/ilong.md" 'a URL as three characters and a Markdown image as none)')"
+check "a How to see section's prose isn't counted, as How to reproduce's isn't" 0 "$(ilint "$T/isee.md" '400 for an issue')"
+{ printf '%s Who picks the payout account?\n\n### How to reproduce\n\n1. Open /invoices\n\n![list](/abs/list.png)\n\n### Options\n\n```\n' "$B"; printf 'get(a) -> b\n%.0s' $(seq 150); printf '```\n'; } > "$T/i6.md"
+check "BLOCK: a decision issue's code counts toward its 400 words" 1 "$(ilint "$T/i6.md" 'decision issue')"
+# the reproduction section as it renders: a '#' line in code is no heading, a subheading stays in it, and a heading matches by its whole text
+printf '%s The worker test run fails on a clean checkout.\n\n### How to reproduce\n\n```sh\n# Run this on the worker\npnpm test\n```\n\n### Actual behavior\n\nThe worker exits before any test file is loaded.\nThe runner then reports every suite as skipped.\nNothing in the output names the missing option.\nA second run on the same checkout fails the same way.\n' "$B" > "$T/r1.md"
+check "a shell comment in the reproduction's code is no heading, so the short issue passes" 0 "$(ilint "$T/r1.md" '400 for an issue')"
+{ printf '%s The worker test run fails on a clean checkout.\n\n### How to reproduce\n\n1. Run pnpm test\n\n### Actual behavior\n\n```\n### How to reproduce\n' "$B"; printf '%s\n' "${S[@]}" 'The worker never says which option it rejected.' 'A second run on the same checkout fails the same way.'; printf '```\n'; } > "$T/r2.md"
+check "BLOCK: a reproduction heading inside code exempts nothing" 1 "$(ilint "$T/r2.md" '400 for an issue')"
+printf '%s The worker test run fails.\n\n```sh\n# How to reproduce\npnpm test\n```\n' "$B" > "$T/r3.md"
+check "BLOCK: a reproduction heading inside code is no reproduction section" 1 "$(ilint "$T/r3.md" 'no .### How to reproduce')"
+printf '%s The worker drops the job after a restart.\n\n### How to reproduce\n\n1. Queue a job\n\n#### Restart the worker\n\n%s\n\n![queue](/abs/queue.png)\n' "$B" "${S[*]}" > "$T/r4.md"
+check "a subheading stays in its reproduction section" 0 "$(ilint "$T/r4.md" '400 for an issue')"
+printf '%s The worker drops the job after a restart.\n\n### How to reproduce\n\n1. Queue a job, restart the worker\n\n### How to see the expected result\n\n%s\n\n![queue](/abs/queue.png)\n' "$B" "${S[*]}" > "$T/r5.md"
+check "BLOCK: a heading that only starts like a reproduction heading is counted" 1 "$(ilint "$T/r5.md" '400 for an issue')"
+printf '%s### Description\n\nThe server drops the upgrade header behind a proxy.\n\n### Reproduction\n\n%s\n\n![proxy](/abs/proxy.png)\n' "$B" "${S[*]} ${S[*]}" > "$T/r6.md"
+check "a template's Reproduction section isn't counted either" 0 "$(tpi acme/tpl r6 '400 for an issue')"
+{ printf '%s Who picks the payout account?\n\n### How to reproduce\n\n```\n' "$B"; printf 'check object %s unreadable expected account\n' $(seq 70); printf '```\n\n### Options\n\n(a) The typed account. (b) The winning account. I recommend (a).\n'; } > "$T/r7.md"
+check "a decision issue's reproduction stays out of its 400 words" 0 "$(ilint "$T/r7.md" 'decision issue')"
+# the still-image check counts each reproduction action once: a subsection inside a template heading's span, or a numbered line in code, adds none
+printf '%s### Description\n\nThe upload stalls.\n\n#### How to reproduce\n\n1. Open /upload\n2. Pick a 50 MB file\n\n![upload](/abs/upload.png)\n' "$B" > "$T/r8.md"
+printf '%s Totals skip the last row.\n\n### How to reproduce\n\n1. Import this file\n2. Open /report\n\n```md\n# Expense report\n1. Taxi\n2. Hotel\n```\n\n![report](/abs/report.png)\n' "$B" > "$T/r9.md"
+check "two actions in a template's nested reproduction, or beside a numbered fixture in code, are two steps" "0 0" "$(tpi acme/tpl r8 'record a video') $(ilint "$T/r9.md" 'record a video')"
 # ---------- pre-bash-guard: no foreground waits ----------
 wait_guard() { # command background(true|false)
   python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1],"run_in_background":sys.argv[2]=="true"},"cwd":sys.argv[3]}))' "$1" "$2" "$T" \
@@ -2392,6 +2461,17 @@ check "pr-steps verify: BLOCK a round 2 carrying only round-1 findings without a
   "$(led 'R1.1 should listed: the report') $(grep -c 'closes round 1' "$T/err") $(led 'Round: 2' 'R1.1 should disputed: x' 'R2.1 nit declined: y') $(grep -c 'R1.1 should disputed: x  <- not fixed' "$T/err") $(led 'Round: 2' 'R1.1 should listed: the report')"
 cp "$T/r2.md" "$T/r2c.md"; LR="$T/r2c.md"
 check "BLOCK: pr-steps verify with a code loop's blocker closed as fixed in r3, which only a post's ledger takes" "1 1" "$(led 'Round: 3' 'R2.1 blocker fixed in r3') $(grep -c 'open blocker' "$T/err")"
+# a finding on a post's draft closes as `fixed in <draft>.md` (relative to the ledger) while gate-pass's record holds the draft's text
+mkdir -p "$T/d"; printf 'body\n' > "$T/d/b.md"; cp "$T/r2.md" "$T/r2d.md"; LR="$T/r2d.md"
+check "BLOCK: a finding fixed in a draft with no gate, a draft edited after its gate, a missing draft; gated, it records" "1 1 1 1 1 0" \
+  "$(led 'R2.1 blocker fixed in d/b.md') $(grep -c 'd/b.md has no gate-pass record' "$T/err") $(sha256sum "$T/d/b.md" | cut -d' ' -f1 > "$T/d/b.md.gate"; echo more >> "$T/d/b.md"; led 'R2.1 blocker fixed in d/b.md') $(grep -c 'has no gate-pass record of its current text' "$T/err") $(led 'R2.1 should fixed in d/gone.md') $(sha256sum "$T/d/b.md" | cut -d' ' -f1 > "$T/d/b.md.gate"; led 'R2.1 blocker fixed in d/b.md')"
+printf 'Maintainer: nitedani\nR1.1 blocker: the body claims too much\nMERGE AS IS: no\n' > "$T/frl.md"; std "$T/frl.md"; printf 'Round: 2\nR1.1 blocker fixed in d/b.md\n' > "$T/frl.ledger.md"
+check "pr-steps fresh: a body finding fixed in the gated pr-body.md records a report without a yes" 0 "$(cd "$GL" && bash "$R/bin/pr-steps" fresh "$T/frl.md" --ledger "$T/frl.ledger.md" >/dev/null 2>&1; echo $?)"
+pl() { printf '%s\n' "$@" > "$T/pl.md"; (cd "$GL" && python3 "$R/hooks/ledger.py" --post "$T/pl.md" 2>/dev/null; echo $?); }
+check "BLOCK: a post's own ledger (gate-pass --post) closing a finding by a gated draft, which only its confirming round closes" 1 "$(pl 'Round: 2' 'R1.1 blocker fixed in d/b.md')"
+mkdir -p "$T/$ON"; printf 'body\n' > "$T/$ON/pr-body.md"; echo stale > "$T/$ON/pr-body.md.gate"
+check "BLOCK: a draft named like a round or a sha (fixed in r3.md, <sha>.md, r3/pr-body.md, <sha>/pr-body.md) closes only through its gate; a sha or round ending a sentence (fixed in <sha>., fixed in r3.) closes" "1 1 1 1 0 0" \
+  "$(pl 'Round: 3' 'R1.1 blocker fixed in r3.md') $(cp "$T/r2.md" "$T/r2e.md"; LR="$T/r2e.md"; led "R2.1 blocker fixed in $ON.md") $(pl 'Round: 3' 'R1.1 blocker fixed in r3/pr-body.md') $(LR="$T/r2e.md"; led "R2.1 blocker fixed in $ON/pr-body.md") $(pl 'Round: 3' 'R1.1 blocker fixed in r3.') $(cp "$T/r2.md" "$T/r2f.md"; LR="$T/r2f.md"; led "R2.1 blocker fixed in $ON.")"
 # a claim the verifier lists as untested waits for a RULED line naming it, in round 2's ledger record as in a file ending NO BUGS (#190)
 printf '## Dropped\nNone.\n## Untested claims\n\n- `src/panel.tsx`: // The question the page opened on takes the focus as it shows. — Chrome — no probe recorded — UNVERIFIED\n' > "$T/uc.md"; std "$T/uc.md"; LR="$T/uc.md"
 { cat "$T/uc.md"; echo 'RULED: src/panel.tsx: // The question the page opened on takes the focus as it shows.: listed: the PR body says no probe saw it'; } > "$T/uc1.md"
@@ -2996,16 +3076,23 @@ check "BLOCK: a PR gh can't read, asking to retry" "2 1" "$(GH_STUB_403=1 rdy 'g
 check "BLOCK: a number gh finds no PR for, saying to check the repository and number" "2 1 0" "$(rdy 'gh pr ready 1 -R o/r' "$G2") $(grep -c "finds no PR (no pull requests found.*name no PR this account can see, so check them" "$T/err") $(grep -c 'retry once' "$T/err")"
 : > "$T/rdy.args"
 check "gh pr ready --undo, --undo=true, -h and --help, with no PR of the checkout too, never read the PR" "0 0 0 0 0" "$(rdy 'gh pr ready 5 -R o/r --undo' "$GO") $(rdy 'gh pr ready --undo=true 5 -R o/r' "$GO") $(rdy 'gh pr ready -h' "$GO") $(rdy 'gh pr ready --help' "$GO") $(grep -c 'pr view' "$T/rdy.args")"
-# pre-bash-guard: `gh pr merge` waits for a PR that is up to date with its base and whose CI ran after the base last touched its files; never --admin
+# pre-bash-guard: `gh pr merge` waits for a PR that is up to date with its base and whose CI ran after the base last touched its files; --admin only past rules the owner may bypass (below, with the ask)
 printf '## Merging\n- Merge each PR as soon as it is ready\n' >> "$HOME/.mergeworthy/projects/o/r.md"  # the owner's standing order: the checks below are on the merge's form
 M='gh pr merge 41 -R o/r --squash --delete-branch --subject "Fix it (#41)" --body ""'
 mpr() { # mergeStateStatus, when its last check completed
-  printf '{"url":"https://github.com/o/r/pull/41","headRefName":"fix","headRefOid":"hd","baseRefName":"main","mergeStateStatus":"%s","changedFiles":1,"files":[{"path":"a.py"}],"statusCheckRollup":[{"completedAt":"%s"}],"commits":[{"authors":[%s]}]}' "$1" "$2" "${3:-}" > "$FX/pr_view_41"; }
+  printf '{"url":"https://github.com/o/r/pull/41","headRefName":"fix","headRefOid":"hd","baseRefName":"main","mergeStateStatus":"%s","changedFiles":1,"files":[{"path":"a.py"}],"statusCheckRollup":[{"name":"ci","conclusion":"SUCCESS","completedAt":"%s"}],"commits":[{"authors":[%s]}]}' "$1" "$2" "${3:-}" > "$FX/pr_view_41"; }
 printf '{"total_commits":1,"commits":[{"sha":"b1","commit":{"committer":{"date":"2026-10-28T12:00:00Z"}}}]}' > "$FX/repos_o_r_compare_hd...main"
 printf '{"files":[{"filename":"a.py"}]}' > "$FX/repos_o_r_commits_b1"
 mpr CLEAN 2026-10-28T13:00:00Z
 check "a PR up to date with its base, CI run after the base's last commit, merges" 0 "$(guard "$M")"
-check "BLOCK: --admin, naming it" "2 1" "$(guard "$M --admin") $(grep -c 'never `gh pr merge --admin`' "$T/err")"
+printf '{"login":"me"}' > "$FX/user"; printf '{"owner":{"login":"o","type":"User"}}' > "$FX/repos_o_r"
+check "BLOCK: --admin on a repo of another login, naming it" "2 1" "$(guard "$M --admin") $(grep -c "\`gh pr merge --admin\` bypasses main's rules.*Here o/r is o's, not me's" "$T/err")"
+rm "$FX/user" "$FX/repos_o_r"
+check "BLOCK: a merge through gh api's PUT .../pulls/<N>/merge, by -X or --method, with fields or --input, naming gh pr merge; reading whether it merged passes" "2 1 2 2 0" \
+  "$(guard 'gh api -X PUT repos/o/r/pulls/41/merge -f merge_method=squash') $(grep -c 'merge with `gh pr merge`, where the merge checks run' "$T/err") $(guard 'gh api --method put /repos/o/r/pulls/41/merge --input m.json') $(guard "gh api -X PUT 'repos/{owner}/{repo}/pulls/41/merge'") $(guard 'gh api repos/o/r/pulls/41/merge')"
+echo '{"query":"mutation($id: ID!) { mergePullRequest(input: {pullRequestId: $id}) { clientMutationId } }","variables":{"id":"PR_1"}}' > "$T/mpr.json"
+check "BLOCK: a merge through gh api's POST .../merges or GraphQL's mergePullRequest, inline or from --input, with the same message; a GraphQL read passes, one searching for the word too" "2 1 2 2 1 0 0" \
+  "$(guard 'gh api -X POST repos/o/r/merges -f base=main -f head=fix') $(grep -c 'merge with `gh pr merge`, where the merge checks run' "$T/err") $(guard "gh api graphql -f query='mutation { mergePullRequest(input: {pullRequestId: \"PR_1\"}) { clientMutationId } }'") $(guard "gh api graphql --input $T/mpr.json") $(grep -c 'merge with `gh pr merge`, where the merge checks run' "$T/err") $(guard "gh api graphql -f query='{ viewer { login } }'") $(guard "gh api graphql -f query='query { search(query: \"mergePullRequest\", type: ISSUE, first: 1) { issueCount } }'")"
 check "a merge the guard passes records its PR as merged, pending until it ends (own_actions); one it blocks records nothing" "2 0 CLOSED_THREADS o/r#41 merged|" \
   "$(OWN_PENDING="$T/own-pm" guard "$M --admin") $(OWN_PENDING="$T/own-pm" guard "$M") $(cut -d' ' -f3- "$T/own-pm" | tr '\n' '|')"
 mpr BEHIND 2026-10-28T13:00:00Z
@@ -3701,6 +3788,14 @@ check "BLOCK: compose up reading a default-named file the same command writes in
 printf 'See #7.\n' > "$T/ref.md"
 check "post-lint: a 404 reference doesn't exist" 1 "$(python3 "$R/bin/post-lint" "$T/ref.md" --kind reply --repo o/r --parent none 2>&1 | grep -c "doesn't exist in o/r")"
 check "post-lint: a rate-limited check says it couldn't check, not that it doesn't exist" "1 0" "$(GH_STUB_403=1 python3 "$R/bin/post-lint" "$T/ref.md" --kind reply --repo o/r --parent none 2>&1 | grep -c "couldn't check it") $(GH_STUB_403=1 python3 "$R/bin/post-lint" "$T/ref.md" --kind reply --repo o/r --parent none 2>&1 | grep -c "doesn't exist")"
+mkdir -p "$T/plfx"; echo '{}' > "$T/plfx/repos_o_r_issues_8"; printf 'See #8, then #8 and #8 again.\n' > "$T/ref8.md"; : > "$T/ref8.args"
+plref() { XDG_CACHE_HOME="$T/plcache" FX="$T/plfx" GH_STUB_ARGS="$T/ref8.args" python3 "$R/bin/post-lint" "$T/ref8.md" --kind reply --repo o/r --parent none >/dev/null 2>&1; grep -c 'issues/8' "$T/ref8.args"; }
+check "post-lint: a reference named three times is asked once" 1 "$(plref)"
+check "post-lint: a reference found once is not asked again in a later run" 1 "$(plref)"
+sed -i 's/ [0-9]*$/ 1/' "$T/plcache/mergeworthy/refs"
+check "post-lint: a reference found more than a day ago is asked again" 2 "$(plref)"
+eolive 'See #9.'
+check "post-lint --edit-of: an edit adding a second mention of a reference that doesn't exist fails" "rc=1 1" "$(eo 'See #9 and #9 again.' | tail -1) $(eo 'See #9 and #9 again.' | grep -c "#9 doesn't exist in acme/x")"
 
 # ---------- the steward: ~/.mergeworthy/steward owns the mergeworthy repo and the follow-ups ----------
 SW="$T/steward"; mkdir -p "$SW" "$T/mwc"; git init -q "$T/mwc"; git -C "$T/mwc" remote add origin https://github.com/nitedani/mergeworthy.git
@@ -4922,6 +5017,51 @@ printf '## Merging\n- Merge each PR as soon as it is ready (gates, CI)\n' >> "$H
 check "a merge under the project file's standing order passes with no ask, or with another PR held back; BLOCK: the user's last message holding it back wins over the order, a past 'merged' too" "0 0 2 2 2 2" \
   "$(said 'thanks'; lg "$M") $(said "Don't merge #40."; lg "$M") $(said 'Dont merge pr when ready, I want to see it.'; lg "$M") $(said 'ne mergeld'; lg "$M") $(said "Don't merge #41."; lg "$M") $(said "I don't want it merged yet."; lg "$M")"
 sed -i '/^## Merging/,$d' "$HOME/.mergeworthy/projects/o/r.md"
+# --admin merges past the base's rules only on the owner's own user repo, every rule on the base from a ruleset GitHub lets them always bypass, no
+# classic protection, and on their ask: the typed one, or the project file's order; a repo with no project file has no standing order
+adm() { # login, repo owner, owner type, the ruleset's current_user_can_bypass
+  printf '{"login":"%s"}' "$1" > "$FX/user"; printf '{"owner":{"login":"%s","type":"%s"}}' "$2" "$3" > "$FX/repos_o_r"
+  printf '[{"type":"update","ruleset_id":7}]' > "$FX/repos_o_r_rules_branches_main_per_page_100"; printf '{"name":"carry","current_user_can_bypass":"%s"}' "$4" > "$FX/repos_o_r_rulesets_7"
+  echo 'gh: Branch not protected (HTTP 404)' > "$FX/repos_o_r_branches_main_protection.err"; }
+MA="$M --admin"; adm o o User always
+check "an --admin merge on the owner's own repo, its ruleset always bypassable, no classic protection, asked for as merge #41, passes; with the project file's order too" "0 0" \
+  "$(said 'merge #41'; lg "$MA") $(said 'looks good'; printf '## Merging\n- Merge each PR as soon as it is ready\n' >> "$HOME/.mergeworthy/projects/o/r.md"; lg "$MA"; sed -i '/^## Merging/,$d' "$HOME/.mergeworthy/projects/o/r.md")"
+said 'merge #41'
+check "an --admin merge with GH_HOST naming another host reads the login, repo, rules and protection from github.com" "0 5 5" \
+  "$(rm -f "$T/args"; GH_HOST=github.example.com GH_STUB_ARGS="$T/args" lg "$MA") $(grep -cE '^api (--hostname github.com )?(user|repos/o/r|repos/o/r/(rules|rulesets|branches)/.*)$' "$T/args") $(grep -cE '^api --hostname github.com (user|repos/o/r|repos/o/r/(rules|rulesets|branches)/.*)$' "$T/args")"
+check "BLOCK: --admin on an organization's repo, past a ruleset bypassable never or for pull requests only, or classic protection, naming why" "2 1 2 1 2 1 2 1" \
+  "$(adm o o Organization always; lg "$MA") $(grep -c 'o/r belongs to the organization o: merge once the PR meets them' "$T/err") \
+$(adm o o User never; lg "$MA") $(grep -c 'ruleset 7 (carry) lets o bypass it never, not always' "$T/err") \
+$(adm o o User pull_requests_only; lg "$MA") $(grep -c 'bypass it pull_requests_only, not always' "$T/err") \
+$(adm o o User always; echo '{}' > "$FX/repos_o_r_branches_main_protection"; lg "$MA") $(grep -c 'main has classic branch protection, past which the guard lets no --admin merge' "$T/err"; rm "$FX/repos_o_r_branches_main_protection")"
+check "BLOCK: --admin when reading the base's classic protection fails other than with GitHub's 'Branch not protected', saying to retry" "2 1" \
+  "$(mv "$FX/repos_o_r_branches_main_protection.err" "$T/bnp"; lg "$MA") $(grep -c "gh couldn't read main's branch protection: retry once gh answers" "$T/err"; mv "$T/bnp" "$FX/repos_o_r_branches_main_protection.err")"
+check "BLOCK: --admin=true, and --admin=false then --admin, read as --admin; --admin then --admin=false is a plain merge" "2 2 0" \
+  "$(adm o o Organization always; lg "$M --admin=true") $(lg "$M --admin=false --admin") $(lg "$M --admin --admin=false"; adm o o User always)"
+MR="${MA#gh }"; MR="${MR/ -R o\/r/}"
+check "BLOCK: -R or --repo before pr merge reaches the merge checks with its repo" "2 2 2 1" \
+  "$(adm o o Organization always; lg "gh -R o/r $MR") $(lg "gh --repo o/r $MR") $(lg "gh --repo=o/r $MR") $(grep -c 'o/r belongs to the organization o' "$T/err"; adm o o User always)"
+check "BLOCK: --admin on a PR off github.com, naming its host" "2 1" \
+  "$(sed -i 's|https://github.com/o/r/pull/41|https://github.example.com/o/r/pull/41|' "$FX/pr_view_41"; lg "$MA") $(grep -c 'pull/41 is on github.example.com' "$T/err"; sed -i 's|github.example.com|github.com|' "$FX/pr_view_41")"
+check "BLOCK: --admin on a response of another shape (the repo with no owner, a rules page an object, a rule with no ruleset_id, a ruleset a string), naming the read to retry" "2 1 2 1 2 1 2 1" \
+  "$(echo '{}' > "$FX/repos_o_r"; lg "$MA") $(grep -c "gh couldn't read the login or o/r: retry once gh answers" "$T/err"; adm o o User always) \
+$(echo '{}' > "$FX/repos_o_r_rules_branches_main_per_page_100"; lg "$MA") $(grep -c "gh couldn't read main's rules: retry" "$T/err") \
+$(echo '[{}]' > "$FX/repos_o_r_rules_branches_main_per_page_100"; lg "$MA") $(grep -c "gh couldn't read main's rules: retry" "$T/err"; adm o o User always) \
+$(echo '"x"' > "$FX/repos_o_r_rulesets_7"; lg "$MA") $(grep -c "gh couldn't read ruleset 7: retry" "$T/err"; adm o o User always)"
+sed 's/"statusCheckRollup":\[/&{"name":"lint","conclusion":"NEUTRAL"},{"context":"e2e","state":"PENDING"},{"name":"docs","conclusion":"","status":"IN_PROGRESS"},{"name":"t","conclusion":"FAILURE"},/' "$FX/pr_view_41" > "$T/pv"
+check "BLOCK: --admin while a check on the head failed or is pending, naming each; a neutral one passes" "2 1" \
+  "$(cp "$FX/pr_view_41" "$T/pv41"; cp "$T/pv" "$FX/pr_view_41"; lg "$MA") $(grep -c "its head's checks haven't all succeeded (e2e pending, docs pending, t failure)" "$T/err"; mv "$T/pv41" "$FX/pr_view_41")"
+mv "$HOME/.mergeworthy/projects/o/r.md" "$T/or.md"
+check "with no project file, BLOCK: --admin unasked, or asked for another PR; a plain merge unasked passes, and --admin asked for passes" "2 1 2 0 0" \
+  "$(said 'looks good'; lg "$MA") $(grep -c "merging https://github.com/o/r/pull/41 past its base's rules (--admin) lands on o/r.*reply \`merge\`" "$T/err") $(said 'merge #40'; lg "$MA") $(said 'looks good'; lg "$M") $(said 'merge #41'; lg "$MA")"
+mv "$T/or.md" "$HOME/.mergeworthy/projects/o/r.md"; rm "$FX/user"
+check "BLOCK: --admin when gh can't read the login, saying to retry" "2 1" "$(lg "$MA") $(grep -c "gh couldn't read the login or o/r: retry once gh answers" "$T/err")"
+echo '{"login":"o"}' > "$FX/user"; printf '[{"type":"update","ruleset_id":7}][{"type":"deletion","ruleset_id":8}]' > "$FX/repos_o_r_rules_branches_main_per_page_100"; printf '{"name":"maint","current_user_can_bypass":"never"}' > "$FX/repos_o_r_rulesets_8"
+check "BLOCK: --admin past a ruleset that only the second page of the base's rules names" "2 1" "$(lg "$MA") $(grep -c 'ruleset 8 (maint) lets o bypass it never, not always' "$T/err")"
+rm "$FX/repos_o_r_rulesets_8"
+touch "$FX/repos_o_r_rules_branches_main_per_page_100.hang"
+check "BLOCK: --admin when gh hangs reading the base's rules, saying to retry" "2 1" "$(lg "$MA") $(grep -c "gh couldn't read main's rules: retry once gh answers" "$T/err")"
+rm "$FX/user" "$FX/repos_o_r_rules_branches_main_per_page_100.hang" "$FX/repos_o_r_branches_main_protection.err" "$FX/repos_o_r" "$FX/repos_o_r_rules_branches_main_per_page_100" "$FX/repos_o_r_rulesets_7"
 said 'looks good'
 check "BLOCK: gh release create and npm publish unasked; asked, or a dry run, or a repo with no project file, they pass; BLOCK: release notes asked for, a past 'released' or 'published', one held back as 'released' or 'published'" "2 2 0 0 2 2 2 0 0 2 2 2 2" \
   "$(lg 'gh release create v1.2.0 -R o/r') $(lg 'npm publish' "$TCO") $(lg 'npm publish --dry-run' "$TCO") $(lg 'gh release create v1.2.0 -R lo/none') \
