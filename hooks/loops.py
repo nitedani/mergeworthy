@@ -67,20 +67,22 @@ FANOUT = r'^Fan-out: converge §Running the agents$'  # a round 1 seating a step
 
 
 def declared(brief):
-    """(the step a round's brief declares by its line `Review: <step> [<part>]`, the seats its line `Seats: <seat>, …` does), each None without."""
+    """(the step a round's brief declares by its line `Review: <step> [<part>]`, the seats its line `Seats: <seat>, …` does, the
+    seat or loop its line `Fallback: <seat> failed …` names first, which it fills), each None without."""
     st, se = re.search(r'^[ \t>*-]*Review:[ \t]*(' + '|'.join(STEPS) + r')\b', brief, re.M), re.search(r'^[ \t>*-]*Seats:[ \t]*(.+)$', brief, re.M)
-    return st and st[1], se and [x for x in re.split(r'[\s,]+', se[1]) if x] or None
+    fb = re.search(r'^[ \t>*-]*Fallback:[ \t]*([^\s<,:;]+)', brief, re.M)
+    return st and st[1], se and [x for x in re.split(r'[\s,]+', se[1]) if x] or None, fb and fb[1]
 
 
-def register(loop, n, heads, thread=None, post=False, outs=(), seated=False, checkouts=(), led=None, step=None, seats=None):
+def register(loop, n, heads, thread=None, post=False, outs=(), seated=False, checkouts=(), led=None, step=None, seats=None, fills=None, company=None):
     """Records round n of loop that ran: the thread it ran in, and, for a code review, the heads its brief pinned, the reports it
     writes (outs) and whether it is one of its step's seats (seated: its round 1 brief's FANOUT line), in review-loops.json and in
     the journal of each change its brief names (checkouts), with the ledger it names (led), the step its `Review:` line declares
-    and the seats its `Seats:` line does."""
+    the seats its `Seats:` line does, the seat its `Fallback:` line fills and the company it ran on."""
     failed = []  # each record is written though the other's write failed, then the first failure is raised
     if not post:
         for c in dict.fromkeys(filter(None, map(review_journal.change_of, checkouts))):
-            try: review_journal.append(c, {'ev': 'round', 'loop': loop, 'n': n, 'heads': heads, 'outs': sorted({os.path.realpath(o) for o in outs}), 'thread': thread, 'seated': seated, 'checkouts': list(checkouts), 'ledger': led, 'step': step, 'seats': seats})
+            try: review_journal.append(c, {'ev': 'round', 'loop': loop, 'n': n, 'heads': heads, 'outs': sorted({os.path.realpath(o) for o in outs}), 'thread': thread, 'seated': seated, 'checkouts': list(checkouts), 'ledger': led, 'step': step, 'seats': seats, 'fills': fills, 'company': company})
             except OSError as e: failed.append(e)
     def ran(loops):
         r = loops[loop] = record(loop, loops)
@@ -130,6 +132,12 @@ def lineage(checkout):
     return found
 
 
+def same_company_seat(loop, tops):
+    """Whether loop's round 1 on the lineage of one of the checkouts tops was a seat (its FANOUT line) on the main session's
+    company, whose later rounds stay on it (delegate §Reviewers)."""
+    return any((r := lineage(t).get(loop)) and r['first'].get('seated') and r['first'].get('company') == 'claudeAgent' for t in tops)
+
+
 def step_of(loop, first):
     """The step a loop checks: its round 1's `Review: <step>`, else its name's `<step-or-slice>` (a slice's: verify)."""
     stem = loop.rsplit('-', 1)[0]
@@ -139,12 +147,16 @@ def step_of(loop, first):
 def open_seats(report, recorded, step, checkout='.'):
     """The other seats of report's step on checkout's lineage, each still open: a loop whose round 1 seated it (its FANOUT line
     or `Seats:`) checking step, or one its round 1's `Seats: <seat>, …` declares that never ran, none of whose reports is in
-    recorded (the outputs pr-steps recorded on the head). A step closes only once every seat's loop did."""
+    recorded (the outputs pr-steps recorded on the head), and no loop filling it (its round 1's `Fallback: <seat>`) closed.
+    A step closes only once every seat's loop did."""
     report, on = os.path.realpath(report), lineage(checkout)
     mine = [l for l, r in on.items() if any(report in outs for _, _, outs in r['rounds'])]
     named = {f"{l.rsplit('-', 1)[0]}-{s}" for l in mine for s in on[l]['first'].get('seats') or ()}
     seats = {l for l, r in on.items() if (r['first'].get('seated') or r['first'].get('seats')) and step_of(l, r['first']) == step} | named
-    return sorted(l for l in seats - set(mine) if not (l in on and {o for _, _, outs in on[l]['rounds'] for o in outs} & set(recorded)))
+    stem = lambda l: l.rsplit('-', 1)[0]
+    filled = {f if f.startswith(stem(l) + '-') else f"{stem(l)}-{f}": l for l, r in on.items() if (f := r['first'].get('fills'))}
+    done = lambda l: l in mine or l in on and {o for _, _, outs in on[l]['rounds'] for o in outs} & set(recorded)
+    return sorted(l for l in seats if not done(l) and not (l in filled and done(filled[l])))
 
 
 git = lambda wt, *a: subprocess.run(['git', '-C', wt, *a], capture_output=True, text=True)

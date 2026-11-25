@@ -70,7 +70,8 @@ led = loops.ledger_named(brief) or (first or {}).get('ledger')
 # Rounds per loop on one head (loops.admit); a post's review is refused only once gate-pass's own check (review_launch.answers) already passes every draft it reviews
 rnd = loops.round_of(review_transport.round_name(ti))
 # a review template's first line `Review: <step> [<part>]` (delegate/verifier.md) declares the round's step
-step, seats = loops.declared(brief)
+step, seats, fills = loops.declared(brief)
+provider = {(ti.get('target') or {}).get(k) for k in ('providerInstanceId', 'driverKind')} - {None, ''}  # the company a launched review runs on
 review = rnd and (ti.get('role') == 'review' or not ti.get('role') and (step or re.search(r'\bexactly (CLEAN|NO BUGS)\b|\.docs-read\.md\b', brief)))  # a docs reader writes <name>.docs-read.md
 # a post's review: a gate review of a named draft whose brief asks for no code verdict (a small review's pr-body.review.out comes with one)
 post_review = review and bool(reviewed_drafts(brief)) and (step == 'post' if step else not re.search(r'\b(NO BUGS|MERGE AS IS)\b', own_brief))
@@ -155,7 +156,7 @@ def register_launch():
     for out, sha in rec.get('launches', {}).items(): review_launch.launch(out, sha)
     if review:
         loops.register(rnd[1], int(rnd[2]), None if post_review else rec['heads'] if 'heads' in rec else heads,
-                       review_transport.thread(ti, d.get('tool_response')), post_review, said_outs, bool(re.search(loops.FANOUT, brief, re.M)), tops, led, step, seats)
+                       review_transport.thread(ti, d.get('tool_response')), post_review, said_outs, bool(re.search(loops.FANOUT, brief, re.M)), tops, led, step, seats, fills, None if sent else 'claudeAgent' if not provider or 'claudeAgent' in provider else min(provider))
     if implementer and (approach := rec['approach'] if 'approach' in rec else brief_approach(strict=False)):
         os.makedirs(BUILT, exist_ok=True)
         open(os.path.join(BUILT, os.path.basename(approach[0])), 'w').write(approach[1])
@@ -182,8 +183,6 @@ def codex_reset():
     return min(until) if until and min(until) > time.time() else None
 # This hook runs only under Claude Code, so a review on claudeAgent, or naming no provider (it inherits), is on the main session's company
 if ti.get('role') == 'review' and under_t3() and not sent:  # a continued round runs on its thread's model
-    target = ti.get('target') or {}
-    provider = {target.get('providerInstanceId'), target.get('driverKind')} - {None, ''}
     reset = codex_reset()
     if reset and 'codex' in provider:
         at = time.localtime(reset)
@@ -191,8 +190,10 @@ if ti.get('role') == 'review' and under_t3() and not sent:  # a continued round 
                          "Launch the review on this company (target.providerInstanceId claudeAgent); it needs no Fallback line while that holds.\n")
         refused()
     # the fallback keeps the first review's prompt, so its claim may sit in the brief file the task names; `<what failed>` is the form, no claim.
-    # A round 1 seating its step's reviewers at once takes a fresh agent of this company as its second seat (delegate §Reviewers)
-    elif not reset and (not provider or 'claudeAgent' in provider) and not (rnd and rnd[2] == '1' and re.search(loops.FANOUT, brief, re.M)) and not re.search(r'\bFallback:[ \t]*[^\s<]', launch.Launch(str(ti.get('task') or '')).brief):
+    # A round 1 seating its step's reviewers at once takes a fresh agent of this company as its second seat, which keeps its
+    # later rounds on it (delegate §Reviewers)
+    elif not reset and (not provider or 'claudeAgent' in provider) and not (rnd and (rnd[2] == '1' and re.search(loops.FANOUT, brief, re.M) or rnd[2] != '1' and loops.same_company_seat(rnd[1], tops))) \
+            and not re.search(r'\bFallback:[ \t]*[^\s<]', launch.Launch(str(ti.get('task') or '')).brief):
         sys.stderr.write("BLOCKED: an independent check starts on another company's model (mergeworthy:delegate §Reviewers): set target.providerInstanceId to codex. "
                          "Only when that call failed, launch on this company with `Fallback: <what failed>` in the task or the brief file it names.\n")
         refused()

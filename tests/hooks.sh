@@ -2647,6 +2647,16 @@ $2}"; }  # loop extra-line: a round 1 brief of the step whose seats are codex an
 ts="$(fo ts-codex-r1 '{"providerInstanceId":"codex"}' "$(tsb ts-codex)") $(fo ts-claude-r1 '{"providerInstanceId":"claudeAgent"}' "$(tsb ts-claude)") $(fo ts-claude2-r1 '{"providerInstanceId":"claudeAgent"}' "$(tsb ts-claude2)") $(grep -c 'would be a third seat of ts, whose round 1 declared claude, codex' "$T/err")"
 ts="$ts $(fo ts-claude3-r1 '{"providerInstanceId":"claudeAgent"}' "$(tsb ts-claude3 'Fallback: ts-claude stopped')") $(fo ts-claude4-r1 '{"providerInstanceId":"claudeAgent"}' "$(tsb ts-claude4 'Continues: ts-claude')")"
 check "BLOCK: a third fresh seat of a step whose round 1 declared two, naming the cure; with what failed (Fallback:) or the loop it takes over (Continues:) it passes" "0 0 2 1 0 0" "$ts"
+GF="$T/seats6"; git init -q -b main "$GF"; git -C "$GF" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; FH=$(git -C "$GF" rev-parse HEAD)
+for s in "fl-codex codex" "fl-claude2 claudeAgent"; do set -- $s; fo "$1-r1" "{\"providerInstanceId\":\"$2\"}" "Review $GF at head $FH; output to $T/$1.md
+$FO
+Seats: codex, claude$([ "$1" = fl-claude2 ] && printf '\nFallback: fl-claude failed to start')" >/dev/null; printf 'Checked it.\nNO BUGS\n' > "$T/$1.md"; std "$T/$1.md"; done
+check "a seat admitted as a substitute (Fallback: <seat> failed) fills the declared seat it replaces: verify records once both reports do" "0 0 1" "$(for s in fl-codex fl-claude2; do (cd "$GF" && bash "$R/bin/pr-steps" verify "$T/$s.md" >/dev/null 2>&1; echo $?); done | xargs) $(grep -c '^verify ' ~/.claude/pr-steps/"$FH")"
+GC="$T/seats7"; git init -q -b main "$GC"; git -C "$GC" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; CCH=$(git -C "$GC" rev-parse HEAD); SCL="$RLD/sc.ledger.md"; printf 'R1.1 should fixed in %s\n' "$CCH" > "$SCL"
+sc="$(for s in "sc-codex codex" "sc-claude claudeAgent"; do set -- $s; fo "$1-r1" "{\"providerInstanceId\":\"$2\"}" "Review $GC at head $CCH; output to $T/$1.md
+$FO
+Seats: codex, claude"; done | xargs) $(for s in sc-claude sc-codex; do fo "$s-r2" '{"providerInstanceId":"claudeAgent"}' "Review $GC at head $CCH, the commits since. Ledger: $SCL"; done | xargs)"
+check "a later round of the seat on this company stays on it: a fresh claudeAgent r2 of the Claude seat passes while Codex is available; BLOCK the Codex seat's r2 on claudeAgent without a Fallback line" "0 0 0 2" "$sc"
 TCL="$RLD/tc.ledger.md"; rule "$TCL" "$TH" 3
 tc="$(for i in 1 2 3; do fo tc-codex-r$i '{"providerInstanceId":"codex"}' "Review $GT at head $TH; round $i. Ledger: $TCL"; done | xargs) $(fo tc-codex2-r2 '{"providerInstanceId":"codex"}' "Review $GT at head $TH; the seat past its context.
 Continues: tc-codex
