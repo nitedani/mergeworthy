@@ -5205,6 +5205,22 @@ agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$W]}"
 a1=$(agy_ev PreToolUse "{\"id\":\"c\",$(echo "$W" | cut -c2-)" 2 | grep -c 'AGENTS.md')
 agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$RA,$W]}" '{"type":"GENERIC","content":"1: Be nice."}'
 check "agy: a file write before AGENTS.md was read is denied; read in the same model turn (step 2, the write step 3), it isn't" "1 0" "$a1 $(agy_ev PreToolUse "{\"id\":\"c_1\",$(echo "$W" | cut -c2-)" 3 | grep -c 'AGENTS.md')"
+# only a read of AGENTS.md that succeeded counts: a cat that failed with no output, or one declined (agy logs no result), doesn't
+CA='{"name":"run_command","args":{"CommandLine":"cat AGENTS.md 2>/dev/null"}}'
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$CA]}" '{"type":"GENERIC","content":"Command exited with code 1.\n\nNo output from the command."}' "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$W]}"
+a1=$(agy_ev PreToolUse "{\"id\":\"c\",$(echo "$W" | cut -c2-)" 4 | grep -c 'AGENTS.md')
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$CA]}" "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$W]}"
+a2=$(agy_ev PreToolUse "{\"id\":\"c\",$(echo "$W" | cut -c2-)" 4 | grep -c 'AGENTS.md')
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$CA]}" '{"type":"GENERIC","content":"Command exited with code 0.\n\nCommand output:\nBe nice.\n"}' "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$W]}"
+check "agy: a file write after a cat of AGENTS.md that failed, or one declined (no result), is denied; after one that succeeded it isn't" "1 1 0" "$a1 $a2 $(agy_ev PreToolUse "{\"id\":\"c\",$(echo "$W" | cut -c2-)" 4 | grep -c 'AGENTS.md')"
+# a declined push's queued check runs as failed at the next event: its pending action goes, none recorded
+export OWN_PENDING="$T/agy-own-d" PUSHED_HEADS="$T/agy-heads-d"; rm -f "$HOME/.mergeworthy/agy/c1.post"
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PUSH]}"; agy_ev PostToolUse "{\"id\":\"g\",$(echo "$PUSH" | cut -c2-)" 2 >/dev/null
+python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import agy, own_actions; own_actions.intend(agy.call_id("c1", 2), {"PUSHED_HEADS": ["o/r declined"]})' "$R/hooks"
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PUSH]}" "$U" '{"type":"PLANNER_RESPONSE","content":"Not pushed."}'; agy_ev Stop "" 0 0 >/dev/null
+check "agy: a declined push (no result step) is settled as failed at the next event: queued check gone, pending action dropped, no head recorded" "0 0 0" \
+  "$(wc -l < "$HOME/.mergeworthy/agy/c1.post") $(cat "$OWN_PENDING" 2>/dev/null | wc -l) $(cat "$PUSHED_HEADS" 2>/dev/null | wc -l)"
+unset OWN_PENDING PUSHED_HEADS; rm -f "$HOME/.mergeworthy/agy/c1.post"
 check "agy: its own subagents (swarm) are denied" 1 "$(agy_ev PreToolUse '{"id":"s","name":"swarm","args":{"action":"add","name":"w","brief":"b"}}' 2 | grep -c '"decision": "deny".*delegate_task')"
 check "agy: a call no hook refuses is allowed in agy's form (an empty stdout or {} would not say so)" '{"decision": "allow"} 0' "$(agt "$U" '{"type":"PLANNER_RESPONSE","tool_calls":[{"name":"run_command","args":{"CommandLine":"ls"}}]}'; agy_ev PreToolUse '{"id":"l","name":"run_command","args":{"CommandLine":"ls"}}' 2)"
 check "agy: input it can't read is denied, with exit 0 and a JSON verdict" "deny 0" "$(o=$(echo 'not json' | python3 "$R/hooks/agy.py" PreToolUse); rc=$?; printf '%s' "$o" | python3 -c 'import json, sys; print(json.load(sys.stdin)["decision"], end=" ")'; echo $rc)"

@@ -95,11 +95,17 @@ def steps(path):
 def claude_transcript(agy_steps, cwd, session):
     """agy's transcript steps as Claude Code transcript entries: a typed request, each model text and tool call, each call's result, a
     Stop hook's continuation reason, and a compaction (agy's CHECKPOINT step) as compact_boundary. A background command's result
-    and its end are Claude Code's: a started task, then a <task-notification>. Returns the entries and the outcome of each call that
-    ended, by its step (a background command's once its task finished)."""
+    and its end are Claude Code's: a started task, then a <task-notification>. A call agy logged no result for (declined, cancelled)
+    failed with no result once a later step shows it ended, as Claude Code records one. Returns the entries and the outcome of each
+    call that ended, by its step (a background command's once its task finished)."""
     calls, tasks, ends, out = {}, {}, {}, []
     for s in agy_steps:
         at, n = s.get('created_at'), s['step_index']
+        for gone in sorted(k for k in calls if k < n):
+            calls.pop(gone)
+            o = ends[gone] = {'failed': True, 'output': '', 'error': 'The call ended with no result.'}
+            out.append({'type': 'user', 'timestamp': at, 'message': {'role': 'user', 'content': [
+                {'type': 'tool_result', 'tool_use_id': call_id(session, gone), 'is_error': True, 'content': o['error']}]}})
         if s.get('type') == 'USER_INPUT':
             m = re.search(r'<USER_REQUEST>\n?(.*?)\n?</USER_REQUEST>', s.get('content') or '', re.S)
             out.append({'type': 'user', 'timestamp': at, 'cwd': cwd, 'message': {'role': 'user', 'content': m[1] if m else s.get('content') or ''}})
@@ -133,6 +139,11 @@ def claude_transcript(agy_steps, cwd, session):
     return out, ends
 
 
+def line(entry):
+    """One transcript entry as Claude Code writes it, compact JSON on one line, which the hooks' byte filters ("is_error":true) match."""
+    return json.dumps(entry, separators=(',', ':')) + '\n'
+
+
 class Event:
     """One agy hook call: its input, the conversation's agy steps so far, and the Claude Code transcript written from them."""
     def __init__(self, d):
@@ -145,7 +156,7 @@ class Event:
         os.makedirs(DIR, exist_ok=True)
         tmp = f'{self.transcript}.{os.getpid()}'
         with open(tmp, 'w') as f:
-            f.writelines(json.dumps(e) + '\n' for e in entries)
+            f.writelines(line(e) for e in entries)
         os.replace(tmp, self.transcript)
 
     def base(self, event):
