@@ -5273,6 +5273,6 @@ for ev in ("PreToolUse", "PostToolUse"):
     for name in [*agy.TOOLS, "swarm", "mcp_t3-code_delegate_task", "mcp_t3-code_t3_thread_launch", "mcp_t3-code_create_threads"]:
         wants = name in agy.OWN_AGENTS and ev == "PreToolUse" or bool(agy.matched(ev, agy.claude_name(name)))
         if wants != any(re.search(g["matcher"], name) for g in mine[ev]): print(ev, name, wants)' "$R")"
-check "agy: the plugin's always-on rule loads always-on.md" yes "$(grep -q '^@\[always-on\](~/.mergeworthy/current/always-on.md)$' "$R/agy/rules/mergeworthy.md" && head -3 "$R/agy/rules/mergeworthy.md" | grep -qx 'trigger: always_on' && echo yes || echo no)"
+check "agy: the plugin's always-on rule declares the shared always-on.md import" yes "$(grep -q '^@\[always-on\](~/.mergeworthy/current/always-on.md)$' "$R/agy/rules/mergeworthy.md" && head -3 "$R/agy/rules/mergeworthy.md" | grep -qx 'trigger: always_on' && echo yes || echo no)"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]
