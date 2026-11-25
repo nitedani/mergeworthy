@@ -27,8 +27,10 @@ def round_name(ti):
 
 
 def thread(ti, response):
-    """The reviewer a round ran in, which a later round is sent to: the one it was sent to, T3's childThreadId, or Claude Code's agentId."""
-    return ti.get('threadId') or (t3_tasks.result(response) or {}).get('childThreadId') \
+    """The reviewer a round ran in, which a later round is sent to: the one it was sent to, T3's childThreadId (delegate_task) or
+    threadId (t3_thread_launch), or Claude Code's agentId."""
+    r = t3_tasks.result(response) or {}
+    return ti.get('threadId') or r.get('childThreadId') or r.get('threadId') \
         or (response.get('agentId') if isinstance(response, dict) else None)
 
 

@@ -22,7 +22,7 @@ def locked_update(path, change):
     concurrent launches update it one at a time."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path + '.lock', 'a') as held:
-        if not (_lock and path == LOOPS): fcntl.flock(held, fcntl.LOCK_EX)  # a shell round admitted in this process holds it already
+        fcntl.flock(held, fcntl.LOCK_EX)
         data = json.load(open(path)) if os.path.exists(path) else {}
         change(data)
         with open(path + '.tmp', 'w') as o: json.dump(data, o)
@@ -81,6 +81,27 @@ def register(loop, n, heads, thread=None, post=False, outs=(), seated=False, che
     if failed: raise failed[0]
 
 
+PENDING = os.path.expanduser('~/.claude/review-pending')  # a Bash command's admitted rounds and post launches, until it ended
+
+
+def pend(key, rounds, launches):
+    """Holds, for the Bash command key (own_actions.key), the register() arguments of the review rounds it runs and the draft sha
+    of each post review output it writes (review_launch.set_aside), until post-bash-register settles them."""
+    if rounds or launches:
+        os.makedirs(PENDING, exist_ok=True)
+        with open(os.path.join(PENDING, key + '.json'), 'w') as f: json.dump({'rounds': rounds, 'launches': launches}, f)
+
+
+def settle(key, ran):
+    """The Bash command key ended: what pend() held for it is registered when it ran (exit 0), else dropped."""
+    import review_launch
+    try: held = json.load(open(p := os.path.join(PENDING, key + '.json'))); os.remove(p)
+    except (OSError, ValueError): return
+    if ran:
+        for out, sha in held['launches'].items(): review_launch.launch(out, sha)
+        for r in held['rounds']: register(*r)
+
+
 def open_seats(report, recorded, step):
     """The other seats of report's step, loops `<step-or-slice>-<provider>` seated with its loop (its slice's, or any whose round 1
     pinned the same head) that no other step recorded, none of whose reports is in recorded (the outputs pr-steps recorded on the
@@ -112,7 +133,6 @@ def ledger_named(brief):
     """The ledger path a round's brief names, else None."""
     m = re.search(r'(/[^\s`\'"()]+\.ledger\.md)\b', brief)
     return m and m[1]
-_lock = None
 
 
 desc = lambda t, o, h: git(t, 'merge-base', '--is-ancestor', o, h).returncode == 0
@@ -148,11 +168,9 @@ def rounds_of(loop, tops):
 
 def admit(loop, n, tops, heads, led):
     """Why round n (2 or later) of code review loop is refused, '' when it may run: tops are the checkouts its brief names, heads
-    their heads its pins equal, led the ledger path it names (None). Holds the rounds' lock until the process exits."""
-    global _lock
+    their heads its pins equal, led the ledger path it names (None)."""
     if re.fullmatch(r'fresh(-[^-]+)?', loop):
         return f"{loop}-r{n}: the fresh reader runs once (mergeworthy:converge step 4); its findings go back to the loops that own them, `<slice>-fresh` (mergeworthy:delegate §Review rounds).\n"
-    _lock = open(LOOPS + '.lock', 'a'); fcntl.flock(_lock, fcntl.LOCK_EX)
     earlier = on_head(loop, n, tops, heads)
     try: rows, _, last = ledger.read(led) if led and os.path.isfile(led) else ([], [], 0)
     except OSError as e: return f"the ledger {led} can't be read ({e.strerror}), so no round of {loop} is admitted: fix it, or name the loop's ledger (mergeworthy:delegate §Review rounds).\n"

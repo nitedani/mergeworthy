@@ -1,5 +1,5 @@
 """The text a post's reviewer was handed. The hooks that start a reviewer (pre-agent-dedupe, pre-bash-guard) check unlinted() on its
-output while they admit the launch, and call launch() once the launching hook admitted it; gate-pass and pre-agent-dedupe call answers(), which
+output while they admit the launch, call set_aside() once the launching hook admitted it and launch() once it ran; gate-pass and pre-agent-dedupe call answers(), which
 adds the verdict, ledger and freshness rules to reviewed(), so a verdict counts only for the draft's text at that launch, whatever the files' times say. The record is a workflow check of what those hooks see, not proof
 of who wrote it."""
 import datetime, hashlib, os, re, time
@@ -47,18 +47,23 @@ def unlinted(out):
     return ''
 
 
-def launch(out):
-    """Records, once the launching hook admitted it (unlinted(out) passed), that a reviewer starts on out's draft: moves a verdict
-    an earlier launch left in out to <out>.prev, and writes <out>.launch as `<sha256 of the draft> <epoch>`.
-    Nothing when out names no draft that exists."""
+def set_aside(out):
+    """Before a reviewer the launching hook admitted (unlinted(out) passed) starts on out's draft: the sha256 of the draft it is
+    handed, once an earlier launch's verdict in out moved to <out>.prev; None when out names no draft that exists."""
     draft = draft_of(out)
     if not draft or not os.path.isfile(draft):
-        return
-    sha = hashlib.sha256(open(draft, 'rb').read()).hexdigest()
+        return None
     if os.path.exists(out):
         os.replace(out, out + '.prev')
-    with open(out + '.launch', 'w') as f:
-        f.write(f'{sha} {int(time.time())}\n')
+    return hashlib.sha256(open(draft, 'rb').read()).hexdigest()
+
+
+def launch(out, sha):
+    """Records, once the reviewer's launch ran, that it started on the draft text whose sha256 set_aside() returned: writes
+    <out>.launch as `<sha> <epoch>`. Nothing for sha None."""
+    if sha:
+        with open(out + '.launch', 'w') as f:
+            f.write(f'{sha} {int(time.time())}\n')
 
 
 def reviewed(out, draft):
@@ -83,7 +88,7 @@ def answers(out, draft, ledger_file=None):
     """Why the review in out doesn't let draft be posted, gate-pass's review rule ('' when it does).
     The reviewer was handed draft's text (reviewed()); its verdict is exactly CLEAN, or ledger_file (default: <name>.ledger.md beside draft,
     if any), written after it, closes the round (loops.close, a post's rules, with a row for each finding of the verdict and of the one
-    launch() set aside); the launch postdates the latest human comment
+    set_aside() moved); the launch postdates the latest human comment
     thread-context.md beside draft records. out None: a status post, which has no review and is checked by draft's own time. Writes nothing."""
     why, at = reviewed(out, draft) if out else ('', int(os.path.getmtime(draft)))
     if why: return f'{draft}: {why}'

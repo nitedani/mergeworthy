@@ -121,6 +121,7 @@ job_file = os.path.join(agent_jobs.JOBS, hashlib.sha256(key.encode()).hexdigest(
 # pend at a time; the record of a call another hook blocked is overwritten by the key's next launch, or removed a day on by the
 # next launch that reads it (the pending loop)
 pre = os.path.join(agent_jobs.LAUNCHED, os.path.basename(job_file))
+nokey = os.path.join(agent_jobs.LAUNCHED, 'nokey-' + hashlib.sha256(f"{d.get('tool_use_id') or ''}\0{json.dumps(ti, sort_keys=True)}".encode()).hexdigest()[:16])  # a keyless launch's pending record
 task = str(ti.get('task') or ti.get('prompt') or '')
 memory = memory_launch(task)  # decided here, at admission, and stored on the pending call; `refresh` on the job too
 refresh = bool(memory)
@@ -139,7 +140,11 @@ def register_launch():
             except (OSError, ValueError, KeyError, TypeError): rec, launched = {}, time.time()
             json.dump({'key': key, 'started': time.time(), 'launched': launched, 'brief': task, 'role': ti.get('role'), 'worktrees': L.worktrees, 'refresh': bool(ran_memory),
                        'session': d.get('session_id'), 'transcript': d.get('transcript_path'), 'handle': agent_jobs.handle(d.get('tool_response'), ti.get('threadId')) or (sent and d.get('tool_name') == 'SendMessage' and f"claude:{ti['threadId']}") or None}, open(job_file, 'w'))
+    if not key:  # a keyless launch's pending record holds only what its admission set aside
+        try: rec = json.load(open(nokey)); os.remove(nokey)
+        except (OSError, ValueError): rec = {}
     if cid: loops.locked_update(CIDS, lambda seen: seen.setdefault(cid, time.time()))
+    for out, sha in rec.get('launches', {}).items(): review_launch.launch(out, sha)
     if review:
         loops.register(rnd[1], int(rnd[2]), None if post_review else rec['heads'] if 'heads' in rec else loops.pinned(L)[1],
                        review_transport.thread(ti, d.get('tool_response')), post_review, said_outs, bool(re.search(loops.FANOUT, brief, re.M)), L.checkouts)
@@ -194,10 +199,11 @@ for out in review_outs(brief):
     if why := review_launch.misnamed(out) or review_launch.unlinted(out):
         sys.stderr.write(f"BLOCKED: {why}\n")
         refused()
+launches = {}  # per review output its brief names: the sha256 of the draft its reviewer is handed, recorded once the launch ran
 def admit():
-    """The PRE call's end: a launch nothing refused records each review output its brief names, setting aside an earlier verdict."""
+    """The PRE call's end: a launch nothing refused sets aside each earlier verdict in the review outputs its brief names."""
     if not blocked:
-        for out in review_outs(brief): review_launch.launch(out)
+        for out in review_outs(brief): launches[out] = review_launch.set_aside(out)
 # A template's slot left unfilled (`<the slice's risky edges>`) reaches the agent as a rule it never got. A slot in backticks is
 # the agent's own output form, the paste-in rules (agent.md) carry slots of their own, and an HTML tag a brief quotes is no slot.
 told = re.sub(r'`[^`\n]*`', '', own_brief)  # a form the brief quotes in backticks (`PROMISED <thread>: …`) is a format, not a slot
@@ -479,6 +485,8 @@ if ti.get('role') not in READERS:
         refused()
 if not key:
     admit()
+    if launches and not blocked:
+        os.makedirs(agent_jobs.LAUNCHED, exist_ok=True); json.dump({'launches': launches}, open(nokey, 'w'))
     sys.exit(2 if blocked else 0)  # nothing names the job (no ticket, title or description), so no second launch of it can be told apart
 def one_per_job(started):
     """Blocks a second agent for this key: a key is one job, so two job files never share one."""
@@ -532,5 +540,5 @@ if not blocked:
     os.makedirs(agent_jobs.LAUNCHED, exist_ok=True); json.dump({'launched': time.time(), 'key': key, 'task': task, 'role': ti.get('role'), 'worktrees': L.worktrees, 'tool_use_id': d.get('tool_use_id'),
                                                            'transcript': d.get('transcript_path'), 'session': d.get('session_id'), 'refresh': refresh, 'memory': memory,
                                                            **({'approach': list(approach[:2])} if approach else {}),
-                                                           **({'heads': loops.pinned(L)[1]} if review and not post_review else {})}, open(pre, 'w'))
+                                                           'launches': launches, **({'heads': loops.pinned(L)[1]} if review and not post_review else {})}, open(pre, 'w'))
 sys.exit(2 if blocked else 0)

@@ -68,7 +68,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "^(Agent|Task|SendMessage|mcp__.*(delegate_task|t3_thread_send))$",
+        "matcher": "^(Agent|Task|SendMessage|mcp__.*(delegate_task|t3_thread_launch|t3_thread_send))$",
         "hooks": [
           {
             "type": "command",

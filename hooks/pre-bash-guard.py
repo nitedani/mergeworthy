@@ -1519,10 +1519,8 @@ for s in where.walk(segs):
         if w & {'git', 'gh', 'glab'} and w & {'push', 'commit', 'pr', 'issue', 'api', 'release', 'mr'} or 'git' not in w and w & {'push', 'commit'}:
             block(f"`{named}` runs a command named only when it runs, with `{' '.join(words)[:80]}`: write the command out, so it can be checked")
     check(s, has_cd)
-for out in launches:
-    review_launch.launch(out)
-for r in rounds:
-    loops.register(*r)
+# recorded by post-bash-register once the command ran: a reviewer Bash skipped or that failed starts no round
+loops.pend(own_actions.key(d), rounds, {out: review_launch.set_aside(out) for out in launches})
 try:  # pending until post-bash-register sees how the command ended
     own_actions.intend(own_actions.key(d), own)
 except OSError:
