@@ -5,6 +5,11 @@ SessionStart input on stdin and the session's plugin folder in $CLAUDE_PLUGIN_RO
 import json, os, select, sys, time
 
 
+def path(session_id):
+    """Where session session_id's record is."""
+    return os.path.join(os.path.expanduser('~/.mergeworthy/sessions'), os.path.basename(session_id))
+
+
 def record(session_id, root, source):
     """Records the catalog in plugin folder root as the one session session_id loaded, at source (startup, resume, compact)."""
     catalog = 'graph' if os.path.isfile(os.path.join(root, 'skills', 'task', 'SKILL.md')) else 'v1'
@@ -14,7 +19,7 @@ def record(session_id, root, source):
         try:
             if os.path.getmtime(os.path.join(sd, f)) < time.time() - 30 * 86400: os.remove(os.path.join(sd, f))
         except FileNotFoundError: pass  # another session's start took it
-    open(os.path.join(sd, os.path.basename(session_id)), 'w').write(line + '\n')
+    open(path(session_id), 'w').write(line + '\n')
 
 
 if __name__ == '__main__':

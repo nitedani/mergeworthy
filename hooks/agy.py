@@ -209,6 +209,8 @@ def main(name, d):
         session_catalog.record(ev.session, ROOT, 'startup')
         text = '\n'.join(run('SessionStart', {**ev.base('SessionStart'), 'source': 'startup'})[1])
         return {'injectSteps': [{'systemMessage': {'systemMessage': text}}] if text else []}
+    if not os.path.exists(session_catalog.path(ev.session)):  # a conversation reopened (session/load, resume) after its record went
+        session_catalog.record(ev.session, ROOT, 'resume')
     c = d.get('toolCall') or {}
     if name == 'PostToolUse':
         if matched('PostToolUse', claude_name(c.get('name', ''))):

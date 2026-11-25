@@ -5263,6 +5263,9 @@ SD="$HOME/.mergeworthy/sessions"; mkdir -p "$SD"; for i in $(seq 1500); do : > "
 for c in ag-a ag-b; do echo "{\"conversationId\":\"$c\",\"hookEventName\":\"SessionStart\"}" | python3 "$R/hooks/agy.py" SessionStart > "$T/$c.out" & done; wait
 check "agy: two SessionStarts at once among 1500 expired records both record the skill graph, with no error" "graph graph 0 0" \
   "$(cut -d' ' -f2 "$SD/ag-a" 2>/dev/null || echo none) $(cut -d' ' -f2 "$SD/ag-b" 2>/dev/null || echo none) $(ls "$SD" | grep -c '^old-') $(cat "$T/ag-a.out" "$T/ag-b.out" | grep -c Error)"
+# a conversation reopened after its catalog record expired (agy runs no SessionStart for session/load or resume) gets it back
+rm -f "$SD/c1"; agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$LS]}"; agy_ev PreToolUse "{\"id\":\"l\",$(echo "$LS" | cut -c2-)" 2 >/dev/null
+check "agy: the first event of a conversation with no catalog record records the skill graph, as resumed" "graph resume" "$(cut -d' ' -f2,3 "$SD/c1" 2>/dev/null)"
 # a conversation's files go at a SessionStart once all of them are untouched for 14 days
 AD="$HOME/.mergeworthy/agy"; touch "$AD/old-conv.jsonl" "$AD/old-conv.post" "$AD/new-conv.jsonl" "$AD/new-conv.post"
 touch -d 2000-01-01 "$AD/old-conv.jsonl" "$AD/old-conv.post" "$AD/new-conv.post"; touch -d '13 days ago' "$AD/new-conv.jsonl"
