@@ -1320,7 +1320,8 @@ def check(t, has_cd):
         # a code review's round, named by its prompt file, is admitted and counted as an agent's is (loops); a post's counts none
         if (p == 'codex' and ('exec' in a or a[:1] == ['e']) or '-p' in a or '--print' in a) and not post and (r := review_transport.shell_round(' '.join(t))):
             L = launch.Launch(r[1])
-            if int(r[0][2]) >= 2 and (why := loops.admit(r[0][1], int(r[0][2]), *loops.pinned(L), loops.ledger_named(L.brief))): block(why)
+            owners = re.findall(r'^[ \t>*-]*Continues:[ \t]*(\S+)', L.brief, re.M)
+            if why := (r[0][2] == '1' and not owners and loops.third_seat(r[0][1], L.checkouts, L.brief)) or loops.admit(r[0][1], int(r[0][2]), *loops.pinned(L), loops.ledger_named(L.brief), owners): block(why)
             rounds.append((r[0][1], int(r[0][2]), loops.pinned(L)[1], None, False, outs, bool(re.search(loops.FANOUT, r[1], re.M)), L.checkouts, loops.ledger_named(L.brief), *loops.declared(L.brief)))
     written = [f for x, c in zip(targets, files) for f in known(c, x)]
     for x in dict.fromkeys(map(shellcmd.folder, written)):  # the instructions check runs git, once per folder

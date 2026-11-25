@@ -35,7 +35,7 @@ if not (launched := review_transport.as_launch(d.get('tool_name'), ti)): sys.exi
 if isinstance(launched, str):
     if not register: sys.stderr.write(f"BLOCKED: {launched}\n"); sys.exit(2)
     sys.exit(0)
-ti, sent, first = launched
+ti, sent, first, here = launched
 # a sent round is a new task of the agent an open job of its thread holds, so its job takes that one's place, never its twin
 same_agent = lambda j: sent and re.split(r'[:/]', str(j.get('handle') or ''))[-1] == ti['threadId']
 # T3 opens no run for a turn Claude Code starts by itself (a finished background command, a Monitor event), and refuses
@@ -247,8 +247,11 @@ if post_review:
                          "(mergeworthy:delegate §Review rounds): post it, or edit the draft first. It passes with:\n"
                          + ''.join(f"gate-pass {dr} {o}{f' --ledger {lg}' if lg else ''}\n" for o, dr, lg in passes))
         refused()
-elif review and int(rnd[2]) >= 2:
-    if why := loops.admit(rnd[1], int(rnd[2]), tops, heads, led):
+elif review:
+    # a routed round counts in its seat's loop of its slice, a `Continues: <loop>` one in the loop it takes over
+    routed = re.fullmatch(loops.ROUTED, rnd[1])
+    owners = [l for l in here if routed and l.rsplit('-', 1)[0] == routed[1] and not re.fullmatch(loops.ROUTED, l)] + re.findall(r'^[ \t>*-]*Continues:[ \t]*(\S+)', brief, re.M)
+    if why := (rnd[2] == '1' and not sent and not owners and loops.third_seat(rnd[1], tops, brief)) or loops.admit(rnd[1], int(rnd[2]), tops, heads, led, owners):
         sys.stderr.write(f"BLOCKED: {why}")
         refused()
 # A brief that writes or reviews code, docs or a post (any role but research or test) for a repo whose maintainers' notes exist

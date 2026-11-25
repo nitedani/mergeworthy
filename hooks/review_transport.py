@@ -8,7 +8,8 @@ import loops, t3_tasks
 
 
 def as_launch(tool, ti):
-    """(the tool input as the launch it is, whether it was sent to a running reviewer, the first round of its loop there or None);
+    """(the tool input as the launch it is, whether it was sent to a running reviewer, the first round of its loop there or None,
+    the loops that reviewer runs (loops.seat_loops));
     None for a send to no reviewer; a refusal (str) for a send to a reviewer that names no round of a loop it runs."""
     tool = str(tool or '')
     if tool.endswith('t3_thread_send'):
@@ -16,7 +17,7 @@ def as_launch(tool, ti):
     elif tool == 'SendMessage':
         name, seat = str(ti.get('summary') or ''), str(ti.get('to') or '')
     else:
-        return ti, False, None
+        return ti, False, None, {}
     m = loops.round_of(name)
     if not (here := loops.seat_loops(seat) if seat else {}):
         return None
@@ -25,7 +26,7 @@ def as_launch(tool, ti):
                 f"({'clientRequestId' if tool.endswith('t3_thread_send') else 'summary'}), or `<loop>-ask<N>` for a maintainer's ask, "
                 f"not {name or 'nothing'} (mergeworthy:delegate §Review rounds)")
     first = here.get(m[1]) or next((e for l, e in here.items() if e and l.startswith(m[1].rsplit('-', 1)[0])), None)
-    return {'task': str(ti.get('message') or ''), 'title': name, 'role': 'review', 'clientRequestId': name, 'threadId': seat}, True, first
+    return {'task': str(ti.get('message') or ''), 'title': name, 'role': 'review', 'clientRequestId': name, 'threadId': seat}, True, first, here
 
 
 def round_name(ti):

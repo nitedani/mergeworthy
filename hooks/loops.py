@@ -194,12 +194,33 @@ def rounds_of(loop, tops):
     return found or record(loop)['rounds']
 
 
-def admit(loop, n, tops, heads, led):
-    """Why round n (2 or later) of code review loop is refused, '' when it may run: tops are the checkouts its brief names, heads
-    their heads its pins equal, led the ledger path it names (None)."""
-    if re.fullmatch(r'fresh(-[^-]+)?', loop):
+ROUTED = r'(.+)-(?:recheck|fresh)'  # a round routed to a seat's loop (converge steps 2 and 4), counted in its four
+
+
+def third_seat(loop, tops, brief):
+    """Why round 1 of loop, launched fresh, is refused: its step's round 1 on this lineage declared other seats (`Seats:`) and
+    the brief neither says what failed (`Fallback:`) nor which loop it takes over (`Continues:`); '' otherwise."""
+    stem, seat = loop.rsplit('-', 1) if '-' in loop else (loop, '')
+    named = {s for t in tops for l, r in lineage(t).items() if l != loop and l.rsplit('-', 1)[0] == stem for s in r['first'].get('seats') or ()}
+    if not named or seat in named or re.search(r'^[ \t>*-]*(Fallback|Continues):[ \t]*[^\s<]', brief, re.M): return ''
+    return (f"{loop}-r1 would be a third seat of {stem}, whose round 1 declared {', '.join(sorted(named))}: continue a declared seat, "
+            "or, when its launch failed, say so in a line `Fallback: <what failed>`; a seat taking over another's count names it, `Continues: <loop>` (mergeworthy:delegate §Review rounds).\n")
+
+
+def admit(loop, n, tops, heads, led, owners=()):
+    """Why round n of code review loop is refused, '' when it may run: tops are the checkouts its brief names, heads their heads
+    its pins equal, led the ledger path it names (None), owners the loops whose rounds count in its four (a routed round's seat
+    loop, the loop a `Continues:` line takes over)."""
+    if re.fullmatch(r'fresh(-[^-]+)?', loop) and n >= 2:
         return f"{loop}-r{n}: the fresh reader runs once (mergeworthy:converge step 4); its findings go back to the loops that own them, `<slice>-fresh` (mergeworthy:delegate §Review rounds).\n"
     earlier = on_head(loop, n, tops, heads)
+    shared = [f"{o} r{m}" for o in owners for m in on_head(o, 10 ** 9, tops, heads)]
+    if shared and len(earlier) + len(shared) >= CAP:
+        return (f"{loop}-r{n} counts in the four rounds per head of {', '.join(owners)}, which already ran {', '.join(shared)}"
+                + (f" and {loop} {', '.join(f'r{m}' for m in earlier)}" if earlier else '')
+                + f" on this head or one within {testpaths.STALE_LINES} changed lines of it: a recheck or a fresh reader's findings go to their seat's loop "
+                "within its four (mergeworthy:delegate §Review rounds). List what is still open in the report or the PR body's notes and go on.\n")
+    if not earlier: return 
     try: rows, _, last = ledger.read(led) if led and os.path.isfile(led) else ([], [], 0)
     except OSError as e: return f"the ledger {led} can't be read ({e.strerror}), so no round of {loop} is admitted: fix it, or name the loop's ledger (mergeworthy:delegate §Review rounds).\n"
     kept = ledger.owed(rows, last, lambda sha: any(desc(t, sha, 'HEAD') for t in tops))

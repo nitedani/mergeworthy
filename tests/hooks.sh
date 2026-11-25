@@ -1762,7 +1762,7 @@ check "a docs reader launched by the Agent tool is a review round: BLOCK its r2 
 # replay corpus (finality2 plan step 1): Loop A's R1.1-R1.5, R1.9 and R1.10 are the checks their fixes added; R1.6 and R1.7 come with step 2
 SLL="$HOME/.mergeworthy/work/cl/drafts/stale.ledger.md"; printf 'R1.1 should fixed in %s\n' "$CH" > "$SLL"
 check "BLOCK: r3 while the ledger still shows only round 1, so round 2 is unruled" "0 0 2" "$(t3r delegate_task sl-codex-r1 th-sl "Review $T/ct at head $CH. Ledger: $SLL") $(t3r t3_thread_send sl-codex-r2 th-sl "Round 2: review $T/ct at head $CH. Ledger: $SLL") $(t3r t3_thread_send sl-codex-r3 th-sl "Round 3: review $T/ct at head $CH. Ledger: $SLL")"
-PCL="$RLD/pc.ledger.md"; known "BLOCK: a recheck sent to a seat whose loop ran its four rounds on this head: it counts in that loop" "0 0 0 0 2" "$(t3r delegate_task pc-codex-r1 th-pc "Review pc in $T/ct at head $CH. Ledger: $PCL") $(for i in 2 3 4; do rule "$PCL" "$CH" $((i - 1)); t3r t3_thread_send pc-codex-r$i th-pc "Round $i of pc: review $T/ct at head $CH. Ledger: $PCL"; done | xargs) $(t3r t3_thread_send pc-recheck-r1 th-pc "Recheck pc: review $T/ct at head $CH. Ledger: $CL")"
+PCL="$RLD/pc.ledger.md"; check "BLOCK: a recheck sent to a seat whose loop ran its four rounds on this head: it counts in that loop" "0 0 0 0 2" "$(t3r delegate_task pc-codex-r1 th-pc "Review pc in $T/ct at head $CH. Ledger: $PCL") $(for i in 2 3 4; do rule "$PCL" "$CH" $((i - 1)); t3r t3_thread_send pc-codex-r$i th-pc "Round $i of pc: review $T/ct at head $CH. Ledger: $PCL"; done | xargs) $(t3r t3_thread_send pc-recheck-r1 th-pc "Recheck pc: review $T/ct at head $CH. Ledger: $CL")"
 check "a shape seat launched by the Agent tool from the shape template, its first line \`Review: shape\`, is a review round" "0 1" "$(smr Agent shape-claude-r1 a-sh "Review: shape
 Run the shape pass on $T/ct at head $CH. Write $T/shape-claude.md, ending with a line CLEAN only when nothing is worth changing.") $(nrounds shape-claude)"
 check "t3_thread_launch's result is registered: the PostToolUse matcher holds it" yes "$(python3 -c 'import json,re,sys; h=json.load(open(sys.argv[1]))["hooks"]["PostToolUse"]; print("yes" if any(re.search(x["matcher"], "mcp__t3-code__t3_thread_launch") for x in h if "pre-agent-dedupe.py register" in str(x)) else "no")' "$R/hooks/hooks.json")"
@@ -2594,6 +2594,19 @@ check "a round 1 declaring its step's seats holds the step for a declared seat t
 git -C "$GD" commit -q --allow-empty -m b; git -C "$GD" checkout -q -b off "$DH"; git -C "$GD" commit -q --allow-empty -m off
 fo dd-codex-r1 '{"providerInstanceId":"codex"}' "Review $GD at head $(git -C "$GD" rev-parse off); output to $T/dd-codex.md" >/dev/null; git -C "$GD" checkout -q main; printf 'Checked it.\nNO BUGS\n' > "$T/dd-codex.md"; std "$T/dd-codex.md"
 check "BLOCK: pr-steps verify on a report whose round pinned a head off HEAD's history, naming it" "1 1" "$(cd "$GD" && bash "$R/bin/pr-steps" verify "$T/dd-codex.md" >/dev/null 2>"$T/err"; echo $?) $(grep -c "isn't in HEAD's history" "$T/err")"
+GT="$T/seats5"; git init -q -b main "$GT"; git -C "$GT" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; TH=$(git -C "$GT" rev-parse HEAD)
+tsb() { printf 'Review %s at head %s; output to %s\n%s\nSeats: codex, claude%s' "$GT" "$TH" "$T/$1.md" "$FO" "${2:+
+$2}"; }  # loop extra-line: a round 1 brief of the step whose seats are codex and claude
+ts="$(fo ts-codex-r1 '{"providerInstanceId":"codex"}' "$(tsb ts-codex)") $(fo ts-claude-r1 '{"providerInstanceId":"claudeAgent"}' "$(tsb ts-claude)") $(fo ts-claude2-r1 '{"providerInstanceId":"claudeAgent"}' "$(tsb ts-claude2)") $(grep -c 'would be a third seat of ts, whose round 1 declared claude, codex' "$T/err")"
+ts="$ts $(fo ts-claude3-r1 '{"providerInstanceId":"claudeAgent"}' "$(tsb ts-claude3 'Fallback: ts-claude stopped')") $(fo ts-claude4-r1 '{"providerInstanceId":"claudeAgent"}' "$(tsb ts-claude4 'Continues: ts-claude')")"
+check "BLOCK: a third fresh seat of a step whose round 1 declared two, naming the cure; with what failed (Fallback:) or the loop it takes over (Continues:) it passes" "0 0 2 1 0 0" "$ts"
+TCL="$RLD/tc.ledger.md"; rule "$TCL" "$TH" 3
+tc="$(for i in 1 2 3; do fo tc-codex-r$i '{"providerInstanceId":"codex"}' "Review $GT at head $TH; round $i. Ledger: $TCL"; done | xargs) $(fo tc-codex2-r2 '{"providerInstanceId":"codex"}' "Review $GT at head $TH; the seat past its context.
+Continues: tc-codex
+Ledger: $TCL") $(rule "$TCL" "$TH" 4; fo tc-codex2-r3 '{"providerInstanceId":"codex"}' "Review $GT at head $TH; round 5 of the count.
+Continues: tc-codex
+Ledger: $TCL") $(grep -c 'counts in the four rounds per head of tc-codex' "$T/err")"
+check "a seat that takes over another's loop (Continues:) counts in its four: BLOCK the round past them, naming the loop" "0 0 0 0 2 1" "$tc"
 for p in pa pb; do git init -q -b main "$T/$p"; git -C "$T/$p" -c user.name=t -c user.email=$p@t commit -q --allow-empty -m $p; done; PA=$(git -C "$T/pa" rev-parse HEAD); PBH=$(git -C "$T/pb" rev-parse HEAD)
 printf 'R1.1 should: the parser drops a field\n' > "$T/a-first.md"; printf 'R1.1 nit: wording\nR1.2 should: the date\n' > "$T/b-first.md"; printf 'R2.1 nit: phrasing\n' > "$T/b-second.md"; std "$T/b-second.md"
 printf '%s\n' 'R1.1 nit declined: wording' "R1.2 should fixed in $PBH" > "$T/b.ledger.md"
