@@ -5356,13 +5356,21 @@ check "agy: SessionStart deletes a conversation's files untouched for 14 days, a
 unset OWN_PENDING PUSHED_HEADS
 agt "$U" '{"type":"PLANNER_RESPONSE","content":"Hello."}'
 check "agy: a Stop no check refuses ends the turn ({})" '{} 0' "$(MERGEWORTHY_STOP_CHECKIN=off agy_ev Stop "" 0 0)"
-check "agy: the plugin's matchers send agy every tool hooks.json's matchers take, under its agy name" "" "$(python3 -c 'import json, re, sys
+# <agy hooks.json>: each tool whose matchers it gets wrong, then the script's exit status (a file Python can't read fails it)
+mt() { python3 -c 'import json, re, sys
 sys.path.insert(0, sys.argv[1] + "/hooks"); import agy
-mine = json.load(open(sys.argv[1] + "/agy/hooks.json"))["mergeworthy"]
+mine = json.load(open(sys.argv[2]))["mergeworthy"]
 for ev in ("PreToolUse", "PostToolUse"):
     for name in [*agy.TOOLS, "swarm", "mcp_t3-code_delegate_task", "mcp_t3-code_t3_thread_launch", "mcp_t3-code_create_threads"]:
         wants = name in agy.OWN_AGENTS and ev == "PreToolUse" or bool(agy.matched(ev, agy.claude_name(name)))
-        if wants != any(re.search(g["matcher"], name) for g in mine[ev]): print(ev, name, wants)' "$R")"
+        if wants != any(re.search(g["matcher"], name) for g in mine[ev]): print(ev, name, wants)' "$R" "$1" 2>&1; echo "exit $?"; }
+check "agy: the plugin's matchers send agy every tool hooks.json's matchers take, under its agy name" "exit 0" "$(mt "$R/agy/hooks.json")"
+head -c 15 "$R/agy/hooks.json" > "$T/agy-hooks-cut.json"
+python3 -c 'import json, sys
+h = json.load(open(sys.argv[1])); h["mergeworthy"]["PreToolUse"] = [g for g in h["mergeworthy"]["PreToolUse"] if not __import__("re").search(g["matcher"], "run_command")]
+json.dump(h, open(sys.argv[2], "w"))' "$R/agy/hooks.json" "$T/agy-hooks-norun.json"
+check "agy: the matcher check fails a truncated hooks file and one with no PreToolUse matcher for run_command" "no no" \
+  "$([ "$(mt "$T/agy-hooks-cut.json")" = 'exit 0' ] && echo yes || echo no) $([ "$(mt "$T/agy-hooks-norun.json")" = 'exit 0' ] && echo yes || echo no)"
 check "agy: the plugin's always-on rule declares the shared always-on.md import" yes "$(grep -q '^@\[always-on\](~/.mergeworthy/current/always-on.md)$' "$R/agy/rules/mergeworthy.md" && head -3 "$R/agy/rules/mergeworthy.md" | grep -qx 'trigger: always_on' && echo yes || echo no)"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]
