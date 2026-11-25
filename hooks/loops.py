@@ -169,10 +169,12 @@ ID = re.compile(r'[\s>*-]*`?(R\d+\.\d+)')
 
 
 def reports_of(report, checkout='.'):
-    """report and the reports of its loop's other rounds on checkout's lineage (each head they pinned is in its HEAD's history)."""
+    """report and the reports of its loop's other rounds on checkout's lineage (each head they pinned is in its HEAD's history),
+    leaving out a post's verdict (a fresh reader's body verdict), which its post loop's ledger closes."""
+    import review_launch
     report = os.path.realpath(report)
     rounds = [x for r in _json(LOOPS).values() if isinstance(r, dict) and report in r.get('outs', []) for x in r['rounds']]
-    return sorted({report} | {o for _, hs, *outs in rounds if hs and all(git(checkout, 'merge-base', '--is-ancestor', h, 'HEAD').returncode == 0 for h in hs) for o in (outs or [[]])[0]})
+    return sorted({report} | {o for _, hs, *outs in rounds if hs and all(git(checkout, 'merge-base', '--is-ancestor', h, 'HEAD').returncode == 0 for h in hs) for o in (outs or [[]])[0] if not review_launch.draft_of(o)})
 
 
 def close(path, kind='code', checkout='.', reports=()):
