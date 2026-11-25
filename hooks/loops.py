@@ -131,7 +131,14 @@ def on_head(loop, n, tops, heads):
             moved = True
             if not any(own_lines(t, o, h) <= testpaths.STALE_LINES for t, o in itertools.chain([first], on)): return False
         return moved
-    return sorted({m for m, old, *_ in record(loop)['rounds'] if m < n and built_on(old)})
+    return sorted({m for m, old, *_ in rounds_of(loop, tops) if m < n and built_on(old)})
+
+
+def rounds_of(loop, tops):
+    """loop's rounds the journals of the changes of the checkouts tops hold, else review-loops.json's (a round whose brief named
+    no checkout, or one recorded before the journal)."""
+    found = [x for c in dict.fromkeys(filter(None, map(review_journal.change_of, tops))) for x in review_journal.fold(c).get(loop, {}).get('rounds', [])]
+    return found or record(loop)['rounds']
 
 
 def admit(loop, n, tops, heads, led):
@@ -154,6 +161,9 @@ def admit(loop, n, tops, heads, led):
                    "the finality pass (mergeworthy:finality step 1, recorded by `pr-steps finality <file>`), not another round. " if kept == 'fixed' else "")
                 + "List what is still open in the report or the PR body's notes and go on (push, ready, the next step) without waiting for an answer; "
                 "only an open blocker keeps the PR in draft. A maintainer's ask on a new head starts a new loop name. " + close)
+    if earlier and led and os.path.isfile(led) and last < earlier[-1]:
+        return (f"{loop}-r{n} follows r{earlier[-1]}, but the ledger {led} shows round {last} as its last: rule r{earlier[-1]}'s findings in it first "
+                f"(each `R{earlier[-1]}.<n> <label> <outcome>`, then `Round: {earlier[-1]}`), then send the round (mergeworthy:delegate §Review rounds).\n")
     if earlier and not kept:
         return (f"{loop}-r{n} follows r{earlier[-1]} on this head or one within {testpaths.STALE_LINES} changed lines of it, and a loop gets its next round only "
                 "while its last round brought a blocker or should you kept and fixed, or a blocker you declined (mergeworthy:delegate §Review rounds), but "
