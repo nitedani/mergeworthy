@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
 import shellcmd
 from shellcmd import parse, segments, prog, script, opt, api_call, field_name, TEXT_FREE, discussion_post, discussion_thread_of, names_discussion_mutation, env_of, origin, plain_create, PLAIN, new_post_drafts, no_instructions_read, by_agent, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Unseen, Where
-from records import branch_record, commit_file, DRIFT_REF, no_approach, no_preflight, STORE
+from records import branch_record, commit_file, DRIFT_REF, LIMIT, no_approach, no_preflight, STORE
 import drift, own_actions, review_launch, steward, post_words, threads_file, transcript_facts, work_folder
 from t3_tasks import under_t3, typed
 def missing_steps(d, head=None):
@@ -768,10 +768,12 @@ def git_head(d):
     return subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
 
 def block_drift(hot, pushed=None):
-    """Blocks on the files drift.over found ({file: its count}); pushed: the branch or commit a push publishes, None for a commit."""
+    """Blocks on the files drift.over found ({file: (its count, the changes it may take)}); pushed: the branch or commit a push publishes,
+    None for a commit."""
     if not hot: return
-    (first, n), *rest = hot.items()
-    block(f"{first} {'got' if pushed else 'would get'} a {n}th change{''.join(f', {f} a {c}th' for f, c in rest)} on {pushed or 'this branch'}: "
+    allows = lambda may: f" (its recorded plan allows {may})" if may > LIMIT else ''
+    (first, (n, may)), *rest = hot.items()
+    block(f"{first} {'got' if pushed else 'would get'} a {n}th change{allows(may)}{''.join(f', {f} a {c}th{allows(m)}' for f, (c, m) in rest)} on {pushed or 'this branch'}: "
           "patch after patch in one place is drift. Run the finality pass (mergeworthy:finality steps 2-3) on it and record its plan with "
           f"`pr-steps finality <the plan>` {f'with {pushed} checked out' if pushed else 'on this head'} before Phase C's commits")
 

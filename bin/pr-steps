@@ -8,7 +8,8 @@
 # layout: a layout check's lines (evidence step 4), each screenshot OK or its defect with the place it comes from, outside the functions the branch changes.
 # finality: the finality pass's pinnacle and plan (finality step 3), which a code file's change past the drift limit on the branch needs on the head
 # (pre-bash-guard; hooks/records.py LIMIT). A review (verify, shape, reverify, fresh, small) or a finality is also a note of its kind on the head under
-# the drift ref (records.py DRIFT_REF, NOTE_KIND), written before the record, which git carries through an amend or a rebase (hooks/drift.py).
+# the drift ref (records.py DRIFT_REF, NOTE_KIND), a finality's with a line 'plan <its numbered steps>', written before the record, which git
+# carries through an amend or a rebase (hooks/drift.py).
 # union <log> | --conflict <sha>: two ready PRs of ours sharing a file, checked together (merging step 2): in a checkout of their merge, the log's
 # first line 'Union: <owner/repo>#<A>@<sha> + #<B>@<sha> on <base>@<sha>' and its quick gates; or, in one PR's checkout, its textual conflict with the other's head.
 set -euo pipefail
@@ -125,16 +126,19 @@ pbase() {
   local pb; pb=$(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || true)
   git merge-base HEAD "${pb:+origin/$pb}" 2>/dev/null || git merge-base HEAD "$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)" 2>/dev/null || true
 }
-# drift_note <step>: the step's note on $sha, its kind once; the repo's notes.rewriteRef gets the drift ref beside any value it has, which
-# is what makes an amend or a rebase copy the note. A note it can't write exits, recording nothing
+# drift_note <step>: the step's note on $sha, its kind once and a finality's plan line; the repo's notes.rewriteRef gets the drift ref beside
+# any value it has, which is what makes an amend or a rebase copy the note. A note it can't write exits, recording nothing
 drift_note() {
-  local ref k; read -r ref k <<< "$(python3 "$(dirname "$(realpath "$0")")/../hooks/records.py" drift-note "$1")"; [ -n "$k" ] || return 0
+  local ref k m=; read -r ref k <<< "$(python3 "$(dirname "$(realpath "$0")")/../hooks/records.py" drift-note "$1")"; [ -n "$k" ] || return 0
   local failed="the drift note of $out on $sha could not be written (git's error above), so nothing is recorded: fix that, then run the same pr-steps again"
   # the repo's own value: a global one is the recorder's alone, which another home amending this checkout doesn't have
   if ! git config --local --get-all notes.rewriteRef | grep -qxF "$ref"; then git config --local --add notes.rewriteRef "$ref" || { echo "$failed" >&2; exit 1; }; fi
-  if git notes --ref="$ref" show "$sha" 2>/dev/null | grep -qxF "$k"; then return 0; fi
+  git notes --ref="$ref" show "$sha" 2>/dev/null | grep -qxF "$k" || m=$k
+  # a finality's plan size: the changes past LIMIT hooks/drift.py lets the files the branch changed take; a later plan's line wins
+  if [ "$k" = finality ]; then m+=${m:+$'\n'}"plan $plan"; fi
+  [ -n "$m" ] || return 0
   # a note is a commit, which needs an identity: pr-steps' own, which no half-set or useConfigOnly identity can fail
-  git -c user.name=pr-steps -c user.email=pr-steps@localhost notes --ref="$ref" append -m "$k" "$sha" || { echo "$failed" >&2; exit 1; }
+  git -c user.name=pr-steps -c user.email=pr-steps@localhost notes --ref="$ref" append -m "$m" "$sha" || { echo "$failed" >&2; exit 1; }
 }
 # record <step> <line>...: records $out on $sha as a line per step named, after its drift note as <step>; an output recorded already is refused
 record() {
@@ -290,7 +294,9 @@ EOF
       { printf '%s\n' "$out is a layout check, one line per screenshot: '<file name> — OK', or a defect left unfixed as '<file name> — <the defect>, from <path:line>', the place it comes from, outside the functions this branch changes (mergeworthy:evidence step 4):" "$bad" >&2; exit 1; } ;;
   finality)
     # finality step 3: a code file's 6th change on the branch waits for this record (pre-bash-guard)
-    grep -Eq '^Pinnacle: +[^ ]+ +[^ ]+ +[^ ]+' "$out" && awk '/^Plan:/{p=1;next} p&&/^[0-9]+\. +[^ ]/{f=1} END{exit !f}' "$out" ||
+    # its 'Plan:' steps, numbered 1, 2, 3… until a number out of turn, which drift_note writes into the finality's note
+    plan=$(awk '/^Plan:/{p=1;next} p&&/^[0-9]+\. +[^ ]/{if ($0+0 != n+1) exit; n++} END{print n+0}' "$out")
+    grep -Eq '^Pinnacle: +[^ ]+ +[^ ]+ +[^ ]+' "$out" && [ "$plan" -gt 0 ] ||
       { echo "$out needs a line 'Pinnacle: <the design>' and a line 'Plan:' followed by the ranked convergence plan, one numbered line '1. <step>' per step (mergeworthy finality step 3)" >&2; exit 1; } ;;
   loopb)
     [ "$last" = CLEAN ] || { echo "$out does not end with a line CLEAN: fix its findings and continue the same agent" >&2; exit 1; } ;;
