@@ -497,8 +497,7 @@ def sweep_repo(repo, dev, rule, age):
 
 def ignored(repo, path):
     """Whether git ignores path, a folder in repo, and tracks no file in it."""
-    rel = os.path.relpath(path, repo)
-    return git(repo, 'check-ignore', '-q', '--', rel).returncode == 0 and not git(repo, 'ls-files', '--', rel).stdout
+    return git(repo, 'check-ignore', '-q', '--', os.path.relpath(path, repo)).returncode == 0
 
 
 def cargo(path):
