@@ -410,7 +410,7 @@ if not child and d.get('session_id'):
     import agent_jobs, shlex
     for f, j in agent_jobs.jobs():
         done = j.get('session') == d['session_id'] and agent_jobs.finished(j)
-        if done:
+        if done and not agent_jobs.awaits_notice(j, done[0], j.get('transcript')):
             print(f"The agent for {j['key'][:200]} has finished (its transcript {done[0]} went quiet) and its job is open: read its "
                   f"result (task_status / its report), act on it, then `agent-job done {shlex.quote(j['key'][:200])}` (mergeworthy:delegate step 6).", file=sys.stderr)
             sys.exit(2)

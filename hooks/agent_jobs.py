@@ -255,6 +255,11 @@ def noticed(launcher, path):
         if n and n[1] in ids or agent and cn and cn[1] == agent[1]: return True
     return False
 
+def awaits_notice(job, path, launcher):
+    """T3 Code ran the job and its own notice of the finish is still due: T3 holds it while the launcher's turn runs, so up to
+    LONG after the agent last wrote, that notice reports the finish, not the hooks."""
+    return (job.get('handle') or '').startswith('t3:') and time.time() - wrote(path) < LONG and not noticed(launcher, path)
+
 def reported(f, mtime):
     return os.path.exists(os.path.join(REPORTED, f'{f}-{int(mtime)}'))
 

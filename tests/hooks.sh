@@ -2023,6 +2023,27 @@ done_events > "$T/ev12"
 check "no AGENT DONE for a finish T3's notice (t3note), Claude Code's (sub) or a foreground Agent's result (fg) told the launcher of; one for a run that wrote after its notice (t3rev)" "0 0 0 1" \
   "$(grep -c "AGENT DONE $T/jobs/t3note-ticket.md" "$T/ev12") $(grep -c "AGENT DONE $T/jobs/sub-ticket.md" "$T/ev12") $(grep -c "AGENT DONE $T/jobs/fg-ticket.md" "$T/ev12") $(grep -c "AGENT DONE $T/jobs/t3rev-ticket.md" "$T/ev12")"
 for jn in t3note t3rev sub fg; do python3 "$R/bin/agent-job" done "$T/jobs/$jn-ticket.md" >/dev/null; done
+# a job T3 Code ran (a t3: handle) is reported by T3's own notice, held while the launcher's turn runs: AGENT DONE and stop-lint's
+# open-job stop wait for it up to LONG after the agent's last write, then report as for any other job
+t3db "insert into orchestration_v2_projection_provider_threads values ('p6', 'hq-1', '{\"nativeThreadRef\":{\"nativeId\":\"t3hq\"}}'), ('p7', 'hn-1', '{\"nativeThreadRef\":{\"nativeId\":\"t3hn\"}}')"
+t3db "insert into orchestration_v2_projection_subagents values ('node:delegated-task:hq', 'orch-1', 'hq-1', 'completed'), ('node:delegated-task:hn', 'orch-1', 'hn-1', 'completed')"
+for jn in hq hn plain; do reg "Execute $T/jobs/$jn-ticket.md exactly"; done
+child_log "$JD/t3hq.jsonl" "Execute $T/jobs/hq-ticket.md exactly" 5 text; child_log "$JD/t3hn.jsonl" "Execute $T/jobs/hn-ticket.md exactly" 5 text
+child_log "$JD/plain.jsonl" "Execute $T/jobs/plain-ticket.md exactly" 5 text
+python3 -c 'import glob,json,os,re,time; [json.dump({**j, "started": time.time() - 3600, "launched": time.time() - 3600, **({"handle": f"t3:node:delegated-task:{m[1]}/{m[1]}-1"} if m[1] != "plain" else {})}, open(f + ".n", "w")) or os.replace(f + ".n", f)
+ for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) for j in [json.load(open(f))] for m in [re.search(r"jobs/(hq|hn|plain)-ticket", j["key"])] if m]'
+done_events > "$T/ev15"
+check "no AGENT DONE for a quiet T3 job before LONG with T3's notice still due (hq, hn); one for a job of another launcher (plain)" "0 0 1" \
+  "$(grep -c "AGENT DONE $T/jobs/hq-ticket.md" "$T/ev15") $(grep -c "AGENT DONE $T/jobs/hn-ticket.md" "$T/ev15") $(grep -c "AGENT DONE $T/jobs/plain-ticket.md" "$T/ev15")"
+python3 "$R/bin/agent-job" done "$T/jobs/plain-ticket.md" >/dev/null
+check "stop-lint passes while T3's notice of a quiet T3 job is due" 0 "$(sj orch)"
+note 'Delegated task node:delegated-task:hn (hn) [completed]: Report written.' 4 user
+touch -r "$JD/t3hq.jsonl" "$T/hq.mtime"; rm "$JD/t3hq.jsonl"; child_log "$JD/t3hq.jsonl" "Execute $T/jobs/hq-ticket.md exactly" 11 text
+touch -r "$T/hq.mtime" "$JD/t3hq.jsonl"  # the same finish as in ev15, its last write now past LONG
+done_events > "$T/ev16"
+check "past LONG with no notice the T3 job gets its AGENT DONE and stop-lint names it; one whose notice came gets none" "1 0 2 1" \
+  "$(grep -c "AGENT DONE $T/jobs/hq-ticket.md" "$T/ev16") $(grep -c "AGENT DONE $T/jobs/hn-ticket.md" "$T/ev16") $(python3 "$R/bin/agent-job" done "$T/jobs/hn-ticket.md" >/dev/null; sj orch) $(grep -c hq-ticket "$T/err")"
+python3 "$R/bin/agent-job" done "$T/jobs/hq-ticket.md" >/dev/null
 # a job whose end T3 told its launcher of counts as finished at once, for the twin check and the limit, though its transcript changed
 # seconds ago; one whose agent wrote after the notice (revived) still counts
 t3db "insert into orchestration_v2_projection_provider_threads values ('p4', 'tw1-1', '{\"nativeThreadRef\":{\"nativeId\":\"t3tw1\"}}'), ('p5', 'tw4-1', '{\"nativeThreadRef\":{\"nativeId\":\"t3tw4\"}}')"
