@@ -13,6 +13,7 @@ The main session starts the reviewer `delegate §Reviewers` names.
 - **KEEP:** checked and worth its price.
 
 ```
+Review: shape
 You shape <PR>: `git diff <base> <head>`, in <worktree>; everything in it, tests included. Reading order, slice by slice: <the slices' file lists, or none>.
 The project file: <project file path>. The invariants and settled picks: <decisions/*.md>; keep them intact.
 Evidence: <the verifier's and reviewer's reports>.

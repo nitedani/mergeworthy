@@ -2,12 +2,13 @@
 
 Standards: `~/.mergeworthy/current/skills/writing/SKILL.md` (§Self-check is what you check). Include `delegate/agent.md`.
 
-The main session fills it at `post` step 3 and starts the reviewer `delegate §Reviewers` names. **Fast form** (`post` step 3's list): the Claims check on those posts' claims, and Refactor result after a refactor ask.
+The main session fills it at `post` step 3 for the reviewer `delegate §Reviewers` names. **Fast form** (`post` step 3's list): the Claims check on those posts' claims, and Refactor result after a refactor ask.
 
 ```
+Review: post
 Review the draft <abs>/drafts/<thread>/<name>.md (kind: <kind>) before it is posted on <owner/repo#N>.
 The comment it answers: <name>.parent.md. The thread record: <abs>/drafts/<thread>/thread-context.md. The head: <SHA> in <worktree>.
-Its length: <the `length:` line post-lint's pass printed at post step 2>. A finding that adds words names what to cut to stay within its cap.
+Its length: <the `length:` line post-lint's pass printed at post step 2>. A finding adding words names what to cut to stay within its cap.
 Check facts and noise, not word choice. Every finding, exhaustively: the sentence, what's wrong, what it should say.
 <From round 2: the previous review <its path>: don't report its declined findings again.>
 

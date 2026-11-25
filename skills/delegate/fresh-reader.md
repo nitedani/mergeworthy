@@ -5,6 +5,7 @@ Standards: `~/.mergeworthy/current/skills/code/SKILL.md`, `~/.mergeworthy/curren
 Each seat runs once (`converge` step 4) and gets no loop's report or ledger, the shape brief's Evidence included: a loop judges its own suggestions. The main session fills it only once the project file exists (`task §Repo study`). Paste after it; the pasted briefs write into sections of the seat's report, and this brief's Standards read, outputs and ending replace theirs: `delegate/verifier.md`'s brief (its slice: the whole PR), `delegate/reviewer.md`'s brief, `delegate/post-review.md`'s brief for the body draft, and, where `finality` ran, step 1 of `delegate/shape.md` (only DELETE-NOW, FIX, FILL or DELETE-CAREFULLY items worth their price count; OWNER-DECISION rows go in the body's decision blocks).
 
 ```
+Review: fresh
 You read <PR> cold, at head <SHA> (origin/<base> merged in), in <worktree>.
 The project file: <project file path>. The repo study: <its path, from the project file's ## Who decides>.
 The PR body draft: <work folder>/drafts/<pr>/pr-body.md.

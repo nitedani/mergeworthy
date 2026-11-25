@@ -61,9 +61,11 @@ shas = set(re.findall(loops.SHA, brief))
 git = lambda wt, *a: subprocess.run(['git', '-C', wt, *a], capture_output=True, text=True)
 # Rounds per loop on one head (loops.admit); a post's review is refused only once gate-pass's own check (review_launch.answers) already passes every draft it reviews
 rnd = loops.round_of(review_transport.round_name(ti))
-review = rnd and (ti.get('role') == 'review' or not ti.get('role') and re.search(r'\bexactly (CLEAN|NO BUGS)\b|\.docs-read\.md\b', brief))  # a docs reader writes <name>.docs-read.md
+# a review template's first line `Review: <step> [<part>]` (delegate/verifier.md) declares the round's step
+declared = re.search(r'^[ \t>*-]*Review:[ \t]*(verify|reverify|shape|fresh|small|post|docs)\b', brief, re.M)
+review = rnd and (ti.get('role') == 'review' or not ti.get('role') and (declared or re.search(r'\bexactly (CLEAN|NO BUGS)\b|\.docs-read\.md\b', brief)))  # a docs reader writes <name>.docs-read.md
 # a post's review: a gate review of a named draft whose brief asks for no code verdict (a small review's pr-body.review.out comes with one)
-post_review = review and bool(reviewed_drafts(brief)) and not re.search(r'\b(NO BUGS|MERGE AS IS)\b', own_brief)
+post_review = review and bool(reviewed_drafts(brief)) and (declared[1] == 'post' if declared else not re.search(r'\b(NO BUGS|MERGE AS IS)\b', own_brief))
 # pull-request step 5 is the build's input: an implementer brief names `Approach: <path>`, the newest approach record of a checkout it names
 # (pr-steps approach). A later build of that record's PR names a newer record, or the same one marked `(unchanged: <why>)`.
 BUILT = os.path.expanduser('~/.claude/approach-builds')  # per approach record: the time of the record the PR's last build was briefed on
