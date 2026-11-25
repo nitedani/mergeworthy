@@ -35,7 +35,7 @@ deleted.
 Weekly, ~/.mergeworthy/disk-report.md lists the 20 largest folders under HOME unused for 14 days (neither written nor read) that no rule deletes.
 Deleting under the account's home and pruning Docker happen only when the watcher daemon of the main watch dir started the sweep
 (from_daemon); anything else deletes only in folders outside that home, a test's temp roots."""
-import datetime, fcntl, glob, json, os, pwd, re, shutil, subprocess, sys, time
+import datetime, fcntl, glob, json, os, pwd, re, shutil, stat, subprocess, sys, time
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'hooks'))
 import agent_jobs, steward, work_folder
 
@@ -501,6 +501,14 @@ def ignored(repo, path):
     return git(repo, 'check-ignore', '-q', '--', rel).returncode == 0 and not git(repo, 'ls-files', '--', rel).stdout
 
 
+def cargo(path):
+    """Whether the folder path holds CARGO as a regular file, looked at without following a symlink."""
+    try:
+        return stat.S_ISREG(os.lstat(os.path.join(path, CARGO)).st_mode)
+    except OSError:
+        return False
+
+
 def due(name, period):
     """Whether the step name last ran more than period seconds ago, stamping it now if so; a dry run always runs it, unstamped."""
     if DRY:
@@ -538,7 +546,7 @@ def sweep_home():
         for e in entries:
             if e.name.startswith('.') or d == HOME and e.name.endswith('-work') or not e.is_dir(follow_symlinks=False) or e.stat(follow_symlinks=False).st_dev != dev:
                 continue
-            if os.path.isfile(os.path.join(e.path, CARGO)):
+            if cargo(e.path):
                 if e.path not in taken and (not repo or ignored(repo, e.path)):
                     delete(e.path, repo or (e.path if d == HOME else d), dev, 'h-cargo', WEEK)
             elif e.name not in BUILD:
