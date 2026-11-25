@@ -6,34 +6,13 @@ wakes it) unless its watch folder retired after the post, or with a line still o
 The final message is the hook input's last_assistant_message (the transcript may not hold it yet). stop_hook_active skips only
 the check-in: every other check holds until it is met, except a late `drafting:` owed line, which blocks once (Claude Code itself ends the turn after 8 blocks in a row).
 While the last message the user typed asks to stop or pause (steward.asks_stop), the turn ends with no check."""
-import glob, hashlib, json, os, re, subprocess, sys, time
+import glob, hashlib, itertools, json, os, re, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
-import failclosed
+import failclosed, transcript_facts
 d = json.load(sys.stdin)
 active = bool(d.get('stop_hook_active'))
-last = ''
-posted, monitor_ids, monitors, dead, commands, monitor_cmds = False, {}, set(), set(), [], []
-posted_at = ''  # the time of the session's last post, from its transcript
-wakers, opened_task, acted, delegated = {}, False, False, False  # the background commands and Monitors this session started; whether it is a task's
-last_user = ''  # the user's own last message (t3_tasks.typed)
-said = []  # every text the agent wrote, in order
-POST = re.compile(r'\bgh\b[^\n]*(body-file|body=@|--input|\s-F\s)')
-READ = re.compile(r'\bgh\s+api\s+graphql\b|\bgh\s+api\b[^\n]*\s(?:-X\s*|--method[\s=])GET\b')  # a field makes `gh api` a POST, but these read
-RUN_GH = re.compile(r'(?:^|[;&|(]|\s--)\s*gh\s')  # gh where the shell runs it: a line's start, after ; & | ( or mw post's --
-QUOTED = re.compile(r"'[^'\n]*'|\"(?:[^\"\\\n]|\\.)*\"|`[^`\n]*`")  # text in quotes or backticks is data, not a command
-def run_lines(cmd):  # the command's lines minus heredoc bodies, which are a file's text
-    end = None
-    for l in cmd.split('\n'):
-        if end is not None:
-            if l.strip() == end: end = None
-            continue
-        doc = re.search(r'<<-?\s*[\'"]?(\w+)', l)
-        end = doc and doc.group(1)
-        yield l
-def posts(cmd):
-    return any(POST.search(l) and RUN_GH.search(QUOTED.sub("''", l)) and not (READ.search(l) and 'mutation' not in cmd) for l in run_lines(cmd))
 try:
-    lines = open(d['transcript_path'], errors='replace').readlines()
+    facts = transcript_facts.read(d['transcript_path'])
 except (KeyError, TypeError, OSError):
     # Without the transcript, what the session did can't be checked: block once; on the stop after, the final message's
     # own checks still run (this session can't make its transcript readable)
@@ -43,17 +22,12 @@ except (KeyError, TypeError, OSError):
         print(f"stop-lint can't read this session's transcript ({d.get('transcript_path')}), so whether its work is finished can't be checked. "
               "Re-check it yourself: anything owed, unfinished or unwatched, do now; then end the turn.", file=sys.stderr)
         sys.exit(2)
-    lines = []
+    facts = transcript_facts.Facts()
 import forge, post_words, report, steward, t3_tasks
 from shellcmd import segments, prog, git_argv, Where
 # A T3 Code delegated child (its thread has a parent in T3's state, or its prompt says so): its result is its last message, and the main session owns replies and next steps
-def opening(l):  # a user line's typed text ('' for a tool result's list, or a line that isn't JSON)
-    try: c = (json.loads(l).get('message') or {}).get('content')
-    except (ValueError, AttributeError): return ''
-    return c if isinstance(c, str) else ''
 t3_chain = steward.threads(d.get('session_id'))  # its T3 thread, then the threads that delegated it; [] outside T3 Code
-child = len(t3_chain) > 1 or any(re.match(r'Act as the [\w-]+ sub-agent for this task', opening(l))
-            for l in lines[:20] if '"type":"user"' in l.replace(' ', '') and 'sub-agent for this task' in l)
+child = len(t3_chain) > 1 or facts.child_opening
 reg = os.path.expanduser('~/.claude/gh-watch-dirs.txt')
 def watching(wd):  # wd's watcher daemon runs
     try: os.kill(int(steward.first(os.path.join(wd, 'gh-watch.pid'))), 0)
@@ -62,48 +36,10 @@ def watching(wd):  # wd's watcher daemon runs
 live_dirs = [wd for wd in ((l.strip() for l in open(reg)) if os.path.exists(reg) else ()) if wd and watching(wd)]
 # a live watcher that sends wd's events to this session's T3 thread (gh-watch.py's wake_thread): its Monitor
 t3_dirs = {wd for wd in live_dirs if steward.first(os.path.join(wd, 't3-thread')) in t3_chain}
-for line in lines:
-    try:
-        e = json.loads(line)
-    except ValueError:
-        continue  # one bad or half-written line must not disable the check
-    if not isinstance(e, dict): continue
-    c = (e.get('message') or {}).get('content')
-    if e.get('type') == 'user':
-        texts = [c] if isinstance(c, str) else [x.get('text', '') if x.get('type') == 'text' else json.dumps(x.get('content')) for x in c or [] if isinstance(x, dict)]
-        for x in c if isinstance(c, list) else []:
-            if isinstance(x, dict) and x.get('tool_use_id') in monitor_ids:
-                m = re.search(r'Monitor started \(task (\w+)', json.dumps(x.get('content')))
-                if m: monitors.add(m.group(1))
-        typed = c if isinstance(c, str) else ' '.join(x.get('text', '') for x in c or [] if isinstance(x, dict) and x.get('type') == 'text')
-        last_user = t3_tasks.typed(typed) or last_user
-        for t in texts:
-            for tid in re.findall(r'<task-id>(\w+)</task-id>[\s\S]*?Monitor expired', t or ''): dead.add(tid)
-            for tid, st in re.findall(r'<task-id>(\w+)</task-id>[\s\S]*?<status>(\w+)</status>', t or ''):
-                if st in ('completed', 'failed', 'killed', 'stopped', 'cancelled', 'canceled', 'error'): dead.add(tid)
-            for tid in re.findall(r'Command running in background with ID: (\w+)|Monitor started \(task (\w+)', t or ''):
-                wakers[tid[0] or tid[1]] = 1
-        opened_task = opened_task or '<command-name>/mergeworthy:task</command-name>' in typed
-    if e.get('type') == 'assistant':
-        for x in c if isinstance(c, list) else []:
-            if not isinstance(x, dict) or x.get('type') != 'tool_use': continue
-            i = x.get('input') or {}
-            if x.get('name') == 'Bash' and posts(i.get('command', '')): posted, posted_at = True, e.get('timestamp') or ''
-            if x.get('name') == 'Bash': commands.append(i.get('command', ''))
-            if x.get('name') == 'Skill' and str(i.get('skill', '')) in ('task', 'mergeworthy:task'): opened_task = True
-            if x.get('name') == 'Monitor' and 'events.log' in i.get('command', ''):
-                monitor_ids[x.get('id')] = 1
-                monitor_cmds.append(i.get('command', ''))
-            if x.get('name') in ('Agent', 'Task') or re.search(r'(delegate_task|t3_thread_launch)$', x.get('name', '')): delegated = True
-            if x.get('name') == 'TaskStop': dead.add(i.get('task_id') or i.get('shell_id') or '')
-        if isinstance(c, list):
-            t = ''.join(x.get('text', '') for x in c if isinstance(x, dict) and x.get('type') == 'text')
-            if t.strip(): last = t; said.append(t)
+posted, posted_at, monitors, dead, wakers = facts.posted, facts.posted_at, set(facts.monitors), set(facts.dead), facts.wakers
+commands, monitor_cmds, opened_task, delegated, last_user = facts.commands, facts.monitor_cmds, facts.opened_task, facts.delegated, facts.last_user
 # The final message as the harness hands it over: the transcript may not hold it yet when this hook runs
-fin = d.get('last_assistant_message')
-if isinstance(fin, str) and fin.strip():
-    if not said or said[-1].strip() != fin.strip(): said.append(fin)
-    last = fin
+asked, last = facts.said(d.get('last_assistant_message'))
 # The user asked to stop or pause: the turn ends as they asked, until they write again
 if steward.asks_stop(last_user): sys.exit(0)
 cwd_d = d.get('cwd') or ''
@@ -141,7 +77,7 @@ for t in runs(r'\.mergeworthy/work|-work\b'):
     worked += [x for x in t[1:] if not x.startswith('-')] if name in (
         'cd', 'pushd', 'mkdir', 'gh-watch-start', 'gate-pass', 'pr-steps', 'memory-prep', 'post-lint', 'thread-context') else []
     worked += [t[i + 1] for i in range(len(t) - 1) if t[i] == '-C' and name == 'git' or re.fullmatch(r'\d*>>?|&>>?', t[i])]
-task_dirs = {t for p in worked if p.startswith(('/', '~', '$HOME/', '${HOME}/')) and (t := work_folder.task_of(p))}
+task_dirs = {t for p in dict.fromkeys(worked) if p.startswith(('/', '~', '$HOME/', '${HOME}/')) and (t := work_folder.task_of(p))}
 # mergeworthy work (a task, a work folder, a push or post, a watcher, an agent it started) gets the hand-back check;
 # a plain question answered doesn't
 working = opened_task or acted or delegated or bool(task_dirs or monitor_cmds or t3_dirs)
@@ -152,10 +88,28 @@ def handback_check():
     if working and offer and 'GENUINE-FORK' not in last:
         print(f"Your last message hands the next step back (\"{offer.group(0)}\"). If it is your own recommendation or in scope, "
               "do it now; if it waits on something (CI, an agent, a reply), arm a Monitor or a background command that wakes you when it lands, "
-              "and continue then. Ask only for (a) irreversible actions on shared state you didn't create, (b) money, credentials "
-              "or the user's global config, (c) an external maintainer's product decision or a fork you can't rank; then "
+              "and continue then. Ask only for (a) a merge, a push to a default branch or a release, or irreversible actions on shared state "
+              "you didn't create, (b) money, credentials or the user's global config, (c) an external maintainer's product decision or a fork you can't rank; then "
               "include a line starting 'GENUINE-FORK:' with your recommended default.", file=sys.stderr)
         sys.exit(2)
+# A "best solution?" asked about work whose ratings this session's work folder holds is answered from them
+BEST = re.compile(r"\b(best|better|ideal|optimal|right|cleanest|pinnacle)\b[^.?!\n]{0,40}\b(solution|approach|design|way|fix|option|code)s?\b[^.!\n]*\?"
+                  r"|\b(solution|approach|design|fix|code)\b[^.?!\n]{0,30}\b(best|better|ideal|optimal|right)\b[^.!\n]*\?", re.I)
+def ratings(wf):  # the rating records at any depth of wf, outside the checkouts in it (a repo's own docs/decisions/ are no rating)
+    for root, dirs, files in os.walk(wf):
+        dirs[:] = sorted(x for x in dirs if not os.path.exists(os.path.join(root, x, '.git')))
+        yield from (os.path.relpath(os.path.join(root, f), wf) for f in sorted(files)
+                    if f in ('approach.md', 'converge.md', 'rating.md') or f.endswith('.md') and os.path.basename(root) == 'decisions')
+def best_check():
+    if not BEST.search(last_user): return
+    for wf in sorted(task_dirs):
+        kinds = {}  # approach.md, converge.md, rating.md or decisions/: each kind present is named by one of its files
+        for r in ratings(wf): kinds.setdefault('decisions/' if os.path.basename(os.path.dirname(r)) == 'decisions' else os.path.basename(r), []).append(r)
+        unnamed = [r for rs in kinds.values() if not any(r in last for r in rs) for r in rs]
+        if unnamed:
+            print(f"This asks whether a design is the best one, and {wf} holds ratings of a kind your message names no file of ({', '.join(unnamed)}): "
+                  "read them, and answer from them, naming one file of each kind (approach.md, decisions/, converge.md, rating.md) and any rating you overturn, with what evidence.", file=sys.stderr)
+            sys.exit(2)
 # A checkable fact left unchecked in the reply (mergeworthy:writing §Evidence for claims)
 def unchecked_check():
     m = report.unchecked(last)
@@ -166,7 +120,6 @@ def unchecked_check():
         sys.exit(2)
 # A fork is asked once per session: a GENUINE-FORK line already sent blocks, answered or not (it waits in questions-owed.md)
 def fork_check():
-    asked = set().union(*map(report.forks, said[:-1])) if len(said) > 1 else set()
     if report.forks(last) & asked:
         print("This GENUINE-FORK line was already sent to the user in this session. Ask a fork once: until they answer, "
               "it waits in questions-owed.md, and a later report doesn't repeat it. Send it again only with changed "
@@ -177,7 +130,7 @@ def fork_check():
 def running_check():
     text = report.running_list(last)
     if text is None: return
-    status, thread, seen, launched = t3_tasks.observed(lines)
+    status, thread, seen, launched = facts.tasks.result()
     # a link names a thread, and a list with no link names a thread by a title its tasks hold ("memory refresh" is the refresh just
     # launched). It is finished only when every task of it is; it is current when one of them was heard of since the user's last message.
     threads = {}
@@ -224,13 +177,30 @@ def done_check():
 # A sentence whose subject is a PR (`#N`, `owner/repo#N`, its URL, `PR #N`, `CI on #N`) and that states its live state (a draft,
 # ready, merged, CI green or red) is checked against GitHub now: the PR may have moved since the agent last looked (a maintainer
 # marks it ready, CI finishes), and the user acts on what the report says. "My reply to #12 is a draft" has another subject.
+def session_links():
+    """{number: the repos whose PR or issue of that number the text the user typed (t3_tasks.typed: no notice or tool result) or the agent wrote linked, newest first}, from the
+    transcript's last 4,000 lines: a bare #N means the one the session named."""
+    links = {}
+    try:
+        for l in itertools.islice(shellcmd.rlines(d['transcript_path']), 4001):  # rlines yields b'' first after a final newline
+            if not re.search(rb'[\w.-]/[\w.-]+(?:#|/pull/|/issues/)\d', l): continue
+            try: e = json.loads(l)
+            except ValueError: continue
+            m = e.get('message') if isinstance(e, dict) and e.get('type') in ('user', 'assistant') else None
+            c = m.get('content') if isinstance(m, dict) else None
+            texts = [t3_tasks.typed(c)] if e['type'] == 'user' else [x.get('text') or '' for x in c if isinstance(x, dict) and x.get('type') == 'text'] if isinstance(c, list) else []
+            for repo, n in reversed([link for t in texts for link in report.numbered_links(t)]): links.setdefault(n, []).append(repo)
+    except (KeyError, TypeError, OSError): pass  # no transcript: the message's links and the checkout's remotes still hold
+    return links
 def state_check():
-    url_repos = report.linked_repos(last)
+    url_repos, claims = report.linked_repos(last), report.state_claims(last)
+    linked = session_links() if any(not key[0] for _, key, _ in claims) else {}
     states, wrong = {}, []
-    for claim, key, sentence in report.state_claims(last):
+    for claim, key, sentence in claims:
         if key not in states:
             pr, why = None, ''
-            repos = list(dict.fromkeys(([key[0]] if key[0] else []) + url_repos + forge.remotes(d.get('cwd') or '.')))
+            named = [r for r, n in report.numbered_links(last) if n == key[1]] + linked.get(key[1], [])  # the message's own, then the session's
+            repos = [key[0]] if key[0] else list(dict.fromkeys(named + url_repos + forge.remotes(d.get('cwd') or '.')))
             for repo in repos:
                 pr, why = forge.pull(repo, key[1])
                 if pr is not None or 'HTTP 404' not in (why or ''): break
@@ -261,7 +231,7 @@ def state_check():
               "(mergeworthy:writing §Evidence for claims); then act on it (a ready PR: the reply loop; red CI: fix it).", file=sys.stderr)
         sys.exit(2)
 if not child:
-    for check in (handback_check, unchecked_check, fork_check, running_check, done_check, state_check): check()
+    for check in (handback_check, best_check, unchecked_check, fork_check, running_check, done_check, state_check): check()
 own_dirs = set(t3_dirs)
 for wd in (l.strip() for l in open(reg)) if os.path.exists(reg) else ():
     # or a watch dir this session works through from elsewhere (its cwd is a repo, the watch dir an artifact root):
@@ -275,7 +245,7 @@ _env = os.path.expanduser('~/.mergeworthy/settings.env')
 # MERGEWORTHY_WATCHER in the environment wins over the plugin option, as for every script
 watcher_on = (os.environ.get('MERGEWORTHY_WATCHER') or ('off' if 'MERGEWORTHY_WATCHER=off' in (open(_env).read() if os.path.exists(_env) else '') else 'on')) != 'off'
 # A headless run (`claude -p`, entrypoint sdk-cli) has no Monitor tool: its caller watches
-headless = any('"entrypoint":"sdk-cli"' in l for l in lines[-20:])
+headless = any(facts.tail_sdk)
 # A steward pass's round (gh-watch-start --round, mergeworthy:steward) names its session in <dir>/passed: that dir's owed lines hold the
 # session's turn as a live watcher's do. It has no daemon, so a post there still needs a live watcher, as any post does
 pass_dirs = {wd for wd in ((l.strip() for l in open(reg)) if os.path.exists(reg) else ()) if d.get('session_id') and steward.passed_by(wd) == d['session_id']}

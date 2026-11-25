@@ -429,7 +429,7 @@ def build_world(gh):
             if who.endswith('[bot]') or rng.random() < .15:  # dependency bumps: the noise
                 files += [{'filename': PKG, 'status': 'modified', 'patch': DEP(30, i)}, {'filename': 'pnpm-lock.yaml', 'status': 'modified', 'patch': HUNK.format(a=400 + i, old=f'      version: 1.2.{i}', new=f'      version: 1.2.{i + 1}')}]
             gh.commit(repo, who, files, when=T0 - rng.uniform(.01, 59) * DAY, parents=2 if rng.random() < .08 else 1)
-    # commits planted among them, each with what a FOLLOW-UP should do with it
+    # commits planted among them: no event may come of any
     gh.planted = {
         'touch50': gh.commit('vikejs/vike', 'alice', [{'filename': 'packages/50/a.ts', 'status': 'modified', 'patch': TS(11)}], when=T0 - 1 * DAY),
         'bump': gh.commit('vikejs/vike', 'bob', [{'filename': PKG, 'status': 'modified', 'patch': DEP(30, 9)}, {'filename': 'pnpm-lock.yaml', 'status': 'modified', 'patch': DEP(31, 9)}], when=T0 - 3 * DAY),
@@ -460,12 +460,6 @@ def build_world(gh):
     # the events these produce, per watch dir (the planted commits are listed by their short sha)
     short = lambda k: gh.planted[k][:10]
     return lambda: sorted([
-        ('d1', f"### FOLLOW-UP vikejs/vike#50: {short('touch50')}"),
-        ('d1', "### FOLLOW-UP vikejs/vike#50, #51:"),  # one line for a commit touching two PRs
-        ('d3', f"### FOLLOW-UP vikejs/vike-react#8: {short('rename8')}"),
-        ('d4', f"### FOLLOW-UP vikejs/docpress#190: {short('late190')}"),
-        ('d2', f"### FOLLOW-UP vikejs/vike#53: {short('late53')}"),
-        ('d1', '### FOLLOW-UP vikejs/vike#50: <frank-pr>'),
         ('d1', '### vikejs/vike#101 comment'),
         ('d1', '### UNROUTED /agent vikejs/vike#999'),
     ])
@@ -486,7 +480,7 @@ FOREIGN = {('d3', 'open', True), ('d6', 'issue', False)}  # threads of someone e
 
 def build_machine(gh, seed=11):
     """The threads of MACHINE in a FakeGitHub: -> ({dir: ['owner/repo N', ...]}, {'recent_pr': [keys], 'stale_issue': [keys]}).
-    Each repo also has commits (a fifth by bots) over the last 60 days, so the follow-ups of the merged PRs have work to do."""
+    Each repo also has commits (a fifth by bots) over the last 60 days."""
     rng, dirs, pick = random.Random(seed), {}, {'recent_pr': [], 'stale_issue': [], 'recent_issue': []}
     numbers = {}
     def new(repo):

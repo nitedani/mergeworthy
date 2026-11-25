@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 # pr-steps <step> <output-file>: records that a converge step ran on the current HEAD, after checking its output proves it.
-# verify, reverify, small, shape and fresh take `--ledger <path>` for a round 2 whose verdict isn't clean: the loop's ledger closes it (hooks/ledger.py).
+# verify, reverify, small, shape and fresh take `--ledger <path>` for a round 2 whose verdict isn't clean: the loop's ledger closes it (hooks/ledger.py), a finding on a post's draft by its gate-pass record.
 # Steps, in pipeline order (mergeworthy:converge): verify (Loop A), shape (Loop B: the review and the shape pass),
 # reverify (Loop A after Loop B's commits), fresh (the fresh reader), gates (every gate's exit code on the final head).
 # The posting hook blocks `gh pr create` (unless --draft), `gh pr ready` and pushes to a ready PR until HEAD has all five.
 # quick: the quick gates' exit codes on a head (code §Gates), which a push to a PR or another owner's repo, and `gh pr create`, need on the pushed head.
 # layout: a layout check's lines (evidence step 4), each screenshot OK or its defect with the place it comes from, outside the functions the branch changes.
-# finality: the finality pass's pinnacle and plan (finality step 3), which a code file's 6th change on the branch needs on the head (pre-bash-guard).
+# finality: the finality pass's pinnacle and plan (finality step 3), which a code file's change past the drift limit on the branch needs on the head
+# (pre-bash-guard; hooks/records.py LIMIT). A review (verify, shape, reverify, fresh, small) or a finality is also a note of its kind on the head under
+# the drift ref (records.py DRIFT_REF, NOTE_KIND), a finality's with a line 'plan <its numbered steps>', written before the record, which git
+# carries through an amend or a rebase (hooks/drift.py).
 # union <log> | --conflict <sha>: two ready PRs of ours sharing a file, checked together (merging step 2): in a checkout of their merge, the log's
 # first line 'Union: <owner/repo>#<A>@<sha> + #<B>@<sha> on <base>@<sha>' and its quick gates; or, in one PR's checkout, its textual conflict with the other's head.
 set -euo pipefail
@@ -107,6 +110,7 @@ if [ "$step" = approach ]; then
   [ -n "$rating" ] || { echo "Chosen '$chosen' is not a row of the candidates table" >&2; exit 1; }
   [ "$rating" -ge 7 ] || { echo "the chosen approach is rated $rating: 6 or below is not ready to build (pull-request step 5); find a better candidate or stop" >&2; exit 1; }
   grep -Eq '^[[:space:]*>-]*Shared assumption:[*]*[[:space:]]+[^[:space:]]+[[:space:]]+[^[:space:]]+' "$out" || { echo "$out has no line 'Shared assumption: <what every other candidate takes for granted>', which one candidate drops (pull-request §Rating)" >&2; exit 1; }
+  grep -Eq '^[[:space:]*>-]*Probe:[*]*[[:space:]]+[^[:space:]].*[[:space:]]->[[:space:]]*[^[:space:]]' "$out" || { echo "$out has no line 'Probe: <the run that tried to break the shared assumption> -> <its result>': run one before Chosen (pull-request step 5)" >&2; exit 1; }
   # the contract is the one this session's loaded skills follow (session-start's record): a session on v1's catalog, or one
   # with no record, still records loopb and refactor, so its branch gets no `contract: 2`
   catalog=$(cut -d' ' -f2 ~/.mergeworthy/sessions/"$(basename "${CLAUDE_CODE_SESSION_ID:-none}")" 2>/dev/null || true)
@@ -121,6 +125,27 @@ sha=$(git rev-parse HEAD)
 pbase() {
   local pb; pb=$(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || true)
   git merge-base HEAD "${pb:+origin/$pb}" 2>/dev/null || git merge-base HEAD "$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)" 2>/dev/null || true
+}
+# drift_note <step>: the step's note on $sha, its kind once and a finality's plan line; the repo's notes.rewriteRef gets the drift ref beside
+# any value it has, which is what makes an amend or a rebase copy the note. A note it can't write exits, recording nothing
+drift_note() {
+  local ref k m=; read -r ref k <<< "$(python3 "$(dirname "$(realpath "$0")")/../hooks/records.py" drift-note "$1")"; [ -n "$k" ] || return 0
+  local failed="the drift note of $out on $sha could not be written (git's error above), so nothing is recorded: fix that, then run the same pr-steps again"
+  # the repo's own value: a global one is the recorder's alone, which another home amending this checkout doesn't have
+  if ! git config --local --get-all notes.rewriteRef | grep -qxF "$ref"; then git config --local --add notes.rewriteRef "$ref" || { echo "$failed" >&2; exit 1; }; fi
+  git notes --ref="$ref" show "$sha" 2>/dev/null | grep -qxF "$k" || m=$k
+  # a finality's plan size: the changes past LIMIT hooks/drift.py lets the files the branch changed take; a later plan's line wins
+  if [ "$k" = finality ]; then m+=${m:+$'\n'}"plan $plan"; fi
+  [ -n "$m" ] || return 0
+  # a note is a commit, which needs an identity: pr-steps' own, which no half-set or useConfigOnly identity can fail
+  git -c user.name=pr-steps -c user.email=pr-steps@localhost notes --ref="$ref" append -m "$m" "$sha" || { echo "$failed" >&2; exit 1; }
+}
+# record <step> <line>...: records $out on $sha as a line per step named, after its drift note as <step>; an output recorded already is refused
+record() {
+  local step=$1; shift
+  grep -qsF " $(realpath "$out") " ~/.claude/pr-steps/"$sha" && { echo "$out is already recorded for $sha: each step has its own output" >&2; exit 1; }
+  drift_note "$step"
+  for k in "$@"; do echo "$k $(realpath "$out") $(date -u +%FT%TZ)" >> ~/.claude/pr-steps/"$sha"; done
 }
 # build output, not code a reviewer reads: those of the paths on stdin, a line each, that testpaths.generated finds
 built() { python3 "$(dirname "$(realpath "$0")")/../hooks/testpaths.py" generated; }
@@ -151,8 +176,7 @@ if [ "$step" = small ]; then
   # the verdict ends the report, before any trailing Verification or not_checked section (delegate/agent.md asks every agent for not_checked)
   verdict=$(awk '{ l = tolower($0) } l ~ /^#+[ \t]*(verification|not[ _]checked)([^a-z]|$)/ { tail = 1; next } /^#/ { tail = 0 } !tail' "$out" | grep -v '^[[:space:]]*$' | tail -n2 | tr '\n' '|')
   [ "$(grep -v '^[[:space:]]*$' "$out" | tail -n2 | tr '\n' '|')" = 'NO BUGS|MERGE AS IS: yes|' ] || [ "$verdict" = 'NO BUGS|MERGE AS IS: yes|' ] || ledger_ok || { echo "$out does not end with NO BUGS and MERGE AS IS: yes: fix what it found and send the same reviewer round 2 checking that fix; after round 2, record it with --ledger <the loop's ledger>" >&2; exit 1; }
-  grep -qsF " $(realpath "$out") " ~/.claude/pr-steps/"$sha" && { echo "$out is already recorded for $sha" >&2; exit 1; }
-  for k in verify shape reverify fresh; do echo "$k $(realpath "$out") $(date -u +%FT%TZ)" >> ~/.claude/pr-steps/"$sha"; done
+  record small verify shape reverify fresh
   echo "recorded small fix ($n lines) for $sha: verify, shape, reverify, fresh; run the gates next"
   exit 0
 fi
@@ -160,13 +184,29 @@ fi
 # carries an earlier pass or small fix's review ("carries the pass of <sha>", carry_holds): a fix log or a note is not a shape pass
 # A pass rates every item afresh: a row whose rating is copied ("10 =", "=", "unchanged since") is a re-rating of a delta, not a pass
 is_pass() { grep -q '✅' "$1" && grep -Eq '([0-9]+|\bnew) *(⇒|=>) *([0-9]+|removed|new|n/a)' "$1" && ! grep -Eiq '\| *([0-9]+ *)?= *\||unchanged since' "$1"; }
+# The lines between two trees, a binary, mode or empty file counting one
+span() { git diff --numstat "$1" "$2" | awk '{ s += $1 + $2 + 1 } END { print s + 0 }'; }
 # The file of each line HEAD changed since an earlier head, once per line: compared whole with that head replayed on the base HEAD has merged,
 # so what the base brought doesn't count and every move does; a conflict stays in the replay as its markers, so its resolution counts
 delta() {
-  local T
-  T=$(git merge-tree --write-tree "$(pbase)" "$1" 2>/dev/null | sed -n 1p || true)  # exit 1 on a conflict, with the tree first
-  git -c core.quotePath=false -c diff.noprefix=false diff --no-renames --numstat "${T:-$1}" HEAD |
-    not_built | awk -F'\t' '{ n = $1 + $2; if (!n) n = 1; for (i = 0; i < n; i++) print $3 }'  # a binary, a mode or an empty file has no line, and is a change
+  local b c d h k m n pb M T r=
+  b=$(pbase); pb=$(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || true)
+  [ -n "$pb" ] || { pb=$(git symbolic-ref -q --short refs/remotes/origin/HEAD || true); pb=${pb#origin/}; }
+  m=$(git merge-base "$b" "$1" 2>/dev/null || true)
+  # a squash of a branch $1 merged leaves git no merge base inside it: replay from the commit of $1 nearest the base that a merged PR's head
+  # shares with it, which holds that branch; only PRs merged into this PR's base branch count; gh failing leaves the merge base
+  if [ -n "$m" ]; then n=$(span "$m" "$b")
+    for h in $(gh pr list --state merged --base "${pb:-main}" --limit 30 --json headRefOid -q '.[].headRefOid' 2>/dev/null || true); do
+      c=$(git merge-base "$1" "$h" 2>/dev/null) && ! git merge-base --is-ancestor "$c" "$b" || continue
+      k=$(span "$c" "$b"); [ "$k" -ge "$n" ] || { n=$k; r=$c; }
+    done
+  fi
+  M=$(git -c core.quotePath=false merge-tree --write-tree --name-only ${r:+--merge-base="$r"} "$b" "$1" 2>/dev/null || true)  # exit 1 on a conflict, with the tree first, then the conflicted files
+  [ -n "$M" ] || [ -z "$r" ] || M=$(git -c core.quotePath=false merge-tree --write-tree --name-only "$b" "$1" 2>/dev/null || true)  # a git without --merge-base replays as before
+  T=$(sed -n 1p <<< "$M"); d=$(git -c core.quotePath=false -c diff.noprefix=false diff --no-renames --numstat "${T:-$1}" HEAD |
+    not_built | awk -F'\t' '{ n = $1 + $2; if (!n) n = 1; for (i = 0; i < n; i++) print $3 }')  # a binary, a mode or an empty file has no line, and is a change
+  printf '%s\n' "$d"
+  sed -n '2,/^$/p' <<< "$M" | grep -vxF -e "$d" -e '' | sed 's/^/0\t0\t/' | not_built | cut -f3 || true  # a conflict whose written tree has no markers (modify/delete) still changed its file
 }
 # A carry of head $1's step holds for at most 80 changed lines, none outside tests and docs: a line of code may add behavior, whatever the session says
 carry_holds() {
@@ -254,7 +294,9 @@ EOF
       { printf '%s\n' "$out is a layout check, one line per screenshot: '<file name> — OK', or a defect left unfixed as '<file name> — <the defect>, from <path:line>', the place it comes from, outside the functions this branch changes (mergeworthy:evidence step 4):" "$bad" >&2; exit 1; } ;;
   finality)
     # finality step 3: a code file's 6th change on the branch waits for this record (pre-bash-guard)
-    grep -Eq '^Pinnacle: +[^ ]+ +[^ ]+ +[^ ]+' "$out" && awk '/^Plan:/{p=1;next} p&&/^[0-9]+\. +[^ ]/{f=1} END{exit !f}' "$out" ||
+    # its 'Plan:' steps, numbered 1, 2, 3… until a number out of turn, which drift_note writes into the finality's note
+    plan=$(awk '/^Plan:/{p=1;next} p&&/^[0-9]+\. +[^ ]/{if ($0+0 != n+1) exit; n++} END{print n+0}' "$out")
+    grep -Eq '^Pinnacle: +[^ ]+ +[^ ]+ +[^ ]+' "$out" && [ "$plan" -gt 0 ] ||
       { echo "$out needs a line 'Pinnacle: <the design>' and a line 'Plan:' followed by the ranked convergence plan, one numbered line '1. <step>' per step (mergeworthy finality step 3)" >&2; exit 1; } ;;
   loopb)
     [ "$last" = CLEAN ] || { echo "$out does not end with a line CLEAN: fix its findings and continue the same agent" >&2; exit 1; } ;;
@@ -339,7 +381,5 @@ EOF
 esac
 fi
 [ "$step" != union ] || { proof=$(realpath "$out"); record_union "$ua" "$ub"; exit 0; }
-grep -qsF " $(realpath "$out") " ~/.claude/pr-steps/"$sha" && { echo "$out is already recorded for $sha: each step has its own output" >&2; exit 1; }
-mkdir -p ~/.claude/pr-steps
-echo "$step $(realpath "$out") $(date -u +%FT%TZ)" >> ~/.claude/pr-steps/$sha
+record "$step" "$step"
 echo "recorded $step for $sha"

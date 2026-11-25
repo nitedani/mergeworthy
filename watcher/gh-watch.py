@@ -6,10 +6,9 @@
   (your events feed; one watch dir gets each, see main_dir). Nothing else.
 - `owner/repo all` in repos.txt: the repo's new issues and PRs (`### NEW ISSUE`, `### NEW PR`), and every thread that moves joins threads.txt (moved_thread).
 - Your "/agent ..." comments on threads no watch dir lists, found in the watched repos' recent comments (search as a backup) and sent to one dir (see agent_command): `### AGENT COMMAND`.
-- MAINTAINER REVIEW: a maintainer's review (not a bare approval) on your PR, sent to the steward like FOLLOW-UP: every defect it names is sorted.
-- FOLLOW-UP: later commits by others to the lines of your merged PRs, and PRs that reference them (see follow_ups), for 60 days after the merge.
-  What you caused yourself (your reference, a head you pushed, your merge or close: own_change) is a `note:` line, logged without waking you.
-  Another account renaming your PR, open (the last-comment call) or merged (follow_ups' timeline), is one too (pr_renamed).
+- MAINTAINER REVIEW: a maintainer's review (not a bare approval) on your PR, sent to the steward's dir while its watcher runs: every defect it names is sorted.
+  Follow-ups on merged PRs are project-learn's (mergeworthy:task step 4). What you caused yourself (a head you pushed, your merge or close: own_change) is a `note:` line, logged without waking you.
+  Another account renaming your open PR (the last-comment call) is one too (pr_renamed).
 - Machine-wide work (those two) runs in one daemon, or a --round, at a time (shared_pass). Every call goes through request(), which keeps the
   hour's budget (see "The GitHub API budget") and sends ETags; a rate-limit pause prints one `note:` line per daemon, waking nobody.
 - Maintainers' commits pushed to a tracked PR, and 👍/👎 from you or a maintainer (write access, see maintainer) on the agent's comments.
@@ -76,7 +75,7 @@ def shared_path(name='shared-watch.json'):
 
 
 def shared_default():
-    return {'rate': {}, 'pause_until': 0, 'jobs': {}, 'etags': {}, 'commits': {}, 'followups': {}, 'backlog': {}, 'agent_since': None, 'me': None,
+    return {'rate': {}, 'pause_until': 0, 'jobs': {}, 'etags': {}, 'agent_since': None, 'me': None,
             'poll': POLL_DEFAULT, 'feeds': {}, 'activity': {}, 'dirty': {}, 'disc': {}}
 
 
@@ -790,9 +789,9 @@ def wake_thread():
     queued, nothing is sent: t3-wake.held names that run and how far the events it will read go; once it starts, the cursor moves there,
     and if it ends without starting, the next pass sends them (False until then: the thread hasn't got them). While the user has the
     thread stopped (steward.stopped), nothing is sent, the cursor stays and the watcher doesn't retire (False): once they write in it
-    again, the next pass sends every event since in one wake. While the thread is settled (steward.settled), which any message ends,
-    nothing is sent and the cursor stays unless an unsent line is one a person caused (PERSON): that wake carries the waiting lines
-    too. The watcher may retire meanwhile (True): events.log keeps them for the session's next start. A FOLLOW-UP or MAINTAINER REVIEW
+    again, the next pass sends every event since in one wake. While the thread is settled, by hand or by T3, or archived
+    (steward.settled), which any message ends, nothing is sent and the cursor stays unless an unsent line is one a person caused
+    (PERSON): that wake carries the waiting lines too. The watcher may retire meanwhile (True): events.log keeps them for the session's next start. A MAINTAINER REVIEW
     still unsorted 30 minutes after its time (steward.unsorted) goes again while the thread is idle and not settled, an hour after the
     last such send (t3-wake.resent), the gap doubling to a day."""
     tid, _, t3 = first_line(os.path.join(HERE, 't3-thread')).partition('\n')
@@ -821,7 +820,7 @@ def wake_thread():
             start, data = unsent()
     lines = [l for l in data.decode(errors='replace').splitlines() if (WAKES if steward.quiet(HERE) else EVENT).match(l)]
     head = f"Watcher events in {HERE}/events.log (mergeworthy:reply):\n"
-    late = [] if steward.quiet(HERE) else [l for l, _, at in steward.unsorted(HERE, 1800) if time.time() - at < FOLLOWUP_DAYS * 86400]
+    late = [] if steward.quiet(HERE) else [l for l, _, at in steward.unsorted(HERE, 1800) if time.time() - at < 60 * 86400]
     t, _, n = first_line(resent).partition(' ')
     if not late:
         with contextlib.suppress(FileNotFoundError): os.remove(resent)
@@ -920,8 +919,9 @@ def emit_tracker_stale(key, ended):
 AGENT_TRAILER = re.compile(r'^co-authored-by: claude\b', re.I | re.M)  # an agent's commit, whoever pushed it (the project files' definition)
 
 
-def emit_maintainer_commits(state, repo, key, old, new):
+def emit_maintainer_commits(state, repo, key, old, new, here=True):
     """A maintainer's commits pushed to a tracked PR: reviewing them was requested ("Review each of my commit as I push them").
+    here=False (a PR this dir only waits on) keeps their activity and the steward's copy, without this dir's event.
     -> False when a call failed, so the caller reads them again."""
     try:
         commits = [{'sha': c['sha'][:10], 'login': (c.get('author') or {}).get('login') or '', 'date': c['commit']['committer']['date'], 'agent': bool(AGENT_TRAILER.search(c['commit'].get('message') or ''))}
@@ -951,8 +951,9 @@ def emit_maintainer_commits(state, repo, key, old, new):
             return False
         worked(f"permission {repo} {c['login']}")
     if theirs:
-        if (s := steward.recipient([])) and s[0] != HERE.rstrip('/') and not ONCE:  # a copy for the steward's follow-up sort
+        if (s := steward.recipient([])) and (s[0] != HERE.rstrip('/') or not here) and not ONCE:  # a copy for the steward's follow-up sort, which here's own event covers only when here
             emit_to(s[0], f"### MAINTAINER COMMITS {key}: {' '.join(theirs)}")
+    if theirs and here:
         emit(f"### MAINTAINER COMMITS {key}: {' '.join(theirs)}: review each one in a table (| Commit | What it does, and the idea behind it | Rating |, one short sentence each; rated N/10 with a short reason next to anything below 10, e.g. 9/10 (Vite's built-ins differ); an emoji only where it's funny; 10/10 only when nothing could be better), as requested (mergeworthy:reply §Maintainer commits)")
     return True
 
@@ -1225,6 +1226,7 @@ def scan(state, jobs):
         dt = datetime.datetime.strptime(state['since_by'].get(key, first), '%Y-%m-%dT%H:%M:%SZ') - datetime.timedelta(minutes=10)
         return dt.strftime('%Y-%m-%dT%H:%M:%SZ')
     ok, read, pings, now = True, [], [], time.time()
+    waits = {k for _, k in waiting_keys()} - {f"{r}#{n}" for r, n in threads_file.read(THREADS)[0]}  # only waited on: its pushes and CI are its owner's (#256)
     state.setdefault('upd', {})
     sched = state.setdefault('sched', {})
     with ThreadPoolExecutor(max_workers=8) as ex:
@@ -1250,7 +1252,7 @@ def scan(state, jobs):
                 state['upd'][key] = iso_epoch(updated)
             if last:
                 state.setdefault('open', {})
-                closed = not is_pr and state['open'].get(key) and not last['open']
+                closed = not is_pr and not last['open'] and (state['open'].get(key) or key in waits and key not in state['open'])  # a waited issue closed before its first read too
                 mine = closed and own_change(key, {'state': 'open'}, {'state': 'closed'})
                 if mine == 'pending':  # the close's command still runs: read the issue again next pass
                     state['etag'].pop(f"repos/{repo}/issues/{num}", None)
@@ -1262,24 +1264,33 @@ def scan(state, jobs):
             state['since_by'][key] = started
             if pr_state:
                 prev = state['prs'].get(key)
-                mine = prev and prev != pr_state and own_change(key, prev, pr_state)
+                ended = not prev and key in waits and pr_state['state'] != 'open'  # ended before its first read: the end its dir waits for
+                was = {**pr_state, 'state': 'open'} if ended else prev
+                mine = was and was != pr_state and own_change(key, was, pr_state)
                 if mine == 'pending':  # the push, merge or close still runs: compare again next pass
-                    pr_state = prev
+                    pr_state = prev or pr_state  # the saved state stays as it was
                     state['etag'].pop(f"repos/{repo}/pulls/{num}", None)
                 elif prev and prev != pr_state:
-                    emit(f"{'note:' if mine else '###'} PR CHANGED {key}: {prev} -> {pr_state}")  # a note is logged, and wakes no one
+                    if key not in waits or prev.get('state') != pr_state['state']:
+                        emit(f"{'note:' if mine else '###'} PR CHANGED {key}: {prev} -> {pr_state}")  # a note is logged, and wakes no one
                     if pr_state['state'] == 'merged' and prev.get('state') != 'merged':
                         emit_dependents(key)
                     if pr_state['state'] in ('merged', 'closed') and prev.get('state') != pr_state['state']:
                         emit_tracker_stale(key, pr_state['state'])
                     if prev.get('head') != pr_state['head']:
-                        reported = emit_maintainer_commits(state, repo, key, prev['head'], pr_state['head'])
-                        emit_refactor_stale(repo, key, pr_state['head'])
+                        reported = emit_maintainer_commits(state, repo, key, prev['head'], pr_state['head'], here=key not in waits)
+                        if key not in waits:
+                            emit_refactor_stale(repo, key, pr_state['head'])
                         if not reported:  # as after a failed read: the old head and no validator, so the next look compares again
                             pr_state = {**pr_state, 'head': prev['head']}
                             state['etag'].pop(f"repos/{repo}/pulls/{num}", None)
-                state['prs'][key] = pr_state
-            if red is not None:
+                elif ended:
+                    emit(f"{'note:' if mine else '###'} PR CHANGED {key}: {prev} -> {pr_state}")
+                    if pr_state['state'] == 'merged':
+                        emit_dependents(key)
+                if mine != 'pending':
+                    state['prs'][key] = pr_state
+            if red is not None and key not in waits:  # unsaved: once threads.txt lists it, a red is news
                 if red != state['ci'].get(key, []) and (key in state['ci'] or not SEED):  # red already when a seeding round first reads it
                     emit(f"### CI {key}: red={red}: fix it, or if it is not this PR's doing, say why on the PR now with the evidence (mergeworthy:reply §Events)" if red else f"### CI {key}: no longer red")
                 state['ci'][key] = red
@@ -1714,109 +1725,6 @@ def own_events_changed(state):
     return keys
 
 
-FOLLOWUP_DAYS, SLACK = 60, 3  # how long a merged PR is followed; lines of slack around its lines
-LOCKFILES = ('pnpm-lock.yaml', 'package-lock.json', 'yarn.lock')
-# a package.json line that only gives a dependency (or the package) a version: "name": "<alias target, workspace: or nothing><version>"; in a lockfile, semver numbers and integrity hashes
-DEP_LINE = re.compile(r'^\s*"([^"]+)":\s*"((?:npm:.+@|workspace:)?)(?:[\^~<>=v ]*\d[^"]*|\*|latest)"(,?)\s*$')
-SEMVER = re.compile(r'\d+\.\d+\.\d+[\w.+-]*|(?:sha\d+|md5)-[\w+/=]+|\b[0-9a-f]{40}\b')
-
-
-def version_only(base, lines):
-    """A hunk of package.json or a lockfile whose removed lines equal its added lines once versions are blanked: a dependency
-    bump, which says nothing about your PR's lines (the dependency PRs of the repo are the noise in a follow-up report)."""
-    if base != 'package.json' and base not in LOCKFILES:
-        return False
-    def norm(l):
-        m = DEP_LINE.match(l[1:])
-        return f'"{m[1]}":"{m[2]}"{m[3]}' if m else SEMVER.sub('V', l[1:]).strip()
-    return sorted(norm(l) for l in lines if l[0] == '-') == sorted(norm(l) for l in lines if l[0] == '+')
-
-
-def patch_lines(patch, path=''):
-    """-> (old-side, new-side) line numbers a unified-diff patch changes; a pure insertion or deletion counts at its position.
-    Hunks that only bump dependency versions (version_only) are left out."""
-    old, new = [], []
-    for hunk in re.split(r'(?m)^(?=@@)', patch or ''):
-        lines = hunk.splitlines()
-        if not lines or not lines[0].startswith('@@') or version_only(path.rsplit('/', 1)[-1], [l for l in lines[1:] if l[:1] in ('+', '-')]):
-            continue
-        m = re.match(r'@@ -(\d+)(?:,\d+)? \+(\d+)', lines[0])
-        o, n = int(m[1]), int(m[2])
-        for l in lines[1:]:
-            if l.startswith('-'):
-                old.append(o); new.append(n); o += 1
-            elif l.startswith('+'):
-                old.append(o); new.append(n); n += 1
-            elif not l.startswith('\\'):
-                o += 1; n += 1
-    return old, new
-
-
-def spans(nums):
-    out = []
-    for x in sorted(set(nums)):
-        if out and x <= out[-1][1] + 1:
-            out[-1][1] = x
-        else:
-            out.append([x, x])
-    return out
-
-
-def follow_record(key):
-    """A merged PR of yours: its merge commit and the lines it changed, to compare later commits against."""
-    repo, num = key.rsplit('#', 1)
-    pr = request(f"repos/{repo}/pulls/{num}").json()
-    files = {f['filename']: spans(patch_lines(f['patch'])[1]) if f.get('patch') else [[1, 10**9]]  # no patch: the whole file
-             for f in paged(f"repos/{repo}/pulls/{num}/files?per_page=100") if f.get('status') != 'removed'}
-    until = iso_epoch(pr['merged_at']) + FOLLOWUP_DAYS * 86400
-    return {'merge_sha': pr['merge_commit_sha'], 'base': pr['base']['ref'], 'merged': pr['merged_at'], 'scanned': pr['merged_at'], 'checked': 0,
-            'until': until, 'files': files if until > time.time() else {}}
-
-
-def summarize(files):
-    """What a commit did to each file, small enough to keep for good: the old-side line spans it changed, or None when
-    GitHub shows no patch. A file that changed no line that counts (a dependency bump) is left out."""
-    out = []
-    for f in files:
-        base = f['filename'].rsplit('/', 1)[-1]
-        if f.get('status') == 'modified' and not f.get('patch') and base in LOCKFILES:
-            continue  # a lockfile too large for GitHub to show: a dependency change, not your lines
-        e = {'f': f['filename'], 's': f.get('status'), 'o': spans(patch_lines(f['patch'], f['filename'])[0]) if f.get('patch') else None}
-        if f.get('previous_filename'):
-            e['p'] = f['previous_filename']
-        if e['o'] != [] or e['s'] in ('removed', 'renamed') or e.get('p'):
-            out.append(e)
-    return out
-
-
-def touches(e, files):
-    """Does a commit's summary (see summarize) change lines of the PR (within SLACK lines), or rename or remove one of its files? A rename is followed."""
-    hit, renames = False, []
-    for f in files:
-        old = f.get('p') or f['f']
-        ranges = e['files'].get(old)
-        if ranges is None:
-            continue
-        if old != f['f']:
-            renames.append((old, f['f']))
-        if old != f['f'] or f['s'] == 'removed' or f['o'] is None:
-            hit = True
-        else:
-            hit = hit or any(a <= hi + SLACK and b >= lo - SLACK for a, b in f['o'] for lo, hi in ranges)
-    for old, new in renames:
-        e['files'][new] = e['files'].pop(old)
-    return hit
-
-
-def commit_files(repo, sha):
-    """A commit's summary, read from GitHub once ever: the answer is the same every time, so it is kept in the shared state."""
-    k = f"{repo}@{sha}"
-    if k not in shared_read()['commits']:
-        files = summarize(request(f"repos/{repo}/commits/{sha}").json().get('files') or [])
-        shared_update(lambda s: s['commits'].__setitem__(k, files))
-    return shared_read()['commits'][k]
-
-
 def emit_to(d, line):
     """An event for the session that owns watch dir d: its events.log, which that dir's daemon also writes to."""
     if ONCE:
@@ -1836,126 +1744,16 @@ def maintainer_review(key, author, kind, cid, user, url, state, upd):
 
 
 def pr_renamed(key, dirs, when, login, old, new):
-    """Someone else retitled your PR, open or merged: the title is the repo's form, so it goes where a FOLLOW-UP goes, once."""
+    """Someone else retitled your open PR: the title is the repo's form, so it goes where a MAINTAINER REVIEW goes, once."""
     if login and not is_own(login):
         repo, num = key.rsplit('#', 1)
-        follow_emit(f"rename:{key}:{when}", dirs, f'### FOLLOW-UP {key}: https://github.com/{repo}/pull/{num}#rename-{when} by {login} renames your PR: "{old}" -> "{new}"  at {iso(time.time())}')
+        follow_emit(f"rename:{key}:{when}", dirs, f'### MAINTAINER REVIEW {key}: https://github.com/{repo}/pull/{num}#rename-{when} by {login} renames your PR: "{old}" -> "{new}"  at {iso(time.time())}')
 
 
 def follow_emit(sk, dirs, line):
     if claim(sk, record=not ONCE):  # once across restarts and daemons; a manual --once check records nothing
         for d in steward.recipient(dirs):
             emit_to(d, line)
-
-
-def followed_prs():
-    """-> {key: [watch dirs]}: your merged PRs in the threads of every live watch dir (and this one)."""
-    out = {}
-    for d in dict.fromkeys(live_dirs() + [HERE]):
-        try:
-            st = json.load(open(os.path.join(d, 'gh-watch-state.json')))
-        except (OSError, ValueError):
-            continue
-        for key in listed_threads(d):
-            if st.get('prs', {}).get(key, {}).get('state') == 'merged' and is_own(st.get('author', {}).get(key)):
-                out.setdefault(key, []).append(d)
-                old = st.get('followups', {}).get(key)  # kept by a watcher from before the shared state: its cursors save the backfill
-                if old and key not in shared_read()['followups']:
-                    old.setdefault('merged', iso(old['until'] - FOLLOWUP_DAYS * 86400))
-                    shared_update(lambda s: s['followups'].setdefault(key, old))
-    return out
-
-
-def follow_ups():
-    """After a PR of yours merges, later commits to its lines by others and PRs that reference it are a review you didn't get
-    (mergeworthy:rules step 6). A shared job (shared_pass): each merged PR of yours in any live watch dir is
-    followed for FOLLOWUP_DAYS. `### FOLLOW-UP` goes once per commit (not yours, not a bot's, not a merge) that touches the
-    recorded lines of PRs of yours, naming them all, to the dirs that list them, with its time (stop-lint's sort deadline), and once per other person's PR that references it.
-    The commits of a repo are listed once per pass, newest first and with an ETag, and read oldest first, so a daemon pass
-    that runs out of calls (PASS_CALLS) resumes where it stopped, a list of more pages than a pass included (the backlog in the shared state);
-    PRs not checked for longest go first."""
-    prs, now = followed_prs(), time.time()
-    fu = shared_read()['followups']
-    for key in sorted(prs.keys() - fu.keys()):
-        try:
-            record = follow_record(key)
-        except (Budget, PassSpent):
-            raise
-        except Exception as e:
-            fail(f"follow-up record {key}", e)
-            continue
-        worked(f"follow-up record {key}")
-        shared_update(lambda s: s['followups'].__setitem__(key, record))
-    fu = shared_read()['followups']
-    groups = {}
-    for key in sorted((k for k in prs if k in fu and fu[k]['until'] > now), key=lambda k: fu[k]['checked']):
-        groups.setdefault((key.rsplit('#', 1)[0], fu[key]['base']), []).append(key)
-    for k in prs:
-        if k in fu and fu[k]['until'] <= now and fu[k]['files']:
-            shared_update(lambda s: s['followups'][k].update(files={}))  # past the window: kept as a marker so the PR isn't recorded again
-    for (repo, base), keys in groups.items():
-        entries = {k: json.loads(json.dumps(fu[k])) for k in keys}  # worked on here, written back when the group is done or stops
-        gk, pending, done, moved = f"{repo}@{base}", {}, False, None
-        floor, since = min(e['scanned'] for e in entries.values()), min(e['merged'] for e in entries.values())
-        url = f"repos/{repo}/commits?sha={base}&since={since}&per_page=100"
-        bk = shared_read()['backlog'].get(gk)  # a commit list longer than a pass, kept page by page: this pass continues it
-        if not bk or bk['since'] > since or bk['floor'] > floor or not set(keys) <= set(bk.get('keys', ())):  # one read without a PR of the group (followed or moved here since) is read again for it
-            bk = {'since': since, 'floor': floor, 'started': iso(now - 600), 'next': url, 'queue': [], 'keys': keys,  # overlap: claims dedupe
-                  'fresh': any(e['checked'] == 0 for e in entries.values())}  # a PR never read can't use a 304 for a list others have read
-        try:
-            while bk['next']:  # newest first, down to what was already read
-                first = bk['next'] == url
-                try:
-                    resp = request(bk['next'], store=shared_read()['etags'] if first else None, pending=pending if first else None, fresh=bk['fresh'], newest_first=True)
-                except RuntimeError as ex:
-                    if re.search(r'HTTP 404\b', str(ex)):  # the base branch was deleted after the merge (a PR into another PR's branch): the default branch is followed instead
-                        moved = request(f"repos/{repo}").json()['default_branch']
-                    raise
-                page = [] if resp.status == 304 else resp.json()
-                bk['queue'] += [{'sha': c['sha'], 'html_url': c['html_url'], 'parents': [0] * len(c.get('parents') or []), 'author': c.get('author') and {k: c['author'].get(k) for k in ('login', 'type')},
-                                 'commit': {'committer': {'date': c['commit']['committer']['date']}, 'author': {k: c['commit']['author'].get(k) for k in ('name', 'email')}}} for c in page]
-                bk['next'] = None if not page or not resp.next() or page[-1]['commit']['committer']['date'] < bk['floor'] else resp.next()
-            while bk['queue']:  # oldest first
-                c = bk['queue'][-1]
-                sha, author, when = c['sha'], c.get('author') or {}, c['commit']['committer']['date']
-                who = author.get('login') or c['commit']['author'].get('name')  # no GitHub account is linked to the commit's email: its git name
-                mine = is_own(author.get('login')) or re.fullmatch(rf"(\d+\+)?({'|'.join(map(re.escape, OWN))})@users\.noreply\.github\.com", c['commit']['author'].get('email') or '', re.I)
-                if not is_bot({**author, 'login': who}) and not mine and len(c.get('parents') or []) <= 1:
-                    wanted = [k for k, e in entries.items() if when >= e['scanned'] and sha != e['merge_sha'] and claim(f"followup:{k}:{sha}", record=False)]
-                    if wanted:
-                        files = commit_files(repo, sha)
-                        hit = [k for k in wanted if touches(entries[k], files) and claim(f"followup:{k}:{sha}", record=not ONCE)]
-                        if hit:  # one line per commit, naming every PR of yours it touches
-                            for d in steward.recipient(list(dict.fromkeys(d for k in hit for d in prs[k]))):
-                                emit_to(d, f"### FOLLOW-UP {repo}#{', #'.join(sorted((k.rsplit('#', 1)[1] for k in hit), key=int))}: {sha[:10]} by {who} changes lines from your PR  {c['html_url']}  at {iso(time.time())}")
-                for e in entries.values():
-                    e['scanned'] = max(e['scanned'], when)
-                bk['queue'].pop()
-            for k, e in entries.items():
-                tpending = {}
-                for t in paged(f"repos/{repo}/issues/{k.rsplit('#', 1)[1]}/timeline?per_page=100", shared_read()['etags'], tpending, fresh=bk['fresh']):
-                    i = (t.get('source') or {}).get('issue') or {}
-                    if t.get('event') == 'cross-referenced' and 'pull_request' in i and not is_bot(i.get('user')):
-                        who = (t.get('actor') or {}).get('login') or i['user']['login']  # who wrote the reference: in another's PR, it can be your comment
-                        ours = is_own(who) or is_own(i['user']['login'])  # its own claim: a later reference by someone else from that PR still wakes
-                        follow_emit(f"followup-ref{'-own' if ours else ''}:{k}:{i['html_url']}", prs[k], f"{'note:' if ours else '###'} FOLLOW-UP {k}: {i['html_url']} by {who} references your PR  at {iso(time.time())}")
-                    elif t.get('event') == 'renamed':
-                        pr_renamed(k, prs[k], t['created_at'], (t.get('actor') or {}).get('login'), t['rename']['from'], t['rename']['to'])
-                pending.update(tpending)
-                e['scanned'] = bk['started']
-            done = True
-            worked(f"follow-up {gk}")
-        except (Budget, PassSpent):
-            raise
-        except Exception as ex:
-            if not moved:
-                fail(f"follow-up {gk}", ex)
-        finally:
-            for e in entries.values():
-                e['checked'] = now  # done or not, the group goes to the back of the line: a long backlog doesn't hold up the other repos
-                if moved:  # followed there from the next pass, first in line and as never read: another group's ETag for that list doesn't cover these PRs
-                    e.update(base=moved, checked=0)
-            shared_update(lambda s: (s['followups'].update(entries), s['etags'].update(pending if done else {}), s['backlog'].pop(gk, None) if done or moved else s['backlog'].__setitem__(gk, bk)))
 
 
 def locked():
@@ -1986,7 +1784,7 @@ def read_reactions(read):
             save_state(state)
 
 
-JOBS = (('feeds', poll_interval, repo_feeds), ('discovery', 300, discover_agent_commands), ('followups', 1800, follow_ups))  # machine-wide work: name, seconds between passes (or a function of it), job
+JOBS = (('feeds', poll_interval, repo_feeds), ('discovery', 300, discover_agent_commands))  # machine-wide work: name, seconds between passes (or a function of it), job
 RESERVE_JOBS = ('feeds',)  # the jobs that run below RESERVE_AT calls left too: they are what names the threads to read
 
 
@@ -2026,13 +1824,12 @@ def retire_if_done():
     only for an hour after it was written, for the thread about to join, an `owner/repo all` line always) has nothing left to watch:
     it writes the time to HERE/retired and disables its service, so it doesn't come back after a reboot, or stops its daemon (tick() does
     the same for a HERE/retired that someone else wrote). A reply
-    still owed in replies-owed.md keeps it: stop-lint holds a session's turn only for a live watcher's owed lines. So does an unsorted
-    FOLLOW-UP or MAINTAINER REVIEW, for FOLLOWUP_DAYS, which wake_thread sends again. So does an open agent
+    still owed in replies-owed.md keeps it: stop-lint holds a session's turn only for a live watcher's owed lines. So does an unsorted MAINTAINER REVIEW, for the 30 minutes stop-lint gives to sort it, and an open agent
     job whose brief is in its work folder: its AGENT DONE comes here (agent_jobs_pass)."""
     repos, wf = repo_lines(HERE), work_folder.task_of(HERE)
     if (any(repos.values()) or repos and time.time() - os.path.getmtime(os.path.join(HERE, 'repos.txt')) < 3600
             or work_folder.has_open_line(os.path.join(HERE, 'replies-owed.md'), 'done:')
-            or any(time.time() - at < FOLLOWUP_DAYS * 86400 for *_, at in steward.unsorted(HERE))
+            or any(time.time() - at < 1800 for *_, at in steward.unsorted(HERE))
             or wf and any(job_folder(j) == wf for _, j in agent_jobs.jobs())):
         return
     threads, gl = read_threads(), gl_watch.threads(THREADS)
@@ -2041,11 +1838,6 @@ def retire_if_done():
     with locked():
         state = load_state()
     if not all(gl_watch.done(state, key) for key, *_ in gl):
-        return
-    fu = shared_read()['followups']  # a merged PR of yours still being followed, or not yet recorded by the shared job, keeps the watcher,
-    # except in your own repo, where you are the one who follows up
-    if any(state['prs'].get(k, {}).get('state') == 'merged' and is_own(state.get('author', {}).get(k)) and fu.get(k, {'until': float('inf')})['until'] > time.time()
-           for k in (f"{r}#{n}" for r, n in threads if r.split('/')[0].lower() != ME.lower())):
         return
     prs = state['prs']
     for repo, num in threads:
@@ -2088,7 +1880,7 @@ def stop_watcher():
         kept = ''.join(l + '\n' for l in tab.stdout.splitlines() if not l.endswith(f'# gh-watch {HERE}'))
         subprocess.run(['crontab', '-'], input=kept, text=True)
     try:
-        os.kill(int(open(os.path.join(HERE, 'gh-watch.pid')).read().strip()), 15)  # the daemon's trap stops this watcher too
+        os.kill(int(open(os.path.join(HERE, 'gh-watch.pid')).read().strip()) if os.path.isdir(HERE) or not DAEMON else os.getppid(), 15)  # the daemon's trap stops this watcher too; with the folder gone, its loop is the parent
     except (OSError, ValueError):
         sys.exit(0)
 
@@ -2154,7 +1946,7 @@ def tick():
     """One round of a daemon. What each budget level allows: OK everything; RESERVE (below RESERVE_AT calls left) not discovery and
     follow-ups; LOW (below LOW_AT) only the notifications and the threads they name; PAUSED nothing."""
     _ticks[0] += 1
-    if os.path.exists(os.path.join(HERE, 'retired')):
+    if os.path.exists(os.path.join(HERE, 'retired')) or not os.path.isdir(HERE) or steward.thread_state(steward.thread_of(HERE)) == 'deleted' and not steward.in_folder(HERE):  # disk-sweep deletes the folder of a deleted thread, but the steward's
         stop_watcher()
         return
     if not os.path.exists(os.path.join(HERE, 't3-thread')):  # started before T3 delivery or while t3 wasn't found; first, so this pass's events go too

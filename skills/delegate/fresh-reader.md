@@ -2,7 +2,7 @@
 
 Standards: `~/.mergeworthy/current/skills/code/SKILL.md`, `~/.mergeworthy/current/skills/writing/SKILL.md` §Self-check. Include `delegate/agent.md`.
 
-A new agent each round, blind to the loop agents' reports (`converge` step 4): they judge their own suggestions. The main session fills it only once the project file exists (`task §Repo study`). Paste after it; the pasted briefs write into sections of fresh.report.md, not their own files, and this brief's Standards read and ending replace theirs: `delegate/verifier.md`'s brief, `delegate/reviewer.md`'s brief, `delegate/post-review.md`'s brief for the body draft, and, where `finality` ran, step 1 of `delegate/shape.md` (only DELETE-NOW, FIX, FILL or DELETE-CAREFULLY items worth their price count; OWNER-DECISION rows go in the body's decision blocks).
+A new agent each round, blind to the loop agents' reports (`converge` step 4): they judge their own suggestions. The main session fills it only once the project file exists (`task §Repo study`). Paste after it; the pasted briefs write into sections of fresh.report.md, and this brief's Standards read and ending replace theirs: `delegate/verifier.md`'s brief, `delegate/reviewer.md`'s brief, `delegate/post-review.md`'s brief for the body draft, and, where `finality` ran, step 1 of `delegate/shape.md` (only DELETE-NOW, FIX, FILL or DELETE-CAREFULLY items worth their price count; OWNER-DECISION rows go in the body's decision blocks).
 
 ```
 You read <PR> cold, at head <SHA> (origin/<base> merged in), in <worktree>.

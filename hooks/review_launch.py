@@ -1,8 +1,9 @@
 """The text a post's reviewer was handed. The hooks that start a reviewer (pre-agent-dedupe, pre-bash-guard) check unlinted() on its
-output while they admit the launch, and call launch() once the launching hook admitted it; gate-pass calls reviewed(), so a verdict counts only
-for the draft's text at that launch, whatever the files' times say. The record is a workflow check of what those hooks see, not proof
+output while they admit the launch, and call launch() once the launching hook admitted it; gate-pass and pre-agent-dedupe call answers(), which
+adds the verdict, ledger and freshness rules to reviewed(), so a verdict counts only for the draft's text at that launch, whatever the files' times say. The record is a workflow check of what those hooks see, not proof
 of who wrote it."""
-import hashlib, os, re, time
+import datetime, hashlib, os, re, time
+import ledger
 
 # the line gate-pass appends to a draft after its review, in gate-pass's own format
 FOOTER = re.compile(rb'\nHarness changes since my last note: <https://github\.com/nitedani/mergeworthy/compare/[0-9a-f]+\.\.\.[0-9a-f]+>\n\Z')
@@ -74,3 +75,33 @@ def reviewed(out, draft):
         return (f"the draft changed after its review {out} was launched: lint it again (post step 2), then send it back to the reviewer "
                 "(post step 3)"), int(m[2])
     return '', int(m[2])
+
+
+def answers(out, draft, ledger_file=None):
+    """Why the review in out doesn't let draft be posted, gate-pass's review rule ('' when it does).
+    The reviewer was handed draft's text (reviewed()); its verdict is exactly CLEAN, or ledger_file (default: <name>.ledger.md beside draft,
+    if any), written after it, closes the round (ledger.problems, a post's rules); the launch postdates the latest human comment
+    thread-context.md beside draft records. out None: a status post, which has no review and is checked by draft's own time. Writes nothing."""
+    why, at = reviewed(out, draft) if out else ('', int(os.path.getmtime(draft)))
+    if why: return f'{draft}: {why}'
+    try: verdict = [l.strip() for l in open(out, errors='replace').read().splitlines() if l.strip()] if out else ['CLEAN']
+    except OSError: verdict = []  # its reviewer hasn't written yet
+    if verdict != ['CLEAN']:
+        beside = os.path.splitext(draft)[0] + '.ledger.md'
+        ledger_file = ledger_file or (beside if os.path.isfile(beside) else None)
+        found = ledger.problems(ledger_file, post=True) if ledger_file else []
+        if ledger_file and not found and (not verdict or os.path.getmtime(ledger_file) < os.path.getmtime(out)):
+            found = [f'{out} holds no verdict yet: wait for its reviewer, or launch the round again' if not verdict else f'{ledger_file} was last written before the verdict in {out}: add its findings, then pass it']
+        if not ledger_file or found:
+            return ((f'the ledger leaves this round open (mergeworthy:delegate §Review rounds):\n' + '\n'.join(found) + '\n' if found else '')
+                    + f"review is not exactly CLEAN (it has {len(verdict)} non-empty lines; last: {verdict[-1] if verdict else ''}). The reviewer's "
+                    "final message, alone, is the review output; after round 2, pass --ledger <the loop's ledger>")
+    try: tc = open(os.path.join(os.path.dirname(os.path.realpath(draft)), 'thread-context.md')).read()
+    except OSError: tc = ''
+    if (m := re.search(r'^- latest-human-comment: id=\d* at=([0-9TZ:-]+)', tc, re.M)):
+        try: human = int(datetime.datetime.fromisoformat(m[1].replace('Z', '+00:00')).timestamp())
+        except ValueError: human = 0
+        if human >= at:
+            return (f'thread-context.md records a human comment ({m[1]}) newer than the review: re-read it, revise the draft if it changes '
+                    'anything, and review again (mergeworthy:post step 1)')
+    return ''

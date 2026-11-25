@@ -14,7 +14,7 @@ cat > "$T/bin/gh" <<'EOF'
 # ...and `gh pr view [<ref>] --json number` from $FX/pr_view_<ref with / and : replaced by _>, or $FX/pr_view_current without a ref (none: gh's "no pull requests found")
 # ...and `gh pr checks <url> --json name,bucket` from $FX/pr_checks_<url with / and : replaced by _> (none: "no checks reported"; a URL not on github.com: gh's "no pull requests found")
 # A `--jq .a.b` on a fixture holding a JSON object answers that field, as gh does; any other fixture is the answer as it stands, its
-# first JSON page alone without --paginate
+# first JSON page alone without --paginate, and every page as one array of them with --paginate --slurp
 [ -n "${GH_STUB_PWD:-}" ] && echo "$1 $2 $PWD" >> "$GH_STUB_PWD"  # each call and where it ran, for a check that must run gh in the command's dir
 [ -n "${GH_STUB_ARGS:-}" ] && printf '%s\n' "$*" >> "$GH_STUB_ARGS"  # each call's arguments
 [ "$1 $2" = "config get" ] && { [ ! -f "$FX/login" ] || cat "$FX/login"; exit; }  # the login gh's own config names: $FX/login
@@ -32,17 +32,26 @@ print(v.get(sys.argv[2][1:], "") if sys.argv[2] and isinstance(v, dict) else raw
 if [ "$1 $2" = "pr list" ]; then  # from $FX/pr_list_<the -R repo with / replaced by _>; none: no PRs ([], or nothing with -q)
   [ -n "$GH_STUB_403" ] && { echo 'gh: API rate limit exceeded for user ID 1. (HTTP 403)' >&2; exit 1; }
   s=; q=; p=; for a in "$@"; do [ "$p" = -R ] && s=$a; case "$a" in -q|--jq) q=1;; esac; p=$a; done
-  f="$FX/pr_list_$(printf '%s' "$s" | tr / _)"; if [ -f "$f" ]; then cat "$f"; elif [ -z "$q" ]; then echo '[]'; fi; exit 0; fi
+  f="$FX/pr_list_$(printf '%s' "$s" | tr / _)"; p=; for a in "$@"; do [ "$p" = --base ] && [ -f "${f}_base_$a" ] && f="${f}_base_$a"; p=$a; done  # a --base answers from $f_base_<branch> when it exists
+  if [ -f "$f" ]; then cat "$f"; elif [ -z "$q" ]; then echo '[]'; fi; exit 0; fi
 [ "$1 $2" = "pr checks" ] && [ "${3#https://github.com/}" = "$3" ] && { echo "no pull requests found for branch \"$3\"" >&2; exit 1; }
 if [ "$1 $2" = "pr checks" ]; then f="$FX/pr_checks_$(printf '%s' "$3" | tr '/:' '__')"; [ -f "$f" ] && cat "$f" && exit 1; echo "no checks reported on the 'x' branch" >&2; exit 1; fi
 [ "$1" = api ] || exit 1
+[ "$2 $3" = "--hostname github.com" ] && set -- api "${@:4}"  # --hostname github.com: the same fixtures
 f="$FX/$(printf '%s' "$2" | tr '/?&=' '____')"
 for a in "$@"; do case "$a" in o=*|id=*) [ -f "${f}_${a#*=}" ] && f="${f}_${a#*=}";; esac; done  # graphql: $FX/graphql_<owner> or $FX/graphql_<node id> answers for it
-[ -n "$GH_STUB_403" ] && { echo 'gh: API rate limit exceeded for user ID 1. (HTTP 403)' >&2; exit 1; }
+# GH_STUB_403=1 rate-limits every call, GH_STUB_403=<path> that path's; `gh api rate_limit` answers, as GitHub's doesn't count
+[ -n "$GH_STUB_403" ] && [ "$2" != rate_limit ] && { [ "$GH_STUB_403" = 1 ] || [ "$GH_STUB_403" = "$2" ]; } && { echo 'gh: API rate limit exceeded for user ID 1. (HTTP 403)' >&2; exit 1; }
+[ -f "$f.hang" ] && exec sleep 30  # $FX/<path>.hang: gh hangs past the caller's timeout
+[ -f "$f" ] || [ ! -f "$f.err" ] || { cat "$f.err" >&2; exit 1; }  # $FX/<path>.err, with no $FX/<path>: gh fails, printing it
 [ -f "$f" ] || { printf '{"message":"Not Found","status":"404"}'; echo 'gh: Not Found (HTTP 404)' >&2; exit 1; }  # gh prints the error's JSON body too
-q=; pg=; while [ $# -gt 0 ]; do [ "$1" = --jq ] && q=$2; [ "$1" = --paginate ] && pg=1; shift; done
+q=; pg=; sl=; while [ $# -gt 0 ]; do [ "$1" = --jq ] && q=$2; [ "$1" = --paginate ] && pg=1; [ "$1" = --slurp ] && sl=1; shift; done
 python3 -c 'import json, re, sys
 raw = open(sys.argv[1]).read(); q = sys.argv[2]
+if sys.argv[4]:  # --slurp: every page, as one array of them
+    pages, at = [], 0
+    while raw[at:].strip(): page, at = json.JSONDecoder().raw_decode(raw, len(raw) - len(raw[at:].lstrip())); pages.append(page)
+    raw = json.dumps(pages)
 if not sys.argv[3] and raw.lstrip()[:1] in ("{", "["):  # a fixture of several JSON pages: without --paginate, gh reads the first
     try: raw = raw[:json.JSONDecoder().raw_decode(raw.lstrip())[1] + len(raw) - len(raw.lstrip())]
     except ValueError: pass
@@ -51,7 +60,7 @@ except ValueError: v = None
 if isinstance(v, dict) and re.fullmatch(r"(\.\w+)+", q):
     for k in q.split(".")[1:]: v = v.get(k) if isinstance(v, dict) else None
     print("" if v is None else v if isinstance(v, str) else json.dumps(v))
-else: sys.stdout.write(raw)' "$f" "$q" "$pg"
+else: sys.stdout.write(raw)' "$f" "$q" "$pg" "$sl"
 EOF
 printf '#!/bin/sh\nexit 1\n' > "$T/bin/systemctl"  # no systemd user manager: session-start never reaches the real one
 chmod +x "$T/bin/gh" "$T/bin/systemctl"; export PATH="$T/bin:$PATH" FX="$T/fx"
@@ -67,7 +76,7 @@ git init -q -b fix "$TCO"; git -C "$TCO" -c user.name=t -c user.email=t@t commit
 quick() { # <checkout> [extra log lines]: records its HEAD's quick gates
   local f; f=$(mktemp "$T/quick.XXXXXX"); printf 'pnpm test -> exit 0 (3 tests)\n%s' "${2:-}" > "$f"; (cd "$1" && bash "$R/bin/pr-steps" quick "$f" >/dev/null); }
 quick "$TCO"
-printf 'Root cause: src/a.ts:3 does it\nBasis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix it | 8 | one place |\nShared assumption: the bug is in this repo\n\nChosen: Fix it\n' > "$T/approach.md"
+printf 'Root cause: src/a.ts:3 does it\nBasis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix it | 8 | one place |\nShared assumption: the bug is in this repo\nProbe: rg -l a.ts -> only src/a.ts\n\nChosen: Fix it\n' > "$T/approach.md"
 (cd "$TCO" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 # an implementer brief names its recorded approach (pre-agent-dedupe): the briefs below that test other checks carry this one
 git init -q "$T/afx"; git -C "$T/afx" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; (cd "$T/afx" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null); AFX=$'\n'"Approach: $T/approach.md (unchanged: a test fixture)"$'\n'"Checkout: $T/afx"
@@ -151,20 +160,20 @@ echo 'o/r#5: the wrapped facts line starts with "·"' > "$WD/defects-open.md"
 check "BLOCK: an open defects-open.md line is named at turn end, once; cleared, nothing" "2 1 0 0" "$(stop "$WD") $(grep -c 'the wrapped facts line starts with' "$T/err") $(stop "$WD") $(echo 'fixed in abc1234: o/r#6: the dot' > "$WD/defects-open.md"; stop "$WD")"
 rm -f "$WD/defects-open.md" "$WD/defects-told"
 F40=$(date -u -d '-40 minutes' +%FT%TZ); F10=$(date -u -d '-10 minutes' +%FT%TZ)
-printf '### FOLLOW-UP o/r#5, #6: abcdef1234 by carol changes lines from your PR  <c>  at %s\n### FOLLOW-UP o/r#5: https://github.com/o/r/pull/9 by alice references your PR  at %s\n' "$F40" "$F10" > "$WD/events.log"
-check "BLOCK: a FOLLOW-UP unsorted after 30 minutes, named; a newer one waits" "2 1 0" "$(stop "$WD") $(grep -c abcdef1234 "$T/err") $(grep -c pull/9 "$T/err")"
+printf '### MAINTAINER REVIEW o/r#5: abcdef1234 by carol reviews your PR  at %s\n### MAINTAINER REVIEW o/r#5: https://github.com/o/r/pull/9 by alice reviews your PR  at %s\n' "$F40" "$F10" > "$WD/events.log"
+check "BLOCK: a MAINTAINER REVIEW unsorted after 30 minutes, named; a newer one waits" "2 1 0" "$(stop "$WD") $(grep -c abcdef1234 "$T/err") $(grep -c pull/9 "$T/err")"
 printf '### MAINTAINER REVIEW o/r#5: https://github.com/o/r/pull/5#pullrequestreview-71 by magne reviews your PR  at %s\n' "$F40" >> "$WD/events.log"
-check "BLOCK: a MAINTAINER REVIEW unsorted after 30 minutes, named" "2 1" "$(stop "$WD") $(grep -c pullrequestreview-71 "$T/err")"
+check "BLOCK: another MAINTAINER REVIEW unsorted after 30 minutes, named" "2 1" "$(stop "$WD") $(grep -c pullrequestreview-71 "$T/err")"
 echo "abcdef1234 nothing to act on" > "$WD/followups-sorted.txt"
 check "BLOCK: 'nothing to act on' is not a verdict" 2 "$(stop "$WD")"
 printf 'abcdef1234567 TASTE https://example.invalid/notes\nhttps://github.com/o/r/pull/5#pullrequestreview-71 MISS https://example.invalid/ledger\n' > "$WD/followups-sorted.txt"
 check "a verdict line in followups-sorted.txt sorts it" 0 "$(stop "$WD")"
 rv='https://github.com/o/r/pull/5#pullrequestreview-71 MISS https://example.invalid/ledger'
 sorts() { printf '%s TASTE https://example.invalid/notes\n%s\n' "$1" "$rv" > "$WD/followups-sorted.txt"; stop "$WD"; }
-check "a commit's URL and a 7-character sha sort its FOLLOW-UP; another commit's URL doesn't" "0 0 2" "$(sorts https://github.com/o/r/commit/abcdef1234) $(sorts abcdef1) $(sorts https://github.com/o/r/commit/1234567890)"
+check "a commit's URL and a 7-character sha sort its event; another commit's URL doesn't" "0 0 2" "$(sorts https://github.com/o/r/commit/abcdef1234) $(sorts abcdef1) $(sorts https://github.com/o/r/commit/1234567890)"
 rm "$WD/events.log" "$WD/followups-sorted.txt"
-printf '### FOLLOW-UP o/r#5: https://github.com/o/r/pull/5#rename-2026-10-14T10:00:00Z by brillout renames your PR: "fix: a" -> "fix(core): a"  at %s\n' "$F40" > "$WD/events.log"
-check "BLOCK: the watcher's PR-rename FOLLOW-UP unsorted after 30 minutes, named" "2 1" "$(stop "$WD") $(grep -c 'pull/5#rename-2026-10-14T10:00:00Z' "$T/err")"
+printf '### MAINTAINER REVIEW o/r#5: https://github.com/o/r/pull/5#rename-2026-10-14T10:00:00Z by brillout renames your PR: "fix: a" -> "fix(core): a"  at %s\n' "$F40" > "$WD/events.log"
+check "BLOCK: the watcher's PR-rename MAINTAINER REVIEW unsorted after 30 minutes, named" "2 1" "$(stop "$WD") $(grep -c 'pull/5#rename-2026-10-14T10:00:00Z' "$T/err")"
 rm "$WD/events.log"
 echo "o/r 1 comment 42 by someone" > "$WD/replies-owed.md"
 check "control: open owed line, cwd=watch dir" 2 "$(stop "$WD")"
@@ -364,6 +373,26 @@ tc_fx repos_o_r_issues_45 '{"number":45,"id":5,"title":"Code in a list","html_ur
 tc_fx repos_o_r_issues_45_comments_per_page_100 '[{"id":105,"user":{"login":"maint"},"created_at":"2026-10-02T09:30:00Z","html_url":"https://example.invalid/o/r/issues/45#c105","body":"- The bot said:\n  ```\n  I disagree with the rename.\n  ```"}]'
 "$R/bin/thread-context" o/r#45 --out "$T/ctx/tc45.md" >/dev/null
 check "a ref and a rejection inside a code block in a list item are code: not followed, not in the ledger" "0 0" "$(grep -c '^  - o/r#42 ' "$T/ctx/tc45.md") $(grep -c '\[reject\]' "$T/ctx/tc45.md")"
+# a rate limit isn't a missing thread (nitedani/mergeworthy#260): the failure names gh's error and when the limit lifts
+tc_fx rate_limit '{"resources":{"core":{"remaining":0,"reset":1795000000},"graphql":{"remaining":4000,"reset":1795000000},"search":{"remaining":30,"reset":1795000000}}}'
+tclimit() { GH_STUB_403=$1 "$R/bin/thread-context" "$2" --out "$T/ctx/rl.md" >/dev/null 2>"$T/rl.err"; echo "$? $(grep -cxF "thread-context: cannot read $2: $3" "$T/rl.err")"; }
+RL403='gh: API rate limit exceeded for user ID 1. (HTTP 403)'
+check "BLOCK: a rate limit on REST, then on GraphQL behind a missing issue, is named, with its reset once spent; a missing thread is still none" "1 1 1 1 1 1" \
+  "$(tclimit 1 o/r#41 "\`gh api repos/o/r/issues/41\` failed: $RL403; it resets at 2026-11-18T11:06:40Z: retry then") $(tclimit graphql o/r#47 "\`gh api graphql\` failed: $RL403") $(tclimit '' o/r#47 'gh read no issue, PR or discussion at o/r#47')"
+mkdir -p "$T/rlbin"; cat > "$T/rlbin/gh" <<EOF
+#!/bin/sh
+# gh, but \`gh api rate_limit\` answers as \$RL says: html (a proxy's sign-in page), empty (no resources), hang; RL=two: GraphQL fails with two errors
+[ "\$1 \$2 \$RL" = "api graphql two" ] && { printf '%s\\n' "$RL403" 'gh: Could not resolve to a Discussion with the number of 47.' >&2; exit 1; }
+[ "\$1 \$2" = "api rate_limit" ] && case "\$RL" in html) echo '<html>Sign in</html>'; exit 0;; empty) echo '{}'; exit 0;; hang) exec sleep 60;; esac
+exec "$T/bin/gh" "\$@"
+EOF
+chmod +x "$T/rlbin/gh"
+rlodd() { (export RL=$1 PATH="$T/rlbin:$PATH"; tclimit 1 o/r#41 "\`gh api repos/o/r/issues/41\` failed: $RL403"); }
+check "BLOCK: a reset lookup that answers a page, no resources or nothing in time leaves the rate-limit error as gh gave it" "1 1 1 1 1 1" "$(rlodd html) $(rlodd empty) $(rlodd hang)"
+check "BLOCK: GraphQL's rate limit before a NOT_FOUND is no missing thread: both errors are named" "1 1" "$(export RL=two PATH="$T/rlbin:$PATH"; tclimit '' o/r#47 "\`gh api graphql\` failed: $RL403; gh: Could not resolve to a Discussion with the number of 47.")"
+rlasks() { rm -f "$T/rl.calls"; GH_STUB_ENV="$T/rl.calls" GH_STUB_403=$1 "$R/bin/thread-context" o/r#41 --depth 1 --out "$T/ctx/rl.md" >/dev/null 2>&1; echo "$? $(grep -c '^api rate_limit ' "$T/rl.calls")"; }
+check "the reset is looked up only for the error thread-context dies with, not for a linked thread it skips" "0 0 1 1" "$(rlasks repos/o/r/issues/42) $(rlasks repos/o/r/issues/41)"
+rm "$FX/rate_limit"
 
 # the guard: a post on the thread needs thread-context.md in the draft's folder, current
 TD="$T/tdrafts/o-r-41"; mkdir -p "$TD"
@@ -390,6 +419,38 @@ grep -o 'records the latest comment.*' "$T/err" | sed "s#$T#<T>#g; s/ (mergewort
 check "BLOCK: a thread-context.md regenerated after the gate needs a new review" 2 "$(tcguard)"
 sha256sum "$TD/r.md" | cut -d' ' -f1 > "$TD/r.md.gate"; tcbind "$TD/r.md"
 check "the regenerated thread-context.md passes once gated again" 0 "$(tcguard)"
+# a badge names only Claude models the session ran or launched: its transcript says which
+bmguard() { # <badge model line> <transcript line>...: a post to #41 ($BMCMD, else a new comment) from $TD/r.md under that badge, the session's transcript holding those lines; $BMAGENT: a native subagent's own transcript, posting
+  printf '<img src="https://github.com/claude.png" width="20" height="20" alt="Claude"> *%s wrote this.*\n\nAgreed, option A it is.\n' "$1" > "$TD/r.md"; shift
+  sha256sum "$TD/r.md" | cut -d' ' -f1 > "$TD/r.md.gate"; tcbind "$TD/r.md"; rm -f "$TD/r.md.posted"; printf '%s\n' "$@" > "$T/bm.jsonl"
+  python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[4]+" "+sys.argv[2]},"cwd":sys.argv[1],"transcript_path":sys.argv[3],**({"agent_id":"a1","agent_transcript_path":sys.argv[5]} if sys.argv[5] else {})}))' "$T" "$TD/r.md" "$T/bm.jsonl" "${BMCMD:-gh issue comment 41 --repo o/r --body-file}" "${BMAGENT:-}" > "$T/in.json"
+  python3 "$R/hooks/pre-bash-guard.py" < "$T/in.json" 2>"$T/err"; echo $?; }
+BM_RAN='{"type":"assistant","message":{"model":"claude-opus-5-5","content":[{"type":"text","text":"Drafted."}]}}'
+BM_DELEGATED='{"type":"assistant","message":{"model":"claude-opus-5-5","content":[{"type":"tool_use","id":"d1","name":"mcp__t3-code__delegate_task","input":{"task":"x","target":{"provider":"claudeAgent","model":"claude-sonnet-5-5"}}}]}}'
+check "a badge naming the model the session ran passes" 0 "$(bmguard 'Claude Opus 5.5 (high effort)' "$BM_RAN")"
+check "a badge naming a model the session launched only through delegate_task passes" 0 "$(bmguard 'Claude Opus 5.5 (high effort) and Claude Sonnet 5.5 (high effort)' "$BM_DELEGATED")"
+BM_ALIAS='{"type":"assistant","message":{"model":"claude-opus-5-5","content":[{"type":"tool_use","id":"a1","name":"Agent","input":{"prompt":"x","model":"sonnet"}}]}}'
+check "a badge naming a Sonnet version in a session that launched an Agent on the sonnet alias passes" 0 "$(bmguard 'Claude Opus 5.5 (high effort) and Claude Sonnet 5.5 (high effort)' "$BM_ALIAS")"
+check "BLOCK: a badge naming a Claude model that never ran, saying which ran and that the changed draft is reviewed again" "2 1 1" "$(bmguard 'Claude Fable 5.2 (high effort)' "$BM_RAN") $(grep -c 'names claude-fable-5-2, which this session didn.t run.*in the last day; it ran claude-opus-5-5' "$T/err") $(grep -c 'run its review again (mergeworthy:post step 3) and gate-pass it' "$T/err")"
+BM_BAD_TARGET='{"type":"assistant","message":{"model":"claude-opus-5-5","content":[{"type":"tool_use","id":"d2","name":"mcp__t3-code__delegate_task","input":{"task":"x","target":"claude-sonnet-5-5"}}]}}'
+check "a delegate request whose target is a string, not an object, is skipped: the badge naming the session's model passes" 0 "$(bmguard 'Claude Opus 5.5 (high effort)' "$BM_BAD_TARGET")"
+BM_SNAPSHOT='{"type":"assistant","message":{"model":"claude-haiku-4-5-20251001","content":[{"type":"text","text":"Drafted."}]}}'
+check "a badge naming the model whose dated snapshot the session ran passes" 0 "$(bmguard 'Claude Haiku 4.5 (high effort)' "$BM_SNAPSHOT")"
+check "BLOCK: a badge naming a model of any Claude family that never ran, Mythos too" "2 1" "$(bmguard 'Claude Mythos 5.2 (high effort)' "$BM_RAN") $(grep -c 'names claude-mythos-5-2, which' "$T/err")"
+check "an edit of a post from a draft whose badge names a model this session never ran passes: the edit keeps the post's credit" 0 "$(BMCMD='gh pr edit 41 --repo o/r --body-file' bmguard 'Claude Fable 5.2 (high effort)' "$BM_RAN")"
+printf '%s\n' '{"type":"assistant","message":{"model":"claude-sonnet-5-5","content":[{"type":"text","text":"Drafted."}]}}' > "$T/bm-agent.jsonl"
+check "a native subagent's post is checked against its own transcript: its Sonnet badge passes though its parent ran only Opus" 0 "$(BMAGENT="$T/bm-agent.jsonl" bmguard 'Claude Sonnet 5.5 (high effort)' "$BM_RAN")"
+python3 -c 'import json,sys; json.dump({"body": sys.argv[2]}, open(sys.argv[1], "w"))' "$TD/r.json" "$(printf '<img src="https://github.com/claude.png" width="20" height="20" alt="Claude"> *Claude Fable 5.2 (high effort) wrote this.*\n\nAgreed, option A it is.')"
+sha256sum "$TD/r.json" | cut -d' ' -f1 > "$TD/r.json.gate"; tcbind "$TD/r.json"; printf '%s\n' "$BM_RAN" > "$T/bm.jsonl"
+python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh api repos/o/r/issues/41/comments --input "+sys.argv[2]},"cwd":sys.argv[1],"transcript_path":sys.argv[3]}))' "$T" "$TD/r.json" "$T/bm.jsonl" > "$T/in.json"
+check "BLOCK: a request file (--input) whose JSON body's badge names a model that never ran" "2 1" "$(python3 "$R/hooks/pre-bash-guard.py" < "$T/in.json" 2>"$T/err"; echo $?) $(grep -c 'names claude-fable-5-2, which' "$T/err")"
+rm -f "$TD/r.json" "$TD/r.json.gate"
+check "a comment's --edit-last edit keeps the post's credit, while --create-if-none may create, so its badge is checked" "0 2 1" "$(BMCMD='gh issue comment 41 --repo o/r --edit-last --body-file' bmguard 'Claude Fable 5.2 (high effort)' "$BM_RAN") $(BMCMD='gh issue comment 41 --repo o/r --edit-last --create-if-none --body-file' bmguard 'Claude Fable 5.2 (high effort)' "$BM_RAN") $(grep -c 'names claude-fable-5-2, which' "$T/err")"
+check "BLOCK: a badge naming a version only a longer id of the session's starts with (Claude Sonnet 5, the session ran claude-sonnet-5-5)" "2 1" "$(bmguard 'Claude Sonnet 5 (high effort)' '{"type":"assistant","message":{"model":"claude-sonnet-5-5","content":[{"type":"text","text":"Drafted."}]}}') $(grep -c 'names claude-sonnet-5, which' "$T/err")"
+BM_OLD='{"type":"assistant","timestamp":"2026-11-16T13:09:31Z","message":{"model":"claude-fable-5-2","content":[{"type":"text","text":"Done."}]}}'
+BM_NOW='{"type":"assistant","timestamp":"2026-11-21T10:00:00Z","message":{"model":"claude-opus-5-5","content":[{"type":"text","text":"Drafted."}]}}'
+check "BLOCK: a badge naming a model the session last ran over a day before its latest line" "2 1" "$(bmguard 'Claude Fable 5.2 (high effort)' "$BM_OLD" "$BM_NOW") $(grep -c 'names claude-fable-5-2, which.*it ran claude-opus-5-5:' "$T/err")"
+printf 'Agreed, option A it is.\n' > "$TD/r.md"; sha256sum "$TD/r.md" | cut -d' ' -f1 > "$TD/r.md.gate"; tcbind "$TD/r.md"
 # the .posted marker: written once the post succeeded (PostToolUse), so a post another hook blocked, or that failed, can be retried
 postreg() { # tool_response json: post-bash-register after `gh issue comment 41 ... --body-file $TD/r.md`
   python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh issue comment 41 --repo o/r --body-file "+sys.argv[2]},"cwd":sys.argv[1],"tool_response":json.loads(sys.argv[3])}))' "$T" "$TD/r.md" "$1" \
@@ -474,6 +535,14 @@ check "the discussion's replies are in the transcript, each naming the comment i
 check "an organization's discussion URL in the thread is followed as the thread it names" "0 1 1 1" "$(dtc 'd/r#5' 1) $(grep -c '^  - d/r#6 .*linked from d/r#5)$' "$DD/thread-context.md")"
 check "--ref names a discussion URL's thread, an organization's too; one gh finds none at fails" "d/r#5 d/r#5 1" \
   "$("$R/bin/thread-context" --ref https://github.com/d/r/discussions/5) $("$R/bin/thread-context" --ref https://github.com/orgs/dorg/discussions/5) $("$R/bin/thread-context" --ref https://github.com/orgs/dorg/discussions/7 >/dev/null 2>&1; echo $?)"
+check "BLOCK: --ref on an organization's discussion URL while GitHub rate-limits names the limit" "1 1 0" \
+  "$(GH_STUB_403=1 "$R/bin/thread-context" --ref https://github.com/orgs/dorg/discussions/5 >/dev/null 2>"$T/ref.err"; echo $?) $(grep -c '^thread-context: cannot read https://github.com/orgs/dorg/discussions/5: `gh api graphql` failed: gh: API rate limit exceeded' "$T/ref.err") $(grep -c Traceback "$T/ref.err")"
+check "a discussion's URL, an organization's too, is read while REST is rate-limited; owner/repo#N still asks REST first" "0 0 1" \
+  "$(for r in https://github.com/d/r/discussions/5 https://github.com/orgs/dorg/discussions/5 'd/r#5'; do GH_STUB_403=repos/d/r/issues/5 "$R/bin/thread-context" --items "$r" >/dev/null 2>&1; printf '%s ' $?; done | sed 's/ $//')"
+tc_fx repos_o_discussions_issues_41 '{"number":41,"id":1,"title":"In a repo named discussions","html_url":"https://example.invalid/o/discussions/issues/41","state":"open","updated_at":"2026-10-01T10:00:00Z","created_at":"2026-09-30T10:00:00Z","user":{"login":"maint"},"body":"Hi."}'
+tc_fx repos_o_discussions_issues_41_comments_per_page_100 '[]'; tc_fx repos_o_discussions_issues_41_timeline_per_page_100 '[]'
+check "an issue URL is read as an issue when its repo is named discussions or its query names a discussion" "0 0" \
+  "$(for r in https://github.com/o/discussions/issues/41 'https://github.com/o/r/issues/41?next=/o/r/discussions/42'; do "$R/bin/thread-context" --items "$r" >/dev/null 2>&1; printf '%s ' $?; done | sed 's/ $//')"
 python3 "$T/dfx.py" replies '' '' "$FX/graphql_DC_501" > "$FX/graphql_d"
 "$R/bin/thread-context" 'd/r#5' --out "$T/d101.md" --depth 0 >/dev/null
 check "a comment's 101 replies, over two pages, are all read: the first and the newest, in the record and in --items" "1 1 1 101" "$(grep -c '^https://example.invalid/d/r/discussions/5#discussioncomment-1001$' "$T/d101.md") $(grep -c '^https://example.invalid/d/r/discussions/5#discussioncomment-1101$' "$T/d101.md") $(grep -c '^- latest-human-comment: id=1101 ' "$T/d101.md") $("$R/bin/thread-context" --items 'd/r#5' | python3 -c 'import json,sys; print(sum(x["kind"] == "reply" for x in json.load(sys.stdin)))')"
@@ -552,7 +621,7 @@ rm -f "$FX/graphql" "$FX/graphql_d" "$FX/graphql_DC_504" "$FX/graphql_D_5" "$FX/
 # gate-pass wants the same file beside a reply draft
 GD="$T/gdrafts/drafts/x"; mkdir -p "$GD"; printf 'Agreed, option A it is.\n' > "$GD/r.md"; echo CLEAN > "$GD/r.review.out"
 gp0() { MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GD/r.md" "$GD/r.review.out" ${GPL:+--ledger "$GPL"} --kind reply --parent none >"$T/gp.out" 2>&1; echo $?; }
-gp() { rv "$GD/r.review.out"; gp0; }
+gp() { rv "$GD/r.review.out"; [ -z "${GPL:-}" ] || touch -c "$GPL"; gp0; }  # a ledger is written after the verdict it closes
 check "BLOCK: gate-pass on a reply without thread-context.md" 1 "$(gp)"
 grep -c 'no thread-context.md' "$T/gp.out"
 cp "$TD/thread-context.md" "$GD/thread-context.md"; touch -d 2026-10-01T00:00:00Z "$GD/r.md"
@@ -1067,6 +1136,26 @@ check "status under Language: hu: actions that share a stem with an observation 
 check "status under Language: hu: a past verb, an observation (a prefixed one too), a result, a verb outside the list, a claim, a relative time and no deadline are findings; listed actions, prefixed ones too, are not" "1 1 1 1 1 1 1 1 0 0 0 0 0 0 0 0 1 1 1" "$(slh 'says neither' "Megnéztem a naplót. Átnézem $FUT-ig.") $(slh 'says neither' "Látom az eltérést. Átnézem $FUT-ig.") $(slh 'says neither' "Észreveszem az eltérést. Átnézem $FUT-ig.") $(slh 'says neither' "Észlelem az eltérést. Átnézem $FUT-ig.") $(slh 'says neither' "Megtalálom az eltérést. Átnézem $FUT-ig.") $(slh 'says neither' "Sikeresek a tesztek. Átnézem $FUT-ig.") $(slh 'says neither' "Zöldek a tesztek. Átnézem $FUT-ig.") $(slh 'says neither' "Gondolom, rendben van. Átnézem $FUT-ig.") $(slh 'says neither' "Megnézem a naplót. Átnézem $FUT-ig.") $(slh 'says neither' "Kijavítom a hibát. Átnézem $FUT-ig.") $(slh 'says neither' "Elküldöm a választ. Átnézem $FUT-ig.") $(slh 'says neither' "Frissítem a leírást. Átnézem $FUT-ig.") $(slh 'says neither' "Letöltöm a csomagot. Átnézem $FUT-ig.") $(slh 'says neither' "Áttekintem a kódot. Átnézem $FUT-ig.") $(slh 'says neither' "Ráfuttatjuk a teszteket az ágra. Átnézem $FUT-ig.") $(slh 'says neither' "Dolgozom rajta. Írok a karbantartónak. Átnézem $FUT-ig.") $(slh 'is a claim' "Átnézem, mert elbukott, $FUT-ig.") $(slh 'relative time' "Átnézem holnap, a többit $FUT-ig.") $(slh "say by when, as an ISO time in UTC ('2026-10-28T16:00Z-ig')" 'Átnézem a javítást.')"
 printf '%s\nA feltöltés elakad nagy fájloknál. Ez az MR darabokban küldi a fájlt.\n\n### Amit látni fogsz\n\n**1.** Egy 50 MB-os fájl feltöltése:\n\n```\nPOST /upload -> 201\n```\n' "$B" > "$T/hus.md"
 check "a ready Hungarian body's evidence heading passes under Language: hu, not without it" "0 1" "$(python3 "$R/bin/post-lint" "$T/hus.md" --kind pr --repo acme/hu --parent none 2>&1 | grep -c 'pull-request §Body') $(python3 "$R/bin/post-lint" "$T/hus.md" --kind pr --repo acme/en --parent none 2>&1 | grep -c 'pull-request §Body')"
+TPP="$HOME/.mergeworthy/projects/acme"; printf '# acme/tpl\n\n## PR conventions\n- PR template: .github/PULL_REQUEST_TEMPLATE.md: `## Why`, `## How`\n- Issue template: .github/ISSUE_TEMPLATE/bug.yml: `### Description`, `### Reproduction`\n' > "$TPP/tpl.md"
+printf '# acme/none\n\n## PR conventions\n- PR template: none\n- Issue template: none\n' > "$TPP/none.md"; printf '# acme/noline\n\n## PR conventions\n- Squash.\n' > "$TPP/noline.md"
+printf '%s\n## Why\n\nUploads stall on big files.\n\n## How\n\nThis PR sends the file in chunks.\n\n**1.** A 50 MB upload:\n\n```\nPOST /upload -> 201\n```\n' "$B" > "$T/tpl.md"
+sed 's/^## How$/### What you should see/; /^## Why$/d' "$T/tpl.md" > "$T/see.md"
+tpl() { python3 "$R/bin/post-lint" "$T/${2:-tpl}.md" --kind pr --repo "$1" --parent none 2>&1 | grep -c "${3:-pull-request §Body}"; }
+check "a template repo's body with its headings and numbered evidence under one passes; without a project file it needs What you should see" "0 1" "$(tpl acme/tpl) $(tpl acme/en)"
+check "PR template: none, like no project file, passes What you should see and fails the template body, asking for no line" "0 1 0 0" "$(tpl acme/none see) $(tpl acme/none) $(tpl acme/none see "no 'PR template:' line") $(tpl acme/en see "no 'PR template:' line")"
+check "BLOCK: a project file without a PR template: line asks for it, beside today's check" "1 0" "$(tpl acme/noline see "no 'PR template:' line") $(tpl acme/noline see)"
+TW="$T/tplw"; mkdir -p "$TW/drafts"; cp "$T/see.md" "$TW/drafts/see.md"; echo acme/noline > "$TW/repos.txt"
+check "without --repo the template check doesn't run, though repos.txt names a repo whose project file lacks the line" 0 "$(cd "$T" && python3 "$R/bin/post-lint" "$TW/drafts/see.md" --kind pr --parent none 2>&1 | grep -c "no 'PR template:' line")"
+check "BLOCK: a template repo's body that drops a template heading" 1 "$(sed 's/^## Why$/## Motivation/' "$T/tpl.md" > "$T/tpd.md"; tpl acme/tpl tpd)"
+check "BLOCK: a template repo's body without numbered evidence" 1 "$(sed 's/^\*\*1\.\*\* //' "$T/tpl.md" > "$T/tpd.md"; tpl acme/tpl tpd)"
+printf '%s\nUploads stall on big files.\n\n### Description\n\nA 50 MB upload never finishes.\n\n### Reproduction\n\n1. Open /upload.\n2. Pick a 50 MB file.\n\n```\nPOST /upload -> pending\n```\n' "$B" > "$T/tpi.md"
+sed 's/^### Reproduction$/### How to reproduce/; /^### Description$/d' "$T/tpi.md" > "$T/rep.md"
+tpi() { python3 "$R/bin/post-lint" "$T/${2:-tpi}.md" --kind issue --repo "$1" --parent none 2>&1 | grep -c "${3:-open-issue}"; }
+check "a template repo's issue with its headings and steps under one passes; without a project file it needs How to reproduce" "0 1" "$(tpi acme/tpl) $(tpi acme/en)"
+check "Issue template: none, like no project file, passes How to reproduce and fails the template issue, asking for no line" "0 1 0 0" "$(tpi acme/none rep) $(tpi acme/none) $(tpi acme/none rep "no 'Issue template:' line") $(tpi acme/en rep "no 'Issue template:' line")"
+check "BLOCK: a project file without an Issue template: line asks for it, beside today's check" "1 0" "$(tpi acme/noline rep "no 'Issue template:' line") $(tpi acme/noline rep)"
+check "BLOCK: a template repo's issue that drops a template heading" 1 "$(sed 's/^### Description$/### Summary/' "$T/tpi.md" > "$T/tpd.md"; tpi acme/tpl tpd)"
+check "BLOCK: a template repo's issue with more than 3 steps under its heading, shown only in a still" 1 "$(sed 's/^2\. Pick a 50 MB file\.$/2. Pick a file.\n3. Press Upload.\n4. Wait.\n\n![](https:\/\/x\/s.png)/; /^```/,/^```/d' "$T/tpi.md" > "$T/tpd.md"; tpi acme/tpl tpd 'only in stills')"
 hdguard() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr create --draft --repo acme/hu --title \"$(cat /w/drafts/title.md)\" --body-file "+sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$TCO" \
     | MERGEWORTHY_WATCHER=off python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?; }
 printf '%s\n**Állapot: piszkozat** (a CI futtatója nem működik)\n\nA feltöltés elakad nagy fájloknál.\n' "$B" > "$T/hdg.md"; sha256sum "$T/hdg.md" | cut -d' ' -f1 > "$T/hdg.md.gate"
@@ -1127,6 +1216,39 @@ printf '%s CI runs no tests.\n\n### How to reproduce\n\n1. Run the backend tests
 check "no screen: the command and output pass" 0 "$(ilint "$T/i4.md" 'evidence')"
 { printf '%s Who picks the payout account?\n\n### How to reproduce\n\n1. Open /invoices\n\n![list](/abs/list.png)\n\n### Options\n\n' "$B"; printf 'word %.0s' $(seq 120); echo; } > "$T/i5.md"
 check "a decision issue gets a word budget, not 400 characters" 0 "$(ilint "$T/i5.md" 'for an issue\|decision issue')"
+# a finding issue counts its prose as a PR body does: a log in a code block isn't counted, prose moved into code or a table is, and its reproduction section is required, not counted
+printf '# acme/bug\n\n## PR conventions\n- PR template: none\n- Issue template: .github/ISSUE_TEMPLATE/bug.yml: `### Area`, `### Steps to reproduce`, `### Expected behavior`, `### Actual behavior`, `### Impact`\n' > "$TPP/bug.md"
+ibug() { printf '%s### Area\n\napps/server\n\n### %s\n\n1. A delegated Claude child awaits a Monitor.\n2. It ends while a wake run is mid-request.\n\n### Expected behavior\n\nThe task waits for the wake'\''s text.\n%b\n### Actual behavior\n\nIt completes with stale text, then the detach kills the wake:\n\n```\n14:47:32.381 background tasks []\n14:47:32.398 task completed\n14:47:32.426 query.close\n14:47:32.429 wake failed\n```\n\n### Impact\n\nMajor degradation or frequent failure\n' "$B" "${3:-Steps to reproduce}" "$2" > "$T/$1.md"; }
+S=('The wake run had already sent its request when the task ended.' 'The detach then closed the query under it.' 'Nothing in the log says why the wake failed.' 'A user sees the child finish with an old answer.' 'The parent thread then acts on that answer as if it were new.' 'The next wake starts from the stale state again.' 'Only a restart of the thread clears it.')
+ibug ilog ''; ibug ilong "\n${S[*]}\n"; ibug icode "\n\`\`\`\n$(printf '%s\\n' "${S[@]}")\`\`\`\n"; ibug itab "\n| Why |\n|---|\n$(printf '| %s |\\n' "${S[@]}")"
+ibug isee "\n### How to see\n\n${S[*]}\n" 'How to reproduce'
+check "a templated issue with a four-line log and Steps to reproduce passes the 400 characters, with and without its project file" "0 0" "$(tpi acme/bug ilog '400 for an issue') $(ilint "$T/ilog.md" '400 for an issue')"
+check "BLOCK: the same issue with seven sentences more under Expected behavior" 1 "$(ilint "$T/ilong.md" '400 for an issue')"
+check "BLOCK: those sentences moved into a code block" 1 "$(ilint "$T/icode.md" '400 for an issue')"
+check "BLOCK: those sentences moved into a one-column table" 1 "$(ilint "$T/itab.md" '400 for an issue')"
+check "the 400-character finding says a URL counts three characters" 1 "$(ilint "$T/ilong.md" 'a URL as three characters and a Markdown image as none)')"
+check "a How to see section's prose isn't counted, as How to reproduce's isn't" 0 "$(ilint "$T/isee.md" '400 for an issue')"
+{ printf '%s Who picks the payout account?\n\n### How to reproduce\n\n1. Open /invoices\n\n![list](/abs/list.png)\n\n### Options\n\n```\n' "$B"; printf 'get(a) -> b\n%.0s' $(seq 150); printf '```\n'; } > "$T/i6.md"
+check "BLOCK: a decision issue's code counts toward its 400 words" 1 "$(ilint "$T/i6.md" 'decision issue')"
+# the reproduction section as it renders: a '#' line in code is no heading, a subheading stays in it, and a heading matches by its whole text
+printf '%s The worker test run fails on a clean checkout.\n\n### How to reproduce\n\n```sh\n# Run this on the worker\npnpm test\n```\n\n### Actual behavior\n\nThe worker exits before any test file is loaded.\nThe runner then reports every suite as skipped.\nNothing in the output names the missing option.\nA second run on the same checkout fails the same way.\n' "$B" > "$T/r1.md"
+check "a shell comment in the reproduction's code is no heading, so the short issue passes" 0 "$(ilint "$T/r1.md" '400 for an issue')"
+{ printf '%s The worker test run fails on a clean checkout.\n\n### How to reproduce\n\n1. Run pnpm test\n\n### Actual behavior\n\n```\n### How to reproduce\n' "$B"; printf '%s\n' "${S[@]}" 'The worker never says which option it rejected.' 'A second run on the same checkout fails the same way.'; printf '```\n'; } > "$T/r2.md"
+check "BLOCK: a reproduction heading inside code exempts nothing" 1 "$(ilint "$T/r2.md" '400 for an issue')"
+printf '%s The worker test run fails.\n\n```sh\n# How to reproduce\npnpm test\n```\n' "$B" > "$T/r3.md"
+check "BLOCK: a reproduction heading inside code is no reproduction section" 1 "$(ilint "$T/r3.md" 'no .### How to reproduce')"
+printf '%s The worker drops the job after a restart.\n\n### How to reproduce\n\n1. Queue a job\n\n#### Restart the worker\n\n%s\n\n![queue](/abs/queue.png)\n' "$B" "${S[*]}" > "$T/r4.md"
+check "a subheading stays in its reproduction section" 0 "$(ilint "$T/r4.md" '400 for an issue')"
+printf '%s The worker drops the job after a restart.\n\n### How to reproduce\n\n1. Queue a job, restart the worker\n\n### How to see the expected result\n\n%s\n\n![queue](/abs/queue.png)\n' "$B" "${S[*]}" > "$T/r5.md"
+check "BLOCK: a heading that only starts like a reproduction heading is counted" 1 "$(ilint "$T/r5.md" '400 for an issue')"
+printf '%s### Description\n\nThe server drops the upgrade header behind a proxy.\n\n### Reproduction\n\n%s\n\n![proxy](/abs/proxy.png)\n' "$B" "${S[*]} ${S[*]}" > "$T/r6.md"
+check "a template's Reproduction section isn't counted either" 0 "$(tpi acme/tpl r6 '400 for an issue')"
+{ printf '%s Who picks the payout account?\n\n### How to reproduce\n\n```\n' "$B"; printf 'check object %s unreadable expected account\n' $(seq 70); printf '```\n\n### Options\n\n(a) The typed account. (b) The winning account. I recommend (a).\n'; } > "$T/r7.md"
+check "a decision issue's reproduction stays out of its 400 words" 0 "$(ilint "$T/r7.md" 'decision issue')"
+# the still-image check counts each reproduction action once: a subsection inside a template heading's span, or a numbered line in code, adds none
+printf '%s### Description\n\nThe upload stalls.\n\n#### How to reproduce\n\n1. Open /upload\n2. Pick a 50 MB file\n\n![upload](/abs/upload.png)\n' "$B" > "$T/r8.md"
+printf '%s Totals skip the last row.\n\n### How to reproduce\n\n1. Import this file\n2. Open /report\n\n```md\n# Expense report\n1. Taxi\n2. Hotel\n```\n\n![report](/abs/report.png)\n' "$B" > "$T/r9.md"
+check "two actions in a template's nested reproduction, or beside a numbered fixture in code, are two steps" "0 0" "$(tpi acme/tpl r8 'record a video') $(ilint "$T/r9.md" 'record a video')"
 # ---------- pre-bash-guard: no foreground waits ----------
 wait_guard() { # command background(true|false)
   python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1],"run_in_background":sys.argv[2]=="true"},"cwd":sys.argv[3]}))' "$1" "$2" "$T" \
@@ -1170,6 +1292,13 @@ launch_in 'Execute /tmp/x/blocked.md' | python3 "$R/hooks/pre-agent-dedupe.py" >
 check "a launch another hook blocked (never ran) leaves no job" 0 "$(launch 'Execute /tmp/x/blocked.md')"
 refused() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":sys.argv[1],"title":"t"},"tool_response":[{"type":"text","text":"code: parent_not_active"}]}))' "$1" | python3 "$R/hooks/pre-agent-dedupe.py" register; }
 check "a launch T3 refused (parent_not_active) says what to do and leaves no job" "1 0" "$(refused 'Execute /tmp/x/refused.md' | grep -c 'do the step yourself') $(launch 'Execute /tmp/x/refused.md')"
+# an implementer brief file in the work folder, admitted with its recorded Approach, then edited while the call runs
+PB="$HOME/.mergeworthy/work/po/brief.md"; mkdir -p "${PB%/*}"; printf 'You implement the fix in %s.%s\n' "$T/afx" "$AFX" > "$PB"
+po() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"Agent","session_id":"po","tool_input":{"prompt":sys.argv[1],"description":"po impl","run_in_background":False},"tool_response":{"agentId":"abc"}}))' "Follow $PB exactly" | python3 "$R/hooks/pre-agent-dedupe.py" "$@" 2>"$T/err"; echo $?; }
+check "a launch admitted with its Approach line, whose brief loses that line before the call ends, is registered with the build its admission decided, and its PostToolUse call refuses nothing" "0 0 1 0 1" \
+  "$(rm -rf "$HOME/.claude/approach-builds"; po) $(sed -i '/^Approach:/d' "$PB"; po register) $(python3 "$R/bin/agent-job" list | grep -c 'po impl') $(grep -c BLOCKED "$T/err") $(ls "$HOME/.claude/approach-builds" 2>/dev/null | wc -l)"
+rm -r "${PB%/*}"
+python3 "$R/bin/agent-job" done 'po impl' >/dev/null
 python3 "$R/bin/agent-job" done /tmp/x/ticket-check.md >/dev/null
 check "after agent-job done the ticket launches again" 0 "$(launch 'Execute /tmp/x/ticket-check.md')"
 check "agent-job done takes a ticket path relative to the cwd" 0 "$(mkdir -p /tmp/x && touch /tmp/x/ticket-check.md && cd /tmp/x && python3 "$R/bin/agent-job" done ticket-check.md >/dev/null; echo $?)"
@@ -1206,7 +1335,8 @@ use key-1 key-2; r="$(lc key-1 keyed 'Check the cost.') $(lc key-2 keyed 'Check 
 check "BLOCK: two calls with one key and different tasks in one message: the second, until the first's call returned" "0 2 0" "$r $(lc key-3 keyed 'Check the security.')"
 use long-1 long-2; r=$(lc long-1 first 'Follow /tmp/x/life-long.md')
 python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "launched": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs-launch/*")) if "life-long" in open(f).read()]'  # a foreground agent still at work an hour later
-check "BLOCK: a launch whose call hasn't returned, an hour on, still counts" "0 2" "$r $(lc long-2 second 'Follow /tmp/x/life-long.md')"
+mkdir -p "$HOME/.claude/projects/-ll"; python3 -c 'import json,time; at=time.strftime("%Y-%m-%dT%H:%M:%S.000Z",time.gmtime(time.time()-3000)); print(json.dumps({"type":"user","timestamp":at,"message":{"role":"user","content":"Follow /tmp/x/life-long.md"}})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","id":"b","name":"Bash","input":{}}]}}))' > "$HOME/.claude/projects/-ll/ll.jsonl"  # its transcript, a tool call running
+check "BLOCK: a launch whose call hasn't returned, an hour on, still counts" "0 2" "$r $(lc long-2 second 'Follow /tmp/x/life-long.md')"; rm -r "$HOME/.claude/projects/-ll"
 use blk-1; r=$(lc blk-1 first 'Follow /tmp/x/life-blk.md'); res blk-1; use blk-2
 r="$r $(lc blk-2 second 'Follow /tmp/x/life-blk.md')"; res blk-2; use blk-3
 check "a launch another hook blocked (its tool_result written) no longer counts: a retry passes at once, under another title or its own" "0 0 0" "$r $(lc blk-3 first 'Follow /tmp/x/life-blk.md')"
@@ -1239,43 +1369,50 @@ Fallback:
 next line')"
 printf 'Fallback: codex stopped round 2\nReview it\n' > "$T/fx/fb-brief.md"; printf 'Review it\n' > "$T/fx/plain-brief.md"
 check "a review on claudeAgent passes with a Fallback sentence inside a task line, or a Fallback line in the brief file it names; one whose brief file has none is refused" "0 0 2" "$(rev '{"providerInstanceId":"claudeAgent"}' 'Review it. Fallback: codex stopped round 1') $(rev '{"providerInstanceId":"claudeAgent"}' "Follow $T/fx/fb-brief.md") $(rev '{"providerInstanceId":"claudeAgent"}' "Follow $T/fx/plain-brief.md")"
+printf 'Review the change.\nIf the independent reviewer fails, record `Fallback: <what failed>` in the task.\n' > "$T/fx/fb-slot-brief.md"
+check "BLOCK: a review on claudeAgent whose task, or the brief file it names, only quotes the \`Fallback: <what failed>\` form" "2 2" "$(rev '{"providerInstanceId":"claudeAgent"}' 'Review the change. If the independent reviewer fails, record `Fallback: <what failed>` in the task.') $(rev '{"providerInstanceId":"claudeAgent"}' "Follow $T/fx/fb-slot-brief.md")"
 check "an exploring research agent on claudeAgent passes" 0 "$(rev '{"providerInstanceId":"claudeAgent"}' 'Explore it' research)"
 python3 -c 'import json; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":"Review it","role":"review","target":{"providerInstanceId":"claudeAgent"},"clientRequestId":"r-1"}}))' \
   | T3CODE_THREAD_ID=th python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"
 check "BLOCK: a launch with two faults, a review on claudeAgent and a reused clientRequestId, gets both refusals in one message" "2 1 1" "$? $(grep -c 'Fallback: <what failed>' "$T/err") $(grep -c "clientRequestId 'r-1' was used before" "$T/err")"
+CX="$T/cx"; mkdir -p "$CX/profiles/a" "$CX/profiles/b" "$CX/profiles/active"; touch "$CX/profiles/a/auth.json" "$CX/profiles/b/auth.json"; now=$(date +%s)
+lim() { printf '{"a":{"until":%s},"b":{"until":%s}}' "$1" "$2" > "$CX/profiles/limited.json"; }  # claude-swap's Codex limit state: the accounts' resets
+lim $(date -d 'today 23:59:59' +%s) $((now + 4 * 86400)); export CODEX_HOME="$CX"; r="$(rev '{"providerInstanceId":"codex"}' 'Review it') $(grep -c 'until 23:59,' "$T/err")"
+lim $((now + 3 * 86400)) $((now + 4 * 86400)); r="$r $(rev '{"providerInstanceId":"codex"}' 'Review it') $(grep -c "until $(LC_ALL=C date -d @$((now + 3 * 86400)) '+%a %H:%M')," "$T/err")"
+check "BLOCK: a review on codex while claude-swap reads every saved Codex account as used up, naming the soonest reset, with its day when not today; one on claudeAgent or no provider passes without a Fallback line" "2 1 2 1 0 0" "$r $(rev '{"providerInstanceId":"claudeAgent"}' 'Review it') $(rev '{}' 'Review it')"
+printf '{"a":{"until":%s}}' $((now + 3600)) > "$CX/profiles/limited.json"; r="$(rev '{"driverKind":"codex"}' 'Review it') $(rev '{"providerInstanceId":"claudeAgent"}' 'Review it')"
+lim $((now - 60)) $((now + 3600)); r="$r $(rev '{"providerInstanceId":"codex"}' 'Review it') $(rev '{"providerInstanceId":"claudeAgent"}' 'Review it')"
+rm "$CX/profiles/limited.json"; r="$r $(rev '{"providerInstanceId":"codex"}' 'Review it') $(rev '{"providerInstanceId":"claudeAgent"}' 'Review it')"
+check "a Codex account with room (none in limited.json, a reset past) or no limited.json: a review on codex passes, one on claudeAgent without a Fallback line is refused" "0 2 0 2 0 2" "$r"
+unset CODEX_HOME
 agent_rnd() { # description prompt
   local j; j=$(python3 -c 'import json,sys; print(json.dumps({"tool_name":"Agent","tool_input":{"description":sys.argv[1],"prompt":sys.argv[2]}}))' "$1" "$2")
   printf '%s' "$j" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; local r=$?; [ $r = 0 ] && printf '%s' "$j" | python3 "$R/hooks/pre-agent-dedupe.py" register; echo $r; }
 PD="$T/rdrafts/drafts/p"; mkdir -p "$PD"; printf 'Agreed.\n' > "$PD/r.md"; python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest(), end="")' "$PD/r.md" > "$PD/r.md.lint.sha"
 jd() { python3 "$R/bin/agent-job" done "$1" >/dev/null 2>&1; shift; "$@"; }  # the round before ended and was read: its job is released
 PB="Review $PD/r.md; write your final message, exactly CLEAN or the findings, to $PD/r.review.out."
-check "a post's review gets r3 to confirm round 2's fixes; BLOCK its r4, a trailing date no escape; a launch naming no round and another loop's r4 pass" "0 0 0 2 1 2 0 0" "$(jd "$PD/r.md" rnd loop-a-r1 "$PB") $(jd "$PD/r.md" rnd loop-a-r2 "$PB") $(jd "$PD/r.md" rnd loop-a-r3 "$PB") $(jd "$PD/r.md" rnd loop-a-r4 "$PB") $(grep -c 'delegate §Review rounds' "$T/err") $(jd "$PD/r.md" rnd loop-a-r4-2026-11-02 "$PB") $(jd "$PD/r.md" rnd loop-a "$PB") $(jd "$PD/r.md" rnd loop-b-r4 "$PB")"
-check "BLOCK: a post review's r4 names its round 3, the -u loop and the ledger close; that loop's r1 passes" "0 0 0 2 1 1 1 0" "$(jd "$PD/r.md" rnd x-r1 "$PB") $(jd "$PD/r.md" rnd x-r2 "$PB") $(jd "$PD/r.md" rnd x-r3 "$PB") $(jd "$PD/r.md" rnd x-r4 "$PB") $(grep -c 'a post’s review gets round 3' "$T/err") $(grep -c -- '<loop>-u<N>-r1' "$T/err") $(grep -c -- '--ledger <ledger>' "$T/err") $(jd "$PD/r.md" rnd x-u2-r1 "$PB")"
-check "BLOCK: the Agent tool's review round r4 by its description, a post's r3 passes; an unpinned review naming no draft is refused r3" "0 0 0 2 0 0 2" "$(jd "$PD/r.md" agent_rnd fresh-r1 "$PB") $(jd "$PD/r.md" agent_rnd fresh-r2 "$PB") $(jd "$PD/r.md" agent_rnd fresh-r3 "$PB") $(jd "$PD/r.md" agent_rnd fresh-r4 "$PB") $(agent_rnd plain-r1 'Read it. Final message: exactly CLEAN, or the findings.') $(agent_rnd plain-r2 'Read it again. Final message: exactly CLEAN, or the findings.') $(agent_rnd plain-r3 'Read it a third time. Final message: exactly CLEAN, or the findings.')"
-# round 3 found something: one more round confirms its fixes (#227)
-PQ="$T/rdrafts/drafts/q"; mkdir -p "$PQ"; printf 'Agreed.\n' > "$PQ/r.md"; sha256sum "$PQ/r.md" | cut -d' ' -f1 | tr -d '\n' > "$PQ/r.md.lint.sha"
-PQB="Review $PQ/r.md; write your final message, exactly CLEAN or the findings, to $PQ/r.review.out."
-check "a post's review gets r4 after an r3 with findings, and BLOCK its r5; BLOCK r4 after a CLEAN r3" "0 0 0 0 2 1 0 0 0 2" \
-  "$(jd "$PQ/r.md" rnd q-r1 "$PQB") $(jd "$PQ/r.md" rnd q-r2 "$PQB") $(jd "$PQ/r.md" rnd q-r3 "$PQB") $(echo 'R3.1 should: the date is wrong' > "$PQ/r.review.out"; jd "$PQ/r.md" rnd q-r4 "$PQB") $(jd "$PQ/r.md" rnd q-r5 "$PQB") $(grep -c 'when round 3 found something, round 4, which confirms' "$T/err") $(jd "$PQ/r.md" rnd c-r1 "$PQB") $(jd "$PQ/r.md" rnd c-r2 "$PQB") $(jd "$PQ/r.md" rnd c-r3 "$PQB") $(echo CLEAN > "$PQ/r.review.out"; jd "$PQ/r.md" rnd c-r4 "$PQB")"
-# the third round that ran counts, whatever its number, and only a verdict written since its launch (#227)
-i227="$(jd "$PQ/r.md" rnd i-r3 "$PQB") $(jd "$PQ/r.md" rnd i-r4 "$PQB") $(jd "$PQ/r.md" rnd i-r5 "$PQB") $(echo 'R5.1 should: the date is wrong' > "$PQ/r.review.out"; jd "$PQ/r.md" rnd i-r6 "$PQB") $(jd "$PQ/r.md" rnd i-r7 "$PQB")"
-sclean="$(jd "$PQ/r.md" rnd sc-r1 "$PQB") $(jd "$PQ/r.md" rnd sc-r2 "$PQB") $(jd "$PQ/r.md" rnd sc-r3 "$PQB") $(echo CLEAN > "$PQ/r.review.out"; touch -d '-1 hour' "$PQ/r.review.out"; jd "$PQ/r.md" rnd sc-r4 "$PQB") $(grep -c 'r3 has no verdict written' "$T/err") $(grep -c 'Close r3, the last round' "$T/err")"
-sfound="$(jd "$PQ/r.md" rnd sf-r1 "$PQB") $(jd "$PQ/r.md" rnd sf-r2 "$PQB") $(jd "$PQ/r.md" rnd sf-r3 "$PQB") $(echo 'R3.1 should: old' > "$PQ/r.review.out"; touch -d '-1 hour' "$PQ/r.review.out"; jd "$PQ/r.md" rnd sf-r4 "$PQB") $(grep -c 'r3 has no verdict written' "$T/err")"
-check "a post's review gets r6 after r3, r4 and r5 found something, BLOCK its r7; BLOCK the round after a third whose output holds only a verdict older than its launch, CLEAN or not, naming the missing verdict and the last round" "0 0 0 0 2 | 0 0 0 2 1 1 | 0 0 0 2 1" "$i227 | $sclean | $sfound"
-# the third round's verdict is in the outputs its own launch named, not in those the next round's brief names (#227)
-PU="$T/rdrafts/drafts/u"; mkdir -p "$PU"; for f in r s; do printf 'Agreed.\n' > "$PU/$f.md"; sha256sum "$PU/$f.md" | cut -d' ' -f1 | tr -d '\n' > "$PU/$f.md.lint.sha"; done
-ub() { echo "Review $PU/r.md; write your final message, exactly CLEAN or the findings, to $PU/$1."; }
-unfin="$(jd "$PU/r.md" rnd ua-r1 "$(ub r.review.out)") $(jd "$PU/r.md" rnd ua-r2 "$(ub r.review.out)") $(echo 'R2.1 should: old' > "$PU/r.review.out"; jd "$PU/r.md" rnd ua-r3 "$(ub r.review-r3.out)") $(jd "$PU/r.md" rnd ua-r4 "$(ub r.review.out)") $(grep -c 'r3 has no verdict written' "$T/err")"
-rm -f "$PU"/r.review*
-othr="$(jd "$PU/r.md" rnd ub-r1 "$(ub r.review.out)") $(jd "$PU/r.md" rnd ub-r2 "$(ub r.review.out)") $(jd "$PU/r.md" rnd ub-r3 "$(ub r.review-r3.out)") $(echo 'R3.1 should: the date' > "$PU/r.review-r3.out"; jd "$PU/r.md" rnd ub-r4 "$(ub r.review-r4.out)")"
-rm -f "$PU"/r.review*
-both="$(jd "$PU/s.md" rnd us-r1 "Review $PU/s.md; write your final message, exactly CLEAN or the findings, to $PU/s.review.out.") $(echo 'R1.1 should: other' > "$PU/s.review.out"; jd "$PU/r.md" rnd uc-r1 "$(ub r.review.out)") $(jd "$PU/r.md" rnd uc-r2 "$(ub r.review.out)") $(jd "$PU/r.md" rnd uc-r3 "$(ub r.review.out)") $(echo CLEAN > "$PU/r.review.out"; jd "$PU/r.md" rnd uc-r4 "$(ub r.review.out) Review $PU/s.md too; write that verdict to $PU/s.review.out.")"
-rm -f "$PU"/r.review*
-oldrec="$(jd "$PU/r.md" rnd uo-r1 "$(ub r.review.out)") $(jd "$PU/r.md" rnd uo-r2 "$(ub r.review.out)") $(jd "$PU/r.md" rnd uo-r3 "$(ub r.review.out)") $(python3 -c 'import json,sys; f=sys.argv[1]; v=json.load(open(f)); v["uo"]=[e[:2] for e in v["uo"]]; json.dump(v, open(f, "w"))' "$HOME/.claude/review-rounds.json"; echo 'R3.1 should: the date' > "$PU/r.review.out"; jd "$PU/r.md" rnd uo-r4 "$(ub r.review.out)")"
-check "the round after a third reads the outputs the third's launch named: BLOCK it while r3's own output has no verdict, though the next brief's holds r2's findings; it passes on r3's findings in its own file; BLOCK it after a CLEAN r3 whose next brief adds another draft with findings; a third recorded without its outputs reads the next brief's, and passes on its findings" "0 0 0 2 1 | 0 0 0 0 | 0 0 0 0 2 | 0 0 0 0" "$unfin | $othr | $both | $oldrec"
+pe() { printf '%s\n' "$2" >> "$1"; sha256sum "$1" | cut -d' ' -f1 | tr -d '\n' > "$1.lint.sha"; }  # draft line: the draft edited after a round, linted again
+pv() { printf '%s\n' "$2" > "$1"; }  # output verdict: the round's reviewer wrote its verdict
+# a post's round is refused only once gate-pass's own check already passes every draft it reviews: editing a post moves no head (agent-tools#62)
+check "BLOCK: a post round on the text a CLEAN round answered, by any loop name or round number, the Agent tool's description too, a trailing date no escape; a launch naming no round passes" "0 2 1 2 2 0 2 0" "$(jd "$PD/r.md" rnd any-r1 "$PB") $(pv "$PD/r.review.out" CLEAN; jd "$PD/r.md" rnd any-r2 "$PB") $(grep -c 'gate-pass already passes every draft' "$T/err") $(jd "$PD/r.md" rnd other-r1 "$PB") $(jd "$PD/r.md" rnd any-r1-2026-11-20 "$PB") $(jd "$PD/r.md" rnd any "$PB") $(pv "$PD/r.review.out" CLEAN; jd "$PD/r.md" agent_rnd any-r5 "$PB") $(pe "$PD/r.md" 'Edit any.'; jd "$PD/r.md" agent_rnd any-r6 "$PB")"
+check "a post round on text whose round left no verdict, or findings its ledger doesn't close, passes" "0 0 0" "$(pe "$PD/r.md" 'Edit nv.'; jd "$PD/r.md" rnd nv-r1 "$PB") $(jd "$PD/r.md" rnd nv-r2 "$PB") $(pv "$PD/r.review.out" 'R2.1 should: the date'; jd "$PD/r.md" rnd nv-r3 "$PB")"
+check "BLOCK: a redundant post round after another review's CLEAN on the same output (a small review that also read the body)" "0 2" "$(pe "$PD/r.md" 'Edit sm.'; jd "$PD/r.md" rnd sm-r1 "Review $T/rh's code; final message exactly NO BUGS, and the body's verdict, exactly CLEAN or the findings, to $PD/r.review.out.") $(pv "$PD/r.review.out" CLEAN; jd "$PD/r.md" rnd smp-r1 "$PB")"
 PA="$PB
 $(cat "$R/skills/delegate/agent.md")"
-check "a post's review with agent.md pasted in still gets r3 (agent.md names NO BUGS and MERGE AS IS); its r4 is refused" "0 0 0 2" "$(jd "$PD/r.md" rnd pasted-r1 "$PA") $(jd "$PD/r.md" rnd pasted-r2 "$PA") $(jd "$PD/r.md" rnd pasted-r3 "$PA") $(jd "$PD/r.md" rnd pasted-r4 "$PA")"
+check "a post's review with agent.md pasted in is still one (agent.md names NO BUGS and MERGE AS IS): BLOCK it on the text a CLEAN round answered" "0 2" "$(pe "$PD/r.md" 'Edit pa.'; jd "$PD/r.md" rnd pasted-r1 "$PA") $(pv "$PD/r.review.out" CLEAN; jd "$PD/r.md" rnd pasted-r2 "$PA")"
+# with two drafts, every one must already pass
+PU="$T/rdrafts/drafts/u"; mkdir -p "$PU"; for f in r s; do printf 'Agreed.\n' > "$PU/$f.md"; sha256sum "$PU/$f.md" | cut -d' ' -f1 | tr -d '\n' > "$PU/$f.md.lint.sha"; done
+two="Review $PU/r.md and $PU/s.md; write the verdicts, exactly CLEAN or the findings, to $PU/r.review.out and $PU/s.review.out."
+check "with A answered CLEAN, a round on A and a new B passes; BLOCK it once both are CLEAN" "0 0 2" "$(jd "$PU/r.md" rnd tw-r1 "Review $PU/r.md; write your final message, exactly CLEAN or the findings, to $PU/r.review.out.") $(pv "$PU/r.review.out" CLEAN; jd "$PU/s.md" jd "$PU/r.md" rnd tw-r2 "$two") $(pv "$PU/r.review.out" CLEAN; pv "$PU/s.review.out" CLEAN; jd "$PU/s.md" jd "$PU/r.md" rnd tw-r3 "$two")"
+# the gate's ledger and freshness rules decide too, and the refusal prints the gate-pass that passes
+GB="Review $GD/r.md; write your final message, exactly CLEAN or the findings, to $GD/r.review.out."
+gr="$(pe "$GD/r.md" 'Edit gr.'; jd "$GD/r.md" rnd gr-r1 "$GB") $(pv "$GD/r.review.out" 'R1.1 should: the tone'; printf 'Round: 1\nR1.1 should declined: the wording is quoted from the issue\n' > "$GD/r.ledger.md"; jd "$GD/r.md" rnd gr-r2 "$GB") $(pv "$GD/r.review.out" 'R2.1 should: the tone'; printf 'Round: 2\nR1.1 should declined: the wording is quoted from the issue\nR2.1 should declined: the same\n' > "$GD/r.ledger.md"; jd "$GD/r.md" rnd gr-r3 "$GB")"
+gr="$gr $(grep -c -- "^gate-pass $GD/r.md $GD/r.review.out\$" "$T/err") $(MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" $(sed -n 's/^gate-pass //p' "$T/err") --kind reply --parent none >"$T/gp.out" 2>&1; echo $?)"
+cp "$GD/thread-context.md" "$T/gd-tc2.md"; sed -i "s/^- latest-human-comment: id=\([0-9]*\) at=[^ ]*/- latest-human-comment: id=\1 at=$(date -u -d '+1 hour' +%Y-%m-%dT%H:%M:%SZ)/" "$GD/thread-context.md"
+gr="$gr $(jd "$GD/r.md" rnd gr-r4 "$GB")"; mv "$T/gd-tc2.md" "$GD/thread-context.md"; rm -f "$GD/r.ledger.md"
+check "a round-1 decline: r2 passes, BLOCK r3 once the beside-the-draft ledger closes r2, printing the gate-pass that then exits 0 without --ledger; a human comment newer than the review admits a round on the same text" "0 0 2 1 0 0" "$gr"
+lb="$(pe "$GD/r.md" 'Edit lb.'; printf 'Round: 2\nR1.1 should declined: the wording is quoted from the issue\nR2.1 should declined: the same\n' > "$GD/r.ledger.md"; jd "$GD/r.md" rnd lb-r3 "$GB") $(pv "$GD/r.review.out" 'R3.1 blocker: the claim about the date is false'; MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GD/r.md" "$GD/r.review.out" --ledger "$GD/r.ledger.md" --kind reply --parent none >"$T/gp.out" 2>&1; echo $?) $(jd "$GD/r.md" rnd lb-r4 "$GB") $(jd "$GD/r.md" rnd lb-r5 "$GB")"; rm -f "$GD/r.ledger.md"
+check "a ledger last written before the verdict it would close leaves that round open: gate-pass refuses, a round on the same text passes, and so does the next once that round's reviewer wrote no verdict" "0 1 0 0" "$lb"
 bg() { # [run_in_background]: an Agent launch's exit code, with T3CODE_THREAD_ID as the caller has it
   python3 -c 'import json,sys; t={"description":"bg","prompt":"Execute /tmp/x/bg.md"}; t.update({"run_in_background":json.loads(sys.argv[1])} if sys.argv[1:] else {}); print(json.dumps({"tool_name":"Agent","tool_input":t}))' "$@" | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
 check "BLOCK: under T3 an Agent in the background, by default or asked, naming delegate_task; in the foreground it passes" "2 1 2 0" "$(T3CODE_THREAD_ID=th bg) $(grep -c delegate_task "$T/err") $(T3CODE_THREAD_ID=th bg true) $(T3CODE_THREAD_ID=th bg false)"
@@ -1303,7 +1440,123 @@ wait $LPID $WPID $OPID 2>/dev/null
 cap_in() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":sys.argv[1],"tool_input":{"task":sys.argv[2],"title":sys.argv[2][:40]}}))' "$1" "$2"; }
 cap() { cap_in "$1" "$2" | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; local rc=$?; [ $rc = 0 ] && cap_in "$1" "$2" | python3 "$R/hooks/pre-agent-dedupe.py" register; echo $rc; }
 check "BLOCK: a fourth agent open at once in one session, naming the three" "0 0 0 2 3" "$(cap capS 'Execute /tmp/x/cap1.md') $(cap capS 'Execute /tmp/x/cap2.md') $(cap capS 'Execute /tmp/x/cap3.md') $(cap capS 'Execute /tmp/x/cap4.md') $(grep -c '^/tmp/x/cap[123].md' "$T/err")"
-check "another session, and a memory refresh in this one, pass" "0 0" "$(cap capT 'Execute /tmp/x/cap5.md') $(cap capS 'Follow skills/delegate/memory-refresh.md on /tmp/x/mem-lines.md')"
+check "another session, and a memory refresh in this one, pass" "0 0" "$(cap capT 'Execute /tmp/x/cap5.md') $(cap capS 'Follow ~/.mergeworthy/current/skills/delegate/memory-refresh.md on /tmp/x/mem-lines.md')"
+CM="$HOME/.mergeworthy/work/capmem"; mkdir -p "$CM"; : > "$CM/memory.source"; printf 'Merge memory-new.txt into memory.md.\n' > "$CM/memory-brief-1.md"
+check "a running memory refresh under ~/.mergeworthy/work leaves the session its 3 other agents" "0 0 0 0" "$(cap capM "Follow $CM/memory-brief-1.md exactly") $(cap capM 'Execute /tmp/x/capm1.md') $(cap capM 'Execute /tmp/x/capm2.md') $(cap capM 'Execute /tmp/x/capm3.md')"
+for k in capm1 capm2 capm3; do python3 "$R/bin/agent-job" done "/tmp/x/$k.md" >/dev/null; done
+python3 "$R/bin/agent-job" done "$(python3 -c 'import sys; print(sys.argv[1][:40])' "Follow $CM/memory-brief-1.md exactly")" >/dev/null
+check "BLOCK: with three agents open, the refresh as sessions word it (Follow the brief at <path>) passes, and one that says not to follow it counts as the fourth" "0 0 0 0 2" \
+  "$(cap capF 'Execute /tmp/x/capf1.md') $(cap capF 'Execute /tmp/x/capf2.md') $(cap capF 'Execute /tmp/x/capf3.md') $(cap capF "Follow the brief at $CM/memory-brief-1.md exactly.") $(cap capF "Do not follow $CM/memory-brief-1.md; report what it asks.")"
+check "with the same three open, a refresh that says to read the brief and then follow it passes either way, and one that says to read it and review it counts" "0 0 2" \
+  "$(cap capF "Read the brief file $CM/memory-brief-1.md and follow it exactly.") $(cap capF "Your task: read $CM/memory-brief-1.md and follow its steps.") $(cap capF "Read $CM/memory-brief-1.md and review its wording.")"
+for k in capf1 capf2 capf3; do python3 "$R/bin/agent-job" done "/tmp/x/$k.md" >/dev/null; done
+for t in "Follow the brief at $CM/memory-brief-1.md exactly." "Read the brief file $CM/memory-brief-1.md and follow it exactly." "Your task: read $CM/memory-brief-1.md and follow its steps."; do
+  python3 "$R/bin/agent-job" done "$(python3 -c 'import sys; print(sys.argv[1][:40])' "$t")" >/dev/null; done
+python3 -c 'import json,sys,time; json.dump({"key":"legacy refresh","started":time.time(),"launched":time.time(),"brief":sys.argv[2],"role":None,"worktrees":[],"session":"capU","transcript":None,"handle":None},open(sys.argv[1],"w"))' "$J/legacy" "Follow the brief at $CM/memory-brief-1.md exactly."
+check "an open memory refresh a hook before \`refresh\` registered still leaves the session its 3 other agents" "0 0 0" "$(cap capU 'Execute /tmp/x/capu1.md') $(cap capU 'Execute /tmp/x/capu2.md') $(cap capU 'Execute /tmp/x/capu3.md')"
+for k in capu1 capu2 capu3; do python3 "$R/bin/agent-job" done "/tmp/x/$k.md" >/dev/null; done; rm -f "$J/legacy"
+CR="Review why the refresh failed, using the archived brief at $CM/memory-brief-1.md as evidence. Report the cause."
+check "BLOCK: a review that cites a memory brief as evidence is no memory refresh: it counts, and the fourth agent is refused" "0 0 0 2" "$(cap capA "$CR") $(cap capA 'Execute /tmp/x/capa1.md') $(cap capA 'Execute /tmp/x/capa2.md') $(cap capA 'Execute /tmp/x/capa3.md')"
+for k in capa1 capa2; do python3 "$R/bin/agent-job" done "/tmp/x/$k.md" >/dev/null; done; python3 "$R/bin/agent-job" done "${CR:0:40}" >/dev/null; rm -r "$CM"
+capt() { # session title task: a launch that passes runs, so the PostToolUse half registers it
+  local j; j=$(python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":sys.argv[1],"tool_input":{"title":sys.argv[2],"task":sys.argv[3]}}))' "$@")
+  printf '%s' "$j" | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; local rc=$?; [ $rc = 0 ] && printf '%s' "$j" | python3 "$R/hooks/pre-agent-dedupe.py" register; echo $rc; }
+check "BLOCK: a launch whose title, not its task, names the memory-refresh template counts, and the fourth agent is refused" "0 0 0 2" \
+  "$(capt capY 'Did agents follow skills/delegate/memory-refresh.md?' 'Read the archived instructions and summarize what changed between the two versions.') $(cap capY 'Execute /tmp/x/capy1.md') $(cap capY 'Execute /tmp/x/capy2.md') $(cap capY 'Execute /tmp/x/capy3.md')"
+for k in capy1 capy2; do python3 "$R/bin/agent-job" done "/tmp/x/$k.md" >/dev/null; done; python3 "$R/bin/agent-job" done 'Did agents follow skills/delegate/memory-refresh.md?' >/dev/null
+FX="$T/fixtures/skills/delegate"; mkdir -p "$FX"; printf 'Reproduce the fixture failures and summarize what broke.\n' > "$FX/memory-refresh.md"
+mkdir -p "$HOME/.mergeworthy/projects/widget"; printf -- '- a convention\n' > "$HOME/.mergeworthy/projects/widget/example.md"
+agv() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"orchv","tool_input":{"task":sys.argv[1],"title":sys.argv[2]}}))' "$1" "$2" | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo "$? $(grep -c 'projects/widget/example.md' "$T/err")"; }
+check "a launch following a skills/delegate/memory-refresh.md that isn't the installed template (a fixture's) is ordinary work: it counts against the cap, and one for a repo names its project file" "0 0 0 2 2 1" \
+  "$(cap capV "Follow $FX/memory-refresh.md exactly.") $(cap capV 'Execute /tmp/x/capv1.md') $(cap capV 'Execute /tmp/x/capv2.md') $(cap capV 'Execute /tmp/x/capv3.md') $(agv "Follow $FX/memory-refresh.md exactly for widget/example#17." lookalike)"
+for k in capv1 capv2 "$FX/memory-refresh.md"; do python3 "$R/bin/agent-job" done "$([ "${k#/}" = "$k" ] && echo "/tmp/x/$k.md" || echo "$k")" >/dev/null; done
+capc() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","cwd":sys.argv[1],"session_id":"capC","tool_input":{"task":sys.argv[2],"title":"relative"}}))' "$1" "$2" | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
+check "BLOCK: a relative skills/delegate/memory-refresh.md read from a cwd that isn't the installed folder is ordinary work, refused as a fourth agent" "0 0 0 2" \
+  "$(cap capC 'Execute /tmp/x/capc1.md') $(cap capC 'Execute /tmp/x/capc2.md') $(cap capC 'Execute /tmp/x/capc3.md') $(capc "$T" 'Follow skills/delegate/memory-refresh.md on /tmp/x/mem-lines.md')"
+for k in capc1 capc2 capc3; do python3 "$R/bin/agent-job" done "/tmp/x/$k.md" >/dev/null; done
+MG="$HOME/.mergeworthy/work/memgone"; mkdir -p "$MG"; : > "$MG/memory.source"  # memory-prep replaced memory-brief-1.md: only its folder's memory.source is left
+check "a launch following a memory brief memory-prep already replaced is ordinary work: it counts against the cap, stamps no marker, and one for a repo names its project file" "0 0 0 2 no 2 1" \
+  "$(cap capW "Follow $MG/memory-brief-1.md exactly.") $(cap capW 'Execute /tmp/x/capw1.md') $(cap capW 'Execute /tmp/x/capw2.md') $(cap capW 'Execute /tmp/x/capw3.md') $([ -e "$MG/.memory-order-repeated" ] && echo yes || echo no) $(agv "Follow $MG/memory-brief-1.md exactly for widget/example#17." replaced)"
+for k in capw1 capw2; do python3 "$R/bin/agent-job" done "/tmp/x/$k.md" >/dev/null; done; python3 "$R/bin/agent-job" done "$(python3 -c 'import sys; print(sys.argv[1][:40])' "Follow $MG/memory-brief-1.md exactly.")" >/dev/null
+rm -r "$MG" "$HOME/.mergeworthy/projects/widget"
+MD="$HOME/.mergeworthy/work/memdecided"; mkdir -p "$MD"; : > "$MD/memory.source"; printf 'Merge memory-new.txt into memory.md.\n' > "$MD/memory-brief-1.md"
+check "a memory brief memory-prep replaces while its launch runs still gets the marker its admission decided" "0 yes" \
+  "$(cap_in capD "Follow $MD/memory-brief-1.md exactly." | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; rm "$MD/memory-brief-1.md"; cap_in capD "Follow $MD/memory-brief-1.md exactly." | python3 "$R/hooks/pre-agent-dedupe.py" register) $([ -e "$MD/.memory-order-repeated" ] && echo yes || echo no)"
+python3 "$R/bin/agent-job" done "$(python3 -c 'import sys; print(sys.argv[1][:40])' "Follow $MD/memory-brief-1.md exactly.")" >/dev/null; rm -r "$MD"
+fgcall() { # session tool_use_id launcher prompt [description]: a foreground Agent call, its tool_use in the launcher's transcript, through PreToolUse only
+  python3 -c 'import json,sys; print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","id":sys.argv[1],"name":"Agent","input":{}}]}}))' "$2" >> "$3"
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"Agent","session_id":sys.argv[1],"tool_use_id":sys.argv[2],"transcript_path":sys.argv[3],"tool_input":{"prompt":sys.argv[4],"description":sys.argv[5],"run_in_background":False}}))' "$1" "$2" "$3" "$4" "${5:-$2}" \
+    | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
+result() { python3 -c 'import json,sys; print(json.dumps({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":sys.argv[1],"content":"blocked"}]}}))' "$1" >> "$2"; }  # tool_use_id launcher
+recs() { # word... [--age seconds...]: the pending records whose task holds each word, each aged by its seconds when given
+  python3 -c 'import json,os,sys,time
+a=sys.argv[1:]; words=a[:a.index("--age")] if "--age" in a else a; ages=a[len(words)+1:]
+d=os.path.expanduser("~/.claude/agent-jobs-launch"); out=[]
+for i, w in enumerate(words):
+    n=0
+    for f in os.listdir(d):
+        p=os.path.join(d,f); r=json.load(open(p))
+        if w in r.get("task",""):
+            n+=1
+            if ages: r["launched"]=time.time()-float(ages[i]); json.dump(r,open(p,"w"))
+    out.append(str(n))
+print(" ".join(out))' "$@"; }
+PL="$T/pend-launcher.jsonl"; : > "$PL"
+pend() { fgcall capP "$1" "$PL" "$2"; }  # tool_use_id task: a call of session capP still running in the launcher's transcript
+check "BLOCK: with one open job, three launches in one message whose calls haven't registered yet: the third, naming the two before it" "0 0 0 2 2" "$(cap capP 'Execute /tmp/x/capp0.md') $(pend capp-1 'Execute /tmp/x/capp1.md') $(pend capp-2 'Execute /tmp/x/capp2.md') $(pend capp-3 'Execute /tmp/x/capp3.md') $(grep -c '^/tmp/x/capp[12].md' "$T/err")"
+python3 "$R/bin/agent-job" done /tmp/x/capp0.md >/dev/null; rm -f $(grep -l pend-launcher "$HOME"/.claude/agent-jobs-launch/*)
+pend exp-1 'Execute /tmp/x/exp1.md' >/dev/null
+python3 -c 'import glob,json,os,time; [json.dump({**r, "launched": time.time() - 661}, open(f, "w")) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs-launch/*")) for r in [json.load(open(f))] if r.get("tool_use_id") == "exp-1"]'
+check "a call 11 minutes on whose agent never started is dropped at the next launch, its record with it, so no later launch searches for it again" "0 0" "$(pend exp-2 'Execute /tmp/x/exp2.md') $(grep -l '"exp-1"' "$HOME"/.claude/agent-jobs-launch/* | wc -l)"
+rm -f $(grep -l pend-launcher "$HOME"/.claude/agent-jobs-launch/*)
+pend exp-a 'Execute /tmp/x/expa.md' >/dev/null
+python3 -c 'import glob,json,os,time; [json.dump({**r, "launched": time.time() - 661}, open(f, "w")) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs-launch/*")) for r in [json.load(open(f))] if r.get("tool_use_id") == "exp-a"]'
+check "a launch reads only its own session's pending calls and those sharing its worktrees: another session's launch leaves this session's expired call alone, this session's next launch drops it" "0 1 0 0" \
+  "$(cap capQ 'Execute /tmp/x/expq.md') $(grep -l '"exp-a"' "$HOME"/.claude/agent-jobs-launch/* | wc -l) $(pend exp-b 'Execute /tmp/x/expb.md') $(grep -l '"exp-a"' "$HOME"/.claude/agent-jobs-launch/* | wc -l)"
+rm -f $(grep -l pend-launcher "$HOME"/.claude/agent-jobs-launch/*); python3 "$R/bin/agent-job" done /tmp/x/expq.md >/dev/null
+# one job from two sessions: session A's call of the job is still outstanding when session B launches the same job
+SB="$T/shared-brief.md"; printf 'Trace the shared worker.\n' > "$SB"; : > "$T/sh-a.jsonl"; : > "$T/sh-b.jsonl"
+shl() { fgcall "sh$1" "$2" "$T/sh-$1.jsonl" "Follow $SB exactly" trace-shared-worker; }  # session tool_use_id: the shared job from that session
+check "BLOCK: one agent per job across sessions: another session's launch of a job whose call is still outstanding is refused, and the reservation stays the first call's" "0 2 1 1" \
+  "$(shl a sh-1) $(shl b sh-2) $(grep -c 'already launched' "$T/err") $(grep -l '"sh-1"' "$HOME"/.claude/agent-jobs-launch/* | wc -l)"
+rm -f $(grep -l shared-brief "$HOME"/.claude/agent-jobs-launch/*)
+# the same work from two sessions under two titles: session A's call is still outstanding when session B launches it
+twl() { fgcall "sh$1" "$2" "$T/sh-$1.jsonl" 'Trace why the cache loses a cold write.' "$3"; }  # session tool_use_id description: the shared task
+check "BLOCK: the same task from another session under another title while the first call is outstanding, as the same work" "0 2 1" \
+  "$(twl a tw-x Trace) $(twl b tw-y Investigate) $(grep -c 'contains, or is contained in' "$T/err")"
+rm -f $(grep -l 'cache loses a cold write' "$HOME"/.claude/agent-jobs-launch/*)
+# a launch the cap doesn't apply to (a fan-out) reads none of its session's other calls, so it searches no transcript for them
+: > "$T/y3.jsonl"
+yc() { fgcall y3 "$1" "$T/y3.jsonl" "$2"; }  # tool_use_id prompt: a call of session y3, left outstanding
+check "an own call aged 11 minutes with no agent transcript is left unread by a fan-out launch and dropped by the next ordinary one (exit, its record left)" "0 0 1 0 0" \
+  "$(yc y-1 'Execute /tmp/x/y3-old.md'; recs y3-old --age 661 >/dev/null) $(yc y-2 "$(printf 'Execute /tmp/x/y3-fan.md\nFan-out: converge §Running the agents')") $(recs y3-old) $(yc y-3 'Execute /tmp/x/y3-ord.md') $(recs y3-old)"
+rm -f $(grep -l 'y3-' "$HOME"/.claude/agent-jobs-launch/*)
+# a call that returned without registering (another hook blocked it) counts for nothing; a day on, the next launch it bears on drops its record
+: > "$T/r5.jsonl"
+rc5() { fgcall r5 "$1" "$T/r5.jsonl" "$2"; result "$1" "$T/r5.jsonl"; }  # tool_use_id prompt: a call of session r5, its result already in the launcher's transcript
+check "a returned call's record goes once it is a day old, and one an hour old stays (exits, then the day's and the hour's records left)" "0 0 0 0 1" \
+  "$(rc5 r5-a 'Execute /tmp/x/r5-day.md') $(rc5 r5-b 'Execute /tmp/x/r5-hour.md'; recs r5-day r5-hour --age 90000 3600 >/dev/null) $(rc5 r5-c 'Execute /tmp/x/r5-next.md') $(recs r5-day r5-hour)"
+rm -f $(grep -l 'r5-' "$HOME"/.claude/agent-jobs-launch/*)
+# a launcher lost after admission: three calls with no result in its transcript, whose agents (its subagents) finished 25 minutes ago
+LD2="$HOME/.claude/projects/-fin"; mkdir -p "$LD2/launcher/subagents"; FL="$LD2/launcher.jsonl"; : > "$FL"
+fin_pre() { fgcall capF2 "$1" "$FL" "$2"; }  # tool_use_id task: an admitted call of session capF2 whose launcher got no result
+r="$(fin_pre fin-1 'Execute /tmp/x/fin1.md') $(fin_pre fin-2 'Execute /tmp/x/fin2.md') $(fin_pre fin-3 'Execute /tmp/x/fin3.md')"
+python3 - "$FL" <<'PY'
+import glob, json, os, sys, time
+now = time.time()
+for f in glob.glob(os.path.expanduser('~/.claude/agent-jobs-launch/*')):
+    r = json.load(open(f))
+    if r.get('transcript') != sys.argv[1]: continue
+    r['launched'] = now - 1500; json.dump(r, open(f, 'w'))
+    at = time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime(now - 1495))
+    c = os.path.join(os.path.dirname(sys.argv[1]), 'launcher', 'subagents', f"agent-{r['tool_use_id']}.jsonl")
+    with open(c, 'w') as o:
+        o.write(json.dumps({'type': 'user', 'timestamp': at, 'message': {'role': 'user', 'content': r['task']}}) + '\n')
+        o.write(json.dumps({'type': 'assistant', 'timestamp': at, 'message': {'content': [{'type': 'text', 'text': 'Done.'}]}}) + '\n')
+    os.utime(c, (now - 1490, now - 1490))
+PY
+check "a launch after three calls whose agents finished with no result reaching the launcher passes: a finished agent holds no slot" "0 0 0 0" "$r $(fin_pre fin-4 'Execute /tmp/x/fin4.md')"
+rm -rf "$LD2"; rm -f $(grep -l '"capF2"' "$HOME"/.claude/agent-jobs-launch/*)
 check "a fifth brief naming its fan-out step passes; one naming another step does not" "0 2" "$(cap capS $'Execute /tmp/x/cap8.md\nFan-out: converge §Running the agents') $(cap capS $'Execute /tmp/x/cap9.md\nFan-out: review step 2')"
 cap_impl() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"capS","tool_input":{"task":sys.argv[1],"title":"impl","role":"implementation"}}))' "$1$AFX" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; echo $?; }
 check "BLOCK: an implementation brief carrying the fan-out line still counts" 2 "$(cap_impl $'Execute /tmp/x/cap10.md\nFan-out: converge §Running the agents')"
@@ -1489,9 +1742,9 @@ F=$(rp_commit "$T/rpf" a.py 200); check "rounds also pinning a diverged branch's
 RH=$(git -C "$T/rh" rev-parse HEAD); printf 'Body.\n' > "$PD/pr-body.md"; python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest(), end="")' "$PD/pr-body.md" > "$PD/pr-body.md.lint.sha"
 PP="$PB The head: $RH in $T/rh."; UC="Review the code in $T/rh. Final message exactly NO BUGS."
 SR="Review $T/rh at head $RH; write the report, ending MERGE AS IS: yes or no, to $T/sr.report.md and the body's verdict, exactly CLEAN or the findings, to $PD/pr-body.review.out."
-check "a post review pinning the head gets r3, BLOCK its r4; BLOCK r3 of an unpinned code review and of a small review that also reviews the PR body" "0 0 0 2 0 0 2 0 0 2" "$(jd "$PD/r.md" rnd pp-r1 "$PP") $(jd "$PD/r.md" rnd pp-r2 "$PP") $(jd "$PD/r.md" rnd pp-r3 "$PP") $(jd "$PD/r.md" rnd pp-r4 "$PP") $(rnd uc-r1 "$UC") $(rnd uc-r2 "$UC") $(rnd uc-r3 "$UC") $(jd "$T/sr.report.md" rnd sr-r1 "$SR") $(jd "$T/sr.report.md" rnd sr-r2 "$SR") $(jd "$T/sr.report.md" rnd sr-r3 "$SR")"
+check "a post review pinning the head gets r2 to r6, each on a changed draft, the head unchanged; BLOCK r7 on the text a CLEAN r6 answered, r7 on a changed draft passes; BLOCK r3 of an unpinned code review and of a small review that also reviews the PR body" "0 0 0 0 0 0 2 0 0 0 2 0 0 2" "$(pe "$PD/r.md" 'Pinned 1.'; jd "$PD/r.md" rnd pp-r1 "$PP") $(for i in 2 3 4 5 6; do pv "$PD/r.review.out" "R$((i-1)).1 should: x"; pe "$PD/r.md" "Pinned $i."; printf ' '; jd "$PD/r.md" rnd pp-r$i "$PP"; done | xargs) $(pv "$PD/r.review.out" CLEAN; jd "$PD/r.md" rnd pp-r7 "$PP") $(pe "$PD/r.md" 'Pinned 7.'; jd "$PD/r.md" rnd pp-r7 "$PP") $(rnd uc-r1 "$UC") $(rnd uc-r2 "$UC") $(rnd uc-r3 "$UC") $(jd "$T/sr.report.md" rnd sr-r1 "$SR") $(jd "$T/sr.report.md" rnd sr-r2 "$SR") $(jd "$T/sr.report.md" rnd sr-r3 "$SR")"
 WB="$HOME/.mergeworthy/work/t/briefs/post-review.md"; mkdir -p "${WB%/*}"; printf '%s\n' "$PP" > "$WB"
-check "a post review whose head-pinned brief is a work-folder file gets r3, BLOCK its r4" "0 0 0 2" "$(jd "$WB" jd "$PD/r.md" rnd wb-r1 "Follow $WB exactly.") $(jd "$WB" jd "$PD/r.md" rnd wb-r2 "Follow $WB exactly.") $(jd "$WB" jd "$PD/r.md" rnd wb-r3 "Follow $WB exactly.") $(jd "$WB" jd "$PD/r.md" rnd wb-r4 "Follow $WB exactly.")"
+check "a post review whose head-pinned brief is a work-folder file gets r3 on a changed draft, BLOCK its r4 on the text r3 answered" "0 0 0 2" "$(jd "$WB" jd "$PD/r.md" rnd wb-r1 "Follow $WB exactly.") $(pv "$PD/r.review.out" 'R1.1 should: x'; pe "$PD/r.md" 'Brief 2.'; jd "$WB" jd "$PD/r.md" rnd wb-r2 "Follow $WB exactly.") $(pv "$PD/r.review.out" 'R2.1 should: x'; pe "$PD/r.md" 'Brief 3.'; jd "$WB" jd "$PD/r.md" rnd wb-r3 "Follow $WB exactly.") $(pv "$PD/r.review.out" CLEAN; jd "$WB" jd "$PD/r.md" rnd wb-r4 "Follow $WB exactly.")"
 mkdir -p "$T/rh/src" "$T/rh/spec"; for f in src/m81.py:81 src/m80.py:80 tests/helper.py:1000 src/code.py:100 tests/x.py:200; do rh_commit "${f%:*}" "${f#*:}" >/dev/null; done
 rh_moved() { # loop from to lines: r1 and r2 on the head, then r3 on the rename of a file with that many new lines
   local H; H=$(git -C "$T/rh" rev-parse HEAD); rh_rnd "$1-r1" "$H" >/dev/null; rh_rnd "$1-r2" "$H" >/dev/null; git -C "$T/rh" mv "$2" "$3"; rh_rnd "$1-r3" "$(rh_commit "$3" "$4")"; }
@@ -1526,7 +1779,8 @@ check "a brief with an https URL finishes (its //host is not a path), and the UR
 git init -q "$HOME/occ"; git -C "$HOME/occ" remote add origin git@github.com:o/r.git; mkdir -p "$HOME/occ/src"
 check "BLOCK: the repo as git@github.com:o/r.git, and a ~/ path in its checkout" "2 2" "$(ag "$T" 'Fix git@github.com:o/r.git') $(ag "$T" 'Fix the bug in ~/occ/src')"
 check "a brief that writes nothing to the repo (role research or test) needs no notes; a review does" "0 0 2" "$(ag "$T" 'Mine session logs for o/r' research) $(ag "$T" 'Run the tests of o/r' test) $(ag "$T" 'Review o/r#7' review)"
-check "a brief naming the notes file passes; one naming another repo or none passes; a memory-refresh brief passes" "0 0 0 0" "$(ag "$T" 'Fix o/r#5 by skills/code/SKILL.md, notes in ~/.mergeworthy/projects/o/r.md') $(ag "$T" 'Fix o/r-two#5') $(ag "$T" 'Tidy the README') $(ag "$T" 'Follow skills/delegate/memory-refresh.md on o/r#5 lines')"
+check "a brief naming the notes file passes; one naming another repo or none passes; a memory-refresh brief passes" "0 0 0 0" "$(ag "$T" 'Fix o/r#5 by skills/code/SKILL.md, notes in ~/.mergeworthy/projects/o/r.md') $(ag "$T" 'Fix o/r-two#5') $(ag "$T" 'Tidy the README') $(ag "$T" 'Follow ~/.mergeworthy/current/skills/delegate/memory-refresh.md on o/r#5 lines')"
+check "BLOCK: a brief for a repo that only mentions memory-refresh.md mid-text still names its project file; the real memory-refresh launch passes" "2 0" "$(ag "$T" 'Fix o/r#5 by skills/code/SKILL.md: pre-agent-dedupe misreads skills/delegate/memory-refresh.md briefs.') $(ag "$T" 'Follow ~/.mergeworthy/current/skills/delegate/memory-refresh.md on the o/r#5 session lines')"
 printf -- '- a convention\n## Who decides\n- maint merges. Study: [r.study.md](r.study.md)\n' > "$HOME/.mergeworthy/projects/o/r.md"
 check "a study linked relative to the project file counts" 0 "$(ag "$T" 'Fix o/r#5 by skills/code/SKILL.md, notes in ~/.mergeworthy/projects/o/r.md')"
 printf -- '- a convention\n## Who decides\n- maint merges: ~/.mergeworthy/projects/o/r.study.md\n' > "$HOME/.mergeworthy/projects/o/r.md"
@@ -1536,34 +1790,10 @@ echo "Studied: $(date -u +%F)" > "$HOME/.mergeworthy/projects/o/r.study.md"
 cp "$HOME/.mergeworthy/projects/o/r.md" "$T/r.md"; yes word | head -n 2500 >> "$HOME/.mergeworthy/projects/o/r.md"
 check "BLOCK: a brief naming a project file over its 2500-word cap, with its count; research needs none; at the cap it passes" "2 1 0 0" "$(ag "$T" 'Fix o/r#5 by skills/code/SKILL.md, notes in ~/.mergeworthy/projects/o/r.md') $(grep -c 'o/r.md: 2510 words' "$T/err") $(ag "$T" 'Mine session logs for o/r' research) $(cp "$T/r.md" "$HOME/.mergeworthy/projects/o/r.md"; yes word | head -n $((2500 - $(wc -w < "$T/r.md"))) >> "$HOME/.mergeworthy/projects/o/r.md"; ag "$T" 'Fix o/r#5 by skills/code/SKILL.md, notes in ~/.mergeworthy/projects/o/r.md')"
 cp "$T/r.md" "$HOME/.mergeworthy/projects/o/r.md"; yes word | head -n 2500 >> "$HOME/.mergeworthy/projects/o/r.md"
-mkdir -p "$HOME/.mergeworthy/work/project-learn"; echo "$(date -u +%F) $(date -u +%FT%TZ) thread thread-9; 2 to sort: o/r-two o/r" > "$HOME/.mergeworthy/work/project-learn/runs.txt"
-# T3's state: the learning thread thread-9 running, a task it delegated, and another session's thread
-mkdir -p "$HOME/.t3/userdata"; python3 - "$HOME/.t3/userdata/statev2.sqlite" <<'EOF2'
-import sqlite3, sys
-c = sqlite3.connect(sys.argv[1])
-c.execute('create table orchestration_v2_projection_provider_threads (provider_thread_id text, thread_id text, payload_json text)')
-c.execute('create table orchestration_v2_projection_subagents (subagent_id text, thread_id text, child_thread_id text, status text)')
-c.execute('create table orchestration_v2_projection_runs (run_id text, thread_id text, status text)')
-c.execute("insert into orchestration_v2_projection_runs values ('r9', 'thread-9', 'running')")
-c.execute("insert into orchestration_v2_projection_subagents values ('s9', 'thread-9', 'thread:delegated-task:sort-1', 'running')")
-c.execute("""insert into orchestration_v2_projection_provider_threads values ('p9', 'thread-9', '{"nativeThreadRef":{"driver":"claudeAgent","nativeId":"sess-9"}}')"""); c.commit()
-EOF2
 OVER='Fix o/r#5 by skills/code/SKILL.md, notes in ~/.mergeworthy/projects/o/r.md'
-check "BLOCK: over the cap while the learning thread sorting that repo runs: the refusal names the thread, so the session doesn't condense alongside it" "2 1" \
-  "$(T3CODE_THREAD_ID=other-thread ag "$T" "$OVER") $(grep -c 'learning thread thread-9 started' "$T/err")"
-check "the learning thread's own agents pass the cap for the file it condenses: launched from it, or from a task it delegated" "0 0" \
-  "$(T3CODE_THREAD_ID=thread-9 ag "$T" "$OVER") $(T3CODE_THREAD_ID=thread:delegated-task:sort-1 ag "$T" "$OVER")"
-agsess() { # session_id: a brief launched from that Claude session, with no T3CODE_THREAD_ID
-  python3 -c 'import json,sys,time; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","cwd":sys.argv[1],"session_id":sys.argv[3],"tool_input":{"task":sys.argv[2],"title":sys.argv[2][:50],"role":"implementation","clientRequestId":f"ag-{time.time_ns()}-r1"}}))' "$T" "$OVER$AFX" "$1" \
-    | env -u T3CODE_THREAD_ID timeout 10 python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; grep -c 'over its 2500-word cap' "$T/err"; }
-check "the learning thread's own session, known only by its session id, passes the cap; another session is refused naming the thread" "0 1 1" \
-  "$(agsess sess-9) $(agsess sess-other) $(grep -c 'the learning thread thread-9 started' "$T/err")"
-python3 -c 'import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); c.execute("update orchestration_v2_projection_runs set status = ?", ("completed",)); c.execute("update orchestration_v2_projection_subagents set status = ?", ("completed",)); c.commit()' "$HOME/.t3/userdata/statev2.sqlite"
-check "BLOCK: once the learning thread ended, the refusal names no thread: the session condenses the file itself" "2 0 1" \
-  "$(T3CODE_THREAD_ID=other-thread ag "$T" "$OVER") $(grep -c 'the learning thread thread-9' "$T/err") $(grep -c 'condense it first' "$T/err")"
-rm "$HOME/.t3/userdata/statev2.sqlite"
-check "BLOCK: without T3's database the learning thread counts as ended" "2 0" "$(ag "$T" "$OVER") $(grep -c 'the learning thread thread-9' "$T/err")"
-rm -r "$HOME/.mergeworthy/work/project-learn"; cp "$T/r.md" "$HOME/.mergeworthy/projects/o/r.md"
+check "a learning sort's brief (delegate/learn-sort.md) passes the cap for the file it condenses; another brief is refused" "0 2" \
+  "$(ag "$T" "Follow ~/.mergeworthy/current/skills/delegate/learn-sort.md for o/r by ~/.mergeworthy/current/skills/code/SKILL.md, notes in ~/.mergeworthy/projects/o/r.md") $(ag "$T" "$OVER")"
+cp "$T/r.md" "$HOME/.mergeworthy/projects/o/r.md"
 check "BLOCK: an implementation brief for that repo without code/SKILL.md, naming it" "2 1" "$(ag "$T" 'Build o/r#6 per ~/.mergeworthy/projects/o/r.md') $(grep -c 'skills/code/SKILL.md' "$T/err")"
 check "a review brief needs no code/SKILL.md" 0 "$(ag "$T" 'Review o/r#8 per ~/.mergeworthy/projects/o/r.md' review)"
 # pre-agent-dedupe: the project file's `## Agents` line `Effort: <effort>` is the effort every agent for its repo launches at
@@ -1593,6 +1823,12 @@ check "BLOCK: an implementation brief whose session read only an agent's report 
 python3 -c 'import json,sys; print(json.dumps({"type":"assistant","timestamp":sys.argv[1],"message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":sys.argv[2]}}]}}))' "$now" "D=$RD; cd \"\$D\" && sed -n 1,80p src/a.ts" > "$T/tr-var.jsonl"
 python3 -c 'import json,sys; print(json.dumps({"type":"assistant","timestamp":sys.argv[1],"message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":sys.argv[2]}}]}}))' "$now" "D=$RD; git -C \"\$D\" show HEAD:src/a.ts" > "$T/tr-gshow.jsonl"
 check "a read in a checkout named by a variable the command set (cd \"\$D\" && sed, git -C \"\$D\" show) passes too" "0 0" "$(agt "$B" "$T/tr-var.jsonl") $(agt "$B" "$T/tr-gshow.jsonl")"
+# the check reads the transcript's end, not all of it: a 2 GB prefix before a call older than 3 hours, under a 400 MB memory cap
+truncate -s 2G "$T/tr-big.jsonl"; printf '\n' >> "$T/tr-big.jsonl"
+python3 -c 'import json,sys; print(json.dumps({"type":"assistant","timestamp":sys.argv[1],"message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"ls"}}]}}))' "$(date -u -d '-4 hours' +%FT%T.000Z)" >> "$T/tr-big.jsonl"
+cat "$T/tr-read.jsonl" >> "$T/tr-big.jsonl"
+check "a session transcript with a 2 GB start passes on its recent read under a 400 MB memory cap" 0 "$(ulimit -v 409600; agt "$B" "$T/tr-big.jsonl")"
+rm "$T/tr-big.jsonl"
 # #87: a walk up from '' (a brief's `//`) or from '//' (a `cat //`) ends at the root instead of looping until the hook's timeout
 python3 -c 'import json,sys; [print(json.dumps({"type":"assistant","timestamp":sys.argv[1],"message":{"content":[{"type":"tool_use","name":n,"input":i}]}})) for n, i in (("Read",{"file_path":sys.argv[2]}),("Bash",{"command":"cat //"}))]' "$now" "$RD/src/a.ts" > "$T/tr-root.jsonl"
 check "a brief with a // TODO line, a session that ran cat //, and both (#87), launched outside a checkout, pass in time" "0 0 0" \
@@ -1608,6 +1844,8 @@ check "the newest record passes; the next build on the same record waits, unless
   "$(abrief $'You implement the fix in '"$AB"$'.\nApproach: '"$T/ab1.md") $(abrief $'You implement the review fix in '"$AB"$'.\nApproach: '"$T/ab1.md") $(grep -c 'last build was briefed on the approach recorded' "$T/err") $(abrief $'You implement the review fix in '"$AB"$'.\nApproach: '"$T/ab1.md (unchanged: a test the review asked for)")"
 sleep 1; (cd "$AB" && bash "$R/bin/pr-steps" approach "$T/ab2.md" >/dev/null)
 check "a changed approach recorded after the last build passes; the record it replaced no longer does" "0 2" "$(abrief $'You implement it as a virtual module in '"$AB"$'.\nApproach: '"$T/ab2.md") $(abrief $'You implement more in '"$AB"$'.\nApproach: '"$T/ab1.md (unchanged: same)")"
+check "BLOCK: an Approach that isn't the newest record, naming each checkout's newest record; one naming no checkout with a record says so" "2 1 2 1" \
+  "$(abrief $'You implement more in '"$AB"$'.\nApproach: '"$T/ab1.md") $(grep -c "newest: $AB: $T/ab2.md" "$T/err") $(abrief $'You implement more in /tmp/nowhere-x.\nApproach: '"$T/ab1.md") $(grep -c 'no checkout this brief names has a record' "$T/err")"
 AO="$T/abo"; git init -q "$AO"; git -C "$AO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; cp "$T/approach.md" "$T/ab3.md"; (cd "$AO" && bash "$R/bin/pr-steps" approach "$T/ab3.md" >/dev/null)
 check "any text after the Approach path: on an unbuilt record it passes; on a built one it is refused as already built, not as naming no approach; an unchanged reason inside the text counts" "0 2 1 0 0" \
   "$(abrief $'You implement the fix in '"$AO"$'.\nApproach: '"$T/ab3.md (amended: re-rated)") $(abrief $'You implement more in '"$AO"$'.\nApproach: '"$T/ab3.md (amended: re-rated)") $(grep -c 'last build was briefed on' "$T/err") $(grep -c 'a line `Approach:' "$T/err") $(abrief $'You implement the rest in '"$AO"$'.\nApproach: '"$T/ab3.md amended (unchanged: a review fix) today")"
@@ -1637,15 +1875,30 @@ lb() { python3 -c 'import json,sys,time; print(json.dumps({"tool_name":"mcp__t3-
 check "a launch that says to do a work-folder brief gets no refusal for the lines the brief holds; BLOCK one whose brief lacks the project file, naming it" "0 2 1" \
   "$(lb "$LB/impl-race.md") $(lb "$LB/impl-noproject.md") $(grep -c "$HOME/.mergeworthy/projects/o/r.md" "$T/err")"
 check "BLOCK: a drafter brief (it reads thread-context.md) without writing/SKILL.md; with it, it passes" "2 0" "$(ag "$T" 'Draft the reply from /w/drafts/x/thread-context.md' review) $(ag "$T" 'Write a reply draft by skills/writing/SKILL.md from /w/drafts/y/thread-context.md; list each claim with a scope word beside its source' review)"
-check "BLOCK: a drafter brief without the template's scope-word check, naming the template; a review of a draft (CLEAN) needs none" "2 1 0" "$(ag "$T" 'Write a reply draft by skills/writing/SKILL.md from /w/drafts/z/thread-context.md' review) $(grep -c 'delegate/drafter.md' "$T/err") $(ag "$T" 'Review /w/drafts/z/r.md against /w/drafts/z/thread-context.md by skills/writing/SKILL.md; final message CLEAN or findings' review)"
+agn() { # cwd task: a launch with no role
+  python3 -c 'import json,sys,time; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","cwd":sys.argv[1],"session_id":"orch","tool_input":{"task":sys.argv[2],"title":sys.argv[2][:50],"clientRequestId":f"ag-{time.time_ns()}-r1"}}))' "$1" "$2$AFX" \
+    | timeout 10 python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
+check "BLOCK: a drafter brief (it writes its draft beside the thread record) without the template's scope-word check, naming the template; a review of a draft (CLEAN) needs none" "2 1 0" "$(agn "$T" 'Write a reply draft by skills/writing/SKILL.md from /w/drafts/z/thread-context.md to /w/drafts/z/r.md') $(grep -c 'delegate/drafter.md' "$T/err") $(ag "$T" 'Review /w/drafts/z/r.md against /w/drafts/z/thread-context.md by skills/writing/SKILL.md; final message CLEAN or findings' review)"
+# delegate/drafter.md's template filled, with its standards line, and the same without its scope-word sentence
+python3 - "$R/skills/delegate/drafter.md" "$T/dtpl" <<'PY'
+import re, sys
+body = re.search(r'```\n(.*?)```', open(sys.argv[1]).read(), re.S)[1].replace('<abs>', '/w')
+while re.search(r'<[^<>\n]+>', body): body = re.sub(r'<[^<>\n]+>', 'it', body)
+body += 'Standards: ~/.mergeworthy/current/skills/writing/SKILL.md\n'
+open(sys.argv[2] + '-scope.md', 'w').write(body)
+open(sys.argv[2] + '-noscope.md', 'w').write(re.sub(r' Then list there each claim with a scope word[^\n]*', '', body))
+PY
+WS='~/.mergeworthy/current/skills/writing/SKILL.md'
+check "a design, review or research launch that reads the thread record passes without the scope-word check; BLOCK any other brief naming the record without it (a summary citing a draft, one writing under another thread's drafts/, a reply saved by a relative name), and drafter.md filled without its scope-word line; with it, it passes" "0 0 0 0 2 2 2 2 0" \
+  "$(ag "$T" "Design question: read /w/x/thread-context.md and $WS, then rate two designs. Write the ranking to /w/x/design.md." design) $(ag "$T" "Review the fix against /w/x/thread-context.md by $WS; report the findings." review) $(ag "$T" "Collect what /w/x/thread-context.md decided, by $WS." research) $(ag "$T" 'Review the reply draft at /w/reply.md for jargon and accuracy. Return findings.' review) $(agn "$T" "Read $WS. Summarize the decisions in /w/drafts/issue/thread-context.md compared with /w/drafts/issue/answer.md; write the summary to /w/status.md.") $(agn "$T" "Read $WS. Summarize the decisions in /w/drafts/issue/thread-context.md; write the summary to /w/drafts/other/summary.md.") $(agn "$T" "Read /w/drafts/issue/thread-context.md. Draft a reply to the maintainer and save it as answer.md next to the thread record. Read $WS.") $(agn "$T" "$(cat "$T/dtpl-noscope.md")") $(agn "$T" "$(cat "$T/dtpl-scope.md")")"
 # pre-agent-dedupe: a template's placeholder left in the brief, by the plugin's own skills/delegate templates
 check "BLOCK: a brief with a template's placeholder unfilled, naming it and its template" "2 1" "$(ag "$T" $'Verify the slice.\n- try the edges: <the slice\'s risky edges>, each Recurring misses line' review) $(grep -c "<the slice's risky edges> (delegate/verifier.md)" "$T/err")"
 check "BLOCK: a slot of a template's code block indented in a list item (delegate/SKILL.md's reviewer launch)" "2 1" "$(ag "$T" $'Review the diff.\n{"target": {"options": {"<its effort option>": "high"}}}' review) $(grep -c '<its effort option> (delegate/SKILL.md)' "$T/err")"
 check "a filled brief passes with the paste-in rules (their <work folder>), an output form in backticks and a quoted HTML tag" 0 "$(ag "$T" "$(printf 'Verify the slice: try the edges: the abort path.\nFinal message: the gates as `<command> -> exit <code>`; check the <head> tags.\n'; cat "$R/skills/delegate/agent.md")" review)"
 check "a brief quoting a line format in backticks that holds a template's slot passes (a format, not a slot)" 0 "$(ag "$T" 'Check each `PROMISED <thread>: <what> (<draft>)` line in proposals-open.md.' review)"
-mkdir -p "$T/mem"; printf 'Next: the brief may say (git show <sha>) in a quoted ruling.\n' > "$T/mem/memory.md"; printf 'Summarize %s into the digest.\n' "$T/mem/memory.md" > "$T/mem/memory-brief-1.md"
-check "an input file the brief names (memory.md quoting <sha>) is not scanned for slots; the brief file still is" "0 2" "$(ag "$T" "Follow $T/mem/memory-brief-1.md" research) $(printf 'Sort it (git show <sha>).\n' > "$T/mem/sort-brief.md"; ag "$T" "Follow $T/mem/sort-brief.md" review)"
-CB="$HOME/.mergeworthy/work/rb"; mkdir -p "$CB"; printf 'Recorded output form: <sha>\n' | tee "$CB/memory.md" > "$CB/causes.md"; printf 'Sort it (git show <sha>).\n' > "$CB/sort.md"
+mkdir -p "$T/mem"; printf 'Next: the brief may say (git diff <base>...<head SHA>) in a quoted ruling.\n' > "$T/mem/memory.md"; printf 'Summarize %s into the digest.\n' "$T/mem/memory.md" > "$T/mem/memory-brief-1.md"
+check "an input file the brief names (memory.md quoting <head SHA>) is not scanned for slots; the brief file still is" "0 2" "$(ag "$T" "Follow $T/mem/memory-brief-1.md" research) $(printf 'Sort it (git diff <base>...<head SHA>).\n' > "$T/mem/sort-brief.md"; ag "$T" "Follow $T/mem/sort-brief.md" review)"
+CB="$HOME/.mergeworthy/work/rb"; mkdir -p "$CB"; printf 'Recorded output form: <head SHA>\n' | tee "$CB/memory.md" > "$CB/causes.md"; printf 'Sort it (git diff <base>...<head SHA>).\n' > "$CB/sort.md"
 check "a file read for context in a sentence that also says do or follow is no brief; BLOCK a file the verb governs (do the brief at, follow ... exactly)" "0 0 0 2 2" \
   "$(ag "$T" "Read $CB/memory.md for context and do the review." review) $(ag "$T" "Read $CB/causes.md for context and do the review." review) $(ag "$T" "Read $CB/memory.md for context and follow the reviewer instructions." review) $(ag "$T" "Read and do the brief at $CB/sort.md." review) $(ag "$T" "Follow $CB/sort.md exactly." review)"
 printf 'Context only.\n' > "$CB/plain.md"
@@ -2282,6 +2535,17 @@ check "pr-steps verify: BLOCK a round 2 carrying only round-1 findings without a
   "$(led 'R1.1 should listed: the report') $(grep -c 'closes round 1' "$T/err") $(led 'Round: 2' 'R1.1 should disputed: x' 'R2.1 nit declined: y') $(grep -c 'R1.1 should disputed: x  <- not fixed' "$T/err") $(led 'Round: 2' 'R1.1 should listed: the report')"
 cp "$T/r2.md" "$T/r2c.md"; LR="$T/r2c.md"
 check "BLOCK: pr-steps verify with a code loop's blocker closed as fixed in r3, which only a post's ledger takes" "1 1" "$(led 'Round: 3' 'R2.1 blocker fixed in r3') $(grep -c 'open blocker' "$T/err")"
+# a finding on a post's draft closes as `fixed in <draft>.md` (relative to the ledger) while gate-pass's record holds the draft's text
+mkdir -p "$T/d"; printf 'body\n' > "$T/d/b.md"; cp "$T/r2.md" "$T/r2d.md"; LR="$T/r2d.md"
+check "BLOCK: a finding fixed in a draft with no gate, a draft edited after its gate, a missing draft; gated, it records" "1 1 1 1 1 0" \
+  "$(led 'R2.1 blocker fixed in d/b.md') $(grep -c 'd/b.md has no gate-pass record' "$T/err") $(sha256sum "$T/d/b.md" | cut -d' ' -f1 > "$T/d/b.md.gate"; echo more >> "$T/d/b.md"; led 'R2.1 blocker fixed in d/b.md') $(grep -c 'has no gate-pass record of its current text' "$T/err") $(led 'R2.1 should fixed in d/gone.md') $(sha256sum "$T/d/b.md" | cut -d' ' -f1 > "$T/d/b.md.gate"; led 'R2.1 blocker fixed in d/b.md')"
+printf 'Maintainer: nitedani\nR1.1 blocker: the body claims too much\nMERGE AS IS: no\n' > "$T/frl.md"; std "$T/frl.md"; printf 'Round: 2\nR1.1 blocker fixed in d/b.md\n' > "$T/frl.ledger.md"
+check "pr-steps fresh: a body finding fixed in the gated pr-body.md records a report without a yes" 0 "$(cd "$GL" && bash "$R/bin/pr-steps" fresh "$T/frl.md" --ledger "$T/frl.ledger.md" >/dev/null 2>&1; echo $?)"
+pl() { printf '%s\n' "$@" > "$T/pl.md"; (cd "$GL" && python3 "$R/hooks/ledger.py" --post "$T/pl.md" 2>/dev/null; echo $?); }
+check "BLOCK: a post's own ledger (gate-pass --post) closing a finding by a gated draft, which only its confirming round closes" 1 "$(pl 'Round: 2' 'R1.1 blocker fixed in d/b.md')"
+mkdir -p "$T/$ON"; printf 'body\n' > "$T/$ON/pr-body.md"; echo stale > "$T/$ON/pr-body.md.gate"
+check "BLOCK: a draft named like a round or a sha (fixed in r3.md, <sha>.md, r3/pr-body.md, <sha>/pr-body.md) closes only through its gate; a sha or round ending a sentence (fixed in <sha>., fixed in r3.) closes" "1 1 1 1 0 0" \
+  "$(pl 'Round: 3' 'R1.1 blocker fixed in r3.md') $(cp "$T/r2.md" "$T/r2e.md"; LR="$T/r2e.md"; led "R2.1 blocker fixed in $ON.md") $(pl 'Round: 3' 'R1.1 blocker fixed in r3/pr-body.md') $(LR="$T/r2e.md"; led "R2.1 blocker fixed in $ON/pr-body.md") $(pl 'Round: 3' 'R1.1 blocker fixed in r3.') $(cp "$T/r2.md" "$T/r2f.md"; LR="$T/r2f.md"; led "R2.1 blocker fixed in $ON.")"
 # a claim the verifier lists as untested waits for a RULED line naming it, in round 2's ledger record as in a file ending NO BUGS (#190)
 printf '## Dropped\nNone.\n## Untested claims\n\n- `src/panel.tsx`: // The question the page opened on takes the focus as it shows. — Chrome — no probe recorded — UNVERIFIED\n' > "$T/uc.md"; std "$T/uc.md"; LR="$T/uc.md"
 { cat "$T/uc.md"; echo 'RULED: src/panel.tsx: // The question the page opened on takes the focus as it shows.: listed: the PR body says no probe saw it'; } > "$T/uc1.md"
@@ -2414,9 +2678,75 @@ gc checkout -q parent; seq 1 200 > "$MG/p"; gc commit -qam parent2; gc push -q o
 printf 'carries the pass of %s: merged parent\n' "$MS" > "$T/carry-m4.md"; echo parent > "$FX/pr_view_current"
 check "a stacked PR's merge of its parent branch (200 lines) carries the earlier head's Loop A" 0 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m4.md" >/dev/null 2>&1; echo $?) )"
 rm "$FX/pr_view_current"
+# a squash of a branch the PR merged: git's merge base is the old main, so the replay conflicts; the carry replays from the commit of the head that a merged PR's head shares with it
+SB="$T/sbase.git"; SG="$T/sclone"; git init -q --bare -b main "$SB"; git clone -q "$SB" "$SG" 2>/dev/null
+sc() { git -C "$SG" -c user.name=t -c user.email=t@t "$@"; }
+sk() { printf 'carries the pass of %s: merged main\n' "$1" > "$T/sk-$2.md"; (cd "$SG" && bash "$R/bin/pr-steps" verify "$T/sk-$2.md" >/dev/null 2>&1; echo $?); }
+seq 1 50 > "$SG/app.ts"; seq 1 50 > "$SG/z.ts"; sc add -A; sc commit -q -m base; sc push -q origin main; sc remote set-head origin main >/dev/null
+sc checkout -q -b p25; seq 1 120 > "$SG/lib.ts"; sc add -A; sc commit -q -m p25; P25=$(git -C "$SG" rev-parse HEAD)
+sc checkout -q -b p26 main; sc merge -q --no-edit p25; sed -i 's/^60$/p26/' "$SG/lib.ts"; sc commit -qam p26; SA=$(git -C "$SG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$SA"
+sc checkout -q main; sc merge -q --squash p25; sc commit -q -m 'p25 (#25)'; sc push -q origin main
+sc checkout -q p26; sc merge -q --no-edit main >/dev/null 2>&1; sc checkout -q --ours -- .; sc add -A; sc commit -q --no-edit
+echo "$P25" > "$FX/pr_list_"
+check "a merge of main after the squash of a branch the PR merged, tree unchanged, carries (#251)" 0 "$(sk "$SA" s1)"
+check "BLOCK: the same carry with gh failing is refused: no merged PR's head to replay from" 1 "$(GH_STUB_403=1 sk "$SA" s2)"
+# a git without merge-tree's --merge-base (2.43) replays as before: the unchanged-tree carry of #251 is refused, not compared with the bare old head
+mkdir -p "$T/shim"; printf '#!/bin/bash\ncase " $* " in *" merge-tree "*) echo "$*" >> "$T/merge-tree.log";; esac\ncase " $* " in *" merge-tree "*" --merge-base="*) exit 129;; esac\nexec %s "$@"\n' "$(command -v git)" > "$T/shim/git"; chmod +x "$T/shim/git"
+check "BLOCK: a git that rejects --merge-base refuses the #251 carry as cd254f8 did" 1 "$(PATH="$T/shim:$PATH" sk "$SA" s2b)"
+sc checkout -q main; sed -i 's/^5$/other/' "$SG/z.ts"; sc commit -qam other; sc push -q origin main; sc checkout -q p26; sc merge -q --no-edit main >/dev/null 2>&1
+check "main moving on after the squash, merged in, carries" 0 "$(sk "$SA" s3)"
+sc checkout -q -b q25 main; seq 1 90 > "$SG/q.ts"; sc add -A; sc commit -q -m q25
+sc checkout -q -b q26 main; sc merge -q --no-edit q25; sed -i 's/^40$/q26/' "$SG/q.ts"; sc commit -qam q26; SQ=$(git -C "$SG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$SQ"
+sc checkout -q q25; sed -i 's/^80$/q25more/' "$SG/q.ts"; sc commit -qam more; git -C "$SG" rev-parse HEAD > "$FX/pr_list_"
+sc checkout -q main; sc merge -q --squash q25; sc commit -q -m 'q25 (#27)'; sc push -q origin main
+sc checkout -q q26; sc merge -q --no-edit main >/dev/null 2>&1 || { sc checkout -q --theirs -- q.ts; sed -i 's/^40$/q26/' "$SG/q.ts"; sc add -A; sc commit -q --no-edit; }
+check "the merged sibling having grown a commit after the PR merged it carries" 0 "$(sk "$SQ" s4)"
+# a merge that reverts what main fixed leaves the tree unchanged, and the replay from a merged head must not hide it
+sc checkout -q -b r1 main; echo pr > "$SG/r.md"; sc add -A; sc commit -q -m r1; SR=$(git -C "$SG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$SR"
+sc checkout -q main; sed -i 's/^7$/fix/' "$SG/app.ts"; sc commit -qam fix; sc push -q origin main; sc checkout -q r1; sc merge -q -s ours --no-edit main
+check "BLOCK: a merge with -s ours that reverts main's fix is refused" 1 "$(sk "$SR" s5)"
+# a PR with its own guard, cherry-picking a main commit, drops the guard in the merge of main: the merged head of main's commit is no replay point
+sc checkout -q -b c1 main; sed -i 's/^20$/guard2/' "$SG/z.ts"; sc commit -qam guard2
+sc checkout -q main; seq 1 200 > "$SG/big.ts"; sc add -A; sc commit -q -m big; sc push -q origin main; SF=$(git -C "$SG" rev-parse HEAD); echo "$SF" > "$FX/pr_list_"
+sc checkout -q c1; sc cherry-pick "$SF" >/dev/null; SV=$(git -C "$SG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$SV"
+sc merge -q --no-edit main >/dev/null 2>&1; sed -i 's/^guard2$/20/' "$SG/z.ts"; sc commit -qam dropguard
+check "BLOCK: a merge of main dropping the PR's own guard after a cherry-pick of a main commit is refused" 1 "$(sk "$SV" s6)"
+rm "$FX/pr_list_"
+# a PR merged into another branch says nothing about this PR's base: its head is no replay point, though it holds the reviewed head
+OG="$T/obase.git"; OC="$T/oclone"; git init -q --bare -b main "$OG"; git clone -q "$OG" "$OC" 2>/dev/null; oc() { git -C "$OC" -c user.name=t -c user.email=t@t "$@"; }
+echo g > "$OC/guard.ts"; oc add -A; oc commit -q -m base; oc push -q origin main; oc remote set-head origin main >/dev/null
+oc checkout -q -b topic; echo guard2 > "$OC/guard.ts"; seq 1 200 > "$OC/big.ts"; oc add -A; oc commit -q -m topic; OA=$(git -C "$OC" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$OA"
+oc checkout -q -b beyond; echo more > "$OC/more.ts"; oc add -A; oc commit -q -m beyond; git -C "$OC" rev-parse HEAD | tee "$FX/pr_list_" > "$FX/pr_list__base_topic"; : > "$FX/pr_list__base_main"
+oc checkout -q main; seq 1 200 > "$OC/big.ts"; oc add -A; oc commit -q -m big; oc push -q origin main
+oc checkout -q topic; oc merge -q --no-edit main >/dev/null 2>&1; echo g > "$OC/guard.ts"; oc commit -q -am dropguard; printf 'carries the pass of %s: merged main\n' "$OA" > "$T/ok.md"
+check "BLOCK: a carry is refused when only a PR merged into another branch holds the reviewed head, naming the guard it lost" "1 1" "$( (cd "$OC" && bash "$R/bin/pr-steps" verify "$T/ok.md" >/dev/null 2>&1; echo $?) ) $( (cd "$OC" && bash "$R/bin/pr-steps" verify "$T/ok.md" 2>&1 >/dev/null) | grep -c 'guard.ts changed')"
+rm "$FX/pr_list_" "$FX/pr_list__base_topic" "$FX/pr_list__base_main"
+# a modify/delete conflict written into the tree without markers: keeping main's file over the PR's reviewed deletion is a change
+DG="$T/dclone"; git init -q -b main "$DG"; dc() { git -C "$DG" -c user.name=t -c user.email=t@t "$@"; }
+seq 1 20 > "$DG/f.ts"; dc add -A; dc commit -q -m base; dc checkout -q -b gone; dc rm -q f.ts; dc commit -q -m gone; DA=$(git -C "$DG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$DA"
+dc checkout -q main; sed -i 's/^3$/main/' "$DG/f.ts"; dc commit -q -am main; dc update-ref refs/remotes/origin/main main; dc symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+dc checkout -q gone; dc merge -q --no-edit main >/dev/null 2>&1; dc checkout -q main -- f.ts; dc add -A; dc commit -q --no-edit; printf 'carries the pass of %s: merged main\n' "$DA" > "$T/dk.md"
+check "BLOCK: a merge keeping main's file over the reviewed deletion is refused, naming the file" "1 1" "$( (cd "$DG" && bash "$R/bin/pr-steps" verify "$T/dk.md" >/dev/null 2>&1; echo $?) ) $( (cd "$DG" && bash "$R/bin/pr-steps" verify "$T/dk.md" 2>&1 >/dev/null) | grep -c 'f.ts changed since')"
+# the same conflict in a linguist-generated file is build output, which no carry counts
+DH="$T/hclone"; git init -q -b main "$DH"; dh() { git -C "$DH" -c user.name=t -c user.email=t@t "$@"; }
+seq 1 20 > "$DH/f.ts"; printf 'f.ts linguist-generated\n' > "$DH/.gitattributes"; dh add -A; dh commit -q -m base; dh checkout -q -b gone; dh rm -q f.ts; dh commit -q -m gone; DB=$(git -C "$DH" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$DB"
+dh checkout -q main; sed -i 's/^3$/main/' "$DH/f.ts"; dh commit -q -am main; dh update-ref refs/remotes/origin/main main; dh symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+dh checkout -q gone; dh merge -q --no-edit main >/dev/null 2>&1; dh checkout -q main -- f.ts; dh add -A; dh commit -q --no-edit; printf 'carries the pass of %s: merged main\n' "$DB" > "$T/hk.md"
+check "a merge keeping main's generated file over its deletion carries" 0 "$( (cd "$DH" && bash "$R/bin/pr-steps" verify "$T/hk.md" >/dev/null 2>&1; echo $?) )"
+# a criss-cross merge has two merge bases, which git merges itself: the replay leaves them to git unless a merged PR's head replaces them
+XG="$T/xclone"; git init -q -b main "$XG"; xc() { git -C "$XG" -c user.name=t -c user.email=t@t "$@"; }; xl() { seq 1 120 | sed "5,104s/.*/$1/"; }
+seq 1 120 > "$XG/f.md"; xc add f.md; xc commit -q -m x; xc checkout -q -b a1; xl a > "$XG/f.md"; GIT_COMMITTER_DATE='2099-01-02T00:00:00Z' xc commit -q -am a1; xc checkout -q main; xc checkout -q -b b1; xl b > "$XG/f.md"; xc commit -q -am b1
+xc checkout -q -b a a1; xc merge -q --no-commit b1 >/dev/null 2>&1; xl a > "$XG/f.md"; xc add -A; xc commit -q -m am
+xc checkout -q -b b b1; xc merge -q --no-commit a1 >/dev/null 2>&1; xl a > "$XG/f.md"; xc add -A; xc commit -q -m bm
+xc checkout -q a; sed -i 's/^4$/A4/' "$XG/f.md"; xc commit -q -am A; XA=$(git -C "$XG" rev-parse HEAD); echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$XA"
+xc checkout -q b; sed -i 's/^110$/B110/' "$XG/f.md"; xc commit -q -am B; xc update-ref refs/remotes/origin/main b; xc symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+xc checkout -q a; xc reset -q --hard "$(xc commit-tree -p "$XA" -p b -m merged "$(git -C "$XG" merge-tree --write-tree "$(git -C "$XG" rev-parse b)" "$XA" | sed -n 1p)")"
+printf 'carries the pass of %s: merged main\n' "$XA" > "$T/xk.md"
+: > "$T/merge-tree.log"
+check "a merge of main into a head with two merge bases carries, the replay leaving git both bases (no --merge-base)" "0 0" "$( (cd "$XG" && PATH="$T/shim:$PATH" bash "$R/bin/pr-steps" verify "$T/xk.md" >/dev/null 2>&1; echo $?) ) $(grep -c -e --merge-base "$T/merge-tree.log")"
 # a branch whose latest approach record has no `contract: 2` was started by a session on v1's skills: it finishes under the old records
 mkdir -p "$HOME/.mergeworthy/sessions"; echo "/p graph startup 0" > "$HOME/.mergeworthy/sessions/s-graph"; echo "/p v1 startup 0" > "$HOME/.mergeworthy/sessions/s-v1"
-printf 'Root cause: src/a.ts:3 does it\nBasis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | stays |\n| Fix it | 8 | ok |\nShared assumption: the bug is in this repo\n\nChosen: Fix it\n' > "$T/apo.md"; CLAUDE_CODE_SESSION_ID=s-graph prs approach "$T/apo.md" >/dev/null
+printf 'Root cause: src/a.ts:3 does it\nBasis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | stays |\n| Fix it | 8 | ok |\nShared assumption: the bug is in this repo\nProbe: rg -l a.ts -> only src/a.ts\n\nChosen: Fix it\n' > "$T/apo.md"; CLAUDE_CODE_SESSION_ID=s-graph prs approach "$T/apo.md" >/dev/null
 APF=$(ls -t "$HOME"/.claude/pr-steps/approach.* | head -n1)
 check "an approach recorded by a session on the graph catalog carries contract: 2" 1 "$(tail -n1 "$APF" | grep -c ' contract: 2$')"
 printf 'nothing worth changing\nCLEAN\n' > "$T/olb.md"
@@ -2566,6 +2896,7 @@ seq 1 5 >> "$GS/src/a.ts"; git -C "$GS" -c user.name=t -c user.email=t@t commit 
 r1=$(prss "$T/sr1.md"); echo t > "$GS/test/a.test.ts"; seq 1 300 > "$GS/README.md"; seq 1 300 > "$GS/pnpm-lock.yaml"; mkdir "$GS/.changeset"; seq 1 300 > "$GS/.changeset/config.json"; git -C "$GS" add -A; git -C "$GS" -c user.name=t -c user.email=t@t commit -qm c
 r2=$(prss "$T/sr0.md")
 check "pr-steps small: BLOCK with no test in the diff, BLOCK on a report with findings, records with both (docs, a lockfile and a changeset not counted)" "1 1 0" "$r1 $r2 $(prss "$T/sr2.md")"
+check "pr-steps small records its report as verify, shape, reverify and fresh, and notes it as a review" "verify shape reverify fresh|review" "$(cut -d' ' -f1 "$HOME/.claude/pr-steps/$(git -C "$GS" rev-parse HEAD)" | xargs)|$(git -C "$GS" notes --ref=drift show HEAD)"
 check "after pr-steps small, gh pr ready lacks only the approach and the gates" "approach, gates" "$(prhead "$GS" "$FX/pr_view_5" https://github.com/o/r/pull/5; python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr ready 5 -R o/r"},"cwd":sys.argv[1]}))' "$GS" | python3 "$R/hooks/pre-bash-guard.py" 2>&1 | grep -o 'no pr-steps [a-z, ]* record' | sed 's/no pr-steps //; s/ record//')"
 printf 'x\n## Outside this change\nNone.\n\nNO BUGS\nMERGE AS IS: yes\n\n## Verification\n- ran it\n\n## not_checked\n- Windows\n' > "$T/sr5.md"
 check "pr-steps small records a report whose verdict comes before its Verification and not_checked sections" 0 "$(prss "$T/sr5.md")"
@@ -2649,18 +2980,20 @@ printf 'pnpm test -> exit 0\npnpm lint -> exit 0\n' > "$T/g0.md"; printf 'pnpm t
 check "BLOCK: a test gate without its count, or with 0 tests" "1 1" "$(prs2 gates "$T/g0.md") $(prs2 gates "$T/g00.md")"
 printf 'pnpm test -> exit 0 (134 tests)\npnpm lint -> exit 0\n' > "$T/g2.md"; check "a green gates log records" 0 "$(prs2 gates "$T/g2.md")"
 check "BLOCK: gh pr ready with the five steps but no approach record" 2 "$(ready)"
-printf 'Root cause: src/a.ts:3 does it\nBasis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 5 | misses siblings |\n| Fix the shared helper | 8 | one place for all |\nShared assumption: the bug is in this repo\n\nChosen: Fix the shared helper\n' > "$T/ap.md"
-printf 'Root cause: src/a.ts:3 does it\nBasis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Fix the shared helper | 8 | only one |\nShared assumption: the bug is in this repo\n\nChosen: Fix the shared helper\n' > "$T/ap1.md"
-printf 'Basis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 8 | ok |\nShared assumption: the bug is in this repo\n\nChosen: Fix in place\n' > "$T/apnr.md"
-printf 'Root cause: src/a.ts:3 does it\nBasis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 6 | misses siblings |\nShared assumption: the bug is in this repo\n\nChosen: Fix in place\n' > "$T/ap6.md"
-printf 'Root cause: src/a.ts:3 does it\nBasis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 8 | ok |\nShared assumption: the bug is in this repo\n\nChosen: Rewrite\n' > "$T/apx.md"
-rc=; for c in 'Root cause: unknown yet, logged at 12:30' '- **Root cause:** src/a.ts:3 does it' 'Root cause: none, a feature'; do printf '%s\nBasis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 8 | ok |\nShared assumption: the bug is in this repo\n\nChosen: Fix in place\n' "$c" > "$T/aprc.md"; GR="$T/aprc-$((n=${n:-0}+1))"; git init -q "$GR"; git -C "$GR" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; rc="$rc $(cd "$GR" && bash "$R/bin/pr-steps" approach "$T/aprc.md" >/dev/null 2>&1; echo $?)"; done
+printf 'Root cause: src/a.ts:3 does it\nBasis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 5 | misses siblings |\n| Fix the shared helper | 8 | one place for all |\nShared assumption: the bug is in this repo\nProbe: rg -l a.ts -> only src/a.ts\n\nChosen: Fix the shared helper\n' > "$T/ap.md"
+printf 'Root cause: src/a.ts:3 does it\nBasis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Fix the shared helper | 8 | only one |\nShared assumption: the bug is in this repo\nProbe: rg -l a.ts -> only src/a.ts\n\nChosen: Fix the shared helper\n' > "$T/ap1.md"
+printf 'Basis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 8 | ok |\nShared assumption: the bug is in this repo\nProbe: rg -l a.ts -> only src/a.ts\n\nChosen: Fix in place\n' > "$T/apnr.md"
+printf 'Root cause: src/a.ts:3 does it\nBasis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 6 | misses siblings |\nShared assumption: the bug is in this repo\nProbe: rg -l a.ts -> only src/a.ts\n\nChosen: Fix in place\n' > "$T/ap6.md"
+printf 'Root cause: src/a.ts:3 does it\nBasis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 8 | ok |\nShared assumption: the bug is in this repo\nProbe: rg -l a.ts -> only src/a.ts\n\nChosen: Rewrite\n' > "$T/apx.md"
+rc=; for c in 'Root cause: unknown yet, logged at 12:30' '- **Root cause:** src/a.ts:3 does it' 'Root cause: none, a feature'; do printf '%s\nBasis: request: "fix it"\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 8 | ok |\nShared assumption: the bug is in this repo\nProbe: rg -l a.ts -> only src/a.ts\n\nChosen: Fix in place\n' "$c" > "$T/aprc.md"; GR="$T/aprc-$((n=${n:-0}+1))"; git init -q "$GR"; git -C "$GR" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; rc="$rc $(cd "$GR" && bash "$R/bin/pr-steps" approach "$T/aprc.md" >/dev/null 2>&1; echo $?)"; done
 check "BLOCK: an approach with no Root cause line citing a path:line, or one citing a time; a bold list item or a feature records" "1 1 0 0" "$(prs2 approach "$T/apnr.md")$rc"
 check "BLOCK: an approach with one candidate" 1 "$(prs2 approach "$T/ap1.md")"
 check "BLOCK: a chosen approach rated 6" 1 "$(prs2 approach "$T/ap6.md")"
 check "BLOCK: a chosen approach that is no candidate" 1 "$(prs2 approach "$T/apx.md")"
+grep -v '^Probe:' "$T/ap.md" > "$T/apnp.md"; sed 's/^Probe:.*/Probe:   -> nothing/' "$T/ap.md" > "$T/apne.md"
+check "BLOCK: an approach with no Probe line, naming pull-request step 5, or with no run before its ->" "1 1 1" "$(prs2 approach "$T/apnp.md") $(cd "$G2" && bash "$R/bin/pr-steps" approach "$T/apnp.md" 2>&1 | grep -c "Probe: <the run.*pull-request step 5") $(prs2 approach "$T/apne.md")"
 # the Basis line: the user's words, the goal's own failing run, a clean-cut error, or a report someone else wrote; never our own
-apb() { printf 'Root cause: %s\n%s| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | stays |\n| Fix it | 8 | ok |\nShared assumption: the bug is in this repo\n\nChosen: Fix it\n' "$1" "$2" > "$T/apb.md"; (cd "$T/apbr" && bash "$R/bin/pr-steps" approach "$T/apb.md" >/dev/null 2>&1; echo $?); }
+apb() { printf 'Root cause: %s\n%s| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | stays |\n| Fix it | 8 | ok |\nShared assumption: the bug is in this repo\nProbe: rg -l a.ts -> only src/a.ts\n\nChosen: Fix it\n' "$1" "$2" > "$T/apb.md"; (cd "$T/apbr" && bash "$R/bin/pr-steps" approach "$T/apb.md" >/dev/null 2>&1; echo $?); }
 git init -q "$T/apbr"; git -C "$T/apbr" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a  # its own repo: a recorded approach here reaches no other check
 echo '{"user":{"login":"nitedani","type":"User"},"body":"The login page fails."}' > "$FX/repos_o_r_issues_5"; echo '{"user":{"login":"nitedani","type":"User"},"body":"<img src=\"https://github.com/claude.png\" width=\"20\" height=\"20\" alt=\"Claude\"> *Claude wrote this.*\n\nA finding."}' > "$FX/repos_o_r_issues_6"; echo '{"user":{"login":"nitedani-agent","type":"User"},"body":"<img src=\"https://github.com/claude.png\" width=\"20\" height=\"20\" alt=\"Claude\"> *Claude wrote this.*\n\nA finding."}' > "$FX/repos_o_r_issues_comments_77"; echo '{"user":{"login":"renovate[bot]","type":"Bot"},"body":"Update x"}' > "$FX/repos_o_r_pulls_comments_78"
 check "the Basis forms record: the user's words, the goal's failing run, a clean-cut error, a person's issue (the posting account's own included), a GitLab issue, a markdown link" "0 0 0 0 0 0" \
@@ -2817,15 +3150,23 @@ check "BLOCK: a PR gh can't read, asking to retry" "2 1" "$(GH_STUB_403=1 rdy 'g
 check "BLOCK: a number gh finds no PR for, saying to check the repository and number" "2 1 0" "$(rdy 'gh pr ready 1 -R o/r' "$G2") $(grep -c "finds no PR (no pull requests found.*name no PR this account can see, so check them" "$T/err") $(grep -c 'retry once' "$T/err")"
 : > "$T/rdy.args"
 check "gh pr ready --undo, --undo=true, -h and --help, with no PR of the checkout too, never read the PR" "0 0 0 0 0" "$(rdy 'gh pr ready 5 -R o/r --undo' "$GO") $(rdy 'gh pr ready --undo=true 5 -R o/r' "$GO") $(rdy 'gh pr ready -h' "$GO") $(rdy 'gh pr ready --help' "$GO") $(grep -c 'pr view' "$T/rdy.args")"
-# pre-bash-guard: `gh pr merge` waits for a PR that is up to date with its base and whose CI ran after the base last touched its files; never --admin
+# pre-bash-guard: `gh pr merge` waits for a PR that is up to date with its base and whose CI ran after the base last touched its files; --admin only past rules the owner may bypass (below, with the ask)
+printf '## Merging\n- Merge each PR as soon as it is ready\n' >> "$HOME/.mergeworthy/projects/o/r.md"  # the owner's standing order: the checks below are on the merge's form
 M='gh pr merge 41 -R o/r --squash --delete-branch --subject "Fix it (#41)" --body ""'
 mpr() { # mergeStateStatus, when its last check completed
-  printf '{"url":"https://github.com/o/r/pull/41","headRefName":"fix","headRefOid":"hd","baseRefName":"main","mergeStateStatus":"%s","changedFiles":1,"files":[{"path":"a.py"}],"statusCheckRollup":[{"completedAt":"%s"}],"commits":[{"authors":[%s]}]}' "$1" "$2" "${3:-}" > "$FX/pr_view_41"; }
+  printf '{"url":"https://github.com/o/r/pull/41","headRefName":"fix","headRefOid":"hd","baseRefName":"main","mergeStateStatus":"%s","changedFiles":1,"files":[{"path":"a.py"}],"statusCheckRollup":[{"name":"ci","conclusion":"SUCCESS","completedAt":"%s"}],"commits":[{"authors":[%s]}]}' "$1" "$2" "${3:-}" > "$FX/pr_view_41"; }
 printf '{"total_commits":1,"commits":[{"sha":"b1","commit":{"committer":{"date":"2026-10-28T12:00:00Z"}}}]}' > "$FX/repos_o_r_compare_hd...main"
 printf '{"files":[{"filename":"a.py"}]}' > "$FX/repos_o_r_commits_b1"
 mpr CLEAN 2026-10-28T13:00:00Z
 check "a PR up to date with its base, CI run after the base's last commit, merges" 0 "$(guard "$M")"
-check "BLOCK: --admin, naming it" "2 1" "$(guard "$M --admin") $(grep -c 'never `gh pr merge --admin`' "$T/err")"
+printf '{"login":"me"}' > "$FX/user"; printf '{"owner":{"login":"o","type":"User"}}' > "$FX/repos_o_r"
+check "BLOCK: --admin on a repo of another login, naming it" "2 1" "$(guard "$M --admin") $(grep -c "\`gh pr merge --admin\` bypasses main's rules.*Here o/r is o's, not me's" "$T/err")"
+rm "$FX/user" "$FX/repos_o_r"
+check "BLOCK: a merge through gh api's PUT .../pulls/<N>/merge, by -X or --method, with fields or --input, naming gh pr merge; reading whether it merged passes" "2 1 2 2 0" \
+  "$(guard 'gh api -X PUT repos/o/r/pulls/41/merge -f merge_method=squash') $(grep -c 'merge with `gh pr merge`, where the merge checks run' "$T/err") $(guard 'gh api --method put /repos/o/r/pulls/41/merge --input m.json') $(guard "gh api -X PUT 'repos/{owner}/{repo}/pulls/41/merge'") $(guard 'gh api repos/o/r/pulls/41/merge')"
+echo '{"query":"mutation($id: ID!) { mergePullRequest(input: {pullRequestId: $id}) { clientMutationId } }","variables":{"id":"PR_1"}}' > "$T/mpr.json"
+check "BLOCK: a merge through gh api's POST .../merges or GraphQL's mergePullRequest, inline or from --input, with the same message; a GraphQL read passes, one searching for the word too" "2 1 2 2 1 0 0" \
+  "$(guard 'gh api -X POST repos/o/r/merges -f base=main -f head=fix') $(grep -c 'merge with `gh pr merge`, where the merge checks run' "$T/err") $(guard "gh api graphql -f query='mutation { mergePullRequest(input: {pullRequestId: \"PR_1\"}) { clientMutationId } }'") $(guard "gh api graphql --input $T/mpr.json") $(grep -c 'merge with `gh pr merge`, where the merge checks run' "$T/err") $(guard "gh api graphql -f query='{ viewer { login } }'") $(guard "gh api graphql -f query='query { search(query: \"mergePullRequest\", type: ISSUE, first: 1) { issueCount } }'")"
 check "a merge the guard passes records its PR as merged, pending until it ends (own_actions); one it blocks records nothing" "2 0 CLOSED_THREADS o/r#41 merged|" \
   "$(OWN_PENDING="$T/own-pm" guard "$M --admin") $(OWN_PENDING="$T/own-pm" guard "$M") $(cut -d' ' -f3- "$T/own-pm" | tr '\n' '|')"
 mpr BEHIND 2026-10-28T13:00:00Z
@@ -3083,6 +3424,12 @@ check "cd into \$(git rev-parse --show-toplevel)/sub resolves where the substitu
   "$(ibash "$IT" "cd $I && cd \"\$(git rev-parse --show-toplevel)/sub\" && echo x > a.txt" "$T/nogit") $(grep -c "follow them: $I/AGENTS.md" "$T/ierr")"
 check "a double-quoted bash -c, sh -c or setsid nohup bash -c script reads \$NAME from this shell, in the script's own quotes too, and its \\\$? stays the child's; BLOCK: into the repo, by its rule" "0 0 0 0 2 2" \
   "$(ibash "$IT" "P=$T/nogit; bash -c \"echo x > \$P/a; echo \\\$? > \$P/b\"") $(ibash "$IT" "P=$T/nogit; sh -c \"echo x > \$P/a\"") $(ibash "$IT" "P=$T/nogit; setsid nohup bash -c \"\$P/run.sh \$P/e.log; echo \\\$? > \$P/e.exit\" > \$P/o.log 2>&1 < /dev/null &") $(ibash "$IT" "P=$T/nogit; bash -c \"echo x > '\$P/a'\"") $(ibash "$IT" "P=$I; bash -c \"echo x > \$P/a; echo \\\$?\"" "$T/nogit") $(ibash "$IT" "P=$I; bash -c \"echo x > '\$P/a'\"" "$T/nogit")"
+check "a \$(...) this shell expands in a double-quoted bash -c script runs where this shell is, not where the script cds: from outside any repo it passes; BLOCK: from the repo" "0 2 1" \
+  "$(ibash "$IT" "bash -c \"cd $I; echo x > \$(pwd)/a\"" "$T/nogit") $(ibash "$IT" "bash -c \"cd $T/nogit; echo x > \$(pwd)/a\"") $(grep -c "follow them: $I/AGENTS.md" "$T/ierr")"
+check "a bash -c script's \$1.. are the words after its \$0, empty past them: a write there passes outside any repo; BLOCK: a word naming the repo, by its rule, from a function's body too, and one it can't tell" "0 0 2 2 2 2 1" \
+  "$(ibash "$IT" "bash -c 'echo x > \$1/a.log' _ \"$T/nogit\"" "$T/nogit") $(ibash "$IT" "f() { bash -c 'echo x > \$1/a' _; }; f $I" "$T/nogit") $(ibash "$IT" "bash -c 'cd \$1 && echo x > a' _ $I" "$T/nogit") $(ibash "$IT" "bash -c 'echo x > \$2/a' _ $T/nogit $I" "$T/nogit") $(ibash "$IT" "f() { bash -c 'echo x > \$1/a' _ $I; }; f b" "$T/nogit") $(ibash "$IT" "bash -c 'echo x > \$1/a' _ \$(ls)" "$T/nogit") $(grep -c '`$1` holds the output of `ls`' "$T/ierr")"
+check "a bash -c script's \$1.. leave out the command's redirects; BLOCK: past a \$0 that may split, or from xargs or su -c, they can't be told" "0 2 2 2 1" \
+  "$(ibash "$IT" "bash -c 'echo x > \$3/a' _ $T/nogit < $I" "$T/nogit") $(ibash "$IT" "bash -c 'echo x > \$1/a' \$(ls) $T/nogit" "$T/nogit") $(ibash "$IT" "echo $T/nogit | xargs bash -c 'echo x > \$1/a' _" "$T/nogit") $(ibash "$IT" "su -c 'echo x > \$1/a' me" "$T/nogit") $(grep -c 'a word the command starting this shell may give it' "$T/ierr")"
 check "BLOCK: in a child shell's script, \\\$NAME and a single-quoted script's \$NAME are the child's, and a value holding a space, a \$, a ; or a wildcard is source there: can't be told" "2 2 2 2 2 2" \
   "$(ibash "$IT" "P=$T/nogit; bash -c \"echo x > \\\$P/a\"" "$T/nogit") $(ibash "$IT" "P=$T/nogit; bash -c 'echo x > \$P/a'" "$T/nogit") $(ibash "$IT" "P='$T/nogit/a b'; bash -c \"echo x > \$P/f\"" "$T/nogit") $(ibash "$IT" "P='\$HOME'; HOME=$I bash -c \"echo x > \$P/a\"" "$T/nogit") $(ibash "$IT" "P='$T/nogit;cd $I'; bash -c \"cd \$P; echo x > f\"" "$T/nogit") $(ibash "$IT" "P='$I*'; bash -c \"cd \$P; echo x > f\"" "$T/nogit")"
 check "a function's body reads a name set before it and left alone, as written at the top level; BLOCK: into the repo, by its rule, and a call that passes the name" "0 2 2" \
@@ -3140,6 +3487,21 @@ check "\$(echo … | tr …) is a piece only when it can't print a /: over a wor
   "$(ibash "$IT" "for f in a; do echo x > \$(echo \$f | tr a b); done" "$T/nogit") $(ibash "$IT" "for f in \$(ls); do echo x > \$(echo \$f | tr / _); done" "$T/nogit") $(ibash "$IT" "for f in a/b; do echo x > \$(echo \$f | tr a b); done" "$T/nogit") $(ibash "$IT" "for f in \$(ls); do echo x > \$(echo \$f | tr a b); done" "$T/nogit") $(ibash "$IT" "for f in a; do echo x > \$(echo \$f | tr a /); done" "$T/nogit")"
 check "dirname is evaluated per value: a write under it from the repo's path blocks, from outside passes; a default is the value when the variable is unset" "2 0 2 0" \
   "$(ibash "$IT" "for f in $I/a; do echo x > \$(dirname \$f)/b; done" "$T/nogit") $(ibash "$IT" "for f in $T/nogit/a; do echo x > \$(dirname \$f)/b; done" "$T/nogit") $(ibash "$IT" "echo x > \${MW_UNSET:-$I}/b" "$T/nogit") $(ibash "$IT" "echo x > \${MW_UNSET:-$T/nogit}/b" "$T/nogit")"
+mkdir -p "$T/nogit/p"; ln -sfn "$I" "$T/nogit/link"
+check "a write under what mktemp makes, or realpath, readlink -f or pwd prints, is judged by that place: outside any repo it passes; BLOCK: mktemp's template, -p dir or \$TMPDIR in the repo, readlink -f there, pwd after a cd into it, by its rule" "0 0 0 0 0 0 2 2 2 2 2 2 1" \
+  "$(ibash "$IT" 'D=$(mktemp -d) && echo x > "$D/a"') $(ibash "$IT" 'T=$(readlink -f .) && echo x > "$T/b"' "$T/nogit") $(ibash "$IT" 'cd "$(realpath ..)" && echo x > out.txt' "$T/nogit/p") $(ibash "$IT" "cd $I && L=\$(realpath ../nogit); echo x > \$L/a.log" "$T/nogit") $(ibash "$IT" 'D=$(mktemp x.XXX) && echo x > $D' "$T/nogit") $(ibash "$IT" "cd $T/nogit; echo x > \"\$(pwd)/a\"") $(ibash "$IT" "D=\$(mktemp -d $I/x.XXX) && echo x > \"\$D/a\"" "$T/nogit") $(ibash "$IT" "D=\$(mktemp -p $I) && echo x > \$D" "$T/nogit") $(ibash "$IT" "export TMPDIR=$I; D=\$(mktemp -d) && echo x > \"\$D/a\"" "$T/nogit") $(ibash "$IT" 'D=$(mktemp x.XXX) && echo x > $D') $(ibash "$IT" 'T=$(readlink -f .) && echo x > "$T/b"') $(ibash "$IT" "cd $I; echo x > \"\$(pwd)/a\"" "$T/nogit") $(grep -c "follow them: $I/AGENTS.md" "$T/ierr")"
+check "BLOCK: realpath or readlink -f through a link, pwd -P in one, readlink without -f, a template or path it can't tell, and mktemp -t beside -p can't be told" "2 2 2 2 2 2 2 1" \
+  "$(ibash "$IT" 'cd "$(realpath ..)" && echo x > out.txt' "$T/nogit/link") $(ibash "$IT" 'echo x > "$(pwd -P)/a"' "$T/nogit/link") $(ibash "$IT" 'echo x > "$(readlink link)/a"' "$T/nogit") $(ibash "$IT" 'D=$(mktemp -d $MW_UNSET/x.XXX) && echo x > "$D/a"' "$T/nogit") $(ibash "$IT" 'L=$(realpath $MW_UNSET) && echo x > "$L/a"' "$T/nogit") $(ibash "$IT" "D=\$(mktemp -t -p $T/nogit x.XXX) && echo x > \"\$D/a\"" "$T/nogit") $(ibash "$IT" 'F=$(readlink -f link)/c.js; sed -i s/a/b/ $F' "$T/nogit") $(grep -c '`$F` holds the output of `readlink -f link`' "$T/ierr")"
+check "a failing mktemp, realpath or readlink prints nothing, and mktemp's name is a new one: BLOCK: a write after ; past a cd to a realpath -e that fails lands where the line is; a review output mktemp makes in drafts/ can't be placed; an operand that may split or glob can't be told; one plain operand after -- is read; the Xs and a \$\$ in a template's name stay out of its folder" "2 2 1 2 2 2 0 0 0 0" \
+  "$(ibash "$IT" "cd \"\$(realpath -e $T/nogit/absent)\"; echo x > out.txt") $(ibash "$IT" "D=\$(mktemp -p $T/nogit/drafts a.XXXX) && codex exec --skip-git-repo-check -o \"\$D\" x < /dev/null" "$T/nogit") $(grep -c "the review output \$D can't be placed" "$T/ierr") $(ibash "$IT" "X='$T/nogit $I'; echo x > \"\$(realpath \$X)/a\"" "$T/nogit") $(ibash "$IT" "echo x > \"\$(realpath $T/nogit/*)/a\"" "$T/nogit") $(ibash "$IT" "S='$T/nogit $I'; D=\$(mktemp -p \$S) && echo x > \"\$D\"" "$T/nogit") $(ibash "$IT" 'echo x > "$(realpath -- .)/a"' "$T/nogit") $(ibash "$IT" 'echo x > "$(readlink -f -- .)/a"' "$T/nogit") $(ibash "$IT" 'D=$(mktemp -u -- x.XXXX) && echo x > "$D"' "$T/nogit") $(ibash "$IT" "D=\$(mktemp -d $T/nogit/x.\$\$.XXXX) && echo x > \"\$D/a\"" "$T/nogit")"
+check "a 2>/dev/null leaves a substitution's output as it is: realpath, readlink -f, mktemp -d and pwd with it are placed; BLOCK: with 2>&1 or >/dev/null their output can't be told, and pwd's in the repo, by its rule" "0 0 0 0 2 2 2" \
+  "$(ibash "$IT" 'D=$(realpath ./p 2>/dev/null) && printf x > "$D/q.log"' "$T/nogit") $(ibash "$IT" 'D=$(readlink -f ./p 2>/dev/null) && printf x > "$D/q.log"' "$T/nogit") $(ibash "$IT" 'D=$(mktemp -d 2>/dev/null) && printf x > "$D/q.log"' "$T/nogit") $(ibash "$IT" 'D=$(pwd 2>/dev/null) && printf x > "$D/q.log"' "$T/nogit") $(ibash "$IT" 'D=$(realpath ./p 2>&1) && printf x > "$D/q.log"' "$T/nogit") $(ibash "$IT" 'D=$(realpath ./p >/dev/null) && printf x > "$D/q.log"' "$T/nogit") $(ibash "$IT" "cd $I && D=\$(pwd 2>/dev/null) && printf x > \"\$D/q.log\"" "$T/nogit")"
+RD="$T/nogit/rdp/drafts"; mkdir -p "$RD"; printf 'Note.\n' > "$RD/note.md"; sha256sum "$RD/note.md" | cut -d' ' -f1 | tr -d '\n' > "$RD/note.md.lint.sha"
+check "a command run only once D=\$(realpath …) or readlink -f exited 0 reads its output: a review launch after && passes and is recorded; BLOCK: after ; it may read the empty output of a failure, so the output in drafts/ can't be placed" "0 0 1 2 1" \
+  "$(ibash "$IT" 'D=$(realpath ./drafts) && codex exec --skip-git-repo-check -o "$D/note.review.out" review < /dev/null' "$T/nogit/rdp") $(ibash "$IT" 'D=$(readlink -f ./drafts) && codex exec --skip-git-repo-check -o "$D/note.review.out" review < /dev/null' "$T/nogit/rdp") $(ls "$RD"/note.review.out.launch | wc -l) $(ibash "$IT" 'D=$(realpath ./drafts); codex exec --skip-git-repo-check -o "$D/note.review.out" review < /dev/null' "$T/nogit/rdp") $(grep -c "can't be placed" "$T/ierr")"
+mkdir -p "$T/nogit/sub/p"; echo "OUT=$T/nogit/sub/p" > "$T/nogit/env.sh"
+check "a redirect to an empty name writes nothing: a source after it is still followed, so a write to \$OUT/result it sets passes; BLOCK: after a redirect to a command's output, which may be the sourced file" "0 2" \
+  "$(ibash "$IT" 'LOG=${LOG_FILE:-}; printf "starting\n" > "$LOG" || :; source ../env.sh; echo ok > "$OUT/result"' "$T/nogit/sub") $(ibash "$IT" 'printf "starting\n" > "$(cat log.txt)" || :; source ../env.sh; echo ok > "$OUT/result"' "$T/nogit/sub")"
 check "a piece reaches a check as a valid path: a file named by \$\$ under a new folder of the repo is that repo's; BLOCK: a cd to one, or a loop's glob under one, can't be told" "2 2 2" "$(ibash "$IT" "echo x > $I/new/a.\$\$" "$T/nogit") $(ibash "$IT" "cd /tmp/x.\$\$ && echo x > f" "$T/nogit") $(ibash "$IT" "for f in /tmp/x.\$\$/*; do echo x > \$f/a; done" "$T/nogit")"
 IS="$T/spaced repo"; mkdir -p "$IS"; git -C "$IS" init -q; printf 'rules\n' > "$IS/AGENTS.md"
 check "BLOCK: a loop word mixing a quoted part that holds a space with an unquoted expansion can't be told, from a variable or written out; with no space it passes" "2 2 0" \
@@ -3161,8 +3523,8 @@ check "a shift drops a call's word: a write to \$1 is the next word's, so only t
 check "BLOCK: a function no call on the line names, a call past a word bash may split, or three bodies deep can't tell its \$1" "2 2 2 2 2 2" \
   "$(ibash "$IT" "f() { echo x > \$1; }; \$g a" "$T/nogit") $(ibash "$IT" "f() { echo x > \$2/a; }; f \$(ls) b" "$T/nogit") $(ibash "$IT" "s='a b'; f() { echo x > \$2/a; }; f \$s b" "$T/nogit") $(ibash "$IT" "f() { echo x > \$2/a; }; f *.md b" "$T/nogit") $(ibash "$IT" "f() { echo x > \$2/a; }; g() { f \"\$@\" b; }; g a" "$T/nogit") $(ibash "$IT" "a() { b \$1; }; b() { c \$1; }; c() { echo x > \$1; }; a z" "$T/nogit")"
 check "a quoted word stays one word whatever it holds: the words after it are still known" 0 "$(ibash "$IT" "f() { echo x > \$2/a; }; f \"\$(ls)\" $T/nogit" "$T/nogit")"
-check "BLOCK: \$1 after a shift in a loop or branch, a shift by an expansion, in a subshell, after set --, or in a child shell's script can't be told; set -e leaves it known" "2 2 2 2 2 2 0" \
-  "$(ibash "$IT" "f() { while [ \$# -gt 0 ]; do echo x > \$1/a; shift; done; }; f b $I" "$T/nogit") $(ibash "$IT" "f() { [ -n x ] && shift; echo x > \$1/a; }; f $I b" "$T/nogit") $(ibash "$IT" "f() { shift \$n; echo x > \$1/a; }; f a b" "$T/nogit") $(ibash "$IT" "f() ( shift; echo x > \$1/a ); f b $I" "$T/nogit") $(ibash "$IT" "f() { set -- $I; echo x > \$1/a; }; f b" "$T/nogit") $(ibash "$IT" "f() { bash -c 'echo x > \$1/a' _ $I; }; f b" "$T/nogit") $(ibash "$IT" "f() { set -euo pipefail; set -o errexit; echo x > \$1/a; }; f b" "$T/nogit")"
+check "BLOCK: \$1 after a shift in a loop or branch, a shift by an expansion, in a subshell, or after set -- can't be told; set -e leaves it known" "2 2 2 2 2 0" \
+  "$(ibash "$IT" "f() { while [ \$# -gt 0 ]; do echo x > \$1/a; shift; done; }; f b $I" "$T/nogit") $(ibash "$IT" "f() { [ -n x ] && shift; echo x > \$1/a; }; f $I b" "$T/nogit") $(ibash "$IT" "f() { shift \$n; echo x > \$1/a; }; f a b" "$T/nogit") $(ibash "$IT" "f() ( shift; echo x > \$1/a ); f b $I" "$T/nogit") $(ibash "$IT" "f() { set -- $I; echo x > \$1/a; }; f b" "$T/nogit") $(ibash "$IT" "f() { set -euo pipefail; set -o errexit; echo x > \$1/a; }; f b" "$T/nogit")"
 check "BLOCK: a parameter a function's body writes to .review.out is refused by the review rule; a parameter naming a command stays refused" "2 1 2" \
   "$(ibash "$IT" "f() { printf CLEAN > \$1; }; f a.review.out" "$T/nogit") $(grep -c 'codex exec -o' "$T/ierr") $(ibash "$IT" "f() { G=\$1; \$G push; }; f git" "$T/nogit")"
 check "a cd in a subshell of a body ends with it: the dir and \$PWD hold after a call; BLOCK: a cd beside it in the body still moves the caller" "0 0 2" \
@@ -3222,12 +3584,12 @@ check "BLOCK: a quoted or subscripted name sets the variable too (export \"D=…
 echo "D=$I" > "$T/nogit/e.sh"
 check "BLOCK: a subshell that runs a source or . of a file setting D to the repo, a trap or an eval of a variable: a relative write after its cd \$D lands in the repo, or can't be told" "2 2 2 2" \
   "$(ibash "$IT" "D=$T/nogit; (source $T/nogit/e.sh; cd \$D; echo x > a.txt)" "$T/nogit") $(ibash "$IT" "D=$T/nogit; (. $T/nogit/e.sh; cd \$D; echo x > a.txt)" "$T/nogit") $(ibash "$IT" "D=$T/nogit; (trap 'D=$I' DEBUG; cd \$D; echo x > a.txt)" "$T/nogit") $(ibash "$IT" "D=$T/nogit; x='D=$I'; (eval \"\$x\"; cd \$D; echo x > a.txt)" "$T/nogit")"
-printf 'export PATH=/opt/bin:$PATH\nCI=1\n' > "$T/nogit/ok.sh"; echo 'L=$(pwd)/logs' > "$T/nogit/setl.sh"
+printf 'export PATH=/opt/bin:$PATH\nCI=1\n' > "$T/nogit/ok.sh"; echo 'L=$(cat d.txt)/logs' > "$T/nogit/setl.sh"
 check "a source or . of a file the line names runs its assignments here and keeps the line's others: a write to \$L/a.log after it passes, from a relative name after a cd too" "0 0 0" \
   "$(ibash "$IT" "L=$T/nogit/logs; cd $T/nogit && source $T/nogit/ok.sh && echo x > \$L/a.log") $(ibash "$IT" "W=$T/nogit; L=\$W/logs; . \$W/ok.sh; echo x > \$L/a.log") $(ibash "$IT" "L=$T/nogit/logs; cd $T/nogit && source ./ok.sh && echo x > \$L/a.log")"
 check "BLOCK: a sourced file that sets L to a command's output, or one that can't be read, leaves \$L unknown" "2 1 2 1" \
-  "$(ibash "$IT" "L=$T/nogit/logs; source $T/nogit/setl.sh; echo x > \$L/a.log" "$T/nogit") $(grep -c '`\$L` holds the output of `pwd`' "$T/ierr") $(ibash "$IT" "L=$T/nogit/logs; source $T/nogit/none.sh; echo x > \$L/a.log" "$T/nogit") $(grep -c '`\$L` holds a value set where it can.t follow' "$T/ierr")"
-mkdir -p "$T/nogit/p"; echo "L=$T/nogit" > "$T/nogit/safe.sh"; echo "L=$I" > "$T/nogit/p/safe.sh"; echo CI=1 > "$T/nogit/w.sh"; printf 'return\nL=%s\n' "$T/nogit" > "$T/nogit/ret.sh"; echo "cd $T/nogit" > "$T/nogit/cd.sh"
+  "$(ibash "$IT" "L=$T/nogit/logs; source $T/nogit/setl.sh; echo x > \$L/a.log" "$T/nogit") $(grep -c '`\$L` holds the output of `cat d.txt`' "$T/ierr") $(ibash "$IT" "L=$T/nogit/logs; source $T/nogit/none.sh; echo x > \$L/a.log" "$T/nogit") $(grep -c '`\$L` holds a value set where it can.t follow' "$T/ierr")"
+echo "L=$T/nogit" > "$T/nogit/safe.sh"; echo "L=$I" > "$T/nogit/p/safe.sh"; echo CI=1 > "$T/nogit/w.sh"; printf 'return\nL=%s\n' "$T/nogit" > "$T/nogit/ret.sh"; echo "cd $T/nogit" > "$T/nogit/cd.sh"
 check "BLOCK: a sourced file the line writes first, or one holding a return, isn't followed: \$L may still name the repo" "2 2" \
   "$(ibash "$IT" "L=$T/nogit; printf 'L=$I\n' > $T/nogit/w.sh; source $T/nogit/w.sh; echo x > \$L/a.txt" "$T/nogit") $(ibash "$IT" "L=$I; source $T/nogit/ret.sh; echo x > \$L/a.txt" "$T/nogit")"
 check "BLOCK: a source of a name without a / (bash looks it up in PATH), or one a && may skip before a later command, isn't followed: the write may land in the repo" "2 2" \
@@ -3456,15 +3818,32 @@ check "BLOCK: kill of an agent's claude process" 2 "$(kill_guard $APID)"
 check "kill of an ordinary process passes" 0 "$(kill_guard $OPID)"
 kill $(ps -o pid= --ppid $APID) $APID $OPID 2>/dev/null
 # ---------- pre-bash-guard: a compose stack takes no fixed host port or container name ----------
-printf '#!/bin/sh\ncase " $* " in *" config "*) f=$DC_FX; while [ $# -gt 0 ]; do case "$1" in -f) f=$2;; --file=*) f=${1#--file=};; esac; shift; done; [ -f "$f" ] && cat "$f";; esac\n' > "$T/bin/docker"; chmod +x "$T/bin/docker"
+printf '#!/bin/sh\ncase " $* " in *" config "*) f=$DC_FX; while [ $# -gt 0 ]; do case "$1" in -f) f=$2;; --file=*) f=${1#--file=};; esac; shift; done; [ -f "$f" ] && cat "$f";; *" ps "*) cat "$DC_PS"; case " $* " in *" -a "*) cat "$DC_PS.exited" 2>/dev/null || :;; esac;; *" stats "*) cat "$DC_STATS";; esac\n' > "$T/bin/docker"; chmod +x "$T/bin/docker"
 echo '{"services":{"db":{"ports":[{"target":5432,"published":"5432"}]}}}' > "$T/fixed.json"
 echo '{"services":{"web":{"container_name":"web","ports":[{"target":80}]}}}' > "$T/named.json"
 echo '{"services":{"web":{"ports":[{"target":80}]}}}' > "$T/assigned.json"
-dc_guard() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$T" | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?; }
+printf 'MemTotal: 41943040 kB\nMemAvailable: 31457280 kB\n' > "$T/mem-roomy"  # 40 GB, 30 available
+printf 'MemTotal: 41943040 kB\nMemAvailable: 6291456 kB\n' > "$T/mem-tight"  # 40 GB, 6 available: a 4 GB headroom
+dc_guard() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$T" | MERGEWORTHY_MEMINFO=${MI:-$T/mem-roomy} python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?; }
 check "BLOCK: compose up publishing a fixed host port" 2 "$(dc_guard "DC_FX=$T/fixed.json docker compose -p x up -d")"
 check "BLOCK: compose up with a container_name" 2 "$(dc_guard "DC_FX=$T/named.json docker compose -p x up -d")"
 check "compose up with Docker-assigned ports passes" 0 "$(dc_guard "DC_FX=$T/assigned.json docker compose -p x up -d")"
 check "compose up on the usual ports when the user asked passes" 0 "$(dc_guard "MERGEWORTHY_HOST_PORTS=user-asked DC_FX=$T/fixed.json docker compose -p x up -d")"
+echo '{"name":"b","services":{"web":{"ports":[{"target":80}]},"db":{},"init":{}}}' > "$T/mem.json"
+echo '{"name":"a","services":{"web":{"ports":[{"target":80}]},"db":{},"init":{}}}' > "$T/mem-a.json"
+printf 'a-web-1\ta\tweb\t/w/a/compose.yaml\na-db-1\ta\tdb\t/w/a/compose.yaml\nc-db-1\tc\tdb\t/w/c/compose.yaml\n' > "$T/ps-same"  # a: b's services, from another folder; c: only db
+printf 'a-init-1\ta\tinit\t/w/a/compose.yaml\n' > "$T/ps-same.exited"  # a one-shot service that ran and exited
+printf 'a-web-1\ta\tweb\t%s\na-db-1\ta\tdb\t%s\n' "$T/mem.json" "$T/mem.json" > "$T/ps-files"  # b's files, without its one-shot service
+printf 'c-db-1\tc\tdb\t/w/c/compose.yaml\n' > "$T/ps-other"
+printf 'a-web-1\t2GiB / 40GiB\na-db-1\t1024MiB / 40GiB\nc-db-1\t2.5GiB / 40GiB\n' > "$T/stats"
+MEM_UP="DC_STATS=$T/stats docker compose -f $T/mem.json -p b up -d"
+check "BLOCK: compose up when MemAvailable less a running project with its services, from another folder and with a one-shot service exited, is under the headroom, naming it" "2 1 1" "$(MI=$T/mem-tight dc_guard "DC_PS=$T/ps-same $MEM_UP") $(grep -c 'expected peak 3.0 GB.*headroom 4.0 GB' "$T/err") $(grep -c 'a 3.0 GB, c 2.5 GB' "$T/err")"
+check "BLOCK: compose up when MemAvailable less a running project from its files, started without one of its services, is under the headroom" "2 1" "$(MI=$T/mem-tight dc_guard "DC_PS=$T/ps-files $MEM_UP") $(grep -c 'expected peak 3.0 GB' "$T/err")"
+check "compose up passes on the same memory when the running projects have other services and other files" 0 "$(MI=$T/mem-tight dc_guard "DC_PS=$T/ps-other $MEM_UP")"
+check "compose up passes when the running project with its services is the one it starts" 0 "$(MI=$T/mem-tight dc_guard "DC_PS=$T/ps-same DC_STATS=$T/stats docker compose -f $T/mem-a.json -p a up -d")"
+check "compose up passes when docker stats fails" 0 "$(MI=$T/mem-tight dc_guard "DC_PS=$T/ps-same docker compose -f $T/mem.json -p b up -d")"
+check "compose up the machine can't hold passes when the user asked" 0 "$(MI=$T/mem-tight dc_guard "MERGEWORTHY_STACK_MEMORY=user-asked DC_PS=$T/ps-same $MEM_UP")"
+check "BLOCK: compose up the machine can't hold, on the usual ports the user asked for" "2 1" "$(MI=$T/mem-tight dc_guard "MERGEWORTHY_HOST_PORTS=user-asked DC_PS=$T/ps-same $MEM_UP") $(grep -c 'expected peak 3.0 GB' "$T/err")"
 check "BLOCK: compose up whose config fails (its ports can't be checked)" 2 "$(dc_guard "DC_FX=$T/missing.json docker compose -p x up -d")"
 cp "$T/assigned.json" "$HOME/assigned.json"
 check "compose up with a file under ~ passes" 0 "$(dc_guard 'docker compose -f ~/assigned.json -p x up -d')"
@@ -3483,6 +3862,14 @@ check "BLOCK: compose up reading a default-named file the same command writes in
 printf 'See #7.\n' > "$T/ref.md"
 check "post-lint: a 404 reference doesn't exist" 1 "$(python3 "$R/bin/post-lint" "$T/ref.md" --kind reply --repo o/r --parent none 2>&1 | grep -c "doesn't exist in o/r")"
 check "post-lint: a rate-limited check says it couldn't check, not that it doesn't exist" "1 0" "$(GH_STUB_403=1 python3 "$R/bin/post-lint" "$T/ref.md" --kind reply --repo o/r --parent none 2>&1 | grep -c "couldn't check it") $(GH_STUB_403=1 python3 "$R/bin/post-lint" "$T/ref.md" --kind reply --repo o/r --parent none 2>&1 | grep -c "doesn't exist")"
+mkdir -p "$T/plfx"; echo '{}' > "$T/plfx/repos_o_r_issues_8"; printf 'See #8, then #8 and #8 again.\n' > "$T/ref8.md"; : > "$T/ref8.args"
+plref() { XDG_CACHE_HOME="$T/plcache" FX="$T/plfx" GH_STUB_ARGS="$T/ref8.args" python3 "$R/bin/post-lint" "$T/ref8.md" --kind reply --repo o/r --parent none >/dev/null 2>&1; grep -c 'issues/8' "$T/ref8.args"; }
+check "post-lint: a reference named three times is asked once" 1 "$(plref)"
+check "post-lint: a reference found once is not asked again in a later run" 1 "$(plref)"
+sed -i 's/ [0-9]*$/ 1/' "$T/plcache/mergeworthy/refs"
+check "post-lint: a reference found more than a day ago is asked again" 2 "$(plref)"
+eolive 'See #9.'
+check "post-lint --edit-of: an edit adding a second mention of a reference that doesn't exist fails" "rc=1 1" "$(eo 'See #9 and #9 again.' | tail -1) $(eo 'See #9 and #9 again.' | grep -c "#9 doesn't exist in acme/x")"
 
 # ---------- the steward: ~/.mergeworthy/steward owns the mergeworthy repo and the follow-ups ----------
 SW="$T/steward"; mkdir -p "$SW" "$T/mwc"; git init -q "$T/mwc"; git -C "$T/mwc" remote add origin https://github.com/nitedani/mergeworthy.git
@@ -3513,14 +3900,14 @@ check "the steward's agent is found in JSON written with spaces" 0 "$(sg "git -C
 mv "$HOME/.t3/userdata/statev2.sqlite" "$T/state.bak"
 check "without T3's database, the session its watch dir's session file names is the steward; another isn't" "0 2" "$(sg "git -C $T/mwc push $T/elsewhere.git HEAD:main" steward-session "$T") $(sg "git -C $T/mwc push $T/elsewhere.git HEAD:main" other-session "$T")"
 mv "$T/state.bak" "$HOME/.t3/userdata/statev2.sqlite"
-printf '### FOLLOW-UP o/r#5: abcdef1234 by carol changes lines from your PR  <c>  at %s\n' "$(date -u -d '-40 minutes' +%FT%TZ)" > "$SW/events.log"; : > "$WD/events.log"; echo "$WD" > "$HOME/.claude/gh-watch-dirs.txt"
+printf '### MAINTAINER REVIEW o/r#5: abcdef1234 by carol reviews your PR  at %s\n' "$(date -u -d '-40 minutes' +%FT%TZ)" > "$SW/events.log"; : > "$WD/events.log"; echo "$WD" > "$HOME/.claude/gh-watch-dirs.txt"
 tr_file "Done."
 stop_in() { python3 -c 'import json,sys; print(json.dumps({"transcript_path":sys.argv[1],"cwd":sys.argv[2],"session_id":sys.argv[3]}))' "$T/tr.jsonl" "$1" "$2" \
   | MERGEWORTHY_STOP_CHECKIN=off python3 "$R/hooks/stop-lint.py" 2>"$T/err"; echo $?; }  # cwd session
 s1=$(stop_in "$SW" steward-session); echo "$SW" >> "$HOME/.claude/gh-watch-dirs.txt"; echo steward-session > "$SW/passed"
-check "with a steward, its unsorted FOLLOW-UP waits for its pass, then blocks it, not an orchestrator" "0 2 0" "$s1 $(stop_in "$SW" steward-session) $(stop "$WD")"
+check "with a steward, its unsorted MAINTAINER REVIEW waits for its pass, then blocks it, not an orchestrator" "0 2 0" "$s1 $(stop_in "$SW" steward-session) $(stop "$WD")"
 cp "$SW/events.log" "$WD/events.log"
-check "a FOLLOW-UP that fell back to the orchestrator's dir (no steward watcher ran) blocks the orchestrator" 2 "$(stop "$WD")"
+check "a MAINTAINER REVIEW that fell back to the orchestrator's dir (no steward watcher ran) blocks the orchestrator" 2 "$(stop "$WD")"
 echo 'abcdef1234 WORKED https://github.com/o/r/pull/5#issuecomment-1' > "$SW/followups-sorted.txt"
 check "a WORKED verdict sorts it" 0 "$(stop_in "$SW" steward-session)"
 echo "$WD" > "$HOME/.claude/gh-watch-dirs.txt"
@@ -3853,6 +4240,9 @@ sreg() { : > "$T/started"; python3 -c 'import json,sys; print(json.dumps({"sessi
     | python3 "$R/hooks/post-bash-register.py" 2>/dev/null; echo "$?:$(cat "$SWD/live/threads.txt" 2>/dev/null || echo none):$(cat "$SWD/threads.txt" 2>/dev/null || echo none):$(cat "$T/started")"; rm -f "$SWD/live/threads.txt"; }
 mkdir -p "$SWD/wt" "$SWD/live"; a=$(sreg); echo "$FPID" > "$SWD/live/gh-watch.pid"; echo "$SWD/live" >> "$HOME/.claude/gh-watch-dirs.txt"
 check "a PR from a worktree in the steward's folder starts its live dir's watcher, or joins it while it runs, not the folder's" "2:vikejs/vike 9:none:sess-s $SWD/live vikejs/vike 9|0:vikejs/vike 9:none:" "$a|$(sreg)"
+check "BLOCK: that PR's create with its output filtered (no URL) joins no watcher, naming the live dir to register it in" "2:none:none:1" \
+  "$(python3 -c 'import json,sys; print(json.dumps({"session_id":"sess-s","cwd":sys.argv[1],"tool_input":{"command":sys.argv[2]},"tool_response":{"stdout":"  - Event subscriptions are in preview"}}))' "$SWD/wt" "$PRC 2>&1 | tail -1" \
+    | python3 "$R/hooks/post-bash-register.py" 2>"$T/err"; echo "$?:$(cat "$SWD/live/threads.txt" 2>/dev/null || echo none):$(cat "$SWD/threads.txt" 2>/dev/null || echo none):$(grep -c "run \`gh-watch-start $SWD/live vikejs/vike <N>\`" "$T/err")")"
 # the push that follows is checked against the same watcher: the live dir's covers it, the quiet folder's doesn't
 printf 'Tier: S, because one fix\n\n- [ ] Fix it https://github.com/vikejs/vike/issues/1\n' > "$SWD/scope.md"; : > "$SWD/repos.txt"
 git init -q -b fix-telefunc "$SWD/wt"; git -C "$SWD/wt" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; git -C "$SWD/wt" remote add upstream https://github.com/vikejs/vike.git; quick "$SWD/wt"; (cd "$SWD/wt" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
@@ -3885,8 +4275,8 @@ check "every signal naming the public host passes: GH_REPO github.com with GH_HO
   "$(GH_REPO=github.com/vikejs/vike GH_HOST=github.com bgs sess-b "$GHE" "$CK4") $(GITLAB_HOST=gitlab.com GL_HOST=https://gitlab.com bgs sess-b "$GIC" "$CK4")"
 check "the same creates on github.com and gitlab.com pass: gh api, with --hostname github.com, gh -R OWNER/REPO and github.com/OWNER/REPO, glab -R PATH and gitlab.com/PATH" "0 0 0 0 0 0" \
   "$(bgs sess-b "$GHE" "$CK4") $(bgs sess-b "gh api --hostname github.com repos/vikejs/vike/issues -f title=x -F body=@$T/h1.md" "$CK4") $(bgs sess-b "gh issue create -R vikejs/vike --title x --body-file $T/h1.md" "$CK4") $(bgs sess-b "gh issue create -R github.com/vikejs/vike --title x --body-file $T/h1.md" "$CK4") $(bgs sess-b 'glab issue create -R ns/proj --title x' "$CK4") $(bgs sess-b "$GIC" "$CK4")"
-check "a create alone, after cd /abs &&, with 2>&1 or with --title \"\$(cat <file>)\" passes and starts the folder's watcher; after exec > file it starts none" \
-  "0 0 0 0|2:sess-b $TK4 vikejs/vike 9|2:sess-b $TK4 vikejs/vike 9|2:sess-b $TK4 vikejs/vike 9|0:" \
+check "a create alone, after cd /abs &&, with 2>&1 or with --title \"\$(cat <file>)\" passes and starts the folder's watcher; after exec > file it starts none, saying to register it" \
+  "0 0 0 0|2:sess-b $TK4 vikejs/vike 9|2:sess-b $TK4 vikejs/vike 9|2:sess-b $TK4 vikejs/vike 9|2:" \
   "$(bgs sess-b "$MRC" "$CK4") $(bgs sess-b "cd $CK4 && $MRC" "$T") $(bgs sess-b "$MRC 2>&1" "$CK4") $(bgs sess-b "glab mr create --draft -R gitlab.com/ns/proj --title \"\$(cat $T/h1.md)\"" "$CK4")|$(areg "$PRC" https://github.com/vikejs/vike/pull/9)|$(areg "cd $CK4 && $PRC" https://github.com/vikejs/vike/pull/9)|$(areg "$PRC 2>&1" https://github.com/vikejs/vike/pull/9)|$(areg "exec > $T/create.log; $GIC" '')"
 check "a create whose repository names the host (-R github.com/OWNER/REPO, --repo with its URL, --repo=) starts the folder's watcher as -R OWNER/REPO does" \
   "2:sess-b $TK4 vikejs/vike 9|2:sess-b $TK4 vikejs/vike 9|2:sess-b $TK4 vikejs/vike 9|2:sess-b $TK4 vikejs/vike 9" \
@@ -3948,6 +4338,17 @@ hb=; for m in 'The fix is committed locally on `fix-telefunc`. Pushing it, or te
              'Nothing will notify me when they finish. Tell me to check, or to post the reply now.' \
              "The reply to brillout is drafted and reviewed as CLEAN, but it isn't posted yet. Do you want me to post it now that CI is green?"; do tr_file "$m" work; hb="$hb $(slj)"; done
 check "BLOCK: the session's six hand-backs, as it wrote them" " 2 2 2 2 2 2" "$hb"
+# a "best solution?" in a work folder holding ratings is answered from them (the zqs session, nitedani/mergeworthy#252)
+BW="$HOME/.mergeworthy/work/best"; mkdir -p "$BW/strict-pr" "$HOME/.mergeworthy/work/unrated"; echo '| C3: one shared loop | 4 | splits |' > "$BW/strict-pr/rating.md"
+python3 -c 'import json; print(json.dumps({"type":"user","message":{"content":"Is this the best solution?"}}))' > "$T/tr.jsonl"
+check "BLOCK: a \"best solution?\" answer naming none of the work folder's rating files, naming it; one naming strict-pr/rating.md, or with no rating file, passes" "2 1 0 0" \
+  "$(slj 'Yes: one URL watcher for the whole page, shared by all stores.' 0 s-best "$BW") $(grep -c 'strict-pr/rating.md' "$T/err") $(slj 'No: strict-pr/rating.md rates C3, one shared loop, 4, and nothing since overturns it.' 0 s-best "$BW") $(slj 'Yes: one URL watcher for the whole page.' 0 s-best "$HOME/.mergeworthy/work/unrated")"
+BD="$HOME/.mergeworthy/work/deep"; mkdir -p "$BD/pr/finality" "$HOME/.mergeworthy/work/unrated/repo/.git" "$HOME/.mergeworthy/work/unrated/repo/docs/decisions"; echo '| K7 | 2 | splits |' > "$BD/pr/finality/converge.md"; echo '# ADR 1' > "$HOME/.mergeworthy/work/unrated/repo/docs/decisions/1.md"
+check "BLOCK: a \"best solution?\" answer when the only rating is two folders down (pr/finality/converge.md); a checkout's own docs/decisions/ is no rating" "2 0" \
+  "$(slj 'Yes.' 0 s-best "$BD") $(slj 'Yes.' 0 s-best "$HOME/.mergeworthy/work/unrated")"
+echo '| B | 8 | ok |' > "$BD/pr/approach.md"
+check "BLOCK: a \"best solution?\" answer naming pr/approach.md alone while pr/finality/converge.md also rates it, naming the one left; naming both passes" "2 1 0" \
+  "$(slj 'Yes, one scheduler is best. See pr/approach.md.' 0 s-best "$BD") $(grep -c 'names no file of (pr/finality/converge.md)' "$T/err") $(slj 'Yes: pr/approach.md rates it 8, and pr/finality/converge.md rates K7 2.' 0 s-best "$BD")"
 # the telefunc-room session's answer, as it wrote it, then the same with the attempt that failed, and a quoted phrase
 tr_file 'README tidied.'
 check "BLOCK: a fact left unchecked (\"I don't know whether\", \"I haven't read\"); its sentence quoting the failed attempt, or the phrase in quotes, passes" "2 2 0 0" \
@@ -3995,6 +4396,42 @@ check "replay: 'PR #3675 is still a draft' while the maintainer had marked it re
   "$(slj "I'm watching #3675 for replies. PR #3675 is still a draft with CI green. It waits on brillout." 0 s-fc "$T/vkr") $(grep -c 'is a draft, you say.*ready for review' "$T/err")"
 check "a PR state that matches GitHub passes; a conditional is no claim" "0 0" "$(slj 'https://github.com/vikejs/vike/pull/3675 is ready for review, and its CI is green.') $(slj 'Once vikejs/vike#3675 is merged, I will update the docs.')"
 check "BLOCK: a PR state claimed about a PR gh can't read" "2 1" "$(slj 'PR o/r#99 is still a draft.') $(grep -c "gh couldn't read that PR" "$T/err")"
+# A bare #N is looked up in the repos the session linked a PR or issue N of, newest first, before the checkout's remotes
+tr_said() { python3 - "$T/tr.jsonl" "$@" <<'PY'
+import json, sys
+out = open(sys.argv[1], 'w')
+for role, text in zip(sys.argv[2::2], sys.argv[3::2]):
+    out.write(json.dumps({"type": role, "message": {"content": text if role == 'user' else [{"type": "text", "text": text}]}}) + '\n')
+PY
+}
+pr12() { # repo state merged: its PR 12, with green checks
+  printf '{"state":"%s","draft":false,"merged":%s,"html_url":"https://example.invalid/%s/pull/12","head":{"sha":"s12"},"base":{"repo":{"full_name":"%s"}}}' "$2" "$3" "$1" "$1" > "$FX/repos_$(printf '%s' "$1" | tr / _)_pulls_12"
+  printf '{"check_runs":[{"name":"test","status":"completed","conclusion":"success"}]}' > "$FX/repos_$(printf '%s' "$1" | tr / _)_commits_s12_check-runs_per_page_100"; }
+pr12 acme/widgets closed true
+check "a bare #12 the session linked by URL earlier, in a checkout of another repo, is that PR: merged passes; open blocks with GitHub's state" "0 2 1" \
+  "$(tr_said user 'Merge https://github.com/acme/widgets/pull/12 please.' assistant '#12 is merged.'; slj '#12 is merged.' 0 s-fc "$T/vkr") $(pr12 acme/widgets open false; slj '#12 is merged.' 0 s-fc "$T/vkr") $(grep -c 'widgets/pull/12 is merged, you say.*GitHub says open' "$T/err")"
+pr12 acme/widgets closed true
+check "a bare #12 the session linked as acme/widgets#12 is that PR; a #13 it never linked still can't be read" "0 2 1" \
+  "$(tr_said assistant 'Opened acme/widgets#12.' assistant '#12 is merged.'; slj '#12 is merged.' 0 s-fc "$T/vkr") $(tr_said assistant 'Opened acme/widgets#12.' assistant '#13 is merged.'; slj '#13 is merged.' 0 s-fc "$T/vkr") $(grep -c "gh couldn't read that PR" "$T/err")"
+pr12 acme/gadgets open false
+check "two repos linked with the same #12: the newest link is the one checked" "2 1 0" \
+  "$(tr_said user 'See acme/widgets#12.' user 'Now https://github.com/acme/gadgets/issues/12 and its PR.' assistant '#12 is merged.'; slj '#12 is merged.' 0 s-fc "$T/vkr") $(grep -c 'gadgets/pull/12' "$T/err") $(tr_said user 'Now https://github.com/acme/gadgets/pull/12.' user 'See acme/widgets#12.' assistant '#12 is merged.'; slj '#12 is merged.' 0 s-fc "$T/vkr")"
+M12='For https://github.com/acme/gadgets/pull/12, #12 is merged.'; pr12 acme/widgets open false; pr12 acme/gadgets closed true
+check "a bare #12 in a message linking a PR 12 by URL is that PR, not one the session linked earlier, before and after the transcript holds the message" "0 0 2 2" \
+  "$(tr_said user 'See https://github.com/acme/widgets/pull/12.'; slj "$M12" 0 s-fc "$T/vkr") $(tr_said user 'See https://github.com/acme/widgets/pull/12.' assistant "$M12"; slj "$M12" 0 s-fc "$T/vkr") $(pr12 acme/widgets closed true; pr12 acme/gadgets open false; tr_said user 'See https://github.com/acme/widgets/pull/12.'; slj "$M12" 0 s-fc "$T/vkr") $(tr_said user 'See https://github.com/acme/widgets/pull/12.' assistant "$M12"; slj "$M12" 0 s-fc "$T/vkr")"
+M99=$'#12 is merged.\nAlso see https://github.com/acme/gadgets/pull/99 for the follow-up.'; pr12 acme/widgets open false; pr12 acme/gadgets closed true
+check "a final link to another number (gadgets/pull/99) doesn't outrank the session's link to the #12 claimed, before and after the transcript holds the message" "2 2 0 0" \
+  "$(tr_said user 'See https://github.com/acme/widgets/pull/12.'; slj "$M99" 0 s-fc "$T/vkr") $(tr_said user 'See https://github.com/acme/widgets/pull/12.' assistant "$M99"; slj "$M99" 0 s-fc "$T/vkr") $(pr12 acme/widgets closed true; pr12 acme/gadgets open false; tr_said user 'See https://github.com/acme/widgets/pull/12.'; slj "$M99" 0 s-fc "$T/vkr") $(tr_said user 'See https://github.com/acme/widgets/pull/12.' assistant "$M99"; slj "$M99" 0 s-fc "$T/vkr")"
+M12s='For acme/gadgets#12, #12 is merged.'; pr12 acme/widgets open false; pr12 acme/gadgets closed true
+check "a bare #12 in a message naming acme/gadgets#12 is that PR, before and after the transcript holds the message" "0 0 2 2" \
+  "$(tr_said user 'See https://github.com/acme/widgets/pull/12.'; slj "$M12s" 0 s-fc "$T/vkr") $(tr_said user 'See https://github.com/acme/widgets/pull/12.' assistant "$M12s"; slj "$M12s" 0 s-fc "$T/vkr") $(pr12 acme/widgets closed true; pr12 acme/gadgets open false; tr_said user 'See https://github.com/acme/widgets/pull/12.'; slj "$M12s" 0 s-fc "$T/vkr") $(tr_said user 'See https://github.com/acme/widgets/pull/12.' assistant "$M12s"; slj "$M12s" 0 s-fc "$T/vkr")"
+check "a T3 notice naming another repo's #12 is no session link: the bare #12 is the one the user linked" "0 0" \
+  "$(tr_said user 'Merge https://github.com/acme/widgets/pull/12 please.' user 'Delegated task q (Other work) [completed]: acme/gadgets#12.'; slj '#12 is merged.' 0 s-fc "$T/vkr") $(grep -c gadgets "$T/err")"
+check "a user message opening with a <https://…> autolink is typed text: the bare #12 is the PR it links" 0 \
+  "$(tr_said user '<https://github.com/acme/widgets/pull/12> is the one to merge.'; slj '#12 is merged.' 0 s-fc "$T/vkr")"
+git init -q "$T/gdg"; git -C "$T/gdg" remote add origin https://github.com/acme/gadgets.git; pr12 acme/gadgets closed true; tr_file 'x'
+check "BLOCK: acme/missing#12 is looked up in acme/missing only: its 404 can't be read, though the checkout's acme/gadgets#12 is merged" "2 1" \
+  "$(slj 'acme/missing#12 is merged.' 0 s-fc "$T/gdg") $(grep -c "gh couldn't read that PR" "$T/err")"
 check "BLOCK: a done message linking a PR gh can't read" "2 1" "$(slj 'All done: https://github.com/o/r/pull/404 has the fix.') $(grep -c "couldn't read it" "$T/err")"
 TK4="$HOME/.mergeworthy/work/fc-task"; mkdir -p "$TK4"; printf 'Tier: S, because one fix\n\n- [ ] Fix CI https://github.com/o/r/pull/71\n' > "$TK4/scope.md"
 uf() { python3 - "$T/tr.jsonl" "$@" <<'PY'
@@ -4273,6 +4710,28 @@ check "BLOCK: the same with the failed job on the second page of the pipeline's 
 tr_cmd 'cd /tmp/x && git push origin HEAD:fix'
 check "a session that pushed, with no scope.md in a work folder it used, is told to write one (stop-lint reads its git commands)" "2 1" "$(slj 'Pushed the fix.') $(grep -c 'no work folder it used has a scope.md' "$T/err")"
 check "the parses a stop made are kept for the session's next stop, which blocks the same" "1 2" "$(ls "$HOME/.claude/mergeworthy-parses/s-fc.json" | wc -l) $(slj 'Pushed the fix.')"
+# a stop reads only what the transcript gained since the last stop, and blocks as a read of every line does: each pair is the stop
+# from the kept facts, then from none
+KF="$HOME/.claude/mergeworthy-folds"; F='GENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.'
+twice() { local a; a=$(slj "$@"); rm -rf "$KF"; echo "$a $(slj "$@")"; }
+say() { python3 -c 'import json,sys; sys.stdout.write(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":sys.argv[1]}]}}) + sys.argv[2])' "$1" "${2-$'\n'}" >> "$T/tr.jsonl"; }
+rm -rf "$KF"; forks "$F"; k1=$(slj); say '#21 is ready.'
+check "a fork sent before the kept facts' last stop is still sent once: blocks, as a read of every line" "0 1 2 2" "$k1 $(ls "$KF" | wc -l) $(twice "$F")"
+rm -rf "$KF"; forks '#20 is in review.'; slj >/dev/null; h=$(say "$F" ''; tail -c 40 "$T/tr.jsonl"); python3 -c 'import sys; p=sys.argv[1]; b=open(p,"rb").read(); open(p,"wb").write(b[:-40])' "$T/tr.jsonl"
+k1=$(slj); printf '%s\n' "$h" >> "$T/tr.jsonl"; say 'Done.'
+check "a last line written halfway at a stop is read whole at the next" "0 2 2" "$k1 $(twice "$F")"
+rm -rf "$KF"; forks "$F" 'a'; slj >/dev/null; forks 'b'
+check "a transcript rewritten shorter is read from its start" "0 0" "$(twice "$F")"
+rm -rf "$KF"; forks "$F" 'a'; slj >/dev/null; forks 'bb' 'c' 'some longer text than before'
+check "a transcript rewritten in place is read from its start" "0 0" "$(twice "$F")"
+rm -rf "$KF"; pad=$(printf 'x%.0s' $(seq 70000)); forks "${pad:0:5000}" "$F" "$pad"; slj >/dev/null; forks "${pad:0:5000}" "${F/GENUINE-FORK/genuine-fork}" "$pad" && mv "$T/tr.jsonl" "$T/tr2.jsonl"; cp "$T/tr2.jsonl" "$T/tr.jsonl"
+check "a transcript replaced by another file, with the same start and end, is read from its start" "0 0" "$(twice "$F")"
+rm -rf "$KF"; forks '#20 is in review.' 'a'; slj >/dev/null
+python3 -c 'import glob,json,sys; sys.path.insert(0, sys.argv[1]); import report; [p]=glob.glob(sys.argv[2] + "/*.json"); k=json.load(open(p)); k["facts"]["forks_before_last"]=dict.fromkeys(report.forks(sys.argv[3]), 1); json.dump(k, open(p, "w"))' "$R/hooks" "$KF" "$F"
+rm -rf "$T/hk2"; mkdir "$T/hk2"; cp -r "$R/hooks" "$T/hk2/hooks"; echo "# another version" >> "$T/hk2/hooks/transcript_facts.py"
+check "the kept facts are what the next stop reads; another version of the code reads every line again" "2 0" "$(slj "$F") $(R="$T/hk2" slj "$F")"
+keep() { rm -rf "$KF"; forks '#20 is in review.' 'a'; slj >/dev/null; for p in "$KF"/*.json; do printf '%s' "$1" > "$p"; done; slj "$F"; }
+check "a kept file left empty or cut short is read again from the start" "0 0" "$(keep '') $(keep '{"version": "')"
 mkdir -p "$HOME/.mergeworthy/work/tilde"; printf 'Tier: S, because one fix\n' > "$HOME/.mergeworthy/work/tilde/scope.md"
 tr_cmd 'cd ~/.mergeworthy/work/tilde && git push origin HEAD:fix'
 check "a session that pushed from a work folder it spelled with ~, which has a scope.md, isn't told to write one" "0 0" "$(slj 'Pushed the fix.') $(grep -c 'no work folder it used has a scope.md' "$T/err")"
@@ -4304,6 +4763,8 @@ check "a typed stop, then a watcher's and a finished task's notice: the turn end
   "$(held user 'can you stop work please dont waste money' assistant 'Stopped.' user $'Watcher events in /w/events.log (mergeworthy:reply):\n### o/r#1 comment 2 by bob' assistant 'Held.' user 'Delegated task node:x [completed]: done' assistant 'Held.') $(wc -c < "$T/err") \
 $(held user 'Stooooppoopp' assistant 'Stopped.') $(held user 'pause until I say continue' assistant 'Paused.') \
 $(held user 'Please pause the work until I get back' assistant 'Paused.') $(held user 'stop 🙏' assistant 'Stopped.') $(held user 'állj' assistant 'Stopped.' user 'ok go on' assistant 'Held.')"
+check "BLOCK: a stop in what a T3 scheduled task or another agent sent is no stop the user typed" 2 \
+  "$(held user '[T3 Code: the agent in T3 thread "t" sent this message, not the user.] Check the open PRs, then pause' assistant 'Stopped.')"
 check "a stop or pause is a message that opens by asking for one of the work itself, or ends with \"then pause\"" "True True True True True True True True True True False False False False False False False False False False" \
   "$(PYTHONPATH="$R/hooks" python3 -c 'import steward, sys; print(*(steward.asks_stop(t) for t in sys.argv[1:]))' 'stop the work now' 'Stooooooooopppppppppppp' 'Állj meg' 'Please pause the work' \
      'make me four fox images, then pause' 'pause until I say continue' 'Please pause the work until I get back' 'stop…' 'pause 🙏' 'pause and wait for my approval' "don't stop" 'ne állj meg' 'stop-lint blocks too often' 'stop using sonnet' \
@@ -4350,6 +4811,15 @@ check "with a finality record on the head, the 6th change passes" 0 "$(bg 'git c
 for i in 7 8 9 10 11 12; do echo "p$i" >> "$SP/a.py"; git -C "$SP" add a.py; sc -m "p$i"; done  # 6 changes since the record, made without the hook
 echo p13 >> "$SP/a.py"; git -C "$SP" add a.py; r13=$(bg 'git commit -m p13' "$SP"); (cd "$SP" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null)
 check "BLOCK: a 7th change; a finality record on the head that holds the 6th unblocks it" "2 0" "$r13 $(bg 'git commit -m p13' "$SP")"
+# a plan of n steps lets each file the branch changed by its record take LIMIT + n changes, the last plan recorded on a head counting; a file new after it, LIMIT
+printf 'Pinnacle: one rule decides which lines a counts\nPlan:\n1. fold the patches\n2. drop the special case\n3. rename the rule\n' > "$T/fin3.md"
+printf 'Pinnacle: one rule decides which lines a counts\nPlan:\n1. fold the patches into that rule\n' > "$T/fin1b.md"
+sc -m p13; (cd "$SP" && bash "$R/bin/pr-steps" finality "$T/fin1b.md" >/dev/null && bash "$R/bin/pr-steps" finality "$T/fin3.md" >/dev/null)
+for i in 1 2 3 4 5 6; do echo "n$i" >> "$SP/n.py"; git -C "$SP" add n.py; [ $i = 6 ] || sc -m "n$i"; done; rn6=$(bg 'git commit -m n6' "$SP"); git -C "$SP" checkout -q HEAD -- n.py
+for i in 1 2 3 4 5 6 7; do echo "q$i" >> "$SP/a.py"; sc -am "q$i"; done
+echo q8 >> "$SP/a.py"; git -C "$SP" add a.py; r8=$(bg 'git commit -m q8' "$SP"); sc -m q8; echo q9 >> "$SP/a.py"; git -C "$SP" add a.py
+check "BLOCK: after a 1-step, then a 3-step plan recorded on one head, a file new after them at its 6th change; a planned file's 8th passes, its 9th is refused naming its budget" "2 0 2 1" \
+  "$rn6 $r8 $(bg 'git commit -m q9' "$SP") $(grep -c 'a.py would get a 9th change (its recorded plan allows 8)' "$T/err")"
 # merges: a merge of the base, being made or in the history, is no change, and a finality record on a merge commit counts
 SM="$T/simpm"; git init -q -b main "$SM"; mc() { if [ "$1" = commit ]; then shift; git -C "$SM" -c user.name=t -c user.email=t@t commit --trailer "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" "$@"; else git -C "$SM" -c user.name=t -c user.email=t@t "$@"; fi; }
 seq 1 10 > "$SM/a.py"; git -C "$SM" add -A; mc commit -q -m base
@@ -4359,6 +4829,16 @@ for i in 1 2 3 4 5; do echo "p$i" >> "$SM/a.py"; mc commit -qam "p$i"; done
 base_edit() { mc checkout -q main; sed -i "$1s/.*/main$1/" "$SM/a.py"; mc commit -qam "main$1"; git -C "$SM" update-ref refs/remotes/origin/main HEAD; mc checkout -q fix; mc merge -q --no-commit origin/main >/dev/null; }
 base_edit 1
 check "committing a merge of the base is no change, though the branch changed its file 5 times" 0 "$(bg 'git commit --no-edit' "$SM")"
+# so is one bringing in a base edit of a file changed 5 times since a review on the branch's own commit
+SM2="$T/simpm2"; git init -q -b main "$SM2"; seq 1 10 > "$SM2/a.py"; git -C "$SM2" add -A; git -C "$SM2" -c user.name=t -c user.email=t@t commit -q -m base
+git -C "$SM2" update-ref refs/remotes/origin/main HEAD; git -C "$SM2" checkout -q -b fix; echo r >> "$SM2/a.py"; git -C "$SM2" -c user.name=t -c user.email=t@t commit -qam reviewed
+(cd "$SM2" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null)
+for i in 1 2 3 4 5; do echo "m$i" >> "$SM2/a.py"; git -C "$SM2" -c user.name=t -c user.email=t@t commit -qam "m$i" --trailer "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"; done
+git -C "$SM2" checkout -q main; sed -i 1s/.*/main1/ "$SM2/a.py"; git -C "$SM2" -c user.name=t -c user.email=t@t commit -qam main1; git -C "$SM2" update-ref refs/remotes/origin/main HEAD
+git -C "$SM2" checkout -q fix; git -C "$SM2" -c user.name=t -c user.email=t@t merge -q --no-commit origin/main >/dev/null
+check "committing a merge that brings in a base edit of a file changed 5 times since the review is no change" 0 "$(bg 'git commit --no-edit' "$SM2")"
+git -C "$SM2" -c user.name=t -c user.email=t@t commit -q --no-edit; echo m6 >> "$SM2/a.py"; git -C "$SM2" add a.py
+check "BLOCK: the change after that merge is the 6th" 2 "$(bg 'git commit -m m6' "$SM2")"
 mc commit -q --no-edit; (cd "$SM" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null)
 for i in 6 7 8; do echo "p$i" >> "$SM/a.py"; mc commit -qam "p$i"; done; echo p9 >> "$SM/a.py"; git -C "$SM" add a.py
 check "a finality record on a merge commit starts the counts over" 0 "$(bg 'git commit -m p9' "$SM")"
@@ -4437,5 +4917,296 @@ git -C "$SD" add build
 check "BLOCK: a build/ file's 6th change, naming it alone" "2 1 0" "$(bg 'git commit -m b6' "$SD") $(grep -c 'build/bundle.js would get a 6th change' "$T/err") $(grep -c 'claude-swap.mjs\|api.ts' "$T/err")"
 git -C "$SD" reset -q build; git -C "$SD" add src.ts
 check "BLOCK: the hand-written source's 6th change beside them, naming it alone" "2 1 0" "$(bg 'git commit -m b6' "$SD") $(grep -c 'src.ts would get a 6th change' "$T/err") $(grep -c 'claude-swap.mjs\|api.ts\|bundle.js' "$T/err")"
+# a record is also a note under refs/notes/drift, which git copies through an amend and a rebase and every worktree reads; a squash made by a reset and a commit has none
+# rc <repo> <commit args>: an agent commit; its Fixture trailer gives each fixture's commits their own SHAs, so no two share a record
+rc() { git -C "$1" -c user.name=t -c user.email=t@t commit -q --trailer 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>' --trailer "Fixture: ${1##*/}" "${@:2}"; }
+# fx <dir>: a repo on main with a.py, origin/main at its base, on a new branch fix
+fx() { git init -q -b main "$1"; echo 0 > "$1/a.py"; git -C "$1" add -A; rc "$1" -m base; git -C "$1" update-ref refs/remotes/origin/main HEAD; git -C "$1" checkout -q -b fix; }
+# pre <dir> [<step> <out>]: its preflight and approach, then that step recorded on HEAD
+pre() { (cd "$1" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && { [ -z "${2:-}" ] || bash "$R/bin/pr-steps" "$2" "$3" >/dev/null; }); }
+SR="$T/simpr"; fx "$SR"; echo 1 >> "$SR/a.py"; rc "$SR" -am reviewed
+git -C "$SR" config notes.rewriteRef refs/notes/commits; pre "$SR" reverify "$T/rv.md"
+for i in 1 2 3 4 5; do echo "r$i" >> "$SR/a.py"; rc "$SR" -am "r$i"; done
+git -C "$SR" worktree add -q -b impl "$T/simpw" fix~5; pre "$T/simpw"
+for i in 1 2 3 4 5; do echo "w$i" >> "$T/simpw/a.py"; rc "$T/simpw" -am "w$i"; done
+# rebased inside the worktree onto a newer main, the reviewed commit has a new SHA, so only its note can count the review there
+git -C "$SR" checkout -q main; echo 0 > "$SR/c.py"; git -C "$SR" add c.py; rc "$SR" -m main0; git -C "$SR" update-ref refs/remotes/origin/main HEAD; git -C "$SR" checkout -q fix
+git -C "$T/simpw" rebase -q origin/main; echo w6 >> "$T/simpw/a.py"; git -C "$T/simpw" add a.py
+check "BLOCK: an implementer's worktree on another branch, made from the reviewed head and rebased there onto a newer main, counts its 6th change" "2 1" "$(bg 'git commit -m w6' "$T/simpw") $(grep -c 'a.py would get a 6th change' "$T/err")"
+(cd "$SR" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null); rc "$SR" --amend -m 'Edited subject'; echo r6 >> "$SR/a.py"; git -C "$SR" add a.py
+check "an amend of the subject of the head holding the finality record keeps it: the next change passes" 0 "$(bg 'git commit -m r6' "$SR")"
+for i in 6 7 8 9 10 11; do echo "r$i" >> "$SR/a.py"; rc "$SR" -am "r$i"; done
+git -C "$SR" checkout -q main; echo 0 > "$SR/b.py"; git -C "$SR" add b.py; rc "$SR" -m main1; git -C "$SR" update-ref refs/remotes/origin/main HEAD; git -C "$SR" checkout -q fix; git -C "$SR" rebase -q origin/main
+echo r12 >> "$SR/a.py"; git -C "$SR" add a.py
+check "BLOCK: a rebase keeps the finality record and its 1-step plan: the 7th change since it is refused" "2 1" "$(bg 'git commit -m r12' "$SR") $(grep -c 'a.py would get a 7th change (its recorded plan allows 6)' "$T/err")"
+SU="$T/simpu"; fx "$SU"; echo 1 > "$SU/ár.py"; git -C "$SU" add ár.py; rc "$SU" -m reviewed; pre "$SU" reverify "$T/rv.md"; (cd "$SU" && bash "$R/bin/pr-steps" finality "$T/fin3.md" >/dev/null)
+for i in 1 2 3 4 5 6 7; do echo "u$i" >> "$SU/ár.py"; rc "$SU" -am "u$i"; done; echo u8 >> "$SU/ár.py"; git -C "$SU" add ár.py; ru8=$(bg 'git commit -m u8' "$SU"); rc "$SU" -m u8; echo u9 >> "$SU/ár.py"; git -C "$SU" add ár.py
+check "a planned file named with a non-ASCII letter gets its plan's budget: its 8th change after a 3-step plan passes; BLOCK: its 9th, naming it" "0 2 1" \
+  "$ru8 $(bg 'git commit -m u9' "$SU") $(grep -c 'ár.py would get a 9th change (its recorded plan allows 8)' "$T/err")"
+# only the branch's own commits make a file planned: one a merge of main brought in before the plan keeps LIMIT
+SG="$T/simpmb"; fx "$SG"; echo 1 >> "$SG/a.py"; rc "$SG" -am reviewed; pre "$SG" reverify "$T/rv.md"
+git -C "$SG" checkout -q main; echo 0 > "$SG/upstream.py"; git -C "$SG" add upstream.py; rc "$SG" -m upstream; git -C "$SG" update-ref refs/remotes/origin/main HEAD
+git -C "$SG" checkout -q fix; git -C "$SG" -c user.name=t -c user.email=t@t merge -q --no-edit origin/main; (cd "$SG" && bash "$R/bin/pr-steps" finality "$T/fin3.md" >/dev/null)
+for i in 1 2 3 4 5; do echo "g$i" >> "$SG/upstream.py"; rc "$SG" -am "g$i"; done; echo g6 >> "$SG/upstream.py"; git -C "$SG" add upstream.py
+check "BLOCK: a file a merge of main brought in before a 3-step plan, at its 6th change, naming it with no plan budget" "2 1" \
+  "$(bg 'git commit -m g6' "$SG") $(grep -c 'upstream.py would get a 6th change on' "$T/err")"
+# a plan's steps end at its next heading: a numbered list under a later heading adds none
+# a plan's steps are its lines numbered 1, 2, 3… in turn: a later list restarting at 1 ends them; headings, fences and other lines don't
+# pn <dir> <plan text>: the plan lines of the finality note that text records on a reviewed head
+pn() { fx "$1"; echo 1 >> "$1/a.py"; rc "$1" -am reviewed; pre "$1" reverify "$T/rv.md"; printf 'Pinnacle: one rule decides which lines a counts\nPlan:\n%s' "$2" > "$1.md"
+  (cd "$1" && bash "$R/bin/pr-steps" finality "$1.md" >/dev/null); git -C "$1" notes --ref=drift show HEAD | grep '^plan'; }
+check "a 1-step plan, then an indented ## Tests heading with its own 1. and 2., records plan 1; a 2-step plan with a fenced column-one # comment between its steps records plan 2" "plan 1 plan 2" \
+  "$(pn "$T/plansteps-heading" $'1. fold the patches\n\n  ## Tests\n1. a case\n2. another case\n') $(pn "$T/plansteps-fence" $'1. fold the patches\n```sh\n# comment\n```\n2. drop the special case\n')"
+git -C "$SR" reset -q --soft origin/main; rc "$SR" -m squashed; for i in 1 2 3 4 5; do echo "s$i" >> "$SR/a.py"; rc "$SR" -am "s$i"; done; echo s6 >> "$SR/a.py"; git -C "$SR" add a.py; rs=$(bg 'git commit -m s6' "$SR")
+(cd "$SR" && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null); for i in 6 7 8 9 10; do echo "s$i" >> "$SR/a.py"; rc "$SR" -am "s$i"; done; echo s11 >> "$SR/a.py"; git -C "$SR" add a.py
+check "a squash of the reviewed branch by a reset and a commit counts nothing; BLOCK: the 6th change since its next review" "0 2" "$rs $(bg 'git commit -m s11' "$SR")"
+check "pr-steps adds refs/notes/drift to notes.rewriteRef beside the value it had" "refs/notes/commits refs/notes/drift" "$(git -C "$SR" config --get-all notes.rewriteRef | tr '\n' ' ' | sed 's/ $//')"
+# a recorder whose global config alone has the rewriteRef still adds it to the repo, so an amend from a home without it keeps the note
+SG="$T/simpg"; fx "$SG"; echo g >> "$SG/a.py"; rc "$SG" -am reviewed
+printf '[notes]\n\trewriteRef = refs/notes/drift\n' > "$T/gcfg"; (cd "$SG" && export GIT_CONFIG_GLOBAL="$T/gcfg" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null)
+rc "$SG" --amend -m 'reviewed, subject edited'; for i in 1 2 3 4 5; do echo "g$i" >> "$SG/a.py"; rc "$SG" -am "g$i"; done; echo g6 >> "$SG/a.py"; git -C "$SG" add a.py
+check "a recorder with notes.rewriteRef in its global config alone adds it to the repo; BLOCK: the 6th change after an amend from another home" "refs/notes/drift 2" "$(git -C "$SG" config --local --get-all notes.rewriteRef) $(bg 'git commit -m g6' "$SG")"
+# a squash in a rebase joins the reviewed commit's note onto the squashed commit, by design: a fixup and an empty commit squashed into it keep its review
+for q in fixup empty; do SA="$T/simpa-$q"; fx "$SA"
+  echo 1 >> "$SA/a.py"; rc "$SA" -am reviewed; pre "$SA" reverify "$T/rv.md"
+  if [ $q = fixup ]; then echo 2 >> "$SA/a.py"; rc "$SA" -a --fixup=HEAD; git -C "$SA" -c sequence.editor=true rebase -q -i --autosquash origin/main
+  else rc "$SA" --allow-empty -m 'why the change'; git -C "$SA" -c sequence.editor="sed -i 2s/^pick/squash/" -c core.editor=true rebase -q -i --keep-empty origin/main; fi
+  for i in 1 2 3 4 5; do echo "a$i" >> "$SA/a.py"; rc "$SA" -am "a$i"; done; echo a6 >> "$SA/a.py"; git -C "$SA" add a.py
+  check "BLOCK: the 6th change after a$([ $q = empty ] && echo 'n') $q commit was squashed into the reviewed commit, which keeps its review by design" "1 2" "$(git -C "$SA" rev-list --count origin/main..HEAD~5) $(bg 'git commit -m a6' "$SA")"
+done
+# a clean rebase onto an upstream edit two lines above the reviewed line, which moves it, keeps the review; so do a rebase that resets the author date and one with a conflict
+SW="$T/simpw2"; git init -q -b main "$SW"; seq 1 12 | sed 's/.*/v& = &/' > "$SW/a.py"; git -C "$SW" add -A; rc "$SW" -m base; git -C "$SW" update-ref refs/remotes/origin/main HEAD
+git -C "$SW" checkout -q -b fix; echo 'v = "a b"' >> "$SW/a.py"; sed -i 's/^v6 = 6$/v6 = 66/' "$SW/a.py"; rc "$SW" -am reviewed
+pre "$SW" reverify "$T/rv.md"
+for i in 1 2 3 4 5; do echo "w$i" >> "$SW/a.py"; rc "$SW" -am "w$i"; done
+git -C "$SW" checkout -q main; sed -i 's/^v4 = 4$/v4 = 44\nv4b = 4/' "$SW/a.py"; rc "$SW" -am up; git -C "$SW" update-ref refs/remotes/origin/main HEAD; git -C "$SW" checkout -q fix; git -C "$SW" rebase -q origin/main
+echo w6 >> "$SW/a.py"; git -C "$SW" add a.py; rr=$(bg 'git commit -m w6' "$SW")
+rv_=(); for b in date conflict; do SV="$T/simpv-$b"; git init -q -b main "$SV"; echo 'v = 1' > "$SV/a.py"; git -C "$SV" add -A; rc "$SV" -m base; git -C "$SV" update-ref refs/remotes/origin/main HEAD; git -C "$SV" checkout -q -b fix
+  sed -i 's/^v = 1$/v = 2/' "$SV/a.py"; GIT_AUTHOR_DATE=2021-01-01T00:00:00Z rc "$SV" -am reviewed
+  pre "$SV" reverify "$T/rv.md"
+  git -C "$SV" checkout -q main; if [ $b = date ]; then echo 0 > "$SV/b.py"; git -C "$SV" add b.py; else sed -i 's/^v = 1$/v = 3/' "$SV/a.py"; fi; rc "$SV" -am up
+  git -C "$SV" update-ref refs/remotes/origin/main HEAD; git -C "$SV" checkout -q fix
+  if [ $b = date ]; then git -C "$SV" rebase -q --reset-author-date origin/main
+  else git -C "$SV" rebase -q origin/main >/dev/null 2>&1; echo 'v = 4' > "$SV/a.py"; git -C "$SV" add a.py; GIT_EDITOR=true git -C "$SV" -c user.name=t -c user.email=t@t rebase --continue >/dev/null 2>&1; fi
+  for i in 1 2 3 4 5; do echo "w$i" >> "$SV/a.py"; rc "$SV" -am "w$i"; done; echo w6 >> "$SV/a.py"; git -C "$SV" add a.py; rv_[${#rv_[@]}]=$(bg 'git commit -m w6' "$SV")
+done
+check "BLOCK: the 6th change after a clean rebase onto an upstream edit near the reviewed line, a rebase that reset the author date, and a rebase with a conflict" "2 2 2" "$rr ${rv_[*]}"
+# git's log output encoding and signature display change no record: a Latin-1 subject and a signed commit hold their review
+for e in latin signed; do SE="$T/simpe-$e"; fx "$SE"
+  if [ $e = latin ]; then git -C "$SE" config i18n.commitEncoding ISO-8859-1; git -C "$SE" config i18n.logOutputEncoding ISO-8859-1; echo 1 >> "$SE/a.py"; rc "$SE" -am "$(printf 'review Caf\xe9')"
+  else ssh-keygen -q -t ed25519 -N '' -C t@t -f "$T/sign" <<< y >/dev/null; echo "t@t $(cat "$T/sign.pub")" > "$T/signers"; git -C "$SE" config gpg.format ssh; git -C "$SE" config user.signingkey "$T/sign"
+    git -C "$SE" config gpg.ssh.allowedSignersFile "$T/signers"; git -C "$SE" config log.showSignature true; echo 1 >> "$SE/a.py"; rc "$SE" -S -am reviewed; fi
+  pre "$SE" reverify "$T/rv.md"; rec=$?
+  for i in 1 2 3 4 5; do echo "e$i" >> "$SE/a.py"; rc "$SE" -am "e$i"; done; echo e6 >> "$SE/a.py"; git -C "$SE" add a.py
+  check "the review of a commit with git's $e output records; BLOCK: the 6th change since it" "0 2 1" "$rec $(bg 'git commit -m e6' "$SE") $(grep -c 'a.py would get a 6th change' "$T/err")"
+done
+# signature display, here on five signed edits after the review, adds nothing to what the count reads
+SE="$T/simpe-signed5"; fx "$SE"
+git -C "$SE" config gpg.format ssh; git -C "$SE" config user.signingkey "$T/sign"; git -C "$SE" config gpg.ssh.allowedSignersFile "$T/signers"; git -C "$SE" config log.showSignature true
+echo s5 >> "$SE/a.py"; rc "$SE" -am reviewed; pre "$SE" reverify "$T/rv.md"
+for i in 1 2 3 4 5; do echo "e$i" >> "$SE/a.py"; rc "$SE" -S -am "e$i"; done; echo e6 >> "$SE/a.py"; git -C "$SE" add a.py
+check "BLOCK: the 6th change after five signed edits, with log.showSignature true" 2 "$(bg 'git commit -m e6' "$SE")"
+# a second clone of a reviewed commit, which git clone gives no notes, reads the review from its record on that commit, as main does; the
+# same pr-steps run there is refused as recorded already and notes nothing
+SC="$T/simpc"; fx "$SC"
+echo c >> "$SC/a.py"; rc "$SC" -am reviewed; pre "$SC" reverify "$T/rv.md"
+SC2="$T/simpc2"; git clone -q -b fix "$SC" "$SC2"; git -C "$SC2" remote set-head origin main; pre "$SC2"
+rc2=$(cd "$SC2" && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null 2>&1; echo $?)
+for i in 1 2 3 4 5; do echo "c$i" >> "$SC2/a.py"; rc "$SC2" -am "c$i"; done; echo c6 >> "$SC2/a.py"; git -C "$SC2" add a.py
+check "a review run again in a second clone of its commit is refused as recorded and notes nothing; BLOCK: the 6th change since it there" "1 0 2" "$rc2 $(git -C "$SC2" notes --ref=drift list | wc -l) $(bg 'git commit -m c6' "$SC2")"
+# a stacked top branch with its own finality merges up its bottom branch, whose newer commit holds a finality: only the top's own
+# first-parent commits anchor, so its count runs from its own finality and its 3rd change since then passes
+SPC="$T/simppc"; fx "$SPC"; git -C "$SPC" branch -m fix low; echo 1 > "$SPC/b.py"; git -C "$SPC" add b.py; GIT_COMMITTER_DATE=2026-01-01T00:00:01Z rc "$SPC" -m L1
+git -C "$SPC" checkout -q -b top; pre "$SPC"; n=2
+for i in 1 2 3; do echo "t$i" >> "$SPC/a.py"; GIT_COMMITTER_DATE=2026-01-01T00:00:0${n}Z rc "$SPC" -am "T$i"; n=$((n+1)); [ $i = 1 ] && pre "$SPC" reverify "$T/rv.md"; done
+(cd "$SPC" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null)
+git -C "$SPC" checkout -q low; pre "$SPC"; echo 2 >> "$SPC/b.py"; GIT_COMMITTER_DATE=2026-01-01T00:00:06Z rc "$SPC" -am L2; pre "$SPC" reverify "$T/rv.md"; (cd "$SPC" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null)
+git -C "$SPC" checkout -q top; for i in 4 5; do echo "t$i" >> "$SPC/a.py"; GIT_COMMITTER_DATE=2026-01-01T00:00:0${n}Z rc "$SPC" -am "T$i"; n=$((n+1)); done
+GIT_COMMITTER_DATE=2026-01-01T00:00:09Z git -C "$SPC" -c user.name=t -c user.email=t@t merge -q --no-edit low; echo t6 >> "$SPC/a.py"; git -C "$SPC" add a.py
+check "a stacked top branch that merged up its bottom branch, whose newer commit holds a finality, counts from its own finality: its 3rd change since then passes" 0 "$(bg 'git commit -m T6' "$SPC")"
+# a review whose report is named across two lines records like any other
+SN="$T/simpn"; fx "$SN"
+echo 1 >> "$SN/a.py"; rc "$SN" -am reviewed; cp "$T/rv.md" "$T/moved report"$'\n'"v1"
+pre "$SN" reverify "$T/moved report"$'\n'"v1"
+echo n1 >> "$SN/a.py"; git -C "$SN" add a.py; rn=$(bg 'git commit -m n1' "$SN"); rc "$SN" -m n1
+for i in 2 3 4 5; do echo "n$i" >> "$SN/a.py"; rc "$SN" -am "n$i"; done; echo n6 >> "$SN/a.py"; git -C "$SN" add a.py
+check "the first change after a review whose report is named across two lines passes; BLOCK: its 6th" "0 2" "$rn $(bg 'git commit -m n6' "$SN")"
+# a finality report pr-steps refuses, here as already recorded for another step, notes nothing
+{ cat "$T/fin.md"; echo 'NO LOOP B COMMITS'; } > "$T/fin2.md"; (cd "$SN" && bash "$R/bin/pr-steps" reverify "$T/fin2.md" >/dev/null)
+check "BLOCK: a refused finality report leaves the 6th change refused" "1 2" "$(cd "$SN" && bash "$R/bin/pr-steps" finality "$T/fin2.md" >/dev/null 2>&1; echo $?) $(bg 'git commit -m n6' "$SN")"
+# a checkout with no git identity still gets its note, which an amend then carries
+SI="$T/simpi"; fx "$SI"; echo 1 >> "$SI/a.py"; rc "$SI" -am reviewed
+pre "$SI"
+ri=$(cd "$SI" && env -u GIT_AUTHOR_NAME -u GIT_AUTHOR_EMAIL -u GIT_COMMITTER_NAME -u GIT_COMMITTER_EMAIL -u EMAIL GIT_CONFIG_GLOBAL=/dev/null bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null 2>&1; echo $?)
+rc "$SI" --amend -m 'reviewed, subject edited'; for i in 1 2 3 4 5; do echo "i$i" >> "$SI/a.py"; rc "$SI" -am "i$i"; done; echo i6 >> "$SI/a.py"; git -C "$SI" add a.py
+check "a review recorded where git has no identity records its note; BLOCK: the 6th change since it, its subject amended" "0 2" "$ri $(bg 'git commit -m i6' "$SI")"
+# so does one whose repo sets an email alone under user.useConfigOnly
+SJ="$T/simpj"; fx "$SJ"; echo j >> "$SJ/a.py"; rc "$SJ" -am reviewed
+git -C "$SJ" config user.email j@j; git -C "$SJ" config user.useConfigOnly true; pre "$SJ"
+rj=$(cd "$SJ" && env -u GIT_AUTHOR_NAME -u GIT_AUTHOR_EMAIL -u GIT_COMMITTER_NAME -u GIT_COMMITTER_EMAIL -u EMAIL GIT_CONFIG_GLOBAL=/dev/null bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null 2>&1; echo $?)
+rc "$SJ" --amend -m 'reviewed, subject edited'; for i in 1 2 3 4 5; do echo "j$i" >> "$SJ/a.py"; rc "$SJ" -am "j$i"; done; echo j6 >> "$SJ/a.py"; git -C "$SJ" add a.py
+check "a review recorded where the repo sets user.email alone under user.useConfigOnly records its note; BLOCK: the 6th change since it, its subject amended" "0 2" "$rj $(bg 'git commit -m j6' "$SJ")"
+# a drift note comes from pr-steps alone: git commands writing refs/notes/drift are refused, reading it and other notes refs pass
+dn=; for c in 'git notes --ref=drift append -m finality HEAD' 'git notes --ref refs/notes/drift add -f -m finality HEAD' 'git -c core.notesRef=refs/notes/drift notes remove HEAD' \
+  'git update-ref refs/notes/drift HEAD' "git push $T/notes.git refs/notes/drift" 'git notes --ref=drift show HEAD' 'git notes append -m mine HEAD'; do dn="$dn $(bg "$c" "$SN")$(grep -c 'refs/notes/drift are written by .pr-steps <step>' "$T/err")"; done
+check "BLOCK: git notes add, append and remove on refs/notes/drift, update-ref and a push of it, naming pr-steps; git notes show of it and a note on another ref pass" " 21 21 21 21 21 00 00" "$dn"
+# a finality whose drift note can't be written records nothing, even where its record's folder is read-only too, and the 6th change stays refused
+SNF="$HOME/.claude/pr-steps/$(git -C "$SN" rev-parse HEAD)"; chmod a-w "$SN/.git/refs/notes" "$HOME/.claude/pr-steps"
+f1=$(cd "$SN" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null 2>&1; echo $?); chmod u+w "$SN/.git/refs/notes" "$HOME/.claude/pr-steps"
+check "BLOCK: a finality whose drift note can't be written fails, records nothing and leaves the 6th change refused" "1 0 2" "$([ "$f1" = 0 ] || echo 1) $(grep -c '^finality ' "$SNF") $(bg 'git commit -m n6' "$SN")"
+# a finality waiting on the drift notes' lock while another worktree records quick on the same commit leaves that record whole
+git -C "$SN" worktree add -q --detach "$T/simpn2" HEAD; git -C "$SN" config core.filesRefLockTimeout 2000; : > "$SN/.git/refs/notes/drift.lock"
+(cd "$SN" && exec bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null 2>&1) & fp=$!
+for _ in $(seq 50); do grep -q '^finality ' "$SNF" && break; kill -0 $fp 2>/dev/null || break; sleep 0.1; done; quick "$T/simpn2"; wait $fp; f2=$?
+rm "$SN/.git/refs/notes/drift.lock"; git -C "$SN" config --unset core.filesRefLockTimeout
+check "a finality whose note waits on a held lock fails and records nothing; quick, recorded meanwhile from another worktree, stays" "1 0 1" "$([ "$f2" = 0 ] || echo 1) $(grep -c '^finality ' "$SNF") $(grep -c '^quick ' "$SNF")"
+# a finality whose record can't be appended after its note: the same pr-steps again records it, its note written once, and the 6th change passes
+chmod a-w "$SNF"; f3=$(cd "$SN" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null 2>&1; echo $?); chmod u+w "$SNF"
+f4=$(cd "$SN" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null 2>&1; echo $?)
+check "a finality whose record append fails, run again, records once with one note; the 6th change passes" "1 0 1 1 0" "$([ "$f3" = 0 ] || echo 1) $f4 $(grep -c '^finality ' "$SNF") $(git -C "$SN" notes --ref=drift show HEAD | grep -cx finality) $(bg 'git commit -m n6' "$SN")"
+# under a 1 KiB file-size limit a finality record either records whole or anchors nothing: its exit and the next change's verdict agree
+rc "$SN" -m n6; for i in 1 2 3 4; do echo "u$i" >> "$SN/a.py"; rc "$SN" -am "u$i"; done; echo u5 >> "$SN/a.py"; git -C "$SN" add a.py
+fu=$(cd "$SN" && bash -c 'ulimit -f 1; bash "$@"' bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null 2>&1; echo $?); vu=$(bg 'git commit -m u5' "$SN")
+check "a finality record under a 1 KiB file-size limit: recorded and the 6th passes, or refused and the 6th is refused" yes "$({ [ "$fu" = 0 ] && [ "$vu" = 0 ]; } || { [ "$fu" != 0 ] && [ "$vu" = 2 ]; } && echo yes || echo "no: $fu $vu")"
+# a file named with a byte that isn't UTF-8, changed before the review, reads like any other
+SX="$T/simpx"; fx "$SX"
+echo 0 > "$SX/legacy-"$'\xff'".py"; git -C "$SX" add -A; rc "$SX" -m legacy; echo 1 >> "$SX/a.py"; rc "$SX" -am reviewed
+pre "$SX" reverify "$T/rv.md"
+echo x1 >> "$SX/a.py"; git -C "$SX" add a.py
+check "the first change after a review, on a branch that earlier added a file whose name isn't UTF-8, passes" 0 "$(bg 'git commit -m x1' "$SX")"
+# git's display settings and the checkout's attributes don't hide a record on its own commit
+SZ="$T/simpz"; fx "$SZ"
+echo 'y = 1' >> "$SZ/a.py"; rc "$SZ" -am reviewed; pre "$SZ" reverify "$T/rv.md"
+git -C "$SZ" config diff.noprefix true; for i in 1 2 3 4 5; do echo "z$i" >> "$SZ/a.py"; rc "$SZ" -am "z$i"; done; echo z6 >> "$SZ/a.py"; git -C "$SZ" add a.py; rz=$(bg 'git commit -m z6' "$SZ")
+git -C "$SZ" config --unset diff.noprefix; git -C "$SZ" checkout -q a.py; git -C "$SZ" worktree add -q -b attr "$T/simpz-w" fix; echo 'a.py -diff' > "$T/simpz-w/.gitattributes"; git -C "$T/simpz-w" add .gitattributes; rc "$T/simpz-w" -m attributes
+pre "$T/simpz-w"; echo z6 >> "$T/simpz-w/a.py"; git -C "$T/simpz-w" add a.py
+check "BLOCK: the 6th change since a review with diff.noprefix set, and in a worktree whose .gitattributes marks the file -diff" "2 2" "$rz $(bg 'git commit -m z6' "$T/simpz-w")"
+# a cherry-pick onto another branch carries no note, by design
+SF="$T/simpf"; git init -q -b main "$SF"; printf 'class C:\n    def a(self):\n        return 1\n    def b(self):\n        return 1\n' > "$SF/a.py"; git -C "$SF" add -A; rc "$SF" -m base; git -C "$SF" update-ref refs/remotes/origin/main HEAD
+git -C "$SF" checkout -q -b fix; sed -i '3s/1/2/' "$SF/a.py"; rc "$SF" -am a2; pre "$SF" reverify "$T/rv.md"
+git -C "$SF" checkout -q -b pick main; echo 0 > "$SF/c.py"; git -C "$SF" add c.py; rc "$SF" -m other; git -C "$SF" -c user.name=t -c user.email=t@t cherry-pick fix >/dev/null; pre "$SF"
+for i in 1 2 3 4 5; do echo "# $i" >> "$SF/a.py"; rc "$SF" -am "c$i"; done; echo '# 6' >> "$SF/a.py"; git -C "$SF" add a.py
+check "the 6th change after a cherry-pick of the reviewed commit to another branch passes: it carries no record" 0 "$(bg 'git commit -m c6' "$SF")"
+# a message amend keeps a finality record on a merge commit and a review on an empty commit
+SG="$T/simpg2"; fx "$SG"
+echo 1 >> "$SG/a.py"; rc "$SG" -am reviewed; pre "$SG" reverify "$T/rv.md"
+for i in 1 2 3 4 5; do echo "g$i" >> "$SG/a.py"; rc "$SG" -am "g$i"; done; git -C "$SG" checkout -q main; echo 0 > "$SG/b.py"; git -C "$SG" add b.py; rc "$SG" -m main1; git -C "$SG" update-ref refs/remotes/origin/main HEAD
+git -C "$SG" checkout -q fix; git -C "$SG" -c user.name=t -c user.email=t@t merge -q --no-edit origin/main; (cd "$SG" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null); rc "$SG" --amend -m 'clarify the merge subject'
+echo g6 >> "$SG/a.py"; git -C "$SG" add a.py; rg=$(bg 'git commit -m g6' "$SG")
+SE2="$T/simpe2"; fx "$SE2"; rc "$SE2" --allow-empty -m empty
+pre "$SE2" reverify "$T/rv.md"; rc "$SE2" --amend --allow-empty -m 'new empty subject'
+for i in 1 2 3 4 5; do echo "e$i" >> "$SE2/a.py"; rc "$SE2" -am "e$i"; done; echo e6 >> "$SE2/a.py"; git -C "$SE2" add a.py
+check "the change after a message-amended merge holding finality passes; BLOCK: the 6th change since a message-amended empty commit's review" "0 2" "$rg $(bg 'git commit -m e6' "$SE2")"
+# ---------- pre-bash-guard: a merge, a push to the default branch or a release, in a repo with a project file, and a command ~/.mergeworthy/ask-first lists, run on the owner's ask ----------
+# the ask: the message the user last typed (not a T3 prompt or a tool result), a sentence with the words that is no question and has no negation; or the project file's `## Merging` order
+said() { # the messages the user typed, in order: the session's transcript, a tool result after them
+  python3 -c 'import json,sys
+for m in sys.argv[1:]: print(json.dumps({"type":"user","message":{"role":"user","content":m}})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":"ok"}]}}))
+print(json.dumps({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"merge it"}]}}))' "$@" > "$T/ask.jsonl"; }
+lg() { # command [cwd]: pre-bash-guard's exit code with $T/ask.jsonl as the session's transcript, its message in $T/err
+  python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2],"transcript_path":sys.argv[3]}))' "$1" "${2:-$T}" "$T/ask.jsonl" | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?; }
+sed -i '/^## Merging/,$d' "$HOME/.mergeworthy/projects/o/r.md"; mpr CLEAN 2026-10-28T13:00:00Z
+printf '{"total_commits":1,"commits":[{"sha":"b1","commit":{"committer":{"date":"2026-10-28T12:00:00Z"}}}]}' > "$FX/repos_o_r_compare_hd...main"; printf '{"files":[{"filename":"b.py"}]}' > "$FX/repos_o_r_commits_b1"
+said 'looks good'
+check "BLOCK: a merge nobody asked for, naming the way out" "2 1" "$(lg "$M") $(grep -c "needs their ask.*reply \`merge\` (mergeworthy:merging steps 3-4)" "$T/err")"
+said 'thanks'; check "a merge the user's last message asks for passes: merge, mergeld, the PR's URL with merge and release, beside another PR held back, after let's, a bullet, I want you to, kérlek" "0 0 0 0 0 0 0 0" \
+  "$(said "Don't merge #40. Merge #41."; lg "$M") $(said 'merge it'; lg "$M") $(said 'Let’s merge #41.'; lg "$M") $(said '- Merge #41.'; lg "$M") $(said 'I want you to merge #41.'; lg "$M") $(said 'kérlek mergeld'; lg "$M") $(said 'mergeld kerlek'; lg "$M") $(said 'https://github.com/o/r/pull/41 merge and release'; lg "$M")"
+check "BLOCK: an ask naming another PR (in its own sentence or clause, or another repo's), a question (a URL ending it too), a negation (English, Hungarian), an older ask, a mention, an ask put off, a T3 scheduled prompt" "2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2" \
+  "$(said 'merge #40'; lg "$M") $(said 'is #41 merged?'; lg "$M") $(said "don't merge it yet"; lg "$M") $(said 'ne mergeld'; lg "$M") $(said 'nem kell mergelni'; lg "$M") $(said 'majd en mergelem'; lg "$M") \
+$(said 'Review #41. Merge #40.'; lg "$M") $(said 'Merge #40, and review #41.'; lg "$M") $(said 'Merge it, but not before CI passes.'; lg "$M") $(said 'Merge https://github.com/o/r/pull/41?'; lg "$M") $(said 'Merge https://github.com/o/pkg/pull/41'; lg "$M") $(said 'merge it' 'wait, not yet'; lg "$M") $(said 'Resolve the merge conflicts.'; lg "$M") $(said 'Merge #41 after I review it.'; lg "$M") $(said 'the merge went fine'; lg "$M") $(said 'thanks' '[T3 Code: scheduled task "zqs-check" sent this prompt.] Goal: merge and land PR #41'; lg "$M") $(said 'land PR #23'; lg "$M")"
+printf '## Merging\n- Merge each PR as soon as it is ready (gates, CI)\n' >> "$HOME/.mergeworthy/projects/o/r.md"
+check "a merge under the project file's standing order passes with no ask, or with another PR held back; BLOCK: the user's last message holding it back wins over the order, a past 'merged' too" "0 0 2 2 2 2" \
+  "$(said 'thanks'; lg "$M") $(said "Don't merge #40."; lg "$M") $(said 'Dont merge pr when ready, I want to see it.'; lg "$M") $(said 'ne mergeld'; lg "$M") $(said "Don't merge #41."; lg "$M") $(said "I don't want it merged yet."; lg "$M")"
+sed -i '/^## Merging/,$d' "$HOME/.mergeworthy/projects/o/r.md"
+# --admin merges past the base's rules only on the owner's own user repo, every rule on the base from a ruleset GitHub lets them always bypass, no
+# classic protection, and on their ask: the typed one, or the project file's order; a repo with no project file has no standing order
+adm() { # login, repo owner, owner type, the ruleset's current_user_can_bypass
+  printf '{"login":"%s"}' "$1" > "$FX/user"; printf '{"owner":{"login":"%s","type":"%s"}}' "$2" "$3" > "$FX/repos_o_r"
+  printf '[{"type":"update","ruleset_id":7}]' > "$FX/repos_o_r_rules_branches_main_per_page_100"; printf '{"name":"carry","current_user_can_bypass":"%s"}' "$4" > "$FX/repos_o_r_rulesets_7"
+  echo 'gh: Branch not protected (HTTP 404)' > "$FX/repos_o_r_branches_main_protection.err"; }
+MA="$M --admin"; adm o o User always
+check "an --admin merge on the owner's own repo, its ruleset always bypassable, no classic protection, asked for as merge #41, passes; with the project file's order too" "0 0" \
+  "$(said 'merge #41'; lg "$MA") $(said 'looks good'; printf '## Merging\n- Merge each PR as soon as it is ready\n' >> "$HOME/.mergeworthy/projects/o/r.md"; lg "$MA"; sed -i '/^## Merging/,$d' "$HOME/.mergeworthy/projects/o/r.md")"
+said 'merge #41'
+check "an --admin merge with GH_HOST naming another host reads the login, repo, rules and protection from github.com" "0 5 5" \
+  "$(rm -f "$T/args"; GH_HOST=github.example.com GH_STUB_ARGS="$T/args" lg "$MA") $(grep -cE '^api (--hostname github.com )?(user|repos/o/r|repos/o/r/(rules|rulesets|branches)/.*)$' "$T/args") $(grep -cE '^api --hostname github.com (user|repos/o/r|repos/o/r/(rules|rulesets|branches)/.*)$' "$T/args")"
+check "BLOCK: --admin on an organization's repo, past a ruleset bypassable never or for pull requests only, or classic protection, naming why" "2 1 2 1 2 1 2 1" \
+  "$(adm o o Organization always; lg "$MA") $(grep -c 'o/r belongs to the organization o: merge once the PR meets them' "$T/err") \
+$(adm o o User never; lg "$MA") $(grep -c 'ruleset 7 (carry) lets o bypass it never, not always' "$T/err") \
+$(adm o o User pull_requests_only; lg "$MA") $(grep -c 'bypass it pull_requests_only, not always' "$T/err") \
+$(adm o o User always; echo '{}' > "$FX/repos_o_r_branches_main_protection"; lg "$MA") $(grep -c 'main has classic branch protection, past which the guard lets no --admin merge' "$T/err"; rm "$FX/repos_o_r_branches_main_protection")"
+check "BLOCK: --admin when reading the base's classic protection fails other than with GitHub's 'Branch not protected', saying to retry" "2 1" \
+  "$(mv "$FX/repos_o_r_branches_main_protection.err" "$T/bnp"; lg "$MA") $(grep -c "gh couldn't read main's branch protection: retry once gh answers" "$T/err"; mv "$T/bnp" "$FX/repos_o_r_branches_main_protection.err")"
+check "BLOCK: --admin=true, and --admin=false then --admin, read as --admin; --admin then --admin=false is a plain merge" "2 2 0" \
+  "$(adm o o Organization always; lg "$M --admin=true") $(lg "$M --admin=false --admin") $(lg "$M --admin --admin=false"; adm o o User always)"
+MR="${MA#gh }"; MR="${MR/ -R o\/r/}"
+check "BLOCK: -R or --repo before pr merge reaches the merge checks with its repo" "2 2 2 1" \
+  "$(adm o o Organization always; lg "gh -R o/r $MR") $(lg "gh --repo o/r $MR") $(lg "gh --repo=o/r $MR") $(grep -c 'o/r belongs to the organization o' "$T/err"; adm o o User always)"
+check "BLOCK: --admin on a PR off github.com, naming its host" "2 1" \
+  "$(sed -i 's|https://github.com/o/r/pull/41|https://github.example.com/o/r/pull/41|' "$FX/pr_view_41"; lg "$MA") $(grep -c 'pull/41 is on github.example.com' "$T/err"; sed -i 's|github.example.com|github.com|' "$FX/pr_view_41")"
+check "BLOCK: --admin on a response of another shape (the repo with no owner, a rules page an object, a rule with no ruleset_id, a ruleset a string), naming the read to retry" "2 1 2 1 2 1 2 1" \
+  "$(echo '{}' > "$FX/repos_o_r"; lg "$MA") $(grep -c "gh couldn't read the login or o/r: retry once gh answers" "$T/err"; adm o o User always) \
+$(echo '{}' > "$FX/repos_o_r_rules_branches_main_per_page_100"; lg "$MA") $(grep -c "gh couldn't read main's rules: retry" "$T/err") \
+$(echo '[{}]' > "$FX/repos_o_r_rules_branches_main_per_page_100"; lg "$MA") $(grep -c "gh couldn't read main's rules: retry" "$T/err"; adm o o User always) \
+$(echo '"x"' > "$FX/repos_o_r_rulesets_7"; lg "$MA") $(grep -c "gh couldn't read ruleset 7: retry" "$T/err"; adm o o User always)"
+sed 's/"statusCheckRollup":\[/&{"name":"lint","conclusion":"NEUTRAL"},{"context":"e2e","state":"PENDING"},{"name":"docs","conclusion":"","status":"IN_PROGRESS"},{"name":"t","conclusion":"FAILURE"},/' "$FX/pr_view_41" > "$T/pv"
+check "BLOCK: --admin while a check on the head failed or is pending, naming each; a neutral one passes" "2 1" \
+  "$(cp "$FX/pr_view_41" "$T/pv41"; cp "$T/pv" "$FX/pr_view_41"; lg "$MA") $(grep -c "its head's checks haven't all succeeded (e2e pending, docs pending, t failure)" "$T/err"; mv "$T/pv41" "$FX/pr_view_41")"
+mv "$HOME/.mergeworthy/projects/o/r.md" "$T/or.md"
+check "with no project file, BLOCK: --admin unasked, or asked for another PR; a plain merge unasked passes, and --admin asked for passes" "2 1 2 0 0" \
+  "$(said 'looks good'; lg "$MA") $(grep -c "merging https://github.com/o/r/pull/41 past its base's rules (--admin) lands on o/r.*reply \`merge\`" "$T/err") $(said 'merge #40'; lg "$MA") $(said 'looks good'; lg "$M") $(said 'merge #41'; lg "$MA")"
+mv "$T/or.md" "$HOME/.mergeworthy/projects/o/r.md"; rm "$FX/user"
+check "BLOCK: --admin when gh can't read the login, saying to retry" "2 1" "$(lg "$MA") $(grep -c "gh couldn't read the login or o/r: retry once gh answers" "$T/err")"
+echo '{"login":"o"}' > "$FX/user"; printf '[{"type":"update","ruleset_id":7}][{"type":"deletion","ruleset_id":8}]' > "$FX/repos_o_r_rules_branches_main_per_page_100"; printf '{"name":"maint","current_user_can_bypass":"never"}' > "$FX/repos_o_r_rulesets_8"
+check "BLOCK: --admin past a ruleset that only the second page of the base's rules names" "2 1" "$(lg "$MA") $(grep -c 'ruleset 8 (maint) lets o bypass it never, not always' "$T/err")"
+rm "$FX/repos_o_r_rulesets_8"
+touch "$FX/repos_o_r_rules_branches_main_per_page_100.hang"
+check "BLOCK: --admin when gh hangs reading the base's rules, saying to retry" "2 1" "$(lg "$MA") $(grep -c "gh couldn't read main's rules: retry once gh answers" "$T/err")"
+rm "$FX/user" "$FX/repos_o_r_rules_branches_main_per_page_100.hang" "$FX/repos_o_r_branches_main_protection.err" "$FX/repos_o_r" "$FX/repos_o_r_rules_branches_main_per_page_100" "$FX/repos_o_r_rulesets_7"
+said 'looks good'
+check "BLOCK: gh release create and npm publish unasked; asked, or a dry run, or a repo with no project file, they pass; BLOCK: release notes asked for, a past 'released' or 'published', one held back as 'released' or 'published'" "2 2 0 0 2 2 2 0 0 2 2 2 2" \
+  "$(lg 'gh release create v1.2.0 -R o/r') $(lg 'npm publish' "$TCO") $(lg 'npm publish --dry-run' "$TCO") $(lg 'gh release create v1.2.0 -R lo/none') \
+$(said 'release notes kellenek, ne publisholj'; lg 'pnpm publish' "$TCO") $(said 'Write release notes for v1.2.0.'; lg 'gh release create v1.2.0 -R o/r') $(said 'Release notes for v1.2.0, please.'; lg 'gh release create v1.2.0 -R o/r') $(said 'release 1.2.0 please'; lg 'gh release create v1.2.0 -R o/r') $(lg 'pnpm publish' "$TCO") \
+$(said 'Released v1.2.0 yesterday.'; lg 'gh release create v1.2.0 -R o/r') $(said 'Published v1.2.0 yesterday.'; lg 'pnpm publish' "$TCO") \
+$(said 'Release v1.2.0. It must not be released until I approve it.'; lg 'gh release create v1.2.0 -R o/r') $(said 'Publish v1.2.0. It must not be published until I approve it.'; lg 'pnpm publish' "$TCO")"
+said 'looks good'
+check "BLOCK: a publish from a project file's repo named by -C, --dir= or --prefix, or past a --filter; from a dir of no repo it passes" "2 2 2 2 0" \
+  "$(lg "pnpm -C $TCO publish") $(lg "pnpm --dir=$TCO publish -r") $(lg "npm --prefix $TCO publish") $(lg 'pnpm --filter x publish' "$TCO") $(lg "pnpm -C $T publish" "$TCO")"
+check "BLOCK: a publish whose -C after publish names a project file's repo; one whose -C there names a dir of no repo passes" "2 0" "$(lg "pnpm publish -C $TCO") $(lg "pnpm publish -C $T" "$TCO")"
+check "GitLab: BLOCK: glab mr merge, its alias accept, and glab release create unasked, naming the MR; asked, they pass" "2 1 2 2 0 0" \
+  "$(said 'looks good'; lg 'glab mr merge 41 -R o/r') $(grep -c 'merging gitlab.com/o/r!41 lands on o/r' "$T/err") $(lg 'glab mr accept 41 -R o/r') $(lg 'glab release create v1.2.0 -R o/r') $(said 'merge it'; lg 'glab mr merge 41 -R o/r') $(said 'release it'; lg 'glab release create v1.2.0 -R o/r')"
+check "GitLab, BLOCK: an ask naming another MR as <path>!N or !N" "2 2 0" "$(said 'Merge o/r!40.'; lg 'glab mr merge 41 -R o/r') $(said 'merge !40'; lg 'glab mr merge 41 -R o/r') $(said 'merge !41'; lg 'glab mr merge 41 -R o/r')"
+gql nitedani-agent nitedani-agent; mkdir -p "$HOME/.mergeworthy/projects/nitedani-agent"; echo '# notes' > "$HOME/.mergeworthy/projects/nitedani-agent/notes.md"; echo '{"default_branch":"main"}' > "$FX/repos_nitedani-agent_notes"
+said 'looks good'
+check "BLOCK: a push to the default branch unasked, naming it, or told of as past; to another branch, or asked, it passes" "2 1 2 2 2 0 0" \
+  "$(lg 'git push origin HEAD:main' "$OWN") $(grep -c 'this push to main lands on nitedani-agent/notes' "$T/err") $(said 'Released and pushed.'; lg 'git push origin HEAD:main' "$OWN") $(said 'Published and pushed to main.'; lg 'git push origin HEAD:main' "$OWN") \
+$(said 'Pushed to main.'; lg 'git push origin HEAD:main' "$OWN") $(lg 'git push origin HEAD:scratch' "$OWN") $(said 'push it to main'; lg 'git push origin HEAD:main' "$OWN")"
+check "BLOCK: a push to the default branch asked for as another branch's, or by its name in another case; asked for by its name, it passes, beside another branch held back" "2 2 2 0 0" \
+  "$(said 'Push the feature branch.'; lg 'git push origin HEAD:main' "$OWN") $(said 'Push to scratch.'; lg 'git push origin HEAD:main' "$OWN") $(said 'Push to MAIN.'; lg 'git push origin HEAD:main' "$OWN") $(said 'Push to branch main, and open the PR.'; lg 'git push origin HEAD:main' "$OWN") $(said "Don't push the scratch branch. Push to main."; lg 'git push origin HEAD:main' "$OWN")"
+check "BLOCK: a push to the default branch asked for as another branch's in inline code; asked for by its name, it passes" "2 2 2 0" \
+  "$(said 'Push to scratch.'; lg 'git push origin HEAD:main' "$OWN") $(said 'Push to `scratch`.'; lg 'git push origin HEAD:main' "$OWN") $(said 'Push to MAIN.'; lg 'git push origin HEAD:main' "$OWN") $(said 'Push to main.'; lg 'git push origin HEAD:main' "$OWN")"
+said 'looks good'; git -C "$OWN" config remote.origin.push refs/heads/scratch:refs/heads/main
+check "BLOCK: a push whose remote.<name>.push sends it to the default branch, named or bare; a pattern there or push.default=matching, as untellable" "2 2 2 1 2 1" \
+  "$(lg 'git push origin' "$OWN") $(lg 'git push' "$OWN") $(git -C "$OWN" config remote.origin.push 'refs/heads/*:refs/heads/*'; lg 'git push origin' "$OWN") $(grep -c "comes from git's config" "$T/err") \
+$(git -C "$OWN" config --unset remote.origin.push; git -C "$OWN" config push.default matching; lg 'git push' "$OWN") $(grep -c "comes from git's config" "$T/err")"
+git -C "$OWN" config --unset push.default
+said 'looks good'; printf '## Merging\n- Push to main once the gates pass\n' >> "$HOME/.mergeworthy/projects/nitedani-agent/notes.md"
+check "a push to the default branch under the project file's \`- Push to main\` order passes, with another branch held back as words or inline code; without a project file it is unchanged" "0 0 0 0" \
+  "$(lg 'git push origin HEAD:main' "$OWN") $(said "Don't push to scratch."; lg 'git push origin HEAD:main' "$OWN") $(said 'Don’t push to `scratch`.'; lg 'git push origin HEAD:main' "$OWN") $(said 'looks good'; rm "$HOME/.mergeworthy/projects/nitedani-agent/notes.md"; lg 'git push origin HEAD:main' "$OWN")"
+check "a push git's config can't tell, to a repo with no project file, passes as before: push.default=matching, a pattern in remote.<name>.push" "0 0" \
+  "$(git -C "$OWN" config push.default matching; lg 'git push' "$OWN") $(git -C "$OWN" config --unset push.default; git -C "$OWN" config remote.origin.push 'refs/heads/*:refs/heads/*'; lg 'git push origin' "$OWN")"
+git -C "$OWN" config --unset remote.origin.push
+printf 't3-update\nsystemctl --user (re)?start (t3code|t3-update)\n' > "$HOME/.mergeworthy/ask-first"; said 'is the t3 fix built yet?'
+check "BLOCK: an ask-first command unasked, at any command position and inside ssh's remote command, naming the list; a mention passes" "2 1 2 2 2 0" \
+  "$(lg "ssh collab@opensource 'export PATH=x; t3-update; echo \"exit \$?\"'") $(grep -c "is on this machine's ~/.mergeworthy/ask-first list.*ask the owner to reply \`update\`" "$T/err") \
+$(lg 't3-update 2>&1 | tail -5') $(lg 'systemctl --user restart t3code') $(lg 'ssh -p 22 h t3-update') $(lg 'echo t3-update')"
+check "an ask-first command the user's last message asks for passes, over ssh too; BLOCK: a question, a negation, a mention or a past 'updated'" "0 0 2 2 2 2" \
+  "$(said 'update t3'; lg "ssh collab@opensource 'export PATH=x; t3-update'") $(lg 't3-update') $(said 'should we update t3?'; lg 't3-update') $(said 'ne frissítsd még'; lg 't3-update') $(said 'Review the update plan.'; lg 't3-update') $(said $'Claude Code 2.1.319\nupdated 6 d ago'; lg 't3-update')"
+rt() { # command [cwd]: refused unasked, then passing once the user replies as the refusal says
+  said 'looks good'; local a; a=$(lg "$@"); said "$(grep -o 'reply `[a-z]*`' "$T/err" | tr -d '`' | cut -d' ' -f2)"; echo "$a $(lg "$@")"; }
+mkdir -p "$HOME/.mergeworthy/projects/nitedani-agent"; echo '# notes' > "$HOME/.mergeworthy/projects/nitedani-agent/notes.md"
+check "the reply each refusal asks the owner for lets that command through: a merge, a push to the default branch, a release, an ask-first command" "2 0 2 0 2 0 2 0" \
+  "$(rt "$M") $(rt 'git push origin HEAD:main' "$OWN") $(rt 'gh release create v1.2.0 -R o/r') $(rt 't3-update')"
+rm "$HOME/.mergeworthy/ask-first" "$HOME/.mergeworthy/projects/nitedani-agent/notes.md"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]

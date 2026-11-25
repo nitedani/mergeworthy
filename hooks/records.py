@@ -4,6 +4,10 @@ import hashlib, os, re, subprocess, sys
 from shellcmd import folder
 
 STORE = os.path.expanduser('~/.claude/pr-steps')
+# a review or finality is also noted on its commit under DRIFT_REF, which git carries through an amend or a rebase: the note's kind per step
+DRIFT_REF = 'refs/notes/drift'
+NOTE_KIND = {'verify': 'review', 'shape': 'review', 'reverify': 'review', 'fresh': 'review', 'small': 'review', 'finality': 'finality'}
+LIMIT = 5  # the changes a code file may get after its branch's anchor (drift.py): the next one is drift
 
 
 def commit_file(sha):
@@ -75,5 +79,7 @@ def no_approach(path):
         "(`git branch -u <its branch>`) and shares its record" + unknown_base(path)) or ''
 
 
-if __name__ == '__main__':  # bin/pr-steps: the record path of the checked-out branch for kind sys.argv[1]
+if __name__ == '__main__' and sys.argv[1] == 'drift-note':  # bin/pr-steps: `<DRIFT_REF> <kind>` of step sys.argv[2], or nothing
+    print(f'{DRIFT_REF} {NOTE_KIND[sys.argv[2]]}' if sys.argv[2] in NOTE_KIND else '')
+elif __name__ == '__main__':  # bin/pr-steps: the record path of the checked-out branch for kind sys.argv[1]
     print(branch_record(os.getcwd(), sys.argv[1]) or sys.exit(f'{os.getcwd()} is not in a git work tree'))

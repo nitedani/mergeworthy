@@ -65,12 +65,25 @@ WORDS = {
     },
 }
 
-def language(repo):
-    """The language code of a repo (owner/repo, or gitlab.com/<namespace>/<project>)."""
+def project_line(repo, key):
+    """The rest of the project file's `<key>:` line, bulleted or not, for a repo (owner/repo, or gitlab.com/<namespace>/<project>):
+    '' when the file has no such line, None without a project file."""
     p = os.path.expanduser(f"~/.mergeworthy/projects/{re.sub(r'^gitlab[.]com/', '', repo or '')}.md")
-    try: m = re.search(r'^\s*(?:[-*]\s+)?Language:\s*(\w+)', open(p).read(), re.M) if repo else None
-    except OSError: m = None
-    return m[1] if m and m[1] in WORDS else 'en'
+    try: text = open(p).read() if repo else None
+    except OSError: text = None
+    m = text and re.search(rf'^[ \t]*(?:[-*]\s+)?{key}:[ \t]*(.*)', text, re.M)
+    return None if text is None else m[1].strip() if m else ''
+
+def language(repo):
+    """The language code of a repo."""
+    m = re.match(r'\w+', project_line(repo, 'Language') or '')
+    return m[0] if m and m[0] in WORDS else 'en'
+
+def template(repo, kind):
+    """The headings a body keeps, as the project file's `<kind> template: <path>: `## Why`, `## How`` line quotes them (kind: 'PR' or
+    'Issue'): [] with `none` or without a project file, None when the project file has no such line."""
+    line = project_line(repo, f'{kind} template')
+    return None if line == '' else re.findall(r'`(#{1,6} [^`]+)`', line or '')
 
 def words(repo):
     return WORDS[language(repo)]
@@ -116,17 +129,25 @@ def state_line(w):
     return re.compile(rf'^\*\*{re.escape(w["state"][0])}: {re.escape(w["state"][1])}\*\* \(.*\S.*\)$')
 
 def _blocks(s):
-    """s's block tokens as CommonMark parses it, read by markdown-it-py: the parse every Markdown query in this module shares."""
+    """s's block tokens as CommonMark renders it, read by markdown-it-py, and at(n): where its line n starts in s."""
     try: from markdown_it import MarkdownIt
     except ImportError as e:  # raised, not sys.exit: failclosed turns it into a hook's block (exit 2), where an exit 1 lets the action through
         raise ImportError("mergeworthy reads Markdown with markdown-it-py: install it (apt install python3-markdown-it, or pip install markdown-it-py)") from e
-    return MarkdownIt('commonmark').parse(s)
+    lines = [0] + [m.end() for m in re.finditer(r'\r\n?|\n', s)]  # where markdown-it's lines start
+    return MarkdownIt('commonmark').parse(s), lambda n: lines[n] if n < len(lines) else len(s)
 
 def fence_spans(s):
-    """(start, end, inner) of each fenced or indented code block in s: the block's lines, its closing fence included, and the code it shows."""
-    lines = [0] + [m.end() for m in re.finditer(r'\r\n?|\n', s)]  # where markdown-it's lines start
-    at = lambda n: lines[n] if n < len(lines) else len(s)
-    return [(at(t.map[0]), at(t.map[1]), t.content) for t in _blocks(s) if t.type in ('fence', 'code_block')]
+    """(start, end, inner) of each fenced or indented code block in s as CommonMark renders it: the block's lines, its closing fence
+    included, and the code it shows. The one place mergeworthy decides what renders as code."""
+    toks, at = _blocks(s)
+    return [(at(t.map[0]), at(t.map[1]), t.content) for t in toks if t.type in ('fence', 'code_block')]
+
+def sections(s, pick):
+    """(start, end) of each section of s whose heading pick('### <text>') accepts, as CommonMark renders it: from the heading to the next
+    heading of the same or a higher level (a '#' line in code is no heading)."""
+    toks, at = _blocks(s)
+    heads = [(int(t.tag[1]), at(t.map[0]), f"{'#' * int(t.tag[1])} {toks[i + 1].content.strip()}") for i, t in enumerate(toks) if t.type == 'heading_open']
+    return [(a, next((b for m, b, _ in heads[i + 1:] if m <= n), len(s))) for i, (n, a, h) in enumerate(heads) if pick(h)]
 
 def _html_tags(s, tag):
     """(start, end) of each match of the regex tag in s that renders as an HTML tag: one in inline code, a fence or behind a backslash is
@@ -137,7 +158,7 @@ def _html_tags(s, tag):
     marked = ''.join(s[m0.end() if m0 else 0:m.end()] + f'<?mw-tag-{n}?>' for n, (m0, m) in enumerate(zip([None] + found, found)))
     marked += s[found[-1].end():]
     real = set()
-    for t in _blocks(marked):
+    for t in _blocks(marked)[0]:
         if t.type == 'html_block':  # less its comments, to their --> (one unclosed to its end): a tag after a --> on that line still renders
             real |= {int(n) for n in re.findall(rf'(?:{tag})<\?mw-tag-(\d+)\?>', re.sub(r'(?s)<!--(?:.*?-->|.*)', '', t.content))}
         for a, b in zip(t.children or [], (t.children or [])[1:]):
@@ -145,18 +166,20 @@ def _html_tags(s, tag):
                 real.add(int(n[1]))
     return [m.span() for n, m in enumerate(found) if n in real]
 
-def _section(s, title):
+def _sections(s, title, heads=()):
     """The block tokens of s's section under its first top-level h3 (not in a blockquote or a list) whose plain text tokens, joined and
     stripped, equal `title` (emphasis markers, inline HTML and inline code are no text tokens, so a title written in code doesn't match),
-    up to the next top-level h3 or higher heading; None when no heading matches."""
-    tokens = _blocks(s)
+    up to the next top-level h3 or higher heading, as a list of one; [] when no heading matches. With heads (a template's headings,
+    '## <text>'), each section under that h3 or a top-level heading shown as one of heads, up to the next top-level heading."""
+    tokens, _ = _blocks(s)
     heading = lambda t: t.type == 'heading_open' and t.level == 0
     shown = lambda inline: ''.join(c.content for c in inline.children if c.type == 'text').strip()
+    out = []
     for i, t in enumerate(tokens):
-        if heading(t) and t.tag == 'h3' and shown(tokens[i + 1]) == title:
-            end = next((j for j in range(i + 3, len(tokens)) if heading(tokens[j]) and tokens[j].tag <= 'h3'), len(tokens))
-            return tokens[i + 3:end]
-    return None
+        if heading(t) and (t.tag == 'h3' and shown(tokens[i + 1]) == title or f"{'#' * int(t.tag[1])} {shown(tokens[i + 1])}" in heads):
+            end = next((j for j in range(i + 3, len(tokens)) if heading(tokens[j]) and (heads or tokens[j].tag <= 'h3')), len(tokens))
+            out.append(tokens[i + 3:end])
+    return out if heads else out[:1]
 
 def without_details(s, hides=lambda tag: True):
     """s without the <details> blocks whose opening tag hides() picks (every one unless it says), each from that tag (its attributes or
@@ -180,30 +203,31 @@ def _breaks(c):
     """Whether inline token c renders as a line break: a soft or hard break, or an HTML <br> (<br/>, <br />, in any case)."""
     return c.type in ('softbreak', 'hardbreak') or c.type == 'html_inline' and re.fullmatch(r'<br\s*/?>', c.content, re.I) is not None
 
-def shows_evidence(s, title):
-    """Whether s's section under the top-level h3 `title` (_section), read after removing each paired <details> block, open or collapsed (an
-    unclosed one stays, as without_details leaves it), holds a top-level paragraph with a line starting with a bold `1.`, and an output
-    anywhere in it: a fence or code block, a Markdown image, or an HTML token that isn't a comment with `<img` anywhere in it (an attribute
-    value too). A fence's contents, inline code and an HTML comment are none of these tokens."""
-    see = _section(without_details(s), title) or []
+def shows_evidence(s, title, heads=()):
+    """Whether one of s's sections under the top-level h3 `title` or a template's heads (_sections), read after removing each paired
+    <details> block, open or collapsed (an unclosed one stays, as without_details leaves it), holds a top-level paragraph with a line
+    starting with a bold `1.`, and an output anywhere in it: a fence or code block, a Markdown image, or an HTML token that isn't a comment
+    with `<img` anywhere in it (an attribute value too). A fence's contents, inline code and an HTML comment are none of these tokens."""
     def lines(inline):  # a paragraph's rendered lines, split at its line breaks, without empty text tokens or a line's leading spaces and tabs, unrendered
         line = []
         for c in inline.children:
             if _breaks(c): yield line; line = []
             elif c.type != 'text' or c.content.strip(' \t') or line and c.content: line.append((c.type, c.content))
         yield line
-    item = any(p.type == 'paragraph_open' and p.level == 0 and any(l[:3] == [('strong_open', ''), ('text', '1.'), ('strong_close', '')] for l in lines(t))
-               for p, t in zip(see, see[1:]))
     img = lambda t: t.type in ('html_block', 'html_inline') and not t.content.lstrip().startswith('<!--') and re.search(r'<img\b', t.content, re.I)
-    output = any(t.type in ('fence', 'code_block') or img(t) or t.type == 'inline' and any(c.type == 'image' or img(c) for c in t.children)
-                 for t in see)
-    return item and output
+    def shows(see):
+        item = any(p.type == 'paragraph_open' and p.level == 0 and any(l[:3] == [('strong_open', ''), ('text', '1.'), ('strong_close', '')] for l in lines(t))
+                   for p, t in zip(see, see[1:]))
+        output = any(t.type in ('fence', 'code_block') or img(t) or t.type == 'inline' and any(c.type == 'image' or img(c) for c in t.children)
+                     for t in see)
+        return item and output
+    return any(shows(see) for see in _sections(without_details(s), title, heads))
 
 def own_blocks(s):
     """The displayed text of each paragraph and heading of s (`List **all**` reads "List all"), one string a block, outside any blockquote
     (one in a list item and a quote's lazy continuation lines are blockquote too): the words s's own author wrote."""
     shown = lambda c: '\n' if _breaks(c) else c.content if c.type in ('text', 'code_inline') else ''
-    tokens, quoted, out = _blocks(s), 0, []
+    (tokens, _), quoted, out = _blocks(s), 0, []
     for prev, t in zip([None] + tokens, tokens):
         quoted += {'blockquote_open': 1, 'blockquote_close': -1}.get(t.type, 0)
         if t.type == 'inline' and not quoted and prev.type in ('paragraph_open', 'heading_open'):
