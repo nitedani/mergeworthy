@@ -25,7 +25,7 @@ deleted.
 - h-ignored, once a day: the same folders in any git repo up to 5 levels below HOME (hidden folders and the work folders
   aside), each unused for 14 days (neither written nor read).
 - h-cargo, once a day: a cargo build folder (CACHEDIR.TAG beside .rustc_info.json) up to 5 levels below HOME, in a git repo or not
-  (hidden folders and the work folders aside), whole, unused for 7 days (neither written nor read), unless its parent is
+  (in a repo: one git ignores, holding no tracked file; hidden folders and the work folders aside), whole, unused for 7 days (neither written nor read), unless its parent is
   busy or h-ignored takes it.
 - k-cache, once a day: `pnpm store prune`, `pip cache purge`, `npm cache clean --force` when ~/.npm/_cacache is unused for
   14 days, and each entry of the named tool caches (CACHES: cargo's, and ~/.cache/yarn, node-gyp, go-build and the like) unused for 14 days (neither written nor read), not busy.
@@ -494,6 +494,12 @@ def sweep_repo(repo, dev, rule, age):
     return taken
 
 
+def ignored(repo, path):
+    """Whether git ignores path, a folder in repo, and tracks no file in it."""
+    rel = os.path.relpath(path, repo)
+    return git(repo, 'check-ignore', '-q', '--', rel).returncode == 0 and not git(repo, 'ls-files', '--', rel).stdout
+
+
 def due(name, period):
     """Whether the step name last ran more than period seconds ago, stamping it now if so; a dry run always runs it, unstamped."""
     if DRY:
@@ -512,15 +518,16 @@ def due(name, period):
 def sweep_home():
     """Once a day, below HOME outside hidden folders and the work folders (sweep_files has those), up to 5 levels down: h-ignored, build
     output unused for 14 days (neither written nor read) in the git repos, then h-cargo, each cargo build folder (CARGO) in a repo or
-    not, unused for 7 days, that h-ignored didn't take."""
+    not (in a repo: one git ignores, holding no tracked file), unused for 7 days, that h-ignored didn't take."""
     if not due('home', DAY):
         return
-    dev, stack, taken = os.lstat(HOME).st_dev, [(HOME, 0, False)], set()
+    dev, stack, taken = os.lstat(HOME).st_dev, [(HOME, 0, None)], set()
     while stack:
-        d, depth, in_repo = stack.pop()
-        if not in_repo and d != HOME and os.path.lexists(os.path.join(d, '.git')):
-            taken |= sweep_repo(d, dev, 'h-ignored', OLD)
-            in_repo = True
+        d, depth, repo = stack.pop()
+        if d != HOME and os.path.lexists(os.path.join(d, '.git')):
+            if not repo:
+                taken |= sweep_repo(d, dev, 'h-ignored', OLD)
+            repo = d
         if depth == 5:
             continue
         try:
@@ -531,10 +538,10 @@ def sweep_home():
             if e.name.startswith('.') or d == HOME and e.name.endswith('-work') or not e.is_dir(follow_symlinks=False) or e.stat(follow_symlinks=False).st_dev != dev:
                 continue
             if all(os.path.isfile(os.path.join(e.path, f)) for f in CARGO):
-                if e.path not in taken:
+                if e.path not in taken and (not repo or ignored(repo, e.path)):
                     delete(e.path, d, dev, 'h-cargo', WEEK)
             elif e.name not in BUILD:
-                stack.append((e.path, depth + 1, in_repo))
+                stack.append((e.path, depth + 1, repo))
 
 
 CACHES = ('.cargo/registry/cache', '.cargo/git/checkouts', '.cache/node-gyp', '.cache/typescript', '.cache/yarn', '.cache/go-build')  # named tool caches only: other ~/.cache folders hold drafts and records, and browser binaries
