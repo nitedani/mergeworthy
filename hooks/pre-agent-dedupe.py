@@ -140,7 +140,7 @@ def register_launch():
     if cid: loops.locked_update(CIDS, lambda seen: seen.setdefault(cid, time.time()))
     if review:
         loops.register(rnd[1], int(rnd[2]), None if post_review else rec['heads'] if 'heads' in rec else loops.pinned(L)[1],
-                       review_transport.thread(ti, d.get('tool_response')), post_review, said_outs, bool(re.search(loops.FANOUT, brief, re.M)))
+                       review_transport.thread(ti, d.get('tool_response')), post_review, said_outs, bool(re.search(loops.FANOUT, brief, re.M)), L.checkouts)
     if implementer and (approach := rec['approach'] if 'approach' in rec else brief_approach(strict=False)):
         os.makedirs(BUILT, exist_ok=True)
         open(os.path.join(BUILT, os.path.basename(approach[0])), 'w').write(approach[1])

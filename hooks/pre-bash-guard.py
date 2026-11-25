@@ -1321,7 +1321,7 @@ def check(t, has_cd):
         if (p == 'codex' and ('exec' in a or a[:1] == ['e']) or '-p' in a or '--print' in a) and not post and (r := review_transport.shell_round(' '.join(t))):
             L = launch.Launch(r[1])
             if int(r[0][2]) >= 2 and (why := loops.admit(r[0][1], int(r[0][2]), *loops.pinned(L), loops.ledger_named(L.brief))): block(why)
-            rounds.append((r[0][1], int(r[0][2]), loops.pinned(L)[1], None, False, outs, bool(re.search(loops.FANOUT, r[1], re.M))))
+            rounds.append((r[0][1], int(r[0][2]), loops.pinned(L)[1], None, False, outs, bool(re.search(loops.FANOUT, r[1], re.M)), L.checkouts))
     written = [f for x, c in zip(targets, files) for f in known(c, x)]
     for x in dict.fromkeys(map(shellcmd.folder, written)):  # the instructions check runs git, once per folder
         if why := no_instructions_read(x, d):

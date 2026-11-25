@@ -4,7 +4,7 @@ and pr-steps asks open_seats() whether a step's other reviewers closed. A round 
 branch hasn't moved since four earlier rounds of its loop, after an earlier one there when the ledger its brief names doesn't show
 the last round brought a fixed blocker or should or a declined blocker, and as a fresh reader's second."""
 import fcntl, itertools, json, os, re, subprocess, sys
-import ledger, testpaths
+import ledger, review_journal, testpaths
 
 # {loop: {'rounds': [[n, the heads its brief pinned, the reports it wrote]], 'threads': the T3 threads or Claude agents its rounds ran in, 'outs': its reports, 'seated': a step's seat, 'step': the step pr-steps recorded it for}}
 LOOPS = os.path.expanduser('~/.claude/review-loops.json')
@@ -59,9 +59,13 @@ CAP = 4  # rounds per loop on one head (delegate §Review rounds)
 FANOUT = r'^Fan-out: converge §Running the agents$'  # a round 1 seating a step's reviewers at once (delegate §Reviewers)
 
 
-def register(loop, n, heads, thread=None, post=False, outs=(), seated=False):
+def register(loop, n, heads, thread=None, post=False, outs=(), seated=False, checkouts=()):
     """Records round n of loop that ran: the thread it ran in, and, for a code review, the heads its brief pinned, the reports it
-    writes (outs) and whether it is one of its step's seats (seated: its round 1 brief's FANOUT line)."""
+    writes (outs) and whether it is one of its step's seats (seated: its round 1 brief's FANOUT line), in review-loops.json and in
+    the journal of each change its brief names (checkouts)."""
+    if not post:
+        for c in dict.fromkeys(filter(None, map(review_journal.change_of, checkouts))):
+            review_journal.append(c, {'ev': 'round', 'loop': loop, 'n': n, 'heads': heads, 'outs': sorted({os.path.realpath(o) for o in outs}), 'thread': thread, 'seated': seated})
     def ran(loops):
         r = loops[loop] = record(loop, loops)
         if thread and thread not in r['threads']: r['threads'].append(thread)
