@@ -2529,6 +2529,12 @@ check "a round 1 seating its step's reviewers at once takes this company's agent
 for f in vs-codex vs-claude; do printf 'Checked it.\nNO BUGS\n' > "$T/$f.md"; std "$T/$f.md"; done
 fs="$(cd "$GS" && bash "$R/bin/pr-steps" verify "$T/vs-codex.md" 2>&1 | grep -c 'one seat of verify.*vs-claude') $(grep -c '^verify ' ~/.claude/pr-steps/"$SH") $(cd "$GS" && bash "$R/bin/pr-steps" verify "$T/vs-claude.md" >/dev/null 2>&1; echo $?) $(grep -c '^verify ' ~/.claude/pr-steps/"$SH")"
 check "pr-steps verify records a seated step once every seat's report is: the first seat's report records as a seat, naming the other, the second's records verify" "1 0 0 1" "$fs"
+GM="$T/seats2"; git init -q -b main "$GM"; git -C "$GM" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; MH=$(git -C "$GM" rev-parse HEAD)
+seat() { for s in "$@"; do fo "$s-r1" "{\"providerInstanceId\":\"${s#*-}\"}" "Review $GM at head $MH; output to $T/$s.md
+$FO" >/dev/null; printf 'Checked it.\nNO BUGS\n' > "$T/$s.md"; std "$T/$s.md"; done; }
+seat alpha-codex alpha-claude beta-codex beta-claude
+fs=$(for s in alpha-codex alpha-claude beta-codex beta-claude; do (cd "$GM" && bash "$R/bin/pr-steps" verify "$T/$s.md" >/dev/null 2>&1); grep -c '^verify ' ~/.claude/pr-steps/"$MH"; done | xargs); seat shape-codex shape-claude
+check "pr-steps verify waits for every seat of every slice on the head: verify records with the fourth report; a later step's seat on that head waits only for its own step's" "0 0 0 1 shape-claude" "$fs $(python3 "$R/hooks/loops.py" seats "$T/shape-codex.md" "$T/none" shape | xargs)"
 lr() { cp "$T/r2.md" "$T/r2-$1.md"; LR="$T/r2-$1.md"; shift; led "$@"; }  # a report of its own per ledger that records
 check "pr-steps verify --ledger: a round 1 bringing only nits or declined findings closes the loop; BLOCK a round 2 with a fixed should, it gets round 3; round 4 closes with a fixed should" "0 0 1 1 0" \
   "$(lr n1 'R1.1 nit declined: wording') $(lr d1 'R1.1 should declined: the case needs a staged race' 'R1.2 nit listed: the report') $(lr f2 "R1.1 should fixed in $ON" 'Round: 2' "R2.1 should fixed in $ON") $(grep -c 'closes round 2, which brought a blocker or should fixed in a commit: the loop gets its next round first' "$T/err") $(lr f4 "R4.1 should fixed in $ON")"

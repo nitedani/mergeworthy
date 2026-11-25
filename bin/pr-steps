@@ -375,7 +375,7 @@ esac
 fi
 [ "$step" != union ] || { proof=$(realpath "$out"); record_union "$ua" "$ub"; exit 0; }
 # a step whose round 1 seated several reviewers (hooks/loops.py) is recorded once every seat's report is: until then, this one as a seat
-seats=$(python3 "$(dirname "$(realpath "$0")")/../hooks/loops.py" seats "$out" ~/.claude/pr-steps/"$sha")
+seats=$(python3 "$(dirname "$(realpath "$0")")/../hooks/loops.py" seats "$out" ~/.claude/pr-steps/"$sha" "$step")
 [ -z "$seats" ] || { record "$step" "$step-seat"; echo "recorded $out as one seat of $step for $sha; $step is recorded with the report of $(echo $seats)"; exit 0; }
 record "$step" "$step"
 echo "recorded $step for $sha"

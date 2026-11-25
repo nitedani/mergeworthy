@@ -6,7 +6,7 @@ the last round brought a fixed blocker or should or a declined blocker, and as a
 import fcntl, itertools, json, os, re, subprocess, sys
 import ledger, testpaths
 
-# {loop: {'rounds': [[n, the heads its brief pinned]], 'threads': the T3 threads or Claude agents its rounds ran in, 'outs': its reports, 'seated': a step's seat}}
+# {loop: {'rounds': [[n, the heads its brief pinned]], 'threads': the T3 threads or Claude agents its rounds ran in, 'outs': its reports, 'seated': a step's seat, 'step': the step pr-steps recorded it for}}
 LOOPS = os.path.expanduser('~/.claude/review-loops.json')
 # what a loop recorded before review-loops.json: rounds {loop: [[n, heads]]}, threads {loop: [thread]}
 OLD = {'rounds': os.path.expanduser('~/.claude/review-rounds.json'), 'threads': os.path.expanduser('~/.claude/review-threads.json')}
@@ -71,13 +71,21 @@ def register(loop, n, heads, thread=None, post=False, outs=(), seated=False):
     if thread or not post: locked_update(LOOPS, ran)
 
 
-def open_seats(report, recorded):
-    """The other seats of report's step, loops `<step-or-slice>-<provider>` seated with its loop, none of whose reports is in
-    recorded (the outputs pr-steps recorded on the head): a step closes only once every seat's loop did."""
-    loops, report = _json(LOOPS), os.path.realpath(report)
-    stems = {l.rsplit('-', 1)[0] for l, r in loops.items() if isinstance(r, dict) and r.get('seated') and report in r.get('outs', [])}
-    return sorted(l for l, r in loops.items() if isinstance(r, dict) and r.get('seated') and l.rsplit('-', 1)[0] in stems
-                  and report not in r.get('outs', []) and not set(r.get('outs', [])) & set(recorded))
+def open_seats(report, recorded, step):
+    """The other seats of report's step, loops `<step-or-slice>-<provider>` seated with its loop (its slice's, or any whose round 1
+    pinned the same head) that no other step recorded, none of whose reports is in recorded (the outputs pr-steps recorded on the
+    head); records report's loop as step's: a step closes only once every seat's loop did."""
+    report, found = os.path.realpath(report), []
+    def seen(loops):
+        seats = {l: r for l, r in loops.items() if isinstance(r, dict) and r.get('seated')}
+        mine = [l for l, r in seats.items() if report in r.get('outs', [])]
+        first = lambda r: {h for n, hs, *_ in r['rounds'] if n == 1 for h in hs or ()}
+        stems, heads = {l.rsplit('-', 1)[0] for l in mine}, set().union(*map(first, (seats[l] for l in mine)))
+        for l in mine: seats[l]['step'] = step
+        found[:] = sorted(l for l, r in seats.items() if l not in mine and r.get('step', step) == step
+                          and (l.rsplit('-', 1)[0] in stems or first(r) & heads) and not set(r.get('outs', [])) & set(recorded))
+    locked_update(LOOPS, seen)
+    return found
 
 
 git = lambda wt, *a: subprocess.run(['git', '-C', wt, *a], capture_output=True, text=True)
@@ -197,8 +205,8 @@ def close(path, kind='code', checkout='.', reports=()):
     return out
 
 
-if __name__ == '__main__' and sys.argv[1:2] == ['seats']:  # loops.py seats <report> <record file>: open_seats, a line each
-    print(*open_seats(sys.argv[2], [l.split()[1] for l in open(sys.argv[3]) if len(l.split()) > 1] if os.path.isfile(sys.argv[3]) else []), sep='\n')
+if __name__ == '__main__' and sys.argv[1:2] == ['seats']:  # loops.py seats <report> <record file> <step>: open_seats, a line each
+    print(*open_seats(sys.argv[2], [l.split()[1] for l in open(sys.argv[3]) if len(l.split()) > 1] if os.path.isfile(sys.argv[3]) else [], sys.argv[4]), sep='\n')
 elif __name__ == '__main__':  # loops.py close [--post|--fresh] <ledger> [<checkout>] [--report <the last round's report>]: exits 0 when the ledger closes its loop, else prints what stands
     a, rep = sys.argv[2:], []
     if '--report' in a: i = a.index('--report'); rep = reports_of(a[i + 1]); del a[i:i + 2]
