@@ -5218,6 +5218,17 @@ agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$CA]}" "$U" "{\"type\":
 a2=$(agy_ev PreToolUse "{\"id\":\"c\",$(echo "$W" | cut -c2-)" 4 | grep -c 'AGENTS.md')
 agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$CA]}" '{"type":"GENERIC","content":"Command exited with code 0.\n\nCommand output:\nBe nice.\n"}' "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$W]}"
 check "agy: a file write after a cat of AGENTS.md that failed, or one declined (no result), is denied; after one that succeeded it isn't" "1 1 0" "$a1 $a2 $(agy_ev PreToolUse "{\"id\":\"c\",$(echo "$W" | cut -c2-)" 4 | grep -c 'AGENTS.md')"
+# a background cat of AGENTS.md counts once its task ended with success: not while it runs, nor after it failed
+CB='{"name":"run_command","args":{"CommandLine":"sleep 5; cat AGENTS.md 2>/dev/null","WaitMsBeforeAsync":500}}'
+CS='{"type":"GENERIC","status":"RUNNING","content":"Created At: x\nTool is running as a background task with task id: c1/task-2\nTask Description: cat\nTask logs are available at: file:///x/task-2.log"}'
+ce() { echo "{\"type\":\"SYSTEM_MESSAGE\",\"source\":\"SYSTEM\",\"content\":\"<SYSTEM_MESSAGE>\\n[Message] timestamp=x sender=c1/task-2 priority=MESSAGE_PRIORITY_HIGH content=Task id \\\"c1/task-2\\\" finished with result:\\n$1\\n\\nLog: file:///x/task-2.log\\n</SYSTEM_MESSAGE>\"}"; }
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$CB]}" "$CS" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$W]}"
+a1=$(agy_ev PreToolUse "{\"id\":\"c\",$(echo "$W" | cut -c2-)" 4 | grep -c 'AGENTS.md')
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$CB]}" "$CS" "$(ce 'Command exited with code 1.\n\nNo output from the command.')" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$W]}"
+a2=$(agy_ev PreToolUse "{\"id\":\"c\",$(echo "$W" | cut -c2-)" 5 | grep -c 'AGENTS.md')
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$CB]}" "$CS" "$(ce 'Command exited with code 0.\n\nCommand output:\nBe nice.')" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$W]}"
+check "agy: a file write while a background cat of AGENTS.md runs, or after it failed, is denied; after it succeeded it isn't" "1 1 0" "$a1 $a2 $(agy_ev PreToolUse "{\"id\":\"c\",$(echo "$W" | cut -c2-)" 5 | grep -c 'AGENTS.md')"
+rm -f "$HOME/.mergeworthy/agy/c1.post"
 # a declined push's queued check runs as failed at the next event: its pending action goes, none recorded
 export OWN_PENDING="$T/agy-own-d" PUSHED_HEADS="$T/agy-heads-d"; rm -f "$HOME/.mergeworthy/agy/c1.post"
 agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PUSH]}"; agy_ev PostToolUse "{\"id\":\"g\",$(echo "$PUSH" | cut -c2-)" 2 >/dev/null
@@ -5252,7 +5263,7 @@ agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$BG]}" "$BGS" "{\"type\
 agy_ev PreToolUse "{\"id\":\"l\",$(echo "$LS" | cut -c2-)" 4 >/dev/null; b1="$(wc -l < "$HOME/.mergeworthy/agy/c1.post") $(bgres is_error) $(cat "$PUSHED_HEADS" 2>/dev/null | wc -l)"
 agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$BG]}" "$BGS" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$LS]}" '{"type":"GENERIC","content":"Command exited with code 0.\n\nCommand output:\nx\n"}' "$BGE" '{"type":"PLANNER_RESPONSE","content":"Pushed."}'
 agy_ev Stop "" 0 0 >/dev/null
-check "agy: a background command stays pending, not failed, while it runs; once its task finished with exit 0 it is settled as a success" "1 False 0 | 0 o/r bg" \
+check "agy: a background command stays pending while it runs, its start an error in the transcript until the task succeeds; once its task finished with exit 0 it is settled as a success" "1 True 0 | 0 o/r bg" \
   "$b1 | $(wc -l < "$HOME/.mergeworthy/agy/c1.post") $(cat "$PUSHED_HEADS" 2>/dev/null)"
 check "agy: its end is Claude Code's <task-notification>, not Stop feedback" 1 "$(grep -c '<task-notification>.*<status>completed</status>' "$HOME/.mergeworthy/agy/c1.jsonl")"
 # the exit is agy's line above the command's output, never a line of that output: background and foreground

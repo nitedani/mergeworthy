@@ -95,7 +95,8 @@ def steps(path):
 def claude_transcript(agy_steps, cwd, session):
     """agy's transcript steps as Claude Code transcript entries: a typed request, each model text and tool call, each call's result, a
     Stop hook's continuation reason, and a compaction (agy's CHECKPOINT step) as compact_boundary. A background command's result
-    and its end are Claude Code's: a started task, then a <task-notification>. A call agy logged no result for (declined, cancelled)
+    and its end are Claude Code's: a started task, then a <task-notification>; the start's result is an error until the task ended with
+    success, so a read through it (`sleep 5; cat AGENTS.md`) counts for shellcmd.files_read only then. A call agy logged no result for (declined, cancelled)
     failed with no result once a later step shows it ended, as Claude Code records one. Returns the entries and the outcome of each
     call that ended, by its step (a background command's once its task finished)."""
     calls, tasks, ends, out = {}, {}, {}, []
@@ -114,7 +115,9 @@ def claude_transcript(agy_steps, cwd, session):
             out.append({'type': 'system', 'subtype': 'compact_boundary', 'timestamp': at})
         elif s.get('type') == 'SYSTEM_MESSAGE' and (m := FINISHED.search(s.get('content') or '')):
             o = outcome('run_command', {'content': m[2]})
-            if m[1] in tasks: ends[tasks.pop(m[1])] = o
+            if m[1] in tasks:
+                k, start = tasks.pop(m[1])
+                ends[k], start['is_error'] = o, o['failed']
             out.append({'type': 'user', 'timestamp': at, 'message': {'role': 'user', 'content': (
                 f"<task-notification>\n<task-id>{task_id(m[1])}</task-id>\n<status>{'failed' if o['failed'] else 'completed'}</status>\n<summary>{o['output']}</summary>\n</task-notification>")}})
         elif s.get('type') == 'SYSTEM_MESSAGE':
@@ -128,12 +131,13 @@ def claude_transcript(agy_steps, cwd, session):
         elif n in calls:
             c = calls.pop(n)
             if bg := started(s):
-                tasks[bg], bad, text = n, False, f'Command running in background with ID: {task_id(bg)}'
+                bad, text = True, f'Command running in background with ID: {task_id(bg)}'
             else:
                 o = ends[n] = outcome(c.get('name'), s)
                 bad, text = o['failed'], o['error'] or o['output']
-            out.append({'type': 'user', 'timestamp': at, 'message': {'role': 'user', 'content': [
-                {'type': 'tool_result', 'tool_use_id': call_id(session, n), 'is_error': bad, 'content': text}]}})
+            result = {'type': 'tool_result', 'tool_use_id': call_id(session, n), 'is_error': bad, 'content': text}
+            if bg: tasks[bg] = n, result
+            out.append({'type': 'user', 'timestamp': at, 'message': {'role': 'user', 'content': [result]}})
             if c.get('name') == 'read_file' and not bad and whole(s) and (k := skill_of((c.get('args') or {}).get('Path'))):
                 out.append({'type': 'assistant', 'timestamp': at, 'cwd': cwd, 'message': {'role': 'assistant', 'content': [
                     {'type': 'tool_use', 'id': f'{call_id(session, n)}-skill', 'name': 'Skill', 'input': {'skill': f'mergeworthy:{k}'}}]}})
