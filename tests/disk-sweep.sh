@@ -224,11 +224,11 @@ check "a weekly report names the stale folder no rule covers, and deletes nothin
 # or one whose project a process works in stays, and a repo's ignored target that h-ignored takes is listed once
 HC="$T/homec"; mkdir -p "$HC/.mergeworthy"
 for p in loose/target fresh/target busy/target repo/target trk/target force/target repo8/target unig/target mono/member/target custom; do mkdir -p "$HC/$p/debug"; echo x > "$HC/$p/debug/x"; echo 'Signature: 8a477f597d28d172789f06886806bc55' > "$HC/$p/CACHEDIR.TAG"; echo '{}' > "$HC/$p/.rustc_info.json"; done
-mkdir -p "$HC/pre/target/debug"; echo '{}' > "$HC/pre/target/.rustc_info.json"; echo x > "$HC/pre/target/debug/x"; mkdir -p "$HC/symm/target/debug"; echo '{}' > "$T/rinfo"; ln -s "$T/rinfo" "$HC/symm/target/.rustc_info.json"; echo x > "$HC/symm/target/debug/x"; mkdir -p "$HC/py/cache"; echo 'Signature: 8a477f597d28d172789f06886806bc55' > "$HC/py/cache/CACHEDIR.TAG"; echo x > "$HC/py/cache/v"
+mkdir -p "$HC/pre/target/debug"; echo '{}' > "$HC/pre/target/.rustc_info.json"; echo x > "$HC/pre/target/debug/x"; mkdir -p "$HC/symm/target/debug"; echo '{}' > "$T/rinfo"; ln -s "$T/rinfo" "$HC/symm/target/.rustc_info.json"; echo x > "$HC/symm/target/debug/x"; mkdir -p "$HC/build/under/target"; echo '{}' > "$HC/build/under/target/.rustc_info.json"; mkdir -p "$HC/py/cache"; echo 'Signature: 8a477f597d28d172789f06886806bc55' > "$HC/py/cache/CACHEDIR.TAG"; echo x > "$HC/py/cache/v"
 G init -q "$HC/repo"; echo target/ > "$HC/repo/.gitignore"; G -C "$HC/repo" add .gitignore; G -C "$HC/repo" commit -qm base
 for n in trk force repo8 unig mono; do G init -q "$HC/$n"; done; for n in force repo8 mono; do echo target/ > "$HC/$n/.gitignore"; G -C "$HC/$n" add .gitignore; done
 G -C "$HC/trk" add target; G -C "$HC/force" add -f target/debug/x; for n in trk force repo8; do G -C "$HC/$n" commit -qm base; echo edit >> "$HC/$n/target/debug/x"; done
-find "$HC" -exec touch -h -d '15 days ago' {} +; find "$HC/loose" "$HC/trk" "$HC/force" "$HC/repo8" "$HC/unig" "$HC/mono" "$HC/custom" "$HC/pre" "$HC/symm" -exec touch -h -d '8 days ago' {} +; find "$HC/fresh" -exec touch -h -d '2 days ago' {} +
+find "$HC" -exec touch -h -d '15 days ago' {} +; find "$HC/loose" "$HC/trk" "$HC/force" "$HC/repo8" "$HC/unig" "$HC/mono" "$HC/custom" "$HC/pre" "$HC/symm" "$HC/build" -exec touch -h -d '8 days ago' {} +; find "$HC/fresh" -exec touch -h -d '2 days ago' {} +
 LA=$(stat -c %X "$HC/symm/target/.rustc_info.json"); bash -c "cd '$HC/busy' && exec sleep 600" & CB=$!; bash -c "cd '$HC/mono' && exec sleep 600" & CM=$!; sleep 0.2
 HOME="$HC" python3 "$R/bin/disk-sweep" > "$T/dryc.out" 2>/dev/null
 check "a dry run lists a repo's ignored cargo target once, as h-ignored's" "1 1" "$(grep -c " $HC/repo/target " "$T/dryc.out") $(grep -c " $HC/repo/target h-ignored$" "$T/dryc.out")"
@@ -238,6 +238,7 @@ check "in a repo h-cargo takes only a target git ignores holding no tracked file
 check "a process at a repo's root keeps a member's target; one in another project keeps no cargo folder directly in home" "kept removed" "$(there "$HC/mono/member/target") $(there "$HC/custom")"
 check "h-cargo deletes a target cargo built into once it existed, which holds .rustc_info.json without CACHEDIR.TAG" removed "$(there "$HC/pre/target")"
 check "a symlinked .rustc_info.json marks no cargo folder, and the sweep doesn't follow it" "kept same" "$(there "$HC/symm/target") $([ "$(stat -c %X "$HC/symm/target/.rustc_info.json")" = "$LA" ] && echo same || echo read)"
+check "h-cargo doesn't look inside a folder named like a build folder" kept "$(there "$HC/build/under/target")"
 
 # w-done over a whole sweep: the dry run, then a deleting one, with T3's database as a fixture (deleted, no row, settled, auto-settled,
 # archived, live; a row it can't read for err-*)

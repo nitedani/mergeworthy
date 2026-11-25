@@ -25,9 +25,9 @@ deleted.
 - h-ignored, once a day: the same folders in any git repo up to 5 levels below HOME (hidden folders and the work folders
   aside), each unused for 14 days (neither written nor read).
 - h-cargo, once a day: a cargo build folder (holding .rustc_info.json; a split build's final artifacts, CARGO_BUILD_BUILD_DIR,
-  aside) up to 5 levels below HOME, in a git repo or not (in a repo: one git ignores, holding no tracked file; hidden folders and
-  the work folders aside), whole, unused for 7 days (neither written nor read), unless h-ignored takes it or its repo, else its
-  parent (itself directly in HOME), is busy.
+  aside) up to 5 levels below HOME, in a git repo or not (in a repo: one git ignores, holding no tracked file; hidden folders,
+  the work folders and folders named in BUILD aside), whole, unused for 7 days (neither written nor read), unless h-ignored
+  takes it or its repo, else its parent (itself directly in HOME), is busy.
 - k-cache, once a day: `pnpm store prune`, `pip cache purge`, `npm cache clean --force` when ~/.npm/_cacache is unused for
   14 days, and each entry of the named tool caches (CACHES: cargo's, and ~/.cache/yarn, node-gyp, go-build and the like) unused for 14 days (neither written nor read), not busy.
 - d-docker: `docker image prune -a` (every unused image) and `docker builder prune`, with `-f --filter until=336h`, each by its
@@ -525,9 +525,10 @@ def due(name, period):
 
 
 def sweep_home():
-    """Once a day, below HOME outside hidden folders and the work folders (sweep_files has those), up to 5 levels down: h-ignored, build
-    output unused for 14 days (neither written nor read) in the git repos, then h-cargo, each cargo build folder (CARGO) in a repo or
-    not (in a repo: one git ignores, holding no tracked file), unused for 7 days, that h-ignored didn't take."""
+    """Once a day, below HOME outside hidden folders, the work folders (sweep_files has those) and folders named in BUILD, up to 5
+    levels down: h-ignored, build output unused for 14 days (neither written nor read) in the git repos, then h-cargo, each cargo
+    build folder (CARGO) in a repo or not (in a repo: one git ignores, holding no tracked file), unused for 7 days, that h-ignored
+    didn't take."""
     if not due('home', DAY):
         return
     dev, stack, taken = os.lstat(HOME).st_dev, [(HOME, 0, None)], set()
