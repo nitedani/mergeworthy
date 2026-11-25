@@ -123,6 +123,11 @@ rm "$AGP/mergeworthy"; mkdir "$AGP/mergeworthy"; touch "$AGP/mergeworthy/plugin.
 PATH="$T/agybin:$PATH" bash "$R/hooks/agy-link" 2>"$T/err"; l1=$?
 check "a copied plugin at the link's path: agy-link exits 0 with one line naming it, the copy kept, nothing else in agy's plugin folder; the session says so" "0 1 1 mergeworthy 1" \
   "$l1 $(wc -l < "$T/err") $(grep -c "loads a copy of mergeworthy from $AGP/mergeworthy" "$T/err") $(ls -A "$AGP" | paste -sd' ')$([ -L "$AGP/mergeworthy" ] && echo ' link') $(PATH="$T/agybin:$PATH" CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" 2>/dev/null </dev/null | grep -c 'loads a copy of mergeworthy')"
+# a file there is no copied plugin: kept, and the link fails, with one line naming it
+rm -r "$AGP/mergeworthy"; printf 'saved file\n' > "$AGP/mergeworthy"
+PATH="$T/agybin:$PATH" bash "$R/hooks/agy-link" 2>"$T/err"; l1=$?
+check "a file at the link's path: agy-link exits 1 with one line naming it, the file kept" "1 1 1 saved file" \
+  "$l1 $(wc -l < "$T/err") $(grep -c "$AGP/mergeworthy, where .* is no folder and no link" "$T/err") $(cat "$AGP/mergeworthy")"
 rm -r "$T/mvbin" "$T/mvwait"
 rm -r "$HOME/.t3" "$T/agybin"
 # ---------- shared state under ~/.mergeworthy changes only from a real input: an empty environment leaves it as it was ----------

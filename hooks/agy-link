@@ -3,8 +3,8 @@
 # `antigravity` (~/.t3/userdata/providers/antigravity/<sha256 of the id>/config/plugins), where agy loads it from at each session, so
 # an update reaches it through ~/.mergeworthy/current; the instance's twin (antigravity_2) and ~/.gemini, which every instance shares, get
 # nothing. Run by session-start, mergeworthy-update, the installer and learn-units; without T3 Code, agy or the installed plugin it
-# changes nothing. A copied plugin where the link goes is the person's own folder: kept, a warning on stderr, exit 0; any other
-# failure to link exits 1.
+# changes nothing. A copied plugin (a folder) where the link goes is the person's own: kept, a warning on stderr, exit 0. Anything
+# else there that isn't a link (a file) is kept too, and fails the link, as any other failure to link does: exit 1.
 t3=~/.t3/userdata
 [ -d "$t3" ] && command -v agy >/dev/null && [ -f ~/.mergeworthy/current/agy/hooks.json ] || exit 0
 # the instance runs on Antigravity unless T3's settings give that id another driver
@@ -13,9 +13,13 @@ try: sys.exit(json.load(open(sys.argv[1]))["providerInstances"]["antigravity"].g
 except (OSError, ValueError, KeyError, TypeError, AttributeError): pass' "$t3/settings.json" || exit 0
 dir=$t3/providers/antigravity/$(printf antigravity | sha256sum | cut -d' ' -f1)/config/plugins
 [ "$(readlink "$dir/mergeworthy")" = "$HOME/.mergeworthy/current/agy" ] && exit 0
-if [ -e "$dir/mergeworthy" ] && [ ! -L "$dir/mergeworthy" ]; then
+if [ -d "$dir/mergeworthy" ] && [ ! -L "$dir/mergeworthy" ]; then
   echo "mergeworthy: T3 Code's Antigravity instance loads a copy of mergeworthy from $dir/mergeworthy, which updates never reach; tell the user to delete that folder, and the next Claude Code session links the installed one" >&2
   exit 0
+fi
+if [ -e "$dir/mergeworthy" ] && [ ! -L "$dir/mergeworthy" ]; then
+  echo "mergeworthy: $dir/mergeworthy, where T3 Code's Antigravity instance loads mergeworthy from, is no folder and no link, so mergeworthy can't be linked there; tell the user to move it" >&2
+  exit 1
 fi
 # the new link is made outside the folder agy loads plugins from, under a name of this run's own, then renamed over the old one
 mkdir -p "$dir" && tmp=$(mktemp -u "$dir/../.mergeworthy-link.XXXXXX") || exit 1
