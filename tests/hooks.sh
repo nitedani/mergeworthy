@@ -5300,6 +5300,15 @@ m2=$(cd "$AGR" && python3 "$R/bin/memory-prep" prep "$MW" >/dev/null 2>&1; echo 
 check "agy: memory-prep init and prep from an Antigravity session exit 0 and take its prompt and its answer" "0 0 1 1" \
   "$m1 $m2 $(grep -c 'USER\] remember the cache plan' "$MW/memory-new.txt" 2>/dev/null) $(grep -c 'ASSISTANT\] Noted: the cache plan.' "$MW/memory-new.txt" 2>/dev/null)"
 sed -i "\|^$MW\$|d" "$HOME/.mergeworthy/memory-roots.txt"
+# what a queued check says without blocking (additionalContext) reaches the model too: T3 refusing a launch (parent_not_active)
+DT='{"name":"mcp_t3-code_delegate_task","args":{"task":"Research the cache","title":"agy refused"}}'; DR='{"type":"GENERIC","content":"code: parent_not_active"}'
+pna() { rm -f "$HOME/.mergeworthy/agy/c1.post"; agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$DT]}"; agy_ev PostToolUse "{\"id\":\"d\",$(echo "$DT" | cut -c2-)" 2 >/dev/null; }
+pna; agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$DT]}" "$DR" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$LS]}"
+p1=$(agy_ev PreToolUse "{\"id\":\"l\",$(echo "$LS" | cut -c2-)" 4 | python3 -c 'import json, sys; v = json.loads(sys.stdin.read().rsplit(" ", 1)[0]); r = v.get("reason", ""); print(v["decision"], r.count("T3 refused this launch"), r.count("This call was not run"))')
+pna; agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$DT]}" "$DR" '{"type":"PLANNER_RESPONSE","content":"Waiting."}'
+check "agy: T3's refusal of a launch says what to do in the next call's refusal, which says to run it again, and in Stop's continuation" "deny 1 1 continue 1" \
+  "$p1 $(MERGEWORTHY_STOP_CHECKIN=off agy_ev Stop "" 0 0 | python3 -c 'import json, sys; v = json.loads(sys.stdin.read().rsplit(" ", 1)[0]); print(v.get("decision"), v.get("reason", "").count("T3 refused this launch"))')"
+rm -f "$HOME/.mergeworthy/agy/c1.post"
 # a conversation's files go at a SessionStart once all of them are untouched for 14 days
 AD="$HOME/.mergeworthy/agy"; touch "$AD/old-conv.jsonl" "$AD/old-conv.post" "$AD/new-conv.jsonl" "$AD/new-conv.post"
 touch -d 2000-01-01 "$AD/old-conv.jsonl" "$AD/old-conv.post" "$AD/new-conv.post"; touch -d '13 days ago' "$AD/new-conv.jsonl"

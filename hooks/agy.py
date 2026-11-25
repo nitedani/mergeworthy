@@ -174,20 +174,26 @@ def matched(event, tool):
             for h in g['hooks'] if '/hooks/run ' in h['command']]
 
 
+def context(out):
+    """What a hook's stdout gives the model as Claude Code reads it: its hookSpecificOutput.additionalContext, else the text itself."""
+    try: return json.loads(out)['hookSpecificOutput']['additionalContext']
+    except (ValueError, KeyError, TypeError): return out
+
+
 def run(event, d):
-    """Runs event's hooks on Claude Code input d: (the messages of those that blocked, their stdout)."""
-    errs, outs = [], []
+    """Runs event's hooks on Claude Code input d: what they said, (the messages of those that blocked, their context)."""
+    errs, said = [], []
     env = {**os.environ, 'MERGEWORTHY_HOST': 'antigravity', 'CLAUDE_CODE_SESSION_ID': d['session_id']}
     for argv in matched(event, d.get('tool_name')):
         r = subprocess.run([os.path.join(HERE, 'run'), *argv], input=json.dumps(d), capture_output=True, text=True, env=env)
         if r.returncode == 2: errs.append(r.stderr.strip())
-        if r.stdout.strip(): outs.append(r.stdout.strip())
-    return errs, outs
+        if r.stdout.strip(): said.append(context(r.stdout.strip()))
+    return errs, said
 
 
 def settle(ev):
-    """Runs the PostToolUse hooks of each earlier call that has an outcome (a background command, once its task finished): their
-    messages."""
+    """Runs the PostToolUse hooks of each earlier call that has an outcome (a background command, once its task finished): what
+    they said, blocks and context alike, which the model gets in this event's answer."""
     try: waiting = [json.loads(l) for l in open(ev.pending)]
     except OSError: return []
     errs, done = [], ev.outcomes
@@ -195,7 +201,8 @@ def settle(ev):
         o = done[p['step']]
         d = {**ev.base('PostToolUseFailure' if o['failed'] else 'PostToolUse'), 'cwd': p['cwd'], **ev.call(p['name'], p['args'], p['step'])}
         d['tool_response'] = {'stdout': o['output'], 'stderr': o['error'], 'interrupted': False} if p['name'] == 'run_command' else o['output']
-        errs += [f"mergeworthy's check after your earlier call {p['name']} (step {p['step']}): {e}" for e in run(d['hook_event_name'], d)[0]]
+        blocks, said = run(d['hook_event_name'], d)
+        errs += [f"mergeworthy's check after your earlier call {p['name']} (step {p['step']}): {e}" for e in blocks + said]
     rest = [p for p in waiting if p['step'] not in done]
     with open(f'{ev.pending}.{os.getpid()}', 'w') as f: f.writelines(json.dumps(p) + '\n' for p in rest)
     os.replace(f'{ev.pending}.{os.getpid()}', ev.pending)
