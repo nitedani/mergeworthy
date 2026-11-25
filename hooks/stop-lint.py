@@ -383,7 +383,8 @@ if (opened_task or acted) and not child and not headless:
               "a checkbox (mergeworthy:task steps 2-3), then run the steps it leads to.", file=sys.stderr)
         sys.exit(2)
     open_items = [(f, m) for f, t in sorted(scopes.items()) for m in re.findall(r'^\s*[-*] \[ \] (.+)$', t, re.M)]
-    jobs = [j for _, j in agent_jobs.jobs() if j.get('session') == d.get('session_id') and not agent_jobs.finished(j)] if d.get('session_id') else []
+    # a job still running, or one T3 Code ran whose notice of its finish is still due: either wakes the session
+    jobs = [j for _, j in agent_jobs.jobs() if j.get('session') == d.get('session_id') and (not (done := agent_jobs.finished(j)) or agent_jobs.awaits_notice(j, done[0], j.get('transcript')))] if d.get('session_id') else []
     live = [w for w in wakers if w not in dead] + jobs + sorted(t3_dirs)
     if open_items and not live and 'GENUINE-FORK' not in last:
         print(f"{open_items[0][0]}/scope.md still has open items ({'; '.join(m[:80] for _, m in open_items[:3])}) and nothing this session "

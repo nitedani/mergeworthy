@@ -4384,6 +4384,19 @@ PY
 }
 check "BLOCK: a task's turn ending with a scope.md box open and nothing armed to wake it, naming the item" "2 1" "$(uf 'I pushed the fix; CI runs on the new head.'; slj '' 0 s-uf "$TK4") $(grep -c 'Fix CI https://github.com/o/r/pull/71' "$T/err")"
 check "a Monitor it armed lets the turn end; once that Monitor ended, it doesn't" "0 2" "$(uf monitor:m1 'Waiting on CI.'; slj '' 0 s-uf "$TK4") $(uf monitor:m1 ended:m1 'Waiting on CI.'; slj '' 0 s-uf "$TK4")"
+# a T3 job that finished, its notice still due (within LONG of its last write), wakes the session as a running one does; a finished plain job doesn't
+t3db "insert into orchestration_v2_projection_provider_threads values ('p9', 'uft-1', '{\"nativeThreadRef\":{\"nativeId\":\"t3uf\"}}')"
+t3db "insert into orchestration_v2_projection_subagents values ('node:delegated-task:uft', 'orch-1', 'uft-1', 'completed')"
+reg "Execute $T/jobs/uf-t3-ticket.md exactly"; reg "Execute $T/jobs/uf-plain-ticket.md exactly"
+child_log "$JD/t3uf.jsonl" "Execute $T/jobs/uf-t3-ticket.md exactly" 5 text; child_log "$JD/ufplain.jsonl" "Execute $T/jobs/uf-plain-ticket.md exactly" 5 text
+python3 -c 'import glob,json,os,re,time; [json.dump({**j, "session": "s-uf", "started": time.time() - 3600, "launched": time.time() - 3600, **({"handle": "t3:node:delegated-task:uft/uft-1"} if m[1] == "t3" else {})}, open(f + ".n", "w")) or os.replace(f + ".n", f)
+ for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) for j in [json.load(open(f))] for m in [re.search(r"jobs/uf-(t3|plain)-ticket", j["key"])] if m]'
+python3 "$R/bin/agent-job" done "$T/jobs/uf-plain-ticket.md" >/dev/null
+a=$(uf 'Waiting on the agent.'; slj '' 0 s-uf "$TK4")
+reg "Execute $T/jobs/uf-plain-ticket.md exactly"; python3 "$R/bin/agent-job" done "$T/jobs/uf-t3-ticket.md" >/dev/null
+python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "session": "s-uf", "started": time.time() - 3600, "launched": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "uf-plain-ticket" in open(f).read()]'
+check "a finished T3 job whose notice is still due counts as what wakes the session for an open scope.md box; a finished plain job doesn't" "0 2" "$a $(uf 'Waiting on the agent.'; slj '' 0 s-uf "$TK4")"
+python3 "$R/bin/agent-job" done "$T/jobs/uf-plain-ticket.md" >/dev/null
 check "a GENUINE-FORK the user must answer ends it; every box ticked ends it" "0 0" "$(uf $'Two ways remain.\n\nGENUINE-FORK: a or b; I recommend a.'; slj '' 0 s-uf "$TK4") $(sed -i 's/- \[ \]/- [x]/' "$TK4/scope.md"; uf 'Done.'; slj '' 0 s-uf "$TK4")"
 check "replay: the session's first turn (task opened, no scope.md anywhere): blocked, naming task steps 2-3" "2 1" "$(uf 'I could not push the fix.'; slj '' 0 s-uf "$VK") $(grep -c 'task steps 2-3' "$T/err")"
 WD2="$T/deadw"; mkdir -p "$WD2"; echo 999999 > "$WD2/gh-watch.pid"; echo 'o/r 5 comment 42 by maint' > "$WD2/replies-owed.md"; echo "$WD2" > "$HOME/.claude/gh-watch-dirs.txt"
