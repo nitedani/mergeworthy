@@ -29,7 +29,7 @@ read_standards() {
 }
 step=${1:?usage: pr-steps <preflight|approach|small|quick|layout|verify|shape|reverify|fresh|gates|finality|union> <output-file> [--ledger <path>]}; out=${2:?output file}
 ledger=; [ "${3:-}" != --ledger ] || ledger=${4:?--ledger <path>}
-ledger_ok() { [ -n "$ledger" ] && python3 "$(dirname "$(realpath "$0")")/../hooks/loops.py" close "$ledger" --report "$out"; }
+ledger_ok() { [ -n "$ledger" ] && python3 "$(dirname "$(realpath "$0")")/../hooks/loops.py" close ${1:-} "$ledger" --report "$out"; }
 case "$step" in preflight|approach|small|quick|layout|verify|shape|loopb|refactor|reverify|fresh|gates|finality|union) ;; review) step=fresh ;;
   *) echo "step must be preflight, approach, small, quick, layout, verify, shape, reverify, fresh, gates, finality or union" >&2; exit 1;; esac
 # preflight and approach: one record per repo and branch, the path the hooks read (hooks/records.py branch_record)
@@ -296,7 +296,7 @@ EOF
   fresh)
     read_standards
     grep -Eq '^Maintainer: @?[A-Za-z0-9-]+' "$out" || old_pipeline || { echo "$out has no line 'Maintainer: <login>': the fresh reader reviews as the maintainer who decides, citing what they said or did (mergeworthy delegate/fresh-reader.md)" >&2; exit 1; }
-    grep -qx 'MERGE AS IS: yes' "$out" || ledger_ok || { echo "$out has no line 'MERGE AS IS: yes': the fresh reader, as this repo's maintainer, would not merge it exactly as it is; what it lists stands between the PR and a yes, until its last round's ledger closes it (--ledger <path>)" >&2; exit 1; }
+    grep -qx 'MERGE AS IS: yes' "$out" || ledger_ok --fresh || { echo "$out has no line 'MERGE AS IS: yes': the fresh reader, as this repo's maintainer, would not merge it exactly as it is; what it lists stands between the PR and a yes, until its last round's ledger closes it (--ledger <path>)" >&2; exit 1; }
     # a yes is the maintainer merging this head: a note it adds (a body word) goes through the body's post review, no new reader
     ;;
   shape|refactor)

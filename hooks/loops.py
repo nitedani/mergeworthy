@@ -143,6 +143,8 @@ KINDS = {
         'fixed': f'{p} closes round {last}, which brought a blocker or should fixed in a commit: the loop gets its next round first',
         'declined': f'{p} closes round {last}, which declined a blocker: send it back to its seat once, in the next round, before the loop closes (mergeworthy:delegate §Stuck)',
     }.get(ledger.owed(rows, last), ''), False),
+    # a fresh reader runs once (admit): its findings are fixed and confirmed in the loops that own them, so its ledger asks no next round
+    'fresh': ('fixed in <sha>', lambda rows, last, p: '', False),
     'post': ('fixed in r<N>', lambda rows, last, p: '' if last >= 2 else f'{p} closes round {last}: a verdict that is not clean gets round 2 first', True),
 }
 
@@ -189,11 +191,11 @@ def close(path, kind='code', checkout='.', reports=()):
 
 if __name__ == '__main__' and sys.argv[1:2] == ['seats']:  # loops.py seats <report> <record file>: open_seats, a line each
     print(*open_seats(sys.argv[2], [l.split()[1] for l in open(sys.argv[3]) if len(l.split()) > 1] if os.path.isfile(sys.argv[3]) else []), sep='\n')
-elif __name__ == '__main__':  # loops.py close [--post] <ledger> [<checkout>] [--report <the last round's report>]: exits 0 when the ledger closes its loop, else prints what stands
+elif __name__ == '__main__':  # loops.py close [--post|--fresh] <ledger> [<checkout>] [--report <the last round's report>]: exits 0 when the ledger closes its loop, else prints what stands
     a, rep = sys.argv[2:], []
     if '--report' in a: i = a.index('--report'); rep = reports_of(a[i + 1]); del a[i:i + 2]
-    post = a[:1] == ['--post']
-    found = close(a[post], kind='post' if post else 'code', checkout=(a[post + 1:post + 2] or ['.'])[0], reports=rep)
+    kind = {'--post': 'post', '--fresh': 'fresh'}.get(a[0], 'code'); flag = kind != 'code'
+    found = close(a[flag], kind=kind, checkout=(a[flag + 1:flag + 2] or ['.'])[0], reports=rep)
     if found:
         print('the ledger leaves this round open (mergeworthy:delegate §Review rounds):\n' + '\n'.join(found), file=sys.stderr)
     sys.exit(1 if found else 0)
