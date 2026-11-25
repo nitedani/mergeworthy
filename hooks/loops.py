@@ -105,19 +105,16 @@ def ledger_named(brief):
 _lock = None
 
 
-def admit(loop, n, tops, heads, led):
-    """Why round n (2 or later) of code review loop is refused, '' when it may run: tops are the checkouts its brief names, heads
-    their heads its pins equal, led the ledger path it names (None). Holds the rounds' lock until the process exits."""
-    global _lock
-    if re.fullmatch(r'fresh(-[^-]+)?', loop):
-        return f"{loop}-r{n}: the fresh reader runs once (mergeworthy:converge step 4); its findings go back to the loops that own them, `<slice>-fresh` (mergeworthy:delegate §Review rounds).\n"
-    _lock = open(LOOPS + '.lock', 'a'); fcntl.flock(_lock, fcntl.LOCK_EX)
+desc = lambda t, o, h: git(t, 'merge-base', '--is-ancestor', o, h).returncode == 0
+
+
+def on_head(loop, n, tops, heads):
+    """The rounds before n of loop that ran on heads (in the checkouts tops) or within STALE_LINES of the branch's own changed lines of them."""
     # first-parent and no merges: what a merge of the base brought in isn't the PR's own, as SHAPE STALE's compare leaves it out; no renames: each row names a real path
     def own_lines(t, o, h):
         rows = re.findall(r'^(\d+)\t(\d+)\t(.*)$', git(t, '-c', 'core.quotePath=false', 'log', '--first-parent', '--no-merges', '--no-renames', '--numstat', '--format=', f'{o}..{h}').stdout, re.M)
         gen = testpaths.generated(t, [p for _, _, p in rows])
         return testpaths.moved([r for r in rows if r[2] not in gen])
-    desc = lambda t, o, h: git(t, 'merge-base', '--is-ancestor', o, h).returncode == 0
     def built_on(old):
         # each new head built on the round's heads counts, so a pin that never moves can't stand for a branch that did
         if not old: return not heads
@@ -129,10 +126,20 @@ def admit(loop, n, tops, heads, led):
             moved = True
             if not any(own_lines(t, o, h) <= testpaths.STALE_LINES for t, o in itertools.chain([first], on)): return False
         return moved
-    earlier = sorted({m for m, old, *_ in record(loop)['rounds'] if m < n and built_on(old)})
+    return sorted({m for m, old, *_ in record(loop)['rounds'] if m < n and built_on(old)})
+
+
+def admit(loop, n, tops, heads, led):
+    """Why round n (2 or later) of code review loop is refused, '' when it may run: tops are the checkouts its brief names, heads
+    their heads its pins equal, led the ledger path it names (None). Holds the rounds' lock until the process exits."""
+    global _lock
+    if re.fullmatch(r'fresh(-[^-]+)?', loop):
+        return f"{loop}-r{n}: the fresh reader runs once (mergeworthy:converge step 4); its findings go back to the loops that own them, `<slice>-fresh` (mergeworthy:delegate §Review rounds).\n"
+    _lock = open(LOOPS + '.lock', 'a'); fcntl.flock(_lock, fcntl.LOCK_EX)
+    earlier = on_head(loop, n, tops, heads)
     try: rows, _, last = ledger.read(led) if led and os.path.isfile(led) else ([], [], 0)
     except OSError as e: return f"the ledger {led} can't be read ({e.strerror}), so no round of {loop} is admitted: fix it, or name the loop's ledger (mergeworthy:delegate §Review rounds).\n"
-    kept = ledger.owed(rows, last)
+    kept = ledger.owed(rows, last, lambda sha: any(desc(t, sha, 'HEAD') for t in tops))
     close = f"Close the loop with `pr-steps <step> <file> --ledger {led or '<ledger>'}` on r{earlier[-1]}'s report when it isn't clean: the agent's own report is the record, never one the main session writes.\n" if earlier else ''
     if len(earlier) >= 4:
         return (f"{loop} already ran {', '.join(f'r{m}' for m in earlier)} on this head or one within {testpaths.STALE_LINES} changed lines of it "
@@ -155,32 +162,37 @@ def admit(loop, n, tops, heads, led):
 # per kind of loop: the fix outcome that closes a finding, why the completed round leaves the loop open ('' when it doesn't), and
 # whether a later round confirming the fix closes it (a post's draft has no sha)
 KINDS = {
-    'code': ('fixed in <sha>', lambda rows, last, p: '' if last >= 4 else {
+    'code': ('fixed in <sha>', lambda rows, last, p, reached, ran: '' if ran >= 4 else {
         'fixed': f'{p} closes round {last}, which brought a blocker or should fixed in a commit: the loop gets its next round first',
         'declined': f'{p} closes round {last}, which declined a blocker: send it back to its seat once, in the next round, before the loop closes (mergeworthy:delegate §Stuck)',
-    }.get(ledger.owed(rows, last), ''), False),
+    }.get(ledger.owed(rows, last, reached), ''), False),
     # a fresh reader runs once (admit): its findings are fixed and confirmed in the loops that own them, so its ledger asks no next round
-    'fresh': ('fixed in <sha>', lambda rows, last, p: '', False),
-    'post': ('fixed in r<N>', lambda rows, last, p: '' if last >= 2 else f'{p} closes round {last}: a verdict that is not clean gets round 2 first', True),
+    'fresh': ('fixed in <sha>', lambda rows, last, p, reached, ran: '', False),
+    'post': ('fixed in r<N>', lambda rows, last, p, reached, ran: '' if last >= 2 else f'{p} closes round {last}: a verdict that is not clean gets round 2 first', True),
 }
 
 
 ID = re.compile(r'[\s>*-]*`?(R\d+\.\d+)')
 
 
+def loop_of(report):
+    """The loop a round of which wrote report, else None."""
+    report = os.path.realpath(report)
+    return next((l for l, r in _json(LOOPS).items() if isinstance(r, dict) and report in r.get('outs', [])), None)
+
+
 def reports_of(report, checkout='.'):
     """report and the reports of its loop's other rounds on checkout's lineage (each head they pinned is in its HEAD's history),
     leaving out a post's verdict (a fresh reader's body verdict), which its post loop's ledger closes."""
     import review_launch
-    report = os.path.realpath(report)
-    rounds = [x for r in _json(LOOPS).values() if isinstance(r, dict) and report in r.get('outs', []) for x in r['rounds']]
-    return sorted({report} | {o for _, hs, *outs in rounds if hs and all(git(checkout, 'merge-base', '--is-ancestor', h, 'HEAD').returncode == 0 for h in hs) for o in (outs or [[]])[0] if not review_launch.draft_of(o)})
+    rounds = record(loop)['rounds'] if (loop := loop_of(report)) else []
+    return sorted({os.path.realpath(report)} | {o for _, hs, *outs in rounds if hs and all(desc(checkout, h, 'HEAD') for h in hs) for o in (outs or [[]])[0] if not review_launch.draft_of(o)})
 
 
-def close(path, kind='code', checkout='.', reports=()):
+def close(path, kind='code', checkout='.', reports=(), loop=None):
     """What leaves the loop of the ledger at path open, [] when it closes: each finding of every round is the kind's fix (a code
     fix's sha in checkout's HEAD history), `declined: <why>` or `listed: <where>`, no blocker is listed or open, the completed round
-    leaves the loop closed by the kind's rule, every row's id (a word starting with a letter, with a digit) is R<round>.<n>, and
+    leaves the loop closed by the kind's rule (a code loop's counts the rounds loop ran on HEAD), every row's id (a word starting with a letter, with a digit) is R<round>.<n>, and
     each finding `R<round>.<n> <label>` the seat's reports hold has its row, with that label."""
     fix, still_open, confirms = KINDS[kind]
     try: rows, lines, last = ledger.read(path)
@@ -194,11 +206,14 @@ def close(path, kind='code', checkout='.', reports=()):
         unbound += [f"{rp}: {m[0].strip()}  <- {'its ledger row says ' + ruled[i] if i in ruled else 'no ledger row'}: the ledger keeps the seat's id and label, its ruling the outcome"
                     for m in said if ruled.get(i := ID.match(m[0])[1]) != m[2].lower()]
     if not rows: return misnamed + unbound + [f"{path} has no '<id> <label> <outcome>' lines (R<round>.<n> blocker|should|nit {fix}|declined: <why>|listed: <where>)"]
-    out = misnamed + unbound + [w for w in [still_open(rows, last, path)] if w]
+    reached = lambda sha: desc(checkout, sha, 'HEAD')
+    # the rounds loop ran on HEAD, as admit counts them; the round number for a ledger whose loop isn't named
+    ran = len(on_head(loop, last + 1, [checkout], [git(checkout, 'rev-parse', 'HEAD').stdout.strip()])) if loop else last
+    out = misnamed + unbound + [w for w in [still_open(rows, last, path, reached, ran)] if w]
     for m in rows:
         fixed = ledger.FIXED.match(m[3])
         confirmed = confirms and (r := re.match(r'fixed in r(\d+)\b', m[3])) and int(m[1]) < int(r[1]) <= last
-        closed = confirmed or fixed and subprocess.run(['git', '-C', checkout, 'merge-base', '--is-ancestor', fixed[1], 'HEAD'], capture_output=True).returncode == 0
+        closed = confirmed or fixed and reached(fixed[1])
         if fixed and not closed:
             out.append(f'{m[0].strip()}  <- {fixed[1]} is not in HEAD\'s history')
         elif m[2].lower() == 'blocker' and not closed and not m[3].startswith('declined:'):
@@ -215,7 +230,7 @@ elif __name__ == '__main__':  # loops.py close [--post|--fresh] <ledger> [<check
     if '--report' in a: i = a.index('--report'); rep = a[i + 1]; del a[i:i + 2]
     kind = {'--post': 'post', '--fresh': 'fresh'}.get(a[0], 'code'); flag = kind != 'code'
     checkout = (a[flag + 1:flag + 2] or ['.'])[0]
-    found = close(a[flag], kind=kind, checkout=checkout, reports=reports_of(rep, checkout) if rep else [])
+    found = close(a[flag], kind=kind, checkout=checkout, reports=reports_of(rep, checkout) if rep else [], loop=rep and loop_of(rep))
     if found:
         print('the ledger leaves this round open (mergeworthy:delegate §Review rounds):\n' + '\n'.join(found), file=sys.stderr)
     sys.exit(1 if found else 0)

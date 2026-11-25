@@ -17,9 +17,9 @@ def read(path):
     return rows, lines, max([int(m[1]) for m in rows] + [int(n) for n in ROUND.findall(text)], default=0)
 
 
-def owed(rows, n):
-    """What earns a code loop its next round after round n: 'fixed' when it brought a blocker or should `fixed in <sha>`, else
-    'declined' when it brought a blocker `declined:`, which goes back to its seat once (delegate §Stuck), else ''."""
+def owed(rows, n, on_head):
+    """What earns a code loop its next round after round n: 'fixed' when it brought a blocker or should `fixed in <sha>` with
+    on_head(sha), else 'declined' when it brought a blocker `declined:`, which goes back to its seat once (delegate §Stuck), else ''."""
     of_n = [m for m in rows if int(m[1]) == n]
-    return 'fixed' if any(m[2].lower() != 'nit' and FIXED.match(m[3]) for m in of_n) else \
+    return 'fixed' if any(m[2].lower() != 'nit' and (f := FIXED.match(m[3])) and on_head(f[1]) for m in of_n) else \
         'declined' if any(m[2].lower() == 'blocker' and m[3].startswith('declined:') for m in of_n) else ''

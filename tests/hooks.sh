@@ -1639,8 +1639,8 @@ ag() { # cwd task [role]
 printf '# Memory\n## Standing\n### Ruled out\n- **Cron jobs** (now). The user refused them.\n## Recent\n<!-- covered-until: 2099-01-01T00:00:00.000Z -->\n' > "$MR/memory.md"
 check "BLOCK: a brief pinned to an older commit of the worktree it names, with the ruled-out list" "2 1" "$(ag "$OC" "Fix it in $T/gw at $OLD") $(grep -c 'Cron jobs' "$T/err")"
 check "a brief pinned to the worktree's live head passes" 0 "$(ag "$OC" "Fix it again in $T/gw at $NEW, base $OLD")"
-# a code round names its loop's ledger; this one's last round brought a fixed should, so the loop goes on
-CL="$HOME/.mergeworthy/work/cl/drafts/loop.ledger.md"; mkdir -p "${CL%/*}"; printf 'R1.1 should fixed in abc1234\n' > "$CL"
+# a code round names its loop's ledger; this one's last round brought a should fixed on HEAD, a row for each repo below, so the loop goes on
+CL="$HOME/.mergeworthy/work/cl/drafts/loop.ledger.md"; mkdir -p "${CL%/*}"; printf 'R1.1 should fixed in %s\n' "$OLD" > "$CL"
 crnd() { rnd "$1" "$2 Ledger: $CL"; }
 r14=$(for i in 1 2 3 4; do crnd gw-r$i "Review $T/gw at head $NEW, round $i"; done | xargs); r5=$(crnd gw-r5 "Review $T/gw at head $NEW once more")
 r5n=$(grep -c 'a loop gets four rounds per head' "$T/err"); r5p=$(grep -c "pr-steps <step> <file> --ledger $CL" "$T/err"); r5z=$(grep -c 'the area keeps taking patches, so its next step is the finality pass (mergeworthy:finality step 1, recorded by `pr-steps finality <file>`)' "$T/err")
@@ -1650,7 +1650,7 @@ check "review rounds on one head: r1 to r4 pass, BLOCK r5 on it, naming the cap,
 git init -q -b main "$T/rh"; mkdir "$T/rh/tests"
 rh_commit() { seq "$2" >> "$T/rh/$1"; git -C "$T/rh" add .; git -C "$T/rh" commit -qm "$1"; git -C "$T/rh" rev-parse HEAD; }  # a path gets N new lines
 rh_rnd() { crnd "$1" "Review $T/rh at head $2"; }
-H0=$(rh_commit a.py 100); r14=$(for i in 1 2 3 4; do rh_rnd rh-r$i "$H0"; done | xargs)
+H0=$(rh_commit a.py 100); echo "R1.2 should fixed in $H0" >> "$CL"; r14=$(for i in 1 2 3 4; do rh_rnd rh-r$i "$H0"; done | xargs)
 H80=$(rh_commit a.py 80); at80=$(rh_rnd rh-r5 "$H80")
 HT=$(rh_commit tests/a.py 200); attests=$(rh_rnd rh-r5 "$HT")
 git -C "$T/rh" checkout -qb base "$H0"; rh_commit b.py 200 >/dev/null; git -C "$T/rh" checkout -q main; git -C "$T/rh" merge -q --no-ff -m "merge the base" base; HM=$(git -C "$T/rh" rev-parse HEAD); atmerge=$(rh_rnd rh-r5 "$HM")
@@ -1665,7 +1665,7 @@ check "r2 past 80 lines of r1 opens a new head, so it passes naming no ledger: r
 check "a round with no pinned head holds only against another: pinned after unpinned and unpinned after pinned pass" "0 0 0 0 0 0" "$(crnd rh-u-r1 "Review $T/rh") $(crnd rh-u-r2 "Review $T/rh") $(rh_rnd rh-u-r3 "$HC") $(rh_rnd rh-p-r1 "$HC") $(rh_rnd rh-p-r2 "$HC") $(crnd rh-p-r3 "Review $T/rh")"
 git init -q -b main "$T/rp"; git -C "$T/rp" worktree add -q -b feat "$T/rpf"; git -C "$T/rp" worktree add -q -b cmp "$T/rpc"
 rp_commit() { seq "$3" >> "$1/$2"; git -C "$1" add "$2"; git -C "$1" commit -qm "$2"; git -C "$1" rev-parse HEAD; }  # checkout path N: the path gets N new lines
-REL=$(rp_commit "$T/rp" a.py 10); git -C "$T/rpf" reset -q --hard "$REL"; git -C "$T/rpc" reset -q --hard "$REL"; CMP=$(rp_commit "$T/rpc" c.py 30)
+REL=$(rp_commit "$T/rp" a.py 10); echo "R1.3 should fixed in $REL" >> "$CL"; git -C "$T/rpf" reset -q --hard "$REL"; git -C "$T/rpc" reset -q --hard "$REL"; CMP=$(rp_commit "$T/rpc" c.py 30)
 rp_rnd() { crnd "$1" "Review $T/rpf at head $2; compare it with $3."; }  # round head comparison
 F=$(rp_commit "$T/rpf" a.py 20); rpm="$(rp_rnd rp-m-r1 "$F" "the release in $T/rp at $REL")"; F=$(rp_commit "$T/rpf" a.py 1); rpm="$rpm $(rp_rnd rp-m-r2 "$F" "the release in $T/rp at $REL")"
 F=$(rp_commit "$T/rpf" a.py 200); check "issue #215: rounds also pinning the release's checkout, the branch 200 lines past r2: r3 passes" "0 0 0" "$rpm $(rp_rnd rp-m-r3 "$F" "the release in $T/rp at $REL")"
@@ -1688,24 +1688,31 @@ rh_moved() { # loop from to lines: r1 to r4 on the head, then r5 on the rename o
 check "a rename counts each side by its real path: 81 code lines moved to tests pass by the delete side, 80 BLOCK; 81 new lines in a file moved from tests or within the code pass; BLOCK 81 lines of a test moved between test paths" "0 2 0 0 2" "$(rh_moved rh-m81 src/m81.py tests/m81.py 0) $(rh_moved rh-m80 src/m80.py tests/m80.py 0) $(rh_moved rh-h tests/helper.py src/runtime.py 81) $(rh_moved rh-c src/code.py src/renamed.py 81) $(rh_moved rh-t tests/x.py spec/x.py 81)"
 HQ=$(git -C "$T/rh" rev-parse HEAD); for i in 1 2 3 4; do rh_rnd rh-q-r$i "$HQ" >/dev/null; done
 check "BLOCK: r5 on 81 new lines only in tests/café.py: a path git would quote is still a test" 2 "$(rh_rnd rh-q-r5 "$(rh_commit 'tests/café.py' 81)")"
-HL=$(rh_commit a.py 100); NL="$HOME/.mergeworthy/work/cl/drafts/nits.ledger.md"; printf 'R1.1 nit declined: wording\nR1.2 should declined: a staged race\n' > "$NL"
+HL=$(rh_commit a.py 100); OFFH=$(git -C "$T/rh" commit-tree -m off "$HL^{tree}"); NL="$HOME/.mergeworthy/work/cl/drafts/nits.ledger.md"; printf 'R1.1 nit declined: wording\nR1.2 should declined: a staged race\n' > "$NL"
 nl="$(rnd rh-l-r1 "Review $T/rh at head $HL") $(rnd rh-l-r2 "Review $T/rh at head $HL") $(grep -c 'the brief names no `<work folder>/drafts/<review>.ledger.md`' "$T/err")"
 nl="$nl $(rnd rh-l-r2 "Review $T/rh at head $HL; ledger $NL") $(grep -c "the ledger $NL shows round 1 brought none \`fixed in <sha>\`, and no blocker \`declined:\`: the loop ends there" "$T/err") $(grep -c "pr-steps <step> <file> --ledger $NL" "$T/err")"
-printf 'R1.1 should fixed in abc1234\nRound: 2\nR2.1 should fixed in abc1234\n' > "$NL"; nl="$nl $(rnd rh-l-r2 "Review $T/rh at head $HL; ledger $NL") $(rnd rh-l-r3 "Review $T/rh at head $HL; ledger $NL")"
-printf 'Round: 3\nR1.1 should fixed in abc1234\nR2.1 should fixed in abc1234\nR3.1 nit declined: wording\n' > "$NL"
+printf 'R1.1 should fixed in %s\nRound: 2\nR2.1 should fixed in %s\n' "$HL" "$HL" > "$NL"; nl="$nl $(rnd rh-l-r2 "Review $T/rh at head $HL; ledger $NL") $(rnd rh-l-r3 "Review $T/rh at head $HL; ledger $NL")"
+printf 'Round: 3\nR1.1 should fixed in %s\nR2.1 should fixed in %s\nR3.1 nit declined: wording\n' "$HL" "$HL" > "$NL"
 check "BLOCK r2 naming no ledger, or one whose round 1 brought only nits and declined findings, naming the pr-steps that closes it; r2 and r3 after a round with a fixed should pass; BLOCK r4 after a nits-only r3" "0 2 1 2 1 1 0 0 2" "$nl $(rnd rh-l-r4 "Review $T/rh at head $HL; ledger $NL")"
 chmod 000 "$NL"; nr="$(rnd rh-l-r5 "Review $T/rh at head $HL; ledger $NL") $(grep -c "the ledger $NL can't be read" "$T/err") $(grep -c Traceback "$T/err")"; chmod 644 "$NL"
 check "BLOCK a round whose ledger can't be read, naming it, with no crash" "2 1 0" "$nr"
 DL="$HOME/.mergeworthy/work/cl/drafts/dblocker.ledger.md"; printf 'R1.1 blocker declined: the race needs a staged clock\n' > "$DL"
 dl="$(rnd rh-d-r1 "Review $T/rh at head $HL; ledger $DL") $(rnd rh-d-r2 "Review $T/rh at head $HL; ledger $DL") $(printf 'Round: 2\nR1.1 blocker declined: the race needs a staged clock\nR2.1 should declined: rare\n' > "$DL"; rnd rh-d-r3 "Review $T/rh at head $HL; ledger $DL")"
 check "a round 1 whose blocker was declined earns its seat round 2; BLOCK r3 after a round 2 bringing only a declined should" "0 0 2" "$dl"
+git init -q -b main "$T/rz"; RZ=$(seq 10 > "$T/rz/parser.py"; git -C "$T/rz" add .; git -C "$T/rz" commit -qm a; git -C "$T/rz" rev-parse HEAD); ZL="$HOME/.mergeworthy/work/cl/drafts/reset.ledger.md"; printf 'R1.1 should fixed in %s\n' "$RZ" > "$ZL"
+rz="$(for i in 1 2 3 4 5; do crnd reset-codex-r$i "Review $T/rz at head $RZ; ledger $ZL"; done | xargs)"; seq 81 >> "$T/rz/parser.py"; git -C "$T/rz" commit -qam b; RZ2=$(git -C "$T/rz" rev-parse HEAD)
+{ echo '## Standards read'; bash "$R/bin/pr-steps" standards; echo '## Report'; echo 'R5.1 should: the parser drops a field'; } > "$T/rz5.md"
+rz="$rz $(crnd reset-codex-r5-${RZ2:0:7} "Review $T/rz at head $RZ2; ledger $ZL; output to $T/rz5.md") $(printf '%s\n' "R5.1 should fixed in $RZ2" 'Round: 5' >> "$ZL"; cd "$T/rz" && bash "$R/bin/pr-steps" verify "$T/rz5.md" --ledger "$ZL" >/dev/null 2>"$T/err"; echo $?) $(grep -c 'closes round 5, which brought a blocker or should fixed' "$T/err")"
+check "BLOCK: pr-steps verify --ledger closing the first round on a head past 80 lines, r5, which brought a fixed should: the cap counts the rounds on the head, as admission does" "0 0 0 0 2 0 1 1" "$rz"
+UL="$HOME/.mergeworthy/work/cl/drafts/unreached.ledger.md"; printf 'R1.1 should fixed in deadbeef\nR1.2 should fixed in %s\n' "$OFFH" > "$UL"
+check "BLOCK r2 after a round whose fix is not in HEAD's history, a mistyped sha or one on another branch" "0 2 1" "$(rnd rh-x-r1 "Review $T/rh at head $HL; ledger $UL") $(rnd rh-x-r2 "Review $T/rh at head $HL; ledger $UL") $(grep -c "shows round 1 brought none" "$T/err")"
 # under T3 a later review round continues its reviewer's thread (delegate §Continue): t3_thread_send counts as that round
 t3r() { # tool clientRequestId thread text: a delegate_task round (T3 returns thread as its childThreadId) or a t3_thread_send to thread; exit code, registered when it passes
   local j; j=$(python3 -c 'import json,sys; t,c,th,x=sys.argv[1:]; ti={"task":x,"role":"review","clientRequestId":c} if t=="delegate_task" else {"threadId":th,"message":x,"mode":"queue","clientRequestId":c}
 r={"taskId":"task-"+c,"status":"running",**({"childThreadId":th} if t=="delegate_task" else {"threadId":th,"runId":"run-"+c})}
 print(json.dumps({"tool_name":"mcp__t3-code__"+t,"tool_input":ti,"tool_response":[{"type":"text","text":json.dumps(r)}]}))' "$@")
   printf '%s' "$j" | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; local r=$?; [ $r = 0 ] && printf '%s' "$j" | python3 "$R/hooks/pre-agent-dedupe.py" register; echo $r; }
-git init -q -b main "$T/ct"; git -C "$T/ct" commit -q --allow-empty -m one; CH=$(git -C "$T/ct" rev-parse HEAD)
+git init -q -b main "$T/ct"; git -C "$T/ct" commit -q --allow-empty -m one; CH=$(git -C "$T/ct" rev-parse HEAD); echo "R1.4 should fixed in $CH" >> "$CL"
 ct="$(t3r delegate_task ct-r1 th-ct "Review $T/ct at head $CH, round 1. Ledger: $CL") $(for i in 2 3 4 5; do t3r t3_thread_send ct-r$i th-ct "Round $i: review $T/ct at head $CH. Ledger: $CL"; done | xargs) $(grep -c 'ct already ran r1, r2, r3, r4 on this head' "$T/err")"
 job() { python3 -c 'import json,os,sys; print(*[j.get("handle") for f in os.listdir(sys.argv[1]) for j in [json.load(open(os.path.join(sys.argv[1], f)))] if j.get("key") == sys.argv[2]] or ["none"])' "$HOME/.claude/agent-jobs" "$1"; }
 check "a round sent to its reviewer's thread counts and is capped like a launched one: r2 to r4 by t3_thread_send pass, registered as jobs of that thread, BLOCK r5 naming the cap" "0 0 0 0 2 1 t3:task-ct-r4/th-ct" "$ct $(job ct-r4)"
