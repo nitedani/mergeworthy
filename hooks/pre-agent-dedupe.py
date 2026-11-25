@@ -13,7 +13,7 @@ child wakes again when its background commands end."""
 import datetime, fcntl, functools, glob, hashlib, itertools, json, os, re, shlex, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import failclosed
-import agent_jobs, launch, memory_file, project_file, review_launch, testpaths
+import agent_jobs, launch, memory_file, project_file, review_launch, t3_tasks, testpaths
 from post_words import fence_spans
 from records import branch_record
 from shellcmd import segments, prog, git_argv, rlines, Where
@@ -169,18 +169,25 @@ def codex_reset():
     except (OSError, ValueError, AttributeError, TypeError):
         return None
     return min(until) if until and min(until) > time.time() else None
-# This hook runs only under Claude Code, so a review on claudeAgent, or naming no provider (it inherits), is on the main session's company
-if req.role == 'review' and req.t3:
+# Delegated agents run on Claude, reviews first on Codex (mergeworthy:delegate §Model class, §Reviewers), whichever host the session runs
+# on: a delegate_task with no target runs on the launching session's provider, Antigravity's under hooks/agy.py (MERGEWORTHY_HOST)
+drivers = {t3_tasks.driver(p) for p in req.providers} or {'antigravity' if os.environ.get('MERGEWORTHY_HOST') == 'antigravity' else 'claudeAgent'}
+if req.t3 and str(req.tool).endswith('delegate_task') and 'antigravity' in drivers:
+    sys.stderr.write("BLOCKED: no delegated agent runs on Antigravity (mergeworthy:delegate §Model class, §Reviewers)"
+                     + ("; with no target this launch would run on this session's Antigravity" if not req.providers else '')
+                     + f": set target.providerInstanceId to {'codex' if req.role == 'review' else 'claudeAgent'}.\n")
+    refused()
+elif req.role == 'review' and req.t3:
     reset = codex_reset()
     if reset and 'codex' in req.providers:
         at = time.localtime(reset)
         sys.stderr.write(f"BLOCKED: claude-swap reads every saved Codex account as used up until {time.strftime('%H:%M' if at[:3] == time.localtime()[:3] else '%a %H:%M', at)}, so this launch would fail. "
-                         "Launch the review on this company (target.providerInstanceId claudeAgent); it needs no Fallback line while that holds.\n")
+                         "Launch the review on Claude (target.providerInstanceId claudeAgent); it needs no Fallback line while that holds.\n")
         refused()
     # the fallback keeps the first review's prompt, so its claim may sit in the brief file the task names; `<what failed>` is the form, no claim
-    elif not reset and (not req.providers or 'claudeAgent' in req.providers) and not re.search(r'\bFallback:[ \t]*[^\s<]', launch.Brief(req.task).brief):
+    elif not reset and 'claudeAgent' in drivers and not re.search(r'\bFallback:[ \t]*[^\s<]', launch.Brief(req.task).brief):
         sys.stderr.write("BLOCKED: an independent check starts on another company's model (mergeworthy:delegate §Reviewers): set target.providerInstanceId to codex. "
-                         "Only when that call failed, launch on this company with `Fallback: <what failed>` in the task or the brief file it names.\n")
+                         "Only when that call failed, launch on Claude (claudeAgent) with `Fallback: <what failed>` in the task or the brief file it names.\n")
         refused()
 # T3 answers a delegate_task whose clientRequestId it has seen with that earlier task's result, without running anything.
 # Reuse is allowed only within 10 minutes (a retry of the same launch).

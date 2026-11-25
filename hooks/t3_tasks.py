@@ -24,6 +24,13 @@ def under_t3():
     return bool(os.environ.get('T3CODE_THREAD_ID'))
 
 
+def driver(instance):
+    """The driver T3 Code runs provider instance `instance` with (claudeAgent, codex, antigravity), from its settings; else the id itself, as
+    a built-in instance's id is its driver's."""
+    try: return json.load(open(os.path.expanduser('~/.t3/userdata/settings.json')))['providerInstances'][instance]['driver']
+    except (OSError, ValueError, KeyError, TypeError): return instance
+
+
 def result(content):
     """A T3 tool's result, the JSON object in its text (alone, or in content blocks as a PostToolUse hook gets it), else None."""
     r = ''.join(x.get('text', '') for x in content if isinstance(x, dict)) if isinstance(content, list) else str(content or '')
