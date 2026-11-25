@@ -129,8 +129,8 @@ def claude_transcript(agy_steps, cwd, session):
 
 class Event:
     """One agy hook call: its input, the conversation's agy steps so far, and the Claude Code transcript written from them."""
-    def __init__(self, name, d):
-        self.name, self.d = name, d
+    def __init__(self, d):
+        self.d = d
         self.session = re.sub(r'[^\w-]', '', d.get('conversationId') or '') or 'none'
         self.dir = os.path.expanduser('~/.mergeworthy/agy')
         self.transcript = os.path.join(self.dir, f'{self.session}.jsonl')
@@ -202,7 +202,7 @@ def prune(folder):
 
 
 def main(name, d):
-    ev = Event(name, d)
+    ev = Event(d)
     if name == 'SessionStart':
         prune(ev.dir)
         subprocess.run([os.path.join(HERE, 'bin-links')])

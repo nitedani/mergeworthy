@@ -5242,7 +5242,7 @@ for l in open(sys.argv[1]):
 # step numbers restart in each conversation: one conversation's command never settles another's at the same step
 rm -f "$OWN_PENDING" "$PUSHED_HEADS" "$HOME/.mergeworthy/agy/c1.post"
 python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import agy, own_actions
-own_actions.intend(agy.Event("PreToolUse", {"conversationId": "session-A"}).call("run_command", {}, 2)["tool_use_id"], {"PUSHED_HEADS": ["fixture-owner fixture-head"]})' "$R/hooks"
+own_actions.intend(agy.Event({"conversationId": "session-A"}).call("run_command", {}, 2)["tool_use_id"], {"PUSHED_HEADS": ["fixture-owner fixture-head"]})' "$R/hooks"
 PF='{"name":"run_command","args":{"CommandLine":"printf ok"}}'
 agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PF]}"; agy_ev PostToolUse "{\"id\":\"p\",$(echo "$PF" | cut -c2-)" 2 >/dev/null
 agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PF]}" '{"type":"GENERIC","content":"Command exited with code 0.\n\nCommand output:\nok\n"}' '{"type":"PLANNER_RESPONSE","content":"Done."}'
