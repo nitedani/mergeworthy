@@ -1781,6 +1781,21 @@ dra() { local j; j=$(python3 -c 'import json,sys; print(json.dumps({"tool_name":
 DFL="$RLD/dfix.ledger.md"; DF="Review: docs
 Read $T/page.txt and two sibling pages, $T/a.txt and $T/b.txt. Nothing else. Write $HOME/.mergeworthy/work/cl/dfix.docs-read.md."; df=$(dra dfix-codex-r1 "$DF"); printf 'R1.1 should fixed in %s\n' "$CH" > "$DFL"
 check "a docs reader whose brief names no checkout earns round 2 by a should fixed in the launcher's checkout" "0 0" "$df $(jd dfix-codex-r1 dra dfix-codex-r2 "$DF Ledger: $DFL")"
+check "a docs reader whose brief names no checkout earns round 2 by a should fixed in the launcher's checkout" "0 0" "$df $(dra dfix-codex-r2 "$DF Ledger: $DFL")"
+PH="$T/perfhome"; python3 - "$PH" <<'EOF2'
+import json, os, sys
+c = os.path.join(sys.argv[1], '.claude'); os.makedirs(os.path.join(c, 'review-journal', 'r'))
+json.dump({f'l{i}-codex': {'rounds': [[n, ['a' * 40], []] for n in range(1, 5)], 'threads': [f'th-{i}-{k}' for k in range(4)], 'outs': [], 'seated': False} for i in range(500)}, open(os.path.join(c, 'review-loops.json'), 'w'))
+open(os.path.join(c, 'review-journal', 'r', 'b.jsonl'), 'w').writelines(json.dumps({'ev': 'round', 'loop': f'l{i}-codex', 'n': n, 'heads': ['a' * 40], 'outs': [], 'thread': f'th-{i}-{n}', 'seated': False}) + '\n' for i in range(500) for n in range(1, 5))
+EOF2
+check "a t3_thread_send to a thread that never reviewed passes in under 0.1 s with 500 loops of four rounds on the machine" "0 yes" "$(python3 - "$R/hooks/pre-agent-dedupe.py" "$PH" <<'EOF2'
+import os, subprocess, sys, time
+def one():
+    s = time.time(); r = subprocess.run(['python3', sys.argv[1]], input='{"tool_name":"mcp__t3-code__t3_thread_send","tool_input":{"threadId":"dev","message":"hi","clientRequestId":"x"}}', text=True, env={**os.environ, 'HOME': sys.argv[2]}); return r.returncode, time.time() - s
+runs = [one() for _ in range(3)]
+print(max(r for r, _ in runs), 'yes' if min(t for _, t in runs) < 0.1 else f'no {min(t for _, t in runs):.3f}')
+EOF2
+)"
 # replay corpus (finality2 plan step 1): Loop A's R1.1-R1.5, R1.9 and R1.10 are the checks their fixes added; R1.6 and R1.7 come with step 2
 SLL="$HOME/.mergeworthy/work/cl/drafts/stale.ledger.md"; printf 'R1.1 should fixed in %s\n' "$CH" > "$SLL"
 check "BLOCK: r3 while the ledger still shows only round 1, so round 2 is unruled" "0 0 2" "$(t3r delegate_task sl-codex-r1 th-sl "Review $T/ct at head $CH. Ledger: $SLL") $(t3r t3_thread_send sl-codex-r2 th-sl "Round 2: review $T/ct at head $CH. Ledger: $SLL") $(t3r t3_thread_send sl-codex-r3 th-sl "Round 3: review $T/ct at head $CH. Ledger: $SLL")"

@@ -42,15 +42,11 @@ def record(loop, loops=None):
     return {k: _json(path).get(loop, []) for k, path in OLD.items()}
 
 
-def threads(loop):
-    """The T3 threads or Claude agents an earlier review round of loop ran in."""
-    return record(loop)['threads']
-
-
 def seat_loops(seat):
     """The loops whose rounds ran in the reviewer seat: {loop: its first round's journal event, or None for a round only
     review-loops.json or the files before it hold (a brief naming no checkout)}."""
-    here = {l: None for l in {*_json(LOOPS), *_json(OLD['threads'])} if seat in threads(l)}
+    data, old = _json(LOOPS), _json(OLD['threads'])  # read once: a message to a thread that never reviewed waits on nothing
+    here = {l: None for l in {*data, *old} if seat in (data[l].get('threads', []) if isinstance(data.get(l), dict) else old.get(l, []))}
     return {**here, **review_journal.seat_of(seat)}
 
 
