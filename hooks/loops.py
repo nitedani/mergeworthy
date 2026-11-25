@@ -219,10 +219,11 @@ def third_seat(loop, tops, brief):
             "or, when its launch failed, say so in a line `Fallback: <what failed>`; a seat taking over another's count names it, `Continues: <loop>` (mergeworthy:delegate §Review rounds).\n")
 
 
-def admit(loop, n, tops, heads, led, owners=()):
+def admit(loop, n, tops, heads, led, owners=(), here=()):
     """Why round n of code review loop is refused, '' when it may run: tops are the checkouts its brief names, heads their heads
     its pins equal, led the ledger path it names (None), owners the loops whose rounds count in its four (a routed round's seat
-    loop, the loop a `Continues:` line takes over)."""
+    loop, the loop a `Continues:` line takes over), here the launcher's checkout, which holds the fixes of a brief naming none (a
+    docs reader's, handed rendered pages)."""
     if re.fullmatch(r'fresh(-[^-]+)?', loop) and n >= 2:
         return f"{loop}-r{n}: the fresh reader runs once (mergeworthy:converge step 4); its findings go back to the loops that own them, `<slice>-fresh` (mergeworthy:delegate §Review rounds).\n"
     earlier = on_head(loop, n, tops, heads)
@@ -235,7 +236,7 @@ def admit(loop, n, tops, heads, led, owners=()):
     if not earlier: return 
     try: rows, _, last = ledger.read(led) if led and os.path.isfile(led) else ([], [], 0)
     except OSError as e: return f"the ledger {led} can't be read ({e.strerror}), so no round of {loop} is admitted: fix it, or name the loop's ledger (mergeworthy:delegate §Review rounds).\n"
-    kept = ledger.owed(rows, last, lambda sha: any(desc(t, sha, 'HEAD') for t in tops))
+    kept = ledger.owed(rows, last, lambda sha: any(desc(t, sha, 'HEAD') for t in tops or here))
     close = f"Close the loop with `pr-steps <step> <file> --ledger {led or '<ledger>'}` on r{earlier[-1]}'s report when it isn't clean: the agent's own report is the record, never one the main session writes.\n" if earlier else ''
     if len(earlier) >= CAP:
         return (f"{loop} already ran {', '.join(f'r{m}' for m in earlier)} on this head or one within {testpaths.STALE_LINES} changed lines of it "

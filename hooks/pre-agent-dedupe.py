@@ -255,7 +255,7 @@ elif review:
     if sent and (why := review_transport.fix_check(rnd[0], brief, review_transport.last_active(d.get('tool_name'), ti['threadId'], d.get('transcript_path')))):
         sys.stderr.write(f"BLOCKED: {why}")
         refused()
-    if why := (rnd[2] == '1' and not sent and not owners and loops.third_seat(rnd[1], tops, brief)) or loops.admit(rnd[1], int(rnd[2]), tops, heads, led, owners):
+    if why := (rnd[2] == '1' and not sent and not owners and loops.third_seat(rnd[1], tops, brief)) or loops.admit(rnd[1], int(rnd[2]), tops, heads, led, owners, list(filter(None, [git_top(d.get('cwd') or '/')]))):
         sys.stderr.write(f"BLOCKED: {why}")
         refused()
 # A brief that writes or reviews code, docs or a post (any role but research or test) for a repo whose maintainers' notes exist
