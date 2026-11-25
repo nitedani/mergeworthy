@@ -1,6 +1,7 @@
 """The drift count behind pre-bash-guard's finality trigger (`finality` step 1 as a mechanism): which code files (not
 testpaths.NOT_CODE, not build output: testpaths.generated) the branch's own commits changed more than LIMIT times after its anchor:
-the last commit recorded as a finality, else the first recorded as a review (records.py NOTE_KIND). Building before any review counts
+the last commit recorded as a finality, else the first recorded as a review (records.py NOTE_KIND). A finality's plan of n steps (the last
+`plan <n>` line pr-steps wrote in its note) lets each file the branch had changed by then take LIMIT + n. Building before any review counts
 nothing. Only the branch's own commits count (first parent): a merge commit is no change, nor are the commits it brings in (the guard
 passes none for a merge being made), nor is a maintainer's (AGENT_TRAILER): the drift is the agent's.
 A record is the commit's pr-steps record, or its note under records.py DRIFT_REF, which pr-steps writes first and every worktree of the
@@ -38,15 +39,18 @@ def anchor(commits):
 
 
 def over(d, head='HEAD', pending=None, amend=False):
-    """{code file: its count} of checkout d's files past LIMIT changes on the branch at head. pending: the files the commit being made
-    changes, which alone are judged, each counted once more; None for a push, which judges the commits alone. amend: that commit
-    replaces HEAD."""
+    """{code file: (its count, the changes it may take)} of checkout d's files past them on the branch at head: LIMIT, plus the anchor's plan
+    steps for a file the branch changed by the anchor. pending: the files the commit being made changes, which alone are judged, each
+    counted once more; None for a push, which judges the commits alone. amend: that commit replaces HEAD."""
     base = base_ref(d)
     if not base: return {}
     # git prints `\0<sha>\n<its drift note>` per commit: the kinds pr-steps noted on it, one a line
     commits = [c.split('\n', 1) for c in log(d, '--first-parent', '--reverse', '--no-notes', f'--notes={DRIFT_REF}', '--format=%x00%H%n%N', head, '--not', base).split('\0')[1:]]
     start = anchor(commits)
     if not start: return {}
+    plan = int((re.findall(r'^plan (\d+)$', dict(commits)[start], re.M) or [0])[-1])
+    planned = set(log(d, '--first-parent', '--no-renames', '--name-only', '--format=', start, '--not', base).split('\n')) if plan else set()
+    limit = lambda f: LIMIT + (plan if f in planned else 0)
     count = {}
     # git prints `\0<sha>\n<message>\0` per commit, then `\n` and `<file>\0` for each file it changed (none for a merge): `\0\0` is where a commit ends
     changes = log(d, '--first-parent', '--reverse', '--no-diff-merges', '--no-renames', '--name-only', '-z', '--format=%x00%H%n%B', f'{start}..{head}')
@@ -56,6 +60,6 @@ def over(d, head='HEAD', pending=None, amend=False):
         if amend and entry.startswith(commits[-1][0]): pending, files = sorted(set(pending or []) | set(files)), []  # the amended commit is the pending one
         for f in files: count[f] = count.get(f, 0) + 1
     for f in pending or []: count[f] = count.get(f, 0) + 1
-    hot = [f for f in (count if pending is None else pending) if count.get(f, 0) > LIMIT and not re.search(testpaths.NOT_CODE, f)]
+    hot = [f for f in (count if pending is None else pending) if count.get(f, 0) > limit(f) and not re.search(testpaths.NOT_CODE, f)]
     gen = testpaths.generated(d, hot, head if pending is None else None) if hot else set()  # a push's own attributes, a commit's checkout
-    return {f: count[f] for f in hot if f not in gen}
+    return {f: (count[f], limit(f)) for f in hot if f not in gen}

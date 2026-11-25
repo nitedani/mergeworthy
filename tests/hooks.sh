@@ -4723,6 +4723,15 @@ check "with a finality record on the head, the 6th change passes" 0 "$(bg 'git c
 for i in 7 8 9 10 11 12; do echo "p$i" >> "$SP/a.py"; git -C "$SP" add a.py; sc -m "p$i"; done  # 6 changes since the record, made without the hook
 echo p13 >> "$SP/a.py"; git -C "$SP" add a.py; r13=$(bg 'git commit -m p13' "$SP"); (cd "$SP" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null)
 check "BLOCK: a 7th change; a finality record on the head that holds the 6th unblocks it" "2 0" "$r13 $(bg 'git commit -m p13' "$SP")"
+# a plan of n steps lets each file the branch changed by its record take LIMIT + n changes, the last plan recorded on a head counting; a file new after it, LIMIT
+printf 'Pinnacle: one rule decides which lines a counts\nPlan:\n1. fold the patches\n2. drop the special case\n3. rename the rule\n' > "$T/fin3.md"
+printf 'Pinnacle: one rule decides which lines a counts\nPlan:\n1. fold the patches into that rule\n' > "$T/fin1b.md"
+sc -m p13; (cd "$SP" && bash "$R/bin/pr-steps" finality "$T/fin1b.md" >/dev/null && bash "$R/bin/pr-steps" finality "$T/fin3.md" >/dev/null)
+for i in 1 2 3 4 5 6; do echo "n$i" >> "$SP/n.py"; git -C "$SP" add n.py; [ $i = 6 ] || sc -m "n$i"; done; rn6=$(bg 'git commit -m n6' "$SP"); git -C "$SP" checkout -q HEAD -- n.py
+for i in 1 2 3 4 5 6 7; do echo "q$i" >> "$SP/a.py"; sc -am "q$i"; done
+echo q8 >> "$SP/a.py"; git -C "$SP" add a.py; r8=$(bg 'git commit -m q8' "$SP"); sc -m q8; echo q9 >> "$SP/a.py"; git -C "$SP" add a.py
+check "BLOCK: after a 1-step, then a 3-step plan recorded on one head, a file new after them at its 6th change; a planned file's 8th passes, its 9th is refused naming its budget" "2 0 2 1" \
+  "$rn6 $r8 $(bg 'git commit -m q9' "$SP") $(grep -c 'a.py would get a 9th change (its recorded plan allows 8)' "$T/err")"
 # merges: a merge of the base, being made or in the history, is no change, and a finality record on a merge commit counts
 SM="$T/simpm"; git init -q -b main "$SM"; mc() { if [ "$1" = commit ]; then shift; git -C "$SM" -c user.name=t -c user.email=t@t commit --trailer "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" "$@"; else git -C "$SM" -c user.name=t -c user.email=t@t "$@"; fi; }
 seq 1 10 > "$SM/a.py"; git -C "$SM" add -A; mc commit -q -m base
@@ -4838,10 +4847,10 @@ git -C "$T/simpw" rebase -q origin/main; echo w6 >> "$T/simpw/a.py"; git -C "$T/
 check "BLOCK: an implementer's worktree on another branch, made from the reviewed head and rebased there onto a newer main, counts its 6th change" "2 1" "$(bg 'git commit -m w6' "$T/simpw") $(grep -c 'a.py would get a 6th change' "$T/err")"
 (cd "$SR" && bash "$R/bin/pr-steps" finality "$T/fin.md" >/dev/null); rc "$SR" --amend -m 'Edited subject'; echo r6 >> "$SR/a.py"; git -C "$SR" add a.py
 check "an amend of the subject of the head holding the finality record keeps it: the next change passes" 0 "$(bg 'git commit -m r6' "$SR")"
-for i in 6 7 8 9 10; do echo "r$i" >> "$SR/a.py"; rc "$SR" -am "r$i"; done
+for i in 6 7 8 9 10 11; do echo "r$i" >> "$SR/a.py"; rc "$SR" -am "r$i"; done
 git -C "$SR" checkout -q main; echo 0 > "$SR/b.py"; git -C "$SR" add b.py; rc "$SR" -m main1; git -C "$SR" update-ref refs/remotes/origin/main HEAD; git -C "$SR" checkout -q fix; git -C "$SR" rebase -q origin/main
-echo r11 >> "$SR/a.py"; git -C "$SR" add a.py
-check "BLOCK: a rebase keeps the finality record: the 6th change since it is refused" "2 1" "$(bg 'git commit -m r11' "$SR") $(grep -c 'a.py would get a 6th change' "$T/err")"
+echo r12 >> "$SR/a.py"; git -C "$SR" add a.py
+check "BLOCK: a rebase keeps the finality record and its 1-step plan: the 7th change since it is refused" "2 1" "$(bg 'git commit -m r12' "$SR") $(grep -c 'a.py would get a 7th change (its recorded plan allows 6)' "$T/err")"
 git -C "$SR" reset -q --soft origin/main; rc "$SR" -m squashed; for i in 1 2 3 4 5; do echo "s$i" >> "$SR/a.py"; rc "$SR" -am "s$i"; done; echo s6 >> "$SR/a.py"; git -C "$SR" add a.py; rs=$(bg 'git commit -m s6' "$SR")
 (cd "$SR" && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null); for i in 6 7 8 9 10; do echo "s$i" >> "$SR/a.py"; rc "$SR" -am "s$i"; done; echo s11 >> "$SR/a.py"; git -C "$SR" add a.py
 check "a squash of the reviewed branch by a reset and a commit counts nothing; BLOCK: the 6th change since its next review" "0 2" "$rs $(bg 'git commit -m s11' "$SR")"
