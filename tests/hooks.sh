@@ -4851,6 +4851,10 @@ for i in 6 7 8 9 10 11; do echo "r$i" >> "$SR/a.py"; rc "$SR" -am "r$i"; done
 git -C "$SR" checkout -q main; echo 0 > "$SR/b.py"; git -C "$SR" add b.py; rc "$SR" -m main1; git -C "$SR" update-ref refs/remotes/origin/main HEAD; git -C "$SR" checkout -q fix; git -C "$SR" rebase -q origin/main
 echo r12 >> "$SR/a.py"; git -C "$SR" add a.py
 check "BLOCK: a rebase keeps the finality record and its 1-step plan: the 7th change since it is refused" "2 1" "$(bg 'git commit -m r12' "$SR") $(grep -c 'a.py would get a 7th change (its recorded plan allows 6)' "$T/err")"
+SU="$T/simpu"; fx "$SU"; echo 1 > "$SU/ár.py"; git -C "$SU" add ár.py; rc "$SU" -m reviewed; pre "$SU" reverify "$T/rv.md"; (cd "$SU" && bash "$R/bin/pr-steps" finality "$T/fin3.md" >/dev/null)
+for i in 1 2 3 4 5 6 7; do echo "u$i" >> "$SU/ár.py"; rc "$SU" -am "u$i"; done; echo u8 >> "$SU/ár.py"; git -C "$SU" add ár.py; ru8=$(bg 'git commit -m u8' "$SU"); rc "$SU" -m u8; echo u9 >> "$SU/ár.py"; git -C "$SU" add ár.py
+check "a planned file named with a non-ASCII letter gets its plan's budget: its 8th change after a 3-step plan passes; BLOCK: its 9th, naming it" "0 2 1" \
+  "$ru8 $(bg 'git commit -m u9' "$SU") $(grep -c 'ár.py would get a 9th change (its recorded plan allows 8)' "$T/err")"
 git -C "$SR" reset -q --soft origin/main; rc "$SR" -m squashed; for i in 1 2 3 4 5; do echo "s$i" >> "$SR/a.py"; rc "$SR" -am "s$i"; done; echo s6 >> "$SR/a.py"; git -C "$SR" add a.py; rs=$(bg 'git commit -m s6' "$SR")
 (cd "$SR" && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null); for i in 6 7 8 9 10; do echo "s$i" >> "$SR/a.py"; rc "$SR" -am "s$i"; done; echo s11 >> "$SR/a.py"; git -C "$SR" add a.py
 check "a squash of the reviewed branch by a reset and a commit counts nothing; BLOCK: the 6th change since its next review" "0 2" "$rs $(bg 'git commit -m s11' "$SR")"

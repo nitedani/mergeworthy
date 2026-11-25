@@ -49,7 +49,7 @@ def over(d, head='HEAD', pending=None, amend=False):
     start = anchor(commits)
     if not start: return {}
     plan = int((re.findall(r'^plan (\d+)$', dict(commits)[start], re.M) or [0])[-1])
-    planned = set(log(d, '--first-parent', '--no-renames', '--name-only', '--format=', start, '--not', base).split('\n')) if plan else set()
+    planned = set(log(d, '--first-parent', '--no-renames', '--name-only', '-z', '--format=', start, '--not', base).split('\0')) if plan else set()
     limit = lambda f: LIMIT + (plan if f in planned else 0)
     count = {}
     # git prints `\0<sha>\n<message>\0` per commit, then `\n` and `<file>\0` for each file it changed (none for a merge): `\0\0` is where a commit ends
