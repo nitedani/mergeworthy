@@ -88,6 +88,9 @@ v.update({"sha": h, "web_url": u} if os.path.basename(f).startswith("glmr_") els
 json.dump(v, open(f, "w"))' "$2" "$(git -C "$1" rev-parse HEAD)" "$3"; }
 check() { # name want got
   echo "$1: $3 (want $2)"; [ "$2" = "$3" ] || fails=$((fails+1))
+known() { # name want got: a replay case the hooks still decide wrongly (finality2 plan step 1); the step that fixes it makes it a check
+  if [ "$2" = "$3" ]; then echo "$1: $3 (want $2) KNOWN-FAILING CASE PASSES: make it a check"; fails=$((fails+1)); else echo "$1: $3 (want $2) known-failing"; fi
+}
 }
 rl() { python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import review_launch; sys.exit(review_launch.launch(sys.argv[2]) or 0)' "$R/hooks" "$1"; }  # <out>: its review launched through the hook
 rv() { # <dir>/<name>.review.out: its reviewer launched on <name>.md's current text (at RT, else now), then writing back the verdict <out> holds
@@ -1717,6 +1720,10 @@ cq="$(t3r delegate_task cq-r1 th-q "$QB") $(pv "$QD/r.review.out" 'R1.1 should: 
 cq="$cq $(cat "$QD/r.review.out.prev") $(pv "$QD/r.review.out" CLEAN; python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import review_launch; print(review_launch.answers(sys.argv[2], sys.argv[3]) or "passes")' "$R/hooks" "$QD/r.review.out" "$QD/r.md")"
 check "a post round sent to its reviewer's thread records the draft it was handed, so gate-pass's review check passes its CLEAN" "0 0 launched R1.1 should: the date passes" "$cq"
 check "the sent round's job takes the place of its thread's open job" "none t3:task-cq-r2/th-q" "$(job "$QD/r.md") $(job "$QD/r.md cq-r2")"
+PQ="$T/rdrafts/drafts/pq"; mkdir -p "$PQ"; pe "$PQ/r.md" 'Agreed.'; PQB="Review $PQ/r.md; write your final message, exactly CLEAN or the findings, to $PQ/r.review.out."
+pq="$(t3r delegate_task pq-r1 th-pq "$PQB") $(pv "$PQ/r.review.out" 'R1.1 blocker: the wrong response format'; pe "$PQ/r.md" 'One word.'; t3r t3_thread_send pq-r2 th-pq "Round 2: $PQB")"
+pq="$pq $(pv "$PQ/r.review.out" 'R2.1 should: the date'; pe "$PQ/r.md" 'Fixed the date.'; t3r t3_thread_send pq-r3 th-pq "Round 3: $PQB") $(pv "$PQ/r.review.out" 'R3.1 nit: phrasing'; printf '%s\n' 'Round: 3' 'R2.1 should fixed in r3' 'R3.1 nit declined: house style' > "$PQ/r.ledger.md"; python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import review_launch; print("refused" if review_launch.answers(sys.argv[2], sys.argv[3]) else "passes")' "$R/hooks" "$PQ/r.review.out" "$PQ/r.md")"
+known "gate-pass's review check refuses a round-3 post ledger without a row for round 1's blocker" "0 0 0 refused" "$pq"
 smr() { # tool round to text: an Agent launch (Claude Code returns agent to as its agentId) or a SendMessage to agent to; exit code, registered when it passes
   local j; j=$(python3 -c 'import json,sys; t,c,to,x=sys.argv[1:]; ti={"description":c,"prompt":x,"run_in_background":False} if t=="Agent" else {"to":to,"summary":c,"message":x}
 print(json.dumps({"tool_name":t,"tool_input":ti,"tool_response":{"agentId":to} if t=="Agent" else {"success":True}}))' "$@")
@@ -1732,6 +1739,12 @@ rv="$rv $(smr Agent rs-codex-r1 a-rs "Review $T/ct at head $CH; final message ex
 check "a reverify, recheck or ask sent to a seat of its slice or loop starts that loop there, by t3_thread_send or SendMessage: BLOCK its r2 after an r1 that earned none; one sent to another thread is untouched" "0 0 1 2 0 1 0 0 0 0 1 2" "$rv"
 DR="Read $T/page.txt and two sibling pages, $T/a.txt and $T/b.txt. Nothing else. Write $HOME/.mergeworthy/work/cl/page.docs-read.md."
 check "a docs reader launched by the Agent tool is a review round: BLOCK its r2 after an r1 that earned none, by SendMessage or a new Agent" "0 1 2 1 2 1" "$(smr Agent docs-codex-r1 a-dr "$DR") $(nrounds docs-codex) $(smr SendMessage docs-codex-r2 a-dr "Round 2: $DR Ledger: $RV") $(grep -c 'docs-codex-r2 follows r1' "$T/err") $(smr Agent docs-codex-r2 a-dr2 "Round 2 again: $DR Ledger: $RV") $(grep -c 'docs-codex-r2 follows r1' "$T/err")"
+# replay corpus (finality2 plan step 1): Loop A's R1.1-R1.5, R1.9 and R1.10 are the checks their fixes added; R1.6 and R1.7 come with step 2
+SLL="$HOME/.mergeworthy/work/cl/drafts/stale.ledger.md"; printf 'R1.1 should fixed in %s\n' "$CH" > "$SLL"
+known "BLOCK: r3 while the ledger still shows only round 1, so round 2 is unruled" "0 0 2" "$(t3r delegate_task sl-codex-r1 th-sl "Review $T/ct at head $CH. Ledger: $SLL") $(t3r t3_thread_send sl-codex-r2 th-sl "Round 2: review $T/ct at head $CH. Ledger: $SLL") $(t3r t3_thread_send sl-codex-r3 th-sl "Round 3: review $T/ct at head $CH. Ledger: $SLL")"
+known "BLOCK: a recheck sent to a seat whose loop ran its four rounds on this head: it counts in that loop" "0 0 0 0 2" "$(t3r delegate_task pc-codex-r1 th-pc "Review pc in $T/ct at head $CH. Ledger: $CL") $(for i in 2 3 4; do t3r t3_thread_send pc-codex-r$i th-pc "Round $i of pc: review $T/ct at head $CH. Ledger: $CL"; done | xargs) $(t3r t3_thread_send pc-recheck-r1 th-pc "Recheck pc: review $T/ct at head $CH. Ledger: $CL")"
+known "a shape seat launched by the Agent tool from the shape template is a review round" "0 1" "$(smr Agent shape-claude-r1 a-sh "Run the shape pass on $T/ct at head $CH. Write $T/shape-claude.md, ending with a line CLEAN only when nothing is worth changing.") $(nrounds shape-claude)"
+known "t3_thread_launch's result is registered: the PostToolUse matcher holds it" yes "$(python3 -c 'import json,re,sys; h=json.load(open(sys.argv[1]))["hooks"]["PostToolUse"]; print("yes" if any(re.search(x["matcher"], "mcp__t3-code__t3_thread_launch") for x in h if "pre-agent-dedupe.py register" in str(x)) else "no")' "$R/hooks/hooks.json")"
 mkdir -p "$HOME/.mergeworthy/projects/o"; echo "- a lesson from $OLD" > "$HOME/.mergeworthy/projects/o/gwnotes.md"
 check "a project notes file the brief names is read, not pinned: its history SHAs block nothing" 0 "$(ag "$OC" "Fix it in $T/gw; notes $HOME/.mergeworthy/projects/o/gwnotes.md")"
 check "the user's own checkout is read at any commit" 0 "$(ag "$OC" "Read $T/gr at $MAINOLD once more")"
@@ -2503,6 +2516,8 @@ fbl() { launch "Review $FB/pr-body.md at its head, the body verdict exactly CLEA
 fb="$(fbl claude pr-body-claude.review.out)"; pe "$FB/pr-body.md" 'Linted.'; fb="$fb $(fbl codex pr-body.review.out) $(fbl claude2 pr-body-claude2.review.out)"
 for v in pr-body.review.out pr-body-claude2.review.out; do echo CLEAN > "$FB/$v"; fb="$fb $(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import review_launch; print(review_launch.answers(sys.argv[2], sys.argv[3]) or "passes")' "$R/hooks" "$FB/$v" "$FB/pr-body.md")"; done
 check "a second fresh seat's pr-body-<seat>.review.out is a verdict on pr-body.md: BLOCK it while pr-body.md has no post-lint; once linted, both seats' CLEAN pass gate-pass's review check" "2 0 0 passes passes" "$fb"
+printf 'R1.1 blocker: the body claims a guarantee the code lacks.\n' > "$FB/pr-body-claude2.review.out"
+known "gate-pass's review check refuses one body seat's CLEAN while the other seat's verdict on the same body holds a blocker" refused "$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import review_launch; print("refused" if review_launch.answers(sys.argv[2], sys.argv[3]) else "passes")' "$R/hooks" "$FB/pr-body.review.out" "$FB/pr-body.md")"
 # ---------- pr-steps: a shape record is a real pass ----------
 G="$T/prs"; mkdir -p "$G"; git -C "$G" init -q; git -C "$G" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 prs() { (cd "$G" && bash "$R/bin/pr-steps" "$@" >/dev/null 2>&1; echo $?); }
@@ -2541,6 +2556,10 @@ $FO" >/dev/null; printf 'Checked it.\nNO BUGS\n' > "$T/$s.md"; std "$T/$s.md"; d
 seat alpha-codex alpha-claude beta-codex beta-claude
 fs=$(for s in alpha-codex alpha-claude beta-codex beta-claude; do (cd "$GM" && bash "$R/bin/pr-steps" verify "$T/$s.md" >/dev/null 2>&1); grep -c '^verify ' ~/.claude/pr-steps/"$MH"; done | xargs); seat shape-codex shape-claude
 check "pr-steps verify waits for every seat of every slice on the head: verify records with the fourth report; a later step's seat on that head waits only for its own step's" "0 0 0 1 shape-claude" "$fs $(python3 "$R/hooks/loops.py" seats "$T/shape-codex.md" "$T/none" shape | xargs)"
+GN="$T/seats3"; git init -q -b main "$GN"; git -C "$GN" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; NH=$(git -C "$GN" rev-parse HEAD)
+for s in vn-codex vn-claude shape-codex shape-claude; do fo "$s-r1" "{\"providerInstanceId\":\"${s#*-}\"}" "Review $GN at head $NH; output to $T/$s-n.md
+$FO" >/dev/null; printf 'Checked it.\nNO BUGS\n' > "$T/$s-n.md"; std "$T/$s-n.md"; done
+known "verify records once its own two seats' reports do, while Loop B's seats on that head are still open" 1 "$(for s in vn-codex vn-claude; do (cd "$GN" && bash "$R/bin/pr-steps" verify "$T/$s-n.md" >/dev/null 2>&1); done; grep -c '^verify ' ~/.claude/pr-steps/"$NH")"
 for p in pa pb; do git init -q -b main "$T/$p"; git -C "$T/$p" -c user.name=t -c user.email=$p@t commit -q --allow-empty -m $p; done; PA=$(git -C "$T/pa" rev-parse HEAD); PBH=$(git -C "$T/pb" rev-parse HEAD)
 printf 'R1.1 should: the parser drops a field\n' > "$T/a-first.md"; printf 'R1.1 nit: wording\nR1.2 should: the date\n' > "$T/b-first.md"; printf 'R2.1 nit: phrasing\n' > "$T/b-second.md"; std "$T/b-second.md"
 printf '%s\n' 'R1.1 nit declined: wording' "R1.2 should fixed in $PBH" > "$T/b.ledger.md"
@@ -3093,6 +3112,10 @@ CXP="$T/cxr"; mkdir -p "$CXP"; for l in cx-codex cp-claude; do for i in 1 2 3 4 
 cxr="$(guard "codex exec --skip-git-repo-check -o $CXP/r1.out \"\$(cat $CXP/cx-codex-r1.md)\" < /dev/null") $(for i in 2 3 4 5; do guard "codex exec resume 019a-sid \"\$(cat $CXP/cx-codex-r$i.md)\" < /dev/null"; done | xargs) $(grep -c 'cx-codex already ran r1, r2, r3, r4 on this head' "$T/err")"
 cxr="$cxr $(for i in 1 2 3 4 5; do guard "claude -p --effort high < $CXP/cp-claude-r$i.md > $CXP/cp.out"; done | xargs) $(grep -c 'cp-claude already ran r1, r2, r3, r4' "$T/err")"
 check "a shell reviewer's rounds, named by their prompt files, count like an agent's: codex exec r1 and its resume r2 to r4 pass, BLOCK r5 naming the cap; claude -p's the same" "0 0 0 0 2 1 0 0 0 0 2 1" "$cxr"
+for i in 1 2; do printf 'Review %s at head %s; final message exactly NO BUGS. Ledger: %s\n' "$T/ct" "$CH" "$CL" > "$CXP/sk-claude-r$i.md"; done
+pbr() { python3 -c 'import json,sys; print(json.dumps({"hook_event_name":sys.argv[1],"session_id":"s","tool_use_id":"tu","tool_input":{"command":sys.argv[2]},"cwd":sys.argv[3],"tool_response":{"stdout":"","stderr":""}}))' "$1" "$2" "$T" | python3 "$R/hooks/post-bash-register.py" >/dev/null 2>&1; }  # event command
+SK="test -s $T/missing-input.md && claude -p < $CXP/sk-claude-r1.md > $CXP/sk.out"
+known "a shell round counts once its command ran: none after the hook admits it, none after Bash skips or fails it, one after it ran" "0 0 0 1" "$(guard "$SK") $(nrounds sk-claude) $(pbr PostToolUseFailure "$SK"; nrounds sk-claude) $(guard "$SK" >/dev/null; pbr PostToolUse "$SK"; nrounds sk-claude)"
 printf 'src/a' > "$T/review-key"
 check "BLOCK: a reviewer's output with a computed basename in drafts/ (codex -o, claude -p >), naming the fix" "2 1 2" "$(guard "stem=\$(cat $T/review-key); codex exec --skip-git-repo-check -o \"$T/drafts/amb/\${stem##*/}.review.out\" \"\$(cat $SL/p.md)\" < /dev/null") $(grep -c 'pass its absolute path, written out or assigned once' "$T/err") $(guard "stem=\$(cat $T/review-key); claude -p < $SL/p.md > \"$T/drafts/amb/\${stem##*/}.review.out\"")"
 check "BLOCK: a reviewer's output that may be one of two misnamed drafts/ outputs" 2 "$(guard "out=$T/drafts/sn/a.out; if false; then out=$T/drafts/sn/b.out; fi; codex exec --skip-git-repo-check -o \"\$out\" \"\$(cat $SL/p.md)\" < /dev/null")"
