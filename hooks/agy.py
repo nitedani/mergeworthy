@@ -200,14 +200,26 @@ def prune(folder):
         except FileNotFoundError: pass  # another session's prune took it
 
 
+def answer(event, said):
+    """agy's JSON for event from what the checks said: PreToolUse refuses the call with it, Stop continues the turn with it,
+    SessionStart puts it in the conversation; with nothing said, each goes ahead, said so explicitly where agy reads silence as yes."""
+    text = '\n'.join(said)
+    if event == 'SessionStart': return {'injectSteps': [{'systemMessage': {'systemMessage': text}}] if text else []}
+    if event == 'PreToolUse': return {'decision': 'deny', 'reason': text} if text else {'decision': 'allow'}
+    if event == 'Stop': return {'decision': 'continue', 'reason': text} if text else {}
+    return {}
+
+
 def main(name, d):
     ev = Event(d)
     if name == 'SessionStart':
+        # of Claude Code's SessionStart duties (hooks/session-start), the ones agy needs: old files pruned, the bin/ commands on
+        # PATH, the catalog recorded, and the hooks hooks.json runs through hooks/run; session-start itself, which prints the
+        # always-on rules agy loads from agy/rules, doesn't run
         prune(ev.dir)
         subprocess.run([os.path.join(HERE, 'bin-links')])
         session_catalog.record(ev.session, ROOT, 'startup')
-        text = '\n'.join(run('SessionStart', {**ev.base('SessionStart'), 'source': 'startup'})[1])
-        return {'injectSteps': [{'systemMessage': {'systemMessage': text}}] if text else []}
+        return answer(name, run('SessionStart', {**ev.base('SessionStart'), 'source': 'startup'})[1])
     if not os.path.exists(session_catalog.path(ev.session)):  # a conversation reopened (session/load, resume) after its record went
         session_catalog.record(ev.session, ROOT, 'resume')
     c = d.get('toolCall') or {}
@@ -215,16 +227,17 @@ def main(name, d):
         if matched('PostToolUse', claude_name(c.get('name', ''))):
             with open(ev.pending, 'a') as f:
                 f.write(json.dumps({'step': d.get('stepIdx'), 'name': c.get('name'), 'args': c.get('args'), 'cwd': d.get('cwd')}) + '\n')
-        return {}
+        return answer(name, [])
     after = settle(ev)  # at an event whose answer can carry their messages
     if name == 'PreToolUse':
         errs = (["mergeworthy: Antigravity's own subagents run without mergeworthy's checks: launch agents with T3's delegate_task "
                  "(mergeworthy:delegate step 4)."] if c.get('name') in OWN_AGENTS else
                 run('PreToolUse', {**ev.base('PreToolUse'), **ev.call(c.get('name', ''), c.get('args'), d.get('stepIdx'))})[0])
         if after and not errs: after.append('This call was not run: run it again once you have acted on that.')
-        return {'decision': 'deny', 'reason': '\n'.join(after + errs)} if after or errs else {'decision': 'allow'}
-    errs = run('Stop', {**ev.base('Stop'), 'last_assistant_message': last_text(ev), 'stop_hook_active': (d.get('executionNum') or 0) > 0})[0]
-    return {'decision': 'continue', 'reason': '\n'.join(after + errs)} if after or errs else {}
+        return answer(name, after + errs)
+    if name == 'Stop':
+        return answer(name, after + run('Stop', {**ev.base('Stop'), 'last_assistant_message': last_text(ev), 'stop_hook_active': (d.get('executionNum') or 0) > 0})[0])
+    raise ValueError(f'no such agy hook event: {name}')
 
 
 if __name__ == '__main__':
@@ -233,8 +246,6 @@ if __name__ == '__main__':
         verdict = main(event, json.load(sys.stdin))
     except Exception as e:  # a crash is a verdict too: agy lets a tool through on an empty stdout
         import traceback
-        why = (f"mergeworthy's {event} check failed, so it can't tell whether this is allowed. Retry once; if it fails again, tell the "
-               f"user, with this error:\n{''.join(traceback.format_exception(e))[-1500:]}")
-        verdict = {'PreToolUse': {'decision': 'deny', 'reason': why}, 'Stop': {'decision': 'continue', 'reason': why},
-                   'SessionStart': {'injectSteps': [{'systemMessage': {'systemMessage': why}}]}}.get(event, {})
+        verdict = answer(event, [f"mergeworthy's {event} check failed, so it can't tell whether this is allowed. Retry once; if it fails "
+                                 f"again, tell the user, with this error:\n{''.join(traceback.format_exception(e))[-1500:]}"])
     print(json.dumps(verdict))
