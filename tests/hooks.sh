@@ -1730,6 +1730,8 @@ rv="$(t3r delegate_task rv-codex-r1 th-rv "Review $T/ct at head $CH. Ledger: $CL
 rv="$rv $(t3r t3_thread_send rv-codex-ask1-r1 th-rv "The maintainer's ask: $RB") $(nrounds rv-codex-ask1) $(t3r t3_thread_send rv-recheck-r1 th-other "Recheck: $RB") $(nrounds rv-recheck)"
 rv="$rv $(smr Agent rs-codex-r1 a-rs "Review $T/ct at head $CH; final message exactly NO BUGS. Ledger: $CL") $(smr SendMessage rs-recheck-r1 a-rs "Recheck: $RB") $(nrounds rs-recheck) $(smr SendMessage rs-recheck-r2 a-rs "Round 2: $RB")"
 check "a reverify, recheck or ask sent to a seat of its slice or loop starts that loop there, by t3_thread_send or SendMessage: BLOCK its r2 after an r1 that earned none; one sent to another thread is untouched" "0 0 1 2 0 1 0 0 0 0 1 2" "$rv"
+DR="Read $T/page.txt and two sibling pages, $T/a.txt and $T/b.txt. Nothing else. Write $HOME/.mergeworthy/work/cl/page.docs-read.md."
+check "a docs reader launched by the Agent tool is a review round: BLOCK its r2 after an r1 that earned none, by SendMessage or a new Agent" "0 1 2 1 2 1" "$(smr Agent docs-codex-r1 a-dr "$DR") $(nrounds docs-codex) $(smr SendMessage docs-codex-r2 a-dr "Round 2: $DR Ledger: $RV") $(grep -c 'docs-codex-r2 follows r1' "$T/err") $(smr Agent docs-codex-r2 a-dr2 "Round 2 again: $DR Ledger: $RV") $(grep -c 'docs-codex-r2 follows r1' "$T/err")"
 mkdir -p "$HOME/.mergeworthy/projects/o"; echo "- a lesson from $OLD" > "$HOME/.mergeworthy/projects/o/gwnotes.md"
 check "a project notes file the brief names is read, not pinned: its history SHAs block nothing" 0 "$(ag "$OC" "Fix it in $T/gw; notes $HOME/.mergeworthy/projects/o/gwnotes.md")"
 check "the user's own checkout is read at any commit" 0 "$(ag "$OC" "Read $T/gr at $MAINOLD once more")"
