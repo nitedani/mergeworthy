@@ -5234,6 +5234,11 @@ GI='{"name":"run_command","args":{"CommandLine":"gh issue create -R fixture/repo
 agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$GI]}"; agy_ev PostToolUse "{\"id\":\"g\",$(echo "$GI" | cut -c2-)" 2 >/dev/null
 agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$GI]}" '{"type":"GENERIC","content":"Command exited with code 0.\n\nCommand output:\ncreated\n"}' "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$SW]}"
 check "agy: a refused swarm call's reason keeps the earlier command's check and its own" "1 1" "$(agy_ev PreToolUse "{\"id\":\"s\",$(echo "$SW" | cut -c2-)" 4 | python3 -c 'import json, sys; r = json.loads(sys.stdin.read().rsplit(" ", 1)[0])["reason"]; print(r.count("earlier call run_command (step 2)"), r.count("delegate_task"))')"
+# a conversation's files go at a SessionStart once all of them are untouched for 14 days
+AD="$HOME/.mergeworthy/agy"; touch "$AD/old-conv.jsonl" "$AD/old-conv.post" "$AD/new-conv.jsonl" "$AD/new-conv.post"
+touch -d 2000-01-01 "$AD/old-conv.jsonl" "$AD/old-conv.post" "$AD/new-conv.post"; touch -d '13 days ago' "$AD/new-conv.jsonl"
+agt "$U"; agy_ev SessionStart >/dev/null
+check "agy: SessionStart deletes a conversation's files untouched for 14 days, and keeps one with a file touched since" "new-conv.jsonl new-conv.post" "$(cd "$AD" && ls -d old-conv.* new-conv.* 2>/dev/null | paste -sd' ')"
 unset OWN_PENDING PUSHED_HEADS
 agt "$U" '{"type":"PLANNER_RESPONSE","content":"Hello."}'
 check "agy: a Stop no check refuses ends the turn ({})" '{} 0' "$(MERGEWORTHY_STOP_CHECKIN=off agy_ev Stop "" 0 0)"

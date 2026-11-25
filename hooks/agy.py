@@ -2,14 +2,15 @@
 """Antigravity (agy) hook event argv[1], from the plugin in agy/: runs the hooks hooks/hooks.json gives Claude Code for that event and
 tool, and prints their verdict as agy's JSON on stdout, always (agy lets a tool through on an empty stdout). Each hook reads what it
 would under Claude Code: agy's tools under their Claude names and arguments, and agy's transcript rewritten as a Claude Code
-transcript, ~/.mergeworthy/agy/<conversation>.jsonl. A tool's result reaches agy's transcript only after its PostToolUse, so a
+transcript, ~/.mergeworthy/agy/<conversation>.jsonl, kept until the conversation's files are untouched for 14 days. A tool's result reaches agy's transcript only after its PostToolUse, so a
 PostToolUse hook runs at the conversation's next event, which shows its message by refusing that event's tool (or, at Stop, by
 continuing). agy's own subagents (swarm) run no hooks, so they are refused."""
-import json, os, re, subprocess, sys
+import json, os, re, subprocess, sys, time
 HERE = os.path.dirname(os.path.realpath(__file__))
 ROOT = os.path.dirname(HERE)
 TOOLS = {'run_command': 'Bash', 'read_file': 'Read', 'write_file': 'Write', 'edit_file': 'Edit'}
 OWN_AGENTS = ('swarm',)
+KEEP = 14 * 86400
 HEADER = re.compile(r'\A(?:(?:Created|Completed) At: .*\n)*')
 STARTED = re.compile(r'^Tool is running as a background task with task id: (\S+)$', re.M)
 FINISHED = re.compile(r'content=Task id "([^"]+)" finished with \w+:\n(.*?)(?:\n\nLog: \S+)?\n</SYSTEM_MESSAGE>', re.S)
@@ -177,9 +178,21 @@ def last_text(ev):
     return next((s.get('content') for s in reversed(ev.steps) if s.get('type') == 'PLANNER_RESPONSE' and s.get('content')), '')
 
 
+def prune(folder):
+    """Deletes the files of each conversation in folder (<conversation>.*) that are all untouched for KEEP."""
+    convs = {}
+    for f in os.scandir(folder): convs.setdefault(f.name.split('.')[0], []).append(f.path)
+    for files in convs.values():
+        try:
+            if max(os.path.getmtime(f) for f in files) < time.time() - KEEP:
+                for f in files: os.remove(f)
+        except FileNotFoundError: pass  # another session's prune took it
+
+
 def main(name, d):
     ev = Event(name, d)
     if name == 'SessionStart':
+        prune(ev.dir)
         text = '\n'.join(run('SessionStart', {**ev.base('SessionStart'), 'source': 'startup'})[1])
         return {'injectSteps': [{'systemMessage': {'systemMessage': text}}] if text else []}
     c = d.get('toolCall') or {}
