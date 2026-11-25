@@ -108,7 +108,8 @@ def claude_transcript(agy_steps, cwd, session):
                 {'type': 'tool_result', 'tool_use_id': call_id(session, gone), 'is_error': True, 'content': o['error']}]}})
         if s.get('type') == 'USER_INPUT':
             m = re.search(r'<USER_REQUEST>\n?(.*?)\n?</USER_REQUEST>', s.get('content') or '', re.S)
-            out.append({'type': 'user', 'timestamp': at, 'cwd': cwd, 'message': {'role': 'user', 'content': m[1] if m else s.get('content') or ''}})
+            out.append({'type': 'user', 'timestamp': at, 'cwd': cwd, 'promptSource': 'typed',
+                        'message': {'role': 'user', 'content': m[1] if m else s.get('content') or ''}})
         elif s.get('type') == 'CHECKPOINT':
             out.append({'type': 'system', 'subtype': 'compact_boundary', 'timestamp': at})
         elif s.get('type') == 'SYSTEM_MESSAGE' and (m := FINISHED.search(s.get('content') or '')):

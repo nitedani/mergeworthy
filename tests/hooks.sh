@@ -5288,6 +5288,18 @@ check "agy: two SessionStarts at once among 1500 expired records both record the
 # a conversation reopened after its catalog record expired (agy runs no SessionStart for session/load or resume) gets it back
 rm -f "$SD/c1"; agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$LS]}"; agy_ev PreToolUse "{\"id\":\"l\",$(echo "$LS" | cut -c2-)" 2 >/dev/null
 check "agy: the first event of a conversation with no catalog record records the skill graph, as resumed" "graph resume" "$(cut -d' ' -f2,3 "$SD/c1" 2>/dev/null)"
+# the memory file of an Antigravity session (task step 8): init and prep read its conversation's transcript
+MW="$T/agy-mem"; now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+python3 -c 'import json, sys
+for s in [{"type": "USER_INPUT", "source": "USER_EXPLICIT", "content": "<USER_REQUEST>\nremember the cache plan\n</USER_REQUEST>"},
+          {"type": "PLANNER_RESPONSE", "content": "Noted: the cache plan."}]:
+    print(json.dumps({"step_index": 0 if s["type"] == "USER_INPUT" else 1, "status": "DONE", "created_at": sys.argv[1], **s}))' "$now" > "$AG/t.jsonl"
+agy_ev Stop "" 0 0 >/dev/null
+m1=$(cd "$AGR" && CLAUDE_CODE_SESSION_ID= ANTIGRAVITY_CONVERSATION_ID=c1 python3 "$R/bin/memory-prep" init "$MW" thread-agy >/dev/null 2>&1; echo $?)
+m2=$(cd "$AGR" && python3 "$R/bin/memory-prep" prep "$MW" >/dev/null 2>&1; echo $?)
+check "agy: memory-prep init and prep from an Antigravity session exit 0 and take its prompt and its answer" "0 0 1 1" \
+  "$m1 $m2 $(grep -c 'USER\] remember the cache plan' "$MW/memory-new.txt" 2>/dev/null) $(grep -c 'ASSISTANT\] Noted: the cache plan.' "$MW/memory-new.txt" 2>/dev/null)"
+sed -i "\|^$MW\$|d" "$HOME/.mergeworthy/memory-roots.txt"
 # a conversation's files go at a SessionStart once all of them are untouched for 14 days
 AD="$HOME/.mergeworthy/agy"; touch "$AD/old-conv.jsonl" "$AD/old-conv.post" "$AD/new-conv.jsonl" "$AD/new-conv.post"
 touch -d 2000-01-01 "$AD/old-conv.jsonl" "$AD/old-conv.post" "$AD/new-conv.post"; touch -d '13 days ago' "$AD/new-conv.jsonl"
