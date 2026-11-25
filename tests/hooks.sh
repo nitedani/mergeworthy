@@ -1699,6 +1699,8 @@ check "BLOCK a round whose ledger can't be read, naming it, with no crash" "2 1 
 DL="$HOME/.mergeworthy/work/cl/drafts/dblocker.ledger.md"; printf 'R1.1 blocker declined: the race needs a staged clock\n' > "$DL"
 dl="$(rnd rh-d-r1 "Review $T/rh at head $HL; ledger $DL") $(rnd rh-d-r2 "Review $T/rh at head $HL; ledger $DL") $(printf 'Round: 2\nR1.1 blocker declined: the race needs a staged clock\nR2.1 should declined: rare\n' > "$DL"; rnd rh-d-r3 "Review $T/rh at head $HL; ledger $DL")"
 check "a round 1 whose blocker was declined earns its seat round 2; BLOCK r3 after a round 2 bringing only a declined should" "0 0 2" "$dl"
+EL="$HOME/.mergeworthy/work/cl/drafts/eblocker.ledger.md"; printf 'R1.1 blocker declined:\n' > "$EL"
+check "BLOCK r2 after a round 1 whose blocker was declined with no reason: the decline needs its why" "0 2" "$(rnd rh-e-r1 "Review $T/rh at head $HL; ledger $EL") $(rnd rh-e-r2 "Review $T/rh at head $HL; ledger $EL")"
 git init -q -b main "$T/rz"; RZ=$(seq 10 > "$T/rz/parser.py"; git -C "$T/rz" add .; git -C "$T/rz" commit -qm a; git -C "$T/rz" rev-parse HEAD); ZL="$HOME/.mergeworthy/work/cl/drafts/reset.ledger.md"; printf 'R1.1 should fixed in %s\n' "$RZ" > "$ZL"
 rz="$(for i in 1 2 3 4 5; do crnd reset-codex-r$i "Review $T/rz at head $RZ; ledger $ZL"; done | xargs)"; seq 81 >> "$T/rz/parser.py"; git -C "$T/rz" commit -qam b; RZ2=$(git -C "$T/rz" rev-parse HEAD)
 { echo '## Standards read'; bash "$R/bin/pr-steps" standards; echo '## Report'; echo 'R5.1 should: the parser drops a field'; } > "$T/rz5.md"

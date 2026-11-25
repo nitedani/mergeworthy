@@ -172,9 +172,6 @@ KINDS = {
 }
 
 
-ID = re.compile(r'[\s>*-]*`?(R\d+\.\d+)')
-
-
 def loop_of(report):
     """The loop a round of which wrote report, else None."""
     report = os.path.realpath(report)
@@ -195,31 +192,29 @@ def close(path, kind='code', checkout='.', reports=(), loop=None):
     leaves the loop closed by the kind's rule (a code loop's counts the rounds loop ran on HEAD), every row's id (a word starting with a letter, with a digit) is R<round>.<n>, and
     each finding `R<round>.<n> <label>` the seat's reports hold has its row, with that label."""
     fix, still_open, confirms = KINDS[kind]
-    try: rows, lines, last = ledger.read(path)
+    try: rows, others, last = ledger.read(path)
     except OSError as e: return [f'{path}: {e.strerror}']
-    misnamed = [f'{m[0].strip()}  <- its id is not R<round>.<n>' for m in lines if not m[1]]
-    ruled = {ID.match(m[0])[1]: m[2].lower() for m in rows}
+    misnamed = [f'{line}  <- its id is not R<round>.<n>' for line in others]
+    ruled = {r.id: r.label for r in rows}
     unbound = []
     for rp in reports:
-        try: said = [m for m in map(ledger.LINE.match, open(rp, errors='replace').read().splitlines()) if m and m[1]]
+        try: said = [r for r in ledger.rows(open(rp, errors='replace').read()) if r.id]
         except OSError: continue
-        unbound += [f"{rp}: {m[0].strip()}  <- {'its ledger row says ' + ruled[i] if i in ruled else 'no ledger row'}: the ledger keeps the seat's id and label, its ruling the outcome"
-                    for m in said if ruled.get(i := ID.match(m[0])[1]) != m[2].lower()]
+        unbound += [f"{rp}: {r.line}  <- {'its ledger row says ' + ruled[r.id] if r.id in ruled else 'no ledger row'}: the ledger keeps the seat's id and label, its ruling the outcome"
+                    for r in said if ruled.get(r.id) != r.label]
     if not rows: return misnamed + unbound + [f"{path} has no '<id> <label> <outcome>' lines (R<round>.<n> blocker|should|nit {fix}|declined: <why>|listed: <where>)"]
     reached = lambda sha: desc(checkout, sha, 'HEAD')
     # the rounds loop ran on HEAD, as admit counts them; the round number for a ledger whose loop isn't named
     ran = len(on_head(loop, last + 1, [checkout], [git(checkout, 'rev-parse', 'HEAD').stdout.strip()])) if loop else last
     out = misnamed + unbound + [w for w in [still_open(rows, last, path, reached, ran)] if w]
-    for m in rows:
-        fixed = ledger.FIXED.match(m[3])
-        confirmed = confirms and (r := re.match(r'fixed in r(\d+)\b', m[3])) and int(m[1]) < int(r[1]) <= last
-        closed = confirmed or fixed and reached(fixed[1])
-        if fixed and not closed:
-            out.append(f'{m[0].strip()}  <- {fixed[1]} is not in HEAD\'s history')
-        elif m[2].lower() == 'blocker' and not closed and not m[3].startswith('declined:'):
-            out.append(f'{m[0].strip()}  <- an open blocker keeps the PR in draft')
-        elif not closed and not re.match(r'(declined|listed):\s*\S', m[3]):
-            out.append(f'{m[0].strip()}  <- not {fix}, declined: <why> or listed: <where>')
+    for r in rows:
+        closed = confirms and r.confirmed and r.round < r.confirmed <= last or r.fixed and reached(r.fixed)
+        if r.fixed and not closed:
+            out.append(f'{r.line}  <- {r.fixed} is not in HEAD\'s history')
+        elif r.label == 'blocker' and not closed and not r.declined:
+            out.append(f'{r.line}  <- an open blocker keeps the PR in draft')
+        elif not closed and not (r.declined or r.listed):
+            out.append(f'{r.line}  <- not {fix}, declined: <why> or listed: <where>')
     return out
 
 
