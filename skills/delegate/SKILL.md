@@ -53,9 +53,9 @@ Every independent check picks its reviewer in this order, trying the first each 
    ```json
    {"task": "Follow <prompt file>; output to <out>", "role": "review", "target": {"providerInstanceId": "<id>", "options": {"<its effort option>": "<effort>"}}, "clientRequestId": "<loop>-r1"}
    ```
-   Elsewhere, a Codex reviewer: `codex exec -c model_reasoning_effort=<effort> --sandbox danger-full-access --skip-git-repo-check -o <out> "$(cat <prompt file>)" < /dev/null`; a Claude reviewer: `claude -p --effort <effort> --permission-mode bypassPermissions < <prompt file> > <out>`.
+   Elsewhere, a Codex reviewer: `codex exec -c model_reasoning_effort=<effort> --sandbox danger-full-access --skip-git-repo-check -o <out> "$(cat <prompt file>)" < /dev/null`; a Claude reviewer: `claude -p --session-id <uuid> --effort <effort> --permission-mode bypassPermissions < <prompt file> > <out>`.
 - **Else, a fresh agent of the main session's class,** with the same prompt and a task line `Fallback: <what failed>`, when the first fails (spent credits, rate limits, errors, no reply within its time budget). A report, even a partial one, is no failure.
-- **Round 1 of a code loop** (each Loop A slice, Loop B, the fresh reader) runs two seats at once, each its own loop `<loop>-<seat>-r1` (`Fan-out: converge §Running the agents`): the first above, and a third company's (your scope.md line `Reviewer: <providerInstanceId or CLI>`) or else a fresh agent of your class. Rule on both; later rounds continue each Loop A and Loop B seat, never a fresh reader.
+- **Round 1 of a code loop** (each Loop A slice, Loop B, the fresh reader) runs two seats at once, each its own loop `<loop>-<seat>-r1` (`Fan-out: converge §Running the agents`): the first above, and a third company's (your scope.md line `Reviewer: <providerInstanceId or CLI>`) or else a fresh agent of your class. Rule on both; each Loop A or B seat its last round earns continues, never a fresh reader.
 
 The prompt is a file with the template filled. Never write `CLEAN` yourself. Send fixes to the same reviewer (§Continue); a new one only for its context, a failed run, a stale shape pass (`converge`) or a final cold read. Record which reviewer ran (Tier M: a `ledger.md` row).
 
