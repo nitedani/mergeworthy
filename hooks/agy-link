@@ -15,7 +15,7 @@ if [ -e "$dir/mergeworthy" ] && [ ! -L "$dir/mergeworthy" ]; then
   echo "mergeworthy: T3 Code's Antigravity instance loads a copy of mergeworthy from $dir/mergeworthy, which updates never reach; tell the user to delete that folder, and the next Claude Code session links the installed one" >&2
   exit 1
 fi
-# the new link is made outside the folder agy loads plugins from, then renamed over the old one
-mkdir -p "$dir" && tmp=$dir/../.mergeworthy-link || exit 1
+# the new link is made outside the folder agy loads plugins from, under a name of this run's own, then renamed over the old one
+mkdir -p "$dir" && tmp=$(mktemp -u "$dir/../.mergeworthy-link.XXXXXX") || exit 1
 trap 'rm -f "$tmp"' EXIT
 ln -s ~/.mergeworthy/current/agy "$tmp" && mv -T "$tmp" "$dir/mergeworthy"
