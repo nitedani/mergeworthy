@@ -5300,6 +5300,18 @@ m2=$(cd "$AGR" && python3 "$R/bin/memory-prep" prep "$MW" >/dev/null 2>&1; echo 
 check "agy: memory-prep init and prep from an Antigravity session exit 0 and take its prompt and its answer" "0 0 1 1" \
   "$m1 $m2 $(grep -c 'USER\] remember the cache plan' "$MW/memory-new.txt" 2>/dev/null) $(grep -c 'ASSISTANT\] Noted: the cache plan.' "$MW/memory-new.txt" 2>/dev/null)"
 sed -i "\|^$MW\$|d" "$HOME/.mergeworthy/memory-roots.txt"
+# agy's steps carry whole seconds: a ruling and its correction in one second keep the conversation's order
+MW="$T/agy-mem-order"
+python3 -c 'import json, sys
+for i, (t, c) in enumerate([("USER_INPUT", "Zebra configuration is enabled."), ("PLANNER_RESPONSE", "Zebra enabled."),
+                            ("USER_INPUT", "Actually, zebra configuration is disabled."), ("PLANNER_RESPONSE", "Acknowledged, zebra disabled.")]):
+    print(json.dumps({"step_index": i, "status": "DONE", "created_at": sys.argv[1], "type": t, "source": "USER_EXPLICIT",
+                      "content": f"<USER_REQUEST>\n{c}\n</USER_REQUEST>" if t == "USER_INPUT" else c}))' "$now" > "$AG/t.jsonl"
+agy_ev Stop "" 0 0 >/dev/null
+(cd "$AGR" && CLAUDE_CODE_SESSION_ID= ANTIGRAVITY_CONVERSATION_ID=c1 python3 "$R/bin/memory-prep" init "$MW" thread-agy >/dev/null 2>&1 && python3 "$R/bin/memory-prep" prep "$MW" >/dev/null 2>&1)
+check "agy: memory-prep keeps the order of prompts and answers that share one second" "Zebra configuration is enabled.|Zebra enabled.|Actually, zebra configuration is disabled.|Acknowledged, zebra disabled." \
+  "$(sed -n 's/^\[[^]]* \(USER\|ASSISTANT\)\] //p' "$MW/memory-new.txt" 2>/dev/null | paste -sd'|')"
+sed -i "\|^$MW\$|d" "$HOME/.mergeworthy/memory-roots.txt"
 # what a queued check says without blocking (additionalContext) reaches the model too: T3 refusing a launch (parent_not_active)
 DT='{"name":"mcp_t3-code_delegate_task","args":{"task":"Research the cache","title":"agy refused"}}'; DR='{"type":"GENERIC","content":"code: parent_not_active"}'
 pna() { rm -f "$HOME/.mergeworthy/agy/c1.post"; agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$DT]}"; agy_ev PostToolUse "{\"id\":\"d\",$(echo "$DT" | cut -c2-)" 2 >/dev/null; }
