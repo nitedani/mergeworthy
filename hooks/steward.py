@@ -210,13 +210,13 @@ def busy(session_id):
     return _ask(session_id, _busy, False)
 
 def ended(session_id, at):
-    """When the Claude session's T3 turn that was requested and not ended at epoch `at` ended (epoch seconds), skipping one that ended without starting: T3 delivers a notice due then once
-    that turn ends. None while it still runs; 0 without the thread, such a turn or T3's database. Later turns don't count."""
+    """When the Claude session's T3 turn that was requested and not ended at epoch `at` ended (epoch seconds), skipping one still queued or that ended without starting: T3 delivers a notice due then once
+    that turn ends, ahead of any queued message. None while it still runs; 0 without the thread, such a turn or T3's database. Later turns don't count."""
     def ask(c, tid):
         ts = lambda v: datetime.datetime.fromisoformat(v.replace('Z', '+00:00')).timestamp()
         for status, req, start, done in c.execute("select status, json_extract(payload_json, '$.requestedAt'), json_extract(payload_json, '$.startedAt'), "
                                                   "completed_at from orchestration_v2_projection_runs where thread_id = ? and json_valid(payload_json)", (tid,)):
-            if not start and status not in ACTIVE_RUNS: continue  # ended without starting (queued, then cancelled): it never held it
+            if status == 'queued' or not start and status not in ACTIVE_RUNS: continue  # still queued, or ended without starting: T3 delivers a notice ahead of a queued message, so it never held it
             begin = req or start  # T3 holds a notice behind a turn from the moment it is requested, starting included
             if begin and ts(begin) <= at and (not done or ts(done) >= at):
                 return None if status in ACTIVE_RUNS else ts(done) if done else 0
