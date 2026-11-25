@@ -5134,5 +5134,56 @@ mkdir -p "$HOME/.mergeworthy/projects/nitedani-agent"; echo '# notes' > "$HOME/.
 check "the reply each refusal asks the owner for lets that command through: a merge, a push to the default branch, a release, an ask-first command" "2 0 2 0 2 0 2 0" \
   "$(rt "$M") $(rt 'git push origin HEAD:main' "$OWN") $(rt 'gh release create v1.2.0 -R o/r') $(rt 't3-update')"
 rm "$HOME/.mergeworthy/ask-first" "$HOME/.mergeworthy/projects/nitedani-agent/notes.md"
+# ---------- Antigravity (agy): hooks/agy.py runs Claude Code's hooks on agy's events and answers in agy's JSON ----------
+AG="$T/agy"; AGR="$AG/repo"; mkdir -p "$AG"; git init -q -b main "$AGR"; git -C "$AGR" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
+git -C "$AGR" remote add origin "$AG/remote.git"; echo 'Be nice.' > "$AGR/AGENTS.md"
+agt() { # <step json>...: agy's transcript of conversation c1 (one step per argument; step_index in order)
+  python3 -c 'import json, sys
+for i, a in enumerate(sys.argv[1:]): print(json.dumps({"step_index": i, "status": "DONE", "created_at": "2026-11-25T10:00:00Z", **json.loads(a)}))' "$@" > "$AG/t.jsonl"; }
+agy_ev() { # <event> [toolCall json] [stepIdx] [executionNum]: agy's input on stdin; prints agy.py's stdout, then its exit code
+  python3 -c 'import json, sys
+e, call, step, n = sys.argv[1:5]
+d = {"conversationId": "c1", "cwd": sys.argv[5], "transcriptPath": sys.argv[6], "hookEventName": e}
+if call: d.update(toolCall=json.loads(call), stepIdx=int(step))
+if e == "Stop": d.update(executionNum=int(n or 0))
+print(json.dumps(d))' "$1" "${2:-}" "${3:-0}" "${4:-}" "$AGR" "$AG/t.jsonl" | python3 "$R/hooks/agy.py" "$1" | tr -d '\n'; echo " ${PIPESTATUS[1]}"; }
+U='{"type":"USER_INPUT","source":"USER_EXPLICIT","content":"<USER_REQUEST>\npush it\n</USER_REQUEST>"}'
+PUSH='{"name":"run_command","args":{"CommandLine":"git push origin HEAD:refs/heads/probe"}}'
+SKILL="{\"name\":\"read_file\",\"args\":{\"Path\":\"$R/agy/skills/merging/SKILL.md\"}}"
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PUSH]}"
+check "agy: a push before mergeworthy:merging is open is denied in agy's form, naming the skill, exit 0" "deny 1 0" \
+  "$(agy_ev PreToolUse "{\"id\":\"call_0\",$(echo "$PUSH" | cut -c2-)" 2 | python3 -c 'import json, sys; o = sys.stdin.read(); v = json.loads(o.rsplit(" ", 1)[0]); print(v["decision"], v["reason"].count("mergeworthy:merging"), o.rsplit(" ", 1)[1].strip())')"
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$SKILL]}" '{"type":"GENERIC","content":"Created At: x\n1: ---"}' "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PUSH]}"
+check "agy: once agy read merging's SKILL.md the skill gate passes the push" 0 "$(agy_ev PreToolUse "{\"id\":\"call_1\",$(echo "$PUSH" | cut -c2-)" 4 | grep -c 'pre-skill-gate')"
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$SKILL]}" '{"type":"GENERIC","status":"ERROR","error":"file does not exist","content":"x"}' "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PUSH]}"
+check "agy: a read of SKILL.md that failed opens nothing" 1 "$(agy_ev PreToolUse "{\"id\":\"call_1\",$(echo "$PUSH" | cut -c2-)" 4 | grep -c 'mergeworthy:merging')"
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$SKILL]}" '{"type":"GENERIC","content":"1: ---"}' '{"type":"CHECKPOINT","source":"SYSTEM","content":"# Resuming from a compaction"}' "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PUSH]}"
+check "agy: a compaction (agy's CHECKPOINT step) closes the skills read before it" 1 "$(agy_ev PreToolUse "{\"id\":\"call_1\",$(echo "$PUSH" | cut -c2-)" 4 | grep -c 'mergeworthy:merging')"
+W="{\"name\":\"write_file\",\"args\":{\"Path\":\"$AGR/x.txt\",\"Content\":\"x\"}}"; RA="{\"name\":\"read_file\",\"args\":{\"Path\":\"$AGR/AGENTS.md\"}}"
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$W]}"
+a1=$(agy_ev PreToolUse "{\"id\":\"c\",$(echo "$W" | cut -c2-)" 2 | grep -c 'AGENTS.md')
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$RA,$W]}" '{"type":"GENERIC","content":"1: Be nice."}'
+check "agy: a file write before AGENTS.md was read is denied; read in the same model turn (step 2, the write step 3), it isn't" "1 0" "$a1 $(agy_ev PreToolUse "{\"id\":\"c_1\",$(echo "$W" | cut -c2-)" 3 | grep -c 'AGENTS.md')"
+check "agy: its own subagents (swarm) are denied" 1 "$(agy_ev PreToolUse '{"id":"s","name":"swarm","args":{"action":"add","name":"w","brief":"b"}}' 2 | grep -c '"decision": "deny".*delegate_task')"
+check "agy: a call no hook refuses is allowed in agy's form (an empty stdout or {} would not say so)" '{"decision": "allow"} 0' "$(agt "$U" '{"type":"PLANNER_RESPONSE","tool_calls":[{"name":"run_command","args":{"CommandLine":"ls"}}]}'; agy_ev PreToolUse '{"id":"l","name":"run_command","args":{"CommandLine":"ls"}}' 2)"
+check "agy: input it can't read is denied, with exit 0 and a JSON verdict" "deny 0" "$(o=$(echo 'not json' | python3 "$R/hooks/agy.py" PreToolUse); rc=$?; printf '%s' "$o" | python3 -c 'import json, sys; print(json.load(sys.stdin)["decision"], end=" ")'; echo $rc)"
+# a command's result reaches agy's transcript after its PostToolUse: its PostToolUse hooks run at the next event
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PUSH]}"
+agy_ev PostToolUse "{\"id\":\"g\",$(echo "$PUSH" | cut -c2-)" 2 >/dev/null; p1=$(wc -l < "$HOME/.mergeworthy/agy/c1.post")
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PUSH]}" '{"type":"GENERIC","content":"Command exited with code 1.\n\nCommand output:\nfatal: no remote\n"}' '{"type":"PLANNER_RESPONSE","content":"Pushed."}'
+s1=$(agy_ev Stop "" 0 0); p2=$(wc -l < "$HOME/.mergeworthy/agy/c1.post")
+check "agy: a command's PostToolUse waits for its result, then runs at the next event (Stop) and is done" "1 0" "$p1 $p2"
+check "agy: Stop continues with what stop-lint says (a session that pushed, without scope.md)" "continue scope.md" \
+  "$(printf '%s' "$s1" | python3 -c 'import json, sys; v = json.loads(sys.stdin.read().rsplit(" ", 1)[0]); print(v.get("decision"), "scope.md" if "scope.md" in v.get("reason", "") else v)')"
+agt "$U" '{"type":"PLANNER_RESPONSE","content":"Hello."}'
+check "agy: a Stop no check refuses ends the turn ({})" '{} 0' "$(MERGEWORTHY_STOP_CHECKIN=off agy_ev Stop "" 0 0)"
+check "agy: the plugin's matchers send agy every tool hooks.json's matchers take, under its agy name" "" "$(python3 -c 'import json, re, sys
+sys.path.insert(0, sys.argv[1] + "/hooks"); import agy
+mine = json.load(open(sys.argv[1] + "/agy/hooks.json"))["mergeworthy"]
+for ev in ("PreToolUse", "PostToolUse"):
+    for name in [*agy.TOOLS, "swarm", "mcp_t3-code_delegate_task", "mcp_t3-code_t3_thread_launch", "mcp_t3-code_create_threads"]:
+        wants = name in agy.OWN_AGENTS and ev == "PreToolUse" or bool(agy.matched(ev, agy.claude_name(name)))
+        if wants != any(re.search(g["matcher"], name) for g in mine[ev]): print(ev, name, wants)' "$R")"
+check "agy: the plugin's always-on rule loads always-on.md" yes "$(grep -q '^@\[always-on\](~/.mergeworthy/current/always-on.md)$' "$R/agy/rules/mergeworthy.md" && head -3 "$R/agy/rules/mergeworthy.md" | grep -qx 'trigger: always_on' && echo yes || echo no)"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]
