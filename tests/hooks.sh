@@ -2054,6 +2054,8 @@ python3 -c 'import glob,json,os,re,time; [json.dump({**j, "started": time.time()
 done_events > "$T/ev17"; a="$(grep -c "AGENT DONE $T/jobs/lr-ticket.md" "$T/ev17") $(grep -c "AGENT DONE $T/jobs/ll-ticket.md" "$T/ev17") $(sj orch)"
 t3db "update orchestration_v2_projection_runs set status = 'completed', completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') where run_id = 'rl'"
 done_events > "$T/ev18"; note 'Delegated task node:delegated-task:lr (lr) [completed]: Report written.' 0 user; done_events >> "$T/ev18"
+check "stop-lint names the notice that reached the session, to act on and release, not a quiet transcript to read" "2 1 1 0" \
+  "$(sj orch) $(grep -c "notice that the agent for $T/jobs/lr-ticket.md" "$T/err") $(grep -c "then .agent-job done" "$T/err") $(grep -c 'went quiet' "$T/err")"
 t3db "update orchestration_v2_projection_runs set completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-12 minutes') where run_id = 'rl'"; done_events > "$T/ev19"
 check "a T3 job quiet past LONG gets no AGENT DONE and stop-lint passes while the launcher's turn runs (lr, ll); none once it ended, the notice coming (lr) or not (ll); LONG after the end, one for the lost notice (ll)" "0 0 0 0 0 0 1" \
   "$a $(grep -c "AGENT DONE $T/jobs/lr-ticket.md" "$T/ev18") $(grep -c "AGENT DONE $T/jobs/ll-ticket.md" "$T/ev18") $(grep -c "AGENT DONE $T/jobs/lr-ticket.md" "$T/ev19") $(grep -c "AGENT DONE $T/jobs/ll-ticket.md" "$T/ev19")"

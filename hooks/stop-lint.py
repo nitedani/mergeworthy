@@ -405,15 +405,19 @@ if not child:
             open(stamp, 'w').close()
             print(mf.order(root, live=True), file=sys.stderr)
             sys.exit(2)
-# An agent this session launched has finished (its transcript went quiet) and its job is still open: its result is unread
+# An agent this session launched has finished and its job is still open: its result is unread, or its notice came and the job is unreleased
 if not child and d.get('session_id'):
     sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
     import agent_jobs, shlex
     for f, j in agent_jobs.jobs():
         done = j.get('session') == d['session_id'] and agent_jobs.finished(j)
         if done and not agent_jobs.awaits_notice(j, done[0], j.get('transcript')):
-            print(f"The agent for {j['key'][:200]} has finished (its transcript {done[0]} went quiet) and its job is open: read its "
-                  f"result (task_status / its report), act on it, then `agent-job done {shlex.quote(j['key'][:200])}` (mergeworthy:delegate step 6).", file=sys.stderr)
+            release = f"`agent-job done {shlex.quote(j['key'][:200])}` (mergeworthy:delegate step 6)."
+            if agent_jobs.noticed(j.get('transcript'), done[0]):
+                print(f"The notice that the agent for {j['key'][:200]} finished reached this session and its job is open: act on its result, then {release}", file=sys.stderr)
+            else:
+                print(f"The agent for {j['key'][:200]} has finished (its transcript {done[0]} went quiet) and its job is open: read its "
+                      f"result (task_status / its report), act on it, then {release}", file=sys.stderr)
             sys.exit(2)
 # Hook scripts run from ~/.mergeworthy/current (hooks/run), but the hook list is the one this session started with: when a newer
 # version changed hooks.json, say so once per session
