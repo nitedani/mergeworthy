@@ -55,6 +55,7 @@ def continues(loop, n, seat):
     return bool(m) and any((l.rsplit('-', 1)[0] if m[2] else l) == m[1] and seat in threads(l) for l in {*_json(LOOPS), *_json(OLD['threads'])})
 
 
+CAP = 4  # rounds per loop on one head (delegate §Review rounds)
 FANOUT = r'^Fan-out: converge §Running the agents$'  # a round 1 seating a step's reviewers at once (delegate §Reviewers)
 
 
@@ -114,7 +115,7 @@ def on_head(loop, n, tops, heads):
     def own_lines(t, o, h):
         rows = re.findall(r'^(\d+)\t(\d+)\t(.*)$', git(t, '-c', 'core.quotePath=false', 'log', '--first-parent', '--no-merges', '--no-renames', '--numstat', '--format=', f'{o}..{h}').stdout, re.M)
         gen = testpaths.generated(t, [p for _, _, p in rows])
-        return testpaths.moved([r for r in rows if r[2] not in gen])
+        return testpaths.moved([r for r in rows if r[2] not in gen], 'cap')
     def built_on(old):
         # each new head built on the round's heads counts, so a pin that never moves can't stand for a branch that did
         if not old: return not heads
@@ -141,7 +142,7 @@ def admit(loop, n, tops, heads, led):
     except OSError as e: return f"the ledger {led} can't be read ({e.strerror}), so no round of {loop} is admitted: fix it, or name the loop's ledger (mergeworthy:delegate §Review rounds).\n"
     kept = ledger.owed(rows, last, lambda sha: any(desc(t, sha, 'HEAD') for t in tops))
     close = f"Close the loop with `pr-steps <step> <file> --ledger {led or '<ledger>'}` on r{earlier[-1]}'s report when it isn't clean: the agent's own report is the record, never one the main session writes.\n" if earlier else ''
-    if len(earlier) >= 4:
+    if len(earlier) >= CAP:
         return (f"{loop} already ran {', '.join(f'r{m}' for m in earlier)} on this head or one within {testpaths.STALE_LINES} changed lines of it "
                 f"({', '.join(h[:12] for h in heads) or 'no head pinned'}): a loop gets four rounds per head, and a head past those lines is a new one "
                 "(mergeworthy:delegate §Review rounds). "
@@ -162,7 +163,7 @@ def admit(loop, n, tops, heads, led):
 # per kind of loop: the fix outcome that closes a finding, why the completed round leaves the loop open ('' when it doesn't), and
 # whether a later round confirming the fix closes it (a post's draft has no sha)
 KINDS = {
-    'code': ('fixed in <sha>', lambda rows, last, p, reached, ran: '' if ran >= 4 else {
+    'code': ('fixed in <sha>', lambda rows, last, p, reached, ran: '' if ran >= CAP else {
         'fixed': f'{p} closes round {last}, which brought a blocker or should fixed in a commit: the loop gets its next round first',
         'declined': f'{p} closes round {last}, which declined a blocker: send it back to its seat once, in the next round, before the loop closes (mergeworthy:delegate §Stuck)',
     }.get(ledger.owed(rows, last, reached), ''), False),

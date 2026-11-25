@@ -207,7 +207,7 @@ delta() {
 # A carry of head $1's step holds for at most STALE_LINES changed lines, tests and docs included, none outside them: a line of code may add behavior, whatever the session says
 carry_holds() {
   local files changed code
-  files=$(delta "$1"); ! changed=$(printf '%s\n' "$files" | awk 'NF {print "1\t0\t" $0}' | python3 "$(dirname "$(realpath "$0")")/../hooks/testpaths.py" moved '') || { echo "$changed lines changed since $1: too much to carry, run the $step step again (mergeworthy:converge §Batching)" >&2; exit 1; }
+  files=$(delta "$1"); ! changed=$(printf '%s\n' "$files" | awk 'NF {print "1\t0\t" $0}' | python3 "$(dirname "$(realpath "$0")")/../hooks/testpaths.py" moved carry) || { echo "$changed lines changed since $1: too much to carry, run the $step step again (mergeworthy:converge §Batching)" >&2; exit 1; }
   code=$(printf '%s\n' "$files" | R="$(python3 "$(dirname "$(realpath "$0")")/../hooks/testpaths.py")|[.]md\$" awk 'NF && $0 !~ ENVIRON["R"] && !f {f = $0} END {print f}')
   [ -z "$code" ] || { echo "$code changed since $1, and a carry holds for tests and docs alone: run the $step step again (mergeworthy:converge §Batching)" >&2; exit 1; }
 }
