@@ -82,7 +82,8 @@ def reviewed(out, draft):
 def answers(out, draft, ledger_file=None):
     """Why the review in out doesn't let draft be posted, gate-pass's review rule ('' when it does).
     The reviewer was handed draft's text (reviewed()); its verdict is exactly CLEAN, or ledger_file (default: <name>.ledger.md beside draft,
-    if any), written after it, closes the round (loops.close, a post's rules); the launch postdates the latest human comment
+    if any), written after it, closes the round (loops.close, a post's rules, with a row for each finding of the verdict and of the one
+    launch() set aside); the launch postdates the latest human comment
     thread-context.md beside draft records. out None: a status post, which has no review and is checked by draft's own time. Writes nothing."""
     why, at = reviewed(out, draft) if out else ('', int(os.path.getmtime(draft)))
     if why: return f'{draft}: {why}'
@@ -91,7 +92,7 @@ def answers(out, draft, ledger_file=None):
     if verdict != ['CLEAN']:
         beside = os.path.splitext(draft)[0] + '.ledger.md'
         ledger_file = ledger_file or (beside if os.path.isfile(beside) else None)
-        found = loops.close(ledger_file, 'post', reports=[out]) if ledger_file else []
+        found = loops.close(ledger_file, 'post', reports=[out] + [out + '.prev'] * os.path.isfile(out + '.prev')) if ledger_file else []
         if ledger_file and not found and (not verdict or os.path.getmtime(ledger_file) < os.path.getmtime(out)):
             found = [f'{out} holds no verdict yet: wait for its reviewer, or launch the round again' if not verdict else f'{ledger_file} was last written before the verdict in {out}: add its findings, then pass it']
         if not ledger_file or found:
