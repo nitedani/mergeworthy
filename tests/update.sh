@@ -65,6 +65,11 @@ prof() { echo "$HOME/.t3/userdata/providers/antigravity/$(printf '%s' "$1" | sha
 bash "$R/bin/mergeworthy-update" > "$T/out" 2>&1
 check "the antigravity instance's profile links the installed agy plugin; antigravity_2's and ~/.gemini have none" "$HOME/.mergeworthy/current/agy no no" \
   "$(readlink "$(prof antigravity)/mergeworthy") $([ -e "$(prof antigravity_2)" ] && echo yes || echo no) $([ -e "$HOME/.gemini" ] && echo yes || echo no)"
+# a fresh install links it too, before any Claude Code session or update ran (installClaude, cli/index.mjs)
+if [ -d "$R/cli/node_modules" ]; then
+  rm -r "$HOME/.t3/userdata/providers"; node "$R/cli/index.mjs" --yes --agents claude > "$T/out" 2>&1
+  check "npx mergeworthy --agents claude: exit, the antigravity instance's link" "0 $HOME/.mergeworthy/current/agy" "$? $(readlink "$(prof antigravity)/mergeworthy")"
+fi
 rm -r "$HOME/.t3/userdata/providers"; echo '{"providerInstances":{"antigravity":{"driver":"codex"}}}' > "$HOME/.t3/userdata/settings.json"
 bash "$R/bin/mergeworthy-update" > "$T/out" 2>&1; check "an instance \`antigravity\` on another driver gets no link" no "$([ -e "$HOME/.t3/userdata/providers" ] && echo yes || echo no)"
 rm -r "$HOME/.t3" "$NEW/hooks" "$NEW/agy" "$T/bin/agy"

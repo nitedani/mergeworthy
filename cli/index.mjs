@@ -64,6 +64,9 @@ function installClaude(values) {
     fs.mkdirSync(path.join(HOME, '.mergeworthy'), { recursive: true })
     fs.rmSync(path.join(HOME, '.mergeworthy', 'current'), { force: true })
     fs.symlinkSync(installed.installPath, path.join(HOME, '.mergeworthy', 'current'))
+    // and T3 Code's Antigravity instance loads the plugin's agy/ through it, as session-start and mergeworthy-update keep it
+    const link = path.join(installed.installPath, 'hooks', 'agy-link')
+    if (fs.existsSync(link)) run(link, [])
   }
 }
 function uninstallClaude() {
