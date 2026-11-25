@@ -209,6 +209,15 @@ def busy(session_id):
     running (T3's waiting_for_children), or, as a delegated task, is still active itself: T3 will act on it again."""
     return _ask(session_id, _busy, False)
 
+def ended(session_id):
+    """When the Claude session's T3 thread last ended a run (epoch seconds); None while a run is active, 0 without the thread, an
+    ended run or T3's database."""
+    def ask(c, tid):
+        if c.execute(f"select 1 from orchestration_v2_projection_runs where thread_id = ? and status in {_in(ACTIVE_RUNS)}", (tid, *ACTIVE_RUNS)).fetchone(): return None
+        r = c.execute("select max(completed_at) from orchestration_v2_projection_runs where thread_id = ?", (tid,)).fetchone()
+        return datetime.datetime.fromisoformat(r[0].replace('Z', '+00:00')).timestamp() if r and r[0] else 0
+    return _ask(session_id, ask, 0)
+
 def pending(session_id):
     """What busy() counts but the thread's runs: a Stop hook runs inside the session's own run, so busy() is true at every stop."""
     return _ask(session_id, _pending, False)

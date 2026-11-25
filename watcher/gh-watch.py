@@ -18,7 +18,7 @@
   and the repos' issue lists are polled once per X-Poll-Interval, the repo lists by the one daemon holding the lease for all.
 - GitLab threads in threads.txt are read by gl_watch.py (scan_gitlab), into the same events.log and replies-owed.md.
 - AGENT DONE: an agent the session launched has finished (hooks/agent_jobs.py), once per finish no T3 or Claude Code notice told it of, until `agent-job done` releases its job;
-  for a job T3 Code ran, only when T3's own notice hasn't reached the launcher LONG (11 min) after the agent's last write.
+  for a job T3 Code ran, only when T3's own notice hasn't reached the launcher LONG (11 min) after its turn ended or the agent last wrote, whichever is later.
 - Under T3 Code each pass's event lines also go to the session's thread (wake_thread), so it needs no Monitor; none while its last
   such message is still queued in T3, whose run reads events.log past the session's cursor.
 - The steward's folder and the dirs inside it but its live dir (steward.quiet) watch nitedani/mergeworthy whole and only log: no :eyes:, no owed reply, and only
