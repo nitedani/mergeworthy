@@ -4855,6 +4855,13 @@ SU="$T/simpu"; fx "$SU"; echo 1 > "$SU/ár.py"; git -C "$SU" add ár.py; rc "$SU
 for i in 1 2 3 4 5 6 7; do echo "u$i" >> "$SU/ár.py"; rc "$SU" -am "u$i"; done; echo u8 >> "$SU/ár.py"; git -C "$SU" add ár.py; ru8=$(bg 'git commit -m u8' "$SU"); rc "$SU" -m u8; echo u9 >> "$SU/ár.py"; git -C "$SU" add ár.py
 check "a planned file named with a non-ASCII letter gets its plan's budget: its 8th change after a 3-step plan passes; BLOCK: its 9th, naming it" "0 2 1" \
   "$ru8 $(bg 'git commit -m u9' "$SU") $(grep -c 'ár.py would get a 9th change (its recorded plan allows 8)' "$T/err")"
+# only the branch's own commits make a file planned: one a merge of main brought in before the plan keeps LIMIT
+SG="$T/simpmb"; fx "$SG"; echo 1 >> "$SG/a.py"; rc "$SG" -am reviewed; pre "$SG" reverify "$T/rv.md"
+git -C "$SG" checkout -q main; echo 0 > "$SG/upstream.py"; git -C "$SG" add upstream.py; rc "$SG" -m upstream; git -C "$SG" update-ref refs/remotes/origin/main HEAD
+git -C "$SG" checkout -q fix; git -C "$SG" -c user.name=t -c user.email=t@t merge -q --no-edit origin/main; (cd "$SG" && bash "$R/bin/pr-steps" finality "$T/fin3.md" >/dev/null)
+for i in 1 2 3 4 5; do echo "g$i" >> "$SG/upstream.py"; rc "$SG" -am "g$i"; done; echo g6 >> "$SG/upstream.py"; git -C "$SG" add upstream.py
+check "BLOCK: a file a merge of main brought in before a 3-step plan, at its 6th change, naming it with no plan budget" "2 1" \
+  "$(bg 'git commit -m g6' "$SG") $(grep -c 'upstream.py would get a 6th change on' "$T/err")"
 git -C "$SR" reset -q --soft origin/main; rc "$SR" -m squashed; for i in 1 2 3 4 5; do echo "s$i" >> "$SR/a.py"; rc "$SR" -am "s$i"; done; echo s6 >> "$SR/a.py"; git -C "$SR" add a.py; rs=$(bg 'git commit -m s6' "$SR")
 (cd "$SR" && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null); for i in 6 7 8 9 10; do echo "s$i" >> "$SR/a.py"; rc "$SR" -am "s$i"; done; echo s11 >> "$SR/a.py"; git -C "$SR" add a.py
 check "a squash of the reviewed branch by a reset and a commit counts nothing; BLOCK: the 6th change since its next review" "0 2" "$rs $(bg 'git commit -m s11' "$SR")"
