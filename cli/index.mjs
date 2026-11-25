@@ -5,6 +5,7 @@
 // rules in ~/.codex/AGENTS.md), and any other agent through skills.sh (skills only).
 import * as p from '@clack/prompts'
 import { execFileSync, spawnSync } from 'node:child_process'
+import crypto from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -72,7 +73,9 @@ function installClaude(values) {
 function uninstallClaude() {
   if (claudeInstalled()) run('claude', ['plugin', 'uninstall', ID])
   try { run('claude', ['plugin', 'marketplace', 'remove', NAME]) } catch {}
-  // what the plugin created; ~/.mergeworthy/voice.md is the user's and stays
+  // what the plugin created; ~/.mergeworthy/voice.md is the user's and stays, as does a copied plugin where agy-link links it
+  const agy = path.join(HOME, '.t3', 'userdata', 'providers', 'antigravity', crypto.createHash('sha256').update('antigravity').digest('hex'), 'config', 'plugins', NAME)
+  try { if (fs.readlinkSync(agy) === path.join(HOME, '.mergeworthy', 'current', 'agy')) fs.rmSync(agy) } catch {}
   for (const f of ['current', 'settings.env']) fs.rmSync(path.join(HOME, '.mergeworthy', f), { recursive: true, force: true })
 }
 

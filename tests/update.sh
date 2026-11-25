@@ -69,6 +69,11 @@ check "the antigravity instance's profile links the installed agy plugin; antigr
 if [ -d "$R/cli/node_modules" ]; then
   rm -r "$HOME/.t3/userdata/providers"; node "$R/cli/index.mjs" --yes --agents claude > "$T/out" 2>&1
   check "npx mergeworthy --agents claude: exit, the antigravity instance's link" "0 $HOME/.mergeworthy/current/agy" "$? $(readlink "$(prof antigravity)/mergeworthy")"
+  node "$R/cli/index.mjs" uninstall --yes --agents claude > "$T/out" 2>&1; rc=$?
+  mkdir "$(prof antigravity)/mergeworthy"; node "$R/cli/index.mjs" uninstall --yes --agents claude > "$T/out" 2>&1
+  check "npx mergeworthy uninstall --agents claude: exit, its link gone; a copied plugin folder there stays" "0 no yes" \
+    "$rc $([ -L "$(prof antigravity)/mergeworthy" ] && echo yes || echo no) $([ -d "$(prof antigravity)/mergeworthy" ] && [ ! -L "$(prof antigravity)/mergeworthy" ] && echo yes || echo no)"
+  rmdir "$(prof antigravity)/mergeworthy"; ln -sfn "$NEW" "$HOME/.mergeworthy/current"
 fi
 rm -r "$HOME/.t3/userdata/providers"; echo '{"providerInstances":{"antigravity":{"driver":"codex"}}}' > "$HOME/.t3/userdata/settings.json"
 bash "$R/bin/mergeworthy-update" > "$T/out" 2>&1; check "an instance \`antigravity\` on another driver gets no link" no "$([ -e "$HOME/.t3/userdata/providers" ] && echo yes || echo no)"
