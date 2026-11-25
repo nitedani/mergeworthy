@@ -24,9 +24,10 @@ deleted.
   with its <name>-notes/ folder; both go, then its branch.
 - h-ignored, once a day: the same folders in any git repo up to 5 levels below HOME (hidden folders and the work folders
   aside), each unused for 14 days (neither written nor read).
-- h-cargo, once a day: a cargo build folder (CACHEDIR.TAG beside .rustc_info.json) up to 5 levels below HOME, in a git repo or not
-  (in a repo: one git ignores, holding no tracked file; hidden folders and the work folders aside), whole, unused for 7 days (neither written nor read), unless h-ignored takes it or
-  its repo, else its parent (itself directly in HOME), is busy.
+- h-cargo, once a day: a cargo build folder (holding .rustc_info.json; a split build's final artifacts, CARGO_BUILD_BUILD_DIR,
+  aside) up to 5 levels below HOME, in a git repo or not (in a repo: one git ignores, holding no tracked file; hidden folders and
+  the work folders aside), whole, unused for 7 days (neither written nor read), unless h-ignored takes it or its repo, else its
+  parent (itself directly in HOME), is busy.
 - k-cache, once a day: `pnpm store prune`, `pip cache purge`, `npm cache clean --force` when ~/.npm/_cacache is unused for
   14 days, and each entry of the named tool caches (CACHES: cargo's, and ~/.cache/yarn, node-gyp, go-build and the like) unused for 14 days (neither written nor read), not busy.
 - d-docker: `docker image prune -a` (every unused image) and `docker builder prune`, with `-f --filter until=336h`, each by its
@@ -45,7 +46,7 @@ HOME, NOW = os.path.expanduser('~'), time.time()
 DAY = 86400
 OLD = 14 * DAY  # the round-7 rules: unused for 14 days (neither written nor read)
 WEEK = 7 * DAY  # h-cargo's: a Rust build grows by gigabytes a day
-CARGO = ('CACHEDIR.TAG', '.rustc_info.json')  # both in a cargo target dir; the tag alone also marks pytest, ruff and uv caches
+CARGO = '.rustc_info.json'  # cargo writes it in each build dir, pre-created or not; nothing else does, while CACHEDIR.TAG also marks pytest, ruff and uv caches
 VCS = {'.git', '.hg', '.svn', '.jj'}  # a checkout's commits and edits, which no build restores
 BUILD = {'node_modules', 'dist', 'build', '.next', '.vite', '.turbo', '.svelte-kit', 'coverage', 'test-results', 'playwright-report', 'target', '.pnpm-store', '.venv', '.mypy_cache'}  # never .cache: projects keep dumps and reports there
 IDLE = 8 * DAY  # w-done's fallback: a folder its retired watcher left untouched this long
@@ -537,7 +538,7 @@ def sweep_home():
         for e in entries:
             if e.name.startswith('.') or d == HOME and e.name.endswith('-work') or not e.is_dir(follow_symlinks=False) or e.stat(follow_symlinks=False).st_dev != dev:
                 continue
-            if all(os.path.isfile(os.path.join(e.path, f)) for f in CARGO):
+            if os.path.isfile(os.path.join(e.path, CARGO)):
                 if e.path not in taken and (not repo or ignored(repo, e.path)):
                     delete(e.path, repo or (e.path if d == HOME else d), dev, 'h-cargo', WEEK)
             elif e.name not in BUILD:
