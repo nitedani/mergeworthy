@@ -5188,7 +5188,7 @@ e, call, step, n = sys.argv[1:5]
 d = {"conversationId": "c1", "cwd": sys.argv[5], "transcriptPath": sys.argv[6], "hookEventName": e}
 if call: d.update(toolCall=json.loads(call), stepIdx=int(step))
 if e == "Stop": d.update(executionNum=int(n or 0))
-print(json.dumps(d))' "$1" "${2:-}" "${3:-0}" "${4:-}" "$AGR" "$AG/t.jsonl" | python3 "$R/hooks/agy.py" "$1" | tr -d '\n'; echo " ${PIPESTATUS[1]}"; }
+print(json.dumps(d))' "$1" "${2:-}" "${3:-0}" "${4:-}" "${AGC:-$AGR}" "$AG/t.jsonl" | python3 "$R/hooks/agy.py" "$1" | tr -d '\n'; echo " ${PIPESTATUS[1]}"; }
 U='{"type":"USER_INPUT","source":"USER_EXPLICIT","content":"<USER_REQUEST>\npush it\n</USER_REQUEST>"}'
 PUSH='{"name":"run_command","args":{"CommandLine":"git push origin HEAD:refs/heads/probe"}}'
 SKILL="{\"name\":\"read_file\",\"args\":{\"Path\":\"$R/agy/skills/merging/SKILL.md\"}}"
@@ -5205,30 +5205,37 @@ agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$SKILL]}" '{"type":"GEN
 check "agy: a read of SKILL.md that failed opens nothing" 1 "$(agy_ev PreToolUse "{\"id\":\"call_1\",$(echo "$PUSH" | cut -c2-)" 4 | grep -c 'mergeworthy:merging')"
 agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$SKILL]}" '{"type":"GENERIC","content":"Showing lines 1-1 of 1\n1: ---"}' '{"type":"CHECKPOINT","source":"SYSTEM","content":"# Resuming from a compaction"}' "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PUSH]}"
 check "agy: a compaction (agy's CHECKPOINT step) closes the skills read before it" 1 "$(agy_ev PreToolUse "{\"id\":\"call_1\",$(echo "$PUSH" | cut -c2-)" 4 | grep -c 'mergeworthy:merging')"
-W="{\"name\":\"write_file\",\"args\":{\"Path\":\"$AGR/x.txt\",\"Content\":\"x\"}}"; RA="{\"name\":\"read_file\",\"args\":{\"Path\":\"$AGR/AGENTS.md\"}}"
+# the repository-read checks run in a repo of their own with no remote, so nothing but AGENTS.md stands between a write and allow;
+# rd <step>: the write's decision, and for a denial whether it names AGENTS.md as unread
+AGC="$AG/readrepo"; git init -q -b main "$AGC"; git -C "$AGC" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; echo 'Be nice.' > "$AGC/AGENTS.md"
+W="{\"name\":\"write_file\",\"args\":{\"Path\":\"$AGC/x.txt\",\"Content\":\"x\"}}"; RA="{\"name\":\"read_file\",\"args\":{\"Path\":\"$AGC/AGENTS.md\"}}"
+rd() { agy_ev PreToolUse "{\"id\":\"c\",$(echo "$W" | cut -c2-)" "$1" | python3 -c 'import json, sys
+o = sys.stdin.read(); v = json.loads(o.rsplit(" ", 1)[0]); rc = o.rsplit(" ", 1)[1].strip()
+print(v["decision"] + ("" if v["decision"] == "allow" else ":" + str(int("read this repo\x27s instructions first" in v.get("reason", "") and sys.argv[1] in v["reason"]))) + ":" + rc)' "$AGC/AGENTS.md"; }
+export AGC
 agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$W]}"
-a1=$(agy_ev PreToolUse "{\"id\":\"c\",$(echo "$W" | cut -c2-)" 2 | grep -c 'AGENTS.md')
+a1=$(rd 2)
 agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$RA,$W]}" '{"type":"GENERIC","content":"1: Be nice."}'
-check "agy: a file write before AGENTS.md was read is denied; read in the same model turn (step 2, the write step 3), it isn't" "1 0" "$a1 $(agy_ev PreToolUse "{\"id\":\"c_1\",$(echo "$W" | cut -c2-)" 3 | grep -c 'AGENTS.md')"
+check "agy: a file write before AGENTS.md was read is denied naming it; read in the same model turn (step 2, the write step 3), it is allowed" "deny:1:0 allow:0" "$a1 $(rd 3)"
 # only a read of AGENTS.md that succeeded counts: a cat that failed with no output, or one declined (agy logs no result), doesn't
 CA='{"name":"run_command","args":{"CommandLine":"cat AGENTS.md 2>/dev/null"}}'
 agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$CA]}" '{"type":"GENERIC","content":"Command exited with code 1.\n\nNo output from the command."}' "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$W]}"
-a1=$(agy_ev PreToolUse "{\"id\":\"c\",$(echo "$W" | cut -c2-)" 4 | grep -c 'AGENTS.md')
+a1=$(rd 4)
 agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$CA]}" "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$W]}"
-a2=$(agy_ev PreToolUse "{\"id\":\"c\",$(echo "$W" | cut -c2-)" 4 | grep -c 'AGENTS.md')
+a2=$(rd 4)
 agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$CA]}" '{"type":"GENERIC","content":"Command exited with code 0.\n\nCommand output:\nBe nice.\n"}' "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$W]}"
-check "agy: a file write after a cat of AGENTS.md that failed, or one declined (no result), is denied; after one that succeeded it isn't" "1 1 0" "$a1 $a2 $(agy_ev PreToolUse "{\"id\":\"c\",$(echo "$W" | cut -c2-)" 4 | grep -c 'AGENTS.md')"
+check "agy: a file write after a cat of AGENTS.md that failed, or one declined (no result), is denied naming it; after one that succeeded it is allowed" "deny:1:0 deny:1:0 allow:0" "$a1 $a2 $(rd 4)"
 # a background cat of AGENTS.md counts once its task ended with success: not while it runs, nor after it failed
 CB='{"name":"run_command","args":{"CommandLine":"sleep 5; cat AGENTS.md 2>/dev/null","WaitMsBeforeAsync":500}}'
 CS='{"type":"GENERIC","status":"RUNNING","content":"Created At: x\nTool is running as a background task with task id: c1/task-2\nTask Description: cat\nTask logs are available at: file:///x/task-2.log"}'
 ce() { echo "{\"type\":\"SYSTEM_MESSAGE\",\"source\":\"SYSTEM\",\"content\":\"<SYSTEM_MESSAGE>\\n[Message] timestamp=x sender=c1/task-2 priority=MESSAGE_PRIORITY_HIGH content=Task id \\\"c1/task-2\\\" finished with result:\\n$1\\n\\nLog: file:///x/task-2.log\\n</SYSTEM_MESSAGE>\"}"; }
 agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$CB]}" "$CS" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$W]}"
-a1=$(agy_ev PreToolUse "{\"id\":\"c\",$(echo "$W" | cut -c2-)" 4 | grep -c 'AGENTS.md')
+a1=$(rd 4)
 agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$CB]}" "$CS" "$(ce 'Command exited with code 1.\n\nNo output from the command.')" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$W]}"
-a2=$(agy_ev PreToolUse "{\"id\":\"c\",$(echo "$W" | cut -c2-)" 5 | grep -c 'AGENTS.md')
+a2=$(rd 5)
 agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$CB]}" "$CS" "$(ce 'Command exited with code 0.\n\nCommand output:\nBe nice.')" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$W]}"
-check "agy: a file write while a background cat of AGENTS.md runs, or after it failed, is denied; after it succeeded it isn't" "1 1 0" "$a1 $a2 $(agy_ev PreToolUse "{\"id\":\"c\",$(echo "$W" | cut -c2-)" 5 | grep -c 'AGENTS.md')"
-rm -f "$HOME/.mergeworthy/agy/c1.post"
+check "agy: a file write while a background cat of AGENTS.md runs, or after it failed, is denied naming it; after it succeeded it is allowed" "deny:1:0 deny:1:0 allow:0" "$a1 $a2 $(rd 5)"
+rm -f "$HOME/.mergeworthy/agy/c1.post"; unset AGC
 # a declined push's queued check runs as failed at the next event: its pending action goes, none recorded
 export OWN_PENDING="$T/agy-own-d" PUSHED_HEADS="$T/agy-heads-d"; rm -f "$HOME/.mergeworthy/agy/c1.post"
 agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PUSH]}"; agy_ev PostToolUse "{\"id\":\"g\",$(echo "$PUSH" | cut -c2-)" 2 >/dev/null
