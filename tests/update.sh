@@ -58,6 +58,16 @@ check "~/.mergeworthy/current points at the new version" "$NEW" "$(readlink "$HO
 
 : > "$T/breaks"; unit "$BAD" >> "$T/active"
 bash "$R/bin/mergeworthy-update" > "$T/out" 2>&1; check "every unit back active: exit" 0 $?
+# T3 Code's Antigravity instance `antigravity` gets the installed version's agy plugin as a link; antigravity_2 and ~/.gemini get nothing
+mkdir -p "$NEW/hooks" "$NEW/agy" "$HOME/.t3/userdata"; cp "$R/hooks/agy-link" "$NEW/hooks/"; echo '{}' > "$NEW/agy/hooks.json"; printf '#!/bin/sh\n' > "$T/bin/agy"; chmod +x "$T/bin/agy"
+echo '{"providerInstances":{"antigravity":{"driver":"antigravity"},"antigravity_2":{"driver":"antigravity"}}}' > "$HOME/.t3/userdata/settings.json"
+prof() { echo "$HOME/.t3/userdata/providers/antigravity/$(printf '%s' "$1" | sha256sum | cut -d' ' -f1)/config/plugins"; }
+bash "$R/bin/mergeworthy-update" > "$T/out" 2>&1
+check "the antigravity instance's profile links the installed agy plugin; antigravity_2's and ~/.gemini have none" "$HOME/.mergeworthy/current/agy no no" \
+  "$(readlink "$(prof antigravity)/mergeworthy") $([ -e "$(prof antigravity_2)" ] && echo yes || echo no) $([ -e "$HOME/.gemini" ] && echo yes || echo no)"
+rm -r "$HOME/.t3/userdata/providers"; echo '{"providerInstances":{"antigravity":{"driver":"codex"}}}' > "$HOME/.t3/userdata/settings.json"
+bash "$R/bin/mergeworthy-update" > "$T/out" 2>&1; check "an instance \`antigravity\` on another driver gets no link" no "$([ -e "$HOME/.t3/userdata/providers" ] && echo yes || echo no)"
+rm -r "$HOME/.t3" "$NEW/hooks" "$NEW/agy" "$T/bin/agy"
 
 # a watcher whose every thread closed retires right after its restart: it writes its folder's `retired` and stops its unit
 DONE="$W/all-merged"; QUIT="$W/stopped"; mkdir -p "$DONE" "$QUIT"; printf '%s\n' "$DONE" "$QUIT" >> "$HOME/.claude/gh-watch-dirs.txt"

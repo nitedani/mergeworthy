@@ -22,6 +22,7 @@ The installer finds the coding agents on this machine and asks which to install 
 |---|---|---|
 | Claude Code | the skills, the hooks, the `bin/` commands and the always-on rules | automatically |
 | Codex | the skills, and the always-on rules in `~/.codex/AGENTS.md` | re-run `npx mergeworthy` |
+| Antigravity, as T3 Code's `antigravity` instance, beside Claude Code | the skills, the hooks and the always-on rules | with Claude Code's |
 | Others, through [skills.sh](https://skills.sh) | the skills | `npx skills update` |
 
 The hooks and the `bin/` commands read Markdown with Python's markdown-it-py: install it first (`sudo apt install python3-markdown-it`, or `pip install markdown-it-py`).

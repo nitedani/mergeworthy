@@ -104,6 +104,10 @@ CLAUDE_PLUGIN_ROOT="$R" CLAUDE_PLUGIN_OPTION_BADGE=off bash "$R/hooks/session-st
 check "session-start writes the options it is given" 'MERGEWORTHY_BADGE=off' "$(cat "$HOME/.mergeworthy/settings.env")"
 rm -f "$HOME/.mergeworthy/settings.env"
 check "session-start still carries the always-on rules" yes "$(CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" 2>/dev/null </dev/null | grep -q '^## Always-on rules (mergeworthy)' && echo yes || echo no)"
+mkdir -p "$HOME/.t3/userdata" "$T/agybin"; printf '#!/bin/sh\n' > "$T/agybin/agy"; chmod +x "$T/agybin/agy"
+PATH="$T/agybin:$PATH" CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" >/dev/null 2>&1 </dev/null
+check "session-start links the agy plugin into T3's antigravity instance" "$HOME/.mergeworthy/current/agy" "$(readlink "$HOME/.t3/userdata/providers/antigravity/$(printf antigravity | sha256sum | cut -d' ' -f1)/config/plugins/mergeworthy")"
+rm -r "$HOME/.t3" "$T/agybin"
 # ---------- shared state under ~/.mergeworthy changes only from a real input: an empty environment leaves it as it was ----------
 EH="$T/emptyhome"; mkdir -p "$EH/.mergeworthy" "$EH/.claude/projects/$(printf '%s' "$EH/cwd" | sed 's/[^A-Za-z0-9]/-/g')" "$EH/cwd"
 printf 'MERGEWORTHY_BADGE=on\nMERGEWORTHY_WATCHER=on\n' > "$EH/.mergeworthy/settings.env"; echo /keep > "$EH/.mergeworthy/memory-roots.txt"; echo /keep > "$EH/.mergeworthy/main-watch"

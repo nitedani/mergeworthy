@@ -1,0 +1,14 @@
+#!/bin/bash
+# agy-link: links mergeworthy's Antigravity plugin (~/.mergeworthy/current/agy) into the profile T3 Code gives its Antigravity instance
+# `antigravity` (~/.t3/userdata/providers/antigravity/<sha256 of the id>/config/plugins), where agy loads it from at each session, so
+# an update reaches it through ~/.mergeworthy/current; the instance's twin (antigravity_2) and ~/.gemini, which every instance shares, get
+# nothing. Run by session-start and mergeworthy-update; without T3 Code, agy or the installed plugin it changes nothing.
+t3=~/.t3/userdata
+[ -d "$t3" ] && command -v agy >/dev/null && [ -f ~/.mergeworthy/current/agy/hooks.json ] || exit 0
+# the instance runs on Antigravity unless T3's settings give that id another driver
+python3 -c 'import json, sys
+try: sys.exit(json.load(open(sys.argv[1]))["providerInstances"]["antigravity"].get("driver", "antigravity") != "antigravity")
+except (OSError, ValueError, KeyError, TypeError, AttributeError): pass' "$t3/settings.json" || exit 0
+dir=$t3/providers/antigravity/$(printf antigravity | sha256sum | cut -d' ' -f1)/config/plugins
+[ "$(readlink "$dir/mergeworthy")" = "$HOME/.mergeworthy/current/agy" ] && exit 0
+mkdir -p "$dir" && ln -sfn ~/.mergeworthy/current/agy "$dir/mergeworthy.tmp" && mv -T "$dir/mergeworthy.tmp" "$dir/mergeworthy"

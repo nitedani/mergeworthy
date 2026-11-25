@@ -6,6 +6,8 @@ root=$(python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.cl
 [ -d "$root" ] || root=$CLAUDE_PLUGIN_ROOT
 # Shared state changes only from a real input: no plugin folder, no new link
 [ -n "$root" ] && [ -f "$root/always-on.md" ] && mkdir -p ~/.mergeworthy && ln -sfn "$root" ~/.mergeworthy/current
+# T3 Code's Antigravity instance `antigravity` loads mergeworthy's Antigravity plugin from that path
+[ -n "$root" ] && [ -f "$root/always-on.md" ] && "$root/hooks/agy-link"
 # The skill catalog this session loaded is the one in its own plugin folder ($CLAUDE_PLUGIN_ROOT), at start, resume and
 # compaction alike: pre-skill-gate reads it to tell a session still on the old skills from one on the skill graph
 [ -t 0 ] || python3 -c 'import json, os, select, sys, time
