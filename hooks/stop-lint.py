@@ -400,7 +400,7 @@ if not child:
     stamp = root and os.path.join(root, '.memory-order-repeated')
     if root and time.time() - (os.path.getmtime(stamp) if os.path.exists(stamp) else 0) > 3600:
         cov = mf.covered(root)
-        if (not cov or time.time() - datetime.datetime.fromisoformat(cov.replace('Z', '+00:00')).timestamp() > 7200) and mf.behind(root):
+        if (not cov or time.time() - datetime.datetime.fromisoformat(cov.split('#')[0].replace('Z', '+00:00')).timestamp() > 7200) and mf.behind(root):
             open(stamp, 'w').close()
             print(mf.order(root, live=True), file=sys.stderr)
             sys.exit(2)

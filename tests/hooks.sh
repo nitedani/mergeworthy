@@ -1586,7 +1586,7 @@ check "outside T3, only a session memory.source lists gets the memory: session B
 python3 "$R/bin/memory-prep" prep "$MR" > "$T/prep.out"
 MB=$(sed -n 's/.*brief: //p' "$T/prep.out")
 check "the first prep takes the thread's last 24 hours only, from the init session and the handed-off one" "1 1 0 0 0 1" "$(grep -c 'USER\] said in the session init ran in' "$MR/memory-new.txt") $(grep -c 'USER\] never use cron' "$MR/memory-new.txt") $(grep -c 'an old ruling' "$MR/memory-new.txt") $(grep -c "another thread" "$MR/memory-new.txt") $(grep -c "a child's brief" "$MR/memory-new.txt") $(grep -c 'skills/delegate/memory-refresh.md' "$MB")"
-check "prep drops the harness's entries (skill bodies, hook feedback, summaries, notifications, T3's own) and repeats" "0 0 0 1 1" "$(grep -c 'harness entry\|Base directory' "$MR/memory-new.txt") $(grep -c 'Delegated task' "$MR/memory-new.txt") $(grep -c 'Context handoff' "$MR/memory-new.txt") $(grep -c 'RSC check-in' "$MR/memory-new.txt") $(grep -c '^\[20[0-9T:.-]*Z END\]' "$MR/memory-new.txt")"
+check "prep drops the harness's entries (skill bodies, hook feedback, summaries, notifications, T3's own) and repeats" "0 0 0 1 1" "$(grep -c 'harness entry\|Base directory' "$MR/memory-new.txt") $(grep -c 'Delegated task' "$MR/memory-new.txt") $(grep -c 'Context handoff' "$MR/memory-new.txt") $(grep -c 'RSC check-in' "$MR/memory-new.txt") $(grep -c '^\[20[0-9T:.-]*Z#[0-9]* END\]' "$MR/memory-new.txt")"
 UNTIL=$(sed -n 's/^\[\(.*\) END\].*/\1/p' "$MR/memory-new.txt")
 echo "read-through: $UNTIL" >> "$MR/memory-notes.txt"
 printf '# Memory\n## Standing\n### Rulings in force\n- **No cron** (now). "never use cron".\n### Ruled out\n- **Cron jobs** (now). The user refused them.\n### Superseded\n- **Day files → one memory file** (now).\n### Still intended\n- **Ship it** (now).\n## Recent\n- now: refreshed.\n<!-- covered-until: %s -->\n' "$UNTIL" > "$MR/memory.md"
@@ -5327,6 +5327,17 @@ agy_ev Stop "" 0 0 >/dev/null
 (cd "$AGR" && CLAUDE_CODE_SESSION_ID= ANTIGRAVITY_CONVERSATION_ID=c1 python3 "$R/bin/memory-prep" init "$MW" thread-agy >/dev/null 2>&1 && python3 "$R/bin/memory-prep" prep "$MW" >/dev/null 2>&1)
 check "agy: memory-prep keeps the order of prompts and answers that share one second" "Zebra configuration is enabled.|Zebra enabled.|Actually, zebra configuration is disabled.|Acknowledged, zebra disabled." \
   "$(sed -n 's/^\[[^]]* \(USER\|ASSISTANT\)\] //p' "$MW/memory-new.txt" 2>/dev/null | paste -sd'|')"
+# a refresh that stops after the ruling's answer (its chunk's last header, as delegate/memory-refresh.md writes it) leaves the
+# correction in that same second to the next one; one that read to the last entry, or a bare timestamp as earlier runs wrote, covers it
+mem_at() { echo "read-through: $1" >> "$MW/memory-notes.txt"; printf '# Memory\n<!-- covered-until: %s -->\n' "$1" > "$MW/memory.md"
+  b=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import memory_file as mf; print(mf.behind(sys.argv[2]))' "$R/hooks" "$MW")
+  echo "$b $(python3 "$R/bin/memory-prep" prep "$MW" | grep -c 'nothing new') $(sed -n 's/^\[[^]]* \(USER\|ASSISTANT\)\] //p' "$MW/memory-new.txt" | paste -sd'|')"; }
+hd() { sed -n 's/^\[\([^ ]*\) \(USER\|ASSISTANT\)\] .*/\1/p' "$MW/memory-new.txt" | sed -n "$1p"; }
+h2=$(hd 2); h4=$(hd 4)
+check "agy: memory stopped at the ruling's answer: behind, and the next prep has the correction and its answer" \
+  "True 0 Actually, zebra configuration is disabled.|Acknowledged, zebra disabled." "$(mem_at "$h2")"
+check "agy: memory read to the last entry of that second, or covered to it by a bare timestamp: not behind, nothing new" "False 1|False 1" \
+  "$(mem_at "$h4" | cut -d' ' -f1,2)|$(mem_at "$now" | cut -d' ' -f1,2)"
 sed -i "\|^$MW\$|d" "$HOME/.mergeworthy/memory-roots.txt"
 # what a queued check says without blocking (additionalContext) reaches the model too: T3 refusing a launch (parent_not_active)
 DT='{"name":"mcp_t3-code_delegate_task","args":{"task":"Research the cache","title":"agy refused"}}'; DR='{"type":"GENERIC","content":"code: parent_not_active"}'
