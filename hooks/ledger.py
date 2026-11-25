@@ -5,7 +5,7 @@ verdict wasn't clean: the completed round is the larger of `Round: <N>` and the 
 `fixed in <sha>` with the sha in the checkout's HEAD history, `declined: <why>` or `listed: <where>`, and no blocker of any round
 is listed or open; a row whose id (a word starting with a letter, with a digit) isn't R<round>.<n> stands too. With --post
 (gate-pass: a post's draft has no sha) `fixed in r<N>`, a later round up to the completed one that confirmed the fix, closes a finding
-too. `fixed in <draft>.md` (a path from the ledger's folder) closes a finding on a post's draft while gate-pass's record
+too. Without it, `fixed in <draft>.md` (a path from the ledger's folder) closes a finding on a post's draft while gate-pass's record
 (<draft>.md.gate) holds the draft's current sha256. Used by pr-steps and gate-pass (`--ledger`); else it prints what stands and exits 1."""
 import hashlib, os, re, subprocess, sys
 
@@ -29,9 +29,9 @@ def problems(path, checkout='.', post=False):
     last = max(int(n) for n in [m[1] for m in rows] + ROUND.findall(text))
     out = misnamed + ([] if last >= 2 else [f'{path} closes round {last}: a verdict that is not clean gets round 2 first'])
     for m in rows:
-        fixed = re.match(r'fixed in ([0-9a-f]{7,40})\b', m[3])
-        confirmed = post and (r := re.match(r'fixed in r(\d+)\b', m[3])) and int(m[1]) < int(r[1]) <= last
-        body = (b := re.match(r'fixed in (\S+\.md)(?=\s|$)', m[3])) and os.path.join(os.path.dirname(path), b[1])
+        fixed = re.match(r'fixed in ([0-9a-f]{7,40})(?![\w.])', m[3])
+        confirmed = post and (r := re.match(r'fixed in r(\d+)(?![\w.])', m[3])) and int(m[1]) < int(r[1]) <= last
+        body = not post and (b := re.match(r'fixed in (\S+\.md)(?=\s|$)', m[3])) and os.path.join(os.path.dirname(path), b[1])
         closed = confirmed or body and gated(body) or fixed and subprocess.run(['git', '-C', checkout, 'merge-base', '--is-ancestor', fixed[1], 'HEAD'], capture_output=True).returncode == 0
         if body and not closed:
             out.append(f'{m[0].strip()}  <- {b[1]} has no gate-pass record of its current text')
