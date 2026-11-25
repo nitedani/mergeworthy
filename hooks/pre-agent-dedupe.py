@@ -32,7 +32,10 @@ cid = str(ti.get('clientRequestId') or '')
 CIDS = os.path.expanduser('~/.claude/agent-client-request-ids.json')
 # a later round sent to a thread an earlier round of its loop ran in is checked and counted as that round; any other send passes untouched
 if not (launched := review_transport.as_launch(d.get('tool_name'), ti)): sys.exit(0)
-ti, sent = launched
+if isinstance(launched, str):
+    if not register: sys.stderr.write(f"BLOCKED: {launched}\n"); sys.exit(2)
+    sys.exit(0)
+ti, sent, first = launched
 # a sent round is a new task of the agent an open job of its thread holds, so its job takes that one's place, never its twin
 same_agent = lambda j: sent and re.split(r'[:/]', str(j.get('handle') or ''))[-1] == ti['threadId']
 # T3 opens no run for a turn Claude Code starts by itself (a finished background command, a Monitor event), and refuses
@@ -59,6 +62,11 @@ pasted = {l.strip() for l in open(os.path.join(tdir, 'agent.md'))} if os.path.is
 own_brief = '\n'.join(l for l in brief.splitlines() if l.strip() not in pasted)  # the brief without the rules pasted from agent.md
 shas = set(re.findall(loops.SHA, brief))
 git = lambda wt, *a: subprocess.run(['git', '-C', wt, *a], capture_output=True, text=True)
+# a round's checkouts, their heads its pins equal and its ledger; a round sent to its reviewer naming no checkout or ledger
+# continues on its loop's round-1 checkouts at their live heads, and that round's ledger
+tops, heads = loops.pinned(L)
+if first and not tops: tops = first.get('checkouts') or []; heads = sorted(filter(None, (git(t, 'rev-parse', 'HEAD').stdout.strip() for t in tops)))
+led = loops.ledger_named(brief) or (first or {}).get('ledger')
 # Rounds per loop on one head (loops.admit); a post's review is refused only once gate-pass's own check (review_launch.answers) already passes every draft it reviews
 rnd = loops.round_of(review_transport.round_name(ti))
 # a review template's first line `Review: <step> [<part>]` (delegate/verifier.md) declares the round's step
@@ -146,8 +154,8 @@ def register_launch():
     if cid: loops.locked_update(CIDS, lambda seen: seen.setdefault(cid, time.time()))
     for out, sha in rec.get('launches', {}).items(): review_launch.launch(out, sha)
     if review:
-        loops.register(rnd[1], int(rnd[2]), None if post_review else rec['heads'] if 'heads' in rec else loops.pinned(L)[1],
-                       review_transport.thread(ti, d.get('tool_response')), post_review, said_outs, bool(re.search(loops.FANOUT, brief, re.M)), L.checkouts)
+        loops.register(rnd[1], int(rnd[2]), None if post_review else rec['heads'] if 'heads' in rec else heads,
+                       review_transport.thread(ti, d.get('tool_response')), post_review, said_outs, bool(re.search(loops.FANOUT, brief, re.M)), tops, led)
     if implementer and (approach := rec['approach'] if 'approach' in rec else brief_approach(strict=False)):
         os.makedirs(BUILT, exist_ok=True)
         open(os.path.join(BUILT, os.path.basename(approach[0])), 'w').write(approach[1])
@@ -240,7 +248,7 @@ if post_review:
                          + ''.join(f"gate-pass {dr} {o}{f' --ledger {lg}' if lg else ''}\n" for o, dr, lg in passes))
         refused()
 elif review and int(rnd[2]) >= 2:
-    if why := loops.admit(rnd[1], int(rnd[2]), *loops.pinned(L), loops.ledger_named(brief)):
+    if why := loops.admit(rnd[1], int(rnd[2]), tops, heads, led):
         sys.stderr.write(f"BLOCKED: {why}")
         refused()
 # A brief that writes or reviews code, docs or a post (any role but research or test) for a repo whose maintainers' notes exist
@@ -540,5 +548,5 @@ if not blocked:
     os.makedirs(agent_jobs.LAUNCHED, exist_ok=True); json.dump({'launched': time.time(), 'key': key, 'task': task, 'role': ti.get('role'), 'worktrees': L.worktrees, 'tool_use_id': d.get('tool_use_id'),
                                                            'transcript': d.get('transcript_path'), 'session': d.get('session_id'), 'refresh': refresh, 'memory': memory,
                                                            **({'approach': list(approach[:2])} if approach else {}),
-                                                           'launches': launches, **({'heads': loops.pinned(L)[1]} if review and not post_review else {})}, open(pre, 'w'))
+                                                           'launches': launches, **({'heads': heads} if review and not post_review else {})}, open(pre, 'w'))
 sys.exit(2 if blocked else 0)

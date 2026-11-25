@@ -1,24 +1,31 @@
 """How a review round reaches its reviewer: a launch (Agent, Task, delegate_task, t3_thread_launch) is a round by its name; a send
-(T3's t3_thread_send, Claude Code's SendMessage) is one only as a round `<loop>-r<N>` that continues the reviewer it is sent to
-(loops.continues, delegate §Continue), its message the task and its round name the title; any other send is no launch. A shell
+(T3's t3_thread_send, Claude Code's SendMessage) to a reviewer (loops.seat_loops) is a round `<loop>-r<N>` that continues it
+(loops.continues, delegate §Continue), its message the task and its round name the title, and refused naming none; a send to
+anyone else is no launch. A shell
 reviewer (`codex exec`, its `resume`, `claude -p`) is a round by its prompt file's name, `<loop>-r<N>.md`."""
 import os, re
 import loops, t3_tasks
 
 
 def as_launch(tool, ti):
-    """(the tool input as the launch it is, whether it was sent to a running reviewer); None for a send that is no review round."""
+    """(the tool input as the launch it is, whether it was sent to a running reviewer, the first round of its loop there or None);
+    None for a send to no reviewer; a refusal (str) for a send to a reviewer that names no round of a loop it runs."""
     tool = str(tool or '')
     if tool.endswith('t3_thread_send'):
         name, seat = str(ti.get('clientRequestId') or ''), str(ti.get('threadId') or '')
     elif tool == 'SendMessage':
         name, seat = str(ti.get('summary') or ''), str(ti.get('to') or '')
     else:
-        return ti, False
+        return ti, False, None
     m = loops.round_of(name)
-    if not seat or not (m and loops.continues(m[1], int(m[2]), seat)):
+    if not (here := loops.seat_loops(seat) if seat else {}):
         return None
-    return {'task': str(ti.get('message') or ''), 'title': name, 'role': 'review', 'clientRequestId': name, 'threadId': seat}, True
+    if not (m and loops.continues(m[1], int(m[2]), here)):
+        return (f"{seat} runs the review loop {', '.join(sorted(here))}, and a message to it is that loop's next round: name it `<loop>-r<N>` "
+                f"({'clientRequestId' if tool.endswith('t3_thread_send') else 'summary'}), or `<loop>-ask<N>` for a maintainer's ask, "
+                f"not {name or 'nothing'} (mergeworthy:delegate §Review rounds)")
+    first = here.get(m[1]) or next((e for l, e in here.items() if e and l.startswith(m[1].rsplit('-', 1)[0])), None)
+    return {'task': str(ti.get('message') or ''), 'title': name, 'role': 'review', 'clientRequestId': name, 'threadId': seat}, True, first
 
 
 def round_name(ti):

@@ -47,26 +47,33 @@ def threads(loop):
     return record(loop)['threads']
 
 
-def continues(loop, n, seat):
-    """Whether round n of loop, sent to the reviewer seat, continues it: a later round of a loop that ran there, or round 1 of
-    `<slice>-reverify`, `-recheck` or `-fresh` sent to a seat of that slice, or of `<loop>-ask<N>` sent to that loop's (delegate §Review rounds)."""
-    if n >= 2: return seat in threads(loop)
+def seat_loops(seat):
+    """The loops whose rounds ran in the reviewer seat: {loop: its first round's journal event, or None for a round only
+    review-loops.json or the files before it hold (a brief naming no checkout)}."""
+    here = {l: None for l in {*_json(LOOPS), *_json(OLD['threads'])} if seat in threads(l)}
+    return {**here, **review_journal.seat_of(seat)}
+
+
+def continues(loop, n, here):
+    """Whether round n of loop continues one of the loops here (seat_loops) that ran in the seat it is sent to: a later round of
+    one of them, or round 1 of `<slice>-reverify`, `-recheck` or `-fresh` of one's slice, or of `<loop>-ask<N>` of one (delegate §Review rounds)."""
+    if n >= 2: return loop in here
     m = re.fullmatch(r'(.+)-(?:(reverify|recheck|fresh)|ask\d+)', loop)
-    return bool(m) and any((l.rsplit('-', 1)[0] if m[2] else l) == m[1] and seat in threads(l) for l in {*_json(LOOPS), *_json(OLD['threads'])})
+    return bool(m) and any((l.rsplit('-', 1)[0] if m[2] else l) == m[1] for l in here)
 
 
 CAP = 4  # rounds per loop on one head (delegate §Review rounds)
 FANOUT = r'^Fan-out: converge §Running the agents$'  # a round 1 seating a step's reviewers at once (delegate §Reviewers)
 
 
-def register(loop, n, heads, thread=None, post=False, outs=(), seated=False, checkouts=()):
+def register(loop, n, heads, thread=None, post=False, outs=(), seated=False, checkouts=(), led=None):
     """Records round n of loop that ran: the thread it ran in, and, for a code review, the heads its brief pinned, the reports it
     writes (outs) and whether it is one of its step's seats (seated: its round 1 brief's FANOUT line), in review-loops.json and in
-    the journal of each change its brief names (checkouts)."""
+    the journal of each change its brief names (checkouts), with the ledger it names (led)."""
     failed = []  # each record is written though the other's write failed, then the first failure is raised
     if not post:
         for c in dict.fromkeys(filter(None, map(review_journal.change_of, checkouts))):
-            try: review_journal.append(c, {'ev': 'round', 'loop': loop, 'n': n, 'heads': heads, 'outs': sorted({os.path.realpath(o) for o in outs}), 'thread': thread, 'seated': seated})
+            try: review_journal.append(c, {'ev': 'round', 'loop': loop, 'n': n, 'heads': heads, 'outs': sorted({os.path.realpath(o) for o in outs}), 'thread': thread, 'seated': seated, 'checkouts': list(checkouts), 'ledger': led})
             except OSError as e: failed.append(e)
     def ran(loops):
         r = loops[loop] = record(loop, loops)

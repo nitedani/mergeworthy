@@ -1,6 +1,6 @@
 """The review journal (delegate §Review rounds): one append-only file per change, a branch of one repo, holding a `round` event for
 each review round that ran, written only by the hooks that register rounds. fold() reads it back as the loops' records."""
-import fcntl, hashlib, json, os, subprocess, time
+import fcntl, glob, hashlib, json, os, subprocess, time
 
 JOURNAL = os.path.expanduser('~/.claude/review-journal')
 
@@ -22,12 +22,25 @@ def append(change, event):
         f.write(json.dumps({'at': time.time(), **event}) + '\n')
 
 
+def events(change):
+    """The events in the journal file change, oldest first."""
+    try: return [json.loads(l) for l in open(change).read().splitlines() if l.strip()]
+    except OSError: return []
+
+
+def seat_of(handle):
+    """The loops whose rounds ran in the reviewer handle (a T3 thread, a Claude agent), each with its first round's event."""
+    found = {}
+    for f in sorted(glob.glob(os.path.join(JOURNAL, '*', '*.jsonl'))):
+        for e in events(f):
+            if handle and e.get('thread') == handle: found.setdefault(e['loop'], e)
+    return found
+
+
 def fold(change):
     """The loops change's journal holds: {loop: {'rounds': [[n, heads, outs]], 'threads': [...], 'outs': [...], 'seated': bool}}."""
     loops = {}
-    try: lines = open(change).read().splitlines()
-    except OSError: return loops
-    for e in map(json.loads, filter(None, lines)):
+    for e in events(change):
         r = loops.setdefault(e['loop'], {'rounds': [], 'threads': [], 'outs': [], 'seated': False})
         if e.get('thread') and e['thread'] not in r['threads']: r['threads'].append(e['thread'])
         r['rounds'].append([e['n'], e['heads'], e['outs']])
