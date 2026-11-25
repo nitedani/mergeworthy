@@ -130,4 +130,14 @@ ln -sfn "$PRE" "$HOME/.mergeworthy/current"; ln -s "$HOME/.mergeworthy/current/b
 : > "$U/mergeworthy-learn.timer"; : > "$U/mergeworthy-learn.service"; NEW="$NEW" bash "$HOME/.local/bin/mergeworthy-update" > "$T/out" 2>&1; rc=$?
 check "the old script's update to this version: exit, both learning units removed, no failure named" "0 0 0" "$rc $(ls "$U" | grep -c mergeworthy-learn) $(grep -c '^failed:' "$T/out")"
 
+# the first update from main before the agy plugin (fb5d9a0's installed mergeworthy-update, verbatim) links it in that same run:
+# it repoints current, then runs the new tree's hooks/learn-units, which links it
+cp "$R/tests/fixtures/mergeworthy-update-fb5d9a0" "$PRE/bin/mergeworthy-update"; mkdir -p "$NEW/agy" "$HOME/.t3/userdata"
+cp "$R/hooks/learn-units" "$R/hooks/agy-link" "$NEW/hooks/"; echo '{}' > "$NEW/agy/hooks.json"; printf '#!/bin/sh\n' > "$T/bin/agy"; chmod +x "$T/bin/agy"
+echo '{"providerInstances":{"antigravity":{"driver":"antigravity"},"antigravity_2":{"driver":"antigravity"}}}' > "$HOME/.t3/userdata/settings.json"
+ln -sfn "$PRE" "$HOME/.mergeworthy/current"; bash "$HOME/.local/bin/mergeworthy-update" > "$T/out" 2>&1; rc=$?
+check "main's mergeworthy-update to this version: exit, current, the antigravity instance linked in that run, antigravity_2 not" "0 $NEW $HOME/.mergeworthy/current/agy no" \
+  "$rc $(readlink "$HOME/.mergeworthy/current") $(readlink "$(prof antigravity)/mergeworthy") $([ -e "$(prof antigravity_2)" ] && echo yes || echo no)"
+rm -r "$HOME/.t3" "$NEW/agy" "$T/bin/agy"
+
 [ "$fails" = 0 ] && echo "update: all cases pass" || { echo "update: $fails case(s) failed"; exit 1; }

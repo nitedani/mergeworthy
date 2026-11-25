@@ -26,7 +26,7 @@ if command -v codex >/dev/null && codex plugin list 2>/dev/null | grep '^mergewo
   update_codex || failed+=("the Codex update")
 fi
 # the daily learning run is gone (task step 4 learns on demand): its installed timer and service go (hooks/learn-units, a migration)
-remove_learn() { "$(dirname "$(readlink -f "$0")")/../hooks/learn-units"; }
+remove_learn() { MERGEWORTHY_AGY_LINKED=1 "$(dirname "$(readlink -f "$0")")/../hooks/learn-units"; }
 units=() dirs=()
 if systemctl --user show-environment >/dev/null 2>&1; then
   remove_learn || failed+=("removing mergeworthy-learn.timer")
