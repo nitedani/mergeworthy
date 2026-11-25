@@ -209,13 +209,15 @@ def busy(session_id):
     running (T3's waiting_for_children), or, as a delegated task, is still active itself: T3 will act on it again."""
     return _ask(session_id, _busy, False)
 
-def ended(session_id):
-    """When the Claude session's T3 thread last ended a run (epoch seconds); None while a run is active, 0 without the thread, an
-    ended run or T3's database."""
+def ended(session_id, at):
+    """When the Claude session's T3 turn that was running at epoch `at` ended (epoch seconds): T3 delivers a notice due then once
+    that turn ends. None while it still runs; 0 without the thread, such a turn or T3's database. Later turns don't count."""
     def ask(c, tid):
-        if c.execute(f"select 1 from orchestration_v2_projection_runs where thread_id = ? and status in {_in(ACTIVE_RUNS)}", (tid, *ACTIVE_RUNS)).fetchone(): return None
-        r = c.execute("select max(completed_at) from orchestration_v2_projection_runs where thread_id = ?", (tid,)).fetchone()
-        return datetime.datetime.fromisoformat(r[0].replace('Z', '+00:00')).timestamp() if r and r[0] else 0
+        ts = lambda v: datetime.datetime.fromisoformat(v.replace('Z', '+00:00')).timestamp()
+        for status, req, done in c.execute("select status, requested_at, completed_at from orchestration_v2_projection_runs where thread_id = ?", (tid,)):
+            if req and ts(req) <= at and (not done or ts(done) >= at):
+                return None if status in ACTIVE_RUNS else ts(done) if done else 0
+        return 0
     return _ask(session_id, ask, 0)
 
 def pending(session_id):

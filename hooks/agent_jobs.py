@@ -256,11 +256,13 @@ def noticed(launcher, path):
     return False
 
 def awaits_notice(job, path, launcher):
-    """T3 Code ran the job and its own notice of the finish is still due: T3 delivers it once the launcher's running turn ends, so while
-    that turn runs and up to LONG after it ended or the agent last wrote, whichever is later, that notice reports the finish, not the hooks."""
+    """T3 Code ran the job and its own notice of the finish is still due: T3 delivers it once the launcher's turn that was running when the agent last wrote ends,
+    so while that turn runs and up to LONG after it ended or the agent last wrote, whichever is later, that notice reports the finish,
+    not the hooks; a later turn of the launcher doesn't hold it."""
     if not (job.get('handle') or '').startswith('t3:') or noticed(launcher, path): return False
-    end = steward.ended(session_id(launcher)) if launcher else 0
-    return end is None or time.time() - max(end, wrote(path)) < LONG
+    last = wrote(path)
+    end = steward.ended(session_id(launcher), last) if launcher else 0
+    return end is None or time.time() - max(end, last) < LONG
 
 def reported(f, mtime):
     return os.path.exists(os.path.join(REPORTED, f'{f}-{int(mtime)}'))

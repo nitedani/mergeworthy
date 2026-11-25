@@ -1972,9 +1972,9 @@ import sqlite3, sys
 c = sqlite3.connect(sys.argv[1])
 c.execute('create table orchestration_v2_projection_provider_threads (provider_thread_id text, thread_id text, payload_json text)')
 c.execute('create table orchestration_v2_projection_subagents (subagent_id text, thread_id text, child_thread_id text, status text)')
-c.execute('create table orchestration_v2_projection_runs (run_id text, thread_id text, status text, completed_at text)')
+c.execute('create table orchestration_v2_projection_runs (run_id text, thread_id text, status text, completed_at text, requested_at text)')
 c.execute("""insert into orchestration_v2_projection_provider_threads values ('p1', 'busy-1', '{"nativeThreadRef":{"driver":"claudeAgent","nativeId":"t3busy"}}')""")
-c.execute("insert into orchestration_v2_projection_runs values ('r1', 'busy-1', 'waiting', null)"); c.commit()  # waiting on an approval: as active as running
+c.execute("insert into orchestration_v2_projection_runs values ('r1', 'busy-1', 'waiting', null, '2000-01-01T00:00:00Z')"); c.commit()  # waiting on an approval: as active as running
 EOF2
 reg "Execute $T/jobs/t3busy-ticket.md exactly"; child_log "$JD/t3busy.jsonl" "Execute $T/jobs/t3busy-ticket.md exactly" 5 text
 python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600, "launched": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "t3busy-ticket" in open(f).read()]'
@@ -1995,7 +1995,7 @@ def name(f):
     try: return os.readlink("/proc/self/fd/" + f)
     except OSError: return ""
 print(sum("statev2" in name(f) for f in os.listdir("/proc/self/fd")))' "$R/hooks")"
-t3db "insert into orchestration_v2_projection_runs values ('r3', 'busy-1', 'running', null)"  # woken again: its next turn runs
+t3db "insert into orchestration_v2_projection_runs values ('r3', 'busy-1', 'running', null, '2000-01-01T00:00:00Z')"  # woken again: its next turn runs
 check "BLOCK: agent-job done while the ticket's agent is still at work keeps the job, pointing at AGENT DONE" "1 1 1" \
   "$(python3 "$R/bin/agent-job" done "$T/jobs/t3busy-ticket.md" >/dev/null 2>"$T/aj.err"; echo $?) $(grep -c 'AGENT DONE. wakes this session' "$T/aj.err") $(python3 "$R/bin/agent-job" list | grep -c t3busy-ticket)"
 t3db "update orchestration_v2_projection_runs set status = 'completed' where run_id = 'r3'"
@@ -2047,7 +2047,7 @@ python3 "$R/bin/agent-job" done "$T/jobs/hq-ticket.md" >/dev/null
 # T3 delivers its notice once the launcher's running turn ends, so the wait lasts while that turn runs and LONG counts from its end
 t3db "insert into orchestration_v2_projection_provider_threads values ('p8', 'orch-1', '{\"nativeThreadRef\":{\"nativeId\":\"tr\"}}'), ('p10', 'lr-1', '{\"nativeThreadRef\":{\"nativeId\":\"t3lr\"}}'), ('p11', 'll-1', '{\"nativeThreadRef\":{\"nativeId\":\"t3ll\"}}')"
 t3db "insert into orchestration_v2_projection_subagents values ('node:delegated-task:lr', 'orch-1', 'lr-1', 'completed'), ('node:delegated-task:ll', 'orch-1', 'll-1', 'completed')"
-t3db "insert into orchestration_v2_projection_runs values ('rl', 'orch-1', 'running', null)"
+t3db "insert into orchestration_v2_projection_runs values ('rl', 'orch-1', 'running', null, strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-30 minutes'))"
 for jn in lr ll; do reg "Execute $T/jobs/$jn-ticket.md exactly"; child_log "$JD/t3$jn.jsonl" "Execute $T/jobs/$jn-ticket.md exactly" 12 text; done
 python3 -c 'import glob,json,os,re,time; [json.dump({**j, "started": time.time() - 3600, "launched": time.time() - 3600, "handle": f"t3:node:delegated-task:{m[1]}/{m[1]}-1"}, open(f + ".n", "w")) or os.replace(f + ".n", f)
  for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) for j in [json.load(open(f))] for m in [re.search(r"jobs/(lr|ll)-ticket", j["key"])] if m]'
@@ -2056,11 +2056,13 @@ t3db "update orchestration_v2_projection_runs set status = 'completed', complete
 done_events > "$T/ev18"; note 'Delegated task node:delegated-task:lr (lr) [completed]: Report written.' 0 user; done_events >> "$T/ev18"
 check "stop-lint names the notice that reached the session, to act on and release, not a quiet transcript to read" "2 1 1 0" \
   "$(sj orch) $(grep -c "notice that the agent for $T/jobs/lr-ticket.md" "$T/err") $(grep -c "then .agent-job done" "$T/err") $(grep -c 'went quiet' "$T/err")"
-t3db "update orchestration_v2_projection_runs set completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-12 minutes') where run_id = 'rl'"; done_events > "$T/ev19"
-check "a T3 job quiet past LONG gets no AGENT DONE and stop-lint passes while the launcher's turn runs (lr, ll); none once it ended, the notice coming (lr) or not (ll); LONG after the end, one for the lost notice (ll)" "0 0 0 0 0 0 1" \
+t3db "update orchestration_v2_projection_runs set completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-12 minutes') where run_id = 'rl'"
+t3db "insert into orchestration_v2_projection_runs values ('rl2', 'orch-1', 'running', null, strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-1 minutes'))"  # a later turn: it never held these notices
+done_events > "$T/ev19"
+check "a T3 job quiet past LONG gets no AGENT DONE and stop-lint passes while the launcher's turn runs (lr, ll); none once it ended, the notice coming (lr) or not (ll); LONG after the end, one for the lost notice (ll), with a later turn of the launcher running" "0 0 0 0 0 0 1" \
   "$a $(grep -c "AGENT DONE $T/jobs/lr-ticket.md" "$T/ev18") $(grep -c "AGENT DONE $T/jobs/ll-ticket.md" "$T/ev18") $(grep -c "AGENT DONE $T/jobs/lr-ticket.md" "$T/ev19") $(grep -c "AGENT DONE $T/jobs/ll-ticket.md" "$T/ev19")"
 for jn in lr ll; do python3 "$R/bin/agent-job" done "$T/jobs/$jn-ticket.md" >/dev/null; done
-t3db "delete from orchestration_v2_projection_provider_threads where provider_thread_id = 'p8'"; t3db "delete from orchestration_v2_projection_runs where run_id = 'rl'"
+t3db "delete from orchestration_v2_projection_provider_threads where provider_thread_id = 'p8'"; t3db "delete from orchestration_v2_projection_runs where run_id in ('rl', 'rl2')"
 # a job whose end T3 told its launcher of counts as finished at once, for the twin check and the limit, though its transcript changed
 # seconds ago; one whose agent wrote after the notice (revived) still counts
 t3db "insert into orchestration_v2_projection_provider_threads values ('p4', 'tw1-1', '{\"nativeThreadRef\":{\"nativeId\":\"t3tw1\"}}'), ('p5', 'tw4-1', '{\"nativeThreadRef\":{\"nativeId\":\"t3tw4\"}}')"
@@ -2176,7 +2178,7 @@ w({"type":"event_msg","payload":{"type":"task_complete"}})' "$CXF" "$CX" "Execut
 reg "Execute $T/jobs/cx-ticket.md exactly"; touch -d '5 minutes ago' "$CXF"
 python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600, "launched": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "cx-ticket" in open(f).read()]'
 t3db "insert into orchestration_v2_projection_provider_threads values ('p3', 'codex-1', '{\"nativeThreadRef\":{\"driver\":\"codex\",\"nativeId\":\"$CX\"}}')"
-t3db "insert into orchestration_v2_projection_runs values ('r4', 'codex-1', 'running', null)"
+t3db "insert into orchestration_v2_projection_runs values ('r4', 'codex-1', 'running', null, '2000-01-01T00:00:00Z')"
 done_events > "$T/ev10"; tr_file 'Done.'
 check "a running T3 Codex agent is not done: no AGENT DONE, stop-lint passes, agent-job done keeps its job" "0 0 1" \
   "$(grep -c "AGENT DONE $T/jobs/cx-ticket.md" "$T/ev10") $(sj orch) $(python3 "$R/bin/agent-job" done "$T/jobs/cx-ticket.md" >/dev/null 2>&1; echo $?)"
