@@ -5188,6 +5188,25 @@ s1=$(agy_ev Stop "" 0 0); p2=$(wc -l < "$HOME/.mergeworthy/agy/c1.post")
 check "agy: a command's PostToolUse waits for its result, then runs at the next event (Stop) and is done" "1 0" "$p1 $p2"
 check "agy: Stop continues with what stop-lint says (a session that pushed, without scope.md)" "continue scope.md" \
   "$(printf '%s' "$s1" | python3 -c 'import json, sys; v = json.loads(sys.stdin.read().rsplit(" ", 1)[0]); print(v.get("decision"), "scope.md" if "scope.md" in v.get("reason", "") else v)')"
+# a background command (agy's RUNNING result step naming its task) ends when agy's message says that task finished
+BG='{"name":"run_command","args":{"CommandLine":"git push origin HEAD:refs/heads/bg","WaitMsBeforeAsync":500}}'; LS='{"name":"run_command","args":{"CommandLine":"ls"}}'
+BGS='{"type":"GENERIC","status":"RUNNING","content":"Created At: x\nTool is running as a background task with task id: c1/task-2\nTask Description: git push\nTask logs are available at: file:///x/task-2.log"}'
+BGE='{"type":"SYSTEM_MESSAGE","source":"SYSTEM","content":"<SYSTEM_MESSAGE>\n[Message] timestamp=x sender=c1/task-2 priority=MESSAGE_PRIORITY_HIGH content=Task id \"c1/task-2\" finished with result:\nCommand exited with code 0.\n\nCommand output:\npushed\n\nLog: file:///x/task-2.log\n</SYSTEM_MESSAGE>"}'
+export OWN_PENDING="$T/agy-own" PUSHED_HEADS="$T/agy-heads"; rm -f "$HOME/.mergeworthy/agy/c1.post"
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$BG]}" "$BGS"; agy_ev PostToolUse "{\"id\":\"b\",$(echo "$BG" | cut -c2-)" 2 >/dev/null
+bgres() { python3 -c 'import json, sys
+for l in open(sys.argv[1]):
+    for c in (json.loads(l).get("message") or {}).get("content") or []:
+        if isinstance(c, dict) and c.get("type") == "tool_result" and c["tool_use_id"].endswith("-2"): print(c[sys.argv[2]])' "$HOME/.mergeworthy/agy/c1.jsonl" "$1"; }
+python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import own_actions; own_actions.intend(sys.argv[2], {"PUSHED_HEADS": ["o/r bg"]})' "$R/hooks" "$(bgres tool_use_id)"
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$BG]}" "$BGS" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$LS]}"
+agy_ev PreToolUse "{\"id\":\"l\",$(echo "$LS" | cut -c2-)" 4 >/dev/null; b1="$(wc -l < "$HOME/.mergeworthy/agy/c1.post") $(bgres is_error) $(cat "$PUSHED_HEADS" 2>/dev/null | wc -l)"
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$BG]}" "$BGS" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$LS]}" '{"type":"GENERIC","content":"Command exited with code 0.\n\nCommand output:\nx\n"}' "$BGE" '{"type":"PLANNER_RESPONSE","content":"Pushed."}'
+agy_ev Stop "" 0 0 >/dev/null
+check "agy: a background command stays pending, not failed, while it runs; once its task finished with exit 0 it is settled as a success" "1 False 0 | 0 o/r bg" \
+  "$b1 | $(wc -l < "$HOME/.mergeworthy/agy/c1.post") $(cat "$PUSHED_HEADS" 2>/dev/null)"
+check "agy: its end is Claude Code's <task-notification>, not Stop feedback" 1 "$(grep -c '<task-notification>.*<status>completed</status>' "$HOME/.mergeworthy/agy/c1.jsonl")"
+unset OWN_PENDING PUSHED_HEADS
 agt "$U" '{"type":"PLANNER_RESPONSE","content":"Hello."}'
 check "agy: a Stop no check refuses ends the turn ({})" '{} 0' "$(MERGEWORTHY_STOP_CHECKIN=off agy_ev Stop "" 0 0)"
 check "agy: the plugin's matchers send agy every tool hooks.json's matchers take, under its agy name" "" "$(python3 -c 'import json, re, sys

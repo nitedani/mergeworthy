@@ -11,6 +11,8 @@ ROOT = os.path.dirname(HERE)
 TOOLS = {'run_command': 'Bash', 'read_file': 'Read', 'write_file': 'Write', 'edit_file': 'Edit'}
 OWN_AGENTS = ('swarm',)
 HEADER = re.compile(r'\A(?:(?:Created|Completed) At: .*\n)*')
+STARTED = re.compile(r'^Tool is running as a background task with task id: (\S+)$', re.M)
+FINISHED = re.compile(r'content=Task id "([^"]+)" finished with \w+:\n(.*?)(?:\n\nLog: \S+)?\n</SYSTEM_MESSAGE>', re.S)
 
 
 def claude_name(name):
@@ -43,6 +45,22 @@ def output(step):
     return m[1] if (m := re.search(r'\nCommand output:\n(.*)\Z', text, re.S)) else '' if text.startswith('Command exited with code') else text
 
 
+def finished(agy_steps):
+    """Each ended background task's result text, by task id, from agy's message that it finished."""
+    return {m[1]: m[2] for s in agy_steps if s.get('type') == 'SYSTEM_MESSAGE' and (m := FINISHED.search(s.get('content') or ''))}
+
+
+def ended(step, ends):
+    """A call's result step once the call ended: a background command's (a RUNNING step naming its task) from ends, else None."""
+    m = step.get('status') == 'RUNNING' and STARTED.search(step.get('content') or '')
+    return step if not m else {'status': 'DONE', 'content': ends[m[1]]} if m[1] in ends else None
+
+
+def task_id(agy_id):
+    """agy's task id as Claude Code's, a word."""
+    return re.sub(r'\W', '', agy_id)
+
+
 def skill_of(path):
     """The mergeworthy skill whose SKILL.md path is, else None: agy opens a skill by reading it."""
     m = re.search(r'/skills/([\w-]+)/SKILL\.md$', path or '')
@@ -60,7 +78,8 @@ def steps(path):
 
 def claude_transcript(agy_steps, cwd):
     """agy's transcript steps as Claude Code transcript entries: a typed request, each model text and tool call, each call's result, a
-    Stop hook's continuation reason, and a compaction (agy's CHECKPOINT step) as compact_boundary."""
+    Stop hook's continuation reason, and a compaction (agy's CHECKPOINT step) as compact_boundary. A background command's result
+    and its end are Claude Code's: a started task, then a <task-notification>."""
     calls, out = {}, []
     for s in agy_steps:
         at, n = s.get('created_at'), s['step_index']
@@ -69,6 +88,10 @@ def claude_transcript(agy_steps, cwd):
             out.append({'type': 'user', 'timestamp': at, 'cwd': cwd, 'message': {'role': 'user', 'content': m[1] if m else s.get('content') or ''}})
         elif s.get('type') == 'CHECKPOINT':
             out.append({'type': 'system', 'subtype': 'compact_boundary', 'timestamp': at})
+        elif s.get('type') == 'SYSTEM_MESSAGE' and (m := FINISHED.search(s.get('content') or '')):
+            status = 'failed' if failed('run_command', {'content': m[2]}) else 'completed'
+            out.append({'type': 'user', 'timestamp': at, 'message': {'role': 'user', 'content': (
+                f"<task-notification>\n<task-id>{task_id(m[1])}</task-id>\n<status>{status}</status>\n<summary>{output({'content': m[2]})}</summary>\n</task-notification>")}})
         elif s.get('type') == 'SYSTEM_MESSAGE':
             out.append({'type': 'user', 'timestamp': at, 'message': {'role': 'user', 'content': f"Stop hook feedback:\n{s.get('content') or ''}"}})
         elif s.get('type') == 'PLANNER_RESPONSE':
@@ -79,9 +102,11 @@ def claude_transcript(agy_steps, cwd):
             out.append({'type': 'assistant', 'timestamp': at, 'cwd': cwd, 'message': {'role': 'assistant', 'model': s.get('model'), 'content': text}})
         elif n in calls:
             c = calls.pop(n)
-            bad = failed(c.get('name'), s)
+            bg = s.get('status') == 'RUNNING' and STARTED.search(s.get('content') or '')
+            bad = not bg and failed(c.get('name'), s)
+            text = f'Command running in background with ID: {task_id(bg[1])}' if bg else s.get('error') or output(s)
             out.append({'type': 'user', 'timestamp': at, 'message': {'role': 'user', 'content': [
-                {'type': 'tool_result', 'tool_use_id': call_id(n), 'is_error': bad, 'content': s.get('error') or output(s)}]}})
+                {'type': 'tool_result', 'tool_use_id': call_id(n), 'is_error': bad, 'content': text}]}})
             if c.get('name') == 'read_file' and not bad and (k := skill_of((c.get('args') or {}).get('Path'))):
                 out.append({'type': 'assistant', 'timestamp': at, 'cwd': cwd, 'message': {'role': 'assistant', 'content': [
                     {'type': 'tool_use', 'id': f'{call_id(n)}-skill', 'name': 'Skill', 'input': {'skill': f'mergeworthy:{k}'}}]}})
@@ -129,10 +154,12 @@ def run(event, d):
 
 
 def settle(ev):
-    """Runs the PostToolUse hooks of each earlier call whose result agy's transcript now holds: their messages."""
+    """Runs the PostToolUse hooks of each earlier call that ended in agy's transcript (a background command, once its task
+    finished): their messages."""
     try: waiting = [json.loads(l) for l in open(ev.pending)]
     except OSError: return []
-    done, errs = {s['step_index']: s for s in ev.steps}, []
+    ends, errs = finished(ev.steps), []
+    done = {s['step_index']: r for s in ev.steps if (r := ended(s, ends))}
     for p in (p for p in waiting if p['step'] in done):
         s = done[p['step']]
         bad = failed(p['name'], s)
