@@ -65,9 +65,11 @@ function installClaude(values) {
     fs.mkdirSync(path.join(HOME, '.mergeworthy'), { recursive: true })
     fs.rmSync(path.join(HOME, '.mergeworthy', 'current'), { force: true })
     fs.symlinkSync(installed.installPath, path.join(HOME, '.mergeworthy', 'current'))
-    // and T3 Code's Antigravity instance loads the plugin's agy/ through it, as session-start and mergeworthy-update keep it
+    // and T3 Code's Antigravity instance loads the plugin's agy/ through it, as session-start and mergeworthy-update keep it; what
+    // keeps it from that (a copied plugin there) is a warning
     const link = path.join(installed.installPath, 'hooks', 'agy-link')
-    if (fs.existsSync(link)) run(link, [])
+    const r = fs.existsSync(link) ? spawnSync(link, [], { encoding: 'utf8' }) : { status: 0 }
+    if (r.status !== 0) return (r.stderr || r.stdout || `${link} failed`).trim()
   }
 }
 function uninstallClaude() {
@@ -143,7 +145,8 @@ async function main() {
 
   const s = p.spinner()
   if (targets.includes('claude')) {
-    s.start('Claude Code'); installClaude(values); s.stop('Claude Code: installed, auto-update on')
+    s.start('Claude Code'); const warning = installClaude(values); s.stop('Claude Code: installed, auto-update on')
+    if (warning) p.log.warn(warning)
   }
   if (targets.includes('codex')) { s.start('Codex'); installCodex(); s.stop('Codex: installed, always-on rules in ~/.codex/AGENTS.md') }
   if (targets.includes('other')) skillsSh('add')

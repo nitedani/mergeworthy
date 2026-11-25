@@ -22,6 +22,7 @@ EOF
 # stub codex: lists mergeworthy installed while $T/codex-has exists; pnpm records the installer run
 cat > "$T/bin/codex" <<EOF
 #!/bin/sh
+echo "codex \$*" >> "$T/calls"
 [ "\$*" = "plugin list" ] && [ -e "$T/codex-has" ] && echo "mergeworthy@mergeworthy (installed)"
 exit 0
 EOF
@@ -73,6 +74,10 @@ if [ -d "$R/cli/node_modules" ]; then
   mkdir "$(prof antigravity)/mergeworthy"; node "$R/cli/index.mjs" uninstall --yes --agents claude > "$T/out" 2>&1
   check "npx mergeworthy uninstall --agents claude: exit, its link gone; a copied plugin folder there stays" "0 no yes" \
     "$rc $([ -L "$(prof antigravity)/mergeworthy" ] && echo yes || echo no) $([ -d "$(prof antigravity)/mergeworthy" ] && [ ! -L "$(prof antigravity)/mergeworthy" ] && echo yes || echo no)"
+  : > "$T/calls"; node "$R/cli/index.mjs" --yes --agents claude,codex > "$T/out" 2>&1; rc=$?
+  check "a copied plugin folder at the link's path: the install exits 0, warns naming it, keeps it and installs Codex too" "0 1 yes 1" \
+    "$rc $(grep -c 'loads a copy of mergeworthy' "$T/out") $([ -d "$(prof antigravity)/mergeworthy" ] && [ ! -L "$(prof antigravity)/mergeworthy" ] && echo yes || echo no) $(grep -c '^codex plugin add' "$T/calls")"
+  rm -rf "$HOME/.codex"
   rmdir "$(prof antigravity)/mergeworthy"; ln -sfn "$NEW" "$HOME/.mergeworthy/current"
 fi
 rm -r "$HOME/.t3/userdata/providers"; echo '{"providerInstances":{"antigravity":{"driver":"codex"}}}' > "$HOME/.t3/userdata/settings.json"
