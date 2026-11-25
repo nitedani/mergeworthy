@@ -13,6 +13,7 @@ ROOT = os.path.dirname(HERE)
 TOOLS = {'run_command': 'Bash', 'read_file': 'Read', 'write_file': 'Write', 'edit_file': 'Edit'}
 OWN_AGENTS = ('swarm',)
 KEEP = 14 * 86400
+DIR = os.path.expanduser('~/.mergeworthy/agy')  # each conversation's Claude Code transcript (.jsonl) and queued checks (.post)
 HEADER = re.compile(r'\A(?:(?:Created|Completed) At: .*\n)*')
 STARTED = re.compile(r'^Tool is running as a background task with task id: (\S+)$', re.M)
 FINISHED = re.compile(r'content=Task id "([^"]+)" finished with \w+:\n(.*?)(?:\n\nLog: \S+)?\n</SYSTEM_MESSAGE>', re.S)
@@ -32,9 +33,14 @@ def claude_input(name, args):
     return {k: v for k, v in a.items() if k != 'toolSummary'}
 
 
+def conversation(agy_id):
+    """agy's conversation id as the name of its files and its session id."""
+    return re.sub(r'[^\w-]', '', agy_id or '') or 'none'
+
+
 def call_id(session, step):
-    """A tool call's id in both records, unique across conversations: agy's transcript names no call ids, but its call's result is the
-    step the hooks' stepIdx names."""
+    """A tool call's id in both records, unique across conversations. The hook input names the call (toolCall.id) but agy's log
+    doesn't, so the key both have is its result's step: the hook's stepIdx."""
     return f'agy-{session}-{step}'
 
 
@@ -131,13 +137,12 @@ class Event:
     """One agy hook call: its input, the conversation's agy steps so far, and the Claude Code transcript written from them."""
     def __init__(self, d):
         self.d = d
-        self.session = re.sub(r'[^\w-]', '', d.get('conversationId') or '') or 'none'
-        self.dir = os.path.expanduser('~/.mergeworthy/agy')
-        self.transcript = os.path.join(self.dir, f'{self.session}.jsonl')
-        self.pending = os.path.join(self.dir, f'{self.session}.post')
+        self.session = conversation(d.get('conversationId'))
+        self.transcript = os.path.join(DIR, f'{self.session}.jsonl')
+        self.pending = os.path.join(DIR, f'{self.session}.post')
         self.steps = steps(d['transcriptPath']) if os.path.isfile(d.get('transcriptPath') or '') else []
         entries, self.outcomes = claude_transcript(self.steps, d.get('cwd'), self.session)
-        os.makedirs(self.dir, exist_ok=True)
+        os.makedirs(DIR, exist_ok=True)
         tmp = f'{self.transcript}.{os.getpid()}'
         with open(tmp, 'w') as f:
             f.writelines(json.dumps(e) + '\n' for e in entries)
@@ -216,7 +221,7 @@ def main(name, d):
         # of Claude Code's SessionStart duties (hooks/session-start), the ones agy needs: old files pruned, the bin/ commands on
         # PATH, the catalog recorded, and the hooks hooks.json runs through hooks/run; session-start itself, which prints the
         # always-on rules agy loads from agy/rules, doesn't run
-        prune(ev.dir)
+        prune(DIR)
         subprocess.run([os.path.join(HERE, 'bin-links')])
         session_catalog.record(ev.session, ROOT, 'startup')
         return answer(name, run('SessionStart', {**ev.base('SessionStart'), 'source': 'startup'})[1])
