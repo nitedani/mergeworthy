@@ -66,6 +66,15 @@ prof() { echo "$HOME/.t3/userdata/providers/antigravity/$(printf '%s' "$1" | sha
 bash "$R/bin/mergeworthy-update" > "$T/out" 2>&1
 check "the antigravity instance's profile links the installed agy plugin; antigravity_2's and ~/.gemini have none" "$HOME/.mergeworthy/current/agy no no" \
   "$(readlink "$(prof antigravity)/mergeworthy") $([ -e "$(prof antigravity_2)" ] && echo yes || echo no) $([ -e "$HOME/.gemini" ] && echo yes || echo no)"
+# a copied plugin where the link goes is the person's own folder: the update warns, keeps it and exits 0; a link it can't make fails it
+copied() { [ -d "$(prof antigravity)/mergeworthy" ] && [ ! -L "$(prof antigravity)/mergeworthy" ] && echo yes || echo no; }
+rm "$(prof antigravity)/mergeworthy"; mkdir "$(prof antigravity)/mergeworthy"
+bash "$R/bin/mergeworthy-update" > "$T/out" 2>&1; rc=$?
+check "an update over a copied plugin: exit, warned, no failure named, the copy kept" "0 1 0 yes" "$rc $(grep -c 'loads a copy of mergeworthy' "$T/out") $(grep -c '^failed:' "$T/out") $(copied)"
+rmdir "$(prof antigravity)/mergeworthy"; chmod a-w "$(prof antigravity)/.."
+bash "$R/bin/mergeworthy-update" > "$T/out" 2>&1; rc=$?; chmod u+w "$(prof antigravity)/.."
+check "an update whose Antigravity link can't be made: exit, the failure named" "1 1" "$rc $(grep -cx 'failed: linking the Antigravity plugin' "$T/out")"
+bash "$R/bin/mergeworthy-update" > /dev/null 2>&1
 # a fresh install links it too, before any Claude Code session or update ran (installClaude, cli/index.mjs)
 if [ -d "$R/cli/node_modules" ]; then
   mkdir -p "$NEW/bin"; cp "$R/hooks/bin-links" "$NEW/hooks/"; : > "$NEW/bin/gate-pass"
@@ -81,6 +90,12 @@ if [ -d "$R/cli/node_modules" ]; then
     "$rc $(grep -c 'loads a copy of mergeworthy' "$T/out") $([ -d "$(prof antigravity)/mergeworthy" ] && [ ! -L "$(prof antigravity)/mergeworthy" ] && echo yes || echo no) $(grep -c '^codex plugin add' "$T/calls")"
   rm -rf "$HOME/.codex"
   rmdir "$(prof antigravity)/mergeworthy"
+  # a link it can't make fails the install, after Codex is installed too
+  rm -f "$(prof antigravity)/mergeworthy"; chmod a-w "$(prof antigravity)/.."; : > "$T/calls"
+  node "$R/cli/index.mjs" --yes --agents claude,codex > "$T/out" 2>&1; rc=$?; chmod u+w "$(prof antigravity)/.."
+  check "an Antigravity link the install can't make: exit 1, the failure named, Codex installed" "1 1 1" \
+    "$rc $(grep -c 'Linking the Antigravity plugin failed' "$T/out") $(grep -c '^codex plugin add' "$T/calls")"
+  rm -rf "$HOME/.codex"
   # an ~/.local/bin it can't write is a warning too
   rm "$HOME/.local/bin/gate-pass"; : > "$NEW/bin/zz-linked"; ln -s x "$HOME/.local/bin/zz-linked"; chmod a-w "$HOME/.local/bin"; : > "$T/calls"; node "$R/cli/index.mjs" --yes --agents claude,codex > "$T/out" 2>&1; rc=$?; chmod u+w "$HOME/.local/bin"
   check "an unwritable ~/.local/bin: the install exits 0, warns naming it, links the antigravity instance and installs Codex too" "0 1 $HOME/.mergeworthy/current/agy 1" \
@@ -145,11 +160,14 @@ echo '{"providerInstances":{"antigravity":{"driver":"antigravity"},"antigravity_
 ln -sfn "$PRE" "$HOME/.mergeworthy/current"; bash "$HOME/.local/bin/mergeworthy-update" > "$T/out" 2>&1; rc=$?
 check "main's mergeworthy-update to this version: exit, current, the antigravity instance linked in that run, antigravity_2 not" "0 $NEW $HOME/.mergeworthy/current/agy no" \
   "$rc $(readlink "$HOME/.mergeworthy/current") $(readlink "$(prof antigravity)/mergeworthy") $([ -e "$(prof antigravity_2)" ] && echo yes || echo no)"
-# a copied plugin where the link goes fails that update as it fails this version's: learn-units exits with agy-link's status
+# as this version's update: over a copied plugin it warns and exits 0, a link it can't make fails it (learn-units exits with agy-link's status)
 rm "$(prof antigravity)/mergeworthy"; mkdir "$(prof antigravity)/mergeworthy"; ln -sfn "$PRE" "$HOME/.mergeworthy/current"
 bash "$HOME/.local/bin/mergeworthy-update" > "$T/out" 2>&1; rc=$?
-check "main's mergeworthy-update over a copied plugin: exit, the failure named, the copy kept" "1 1 yes" \
-  "$rc $(grep -c 'removing mergeworthy-learn.timer' "$T/out") $([ -d "$(prof antigravity)/mergeworthy" ] && [ ! -L "$(prof antigravity)/mergeworthy" ] && echo yes || echo no)"
+check "main's mergeworthy-update over a copied plugin: exit, warned, no failure named, the copy kept" "0 1 0 yes" \
+  "$rc $(grep -c 'loads a copy of mergeworthy' "$T/out") $(grep -c '^failed:' "$T/out") $(copied)"
+rmdir "$(prof antigravity)/mergeworthy"; chmod a-w "$(prof antigravity)/.."; ln -sfn "$PRE" "$HOME/.mergeworthy/current"
+bash "$HOME/.local/bin/mergeworthy-update" > "$T/out" 2>&1; rc=$?; chmod u+w "$(prof antigravity)/.."
+check "main's mergeworthy-update when the Antigravity link can't be made: exit, the failure named" "1 1" "$rc $(grep -c 'removing mergeworthy-learn.timer' "$T/out")"
 rm -r "$HOME/.t3" "$NEW/agy" "$T/bin/agy"
 
 [ "$fails" = 0 ] && echo "update: all cases pass" || { echo "update: $fails case(s) failed"; exit 1; }

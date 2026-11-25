@@ -66,16 +66,20 @@ function installClaude(values) {
     fs.rmSync(path.join(HOME, '.mergeworthy', 'current'), { force: true })
     fs.symlinkSync(installed.installPath, path.join(HOME, '.mergeworthy', 'current'))
     // the commands in its bin/ on PATH, as session-start keeps them, and T3 Code's Antigravity instance loading the plugin's agy/
-    // through it, as session-start and mergeworthy-update keep it; what keeps either from that (an unwritable ~/.local/bin, a
-    // copied plugin) is a warning
+    // through it, as session-start and mergeworthy-update keep it. An unwritable ~/.local/bin is a warning, and so is what agy-link
+    // says when it exits 0 (a copied plugin); agy-link failing fails the install, as it fails an update
     const warnings = []
+    let failed = ''
     for (const step of ['bin-links', 'agy-link']) {
       const file = path.join(installed.installPath, 'hooks', step)
       const r = fs.existsSync(file) ? spawnSync(file, [], { encoding: 'utf8' }) : { status: 0 }
-      if (r.status !== 0) warnings.push((r.stderr || r.stdout || `${file} failed`).trim())
+      const said = (r.stderr || r.stdout || (r.status === 0 ? '' : `${file} failed`)).trim()
+      if (step === 'agy-link' && r.status !== 0) failed = said
+      else if (said && (r.status !== 0 || step === 'agy-link')) warnings.push(said)
     }
-    return warnings.join('\n')
+    return { warning: warnings.join('\n'), failed }
   }
+  return { warning: '', failed: '' }
 }
 function uninstallClaude() {
   if (claudeInstalled()) run('claude', ['plugin', 'uninstall', ID])
@@ -149,12 +153,14 @@ async function main() {
   }
 
   const s = p.spinner()
+  let warning, failed
   if (targets.includes('claude')) {
-    s.start('Claude Code'); const warning = installClaude(values); s.stop('Claude Code: installed, auto-update on')
+    s.start('Claude Code'); ({ warning, failed } = installClaude(values)); s.stop('Claude Code: installed, auto-update on')
     if (warning) p.log.warn(warning)
   }
   if (targets.includes('codex')) { s.start('Codex'); installCodex(); s.stop('Codex: installed, always-on rules in ~/.codex/AGENTS.md') }
   if (targets.includes('other')) skillsSh('add')
+  if (failed) { p.cancel(`Linking the Antigravity plugin failed: ${failed}`); process.exit(1) }
   p.outro('Done. New sessions load it; run this again to change the options or add an agent.')
 }
 
