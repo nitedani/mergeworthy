@@ -132,7 +132,7 @@ install_learn() {
 [ -x ~/.mergeworthy/current/bin/project-learn ] && { install_learn || failed+=("mergeworthy-learn.timer"); }
 [ ${#failed[@]} = 0 ] || { echo "failed: ${failed[*]}"; exit 1; }
 OLD
-cp "$R/hooks/learn-units" "$NEW/hooks/"; printf '#!/bin/sh\n' > "$NEW/bin/project-learn"; chmod +x "$PRE/bin/mergeworthy-update" "$NEW/bin/project-learn"
+cp "$R/hooks/learn-units" "$R/hooks/agy-link" "$NEW/hooks/"; printf '#!/bin/sh\n' > "$NEW/bin/project-learn"; chmod +x "$PRE/bin/mergeworthy-update" "$NEW/bin/project-learn"
 ln -sfn "$PRE" "$HOME/.mergeworthy/current"; ln -s "$HOME/.mergeworthy/current/bin/mergeworthy-update" "$HOME/.local/bin/mergeworthy-update"
 : > "$U/mergeworthy-learn.timer"; : > "$U/mergeworthy-learn.service"; NEW="$NEW" bash "$HOME/.local/bin/mergeworthy-update" > "$T/out" 2>&1; rc=$?
 check "the old script's update to this version: exit, both learning units removed, no failure named" "0 0 0" "$rc $(ls "$U" | grep -c mergeworthy-learn) $(grep -c '^failed:' "$T/out")"
@@ -145,6 +145,11 @@ echo '{"providerInstances":{"antigravity":{"driver":"antigravity"},"antigravity_
 ln -sfn "$PRE" "$HOME/.mergeworthy/current"; bash "$HOME/.local/bin/mergeworthy-update" > "$T/out" 2>&1; rc=$?
 check "main's mergeworthy-update to this version: exit, current, the antigravity instance linked in that run, antigravity_2 not" "0 $NEW $HOME/.mergeworthy/current/agy no" \
   "$rc $(readlink "$HOME/.mergeworthy/current") $(readlink "$(prof antigravity)/mergeworthy") $([ -e "$(prof antigravity_2)" ] && echo yes || echo no)"
+# a copied plugin where the link goes fails that update as it fails this version's: learn-units exits with agy-link's status
+rm "$(prof antigravity)/mergeworthy"; mkdir "$(prof antigravity)/mergeworthy"; ln -sfn "$PRE" "$HOME/.mergeworthy/current"
+bash "$HOME/.local/bin/mergeworthy-update" > "$T/out" 2>&1; rc=$?
+check "main's mergeworthy-update over a copied plugin: exit, the failure named, the copy kept" "1 1 yes" \
+  "$rc $(grep -c 'removing mergeworthy-learn.timer' "$T/out") $([ -d "$(prof antigravity)/mergeworthy" ] && [ ! -L "$(prof antigravity)/mergeworthy" ] && echo yes || echo no)"
 rm -r "$HOME/.t3" "$NEW/agy" "$T/bin/agy"
 
 [ "$fails" = 0 ] && echo "update: all cases pass" || { echo "update: $fails case(s) failed"; exit 1; }
