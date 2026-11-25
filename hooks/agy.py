@@ -37,8 +37,10 @@ def call_id(session, step):
 
 
 def failed(name, step):
-    """Whether the result step of a call failed: agy's error, or a command's non-zero exit, which Claude Code also reports as an error."""
-    return step.get('status') == 'ERROR' or name == 'run_command' and not re.search(r'^Command exited with code 0\.$', step.get('content', ''), re.M)
+    """Whether the result step of a call failed: agy's error, or a command's non-zero exit, which Claude Code also reports as an error.
+    The exit is agy's line above the command's output, which may hold such a line of its own."""
+    head = (step.get('content') or '').split('\nCommand output:\n', 1)[0]
+    return step.get('status') == 'ERROR' or name == 'run_command' and not re.search(r'^Command exited with code 0\.$', head, re.M)
 
 
 def output(step):
