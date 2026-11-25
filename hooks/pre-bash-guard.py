@@ -9,7 +9,7 @@ import failclosed
 import shellcmd
 from shellcmd import parse, segments, prog, script, opt, api_call, field_name, TEXT_FREE, discussion_post, discussion_thread_of, names_discussion_mutation, env_of, origin, plain_create, PLAIN, new_post_drafts, no_instructions_read, by_agent, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Unseen, Where
 from records import branch_record, commit_file, DRIFT_REF, no_approach, no_preflight, STORE
-import drift, own_actions, review_launch, steward, post_words, threads_file, transcript_facts, work_folder
+import drift, launch, loops, own_actions, review_launch, review_transport, steward, post_words, threads_file, transcript_facts, work_folder
 from t3_tasks import under_t3, typed
 def missing_steps(d, head=None):
     """(head, the converge steps it lacks): head is a push's pushed commit, else HEAD."""
@@ -1179,7 +1179,7 @@ def check(t, has_cd):
         need_ask('release', f'`{p} publish`', (repo_of(origin(pkg)) or (None, None))[1])
     if p == 'codex' and ('exec' in a or a[:1] == ['e']) and under_t3():
         block("under T3 Code, start Codex through T3, where the user sees it: delegate_task with target {providerInstanceId: codex, "
-              "model: <the review model from orchestrator_capabilities>}, the prompt file's path in the task, a new delegate_task per review round (mergeworthy:delegate §Reviewers)")
+              "model: <the review model from orchestrator_capabilities>}, the prompt file's path in the task; a later round to a fresh reviewer, a fix check of its findings to its thread by t3_thread_send (mergeworthy:delegate §Reviewers, §Continue)")
     if p in ('docker', 'docker-compose'):
         check_compose(env, t)
     # a watcher wakes the session that started it, and a subagent's result is its last message: the main session owns the PR and its watcher
@@ -1295,12 +1295,13 @@ def check(t, has_cd):
     if p not in ('claude', 'codex') and any(review_launch.REVIEW_OUT.fullmatch(f) for f in names) and not by_agent(d):
         block("a review's output is the reviewer's final message, written by the reviewer: `codex exec -o <out>`, or the agent writes <out> itself. "
               "Never write a verdict yourself (mergeworthy:delegate §Reviewers, post step 3)")
-    if any(review_launch.REVIEW_OUT.fullmatch(re.sub(r'\.(launch|prev)$', '', f)) and f.endswith(('.launch', '.prev')) for f in names):
-        block("a review output's .launch and .prev are written by the hook that starts its reviewer, which records the text the reviewer is handed: "
+    if any(review_launch.REVIEW_OUT.fullmatch(f[:-len('.launch')]) and f.endswith('.launch') for f in names):
+        block("a review output's .launch is written by the hook that starts its reviewer, which records the text the reviewer is handed: "
               "launch the review again (mergeworthy:post step 3)")
     if p in ('claude', 'codex'):
         # the verdict is codex's -o file, or claude's stdout: another descriptor's file is a plain write
         stdout = [t[i + 1] for i, x in enumerate(t[:-1]) if re.fullmatch(r'1?>>?|1?>\||&>>?', x) and not t[i + 1].startswith('/dev/')]
+        post, outs = False, []
         for w in (opt(a, ['-o', '--output-last-message']) if p == 'codex' else []) + (stdout if p == 'claude' and ('-p' in a or '--print' in a) else []):
             # only an output that is one fully known path is recorded or name-checked; any other that may land in drafts/ is refused
             vals, paths = where.values(w), where.files(w)
@@ -1309,12 +1310,20 @@ def check(t, has_cd):
                 if any(re.search(r'(^|/)drafts/', x) for x in seen):
                     block(f"the review output {w} can't be placed: pass its absolute path, written out or assigned once")
                 continue
-            out = paths[0]
+            out = paths[0]; outs.append(out)
             if why := review_launch.misnamed(out):
                 block(why)
             if review_launch.draft_of(out):
                 if why := review_launch.unlinted(out): block(why)
                 launches.append(out)  # recorded once every segment of the command passed
+                post = True
+        # a code review's round, named by its prompt file, is admitted and counted as an agent's is (loops); a post's counts none
+        if (p == 'codex' and ('exec' in a or a[:1] == ['e']) or '-p' in a or '--print' in a) and not post and (r := review_transport.shell_round(' '.join(t))):
+            L = launch.Launch(r[1])
+            owners = re.findall(r'^[ \t>*-]*Continues:[ \t]*(\S+)', L.brief, re.M)
+            if (f := review_transport.resumed(t)) is not None and (why := review_transport.fix_check(r[0][0], L.brief, f and os.path.getmtime(f))): block(why)
+            if why := (r[0][2] == '1' and not owners and loops.third_seat(r[0][1], L.checkouts, L.brief)) or loops.admit(r[0][1], int(r[0][2]), *loops.pinned(L), loops.ledger_named(L.brief), owners): block(why)
+            rounds.append((r[0][1], int(r[0][2]), loops.pinned(L)[1], None, False, outs, bool(re.search(loops.FANOUT, r[1], re.M)), L.checkouts, loops.ledger_named(L.brief), *loops.declared(L.brief)))
     written = [f for x, c in zip(targets, files) for f in known(c, x)]
     for x in dict.fromkeys(map(shellcmd.folder, written)):  # the instructions check runs git, once per folder
         if why := no_instructions_read(x, d):
@@ -1491,7 +1500,7 @@ if any(prog(x)[:1] and os.path.basename(prog(x)[0]) == 'gate-pass' for x in segs
                                         or prog(x)[1:2] == ['api'] and any(w.startswith('body=') or w in ('--input',) for w in prog(x))) or discussion_post(x) for x in segs):
     block("run gate-pass as its own command and read its exit code, then post in the next command: this check reads the gate record before the command runs (mergeworthy:post step 4)")
 clones = {}  # folder: the repo it was cloned from, for a `git clone` in this command
-launches = []  # the review outputs of the reviewers this command starts (check)
+launches, rounds = [], []  # the review outputs of the reviewers this command starts, and their code review rounds (check)
 records = {}  # each `pr-steps approach|preflight ...` walked so far, by its statement (Seg.stmt): the record it writes
 for s in where.walk(segs):
     run_dir, has_cd = where.dir, where.moved
@@ -1512,8 +1521,8 @@ for s in where.walk(segs):
         if w & {'git', 'gh', 'glab'} and w & {'push', 'commit', 'pr', 'issue', 'api', 'release', 'mr'} or 'git' not in w and w & {'push', 'commit'}:
             block(f"`{named}` runs a command named only when it runs, with `{' '.join(words)[:80]}`: write the command out, so it can be checked")
     check(s, has_cd)
-for out in launches:
-    review_launch.launch(out)
+# recorded by post-bash-register once the command ran: a reviewer Bash skipped or that failed starts no round
+loops.pend(own_actions.key(d), rounds, {out: review_launch.set_aside(out) for out in launches})
 try:  # pending until post-bash-register sees how the command ended
     own_actions.intend(own_actions.key(d), own)
 except OSError:

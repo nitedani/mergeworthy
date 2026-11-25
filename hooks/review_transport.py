@@ -1,0 +1,88 @@
+"""How a review round reaches its reviewer: a launch (Agent, Task, delegate_task, t3_thread_launch) is a round by its name; a send
+(T3's t3_thread_send, Claude Code's SendMessage) to a reviewer (loops.seat_loops) is a round `<loop>-r<N>` that continues it
+(loops.continues, delegate §Continue), its message the task and its round name the title, and refused naming none; a send to
+anyone else is no launch. A shell reviewer (`codex exec`, its `resume`, `claude -p`) is a round by its prompt file's name,
+`<loop>-r<N>.md`. A round that continues its reviewer is admitted only as a fix check of that reviewer's findings while it is
+recent (fix_check); any other later round goes to a fresh reviewer (delegate §Reviewers)."""
+import glob, os, re, time
+import agent_jobs, loops, steward, t3_tasks
+
+WINDOW = 50 * 60  # a provider's prompt cache is gone after about an hour, and the continued reviewer re-reads it all
+FIX_CHECK = r'^[ \t>*-]*Review:[^\n]*\bfix-check\b'  # the brief's line declaring a round a fix check of its reviewer's own findings
+
+
+def as_launch(tool, ti):
+    """(the tool input as the launch it is, whether it was sent to a running reviewer, the first round of its loop there or None,
+    the loops that reviewer runs (loops.seat_loops));
+    None for a send to no reviewer; a refusal (str) for a send to a reviewer that names no round of a loop it runs."""
+    tool = str(tool or '')
+    if tool.endswith('t3_thread_send'):
+        name, seat = str(ti.get('clientRequestId') or ''), str(ti.get('threadId') or '')
+    elif tool == 'SendMessage':
+        name, seat = str(ti.get('summary') or ''), str(ti.get('to') or '')
+    else:
+        return ti, False, None, {}
+    m = loops.round_of(name)
+    if not (here := loops.seat_loops(seat) if seat else {}):
+        return None
+    if not (m and loops.continues(m[1], int(m[2]), here)):
+        return (f"{seat} runs the review loop {', '.join(sorted(here))}, and a message to it is that loop's next round: name it `<loop>-r<N>` "
+                f"({'clientRequestId' if tool.endswith('t3_thread_send') else 'summary'}), or `<loop>-ask<N>` for a maintainer's ask, "
+                f"not {name or 'nothing'} (mergeworthy:delegate §Review rounds)")
+    first = here.get(m[1]) or next((e for l, e in here.items() if e and l.startswith(m[1].rsplit('-', 1)[0])), None)
+    return {'task': str(ti.get('message') or ''), 'title': name, 'role': 'review', 'clientRequestId': name, 'threadId': seat}, True, first, here
+
+
+def round_name(ti):
+    """The name a launch gives its round: T3's clientRequestId, else the Agent tool's description."""
+    return str(ti.get('clientRequestId') or ti.get('description') or '')
+
+
+def thread(ti, response):
+    """The reviewer a round ran in, which a later round is sent to: the one it was sent to, T3's childThreadId (delegate_task) or
+    threadId (t3_thread_launch), or Claude Code's agentId."""
+    r = t3_tasks.result(response) or {}
+    return ti.get('threadId') or r.get('childThreadId') or r.get('threadId') \
+        or (response.get('agentId') if isinstance(response, dict) else None)
+
+
+def shell_round(command):
+    """(the round `<loop>-r<N>` a shell reviewer's command names by its prompt file, that file's text), else None."""
+    for f in re.findall(r'(?<![\w.~/-])(~?/[^\s`\'"()<>$]+\.md)\b', command):
+        if (m := loops.round_of(os.path.basename(f)[:-3])) and os.path.isfile(p := os.path.expanduser(f)):
+            return m, open(p, errors='replace').read()
+    return None
+
+
+def last_active(tool, seat, launcher):
+    """When the reviewer seat a round is sent to was last active, in epoch seconds, None when unknown: a T3 thread's newest message
+    or run, a Claude Code agent's transcript (under launcher's session)."""
+    if str(tool or '').endswith('t3_thread_send'): return steward.active_at(seat)
+    p = agent_jobs.transcript({'handle': f'claude:{seat}', 'transcript': launcher})
+    return p and os.path.getmtime(p)
+
+
+def resumed(argv):
+    """The session file a shell reviewer's command resumes (`codex exec resume <id>`, `claude -p --resume <id>`), '' when it
+    resumes one it doesn't name or that doesn't exist (`--last`, `--continue`), None when it resumes none."""
+    if os.path.basename(argv[0]) == 'codex':
+        if 'resume' not in argv: return None
+        ids = argv[argv.index('resume') + 1:]
+        return next((f for i in ids for f in glob.glob(os.path.expanduser(agent_jobs.CODEX.replace('*.jsonl', f'*-{glob.escape(i)}.jsonl')))), '')
+    for i, a in enumerate(argv):
+        if a in ('-c', '--continue'): return ''
+        if a in ('-r', '--resume') or a.startswith('--resume='):
+            sid = a.partition('=')[2] or (argv[i + 1] if i + 1 < len(argv) else '')
+            return next(iter(glob.glob(os.path.expanduser(f'~/.claude/projects/*/{glob.escape(sid)}.jsonl'))), '') if sid else ''
+    return None
+
+
+def fix_check(name, brief, at):
+    """Why round name, continuing the reviewer last active at at (None: unknown), is refused, '' when it may run: only a fix check
+    of that reviewer's own findings (FIX_CHECK) continues it, within WINDOW."""
+    declared, recent = re.search(FIX_CHECK, brief, re.M), at and time.time() - at <= WINDOW
+    if declared and recent: return ''
+    why = ("its brief declares no fix check of that reviewer's own findings (a line `Review: <step> [<part>] fix-check`)" if not declared else
+           f"that reviewer was last active {int((time.time() - at) / 60)} minutes ago, past {WINDOW // 60}" if at else "no record shows when that reviewer was last active")
+    return (f"{name} continues its reviewer, but {why}: launch the round on a fresh reviewer, of the other company than the loop's last round "
+            "where one is available, its brief carrying the loop's ledger and the commits since, never the earlier reports (mergeworthy:delegate §Reviewers).\n")

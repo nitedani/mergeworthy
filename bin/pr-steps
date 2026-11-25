@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # pr-steps <step> <output-file>: records that a converge step ran on the current HEAD, after checking its output proves it.
-# verify, reverify, small, shape and fresh take `--ledger <path>` for a round 2 whose verdict isn't clean: the loop's ledger closes it (hooks/ledger.py).
+# verify, reverify, small, shape and fresh take `--ledger <path>` for a last round whose verdict isn't clean: the loop's ledger closes it (hooks/loops.py close).
 # Steps, in pipeline order (mergeworthy:converge): verify (Loop A), shape (Loop B: the review and the shape pass),
 # reverify (Loop A after Loop B's commits), fresh (the fresh reader), gates (every gate's exit code on the final head).
 # The posting hook blocks `gh pr create` (unless --draft), `gh pr ready` and pushes to a ready PR until HEAD has all five.
@@ -29,7 +29,7 @@ read_standards() {
 }
 step=${1:?usage: pr-steps <preflight|approach|small|quick|layout|verify|shape|reverify|fresh|gates|finality|union> <output-file> [--ledger <path>]}; out=${2:?output file}
 ledger=; [ "${3:-}" != --ledger ] || ledger=${4:?--ledger <path>}
-ledger_ok() { [ -n "$ledger" ] && python3 "$(dirname "$(realpath "$0")")/../hooks/ledger.py" "$ledger"; }
+ledger_ok() { [ -n "$ledger" ] && python3 "$(dirname "$(realpath "$0")")/../hooks/loops.py" close ${1:-} "$ledger" --report "$out"; }
 case "$step" in preflight|approach|small|quick|layout|verify|shape|loopb|refactor|reverify|fresh|gates|finality|union) ;; review) step=fresh ;;
   *) echo "step must be preflight, approach, small, quick, layout, verify, shape, reverify, fresh, gates, finality or union" >&2; exit 1;; esac
 # preflight and approach: one record per repo and branch, the path the hooks read (hooks/records.py branch_record)
@@ -171,7 +171,7 @@ if [ "$step" = small ]; then
   fi
   # the verdict ends the report, before any trailing Verification or not_checked section (delegate/agent.md asks every agent for not_checked)
   verdict=$(awk '{ l = tolower($0) } l ~ /^#+[ \t]*(verification|not[ _]checked)([^a-z]|$)/ { tail = 1; next } /^#/ { tail = 0 } !tail' "$out" | grep -v '^[[:space:]]*$' | tail -n2 | tr '\n' '|')
-  [ "$(grep -v '^[[:space:]]*$' "$out" | tail -n2 | tr '\n' '|')" = 'NO BUGS|MERGE AS IS: yes|' ] || [ "$verdict" = 'NO BUGS|MERGE AS IS: yes|' ] || ledger_ok || { echo "$out does not end with NO BUGS and MERGE AS IS: yes: fix what it found and send the same reviewer round 2 checking that fix; after round 2, record it with --ledger <the loop's ledger>" >&2; exit 1; }
+  [ "$(grep -v '^[[:space:]]*$' "$out" | tail -n2 | tr '\n' '|')" = 'NO BUGS|MERGE AS IS: yes|' ] || [ "$verdict" = 'NO BUGS|MERGE AS IS: yes|' ] || ledger_ok || { echo "$out does not end with NO BUGS and MERGE AS IS: yes: fix what it found and send the same reviewer the next round; after its last round, record it with --ledger <the loop's ledger>" >&2; exit 1; }
   record small verify shape reverify fresh
   echo "recorded small fix ($n lines) for $sha: verify, shape, reverify, fresh; run the gates next"
   exit 0
@@ -204,11 +204,10 @@ delta() {
   printf '%s\n' "$d"
   sed -n '2,/^$/p' <<< "$M" | grep -vxF -e "$d" -e '' | sed 's/^/0\t0\t/' | not_built | cut -f3 || true  # a conflict whose written tree has no markers (modify/delete) still changed its file
 }
-# A carry of head $1's step holds for at most 80 changed lines, none outside tests and docs: a line of code may add behavior, whatever the session says
+# A carry of head $1's step holds for at most STALE_LINES changed lines, tests and docs included, none outside them: a line of code may add behavior, whatever the session says
 carry_holds() {
   local files changed code
-  files=$(delta "$1"); changed=$(printf '%s' "$files" | grep -c . || true)
-  [ "$changed" -le 80 ] || { echo "$changed lines changed since $1: too much to carry, run the $step step again (mergeworthy:converge §Batching)" >&2; exit 1; }
+  files=$(delta "$1"); ! changed=$(printf '%s\n' "$files" | awk 'NF {print "1\t0\t" $0}' | python3 "$(dirname "$(realpath "$0")")/../hooks/testpaths.py" moved carry) || { echo "$changed lines changed since $1: too much to carry, run the $step step again (mergeworthy:converge §Batching)" >&2; exit 1; }
   code=$(printf '%s\n' "$files" | R="$(python3 "$(dirname "$(realpath "$0")")/../hooks/testpaths.py")|[.]md\$" awk 'NF && $0 !~ ENVIRON["R"] && !f {f = $0} END {print f}')
   [ -z "$code" ] || { echo "$code changed since $1, and a carry holds for tests and docs alone: run the $step step again (mergeworthy:converge §Batching)" >&2; exit 1; }
 }
@@ -223,7 +222,7 @@ if [ "$step" != shape ] && [ "$step" != refactor ] && [ "$step" != gates ] && [ 
 base=$(git merge-base HEAD "$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)" 2>/dev/null || true)
 case "$step" in
   verify|reverify)
-    [ "$last" = "NO BUGS" ] || [ "$step" = reverify -a "$last" = "NO LOOP B COMMITS" ] || ledger_ok || { echo "$out does not end with a line NO BUGS: fix what it found for round 2; after round 2, record it with --ledger <the loop's ledger>" >&2; exit 1; }
+    [ "$last" = "NO BUGS" ] || [ "$step" = reverify -a "$last" = "NO LOOP B COMMITS" ] || ledger_ok || { echo "$out does not end with a line NO BUGS: fix what it found for the next round; after its last round, record it with --ledger <the loop's ledger>" >&2; exit 1; }
     [ "$step" = reverify ] || read_standards
     # A reproduced behavior dropped as harmless, and a claim no test or probe covers, are the main session's call: a later `RULED: <candidate>: <ruling>` line, its own
     unruled=$(python3 - "$out" "$(pbase)" "$(dirname "$(realpath "$0")")/../hooks" <<'EOF'
@@ -297,14 +296,14 @@ EOF
   fresh)
     read_standards
     grep -Eq '^Maintainer: @?[A-Za-z0-9-]+' "$out" || old_pipeline || { echo "$out has no line 'Maintainer: <login>': the fresh reader reviews as the maintainer who decides, citing what they said or did (mergeworthy delegate/fresh-reader.md)" >&2; exit 1; }
-    grep -qx 'MERGE AS IS: yes' "$out" || ledger_ok || { echo "$out has no line 'MERGE AS IS: yes': the fresh reader, as this repo's maintainer, would not merge it exactly as it is; what it lists stands between the PR and a yes, until round 2's ledger closes it (--ledger <path>)" >&2; exit 1; }
+    grep -qx 'MERGE AS IS: yes' "$out" || ledger_ok --fresh || { echo "$out has no line 'MERGE AS IS: yes': the fresh reader, as this repo's maintainer, would not merge it exactly as it is; what it lists stands between the PR and a yes, until its last round's ledger closes it (--ledger <path>)" >&2; exit 1; }
     # a yes is the maintainer merging this head: a note it adds (a body word) goes through the body's post review, no new reader
     ;;
   shape|refactor)
     if is_pass "$out"; then
       [ "$step" = refactor ] || old_pipeline || read_standards
       [ "$step" = refactor ] ||
-      [ "$last" = CLEAN ] || ledger_ok || { echo "$out does not end with a line CLEAN: land what its review and shape pass found worth changing, then continue the same agent for round 2; after round 2, record it with --ledger <the loop's ledger> (mergeworthy:converge step 2)" >&2; exit 1; }
+      [ "$last" = CLEAN ] || ledger_ok || { echo "$out does not end with a line CLEAN: land what its review and shape pass found worth changing, then continue the same agent for the next round; after its last round, record it with --ledger <the loop's ledger> (mergeworthy:converge step 2)" >&2; exit 1; }
     else
       carried=$(grep -Eo 'carries the pass of [0-9a-f]{7,40}' "$out" | head -n1 | awk '{print $NF}' || true)
       copied=$(grep -Eio '\| *([0-9]+ *)?= *\||unchanged since' "$out" | head -n1 || true)
@@ -375,5 +374,8 @@ EOF
 esac
 fi
 [ "$step" != union ] || { proof=$(realpath "$out"); record_union "$ua" "$ub"; exit 0; }
+# a step whose round 1 seated several reviewers (hooks/loops.py) is recorded once every seat's report is: until then, this one as a seat
+seats=$(python3 "$(dirname "$(realpath "$0")")/../hooks/loops.py" seats "$out" ~/.claude/pr-steps/"$sha" "$step") || exit 1
+[ -z "$seats" ] || { record "$step" "$step-seat"; echo "recorded $out as one seat of $step for $sha; $step is recorded with the report of $(echo $seats)"; exit 0; }
 record "$step" "$step"
 echo "recorded $step for $sha"

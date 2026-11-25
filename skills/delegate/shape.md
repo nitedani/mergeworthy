@@ -4,15 +4,16 @@ Standards: `~/.mergeworthy/current/skills/code/SKILL.md`. Include `delegate/agen
 
 The main session starts the reviewer `delegate §Reviewers` names.
 
-- **DELETE-NOW:** remove; behavior-preserving, no probe needed.
-- **FIX:** an exact behavior-preserving change.
-- **FILL:** a gap to fill (a missing test of a documented contract, a missing sibling case).
-- **DELETE-CAREFULLY:** remove only after code §Removal gate's probe.
-- **OWNER-DECISION:** owner code, a behavior or public-surface change, or anything the task doesn't authorize; it goes in the PR body's decision blocks or the report to the user, with a recommendation.
+- **DELETE-NOW** (should)**:** remove; behavior-preserving, no probe needed.
+- **FIX** (should)**:** an exact behavior-preserving change.
+- **FILL** (should)**:** a gap to fill (a missing test of a documented contract, a missing sibling case).
+- **DELETE-CAREFULLY** (should)**:** remove only after code §Removal gate's probe.
+- **OWNER-DECISION** (`listed:`)**:** owner code, a behavior or public-surface change, or anything the task doesn't authorize; in the PR body's decision blocks or the report to the user, with a recommendation.
 - **NIT:** a nit (`agent.md`): no code.
 - **KEEP:** checked and worth its price.
 
 ```
+Review: shape
 You shape <PR>: `git diff <base> <head>`, in <worktree>; everything in it, tests included. Reading order, slice by slice: <the slices' file lists, or none>.
 The project file: <project file path>. The invariants and settled picks: <decisions/*.md>; keep them intact.
 Evidence: <the verifier's and reviewer's reports>.
@@ -27,11 +28,11 @@ Step 1, cut what shouldn't exist. Check every line of code §Checklist. Each fin
 - When the change is to a methodology (skills, prompts, hooks): check that every named mechanism survived, and fail any compressed into generic prose.
 - A closure claim without a tree, lane or capture you observed yourself stays open. Mark unavailable evidence UNKNOWN.
 
-Step 2, reshape what stays: the prompt below, the user's text, unchanged in every repo whatever the project file says.
+Step 2, reshape what stays: the prompt below, the user's text, unchanged in every repo whatever the project file says; its "until" ends with this round (`delegate §Review rounds`).
 
 Step 3, rate every file and function old ⇒ new: verify each implementation (behavior preserved, mutation probes still red, comments true), and say whether each decline holds.
 
-<Round 2: the previous report <path>, the ledger <path>, the commits since <list>: all three steps on the rows they touched; rate every other row afresh (old ⇒ new, never '=' or 'unchanged since'); only a blocker or regression counts, the rest under `## Dropped`.>
+<From round 2: the loop's ledger <path>, the commits since <list>, what's left unchecked <list>: every finding there and in the code they touch; skip the rest and declined ids but last round's blockers; rate every file.>
 
 Write <report path>: `## Standards read` (above), then step 1's findings, DELETE-NOW first, then FIX, FILL, DELETE-CAREFULLY, OWNER-DECISION; NIT rows under `## Dropped` (agent.md); the mechanism census; the 10-second pass as classes; step 2's ratings and ✅ coverage list; step 3's old ⇒ new ratings and the prior findings' closure; an honest-positive statement ("nothing worth changing" where that is the result). End the file with a line CLEAN only when your review in this run and all three steps leave nothing behavior-preserving whose value is worth its price (its should, agent.md).
 Final message: the path, counts per disposition, the three highest-value findings, the overall rating.

@@ -154,6 +154,17 @@ def started(run_id):
         return None if not r else True if r[1] else False if r[0] in ACTIVE_RUNS else None
     return _db(ask, None)
 
+def active_at(tid):
+    """When T3 thread tid was last active, in epoch seconds: now while a run of it is active, else its newest message or run;
+    None without either or without T3's database."""
+    def ask(c):
+        if c.execute(f"select 1 from orchestration_v2_projection_runs where thread_id = ? and status in {_in(ACTIVE_RUNS)}", (tid, *ACTIVE_RUNS)).fetchone():
+            return time.time()
+        at = c.execute("select max(at) from (select max(updated_at) at from orchestration_v2_projection_messages where thread_id = ? "
+                       "union all select max(coalesce(completed_at, requested_at)) from orchestration_v2_projection_runs where thread_id = ?)", (tid, tid)).fetchone()[0]
+        return at and datetime.datetime.fromisoformat(at.replace('Z', '+00:00')).timestamp()
+    return _db(ask, None)
+
 def _in(values):
     return f"({','.join('?' * len(values))})"
 

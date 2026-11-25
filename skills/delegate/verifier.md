@@ -10,22 +10,23 @@ A slice is a part of the PR's code one verifier can hold (core feature, backend 
 
 ## Counting
 
-**When a pass finds bugs:** fix the root cause with the smallest diff, with a failing repro first, passing code §Phantom gate; re-run the verifier's repro on the fixed build. An area that already had two corrective edits gets rethought as one rule covering every case found, then that rule is implemented. Fixes to base code go in the bottom PR of a stack, then merge up; a merge-up re-opens the top PR's slices that call the changed base code.
+**When a pass finds bugs:** fix the root cause with the smallest diff, with a failing repro first, passing code §Phantom gate; re-run its repro on the fix. An area that already had two corrective edits gets rethought as one rule covering every case found, and implemented. Fixes to base code go in the bottom PR of a stack, then merge up; a merge-up re-opens the top PR's slices that call the changed base code.
 
 **A finished slice** (`converge` step 1) re-opens when a fix, refactor or revert touches its paths; unchanged, it isn't run again; a queued pass is never dropped.
 
 ## After refactors
 
-Continue the Loop A agent with Loop B's commits. It compares the tree before the refactors with the head, reproduce-only: the old specs run on the new code, adapting only renames, and every failure must be an intended change; side-by-side scripts run the same scenarios on both trees and diff the output; randomized comparisons where the logic is combinatorial. A regression here means the refactor wasn't behavior-preserving: revert it, then a fresh pass on that slice. With no Loop B commits, the file says `NO LOOP B COMMITS`.
+The reverify seat (`converge` step 3) compares the tree before the refactors with the head, reproduce-only: the old specs run on the new code, adapting only renames, and every failure must be an intended change; side-by-side scripts diff both trees' output on the same scenarios; randomized comparisons where the logic is combinatorial. A regression here means the refactor wasn't behavior-preserving: name its commit; the main session reverts it, and this seat's next round rechecks the slice.
 
 ## The brief
 
 ```
+Review: verify <slice>
 You are a bug verifier for <PR and slice>. Count only what you reproduce. Don't commit, push or comment anywhere.
 First read ~/.mergeworthy/current/skills/code/SKILL.md §Phantom gate, §Docs are a claim and §No regressions in full; your file starts with `## Standards read`, the first sentence of each copied.
 
 Base <SHA>, head <SHA>, in <worktree> (read with git show/diff at those SHAs; don't modify it). Your slice: <paths>.
-<What changed since the last pass, with the previous reports' paths, if any.>
+<From round 2: the loop's ledger <path>, the commits since <list>, what its reports left unchecked <list>.>
 The project file: <project file path>. Settled decisions: <decisions/*.md or the PR body>.
 
 What counts:
@@ -41,10 +42,10 @@ How:
 - make your own worktrees under <work folder> (worktree add --detach, install, build) and remove them after;
 - lanes you may run: <lanes>. Don't run <lanes owned by others>.
 
-Write <work folder>/<name>.md, exhaustively:
+Write <work folder>/<name>.md, exhaustively, after the sections above, each finding `R<round>.<n> <label>`:
 - each reproduced bug with its commit, the repro inline, observed vs expected;
-- then, under `## Dropped`, every candidate you tried and dropped, each one list item `- <candidate>: <why>`; the main session adds `RULED: <candidate>: <ruling>` under each before `pr-steps verify` records the file (converge step 1);
+- then, under `## Dropped`, every candidate you tried and dropped, each one list item `- <candidate>: <why>`;
 - if no bug counts, what you tried under `## Tried`, then a last line NO BUGS.
 
-Final message: the count and one line each, then each reproduced-and-dropped candidate, one line each; exactly NO BUGS only when both lists are empty.
+Final message: the count and one line each, then each reproduced-and-dropped candidate, one line each; exactly NO BUGS only when the file ends NO BUGS.
 ```

@@ -11,10 +11,12 @@ import hashlib, json, os, re, shlex, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
 from shellcmd import segments, prog, new_post_drafts, Where, opened, plain_create, opt, repo_name, discussion_post, discussion_thread_of
-import own_actions, steward, threads_file, work_folder
+import loops, own_actions, steward, threads_file, work_folder
 d = json.load(sys.stdin)
 # the pushes, merges and closes pre-bash-guard let this command make are its own once it succeeded; a failed command's go
 own_actions.settle(own_actions.key(d), d.get('hook_event_name') != 'PostToolUseFailure')
+# the review rounds and post launches pre-bash-guard admitted for it count once it ran (loops.pend)
+loops.settle(own_actions.key(d), d.get('hook_event_name') != 'PostToolUseFailure')
 if d.get('hook_event_name') == 'PostToolUseFailure':
     sys.exit(0)
 cmd = d.get('tool_input', {}).get('command', '')

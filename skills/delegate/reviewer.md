@@ -2,15 +2,16 @@
 
 Standards: `~/.mergeworthy/current/skills/code/SKILL.md` (§Owner code and authority, §Removal gate, §Earn every line), `~/.mergeworthy/current/skills/writing/SKILL.md` §Evidence for claims. Include `delegate/agent.md`.
 
-The main session fills it (`review` step 2, `converge` steps 2 and 4, `design` step 6) and starts the reviewer `delegate §Reviewers` names, not the author nor in its context. It adds no cases of its own to attack.
+The main session fills it (`review` step 2, `converge` steps 2 and 4, `design` step 6) and starts the reviewer `delegate §Reviewers` names, not the author nor in its context. It adds no cases of its own.
 
 **Cold-read variant** (`rules` step 4): use this instead of the code block below: "Read <file> as an agent that has never seen this repo. List every sentence you can't act on: an undefined term, a pointer you can't resolve, an actor or file not named. Write `<file>:<line> — the sentence — what's unclear — a rewrite` to <out>."
 
 ```
+Review: <step> <part>
 You are reviewing a change you did not write: <PR or artifact>, head <SHA>.
 It claims to: <one sentence>. It fixes: <the defect>; its sibling sites: <list>. Issue: <link>.
 Diff: git diff $(git merge-base <head> origin/<base>) <head>, in <worktree>.
-The project file: <project file path>. Settled decisions: <decisions/*.md>. <Round 2: the ledger <its path>: don't report its declined ids again; confirm its fixed ones in <the changes since>, and report only a blocker or a regression.>
+The project file: <project file path>. Settled decisions: <decisions/*.md>. <From round 2: the loop's ledger <path>, the commits since <list>, what's left unchecked <list>: every finding there and in the code they touch; skip the rest and declined ids but last round's blockers.>
 Callers and callees of the changed symbols (review-context <base> at the head):
 <its output>
 <Gate commands, exit codes and output, where you can't run them.>

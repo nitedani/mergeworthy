@@ -16,7 +16,7 @@ from shellcmd import rlines
 JOBS = os.path.expanduser('~/.claude/agent-jobs')
 REPORTED = os.path.expanduser('~/.claude/agent-jobs-reported')  # <job file>-<transcript mtime>: reported once per finish
 LAUNCHED = os.path.expanduser('~/.claude/agent-jobs-launch')  # <job file>: pre-agent-dedupe's decision on a launch it let through (its docstring lists the fields)
-LAUNCH = re.compile(rb'"name": ?"(Agent|Task|mcp__[^"]*(delegate_task|t3_thread_launch))"')  # pre-agent-dedupe's matcher
+LAUNCH = re.compile(rb'"name": ?"(Agent|Task|mcp__[^"]*(delegate_task|t3_thread_launch|t3_thread_send))"')  # pre-agent-dedupe's matcher
 QUIET, LONG, OPEN = 180, 660, 24 * 3600  # OPEN: pre-agent-dedupe's window, after which a job no longer counts
 TASK_NOTICE = re.compile(r'<task-notification>\s*<task-id>(\w+)</task-id>')  # Claude Code's, for a background agent or command
 KILLED = re.compile(TASK_NOTICE.pattern + r'.*?<status>killed</status>', re.S)
@@ -105,12 +105,13 @@ def launched(job):
 def job_id(job):
     return hashlib.sha256(f"{job['key']}\0{launched(job)}".encode()).hexdigest()[:16]
 
-def handle(response):
+def handle(response, thread=None):
     """What the platform's PostToolUse result names the launched agent by: `t3:<taskId>/<childThreadId>` for T3's delegate_task,
-    `claude:<agentId>` for Claude Code's Agent tool, else None."""
+    `t3:<taskId or runId>/<thread>` for a t3_thread_send to thread, `claude:<agentId>` for Claude Code's Agent tool, else None."""
     if isinstance(response, dict) and response.get('agentId'): return f"claude:{response['agentId']}"
     r = t3_tasks.result(response) or {}
-    return f"t3:{r['taskId']}/{r['childThreadId']}" if r.get('taskId') and r.get('childThreadId') else None
+    task, thread = r.get('taskId') or thread and r.get('runId'), r.get('childThreadId') or thread
+    return f"t3:{task}/{thread}" if task and thread else None
 
 _hit = {}
 def transcript(job):

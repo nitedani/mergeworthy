@@ -2,9 +2,10 @@
 
 Standards: `~/.mergeworthy/current/skills/code/SKILL.md` §Checklist, `~/.mergeworthy/current/skills/writing/SKILL.md` §Self-check. Include `delegate/agent.md`.
 
-The main session fills it and starts the reviewer `delegate §Reviewers` names.
+The main session starts the reviewer `delegate §Reviewers` names.
 
 ```
+Review: small
 You review <PR> at head <SHA> (base <SHA>) in <worktree>, as its maintainer would before merging. The project file: <project file path>. The body draft: <work folder>/drafts/<pr>/pr-body.md. Don't commit, push or comment anywhere.
 
 1. Run <the test the fix adds, or a reproduction where the repo keeps none> on base and head: red, then green, or that is your first finding (a reproduction: `Reproduction: <command>: red on <base sha>, green on <head sha>`); docs or whole-line comments alone need none.

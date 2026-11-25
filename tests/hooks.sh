@@ -88,8 +88,12 @@ v.update({"sha": h, "web_url": u} if os.path.basename(f).startswith("glmr_") els
 json.dump(v, open(f, "w"))' "$2" "$(git -C "$1" rev-parse HEAD)" "$3"; }
 check() { # name want got
   echo "$1: $3 (want $2)"; [ "$2" = "$3" ] || fails=$((fails+1))
+known() { # name want got: a replay case the hooks still decide wrongly (finality2 plan step 1); the step that fixes it makes it a check
+  if [ "$2" = "$3" ]; then echo "$1: $3 (want $2) KNOWN-FAILING CASE PASSES: make it a check"; fails=$((fails+1)); else echo "$1: $3 (want $2) known-failing"; fi
 }
-rl() { python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import review_launch; sys.exit(review_launch.launch(sys.argv[2]) or 0)' "$R/hooks" "$1"; }  # <out>: its review launched through the hook
+}
+rl() { python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import review_launch; review_launch.launch(sys.argv[2], review_launch.set_aside(sys.argv[2]))' "$R/hooks" "$1"; }  # <out>: its review launched through the hook
+aside() { python3 -c 'import os,sys; sys.path.insert(0, sys.argv[1]); import review_journal, review_launch; o=os.path.realpath(sys.argv[2]); print(*[e["text"].strip() for e in review_journal.events(review_journal.post_of(review_launch.draft_of(sys.argv[2]))) if e["ev"] == "verdict" and e["out"] == o][-1:])' "$R/hooks" "$1"; }  # <out>: the last verdict a new round set aside
 rv() { # <dir>/<name>.review.out: its reviewer launched on <name>.md's current text (at RT, else now), then writing back the verdict <out> holds
   local v; v=$(cat "$1"); sha256sum "${1%.review.out}.md" | cut -d' ' -f1 | tr -d '\n' > "${1%.review.out}.md.lint.sha"; rl "$1" || return
   [ -z "${RT:-}" ] || echo "$(cut -d' ' -f1 "$1.launch") $(date -d "$RT" +%s)" > "$1.launch"; printf '%s\n' "$v" > "$1"; }
@@ -635,13 +639,17 @@ cp "$GD/thread-context.md" "$T/gd-tc.md"; cp "$TC" "$GD/thread-context.md"; touc
 check "BLOCK: gate-pass with the parent saved after a record the thread has outgrown" "1 1" "$(gp) $(grep -c 'records the latest comment' "$T/gp.out")"
 mv "$T/gd-tc.md" "$GD/thread-context.md"; rm "$GD/r.parent.md"; touch -d '+1 minute' "$GD/r.md"
 check "gate-pass records the thread context in the gate" 1 "$(grep -c '^tc ' "$GD/r.md.gate")"
-printf 'R2.1 should: the second sentence reads twice\n' > "$GD/r.review.out"; printf 'R2.1 should listed: the report to the user\n' > "$T/gl.md"; printf 'R2.1 blocker listed: the report to the user\n' > "$T/gb.md"
+printf 'should: the second sentence reads twice\n' > "$GD/r.review.out"; printf 'R2.1 should listed: the report to the user\n' > "$T/gl.md"; printf 'R2.1 blocker listed: the report to the user\n' > "$T/gb.md"
 check "gate-pass: a round-2 review that isn't CLEAN passes with its ledger closing it; BLOCK without one, or with a blocker left open" "1 0 1 1" "$(gp) $(GPL="$T/gl.md" gp) $(GPL="$T/gb.md" gp) $(grep -c 'open blocker' "$T/gp.out")"
 printf 'Round: 3\nR2.1 blocker fixed in r3\n' > "$T/g3.md"; printf 'R2.1 blocker fixed in r3\n' > "$T/g3x.md"
 check "gate-pass: a post's blocker fixed in r3, the round that confirmed it, closes; BLOCK it before round 3 completed" "0 1 1" "$(GPL="$T/g3.md" gp) $(GPL="$T/g3x.md" gp) $(grep -c 'open blocker' "$T/gp.out")"
 gf() { printf 'Round: 2\nR1.1 should fixed in r2\n%s\n' "$1" > "$T/gf.md"; GPL="$T/gf.md" gp; }
 check "BLOCK: gate-pass with a ledger row whose id isn't R<round>.<n>, naming the id form, with a colon after its label too; a row with no outcome is open; prose, a numbered note and a heading, in a list or quote too, are no row" "1 1 1 1 1 1 0 0 0 0 0" \
   "$(gf 'F2.1 blocker listed: still open') $(grep -c 'F2.1 blocker listed: still open  <- its id is not R<round>.<n>' "$T/gp.out") $(gf 'F2.1 blocker: still open') $(grep -c 'F2.1 blocker: still open  <- its id is not' "$T/gp.out") $(gf 'R2.1 blocker') $(grep -c 'R2.1 blocker  <- an open blocker' "$T/gp.out") $(gf '# Should this wait?') $(gf '> # Should this wait?') $(gf '- # Should this wait?') $(gf 'This should stay as written.') $(gf '1. Should we keep this?')"
+PV="$T/pvl/drafts/pr"; mkdir -p "$PV"; printf 'The parser keeps empty fields.\n' > "$PV/pr-body.md"; rl "$PV/pr-body.review.out"; echo 'R1.1 blocker: the body gives the wrong response format.' > "$PV/pr-body.review.out"
+echo 'The reply format is JSON.' >> "$PV/pr-body.md"; rl "$PV/pr-body.review.out"; echo 'R2.1 nit: phrasing.' > "$PV/pr-body.review.out"
+pans() { local want=$1; shift; printf '%s\n' "$@" > "$PV/pr-body.ledger.md"; touch -d '+1 minute' "$PV/pr-body.ledger.md"; python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import review_launch; print(review_launch.answers(sys.argv[2], sys.argv[3]) or "passes")' "$R/hooks" "$PV/pr-body.review.out" "$PV/pr-body.md" | grep -cF "$want"; }
+check "BLOCK: a post ledger with no row for a finding of the earlier verdict the launch set aside, naming it; with the row it passes" "1 1" "$(pans 'R1.1 blocker: the body gives the wrong response format.  <- no ledger row' 'Round: 2' 'R2.1 nit declined: matches house style') $(pans passes 'Round: 2' 'R1.1 blocker fixed in r2' 'R2.1 nit declined: matches house style')"
 echo CLEAN > "$GD/r.review.out"
 printf 'The test checks that "I'"'"'ll switch it once X is released" passes.\n' > "$GD/r.md"; touch -d '+2 minutes' "$GD/r.md"
 # the verdict counts for the text its reviewer was handed, whatever the files' times say (#200)
@@ -892,7 +900,7 @@ rm "$FX/repos_acme_x_issues_7"
 check "--edit-of: gh failing fails, even for a clean draft" "rc=1 1" "$(eo 'The cache is per user.' | tail -1) $(eo 'The cache is per user.' | grep -c "couldn't read the live body.*HTTP 404")"
 check "--edit-of: a reply is refused as a usage error" "rc=1 1" "$(eo 'The cache is per user.' reply | tail -1) $(eo 'The cache is per user.' reply | grep -c '^usage: post-lint')"
 eolive 'The old text.'; rm -f "$EO"/e.md*; eo 'The new text.' >/dev/null; printf 'CLEAN\n' > "$EO/e.review.out"; rv "$EO/e.review.out"
-check "--edit-of: only the draft's own .lint files are left, and the temp folder is empty" "e.md e.md.lint e.md.lint.sha e.review.out e.review.out.launch e.review.out.prev|" "$(ls "$EO" | xargs)|$(ls -A "$T/eotmp")"
+check "--edit-of: only the draft's own .lint files are left, and the temp folder is empty" "e.md e.md.lint e.md.lint.sha e.review.out e.review.out.launch|" "$(ls "$EO" | xargs)|$(ls -A "$T/eotmp")"
 eg() { MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$EO/e.md" "$EO/e.review.out" 2>&1; echo "rc=$?"; }
 check "--edit-of survives gate-pass's re-lint from the draft's .lint" "--kind issue --repo acme/x --parent none --edit-of acme/x#7 rc=0" "$(cat "$EO/e.md.lint") $(eg | tail -1)"
 rm "$FX/repos_acme_x_issues_7"; check "gate-pass re-reads the live body: gh failing fails it" "rc=1 1" "$(eg | tail -1) $(eg | grep -c "couldn't read the live body")"
@@ -1632,48 +1640,193 @@ ag() { # cwd task [role]
 printf '# Memory\n## Standing\n### Ruled out\n- **Cron jobs** (now). The user refused them.\n## Recent\n<!-- covered-until: 2099-01-01T00:00:00.000Z -->\n' > "$MR/memory.md"
 check "BLOCK: a brief pinned to an older commit of the worktree it names, with the ruled-out list" "2 1" "$(ag "$OC" "Fix it in $T/gw at $OLD") $(grep -c 'Cron jobs' "$T/err")"
 check "a brief pinned to the worktree's live head passes" 0 "$(ag "$OC" "Fix it again in $T/gw at $NEW, base $OLD")"
-r1=$(rnd gw-r1 "Review $T/gw at head $NEW"); r2=$(rnd gw-r2 "Review $T/gw at head $NEW again"); r3=$(rnd gw-r3 "Review $T/gw at head $NEW once more")
-git -C "$T/gw" commit -q --allow-empty -m fix; FIX=$(git -C "$T/gw" rev-parse HEAD); r3f=$(rnd "gw-r3-${FIX:0:7}" "Review $T/gw at head $FIX")
+# a code round names its loop's ledger; this one's last round brought a should fixed on HEAD, a row for each repo below, so the loop goes on
+CL="$HOME/.mergeworthy/work/cl/drafts/loop.ledger.md"; mkdir -p "${CL%/*}"; printf 'R1.1 should fixed in %s\n' "$OLD" > "$CL"
+RLD="${CL%/*}"; rule() { local k; : > "$1"; for k in $(seq "$3"); do echo "R$k.1 should fixed in $2" >> "$1"; done; }  # ledger sha N: rounds 1 to N each brought a should fixed in sha
+# a code round on its loop's own ledger, which rules every earlier round as bringing a should fixed in sha (default: the head the task pins), so the loop goes on
+crnd() { local l=${1%-r[0-9]*} n; n=$(sed -E 's/.*-r([0-9]+).*/\1/' <<< "$1"); rule "$RLD/$l.ledger.md" "${3:-$(grep -oE '[0-9a-f]{40}' <<< "$2" | head -1)}" $((n - 1)); rnd "$1" "$2 Ledger: $RLD/$l.ledger.md"; }
+r14=$(for i in 1 2 3 4; do crnd gw-r$i "Review $T/gw at head $NEW, round $i"; done | xargs); r5=$(crnd gw-r5 "Review $T/gw at head $NEW once more")
+r5n=$(grep -c 'a loop gets four rounds per head' "$T/err"); r5p=$(grep -c "pr-steps <step> <file> --ledger $RLD/gw.ledger.md" "$T/err"); r5z=$(grep -c 'the area keeps taking patches, so its next step is the finality pass (mergeworthy:finality step 1, recorded by `pr-steps finality <file>`)' "$T/err")
+git -C "$T/gw" commit -q --allow-empty -m fix; FIX=$(git -C "$T/gw" rev-parse HEAD); r5f=$(crnd "gw-r5-${FIX:0:7}" "Review $T/gw at head $FIX")
 git -C "$T/gw" checkout -q --detach "$OLD"; git -C "$T/gw" commit -q --allow-empty -m new; NH=$(git -C "$T/gw" rev-parse HEAD)
-check "review rounds on one head: r1 and r2 pass, BLOCK r3 on it and on a fix built on it, r3 on a new head passes" "0 0 2 2 0" "$r1 $r2 $r3 $r3f $(rnd "gw-r3-${NH:0:7}" "Review $T/gw at head $NH")"
+check "review rounds on one head: r1 to r4 pass, BLOCK r5 on it, naming the cap, the pr-steps that closes the ledger and, as round 4 brought a fixed should, the finality pass, and on a fix built on it; r5 on a new head passes" "0 0 0 0 2 1 1 1 2 0" "$r14 $r5 $r5n $r5p $r5z $r5f $(crnd "gw-r5-${NH:0:7}" "Review $T/gw at head $NH")"
 git init -q -b main "$T/rh"; mkdir "$T/rh/tests"
 rh_commit() { seq "$2" >> "$T/rh/$1"; git -C "$T/rh" add .; git -C "$T/rh" commit -qm "$1"; git -C "$T/rh" rev-parse HEAD; }  # a path gets N new lines
-rh_rnd() { rnd "$1" "Review $T/rh at head $2"; }
-H0=$(rh_commit a.py 100); r12="$(rh_rnd rh-r1 "$H0") $(rh_rnd rh-r2 "$H0")"
-H80=$(rh_commit a.py 80); at80=$(rh_rnd rh-r3 "$H80")
-HT=$(rh_commit tests/a.py 200); attests=$(rh_rnd rh-r3 "$HT")
-git -C "$T/rh" checkout -qb base "$H0"; rh_commit b.py 200 >/dev/null; git -C "$T/rh" checkout -q main; git -C "$T/rh" merge -q --no-ff -m "merge the base" base; HM=$(git -C "$T/rh" rev-parse HEAD); atmerge=$(rh_rnd rh-r3 "$HM")
-check "the round cap counts as SHAPE STALE: exactly 80 lines, 200 in tests and 200 from a merge of the base stay fixes of the head, BLOCK r3 on each" "0 0 2 2 2" "$r12 $at80 $attests $atmerge"
-sed -i 1d "$T/rh/a.py"; git -C "$T/rh" commit -qam "one deletion"; H81=$(git -C "$T/rh" rev-parse HEAD); past=$(rh_rnd rh-r3 "$H81")
-HF=$(rh_commit a.py 10); onfix=$(rh_rnd rh-r4 "$HF")
-HG=$(rh_commit a.py 5); third=$(rh_rnd rh-r5 "$HG")
-HN=$(rh_commit a.py 81); onnew=$(rh_rnd rh-r5 "$HN")
-check "the 81st changed line, a deletion, makes a new head with two rounds: r3 passes, r4 on its fixes passes, BLOCK r5 within 80 lines of them, r5 81 lines past passes" "0 0 2 0" "$past $onfix $third $onnew"
-first=$(rh_rnd rh-a-r1 "$HN"); HB=$(rh_commit a.py 81); second=$(rh_rnd rh-a-r2 "$HB"); HC=$(rh_commit a.py 5)
-check "r2 past 80 lines of r1 opens a new head: r3 on r2's fixes passes, BLOCK r4 on them" "0 0 0 2" "$first $second $(rh_rnd rh-a-r3 "$HC") $(rh_rnd rh-a-r4 "$HC")"
-check "a round with no pinned head holds only against another: pinned after unpinned and unpinned after pinned pass" "0 0 0 0 0 0" "$(rnd rh-u-r1 "Review $T/rh") $(rnd rh-u-r2 "Review $T/rh") $(rh_rnd rh-u-r3 "$HC") $(rh_rnd rh-p-r1 "$HC") $(rh_rnd rh-p-r2 "$HC") $(rnd rh-p-r3 "Review $T/rh")"
+rh_rnd() { crnd "$1" "Review $T/rh at head $2"; }
+H0=$(rh_commit a.py 100); echo "R1.2 should fixed in $H0" >> "$CL"; r14=$(for i in 1 2 3 4; do rh_rnd rh-r$i "$H0"; done | xargs)
+H80=$(rh_commit a.py 80); at80=$(rh_rnd rh-r5 "$H80")
+HT=$(rh_commit tests/a.py 200); attests=$(rh_rnd rh-r5 "$HT")
+git -C "$T/rh" checkout -qb base "$H0"; rh_commit b.py 200 >/dev/null; git -C "$T/rh" checkout -q main; git -C "$T/rh" merge -q --no-ff -m "merge the base" base; HM=$(git -C "$T/rh" rev-parse HEAD); atmerge=$(rh_rnd rh-r5 "$HM")
+check "the round cap counts as SHAPE STALE: exactly 80 lines, 200 in tests and 200 from a merge of the base stay fixes of the head, BLOCK r5 on each" "0 0 0 0 2 2 2" "$r14 $at80 $attests $atmerge"
+sed -i 1d "$T/rh/a.py"; git -C "$T/rh" commit -qam "one deletion"; H81=$(git -C "$T/rh" rev-parse HEAD); past=$(rh_rnd rh-r5 "$H81")
+onfix=$(for i in 6 7 8; do rh_rnd rh-r$i "$(rh_commit a.py 5)"; done | xargs)
+HG=$(rh_commit a.py 5); fifth=$(rh_rnd rh-r9 "$HG")
+HN=$(rh_commit a.py 81); onnew=$(rh_rnd rh-r9 "$HN")
+check "the 81st changed line, a deletion, makes a new head with four rounds: r5 passes, r6 to r8 on its fixes pass, BLOCK r9 within 80 lines of them, r9 81 lines past passes" "0 0 0 0 2 0" "$past $onfix $fifth $onnew"
+first=$(rh_rnd rh-a-r1 "$HN"); HB=$(rh_commit a.py 81); second=$(rnd rh-a-r2 "Review $T/rh at head $HB"); HC=$(rh_commit a.py 5)
+check "r2 past 80 lines of r1 opens a new head, so it passes naming no ledger: r3 to r5 on r2's fixes pass, BLOCK r6 on them" "0 0 0 0 0 2" "$first $second $(for i in 3 4 5 6; do rh_rnd rh-a-r$i "$HC"; done | xargs)"
+check "a round with no pinned head holds only against another: pinned after unpinned and unpinned after pinned pass" "0 0 0 0 0 0" "$(crnd rh-u-r1 "Review $T/rh" "$HC") $(crnd rh-u-r2 "Review $T/rh" "$HC") $(rh_rnd rh-u-r3 "$HC") $(rh_rnd rh-p-r1 "$HC") $(rh_rnd rh-p-r2 "$HC") $(crnd rh-p-r3 "Review $T/rh" "$HC")"
 git init -q -b main "$T/rp"; git -C "$T/rp" worktree add -q -b feat "$T/rpf"; git -C "$T/rp" worktree add -q -b cmp "$T/rpc"
 rp_commit() { seq "$3" >> "$1/$2"; git -C "$1" add "$2"; git -C "$1" commit -qm "$2"; git -C "$1" rev-parse HEAD; }  # checkout path N: the path gets N new lines
-REL=$(rp_commit "$T/rp" a.py 10); git -C "$T/rpf" reset -q --hard "$REL"; git -C "$T/rpc" reset -q --hard "$REL"; CMP=$(rp_commit "$T/rpc" c.py 30)
-rp_rnd() { rnd "$1" "Review $T/rpf at head $2; compare it with $3."; }  # round head comparison
+REL=$(rp_commit "$T/rp" a.py 10); echo "R1.3 should fixed in $REL" >> "$CL"; git -C "$T/rpf" reset -q --hard "$REL"; git -C "$T/rpc" reset -q --hard "$REL"; CMP=$(rp_commit "$T/rpc" c.py 30)
+rp_rnd() { crnd "$1" "Review $T/rpf at head $2; compare it with $3."; }  # round head comparison
 F=$(rp_commit "$T/rpf" a.py 20); rpm="$(rp_rnd rp-m-r1 "$F" "the release in $T/rp at $REL")"; F=$(rp_commit "$T/rpf" a.py 1); rpm="$rpm $(rp_rnd rp-m-r2 "$F" "the release in $T/rp at $REL")"
 F=$(rp_commit "$T/rpf" a.py 200); check "issue #215: rounds also pinning the release's checkout, the branch 200 lines past r2: r3 passes" "0 0 0" "$rpm $(rp_rnd rp-m-r3 "$F" "the release in $T/rp at $REL")"
-rpn="$(rp_rnd rp-n-r1 "$F" "the release, $T/rp at $REL")"; F=$(rp_commit "$T/rpf" a.py 1); rpn="$rpn $(rp_rnd rp-n-r2 "$F" "the release, $T/rp at $REL")"
-F=$(rp_commit "$T/rpf" a.py 5); check "rounds also pinning the release's checkout, the branch within 80 lines of r2: BLOCK r3" "0 0 2" "$rpn $(rp_rnd rp-n-r3 "$F" "the release, $T/rp at $REL")"
+rpn="$(rp_rnd rp-n-r1 "$F" "the release, $T/rp at $REL")"; for i in 2 3 4; do F=$(rp_commit "$T/rpf" a.py 1); rpn="$rpn $(rp_rnd rp-n-r$i "$F" "the release, $T/rp at $REL")"; done
+F=$(rp_commit "$T/rpf" a.py 5); check "rounds also pinning the release's checkout, the branch within 80 lines of r4: BLOCK r5" "0 0 0 0 2" "$rpn $(rp_rnd rp-n-r5 "$F" "the release, $T/rp at $REL")"
 rpc="$(rp_rnd rp-c-r1 "$F" "the diverged branch in $T/rpc at $CMP")"; F=$(rp_commit "$T/rpf" a.py 1); rpc="$rpc $(rp_rnd rp-c-r2 "$F" "the diverged branch in $T/rpc at $CMP")"
 F=$(rp_commit "$T/rpf" a.py 200); check "rounds also pinning a diverged branch's worktree, unchanged, the branch 200 lines past r2: r3 passes" "0 0 0" "$rpc $(rp_rnd rp-c-r3 "$F" "the diverged branch in $T/rpc at $CMP")"
 RH=$(git -C "$T/rh" rev-parse HEAD); printf 'Body.\n' > "$PD/pr-body.md"; python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest(), end="")' "$PD/pr-body.md" > "$PD/pr-body.md.lint.sha"
 PP="$PB The head: $RH in $T/rh."; UC="Review the code in $T/rh. Final message exactly NO BUGS."
 SR="Review $T/rh at head $RH; write the report, ending MERGE AS IS: yes or no, to $T/sr.report.md and the body's verdict, exactly CLEAN or the findings, to $PD/pr-body.review.out."
-check "a post review pinning the head gets r2 to r6, each on a changed draft, the head unchanged; BLOCK r7 on the text a CLEAN r6 answered, r7 on a changed draft passes; BLOCK r3 of an unpinned code review and of a small review that also reviews the PR body" "0 0 0 0 0 0 2 0 0 0 2 0 0 2" "$(pe "$PD/r.md" 'Pinned 1.'; jd "$PD/r.md" rnd pp-r1 "$PP") $(for i in 2 3 4 5 6; do pv "$PD/r.review.out" "R$((i-1)).1 should: x"; pe "$PD/r.md" "Pinned $i."; printf ' '; jd "$PD/r.md" rnd pp-r$i "$PP"; done | xargs) $(pv "$PD/r.review.out" CLEAN; jd "$PD/r.md" rnd pp-r7 "$PP") $(pe "$PD/r.md" 'Pinned 7.'; jd "$PD/r.md" rnd pp-r7 "$PP") $(rnd uc-r1 "$UC") $(rnd uc-r2 "$UC") $(rnd uc-r3 "$UC") $(jd "$T/sr.report.md" rnd sr-r1 "$SR") $(jd "$T/sr.report.md" rnd sr-r2 "$SR") $(jd "$T/sr.report.md" rnd sr-r3 "$SR")"
+check "a post review pinning the head gets r2 to r6, each on a changed draft, the head unchanged; BLOCK r7 on the text a CLEAN r6 answered, r7 on a changed draft passes" "0 0 0 0 0 0 2 0" "$(pe "$PD/r.md" 'Pinned 1.'; jd "$PD/r.md" rnd pp-r1 "$PP") $(for i in 2 3 4 5 6; do pv "$PD/r.review.out" "R$((i-1)).1 should: x"; pe "$PD/r.md" "Pinned $i."; printf ' '; jd "$PD/r.md" rnd pp-r$i "$PP"; done | xargs) $(pv "$PD/r.review.out" CLEAN; jd "$PD/r.md" rnd pp-r7 "$PP") $(pe "$PD/r.md" 'Pinned 7.'; jd "$PD/r.md" rnd pp-r7 "$PP")"
+check "BLOCK r5 of an unpinned code review and of a small review that also reviews the PR body" "0 0 0 0 2 0 0 0 0 2" "$(for i in 1 2 3 4 5; do crnd uc-r$i "$UC" "$RH"; done | xargs) $(for i in 1 2 3 4 5; do jd "$T/sr.report.md" crnd sr-r$i "$SR"; done | xargs)"
+NF="$HOME/.mergeworthy/work/cl/drafts/r4nits.ledger.md"; printf 'R1.1 should fixed in abc1234\nRound: 4\nR4.1 nit declined: wording\n' > "$NF"
+check "BLOCK r5 after a round 4 that brought only nits, naming no finality pass" "0 0 0 0 2 0" "$(for i in 1 2 3 4; do crnd uf-r$i "$UC" "$RH"; done | xargs) $(rnd uf-r5 "$UC Ledger: $NF") $(grep -c 'finality pass' "$T/err")"
 WB="$HOME/.mergeworthy/work/t/briefs/post-review.md"; mkdir -p "${WB%/*}"; printf '%s\n' "$PP" > "$WB"
 check "a post review whose head-pinned brief is a work-folder file gets r3 on a changed draft, BLOCK its r4 on the text r3 answered" "0 0 0 2" "$(jd "$WB" jd "$PD/r.md" rnd wb-r1 "Follow $WB exactly.") $(pv "$PD/r.review.out" 'R1.1 should: x'; pe "$PD/r.md" 'Brief 2.'; jd "$WB" jd "$PD/r.md" rnd wb-r2 "Follow $WB exactly.") $(pv "$PD/r.review.out" 'R2.1 should: x'; pe "$PD/r.md" 'Brief 3.'; jd "$WB" jd "$PD/r.md" rnd wb-r3 "Follow $WB exactly.") $(pv "$PD/r.review.out" CLEAN; jd "$WB" jd "$PD/r.md" rnd wb-r4 "Follow $WB exactly.")"
 mkdir -p "$T/rh/src" "$T/rh/spec"; for f in src/m81.py:81 src/m80.py:80 tests/helper.py:1000 src/code.py:100 tests/x.py:200; do rh_commit "${f%:*}" "${f#*:}" >/dev/null; done
-rh_moved() { # loop from to lines: r1 and r2 on the head, then r3 on the rename of a file with that many new lines
-  local H; H=$(git -C "$T/rh" rev-parse HEAD); rh_rnd "$1-r1" "$H" >/dev/null; rh_rnd "$1-r2" "$H" >/dev/null; git -C "$T/rh" mv "$2" "$3"; rh_rnd "$1-r3" "$(rh_commit "$3" "$4")"; }
+rh_moved() { # loop from to lines: r1 to r4 on the head, then r5 on the rename of a file with that many new lines
+  local H i; H=$(git -C "$T/rh" rev-parse HEAD); for i in 1 2 3 4; do rh_rnd "$1-r$i" "$H" >/dev/null; done; git -C "$T/rh" mv "$2" "$3"; rh_rnd "$1-r5" "$(rh_commit "$3" "$4")"; }
 check "a rename counts each side by its real path: 81 code lines moved to tests pass by the delete side, 80 BLOCK; 81 new lines in a file moved from tests or within the code pass; BLOCK 81 lines of a test moved between test paths" "0 2 0 0 2" "$(rh_moved rh-m81 src/m81.py tests/m81.py 0) $(rh_moved rh-m80 src/m80.py tests/m80.py 0) $(rh_moved rh-h tests/helper.py src/runtime.py 81) $(rh_moved rh-c src/code.py src/renamed.py 81) $(rh_moved rh-t tests/x.py spec/x.py 81)"
-HQ=$(git -C "$T/rh" rev-parse HEAD); rh_rnd rh-q-r1 "$HQ" >/dev/null; rh_rnd rh-q-r2 "$HQ" >/dev/null
-check "BLOCK: r3 on 81 new lines only in tests/café.py: a path git would quote is still a test" 2 "$(rh_rnd rh-q-r3 "$(rh_commit 'tests/café.py' 81)")"
+HQ=$(git -C "$T/rh" rev-parse HEAD); for i in 1 2 3 4; do rh_rnd rh-q-r$i "$HQ" >/dev/null; done
+check "BLOCK: r5 on 81 new lines only in tests/café.py: a path git would quote is still a test" 2 "$(rh_rnd rh-q-r5 "$(rh_commit 'tests/café.py' 81)")"
+HL=$(rh_commit a.py 100); OFFH=$(git -C "$T/rh" commit-tree -m off "$HL^{tree}"); NL="$HOME/.mergeworthy/work/cl/drafts/nits.ledger.md"; printf 'R1.1 nit declined: wording\nR1.2 should declined: a staged race\n' > "$NL"
+nl="$(rnd rh-l-r1 "Review $T/rh at head $HL") $(rnd rh-l-r2 "Review $T/rh at head $HL") $(grep -c 'the brief names no `<work folder>/drafts/<review>.ledger.md`' "$T/err")"
+nl="$nl $(rnd rh-l-r2 "Review $T/rh at head $HL; ledger $NL") $(grep -c "the ledger $NL shows round 1 brought none \`fixed in <sha>\`, and no blocker \`declined:\` outside the round that rechecked a declined one (Stuck): the loop ends there" "$T/err") $(grep -c "pr-steps <step> <file> --ledger $NL" "$T/err")"
+printf 'R1.1 should fixed in %s\nRound: 2\nR2.1 should fixed in %s\n' "$HL" "$HL" > "$NL"; nl="$nl $(rnd rh-l-r2 "Review $T/rh at head $HL; ledger $NL") $(rnd rh-l-r3 "Review $T/rh at head $HL; ledger $NL")"
+printf 'Round: 3\nR1.1 should fixed in %s\nR2.1 should fixed in %s\nR3.1 nit declined: wording\n' "$HL" "$HL" > "$NL"
+check "BLOCK r2 naming no ledger, or one whose round 1 brought only nits and declined findings, naming the pr-steps that closes it; r2 and r3 after a round with a fixed should pass; BLOCK r4 after a nits-only r3" "0 2 1 2 1 1 0 0 2" "$nl $(rnd rh-l-r4 "Review $T/rh at head $HL; ledger $NL")"
+chmod 000 "$NL"; nr="$(rnd rh-l-r5 "Review $T/rh at head $HL; ledger $NL") $(grep -c "the ledger $NL can't be read" "$T/err") $(grep -c Traceback "$T/err")"; chmod 644 "$NL"
+check "BLOCK a round whose ledger can't be read, naming it, with no crash" "2 1 0" "$nr"
+DL="$HOME/.mergeworthy/work/cl/drafts/dblocker.ledger.md"; printf 'R1.1 blocker declined: the race needs a staged clock\n' > "$DL"
+dl="$(rnd rh-d-r1 "Review $T/rh at head $HL; ledger $DL") $(rnd rh-d-r2 "Review $T/rh at head $HL; ledger $DL") $(printf 'Round: 2\nR1.1 blocker declined: the race needs a staged clock\nR2.1 should declined: rare\n' > "$DL"; rnd rh-d-r3 "Review $T/rh at head $HL; ledger $DL")"
+check "a round 1 whose blocker was declined earns its seat round 2; BLOCK r3 after a round 2 bringing only a declined should" "0 0 2" "$dl"
+EL="$HOME/.mergeworthy/work/cl/drafts/eblocker.ledger.md"; printf 'R1.1 blocker declined:\n' > "$EL"
+check "BLOCK r2 after a round 1 whose blocker was declined with no reason: the decline needs its why" "0 2" "$(rnd rh-e-r1 "Review $T/rh at head $HL; ledger $EL") $(rnd rh-e-r2 "Review $T/rh at head $HL; ledger $EL")"
+git init -q -b main "$T/rz"; RZ=$(seq 10 > "$T/rz/parser.py"; git -C "$T/rz" add .; git -C "$T/rz" commit -qm a; git -C "$T/rz" rev-parse HEAD); ZL="$HOME/.mergeworthy/work/cl/drafts/reset.ledger.md"; printf 'R1.1 should fixed in %s\n' "$RZ" > "$ZL"
+rz="$(for i in 1 2 3 4 5; do crnd reset-codex-r$i "Review $T/rz at head $RZ"; done | xargs)"; seq 81 >> "$T/rz/parser.py"; git -C "$T/rz" commit -qam b; RZ2=$(git -C "$T/rz" rev-parse HEAD)
+{ echo '## Standards read'; bash "$R/bin/pr-steps" standards; echo '## Report'; echo 'R5.1 should: the parser drops a field'; } > "$T/rz5.md"
+rz="$rz $(crnd reset-codex-r5-${RZ2:0:7} "Review $T/rz at head $RZ2; ledger $ZL; output to $T/rz5.md") $(printf '%s\n' "R5.1 should fixed in $RZ2" 'Round: 5' >> "$ZL"; cd "$T/rz" && bash "$R/bin/pr-steps" verify "$T/rz5.md" --ledger "$ZL" >/dev/null 2>"$T/err"; echo $?) $(grep -c 'closes round 5, which brought a blocker or should fixed' "$T/err")"
+check "BLOCK: pr-steps verify --ledger closing the first round on a head past 80 lines, r5, which brought a fixed should: the cap counts the rounds on the head, as admission does" "0 0 0 0 2 0 1 1" "$rz"
+UL="$HOME/.mergeworthy/work/cl/drafts/unreached.ledger.md"; printf 'R1.1 should fixed in deadbeef\nR1.2 should fixed in %s\n' "$OFFH" > "$UL"
+check "BLOCK r2 after a round whose fix is not in HEAD's history, a mistyped sha or one on another branch" "0 2 1" "$(rnd rh-x-r1 "Review $T/rh at head $HL; ledger $UL") $(rnd rh-x-r2 "Review $T/rh at head $HL; ledger $UL") $(grep -c "shows round 1 brought none" "$T/err")"
+# under T3 a later review round continues its reviewer's thread (delegate §Continue): t3_thread_send counts as that round
+# a send continues its reviewer only as a fix check (`Review: ... fix-check`) of a thread active within 50 minutes: t3r's and smr's sends are both unless NOFC is set
+t3db() { python3 - "$HOME/.t3/userdata/statev2.sqlite" "$@" <<'EOF2'
+import datetime, os, sqlite3, sys
+db, th, ago = sys.argv[1], sys.argv[2], float(sys.argv[3] if len(sys.argv) > 3 else 0)
+os.makedirs(os.path.dirname(db), exist_ok=True); c = sqlite3.connect(db)
+c.execute('create table if not exists orchestration_v2_projection_runs (run_id text, thread_id text, ordinal integer, provider text, provider_thread_id text, status text, requested_at text, completed_at text, payload_json text, provider_instance_id text)')
+c.execute('create table if not exists orchestration_v2_projection_messages (message_id text, thread_id text, run_id text, node_id text, role text, streaming integer, created_at text, updated_at text, payload_json text)')
+at = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=ago)).strftime('%Y-%m-%dT%H:%M:%S.000Z')
+c.execute('delete from orchestration_v2_projection_runs where thread_id = ?', (th,)); c.execute('delete from orchestration_v2_projection_messages where thread_id = ?', (th,))
+c.execute("insert into orchestration_v2_projection_runs values ('run-' || ?, ?, 1, 'codex', null, 'completed', ?, ?, '{}', 'codex')", (th, th, at, at)); c.commit()
+EOF2
+}
+agentlog() { mkdir -p "$HOME/.claude/projects/p/s/subagents"; touch -d "-${2:-0} minutes" "$HOME/.claude/projects/p/s/subagents/agent-$1.jsonl"; }
+t3r() { # tool clientRequestId thread text: a delegate_task round (T3 returns thread as its childThreadId) or a t3_thread_send to thread; exit code, registered when it passes
+  [ "$1" = t3_thread_send ] && [ -z "${NOFC:-}" ] && { t3db "$3"; set -- "$1" "$2" "$3" "$4
+Review: fix-check"; }
+  local j; j=$(python3 -c 'import json,sys; t,c,th,x=sys.argv[1:]; ti={"task":x,"role":"review","clientRequestId":c} if t=="delegate_task" else {"threadId":th,"message":x,"mode":"queue","clientRequestId":c}
+r={"taskId":"task-"+c,"status":"running",**({"childThreadId":th} if t=="delegate_task" else {"threadId":th,"runId":"run-"+c})}
+print(json.dumps({"tool_name":"mcp__t3-code__"+t,"tool_input":ti,"tool_response":[{"type":"text","text":json.dumps(r)}]}))' "$@")
+  printf '%s' "$j" | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; local r=$?; [ $r = 0 ] && printf '%s' "$j" | python3 "$R/hooks/pre-agent-dedupe.py" register; echo $r; }
+git init -q -b main "$T/ct"; git -C "$T/ct" commit -q --allow-empty -m one; CH=$(git -C "$T/ct" rev-parse HEAD); echo "R1.4 should fixed in $CH" >> "$CL"
+CTL="$RLD/ct.ledger.md"; ct="$(t3r delegate_task ct-r1 th-ct "Review $T/ct at head $CH, round 1. Ledger: $CTL") $(for i in 2 3 4 5; do rule "$CTL" "$CH" $((i - 1)); t3r t3_thread_send ct-r$i th-ct "Round $i: review $T/ct at head $CH. Ledger: $CTL"; done | xargs) $(grep -c 'ct already ran r1, r2, r3, r4 on this head' "$T/err")"
+job() { python3 -c 'import json,os,sys; print(*[j.get("handle") for f in os.listdir(sys.argv[1]) for j in [json.load(open(os.path.join(sys.argv[1], f)))] if j.get("key") == sys.argv[2]] or ["none"])' "$HOME/.claude/agent-jobs" "$1"; }
+check "a round sent to its reviewer's thread counts and is capped like a launched one: r2 to r4 by t3_thread_send pass, registered as jobs of that thread, BLOCK r5 naming the cap" "0 0 0 0 2 1 t3:task-ct-r4/th-ct" "$ct $(job ct-r4)"
+nrounds() { python3 -c 'import json,os,sys; print(len(json.load(open(os.path.expanduser("~/.claude/review-loops.json"))).get(sys.argv[1], {}).get("rounds", [])))' "$1"; }
+jrounds() { python3 -c 'import glob,json,os,sys; print(sum(json.loads(l).get("loop") == sys.argv[1] for f in glob.glob(os.path.expanduser("~/.claude/review-journal/*/*.jsonl")) for l in open(f) if l.strip()))' "$1"; }
+git init -q -b main "$T/jw"; git -C "$T/jw" commit -q --allow-empty -m one; JH=$(git -C "$T/jw" rev-parse HEAD); mkdir -p "$HOME/.claude/review-journal"
+jw="$(chmod 555 "$HOME/.claude/review-journal"; t3r delegate_task jw-r1 th-jw "Review $T/jw at head $JH" 2>/dev/null; chmod 755 "$HOME/.claude/review-journal") $(nrounds jw) $(jrounds jw)"
+jw="$jw $(touch "$HOME/.claude/review-loops.json.lock"; chmod 000 "$HOME/.claude/review-loops.json.lock"; t3r delegate_task jx-r1 th-jx "Review $T/jw at head $JH" 2>/dev/null; chmod 644 "$HOME/.claude/review-loops.json.lock") $(nrounds jx) $(jrounds jx)"
+check "a round whose journal can't be written is still recorded in review-loops.json, and one whose review-loops.json can't be is still in the journal" "0 1 0 0 0 1" "$jw"
+refused_send=$(printf '%s' '{"tool_name":"mcp__t3-code__t3_thread_send","tool_input":{"threadId":"th-other","message":"Go on."},"tool_response":"parent_not_active"}' | python3 "$R/hooks/pre-agent-dedupe.py" register | wc -c)
+check "a send to a thread no round ran in is untouched: it passes past the cap, counts no round, registers no job, and T3 refusing it is no refused launch; BLOCK one to a reviewer's thread naming no round of its loop, naming the cure" "0 2 1 4 none none 0" "$(t3r t3_thread_send ct-r6 th-other "Round 6: review $T/ct at head $CH. Ledger: $CL") $(t3r t3_thread_send note th-ct "Review $T/ct at head $CH once more. Ledger: $CL") $(grep -c "th-ct runs the review loop ct, and a message to it is that loop.s next round" "$T/err") $(nrounds ct) $(job ct-r6) $(job note) $refused_send"
+python3 -c 'import json,os; c=os.path.expanduser("~/.claude/"); json.dump({"old":[[i,[]] for i in (1,2,3,4)]}, open(c+"review-rounds.json","w")); json.dump({"old":["th-old"]}, open(c+"review-threads.json","w"))'
+check "a loop recorded before review-loops.json keeps its rounds and threads: BLOCK its r5, launched or sent to its thread" "2 2" "$(rnd old-r5 "$UC Ledger: $CL") $(t3r t3_thread_send old-r5 th-old "Round 5: $UC Ledger: $CL")"
+QD="$T/rdrafts/drafts/q"; mkdir -p "$QD"; pe "$QD/r.md" 'Agreed.'; QB="Review $QD/r.md; write your final message, exactly CLEAN or the findings, to $QD/r.review.out."
+cq="$(t3r delegate_task cq-r1 th-q "$QB") $(pv "$QD/r.review.out" 'R1.1 should: the date'; pe "$QD/r.md" 'Fixed the date.'; t3r t3_thread_send cq-r2 th-q "Round 2: $QB")"
+[ "$(cut -d' ' -f1 "$QD/r.review.out.launch")" = "$(sha256sum "$QD/r.md" | cut -d' ' -f1)" ] && cq="$cq launched" || cq="$cq stale"
+cq="$cq $(aside "$QD/r.review.out") $(pv "$QD/r.review.out" CLEAN; python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import review_launch; print(review_launch.answers(sys.argv[2], sys.argv[3]) or "passes")' "$R/hooks" "$QD/r.review.out" "$QD/r.md")"
+check "a post round sent to its reviewer's thread records the draft it was handed, so gate-pass's review check passes its CLEAN" "0 0 launched R1.1 should: the date passes" "$cq"
+check "the sent round's job takes the place of its thread's open job" "none t3:task-cq-r2/th-q" "$(job "$QD/r.md") $(job "$QD/r.md cq-r2")"
+PQ="$T/rdrafts/drafts/pq"; mkdir -p "$PQ"; pe "$PQ/r.md" 'Agreed.'; PQB="Review $PQ/r.md; write your final message, exactly CLEAN or the findings, to $PQ/r.review.out."
+pq="$(t3r delegate_task pq-r1 th-pq "$PQB") $(pv "$PQ/r.review.out" 'R1.1 blocker: the wrong response format'; pe "$PQ/r.md" 'One word.'; t3r t3_thread_send pq-r2 th-pq "Round 2: $PQB")"
+pq="$pq $(pv "$PQ/r.review.out" 'R2.1 should: the date'; pe "$PQ/r.md" 'Fixed the date.'; t3r t3_thread_send pq-r3 th-pq "Round 3: $PQB") $(pv "$PQ/r.review.out" 'R3.1 nit: phrasing'; printf '%s\n' 'Round: 3' 'R2.1 should fixed in r3' 'R3.1 nit declined: house style' > "$PQ/r.ledger.md"; python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import review_launch; print("refused" if review_launch.answers(sys.argv[2], sys.argv[3]) else "passes")' "$R/hooks" "$PQ/r.review.out" "$PQ/r.md")"
+check "gate-pass's review check refuses a round-3 post ledger without a row for round 1's blocker" "0 0 0 refused" "$pq"
+smr() { # tool round to text: an Agent launch (Claude Code returns agent to as its agentId) or a SendMessage to agent to; exit code, registered when it passes
+  [ "$1" = SendMessage ] && [ -z "${NOFC:-}" ] && { agentlog "$3"; set -- "$1" "$2" "$3" "$4
+Review: fix-check"; }
+  local j; j=$(python3 -c 'import json,sys; t,c,to,x=sys.argv[1:]; ti={"description":c,"prompt":x,"run_in_background":False} if t=="Agent" else {"to":to,"summary":c,"message":x}
+print(json.dumps({"tool_name":t,"tool_input":ti,"tool_response":{"agentId":to} if t=="Agent" else {"success":True}}))' "$@")
+  printf '%s' "$j" | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; local r=$?; [ $r = 0 ] && printf '%s' "$j" | python3 "$R/hooks/pre-agent-dedupe.py" register; echo $r; }
+SML="$RLD/sm.ledger.md"; sm="$(smr Agent sm-r1 a-sm "Review $T/ct at head $CH; final message exactly NO BUGS. Ledger: $SML") $(for i in 2 3 4 5; do rule "$SML" "$CH" $((i - 1)); smr SendMessage sm-r$i a-sm "Round $i: review $T/ct at head $CH; final message exactly NO BUGS. Ledger: $SML"; done | xargs) $(grep -c 'sm already ran r1, r2, r3, r4 on this head' "$T/err") $(job sm-r4)"
+check "a round sent by SendMessage to its reviewer's agent counts and is capped like a launched one: r2 to r4 pass as jobs of that agent, BLOCK r5 naming the cap" "0 0 0 0 2 1 claude:a-sm" "$sm"
+check "a SendMessage to an agent no round ran in is untouched: it passes past the cap and registers no job; BLOCK one to a reviewer agent naming no round of its loop, or another loop's round" "0 2 2 none none" "$(smr SendMessage sm-r6 a-other "Round 6: review $T/ct at head $CH. Ledger: $CL") $(smr SendMessage note a-sm "Review $T/ct once more") $(smr SendMessage other-r2 a-sm "Round 2: review $T/ct once more") $(job sm-r6) $(job note)"
+PNL="$RLD/pn.ledger.md"; rule "$PNL" "$CH" 1
+pn="$(t3r delegate_task pn-codex-r1 th-pn "Review $T/ct at head $CH. Ledger: $PNL") $(t3r t3_thread_send pn-codex-r2 th-pn "Round 2: the commits since fixed R1.1; check them.") $(python3 -c 'import json,os; r=json.load(open(os.path.expanduser("~/.claude/review-loops.json")))["pn-codex"]["rounds"]; print(len(r), r[-1][1] == r[0][1])') $(t3r t3_thread_send pn-codex-r3 th-pn "Round 3: once more.") $(grep -c "the ledger $PNL shows round 1 as its last" "$T/err")"
+check "a round sent to its reviewer naming no checkout or ledger continues on round 1's checkout at its live head and round 1's ledger: r2 passes on that head, BLOCK r3 while that ledger hasn't ruled r2" "0 0 2 True 2 1" "$pn"
+check "BLOCK: a fresh reader's round 2, launched or sent, naming that it runs once" "0 2 1 2" "$(t3r delegate_task fresh-codex-r1 th-fr "Review $T/ct at head $CH; end MERGE AS IS: yes or no. Ledger: $CL") $(t3r delegate_task fresh-codex-r2 th-fr2 "Review $T/ct at head $CH; end MERGE AS IS: yes or no. Ledger: $CL") $(grep -c 'the fresh reader runs once' "$T/err") $(t3r t3_thread_send fresh-codex-r2 th-fr "Round 2: review $T/ct at head $CH; MERGE AS IS. Ledger: $CL")"
+RV="$HOME/.mergeworthy/work/cl/drafts/rv.ledger.md"; printf 'R1.1 nit declined: wording\n' > "$RV"; RB="review $T/ct at head $CH; final message exactly NO BUGS. Ledger: $RV"
+rv="$(t3r delegate_task rv-codex-r1 th-rv "Review $T/ct at head $CH. Ledger: $CL") $(t3r t3_thread_send rv-reverify-r1 th-rv "Reverify: $RB") $(nrounds rv-reverify) $(t3r t3_thread_send rv-reverify-r2 th-rv "Round 2: $RB")"
+rv="$rv $(t3r t3_thread_send rv-codex-ask1-r1 th-rv "The maintainer's ask: $RB") $(nrounds rv-codex-ask1) $(t3r t3_thread_send rv-recheck-r1 th-other "Recheck: $RB") $(nrounds rv-recheck)"
+rv="$rv $(smr Agent rs-codex-r1 a-rs "Review $T/ct at head $CH; final message exactly NO BUGS. Ledger: $CL") $(smr SendMessage rs-recheck-r1 a-rs "Recheck: $RB") $(nrounds rs-recheck) $(smr SendMessage rs-recheck-r2 a-rs "Round 2: $RB")"
+check "a reverify, recheck or ask sent to a seat of its slice or loop starts that loop there, by t3_thread_send or SendMessage: BLOCK its r2 after an r1 that earned none; one sent to another thread is untouched" "0 0 1 2 0 1 0 0 0 0 1 2" "$rv"
+DR="Read $T/page.txt and two sibling pages, $T/a.txt and $T/b.txt. Nothing else. Write $HOME/.mergeworthy/work/cl/page.docs-read.md."
+check "a docs reader launched by the Agent tool is a review round: BLOCK its r2 after an r1 that earned none, by SendMessage or a new Agent" "0 1 2 1 2 1" "$(smr Agent docs-codex-r1 a-dr "$DR") $(nrounds docs-codex) $(smr SendMessage docs-codex-r2 a-dr "Round 2: $DR Ledger: $RV") $(grep -c 'docs-codex-r2 follows r1' "$T/err") $(smr Agent docs-codex-r2 a-dr2 "Round 2 again: $DR Ledger: $RV") $(grep -c 'docs-codex-r2 follows r1' "$T/err")"
+dra() { local j; j=$(python3 -c 'import json,sys; print(json.dumps({"tool_name":"Agent","cwd":sys.argv[3],"tool_input":{"description":sys.argv[1],"prompt":sys.argv[2],"run_in_background":False},"tool_response":{"agentId":sys.argv[1]}}))' "$1" "$2" "$T/ct")
+  printf '%s' "$j" | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; local r=$?; [ $r = 0 ] && printf '%s' "$j" | python3 "$R/hooks/pre-agent-dedupe.py" register; echo $r; }  # description prompt: an Agent launch from the checkout $T/ct
+DFL="$RLD/dfix.ledger.md"; DF="Review: docs
+Read $T/page.txt and two sibling pages, $T/a.txt and $T/b.txt. Nothing else. Write $HOME/.mergeworthy/work/cl/dfix.docs-read.md."; df=$(dra dfix-codex-r1 "$DF"); printf 'R1.1 should fixed in %s\n' "$CH" > "$DFL"
+check "a docs reader whose brief names no checkout earns round 2 by a should fixed in the launcher's checkout" "0 0" "$df $(jd dfix-codex-r1 dra dfix-codex-r2 "$DF Ledger: $DFL")"
+PH="$T/perfhome"; python3 - "$PH" <<'EOF2'
+import json, os, sys
+c = os.path.join(sys.argv[1], '.claude'); os.makedirs(os.path.join(c, 'review-journal', 'r'))
+json.dump({f'l{i}-codex': {'rounds': [[n, ['a' * 40], []] for n in range(1, 5)], 'threads': [f'th-{i}-{k}' for k in range(4)], 'outs': [], 'seated': False} for i in range(500)}, open(os.path.join(c, 'review-loops.json'), 'w'))
+open(os.path.join(c, 'review-journal', 'r', 'b.jsonl'), 'w').writelines(json.dumps({'ev': 'round', 'loop': f'l{i}-codex', 'n': n, 'heads': ['a' * 40], 'outs': [], 'thread': f'th-{i}-{n}', 'seated': False}) + '\n' for i in range(500) for n in range(1, 5))
+EOF2
+check "a t3_thread_send to a thread that never reviewed passes in under 0.1 s with 500 loops of four rounds on the machine" "0 yes" "$(python3 - "$R/hooks/pre-agent-dedupe.py" "$PH" <<'EOF2'
+import os, subprocess, sys, time
+def one():
+    s = time.time(); r = subprocess.run(['python3', sys.argv[1]], input='{"tool_name":"mcp__t3-code__t3_thread_send","tool_input":{"threadId":"dev","message":"hi","clientRequestId":"x"}}', text=True, env={**os.environ, 'HOME': sys.argv[2]}); return r.returncode, time.time() - s
+runs = [one() for _ in range(3)]
+print(max(r for r, _ in runs), 'yes' if min(t for _, t in runs) < 0.1 else f'no {min(t for _, t in runs):.3f}')
+EOF2
+)"
+# replay corpus (finality2 plan step 1): Loop A's R1.1-R1.5, R1.9 and R1.10 are the checks their fixes added; R1.6 and R1.7 come with step 2
+SLL="$HOME/.mergeworthy/work/cl/drafts/stale.ledger.md"; printf 'R1.1 should fixed in %s\n' "$CH" > "$SLL"
+check "BLOCK: r3 while the ledger still shows only round 1, so round 2 is unruled" "0 0 2" "$(t3r delegate_task sl-codex-r1 th-sl "Review $T/ct at head $CH. Ledger: $SLL") $(t3r t3_thread_send sl-codex-r2 th-sl "Round 2: review $T/ct at head $CH. Ledger: $SLL") $(t3r t3_thread_send sl-codex-r3 th-sl "Round 3: review $T/ct at head $CH. Ledger: $SLL")"
+ICL="$RLD/ic.ledger.md"; printf 'R1.1 should: first\nR1.2 blocker: second\n' > "$T/ic-first.md"; ic="$(t3r delegate_task ic-codex-r1 th-ic "Review $T/ct at head $CH; output to $T/ic-first.md. Ledger: $ICL")"
+printf 'R1.1 should fixed in %s\nRound: 1\n' "$CH" > "$ICL"; ic="$ic $(t3r delegate_task ic-codex-r2 th-ic2 "Review $T/ct at head $CH, the commits since. Ledger: $ICL") $(grep -c "$T/ic-first.md: R1.2 blocker: second  <- no ledger row" "$T/err")"
+printf 'R1.2 blocker declined: expected\n' >> "$ICL"; check "BLOCK: a next round while the ledger has no row for a finding of the last round's report, naming it; it passes once every finding is ruled" "0 2 1 0" "$ic $(t3r delegate_task ic-codex-r2 th-ic2 "Review $T/ct at head $CH, the commits since. Ledger: $ICL")"
+SKL="$RLD/sk.ledger.md"; printf 'R1.1 blocker declined: expected behavior\nRound: 1\n' > "$SKL"; sk="$(t3r delegate_task sk-codex-r1 th-sk "Review $T/ct at head $CH. Ledger: $SKL") $(t3r delegate_task sk-codex-r2 th-sk2 "Review $T/ct at head $CH, the commits since. Ledger: $SKL")"
+printf 'R2.1 blocker declined: expected behavior\nRound: 2\n' >> "$SKL"; check "BLOCK: a round after the one a declined blocker went back in, which still holds it (Stuck)" "0 0 2" "$sk $(t3r delegate_task sk-codex-r3 th-sk3 "Review $T/ct at head $CH, the commits since. Ledger: $SKL")"
+PCL="$RLD/pc.ledger.md"; check "BLOCK: a recheck sent to a seat whose loop ran its four rounds on this head: it counts in that loop" "0 0 0 0 2" "$(t3r delegate_task pc-codex-r1 th-pc "Review pc in $T/ct at head $CH. Ledger: $PCL") $(for i in 2 3 4; do rule "$PCL" "$CH" $((i - 1)); t3r t3_thread_send pc-codex-r$i th-pc "Round $i of pc: review $T/ct at head $CH. Ledger: $PCL"; done | xargs) $(t3r t3_thread_send pc-recheck-r1 th-pc "Recheck pc: review $T/ct at head $CH. Ledger: $CL")"
+check "a shape seat launched by the Agent tool from the shape template, its first line \`Review: shape\`, is a review round" "0 1" "$(smr Agent shape-claude-r1 a-sh "Review: shape
+Run the shape pass on $T/ct at head $CH. Write $T/shape-claude.md, ending with a line CLEAN only when nothing is worth changing.") $(nrounds shape-claude)"
+check "t3_thread_launch's result is registered: the PostToolUse matcher holds it" yes "$(python3 -c 'import json,re,sys; h=json.load(open(sys.argv[1]))["hooks"]["PostToolUse"]; print("yes" if any(re.search(x["matcher"], "mcp__t3-code__t3_thread_launch") for x in h if "pre-agent-dedupe.py register" in str(x)) else "no")' "$R/hooks/hooks.json")"
+tll() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__t3_thread_launch","tool_input":{"title":sys.argv[1],"clientRequestId":sys.argv[1],"message":sys.argv[2]},"tool_response":[{"type":"text","text":json.dumps({"threadId":"th-tl","link":"t3://th-tl","runId":"run-tl","status":"running"})}]}))' "$@"; }
+TLL="$RLD/tl.ledger.md"; TLB="Review: verify
+Review $T/ct at head $CH; final message exactly NO BUGS. Ledger: $TLL"
+tl="$(tll tl-r1 "$TLB" | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?) $(tll tl-r1 "$TLB" | python3 "$R/hooks/pre-agent-dedupe.py" register; nrounds tl) $(rule "$TLL" "$CH" 1; t3r t3_thread_send tl-r2 th-tl "Round 2 of tl: $TLB") $(nrounds tl)"
+check "a review round launched by t3_thread_launch is registered on the thread its result names, so a round sent there continues its loop" "0 1 0 2" "$tl"
+FRL="$RLD/fr.ledger.md"; FRB="Review $T/ct at head $CH; final message exactly NO BUGS. Ledger: $FRL"
+fr="$(t3r delegate_task fr-codex-r1 th-fr1 "$FRB") $(rule "$FRL" "$CH" 1; NOFC=1 t3r t3_thread_send fr-codex-r2 th-fr1 "Round 2: $FRB") $(grep -c "declares no fix check of that reviewer's own findings" "$T/err")"
+fr="$fr $(NOFC=1 t3r t3_thread_send fr-codex-r2 th-fr1 "Round 2: $FRB
+Review: verify fix-check") $(grep -c 'no record shows when that reviewer was last active' "$T/err") $(t3db th-fr1 51; NOFC=1 t3r t3_thread_send fr-codex-r2 th-fr1 "Round 2: $FRB
+Review: verify fix-check") $(grep -c 'last active 51 minutes ago, past 50: launch the round on a fresh reviewer' "$T/err") $(t3db th-fr1 49; NOFC=1 t3r t3_thread_send fr-codex-r2 th-fr1 "Round 2: $FRB
+Review: verify fix-check") $(jrounds fr-codex)"
+check "a round sent to its reviewer's thread passes only as a fix check of a thread active within 50 minutes: BLOCK one declaring none, one no record dates, one 51 minutes quiet, each naming the fresh reviewer; at 49 minutes it passes" "0 2 1 2 1 2 1 0 2" "$fr"
+FSL="$RLD/fs.ledger.md"; FSB="Review $T/ct at head $CH; final message exactly NO BUGS. Ledger: $FSL"
+fs="$(smr Agent fs-codex-r1 a-fs "$FSB") $(rule "$FSL" "$CH" 1; agentlog a-fs 51; NOFC=1 smr SendMessage fs-codex-r2 a-fs "Round 2: $FSB
+Review: fix-check") $(grep -c 'last active 51 minutes ago' "$T/err") $(NOFC=1 smr SendMessage fs-codex-r2 a-fs "Round 2: $FSB") $(grep -c 'declares no fix check' "$T/err") $(smr SendMessage fs-codex-r2 a-fs "Round 2: $FSB")"
+check "a SendMessage round passes only as a fix check of an agent whose transcript moved within 50 minutes: BLOCK one 51 minutes quiet or declaring none" "0 2 1 2 1 0" "$fs"
+FNL="$RLD/fn.ledger.md"; FNB="Review $T/ct at head $CH; final message exactly NO BUGS. Ledger: $FNL"
+fn="$(t3r delegate_task fn-codex-r1 th-fn1 "$FNB") $(rule "$FNL" "$CH" 1; t3r delegate_task fn-codex-r2 th-fn2 "$FNB") $(jrounds fn-codex) $(rule "$FNL" "$CH" 2; t3r t3_thread_send fn-codex-r3 th-fn2 "Round 3: $FNB") $(rule "$FNL" "$CH" 3; t3r delegate_task fn-codex-r4 th-fn3 "$FNB") $(rule "$FNL" "$CH" 4; t3r delegate_task fn-codex-r5 th-fn4 "$FNB") $(grep -c 'fn-codex already ran r1, r2, r3, r4' "$T/err")"
+check "a later round launched on a fresh reviewer stays in its loop and its four: r2 on a new thread counts as round 2, a fix check sent there continues it, BLOCK r5 on yet another thread naming the cap" "0 0 2 0 0 2 1" "$fn"
+rm -f "$HOME/.t3/userdata/statev2.sqlite"
 mkdir -p "$HOME/.mergeworthy/projects/o"; echo "- a lesson from $OLD" > "$HOME/.mergeworthy/projects/o/gwnotes.md"
 check "a project notes file the brief names is read, not pinned: its history SHAs block nothing" 0 "$(ag "$OC" "Fix it in $T/gw; notes $HOME/.mergeworthy/projects/o/gwnotes.md")"
 check "the user's own checkout is read at any commit" 0 "$(ag "$OC" "Read $T/gr at $MAINOLD once more")"
@@ -2426,7 +2579,7 @@ check "a review naming a ledger and an output with no draft behind it launches; 
 # the launch records the text the reviewer is handed, and a verdict an earlier launch left is set aside
 L3="$T/drafts/lf/launch-r3.md"; printf 'Retitled the PR.\n' > "$T/drafts/lf/launch.md"; sha=$(sha256sum "$T/drafts/lf/launch.md" | cut -d' ' -f1); printf %s "$sha" > "$T/drafts/lf/launch.md.lint.sha"; echo CLEAN > "$T/drafts/lf/launch.review.out"
 printf 'Review %s; write exactly CLEAN or the findings to %s/drafts/lf/launch.review.out.\n' "$T/drafts/lf/launch.md" "$T" > "$L3"
-check "a review launch records the draft's sha256 and moves the earlier verdict to .prev" "0 $sha CLEAN no-out" "$(launch "Execute $L3") $(cut -d' ' -f1 "$T/drafts/lf/launch.review.out.launch") $(cat "$T/drafts/lf/launch.review.out.prev") $([ -e "$T/drafts/lf/launch.review.out" ] && echo out || echo no-out)"
+check "a review launch records the draft's sha256 and sets the earlier verdict aside in the post's journal" "0 $sha CLEAN no-out" "$(launch "Execute $L3") $(cut -d' ' -f1 "$T/drafts/lf/launch.review.out.launch") $(aside "$T/drafts/lf/launch.review.out") $([ -e "$T/drafts/lf/launch.review.out" ] && echo out || echo no-out)"
 check "BLOCK: a duplicate of that launch, its job still open, leaves the verdict its reviewer wrote in place" "2 CLEAN" "$(echo CLEAN > "$T/drafts/lf/launch.review.out"; launch "Execute $L3") $(cat "$T/drafts/lf/launch.review.out")"
 python3 "$R/bin/agent-job" done "$L3" >/dev/null; echo x >> "$T/drafts/lf/launch.md"
 printf 'Review %s; write exactly CLEAN or the findings to %s/drafts/lf/launch.review-r3.out.\n' "$T/drafts/lf/launch.md" "$T" > "$L3"
@@ -2440,6 +2593,23 @@ printf 'Review %s, reading the earlier verdicts %s and %s; write exactly CLEAN o
 check "a review whose task names its output (output to <out>) and whose brief cites earlier verdicts launches, recording only that output and leaving the cited files" "0 launch none none R1.1 should: old CLEAN" "$(launch "Execute $CT/ticket.md; output to $CT/title.review.out") $([ -e "$CT/title.review.out.launch" ] && echo launch || echo none) $(ls "$CT"/title.review-small-r1.out.* "$CT"/title.review-r3.out.* 2>/dev/null | wc -l | sed 's/^0$/none/') $([ -e "$CT/title.review-r3.out.prev" ] && echo prev || echo none) $(cat "$CT/title.review-small-r1.out") $(cat "$CT/title.review-r3.out")"
 python3 "$R/bin/agent-job" done "$CT/ticket.md" >/dev/null
 check "BLOCK: a review whose task names a drafts/ output not named after its draft (output to drafts/title.out), naming the rename" "2 1" "$(launch_in "Execute $CT/ticket.md; output to $CT/title.out" | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?) $(grep -c 'name it <name>.review.out' "$T/err")"
+FB="$T/drafts/fb"; mkdir -p "$FB"; printf 'The parser keeps empty fields.\n' > "$FB/pr-body.md"
+fbl() { launch "Review $FB/pr-body.md at its head, the body verdict exactly CLEAN or the findings; output to $T/fresh-$1.report.md and $FB/$2"; }
+fb="$(fbl claude pr-body-claude.review.out)"; pe "$FB/pr-body.md" 'Linted.'; fb="$fb $(fbl codex pr-body.review.out) $(fbl claude2 pr-body-claude2.review.out)"
+ans() { python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import review_launch; print(review_launch.answers(sys.argv[2], sys.argv[3]) or "passes")' "$R/hooks" "$1" "$2"; }  # out draft: gate-pass's review check
+echo CLEAN > "$FB/pr-body.review.out"; fb="$fb $(ans "$FB/pr-body.review.out" "$FB/pr-body.md" | grep -c "pr-body-claude2.review.out was launched on this text and holds no verdict yet")"
+echo CLEAN > "$FB/pr-body-claude2.review.out"; for v in pr-body.review.out pr-body-claude2.review.out; do fb="$fb $(ans "$FB/$v" "$FB/pr-body.md")"; done
+check "a second fresh seat's pr-body-<seat>.review.out is a verdict on pr-body.md: BLOCK it while pr-body.md has no post-lint; once linted, BLOCK one seat's CLEAN while the other seat launched on that text has no verdict, naming it; both seats' CLEAN pass gate-pass's review check" "2 0 0 1 passes passes" "$fb"
+printf 'R1.1 blocker: the body claims a guarantee the code lacks.\n' > "$FB/pr-body-claude2.review.out"
+check "gate-pass's review check refuses one body seat's CLEAN while the other seat's verdict on the same body holds a blocker" refused "$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import review_launch; print("refused" if review_launch.answers(sys.argv[2], sys.argv[3]) else "passes")' "$R/hooks" "$FB/pr-body.review.out" "$FB/pr-body.md")"
+printf 'R1.1 should: define the field.\n' > "$FB/pr-body.review.out"; printf '%s\n' 'R1.1 blocker declined: the code has the guarantee' 'R1.1 should declined: the field is named' 'Round: 2' > "$FB/pr-body.ledger.md"; touch -d '+1 minute' "$FB/pr-body.ledger.md"; fb=$(ans "$FB/pr-body.review.out" "$FB/pr-body.md" | grep -c 'pr-body-claude2.review.out: R1.1 blocker: the body claims a guarantee the code lacks.  <- its ledger row says should')
+sed -i 's/^R1.1 blocker/claude2:R1.1 blocker/' "$FB/pr-body.ledger.md"; touch -d '+1 minute' "$FB/pr-body.ledger.md"
+check "two body seats' R1.1 each close by their own ledger row, the second seat's named first (claude2:R1.1); BLOCK while both share one row" "1 passes" "$fb $(ans "$FB/pr-body.review.out" "$FB/pr-body.md")"
+PN="$T/drafts/pn"; mkdir -p "$PN"; pe "$PN/pr-body.md" 'The cache keeps every key.'; rl "$PN/pr-body.review.out"; pv "$PN/pr-body.review.out" 'R1.1 blocker: the claim has no evidence'
+pe "$PN/pr-body.md" 'Measured: 3 of 3 keys kept.'; rl "$PN/pr-body.review-r2.out"; pv "$PN/pr-body.review-r2.out" 'R2.1 should: name the benchmark'
+printf '%s\n' 'R2.1 should declined: not in scope' 'Round: 2' > "$PN/pr-body.ledger.md"; touch -d '+1 minute' "$PN/pr-body.ledger.md"; pn=$(ans "$PN/pr-body.review-r2.out" "$PN/pr-body.md" | grep -c 'pr-body.review.out: R1.1 blocker: the claim has no evidence  <- no ledger row')
+echo 'R1.1 blocker fixed in r2' >> "$PN/pr-body.ledger.md"; touch -d '+1 minute' "$PN/pr-body.ledger.md"
+check "gate-pass's review check needs a ledger row for each finding of an earlier text's verdict at a numbered output (pr-body.review-r<N>.out beside it)" "1 passes" "$pn $(ans "$PN/pr-body.review-r2.out" "$PN/pr-body.md")"
 # ---------- pr-steps: a shape record is a real pass ----------
 G="$T/prs"; mkdir -p "$G"; git -C "$G" init -q; git -C "$G" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 prs() { (cd "$G" && bash "$R/bin/pr-steps" "$@" >/dev/null 2>&1; echo $?); }
@@ -2449,15 +2619,90 @@ printf '\n\n' > "$T/blank.md"; check "BLOCK: an output of blank lines, saying wh
 # a round 2 that isn't clean records with the loop's ledger closing it: every finding fixed on HEAD, declined or listed, no blocker open
 GL="$T/prl"; git init -q -b main "$GL"; gl() { git -C "$GL" -c user.name=t -c user.email=t@t "$@"; }; gl commit -q --allow-empty -m a; ON=$(gl rev-parse --short HEAD)
 gl checkout -q -b side; gl commit -q --allow-empty -m off; OFF=$(gl rev-parse --short HEAD); gl checkout -q main; gl commit -q --allow-empty -m b
-printf 'R2.1 should: the parser drops a field\n' > "$T/r2.md"; std "$T/r2.md"
+printf 'should: the parser drops a field\n' > "$T/r2.md"; std "$T/r2.md"
 LR="$T/r2.md"; led() { printf '%s\n' "$@" > "$T/led.md"; (cd "$GL" && bash "$R/bin/pr-steps" verify "$LR" --ledger "$T/led.md" >/dev/null 2>"$T/err"; echo $?); }
-check "pr-steps verify: BLOCK a round-2 report without NO BUGS with no ledger, a round-1 ledger, a blocker left open, a fix not on HEAD; a ledger closing it records" "1 1 1 1 1 1 1 0" \
-  "$(cd "$GL" && bash "$R/bin/pr-steps" verify "$T/r2.md" >/dev/null 2>&1; echo $?) $(led 'R1.1 should listed: the PR body notes') $(grep -c 'closes round 1' "$T/err") $(led 'R2.1 blocker listed: the PR body notes') $(grep -c 'open blocker' "$T/err") $(led "R2.1 should fixed in $OFF") $(grep -c "$OFF is not in HEAD" "$T/err") $(led "R1.1 blocker fixed in $ON" 'R2.1 should listed: the PR body notes' 'R2.2 nit declined: wording')"
+check "pr-steps verify: BLOCK a round-2 report without NO BUGS with no ledger, a round-1 ledger with a fixed should, a blocker left open, a fix not on HEAD; a ledger closing it records" "1 1 1 1 1 1 1 0" \
+  "$(cd "$GL" && bash "$R/bin/pr-steps" verify "$T/r2.md" >/dev/null 2>&1; echo $?) $(led "R1.1 should fixed in $ON") $(grep -c 'closes round 1, which brought a blocker or should fixed' "$T/err") $(led 'R2.1 blocker listed: the PR body notes') $(grep -c 'open blocker' "$T/err") $(led "R2.1 should fixed in $OFF") $(grep -c "$OFF is not in HEAD" "$T/err") $(led "R1.1 blocker fixed in $ON" 'R2.1 should listed: the PR body notes' 'R2.2 nit declined: wording')"
+printf 'Maintainer: t\nMERGE AS IS: no\n- R1.1 should: the parser drops a field\n' > "$T/fr1.md"; std "$T/fr1.md"
+check "a fresh seat's round 1, its should fixed on HEAD through the loop that owns it, records with its ledger (no round 2: the reader runs once); one still open doesn't" "0 1" \
+  "$(printf '%s\n' "R1.1 should fixed in $ON" 'Round: 1' > "$T/frl.md"; cd "$GL" && bash "$R/bin/pr-steps" fresh "$T/fr1.md" --ledger "$T/frl.md" >/dev/null 2>&1; echo $?) $(printf '%s\n' "R1.1 should fixed in $OFF" 'Round: 1' > "$T/frl.md"; cd "$GL" && bash "$R/bin/pr-steps" fresh "$T/fr1.md" --ledger "$T/frl.md" >/dev/null 2>&1; echo $?)"
 cp "$T/r2.md" "$T/r2b.md"; LR="$T/r2b.md" # r2.md is recorded on this head above
 check "pr-steps verify: BLOCK a round 2 carrying only round-1 findings without a 'Round: 2' line, or with a carried finding left open; with the line it records" "1 1 1 1 0" \
-  "$(led 'R1.1 should listed: the report') $(grep -c 'closes round 1' "$T/err") $(led 'Round: 2' 'R1.1 should disputed: x' 'R2.1 nit declined: y') $(grep -c 'R1.1 should disputed: x  <- not fixed' "$T/err") $(led 'Round: 2' 'R1.1 should listed: the report')"
+  "$(led "R1.1 should fixed in $ON") $(grep -c 'closes round 1' "$T/err") $(led 'Round: 2' 'R1.1 should disputed: x' 'R2.1 nit declined: y') $(grep -c 'R1.1 should disputed: x  <- not fixed' "$T/err") $(led 'Round: 2' "R1.1 should fixed in $ON")"
+# a step whose round 1 seats two reviewers at once (delegate §Reviewers) is recorded once both seats' reports are
+GS="$T/seats"; git init -q -b main "$GS"; git -C "$GS" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; SH=$(git -C "$GS" rev-parse HEAD)
+fo() { # clientRequestId target-JSON task: a review delegate_task under T3, registered when it passes
+  local j; j=$(python3 -c 'import json,sys; c,t,x=sys.argv[1:]; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":x,"role":"review","target":json.loads(t),"clientRequestId":c},"tool_response":[{"type":"text","text":json.dumps({"taskId":"t-"+c,"childThreadId":"th-"+c})}]}))' "$@")
+  printf '%s' "$j" | T3CODE_THREAD_ID=th python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; local r=$?; [ $r = 0 ] && printf '%s' "$j" | T3CODE_THREAD_ID=th python3 "$R/hooks/pre-agent-dedupe.py" register; echo $r; }
+FO="Fan-out: converge §Running the agents"
+fs="$(fo vs-codex-r1 '{"providerInstanceId":"codex"}' "Review $GS at head $SH; output to $T/vs-codex.md
+$FO") $(fo vs-claude-r1 '{"providerInstanceId":"claudeAgent"}' "Review $GS at head $SH; output to $T/vs-claude.md
+$FO") $(fo vx-claude-r1 '{"providerInstanceId":"claudeAgent"}' "Review $GS at head $SH; output to $T/vx-claude.md")"
+check "a round 1 seating its step's reviewers at once takes this company's agent as its second seat without a Fallback line; without the Fan-out line it is refused" "0 0 2" "$fs"
+for f in vs-codex vs-claude; do printf 'Checked it.\nNO BUGS\n' > "$T/$f.md"; std "$T/$f.md"; done
+fs="$(cd "$GS" && bash "$R/bin/pr-steps" verify "$T/vs-codex.md" 2>&1 | grep -c 'one seat of verify.*vs-claude') $(grep -c '^verify ' ~/.claude/pr-steps/"$SH") $(cd "$GS" && bash "$R/bin/pr-steps" verify "$T/vs-claude.md" >/dev/null 2>&1; echo $?) $(grep -c '^verify ' ~/.claude/pr-steps/"$SH")"
+check "pr-steps verify records a seated step once every seat's report is: the first seat's report records as a seat, naming the other, the second's records verify" "1 0 0 1" "$fs"
+GM="$T/seats2"; git init -q -b main "$GM"; git -C "$GM" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; MH=$(git -C "$GM" rev-parse HEAD)
+seat() { for s in "$@"; do fo "$s-r1" "{\"providerInstanceId\":\"${s#*-}\"}" "Review $GM at head $MH; output to $T/$s.md
+$FO" >/dev/null; printf 'Checked it.\nNO BUGS\n' > "$T/$s.md"; std "$T/$s.md"; done; }
+seat alpha-codex alpha-claude beta-codex beta-claude
+fs=$(for s in alpha-codex alpha-claude beta-codex beta-claude; do (cd "$GM" && bash "$R/bin/pr-steps" verify "$T/$s.md" >/dev/null 2>&1); grep -c '^verify ' ~/.claude/pr-steps/"$MH"; done | xargs); seat shape-codex shape-claude
+check "pr-steps verify waits for every seat of every slice on the head: verify records with the fourth report; a later step's seat on that head waits only for its own step's" "0 0 0 1 shape-claude" "$fs $(cd "$GM" && python3 "$R/hooks/loops.py" seats "$T/shape-codex.md" "$T/none" shape | xargs)"
+GN="$T/seats3"; git init -q -b main "$GN"; git -C "$GN" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; NH=$(git -C "$GN" rev-parse HEAD)
+for s in vn-codex vn-claude shape-codex shape-claude; do fo "$s-r1" "{\"providerInstanceId\":\"${s#*-}\"}" "Review $GN at head $NH; output to $T/$s-n.md
+$FO" >/dev/null; printf 'Checked it.\nNO BUGS\n' > "$T/$s-n.md"; std "$T/$s-n.md"; done
+check "verify records once its own two seats' reports do, while Loop B's seats on that head are still open" 1 "$(for s in vn-codex vn-claude; do (cd "$GN" && bash "$R/bin/pr-steps" verify "$T/$s-n.md" >/dev/null 2>&1); done; grep -c '^verify ' ~/.claude/pr-steps/"$NH")"
+GD="$T/seats4"; git init -q -b main "$GD"; git -C "$GD" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; DH=$(git -C "$GD" rev-parse HEAD)
+fo dc-codex-r1 '{"providerInstanceId":"codex"}' "Review: verify dc
+Seats: codex, claude2
+Review $GD at head $DH; output to $T/dc-codex.md" >/dev/null; printf 'Checked it.\nNO BUGS\n' > "$T/dc-codex.md"; std "$T/dc-codex.md"
+check "a round 1 declaring its step's seats holds the step for a declared seat that never ran" "1 0" "$(cd "$GD" && bash "$R/bin/pr-steps" verify "$T/dc-codex.md" 2>&1 | grep -c 'one seat of verify.*dc-claude2') $(grep -c '^verify ' ~/.claude/pr-steps/"$DH")"
+git -C "$GD" commit -q --allow-empty -m b; git -C "$GD" checkout -q -b off "$DH"; git -C "$GD" commit -q --allow-empty -m off
+fo dd-codex-r1 '{"providerInstanceId":"codex"}' "Review $GD at head $(git -C "$GD" rev-parse off); output to $T/dd-codex.md" >/dev/null; git -C "$GD" checkout -q main; printf 'Checked it.\nNO BUGS\n' > "$T/dd-codex.md"; std "$T/dd-codex.md"
+check "BLOCK: pr-steps verify on a report whose round pinned a head off HEAD's history, naming it" "1 1" "$(cd "$GD" && bash "$R/bin/pr-steps" verify "$T/dd-codex.md" >/dev/null 2>"$T/err"; echo $?) $(grep -c "isn't in HEAD's history" "$T/err")"
+GT="$T/seats5"; git init -q -b main "$GT"; git -C "$GT" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; TH=$(git -C "$GT" rev-parse HEAD)
+tsb() { printf 'Review %s at head %s; output to %s\n%s\nSeats: codex, claude%s' "$GT" "$TH" "$T/$1.md" "$FO" "${2:+
+$2}"; }  # loop extra-line: a round 1 brief of the step whose seats are codex and claude
+ts="$(fo ts-codex-r1 '{"providerInstanceId":"codex"}' "$(tsb ts-codex)") $(fo ts-claude-r1 '{"providerInstanceId":"claudeAgent"}' "$(tsb ts-claude)") $(fo ts-claude2-r1 '{"providerInstanceId":"claudeAgent"}' "$(tsb ts-claude2)") $(grep -c 'would be a third seat of ts, whose round 1 declared claude, codex' "$T/err")"
+ts="$ts $(fo ts-claude3-r1 '{"providerInstanceId":"claudeAgent"}' "$(tsb ts-claude3 'Fallback: ts-claude stopped')") $(fo ts-claude4-r1 '{"providerInstanceId":"claudeAgent"}' "$(tsb ts-claude4 'Continues: ts-claude')")"
+check "BLOCK: a third fresh seat of a step whose round 1 declared two, naming the cure; with what failed (Fallback:) or the loop it takes over (Continues:) it passes" "0 0 2 1 0 0" "$ts"
+GF="$T/seats6"; git init -q -b main "$GF"; git -C "$GF" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; FH=$(git -C "$GF" rev-parse HEAD)
+for s in "fl-codex codex" "fl-claude2 claudeAgent"; do set -- $s; fo "$1-r1" "{\"providerInstanceId\":\"$2\"}" "Review $GF at head $FH; output to $T/$1.md
+$FO
+Seats: codex, claude$([ "$1" = fl-claude2 ] && printf '\nFallback: fl-claude failed to start')" >/dev/null; printf 'Checked it.\nNO BUGS\n' > "$T/$1.md"; std "$T/$1.md"; done
+check "a seat admitted as a substitute (Fallback: <seat> failed) fills the declared seat it replaces: verify records once both reports do" "0 0 1" "$(for s in fl-codex fl-claude2; do (cd "$GF" && bash "$R/bin/pr-steps" verify "$T/$s.md" >/dev/null 2>&1; echo $?); done | xargs) $(grep -c '^verify ' ~/.claude/pr-steps/"$FH")"
+GC="$T/seats7"; git init -q -b main "$GC"; git -C "$GC" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; CCH=$(git -C "$GC" rev-parse HEAD); SCL="$RLD/sc.ledger.md"; printf 'R1.1 should fixed in %s\n' "$CCH" > "$SCL"
+sc="$(for s in "sc-codex codex" "sc-claude claudeAgent"; do set -- $s; fo "$1-r1" "{\"providerInstanceId\":\"$2\"}" "Review $GC at head $CCH; output to $T/$1.md
+$FO
+Seats: codex, claude"; done | xargs) $(for s in sc-claude sc-codex; do fo "$s-r2" '{"providerInstanceId":"claudeAgent"}' "Review $GC at head $CCH, the commits since. Ledger: $SCL"; done | xargs)"
+check "a later round of the seat on this company stays on it: a fresh claudeAgent r2 of the Claude seat passes while Codex is available; BLOCK the Codex seat's r2 on claudeAgent without a Fallback line" "0 0 0 2" "$sc"
+TCL="$RLD/tc.ledger.md"; rule "$TCL" "$TH" 3
+tc="$(for i in 1 2 3; do fo tc-codex-r$i '{"providerInstanceId":"codex"}' "Review $GT at head $TH; round $i. Ledger: $TCL"; done | xargs) $(fo tc-codex2-r2 '{"providerInstanceId":"codex"}' "Review $GT at head $TH; the seat past its context.
+Continues: tc-codex
+Ledger: $TCL") $(rule "$TCL" "$TH" 4; fo tc-codex2-r3 '{"providerInstanceId":"codex"}' "Review $GT at head $TH; round 5 of the count.
+Continues: tc-codex
+Ledger: $TCL") $(grep -c 'counts in the four rounds per head of tc-codex' "$T/err")"
+check "a seat that takes over another's loop (Continues:) counts in its four: BLOCK the round past them, naming the loop" "0 0 0 0 2 1" "$tc"
+for p in pa pb; do git init -q -b main "$T/$p"; git -C "$T/$p" -c user.name=t -c user.email=$p@t commit -q --allow-empty -m $p; done; PA=$(git -C "$T/pa" rev-parse HEAD); PBH=$(git -C "$T/pb" rev-parse HEAD)
+printf 'R1.1 should: the parser drops a field\n' > "$T/a-first.md"; printf 'R1.1 nit: wording\nR1.2 should: the date\n' > "$T/b-first.md"; printf 'R2.1 nit: phrasing\n' > "$T/b-second.md"; std "$T/b-second.md"
+printf '%s\n' 'R1.1 nit declined: wording' "R1.2 should fixed in $PBH" > "$T/b.ledger.md"
+fs="$(fo parser-codex-r1 '{"providerInstanceId":"codex"}' "Review $T/pa at head $PA; output to $T/a-first.md") $(fo parser-codex-r1-2026-11-25 '{"providerInstanceId":"codex"}' "Review $T/pb at head $PBH; output to $T/b-first.md")"
+fs="$fs $(fo parser-codex-r2 '{"providerInstanceId":"codex"}' "Review $T/pb at head $PBH; ledger $T/b.ledger.md; output to $T/b-second.md") $(printf '%s\n' 'Round: 2' 'R2.1 nit declined: phrasing' >> "$T/b.ledger.md"; grep -v R1.2 "$T/b.ledger.md" > "$T/b2.ledger.md"; cd "$T/pb" && bash "$R/bin/pr-steps" verify "$T/b-second.md" --ledger "$T/b2.ledger.md" 2>&1 | grep -c 'b-first.md: R1.2 should: the date  <- no ledger row') $(cd "$T/pb" && bash "$R/bin/pr-steps" verify "$T/b-second.md" --ledger "$T/b.ledger.md" >/dev/null 2>"$T/err"; echo $?) $(grep -c a-first "$T/err")"
+check "a ledger is checked against its loop's reports on this checkout's lineage: its own round 1 counts, another repo's round of a loop of the same name adds none" "0 0 0 1 0 0" "$fs"
+FP="$T/drafts/fpr"; mkdir -p "$FP"; pe "$FP/pr-body.md" 'The parser keeps empty fields.'; GLH=$(gl rev-parse HEAD)
+printf 'Maintainer: example\nMERGE AS IS: no\nR1.1 should: the parser drops empty fields.\n' > "$T/fresh-codex.report.md"; std "$T/fresh-codex.report.md"
+fs="$(fo fresh-codex-r1 '{"providerInstanceId":"codex"}' "Review $GL at head $GLH, ending MERGE AS IS: yes or no; output to $T/fresh-codex.report.md and $FP/pr-body.review.out")"
+printf 'R1.1 blocker: the body claims a guarantee the code lacks.\n' > "$FP/pr-body.review.out"; printf '%s\n' "R1.1 should fixed in $ON" 'Round: 1' > "$T/fcl.md"
+check "a fresh seat's code ledger is checked against its report alone, not its body verdict, which the post loop closes" "0 0" "$fs $(cd "$GL" && bash "$R/bin/pr-steps" fresh "$T/fresh-codex.report.md" --ledger "$T/fcl.md" >/dev/null 2>&1; echo $?)"
+lr() { cp "$T/r2.md" "$T/r2-$1.md"; LR="$T/r2-$1.md"; shift; led "$@"; }  # a report of its own per ledger that records
+check "pr-steps verify --ledger: a round 1 bringing only nits or declined findings closes the loop; BLOCK a round 2 with a fixed should, it gets round 3; round 4 closes with a fixed should" "0 0 1 1 0" \
+  "$(lr n1 'R1.1 nit declined: wording') $(lr d1 'R1.1 should declined: the case needs a staged race' 'R1.2 nit listed: the report') $(lr f2 "R1.1 should fixed in $ON" 'Round: 2' "R2.1 should fixed in $ON") $(grep -c 'closes round 2, which brought a blocker or should fixed in a commit: the loop gets its next round first' "$T/err") $(lr f4 "R4.1 should fixed in $ON")"
 cp "$T/r2.md" "$T/r2c.md"; LR="$T/r2c.md"
 check "BLOCK: pr-steps verify with a code loop's blocker closed as fixed in r3, which only a post's ledger takes" "1 1" "$(led 'Round: 3' 'R2.1 blocker fixed in r3') $(grep -c 'open blocker' "$T/err")"
+printf 'R2.1 blocker: the parser drops a field\nR2.2 should: a second one\n' > "$T/rb.md"; std "$T/rb.md"; bl() { cp "$T/rb.md" "$T/rb-$1.md"; LR="$T/rb-$1.md"; shift; led "$@"; }
+check "BLOCK: pr-steps verify --ledger missing a finding the report holds, or re-labelling one, naming each; the seat's ids and labels with the rulings as outcomes record" "1 1 1 1 0" "$(bl m 'Round: 2' 'R2.1 blocker fixed in '"$ON") $(grep -c 'R2.2 should: a second one  <- no ledger row' "$T/err") $(bl l 'Round: 2' 'R2.1 should declined: rare' 'R2.2 should declined: rare') $(grep -c 'R2.1 blocker: the parser drops a field  <- its ledger row says should' "$T/err") $(bl ok 'Round: 4' "R2.1 blocker fixed in $ON" 'R2.2 should declined: a nit, rare')"
+check "BLOCK: pr-steps verify --ledger closing a round that declined a blocker, naming the next round to its seat; after that round it records" "1 1 0" "$(lr db1 'R1.1 blocker declined: needs a staged race') $(grep -c 'which declined a blocker: send it back to its seat once' "$T/err") $(lr db2 'Round: 2' 'R1.1 blocker declined: needs a staged race')"
+check "a blocker declined, sent back once and still held by the round after is Stuck: pr-steps verify --ledger records it declined" 0 "$(lr ds 'Round: 2' 'R1.1 blocker declined: needs a staged race' 'R2.1 blocker declined: needs a staged race')"
 # a claim the verifier lists as untested waits for a RULED line naming it, in round 2's ledger record as in a file ending NO BUGS (#190)
 printf '## Dropped\nNone.\n## Untested claims\n\n- `src/panel.tsx`: // The question the page opened on takes the focus as it shows. — Chrome — no probe recorded — UNVERIFIED\n' > "$T/uc.md"; std "$T/uc.md"; LR="$T/uc.md"
 { cat "$T/uc.md"; echo 'RULED: src/panel.tsx: // The question the page opened on takes the focus as it shows.: listed: the PR body says no probe saw it'; } > "$T/uc1.md"
@@ -2976,28 +3221,44 @@ check "BLOCK: ps selecting by user, name, group, terminal or all, a numeric valu
 check "BLOCK: pkill -f behind wrappers (timeout, netns-run, nice, ionice) and inside their bash -c; a plain timeout run passes" "2 2 2 0" "$(guard "timeout 200 netns-run bash -c 'pnpm build; pkill -f \"vike preview\"; true'") $(guard 'nice -n 19 ionice -c3 pkill -f vite') $(guard 'timeout -k 5 60 pkill -f vite') $(guard 'timeout 60 nice -n 19 pnpm test')"
 check "reading a .review.out, gate-pass, a claude -p reviewer's stdout and an agent writing its own output pass" "0 0 0 0" "$(guard 'cat /w/x.review.out > /w/copy.md') $(guard 'gate-pass /w/x.md /w/x.review.out') $(guard 'claude -p "$(cat /w/p.md)" > /w/x.review.out') $(guard 'echo CLEAN > /w/x.review.out' a1)"
 # a reviewer launched from a shell gets the same post-lint check as an agent, and its launch records the text it is handed
+bashed() { python3 -c 'import json,sys; print(json.dumps({"hook_event_name":sys.argv[1],"tool_input":{"command":sys.argv[2]},"cwd":sys.argv[3],"tool_response":{"stdout":"","stderr":""}}))' "$1" "$2" "$T" | python3 "$R/hooks/post-bash-register.py" >/dev/null 2>&1; }  # event command: post-bash-register after it ended
+ran() { local r; r=$(guard "$1"); [ "$r" = 0 ] && bashed PostToolUse "$1"; echo "$r"; }  # command: pre-bash-guard's exit code, and the command ran when it passed
 SL="$T/drafts/sl"; mkdir -p "$SL"; printf 'Fixed in abc1234.\n' > "$SL/b.md"; echo CLEAN > "$SL/b.review.out"; sl_sha=$(sha256sum "$SL/b.md" | cut -d' ' -f1)
 check "BLOCK: codex exec -o <out> on a draft with no passing post-lint, naming post-lint" "2 1" "$(guard "codex exec --skip-git-repo-check -o $SL/b.review.out \"\$(cat $SL/p.md)\" < /dev/null") $(grep -c 'no passing post-lint' "$T/err")"
 printf %s "$sl_sha" > "$SL/b.md.lint.sha"
-check "codex exec -o <out> and claude -p > <out-r2> record the launched text, and the earlier verdict is set aside" "0 $sl_sha CLEAN 0 $sl_sha" "$(guard "codex exec --skip-git-repo-check -o $SL/b.review.out \"\$(cat $SL/p.md)\" < /dev/null") $(cut -d' ' -f1 "$SL/b.review.out.launch") $(cat "$SL/b.review.out.prev") $(guard "claude -p --effort high < $SL/p.md > $SL/b.review-r2.out") $(cut -d' ' -f1 "$SL/b.review-r2.out.launch")"
-check "codex exec -o \"\$out\" and claude -p > \"\$out\", the output in a variable, record their launch" "0 $sl_sha 0 $sl_sha" "$(guard "out=$SL/b.review-r4.out; codex exec --skip-git-repo-check -o \"\$out\" \"\$(cat $SL/p.md)\" < /dev/null") $(cut -d' ' -f1 "$SL/b.review-r4.out.launch" 2>&1) $(guard "out=$SL/b.review-r5.out; claude -p < $SL/p.md > \"\$out\"") $(cut -d' ' -f1 "$SL/b.review-r5.out.launch" 2>&1)"
+check "codex exec -o <out> and claude -p > <out-r2> record the launched text, and the earlier verdict is set aside" "0 $sl_sha CLEAN 0 $sl_sha" "$(ran "codex exec --skip-git-repo-check -o $SL/b.review.out \"\$(cat $SL/p.md)\" < /dev/null") $(cut -d' ' -f1 "$SL/b.review.out.launch") $(aside "$SL/b.review.out") $(ran "claude -p --effort high < $SL/p.md > $SL/b.review-r2.out") $(cut -d' ' -f1 "$SL/b.review-r2.out.launch")"
+check "codex exec -o \"\$out\" and claude -p > \"\$out\", the output in a variable, record their launch" "0 $sl_sha 0 $sl_sha" "$(ran "out=$SL/b.review-r4.out; codex exec --skip-git-repo-check -o \"\$out\" \"\$(cat $SL/p.md)\" < /dev/null") $(cut -d' ' -f1 "$SL/b.review-r4.out.launch" 2>&1) $(ran "out=$SL/b.review-r5.out; claude -p < $SL/p.md > \"\$out\"") $(cut -d' ' -f1 "$SL/b.review-r5.out.launch" 2>&1)"
+lt0=$(date +%s); lt=$(guard "claude -p < $SL/p.md > $SL/b.review-r7.out"); sleep 2; bashed PostToolUse "claude -p < $SL/p.md > $SL/b.review-r7.out"
+check "a shell reviewer's launch records when it started (PreToolUse), not when it ended, so a comment made while it ran is newer than its review" "0 yes" "$lt $([ $(( $(cut -d' ' -f2 "$SL/b.review-r7.out.launch") - lt0 )) -le 1 ] && echo yes || echo no)"
 mkdir -p "$T/drafts/amb"; for n in a b; do printf 'Draft %s.\n' "$n" > "$T/drafts/amb/$n.md"; sha256sum "$T/drafts/amb/$n.md" | cut -d' ' -f1 | tr -d '\n' > "$T/drafts/amb/$n.md.lint.sha"; echo CLEAN > "$T/drafts/amb/$n.review.out"; done
 check "BLOCK: a reviewer's output that may be one of two paths (a reassignment in an untaken branch), naming the fix; both verdicts stay in place" "2 1 CLEAN CLEAN" "$(guard "out=$T/drafts/amb/a.review.out; if false; then out=$T/drafts/amb/b.review.out; fi; codex exec --skip-git-repo-check -o \"\$out\" \"\$(cat $SL/p.md)\" < /dev/null") $(grep -c 'pass its absolute path, written out or assigned once' "$T/err") $(cat "$T/drafts/amb/a.review.out") $(cat "$T/drafts/amb/b.review.out")"
 check "BLOCK: a reviewer's launch in a command another segment of which is refused leaves its earlier verdict and records nothing" "2 CLEAN none" "$(echo CLEAN > "$SL/b.review-r6.out"; guard "codex exec --skip-git-repo-check -o $SL/b.review-r6.out \"\$(cat $SL/p.md)\" < /dev/null; gh pr create --draft --title Fix --body-file /w/b.md") $(cat "$SL/b.review-r6.out") $([ -e "$SL/b.review-r6.out.launch" ] && echo launch || echo none)"
 mkdir -p "$T/drafts/sn"; printf 'Fixed.\n' > "$T/drafts/sn/body.md"
 check "BLOCK: a shell-launched reviewer writing a drafts/ output not named after its draft (codex -o review.out, claude -p > body.out), naming the rename" "2 1 2 1" "$(guard "codex exec --skip-git-repo-check -o $T/drafts/sn/review.out \"\$(cat $SL/p.md)\" < /dev/null") $(grep -c 'name it <name>.review.out' "$T/err") $(guard "claude -p < $SL/p.md > $T/drafts/sn/body.out") $(grep -c 'name it <name>.review.out' "$T/err")"
 check "BLOCK: a loop's reviewers writing several review outputs, naming the fix" "2 1" "$(guard "for f in a b; do codex exec --skip-git-repo-check -o $T/drafts/amb/\$f.review.out \"\$(cat $SL/p.md)\" < /dev/null; done") $(grep -c 'pass its absolute path, written out or assigned once' "$T/err")"
+CXP="$T/cxr"; mkdir -p "$CXP" "$HOME/.codex/sessions/2026/11/25"; touch "$HOME/.codex/sessions/2026/11/25/rollout-2026-11-25T01-00-00-019a-sid.jsonl"; for l in cx-codex cp-claude; do for i in 1 2 3 4 5; do printf 'Review %s at head %s; final message exactly NO BUGS. Ledger: %s\nReview: verify fix-check\n' "$T/ct" "$CH" "$RLD/$l.ledger.md" > "$CXP/$l-r$i.md"; done; done
+cxr="$(ran "codex exec --skip-git-repo-check -o $CXP/r1.out \"\$(cat $CXP/cx-codex-r1.md)\" < /dev/null") $(for i in 2 3 4 5; do rule "$RLD/cx-codex.ledger.md" "$CH" $((i - 1)); ran "codex exec resume 019a-sid \"\$(cat $CXP/cx-codex-r$i.md)\" < /dev/null"; done | xargs) $(grep -c 'cx-codex already ran r1, r2, r3, r4 on this head' "$T/err")"
+cxr="$cxr $(for i in 1 2 3 4 5; do rule "$RLD/cp-claude.ledger.md" "$CH" $((i - 1)); ran "claude -p --effort high < $CXP/cp-claude-r$i.md > $CXP/cp.out"; done | xargs) $(grep -c 'cp-claude already ran r1, r2, r3, r4' "$T/err")"
+check "a shell reviewer's rounds, named by their prompt files, count like an agent's: codex exec r1 and its resume r2 to r4 pass, BLOCK r5 naming the cap; claude -p's the same" "0 0 0 0 2 1 0 0 0 0 2 1" "$cxr"
+CRL="$RLD/cr-codex.ledger.md"; printf 'Review %s at head %s; final message exactly NO BUGS. Ledger: %s\n' "$T/ct" "$CH" "$CRL" > "$CXP/cr-codex-r1.md"; cp "$CXP/cr-codex-r1.md" "$CXP/cr-codex-r2.md"; printf 'Review: verify fix-check\n' >> "$CXP/cr-codex-r2.md"
+mkdir -p "$HOME/.claude/projects/p"; touch "$HOME/.claude/projects/p/cl-sid.jsonl"; touch -d '-51 minutes' "$HOME/.codex/sessions/2026/11/25/rollout-2026-11-25T01-00-00-019b-old.jsonl"
+cr="$(ran "codex exec --skip-git-repo-check -o $CXP/cr.out \"\$(cat $CXP/cr-codex-r1.md)\" < /dev/null") $(rule "$CRL" "$CH" 1; guard "codex exec resume 019b-old \"\$(cat $CXP/cr-codex-r2.md)\" < /dev/null") $(grep -c 'past 50: launch the round on a fresh reviewer' "$T/err") $(guard "codex exec resume --last \"\$(cat $CXP/cr-codex-r2.md)\" < /dev/null") $(grep -c 'no record shows when that reviewer was last active' "$T/err")"
+cr="$cr $(cp "$CXP/cr-codex-r1.md" "$CXP/cr-codex-r2.md"; guard "claude -p --resume cl-sid < $CXP/cr-codex-r2.md > $CXP/cr.out") $(grep -c 'declares no fix check' "$T/err") $(printf 'Review: verify fix-check\n' >> "$CXP/cr-codex-r2.md"; guard "claude -p --resume cl-sid < $CXP/cr-codex-r2.md > $CXP/cr.out")"
+check "a shell reviewer resumed for a round passes only as a fix check of a session file written within 50 minutes: BLOCK codex resume of a 51-minute-old session or --last, and claude -p --resume declaring none" "0 2 1 2 1 2 1 0" "$cr"
+for i in 1 2; do printf 'Review %s at head %s; final message exactly NO BUGS. Ledger: %s\n' "$T/ct" "$CH" "$CL" > "$CXP/sk-claude-r$i.md"; done
+SK="test -s $T/missing-input.md && claude -p < $CXP/sk-claude-r1.md > $CXP/sk.out"
+check "a shell round counts once its command ran: none after the hook admits it, none after Bash skips or fails it, one after it ran" "0 0 0 1" "$(guard "$SK") $(nrounds sk-claude) $(bashed PostToolUseFailure "$SK"; nrounds sk-claude) $(guard "$SK" >/dev/null; bashed PostToolUse "$SK"; nrounds sk-claude)"
 printf 'src/a' > "$T/review-key"
 check "BLOCK: a reviewer's output with a computed basename in drafts/ (codex -o, claude -p >), naming the fix" "2 1 2" "$(guard "stem=\$(cat $T/review-key); codex exec --skip-git-repo-check -o \"$T/drafts/amb/\${stem##*/}.review.out\" \"\$(cat $SL/p.md)\" < /dev/null") $(grep -c 'pass its absolute path, written out or assigned once' "$T/err") $(guard "stem=\$(cat $T/review-key); claude -p < $SL/p.md > \"$T/drafts/amb/\${stem##*/}.review.out\"")"
 check "BLOCK: a reviewer's output that may be one of two misnamed drafts/ outputs" 2 "$(guard "out=$T/drafts/sn/a.out; if false; then out=$T/drafts/sn/b.out; fi; codex exec --skip-git-repo-check -o \"\$out\" \"\$(cat $SL/p.md)\" < /dev/null")"
 F1="$T/drafts/r1"; mkdir -p "$F1"; printf 'Fixed.\n' > "$F1/title.md"; f1_sha=$(sha256sum "$F1/title.md" | cut -d' ' -f1); printf %s "$f1_sha" > "$F1/title.md.lint.sha"
-check "a claude -p reviewer's stderr file is a plain write: only its stdout target is its verdict, recorded" "0 $f1_sha" "$(guard "claude -p < \"$F1/prompt.md\" > \"$F1/title.review-r3.out\" 2> \"$F1/review-stderr.out\"") $(cut -d' ' -f1 "$F1/title.review-r3.out.launch" 2>&1)"
+check "a claude -p reviewer's stderr file is a plain write: only its stdout target is its verdict, recorded" "0 $f1_sha" "$(ran "claude -p < \"$F1/prompt.md\" > \"$F1/title.review-r3.out\" 2> \"$F1/review-stderr.out\"") $(cut -d' ' -f1 "$F1/title.review-r3.out.launch" 2>&1)"
 SA="$T/standalone"; mkdir -p "$SA"; printf 'A title\n' > "$SA/title.md"
 check "a standalone reviewer's <name>.review.out outside drafts/, beside an unlinted <name>.md, passes unrecorded" "0 none" "$(guard "folder=$SA; codex exec --skip-git-repo-check -o \"\$folder/title.review.out\" \"Review the title\" < /dev/null") $([ -e "$SA/title.review.out.launch" ] && echo launch || echo none)"
 check "BLOCK: gate-pass on a review output outside drafts/, naming where drafts live" "1 1" "$(echo CLEAN > "$SA/title.review.out"; MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$SA/title.md" "$SA/title.review.out" --kind title >"$T/sa.out" 2>&1; echo $?) $(grep -c 'only a post.s review there records its launch' "$T/sa.out")"
 check "a shell-launched output naming no review output passes though it isn't one known path: a loop's variable, \$(mktemp)" "0 0" "$(guard "for f in a b; do out=$T/\$f.txt; codex exec --skip-git-repo-check -o \"\$out\" \"\$(cat $SL/p.md)\" < /dev/null; done") $(guard "codex exec --skip-git-repo-check -o \"\$(mktemp)\" \"\$(cat $SL/p.md)\" < /dev/null")"
 check "a shell-launched reviewer's output whose real path is outside drafts/ (drafts/../summary.out) passes" 0 "$(guard "codex exec --skip-git-repo-check -o $T/drafts/../summary.out \"\$(cat $SL/p.md)\" < /dev/null")"
-check "BLOCK: the main session writing a launch record or a set-aside verdict, naming the hook, or a round's output" "2 1 2 2" "$(guard "echo x > $SL/b.review.out.launch") $(grep -c 'written by the hook' "$T/err") $(guard "mv $SL/b.review.out.prev $SL/b.review.out.prev") $(guard "echo CLEAN > $SL/b.review-r3.out")"
+check "BLOCK: the main session writing a launch record, naming the hook, or a round's output" "2 1 2" "$(guard "echo x > $SL/b.review.out.launch") $(grep -c 'written by the hook' "$T/err") $(guard "echo CLEAN > $SL/b.review-r3.out")"
 check "BLOCK: glab mr create, not a draft, outside a converged repo" 2 "$(glab 'glab mr create --title x')"
 check "BLOCK: glab mr update --ready outside a converged repo" 2 "$(glab 'glab mr update 5 --ready')"
 check "glab mr create --draft passes on a branch with its approach" 0 "$(MERGEWORTHY_WATCHER=off glab 'glab mr create --draft --title x' "$G2")"
@@ -3302,6 +3563,7 @@ iedit() { # <transcript> <tool> <file> [extra hook input as JSON]: pre-design-ga
 ibash() { # <transcript> <command> [cwd]: pre-bash-guard's exit code for the command run in cwd, by default $I
   python3 -c 'import json,sys; print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[2]},"cwd":sys.argv[3],"transcript_path":sys.argv[1]}))' "$1" "$2" "${3:-$I}" | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/ierr"; echo $?
 }
+iran() { local r; r=$(ibash "$@"); [ "$r" = 0 ] && python3 -c 'import json,sys; print(json.dumps({"hook_event_name":"PostToolUse","tool_name":"Bash","tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2],"tool_response":{"stdout":""}}))' "$2" "${3:-$I}" | python3 "$R/hooks/post-bash-register.py" >/dev/null 2>&1; echo "$r"; }  # ibash, and the command ran when it passed
 IT="$T/instr.jsonl"; ir_tr "$IT"
 check "BLOCK: an edit in a repo whose root has AGENTS.md and CLAUDE.md, before reading them, naming both" "2 1" "$(iedit "$IT" Edit "$I/a.ts") $(grep -c "read this repo's instructions first.*$I/AGENTS.md, $I/CLAUDE.md" "$T/ierr")"
 check "BLOCK: Write, MultiEdit and NotebookEdit there, and a new file in a new folder" "2 2 2 2" "$(iedit "$IT" Write "$I/b.ts") $(iedit "$IT" MultiEdit "$I/a.ts") $(iedit "$IT" NotebookEdit "$I/n.ipynb") $(iedit "$IT" Write "$I/new/dir/c.ts")"
@@ -3410,7 +3672,7 @@ check "a 2>/dev/null leaves a substitution's output as it is: realpath, readlink
   "$(ibash "$IT" 'D=$(realpath ./p 2>/dev/null) && printf x > "$D/q.log"' "$T/nogit") $(ibash "$IT" 'D=$(readlink -f ./p 2>/dev/null) && printf x > "$D/q.log"' "$T/nogit") $(ibash "$IT" 'D=$(mktemp -d 2>/dev/null) && printf x > "$D/q.log"' "$T/nogit") $(ibash "$IT" 'D=$(pwd 2>/dev/null) && printf x > "$D/q.log"' "$T/nogit") $(ibash "$IT" 'D=$(realpath ./p 2>&1) && printf x > "$D/q.log"' "$T/nogit") $(ibash "$IT" 'D=$(realpath ./p >/dev/null) && printf x > "$D/q.log"' "$T/nogit") $(ibash "$IT" "cd $I && D=\$(pwd 2>/dev/null) && printf x > \"\$D/q.log\"" "$T/nogit")"
 RD="$T/nogit/rdp/drafts"; mkdir -p "$RD"; printf 'Note.\n' > "$RD/note.md"; sha256sum "$RD/note.md" | cut -d' ' -f1 | tr -d '\n' > "$RD/note.md.lint.sha"
 check "a command run only once D=\$(realpath …) or readlink -f exited 0 reads its output: a review launch after && passes and is recorded; BLOCK: after ; it may read the empty output of a failure, so the output in drafts/ can't be placed" "0 0 1 2 1" \
-  "$(ibash "$IT" 'D=$(realpath ./drafts) && codex exec --skip-git-repo-check -o "$D/note.review.out" review < /dev/null' "$T/nogit/rdp") $(ibash "$IT" 'D=$(readlink -f ./drafts) && codex exec --skip-git-repo-check -o "$D/note.review.out" review < /dev/null' "$T/nogit/rdp") $(ls "$RD"/note.review.out.launch | wc -l) $(ibash "$IT" 'D=$(realpath ./drafts); codex exec --skip-git-repo-check -o "$D/note.review.out" review < /dev/null' "$T/nogit/rdp") $(grep -c "can't be placed" "$T/ierr")"
+  "$(iran "$IT" 'D=$(realpath ./drafts) && codex exec --skip-git-repo-check -o "$D/note.review.out" review < /dev/null' "$T/nogit/rdp") $(iran "$IT" 'D=$(readlink -f ./drafts) && codex exec --skip-git-repo-check -o "$D/note.review.out" review < /dev/null' "$T/nogit/rdp") $(ls "$RD"/note.review.out.launch | wc -l) $(ibash "$IT" 'D=$(realpath ./drafts); codex exec --skip-git-repo-check -o "$D/note.review.out" review < /dev/null' "$T/nogit/rdp") $(grep -c "can't be placed" "$T/ierr")"
 mkdir -p "$T/nogit/sub/p"; echo "OUT=$T/nogit/sub/p" > "$T/nogit/env.sh"
 check "a redirect to an empty name writes nothing: a source after it is still followed, so a write to \$OUT/result it sets passes; BLOCK: after a redirect to a command's output, which may be the sourced file" "0 2" \
   "$(ibash "$IT" 'LOG=${LOG_FILE:-}; printf "starting\n" > "$LOG" || :; source ../env.sh; echo ok > "$OUT/result"' "$T/nogit/sub") $(ibash "$IT" 'printf "starting\n" > "$(cat log.txt)" || :; source ../env.sh; echo ok > "$OUT/result"' "$T/nogit/sub")"
