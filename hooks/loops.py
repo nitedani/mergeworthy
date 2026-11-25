@@ -246,7 +246,7 @@ def admit(loop, n, tops, heads, led, owners=()):
                 "while its last round brought a blocker or should you kept and fixed, or a blocker you declined (mergeworthy:delegate §Review rounds), but "
                 + ("the brief names no `<work folder>/drafts/<review>.ledger.md` to show it: name the loop's ledger in the brief, or end the loop. " if not led else
                    f"{led} doesn't exist: name the loop's ledger, or end the loop. " if not os.path.isfile(led) else
-                   f"the ledger {led} shows round {last} brought none `fixed in <sha>`, and no blocker `declined:`: the loop ends there. ")
+                   f"the ledger {led} shows round {last} brought none `fixed in <sha>`, and no blocker `declined:` outside the round that rechecked a declined one (Stuck): the loop ends there. ")
                 + close)
     return ''
 

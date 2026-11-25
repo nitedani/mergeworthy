@@ -54,7 +54,7 @@ def read(path):
 
 def owed(rows, n, on_head):
     """What earns a code loop its next round after round n: 'fixed' when it brought a blocker or should `fixed in <sha>` with
-    on_head(sha), else 'declined' when it brought a blocker `declined: <why>`, which goes back to its seat once (delegate §Stuck), else ''."""
-    of_n = [r for r in rows if r.round == n]
-    return 'fixed' if any(r.label != 'nit' and r.fixed and on_head(r.fixed) for r in of_n) else \
-        'declined' if any(r.label == 'blocker' and r.declined for r in of_n) else ''
+    on_head(sha), else 'declined' when it brought a blocker `declined: <why>` and isn't itself the round a declined blocker went
+    back in: a declined blocker goes back to its seat once, and one the round after still holds is Stuck (delegate §Review rounds), else ''."""
+    sends = lambda m: m >= 1 and any(r.round == m and r.label == 'blocker' and r.declined for r in rows) and not sends(m - 1)
+    return 'fixed' if any(r.round == n and r.label != 'nit' and r.fixed and on_head(r.fixed) for r in rows) else 'declined' if sends(n) else ''
