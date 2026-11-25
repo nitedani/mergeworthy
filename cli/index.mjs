@@ -65,6 +65,9 @@ function installClaude(values) {
     fs.mkdirSync(path.join(HOME, '.mergeworthy'), { recursive: true })
     fs.rmSync(path.join(HOME, '.mergeworthy', 'current'), { force: true })
     fs.symlinkSync(installed.installPath, path.join(HOME, '.mergeworthy', 'current'))
+    // the commands in its bin/ on PATH, as session-start keeps them
+    const bins = path.join(installed.installPath, 'hooks', 'bin-links')
+    if (fs.existsSync(bins)) run(bins, [])
     // and T3 Code's Antigravity instance loads the plugin's agy/ through it, as session-start and mergeworthy-update keep it; what
     // keeps it from that (a copied plugin there) is a warning
     const link = path.join(installed.installPath, 'hooks', 'agy-link')

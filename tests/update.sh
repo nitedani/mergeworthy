@@ -68,8 +68,10 @@ check "the antigravity instance's profile links the installed agy plugin; antigr
   "$(readlink "$(prof antigravity)/mergeworthy") $([ -e "$(prof antigravity_2)" ] && echo yes || echo no) $([ -e "$HOME/.gemini" ] && echo yes || echo no)"
 # a fresh install links it too, before any Claude Code session or update ran (installClaude, cli/index.mjs)
 if [ -d "$R/cli/node_modules" ]; then
+  mkdir -p "$NEW/bin"; cp "$R/hooks/bin-links" "$NEW/hooks/"; : > "$NEW/bin/gate-pass"
   rm -r "$HOME/.t3/userdata/providers"; node "$R/cli/index.mjs" --yes --agents claude > "$T/out" 2>&1
-  check "npx mergeworthy --agents claude: exit, the antigravity instance's link" "0 $HOME/.mergeworthy/current/agy" "$? $(readlink "$(prof antigravity)/mergeworthy")"
+  check "npx mergeworthy --agents claude: exit, the antigravity instance's link, the bin/ commands on PATH" "0 $HOME/.mergeworthy/current/agy $HOME/.mergeworthy/current/bin/gate-pass" \
+    "$? $(readlink "$(prof antigravity)/mergeworthy") $(readlink "$HOME/.local/bin/gate-pass")"
   node "$R/cli/index.mjs" uninstall --yes --agents claude > "$T/out" 2>&1; rc=$?
   mkdir "$(prof antigravity)/mergeworthy"; node "$R/cli/index.mjs" uninstall --yes --agents claude > "$T/out" 2>&1
   check "npx mergeworthy uninstall --agents claude: exit, its link gone; a copied plugin folder there stays" "0 no yes" \

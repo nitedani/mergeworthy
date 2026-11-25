@@ -198,6 +198,7 @@ def main(name, d):
     ev = Event(name, d)
     if name == 'SessionStart':
         prune(ev.dir)
+        subprocess.run([os.path.join(HERE, 'bin-links')])
         text = '\n'.join(run('SessionStart', {**ev.base('SessionStart'), 'source': 'startup'})[1])
         return {'injectSteps': [{'systemMessage': {'systemMessage': text}}] if text else []}
     c = d.get('toolCall') or {}

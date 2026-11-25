@@ -1,0 +1,5 @@
+#!/bin/bash
+# bin-links: puts every tool in this version's bin/ on PATH through the stable path (~/.local/bin/<tool> ->
+# ~/.mergeworthy/current/bin/<tool>), so a tool added in an update is usable without a manual link; a name ~/.local/bin already
+# holds stays. Run by session-start, npx mergeworthy and Antigravity's SessionStart (hooks/agy.py).
+mkdir -p ~/.local/bin && for t in "$(dirname "$(readlink -f "$0")")"/../bin/*; do n=$(basename "$t"); [ -e ~/.local/bin/"$n" ] || [ -L ~/.local/bin/"$n" ] || ln -s ~/.mergeworthy/current/bin/"$n" ~/.local/bin/"$n"; done
