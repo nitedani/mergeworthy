@@ -11,4 +11,11 @@ try: sys.exit(json.load(open(sys.argv[1]))["providerInstances"]["antigravity"].g
 except (OSError, ValueError, KeyError, TypeError, AttributeError): pass' "$t3/settings.json" || exit 0
 dir=$t3/providers/antigravity/$(printf antigravity | sha256sum | cut -d' ' -f1)/config/plugins
 [ "$(readlink "$dir/mergeworthy")" = "$HOME/.mergeworthy/current/agy" ] && exit 0
-mkdir -p "$dir" && ln -sfn ~/.mergeworthy/current/agy "$dir/mergeworthy.tmp" && mv -T "$dir/mergeworthy.tmp" "$dir/mergeworthy"
+if [ -e "$dir/mergeworthy" ] && [ ! -L "$dir/mergeworthy" ]; then
+  echo "mergeworthy: T3 Code's Antigravity instance loads a copy of mergeworthy from $dir/mergeworthy, which updates never reach; tell the user to delete that folder, and the next Claude Code session links the installed one" >&2
+  exit 1
+fi
+# the new link is made outside the folder agy loads plugins from, then renamed over the old one
+mkdir -p "$dir" && tmp=$dir/../.mergeworthy-link || exit 1
+trap 'rm -f "$tmp"' EXIT
+ln -s ~/.mergeworthy/current/agy "$tmp" && mv -T "$tmp" "$dir/mergeworthy"

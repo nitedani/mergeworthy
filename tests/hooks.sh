@@ -107,6 +107,13 @@ check "session-start still carries the always-on rules" yes "$(CLAUDE_PLUGIN_ROO
 mkdir -p "$HOME/.t3/userdata" "$T/agybin"; printf '#!/bin/sh\n' > "$T/agybin/agy"; chmod +x "$T/agybin/agy"
 PATH="$T/agybin:$PATH" CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" >/dev/null 2>&1 </dev/null
 check "session-start links the agy plugin into T3's antigravity instance" "$HOME/.mergeworthy/current/agy" "$(readlink "$HOME/.t3/userdata/providers/antigravity/$(printf antigravity | sha256sum | cut -d' ' -f1)/config/plugins/mergeworthy")"
+AGP="$HOME/.t3/userdata/providers/antigravity/$(printf antigravity | sha256sum | cut -d' ' -f1)/config/plugins"
+rm "$AGP/mergeworthy"
+# a copied plugin folder where the link goes stays as it is; agy-link says so once, and so does the session
+mkdir "$AGP/mergeworthy"; touch "$AGP/mergeworthy/plugin.json"
+PATH="$T/agybin:$PATH" bash "$R/hooks/agy-link" 2>"$T/err"; l1=$?
+check "a copied plugin at the link's path: agy-link exits 1 with one line naming it, the copy kept, nothing else in agy's plugin folder; the session says so" "1 1 1 mergeworthy 1" \
+  "$l1 $(wc -l < "$T/err") $(grep -c "loads a copy of mergeworthy from $AGP/mergeworthy" "$T/err") $(ls -A "$AGP" | paste -sd' ')$([ -L "$AGP/mergeworthy" ] && echo ' link') $(PATH="$T/agybin:$PATH" CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" 2>/dev/null </dev/null | grep -c 'loads a copy of mergeworthy')"
 rm -r "$HOME/.t3" "$T/agybin"
 # ---------- shared state under ~/.mergeworthy changes only from a real input: an empty environment leaves it as it was ----------
 EH="$T/emptyhome"; mkdir -p "$EH/.mergeworthy" "$EH/.claude/projects/$(printf '%s' "$EH/cwd" | sed 's/[^A-Za-z0-9]/-/g')" "$EH/cwd"
