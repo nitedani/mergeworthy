@@ -5215,6 +5215,11 @@ agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PF]}"; agy_ev PostTool
 agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PF]}" '{"type":"GENERIC","content":"Command exited with code 0.\n\nCommand output:\nok\n"}' '{"type":"PLANNER_RESPONSE","content":"Done."}'
 agy_ev Stop "" 0 0 >/dev/null
 check "agy: conversation c1's command at step 2 leaves session-A's pending action at step 2 pending" "1 0" "$(grep -c 'fixture-head' "$OWN_PENDING") $(cat "$PUSHED_HEADS" 2>/dev/null | wc -l)"
+# a refused swarm call still carries an earlier command's check: a new issue whose watcher post-bash-register can't tell
+GI='{"name":"run_command","args":{"CommandLine":"gh issue create -R fixture/repo --title x --body x"}}'; SW='{"name":"swarm","args":{"action":"add","name":"w","brief":"b"}}'
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$GI]}"; agy_ev PostToolUse "{\"id\":\"g\",$(echo "$GI" | cut -c2-)" 2 >/dev/null
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$GI]}" '{"type":"GENERIC","content":"Command exited with code 0.\n\nCommand output:\ncreated\n"}' "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$SW]}"
+check "agy: a refused swarm call's reason keeps the earlier command's check and its own" "1 1" "$(agy_ev PreToolUse "{\"id\":\"s\",$(echo "$SW" | cut -c2-)" 4 | python3 -c 'import json, sys; r = json.loads(sys.stdin.read().rsplit(" ", 1)[0])["reason"]; print(r.count("earlier call run_command (step 2)"), r.count("delegate_task"))')"
 unset OWN_PENDING PUSHED_HEADS
 agt "$U" '{"type":"PLANNER_RESPONSE","content":"Hello."}'
 check "agy: a Stop no check refuses ends the turn ({})" '{} 0' "$(MERGEWORTHY_STOP_CHECKIN=off agy_ev Stop "" 0 0)"

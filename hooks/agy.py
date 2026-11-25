@@ -190,10 +190,9 @@ def main(name, d):
         return {}
     after = settle(ev)  # at an event whose answer can carry their messages
     if name == 'PreToolUse':
-        if c.get('name') in OWN_AGENTS:
-            return {'decision': 'deny', 'reason': "mergeworthy: Antigravity's own subagents run without mergeworthy's checks: launch agents with "
-                                                  "T3's delegate_task (mergeworthy:delegate step 4)."}
-        errs = run('PreToolUse', {**ev.base('PreToolUse'), **ev.call(c.get('name', ''), c.get('args'), d.get('stepIdx'))})[0]
+        errs = (["mergeworthy: Antigravity's own subagents run without mergeworthy's checks: launch agents with T3's delegate_task "
+                 "(mergeworthy:delegate step 4)."] if c.get('name') in OWN_AGENTS else
+                run('PreToolUse', {**ev.base('PreToolUse'), **ev.call(c.get('name', ''), c.get('args'), d.get('stepIdx'))})[0])
         if after and not errs: after.append('This call was not run: run it again once you have acted on that.')
         return {'decision': 'deny', 'reason': '\n'.join(after + errs)} if after or errs else {'decision': 'allow'}
     errs = run('Stop', {**ev.base('Stop'), 'last_assistant_message': last_text(ev), 'stop_hook_active': (d.get('executionNum') or 0) > 0})[0]
