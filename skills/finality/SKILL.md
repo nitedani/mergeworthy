@@ -5,7 +5,7 @@ description: "The finality pass, for code that has drifted through many patches,
 
 # Finality
 
-Converges code or a design to the final state that will need no rewrite. The prompt is `delegate/finality.md`'s, filled; each step gives one agent its part. Called by `converge` step 0, `design` steps 5 and 7 (steps 2–3; Phase C after `design` step 9, in `pull-request` step 6) and `pull-request` steps 5–6; when done, return to the calling step.
+Converges code or a design to the final state that will need no rewrite. The prompt is `delegate/finality.md`'s, filled; each step gives one agent its part. Called by `converge` step 0, `design` steps 5 and 7 (steps 2–3) and `pull-request` steps 5–6; when done, return to the calling step.
 
 ## Steps
 
