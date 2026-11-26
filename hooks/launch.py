@@ -75,7 +75,9 @@ class Request:
         self.effort = ti.get('effort') or opts.get('effort') or opts.get('reasoningEffort')
         self.session, self.transcript, self.cwd = d.get('session_id'), d.get('transcript_path'), d.get('cwd') or ''
         self.caller = transcript(d)  # the transcript of the session or subagent making the call
-        self.tool_use_id, self.response = d.get('tool_use_id'), d.get('tool_response')
+        # a call that failed (PostToolUseFailure, as T3 returns a refused launch: an MCP error) has its error instead of a response
+        self.tool_use_id, self.response = d.get('tool_use_id'), d.get('tool_response') or d.get('error')
+        self.failed = d.get('hook_event_name') == 'PostToolUseFailure'
 
 
 class Brief:

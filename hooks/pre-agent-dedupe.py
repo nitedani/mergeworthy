@@ -35,6 +35,8 @@ if register and 'parent_not_active' in json.dumps(req.response or ''):
         "edits, preparing the push or the body: delegate step 7); only an independent review and a post wait for a run. "
         "Keep the brief, launch it in the next run, and add no status line on each wake."}}))
     sys.exit(0)
+if register and req.failed:  # a launch that failed for another reason started nothing to register
+    sys.exit(0)
 L = launch.Brief(req.text)
 brief = L.brief  # every rule below reads the brief; the files it only names (project notes, installed skills) are read, so their history SHAs pin nothing
 paths = L.paths
