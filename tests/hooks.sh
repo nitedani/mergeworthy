@@ -828,6 +828,15 @@ check "BLOCK: a model line with no versioned model and no effort" 1 "$(elint '*C
 check "the effort right after each model passes, every level" 0 "$(elint '*Opus 5.5 (low effort) wrote this; Haiku 5.5 (medium effort) tested it; Opus 5.5 (xhigh effort), Opus 5.5 (max effort) and Opus 5.5 (ultra effort) reviewed it.*')"
 check "the effort inside the model's parenthesis passes" 0 "$(elint '*Opus 5.5 (high effort) wrote this; GPT-6.1-Sol (Codex, high effort) reviewed it.*')"
 check "a model named by a word after its version passes with its effort, and is flagged without it" "0 1" "$(elint '*Gemini 4 Neon (Antigravity, high effort) wrote this; GPT-6.1-Sol (Codex, high effort) reviewed it.*') $(elint '*Opus 5.5 (high effort) wrote this; Gemini 4 Neon (Antigravity) reviewed it.*')"
+py310() { python3 -c 'import re, re._parser as p, runpy, sys
+parse = p.parse
+def old(*a, **k):  # what CPython 3.10 parses: no possessive quantifier or atomic group (3.11)
+    r = parse(*a, **k)
+    if "POSSESSIVE_REPEAT" in repr(r.data) or "ATOMIC_GROUP" in repr(r.data): raise re.error("Python 3.11 regex syntax")
+    return r
+p.parse = old; re.purge(); sys.argv = sys.argv[1:]; runpy.run_path(sys.argv[0], run_name="__main__")' "$R/bin/post-lint" "$@"; }
+printf '%s *Opus 5.5 (high effort) wrote this; Gemini 4 Neon (Antigravity, high effort) reviewed it.*\nFixed in abc1234.\n' '<img src="https://github.com/claude.png" width="20" height="20" alt="Claude">' > "$T/p310.md"
+check "post-lint uses only regex syntax Python 3.10 parses: a badged reply lints without a regex error" 0 "$(py310 "$T/p310.md" --parent none 2>&1 | grep -c 'regex syntax')"
 check "a link to the WIP comment isn't read as a model" 0 "$(elint '*Opus 5.5 (high effort) wrote this. [WIP](https://github.com/vikejs/vike/issues/3407#issuecomment-6100167145)*')"
 # ---------- post-lint: a reply doesn't defer a quick win ----------
 qlint() { printf '%s' "$1" > "$T/quick.md"; python3 "$R/bin/post-lint" "$T/quick.md" --kind reply --parent none 2>&1 | grep -c 'defers work'; }

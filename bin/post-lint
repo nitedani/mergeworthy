@@ -448,7 +448,8 @@ if has_badge and kind != 'tracker' and '*' not in _m.group(0):
 if has_badge and kind != 'tracker' and '*' in _m.group(0):
     _line = re.sub(r'\]\([^)]*\)', ']', _m.group(0).split('*', 1)[1])  # link targets aren't model names
     _effort = rf'\b(?:{post_words.alt(W["effort"])}) {re.escape(W["effort_word"])}\b'
-    _bare = [m.group(1) for m in re.finditer(rf'\b([A-Z][A-Za-z]*[ -]?\d+(?:\.\d+)*(?:-[A-Za-z0-9]+)*(?: [A-Z][a-z]+\b)?+)(?![\w-]|\.\w)(?!\s*\([^()]*{_effort}[^()]*\))', _line)]
+    _bare = [m.group(1) for m in re.finditer(r'\b([A-Z][A-Za-z]*[ -]?\d+(?:\.\d+)*(?:-[A-Za-z0-9]+)*(?: [A-Z][a-z]+\b)?)(?![\w-]|\.\w)', _line)
+             if not re.match(rf'\s*\([^()]*{_effort}[^()]*\)', _line[m.end():])]
     if _bare or not re.search(_effort, _line):
         _e = f"{W['effort'][2]} {W['effort_word']}"
         findings.append(f"model line without effort{' for ' + ', '.join(_bare) if _bare else ''}: add each model's configured reasoning effort right after its name, \"Opus 5.5 ({_e})\" or inside its parenthesis, \"GPT-6.1-Sol (Codex, {_e})\" (writing, the badge)")
