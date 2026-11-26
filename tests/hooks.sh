@@ -810,12 +810,12 @@ pguard() { # n -> exit code of the pre-bash-guard on posting proposal n to o/r#9
 }
 pposted() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh issue comment 9 --repo o/r --body-file "+sys.argv[1]},"tool_response":{"stdout":"https://example.invalid/x"}}))' "$AR/drafts/r1/p$1.md" \
     | python3 "$R/hooks/post-bash-register.py"; }
-for n in 1 2 3; do prop $n; done
+for n in 1 2 3 4; do prop $n; done
 check "the 1st proposal passes" 0 "$(pguard 1)"; pposted 1
 check "the 2nd proposal passes" 0 "$(pguard 2)"; pposted 2
 check "BLOCK: the 3rd proposal without a thread map" 2 "$(pguard 3)"
 grep -o 'maps/[^ ]*' "$T/err" | head -1
-check "the finality block has the proposal posted as the thread's WIP comment, with no 'I updated' reply" "1 0" "$(grep -c "post this proposal as the thread's WIP comment: a new comment, or the edit mergeworthy:post §Thread rules asks for" "$T/err") $(grep -c 'I updated' "$T/err")"
+check "the 3rd proposal's block: refresh the map, finality only when design step 7 calls for it, this proposal a new comment that is the WIP comment, no 'I updated' reply" "1 1 0" "$(grep -c 'refresh its thread map' "$T/err") $(grep -c "finality pass only when mergeworthy:design step 7 calls for it), then post this proposal as a new comment: it is the thread's WIP comment" "$T/err") $(grep -c 'I updated' "$T/err")"
 touch -d '+1 minute' "$AR/maps/o-r-9.md"
 check "the 3rd proposal with a fresh map passes" 0 "$(pguard 3)"
 cp "$AR/drafts/r1/p3.md" "$AR/drafts/r1/p3.md.lint" "$AR/drafts/r1/p3.md.gate" "$T/"; mv "$T/p3.md" "$T/p9.md"; mv "$T/p3.md.lint" "$T/p9.md.lint"; mv "$T/p3.md.gate" "$T/p9.md.gate"; tcbind "$T/p9.md"
@@ -823,6 +823,9 @@ check "BLOCK: a proposal posted from a //path outside any drafts/ folder, for it
   "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh issue comment 9 --repo o/r --body-file /"+sys.argv[1]},"cwd":sys.argv[2]}))' "$T/p9.md" "$T" | timeout 20 python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?)"
 touch -d '-1 hour' "$AR/maps/o-r-9.md"
 check "BLOCK: a map older than the last proposal" 2 "$(pguard 3)"
+touch -d '+1 minute' "$AR/maps/o-r-9.md"; pguard 3 >/dev/null; pposted 3; touch -d '-1 hour' "$AR/maps/o-r-9.md"
+check "BLOCK: a 4th proposal whose map predates the 3rd: refresh the map, edit the WIP comment as a reply, and this reply says it updated it" "2 1 1 0" \
+  "$(pguard 4) $(grep -c 'refresh its thread map' "$T/err") $(grep -c "edit the thread's WIP comment from it through post (--kind reply), and let this reply say 'I updated the \[WIP comment\](link)'" "$T/err") $(grep -c 'post this proposal as a new comment' "$T/err")"
 # ---------- post-lint: the badge is icons, then a line break ----------
 blint() { printf '%s' "$1" > "$T/badge.md"; python3 "$R/bin/post-lint" "$T/badge.md" --parent none 2>&1 | grep -c 'badge'; }
 check "icons, the italic model line, then a line break pass" 0 "$(blint $'<img src="https://github.com/claude.png" width="20" height="20" alt="Claude"> <img src="https://github.com/openai.png" width="20" height="20" alt="Codex"> *Opus 5.5 (medium effort) wrote this; GPT-6.1-Sol (high effort) reviewed it.*\nFixed in abc1234.\n')"
