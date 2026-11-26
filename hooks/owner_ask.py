@@ -46,11 +46,12 @@ def asks(text, kind, repo=None, num=None, branch=None, subject=None):
                      rf"(?:{NAME if kind in ('release', 'push') else '(?!)'})?(?:\s+(?:in)?to\s+(?:the\s+)?[\w./-]+)?(?:[\s,]*{TAIL})*[\s.!?]*", re.I)
     def marked(c):  # c with each target it names as ‹t› (this command's) or ‹x› (another)
         tok = lambda ours: ' ‹t› ' if ours else ' ‹x› '
+        c = re.sub(r'`([^`\s]+)`', r'\1', c)  # a target as inline code
         if kind == 'merge':
             return re.sub(r'(?:https?://)?' + PR_REF.pattern, lambda m: tok((m[1] or m[2] or m[3] or '').lower() in ('', (repo or '').lower()) and m[4] == str(num)), c)
         if kind == 'push':  # `to <branch>`, `<branch> branch`, `push <branch>`, or the pushed branch's name; git's branch names are case-sensitive
             c = re.sub(r'\bto\s+(?:the\s+)?(?:branch\s+)?(?!(?:the|a|this|that)\b)([\w./-]*[\w-])(?:\s+branch\b)?|\b(?!(?:the|a|this|that)\b)([\w./-]*[\w-])\s+branch\b',
-                       lambda m: tok((m[1] or m[2]) == branch), c.replace('`', ''), flags=re.I)
+                       lambda m: tok((m[1] or m[2]) == branch), c, flags=re.I)
             c = re.sub(rf'(?<![\w./-]){re.escape(branch)}(?![\w/-]|\.\w)', tok(True), c) if branch else c  # a full stop ends the name
             return re.sub(rf"(\bpush\w*\s+)(?!(?:{PRONOUN}|{TAIL}|{OBJECTS['push']}|the|an?|to|and|then)(?![\w-]))([\w./-]*[\w-])",
                           lambda m: m[1] + tok(False), c, flags=re.I)

@@ -186,3 +186,9 @@ release	v1.2.0-rc.1	True	Release v1.2.0-rc.1
 release	v1.2.0-rc.1	True	Release v1.2.0-rc.1.
 release	v1.2.0-rc.1	None	Release v1.2.0.
 release	v1.2.0	None	Release v1.2.0-rc.1
+merge	o/r#41	True	Merge `#41`.
+merge	o/r#41	True	Merge `!41`
+merge	o/r#41	None	Merge `#40`.
+release	v1.2.0	True	Release `v1.2.0`.
+ask-first	systemctl --user restart t3code	True	Restart `t3code` please.
+push	main	True	Push to `main`.
