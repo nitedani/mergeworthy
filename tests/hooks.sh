@@ -2296,6 +2296,7 @@ for e in ev:
     elif e == 'waiting': w({"type": "user", "message": {"content": "Delegated task node:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aloop-a-1 (Loop A) [completed]: The gates are still running; I'll continue when they finish."}})
     elif e == 'untitled': w({"type": "user", "message": {"content": "Delegated task node:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aloop-a-1 in child thread thread:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aloop-a-1 [completed]:\nDone."}})
     elif e == 'batch': w({"type": "user", "message": {"content": "Delegated task node:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aloop-a-1 (Loop A) [completed]:\nDone.\n\nDelegated task node:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aother-9 (Review) [completed]:\nThe gates are still running; I'll continue when they finish."}})
+    elif e == 'nested': w({"type": "user", "message": {"content": "Delegated task node:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aloop-a-1 (Loop A) in child thread thread:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aloop-a-1 [completed]:\nDelegated task node:nested (Nested review) in child thread thread:nested [completed]. Use task_status with taskId node:nested to read the result.\nI will wait for the remaining review."}})
     elif e == 'other2': w({"type": "user", "message": {"content": "Delegated task node:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aother-9 (Review round 2) [completed]:\nCLEAN"}})
     else: res('task_status', e.split(':')[1])
 w({"type": "assistant", "message": {"content": [{"type": "text", "text": text}]}})
@@ -2309,6 +2310,7 @@ rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user status:running oth
 rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user status:running notice; check "BLOCK: a Running list naming the task whose completion notice came in" 2 "$(stop "$T")"
 rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user status:running untitled; check "BLOCK: also when the task has no title (\`Delegated task <id> in child thread <thread> [completed]:\`)" 2 "$(stop "$T")"
 rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user status:running batch; check "BLOCK: also when T3 announces it with another task, whose result says it continues" 2 "$(stop "$T")"
+rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user status:running nested; check "a result quoting another task's notice on a line of its own is still its task's: Loop A, saying it waits, is running" 0 "$(stop "$T")"
 rl_tr $'Started Loop A.
 
 Running:

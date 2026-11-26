@@ -6,10 +6,11 @@ import json, os, re
 
 # T3's notice is `Delegated task <id>[ (<title>)][ in child thread <thread id>] [<status>]:` with its result, or
 # `Delegated task <id> reached a terminal state` for a task it no longer knows (its formatter, delegatedCompletionWakeDetail)
-NOTICE = re.compile(r'^Delegated task (\S+)(?: \(.*?\))?(?: in child thread \S+)? (?:reached a terminal state|\[(\w+)\]:?)', re.M)
+NOTICE = re.compile(r'(?:\A|\n\n)Delegated task (\S+)(?: \(.*?\))?(?: in child thread \S+)? (?:reached a terminal state|\[(\w+)\]:?)')
 
 def notices(text):
-    """(task id, status or None, its result) for each notice of T3's message, which starts with one and holds one per finished task"""
+    """(task id, status or None, its result) for each notice of T3's message, which starts with one and holds one per finished task,
+    each after a blank line: a result quoting a notice on a line of its own stays that task's result"""
     ms = list(NOTICE.finditer(text)) if NOTICE.match(text) else []
     for m, nxt in zip(ms, ms[1:] + [None]): yield m[1], m[2], text[m.end():nxt.start() if nxt else len(text)]
 
