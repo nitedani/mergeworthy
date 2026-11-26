@@ -112,6 +112,7 @@ def steps_out(s):  # an issue's reproduction steps a newcomer needs are required
 code = '\n'.join(inner for _, _, inner in fence_spans(steps_out(prose)))
 prose = uncoded(prose)
 prose = re.sub(r'^\s*(?:[-*]\s+)?>.*$', '', prose, flags=re.M)
+coded_lines = prose.split('\n')  # the label check below reads a line's inline code before its replacement, which keeps the line count
 prose = re.sub(r'`[^`\n]*`', 'CODE', prose)
 # A PR body and a finding issue count, outside evidence blocks, the prose moved into a table or a code block (mergeworthy:writing): a sentence-long
 # cell (more than 15 words besides numbers and inline code) or a row's only cell, except a rated row's and its header's first BOUND words a
@@ -163,9 +164,12 @@ if kind != 'tracker':
     for m in re.finditer(r'^\*\*([^*\n]{1,40}?)[.:]\*\*[ \t]+\S', prose, flags=re.M):
         if len(m.group(1).split()) <= 4 and not m.group(1).strip().isdigit():
             findings.append(f"a paragraph opening with a bold label ({m.group(0).strip()[:40]!r}): say it the way you would to a colleague")
-# A label and a colon opening a sentence ("Done: …", "One change I didn't make: …") reads as a report line, not a person (mergeworthy:writing)
+# A label and a colon opening a sentence ("Done: …", "One change I didn't make: …") reads as a report line, not a person (mergeworthy:writing);
+# a maintainer-commits review's whole `CI on <sha>: <state>` line is prescribed (reply §Maintainer commits)
 if kind in ('reply', 'inline', 'proposal', 'issue'):
-    for m in re.finditer(r"(?:^|(?<=[.!?]\s))([A-Z][^:\n.!?`|*]{0,50}?):[ \t]+(?=\S)", prose, flags=re.M):
+    ci_line = r'CI on (`?)[0-9a-f]{40}\1: (?:green|none|(?:red|pending): \S.*?)[ \t]*'  # the states reply §Maintainer commits allows
+    label_prose = '\n'.join('' if re.fullmatch(ci_line, raw) else line for raw, line in zip(coded_lines, prose.split('\n')))
+    for m in re.finditer(r"(?:^|(?<=[.!?]\s))([A-Z][^:\n.!?`|*]{0,50}?):[ \t]+(?=\S)", label_prose, flags=re.M):
         if 1 <= len(m.group(1).split()) <= 6 and not re.search(r'\d$', m.group(1)):
             findings.append(f"a label opening a sentence ({m.group(0).strip()[:40]!r}): say it the way you would to a colleague")
 # Crediting a decision or idea to someone needs a link to where they said it, or a summary becomes "you agreed" (mergeworthy:writing §How a colleague writes)
