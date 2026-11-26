@@ -3,13 +3,11 @@
 Standards: `~/.mergeworthy/current/skills/code/SKILL.md` §Deep modules, §Phantom gate, §Removal gate. Include `delegate/agent.md`.
 
 The user's prompt, verbatim; `finality`'s steps say which part each agent gets. Its words:
-- **The orchestrator** is the main session: it starts every agent the prompt names (the mappers, the 3 branch agents, one per provider, the converging agent); each agent does its share itself, without starting agents.
+- **The orchestrator** is the main session: it starts every agent the prompt names (the mappers, `finality` step 3's branch agents, the converging agent); each agent does its share itself, without starting agents.
 - **§A, the shared node schema** is the per-function field list under PHASE A.
 - **§B** is PHASE B; **§B½** is PHASE B½; Phase C is the implementer's (`delegate/implementer.md`).
 - **§Closure** is the Owner-Safe closure paragraph at the end. *Every SETTLED decision propagated to its named surfaces*: every decision in `<work folder>/decisions/*.md` reached every place that describes it (code, tests, types, docs, PR bodies). *Owning lanes, mutations, reference captures, clean-tree scope*: the lanes that own the changed code (`code §Gates`), mutation probes (`code §Tests`), before/after screenshots, and a `git status` with only in-scope changes, each observed on the head.
-- Where PHASE C cites the old core skill's task and authority rules, read `code §Owner code and authority`.
 - *Fresh Guardian evidence* is Loop B's latest shape report (`converge` step 2).
-- The design doc it ends with is posted through `post` (a gist counts) unless the repo keeps design docs.
 
 ```
 Run a FINALITY PASS on <FEATURE / PATHS>.
@@ -52,7 +50,7 @@ hint of how it is solved today: those anchor the branches on what exists. Pick 6
 1 or 2 drawn from that clean problem itself (the ways it fails, the people it serves, a field that
 solved its like), never from the current solution, each with a vantage prompt you write; the rest
 from the table below, mostly tagged code or design and at least 1 tagged wild (a row with both
-tags counts for both). The orchestrator starts 3 branch agents in parallel, each given as design input only the
+tags counts for both). The orchestrator starts the branch agents in parallel, each writing finality/branch-<provider>.md, given as design input only the
 clean problem, the names and vantage prompts of 2 or 3 of those frames (no frame given twice) and
 this instruction, verbatim:
 "You are in DIVERGENT mode: a generator, not a critic. For each frame, under its name, design as its persona:
@@ -148,7 +146,7 @@ Execute the convergence plan:
   lethal in the new home — a refactor voids prior probe results for moved code),
 - adversarially gated before push.
 Keep convergence behavior-preserving; ask external maintainers about behavior or public-surface
-changes and decide changes authorized by the user’s task (`core`, The task and 1.1.9).
+changes and decide changes authorized by the user’s task (`code §Owner code and authority`).
 Finish by distilling the graph into a short design doc a maintainer can read in one sitting: the
 concept list, the stable/brittle boundary, the glossary, how it all fits together.
 Then run Owner-Safe closure reconciliation:
