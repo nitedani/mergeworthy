@@ -5,7 +5,7 @@ description: "A design question, designing an API, protocol or module, restructu
 
 # Design
 
-Takes a design to a shape the maintainer agreed to, before any PR converges. Entered from `task` step 9, `reply` step 5 or `pull-request` step 5. Keep your argued position until evidence changes it.
+Takes a design to a shape the maintainer agreed to, before any PR converges. Entered from `task` step 9, `reply` step 5 or `pull-request` step 5.
 
 ## Steps
 
@@ -15,14 +15,14 @@ Takes a design to a shape the maintainer agreed to, before any PR converges. Ent
    Open: `delegate/debater.md` (its file ends `SIMPLER:`) · Record: debaters' `<work folder>/design/<name>.<provider>.debate.md`; yours, `<work folder>/design/<name>.debate.md`, `<name>` being the decision's name
 4. **Design it twice** (Tier M or L, or a new interface). First the invariants, in `<work folder>/design/<name>.invariants.md`: what any acceptable design must keep, named by the project file or the user, one row each, with its evidence or pending check. Then one agent per provider writes three designs; you rank all by interface size and recommend the smallest that keeps every invariant. The invariant list heads every later agent's and reviewer's brief.
    Open: `delegate/designer.md`; `code §Deep modules` · Record: designers' `<work folder>/design/<name>.<provider>.design.md`; your ranking, `<work folder>/design/<name>.ranking.md`
-5. **Prototype to prove the invariants end to end,** in a copy outside any checkout (`git archive`): a real browser for UI, request counts, timing, bytes, in each supported mode (dev, prod, static), each result into the ranking. A failing design: prove the next; none left: `finality`.
+5. **Prototype to prove the invariants end to end,** in a copy outside any checkout (`git archive`): a real browser for UI, request counts, timing, bytes, in each supported mode (dev, prod, static), each result into the ranking. A failing design: prove the next; none left: `finality` steps 2–3, its pinnacle proved next.
 6. **Adversarial review of the prototype:** how does it fail? When two rounds each find a new case breaking the same rule, stop patching cases: restate them as one rule, walk every setup through it yourself, then ask again.
    Open: `delegate §Reviewers`; `delegate/reviewer.md` · Record: `<work folder>/design/<name>.review.md`
-7. **Keep the thread map:** `<work folder>/maps/<owner>-<repo>-<N>.md` (no thread: `<name>.md`), your own file: linked threads and PRs, every invariant agreed (with the link) or open, and where it is heading. A decision blocks only the part it decides: start everything else now. When `finality` step 1 applies: `finality` first. Then update the WIP comment, if any, from the map before replying.
+7. **Keep the thread map:** `<work folder>/maps/<owner>-<repo>-<N>.md` (no thread: `<name>.md`), your own file: linked threads and PRs, every invariant agreed (with the link) or open, and where it is heading. A decision blocks only the part it decides: start everything else now. When `finality` step 1 applies: its steps 2–3 first, a changed pinnacle back to step 5. **The WIP update:** then update the WIP comment, if any, from the map before replying.
    Open: §WIP comment; `finality` · Record: the map · Hook: pre-bash-guard (a third proposal on a thread waits for a map newer than the last one)
-8. **Propose** only when no invariant is broken: a walkthrough of what the user writes and what happens on each path, alternatives as code, numbered questions each with your pick; no thread: to the user, in chat.
+8. **Propose** only when no invariant is broken: the walkthrough (`writing §Design threads`), each question with your pick; no thread: to the user, in chat.
    Open: `writing §Design threads`; `post` with `--kind proposal` · Record: a thread's gate file · Hook: post-bash-register counts proposals per thread
-9. **Converge:** agreement before product code; end with the change list and ask them to confirm. Until the maintainer OKs the shape, no `converge` loops; in the user's own repos, continue on your recommendation after step 8 (a reply from the user re-opens it). Then write the decision: `Source:` (the OK's permalink, the user's dated words, or `own repo, unanswered`), the shape, its invariants. Then: called by `pull-request` step 5, return it there; else a PR task starts `pull-request` at step 1, a design-only one ends here. After a PR opens, each commit answers a request, a red CI, a found bug, or a mergeworthy rule.
+9. **Converge:** agreement before product code. In the user's own repos, continue on your recommendation after step 8 (a reply from the user re-opens it). Then write the decision: `Source:` (the OK's permalink, the user's dated words, or `own repo, unanswered`), the shape, its invariants. Then: called by `pull-request` step 5, return it there; else a PR task starts `pull-request` at step 1, a design-only one ends here. After a PR opens, each commit answers a request, a red CI, a found bug, or a mergeworthy rule.
    Record: `<work folder>/decisions/<name>.md`, written here only · Hook: pre-design-gate (Tier M/L: no code before it)
 
 ### WIP comment

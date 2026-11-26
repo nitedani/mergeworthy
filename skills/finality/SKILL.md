@@ -5,7 +5,7 @@ description: "The finality pass, for code that has drifted through many patches,
 
 # Finality
 
-Converges code or a design to the final state that will need no rewrite. The prompt is `delegate/finality.md`'s, filled; each step gives one agent its part. Called by `converge` step 0, `design` step 7 and `pull-request` steps 5–6; when done, return there.
+Converges code or a design to the final state that will need no rewrite. The prompt is `delegate/finality.md`'s, filled; each step gives one agent its part. Called by `converge` step 0, `design` steps 5 and 7 (steps 2–3; Phase C after `design` step 9, in `pull-request` step 6) and `pull-request` steps 5–6; when done, return to the calling step.
 
 ## Steps
 
@@ -18,7 +18,7 @@ Converges code or a design to the final state that will need no rewrite. The pro
    Open: `delegate/finality.md` (PHASE B½); `code §Removal gate` · Record: `<work folder>/finality/<name>-phantoms.md`: suspects, counters, removals
 5. **Phase C, converge:** behavior-preserving, revert-ready commits through an implementer, gates after each.
    Open: `delegate/implementer.md` · Record: commits
-6. **The deliverable is the short design doc**, posted through `post` (a gist counts) unless the repo keeps design docs; in a design thread, `design` step 7 follows.
+6. **The deliverable is the short design doc**, posted through `post` (a gist counts) unless the repo keeps design docs; in a design thread, then `design` step 7's WIP update.
    Open: `post` · Record: the doc's link or repo path
 7. **Owner-Safe closure,** last in `converge` step 5: it needs the reviewer's and the shape pass's evidence.
    Open: `delegate/finality.md` (the closure paragraph and its header's glossary) · Record: `<work folder>/finality/<name>-closure.md`
