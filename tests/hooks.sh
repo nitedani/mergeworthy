@@ -821,6 +821,7 @@ check "BLOCK: one model of two without its effort" 1 "$(elint '*Opus 5.5 (high e
 check "BLOCK: a model line with no versioned model and no effort" 1 "$(elint '*Claude wrote this.*')"
 check "the effort right after each model passes, every level" 0 "$(elint '*Opus 5.5 (low effort) wrote this; Haiku 5.5 (medium effort) tested it; Opus 5.5 (xhigh effort), Opus 5.5 (max effort) and Opus 5.5 (ultra effort) reviewed it.*')"
 check "the effort inside the model's parenthesis passes" 0 "$(elint '*Opus 5.5 (high effort) wrote this; GPT-6.1-Sol (Codex, high effort) reviewed it.*')"
+check "a model named by a word after its version passes with its effort, and is flagged without it" "0 1" "$(elint '*Gemini 4 Neon (Antigravity, high effort) wrote this; GPT-6.1-Sol (Codex, high effort) reviewed it.*') $(elint '*Opus 5.5 (high effort) wrote this; Gemini 4 Neon (Antigravity) reviewed it.*')"
 check "a link to the WIP comment isn't read as a model" 0 "$(elint '*Opus 5.5 (high effort) wrote this. [WIP](https://github.com/vikejs/vike/issues/3407#issuecomment-6100167145)*')"
 # ---------- post-lint: a reply doesn't defer a quick win ----------
 qlint() { printf '%s' "$1" > "$T/quick.md"; python3 "$R/bin/post-lint" "$T/quick.md" --kind reply --parent none 2>&1 | grep -c 'defers work'; }
