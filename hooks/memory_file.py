@@ -53,14 +53,21 @@ def texts(o):
     c = (o.get('message') or {}).get('content')
     return [c] if isinstance(c, str) else [b.get('text', '') for b in c or [] if b.get('type') == 'text']
 
-def orchestrator(line, tid):
+HANDOFF = 'Context handoff ('  # how T3 Code opens the session it hands a thread to
+
+def orchestrator(line, tid, cwd=None):
     """A log line that marks a later session of the orchestrator: a prompt naming its thread (T3 Code's context handoff).
-    A child session's log names the thread only in tool output."""
+    A child session's log names the thread only in tool output. In the other provider's folder (cwd, the checkout memory.source
+    names) only T3's handoff itself counts, in an entry of that checkout: a prompt there that only mentions the thread is
+    another session's, and Antigravity's folder holds every checkout's conversations."""
     if tid not in line:
         return False
     try: o = json.loads(line)
     except ValueError: return False
-    return prompt(o) and any(tid in t for t in texts(o))
+    if not prompt(o): return False
+    if cwd is None: return any(tid in t for t in texts(o))
+    at = o.get('cwd') or ''
+    return (at == cwd or at.startswith(cwd.rstrip('/') + '/')) and any(t.startswith(HANDOFF) and tid in t for t in texts(o))
 
 def claude_logdir(cwd):
     """Where Claude Code keeps a checkout's session logs: ~/.claude/projects/<its path, every other character a dash>."""
@@ -75,9 +82,9 @@ def thread_logs(root, since=0.0):
     src = source(root); cache_f = os.path.join(root, '.memory-orchestrator-logs.json')
     cache = json.load(open(cache_f)) if os.path.exists(cache_f) else {}
     out, tid = [], src['thread']
-    files = [os.path.join(d, f) for d in dict.fromkeys((src['logdir'], claude_logdir(src['cwd']), agy.DIR)) if os.path.isdir(d)
-             for f in os.listdir(d)]
-    for p in files:
+    own = src['logdir']  # its provider's folder: missing, it fails, as memory is set up from it
+    others = [d for d in dict.fromkeys((claude_logdir(src['cwd']), agy.DIR)) if d != own and os.path.isdir(d)]
+    for p, other in [(os.path.join(d, f), d != own) for d in (own, *others) for f in os.listdir(d)]:
         f = os.path.basename(p)
         if not f.endswith('.jsonl') or os.path.getmtime(p) < since:
             continue
@@ -89,7 +96,7 @@ def thread_logs(root, since=0.0):
                     if not l.endswith(b'\n'):
                         break
                     pos += len(l)
-                    if orchestrator(l.decode(errors='replace'), tid):
+                    if orchestrator(l.decode(errors='replace'), tid, src['cwd'] if other else None):
                         hit = True; break
             cache[p] = (pos, hit)
         if hit:

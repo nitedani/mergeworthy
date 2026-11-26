@@ -5386,11 +5386,11 @@ sed -i "\|^$MH\$|d; \|^$MH3\$|d" "$HOME/.mergeworthy/memory-roots.txt"
 CD="$HOME/.claude/projects/$(printf '%s' "$AGR" | sed 's/[^A-Za-z0-9]/-/g')"; mkdir -p "$CD"
 clog() { # <session> <text of a typed prompt> <answer> [thread a T3 handoff names first]: a Claude Code session log in the checkout's folder
   python3 -c 'import json, sys, datetime as d
-f, p, a = sys.argv[1:4]; t = d.datetime.now(d.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
-w = lambda o: open(f, "a").write(json.dumps(o, separators=(",", ":")) + "\n")
-if len(sys.argv) > 4: w({"type": "user", "timestamp": t, "promptSource": "sdk", "message": {"role": "user", "content": "Context handoff (manual_context):\nThread: " + sys.argv[4]}})
-w({"type": "user", "timestamp": t, "promptSource": "typed", "message": {"role": "user", "content": p}})
-w({"type": "assistant", "timestamp": t, "message": {"role": "assistant", "content": [{"type": "text", "text": a}], "stop_reason": "end_turn"}})' "$CD/$1.jsonl" "$2" "$3" ${4:+"$4"}; }
+f, w0, p, a = sys.argv[1:5]; t = d.datetime.now(d.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+w = lambda o: open(f, "a").write(json.dumps({**o, "timestamp": t, "cwd": w0}, separators=(",", ":")) + "\n")
+if len(sys.argv) > 5: w({"type": "user", "promptSource": "sdk", "message": {"role": "user", "content": "Context handoff (manual_context):\nThread: " + sys.argv[5]}})
+w({"type": "user", "promptSource": "typed", "message": {"role": "user", "content": p}})
+w({"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": a}], "stop_reason": "end_turn"}})' "$CD/$1.jsonl" "$AGR" "$2" "$3" ${4:+"$4"}; }
 MXA="$T/agy-mem-to-claude"; st "$AG/xa.jsonl" "USER_INPUT:Agy ruling" "PLANNER_RESPONSE:Agy answer"; ev2 xa; hinit "$MXA" xa thread-xa; mem_at "$MXA" "$(hd "$MXA" 2)" >/dev/null
 clog claude-xa "Claude ruling" "Claude answer" thread-xa
 check "agy: memory set up under Antigravity follows the thread to Claude Code: behind, and prep has Claude's prompt and answer" \
@@ -5402,6 +5402,29 @@ st "$AG/xb.jsonl" "$(hand thread-xb)" "USER_INPUT:Agy later" "PLANNER_RESPONSE:A
 check "agy: memory set up under Claude Code follows the thread to Antigravity: behind, and prep has agy's prompt and answer" \
   "True 0 Agy later|Agy later answer" "$(mem_at "$MXB" "$(hd "$MXB" 2)")"
 sed -i "\|^$MXA\$|d; \|^$MXB\$|d" "$HOME/.mergeworthy/memory-roots.txt"
+# a session in the other provider's folder joins the thread only by T3's handoff naming it, in an entry of the same checkout:
+# under Claude Code, an Antigravity conversation of this checkout that only mentions the thread, or one of another checkout
+# that T3 handed it to, is another session's
+ago() { # <conversation> <cwd> <type:content>...: agy's conversation in cwd, transcribed at a Stop there
+  local c=$1 w=$2; shift 2; st "$AG/$c.jsonl" "$@"
+  python3 -c 'import json, sys; print(json.dumps({"conversationId": sys.argv[1], "cwd": sys.argv[2], "transcriptPath": sys.argv[3], "hookEventName": "Stop", "executionNum": 0}))' "$c" "$w" "$AG/$c.jsonl" | python3 "$R/hooks/agy.py" Stop >/dev/null; }
+MXC="$T/agy-mem-typed"; clog cs-xc "Claude first" "Claude first answer"
+(cd "$AGR" && env -u ANTIGRAVITY_CONVERSATION_ID CLAUDE_CODE_SESSION_ID=cs-xc python3 "$R/bin/memory-prep" init "$MXC" thread-xc >/dev/null 2>&1 && python3 "$R/bin/memory-prep" prep "$MXC" >/dev/null 2>&1)
+mem_at "$MXC" "$(hd "$MXC" 2)" >/dev/null
+AGO="$AG/other-repo"; mkdir -p "$AGO"
+ago xc-typed "$AGR" "USER_INPUT:What did thread-xc decide?" "PLANNER_RESPONSE:Typed mention answer"
+ago xc-other "$AGO" "$(hand thread-xc)" "USER_INPUT:Other checkout ruling" "PLANNER_RESPONSE:Other checkout answer"
+check "agy: under Claude Code, an Antigravity conversation of the checkout that only mentions the thread, and one of another checkout T3 handed it to, don't join it: not behind" \
+  "False" "$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import memory_file; print(memory_file.behind(sys.argv[2]))' "$R/hooks" "$MXC")"
+# the folder memory.source names gone: the check fails, as memory is set up from it, never reads as nothing new
+MXD="$T/agy-mem-gone"; GO="$AG/gone-repo"; mkdir -p "$GO"; GLD="$HOME/.claude/projects/$(printf '%s' "$GO" | sed 's/[^A-Za-z0-9]/-/g')"; mkdir -p "$GLD"
+(cd "$GO" && env -u ANTIGRAVITY_CONVERSATION_ID CLAUDE_CODE_SESSION_ID=cs-xd python3 "$R/bin/memory-prep" init "$MXD" thread-xd >/dev/null 2>&1)
+rmdir "$GLD"
+check "agy: memory set up, then its session-log folder gone: the behind check fails" "set FileNotFoundError" \
+  "$([ -f "$MXD/memory.source" ] && echo set) $(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import memory_file
+try: print(memory_file.behind(sys.argv[2]))
+except OSError as e: print(type(e).__name__)' "$R/hooks" "$MXD")"
+sed -i "\|^$MXC\$|d; \|^$MXD\$|d" "$HOME/.mergeworthy/memory-roots.txt"
 # a step first seen more than 10 minutes after agy's own time for it (a conversation reopened, pruned or from before step times)
 # keeps agy's time: old history stays old for the memory and for every hook that reads a time
 sta() { # <conversation> <ago>|<type:content>...: agy's steps, each at its own time (`date -d` relative, e.g. "-2 days")
