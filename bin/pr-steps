@@ -178,6 +178,9 @@ if [ "$step" = small ]; then
   # the verdict ends the report, before any trailing Verification or not_checked section (delegate/agent.md asks every agent for not_checked)
   verdict=$(awk '{ l = tolower($0) } l ~ /^#+[ \t]*(verification|not[ _]checked)([^a-z]|$)/ { tail = 1; next } /^#/ { tail = 0 } !tail' "$out" | grep -v '^[[:space:]]*$' | tail -n2 | tr '\n' '|')
   [ "$(grep -v '^[[:space:]]*$' "$out" | tail -n2 | tr '\n' '|')" = 'NO BUGS|MERGE AS IS: yes|' ] || [ "$verdict" = 'NO BUGS|MERGE AS IS: yes|' ] || ledger_ok || { echo "$out does not end with NO BUGS and MERGE AS IS: yes: fix what it found, then send the next round to a fresh reviewer, or a fix check of its own findings to the same one while it is recent (mergeworthy:delegate §Reviewers); after its last round, record it with --ledger <the loop's ledger>" >&2; exit 1; }
+  # its round 1 seats two reviewers (converge §Small fix): until the other seat's report is recorded too, this one is a seat's
+  seats=$(python3 "$(dirname "$(realpath "$0")")/../hooks/loops.py" seats "$out" ~/.claude/pr-steps/"$sha" small) || exit 1
+  [ -z "$seats" ] || { record small small-seat; echo "recorded $out as one seat of the small fix's review for $sha; it is recorded with the report of $(echo $seats)"; exit 0; }
   record small verify shape reverify fresh
   echo "recorded small fix ($n lines) for $sha: verify, shape, reverify, fresh; run the gates next"
   exit 0

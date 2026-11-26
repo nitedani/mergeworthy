@@ -3166,6 +3166,13 @@ printf 'x\n## Outside this change\nNone.\n\nNO BUGS\nMERGE AS IS: yes\n\n## Veri
 check "pr-steps small records a report whose verdict comes before its Verification and not_checked sections" 0 "$(prss "$T/sr5.md")"
 printf 'x\n## Outside this change\nNone.\n\n## not_checked\n- Windows\n\nNO BUGS\nMERGE AS IS: yes\n' > "$T/sr6.md"
 check "pr-steps small records a report whose verdict ends the file after its not_checked section" 0 "$(prss "$T/sr6.md")"
+echo t2 >> "$GS/test/a.test.ts"; git -C "$GS" -c user.name=t -c user.email=t@t commit -qam e; SSH=$(git -C "$GS" rev-parse HEAD); for s in codex claude; do cp "$T/sr6.md" "$T/small-$s.md"; done
+ssr() { fo small-$1-r1 "{\"providerInstanceId\":\"$2\"}" "Review: small
+Review $GS at head $SSH; output to $T/small-$1.md
+$FO
+Seats: codex, claude"; }
+check "pr-steps small on a review seating two reviewers records the first report as a seat's, and the step once the second's is recorded" "0 0 0 0 0 1" \
+  "$(ssr codex codex) $(ssr claude claudeAgent) $(prss "$T/small-codex.md") $(grep -c '^fresh ' "$HOME/.claude/pr-steps/$SSH") $(prss "$T/small-claude.md") $(grep -c '^fresh ' "$HOME/.claude/pr-steps/$SSH")"
 mkdir -p "$GS/dist" "$GS/gen"; seq 1 300 > "$GS/dist/a.mjs"; seq 1 300 > "$GS/gen/api.ts"; echo 'gen/** linguist-generated' > "$GS/.gitattributes"; git -C "$GS" add -A; git -C "$GS" -c user.name=t -c user.email=t@t commit -qm bundle
 check "pr-steps small doesn't count a committed build bundle (dist/) or a linguist-generated file" 0 "$(prss "$T/sr2.md")"
 seq 1 100 > "$GS/gen/árvíz.ts"; git -C "$GS" add gen; git -C "$GS" -c user.name=t -c user.email=t@t commit -qm gen
