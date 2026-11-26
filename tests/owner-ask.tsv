@@ -176,3 +176,9 @@ merge	o/r#41	None	GitHub's own "mergeable" only compares against main.\nTHATS EX
 merge	nitedani/t3code#6	None	The only thing waiting on you is still the merge of [nitedani/t3code#6](https://github.com/nitedani/t3code/pull/6).\n\nWHY IS IT WAITIN ON ME. DO YOUR THING
 merge	o/r#41	None	The most reliable way to stop OOM crashes is to turn off ballooning.\nStop allocating every last byte to the VM.
 merge	o/r#41	False	Merge #41. Stop.
+push	main	True	Push main.
+push	main	True	Push main, please.
+push	main	True	Push légyszi
+push	main	True	Push kérlek
+push	main	None	Push scratch.
+push	main	None	Push main.backup
