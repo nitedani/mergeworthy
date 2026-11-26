@@ -5093,8 +5093,8 @@ for i, l in enumerate(open(sys.argv[1] + "/tests/owner-ask.tsv"), 1):
     if str(got) != want: print(f"line {i}: {x!r} gives {got}")
 n or print("no phrasings")' "$R"; }
 check "each phrasing of tests/owner-ask.tsv gets its verdict from owner_ask.asks; a failing one is named by its line" "" "$(oa)"
-check "a merge the typed message asks for passes; BLOCK: an older ask, a T3 scheduled prompt" "0 2 2" \
-  "$(said 'merge it'; lg "$M") $(said 'merge it' 'wait, not yet'; lg "$M") $(said 'thanks' '[T3 Code: scheduled task "zqs-check" sent this prompt.] Goal: merge and land PR #41'; lg "$M")"
+check "a merge the typed message asks for passes, as the owner asked for one; BLOCK: an older ask, a T3 scheduled prompt" "0 2 2" \
+  "$(said 'for now lets just merge the sentry pr and release it'; lg "$M") $(said 'merge it' 'wait, not yet'; lg "$M") $(said 'thanks' '[T3 Code: scheduled task "zqs-check" sent this prompt.] Goal: merge and land PR #41'; lg "$M")"
 printf '## Merging\n- Merge each PR as soon as it is ready (gates, CI)\n' >> "$HOME/.mergeworthy/projects/o/r.md"
 check "a merge under the project file's standing order passes with no ask; BLOCK: the typed message holding it back wins over the order" "0 2" \
   "$(said 'thanks'; lg "$M") $(said "Don't merge #41."; lg "$M")"
