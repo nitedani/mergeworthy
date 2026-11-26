@@ -71,7 +71,7 @@ def asks(text, kind, repo=None, num=None, branch=None, subject=None):
         if not re.search(words, bare(s), re.I):
             if HALT.match(m := bare(marked(s)).strip()) and on(m): return False
             continue
-        for c in re.split(r'[,;—–]|\bthen\b|\b(?:and|és)\b(?!\s*(?:[#!]\d|https?:|[\w.-]+/[\w./-]*[#!]\d))', s):
+        for c in re.split(r'[,;—–]|\s-+\s|\bthen\b|\b(?:and|és)\b(?!\s*(?:[#!]\d|https?:|[\w.-]+/[\w./-]*[#!]\d))', s, flags=re.I):
             st = stance(m := bare(marked(c)), s.rstrip().endswith('?'))
             if st == 'holds' and on(m): return False
             found = found or st == 'asks' and ('‹t›' in m or on(marked(text))) or None

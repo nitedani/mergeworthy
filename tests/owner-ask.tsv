@@ -197,3 +197,8 @@ merge	o/r#41	True	merge all of the prs please
 push	main	True	Push all the commits.
 push	main	True	push all changes
 merge	o/r#41	None	Merge all the other PRs.
+merge	o/r#41	True	Merge #41 - then tell me how it went.
+merge	o/r#41	True	Please merge #41 AND send me the result.
+merge	o/r#41	True	Merge #41 -- thanks
+merge	o/r#41	True	Merge it THEN tell me if CI fails
+merge	o/r#41	False	Don't merge #41 - wait for CI
