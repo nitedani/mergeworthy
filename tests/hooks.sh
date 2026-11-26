@@ -5088,11 +5088,13 @@ oa() { python3 -c 'import sys; sys.path.insert(0, sys.argv[1] + "/hooks"); impor
 n = 0
 for i, l in enumerate(open(sys.argv[1] + "/tests/owner-ask.tsv"), 1):
     if l.startswith("#") or not l.strip(): continue
-    a, t, want, x = l.rstrip("\n").split("\t"); x = x.replace("\\n", "\n"); r, _, num = t.partition("#"); n += 1
+    try: a, t, want, x = l.rstrip("\n").split("\t")
+    except ValueError: print(f"line {i}: not 4 tab-separated fields"); continue
+    x = x.replace("\\n", "\n"); r, _, num = t.partition("#"); n += 1
     got = owner_ask.asks(x, a, r, num or None) if a == "merge" else owner_ask.asks(x, a, branch=t) if a == "push" else owner_ask.asks(x, a, subject=None if t == "-" else t)
     if str(got) != want: print(f"line {i}: {x!r} gives {got}")
 n or print("no phrasings")' "$R"; }
-check "each phrasing of tests/owner-ask.tsv gets its verdict from owner_ask.asks; a failing one is named by its line" "" "$(oa)"
+check "each phrasing of tests/owner-ask.tsv gets its verdict from owner_ask.asks; a failing one is named by its line, a runner error or an empty table fails" "" "$(oa 2>&1 || echo "the runner exited $?")"
 check "a merge the typed message asks for passes, as the owner asked for one; BLOCK: an older ask, a T3 scheduled prompt" "0 2 2" \
   "$(said 'for now lets just merge the sentry pr and release it'; lg "$M") $(said 'merge it' 'wait, not yet'; lg "$M") $(said 'thanks' '[T3 Code: scheduled task "zqs-check" sent this prompt.] Goal: merge and land PR #41'; lg "$M")"
 printf '## Merging\n- Merge each PR as soon as it is ready (gates, CI)\n' >> "$HOME/.mergeworthy/projects/o/r.md"
