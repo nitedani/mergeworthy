@@ -338,7 +338,7 @@ def gated_file(p, has_cd, create=False):
             block(f"{p} was already posted: edit that post instead (PATCH / gh … edit)")
 
 def check_badge_models(p):
-    """The Claude models p's badge names (`Claude Opus 5.5`) are ones this session ran on or launched an agent on in the last day, as its transcript says."""
+    """The Claude and Gemini models p's badge names (`Claude Opus 5.5`, `Gemini 4 Neon`) are ones this session ran on or launched an agent on in the last day, as its transcript says."""
     text = open(p, errors='replace').read()
     try: req = json.loads(text)
     except ValueError: req = None
@@ -346,13 +346,14 @@ def check_badge_models(p):
     first = re.sub(r'\ATitle:[^\n]*\n', '', text).lstrip().split('\n', 1)[0]
     line = re.sub(r'\]\([^)]*\)', ']', first.split('*', 1)[1]) if first.startswith('<img') and '*' in first else ''  # link targets aren't model names
     named = {(f"claude-{f.lower()}", f"claude-{f.lower()}-{v.replace('.', '-')}") for f, v in re.findall(r'\bClaude ([A-Z][a-z]+) (\d+(?:\.\d+)*)\b', line)}
+    named |= {('gemini', f"gemini-{v}-{f.lower()}") for v, f in re.findall(r'\bGemini (\d+(?:\.\d+)*) ([A-Z][a-z]+)\b', line)}
     if not named: return
     if not (path := shellcmd.transcript(d)): return  # a native subagent's post: its own transcript
     try: ran = transcript_facts.read(path).recent_models()
     except OSError: return
-    # claude-sonnet: an agent launched on the alias, any version; claude-haiku-4-5-20251001: a dated snapshot of claude-haiku-4-5
-    if missing := sorted(m for f, m in named if not any(r == f or re.fullmatch(re.escape(m) + r'(-\d{8})?', r) for r in ran)):
-        block(f"{p}'s badge names {', '.join(missing)}, which this session didn't run on or launch an agent on in the last day; it ran {', '.join(sorted(ran)) or 'no Claude model'}: "
+    # claude-sonnet: an agent launched on the alias, any version; claude-haiku-4-5-20251001: a dated snapshot of claude-haiku-4-5; gemini-4-neon-high: gemini-4-neon at an effort
+    if missing := sorted(m for f, m in named if not any(r == f or re.fullmatch(re.escape(m) + r'(-\d{8}|-[a-z]+)?', r) for r in ran)):
+        block(f"{p}'s badge names {', '.join(missing)}, which this session didn't run on or launch an agent on in the last day; it ran {', '.join(sorted(ran)) or 'no Claude or Gemini model'}: "
               "name the models that worked on this post (mergeworthy:writing, the badge), then post-lint it, run its review again (mergeworthy:post step 3) and gate-pass it")
 
 def local_login():
