@@ -116,9 +116,9 @@ class Kinds:
         self.author = self.implementation or self.drafter or 'MERGE AS IS' in brief
         self.research = req.role == 'research' or bool(re.search(r'\bresearch', f"{req.title} {req.description}", re.I))
         self.refresh = memory_launch(req.task)  # decided here, at admission, and stored on the pending call; `refresh` on the job too
-        # A fan-out a step names (finality steps 2-3, converge's per-slice verifiers) says so on a `Fan-out:` line, in the task or its brief, and passes
-        # the cap; the fan-out agents already open still count against an ordinary launch
-        self.fanout = not self.implementation and bool(re.search(r'^Fan-out: (finality step [23]|converge §Running the agents)$', brief, re.M))
+        # A fan-out a step names (finality steps 2-3, converge's per-slice verifiers, the per-provider seats of delegate §Model class) says so on a
+        # `Fan-out:` line, in the task or its brief, and passes the cap; the fan-out agents already open still count against an ordinary launch
+        self.fanout = not self.implementation and bool(re.search(r'^Fan-out: (finality step [23]|design step [34]|pull-request step 5|converge §Running the agents)$', brief, re.M))
         self.writer = req.role not in READERS
 k = Kinds(req, brief)
 def is_refresh(r):

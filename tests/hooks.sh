@@ -1370,6 +1370,14 @@ check "on Antigravity a review, a design, research and a finality branch pass, b
 Fan-out: finality step 3') $(impl '{}' antigravity review 'Review it') $(impl '{}' antigravity research 'Research the cache')"
 check "under Antigravity a launch on claudeAgent passes, and so does one with no target under Claude Code; a review on claude_2 (a Claude instance) still needs its Fallback line" "0 0 2" \
   "$(impl '{"providerInstanceId":"claudeAgent"}' antigravity research 'Research the cache') $(impl '{}' '' research 'Research the cache') $(rev '{"providerInstanceId":"claude_2"}' 'Review it')"
+# delegate §Model class's per-provider seat: one brief's problem, a launch per provider, each with its own title, clientRequestId and output
+printf 'Debate the cache question.\nFan-out: design step 3\n' > "$T/fx/seat-brief.md"
+seat() { # provider [task]: a debater launch's exit code, registered when it passes
+  local j; j=$(python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"seat","tool_input":{"task":sys.argv[2],"title":"cache debate "+sys.argv[1],"role":"design","clientRequestId":"cache-debate-"+sys.argv[1],"target":{"providerInstanceId":sys.argv[1]}}}))' "$1" "${2:-Follow $T/fx/seat-brief.md; output to $T/fx/cache.$1.debate.md}")
+  printf '%s' "$j" | T3CODE_THREAD_ID=th python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; local r=$?; [ $r = 0 ] && printf '%s' "$j" | T3CODE_THREAD_ID=th python3 "$R/hooks/pre-agent-dedupe.py" register; echo $r; }
+check "a seat's three launches, one per provider (claudeAgent, codex, antigravity), all pass; BLOCK: a fourth with the claudeAgent launch's task under another title" "0 0 0 2 1" \
+  "$(seat claudeAgent) $(seat codex) $(seat antigravity) $(seat claude_2 "Follow $T/fx/seat-brief.md; output to $T/fx/cache.claudeAgent.debate.md") $(grep -c 'same work under another title' "$T/err")"
+for p in claudeAgent codex antigravity; do python3 "$R/bin/agent-job" done "cache debate $p" >/dev/null; done
 echo '{"providerInstances":{"antigravity":{"driver":"codex"},"antigravity_2":{"driver":"antigravity"}}}' > "$HOME/.t3/userdata/settings.json"
 check "BLOCK: an implementer on a target naming the antigravity driver alone, while the instance id antigravity runs Codex, as the Antigravity instance does" "2 2" \
   "$(impl '{"driverKind":"antigravity"}') $(impl '{"providerInstanceId":"antigravity_2"}')"
@@ -1563,13 +1571,13 @@ for f in glob.glob(os.path.expanduser('~/.claude/agent-jobs-launch/*')):
 PY
 check "a launch after three calls whose agents finished with no result reaching the launcher passes: a finished agent holds no slot" "0 0 0 0" "$r $(fin_pre fin-4 'Execute /tmp/x/fin4.md')"
 rm -rf "$LD2"; rm -f $(grep -l '"capF2"' "$HOME"/.claude/agent-jobs-launch/*)
-check "a fifth brief naming its fan-out step passes; one naming another step does not" "0 2" "$(cap capS $'Execute /tmp/x/cap8.md\nFan-out: converge §Running the agents') $(cap capS $'Execute /tmp/x/cap9.md\nFan-out: review step 2')"
+check "a fifth brief naming its fan-out step passes, a per-provider seat's too; one naming another step does not" "0 0 0 2" "$(cap capS $'Execute /tmp/x/cap8.md\nFan-out: converge §Running the agents') $(cap capS $'Execute /tmp/x/cap11.md\nFan-out: design step 3') $(cap capS $'Execute /tmp/x/cap12.md\nFan-out: pull-request step 5') $(cap capS $'Execute /tmp/x/cap9.md\nFan-out: review step 2')"
 cap_impl() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"capS","tool_input":{"task":sys.argv[1],"title":"impl","role":"implementation"}}))' "$1$AFX" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; echo $?; }
 check "BLOCK: an implementation brief carrying the fan-out line still counts" 2 "$(cap_impl $'Execute /tmp/x/cap10.md\nFan-out: converge §Running the agents')"
 FB="$HOME/.mergeworthy/work/fx/verify-1.md"; mkdir -p "${FB%/*}"; printf 'Verify slice 1.\nFan-out: converge §Running the agents\n' > "$FB"
 check "a fifth launch following a work-folder brief that holds the fan-out line passes" 0 "$(cap capS "Follow $FB exactly")"
 python3 "$R/bin/agent-job" done "$(python3 -c 'import sys; print(sys.argv[1][:40])' "Follow $FB exactly")" >/dev/null  # its key: the title
-python3 "$R/bin/agent-job" done /tmp/x/cap8.md >/dev/null; python3 "$R/bin/agent-job" done /tmp/x/cap1.md >/dev/null
+for k in cap8 cap11 cap12 cap1; do python3 "$R/bin/agent-job" done "/tmp/x/$k.md" >/dev/null; done
 check "a released job no longer counts" 0 "$(cap capS 'Execute /tmp/x/cap4.md')"
 python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600, "launched": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "cap2.md" in open(f).read()]'
 mkdir -p "$HOME/.claude/projects/-cap"; python3 -c 'import json,sys,time; w=lambda o: print(json.dumps(o)); w({"type":"queue-operation","operation":"enqueue","timestamp":time.strftime("%Y-%m-%dT%H:%M:%S.000Z",time.gmtime(time.time()-600)),"content":"Execute /tmp/x/cap2.md"}); w({"type":"user","message":{"content":"Execute /tmp/x/cap2.md"}}); w({"type":"assistant","message":{"content":[{"type":"text","text":"Report written."}]}})' > "$HOME/.claude/projects/-cap/cap2.jsonl"
