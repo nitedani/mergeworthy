@@ -7,8 +7,9 @@ the earliest-started one under ~/.claude/projects or ~/.codex/sessions that star
 carries the job's whole task (or, for a job an older hook registered with only its key and start, every ticket path in the key).
 It has finished when that transcript has been quiet for QUIET
 seconds with no tool call pending, for LONG seconds whatever it was doing (no foreground tool call runs ten minutes),
-Claude Code stopped it, or its launcher was told it ended (noticed), while T3 Code shows no active run or background command of its thread and no agent it launched is still at work."""
-import datetime, glob, hashlib, itertools, json, os, re, sys, time
+Claude Code stopped it, or its launcher was told it ended (noticed), while T3 Code shows no active run or background command of its thread and no agent it launched is still at work.
+It also holds the stores pre-agent-dedupe's other checks keep: CIDS and BUILT."""
+import datetime, fcntl, glob, hashlib, itertools, json, os, re, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import memory_file, steward, t3_tasks
 from shellcmd import rlines
@@ -17,6 +18,8 @@ JOBS = os.path.expanduser('~/.claude/agent-jobs')
 REPORTED = os.path.expanduser('~/.claude/agent-jobs-reported')  # <job file>-<transcript mtime>: reported once per finish
 LAUNCHED = os.path.expanduser('~/.claude/agent-jobs-launch')  # <job file>: pre-agent-dedupe's decision on a launch it let through (its docstring lists the fields)
 LAUNCH = re.compile(rb'"name": ?"(Agent|Task|mcp__[^"]*(delegate_task|t3_thread_launch|t3_thread_send))"')  # pre-agent-dedupe's matcher
+CIDS = os.path.expanduser('~/.claude/agent-client-request-ids.json')  # {clientRequestId: when its launch registered}
+BUILT = os.path.expanduser('~/.claude/approach-builds')  # per approach record: the time of the record the PR's last build was briefed on
 QUIET, LONG, OPEN = 180, 660, 24 * 3600  # OPEN: pre-agent-dedupe's window, after which a job no longer counts
 TASK_NOTICE = re.compile(r'<task-notification>\s*<task-id>(\w+)</task-id>')  # Claude Code's, for a background agent or command
 KILLED = re.compile(TASK_NOTICE.pattern + r'.*?<status>killed</status>', re.S)
@@ -35,6 +38,17 @@ def jobs(now=None):
     """(file name, job) for each open job: registered in the last day and not released."""
     now = now or time.time()
     return [(f, j) for f, j in registered() if now - j.get('started', 0) < OPEN]
+
+def locked_update(path, change):
+    """Applies change to the JSON object in path (an empty one while it is missing) and writes it back, under path's lock:
+    concurrent launches update it one at a time."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path + '.lock', 'a') as held:
+        fcntl.flock(held, fcntl.LOCK_EX)
+        data = json.load(open(path)) if os.path.exists(path) else {}
+        change(data)
+        with open(path + '.tmp', 'w') as o: json.dump(data, o)
+        os.replace(path + '.tmp', path)
 
 def remove(path):
     """Deletes path; one another process deleted first is gone already."""
@@ -252,8 +266,8 @@ def noticed(launcher, path):
         if t and t.get('taskId') in ids and t.get('status') in ('completed', 'failed', 'cancelled', 'interrupted'): return True
         # delivered as a prompt, or mid-turn as a queued_command attachment
         c = (e.get('message') or {}).get('content') if e.get('type') == 'user' else (e.get('attachment') or {}).get('prompt')
-        n, cn = isinstance(c, str) and t3_tasks.NOTICE.match(c), isinstance(c, str) and TASK_NOTICE.match(c)
-        if n and n[1] in ids or agent and cn and cn[1] == agent[1]: return True
+        cn = isinstance(c, str) and TASK_NOTICE.match(c)
+        if isinstance(c, str) and any(task in ids for task, _, _ in t3_tasks.notices(c)) or agent and cn and cn[1] == agent[1]: return True
     return False
 
 def reported(f, mtime):

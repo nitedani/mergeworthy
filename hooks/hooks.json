@@ -90,6 +90,16 @@
     ],
     "PostToolUseFailure": [
       {
+        "matcher": "^mcp__.*delegate_task$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run pre-agent-dedupe.py register",
+            "timeout": 600
+          }
+        ]
+      },
+      {
         "matcher": "Bash",
         "hooks": [
           {

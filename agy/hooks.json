@@ -1,0 +1,19 @@
+{
+  "mergeworthy": {
+    "SessionStart": [{"type": "command", "command": "python3 ../hooks/agy.py SessionStart", "timeout": 600}],
+    "PreToolUse": [
+      {
+        "matcher": "^(run_command|write_file|edit_file|swarm|mcp_.*(delegate_task|t3_thread_launch|t3_thread_send|create_threads))$",
+        "hooks": [{"type": "command", "command": "python3 ../hooks/agy.py PreToolUse", "timeout": 600}]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^(run_command|mcp_.*(delegate_task|t3_thread_launch|t3_thread_send))$",
+        "hooks": [{"type": "command", "command": "python3 ../hooks/agy.py PostToolUse", "timeout": 600}]
+      }
+    ],
+    "PostInvocation": [{"type": "command", "command": "python3 ../hooks/agy.py PostInvocation", "timeout": 600}],
+    "Stop": [{"type": "command", "command": "python3 ../hooks/agy.py Stop", "timeout": 600}]
+  }
+}

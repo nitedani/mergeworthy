@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # pr-steps <step> <output-file>: records that a converge step ran on the current HEAD, after checking its output proves it.
-# verify, reverify, small, shape and fresh take `--ledger <path>` for a last round whose verdict isn't clean: the loop's ledger closes it (hooks/loops.py close).
+# verify, reverify, small, shape and fresh take `--ledger <path>` for a last round whose verdict isn't clean: the loop's ledger closes it (hooks/loops.py close), a finding on a post's draft by its gate-pass record.
 # Steps, in pipeline order (mergeworthy:converge): verify (Loop A), shape (Loop B: the review and the shape pass),
 # reverify (Loop A after Loop B's commits), fresh (the fresh reader), gates (every gate's exit code on the final head).
 # The posting hook blocks `gh pr create` (unless --draft), `gh pr ready` and pushes to a ready PR until HEAD has all five.
@@ -8,7 +8,8 @@
 # layout: a layout check's lines (evidence step 4), each screenshot OK or its defect with the place it comes from, outside the functions the branch changes.
 # finality: the finality pass's pinnacle and plan (finality step 3), which a code file's change past the drift limit on the branch needs on the head
 # (pre-bash-guard; hooks/records.py LIMIT). A review (verify, shape, reverify, fresh, small) or a finality is also a note of its kind on the head under
-# the drift ref (records.py DRIFT_REF, NOTE_KIND), written before the record, which git carries through an amend or a rebase (hooks/drift.py).
+# the drift ref (records.py DRIFT_REF, NOTE_KIND), a finality's with a line 'plan <its numbered steps>', written before the record, which git
+# carries through an amend or a rebase (hooks/drift.py).
 # union <log> | --conflict <sha>: two ready PRs of ours sharing a file, checked together (merging step 2): in a checkout of their merge, the log's
 # first line 'Union: <owner/repo>#<A>@<sha> + #<B>@<sha> on <base>@<sha>' and its quick gates; or, in one PR's checkout, its textual conflict with the other's head.
 set -euo pipefail
@@ -99,7 +100,9 @@ if [ "$step" = approach ]; then
       esac
       kind=$(gh api "$api" --jq .user.type 2>/dev/null) && [ -n "$kind" ] || { echo "Basis $u: gh api $api failed, so its author is unknown" >&2; exit 1; }
       # an agent's post (its badge, writing §Forms) or a bot's is our own finding, whichever account posted it
-      body=$(gh api "$api" --jq .body 2>/dev/null); case "$kind ${body:0:2000}" in Bot\ *|*'src="https://github.com/claude.png"'*|*'src="https://github.com/openai.png"'*) false ;; esac || { echo "Basis $u was written by an agent or a bot: name a report, request or agreed design a person wrote, the user's words as 'request: \"<them>\"', or the goal's own failing run (task §Dispositions)" >&2; exit 1; } ;;
+      body=$(gh api "$api" --jq .body 2>/dev/null)
+      who=$(printf '%s' "$body" | python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); from gh_common import BADGE; print("agent" if BADGE.match(sys.stdin.read()) else "person")' "$(dirname "$(realpath "$0")")/../hooks") || { echo "Basis $u: the badge check on its body failed, so its author is unknown" >&2; exit 1; }
+      [ "$kind" != Bot ] && [ "$who" = person ] || { echo "Basis $u was written by an agent or a bot: name a report, request or agreed design a person wrote, the user's words as 'request: \"<them>\"', or the goal's own failing run (task §Dispositions)" >&2; exit 1; } ;;
     *) echo "$nobasis" >&2; exit 1 ;;
   esac
   # candidates: table rows `| name | rating 0-10 | why |`; the header and separator rows have no numeric rating
@@ -112,7 +115,7 @@ if [ "$step" = approach ]; then
   grep -Eq '^[[:space:]*>-]*Probe:[*]*[[:space:]]+[^[:space:]].*[[:space:]]->[[:space:]]*[^[:space:]]' "$out" || { echo "$out has no line 'Probe: <the run that tried to break the shared assumption> -> <its result>': run one before Chosen (pull-request step 5)" >&2; exit 1; }
   # the contract is the one this session's loaded skills follow (session-start's record): a session on v1's catalog, or one
   # with no record, still records loopb and refactor, so its branch gets no `contract: 2`
-  catalog=$(cut -d' ' -f2 ~/.mergeworthy/sessions/"$(basename "${CLAUDE_CODE_SESSION_ID:-none}")" 2>/dev/null || true)
+  catalog=$(cut -d' ' -f2 ~/.mergeworthy/sessions/"$(basename "${CLAUDE_CODE_SESSION_ID:-${ANTIGRAVITY_CONVERSATION_ID:-none}}")" 2>/dev/null || true)
   echo "approach $(realpath "$out") $(date -u +%FT%TZ)$([ "$catalog" = graph ] && echo ' contract: 2')" >> "$approach"
   echo "recorded approach for branch $(git symbolic-ref --short -q HEAD || echo HEAD)"
   exit 0
@@ -125,16 +128,19 @@ pbase() {
   local pb; pb=$(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || true)
   git merge-base HEAD "${pb:+origin/$pb}" 2>/dev/null || git merge-base HEAD "$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)" 2>/dev/null || true
 }
-# drift_note <step>: the step's note on $sha, its kind once; the repo's notes.rewriteRef gets the drift ref beside any value it has, which
-# is what makes an amend or a rebase copy the note. A note it can't write exits, recording nothing
+# drift_note <step>: the step's note on $sha, its kind once and a finality's plan line; the repo's notes.rewriteRef gets the drift ref beside
+# any value it has, which is what makes an amend or a rebase copy the note. A note it can't write exits, recording nothing
 drift_note() {
-  local ref k; read -r ref k <<< "$(python3 "$(dirname "$(realpath "$0")")/../hooks/records.py" drift-note "$1")"; [ -n "$k" ] || return 0
+  local ref k m=; read -r ref k <<< "$(python3 "$(dirname "$(realpath "$0")")/../hooks/records.py" drift-note "$1")"; [ -n "$k" ] || return 0
   local failed="the drift note of $out on $sha could not be written (git's error above), so nothing is recorded: fix that, then run the same pr-steps again"
   # the repo's own value: a global one is the recorder's alone, which another home amending this checkout doesn't have
   if ! git config --local --get-all notes.rewriteRef | grep -qxF "$ref"; then git config --local --add notes.rewriteRef "$ref" || { echo "$failed" >&2; exit 1; }; fi
-  if git notes --ref="$ref" show "$sha" 2>/dev/null | grep -qxF "$k"; then return 0; fi
+  git notes --ref="$ref" show "$sha" 2>/dev/null | grep -qxF "$k" || m=$k
+  # a finality's plan size: the changes past LIMIT hooks/drift.py lets the files the branch changed take; a later plan's line wins
+  if [ "$k" = finality ]; then m+=${m:+$'\n'}"plan $plan"; fi
+  [ -n "$m" ] || return 0
   # a note is a commit, which needs an identity: pr-steps' own, which no half-set or useConfigOnly identity can fail
-  git -c user.name=pr-steps -c user.email=pr-steps@localhost notes --ref="$ref" append -m "$k" "$sha" || { echo "$failed" >&2; exit 1; }
+  git -c user.name=pr-steps -c user.email=pr-steps@localhost notes --ref="$ref" append -m "$m" "$sha" || { echo "$failed" >&2; exit 1; }
 }
 # record <step> <line>...: records $out on $sha as a line per step named, after its drift note as <step>; an output recorded already is refused
 record() {
@@ -289,7 +295,9 @@ EOF
       { printf '%s\n' "$out is a layout check, one line per screenshot: '<file name> — OK', or a defect left unfixed as '<file name> — <the defect>, from <path:line>', the place it comes from, outside the functions this branch changes (mergeworthy:evidence step 4):" "$bad" >&2; exit 1; } ;;
   finality)
     # finality step 3: a code file's 6th change on the branch waits for this record (pre-bash-guard)
-    grep -Eq '^Pinnacle: +[^ ]+ +[^ ]+ +[^ ]+' "$out" && awk '/^Plan:/{p=1;next} p&&/^[0-9]+\. +[^ ]/{f=1} END{exit !f}' "$out" ||
+    # its 'Plan:' steps, numbered 1, 2, 3… until a number out of turn, which drift_note writes into the finality's note
+    plan=$(awk '/^Plan:/{p=1;next} p&&/^[0-9]+\. +[^ ]/{if ($0+0 != n+1) exit; n++} END{print n+0}' "$out")
+    grep -Eq '^Pinnacle: +[^ ]+ +[^ ]+ +[^ ]+' "$out" && [ "$plan" -gt 0 ] ||
       { echo "$out needs a line 'Pinnacle: <the design>' and a line 'Plan:' followed by the ranked convergence plan, one numbered line '1. <step>' per step (mergeworthy finality step 3)" >&2; exit 1; } ;;
   loopb)
     [ "$last" = CLEAN ] || { echo "$out does not end with a line CLEAN: fix its findings and continue the same agent" >&2; exit 1; } ;;

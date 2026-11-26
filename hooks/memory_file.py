@@ -53,36 +53,56 @@ def texts(o):
     c = (o.get('message') or {}).get('content')
     return [c] if isinstance(c, str) else [b.get('text', '') for b in c or [] if b.get('type') == 'text']
 
-def orchestrator(line, tid):
+HANDOFF = 'Context handoff ('  # how T3 Code opens the session it hands a thread to
+
+def orchestrator(line, tid, cwd=None):
     """A log line that marks a later session of the orchestrator: a prompt naming its thread (T3 Code's context handoff).
-    A child session's log names the thread only in tool output."""
+    A child session's log names the thread only in tool output. In the other provider's folder (cwd, the checkout memory.source
+    names) only T3's handoff itself counts, in an entry of that checkout: a prompt there that only mentions the thread is
+    another session's, and Antigravity's folder holds every checkout's conversations."""
     if tid not in line:
         return False
     try: o = json.loads(line)
     except ValueError: return False
-    return prompt(o) and any(tid in t for t in texts(o))
+    if not prompt(o): return False
+    if cwd is None: return any(tid in t for t in texts(o))
+    at = o.get('cwd') or ''
+    return (at == cwd or at.startswith(cwd.rstrip('/') + '/')) and any(t.startswith(HANDOFF) and tid in t for t in texts(o))
+
+def claude_logdir(cwd):
+    """Where Claude Code keeps a checkout's session logs: ~/.claude/projects/<its path, every other character a dash>."""
+    return os.path.expanduser('~/.claude/projects/' + re.sub(r'[^A-Za-z0-9]', '-', cwd))
 
 def thread_logs(root, since=0.0):
     """The orchestrator's session logs modified since `since`: the session init ran in, and later ones its thread was handed
-    to. Each file's checked position is cached, so a log is read once and a growing one only from where it was checked."""
+    to, under either provider T3 Code can switch the thread to (Claude Code's logs of the checkout, and hooks/agy.py's of
+    Antigravity's conversations). Each file's checked position is cached, so a log is read once and a growing one only from
+    where it was checked."""
+    import agy
     src = source(root); cache_f = os.path.join(root, '.memory-orchestrator-logs.json')
     cache = json.load(open(cache_f)) if os.path.exists(cache_f) else {}
     out, tid = [], src['thread']
-    for f in os.listdir(src['logdir']):
-        p = os.path.join(src['logdir'], f)
-        if not f.endswith('.jsonl') or os.path.getmtime(p) < since:
+    own = src['logdir']  # its provider's folder: missing, it fails, as memory is set up from it
+    others = [d for d in dict.fromkeys((claude_logdir(src['cwd']), agy.DIR)) if d != own and os.path.isdir(d)]
+    for p, other in [(os.path.join(d, f), d != own) for d in (own, *others) for f in os.listdir(d)]:
+        f = os.path.basename(p)
+        try:
+            if not f.endswith('.jsonl') or os.path.getmtime(p) < since:
+                continue
+            pos, hit = cache.get(p, (0, f[:-len('.jsonl')] in src.get('sessions', ())))
+            if not hit and os.path.getsize(p) > pos:
+                with open(p, 'rb') as fh:
+                    fh.seek(pos)
+                    for l in fh:
+                        if not l.endswith(b'\n'):
+                            break
+                        pos += len(l)
+                        if orchestrator(l.decode(errors='replace'), tid, src['cwd'] if other else None):
+                            hit = True; break
+                cache[p] = (pos, hit)
+        except FileNotFoundError:  # deleted since the listing: in the other provider's folder, a log its prune took (agy.py's SessionStart)
+            if not other: raise
             continue
-        pos, hit = cache.get(p, (0, f[:-len('.jsonl')] in src.get('sessions', ())))
-        if not hit and os.path.getsize(p) > pos:
-            with open(p, 'rb') as fh:
-                fh.seek(pos)
-                for l in fh:
-                    if not l.endswith(b'\n'):
-                        break
-                    pos += len(l)
-                    if orchestrator(l.decode(errors='replace'), tid):
-                        hit = True; break
-            cache[p] = (pos, hit)
         if hit:
             out.append(p)
     json.dump(cache, open(cache_f, 'w'))
@@ -112,7 +132,7 @@ def order(root, live=False):
             f"`memory-prep digest {root}` and read it.")
     return (f"IMPORTANT: {path(root)} is behind your session log. If you are a delegated sub-agent, ignore this. "
             + ("" if live else "Before resuming: ")
-            + f"run `memory-prep prep {root}`; start ONE Haiku at high effort (T3 Code: delegate_task, mode async) on the brief file it names; "
+            + f"run `memory-prep prep {root}`; start ONE Haiku at high effort on the brief file it names (T3 Code: delegate_task, role research, mode async, task `Follow the brief at <its path> exactly.`); "
             + (side if live else wait))
 
 def section(text, heading):

@@ -2,12 +2,11 @@
 """A review loop's ledger (delegate §Review rounds): `<id> <label> <outcome>` lines, ids R<round>.<n> from a finding's first round,
 and a line `Round: <N>` naming the last completed round, the larger of it and the highest id round. loops.close says whether it
 closes its loop; loops.admit asks owed whether a code round may follow."""
-import re
+import hashlib, re
 from typing import NamedTuple
 
 LINE = re.compile(r'^[\s>*-]*`?(?:((?:[a-z][\w-]*:)?R(\d+)\.\d+)|[a-z][^\s`]*\d[^\s`]*)`?\s+`?(blocker|should|nit)`?:?(?=\s|$)\s*(.*?)\s*$', re.I)
 ROUND = re.compile(r'^[\s>*-]*`?Round:\s*(\d+)', re.I | re.M)
-FIXED = re.compile(r'fixed in ([0-9a-f]{7,40})\b')
 
 
 class Row(NamedTuple):
@@ -20,14 +19,24 @@ class Row(NamedTuple):
     outcome: str
 
     @property
+    def fix(self):
+        """`fixed in <word>`'s word less trailing `.,;:)`, one form: a draft's <path>.md, else a sha, else a post's r<N>; else None."""
+        return (m := re.match(r'fixed in (\S+)', self.outcome)) and m[1].rstrip('.,;:)')
+
+    @property
     def fixed(self):
         """The sha of `fixed in <sha>`, else None."""
-        return (m := FIXED.match(self.outcome)) and m[1]
+        return (f := self.fix) and re.fullmatch(r'[0-9a-f]{7,40}', f) and f
 
     @property
     def confirmed(self):
         """The round N of a post's `fixed in r<N>`, else None."""
-        return (m := re.match(r'fixed in r(\d+)\b', self.outcome)) and int(m[1])
+        return (f := self.fix) and (m := re.fullmatch(r'r(\d+)', f)) and int(m[1])
+
+    @property
+    def draft(self):
+        """The path, relative to the ledger, of `fixed in <draft>.md`, else None."""
+        return (f := self.fix) and f.endswith('.md') and f
 
     @property
     def declined(self):
@@ -58,3 +67,9 @@ def owed(rows, n, on_head):
     back in: a declined blocker goes back to its seat once, and one the round after still holds is Stuck (delegate §Review rounds), else ''."""
     sends = lambda m: m >= 1 and any(r.round == m and r.label == 'blocker' and r.declined for r in rows) and not sends(m - 1)
     return 'fixed' if any(r.round == n and r.label != 'nit' and r.fixed and on_head(r.fixed) for r in rows) else 'declined' if sends(n) else ''
+
+
+def gated(draft):
+    """Whether the first line of draft's gate-pass record (<draft>.gate) is the sha256 of its current text."""
+    try: return hashlib.sha256(open(draft, 'rb').read()).hexdigest() == open(draft + '.gate').read().split('\n')[0].strip()
+    except OSError: return False

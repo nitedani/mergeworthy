@@ -5,6 +5,7 @@
 // rules in ~/.codex/AGENTS.md), and any other agent through skills.sh (skills only).
 import * as p from '@clack/prompts'
 import { execFileSync, spawnSync } from 'node:child_process'
+import crypto from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -64,12 +65,28 @@ function installClaude(values) {
     fs.mkdirSync(path.join(HOME, '.mergeworthy'), { recursive: true })
     fs.rmSync(path.join(HOME, '.mergeworthy', 'current'), { force: true })
     fs.symlinkSync(installed.installPath, path.join(HOME, '.mergeworthy', 'current'))
+    // the commands in its bin/ on PATH, as session-start keeps them, and T3 Code's Antigravity instance loading the plugin's agy/
+    // through it, as session-start and mergeworthy-update keep it. An unwritable ~/.local/bin is a warning, and so is what agy-link
+    // says when it exits 0 (a copied plugin); agy-link failing fails the install, as it fails an update
+    const warnings = []
+    let failed = ''
+    for (const step of ['bin-links', 'agy-link']) {
+      const file = path.join(installed.installPath, 'hooks', step)
+      const r = fs.existsSync(file) ? spawnSync(file, [], { encoding: 'utf8' }) : { status: 0 }
+      const said = (r.stderr || r.stdout || (r.status === 0 ? '' : `${file} failed`)).trim()
+      if (step === 'agy-link' && r.status !== 0) failed = said
+      else if (said && (r.status !== 0 || step === 'agy-link')) warnings.push(said)
+    }
+    return { warning: warnings.join('\n'), failed }
   }
+  return { warning: '', failed: '' }
 }
 function uninstallClaude() {
   if (claudeInstalled()) run('claude', ['plugin', 'uninstall', ID])
   try { run('claude', ['plugin', 'marketplace', 'remove', NAME]) } catch {}
-  // what the plugin created; ~/.mergeworthy/voice.md is the user's and stays
+  // what the plugin created; ~/.mergeworthy/voice.md is the user's and stays, as does a copied plugin where agy-link links it
+  const agy = path.join(HOME, '.t3', 'userdata', 'providers', 'antigravity', crypto.createHash('sha256').update('antigravity').digest('hex'), 'config', 'plugins', NAME)
+  try { if (fs.readlinkSync(agy) === path.join(HOME, '.mergeworthy', 'current', 'agy')) fs.rmSync(agy) } catch {}
   for (const f of ['current', 'settings.env']) fs.rmSync(path.join(HOME, '.mergeworthy', f), { recursive: true, force: true })
 }
 
@@ -136,11 +153,14 @@ async function main() {
   }
 
   const s = p.spinner()
+  let warning, failed
   if (targets.includes('claude')) {
-    s.start('Claude Code'); installClaude(values); s.stop('Claude Code: installed, auto-update on')
+    s.start('Claude Code'); ({ warning, failed } = installClaude(values)); s.stop('Claude Code: installed, auto-update on')
+    if (warning) p.log.warn(warning)
   }
   if (targets.includes('codex')) { s.start('Codex'); installCodex(); s.stop('Codex: installed, always-on rules in ~/.codex/AGENTS.md') }
   if (targets.includes('other')) skillsSh('add')
+  if (failed) { p.cancel(`Linking the Antigravity plugin failed: ${failed}`); process.exit(1) }
   p.outro('Done. New sessions load it; run this again to change the options or add an agent.')
 }
 

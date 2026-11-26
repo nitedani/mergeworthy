@@ -1,6 +1,7 @@
 #!/bin/bash
 # mergeworthy-update: updates the installed mergeworthy (README, Install) in each agent program that has it: Claude Code's
-# plugin, pointing ~/.mergeworthy/current at its new version folder, and Codex's; restarts every live watcher unit by the
+# plugin, pointing ~/.mergeworthy/current at its new version folder, and linking its Antigravity plugin into T3 Code's Antigravity instance
+# `antigravity` (hooks/agy-link), and Codex's; restarts every live watcher unit by the
 # name gh-watch-start gives it (gh-watch@<systemd-escape --path of its work folder>.service, never a name read back from
 # `systemctl list-units`, which drops the \x2d escapes) and prints each unit's state, `retired` for one its watcher stopped
 # itself after writing <work folder>/retired; disables and removes the old daily learning timer and service (mergeworthy-learn). Runs every step, then exits 1 naming each update that failed and each unit
@@ -20,11 +21,12 @@ update_codex() {
   if command -v pnpm >/dev/null; then pnpm dlx mergeworthy --yes --agents codex; else npx -y mergeworthy --yes --agents codex; fi
 }
 if command -v claude >/dev/null && [ -n "$(claude_root)" ]; then update_claude || failed+=("the Claude Code update"); fi
+[ ! -x ~/.mergeworthy/current/hooks/agy-link ] || ~/.mergeworthy/current/hooks/agy-link || failed+=("linking the Antigravity plugin")
 if command -v codex >/dev/null && codex plugin list 2>/dev/null | grep '^mergeworthy@mergeworthy ' | grep -vq 'not installed'; then
   update_codex || failed+=("the Codex update")
 fi
 # the daily learning run is gone (task step 4 learns on demand): its installed timer and service go (hooks/learn-units, a migration)
-remove_learn() { "$(dirname "$(readlink -f "$0")")/../hooks/learn-units"; }
+remove_learn() { MERGEWORTHY_AGY_LINKED=1 "$(dirname "$(readlink -f "$0")")/../hooks/learn-units"; }
 units=() dirs=()
 if systemctl --user show-environment >/dev/null 2>&1; then
   remove_learn || failed+=("removing mergeworthy-learn.timer")

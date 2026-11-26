@@ -1,10 +1,15 @@
 #!/bin/bash
 # learn-units: a migration only. The daily learning run is gone (task step 4 learns on demand), so this removes its timer and
-# service, says so on stdout, and exits 0. Its callers: this version's mergeworthy-update (remove_learn), and the first
+# service, says so on stdout, and exits with agy-link's status. Its callers: this version's mergeworthy-update (remove_learn), and the first
 # mergeworthy-update from an older version, which repoints ~/.mergeworthy/current and then calls this file from the new tree, where
 # it used to install the units. It goes, with remove_learn, once every install ran one mergeworthy-update past this change.
-systemctl --user show-environment >/dev/null 2>&1 || exit 0
+# That older mergeworthy-update links no agy plugin either: this file, the only one of the new tree it runs, does (agy-link), and
+# its failure fails that update as it fails this version's.
+[ -n "${MERGEWORTHY_AGY_LINKED:-}" ] || "$(dirname "$(readlink -f "$0")")/agy-link"
+linked=$?
+systemctl --user show-environment >/dev/null 2>&1 || exit $linked
 u=~/.config/systemd/user
-[ -e "$u/mergeworthy-learn.timer" ] || [ -e "$u/mergeworthy-learn.service" ] || exit 0
+[ -e "$u/mergeworthy-learn.timer" ] || [ -e "$u/mergeworthy-learn.service" ] || exit $linked
 systemctl --user disable --now mergeworthy-learn.timer >/dev/null 2>&1
-rm -f "$u/mergeworthy-learn.timer" "$u/mergeworthy-learn.service" && systemctl --user daemon-reload && echo "mergeworthy-learn.timer removed"
+rm -f "$u/mergeworthy-learn.timer" "$u/mergeworthy-learn.service" && systemctl --user daemon-reload && echo "mergeworthy-learn.timer removed" || exit 1
+exit $linked

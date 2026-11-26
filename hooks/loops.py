@@ -3,8 +3,8 @@ review may run, and record a round that ran with register(); pr-steps and gate-p
 and pr-steps asks open_seats() whether a step's other reviewers closed. A round is refused once the heads its brief pins show the
 branch hasn't moved since four earlier rounds of its loop, after an earlier one there when the ledger its brief names doesn't show
 the last round brought a fixed blocker or should or a declined blocker, and as a fresh reader's second."""
-import fcntl, glob, itertools, json, os, re, subprocess, sys
-import ledger, review_journal, testpaths
+import glob, itertools, json, os, re, subprocess, sys
+import agent_jobs, ledger, review_journal, testpaths
 
 # {loop: {'rounds': [[n, the heads its brief pinned, the reports it wrote]], 'threads': the T3 threads or Claude agents its rounds ran in, 'outs': its reports, 'seated': a step's seat, 'step': the step pr-steps recorded it for}}
 LOOPS = os.path.expanduser('~/.claude/review-loops.json')
@@ -15,18 +15,6 @@ OLD = {'rounds': os.path.expanduser('~/.claude/review-rounds.json'), 'threads': 
 def round_of(name):
     """A review round `<loop>-r<N>`, maybe followed by the date or head SHA a reused clientRequestId needs: the match, loop and N."""
     return re.fullmatch(r'(.+)-r(\d+)', re.sub(r'(-\d{4}-\d{2}-\d{2}|-[0-9a-f]{7,40})+$', '', name.strip()))
-
-
-def locked_update(path, change):
-    """Applies change to the JSON object in path (an empty one while it is missing) and writes it back, under path's lock:
-    concurrent launches update it one at a time."""
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path + '.lock', 'a') as held:
-        fcntl.flock(held, fcntl.LOCK_EX)
-        data = json.load(open(path)) if os.path.exists(path) else {}
-        change(data)
-        with open(path + '.tmp', 'w') as o: json.dump(data, o)
-        os.replace(path + '.tmp', path)
 
 
 def _json(path):
@@ -88,7 +76,7 @@ def register(loop, n, heads, thread=None, post=False, outs=(), seated=False, che
             r['outs'] = sorted(set(r.get('outs', [])) | {os.path.realpath(o) for o in outs})
             r['seated'] = r.get('seated') or seated
     try:
-        if thread or not post: locked_update(LOOPS, ran)
+        if thread or not post: agent_jobs.locked_update(LOOPS, ran)
     except OSError as e: failed.append(e)
     if failed: raise failed[0]
 
@@ -304,9 +292,10 @@ def unruled(rows, reports):
 
 def close(path, kind='code', checkout='.', reports=(), loop=None):
     """What leaves the loop of the ledger at path open, [] when it closes: each finding of every round is the kind's fix (a code
-    fix's sha in checkout's HEAD history), `declined: <why>` or `listed: <where>`, no blocker is listed or open, the completed round
-    leaves the loop closed by the kind's rule (a code loop's counts the rounds loop ran on HEAD), every row's id (a word starting with a letter, with a digit) is R<round>.<n>, and
-    each finding `R<round>.<n> <label>` the seat's reports hold has its row, with that label."""
+    fix's sha in checkout's HEAD history, or, outside a post's own ledger, a draft whose gate-pass record holds its text),
+    `declined: <why>` or `listed: <where>`, no blocker is listed or open, the completed round leaves the loop closed by the kind's
+    rule (a code loop's counts the rounds loop ran on HEAD), every row's id (a word starting with a letter, with a digit) is
+    R<round>.<n>, and each finding `R<round>.<n> <label>` the seat's reports hold has its row, with that label."""
     fix, still_open, confirms = KINDS[kind]
     try: rows, others, last = ledger.read(path)
     except OSError as e: return [f'{path}: {e.strerror}']
@@ -318,8 +307,11 @@ def close(path, kind='code', checkout='.', reports=(), loop=None):
     ran = len(on_head(loop, last + 1, [checkout], [git(checkout, 'rev-parse', 'HEAD').stdout.strip()])) if loop else last
     out = misnamed + unbound + [w for w in [still_open(rows, last, path, reached, ran)] if w]
     for r in rows:
-        closed = confirms and r.confirmed and r.round < r.confirmed <= last or r.fixed and reached(r.fixed)
-        if r.fixed and not closed:
+        body = not confirms and r.draft and os.path.join(os.path.dirname(path), r.draft)
+        closed = confirms and r.confirmed and r.round < r.confirmed <= last or body and ledger.gated(body) or r.fixed and reached(r.fixed)
+        if body and not closed:
+            out.append(f'{r.line}  <- {r.draft} has no gate-pass record of its current text')
+        elif r.fixed and not closed:
             out.append(f'{r.line}  <- {r.fixed} is not in HEAD\'s history')
         elif r.label == 'blocker' and not closed and not r.declined:
             out.append(f'{r.line}  <- an open blocker keeps the PR in draft')
