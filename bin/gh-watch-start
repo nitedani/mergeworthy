@@ -57,6 +57,7 @@ while [ $# -gt 0 ]; do
   if [ "$file" = threads.txt ]; then grep -vxF "$repo" "$dir/repos.txt" > "$dir/repos.txt.tmp" || true; mv "$dir/repos.txt.tmp" "$dir/repos.txt"; fi
 done
 # the session that started it owns it: post-bash-register adds that session's new threads here (cron's revival has no session)
+CLAUDE_CODE_SESSION_ID=${CLAUDE_CODE_SESSION_ID:-${ANTIGRAVITY_CONVERSATION_ID:-}}  # an Antigravity session goes by its conversation (hooks/agy.py)
 if [ -n "${CLAUDE_CODE_SESSION_ID:-}" ]; then
   echo "$CLAUDE_CODE_SESSION_ID" > "$dir/session"
   # under T3 Code the watcher sends each event to the main session's thread (gh-watch.py's wake_thread), from the log's end on:

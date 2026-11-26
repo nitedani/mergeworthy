@@ -15,13 +15,16 @@ if len(sys.argv) < 3 or sys.argv[1] not in ('init', 'prep', 'digest') or (sys.ar
 cmd, root = sys.argv[1], os.path.abspath(os.path.expanduser(sys.argv[2]))
 if cmd == 'init':
     cwd, tid = os.getcwd(), sys.argv[3]
-    # Claude Code keeps a checkout's session logs in ~/.claude/projects/<its path, every other character a dash>
-    logdir = os.path.expanduser('~/.claude/projects/' + re.sub(r'[^A-Za-z0-9]', '-', cwd))
+    if os.environ.get('ANTIGRAVITY_CONVERSATION_ID') and not os.environ.get('CLAUDE_CODE_SESSION_ID'):
+        # an Antigravity session: its log is the Claude Code transcript hooks/agy.py writes from agy's, one per conversation
+        import agy
+        logdir, sid = agy.DIR, agy.conversation(os.environ['ANTIGRAVITY_CONVERSATION_ID'])
+    else:
+        logdir, sid = mf.claude_logdir(cwd), os.environ.get('CLAUDE_CODE_SESSION_ID')
     if not os.path.isdir(logdir):
         sys.exit(f'memory-prep: no session-log dir {logdir}: run init from the main session\'s own checkout')
     os.makedirs(root, exist_ok=True)
     sessions = mf.source(root).get('sessions', []) if os.path.isfile(os.path.join(root, 'memory.source')) else []
-    sid = os.environ.get('CLAUDE_CODE_SESSION_ID')
     sessions += [sid] if sid and sid not in sessions else []
     json.dump({'cwd': cwd, 'thread': tid, 'logdir': logdir, 'sessions': sessions}, open(os.path.join(root, 'memory.source'), 'w'))
     os.makedirs(os.path.dirname(mf.REG), exist_ok=True)
@@ -63,7 +66,8 @@ for p in mf.thread_logs(root, dt.datetime.fromisoformat(after.replace('Z', '+00:
 if not entries:
     print(f'memory: nothing new after {after}'); sys.exit(0)
 new = os.path.join(root, 'memory-new.txt')
-text = '\n\n'.join([x for _, x in sorted(entries)] + [f'[{until} END] the logs are read through here'])
+# by time only: entries of one time keep the log's order (agy's steps carry whole seconds, so a prompt and its answer often share one)
+text = '\n\n'.join([x for _, x in sorted(entries, key=lambda e: e[0])] + [f'[{until} END] the logs are read through here'])
 text = '\n'.join(l[i:i + WRAP] for l in text.split('\n') for i in range(0, len(l) or 1, WRAP))
 open(new, 'w').write(text + '\n')
 # the run notes each chunk it read here; memory.md never counts as covered past them

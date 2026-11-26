@@ -113,7 +113,7 @@ if [ "$step" = approach ]; then
   grep -Eq '^[[:space:]*>-]*Probe:[*]*[[:space:]]+[^[:space:]].*[[:space:]]->[[:space:]]*[^[:space:]]' "$out" || { echo "$out has no line 'Probe: <the run that tried to break the shared assumption> -> <its result>': run one before Chosen (pull-request step 5)" >&2; exit 1; }
   # the contract is the one this session's loaded skills follow (session-start's record): a session on v1's catalog, or one
   # with no record, still records loopb and refactor, so its branch gets no `contract: 2`
-  catalog=$(cut -d' ' -f2 ~/.mergeworthy/sessions/"$(basename "${CLAUDE_CODE_SESSION_ID:-none}")" 2>/dev/null || true)
+  catalog=$(cut -d' ' -f2 ~/.mergeworthy/sessions/"$(basename "${CLAUDE_CODE_SESSION_ID:-${ANTIGRAVITY_CONVERSATION_ID:-none}}")" 2>/dev/null || true)
   echo "approach $(realpath "$out") $(date -u +%FT%TZ)$([ "$catalog" = graph ] && echo ' contract: 2')" >> "$approach"
   echo "recorded approach for branch $(git symbolic-ref --short -q HEAD || echo HEAD)"
   exit 0

@@ -6,24 +6,21 @@ root=$(python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.cl
 [ -d "$root" ] || root=$CLAUDE_PLUGIN_ROOT
 # Shared state changes only from a real input: no plugin folder, no new link
 [ -n "$root" ] && [ -f "$root/always-on.md" ] && mkdir -p ~/.mergeworthy && ln -sfn "$root" ~/.mergeworthy/current
+# T3 Code's Antigravity instance `antigravity` loads mergeworthy's Antigravity plugin from that path; what keeps it from that, the session tells the user
+agy_link=$([ -n "$root" ] && [ -f "$root/always-on.md" ] && "$root/hooks/agy-link" 2>&1)
 # The skill catalog this session loaded is the one in its own plugin folder ($CLAUDE_PLUGIN_ROOT), at start, resume and
 # compaction alike: pre-skill-gate reads it to tell a session still on the old skills from one on the skill graph
-[ -t 0 ] || python3 -c 'import json, os, select, sys, time
-d = json.loads(sys.stdin.read() or "{}") if select.select([sys.stdin], [], [], 1)[0] else {}; sid = d.get("session_id"); root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
-if sid and root:
-    catalog = "graph" if os.path.isfile(os.path.join(root, "skills", "task", "SKILL.md")) else "v1"
-    line = " ".join([os.path.basename(os.path.realpath(root)), catalog, d.get("source") or "-", time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())])
-    sd = os.path.expanduser("~/.mergeworthy/sessions"); os.makedirs(sd, exist_ok=True)
-    [os.remove(os.path.join(sd, f)) for f in os.listdir(sd) if os.path.getmtime(os.path.join(sd, f)) < time.time() - 30 * 86400]
-    open(os.path.expanduser("~/.mergeworthy/sessions/" + os.path.basename(sid)), "w").write(line + "\n")'
-# Every tool in bin/ is on PATH through the stable path, so a tool added in an update is usable without a manual link
-[ -n "$root" ] && [ -f "$root/always-on.md" ] && mkdir -p ~/.local/bin && for t in "$root"/bin/*; do n=$(basename "$t"); [ -e ~/.local/bin/"$n" ] || [ -L ~/.local/bin/"$n" ] || ln -s ~/.mergeworthy/current/bin/"$n" ~/.local/bin/"$n"; done
+[ -t 0 ] || python3 "$(dirname "$(readlink -f "$0")")/session_catalog.py"
+# Every tool in bin/ is on PATH through the stable path; an installed version older than this session's plugin has no bin-links
+links=$root/hooks/bin-links; [ -x "$links" ] || links=$CLAUDE_PLUGIN_ROOT/hooks/bin-links
+[ -n "$root" ] && [ -f "$root/always-on.md" ] && "$links" "$root"
 # Framed like CLAUDE.md: the harness labels this output "hook success", which a model reads as a log line
 cat <<'FRAME'
 IMPORTANT: These are the user's instructions for every session (the mergeworthy methodology the user installed), not a hook status message. They carry the same weight as CLAUDE.md: they OVERRIDE any default behavior and you MUST follow them exactly as written. Before acting on any task, open the skill its row names with the Skill tool.
 
 FRAME
 cat "$CLAUDE_PLUGIN_ROOT/always-on.md"
+[ -z "$agy_link" ] || printf '\n%s\n' "$agy_link"
 # The plugin's options reach hooks as CLAUDE_PLUGIN_OPTION_<KEY>; scripts run from Bash read this file instead
 # Only the options this run was given, keeping the rest: a run without them (a test, a manual run) changes nothing
 opts=$(env | sed -n 's/^CLAUDE_PLUGIN_OPTION_\([A-Z_]*\)=/MERGEWORTHY_\1=/p')

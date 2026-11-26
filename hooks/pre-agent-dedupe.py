@@ -28,12 +28,15 @@ def refused():
 # T3 opens no run for a turn Claude Code starts by itself (a finished background command, a Monitor event), and refuses
 # launches from it (pingdotgg/t3code#16808): nothing ran, so no job, and the session keeps working instead of waiting
 if register and 'parent_not_active' in json.dumps(req.response or ''):
-    print(json.dumps({'hookSpecificOutput': {'hookEventName': 'PostToolUse', 'additionalContext':
+    # Claude Code takes the context only from an answer naming the event it ran on
+    print(json.dumps({'hookSpecificOutput': {'hookEventName': 'PostToolUseFailure' if req.failed else 'PostToolUse', 'additionalContext':
         "T3 refused this launch: a background event started this turn, and T3 opened no run for it, so it refuses agent "
         "launches and the user doesn't see this turn in the thread. The next user message, scheduled task or finished agent "
         "starts a run. Until then, do the step yourself wherever the main session may (gates, tests, probes, an implementer's "
         "edits, preparing the push or the body: delegate step 7); only an independent review and a post wait for a run. "
         "Keep the brief, launch it in the next run, and add no status line on each wake."}}))
+    sys.exit(0)
+if register and req.failed:  # a launch that failed for another reason started nothing to register
     sys.exit(0)
 L = launch.Brief(req.text)
 brief = L.brief  # every rule below reads the brief; the files it only names (project notes, installed skills) are read, so their history SHAs pin nothing
@@ -169,18 +172,25 @@ def codex_reset():
     except (OSError, ValueError, AttributeError, TypeError):
         return None
     return min(until) if until and min(until) > time.time() else None
-# This hook runs only under Claude Code, so a review on claudeAgent, or naming no provider (it inherits), is on the main session's company
-if req.role == 'review' and req.t3:
+# Delegated agents run on Claude, reviews first on Codex (mergeworthy:delegate §Model class, §Reviewers), whichever host the session runs
+# on: a delegate_task with no target runs on the launching session's provider, Antigravity's under hooks/agy.py (MERGEWORTHY_HOST)
+drivers = req.drivers or {'antigravity' if os.environ.get('MERGEWORTHY_HOST') == 'antigravity' else 'claudeAgent'}
+if req.t3 and str(req.tool).endswith('delegate_task') and 'antigravity' in drivers:
+    sys.stderr.write("BLOCKED: no delegated agent runs on Antigravity (mergeworthy:delegate §Model class, §Reviewers)"
+                     + ("; with no target this launch would run on this session's Antigravity" if not req.providers else '')
+                     + f": set target.providerInstanceId to {'codex' if req.role == 'review' else 'claudeAgent'}.\n")
+    refused()
+elif req.role == 'review' and req.t3:
     reset = codex_reset()
     if reset and 'codex' in req.providers:
         at = time.localtime(reset)
         sys.stderr.write(f"BLOCKED: claude-swap reads every saved Codex account as used up until {time.strftime('%H:%M' if at[:3] == time.localtime()[:3] else '%a %H:%M', at)}, so this launch would fail. "
-                         "Launch the review on this company (target.providerInstanceId claudeAgent); it needs no Fallback line while that holds.\n")
+                         "Launch the review on Claude (target.providerInstanceId claudeAgent); it needs no Fallback line while that holds.\n")
         refused()
     # the fallback keeps the first review's prompt, so its claim may sit in the brief file the task names; `<what failed>` is the form, no claim
-    elif not reset and (not req.providers or 'claudeAgent' in req.providers) and not re.search(r'\bFallback:[ \t]*[^\s<]', launch.Brief(req.task).brief):
+    elif not reset and 'claudeAgent' in drivers and not re.search(r'\bFallback:[ \t]*[^\s<]', launch.Brief(req.task).brief):
         sys.stderr.write("BLOCKED: an independent check starts on another company's model (mergeworthy:delegate §Reviewers): set target.providerInstanceId to codex. "
-                         "Only when that call failed, launch on this company with `Fallback: <what failed>` in the task or the brief file it names.\n")
+                         "Only when that call failed, launch on Claude (claudeAgent) with `Fallback: <what failed>` in the task or the brief file it names.\n")
         refused()
 # T3 answers a delegate_task whose clientRequestId it has seen with that earlier task's result, without running anything.
 # Reuse is allowed only within 10 minutes (a retry of the same launch).

@@ -22,6 +22,7 @@ EOF
 # stub codex: lists mergeworthy installed while $T/codex-has exists; pnpm records the installer run
 cat > "$T/bin/codex" <<EOF
 #!/bin/sh
+echo "codex \$*" >> "$T/calls"
 [ "\$*" = "plugin list" ] && [ -e "$T/codex-has" ] && echo "mergeworthy@mergeworthy (installed)"
 exit 0
 EOF
@@ -58,6 +59,61 @@ check "~/.mergeworthy/current points at the new version" "$NEW" "$(readlink "$HO
 
 : > "$T/breaks"; unit "$BAD" >> "$T/active"
 bash "$R/bin/mergeworthy-update" > "$T/out" 2>&1; check "every unit back active: exit" 0 $?
+# T3 Code's Antigravity instance `antigravity` gets the installed version's agy plugin as a link; antigravity_2 and ~/.gemini get nothing
+mkdir -p "$NEW/hooks" "$NEW/agy" "$HOME/.t3/userdata"; cp "$R/hooks/agy-link" "$NEW/hooks/"; echo '{}' > "$NEW/agy/hooks.json"; printf '#!/bin/sh\n' > "$T/bin/agy"; chmod +x "$T/bin/agy"
+echo '{"providerInstances":{"antigravity":{"driver":"antigravity"},"antigravity_2":{"driver":"antigravity"}}}' > "$HOME/.t3/userdata/settings.json"
+prof() { echo "$HOME/.t3/userdata/providers/antigravity/$(printf '%s' "$1" | sha256sum | cut -d' ' -f1)/config/plugins"; }
+bash "$R/bin/mergeworthy-update" > "$T/out" 2>&1
+check "the antigravity instance's profile links the installed agy plugin; antigravity_2's and ~/.gemini have none" "$HOME/.mergeworthy/current/agy no no" \
+  "$(readlink "$(prof antigravity)/mergeworthy") $([ -e "$(prof antigravity_2)" ] && echo yes || echo no) $([ -e "$HOME/.gemini" ] && echo yes || echo no)"
+# a copied plugin where the link goes is the person's own folder: the update warns, keeps it and exits 0; a link it can't make fails it
+copied() { [ -d "$(prof antigravity)/mergeworthy" ] && [ ! -L "$(prof antigravity)/mergeworthy" ] && echo yes || echo no; }
+rm "$(prof antigravity)/mergeworthy"; mkdir "$(prof antigravity)/mergeworthy"
+bash "$R/bin/mergeworthy-update" > "$T/out" 2>&1; rc=$?
+check "an update over a copied plugin: exit, warned, no failure named, the copy kept" "0 1 0 yes" "$rc $(grep -c 'loads a copy of mergeworthy' "$T/out") $(grep -c '^failed:' "$T/out") $(copied)"
+rmdir "$(prof antigravity)/mergeworthy"; chmod a-w "$(prof antigravity)/.."
+bash "$R/bin/mergeworthy-update" > "$T/out" 2>&1; rc=$?; chmod u+w "$(prof antigravity)/.."
+check "an update whose Antigravity link can't be made: exit, the failure named" "1 1" "$rc $(grep -cx 'failed: linking the Antigravity plugin' "$T/out")"
+printf 'saved file\n' > "$(prof antigravity)/mergeworthy"; bash "$R/bin/mergeworthy-update" > "$T/out" 2>&1; rc=$?
+check "an update over a file at the link's path: exit, the failure named, no copy warning, the file kept" "1 1 0 saved file" \
+  "$rc $(grep -cx 'failed: linking the Antigravity plugin' "$T/out") $(grep -c 'loads a copy of mergeworthy' "$T/out") $(cat "$(prof antigravity)/mergeworthy")"
+rm "$(prof antigravity)/mergeworthy"
+bash "$R/bin/mergeworthy-update" > /dev/null 2>&1
+# a fresh install links it too, before any Claude Code session or update ran (installClaude, cli/index.mjs)
+if [ -d "$R/cli/node_modules" ]; then
+  mkdir -p "$NEW/bin"; cp "$R/hooks/bin-links" "$NEW/hooks/"; : > "$NEW/bin/gate-pass"
+  rm -r "$HOME/.t3/userdata/providers"; node "$R/cli/index.mjs" --yes --agents claude > "$T/out" 2>&1
+  check "npx mergeworthy --agents claude: exit, the antigravity instance's link, the bin/ commands on PATH" "0 $HOME/.mergeworthy/current/agy $HOME/.mergeworthy/current/bin/gate-pass" \
+    "$? $(readlink "$(prof antigravity)/mergeworthy") $(readlink "$HOME/.local/bin/gate-pass")"
+  node "$R/cli/index.mjs" uninstall --yes --agents claude > "$T/out" 2>&1; rc=$?
+  mkdir "$(prof antigravity)/mergeworthy"; node "$R/cli/index.mjs" uninstall --yes --agents claude > "$T/out" 2>&1
+  check "npx mergeworthy uninstall --agents claude: exit, its link gone; a copied plugin folder there stays" "0 no yes" \
+    "$rc $([ -L "$(prof antigravity)/mergeworthy" ] && echo yes || echo no) $([ -d "$(prof antigravity)/mergeworthy" ] && [ ! -L "$(prof antigravity)/mergeworthy" ] && echo yes || echo no)"
+  : > "$T/calls"; node "$R/cli/index.mjs" --yes --agents claude,codex > "$T/out" 2>&1; rc=$?
+  check "a copied plugin folder at the link's path: the install exits 0, warns naming it, keeps it and installs Codex too" "0 1 yes 1" \
+    "$rc $(grep -c 'loads a copy of mergeworthy' "$T/out") $([ -d "$(prof antigravity)/mergeworthy" ] && [ ! -L "$(prof antigravity)/mergeworthy" ] && echo yes || echo no) $(grep -c '^codex plugin add' "$T/calls")"
+  rm -rf "$HOME/.codex"
+  rmdir "$(prof antigravity)/mergeworthy"
+  # a link it can't make fails the install, after Codex is installed too
+  rm -f "$(prof antigravity)/mergeworthy"; chmod a-w "$(prof antigravity)/.."; : > "$T/calls"
+  node "$R/cli/index.mjs" --yes --agents claude,codex > "$T/out" 2>&1; rc=$?; chmod u+w "$(prof antigravity)/.."
+  check "an Antigravity link the install can't make: exit 1, the failure named, Codex installed" "1 1 1" \
+    "$rc $(grep -c 'Linking the Antigravity plugin failed' "$T/out") $(grep -c '^codex plugin add' "$T/calls")"
+  rm -rf "$HOME/.codex"
+  printf 'saved file\n' > "$(prof antigravity)/mergeworthy"; : > "$T/calls"
+  node "$R/cli/index.mjs" --yes --agents claude,codex > "$T/out" 2>&1; rc=$?
+  check "a file at the link's path: the install exits 1 naming it, no copy warning, the file kept, Codex installed" "1 1 0 saved file 1" \
+    "$rc $(grep -c 'Linking the Antigravity plugin failed' "$T/out") $(grep -c 'loads a copy of mergeworthy' "$T/out") $(cat "$(prof antigravity)/mergeworthy") $(grep -c '^codex plugin add' "$T/calls")"
+  rm -rf "$HOME/.codex" "$(prof antigravity)/mergeworthy"
+  # an ~/.local/bin it can't write is a warning too
+  rm "$HOME/.local/bin/gate-pass"; : > "$NEW/bin/zz-linked"; ln -s x "$HOME/.local/bin/zz-linked"; chmod a-w "$HOME/.local/bin"; : > "$T/calls"; node "$R/cli/index.mjs" --yes --agents claude,codex > "$T/out" 2>&1; rc=$?; chmod u+w "$HOME/.local/bin"
+  check "an unwritable ~/.local/bin: the install exits 0, warns naming it, links the antigravity instance and installs Codex too" "0 1 $HOME/.mergeworthy/current/agy 1" \
+    "$rc $(grep -c 'local/bin/gate-pass.*Permission denied' "$T/out") $(readlink "$(prof antigravity)/mergeworthy") $(grep -c '^codex plugin add' "$T/calls")"
+  rm -rf "$HOME/.codex"; rm "$NEW/bin/zz-linked" "$HOME/.local/bin/zz-linked"; ln -sfn "$NEW" "$HOME/.mergeworthy/current"
+fi
+rm -r "$HOME/.t3/userdata/providers"; echo '{"providerInstances":{"antigravity":{"driver":"codex"}}}' > "$HOME/.t3/userdata/settings.json"
+bash "$R/bin/mergeworthy-update" > "$T/out" 2>&1; check "an instance \`antigravity\` on another driver gets no link" no "$([ -e "$HOME/.t3/userdata/providers" ] && echo yes || echo no)"
+rm -r "$HOME/.t3" "$NEW/hooks" "$NEW/agy" "$T/bin/agy"
 
 # a watcher whose every thread closed retires right after its restart: it writes its folder's `retired` and stops its unit
 DONE="$W/all-merged"; QUIT="$W/stopped"; mkdir -p "$DONE" "$QUIT"; printf '%s\n' "$DONE" "$QUIT" >> "$HOME/.claude/gh-watch-dirs.txt"
@@ -100,9 +156,31 @@ install_learn() {
 [ -x ~/.mergeworthy/current/bin/project-learn ] && { install_learn || failed+=("mergeworthy-learn.timer"); }
 [ ${#failed[@]} = 0 ] || { echo "failed: ${failed[*]}"; exit 1; }
 OLD
-cp "$R/hooks/learn-units" "$NEW/hooks/"; printf '#!/bin/sh\n' > "$NEW/bin/project-learn"; chmod +x "$PRE/bin/mergeworthy-update" "$NEW/bin/project-learn"
+cp "$R/hooks/learn-units" "$R/hooks/agy-link" "$NEW/hooks/"; printf '#!/bin/sh\n' > "$NEW/bin/project-learn"; chmod +x "$PRE/bin/mergeworthy-update" "$NEW/bin/project-learn"
 ln -sfn "$PRE" "$HOME/.mergeworthy/current"; ln -s "$HOME/.mergeworthy/current/bin/mergeworthy-update" "$HOME/.local/bin/mergeworthy-update"
 : > "$U/mergeworthy-learn.timer"; : > "$U/mergeworthy-learn.service"; NEW="$NEW" bash "$HOME/.local/bin/mergeworthy-update" > "$T/out" 2>&1; rc=$?
 check "the old script's update to this version: exit, both learning units removed, no failure named" "0 0 0" "$rc $(ls "$U" | grep -c mergeworthy-learn) $(grep -c '^failed:' "$T/out")"
+
+# the first update from main before the agy plugin (fb5d9a0's installed mergeworthy-update, verbatim) links it in that same run:
+# it repoints current, then runs the new tree's hooks/learn-units, which links it
+cp "$R/tests/fixtures/mergeworthy-update-fb5d9a0" "$PRE/bin/mergeworthy-update"; mkdir -p "$NEW/agy" "$HOME/.t3/userdata"
+cp "$R/hooks/learn-units" "$R/hooks/agy-link" "$NEW/hooks/"; echo '{}' > "$NEW/agy/hooks.json"; printf '#!/bin/sh\n' > "$T/bin/agy"; chmod +x "$T/bin/agy"
+echo '{"providerInstances":{"antigravity":{"driver":"antigravity"},"antigravity_2":{"driver":"antigravity"}}}' > "$HOME/.t3/userdata/settings.json"
+ln -sfn "$PRE" "$HOME/.mergeworthy/current"; bash "$HOME/.local/bin/mergeworthy-update" > "$T/out" 2>&1; rc=$?
+check "main's mergeworthy-update to this version: exit, current, the antigravity instance linked in that run, antigravity_2 not" "0 $NEW $HOME/.mergeworthy/current/agy no" \
+  "$rc $(readlink "$HOME/.mergeworthy/current") $(readlink "$(prof antigravity)/mergeworthy") $([ -e "$(prof antigravity_2)" ] && echo yes || echo no)"
+# as this version's update: over a copied plugin it warns and exits 0, a link it can't make fails it (learn-units exits with agy-link's status)
+rm "$(prof antigravity)/mergeworthy"; mkdir "$(prof antigravity)/mergeworthy"; ln -sfn "$PRE" "$HOME/.mergeworthy/current"
+bash "$HOME/.local/bin/mergeworthy-update" > "$T/out" 2>&1; rc=$?
+check "main's mergeworthy-update over a copied plugin: exit, warned, no failure named, the copy kept" "0 1 0 yes" \
+  "$rc $(grep -c 'loads a copy of mergeworthy' "$T/out") $(grep -c '^failed:' "$T/out") $(copied)"
+rmdir "$(prof antigravity)/mergeworthy"; chmod a-w "$(prof antigravity)/.."; ln -sfn "$PRE" "$HOME/.mergeworthy/current"
+bash "$HOME/.local/bin/mergeworthy-update" > "$T/out" 2>&1; rc=$?; chmod u+w "$(prof antigravity)/.."
+check "main's mergeworthy-update when the Antigravity link can't be made: exit, the failure named" "1 1" "$rc $(grep -c 'removing mergeworthy-learn.timer' "$T/out")"
+printf 'saved file\n' > "$(prof antigravity)/mergeworthy"; ln -sfn "$PRE" "$HOME/.mergeworthy/current"
+bash "$HOME/.local/bin/mergeworthy-update" > "$T/out" 2>&1; rc=$?
+check "main's mergeworthy-update over a file at the link's path: exit, the failure named, no copy warning, the file kept" "1 1 0 saved file" \
+  "$rc $(grep -c 'removing mergeworthy-learn.timer' "$T/out") $(grep -c 'loads a copy of mergeworthy' "$T/out") $(cat "$(prof antigravity)/mergeworthy")"
+rm -r "$HOME/.t3" "$NEW/agy" "$T/bin/agy"
 
 [ "$fails" = 0 ] && echo "update: all cases pass" || { echo "update: $fails case(s) failed"; exit 1; }
