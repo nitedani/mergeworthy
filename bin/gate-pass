@@ -4,6 +4,7 @@
 # Writes <draft.md>.gate with the draft's sha256; the posting hook checks it, so any later edit needs a new review.
 # A status post (post-lint --kind status, post step 3) has no review: its review output is `none`, and it needs its PROMISED line.
 set -e
+CLAUDE_CODE_SESSION_ID=${CLAUDE_CODE_SESSION_ID:-${ANTIGRAVITY_CONVERSATION_ID:-}}  # an Antigravity session goes by its conversation (hooks/agy.py)
 d="$1"; r="$2"
 [ -f "$d" ] && { [ -f "$r" ] || [ "$r" = none ]; } || { echo "usage: gate-pass <draft.md> <review-output>|none [--ledger <path>] [post-lint flags]"; exit 2; }
 # the flags given here, else those the draft last passed post-lint with (<draft>.lint), else a reply's

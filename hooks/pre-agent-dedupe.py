@@ -28,12 +28,15 @@ def refused():
 # T3 opens no run for a turn Claude Code starts by itself (a finished background command, a Monitor event), and refuses
 # launches from it (pingdotgg/t3code#16808): nothing ran, so no job, and the session keeps working instead of waiting
 if register and 'parent_not_active' in json.dumps(req.response or ''):
-    print(json.dumps({'hookSpecificOutput': {'hookEventName': 'PostToolUse', 'additionalContext':
+    # Claude Code takes the context only from an answer naming the event it ran on
+    print(json.dumps({'hookSpecificOutput': {'hookEventName': 'PostToolUseFailure' if req.failed else 'PostToolUse', 'additionalContext':
         "T3 refused this launch: a background event started this turn, and T3 opened no run for it, so it refuses agent "
         "launches and the user doesn't see this turn in the thread. The next user message, scheduled task or finished agent "
         "starts a run. Until then, do the step yourself wherever the main session may (gates, tests, probes, an implementer's "
         "edits, preparing the push or the body: delegate step 7); only an independent review and a post wait for a run. "
         "Keep the brief, launch it in the next run, and add no status line on each wake."}}))
+    sys.exit(0)
+if register and req.failed:  # a launch that failed for another reason started nothing to register
     sys.exit(0)
 L = launch.Brief(req.text)
 brief = L.brief  # every rule below reads the brief; the files it only names (project notes, installed skills) are read, so their history SHAs pin nothing
@@ -160,6 +163,13 @@ if req.tool in ('Agent', 'Task') and req.t3 and req.background:
     sys.stderr.write("BLOCKED: under T3 Code a background Agent stops when this turn ends (T3 starts a new session for the next one). "
                      "Launch it with delegate_task (mergeworthy:delegate step 4), or with run_in_background: false for a child that finishes within this turn.\n")
     refused()
+# T3 heads a delegated task with "the agent in T3 thread <id> sent this message, not the user"; under that line Haiku declined 8 of
+# 86 memory refreshes launched with role general or none, and none of 17 with role research, which T3 opens with "Act as the
+# research sub-agent for this task" (Claude transcripts on private, 2026-11-20 to 11-25)
+if k.refresh and req.t3 and str(req.tool).endswith('delegate_task') and req.role != 'research':
+    sys.stderr.write("BLOCKED: launch the memory refresh with role research: T3 then opens its task with \"Act as the research sub-agent\"; "
+                     "without it the Haiku reads the task as another agent's message, not the user's, and declines it.\n")
+    refused()
 def codex_reset():
     """The soonest reset while claude-swap reads every saved Codex account as used up ($CODEX_HOME/profiles/limited.json), else None."""
     profiles = os.path.join(os.environ.get('CODEX_HOME') or os.path.expanduser('~/.codex'), 'profiles')
@@ -169,18 +179,25 @@ def codex_reset():
     except (OSError, ValueError, AttributeError, TypeError):
         return None
     return min(until) if until and min(until) > time.time() else None
-# This hook runs only under Claude Code, so a review on claudeAgent, or naming no provider (it inherits), is on the main session's company
-if req.role == 'review' and req.t3:
+# Delegated agents run on Claude, reviews first on Codex (mergeworthy:delegate §Model class, §Reviewers), whichever host the session runs
+# on: a delegate_task with no target runs on the launching session's provider, Antigravity's under hooks/agy.py (MERGEWORTHY_HOST)
+drivers = req.drivers or {'antigravity' if os.environ.get('MERGEWORTHY_HOST') == 'antigravity' else 'claudeAgent'}
+if req.t3 and str(req.tool).endswith('delegate_task') and 'antigravity' in drivers:
+    sys.stderr.write("BLOCKED: no delegated agent runs on Antigravity (mergeworthy:delegate §Model class, §Reviewers)"
+                     + ("; with no target this launch would run on this session's Antigravity" if not req.providers else '')
+                     + f": set target.providerInstanceId to {'codex' if req.role == 'review' else 'claudeAgent'}.\n")
+    refused()
+elif req.role == 'review' and req.t3:
     reset = codex_reset()
     if reset and 'codex' in req.providers:
         at = time.localtime(reset)
         sys.stderr.write(f"BLOCKED: claude-swap reads every saved Codex account as used up until {time.strftime('%H:%M' if at[:3] == time.localtime()[:3] else '%a %H:%M', at)}, so this launch would fail. "
-                         "Launch the review on this company (target.providerInstanceId claudeAgent); it needs no Fallback line while that holds.\n")
+                         "Launch the review on Claude (target.providerInstanceId claudeAgent); it needs no Fallback line while that holds.\n")
         refused()
     # the fallback keeps the first review's prompt, so its claim may sit in the brief file the task names; `<what failed>` is the form, no claim
-    elif not reset and (not req.providers or 'claudeAgent' in req.providers) and not re.search(r'\bFallback:[ \t]*[^\s<]', launch.Brief(req.task).brief):
+    elif not reset and 'claudeAgent' in drivers and not re.search(r'\bFallback:[ \t]*[^\s<]', launch.Brief(req.task).brief):
         sys.stderr.write("BLOCKED: an independent check starts on another company's model (mergeworthy:delegate §Reviewers): set target.providerInstanceId to codex. "
-                         "Only when that call failed, launch on this company with `Fallback: <what failed>` in the task or the brief file it names.\n")
+                         "Only when that call failed, launch on Claude (claudeAgent) with `Fallback: <what failed>` in the task or the brief file it names.\n")
         refused()
 # T3 answers a delegate_task whose clientRequestId it has seen with that earlier task's result, without running anything.
 # Reuse is allowed only within 10 minutes (a retry of the same launch).
@@ -391,9 +408,9 @@ if approach and not approach[2]:
                          "approach is rated and recorded first (mergeworthy:pull-request step 5); the same approach says so: "
                          "`Approach: <path> (unchanged: <why, in one line>)`\n")
         refused()
-# Research the program already wrote up (memory.md, the notes) is read, not redone.
+# Research the program already wrote up (memory.md, the notes) is read, not redone; a memory refresh, launched as research, writes them
 root = memory_file.for_cwd(req.cwd, req.session)
-if root and k.research:
+if root and k.research and not k.refresh:
     topic = re.search(r'^\s*Topic:\s*(.+?)\s*$', brief, re.M)
     if not topic:
         sys.stderr.write("BLOCKED: a research brief names its topic in a `Topic: <key words>` line, so the hook can search the work folder's files for research already done (mergeworthy:delegate §Brief).\n")

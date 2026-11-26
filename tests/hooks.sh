@@ -104,6 +104,32 @@ CLAUDE_PLUGIN_ROOT="$R" CLAUDE_PLUGIN_OPTION_BADGE=off bash "$R/hooks/session-st
 check "session-start writes the options it is given" 'MERGEWORTHY_BADGE=off' "$(cat "$HOME/.mergeworthy/settings.env")"
 rm -f "$HOME/.mergeworthy/settings.env"
 check "session-start still carries the always-on rules" yes "$(CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" 2>/dev/null </dev/null | grep -q '^## Always-on rules (mergeworthy)' && echo yes || echo no)"
+# an installed version older than the session's plugin (no hooks/bin-links): its bin/ commands still go on PATH
+OLDV="$T/old-install"; mkdir -p "$OLDV/bin"; touch "$OLDV/always-on.md"; : > "$OLDV/bin/old-only-tool"
+mkdir -p "$HOME/.claude/plugins"; echo "{\"plugins\":{\"mergeworthy@mergeworthy\":[{\"installPath\":\"$OLDV\"}]}}" > "$HOME/.claude/plugins/installed_plugins.json"
+echo '{"session_id":"sid-old","source":"resume"}' | CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" >/dev/null 2>"$T/err"
+check "session-start under an installed version without bin-links links that version's commands, with no error" "$HOME/.mergeworthy/current/bin/old-only-tool 0" "$(readlink "$HOME/.local/bin/old-only-tool") $(grep -c 'No such file' "$T/err")"
+rm "$HOME/.claude/plugins/installed_plugins.json" "$HOME/.local/bin/old-only-tool"; CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" >/dev/null 2>&1 </dev/null
+mkdir -p "$HOME/.t3/userdata" "$T/agybin"; printf '#!/bin/sh\n' > "$T/agybin/agy"; chmod +x "$T/agybin/agy"
+PATH="$T/agybin:$PATH" CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" >/dev/null 2>&1 </dev/null
+check "session-start links the agy plugin into T3's antigravity instance" "$HOME/.mergeworthy/current/agy" "$(readlink "$HOME/.t3/userdata/providers/antigravity/$(printf antigravity | sha256sum | cut -d' ' -f1)/config/plugins/mergeworthy")"
+AGP="$HOME/.t3/userdata/providers/antigravity/$(printf antigravity | sha256sum | cut -d' ' -f1)/config/plugins"
+# two runs at once both link it: a stub mv waits until both reached their rename
+mkdir -p "$T/mvbin" "$T/mvwait"; rm "$AGP/mergeworthy"; printf '#!/bin/sh\ntouch "%s/$$"; i=0; while [ "$(ls "%s" | wc -l)" -lt 2 ] && [ $i -lt 50 ]; do sleep 0.1; i=$((i+1)); done\nexec /usr/bin/mv "$@"\n' "$T/mvwait" "$T/mvwait" > "$T/mvbin/mv"; chmod +x "$T/mvbin/mv"
+PATH="$T/mvbin:$T/agybin:$PATH" bash "$R/hooks/agy-link" 2>/dev/null & l1=$!; PATH="$T/mvbin:$T/agybin:$PATH" bash "$R/hooks/agy-link" 2>/dev/null; l2=$?; wait $l1
+check "two agy-link runs at once both exit 0 with the link made, and only it in agy's plugin folder" "0 0 $HOME/.mergeworthy/current/agy mergeworthy" "$? $l2 $(readlink "$AGP/mergeworthy") $(ls -A "$AGP" | paste -sd' ')"
+# a copied plugin folder where the link goes stays as it is; agy-link says so once, and so does the session
+rm "$AGP/mergeworthy"; mkdir "$AGP/mergeworthy"; touch "$AGP/mergeworthy/plugin.json"
+PATH="$T/agybin:$PATH" bash "$R/hooks/agy-link" 2>"$T/err"; l1=$?
+check "a copied plugin at the link's path: agy-link exits 0 with one line naming it, the copy kept, nothing else in agy's plugin folder; the session says so" "0 1 1 mergeworthy 1" \
+  "$l1 $(wc -l < "$T/err") $(grep -c "loads a copy of mergeworthy from $AGP/mergeworthy" "$T/err") $(ls -A "$AGP" | paste -sd' ')$([ -L "$AGP/mergeworthy" ] && echo ' link') $(PATH="$T/agybin:$PATH" CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" 2>/dev/null </dev/null | grep -c 'loads a copy of mergeworthy')"
+# a file there is no copied plugin: kept, and the link fails, with one line naming it
+rm -r "$AGP/mergeworthy"; printf 'saved file\n' > "$AGP/mergeworthy"
+PATH="$T/agybin:$PATH" bash "$R/hooks/agy-link" 2>"$T/err"; l1=$?
+check "a file at the link's path: agy-link exits 1 with one line naming it, the file kept" "1 1 1 saved file" \
+  "$l1 $(wc -l < "$T/err") $(grep -c "$AGP/mergeworthy, where .* is no folder and no link" "$T/err") $(cat "$AGP/mergeworthy")"
+rm -r "$T/mvbin" "$T/mvwait"
+rm -r "$HOME/.t3" "$T/agybin"
 # ---------- shared state under ~/.mergeworthy changes only from a real input: an empty environment leaves it as it was ----------
 EH="$T/emptyhome"; mkdir -p "$EH/.mergeworthy" "$EH/.claude/projects/$(printf '%s' "$EH/cwd" | sed 's/[^A-Za-z0-9]/-/g')" "$EH/cwd"
 printf 'MERGEWORTHY_BADGE=on\nMERGEWORTHY_WATCHER=on\n' > "$EH/.mergeworthy/settings.env"; echo /keep > "$EH/.mergeworthy/memory-roots.txt"; echo /keep > "$EH/.mergeworthy/main-watch"
@@ -153,6 +179,14 @@ for t in sys.argv[1:]: print(json.dumps({"type":"assistant","message":{"content"
 forks $'#20 is in review.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.' $'#21 is ready.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.'; f1=$(stop "$T"); f1e=$(grep -c 'already sent' "$T/err")
 forks $'#20 is in review.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.' $'#21 is ready.\n\nGENUINE-FORK: publish now as 0.1.0, or after #20 lands; I recommend after #20.'; f2=$(stop "$T")
 check "BLOCK: a GENUINE-FORK line already sent this session; one with changed options passes" "2 1 0" "$f1 $f1e $f2"
+# under T3 a fork counts as sent only from a final message stop-lint let end the turn: T3 folds a text the turn went past into one line
+TF=$'#20 is in review.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.'
+forks 'Checking the release.' "$TF"; t1=$(T3CODE_THREAD_ID=th-f SID=t3-fork-a stop "$T"); forks "$TF" 'More work.' "${TF/is in review/is still in review}"; t2=$(T3CODE_THREAD_ID=th-f SID=t3-fork-a stop "$T")
+forks "$TF" 'More work.' "${TF/is in review/is still in review}"; t3=$(T3CODE_THREAD_ID=th-f SID=t3-fork-b stop "$T"); t4=$(SID=t3-fork-b stop "$T")
+check "BLOCK: under T3 a fork a passed final message carried is sent; one only in a text the turn went past is asked again in the final message, and outside T3 it is sent" "0 2 0 2" "$t1 $t2 $t3 $t4"
+forks "$TF"; c1=$(python3 -c 'import json,sys; print(json.dumps({"transcript_path":sys.argv[1],"cwd":sys.argv[2],"session_id":"t3-fork-c","mergeworthy_continues":True}))' "$T/tr.jsonl" "$T" | T3CODE_THREAD_ID=th-f MERGEWORTHY_STOP_CHECKIN=off python3 "$R/hooks/stop-lint.py" 2>/dev/null; echo $?)
+forks "$TF" 'More work.' "${TF/is in review/is still in review}"; c2=$(T3CODE_THREAD_ID=th-f SID=t3-fork-c stop "$T")
+check "a final message the host goes on past (agy.py's owed checks) doesn't count its fork as sent" "0 0" "$c1 $c2"
 tr_file "The watcher runs and the Monitor is armed."
 check "no replies-owed.md, cwd=watch dir" 0 "$(stop "$WD")"
 # defects-open.md (task §Files): an open line is named once at turn end; a cleared one isn't
@@ -429,6 +463,12 @@ BM_RAN='{"type":"assistant","message":{"model":"claude-opus-5-5","content":[{"ty
 BM_DELEGATED='{"type":"assistant","message":{"model":"claude-opus-5-5","content":[{"type":"tool_use","id":"d1","name":"mcp__t3-code__delegate_task","input":{"task":"x","target":{"provider":"claudeAgent","model":"claude-sonnet-5-5"}}}]}}'
 check "a badge naming the model the session ran passes" 0 "$(bmguard 'Claude Opus 5.5 (high effort)' "$BM_RAN")"
 check "a badge naming a model the session launched only through delegate_task passes" 0 "$(bmguard 'Claude Opus 5.5 (high effort) and Claude Sonnet 5.5 (high effort)' "$BM_DELEGATED")"
+BM_AGY='{"type":"assistant","message":{"model":"claude-opus-5-5","content":[{"type":"tool_use","id":"d3","name":"mcp__t3-code__delegate_task","input":{"task":"x","target":{"providerInstanceId":"antigravity","model":"gemini-4-neon"}}},{"type":"tool_use","id":"d4","name":"mcp__t3-code__delegate_task","input":{"task":"y","target":{"providerInstanceId":"codex"}}}]}}'
+BM_AGY_SELF=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import agy; print("".join(map(agy.line, agy.claude_transcript([{"step_index": 0, "type": "PLANNER_RESPONSE", "model": "gemini-4-neon-high", "content": "Drafted."}], "/w", "c1", {0: 1})[0])), end="")' "$R/hooks")
+check "an Antigravity session's transcript (hooks/agy.py) names its Gemini model: a badge naming it passes; BLOCK: one it never ran" "0 2 1" "$(bmguard 'Gemini 4 Neon (Antigravity, high effort)' "$BM_AGY_SELF") $(bmguard 'Gemini 4 Carbon (Antigravity, high effort)' "$BM_AGY_SELF") $(grep -c 'names gemini-4-carbon, which.*it ran gemini-4-neon-high' "$T/err")"
+check "a Gemini model launched through delegate_task, named or not, authorizes no Gemini name: BLOCK" "2 2 1" "$(bmguard 'Claude Opus 5.5 (high effort) and Gemini 4 Neon (Antigravity, high effort)' "$BM_AGY") $(bmguard 'Claude Opus 5.5 (high effort) and Gemini 4 Carbon (Antigravity, high effort)' "$BM_AGY") $(grep -c 'names gemini-4-carbon, which' "$T/err")"
+BM_AGY_CODEX='{"type":"assistant","message":{"model":"gemini-4-neon-high","content":[{"type":"tool_use","id":"d5","name":"mcp__t3-code__delegate_task","input":{"task":"review","target":{"providerInstanceId":"codex"}}}]}}'
+check "BLOCK: an Antigravity session that ran only gemini-4-neon-high and launched a Codex review is refused a Gemini 4 Carbon badge" "2 1" "$(bmguard 'Gemini 4 Carbon (Antigravity, high effort)' "$BM_AGY_SELF" "$BM_AGY_CODEX") $(grep -c 'names gemini-4-carbon, which' "$T/err")"
 BM_ALIAS='{"type":"assistant","message":{"model":"claude-opus-5-5","content":[{"type":"tool_use","id":"a1","name":"Agent","input":{"prompt":"x","model":"sonnet"}}]}}'
 check "a badge naming a Sonnet version in a session that launched an Agent on the sonnet alias passes" 0 "$(bmguard 'Claude Opus 5.5 (high effort) and Claude Sonnet 5.5 (high effort)' "$BM_ALIAS")"
 check "BLOCK: a badge naming a Claude model that never ran, saying which ran and that the changed draft is reviewed again" "2 1 1" "$(bmguard 'Claude Fable 5.2 (high effort)' "$BM_RAN") $(grep -c 'names claude-fable-5-2, which this session didn.t run.*in the last day; it ran claude-opus-5-5' "$T/err") $(grep -c 'run its review again (mergeworthy:post step 3) and gate-pass it' "$T/err")"
@@ -798,6 +838,18 @@ check "BLOCK: one model of two without its effort" 1 "$(elint '*Opus 5.5 (high e
 check "BLOCK: a model line with no versioned model and no effort" 1 "$(elint '*Claude wrote this.*')"
 check "the effort right after each model passes, every level" 0 "$(elint '*Opus 5.5 (low effort) wrote this; Haiku 5.5 (medium effort) tested it; Opus 5.5 (xhigh effort), Opus 5.5 (max effort) and Opus 5.5 (ultra effort) reviewed it.*')"
 check "the effort inside the model's parenthesis passes" 0 "$(elint '*Opus 5.5 (high effort) wrote this; GPT-6.1-Sol (Codex, high effort) reviewed it.*')"
+check "a model named by a word after its version passes with its effort, and is flagged without it" "0 1" "$(elint '*Gemini 4 Neon (Antigravity, high effort) wrote this; GPT-6.1-Sol (Codex, high effort) reviewed it.*') $(elint '*Opus 5.5 (high effort) wrote this; Gemini 4 Neon (Antigravity) reviewed it.*')"
+glint() { printf '%s %s\nFixed in abc1234.\n' '<img src="https://github.com/google-antigravity.png" width="20" height="20" alt="Antigravity">' "$1" > "$T/gemini.md"; python3 "$R/bin/post-lint" "$T/gemini.md" --parent none 2>&1 | grep -c 'Gemini <version> <Family>'; }
+check "BLOCK: a Gemini credit outside \"Gemini <version> <Family>\" (no version, a hyphen); the form passes" "1 1 0" "$(glint '*Gemini (Antigravity, high effort) wrote this.*') $(glint '*Gemini 4-Neon (Antigravity, high effort) wrote this.*') $(glint '*Gemini 3.8 Flash (Antigravity, high effort) wrote this.*')"
+py310() { python3 -c 'import re, re._parser as p, runpy, sys
+parse = p.parse
+def old(*a, **k):  # what CPython 3.10 parses: no possessive quantifier or atomic group (3.11)
+    r = parse(*a, **k)
+    if "POSSESSIVE_REPEAT" in repr(r.data) or "ATOMIC_GROUP" in repr(r.data): raise re.error("Python 3.11 regex syntax")
+    return r
+p.parse = old; re.purge(); sys.argv = sys.argv[1:]; runpy.run_path(sys.argv[0], run_name="__main__")' "$R/bin/post-lint" "$@"; }
+printf '%s *Opus 5.5 (high effort) wrote this; Gemini 4 Neon (Antigravity, high effort) reviewed it.*\nFixed in abc1234.\n' '<img src="https://github.com/claude.png" width="20" height="20" alt="Claude">' > "$T/p310.md"
+check "post-lint uses only regex syntax Python 3.10 parses: a badged reply lints without a regex error" 0 "$(py310 "$T/p310.md" --parent none 2>&1 | grep -c 'regex syntax')"
 check "a link to the WIP comment isn't read as a model" 0 "$(elint '*Opus 5.5 (high effort) wrote this. [WIP](https://github.com/vikejs/vike/issues/3407#issuecomment-6100167145)*')"
 # ---------- post-lint: a reply doesn't defer a quick win ----------
 qlint() { printf '%s' "$1" > "$T/quick.md"; python3 "$R/bin/post-lint" "$T/quick.md" --kind reply --parent none 2>&1 | grep -c 'defers work'; }
@@ -1039,6 +1091,8 @@ printf '%s Done: eight commits, none changing behavior.\n\nOne change I didn'"'"
 check "a label opening a sentence is flagged" 2 "$(python3 "$R/bin/post-lint" "$T/lbl.md" --parent none 2>&1 | grep -c 'a label opening a sentence')"
 printf '%s I landed eight commits at 14:52, and here is the plan I see:\n\n1. Fix it.\n' "$B" > "$T/lbl2.md"
 check "a time, or a colon before a list, is not a label" 0 "$(python3 "$R/bin/post-lint" "$T/lbl2.md" --parent none 2>&1 | grep -c 'a label opening a sentence')"
+printf '%s Two commits rated.\n\nCI on %s: green\n\nCI on `%s`: red: check (ubuntu)\n\nCI on main: green\n\nCI on `main`: green\n\nCI on `%s`: skipped\n\nCI on %s: none  \n' "$B" 1111111111111111111111111111111111111aaf 1111111111111111111111111111111111111aaf 1111111111111111111111111111111111111aa1 1111111111111111111111111111111111111aaf > "$T/lbl3.md"
+check "a review's whole CI line, its SHA bare or in code, is not a label; CI on a branch, bare or in code, is, and so is a state the review never writes" 3 "$(python3 "$R/bin/post-lint" "$T/lbl3.md" --kind reply --parent none 2>&1 | grep -c 'a label opening a sentence')"
 printf '%s Fixes the leak.\n\n<details>\n<summary>Refactor pass, run 2 (head abc1234)</summary>\n\nS1 and S2. %s\n</details>\n' "$B" "$(printf 'word %.0s' $(seq 300))" > "$T/rpb.md"
 printf '%s Fixes the leak.\n\n<details>\n<summary>Approach (head abc1234)</summary>\n\n%s\n</details>\n' "$B" "$(printf 'word %.0s' $(seq 300))" > "$T/apb.md"
 check "an Approach block collapsed in a PR body is not counted" 0 "$(python3 "$R/bin/post-lint" "$T/apb.md" --kind pr --parent none 2>&1 | grep -c 'words >')"
@@ -1290,8 +1344,15 @@ check "BLOCK: a second launch of the same ticket" 2 "$(launch 'Retry: execute /t
 check "another ticket passes" 0 "$(launch 'Execute /tmp/x/other.md')"
 launch_in 'Execute /tmp/x/blocked.md' | python3 "$R/hooks/pre-agent-dedupe.py" >/dev/null 2>&1
 check "a launch another hook blocked (never ran) leaves no job" 0 "$(launch 'Execute /tmp/x/blocked.md')"
+# the answer names the event it ran on, as Claude Code requires before it takes the context (hookSpecificOutput.hookEventName)
+ctx_of() { python3 -c 'import json, sys; o = json.load(sys.stdin)["hookSpecificOutput"]; print(int(o["hookEventName"] == sys.argv[1] and "do the step yourself" in o["additionalContext"]))' "$1"; }
 refused() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":sys.argv[1],"title":"t"},"tool_response":[{"type":"text","text":"code: parent_not_active"}]}))' "$1" | python3 "$R/hooks/pre-agent-dedupe.py" register; }
-check "a launch T3 refused (parent_not_active) says what to do and leaves no job" "1 0" "$(refused 'Execute /tmp/x/refused.md' | grep -c 'do the step yourself') $(launch 'Execute /tmp/x/refused.md')"
+check "a launch T3 refused (parent_not_active) says what to do and leaves no job" "1 0" "$(refused 'Execute /tmp/x/refused.md' | ctx_of PostToolUse) $(launch 'Execute /tmp/x/refused.md')"
+# T3 returns the refusal as an MCP error, so Claude Code runs PostToolUseFailure with it as the error: the same advice, and no job;
+# a launch that failed otherwise leaves none either
+failed_launch() { python3 -c 'import json,sys; print(json.dumps({"hook_event_name":"PostToolUseFailure","tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":sys.argv[1],"title":"t"},"error":sys.argv[2]}))' "$1" "$2" | python3 "$R/hooks/pre-agent-dedupe.py" register; }
+check "a launch T3 refused as an MCP error (PostToolUseFailure): the advice and no job; one that failed otherwise: nothing said, no job; hooks.json runs it there" "1 0 0 0 yes" \
+  "$(failed_launch 'Execute /tmp/x/refused-err.md' '{"code":"parent_not_active","message":"no active turn"}' | ctx_of PostToolUseFailure) $(launch 'Execute /tmp/x/refused-err.md') $(failed_launch 'Execute /tmp/x/failed.md' 'MCP error -32603: boom' | wc -c) $(launch 'Execute /tmp/x/failed.md') $(python3 -c 'import json,re,sys; print("yes" if any(re.search(g["matcher"], "mcp__t3-code__delegate_task") and any("pre-agent-dedupe.py register" in h["command"] for h in g["hooks"]) for g in json.load(open(sys.argv[1]))["hooks"]["PostToolUseFailure"]) else "no")' "$R/hooks/hooks.json")"
 # an implementer brief file in the work folder, admitted with its recorded Approach, then edited while the call runs
 PB="$HOME/.mergeworthy/work/po/brief.md"; mkdir -p "${PB%/*}"; printf 'You implement the fix in %s.%s\n' "$T/afx" "$AFX" > "$PB"
 po() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"Agent","session_id":"po","tool_input":{"prompt":sys.argv[1],"description":"po impl","run_in_background":False},"tool_response":{"agentId":"abc"}}))' "Follow $PB exactly" | python3 "$R/hooks/pre-agent-dedupe.py" "$@" 2>"$T/err"; echo $?; }
@@ -1371,6 +1432,18 @@ printf 'Fallback: codex stopped round 2\nReview it\n' > "$T/fx/fb-brief.md"; pri
 check "a review on claudeAgent passes with a Fallback sentence inside a task line, or a Fallback line in the brief file it names; one whose brief file has none is refused" "0 0 2" "$(rev '{"providerInstanceId":"claudeAgent"}' 'Review it. Fallback: codex stopped round 1') $(rev '{"providerInstanceId":"claudeAgent"}' "Follow $T/fx/fb-brief.md") $(rev '{"providerInstanceId":"claudeAgent"}' "Follow $T/fx/plain-brief.md")"
 printf 'Review the change.\nIf the independent reviewer fails, record `Fallback: <what failed>` in the task.\n' > "$T/fx/fb-slot-brief.md"
 check "BLOCK: a review on claudeAgent whose task, or the brief file it names, only quotes the \`Fallback: <what failed>\` form" "2 2" "$(rev '{"providerInstanceId":"claudeAgent"}' 'Review the change. If the independent reviewer fails, record `Fallback: <what failed>` in the task.') $(rev '{"providerInstanceId":"claudeAgent"}' "Follow $T/fx/fb-slot-brief.md")"
+# under Antigravity (hooks/agy.py sets MERGEWORTHY_HOST) a launch with no target inherits Antigravity, which runs no delegated agent
+impl() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"ag","tool_input":{"task":"Research the cache","title":"ag research","role":"research","target":json.loads(sys.argv[1])}}))' "$1" \
+  | T3CODE_THREAD_ID=th MERGEWORTHY_HOST="${2:-}" python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
+mkdir -p "$HOME/.t3/userdata"; echo '{"providerInstances":{"antigravity_2":{"driver":"antigravity"},"claude_2":{"driver":"claudeAgent"}}}' > "$HOME/.t3/userdata/settings.json"
+check "BLOCK: under Antigravity a launch with no target, naming claudeAgent; a review with none, naming codex; an Antigravity target by instance or driver, under either host" "2 1 2 1 2 2 2" \
+  "$(impl '{}' antigravity) $(grep -c 'set target.providerInstanceId to claudeAgent' "$T/err") $(MERGEWORTHY_HOST=antigravity rev '{}' 'Review it') $(grep -c 'to codex' "$T/err") $(impl '{"providerInstanceId":"antigravity_2"}') $(impl '{"driverKind":"antigravity"}') $(impl '{"providerInstanceId":"antigravity"}' antigravity)"
+check "under Antigravity a launch on claudeAgent passes, and so does one with no target under Claude Code; a review on claude_2 (a Claude instance) still needs its Fallback line" "0 0 2" \
+  "$(impl '{"providerInstanceId":"claudeAgent"}' antigravity) $(impl '{}') $(rev '{"providerInstanceId":"claude_2"}' 'Review it')"
+echo '{"providerInstances":{"antigravity":{"driver":"codex"},"antigravity_2":{"driver":"antigravity"}}}' > "$HOME/.t3/userdata/settings.json"
+check "BLOCK: a target naming the antigravity driver alone, while the instance id antigravity runs Codex, as the Antigravity instance does" "2 2" \
+  "$(impl '{"driverKind":"antigravity"}') $(impl '{"providerInstanceId":"antigravity_2"}')"
+rm "$HOME/.t3/userdata/settings.json"
 check "an exploring research agent on claudeAgent passes" 0 "$(rev '{"providerInstanceId":"claudeAgent"}' 'Explore it' research)"
 python3 -c 'import json; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":"Review it","role":"review","target":{"providerInstanceId":"claudeAgent"},"clientRequestId":"r-1"}}))' \
   | T3CODE_THREAD_ID=th python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"
@@ -1445,6 +1518,9 @@ CM="$HOME/.mergeworthy/work/capmem"; mkdir -p "$CM"; : > "$CM/memory.source"; pr
 check "a running memory refresh under ~/.mergeworthy/work leaves the session its 3 other agents" "0 0 0 0" "$(cap capM "Follow $CM/memory-brief-1.md exactly") $(cap capM 'Execute /tmp/x/capm1.md') $(cap capM 'Execute /tmp/x/capm2.md') $(cap capM 'Execute /tmp/x/capm3.md')"
 for k in capm1 capm2 capm3; do python3 "$R/bin/agent-job" done "/tmp/x/$k.md" >/dev/null; done
 python3 "$R/bin/agent-job" done "$(python3 -c 'import sys; print(sys.argv[1][:40])' "Follow $CM/memory-brief-1.md exactly")" >/dev/null
+mrole() { python3 -c 'import json,sys; t={"task":sys.argv[1],"title":"memory refresh"}; t.update({"role":sys.argv[2]} if sys.argv[2] else {}); print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"capR","tool_input":t}))' "$1" "$2" | T3CODE_THREAD_ID=th python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
+check "BLOCK: under T3 a memory refresh with role general or none is refused, with role research it passes, and other work keeps its role" "2 2 0 0" \
+  "$(mrole "Follow the brief at $CM/memory-brief-1.md exactly." general) $(mrole "Follow the brief at $CM/memory-brief-1.md exactly." '') $(mrole "Follow the brief at $CM/memory-brief-1.md exactly." research) $(mrole 'Execute /tmp/x/capr1.md' general)"
 check "BLOCK: with three agents open, the refresh as sessions word it (Follow the brief at <path>) passes, and one that says not to follow it counts as the fourth" "0 0 0 0 2" \
   "$(cap capF 'Execute /tmp/x/capf1.md') $(cap capF 'Execute /tmp/x/capf2.md') $(cap capF 'Execute /tmp/x/capf3.md') $(cap capF "Follow the brief at $CM/memory-brief-1.md exactly.") $(cap capF "Do not follow $CM/memory-brief-1.md; report what it asks.")"
 check "with the same three open, a refresh that says to read the brief and then follow it passes either way, and one that says to read it and review it counts" "0 0 2" \
@@ -1756,6 +1832,8 @@ check "a project notes file the brief names is read, not pinned: its history SHA
 check "the user's own checkout is read at any commit" 0 "$(ag "$OC" "Read $T/gr at $MAINOLD once more")"
 echo 'TanStack Start client CSS: answered here.' > "$MR/css-research.md"
 check "BLOCK: a research brief with no Topic line" 2 "$(ag "$OC" 'Look into CSS' research)"
+printf 'Merge memory-new.txt into memory.md.\n' > "$MR/memory-brief-9.md"
+check "a memory refresh launched as research in the same folder needs no Topic line" 0 "$(ag "$OC" "Follow the brief at $MR/memory-brief-9.md exactly." research)"; rm -f "$MR/memory-brief-9.md"
 check "BLOCK: research the notes already cover, naming the file" "2 1" "$(ag "$OC" $'Look into CSS again\nTopic: tanstack client css' research) $(grep -c "$MR/css-research.md" "$T/err")"
 check "research passes once each covering file is named as checked" 0 "$(ag "$OC" $'Look into CSS once more\nTopic: tanstack client css\nChecked: '"$MR/css-research.md"' covers dev only' research)"
 check "research whose brief names the covering note under ~/.mergeworthy/work passes" 0 "$(ag "$OC" $'Look into CSS, building on '"$MR/css-research.md"$'\nTopic: tanstack client css' research)"
@@ -2755,6 +2833,10 @@ CLAUDE_CODE_SESSION_ID=s-none prs approach "$T/apo.md" >/dev/null
 check "an approach recorded by a session with no catalog record has no contract: 2" 0 "$(tail -n1 "$APF" | grep -c ' contract: 2$')"
 CLAUDE_CODE_SESSION_ID=s-v1 prs approach "$T/apo.md" >/dev/null
 check "an approach recorded by a session on v1's catalog has no contract: 2" 0 "$(tail -n1 "$APF" | grep -c ' contract: 2$')"
+echo '{"conversationId":"ag-conv","hookEventName":"SessionStart"}' | python3 "$R/hooks/agy.py" SessionStart >/dev/null
+CLAUDE_CODE_SESSION_ID= ANTIGRAVITY_CONVERSATION_ID=ag-conv prs approach "$T/apo.md" >/dev/null
+check "an approach recorded by an Antigravity session (its SessionStart records the catalog it loaded) carries contract: 2" 1 "$(tail -n1 "$APF" | grep -c ' contract: 2$')"
+CLAUDE_CODE_SESSION_ID=s-v1 prs approach "$T/apo.md" >/dev/null
 printf 'MERGE AS IS: yes\nCLEAN\n' > "$T/ofr.md"; std "$T/ofr.md"
 check "an old-contract branch still records loopb, refactor, and a fresh report without a Maintainer line" "0 0 0" "$(prs loopb "$T/olb.md") $(prs refactor "$T/pass.md") $(prs fresh "$T/ofr.md")"
 C=$(git -C "$G" rev-parse HEAD); printf 'y\n' > "$G/f2.md"; git -C "$G" add f2.md; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m d
@@ -2995,12 +3077,14 @@ check "BLOCK: an approach with no Probe line, naming pull-request step 5, or wit
 # the Basis line: the user's words, the goal's own failing run, a clean-cut error, or a report someone else wrote; never our own
 apb() { printf 'Root cause: %s\n%s| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | stays |\n| Fix it | 8 | ok |\nShared assumption: the bug is in this repo\nProbe: rg -l a.ts -> only src/a.ts\n\nChosen: Fix it\n' "$1" "$2" > "$T/apb.md"; (cd "$T/apbr" && bash "$R/bin/pr-steps" approach "$T/apb.md" >/dev/null 2>&1; echo $?); }
 git init -q "$T/apbr"; git -C "$T/apbr" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a  # its own repo: a recorded approach here reaches no other check
-echo '{"user":{"login":"nitedani","type":"User"},"body":"The login page fails."}' > "$FX/repos_o_r_issues_5"; echo '{"user":{"login":"nitedani","type":"User"},"body":"<img src=\"https://github.com/claude.png\" width=\"20\" height=\"20\" alt=\"Claude\"> *Claude wrote this.*\n\nA finding."}' > "$FX/repos_o_r_issues_6"; echo '{"user":{"login":"nitedani-agent","type":"User"},"body":"<img src=\"https://github.com/claude.png\" width=\"20\" height=\"20\" alt=\"Claude\"> *Claude wrote this.*\n\nA finding."}' > "$FX/repos_o_r_issues_comments_77"; echo '{"user":{"login":"renovate[bot]","type":"Bot"},"body":"Update x"}' > "$FX/repos_o_r_pulls_comments_78"
+echo '{"user":{"login":"nitedani","type":"User"},"body":"The login page fails."}' > "$FX/repos_o_r_issues_5"; echo '{"user":{"login":"nitedani","type":"User"},"body":"<img src=\"https://github.com/claude.png\" width=\"20\" height=\"20\" alt=\"Claude\"> *Claude wrote this.*\n\nA finding."}' > "$FX/repos_o_r_issues_6"; echo '{"user":{"login":"nitedani-agent","type":"User"},"body":"<img src=\"https://github.com/claude.png\" width=\"20\" height=\"20\" alt=\"Claude\"> *Claude wrote this.*\n\nA finding."}' > "$FX/repos_o_r_issues_comments_77"; echo '{"user":{"login":"nitedani-agent","type":"User"},"body":"<img src=\"https://github.com/google-antigravity.png\" width=\"20\" height=\"20\" alt=\"Antigravity\"> *Gemini 4 Neon (Antigravity, high effort) wrote this.*\n\nA finding."}' > "$FX/repos_o_r_issues_comments_79"; echo '{"user":{"login":"renovate[bot]","type":"Bot"},"body":"Update x"}' > "$FX/repos_o_r_pulls_comments_78"
+python3 -c 'import json,sys; json.dump({"user":{"login":"nitedani","type":"User"},"body":"\u6f22" * 44000}, open(sys.argv[1], "w"))' "$FX/repos_o_r_issues_7"
+check "a person's issue of 132 KB (44,000 CJK characters) records as Basis" 0 "$(apb src/a.ts:3 $'Basis: https://github.com/o/r/issues/7\n')"
 check "the Basis forms record: the user's words, the goal's failing run, a clean-cut error, a person's issue (the posting account's own included), a GitLab issue, a markdown link" "0 0 0 0 0 0" \
   "$(apb src/a.ts:3 $'Basis: request: "fix the login"\n') $(apb src/a.ts:3 $'Basis: goal: pnpm build -> error TS2304: Cannot find name x\n') $(apb src/a.ts:3 $'Basis: clean-cut: node a.js -> TypeError: x is undefined\n') $(apb src/a.ts:3 $'Basis: https://github.com/o/r/issues/5\n') $(apb src/a.ts:3 $'Basis: https://gitlab.com/o/r/-/issues/5\n') $(apb src/a.ts:3 $'Basis: [the report](https://github.com/o/r/issues/5)\n')"
-check "BLOCK: no Basis line, a probe in no named form, an agent's PR or comment (badged, whichever account), a bot's review comment, an issue gh can't read, an agent's PR for a reshape too" "1 1 1 1 1 1 1" \
-  "$(apb src/a.ts:3 '') $(apb src/a.ts:3 $'Basis: engine-strict refuses Node 22\n') $(apb src/a.ts:3 $'Basis: https://github.com/o/r/pull/6\n') $(apb src/a.ts:3 $'Basis: https://github.com/o/r/issues/5#issuecomment-77\n') $(apb src/a.ts:3 $'Basis: https://github.com/o/r/issues/9\n') $(apb src/a.ts:3 $'Basis: https://github.com/o/r/pull/6/files#r78\n') $(apb 'none, a reshape for the goal' $'Basis: https://github.com/o/r/pull/6\n')"
-rm -f "$FX/repos_o_r_issues_5" "$FX/repos_o_r_issues_6" "$FX/repos_o_r_issues_comments_77" "$FX/repos_o_r_pulls_comments_78"
+check "BLOCK: no Basis line, a probe in no named form, an agent's PR or comment (badged, whichever account, Antigravity's too), a bot's review comment, an issue gh can't read, an agent's PR for a reshape too" "1 1 1 1 1 1 1 1" \
+  "$(apb src/a.ts:3 '') $(apb src/a.ts:3 $'Basis: engine-strict refuses Node 22\n') $(apb src/a.ts:3 $'Basis: https://github.com/o/r/pull/6\n') $(apb src/a.ts:3 $'Basis: https://github.com/o/r/issues/5#issuecomment-77\n') $(apb src/a.ts:3 $'Basis: https://github.com/o/r/issues/5#issuecomment-79\n') $(apb src/a.ts:3 $'Basis: https://github.com/o/r/issues/9\n') $(apb src/a.ts:3 $'Basis: https://github.com/o/r/pull/6/files#r78\n') $(apb 'none, a reshape for the goal' $'Basis: https://github.com/o/r/pull/6\n')"
+rm -f "$FX/repos_o_r_issues_5" "$FX/repos_o_r_issues_6" "$FX/repos_o_r_issues_7" "$FX/repos_o_r_issues_comments_77" "$FX/repos_o_r_issues_comments_79" "$FX/repos_o_r_pulls_comments_78"
 check "BLOCK: gh pr ready after refused approach records" 2 "$(ready)"
 check "an approach with three rated candidates and a chosen 8 records, with no Browser line" 0 "$(prs2 approach "$T/ap.md")"
 glab() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "${2:-$T}" | python3 "$R/hooks/pre-bash-guard.py" >/dev/null 2>&1; echo $?; }
@@ -5208,5 +5292,395 @@ mkdir -p "$HOME/.mergeworthy/projects/nitedani-agent"; echo '# notes' > "$HOME/.
 check "the reply each refusal asks the owner for lets that command through: a merge, a push to the default branch, a release, an ask-first command" "2 0 2 0 2 0 2 0" \
   "$(rt "$M") $(rt 'git push origin HEAD:main' "$OWN") $(rt 'gh release create v1.2.0 -R o/r') $(rt 't3-update')"
 rm "$HOME/.mergeworthy/ask-first" "$HOME/.mergeworthy/projects/nitedani-agent/notes.md"
+# ---------- Antigravity (agy): hooks/agy.py runs Claude Code's hooks on agy's events and answers in agy's JSON ----------
+AG="$T/agy"; AGR="$AG/repo"; mkdir -p "$AG"; git init -q -b main "$AGR"; git -C "$AGR" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
+git -C "$AGR" remote add origin "$AG/remote.git"; echo 'Be nice.' > "$AGR/AGENTS.md"
+agt() { # <step json>...: agy's transcript of conversation c1 (one step per argument; step_index in order)
+  python3 -c 'import json, sys
+for i, a in enumerate(sys.argv[1:]): print(json.dumps({"step_index": i, "status": "DONE", "created_at": "2026-11-25T10:00:00Z", **json.loads(a)}))' "$@" > "$AG/t.jsonl"; }
+agy_ev() { # <event> [toolCall json] [stepIdx] [executionNum]: agy's input on stdin; prints agy.py's stdout, then its exit code
+  python3 -c 'import json, sys
+e, call, step, n = sys.argv[1:5]
+d = {"conversationId": "c1", "cwd": sys.argv[5], "transcriptPath": sys.argv[6], "hookEventName": e}
+if call: d.update(toolCall=json.loads(call), stepIdx=int(step))
+if e == "Stop": d.update(executionNum=int(n or 0))
+print(json.dumps(d))' "$1" "${2:-}" "${3:-0}" "${4:-}" "${AGC:-$AGR}" "$AG/t.jsonl" | python3 "$R/hooks/agy.py" "$1" | tr -d '\n'; echo " ${PIPESTATUS[1]}"; }
+U='{"type":"USER_INPUT","source":"USER_EXPLICIT","content":"<USER_REQUEST>\npush it\n</USER_REQUEST>"}'
+PUSH='{"name":"run_command","args":{"CommandLine":"git push origin HEAD:refs/heads/probe"}}'
+SKILL="{\"name\":\"read_file\",\"args\":{\"Path\":\"$R/agy/skills/merging/SKILL.md\"}}"
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PUSH]}"
+check "agy: a push before mergeworthy:merging is open is denied in agy's form, naming the skill, exit 0" "deny 1 0" \
+  "$(agy_ev PreToolUse "{\"id\":\"call_0\",$(echo "$PUSH" | cut -c2-)" 2 | python3 -c 'import json, sys; o = sys.stdin.read(); v = json.loads(o.rsplit(" ", 1)[0]); print(v["decision"], v["reason"].count("mergeworthy:merging"), o.rsplit(" ", 1)[1].strip())')"
+# agy opens a skill by reading its SKILL.md whole: "Showing lines 1-N of N"; a line range shows fewer
+SKILL1="{\"name\":\"read_file\",\"args\":{\"Path\":\"$R/agy/skills/merging/SKILL.md\",\"StartLine\":1,\"EndLine\":1}}"
+skread() { agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$1]}" "{\"type\":\"GENERIC\",\"content\":\"Created At: x\\n$2\"}" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PUSH]}"
+  agy_ev PreToolUse "{\"id\":\"call_1\",$(echo "$PUSH" | cut -c2-)" 4 | python3 -c 'import json, sys; v = json.loads(sys.stdin.read().rsplit(" ", 1)[0]); print(v["decision"] + ":" + str(v.get("reason", "").count("- mergeworthy:merging,")))'; }
+check "agy: a push with merging's SKILL.md unread, read as a line range (1 of 70 lines), and read whole: denied for the skill, still denied for it, and allowed" "deny:1 deny:1 allow:0" \
+  "$(agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PUSH]}"; agy_ev PreToolUse "{\"id\":\"call_0\",$(echo "$PUSH" | cut -c2-)" 2 | python3 -c 'import json, sys; v = json.loads(sys.stdin.read().rsplit(" ", 1)[0]); print(v["decision"] + ":" + str(v.get("reason", "").count("- mergeworthy:merging,")))') $(skread "$SKILL1" 'Showing lines 1-1 of 70\n1: ---') $(skread "$SKILL" 'Showing lines 1-70 of 70\n1: ---')"
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$SKILL]}" '{"type":"GENERIC","status":"ERROR","error":"file does not exist","content":"x"}' "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PUSH]}"
+check "agy: a read of SKILL.md that failed opens nothing" 1 "$(agy_ev PreToolUse "{\"id\":\"call_1\",$(echo "$PUSH" | cut -c2-)" 4 | grep -c 'mergeworthy:merging')"
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$SKILL]}" '{"type":"GENERIC","content":"Showing lines 1-1 of 1\n1: ---"}' '{"type":"CHECKPOINT","source":"SYSTEM","content":"# Resuming from a compaction"}' "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PUSH]}"
+check "agy: a compaction (agy's CHECKPOINT step) closes the skills read before it" 1 "$(agy_ev PreToolUse "{\"id\":\"call_1\",$(echo "$PUSH" | cut -c2-)" 4 | grep -c 'mergeworthy:merging')"
+# the repository-read checks run in a repo of their own with no remote, so nothing but AGENTS.md stands between a write and allow;
+# rd <step>: the write's decision, and for a denial whether it names AGENTS.md as unread
+AGC="$AG/readrepo"; git init -q -b main "$AGC"; git -C "$AGC" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; echo 'Be nice.' > "$AGC/AGENTS.md"
+W="{\"name\":\"write_file\",\"args\":{\"Path\":\"$AGC/x.txt\",\"Content\":\"x\"}}"; RA="{\"name\":\"read_file\",\"args\":{\"Path\":\"$AGC/AGENTS.md\"}}"
+rd() { agy_ev PreToolUse "{\"id\":\"c\",$(echo "$W" | cut -c2-)" "$1" | python3 -c 'import json, sys
+o = sys.stdin.read(); v = json.loads(o.rsplit(" ", 1)[0]); rc = o.rsplit(" ", 1)[1].strip()
+print(v["decision"] + ("" if v["decision"] == "allow" else ":" + str(int("read this repo\x27s instructions first" in v.get("reason", "") and sys.argv[1] in v["reason"]))) + ":" + rc)' "$AGC/AGENTS.md"; }
+export AGC
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$W]}"
+a1=$(rd 2)
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$RA,$W]}" '{"type":"GENERIC","content":"1: Be nice."}'
+check "agy: a file write before AGENTS.md was read is denied naming it; read in the same model turn (step 2, the write step 3), it is allowed" "deny:1:0 allow:0" "$a1 $(rd 3)"
+# only a read of AGENTS.md that succeeded counts: a cat that failed with no output, or one declined (agy logs no result), doesn't
+CA='{"name":"run_command","args":{"CommandLine":"cat AGENTS.md 2>/dev/null"}}'
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$CA]}" '{"type":"GENERIC","content":"Command exited with code 1.\n\nNo output from the command."}' "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$W]}"
+a1=$(rd 4)
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$CA]}" "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$W]}"
+a2=$(rd 4)
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$CA]}" '{"type":"GENERIC","content":"Command exited with code 0.\n\nCommand output:\nBe nice.\n"}' "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$W]}"
+check "agy: a file write after a cat of AGENTS.md that failed, or one declined (no result), is denied naming it; after one that succeeded it is allowed" "deny:1:0 deny:1:0 allow:0" "$a1 $a2 $(rd 4)"
+# a background cat of AGENTS.md counts once its task ended with success: not while it runs, nor after it failed
+CB='{"name":"run_command","args":{"CommandLine":"sleep 5; cat AGENTS.md 2>/dev/null","WaitMsBeforeAsync":500}}'
+CS='{"type":"GENERIC","status":"RUNNING","content":"Created At: x\nTool is running as a background task with task id: c1/task-2\nTask Description: cat\nTask logs are available at: file:///x/task-2.log"}'
+ce() { echo "{\"type\":\"SYSTEM_MESSAGE\",\"source\":\"SYSTEM\",\"content\":\"<SYSTEM_MESSAGE>\\n[Message] timestamp=x sender=c1/task-2 priority=MESSAGE_PRIORITY_HIGH content=Task id \\\"c1/task-2\\\" finished with result:\\n$1\\n\\nLog: file:///x/task-2.log\\n</SYSTEM_MESSAGE>\"}"; }
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$CB]}" "$CS" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$W]}"
+a1=$(rd 4)
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$CB]}" "$CS" "$(ce 'Command exited with code 1.\n\nNo output from the command.')" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$W]}"
+a2=$(rd 5)
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$CB]}" "$CS" "$(ce 'Command exited with code 0.\n\nCommand output:\nBe nice.')" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$W]}"
+check "agy: a file write while a background cat of AGENTS.md runs, or after it failed, is denied naming it; after it succeeded it is allowed" "deny:1:0 deny:1:0 allow:0" "$a1 $a2 $(rd 5)"
+rm -f "$HOME/.mergeworthy/agy/c1.post"; unset AGC
+# a declined push's queued check runs as failed at PostInvocation: its pending action goes, none recorded
+export OWN_PENDING="$T/agy-own-d" PUSHED_HEADS="$T/agy-heads-d"; rm -f "$HOME/.mergeworthy/agy/c1.post"
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PUSH]}"; agy_ev PostToolUse "{\"id\":\"g\",$(echo "$PUSH" | cut -c2-)" 2 >/dev/null
+python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import agy, own_actions; own_actions.intend(agy.call_id("c1", 2), {"PUSHED_HEADS": ["o/r declined"]})' "$R/hooks"
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PUSH]}" "$U" '{"type":"PLANNER_RESPONSE","content":"Not pushed."}'; agy_ev PostInvocation >/dev/null
+check "agy: a declined push (no result step) is settled as failed at PostInvocation: queued check gone, pending action dropped, no head recorded" "0 0 0" \
+  "$(wc -l < "$HOME/.mergeworthy/agy/c1.post") $(cat "$OWN_PENDING" 2>/dev/null | wc -l) $(cat "$PUSHED_HEADS" 2>/dev/null | wc -l)"
+unset OWN_PENDING PUSHED_HEADS; rm -f "$HOME/.mergeworthy/agy/c1.post"
+check "agy: its own subagents (swarm) are denied" 1 "$(agy_ev PreToolUse '{"id":"s","name":"swarm","args":{"action":"add","name":"w","brief":"b"}}' 2 | grep -c '"decision": "deny".*delegate_task')"
+check "agy: a call no hook refuses is allowed in agy's form (an empty stdout or {} would not say so)" '{"decision": "allow"} 0' "$(agt "$U" '{"type":"PLANNER_RESPONSE","tool_calls":[{"name":"run_command","args":{"CommandLine":"ls"}}]}'; agy_ev PreToolUse '{"id":"l","name":"run_command","args":{"CommandLine":"ls"}}' 2)"
+check "agy: input it can't read is denied, with exit 0 and a JSON verdict" "deny 0" "$(o=$(echo 'not json' | python3 "$R/hooks/agy.py" PreToolUse); rc=$?; printf '%s' "$o" | python3 -c 'import json, sys; print(json.load(sys.stdin)["decision"], end=" ")'; echo $rc)"
+# a command's result reaches agy's transcript after its PostToolUse: its PostToolUse hooks run at PostInvocation, after the model's calls ran
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PUSH]}"
+agy_ev PostToolUse "{\"id\":\"g\",$(echo "$PUSH" | cut -c2-)" 2 >/dev/null; p1=$(wc -l < "$HOME/.mergeworthy/agy/c1.post")
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PUSH]}" '{"type":"GENERIC","content":"Command exited with code 1.\n\nCommand output:\nfatal: no remote\n"}' '{"type":"PLANNER_RESPONSE","content":"Pushed."}'
+agy_ev PostInvocation >/dev/null; p2=$(wc -l < "$HOME/.mergeworthy/agy/c1.post"); s1=$(agy_ev Stop "" 0 0)
+check "agy: a command's PostToolUse waits for its result, then runs at PostInvocation and is done" "1 0" "$p1 $p2"
+check "agy: Stop continues with what stop-lint says (a session that pushed, without scope.md)" "continue scope.md" \
+  "$(printf '%s' "$s1" | python3 -c 'import json, sys; v = json.loads(sys.stdin.read().rsplit(" ", 1)[0]); print(v.get("decision"), "scope.md" if "scope.md" in v.get("reason", "") else v)')"
+# a background command (agy's RUNNING result step naming its task) ends when agy's message says that task finished
+BG='{"name":"run_command","args":{"CommandLine":"git push origin HEAD:refs/heads/bg","WaitMsBeforeAsync":500}}'; LS='{"name":"run_command","args":{"CommandLine":"ls"}}'
+BGS='{"type":"GENERIC","status":"RUNNING","content":"Created At: x\nTool is running as a background task with task id: c1/task-2\nTask Description: git push\nTask logs are available at: file:///x/task-2.log"}'
+BGE='{"type":"SYSTEM_MESSAGE","source":"SYSTEM","content":"<SYSTEM_MESSAGE>\n[Message] timestamp=x sender=c1/task-2 priority=MESSAGE_PRIORITY_HIGH content=Task id \"c1/task-2\" finished with result:\nCommand exited with code 0.\n\nCommand output:\npushed\n\nLog: file:///x/task-2.log\n</SYSTEM_MESSAGE>"}'
+export OWN_PENDING="$T/agy-own" PUSHED_HEADS="$T/agy-heads"; rm -f "$HOME/.mergeworthy/agy/c1.post"
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$BG]}" "$BGS"; agy_ev PostToolUse "{\"id\":\"b\",$(echo "$BG" | cut -c2-)" 2 >/dev/null
+bgres() { python3 -c 'import json, sys
+for l in open(sys.argv[1]):
+    for c in (json.loads(l).get("message") or {}).get("content") or []:
+        if isinstance(c, dict) and c.get("type") == "tool_result" and c["tool_use_id"].endswith("-2"): print(c[sys.argv[2]])' "$HOME/.mergeworthy/agy/c1.jsonl" "$1"; }
+python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import own_actions; own_actions.intend(sys.argv[2], {"PUSHED_HEADS": ["o/r bg"]})' "$R/hooks" "$(bgres tool_use_id)"
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$BG]}" "$BGS" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$LS]}"
+agy_ev PreToolUse "{\"id\":\"l\",$(echo "$LS" | cut -c2-)" 4 >/dev/null; b1="$(wc -l < "$HOME/.mergeworthy/agy/c1.post") $(bgres is_error) $(cat "$PUSHED_HEADS" 2>/dev/null | wc -l)"
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$BG]}" "$BGS" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$LS]}" '{"type":"GENERIC","content":"Command exited with code 0.\n\nCommand output:\nx\n"}' "$BGE" '{"type":"PLANNER_RESPONSE","content":"Pushed."}'
+agy_ev PostInvocation >/dev/null
+check "agy: a background command stays pending while it runs, its start an error in the transcript until the task succeeds; once its task finished with exit 0 it is settled as a success" "1 True 0 | 0 o/r bg" \
+  "$b1 | $(wc -l < "$HOME/.mergeworthy/agy/c1.post") $(cat "$PUSHED_HEADS" 2>/dev/null)"
+check "agy: its end is Claude Code's <task-notification>, not Stop feedback" 1 "$(grep -c '<task-notification>.*<status>completed</status>' "$HOME/.mergeworthy/agy/c1.jsonl")"
+# the exit is agy's line above the command's output, never a line of that output: background and foreground
+rm -f "$OWN_PENDING" "$PUSHED_HEADS" "$HOME/.mergeworthy/agy/c1.post"
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$BG]}" "$BGS"; agy_ev PostToolUse "{\"id\":\"b\",$(echo "$BG" | cut -c2-)" 2 >/dev/null
+python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import own_actions; own_actions.intend(sys.argv[2], {"PUSHED_HEADS": ["o/r bg"]})' "$R/hooks" "$(bgres tool_use_id)"
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$BG]}" "$BGS" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$LS]}" '{"type":"GENERIC","content":"Command exited with code 3.\n\nCommand output:\nCommand exited with code 0.\n"}' "$(echo "$BGE" | sed 's/code 0\.\\n\\nCommand output:\\npushed/code 3.\\n\\nCommand output:\\nCommand exited with code 0./')" '{"type":"PLANNER_RESPONSE","content":"Pushed."}'
+agy_ev PostInvocation >/dev/null
+check "agy: a command that exits 3 after printing \"Command exited with code 0.\" failed, run in the background (no head recorded, its task failed) or not (an error)" "0 0 1 True" \
+  "$(wc -l < "$OWN_PENDING") $(cat "$PUSHED_HEADS" 2>/dev/null | wc -l) $(grep -c '<status>failed</status>' "$HOME/.mergeworthy/agy/c1.jsonl") $(python3 -c 'import json, sys
+for l in open(sys.argv[1]):
+    for c in (json.loads(l).get("message") or {}).get("content") or []:
+        if isinstance(c, dict) and c.get("type") == "tool_result" and c["tool_use_id"].endswith("-4"): print(c["is_error"])' "$HOME/.mergeworthy/agy/c1.jsonl")"
+# step numbers restart in each conversation: one conversation's command never settles another's at the same step
+rm -f "$OWN_PENDING" "$PUSHED_HEADS" "$HOME/.mergeworthy/agy/c1.post"
+python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import agy, own_actions
+own_actions.intend(agy.call_id("session-A", 2), {"PUSHED_HEADS": ["fixture-owner fixture-head"]})' "$R/hooks"
+PF='{"name":"run_command","args":{"CommandLine":"printf ok"}}'
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PF]}"; agy_ev PostToolUse "{\"id\":\"p\",$(echo "$PF" | cut -c2-)" 2 >/dev/null
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PF]}" '{"type":"GENERIC","content":"Command exited with code 0.\n\nCommand output:\nok\n"}' '{"type":"PLANNER_RESPONSE","content":"Done."}'
+agy_ev PostInvocation >/dev/null
+check "agy: conversation c1's command at step 2 leaves session-A's pending action at step 2 pending" "1 0" "$(grep -c 'fixture-head' "$OWN_PENDING") $(cat "$PUSHED_HEADS" 2>/dev/null | wc -l)"
+# a check's block after a call reaches the model at PostInvocation, and refuses nothing later: a new issue whose watcher
+# post-bash-register can't tell, then a swarm call refused for its own reason only
+GI='{"name":"run_command","args":{"CommandLine":"gh issue create -R fixture/repo --title x --body x"}}'; SW='{"name":"swarm","args":{"action":"add","name":"w","brief":"b"}}'
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$GI]}"; agy_ev PostToolUse "{\"id\":\"g\",$(echo "$GI" | cut -c2-)" 2 >/dev/null
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$GI]}" '{"type":"GENERIC","content":"Command exited with code 0.\n\nCommand output:\ncreated\n"}' "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$SW]}"
+inj() { python3 -c 'import json, sys; v = json.loads(sys.stdin.read().rsplit(" ", 1)[0]); print(" ".join(s["systemMessage"]["systemMessage"] for s in v.get("injectSteps", [])))'; }
+check "agy: a check's block after a call reaches the model at PostInvocation as a system message; a later swarm call is refused for its own reason only" "1 0 1" \
+  "$(agy_ev PostInvocation | inj | grep -c 'your call run_command (step 2)') $(agy_ev PreToolUse "{\"id\":\"s\",$(echo "$SW" | cut -c2-)" 4 | python3 -c 'import json, sys; r = json.loads(sys.stdin.read().rsplit(" ", 1)[0])["reason"]; print(r.count("your call run_command"), r.count("delegate_task"))')"
+# Antigravity's SessionStart puts the bin/ commands on PATH, as Claude Code's does
+rm -rf "$HOME/.local/bin"; agt "$U"; agy_ev SessionStart >/dev/null
+check "agy: SessionStart links the bin/ commands an agy session runs (pr-steps, gate-pass, gh-watch-start) through ~/.mergeworthy/current" \
+  "$HOME/.mergeworthy/current/bin/pr-steps $HOME/.mergeworthy/current/bin/gate-pass $HOME/.mergeworthy/current/bin/gh-watch-start" \
+  "$(readlink "$HOME/.local/bin/pr-steps") $(readlink "$HOME/.local/bin/gate-pass") $(readlink "$HOME/.local/bin/gh-watch-start")"
+# two sessions starting at once both record their catalog while both clear the same expired records
+SD="$HOME/.mergeworthy/sessions"; mkdir -p "$SD"; for i in $(seq 1500); do : > "$SD/old-$i"; done; touch -d 2000-01-01 "$SD"/old-*; rm -f "$SD/ag-a" "$SD/ag-b"
+for c in ag-a ag-b; do echo "{\"conversationId\":\"$c\",\"hookEventName\":\"SessionStart\"}" | python3 "$R/hooks/agy.py" SessionStart > "$T/$c.out" & done; wait
+check "agy: two SessionStarts at once among 1500 expired records both record the skill graph, with no error" "graph graph 0 0" \
+  "$(cut -d' ' -f2 "$SD/ag-a" 2>/dev/null || echo none) $(cut -d' ' -f2 "$SD/ag-b" 2>/dev/null || echo none) $(ls "$SD" | grep -c '^old-') $(cat "$T/ag-a.out" "$T/ag-b.out" | grep -c Error)"
+# a conversation reopened after its catalog record expired (agy runs no SessionStart for session/load or resume) gets it back
+rm -f "$SD/c1"; agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$LS]}"; agy_ev PreToolUse "{\"id\":\"l\",$(echo "$LS" | cut -c2-)" 2 >/dev/null
+check "agy: the first event of a conversation with no catalog record records the skill graph, as resumed" "graph resume" "$(cut -d' ' -f2,3 "$SD/c1" 2>/dev/null)"
+# the memory file of an Antigravity session (task step 8): init and prep read its conversation's transcript; c1's earlier steps
+# start over without their step times, as a conversation from before them does
+rm -f "$HOME/.mergeworthy/agy/c1.seen"; MW="$T/agy-mem"; now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+python3 -c 'import json, sys
+for s in [{"type": "USER_INPUT", "source": "USER_EXPLICIT", "content": "<USER_REQUEST>\nremember the cache plan\n</USER_REQUEST>"},
+          {"type": "PLANNER_RESPONSE", "content": "Noted: the cache plan."}]:
+    print(json.dumps({"step_index": 0 if s["type"] == "USER_INPUT" else 1, "status": "DONE", "created_at": sys.argv[1], **s}))' "$now" > "$AG/t.jsonl"
+agy_ev Stop "" 0 0 >/dev/null
+m1=$(cd "$AGR" && CLAUDE_CODE_SESSION_ID= ANTIGRAVITY_CONVERSATION_ID=c1 python3 "$R/bin/memory-prep" init "$MW" thread-agy >/dev/null 2>&1; echo $?)
+m2=$(cd "$AGR" && python3 "$R/bin/memory-prep" prep "$MW" >/dev/null 2>&1; echo $?)
+check "agy: memory-prep init and prep from an Antigravity session exit 0 and take its prompt and its answer" "0 0 1 1" \
+  "$m1 $m2 $(grep -c 'USER\] remember the cache plan' "$MW/memory-new.txt" 2>/dev/null) $(grep -c 'ASSISTANT\] Noted: the cache plan.' "$MW/memory-new.txt" 2>/dev/null)"
+sed -i "\|^$MW\$|d" "$HOME/.mergeworthy/memory-roots.txt"
+# agy's steps carry whole seconds: a ruling and its correction in one second keep the conversation's order
+MW="$T/agy-mem-order"
+python3 -c 'import json, sys
+for i, (t, c) in enumerate([("USER_INPUT", "Zebra configuration is enabled."), ("PLANNER_RESPONSE", "Zebra enabled."),
+                            ("USER_INPUT", "Actually, zebra configuration is disabled."), ("PLANNER_RESPONSE", "Acknowledged, zebra disabled.")]):
+    print(json.dumps({"step_index": i, "status": "DONE", "created_at": sys.argv[1], "type": t, "source": "USER_EXPLICIT",
+                      "content": f"<USER_REQUEST>\n{c}\n</USER_REQUEST>" if t == "USER_INPUT" else c}))' "$now" > "$AG/t.jsonl"
+agy_ev Stop "" 0 0 >/dev/null
+(cd "$AGR" && CLAUDE_CODE_SESSION_ID= ANTIGRAVITY_CONVERSATION_ID=c1 python3 "$R/bin/memory-prep" init "$MW" thread-agy >/dev/null 2>&1 && python3 "$R/bin/memory-prep" prep "$MW" >/dev/null 2>&1)
+check "agy: memory-prep keeps the order of prompts and answers that share one second" "Zebra configuration is enabled.|Zebra enabled.|Actually, zebra configuration is disabled.|Acknowledged, zebra disabled." \
+  "$(sed -n 's/^\[[^]]* \(USER\|ASSISTANT\)\] //p' "$MW/memory-new.txt" 2>/dev/null | paste -sd'|')"
+# each entry's time is when an event first showed its step, a microsecond apart at least: a refresh that stops after the ruling's
+# answer (its chunk's last header, as delegate/memory-refresh.md writes it) leaves the correction to the next one; one that read to
+# the last entry covers it
+mem_at() { echo "read-through: $2" >> "$1/memory-notes.txt"; printf '# Memory\n<!-- covered-until: %s -->\n' "$2" > "$1/memory.md"
+  b=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import memory_file as mf; print(mf.behind(sys.argv[2]))' "$R/hooks" "$1")
+  echo "$b $(python3 "$R/bin/memory-prep" prep "$1" | grep -c 'nothing new') $(sed -n 's/^\[[^]]* \(USER\|ASSISTANT\)\] //p' "$1/memory-new.txt" | paste -sd'|')"; }
+hd() { sed -n 's/^\[\([^ ]*\) \(USER\|ASSISTANT\)\] .*/\1/p' "$1/memory-new.txt" | sed -n "$2p"; }
+h2=$(hd "$MW" 2); h4=$(hd "$MW" 4)
+check "agy: memory stopped at the ruling's answer: behind, and the next prep has the correction and its answer" \
+  "True 0 Actually, zebra configuration is disabled.|Acknowledged, zebra disabled." "$(mem_at "$MW" "$h2")"
+check "agy: memory read to the last entry of that second: not behind, nothing new" "False 1" "$(mem_at "$MW" "$h4" | cut -d' ' -f1,2)"
+sed -i "\|^$MW\$|d" "$HOME/.mergeworthy/memory-roots.txt"
+# a T3 handoff continues a conversation in a new one, in the same second of agy's: the memory reads both in the order they were seen
+st() { # <file> <type:content>...: agy's steps, all in one second
+  f=$1; shift; python3 -c 'import json, sys
+for i, a in enumerate(sys.argv[2:]):
+    t, c = a.split(":", 1)
+    print(json.dumps({"step_index": i, "status": "DONE", "created_at": sys.argv[1], "type": t, "source": "USER_EXPLICIT",
+                      "content": f"<USER_REQUEST>\n{c}\n</USER_REQUEST>" if t == "USER_INPUT" else c}))' "$now" "$@" > "$f"; }
+ev2() { python3 -c 'import json, sys; print(json.dumps({"conversationId": sys.argv[1], "cwd": sys.argv[2], "transcriptPath": sys.argv[3], "hookEventName": "Stop", "executionNum": 0}))' "$1" "$AGR" "$AG/$1.jsonl" | python3 "$R/hooks/agy.py" Stop >/dev/null; }
+OLD=("USER_INPUT:Former instruction" "PLANNER_RESPONSE:Former answer" "USER_INPUT:Later former instruction" "PLANNER_RESPONSE:Later former answer")
+hand() { printf 'USER_INPUT:Context handoff (manual_context):\nThread: %s' "$1"; }  # T3's handoff to a new conversation, naming the thread
+hinit() { (cd "$AGR" && CLAUDE_CODE_SESSION_ID= ANTIGRAVITY_CONVERSATION_ID=$2 python3 "$R/bin/memory-prep" init "$1" "$3" >/dev/null 2>&1 && python3 "$R/bin/memory-prep" prep "$1" >/dev/null 2>&1); }
+MH="$T/agy-mem-hand"; st "$AG/hold.jsonl" "${OLD[@]}"; ev2 hold; st "$AG/hnew.jsonl" "$(hand thread-hand)" "PLANNER_RESPONSE:Unread new answer"; ev2 hnew; hinit "$MH" hold thread-hand
+check "agy: the first prep after a handoff in the same second: the old conversation's entries, then the new one's answer" \
+  "Former instruction|Former answer|Later former instruction|Later former answer|Unread new answer" "$(sed -n 's/^\[[^]]* \(USER\|ASSISTANT\)\] //p' "$MH/memory-new.txt" | paste -sd'|')"
+check "agy: a refresh that stopped after the old conversation's answer: behind, and the next prep has the rest of both conversations" \
+  "True 0 Later former instruction|Later former answer|Unread new answer" "$(mem_at "$MH" "$(hd "$MH" 2)")"
+MH3="$T/agy-mem-hand3"; st "$AG/hold3.jsonl" "${OLD[@]}"; ev2 hold3; hinit "$MH3" hold3 thread-hand3; h4=$(hd "$MH3" 4); mem_at "$MH3" "$h4" >/dev/null
+st "$AG/hnew3.jsonl" "$(hand thread-hand3)" "PLANNER_RESPONSE:Unread new answer"; ev2 hnew3
+check "agy: a refresh that read the old conversation to its end before the handoff: behind, and the next prep has the new answer" \
+  "True 0 Unread new answer" "$(mem_at "$MH3" "$h4")"
+times() { python3 -c 'import json, sys; print(" ".join(json.loads(l)["timestamp"] for l in open(sys.argv[1])))' "$HOME/.mergeworthy/agy/hold.jsonl"; }
+t1=$(times); ev2 hold
+check "agy: rebuilding the transcript at a later event keeps every entry's time, each after the one before" "same yes" \
+  "$([ "$t1" = "$(times)" ] && echo same || echo changed) $(python3 -c 'import sys; t = sys.argv[1].split(); print("yes" if t == sorted(set(t)) and len(t) == 4 else "no")' "$t1")"
+sed -i "\|^$MH\$|d; \|^$MH3\$|d" "$HOME/.mergeworthy/memory-roots.txt"
+# T3 Code can switch the thread's provider: memory set up under one follows the thread's later session under the other
+CD="$HOME/.claude/projects/$(printf '%s' "$AGR" | sed 's/[^A-Za-z0-9]/-/g')"; mkdir -p "$CD"
+clog() { # <session> <text of a typed prompt> <answer> [thread a T3 handoff names first]: a Claude Code session log in the checkout's folder
+  python3 -c 'import json, sys, datetime as d
+f, w0, p, a = sys.argv[1:5]; t = d.datetime.now(d.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+w = lambda o: open(f, "a").write(json.dumps({**o, "timestamp": t, "cwd": w0}, separators=(",", ":")) + "\n")
+if len(sys.argv) > 5: w({"type": "user", "promptSource": "sdk", "message": {"role": "user", "content": "Context handoff (manual_context):\nThread: " + sys.argv[5]}})
+w({"type": "user", "promptSource": "typed", "message": {"role": "user", "content": p}})
+w({"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": a}], "stop_reason": "end_turn"}})' "$CD/$1.jsonl" "$AGR" "$2" "$3" ${4:+"$4"}; }
+MXA="$T/agy-mem-to-claude"; st "$AG/xa.jsonl" "USER_INPUT:Agy ruling" "PLANNER_RESPONSE:Agy answer"; ev2 xa; hinit "$MXA" xa thread-xa; mem_at "$MXA" "$(hd "$MXA" 2)" >/dev/null
+clog claude-xa "Claude ruling" "Claude answer" thread-xa
+check "agy: memory set up under Antigravity follows the thread to Claude Code: behind, and prep has Claude's prompt and answer" \
+  "True 0 Claude ruling|Claude answer" "$(mem_at "$MXA" "$(hd "$MXA" 2)")"
+MXB="$T/agy-mem-to-agy"; clog cs-xb "Claude first" "Claude first answer"
+(cd "$AGR" && env -u ANTIGRAVITY_CONVERSATION_ID CLAUDE_CODE_SESSION_ID=cs-xb python3 "$R/bin/memory-prep" init "$MXB" thread-xb >/dev/null 2>&1 && python3 "$R/bin/memory-prep" prep "$MXB" >/dev/null 2>&1)
+mem_at "$MXB" "$(hd "$MXB" 2)" >/dev/null
+st "$AG/xb.jsonl" "$(hand thread-xb)" "USER_INPUT:Agy later" "PLANNER_RESPONSE:Agy later answer"; ev2 xb
+check "agy: memory set up under Claude Code follows the thread to Antigravity: behind, and prep has agy's prompt and answer" \
+  "True 0 Agy later|Agy later answer" "$(mem_at "$MXB" "$(hd "$MXB" 2)")"
+sed -i "\|^$MXA\$|d; \|^$MXB\$|d" "$HOME/.mergeworthy/memory-roots.txt"
+# a session in the other provider's folder joins the thread only by T3's handoff naming it, in an entry of the same checkout:
+# under Claude Code, an Antigravity conversation of this checkout that only mentions the thread, or one of another checkout
+# that T3 handed it to, is another session's
+ago() { # <conversation> <cwd> <type:content>...: agy's conversation in cwd, transcribed at a Stop there
+  local c=$1 w=$2; shift 2; st "$AG/$c.jsonl" "$@"
+  python3 -c 'import json, sys; print(json.dumps({"conversationId": sys.argv[1], "cwd": sys.argv[2], "transcriptPath": sys.argv[3], "hookEventName": "Stop", "executionNum": 0}))' "$c" "$w" "$AG/$c.jsonl" | python3 "$R/hooks/agy.py" Stop >/dev/null; }
+MXC="$T/agy-mem-typed"; clog cs-xc "Claude first" "Claude first answer"
+(cd "$AGR" && env -u ANTIGRAVITY_CONVERSATION_ID CLAUDE_CODE_SESSION_ID=cs-xc python3 "$R/bin/memory-prep" init "$MXC" thread-xc >/dev/null 2>&1 && python3 "$R/bin/memory-prep" prep "$MXC" >/dev/null 2>&1)
+mem_at "$MXC" "$(hd "$MXC" 2)" >/dev/null
+AGO="$AG/other-repo"; mkdir -p "$AGO"
+ago xc-typed "$AGR" "USER_INPUT:What did thread-xc decide?" "PLANNER_RESPONSE:Typed mention answer"
+ago xc-other "$AGO" "$(hand thread-xc)" "USER_INPUT:Other checkout ruling" "PLANNER_RESPONSE:Other checkout answer"
+check "agy: under Claude Code, an Antigravity conversation of the checkout that only mentions the thread, and one of another checkout T3 handed it to, don't join it: not behind" \
+  "False" "$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import memory_file; print(memory_file.behind(sys.argv[2]))' "$R/hooks" "$MXC")"
+# a log in the other provider's folder deleted between the listing and its read (agy's SessionStart prune) is skipped
+ago xc-pruned "$AGR" "USER_INPUT:Pruned" "PLANNER_RESPONSE:Pruned answer"
+check "agy: under Claude Code, an Antigravity log pruned while memory reads the folder is skipped, and the refresh goes on: not behind" "False" \
+  "$(python3 -c 'import os, sys; sys.path.insert(0, sys.argv[1]); import agy, memory_file
+listdir = os.listdir
+def pruned(d):  # the listing, then agy prunes the file before memory reads it
+    names = listdir(d)
+    if d == agy.DIR and "xc-pruned.jsonl" in names: os.remove(os.path.join(d, "xc-pruned.jsonl"))
+    return names
+os.listdir = pruned
+try: print(memory_file.behind(sys.argv[2]))
+except OSError as e: print(type(e).__name__)' "$R/hooks" "$MXC")"
+# the folder memory.source names gone: the check fails, as memory is set up from it, never reads as nothing new
+MXD="$T/agy-mem-gone"; GO="$AG/gone-repo"; mkdir -p "$GO"; GLD="$HOME/.claude/projects/$(printf '%s' "$GO" | sed 's/[^A-Za-z0-9]/-/g')"; mkdir -p "$GLD"
+(cd "$GO" && env -u ANTIGRAVITY_CONVERSATION_ID CLAUDE_CODE_SESSION_ID=cs-xd python3 "$R/bin/memory-prep" init "$MXD" thread-xd >/dev/null 2>&1)
+rmdir "$GLD"
+check "agy: memory set up, then its session-log folder gone: the behind check fails" "set FileNotFoundError" \
+  "$([ -f "$MXD/memory.source" ] && echo set) $(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import memory_file
+try: print(memory_file.behind(sys.argv[2]))
+except OSError as e: print(type(e).__name__)' "$R/hooks" "$MXD")"
+sed -i "\|^$MXC\$|d; \|^$MXD\$|d" "$HOME/.mergeworthy/memory-roots.txt"
+# a step first seen more than 10 minutes after agy's own time for it (a conversation reopened, pruned or from before step times)
+# keeps agy's time: old history stays old for the memory and for every hook that reads a time
+sta() { # <conversation> <ago>|<type:content>...: agy's steps, each at its own time (`date -d` relative, e.g. "-2 days")
+  c=$1; shift; python3 -c 'import json, subprocess, sys
+for i, a in enumerate(sys.argv[1:]):
+    ago, t, c = a.split("|", 1)[0], *a.split("|", 1)[1].split(":", 1)
+    at = subprocess.run(["date", "-u", "-d", ago, "+%Y-%m-%dT%H:%M:%SZ"], capture_output=True, text=True).stdout.strip()
+    step = {"step_index": i, "status": "DONE", "created_at": at, "type": t, "source": "USER_EXPLICIT"}
+    if t == "USER_INPUT": step["content"] = f"<USER_REQUEST>\n{c}\n</USER_REQUEST>"
+    elif t == "PLANNER_RESPONSE" and c.startswith("{"): step["tool_calls"] = [json.loads(c)]
+    else: step["content"] = c
+    print(json.dumps(step))' "$@" > "$AG/$c.jsonl"; }
+D2=$(date -u -d '-2 days' +%FT%TZ); M160=$(date -u -d '-160 minutes' +%FT%TZ)  # fixed once: a conversation's steps keep their times when its log grows
+OLDX=("$D2|USER_INPUT:Two-day-old ruling" "$D2|PLANNER_RESPONSE:Two-day-old answer")
+NEWX=("now|USER_INPUT:Today's ruling" "now|PLANNER_RESPONSE:Today's answer")
+lines() { sed -n 's/^\[[^]]* \(USER\|ASSISTANT\)\] //p' "$1/memory-new.txt" | paste -sd'|'; }
+MO="$T/agy-mem-old"; sta hage "${OLDX[@]}" "${NEWX[@]}"; ev2 hage; hinit "$MO" hage thread-age
+check "agy: the first refresh of a conversation with a two-day-old exchange and no step times takes the last 24 hours only" \
+  "Today's ruling|Today's answer" "$(lines "$MO")"
+MC="$T/agy-mem-cov"; sta hcov "${OLDX[@]}" "$M160|USER_INPUT:Recent ruling" "$M160|PLANNER_RESPONSE:Recent answer"; ev2 hcov; hinit "$MC" hcov thread-cov
+cov=$(sed -n 4p "$AG/hcov.jsonl" | python3 -c 'import json, sys; print(json.load(sys.stdin)["created_at"])')
+rm "$HOME/.mergeworthy/agy/hcov.seen"; ev2 hcov
+b1=$(echo "read-through: $cov" >> "$MC/memory-notes.txt"; printf '# Memory\n<!-- covered-until: %s -->\n' "$cov" > "$MC/memory.md"
+  python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import memory_file as mf; print(mf.behind(sys.argv[2]))' "$R/hooks" "$MC")
+sta hcov "${OLDX[@]}" "$M160|USER_INPUT:Recent ruling" "$M160|PLANNER_RESPONSE:Recent answer" "${NEWX[@]}"; rm "$HOME/.mergeworthy/agy/hcov.seen"; ev2 hcov
+check "agy: a conversation covered to its fourth step and rebuilt with no step times: not behind; with today's exchange appended, prep has only that" \
+  "False True 0 Today's ruling|Today's answer" "$b1 $(mem_at "$MC" "$cov")"
+# pruned (no step times) and reopened, its 17-day-old exchange covered through 16 days ago: its Stop ends the turn, with no refresh order
+MP="$T/agy-mem-pruned"; sta hpr "-17 days|USER_INPUT:Old work" "-17 days|PLANNER_RESPONSE:Old work done"; ev2 hpr; hinit "$MP" hpr thread-pr
+printf '# Memory\n<!-- covered-until: %s -->\n' "$(date -u -d '-16 days' +%FT%TZ)" > "$MP/memory.md"; echo "read-through: $(date -u -d '-16 days' +%FT%TZ)" > "$MP/memory-notes.txt"
+rm "$HOME/.mergeworthy/agy/hpr.seen"
+check "agy: a pruned conversation reopened with its old exchange covered: Stop ends the turn ({})" '{} 0' \
+  "$(python3 -c 'import json, sys; print(json.dumps({"conversationId": "hpr", "cwd": sys.argv[1], "transcriptPath": sys.argv[2], "hookEventName": "Stop", "executionNum": 0}))' "$AGR" "$AG/hpr.jsonl" \
+    | MERGEWORTHY_STOP_CHECKIN=off python3 "$R/hooks/agy.py" Stop | tr -d '\n'; echo " ${PIPESTATUS[1]}")"
+sed -i "\|^$MO\$|d; \|^$MC\$|d; \|^$MP\$|d" "$HOME/.mergeworthy/memory-roots.txt"
+# a post two days ago from a watch dir that retired an hour ago needs no watcher at today's Stop
+WR="$T/agy-retired"; mkdir -p "$WR/drafts"; echo "$WR" >> "$HOME/.claude/gh-watch-dirs.txt"; touch -d '-1 hour' "$WR/retired"
+GP="{\"name\":\"run_command\",\"args\":{\"CommandLine\":\"gh issue comment 5 --repo o/r --body-file $WR/drafts/r.md\"}}"
+sta hret "-2 days|USER_INPUT:Post the reply" "-2 days|PLANNER_RESPONSE:$GP" "-2 days|GENERIC:Command exited with code 0.
+
+Command output:
+https://github.com/o/r/issues/5#issuecomment-1" "${NEWX[@]}"; ev2 hret
+check "agy: a post two days before its watch dir retired, read at today's Stop: no watcher asked for" 0 \
+  "$(python3 -c 'import json, sys; print(json.dumps({"transcript_path": sys.argv[1], "cwd": sys.argv[2], "session_id": "hret"}))' "$HOME/.mergeworthy/agy/hret.jsonl" "$WR" \
+    | MERGEWORTHY_STOP_CHECKIN=off python3 "$R/hooks/stop-lint.py" 2>&1 | grep -c 'nothing wakes it')"
+sed -i "\|^$WR\$|d" "$HOME/.claude/gh-watch-dirs.txt"
+# the implementation gate's three hours: a read of the tracked source four hours ago is too old, one 100 seconds ago is not
+GR="$T/x-work/agy-rd"; git init -q "$GR"; git -C "$GR" remote add origin git@github.com:o/r.git; mkdir -p "$GR/src"; echo 'export {}' > "$GR/src/a.ts"; git -C "$GR" add src/a.ts
+RS="{\"name\":\"read_file\",\"args\":{\"Path\":\"$GR/src/a.ts\"}}"
+gate() { sta "$1" "$2|USER_INPUT:Read the source" "$2|PLANNER_RESPONSE:$RS" "$2|GENERIC:Showing lines 1-1 of 1
+1: export {}" "${NEWX[@]}"; ev2 "$1"
+  python3 -c 'import json, sys; print(json.dumps({"tool_name": "mcp__t3-code__delegate_task", "cwd": sys.argv[1], "transcript_path": sys.argv[3], "tool_input": {"task": sys.argv[2], "title": sys.argv[2][:50], "role": "implementation"}}))' "$T" 'Build o/r#9 by skills/code/SKILL.md per ~/.mergeworthy/projects/o/r.md' "$HOME/.mergeworthy/agy/$1.jsonl" \
+    | timeout 10 python3 "$R/hooks/pre-agent-dedupe.py" 2>&1 | grep -c 'read the code this change is about yourself'; }
+check "agy: an implementation brief after a read of the source four hours ago is refused for it; after one 100 seconds ago it isn't" "1 0" \
+  "$(gate hgate4 '-4 hours') $(gate hgate0 '-100 seconds')"
+# what a queued check says without blocking (additionalContext) reaches the model too, at PostInvocation, and the next call runs:
+# T3 refusing a launch (parent_not_active), as text and as the MCP error T3 returns (agy logs it as an ERROR step)
+DT='{"name":"mcp_t3-code_delegate_task","args":{"task":"Research the cache","title":"agy refused"}}'
+DR='{"type":"GENERIC","content":"code: parent_not_active"}'
+DE='{"type":"GENERIC","status":"ERROR","content":"Created At: x\nCompleted At: x\nEncountered error in step execution: {\"code\":\"parent_not_active\",\"message\":\"The parent thread has no active turn, so it cannot delegate.\"}"}'
+pna() { rm -f "$HOME/.mergeworthy/agy/c1.post"; agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$DT]}"; agy_ev PostToolUse "{\"id\":\"d\",$(echo "$DT" | cut -c2-)" 2 >/dev/null
+  agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$DT]}" "$1" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$LS]}"
+  echo "$(agy_ev PostInvocation | inj | grep -c 'T3 refused this launch') $(agy_ev PreToolUse "{\"id\":\"l\",$(echo "$LS" | cut -c2-)" 4 | python3 -c 'import json, sys; print(json.loads(sys.stdin.read().rsplit(" ", 1)[0])["decision"])')"; }
+check "agy: T3's refusal of a launch, as text or as T3's MCP error, reaches the model at PostInvocation, and the next call is allowed" "1 allow|1 allow" "$(pna "$DR")|$(pna "$DE")"
+rm -f "$HOME/.mergeworthy/agy/c1.post"
+# a call's queued checks settle at the next call's PreToolUse, so what they record is in place for that call's own checks (two
+# calls in one model response); what they say waits for PostInvocation and refuses nothing
+sk() { # <skill>...: the model's read_file call of each skill's SKILL.md, then each read's result, whole
+  local c="" n; for n in "$@"; do c="$c${c:+,}{\"name\":\"read_file\",\"args\":{\"Path\":\"$R/agy/skills/$n/SKILL.md\"}}"; done
+  echo "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$c]}"; for n in "$@"; do echo "{\"type\":\"GENERIC\",\"content\":\"Showing lines 1-$(wc -l < "$R/agy/skills/$n/SKILL.md") of $(wc -l < "$R/agy/skills/$n/SKILL.md")\"}"; done; }
+dec() { python3 -c 'import json, sys; v = json.loads(sys.stdin.read().rsplit(" ", 1)[0]); print(v["decision"] + ":" + str(v.get("reason", "").count(sys.argv[1])))' "$1"; }
+two() { # <call json> <its result step> <second call json> <first call's step>: the model's response holds both calls (opened skills: $SKS); agy's
+  # PreToolUse of the first, which must allow it (else it prints that verdict and stops, failing the case), its PostToolUse, then its
+  # result logged and the second's PreToolUse; prints the second's verdict
+  rm -f "$HOME/.mergeworthy/agy/c1.post" "$HOME/.mergeworthy/agy/c1.said"
+  agt "$U" "${SKS[@]}" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$1,$3]}"; local v; v=$(agy_ev PreToolUse "{\"id\":\"a\",$(echo "$1" | cut -c2-)" "$4")
+  [ "$v" = '{"decision": "allow"} 0' ] || { echo "the first call wasn't allowed: $v"; return; }
+  agy_ev PostToolUse "{\"id\":\"a\",$(echo "$1" | cut -c2-)" "$4" >/dev/null
+  agt "$U" "${SKS[@]}" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$1,$3]}" "$2"; agy_ev PreToolUse "{\"id\":\"b\",$(echo "$3" | cut -c2-)" $(($4 + 1)); }
+mapfile -t SKS < <(sk delegate)
+DL='{"name":"mcp_t3-code_delegate_task","args":{"task":"Topic: cache eviction\nResearch how the cache evicts entries.","title":"agy cache research"}}'
+check "agy: two identical delegate_task launches in one response: the second is refused as launched by the first" "deny:1" \
+  "$(two "$DL" '{"type":"GENERIC","content":"{\"taskId\":\"task-1\",\"childThreadId\":\"child-1\",\"status\":\"running\"}"}' "$DL" 4 | dec 'an agent for this job is already launched')"
+mapfile -t SKS < <(sk task writing post open-issue)
+WF="$HOME/.mergeworthy/work/agy-post"; mkdir -p "$WF/drafts"; for n in 1 2 3 4; do printf 'The cache evicts entry %s early.\n' $n > "$WF/drafts/i$n.md"; sha256sum "$WF/drafts/i$n.md" | cut -d' ' -f1 > "$WF/drafts/i$n.md.gate"; done
+gp() { echo "{\"name\":\"run_command\",\"args\":{\"CommandLine\":\"gh issue create -R fixture/repo --title Local --body-file $WF/drafts/$1.md${2:-}\"}}"; }
+GPR='{"type":"GENERIC","content":"Command exited with code 0.\n\nCommand output:\nhttps://github.com/fixture/repo/issues/3\n"}'
+export AGC=$WF
+r1=$(two "$(gp i1)" "$GPR" "$(gp i1)" 7 | dec 'i1.md was already posted'); n1=$(agy_ev PostInvocation)
+check "agy: one draft posted twice in one response: the second is refused as already posted, and the first's watcher notice reaches the model at PostInvocation, the turn going on by its calls" "deny:1 1 no" \
+  "$r1 $(echo "$n1" | inj | grep -c 'your call run_command (step 7): post-bash-register: started the watcher') $(echo "$n1" | grep -q terminationBehavior && echo yes || echo no)"
+# a watcher running for the work folder, not yet of fixture/repo: the first post's plain create adds its thread, so the second,
+# piped, finds the watcher it needs
+bash -c 'exec -a gh-watch-daemon sleep 600' & WPID=$!; echo "$WPID" > "$WF/gh-watch.pid"; : > "$WF/threads.txt"; echo "$WF" >> "$HOME/.claude/gh-watch-dirs.txt"
+check "agy: a post that needs a running watcher of its repo, after one in the same response whose plain create added that repo's thread, is allowed" "allow:0" \
+  "$(two "$(gp i2)" "$GPR" "$(gp i3 ' | cat')" 7 | dec 'no running watcher')"
+kill "$WPID"; sed -i "\#^$WF\$#d" "$HOME/.claude/gh-watch-dirs.txt"
+# what a check settled at the next call's PreToolUse said, still owed when the turn stops, is Stop's continuation
+check "agy: a check settled at the next call's PreToolUse, its notice still owed at Stop: Stop continues with it, once" "allow continue 1 0" \
+  "$(two "$(gp i4)" "$GPR" "$LS" 7 | python3 -c 'import json, sys; print(json.loads(sys.stdin.read().rsplit(" ", 1)[0])["decision"])') $(agy_ev Stop "" 0 0 | python3 -c 'import json, sys; v = json.loads(sys.stdin.read().rsplit(" ", 1)[0]); print(v.get("decision"), v.get("reason", "").count("your call run_command (step 7): post-bash-register: started the watcher"))') $(agy_ev Stop "" 0 1 | grep -c 'your call run_command')"
+unset AGC
+# a check that settles at a PostInvocation ending in text (agy's completion turn after a background post) continues the turn
+GB='{"name":"run_command","args":{"CommandLine":"gh issue create -R fixture/repo --title x --body x","WaitMsBeforeAsync":500}}'
+GBS='{"type":"GENERIC","status":"RUNNING","content":"Created At: x\nTool is running as a background task with task id: c1/task-2\nTask Description: gh issue create\nTask logs are available at: file:///x/task-2.log"}'
+GBE='{"type":"SYSTEM_MESSAGE","source":"SYSTEM","content":"<SYSTEM_MESSAGE>\n[Message] timestamp=x sender=c1/task-2 priority=MESSAGE_PRIORITY_HIGH content=Task id \"c1/task-2\" finished with result:\nCommand exited with code 0.\n\nCommand output:\ncreated\n\nLog: file:///x/task-2.log\n</SYSTEM_MESSAGE>"}'
+rm -f "$HOME/.mergeworthy/agy/c1.post" "$HOME/.mergeworthy/agy/c1.said"
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$GB]}" "$GBS"; agy_ev PostToolUse "{\"id\":\"g\",$(echo "$GB" | cut -c2-)" 2 >/dev/null
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$GB]}" "$GBS" '{"type":"PLANNER_RESPONSE","content":"It runs."}' "$GBE" '{"type":"PLANNER_RESPONSE","content":"The issue is created."}'
+check "agy: a background post's check that settles at a PostInvocation ending in text reaches the model, the turn continued (force_continue)" "1 force_continue" \
+  "$(agy_ev PostInvocation | python3 -c 'import json, sys; v = json.loads(sys.stdin.read().rsplit(" ", 1)[0]); print(sum("your call run_command (step 2)" in s["systemMessage"]["systemMessage"] for s in v["injectSteps"]), v.get("terminationBehavior"))')"
+rm -f "$HOME/.mergeworthy/agy/c1.post" "$HOME/.mergeworthy/agy/c1.said"
+# a conversation's files go at a SessionStart once all of them are untouched for 14 days
+AD="$HOME/.mergeworthy/agy"; touch "$AD/old-conv.jsonl" "$AD/old-conv.post" "$AD/new-conv.jsonl" "$AD/new-conv.post"
+touch -d 2000-01-01 "$AD/old-conv.jsonl" "$AD/old-conv.post" "$AD/new-conv.post"; touch -d '13 days ago' "$AD/new-conv.jsonl"
+agt "$U"; agy_ev SessionStart >/dev/null
+check "agy: SessionStart deletes a conversation's files untouched for 14 days, and keeps one with a file touched since" "new-conv.jsonl new-conv.post" "$(cd "$AD" && ls -d old-conv.* new-conv.* 2>/dev/null | paste -sd' ')"
+unset OWN_PENDING PUSHED_HEADS
+agt "$U" '{"type":"PLANNER_RESPONSE","content":"Hello."}'
+check "agy: a Stop no check refuses ends the turn ({})" '{} 0' "$(MERGEWORTHY_STOP_CHECKIN=off agy_ev Stop "" 0 0)"
+# <agy hooks.json>: each tool whose matchers it gets wrong, then the script's exit status (a file Python can't read fails it)
+mt() { python3 -c 'import json, re, sys
+sys.path.insert(0, sys.argv[1] + "/hooks"); import agy
+mine = json.load(open(sys.argv[2]))["mergeworthy"]
+for ev in ("PreToolUse", "PostToolUse"):
+    for name in [*agy.TOOLS, "swarm", "mcp_t3-code_delegate_task", "mcp_t3-code_t3_thread_launch", "mcp_t3-code_create_threads"]:
+        wants = name in agy.OWN_AGENTS and ev == "PreToolUse" or bool(agy.matched(ev, agy.claude_name(name))) or ev == "PostToolUse" and bool(agy.matched("PostToolUseFailure", agy.claude_name(name)))
+        if wants != any(re.search(g["matcher"], name) for g in mine[ev]): print(ev, name, wants)
+if [h["command"] for h in mine.get("PostInvocation", [])] != ["python3 ../hooks/agy.py PostInvocation"]: print("PostInvocation", mine.get("PostInvocation"))' "$R" "$1" 2>&1; echo "exit $?"; }
+check "agy: the plugin's matchers send agy every tool hooks.json's matchers take, under its agy name" "exit 0" "$(mt "$R/agy/hooks.json")"
+head -c 15 "$R/agy/hooks.json" > "$T/agy-hooks-cut.json"
+python3 -c 'import json, sys
+h = json.load(open(sys.argv[1])); h["mergeworthy"]["PreToolUse"] = [g for g in h["mergeworthy"]["PreToolUse"] if not __import__("re").search(g["matcher"], "run_command")]
+json.dump(h, open(sys.argv[2], "w"))' "$R/agy/hooks.json" "$T/agy-hooks-norun.json"
+check "agy: the matcher check fails a truncated hooks file and one with no PreToolUse matcher for run_command" "no no" \
+  "$([ "$(mt "$T/agy-hooks-cut.json")" = 'exit 0' ] && echo yes || echo no) $([ "$(mt "$T/agy-hooks-norun.json")" = 'exit 0' ] && echo yes || echo no)"
+check "agy: the plugin's always-on rule declares the shared always-on.md import" yes "$(grep -q '^@\[always-on\](~/.mergeworthy/current/always-on.md)$' "$R/agy/rules/mergeworthy.md" && head -3 "$R/agy/rules/mergeworthy.md" | grep -qx 'trigger: always_on' && echo yes || echo no)"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]

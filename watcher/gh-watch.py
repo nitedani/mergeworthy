@@ -34,7 +34,7 @@ from concurrent.futures import ThreadPoolExecutor
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))  # a watch dir runs this through a link
 sys.path.insert(1, os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'hooks'))
 import gl_watch
-from gh_common import own_accounts
+from gh_common import BADGE, own_accounts
 import agent_jobs, own_actions, records, shlex, steward, testpaths, threads_file, work_folder
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -651,7 +651,7 @@ def is_human(u, body=None, agent_hashes=frozenset()):
 
 
 def agent_post(u, body, agent_hashes):
-    return bool(gl_watch.BADGE.match(body or '')) or is_own(u.get('login')) and _norm(body) in agent_hashes
+    return bool(BADGE.match(body or '')) or is_own(u.get('login')) and _norm(body) in agent_hashes
 
 
 def append_owed(entry, d=None):
