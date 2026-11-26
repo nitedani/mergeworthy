@@ -2292,6 +2292,7 @@ for e in ev:
     elif e == 'watcher': w({"type": "user", "message": {"content": "Watcher events in /w/events.log (mergeworthy:reply):\n### o/r#1 comment 2 by bob"}})
     elif e == 'other': w({"type": "user", "message": {"content": "Delegated task node:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aother-9 reached a terminal state."}})
     elif e == 'waiting': w({"type": "user", "message": {"content": "Delegated task node:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aloop-a-1 (Loop A) [completed]: The gates are still running; I'll continue when they finish."}})
+    elif e == 'untitled': w({"type": "user", "message": {"content": "Delegated task node:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aloop-a-1 in child thread thread:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aloop-a-1 [completed]:\nDone."}})
     elif e == 'other2': w({"type": "user", "message": {"content": "Delegated task node:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aother-9 (Review round 2) [completed]:\nCLEAN"}})
     else: res('task_status', e.split(':')[1])
 w({"type": "assistant", "message": {"content": [{"type": "text", "text": text}]}})
@@ -2303,6 +2304,7 @@ rl_tr $'Done for now.\n\n**Running:**\n- loop-a-1, the bug hunt' user status:fai
 rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user status:running; check "a Running list read live, its task still running, passes" 0 "$(stop "$T")"
 rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user status:running other; check "another task's T3 completion notice is not the user: a list read live before it passes" 0 "$(stop "$T")"
 rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user status:running notice; check "BLOCK: a Running list naming the task whose completion notice came in" 2 "$(stop "$T")"
+rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user status:running untitled; check "BLOCK: also when the task has no title (\`Delegated task <id> in child thread <thread> [completed]:\`)" 2 "$(stop "$T")"
 rl_tr $'Started Loop A.
 
 Running:

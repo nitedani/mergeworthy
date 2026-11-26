@@ -4,9 +4,9 @@ and results (delegate_task, task_status, t3_thread_send) and T3's notices. A thr
 to it, each turn T3 continues on its own (provider-continuation)."""
 import json, os, re
 
-# T3's notice is `Delegated task <id> reached a terminal state`, or `Delegated task <id> (<title>) [<status>]:` with its result,
-# newer T3 naming the task's thread before the status: `(<title>) in child thread <thread id> [<status>]:`
-NOTICE = re.compile(r'Delegated task (\S+) (?:reached a terminal state|\(.*?\)(?: in child thread \S+)? \[(\w+)\]:?)')
+# T3's notice is `Delegated task <id>[ (<title>)][ in child thread <thread id>] [<status>]:` with its result, or
+# `Delegated task <id> reached a terminal state` for a task it no longer knows (its formatter, delegatedCompletionWakeDetail)
+NOTICE = re.compile(r'Delegated task (\S+)(?: \(.*?\))?(?: in child thread \S+)? (?:reached a terminal state|\[(\w+)\]:?)')
 # What the harness, T3, a hook or the watcher writes into a session as a user message: a tag (`<task-notification>`), not an autolink (`<https://…>`)
 TAG = re.compile(r'<[A-Za-z][\w-]*[\s>/]')
 NOTICES = ('Stop hook feedback', 'Watcher events in ', 'Delegated task ', 'Skill /', 'Base directory for this skill',
