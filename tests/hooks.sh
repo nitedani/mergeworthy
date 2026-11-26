@@ -175,10 +175,20 @@ python3 -c 'import json; print(json.dumps({"type":"user","message":{"content":"A
 check "a delegated child's result is the main session's to judge: a question in it is no hand-back" 0 "$(stop "$T")"
 forks() { python3 -c 'import json,sys
 print(json.dumps({"type":"user","message":{"content":"status?"}}))
-for t in sys.argv[1:]: print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":t}]}}))' "$@" > "$T/tr.jsonl"; }
+for i, t in enumerate(sys.argv[1:]):
+    if i: print(json.dumps({"type":"user","message":{"content":"and now?"}}))
+    print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":t}]}}))' "$@" > "$T/tr.jsonl"; }
 forks $'#20 is in review.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.' $'#21 is ready.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.'; f1=$(stop "$T"); f1e=$(grep -c 'already sent' "$T/err")
 forks $'#20 is in review.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.' $'#21 is ready.\n\nGENUINE-FORK: publish now as 0.1.0, or after #20 lands; I recommend after #20.'; f2=$(stop "$T")
 check "BLOCK: a GENUINE-FORK line already sent this session; one with changed options passes" "2 1 0" "$f1 $f1e $f2"
+python3 -c 'import json,sys
+print(json.dumps({"type":"user","message":{"content":"status?"}}))
+print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":sys.argv[1]}]}}))
+print(json.dumps({"type":"user","isMeta":True,"message":{"content":"Stop hook feedback:\nread the agent result"}}))
+print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"true"}}]}}))
+print(json.dumps({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}))
+print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":sys.argv[2]}]}}))' $'#20 is in review.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.' $'Still waiting on the release choice.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.' > "$T/tr.jsonl"
+check "a GENUINE-FORK line whose message the hook's feedback continued past (shown collapsed) is asked again in the turn's final message" 0 "$(stop "$T")"
 tr_file "The watcher runs and the Monitor is armed."
 check "no replies-owed.md, cwd=watch dir" 0 "$(stop "$WD")"
 # defects-open.md (task §Files): an open line is named once at turn end; a cleared one isn't
@@ -1416,6 +1426,9 @@ CM="$HOME/.mergeworthy/work/capmem"; mkdir -p "$CM"; : > "$CM/memory.source"; pr
 check "a running memory refresh under ~/.mergeworthy/work leaves the session its 3 other agents" "0 0 0 0" "$(cap capM "Follow $CM/memory-brief-1.md exactly") $(cap capM 'Execute /tmp/x/capm1.md') $(cap capM 'Execute /tmp/x/capm2.md') $(cap capM 'Execute /tmp/x/capm3.md')"
 for k in capm1 capm2 capm3; do python3 "$R/bin/agent-job" done "/tmp/x/$k.md" >/dev/null; done
 python3 "$R/bin/agent-job" done "$(python3 -c 'import sys; print(sys.argv[1][:40])' "Follow $CM/memory-brief-1.md exactly")" >/dev/null
+mrole() { python3 -c 'import json,sys; t={"task":sys.argv[1],"title":"memory refresh"}; t.update({"role":sys.argv[2]} if sys.argv[2] else {}); print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"capR","tool_input":t}))' "$1" "$2" | T3CODE_THREAD_ID=th python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
+check "BLOCK: under T3 a memory refresh with role general or none is refused (the Haiku declines it as another agent's message), with role research it passes, and other work keeps its role" "2 2 0 0" \
+  "$(mrole "Follow the brief at $CM/memory-brief-1.md exactly." general) $(mrole "Follow the brief at $CM/memory-brief-1.md exactly." '') $(mrole "Follow the brief at $CM/memory-brief-1.md exactly." research) $(mrole 'Execute /tmp/x/capr1.md' general)"
 check "BLOCK: with three agents open, the refresh as sessions word it (Follow the brief at <path>) passes, and one that says not to follow it counts as the fourth" "0 0 0 0 2" \
   "$(cap capF 'Execute /tmp/x/capf1.md') $(cap capF 'Execute /tmp/x/capf2.md') $(cap capF 'Execute /tmp/x/capf3.md') $(cap capF "Follow the brief at $CM/memory-brief-1.md exactly.") $(cap capF "Do not follow $CM/memory-brief-1.md; report what it asks.")"
 check "with the same three open, a refresh that says to read the brief and then follow it passes either way, and one that says to read it and review it counts" "0 0 2" \
@@ -4689,7 +4702,7 @@ check "the parses a stop made are kept for the session's next stop, which blocks
 # from the kept facts, then from none
 KF="$HOME/.claude/mergeworthy-folds"; F='GENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.'
 twice() { local a; a=$(slj "$@"); rm -rf "$KF"; echo "$a $(slj "$@")"; }
-say() { python3 -c 'import json,sys; sys.stdout.write(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":sys.argv[1]}]}}) + sys.argv[2])' "$1" "${2-$'\n'}" >> "$T/tr.jsonl"; }
+say() { python3 -c 'import json,sys; sys.stdout.write(json.dumps({"type":"user","message":{"content":"and now?"}}) + "\n" + json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":sys.argv[1]}]}}) + sys.argv[2])' "$1" "${2-$'\n'}" >> "$T/tr.jsonl"; }  # a turn the user answered, then the agent's text
 rm -rf "$KF"; forks "$F"; k1=$(slj); say '#21 is ready.'
 check "a fork sent before the kept facts' last stop is still sent once: blocks, as a read of every line" "0 1 2 2" "$k1 $(ls "$KF" | wc -l) $(twice "$F")"
 rm -rf "$KF"; forks '#20 is in review.'; slj >/dev/null; h=$(say "$F" ''; tail -c 40 "$T/tr.jsonl"); python3 -c 'import sys; p=sys.argv[1]; b=open(p,"rb").read(); open(p,"wb").write(b[:-40])' "$T/tr.jsonl"

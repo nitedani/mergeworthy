@@ -118,7 +118,8 @@ def unchecked_check():
               "a command), check it now and answer from what you found, also when asked to answer now. An unknown stands only with "
               "the attempt that failed, quoted in the same paragraph (mergeworthy:writing §Evidence for claims).", file=sys.stderr)
         sys.exit(2)
-# A fork is asked once per session: a GENUINE-FORK line already sent blocks, answered or not (it waits in questions-owed.md)
+# A fork is asked once per session: a GENUINE-FORK line already sent in a message that ended a turn blocks, answered or not (it waits in
+# questions-owed.md); one this hook's own feedback continued past was never shown whole, so it is asked again
 def fork_check():
     if report.forks(last) & asked:
         print("This GENUINE-FORK line was already sent to the user in this session. Ask a fork once: until they answer, "
