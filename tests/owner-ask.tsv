@@ -1,0 +1,141 @@
+# What owner_ask.asks says of a message the user typed, one phrasing a line: action, target, verdict (True asks, False holds back, None neither), text
+# (\n a line break). The target is a merge's <repo>#<number> (<repo> alone for an MR named by its branch), a push's branch, a release's tag (- for none),
+# an ask-first command's line.
+merge	o/r#41	None	looks good
+merge	o/r#41	None	thanks
+merge	o/r#41	True	Don't merge #40. Merge #41.
+merge	o/r#41	True	merge it
+merge	o/r#41	True	Let’s merge #41.
+merge	o/r#41	True	- Merge #41.
+merge	o/r#41	True	I want you to merge #41.
+merge	o/r#41	True	kérlek mergeld
+merge	o/r#41	True	mergeld kerlek
+merge	o/r#41	True	https://github.com/o/r/pull/41 merge and release
+merge	o/r#41	None	merge #40
+merge	o/r#41	None	is #41 merged?
+merge	o/r#41	False	don't merge it yet
+merge	o/r#41	False	ne mergeld
+merge	o/r#41	False	nem kell mergelni
+merge	o/r#41	False	majd en mergelem
+merge	o/r#41	None	Review #41. Merge #40.
+merge	o/r#41	None	Merge #40, and review #41.
+merge	o/r#41	False	Merge it, but not before CI passes.
+merge	o/r#41	None	Merge https://github.com/o/r/pull/41?
+merge	o/r#41	None	Merge https://github.com/o/pkg/pull/41
+merge	o/r#41	None	wait, not yet
+merge	o/r#41	None	Resolve the merge conflicts.
+merge	o/r#41	False	Merge #41 after I review it.
+merge	o/r#41	None	the merge went fine
+merge	o/r#41	None	land PR #23
+merge	o/r#41	True	for now lets just merge the sentry pr and release it
+merge	o/r#41	True	ok so for now just merge it
+merge	o/r#41	True	so merge it
+merge	o/r#41	True	yes merge
+merge	o/r#41	True	yes please merge it
+merge	o/r#41	True	also merge #41
+merge	o/r#41	True	alright merge it
+merge	o/r#41	True	akkor mergeld
+merge	o/r#41	True	will you merge it
+merge	o/r#41	True	I need you to merge #41
+merge	o/r#41	True	feel free to merge
+merge	o/r#41	True	Merge #41, then tell me if CI fails.
+merge	o/r#41	True	merge it and ping me once it is in
+merge	o/r#41	True	merge it, let me know when it is done
+merge	o/r#41	True	merge it and tell me if it does not go through
+merge	o/r#41	True	mergeld, majd szólj ha kész
+merge	o/r#41	True	mergeld, ne varj ram
+merge	o/r#41	True	merge it, no need to wait for me
+merge	o/r#41	True	merge it, don't wait for CI
+merge	o/r#41	None	for now merge #40
+merge	o/r#41	False	for now dont merge
+merge	o/r#41	None	for now leave the merge
+merge	o/r#41	False	Merge it, but only if CI passes
+merge	o/r#41	False	merge it, after I look
+merge	o/r#41	False	Merge #41 when CI is green
+merge	o/r#41	False	merge it, though maybe wait for CI
+merge	o/r#41	False	merge it, but later
+merge	o/r#41	False	merge it, only do it if CI is green
+merge	o/r#41	False	merge it, check if CI is green after
+merge	o/r#41	False	merge it, let me know, wait actually dont
+merge	o/r#41	False	ping me, dont merge
+merge	o/r#41	False	tell me when you merge it
+merge	o/r#41	None	did you merge it
+merge	o/r#41	None	should we merge this
+merge	o/r#41	None	is it safe to merge
+merge	o/r#41	None	how do I merge this
+merge	o/r#41	None	ready to merge
+merge	o/r#41	None	revert merge
+merge	o/r#41	None	cancel the merge
+merge	o/r#41	None	avoid merge commits
+merge	o/r#41	None	I'll merge it
+merge	o/r#41	None	so the merge went fine
+merge	o/r#41	None	ok the merge is done
+merge	o/r#41	None	yes merged
+merge	o/r#41	None	great merge
+merge	o/r#41	None	next merge should be clean
+merge	o/r#41	None	Don't merge #40.
+merge	o/r#41	False	Dont merge pr when ready, I want to see it.
+merge	o/r#41	False	Don't merge #41.
+merge	o/r#41	False	I don't want it merged yet.
+merge	o/r#41	True	merge #41
+merge	o/r#41	None	Merge o/r!40.
+merge	o/r#41	None	merge !40
+merge	o/r#41	True	merge !41
+release	-	False	release notes kellenek, ne publisholj
+release	-	None	Write release notes for v1.2.0.
+release	-	None	Release notes for v1.2.0, please.
+release	-	True	release 1.2.0 please
+release	-	None	Released v1.2.0 yesterday.
+release	-	None	Published v1.2.0 yesterday.
+release	-	False	Release v1.2.0. It must not be released until I approve it.
+release	-	False	Publish v1.2.0. It must not be published until I approve it.
+release	-	True	for now lets just merge the sentry pr and release it
+release	-	True	so release
+release	-	True	release it and tell me when it is out
+release	-	None	for now release notes only
+release	-	None	great release
+release	-	None	next release should include it
+release	-	None	cancel release
+release	-	None	yes release notes
+release	-	True	release it
+push	main	None	looks good
+push	main	None	Released and pushed.
+push	main	None	Published and pushed to main.
+push	main	None	Pushed to main.
+push	main	True	push it to main
+push	main	None	Push the feature branch.
+push	main	None	Push to scratch.
+push	main	None	Push to MAIN.
+push	main	True	Push to branch main, and open the PR.
+push	main	True	Don't push the scratch branch. Push to main.
+push	main	None	Push to `scratch`.
+push	main	True	Push to main.
+push	main	True	for now just push
+push	main	True	for now lets just merge the sentry pr and release it
+push	main	None	for now push to scratch
+push	main	None	Don't push to scratch.
+push	main	None	Don’t push to `scratch`.
+push	main	True	push
+ask-first	t3-update	None	is the t3 fix built yet?
+ask-first	t3-update	True	update t3
+ask-first	t3-update	None	should we update t3?
+ask-first	t3-update	False	ne frissítsd még
+ask-first	t3-update	None	Review the update plan.
+ask-first	t3-update	None	Claude Code 2.1.319\nupdated 6 d ago
+ask-first	t3-update	True	for now just update t3
+ask-first	t3-update	True	restart it and tell me if it fails
+ask-first	t3-update	True	update
+merge	o/r#41	True	Merge the mergeworthy PR #41
+merge	o/r#41	None	the mergeworthy steward is slow
+merge	o/r#41	None	(Re-invocation of /loop merge it)
+merge	o/r#41	True	(Re-invocation of /loop)\nmerge it
+push	main	None	push back on that
+push	main	None	push for a fix
+merge	o/r#41	False	who merged #41
+merge	o/r#41	False	Merge #41, no rush.
+merge	o/r#41	True	Merge #41. Don't.
+merge	o/r#41	True	Review #41. Merge it.
+merge	o/r	True	merge it
+merge	o/r	None	merge !41
+ask-first	t3-update	True	update the README
+release	-	True	Publish the blog post
