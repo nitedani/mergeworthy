@@ -6,7 +6,7 @@ One fresh-context agent per provider writes all its designs or candidates before
 
 ```
 The problem, for its users: <the constraints any interface must meet, the dependencies and their categories (code §Deep modules), a rough code sketch that makes the constraints concrete; the sketch is not a proposal>.
-The invariants: <decisions/<name>.md's table; approach candidates: the behavior to keep, with sources>. The project file: <project file path>. Read the code at <SHA> in <worktree>.
+The invariants: <design/<name>.invariants.md's path; approach candidates: the behavior to keep, with sources>. The project file: <project file path>. Read the code at <SHA> in <worktree>.
 
 <Design it twice:> write three designs, each under a different constraint, none reusing another's entry points:
 - minimize the interface (1–3 entry points);

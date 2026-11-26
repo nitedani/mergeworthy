@@ -50,7 +50,7 @@ hint of how it is solved today: those anchor the branches on what exists. Pick 6
 1 or 2 drawn from that clean problem itself (the ways it fails, the people it serves, a field that
 solved its like), never from the current solution, each with a vantage prompt you write; the rest
 from the table below, mostly tagged code or design and at least 1 tagged wild (a row with both
-tags counts for both). The orchestrator starts the branch agents in parallel, each writing finality/branch-<provider>.md, given as design input only the
+tags counts for both). The orchestrator starts 3 branch agents in parallel, each given as design input only the
 clean problem, the names and vantage prompts of 2 or 3 of those frames (no frame given twice) and
 this instruction, verbatim:
 "You are in DIVERGENT mode: a generator, not a critic. For each frame, under its name, design as its persona:
