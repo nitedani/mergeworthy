@@ -45,10 +45,7 @@ class Facts:
         self.commands, self.monitor_cmds = j.get('commands', []), j.get('monitor_cmds', [])
         self.opened_task, self.delegated = j.get('opened_task', False), j.get('delegated', False)
         self.last, self.last_user = j.get('last', ''), j.get('last_user', '')  # the agent's last text; the user's own last message (t3_tasks.typed)
-        self.forks_before_last = j.get('forks_before_last', {})  # the GENUINE-FORK lines of every text but the last that ended a turn
-        # self.last ended a turn: a message the user typed or a notice (a watcher event, an agent's result) came after it. A text a stop
-        # hook's feedback continued, or a tool call followed, reached the user in T3 Code as a collapsed line, so its fork wasn't asked.
-        self.shown = j.get('shown', False)
+        self.forks_before_last = j.get('forks_before_last', {})  # the GENUINE-FORK lines of every text the agent wrote but the last
         self.child_opening, self.head_lines = j.get('child_opening', False), j.get('head_lines', 0)  # the first 20 lines open a sub-agent's brief
         self.models = j.get('models', {})  # each Claude model id the session ran on or launched an agent on: the time of its last line
         self.at = j.get('at', '')  # the time of the transcript's latest line
@@ -59,11 +56,11 @@ class Facts:
         return {**{k: v for k, v in vars(self).items() if k not in ('tail_sdk', 'tasks')}, 'tail_sdk': list(self.tail_sdk), 'tasks': self.tasks.json()}
 
     def said(self, fin=None):
-        """(the GENUINE-FORK lines of every text but the last that ended a turn, the last text), the final message fin from the hook's input counted
+        """(the GENUINE-FORK lines of every text but the last, the last text), the final message fin from the hook's input counted
         as the last text: the transcript may not hold it yet."""
         before, last = set(self.forks_before_last), self.last
         if isinstance(fin, str) and fin.strip():
-            if last.strip() and last.strip() != fin.strip() and self.shown: before |= report.forks(last)
+            if last.strip() and last.strip() != fin.strip(): before |= report.forks(last)
             last = fin
         return before, last
 
@@ -97,7 +94,6 @@ class Facts:
                     if m: self.monitors[m.group(1)] = 1
             typed = c if isinstance(c, str) else ' '.join(x.get('text', '') for x in c or [] if isinstance(x, dict) and x.get('type') == 'text')
             self.last_user = t3_tasks.typed(typed) or self.last_user
-            if typed.strip() and not e.get('isMeta') and not typed.startswith('Stop hook feedback'): self.shown = True
             for t in texts:
                 for tid in re.findall(r'<task-id>(\w+)</task-id>[\s\S]*?Monitor expired', t or ''): self.dead[tid] = 1
                 for tid, st in re.findall(r'<task-id>(\w+)</task-id>[\s\S]*?<status>(\w+)</status>', t or ''):
@@ -124,8 +120,8 @@ class Facts:
             if isinstance(c, list):
                 t = ''.join(x.get('text', '') for x in c if isinstance(x, dict) and x.get('type') == 'text')
                 if t.strip():
-                    if self.last.strip() and self.shown: self.forks_before_last.update(dict.fromkeys(report.forks(self.last), 1))
-                    self.last, self.shown = t, False
+                    if self.last.strip(): self.forks_before_last.update(dict.fromkeys(report.forks(self.last), 1))
+                    self.last = t
 
 
 def _version():  # the code whose output a kept fold holds

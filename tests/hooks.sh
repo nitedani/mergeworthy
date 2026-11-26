@@ -175,20 +175,15 @@ python3 -c 'import json; print(json.dumps({"type":"user","message":{"content":"A
 check "a delegated child's result is the main session's to judge: a question in it is no hand-back" 0 "$(stop "$T")"
 forks() { python3 -c 'import json,sys
 print(json.dumps({"type":"user","message":{"content":"status?"}}))
-for i, t in enumerate(sys.argv[1:]):
-    if i: print(json.dumps({"type":"user","message":{"content":"and now?"}}))
-    print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":t}]}}))' "$@" > "$T/tr.jsonl"; }
+for t in sys.argv[1:]: print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":t}]}}))' "$@" > "$T/tr.jsonl"; }
 forks $'#20 is in review.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.' $'#21 is ready.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.'; f1=$(stop "$T"); f1e=$(grep -c 'already sent' "$T/err")
 forks $'#20 is in review.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.' $'#21 is ready.\n\nGENUINE-FORK: publish now as 0.1.0, or after #20 lands; I recommend after #20.'; f2=$(stop "$T")
 check "BLOCK: a GENUINE-FORK line already sent this session; one with changed options passes" "2 1 0" "$f1 $f1e $f2"
-python3 -c 'import json,sys
-print(json.dumps({"type":"user","message":{"content":"status?"}}))
-print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":sys.argv[1]}]}}))
-print(json.dumps({"type":"user","isMeta":True,"message":{"content":"Stop hook feedback:\nread the agent result"}}))
-print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"true"}}]}}))
-print(json.dumps({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}))
-print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":sys.argv[2]}]}}))' $'#20 is in review.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.' $'Still waiting on the release choice.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.' > "$T/tr.jsonl"
-check "a GENUINE-FORK line whose message the hook's feedback continued past (shown collapsed) is asked again in the turn's final message" 0 "$(stop "$T")"
+# under T3 a fork counts as sent only from a final message stop-lint let end the turn: T3 folds a text the turn went past into one line
+TF=$'#20 is in review.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.'
+forks 'Checking the release.' "$TF"; t1=$(T3CODE_THREAD_ID=th-f SID=t3-fork-a stop "$T"); forks "$TF" 'More work.' "${TF/is in review/is still in review}"; t2=$(T3CODE_THREAD_ID=th-f SID=t3-fork-a stop "$T")
+forks "$TF" 'More work.' "${TF/is in review/is still in review}"; t3=$(T3CODE_THREAD_ID=th-f SID=t3-fork-b stop "$T"); t4=$(SID=t3-fork-b stop "$T")
+check "BLOCK: under T3 a fork a passed final message carried is sent; one only in a text the turn went past is asked again in the final message, and outside T3 it is sent" "0 2 0 2" "$t1 $t2 $t3 $t4"
 tr_file "The watcher runs and the Monitor is armed."
 check "no replies-owed.md, cwd=watch dir" 0 "$(stop "$WD")"
 # defects-open.md (task §Files): an open line is named once at turn end; a cleared one isn't
@@ -1740,6 +1735,8 @@ check "a project notes file the brief names is read, not pinned: its history SHA
 check "the user's own checkout is read at any commit" 0 "$(ag "$OC" "Read $T/gr at $MAINOLD once more")"
 echo 'TanStack Start client CSS: answered here.' > "$MR/css-research.md"
 check "BLOCK: a research brief with no Topic line" 2 "$(ag "$OC" 'Look into CSS' research)"
+printf 'Merge memory-new.txt into memory.md.\n' > "$MR/memory-brief-9.md"
+check "a memory refresh launched as research in the same folder needs no Topic line" 0 "$(ag "$OC" "Follow the brief at $MR/memory-brief-9.md exactly." research)"; rm -f "$MR/memory-brief-9.md"
 check "BLOCK: research the notes already cover, naming the file" "2 1" "$(ag "$OC" $'Look into CSS again\nTopic: tanstack client css' research) $(grep -c "$MR/css-research.md" "$T/err")"
 check "research passes once each covering file is named as checked" 0 "$(ag "$OC" $'Look into CSS once more\nTopic: tanstack client css\nChecked: '"$MR/css-research.md"' covers dev only' research)"
 check "research whose brief names the covering note under ~/.mergeworthy/work passes" 0 "$(ag "$OC" $'Look into CSS, building on '"$MR/css-research.md"$'\nTopic: tanstack client css' research)"
@@ -4702,7 +4699,7 @@ check "the parses a stop made are kept for the session's next stop, which blocks
 # from the kept facts, then from none
 KF="$HOME/.claude/mergeworthy-folds"; F='GENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.'
 twice() { local a; a=$(slj "$@"); rm -rf "$KF"; echo "$a $(slj "$@")"; }
-say() { python3 -c 'import json,sys; sys.stdout.write(json.dumps({"type":"user","message":{"content":"and now?"}}) + "\n" + json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":sys.argv[1]}]}}) + sys.argv[2])' "$1" "${2-$'\n'}" >> "$T/tr.jsonl"; }  # a turn the user answered, then the agent's text
+say() { python3 -c 'import json,sys; sys.stdout.write(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":sys.argv[1]}]}}) + sys.argv[2])' "$1" "${2-$'\n'}" >> "$T/tr.jsonl"; }
 rm -rf "$KF"; forks "$F"; k1=$(slj); say '#21 is ready.'
 check "a fork sent before the kept facts' last stop is still sent once: blocks, as a read of every line" "0 1 2 2" "$k1 $(ls "$KF" | wc -l) $(twice "$F")"
 rm -rf "$KF"; forks '#20 is in review.'; slj >/dev/null; h=$(say "$F" ''; tail -c 40 "$T/tr.jsonl"); python3 -c 'import sys; p=sys.argv[1]; b=open(p,"rb").read(); open(p,"wb").write(b[:-40])' "$T/tr.jsonl"
