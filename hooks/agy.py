@@ -3,8 +3,10 @@
 tool, and prints their verdict as agy's JSON on stdout, always (agy lets a tool through on an empty stdout). Each hook reads what it
 would under Claude Code: agy's tools under their Claude names and arguments, and agy's transcript rewritten as a Claude Code
 transcript, ~/.mergeworthy/agy/<conversation>.jsonl, kept until the conversation's files are untouched for 14 days. A tool's
-result reaches agy's transcript only after its PostToolUse, so a PostToolUse hook runs at the conversation's next event, which shows its
-message by refusing that event's tool (or, at Stop, by continuing). agy's own subagents (swarm) run no hooks, so they are refused."""
+result reaches agy's transcript only after its PostToolUse, so a PostToolUse hook runs at PostInvocation, after the model's tool
+calls ran, and what it says (a block's reason or context) reaches the model there as a system message, as Claude Code passes a
+PostToolUse hook's block reason and context to the model; nothing later is refused for it. agy's own subagents (swarm) run no hooks,
+so they are refused."""
 import datetime, json, os, re, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import session_catalog
@@ -226,8 +228,8 @@ def run(event, d):
 
 
 def settle(ev):
-    """Runs the PostToolUse hooks of each earlier call that has an outcome (a background command, once its task finished): what
-    they said, blocks and context alike, which the model gets in this event's answer."""
+    """Runs the PostToolUse (or PostToolUseFailure) hooks of each queued call that has an outcome (a background command, once its
+    task finished): what they said, blocks and context alike."""
     try: waiting = [json.loads(l) for l in open(ev.pending)]
     except OSError: return []
     errs, done = [], ev.outcomes
@@ -235,8 +237,9 @@ def settle(ev):
         o = done[p['step']]
         d = {**ev.base('PostToolUseFailure' if o['failed'] else 'PostToolUse'), 'cwd': p['cwd'], **ev.call(p['name'], p['args'], p['step'])}
         d['tool_response'] = {'stdout': o['output'], 'stderr': o['error'], 'interrupted': False} if p['name'] == 'run_command' else o['output']
+        if o['failed']: d['error'] = o['error'] or o['output']
         blocks, said = run(d['hook_event_name'], d)
-        errs += [f"mergeworthy's check after your earlier call {p['name']} (step {p['step']}): {e}" for e in blocks + said]
+        errs += [f"mergeworthy's check after your call {p['name']} (step {p['step']}): {e}" for e in blocks + said]
     rest = [p for p in waiting if p['step'] not in done]
     with open(f'{ev.pending}.{os.getpid()}', 'w') as f: f.writelines(json.dumps(p) + '\n' for p in rest)
     os.replace(f'{ev.pending}.{os.getpid()}', ev.pending)
@@ -260,9 +263,10 @@ def prune(folder):
 
 def answer(event, said):
     """agy's JSON for event from what the checks said: PreToolUse refuses the call with it, Stop continues the turn with it,
-    SessionStart puts it in the conversation; with nothing said, each goes ahead, said so explicitly where agy reads silence as yes."""
+    SessionStart and PostInvocation put it in the conversation; with nothing said, each goes ahead, said so explicitly where agy
+    reads silence as yes."""
     text = '\n'.join(said)
-    if event == 'SessionStart': return {'injectSteps': [{'systemMessage': {'systemMessage': text}}] if text else []}
+    if event in ('SessionStart', 'PostInvocation'): return {'injectSteps': [{'systemMessage': {'systemMessage': text}}] if text else []}
     if event == 'PreToolUse': return {'decision': 'deny', 'reason': text} if text else {'decision': 'allow'}
     if event == 'Stop': return {'decision': 'continue', 'reason': text} if text else {}
     return {}
@@ -282,19 +286,18 @@ def main(name, d):
         session_catalog.record(ev.session, ROOT, 'resume')
     c = d.get('toolCall') or {}
     if name == 'PostToolUse':
-        if matched('PostToolUse', claude_name(c.get('name', ''))):
+        if matched('PostToolUse', claude_name(c.get('name', ''))) or matched('PostToolUseFailure', claude_name(c.get('name', ''))):
             with open(ev.pending, 'a') as f:
                 f.write(json.dumps({'step': d.get('stepIdx'), 'name': c.get('name'), 'args': c.get('args'), 'cwd': d.get('cwd')}) + '\n')
         return answer(name, [])
-    after = settle(ev)  # at an event whose answer can carry their messages
+    if name == 'PostInvocation':  # the invocation's tool results are in agy's transcript by now
+        return answer(name, settle(ev))
     if name == 'PreToolUse':
-        errs = (["mergeworthy: Antigravity's own subagents run without mergeworthy's checks: launch agents with T3's delegate_task "
-                 "(mergeworthy:delegate step 4)."] if c.get('name') in OWN_AGENTS else
-                run('PreToolUse', {**ev.base('PreToolUse'), **ev.call(c.get('name', ''), c.get('args'), d.get('stepIdx'))})[0])
-        if after and not errs: after.append('This call was not run: run it again once you have acted on that.')
-        return answer(name, after + errs)
+        return answer(name, ["mergeworthy: Antigravity's own subagents run without mergeworthy's checks: launch agents with T3's delegate_task "
+                             "(mergeworthy:delegate step 4)."] if c.get('name') in OWN_AGENTS else
+                      run('PreToolUse', {**ev.base('PreToolUse'), **ev.call(c.get('name', ''), c.get('args'), d.get('stepIdx'))})[0])
     if name == 'Stop':
-        return answer(name, after + run('Stop', {**ev.base('Stop'), 'last_assistant_message': last_text(ev), 'stop_hook_active': (d.get('executionNum') or 0) > 0})[0])
+        return answer(name, run('Stop', {**ev.base('Stop'), 'last_assistant_message': last_text(ev), 'stop_hook_active': (d.get('executionNum') or 0) > 0})[0])
     raise ValueError(f'no such agy hook event: {name}')
 
 

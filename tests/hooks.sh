@@ -5241,23 +5241,23 @@ a2=$(rd 5)
 agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$CB]}" "$CS" "$(ce 'Command exited with code 0.\n\nCommand output:\nBe nice.')" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$W]}"
 check "agy: a file write while a background cat of AGENTS.md runs, or after it failed, is denied naming it; after it succeeded it is allowed" "deny:1:0 deny:1:0 allow:0" "$a1 $a2 $(rd 5)"
 rm -f "$HOME/.mergeworthy/agy/c1.post"; unset AGC
-# a declined push's queued check runs as failed at the next event: its pending action goes, none recorded
+# a declined push's queued check runs as failed at PostInvocation: its pending action goes, none recorded
 export OWN_PENDING="$T/agy-own-d" PUSHED_HEADS="$T/agy-heads-d"; rm -f "$HOME/.mergeworthy/agy/c1.post"
 agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PUSH]}"; agy_ev PostToolUse "{\"id\":\"g\",$(echo "$PUSH" | cut -c2-)" 2 >/dev/null
 python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import agy, own_actions; own_actions.intend(agy.call_id("c1", 2), {"PUSHED_HEADS": ["o/r declined"]})' "$R/hooks"
-agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PUSH]}" "$U" '{"type":"PLANNER_RESPONSE","content":"Not pushed."}'; agy_ev Stop "" 0 0 >/dev/null
-check "agy: a declined push (no result step) is settled as failed at the next event: queued check gone, pending action dropped, no head recorded" "0 0 0" \
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PUSH]}" "$U" '{"type":"PLANNER_RESPONSE","content":"Not pushed."}'; agy_ev PostInvocation >/dev/null
+check "agy: a declined push (no result step) is settled as failed at PostInvocation: queued check gone, pending action dropped, no head recorded" "0 0 0" \
   "$(wc -l < "$HOME/.mergeworthy/agy/c1.post") $(cat "$OWN_PENDING" 2>/dev/null | wc -l) $(cat "$PUSHED_HEADS" 2>/dev/null | wc -l)"
 unset OWN_PENDING PUSHED_HEADS; rm -f "$HOME/.mergeworthy/agy/c1.post"
 check "agy: its own subagents (swarm) are denied" 1 "$(agy_ev PreToolUse '{"id":"s","name":"swarm","args":{"action":"add","name":"w","brief":"b"}}' 2 | grep -c '"decision": "deny".*delegate_task')"
 check "agy: a call no hook refuses is allowed in agy's form (an empty stdout or {} would not say so)" '{"decision": "allow"} 0' "$(agt "$U" '{"type":"PLANNER_RESPONSE","tool_calls":[{"name":"run_command","args":{"CommandLine":"ls"}}]}'; agy_ev PreToolUse '{"id":"l","name":"run_command","args":{"CommandLine":"ls"}}' 2)"
 check "agy: input it can't read is denied, with exit 0 and a JSON verdict" "deny 0" "$(o=$(echo 'not json' | python3 "$R/hooks/agy.py" PreToolUse); rc=$?; printf '%s' "$o" | python3 -c 'import json, sys; print(json.load(sys.stdin)["decision"], end=" ")'; echo $rc)"
-# a command's result reaches agy's transcript after its PostToolUse: its PostToolUse hooks run at the next event
+# a command's result reaches agy's transcript after its PostToolUse: its PostToolUse hooks run at PostInvocation, after the model's calls ran
 agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PUSH]}"
 agy_ev PostToolUse "{\"id\":\"g\",$(echo "$PUSH" | cut -c2-)" 2 >/dev/null; p1=$(wc -l < "$HOME/.mergeworthy/agy/c1.post")
 agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PUSH]}" '{"type":"GENERIC","content":"Command exited with code 1.\n\nCommand output:\nfatal: no remote\n"}' '{"type":"PLANNER_RESPONSE","content":"Pushed."}'
-s1=$(agy_ev Stop "" 0 0); p2=$(wc -l < "$HOME/.mergeworthy/agy/c1.post")
-check "agy: a command's PostToolUse waits for its result, then runs at the next event (Stop) and is done" "1 0" "$p1 $p2"
+agy_ev PostInvocation >/dev/null; p2=$(wc -l < "$HOME/.mergeworthy/agy/c1.post"); s1=$(agy_ev Stop "" 0 0)
+check "agy: a command's PostToolUse waits for its result, then runs at PostInvocation and is done" "1 0" "$p1 $p2"
 check "agy: Stop continues with what stop-lint says (a session that pushed, without scope.md)" "continue scope.md" \
   "$(printf '%s' "$s1" | python3 -c 'import json, sys; v = json.loads(sys.stdin.read().rsplit(" ", 1)[0]); print(v.get("decision"), "scope.md" if "scope.md" in v.get("reason", "") else v)')"
 # a background command (agy's RUNNING result step naming its task) ends when agy's message says that task finished
@@ -5274,7 +5274,7 @@ python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import own_actions; own
 agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$BG]}" "$BGS" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$LS]}"
 agy_ev PreToolUse "{\"id\":\"l\",$(echo "$LS" | cut -c2-)" 4 >/dev/null; b1="$(wc -l < "$HOME/.mergeworthy/agy/c1.post") $(bgres is_error) $(cat "$PUSHED_HEADS" 2>/dev/null | wc -l)"
 agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$BG]}" "$BGS" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$LS]}" '{"type":"GENERIC","content":"Command exited with code 0.\n\nCommand output:\nx\n"}' "$BGE" '{"type":"PLANNER_RESPONSE","content":"Pushed."}'
-agy_ev Stop "" 0 0 >/dev/null
+agy_ev PostInvocation >/dev/null
 check "agy: a background command stays pending while it runs, its start an error in the transcript until the task succeeds; once its task finished with exit 0 it is settled as a success" "1 True 0 | 0 o/r bg" \
   "$b1 | $(wc -l < "$HOME/.mergeworthy/agy/c1.post") $(cat "$PUSHED_HEADS" 2>/dev/null)"
 check "agy: its end is Claude Code's <task-notification>, not Stop feedback" 1 "$(grep -c '<task-notification>.*<status>completed</status>' "$HOME/.mergeworthy/agy/c1.jsonl")"
@@ -5283,7 +5283,7 @@ rm -f "$OWN_PENDING" "$PUSHED_HEADS" "$HOME/.mergeworthy/agy/c1.post"
 agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$BG]}" "$BGS"; agy_ev PostToolUse "{\"id\":\"b\",$(echo "$BG" | cut -c2-)" 2 >/dev/null
 python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import own_actions; own_actions.intend(sys.argv[2], {"PUSHED_HEADS": ["o/r bg"]})' "$R/hooks" "$(bgres tool_use_id)"
 agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$BG]}" "$BGS" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$LS]}" '{"type":"GENERIC","content":"Command exited with code 3.\n\nCommand output:\nCommand exited with code 0.\n"}' "$(echo "$BGE" | sed 's/code 0\.\\n\\nCommand output:\\npushed/code 3.\\n\\nCommand output:\\nCommand exited with code 0./')" '{"type":"PLANNER_RESPONSE","content":"Pushed."}'
-agy_ev Stop "" 0 0 >/dev/null
+agy_ev PostInvocation >/dev/null
 check "agy: a command that exits 3 after printing \"Command exited with code 0.\" failed, run in the background (no head recorded, its task failed) or not (an error)" "0 0 1 True" \
   "$(wc -l < "$OWN_PENDING") $(cat "$PUSHED_HEADS" 2>/dev/null | wc -l) $(grep -c '<status>failed</status>' "$HOME/.mergeworthy/agy/c1.jsonl") $(python3 -c 'import json, sys
 for l in open(sys.argv[1]):
@@ -5296,13 +5296,16 @@ own_actions.intend(agy.call_id("session-A", 2), {"PUSHED_HEADS": ["fixture-owner
 PF='{"name":"run_command","args":{"CommandLine":"printf ok"}}'
 agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PF]}"; agy_ev PostToolUse "{\"id\":\"p\",$(echo "$PF" | cut -c2-)" 2 >/dev/null
 agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$PF]}" '{"type":"GENERIC","content":"Command exited with code 0.\n\nCommand output:\nok\n"}' '{"type":"PLANNER_RESPONSE","content":"Done."}'
-agy_ev Stop "" 0 0 >/dev/null
+agy_ev PostInvocation >/dev/null
 check "agy: conversation c1's command at step 2 leaves session-A's pending action at step 2 pending" "1 0" "$(grep -c 'fixture-head' "$OWN_PENDING") $(cat "$PUSHED_HEADS" 2>/dev/null | wc -l)"
-# a refused swarm call still carries an earlier command's check: a new issue whose watcher post-bash-register can't tell
+# a check's block after a call reaches the model at PostInvocation, and refuses nothing later: a new issue whose watcher
+# post-bash-register can't tell, then a swarm call refused for its own reason only
 GI='{"name":"run_command","args":{"CommandLine":"gh issue create -R fixture/repo --title x --body x"}}'; SW='{"name":"swarm","args":{"action":"add","name":"w","brief":"b"}}'
 agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$GI]}"; agy_ev PostToolUse "{\"id\":\"g\",$(echo "$GI" | cut -c2-)" 2 >/dev/null
 agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$GI]}" '{"type":"GENERIC","content":"Command exited with code 0.\n\nCommand output:\ncreated\n"}' "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$SW]}"
-check "agy: a refused swarm call's reason keeps the earlier command's check and its own" "1 1" "$(agy_ev PreToolUse "{\"id\":\"s\",$(echo "$SW" | cut -c2-)" 4 | python3 -c 'import json, sys; r = json.loads(sys.stdin.read().rsplit(" ", 1)[0])["reason"]; print(r.count("earlier call run_command (step 2)"), r.count("delegate_task"))')"
+inj() { python3 -c 'import json, sys; v = json.loads(sys.stdin.read().rsplit(" ", 1)[0]); print(" ".join(s["systemMessage"]["systemMessage"] for s in v.get("injectSteps", [])))'; }
+check "agy: a check's block after a call reaches the model at PostInvocation as a system message; a later swarm call is refused for its own reason only" "1 0 1" \
+  "$(agy_ev PostInvocation | inj | grep -c 'your call run_command (step 2)') $(agy_ev PreToolUse "{\"id\":\"s\",$(echo "$SW" | cut -c2-)" 4 | python3 -c 'import json, sys; r = json.loads(sys.stdin.read().rsplit(" ", 1)[0])["reason"]; print(r.count("your call run_command"), r.count("delegate_task"))')"
 # Antigravity's SessionStart puts the bin/ commands on PATH, as Claude Code's does
 rm -rf "$HOME/.local/bin"; agt "$U"; agy_ev SessionStart >/dev/null
 check "agy: SessionStart links the bin/ commands an agy session runs (pr-steps, gate-pass, gh-watch-start) through ~/.mergeworthy/current" \
@@ -5452,14 +5455,15 @@ gate() { sta "$1" "$2|USER_INPUT:Read the source" "$2|PLANNER_RESPONSE:$RS" "$2|
     | timeout 10 python3 "$R/hooks/pre-agent-dedupe.py" 2>&1 | grep -c 'read the code this change is about yourself'; }
 check "agy: an implementation brief after a read of the source four hours ago is refused for it; after one 100 seconds ago it isn't" "1 0" \
   "$(gate hgate4 '-4 hours') $(gate hgate0 '-100 seconds')"
-# what a queued check says without blocking (additionalContext) reaches the model too: T3 refusing a launch (parent_not_active)
-DT='{"name":"mcp_t3-code_delegate_task","args":{"task":"Research the cache","title":"agy refused"}}'; DR='{"type":"GENERIC","content":"code: parent_not_active"}'
-pna() { rm -f "$HOME/.mergeworthy/agy/c1.post"; agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$DT]}"; agy_ev PostToolUse "{\"id\":\"d\",$(echo "$DT" | cut -c2-)" 2 >/dev/null; }
-pna; agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$DT]}" "$DR" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$LS]}"
-p1=$(agy_ev PreToolUse "{\"id\":\"l\",$(echo "$LS" | cut -c2-)" 4 | python3 -c 'import json, sys; v = json.loads(sys.stdin.read().rsplit(" ", 1)[0]); r = v.get("reason", ""); print(v["decision"], r.count("T3 refused this launch"), r.count("This call was not run"))')
-pna; agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$DT]}" "$DR" '{"type":"PLANNER_RESPONSE","content":"Waiting."}'
-check "agy: T3's refusal of a launch says what to do in the next call's refusal, which says to run it again, and in Stop's continuation" "deny 1 1 continue 1" \
-  "$p1 $(MERGEWORTHY_STOP_CHECKIN=off agy_ev Stop "" 0 0 | python3 -c 'import json, sys; v = json.loads(sys.stdin.read().rsplit(" ", 1)[0]); print(v.get("decision"), v.get("reason", "").count("T3 refused this launch"))')"
+# what a queued check says without blocking (additionalContext) reaches the model too, at PostInvocation, and the next call runs:
+# T3 refusing a launch (parent_not_active), as text and as the MCP error T3 returns (agy logs it as an ERROR step)
+DT='{"name":"mcp_t3-code_delegate_task","args":{"task":"Research the cache","title":"agy refused"}}'
+DR='{"type":"GENERIC","content":"code: parent_not_active"}'
+DE='{"type":"GENERIC","status":"ERROR","content":"Created At: x\nCompleted At: x\nEncountered error in step execution: {\"code\":\"parent_not_active\",\"message\":\"The parent thread has no active turn, so it cannot delegate.\"}"}'
+pna() { rm -f "$HOME/.mergeworthy/agy/c1.post"; agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$DT]}"; agy_ev PostToolUse "{\"id\":\"d\",$(echo "$DT" | cut -c2-)" 2 >/dev/null
+  agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$DT]}" "$1" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$LS]}"
+  echo "$(agy_ev PostInvocation | inj | grep -c 'T3 refused this launch') $(agy_ev PreToolUse "{\"id\":\"l\",$(echo "$LS" | cut -c2-)" 4 | python3 -c 'import json, sys; print(json.loads(sys.stdin.read().rsplit(" ", 1)[0])["decision"])')"; }
+check "agy: T3's refusal of a launch, as text or as T3's MCP error, reaches the model at PostInvocation, and the next call is allowed" "1 allow|1 allow" "$(pna "$DR")|$(pna "$DE")"
 rm -f "$HOME/.mergeworthy/agy/c1.post"
 # a conversation's files go at a SessionStart once all of them are untouched for 14 days
 AD="$HOME/.mergeworthy/agy"; touch "$AD/old-conv.jsonl" "$AD/old-conv.post" "$AD/new-conv.jsonl" "$AD/new-conv.post"
@@ -5475,8 +5479,9 @@ sys.path.insert(0, sys.argv[1] + "/hooks"); import agy
 mine = json.load(open(sys.argv[2]))["mergeworthy"]
 for ev in ("PreToolUse", "PostToolUse"):
     for name in [*agy.TOOLS, "swarm", "mcp_t3-code_delegate_task", "mcp_t3-code_t3_thread_launch", "mcp_t3-code_create_threads"]:
-        wants = name in agy.OWN_AGENTS and ev == "PreToolUse" or bool(agy.matched(ev, agy.claude_name(name)))
-        if wants != any(re.search(g["matcher"], name) for g in mine[ev]): print(ev, name, wants)' "$R" "$1" 2>&1; echo "exit $?"; }
+        wants = name in agy.OWN_AGENTS and ev == "PreToolUse" or bool(agy.matched(ev, agy.claude_name(name))) or ev == "PostToolUse" and bool(agy.matched("PostToolUseFailure", agy.claude_name(name)))
+        if wants != any(re.search(g["matcher"], name) for g in mine[ev]): print(ev, name, wants)
+if [h["command"] for h in mine.get("PostInvocation", [])] != ["python3 ../hooks/agy.py PostInvocation"]: print("PostInvocation", mine.get("PostInvocation"))' "$R" "$1" 2>&1; echo "exit $?"; }
 check "agy: the plugin's matchers send agy every tool hooks.json's matchers take, under its agy name" "exit 0" "$(mt "$R/agy/hooks.json")"
 head -c 15 "$R/agy/hooks.json" > "$T/agy-hooks-cut.json"
 python3 -c 'import json, sys

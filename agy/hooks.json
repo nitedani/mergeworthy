@@ -13,6 +13,7 @@
         "hooks": [{"type": "command", "command": "python3 ../hooks/agy.py PostToolUse", "timeout": 600}]
       }
     ],
+    "PostInvocation": [{"type": "command", "command": "python3 ../hooks/agy.py PostInvocation", "timeout": 600}],
     "Stop": [{"type": "command", "command": "python3 ../hooks/agy.py Stop", "timeout": 600}]
   }
 }
