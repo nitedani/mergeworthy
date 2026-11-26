@@ -47,7 +47,7 @@ class Facts:
         self.last, self.last_user = j.get('last', ''), j.get('last_user', '')  # the agent's last text; the user's own last message (t3_tasks.typed)
         self.forks_before_last = j.get('forks_before_last', {})  # the GENUINE-FORK lines of every text the agent wrote but the last
         self.child_opening, self.head_lines = j.get('child_opening', False), j.get('head_lines', 0)  # the first 20 lines open a sub-agent's brief
-        self.models = j.get('models', {})  # each Claude model id the session ran on or launched an agent on: the time of its last line
+        self.models = j.get('models', {})  # each Claude model id the session ran on or launched an agent on, and each Gemini one it ran on: the time of its last line
         self.at = j.get('at', '')  # the time of the transcript's latest line
         self.tail_sdk = collections.deque(j.get('tail_sdk', []), maxlen=20)  # for each of the last 20 lines: the SDK CLI wrote it
         self.tasks = t3_tasks.Observer(j.get('tasks'))
@@ -103,7 +103,8 @@ class Facts:
             self.opened_task = self.opened_task or '<command-name>/mergeworthy:task</command-name>' in typed
         if e.get('type') == 'assistant':
             at = e.get('timestamp') or ''
-            self.ran((e.get('message') or {}).get('model'), at)
+            self.ran(model := (e.get('message') or {}).get('model'), at)
+            if isinstance(model, str) and model.startswith('gemini-'): self.models[model] = at  # Gemini: only an Antigravity session's own model
             for x in c if isinstance(c, list) else []:
                 if not isinstance(x, dict) or x.get('type') != 'tool_use': continue
                 i = x.get('input') if isinstance(x.get('input'), dict) else {}

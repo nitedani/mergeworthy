@@ -16,7 +16,7 @@ import json, os, re, subprocess, sys, datetime, urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 sys.path[:0] = [os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), d) for d in ('watcher', 'hooks')]
 import gh_common
-import gl_watch  # BADGE: what an agent's post starts with
+import gl_watch
 from post_words import uncoded
 
 LINKED_LAST = 30          # comments kept per linked thread
@@ -87,7 +87,7 @@ def utc(at):
 def record(kind, c, at_key='created_at', extra=''):
     u = c.get('user') or {}
     body = c.get('body') or ''
-    return {'kind': kind, 'id': c.get('id') or 0, 'author': u.get('login') or 'ghost', 'bot': is_bot(u), 'agent': bool(gl_watch.BADGE.match(body)),
+    return {'kind': kind, 'id': c.get('id') or 0, 'author': u.get('login') or 'ghost', 'bot': is_bot(u), 'agent': bool(gh_common.BADGE.match(body)),
             'at': utc(c.get(at_key) or c.get('created_at') or ''), 'url': c.get('html_url') or '', 'body': body, 'extra': extra}
 
 def load(repo, sep, num):
