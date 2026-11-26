@@ -5416,6 +5416,18 @@ ago xc-typed "$AGR" "USER_INPUT:What did thread-xc decide?" "PLANNER_RESPONSE:Ty
 ago xc-other "$AGO" "$(hand thread-xc)" "USER_INPUT:Other checkout ruling" "PLANNER_RESPONSE:Other checkout answer"
 check "agy: under Claude Code, an Antigravity conversation of the checkout that only mentions the thread, and one of another checkout T3 handed it to, don't join it: not behind" \
   "False" "$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import memory_file; print(memory_file.behind(sys.argv[2]))' "$R/hooks" "$MXC")"
+# a log in the other provider's folder deleted between the listing and its read (agy's SessionStart prune) is skipped
+ago xc-pruned "$AGR" "USER_INPUT:Pruned" "PLANNER_RESPONSE:Pruned answer"
+check "agy: under Claude Code, an Antigravity log pruned while memory reads the folder is skipped, and the refresh goes on: not behind" "False" \
+  "$(python3 -c 'import os, sys; sys.path.insert(0, sys.argv[1]); import agy, memory_file
+listdir = os.listdir
+def pruned(d):  # the listing, then agy prunes the file before memory reads it
+    names = listdir(d)
+    if d == agy.DIR and "xc-pruned.jsonl" in names: os.remove(os.path.join(d, "xc-pruned.jsonl"))
+    return names
+os.listdir = pruned
+try: print(memory_file.behind(sys.argv[2]))
+except OSError as e: print(type(e).__name__)' "$R/hooks" "$MXC")"
 # the folder memory.source names gone: the check fails, as memory is set up from it, never reads as nothing new
 MXD="$T/agy-mem-gone"; GO="$AG/gone-repo"; mkdir -p "$GO"; GLD="$HOME/.claude/projects/$(printf '%s' "$GO" | sed 's/[^A-Za-z0-9]/-/g')"; mkdir -p "$GLD"
 (cd "$GO" && env -u ANTIGRAVITY_CONVERSATION_ID CLAUDE_CODE_SESSION_ID=cs-xd python3 "$R/bin/memory-prep" init "$MXD" thread-xd >/dev/null 2>&1)

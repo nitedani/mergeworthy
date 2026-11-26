@@ -86,19 +86,23 @@ def thread_logs(root, since=0.0):
     others = [d for d in dict.fromkeys((claude_logdir(src['cwd']), agy.DIR)) if d != own and os.path.isdir(d)]
     for p, other in [(os.path.join(d, f), d != own) for d in (own, *others) for f in os.listdir(d)]:
         f = os.path.basename(p)
-        if not f.endswith('.jsonl') or os.path.getmtime(p) < since:
+        try:
+            if not f.endswith('.jsonl') or os.path.getmtime(p) < since:
+                continue
+            pos, hit = cache.get(p, (0, f[:-len('.jsonl')] in src.get('sessions', ())))
+            if not hit and os.path.getsize(p) > pos:
+                with open(p, 'rb') as fh:
+                    fh.seek(pos)
+                    for l in fh:
+                        if not l.endswith(b'\n'):
+                            break
+                        pos += len(l)
+                        if orchestrator(l.decode(errors='replace'), tid, src['cwd'] if other else None):
+                            hit = True; break
+                cache[p] = (pos, hit)
+        except FileNotFoundError:  # deleted since the listing: in the other provider's folder, a log its prune took (agy.py's SessionStart)
+            if not other: raise
             continue
-        pos, hit = cache.get(p, (0, f[:-len('.jsonl')] in src.get('sessions', ())))
-        if not hit and os.path.getsize(p) > pos:
-            with open(p, 'rb') as fh:
-                fh.seek(pos)
-                for l in fh:
-                    if not l.endswith(b'\n'):
-                        break
-                    pos += len(l)
-                    if orchestrator(l.decode(errors='replace'), tid, src['cwd'] if other else None):
-                        hit = True; break
-            cache[p] = (pos, hit)
         if hit:
             out.append(p)
     json.dump(cache, open(cache_f, 'w'))
