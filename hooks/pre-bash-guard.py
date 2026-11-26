@@ -195,11 +195,14 @@ def asks(text, kind, repo=None, num=None, branch=None):
         if kind == 'merge': return refs(c)
         return {x for x in re.findall(r'\bto\s+(?:the\s+)?(?:branch\s+)?([\w./-]*[\w-])|([\w./-]*[\w-])\s+branch\b', c.replace('`', ''), re.I) for x in x if x and x.lower() not in ('the', 'a', 'this', 'that')} if kind == 'push' else set()
     def hits(t): return any(r in ('', (repo or '').lower()) and n == str(num) for r, n in t) if kind == 'merge' else (branch or '') in t  # git's branch names are case-sensitive
+    def holds(c):  # c negates the action or puts it off; a follow-up naming neither the action nor a target, or a "don't wait", holds nothing
+        if not re.search(words, bare(c), re.I) and not named(c) and FOLLOW_UP.match(bare(c).strip()): return False
+        return bool(NEGATED.search(NO_WAIT.sub(' ', bare(c))))
     found = None
     for s in re.split(r'(?<=[.!?])\s+|\n', text):
         if not re.search(words, bare(s), re.I): continue
         clauses = re.split(r'[,;]|\b(?:and|és)\b(?!\s*(?:[#!]\d|https?:|[\w.-]+/[\w./-]*[#!]\d))', s)
-        held = [c for c in clauses if (re.search(words, bare(c), re.I) or named(c) or not FOLLOW_UP.match(bare(c).strip())) and NEGATED.search(NO_WAIT.sub(' ', bare(c)))]
+        held = [c for c in clauses if holds(c)]
         if any(not named(c) or hits(named(c)) for c in held): return False
         found = found or not s.rstrip().endswith('?') and any(
             c not in held and re.match(LEAD + r'(?!\w*ed\b)' + words, bare(c).strip(), re.I) and (not (t := named(c) or (refs(text) if kind == 'merge' else [])) or hits(t)) for c in clauses) or None
