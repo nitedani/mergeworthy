@@ -18,7 +18,7 @@ Converges code or a design to the final state that will need no rewrite. The pro
    Open: `delegate/finality.md` (PHASE B½); `code §Removal gate` · Record: `<work folder>/finality/<name>-phantoms.md`: suspects, counters, removals
 5. **Phase C, converge:** behavior-preserving, revert-ready commits through an implementer, gates after each.
    Open: `delegate/implementer.md` · Record: commits
-6. **The deliverable is the short design doc**, posted through `post` (a gist counts) unless the repo keeps design docs; in a design thread, update its WIP comment.
+6. **The deliverable is the short design doc**, posted through `post` (a gist counts) unless the repo keeps design docs; in a design thread, `design` step 7 follows.
    Open: `post` · Record: the doc's link or repo path
 7. **Owner-Safe closure,** last in `converge` step 5: it needs the reviewer's and the shape pass's evidence.
    Open: `delegate/finality.md` (the closure paragraph and its header's glossary) · Record: `<work folder>/finality/<name>-closure.md`
