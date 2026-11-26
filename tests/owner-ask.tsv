@@ -162,3 +162,17 @@ merge	o/r#41	True	Merge it, but don’t wait for CI
 merge	o/r#41	True	Merge it, but don't wait until CI passes
 merge	o/r#41	True	Will you merge #41?
 merge	o/r#41	True	Can you merge #41?
+merge	o/r#41	True	mergeld be az osszes mergeworthy prt kerlek amint tudod
+release	-	True	can you please release a minor of vike-react-sentry
+push	main	True	can you please release a minor of vike-react-sentry
+release	-	True	please release vike-react-apollo
+push	main	True	please release vike-react-apollo
+push	main	None	push scratch
+release	-	None	release is out
+merge	o/r#41	None	Merge requestet nyitni kell, mindenképpen atól, hogy github, gitlab az teljesen mindegy.
+merge	o/r#41	None	Igen, frissítsed és akkor kezdhetted a feladatokat, ahogy tudod csinálni az elkészíthetőeket. Merge Requestekben és hatékonyan fürgén csinál meg őket.
+ask-first	t3-update	True	Igen, frissítsed és akkor kezdhetted a feladatokat, ahogy tudod csinálni az elkészíthetőeket. Merge Requestekben és hatékonyan fürgén csinál meg őket.
+merge	o/r#41	None	GitHub's own "mergeable" only compares against main.\nTHATS EXACTLY WHAT I WANT. WHY IS THAT AN ISSUE?
+merge	nitedani/t3code#6	None	The only thing waiting on you is still the merge of [nitedani/t3code#6](https://github.com/nitedani/t3code/pull/6).\n\nWHY IS IT WAITIN ON ME. DO YOUR THING
+merge	o/r#41	None	The most reliable way to stop OOM crashes is to turn off ballooning.\nStop allocating every last byte to the VM.
+merge	o/r#41	False	Merge #41. Stop.
