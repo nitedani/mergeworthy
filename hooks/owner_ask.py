@@ -57,8 +57,9 @@ def asks(text, kind, repo=None, num=None, branch=None, subject=None):
         own = set(re.split(r'[^\w.]+', (subject or '').lower())) - {''}  # an ask-first command's words: "update t3" names t3-update
         return re.sub(r'[\w.]+', lambda m: tok(True) if not re.fullmatch(words, m[0], re.I) and any(o.startswith(m[0].lower()) for o in own) else m[0], c)
     def stance(m, question):  # 'holds', 'asks' or None for clause m, marked and bare
-        if FOLLOW_UP.match(m.strip()) and FIRST.search(m): return 'holds'
-        if FOLLOW_UP.match(m.strip()) and not re.search(rf'{PAST}{words}', m, re.I): return None
+        if FOLLOW_UP.match(m.strip()):
+            if FIRST.search(m): return 'holds'
+            if not re.search(rf'{PAST}{words}', m, re.I): return None
         if NEGATED.search(NO_WAIT.sub(' ', m)): return 'holds'
         if ask.fullmatch(m.strip()) and (not question or re.match(REQUEST, m.strip(), re.I)): return 'asks'
     on = lambda m: '‹t›' in m or '‹x›' not in m  # names the target, or none
