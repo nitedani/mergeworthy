@@ -5,7 +5,7 @@ It fails closed: a command it can't parse, a record it can't find or a state gh 
 MERGEWORTHY_MERGE=reviewer blocks every `gh pr merge`."""
 import glob, itertools, json, re, sys, os, hashlib, shlex, subprocess, urllib.parse
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import failclosed
+import failclosed, gh_common
 import shellcmd
 from shellcmd import parse, segments, prog, script, opt, api_call, field_name, TEXT_FREE, discussion_post, discussion_thread_of, names_discussion_mutation, env_of, origin, plain_create, PLAIN, new_post_drafts, no_instructions_read, by_agent, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Unseen, Where
 from records import branch_record, commit_file, DRIFT_REF, LIMIT, no_approach, no_preflight, STORE
@@ -346,7 +346,7 @@ def check_badge_models(p):
     first = re.sub(r'\ATitle:[^\n]*\n', '', text).lstrip().split('\n', 1)[0]
     line = re.sub(r'\]\([^)]*\)', ']', first.split('*', 1)[1]) if first.startswith('<img') and '*' in first else ''  # link targets aren't model names
     named = {(f"claude-{f.lower()}", f"claude-{f.lower()}-{v.replace('.', '-')}") for f, v in re.findall(r'\bClaude ([A-Z][a-z]+) (\d+(?:\.\d+)*)\b', line)}
-    named |= {(None, f"gemini-{v}-{f.lower()}") for v, f in re.findall(r'\bGemini (\d+(?:\.\d+)*) ([A-Z][a-z]+)\b', line)}
+    named |= {(None, f"gemini-{v}-{f.lower()}") for v, f in gh_common.GEMINI.findall(line)}
     if not named: return
     if not (path := shellcmd.transcript(d)): return  # a native subagent's post: its own transcript
     try: ran = transcript_facts.read(path).recent_models()

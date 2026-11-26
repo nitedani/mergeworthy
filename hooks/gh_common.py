@@ -4,6 +4,7 @@ import collections, datetime, json, os, re, subprocess, sys, time, urllib.parse
 
 AGENTS = {'Claude': 'claude', 'Codex': 'openai', 'Antigravity': 'google-antigravity'}  # each agent's badge icon: alt -> github.com/<login>.png
 BADGE = re.compile(r'\A\s*<img(?=[^>]*\s(?:alt="(?:%s)"|src="https://github\.com/(?:%s)\.png"))[^>]*>' % ('|'.join(AGENTS), '|'.join(map(re.escape, AGENTS.values()))))  # an agent's post starts with its badge: a whole <img> tag whose alt or src names one
+GEMINI = re.compile(r'\bGemini (\d+(?:\.\d+)*) ([A-Z][a-z]+)\b')  # a Gemini model in a badge: "Gemini <version> <Family>", as `agy models` lists it
 MAINTAINER = ('OWNER', 'MEMBER', 'COLLABORATOR')
 UPDATED = re.compile(r'(?:^| )updated:>=\S+')
 LOWER = re.compile(r'(?:^| )(?:updated|merged|closed|created):>=(\S+)')  # a search's own lower bound: each implies updated:>= it

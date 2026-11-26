@@ -828,6 +828,8 @@ check "BLOCK: a model line with no versioned model and no effort" 1 "$(elint '*C
 check "the effort right after each model passes, every level" 0 "$(elint '*Opus 5.5 (low effort) wrote this; Haiku 5.5 (medium effort) tested it; Opus 5.5 (xhigh effort), Opus 5.5 (max effort) and Opus 5.5 (ultra effort) reviewed it.*')"
 check "the effort inside the model's parenthesis passes" 0 "$(elint '*Opus 5.5 (high effort) wrote this; GPT-6.1-Sol (Codex, high effort) reviewed it.*')"
 check "a model named by a word after its version passes with its effort, and is flagged without it" "0 1" "$(elint '*Gemini 4 Neon (Antigravity, high effort) wrote this; GPT-6.1-Sol (Codex, high effort) reviewed it.*') $(elint '*Opus 5.5 (high effort) wrote this; Gemini 4 Neon (Antigravity) reviewed it.*')"
+glint() { printf '%s %s\nFixed in abc1234.\n' '<img src="https://github.com/google-antigravity.png" width="20" height="20" alt="Antigravity">' "$1" > "$T/gemini.md"; python3 "$R/bin/post-lint" "$T/gemini.md" --parent none 2>&1 | grep -c 'Gemini <version> <Family>'; }
+check "BLOCK: a Gemini credit outside \"Gemini <version> <Family>\" (no version, a hyphen); the form passes" "1 1 0" "$(glint '*Gemini (Antigravity, high effort) wrote this.*') $(glint '*Gemini 4-Neon (Antigravity, high effort) wrote this.*') $(glint '*Gemini 3.8 Flash (Antigravity, high effort) wrote this.*')"
 py310() { python3 -c 'import re, re._parser as p, runpy, sys
 parse = p.parse
 def old(*a, **k):  # what CPython 3.10 parses: no possessive quantifier or atomic group (3.11)
