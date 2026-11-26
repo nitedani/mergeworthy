@@ -1788,7 +1788,8 @@ check "BLOCK: pr-steps verify --ledger closing the first round on a head past 80
 UL="$HOME/.mergeworthy/work/cl/drafts/unreached.ledger.md"; printf 'R1.1 should fixed in deadbeef\nR1.2 should fixed in %s\n' "$OFFH" > "$UL"
 check "BLOCK r2 after a round whose fix is not in HEAD's history, a mistyped sha or one on another branch" "0 2 1" "$(rnd rh-x-r1 "Review $T/rh at head $HL; ledger $UL") $(rnd rh-x-r2 "Review $T/rh at head $HL; ledger $UL") $(grep -c "shows round 1 brought none" "$T/err")"
 # under T3 a later review round continues its reviewer's thread (delegate §Continue): t3_thread_send counts as that round
-# a send continues its reviewer only as a fix check (`Review: ... fix-check`) of a thread active within 50 minutes: t3r's and smr's sends are both unless NOFC is set
+# a send continues its reviewer only as a fix check (`Review: ... fix-check`) of its own findings by id, of a thread active within 50 minutes: t3r's and smr's
+# sends are both unless NOFC is set, naming R<FCR>.1 (default R1.1)
 t3db() { python3 - "$HOME/.t3/userdata/statev2.sqlite" "$@" <<'EOF2'
 import datetime, os, sqlite3, sys
 db, th, ago = sys.argv[1], sys.argv[2], float(sys.argv[3] if len(sys.argv) > 3 else 0)
@@ -1803,7 +1804,7 @@ EOF2
 agentlog() { mkdir -p "$HOME/.claude/projects/p/s/subagents"; touch -d "-${2:-0} minutes" "$HOME/.claude/projects/p/s/subagents/agent-$1.jsonl"; }
 t3r() { # tool clientRequestId thread text: a delegate_task round (T3 returns thread as its childThreadId) or a t3_thread_send to thread; exit code, registered when it passes
   [ "$1" = t3_thread_send ] && [ -z "${NOFC:-}" ] && { t3db "$3"; set -- "$1" "$2" "$3" "$4
-Review: fix-check"; }
+Review: fix-check of R${FCR:-1}.1"; }
   local j; j=$(python3 -c 'import json,sys; t,c,th,x=sys.argv[1:]; ti={"task":x,"role":"review","clientRequestId":c} if t=="delegate_task" else {"threadId":th,"message":x,"mode":"queue","clientRequestId":c}
 r={"taskId":"task-"+c,"status":"running",**({"childThreadId":th} if t=="delegate_task" else {"threadId":th,"runId":"run-"+c})}
 print(json.dumps({"tool_name":"mcp__t3-code__"+t,"tool_input":ti,"tool_response":[{"type":"text","text":json.dumps(r)}]}))' "$@")
@@ -1834,7 +1835,7 @@ pq="$pq $(pv "$PQ/r.review.out" 'R2.1 should: the date'; pe "$PQ/r.md" 'Fixed th
 check "gate-pass's review check refuses a round-3 post ledger without a row for round 1's blocker" "0 0 0 refused" "$pq"
 smr() { # tool round to text: an Agent launch (Claude Code returns agent to as its agentId) or a SendMessage to agent to; exit code, registered when it passes
   [ "$1" = SendMessage ] && [ -z "${NOFC:-}" ] && { agentlog "$3"; set -- "$1" "$2" "$3" "$4
-Review: fix-check"; }
+Review: fix-check of R${FCR:-1}.1"; }
   local j; j=$(python3 -c 'import json,sys; t,c,to,x=sys.argv[1:]; ti={"description":c,"prompt":x,"run_in_background":False} if t=="Agent" else {"to":to,"summary":c,"message":x}
 print(json.dumps({"tool_name":t,"tool_input":ti,"tool_response":{"agentId":to} if t=="Agent" else {"success":True}}))' "$@")
   printf '%s' "$j" | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; local r=$?; [ $r = 0 ] && printf '%s' "$j" | python3 "$R/hooks/pre-agent-dedupe.py" register; echo $r; }
@@ -1893,16 +1894,26 @@ check "a review round launched by t3_thread_launch is registered on the thread i
 FRL="$RLD/fr.ledger.md"; FRB="Review $T/ct at head $CH; final message exactly NO BUGS. Ledger: $FRL"
 fr="$(t3r delegate_task fr-codex-r1 th-fr1 "$FRB") $(rule "$FRL" "$CH" 1; NOFC=1 t3r t3_thread_send fr-codex-r2 th-fr1 "Round 2: $FRB") $(grep -c "declares no fix check of that reviewer's own findings" "$T/err")"
 fr="$fr $(NOFC=1 t3r t3_thread_send fr-codex-r2 th-fr1 "Round 2: $FRB
-Review: verify fix-check") $(grep -c 'no record shows when that reviewer was last active' "$T/err") $(t3db th-fr1 51; NOFC=1 t3r t3_thread_send fr-codex-r2 th-fr1 "Round 2: $FRB
-Review: verify fix-check") $(grep -c 'last active 51 minutes ago, past 50: launch the round on a fresh reviewer' "$T/err") $(t3db th-fr1 49; NOFC=1 t3r t3_thread_send fr-codex-r2 th-fr1 "Round 2: $FRB
-Review: verify fix-check") $(jrounds fr-codex)"
+Review: verify fix-check of R1.1") $(grep -c 'no record shows when that reviewer was last active' "$T/err") $(t3db th-fr1 51; NOFC=1 t3r t3_thread_send fr-codex-r2 th-fr1 "Round 2: $FRB
+Review: verify fix-check of R1.1") $(grep -c 'last active 51 minutes ago, past 50: launch the round on a fresh reviewer' "$T/err") $(t3db th-fr1 49; NOFC=1 t3r t3_thread_send fr-codex-r2 th-fr1 "Round 2: $FRB
+Review: verify fix-check of R1.1") $(jrounds fr-codex)"
 check "a round sent to its reviewer's thread passes only as a fix check of a thread active within 50 minutes: BLOCK one declaring none, one no record dates, one 51 minutes quiet, each naming the fresh reviewer; at 49 minutes it passes" "0 2 1 2 1 2 1 0 2" "$fr"
+FIL="$RLD/fi.ledger.md"; FIB="Review $T/ct at head $CH; final message exactly NO BUGS. Ledger: $FIL"
+fi_="$(t3r delegate_task fi-codex-r1 th-fi1 "$FIB") $(rule "$FIL" "$CH" 1; t3r delegate_task fi-codex-r2 th-fi2 "$FIB") $(rule "$FIL" "$CH" 2; t3r t3_thread_send fi-codex-r3 th-fi2 "Round 3: $FIB") $(grep -c "names R1.1, findings of rounds that reviewer didn't run (it ran r2)" "$T/err")"
+fi_="$fi_ $(t3db th-fi2; NOFC=1 t3r t3_thread_send fi-codex-r3 th-fi2 "Round 3: $FIB
+Review: verify fix-check") $(grep -c "names no ledger id" "$T/err") $(FCR=2 t3r t3_thread_send fi-codex-r3 th-fi2 "Round 3: $FIB")"
+check "a fix check names only its own reviewer's findings: BLOCK one sent to round 2's fresh reviewer naming round 1's id, or naming none; naming its own round's id it passes" "0 0 2 1 2 1 0" "$fi_"
+ORL="$RLD/or.ledger.md"; printf 'R1.1 should: the parser drops a field\n' > "$T/or-r1.md"
+orr="$(t3r delegate_task or-codex-r1 th-or1 "Review $T/ct at head $CH; output to $T/or-r1.md. Ledger: $ORL") $(rule "$ORL" "$CH" 1; t3r delegate_task or-codex-r2 th-or2 "Review $T/ct at head $CH; the last report: $T/or-r1.md; output to $T/or-r2.md. Ledger: $ORL") $(grep -c "never an earlier round's report, but it names $T/or-r1.md" "$T/err")"
+orr="$orr $(t3r delegate_task or-codex2-r2 th-or3 "Review $T/ct at head $CH; the last report: $T/or-r1.md; output to $T/or-r2.md. Ledger: $ORL
+Continues: or-codex")"
+check "BLOCK: a later round launched on a fresh reviewer whose brief names an earlier round's report of its loop, naming it; a new agent taking over a seat past its context (Continues:) gets the last report" "0 2 1 0" "$orr"
 FSL="$RLD/fs.ledger.md"; FSB="Review $T/ct at head $CH; final message exactly NO BUGS. Ledger: $FSL"
 fs="$(smr Agent fs-codex-r1 a-fs "$FSB") $(rule "$FSL" "$CH" 1; agentlog a-fs 51; NOFC=1 smr SendMessage fs-codex-r2 a-fs "Round 2: $FSB
 Review: fix-check") $(grep -c 'last active 51 minutes ago' "$T/err") $(NOFC=1 smr SendMessage fs-codex-r2 a-fs "Round 2: $FSB") $(grep -c 'declares no fix check' "$T/err") $(smr SendMessage fs-codex-r2 a-fs "Round 2: $FSB")"
 check "a SendMessage round passes only as a fix check of an agent whose transcript moved within 50 minutes: BLOCK one 51 minutes quiet or declaring none" "0 2 1 2 1 0" "$fs"
 FNL="$RLD/fn.ledger.md"; FNB="Review $T/ct at head $CH; final message exactly NO BUGS. Ledger: $FNL"
-fn="$(t3r delegate_task fn-codex-r1 th-fn1 "$FNB") $(rule "$FNL" "$CH" 1; t3r delegate_task fn-codex-r2 th-fn2 "$FNB") $(jrounds fn-codex) $(rule "$FNL" "$CH" 2; t3r t3_thread_send fn-codex-r3 th-fn2 "Round 3: $FNB") $(rule "$FNL" "$CH" 3; t3r delegate_task fn-codex-r4 th-fn3 "$FNB") $(rule "$FNL" "$CH" 4; t3r delegate_task fn-codex-r5 th-fn4 "$FNB") $(grep -c 'fn-codex already ran r1, r2, r3, r4' "$T/err")"
+fn="$(t3r delegate_task fn-codex-r1 th-fn1 "$FNB") $(rule "$FNL" "$CH" 1; t3r delegate_task fn-codex-r2 th-fn2 "$FNB") $(jrounds fn-codex) $(rule "$FNL" "$CH" 2; FCR=2 t3r t3_thread_send fn-codex-r3 th-fn2 "Round 3: $FNB") $(rule "$FNL" "$CH" 3; t3r delegate_task fn-codex-r4 th-fn3 "$FNB") $(rule "$FNL" "$CH" 4; t3r delegate_task fn-codex-r5 th-fn4 "$FNB") $(grep -c 'fn-codex already ran r1, r2, r3, r4' "$T/err")"
 check "a later round launched on a fresh reviewer stays in its loop and its four: r2 on a new thread counts as round 2, a fix check sent there continues it, BLOCK r5 on yet another thread naming the cap" "0 0 2 0 0 2 1" "$fn"
 rm -f "$HOME/.t3/userdata/statev2.sqlite"
 mkdir -p "$HOME/.mergeworthy/projects/o"; echo "- a lesson from $OLD" > "$HOME/.mergeworthy/projects/o/gwnotes.md"
@@ -3356,15 +3367,23 @@ check "BLOCK: a reviewer's launch in a command another segment of which is refus
 mkdir -p "$T/drafts/sn"; printf 'Fixed.\n' > "$T/drafts/sn/body.md"
 check "BLOCK: a shell-launched reviewer writing a drafts/ output not named after its draft (codex -o review.out, claude -p > body.out), naming the rename" "2 1 2 1" "$(guard "codex exec --skip-git-repo-check -o $T/drafts/sn/review.out \"\$(cat $SL/p.md)\" < /dev/null") $(grep -c 'name it <name>.review.out' "$T/err") $(guard "claude -p < $SL/p.md > $T/drafts/sn/body.out") $(grep -c 'name it <name>.review.out' "$T/err")"
 check "BLOCK: a loop's reviewers writing several review outputs, naming the fix" "2 1" "$(guard "for f in a b; do codex exec --skip-git-repo-check -o $T/drafts/amb/\$f.review.out \"\$(cat $SL/p.md)\" < /dev/null; done") $(grep -c 'pass its absolute path, written out or assigned once' "$T/err")"
-CXP="$T/cxr"; mkdir -p "$CXP" "$HOME/.codex/sessions/2026/11/25"; touch "$HOME/.codex/sessions/2026/11/25/rollout-2026-11-25T01-00-00-019a-sid.jsonl"; for l in cx-codex cp-claude; do for i in 1 2 3 4 5; do printf 'Review %s at head %s; final message exactly NO BUGS. Ledger: %s\nReview: verify fix-check\n' "$T/ct" "$CH" "$RLD/$l.ledger.md" > "$CXP/$l-r$i.md"; done; done
+CXP="$T/cxr"; mkdir -p "$CXP" "$HOME/.codex/sessions/2026/11/25"; for l in cx-codex cp-claude; do for i in 1 2 3 4 5; do printf 'Review %s at head %s; final message exactly NO BUGS. Ledger: %s\nReview: verify fix-check of R1.1\n' "$T/ct" "$CH" "$RLD/$l.ledger.md" > "$CXP/$l-r$i.md"; done; done
+# a session file whose first prompt is a prompt file's text: a Codex rollout's user message, a Claude transcript's first prompt
+rollout() { python3 -c 'import json,sys; print(json.dumps({"timestamp":"2026-11-25T01:00:00.000Z","type":"session_meta","payload":{}})); print(json.dumps({"timestamp":"2026-11-25T01:00:01.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<environment_context/>"},{"type":"input_text","text":open(sys.argv[1]).read()}]}}))' "$1" > "$2"; }
+claudelog() { python3 -c 'import json,sys; print(json.dumps({"type":"user","timestamp":"2026-11-25T01:00:00.000Z","message":{"role":"user","content":open(sys.argv[1]).read()}}))' "$1" > "$2"; }
+rollout "$CXP/cx-codex-r1.md" "$HOME/.codex/sessions/2026/11/25/rollout-2026-11-25T01-00-00-019a-sid.jsonl"
 cxr="$(ran "codex exec --skip-git-repo-check -o $CXP/r1.out \"\$(cat $CXP/cx-codex-r1.md)\" < /dev/null") $(for i in 2 3 4 5; do rule "$RLD/cx-codex.ledger.md" "$CH" $((i - 1)); ran "codex exec resume 019a-sid \"\$(cat $CXP/cx-codex-r$i.md)\" < /dev/null"; done | xargs) $(grep -c 'cx-codex already ran r1, r2, r3, r4 on this head' "$T/err")"
 cxr="$cxr $(for i in 1 2 3 4 5; do rule "$RLD/cp-claude.ledger.md" "$CH" $((i - 1)); ran "claude -p --effort high < $CXP/cp-claude-r$i.md > $CXP/cp.out"; done | xargs) $(grep -c 'cp-claude already ran r1, r2, r3, r4' "$T/err")"
 check "a shell reviewer's rounds, named by their prompt files, count like an agent's: codex exec r1 and its resume r2 to r4 pass, BLOCK r5 naming the cap; claude -p's the same" "0 0 0 0 2 1 0 0 0 0 2 1" "$cxr"
 CRL="$RLD/cr-codex.ledger.md"; printf 'Review %s at head %s; final message exactly NO BUGS. Ledger: %s\n' "$T/ct" "$CH" "$CRL" > "$CXP/cr-codex-r1.md"; cp "$CXP/cr-codex-r1.md" "$CXP/cr-codex-r2.md"; printf 'Review: verify fix-check\n' >> "$CXP/cr-codex-r2.md"
-mkdir -p "$HOME/.claude/projects/p"; touch "$HOME/.claude/projects/p/cl-sid.jsonl"; touch -d '-51 minutes' "$HOME/.codex/sessions/2026/11/25/rollout-2026-11-25T01-00-00-019b-old.jsonl"
+mkdir -p "$HOME/.claude/projects/p"; claudelog "$CXP/cr-codex-r1.md" "$HOME/.claude/projects/p/cl-sid.jsonl"; touch -d '-51 minutes' "$HOME/.codex/sessions/2026/11/25/rollout-2026-11-25T01-00-00-019b-old.jsonl"
 cr="$(ran "codex exec --skip-git-repo-check -o $CXP/cr.out \"\$(cat $CXP/cr-codex-r1.md)\" < /dev/null") $(rule "$CRL" "$CH" 1; guard "codex exec resume 019b-old \"\$(cat $CXP/cr-codex-r2.md)\" < /dev/null") $(grep -c 'past 50: launch the round on a fresh reviewer' "$T/err") $(guard "codex exec resume --last \"\$(cat $CXP/cr-codex-r2.md)\" < /dev/null") $(grep -c 'no record shows when that reviewer was last active' "$T/err")"
-cr="$cr $(cp "$CXP/cr-codex-r1.md" "$CXP/cr-codex-r2.md"; guard "claude -p --resume cl-sid < $CXP/cr-codex-r2.md > $CXP/cr.out") $(grep -c 'declares no fix check' "$T/err") $(printf 'Review: verify fix-check\n' >> "$CXP/cr-codex-r2.md"; guard "claude -p --resume cl-sid < $CXP/cr-codex-r2.md > $CXP/cr.out")"
+cr="$cr $(cp "$CXP/cr-codex-r1.md" "$CXP/cr-codex-r2.md"; guard "claude -p --resume cl-sid < $CXP/cr-codex-r2.md > $CXP/cr.out") $(grep -c 'declares no fix check' "$T/err") $(printf 'Review: verify fix-check of R1.1\n' >> "$CXP/cr-codex-r2.md"; guard "claude -p --resume cl-sid < $CXP/cr-codex-r2.md > $CXP/cr.out")"
 check "a shell reviewer resumed for a round passes only as a fix check of a session file written within 50 minutes: BLOCK codex resume of a 51-minute-old session or --last, and claude -p --resume declaring none" "0 2 1 2 1 2 1 0" "$cr"
+rollout "$CXP/cp-claude-r1.md" "$HOME/.codex/sessions/2026/11/25/rollout-2026-11-25T01-00-00-019c-other.jsonl"
+check "BLOCK: a shell reviewer's fix check resuming a session another loop's prompt began, naming that it ran no round of this loop" "2 1" "$(guard "codex exec resume 019c-other \"\$(cat $CXP/cx-codex-r2.md)\" < /dev/null") $(grep -c "names R1.1, findings of rounds that reviewer didn't run (it ran none of this loop on record)" "$T/err")"
+FBD="$T/drafts/fb"; mkdir -p "$FBD"; pe "$FBD/pr-body.md" 'The parser keeps empty fields.'; printf 'Review: fresh\nReview %s at head %s; end MERGE AS IS: yes or no. Ledger: %s\n' "$T/ct" "$CH" "$CL" > "$CXP/fresh-codex-r2.md"
+check "BLOCK: a fresh reader's shell round 2 whose output is the body's verdict is a code round, refused as the fresh reader's second" "2 1" "$(guard "codex exec --skip-git-repo-check -o $FBD/pr-body.review.out \"\$(cat $CXP/fresh-codex-r2.md)\" < /dev/null") $(grep -c 'the fresh reader runs once' "$T/err")"
 for i in 1 2; do printf 'Review %s at head %s; final message exactly NO BUGS. Ledger: %s\n' "$T/ct" "$CH" "$CL" > "$CXP/sk-claude-r$i.md"; done
 SK="test -s $T/missing-input.md && claude -p < $CXP/sk-claude-r1.md > $CXP/sk.out"
 check "a shell round counts once its command ran: none after the hook admits it, none after Bash skips or fails it, one after it ran" "0 0 0 1" "$(guard "$SK") $(nrounds sk-claude) $(bashed PostToolUseFailure "$SK"; nrounds sk-claude) $(guard "$SK" >/dev/null; bashed PostToolUse "$SK"; nrounds sk-claude)"

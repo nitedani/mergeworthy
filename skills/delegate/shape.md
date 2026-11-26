@@ -16,7 +16,7 @@ The main session starts the reviewer `delegate §Reviewers` names.
 Review: shape
 You shape <PR>: `git diff <base> <head>`, in <worktree>; everything in it, tests included. Reading order, slice by slice: <the slices' file lists, or none>.
 The project file: <project file path>. The invariants and settled picks: <decisions/*.md>; keep them intact.
-Evidence: <the verifier's and reviewer's reports>.
+Evidence: <the verifier's reports and this round's reviewer's>.
 First read ~/.mergeworthy/current/skills/code/SKILL.md §Phantom gate, §Docs are a claim and §No regressions in full; your shape report starts with `## Standards read`, the first sentence of each copied.
 Read with git at the pinned SHAs; run specs only in your own worktree under <work folder>, removed when done; don't build or run <shared apps>.
 

@@ -253,6 +253,20 @@ def admit(loop, n, tops, heads, led, owners=(), here=(), step=None):
     return ''
 
 
+def old_reports(loop, n, tops, paths, outs, brief):
+    """Why round n of loop, launched on a fresh reviewer, is refused for naming (among paths, its outputs outs aside) a report of an
+    earlier round of its loop, '' otherwise: a fresh reviewer gets the ledger and the commits since, never the reports
+    (delegate §Reviewers); a new agent taking over a seat past its context (`Continues: <loop>`) gets the last one."""
+    if n < 2 or re.search(r'^[ \t>*-]*Continues:[ \t]*\S', brief, re.M): return ''
+    import review_launch
+    mine = {os.path.realpath(o) for o in outs} | {os.path.realpath(w) for w in re.findall(r'\bWrite (/[^\s`\'"():]+)', brief)}
+    old = {o for m, _, said in rounds_of(loop, tops) if m < n for o in said if not review_launch.draft_of(o)} - mine
+    named = sorted(old & {os.path.realpath(p) for p in paths})
+    return (f"{loop}-r{n} goes to a fresh reviewer, whose brief carries the loop's ledger and the commits since, never an earlier round's report, "
+            f"but it names {', '.join(named)} (mergeworthy:delegate §Reviewers): take it out; a new agent taking over a seat past its context "
+            "names the loop it continues in a line `Continues: <loop>` (converge §Running the agents).\n") if named else ''
+
+
 # per kind of loop: the fix outcome that closes a finding, why the completed round leaves the loop open ('' when it doesn't), and
 # whether a later round confirming the fix closes it (a post's draft has no sha)
 KINDS = {

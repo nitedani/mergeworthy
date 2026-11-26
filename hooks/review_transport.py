@@ -47,11 +47,27 @@ def thread(ti, response):
 
 
 def shell_round(command):
-    """(the round `<loop>-r<N>` a shell reviewer's command names by its prompt file, that file's text), else None."""
+    """(the round `<loop>-r<N>` a shell reviewer's command names by its prompt file, that file's text, its path), else None."""
     for f in re.findall(r'(?<![\w.~/-])(~?/[^\s`\'"()<>$]+\.md)\b', command):
         if (m := loops.round_of(os.path.basename(f)[:-3])) and os.path.isfile(p := os.path.expanduser(f)):
-            return m, open(p, errors='replace').read()
+            return m, open(p, errors='replace').read(), p
     return None
+
+
+def seat_rounds(seat):
+    """The rounds that ran in the reviewer seat (a T3 thread, a Claude agent), by the journal."""
+    import review_journal
+    return {e['n'] for f in glob.glob(os.path.join(review_journal.JOURNAL, '*', '*.jsonl')) for e in review_journal.events(f) if e.get('thread') == seat}
+
+
+def started_on(session, prompt, loop, n):
+    """The rounds before n of loop whose prompt file, beside prompt, began the shell reviewer's session file: the rounds it ran."""
+    first = (agent_jobs.head(session)[0] or '').strip()
+    found = set()
+    for f in glob.glob(os.path.join(glob.escape(os.path.dirname(prompt)), '*.md')) if first else ():
+        m = loops.round_of(os.path.basename(f)[:-3])
+        if m and m[1] == loop and int(m[2]) < n and (text := open(f, errors='replace').read().strip()) and text in first: found.add(int(m[2]))
+    return found
 
 
 def last_active(tool, seat, launcher):
@@ -77,12 +93,18 @@ def resumed(argv):
     return None
 
 
-def fix_check(name, brief, at):
-    """Why round name, continuing the reviewer last active at at (None: unknown), is refused, '' when it may run: only a fix check
-    of that reviewer's own findings (FIX_CHECK) continues it, within WINDOW."""
+def fix_check(name, brief, at, ran):
+    """Why round name, continuing the reviewer last active at at (None: unknown) that ran the rounds ran, is refused, '' when it
+    may run: only a fix check (FIX_CHECK) of that reviewer's own findings, named by their ledger ids (R<round>.<n>, a round in
+    ran), continues it, within WINDOW."""
     declared, recent = re.search(FIX_CHECK, brief, re.M), at and time.time() - at <= WINDOW
-    if declared and recent: return ''
+    named = dict(re.findall(r'\b(R(\d+)\.\d+)\b', brief))
+    others = sorted(i for i, m in named.items() if int(m) not in ran)
+    if declared and recent and named and not others: return ''
     why = ("its brief declares no fix check of that reviewer's own findings (a line `Review: <step> [<part>] fix-check`)" if not declared else
-           f"that reviewer was last active {int((time.time() - at) / 60)} minutes ago, past {WINDOW // 60}" if at else "no record shows when that reviewer was last active")
+           f"that reviewer was last active {int((time.time() - at) / 60)} minutes ago, past {WINDOW // 60}" if at and not recent else
+           "no record shows when that reviewer was last active" if not at else
+           "its brief names no ledger id (`R<round>.<n>`) of that reviewer's own findings" if not named else
+           f"its brief names {', '.join(others)}, findings of rounds that reviewer didn't run (it ran {', '.join(f'r{m}' for m in sorted(ran)) or 'none of this loop on record'})")
     return (f"{name} continues its reviewer, but {why}: launch the round on a fresh reviewer, of the other company than the loop's last round "
             "where one is available, its brief carrying the loop's ledger and the commits since, never the earlier reports (mergeworthy:delegate §Reviewers).\n")

@@ -278,7 +278,8 @@ elif k.review:
     # a routed round counts in its seat's loop of its slice, a `Continues: <loop>` one in the loop it takes over
     routed = re.fullmatch(loops.ROUTED, loop)
     owners = [l for l in here if routed and l.rsplit('-', 1)[0] == routed[1] and not re.fullmatch(loops.ROUTED, l)] + re.findall(r'^[ \t>*-]*Continues:[ \t]*(\S+)', brief, re.M)
-    if sent and (why := review_transport.fix_check(f'{loop}-r{n}', brief, review_transport.last_active(req.tool, ti['threadId'], req.transcript))):
+    if sent and (why := review_transport.fix_check(f'{loop}-r{n}', brief, review_transport.last_active(req.tool, ti['threadId'], req.transcript), review_transport.seat_rounds(ti['threadId']))) \
+            or not sent and (why := loops.old_reports(loop, n, tops, L.paths, said_outs, brief)):
         sys.stderr.write(f"BLOCKED: {why}")
         refused()
     if why := (n == 1 and not sent and not owners and loops.third_seat(loop, tops, brief)) or loops.admit(loop, n, tops, heads, led, owners, list(filter(None, [git_top(req.cwd or '/')])), step or (first or {}).get('step')):
