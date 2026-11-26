@@ -40,8 +40,21 @@ posted, posted_at, monitors, dead, wakers = facts.posted, facts.posted_at, set(f
 commands, monitor_cmds, opened_task, delegated, last_user = facts.commands, facts.monitor_cmds, facts.opened_task, facts.delegated, facts.last_user
 # The final message as the harness hands it over: the transcript may not hold it yet when this hook runs
 asked, last = facts.said(d.get('last_assistant_message'))
+# The GENUINE-FORK lines of the final messages this hook let end a turn in this session: under T3 Code only those reached the user
+# whole, since T3 folds a text the turn went on past (after this hook's feedback too) into a one-line summary
+SENT = os.path.expanduser(f"~/.claude/mergeworthy-forks/{re.sub(r'[^\w-]', '', d.get('session_id') or '') or 'none'}.json")
+def sent():
+    try: return set(json.load(open(SENT)))
+    except (OSError, ValueError): return set()
+def finish():  # the turn ends with `last`: its forks are asked; a host that goes on past it (agy.py's owed checks) says so in the input
+    if report.forks(last) and t3_tasks.under_t3() and not d.get('mergeworthy_continues'):
+        try:
+            os.makedirs(os.path.dirname(SENT), exist_ok=True)
+            json.dump(sorted(sent() | report.forks(last)), open(SENT, 'w'))
+        except OSError: pass  # unwritten, the fork may be asked once more
+    sys.exit(0)
 # The user asked to stop or pause: the turn ends as they asked, until they write again
-if steward.asks_stop(last_user): sys.exit(0)
+if steward.asks_stop(last_user): finish()
 cwd_d = d.get('cwd') or ''
 import work_folder
 # Each stop reads the whole session's commands: their parses are kept per session (by the parser's pin and the command), so a
@@ -118,9 +131,10 @@ def unchecked_check():
               "a command), check it now and answer from what you found, also when asked to answer now. An unknown stands only with "
               "the attempt that failed, quoted in the same paragraph (mergeworthy:writing §Evidence for claims).", file=sys.stderr)
         sys.exit(2)
-# A fork is asked once per session: a GENUINE-FORK line already sent blocks, answered or not (it waits in questions-owed.md)
+# A fork is asked once per session: a GENUINE-FORK line already sent blocks, answered or not (it waits in questions-owed.md);
+# under T3 Code, sent is a final message's (above), elsewhere any earlier text's, which Claude Code shows as it streams
 def fork_check():
-    if report.forks(last) & asked:
+    if report.forks(last) & (sent() if t3_tasks.under_t3() else asked):
         print("This GENUINE-FORK line was already sent to the user in this session. Ask a fork once: until they answer, "
               "it waits in questions-owed.md, and a later report doesn't repeat it. Send it again only with changed "
               "options; to refer to it, quote it (always-on: Do, don't offer).", file=sys.stderr)
@@ -469,4 +483,4 @@ if (os.environ.get('MERGEWORTHY_STOP_CHECKIN', 'on') != 'off' and may_wait and n
           "anything: the user already has your answer.",
           file=sys.stderr)
     sys.exit(2)
-sys.exit(0)
+finish()

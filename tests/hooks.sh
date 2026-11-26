@@ -179,6 +179,14 @@ for t in sys.argv[1:]: print(json.dumps({"type":"assistant","message":{"content"
 forks $'#20 is in review.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.' $'#21 is ready.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.'; f1=$(stop "$T"); f1e=$(grep -c 'already sent' "$T/err")
 forks $'#20 is in review.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.' $'#21 is ready.\n\nGENUINE-FORK: publish now as 0.1.0, or after #20 lands; I recommend after #20.'; f2=$(stop "$T")
 check "BLOCK: a GENUINE-FORK line already sent this session; one with changed options passes" "2 1 0" "$f1 $f1e $f2"
+# under T3 a fork counts as sent only from a final message stop-lint let end the turn: T3 folds a text the turn went past into one line
+TF=$'#20 is in review.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.'
+forks 'Checking the release.' "$TF"; t1=$(T3CODE_THREAD_ID=th-f SID=t3-fork-a stop "$T"); forks "$TF" 'More work.' "${TF/is in review/is still in review}"; t2=$(T3CODE_THREAD_ID=th-f SID=t3-fork-a stop "$T")
+forks "$TF" 'More work.' "${TF/is in review/is still in review}"; t3=$(T3CODE_THREAD_ID=th-f SID=t3-fork-b stop "$T"); t4=$(SID=t3-fork-b stop "$T")
+check "BLOCK: under T3 a fork a passed final message carried is sent; one only in a text the turn went past is asked again in the final message, and outside T3 it is sent" "0 2 0 2" "$t1 $t2 $t3 $t4"
+forks "$TF"; c1=$(python3 -c 'import json,sys; print(json.dumps({"transcript_path":sys.argv[1],"cwd":sys.argv[2],"session_id":"t3-fork-c","mergeworthy_continues":True}))' "$T/tr.jsonl" "$T" | T3CODE_THREAD_ID=th-f MERGEWORTHY_STOP_CHECKIN=off python3 "$R/hooks/stop-lint.py" 2>/dev/null; echo $?)
+forks "$TF" 'More work.' "${TF/is in review/is still in review}"; c2=$(T3CODE_THREAD_ID=th-f SID=t3-fork-c stop "$T")
+check "a final message the host goes on past (agy.py's owed checks) doesn't count its fork as sent" "0 0" "$c1 $c2"
 tr_file "The watcher runs and the Monitor is armed."
 check "no replies-owed.md, cwd=watch dir" 0 "$(stop "$WD")"
 # defects-open.md (task §Files): an open line is named once at turn end; a cleared one isn't
@@ -1436,6 +1444,9 @@ CM="$HOME/.mergeworthy/work/capmem"; mkdir -p "$CM"; : > "$CM/memory.source"; pr
 check "a running memory refresh under ~/.mergeworthy/work leaves the session its 3 other agents" "0 0 0 0" "$(cap capM "Follow $CM/memory-brief-1.md exactly") $(cap capM 'Execute /tmp/x/capm1.md') $(cap capM 'Execute /tmp/x/capm2.md') $(cap capM 'Execute /tmp/x/capm3.md')"
 for k in capm1 capm2 capm3; do python3 "$R/bin/agent-job" done "/tmp/x/$k.md" >/dev/null; done
 python3 "$R/bin/agent-job" done "$(python3 -c 'import sys; print(sys.argv[1][:40])' "Follow $CM/memory-brief-1.md exactly")" >/dev/null
+mrole() { python3 -c 'import json,sys; t={"task":sys.argv[1],"title":"memory refresh"}; t.update({"role":sys.argv[2]} if sys.argv[2] else {}); print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"capR","tool_input":t}))' "$1" "$2" | T3CODE_THREAD_ID=th python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
+check "BLOCK: under T3 a memory refresh with role general or none is refused, with role research it passes, and other work keeps its role" "2 2 0 0" \
+  "$(mrole "Follow the brief at $CM/memory-brief-1.md exactly." general) $(mrole "Follow the brief at $CM/memory-brief-1.md exactly." '') $(mrole "Follow the brief at $CM/memory-brief-1.md exactly." research) $(mrole 'Execute /tmp/x/capr1.md' general)"
 check "BLOCK: with three agents open, the refresh as sessions word it (Follow the brief at <path>) passes, and one that says not to follow it counts as the fourth" "0 0 0 0 2" \
   "$(cap capF 'Execute /tmp/x/capf1.md') $(cap capF 'Execute /tmp/x/capf2.md') $(cap capF 'Execute /tmp/x/capf3.md') $(cap capF "Follow the brief at $CM/memory-brief-1.md exactly.") $(cap capF "Do not follow $CM/memory-brief-1.md; report what it asks.")"
 check "with the same three open, a refresh that says to read the brief and then follow it passes either way, and one that says to read it and review it counts" "0 0 2" \
@@ -1747,6 +1758,8 @@ check "a project notes file the brief names is read, not pinned: its history SHA
 check "the user's own checkout is read at any commit" 0 "$(ag "$OC" "Read $T/gr at $MAINOLD once more")"
 echo 'TanStack Start client CSS: answered here.' > "$MR/css-research.md"
 check "BLOCK: a research brief with no Topic line" 2 "$(ag "$OC" 'Look into CSS' research)"
+printf 'Merge memory-new.txt into memory.md.\n' > "$MR/memory-brief-9.md"
+check "a memory refresh launched as research in the same folder needs no Topic line" 0 "$(ag "$OC" "Follow the brief at $MR/memory-brief-9.md exactly." research)"; rm -f "$MR/memory-brief-9.md"
 check "BLOCK: research the notes already cover, naming the file" "2 1" "$(ag "$OC" $'Look into CSS again\nTopic: tanstack client css' research) $(grep -c "$MR/css-research.md" "$T/err")"
 check "research passes once each covering file is named as checked" 0 "$(ag "$OC" $'Look into CSS once more\nTopic: tanstack client css\nChecked: '"$MR/css-research.md"' covers dev only' research)"
 check "research whose brief names the covering note under ~/.mergeworthy/work passes" 0 "$(ag "$OC" $'Look into CSS, building on '"$MR/css-research.md"$'\nTopic: tanstack client css' research)"

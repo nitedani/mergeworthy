@@ -163,6 +163,13 @@ if req.tool in ('Agent', 'Task') and req.t3 and req.background:
     sys.stderr.write("BLOCKED: under T3 Code a background Agent stops when this turn ends (T3 starts a new session for the next one). "
                      "Launch it with delegate_task (mergeworthy:delegate step 4), or with run_in_background: false for a child that finishes within this turn.\n")
     refused()
+# T3 heads a delegated task with "the agent in T3 thread <id> sent this message, not the user"; under that line Haiku declined 8 of
+# 86 memory refreshes launched with role general or none, and none of 17 with role research, which T3 opens with "Act as the
+# research sub-agent for this task" (Claude transcripts on private, 2026-11-20 to 11-25)
+if k.refresh and req.t3 and str(req.tool).endswith('delegate_task') and req.role != 'research':
+    sys.stderr.write("BLOCKED: launch the memory refresh with role research: T3 then opens its task with \"Act as the research sub-agent\"; "
+                     "without it the Haiku reads the task as another agent's message, not the user's, and declines it.\n")
+    refused()
 def codex_reset():
     """The soonest reset while claude-swap reads every saved Codex account as used up ($CODEX_HOME/profiles/limited.json), else None."""
     profiles = os.path.join(os.environ.get('CODEX_HOME') or os.path.expanduser('~/.codex'), 'profiles')
@@ -401,9 +408,9 @@ if approach and not approach[2]:
                          "approach is rated and recorded first (mergeworthy:pull-request step 5); the same approach says so: "
                          "`Approach: <path> (unchanged: <why, in one line>)`\n")
         refused()
-# Research the program already wrote up (memory.md, the notes) is read, not redone.
+# Research the program already wrote up (memory.md, the notes) is read, not redone; a memory refresh, launched as research, writes them
 root = memory_file.for_cwd(req.cwd, req.session)
-if root and k.research:
+if root and k.research and not k.refresh:
     topic = re.search(r'^\s*Topic:\s*(.+?)\s*$', brief, re.M)
     if not topic:
         sys.stderr.write("BLOCKED: a research brief names its topic in a `Topic: <key words>` line, so the hook can search the work folder's files for research already done (mergeworthy:delegate §Brief).\n")
