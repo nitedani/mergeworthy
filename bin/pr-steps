@@ -177,15 +177,18 @@ if [ "$step" = small ]; then
   fi
   # the verdict ends the report, before any trailing Verification or not_checked section (delegate/agent.md asks every agent for not_checked)
   verdict=$(awk '{ l = tolower($0) } l ~ /^#+[ \t]*(verification|not[ _]checked)([^a-z]|$)/ { tail = 1; next } /^#/ { tail = 0 } !tail' "$out" | grep -v '^[[:space:]]*$' | tail -n2 | tr '\n' '|')
-  [ "$(grep -v '^[[:space:]]*$' "$out" | tail -n2 | tr '\n' '|')" = 'NO BUGS|MERGE AS IS: yes|' ] || [ "$verdict" = 'NO BUGS|MERGE AS IS: yes|' ] || ledger_ok || { echo "$out does not end with NO BUGS and MERGE AS IS: yes: fix what it found and send the same reviewer the next round; after its last round, record it with --ledger <the loop's ledger>" >&2; exit 1; }
+  [ "$(grep -v '^[[:space:]]*$' "$out" | tail -n2 | tr '\n' '|')" = 'NO BUGS|MERGE AS IS: yes|' ] || [ "$verdict" = 'NO BUGS|MERGE AS IS: yes|' ] || ledger_ok || { echo "$out does not end with NO BUGS and MERGE AS IS: yes: fix what it found, then send the next round to a fresh reviewer, or a fix check of its own findings to the same one while it is recent (mergeworthy:delegate §Reviewers); after its last round, record it with --ledger <the loop's ledger>" >&2; exit 1; }
   record small verify shape reverify fresh
   echo "recorded small fix ($n lines) for $sha: verify, shape, reverify, fresh; run the gates next"
   exit 0
 fi
 # A shape record is the pass's lists (the ✅ coverage list and old ⇒ new ratings) ending CLEAN, or a small follow-up that
 # carries an earlier pass or small fix's review ("carries the pass of <sha>", carry_holds): a fix log or a note is not a shape pass
-# A pass rates every item afresh: a row whose rating is copied ("10 =", "=", "unchanged since") is a re-rating of a delta, not a pass
-is_pass() { grep -q '✅' "$1" && grep -Eq '([0-9]+|\bnew) *(⇒|=>) *([0-9]+|removed|new|n/a)' "$1" && ! grep -Eiq '\| *([0-9]+ *)?= *\||unchanged since' "$1"; }
+# Round 1 of a pass rates every item afresh: a row whose rating is copied ("10 =", "=", "unchanged since") is a re-rating of a delta, not a pass;
+# a later round re-rates the rows its fixes touch and carries the rest (delegate §Review rounds), so its copied rows stand
+COPIED='\| *([0-9]+ *)?= *\||unchanged since'
+later_round() { [ "$(python3 "$(dirname "$(realpath "$0")")/../hooks/loops.py" round "$1")" -ge 2 ]; }
+is_pass() { grep -q '✅' "$1" && grep -Eq '([0-9]+|\bnew) *(⇒|=>) *([0-9]+|removed|new|n/a)' "$1" && { ! grep -Eiq "$COPIED" "$1" || later_round "$1"; }; }
 # The lines between two trees, a binary, mode or empty file counting one
 span() { git diff --numstat "$1" "$2" | awk '{ s += $1 + $2 + 1 } END { print s + 0 }'; }
 # The file of each line HEAD changed since an earlier head, once per line: compared whole with that head replayed on the base HEAD has merged,
@@ -300,7 +303,7 @@ EOF
     grep -Eq '^Pinnacle: +[^ ]+ +[^ ]+ +[^ ]+' "$out" && [ "$plan" -gt 0 ] ||
       { echo "$out needs a line 'Pinnacle: <the design>' and a line 'Plan:' followed by the ranked convergence plan, one numbered line '1. <step>' per step (mergeworthy finality step 3)" >&2; exit 1; } ;;
   loopb)
-    [ "$last" = CLEAN ] || { echo "$out does not end with a line CLEAN: fix its findings and continue the same agent" >&2; exit 1; } ;;
+    [ "$last" = CLEAN ] || { echo "$out does not end with a line CLEAN: fix its findings, then send the next round to a fresh reviewer, or a fix check of its own findings to the same one while it is recent (mergeworthy:delegate §Reviewers)" >&2; exit 1; } ;;
   fresh)
     read_standards
     grep -Eq '^Maintainer: @?[A-Za-z0-9-]+' "$out" || old_pipeline || { echo "$out has no line 'Maintainer: <login>': the fresh reader reviews as the maintainer who decides, citing what they said or did (mergeworthy delegate/fresh-reader.md)" >&2; exit 1; }
@@ -311,11 +314,11 @@ EOF
     if is_pass "$out"; then
       [ "$step" = refactor ] || old_pipeline || read_standards
       [ "$step" = refactor ] ||
-      [ "$last" = CLEAN ] || ledger_ok || { echo "$out does not end with a line CLEAN: land what its review and shape pass found worth changing, then continue the same agent for the next round; after its last round, record it with --ledger <the loop's ledger> (mergeworthy:converge step 2)" >&2; exit 1; }
+      [ "$last" = CLEAN ] || ledger_ok || { echo "$out does not end with a line CLEAN: land what its review and shape pass found worth changing, then send the next round to a fresh reviewer, or a fix check of its own findings to the same one while it is recent (mergeworthy:delegate §Reviewers); after its last round, record it with --ledger <the loop's ledger> (mergeworthy:converge step 2)" >&2; exit 1; }
     else
       carried=$(grep -Eo 'carries the pass of [0-9a-f]{7,40}' "$out" | head -n1 | awk '{print $NF}' || true)
-      copied=$(grep -Eio '\| *([0-9]+ *)?= *\||unchanged since' "$out" | head -n1 || true)
-      [ -n "$carried" ] || [ -z "$copied" ] || { echo "$out is not a shape pass: a row's rating is copied ('$copied'); rate every file and function afresh as old ⇒ new, with the reason in your own words (mergeworthy delegate/shape.md)" >&2; exit 1; }
+      copied=$(grep -Eio "$COPIED" "$out" | head -n1 || true)
+      [ -n "$carried" ] || [ -z "$copied" ] || { echo "$out is not a shape pass: a row's rating is copied ('$copied'), and only a later round of its loop carries rows: round 1 rates every file and function afresh as old ⇒ new, with the reason in your own words (mergeworthy delegate/shape.md, delegate §Review rounds)" >&2; exit 1; }
       lacks=$(grep -q '✅' "$out" || printf 'the ✅ coverage list, '; grep -Eq '([0-9]+|\bnew) *(⇒|=>) *([0-9]+|removed|new|n/a)' "$out" || printf 'old ⇒ new ratings, '
               grep -q '^## Standards read' "$out" || printf "'## Standards read', "; [ "$last" = CLEAN ] || printf 'a last line CLEAN, ')
       [ -n "$carried" ] || { echo "$out is not a shape pass: it lacks ${lacks%, } (mergeworthy delegate/shape.md). A pass that changes nothing is one too: it rates each item N ⇒ N and records on the unchanged head. A small follow-up says 'carries the pass of <sha>' instead: it carries the latest pass recorded on <sha>, unless a maintainer asked for a pass after it" >&2; exit 1; }

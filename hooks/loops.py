@@ -335,6 +335,9 @@ if __name__ == '__main__' and sys.argv[1:2] == ['seats']:  # loops.py seats <rep
     if any(rp in e['outs'] for f in glob.glob(os.path.join(repo, '*.jsonl')) for e in review_journal.events(f)) and not loop_of(rp):
         sys.exit(f"{sys.argv[2]} is the report of a round pinned to a head that isn't in HEAD's history: review this head, then record its report (mergeworthy:delegate §Review rounds)")
     print(*open_seats(sys.argv[2], [l.split()[1] for l in open(sys.argv[3]) if len(l.split()) > 1] if os.path.isfile(sys.argv[3]) else [], sys.argv[4]), sep='\n')
+elif __name__ == '__main__' and sys.argv[1:2] == ['round']:  # loops.py round <report>: the round of its loop on HEAD's lineage that wrote report, 0 for none
+    rp = os.path.realpath(sys.argv[2])
+    print(max([n for r in lineage('.').values() for n, _, outs in r['rounds'] if rp in outs], default=0))
 elif __name__ == '__main__':  # loops.py close [--post|--fresh] <ledger> [<checkout>] [--report <the last round's report>]: exits 0 when the ledger closes its loop, else prints what stands
     a, rep = sys.argv[2:], None
     if '--report' in a: i = a.index('--report'); rep = a[i + 1]; del a[i:i + 2]
