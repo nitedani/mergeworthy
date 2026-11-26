@@ -9,10 +9,19 @@ ASKED_FOR = {'merge': (r'merge\w*', r'Merge each PR as soon as it is ready\b', '
              'push': (r'push(?!\w*\s+(?:for|back)\b)\w*|releas\w*|publish\w*', r'Push to {branch}(?!\S)', 'push'),  # a release asked for pushes its version commit
              'release': (r'releas\w*|publish\w*', None, 'release'),
              'ask-first': (r'update\w*|restart\w*|frissít\w*', None, 'update')}
-NEGATED = re.compile(r"\b(?:don'?t|\w+n['’]t|do not|never|not|no|who|why|ne|nem|majd|várj|varj|wait|later|after|once|when|until|if|ha|miután)\b", re.I)
-# a clause that opens with another request to report back ("then tell me if CI fails") says nothing about the action, and "don't wait" holds nothing back
+# what an ask may name after the word besides its target and a pronoun: a merge its PR ("the sentry pr"), a push its commits, a release a new version
+OBJECTS = {'merge': r'(?:(?:the|this|that|my|your|our|both|a|az)\s+)?(?:(?!(?:other|another|next|previous|last|old)\b)[\w-]+\s+)?(?:prs?|mrs?|pull requests?|merge requests?|fix(?:es)?|changes?)(?:-\w+)?',
+           'push': r'(?:the\s+)?(?:changes|commits?|fix(?:es)?|tags?)|v?\d+(?:\.\d+)+',
+           'release': r'(?:(?:a|the)\s+)?(?:new\s+)?(?:version|release|package)',
+           'ask-first': r'(?!)'}
+PRONOUN = r'(?:it|this|that|them|these|both|everything|all)(?:\s+(?:one|all|both))?\b'
+NEGATED = re.compile(r"\b(?:don'?t|\w+n['’]t|do not|never|not|no|who|why|only|cancel\w*|abort\w*|revert\w*|undo|stop|ne|nem|majd|várj|varj|wait|later|after|once|when|until|if|ha|miután)\b", re.I)
+# a sentence without the action's words that holds it back: "Wait for CI.", "Don't.", "No."
+HALT = re.compile(r"(?:[-*•]\s*)?(?:(?:but|so|ok|please|pls)\W+)*(?:(?:wait|várj|varj|not yet|hold on|hold off|stop|cancel)\b|(?:don['’]?t|do not|no|ne|nem)[\s.!]*$)", re.I)
+# a clause asking to be told after the action ("then tell me if CI fails") says nothing about it, one asking first ("tell me before you proceed") holds it
 FOLLOW_UP = re.compile(r"(?:(?:then|and|aztán|aztan|és|majd|just|please|pls)\W+)*(?:(?:tell|ping|notify|message|show)\s+me|let\s+me\s+know|report\s+back|szólj|szolj|jelezz|írd\s+meg|ird\s+meg)\b", re.I)
-NO_WAIT = re.compile(r"\b(?:don'?t|do not|no need to|ne|nem kell)\s+(?:wait|várj|varj|várni|varni)\b", re.I)
+FIRST = re.compile(r'\b(?:before|first|discuss\w*|proceed\w*|előtte|először)\b', re.I)
+NO_WAIT = re.compile(r"\b(?:don['’]?t|do not|no need to|ne|nem kell)\s+(?:wait|várj|varj|várni|varni)\b(?:\s+(?:for|until|till|on)\b.*)?", re.I)
 # an ask opens a clause, after a list bullet and the words of these classes at most; each class is a reason a word may stand there, so a word
 # missing from one is added to its class. "merge conflicts", "release notes" and "update plan" name a thing, not the action
 OPENERS = {'courtesy': r'please|pls|plz|kérlek|kerlek|légyszi|legyszi',
@@ -20,33 +29,49 @@ OPENERS = {'courtesy': r'please|pls|plz|kérlek|kerlek|légyszi|legyszi',
            'sequence': r'now|just|then|so|also|for now|aztán|aztan|most|akkor|szóval',
            'request': r"let['’]?s|let us|i want you to|i'd like you to|i need you to|(?:can|could|would|will) you|go ahead and|you can|feel free to"}
 LEAD = rf"(?:[-*•]\s*)?(?:(?:{'|'.join(OPENERS.values())})\W+)*"
+REQUEST = rf"(?:[-*•]\s*)?(?:(?:{OPENERS['courtesy']}|{OPENERS['go-ahead']}|{OPENERS['sequence']})\W+)*(?:can|could|would|will) you\b"  # a question that asks
+TAIL = rf"(?:{OPENERS['courtesy']}|thanks|thx|ty|now|too|also|as well|today|right away|asap|for me|most|be)\b"  # courtesy, time, the Hungarian "be" (in)
 MENTION = r'(?!\s+(?:conflicts?|requests?|notes?|plans?|queue)\b)'
 
-PR_REF = re.compile(r'(?:github\.com/([\w.-]+/[\w.-]+)/pull/|gitlab\.com/([\w./-]+?)/-/merge_requests/|\b([\w.-]+/[\w./-]*[\w-])[#!]|[#!])(\d+)\b')  # a PR, an MR (!N)
+PR_REF = re.compile(r'(?:github\.com/([\w.-]+/[\w.-]+)/pull/|gitlab\.com/([\w./-]+?)/-/merge_requests/|\b([\w.-]+/[\w./-]*[\w-])[#!]|[#!]|(?i:\b(?:pr|mr|pull request)\s+))(\d+)\b')  # a PR, an MR (!N)
 
-def asks(text, kind, repo=None, num=None, branch=None):
-    """Whether text (a message the user typed) asks for kind on its target, read by the clauses (split at commas, semicolons and an "and"
-    before a word) of each sentence holding kind's words, once URLs, `(Re-invocation of` lines and the word mergeworthy are taken out: False
-    when a clause negates them or puts them off, naming the target or none (a "don't wait", or a clause asking to be told that names neither
-    them nor a target, holds nothing back); True when a clause opens with them in no past form (-ed), the sentence is no question, and the
-    clause names the target: PR num of repo when it (else the text) names PRs, the branch pushed when it names a branch (`to <branch>`,
-    `<branch> branch`); else None."""
-    refs = lambda t: [((m[1] or m[2] or m[3] or '').lower(), m[4]) for m in PR_REF.finditer(t)]
+def asks(text, kind, repo=None, num=None, branch=None, subject=None):
+    """Whether text (a message the user typed) asks for kind on its target: PR num of repo, the branch pushed, or subject (a release's tag, an
+    ask-first command's line). Each sentence holding kind's words is split into clauses (at commas, semicolons, dashes, "then" and an "and"
+    before a word) and read once URLs, `(Re-invocation of` lines and the word mergeworthy are out. A clause holds kind back when it negates
+    it or puts it off, unless it only asks to be told after it or not to wait (NO_WAIT); it asks when it is kind's word as an imperative
+    (after the openers, in no past form), followed by the target, a pronoun, one of kind's OBJECTS or nothing, then courtesy or a time (TAIL),
+    in a sentence that is no question or a request (`can you`). A clause naming another target neither asks nor holds for this one; a clause
+    naming none counts for the target when the message names it or no other. A sentence without kind's words holds when it opens with a
+    HALT. False on a hold, else True on an ask, else None."""
     bare = lambda t: re.sub(r'https?://\S+|\bmergeworthy\w*|^\s*\(Re-invocation of .*', ' ', t, flags=re.I)
     words = rf'\b(?:{ASKED_FOR[kind][0]})\b{MENTION}'
-    def named(c):  # the targets clause c names: a merge's PRs as (repo, number), a push's branches, as words or `inline code`
-        if kind == 'merge': return refs(c)
-        return {x for x in re.findall(r'\bto\s+(?:the\s+)?(?:branch\s+)?([\w./-]*[\w-])|([\w./-]*[\w-])\s+branch\b', c.replace('`', ''), re.I) for x in x if x and x.lower() not in ('the', 'a', 'this', 'that')} if kind == 'push' else set()
-    def hits(t): return any(r in ('', (repo or '').lower()) and n == str(num) for r, n in t) if kind == 'merge' else (branch or '') in t  # git's branch names are case-sensitive
-    def holds(c):  # c negates the action or puts it off; a follow-up naming neither the action nor a target, or a "don't wait", holds nothing
-        if not re.search(words, bare(c), re.I) and not named(c) and FOLLOW_UP.match(bare(c).strip()): return False
-        return bool(NEGATED.search(NO_WAIT.sub(' ', bare(c))))
+    ask = re.compile(rf"{LEAD}(?:‹t›\s*)?(?!\w*ed\b){words}\s*(?:{PRONOUN}|{OBJECTS[kind]})?\s*(?:(?:the|a|az)\s+)?(?:‹t›(?:\s*-\w+)?)?(?:\s+(?:in)?to\s+(?:the\s+)?[\w./-]+)?(?:[\s,]*{TAIL})*[\s.!?]*", re.I)
+    def marked(c):  # c with each target it names as ‹t› (this command's) or ‹x› (another)
+        tok = lambda ours: ' ‹t› ' if ours else ' ‹x› '
+        if kind == 'merge':
+            return re.sub(r'(?:https?://)?' + PR_REF.pattern, lambda m: tok((m[1] or m[2] or m[3] or '').lower() in ('', (repo or '').lower()) and m[4] == str(num)), c)
+        if kind == 'push':  # `to <branch>`, `<branch> branch`, or the pushed branch's name; git's branch names are case-sensitive
+            c = re.sub(r'\bto\s+(?:the\s+)?(?:branch\s+)?(?!(?:the|a|this|that)\b)([\w./-]*[\w-])(?:\s+branch\b)?|\b(?!(?:the|a|this|that)\b)([\w./-]*[\w-])\s+branch\b',
+                       lambda m: tok((m[1] or m[2]) == branch), c.replace('`', ''), flags=re.I)
+            return re.sub(rf'(?<![\w./-]){re.escape(branch)}(?![\w./-])', tok(True), c) if branch else c
+        if kind == 'release':
+            return re.sub(r'\bv?\d+(?:\.\d+)+\b', lambda m: tok(subject is None or m[0].lower().lstrip('v') == subject.lower().lstrip('v')), c)
+        own = set(re.split(r'[^\w.]+', (subject or '').lower())) - {''}  # an ask-first command's words: "update t3" names t3-update
+        return re.sub(r'[\w.]+', lambda m: tok(True) if not re.fullmatch(words, m[0], re.I) and any(o.startswith(m[0].lower()) for o in own) else m[0], c)
+    def stance(m, question):  # 'holds', 'asks' or None for clause m, marked and bare
+        if FOLLOW_UP.match(m.strip()) and FIRST.search(m): return 'holds'
+        if FOLLOW_UP.match(m.strip()) and not re.search(rf'(?!\w*ed\b){words}', m, re.I): return None
+        if NEGATED.search(NO_WAIT.sub(' ', m)): return 'holds'
+        if ask.fullmatch(m.strip()) and (not question or re.match(REQUEST, m.strip(), re.I)): return 'asks'
+    on = lambda m: '‹t›' in m or '‹x›' not in m  # names the target, or none
     found = None
     for s in re.split(r'(?<=[.!?])\s+|\n', text):
-        if not re.search(words, bare(s), re.I): continue
-        clauses = re.split(r'[,;]|\b(?:and|és)\b(?!\s*(?:[#!]\d|https?:|[\w.-]+/[\w./-]*[#!]\d))', s)
-        held = [c for c in clauses if holds(c)]
-        if any(not named(c) or hits(named(c)) for c in held): return False
-        found = found or not s.rstrip().endswith('?') and any(
-            c not in held and re.match(LEAD + r'(?!\w*ed\b)' + words, bare(c).strip(), re.I) and (not (t := named(c) or (refs(text) if kind == 'merge' else [])) or hits(t)) for c in clauses) or None
+        if not re.search(words, bare(s), re.I):
+            if HALT.match(m := bare(marked(s)).strip()) and on(m): return False
+            continue
+        for c in re.split(r'[,;—–]|\bthen\b|\b(?:and|és)\b(?!\s*(?:[#!]\d|https?:|[\w.-]+/[\w./-]*[#!]\d))', s):
+            st = stance(m := bare(marked(c)), s.rstrip().endswith('?'))
+            if st == 'holds' and on(m): return False
+            found = found or st == 'asks' and ('‹t›' in m or on(marked(text))) or None
     return found

@@ -22,7 +22,7 @@ merge	o/r#41	None	Merge #40, and review #41.
 merge	o/r#41	False	Merge it, but not before CI passes.
 merge	o/r#41	None	Merge https://github.com/o/r/pull/41?
 merge	o/r#41	None	Merge https://github.com/o/pkg/pull/41
-merge	o/r#41	None	wait, not yet
+merge	o/r#41	False	wait, not yet
 merge	o/r#41	None	Resolve the merge conflicts.
 merge	o/r#41	False	Merge #41 after I review it.
 merge	o/r#41	None	the merge went fine
@@ -64,8 +64,8 @@ merge	o/r#41	None	should we merge this
 merge	o/r#41	None	is it safe to merge
 merge	o/r#41	None	how do I merge this
 merge	o/r#41	None	ready to merge
-merge	o/r#41	None	revert merge
-merge	o/r#41	None	cancel the merge
+merge	o/r#41	False	revert merge
+merge	o/r#41	False	cancel the merge
 merge	o/r#41	None	avoid merge commits
 merge	o/r#41	None	I'll merge it
 merge	o/r#41	None	so the merge went fine
@@ -95,7 +95,7 @@ release	-	True	release it and tell me when it is out
 release	-	None	for now release notes only
 release	-	None	great release
 release	-	None	next release should include it
-release	-	None	cancel release
+release	-	False	cancel release
 release	-	None	yes release notes
 release	-	True	release it
 push	main	None	looks good
@@ -133,9 +133,32 @@ push	main	None	push back on that
 push	main	None	push for a fix
 merge	o/r#41	False	who merged #41
 merge	o/r#41	False	Merge #41, no rush.
-merge	o/r#41	True	Merge #41. Don't.
+merge	o/r#41	False	Merge #41. Don't.
 merge	o/r#41	True	Review #41. Merge it.
 merge	o/r	True	merge it
 merge	o/r	None	merge !41
-ask-first	t3-update	True	update the README
-release	-	True	Publish the blog post
+ask-first	t3-update	None	update the README
+release	-	None	Publish the blog post
+merge	o/r#41	False	Merge it, tell me if that would break the build before proceeding
+merge	o/r#41	False	Merge it, then ping me to discuss when it can go in
+merge	o/r#41	None	So merge is blocked on CI
+release	-	None	So release is out
+merge	o/r#41	None	Will you merge it or will I
+release	-	False	For now release prep only
+merge	o/r#41	None	For now merge PR 40
+merge	o/r#41	True	Don't merge PR 40. Merge #41.
+merge	o/r#41	None	I need you to merge main into this branch
+push	main	None	For now push scratch
+release	v1.3.0	None	For now release v1.2.0
+release	v1.2.0	True	release 1.2.0 please
+ask-first	t3-update	None	For now update the README
+merge	o/r#41	False	For now merge #41 only as a last resort
+merge	o/r#41	False	Merge #41 only with my approval
+merge	o/r#41	False	Merge #41. Wait for CI.
+merge	o/r#41	True	Merge it, then tell me when it is merged
+merge	o/r#41	True	Merge #41, then tell me when #41 is in
+merge	o/r#41	True	Merge it then tell me if CI fails
+merge	o/r#41	True	Merge it, but don’t wait for CI
+merge	o/r#41	True	Merge it, but don't wait until CI passes
+merge	o/r#41	True	Will you merge #41?
+merge	o/r#41	True	Can you merge #41?

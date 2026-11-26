@@ -5089,7 +5089,7 @@ n = 0
 for i, l in enumerate(open(sys.argv[1] + "/tests/owner-ask.tsv"), 1):
     if l.startswith("#") or not l.strip(): continue
     a, t, want, x = l.rstrip("\n").split("\t"); x = x.replace("\\n", "\n"); r, _, num = t.partition("#"); n += 1
-    got = owner_ask.asks(x, a, r, num or None) if a == "merge" else owner_ask.asks(x, a, branch=t) if a == "push" else owner_ask.asks(x, a)
+    got = owner_ask.asks(x, a, r, num or None) if a == "merge" else owner_ask.asks(x, a, branch=t) if a == "push" else owner_ask.asks(x, a, subject=None if t == "-" else t)
     if str(got) != want: print(f"line {i}: {x!r} gives {got}")
 n or print("no phrasings")' "$R"; }
 check "each phrasing of tests/owner-ask.tsv gets its verdict from owner_ask.asks; a failing one is named by its line" "" "$(oa)"
@@ -5145,9 +5145,9 @@ touch "$FX/repos_o_r_rules_branches_main_per_page_100.hang"
 check "BLOCK: --admin when gh hangs reading the base's rules, saying to retry" "2 1" "$(lg "$MA") $(grep -c "gh couldn't read main's rules: retry once gh answers" "$T/err")"
 rm "$FX/user" "$FX/repos_o_r_rules_branches_main_per_page_100.hang" "$FX/repos_o_r_branches_main_protection.err" "$FX/repos_o_r" "$FX/repos_o_r_rules_branches_main_per_page_100" "$FX/repos_o_r_rulesets_7"
 said 'looks good'
-check "BLOCK: gh release create and npm publish unasked; asked, or a dry run, or a repo with no project file, they pass" "2 2 0 0 0 0" \
+check "BLOCK: gh release create and npm publish unasked, or asked for another tag; asked, or a dry run, or a repo with no project file, they pass" "2 2 0 0 2 0 0" \
   "$(lg 'gh release create v1.2.0 -R o/r') $(lg 'npm publish' "$TCO") $(lg 'npm publish --dry-run' "$TCO") $(lg 'gh release create v1.2.0 -R lo/none') \
-$(said 'release 1.2.0 please'; lg 'gh release create v1.2.0 -R o/r') $(lg 'pnpm publish' "$TCO")"
+$(said 'release v1.3.0'; lg 'gh release create v1.2.0 -R o/r') $(said 'release 1.2.0 please'; lg 'gh release create v1.2.0 -R o/r') $(lg 'pnpm publish' "$TCO")"
 said 'looks good'
 check "BLOCK: a publish from a project file's repo named by -C, --dir= or --prefix, or past a --filter; from a dir of no repo it passes" "2 2 2 2 0" \
   "$(lg "pnpm -C $TCO publish") $(lg "pnpm --dir=$TCO publish -r") $(lg "npm --prefix $TCO publish") $(lg 'pnpm --filter x publish' "$TCO") $(lg "pnpm -C $T publish" "$TCO")"
@@ -5173,8 +5173,8 @@ printf 't3-update\nsystemctl --user (re)?start (t3code|t3-update)\n' > "$HOME/.m
 check "BLOCK: an ask-first command unasked, at any command position and inside ssh's remote command, naming the list; a mention passes" "2 1 2 2 2 0" \
   "$(lg "ssh collab@opensource 'export PATH=x; t3-update; echo \"exit \$?\"'") $(grep -c "is on this machine's ~/.mergeworthy/ask-first list.*ask the owner to reply \`update\`" "$T/err") \
 $(lg 't3-update 2>&1 | tail -5') $(lg 'systemctl --user restart t3code') $(lg 'ssh -p 22 h t3-update') $(lg 'echo t3-update')"
-check "an ask-first command the typed message asks for passes, over ssh too" "0 0" \
-  "$(said 'update t3'; lg "ssh collab@opensource 'export PATH=x; t3-update'") $(lg 't3-update')"
+check "an ask-first command the typed message asks for passes, over ssh too; BLOCK: one asked for by another name" "0 0 2" \
+  "$(said 'update t3'; lg "ssh collab@opensource 'export PATH=x; t3-update'") $(lg 't3-update') $(said 'update the README'; lg 't3-update')"
 rt() { # command [cwd]: refused unasked, then passing once the user replies as the refusal says
   said 'looks good'; local a; a=$(lg "$@"); said "$(grep -o 'reply `[a-z]*`' "$T/err" | tr -d '`' | cut -d' ' -f2)"; echo "$a $(lg "$@")"; }
 mkdir -p "$HOME/.mergeworthy/projects/nitedani-agent"; echo '# notes' > "$HOME/.mergeworthy/projects/nitedani-agent/notes.md"

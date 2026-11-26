@@ -179,16 +179,16 @@ def project_file(repo):
     try: return open(os.path.expanduser(f'~/.mergeworthy/projects/{repo}.md'), errors='replace').read() if repo else None
     except OSError: return None
 
-def need_ask(kind, what, repo=None, num=None, branch=None, strict=False):
-    """Blocks what (a landing on repo's default branch, or an ask-first command) unless the message the user last typed asks for it, or
-    holds it back in no sentence while repo's project file holds kind's `## Merging` order; a landing on a repo with no project file passes,
-    unless strict (a merge past the base's rules)."""
+def need_ask(kind, what, repo=None, num=None, branch=None, strict=False, subject=None):
+    """Blocks what (a landing on repo's default branch, or an ask-first command; subject as in owner_ask.asks) unless the message the user
+    last typed asks for it, or holds it back in no sentence while repo's project file holds kind's `## Merging` order; a landing on a repo
+    with no project file passes, unless strict (a merge past the base's rules)."""
     repo = re.sub(r'^gitlab\.com/', '', repo or '') or None  # a GitLab project's project file is named by its path
     _, order, reply = ASKED_FOR[kind]
     text = project_file(repo)
     if text is None and kind != 'ask-first' and not strict: return
     sec = re.search(r'^## Merging\b[^\n]*\n(.*?)(?=^## |\Z)', text or '', re.M | re.S)
-    asked = asks(last_typed(), kind, repo, num, branch)
+    asked = asks(last_typed(), kind, repo, num, branch, subject)
     if asked or asked is None and order and sec and re.search(r'^[-*] +' + order.format(branch=re.escape(branch or '')), sec[1], re.M):
         return
     if kind == 'ask-first':
@@ -253,7 +253,7 @@ def ask_first(t):
         remote = [prog(x) for x in segments(' '.join(t[i + 1:]))] if t[i + 1:] else []
     for c in [t, *remote]:
         line = ' '.join([os.path.basename(c[0]), *c[1:]]) if c else ''
-        if line and any(re.match(rf'(?:{p})(?!\S)', line) for p in ASK_FIRST): need_ask('ask-first', f'`{line[:80]}`')
+        if line and any(re.match(rf'(?:{p})(?!\S)', line) for p in ASK_FIRST): need_ask('ask-first', f'`{line[:80]}`', subject=line)
 
 def setting(name, default):
     """MERGEWORTHY_<name> from the environment, else from ~/.mergeworthy/settings.env (written at session start from the plugin's options)."""
@@ -1138,7 +1138,8 @@ def check(t, has_cd):
     elif p == 'gh' and a and re.fullmatch(r'-R.+|--repo=.+', a[0]): a = a[1:] + a[:1]
     if ASK_FIRST: ask_first(t)
     if p in ('gh', 'glab') and a[:2] == ['release', 'create'] and '--help' not in a and '-h' not in a:
-        need_ask('release', f'`{p} release create`', gh_repo(a[2:], env, run_dir) if p == 'gh' else gitlab_repo(a[2:], run_dir))
+        need_ask('release', f'`{p} release create`', gh_repo(a[2:], env, run_dir) if p == 'gh' else gitlab_repo(a[2:], run_dir),
+                 subject=next((x for x in a[2:] if re.fullmatch(r'v?\d+(?:\.\d+)+\S*', x)), None))  # its tag, when it is a version
     if p == 'glab' and a[:1] == ['mr'] and a[1:2] in (['merge'], ['accept']) and '--help' not in a and '-h' not in a:
         mr = mr_target(a[2:], run_dir)
         need_ask('merge', f"merging {mr[0]}!{mr[1] or mr[2]}", mr[0], mr[1])
