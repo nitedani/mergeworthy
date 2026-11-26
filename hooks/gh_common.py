@@ -1,8 +1,9 @@
 """What bin/steward and bin/project-learn both read GitHub with: the agent's badge, a maintainer's association, times, and gh calls
-that ride out a transient failure and otherwise exit naming the failed call; the watcher reads own_accounts here too."""
+that ride out a transient failure and otherwise exit naming the failed call; the watcher reads own_accounts and the badge here too."""
 import collections, datetime, json, os, re, subprocess, sys, time, urllib.parse
 
-BADGE = re.compile(r'\A\s*(?:<img [^>]*alt="(?:Claude|Codex)"[^>]*>\s*)+')  # an agent's post starts with its badge
+AGENTS = {'Claude': 'claude', 'Codex': 'openai', 'Antigravity': 'google-antigravity'}  # each agent's badge icon: alt -> github.com/<login>.png
+BADGE = re.compile(r'\A\s*<img [^>]*(?:alt="(?:%s)"|src="https://github\.com/(?:%s)\.png")' % ('|'.join(AGENTS), '|'.join(map(re.escape, AGENTS.values()))))  # an agent's post starts with its badge
 MAINTAINER = ('OWNER', 'MEMBER', 'COLLABORATOR')
 UPDATED = re.compile(r'(?:^| )updated:>=\S+')
 LOWER = re.compile(r'(?:^| )(?:updated|merged|closed|created):>=(\S+)')  # a search's own lower bound: each implies updated:>= it
