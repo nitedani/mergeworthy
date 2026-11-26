@@ -5467,6 +5467,50 @@ pna() { rm -f "$HOME/.mergeworthy/agy/c1.post"; agt "$U" "{\"type\":\"PLANNER_RE
   echo "$(agy_ev PostInvocation | inj | grep -c 'T3 refused this launch') $(agy_ev PreToolUse "{\"id\":\"l\",$(echo "$LS" | cut -c2-)" 4 | python3 -c 'import json, sys; print(json.loads(sys.stdin.read().rsplit(" ", 1)[0])["decision"])')"; }
 check "agy: T3's refusal of a launch, as text or as T3's MCP error, reaches the model at PostInvocation, and the next call is allowed" "1 allow|1 allow" "$(pna "$DR")|$(pna "$DE")"
 rm -f "$HOME/.mergeworthy/agy/c1.post"
+# a call's queued checks settle at the next call's PreToolUse, so what they record is in place for that call's own checks (two
+# calls in one model response); what they say waits for PostInvocation and refuses nothing
+sk() { # <skill>...: the model's read_file call of each skill's SKILL.md, then each read's result, whole
+  local c="" n; for n in "$@"; do c="$c${c:+,}{\"name\":\"read_file\",\"args\":{\"Path\":\"$R/agy/skills/$n/SKILL.md\"}}"; done
+  echo "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$c]}"; for n in "$@"; do echo "{\"type\":\"GENERIC\",\"content\":\"Showing lines 1-$(wc -l < "$R/agy/skills/$n/SKILL.md") of $(wc -l < "$R/agy/skills/$n/SKILL.md")\"}"; done; }
+dec() { python3 -c 'import json, sys; v = json.loads(sys.stdin.read().rsplit(" ", 1)[0]); print(v["decision"] + ":" + str(v.get("reason", "").count(sys.argv[1])))' "$1"; }
+two() { # <call json> <its result step> <second call json> <first call's step>: the model's response holds both calls (opened skills: $SKS); agy's
+  # PreToolUse of the first, its PostToolUse, then its result logged and the second's PreToolUse; prints the second's verdict
+  rm -f "$HOME/.mergeworthy/agy/c1.post" "$HOME/.mergeworthy/agy/c1.said"
+  agt "$U" "${SKS[@]}" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$1,$3]}"; agy_ev PreToolUse "{\"id\":\"a\",$(echo "$1" | cut -c2-)" "$4" >/dev/null
+  agy_ev PostToolUse "{\"id\":\"a\",$(echo "$1" | cut -c2-)" "$4" >/dev/null
+  agt "$U" "${SKS[@]}" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$1,$3]}" "$2"; agy_ev PreToolUse "{\"id\":\"b\",$(echo "$3" | cut -c2-)" $(($4 + 1)); }
+mapfile -t SKS < <(sk delegate)
+DL='{"name":"mcp_t3-code_delegate_task","args":{"task":"Topic: cache eviction\nResearch how the cache evicts entries.","title":"agy cache research"}}'
+check "agy: two identical delegate_task launches in one response: the second is refused as launched by the first" "deny:1" \
+  "$(two "$DL" '{"type":"GENERIC","content":"{\"taskId\":\"task-1\",\"childThreadId\":\"child-1\",\"status\":\"running\"}"}' "$DL" 4 | dec 'an agent for this job is already launched')"
+mapfile -t SKS < <(sk task writing post open-issue)
+WF="$HOME/.mergeworthy/work/agy-post"; mkdir -p "$WF/drafts"; for n in 1 2 3 4; do printf 'The cache evicts entry %s early.\n' $n > "$WF/drafts/i$n.md"; sha256sum "$WF/drafts/i$n.md" | cut -d' ' -f1 > "$WF/drafts/i$n.md.gate"; done
+gp() { echo "{\"name\":\"run_command\",\"args\":{\"CommandLine\":\"gh issue create -R fixture/repo --title Local --body-file $WF/drafts/$1.md${2:-}\"}}"; }
+GPR='{"type":"GENERIC","content":"Command exited with code 0.\n\nCommand output:\nhttps://github.com/fixture/repo/issues/3\n"}'
+export AGC=$WF
+r1=$(two "$(gp i1)" "$GPR" "$(gp i1)" 7 | dec 'i1.md was already posted'); n1=$(agy_ev PostInvocation)
+check "agy: one draft posted twice in one response: the second is refused as already posted, and the first's watcher notice reaches the model at PostInvocation, the turn going on by its calls" "deny:1 1 no" \
+  "$r1 $(echo "$n1" | inj | grep -c 'your call run_command (step 7): post-bash-register: started the watcher') $(echo "$n1" | grep -q terminationBehavior && echo yes || echo no)"
+# a watcher running for the work folder, not yet of fixture/repo: the first post's plain create adds its thread, so the second,
+# piped, finds the watcher it needs
+bash -c 'exec -a gh-watch-daemon sleep 600' & WPID=$!; echo "$WPID" > "$WF/gh-watch.pid"; : > "$WF/threads.txt"; echo "$WF" >> "$HOME/.claude/gh-watch-dirs.txt"
+check "agy: a post that needs a running watcher of its repo, after one in the same response whose plain create added that repo's thread, is allowed" "allow:0" \
+  "$(two "$(gp i2)" "$GPR" "$(gp i3 ' | cat')" 7 | dec 'no running watcher')"
+kill "$WPID"; sed -i "\#^$WF\$#d" "$HOME/.claude/gh-watch-dirs.txt"
+# what a check settled at the next call's PreToolUse said, still owed when the turn stops, is Stop's continuation
+check "agy: a check settled at the next call's PreToolUse, its notice still owed at Stop: Stop continues with it, once" "allow continue 1 0" \
+  "$(two "$(gp i4)" "$GPR" "$LS" 7 | python3 -c 'import json, sys; print(json.loads(sys.stdin.read().rsplit(" ", 1)[0])["decision"])') $(agy_ev Stop "" 0 0 | python3 -c 'import json, sys; v = json.loads(sys.stdin.read().rsplit(" ", 1)[0]); print(v.get("decision"), v.get("reason", "").count("your call run_command (step 7): post-bash-register: started the watcher"))') $(agy_ev Stop "" 0 1 | grep -c 'your call run_command')"
+unset AGC
+# a check that settles at a PostInvocation ending in text (agy's completion turn after a background post) continues the turn
+GB='{"name":"run_command","args":{"CommandLine":"gh issue create -R fixture/repo --title x --body x","WaitMsBeforeAsync":500}}'
+GBS='{"type":"GENERIC","status":"RUNNING","content":"Created At: x\nTool is running as a background task with task id: c1/task-2\nTask Description: gh issue create\nTask logs are available at: file:///x/task-2.log"}'
+GBE='{"type":"SYSTEM_MESSAGE","source":"SYSTEM","content":"<SYSTEM_MESSAGE>\n[Message] timestamp=x sender=c1/task-2 priority=MESSAGE_PRIORITY_HIGH content=Task id \"c1/task-2\" finished with result:\nCommand exited with code 0.\n\nCommand output:\ncreated\n\nLog: file:///x/task-2.log\n</SYSTEM_MESSAGE>"}'
+rm -f "$HOME/.mergeworthy/agy/c1.post" "$HOME/.mergeworthy/agy/c1.said"
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$GB]}" "$GBS"; agy_ev PostToolUse "{\"id\":\"g\",$(echo "$GB" | cut -c2-)" 2 >/dev/null
+agt "$U" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$GB]}" "$GBS" '{"type":"PLANNER_RESPONSE","content":"It runs."}' "$GBE" '{"type":"PLANNER_RESPONSE","content":"The issue is created."}'
+check "agy: a background post's check that settles at a PostInvocation ending in text reaches the model, the turn continued (force_continue)" "1 force_continue" \
+  "$(agy_ev PostInvocation | python3 -c 'import json, sys; v = json.loads(sys.stdin.read().rsplit(" ", 1)[0]); print(sum("your call run_command (step 2)" in s["systemMessage"]["systemMessage"] for s in v["injectSteps"]), v.get("terminationBehavior"))')"
+rm -f "$HOME/.mergeworthy/agy/c1.post" "$HOME/.mergeworthy/agy/c1.said"
 # a conversation's files go at a SessionStart once all of them are untouched for 14 days
 AD="$HOME/.mergeworthy/agy"; touch "$AD/old-conv.jsonl" "$AD/old-conv.post" "$AD/new-conv.jsonl" "$AD/new-conv.post"
 touch -d 2000-01-01 "$AD/old-conv.jsonl" "$AD/old-conv.post" "$AD/new-conv.post"; touch -d '13 days ago' "$AD/new-conv.jsonl"

@@ -3,10 +3,11 @@
 tool, and prints their verdict as agy's JSON on stdout, always (agy lets a tool through on an empty stdout). Each hook reads what it
 would under Claude Code: agy's tools under their Claude names and arguments, and agy's transcript rewritten as a Claude Code
 transcript, ~/.mergeworthy/agy/<conversation>.jsonl, kept until the conversation's files are untouched for 14 days. A tool's
-result reaches agy's transcript only after its PostToolUse, so a PostToolUse hook runs at PostInvocation, after the model's tool
-calls ran, and what it says (a block's reason or context) reaches the model there as a system message, as Claude Code passes a
-PostToolUse hook's block reason and context to the model; nothing later is refused for it. agy's own subagents (swarm) run no hooks,
-so they are refused."""
+result reaches agy's transcript only after its PostToolUse, so a PostToolUse hook runs at the conversation's next event that shows
+the result (the next call's PreToolUse, PostInvocation or Stop), so what it records is in place before the next call's checks. What
+it says (a block's reason or context) reaches the model at the next PostInvocation as a system message, as Claude Code passes a
+PostToolUse hook's block reason and context to the model, continuing a turn that ended in text so the model reads it, or at Stop as
+its continuation; nothing is refused for it. agy's own subagents (swarm) run no hooks, so they are refused."""
 import datetime, json, os, re, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import session_catalog
@@ -16,7 +17,7 @@ TOOLS = {'run_command': 'Bash', 'read_file': 'Read', 'write_file': 'Write', 'edi
 OWN_AGENTS = ('swarm',)
 KEEP = 14 * 86400
 LIVE = 600  # a step first seen within this many seconds of agy's time for it is timed when seen; an older one keeps agy's time
-DIR = os.path.expanduser('~/.mergeworthy/agy')  # each conversation's Claude Code transcript (.jsonl), queued checks (.post), step times (.seen)
+DIR = os.path.expanduser('~/.mergeworthy/agy')  # each conversation's Claude Code transcript (.jsonl), queued checks (.post), what they said (.said), step times (.seen)
 HEADER = re.compile(r'\A(?:(?:Created|Completed) At: .*\n)*')
 STARTED = re.compile(r'^Tool is running as a background task with task id: (\S+)$', re.M)
 FINISHED = re.compile(r'content=Task id "([^"]+)" finished with \w+:\n(.*?)(?:\n\nLog: \S+)?\n</SYSTEM_MESSAGE>', re.S)
@@ -180,6 +181,7 @@ class Event:
         self.session = conversation(d.get('conversationId'))
         self.transcript = os.path.join(DIR, f'{self.session}.jsonl')
         self.pending = os.path.join(DIR, f'{self.session}.post')
+        self.said = os.path.join(DIR, f'{self.session}.said')
         self.steps = steps(d['transcriptPath']) if os.path.isfile(d.get('transcriptPath') or '') else []
         os.makedirs(DIR, exist_ok=True)
         times = os.path.join(DIR, f'{self.session}.seen')
@@ -229,9 +231,9 @@ def run(event, d):
 
 def settle(ev):
     """Runs the PostToolUse (or PostToolUseFailure) hooks of each queued call that has an outcome (a background command, once its
-    task finished): what they said, blocks and context alike."""
+    task finished), and keeps what they said, blocks and context alike, for the model (owed)."""
     try: waiting = [json.loads(l) for l in open(ev.pending)]
-    except OSError: return []
+    except OSError: return
     errs, done = [], ev.outcomes
     for p in (p for p in waiting if p['step'] in done):
         o = done[p['step']]
@@ -240,10 +242,25 @@ def settle(ev):
         if o['failed']: d['error'] = o['error'] or o['output']
         blocks, said = run(d['hook_event_name'], d)
         errs += [f"mergeworthy's check after your call {p['name']} (step {p['step']}): {e}" for e in blocks + said]
+    if errs:
+        with open(ev.said, 'a') as f: f.writelines(json.dumps(e) + '\n' for e in errs)
     rest = [p for p in waiting if p['step'] not in done]
     with open(f'{ev.pending}.{os.getpid()}', 'w') as f: f.writelines(json.dumps(p) + '\n' for p in rest)
     os.replace(f'{ev.pending}.{os.getpid()}', ev.pending)
-    return errs
+
+
+def owed(ev):
+    """What settled checks said that the model hasn't been given yet, taken from its file."""
+    try: os.replace(ev.said, f'{ev.said}.{os.getpid()}')
+    except FileNotFoundError: return []
+    with open(f'{ev.said}.{os.getpid()}') as f: said = [json.loads(l) for l in f]
+    os.remove(f'{ev.said}.{os.getpid()}')
+    return said
+
+
+def ended_in_text(ev):
+    """Whether the model's last response called no tool: its turn ends there unless something continues it."""
+    return next((not s.get('tool_calls') for s in reversed(ev.steps) if s.get('type') == 'PLANNER_RESPONSE'), False)
 
 
 def last_text(ev):
@@ -290,14 +307,16 @@ def main(name, d):
             with open(ev.pending, 'a') as f:
                 f.write(json.dumps({'step': d.get('stepIdx'), 'name': c.get('name'), 'args': c.get('args'), 'cwd': d.get('cwd')}) + '\n')
         return answer(name, [])
-    if name == 'PostInvocation':  # the invocation's tool results are in agy's transcript by now
-        return answer(name, settle(ev))
+    settle(ev)  # each queued check whose call's result this event shows, before anything reads what it records
+    if name == 'PostInvocation':  # after the model's calls: what the checks said goes into the conversation
+        said = owed(ev)
+        return {**answer(name, said), **({'terminationBehavior': 'force_continue'} if said and ended_in_text(ev) else {})}
     if name == 'PreToolUse':
         return answer(name, ["mergeworthy: Antigravity's own subagents run without mergeworthy's checks: launch agents with T3's delegate_task "
                              "(mergeworthy:delegate step 4)."] if c.get('name') in OWN_AGENTS else
                       run('PreToolUse', {**ev.base('PreToolUse'), **ev.call(c.get('name', ''), c.get('args'), d.get('stepIdx'))})[0])
     if name == 'Stop':
-        return answer(name, run('Stop', {**ev.base('Stop'), 'last_assistant_message': last_text(ev), 'stop_hook_active': (d.get('executionNum') or 0) > 0})[0])
+        return answer(name, owed(ev) + run('Stop', {**ev.base('Stop'), 'last_assistant_message': last_text(ev), 'stop_hook_active': (d.get('executionNum') or 0) > 0})[0])
     raise ValueError(f'no such agy hook event: {name}')
 
 
