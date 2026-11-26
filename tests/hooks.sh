@@ -5509,9 +5509,11 @@ sk() { # <skill>...: the model's read_file call of each skill's SKILL.md, then e
   echo "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$c]}"; for n in "$@"; do echo "{\"type\":\"GENERIC\",\"content\":\"Showing lines 1-$(wc -l < "$R/agy/skills/$n/SKILL.md") of $(wc -l < "$R/agy/skills/$n/SKILL.md")\"}"; done; }
 dec() { python3 -c 'import json, sys; v = json.loads(sys.stdin.read().rsplit(" ", 1)[0]); print(v["decision"] + ":" + str(v.get("reason", "").count(sys.argv[1])))' "$1"; }
 two() { # <call json> <its result step> <second call json> <first call's step>: the model's response holds both calls (opened skills: $SKS); agy's
-  # PreToolUse of the first, its PostToolUse, then its result logged and the second's PreToolUse; prints the second's verdict
+  # PreToolUse of the first, which must allow it (else it prints that verdict and stops, failing the case), its PostToolUse, then its
+  # result logged and the second's PreToolUse; prints the second's verdict
   rm -f "$HOME/.mergeworthy/agy/c1.post" "$HOME/.mergeworthy/agy/c1.said"
-  agt "$U" "${SKS[@]}" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$1,$3]}"; agy_ev PreToolUse "{\"id\":\"a\",$(echo "$1" | cut -c2-)" "$4" >/dev/null
+  agt "$U" "${SKS[@]}" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$1,$3]}"; local v; v=$(agy_ev PreToolUse "{\"id\":\"a\",$(echo "$1" | cut -c2-)" "$4")
+  [ "$v" = '{"decision": "allow"} 0' ] || { echo "the first call wasn't allowed: $v"; return; }
   agy_ev PostToolUse "{\"id\":\"a\",$(echo "$1" | cut -c2-)" "$4" >/dev/null
   agt "$U" "${SKS[@]}" "{\"type\":\"PLANNER_RESPONSE\",\"tool_calls\":[$1,$3]}" "$2"; agy_ev PreToolUse "{\"id\":\"b\",$(echo "$3" | cut -c2-)" $(($4 + 1)); }
 mapfile -t SKS < <(sk delegate)
