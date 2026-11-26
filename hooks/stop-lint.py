@@ -46,10 +46,12 @@ SENT = os.path.expanduser(f"~/.claude/mergeworthy-forks/{re.sub(r'[^\w-]', '', d
 def sent():
     try: return set(json.load(open(SENT)))
     except (OSError, ValueError): return set()
-def finish():  # the turn ends with `last`: its forks are asked
-    if report.forks(last):
-        os.makedirs(os.path.dirname(SENT), exist_ok=True)
-        json.dump(sorted(sent() | report.forks(last)), open(SENT, 'w'))
+def finish():  # the turn ends with `last`: its forks are asked; a host that goes on past it (agy.py's owed checks) says so in the input
+    if report.forks(last) and t3_tasks.under_t3() and not d.get('mergeworthy_continues'):
+        try:
+            os.makedirs(os.path.dirname(SENT), exist_ok=True)
+            json.dump(sorted(sent() | report.forks(last)), open(SENT, 'w'))
+        except OSError: pass  # unwritten, the fork may be asked once more
     sys.exit(0)
 # The user asked to stop or pause: the turn ends as they asked, until they write again
 if steward.asks_stop(last_user): finish()
