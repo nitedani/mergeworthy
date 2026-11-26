@@ -9,8 +9,6 @@ ASKED_FOR = {'merge': (r'merge(?!ab)\w*', r'Merge each PR as soon as it is ready
              'push': (r'push(?!\w*\s+(?:for|back)\b)\w*|releas\w*|publish\w*', r'Push to {branch}(?!\S)', 'push'),  # a release asked for pushes its version commit
              'release': (r'releas\w*|publish\w*', None, 'release'),
              'ask-first': (r'update\w*|restart\w*|frissít\w*', None, 'update')}
-# what an ask may name after the word besides its target and a pronoun: a merge its PRs ("the sentry pr", "az osszes prt"), a push its commits,
-# a release a new version ("a minor"); a release or a push may also name a package ("vike-react-apollo", "a minor of vike-react-sentry")
 OBJECTS = {'merge': r'(?:(?:the|this|that|my|your|our|both|a|az)\s+)?(?:(?!(?:other|another|next|previous|last|old)\b)[\w-]+\s+)?(?:(?:pr|mr)(?:s|t|ek|eket|-\w+)?|pull requests?|merge requests?|fix(?:es)?|changes?)\b',
            'release': r'(?:(?:a|the)\s+)?(?:new\s+)?(?:(?:major|minor|patch)(?:\s+(?:version|release))?|version|release|package)\b',
            'ask-first': r'(?!)'}
@@ -25,8 +23,6 @@ HALT = re.compile(r"(?:[-*•]\s*)?(?:(?:but|so|ok|please|pls)\W+)*(?:(?:wait|v�
 FOLLOW_UP = re.compile(r"(?:(?:then|and|aztán|aztan|és|majd|just|please|pls)\W+)*(?:(?:tell|ping|notify|message|show)\s+me|let\s+me\s+know|report\s+back|szólj|szolj|jelezz|írd\s+meg|ird\s+meg)\b", re.I)
 FIRST = re.compile(r'\b(?:before|first|discuss\w*|proceed\w*|előtte|először)\b', re.I)
 NO_WAIT = re.compile(r"\b(?:don['’]?t|do not|no need to|ne|nem kell)\s+(?:wait|várj|varj|várni|varni)\b(?:\s+(?:for|until|till|on)\b.*)?", re.I)
-# an ask opens a clause, after a list bullet and the words of these classes at most; each class is a reason a word may stand there, so a word
-# missing from one is added to its class. "merge conflicts", "release notes" and "update plan" name a thing, not the action
 OPENERS = {'courtesy': r'please|pls|plz|kérlek|kerlek|légyszi|legyszi',
            'go-ahead': r'ok(?:ay)?|oké|oke|yes|yeah|yep|sure|alright|igen|rendben',
            'sequence': r'now|just|then|so|also|for now|aztán|aztan|most|akkor|szóval',
@@ -40,14 +36,8 @@ MENTION = r'(?!\s+(?:conflicts?|requests?|notes?|plans?|queue)\b)'
 PR_REF = re.compile(r'(?:github\.com/([\w.-]+/[\w.-]+)/pull/|gitlab\.com/([\w./-]+?)/-/merge_requests/|\b([\w.-]+/[\w./-]*[\w-])[#!]|[#!]|(?i:\b(?:pr|mr|pull request)\s+))(\d+)\b')  # a PR, an MR (!N)
 
 def asks(text, kind, repo=None, num=None, branch=None, subject=None):
-    """Whether text (a message the user typed) asks for kind on its target: PR num of repo, the branch pushed, or subject (a release's tag, an
-    ask-first command's line). Each sentence holding kind's words is split into clauses (at commas, semicolons, dashes, "then" and an "and"
-    before a word) and read once URLs, `(Re-invocation of` lines and the word mergeworthy are out. A clause holds kind back when it negates
-    it or puts it off, unless it only asks to be told after it or not to wait (NO_WAIT); it asks when it is kind's word as an imperative
-    (after the openers, in no past form), followed by the target, a pronoun, one of kind's OBJECTS, a released package's NAME or nothing,
-    then courtesy or a time (TAIL), in a sentence that is no question or a request (`can you`). A clause naming another target neither asks
-    nor holds for this one; a clause naming none counts for the target when the message names it or no other. A sentence without kind's
-    words holds when it opens with a HALT. False on a hold, else True on an ask, else None."""
+    """True when text (a message the user typed) asks for kind on its target (PR num of repo, branch, or subject: a release's tag,
+    an ask-first command's line), False when it holds kind back, None when it says neither."""
     bare = lambda t: re.sub(r'https?://\S+|\bmergeworthy\w*|^\s*\(Re-invocation of .*', ' ', t, flags=re.I)
     words = rf'\b(?:{ASKED_FOR[kind][0]})\b{MENTION}'
     ask = re.compile(rf"{LEAD}(?:‹t›\s*)?{PAST}{words}(?:\s+be\b)?\s*(?:{PRONOUN}|{OBJECTS[kind]})?\s*(?:(?:(?:the|a|az)\s+)?‹t›(?:\s*-\w+)?)?"
