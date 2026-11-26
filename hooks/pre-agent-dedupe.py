@@ -28,7 +28,8 @@ def refused():
 # T3 opens no run for a turn Claude Code starts by itself (a finished background command, a Monitor event), and refuses
 # launches from it (pingdotgg/t3code#16808): nothing ran, so no job, and the session keeps working instead of waiting
 if register and 'parent_not_active' in json.dumps(req.response or ''):
-    print(json.dumps({'hookSpecificOutput': {'hookEventName': 'PostToolUse', 'additionalContext':
+    # Claude Code takes the context only from an answer naming the event it ran on
+    print(json.dumps({'hookSpecificOutput': {'hookEventName': 'PostToolUseFailure' if req.failed else 'PostToolUse', 'additionalContext':
         "T3 refused this launch: a background event started this turn, and T3 opened no run for it, so it refuses agent "
         "launches and the user doesn't see this turn in the thread. The next user message, scheduled task or finished agent "
         "starts a run. Until then, do the step yourself wherever the main session may (gates, tests, probes, an implementer's "
