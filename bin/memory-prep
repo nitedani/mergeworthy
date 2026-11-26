@@ -20,8 +20,7 @@ if cmd == 'init':
         import agy
         logdir, sid = agy.DIR, agy.conversation(os.environ['ANTIGRAVITY_CONVERSATION_ID'])
     else:
-        # Claude Code keeps a checkout's session logs in ~/.claude/projects/<its path, every other character a dash>
-        logdir, sid = os.path.expanduser('~/.claude/projects/' + re.sub(r'[^A-Za-z0-9]', '-', cwd)), os.environ.get('CLAUDE_CODE_SESSION_ID')
+        logdir, sid = mf.claude_logdir(cwd), os.environ.get('CLAUDE_CODE_SESSION_ID')
     if not os.path.isdir(logdir):
         sys.exit(f'memory-prep: no session-log dir {logdir}: run init from the main session\'s own checkout')
     os.makedirs(root, exist_ok=True)

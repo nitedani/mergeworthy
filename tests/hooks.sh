@@ -5372,6 +5372,26 @@ t1=$(times); ev2 hold
 check "agy: rebuilding the transcript at a later event keeps every entry's time, each after the one before" "same yes" \
   "$([ "$t1" = "$(times)" ] && echo same || echo changed) $(python3 -c 'import sys; t = sys.argv[1].split(); print("yes" if t == sorted(set(t)) and len(t) == 4 else "no")' "$t1")"
 sed -i "\|^$MH\$|d; \|^$MH3\$|d" "$HOME/.mergeworthy/memory-roots.txt"
+# T3 Code can switch the thread's provider: memory set up under one follows the thread's later session under the other
+CD="$HOME/.claude/projects/$(printf '%s' "$AGR" | sed 's/[^A-Za-z0-9]/-/g')"; mkdir -p "$CD"
+clog() { # <session> <text of a typed prompt> <answer> [thread a T3 handoff names first]: a Claude Code session log in the checkout's folder
+  python3 -c 'import json, sys, datetime as d
+f, p, a = sys.argv[1:4]; t = d.datetime.now(d.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+w = lambda o: open(f, "a").write(json.dumps(o, separators=(",", ":")) + "\n")
+if len(sys.argv) > 4: w({"type": "user", "timestamp": t, "promptSource": "sdk", "message": {"role": "user", "content": "Context handoff (manual_context):\nThread: " + sys.argv[4]}})
+w({"type": "user", "timestamp": t, "promptSource": "typed", "message": {"role": "user", "content": p}})
+w({"type": "assistant", "timestamp": t, "message": {"role": "assistant", "content": [{"type": "text", "text": a}], "stop_reason": "end_turn"}})' "$CD/$1.jsonl" "$2" "$3" ${4:+"$4"}; }
+MXA="$T/agy-mem-to-claude"; st "$AG/xa.jsonl" "USER_INPUT:Agy ruling" "PLANNER_RESPONSE:Agy answer"; ev2 xa; hinit "$MXA" xa thread-xa; mem_at "$MXA" "$(hd "$MXA" 2)" >/dev/null
+clog claude-xa "Claude ruling" "Claude answer" thread-xa
+check "agy: memory set up under Antigravity follows the thread to Claude Code: behind, and prep has Claude's prompt and answer" \
+  "True 0 Claude ruling|Claude answer" "$(mem_at "$MXA" "$(hd "$MXA" 2)")"
+MXB="$T/agy-mem-to-agy"; clog cs-xb "Claude first" "Claude first answer"
+(cd "$AGR" && env -u ANTIGRAVITY_CONVERSATION_ID CLAUDE_CODE_SESSION_ID=cs-xb python3 "$R/bin/memory-prep" init "$MXB" thread-xb >/dev/null 2>&1 && python3 "$R/bin/memory-prep" prep "$MXB" >/dev/null 2>&1)
+mem_at "$MXB" "$(hd "$MXB" 2)" >/dev/null
+st "$AG/xb.jsonl" "$(hand thread-xb)" "USER_INPUT:Agy later" "PLANNER_RESPONSE:Agy later answer"; ev2 xb
+check "agy: memory set up under Claude Code follows the thread to Antigravity: behind, and prep has agy's prompt and answer" \
+  "True 0 Agy later|Agy later answer" "$(mem_at "$MXB" "$(hd "$MXB" 2)")"
+sed -i "\|^$MXA\$|d; \|^$MXB\$|d" "$HOME/.mergeworthy/memory-roots.txt"
 # a step first seen more than 10 minutes after agy's own time for it (a conversation reopened, pruned or from before step times)
 # keeps agy's time: old history stays old for the memory and for every hook that reads a time
 sta() { # <conversation> <ago>|<type:content>...: agy's steps, each at its own time (`date -d` relative, e.g. "-2 days")

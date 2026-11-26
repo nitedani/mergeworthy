@@ -62,14 +62,23 @@ def orchestrator(line, tid):
     except ValueError: return False
     return prompt(o) and any(tid in t for t in texts(o))
 
+def claude_logdir(cwd):
+    """Where Claude Code keeps a checkout's session logs: ~/.claude/projects/<its path, every other character a dash>."""
+    return os.path.expanduser('~/.claude/projects/' + re.sub(r'[^A-Za-z0-9]', '-', cwd))
+
 def thread_logs(root, since=0.0):
     """The orchestrator's session logs modified since `since`: the session init ran in, and later ones its thread was handed
-    to. Each file's checked position is cached, so a log is read once and a growing one only from where it was checked."""
+    to, under either provider T3 Code can switch the thread to (Claude Code's logs of the checkout, and hooks/agy.py's of
+    Antigravity's conversations). Each file's checked position is cached, so a log is read once and a growing one only from
+    where it was checked."""
+    import agy
     src = source(root); cache_f = os.path.join(root, '.memory-orchestrator-logs.json')
     cache = json.load(open(cache_f)) if os.path.exists(cache_f) else {}
     out, tid = [], src['thread']
-    for f in os.listdir(src['logdir']):
-        p = os.path.join(src['logdir'], f)
+    files = [os.path.join(d, f) for d in dict.fromkeys((src['logdir'], claude_logdir(src['cwd']), agy.DIR)) if os.path.isdir(d)
+             for f in os.listdir(d)]
+    for p in files:
+        f = os.path.basename(p)
         if not f.endswith('.jsonl') or os.path.getmtime(p) < since:
             continue
         pos, hit = cache.get(p, (0, f[:-len('.jsonl')] in src.get('sessions', ())))
