@@ -59,14 +59,14 @@ def asks(text, kind, repo=None, num=None, branch=None, subject=None):
             return re.sub(r'\bv?\d+(?:\.\d+)+(?:[-+][\w.-]*\w)?', lambda m: tok(subject is None or m[0].lower().lstrip('v') == subject.lower().lstrip('v')), c)
         own = set(re.split(r'[^\w.]+', (subject or '').lower())) - {''}  # an ask-first command's words: "update t3" names t3-update
         return re.sub(r'[\w.]+', lambda m: tok(True) if not re.fullmatch(words, m[0], re.I) and any(o.startswith(m[0].lower()) for o in own) else m[0], c)
-    def stance(m, question):  # 'holds', 'asks' or None for clause m, marked and bare
+    def stance(m, question):  # 'holds', 'asks', 'reports' or None for clause m, marked and bare
         if FOLLOW_UP.match(m.strip()):
             if FIRST.search(m): return 'holds'
-            if not re.search(rf'{PAST}{words}', m, re.I): return None
+            return 'reports' if re.search(rf'{PAST}{words}', m, re.I) else None  # "tell me when you merge it": a hold unless the message asks
         if NEGATED.search(NO_WAIT.sub(' ', m)): return 'holds'
         if ask.fullmatch(m.strip()) and (not question or re.match(REQUEST, m.strip(), re.I)): return 'asks'
     on = lambda m: '‹t›' in m or '‹x›' not in m  # names the target, or none
-    found = None
+    found = reported = None
     for s in re.split(r'(?<=[.!?])\s+|\n', text):
         if not re.search(words, bare(s), re.I):
             if HALT.match(m := bare(marked(s)).strip()) and on(m): return False
@@ -74,8 +74,9 @@ def asks(text, kind, repo=None, num=None, branch=None, subject=None):
         for c in re.split(r'[,;—–]|\s-+\s|\bthen\b|\b(?:and|és)\b(?!\s*(?:[#!]\d|https?:|[\w.-]+/[\w./-]*[#!]\d))', s, flags=re.I):
             st = stance(m := bare(marked(c)), s.rstrip().endswith('?'))
             if st == 'holds' and on(m): return False
+            reported = reported or st == 'reports' and on(m)
             found = found or st == 'asks' and ('‹t›' in m or on(marked(text))) or None
-    return found
+    return found or (False if reported else None)
 
 def last_typed(transcript_path):
     """The message the user last typed in the session whose transcript is at transcript_path (t3_tasks.typed); '' with none."""
