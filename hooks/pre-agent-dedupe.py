@@ -179,13 +179,13 @@ def codex_reset():
     except (OSError, ValueError, AttributeError, TypeError):
         return None
     return min(until) if until and min(until) > time.time() else None
-# Delegated agents run on Claude, reviews first on Codex (mergeworthy:delegate §Model class, §Reviewers), whichever host the session runs
+# Implementers run on Claude, reviews first on Codex (mergeworthy:delegate §Model class, §Reviewers), whichever host the session runs
 # on: a delegate_task with no target runs on the launching session's provider, Antigravity's under hooks/agy.py (MERGEWORTHY_HOST)
 drivers = req.drivers or {'antigravity' if os.environ.get('MERGEWORTHY_HOST') == 'antigravity' else 'claudeAgent'}
-if req.t3 and str(req.tool).endswith('delegate_task') and 'antigravity' in drivers:
-    sys.stderr.write("BLOCKED: no delegated agent runs on Antigravity (mergeworthy:delegate §Model class, §Reviewers)"
+if req.t3 and str(req.tool).endswith('delegate_task') and 'antigravity' in drivers and k.builds:
+    sys.stderr.write("BLOCKED: no implementer runs on Antigravity (mergeworthy:delegate §Model class)"
                      + ("; with no target this launch would run on this session's Antigravity" if not req.providers else '')
-                     + f": set target.providerInstanceId to {'codex' if req.role == 'review' else 'claudeAgent'}.\n")
+                     + ": set target.providerInstanceId to claudeAgent.\n")
     refused()
 elif req.role == 'review' and req.t3:
     reset = codex_reset()

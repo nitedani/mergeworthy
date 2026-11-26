@@ -1358,16 +1358,19 @@ printf 'Fallback: codex stopped round 2\nReview it\n' > "$T/fx/fb-brief.md"; pri
 check "a review on claudeAgent passes with a Fallback sentence inside a task line, or a Fallback line in the brief file it names; one whose brief file has none is refused" "0 0 2" "$(rev '{"providerInstanceId":"claudeAgent"}' 'Review it. Fallback: codex stopped round 1') $(rev '{"providerInstanceId":"claudeAgent"}' "Follow $T/fx/fb-brief.md") $(rev '{"providerInstanceId":"claudeAgent"}' "Follow $T/fx/plain-brief.md")"
 printf 'Review the change.\nIf the independent reviewer fails, record `Fallback: <what failed>` in the task.\n' > "$T/fx/fb-slot-brief.md"
 check "BLOCK: a review on claudeAgent whose task, or the brief file it names, only quotes the \`Fallback: <what failed>\` form" "2 2" "$(rev '{"providerInstanceId":"claudeAgent"}' 'Review the change. If the independent reviewer fails, record `Fallback: <what failed>` in the task.') $(rev '{"providerInstanceId":"claudeAgent"}' "Follow $T/fx/fb-slot-brief.md")"
-# under Antigravity (hooks/agy.py sets MERGEWORTHY_HOST) a launch with no target inherits Antigravity, which runs no delegated agent
-impl() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"ag","tool_input":{"task":"Research the cache","title":"ag research","role":"research","target":json.loads(sys.argv[1])}}))' "$1" \
+# under Antigravity (hooks/agy.py sets MERGEWORTHY_HOST) a launch with no target inherits Antigravity, which runs no implementer
+impl() { # target-JSON [host] [role] [task]: a delegate_task's exit code under T3
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"ag","tool_input":{"task":sys.argv[3],"title":"ag "+sys.argv[2],"role":sys.argv[2],"target":json.loads(sys.argv[1])}}))' "$1" "${3:-implementation}" "${4:-You implement the cache}" \
   | T3CODE_THREAD_ID=th MERGEWORTHY_HOST="${2:-}" python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
 mkdir -p "$HOME/.t3/userdata"; echo '{"providerInstances":{"antigravity_2":{"driver":"antigravity"},"claude_2":{"driver":"claudeAgent"}}}' > "$HOME/.t3/userdata/settings.json"
-check "BLOCK: under Antigravity a launch with no target, naming claudeAgent; a review with none, naming codex; an Antigravity target by instance or driver, under either host" "2 1 2 1 2 2 2" \
-  "$(impl '{}' antigravity) $(grep -c 'set target.providerInstanceId to claudeAgent' "$T/err") $(MERGEWORTHY_HOST=antigravity rev '{}' 'Review it') $(grep -c 'to codex' "$T/err") $(impl '{"providerInstanceId":"antigravity_2"}') $(impl '{"driverKind":"antigravity"}') $(impl '{"providerInstanceId":"antigravity"}' antigravity)"
+check "BLOCK: under Antigravity an implementer with no target, naming claudeAgent; an implementer on an Antigravity target by instance or driver, under either host; an implementer brief in role general" "2 1 2 2 2 2 1" \
+  "$(impl '{}' antigravity) $(grep -c 'no implementer runs on Antigravity.*with no target.*set target.providerInstanceId to claudeAgent' "$T/err") $(impl '{"providerInstanceId":"antigravity_2"}') $(impl '{"driverKind":"antigravity"}') $(impl '{"providerInstanceId":"antigravity"}' antigravity) $(impl '{"providerInstanceId":"antigravity"}' '' general 'You implement the cache') $(grep -c 'no implementer runs on Antigravity' "$T/err")"
+check "on Antigravity a review, a design and research pass, by target or with none under Antigravity" "0 0 0 0 0" \
+  "$(impl '{"providerInstanceId":"antigravity"}' '' review 'Review it') $(impl '{"providerInstanceId":"antigravity"}' '' design 'Design the cache') $(impl '{"driverKind":"antigravity"}' '' research 'Research the cache') $(impl '{}' antigravity review 'Review it') $(impl '{}' antigravity research 'Research the cache')"
 check "under Antigravity a launch on claudeAgent passes, and so does one with no target under Claude Code; a review on claude_2 (a Claude instance) still needs its Fallback line" "0 0 2" \
-  "$(impl '{"providerInstanceId":"claudeAgent"}' antigravity) $(impl '{}') $(rev '{"providerInstanceId":"claude_2"}' 'Review it')"
+  "$(impl '{"providerInstanceId":"claudeAgent"}' antigravity research 'Research the cache') $(impl '{}' '' research 'Research the cache') $(rev '{"providerInstanceId":"claude_2"}' 'Review it')"
 echo '{"providerInstances":{"antigravity":{"driver":"codex"},"antigravity_2":{"driver":"antigravity"}}}' > "$HOME/.t3/userdata/settings.json"
-check "BLOCK: a target naming the antigravity driver alone, while the instance id antigravity runs Codex, as the Antigravity instance does" "2 2" \
+check "BLOCK: an implementer on a target naming the antigravity driver alone, while the instance id antigravity runs Codex, as the Antigravity instance does" "2 2" \
   "$(impl '{"driverKind":"antigravity"}') $(impl '{"providerInstanceId":"antigravity_2"}')"
 rm "$HOME/.t3/userdata/settings.json"
 check "an exploring research agent on claudeAgent passes" 0 "$(rev '{"providerInstanceId":"claudeAgent"}' 'Explore it' research)"
