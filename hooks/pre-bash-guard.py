@@ -498,8 +498,9 @@ def check_finality(repo, num, files):
         root = next((os.path.dirname(p) for p in work_folder.ancestors(f) if os.path.basename(p) == 'drafts'), os.path.dirname(os.path.dirname(f)))
         m = os.path.join(root, 'maps', f"{repo.replace('/', '-')}-{num}.md")
         if os.path.exists(m) and os.path.getmtime(m) > rounds[-1]: continue
-        block(f"{repo}#{num} has had {len(rounds)} proposal rounds: run the finality pass (mergeworthy:finality step 1, a drifted design thread) before this reply, "
-              f"write its thread map with the invariants list to {m} (newer than your last proposal), update the thread's WIP comment (Agreed with permalinks, Open; mergeworthy:design §WIP comment) from it, and let this reply say 'I updated the [WIP comment](link)' instead of restating the design")
+        block(f"{repo}#{num} has had {len(rounds)} proposal rounds: run the finality pass (mergeworthy:finality step 1, a drifted design thread) before this proposal, "
+              f"write its thread map with the invariants list to {m} (newer than your last proposal), and post this proposal as the thread's WIP comment: "
+              "a new comment, or the edit mergeworthy:post §Thread rules asks for (mergeworthy:design §WIP comment)")
 
 def comment_discussion(node_id):
     """owner/repo#N of the GitHub Discussion holding the comment with that node id; None when gh can't name it."""

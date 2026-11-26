@@ -815,7 +815,7 @@ check "the 1st proposal passes" 0 "$(pguard 1)"; pposted 1
 check "the 2nd proposal passes" 0 "$(pguard 2)"; pposted 2
 check "BLOCK: the 3rd proposal without a thread map" 2 "$(pguard 3)"
 grep -o 'maps/[^ ]*' "$T/err" | head -1
-check "the finality block points to the WIP comment, not a restated design" 1 "$(grep -c "update the thread's WIP comment" "$T/err")"
+check "the finality block has the proposal posted as the thread's WIP comment, with no 'I updated' reply" "1 0" "$(grep -c "post this proposal as the thread's WIP comment: a new comment, or the edit mergeworthy:post §Thread rules asks for" "$T/err") $(grep -c 'I updated' "$T/err")"
 touch -d '+1 minute' "$AR/maps/o-r-9.md"
 check "the 3rd proposal with a fresh map passes" 0 "$(pguard 3)"
 cp "$AR/drafts/r1/p3.md" "$AR/drafts/r1/p3.md.lint" "$AR/drafts/r1/p3.md.gate" "$T/"; mv "$T/p3.md" "$T/p9.md"; mv "$T/p3.md.lint" "$T/p9.md.lint"; mv "$T/p3.md.gate" "$T/p9.md.gate"; tcbind "$T/p9.md"
