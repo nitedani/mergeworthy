@@ -3,7 +3,7 @@
 Standards: `~/.mergeworthy/current/skills/code/SKILL.md` §Deep modules, §Phantom gate, §Removal gate. Include `delegate/agent.md`.
 
 The user's prompt, verbatim; `finality`'s steps say which part each agent gets. Its words:
-- **The orchestrator** is the main session: it starts every agent the prompt names (the mappers, the 3 branch agents, the converging agent); each agent does its share itself, without starting agents.
+- **The orchestrator** is the main session: it starts every agent the prompt names (the mappers, the 3 branch agents, one per provider, the converging agent); each agent does its share itself, without starting agents.
 - **§A, the shared node schema** is the per-function field list under PHASE A.
 - **§B** is PHASE B; **§B½** is PHASE B½; Phase C is the implementer's (`delegate/implementer.md`).
 - **§Closure** is the Owner-Safe closure paragraph at the end. *Every SETTLED decision propagated to its named surfaces*: every decision in `<work folder>/decisions/*.md` reached every place that describes it (code, tests, types, docs, PR bodies). *Owning lanes, mutations, reference captures, clean-tree scope*: the lanes that own the changed code (`code §Gates`), mutation probes (`code §Tests`), before/after screenshots, and a `git status` with only in-scope changes, each observed on the head.

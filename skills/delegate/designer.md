@@ -2,7 +2,7 @@
 
 Standards: `~/.mergeworthy/current/skills/code/SKILL.md` §Deep modules. Include `delegate/agent.md`.
 
-One fresh-context agent writes every design before comparing any (`design` step 4, `pull-request` step 5).
+One fresh-context agent per provider writes every design before comparing any (`design` step 4, `pull-request` step 5).
 
 ```
 The problem, for its users: <the constraints any interface must meet, the dependencies and their categories (code §Deep modules), a rough code sketch that makes the constraints concrete; the sketch is not a proposal>.

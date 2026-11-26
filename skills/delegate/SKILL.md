@@ -45,7 +45,8 @@ Later work on the same thing (confirming fixes, re-rating) continues that agent.
 
 The classes are model families, never versions: the largest is the newest Fable Claude Code offers, else the strongest; the strongest, the newest Opus; the smallest with an effort setting, the newest Haiku; missing: tell the user. The main session plans, briefs, decides, spot-checks results and approves every word to a maintainer. Never a model the user excluded, an effort above xhigh, nor a model version in a prompt, skill or memory.
 - **Choosing among options** (`pull-request` step 5's rating, `finality` step 3's converging agent): the largest; **root causes and authors** (code, docs, PR bodies, replies, designs): the strongest (delegated if the main session isn't); both at high effort. **Audits and exploration:** the strongest at medium (independent checks: §Reviewers).
-- **The smallest class with an effort setting, at high effort,** only for work where nothing it writes ships: `finality` step 3's branch agents, running gates, tests and a reproduction from a recipe, log mining, data processing and bookkeeping.
+- **The smallest class with an effort setting, at high effort,** only for work where nothing it writes ships: running gates, tests and a reproduction from a recipe, log mining, data processing and bookkeeping.
+- **One per provider** (Claude, Codex, Antigravity; T3's `claudeAgent`, `codex`, `antigravity`), on one brief: `finality` step 3's branch agents at each one's smallest model; `design` steps 3–4's debaters and designers and `pull-request` step 5's candidate writers at its strongest; high effort where it has one. Antigravity never implements.
 
 ### Reviewers
 

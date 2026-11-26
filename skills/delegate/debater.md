@@ -2,7 +2,7 @@
 
 Standards: `~/.mergeworthy/current/skills/code/SKILL.md` §Earn every line, §Deep modules. Include `delegate/agent.md`.
 
-One fresh-context agent (`design` step 3): it first generates without judging, then judges. The main session rates its recommendation (`pull-request §Rating`) and decides.
+One fresh-context agent per provider (`design` step 3): each first generates without judging, then judges. The main session rates each recommendation (`pull-request §Rating`) and decides.
 
 ```
 The question: <the maintainer's comment, with its link>. The thread record: <abs>/drafts/<thread>/thread-context.md.
