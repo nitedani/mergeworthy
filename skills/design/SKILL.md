@@ -22,7 +22,7 @@ Takes a design to a shape the maintainer agreed to, before any PR converges. Ent
    Open: §WIP comment; `finality` · Record: the map · Hook: pre-bash-guard (a third proposal on a thread waits for a map newer than the last one)
 8. **Propose** only when no invariant is broken: a walkthrough of what the user writes and what happens on each path, alternatives as code, numbered questions each with your pick.
    Open: `writing §Design threads`; `post` with `--kind proposal` · Record: the gate file · Hook: post-bash-register counts proposals per thread
-9. **Converge:** agreement before product code; end with the change list and ask them to confirm. Until the maintainer OKs the shape, no `converge` loops; in the user's own repos, post the walkthrough and continue on your recommendation (a reply from the user re-opens it). Then `pull-request` step 5. After a PR opens, each commit answers a request, a red CI, a found bug, or a mergeworthy rule.
+9. **Converge:** agreement before product code; end with the change list and ask them to confirm. Until the maintainer OKs the shape, no `converge` loops; in the user's own repos, post the walkthrough and continue on your recommendation (a reply from the user re-opens it). Then: called by `pull-request` step 5, return the shape and agreement link there; else a PR task starts `pull-request` at step 1, a design-only one ends here. After a PR opens, each commit answers a request, a red CI, a found bug, or a mergeworthy rule.
    Record: the agreement link in decisions/<name>.md
 
 ### WIP comment
