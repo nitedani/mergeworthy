@@ -106,5 +106,5 @@ def fix_check(name, brief, at, ran):
            "no record shows when that reviewer was last active" if not at else
            "its brief names no ledger id (`R<round>.<n>`) of that reviewer's own findings" if not named else
            f"its brief names {', '.join(others)}, findings of rounds that reviewer didn't run (it ran {', '.join(f'r{m}' for m in sorted(ran)) or 'none of this loop on record'})")
-    return (f"{name} continues its reviewer, but {why}: launch the round on a fresh reviewer, of the other company than the loop's last round "
+    return (f"{name} continues its reviewer, but {why}: launch the round on a fresh reviewer, of the other company than the main session's "
             "where one is available, its brief carrying the loop's ledger and the commits since, never the earlier reports (mergeworthy:delegate §Reviewers).\n")

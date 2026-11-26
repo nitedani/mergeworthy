@@ -209,17 +209,19 @@ if req.t3 and str(req.tool).endswith('delegate_task') and 'antigravity' in drive
     refused()
 elif req.role == 'review' and req.t3 and not sent:  # a continued round runs on its thread's model
     reset = codex_reset()
+    when = reset and time.strftime('%H:%M' if time.localtime(reset)[:3] == time.localtime()[:3] else '%a %H:%M', time.localtime(reset))
     if reset and 'codex' in req.providers:
-        at = time.localtime(reset)
-        sys.stderr.write(f"BLOCKED: claude-swap reads every saved Codex account as used up until {time.strftime('%H:%M' if at[:3] == time.localtime()[:3] else '%a %H:%M', at)}, so this launch would fail. "
-                         "Launch the review on Claude (target.providerInstanceId claudeAgent); it needs no Fallback line while that holds.\n")
+        sys.stderr.write(f"BLOCKED: claude-swap reads every saved Codex account as used up until {when}, so this launch would fail. "
+                         f"Launch the review on Claude (target.providerInstanceId claudeAgent) with a line `Fallback: Codex used up until {when}`.\n")
         refused()
     # the fallback keeps the first review's prompt, so its claim may sit in the brief file the task names; `<what failed>` is the form, no claim.
     # A round 1 seating its step's reviewers at once takes a fresh agent of this company as its second seat, which keeps its
     # later rounds on it (delegate §Reviewers)
-    elif not reset and 'claudeAgent' in drivers and not (k.round and (k.round[1] == 1 and re.search(loops.FANOUT, brief, re.M) or k.round[1] != 1 and loops.same_company_seat(k.round[0], tops))) \
+    elif 'claudeAgent' in drivers and not (k.round and (k.round[1] == 1 and re.search(loops.FANOUT, brief, re.M) or k.round[1] != 1 and loops.same_company_seat(k.round[0], tops))) \
             and not re.search(r'\bFallback:[ \t]*[^\s<]', launch.Brief(req.task).brief):
-        sys.stderr.write("BLOCKED: an independent check starts on another company's model (mergeworthy:delegate §Reviewers): set target.providerInstanceId to codex. "
+        sys.stderr.write(f"BLOCKED: claude-swap reads every saved Codex account as used up until {when}: a review on Claude says so in a line "
+                         f"`Fallback: Codex used up until {when}` in the task or the brief file it names (mergeworthy:delegate §Reviewers).\n" if reset else
+                         "BLOCKED: an independent check starts on another company's model (mergeworthy:delegate §Reviewers): set target.providerInstanceId to codex. "
                          "Only when that call failed, launch on Claude (claudeAgent) with `Fallback: <what failed>` in the task or the brief file it names.\n")
         refused()
 # T3 answers a delegate_task whose clientRequestId it has seen with that earlier task's result, without running anything.

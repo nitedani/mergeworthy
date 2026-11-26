@@ -1386,7 +1386,9 @@ CX="$T/cx"; mkdir -p "$CX/profiles/a" "$CX/profiles/b" "$CX/profiles/active"; to
 lim() { printf '{"a":{"until":%s},"b":{"until":%s}}' "$1" "$2" > "$CX/profiles/limited.json"; }  # claude-swap's Codex limit state: the accounts' resets
 lim $(date -d 'today 23:59:59' +%s) $((now + 4 * 86400)); export CODEX_HOME="$CX"; r="$(rev '{"providerInstanceId":"codex"}' 'Review it') $(grep -c 'until 23:59,' "$T/err")"
 lim $((now + 3 * 86400)) $((now + 4 * 86400)); r="$r $(rev '{"providerInstanceId":"codex"}' 'Review it') $(grep -c "until $(LC_ALL=C date -d @$((now + 3 * 86400)) '+%a %H:%M')," "$T/err")"
-check "BLOCK: a review on codex while claude-swap reads every saved Codex account as used up, naming the soonest reset, with its day when not today; one on claudeAgent or no provider passes without a Fallback line" "2 1 2 1 0 0" "$r $(rev '{"providerInstanceId":"claudeAgent"}' 'Review it') $(rev '{}' 'Review it')"
+check "BLOCK: a review on codex while claude-swap reads every saved Codex account as used up, naming the soonest reset, with its day when not today; one on claudeAgent or no provider without a Fallback line, naming the line; with it, it passes" "2 1 2 1 2 2 1 0" \
+  "$r $(rev '{"providerInstanceId":"claudeAgent"}' 'Review it') $(rev '{}' 'Review it') $(grep -c '`Fallback: Codex used up until' "$T/err") $(rev '{"providerInstanceId":"claudeAgent"}' 'Review it
+Fallback: Codex used up until Mon 10:00')"
 printf '{"a":{"until":%s}}' $((now + 3600)) > "$CX/profiles/limited.json"; r="$(rev '{"driverKind":"codex"}' 'Review it') $(rev '{"providerInstanceId":"claudeAgent"}' 'Review it')"
 lim $((now - 60)) $((now + 3600)); r="$r $(rev '{"providerInstanceId":"codex"}' 'Review it') $(rev '{"providerInstanceId":"claudeAgent"}' 'Review it')"
 rm "$CX/profiles/limited.json"; r="$r $(rev '{"providerInstanceId":"codex"}' 'Review it') $(rev '{"providerInstanceId":"claudeAgent"}' 'Review it')"
@@ -1895,7 +1897,7 @@ FRL="$RLD/fr.ledger.md"; FRB="Review $T/ct at head $CH; final message exactly NO
 fr="$(t3r delegate_task fr-codex-r1 th-fr1 "$FRB") $(rule "$FRL" "$CH" 1; NOFC=1 t3r t3_thread_send fr-codex-r2 th-fr1 "Round 2: $FRB") $(grep -c "declares no fix check of that reviewer's own findings" "$T/err")"
 fr="$fr $(NOFC=1 t3r t3_thread_send fr-codex-r2 th-fr1 "Round 2: $FRB
 Review: verify fix-check of R1.1") $(grep -c 'no record shows when that reviewer was last active' "$T/err") $(t3db th-fr1 51; NOFC=1 t3r t3_thread_send fr-codex-r2 th-fr1 "Round 2: $FRB
-Review: verify fix-check of R1.1") $(grep -c 'last active 51 minutes ago, past 50: launch the round on a fresh reviewer' "$T/err") $(t3db th-fr1 49; NOFC=1 t3r t3_thread_send fr-codex-r2 th-fr1 "Round 2: $FRB
+Review: verify fix-check of R1.1") $(grep -c "last active 51 minutes ago, past 50: launch the round on a fresh reviewer, of the other company than the main session's where one is available" "$T/err") $(t3db th-fr1 49; NOFC=1 t3r t3_thread_send fr-codex-r2 th-fr1 "Round 2: $FRB
 Review: verify fix-check of R1.1") $(jrounds fr-codex)"
 check "a round sent to its reviewer's thread passes only as a fix check of a thread active within 50 minutes: BLOCK one declaring none, one no record dates, one 51 minutes quiet, each naming the fresh reviewer; at 49 minutes it passes" "0 2 1 2 1 2 1 0 2" "$fr"
 FIL="$RLD/fi.ledger.md"; FIB="Review $T/ct at head $CH; final message exactly NO BUGS. Ledger: $FIL"
