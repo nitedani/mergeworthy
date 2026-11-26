@@ -118,7 +118,9 @@ class Kinds:
         self.refresh = memory_launch(req.task)  # decided here, at admission, and stored on the pending call; `refresh` on the job too
         # A fan-out a step names (finality steps 2-3, converge's per-slice verifiers, the per-provider seats of delegate §Model class) says so on a
         # `Fan-out:` line, in the task or its brief, and passes the cap; the fan-out agents already open still count against an ordinary launch
-        self.fanout = not self.builds and bool(re.search(r'^Fan-out: (finality step [23]|design step [34]|pull-request step 5|converge §Running the agents)$', brief, re.M))
+        fan = None if self.builds else re.search(r'^Fan-out: (finality step [23]|design step [34]|pull-request step 5|converge §Running the agents)$', brief, re.M)
+        self.fanout = bool(fan)
+        self.seat = bool(fan) and fan[1] not in ('finality step 2', 'converge §Running the agents')  # one opinion per provider
         self.writer = req.role not in READERS
 k = Kinds(req, brief)
 def is_refresh(r):
@@ -409,9 +411,9 @@ if approach and not approach[2]:
                          "`Approach: <path> (unchanged: <why, in one line>)`\n")
         refused()
 # Research the program already wrote up (memory.md, the notes) is read, not redone; a memory refresh, launched as research, writes them,
-# and a fan-out's agents start from the evidence their brief gives, never from another seat's report
+# and a per-provider seat starts from the evidence its brief gives, never from another seat's report
 root = memory_file.for_cwd(req.cwd, req.session)
-if root and k.research and not k.refresh and not k.fanout:
+if root and k.research and not k.refresh and not k.seat:
     topic = re.search(r'^\s*Topic:\s*(.+?)\s*$', brief, re.M)
     if not topic:
         sys.stderr.write("BLOCKED: a research brief names its topic in a `Topic: <key words>` line, so the hook can search the work folder's files for research already done (mergeworthy:delegate §Brief).\n")
