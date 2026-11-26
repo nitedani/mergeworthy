@@ -4,8 +4,16 @@ and results (delegate_task, task_status, t3_thread_send) and T3's notices. A thr
 to it, each turn T3 continues on its own (provider-continuation)."""
 import json, os, re
 
-# T3's notice is `Delegated task <id> reached a terminal state`, or `Delegated task <id> (<title>) [<status>]:` with its result
-NOTICE = re.compile(r'Delegated task (\S+) (?:reached a terminal state|\(.*?\) \[(\w+)\]:?)')
+# T3's notice is `Delegated task <id>[ (<title>)][ in child thread <thread id>] [<status>]:` with its result, or
+# `Delegated task <id> reached a terminal state` for a task it no longer knows (its formatter, delegatedCompletionWakeDetail)
+NOTICE = re.compile(r'(?:\A|\n\n)Delegated task (\S+)(?: \(.*?\))?(?: in child thread \S+)? (?:reached a terminal state|\[(\w+)\]:?)')
+
+def notices(text):
+    """(task id, status or None, its result) for each notice of T3's message, which starts with one and holds one per finished task,
+    each after a blank line: a result quoting a notice on a line of its own stays that task's result"""
+    ms = list(NOTICE.finditer(text)) if NOTICE.match(text) else []
+    for m, nxt in zip(ms, ms[1:] + [None]): yield m[1], m[2], text[m.end():nxt.start() if nxt else len(text)]
+
 # What the harness, T3, a hook or the watcher writes into a session as a user message: a tag (`<task-notification>`), not an autolink (`<https://…>`)
 TAG = re.compile(r'<[A-Za-z][\w-]*[\s>/]')
 NOTICES = ('Stop hook feedback', 'Watcher events in ', 'Delegated task ', 'Skill /', 'Base directory for this skill',
@@ -56,10 +64,10 @@ class Observer:
         c = (e.get('message') or {}).get('content')
         if e.get('type') == 'user' and isinstance(c, str) and not c.startswith('<'):
             # T3's own completion notice isn't the user (typed): it marks its task terminal
-            n = NOTICE.match(c)
-            # a sub-agent whose turn ends while its own background work runs says so, and T3 continues it later: not finished
-            waits = n and re.search(r"\b(?:still running|I'll (?:continue|wait|resume)|I will (?:continue|wait|resume)|I'm waiting|wakes? (?:me )?when)\b", c[n.end():n.end() + 400], re.I)
-            if n: status[n.group(1)] = ('waiting' if waits else n.group(2) or 'completed', status.pop(n.group(1), ('', ''))[1])
+            for task, st, res in notices(c):
+                # a sub-agent whose turn ends while its own background work runs says so, and T3 continues it later: not finished
+                waits = re.search(r"\b(?:still running|I'll (?:continue|wait|resume)|I will (?:continue|wait|resume)|I'm waiting|wakes? (?:me )?when)\b", res[:400], re.I)
+                status[task] = ('waiting' if waits else st or 'completed', status.pop(task, ('', ''))[1])
         if e.get('type') == 'user' and typed(c): self.seen = set()
         for b in c if isinstance(c, list) else []:
             if not isinstance(b, dict): continue
