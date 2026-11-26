@@ -112,6 +112,8 @@ def steps_out(s):  # an issue's reproduction steps a newcomer needs are required
 code = '\n'.join(inner for _, _, inner in fence_spans(steps_out(prose)))
 prose = uncoded(prose)
 prose = re.sub(r'^\s*(?:[-*]\s+)?>.*$', '', prose, flags=re.M)
+# a maintainer-commits review's `CI on <sha>: <state>` line keeps its SHA through the inline code's replacement, for the label check below
+prose = re.sub(r'^(CI on )`([0-9a-f]{40})`(?=: )', r'\1\2', prose, flags=re.M)
 prose = re.sub(r'`[^`\n]*`', 'CODE', prose)
 # A PR body and a finding issue count, outside evidence blocks, the prose moved into a table or a code block (mergeworthy:writing): a sentence-long
 # cell (more than 15 words besides numbers and inline code) or a row's only cell, except a rated row's and its header's first BOUND words a
@@ -166,7 +168,7 @@ if kind != 'tracker':
 # A label and a colon opening a sentence ("Done: …", "One change I didn't make: …") reads as a report line, not a person (mergeworthy:writing);
 # a maintainer-commits review's whole `CI on <sha>: <state>` line is prescribed (reply §Maintainer commits)
 if kind in ('reply', 'inline', 'proposal', 'issue'):
-    label_prose = re.sub(r'^CI on (?:[0-9a-f]{40}|CODE): (?:green|none|(?:red|pending): .+)$', '', prose, flags=re.M)
+    label_prose = re.sub(r'^CI on [0-9a-f]{40}: (?:green|none|(?:red|pending): .+)$', '', prose, flags=re.M)
     for m in re.finditer(r"(?:^|(?<=[.!?]\s))([A-Z][^:\n.!?`|*]{0,50}?):[ \t]+(?=\S)", label_prose, flags=re.M):
         if 1 <= len(m.group(1).split()) <= 6 and not re.search(r'\d$', m.group(1)):
             findings.append(f"a label opening a sentence ({m.group(0).strip()[:40]!r}): say it the way you would to a colleague")
