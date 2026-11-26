@@ -5089,6 +5089,15 @@ said 'thanks'; check "a merge the user's last message asks for passes: merge, me
 check "BLOCK: an ask naming another PR (in its own sentence or clause, or another repo's), a question (a URL ending it too), a negation (English, Hungarian), an older ask, a mention, an ask put off, a T3 scheduled prompt" "2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2" \
   "$(said 'merge #40'; lg "$M") $(said 'is #41 merged?'; lg "$M") $(said "don't merge it yet"; lg "$M") $(said 'ne mergeld'; lg "$M") $(said 'nem kell mergelni'; lg "$M") $(said 'majd en mergelem'; lg "$M") \
 $(said 'Review #41. Merge #40.'; lg "$M") $(said 'Merge #40, and review #41.'; lg "$M") $(said 'Merge it, but not before CI passes.'; lg "$M") $(said 'Merge https://github.com/o/r/pull/41?'; lg "$M") $(said 'Merge https://github.com/o/pkg/pull/41'; lg "$M") $(said 'merge it' 'wait, not yet'; lg "$M") $(said 'Resolve the merge conflicts.'; lg "$M") $(said 'Merge #41 after I review it.'; lg "$M") $(said 'the merge went fine'; lg "$M") $(said 'thanks' '[T3 Code: scheduled task "zqs-check" sent this prompt.] Goal: merge and land PR #41'; lg "$M") $(said 'land PR #23'; lg "$M")"
+check "a merge asked for after an opener of any class (for now, so, yes, also, alright, akkor, will you, I need you to, feel free to), with a clause asking to be told after it, or told not to wait, passes" "$(printf '0 %.0s' {1..19} | xargs)" \
+  "$(for s in 'for now lets just merge the sentry pr and release it' 'ok so for now just merge it' 'so merge it' 'yes merge' 'yes please merge it' 'also merge #41' 'alright merge it' 'akkor mergeld' 'will you merge it' 'I need you to merge #41' 'feel free to merge' \
+'Merge #41, then tell me if CI fails.' 'merge it and ping me once it is in' 'merge it, let me know when it is done' 'merge it and tell me if it does not go through' 'mergeld, majd szólj ha kész' \
+'mergeld, ne varj ram' 'merge it, no need to wait for me' "merge it, don't wait for CI"; do said "$s"; lg "$M"; done | xargs)"
+check "BLOCK: after an opener, an ask naming another PR, held back or put off (by a condition, a later clause or before a report), a question, an undoing, a mention, a past or a plan of the user's" "$(printf '2 %.0s' {1..27} | xargs)" \
+  "$(for s in 'for now merge #40' 'for now dont merge' 'for now leave the merge' 'Merge it, but only if CI passes' 'merge it, after I look' 'Merge #41 when CI is green' 'merge it, though maybe wait for CI' 'merge it, but later' \
+'merge it, only do it if CI is green' 'merge it, check if CI is green after' 'merge it, let me know, wait actually dont' 'ping me, dont merge' 'tell me when you merge it' \
+'did you merge it' 'should we merge this' 'is it safe to merge' 'how do I merge this' 'ready to merge' 'revert merge' 'cancel the merge' 'avoid merge commits' "I'll merge it" \
+'so the merge went fine' 'ok the merge is done' 'yes merged' 'great merge' 'next merge should be clean'; do said "$s"; lg "$M"; done | xargs)"
 printf '## Merging\n- Merge each PR as soon as it is ready (gates, CI)\n' >> "$HOME/.mergeworthy/projects/o/r.md"
 check "a merge under the project file's standing order passes with no ask, or with another PR held back; BLOCK: the user's last message holding it back wins over the order, a past 'merged' too" "0 0 2 2 2 2" \
   "$(said 'thanks'; lg "$M") $(said "Don't merge #40."; lg "$M") $(said 'Dont merge pr when ready, I want to see it.'; lg "$M") $(said 'ne mergeld'; lg "$M") $(said "Don't merge #41."; lg "$M") $(said "I don't want it merged yet."; lg "$M")"
@@ -5144,6 +5153,8 @@ check "BLOCK: gh release create and npm publish unasked; asked, or a dry run, or
 $(said 'release notes kellenek, ne publisholj'; lg 'pnpm publish' "$TCO") $(said 'Write release notes for v1.2.0.'; lg 'gh release create v1.2.0 -R o/r') $(said 'Release notes for v1.2.0, please.'; lg 'gh release create v1.2.0 -R o/r') $(said 'release 1.2.0 please'; lg 'gh release create v1.2.0 -R o/r') $(lg 'pnpm publish' "$TCO") \
 $(said 'Released v1.2.0 yesterday.'; lg 'gh release create v1.2.0 -R o/r') $(said 'Published v1.2.0 yesterday.'; lg 'pnpm publish' "$TCO") \
 $(said 'Release v1.2.0. It must not be released until I approve it.'; lg 'gh release create v1.2.0 -R o/r') $(said 'Publish v1.2.0. It must not be published until I approve it.'; lg 'pnpm publish' "$TCO")"
+check "a release asked for after for now or so, or with a clause asking to be told after it, passes; BLOCK: a mention or an undoing after an opener" "0 0 0 2 2 2 2 2" \
+  "$(for s in 'for now lets just merge the sentry pr and release it' 'so release' 'release it and tell me when it is out' 'for now release notes only' 'great release' 'next release should include it' 'cancel release' 'yes release notes'; do said "$s"; lg 'gh release create v1.2.0 -R o/r'; done | xargs)"
 said 'looks good'
 check "BLOCK: a publish from a project file's repo named by -C, --dir= or --prefix, or past a --filter; from a dir of no repo it passes" "2 2 2 2 0" \
   "$(lg "pnpm -C $TCO publish") $(lg "pnpm --dir=$TCO publish -r") $(lg "npm --prefix $TCO publish") $(lg 'pnpm --filter x publish' "$TCO") $(lg "pnpm -C $T publish" "$TCO")"
@@ -5165,6 +5176,8 @@ check "BLOCK: a push whose remote.<name>.push sends it to the default branch, na
   "$(lg 'git push origin' "$OWN") $(lg 'git push' "$OWN") $(git -C "$OWN" config remote.origin.push 'refs/heads/*:refs/heads/*'; lg 'git push origin' "$OWN") $(grep -c "comes from git's config" "$T/err") \
 $(git -C "$OWN" config --unset remote.origin.push; git -C "$OWN" config push.default matching; lg 'git push' "$OWN") $(grep -c "comes from git's config" "$T/err")"
 git -C "$OWN" config --unset push.default
+said 'looks good'; check "a push to the default branch asked for after for now, or as a release's, passes; BLOCK: one asked for as another branch's after for now" "0 0 2" \
+  "$(for s in 'for now just push' 'for now lets just merge the sentry pr and release it' 'for now push to scratch'; do said "$s"; lg 'git push origin HEAD:main' "$OWN"; done | xargs)"
 said 'looks good'; printf '## Merging\n- Push to main once the gates pass\n' >> "$HOME/.mergeworthy/projects/nitedani-agent/notes.md"
 check "a push to the default branch under the project file's \`- Push to main\` order passes, with another branch held back as words or inline code; without a project file it is unchanged" "0 0 0 0" \
   "$(lg 'git push origin HEAD:main' "$OWN") $(said "Don't push to scratch."; lg 'git push origin HEAD:main' "$OWN") $(said 'Don’t push to `scratch`.'; lg 'git push origin HEAD:main' "$OWN") $(said 'looks good'; rm "$HOME/.mergeworthy/projects/nitedani-agent/notes.md"; lg 'git push origin HEAD:main' "$OWN")"
@@ -5177,6 +5190,8 @@ check "BLOCK: an ask-first command unasked, at any command position and inside s
 $(lg 't3-update 2>&1 | tail -5') $(lg 'systemctl --user restart t3code') $(lg 'ssh -p 22 h t3-update') $(lg 'echo t3-update')"
 check "an ask-first command the user's last message asks for passes, over ssh too; BLOCK: a question, a negation, a mention or a past 'updated'" "0 0 2 2 2 2" \
   "$(said 'update t3'; lg "ssh collab@opensource 'export PATH=x; t3-update'") $(lg 't3-update') $(said 'should we update t3?'; lg 't3-update') $(said 'ne frissítsd még'; lg 't3-update') $(said 'Review the update plan.'; lg 't3-update') $(said $'Claude Code 2.1.319\nupdated 6 d ago'; lg 't3-update')"
+check "an ask-first command asked for after for now, or with a clause asking to be told after it, passes" "0 0" \
+  "$(for s in 'for now just update t3' 'restart it and tell me if it fails'; do said "$s"; lg 't3-update'; done | xargs)"
 rt() { # command [cwd]: refused unasked, then passing once the user replies as the refusal says
   said 'looks good'; local a; a=$(lg "$@"); said "$(grep -o 'reply `[a-z]*`' "$T/err" | tr -d '`' | cut -d' ' -f2)"; echo "$a $(lg "$@")"; }
 mkdir -p "$HOME/.mergeworthy/projects/nitedani-agent"; echo '# notes' > "$HOME/.mergeworthy/projects/nitedani-agent/notes.md"

@@ -165,9 +165,16 @@ ASKED_FOR = {'merge': (r'merge\w*', r'Merge each PR as soon as it is ready\b', '
              'release': (r'releas\w*|publish\w*', None, 'release'),
              'ask-first': (r'update\w*|restart\w*|frissít\w*', None, 'update')}
 NEGATED = re.compile(r"\b(?:don'?t|\w+n['’]t|do not|never|not|no|who|why|ne|nem|majd|várj|varj|wait|later|after|once|when|until|if|ha|miután)\b", re.I)
-# an ask opens a clause, after a list bullet, a please, a "let's" or a "can you" at most; "merge conflicts", "release notes" and "update plan"
-# name a thing, not the action
-LEAD = r"(?:[-*•]\s*)?(?:(?:please|pls|ok(?:ay)?|now|just|then|aztán|let['’]?s|let us|i want you to|i'd like you to|(?:can|could|would) you|go ahead and|you can|kérlek|kerlek|most)\W+)*"
+# a clause that opens with another request to report back ("then tell me if CI fails") says nothing about the action, and "don't wait" holds nothing back
+FOLLOW_UP = re.compile(r"(?:(?:then|and|aztán|aztan|és|majd|just|please|pls)\W+)*(?:(?:tell|ping|notify|message|show)\s+me|let\s+me\s+know|report\s+back|szólj|szolj|jelezz|írd\s+meg|ird\s+meg)\b", re.I)
+NO_WAIT = re.compile(r"\b(?:don'?t|do not|no need to|ne|nem kell)\s+(?:wait|várj|varj|várni|varni)\b", re.I)
+# an ask opens a clause, after a list bullet and the words of these classes at most; each class is a reason a word may stand there, so a word
+# missing from one is added to its class. "merge conflicts", "release notes" and "update plan" name a thing, not the action
+OPENERS = {'courtesy': r'please|pls|plz|kérlek|kerlek|légyszi|legyszi',
+           'go-ahead': r'ok(?:ay)?|oké|oke|yes|yeah|yep|sure|alright|igen|rendben',
+           'sequence': r'now|just|then|so|also|for now|aztán|aztan|most|akkor|szóval',
+           'request': r"let['’]?s|let us|i want you to|i'd like you to|i need you to|(?:can|could|would|will) you|go ahead and|you can|feel free to"}
+LEAD = rf"(?:[-*•]\s*)?(?:(?:{'|'.join(OPENERS.values())})\W+)*"
 MENTION = r'(?!\s+(?:conflicts?|requests?|notes?|plans?|queue)\b)'
 try: ASK_FIRST = [l.strip() for l in open(os.path.expanduser('~/.mergeworthy/ask-first')) if l.strip() and not l.startswith('#')]
 except OSError: ASK_FIRST = []  # the machine's commands that restart what others use, one pattern a line
@@ -177,9 +184,10 @@ PR_REF = re.compile(r'(?:github\.com/([\w.-]+/[\w.-]+)/pull/|gitlab\.com/([\w./-
 def asks(text, kind, repo=None, num=None, branch=None):
     """Whether text (a message the user typed) asks for kind on its target, read by the clauses (split at commas, semicolons and an "and"
     before a word) of each sentence holding kind's words, once URLs, `(Re-invocation of` lines and the word mergeworthy are taken out: False
-    when a clause negates them or puts them off, naming the target or none; True when a clause opens with them in no past form (-ed), the
-    sentence is no question, and the clause names the target: PR num of repo when it (else the text) names PRs, the branch pushed when it
-    names a branch (`to <branch>`, `<branch> branch`); else None."""
+    when a clause negates them or puts them off, naming the target or none (a "don't wait", or a clause asking to be told that names neither
+    them nor a target, holds nothing back); True when a clause opens with them in no past form (-ed), the sentence is no question, and the
+    clause names the target: PR num of repo when it (else the text) names PRs, the branch pushed when it names a branch (`to <branch>`,
+    `<branch> branch`); else None."""
     refs = lambda t: [((m[1] or m[2] or m[3] or '').lower(), m[4]) for m in PR_REF.finditer(t)]
     bare = lambda t: re.sub(r'https?://\S+|\bmergeworthy\w*|^\s*\(Re-invocation of .*', ' ', t, flags=re.I)
     words = rf'\b(?:{ASKED_FOR[kind][0]})\b{MENTION}'
@@ -191,7 +199,7 @@ def asks(text, kind, repo=None, num=None, branch=None):
     for s in re.split(r'(?<=[.!?])\s+|\n', text):
         if not re.search(words, bare(s), re.I): continue
         clauses = re.split(r'[,;]|\b(?:and|és)\b(?!\s*(?:[#!]\d|https?:|[\w.-]+/[\w./-]*[#!]\d))', s)
-        held = [c for c in clauses if NEGATED.search(bare(c))]
+        held = [c for c in clauses if (re.search(words, bare(c), re.I) or named(c) or not FOLLOW_UP.match(bare(c).strip())) and NEGATED.search(NO_WAIT.sub(' ', bare(c)))]
         if any(not named(c) or hits(named(c)) for c in held): return False
         found = found or not s.rstrip().endswith('?') and any(
             c not in held and re.match(LEAD + r'(?!\w*ed\b)' + words, bare(c).strip(), re.I) and (not (t := named(c) or (refs(text) if kind == 'merge' else [])) or hits(t)) for c in clauses) or None
