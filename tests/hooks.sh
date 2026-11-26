@@ -3373,7 +3373,7 @@ check "codex login under T3 passes" 0 "$(cx th 'codex login status')"
 # ---------- pre-design-gate: Tier M code waits for prior-art.md and decisions/*.md ----------
 D="$T/dg"; mkdir -p "$D" "$D-work"; git -C "$D" init -q
 (cd "$D" && bash "$R/bin/pr-steps" preflight 'none, because the design gate is tested here' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
-gate() { python3 -c 'import json,sys; print(json.dumps({"tool_name":sys.argv[1],"tool_input":json.loads(sys.argv[2]),"cwd":sys.argv[3]}))' "$1" "$2" "$D" | python3 "$R/hooks/pre-design-gate.py" 2>/dev/null; echo $?; }
+gate() { python3 -c 'import json,sys; print(json.dumps({"tool_name":sys.argv[1],"tool_input":json.loads(sys.argv[2]),"cwd":sys.argv[3]}))' "$1" "$2" "$D" | python3 "$R/hooks/pre-design-gate.py" 2>"$T/dg.err"; echo $?; }
 check "no scope.md: an edit passes" 0 "$(gate Edit "{\"file_path\":\"$D/a.ts\"}")"
 printf 'Tier: M, because x\n' > "$D-work/scope.md"
 check "BLOCK: Tier M edit with no prior art or decision" 2 "$(gate Edit "{\"file_path\":\"$D/a.ts\"}")"
@@ -3382,6 +3382,8 @@ check "a research agent passes" 0 "$(gate mcp__t3-code__delegate_task '{"role":"
 check "an artifact-root write passes" 0 "$(gate Write "{\"file_path\":\"$D-work/prior-art.md\"}")"
 touch "$D-work/prior-art.md"; mkdir -p "$D-work/design"; touch "$D-work/design/x.debate.md" "$D-work/design/x.review.md"
 check "BLOCK: Tier M edit with only the design debate and review records" 2 "$(gate Edit "{\"file_path\":\"$D/a.ts\"}")"
+check "the refusal waits for the agreed design, design step 9" "2 1" "$(gate Edit "{\"file_path\":\"$D/a.ts\"}") $(grep -c 'design step 9) in decisions/<name>.md' "$T/dg.err")"
+check "with no decision, a Tier M prototype written into a plain folder outside any checkout passes" 0 "$(gate Write "{\"file_path\":\"$T/dg-proto/a.ts\"}")"
 mkdir -p "$D-work/decisions"; touch "$D-work/decisions/x.md"
 check "Tier M edit passes once prior art and a decision exist" 0 "$(gate Edit "{\"file_path\":\"$D/a.ts\"}")"
 DW="$HOME/.mergeworthy/work/dg"; D="$DW/repo"; mkdir -p "$D"; git -C "$D" init -q  # the work folder holding the checkout
