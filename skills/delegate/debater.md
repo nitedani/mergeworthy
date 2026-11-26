@@ -2,7 +2,7 @@
 
 Standards: `~/.mergeworthy/current/skills/code/SKILL.md` §Earn every line, §Deep modules. Include `delegate/agent.md`.
 
-One fresh-context agent per provider, none seeing another's report (`design` step 3).
+No debater sees another's report (`design` step 3).
 
 ```
 The question: <quoted, with its link>. The thread record, if any: <abs>/drafts/<thread>/thread-context.md.
