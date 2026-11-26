@@ -1116,6 +1116,10 @@ def check_processes(segs):
             block("this signals processes a search picked (pkill, killall, or a kill of PIDs from pgrep, pidof, ps or /proc in this command, or -1, every process): they can be other sessions'. "
                   "Kill the PID you started (`<cmd> & pid=$!` … `kill $pid`), its children (`pkill -P $pid`), or a PID you looked up and checked in an earlier command (`kill 1234`)")
 
+# gh and glab release create options that take a value: the word after one is not the tag
+RELEASE_VALUED = {'-R', '--repo', '--target', '-t', '--title', '-n', '--notes', '-F', '--notes-file', '--notes-start-tag', '--discussion-category',
+                  '-r', '--ref', '--name', '-N', '-a', '--assets-links', '-D', '--released-at', '-m', '--milestone', '-T', '--tag-message', '--package-name'}
+
 def check(t, has_cd):
     after = getattr(t, 'after', ())
     env = env_of(t)
@@ -1127,7 +1131,7 @@ def check(t, has_cd):
     if ASK_FIRST: ask_first(t)
     if p in ('gh', 'glab') and a[:2] == ['release', 'create'] and '--help' not in a and '-h' not in a:
         need_ask('release', f'`{p} release create`', gh_repo(a[2:], env, run_dir) if p == 'gh' else gitlab_repo(a[2:], run_dir),
-                 subject=next((x for x in a[2:] if re.fullmatch(r'v?\d+(?:\.\d+)+\S*', x)), None))  # its tag, when it is a version
+                 subject=next((x for i, x in enumerate(a[2:]) if not x.startswith('-') and a[1 + i] not in RELEASE_VALUED), None))
     if p == 'glab' and a[:1] == ['mr'] and a[1:2] in (['merge'], ['accept']) and '--help' not in a and '-h' not in a:
         mr = mr_target(a[2:], run_dir)
         need_ask('merge', f"merging {mr[0]}!{mr[1] or mr[2]}", mr[0], mr[1])
