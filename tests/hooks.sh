@@ -5156,6 +5156,7 @@ check "BLOCK: a publish from a project file's repo named by -C, --dir= or --pref
 check "BLOCK: a publish whose -C after publish names a project file's repo; one whose -C there names a dir of no repo passes" "2 0" "$(lg "pnpm publish -C $TCO") $(lg "pnpm publish -C $T" "$TCO")"
 check "GitLab: BLOCK: glab mr merge, its alias accept, and glab release create unasked, naming the MR; asked, they pass" "2 1 2 2 0 0" \
   "$(said 'looks good'; lg 'glab mr merge 41 -R o/r') $(grep -c 'merging gitlab.com/o/r!41 lands on o/r' "$T/err") $(lg 'glab mr accept 41 -R o/r') $(lg 'glab release create v1.2.0 -R o/r') $(said 'merge it'; lg 'glab mr merge 41 -R o/r') $(said 'release it'; lg 'glab release create v1.2.0 -R o/r')"
+check "a release asked for by its prerelease tag passes, on gh and glab" "0 0" "$(said 'Release v1.2.0-rc.1'; lg 'gh release create v1.2.0-rc.1 -R o/r') $(lg 'glab release create v1.2.0-rc.1 -R o/r')"
 gql nitedani-agent nitedani-agent; mkdir -p "$HOME/.mergeworthy/projects/nitedani-agent"; echo '# notes' > "$HOME/.mergeworthy/projects/nitedani-agent/notes.md"; echo '{"default_branch":"main"}' > "$FX/repos_nitedani-agent_notes"
 said 'looks good'
 check "BLOCK: a push to the default branch unasked, naming it; to another branch, or asked, it passes" "2 1 0 0" \

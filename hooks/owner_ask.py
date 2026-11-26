@@ -55,7 +55,7 @@ def asks(text, kind, repo=None, num=None, branch=None, subject=None):
             return re.sub(rf"(\bpush\w*\s+)(?!(?:{PRONOUN}|{TAIL}|{OBJECTS['push']}|the|an?|to|and|then)(?![\w-]))([\w./-]*[\w-])",
                           lambda m: m[1] + tok(False), c, flags=re.I)
         if kind == 'release':
-            return re.sub(r'\bv?\d+(?:\.\d+)+\b', lambda m: tok(subject is None or m[0].lower().lstrip('v') == subject.lower().lstrip('v')), c)
+            return re.sub(r'\bv?\d+(?:\.\d+)+(?:[-+][\w.-]*\w)?', lambda m: tok(subject is None or m[0].lower().lstrip('v') == subject.lower().lstrip('v')), c)
         own = set(re.split(r'[^\w.]+', (subject or '').lower())) - {''}  # an ask-first command's words: "update t3" names t3-update
         return re.sub(r'[\w.]+', lambda m: tok(True) if not re.fullmatch(words, m[0], re.I) and any(o.startswith(m[0].lower()) for o in own) else m[0], c)
     def stance(m, question):  # 'holds', 'asks' or None for clause m, marked and bare

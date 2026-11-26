@@ -182,3 +182,7 @@ push	main	True	Push légyszi
 push	main	True	Push kérlek
 push	main	None	Push scratch.
 push	main	None	Push main.backup
+release	v1.2.0-rc.1	True	Release v1.2.0-rc.1
+release	v1.2.0-rc.1	True	Release v1.2.0-rc.1.
+release	v1.2.0-rc.1	None	Release v1.2.0.
+release	v1.2.0	None	Release v1.2.0-rc.1
