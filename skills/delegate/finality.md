@@ -2,7 +2,7 @@
 
 Standards: `~/.mergeworthy/current/skills/code/SKILL.md` §Deep modules, §Phantom gate, §Removal gate. Include `delegate/agent.md`.
 
-The user's prompt, verbatim; `finality`'s steps say which part each agent gets. Its words:
+The prompt below, verbatim with its slots filled; `finality`'s steps say which part each agent gets. Its words:
 - **The orchestrator** is the main session: it starts every agent the prompt names (the mappers, `finality` step 3's branch agents, the converging agent); each agent does its share itself, without starting agents.
 - **§A, the shared node schema** is the per-function field list under PHASE A.
 - **§B** is PHASE B; **§B½** is PHASE B½; Phase C is the implementer's (`delegate/implementer.md`).

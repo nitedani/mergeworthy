@@ -12,11 +12,11 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 | `design` | `delegate`, `pull-request`, `code`, `finality`, `writing`, `post`, `converge` |
 | `docs` | `delegate`, `converge`, `code` |
 | `evidence` | `delegate`, `converge`, `post` |
-| `finality` | `delegate`, `code`, `post`, `design`, `converge` |
+| `finality` | `delegate`, `code`, `post`, `converge` |
 | `merging` | `code`, `converge`, `post`, `task`, `writing` |
 | `open-issue` | `pull-request`, `task`, `delegate`, `evidence`, `writing`, `post` |
 | `post` | `pull-request`, `open-issue`, `writing`, `delegate`, `task` |
-| `pull-request` | `delegate`, `post`, `evidence`, `design`, `finality`, `code`, `task`, `docs`, `converge`, `merging`, `writing`, `reply` |
+| `pull-request` | `delegate`, `post`, `evidence`, `design`, `finality`, `code`, `docs`, `task`, `converge`, `merging`, `writing`, `reply` |
 | `reply` | `task`, `post`, `converge`, `design`, `merging`, `delegate` |
 | `review` | `delegate`, `code`, `post`, `writing` |
 | `rules` | `task`, `open-issue`, `delegate`, `reply` |
@@ -62,8 +62,8 @@ flowchart TB
   s0 -.-> r4[["design"]]
   s0 -.-> r5[["finality"]]
   s0 -.-> r6[["code"]]
-  s0 -.-> r7[["task"]]
-  s0 -.-> r8[["docs"]]
+  s0 -.-> r7[["docs"]]
+  s0 -.-> r8[["task"]]
   s0 -.-> r9[["converge"]]
   s0 -.-> r10[["merging"]]
   s0 -.-> r11[["writing"]]
@@ -526,9 +526,8 @@ flowchart TB
   s3 -.-> r4[["code"]]
   s4 -.-> r5[["delegate"]]
   s5 -.-> r6[["post"]]
-  s5 -.-> r7[["design"]]
-  s6 -.-> r8[["converge"]]
-  s6 -.-> r9[["delegate"]]
+  s6 -.-> r7[["converge"]]
+  s6 -.-> r8[["delegate"]]
   start --> g0
 ```
 

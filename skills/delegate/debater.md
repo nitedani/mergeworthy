@@ -5,7 +5,7 @@ Standards: `~/.mergeworthy/current/skills/code/SKILL.md` §Earn every line, §De
 One fresh-context agent per provider, none seeing another's report (`design` step 3). The main session rates each recommendation (`pull-request §Rating`) and decides.
 
 ```
-The question: <the maintainer's comment, with its link>. The thread record: <abs>/drafts/<thread>/thread-context.md.
+The question: <quoted, with its link>. The thread record, if any: <abs>/drafts/<thread>/thread-context.md.
 The evidence so far: the flow traced in code (`design` step 1) <path:line list>; what main does: <...>; measurements: <...>.
 The project file: <project file path>.
 

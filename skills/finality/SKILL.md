@@ -5,7 +5,7 @@ description: "The finality pass, for code that has drifted through many patches,
 
 # Finality
 
-Converges code or a design to the final state that will need no rewrite. The prompt is `delegate/finality.md`, the user's text; each step gives one agent its part. Called by `converge` step 0, `design` step 7 and `pull-request` steps 5–6; when done, return there.
+Converges code or a design to the final state that will need no rewrite. The prompt is `delegate/finality.md`'s, filled; each step gives one agent its part. Called by `converge` step 0, `design` step 7 and `pull-request` steps 5–6; when done, return there.
 
 ## Steps
 
@@ -15,10 +15,10 @@ Converges code or a design to the final state that will need no rewrite. The pro
 3. **Phase B, imagine.** You write the clean problem first, as its users would state it, with no current design, file names or project terms. Then 6–9 frames, from `delegate/finality.md`'s table and 1 or 2 from the problem itself; 3 branch agents in parallel, one per provider (`delegate §Model class`), each designing as the personas of its 2 or 3 frames; then one converging agent with the graph and every branch's lists. You rate the pinnacle and decide.
    Open: `delegate/finality.md` (PHASE B) · Record: a file with a line `Pinnacle: <the design>` and a line `Plan:`, then one numbered line per step · Run (on a branch): `pr-steps finality <that file>` · Hook: pre-bash-guard (a code file's 6th change since review waits for it)
 4. **Phase B½, hunt phantom fixes:** the graph queries by Phase B's converging agent; instrumenting guards, running the full suite and e2e, and the removals by the implementer.
-   Open: `delegate/finality.md` (PHASE B½); `code §Removal gate` · Record: the counters
+   Open: `delegate/finality.md` (PHASE B½); `code §Removal gate` · Record: `<work folder>/finality/<name>-phantoms.md`: suspects, counters, removals
 5. **Phase C, converge:** behavior-preserving, revert-ready commits through an implementer, gates after each.
    Open: `delegate/implementer.md` · Record: commits
-6. **The deliverable is the short design doc** (the graph is working material), posted through `post` (a gist counts) unless the repo keeps design docs. In a design thread, update the WIP comment from the map (`design §WIP comment`).
-   Open: `post` · Record: the doc's link
+6. **The deliverable is the short design doc** (the graph is working material), posted through `post` (a gist counts) unless the repo keeps design docs.
+   Open: `post` · Record: the doc's link or repo path
 7. **Owner-Safe closure,** last in `converge` step 5: it needs the reviewer's and the shape pass's evidence.
-   Open: `delegate/finality.md` (the closure paragraph and its header's glossary) · Record: the closure report
+   Open: `delegate/finality.md` (the closure paragraph and its header's glossary) · Record: `<work folder>/finality/<name>-closure.md`
