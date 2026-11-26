@@ -164,7 +164,7 @@ if req.tool in ('Agent', 'Task') and req.t3 and req.background:
                      "Launch it with delegate_task (mergeworthy:delegate step 4), or with run_in_background: false for a child that finishes within this turn.\n")
     refused()
 # T3 heads a delegated task with "the agent in T3 thread <id> sent this message, not the user"; under that line Haiku declined 8 of
-# 86 memory refreshes launched with role general or none, and none of 24 with role research, which T3 opens with "Act as the
+# 86 memory refreshes launched with role general or none, and none of 17 with role research, which T3 opens with "Act as the
 # research sub-agent for this task" (Claude transcripts on private, 2026-11-20 to 11-25)
 if k.refresh and req.t3 and str(req.tool).endswith('delegate_task') and req.role != 'research':
     sys.stderr.write("BLOCKED: launch the memory refresh with role research: T3 then opens its task with \"Act as the research sub-agent\"; "
