@@ -132,7 +132,7 @@ def order(root, live=False):
             f"`memory-prep digest {root}` and read it.")
     return (f"IMPORTANT: {path(root)} is behind your session log. If you are a delegated sub-agent, ignore this. "
             + ("" if live else "Before resuming: ")
-            + f"run `memory-prep prep {root}`; start ONE Haiku at high effort (T3 Code: delegate_task, mode async) on the brief file it names; "
+            + f"run `memory-prep prep {root}`; start ONE Haiku at high effort on the brief file it names (T3 Code: delegate_task, role research, mode async, task `Follow the brief at <its path> exactly.`); "
             + (side if live else wait))
 
 def section(text, heading):

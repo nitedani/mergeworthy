@@ -80,7 +80,7 @@ Learning runs on demand: `task` step 4 runs `project-learn list` whenever work s
 
 ### `memory-prep` (`task` step 8)
 
-`memory-prep init <root> <T3 thread id>`, run from the main session's checkout, records it, its thread, its session and its session-log dir. `memory-prep prep <root>` extracts the user's prompts and the last text of each main session turn logged after `memory.md`'s `covered-until` position from the main session's own logs into `memory-new.txt`, and writes the brief sending one Haiku to `memory-refresh`. `memory-prep digest <root>` prints the Standing part, one line per item, capped at 7,500 characters.
+`memory-prep init <root> <T3 thread id>`, run from the main session's checkout, records it, its thread, its session and its session-log dir. `memory-prep prep <root>` extracts the user's prompts and the last text of each main session turn logged after `memory.md`'s `covered-until` position from the main session's own logs into `memory-new.txt`, and writes the brief sending one Haiku to `memory-refresh`. Under T3 Code pre-agent-dedupe refuses that launch unless its role is `research` (T3 then opens the task with "Act as the research sub-agent"; without it Haiku declined 8 of 86 refreshes as another agent's message), and spares it the research `Topic:` check. `memory-prep digest <root>` prints the Standing part, one line per item, capped at 7,500 characters.
 
 ### `agent-job` (`delegate` step 6)
 
