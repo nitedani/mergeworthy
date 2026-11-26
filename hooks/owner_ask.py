@@ -42,7 +42,7 @@ def asks(text, kind, repo=None, num=None, branch=None, subject=None):
     an ask-first command's line), False when it holds kind back, None when it says neither."""
     bare = lambda t: re.sub(r'https?://\S+|\bmergeworthy\w*|^\s*\(Re-invocation of .*', ' ', t, flags=re.I)
     words = rf'\b(?:{ASKED_FOR[kind][0]})\b{MENTION}'
-    ask = re.compile(rf"{LEAD}(?:‹t›\s*)?{PAST}{words}(?:\s+be\b)?\s*(?:{PRONOUN}|{OBJECTS[kind]})?\s*(?:(?:(?:the|a|az)\s+)?‹t›(?:\s*-\w+)?)?"
+    ask = re.compile(rf"{LEAD}(?:‹t›\s*)?{PAST}{words}(?:\s+be\b)?\s*(?:{PRONOUN}|(?:(?:all|every|each|both)(?:\s+of)?\s+)?(?:{OBJECTS[kind]}))?\s*(?:(?:(?:the|a|az)\s+)?‹t›(?:\s*-\w+)?)?"
                      rf"(?:{NAME if kind in ('release', 'push') else '(?!)'})?(?:\s+(?:in)?to\s+(?:the\s+)?[\w./-]+)?(?:[\s,]*{TAIL})*[\s.!?]*", re.I)
     def marked(c):  # c with each target it names as ‹t› (this command's) or ‹x› (another)
         tok = lambda ours: ' ‹t› ' if ours else ' ‹x› '

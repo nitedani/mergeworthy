@@ -192,3 +192,8 @@ merge	o/r#41	None	Merge `#40`.
 release	v1.2.0	True	Release `v1.2.0`.
 ask-first	systemctl --user restart t3code	True	Restart `t3code` please.
 push	main	True	Push to `main`.
+merge	o/r#41	True	Merge all the PRs.
+merge	o/r#41	True	merge all of the prs please
+push	main	True	Push all the commits.
+push	main	True	push all changes
+merge	o/r#41	None	Merge all the other PRs.
