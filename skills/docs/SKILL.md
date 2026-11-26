@@ -24,7 +24,7 @@ The voice is the project's, never the warm first person of a post.
    - A sentence that says when something applies states its exact condition and one example with real names, in words the docs already use.
    - Keep sections near their siblings' length; one several times longer is probably two pages, or details that don't belong.
    Record: the draft
-4. **The docs reader:** a fresh agent with only the rendered page and two sibling pages. Rule on its findings; fix in step 3's text the ones you keep and continue it while `delegate §Review rounds` allows (ledger `drafts/docs.ledger.md`); what stays open goes in the report.
+4. **The docs reader:** a fresh agent with only the rendered page and two sibling pages. Rule on its findings; fix in step 3's text the ones you keep; a later round goes to a fresh reader while `delegate §Review rounds` allows (ledger `drafts/docs.ledger.md`); what stays open goes in the report.
    Open: `delegate/docs-reader.md` · Record: its report
 5. **Gates:** the project's docs lint and spellcheck; update `llms.txt` or the index where the project keeps one. In a PR, `converge` covers the docs with the code; docs that disagree with the code: `code §Docs are a claim`.
    Open: the project file's Gates · Record: the gates log
