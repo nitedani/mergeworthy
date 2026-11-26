@@ -2063,7 +2063,7 @@ child_log "$JD/orch/subagents/agent-a5ub.jsonl" "Execute $T/jobs/sub-ticket.md e
 child_log "$JD/t3rev.jsonl" "Execute $T/jobs/t3rev-ticket.md exactly" 5 text; note 'Delegated task node:delegated-task:rev (rev) [interrupted]: Stopped.' 5.5 user
 python3 -c 'import json,sys,time; print(json.dumps({"type":"assistant","timestamp":time.strftime("%Y-%m-%dT%H:%M:%S.000Z",time.gmtime(time.time()-300)),"message":{"content":[{"type":"text","text":"Report written."}]}}))' >> "$JD/t3rev.jsonl"
 touch -d '5 minutes ago' "$JD/t3rev.jsonl"
-note 'Delegated task node:delegated-task:note (note) [completed]: Report written.' 4 user
+note 'Delegated task node:delegated-task:note (note) in child thread thread:delegated-task:note [completed]: Report written.' 4 user
 note "$(printf '<task-notification>\n<task-id>a5ub</task-id>\n<status>completed</status>\n<summary>Agent "sub" finished</summary>')" 4 attachment
 python3 -c 'import json,time; print(json.dumps({"type":"user","timestamp":time.strftime("%Y-%m-%dT%H:%M:%S.000Z",time.gmtime(time.time()-240)),"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"fg1","content":"Report written."}]},"toolUseResult":{"status":"completed","agentId":"f6g"}}))' >> "$T/tr.jsonl"  # a foreground Agent's result
 python3 -c 'import glob,json,os,re,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600, "launched": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if re.search("(t3note|t3rev|sub|fg)-ticket", open(f).read())]'
