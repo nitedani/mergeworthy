@@ -10,8 +10,8 @@ import shellcmd
 from shellcmd import parse, segments, prog, script, opt, api_call, field_name, TEXT_FREE, discussion_post, discussion_thread_of, names_discussion_mutation, env_of, origin, plain_create, PLAIN, new_post_drafts, no_instructions_read, by_agent, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Unseen, Where
 from records import branch_record, commit_file, DRIFT_REF, LIMIT, no_approach, no_preflight, STORE
 import drift, own_actions, review_launch, steward, post_words, threads_file, transcript_facts, work_folder
-from t3_tasks import under_t3, typed
-from owner_ask import ASKED_FOR, asks
+from t3_tasks import under_t3
+from owner_ask import ASKED_FOR, asks, last_typed
 def missing_steps(d, head=None):
     """(head, the converge steps it lacks): head is a push's pushed commit, else HEAD."""
     head = head or subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
@@ -162,18 +162,6 @@ def push_before_gates(url):
 try: ASK_FIRST = [l.strip() for l in open(os.path.expanduser('~/.mergeworthy/ask-first')) if l.strip() and not l.startswith('#')]
 except OSError: ASK_FIRST = []  # the machine's commands that restart what others use, one pattern a line
 
-def last_typed():
-    """The message the user last typed in this session (t3_tasks.typed); '' with none."""
-    try:
-        for l in shellcmd.rlines(d.get('transcript_path') or ''):
-            if b'"user"' not in l: continue
-            try: e = json.loads(l)
-            except ValueError: continue
-            if isinstance(e, dict) and e.get('type') == 'user' and not e.get('isSidechain') and not e.get('isMeta') and (t := typed((e.get('message') or {}).get('content'))):
-                return t
-    except OSError: pass
-    return ''
-
 def project_file(repo):
     """The text of repo's project file (owner/repo, or a GitLab project's path), None without one."""
     try: return open(os.path.expanduser(f'~/.mergeworthy/projects/{repo}.md'), errors='replace').read() if repo else None
@@ -188,7 +176,7 @@ def need_ask(kind, what, repo=None, num=None, branch=None, strict=False, subject
     text = project_file(repo)
     if text is None and kind != 'ask-first' and not strict: return
     sec = re.search(r'^## Merging\b[^\n]*\n(.*?)(?=^## |\Z)', text or '', re.M | re.S)
-    asked = asks(last_typed(), kind, repo, num, branch, subject)
+    asked = asks(last_typed(d.get('transcript_path')), kind, repo, num, branch, subject)
     if asked or asked is None and order and sec and re.search(r'^[-*] +' + order.format(branch=re.escape(branch or '')), sec[1], re.M):
         return
     if kind == 'ask-first':

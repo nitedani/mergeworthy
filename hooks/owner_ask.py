@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Whether a message the user typed asks for a merge, a push to a default branch, a release or an ask-first command (pre-bash-guard).
 Its cases are tests/owner-ask.tsv."""
-import re
+import json, re
+import shellcmd
+from t3_tasks import typed
 
 # What runs only on the owner's ask: the words of a sentence that asks for it, the project file's `## Merging` order that stands in for one,
 # and the reply that asks for it
@@ -73,3 +75,15 @@ def asks(text, kind, repo=None, num=None, branch=None, subject=None):
             if st == 'holds' and on(m): return False
             found = found or st == 'asks' and ('‹t›' in m or on(marked(text))) or None
     return found
+
+def last_typed(transcript_path):
+    """The message the user last typed in the session whose transcript is at transcript_path (t3_tasks.typed); '' with none."""
+    try:
+        for l in shellcmd.rlines(transcript_path or ''):
+            if b'"user"' not in l: continue
+            try: e = json.loads(l)
+            except ValueError: continue
+            if isinstance(e, dict) and e.get('type') == 'user' and not e.get('isSidechain') and not e.get('isMeta') and (t := typed((e.get('message') or {}).get('content'))):
+                return t
+    except OSError: pass
+    return ''
