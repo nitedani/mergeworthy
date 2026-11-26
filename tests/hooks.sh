@@ -1370,14 +1370,18 @@ check "on Antigravity a review, a design, research and a finality branch pass, b
 Fan-out: finality step 3') $(impl '{}' antigravity review 'Review it') $(impl '{}' antigravity research 'Research the cache')"
 check "under Antigravity a launch on claudeAgent passes, and so does one with no target under Claude Code; a review on claude_2 (a Claude instance) still needs its Fallback line" "0 0 2" \
   "$(impl '{"providerInstanceId":"claudeAgent"}' antigravity research 'Research the cache') $(impl '{}' '' research 'Research the cache') $(rev '{"providerInstanceId":"claude_2"}' 'Review it')"
-# delegate §Model class's per-provider seat: one brief's problem, a launch per provider, each with its own title, clientRequestId and output
-printf 'Debate the cache question.\nFan-out: design step 3\n' > "$T/fx/seat-brief.md"
-seat() { # provider [task]: a debater launch's exit code, registered when it passes
-  local j; j=$(python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"seat","tool_input":{"task":sys.argv[2],"title":"cache debate "+sys.argv[1],"role":"design","clientRequestId":"cache-debate-"+sys.argv[1],"target":{"providerInstanceId":sys.argv[1]}}}))' "$1" "${2:-Follow $T/fx/seat-brief.md; output to $T/fx/cache.$1.debate.md}")
+# delegate §Model class's per-provider seat: one brief's problem, a research launch per provider, each with its own title, clientRequestId and
+# output; its brief names a linked checkout, which a writer role would hold for the first launch alone
+git init -q -b main "$T/seatr"; git -C "$T/seatr" commit -q --allow-empty -m one; git -C "$T/seatr" worktree add -q -b seat "$T/seatw"
+printf 'Debate the cache question; read the code in %s.\nTopic: cache debate\nFan-out: design step 3\n' "$T/seatw" > "$T/fx/seat-brief.md"
+seat() { # provider [task] [role]: a debater launch's exit code, registered when it passes
+  local j; j=$(python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"seat","tool_input":{"task":sys.argv[2],"title":"cache debate "+sys.argv[1],"role":sys.argv[3],"clientRequestId":"cache-debate-"+sys.argv[1],"target":{"providerInstanceId":sys.argv[1]}}}))' "$1" "${2:-Follow $T/fx/seat-brief.md; output to $T/fx/cache.$1.debate.md}" "${3:-research}")
   printf '%s' "$j" | T3CODE_THREAD_ID=th python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; local r=$?; [ $r = 0 ] && printf '%s' "$j" | T3CODE_THREAD_ID=th python3 "$R/hooks/pre-agent-dedupe.py" register; echo $r; }
-check "a seat's three launches, one per provider (claudeAgent, codex, antigravity), all pass; BLOCK: a fourth with the claudeAgent launch's task under another title" "0 0 0 2 1" \
+check "a seat's three research launches, one per provider (claudeAgent, codex, antigravity), naming one linked checkout, all pass; BLOCK: a fourth with the claudeAgent launch's task under another title" "0 0 0 2 1" \
   "$(seat claudeAgent) $(seat codex) $(seat antigravity) $(seat claude_2 "Follow $T/fx/seat-brief.md; output to $T/fx/cache.claudeAgent.debate.md") $(grep -c 'same work under another title' "$T/err")"
-for p in claudeAgent codex antigravity; do python3 "$R/bin/agent-job" done "cache debate $p" >/dev/null; done
+for p in claudeAgent codex antigravity; do python3 "$R/bin/agent-job" done "$T/fx/cache.$p.debate.md" >/dev/null; done
+check "BLOCK: the same seat in the writer role design: the second launch waits for the first's checkout" "0 2 1" "$(seat claudeAgent '' design) $(seat codex '' design) $(grep -c 'another writer is working in a worktree' "$T/err")"
+python3 "$R/bin/agent-job" done "$T/fx/cache.claudeAgent.debate.md" >/dev/null
 echo '{"providerInstances":{"antigravity":{"driver":"codex"},"antigravity_2":{"driver":"antigravity"}}}' > "$HOME/.t3/userdata/settings.json"
 check "BLOCK: an implementer on a target naming the antigravity driver alone, while the instance id antigravity runs Codex, as the Antigravity instance does" "2 2" \
   "$(impl '{"driverKind":"antigravity"}') $(impl '{"providerInstanceId":"antigravity_2"}')"
