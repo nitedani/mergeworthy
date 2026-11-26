@@ -62,11 +62,9 @@ def read(path):
 
 
 def owed(rows, n, on_head):
-    """What earns a code loop its next round after round n: 'fixed' when it brought a blocker or should `fixed in <sha>` with
-    on_head(sha), else 'declined' when it brought a blocker `declined: <why>` and isn't itself the round a declined blocker went
-    back in: a declined blocker goes back to its seat once, and one the round after still holds is Stuck (delegate §Review rounds), else ''."""
-    sends = lambda m: m >= 1 and any(r.round == m and r.label == 'blocker' and r.declined for r in rows) and not sends(m - 1)
-    return 'fixed' if any(r.round == n and r.label != 'nit' and r.fixed and on_head(r.fixed) for r in rows) else 'declined' if sends(n) else ''
+    """Whether round n earns a code loop its next round: it brought a blocker or should `fixed in <sha>` with on_head(sha); a
+    round whose findings were all declined, blockers included, ends the loop (delegate §Review rounds)."""
+    return any(r.round == n and r.label != 'nit' and r.fixed and on_head(r.fixed) for r in rows)
 
 
 def gated(draft):

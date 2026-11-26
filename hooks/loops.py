@@ -2,7 +2,7 @@
 review may run, and record a round that ran with register(); pr-steps and gate-pass ask close() whether a loop's ledger closes it,
 and pr-steps asks open_seats() whether a step's other reviewers closed. A round is refused once the heads its brief pins show the
 branch hasn't moved since four earlier rounds of its loop, after an earlier one there when the ledger its brief names doesn't show
-the last round brought a fixed blocker or should or a declined blocker, and as a fresh reader's second."""
+the last round brought a fixed blocker or should, and as a fresh reader's second."""
 import glob, itertools, json, os, re, subprocess, sys
 import agent_jobs, ledger, review_journal, testpaths
 
@@ -227,7 +227,7 @@ def admit(loop, n, tops, heads, led, owners=(), here=()):
                 f"({', '.join(h[:12] for h in heads) or 'no head pinned'}): a loop gets four rounds per head, and a head past those lines is a new one "
                 "(mergeworthy:delegate §Review rounds). "
                 + (f"The ledger {led} shows round {last} still brought a blocker or should fixed in a commit: the area keeps taking patches, so its next step is "
-                   "the finality pass (mergeworthy:finality step 1, recorded by `pr-steps finality <file>`), not another round. " if kept == 'fixed' else "")
+                   "the finality pass (mergeworthy:finality step 1, recorded by `pr-steps finality <file>`), not another round. " if kept else "")
                 + "List what is still open in the report or the PR body's notes and go on (push, ready, the next step) without waiting for an answer; "
                 "only an open blocker keeps the PR in draft. A maintainer's ask on a new head starts a new loop name. " + close)
     if earlier and led and os.path.isfile(led) and last < earlier[-1]:
@@ -240,10 +240,10 @@ def admit(loop, n, tops, heads, led, owners=(), here=()):
                 + "\nRule each (`R<round>.<n> <label> <outcome>`), then send the round (mergeworthy:delegate §Review rounds).\n")
     if earlier and not kept:
         return (f"{loop}-r{n} follows r{earlier[-1]} on this head or one within {testpaths.STALE_LINES} changed lines of it, and a loop gets its next round only "
-                "while its last round brought a blocker or should you kept and fixed, or a blocker you declined (mergeworthy:delegate §Review rounds), but "
+                "while its last round brought a blocker or should you kept and fixed (mergeworthy:delegate §Review rounds), but "
                 + ("the brief names no `<work folder>/drafts/<review>.ledger.md` to show it: name the loop's ledger in the brief, or end the loop. " if not led else
                    f"{led} doesn't exist: name the loop's ledger, or end the loop. " if not os.path.isfile(led) else
-                   f"the ledger {led} shows round {last} brought none `fixed in <sha>`, and no blocker `declined:` outside the round that rechecked a declined one (Stuck): the loop ends there. ")
+                   f"the ledger {led} shows round {last} brought none `fixed in <sha>`: the loop ends there. ")
                 + close)
     return ''
 
@@ -251,10 +251,8 @@ def admit(loop, n, tops, heads, led, owners=(), here=()):
 # per kind of loop: the fix outcome that closes a finding, why the completed round leaves the loop open ('' when it doesn't), and
 # whether a later round confirming the fix closes it (a post's draft has no sha)
 KINDS = {
-    'code': ('fixed in <sha>', lambda rows, last, p, reached, ran: '' if ran >= CAP else {
-        'fixed': f'{p} closes round {last}, which brought a blocker or should fixed in a commit: the loop gets its next round first',
-        'declined': f'{p} closes round {last}, which declined a blocker: send it back to its seat once, in the next round, before the loop closes (mergeworthy:delegate §Stuck)',
-    }.get(ledger.owed(rows, last, reached), ''), False),
+    'code': ('fixed in <sha>', lambda rows, last, p, reached, ran: '' if ran >= CAP or not ledger.owed(rows, last, reached) else
+             f'{p} closes round {last}, which brought a blocker or should fixed in a commit: the loop gets its next round first', False),
     # a fresh reader runs once (admit): its findings are fixed and confirmed in the loops that own them, so its ledger asks no next round
     'fresh': ('fixed in <sha>', lambda rows, last, p, reached, ran: '', False),
     'post': ('fixed in r<N>', lambda rows, last, p, reached, ran: '' if last >= 2 else f'{p} closes round {last}: a verdict that is not clean gets round 2 first', True),
