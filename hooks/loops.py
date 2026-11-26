@@ -2,7 +2,7 @@
 review may run, and record a round that ran with register(); pr-steps and gate-pass ask close() whether a loop's ledger closes it,
 and pr-steps asks open_seats() whether a step's other reviewers closed. A round is refused once the heads its brief pins show the
 branch hasn't moved since four earlier rounds of its loop, after an earlier one there when the ledger its brief names doesn't show
-the last round brought a fixed blocker or should, and as a fresh reader's second."""
+the last round brought a fixed blocker or should, and as a fresh reader's second or its first again."""
 import glob, itertools, json, os, re, subprocess, sys
 import agent_jobs, drift, ledger, records, review_journal, testpaths
 
@@ -203,13 +203,17 @@ def third_seat(loop, tops, brief):
             "or, when its launch failed, say so in a line `Fallback: <what failed>`; a seat taking over another's count names it, `Continues: <loop>` (mergeworthy:delegate §Review rounds).\n")
 
 
-def admit(loop, n, tops, heads, led, owners=(), here=()):
+def admit(loop, n, tops, heads, led, owners=(), here=(), step=None):
     """Why round n of code review loop is refused, '' when it may run: tops are the checkouts its brief names, heads their heads
     its pins equal, led the ledger path it names (None), owners the loops whose rounds count in its four (a routed round's seat
     loop, the loop a `Continues:` line takes over), here the launcher's checkout, which holds the fixes of a brief naming none (a
-    docs reader's, handed rendered pages)."""
-    if re.fullmatch(r'fresh(-[^-]+)?', loop) and n >= 2:
-        return f"{loop}-r{n}: the fresh reader runs once (mergeworthy:converge step 4); its findings go back to the loops that own them, `<slice>-fresh` (mergeworthy:delegate §Review rounds).\n"
+    docs reader's, handed rendered pages), step the step its brief declares (`Review: <step>`)."""
+    # a fresh read's seat (its brief's `Review: fresh`, else its round 1's) runs once: no round 2, nor its round 1 again on this head
+    fresh = (step or next((r['first'].get('step') for t in tops if (r := lineage(t).get(loop))), None)) == 'fresh'
+    if fresh and (n >= 2 or on_head(loop, 2, tops, heads)):
+        again = '' if n >= 2 else f", and this seat already ran on this head or one within {testpaths.STALE_LINES} changed lines of it"
+        return (f"{loop}-r{n}: the fresh reader runs once (mergeworthy:converge step 4){again}; its findings go back to the loops that own them, "
+                "`<slice>-fresh` (mergeworthy:delegate §Review rounds).\n")
     earlier = on_head(loop, n, tops, heads)
     shared = [f"{o} r{m}" for o in owners for m in on_head(o, 10 ** 9, tops, heads)]
     routed_cap = shared and len(earlier) + len(shared) >= CAP
