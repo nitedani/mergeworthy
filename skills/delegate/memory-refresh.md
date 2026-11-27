@@ -1,8 +1,8 @@
-# Memory-refresh brief (merging new session-log lines into memory.md)
+# Memory-refresh brief (noting what new session-log lines hold for memory.md)
 
-`memory-prep prep <work folder>` writes the brief that names this file, the input, the read-through notes and `memory.md`; one smallest-class agent at high effort follows it.
+`memory-prep prep <work folder>` writes the brief that names this file, the input and the read-through notes; one smallest-class agent at high effort follows it.
 
-`memory.md` holds what the built-in compaction summary loses: the user's rulings in force, what is ruled out and why, what was superseded, what is still intended, and the last 24 hours of what happened and why. *The read-through notes* are your own scratch file (`memory-notes.txt`), named in the brief.
+`memory.md` holds what the built-in compaction summary loses: the user's rulings in force, what is ruled out and why, what was superseded, what is still intended, and the last 24 hours of what happened and why. *The read-through notes* (`memory-notes.txt`, named in the brief) are your whole output: `memory-prep` merges them into `memory.md`.
 ## 1. Read the input in chunks
 
 The input is entries `[<log timestamp> ROLE] text`, oldest first: USER is the user (the project owner), ASSISTANT the main session. Its last line is `[<log timestamp> END]`.
@@ -26,22 +26,9 @@ Each item names its date and time and, when the user said it, quotes the user's 
 
 Leave out commit SHAs, branch heads and PR states except to say what was superseded (git and GitHub record those), the task in flight (the compaction summary keeps it), and step-by-step narration. Take facts only from the input; mark an ambiguous item as such.
 
-## 3. Merge the notes into memory.md
+## 3. Tag what a note replaces
 
-When the input is read, read `memory.md` if it exists, then the notes, and write `memory.md` in exactly this shape:
-
-```
-# Memory
-## Standing
-### Rulings in force
-### Ruled out
-### Superseded
-### Still intended
-## Recent
-<!-- covered-until: <log timestamp> -->
-```
-
-- Standing items are one line each, newest first: `- **<lead>** (<date time>). <one sentence>.`, ending with the user's words quoted or a link when there is one.
-- Carry every existing Standing item forward unless a new item replaces it. A replaced ruling or plan leaves its section; a replaced plan goes under Superseded. Done intended work leaves Still intended. Age alone never drops an item.
-- Recent keeps only the 24 hours up to covered-until, one line per item.
-- covered-until is the last `read-through` in the notes, copied exactly. If you stop before the `END` line, write `memory.md` the same way with that value: the file is then honestly behind, and the next run continues from it. `memory.md` never counts as covered past the notes.
+- A Standing note is one line, `- <section>: **<lead>** (<date time>). <one sentence>.`, ending with the user's words quoted or a link when there is one; a Recent note is `- Recent: <date time>: <item>`.
+- Before noting a Standing item, Grep `memory*.md` in the work folder for its subject. When an item there is the ruling or plan the note replaces, reuse its lead or end the note with `[replaces <its lead>]`: the old item goes under Superseded. When the note finishes intended work, end it with `[done <its lead>]`. Otherwise both items stay.
+- Never read or write `memory.md`: the merge keeps Standing newest first and Recent to 24 hours, and moves old items to `memory-archive-<month>.md`.
+- If you stop before the `END` line, the notes are honestly behind at their last `read-through`, and the next run continues from it.
