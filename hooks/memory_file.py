@@ -4,9 +4,10 @@
 last 24 hours. One Haiku notes what new log lines hold (`memory-prep`), merge() folds the notes in, and it records the last
 log line they covered in `<!-- covered-until: <log timestamp> -->`. A root is listed in ~/.mergeworthy/memory-roots.txt and has memory.source
 (`memory-prep init`): the main session's cwd, T3 thread id, session id and session-log dir."""
-import datetime as dt, fcntl, glob, json, os, re, shutil, time
+import datetime as dt, fcntl, glob, hashlib, json, os, re, shutil, time
 
 COVERED = re.compile(r'<!-- covered-until: (\S+) -->')
+MERGED = re.compile(r'<!-- notes-merged: (\d+) (\w+) -->')
 READ = re.compile(r'read-through: (\S+)')
 TS = re.compile(rb'"timestamp":"([0-9T:.\-]+Z)"')
 STANDING = ('Rulings in force', 'Ruled out', 'Superseded', 'Still intended')
@@ -167,13 +168,13 @@ def parse(p):
         h = re.match(r'#+ *(.*)', l)
         if h:
             cur = next((s for s in secs if h.group(1).lower().startswith(s.lower())), 'Recent')
-        elif l.strip() and not COVERED.search(l):
+        elif l.strip() and not COVERED.search(l) and not MERGED.search(l):
             secs[cur].append(l.rstrip())
     return secs
 
-def render(secs, title, cov=None):
+def render(secs, title, cov=None, merged=''):
     return (f'# {title}\n## Standing\n' + ''.join(f'### {s}\n' + ''.join(l + '\n' for l in secs[s]) for s in STANDING)
-            + '## Recent\n' + ''.join(l + '\n' for l in secs['Recent']) + (f'<!-- covered-until: {cov} -->\n' if cov else ''))
+            + '## Recent\n' + ''.join(l + '\n' for l in secs['Recent']) + (f'<!-- covered-until: {cov} -->\n' if cov else '') + merged)
 
 def write(p, text):
     if os.path.isfile(p) and open(p, errors='replace').read() == text:
@@ -219,11 +220,15 @@ def roll(mem, main, root, cov):
                 mem[arch] = parse(arch)
             mem[arch][s].append(line)
 
+def checksum(lines):
+    return hashlib.sha1('\n'.join(lines).encode()).hexdigest()[:12]
+
 def merge(root):
-    """Folds the read-through notes into memory.md (apply()), so merging again changes nothing. Standing is kept newest
-    first, Recent to the 24 hours up to covered-until, and old Standing items move to their month's archive (roll()), written
-    before memory.md: a crash between leaves a line in both, which the next merge keeps once. The notes are only read: the
-    refresh may still be appending to them, and prep resets them."""
+    """Folds the read-through notes into memory.md (apply()), each line once: memory.md records how many lines of the notes it
+    applied, `<!-- notes-merged: <lines> <their hash> -->`, so merging again changes nothing, also once the notes grew. Standing
+    is kept newest first, Recent to the 24 hours up to covered-until, and old Standing items move to their month's archive
+    (roll()), written before memory.md: a crash between leaves a line in both, which the next merge keeps once. The notes are
+    only read: the refresh may still be appending to them, and prep resets them."""
     main, np = path(root), notes_path(root)
     if not os.path.isfile(main) and not os.path.isfile(np):
         return
@@ -237,21 +242,24 @@ def merge(root):
                 seen.update(mem[f][s])
         notes = open(np, errors='replace').read().split('\n')[:-1] if os.path.isfile(np) else []  # a last line without its newline is still being written
         was = open(main, errors='replace').read() if os.path.isfile(main) else ''
+        k, h = (MERGED.findall(was) or [('0', '')])[-1]
+        done = int(k) if checksum(notes[:int(k)]) == h else 0  # the lines an earlier merge applied, while prep hasn't reset the notes
         if notes and COVERED.findall(was)[-1:] == READ.findall('\n'.join(notes))[-1:] and os.path.getmtime(main) > os.path.getmtime(np):
-            notes = []  # a refresh that wrote memory.md itself already merged them
+            done = len(notes)  # a refresh that wrote memory.md itself already merged them
         cov = (READ.findall('\n'.join(notes)) or COVERED.findall(was) or [''])[-1]  # covered() from the notes read here, so a line appended since waits for the next merge
-        apply(mem, main, notes)
+        apply(mem, main, notes[done:])
         if cov:
             mem[main]['Recent'] = [l for l in mem[main]['Recent'] if not when(l) or stamp(when(l) + 'Z') >= stamp(cov) - 86400]
         roll(mem, main, root, cov)
         for f, secs in mem.items():
             for s in STANDING:
                 secs[s] = newest_first(secs[s])
+        text = render(mem[main], 'Memory', cov, f'<!-- notes-merged: {len(notes)} {checksum(notes)} -->\n' if notes else '')
         pre = os.path.join(root, 'memory-premerge.md')
-        if was and not archives and not os.path.exists(pre) and render(mem[main], 'Memory', cov) != was:
+        if was and not archives and not os.path.exists(pre) and text != was:
             shutil.copyfile(main, pre)  # the file as a model wrote it, once, before the first merge rewrites it
         for f in sorted(mem, key=lambda f: f == main):
-            write(f, render(mem[f], 'Memory', cov) if f == main else render(mem[f], 'Memory archive'))
+            write(f, text if f == main else render(mem[f], 'Memory archive'))
 
 def newest(p, heading, chars):
     """A section of memory file p, its first items up to chars: one line each, deduplicated by its lead, then where the rest is."""

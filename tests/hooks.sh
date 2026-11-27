@@ -1680,10 +1680,20 @@ cat > "$T/merged.md" <<'EOF'
 ## Recent
 - 2026-11-27 10:00Z: the CLI shipped.
 <!-- covered-until: 2026-11-27T12:00:00.000Z -->
+<!-- notes-merged: 10 4374b6a21d6f -->
 EOF
 nsum=$(md5sum < "$MM/memory-notes.txt"); mmerge "$MM"; msum=$(md5sum < "$MM/memory.md"); mmerge "$MM"
 check "merge adds a note (one with a parenthesis after its section too), replaces the item a tag or a reused lead names (the old one under Superseded), takes done work out of Still intended, adds a note whose tag names no item, keeps Recent to 24 hours; a second merge changes nothing, and the notes are left as they were" "same same same" \
   "$(diff "$T/merged.md" "$MM/memory.md" >/dev/null && echo same) $([ "$msum" = "$(md5sum < "$MM/memory.md")" ] && echo same) $([ "$nsum" = "$(md5sum < "$MM/memory-notes.txt")" ] && echo same)"
+MG="$T/merge-grown"; mkdir -p "$MG"
+printf '# Memory\n## Standing\n### Rulings in force\n- **Delta** (2026-11-10 09:00Z). The old delta ruling.\n### Ruled out\n### Superseded\n### Still intended\n- **Ship the panel** (2026-11-25 10:00Z). Waits on review.\n## Recent\n<!-- covered-until: 2026-11-27T08:00:00.000Z -->\n' > "$MG/memory.md"
+printf '# Notes\nread-through: 2026-11-27T08:00:00.000Z\nread-through: 2026-11-27T09:00:00.000Z\n- Still intended: **Release the extension** (2026-11-27 08:30Z). Waits on the upstream fix.\n- Rulings in force: **Extension released** (2026-11-27 08:50Z). Done by the user. [done Release the extension]\n- Other: 2026-11-20 06:00Z: the delta plan was dropped. [replaces Delta]\n' > "$MG/memory-notes.txt"; mmerge "$MG"
+printf 'read-through: 2026-11-27T10:00:00.000Z\n- Rulings in force: **Delta** (2026-11-27 09:30Z). The new delta ruling.\n' >> "$MG/memory-notes.txt"; mmerge "$MG"
+printf 'read-through: 2026-11-27T11:00:00.000Z\n- Recent: 2026-11-27 10:40Z: review round two started.\n' >> "$MG/memory-notes.txt"; mmerge "$MG"
+{ printf '# Notes on memory-new.txt\nread-through: 2026-11-27T11:00:00.000Z\nread-through: 2026-11-27T12:00:00.000Z\n- Rulings in force: **After prep** (2026-11-27 11:30Z). From the notes prep reset.\n'
+  for i in $(seq 10 21); do echo "- Recent: 2026-11-27 11:${i}Z: line $i."; done; } > "$MG/memory-notes.txt"; mmerge "$MG"  # longer than the notes merged before
+check "a merge applies each note line once: after the notes grew, finished work stays out of Still intended, and an old tagged line Recent dropped leaves the newer ruling in force; once prep resets the notes, all of them apply" "0 1 1 1" \
+  "$(sed -n '/^### Still intended/,/^## /p' "$MG/memory.md" | grep -c 'Release the extension') $(sed -n '/^### Rulings in force/,/^### /p' "$MG/memory.md" | grep -c 'The new delta ruling') $(grep -c 'review round two' "$MG/memory.md") $(grep -c 'After prep' "$MG/memory.md")"
 MK="$T/merge-big"; mkdir -p "$MK"
 python3 - "$MK/memory.md" <<'EOF'
 import datetime as d, random, sys
