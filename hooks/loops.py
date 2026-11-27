@@ -6,6 +6,7 @@ the last round brought a fixed blocker or should, and as a fresh reader's second
 import collections, glob, json, os, re, subprocess, sys, types
 import agent_jobs, drift, ledger, records, review_journal, testpaths
 
+HOST = 'antigravity' if os.environ.get('MERGEWORTHY_HOST') == 'antigravity' else 'claudeAgent'  # the main session's company (hooks/agy.py sets it)
 # a post review's {loop: {'threads': the T3 threads or Claude agents its rounds ran in}}, where its later rounds are sent
 LOOPS = os.path.expanduser('~/.claude/review-loops.json')
 # what the installed version records, rounds {loop: [[n, heads]]} and threads {loop: [thread]}: read until one release after
@@ -125,7 +126,7 @@ def lineage(checkout):
 def same_company_seat(loop, tops):
     """Whether loop's round 1 on the lineage of one of the checkouts tops was a seat (seated) on the main session's
     company, whose later rounds stay on it (delegate §Reviewers)."""
-    return any((evs := lineage(t).get(loop)) and evs[0].get('seated') and evs[0].get('company') == 'claudeAgent' for t in tops)
+    return any((evs := lineage(t).get(loop)) and evs[0].get('seated') and evs[0].get('company') == HOST for t in tops)
 
 
 def step_of(loop, first):

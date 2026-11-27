@@ -170,7 +170,7 @@ def register_launch():
     if k.review:
         loops.register(*k.round, None if k.post_review else rec['heads'] if 'heads' in rec else heads,
                        thread=review_transport.thread(ti, req.response), post=k.post_review, outs=said_outs, seated=D.fanout == loops.SEATING,
-                       checkouts=tops, led=led, step=step, seats=seats, fills=fills, company=None if sent else 'claudeAgent' if not req.providers or 'claudeAgent' in req.providers else min(req.providers))
+                       checkouts=tops, led=led, step=step, seats=seats, fills=fills, company=None if sent else loops.HOST if not req.providers or loops.HOST in req.providers else min(req.providers))
     if k.builds and (approach := rec['approach'] if 'approach' in rec else brief_approach(strict=False)):
         os.makedirs(agent_jobs.BUILT, exist_ok=True)
         open(os.path.join(agent_jobs.BUILT, os.path.basename(approach[0])), 'w').write(approach[1])
@@ -205,7 +205,7 @@ def codex_reset():
 # Implementers run on Claude, reviews first on Codex (mergeworthy:delegate §Model class, §Reviewers), whichever host the session runs
 # on: a delegate_task with no target runs on the launching session's provider, Antigravity's under hooks/agy.py (MERGEWORTHY_HOST);
 # an Antigravity seat names its target, so a launch without one is refused there too
-drivers = req.drivers or {'antigravity' if os.environ.get('MERGEWORTHY_HOST') == 'antigravity' else 'claudeAgent'}
+drivers = req.drivers or {loops.HOST}
 if req.t3 and str(req.tool).endswith('delegate_task') and 'antigravity' in drivers and (k.builds or not req.providers):
     why = ["no implementer runs on Antigravity (mergeworthy:delegate §Model class)"] if k.builds else []
     why += [] if req.providers else ["with no target this launch would run on this session's Antigravity"]
@@ -221,7 +221,7 @@ elif req.role == 'review' and req.t3 and not sent:  # a continued round runs on 
     # the fallback keeps the first review's prompt, so its claim may sit in the brief file the task names; `<what failed>` is the form, no claim.
     # A round 1 seating its step's reviewers at once takes a fresh agent of this company as its second seat, which keeps its
     # later rounds on it (delegate §Reviewers)
-    elif 'claudeAgent' in drivers and not (k.round and (k.round[1] == 1 and D.fanout == loops.SEATING or k.round[1] != 1 and loops.same_company_seat(k.round[0], tops))) \
+    elif loops.HOST in drivers and not (k.round and (k.round[1] == 1 and D.fanout == loops.SEATING or k.round[1] != 1 and loops.same_company_seat(k.round[0], tops))) \
             and not re.search(r'\bFallback:[ \t]*[^\s<]', launch.Brief(req.task).brief):
         sys.stderr.write(f"BLOCKED: claude-swap reads every saved Codex account as used up until {when}: a review on Claude says so in a line "
                          f"`Fallback: Codex used up until {when}` in the task or the brief file it names (mergeworthy:delegate §Reviewers).\n" if reset else
