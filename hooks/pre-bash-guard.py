@@ -232,7 +232,7 @@ def need_ask(kind, what, repo=None, num=None, branch=None, strict=False):
     block(f"{what} lands on {repo}, which is the owner's: it needs their ask, in the message they last typed or the project file's "
           f"`## Merging` order (your own scheduled prompt, scope or goal is none). Say it's ready and ask the owner to reply `{reply}` (mergeworthy:merging steps 3-4)")
 
-GITHUB_HOSTED = ('ubuntu-', 'windows-', 'macos-', 'xcode-', 'self-hosted')  # GitHub's runner labels: docs.github.com/en/actions/reference/runners/github-hosted-runners
+GITHUB_HOSTED = ('ubuntu-', 'windows-', 'macos-', 'xcode-')  # GitHub-hosted runners' labels: docs.github.com/en/actions/reference/runners/github-hosted-runners
 
 def own_bypass(pr, run):
     """Why an admin merge of pr (`gh pr view`'s JSON) isn't the owner's to make, None when it is: pr is on github.com, every check on its head succeeded or never got a runner,
