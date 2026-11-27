@@ -92,7 +92,8 @@ def project():
 
 def enabled(instance, o):
     """Whether T3 runs instance `o` in the hook's project (resolveProjectProviderInstanceEnabled): the project's override, else (as
-    resolveProviderInstanceEnabled) false when its `enabled` or its config's is false, else the one set, else its driver's default."""
+    resolveProviderInstanceEnabled) either explicit false disables the instance; otherwise the outer flag, inner flag, or driver
+    default applies."""
     over = (((settings() or {}).get('projectSettingsOverrides') or {}).get(project()) or {}) if project() else {}
     over = ((over.get('providerInstances') or {}).get(instance) or {}).get('enabled') if isinstance(over, dict) else None
     if isinstance(over, bool): return over
@@ -122,13 +123,13 @@ def t3_claude_config_dir():
 
 def loads_mergeworthy(instance, config):
     """Whether T3 Code's provider instance `instance` (its settings entry `config`) loads mergeworthy, as its driver loads plugins:
-    Claude Code with the plugin in a `--plugin-dir` of its launchArgs, or enabled in its config dir's settings.json and not disabled
-    by a `--settings` file or JSON there (which override it); Antigravity with a `mergeworthy` plugin in the instance's own profile (where hooks/agy-link
-    links it). Any other driver: True, as nothing here can tell."""
+    Claude Code with the plugin in a `--plugin-dir` of its launchArgs, or enabled in its config dir's settings.json (its homePath,
+    else CLAUDE_CONFIG_DIR in its environment, else in T3's own, else ~/.claude) and not disabled by a `--settings` file or JSON
+    there (which override it); Antigravity with a `mergeworthy` plugin in the instance's own profile (where hooks/agy-link links
+    it). Any other driver: True, as nothing here can tell."""
     c = config.get('config') if isinstance(config.get('config'), dict) else {}
     if config.get('driver') == 'claudeAgent':
-        # its config dir as T3 gives it (resolveClaudeConfigDirPath, mergeClaudeProcessEnvironment): homePath, else CLAUDE_CONFIG_DIR in
-        # the instance's environment, else in T3's own
+        # its config dir as T3 gives it (resolveClaudeConfigDirPath, mergeClaudeProcessEnvironment)
         env = config.get('environment') if isinstance(config.get('environment'), list) else []
         home = (c.get('homePath') or next((e.get('value') for e in env if isinstance(e, dict) and e.get('name') == 'CLAUDE_CONFIG_DIR'), None)
                 or t3_claude_config_dir())
