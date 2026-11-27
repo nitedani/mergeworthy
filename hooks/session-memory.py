@@ -10,6 +10,7 @@ except ValueError: d = {}
 try: root = mf.for_cwd(d.get('cwd') or os.getcwd(), d.get('session_id'))
 except (OSError, ValueError): root = None  # a broken memory.source never fails the session's start
 if root:
+    mf.merge(root)
     if mf.behind(root):
         print(mf.order(root) + ' Until then, the digest below is the last one.\n')
     print(f"The standing memory of this program ({mf.path(root)}, mergeworthy:task step 8): rulings in force, what is ruled out, what was superseded, "

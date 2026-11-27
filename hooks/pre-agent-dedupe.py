@@ -240,7 +240,7 @@ for wt in sorted(paths if shas else ()):
         old = [x for x in shas if git(wt, 'merge-base', '--is-ancestor', x, head).returncode == 0]
         if old:
             root = memory_file.for_cwd(req.cwd, req.session)
-            ruled = memory_file.section(open(memory_file.path(root)).read(), 'Ruled out') if root and os.path.isfile(memory_file.path(root)) else ''
+            ruled = memory_file.newest(memory_file.path(root), 'Ruled out', 1500).rstrip() if root else ''
             sys.stderr.write(f"BLOCKED: the brief pins {', '.join(sorted(old))} in {wt}, which has moved on to {head[:12]}. "
                              "Pin the live head (and check the work isn't already done there)." + (f" Ruled out:\n{ruled}\n" if ruled else "\n"))
             refused()
@@ -422,8 +422,9 @@ if root and k.research and not k.refresh and not k.seat:
     else:
         words = [w.lower() for w in re.findall(r'[\w.-]{3,}', topic.group(1))]
         checked = ' '.join(re.findall(r'^\s*Checked:\s*(.+)$', brief, re.M))
-        # covered = one paragraph holds every topic word: a long design doc that mentions them apart covers nothing
-        covers = lambda p: any(all(w in para for w in words) for para in re.split(r'\n\s*\n', open(p, errors='replace').read().lower()))
+        # covered = one paragraph holds every topic word, one item of a memory file: a long file that mentions them apart covers nothing
+        unit = lambda p: r'\n' if re.fullmatch(r'memory(-archive-.*)?\.md', os.path.basename(p)) else r'\n\s*\n'
+        covers = lambda p: any(all(w in para for w in words) for para in re.split(unit(p), open(p, errors='replace').read().lower()))
         hits = [p for p in memory_file.notes(root) if p not in checked and os.path.abspath(p) not in {os.path.abspath(x) for x in L.paths} and covers(p)]
         if hits:
             sys.stderr.write("BLOCKED: these files already cover the topic; read them first. If one answers it, use it; "
