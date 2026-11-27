@@ -232,13 +232,13 @@ def need_ask(kind, what, repo=None, num=None, branch=None, strict=False):
     block(f"{what} lands on {repo}, which is the owner's: it needs their ask, in the message they last typed or the project file's "
           f"`## Merging` order (your own scheduled prompt, scope or goal is none). Say it's ready and ask the owner to reply `{reply}` (mergeworthy:merging steps 3-4)")
 
+GITHUB_HOSTED = ('ubuntu-', 'windows-', 'macos-', 'xcode-', 'self-hosted')  # GitHub's runner labels: docs.github.com/en/actions/reference/runners/github-hosted-runners
+
 def own_bypass(pr, run):
-    """Why an admin merge of pr (`gh pr view`'s JSON) isn't the owner's to make, None when it is: pr is on github.com, every check on its head succeeded,
+    """Why an admin merge of pr (`gh pr view`'s JSON) isn't the owner's to make, None when it is: pr is on github.com, every check on its head succeeded or never got a runner,
     gh's login owns its repo as a user (not an org), every rule on its base is from a ruleset GitHub says it may always bypass, no classic protection. run: `gh <args>`."""
     host, slug, base = pr['url'].split('/')[2], '/'.join(pr['url'].split('/')[3:5]), pr['baseRefName']
     if host != 'github.com': return f"{pr['url']} is on {host}, whose rules and logins the guard doesn't read"
-    if bad := [f"{c.get('name') or c.get('context')} {(c.get('conclusion') or c.get('state') or 'pending').lower()}" for c in pr['statusCheckRollup'] if (c.get('conclusion') or c.get('state')) not in ('SUCCESS', 'NEUTRAL', 'SKIPPED')]:
-        return f"its head's checks haven't all succeeded ({', '.join(bad)}): merge once they have"
     def call(*path):  # None when gh hangs or can't start
         try: return run('api', '--hostname', 'github.com', *path)
         except (OSError, subprocess.TimeoutExpired): return None
@@ -251,6 +251,20 @@ def own_bypass(pr, run):
         me, owner = get('user')['login'], get(f'repos/{slug}')['owner']
         if owner['login'] != me: return f"{slug} is {owner['login']}'s, not {me}'s" + meet
         if owner['type'] != 'User': return f"{slug} belongs to the organization {owner['login']}" + meet
+        bad, runners = [], None
+        for c in pr['statusCheckRollup']:
+            if (state := c.get('conclusion') or c.get('state')) in ('SUCCESS', 'NEUTRAL', 'SKIPPED'): continue
+            # an Actions job cancelled or queued with no runner, on labels neither GitHub nor a runner of the repo offers, never ran: it carries no verdict
+            job = re.fullmatch(rf'https://github\.com/{re.escape(slug)}/actions/runs/(\d+)/job/(\d+)', c.get('detailsUrl') or '')
+            if job and (state == 'CANCELLED' or c.get('status') == 'QUEUED'):
+                what, j = f"{c['name']}'s job or {slug}'s runners", get(f'repos/{slug}/actions/jobs/{job[2]}')
+                runners = runners or get(f'repos/{slug}/actions/runners?per_page=100', '--paginate', '--slurp')
+                offered = {l['name'] for page in runners for r in page['runners'] for l in r['labels']}
+                if not j['runner_id'] and not j['steps'] and not any(l.startswith(GITHUB_HOSTED) or l in offered for l in j['labels']):
+                    if state == 'CANCELLED': continue
+                    return f"{c['name']} is queued on {', '.join(j['labels'])}, which neither GitHub nor a runner of {slug} offers: cancel it (`gh run cancel {job[1]} -R {slug}`) and merge then"
+            bad.append(f"{c.get('name') or c.get('context')} {(state or 'pending').lower()}")
+        if bad: return f"its head's checks haven't all succeeded ({', '.join(bad)}): merge once they have"
         what, pages = f"{base}'s rules", get(f'repos/{slug}/rules/branches/{branch}?per_page=100', '--paginate', '--slurp')
         for rid in sorted({r['ruleset_id'] for page in pages for r in (page if isinstance(page, list) else [None])}):
             what, rs = f'ruleset {rid}', get(f'repos/{slug}/rulesets/{rid}')
