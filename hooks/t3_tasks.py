@@ -39,8 +39,11 @@ OFF_BY_DEFAULT = {'cursor', 'grok', 'fx', 'kiro', 'muse', 'pi', 'opencode', 'ant
 
 
 def t3_home():
-    """T3 Code's data directory: T3CODE_HOME, else ~/.t3 (resolveBaseDir)."""
-    return os.path.expanduser((os.environ.get('T3CODE_HOME') or '').strip() or '~/.t3')
+    """T3 Code's data directory as its resolveBaseDir gives it: T3CODE_HOME trimmed, a leading `~` or `~/` for the home folder
+    (expandHomePath), made absolute; else ~/.t3."""
+    raw, home = (os.environ.get('T3CODE_HOME') or '').strip(), os.path.expanduser('~')
+    if not raw: return os.path.join(home, '.t3')
+    return os.path.abspath(home if raw == '~' else os.path.join(home, raw[2:]) if raw.startswith('~/') else raw)
 
 
 def userdata(*path):

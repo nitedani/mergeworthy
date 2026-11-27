@@ -5,12 +5,10 @@
 # nothing. Run by session-start, mergeworthy-update, the installer and learn-units; without T3 Code, agy or the installed plugin it
 # changes nothing. A copied plugin (a folder) where the link goes is the person's own: kept, a warning on stderr, exit 0. Anything
 # else there that isn't a link (a file) is kept too, and fails the link, as any other failure to link does: exit 1.
-t3=${T3CODE_HOME:-$HOME/.t3}/userdata  # T3's data directory: T3CODE_HOME, else ~/.t3
-[ -d "$t3" ] && command -v agy >/dev/null && [ -f ~/.mergeworthy/current/agy/hooks.json ] || exit 0
-# the instance runs on Antigravity unless T3's settings give that id another driver
-python3 -c 'import json, sys
-try: sys.exit(json.load(open(sys.argv[1]))["providerInstances"]["antigravity"].get("driver", "antigravity") != "antigravity")
-except (OSError, ValueError, KeyError, TypeError, AttributeError): pass' "$t3/settings.json" || exit 0
+# T3's state folder as t3_tasks.userdata() resolves T3CODE_HOME, when T3's settings run the instance on Antigravity (or name none)
+t3=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import t3_tasks
+print(t3_tasks.userdata() if t3_tasks.driver("antigravity") == "antigravity" else "")' "$(dirname "$(readlink -f "$0")")")
+[ -n "$t3" ] && [ -d "$t3" ] && command -v agy >/dev/null && [ -f ~/.mergeworthy/current/agy/hooks.json ] || exit 0
 dir=$t3/providers/antigravity/$(printf antigravity | sha256sum | cut -d' ' -f1)/config/plugins
 [ "$(readlink "$dir/mergeworthy")" = "$HOME/.mergeworthy/current/agy" ] && exit 0
 if [ -d "$dir/mergeworthy" ] && [ ! -L "$dir/mergeworthy" ]; then

@@ -61,7 +61,7 @@ check "~/.mergeworthy/current points at the new version" "$NEW" "$(readlink "$HO
 : > "$T/breaks"; unit "$BAD" >> "$T/active"
 bash "$R/bin/mergeworthy-update" > "$T/out" 2>&1; check "every unit back active: exit" 0 $?
 # T3 Code's Antigravity instance `antigravity` gets the installed version's agy plugin as a link; antigravity_2 and ~/.gemini get nothing
-mkdir -p "$NEW/hooks" "$NEW/agy" "$HOME/.t3/userdata"; cp "$R/hooks/agy-link" "$NEW/hooks/"; echo '{}' > "$NEW/agy/hooks.json"; printf '#!/bin/sh\n' > "$T/bin/agy"; chmod +x "$T/bin/agy"
+mkdir -p "$NEW/hooks" "$NEW/agy" "$HOME/.t3/userdata"; cp "$R/hooks/agy-link" "$R/hooks/t3_tasks.py" "$NEW/hooks/"; echo '{}' > "$NEW/agy/hooks.json"; printf '#!/bin/sh\n' > "$T/bin/agy"; chmod +x "$T/bin/agy"
 echo '{"providerInstances":{"antigravity":{"driver":"antigravity"},"antigravity_2":{"driver":"antigravity"}}}' > "$HOME/.t3/userdata/settings.json"
 prof() { echo "$HOME/.t3/userdata/providers/antigravity/$(printf '%s' "$1" | sha256sum | cut -d' ' -f1)/config/plugins"; }
 bash "$R/bin/mergeworthy-update" > "$T/out" 2>&1
@@ -157,7 +157,7 @@ install_learn() {
 [ -x ~/.mergeworthy/current/bin/project-learn ] && { install_learn || failed+=("mergeworthy-learn.timer"); }
 [ ${#failed[@]} = 0 ] || { echo "failed: ${failed[*]}"; exit 1; }
 OLD
-cp "$R/hooks/learn-units" "$R/hooks/agy-link" "$NEW/hooks/"; printf '#!/bin/sh\n' > "$NEW/bin/project-learn"; chmod +x "$PRE/bin/mergeworthy-update" "$NEW/bin/project-learn"
+cp "$R/hooks/learn-units" "$R/hooks/agy-link" "$R/hooks/t3_tasks.py" "$NEW/hooks/"; printf '#!/bin/sh\n' > "$NEW/bin/project-learn"; chmod +x "$PRE/bin/mergeworthy-update" "$NEW/bin/project-learn"
 ln -sfn "$PRE" "$HOME/.mergeworthy/current"; ln -s "$HOME/.mergeworthy/current/bin/mergeworthy-update" "$HOME/.local/bin/mergeworthy-update"
 : > "$U/mergeworthy-learn.timer"; : > "$U/mergeworthy-learn.service"; NEW="$NEW" bash "$HOME/.local/bin/mergeworthy-update" > "$T/out" 2>&1; rc=$?
 check "the old script's update to this version: exit, both learning units removed, no failure named" "0 0 0" "$rc $(ls "$U" | grep -c mergeworthy-learn) $(grep -c '^failed:' "$T/out")"
@@ -165,7 +165,7 @@ check "the old script's update to this version: exit, both learning units remove
 # the first update from main before the agy plugin (fb5d9a0's installed mergeworthy-update, verbatim) links it in that same run:
 # it repoints current, then runs the new tree's hooks/learn-units, which links it
 cp "$R/tests/fixtures/mergeworthy-update-fb5d9a0" "$PRE/bin/mergeworthy-update"; mkdir -p "$NEW/agy" "$HOME/.t3/userdata"
-cp "$R/hooks/learn-units" "$R/hooks/agy-link" "$NEW/hooks/"; echo '{}' > "$NEW/agy/hooks.json"; printf '#!/bin/sh\n' > "$T/bin/agy"; chmod +x "$T/bin/agy"
+cp "$R/hooks/learn-units" "$R/hooks/agy-link" "$R/hooks/t3_tasks.py" "$NEW/hooks/"; echo '{}' > "$NEW/agy/hooks.json"; printf '#!/bin/sh\n' > "$T/bin/agy"; chmod +x "$T/bin/agy"
 echo '{"providerInstances":{"antigravity":{"driver":"antigravity"},"antigravity_2":{"driver":"antigravity"}}}' > "$HOME/.t3/userdata/settings.json"
 ln -sfn "$PRE" "$HOME/.mergeworthy/current"; bash "$HOME/.local/bin/mergeworthy-update" > "$T/out" 2>&1; rc=$?
 check "main's mergeworthy-update to this version: exit, current, the antigravity instance linked in that run, antigravity_2 not" "0 $NEW $HOME/.mergeworthy/current/agy no" \

@@ -1509,6 +1509,12 @@ check "BLOCK: under T3CODE_HOME its settings and Antigravity profiles count: c_h
   "$(T3CODE_HOME="$T/t3h" res c_h) $(T3CODE_HOME="$T/t3h" res agy_hp) $(grep -c 'instance agy_hp.*providerInstanceId to agy_h\.$' "$T/err") $(T3CODE_HOME="$T/t3h" res agy_h)"
 mkdir -p "$T/t3a/userdata"; T3CODE_HOME="$T/t3a" PATH="$T/agybin:$PATH" bash "$R/hooks/agy-link" 2>/dev/null
 check "agy-link links the plugin into the antigravity profile under T3CODE_HOME" "0 $HOME/.mergeworthy/current/agy" "$? $(readlink "$T/t3a/userdata/providers/antigravity/$(printf antigravity | sha256sum | cut -d' ' -f1)/config/plugins/mergeworthy")"
+# T3CODE_HOME as T3's resolveBaseDir reads it: trimmed, a leading ~/ for the home folder, made absolute (not ~user)
+AGL="providers/antigravity/$(printf antigravity | sha256sum | cut -d' ' -f1)/config/plugins/mergeworthy"; mkdir -p "$HOME/alt-t3/userdata" "$T/t3p/userdata"
+T3CODE_HOME='~/alt-t3' PATH="$T/agybin:$PATH" bash "$R/hooks/agy-link" 2>/dev/null; T3CODE_HOME="  $T/t3p  " PATH="$T/agybin:$PATH" bash "$R/hooks/agy-link" 2>/dev/null
+check "agy-link links under a T3CODE_HOME of ~/alt-t3 and of a padded absolute path; userdata() keeps ~nobody/x a relative path, as T3 does" \
+  "$HOME/.mergeworthy/current/agy $HOME/.mergeworthy/current/agy $T/~nobody/x/userdata" \
+  "$(readlink "$HOME/alt-t3/userdata/$AGL") $(readlink "$T/t3p/userdata/$AGL") $(cd "$T" && T3CODE_HOME='~nobody/x' PYTHONPATH="$R/hooks" python3 -c 'import t3_tasks; print(t3_tasks.userdata())')"
 mkdir -p "$T/t3s/userdata"; python3 -c 'import sqlite3, sys; c = sqlite3.connect(sys.argv[1]); c.execute("create table orchestration_v2_projection_provider_threads (provider_thread_id text, thread_id text, payload_json text)")
 c.execute("""insert into orchestration_v2_projection_provider_threads values ('"'p1', 'thr-s', '{\"nativeThreadRef\":{\"nativeId\":\"s-s\"}}'"')"""); c.commit()' "$T/t3s/userdata/statev2.sqlite"
 check "the steward's T3 reads (steward.threads) use T3's state under T3CODE_HOME" "['thr-s']" "$(T3CODE_HOME="$T/t3s" PYTHONPATH="$R/hooks" python3 -c 'import steward; print(steward.threads("s-s"))')"
