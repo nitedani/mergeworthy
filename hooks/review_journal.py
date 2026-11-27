@@ -1,5 +1,5 @@
 """The review journal (delegate §Review rounds): one append-only file per change, a branch of one repo, holding a `round` event for
-each review round that ran, written only by the hooks that register rounds. fold() reads it back as the loops' records."""
+each review round that ran, written only by the hooks that register rounds. rounds() reads it back as the loops' records."""
 import fcntl, glob, hashlib, json, os, subprocess, time
 
 JOURNAL = os.path.expanduser('~/.claude/review-journal')
@@ -33,18 +33,11 @@ def post_of(draft):
     return os.path.join(JOURNAL, 'posts', hashlib.sha256(os.path.realpath(draft).encode()).hexdigest()[:16] + '.jsonl')
 
 
-def seat_of(handle):
-    """The loops whose rounds ran in the reviewer handle (a T3 thread, a Claude agent), each with its first round's event."""
+def rounds(change=None, handle=None, keep=lambda e: True):
+    """{loop: its round events, oldest first} in the journal file change, or, for the reviewer handle (a T3 thread, a Claude
+    agent), the rounds that ran in it in every change's; only the events keep accepts."""
     found = {}
-    for f in sorted(glob.glob(os.path.join(JOURNAL, '*', '*.jsonl'))):
-        for e in events(f):
-            if handle and e.get('thread') == handle: found.setdefault(e['loop'], e)
+    for f in [change] if handle is None else sorted(glob.glob(os.path.join(JOURNAL, '*', '*.jsonl'))) if handle else ():
+        for e in events(f) if f else ():
+            if (handle is None or e.get('thread') == handle) and keep(e): found.setdefault(e['loop'], []).append(e)
     return found
-
-
-def fold(change):
-    """The loops change's journal holds: {loop: {'rounds': [[n, heads, outs]]}}."""
-    loops = {}
-    for e in events(change):
-        loops.setdefault(e['loop'], {'rounds': []})['rounds'].append([e['n'], e['heads'], e['outs']])
-    return loops

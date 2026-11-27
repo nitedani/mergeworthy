@@ -56,7 +56,7 @@ def shell_round(command):
 def seat_rounds(seat):
     """The rounds that ran in the reviewer seat (a T3 thread, a Claude agent), by the journal."""
     import review_journal
-    return {e['n'] for f in glob.glob(os.path.join(review_journal.JOURNAL, '*', '*.jsonl')) for e in review_journal.events(f) if e.get('thread') == seat}
+    return {e['n'] for evs in review_journal.rounds(handle=seat).values() for e in evs}
 
 
 def started_on(session, prompt, loop, n):
