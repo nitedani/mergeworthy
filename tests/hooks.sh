@@ -2912,6 +2912,16 @@ check "a round 1 seating its step's reviewers at once takes this company's agent
 for f in vs-codex vs-claude; do printf 'Checked it.\nNO BUGS\n' > "$T/$f.md"; std "$T/$f.md"; done
 fs="$(cd "$GS" && bash "$R/bin/pr-steps" verify "$T/vs-codex.md" 2>&1 | grep -c 'one seat of verify.*vs-claude') $(grep -c '^verify ' ~/.claude/pr-steps/"$SH") $(cd "$GS" && bash "$R/bin/pr-steps" verify "$T/vs-claude.md" >/dev/null 2>&1; echo $?) $(grep -c '^verify ' ~/.claude/pr-steps/"$SH")"
 check "pr-steps verify records a seated step once every seat's report is: the first seat's report records as a seat, naming the other, the second's records verify" "1 0 0 1" "$fs"
+GA="$T/seats-agy"; git init -q -b main "$GA"; git -C "$GA" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; AH=$(git -C "$GA" rev-parse HEAD)
+NEON='{"providerInstanceId":"antigravity","model":"gemini-4-neon"}'
+fs="$(for s in "va-codex {\"providerInstanceId\":\"codex\"}" "va-neon $NEON"; do set -- $s; fo "$1-r1" "$2" "Review $GA at head $AH; output to $T/$1.md
+$FO
+Seats: codex, neon"; printf 'Checked it.\nNO BUGS\n' > "$T/$1.md"; std "$T/$1.md"; done | xargs) $(for s in va-codex va-neon; do (cd "$GA" && bash "$R/bin/pr-steps" verify "$T/$s.md" >/dev/null 2>&1); grep -c '^verify ' ~/.claude/pr-steps/"$AH"; done | xargs)"
+fs="$fs $(for s in "fresh-codex {\"providerInstanceId\":\"codex\"}" "fresh-neon $NEON"; do set -- $s; fo "$1-r1" "$2" "Review: fresh
+Review $GA at head $AH, ending MERGE AS IS: yes or no; output to $T/$1.fresh.md
+$FO
+Seats: codex, neon"; done | xargs) $(impl "$NEON") $(grep -c 'no implementer runs on Antigravity' "$T/err")"
+check "a round 1 and a fresh read whose second seat is Gemini Neon on an Antigravity instance pass, and verify records once both seats' reports do; BLOCK an implementer on that target, naming why" "0 0 0 1 0 0 2 1" "$fs"
 GM="$T/seats2"; git init -q -b main "$GM"; git -C "$GM" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; MH=$(git -C "$GM" rev-parse HEAD)
 seat() { for s in "$@"; do fo "$s-r1" "{\"providerInstanceId\":\"${s#*-}\"}" "Review $GM at head $MH; output to $T/$s.md
 $FO" >/dev/null; printf 'Checked it.\nNO BUGS\n' > "$T/$s.md"; std "$T/$s.md"; done; }
