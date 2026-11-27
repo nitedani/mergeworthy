@@ -434,9 +434,9 @@ def need_home(repo, path):
     if not plain_create(cmd, cwd):
         need_watch(repo, path, PLAIN)
 
-def check_turn(repo, num, args=()):
+def check_turn(repo, num, args=(), drafts=()):
     """post §Thread rules: at most two comments in a row: while your last two comments on a thread have no reply after them and the last
-    is under 3 hours old, a third stacks on them: edit the last one instead. After 3 hours, the third is the wait ping. The agent and the user may
+    is under 3 hours old, a third stacks on them: edit the last one instead. After 3 hours, the third is the wait ping, never a proposal. The agent and the user may
     share one login, so a comment is the agent's only when its body was gated (gate-pass writes ~/.claude/gated-posts.txt).
     A discussion's comments and their replies count as one row, in time order."""
     if '--help' in args or '-h' in args:
@@ -475,11 +475,23 @@ def check_turn(repo, num, args=()):
         return
     import datetime
     when = lambda t: datetime.datetime.fromisoformat(t.replace('Z', '+00:00'))
-    if (datetime.datetime.now(datetime.timezone.utc) - when(last[-1]['created'])).total_seconds() >= 3 * 3600 or any(when(r) > when(last[-1]['created']) for r in reviews if r != 'null'):
+    if any(when(r) > when(last[-1]['created']) for r in reviews if r != 'null'):
+        return
+    if (datetime.datetime.now(datetime.timezone.utc) - when(last[-1]['created'])).total_seconds() >= 3 * 3600:
+        if any(proposal(f) for f in drafts):
+            block(f"your last two comments on {repo}#{num} have no reply yet ({last[-1]['url']}): a proposal waits for one, even after 3 hours; "
+                  "only the wait ping may follow (mergeworthy:post §Thread rules)")
         return
     block(f"your last two comments on {repo}#{num} have no reply yet ({last[-1]['url']}): edit the last one instead of posting a third; "
           "at most two comments in a row; after 3 hours without a reply, the wait ping may follow (mergeworthy:post §Thread rules)")
 
+
+def proposal(f):
+    """Whether the draft a posting command names (a path, @path or body=@path) was linted as `--kind proposal`."""
+    f = os.path.expanduser(where.expand(f[5:] if f.startswith('body=') else f)).lstrip('@')
+    try: flags = open((f if os.path.isabs(f) else os.path.join(cwd, f)) + '.lint').read().split()
+    except OSError: return False
+    return '--kind' in flags and flags[flags.index('--kind') + 1:][:1] == ['proposal']
 
 def check_finality(repo, num, files):
     """A design thread that has had two proposal rounds needs design step 7's thread map before the third (mergeworthy:design).
@@ -490,11 +502,9 @@ def check_finality(repo, num, files):
     rounds = [int(l.split()[1]) for l in open(log) if l.split()[:1] == [f'{repo}#{num}']] if os.path.exists(log) else []
     if len(rounds) < 2: return
     for f in files:
+        if not proposal(f): continue
         f = os.path.expanduser(where.expand(f[5:] if f.startswith('body=') else f)).lstrip('@')
         f = f if os.path.isabs(f) else os.path.join(cwd, f)
-        try: flags = open(f + '.lint').read().split()
-        except OSError: continue
-        if '--kind' not in flags or flags[flags.index('--kind') + 1:][:1] != ['proposal']: continue
         root = next((os.path.dirname(p) for p in work_folder.ancestors(f) if os.path.basename(p) == 'drafts'), os.path.dirname(os.path.dirname(f)))
         m = os.path.join(root, 'maps', f"{repo.replace('/', '-')}-{num}.md")
         if os.path.exists(m) and os.path.getmtime(m) > rounds[-1]: continue
@@ -520,7 +530,7 @@ def check_discussion_post(kind, ref, draft, has_cd):
               "or check the reference")
     repo, num = thread.split('#')
     if kind == 'add':
-        check_turn(repo, num); check_finality(repo, num, [draft])
+        check_turn(repo, num, drafts=[draft]); check_finality(repo, num, [draft])
     check_context(thread, [draft])
     gated_file(draft, has_cd, create=kind == 'add')
 
@@ -1418,7 +1428,7 @@ def check(t, has_cd):
             if sub in ('comment', 'edit') and files:
                 check_refactor_ask(*target, comment=sub == 'comment', drafts=files)
             if sub == 'comment' and '--edit-last' not in rest:
-                check_turn(*target, rest)
+                check_turn(*target, rest, files)
             if sub in ('comment', 'review'):
                 check_finality(*target, files)
             if sub != 'create':
@@ -1451,7 +1461,7 @@ def check(t, has_cd):
             need_home([opens[0]], run_dir)
             if opens[1] == 'pr': need_approach(run_dir, '`gh api` creating a PR', opened_branch(rest, fields=['-f', '--raw-field', '-F', '--field']))
         c = re.fullmatch(r'/?repos/([\w.-]+/[\w.-]+)/issues/(\d+)/comments', ep)
-        if c and method == 'POST': check_turn(c.group(1), c.group(2), rest); check_finality(c.group(1), c.group(2), bodies + inputs)
+        if c and method == 'POST': check_turn(c.group(1), c.group(2), rest, bodies + inputs); check_finality(c.group(1), c.group(2), bodies + inputs)
         thread = None
         t_ = re.fullmatch(r'/?repos/([\w.-]+/[\w.-]+)/(?:issues|pulls)/(\d+)(?:/.*)?', ep)
         if t_: thread = f'{t_.group(1)}#{t_.group(2)}'
