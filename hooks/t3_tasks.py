@@ -2,7 +2,7 @@
 """T3 Code: whether the session runs under it, and its delegated tasks as the session's transcript reports them: its tool calls
 and results (delegate_task, task_status, t3_thread_send) and T3's notices. A thread is all its tasks: the first, each message sent
 to it, each turn T3 continues on its own (provider-continuation)."""
-import hashlib, json, os, re, shlex
+import functools, hashlib, json, os, re, shlex
 
 # T3's notice is `Delegated task <id>[ (<title>)][ in child thread <thread id>] [<status>]:` with its result, or
 # `Delegated task <id> reached a terminal state` for a task it no longer knows (its formatter, delegatedCompletionWakeDetail)
@@ -62,6 +62,25 @@ def driver(instance, kind=None):
     except (KeyError, TypeError): return kind or instance
 
 
+AGENTS = {'claude', 'agy', 'antigravity', 'codex'}
+
+
+@functools.cache
+def t3_environment():
+    """T3 Code's own environment, which it passes to each Claude it starts: that of the nearest ancestor of this hook above its agent
+    (Claude Code, Antigravity, Codex), whose own environment is its instance's; None when /proc can't show it."""
+    pid, seen = os.getppid(), False
+    try:
+        while pid > 1:
+            argv = open(f'/proc/{pid}/cmdline', 'rb').read().split(b'\0')[:2]
+            agent = any(os.path.basename(a.decode(errors='replace')) in AGENTS for a in argv)
+            if seen and not agent:
+                return dict(v.split('=', 1) for v in open(f'/proc/{pid}/environ', 'rb').read().decode(errors='replace').split('\0') if '=' in v)
+            seen, pid = seen or agent, int(open(f'/proc/{pid}/stat').read().rsplit(')', 1)[1].split()[1])
+    except (OSError, ValueError): pass
+    return None
+
+
 def loads_mergeworthy(instance, config):
     """Whether T3 Code's provider instance `instance` (its settings entry `config`) loads mergeworthy, as its driver loads plugins:
     Claude Code with the plugin in a `--plugin-dir` of its launchArgs, or enabled in its config dir's settings.json and not disabled
@@ -70,10 +89,10 @@ def loads_mergeworthy(instance, config):
     c = config.get('config') if isinstance(config.get('config'), dict) else {}
     if config.get('driver') == 'claudeAgent':
         # its config dir as T3 gives it (resolveClaudeConfigDirPath, mergeClaudeProcessEnvironment): homePath, else CLAUDE_CONFIG_DIR in
-        # the instance's environment, else in T3's own, which this hook's Claude session inherits
+        # the instance's environment, else in T3's own
         env = config.get('environment') if isinstance(config.get('environment'), list) else []
         home = (c.get('homePath') or next((e.get('value') for e in env if isinstance(e, dict) and e.get('name') == 'CLAUDE_CONFIG_DIR'), None)
-                or os.environ.get('CLAUDE_CONFIG_DIR'))
+                or (t3_environment() or {}).get('CLAUDE_CONFIG_DIR'))
         layers = [os.path.join(os.path.expanduser(home or '~/.claude'), 'settings.json')]
         args = c.get('launchArgs') or []
         try: args = shlex.split(args) if isinstance(args, str) else [str(a) for a in args]

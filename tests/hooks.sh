@@ -1466,10 +1466,18 @@ check "BLOCK: a Claude instance whose inline --settings JSON or --settings= file
 check "a t3_thread_launch, a top-level thread the user asks for (perhaps the owner's plain A/B one), is never refused for its instance" "0 0" "$(tl myclaude) $(tl agy_x)"
 check "BLOCK: a Claude instance whose homePath doesn't enable the plugin while its environment's CLAUDE_CONFIG_DIR does: T3 takes homePath first" "2 1" \
   "$(res chome) $(grep -c 'instance chome.*providerInstanceId to cm or cpdir\.$' "$T/err")"
-python3 -c 'import json,sys; t=sys.argv[1]; print(json.dumps({"providerInstances":{"cplain":{"driver":"claudeAgent","config":{}},"cown":{"driver":"claudeAgent","environment":[{"name":"CLAUDE_CONFIG_DIR","value":t+"/mwe"}],"config":{}}}}))' "$T" > "$T/mw-env.json"
+python3 -c 'import json,sys; t=sys.argv[1]; print(json.dumps({"providerInstances":{"cplain":{"driver":"claudeAgent","config":{}},"cmw":{"driver":"claudeAgent","config":{"homePath":t+"/mwc"}},"cown":{"driver":"claudeAgent","environment":[{"name":"CLAUDE_CONFIG_DIR","value":t+"/mwe"}],"config":{}}}}))' "$T" > "$T/mw-env.json"
 cp "$HOME/.t3/userdata/settings.json" "$T/mw-main.json"; cp "$T/mw-env.json" "$HOME/.t3/userdata/settings.json"
-check "a Claude instance with no homePath nor environment entry reads T3's own CLAUDE_CONFIG_DIR, which the hook inherits: one enabling the plugin passes; BLOCK: the instance's environment entry still wins over it" "0 2 1" \
-  "$(CLAUDE_CONFIG_DIR="$T/mwc" res cplain) $(CLAUDE_CONFIG_DIR="$T/mwc" res cown) $(grep -c 'instance cown.*providerInstanceId to cplain or claudeAgent\.$' "$T/err")"
+# T3 runs each Claude with its own environment, the instance's config dir merged over it: the hook reads T3's from the process above its
+# agent. A fake chain: "T3" (a shell holding $1 as CLAUDE_CONFIG_DIR) > an agent named claude (holding $2, its instance's) > the hook
+mkdir -p "$T/agentbin"; printf '#!/bin/bash\n"$@"\n' > "$T/agentbin/claude"; chmod +x "$T/agentbin/claude"
+chain() { # T3's CLAUDE_CONFIG_DIR, the session's, target instance: the research delegate_task's exit code under that chain
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":"Research the cache","title":"chain","role":"research","target":{"providerInstanceId":sys.argv[1]}}}))' "$3" > "$T/chain.in"
+  env -u CLAUDE_CONFIG_DIR ${1:+CLAUDE_CONFIG_DIR=$1} bash -c 'env -u CLAUDE_CONFIG_DIR ${1:+CLAUDE_CONFIG_DIR=$1} "$2/agentbin/claude" bash -c "T3CODE_THREAD_ID=th python3 \"\$1/hooks/pre-agent-dedupe.py\" < \"\$2/chain.in\" 2> \"\$2/err\"; echo \$?" _ "$3" "$2"; true' _ "$2" "$T" "$R"; }
+check "BLOCK: a session on cmw (homePath, so its own CLAUDE_CONFIG_DIR is cmw's) delegating to cplain, which T3 runs on ~/.claude, is told cmw; with T3's own CLAUDE_CONFIG_DIR enabling the plugin cplain passes, whatever the session's" "2 1 0" \
+  "$(chain '' "$T/mwc" cplain) $(grep -c "instance cplain doesn't load mergeworthy.*providerInstanceId to cmw\.$" "$T/err") $(chain "$T/mwc" "$T/mwe" cplain)"
+check "BLOCK: an instance's environment entry wins over T3's own CLAUDE_CONFIG_DIR; run outside such a chain (T3's environment unreadable) the hook reads ~/.claude" "2 1 2" \
+  "$(chain "$T/mwc" '' cown) $(grep -c 'instance cown.*providerInstanceId to cplain or cmw or claudeAgent\.$' "$T/err") $(CLAUDE_CONFIG_DIR="$T/mwc" res cplain)"
 cp "$T/mw-main.json" "$HOME/.t3/userdata/settings.json"
 check "a Claude instance loading the plugin by --plugin-dir passes; BLOCK: one whose --plugin-dir= holds another plugin" "0 2 1" \
   "$(res cpdir) $(res cpother) $(grep -c 'instance cpother.*providerInstanceId to cm or cpdir\.$' "$T/err")"
