@@ -18,6 +18,11 @@ ACTIONS = {'merge': Action(r'merge(?!ab)\w*',  # "mergeable" is a state
 # what a command acts on: a merge's PR num of repo, a push's branch, a release's tag or an ask-first command's line (subject), and its
 # other names (its repo, its package)
 Target = namedtuple('Target', 'repo num branch subject names', defaults=(None, None, None, None, ()))
+
+def command_names(line, *hosts):
+    """An ask-first command's names besides its line: its words (t3-update, t3code, as a unit t3code.service) and the hosts it runs on."""
+    words = [w for w in line.split() if not w.startswith('-')]
+    return (*words, *(w + '.service' for w in words), *hosts)
 # a package's name after a release's word or its object; a word that says something of the action ("release is out", "or will I", "prep") is none
 NAME = r"(?:\s+(?:of|for)\b)?\s*(?!(?:is|isn|was|are|were|went|has|had|have|looks?|seems?|should|will|would|can|could|must|may|might|did|does|do|done|or|and|prep|notes?|first|then|if|when|after|before|until|once)\b)[@\w][\w@/.-]*"
 PRONOUN = r'(?:it|this|that|them|these|both|everything|all)(?:\s+(?:one|all|both))?\b'
@@ -45,13 +50,14 @@ PAST = r'(?!(?!frissít)\w*ed\b)'  # an English past form (merged, released); Hu
 MENTION = r'(?!\s+(?:conflicts?|requests?|notes?|plans?|queue)\b)'
 
 PR_REF = re.compile(r'(?:github\.com/([\w.-]+/[\w.-]+)/pull/|gitlab\.com/([\w./-]+?)/-/merge_requests/|\b([\w.-]+/[\w./-]*[\w-])[#!]|[#!]|(?i:\b(?:pr|mr|pull request)\s+))(\d+)\b')  # a PR, an MR (!N)
+SUFFIX = r'-(?:[aeoö]?t|[aeoö]?n|r[ae]|b[ae]n?|[bhr][óő]l|h[oeö]z|n[ae]k|v[ae]l|ig)'  # a Hungarian case ending on a name: t3-at, main-re
 SHAPED = re.compile(r"\d|[/#@_:=~\\]|\w\.\w|^!\w")  # a token that may name a target: a number, a path, a ref, a dotted name, a link
 PEEL = re.compile(r"^([(\[{\"'“‘*]*)(.*?)([)\]}\"'”’*.,;:!?]*)$", re.S)  # a token's outer punctuation
 WORDS = {k: rf'\b(?:{a.words})\b{MENTION}' for k, a in ACTIONS.items()}
 # a clause that asks: openers, the word as an imperative, then this target, a pronoun, a thing the action takes or nothing, then courtesy or time
 ASK = {k: re.compile(rf"{LEAD}(?:‹t›\s*)?{PAST}{w}(?:\s+be\b)?"
                      rf"(?:\s*{PRONOUN}|\s*(?:(?:all|every|each|both)(?:\s+of)?\s+)?(?:{ACTIONS[k].objects})(?:{NAME if k in ('release', 'push') else '(?!)'})?|{NAME if k in ('release', 'push') else '(?!)'})?"
-                     rf"(?:\s*(?:(?:the|a|az)\s+)?‹t›(?:\s*-\w+)?)?(?:\s+(?:of|for|on|in)\s+‹t›(?:\s*-\w+)?)*(?:\s+(?:in)?to\s+(?:the\s+)?[\w./-]+)?(?:[\s,]*{TAIL})*", re.I)
+                     rf"(?:\s*(?:(?:the|a|az)\s+)?‹t›(?:\s*-\w+)?)?(?:\s+(?:(?:of|for|on|in)\s+)?‹t›(?:\s*-\w+)?)*(?:\s+(?:in)?to\s+(?:the\s+)?[\w./-]+)?(?:[\s,]*{TAIL})*", re.I)
        for k, w in WORDS.items()}
 # a clause that asks nothing but sits beside an ask: openers, courtesy and time words alone
 FILLER = re.compile(rf"(?:(?:{'|'.join(OPENERS.values())}|{TAIL}|but|and|or)\W*)*", re.I)
@@ -74,11 +80,13 @@ def sentences(text, kind, target):
         if kind == 'release':
             return re.sub(r'(?<![\w./@-])v?\d+(?:\.\d+)+(?:[-+][\w.-]*\w)?(?![\w/-]|\.\w)', lambda m: tok(subject is None or m[0].lower().lstrip('v') == subject.lower().lstrip('v')), c)
         own = set(re.split(r'[^\w.]+', (subject or '').lower())) - {''}  # an ask-first command's words: "update t3" names t3-update
-        return re.sub(r'(?<![\w./@#-])[\w.]+(?![\w/@#-])', lambda m: tok(True) if not re.fullmatch(WORDS[kind], m[0], re.I) and any(o.startswith(m[0].lower()) for o in own) else m[0], c)
+        return re.sub(rf'(?<![\w./@#-])([\w.]+)({SUFFIX})?(?![\w/@#-])', lambda m: tok(True) + (m[2] or '') if not re.fullmatch(WORDS[kind], m[1], re.I) and any(o.startswith(m[1].lower()) for o in own) else m[0], c)
     def whole(chunk):  # a token marked() left: this target, one of its names, a word, or ‹o› when shaped like a target
         lead, core, trail = PEEL.match(chunk).groups()
         core = core.strip('`')
-        if kind == 'push' and core == branch or core.lower() in names: return lead + tok(True) + trail
+        name, suffix = (m[1], m[2]) if (m := re.fullmatch(rf'(.+?)({SUFFIX})', core)) else (core, '')
+        for n, end in ((core, ''), (name, suffix)):  # this target, or one of its names, with a Hungarian ending or none
+            if kind == 'push' and n == branch or n.lower() in names and not re.fullmatch(WORDS[kind], n, re.I): return lead + tok(True) + end + trail
         if '‹' in core or not core: return chunk
         if kind == 'push' and re.fullmatch(r'v?\d+(?:\.\d+)+', core): return chunk  # a release's version, asked for with a release's word
         return lead + (' ‹o› ' if SHAPED.search(core) else core) + trail

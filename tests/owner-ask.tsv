@@ -1,6 +1,6 @@
 # What owner_ask.asks says of a message the user typed, one phrasing a line: action, target, verdict (True asks, False holds back, None neither), text
 # (\n a line break). The target is a merge's <repo>#<number> (<repo> alone for an MR named by its branch), a push's branch, a release's tag (- for none)
-# and after a space its package's name, an ask-first command's line.
+# and after a space its package's name, an ask-first command's line (run on a machine named opensource).
 merge	o/r#41	None	looks good
 merge	o/r#41	None	thanks
 merge	o/r#41	True	Don't merge #40. Merge #41.
@@ -271,3 +271,9 @@ merge	o/r#41	True	merge https://github.com/o/r/pull/41#issuecomment-123
 merge	o/r#41	None	merge https://github.com/o/r/pull/40/files
 merge	o/r#41	True	merge (#41)
 push	main	True	push to "main"
+ask-first	t3-update	True	frissítsd a t3-at
+ask-first	t3-update	True	frissítsd a t3-at opensource-on
+ask-first	t3-update	True	update t3 on opensource
+ask-first	t3-update	True	update t3-update
+ask-first	systemctl --user restart t3code	True	restart t3code.service
+push	main	True	pushold a main-re

@@ -3,7 +3,7 @@
 Checks each simple command separately (shellcmd.parse: chains, substitutions, `bash -c`; heredoc bodies and quoted text are data).
 It fails closed: a command it can't parse, a record it can't find or a state gh can't read blocks what it guards.
 MERGEWORTHY_MERGE=reviewer blocks every `gh pr merge`."""
-import glob, itertools, json, re, sys, os, hashlib, shlex, subprocess, urllib.parse
+import glob, itertools, json, re, sys, os, hashlib, shlex, socket, subprocess, urllib.parse
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed, gh_common
 import shellcmd
@@ -11,7 +11,7 @@ from shellcmd import parse, segments, prog, script, opt, api_call, field_name, T
 from records import branch_record, commit_file, DRIFT_REF, LIMIT, no_approach, no_preflight, STORE
 import drift, own_actions, review_launch, steward, post_words, threads_file, transcript_facts, work_folder
 from t3_tasks import last_typed, under_t3
-from owner_ask import ACTIONS, Target, asks
+from owner_ask import ACTIONS, Target, asks, command_names
 def missing_steps(d, head=None):
     """(head, the converge steps it lacks): head is a push's pushed commit, else HEAD."""
     head = head or subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
@@ -234,14 +234,16 @@ def publish_dir(p, a):
 
 def ask_first(t):
     """Blocks t when it, or a command an `ssh <host> '<command>'` runs there, is one the machine's ask-first list names, unasked."""
-    remote = []
+    remote, host = [], socket.gethostname()
     if os.path.basename(t[0]) == 'ssh':
         i = 1
         while i < len(t) and t[i].startswith('-'): i += 2 if re.fullmatch(r'-[BbcDEeFIiJLlmOoPpQRSWw]', t[i]) else 1
         remote = [prog(x) for x in segments(' '.join(t[i + 1:]))] if t[i + 1:] else []
     for c in [t, *remote]:
         line = ' '.join([os.path.basename(c[0]), *c[1:]]) if c else ''
-        if line and any(re.match(rf'(?:{p})(?!\S)', line) for p in ASK_FIRST): need_ask('ask-first', f'`{line[:80]}`', Target(subject=line))
+        where = t[i].rpartition('@')[2] if c is not t else host  # the machine it runs on
+        if line and any(re.match(rf'(?:{p})(?!\S)', line) for p in ASK_FIRST):
+            need_ask('ask-first', f'`{line[:80]}`', Target(subject=line, names=command_names(line, where)))
 
 def setting(name, default):
     """MERGEWORTHY_<name> from the environment, else from ~/.mergeworthy/settings.env (written at session start from the plugin's options)."""

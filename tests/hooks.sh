@@ -5135,7 +5135,7 @@ for i, l in enumerate(open(sys.argv[1] + "/tests/owner-ask.tsv"), 1):
     except ValueError: print(f"line {i}: not 4 tab-separated fields"); continue
     x = x.replace("\\n", "\n"); r, _, num = t.partition("#"); tag, _, pkg = t.partition(" "); n += 1
     got = owner_ask.asks(x, a, owner_ask.Target(r, num or None, names=(r,)) if a == "merge" else owner_ask.Target(branch=t) if a == "push"
-                         else owner_ask.Target(subject=None if tag == "-" else tag, names=(pkg,)) if a == "release" else owner_ask.Target(subject=t))
+                         else owner_ask.Target(subject=None if tag == "-" else tag, names=(pkg,)) if a == "release" else owner_ask.Target(subject=t, names=owner_ask.command_names(t, "opensource")))
     if str(got) != want: print(f"line {i}: {x!r} gives {got}")
 n or print("no phrasings")' "$R"; }
 check "each phrasing of tests/owner-ask.tsv gets its verdict from owner_ask.asks; a failing one is named by its line, a runner error or an empty table fails" "" "$(oa 2>&1 || echo "the runner exited $?")"
