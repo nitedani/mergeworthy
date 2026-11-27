@@ -45,7 +45,7 @@ How:
 Write <work folder>/<name>.md, exhaustively, after the sections above, each finding `R<round>.<n> <label>`:
 - each reproduced bug with its commit, the repro inline, observed vs expected;
 - then, under `## Dropped`, every candidate you tried and dropped, each one list item `- <candidate>: <why>`;
-- if no bug counts, what you tried under `## Tried`, then a last line NO BUGS.
+- if no bug counts and no `## Untested claims` line stands, what you tried under `## Tried`, then a last line NO BUGS.
 
 Final message: the count and one line each, then each reproduced-and-dropped candidate, one line each; exactly NO BUGS only when the file ends NO BUGS.
 ```
