@@ -186,6 +186,48 @@ fi
 # carries an earlier pass or small fix's review ("carries the pass of <sha>", carry_holds): a fix log or a note is not a shape pass
 # A pass rates every item afresh: a row whose rating is copied ("10 =", "=", "unchanged since") is a re-rating of a delta, not a pass
 is_pass() { grep -q '✅' "$1" && grep -Eq '([0-9]+|\bnew) *(⇒|=>) *([0-9]+|removed|new|n/a)' "$1" && ! grep -Eiq '\| *([0-9]+ *)?= *\||unchanged since' "$1"; }
+# A pass's report rates one item per rating row (each table cell before the rating, or the text before it) and has the '## Root cause' of code §Root cause
+one_per_row_root_cause() { python3 - "$1" <<'EOF' || exit 1
+import re, sys
+path = sys.argv[1]; s = open(path).read()
+ask = '(mergeworthy delegate/shape.md)'
+count = re.compile(r'\(\s*\d+\s+(fns?|functions?|helpers?|methods?|files?)\b[^)]*\)', re.I)
+# a commit sha is a reference, never an item; a path, a file.ext or a :line locates the one item beside it
+kind = lambda span: 'sha' if re.fullmatch(r'`[0-9a-f]{7,40}`', span) else 'place' if re.search(r'/|\w\.\w+|:\d', span) else 'name'
+# a quoted title, a test title after 'it:' or a link whose text is a sentence (three words outside its code spans) names one item: its spans are words of it
+title = lambda m: m[0].replace('`', '') if len(re.findall(r"\b(?!and\b)[A-Za-z][\w'’-]*", re.sub(r'`[^`\n]+`', '', m[0]))) >= 3 else m[0]
+def grouped(item):
+    item = re.sub(r'''\[[^\]\n]+\](?=\()|(?<!\w)'[^'\n]+'(?!\w)|"[^"\n]+"|“[^”\n]+”|\bit: .+''', title, item)
+    # the parentheses after an item describe it: their spans are no more items (an empty () is part of a name)
+    item = re.sub(r'(?<=\S)\s*\([^()]+\)', '', re.sub(r'^\s*[-*]\s+|[\s:–—-]+$', '', item.strip())) if not count.search(item) else item
+    spans = list(re.finditer(r'`[^`\n]+`', item))
+    words = [w for w in re.split(r'\s*(?:,|\band\b)\s*', item) if w]
+    ident = lambda w: re.fullmatch(r'\w+(\(\))?', w) and (w.endswith('()') or '_' in w or re.search('[A-Z]', w[1:]))
+    return count.search(item) or len(words) > 1 and all(map(ident, words)) or any(re.fullmatch(r'\s*(,|&|\+|/|and)\s*', item[a.end():b.start()], re.I) and kind(a[0]) == kind(b[0]) != 'sha'
+                                     for a, b in zip(spans, spans[1:]))
+for line in s.splitlines():
+    m = re.search(r'([0-9]+|\bnew) *(⇒|=>) *([0-9]+|removed|new|n/a)', line)
+    if not m:
+        continue  # only a rating row rates items; a census or findings row may name several
+    cells = line.strip().strip('|').split('|')
+    items = cells[:min(i for i, c in enumerate(cells) if m[0] in c) or 1] if line.lstrip().startswith('|') else [line[:m.start()]]
+    if any(map(grouped, items)):
+        sys.exit(f"{path} rates several items in one row: give each file and function its own row and rating {ask}:\n{line.strip()}")
+# the section is its bullets and the shims line: the first other line or heading ends it
+sec = re.search(r'^## Root cause[ \t]*\n((?:[ \t]*(?:[-*] .*|Pre-1\.0 shims:.*)?\n)*)', s + '\n', re.M)
+want = "'## Root cause' with one bullet per workaround for another project's bug, `path:line` and its upstream issue or PR link, or '- none', then a line 'Pre-1.0 shims: none'"
+if not sec:
+    sys.exit(f"{path} has no {want} {ask}")
+lines = [l.strip() for l in sec.group(1).splitlines()]
+shims = [l for l in lines if re.match(r'([-*] +)?Pre-1\.0 shims:', l)]
+bullets = [l for l in lines if re.match(r'[-*] ', l) and l not in shims]
+bad = [b for b in bullets if not re.fullmatch(r'[-*] +none\.?', b, re.I) and not re.search(r'https?://', b)]
+if not bullets or bad:
+    sys.exit(f"{path} needs {want}; " + ('its section has no bullet' if not bullets else 'a bullet without its upstream link:\n' + '\n'.join(bad)) + f" {ask}")
+if not shims or not re.fullmatch(r'([-*] +)?Pre-1\.0 shims: *none\.?', shims[0], re.I):
+    sys.exit(f"{path} needs {want}: pre-1.0 code gets no compatibility code or shims (code §Root cause); " + (f"it has '{shims[0]}'" if shims else "the line is missing") + f" {ask}")
+EOF
+}
 # The lines between two trees, a binary, mode or empty file counting one
 span() { git diff --numstat "$1" "$2" | awk '{ s += $1 + $2 + 1 } END { print s + 0 }'; }
 # The file of each line HEAD changed since an earlier head, once per line: compared whole with that head replayed on the base HEAD has merged,
@@ -311,6 +353,7 @@ EOF
   shape|refactor)
     if is_pass "$out"; then
       [ "$step" = refactor ] || old_pipeline || read_standards
+      one_per_row_root_cause "$out"
       [ "$step" = refactor ] ||
       [ "$last" = CLEAN ] || ledger_ok || { echo "$out does not end with a line CLEAN: land what its review and shape pass found worth changing, then continue the same agent for round 2; after round 2, record it with --ledger <the loop's ledger> (mergeworthy:converge step 2)" >&2; exit 1; }
     else
