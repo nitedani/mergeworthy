@@ -5248,6 +5248,22 @@ $(echo '"x"' > "$FX/repos_o_r_rulesets_7"; lg "$MA") $(grep -c "gh couldn't read
 sed 's/"statusCheckRollup":\[/&{"name":"lint","conclusion":"NEUTRAL"},{"context":"e2e","state":"PENDING"},{"name":"docs","conclusion":"","status":"IN_PROGRESS"},{"name":"t","conclusion":"FAILURE"},/' "$FX/pr_view_41" > "$T/pv"
 check "BLOCK: --admin while a check on the head failed or is pending, naming each; a neutral one passes" "2 1" \
   "$(cp "$FX/pr_view_41" "$T/pv41"; cp "$T/pv" "$FX/pr_view_41"; lg "$MA") $(grep -c "its head's checks haven't all succeeded (e2e pending, docs pending, t failure)" "$T/err"; mv "$T/pv41" "$FX/pr_view_41")"
+# an Actions job no runner ever took, on labels neither GitHub nor a runner of the repo offers (nitedani/t3code's job 140286824381), carries no verdict
+unrun() { # the head's one other check: conclusion, status; its job: runner_id, steps, labels; a label the repo's runner offers (- for no runner); a fixture gh can't read
+  cp "$FX/pr_view_41" "$T/pv41"; sed -i "s|\"statusCheckRollup\":\[|&{\"name\":\"fp\",\"conclusion\":\"$1\",\"status\":\"$2\",\"detailsUrl\":\"https://github.com/o/r/actions/runs/5/job/9\"},|" "$FX/pr_view_41"
+  printf '{"runner_id":%s,"steps":%s,"labels":%s}' "$3" "$4" "$5" > "$FX/repos_o_r_actions_jobs_9"; [ "${6-}" = - ] && printf '{"total_count":0,"runners":[]}' > "$FX/repos_o_r_actions_runners_per_page_100" ||
+    printf '{"total_count":1,"runners":[{"labels":[{"name":"%s"}]}]}' "${6:-x}" > "$FX/repos_o_r_actions_runners_per_page_100"
+  rm -f "$FX/${7:-none}"; lg "$MA"; mv "$T/pv41" "$FX/pr_view_41"; }
+BS='["blacksmith-8vcpu-ubuntu-2404"]'
+check "--admin past a cancelled check whose job never got a runner, on a label nothing offers, passes; BLOCK: the same on a GitHub-hosted label, with a runner, with steps, or with a runner of the repo offering the label" "0 2 2 2 2 1" \
+  "$(unrun CANCELLED COMPLETED 0 '[]' "$BS") $(unrun CANCELLED COMPLETED 0 '[]' '["ubuntu-latest"]') $(unrun CANCELLED COMPLETED 7 '[]' "$BS") $(unrun CANCELLED COMPLETED 0 '[{"name":"Set up job"}]' "$BS") $(unrun CANCELLED COMPLETED 0 '[]' "$BS" blacksmith-8vcpu-ubuntu-2404) $(grep -c "its head's checks haven't all succeeded (fp cancelled)" "$T/err")"
+check "--admin past such a job on a self-hosted label passes when the repo has no runners; BLOCK: a runner of the repo offers one of its labels" "0 2 1" \
+  "$(unrun CANCELLED COMPLETED 0 '[]' '["self-hosted","linux","gpu"]' -) $(unrun CANCELLED COMPLETED 0 '[]' '["self-hosted","linux","gpu"]' gpu) $(grep -c "its head's checks haven't all succeeded (fp cancelled)" "$T/err")"
+check "BLOCK: --admin past such a job still queued, naming the command that cancels it" "2 1" \
+  "$(unrun '' QUEUED null '[]' "$BS") $(grep -c 'fp is queued on blacksmith-8vcpu-ubuntu-2404, which neither GitHub nor a runner of o/r offers: cancel it (`gh run cancel 5 -R o/r`)' "$T/err")"
+check "BLOCK: --admin past a cancelled check whose job or the repo's runners gh can't read, saying to retry" "2 1 2 1" \
+  "$(unrun CANCELLED COMPLETED 0 '[]' "$BS" x repos_o_r_actions_jobs_9) $(grep -c "gh couldn't read fp's job or o/r's runners: retry once gh answers" "$T/err") \
+$(unrun CANCELLED COMPLETED 0 '[]' "$BS" x repos_o_r_actions_runners_per_page_100) $(grep -c "gh couldn't read fp's job or o/r's runners: retry once gh answers" "$T/err"; rm -f "$FX"/repos_o_r_actions_*)"
 mv "$HOME/.mergeworthy/projects/o/r.md" "$T/or.md"
 check "with no project file, BLOCK: --admin unasked, or asked for another PR; a plain merge unasked passes, and --admin asked for passes" "2 1 2 0 0" \
   "$(said 'looks good'; lg "$MA") $(grep -c "merging https://github.com/o/r/pull/41 past its base's rules (--admin) lands on o/r.*reply \`merge\`" "$T/err") $(said 'merge #40'; lg "$MA") $(said 'looks good'; lg "$M") $(said 'merge #41'; lg "$MA")"
