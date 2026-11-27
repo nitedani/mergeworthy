@@ -69,7 +69,7 @@ def target(t, d):
 segs = segments(cmd)  # a command that doesn't lex still yields its words: a post in it is still registered
 # the drafts posted as new, and each posting segment's target with the dir it ran in, resolved as pre-bash-guard resolves them
 cwd = d.get('cwd') or os.getcwd()
-where, drafts, posts, creates, discussed = Where(cwd), [], [], [], False
+where, drafts, posts, creates, sent, discussed = Where(cwd), [], [], [], [], False
 def wrote(post, th):  # whether that posting segment can have written the thread th (threads()'s); one that names its thread, only that one
     return post[3] == th if post[3] else (post[0] is None or post[0] == th[0]) and (post[1] is None or post[1] == th[1])
 for s in where.walk(segs):
@@ -77,7 +77,7 @@ for s in where.walk(segs):
     adds = (discussion_post(s) or ('',))[0] == 'add'
     discussed = discussed or adds
     post = (tg[0], tg[1], where.dir, tg[2] if len(tg) > 2 else None) if (tg := target(s, where.dir)) else None
-    if post: posts.append(post)
+    if post: posts.append(post); sent.append((post, new))
     if post and (o := opened(s, where.dir)): creates.append((o[0], post))
     # a pipe hides the post's exit: only the URL it printed says it was created
     if not s.piped or (post and any(wrote(post, th) for th in threads(out))) or (adds and re.search(r'github\.com/\S+/discussions/\d+#discussioncomment', out)):
@@ -117,20 +117,10 @@ def register_posted(out):
             open(gated, 'a').write(hashlib.sha256(body.replace('\r\n', '\n').strip().encode()).hexdigest() + '\n')
 register_posted(out)
 # Count a posted design proposal per thread (pre-bash-guard asks for design step 7's thread map from the third on)
-def body_files(t):
-    if dp := discussion_post(t): return [dp[2]]
-    a = prog(t)
-    return [a[i + 1] for i in range(len(a) - 1) if a[i] in ('--body-file', '-F', '--field', '--input')] + \
-        [x.split('=', 1)[1] for x in a if x.startswith('--body-file=')]
-for s in segs:
-    tg = target(s, None)
-    if not tg or not tg[0] or not tg[1]:
-        continue
-    for f in body_files(s):
-        f = os.path.expanduser(f[len('body='):] if f.startswith('body=') else f)
-        f = f[1:] if f.startswith('@') else f
+for post, new in sent:
+    for f in new if post[0] and post[1] else []:
         if lint_kind(f) == 'proposal' and os.path.abspath(f) in fresh:
-            open(os.path.expanduser('~/.claude/proposal-rounds.txt'), 'a').write(f'{tg[0]}#{tg[1]} {int(time.time())}\n')
+            open(os.path.expanduser('~/.claude/proposal-rounds.txt'), 'a').write(f'{post[0]}#{post[1]} {int(time.time())}\n')
 reg = os.path.expanduser('~/.claude/gh-watch-dirs.txt')
 dirs = [l.strip() for l in open(reg)] if os.path.exists(reg) else []
 def lines(dr, f):
