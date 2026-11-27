@@ -478,7 +478,7 @@ def check_turn(repo, num, args=(), drafts=()):
     if any(when(r) > when(last[-1]['created']) for r in reviews if r != 'null'):
         return
     if (datetime.datetime.now(datetime.timezone.utc) - when(last[-1]['created'])).total_seconds() >= 3 * 3600:
-        if any(proposal(f) for f in drafts):
+        if any(proposal(draft_path(f)) for f in drafts):
             block(f"your last two comments on {repo}#{num} have no reply yet ({last[-1]['url']}): a proposal waits for one, even after 3 hours; "
                   "only the wait ping may follow (mergeworthy:post §Thread rules)")
         return
@@ -486,10 +486,14 @@ def check_turn(repo, num, args=(), drafts=()):
           "at most two comments in a row; after 3 hours without a reply, the wait ping may follow (mergeworthy:post §Thread rules)")
 
 
-def proposal(f):
-    """Whether the draft a posting command names (a path, @path or body=@path) was linted as `--kind proposal`."""
+def draft_path(f):
+    """The file a posting command's draft argument (a path, @path or body=@path) names."""
     f = os.path.expanduser(where.expand(f[5:] if f.startswith('body=') else f)).lstrip('@')
-    try: flags = open((f if os.path.isabs(f) else os.path.join(cwd, f)) + '.lint').read().split()
+    return f if os.path.isabs(f) else os.path.join(cwd, f)
+
+def proposal(path):
+    """Whether the draft at path was linted as `--kind proposal`."""
+    try: flags = open(path + '.lint').read().split()
     except OSError: return False
     return '--kind' in flags and flags[flags.index('--kind') + 1:][:1] == ['proposal']
 
@@ -502,9 +506,8 @@ def check_finality(repo, num, files):
     rounds = [int(l.split()[1]) for l in open(log) if l.split()[:1] == [f'{repo}#{num}']] if os.path.exists(log) else []
     if len(rounds) < 2: return
     for f in files:
+        f = draft_path(f)
         if not proposal(f): continue
-        f = os.path.expanduser(where.expand(f[5:] if f.startswith('body=') else f)).lstrip('@')
-        f = f if os.path.isabs(f) else os.path.join(cwd, f)
         root = next((os.path.dirname(p) for p in work_folder.ancestors(f) if os.path.basename(p) == 'drafts'), os.path.dirname(os.path.dirname(f)))
         m = os.path.join(root, 'maps', f"{repo.replace('/', '-')}-{num}.md")
         if os.path.exists(m) and os.path.getmtime(m) > rounds[-1]: continue
