@@ -1522,6 +1522,14 @@ check "BLOCK: a driverKind alone in a project that turns on agy_pr (off by defau
 python3 -c 'import sqlite3, sys; c = sqlite3.connect(sys.argv[1]); c.execute("update orchestration_v2_projection_threads set project_id = ?", (sys.argv[2],)); c.commit()' "$HOME/.t3/userdata/statev2.sqlite" proj-b
 check "in a project that leaves agy_pr off and turns agy_on off, a driverKind antigravity alone passes" 0 "$(impl '{"driverKind":"antigravity"}' '' research 'Research the cache')"
 rm "$HOME/.t3/userdata/statev2.sqlite" "$HOME/.t3/userdata/settings.json"
+# a target in another linked T3 environment runs on that machine's instances, whose settings aren't here: not judged here
+echo env-here > "$HOME/.t3/userdata/environment-id"
+printf '{"providerInstances":{"mw":{"driver":"claudeAgent","config":{"homePath":"%s"}}}}' "$T/mwon" > "$HOME/.t3/userdata/settings.json"
+check "a delegate_task on claudeAgent in another environment passes; BLOCK: the same in this environment, by its id or none, naming mw" "0 2 2 1" \
+  "$(impl '{"environmentId":"env-other","providerInstanceId":"claudeAgent"}' '' research 'Research the cache') $(impl '{"environmentId":"env-here","providerInstanceId":"claudeAgent"}' '' research 'Research the cache') $(impl '{"providerInstanceId":"claudeAgent"}' '' research 'Research the cache') $(grep -c 'providerInstanceId to mw\.$' "$T/err")"
+check "BLOCK: an implementer on Antigravity in another environment is told that environment's claudeAgent, not this one's mw" "2 1" \
+  "$(impl '{"environmentId":"env-other","driverKind":"antigravity"}') $(grep -c 'no implementer runs on Antigravity (mergeworthy:delegate §Model class): set target.providerInstanceId to claudeAgent\.$' "$T/err")"
+rm "$HOME/.t3/userdata/environment-id" "$HOME/.t3/userdata/settings.json"
 check "an exploring research agent on claudeAgent passes" 0 "$(rev '{"providerInstanceId":"claudeAgent"}' 'Explore it' research)"
 python3 -c 'import json; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":"Review it","role":"review","target":{"providerInstanceId":"claudeAgent"},"clientRequestId":"r-1"}}))' \
   | T3CODE_THREAD_ID=th python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"

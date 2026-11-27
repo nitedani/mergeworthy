@@ -66,6 +66,7 @@ class Request:
         target = ti.get('target') or {}
         self.providers = {target.get('providerInstanceId'), target.get('driverKind')} - {None, ''}
         self.instance = str(target.get('providerInstanceId') or '')  # the T3 provider instance delegate_task's target names
+        self.environment = target.get('environmentId')  # the linked T3 environment it runs in, if not this one
         # the drivers it runs on, as T3 Code picks them: the named instance's, else any instance of the driver it names
         self.kind = k = target.get('driverKind')
         self.drivers = {driver(i, k)} if (i := target.get('providerInstanceId')) else {k} if k else set()

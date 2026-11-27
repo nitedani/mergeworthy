@@ -66,6 +66,12 @@ def instances():
     return known
 
 
+def here(environment):
+    """Whether a launch naming T3 environment `environment` (or none) runs on this machine, whose id is its userdata's environment-id."""
+    try: return not environment or environment == open(userdata('environment-id')).read().strip()
+    except OSError: return False
+
+
 def state_uri():
     """T3 Code's state database as a read-only SQLite URI."""
     return pathlib.Path(userdata('statev2.sqlite')).absolute().as_uri() + '?mode=ro'

@@ -185,7 +185,9 @@ def codex_reset():
 # on: a delegate_task with no target runs on the launching session's provider, Antigravity's under hooks/agy.py (MERGEWORTHY_HOST);
 # an Antigravity seat names its target, so a launch without one is refused there too. Each refusal names the instances of the
 # driver it asks for that load mergeworthy, so the target it names passes the instance check below
-targets = lambda kind: ' or '.join(t3_tasks.mergeworthy_instances(kind)) or f"an instance of {kind} that loads mergeworthy, which none does now"
+# a linked environment's instances are in its own settings, which this machine can't read: there the driver's own id is named
+here = t3_tasks.here(req.environment)
+targets = lambda kind: (' or '.join(t3_tasks.mergeworthy_instances(kind)) if here else kind) or f"an instance of {kind} that loads mergeworthy, which none does now"
 drivers = req.drivers or {'antigravity' if os.environ.get('MERGEWORTHY_HOST') == 'antigravity' else 'claudeAgent'}
 if req.t3 and str(req.tool).endswith('delegate_task') and 'antigravity' in drivers and (k.builds or not req.providers):
     why = ["no implementer runs on Antigravity (mergeworthy:delegate §Model class)"] if k.builds else []
@@ -202,8 +204,8 @@ elif req.role == 'review' and req.t3 and not reset and 'claudeAgent' in drivers 
     sys.stderr.write(f"BLOCKED: an independent check starts on another company's model (mergeworthy:delegate §Reviewers): set target.providerInstanceId to {targets('codex')}. "
                      f"Only when that call failed, launch on Claude ({targets('claudeAgent')}) with `Fallback: <what failed>` in the task or the brief file it names.\n")
     refused()
-# a mergeworthy session's agent never runs on a T3 instance that loads no mergeworthy; a t3_thread_launch is a thread the user asks for
-elif req.t3 and str(req.tool).endswith('delegate_task') and (plain := t3_tasks.without_mergeworthy(req.instance, req.kind)):
+# an agent never runs on a T3 instance that loads no mergeworthy; a t3_thread_launch (the user's) and a linked environment pass
+elif req.t3 and str(req.tool).endswith('delegate_task') and here and (plain := t3_tasks.without_mergeworthy(req.instance, req.kind)):
     what = f"T3's instance {req.instance}" if req.instance else f"driverKind {req.kind} alone may run on T3's instance {' or '.join(plain)}, which"
     sys.stderr.write(f"BLOCKED: {what} doesn't load mergeworthy, so this agent would run without its skills and hooks: "
                      f"set target.providerInstanceId to {targets(t3_tasks.driver(req.instance, req.kind))}.\n")
