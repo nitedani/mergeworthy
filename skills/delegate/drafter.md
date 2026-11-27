@@ -14,7 +14,7 @@ Our position and its reasons: <position, only on what the main session has read>
 What we decided: <decisions>.
 To check, which no position above covers; what you find decides it: <what to check, or none>.
 
-Write the draft to <abs>/drafts/<thread>/<name>.md by writing/SKILL.md, honoring every past decision in the record, each attribution linked to its permalink. Never repeat what's settled, contradict an earlier reply silently, or miss an earlier question.
+Write the draft to <abs>/drafts/<thread>/<name>.md by writing/SKILL.md, honoring every past decision in the record, each attribution linked to its permalink.
 Write to <abs>/drafts/<thread>/<name>.conflicts.md every conflict between our position and a past decision or statement in the record, each with its permalink, or "none". Then list there each claim with a scope word (every, always, fails, only, all) beside the source line proving exactly that scope; narrow the draft's claim where none does.
 Final message: the two paths and the number of conflicts.
 ```

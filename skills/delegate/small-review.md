@@ -2,8 +2,6 @@
 
 Standards: `~/.mergeworthy/current/skills/code/SKILL.md` §Checklist, `~/.mergeworthy/current/skills/writing/SKILL.md` §Self-check. Include `delegate/agent.md`.
 
-The main session starts the reviewer `delegate §Reviewers` names.
-
 ```
 Review: small
 You review <PR> at head <SHA> (base <SHA>) in <worktree>, as its maintainer would before merging. The project file: <project file path>. The body draft: <work folder>/drafts/<pr>/pr-body.md. Don't commit, push or comment anywhere.

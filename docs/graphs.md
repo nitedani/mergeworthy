@@ -7,7 +7,7 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 | Skill | Hands over to |
 |---|---|
 | `code` | `delegate` |
-| `converge` | `design`, `finality`, `delegate`, `task`, `code`, `pull-request`, `rules`, `post`, `merging` |
+| `converge` | `design`, `finality`, `delegate`, `task`, `code`, `pull-request`, `rules`, `merging`, `post` |
 | `delegate` | `code`, `writing` |
 | `design` | `delegate`, `pull-request`, `code`, `finality`, `writing`, `open-issue`, `post` |
 | `docs` | `delegate`, `converge`, `code` |
@@ -320,11 +320,10 @@ flowchart TB
   s4 -.-> r9[["pull-request"]]
   s4 -.-> r10[["delegate"]]
   s4 -.-> r11[["rules"]]
-  s4 -.-> r12[["post"]]
-  s5 -.-> r13[["merging"]]
-  s5 -.-> r14[["post"]]
-  s5 -.-> r15[["finality"]]
-  s5 -.-> r16[["code"]]
+  s5 -.-> r12[["merging"]]
+  s5 -.-> r13[["post"]]
+  s5 -.-> r14[["finality"]]
+  s5 -.-> r15[["code"]]
   start --> g0
 ```
 
@@ -359,11 +358,10 @@ flowchart TB
   s4 -.-> r9[["pull-request"]]
   s4 -.-> r10[["delegate"]]
   s4 -.-> r11[["rules"]]
-  s4 -.-> r12[["post"]]
-  s5 -.-> r13[["merging"]]
-  s5 -.-> r14[["post"]]
-  s5 -.-> r15[["finality"]]
-  s5 -.-> r16[["code"]]
+  s5 -.-> r12[["merging"]]
+  s5 -.-> r13[["post"]]
+  s5 -.-> r14[["finality"]]
+  s5 -.-> r15[["code"]]
   start --> g0
 ```
 
@@ -398,11 +396,10 @@ flowchart TB
   s4 -.-> r9[["pull-request"]]
   s4 -.-> r10[["delegate"]]
   s4 -.-> r11[["rules"]]
-  s4 -.-> r12[["post"]]
-  s5 -.-> r13[["merging"]]
-  s5 -.-> r14[["post"]]
-  s5 -.-> r15[["finality"]]
-  s5 -.-> r16[["code"]]
+  s5 -.-> r12[["merging"]]
+  s5 -.-> r13[["post"]]
+  s5 -.-> r14[["finality"]]
+  s5 -.-> r15[["code"]]
   start --> g0
 ```
 
@@ -437,11 +434,10 @@ flowchart TB
   s4 -.-> r9[["pull-request"]]
   s4 -.-> r10[["delegate"]]
   s4 -.-> r11[["rules"]]
-  s4 -.-> r12[["post"]]
-  s5 -.-> r13[["merging"]]
-  s5 -.-> r14[["post"]]
-  s5 -.-> r15[["finality"]]
-  s5 -.-> r16[["code"]]
+  s5 -.-> r12[["merging"]]
+  s5 -.-> r13[["post"]]
+  s5 -.-> r14[["finality"]]
+  s5 -.-> r15[["code"]]
   start --> g0
 ```
 

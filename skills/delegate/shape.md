@@ -2,13 +2,11 @@
 
 Standards: `~/.mergeworthy/current/skills/code/SKILL.md`. Include `delegate/agent.md`.
 
-The main session starts the reviewer `delegate §Reviewers` names.
-
 - **DELETE-NOW** (should)**:** remove; behavior-preserving, no probe needed.
 - **FIX** (should)**:** an exact behavior-preserving change.
 - **FILL** (should)**:** a gap to fill (a missing test of a documented contract, a missing sibling case).
 - **DELETE-CAREFULLY** (should)**:** remove only after code §Removal gate's probe.
-- **OWNER-DECISION** (should, ruled `listed:`; a blocker where the task can't go on without the owner, keeping the PR in draft)**:** owner code, a behavior or public-surface change, or anything the task doesn't authorize, with your recommendation; the main session puts it in the PR body's decision blocks or its report to the user.
+- **OWNER-DECISION** (should, `listed:`; blocker where the task can't go on without the owner)**:** owner code, a behavior or public-surface change, or anything the task doesn't authorize, with your recommendation, for the main session's decision blocks or report to the user.
 - **NIT:** a nit (`agent.md`): no code.
 - **KEEP:** checked and worth its price.
 
@@ -32,9 +30,9 @@ Step 2, reshape what stays: the prompt below, the user's text, unchanged in ever
 
 Step 3, rate every file and function old ⇒ new: verify each implementation (behavior preserved, mutation probes still red, comments true), and say whether each decline holds.
 
-<From round 2, your whole scope, each step's and the prompt's: the loop's ledger <path>, the commits since <list>, what's left unchecked <list>: every finding there and in the code they touch; skip declined ids. Rate only the rows they touch; list each other row as `<row> | <N> = | carried from <loop>-r<N>`, its rating from the loop's last recorded shape report, which the main session lists here without reasons: <rows and ratings>.>
+<From round 2, your whole scope, each step's and the prompt's: the loop's ledger <path>, the commits since <list>, what's left unchecked <list>: every finding there and in the code they touch; skip declined ids. Rate only the rows they touch; each other row is `<row> | <N> = | carried from <loop>-r<N>`, as the main session lists them from the loop's last recorded shape report: <rows and ratings>.>
 
-Write <report path>: `## Standards read` (above), then step 1's findings, their ids going on from this round's reviewer report's, DELETE-NOW first, then FIX, FILL, DELETE-CAREFULLY, OWNER-DECISION; NIT rows under `## Dropped` (agent.md); the mechanism census; the 10-second pass as classes; step 2's ratings and ✅ coverage list; step 3's old ⇒ new ratings and the prior findings' closure; an honest-positive statement ("nothing worth changing" where that is the result). End the file with a line CLEAN only when your review in this run and all three steps leave nothing behavior-preserving whose value is worth its price (its should, agent.md).
+Write <report path>: `## Standards read` (above), then step 1's findings, numbered on from this round's reviewer report, DELETE-NOW first, then FIX, FILL, DELETE-CAREFULLY, OWNER-DECISION; the mechanism census; the 10-second pass as classes; step 2's ratings and ✅ coverage list; step 3's old ⇒ new ratings and the prior findings' closure; an honest-positive statement ("nothing worth changing" where that is the result). End the file with a line CLEAN only when your review in this run and all three steps leave nothing behavior-preserving whose value is worth its price (its should, agent.md).
 Final message: the path, counts per disposition, the three highest-value findings, the overall rating.
 
 <the prompt below, verbatim>
@@ -42,7 +40,7 @@ Final message: the path, counts per disposition, the three highest-value finding
 
 ## The prompt
 
-Adapted from brillout's [refactor skill](https://github.com/brillout/skills/blob/1742618bced7/skills/refactor/SKILL.md), without its commits and questions; the ✅ coverage list, reuse check, function merging, 8-or-above pass and expert-team lines are ours. Its words: *pinnacle* is the ideal split into files and functions, the shape the code would have if designed today, from scratch; the *✅ coverage list* is the separate tick list of every file, function and piece of logic, proving none was skipped.
+Adapted from brillout's [refactor skill](https://github.com/brillout/skills/blob/1742618bced7/skills/refactor/SKILL.md); *pinnacle* is the ideal split into files and functions, the shape the code would have if designed today, from scratch.
 
 
 Refactor this PR:

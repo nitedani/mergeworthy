@@ -2,7 +2,7 @@
 
 Standards: `~/.mergeworthy/current/skills/code/SKILL.md`, `~/.mergeworthy/current/skills/writing/SKILL.md` §Self-check. Include `delegate/agent.md`.
 
-Each seat runs once (`converge` step 4) and gets no loop's report or ledger, the shape brief's Evidence included: a loop judges its own suggestions. The main session fills it only once the project file exists (`task §Repo study`). Paste after it; the pasted briefs write into sections of the seat's report, and this brief's Standards read, outputs and ending replace theirs: `delegate/verifier.md`'s brief (its slice: the whole PR), `delegate/reviewer.md`'s brief, `delegate/post-review.md`'s brief for the body draft, and, where `finality` ran, step 1 of `delegate/shape.md` (only DELETE-NOW, FIX, FILL or DELETE-CAREFULLY items worth their price count; OWNER-DECISION rows go in the body's decision blocks).
+Each seat runs once (`converge` step 4) and gets no loop's report or ledger, the shape brief's Evidence included. The main session fills it only once the project file exists (`task §Repo study`). Paste after it; the pasted briefs write into sections of the seat's report, and this brief's outputs and ending replace theirs, the verifier's Standards read opening it: `delegate/verifier.md`'s brief (its slice: the whole PR), `delegate/reviewer.md`'s brief, `delegate/post-review.md`'s brief for the body draft, and, where `finality` ran, step 1 of `delegate/shape.md` (only DELETE-NOW, FIX, FILL or DELETE-CAREFULLY items worth their price count).
 
 ```
 Review: fresh
@@ -11,7 +11,6 @@ The project file: <project file path>. The repo study: <its path, from the proje
 The PR body draft: <work folder>/drafts/<pr>/pr-body.md.
 <Docs in the diff: also the rendered page and two sibling pages alone; answer docs' two questions: can I do the task from this, and which sentences read unlike the siblings.>
 
-First read ~/.mergeworthy/current/skills/code/SKILL.md §Phantom gate, §Docs are a claim and §No regressions in full; your report starts with `## Standards read`, the first sentence of each copied.
 Before reading the diff, become the maintainer:
 1. Find who decides: who merges PRs here and who wrote most of the code this PR touches (`gh pr list --state merged --limit 100 --json mergedBy`, `git log --format=%an -- <changed files> | sort | uniq -c | sort -rn`, `git blame` on the changed lines, the project file's ## Who decides, the repo study). Name one person: the one who will merge this.
 2. Load the project file and the repo study in full.
@@ -21,7 +20,7 @@ Then answer: You are <maintainer>: which comments would you leave, and would you
 Every finding cites something that maintainer said or did (a comment, a review, a commit), with its link; a finding you can't tie to them goes under "Not theirs", one line each. Before raising a finding about code the PR didn't write, `git blame` it: a line from the maintainer's own commit is theirs, and where it contradicts the project file, list the project-file line under "Stale in the project file" with the blame link (the main session fixes it), never the code as a finding. Each finding that cites them and the study lacked goes under "New to the study", one line each with its link. A convention question (a bump, a changeset's package list, a file's form) is settled from the repo's last merged examples, quoted, never from a tool's config (where they disagree with `pr-steps gates`, say so to the main session); a change that applies the maintainer's suggestion (a review comment's suggested code or wording) is theirs only where it matches it word for word, and the rest is judged like our own lines.
 Run each brief below on the head and the body draft, each into its own section.
 
-Write <work folder>/drafts/fresh-<seat>.report.md: `## Standards read` (above), then a line `Maintainer: <login>`; `MERGE AS IS: yes`, or `MERGE AS IS: no` with every blocker or should you'd raise on the code, exhaustively, each a labeled finding (the body's go in the verdict below); then each brief's section; then "Not theirs", "Stale in the project file" and "New to the study", which are not findings; end the file with CLEAN when no blocker or should was found.
+Write <work folder>/drafts/fresh-<seat>.report.md: `## Standards read`, then a line `Maintainer: <login>`; `MERGE AS IS: yes`, or `MERGE AS IS: no` with every blocker or should you'd raise on the code, exhaustively, each a labeled finding (the body's go in the verdict below); then each brief's section; then "Not theirs", "Stale in the project file" and "New to the study", which are not findings; end the file with CLEAN when no blocker or should was found.
 Write the post-review brief's verdict alone to <work folder>/drafts/<pr>/<pr-body.review.out, the second seat's pr-body-<seat>.review.out>: exactly CLEAN, or that brief's findings only.
 Final message: exactly CLEAN, or the findings.
 ```
