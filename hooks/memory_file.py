@@ -11,7 +11,7 @@ READ = re.compile(r'read-through: (\S+)')
 TS = re.compile(rb'"timestamp":"([0-9T:.\-]+Z)"')
 STANDING = ('Rulings in force', 'Ruled out', 'Superseded', 'Still intended')
 LIVE = ('Rulings in force', 'Ruled out', 'Still intended')  # where an item's lead names one item; Superseded keeps every replaced one
-NOTE = re.compile(r'- \**(' + '|'.join(STANDING) + r'|Recent)\**:\** (.+?)(?: \[(replaces|done) (.+)\])?$', re.I)
+NOTE = re.compile(r'- \**(' + '|'.join(STANDING) + r'|Recent)\**(?: *\(([^)]*)\))?:\**\s*(.+?)(?: \[(replaces|done) (.+)\])?$', re.I)
 DATE = re.compile(r'(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2}))?')
 KEEP = 48_000  # Standing characters memory.md keeps; older items move to the archive of their month
 AIM, CAP = 6000, 7500  # digest characters: with the refresh order, under Claude Code's 10,000-character hook output limit
@@ -194,7 +194,8 @@ def apply(mem, main, notes):
             else:
                 continue
         sec = next(s for s in STANDING + ('Recent',) if s.lower() == m.group(1).lower())
-        line, op, old = '- ' + m.group(2).strip(), (m.group(3) or '').lower(), m.group(4)
+        line = '- ' + m.group(3).strip() + (f' ({m.group(2)})' if m.group(2) else '')
+        op, old = (m.group(4) or '').lower(), m.group(5)
         if any(line in ls for secs in mem.values() for ls in secs.values()):
             continue
         ends = ([(lead('- ' + old), op)] if old else []) + ([(lead(line), 'replaces')] if sec != 'Recent' else [])

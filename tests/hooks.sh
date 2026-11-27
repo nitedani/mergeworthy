@@ -1658,6 +1658,8 @@ read-through: 2026-11-26T12:00:00.000Z
 - Recent: 2026-11-27 10:00Z: the CLI shipped. [done **Ship the CLI**]
 - Rulings in force: **No cron** (2026-11-27 11:00Z). Recurring work runs in the steward pass.
 - Ruled out: **Haiku drafts** (2026-11-27 11:30Z). Drafts need Opus. [replaces Gemini drafts]
+- Rulings in force (2026-11-27 07:00Z, main-session brief): review fixes change only the sentences a finding names.
+- Still intended (opensource): **Retire the old watcher** (2026-11-27 06:00Z). Waits on the new one.
 read-through: 2026-11-27T12:00:00.000Z
 EOF
 cat > "$T/merged.md" <<'EOF'
@@ -1667,18 +1669,20 @@ cat > "$T/merged.md" <<'EOF'
 - **No cron** (2026-11-27 11:00Z). Recurring work runs in the steward pass.
 - **Codex reviews** (2026-11-27 09:00Z). Reviews go to Codex.
 - **Sonnet implements** (2026-11-27 08:00Z). Implementers run on Sonnet.
+- review fixes change only the sentences a finding names. (2026-11-27 07:00Z, main-session brief)
 ### Ruled out
 - **Haiku drafts** (2026-11-27 11:30Z). Drafts need Opus.
 ### Superseded
 - **Opus reviews** (2026-11-21 09:00Z). Reviews run on Opus.
 - **No cron** (2026-11-20 09:00Z). Recurring work runs in the watcher.
 ### Still intended
+- **Retire the old watcher** (2026-11-27 06:00Z). Waits on the new one. (opensource)
 ## Recent
 - 2026-11-27 10:00Z: the CLI shipped.
 <!-- covered-until: 2026-11-27T12:00:00.000Z -->
 EOF
 nsum=$(md5sum < "$MM/memory-notes.txt"); mmerge "$MM"; msum=$(md5sum < "$MM/memory.md"); mmerge "$MM"
-check "merge adds a note, replaces the item a tag or a reused lead names (the old one under Superseded), takes done work out of Still intended, adds a note whose tag names no item, keeps Recent to 24 hours; a second merge changes nothing, and the notes are left as they were" "same same same" \
+check "merge adds a note (one with a parenthesis after its section too), replaces the item a tag or a reused lead names (the old one under Superseded), takes done work out of Still intended, adds a note whose tag names no item, keeps Recent to 24 hours; a second merge changes nothing, and the notes are left as they were" "same same same" \
   "$(diff "$T/merged.md" "$MM/memory.md" >/dev/null && echo same) $([ "$msum" = "$(md5sum < "$MM/memory.md")" ] && echo same) $([ "$nsum" = "$(md5sum < "$MM/memory-notes.txt")" ] && echo same)"
 MK="$T/merge-big"; mkdir -p "$MK"
 python3 - "$MK/memory.md" <<'EOF'
