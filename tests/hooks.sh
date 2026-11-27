@@ -1709,6 +1709,12 @@ def stop(a, b):
 os.replace = stop; mf.merge(sys.argv[2])' "$R/hooks" "$MK-crash" 2>/dev/null
 check "a merge that stops between the archive and memory.md writes leaves items in both, never lost; the next merge keeps each once" "yes 1500 1500 1500" \
   "$([ "$(items "$MK-crash")" -gt 1500 ] && echo yes) $(items "$MK-crash" -u) $(mmerge "$MK-crash"; items "$MK-crash") $(items "$MK-crash" -u)"
+MF="$T/merge-fixture"; mkdir -p "$MF"; cp "$R/tests/fixtures/memory.md" "$MF/memory.md"
+printf '# Notes\nread-through: 2026-10-12T22:06:43.534Z\n- Rulings in force: **Already merged** (2026-10-12 22:00Z). The refresh wrote it in itself.\n' > "$MF/memory-notes.txt"; touch -d '1 hour ago' "$MF/memory-notes.txt"
+standing() { cat "$1"/memory.md "$1"/memory-archive-*.md 2>/dev/null | sed -n '/^## Standing/,/^## Recent/p' | grep -c '^- '; }
+fx=$(standing "$MF"); mmerge "$MF"; mmerge "$MF"
+check "the first merge of a memory.md a refresh wrote itself keeps its Standing item count, skips the notes that refresh already merged, and keeps one copy of the file as it was" "$fx 0 same" \
+  "$(standing "$MF") $(grep -c 'Already merged' "$MF/memory.md") $(cmp -s "$R/tests/fixtures/memory.md" "$MF/memory-premerge.md" && echo same)"
 # Claude Code shows the model a 2 KB preview of a hook command's output over 10,000 characters: each SessionStart output stays under 9,000 bytes
 cp "$R/tests/fixtures/memory.md" "$MR/memory.md"; rm "$MR/memory-notes.txt"; mlog "$LD/a.jsonl" 0 "after the fixture"  # behind, with no notes to merge
 ss_all=$(CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" </dev/null 2>/dev/null | wc -c); ss_m=$(ss_mem "$OC" | tee "$T/ss.out" | wc -c)

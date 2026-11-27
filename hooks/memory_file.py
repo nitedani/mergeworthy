@@ -4,7 +4,7 @@
 last 24 hours. One Haiku notes what new log lines hold (`memory-prep`), merge() folds the notes in, and it records the last
 log line they covered in `<!-- covered-until: <log timestamp> -->`. A root is listed in ~/.mergeworthy/memory-roots.txt and has memory.source
 (`memory-prep init`): the main session's cwd, T3 thread id, session id and session-log dir."""
-import datetime as dt, fcntl, glob, json, os, re, time
+import datetime as dt, fcntl, glob, json, os, re, shutil, time
 
 COVERED = re.compile(r'<!-- covered-until: (\S+) -->')
 READ = re.compile(r'read-through: (\S+)')
@@ -229,13 +229,16 @@ def merge(root):
         return
     with open(os.path.join(root, '.memory.lock'), 'a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        mem, seen = {}, set()
-        for f in [main] + sorted(glob.glob(os.path.join(root, 'memory-archive-*.md'))):
+        mem, seen, archives = {}, set(), sorted(glob.glob(os.path.join(root, 'memory-archive-*.md')))
+        for f in [main] + archives:
             mem[f] = parse(f)
             for s in STANDING:
                 mem[f][s] = [l for l in dict.fromkeys(mem[f][s]) if l not in seen]
                 seen.update(mem[f][s])
         notes = open(np, errors='replace').read().split('\n')[:-1] if os.path.isfile(np) else []  # a last line without its newline is still being written
+        was = open(main, errors='replace').read() if os.path.isfile(main) else ''
+        if notes and COVERED.findall(was)[-1:] == READ.findall('\n'.join(notes))[-1:] and os.path.getmtime(main) > os.path.getmtime(np):
+            notes = []  # a refresh that wrote memory.md itself already merged them
         apply(mem, main, notes)
         cov = covered(root)
         if cov:
@@ -244,6 +247,9 @@ def merge(root):
         for f, secs in mem.items():
             for s in STANDING:
                 secs[s] = newest_first(secs[s])
+        pre = os.path.join(root, 'memory-premerge.md')
+        if was and not archives and not os.path.exists(pre) and render(mem[main], 'Memory', cov) != was:
+            shutil.copyfile(main, pre)  # the file as a model wrote it, once, before the first merge rewrites it
         for f in sorted(mem, key=lambda f: f == main):
             write(f, render(mem[f], 'Memory', cov) if f == main else render(mem[f], 'Memory archive'))
 
@@ -268,6 +274,6 @@ def digest(root):
     return '\n'.join(f'### {head}\n' + (newest(path(root), head, AIM // len(STANDING)) or 'none\n') for head in STANDING)[:CAP]
 
 def notes(root):
-    """What the guards grep: memory.md and every other .md under the root but drafts and briefs."""
+    """What the guards grep: memory.md and every other .md under the root but drafts, briefs and the pre-merge copy."""
     return sorted(os.path.join(dp, f) for dp, dn, fs in os.walk(root) if os.path.relpath(dp, root).split(os.sep)[0] != 'drafts'
-                  for f in fs if f.endswith('.md') and not f.startswith('memory-brief'))
+                  for f in fs if f.endswith('.md') and not f.startswith(('memory-brief', 'memory-premerge')))
