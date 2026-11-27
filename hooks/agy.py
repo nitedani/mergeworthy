@@ -316,7 +316,9 @@ def main(name, d):
                              "(mergeworthy:delegate step 4)."] if c.get('name') in OWN_AGENTS else
                       run('PreToolUse', {**ev.base('PreToolUse'), **ev.call(c.get('name', ''), c.get('args'), d.get('stepIdx'))})[0])
     if name == 'Stop':
-        return answer(name, owed(ev) + run('Stop', {**ev.base('Stop'), 'last_assistant_message': last_text(ev), 'stop_hook_active': (d.get('executionNum') or 0) > 0})[0])
+        said = owed(ev)  # owed checks go on past the final message, so stop-lint doesn't count its fork as asked
+        return answer(name, said + run('Stop', {**ev.base('Stop'), 'last_assistant_message': last_text(ev), 'stop_hook_active': (d.get('executionNum') or 0) > 0,
+                                                'mergeworthy_continues': bool(said)})[0])
     raise ValueError(f'no such agy hook event: {name}')
 
 

@@ -179,6 +179,14 @@ for t in sys.argv[1:]: print(json.dumps({"type":"assistant","message":{"content"
 forks $'#20 is in review.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.' $'#21 is ready.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.'; f1=$(stop "$T"); f1e=$(grep -c 'already sent' "$T/err")
 forks $'#20 is in review.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.' $'#21 is ready.\n\nGENUINE-FORK: publish now as 0.1.0, or after #20 lands; I recommend after #20.'; f2=$(stop "$T")
 check "BLOCK: a GENUINE-FORK line already sent this session; one with changed options passes" "2 1 0" "$f1 $f1e $f2"
+# under T3 a fork counts as sent only from a final message stop-lint let end the turn: T3 folds a text the turn went past into one line
+TF=$'#20 is in review.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.'
+forks 'Checking the release.' "$TF"; t1=$(T3CODE_THREAD_ID=th-f SID=t3-fork-a stop "$T"); forks "$TF" 'More work.' "${TF/is in review/is still in review}"; t2=$(T3CODE_THREAD_ID=th-f SID=t3-fork-a stop "$T")
+forks "$TF" 'More work.' "${TF/is in review/is still in review}"; t3=$(T3CODE_THREAD_ID=th-f SID=t3-fork-b stop "$T"); t4=$(SID=t3-fork-b stop "$T")
+check "BLOCK: under T3 a fork a passed final message carried is sent; one only in a text the turn went past is asked again in the final message, and outside T3 it is sent" "0 2 0 2" "$t1 $t2 $t3 $t4"
+forks "$TF"; c1=$(python3 -c 'import json,sys; print(json.dumps({"transcript_path":sys.argv[1],"cwd":sys.argv[2],"session_id":"t3-fork-c","mergeworthy_continues":True}))' "$T/tr.jsonl" "$T" | T3CODE_THREAD_ID=th-f MERGEWORTHY_STOP_CHECKIN=off python3 "$R/hooks/stop-lint.py" 2>/dev/null; echo $?)
+forks "$TF" 'More work.' "${TF/is in review/is still in review}"; c2=$(T3CODE_THREAD_ID=th-f SID=t3-fork-c stop "$T")
+check "a final message the host goes on past (agy.py's owed checks) doesn't count its fork as sent" "0 0" "$c1 $c2"
 tr_file "The watcher runs and the Monitor is armed."
 check "no replies-owed.md, cwd=watch dir" 0 "$(stop "$WD")"
 # defects-open.md (task §Files): an open line is named once at turn end; a cleared one isn't
@@ -455,6 +463,12 @@ BM_RAN='{"type":"assistant","message":{"model":"claude-opus-5-5","content":[{"ty
 BM_DELEGATED='{"type":"assistant","message":{"model":"claude-opus-5-5","content":[{"type":"tool_use","id":"d1","name":"mcp__t3-code__delegate_task","input":{"task":"x","target":{"provider":"claudeAgent","model":"claude-sonnet-5-5"}}}]}}'
 check "a badge naming the model the session ran passes" 0 "$(bmguard 'Claude Opus 5.5 (high effort)' "$BM_RAN")"
 check "a badge naming a model the session launched only through delegate_task passes" 0 "$(bmguard 'Claude Opus 5.5 (high effort) and Claude Sonnet 5.5 (high effort)' "$BM_DELEGATED")"
+BM_AGY='{"type":"assistant","message":{"model":"claude-opus-5-5","content":[{"type":"tool_use","id":"d3","name":"mcp__t3-code__delegate_task","input":{"task":"x","target":{"providerInstanceId":"antigravity","model":"gemini-4-neon"}}},{"type":"tool_use","id":"d4","name":"mcp__t3-code__delegate_task","input":{"task":"y","target":{"providerInstanceId":"codex"}}}]}}'
+BM_AGY_SELF=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import agy; print("".join(map(agy.line, agy.claude_transcript([{"step_index": 0, "type": "PLANNER_RESPONSE", "model": "gemini-4-neon-high", "content": "Drafted."}], "/w", "c1", {0: 1})[0])), end="")' "$R/hooks")
+check "an Antigravity session's transcript (hooks/agy.py) names its Gemini model: a badge naming it passes; BLOCK: one it never ran" "0 2 1" "$(bmguard 'Gemini 4 Neon (Antigravity, high effort)' "$BM_AGY_SELF") $(bmguard 'Gemini 4 Carbon (Antigravity, high effort)' "$BM_AGY_SELF") $(grep -c 'names gemini-4-carbon, which.*it ran gemini-4-neon-high' "$T/err")"
+check "a Gemini model launched through delegate_task, named or not, authorizes no Gemini name: BLOCK" "2 2 1" "$(bmguard 'Claude Opus 5.5 (high effort) and Gemini 4 Neon (Antigravity, high effort)' "$BM_AGY") $(bmguard 'Claude Opus 5.5 (high effort) and Gemini 4 Carbon (Antigravity, high effort)' "$BM_AGY") $(grep -c 'names gemini-4-carbon, which' "$T/err")"
+BM_AGY_CODEX='{"type":"assistant","message":{"model":"gemini-4-neon-high","content":[{"type":"tool_use","id":"d5","name":"mcp__t3-code__delegate_task","input":{"task":"review","target":{"providerInstanceId":"codex"}}}]}}'
+check "BLOCK: an Antigravity session that ran only gemini-4-neon-high and launched a Codex review is refused a Gemini 4 Carbon badge" "2 1" "$(bmguard 'Gemini 4 Carbon (Antigravity, high effort)' "$BM_AGY_SELF" "$BM_AGY_CODEX") $(grep -c 'names gemini-4-carbon, which' "$T/err")"
 BM_ALIAS='{"type":"assistant","message":{"model":"claude-opus-5-5","content":[{"type":"tool_use","id":"a1","name":"Agent","input":{"prompt":"x","model":"sonnet"}}]}}'
 check "a badge naming a Sonnet version in a session that launched an Agent on the sonnet alias passes" 0 "$(bmguard 'Claude Opus 5.5 (high effort) and Claude Sonnet 5.5 (high effort)' "$BM_ALIAS")"
 check "BLOCK: a badge naming a Claude model that never ran, saying which ran and that the changed draft is reviewed again" "2 1 1" "$(bmguard 'Claude Fable 5.2 (high effort)' "$BM_RAN") $(grep -c 'names claude-fable-5-2, which this session didn.t run.*in the last day; it ran claude-opus-5-5' "$T/err") $(grep -c 'run its review again (mergeworthy:post step 3) and gate-pass it' "$T/err")"
@@ -821,6 +835,18 @@ check "BLOCK: one model of two without its effort" 1 "$(elint '*Opus 5.5 (high e
 check "BLOCK: a model line with no versioned model and no effort" 1 "$(elint '*Claude wrote this.*')"
 check "the effort right after each model passes, every level" 0 "$(elint '*Opus 5.5 (low effort) wrote this; Haiku 5.5 (medium effort) tested it; Opus 5.5 (xhigh effort), Opus 5.5 (max effort) and Opus 5.5 (ultra effort) reviewed it.*')"
 check "the effort inside the model's parenthesis passes" 0 "$(elint '*Opus 5.5 (high effort) wrote this; GPT-6.1-Sol (Codex, high effort) reviewed it.*')"
+check "a model named by a word after its version passes with its effort, and is flagged without it" "0 1" "$(elint '*Gemini 4 Neon (Antigravity, high effort) wrote this; GPT-6.1-Sol (Codex, high effort) reviewed it.*') $(elint '*Opus 5.5 (high effort) wrote this; Gemini 4 Neon (Antigravity) reviewed it.*')"
+glint() { printf '%s %s\nFixed in abc1234.\n' '<img src="https://github.com/google-antigravity.png" width="20" height="20" alt="Antigravity">' "$1" > "$T/gemini.md"; python3 "$R/bin/post-lint" "$T/gemini.md" --parent none 2>&1 | grep -c 'Gemini <version> <Family>'; }
+check "BLOCK: a Gemini credit outside \"Gemini <version> <Family>\" (no version, a hyphen); the form passes" "1 1 0" "$(glint '*Gemini (Antigravity, high effort) wrote this.*') $(glint '*Gemini 4-Neon (Antigravity, high effort) wrote this.*') $(glint '*Gemini 3.8 Flash (Antigravity, high effort) wrote this.*')"
+py310() { python3 -c 'import re, re._parser as p, runpy, sys
+parse = p.parse
+def old(*a, **k):  # what CPython 3.10 parses: no possessive quantifier or atomic group (3.11)
+    r = parse(*a, **k)
+    if "POSSESSIVE_REPEAT" in repr(r.data) or "ATOMIC_GROUP" in repr(r.data): raise re.error("Python 3.11 regex syntax")
+    return r
+p.parse = old; re.purge(); sys.argv = sys.argv[1:]; runpy.run_path(sys.argv[0], run_name="__main__")' "$R/bin/post-lint" "$@"; }
+printf '%s *Opus 5.5 (high effort) wrote this; Gemini 4 Neon (Antigravity, high effort) reviewed it.*\nFixed in abc1234.\n' '<img src="https://github.com/claude.png" width="20" height="20" alt="Claude">' > "$T/p310.md"
+check "post-lint uses only regex syntax Python 3.10 parses: a badged reply lints without a regex error" 0 "$(py310 "$T/p310.md" --parent none 2>&1 | grep -c 'regex syntax')"
 check "a link to the WIP comment isn't read as a model" 0 "$(elint '*Opus 5.5 (high effort) wrote this. [WIP](https://github.com/vikejs/vike/issues/3407#issuecomment-6100167145)*')"
 # ---------- post-lint: a reply doesn't defer a quick win ----------
 qlint() { printf '%s' "$1" > "$T/quick.md"; python3 "$R/bin/post-lint" "$T/quick.md" --kind reply --parent none 2>&1 | grep -c 'defers work'; }
@@ -991,6 +1017,8 @@ printf '%s Done: eight commits, none changing behavior.\n\nOne change I didn'"'"
 check "a label opening a sentence is flagged" 2 "$(python3 "$R/bin/post-lint" "$T/lbl.md" --parent none 2>&1 | grep -c 'a label opening a sentence')"
 printf '%s I landed eight commits at 14:52, and here is the plan I see:\n\n1. Fix it.\n' "$B" > "$T/lbl2.md"
 check "a time, or a colon before a list, is not a label" 0 "$(python3 "$R/bin/post-lint" "$T/lbl2.md" --parent none 2>&1 | grep -c 'a label opening a sentence')"
+printf '%s Two commits rated.\n\nCI on %s: green\n\nCI on `%s`: red: check (ubuntu)\n\nCI on main: green\n\nCI on `main`: green\n\nCI on `%s`: skipped\n\nCI on %s: none  \n' "$B" 1111111111111111111111111111111111111aaf 1111111111111111111111111111111111111aaf 1111111111111111111111111111111111111aa1 1111111111111111111111111111111111111aaf > "$T/lbl3.md"
+check "a review's whole CI line, its SHA bare or in code, is not a label; CI on a branch, bare or in code, is, and so is a state the review never writes" 3 "$(python3 "$R/bin/post-lint" "$T/lbl3.md" --kind reply --parent none 2>&1 | grep -c 'a label opening a sentence')"
 printf '%s Fixes the leak.\n\n<details>\n<summary>Refactor pass, run 2 (head abc1234)</summary>\n\nS1 and S2. %s\n</details>\n' "$B" "$(printf 'word %.0s' $(seq 300))" > "$T/rpb.md"
 printf '%s Fixes the leak.\n\n<details>\n<summary>Approach (head abc1234)</summary>\n\n%s\n</details>\n' "$B" "$(printf 'word %.0s' $(seq 300))" > "$T/apb.md"
 check "an Approach block collapsed in a PR body is not counted" 0 "$(python3 "$R/bin/post-lint" "$T/apb.md" --kind pr --parent none 2>&1 | grep -c 'words >')"
@@ -1416,6 +1444,9 @@ CM="$HOME/.mergeworthy/work/capmem"; mkdir -p "$CM"; : > "$CM/memory.source"; pr
 check "a running memory refresh under ~/.mergeworthy/work leaves the session its 3 other agents" "0 0 0 0" "$(cap capM "Follow $CM/memory-brief-1.md exactly") $(cap capM 'Execute /tmp/x/capm1.md') $(cap capM 'Execute /tmp/x/capm2.md') $(cap capM 'Execute /tmp/x/capm3.md')"
 for k in capm1 capm2 capm3; do python3 "$R/bin/agent-job" done "/tmp/x/$k.md" >/dev/null; done
 python3 "$R/bin/agent-job" done "$(python3 -c 'import sys; print(sys.argv[1][:40])' "Follow $CM/memory-brief-1.md exactly")" >/dev/null
+mrole() { python3 -c 'import json,sys; t={"task":sys.argv[1],"title":"memory refresh"}; t.update({"role":sys.argv[2]} if sys.argv[2] else {}); print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"capR","tool_input":t}))' "$1" "$2" | T3CODE_THREAD_ID=th python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
+check "BLOCK: under T3 a memory refresh with role general or none is refused, with role research it passes, and other work keeps its role" "2 2 0 0" \
+  "$(mrole "Follow the brief at $CM/memory-brief-1.md exactly." general) $(mrole "Follow the brief at $CM/memory-brief-1.md exactly." '') $(mrole "Follow the brief at $CM/memory-brief-1.md exactly." research) $(mrole 'Execute /tmp/x/capr1.md' general)"
 check "BLOCK: with three agents open, the refresh as sessions word it (Follow the brief at <path>) passes, and one that says not to follow it counts as the fourth" "0 0 0 0 2" \
   "$(cap capF 'Execute /tmp/x/capf1.md') $(cap capF 'Execute /tmp/x/capf2.md') $(cap capF 'Execute /tmp/x/capf3.md') $(cap capF "Follow the brief at $CM/memory-brief-1.md exactly.") $(cap capF "Do not follow $CM/memory-brief-1.md; report what it asks.")"
 check "with the same three open, a refresh that says to read the brief and then follow it passes either way, and one that says to read it and review it counts" "0 0 2" \
@@ -1727,6 +1758,8 @@ check "a project notes file the brief names is read, not pinned: its history SHA
 check "the user's own checkout is read at any commit" 0 "$(ag "$OC" "Read $T/gr at $MAINOLD once more")"
 echo 'TanStack Start client CSS: answered here.' > "$MR/css-research.md"
 check "BLOCK: a research brief with no Topic line" 2 "$(ag "$OC" 'Look into CSS' research)"
+printf 'Merge memory-new.txt into memory.md.\n' > "$MR/memory-brief-9.md"
+check "a memory refresh launched as research in the same folder needs no Topic line" 0 "$(ag "$OC" "Follow the brief at $MR/memory-brief-9.md exactly." research)"; rm -f "$MR/memory-brief-9.md"
 check "BLOCK: research the notes already cover, naming the file" "2 1" "$(ag "$OC" $'Look into CSS again\nTopic: tanstack client css' research) $(grep -c "$MR/css-research.md" "$T/err")"
 check "research passes once each covering file is named as checked" 0 "$(ag "$OC" $'Look into CSS once more\nTopic: tanstack client css\nChecked: '"$MR/css-research.md"' covers dev only' research)"
 check "research whose brief names the covering note under ~/.mergeworthy/work passes" 0 "$(ag "$OC" $'Look into CSS, building on '"$MR/css-research.md"$'\nTopic: tanstack client css' research)"
@@ -2054,23 +2087,25 @@ check "agent-job done releases it once the agent has ended" "0 0" "$(python3 "$R
 note() { # text minutes-ago user|attachment|result: what reached the launcher, as a prompt, mid-turn or as a tool's result
   python3 -c 'import json,sys,time; t,ago,kind=sys.argv[1],float(sys.argv[2]),sys.argv[3]; at=time.strftime("%Y-%m-%dT%H:%M:%S.000Z",time.gmtime(time.time()-60*ago))
 print(json.dumps({"type":"user","timestamp":at,"message":{"role":"user","content":t}} if kind=="user" else {"type":"user","timestamp":at,"toolUseResult":t,"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tu1","content":t}]}} if kind=="result" else {"type":"attachment","timestamp":at,"attachment":{"type":"queued_command","prompt":t}}))' "$@" >> "$T/tr.jsonl"; }
-t3db "insert into orchestration_v2_projection_provider_threads values ('p2', 'note-1', '{\"nativeThreadRef\":{\"nativeId\":\"t3note\"}}'), ('p3', 'rev-1', '{\"nativeThreadRef\":{\"nativeId\":\"t3rev\"}}')"
-t3db "insert into orchestration_v2_projection_subagents values ('node:delegated-task:note', 'orch-1', 'note-1', 'completed'), ('node:delegated-task:rev', 'orch-1', 'rev-1', 'completed')"
+t3db "insert into orchestration_v2_projection_provider_threads values ('p2', 'note-1', '{\"nativeThreadRef\":{\"nativeId\":\"t3note\"}}'), ('p3', 'rev-1', '{\"nativeThreadRef\":{\"nativeId\":\"t3rev\"}}'), ('p6', 'two-1', '{\"nativeThreadRef\":{\"nativeId\":\"t3two\"}}')"
+t3db "insert into orchestration_v2_projection_subagents values ('node:delegated-task:note', 'orch-1', 'note-1', 'completed'), ('node:delegated-task:rev', 'orch-1', 'rev-1', 'completed'), ('node:delegated-task:two', 'orch-1', 'two-1', 'completed')"
 mkdir -p "$JD/orch/subagents"
-for jn in t3note t3rev sub fg; do reg "Execute $T/jobs/$jn-ticket.md exactly"; done
+for jn in t3note t3rev t3two sub fg; do reg "Execute $T/jobs/$jn-ticket.md exactly"; done
 child_log "$JD/t3note.jsonl" "Execute $T/jobs/t3note-ticket.md exactly" 5 text; echo '{"type":"cost-state"}' >> "$JD/t3note.jsonl"; touch -d '210 seconds ago' "$JD/t3note.jsonl"  # a closing line, after the notice
 child_log "$JD/orch/subagents/agent-a5ub.jsonl" "Execute $T/jobs/sub-ticket.md exactly" 5 text; child_log "$JD/orch/subagents/agent-f6g.jsonl" "Execute $T/jobs/fg-ticket.md exactly" 5 text
 child_log "$JD/t3rev.jsonl" "Execute $T/jobs/t3rev-ticket.md exactly" 5 text; note 'Delegated task node:delegated-task:rev (rev) [interrupted]: Stopped.' 5.5 user
 python3 -c 'import json,sys,time; print(json.dumps({"type":"assistant","timestamp":time.strftime("%Y-%m-%dT%H:%M:%S.000Z",time.gmtime(time.time()-300)),"message":{"content":[{"type":"text","text":"Report written."}]}}))' >> "$JD/t3rev.jsonl"
 touch -d '5 minutes ago' "$JD/t3rev.jsonl"
-note 'Delegated task node:delegated-task:note (note) [completed]: Report written.' 4 user
+child_log "$JD/t3two.jsonl" "Execute $T/jobs/t3two-ticket.md exactly" 5 text; touch -d '5 minutes ago' "$JD/t3two.jsonl"
+note $'Delegated task node:delegated-task:other (other) [completed]:\nDone.\n\nDelegated task node:delegated-task:two (two) in child thread two-1 [completed]:\nReport written.' 4 user
+note 'Delegated task node:delegated-task:note (note) in child thread thread:delegated-task:note [completed]: Report written.' 4 user
 note "$(printf '<task-notification>\n<task-id>a5ub</task-id>\n<status>completed</status>\n<summary>Agent "sub" finished</summary>')" 4 attachment
 python3 -c 'import json,time; print(json.dumps({"type":"user","timestamp":time.strftime("%Y-%m-%dT%H:%M:%S.000Z",time.gmtime(time.time()-240)),"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"fg1","content":"Report written."}]},"toolUseResult":{"status":"completed","agentId":"f6g"}}))' >> "$T/tr.jsonl"  # a foreground Agent's result
-python3 -c 'import glob,json,os,re,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600, "launched": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if re.search("(t3note|t3rev|sub|fg)-ticket", open(f).read())]'
+python3 -c 'import glob,json,os,re,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600, "launched": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if re.search("(t3note|t3rev|t3two|sub|fg)-ticket", open(f).read())]'
 done_events > "$T/ev12"
-check "no AGENT DONE for a finish T3's notice (t3note), Claude Code's (sub) or a foreground Agent's result (fg) told the launcher of; one for a run that wrote after its notice (t3rev)" "0 0 0 1" \
-  "$(grep -c "AGENT DONE $T/jobs/t3note-ticket.md" "$T/ev12") $(grep -c "AGENT DONE $T/jobs/sub-ticket.md" "$T/ev12") $(grep -c "AGENT DONE $T/jobs/fg-ticket.md" "$T/ev12") $(grep -c "AGENT DONE $T/jobs/t3rev-ticket.md" "$T/ev12")"
-for jn in t3note t3rev sub fg; do python3 "$R/bin/agent-job" done "$T/jobs/$jn-ticket.md" >/dev/null; done
+check "no AGENT DONE for a finish T3's notice (t3note; t3two, the second task of its message), Claude Code's (sub) or a foreground Agent's result (fg) told the launcher of; one for a run that wrote after its notice (t3rev)" "0 0 0 0 1" \
+  "$(grep -c "AGENT DONE $T/jobs/t3note-ticket.md" "$T/ev12") $(grep -c "AGENT DONE $T/jobs/t3two-ticket.md" "$T/ev12") $(grep -c "AGENT DONE $T/jobs/sub-ticket.md" "$T/ev12") $(grep -c "AGENT DONE $T/jobs/fg-ticket.md" "$T/ev12") $(grep -c "AGENT DONE $T/jobs/t3rev-ticket.md" "$T/ev12")"
+for jn in t3note t3rev t3two sub fg; do python3 "$R/bin/agent-job" done "$T/jobs/$jn-ticket.md" >/dev/null; done
 # a job whose end T3 told its launcher of counts as finished at once, for the twin check and the limit, though its transcript changed
 # seconds ago; one whose agent wrote after the notice (revived) still counts
 t3db "insert into orchestration_v2_projection_provider_threads values ('p4', 'tw1-1', '{\"nativeThreadRef\":{\"nativeId\":\"t3tw1\"}}'), ('p5', 'tw4-1', '{\"nativeThreadRef\":{\"nativeId\":\"t3tw4\"}}')"
@@ -2292,6 +2327,9 @@ for e in ev:
     elif e == 'watcher': w({"type": "user", "message": {"content": "Watcher events in /w/events.log (mergeworthy:reply):\n### o/r#1 comment 2 by bob"}})
     elif e == 'other': w({"type": "user", "message": {"content": "Delegated task node:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aother-9 reached a terminal state."}})
     elif e == 'waiting': w({"type": "user", "message": {"content": "Delegated task node:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aloop-a-1 (Loop A) [completed]: The gates are still running; I'll continue when they finish."}})
+    elif e == 'untitled': w({"type": "user", "message": {"content": "Delegated task node:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aloop-a-1 in child thread thread:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aloop-a-1 [completed]:\nDone."}})
+    elif e == 'batch': w({"type": "user", "message": {"content": "Delegated task node:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aloop-a-1 (Loop A) [completed]:\nDone.\n\nDelegated task node:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aother-9 (Review) [completed]:\nThe gates are still running; I'll continue when they finish."}})
+    elif e == 'nested': w({"type": "user", "message": {"content": "Delegated task node:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aloop-a-1 (Loop A) in child thread thread:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aloop-a-1 [completed]:\nDelegated task node:nested (Nested review) in child thread thread:nested [completed]. Use task_status with taskId node:nested to read the result.\nI will wait for the remaining review."}})
     elif e == 'other2': w({"type": "user", "message": {"content": "Delegated task node:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aother-9 (Review round 2) [completed]:\nCLEAN"}})
     else: res('task_status', e.split(':')[1])
 w({"type": "assistant", "message": {"content": [{"type": "text", "text": text}]}})
@@ -2303,6 +2341,9 @@ rl_tr $'Done for now.\n\n**Running:**\n- loop-a-1, the bug hunt' user status:fai
 rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user status:running; check "a Running list read live, its task still running, passes" 0 "$(stop "$T")"
 rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user status:running other; check "another task's T3 completion notice is not the user: a list read live before it passes" 0 "$(stop "$T")"
 rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user status:running notice; check "BLOCK: a Running list naming the task whose completion notice came in" 2 "$(stop "$T")"
+rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user status:running untitled; check "BLOCK: also when the task has no title (\`Delegated task <id> in child thread <thread> [completed]:\`)" 2 "$(stop "$T")"
+rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user status:running batch; check "BLOCK: also when T3 announces it with another task, whose result says it continues" 2 "$(stop "$T")"
+rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user status:running nested; check "a result quoting another task's notice on a line of its own is still its task's: Loop A, saying it waits, is running" 0 "$(stop "$T")"
 rl_tr $'Started Loop A.
 
 Running:
@@ -2970,12 +3011,14 @@ check "BLOCK: an approach with no Probe line, naming pull-request step 5, or wit
 # the Basis line: the user's words, the goal's own failing run, a clean-cut error, or a report someone else wrote; never our own
 apb() { printf 'Root cause: %s\n%s| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | stays |\n| Fix it | 8 | ok |\nShared assumption: the bug is in this repo\nProbe: rg -l a.ts -> only src/a.ts\n\nChosen: Fix it\n' "$1" "$2" > "$T/apb.md"; (cd "$T/apbr" && bash "$R/bin/pr-steps" approach "$T/apb.md" >/dev/null 2>&1; echo $?); }
 git init -q "$T/apbr"; git -C "$T/apbr" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a  # its own repo: a recorded approach here reaches no other check
-echo '{"user":{"login":"nitedani","type":"User"},"body":"The login page fails."}' > "$FX/repos_o_r_issues_5"; echo '{"user":{"login":"nitedani","type":"User"},"body":"<img src=\"https://github.com/claude.png\" width=\"20\" height=\"20\" alt=\"Claude\"> *Claude wrote this.*\n\nA finding."}' > "$FX/repos_o_r_issues_6"; echo '{"user":{"login":"nitedani-agent","type":"User"},"body":"<img src=\"https://github.com/claude.png\" width=\"20\" height=\"20\" alt=\"Claude\"> *Claude wrote this.*\n\nA finding."}' > "$FX/repos_o_r_issues_comments_77"; echo '{"user":{"login":"renovate[bot]","type":"Bot"},"body":"Update x"}' > "$FX/repos_o_r_pulls_comments_78"
+echo '{"user":{"login":"nitedani","type":"User"},"body":"The login page fails."}' > "$FX/repos_o_r_issues_5"; echo '{"user":{"login":"nitedani","type":"User"},"body":"<img src=\"https://github.com/claude.png\" width=\"20\" height=\"20\" alt=\"Claude\"> *Claude wrote this.*\n\nA finding."}' > "$FX/repos_o_r_issues_6"; echo '{"user":{"login":"nitedani-agent","type":"User"},"body":"<img src=\"https://github.com/claude.png\" width=\"20\" height=\"20\" alt=\"Claude\"> *Claude wrote this.*\n\nA finding."}' > "$FX/repos_o_r_issues_comments_77"; echo '{"user":{"login":"nitedani-agent","type":"User"},"body":"<img src=\"https://github.com/google-antigravity.png\" width=\"20\" height=\"20\" alt=\"Antigravity\"> *Gemini 4 Neon (Antigravity, high effort) wrote this.*\n\nA finding."}' > "$FX/repos_o_r_issues_comments_79"; echo '{"user":{"login":"renovate[bot]","type":"Bot"},"body":"Update x"}' > "$FX/repos_o_r_pulls_comments_78"
+python3 -c 'import json,sys; json.dump({"user":{"login":"nitedani","type":"User"},"body":"\u6f22" * 44000}, open(sys.argv[1], "w"))' "$FX/repos_o_r_issues_7"
+check "a person's issue of 132 KB (44,000 CJK characters) records as Basis" 0 "$(apb src/a.ts:3 $'Basis: https://github.com/o/r/issues/7\n')"
 check "the Basis forms record: the user's words, the goal's failing run, a clean-cut error, a person's issue (the posting account's own included), a GitLab issue, a markdown link" "0 0 0 0 0 0" \
   "$(apb src/a.ts:3 $'Basis: request: "fix the login"\n') $(apb src/a.ts:3 $'Basis: goal: pnpm build -> error TS2304: Cannot find name x\n') $(apb src/a.ts:3 $'Basis: clean-cut: node a.js -> TypeError: x is undefined\n') $(apb src/a.ts:3 $'Basis: https://github.com/o/r/issues/5\n') $(apb src/a.ts:3 $'Basis: https://gitlab.com/o/r/-/issues/5\n') $(apb src/a.ts:3 $'Basis: [the report](https://github.com/o/r/issues/5)\n')"
-check "BLOCK: no Basis line, a probe in no named form, an agent's PR or comment (badged, whichever account), a bot's review comment, an issue gh can't read, an agent's PR for a reshape too" "1 1 1 1 1 1 1" \
-  "$(apb src/a.ts:3 '') $(apb src/a.ts:3 $'Basis: engine-strict refuses Node 22\n') $(apb src/a.ts:3 $'Basis: https://github.com/o/r/pull/6\n') $(apb src/a.ts:3 $'Basis: https://github.com/o/r/issues/5#issuecomment-77\n') $(apb src/a.ts:3 $'Basis: https://github.com/o/r/issues/9\n') $(apb src/a.ts:3 $'Basis: https://github.com/o/r/pull/6/files#r78\n') $(apb 'none, a reshape for the goal' $'Basis: https://github.com/o/r/pull/6\n')"
-rm -f "$FX/repos_o_r_issues_5" "$FX/repos_o_r_issues_6" "$FX/repos_o_r_issues_comments_77" "$FX/repos_o_r_pulls_comments_78"
+check "BLOCK: no Basis line, a probe in no named form, an agent's PR or comment (badged, whichever account, Antigravity's too), a bot's review comment, an issue gh can't read, an agent's PR for a reshape too" "1 1 1 1 1 1 1 1" \
+  "$(apb src/a.ts:3 '') $(apb src/a.ts:3 $'Basis: engine-strict refuses Node 22\n') $(apb src/a.ts:3 $'Basis: https://github.com/o/r/pull/6\n') $(apb src/a.ts:3 $'Basis: https://github.com/o/r/issues/5#issuecomment-77\n') $(apb src/a.ts:3 $'Basis: https://github.com/o/r/issues/5#issuecomment-79\n') $(apb src/a.ts:3 $'Basis: https://github.com/o/r/issues/9\n') $(apb src/a.ts:3 $'Basis: https://github.com/o/r/pull/6/files#r78\n') $(apb 'none, a reshape for the goal' $'Basis: https://github.com/o/r/pull/6\n')"
+rm -f "$FX/repos_o_r_issues_5" "$FX/repos_o_r_issues_6" "$FX/repos_o_r_issues_7" "$FX/repos_o_r_issues_comments_77" "$FX/repos_o_r_issues_comments_79" "$FX/repos_o_r_pulls_comments_78"
 check "BLOCK: gh pr ready after refused approach records" 2 "$(ready)"
 check "an approach with three rated candidates and a chosen 8 records, with no Browser line" 0 "$(prs2 approach "$T/ap.md")"
 glab() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "${2:-$T}" | python3 "$R/hooks/pre-bash-guard.py" >/dev/null 2>&1; echo $?; }

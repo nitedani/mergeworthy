@@ -12,6 +12,7 @@ Settings: MERGEWORTHY_BADGE on|off|auto requires the badge always, never, or for
 import hashlib, os, re, sys, subprocess, tempfile, time, urllib.parse
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'hooks'))
 import post_words
+from gh_common import GEMINI
 from post_words import fence_spans, uncoded
 def setting(name, default):
     """MERGEWORTHY_<name> from the environment, else from ~/.mergeworthy/settings.env (written at session start from the plugin's options)."""
@@ -112,6 +113,7 @@ def steps_out(s):  # an issue's reproduction steps a newcomer needs are required
 code = '\n'.join(inner for _, _, inner in fence_spans(steps_out(prose)))
 prose = uncoded(prose)
 prose = re.sub(r'^\s*(?:[-*]\s+)?>.*$', '', prose, flags=re.M)
+coded_lines = prose.split('\n')  # the label check below reads a line's inline code before its replacement, which keeps the line count
 prose = re.sub(r'`[^`\n]*`', 'CODE', prose)
 # A PR body and a finding issue count, outside evidence blocks, the prose moved into a table or a code block (mergeworthy:writing): a sentence-long
 # cell (more than 15 words besides numbers and inline code) or a row's only cell, except a rated row's and its header's first BOUND words a
@@ -163,9 +165,12 @@ if kind != 'tracker':
     for m in re.finditer(r'^\*\*([^*\n]{1,40}?)[.:]\*\*[ \t]+\S', prose, flags=re.M):
         if len(m.group(1).split()) <= 4 and not m.group(1).strip().isdigit():
             findings.append(f"a paragraph opening with a bold label ({m.group(0).strip()[:40]!r}): say it the way you would to a colleague")
-# A label and a colon opening a sentence ("Done: …", "One change I didn't make: …") reads as a report line, not a person (mergeworthy:writing)
+# A label and a colon opening a sentence ("Done: …", "One change I didn't make: …") reads as a report line, not a person (mergeworthy:writing);
+# a maintainer-commits review's whole `CI on <sha>: <state>` line is prescribed (reply §Maintainer commits)
 if kind in ('reply', 'inline', 'proposal', 'issue'):
-    for m in re.finditer(r"(?:^|(?<=[.!?]\s))([A-Z][^:\n.!?`|*]{0,50}?):[ \t]+(?=\S)", prose, flags=re.M):
+    ci_line = r'CI on (`?)[0-9a-f]{40}\1: (?:green|none|(?:red|pending): \S.*?)[ \t]*'  # the states reply §Maintainer commits allows
+    label_prose = '\n'.join('' if re.fullmatch(ci_line, raw) else line for raw, line in zip(coded_lines, prose.split('\n')))
+    for m in re.finditer(r"(?:^|(?<=[.!?]\s))([A-Z][^:\n.!?`|*]{0,50}?):[ \t]+(?=\S)", label_prose, flags=re.M):
         if 1 <= len(m.group(1).split()) <= 6 and not re.search(r'\d$', m.group(1)):
             findings.append(f"a label opening a sentence ({m.group(0).strip()[:40]!r}): say it the way you would to a colleague")
 # Crediting a decision or idea to someone needs a link to where they said it, or a summary becomes "you agreed" (mergeworthy:writing §How a colleague writes)
@@ -444,11 +449,15 @@ def _codex_trace(f):
     return re.search(r'^model: gpt', open(os.path.join(_dir, f), errors='replace').read(), re.M) is not None
 if has_badge and kind != 'tracker' and '*' not in _m.group(0):
     findings.append("badge without its model line: after the icons, on the same line, add *<model version> (<effort> effort) wrote this; …* in italics (writing, the badge)")
-# each model in the model line carries its reasoning effort: "Opus 5.5 (high effort)", "GPT-6.1-Sol (Codex, high effort)"
+# each model in the model line carries its reasoning effort: "Opus 5.5 (high effort)", "GPT-6.1-Sol (Codex, high effort)", "Gemini 4 Neon (Antigravity, high effort)"
 if has_badge and kind != 'tracker' and '*' in _m.group(0):
     _line = re.sub(r'\]\([^)]*\)', ']', _m.group(0).split('*', 1)[1])  # link targets aren't model names
     _effort = rf'\b(?:{post_words.alt(W["effort"])}) {re.escape(W["effort_word"])}\b'
-    _bare = [m.group(1) for m in re.finditer(rf'\b([A-Z][A-Za-z]*[ -]?\d+(?:\.\d+)*(?:-[A-Za-z0-9]+)*)(?![\w-]|\.\w)(?!\s*\([^()]*{_effort}[^()]*\))', _line)]
+    _model = re.compile(r'\b[A-Z][A-Za-z]*[ -]?\d+(?:\.\d+)*(?:-[A-Za-z0-9]+)*(?![\w-]|\.\w)')
+    _names = [*GEMINI.finditer(_line), *_model.finditer(GEMINI.sub(lambda m: 'Gemini'.ljust(len(m[0])), _line))]  # a Gemini name is read whole: blanked, at its length, for the rest
+    _bare = [m[0] for m in _names if not re.match(rf'\s*\([^()]*{_effort}[^()]*\)', _line[m.end():])]
+    if any(not GEMINI.match(_line, m.start()) for m in re.finditer(r'\bGemini\b', _line)):
+        findings.append('Gemini model outside its form: name it "Gemini <version> <Family>" as `agy models` lists it, "Gemini 4 Neon (Antigravity, high effort)" (writing, the badge)')
     if _bare or not re.search(_effort, _line):
         _e = f"{W['effort'][2]} {W['effort_word']}"
         findings.append(f"model line without effort{' for ' + ', '.join(_bare) if _bare else ''}: add each model's configured reasoning effort right after its name, \"Opus 5.5 ({_e})\" or inside its parenthesis, \"GPT-6.1-Sol (Codex, {_e})\" (writing, the badge)")

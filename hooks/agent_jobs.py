@@ -266,8 +266,8 @@ def noticed(launcher, path):
         if t and t.get('taskId') in ids and t.get('status') in ('completed', 'failed', 'cancelled', 'interrupted'): return True
         # delivered as a prompt, or mid-turn as a queued_command attachment
         c = (e.get('message') or {}).get('content') if e.get('type') == 'user' else (e.get('attachment') or {}).get('prompt')
-        n, cn = isinstance(c, str) and t3_tasks.NOTICE.match(c), isinstance(c, str) and TASK_NOTICE.match(c)
-        if n and n[1] in ids or agent and cn and cn[1] == agent[1]: return True
+        cn = isinstance(c, str) and TASK_NOTICE.match(c)
+        if isinstance(c, str) and any(task in ids for task, _, _ in t3_tasks.notices(c)) or agent and cn and cn[1] == agent[1]: return True
     return False
 
 def reported(f, mtime):

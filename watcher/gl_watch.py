@@ -5,10 +5,10 @@ Reported like a GitHub thread: answerable notes (an event, an owed reply and an 
 and issue closes. Keys are "gitlab.com/<path>#N" and "gitlab.com/<path>!N": no GitHub owner has a dot, so they can't collide."""
 import datetime, json, re, subprocess, time, urllib.parse
 import threads_file  # hooks/, on the path gh-watch.py sets
+from gh_common import BADGE  # an agent's post starts with it (mergeworthy:writing §Forms)
 
 HOST = threads_file.GL
 RECENT_EVERY = 60
-BADGE = re.compile(r'\s*<img src="https://github\.com/(claude|openai)\.png"')  # an agent's post starts with it (mergeworthy:writing §Forms); BADGE.match(body)
 BOT = re.compile(r'^(project|group)_\d+_bot|[-_]bot$|^(ghost|support-bot|alert-bot)$')
 DEVELOPER = 30  # GitLab's access level that can push: GitHub's write access
 

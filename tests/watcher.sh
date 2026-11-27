@@ -1449,12 +1449,15 @@ check "whole repo: new issue and PR reported once, the badge one and old threads
 got=$(py '
 B = "<img src=\"https://github.com/claude.png\" width=\"20\"> *Opus wrote this.*\nDone."
 C = "<img src=\"https://github.com/openai.png\" width=\"20\"> *Codex wrote this.*\nDone."
+A = "<img src=\"https://github.com/google-antigravity.png\" width=\"20\" height=\"20\" alt=\"Antigravity\"> *Gemini 4 Neon (Antigravity, high effort) wrote this.*\nDone."
+D = "<img src=\"https://example.org/chart.png\" data-src=\"https://github.com/claude.png\"> Please fix this chart."
+U = "<img src=\"https://example.org/chart.png\" alt=\"Codex\""
 u = {"login": "another-agent-account", "assoc": "MEMBER"}
 Q = "> <img src=\"https://github.com/claude.png\" width=\"20\"> *Opus wrote this.*\n\nWhy this?"
 L = "Is https://github.com/openai.png the badge you mean? Please drop it."
-print(*(m.answerable(u, b, set(), own=True) for b in (B, C, "Please fix the test.", Q, L)))
+print(*(m.answerable(u, b, set(), own=True) for b in (B, C, A, "Please fix the test.", Q, L, D, U)))
 ')
-check "a post starting with a badge, from any account, is an agent post; a person quoting or linking one is a person" "False False True True True" "$got"
+check "a post starting with a badge, from any account, is an agent post; a person quoting or linking one, or whose image only mentions one (data-src, an unfinished tag), is a person" "False False False True True True True True" "$got"
 # the steward's dir: every open mergeworthy issue is reported to it once, whenever it was opened (also while no watcher ran), though an
 # ordinary dir watching the repo whole comes first, the opener's dir lists it or it is the agent's (rules step 2); the ordinary dir keeps
 # its own handling, the opener its thread; a PR isn't; the open issues are one conditional request a pass
