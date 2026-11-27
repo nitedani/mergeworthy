@@ -64,6 +64,10 @@ def unrated(s):
     for a, b, _ in fence_spans(s) + [(len(s), len(s), '')]: out += [re.sub(TABLE, rest, s[last:a], flags=re.M), s[a:b]]; last = b
     return ''.join(out), n
 WORD = r"[A-Za-z0-9][\w'’-]*"
+def undetailed(s):
+    """s without its <details> blocks, a nested one with the block around it."""
+    while (t := re.sub(r'<details>(?:(?!<details>).)*?</details>', '', s, flags=re.S)) != s: s = t
+    return s
 draft = '--draft' in args
 if kind not in ('reply', 'pr', 'issue', 'inline', 'tracker', 'proposal', 'wip', 'title') or draft and kind != 'pr' \
         or edit_of and not (kind in ('issue', 'pr', 'tracker') and re.fullmatch(r'[\w.-]+/[\w.-]+#\d+', edit_of)): sys.exit(USAGE)  # tracker: umbrella body or decisions comment, a growing list with no word budget
@@ -98,7 +102,7 @@ prose = re.sub(r'<!--.*?-->', '', text, flags=re.S)
 _rp = arg('--parent', None); _rp = (re.sub(r'\.md$', '', path) + '.parent.md') if _rp is None else (None if _rp == 'none' else _rp)
 _asked_list = bool(_rp and os.path.exists(_rp) and re.search(r'\brefactor this pr\b|\bold rating\b|\bratings?\b.*\blists?\b|\b\d+\s+(?:questions|items|options)\b|\bquestions?\b.*\b(?:checkbox|choices)\b', open(_rp).read(), re.I | re.S))
 if _asked_list or kind == 'wip':  # a WIP comment keeps the first proposal, as posted, in <details>
-    prose = re.sub(r'<details>.*?</details>', '', prose, flags=re.S)
+    prose = undetailed(prose)
 if _asked_list:
     prose = re.sub(r'(?m)^\s*(?:- \[[ xX]\] .*|\d+\. \*\*.*|\*Why it matters:.*)$', '', prose)
 # The converge steps' runs, collapsed (converge step 5), are evidence: never linted; only a PR body's count reads this prose, so a reply counts them
@@ -258,7 +262,7 @@ if kind == 'tracker':
 if kind != 'pr' and not finding:
     counted = steps_out(re.sub(r'<!--.*?-->', '', text, flags=re.S))
     if _asked_list or kind == 'wip':  # the lists the reader asked for: collapsed, or open as a questionnaire (GitHub closes <details> on every box ticked)
-        counted = re.sub(r'<details>.*?</details>', '', counted, flags=re.S)
+        counted = undetailed(counted)
     if _asked_list:
         counted = re.sub(r'(?m)^\s*(?:- \[[ xX]\] .*|\d+\. \*\*.*|\*Why it matters:.*)$', '', counted)
     counted = re.sub(r'^\s*(?:[-*]\s+)?>.*$', '', counted, flags=re.M)              # quotes of others

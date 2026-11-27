@@ -865,6 +865,8 @@ wipd 32 Agreed; check "BLOCK: a WIP comment without '## Agreed'" 1 "$(wl | grep 
 wipd 32 '' 'Should the deadline cover the first attempt too?'; check "BLOCK: a WIP comment that asks a question" 1 "$(wl | grep -c 'a WIP comment asks nothing')"
 wipd 32 '' '' $'<details><summary>First proposal</summary>\n\nShould the deadline cover the first attempt too? I recommend yes.\n\n</details>'
 check "a question in the WIP comment's <details> (the first proposal, as posted) passes" "0 0" "$(wl | grep -c 'asks nothing') $(wl >/dev/null; echo $?)"
+wipd 32 '' '' $'<details><summary>First proposal</summary>\n\n<details><summary>Runs</summary>12 ms</details>\n\n1. Should the deadline cover the first attempt? I recommend yes.\n\n</details>'
+check "a question after a <details> nested in the kept first proposal passes too" "0 0" "$(wl | grep -c 'asks nothing') $(wl >/dev/null; echo $?)"
 wipd 58 '' 'The map holds every agreed point.'; check "BLOCK: a 601-word WIP comment" 1 "$(wl | grep -c '^601 words > 600 for a WIP comment')"
 wipd 58 '' 'The map holds agreed points.' "<details><summary>First proposal</summary>$(for i in $(seq 80); do printf '\nThe cache keeps one deadline across every retry it makes.\n'; done)</details>"
 check "a 600-word WIP comment with 800 more words in <details> passes" "0 1" "$(wl >/dev/null; echo $?) $(wl | grep -c '^length: 600 words, cap 600$')"
