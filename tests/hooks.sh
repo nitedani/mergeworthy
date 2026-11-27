@@ -2598,6 +2598,9 @@ sed 's/^✅ a$/| `x.ts`, `y.ts` | DELETE-NOW | dead |\n&/' "$T/rc4.md" > "$T/rc5
 check "only a rating row is checked for grouping: a findings row naming two files records, a rated row naming two refuses" "0 1" "$(psn "$T/rc5.md") $(psn "$T/rc6.md")"
 sed 's/^✅ a$/| `retention.ts:110–118`, `readFacts` | 8 ⇒ 9 | one |\n&/' "$T/rc4.md" > "$T/rc7.md"; sed 's/^✅ a$/| `x.ts`, `y.ts` | 8 ⇒ 9 | two |\n&/' "$T/rc4.md" > "$T/rc8.md"
 check "a location span beside its one function is not a second item; two file spans are" "0 1" "$(psn "$T/rc7.md") $(psn "$T/rc8.md")"
+sed 's/^✅ a$/| 3 | `a`, `b` | 6 ⇒ 8 | two |\n&/' "$T/rc4.md" > "$T/rc9.md"; sed 's/^✅ a$/- helperA, helperB - 8 => 8\n&/' "$T/rc4.md" > "$T/rc10.md"
+sed 's/^✅ a$/| 3 | `a.ts` | 6 ⇒ 8 | one |\n- `readLog` cached offset, hit, partial line and session-ID branch 7 ⇒ 8\n&/' "$T/rc4.md" > "$T/rc11.md"
+check "a numbered table's item is its second cell, and bare identifiers joined by ',' are several; one file after a number, or prose after one span, records" "1 1 0" "$(psn "$T/rc9.md") $(psn "$T/rc10.md") $(psn "$T/rc11.md")"
 # a carry of a head with two passes (one before a maintainer's ask, one after it) carries the latest
 GC="$T/prsc"; mkdir -p "$GC"; git -C "$GC" init -q; git -C "$GC" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; GA=$(git -C "$GC" rev-parse HEAD)
 printf '| `a.ts` | 6 ⇒ 7 | x | one |\n✅ a.ts\nCLEAN\n' > "$T/two-old.md"; printf '| `a.ts` | 7 ⇒ 9 | y | two |\n✅ a.ts\nCLEAN\n' > "$T/two-new.md"
