@@ -1693,7 +1693,7 @@ items = {h: [f'- **Item {i}** ({at(i)}Z). ' + 'A standing line about the work. '
 for v in items.values(): random.Random(1).shuffle(v)
 open(sys.argv[1], 'w').write('# Memory\n## Standing\n' + ''.join(f'### {h}\n' + '\n'.join(items[h]) + '\n' for h in heads) + '## Recent\n<!-- covered-until: 2026-11-27T12:00:00.000Z -->\n')
 EOF
-cp -r "$MK" "$MK-crash"
+cp -r "$MK" "$MK-crash"; cp -r "$MK" "$MK-two"
 items() { cat "$1"/memory.md "$1"/memory-archive-*.md 2>/dev/null | grep -o '^- \*\*Item [0-9]*\*\*' | sort ${2:-} | wc -l; }
 mmerge "$MK"
 check "1500 items: memory.md keeps under 48,000 characters of Standing, every item is in it or its month's archive once, and the digest shows the newest first" "yes 1500 1500 2 - **Item 1496** (2026-11-21 22:40Z)." \
@@ -1709,6 +1709,8 @@ def stop(a, b):
 os.replace = stop; mf.merge(sys.argv[2])' "$R/hooks" "$MK-crash" 2>/dev/null
 check "a merge that stops between the archive and memory.md writes leaves items in both, never lost; the next merge keeps each once" "yes 1500 1500 1500" \
   "$([ "$(items "$MK-crash")" -gt 1500 ] && echo yes) $(items "$MK-crash" -u) $(mmerge "$MK-crash"; items "$MK-crash") $(items "$MK-crash" -u)"
+ws=(); for i in 1 2 3 4 5 6 7 8; do (mmerge "$MK-two" 2>&1; echo "exit $?") > "$T/two.$i" & ws+=($!); done; wait "${ws[@]}"  # without the lock, 8 at once lose or duplicate items in most runs
+check "eight merges at once all finish, and every item is there once" "8 1500 1500" "$(cat "$T"/two.* | grep -cx 'exit 0') $(items "$MK-two") $(items "$MK-two" -u)"
 MF="$T/merge-fixture"; mkdir -p "$MF"; cp "$R/tests/fixtures/memory.md" "$MF/memory.md"
 printf '# Notes\nread-through: 2026-10-12T22:06:43.534Z\n- Rulings in force: **Already merged** (2026-10-12 22:00Z). The refresh wrote it in itself.\n' > "$MF/memory-notes.txt"; touch -d '1 hour ago' "$MF/memory-notes.txt"
 standing() { cat "$1"/memory.md "$1"/memory-archive-*.md 2>/dev/null | sed -n '/^## Standing/,/^## Recent/p' | grep -c '^- '; }
