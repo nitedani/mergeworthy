@@ -232,7 +232,7 @@ It blocks an action until every skill its always-on row names was opened with th
 - `gh pr ready`: `pull-request`, `merging`; `gh pr merge` and `git push`: `merging`; `gh pr create` and `gh issue create` also `task`. `pr-steps approach`: `pull-request`; the other `pr-steps` records: `converge`.
 - A gated action whose transcript can't be read is blocked.
 - Starting an agent (`Agent`, `delegate_task`, `codex exec`, `claude -p`) or editing a brief or prompt file: `delegate`. Editing a skill, `always-on.md`, `AGENTS.md` or `CLAUDE.md`: `rules`.
-- `code`, `finality` and `docs` are ungated: `code` reaches agents by path in their briefs, `finality` is checked by what it leaves (pre-bash-guard waits on `pr-steps finality`'s plan past the drift limit and on a thread map from a thread's third proposal, and its agents need `delegate` like any launch), and no tool call tells docs apart.
+- `code`, `finality` and `docs` are ungated: `code` reaches agents by path in their briefs, `finality` is checked by what it leaves (pre-bash-guard waits on `pr-steps finality`'s plan past the drift limit, and its agents need `delegate` like any launch), and no tool call tells docs apart.
 
 - `session-start` records, in `~/.mergeworthy/sessions/<session id>`, the skill catalog of the plugin folder the session loaded (`graph` or `v1`), at start, resume and compaction. A session recorded on `v1`, or with no record (it started before this install), has the old skills loaded: an old name it opened satisfies its successor (`core` → `task`; `github-threads` → `post`, `reply`; `design-loop` → `design`; `delegating` → `delegate`, `rules`).
 

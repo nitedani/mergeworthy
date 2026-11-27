@@ -46,7 +46,7 @@ ACTIONS = {
     'editing a skill or rules file':  ('rules',),
 }
 TEXT = ('--body', '-b', '--body-file', '-F', '--title', '-t')  # an issue edit that changes what a person reads
-UNGATED = {'code', 'finality', 'docs'}  # code reaches agents by path in briefs; finality is checked by what it leaves (pre-bash-guard: pr-steps finality's plan, the thread map) and its agents need delegate; no tool call tells docs apart
+UNGATED = {'code', 'finality', 'docs'}  # code reaches agents by path in briefs; finality is checked by what it leaves (pre-bash-guard: pr-steps finality's plan) and its agents need delegate; no tool call tells docs apart
 
 
 def rows():
