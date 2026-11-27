@@ -37,7 +37,7 @@ def handle_loops(handle):
 
 
 Name = collections.namedtuple('Name', 'subject kind seat')
-ROUTED = {'recheck', 'fresh'}  # the kinds of a round routed to a seat's loop of its subject (converge steps 2 and 4), counted in its four
+ROUTED = {'reverify', 'recheck', 'fresh'}  # the kinds of a round routed to a seat's loop of its subject (converge steps 2 to 4), counted in its four
 
 
 def name(loop):
@@ -52,7 +52,7 @@ def name(loop):
 def follows(loop, l):
     """Whether round 1 of loop continues the loop l: an ask of l, or a reverify, recheck or fresh of l's subject."""
     k = name(loop)
-    return k.kind == 'ask' and l == k.subject or k.kind in ('reverify', 'recheck', 'fresh') and name(l).subject == k.subject
+    return k.kind == 'ask' and l == k.subject or k.kind in ROUTED and name(l).subject == k.subject
 
 
 def continues(loop, n, here):
@@ -247,8 +247,8 @@ def routed_cap(a):
     if not a.routed: return ''
     return (f"{a.loop}-r{a.n} counts in the {NUMBER[CAP]} rounds per head of {', '.join(a.owners)}, which already ran {', '.join(a.shared)}"
             + (f" and {a.loop} {', '.join(f'r{m}' for m in a.earlier)}" if a.earlier else '')
-            + f" on this head or one within {testpaths.STALE_LINES} changed lines of it: a recheck or a fresh reader's findings go to their seat's loop "
-            "within its four (mergeworthy:delegate §Review rounds). " + a.finality + "List what is still open in the report or the PR body's notes and go on.\n")
+            + f" on this head or one within {testpaths.STALE_LINES} changed lines of it: a reverify, a recheck or a fresh reader's findings go to their "
+            "seat's loop within its four (mergeworthy:delegate §Review rounds). " + a.finality + "List what is still open in the report or the PR body's notes and go on.\n")
 
 
 def cap(a):
@@ -291,12 +291,21 @@ def earned(a):
 RULES = (routed_cap, cap, ledger_current, findings_ruled, earned)  # in the order a launch is told what to fix
 
 
+def seat_owner(loop, tops, heads):
+    """The seat loop a routed round of loop that names none counts in: of its subject's seats on the lineage of tops, the one with
+    the fewest rounds on heads; [] for none."""
+    subject = name(loop).subject
+    seats = {l for t in tops for l in lineage(t) if (k := name(l)).kind == 'seat' and k.subject == subject}
+    return sorted(seats, key=lambda l: (len(on_head(l, 10 ** 9, tops, heads)), l))[:1]
+
+
 def admit(loop, n, tops, heads, led, owners=(), launcher=(), step=None):
     """Why round n of code review loop is refused, '' when it may run: tops are the checkouts its brief names, heads their heads
     its pins equal, led the ledger path it names (None), owners the loops whose rounds count in its four (a routed round's seat
-    loop, the loop a `Continues:` line takes over), launcher the launcher's checkout, which holds the fixes of a brief naming none (a
-    docs reader's, handed rendered pages), step the step its brief declares (`Review: <step>`)."""
+    loop, else seat_owner's, the loop a `Continues:` line takes over), launcher the launcher's checkout, which holds the fixes of
+    a brief naming none (a docs reader's, handed rendered pages), step the step its brief declares (`Review: <step>`)."""
     if why := fresh_once(loop, n, tops, heads, step) or ran_once(loop, n, tops, heads): return why
+    owners = owners or (seat_owner(loop, tops, heads) if name(loop).kind in ROUTED else [])
     a = types.SimpleNamespace(loop=loop, n=n, tops=tops, heads=heads, led=led, owners=owners, earlier=on_head(loop, n, tops, heads),
                               shared=[f"{o} r{m}" for o in owners for m in on_head(o, 10 ** 9, tops, heads)])
     a.routed = bool(a.shared) and len(a.earlier) + len(a.shared) >= CAP
