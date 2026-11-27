@@ -189,7 +189,7 @@ fi
 # carries an earlier pass or small fix's review ("carries the pass of <sha>", carry_holds): a fix log or a note is not a shape pass
 # Round 1 of a pass rates every item afresh: a row whose rating is copied ("10 =", "=", "unchanged since", "carried from <loop>-r<N>") is a re-rating of a delta, not a pass;
 # a later round re-rates the rows its fixes touch and carries the rest (delegate §Review rounds), so its copied rows stand
-COPIED='\| *([0-9]+ *)?= *\||unchanged since|carried from'
+COPIED='\| *([0-9]+ *)?= *\||unchanged since|carried from [[:alnum:]_.-]+-r[0-9]+'
 later_round() { [ "$(python3 "$(dirname "$(realpath "$0")")/../hooks/loops.py" round "$1")" -ge 2 ]; }
 is_pass() { grep -q '✅' "$1" && grep -Eq '([0-9]+|\bnew) *(⇒|=>) *([0-9]+|removed|new|n/a)' "$1" && { ! grep -Eiq "$COPIED" "$1" || later_round "$1"; }; }
 # The lines between two trees, a binary, mode or empty file counting one
