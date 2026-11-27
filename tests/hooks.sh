@@ -1646,8 +1646,94 @@ items = lambda k: ''.join(f'- **{k} item {i}** (2026-10-12 10:00Z). ' + 'A long 
 open(sys.argv[1], 'w').write('# Memory\n## Standing\n' + ''.join(f'### {h}\n' + items(h) for h in ('Rulings in force', 'Ruled out', 'Superseded', 'Still intended')) + '## Recent\n<!-- covered-until: 2099-01-01T00:00:00.000Z -->\n')
 EOF
 check "the digest of a huge memory stays under the aim, one line per item" "yes 0" "$(n=$(python3 "$R/bin/memory-prep" digest "$MR" | wc -c); [ "$n" -le 6400 ] && echo yes || echo "no $n") $(python3 "$R/bin/memory-prep" digest "$MR" | awk 'length > 240' | wc -l)"
+# memory_file.merge: the refresh's notes fold into memory.md, each Standing item known by its lead
+mmerge() { python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import memory_file as mf; mf.merge(sys.argv[2])' "$R/hooks" "$1"; }
+MM="$T/merge"; mkdir -p "$MM"
+printf '# Memory\n## Standing\n### Rulings in force\n- **No cron** (2026-11-20 09:00Z). Recurring work runs in the watcher.\n- **Opus reviews** (2026-11-21 09:00Z). Reviews run on Opus.\n### Ruled out\n### Superseded\n### Still intended\n- **Ship the CLI** (2026-11-22 09:00Z). Waits on the release.\n## Recent\n- 2026-11-25 10:00Z: an old line.\n<!-- covered-until: 2026-11-26T12:00:00.000Z -->\n' > "$MM/memory.md"
+cat > "$MM/memory-notes.txt" <<'EOF'
+# Notes on memory-new.txt
+read-through: 2026-11-26T12:00:00.000Z
+- Rulings in force: **Sonnet implements** (2026-11-27 08:00Z). Implementers run on Sonnet.
+- Rulings in force: **Codex reviews** (2026-11-27 09:00Z). Reviews go to Codex. [replaces Opus reviews]
+- Recent: 2026-11-27 10:00Z: the CLI shipped. [done **Ship the CLI**]
+- Rulings in force: **No cron** (2026-11-27 11:00Z). Recurring work runs in the steward pass.
+- Ruled out: **Haiku drafts** (2026-11-27 11:30Z). Drafts need Opus. [replaces Gemini drafts]
+- Rulings in force (2026-11-27 07:00Z, main-session brief): review fixes change only the sentences a finding names.
+- Still intended (opensource): **Retire the old watcher** (2026-11-27 06:00Z). Waits on the new one.
+read-through: 2026-11-27T12:00:00.000Z
+EOF
+cat > "$T/merged.md" <<'EOF'
+# Memory
+## Standing
+### Rulings in force
+- **No cron** (2026-11-27 11:00Z). Recurring work runs in the steward pass.
+- **Codex reviews** (2026-11-27 09:00Z). Reviews go to Codex.
+- **Sonnet implements** (2026-11-27 08:00Z). Implementers run on Sonnet.
+- review fixes change only the sentences a finding names. (2026-11-27 07:00Z, main-session brief)
+### Ruled out
+- **Haiku drafts** (2026-11-27 11:30Z). Drafts need Opus.
+### Superseded
+- **Opus reviews** (2026-11-21 09:00Z). Reviews run on Opus.
+- **No cron** (2026-11-20 09:00Z). Recurring work runs in the watcher.
+### Still intended
+- **Retire the old watcher** (2026-11-27 06:00Z). Waits on the new one. (opensource)
+## Recent
+- 2026-11-27 10:00Z: the CLI shipped.
+<!-- covered-until: 2026-11-27T12:00:00.000Z -->
+<!-- notes-merged: 10 4374b6a21d6f -->
+EOF
+nsum=$(md5sum < "$MM/memory-notes.txt"); mmerge "$MM"; msum=$(md5sum < "$MM/memory.md"); mmerge "$MM"
+check "merge adds a note (one with a parenthesis after its section too), replaces the item a tag or a reused lead names (the old one under Superseded), takes done work out of Still intended, adds a note whose tag names no item, keeps Recent to 24 hours; a second merge changes nothing, and the notes are left as they were" "same same same" \
+  "$(diff "$T/merged.md" "$MM/memory.md" >/dev/null && echo same) $([ "$msum" = "$(md5sum < "$MM/memory.md")" ] && echo same) $([ "$nsum" = "$(md5sum < "$MM/memory-notes.txt")" ] && echo same)"
+MG="$T/merge-grown"; mkdir -p "$MG"
+printf '# Memory\n## Standing\n### Rulings in force\n- **Delta** (2026-11-10 09:00Z). The old delta ruling.\n### Ruled out\n### Superseded\n### Still intended\n- **Ship the panel** (2026-11-25 10:00Z). Waits on review.\n## Recent\n<!-- covered-until: 2026-11-27T08:00:00.000Z -->\n' > "$MG/memory.md"
+printf '# Notes\nread-through: 2026-11-27T08:00:00.000Z\nread-through: 2026-11-27T09:00:00.000Z\n- Still intended: **Release the extension** (2026-11-27 08:30Z). Waits on the upstream fix.\n- Rulings in force: **Extension released** (2026-11-27 08:50Z). Done by the user. [done Release the extension]\n- Other: 2026-11-20 06:00Z: the delta plan was dropped. [replaces Delta]\n' > "$MG/memory-notes.txt"; mmerge "$MG"
+printf 'read-through: 2026-11-27T10:00:00.000Z\n- Rulings in force: **Delta** (2026-11-27 09:30Z). The new delta ruling.\n' >> "$MG/memory-notes.txt"; mmerge "$MG"
+printf 'read-through: 2026-11-27T11:00:00.000Z\n- Recent: 2026-11-27 10:40Z: review round two started.\n' >> "$MG/memory-notes.txt"; mmerge "$MG"
+{ printf '# Notes on memory-new.txt\nread-through: 2026-11-27T11:00:00.000Z\nread-through: 2026-11-27T12:00:00.000Z\n- Rulings in force: **After prep** (2026-11-27 11:30Z). From the notes prep reset.\n'
+  for i in $(seq 10 21); do echo "- Recent: 2026-11-27 11:${i}Z: line $i."; done; } > "$MG/memory-notes.txt"; mmerge "$MG"  # longer than the notes merged before
+check "a merge applies each note line once: after the notes grew, finished work stays out of Still intended, and an old tagged line Recent dropped leaves the newer ruling in force; once prep resets the notes, all of them apply" "0 1 1 1" \
+  "$(sed -n '/^### Still intended/,/^## /p' "$MG/memory.md" | grep -c 'Release the extension') $(sed -n '/^### Rulings in force/,/^### /p' "$MG/memory.md" | grep -c 'The new delta ruling') $(grep -c 'review round two' "$MG/memory.md") $(grep -c 'After prep' "$MG/memory.md")"
+MK="$T/merge-big"; mkdir -p "$MK"
+python3 - "$MK/memory.md" <<'EOF'
+import datetime as d, random, sys
+heads = ('Rulings in force', 'Ruled out', 'Superseded', 'Still intended')
+at = lambda i: (d.datetime(2026, 10, 1) + d.timedelta(minutes=50 * i)).strftime('%Y-%m-%d %H:%M')
+items = {h: [f'- **Item {i}** ({at(i)}Z). ' + 'A standing line about the work. ' * 8 for i in range(1500) if heads[i % 4] == h] for h in heads}
+for v in items.values(): random.Random(1).shuffle(v)
+open(sys.argv[1], 'w').write('# Memory\n## Standing\n' + ''.join(f'### {h}\n' + '\n'.join(items[h]) + '\n' for h in heads) + '## Recent\n<!-- covered-until: 2026-11-27T12:00:00.000Z -->\n')
+EOF
+cp -r "$MK" "$MK-crash"; cp -r "$MK" "$MK-two"
+items() { cat "$1"/memory.md "$1"/memory-archive-*.md 2>/dev/null | grep -o '^- \*\*Item [0-9]*\*\*' | sort ${2:-} | wc -l; }
+mmerge "$MK"
+check "1500 items: memory.md keeps under 48,000 characters of Standing, every item is in it or its month's archive once, and the digest shows the newest first" "yes 1500 1500 2 - **Item 1496** (2026-11-21 22:40Z)." \
+  "$([ "$(sed -n '/^## Standing/,/^## Recent/p' "$MK/memory.md" | grep '^- ' | wc -c)" -le 48000 ] && echo yes) $(items "$MK") $(items "$MK" -u) $(ls "$MK"/memory-archive-2026-1[01].md | wc -l) $(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import memory_file as mf; print(mf.digest(sys.argv[2]).split("\n")[1].split(" A standing")[0])' "$R/hooks" "$MK")"
+printf '# Notes\nread-through: 2026-11-27T12:00:00.000Z\n- Ruled out: **Item 1 again** (2026-11-27 10:00Z). Ruled out once more. [replaces Item 1]\n' > "$MK/memory-notes.txt"; mmerge "$MK"
+check "a replacement also applies to an archived item: it moves under the archive's Superseded" "1 0" \
+  "$(sed -n '/^### Superseded/,/^###/p' "$MK/memory-archive-2026-10.md" | grep -c '^- \*\*Item 1\*\*') $(sed -n '/^### Ruled out/,/^###/p' "$MK/memory-archive-2026-10.md" | grep -c '^- \*\*Item 1\*\*')"
+python3 -c 'import os, sys; sys.path.insert(0, sys.argv[1]); import memory_file as mf
+r = os.replace
+def stop(a, b):
+    if b.endswith("/memory.md"): raise SystemExit("crashed")
+    r(a, b)
+os.replace = stop; mf.merge(sys.argv[2])' "$R/hooks" "$MK-crash" 2>/dev/null
+check "a merge that stops between the archive and memory.md writes leaves items in both, never lost; the next merge keeps each once" "yes 1500 1500 1500" \
+  "$([ "$(items "$MK-crash")" -gt 1500 ] && echo yes) $(items "$MK-crash" -u) $(mmerge "$MK-crash"; items "$MK-crash") $(items "$MK-crash" -u)"
+ws=(); for i in 1 2 3 4 5 6 7 8; do (mmerge "$MK-two" 2>&1; echo "exit $?") > "$T/two.$i" & ws+=($!); done; wait "${ws[@]}"  # without the lock, 8 at once lose or duplicate items in most runs
+check "eight merges at once all finish, and every item is there once" "8 1500 1500" "$(cat "$T"/two.* | grep -cx 'exit 0') $(items "$MK-two") $(items "$MK-two" -u)"
+OB="$T/orch-b"; MRB="$HOME/.mergeworthy/work/mem-b"; LB="$HOME/.claude/projects/$(printf '%s' "$OB" | sed 's/[^A-Za-z0-9]/-/g')"; mkdir -p "$OB" "$LB"
+(cd "$OB" && CLAUDE_CODE_SESSION_ID=ob python3 "$R/bin/memory-prep" init "$MRB" thread-b >/dev/null)
+mlog "$LB/ob.jsonl" 1 "a ruling an hour ago"; touch -d '1 hour ago' "$LB/ob.jsonl"
+printf '# Memory\n## Standing\n## Recent\n<!-- covered-until: %s -->\n' "$(date -u -d '3 hours ago' +%Y-%m-%dT%H:%M:%S.000Z)" > "$MRB/memory.md"
+check "memory.md written now but covering through 3 hours ago is behind a log line of an hour ago" True "$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import memory_file as mf; print(mf.behind(sys.argv[2]))' "$R/hooks" "$MRB")"
+MF="$T/merge-fixture"; mkdir -p "$MF"; cp "$R/tests/fixtures/memory.md" "$MF/memory.md"
+printf '# Notes\nread-through: 2026-10-12T22:06:43.534Z\n- Rulings in force: **Already merged** (2026-10-12 22:00Z). The refresh wrote it in itself.\n' > "$MF/memory-notes.txt"; touch -d '1 hour ago' "$MF/memory-notes.txt"
+standing() { cat "$1"/memory.md "$1"/memory-archive-*.md 2>/dev/null | sed -n '/^## Standing/,/^## Recent/p' | grep -c '^- '; }
+fx=$(standing "$MF"); mmerge "$MF"; mmerge "$MF"
+check "the first merge of a memory.md a refresh wrote itself keeps its Standing item count, skips the notes that refresh already merged, and keeps one copy of the file as it was" "$fx 0 same" \
+  "$(standing "$MF") $(grep -c 'Already merged' "$MF/memory.md") $(cmp -s "$R/tests/fixtures/memory.md" "$MF/memory-premerge.md" && echo same)"
 # Claude Code shows the model a 2 KB preview of a hook command's output over 10,000 characters: each SessionStart output stays under 9,000 bytes
-cp "$R/tests/fixtures/memory.md" "$MR/memory.md"; touch -d '3 hours ago' "$MR/memory.md"; mlog "$LD/a.jsonl" 0 "after the fixture"
+cp "$R/tests/fixtures/memory.md" "$MR/memory.md"; rm "$MR/memory-notes.txt"; mlog "$LD/a.jsonl" 0 "after the fixture"  # behind, with no notes to merge
 ss_all=$(CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" </dev/null 2>/dev/null | wc -c); ss_m=$(ss_mem "$OC" | tee "$T/ss.out" | wc -c)
 echo "measured with tests/fixtures/memory.md (a real memory.md, words hashed): session-start $ss_all bytes, session-memory $ss_m bytes"
 check "each SessionStart output with a real-sized memory.md stays under 9,000 bytes; the order comes first, the digest after" "yes yes 1 1" "$([ "$ss_all" -le 9000 ] && echo yes) $([ "$ss_m" -le 9000 ] && echo yes) $(head -1 "$T/ss.out" | grep -c 'is behind') $(grep -c '^### Still intended' "$T/ss.out")"
@@ -1710,6 +1796,12 @@ ag() { # cwd task [role]
     | timeout 10 python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
 printf '# Memory\n## Standing\n### Ruled out\n- **Cron jobs** (now). The user refused them.\n## Recent\n<!-- covered-until: 2099-01-01T00:00:00.000Z -->\n' > "$MR/memory.md"
 check "BLOCK: a brief pinned to an older commit of the worktree it names, with the ruled-out list" "2 1" "$(ag "$OC" "Fix it in $T/gw at $OLD") $(grep -c 'Cron jobs' "$T/err")"
+cp "$MR/memory.md" "$T/memory.keep"; python3 -c 'import sys; open(sys.argv[1], "w").write("# Memory\n## Standing\n### Ruled out\n" + "".join(f"- **Ruled out {i}** (2026-11-{27 - i // 20:02d} 10:00Z). " + "A path the user refused, and why. " * 6 + "\n" for i in range(400)) + "## Recent\n<!-- covered-until: 2099-01-01T00:00:00.000Z -->\n")' "$MR/memory.md"
+check "BLOCK: with a 400-item Ruled out, the message lists its newest items up to 1,500 characters and where the rest is" "2 yes 1 1" "$(ag "$OC" "Fix it in $T/gw at $OLD, once more") $([ "$(wc -c < "$T/err")" -le 2500 ] && echo yes) $(grep -c '^- \*\*Ruled out 0\*\*' "$T/err") $(grep -c "more in $MR/memory.md" "$T/err")"
+mv "$T/memory.keep" "$MR/memory.md"
+printf '# Memory\n- **Flight streaming chunk order** (2026-11-21 10:00Z). Settled.\n' > "$MR/memory-premerge.md"
+check "memory-premerge.md, the first merge's copy of the file, covers no topic" 0 "$(ag "$OC" $'Look into RSC\nTopic: flight streaming chunk order' research)"
+rm "$MR/memory-premerge.md"
 check "a brief pinned to the worktree's live head passes" 0 "$(ag "$OC" "Fix it again in $T/gw at $NEW, base $OLD")"
 r1=$(rnd gw-r1 "Review $T/gw at head $NEW"); r2=$(rnd gw-r2 "Review $T/gw at head $NEW again"); r3=$(rnd gw-r3 "Review $T/gw at head $NEW once more")
 git -C "$T/gw" commit -q --allow-empty -m fix; FIX=$(git -C "$T/gw" rev-parse HEAD); r3f=$(rnd "gw-r3-${FIX:0:7}" "Review $T/gw at head $FIX")
@@ -1770,6 +1862,9 @@ check "research on a topic nothing covers passes" 0 "$(ag "$OC" $'Look into RSC\
 printf '# Design\n\nThe flight protocol.\n\nStreaming is out of scope.\n\nChunk order: later.\n' > "$MR/flight-design.md"
 check "a doc naming the topic's words only in separate paragraphs doesn't cover it" 0 "$(ag "$OC" $'Look into RSC\nTopic: flight streaming chunk order' research)"
 rm "$MR/flight-design.md"
+cp "$MR/memory.md" "$T/memory.keep"; python3 -c 'import sys; open(sys.argv[1], "w").write("# Memory\n## Standing\n### Ruled out\n" + "".join(f"- **Item {i}** (2026-11-20 10:00Z). About {w}.\n" for i in range(1500) for w in ["flight", "streaming", "chunk", "order"][i % 4:i % 4 + 1]) + "## Recent\n<!-- covered-until: 2099-01-01T00:00:00.000Z -->\n")' "$MR/memory.md"
+check "a 1500-item memory.md with no blank lines covers a topic only where one item holds every word; BLOCK when one does" "0 2" "$(ag "$OC" $'Look into RSC\nTopic: flight streaming chunk order' research) $(echo '- **Flight streaming chunk order** (2026-11-21 10:00Z). Settled.' >> "$MR/memory.md"; ag "$OC" $'Look into RSC\nTopic: flight streaming chunk order' research)"
+mv "$T/memory.keep" "$MR/memory.md"
 mkdir -p "$MR/flight"; printf 'Topic: flight streaming chunk order\nGoal: find it\n' > "$MR/flight/brief.md"
 check "the brief being launched is not research that already covers its own topic" 0 "$(ag "$OC" "Follow $MR/flight/brief.md exactly" research)"
 rm -r "$MR/flight"
