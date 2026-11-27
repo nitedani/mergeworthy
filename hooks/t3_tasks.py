@@ -123,11 +123,16 @@ def loads_mergeworthy(instance, config):
     return True
 
 
+def _enabled(known, kind):
+    """The ids of the instances in `known` of driver `kind` that T3 runs."""
+    return [i for i, o in known.items() if o.get('driver') == kind and enabled(o)]
+
+
 def mergeworthy_instances(kind):
     """The enabled instances of driver `kind` that load mergeworthy, as T3 Code runs them; [kind] without its settings, as a
     built-in instance's id is its driver's."""
     known = instances()
-    return [kind] if known is None else [i for i, o in known.items() if o.get('driver') == kind and enabled(o) and loads_mergeworthy(i, o)]
+    return [kind] if known is None else [i for i in _enabled(known, kind) if loads_mergeworthy(i, known[i])]
 
 
 def without_mergeworthy(instance, kind=None):
@@ -135,8 +140,7 @@ def without_mergeworthy(instance, kind=None):
     an instance id, or a driverKind alone, for which T3 may pick any enabled instance of that driver (resolveTarget: the first
     healthy one when the parent's runs another driver)."""
     known = instances() or {}
-    picks = [instance] if instance else [i for i, o in known.items() if o.get('driver') == kind and enabled(o)]
-    return [i for i in picks if i in known and not loads_mergeworthy(i, known[i])]
+    return [i for i in ([instance] if instance else _enabled(known, kind)) if i in known and not loads_mergeworthy(i, known[i])]
 
 
 def result(content):

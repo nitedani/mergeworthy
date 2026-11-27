@@ -1491,7 +1491,7 @@ check "BLOCK: a driverKind alone while an enabled instance of it loads no mergew
 echo '{"providerInstances":{"agy_y":{"driver":"antigravity","enabled":true},"agy_off":{"driver":"antigravity","enabled":false}}}' > "$HOME/.t3/userdata/settings.json"
 check "a driverKind alone passes when every enabled instance of it loads mergeworthy" 0 "$(impl '{"driverKind":"antigravity"}' '' research 'Research the cache')"
 echo '{"providerInstances":{"agy_x":{"driver":"antigravity"}}}' > "$HOME/.t3/userdata/settings.json"
-check "BLOCK: when no instance of the driver loads mergeworthy, the refusal says so" "2 1" "$(res agy_x) $(grep -c 'no instance of its driver loads it' "$T/err")"
+check "BLOCK: when no instance of the driver loads mergeworthy, the refusal says so" "2 1" "$(res agy_x) $(grep -c 'set target.providerInstanceId to an instance of antigravity that loads mergeworthy, which none does now\.$' "$T/err")"
 rm "$HOME/.t3/userdata/settings.json"
 check "with no settings file nothing is refused for its instance" "0 0" "$(res myclaude) $(res agy_x)"
 [ -z "$agm_made" ] || rmdir "$AGM"

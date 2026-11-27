@@ -185,34 +185,28 @@ def codex_reset():
 # on: a delegate_task with no target runs on the launching session's provider, Antigravity's under hooks/agy.py (MERGEWORTHY_HOST);
 # an Antigravity seat names its target, so a launch without one is refused there too. Each refusal names the instances of the
 # driver it asks for that load mergeworthy, so the target it names passes the instance check below
-to = lambda kind: ' or '.join(t3_tasks.mergeworthy_instances(kind)) or f"a {kind} instance that loads mergeworthy (none in T3's settings does)"
+targets = lambda kind: ' or '.join(t3_tasks.mergeworthy_instances(kind)) or f"an instance of {kind} that loads mergeworthy, which none does now"
 drivers = req.drivers or {'antigravity' if os.environ.get('MERGEWORTHY_HOST') == 'antigravity' else 'claudeAgent'}
-provider_refused = True
 if req.t3 and str(req.tool).endswith('delegate_task') and 'antigravity' in drivers and (k.builds or not req.providers):
     why = ["no implementer runs on Antigravity (mergeworthy:delegate §Model class)"] if k.builds else []
     why += [] if req.providers else ["with no target this launch would run on this session's Antigravity"]
-    sys.stderr.write(f"BLOCKED: {'; '.join(why)}: set target.providerInstanceId to {to('codex' if req.role == 'review' and not k.builds else 'claudeAgent')}.\n")
+    sys.stderr.write(f"BLOCKED: {'; '.join(why)}: set target.providerInstanceId to {targets('codex' if req.role == 'review' and not k.builds else 'claudeAgent')}.\n")
     refused()
 elif req.role == 'review' and req.t3 and (reset := codex_reset()) and 'codex' in drivers:
     at = time.localtime(reset)
     sys.stderr.write(f"BLOCKED: claude-swap reads every saved Codex account as used up until {time.strftime('%H:%M' if at[:3] == time.localtime()[:3] else '%a %H:%M', at)}, so this launch would fail. "
-                     f"Launch the review on Claude (target.providerInstanceId {to('claudeAgent')}); it needs no Fallback line while that holds.\n")
+                     f"Launch the review on Claude (target.providerInstanceId {targets('claudeAgent')}); it needs no Fallback line while that holds.\n")
     refused()
 # the fallback keeps the first review's prompt, so its claim may sit in the brief file the task names; `<what failed>` is the form, no claim
 elif req.role == 'review' and req.t3 and not reset and 'claudeAgent' in drivers and not re.search(r'\bFallback:[ \t]*[^\s<]', launch.Brief(req.task).brief):
-    sys.stderr.write(f"BLOCKED: an independent check starts on another company's model (mergeworthy:delegate §Reviewers): set target.providerInstanceId to {to('codex')}. "
-                     f"Only when that call failed, launch on Claude ({to('claudeAgent')}) with `Fallback: <what failed>` in the task or the brief file it names.\n")
+    sys.stderr.write(f"BLOCKED: an independent check starts on another company's model (mergeworthy:delegate §Reviewers): set target.providerInstanceId to {targets('codex')}. "
+                     f"Only when that call failed, launch on Claude ({targets('claudeAgent')}) with `Fallback: <what failed>` in the task or the brief file it names.\n")
     refused()
-else:
-    provider_refused = False
-# T3 Code may keep instances of a driver that load no mergeworthy (the owner's A/B twins): a mergeworthy session's agent never
-# runs on one (a Neon session's agents ran on such a Claude instance with no skills or hooks, 2026-11-27). A t3_thread_launch is a
-# top-level thread the user asks for, which may be such an A/B thread. A launch the provider checks refused already was told a target
-if req.t3 and str(req.tool).endswith('delegate_task') and not provider_refused and (plain := t3_tasks.without_mergeworthy(req.instance, req.kind)):
+# a mergeworthy session's agent never runs on a T3 instance that loads no mergeworthy; a t3_thread_launch is a thread the user asks for
+elif req.t3 and str(req.tool).endswith('delegate_task') and (plain := t3_tasks.without_mergeworthy(req.instance, req.kind)):
     what = f"T3's instance {req.instance}" if req.instance else f"driverKind {req.kind} alone may run on T3's instance {' or '.join(plain)}, which"
-    use = t3_tasks.mergeworthy_instances(t3_tasks.driver(req.instance, req.kind))
     sys.stderr.write(f"BLOCKED: {what} doesn't load mergeworthy, so this agent would run without its skills and hooks: "
-                     + (f"set target.providerInstanceId to {' or '.join(use)}.\n" if use else "no instance of its driver loads it; launch on another driver's.\n"))
+                     f"set target.providerInstanceId to {targets(t3_tasks.driver(req.instance, req.kind))}.\n")
     refused()
 # T3 answers a delegate_task whose clientRequestId it has seen with that earlier task's result, without running anything.
 # Reuse is allowed only within 10 minutes (a retry of the same launch).
