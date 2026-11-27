@@ -182,12 +182,13 @@ def codex_reset():
         return None
     return min(until) if until and min(until) > time.time() else None
 # Implementers run on Claude, reviews first on Codex (mergeworthy:delegate §Model class, §Reviewers), whichever host the session runs
-# on: a delegate_task with no target runs on the launching session's provider, Antigravity's under hooks/agy.py (MERGEWORTHY_HOST)
+# on: a delegate_task with no target runs on the launching session's provider, Antigravity's under hooks/agy.py (MERGEWORTHY_HOST);
+# an Antigravity seat names its target, so a launch without one is refused there too
 drivers = req.drivers or {'antigravity' if os.environ.get('MERGEWORTHY_HOST') == 'antigravity' else 'claudeAgent'}
-if req.t3 and str(req.tool).endswith('delegate_task') and 'antigravity' in drivers and k.builds:
-    sys.stderr.write("BLOCKED: no implementer runs on Antigravity (mergeworthy:delegate §Model class)"
-                     + ("; with no target this launch would run on this session's Antigravity" if not req.providers else '')
-                     + ": set target.providerInstanceId to claudeAgent.\n")
+if req.t3 and str(req.tool).endswith('delegate_task') and 'antigravity' in drivers and (k.builds or not req.providers):
+    why = ["no implementer runs on Antigravity (mergeworthy:delegate §Model class)"] if k.builds else []
+    why += [] if req.providers else ["with no target this launch would run on this session's Antigravity"]
+    sys.stderr.write(f"BLOCKED: {'; '.join(why)}: set target.providerInstanceId to {'codex' if req.role == 'review' and not k.builds else 'claudeAgent'}.\n")
     refused()
 elif req.role == 'review' and req.t3:
     reset = codex_reset()
