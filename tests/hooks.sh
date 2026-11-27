@@ -848,6 +848,9 @@ check "a draft linted with no --kind is no proposal: posted to a thread with thr
   "$(pgc "gh issue comment 9 --repo o/r --body-file $AR/drafts/r1/nk.md") $(prc "gh issue comment 9 --repo o/r --body-file $AR/drafts/r1/nk.md") $(rounds)"
 prop 5; touch -d '+1 minute' "$AR/maps/o-r-9.md"
 check "a proposal draft sent as an edit (--edit-last) counts no round" "0 3" "$(prc "gh issue comment 9 --repo o/r --edit-last --body-file $AR/drafts/r1/p5.md") $(rounds)"
+prc "gh issue comment 9 --repo o/r --body-file $AR/drafts/r1/p5.md" >/dev/null; touch -d '-1 hour' "$AR/maps/o-r-9.md"
+check "a posted proposal corrected with --edit-last, the map now stale: both hooks pass it and it counts no second round" "4 0 0 4" \
+  "$(rounds) $(pgc "gh issue comment 9 --repo o/r --edit-last --body-file $AR/drafts/r1/p5.md") $(prc "gh issue comment 9 --repo o/r --edit-last --body-file $AR/drafts/r1/p5.md") $(rounds)"
 
 # ---------- post-lint --kind wip: a design thread's WIP comment (design §WIP comment) ----------
 wipd() { # sentences [section to drop] [line to add under TLDR] [line to add at the end]: $T/wip.md, 15 words plus 10 a sentence

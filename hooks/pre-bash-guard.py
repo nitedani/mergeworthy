@@ -1430,7 +1430,7 @@ def check(t, has_cd):
             if sub == 'comment' and '--edit-last' not in rest:
                 check_turn(*target, rest, files)
             if sub in ('comment', 'review'):
-                check_finality(*target, files)
+                check_finality(*target, [f for f in files if f in new_post_drafts(t)])  # an edit is no proposal round
             if sub != 'create':
                 check_context(f'{target[0]}#{target[1]}' if all(target) else None, files)
             for f in files: gated_file(f, has_cd, create=f in new_post_drafts(t))

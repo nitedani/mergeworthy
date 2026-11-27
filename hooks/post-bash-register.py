@@ -83,12 +83,13 @@ for s in where.walk(segs):
     if not s.piped or (post and any(wrote(post, th) for th in threads(out))) or (adds and re.search(r'github\.com/\S+/discussions/\d+#discussioncomment', out)):
         drafts += new
 # Written here, not in pre-bash-guard: PostToolUse runs only after the command succeeded, so a post another hook blocked, or one that failed, can be retried
+fresh = set()  # the drafts this command posted as new: only these count as proposals below
 if isinstance(r, dict) and not r.get('interrupted'):
     for f in drafts:
         try:
             sha = hashlib.sha256(open(f, 'rb').read()).hexdigest()
             if open(f + '.gate').read().split('\n')[0].strip() == sha:
-                open(f + '.posted', 'w').write(sha)
+                open(f + '.posted', 'w').write(sha); fresh.add(os.path.abspath(f))
         except OSError:
             pass  # a draft with no gate record wasn't posted (pre-bash-guard refuses it); one gone since can't be posted again
 if discussed:  # gh-watch reads issues, PRs and merge requests only, so the thread a discussion-post names joins none
@@ -132,7 +133,7 @@ for s in segs:
             flags = open(f + '.lint').read().split()
         except OSError:
             continue
-        if '--kind' in flags and flags[flags.index('--kind') + 1:][:1] == ['proposal'] and os.path.exists(f + '.posted'):
+        if '--kind' in flags and flags[flags.index('--kind') + 1:][:1] == ['proposal'] and os.path.abspath(f) in fresh:
             open(os.path.expanduser('~/.claude/proposal-rounds.txt'), 'a').write(f'{tg[0]}#{tg[1]} {int(time.time())}\n')
 reg = os.path.expanduser('~/.claude/gh-watch-dirs.txt')
 dirs = [l.strip() for l in open(reg)] if os.path.exists(reg) else []
