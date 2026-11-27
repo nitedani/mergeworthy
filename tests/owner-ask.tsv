@@ -228,3 +228,13 @@ release	v1.3.0	None	release 1,2,0
 release	v1.3.0	None	release @vike/react
 release	v1.3.0 @vike/react	True	release @vike/react
 ask-first	t3-update	None	update t3 to 1.2
+release	-	None	release prep
+release	-	None	release first
+release	-	None	release is
+merge	o/r#41	True	Merge #41 into main
+merge	o/r#41	True	mergeld a #41-et
+merge	o/r#41	None	Review #40. Merge it.
+merge	o/r#41	None	merge #41 and #42
+merge	o/r#41	False	merge it and stop
+push	main	None	push back on nits, or do we not have that rule?
+merge	o/r#41	True	(Re-invocation of /loop don't merge it)\nmerge it
