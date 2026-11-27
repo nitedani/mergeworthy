@@ -277,4 +277,6 @@ ask-first	t3-update	True	update t3 on opensource
 ask-first	t3-update	True	update t3-update
 ask-first	systemctl --user restart t3code	True	restart t3code.service
 push	main	True	pushold a main-re
+merge	o/r#41	True	Merge #41 — thanks
+push	main	True	Push to main – thanks
 merge	o/r#41	False	merge it, or should I?
