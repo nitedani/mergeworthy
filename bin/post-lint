@@ -7,7 +7,7 @@ A reply or inline comment needs the comment it answers: <draft stem>.parent.md n
 --parent none for a comment that answers nobody. --draft (with --kind pr): the body of a draft PR, which says why it is one.
 --kind status: a reply that only says what is being done and by when (post §Kinds), checked here instead of by a reviewer.
 --kind wip: a design thread's WIP comment (design §WIP comment): its heading and seven sections, no question, at most 600 words outside <details>.
---kind plan: a design plan the user asked to post as an issue; linted as an issue, capped at 2500 words, without the reproduction, evidence and internal-label checks.
+--kind plan: a design plan posted as an issue (design step 8, or the user asked); linted as an issue, capped at 2500 words, without the reproduction, evidence and internal-label checks.
 --edit-of owner/repo#N (--kind issue, pr, tracker or plan): the draft edits that live body, and fails only on findings the body doesn't already have, one for one.
 Settings: MERGEWORTHY_BADGE on|off|auto requires the badge always, never, or for a human account."""
 import hashlib, os, re, sys, subprocess, tempfile, time, urllib.parse

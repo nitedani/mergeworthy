@@ -22,7 +22,7 @@ Everything that reaches an external service passes these steps: comments, review
 
 ### Kinds
 
-`post-lint --kind`: `reply` (a thread comment; `--parent none` when it answers nobody), `status` (a reply, step 3), `proposal` (a reply proposing a design or asking agreement to one; counted per thread), `wip` (`design §WIP comment`), `pr` (a PR body; `--draft` for a draft's), `issue`, `plan` (a design plan the user asked to post as an issue; at most 2500 words), `inline` (a diff-line review comment), `tracker` (the umbrella issue and Decisions comment; no badge).
+`post-lint --kind`: `reply` (a thread comment; `--parent none` when it answers nobody), `status` (a reply, step 3), `proposal` (a reply proposing a design or asking agreement to one; counted per thread), `wip` (`design §WIP comment`), `pr` (a PR body; `--draft` for a draft's), `issue`, `plan` (a design plan posted as an issue; at most 2500 words), `inline` (a diff-line review comment), `tracker` (the umbrella issue and Decisions comment; no badge).
 
 ### Thread rules
 
