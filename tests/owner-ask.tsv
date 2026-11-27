@@ -137,21 +137,21 @@ merge	o/r#41	False	Merge #41. Don't.
 merge	o/r#41	True	Review #41. Merge it.
 merge	o/r	True	merge it
 merge	o/r	None	merge !41
-ask-first	t3-update	None	update the README
-release	-	None	Publish the blog post
+ask-first	t3-update	False	update the README
+release	-	False	Publish the blog post
 merge	o/r#41	False	Merge it, tell me if that would break the build before proceeding
 merge	o/r#41	False	Merge it, then ping me to discuss when it can go in
-merge	o/r#41	None	So merge is blocked on CI
-release	-	None	So release is out
-merge	o/r#41	None	Will you merge it or will I
+merge	o/r#41	False	So merge is blocked on CI
+release	-	False	So release is out
+merge	o/r#41	False	Will you merge it or will I
 release	-	False	For now release prep only
 merge	o/r#41	None	For now merge PR 40
 merge	o/r#41	True	Don't merge PR 40. Merge #41.
-merge	o/r#41	None	I need you to merge main into this branch
+merge	o/r#41	False	I need you to merge main into this branch
 push	main	None	For now push scratch
 release	v1.3.0	None	For now release v1.2.0
 release	v1.2.0	True	release 1.2.0 please
-ask-first	t3-update	None	For now update the README
+ask-first	t3-update	False	For now update the README
 merge	o/r#41	False	For now merge #41 only as a last resort
 merge	o/r#41	False	Merge #41 only with my approval
 merge	o/r#41	False	Merge #41. Wait for CI.
@@ -168,9 +168,9 @@ push	main	True	can you please release a minor of vike-react-sentry
 release	-	True	please release vike-react-apollo
 push	main	True	please release vike-react-apollo
 push	main	None	push scratch
-release	-	None	release is out
-merge	o/r#41	None	Merge requestet nyitni kell, mindenképpen atól, hogy github, gitlab az teljesen mindegy.
-merge	o/r#41	None	Igen, frissítsed és akkor kezdhetted a feladatokat, ahogy tudod csinálni az elkészíthetőeket. Merge Requestekben és hatékonyan fürgén csinál meg őket.
+release	-	False	release is out
+merge	o/r#41	False	Merge requestet nyitni kell, mindenképpen atól, hogy github, gitlab az teljesen mindegy.
+merge	o/r#41	False	Igen, frissítsed és akkor kezdhetted a feladatokat, ahogy tudod csinálni az elkészíthetőeket. Merge Requestekben és hatékonyan fürgén csinál meg őket.
 ask-first	t3-update	True	Igen, frissítsed és akkor kezdhetted a feladatokat, ahogy tudod csinálni az elkészíthetőeket. Merge Requestekben és hatékonyan fürgén csinál meg őket.
 merge	o/r#41	None	GitHub's own "mergeable" only compares against main.\nTHATS EXACTLY WHAT I WANT. WHY IS THAT AN ISSUE?
 merge	nitedani/t3code#6	None	The only thing waiting on you is still the merge of [nitedani/t3code#6](https://github.com/nitedani/t3code/pull/6).\n\nWHY IS IT WAITIN ON ME. DO YOUR THING
@@ -196,7 +196,7 @@ merge	o/r#41	True	Merge all the PRs.
 merge	o/r#41	True	merge all of the prs please
 push	main	True	Push all the commits.
 push	main	True	push all changes
-merge	o/r#41	None	Merge all the other PRs.
+merge	o/r#41	False	Merge all the other PRs.
 merge	o/r#41	True	Merge #41 - then tell me how it went.
 merge	o/r#41	True	Please merge #41 AND send me the result.
 merge	o/r#41	True	Merge #41 -- thanks
@@ -228,9 +228,9 @@ release	v1.3.0	None	release 1,2,0
 release	v1.3.0	None	release @vike/react
 release	v1.3.0 @vike/react	True	release @vike/react
 ask-first	t3-update	None	update t3 to 1.2
-release	-	None	release prep
-release	-	None	release first
-release	-	None	release is
+release	-	False	release prep
+release	-	False	release first
+release	-	False	release is
 merge	o/r#41	True	Merge #41 into main
 merge	o/r#41	True	mergeld a #41-et
 merge	o/r#41	None	Review #40. Merge it.
@@ -238,3 +238,29 @@ merge	o/r#41	None	merge #41 and #42
 merge	o/r#41	False	merge it and stop
 push	main	None	push back on nits, or do we not have that rule?
 merge	o/r#41	True	(Re-invocation of /loop don't merge it)\nmerge it
+merge	o/r#41	False	Can you merge it, or should I?
+merge	o/r#41	False	Could you merge #41, or is CI still red?
+push	main	False	Can you push it to main, or should I?
+release	v1.2.0	False	Can you release it, or should I?
+ask-first	t3-update	False	Can you update t3, or should I?
+push	main	False	push to main tomorrow
+push	main	False	push it tomorrow
+release	v1.2.0	False	release it monday
+release	v1.2.0	False	release v1.2.0 eventually
+release	-	False	release 1.2.0 of other-pkg
+merge	o/r#41	False	Merge it tomorrow morning.
+merge	o/r#41	False	Merge it, unless CI fails.
+merge	o/r#41	False	Merge it, provided CI passes.
+merge	o/r#41	False	merge it, but check CI first
+merge	o/r#41	False	Merge it, tomorrow.
+merge	o/r#41	False	Let me look at it first, then merge.
+push	main	False	push to main, unless CI fails
+merge	o/r#41	False	Ask me before you merge it.
+merge	o/r#41	False	Check with me before merging #41.
+merge	o/r#41	False	tell me if that would break the build before proceeding
+merge	o/r#41	False	Tell me before you proceed. Merge it.
+merge	o/r#41	False	Merge — blocked by CI
+push	main	False	Push to main — blocked
+merge	o/r#41	False	merge it, see https://ci.example/run/5
+merge	o/r#41	True	Merge #41, #40 too
+merge	o/r#41	False	merge it or release it
