@@ -22,7 +22,13 @@ OPENERS = {'courtesy': r'please|pls|plz|kérlek|kerlek|légyszi|legyszi',
            'go-ahead': r'ok(?:ay)?|oké|oke|yes|yeah|yep|sure|alright|igen|rendben',
            'sequence': r'now|just|then|so|also|for now|aztán|aztan|most|akkor|szóval',
            'request': r"let['’]?s|let us|i want you to|i'd like you to|i need you to|(?:can|could|would|will) you|go ahead and|you can|feel free to"}
-NEGATED = re.compile(r"\b(?:don'?t|\w+n['’]t|do not|never|not|no|who|why|(?<!the )only|cancel\w*|abort\w*|revert\w*|undo|stop|ne|nem|majd|várj|varj|wait|later|after|once|when|until|if|ha|miután)\b", re.I)
+# the words that hold the action back in a clause that names it
+HOLDS = {'negation': r"don'?t|\w+n['’]t|do not|never|not|no|ne|nem",
+         'deferral': r'majd|várj|varj|wait|later|after|until|miután',
+         'condition': r'(?<!the )only|once|when|if|ha',
+         'reversal': r'cancel\w*|abort\w*|revert\w*|undo|stop',
+         'question': r'who|why'}
+HOLD = re.compile(rf"\b(?:{'|'.join(HOLDS.values())})\b", re.I)
 # a sentence without the action's words that holds it back: "Wait for CI.", "Stop.", "Don't."
 HALT = re.compile(rf"(?:[-*•]\s*)?(?:(?:but|so|ok|{OPENERS['courtesy']})\W+)*(?:(?:wait|várj|varj|not yet|hold on|hold off)\b|(?:stop|cancel|don['’]?t|do not|no|ne|nem)[\s.!]*$)", re.I)
 # a clause asking to be told after the action ("then tell me if CI fails") says nothing about it, one asking first ("tell me before you proceed") holds it
@@ -73,12 +79,13 @@ def asks(text, kind, repo=None, num=None, branch=None, subject=None, names=()):
         t = re.sub(r'(?<![^\s(\[{"\'“‘])' + re.escape(branch) + r'(?=[)\]}"\'”’.,;:!?]*(?:\s|$))', '‹T›', t)
         t = re.sub(r'\bto\s+(?:the\s+)?(?:branch\s+)?‹T›(?:\s+branch\b)?|‹T›\s+branch\b', '‹T›', t, flags=re.I)
     t = re.sub(r'\S+', lambda m: whole(m[0]), marked(t).replace('‹T›', tok(True)))
-    def stance(m, question):  # 'holds', 'asks', 'reports' or None for clause m
-        if FOLLOW_UP.match(m.strip()):
-            if FIRST.search(m): return 'holds'
-            return 'reports' if re.search(rf'{PAST}{words}', m, re.I) else None  # "tell me when you merge it": a hold unless the message asks
-        if NEGATED.search(NO_WAIT.sub(' ', m)): return 'holds'
-        if ask.fullmatch(m.strip()) and (not question or re.match(REQUEST, m.strip(), re.I)): return 'asks'
+    # what a clause (stripped) says of the action, in a question or not: the first row that matches
+    STANCE = (('holds', lambda m, q: FOLLOW_UP.match(m) and FIRST.search(m)),  # "tell me before you proceed"
+              ('reports', lambda m, q: FOLLOW_UP.match(m) and re.search(rf'{PAST}{words}', m, re.I)),  # "tell me when you merge it": a hold unless the message asks
+              (None, lambda m, q: FOLLOW_UP.match(m)),  # "then tell me if CI fails"
+              ('holds', lambda m, q: HOLD.search(NO_WAIT.sub(' ', m))),  # "don't wait for me" holds nothing
+              ('asks', lambda m, q: ask.fullmatch(m) and (not q or re.match(REQUEST, m, re.I))))
+    stance = lambda m, question: next((st for st, test in STANCE if test(m.strip(), question)), None)
     on = lambda m: '‹t›' in m or '‹x›' not in m  # names the target, or none
     found = reported = None
     for s in re.split(r'(?<=[.!?])\s+|\n', t):
