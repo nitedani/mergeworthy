@@ -2603,6 +2603,9 @@ sed 's/^✅ a$/| 3 | `a.ts` | 6 ⇒ 8 | one |\n- `readLog` cached offset, hit, p
 check "a numbered table's item is its second cell, and bare identifiers joined by ',' are several; one file after a number, or prose after one span, records" "1 1 0" "$(psn "$T/rc9.md") $(psn "$T/rc10.md") $(psn "$T/rc11.md")"
 sed 's/^Pre-1.0 shims: none$/&\nnothing worth changing:\n- the loader reads at one altitude/' "$T/rc4.md" > "$T/rc12.md"; sed 's/^- `src\/x.ts:3`/see below\n&/' "$T/rc4.md" > "$T/rc13.md"
 check "'## Root cause' ends at its first line that is no bullet or shims line: a bullet after it records, a shims line after it is missing from the section" "0 1" "$(psn "$T/rc12.md") $(psn "$T/rc13.md")"
+sed 's/^✅ a$/- `cleanWorktrees` edits (`removedDeletedThreadIds`, `noteRemoved`) 8 ⇒ 8\n&/' "$T/rc4.md" > "$T/rc14.md"; sed 's/^✅ a$/- (`a`, `b`) 8 ⇒ 8\n&/' "$T/rc4.md" > "$T/rc15.md"
+sed 's/^✅ a$/| R1.1 `d275727cbf`, then `63d965e052` and `36f7c77e7d` | 5 ⇒ 8 | closed |\n&/' "$T/rc4.md" > "$T/rc16.md"
+check "spans in the parentheses after an item describe it and records, parentheses that are the whole item refuse; commit shas are references and record" "0 1 0" "$(psn "$T/rc14.md") $(psn "$T/rc15.md") $(psn "$T/rc16.md")"
 # a carry of a head with two passes (one before a maintainer's ask, one after it) carries the latest
 GC="$T/prsc"; mkdir -p "$GC"; git -C "$GC" init -q; git -C "$GC" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; GA=$(git -C "$GC" rev-parse HEAD)
 printf '| `a.ts` | 6 ⇒ 7 | x | one |\n✅ a.ts\nCLEAN\n' > "$T/two-old.md"; printf '| `a.ts` | 7 ⇒ 9 | y | two |\n✅ a.ts\nCLEAN\n' > "$T/two-new.md"

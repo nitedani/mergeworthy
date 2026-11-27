@@ -192,12 +192,15 @@ import re, sys
 path = sys.argv[1]; s = open(path).read()
 ask = '(mergeworthy delegate/shape.md)'
 count = re.compile(r'\(\s*\d+\s+(fns?|functions?|helpers?|methods?|files?)\b[^)]*\)', re.I)
-place = lambda span: bool(re.search(r'/|\w\.\w+|:\d', span))  # a path, a file.ext or a :line locates the one item beside it
+# a commit sha is a reference, never an item; a path, a file.ext or a :line locates the one item beside it
+kind = lambda span: 'sha' if re.fullmatch(r'`[0-9a-f]{7,40}`', span) else 'place' if re.search(r'/|\w\.\w+|:\d', span) else 'name'
 def grouped(item):
+    # the parentheses after an item describe it: their spans are no more items
+    item = re.sub(r'(?<=\S)\s*\([^()]*\)', '', re.sub(r'^\s*[-*]\s+|[\s:–—-]+$', '', item)) if not count.search(item) else item
     spans = list(re.finditer(r'`[^`\n]+`', item))
-    words = [w for w in re.split(r'\s*(?:,|\band\b)\s*', re.sub(r'^\s*[-*]\s+|[\s:–—-]+$', '', item)) if w]
+    words = [w for w in re.split(r'\s*(?:,|\band\b)\s*', item) if w]
     ident = lambda w: re.fullmatch(r'\w+(\(\))?', w) and (w.endswith('()') or '_' in w or re.search('[A-Z]', w[1:]))
-    return count.search(item) or len(words) > 1 and all(map(ident, words)) or any(re.fullmatch(r'\s*(,|&|\+|/|and)\s*', item[a.end():b.start()], re.I) and place(a[0]) == place(b[0])
+    return count.search(item) or len(words) > 1 and all(map(ident, words)) or any(re.fullmatch(r'\s*(,|&|\+|/|and)\s*', item[a.end():b.start()], re.I) and kind(a[0]) == kind(b[0]) != 'sha'
                                      for a, b in zip(spans, spans[1:]))
 for line in s.splitlines():
     m = re.search(r'([0-9]+|\bnew) *(⇒|=>) *([0-9]+|removed|new|n/a)', line)
