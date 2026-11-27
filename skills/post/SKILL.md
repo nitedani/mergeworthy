@@ -22,11 +22,11 @@ Everything that reaches an external service passes these steps: comments, review
 
 ### Kinds
 
-`post-lint --kind`: `reply` (a thread comment; `--parent none` when it answers nobody), `status` (a reply, step 3), `proposal` (a reply proposing a design or asking agreement to one; counted per thread), `pr` (a PR body; `--draft` for a draft's), `issue`, `plan` (a design plan the user asked to post as an issue; at most 2500 words), `inline` (a diff-line review comment), `tracker` (the umbrella issue and Decisions comment; no badge).
+`post-lint --kind`: `reply` (a thread comment; `--parent none` when it answers nobody), `status` (a reply, step 3), `proposal` (a reply proposing a design or asking agreement to one; counted per thread), `wip` (`design §WIP comment`), `pr` (a PR body; `--draft` for a draft's), `issue`, `plan` (a design plan posted as an issue; at most 2500 words), `inline` (a diff-line review comment), `tracker` (the umbrella issue and Decisions comment; no badge).
 
 ### Thread rules
 
-- **At most two comments in a row.** The second is only the answer after its holding reply or status post, a wait ping, a dependency's progress, a 👎 fix, or the review of commits a maintainer pushed after your last comment. Anything else edits your last comment; a would-be third is an edit with an @-mention.
+- **At most two comments in a row.** The second is only the answer after its holding reply or status post, a wait ping, a dependency's progress, a 👎 fix, or the review of commits a maintainer pushed after your last comment. Anything else edits your last comment; a would-be third is an edit with an @-mention; a proposal waits for their reply, even after the wait ping.
 - **One reply per person, edits for corrections.** Several comments from one person get one reply.
 - **Evidence carries no secret.** In logs, requests, payloads and screenshots, write `<REDACTED>` for every token, cookie, auth header and key, and quote only the lines that show the point.
 - **A maintainer who asks to see how you change this methodology:** write the installed mergeworthy commit (`git -C ~/.mergeworthy/current rev-parse HEAD`) to `~/.mergeworthy/harness-shown/<owner>`; gate-pass then appends to each `reply` or `proposal` a link comparing the commit it names with the installed one.

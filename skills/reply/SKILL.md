@@ -13,7 +13,7 @@ The watcher (`task` step 5) writes each comment you owe to `events.log` and `rep
    Open: `<work folder>/events.log` · Record: `events.cursor`
 2. **Route each event** by its row of §Events.
    Open: §Events · Hook: the watcher
-3. **A comment that takes more than ~15 minutes to answer:** post a holding reply first through `post`'s fast form, carrying what you've found so far and when the answer comes, and make its owed line `holding: <URL> <ETA>`; while a drafter works, `drafting: <comment URL> <ETA>`. Before acting on any comment, check that its reason fits the line it's anchored to; if it fits another line better, ask before changing anything.
+3. **A comment that takes more than ~15 minutes to answer:** post a holding reply first through `post`'s fast form, carrying what you've found so far and when the answer comes. Before acting on any comment, check that its reason fits the line it's anchored to; if it fits another line better, ask before changing anything.
    Open: `post` · Record: the line in `replies-owed.md` · Hook: stop-lint
 4. **Decide what it asks,** yourself, not an agent: an instruction, a question about your work's quality, a decision question, an acknowledgement, a 👍 or 👎, "I don't understand", a bot's finding (§Kinds of comment). An instruction on a ready PR: one that carries the pass (`converge §Batching`), do it; otherwise a holding reply with the pipeline's ETA.
    Open: §Kinds of comment
@@ -55,7 +55,7 @@ Answer these, and nothing else:
 
 ### Kinds of comment
 
-- **An instruction** ("Let's…", "Remove…", "Merge origin/main") or a suggestion block: do it, then reply "Done in <sha>" and what changed for them.
+- **An instruction** ("Let's…", "Remove…", "Merge origin/main") or a suggestion block: do it, then reply.
 - **A question about your work's quality** ("Is it all DRY?", "Is this tested?") is answered by the work: if the answer is no, fix it, push, and answer with what was missing and the commit. Never ask permission to close a gap they just pointed at.
 - **A question or soft suggestion about a decision** ("Overkill?", "How about…?", "why…?", "I think we can…") gets an answer, never a code change that reverses the decision until they answer it. "Why did you X?" asks for the reason: give it, and if you now think X was wrong, say so with your recommendation and ask. "How about X?" starts with yes or no and the one real obstacle; when their idea is simpler than yours, recommend it. If the answer needs work, say what you're checking; never agree with a premise or promise a change you haven't measured. Hold any loop finding on the questioned lines until they answer.
 - **A short acknowledgement** ("OK", "Good!", 👍) is not the end of the thread. It answers your last open proposal or question in that thread; if that thread has none, your latest one elsewhere in the same PR, posted just before it. That proposal is now an instruction. If it could answer two, do both if they don't conflict, else ask which in one line. "The rest LGTM" agrees to every unquestioned proposal in the comment it answers: record them as agreed and start. Only an acknowledgement of a finished change needs nothing but a 👍.
@@ -73,4 +73,4 @@ A 👍 or 👎 from the user or a maintainer on one of your comments is feedback
 
 ### Wait ping
 
-The watcher owes a `WAIT PING DUE` in `replies-owed.md` after 3 hours of silence on your last comment. Post it only when your next step can't move without it. A release or review your own unmerged work will need later blocks nothing yet: clear the line with that reason. The ping is one @-mention on that PR with the decisions you need, each with your pick and its link; once per thread per wait, never while they're mid-review (a maintainer who commented, reviewed or pushed in any of your threads since your ask). In a long design thread, update the WIP comment instead (`design §WIP comment`).
+The watcher owes a `WAIT PING DUE` in `replies-owed.md` after 3 hours of silence on your last comment. Post it only when your next step can't move without it. A release or review your own unmerged work will need later blocks nothing yet: clear the line with that reason. The ping is one @-mention on that PR with the decisions you need, each with your pick and its link; once per thread per wait, never while they're mid-review (a maintainer who commented, reviewed or pushed in any of your threads since your ask). In a long design thread, update the WIP comment first (`design §WIP comment`); the ping links it.

@@ -13,7 +13,7 @@ shift 2; flags=(); ledger=; while [ $# -gt 0 ]; do if [ "$1" = --ledger ]; then 
 kind=reply; for i in "${!flags[@]}"; do [ "${flags[$i]}" = --kind ] && kind="${flags[$((i+1))]}"; done
 [ "$r" != none ] || [ "$kind" = status ] || { echo "only a status post (post-lint --kind status) skips the review: run it (post step 3)"; exit 1; }
 # a reply, inline comment or proposal is drafted from the whole thread: thread-context.md (post step 1) next to the draft, newer than the comment it answers
-case "$kind" in reply|comment|inline|proposal|status)
+case "$kind" in reply|comment|inline|proposal|wip|status)
   parent="${d%.md}.parent.md"; [ -f "$parent" ] || parent=""
   "$(dirname "$(readlink -f "$0")")/thread-context" --verify "$(dirname "$(readlink -f "$d")")/thread-context.md" ${parent:+--parent "$parent"} || exit 1;;
 esac

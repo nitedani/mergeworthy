@@ -9,7 +9,7 @@ Each role's brief is a template in `~/.mergeworthy/current/skills/delegate/`, wi
 
 ## Steps
 
-1. **One job, one agent.** An agent on the job gets a message, not a twin (§Continue). At most 3 agents at once, implementers included, or the number the user allowed at once for this task, first written in its work folder's scope.md: `Agents: <N> (user <YYYY-MM-DD>: "<their words>")`. Exempt: agents a step runs together, each brief holding `Fan-out: finality step 2`, `Fan-out: finality step 3` or `Fan-out: converge §Running the agents`; they still count against an agent without it. Only the main session starts agents. Start a browser-heavy agent only while the 1-minute load (`uptime`) is below `nproc`. Stop an agent once its question is settled.
+1. **One job, one agent.** An agent on the job gets a message, not a twin (§Continue). At most 3 agents at once, implementers included, or the number the user allowed at once for this task, first written in its work folder's scope.md: `Agents: <N> (user <YYYY-MM-DD>: "<their words>")`. Exempt: agents a step runs together, each brief holding `Fan-out: finality step 2`, `Fan-out: converge §Running the agents` or §Model class's per-provider line; they still count against an agent without it. Start a browser-heavy agent only while the 1-minute load (`uptime`) is below `nproc`. Stop an agent once its question is settled.
    Hook: pre-agent-dedupe
 2. **Model class and effort.**
    Open: §Model class; reviews: §Reviewers; the project file's `## Agents` section overrides
@@ -18,16 +18,16 @@ Each role's brief is a template in `~/.mergeworthy/current/skills/delegate/`, wi
 4. **Launch in the background;** its completion wakes you.
    Run: T3 Code: `delegate_task` with a unique `clientRequestId`; else the Agent tool · Record: the job pre-agent-dedupe registers · Hook: pre-bash-guard (wait loops), pre-agent-dedupe (a review's company)
 5. **Liveness** at 2 minutes and at every wakeup (its output size or log time); five minutes without output: look now. A long job's first output is read within half an hour; confirm its numbers can be used (a benchmark alone on the machine, warmed up, comparing like with like) before it runs the rest; past its budget, stop it or extend it deliberately.
-   Run: `task_status` · Hook: stop-lint
+   Run: T3 Code: `task_status`; else its output and log · Hook: stop-lint
 6. **Its result** (T3's notice, or the watcher's `### AGENT DONE <ticket>`). Read the final message; open two or three cited `path:line`s or re-run one command, and diff the result against your plan. A diff: write down each structural decision in it and why it's right before landing it; hardcoded lists and duplicated classifications get fixed before pushing. Then release the job.
-   Run: `agent-job done <ticket>` · Hook: stop-lint, the watcher
+   Run: `agent-job done <its key>` · Hook: stop-lint, the watcher
 7. **Relay the result to the user and act on it;** an unchecked item, a deviation and each finding (by `code §Earn every line`) are yours to decide; never send the same brief again. If it fails your check or comes back blocked, redo it on your model class with what failed; a review: §Reviewers.
    Open: `writing §Reports to the user`
 
 ### Brief
 
 - **Five parts:** `Goal` (one observable outcome); `Facts` (only what you verified, each with its source); `To check` (your guesses, as questions); `Scope` (the paths and commands it may use, the semantic code-search MCP's name when your session has one, and `agent.md §Machine`, in every brief and every follow-up round); `Acceptance` (the commands or observations that define done).
-- **In T3 Code,** `delegate_task`'s `role` is `implementation`, `research`, `test` or `review`. A research brief adds `Topic: <key words>` and a `Checked: <file>` line per work-folder file already read: pre-agent-dedupe blocks one already written up in an unchecked file.
+- **In T3 Code,** `delegate_task`'s `role` is `implementation`, `research`, `design`, `test` or `review`. Research outside §Model class's per-provider seats adds `Topic: <key words>` and a `Checked: <file>` line per work-folder file already read: pre-agent-dedupe blocks one already written up in an unchecked file.
 - **Never put in** your opinion, the answer you expect, or earlier agents' conclusions: a guess goes under `To check`. The exception: a report handed to an agent that re-rates it. A maintainer's ask goes in quoted whole: an either/or stays an either/or; the implementer reads the code each option touches and recommends one, saying why, and the main session decides before it lands.
 - **Give paths and the question,** never pasted files or long histories.
 - **One run is one agent with one prompt.** Group roles reading one artifact in one loop, in order, each writing its own file. Split only for context limits or independence: authors never review themselves, and fresh readers haven't seen the fixes.
@@ -44,7 +44,8 @@ Later work on the same thing continues that agent, a review round only as a fix 
 
 The classes are model families, never versions: the largest is the newest Fable Claude Code offers, else the strongest; the strongest, the newest Opus; the smallest with an effort setting, the newest Haiku; missing: tell the user. The main session plans, briefs, decides, spot-checks results and approves every word to a maintainer. Never a model the user excluded, an effort above xhigh, nor a model version in a prompt, skill or memory.
 - **Choosing among options** (`pull-request` step 5's rating, `finality` step 3's converging agent): the largest; **root causes and authors** (code, docs, PR bodies, replies, designs): the strongest (delegated if the main session isn't); both at high effort. **Audits and exploration:** the strongest at medium (independent checks: §Reviewers).
-- **The smallest class with an effort setting, at high effort,** only for work where nothing it writes ships: `finality` step 3's branch agents, running gates, tests and a reproduction from a recipe, log mining, data processing and bookkeeping.
+- **The smallest class with an effort setting, at high effort,** only for work where nothing it writes ships: running gates, tests and a reproduction from a recipe, log mining, data processing and bookkeeping.
+- **One per provider:** `finality` step 3's branch agents, `design` steps 3–4's debaters and designers, `pull-request` step 5's candidates. One job per driver kind (`claudeAgent`, `codex`, `antigravity`; in T3, `target.providerInstanceId` from `orchestrator_capabilities`; outside T3, those the host starts); a provider that can't run: its finality branch goes to one that can, Claude first, keeping its `branch<N>`; other seats go without; your report names it; none can: stop, report it. Each call: role `research`, the provider and its `<kind>` in its title and `clientRequestId`, a `task` naming the provider, its part and its absolute output `<name>.<provider>.<kind>.md`; its brief: `Fan-out: <skill> step <N>`, the shared starting evidence (a finality branch: PHASE B's inputs only). Claude: smallest class for branches, else strongest; Codex: its default model; Antigravity: Gemini Neon (its default); no model override for either; high effort where offered. Antigravity never implements.
 
 ### Reviewers
 

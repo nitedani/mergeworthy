@@ -127,9 +127,11 @@ class Kinds:
         self.author = self.implementation or self.drafter or 'MERGE AS IS' in brief
         self.research = req.role == 'research' or bool(re.search(r'\bresearch', f"{req.title} {req.description}", re.I))
         self.refresh = memory_launch(req.task)  # decided here, at admission, and stored on the pending call; `refresh` on the job too
-        # A fan-out a step names (finality steps 2-3, converge's per-slice verifiers) says so on a `Fan-out:` line, in the task or its brief, and passes
-        # the cap; the fan-out agents already open still count against an ordinary launch
-        self.fanout = not self.implementation and bool(re.search(r'^Fan-out: (finality step [23]|converge §Running the agents)$', brief, re.M))
+        # A fan-out a step names (finality steps 2-3, converge's per-slice verifiers, the per-provider seats of delegate §Model class) says so on a
+        # `Fan-out:` line, in the task or its brief, and passes the cap; the fan-out agents already open still count against an ordinary launch
+        fan = None if self.builds else re.search(r'^Fan-out: (finality step [23]|design step [34]|pull-request step 5|converge §Running the agents)$', brief, re.M)
+        self.fanout = bool(fan)
+        self.seat = bool(fan) and fan[1] not in ('finality step 2', 'converge §Running the agents')  # one opinion per provider
         self.writer = req.role not in READERS
 k = Kinds(req, brief)
 def is_refresh(r):
@@ -199,13 +201,14 @@ def codex_reset():
     except (OSError, ValueError, AttributeError, TypeError):
         return None
     return min(until) if until and min(until) > time.time() else None
-# Delegated agents run on Claude, reviews first on Codex (mergeworthy:delegate §Model class, §Reviewers), whichever host the session runs
-# on: a delegate_task with no target runs on the launching session's provider, Antigravity's under hooks/agy.py (MERGEWORTHY_HOST)
+# Implementers run on Claude, reviews first on Codex (mergeworthy:delegate §Model class, §Reviewers), whichever host the session runs
+# on: a delegate_task with no target runs on the launching session's provider, Antigravity's under hooks/agy.py (MERGEWORTHY_HOST);
+# an Antigravity seat names its target, so a launch without one is refused there too
 drivers = req.drivers or {'antigravity' if os.environ.get('MERGEWORTHY_HOST') == 'antigravity' else 'claudeAgent'}
-if req.t3 and str(req.tool).endswith('delegate_task') and 'antigravity' in drivers:
-    sys.stderr.write("BLOCKED: no delegated agent runs on Antigravity (mergeworthy:delegate §Model class, §Reviewers)"
-                     + ("; with no target this launch would run on this session's Antigravity" if not req.providers else '')
-                     + f": set target.providerInstanceId to {'codex' if req.role == 'review' else 'claudeAgent'}.\n")
+if req.t3 and str(req.tool).endswith('delegate_task') and 'antigravity' in drivers and (k.builds or not req.providers):
+    why = ["no implementer runs on Antigravity (mergeworthy:delegate §Model class)"] if k.builds else []
+    why += [] if req.providers else ["with no target this launch would run on this session's Antigravity"]
+    sys.stderr.write(f"BLOCKED: {'; '.join(why)}: set target.providerInstanceId to {'codex' if req.role == 'review' and not k.builds else 'claudeAgent'}.\n")
     refused()
 elif req.role == 'review' and req.t3 and not sent:  # a continued round runs on its thread's model
     reset = codex_reset()
@@ -263,7 +266,7 @@ for wt in sorted(paths if shas else ()):
         old = [x for x in shas if git(wt, 'merge-base', '--is-ancestor', x, head).returncode == 0]
         if old:
             root = memory_file.for_cwd(req.cwd, req.session)
-            ruled = memory_file.section(open(memory_file.path(root)).read(), 'Ruled out') if root and os.path.isfile(memory_file.path(root)) else ''
+            ruled = memory_file.newest(memory_file.path(root), 'Ruled out', 1500).rstrip() if root else ''
             sys.stderr.write(f"BLOCKED: the brief pins {', '.join(sorted(old))} in {wt}, which has moved on to {head[:12]}. "
                              "Pin the live head (and check the work isn't already done there)." + (f" Ruled out:\n{ruled}\n" if ruled else "\n"))
             refused()
@@ -403,7 +406,7 @@ for pf in sorted({os.path.expanduser('~/.mergeworthy/projects/' + r + '.md') for
     want = re.search(r'^(?:[-*] +)?Effort: *(\w+)', sec[1], re.M) if sec else None
     if want and str(req.effort or '').lower() != want[1].lower():
         sys.stderr.write(f"BLOCKED: {pf}'s `## Agents` says `Effort: {want[1]}`: launch with effort {want[1]} (the Agent tool's `effort`, "
-                         f"delegate_task's target.options `effort` for Claude or `reasoningEffort` for Codex), not "
+                         f"delegate_task's target.options `effort` for Claude, `reasoningEffort` for Codex or `thought_level` for Antigravity), not "
                          + (f"{req.effort}.\n" if req.effort else "the harness's default.\n"))
         refused()
 approach = brief_approach() if k.builds else None
@@ -415,9 +418,10 @@ if approach and not approach[2]:
                          "approach is rated and recorded first (mergeworthy:pull-request step 5); the same approach says so: "
                          "`Approach: <path> (unchanged: <why, in one line>)`\n")
         refused()
-# Research the program already wrote up (memory.md, the notes) is read, not redone; a memory refresh, launched as research, writes them
+# Research the program already wrote up (memory.md, the notes) is read, not redone; a memory refresh, launched as research, writes them,
+# and a per-provider seat starts from the evidence its brief gives, never from another seat's report
 root = memory_file.for_cwd(req.cwd, req.session)
-if root and k.research and not k.refresh:
+if root and k.research and not k.refresh and not k.seat:
     topic = re.search(r'^\s*Topic:\s*(.+?)\s*$', brief, re.M)
     if not topic:
         sys.stderr.write("BLOCKED: a research brief names its topic in a `Topic: <key words>` line, so the hook can search the work folder's files for research already done (mergeworthy:delegate §Brief).\n")
@@ -425,8 +429,9 @@ if root and k.research and not k.refresh:
     else:
         words = [w.lower() for w in re.findall(r'[\w.-]{3,}', topic.group(1))]
         checked = ' '.join(re.findall(r'^\s*Checked:\s*(.+)$', brief, re.M))
-        # covered = one paragraph holds every topic word: a long design doc that mentions them apart covers nothing
-        covers = lambda p: any(all(w in para for w in words) for para in re.split(r'\n\s*\n', open(p, errors='replace').read().lower()))
+        # covered = one paragraph holds every topic word, one item of a memory file: a long file that mentions them apart covers nothing
+        unit = lambda p: r'\n' if re.fullmatch(r'memory(-archive-.*)?\.md', os.path.basename(p)) else r'\n\s*\n'
+        covers = lambda p: any(all(w in para for w in words) for para in re.split(unit(p), open(p, errors='replace').read().lower()))
         hits = [p for p in memory_file.notes(root) if p not in checked and os.path.abspath(p) not in {os.path.abspath(x) for x in L.paths} and covers(p)]
         if hits:
             sys.stderr.write("BLOCKED: these files already cover the topic; read them first. If one answers it, use it; "

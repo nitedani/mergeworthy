@@ -3,7 +3,7 @@
 An edit inside a git work tree waits until this session read the AGENTS.md and CLAUDE.md at its root (pre-bash-guard checks the files a
 command writes the same way), then for its repo and branch's `pr-steps preflight` and `pr-steps approach` records.
 At Tier M or L (first line of scope.md in the work folder: ~/.mergeworthy/work/<task>/ holding the checkout, or <repo>-work/ beside it),
-code waits for prior art (task step 6) and the design (design step 4): the work folder's prior-art.md and a decisions/*.md must exist
+code waits for prior art (task step 6) and the agreed design (design step 9): the work folder's prior-art.md and a decisions/*.md must exist
 before an edit inside the repo, or an implementation agent briefed to work in a checkout of it (the session's own when the brief says none).
 In a task's work folder, code waits for scope.md's Tier line (task step 2).
 The step records under ~/.claude/pr-steps are pr-steps' to write."""
@@ -46,8 +46,8 @@ def waits(near, code):
     missing = [n for n, ok in (('prior-art.md', os.path.isfile(os.path.join(work, 'prior-art.md'))),
                               ('decisions/*.md', bool(glob.glob(os.path.join(work, 'decisions', '*.md'))))) if not ok]
     return missing and (f"{tier.strip()} and {work} has no {' or '.join(missing)}. Before code: prior art (mergeworthy:task step 6: the web, "
-                        "every project the user names, peers) into prior-art.md, then design it twice (mergeworthy:design step 4) "
-                        "into decisions/<name>.md.")
+                        "every project the user names, peers) into prior-art.md, then the agreed design (mergeworthy:design step 9) "
+                        "in decisions/<name>.md.")
 if 'delegate_task' in tool:
     impl = str(ti.get('role') or '') == 'implementation'
     # an implementer works in the checkouts its brief says it works in; the session's own when it says none

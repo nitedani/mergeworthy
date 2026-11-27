@@ -2,9 +2,9 @@
 """memory-prep init <work folder> <T3 thread id> | prep <work folder> | digest <work folder>: the memory file (mergeworthy:task step 8).
 init: run once from the main session's checkout; records its cwd, thread, session and session-log dir in memory.source.
 prep: extracts the user's prompts and the last text of each main-session turn from its session logs, after
-the position memory.md covered (the first time, the last 24 hours), into memory-new.txt; writes the brief one Haiku follows
-to merge them in (skills/delegate/memory-refresh.md) and prints its path, or that nothing is new.
-digest: prints the Standing part session-start injects."""
+the position memory.md covered once the last run's notes are merged in (the first time, the last 24 hours), into memory-new.txt;
+writes the brief one Haiku follows to note what they hold (skills/delegate/memory-refresh.md) and prints its path, or that nothing is new.
+digest: merges the notes, then prints the Standing part session-start injects."""
 import datetime as dt, glob, json, os, re, sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'hooks'))
 import memory_file as mf
@@ -35,16 +35,17 @@ if cmd == 'init':
 if not os.path.isfile(os.path.join(root, 'memory.source')):
     sys.exit(f'memory-prep: {root} has no memory.source: run `memory-prep init {root} <T3 thread id>` from the main session\'s checkout')
 if cmd == 'digest':
-    print(mf.digest(root)); sys.exit(0)
+    mf.merge(root); print(mf.digest(root)); sys.exit(0)
 
 # T3 Code's own messages, sent through the SDK like the user's; the log has no field that tells them apart
 T3 = ('Delegated task', 'Context handoff (manual_context)', 'Note: the T3 server restarted', 'The T3 server restarted')
 WRAP = 1500  # Read cuts longer lines
+mf.merge(root)
 cov = mf.covered(root)
 # the first run covers the last 24 hours, never more
 after = cov or (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=24)).strftime('%Y-%m-%dT%H:%M:%S.000Z')
 entries, until, said = [], '', set()
-for p in mf.thread_logs(root, dt.datetime.fromisoformat(after.replace('Z', '+00:00')).timestamp() - 60):
+for p in mf.thread_logs(root, mf.stamp(after) - 60):
     last = []  # an assistant turn's text: only its last block is kept, mid-turn narration is dropped
     for l in open(p, errors='replace'):
         m = re.search(r'"timestamp":"([0-9T:.\-]+Z)"', l)

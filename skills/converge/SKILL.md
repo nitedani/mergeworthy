@@ -9,7 +9,7 @@ Working a PR's head to a final state: every review loop ends clean, or its last 
 
 ## Steps
 
-0. **The shape is agreed and the area is clean.** A new API, protocol or behavior is built only once the maintainer OK'd its shape (`design` step 9); in the user's own repos, once the walkthrough is posted. Code being reshaped, or a change that can't be made cleanly because of past patches: `finality`. Size the batch first (§Batching).
+0. **The shape is agreed and the area is clean.** A new API, protocol or behavior is built only once `design` step 9 wrote its decision. A reshape still pending on the PR head: `finality`. Size the batch first (§Batching).
    Open: §Batching; `finality` · Hook: pre-bash-guard
 1. **Loop A: does it break anything?** Two seats per slice (`delegate §Reviewers`). You decide each reproduced bug's root-cause fix; an implementer lands it. Under each `## Dropped` or `## Untested claims` line, you write `RULED: <candidate>: <ruling>` (a claim's: the text before ` — `): a bug to fix, or your evidence it isn't. A bug outside the functions this change edits: its `task §Dispositions`, never re-opening this one. Done when every seat's last file is recorded, ending `NO BUGS` or with its `--ledger`.
    Open: `delegate/verifier.md`; `delegate/implementer.md` · Run: `pr-steps verify <its file>` · Hook: pre-bash-guard

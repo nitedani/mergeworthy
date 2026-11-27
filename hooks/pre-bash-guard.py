@@ -7,7 +7,7 @@ import glob, itertools, json, re, sys, os, hashlib, shlex, subprocess, urllib.pa
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed, gh_common
 import shellcmd
-from shellcmd import parse, segments, prog, script, opt, api_call, field_name, TEXT_FREE, discussion_post, discussion_thread_of, names_discussion_mutation, env_of, origin, plain_create, PLAIN, new_post_drafts, no_instructions_read, by_agent, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Unseen, Where
+from shellcmd import parse, segments, prog, script, opt, api_call, field_name, TEXT_FREE, discussion_post, discussion_thread_of, names_discussion_mutation, env_of, origin, plain_create, PLAIN, new_post_drafts, lint_kind, no_instructions_read, by_agent, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Unseen, Where
 from records import branch_record, commit_file, DRIFT_REF, LIMIT, no_approach, no_preflight, STORE
 import drift, launch, loops, own_actions, review_launch, review_transport, steward, post_words, threads_file, transcript_facts, work_folder
 from t3_tasks import under_t3, typed
@@ -232,13 +232,13 @@ def need_ask(kind, what, repo=None, num=None, branch=None, strict=False):
     block(f"{what} lands on {repo}, which is the owner's: it needs their ask, in the message they last typed or the project file's "
           f"`## Merging` order (your own scheduled prompt, scope or goal is none). Say it's ready and ask the owner to reply `{reply}` (mergeworthy:merging steps 3-4)")
 
+GITHUB_HOSTED = ('ubuntu-', 'windows-', 'macos-', 'xcode-')  # GitHub-hosted runners' labels: docs.github.com/en/actions/reference/runners/github-hosted-runners
+
 def own_bypass(pr, run):
-    """Why an admin merge of pr (`gh pr view`'s JSON) isn't the owner's to make, None when it is: pr is on github.com, every check on its head succeeded,
+    """Why an admin merge of pr (`gh pr view`'s JSON) isn't the owner's to make, None when it is: pr is on github.com, every check on its head succeeded or never got a runner,
     gh's login owns its repo as a user (not an org), every rule on its base is from a ruleset GitHub says it may always bypass, no classic protection. run: `gh <args>`."""
     host, slug, base = pr['url'].split('/')[2], '/'.join(pr['url'].split('/')[3:5]), pr['baseRefName']
     if host != 'github.com': return f"{pr['url']} is on {host}, whose rules and logins the guard doesn't read"
-    if bad := [f"{c.get('name') or c.get('context')} {(c.get('conclusion') or c.get('state') or 'pending').lower()}" for c in pr['statusCheckRollup'] if (c.get('conclusion') or c.get('state')) not in ('SUCCESS', 'NEUTRAL', 'SKIPPED')]:
-        return f"its head's checks haven't all succeeded ({', '.join(bad)}): merge once they have"
     def call(*path):  # None when gh hangs or can't start
         try: return run('api', '--hostname', 'github.com', *path)
         except (OSError, subprocess.TimeoutExpired): return None
@@ -251,6 +251,20 @@ def own_bypass(pr, run):
         me, owner = get('user')['login'], get(f'repos/{slug}')['owner']
         if owner['login'] != me: return f"{slug} is {owner['login']}'s, not {me}'s" + meet
         if owner['type'] != 'User': return f"{slug} belongs to the organization {owner['login']}" + meet
+        bad, runners = [], None
+        for c in pr['statusCheckRollup']:
+            if (state := c.get('conclusion') or c.get('state')) in ('SUCCESS', 'NEUTRAL', 'SKIPPED'): continue
+            # an Actions job cancelled or queued with no runner, on labels neither GitHub nor a runner of the repo offers, never ran: it carries no verdict
+            job = re.fullmatch(rf'https://github\.com/{re.escape(slug)}/actions/runs/(\d+)/job/(\d+)', c.get('detailsUrl') or '')
+            if job and (state == 'CANCELLED' or c.get('status') == 'QUEUED'):
+                what, j = f"{c['name']}'s job or {slug}'s runners", get(f'repos/{slug}/actions/jobs/{job[2]}')
+                runners = runners or get(f'repos/{slug}/actions/runners?per_page=100', '--paginate', '--slurp')
+                offered = {l['name'] for page in runners for r in page['runners'] for l in r['labels']}
+                if not j['runner_id'] and not j['steps'] and not any(l.startswith(GITHUB_HOSTED) or l in offered for l in j['labels']):
+                    if state == 'CANCELLED': continue
+                    return f"{c['name']} is queued on {', '.join(j['labels'])}, which neither GitHub nor a runner of {slug} offers: cancel it (`gh run cancel {job[1]} -R {slug}`) and merge then"
+            bad.append(f"{c.get('name') or c.get('context')} {(state or 'pending').lower()}")
+        if bad: return f"its head's checks haven't all succeeded ({', '.join(bad)}): merge once they have"
         what, pages = f"{base}'s rules", get(f'repos/{slug}/rules/branches/{branch}?per_page=100', '--paginate', '--slurp')
         for rid in sorted({r['ruleset_id'] for page in pages for r in (page if isinstance(page, list) else [None])}):
             what, rs = f'ruleset {rid}', get(f'repos/{slug}/rulesets/{rid}')
@@ -434,9 +448,9 @@ def need_home(repo, path):
     if not plain_create(cmd, cwd):
         need_watch(repo, path, PLAIN)
 
-def check_turn(repo, num, args=()):
+def check_turn(repo, num, args=(), drafts=()):
     """post §Thread rules: at most two comments in a row: while your last two comments on a thread have no reply after them and the last
-    is under 3 hours old, a third stacks on them: edit the last one instead. After 3 hours, the third is the wait ping. The agent and the user may
+    is under 3 hours old, a third stacks on them: edit the last one instead. After 3 hours, the third is the wait ping, never a proposal. The agent and the user may
     share one login, so a comment is the agent's only when its body was gated (gate-pass writes ~/.claude/gated-posts.txt).
     A discussion's comments and their replies count as one row, in time order."""
     if '--help' in args or '-h' in args:
@@ -475,14 +489,23 @@ def check_turn(repo, num, args=()):
         return
     import datetime
     when = lambda t: datetime.datetime.fromisoformat(t.replace('Z', '+00:00'))
-    if (datetime.datetime.now(datetime.timezone.utc) - when(last[-1]['created'])).total_seconds() >= 3 * 3600 or any(when(r) > when(last[-1]['created']) for r in reviews if r != 'null'):
+    if any(when(r) > when(last[-1]['created']) for r in reviews if r != 'null'):
+        return
+    if (datetime.datetime.now(datetime.timezone.utc) - when(last[-1]['created'])).total_seconds() >= 3 * 3600:
+        if any(lint_kind(draft_path(f)) == 'proposal' for f in drafts):
+            block(f"your last two comments on {repo}#{num} have no reply yet ({last[-1]['url']}): a proposal waits for one, even after 3 hours; "
+                  "only the wait ping may follow (mergeworthy:post §Thread rules)")
         return
     block(f"your last two comments on {repo}#{num} have no reply yet ({last[-1]['url']}): edit the last one instead of posting a third; "
           "at most two comments in a row; after 3 hours without a reply, the wait ping may follow (mergeworthy:post §Thread rules)")
 
 
+def draft_path(f):
+    """The file a posting command's draft argument (a path, @path or body=@path) names."""
+    f = os.path.expanduser(where.expand(f[5:] if f.startswith('body=') else f)).lstrip('@')
+    return f if os.path.isabs(f) else os.path.join(cwd, f)
 def check_finality(repo, num, files):
-    """A design thread that has had two proposal rounds needs the finality pass's thread map before the third (mergeworthy:finality).
+    """A design thread that has had two proposal rounds needs design step 7's thread map before the third (mergeworthy:design).
     post-bash-register counts posted `--kind proposal` drafts per thread in ~/.claude/proposal-rounds.txt; the map is
     <work folder>/maps/<owner>-<repo>-<number>.md (the root holds drafts/), and must be newer than the last proposal."""
     if not repo or not str(num).isdigit(): return
@@ -490,16 +513,13 @@ def check_finality(repo, num, files):
     rounds = [int(l.split()[1]) for l in open(log) if l.split()[:1] == [f'{repo}#{num}']] if os.path.exists(log) else []
     if len(rounds) < 2: return
     for f in files:
-        f = os.path.expanduser(where.expand(f[5:] if f.startswith('body=') else f)).lstrip('@')
-        f = f if os.path.isabs(f) else os.path.join(cwd, f)
-        try: flags = open(f + '.lint').read().split()
-        except OSError: continue
-        if flags[flags.index('--kind') + 1:][:1] != ['proposal']: continue
+        f = draft_path(f)
+        if lint_kind(f) != 'proposal': continue
         root = next((os.path.dirname(p) for p in work_folder.ancestors(f) if os.path.basename(p) == 'drafts'), os.path.dirname(os.path.dirname(f)))
         m = os.path.join(root, 'maps', f"{repo.replace('/', '-')}-{num}.md")
         if os.path.exists(m) and os.path.getmtime(m) > rounds[-1]: continue
-        block(f"{repo}#{num} has had {len(rounds)} proposal rounds: run the finality pass (mergeworthy:finality step 1, a drifted design thread) before this reply, "
-              f"write its thread map with the invariants list to {m} (newer than your last proposal), update the thread's WIP comment (Agreed with permalinks, Open; mergeworthy:design §WIP comment) from it, and let this reply say 'I updated the [WIP comment](link)' instead of restating the design")
+        block(f"{repo}#{num} has had {len(rounds)} proposal rounds: refresh its thread map with the invariants list, {m}, so it is newer than your last proposal "
+              "(run the finality pass only when mergeworthy:design step 7 calls for it), then that step's WIP update (mergeworthy:design §WIP comment)")
 
 def comment_discussion(node_id):
     """owner/repo#N of the GitHub Discussion holding the comment with that node id; None when gh can't name it."""
@@ -520,7 +540,7 @@ def check_discussion_post(kind, ref, draft, has_cd):
               "or check the reference")
     repo, num = thread.split('#')
     if kind == 'add':
-        check_turn(repo, num); check_finality(repo, num, [draft])
+        check_turn(repo, num, drafts=[draft]); check_finality(repo, num, [draft])
     check_context(thread, [draft])
     gated_file(draft, has_cd, create=kind == 'add')
 
@@ -558,11 +578,8 @@ def check_context(thread, files):
     for this thread and recording its latest human comment (the tool's --verify). Tracker drafts are exempt; a thread gh can't read blocks."""
     if not thread: return
     for f in files:
-        f = os.path.expanduser(where.expand(f[5:] if f.startswith('body=') else f)).lstrip('@')
-        f = f if os.path.isabs(f) else os.path.join(cwd, f)
-        try: flags = open(f + '.lint').read().split()
-        except OSError: flags = []
-        if '--kind' in flags and flags[flags.index('--kind') + 1:][:1] == ['tracker']: continue
+        f = draft_path(f)
+        if lint_kind(f) == 'tracker': continue
         parent = re.sub(r'\.md$', '', f) + '.parent.md'
         tcf = os.path.join(os.path.dirname(f), 'thread-context.md')
         # the gate record names the thread context the draft was written and reviewed from (gate-pass); one made later is not it
@@ -1432,13 +1449,12 @@ def check(t, has_cd):
             if sub in ('comment', 'edit') and files:
                 check_refactor_ask(*target, comment=sub == 'comment', drafts=files)
             if sub == 'comment' and '--edit-last' not in rest:
-                check_turn(*target, rest)
+                check_turn(*target, rest, files)
             if sub in ('comment', 'review'):
-                check_finality(*target, files)
+                check_finality(*target, [f for f in files if f in new_post_drafts(t)])  # an edit is no proposal round
             if sub != 'create':
                 check_context(f'{target[0]}#{target[1]}' if all(target) else None, files)
-            edit_last = sub == 'comment' and '--edit-last' in rest and '--create-if-none' not in rest  # --create-if-none may create
-            for f in files: gated_file(f, has_cd, create=f in new_post_drafts(t) and not edit_last)
+            for f in files: gated_file(f, has_cd, create=f in new_post_drafts(t))
     if p == 'gh' and a[:2] in (['pr', 'close'], ['issue', 'close']) and '--help' not in a and '-h' not in a:  # one it can't tell wakes as before
         ref = next((x for i, x in enumerate(a[2:]) if not x.startswith('-') and (i == 0 or a[1 + i] not in VALUED)), None)
         if t_ := thread_of_ref(gh_repo(a[2:], env, run_dir) if run_dir is not None or opt(a[2:], ['--repo', '-R']) else None, ref):
@@ -1466,7 +1482,7 @@ def check(t, has_cd):
             need_home([opens[0]], run_dir)
             if opens[1] == 'pr': need_approach(run_dir, '`gh api` creating a PR', opened_branch(rest, fields=['-f', '--raw-field', '-F', '--field']))
         c = re.fullmatch(r'/?repos/([\w.-]+/[\w.-]+)/issues/(\d+)/comments', ep)
-        if c and method == 'POST': check_turn(c.group(1), c.group(2), rest); check_finality(c.group(1), c.group(2), bodies + inputs)
+        if c and method == 'POST': check_turn(c.group(1), c.group(2), rest, bodies + inputs); check_finality(c.group(1), c.group(2), bodies + inputs)
         thread = None
         t_ = re.fullmatch(r'/?repos/([\w.-]+/[\w.-]+)/(?:issues|pulls)/(\d+)(?:/.*)?', ep)
         if t_: thread = f'{t_.group(1)}#{t_.group(2)}'
