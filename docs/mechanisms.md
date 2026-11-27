@@ -80,7 +80,7 @@ Learning runs on demand: `task` step 4 runs `project-learn list` whenever work s
 
 ### `memory-prep` (`task` step 8)
 
-`memory-prep init <root> <T3 thread id>`, run from the main session's checkout, records it, its thread, its session and its session-log dir. `memory-prep prep <root>` extracts the user's prompts and the last text of each main session turn logged after `memory.md`'s `covered-until` position from the main session's own logs into `memory-new.txt`, and writes the brief sending one Haiku to `memory-refresh`. Under T3 Code pre-agent-dedupe refuses that launch unless its role is `research` (T3 then opens the task with "Act as the research sub-agent"; without it Haiku declined 8 of 86 refreshes as another agent's message), and spares it the research `Topic:` check. `memory-prep digest <root>` prints the Standing part, one line per item, capped at 7,500 characters.
+`memory-prep init <root> <T3 thread id>`, run from the main session's checkout, records it, its thread, its session and its session-log dir. `memory-prep prep <root>` extracts the user's prompts and the last text of each main session turn logged after `memory.md`'s `covered-until` position from the main session's own logs into `memory-new.txt`, and writes the brief sending one Haiku to `memory-refresh`, which only appends notes, each tagged with the lead of the item it replaces or finishes. Under T3 Code pre-agent-dedupe refuses that launch unless its role is `research` (T3 then opens the task with "Act as the research sub-agent"; without it Haiku declined 8 of 86 refreshes as another agent's message), and spares it the research `Topic:` check. `prep` and `digest` first merge those notes into `memory.md` (`memory_file.merge`): an item is known by its lead, Standing is kept newest first, Recent to 24 hours, and Standing past 48,000 characters moves, oldest first, to `memory-archive-<YYYY-MM>.md`. `memory-prep digest <root>` prints the Standing part, one line per item, capped at 7,500 characters.
 
 ### `agent-job` (`delegate` step 6)
 
@@ -253,7 +253,7 @@ Read-only commands pass.
 - a brief pinning an older commit of a linked worktree it names, printing `memory.md`'s Ruled out list;
 - a launch whose brief names a project file with a `## Agents` line `Effort: <effort>` (bulleted or not) and sets another effort, or none, naming the line: the Agent tool's `effort`, or in `delegate_task`'s `target.options` or `t3_thread_launch`'s `modelSelection.options`, `effort` for Claude and `reasoningEffort` for Codex;
 - a brief still holding a placeholder of a fenced template in `skills/delegate/` (`<the slice's risky edges>`), naming each and its template; one in backticks there (the agent's output form), the pasted `agent.md`'s and an HTML tag don't count;
-- in a main session's checkout, a research brief other than a memory refresh (`role: research`, or research in its title) without a `Topic:` line, or whose topic words (all of them in one paragraph) all appear in a file under the work folder not named in a `Checked:` line.
+- in a main session's checkout, a research brief other than a memory refresh (`role: research`, or research in its title) without a `Topic:` line, or whose topic words (all of them in one paragraph, or one item of a memory file) all appear in a file under the work folder not named in a `Checked:` line.
 
 ### `.githooks/pre-push` (this repo)
 
