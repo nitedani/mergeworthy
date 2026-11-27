@@ -216,7 +216,7 @@ elif req.role == 'review' and req.t3 and not sent:  # a continued round runs on 
     when = reset and time.strftime('%H:%M' if time.localtime(reset)[:3] == time.localtime()[:3] else '%a %H:%M', time.localtime(reset))
     if reset and 'codex' in req.providers:
         sys.stderr.write(f"BLOCKED: claude-swap reads every saved Codex account as used up until {when}, so this launch would fail. "
-                         f"Launch the review on Claude (target.providerInstanceId claudeAgent) with a line `Fallback: Codex used up until {when}`.\n")
+                         f"Launch the review on Claude (target.providerInstanceId claudeAgent) with a line `Fallback: codex used up until {when}`.\n")
         refused()
     # the fallback keeps the first review's prompt, so its claim may sit in the brief file the task names; `<what failed>` is the form, no claim.
     # A round 1 seating its step's reviewers at once takes a fresh agent of this company as its second seat, which keeps its
@@ -224,9 +224,9 @@ elif req.role == 'review' and req.t3 and not sent:  # a continued round runs on 
     elif loops.HOST in drivers and not (k.round and (k.round[1] == 1 and D.fanout == loops.SEATING or k.round[1] != 1 and loops.same_company_seat(k.round[0], tops))) \
             and not re.search(r'\bFallback:[ \t]*[^\s<]', launch.Brief(req.task).brief):
         sys.stderr.write(f"BLOCKED: claude-swap reads every saved Codex account as used up until {when}: a review on Claude says so in a line "
-                         f"`Fallback: Codex used up until {when}` in the task or the brief file it names (mergeworthy:delegate §Reviewers).\n" if reset else
+                         f"`Fallback: codex used up until {when}` in the task or the brief file it names (mergeworthy:delegate §Reviewers).\n" if reset else
                          "BLOCKED: an independent check starts on another company's model (mergeworthy:delegate §Reviewers): set target.providerInstanceId to codex. "
-                         "Only when that call failed, launch on Claude (claudeAgent) with `Fallback: <what failed>` in the task or the brief file it names.\n")
+                         "Only when that call failed, launch on Claude (claudeAgent) with `Fallback: codex failed: <why>` in the task or the brief file it names.\n")
         refused()
 # T3 answers a delegate_task whose clientRequestId it has seen with that earlier task's result, without running anything.
 # Reuse is allowed only within 10 minutes (a retry of the same launch).

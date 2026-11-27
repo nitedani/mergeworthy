@@ -1408,7 +1408,7 @@ rnd() { # clientRequestId task [role]: a review round's exit code, registered wh
 rev() { # target-JSON task [role]: a delegate_task's exit code under T3
   python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":sys.argv[2],"role":sys.argv[3],"target":json.loads(sys.argv[1])}}))' "$1" "$2" "${3:-review}" \
     | T3CODE_THREAD_ID=th python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
-check "BLOCK: under T3 a review on claudeAgent, by instance or driver, or with no provider, naming codex and the Fallback line" "2 2 2 2 1 1" "$(rev '{"driverKind":"claudeAgent"}' 'Review it') $(rev '{"providerInstanceId":"claudeAgent"}' 'Review it') $(rev '{"providerInstanceId":"mine","driverKind":"claudeAgent"}' 'Review it') $(rev '{}' 'Review it') $(grep -c codex "$T/err") $(grep -c 'Fallback: <what failed>' "$T/err")"
+check "BLOCK: under T3 a review on claudeAgent, by instance or driver, or with no provider, naming codex and the Fallback line" "2 2 2 2 1 1" "$(rev '{"driverKind":"claudeAgent"}' 'Review it') $(rev '{"providerInstanceId":"claudeAgent"}' 'Review it') $(rev '{"providerInstanceId":"mine","driverKind":"claudeAgent"}' 'Review it') $(rev '{}' 'Review it') $(grep -c codex "$T/err") $(grep -c 'Fallback: codex failed: <why>' "$T/err")"
 check "a review on codex, or on claudeAgent with what failed in a Fallback line, passes; an empty Fallback line is refused" "0 0 0 2" "$(rev '{"providerInstanceId":"codex"}' 'Review it') $(rev '{"driverKind":"codex"}' 'Review it') $(rev '{"providerInstanceId":"claudeAgent"}' 'Review it
 Fallback: codex failed') $(rev '{"providerInstanceId":"claudeAgent"}' 'Review it
 Fallback:
@@ -1450,13 +1450,13 @@ rm "$HOME/.t3/userdata/settings.json"
 check "an exploring research agent on claudeAgent passes" 0 "$(rev '{"providerInstanceId":"claudeAgent"}' 'Explore it' research)"
 python3 -c 'import json; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":"Review it","role":"review","target":{"providerInstanceId":"claudeAgent"},"clientRequestId":"r-1"}}))' \
   | T3CODE_THREAD_ID=th python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"
-check "BLOCK: a launch with two faults, a review on claudeAgent and a reused clientRequestId, gets both refusals in one message" "2 1 1" "$? $(grep -c 'Fallback: <what failed>' "$T/err") $(grep -c "clientRequestId 'r-1' was used before" "$T/err")"
+check "BLOCK: a launch with two faults, a review on claudeAgent and a reused clientRequestId, gets both refusals in one message" "2 1 1" "$? $(grep -c 'Fallback: codex failed: <why>' "$T/err") $(grep -c "clientRequestId 'r-1' was used before" "$T/err")"
 CX="$T/cx"; mkdir -p "$CX/profiles/a" "$CX/profiles/b" "$CX/profiles/active"; touch "$CX/profiles/a/auth.json" "$CX/profiles/b/auth.json"; now=$(date +%s)
 lim() { printf '{"a":{"until":%s},"b":{"until":%s}}' "$1" "$2" > "$CX/profiles/limited.json"; }  # claude-swap's Codex limit state: the accounts' resets
 lim $(date -d 'today 23:59:59' +%s) $((now + 4 * 86400)); export CODEX_HOME="$CX"; r="$(rev '{"providerInstanceId":"codex"}' 'Review it') $(grep -c 'until 23:59,' "$T/err")"
 lim $((now + 3 * 86400)) $((now + 4 * 86400)); r="$r $(rev '{"providerInstanceId":"codex"}' 'Review it') $(grep -c "until $(LC_ALL=C date -d @$((now + 3 * 86400)) '+%a %H:%M')," "$T/err")"
 check "BLOCK: a review on codex while claude-swap reads every saved Codex account as used up, naming the soonest reset, with its day when not today; one on claudeAgent or no provider without a Fallback line, naming the line; with it, it passes" "2 1 2 1 2 2 1 0" \
-  "$r $(rev '{"providerInstanceId":"claudeAgent"}' 'Review it') $(rev '{}' 'Review it') $(grep -c '`Fallback: Codex used up until' "$T/err") $(rev '{"providerInstanceId":"claudeAgent"}' 'Review it
+  "$r $(rev '{"providerInstanceId":"claudeAgent"}' 'Review it') $(rev '{}' 'Review it') $(grep -c '`Fallback: codex used up until' "$T/err") $(rev '{"providerInstanceId":"claudeAgent"}' 'Review it
 Fallback: Codex used up until Mon 10:00')"
 printf '{"a":{"until":%s}}' $((now + 3600)) > "$CX/profiles/limited.json"; r="$(rev '{"driverKind":"codex"}' 'Review it') $(rev '{"providerInstanceId":"claudeAgent"}' 'Review it')"
 lim $((now - 60)) $((now + 3600)); r="$r $(rev '{"providerInstanceId":"codex"}' 'Review it') $(rev '{"providerInstanceId":"claudeAgent"}' 'Review it')"
