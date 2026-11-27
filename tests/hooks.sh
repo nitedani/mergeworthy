@@ -1711,6 +1711,11 @@ check "a merge that stops between the archive and memory.md writes leaves items 
   "$([ "$(items "$MK-crash")" -gt 1500 ] && echo yes) $(items "$MK-crash" -u) $(mmerge "$MK-crash"; items "$MK-crash") $(items "$MK-crash" -u)"
 ws=(); for i in 1 2 3 4 5 6 7 8; do (mmerge "$MK-two" 2>&1; echo "exit $?") > "$T/two.$i" & ws+=($!); done; wait "${ws[@]}"  # without the lock, 8 at once lose or duplicate items in most runs
 check "eight merges at once all finish, and every item is there once" "8 1500 1500" "$(cat "$T"/two.* | grep -cx 'exit 0') $(items "$MK-two") $(items "$MK-two" -u)"
+OB="$T/orch-b"; MRB="$HOME/.mergeworthy/work/mem-b"; LB="$HOME/.claude/projects/$(printf '%s' "$OB" | sed 's/[^A-Za-z0-9]/-/g')"; mkdir -p "$OB" "$LB"
+(cd "$OB" && CLAUDE_CODE_SESSION_ID=ob python3 "$R/bin/memory-prep" init "$MRB" thread-b >/dev/null)
+mlog "$LB/ob.jsonl" 1 "a ruling an hour ago"; touch -d '1 hour ago' "$LB/ob.jsonl"
+printf '# Memory\n## Standing\n## Recent\n<!-- covered-until: %s -->\n' "$(date -u -d '3 hours ago' +%Y-%m-%dT%H:%M:%S.000Z)" > "$MRB/memory.md"
+check "memory.md written now but covering through 3 hours ago is behind a log line of an hour ago" True "$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import memory_file as mf; print(mf.behind(sys.argv[2]))' "$R/hooks" "$MRB")"
 MF="$T/merge-fixture"; mkdir -p "$MF"; cp "$R/tests/fixtures/memory.md" "$MF/memory.md"
 printf '# Notes\nread-through: 2026-10-12T22:06:43.534Z\n- Rulings in force: **Already merged** (2026-10-12 22:00Z). The refresh wrote it in itself.\n' > "$MF/memory-notes.txt"; touch -d '1 hour ago' "$MF/memory-notes.txt"
 standing() { cat "$1"/memory.md "$1"/memory-archive-*.md 2>/dev/null | sed -n '/^## Standing/,/^## Recent/p' | grep -c '^- '; }
