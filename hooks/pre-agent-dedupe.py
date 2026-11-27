@@ -418,8 +418,9 @@ if root and k.research and not k.refresh:
     else:
         words = [w.lower() for w in re.findall(r'[\w.-]{3,}', topic.group(1))]
         checked = ' '.join(re.findall(r'^\s*Checked:\s*(.+)$', brief, re.M))
-        # covered = one paragraph holds every topic word: a long design doc that mentions them apart covers nothing
-        covers = lambda p: any(all(w in para for w in words) for para in re.split(r'\n\s*\n', open(p, errors='replace').read().lower()))
+        # covered = one paragraph holds every topic word, one item of a memory file: a long file that mentions them apart covers nothing
+        unit = lambda p: r'\n' if re.fullmatch(r'memory(-archive-.*)?\.md', os.path.basename(p)) else r'\n\s*\n'
+        covers = lambda p: any(all(w in para for w in words) for para in re.split(unit(p), open(p, errors='replace').read().lower()))
         hits = [p for p in memory_file.notes(root) if p not in checked and os.path.abspath(p) not in {os.path.abspath(x) for x in L.paths} and covers(p)]
         if hits:
             sys.stderr.write("BLOCKED: these files already cover the topic; read them first. If one answers it, use it; "
