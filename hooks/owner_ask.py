@@ -63,7 +63,8 @@ def sentences(text, kind, target):
     names = {n.lower() for n in target.names if n}
     tok = lambda ours: ' ‹t› ' if ours else ' ‹x› '
     def marked(c):  # c with each target it names in kind's notations as ‹t› (this command's) or ‹x› (another)
-        if kind == 'merge':
+        if kind == 'merge':  # a PR's link names it with a page or comment after it too (/files, #issuecomment-1)
+            c = re.sub(r'((?:github\.com/[\w.-]+/[\w.-]+/pull|gitlab\.com/[\w./-]+?/-/merge_requests)/\d+)[/#]\S*?(?=[)\]}"\'”’.,;:!?]*(?:\s|$))', r'\1', c)
             return re.sub(r'(?:https?://)?' + PR_REF.pattern, lambda m: tok((m[1] or m[2] or m[3] or '').lower() in ('', (repo or '').lower()) and m[4] == str(num)), c)
         if kind == 'push':  # `to <branch>`, `<branch> branch` or `push <branch>`
             c = re.sub(r'\bto\s+(?:the\s+)?(?:branch\s+)?(?!(?:the|a|this|that)\b)([\w./-]*[\w-])(?:\s+branch\b)?|\b(?!(?:the|a|this|that)\b)([\w./-]*[\w-])\s+branch\b',

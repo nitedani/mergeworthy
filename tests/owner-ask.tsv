@@ -264,3 +264,10 @@ push	main	False	Push to main — blocked
 merge	o/r#41	False	merge it, see https://ci.example/run/5
 merge	o/r#41	True	Merge #41, #40 too
 merge	o/r#41	False	merge it or release it
+merge	o/r#41	True	merge https://github.com/o/r/pull/41/
+merge	o/r#41	True	merge https://github.com/o/r/pull/41/checks
+merge	o/r#41	True	merge https://github.com/o/r/pull/41/files
+merge	o/r#41	True	merge https://github.com/o/r/pull/41#issuecomment-123
+merge	o/r#41	None	merge https://github.com/o/r/pull/40/files
+merge	o/r#41	True	merge (#41)
+push	main	True	push to "main"
