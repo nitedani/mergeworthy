@@ -63,8 +63,8 @@ ASK = {k: re.compile(rf"{LEAD}(?:‹t›\s*)?{PAST}{w}(?:\s+be\b)?"
 FILLER = re.compile(rf"(?:(?:{'|'.join(OPENERS.values())}|{TAIL}|but|and|or)\W*)*", re.I)
 
 def sentences(text, kind, target):
-    """text's sentences, each a list of clauses, each (the word that opened it, its tokens): words, and ‹t› for target or one of its
-    names, ‹x› for another target in kind's notations, ‹o› for any other token shaped like a target."""
+    """text's sentences, each (whether it ends in `?`, its clauses), each clause (the word that opened it, its tokens): words, and ‹t›
+    for target or one of its names, ‹x› for another target in kind's notations, ‹o› for any other token shaped like a target."""
     repo, num, branch, subject = target.repo, target.num, target.branch, target.subject
     names = {n.lower() for n in target.names if n}
     tok = lambda ours: ' ‹t› ' if ours else ' ‹x› '
@@ -105,16 +105,16 @@ def sentences(text, kind, target):
                 clause, opener = [], core.lower()
                 continue
             if core: clause.append(core)
-            if re.search(r'[.!?]', trail): sentence.append((opener, clause)); yield sentence + [('?', [])] * ('?' in trail); sentence, clause, opener = [], [], ''
+            if re.search(r'[.!?]', trail): yield '?' in trail, sentence + [(opener, clause)]; sentence, clause, opener = [], [], ''
             elif re.search(r'[,;]', trail): sentence.append((opener, clause)); clause, opener = [], ','
-        if clause or sentence: yield sentence + [(opener, clause)]
+        if clause or sentence: yield False, sentence + [(opener, clause)]
 
 def asks(text, kind, target):
     """True when text (a message the user typed) asks for kind on target (a Target), False when it holds kind back, None when it says
     neither. A clause asks when the grammar accounts for every token; in a sentence that asks, a clause it can't account for holds."""
-    ss = [[(o, ' '.join(c)) for o, c in s] for s in sentences(text, kind, target)]
+    ss = [(q, [(o, ' '.join(c)) for o, c in s]) for q, s in sentences(text, kind, target)]
     on = lambda m: '‹t›' in m or '‹x›' not in m  # names the target, or none
-    whole_text = ' '.join(m for s in ss for _, m in s)
+    whole_text = ' '.join(m for _, s in ss for _, m in s)
     words, ask = WORDS[kind], ASK[kind]
     # what a clause says of the action, in a question or not: the first row that matches
     STANCE = (('holds', lambda m, q: FOLLOW_UP.match(m) and FIRST.search(m)),  # "tell me before you proceed"
@@ -130,9 +130,7 @@ def asks(text, kind, target):
               (None, lambda m, q: re.match(rf"{LEAD}(?:‹t›\s*)?{PAST}{words}", m, re.I)),  # a tail about something else: "update t3 to 1.2"
               ('unknown', lambda m, q: True))
     found = reported = None
-    for s in ss:
-        question = s[-1] == ('?', '')
-        if question: s = s[:-1]
+    for question, s in ss:
         if not re.search(words, ' '.join(m for _, m in s), re.I):
             if HALT.match(m := ' '.join(m for _, m in s)) and on(m): return False
             if any(FOLLOW_UP.match(m) and FIRST.search(m) for _, m in s): return False  # "tell me before you proceed"
