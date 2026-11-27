@@ -1,11 +1,11 @@
 """Review loops (delegate §Review rounds): pre-agent-dedupe and pre-bash-guard ask whether round `<loop>-r<N>` of a code review may
 run, and record a round that ran with register(); pr-steps and gate-pass ask close() whether a loop's ledger closes it, and
 pr-steps asks open_seats() whether a step's other seats closed. admit() refuses a fresh reader's second round, or its first again
-on this head (fresh_once), then, on a head within STALE_LINES of a loop's earlier rounds, the first of its RULES that objects: a
-round past the four of the loops it counts in (routed_cap) or of its own (cap), a ledger that doesn't rule the last round
-(ledger_current) or every finding of the loop's reports (findings_ruled), and a last round that brought no fixed blocker or
-should (earned). third_seat() refuses a fresh round 1 its step's declared seats leave out, and old_reports() a fresh later round
-handed an earlier round's report."""
+on this head (fresh_once), a round number whose earlier launch on this head wrote its report (ran_once), then, on a head within
+STALE_LINES of a loop's earlier rounds, the first of its RULES that objects: a round past the four of the loops it counts in
+(routed_cap) or of its own (cap), a ledger that doesn't rule the last round (ledger_current) or every finding of the loop's
+reports (findings_ruled), and a last round that brought no fixed blocker or should (earned). third_seat() refuses a fresh round 1
+its step's declared seats leave out, and old_reports() a fresh later round handed an earlier round's report."""
 import collections, glob, json, os, re, subprocess, sys, types
 import agent_jobs, drift, ledger, records, review_journal, testpaths
 
@@ -166,24 +166,36 @@ def pinned(L):
 desc = lambda t, o, h: git(t, 'merge-base', '--is-ancestor', o, h).returncode == 0
 
 
-def on_head(loop, n, tops, heads):
-    """The rounds before n of loop that ran on heads (in the checkouts tops) or within STALE_LINES of the branch's own changed lines of them."""
+def own_lines(t, o, h):
+    """The PR's own changed lines from o to h in the checkout t, as SHAPE STALE counts them (testpaths.moved)."""
     # first-parent and no merges: what a merge of the base brought in isn't the PR's own, as SHAPE STALE's compare leaves it out; no renames: each row names a real path
-    def own_lines(t, o, h):
-        rows = re.findall(r'^(\d+)\t(\d+)\t(.*)$', git(t, '-c', 'core.quotePath=false', 'log', '--first-parent', '--no-merges', '--no-renames', '--numstat', '--format=', f'{o}..{h}').stdout, re.M)
-        gen = testpaths.generated(t, [p for _, _, p in rows])
-        return testpaths.moved([r for r in rows if r[2] not in gen], 'cap')
-    def built_on(old):
-        # a head neither pinned by the round nor built on its pins is another checkout's; one built on them past the lines leaves it out
-        if not old: return not heads
-        matched = False
-        for h in heads:
-            under = [] if h in old else [(t, o) for t in tops for o in old if desc(t, o, h)]
-            if h not in old and not under: continue
-            matched = True
-            if under and not any(own_lines(t, o, h) <= testpaths.STALE_LINES for t, o in under): return False
-        return matched
-    return sorted({m for m, old, *_ in rounds_of(loop, tops) if m < n and built_on(old)})
+    rows = re.findall(r'^(\d+)\t(\d+)\t(.*)$', git(t, '-c', 'core.quotePath=false', 'log', '--first-parent', '--no-merges', '--no-renames', '--numstat', '--format=', f'{o}..{h}').stdout, re.M)
+    gen = testpaths.generated(t, [p for _, _, p in rows])
+    return testpaths.moved([r for r in rows if r[2] not in gen], 'cap')
+
+
+def on_version(old, tops, heads):
+    """Whether a round that pinned the heads old counts on heads (in the checkouts tops): each head is one of old, or built on
+    them within STALE_LINES of the branch's own changed lines; a round that pinned none counts only for heads that are none."""
+    # a head neither pinned by the round nor built on its pins is another checkout's; one built on them past the lines leaves it out
+    if not old: return not heads
+    matched = False
+    for h in heads:
+        under = [] if h in old else [(t, o) for t in tops for o in old if desc(t, o, h)]
+        if h not in old and not under: continue
+        matched = True
+        if under and not any(own_lines(t, o, h) <= testpaths.STALE_LINES for t, o in under): return False
+    return matched
+
+
+def counted(loop, tops, heads, numbers):
+    """loop's rounds [[m, heads, outs]] numbered in numbers that count on heads (on_version)."""
+    return [r for r in rounds_of(loop, tops) if r[0] in numbers and on_version(r[1], tops, heads)]
+
+
+def on_head(loop, n, tops, heads):
+    """The numbers of the rounds before n of loop that count on heads (in the checkouts tops)."""
+    return sorted({m for m, *_ in counted(loop, tops, heads, range(1, n))})
 
 
 def rounds_of(loop, tops):
@@ -215,6 +227,16 @@ def fresh_once(loop, n, tops, heads, step):
         return (f"{loop}-r{n}: the fresh reader runs once (mergeworthy:converge step 4){again}; its findings go back to the loops that own them, "
                 "`<slice>-fresh` (mergeworthy:delegate §Review rounds).\n")
     return ''
+
+
+def ran_once(loop, n, tops, heads):
+    """A round runs once on a head: an earlier launch of round n that counts on it and wrote its report took the number, while
+    one that wrote none may be retried."""
+    on = counted(loop, tops, heads, range(1, 10 ** 9))
+    took = sorted({o for m, _, outs in on if m == n for o in outs if os.path.isfile(o)})
+    if not took: return ''
+    return (f"{loop}-r{n} already ran on this head or one within {testpaths.STALE_LINES} changed lines of it and wrote {', '.join(took)}: a round runs once. "
+            f"Rule its findings in the loop's ledger; the loop's next round, once its last round earned one, is r{max(m for m, *_ in on) + 1} (mergeworthy:delegate §Review rounds).\n")
 
 
 def routed_cap(a):
@@ -271,7 +293,7 @@ def admit(loop, n, tops, heads, led, owners=(), launcher=(), step=None):
     its pins equal, led the ledger path it names (None), owners the loops whose rounds count in its four (a routed round's seat
     loop, the loop a `Continues:` line takes over), launcher the launcher's checkout, which holds the fixes of a brief naming none (a
     docs reader's, handed rendered pages), step the step its brief declares (`Review: <step>`)."""
-    if why := fresh_once(loop, n, tops, heads, step): return why
+    if why := fresh_once(loop, n, tops, heads, step) or ran_once(loop, n, tops, heads): return why
     a = types.SimpleNamespace(loop=loop, n=n, tops=tops, heads=heads, led=led, owners=owners, earlier=on_head(loop, n, tops, heads),
                               shared=[f"{o} r{m}" for o in owners for m in on_head(o, 10 ** 9, tops, heads)])
     a.routed = bool(a.shared) and len(a.earlier) + len(a.shared) >= CAP

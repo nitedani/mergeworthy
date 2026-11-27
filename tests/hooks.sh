@@ -2947,6 +2947,10 @@ ts="$(fo ts-codex-r1 '{"providerInstanceId":"codex"}' "$(tsb ts-codex)") $(fo ts
 ts="$ts $(fo ts-claude3-r1 '{"providerInstanceId":"claudeAgent"}' "$(tsb ts-claude3 'Fallback: ts-claude stopped')") $(fo ts-claude4-r1 '{"providerInstanceId":"claudeAgent"}' "$(tsb ts-claude4 'Continues: ts-claude')")"
 check "BLOCK: a third fresh seat of a step whose round 1 declared two, naming the cure; with what failed (Fallback:) or the loop it takes over (Continues:) it passes" "0 0 2 1 0 0" "$ts"
 check "a fresh verifier's reverify, a fresh recheck and a fresh reader's finding of a slice whose round 1 declared two seats are no third seat" "0 0 0" "$(for l in ts-reverify ts-recheck ts-fresh; do fo "$l-r1" '{"providerInstanceId":"codex"}' "Review $GT at head $TH, Loop B's commits; output to $T/$l.md"; done | xargs)"
+GR="$T/rerun"; git init -q -b main "$GR"; git -C "$GR" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; RRH=$(git -C "$GR" rev-parse HEAD)
+rr="$(fo rr-codex-r1 '{"providerInstanceId":"codex"}' "Review $GR at head $RRH; output to $T/rr-a.md") $(fo rr-codex-r1-2026-11-27 '{"providerInstanceId":"codex"}' "Review $GR at head $RRH; output to $T/rr-b.md")"
+rr="$rr $(echo 'R1.1 should: the parser drops a field' > "$T/rr-b.md"; fo rr-codex-r1-2026-11-28 '{"providerInstanceId":"codex"}' "Review $GR at head $RRH; output to $T/rr-c.md") $(grep -c "rr-codex-r1 already ran on this head .* and wrote $T/rr-b.md: a round runs once" "$T/err")"
+check "a round runs once on a head: a retry of one that wrote no report passes; BLOCK it again once the report exists, naming it" "0 0 2 1" "$rr"
 GF="$T/seats6"; git init -q -b main "$GF"; git -C "$GF" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; FH=$(git -C "$GF" rev-parse HEAD)
 for s in "fl-codex codex" "fl-claude2 claudeAgent"; do set -- $s; fo "$1-r1" "{\"providerInstanceId\":\"$2\"}" "Review $GF at head $FH; output to $T/$1.md
 $FO
