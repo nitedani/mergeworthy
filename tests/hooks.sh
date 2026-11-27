@@ -1512,6 +1512,16 @@ check "agy-link links the plugin into the antigravity profile under T3CODE_HOME"
 mkdir -p "$T/t3s/userdata"; python3 -c 'import sqlite3, sys; c = sqlite3.connect(sys.argv[1]); c.execute("create table orchestration_v2_projection_provider_threads (provider_thread_id text, thread_id text, payload_json text)")
 c.execute("""insert into orchestration_v2_projection_provider_threads values ('"'p1', 'thr-s', '{\"nativeThreadRef\":{\"nativeId\":\"s-s\"}}'"')"""); c.commit()' "$T/t3s/userdata/statev2.sqlite"
 check "the steward's T3 reads (steward.threads) use T3's state under T3CODE_HOME" "['thr-s']" "$(T3CODE_HOME="$T/t3s" PYTHONPATH="$R/hooks" python3 -c 'import steward; print(steward.threads("s-s"))')"
+# a project can turn an instance on or off for its threads (projectSettingsOverrides), as T3's resolveProjectProviderInstanceEnabled does
+python3 -c 'import sqlite3, sys; c = sqlite3.connect(sys.argv[1]); c.execute("create table orchestration_v2_projection_threads (thread_id text, project_id text)")
+c.execute("insert into orchestration_v2_projection_threads values (?, ?)", ("th", sys.argv[2])); c.commit()' "$HOME/.t3/userdata/statev2.sqlite" proj-a
+mkdir -p "$HOME/.t3/userdata/providers/antigravity/$(printf agy_on | sha256sum | cut -d' ' -f1)/config/plugins/mergeworthy"
+echo '{"providerInstances":{"agy_pr":{"driver":"antigravity"},"agy_on":{"driver":"antigravity","enabled":true}},"projectSettingsOverrides":{"proj-a":{"providerInstances":{"agy_pr":{"enabled":true}}},"proj-b":{"providerInstances":{"agy_on":{"enabled":false}}}}}' > "$HOME/.t3/userdata/settings.json"
+check "BLOCK: a driverKind alone in a project that turns on agy_pr (off by default), which loads no mergeworthy, naming agy_on" "2 1" \
+  "$(impl '{"driverKind":"antigravity"}' '' research 'Research the cache') $(grep -c "may run on T3's instance agy_pr, which doesn't load mergeworthy.*providerInstanceId to agy_on\.$" "$T/err")"
+python3 -c 'import sqlite3, sys; c = sqlite3.connect(sys.argv[1]); c.execute("update orchestration_v2_projection_threads set project_id = ?", (sys.argv[2],)); c.commit()' "$HOME/.t3/userdata/statev2.sqlite" proj-b
+check "in a project that leaves agy_pr off and turns agy_on off, a driverKind antigravity alone passes" 0 "$(impl '{"driverKind":"antigravity"}' '' research 'Research the cache')"
+rm "$HOME/.t3/userdata/statev2.sqlite" "$HOME/.t3/userdata/settings.json"
 check "an exploring research agent on claudeAgent passes" 0 "$(rev '{"providerInstanceId":"claudeAgent"}' 'Explore it' research)"
 python3 -c 'import json; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":"Review it","role":"review","target":{"providerInstanceId":"claudeAgent"},"clientRequestId":"r-1"}}))' \
   | T3CODE_THREAD_ID=th python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"

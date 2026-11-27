@@ -2,7 +2,7 @@
 """T3 Code: whether the session runs under it, and its delegated tasks as the session's transcript reports them: its tool calls
 and results (delegate_task, task_status, t3_thread_send) and T3's notices. A thread is all its tasks: the first, each message sent
 to it, each turn T3 continues on its own (provider-continuation)."""
-import functools, hashlib, json, os, re, shlex
+import contextlib, functools, hashlib, json, os, pathlib, re, shlex, sqlite3
 
 # T3's notice is `Delegated task <id>[ (<title>)][ in child thread <thread id>] [<status>]:` with its result, or
 # `Delegated task <id> reached a terminal state` for a task it no longer knows (its formatter, delegatedCompletionWakeDetail)
@@ -48,18 +48,45 @@ def userdata(*path):
     return os.path.join(t3_home(), 'userdata', *path)
 
 
+@functools.cache
+def settings():
+    """T3 Code's settings.json, or None when it can't be read."""
+    try: d = json.load(open(userdata('settings.json')))
+    except (OSError, ValueError): return None
+    return d if isinstance(d, dict) else None
+
+
 def instances():
     """T3 Code's provider instances by id as T3 runs them: its settings' own, and the default instance of each built-in driver they
     leave out (deriveProviderInstanceConfigMap); None without its settings."""
-    try: listed = json.load(open(userdata('settings.json'))).get('providerInstances') or {}
-    except (OSError, ValueError, AttributeError): return None
+    if (s := settings()) is None: return None
+    listed = s.get('providerInstances')
     known = {i: o for i, o in listed.items() if isinstance(o, dict)} if isinstance(listed, dict) else {}
     for d in BUILT_IN: known.setdefault(d, {'driver': d})
     return known
 
 
-def enabled(o):
-    """Whether T3 runs instance `o` (resolveProviderInstanceEnabled): its `enabled`, else its config's, else its driver's default."""
+def state_uri():
+    """T3 Code's state database as a read-only SQLite URI."""
+    return pathlib.Path(userdata('statev2.sqlite')).absolute().as_uri() + '?mode=ro'
+
+
+@functools.cache
+def project():
+    """The T3 project of the hook's thread (T3CODE_THREAD_ID), from T3's state, or None."""
+    try:
+        with contextlib.closing(sqlite3.connect(state_uri(), uri=True, timeout=2)) as c:
+            r = c.execute('select project_id from orchestration_v2_projection_threads where thread_id = ?', (os.environ.get('T3CODE_THREAD_ID'),)).fetchone()
+    except sqlite3.Error: return None
+    return r and r[0]
+
+
+def enabled(instance, o):
+    """Whether T3 runs instance `o` in the hook's project (resolveProjectProviderInstanceEnabled): the project's override, else (as
+    resolveProviderInstanceEnabled) false when its `enabled` or its config's is false, else the one set, else its driver's default."""
+    over = (((settings() or {}).get('projectSettingsOverrides') or {}).get(project()) or {}) if project() else {}
+    over = ((over.get('providerInstances') or {}).get(instance) or {}).get('enabled') if isinstance(over, dict) else None
+    if isinstance(over, bool): return over
     flag = (o.get('config') or {}).get('enabled') if isinstance(o.get('config'), dict) else None
     if o.get('enabled') is False or flag is False: return False
     return next((v for v in (o.get('enabled'), flag) if isinstance(v, bool)), o.get('driver') not in OFF_BY_DEFAULT)
@@ -123,7 +150,7 @@ def loads_mergeworthy(instance, config):
 
 def _enabled(known, kind):
     """The ids of the instances in `known` of driver `kind` that T3 runs."""
-    return [i for i, o in known.items() if o.get('driver') == kind and enabled(o)]
+    return [i for i, o in known.items() if o.get('driver') == kind and enabled(i, o)]
 
 
 def mergeworthy_instances(kind):
