@@ -1341,11 +1341,11 @@ def plain_create(cmd, cwd):
             return ok and where.dir and work_folder.task_of(where.dir) or None
     return None
 
-def proposal(path):
-    """Whether the draft at path was linted as `--kind proposal` (its <path>.lint)."""
+def lint_kind(path):
+    """The `--kind` the draft at path was last linted with (its <path>.lint), or None."""
     try: flags = open(path + '.lint').read().split()
-    except OSError: return False
-    return '--kind' in flags and flags[flags.index('--kind') + 1:][:1] == ['proposal']
+    except OSError: return None
+    return next(iter(flags[flags.index('--kind') + 1:][:1]), None) if '--kind' in flags else None
 
 
 def new_post_drafts(t):

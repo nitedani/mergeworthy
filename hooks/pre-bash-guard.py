@@ -7,7 +7,7 @@ import glob, itertools, json, re, sys, os, hashlib, shlex, subprocess, urllib.pa
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed, gh_common
 import shellcmd
-from shellcmd import parse, segments, prog, script, opt, api_call, field_name, TEXT_FREE, discussion_post, discussion_thread_of, names_discussion_mutation, env_of, origin, plain_create, PLAIN, new_post_drafts, proposal, no_instructions_read, by_agent, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Unseen, Where
+from shellcmd import parse, segments, prog, script, opt, api_call, field_name, TEXT_FREE, discussion_post, discussion_thread_of, names_discussion_mutation, env_of, origin, plain_create, PLAIN, new_post_drafts, lint_kind, no_instructions_read, by_agent, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Unseen, Where
 from records import branch_record, commit_file, DRIFT_REF, LIMIT, no_approach, no_preflight, STORE
 import drift, own_actions, review_launch, steward, post_words, threads_file, transcript_facts, work_folder
 from t3_tasks import under_t3, typed
@@ -478,7 +478,7 @@ def check_turn(repo, num, args=(), drafts=()):
     if any(when(r) > when(last[-1]['created']) for r in reviews if r != 'null'):
         return
     if (datetime.datetime.now(datetime.timezone.utc) - when(last[-1]['created'])).total_seconds() >= 3 * 3600:
-        if any(proposal(draft_path(f)) for f in drafts):
+        if any(lint_kind(draft_path(f)) == 'proposal' for f in drafts):
             block(f"your last two comments on {repo}#{num} have no reply yet ({last[-1]['url']}): a proposal waits for one, even after 3 hours; "
                   "only the wait ping may follow (mergeworthy:post §Thread rules)")
         return
@@ -500,7 +500,7 @@ def check_finality(repo, num, files):
     if len(rounds) < 2: return
     for f in files:
         f = draft_path(f)
-        if not proposal(f): continue
+        if lint_kind(f) != 'proposal': continue
         root = next((os.path.dirname(p) for p in work_folder.ancestors(f) if os.path.basename(p) == 'drafts'), os.path.dirname(os.path.dirname(f)))
         m = os.path.join(root, 'maps', f"{repo.replace('/', '-')}-{num}.md")
         if os.path.exists(m) and os.path.getmtime(m) > rounds[-1]: continue
@@ -564,11 +564,8 @@ def check_context(thread, files):
     for this thread and recording its latest human comment (the tool's --verify). Tracker drafts are exempt; a thread gh can't read blocks."""
     if not thread: return
     for f in files:
-        f = os.path.expanduser(where.expand(f[5:] if f.startswith('body=') else f)).lstrip('@')
-        f = f if os.path.isabs(f) else os.path.join(cwd, f)
-        try: flags = open(f + '.lint').read().split()
-        except OSError: flags = []
-        if '--kind' in flags and flags[flags.index('--kind') + 1:][:1] == ['tracker']: continue
+        f = draft_path(f)
+        if lint_kind(f) == 'tracker': continue
         parent = re.sub(r'\.md$', '', f) + '.parent.md'
         tcf = os.path.join(os.path.dirname(f), 'thread-context.md')
         # the gate record names the thread context the draft was written and reviewed from (gate-pass); one made later is not it
