@@ -6,9 +6,10 @@ the last round brought a fixed blocker or should, and as a fresh reader's second
 import collections, glob, json, os, re, subprocess, sys, types
 import agent_jobs, drift, ledger, records, review_journal, testpaths
 
-# {loop: {'rounds': [[n, the heads its brief pinned, the reports it wrote]], 'threads': the T3 threads or Claude agents its rounds ran in}}
+# a post review's {loop: {'threads': the T3 threads or Claude agents its rounds ran in}}, where its later rounds are sent
 LOOPS = os.path.expanduser('~/.claude/review-loops.json')
-# what a loop recorded before review-loops.json: rounds {loop: [[n, heads]]}, threads {loop: [thread]}
+# what the installed version records, rounds {loop: [[n, heads]]} and threads {loop: [thread]}: read until one release after
+# the journal is installed on every machine
 OLD = {'rounds': os.path.expanduser('~/.claude/review-rounds.json'), 'threads': os.path.expanduser('~/.claude/review-threads.json')}
 
 
@@ -23,16 +24,9 @@ def _json(path):
     return data if isinstance(data, dict) else {}
 
 
-def record(loop, loops=None):
-    """loop's record in loops (default: review-loops.json), else what the files before it hold for loop."""
-    r = (_json(LOOPS) if loops is None else loops).get(loop)
-    if isinstance(r, dict): return r
-    return {k: _json(path).get(loop, []) for k, path in OLD.items()}
-
-
 def seat_loops(seat):
-    """The loops whose rounds ran in the reviewer seat: {loop: its first round's journal event, or None for a round only
-    review-loops.json or the files before it hold (a brief naming no checkout)}."""
+    """The loops whose rounds ran in the reviewer seat: {loop: its first round's journal event, or None for a post review's
+    round, which review-loops.json holds, or one OLD holds}."""
     data, old = _json(LOOPS), _json(OLD['threads'])  # read once: a message to a thread that never reviewed waits on nothing
     here = {l: None for l in {*data, *old} if seat in (data[l].get('threads', []) if isinstance(data.get(l), dict) else old.get(l, []))}
     return {**here, **{l: evs[0] for l, evs in review_journal.rounds(handle=seat).items()}}
@@ -82,24 +76,20 @@ def directives(brief):
 
 
 def register(loop, n, heads, *, thread=None, post=False, outs=(), seated=False, checkouts=(), led=None, step=None, seats=None, fills=None, company=None):
-    """Records round n of loop that ran: the thread it ran in, and, for a code review, the heads its brief pinned, the reports it
-    writes (outs), in review-loops.json, and in the journal of each change its brief names (checkouts) with whether it is one of
-    its step's seats (seated: its round 1 brief's `Fan-out:` line names SEATING), with the ledger it names (led), the step its `Review:` line declares
-    the seats its `Seats:` line does, the seat its `Fallback:` line fills and the company it ran on."""
-    failed = []  # each record is written though the other's write failed, then the first failure is raised
-    if not post:
-        for c in dict.fromkeys(filter(None, map(review_journal.change_of, checkouts))):
-            try: review_journal.append(c, {'ev': 'round', 'loop': loop, 'n': n, 'heads': heads, 'outs': sorted({os.path.realpath(o) for o in outs}), 'thread': thread, 'seated': seated, 'checkouts': list(checkouts), 'ledger': led, 'step': step, 'seats': seats, 'fills': fills, 'company': company})
-            except OSError as e: failed.append(e)
-    def ran(loops):
-        r = loops[loop] = record(loop, loops)
-        if thread and thread not in r['threads']: r['threads'].append(thread)
-        if not post:
-            r['rounds'].append([n, heads, sorted({os.path.realpath(o) for o in outs})])
-    try:
-        if thread or not post: agent_jobs.locked_update(LOOPS, ran)
-    except OSError as e: failed.append(e)
-    if failed: raise failed[0]
+    """Records round n of loop that ran: a post review's thread in review-loops.json; a code review's in the journal of each
+    change its brief names (checkouts), else in review_journal.UNPINNED, with the heads its brief pinned, the reports it writes
+    (outs), the thread it ran in, whether it is one of its step's seats (seated: its round 1 brief's `Fan-out:` line names
+    SEATING), the ledger it names (led), the step its `Review:` line declares, the seats its `Seats:` line does, the seat its
+    `Fallback:` line fills and the company it ran on."""
+    if post:
+        def ran(loops):
+            threads = loops.setdefault(loop, {'threads': []})['threads']
+            if thread not in threads: threads.append(thread)
+        if thread: agent_jobs.locked_update(LOOPS, ran)
+        return
+    event = {'ev': 'round', 'loop': loop, 'n': n, 'heads': heads, 'outs': sorted({os.path.realpath(o) for o in outs}), 'thread': thread, 'seated': seated,
+             'checkouts': list(checkouts), 'ledger': led, 'step': step, 'seats': seats, 'fills': fills, 'company': company}
+    for c in dict.fromkeys(filter(None, map(review_journal.change_of, checkouts))) or [review_journal.UNPINNED]: review_journal.append(c, event)
 
 
 PENDING = os.path.expanduser('~/.claude/review-pending')  # a Bash command's admitted rounds and post launches, until it ended
@@ -193,10 +183,11 @@ def on_head(loop, n, tops, heads):
 
 
 def rounds_of(loop, tops):
-    """loop's rounds the journals of the changes of the checkouts tops hold, else review-loops.json's (a round whose brief named
-    no checkout, or one recorded before the journal)."""
-    found = [[e['n'], e['heads'], e['outs']] for c in dict.fromkeys(filter(None, map(review_journal.change_of, tops))) for e in review_journal.rounds(c).get(loop, [])]
-    return found or record(loop)['rounds']
+    """loop's rounds [[n, heads, outs]] the journals of the changes of the checkouts tops hold, else review_journal.UNPINNED's (a
+    round whose brief named no checkout), else OLD's."""
+    for changes in dict.fromkeys(filter(None, map(review_journal.change_of, tops))), [review_journal.UNPINNED]:
+        if found := [[e['n'], e['heads'], e['outs']] for c in changes for e in review_journal.rounds(c).get(loop, [])]: return found
+    return [[m, old, []] for m, old, *_ in _json(OLD['rounds']).get(loop, [])]
 
 
 def third_seat(loop, tops, d):

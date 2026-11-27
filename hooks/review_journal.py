@@ -1,8 +1,10 @@
 """The review journal (delegate §Review rounds): one append-only file per change, a branch of one repo, holding a `round` event for
-each review round that ran, written only by the hooks that register rounds. rounds() reads it back as the loops' records."""
+each review round that ran, and UNPINNED for a round whose brief names no checkout, written only by the hooks that register
+rounds. rounds() reads it back as the loops' records."""
 import fcntl, glob, hashlib, json, os, subprocess, time
 
 JOURNAL = os.path.expanduser('~/.claude/review-journal')
+UNPINNED = os.path.join(JOURNAL, 'unpinned', 'rounds.jsonl')  # a docs reader's rounds, handed rendered pages
 
 
 def change_of(checkout):
