@@ -24,7 +24,7 @@ Working a PR's head to a final state: every review loop ends clean, or its last 
 
 ### Small fix
 
-A change of at most 60 lines outside tests, docs (any `.md`), lockfiles and build output, with a test the base fails and the head passes (a repo keeping none: a reproduction; docs or whole-line comments alone: a commit's `Cold-read: <rules step 4's report>` trailer), replaces steps 1–4 with one two-seat review (`delegate §Reviewers`): `delegate/small-review.md` on the pushed head, recorded by `pr-steps small <each report>`; then step 5. Each blocker or should: your ruling and `delegate §Review rounds`; each `## Outside this change` line: its `task §Dispositions`.
+A change of at most 60 lines outside tests, docs (any `.md`), lockfiles and build output, with a test the base fails and the head passes (a repo keeping none: a reproduction; docs or whole-line comments alone: a commit's `Cold-read: <rules step 4's report>` trailer), replaces steps 1–4 with one two-seat review (`delegate §Reviewers`): `delegate/small-review.md` on the pushed head, recorded by `pr-steps small <each report>`; then step 5. Each launch names its report and body verdict paths; the two verdicts are the body loop's round 1, closed in step 5. Each blocker or should: your ruling and `delegate §Review rounds`; each `## Outside this change` line: its `task §Dispositions`.
 
 ### Batching
 

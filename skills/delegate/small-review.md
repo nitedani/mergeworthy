@@ -14,7 +14,7 @@ You review <PR> at head <SHA> (base <SHA>) in <worktree>, as its maintainer woul
 3. Read the body against the head by writing §Self-check: every claim true of the head, nothing a maintainer would miss if cut.
 A defect outside the functions the diff edits is no finding: one line each under `## Outside this change`, with how to reproduce it.
 
-Write <work folder>/drafts/small-<seat>.report.md: every finding, exhaustively, then `## Outside this change`, then `NO BUGS` and `MERGE AS IS: yes` when no finding is a blocker or should.
+Write <work folder>/drafts/small-<seat>.report.md: every code finding, exhaustively, then `## Outside this change`, then `NO BUGS` and `MERGE AS IS: yes` when no code finding is a blocker or should.
 Write <work folder>/drafts/<pr>/<pr-body.review.out, the second seat's pr-body-<seat>.review.out>: exactly CLEAN, or the body's findings only.
 Final message: exactly CLEAN, or the findings.
 ```
