@@ -186,7 +186,7 @@ fi
 # carries an earlier pass or small fix's review ("carries the pass of <sha>", carry_holds): a fix log or a note is not a shape pass
 # A pass rates every item afresh: a row whose rating is copied ("10 =", "=", "unchanged since") is a re-rating of a delta, not a pass
 is_pass() { grep -q '✅' "$1" && grep -Eq '([0-9]+|\bnew) *(⇒|=>) *([0-9]+|removed|new|n/a)' "$1" && ! grep -Eiq '\| *([0-9]+ *)?= *\||unchanged since' "$1"; }
-# A pass's report rates one item per row (its first table cell, or the text before the rating) and has the '## Root cause' of code §Root cause
+# A pass's report rates one item per rating row (its first table cell, or the text before the rating) and has the '## Root cause' of code §Root cause
 one_per_row_root_cause() { python3 - "$1" <<'EOF' || exit 1
 import re, sys
 path = sys.argv[1]; s = open(path).read()
@@ -194,7 +194,9 @@ ask = '(mergeworthy delegate/shape.md)'
 grouped = re.compile(r'\(\s*\d+\s+(fns?|functions?|helpers?|methods?|files?)\b[^)]*\)|`[^`\n]+`\s*(,|&|\+|/|\band\b)\s*`', re.I)
 for line in s.splitlines():
     m = re.search(r'([0-9]+|\bnew) *(⇒|=>) *([0-9]+|removed|new|n/a)', line)
-    item = line.strip().strip('|').split('|')[0] if line.lstrip().startswith('|') else line[:m.start()] if m else ''
+    if not m:
+        continue  # only a rating row rates items; a census or findings row may name several
+    item = line.strip().strip('|').split('|')[0] if line.lstrip().startswith('|') else line[:m.start()]
     if grouped.search(item):
         sys.exit(f"{path} rates several items in one row: give each file and function its own row and rating {ask}:\n{line.strip()}")
 sec = re.search(r'^## Root cause[ \t]*\n(.*?)(?=^## |\Z)', s, re.M | re.S)

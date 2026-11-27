@@ -2594,6 +2594,8 @@ check "BLOCK: a pass without '## Root cause', with a bullet carrying no link (qu
   "$(psn "$T/rc1.md") $(grep -c "has no '## Root cause'" "$T/err") $(psn "$T/rc2.md") $(grep -c '^- src/x.ts:3 decodes the path twice' "$T/err") $(psn "$T/rc3.md") $(grep -c "it has 'Pre-1.0 shims: kept the v0 alias'" "$T/err")"
 sed 's/^✅ a$/- `thread_logs` in `hooks\/memory_file.py` 6 ⇒ 8\n✅ a\n## Root cause\n- `src\/x.ts:3` decodes the path twice: https:\/\/github.com\/o\/r\/issues\/1\nPre-1.0 shims: none/' "$T/rc0.md" > "$T/rc4.md"
 check "a pass rating an item 'in' a file, with a workaround's upstream link and no shims, records" 0 "$(psn "$T/rc4.md")"
+sed 's/^✅ a$/| `x.ts`, `y.ts` | DELETE-NOW | dead |\n&/' "$T/rc4.md" > "$T/rc5.md"; sed 's/^✅ a$/| `x`, `y` | 8 ⇒ 9 | dead |\n&/' "$T/rc4.md" > "$T/rc6.md"
+check "only a rating row is checked for grouping: a findings row naming two files records, a rated row naming two refuses" "0 1" "$(psn "$T/rc5.md") $(psn "$T/rc6.md")"
 # a carry of a head with two passes (one before a maintainer's ask, one after it) carries the latest
 GC="$T/prsc"; mkdir -p "$GC"; git -C "$GC" init -q; git -C "$GC" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; GA=$(git -C "$GC" rev-parse HEAD)
 printf '| `a.ts` | 6 ⇒ 7 | x | one |\n✅ a.ts\nCLEAN\n' > "$T/two-old.md"; printf '| `a.ts` | 7 ⇒ 9 | y | two |\n✅ a.ts\nCLEAN\n' > "$T/two-new.md"
