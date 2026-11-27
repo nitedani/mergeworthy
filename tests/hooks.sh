@@ -1439,6 +1439,31 @@ echo '{"providerInstances":{"antigravity":{"driver":"codex"},"antigravity_2":{"d
 check "BLOCK: an implementer on a target naming the antigravity driver alone, while the instance id antigravity runs Codex, as the Antigravity instance does" "2 2" \
   "$(impl '{"driverKind":"antigravity"}') $(impl '{"providerInstanceId":"antigravity_2"}')"
 rm "$HOME/.t3/userdata/settings.json"
+# whether an instance loads mergeworthy comes from its own config, whatever its id or name: a Claude config dir's settings.json and
+# the --settings layers in launchArgs, an Antigravity profile's plugins folder
+mkdir -p "$T/mwc" "$T/mwe" "$HOME/.t3/userdata/providers/antigravity/$(printf agy_y | sha256sum | cut -d' ' -f1)/config/plugins/mergeworthy"
+echo '{"enabledPlugins":{"mergeworthy@mergeworthy":true}}' > "$T/mwc/settings.json"; echo '{"enabledPlugins":{"mergeworthy@mergeworthy":false}}' > "$T/mwc/off.json"
+python3 -c 'import json,sys; t=sys.argv[1]; cc={"env":{"CLAUDE_CONFIG_DIR":t+"/mwc"}}; print(json.dumps({"providerInstances":{
+  "cm":{"driver":"claudeAgent","config":cc},
+  "myclaude":{"driver":"claudeAgent","config":dict(cc,launchArgs="--settings '"'"'{\"enabledPlugins\":{\"mergeworthy@mergeworthy\":false}}'"'"'")},
+  "cfile":{"driver":"claudeAgent","config":{"homePath":t+"/mwc","launchArgs":["--settings="+t+"/mwc/off.json"]}},
+  "cbare":{"driver":"claudeAgent","config":{"env":{"CLAUDE_CONFIG_DIR":t+"/mwe"}}},
+  "cgone":{"driver":"claudeAgent","enabled":False,"config":cc},
+  "agy_x":{"driver":"antigravity"},"agy_y":{"driver":"antigravity"},"cx":{"driver":"codex"}}}))' "$T" > "$HOME/.t3/userdata/settings.json"
+tl() { # instance: a t3_thread_launch's exit code under T3
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__t3_thread_launch","tool_input":{"title":"tl","message":"Research the cache","modelSelection":{"instanceId":sys.argv[1],"model":"m"}}}))' "$1" \
+    | T3CODE_THREAD_ID=th python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
+res() { impl "{\"providerInstanceId\":\"$1\"}" '' research 'Research the cache'; }
+check "BLOCK: a Claude instance whose inline --settings JSON or --settings= file disables the plugin, or whose config dir doesn't enable it, naming the enabled one that loads it; by delegate_task or t3_thread_launch" "2 1 2 1 2 1 2 1" \
+  "$(res myclaude) $(grep -c "^BLOCKED: T3's instance myclaude doesn't load mergeworthy.*set the target to cm\.$" "$T/err") $(res cfile) $(grep -c 'instance cfile.*target to cm\.$' "$T/err") $(res cbare) $(grep -c 'instance cbare.*target to cm\.$' "$T/err") $(tl myclaude) $(grep -c 'instance myclaude.*target to cm\.$' "$T/err")"
+check "BLOCK: an Antigravity instance with no mergeworthy in its profile's plugins, naming the one that has it" "2 1" \
+  "$(res agy_x) $(grep -c "instance agy_x doesn't load mergeworthy.*set the target to agy_y\.$" "$T/err")"
+check "a launch on an instance that loads mergeworthy (cm, agy_y), on codex, an unlisted instance, a driverKind alone or no target passes" "0 0 0 0 0 0" \
+  "$(res cm) $(res agy_y) $(tl cx) $(res claudeAgent) $(impl '{"driverKind":"claudeAgent"}' '' research 'Research the cache') $(impl '{}' '' research 'Research the cache')"
+echo '{"providerInstances":{"agy_x":{"driver":"antigravity"}}}' > "$HOME/.t3/userdata/settings.json"
+check "BLOCK: when no instance of the driver loads mergeworthy, the refusal says so" "2 1" "$(res agy_x) $(grep -c 'no instance of its driver loads it' "$T/err")"
+rm "$HOME/.t3/userdata/settings.json"
+check "with no settings file nothing is refused for its instance" "0 0" "$(res myclaude) $(tl agy_x)"
 check "an exploring research agent on claudeAgent passes" 0 "$(rev '{"providerInstanceId":"claudeAgent"}' 'Explore it' research)"
 python3 -c 'import json; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":"Review it","role":"review","target":{"providerInstanceId":"claudeAgent"},"clientRequestId":"r-1"}}))' \
   | T3CODE_THREAD_ID=th python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"

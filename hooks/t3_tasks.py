@@ -2,7 +2,7 @@
 """T3 Code: whether the session runs under it, and its delegated tasks as the session's transcript reports them: its tool calls
 and results (delegate_task, task_status, t3_thread_send) and T3's notices. A thread is all its tasks: the first, each message sent
 to it, each turn T3 continues on its own (provider-continuation)."""
-import json, os, re
+import hashlib, json, os, re, shlex
 
 # T3's notice is `Delegated task <id>[ (<title>)][ in child thread <thread id>] [<status>]:` with its result, or
 # `Delegated task <id> reached a terminal state` for a task it no longer knows (its formatter, delegatedCompletionWakeDetail)
@@ -32,11 +32,55 @@ def under_t3():
     return bool(os.environ.get('T3CODE_THREAD_ID'))
 
 
+def instances():
+    """T3 Code's provider instances by id, from its settings, else {}."""
+    try: i = json.load(open(os.path.expanduser('~/.t3/userdata/settings.json')))['providerInstances']
+    except (OSError, ValueError, KeyError, TypeError): return {}
+    return i if isinstance(i, dict) else {}
+
+
 def driver(instance, kind=None):
     """The driver T3 Code runs provider instance `instance` with (claudeAgent, codex, antigravity), from its settings; else the driver
     `kind` the launch names, else the id itself, as a built-in instance's id is its driver's."""
-    try: return json.load(open(os.path.expanduser('~/.t3/userdata/settings.json')))['providerInstances'][instance]['driver']
-    except (OSError, ValueError, KeyError, TypeError): return kind or instance
+    try: return instances()[instance]['driver']
+    except (KeyError, TypeError): return kind or instance
+
+
+def loads_mergeworthy(instance, config):
+    """Whether T3 Code's provider instance `instance` (its settings entry `config`) loads mergeworthy, as its driver loads plugins:
+    Claude Code with the plugin enabled in its config dir's settings.json and not disabled by a `--settings` file or JSON in its
+    launchArgs (which override it); Antigravity with a `mergeworthy` plugin in the instance's own profile (where hooks/agy-link
+    links it). Any other driver: True, as nothing here can tell."""
+    c = config.get('config') if isinstance(config.get('config'), dict) else {}
+    if config.get('driver') == 'claudeAgent':
+        home = (c.get('env') or {}).get('CLAUDE_CONFIG_DIR') if isinstance(c.get('env'), dict) else None
+        layers = [os.path.join(os.path.expanduser(home or c.get('homePath') or '~/.claude'), 'settings.json')]
+        args = c.get('launchArgs') or []
+        try: args = shlex.split(args) if isinstance(args, str) else [str(a) for a in args]
+        except ValueError: args = []
+        layers += [a.split('=', 1)[1] if a.startswith('--settings=') else b for a, b in zip(args, args[1:] + ['']) if a == '--settings' or a.startswith('--settings=')]
+        on = False
+        for layer in filter(None, layers):
+            try: d = json.loads(layer) if layer.lstrip().startswith('{') else json.load(open(os.path.expanduser(layer)))
+            except (OSError, ValueError): continue
+            plugins = d.get('enabledPlugins') if isinstance(d, dict) else None
+            for k, v in (plugins.items() if isinstance(plugins, dict) else ()):
+                if k.split('@')[0] == 'mergeworthy': on = bool(v)
+        return on
+    if config.get('driver') == 'antigravity':
+        profile = hashlib.sha256(instance.encode()).hexdigest()
+        return os.path.exists(os.path.expanduser(f'~/.t3/userdata/providers/antigravity/{profile}/config/plugins/mergeworthy'))
+    return True
+
+
+def without_mergeworthy(instance):
+    """None when T3 Code's instance `instance` loads mergeworthy, or its settings don't list it; else the instances of its driver
+    that do and are enabled, a list that may be empty."""
+    known = instances()
+    c = known.get(instance)
+    if not isinstance(c, dict) or loads_mergeworthy(instance, c): return None
+    return [i for i, o in known.items() if isinstance(o, dict) and o.get('driver') == c.get('driver') and o.get('enabled') is not False
+            and i != instance and loads_mergeworthy(i, o)]
 
 
 def result(content):

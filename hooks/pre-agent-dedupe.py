@@ -13,7 +13,7 @@ child wakes again when its background commands end."""
 import datetime, fcntl, functools, glob, hashlib, itertools, json, os, re, shlex, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import failclosed
-import agent_jobs, launch, memory_file, project_file, review_launch, testpaths
+import agent_jobs, launch, memory_file, project_file, review_launch, t3_tasks, testpaths
 from post_words import fence_spans
 from records import branch_record
 from shellcmd import segments, prog, git_argv, rlines, Where
@@ -181,6 +181,12 @@ def codex_reset():
     except (OSError, ValueError, AttributeError, TypeError):
         return None
     return min(until) if until and min(until) > time.time() else None
+# T3 Code may keep instances of a driver that load no mergeworthy (the owner's A/B twins): a mergeworthy session's agent never
+# runs on one (a Neon session's agents ran on such a Claude instance with no skills or hooks, 2026-11-27)
+if req.t3 and req.instance and (use := t3_tasks.without_mergeworthy(req.instance)) is not None:
+    sys.stderr.write(f"BLOCKED: T3's instance {req.instance} doesn't load mergeworthy, so this agent would run without its skills and hooks: "
+                     + (f"set the target to {' or '.join(use)}.\n" if use else "no instance of its driver loads it; launch on another driver's.\n"))
+    refused()
 # Implementers run on Claude, reviews first on Codex (mergeworthy:delegate §Model class, §Reviewers), whichever host the session runs
 # on: a delegate_task with no target runs on the launching session's provider, Antigravity's under hooks/agy.py (MERGEWORTHY_HOST);
 # an Antigravity seat names its target, so a launch without one is refused there too
