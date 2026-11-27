@@ -36,7 +36,7 @@ Each role's brief is a template in `~/.mergeworthy/current/skills/delegate/`, wi
 
 Later work on the same thing continues that agent, a review round only as a fix check (§Review rounds).
 - **Claude Code:** `SendMessage` to its agent id; a `claude -p` reviewer launched with `--session-id <uuid>`: `claude -p --resume <uuid>`.
-- **T3 Code:** `t3_thread_send` to its `childThreadId`, mode `queue`, asking for its result in a file a background wait watches.
+- **T3 Code:** `t3_thread_send` to its `childThreadId`, mode `queue`, asking for its result in a file a background wait watches; a review's fix check or reverify, which the host sends as a new `delegate_task`: its seat's company, the earlier report and what changed, and `Continues: <its seat loop>`.
 - **Codex in a shell:** `codex exec resume -c sandbox_mode=danger-full-access <session id> "<what changed>"` (the id `codex exec` printed).
 - **An agent is alive until its transcript and processes are quiet,** whatever T3 shows: a turn that ended, `waiting_for_children`, or a cancel that finds "no interruptible run" mean it wakes when its background commands end, and `t3_queue_promote_to_steer` can revive a run T3 calls `interrupted` or `cancelled`. Continue a stuck agent with a message; a replacement goes in a fresh worktree. When two agents run one job, keep the one with the most progress.
 

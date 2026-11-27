@@ -2083,6 +2083,10 @@ check "a SendMessage round passes only as a fix check of an agent whose transcri
 FNL="$RLD/fn.ledger.md"; FNB="Review $T/ct at head $CH; final message exactly NO BUGS. Ledger: $FNL"
 fn="$(t3r delegate_task fn-codex-r1 th-fn1 "$FNB") $(rule "$FNL" "$CH" 1; t3r delegate_task fn-codex-r2 th-fn2 "$FNB") $(nrounds fn-codex) $(rule "$FNL" "$CH" 2; FCR=2 t3r t3_thread_send fn-codex-r3 th-fn2 "Round 3: $FNB") $(rule "$FNL" "$CH" 3; t3r delegate_task fn-codex-r4 th-fn3 "$FNB") $(rule "$FNL" "$CH" 4; t3r delegate_task fn-codex-r5 th-fn4 "$FNB") $(grep -c 'fn-codex already ran r1, r2, r3, r4' "$T/err")"
 check "a later round launched on a fresh reviewer stays in its loop and its four: r2 on a new thread counts as round 2, a fix check sent there continues it, BLOCK r5 on yet another thread naming the cap" "0 0 2 0 0 2 1" "$fn"
+FTL="$RLD/ft.ledger.md"; FTB="Review $T/ct at head $CH; final message exactly NO BUGS. Ledger: $FTL
+Continues: ft-codex"
+ft="$(t3r delegate_task ft-codex-r1 th-ft1 "Review $T/ct at head $CH; final message exactly NO BUGS. Ledger: $FTL") $(for i in 2 3 4; do rule "$FTL" "$CH" $((i - 1)); t3r delegate_task ft-codex-r$i th-ft$i "$FTB"; done | xargs) $(rule "$FTL" "$CH" 4; t3r delegate_task ft-codex-r5 th-ft5 "$FTB") $(grep -c 'ft-codex already ran r1, r2, r3, r4' "$T/err")"
+check "a T3 fix check launched as a new task naming its own loop (Continues: <its loop>) counts each round once: r2 to r4 pass, BLOCK r5 naming the cap" "0 0 0 0 2 1" "$ft"
 rm -f "$HOME/.t3/userdata/statev2.sqlite"
 mkdir -p "$HOME/.mergeworthy/projects/o"; echo "- a lesson from $OLD" > "$HOME/.mergeworthy/projects/o/gwnotes.md"
 check "a project notes file the brief names is read, not pinned: its history SHAs block nothing" 0 "$(ag "$OC" "Fix it in $T/gw; notes $HOME/.mergeworthy/projects/o/gwnotes.md")"

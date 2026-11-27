@@ -305,7 +305,8 @@ def admit(loop, n, tops, heads, led, owners=(), launcher=(), step=None):
     loop, else seat_owner's, the loop a `Continues:` line takes over), launcher the launcher's checkout, which holds the fixes of
     a brief naming none (a docs reader's, handed rendered pages), step the step its brief declares (`Review: <step>`)."""
     if why := fresh_once(loop, n, tops, heads, step) or ran_once(loop, n, tops, heads): return why
-    owners = owners or (seat_owner(loop, tops, heads) if name(loop).kind in ROUTED else [])
+    # a loop a `Continues:` line names as its own (a T3 fix check launched anew) counts its rounds once
+    owners = [o for o in owners if o != loop] or (seat_owner(loop, tops, heads) if name(loop).kind in ROUTED else [])
     a = types.SimpleNamespace(loop=loop, n=n, tops=tops, heads=heads, led=led, owners=owners, earlier=on_head(loop, n, tops, heads),
                               shared=[f"{o} r{m}" for o in owners for m in on_head(o, 10 ** 9, tops, heads)])
     a.routed = bool(a.shared) and len(a.earlier) + len(a.shared) >= CAP
