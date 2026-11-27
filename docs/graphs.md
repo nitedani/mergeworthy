@@ -9,14 +9,14 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 | `code` | `delegate` |
 | `converge` | `design`, `finality`, `task`, `delegate`, `code`, `writing`, `pull-request`, `rules`, `post`, `merging` |
 | `delegate` | `code`, `writing` |
-| `design` | `delegate`, `pull-request`, `code`, `finality`, `writing`, `post`, `converge` |
+| `design` | `delegate`, `pull-request`, `code`, `finality`, `writing`, `open-issue`, `post` |
 | `docs` | `delegate`, `converge`, `code` |
 | `evidence` | `delegate`, `converge`, `post` |
 | `finality` | `delegate`, `code`, `post`, `design`, `converge` |
 | `merging` | `code`, `converge`, `post`, `task`, `writing` |
 | `open-issue` | `pull-request`, `task`, `delegate`, `evidence`, `writing`, `post` |
 | `post` | `pull-request`, `open-issue`, `writing`, `delegate`, `task` |
-| `pull-request` | `delegate`, `post`, `evidence`, `design`, `finality`, `code`, `task`, `docs`, `converge`, `merging`, `writing`, `reply` |
+| `pull-request` | `delegate`, `post`, `evidence`, `design`, `finality`, `code`, `docs`, `task`, `converge`, `merging`, `writing`, `reply` |
 | `reply` | `task`, `post`, `converge`, `design`, `merging`, `delegate` |
 | `review` | `delegate`, `code`, `post`, `writing` |
 | `rules` | `task`, `open-issue`, `delegate`, `reply` |
@@ -62,8 +62,8 @@ flowchart TB
   s0 -.-> r4[["design"]]
   s0 -.-> r5[["finality"]]
   s0 -.-> r6[["code"]]
-  s0 -.-> r7[["task"]]
-  s0 -.-> r8[["docs"]]
+  s0 -.-> r7[["docs"]]
+  s0 -.-> r8[["task"]]
   s0 -.-> r9[["converge"]]
   s0 -.-> r10[["merging"]]
   s0 -.-> r11[["writing"]]
@@ -124,8 +124,8 @@ flowchart TB
   s0 -.-> r3[["code"]]
   s0 -.-> r4[["finality"]]
   s0 -.-> r5[["writing"]]
-  s0 -.-> r6[["post"]]
-  s0 -.-> r7[["converge"]]
+  s0 -.-> r6[["open-issue"]]
+  s0 -.-> r7[["post"]]
   start --> g0
 ```
 

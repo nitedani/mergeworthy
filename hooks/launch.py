@@ -69,10 +69,10 @@ class Request:
         k = target.get('driverKind')
         self.drivers = {driver(i, k)} if (i := target.get('providerInstanceId')) else {k} if k else set()
         # the Agent tool's `effort`, delegate_task's target.options or t3_thread_launch's modelSelection.options, as a list of
-        # {id, value} or an object, `effort` or `reasoningEffort`
+        # {id, value} or an object, `effort`, `reasoningEffort` or Antigravity's `thought_level`
         opts = (ti.get('target') or ti.get('modelSelection') or {}).get('options') or {}
         opts = {o.get('id'): o.get('value') for o in opts if isinstance(o, dict)} if isinstance(opts, list) else opts
-        self.effort = ti.get('effort') or opts.get('effort') or opts.get('reasoningEffort')
+        self.effort = ti.get('effort') or opts.get('effort') or opts.get('reasoningEffort') or opts.get('thought_level')
         self.session, self.transcript, self.cwd = d.get('session_id'), d.get('transcript_path'), d.get('cwd') or ''
         self.caller = transcript(d)  # the transcript of the session or subagent making the call
         # a call that failed (PostToolUseFailure, as T3 returns a refused launch: an MCP error) has its error instead of a response

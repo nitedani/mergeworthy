@@ -27,10 +27,11 @@ ACTIONS = {
     'thread-context':        ('post',),                     # post step 1
     'post-lint reply':       ('reply',) + WRITE,            # --kind reply or inline
     'post-lint proposal':    ('design',) + WRITE,           # design step 8
+    'post-lint wip':         ('design',) + WRITE,           # design §WIP comment
     'post-lint pr':          ('pull-request',) + WRITE,
     'post-lint title':       ('pull-request',) + WRITE,     # pull-request step 7
     'post-lint issue':       ('open-issue',) + WRITE,
-    'post-lint plan':        ('design',) + WRITE,           # a plan the user asked to post as an issue
+    'post-lint plan':        ('design',) + WRITE,           # a design plan posted as an issue
     'post-lint tracker':     ('task',) + WRITE,             # task step 7
     'gate-pass':             WRITE,
     'an upload':             ('evidence',),                 # a gh command with --attach, evidence step 5
@@ -45,7 +46,7 @@ ACTIONS = {
     'editing a skill or rules file':  ('rules',),
 }
 TEXT = ('--body', '-b', '--body-file', '-F', '--title', '-t')  # an issue edit that changes what a person reads
-UNGATED = {'code', 'finality', 'docs'}  # code reaches agents by path in briefs; finality has pre-bash-guard's third-proposal block; no tool call tells docs apart
+UNGATED = {'code', 'finality', 'docs'}  # code reaches agents by path in briefs; finality is checked by what it leaves (pre-bash-guard: pr-steps finality's plan) and its agents need delegate; no tool call tells docs apart
 
 
 def rows():

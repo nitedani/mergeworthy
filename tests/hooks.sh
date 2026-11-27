@@ -345,6 +345,9 @@ rm "$FX/repos_o_r_pulls_5_reviews_per_page_100"
 check "--help on a comment command" 0 "$(guard --help)"
 comments "$A1" "$A2" "$old"
 check "last two are the agent's, last is 4 hours old (wait ping)" 0 "$(guard)"
+echo '--kind proposal --repo o/r --parent none' > "$D/new.md.lint"
+check "BLOCK: a proposal as the third comment in a row, the last 4 hours old: it waits" "2 1" "$(guard) $(grep -c 'a proposal waits for one, even after 3 hours' "$T/err")"
+rm "$D/new.md.lint"
 comments "$A1" "$A2" "$hour"
 check "BLOCK: last two are the agent's, last is 1 hour old" 2 "$(guard)"
 comments "$A1" "$A2" "$now"
@@ -621,6 +624,10 @@ check "BLOCK: the posted draft posted to the discussion again" "2 1" "$(hk pre-b
 dfx turn "$(date -u -d '-1 hour' +%Y-%m-%dT%H:%M:%SZ)"
 check "discussion-post --edit from the posted draft passes, after two of the agent's comments too, and post-bash-register says nothing of a watcher" "0 0 0" \
   "$(hk pre-bash-guard "discussion-post --edit DC_504 $DD/r.md") $(hk post-bash-register "discussion-post --edit DC_504 $DD/r.md") $(grep -c 'joined no watcher' "$T/err")"
+for i in 1 2 3; do echo "d/r#5 $(date -d '-2 hour' +%s)" >> "$HOME/.claude/proposal-rounds.txt"; done; for x in '' .gate; do cp "$DD/r.md$x" "$DD/w.md$x"; done; echo '--kind wip' > "$DD/w.md.lint"
+check "three rounds and no map: a WIP edit of a discussion comment passes pre-bash-guard and post-bash-register, and counts no round" "0 0 3" \
+  "$(hk pre-bash-guard "discussion-post --edit DC_504 $DD/w.md") $(hk post-bash-register "discussion-post --edit DC_504 $DD/w.md") $(grep -c '^d/r#5 ' "$HOME/.claude/proposal-rounds.txt")"
+rm -f "$HOME/.claude/proposal-rounds.txt"
 other
 check "BLOCK: an edit from a draft gated beside another thread's record" "2 1" "$(hk pre-bash-guard "discussion-post --edit DC_504 $DD/r.md") $(grep -c 'is the context of d/r#7, not d/r#5' "$T/err")"
 cp "$T/dtc.md" "$DD/thread-context.md"; cp "$T/dgate" "$DD/r.md.gate"; echo 'Also W.' >> "$DD/r.md"
@@ -810,12 +817,14 @@ pguard() { # n -> exit code of the pre-bash-guard on posting proposal n to o/r#9
 }
 pposted() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh issue comment 9 --repo o/r --body-file "+sys.argv[1]},"tool_response":{"stdout":"https://example.invalid/x"}}))' "$AR/drafts/r1/p$1.md" \
     | python3 "$R/hooks/post-bash-register.py"; }
-for n in 1 2 3; do prop $n; done
+for n in 1 2 3 4; do prop $n; done
 check "the 1st proposal passes" 0 "$(pguard 1)"; pposted 1
 check "the 2nd proposal passes" 0 "$(pguard 2)"; pposted 2
 check "BLOCK: the 3rd proposal without a thread map" 2 "$(pguard 3)"
 grep -o 'maps/[^ ]*' "$T/err" | head -1
-check "the finality block points to the WIP comment, not a restated design" 1 "$(grep -c "update the thread's WIP comment" "$T/err")"
+ONE="refresh its thread map with the invariants list, $AR/maps/o-r-9.md, so it is newer than your last proposal (run the finality pass only when mergeworthy:design step 7 calls for it), then that step's WIP update (mergeworthy:design §WIP comment)"
+one() { echo "$(grep -cF "$ONE" "$T/err") $(grep -c -- '--kind reply' "$T/err") $(grep -c "it is the thread's WIP comment" "$T/err")"; }
+check "the 3rd proposal's block has the one text, pointing at design step 7's WIP update" "1 0 0" "$(one)"
 touch -d '+1 minute' "$AR/maps/o-r-9.md"
 check "the 3rd proposal with a fresh map passes" 0 "$(pguard 3)"
 cp "$AR/drafts/r1/p3.md" "$AR/drafts/r1/p3.md.lint" "$AR/drafts/r1/p3.md.gate" "$T/"; mv "$T/p3.md" "$T/p9.md"; mv "$T/p3.md.lint" "$T/p9.md.lint"; mv "$T/p3.md.gate" "$T/p9.md.gate"; tcbind "$T/p9.md"
@@ -823,6 +832,46 @@ check "BLOCK: a proposal posted from a //path outside any drafts/ folder, for it
   "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh issue comment 9 --repo o/r --body-file /"+sys.argv[1]},"cwd":sys.argv[2]}))' "$T/p9.md" "$T" | timeout 20 python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?)"
 touch -d '-1 hour' "$AR/maps/o-r-9.md"
 check "BLOCK: a map older than the last proposal" 2 "$(pguard 3)"
+touch -d '+1 minute' "$AR/maps/o-r-9.md"; pposted 3; touch -d '-1 hour' "$AR/maps/o-r-9.md"
+check "BLOCK: a 4th proposal whose map predates the 3rd, with the same one text" "2 1 0 0" "$(pguard 4) $(one)"
+touch -d '+1 minute' "$AR/maps/o-r-9.md"; check "the 4th proposal passes once the map is newer than the 3rd" 0 "$(pguard 4)"
+prc() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"tool_response":{"stdout":"https://example.invalid/x"}}))' "$1" | python3 "$R/hooks/post-bash-register.py" 2>"$T/err"; echo $?; }
+rounds() { grep -c '^o/r#9 ' "$HOME/.claude/proposal-rounds.txt"; }
+gd() { # name lint-flags: a gated draft in $AR/drafts/r1 with that .lint
+  printf 'Draft %s\n' "$1" > "$AR/drafts/r1/$1.md"; sha256sum "$AR/drafts/r1/$1.md" | cut -d' ' -f1 > "$AR/drafts/r1/$1.md.gate"; tcbind "$AR/drafts/r1/$1.md"; echo "$2" > "$AR/drafts/r1/$1.md.lint"; }
+touch -d '-1 hour' "$AR/maps/o-r-9.md"; gd w '--kind wip --repo o/r'; echo '{"issue_url":"https://api.github.com/repos/o/r/issues/9"}' > "$FX/repos_o_r_issues_comments_77"
+check "three rounds and a stale map: a WIP edit by comment id passes pre-bash-guard and post-bash-register, and counts no round" "0 0 3" \
+  "$(hk pre-bash-guard "gh api -X PATCH repos/o/r/issues/comments/77 -F body=@$AR/drafts/r1/w.md") $(prc "gh api -X PATCH repos/o/r/issues/comments/77 -F body=@$AR/drafts/r1/w.md") $(rounds)"
+gd nk '--repo o/r --parent none'
+check "a draft linted with no --kind is no proposal: posted to a thread with three rounds and a stale map, both hooks pass and count no round" "0 0 3" \
+  "$(hk pre-bash-guard "gh issue comment 9 --repo o/r --body-file $AR/drafts/r1/nk.md") $(prc "gh issue comment 9 --repo o/r --body-file $AR/drafts/r1/nk.md") $(rounds)"
+prop 5; touch -d '+1 minute' "$AR/maps/o-r-9.md"
+check "a proposal draft sent as an edit (--edit-last) counts no round" "0 3" "$(prc "gh issue comment 9 --repo o/r --edit-last --body-file $AR/drafts/r1/p5.md") $(rounds)"
+prc "gh issue comment 9 --repo o/r --body-file $AR/drafts/r1/p5.md" >/dev/null; touch -d '-1 hour' "$AR/maps/o-r-9.md"
+check "a posted proposal corrected with --edit-last, the map now stale: both hooks pass it and it counts no second round" "4 0 0 4" \
+  "$(rounds) $(hk pre-bash-guard "gh issue comment 9 --repo o/r --edit-last --body-file $AR/drafts/r1/p5.md") $(prc "gh issue comment 9 --repo o/r --edit-last --body-file $AR/drafts/r1/p5.md") $(rounds)"
+prop 6; check "a proposal whose draft path is a shell variable counts a round" "0 5" "$(prc "D=$AR/drafts/r1; gh issue comment 9 --repo o/r --body-file \"\$D/p6.md\"") $(rounds)"
+
+# ---------- post-lint --kind wip: a design thread's WIP comment (design §WIP comment) ----------
+wipd() { # sentences [section to drop] [line to add under TLDR] [line to add at the end]: $T/wip.md, 15 words plus 10 a sentence
+  { printf '# 🚧 WIP\n\n*This comment is edited upon updates.*\n'; s=$1; per=$(( ($1 + 6) / 7 )); for h in TLDR Scope State TODO Agreed Open 'Next steps'; do
+      [ "$h" = "${2:-}" ] && continue; printf '\n## %s\n\n' "$h"; [ "$h" = TLDR ] && [ -n "${3:-}" ] && printf '%s\n' "$3"
+      for i in $(seq $per); do [ "$s" -gt 0 ] && echo "The cache keeps one deadline across every retry it makes." && s=$((s - 1)); done; done
+    [ -z "${4:-}" ] || printf '\n%s\n' "$4"; } > "$T/wip.md"; }
+wl() { MERGEWORTHY_BADGE=off python3 "$R/bin/post-lint" "$T/wip.md" --kind wip "$@" 2>&1; }
+wipd 32 '' 'The map holds agreed points.'; printf 'Could the timeout move before the retry loop, please?\n' > "$T/wip.parent.md"
+check "a 340-word WIP comment beside a 9-word parent passes as --kind wip, capped at 600" "1 0" "$(wl | grep -c '^length: 340 words, cap 600$') $(wl >/dev/null; echo $?)"
+wipd 32 Agreed; check "BLOCK: a WIP comment without '## Agreed'" 1 "$(wl | grep -c "has a '## Agreed' section")"
+wipd 32 '' 'Should the deadline cover the first attempt too?'; check "BLOCK: a WIP comment that asks a question" 1 "$(wl | grep -c 'a WIP comment asks nothing')"
+wipd 32 '' '' $'<details><summary>First proposal</summary>\n\nShould the deadline cover the first attempt too? I recommend yes.\n\n</details>'
+check "a question in the WIP comment's <details> (the first proposal, as posted) passes" "0 0" "$(wl | grep -c 'asks nothing') $(wl >/dev/null; echo $?)"
+wipd 32 '' '' $'<details><summary>First proposal</summary>\n\n<details><summary>Runs</summary>12 ms</details>\n\n1. Should the deadline cover the first attempt? I recommend yes.\n\n</details>'
+check "a question after a <details> nested in the kept first proposal passes too" "0 0" "$(wl | grep -c 'asks nothing') $(wl >/dev/null; echo $?)"
+wipd 58 '' 'The map holds every agreed point.'; check "BLOCK: a 601-word WIP comment" 1 "$(wl | grep -c '^601 words > 600 for a WIP comment')"
+wipd 58 '' 'The map holds agreed points.' "<details><summary>First proposal</summary>$(for i in $(seq 80); do printf '\nThe cache keeps one deadline across every retry it makes.\n'; done)</details>"
+check "a 600-word WIP comment with 800 more words in <details> passes" "0 1" "$(wl >/dev/null; echo $?) $(wl | grep -c '^length: 600 words, cap 600$')"
+printf 'The deadline covers every retry. I recommend option A.\n' > "$T/prop.md"
+check "a proposal's length line names its cap" 1 "$(MERGEWORTHY_BADGE=off python3 "$R/bin/post-lint" "$T/prop.md" --kind proposal --parent none 2>&1 | grep -c '^length: 9 words, cap 900$')"
 # ---------- post-lint: the badge is icons, then a line break ----------
 blint() { printf '%s' "$1" > "$T/badge.md"; python3 "$R/bin/post-lint" "$T/badge.md" --parent none 2>&1 | grep -c 'badge'; }
 check "icons, the italic model line, then a line break pass" 0 "$(blint $'<img src="https://github.com/claude.png" width="20" height="20" alt="Claude"> <img src="https://github.com/openai.png" width="20" height="20" alt="Codex"> *Opus 5.5 (medium effort) wrote this; GPT-6.1-Sol (high effort) reviewed it.*\nFixed in abc1234.\n')"
@@ -880,6 +929,8 @@ check "that draft, its prose edited with the line kept, relinted and reviewed ag
 sed -i -E 's#(compare/)[0-9a-f]+\.\.\.#\11234567...#' "$GD/r.md"
 check "BLOCK: that draft with the compare link's commit edited after its review" "1 1" "$(MERGEWORTHY_SRC="$S" MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GD/r.md" "$GD/r.review.out" --kind reply --repo acme/x --parent none >"$T/gp.out" 2>&1; echo $?) $(grep -c 'changed after its review' "$T/gp.out")"
 check "the next reply, nothing new since, gets no line; another owner's repo none" "0 0 0 0" "$(hg acme/x) $(grep -c 'Harness changes' "$GD/r.md") $(hg other/x) $(grep -c 'Harness changes' "$GD/r.md")"
+echo "$h1" > "$HOME/.mergeworthy/harness-shown/acme"; wipd 32; cp "$T/wip.md" "$GD/w.md"; touch -d '+1 minute' "$GD/w.md"; echo CLEAN > "$GD/w.review.out"; rv "$GD/w.review.out"
+check "gate-pass of a WIP comment passes and appends no harness line" "0 0" "$(MERGEWORTHY_SRC="$S" MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GD/w.md" "$GD/w.review.out" --kind wip --repo acme/x >"$T/gp.out" 2>&1; echo $?) $(grep -c 'Harness changes' "$GD/w.md")"
 
 check "a badge followed on its line by an italic model line passes, model names included" 0 "$(printf '%s\n\nFixed the bug.\n' '<img src="https://github.com/claude.png" width="20" height="20" alt="Claude"><img src="https://github.com/openai.png" width="20" height="20" alt="Codex"> *Opus 5.5 (medium effort) wrote this; a second Opus 5.5 (high effort) reviewed it; GPT-6.1-Sol (Codex, high effort) reviewed it.*' > "$T/ml.md"; MERGEWORTHY_BADGE=on python3 "$R/bin/post-lint" "$T/ml.md" --kind reply --parent none >/dev/null 2>&1; echo $?)"
 check "the writing skill's badge, a WIP link inside the italics, passes" 0 "$(sed -n 's/^  \(<img src=.*\)$/\1/p' "$R/skills/writing/SKILL.md" > "$T/wb.md"; printf '\nFixed the bug.\n' >> "$T/wb.md"; python3 "$R/bin/post-lint" "$T/wb.md" --parent none 2>&1 | grep -c 'badge')"
@@ -1358,16 +1409,34 @@ printf 'Fallback: codex stopped round 2\nReview it\n' > "$T/fx/fb-brief.md"; pri
 check "a review on claudeAgent passes with a Fallback sentence inside a task line, or a Fallback line in the brief file it names; one whose brief file has none is refused" "0 0 2" "$(rev '{"providerInstanceId":"claudeAgent"}' 'Review it. Fallback: codex stopped round 1') $(rev '{"providerInstanceId":"claudeAgent"}' "Follow $T/fx/fb-brief.md") $(rev '{"providerInstanceId":"claudeAgent"}' "Follow $T/fx/plain-brief.md")"
 printf 'Review the change.\nIf the independent reviewer fails, record `Fallback: <what failed>` in the task.\n' > "$T/fx/fb-slot-brief.md"
 check "BLOCK: a review on claudeAgent whose task, or the brief file it names, only quotes the \`Fallback: <what failed>\` form" "2 2" "$(rev '{"providerInstanceId":"claudeAgent"}' 'Review the change. If the independent reviewer fails, record `Fallback: <what failed>` in the task.') $(rev '{"providerInstanceId":"claudeAgent"}' "Follow $T/fx/fb-slot-brief.md")"
-# under Antigravity (hooks/agy.py sets MERGEWORTHY_HOST) a launch with no target inherits Antigravity, which runs no delegated agent
-impl() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"ag","tool_input":{"task":"Research the cache","title":"ag research","role":"research","target":json.loads(sys.argv[1])}}))' "$1" \
+# under Antigravity (hooks/agy.py sets MERGEWORTHY_HOST) a launch with no target inherits Antigravity, which runs no implementer and only the seats a brief targets there
+impl() { # target-JSON [host] [role] [task]: a delegate_task's exit code under T3
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"ag","tool_input":{"task":sys.argv[3],"title":"ag "+sys.argv[2],"role":sys.argv[2],"target":json.loads(sys.argv[1])}}))' "$1" "${3:-implementation}" "${4:-You implement the cache}" \
   | T3CODE_THREAD_ID=th MERGEWORTHY_HOST="${2:-}" python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
 mkdir -p "$HOME/.t3/userdata"; echo '{"providerInstances":{"antigravity_2":{"driver":"antigravity"},"claude_2":{"driver":"claudeAgent"}}}' > "$HOME/.t3/userdata/settings.json"
-check "BLOCK: under Antigravity a launch with no target, naming claudeAgent; a review with none, naming codex; an Antigravity target by instance or driver, under either host" "2 1 2 1 2 2 2" \
-  "$(impl '{}' antigravity) $(grep -c 'set target.providerInstanceId to claudeAgent' "$T/err") $(MERGEWORTHY_HOST=antigravity rev '{}' 'Review it') $(grep -c 'to codex' "$T/err") $(impl '{"providerInstanceId":"antigravity_2"}') $(impl '{"driverKind":"antigravity"}') $(impl '{"providerInstanceId":"antigravity"}' antigravity)"
+check "BLOCK: under Antigravity an implementer with no target, naming claudeAgent; an implementer on an Antigravity target by instance or driver, under either host; an implementer brief in role general; role implementation with any task, refused as an implementer" "2 1 2 2 2 2 1 2 1" \
+  "$(impl '{}' antigravity) $(grep -c 'no implementer runs on Antigravity.*with no target.*set target.providerInstanceId to claudeAgent' "$T/err") $(impl '{"providerInstanceId":"antigravity_2"}') $(impl '{"driverKind":"antigravity"}') $(impl '{"providerInstanceId":"antigravity"}' antigravity) $(impl '{"providerInstanceId":"antigravity"}' '' general 'You implement the cache') $(grep -c 'no implementer runs on Antigravity' "$T/err") $(impl '{"providerInstanceId":"antigravity"}' '' implementation 'Build the cache') $(grep -c 'no implementer runs on Antigravity' "$T/err")"
+check "on an Antigravity target a review, a design, research and a finality branch pass" "0 0 0 0" \
+  "$(impl '{"providerInstanceId":"antigravity"}' '' review 'Review it') $(impl '{"providerInstanceId":"antigravity"}' '' design 'Design the cache') $(impl '{"driverKind":"antigravity"}' '' research 'Research the cache') $(impl '{"providerInstanceId":"antigravity"}' '' general 'Draft the ideal cache design
+Fan-out: finality step 3')"
+check "BLOCK: under Antigravity a review or research with no target would run there, naming codex for the review and claudeAgent for research" "2 1 2 1" \
+  "$(impl '{}' antigravity review 'Review it') $(grep -c "^BLOCKED: with no target this launch would run on this session's Antigravity: set target.providerInstanceId to codex" "$T/err") $(impl '{}' antigravity research 'Research the cache') $(grep -c "^BLOCKED: with no target this launch would run on this session's Antigravity: set target.providerInstanceId to claudeAgent" "$T/err")"
 check "under Antigravity a launch on claudeAgent passes, and so does one with no target under Claude Code; a review on claude_2 (a Claude instance) still needs its Fallback line" "0 0 2" \
-  "$(impl '{"providerInstanceId":"claudeAgent"}' antigravity) $(impl '{}') $(rev '{"providerInstanceId":"claude_2"}' 'Review it')"
+  "$(impl '{"providerInstanceId":"claudeAgent"}' antigravity research 'Research the cache') $(impl '{}' '' research 'Research the cache') $(rev '{"providerInstanceId":"claude_2"}' 'Review it')"
+# delegate §Model class's per-provider seat: one brief's problem, a research launch per provider, each with its own title, clientRequestId and
+# output; its brief names a linked checkout, which a writer role would hold for the first launch alone
+check "the seat fixture's checkout is set up" 0 "$(git init -q -b main "$T/seatr" && git -C "$T/seatr" -c user.name=t -c user.email=t@t commit -q --allow-empty -m one && git -C "$T/seatr" worktree add -q -b seat "$T/seatw"; echo $?)"
+printf 'Debate the cache question; read the code in %s.\nTopic: cache debate\nFan-out: design step 3\n' "$T/seatw" > "$T/fx/seat-brief.md"
+seat() { # provider [task] [role]: a debater launch's exit code, registered when it passes
+  local j; j=$(python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"seat","tool_input":{"task":sys.argv[2],"title":"cache debate "+sys.argv[1],"role":sys.argv[3],"clientRequestId":"cache-debate-"+sys.argv[1],"target":{"providerInstanceId":sys.argv[1]}}}))' "$1" "${2:-Follow $T/fx/seat-brief.md; output to $T/fx/cache.$1.debate.md}" "${3:-research}")
+  printf '%s' "$j" | T3CODE_THREAD_ID=th python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; local r=$?; [ $r = 0 ] && printf '%s' "$j" | T3CODE_THREAD_ID=th python3 "$R/hooks/pre-agent-dedupe.py" register; echo $r; }
+check "a seat's three research launches, one per provider (claudeAgent, codex, antigravity), naming one linked checkout, all pass; BLOCK: a fourth with the claudeAgent launch's task under another title" "0 0 0 2 1" \
+  "$(seat claudeAgent) $(seat codex) $(seat antigravity) $(seat claude_2 "Follow $T/fx/seat-brief.md; output to $T/fx/cache.claudeAgent.debate.md") $(grep -c 'same work under another title' "$T/err")"
+for p in claudeAgent codex antigravity; do python3 "$R/bin/agent-job" done "$T/fx/cache.$p.debate.md" >/dev/null; done
+check "BLOCK: the same seat in the writer role design: the second launch waits for the first's checkout" "0 2 1" "$(seat claudeAgent '' design) $(seat codex '' design) $(grep -c 'another writer is working in a worktree' "$T/err")"
+python3 "$R/bin/agent-job" done "$T/fx/cache.claudeAgent.debate.md" >/dev/null
 echo '{"providerInstances":{"antigravity":{"driver":"codex"},"antigravity_2":{"driver":"antigravity"}}}' > "$HOME/.t3/userdata/settings.json"
-check "BLOCK: a target naming the antigravity driver alone, while the instance id antigravity runs Codex, as the Antigravity instance does" "2 2" \
+check "BLOCK: an implementer on a target naming the antigravity driver alone, while the instance id antigravity runs Codex, as the Antigravity instance does" "2 2" \
   "$(impl '{"driverKind":"antigravity"}') $(impl '{"providerInstanceId":"antigravity_2"}')"
 rm "$HOME/.t3/userdata/settings.json"
 check "an exploring research agent on claudeAgent passes" 0 "$(rev '{"providerInstanceId":"claudeAgent"}' 'Explore it' research)"
@@ -1559,13 +1628,13 @@ for f in glob.glob(os.path.expanduser('~/.claude/agent-jobs-launch/*')):
 PY
 check "a launch after three calls whose agents finished with no result reaching the launcher passes: a finished agent holds no slot" "0 0 0 0" "$r $(fin_pre fin-4 'Execute /tmp/x/fin4.md')"
 rm -rf "$LD2"; rm -f $(grep -l '"capF2"' "$HOME"/.claude/agent-jobs-launch/*)
-check "a fifth brief naming its fan-out step passes; one naming another step does not" "0 2" "$(cap capS $'Execute /tmp/x/cap8.md\nFan-out: converge §Running the agents') $(cap capS $'Execute /tmp/x/cap9.md\nFan-out: review step 2')"
-cap_impl() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"capS","tool_input":{"task":sys.argv[1],"title":"impl","role":"implementation"}}))' "$1$AFX" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; echo $?; }
-check "BLOCK: an implementation brief carrying the fan-out line still counts" 2 "$(cap_impl $'Execute /tmp/x/cap10.md\nFan-out: converge §Running the agents')"
+check "a fifth brief naming its fan-out step passes, a per-provider seat's too; one naming another step does not" "0 0 0 2" "$(cap capS $'Execute /tmp/x/cap8.md\nFan-out: converge §Running the agents') $(cap capS $'Execute /tmp/x/cap11.md\nFan-out: design step 3') $(cap capS $'Execute /tmp/x/cap12.md\nFan-out: pull-request step 5') $(cap capS $'Execute /tmp/x/cap9.md\nFan-out: review step 2')"
+cap_impl() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"capS","tool_input":{"task":sys.argv[1],"title":"impl "+sys.argv[2],"role":sys.argv[2]}}))' "$1$AFX" "${2:-implementation}" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; echo $?; }
+check "BLOCK: an implementation brief carrying the fan-out line still counts, in role implementation or as a general brief starting You implement" "2 2" "$(cap_impl $'Execute /tmp/x/cap10.md\nFan-out: converge §Running the agents') $(cap_impl $'You implement the cache\nFan-out: design step 3' general)"
 FB="$HOME/.mergeworthy/work/fx/verify-1.md"; mkdir -p "${FB%/*}"; printf 'Verify slice 1.\nFan-out: converge §Running the agents\n' > "$FB"
 check "a fifth launch following a work-folder brief that holds the fan-out line passes" 0 "$(cap capS "Follow $FB exactly")"
 python3 "$R/bin/agent-job" done "$(python3 -c 'import sys; print(sys.argv[1][:40])' "Follow $FB exactly")" >/dev/null  # its key: the title
-python3 "$R/bin/agent-job" done /tmp/x/cap8.md >/dev/null; python3 "$R/bin/agent-job" done /tmp/x/cap1.md >/dev/null
+for k in cap8 cap11 cap12 cap1; do python3 "$R/bin/agent-job" done "/tmp/x/$k.md" >/dev/null; done
 check "a released job no longer counts" 0 "$(cap capS 'Execute /tmp/x/cap4.md')"
 python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600, "launched": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "cap2.md" in open(f).read()]'
 mkdir -p "$HOME/.claude/projects/-cap"; python3 -c 'import json,sys,time; w=lambda o: print(json.dumps(o)); w({"type":"queue-operation","operation":"enqueue","timestamp":time.strftime("%Y-%m-%dT%H:%M:%S.000Z",time.gmtime(time.time()-600)),"content":"Execute /tmp/x/cap2.md"}); w({"type":"user","message":{"content":"Execute /tmp/x/cap2.md"}}); w({"type":"assistant","message":{"content":[{"type":"text","text":"Report written."}]}})' > "$HOME/.claude/projects/-cap/cap2.jsonl"
@@ -1853,6 +1922,10 @@ check "BLOCK: a research brief with no Topic line" 2 "$(ag "$OC" 'Look into CSS'
 printf 'Merge memory-new.txt into memory.md.\n' > "$MR/memory-brief-9.md"
 check "a memory refresh launched as research in the same folder needs no Topic line" 0 "$(ag "$OC" "Follow the brief at $MR/memory-brief-9.md exactly." research)"; rm -f "$MR/memory-brief-9.md"
 check "BLOCK: research the notes already cover, naming the file" "2 1" "$(ag "$OC" $'Look into CSS again\nTopic: tanstack client css' research) $(grep -c "$MR/css-research.md" "$T/err")"
+mkdir -p "$MR/design"; printf 'The tanstack client css seat: its answer.\n' > "$MR/design/css.claudeAgent.debate.md"
+check "a per-provider seat on a topic an earlier seat's report covers passes; BLOCK: an ordinary research launch on it, naming that report" "0 2 1" "$(ag "$OC" $'Debate CSS\nTopic: tanstack client css\nFan-out: design step 3' research) $(ag "$OC" $'Look into CSS\nTopic: tanstack client css' research) $(grep -c "$MR/design/css.claudeAgent.debate.md" "$T/err")"
+check "the other per-provider seats on it pass too; BLOCK: a finality step 2 mapper and a converge verifier on it, naming that report" "0 0 0 2 2 1" "$(for s in 'finality step 3' 'design step 4' 'pull-request step 5' 'finality step 2' 'converge §Running the agents'; do ag "$OC" "$(printf 'Map CSS, %s\nTopic: tanstack client css\nFan-out: %s' "$s" "$s")" research; done | tr '\n' ' ')$(grep -c "$MR/design/css.claudeAgent.debate.md" "$T/err")"
+rm -r "$MR/design"
 check "research passes once each covering file is named as checked" 0 "$(ag "$OC" $'Look into CSS once more\nTopic: tanstack client css\nChecked: '"$MR/css-research.md"' covers dev only' research)"
 check "research whose brief names the covering note under ~/.mergeworthy/work passes" 0 "$(ag "$OC" $'Look into CSS, building on '"$MR/css-research.md"$'\nTopic: tanstack client css' research)"
 printf 'Look into CSS, building on %s\nTopic: tanstack client css\n' "$MR/css-research.md" > "$MR/css-brief.md"
@@ -1905,6 +1978,7 @@ check "BLOCK: a Codex delegate_task at high, naming the line; at medium (as opti
 check "BLOCK: under T3 a review on codex at high, and a fallback on Claude at high; medium passes" "2 2 0" "$(T3CODE_THREAD_ID=th aeff mcp__t3-code__delegate_task '{"target":{"providerInstanceId":"codex","options":{"reasoningEffort":"high"}}}') $(T3CODE_THREAD_ID=th aeff mcp__t3-code__delegate_task '{"task":"Review o/r#8 per ~/.mergeworthy/projects/o/r.md\nFallback: codex failed","target":{"options":{"effort":"high"}}}') $(T3CODE_THREAD_ID=th aeff mcp__t3-code__delegate_task '{"target":{"providerInstanceId":"codex","options":{"reasoningEffort":"medium"}}}')"
 check "BLOCK: a Claude delegate_task and an Agent at high, and a launch with no effort option" "2 2 2 1" "$(aeff mcp__t3-code__delegate_task '{"target":{"options":{"effort":"high"}}}') $(aeff Agent '{"effort":"high"}') $(aeff mcp__t3-code__delegate_task '{}') $(grep -c "harness's default" "$T/err")"
 check "an Agent at medium passes" 0 "$(aeff Agent '{"effort":"medium"}')"
+check "under T3 a review and research on antigravity at thought_level medium pass; BLOCK at high, naming its option" "0 0 2 1" "$(T3CODE_THREAD_ID=th aeff mcp__t3-code__delegate_task '{"target":{"providerInstanceId":"antigravity","options":[{"id":"thought_level","value":"medium"}]}}') $(T3CODE_THREAD_ID=th aeff mcp__t3-code__delegate_task '{"role":"research","target":{"providerInstanceId":"antigravity","options":[{"id":"thought_level","value":"medium"}]}}') $(T3CODE_THREAD_ID=th aeff mcp__t3-code__delegate_task '{"target":{"providerInstanceId":"antigravity","options":[{"id":"thought_level","value":"high"}]}}') $(grep -c 'thought_level. for Antigravity' "$T/err")"
 printf -- '- a convention\n## Who decides\n- maint merges: ~/.mergeworthy/projects/o/r.study.md\n## Agents\nEffort: medium\n' > "$HOME/.mergeworthy/projects/o/r.md"
 check "BLOCK: an unbulleted Effort line holds too: high or no option blocks, medium passes" "2 2 0" "$(aeff mcp__t3-code__delegate_task '{"target":{"options":{"reasoningEffort":"high"}}}') $(aeff mcp__t3-code__delegate_task '{}') $(aeff Agent '{"effort":"medium"}')"
 check "BLOCK: a brief naming o/r but not its project file gets that refusal and the file's Effort refusal in one message" "2 1 1" "$(aeff mcp__t3-code__delegate_task '{"task":"Review o/r#8","prompt":"Review o/r#8"}') $(grep -c 'name each project file' "$T/err") $(grep -c 'Effort: medium' "$T/err")"
@@ -3448,7 +3522,7 @@ check "codex login under T3 passes" 0 "$(cx th 'codex login status')"
 # ---------- pre-design-gate: Tier M code waits for prior-art.md and decisions/*.md ----------
 D="$T/dg"; mkdir -p "$D" "$D-work"; git -C "$D" init -q
 (cd "$D" && bash "$R/bin/pr-steps" preflight 'none, because the design gate is tested here' >/dev/null && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
-gate() { python3 -c 'import json,sys; print(json.dumps({"tool_name":sys.argv[1],"tool_input":json.loads(sys.argv[2]),"cwd":sys.argv[3]}))' "$1" "$2" "$D" | python3 "$R/hooks/pre-design-gate.py" 2>/dev/null; echo $?; }
+gate() { python3 -c 'import json,sys; print(json.dumps({"tool_name":sys.argv[1],"tool_input":json.loads(sys.argv[2]),"cwd":sys.argv[3]}))' "$1" "$2" "$D" | python3 "$R/hooks/pre-design-gate.py" 2>"$T/dg.err"; echo $?; }
 check "no scope.md: an edit passes" 0 "$(gate Edit "{\"file_path\":\"$D/a.ts\"}")"
 printf 'Tier: M, because x\n' > "$D-work/scope.md"
 check "BLOCK: Tier M edit with no prior art or decision" 2 "$(gate Edit "{\"file_path\":\"$D/a.ts\"}")"
@@ -3457,6 +3531,8 @@ check "a research agent passes" 0 "$(gate mcp__t3-code__delegate_task '{"role":"
 check "an artifact-root write passes" 0 "$(gate Write "{\"file_path\":\"$D-work/prior-art.md\"}")"
 touch "$D-work/prior-art.md"; mkdir -p "$D-work/design"; touch "$D-work/design/x.debate.md" "$D-work/design/x.review.md"
 check "BLOCK: Tier M edit with only the design debate and review records" 2 "$(gate Edit "{\"file_path\":\"$D/a.ts\"}")"
+check "the refusal waits for the agreed design, design step 9" "2 1" "$(gate Edit "{\"file_path\":\"$D/a.ts\"}") $(grep -c 'design step 9) in decisions/<name>.md' "$T/dg.err")"
+check "with no decision, a Tier M prototype written into a plain folder outside any checkout passes" 0 "$(gate Write "{\"file_path\":\"$T/dg-proto/a.ts\"}")"
 mkdir -p "$D-work/decisions"; touch "$D-work/decisions/x.md"
 check "Tier M edit passes once prior art and a decision exist" 0 "$(gate Edit "{\"file_path\":\"$D/a.ts\"}")"
 DW="$HOME/.mergeworthy/work/dg"; D="$DW/repo"; mkdir -p "$D"; git -C "$D" init -q  # the work folder holding the checkout
@@ -3848,6 +3924,8 @@ check "BLOCK: post-lint without writing" 2 "$(sgb "post-lint $T/d.md --kind repl
 check "a reply's lint names reply, post and writing" "mergeworthy:post mergeworthy:reply mergeworthy:writing" "$(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | sort | xargs)"
 sgb "post-lint $T/d.md --kind=proposal" >/dev/null
 check "a proposal's lint names design" 1 "$(grep -c '^- mergeworthy:design, for post-lint proposal' "$T/sg.err")"
+sgb "post-lint $T/d.md --kind wip" >/dev/null
+check "a WIP comment's lint names design" 1 "$(grep -c '^- mergeworthy:design, for post-lint wip' "$T/sg.err")"
 sgb "post-lint $T/d.md --kind tracker" >/dev/null
 check "a tracker's lint names task" 1 "$(grep -c '^- mergeworthy:task, for post-lint tracker' "$T/sg.err")"
 sgb "post-lint $T/d.md --kind plan" >/dev/null

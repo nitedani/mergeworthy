@@ -1341,6 +1341,13 @@ def plain_create(cmd, cwd):
             return ok and where.dir and work_folder.task_of(where.dir) or None
     return None
 
+def lint_kind(path):
+    """The `--kind` the draft at path was last linted with (its <path>.lint), or None."""
+    try: flags = open(path + '.lint').read().split()
+    except OSError: return None
+    return next(iter(flags[flags.index('--kind') + 1:][:1]), None) if '--kind' in flags else None
+
+
 def new_post_drafts(t):
     """Draft files a gh or discussion-post argv posts as something new (an issue, PR, comment or review): each draft is posted as new once, edits may repeat."""
     if (dp := discussion_post(t)) and dp[0] == 'add':
@@ -1350,7 +1357,7 @@ def new_post_drafts(t):
         return []
     a = t[1:]
     if a[:1] in (['issue'], ['pr']) and a[1:2] and a[1] in ('comment', 'create', 'review'):
-        return opt(a[2:], ['--body-file', '-F'])
+        return [] if '--edit-last' in a and '--create-if-none' not in a else opt(a[2:], ['--body-file', '-F'])  # --create-if-none may create
     if a[:1] == ['api']:
         method, _, _, inputs, posts = api_call(a[1:])
         if posts and method == 'POST':

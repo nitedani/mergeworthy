@@ -2,18 +2,18 @@
 
 Standards: `~/.mergeworthy/current/skills/code/SKILL.md` §Earn every line, §Deep modules. Include `delegate/agent.md`.
 
-One fresh-context agent (`design` step 3): it first generates without judging, then judges. The main session rates its recommendation (`pull-request §Rating`) and decides.
+No debater sees another's report (`design` step 3).
 
 ```
-The question: <the maintainer's comment, with its link>. The thread record: <abs>/drafts/<thread>/thread-context.md.
-The evidence so far: the flow traced in code (caller → callee, which object each side sees, in each environment) <path:line list>; what main does: <...>; measurements: <...>.
+The question: <quoted, with its link>. The thread record, if any: <abs>/drafts/<thread>/thread-context.md.
+The evidence so far: the flow traced in code (`design` step 1) <path:line list>; what main does: <...>; measurements: <...>.
 The project file: <project file path>.
 
-1. Generate, no judging: the strongest case for the maintainer's view and the strongest case against. Each case from at least three frames, past the obvious first answers: the user who hits it, the maintainer who keeps the code, the smallest diff, the version with no new code, the design from scratch.
+1. Generate, no judging: the strongest case for the maintainer's view, else the proposed change, and the strongest case against. Each case from at least three frames, past the obvious first answers: the user who hits it, the maintainer who keeps the code, the smallest diff, the version with no new code, the design from scratch.
 2. Answer the question behind the literal one: is the defect a class (a default, a parser, a shared helper)? Then the class-wide fix with its evidence. Is "over-engineering" the right call, or is there a small, cleaner fix?
 3. Only then judge: score both sides, name each side's weakest point and the traps (hidden cost, a fix for a case nobody hits), and recommend. When the evidence rejects a suggestion in the question, give another way to reach the suggestion's goal, backed by a measurement.
-4. Build the simpler version (theirs, or the simplest option of your comparison) and name what breaks in it.
+4. Name the simpler version (theirs, or your comparison's simplest) and the probe showing what breaks in it; build nothing.
 
-Write <the record path design step 3 names>, ending with a line `SIMPLER: <what breaks, or nothing>`.
+Write <this provider's report path, design step 3>, ending with a line `SIMPLER: <what breaks, nothing, or pending: <probe>>`.
 Final message: the recommendation in one line, and the SIMPLER line.
 ```
