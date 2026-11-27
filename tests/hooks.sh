@@ -2596,6 +2596,8 @@ sed 's/^✅ a$/- `thread_logs` in `hooks\/memory_file.py` 6 ⇒ 8\n✅ a\n## Roo
 check "a pass rating an item 'in' a file, with a workaround's upstream link and no shims, records" 0 "$(psn "$T/rc4.md")"
 sed 's/^✅ a$/| `x.ts`, `y.ts` | DELETE-NOW | dead |\n&/' "$T/rc4.md" > "$T/rc5.md"; sed 's/^✅ a$/| `x`, `y` | 8 ⇒ 9 | dead |\n&/' "$T/rc4.md" > "$T/rc6.md"
 check "only a rating row is checked for grouping: a findings row naming two files records, a rated row naming two refuses" "0 1" "$(psn "$T/rc5.md") $(psn "$T/rc6.md")"
+sed 's/^✅ a$/| `retention.ts:110–118`, `readFacts` | 8 ⇒ 9 | one |\n&/' "$T/rc4.md" > "$T/rc7.md"; sed 's/^✅ a$/| `x.ts`, `y.ts` | 8 ⇒ 9 | two |\n&/' "$T/rc4.md" > "$T/rc8.md"
+check "a location span beside its one function is not a second item; two file spans are" "0 1" "$(psn "$T/rc7.md") $(psn "$T/rc8.md")"
 # a carry of a head with two passes (one before a maintainer's ask, one after it) carries the latest
 GC="$T/prsc"; mkdir -p "$GC"; git -C "$GC" init -q; git -C "$GC" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; GA=$(git -C "$GC" rev-parse HEAD)
 printf '| `a.ts` | 6 ⇒ 7 | x | one |\n✅ a.ts\nCLEAN\n' > "$T/two-old.md"; printf '| `a.ts` | 7 ⇒ 9 | y | two |\n✅ a.ts\nCLEAN\n' > "$T/two-new.md"

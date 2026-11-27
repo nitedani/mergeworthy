@@ -191,13 +191,18 @@ one_per_row_root_cause() { python3 - "$1" <<'EOF' || exit 1
 import re, sys
 path = sys.argv[1]; s = open(path).read()
 ask = '(mergeworthy delegate/shape.md)'
-grouped = re.compile(r'\(\s*\d+\s+(fns?|functions?|helpers?|methods?|files?)\b[^)]*\)|`[^`\n]+`\s*(,|&|\+|/|\band\b)\s*`', re.I)
+count = re.compile(r'\(\s*\d+\s+(fns?|functions?|helpers?|methods?|files?)\b[^)]*\)', re.I)
+place = lambda span: bool(re.search(r'/|\w\.\w+|:\d', span))  # a path, a file.ext or a :line locates the one item beside it
+def grouped(item):
+    spans = list(re.finditer(r'`[^`\n]+`', item))
+    return count.search(item) or any(re.fullmatch(r'\s*(,|&|\+|/|and)\s*', item[a.end():b.start()], re.I) and place(a[0]) == place(b[0])
+                                     for a, b in zip(spans, spans[1:]))
 for line in s.splitlines():
     m = re.search(r'([0-9]+|\bnew) *(⇒|=>) *([0-9]+|removed|new|n/a)', line)
     if not m:
         continue  # only a rating row rates items; a census or findings row may name several
     item = line.strip().strip('|').split('|')[0] if line.lstrip().startswith('|') else line[:m.start()]
-    if grouped.search(item):
+    if grouped(item):
         sys.exit(f"{path} rates several items in one row: give each file and function its own row and rating {ask}:\n{line.strip()}")
 sec = re.search(r'^## Root cause[ \t]*\n(.*?)(?=^## |\Z)', s, re.M | re.S)
 want = "'## Root cause' with one bullet per workaround for another project's bug, `path:line` and its upstream issue or PR link, or '- none', then a line 'Pre-1.0 shims: none'"
