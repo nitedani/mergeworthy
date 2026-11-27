@@ -248,7 +248,6 @@ def merge(root):
 
 def digest(root):
     """The Standing part, cut to the cap: one line per item, newest first, deduplicated by its lead. No model call."""
-    merge(root)
     text = open(path(root), errors='replace').read() if os.path.isfile(path(root)) else ''
     out, per = [], AIM // len(STANDING)
     for head in STANDING:

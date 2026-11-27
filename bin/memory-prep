@@ -35,7 +35,7 @@ if cmd == 'init':
 if not os.path.isfile(os.path.join(root, 'memory.source')):
     sys.exit(f'memory-prep: {root} has no memory.source: run `memory-prep init {root} <T3 thread id>` from the main session\'s checkout')
 if cmd == 'digest':
-    print(mf.digest(root)); sys.exit(0)
+    mf.merge(root); print(mf.digest(root)); sys.exit(0)
 
 # T3 Code's own messages, sent through the SDK like the user's; the log has no field that tells them apart
 T3 = ('Delegated task', 'Context handoff (manual_context)', 'Note: the T3 server restarted', 'The T3 server restarted')
