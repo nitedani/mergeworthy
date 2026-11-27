@@ -1469,16 +1469,23 @@ check "BLOCK: a Claude instance whose homePath doesn't enable the plugin while i
   "$(res chome) $(grep -c 'instance chome.*providerInstanceId to cm or cpdir\.$' "$T/err")"
 python3 -c 'import json,sys; t=sys.argv[1]; print(json.dumps({"providerInstances":{"cplain":{"driver":"claudeAgent","config":{}},"cmw":{"driver":"claudeAgent","config":{"homePath":t+"/mwc"}},"cown":{"driver":"claudeAgent","environment":[{"name":"CLAUDE_CONFIG_DIR","value":t+"/mwe"}],"config":{}}}}))' "$T" > "$T/mw-env.json"
 cp "$HOME/.t3/userdata/settings.json" "$T/mw-main.json"; cp "$T/mw-env.json" "$HOME/.t3/userdata/settings.json"
-# T3 runs each Claude with its own environment, the instance's config dir merged over it: the hook reads T3's from the process above its
-# agent. A fake chain: "T3" (a shell holding $1 as CLAUDE_CONFIG_DIR) > an agent named claude (holding $2, its instance's) > the hook
-mkdir -p "$T/agentbin"; printf '#!/bin/bash\n"$@"\n' > "$T/agentbin/claude"; chmod +x "$T/agentbin/claude"
-chain() { # T3's CLAUDE_CONFIG_DIR, the session's, target instance: the research delegate_task's exit code under that chain
-  python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":"Research the cache","title":"chain","role":"research","target":{"providerInstanceId":sys.argv[1]}}}))' "$3" > "$T/chain.in"
-  env -u CLAUDE_CONFIG_DIR ${1:+CLAUDE_CONFIG_DIR=$1} bash -c 'env -u CLAUDE_CONFIG_DIR ${1:+CLAUDE_CONFIG_DIR=$1} "$2/agentbin/claude" bash -c "T3CODE_THREAD_ID=th python3 \"\$1/hooks/pre-agent-dedupe.py\" < \"\$2/chain.in\" 2> \"\$2/err\"; echo \$?" _ "$3" "$2"; true' _ "$2" "$T" "$R"; }
-check "BLOCK: a session on cmw (homePath, so its own CLAUDE_CONFIG_DIR is cmw's) delegating to cplain, which T3 runs on ~/.claude, is told cmw; with T3's own CLAUDE_CONFIG_DIR enabling the plugin cplain passes, whatever the session's" "2 1 0" \
-  "$(chain '' "$T/mwc" cplain) $(grep -c "instance cplain doesn't load mergeworthy.*providerInstanceId to cmw\.$" "$T/err") $(chain "$T/mwc" "$T/mwe" cplain)"
-check "BLOCK: an instance's environment entry wins over T3's own CLAUDE_CONFIG_DIR; run outside such a chain (T3's environment unreadable) the hook reads ~/.claude" "2 1 2" \
-  "$(chain "$T/mwc" '' cown) $(grep -c 'instance cown.*providerInstanceId to cplain or cmw or claudeAgent\.$' "$T/err") $(CLAUDE_CONFIG_DIR="$T/mwc" res cplain)"
+# T3 runs each Claude with its own environment, the instance's config dir merged over it: the hook reads T3's from the server its
+# server-runtime.json names, when that runs T3's binary from its data directory. A fake T3: a copy of python3 there, holding $1
+PY3=$(readlink -f "$(command -v python3)"); mkdir -p "$HOME/.t3/runtime/versions/v"; cp "$PY3" "$HOME/.t3/runtime/versions/v/t3"; cp "$PY3" "$T/not-t3"
+t3srv() { # T3's CLAUDE_CONFIG_DIR [binary]: start a fake T3 server holding it and record it in server-runtime.json
+  [ -z "${T3PID:-}" ] || kill "$T3PID"; env -u CLAUDE_CONFIG_DIR ${1:+CLAUDE_CONFIG_DIR=$1} "${2:-$HOME/.t3/runtime/versions/v/t3}" -c 'import time; time.sleep(600)' & T3PID=$!
+  local i=0; while [ "$(readlink "/proc/$T3PID/exe")" != "$(readlink -f "${2:-$HOME/.t3/runtime/versions/v/t3}")" ] && [ $i -lt 100 ]; do sleep 0.02; i=$((i+1)); done  # env has exec'd it
+  printf '{"pid":%s}' "$T3PID" > "$HOME/.t3/userdata/server-runtime.json"; }
+t3srv ""
+check "BLOCK: a session on cmw (homePath, so its own CLAUDE_CONFIG_DIR is cmw's) delegating to cplain, which T3 runs on ~/.claude, is told cmw" "2 1" \
+  "$(CLAUDE_CONFIG_DIR="$T/mwc" res cplain) $(grep -c "instance cplain doesn't load mergeworthy.*providerInstanceId to cmw\.$" "$T/err")"
+t3srv "$T/mwc"
+check "with T3's own CLAUDE_CONFIG_DIR enabling the plugin cplain passes, whatever the session's; BLOCK: an instance's environment entry wins over it" "0 2 1" \
+  "$(CLAUDE_CONFIG_DIR="$T/mwe" res cplain) $(res cown) $(grep -c 'instance cown.*providerInstanceId to cplain or cmw or claudeAgent\.$' "$T/err")"
+t3srv "$T/mwc" "$T/not-t3"
+check "BLOCK: a pid in server-runtime.json running another binary than T3's is not read" 2 "$(res cplain)"
+kill "$T3PID"; unset T3PID; rm "$HOME/.t3/userdata/server-runtime.json"
+check "with no T3 server to read the hook reads ~/.claude" 2 "$(CLAUDE_CONFIG_DIR="$T/mwc" res cplain)"
 cp "$T/mw-main.json" "$HOME/.t3/userdata/settings.json"
 check "a Claude instance loading the plugin by --plugin-dir passes; BLOCK: one whose --plugin-dir= holds another plugin" "0 2 1" \
   "$(res cpdir) $(res cpother) $(grep -c 'instance cpother.*providerInstanceId to cm or cpdir\.$' "$T/err")"

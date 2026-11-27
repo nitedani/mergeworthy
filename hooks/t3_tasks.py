@@ -38,9 +38,14 @@ BUILT_IN = ('codex', 'claudeAgent', 'cursor', 'grok', 'fx', 'opencode', 'antigra
 OFF_BY_DEFAULT = {'cursor', 'grok', 'fx', 'kiro', 'muse', 'pi', 'opencode', 'antigravity'}
 
 
+def t3_home():
+    """T3 Code's data directory: T3CODE_HOME, else ~/.t3 (resolveBaseDir)."""
+    return os.path.expanduser((os.environ.get('T3CODE_HOME') or '').strip() or '~/.t3')
+
+
 def userdata(*path):
-    """A path in T3 Code's state folder: `userdata` in its data directory, T3CODE_HOME, else ~/.t3 (resolveBaseDir)."""
-    return os.path.join(os.path.expanduser((os.environ.get('T3CODE_HOME') or '').strip() or '~/.t3'), 'userdata', *path)
+    """A path in T3 Code's state folder, `userdata` in its data directory."""
+    return os.path.join(t3_home(), 'userdata', *path)
 
 
 def instances():
@@ -67,23 +72,16 @@ def driver(instance, kind=None):
     except (KeyError, TypeError): return kind or instance
 
 
-AGENTS = {'claude', 'agy', 'antigravity', 'codex'}
-
-
 @functools.cache
-def t3_environment():
-    """T3 Code's own environment, which it passes to each Claude it starts: that of the nearest ancestor of this hook above its agent
-    (Claude Code, Antigravity, Codex), whose own environment is its instance's; None when /proc can't show it."""
-    pid, seen = os.getppid(), False
+def t3_claude_config_dir():
+    """CLAUDE_CONFIG_DIR in T3 Code's own environment, which it passes to each Claude it starts: read in /proc from the server its
+    server-runtime.json names, when that process runs T3's binary from its data directory; None when that can't be read."""
     try:
-        while pid > 1:
-            argv = open(f'/proc/{pid}/cmdline', 'rb').read().split(b'\0')[:2]
-            agent = any(os.path.basename(a.decode(errors='replace')) in AGENTS for a in argv)
-            if seen and not agent:
-                return dict(v.split('=', 1) for v in open(f'/proc/{pid}/environ', 'rb').read().decode(errors='replace').split('\0') if '=' in v)
-            seen, pid = seen or agent, int(open(f'/proc/{pid}/stat').read().rsplit(')', 1)[1].split()[1])
-    except (OSError, ValueError): pass
-    return None
+        pid = int(json.load(open(userdata('server-runtime.json')))['pid'])
+        if not os.path.realpath(f'/proc/{pid}/exe').startswith(os.path.realpath(t3_home()) + os.sep): return None
+        env = open(f'/proc/{pid}/environ', 'rb').read().split(b'\0')
+    except (OSError, ValueError, KeyError, TypeError): return None
+    return next((v.split(b'=', 1)[1].decode(errors='replace') for v in env if v.startswith(b'CLAUDE_CONFIG_DIR=')), None)
 
 
 def loads_mergeworthy(instance, config):
@@ -97,7 +95,7 @@ def loads_mergeworthy(instance, config):
         # the instance's environment, else in T3's own
         env = config.get('environment') if isinstance(config.get('environment'), list) else []
         home = (c.get('homePath') or next((e.get('value') for e in env if isinstance(e, dict) and e.get('name') == 'CLAUDE_CONFIG_DIR'), None)
-                or (t3_environment() or {}).get('CLAUDE_CONFIG_DIR'))
+                or t3_claude_config_dir())
         layers = [os.path.join(os.path.expanduser(home or '~/.claude'), 'settings.json')]
         args = c.get('launchArgs') or []
         try: args = shlex.split(args) if isinstance(args, str) else [str(a) for a in args]
