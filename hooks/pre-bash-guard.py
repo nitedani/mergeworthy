@@ -9,7 +9,7 @@ import failclosed, gh_common
 import shellcmd
 from shellcmd import parse, segments, prog, script, opt, api_call, field_name, TEXT_FREE, discussion_post, discussion_thread_of, names_discussion_mutation, env_of, origin, plain_create, PLAIN, new_post_drafts, no_instructions_read, by_agent, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Unseen, Where
 from records import branch_record, commit_file, DRIFT_REF, LIMIT, no_approach, no_preflight, STORE
-import drift, own_actions, review_launch, steward, post_words, threads_file, transcript_facts, work_folder
+import drift, lint_flags, own_actions, review_launch, steward, post_words, threads_file, transcript_facts, work_folder
 from t3_tasks import under_t3, typed
 def missing_steps(d, head=None):
     """(head, the converge steps it lacks): head is a push's pushed commit, else HEAD."""
@@ -506,8 +506,7 @@ def check_finality(repo, num, files):
     for f in files:
         f = os.path.expanduser(where.expand(f[5:] if f.startswith('body=') else f)).lstrip('@')
         f = f if os.path.isabs(f) else os.path.join(cwd, f)
-        try: flags = open(f + '.lint').read().split()
-        except OSError: continue
+        if (flags := lint_flags.load(f)) is None: continue
         if flags[flags.index('--kind') + 1:][:1] != ['proposal']: continue
         root = next((os.path.dirname(p) for p in work_folder.ancestors(f) if os.path.basename(p) == 'drafts'), os.path.dirname(os.path.dirname(f)))
         m = os.path.join(root, 'maps', f"{repo.replace('/', '-')}-{num}.md")
@@ -574,8 +573,7 @@ def check_context(thread, files):
     for f in files:
         f = os.path.expanduser(where.expand(f[5:] if f.startswith('body=') else f)).lstrip('@')
         f = f if os.path.isabs(f) else os.path.join(cwd, f)
-        try: flags = open(f + '.lint').read().split()
-        except OSError: flags = []
+        flags = lint_flags.load(f) or []
         if '--kind' in flags and flags[flags.index('--kind') + 1:][:1] == ['tracker']: continue
         parent = re.sub(r'\.md$', '', f) + '.parent.md'
         tcf = os.path.join(os.path.dirname(f), 'thread-context.md')
