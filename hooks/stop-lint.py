@@ -408,13 +408,13 @@ if (opened_task or acted) and not child and not headless:
 # The main session's memory.md is behind and covers nothing from the last 2 hours: the session-start order is repeated, at most hourly
 if not child:
     sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
-    import datetime, time, memory_file as mf
+    import time, memory_file as mf
     try: root = mf.for_cwd(cwd_d, d.get('session_id'))
     except (OSError, ValueError): root = None
     stamp = root and os.path.join(root, '.memory-order-repeated')
     if root and time.time() - (os.path.getmtime(stamp) if os.path.exists(stamp) else 0) > 3600:
         cov = mf.covered(root)
-        if (not cov or time.time() - datetime.datetime.fromisoformat(cov.replace('Z', '+00:00')).timestamp() > 7200) and mf.behind(root):
+        if (not cov or time.time() - mf.stamp(cov) > 7200) and mf.behind(root):
             open(stamp, 'w').close()
             print(mf.order(root, live=True), file=sys.stderr)
             sys.exit(2)
