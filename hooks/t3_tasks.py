@@ -53,9 +53,11 @@ def loads_mergeworthy(instance, config):
     links it). Any other driver: True, as nothing here can tell."""
     c = config.get('config') if isinstance(config.get('config'), dict) else {}
     if config.get('driver') == 'claudeAgent':
-        # its config dir as T3 gives it (resolveClaudeConfigDirPath): homePath, else CLAUDE_CONFIG_DIR in the instance's environment
+        # its config dir as T3 gives it (resolveClaudeConfigDirPath, mergeClaudeProcessEnvironment): homePath, else CLAUDE_CONFIG_DIR in
+        # the instance's environment, else in T3's own, which this hook's Claude session inherits
         env = config.get('environment') if isinstance(config.get('environment'), list) else []
-        home = c.get('homePath') or next((e.get('value') for e in env if isinstance(e, dict) and e.get('name') == 'CLAUDE_CONFIG_DIR'), None)
+        home = (c.get('homePath') or next((e.get('value') for e in env if isinstance(e, dict) and e.get('name') == 'CLAUDE_CONFIG_DIR'), None)
+                or os.environ.get('CLAUDE_CONFIG_DIR'))
         layers = [os.path.join(os.path.expanduser(home or '~/.claude'), 'settings.json')]
         args = c.get('launchArgs') or []
         try: args = shlex.split(args) if isinstance(args, str) else [str(a) for a in args]

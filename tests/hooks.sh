@@ -1463,6 +1463,11 @@ check "BLOCK: a Claude instance whose inline --settings JSON or --settings= file
 check "a t3_thread_launch, a top-level thread the user asks for (perhaps the owner's plain A/B one), is never refused for its instance" "0 0" "$(tl myclaude) $(tl agy_x)"
 check "BLOCK: a Claude instance whose homePath doesn't enable the plugin while its environment's CLAUDE_CONFIG_DIR does: T3 takes homePath first" "2 1" \
   "$(res chome) $(grep -c 'instance chome.*providerInstanceId to cm or cpdir\.$' "$T/err")"
+python3 -c 'import json,sys; t=sys.argv[1]; print(json.dumps({"providerInstances":{"cplain":{"driver":"claudeAgent","config":{}},"cown":{"driver":"claudeAgent","environment":[{"name":"CLAUDE_CONFIG_DIR","value":t+"/mwe"}],"config":{}}}}))' "$T" > "$T/mw-env.json"
+cp "$HOME/.t3/userdata/settings.json" "$T/mw-main.json"; cp "$T/mw-env.json" "$HOME/.t3/userdata/settings.json"
+check "a Claude instance with no homePath nor environment entry reads T3's own CLAUDE_CONFIG_DIR, which the hook inherits: one enabling the plugin passes; BLOCK: the instance's environment entry still wins over it" "0 2 1" \
+  "$(CLAUDE_CONFIG_DIR="$T/mwc" res cplain) $(CLAUDE_CONFIG_DIR="$T/mwc" res cown) $(grep -c 'instance cown.*providerInstanceId to cplain\.$' "$T/err")"
+cp "$T/mw-main.json" "$HOME/.t3/userdata/settings.json"
 check "a Claude instance loading the plugin by --plugin-dir passes; BLOCK: one whose --plugin-dir= holds another plugin" "0 2 1" \
   "$(res cpdir) $(res cpother) $(grep -c 'instance cpother.*providerInstanceId to cm or cpdir\.$' "$T/err")"
 check "BLOCK: an Antigravity instance with no mergeworthy in its profile's plugins, naming the one that has it" "2 1" \
