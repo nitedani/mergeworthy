@@ -81,14 +81,19 @@ def loads_mergeworthy(instance, config):
     return True
 
 
-def without_mergeworthy(instance):
-    """None when T3 Code's instance `instance` loads mergeworthy, or its settings don't list it; else the instances of its driver
-    that do and are enabled, a list that may be empty."""
-    known = instances()
-    c = known.get(instance)
-    if not isinstance(c, dict) or loads_mergeworthy(instance, c): return None
-    return [i for i, o in known.items() if isinstance(o, dict) and o.get('driver') == c.get('driver') and o.get('enabled') is not False
-            and i != instance and loads_mergeworthy(i, o)]
+def without_mergeworthy(instance, kind=None):
+    """None when what a launch names loads mergeworthy, or T3 Code's settings can't tell; else (the instances it may run on that
+    don't, the enabled instances of its driver that do). It names an instance id, or a driverKind alone, for which T3 may pick any
+    enabled instance of that driver (resolveTarget: the first healthy one when the parent's runs another driver)."""
+    known = {i: o for i, o in instances().items() if isinstance(o, dict)}
+    on = lambda i: known[i].get('driver') == kind and known[i].get('enabled') is not False
+    if instance:
+        if instance not in known: return None
+        kind, picks = known[instance].get('driver'), [instance]
+    else:
+        picks = [i for i in known if on(i)]
+    plain = [i for i in picks if not loads_mergeworthy(i, known[i])]
+    return (plain, [i for i in known if on(i) and i not in plain and loads_mergeworthy(i, known[i])]) if plain else None
 
 
 def result(content):

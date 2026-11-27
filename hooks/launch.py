@@ -68,7 +68,7 @@ class Request:
         # the T3 provider instance it names: delegate_task's target, t3_thread_launch's modelSelection
         self.instance = str(target.get('providerInstanceId') or (ti.get('modelSelection') or {}).get('instanceId') or '')
         # the drivers it runs on, as T3 Code picks them: the named instance's, else any instance of the driver it names
-        k = target.get('driverKind')
+        self.kind = k = target.get('driverKind')
         self.drivers = {driver(i, k)} if (i := target.get('providerInstanceId')) else {k} if k else set()
         # the Agent tool's `effort`, delegate_task's target.options or t3_thread_launch's modelSelection.options, as a list of
         # {id, value} or an object, `effort`, `reasoningEffort` or Antigravity's `thought_level`
