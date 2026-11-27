@@ -6,7 +6,7 @@ the last round brought a fixed blocker or should, and as a fresh reader's second
 import glob, itertools, json, os, re, subprocess, sys
 import agent_jobs, drift, ledger, records, review_journal, testpaths
 
-# {loop: {'rounds': [[n, the heads its brief pinned, the reports it wrote]], 'threads': the T3 threads or Claude agents its rounds ran in, 'outs': its reports, 'seated': a step's seat, 'step': the step pr-steps recorded it for}}
+# {loop: {'rounds': [[n, the heads its brief pinned, the reports it wrote]], 'threads': the T3 threads or Claude agents its rounds ran in}}
 LOOPS = os.path.expanduser('~/.claude/review-loops.json')
 # what a loop recorded before review-loops.json: rounds {loop: [[n, heads]]}, threads {loop: [thread]}
 OLD = {'rounds': os.path.expanduser('~/.claude/review-rounds.json'), 'threads': os.path.expanduser('~/.claude/review-threads.json')}
@@ -60,8 +60,8 @@ def declared(brief):
 
 def register(loop, n, heads, thread=None, post=False, outs=(), seated=False, checkouts=(), led=None, step=None, seats=None, fills=None, company=None):
     """Records round n of loop that ran: the thread it ran in, and, for a code review, the heads its brief pinned, the reports it
-    writes (outs) and whether it is one of its step's seats (seated: its round 1 brief's FANOUT line), in review-loops.json and in
-    the journal of each change its brief names (checkouts), with the ledger it names (led), the step its `Review:` line declares
+    writes (outs), in review-loops.json, and in the journal of each change its brief names (checkouts) with whether it is one of
+    its step's seats (seated: its round 1 brief's FANOUT line), with the ledger it names (led), the step its `Review:` line declares
     the seats its `Seats:` line does, the seat its `Fallback:` line fills and the company it ran on."""
     failed = []  # each record is written though the other's write failed, then the first failure is raised
     if not post:
@@ -73,8 +73,6 @@ def register(loop, n, heads, thread=None, post=False, outs=(), seated=False, che
         if thread and thread not in r['threads']: r['threads'].append(thread)
         if not post:
             r['rounds'].append([n, heads, sorted({os.path.realpath(o) for o in outs})])
-            r['outs'] = sorted(set(r.get('outs', [])) | {os.path.realpath(o) for o in outs})
-            r['seated'] = r.get('seated') or seated
     try:
         if thread or not post: agent_jobs.locked_update(LOOPS, ran)
     except OSError as e: failed.append(e)

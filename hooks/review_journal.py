@@ -43,12 +43,8 @@ def seat_of(handle):
 
 
 def fold(change):
-    """The loops change's journal holds: {loop: {'rounds': [[n, heads, outs]], 'threads': [...], 'outs': [...], 'seated': bool}}."""
+    """The loops change's journal holds: {loop: {'rounds': [[n, heads, outs]]}}."""
     loops = {}
     for e in events(change):
-        r = loops.setdefault(e['loop'], {'rounds': [], 'threads': [], 'outs': [], 'seated': False})
-        if e.get('thread') and e['thread'] not in r['threads']: r['threads'].append(e['thread'])
-        r['rounds'].append([e['n'], e['heads'], e['outs']])
-        r['outs'] = sorted(set(r['outs']) | set(e['outs']))
-        r['seated'] = r['seated'] or e['seated']
+        loops.setdefault(e['loop'], {'rounds': []})['rounds'].append([e['n'], e['heads'], e['outs']])
     return loops
