@@ -206,11 +206,13 @@ def grouped(item):
     return count.search(item) or len(words) > 1 and all(map(ident, words)) or any(re.fullmatch(r'\s*(,|&|\+|/|and)\s*', item[a.end():b.start()], re.I) and kind(a[0]) == kind(b[0]) != 'sha'
                                      for a, b in zip(spans, spans[1:]))
 for line in s.splitlines():
-    m = re.search(r'([0-9]+|\bnew) *(⇒|=>) *([0-9]+|removed|new|n/a)', line)
+    # a prose line (no table row or bullet) rating out of ten ('Overall shape 6/10 ⇒ 7.5/10') gives the pass's overall score, not an item's
+    rated = line if re.match(r'[\s>]*(\||[-*+]\s|\d+\.\s)', line) else re.sub(r'\d+(\.\d+)?/10 *(⇒|=>) *\d+(\.\d+)?/10', '', line)
+    m = re.search(r'([0-9]+|\bnew) *(⇒|=>) *([0-9]+|removed|new|n/a)', rated)
     if not m:
         continue  # only a rating row rates items; a census or findings row may name several
     cells = line.strip().strip('|').split('|')
-    items = cells[:min(i for i, c in enumerate(cells) if m[0] in c) or 1] if line.lstrip().startswith('|') else [line[:m.start()]]
+    items = cells[:min(i for i, c in enumerate(cells) if m[0] in c) or 1] if line.lstrip().startswith('|') else [rated[:m.start()]]
     if any(map(grouped, items)):
         sys.exit(f"{path} rates several items in one row: give each file and function its own row and rating {ask}:\n{line.strip()}")
 # the section is its bullets and the shims line: the first other line or heading ends it
