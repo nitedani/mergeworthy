@@ -27,6 +27,7 @@ ACTIONS = {
     'thread-context':        ('post',),                     # post step 1
     'post-lint reply':       ('reply',) + WRITE,            # --kind reply or inline
     'post-lint proposal':    ('design',) + WRITE,           # design step 8
+    'post-lint wip':         ('design',) + WRITE,           # design §WIP comment
     'post-lint pr':          ('pull-request',) + WRITE,
     'post-lint title':       ('pull-request',) + WRITE,     # pull-request step 7
     'post-lint issue':       ('open-issue',) + WRITE,

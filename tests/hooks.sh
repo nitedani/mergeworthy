@@ -826,6 +826,24 @@ check "BLOCK: a map older than the last proposal" 2 "$(pguard 3)"
 touch -d '+1 minute' "$AR/maps/o-r-9.md"; pguard 3 >/dev/null; pposted 3; touch -d '-1 hour' "$AR/maps/o-r-9.md"
 check "BLOCK: a 4th proposal whose map predates the 3rd: refresh the map, edit the WIP comment as a reply, and this reply says it updated it" "2 1 1 0" \
   "$(pguard 4) $(grep -c 'refresh its thread map' "$T/err") $(grep -c "edit the thread's WIP comment from it through post (--kind reply), and let this reply say 'I updated the \[WIP comment\](link)'" "$T/err") $(grep -c 'post this proposal as a new comment' "$T/err")"
+# ---------- post-lint --kind wip: a design thread's WIP comment (design §WIP comment) ----------
+wipd() { # sentences [section to drop] [line to add under TLDR] [line to add at the end]: $T/wip.md, 15 words plus 10 a sentence
+  { printf '# 🚧 WIP\n\n*This comment is edited upon updates.*\n'; s=$1; per=$(( ($1 + 6) / 7 )); for h in TLDR Scope State TODO Agreed Open 'Next steps'; do
+      [ "$h" = "${2:-}" ] && continue; printf '\n## %s\n\n' "$h"; [ "$h" = TLDR ] && [ -n "${3:-}" ] && printf '%s\n' "$3"
+      for i in $(seq $per); do [ "$s" -gt 0 ] && echo "The cache keeps one deadline across every retry it makes." && s=$((s - 1)); done; done
+    [ -z "${4:-}" ] || printf '\n%s\n' "$4"; } > "$T/wip.md"; }
+wl() { MERGEWORTHY_BADGE=off python3 "$R/bin/post-lint" "$T/wip.md" --kind wip "$@" 2>&1; }
+wipd 32 '' 'The map holds agreed points.'; printf 'Could the timeout move before the retry loop, please?\n' > "$T/wip.parent.md"
+check "a 340-word WIP comment beside a 9-word parent passes as --kind wip, capped at 600" "1 0" "$(wl | grep -c '^length: 340 words, cap 600$') $(wl >/dev/null; echo $?)"
+wipd 32 Agreed; check "BLOCK: a WIP comment without '## Agreed'" 1 "$(wl | grep -c "has a '## Agreed' section")"
+wipd 32 '' 'Should the deadline cover the first attempt too?'; check "BLOCK: a WIP comment that asks a question" 1 "$(wl | grep -c 'a WIP comment asks nothing')"
+wipd 32 '' '' $'<details><summary>First proposal</summary>\n\nShould the deadline cover the first attempt too? I recommend yes.\n\n</details>'
+check "a question in the WIP comment's <details> (the first proposal, as posted) passes" "0 0" "$(wl | grep -c 'asks nothing') $(wl >/dev/null; echo $?)"
+wipd 58 '' 'The map holds every agreed point.'; check "BLOCK: a 601-word WIP comment" 1 "$(wl | grep -c '^601 words > 600 for a WIP comment')"
+wipd 58 '' 'The map holds agreed points.' "<details><summary>First proposal</summary>$(for i in $(seq 80); do printf '\nThe cache keeps one deadline across every retry it makes.\n'; done)</details>"
+check "a 600-word WIP comment with 800 more words in <details> passes" "0 1" "$(wl >/dev/null; echo $?) $(wl | grep -c '^length: 600 words, cap 600$')"
+printf 'The deadline covers every retry. I recommend option A.\n' > "$T/prop.md"
+check "a proposal's length line names its cap" 1 "$(MERGEWORTHY_BADGE=off python3 "$R/bin/post-lint" "$T/prop.md" --kind proposal --parent none 2>&1 | grep -c '^length: 9 words, cap 900$')"
 # ---------- post-lint: the badge is icons, then a line break ----------
 blint() { printf '%s' "$1" > "$T/badge.md"; python3 "$R/bin/post-lint" "$T/badge.md" --parent none 2>&1 | grep -c 'badge'; }
 check "icons, the italic model line, then a line break pass" 0 "$(blint $'<img src="https://github.com/claude.png" width="20" height="20" alt="Claude"> <img src="https://github.com/openai.png" width="20" height="20" alt="Codex"> *Opus 5.5 (medium effort) wrote this; GPT-6.1-Sol (high effort) reviewed it.*\nFixed in abc1234.\n')"
@@ -883,6 +901,8 @@ check "that draft, its prose edited with the line kept, relinted and reviewed ag
 sed -i -E 's#(compare/)[0-9a-f]+\.\.\.#\11234567...#' "$GD/r.md"
 check "BLOCK: that draft with the compare link's commit edited after its review" "1 1" "$(MERGEWORTHY_SRC="$S" MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GD/r.md" "$GD/r.review.out" --kind reply --repo acme/x --parent none >"$T/gp.out" 2>&1; echo $?) $(grep -c 'changed after its review' "$T/gp.out")"
 check "the next reply, nothing new since, gets no line; another owner's repo none" "0 0 0 0" "$(hg acme/x) $(grep -c 'Harness changes' "$GD/r.md") $(hg other/x) $(grep -c 'Harness changes' "$GD/r.md")"
+echo "$h1" > "$HOME/.mergeworthy/harness-shown/acme"; wipd 32; cp "$T/wip.md" "$GD/w.md"; touch -d '+1 minute' "$GD/w.md"; echo CLEAN > "$GD/w.review.out"; rv "$GD/w.review.out"
+check "gate-pass of a WIP comment passes and appends no harness line" "0 0" "$(MERGEWORTHY_SRC="$S" MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GD/w.md" "$GD/w.review.out" --kind wip --repo acme/x >"$T/gp.out" 2>&1; echo $?) $(grep -c 'Harness changes' "$GD/w.md")"
 
 check "a badge followed on its line by an italic model line passes, model names included" 0 "$(printf '%s\n\nFixed the bug.\n' '<img src="https://github.com/claude.png" width="20" height="20" alt="Claude"><img src="https://github.com/openai.png" width="20" height="20" alt="Codex"> *Opus 5.5 (medium effort) wrote this; a second Opus 5.5 (high effort) reviewed it; GPT-6.1-Sol (Codex, high effort) reviewed it.*' > "$T/ml.md"; MERGEWORTHY_BADGE=on python3 "$R/bin/post-lint" "$T/ml.md" --kind reply --parent none >/dev/null 2>&1; echo $?)"
 check "the writing skill's badge, a WIP link inside the italics, passes" 0 "$(sed -n 's/^  \(<img src=.*\)$/\1/p' "$R/skills/writing/SKILL.md" > "$T/wb.md"; printf '\nFixed the bug.\n' >> "$T/wb.md"; python3 "$R/bin/post-lint" "$T/wb.md" --parent none 2>&1 | grep -c 'badge')"
@@ -3779,6 +3799,8 @@ check "BLOCK: post-lint without writing" 2 "$(sgb "post-lint $T/d.md --kind repl
 check "a reply's lint names reply, post and writing" "mergeworthy:post mergeworthy:reply mergeworthy:writing" "$(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | sort | xargs)"
 sgb "post-lint $T/d.md --kind=proposal" >/dev/null
 check "a proposal's lint names design" 1 "$(grep -c '^- mergeworthy:design, for post-lint proposal' "$T/sg.err")"
+sgb "post-lint $T/d.md --kind wip" >/dev/null
+check "a WIP comment's lint names design" 1 "$(grep -c '^- mergeworthy:design, for post-lint wip' "$T/sg.err")"
 sgb "post-lint $T/d.md --kind tracker" >/dev/null
 check "a tracker's lint names task" 1 "$(grep -c '^- mergeworthy:task, for post-lint tracker' "$T/sg.err")"
 sgb "post-lint $T/d.md --kind plan" >/dev/null

@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""post-lint <draft.md> [--kind reply|status|pr|issue|plan|inline|tracker|proposal|title] [--draft] [--parent <file>|none]: checks a draft before it is posted to GitHub.
+"""post-lint <draft.md> [--kind reply|status|pr|issue|plan|inline|tracker|proposal|wip|title] [--draft] [--parent <file>|none]: checks a draft before it is posted to GitHub.
 Exit 1 with one line per finding. Checks: banned phrases, "stacked on" without gh stack, bare #N refs
 (must be owner/repo#N unless --repo matches), length budgets, unclassified maintainer notes, em dashes,
 process machinery in the thread, decisions not shown as code and lettered options, questions without a recommendation, and a bare "Done" answering a question.
 A reply or inline comment needs the comment it answers: <draft stem>.parent.md next to it, or --parent <file>;
 --parent none for a comment that answers nobody. --draft (with --kind pr): the body of a draft PR, which says why it is one.
 --kind status: a reply that only says what is being done and by when (post §Kinds), checked here instead of by a reviewer.
+--kind wip: a design thread's WIP comment (design §WIP comment): its heading and seven sections, no question, at most 600 words outside <details>.
 --kind plan: a design plan the user asked to post as an issue; linted as an issue, capped at 2500 words, without the reproduction, evidence and internal-label checks.
 --edit-of owner/repo#N (--kind issue, pr, tracker or plan): the draft edits that live body, and fails only on findings the body doesn't already have, one for one.
 Settings: MERGEWORTHY_BADGE on|off|auto requires the badge always, never, or for a human account."""
@@ -20,7 +21,7 @@ def setting(name, default):
     saved = dict(l.strip().split('=', 1) for l in open(f) if '=' in l) if os.path.exists(f) else {}
     return os.environ.get(f'MERGEWORTHY_{name}') or saved.get(f'MERGEWORTHY_{name}', default)
 args = sys.argv[1:]
-USAGE = "usage: post-lint <draft.md> [--kind reply|status|pr|issue|plan|inline|tracker|proposal|title] [--draft] [--repo owner/repo] [--parent <file>|none] [--edit-of owner/repo#N]"
+USAGE = "usage: post-lint <draft.md> [--kind reply|status|pr|issue|plan|inline|tracker|proposal|wip|title] [--draft] [--repo owner/repo] [--parent <file>|none] [--edit-of owner/repo#N]"
 def arg(name, default):
     if name not in args: return default
     i = args.index(name)
@@ -64,7 +65,7 @@ def unrated(s):
     return ''.join(out), n
 WORD = r"[A-Za-z0-9][\w'’-]*"
 draft = '--draft' in args
-if kind not in ('reply', 'pr', 'issue', 'inline', 'tracker', 'proposal', 'title') or draft and kind != 'pr' \
+if kind not in ('reply', 'pr', 'issue', 'inline', 'tracker', 'proposal', 'wip', 'title') or draft and kind != 'pr' \
         or edit_of and not (kind in ('issue', 'pr', 'tracker') and re.fullmatch(r'[\w.-]+/[\w.-]+#\d+', edit_of)): sys.exit(USAGE)  # tracker: umbrella body or decisions comment, a growing list with no word budget
 record = kind == 'tracker'  # the umbrella issue: a growing list with no word budget
 text = open(path).read()
@@ -96,8 +97,9 @@ prose = re.sub(r'<!--.*?-->', '', text, flags=re.S)
 # A reader who asked for the full lists (a refactor prompt's ratings, "100 questions with A/B/C choices") gets them, collapsed in <details>: not linted or counted
 _rp = arg('--parent', None); _rp = (re.sub(r'\.md$', '', path) + '.parent.md') if _rp is None else (None if _rp == 'none' else _rp)
 _asked_list = bool(_rp and os.path.exists(_rp) and re.search(r'\brefactor this pr\b|\bold rating\b|\bratings?\b.*\blists?\b|\b\d+\s+(?:questions|items|options)\b|\bquestions?\b.*\b(?:checkbox|choices)\b', open(_rp).read(), re.I | re.S))
-if _asked_list:
+if _asked_list or kind == 'wip':  # a WIP comment keeps the first proposal, as posted, in <details>
     prose = re.sub(r'<details>.*?</details>', '', prose, flags=re.S)
+if _asked_list:
     prose = re.sub(r'(?m)^\s*(?:- \[[ xX]\] .*|\d+\. \*\*.*|\*Why it matters:.*)$', '', prose)
 # The converge steps' runs, collapsed (converge step 5), are evidence: never linted; only a PR body's count reads this prose, so a reply counts them
 prose = re.sub(rf'<details>\s*<summary>(?:{post_words.alt(W["blocks"])})[^<]*</summary>.*?</details>', '', prose, flags=re.S)
@@ -255,8 +257,9 @@ if kind == 'tracker':
 # requested lists, an issue's reproduction, quotes of others, and rated rows with their header (up to BOUND words a cell) are left out
 if kind != 'pr' and not finding:
     counted = steps_out(re.sub(r'<!--.*?-->', '', text, flags=re.S))
-    if _asked_list:  # the lists the reader asked for: collapsed, or open as a questionnaire (GitHub closes <details> on every box ticked)
+    if _asked_list or kind == 'wip':  # the lists the reader asked for: collapsed, or open as a questionnaire (GitHub closes <details> on every box ticked)
         counted = re.sub(r'<details>.*?</details>', '', counted, flags=re.S)
+    if _asked_list:
         counted = re.sub(r'(?m)^\s*(?:- \[[ xX]\] .*|\d+\. \*\*.*|\*Why it matters:.*)$', '', counted)
     counted = re.sub(r'^\s*(?:[-*]\s+)?>.*$', '', counted, flags=re.M)              # quotes of others
     counted, n_rated = unrated(counted)  # the cap below counts the rated rows of this same text
@@ -312,7 +315,7 @@ cap = min(cap or 300 + extra, 300 + extra) if kind == 'reply' else None
 if kind == 'reply' and words > 300 + extra:
     findings.append(f"{words} words > {300 + extra} for a reply (a rated cell's words past 45 count too): cut what the reader doesn't need to decide, act or check, a whole sentence at a time, never single words out of a sentence that stays")
 pr_budget = 300  # what's broken and what the PR changes need room; data tables, code and the collapsed evidence don't count
-cap = pr_budget if kind == 'pr' else cap
+cap = pr_budget if kind == 'pr' else {'proposal': 900, 'wip': 600}.get(kind, cap)
 if kind == 'pr' and words > pr_budget:
     findings.append(f"{words} words > {pr_budget} for a PR body (data tables, code, images and URLs not counted; prose in a table or code block is): cut what the reader doesn't need a whole sentence or row at a time, never what's broken or why, and never single words out of a sentence that stays")
     for t in re.findall(r'<summary>([^<]*)</summary>', prose):  # the evidence blocks are gone from prose: any summary left is counted
@@ -358,8 +361,18 @@ _bad = [l for k, l in enumerate(_ls) if re.search(r'!\[[^\]]*\]\(|<img\b', l) an
 if kind == 'pr' and _bad:
     findings.append(f"{len(_bad)} screenshot or video line(s) not in a before/after pair: screenshots go in rows of `| What | Before (<base>) | After (this PR) |`, "
                     "videos under `**Before (<base>)**` and `**After (this PR)**` paragraphs, the same step, data and width on both branches (evidence step 4)")
-if kind == 'proposal' and words > 900 + extra:  # a design walkthrough (mergeworthy:design step 8)
-    findings.append(f"{words} words > {900 + extra} for a design answer or walkthrough (tables and code count): a dump: cut what the reader doesn't need to decide, act or check (mergeworthy:writing)")
+if kind == 'proposal' and words > cap:  # a design walkthrough (mergeworthy:design step 8)
+    findings.append(f"{words} words > {cap} for a design answer or walkthrough (tables and code count): a dump: cut what the reader doesn't need to decide, act or check (mergeworthy:writing)")
+if kind == 'wip':  # mergeworthy:design §WIP comment
+    if not re.match(r'# 🚧 WIP\b', text):
+        findings.append("a WIP comment starts, under the badge, with '# 🚧 WIP' (design §WIP comment)")
+    for h in ('TLDR', 'Scope', 'State', 'TODO', 'Agreed', 'Open', 'Next steps'):
+        if not re.search(rf'^## {h}\s*$', prose, re.M):
+            findings.append(f"a WIP comment has a '## {h}' section (design §WIP comment)")
+    if re.search(r'\?(?=\s|$)', uncoded(prose)):
+        findings.append("a WIP comment asks nothing: the question goes in a proposal (design §WIP comment)")
+    if words > cap:
+        findings.append(f"{words} words > {cap} for a WIP comment (<details> not counted): keep where the design stands, cut how it got there (design §WIP comment)")
 # Parallel, not later (task §Dispositions): work promised for "after it" or "later" is deferred, not waiting on anything named
 if kind in ('reply', 'proposal', 'inline') and (_d := re.search(r"\bI(?:'ll| will)\b[^.\n]*?\b(?:after (?:it|that|this)|later)\b", prose)):
     findings.append(f"{_d.group(0)!r} defers work: do it now, name the dependency or decision it waits on, or drop the promise (task §Dispositions)")
