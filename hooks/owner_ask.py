@@ -36,30 +36,44 @@ PAST = r'(?!(?!frissít)\w*ed\b)'  # an English past form (merged, released); Hu
 MENTION = r'(?!\s+(?:conflicts?|requests?|notes?|plans?|queue)\b)'
 
 PR_REF = re.compile(r'(?:github\.com/([\w.-]+/[\w.-]+)/pull/|gitlab\.com/([\w./-]+?)/-/merge_requests/|\b([\w.-]+/[\w./-]*[\w-])[#!]|[#!]|(?i:\b(?:pr|mr|pull request)\s+))(\d+)\b')  # a PR, an MR (!N)
+SHAPED = re.compile(r"\d|[/#@_:=~\\]|\w\.\w|^!\w")  # a token that may name a target: a number, a path, a ref, a dotted name, a link
+PEEL = re.compile(r"^([(\[{\"'“‘*]*)(.*?)([)\]}\"'”’*.,;:!?]*)$", re.S)  # a token's outer punctuation
 
-def asks(text, kind, repo=None, num=None, branch=None, subject=None):
+def asks(text, kind, repo=None, num=None, branch=None, subject=None, names=()):
     """True when text (a message the user typed) asks for kind on its target (PR num of repo, branch, or subject: a release's tag,
-    an ask-first command's line), False when it holds kind back, None when it says neither."""
-    bare = lambda t: re.sub(r'https?://\S+|\bmergeworthy\w*|^\s*\(Re-invocation of .*', ' ', t, flags=re.I)
+    an ask-first command's line), False when it holds kind back, None when it says neither. names: the command's other names (its repo,
+    its package); a token equal to one names no other target, any other token shaped like a target leaves its clause no ask."""
+    names = {n.lower() for n in names if n}
+    bare = lambda t: re.sub(r'\bmergeworthy\w*', ' ', t, flags=re.I)
     words = rf'\b(?:{ASKED_FOR[kind][0]})\b{MENTION}'
     ask = re.compile(rf"{LEAD}(?:‹t›\s*)?{PAST}{words}(?:\s+be\b)?\s*(?:{PRONOUN}|(?:(?:all|every|each|both)(?:\s+of)?\s+)?(?:{OBJECTS[kind]}))?\s*(?:(?:(?:the|a|az)\s+)?‹t›(?:\s*-\w+)?)?"
                      rf"(?:{NAME if kind in ('release', 'push') else '(?!)'})?(?:\s+(?:in)?to\s+(?:the\s+)?[\w./-]+)?(?:[\s,]*{TAIL})*[\s.!?]*", re.I)
-    def marked(c):  # c with each target it names as ‹t› (this command's) or ‹x› (another)
-        tok = lambda ours: ' ‹t› ' if ours else ' ‹x› '
-        c = re.sub(r'`([^`\s]+)`', r'\1', c)  # a target as inline code
+    tok = lambda ours: ' ‹t› ' if ours else ' ‹x› '
+    def marked(c):  # c with each target it names in kind's notations as ‹t› (this command's) or ‹x› (another)
         if kind == 'merge':
             return re.sub(r'(?:https?://)?' + PR_REF.pattern, lambda m: tok((m[1] or m[2] or m[3] or '').lower() in ('', (repo or '').lower()) and m[4] == str(num)), c)
-        if kind == 'push':  # `to <branch>`, `<branch> branch`, `push <branch>`, or the pushed branch's name; git's branch names are case-sensitive
+        if kind == 'push':  # `to <branch>`, `<branch> branch` or `push <branch>`
             c = re.sub(r'\bto\s+(?:the\s+)?(?:branch\s+)?(?!(?:the|a|this|that)\b)([\w./-]*[\w-])(?:\s+branch\b)?|\b(?!(?:the|a|this|that)\b)([\w./-]*[\w-])\s+branch\b',
                        lambda m: tok((m[1] or m[2]) == branch), c, flags=re.I)
-            c = re.sub(rf'(?<![\w./-]){re.escape(branch)}(?![\w/-]|\.\w)', tok(True), c) if branch else c  # a full stop ends the name
-            return re.sub(rf"(\bpush\w*\s+)(?!(?:{PRONOUN}|{TAIL}|{OBJECTS['push']}|the|an?|to|and|then)(?![\w-]))([\w./-]*[\w-])",
+            return re.sub(rf"(\bpush\w*\s+)(?!(?:{PRONOUN}|{TAIL}|{OBJECTS['push']}|the|an?|to|and|then|for|back)(?![\w./-]))([\w./-]*[\w-])",
                           lambda m: m[1] + tok(False), c, flags=re.I)
         if kind == 'release':
-            return re.sub(r'\bv?\d+(?:\.\d+)+(?:[-+][\w.-]*\w)?', lambda m: tok(subject is None or m[0].lower().lstrip('v') == subject.lower().lstrip('v')), c)
+            return re.sub(r'(?<![\w./@-])v?\d+(?:\.\d+)+(?:[-+][\w.-]*\w)?(?![\w/-]|\.\w)', lambda m: tok(subject is None or m[0].lower().lstrip('v') == subject.lower().lstrip('v')), c)
         own = set(re.split(r'[^\w.]+', (subject or '').lower())) - {''}  # an ask-first command's words: "update t3" names t3-update
-        return re.sub(r'[\w.]+', lambda m: tok(True) if not re.fullmatch(words, m[0], re.I) and any(o.startswith(m[0].lower()) for o in own) else m[0], c)
-    def stance(m, question):  # 'holds', 'asks', 'reports' or None for clause m, marked and bare
+        return re.sub(r'(?<![\w./@#-])[\w.]+(?![\w/@#-])', lambda m: tok(True) if not re.fullmatch(words, m[0], re.I) and any(o.startswith(m[0].lower()) for o in own) else m[0], c)
+    def whole(chunk):  # a token marked() left: the pushed branch, one of names, a word, or ‹o› when shaped like a target
+        lead, core, trail = PEEL.match(chunk).groups()
+        core = core.strip('`')
+        if kind == 'push' and core == branch: return lead + tok(True) + trail
+        if '‹' in core or not core or core.lower() in names: return chunk
+        if kind == 'push' and re.fullmatch(r'v?\d+(?:\.\d+)+', core): return chunk  # a release's version, asked for with a release's word
+        return lead + (' ‹o› ' if SHAPED.search(core) else core) + trail
+    t = re.sub(r'`([^`\s]+)`', r'\1', re.sub(r'^\s*\(Re-invocation of .*', ' ', text, flags=re.I))  # a target as inline code
+    if kind == 'push' and branch:  # the pushed branch as a whole token; git's branch names are case-sensitive
+        t = re.sub(r'(?<![^\s(\[{"\'“‘])' + re.escape(branch) + r'(?=[)\]}"\'”’.,;:!?]*(?:\s|$))', '‹T›', t)
+        t = re.sub(r'\bto\s+(?:the\s+)?(?:branch\s+)?‹T›(?:\s+branch\b)?|‹T›\s+branch\b', '‹T›', t, flags=re.I)
+    t = re.sub(r'\S+', lambda m: whole(m[0]), marked(t).replace('‹T›', tok(True)))
+    def stance(m, question):  # 'holds', 'asks', 'reports' or None for clause m
         if FOLLOW_UP.match(m.strip()):
             if FIRST.search(m): return 'holds'
             return 'reports' if re.search(rf'{PAST}{words}', m, re.I) else None  # "tell me when you merge it": a hold unless the message asks
@@ -67,15 +81,15 @@ def asks(text, kind, repo=None, num=None, branch=None, subject=None):
         if ask.fullmatch(m.strip()) and (not question or re.match(REQUEST, m.strip(), re.I)): return 'asks'
     on = lambda m: '‹t›' in m or '‹x›' not in m  # names the target, or none
     found = reported = None
-    for s in re.split(r'(?<=[.!?])\s+|\n', text):
+    for s in re.split(r'(?<=[.!?])\s+|\n', t):
         if not re.search(words, bare(s), re.I):
-            if HALT.match(m := bare(marked(s)).strip()) and on(m): return False
+            if HALT.match(m := bare(s).strip()) and on(m): return False
             continue
-        for c in re.split(r'[,;—–]|\s-+\s|\bthen\b|\b(?:and|és)\b(?!\s*(?:[#!]\d|https?:|[\w.-]+/[\w./-]*[#!]\d))', s, flags=re.I):
-            st = stance(m := bare(marked(c)), s.rstrip().endswith('?'))
+        for c in re.split(r'[,;—–]|\s-+\s|(?<![\w-])then(?![\w-])|(?<![\w-])(?:and|és)(?![\w-])(?!\s*‹)', s, flags=re.I):
+            st = stance(m := bare(c), s.rstrip().endswith('?'))
             if st == 'holds' and on(m): return False
             reported = reported or st == 'reports' and on(m)
-            found = found or st == 'asks' and ('‹t›' in m or on(marked(text))) or None
+            found = found or st == 'asks' and ('‹t›' in m or on(t)) or None
     return found or (False if reported else None)
 
 def last_typed(transcript_path):

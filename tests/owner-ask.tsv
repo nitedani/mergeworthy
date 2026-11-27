@@ -1,6 +1,6 @@
 # What owner_ask.asks says of a message the user typed, one phrasing a line: action, target, verdict (True asks, False holds back, None neither), text
-# (\n a line break). The target is a merge's <repo>#<number> (<repo> alone for an MR named by its branch), a push's branch, a release's tag (- for none),
-# an ask-first command's line.
+# (\n a line break). The target is a merge's <repo>#<number> (<repo> alone for an MR named by its branch), a push's branch, a release's tag (- for none)
+# and after a space its package's name, an ask-first command's line.
 merge	o/r#41	None	looks good
 merge	o/r#41	None	thanks
 merge	o/r#41	True	Don't merge #40. Merge #41.
@@ -205,3 +205,26 @@ merge	o/r#41	False	Don't merge #41 - wait for CI
 merge	o/r#41	True	Merge #41. Then tell me when you merge it.
 merge	o/r#41	True	merge it and let me know when you merge it
 merge	o/r#41	False	Merge #41. Tell me before you merge it.
+merge	o/r#41	None	merge PR-40
+merge	o/r#41	None	merge the 40 pr
+merge	o/r#41	None	merge the fix-40 pr
+merge	o/r#41	None	merge the sentry-40 pr
+merge	o/r#41	None	merge https://example.com/o/r/pull/40
+merge	o/r#41	None	merge it into release/2.x
+merge	o/r#41	None	merge it to v2
+push	main	None	Push today/fix.
+push	main	None	Push thanks.release.
+push	main	None	push now/fix
+push	main	None	push asap/fix
+push	main	None	push please/fix
+push	main	None	push it today/fix
+push	main	None	push all x/y
+push	release-THEN-next	True	Push to release-THEN-next.
+release	v1.3.0	None	release 2
+release	v1.3.0	None	release v2
+release	v1.3.0	None	release v1
+release	v1.3.0	None	release rc1
+release	v1.3.0	None	release 1,2,0
+release	v1.3.0	None	release @vike/react
+release	v1.3.0 @vike/react	True	release @vike/react
+ask-first	t3-update	None	update t3 to 1.2

@@ -5133,8 +5133,9 @@ for i, l in enumerate(open(sys.argv[1] + "/tests/owner-ask.tsv"), 1):
     if l.startswith("#") or not l.strip(): continue
     try: a, t, want, x = l.rstrip("\n").split("\t")
     except ValueError: print(f"line {i}: not 4 tab-separated fields"); continue
-    x = x.replace("\\n", "\n"); r, _, num = t.partition("#"); n += 1
-    got = owner_ask.asks(x, a, r, num or None) if a == "merge" else owner_ask.asks(x, a, branch=t) if a == "push" else owner_ask.asks(x, a, subject=None if t == "-" else t)
+    x = x.replace("\\n", "\n"); r, _, num = t.partition("#"); tag, _, pkg = t.partition(" "); n += 1
+    got = (owner_ask.asks(x, a, r, num or None, names=(r,)) if a == "merge" else owner_ask.asks(x, a, branch=t) if a == "push"
+           else owner_ask.asks(x, a, subject=None if tag == "-" else tag, names=(pkg,)) if a == "release" else owner_ask.asks(x, a, subject=t))
     if str(got) != want: print(f"line {i}: {x!r} gives {got}")
 n or print("no phrasings")' "$R"; }
 check "each phrasing of tests/owner-ask.tsv gets its verdict from owner_ask.asks; a failing one is named by its line, a runner error or an empty table fails" "" "$(oa 2>&1 || echo "the runner exited $?")"
@@ -5197,6 +5198,9 @@ said 'looks good'
 check "BLOCK: a publish from a project file's repo named by -C, --dir= or --prefix, or past a --filter; from a dir of no repo it passes" "2 2 2 2 0" \
   "$(lg "pnpm -C $TCO publish") $(lg "pnpm --dir=$TCO publish -r") $(lg "npm --prefix $TCO publish") $(lg 'pnpm --filter x publish' "$TCO") $(lg "pnpm -C $T publish" "$TCO")"
 check "BLOCK: a publish whose -C after publish names a project file's repo; one whose -C there names a dir of no repo passes" "2 0" "$(lg "pnpm publish -C $TCO") $(lg "pnpm publish -C $T" "$TCO")"
+printf '{"name":"@o/pkg"}' > "$TCO/package.json"
+check "a publish asked for by its package's name passes; BLOCK: one asked for another package" "0 2" "$(said 'release @o/pkg'; lg 'npm publish' "$TCO") $(said 'release @o/other'; lg 'npm publish' "$TCO")"
+rm "$TCO/package.json"
 check "GitLab: BLOCK: glab mr merge, its alias accept, and glab release create unasked, naming the MR; asked, they pass" "2 1 2 2 0 0" \
   "$(said 'looks good'; lg 'glab mr merge 41 -R o/r') $(grep -c 'merging gitlab.com/o/r!41 lands on o/r' "$T/err") $(lg 'glab mr accept 41 -R o/r') $(lg 'glab release create v1.2.0 -R o/r') $(said 'merge it'; lg 'glab mr merge 41 -R o/r') $(said 'release it'; lg 'glab release create v1.2.0 -R o/r')"
 check "a release asked for by its prerelease tag passes, on gh and glab" "0 0" "$(said 'Release v1.2.0-rc.1'; lg 'gh release create v1.2.0-rc.1 -R o/r') $(lg 'glab release create v1.2.0-rc.1 -R o/r')"

@@ -167,16 +167,16 @@ def project_file(repo):
     try: return open(os.path.expanduser(f'~/.mergeworthy/projects/{repo}.md'), errors='replace').read() if repo else None
     except OSError: return None
 
-def need_ask(kind, what, repo=None, num=None, branch=None, strict=False, subject=None):
-    """Blocks what (a landing on repo's default branch, or an ask-first command; subject as in owner_ask.asks) unless the message the user
-    last typed asks for it, or holds it back in no sentence while repo's project file holds kind's `## Merging` order; a landing on a repo
-    with no project file passes, unless strict (a merge past the base's rules)."""
+def need_ask(kind, what, repo=None, num=None, branch=None, strict=False, subject=None, names=()):
+    """Blocks what (a landing on repo's default branch, or an ask-first command; subject, and names besides repo, as in owner_ask.asks)
+    unless the message the user last typed asks for it, or holds it back in no sentence while repo's project file holds kind's `## Merging`
+    order; a landing on a repo with no project file passes, unless strict (a merge past the base's rules)."""
     repo = re.sub(r'^gitlab\.com/', '', repo or '') or None  # a GitLab project's project file is named by its path
     _, order, reply = ASKED_FOR[kind]
     text = project_file(repo)
     if text is None and kind != 'ask-first' and not strict: return
     sec = re.search(r'^## Merging\b[^\n]*\n(.*?)(?=^## |\Z)', text or '', re.M | re.S)
-    asked = asks(last_typed(d.get('transcript_path')), kind, repo, num, branch, subject)
+    asked = asks(last_typed(d.get('transcript_path')), kind, repo, num, branch, subject, (repo, *names))
     if asked or asked is None and order and sec and re.search(r'^[-*] +' + order.format(branch=re.escape(branch or '')), sec[1], re.M):
         return
     if kind == 'ask-first':
@@ -1137,7 +1137,9 @@ def check(t, has_cd):
         mr = mr_target(a[2:], run_dir)
         need_ask('merge', f"merging {mr[0]}!{mr[1] or mr[2]}", mr[0], mr[1])
     if p in ('npm', 'pnpm') and (pkg := publish_dir(p, a)) and '--dry-run' not in a:
-        need_ask('release', f'`{p} publish`', (repo_of(origin(pkg)) or (None, None))[1])
+        try: name = json.load(open(os.path.join(pkg, 'package.json'))).get('name')
+        except (OSError, ValueError, AttributeError): name = None
+        need_ask('release', f'`{p} publish`', (repo_of(origin(pkg)) or (None, None))[1], names=(name,))
     if p == 'codex' and ('exec' in a or a[:1] == ['e']) and under_t3():
         block("under T3 Code, start Codex through T3, where the user sees it: delegate_task with target {providerInstanceId: codex, "
               "model: <the review model from orchestrator_capabilities>}, the prompt file's path in the task, a new delegate_task per review round (mergeworthy:delegate §Reviewers)")
