@@ -186,6 +186,31 @@ fi
 # carries an earlier pass or small fix's review ("carries the pass of <sha>", carry_holds): a fix log or a note is not a shape pass
 # A pass rates every item afresh: a row whose rating is copied ("10 =", "=", "unchanged since") is a re-rating of a delta, not a pass
 is_pass() { grep -q '✅' "$1" && grep -Eq '([0-9]+|\bnew) *(⇒|=>) *([0-9]+|removed|new|n/a)' "$1" && ! grep -Eiq '\| *([0-9]+ *)?= *\||unchanged since' "$1"; }
+# A pass's report rates one item per row (its first table cell, or the text before the rating) and has the '## Root cause' of code §Root cause
+one_per_row_root_cause() { python3 - "$1" <<'EOF' || exit 1
+import re, sys
+path = sys.argv[1]; s = open(path).read()
+ask = '(mergeworthy delegate/shape.md)'
+grouped = re.compile(r'\(\s*\d+\s+(fns?|functions?|helpers?|methods?|files?)\b[^)]*\)|`[^`\n]+`\s*(,|&|\+|/|\band\b)\s*`', re.I)
+for line in s.splitlines():
+    m = re.search(r'([0-9]+|\bnew) *(⇒|=>) *([0-9]+|removed|new|n/a)', line)
+    item = line.strip().strip('|').split('|')[0] if line.lstrip().startswith('|') else line[:m.start()] if m else ''
+    if grouped.search(item):
+        sys.exit(f"{path} rates several items in one row: give each file and function its own row and rating {ask}:\n{line.strip()}")
+sec = re.search(r'^## Root cause[ \t]*\n(.*?)(?=^## |\Z)', s, re.M | re.S)
+want = "'## Root cause' with one bullet per workaround for another project's bug, `path:line` and its upstream issue or PR link, or '- none', then a line 'Pre-1.0 shims: none'"
+if not sec:
+    sys.exit(f"{path} has no {want} {ask}")
+lines = [l.strip() for l in sec.group(1).splitlines()]
+shims = [l for l in lines if re.match(r'([-*] +)?Pre-1\.0 shims:', l)]
+bullets = [l for l in lines if re.match(r'[-*] ', l) and l not in shims]
+bad = [b for b in bullets if not re.fullmatch(r'[-*] +none\.?', b, re.I) and not re.search(r'https?://', b)]
+if not bullets or bad:
+    sys.exit(f"{path} needs {want}; " + ('its section has no bullet' if not bullets else 'a bullet without its upstream link:\n' + '\n'.join(bad)) + f" {ask}")
+if not shims or not re.fullmatch(r'([-*] +)?Pre-1\.0 shims: *none\.?', shims[0], re.I):
+    sys.exit(f"{path} needs {want}: pre-1.0 code gets no compatibility code or shims (code §Root cause); " + (f"it has '{shims[0]}'" if shims else "the line is missing") + f" {ask}")
+EOF
+}
 # The lines between two trees, a binary, mode or empty file counting one
 span() { git diff --numstat "$1" "$2" | awk '{ s += $1 + $2 + 1 } END { print s + 0 }'; }
 # The file of each line HEAD changed since an earlier head, once per line: compared whole with that head replayed on the base HEAD has merged,
@@ -311,6 +336,7 @@ EOF
   shape|refactor)
     if is_pass "$out"; then
       [ "$step" = refactor ] || old_pipeline || read_standards
+      one_per_row_root_cause "$out"
       [ "$step" = refactor ] ||
       [ "$last" = CLEAN ] || ledger_ok || { echo "$out does not end with a line CLEAN: land what its review and shape pass found worth changing, then continue the same agent for round 2; after round 2, record it with --ledger <the loop's ledger> (mergeworthy:converge step 2)" >&2; exit 1; }
     else

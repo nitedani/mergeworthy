@@ -33,7 +33,7 @@ Step 3, rate every file and function old ⇒ new: verify each implementation (be
 
 <Round 2: the previous report <path>, the ledger <path>, the commits since <list>: all three steps on the rows they touched; rate every other row afresh (old ⇒ new, never '=' or 'unchanged since'); only a blocker or regression counts, the rest under `## Dropped`.>
 
-Write <report path>: `## Standards read` (above), then step 1's findings, DELETE-NOW first, then FIX, FILL, DELETE-CAREFULLY, OWNER-DECISION; NIT rows under `## Dropped` (agent.md); the mechanism census; the 10-second pass as classes; step 2's ratings and ✅ coverage list; step 3's old ⇒ new ratings and the prior findings' closure; an honest-positive statement ("nothing worth changing" where that is the result). End the file with a line CLEAN only when your review in this run and all three steps leave nothing behavior-preserving whose value is worth its price (its should, agent.md).
+Write <report path>: `## Standards read` (above), then step 1's findings, DELETE-NOW first, then FIX, FILL, DELETE-CAREFULLY, OWNER-DECISION; the mechanism census; the 10-second pass as classes; step 2's ratings and ✅ coverage list; step 3's old ⇒ new ratings, one item per row, and the prior findings' closure; `## Root cause`: each workaround's `path:line` and upstream link, or `- none`, then `Pre-1.0 shims: none`; an honest-positive statement ("nothing worth changing" where that is the result). End the file with a line CLEAN only when your review in this run and all three steps leave nothing behavior-preserving whose value is worth its price (its should, agent.md).
 Final message: the path, counts per disposition, the three highest-value findings, the overall rating.
 
 <the prompt below, verbatim>
