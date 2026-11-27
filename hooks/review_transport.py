@@ -8,7 +8,6 @@ import glob, os, re, time
 import agent_jobs, loops, steward, t3_tasks
 
 WINDOW = 50 * 60  # a provider's prompt cache is gone after about an hour, and the continued reviewer re-reads it all
-FIX_CHECK = r'^[ \t>*-]*Review:[^\n]*\bfix-check\b'  # the brief's line declaring a round a fix check of its reviewer's own findings
 
 
 def as_launch(tool, ti):
@@ -95,9 +94,9 @@ def resumed(argv):
 
 def fix_check(name, brief, at, ran):
     """Why round name, continuing the reviewer last active at at (None: unknown) that ran the rounds ran, is refused, '' when it
-    may run: only a fix check (FIX_CHECK) of that reviewer's own findings, named by their ledger ids (R<round>.<n>, a round in
+    may run: only a fix check (its `Review:` line's fix-check) of that reviewer's own findings, named by their ledger ids (R<round>.<n>, a round in
     ran), or a `<slice>-reverify` round, continues it, within WINDOW."""
-    declared, recent = re.search(FIX_CHECK, brief, re.M), at and time.time() - at <= WINDOW
+    declared, recent = loops.directives(brief).fix_check, at and time.time() - at <= WINDOW
     named = dict(re.findall(r'\b(R(\d+)\.\d+)\b', brief))
     others = sorted(i for i, m in named.items() if int(m) not in ran)
     # a reverify continues the Loop A verifier on Loop B's commits, which fix none of its findings (converge step 3)

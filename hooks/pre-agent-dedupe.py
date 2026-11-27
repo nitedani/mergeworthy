@@ -66,9 +66,10 @@ git = lambda wt, *a: subprocess.run(['git', '-C', wt, *a], capture_output=True, 
 # continues on its loop's round-1 checkouts at their live heads, and that round's ledger
 tops, heads = loops.pinned(L)
 if first and not tops: tops = first.get('checkouts') or []; heads = sorted(filter(None, (git(t, 'rev-parse', 'HEAD').stdout.strip() for t in tops)))
-led = loops.ledger_named(brief) or (first or {}).get('ledger')
+D = loops.directives(brief)
+led = D.ledger or (first or {}).get('ledger')
 # a review template's first line `Review: <step> [<part>]` (delegate/verifier.md) declares the round's step
-step, seats, fills = loops.declared(brief)
+step, seats, fills = D.step, D.seats, D.fills
 # pull-request step 5 is the build's input: an implementer brief names `Approach: <path>`, the newest approach record of a checkout it names
 # (pr-steps approach). A later build of that record's PR names a newer record, or the same one marked `(unchanged: <why>)`.
 def brief_approach(strict=True):
@@ -129,9 +130,9 @@ class Kinds:
         self.refresh = memory_launch(req.task)  # decided here, at admission, and stored on the pending call; `refresh` on the job too
         # A fan-out a step names (finality steps 2-3, converge's per-slice verifiers, the per-provider seats of delegate §Model class) says so on a
         # `Fan-out:` line, in the task or its brief, and passes the cap; the fan-out agents already open still count against an ordinary launch
-        fan = None if self.builds else re.search(r'^Fan-out: (finality step [23]|design step [34]|pull-request step 5|converge §Running the agents)$', brief, re.M)
+        fan = None if self.builds else D.fanout
         self.fanout = bool(fan)
-        self.seat = bool(fan) and fan[1] not in ('finality step 2', 'converge §Running the agents')  # one opinion per provider
+        self.seat = bool(fan) and fan not in ('finality step 2', loops.SEATING)  # one opinion per provider
         self.writer = req.role not in READERS
 k = Kinds(req, brief)
 def is_refresh(r):
@@ -168,7 +169,7 @@ def register_launch():
     for out, aside in rec.get('launches', {}).items(): review_launch.launch(out, aside)
     if k.review:
         loops.register(*k.round, None if k.post_review else rec['heads'] if 'heads' in rec else heads,
-                       review_transport.thread(ti, req.response), k.post_review, said_outs, bool(re.search(loops.FANOUT, brief, re.M)), tops, led, step, seats, fills,
+                       review_transport.thread(ti, req.response), k.post_review, said_outs, D.fanout == loops.SEATING, tops, led, step, seats, fills,
                        None if sent else 'claudeAgent' if not req.providers or 'claudeAgent' in req.providers else min(req.providers))
     if k.builds and (approach := rec['approach'] if 'approach' in rec else brief_approach(strict=False)):
         os.makedirs(agent_jobs.BUILT, exist_ok=True)
@@ -220,7 +221,7 @@ elif req.role == 'review' and req.t3 and not sent:  # a continued round runs on 
     # the fallback keeps the first review's prompt, so its claim may sit in the brief file the task names; `<what failed>` is the form, no claim.
     # A round 1 seating its step's reviewers at once takes a fresh agent of this company as its second seat, which keeps its
     # later rounds on it (delegate §Reviewers)
-    elif 'claudeAgent' in drivers and not (k.round and (k.round[1] == 1 and re.search(loops.FANOUT, brief, re.M) or k.round[1] != 1 and loops.same_company_seat(k.round[0], tops))) \
+    elif 'claudeAgent' in drivers and not (k.round and (k.round[1] == 1 and D.fanout == loops.SEATING or k.round[1] != 1 and loops.same_company_seat(k.round[0], tops))) \
             and not re.search(r'\bFallback:[ \t]*[^\s<]', launch.Brief(req.task).brief):
         sys.stderr.write(f"BLOCKED: claude-swap reads every saved Codex account as used up until {when}: a review on Claude says so in a line "
                          f"`Fallback: Codex used up until {when}` in the task or the brief file it names (mergeworthy:delegate §Reviewers).\n" if reset else
@@ -271,8 +272,8 @@ for wt in sorted(paths if shas else ()):
                              "Pin the live head (and check the work isn't already done there)." + (f" Ruled out:\n{ruled}\n" if ruled else "\n"))
             refused()
 if k.post_review:
-    led = re.search(r'(/[^\s`\'"()]+\.ledger\.md)\b', brief)  # the ledger the brief names; answers() defaults to the one beside the draft
-    passes = [(o, dr, led and led[1]) for o in review_outs(brief) if (dr := review_launch.draft_of(o)) in reviewed_drafts(brief)]
+    # the ledger the brief names; answers() defaults to the one beside the draft
+    passes = [(o, dr, D.ledger) for o in review_outs(brief) if (dr := review_launch.draft_of(o)) in reviewed_drafts(brief)]
     if all(not review_launch.answers(o, dr, lg) for o, dr, lg in passes):
         sys.stderr.write("BLOCKED: gate-pass already passes every draft this post review reads, so a round on them reviews nothing new "
                          "(mergeworthy:delegate §Review rounds): post it, or edit the draft first. It passes with:\n"
@@ -282,12 +283,12 @@ elif k.review:
     loop, n = k.round
     # a routed round counts in its seat's loop of its slice, a `Continues: <loop>` one in the loop it takes over
     routed = loops.name(loop)
-    owners = [l for l in here if routed.kind in loops.ROUTED and loops.name(l).subject == routed.subject and loops.name(l).kind not in loops.ROUTED] + re.findall(r'^[ \t>*-]*Continues:[ \t]*(\S+)', brief, re.M)
+    owners = [l for l in here if routed.kind in loops.ROUTED and loops.name(l).subject == routed.subject and loops.name(l).kind not in loops.ROUTED] + D.continues
     if sent and (why := review_transport.fix_check(f'{loop}-r{n}', brief, review_transport.last_active(req.tool, ti['threadId'], req.transcript), review_transport.seat_rounds(ti['threadId']))) \
             or not sent and (why := loops.old_reports(loop, n, tops, L.paths, said_outs, brief)):
         sys.stderr.write(f"BLOCKED: {why}")
         refused()
-    if why := (n == 1 and not sent and not owners and loops.third_seat(loop, tops, brief)) or loops.admit(loop, n, tops, heads, led, owners, list(filter(None, [git_top(req.cwd or '/')])), step or (first or {}).get('step')):
+    if why := (n == 1 and not sent and not owners and loops.third_seat(loop, tops, D)) or loops.admit(loop, n, tops, heads, led, owners, list(filter(None, [git_top(req.cwd or '/')])), step or (first or {}).get('step')):
         sys.stderr.write(f"BLOCKED: {why}")
         refused()
 # A brief that writes or reviews code, docs or a post (any role but research or test) for a repo whose maintainers' notes exist

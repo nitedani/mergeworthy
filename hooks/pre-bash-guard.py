@@ -1340,15 +1340,15 @@ def check(t, has_cd):
         # a code review's round, named by its prompt file, is admitted and counted as an agent's is (loops); a post's counts none. A
         # brief declaring a code step (`Review: fresh`, a small review) is a code round, though its output be the body's verdict
         r = (p == 'codex' and ('exec' in a or a[:1] == ['e']) or '-p' in a or '--print' in a) and review_transport.shell_round(' '.join(t))
-        if r and (not post or (loops.declared(r[1])[0] or 'post') != 'post'):
+        if r and (not post or (loops.directives(r[1]).step or 'post') != 'post'):
             L = launch.Brief(r[1])
-            owners = re.findall(r'^[ \t>*-]*Continues:[ \t]*(\S+)', L.brief, re.M)
+            D = loops.directives(L.brief); owners = D.continues
             if (f := review_transport.resumed(t)) is None:
                 if why := loops.old_reports(r[0][1], int(r[0][2]), L.checkouts, L.paths, outs, L.brief): block(why)
             # the session it resumes ran the rounds of the loop whose prompt file began it: none, for another loop's or no reviewer's
             elif why := review_transport.fix_check(r[0][0], L.brief, f and os.path.getmtime(f), f and review_transport.started_on(f, r[2], r[0][1], int(r[0][2])) or set()): block(why)
-            if why := (r[0][2] == '1' and not owners and loops.third_seat(r[0][1], L.checkouts, L.brief)) or loops.admit(r[0][1], int(r[0][2]), *loops.pinned(L), loops.ledger_named(L.brief), owners, step=loops.declared(L.brief)[0]): block(why)
-            rounds.append((r[0][1], int(r[0][2]), loops.pinned(L)[1], None, False, outs, bool(re.search(loops.FANOUT, r[1], re.M)), L.checkouts, loops.ledger_named(L.brief), *loops.declared(L.brief)))
+            if why := (r[0][2] == '1' and not owners and loops.third_seat(r[0][1], L.checkouts, D)) or loops.admit(r[0][1], int(r[0][2]), *loops.pinned(L), D.ledger, owners, step=D.step): block(why)
+            rounds.append((r[0][1], int(r[0][2]), loops.pinned(L)[1], None, False, outs, loops.directives(r[1]).fanout == loops.SEATING, L.checkouts, D.ledger, D.step, D.seats, D.fills))
     written = [f for x, c in zip(targets, files) for f in known(c, x)]
     for x in dict.fromkeys(map(shellcmd.folder, written)):  # the instructions check runs git, once per folder
         if why := no_instructions_read(x, d):

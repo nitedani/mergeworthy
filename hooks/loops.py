@@ -64,21 +64,27 @@ def continues(loop, n, here):
 
 
 CAP = 4  # rounds per loop on one head (delegate §Review rounds)
-FANOUT = r'^Fan-out: converge §Running the agents$'  # a round 1 seating a step's reviewers at once (delegate §Reviewers)
+SEATING = 'converge §Running the agents'  # the fan-out of a round 1 seating a step's reviewers at once (delegate §Reviewers)
+Directives = collections.namedtuple('Directives', 'step fix_check seats fills continues fanout ledger')
 
 
-def declared(brief):
-    """(the step a round's brief declares by its line `Review: <step> [<part>]`, the seats its line `Seats: <seat>, …` does, the
-    seat or loop its line `Fallback: <seat> failed …` names first, which it fills), each None without."""
-    st, se = re.search(r'^[ \t>*-]*Review:[ \t]*(' + '|'.join(STEPS) + r')\b', brief, re.M), re.search(r'^[ \t>*-]*Seats:[ \t]*(.+)$', brief, re.M)
-    fb = re.search(r'^[ \t>*-]*Fallback:[ \t]*([^\s<,:;]+)', brief, re.M)
-    return st and st[1], se and [x for x in re.split(r'[\s,]+', se[1]) if x] or None, fb and fb[1]
+def directives(brief):
+    """The lines of a launch's brief the hooks read: the step its `Review: <step> [<part>]` declares and whether that line says
+    fix-check, the seats `Seats: <seat>, …` declares, the seat or loop `Fallback: <seat> failed …` names first (which it fills),
+    the loops its `Continues: <loop>` lines take over, the step its `Fan-out: <step>` line names, and the ledger path it names
+    first; each None without (continues: [])."""
+    line = lambda key, value: re.search(r'^[ \t>*-]*' + key + r':[ \t]*' + value, brief, re.M)
+    st, se, fb = line('Review', '(' + '|'.join(STEPS) + r')\b'), line('Seats', '(.+)$'), line('Fallback', r'([^\s<,:;]+)')
+    fan = re.search(r'^Fan-out: (finality step [23]|design step [34]|pull-request step 5|' + SEATING + ')$', brief, re.M)
+    led = re.search(r'(/[^\s`\'"()]+\.ledger\.md)\b', brief)
+    return Directives(st and st[1], bool(line('Review', r'[^\n]*\bfix-check\b')), se and [x for x in re.split(r'[\s,]+', se[1]) if x] or None,
+                      fb and fb[1], re.findall(r'^[ \t>*-]*Continues:[ \t]*(\S+)', brief, re.M), fan and fan[1], led and led[1])
 
 
 def register(loop, n, heads, thread=None, post=False, outs=(), seated=False, checkouts=(), led=None, step=None, seats=None, fills=None, company=None):
     """Records round n of loop that ran: the thread it ran in, and, for a code review, the heads its brief pinned, the reports it
     writes (outs), in review-loops.json, and in the journal of each change its brief names (checkouts) with whether it is one of
-    its step's seats (seated: its round 1 brief's FANOUT line), with the ledger it names (led), the step its `Review:` line declares
+    its step's seats (seated: its round 1 brief's `Fan-out:` line names SEATING), with the ledger it names (led), the step its `Review:` line declares
     the seats its `Seats:` line does, the seat its `Fallback:` line fills and the company it ran on."""
     failed = []  # each record is written though the other's write failed, then the first failure is raised
     if not post:
@@ -132,7 +138,7 @@ def lineage(checkout):
 
 
 def same_company_seat(loop, tops):
-    """Whether loop's round 1 on the lineage of one of the checkouts tops was a seat (its FANOUT line) on the main session's
+    """Whether loop's round 1 on the lineage of one of the checkouts tops was a seat (seated) on the main session's
     company, whose later rounds stay on it (delegate §Reviewers)."""
     return any((r := lineage(t).get(loop)) and r['first'].get('seated') and r['first'].get('company') == 'claudeAgent' for t in tops)
 
@@ -144,7 +150,7 @@ def step_of(loop, first):
 
 
 def open_seats(report, recorded, step, checkout='.'):
-    """The other seats of report's step on checkout's lineage, each still open: a loop whose round 1 seated it (its FANOUT line
+    """The other seats of report's step on checkout's lineage, each still open: a loop whose round 1 seated it (seated
     or `Seats:`) checking step, or one its round 1's `Seats: <seat>, …` declares that never ran, none of whose reports is in
     recorded (the outputs pr-steps recorded on the head), and no loop filling it (its round 1's `Fallback: <seat>`) closed.
     A step closes only once every seat's loop did."""
@@ -166,12 +172,6 @@ def pinned(L):
     """(the checkouts launch L's brief names, their heads that its pinned SHAs equal)."""
     shas = set(re.findall(SHA, L.brief))
     return L.checkouts, sorted({h for t in L.checkouts if (h := git(t, 'rev-parse', 'HEAD').stdout.strip()) and any(h.startswith(x) for x in shas)})
-
-
-def ledger_named(brief):
-    """The ledger path a round's brief names, else None."""
-    m = re.search(r'(/[^\s`\'"()]+\.ledger\.md)\b', brief)
-    return m and m[1]
 
 
 desc = lambda t, o, h: git(t, 'merge-base', '--is-ancestor', o, h).returncode == 0
@@ -205,12 +205,12 @@ def rounds_of(loop, tops):
     return found or record(loop)['rounds']
 
 
-def third_seat(loop, tops, brief):
+def third_seat(loop, tops, d):
     """Why round 1 of the seat loop, launched fresh, is refused: its step's round 1 on this lineage declared other seats (`Seats:`)
-    and the brief neither says what failed (`Fallback:`) nor which loop it takes over (`Continues:`); '' otherwise."""
+    and its brief's directives d neither say what failed (`Fallback:`) nor which loop it takes over (`Continues:`); '' otherwise."""
     stem, kind, seat = name(loop)
     named = {s for t in tops for l, r in lineage(t).items() if l != loop and name(l).subject == stem for s in r['first'].get('seats') or ()}
-    if kind != 'seat' or not named or seat in named or re.search(r'^[ \t>*-]*(Fallback|Continues):[ \t]*[^\s<]', brief, re.M): return ''
+    if kind != 'seat' or not named or seat in named or d.fills or any(c[:1] != '<' for c in d.continues): return ''
     return (f"{loop}-r1 would be a third seat of {stem}, whose round 1 declared {', '.join(sorted(named))}: continue a declared seat, "
             "or, when its launch failed, say so in a line `Fallback: <what failed>`; a seat taking over another's count names it, `Continues: <loop>` (mergeworthy:delegate §Review rounds).\n")
 
@@ -269,7 +269,7 @@ def old_reports(loop, n, tops, paths, outs, brief):
     """Why round n of loop, launched on a fresh reviewer, is refused for naming (among paths, its outputs outs aside) a report of an
     earlier round of its loop, '' otherwise: a fresh reviewer gets the ledger and the commits since, never the reports
     (delegate §Reviewers); a new agent taking over a seat past its context (`Continues: <loop>`) gets the last one."""
-    if n < 2 or re.search(r'^[ \t>*-]*Continues:[ \t]*\S', brief, re.M): return ''
+    if n < 2 or directives(brief).continues: return ''
     import review_launch
     mine = {os.path.realpath(o) for o in outs} | {os.path.realpath(w) for w in re.findall(r'\bWrite (/[^\s`\'"():]+)', brief)}
     old = {o for m, _, said in rounds_of(loop, tops) if m < n for o in said if not review_launch.draft_of(o)} - mine
