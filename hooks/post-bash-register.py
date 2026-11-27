@@ -115,7 +115,7 @@ def register_posted(out):
             body = r.stdout[:-1] if r.stdout.endswith('\n') else r.stdout
             open(gated, 'a').write(hashlib.sha256(body.replace('\r\n', '\n').strip().encode()).hexdigest() + '\n')
 register_posted(out)
-# Count a posted design proposal per thread (pre-bash-guard asks for a finality map from the third on)
+# Count a posted design proposal per thread (pre-bash-guard asks for design step 7's thread map from the third on)
 def body_files(t):
     if dp := discussion_post(t): return [dp[2]]
     a = prog(t)
@@ -132,7 +132,7 @@ for s in segs:
             flags = open(f + '.lint').read().split()
         except OSError:
             continue
-        if flags[flags.index('--kind') + 1:][:1] == ['proposal'] and os.path.exists(f + '.posted'):
+        if '--kind' in flags and flags[flags.index('--kind') + 1:][:1] == ['proposal'] and os.path.exists(f + '.posted'):
             open(os.path.expanduser('~/.claude/proposal-rounds.txt'), 'a').write(f'{tg[0]}#{tg[1]} {int(time.time())}\n')
 reg = os.path.expanduser('~/.claude/gh-watch-dirs.txt')
 dirs = [l.strip() for l in open(reg)] if os.path.exists(reg) else []

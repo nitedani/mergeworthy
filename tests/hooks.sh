@@ -621,6 +621,10 @@ check "BLOCK: the posted draft posted to the discussion again" "2 1" "$(hk pre-b
 dfx turn "$(date -u -d '-1 hour' +%Y-%m-%dT%H:%M:%SZ)"
 check "discussion-post --edit from the posted draft passes, after two of the agent's comments too, and post-bash-register says nothing of a watcher" "0 0 0" \
   "$(hk pre-bash-guard "discussion-post --edit DC_504 $DD/r.md") $(hk post-bash-register "discussion-post --edit DC_504 $DD/r.md") $(grep -c 'joined no watcher' "$T/err")"
+for i in 1 2 3; do echo "d/r#5 $(date -d '-2 hour' +%s)" >> "$HOME/.claude/proposal-rounds.txt"; done; for x in '' .gate; do cp "$DD/r.md$x" "$DD/w.md$x"; done; echo '--kind wip' > "$DD/w.md.lint"
+check "three rounds and no map: a WIP edit of a discussion comment passes pre-bash-guard and post-bash-register, and counts no round" "0 0 3" \
+  "$(hk pre-bash-guard "discussion-post --edit DC_504 $DD/w.md") $(hk post-bash-register "discussion-post --edit DC_504 $DD/w.md") $(grep -c '^d/r#5 ' "$HOME/.claude/proposal-rounds.txt")"
+rm -f "$HOME/.claude/proposal-rounds.txt"
 other
 check "BLOCK: an edit from a draft gated beside another thread's record" "2 1" "$(hk pre-bash-guard "discussion-post --edit DC_504 $DD/r.md") $(grep -c 'is the context of d/r#7, not d/r#5' "$T/err")"
 cp "$T/dtc.md" "$DD/thread-context.md"; cp "$T/dgate" "$DD/r.md.gate"; echo 'Also W.' >> "$DD/r.md"
@@ -815,7 +819,9 @@ check "the 1st proposal passes" 0 "$(pguard 1)"; pposted 1
 check "the 2nd proposal passes" 0 "$(pguard 2)"; pposted 2
 check "BLOCK: the 3rd proposal without a thread map" 2 "$(pguard 3)"
 grep -o 'maps/[^ ]*' "$T/err" | head -1
-check "the 3rd proposal's block: refresh the map, finality only when design step 7 calls for it, this proposal a new comment that is the WIP comment, no 'I updated' reply" "1 1 0" "$(grep -c 'refresh its thread map' "$T/err") $(grep -c "finality pass only when mergeworthy:design step 7 calls for it), then post this proposal as a new comment: it is the thread's WIP comment" "$T/err") $(grep -c 'I updated' "$T/err")"
+ONE="refresh its thread map with the invariants list, $AR/maps/o-r-9.md, so it is newer than your last proposal (run the finality pass only when mergeworthy:design step 7 calls for it), then that step's WIP update (mergeworthy:design §WIP comment)"
+one() { echo "$(grep -cF "$ONE" "$T/err") $(grep -c -- '--kind reply' "$T/err") $(grep -c "it is the thread's WIP comment" "$T/err")"; }
+check "the 3rd proposal's block has the one text, pointing at design step 7's WIP update" "1 0 0" "$(one)"
 touch -d '+1 minute' "$AR/maps/o-r-9.md"
 check "the 3rd proposal with a fresh map passes" 0 "$(pguard 3)"
 cp "$AR/drafts/r1/p3.md" "$AR/drafts/r1/p3.md.lint" "$AR/drafts/r1/p3.md.gate" "$T/"; mv "$T/p3.md" "$T/p9.md"; mv "$T/p3.md.lint" "$T/p9.md.lint"; mv "$T/p3.md.gate" "$T/p9.md.gate"; tcbind "$T/p9.md"
@@ -823,9 +829,23 @@ check "BLOCK: a proposal posted from a //path outside any drafts/ folder, for it
   "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh issue comment 9 --repo o/r --body-file /"+sys.argv[1]},"cwd":sys.argv[2]}))' "$T/p9.md" "$T" | timeout 20 python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?)"
 touch -d '-1 hour' "$AR/maps/o-r-9.md"
 check "BLOCK: a map older than the last proposal" 2 "$(pguard 3)"
-touch -d '+1 minute' "$AR/maps/o-r-9.md"; pguard 3 >/dev/null; pposted 3; touch -d '-1 hour' "$AR/maps/o-r-9.md"
-check "BLOCK: a 4th proposal whose map predates the 3rd: refresh the map, edit the WIP comment as a reply, and this reply says it updated it" "2 1 1 0" \
-  "$(pguard 4) $(grep -c 'refresh its thread map' "$T/err") $(grep -c "edit the thread's WIP comment from it through post (--kind reply), and let this reply say 'I updated the \[WIP comment\](link)'" "$T/err") $(grep -c 'post this proposal as a new comment' "$T/err")"
+touch -d '+1 minute' "$AR/maps/o-r-9.md"; pposted 3; touch -d '-1 hour' "$AR/maps/o-r-9.md"
+check "BLOCK: a 4th proposal whose map predates the 3rd, with the same one text" "2 1 0 0" "$(pguard 4) $(one)"
+touch -d '+1 minute' "$AR/maps/o-r-9.md"; check "the 4th proposal passes once the map is newer than the 3rd" 0 "$(pguard 4)"
+pgc() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$T" | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?; }  # command -> pre-bash-guard's exit code
+prc() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"tool_response":{"stdout":"https://example.invalid/x"}}))' "$1" | python3 "$R/hooks/post-bash-register.py" 2>"$T/err"; echo $?; }
+rounds() { grep -c '^o/r#9 ' "$HOME/.claude/proposal-rounds.txt"; }
+gd() { # name lint-flags: a gated draft in $AR/drafts/r1 with that .lint
+  printf 'Draft %s\n' "$1" > "$AR/drafts/r1/$1.md"; sha256sum "$AR/drafts/r1/$1.md" | cut -d' ' -f1 > "$AR/drafts/r1/$1.md.gate"; tcbind "$AR/drafts/r1/$1.md"; echo "$2" > "$AR/drafts/r1/$1.md.lint"; }
+touch -d '-1 hour' "$AR/maps/o-r-9.md"; gd w '--kind wip --repo o/r'; echo '{"issue_url":"https://api.github.com/repos/o/r/issues/9"}' > "$FX/repos_o_r_issues_comments_77"
+check "three rounds and a stale map: a WIP edit by comment id passes pre-bash-guard and post-bash-register, and counts no round" "0 0 3" \
+  "$(pgc "gh api -X PATCH repos/o/r/issues/comments/77 -F body=@$AR/drafts/r1/w.md") $(prc "gh api -X PATCH repos/o/r/issues/comments/77 -F body=@$AR/drafts/r1/w.md") $(rounds)"
+gd nk '--repo o/r --parent none'
+check "a draft linted with no --kind is no proposal: posted to a thread with three rounds and a stale map, both hooks pass and count no round" "0 0 3" \
+  "$(pgc "gh issue comment 9 --repo o/r --body-file $AR/drafts/r1/nk.md") $(prc "gh issue comment 9 --repo o/r --body-file $AR/drafts/r1/nk.md") $(rounds)"
+prop 5; touch -d '+1 minute' "$AR/maps/o-r-9.md"
+check "a proposal draft sent as an edit (--edit-last) counts no round" "0 3" "$(prc "gh issue comment 9 --repo o/r --edit-last --body-file $AR/drafts/r1/p5.md") $(rounds)"
+
 # ---------- post-lint --kind wip: a design thread's WIP comment (design §WIP comment) ----------
 wipd() { # sentences [section to drop] [line to add under TLDR] [line to add at the end]: $T/wip.md, 15 words plus 10 a sentence
   { printf '# 🚧 WIP\n\n*This comment is edited upon updates.*\n'; s=$1; per=$(( ($1 + 6) / 7 )); for h in TLDR Scope State TODO Agreed Open 'Next steps'; do

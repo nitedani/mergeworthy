@@ -482,7 +482,7 @@ def check_turn(repo, num, args=()):
 
 
 def check_finality(repo, num, files):
-    """A design thread that has had two proposal rounds needs the finality pass's thread map before the third (mergeworthy:finality).
+    """A design thread that has had two proposal rounds needs design step 7's thread map before the third (mergeworthy:design).
     post-bash-register counts posted `--kind proposal` drafts per thread in ~/.claude/proposal-rounds.txt; the map is
     <work folder>/maps/<owner>-<repo>-<number>.md (the root holds drafts/), and must be newer than the last proposal."""
     if not repo or not str(num).isdigit(): return
@@ -494,14 +494,12 @@ def check_finality(repo, num, files):
         f = f if os.path.isabs(f) else os.path.join(cwd, f)
         try: flags = open(f + '.lint').read().split()
         except OSError: continue
-        if flags[flags.index('--kind') + 1:][:1] != ['proposal']: continue
+        if '--kind' not in flags or flags[flags.index('--kind') + 1:][:1] != ['proposal']: continue
         root = next((os.path.dirname(p) for p in work_folder.ancestors(f) if os.path.basename(p) == 'drafts'), os.path.dirname(os.path.dirname(f)))
         m = os.path.join(root, 'maps', f"{repo.replace('/', '-')}-{num}.md")
         if os.path.exists(m) and os.path.getmtime(m) > rounds[-1]: continue
-        wip = ("post this proposal as a new comment: it is the thread's WIP comment" if len(rounds) == 2 else
-               "edit the thread's WIP comment from it through post (--kind reply), and let this reply say 'I updated the [WIP comment](link)'")
         block(f"{repo}#{num} has had {len(rounds)} proposal rounds: refresh its thread map with the invariants list, {m}, so it is newer than your last proposal "
-              f"(run the finality pass only when mergeworthy:design step 7 calls for it), then {wip} (mergeworthy:design §WIP comment)")
+              "(run the finality pass only when mergeworthy:design step 7 calls for it), then that step's WIP update (mergeworthy:design §WIP comment)")
 
 def comment_discussion(node_id):
     """owner/repo#N of the GitHub Discussion holding the comment with that node id; None when gh can't name it."""
@@ -1425,8 +1423,7 @@ def check(t, has_cd):
                 check_finality(*target, files)
             if sub != 'create':
                 check_context(f'{target[0]}#{target[1]}' if all(target) else None, files)
-            edit_last = sub == 'comment' and '--edit-last' in rest and '--create-if-none' not in rest  # --create-if-none may create
-            for f in files: gated_file(f, has_cd, create=f in new_post_drafts(t) and not edit_last)
+            for f in files: gated_file(f, has_cd, create=f in new_post_drafts(t))
     if p == 'gh' and a[:2] in (['pr', 'close'], ['issue', 'close']) and '--help' not in a and '-h' not in a:  # one it can't tell wakes as before
         ref = next((x for i, x in enumerate(a[2:]) if not x.startswith('-') and (i == 0 or a[1 + i] not in VALUED)), None)
         if t_ := thread_of_ref(gh_repo(a[2:], env, run_dir) if run_dir is not None or opt(a[2:], ['--repo', '-R']) else None, ref):

@@ -1350,7 +1350,7 @@ def new_post_drafts(t):
         return []
     a = t[1:]
     if a[:1] in (['issue'], ['pr']) and a[1:2] and a[1] in ('comment', 'create', 'review'):
-        return opt(a[2:], ['--body-file', '-F'])
+        return [] if '--edit-last' in a and '--create-if-none' not in a else opt(a[2:], ['--body-file', '-F'])  # --create-if-none may create
     if a[:1] == ['api']:
         method, _, _, inputs, posts = api_call(a[1:])
         if posts and method == 'POST':
