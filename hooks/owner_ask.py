@@ -125,7 +125,7 @@ def asks(text, kind, target):
               ('question', lambda m, q: ask.fullmatch(m)),  # a question that asks nothing: "Merge #41?"
               (None, lambda m, q: FILLER.fullmatch(NO_WAIT.sub(' ', m).strip())),  # "please", "don't wait for CI"
               (None, lambda m, q: '‹x›' in m and '‹t›' not in m),  # about another target: "#40 too"
-              (None, lambda m, q: any(a.fullmatch(m) for k, a in ASK.items() if k != kind)),  # "… and release it"
+              (None, lambda m, q: any(a.fullmatch(re.sub('‹[xo]›', '‹t›', m)) for k, a in ASK.items() if k != kind)),  # "… and release it", on its own target
               ('holds', lambda m, q: re.match(rf"{LEAD}(?:‹t›\s*)?{PAST}{words}", m, re.I) and not re.search('‹[xo]›', m)),  # a tail it doesn't take: "merge it tomorrow"
               (None, lambda m, q: re.match(rf"{LEAD}(?:‹t›\s*)?{PAST}{words}", m, re.I)),  # a tail about something else: "update t3 to 1.2"
               ('unknown', lambda m, q: True))
