@@ -182,13 +182,47 @@ def write(p, text):
         f.write(text)
     os.replace(p + '.tmp', p)
 
+def apply(mem, main, notes):
+    """Applies note lines to the parsed files: a note with the lead of a live item, or tagged `[replaces <lead>]`, replaces it,
+    the old one going under Superseded, in whichever file holds it; `[done <lead>]` takes a Still intended item out; a line
+    already there is skipped."""
+    for l in notes:
+        m = NOTE.match(l.strip())
+        if not m:
+            if l.startswith('- '):  # a section the brief doesn't name: kept, under Recent
+                m = NOTE.match('- Recent: ' + l[2:].strip())
+            else:
+                continue
+        sec = next(s for s in STANDING + ('Recent',) if s.lower() == m.group(1).lower())
+        line, op, old = '- ' + m.group(2).strip(), (m.group(3) or '').lower(), m.group(4)
+        if any(line in ls for secs in mem.values() for ls in secs.values()):
+            continue
+        ends = ([(lead('- ' + old), op)] if old else []) + ([(lead(line), 'replaces')] if sec != 'Recent' else [])
+        for key, how in ends:
+            for secs in mem.values():
+                for s in LIVE if how == 'replaces' else ('Still intended',):
+                    gone = [x for x in secs[s] if lead(x) == key]
+                    secs[s] = [x for x in secs[s] if lead(x) != key]
+                    secs['Superseded'] += gone if how == 'replaces' else []
+        mem[main][sec].append(line)
+
+def roll(mem, main, root, cov):
+    """Moves memory.md's Standing past KEEP characters, oldest first, to memory-archive-<its month>.md."""
+    size, month = 0, (cov or time.strftime('%Y-%m', time.gmtime()))[:7]
+    for line, s in sorted(((l, s) for s in STANDING for l in mem[main][s]), key=lambda x: when(x[0]), reverse=True):
+        size += len(line) + 1
+        if size > KEEP:
+            mem[main][s].remove(line)
+            arch = os.path.join(root, f'memory-archive-{(when(line) or month)[:7]}.md')
+            if arch not in mem:
+                mem[arch] = parse(arch)
+            mem[arch][s].append(line)
+
 def merge(root):
-    """Folds the read-through notes into memory.md. A Standing item is known by its lead: a note with the lead of a live
-    item, or tagged `[replaces <lead>]`, replaces it, the old one going under Superseded, in whichever file holds it;
-    `[done <lead>]` takes a Still intended item out; a line already there is skipped, so merging again changes nothing.
-    Standing is kept newest first, Recent to the 24 hours up to covered-until, and Standing past KEEP characters moves,
-    oldest first, to memory-archive-<its month>.md, written before memory.md: a crash between leaves a line in both, which
-    the next merge keeps once. The notes are only read: the refresh may still be appending to them, and prep resets them."""
+    """Folds the read-through notes into memory.md (apply()), so merging again changes nothing. Standing is kept newest
+    first, Recent to the 24 hours up to covered-until, and old Standing items move to their month's archive (roll()), written
+    before memory.md: a crash between leaves a line in both, which the next merge keeps once. The notes are only read: the
+    refresh may still be appending to them, and prep resets them."""
     main, np = path(root), notes_path(root)
     if not os.path.isfile(main) and not os.path.isfile(np):
         return
@@ -201,37 +235,11 @@ def merge(root):
                 mem[f][s] = [l for l in dict.fromkeys(mem[f][s]) if l not in seen]
                 seen.update(mem[f][s])
         notes = open(np, errors='replace').read().split('\n')[:-1] if os.path.isfile(np) else []  # a last line without its newline is still being written
-        for l in notes:
-            m = NOTE.match(l.strip())
-            if not m:
-                if l.startswith('- '):  # a section the brief doesn't name: kept, under Recent
-                    m = NOTE.match('- Recent: ' + l[2:].strip())
-                else:
-                    continue
-            sec = next(s for s in STANDING + ('Recent',) if s.lower() == m.group(1).lower())
-            line, op, old = '- ' + m.group(2).strip(), (m.group(3) or '').lower(), m.group(4)
-            if any(line in ls for secs in mem.values() for ls in secs.values()):
-                continue
-            ends = ([(lead('- ' + old), op)] if old else []) + ([(lead(line), 'replaces')] if sec != 'Recent' else [])
-            for key, how in ends:
-                for secs in mem.values():
-                    for s in LIVE if how == 'replaces' else ('Still intended',):
-                        gone = [x for x in secs[s] if lead(x) == key]
-                        secs[s] = [x for x in secs[s] if lead(x) != key]
-                        secs['Superseded'] += gone if how == 'replaces' else []
-            mem[main][sec].append(line)
+        apply(mem, main, notes)
         cov = covered(root)
         if cov:
             mem[main]['Recent'] = [l for l in mem[main]['Recent'] if not when(l) or stamp(when(l) + 'Z') >= stamp(cov) - 86400]
-        size, month = 0, (cov or time.strftime('%Y-%m', time.gmtime()))[:7]
-        for line, s in sorted(((l, s) for s in STANDING for l in mem[main][s]), key=lambda x: when(x[0]), reverse=True):
-            size += len(line) + 1
-            if size > KEEP:
-                mem[main][s].remove(line)
-                arch = os.path.join(root, f'memory-archive-{(when(line) or month)[:7]}.md')
-                if arch not in mem:
-                    mem[arch] = parse(arch)
-                mem[arch][s].append(line)
+        roll(mem, main, root, cov)
         for f, secs in mem.items():
             for s in STANDING:
                 secs[s] = newest_first(secs[s])
