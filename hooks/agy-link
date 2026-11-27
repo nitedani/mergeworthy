@@ -1,11 +1,11 @@
 #!/bin/bash
 # agy-link: links mergeworthy's Antigravity plugin (~/.mergeworthy/current/agy) into the profile T3 Code gives its Antigravity instance
-# `antigravity` (~/.t3/userdata/providers/antigravity/<sha256 of the id>/config/plugins), where agy loads it from at each session, so
+# `antigravity` (<T3's userdata>/providers/antigravity/<sha256 of the id>/config/plugins), where agy loads it from at each session, so
 # an update reaches it through ~/.mergeworthy/current; the instance's twin (antigravity_2) and ~/.gemini, which every instance shares, get
 # nothing. Run by session-start, mergeworthy-update, the installer and learn-units; without T3 Code, agy or the installed plugin it
 # changes nothing. A copied plugin (a folder) where the link goes is the person's own: kept, a warning on stderr, exit 0. Anything
 # else there that isn't a link (a file) is kept too, and fails the link, as any other failure to link does: exit 1.
-t3=~/.t3/userdata
+t3=${T3CODE_HOME:-$HOME/.t3}/userdata  # T3's data directory: T3CODE_HOME, else ~/.t3
 [ -d "$t3" ] && command -v agy >/dev/null && [ -f ~/.mergeworthy/current/agy/hooks.json ] || exit 0
 # the instance runs on Antigravity unless T3's settings give that id another driver
 python3 -c 'import json, sys

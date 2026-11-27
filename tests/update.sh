@@ -4,6 +4,7 @@
 set -u
 R=$(readlink -f "${1:-$(dirname "$0")/..}")
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT; export HOME="$T/home"; mkdir -p "$HOME/.claude" "$HOME/.mergeworthy" "$T/bin"
+unset T3CODE_HOME  # T3 Code's data directory, which a run under T3 inherits; the cases use $HOME/.t3
 fails=0
 check() { echo "$1: $3 (want $2)"; [ "$2" = "$3" ] || fails=$((fails+1)); }
 

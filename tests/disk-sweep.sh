@@ -8,6 +8,7 @@ set -u
 R=$(readlink -f "${1:-$(dirname "$0")/..}")
 # in /tmp whatever TMPDIR says: disk-sweep refuses --delete for a HOME under the account home
 T=$(mktemp -d -p /tmp); export HOME="$T/home" DOCKER_LOG="$T/docker.log" DOCKER_ROOT="$T"; mkdir -p "$HOME/.claude/agent-jobs" "$T/bin"
+unset T3CODE_HOME  # T3 Code's data directory, which a run under T3 inherits; the cases use $HOME/.t3
 cat > "$T/bin/docker" <<'EOF'
 #!/bin/sh
 # stub docker: records each call; the prunes report what they reclaimed as Docker prints it, or fail when DOCKER_FAIL is set

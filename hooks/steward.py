@@ -2,6 +2,7 @@
 """The steward, declared in ~/.mergeworthy/steward as `<watch dir> <T3 thread id>`: the session that sorts follow-ups and owns
 the mergeworthy repo. Without the file there is none, and each main session keeps both."""
 import contextlib, datetime, os, re, shutil, sqlite3, time
+from t3_tasks import userdata
 
 def read():
     """(watch dir, T3 thread id), or None."""
@@ -71,7 +72,7 @@ ACTIVE_TASKS = ('pending', 'starting', 'running', 'waiting')
 def _db(ask, default):
     """ask(read-only connection to T3 Code's state), or default on an error. The connection is closed after: an unclosed one stays
     open until the cycle collector runs, so a watcher that asks for days runs out of file handles."""
-    try: c = sqlite3.connect(f"file:{os.path.expanduser('~/.t3/userdata/statev2.sqlite')}?mode=ro", uri=True, timeout=2)
+    try: c = sqlite3.connect(f"file:{userdata('statev2.sqlite')}?mode=ro", uri=True, timeout=2)
     except sqlite3.Error: return default
     try:
         return ask(c)

@@ -5,6 +5,7 @@ set -u
 R=$(readlink -f "${1:-$(dirname "$0")/..}")
 export MERGEWORTHY_PYDEPS=${MERGEWORTHY_PYDEPS:-$HOME/.mergeworthy/pydeps}  # the shell parser the hooks run, installed once outside the temp HOME
 T=$(mktemp -d); export HOME="$T/home"; mkdir -p "$HOME/.claude/projects/p" "$HOME/.codex/sessions/2026" "$HOME/.mergeworthy/work" "$T/bin"
+unset T3CODE_HOME  # T3 Code's data directory, which a run under T3 inherits; the cases use $HOME/.t3
 fails=0
 check() { echo "$1: $3 (want $2)"; [ "$2" = "$3" ] || fails=$((fails+1)); }
 iso() { date -u -d "$1" +%Y-%m-%dT%H:%M:%SZ; }
@@ -158,7 +159,7 @@ touch -d '-1 minute' "$HOME/.claude/projects/p/s1.jsonl" "$HOME/.codex/sessions/
 PATH="$T/bin:$PATH" python3 "$R/bin/steward" done "$S" 2 replies, 1 PR
 check "done: the pass's time and summary end passes.txt, and the next window starts there" "2 replies, 1 PR|0" "$(tail -1 "$S/passes.txt" | cut -d' ' -f2-)|$(python3 "$R/bin/steward" sessions "$S" | grep -c "^~")"
 # round: gh-watch-start --round on the folder with each open PR of yours (steward_line adds the mergeworthy repo for a declared folder)
-SB="$T/sbin"; mkdir -p "$SB" "$T/hooks"; cp "$R/bin/steward" "$SB/"; cp "$R/hooks/gh_common.py" "$R/hooks/steward.py" "$T/hooks/"; printf '#!/bin/sh
+SB="$T/sbin"; mkdir -p "$SB" "$T/hooks"; cp "$R/bin/steward" "$SB/"; cp "$R/hooks/gh_common.py" "$R/hooks/steward.py" "$R/hooks/t3_tasks.py" "$T/hooks/"; printf '#!/bin/sh
 echo "$@" > "%s/args"
 ' "$T" > "$SB/gh-watch-start"; chmod +x "$SB/gh-watch-start"
 printf '#!/bin/sh

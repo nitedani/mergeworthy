@@ -7,6 +7,7 @@ set -u
 R=$(readlink -f "${1:-$(dirname "$0")/..}")
 # in /tmp whatever TMPDIR says: disk-sweep refuses --delete for a HOME under the account home
 T=$(mktemp -d -p /tmp); export HOME="$T/home"; mkdir -p "$HOME/.claude" "$T/bin"
+unset T3CODE_HOME  # T3 Code's data directory, which a run under T3 inherits; the cases use $HOME/.t3
 printf '#!/bin/sh\necho "gh stub: $*" >&2; exit 1\n' > "$T/bin/gh"
 cat > "$T/bin/codex" <<EOF
 #!/bin/sh
@@ -1307,7 +1308,7 @@ PATH="$T/cronbin:$PATH" bash "$GI/bin/gh-watch-start" "$T/retiredwatch" o/r 5 < 
 check "gh-watch-start on a dir whose watcher retired removes its retired file" "0 removed" "$? $([ -e "$T/retiredwatch/retired" ] && echo kept || echo removed)"
 GP=$(cat "$T/retiredwatch/gh-watch.pid" 2>/dev/null); ps -o args= -p "$GP" 2>/dev/null | grep -qx 'sleep 30' && kill "$GP"  # the stub daemon it started
 # under T3 Code (T3's state names the session's thread) it records the thread and the log's end, and prints no Monitor; outside it, the Monitor again
-mkdir -p "$GI/hooks" "$HOME/.t3/userdata" "$T/t3watch"; cp "$R/hooks/steward.py" "$R/hooks/threads_file.py" "$GI/hooks/"; printf '### before\n' > "$T/t3watch/events.log"
+mkdir -p "$GI/hooks" "$HOME/.t3/userdata" "$T/t3watch"; cp "$R/hooks/steward.py" "$R/hooks/t3_tasks.py" "$R/hooks/threads_file.py" "$GI/hooks/"; printf '### before\n' > "$T/t3watch/events.log"
 python3 -c 'import sqlite3, sys; c = sqlite3.connect(sys.argv[1]); c.execute("create table orchestration_v2_projection_provider_threads (provider_thread_id text, thread_id text, payload_json text)")
 c.execute("create table orchestration_v2_projection_subagents (subagent_id text, thread_id text, child_thread_id text)")
 c.execute("""insert into orchestration_v2_projection_provider_threads values ('"'p1', 'thr-9', '{\"nativeThreadRef\":{\"nativeId\":\"sess-t3\"}}'"')"""); c.commit()' "$HOME/.t3/userdata/statev2.sqlite"
