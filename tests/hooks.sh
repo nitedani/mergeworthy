@@ -1773,6 +1773,9 @@ ag() { # cwd task [role]
     | timeout 10 python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
 printf '# Memory\n## Standing\n### Ruled out\n- **Cron jobs** (now). The user refused them.\n## Recent\n<!-- covered-until: 2099-01-01T00:00:00.000Z -->\n' > "$MR/memory.md"
 check "BLOCK: a brief pinned to an older commit of the worktree it names, with the ruled-out list" "2 1" "$(ag "$OC" "Fix it in $T/gw at $OLD") $(grep -c 'Cron jobs' "$T/err")"
+cp "$MR/memory.md" "$T/memory.keep"; python3 -c 'import sys; open(sys.argv[1], "w").write("# Memory\n## Standing\n### Ruled out\n" + "".join(f"- **Ruled out {i}** (2026-11-{27 - i // 20:02d} 10:00Z). " + "A path the user refused, and why. " * 6 + "\n" for i in range(400)) + "## Recent\n<!-- covered-until: 2099-01-01T00:00:00.000Z -->\n")' "$MR/memory.md"
+check "BLOCK: with a 400-item Ruled out, the message lists its newest items up to 1,500 characters and where the rest is" "2 yes 1 1" "$(ag "$OC" "Fix it in $T/gw at $OLD, once more") $([ "$(wc -c < "$T/err")" -le 2500 ] && echo yes) $(grep -c '^- \*\*Ruled out 0\*\*' "$T/err") $(grep -c "more in $MR/memory.md" "$T/err")"
+mv "$T/memory.keep" "$MR/memory.md"
 check "a brief pinned to the worktree's live head passes" 0 "$(ag "$OC" "Fix it again in $T/gw at $NEW, base $OLD")"
 r1=$(rnd gw-r1 "Review $T/gw at head $NEW"); r2=$(rnd gw-r2 "Review $T/gw at head $NEW again"); r3=$(rnd gw-r3 "Review $T/gw at head $NEW once more")
 git -C "$T/gw" commit -q --allow-empty -m fix; FIX=$(git -C "$T/gw" rev-parse HEAD); r3f=$(rnd "gw-r3-${FIX:0:7}" "Review $T/gw at head $FIX")

@@ -247,25 +247,25 @@ def merge(root):
         for f in sorted(mem, key=lambda f: f == main):
             write(f, render(mem[f], 'Memory', cov) if f == main else render(mem[f], 'Memory archive'))
 
+def newest(p, heading, chars):
+    """A section of memory file p, its first items up to chars: one line each, deduplicated by its lead, then where the rest is."""
+    seen, body = set(), ''
+    for l in section(open(p, errors='replace').read() if os.path.isfile(p) else '', heading).splitlines():
+        l = l.strip()
+        if not re.match(r'[-*] ', l):
+            continue
+        key = lead(l)
+        if key in seen:
+            continue
+        seen.add(key); l = l if len(l) <= 240 else l[:237] + '...'
+        if len(body) + len(l) > chars:
+            return body + f'- ... more in {p}\n'
+        body += l + '\n'
+    return body
+
 def digest(root):
     """The Standing part, cut to the cap: one line per item, newest first, deduplicated by its lead. No model call."""
-    text = open(path(root), errors='replace').read() if os.path.isfile(path(root)) else ''
-    out, per = [], AIM // len(STANDING)
-    for head in STANDING:
-        seen, body = set(), ''
-        for l in section(text, head).splitlines():
-            l = l.strip()
-            if not re.match(r'[-*] ', l):
-                continue
-            key = lead(l)
-            if key in seen:
-                continue
-            seen.add(key); l = l if len(l) <= 240 else l[:237] + '...'
-            if len(body) + len(l) > per:
-                body += f'- ... more in {path(root)}\n'; break
-            body += l + '\n'
-        out.append(f'### {head}\n' + (body or 'none\n'))
-    return '\n'.join(out)[:CAP]
+    return '\n'.join(f'### {head}\n' + (newest(path(root), head, AIM // len(STANDING)) or 'none\n') for head in STANDING)[:CAP]
 
 def notes(root):
     """What the guards grep: memory.md and every other .md under the root but drafts and briefs."""

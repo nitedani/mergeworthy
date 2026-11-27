@@ -237,7 +237,7 @@ for wt in sorted(paths if shas else ()):
         old = [x for x in shas if git(wt, 'merge-base', '--is-ancestor', x, head).returncode == 0]
         if old:
             root = memory_file.for_cwd(req.cwd, req.session)
-            ruled = memory_file.section(open(memory_file.path(root)).read(), 'Ruled out') if root and os.path.isfile(memory_file.path(root)) else ''
+            ruled = memory_file.newest(memory_file.path(root), 'Ruled out', 1500).rstrip() if root else ''
             sys.stderr.write(f"BLOCKED: the brief pins {', '.join(sorted(old))} in {wt}, which has moved on to {head[:12]}. "
                              "Pin the live head (and check the work isn't already done there)." + (f" Ruled out:\n{ruled}\n" if ruled else "\n"))
             refused()
