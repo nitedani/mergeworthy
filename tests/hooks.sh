@@ -1441,7 +1441,8 @@ check "BLOCK: an implementer on a target naming the antigravity driver alone, wh
 rm "$HOME/.t3/userdata/settings.json"
 # whether an instance loads mergeworthy comes from its own config, whatever its id or name: a Claude config dir's settings.json and
 # the --settings layers in launchArgs, an Antigravity profile's plugins folder
-mkdir -p "$T/mwc" "$T/mwe" "$HOME/.t3/userdata/providers/antigravity/$(printf agy_y | sha256sum | cut -d' ' -f1)/config/plugins/mergeworthy"
+mkdir -p "$T/mwc" "$T/mwe" "$T/mwp/.claude-plugin" "$T/otherp/.claude-plugin" "$HOME/.t3/userdata/providers/antigravity/$(printf agy_y | sha256sum | cut -d' ' -f1)/config/plugins/mergeworthy"
+echo '{"name":"mergeworthy"}' > "$T/mwp/.claude-plugin/plugin.json"; echo '{"name":"other"}' > "$T/otherp/.claude-plugin/plugin.json"
 echo '{"enabledPlugins":{"mergeworthy@mergeworthy":true}}' > "$T/mwc/settings.json"; echo '{"enabledPlugins":{"mergeworthy@mergeworthy":false}}' > "$T/mwc/off.json"
 python3 -c 'import json,sys; t=sys.argv[1]; ev=lambda d: [{"name":"CLAUDE_CONFIG_DIR","value":t+d,"sensitive":False}]; print(json.dumps({"providerInstances":{
   "cm":{"driver":"claudeAgent","environment":ev("/mwc"),"config":{}},
@@ -1449,6 +1450,8 @@ python3 -c 'import json,sys; t=sys.argv[1]; ev=lambda d: [{"name":"CLAUDE_CONFIG
   "cfile":{"driver":"claudeAgent","config":{"homePath":t+"/mwc","launchArgs":["--settings="+t+"/mwc/off.json"]}},
   "cbare":{"driver":"claudeAgent","environment":ev("/mwe"),"config":{}},
   "chome":{"driver":"claudeAgent","environment":ev("/mwc"),"config":{"homePath":t+"/mwe"}},
+  "cpdir":{"driver":"claudeAgent","environment":ev("/mwe"),"config":{"launchArgs":"--plugin-dir "+t+"/mwp"}},
+  "cpother":{"driver":"claudeAgent","environment":ev("/mwe"),"config":{"launchArgs":["--plugin-dir="+t+"/otherp"]}},
   "cgone":{"driver":"claudeAgent","enabled":False,"environment":ev("/mwc"),"config":{}},
   "agy_x":{"driver":"antigravity"},"agy_y":{"driver":"antigravity"},"cx":{"driver":"codex"}}}))' "$T" > "$HOME/.t3/userdata/settings.json"
 tl() { # instance: a t3_thread_launch's exit code under T3
@@ -1456,9 +1459,11 @@ tl() { # instance: a t3_thread_launch's exit code under T3
     | T3CODE_THREAD_ID=th python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
 res() { impl "{\"providerInstanceId\":\"$1\"}" '' research 'Research the cache'; }
 check "BLOCK: a Claude instance whose inline --settings JSON or --settings= file disables the plugin, or whose config dir doesn't enable it, naming the enabled one that loads it; by delegate_task or t3_thread_launch" "2 1 2 1 2 1 2 1" \
-  "$(res myclaude) $(grep -c "^BLOCKED: T3's instance myclaude doesn't load mergeworthy.*set the target to cm\.$" "$T/err") $(res cfile) $(grep -c 'instance cfile.*target to cm\.$' "$T/err") $(res cbare) $(grep -c 'instance cbare.*target to cm\.$' "$T/err") $(tl myclaude) $(grep -c 'instance myclaude.*target to cm\.$' "$T/err")"
+  "$(res myclaude) $(grep -c "^BLOCKED: T3's instance myclaude doesn't load mergeworthy.*set the target to cm or cpdir\.$" "$T/err") $(res cfile) $(grep -c 'instance cfile.*target to cm or cpdir\.$' "$T/err") $(res cbare) $(grep -c 'instance cbare.*target to cm or cpdir\.$' "$T/err") $(tl myclaude) $(grep -c 'instance myclaude.*target to cm or cpdir\.$' "$T/err")"
 check "BLOCK: a Claude instance whose homePath doesn't enable the plugin while its environment's CLAUDE_CONFIG_DIR does: T3 takes homePath first" "2 1" \
-  "$(res chome) $(grep -c 'instance chome.*target to cm\.$' "$T/err")"
+  "$(res chome) $(grep -c 'instance chome.*target to cm or cpdir\.$' "$T/err")"
+check "a Claude instance loading the plugin by --plugin-dir passes; BLOCK: one whose --plugin-dir= holds another plugin" "0 2 1" \
+  "$(res cpdir) $(res cpother) $(grep -c 'instance cpother.*target to cm or cpdir\.$' "$T/err")"
 check "BLOCK: an Antigravity instance with no mergeworthy in its profile's plugins, naming the one that has it" "2 1" \
   "$(res agy_x) $(grep -c "instance agy_x doesn't load mergeworthy.*set the target to agy_y\.$" "$T/err")"
 check "a launch on an instance that loads mergeworthy (cm, agy_y), on codex, an unlisted instance, a driverKind alone or no target passes" "0 0 0 0 0 0" \

@@ -48,8 +48,8 @@ def driver(instance, kind=None):
 
 def loads_mergeworthy(instance, config):
     """Whether T3 Code's provider instance `instance` (its settings entry `config`) loads mergeworthy, as its driver loads plugins:
-    Claude Code with the plugin enabled in its config dir's settings.json and not disabled by a `--settings` file or JSON in its
-    launchArgs (which override it); Antigravity with a `mergeworthy` plugin in the instance's own profile (where hooks/agy-link
+    Claude Code with the plugin in a `--plugin-dir` of its launchArgs, or enabled in its config dir's settings.json and not disabled
+    by a `--settings` file or JSON there (which override it); Antigravity with a `mergeworthy` plugin in the instance's own profile (where hooks/agy-link
     links it). Any other driver: True, as nothing here can tell."""
     c = config.get('config') if isinstance(config.get('config'), dict) else {}
     if config.get('driver') == 'claudeAgent':
@@ -60,7 +60,13 @@ def loads_mergeworthy(instance, config):
         args = c.get('launchArgs') or []
         try: args = shlex.split(args) if isinstance(args, str) else [str(a) for a in args]
         except ValueError: args = []
-        layers += [a.split('=', 1)[1] if a.startswith('--settings=') else b for a, b in zip(args, args[1:] + ['']) if a == '--settings' or a.startswith('--settings=')]
+        flag = lambda name: [a.split('=', 1)[1] if a.startswith(name + '=') else b for a, b in zip(args, args[1:] + ['']) if a == name or a.startswith(name + '=')]
+        # a --plugin-dir T3 passes on (claudeLaunchArgPluginDirectories) loads the plugin it holds
+        for d in filter(None, flag('--plugin-dir')):
+            try:
+                if json.load(open(os.path.join(os.path.expanduser(d), '.claude-plugin', 'plugin.json'))).get('name') == 'mergeworthy': return True
+            except (OSError, ValueError, AttributeError): pass
+        layers += flag('--settings')
         on = False
         for layer in filter(None, layers):
             try: d = json.loads(layer) if layer.lstrip().startswith('{') else json.load(open(os.path.expanduser(layer)))
