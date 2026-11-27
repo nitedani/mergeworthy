@@ -5343,14 +5343,23 @@ sed -i '/^## Merging/,$d' "$HOME/.mergeworthy/projects/o/r.md"; mpr CLEAN 2026-1
 printf '{"total_commits":1,"commits":[{"sha":"b1","commit":{"committer":{"date":"2026-10-28T12:00:00Z"}}}]}' > "$FX/repos_o_r_compare_hd...main"; printf '{"files":[{"filename":"b.py"}]}' > "$FX/repos_o_r_commits_b1"
 said 'looks good'
 check "BLOCK: a merge nobody asked for, naming the way out" "2 1" "$(lg "$M") $(grep -c "needs their ask.*reply \`merge\` (mergeworthy:merging steps 3-4)" "$T/err")"
-said 'thanks'; check "a merge the user's last message asks for passes: merge, mergeld, the PR's URL with merge and release, beside another PR held back, after let's, a bullet, I want you to, kérlek" "0 0 0 0 0 0 0 0" \
-  "$(said "Don't merge #40. Merge #41."; lg "$M") $(said 'merge it'; lg "$M") $(said 'Let’s merge #41.'; lg "$M") $(said '- Merge #41.'; lg "$M") $(said 'I want you to merge #41.'; lg "$M") $(said 'kérlek mergeld'; lg "$M") $(said 'mergeld kerlek'; lg "$M") $(said 'https://github.com/o/r/pull/41 merge and release'; lg "$M")"
-check "BLOCK: an ask naming another PR (in its own sentence or clause, or another repo's), a question (a URL ending it too), a negation (English, Hungarian), an older ask, a mention, an ask put off, a T3 scheduled prompt" "2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2" \
-  "$(said 'merge #40'; lg "$M") $(said 'is #41 merged?'; lg "$M") $(said "don't merge it yet"; lg "$M") $(said 'ne mergeld'; lg "$M") $(said 'nem kell mergelni'; lg "$M") $(said 'majd en mergelem'; lg "$M") \
-$(said 'Review #41. Merge #40.'; lg "$M") $(said 'Merge #40, and review #41.'; lg "$M") $(said 'Merge it, but not before CI passes.'; lg "$M") $(said 'Merge https://github.com/o/r/pull/41?'; lg "$M") $(said 'Merge https://github.com/o/pkg/pull/41'; lg "$M") $(said 'merge it' 'wait, not yet'; lg "$M") $(said 'Resolve the merge conflicts.'; lg "$M") $(said 'Merge #41 after I review it.'; lg "$M") $(said 'the merge went fine'; lg "$M") $(said 'thanks' '[T3 Code: scheduled task "zqs-check" sent this prompt.] Goal: merge and land PR #41'; lg "$M") $(said 'land PR #23'; lg "$M")"
+oa() { python3 -c 'import sys; sys.path.insert(0, sys.argv[1] + "/hooks"); import owner_ask
+n = 0
+for i, l in enumerate(open(sys.argv[1] + "/tests/owner-ask.tsv"), 1):
+    if l.startswith("#") or not l.strip(): continue
+    try: a, t, want, x = l.rstrip("\n").split("\t")
+    except ValueError: print(f"line {i}: not 4 tab-separated fields"); continue
+    x = x.replace("\\n", "\n"); r, _, num = t.partition("#"); tag, _, pkg = t.partition(" "); n += 1
+    got = owner_ask.asks(x, a, owner_ask.Target(r, num or None, names=(r,)) if a == "merge" else owner_ask.Target(branch=t) if a == "push"
+                         else owner_ask.Target(subject=None if tag == "-" else tag, names=(pkg,)) if a == "release" else owner_ask.Target(subject=t, names=owner_ask.command_names(t, "opensource")))
+    if str(got) != want: print(f"line {i}: {x!r} gives {got}")
+n or print("no phrasings")' "$R"; }
+check "each phrasing of tests/owner-ask.tsv gets its verdict from owner_ask.asks; a failing one is named by its line, a runner error or an empty table fails" "" "$(oa 2>&1 || echo "the runner exited $?")"
+check "a merge the typed message asks for passes, as the owner asked for one; BLOCK: an older ask, a T3 scheduled prompt" "0 2 2" \
+  "$(said 'for now lets just merge the sentry pr and release it'; lg "$M") $(said 'merge it' 'wait, not yet'; lg "$M") $(said 'thanks' '[T3 Code: scheduled task "zqs-check" sent this prompt.] Goal: merge and land PR #41'; lg "$M")"
 printf '## Merging\n- Merge each PR as soon as it is ready (gates, CI)\n' >> "$HOME/.mergeworthy/projects/o/r.md"
-check "a merge under the project file's standing order passes with no ask, or with another PR held back; BLOCK: the user's last message holding it back wins over the order, a past 'merged' too" "0 0 2 2 2 2" \
-  "$(said 'thanks'; lg "$M") $(said "Don't merge #40."; lg "$M") $(said 'Dont merge pr when ready, I want to see it.'; lg "$M") $(said 'ne mergeld'; lg "$M") $(said "Don't merge #41."; lg "$M") $(said "I don't want it merged yet."; lg "$M")"
+check "a merge under the project file's standing order passes with no ask; BLOCK: the typed message holding it back wins over the order" "0 2" \
+  "$(said 'thanks'; lg "$M") $(said "Don't merge #41."; lg "$M")"
 sed -i '/^## Merging/,$d' "$HOME/.mergeworthy/projects/o/r.md"
 # --admin merges past the base's rules only on the owner's own user repo, every rule on the base from a ruleset GitHub lets them always bypass, no
 # classic protection, and on their ask: the typed one, or the project file's order; a repo with no project file has no standing order
@@ -5414,35 +5423,33 @@ touch "$FX/repos_o_r_rules_branches_main_per_page_100.hang"
 check "BLOCK: --admin when gh hangs reading the base's rules, saying to retry" "2 1" "$(lg "$MA") $(grep -c "gh couldn't read main's rules: retry once gh answers" "$T/err")"
 rm "$FX/user" "$FX/repos_o_r_rules_branches_main_per_page_100.hang" "$FX/repos_o_r_branches_main_protection.err" "$FX/repos_o_r" "$FX/repos_o_r_rules_branches_main_per_page_100" "$FX/repos_o_r_rulesets_7"
 said 'looks good'
-check "BLOCK: gh release create and npm publish unasked; asked, or a dry run, or a repo with no project file, they pass; BLOCK: release notes asked for, a past 'released' or 'published', one held back as 'released' or 'published'" "2 2 0 0 2 2 2 0 0 2 2 2 2" \
+check "BLOCK: gh release create and npm publish unasked, or asked for another tag; asked, or a dry run, or a repo with no project file, they pass" "2 2 0 0 2 0 0" \
   "$(lg 'gh release create v1.2.0 -R o/r') $(lg 'npm publish' "$TCO") $(lg 'npm publish --dry-run' "$TCO") $(lg 'gh release create v1.2.0 -R lo/none') \
-$(said 'release notes kellenek, ne publisholj'; lg 'pnpm publish' "$TCO") $(said 'Write release notes for v1.2.0.'; lg 'gh release create v1.2.0 -R o/r') $(said 'Release notes for v1.2.0, please.'; lg 'gh release create v1.2.0 -R o/r') $(said 'release 1.2.0 please'; lg 'gh release create v1.2.0 -R o/r') $(lg 'pnpm publish' "$TCO") \
-$(said 'Released v1.2.0 yesterday.'; lg 'gh release create v1.2.0 -R o/r') $(said 'Published v1.2.0 yesterday.'; lg 'pnpm publish' "$TCO") \
-$(said 'Release v1.2.0. It must not be released until I approve it.'; lg 'gh release create v1.2.0 -R o/r') $(said 'Publish v1.2.0. It must not be published until I approve it.'; lg 'pnpm publish' "$TCO")"
+$(said 'release v1.3.0'; lg 'gh release create v1.2.0 -R o/r') $(said 'release 1.2.0 please'; lg 'gh release create v1.2.0 -R o/r') $(lg 'pnpm publish' "$TCO")"
 said 'looks good'
 check "BLOCK: a publish from a project file's repo named by -C, --dir= or --prefix, or past a --filter; from a dir of no repo it passes" "2 2 2 2 0" \
   "$(lg "pnpm -C $TCO publish") $(lg "pnpm --dir=$TCO publish -r") $(lg "npm --prefix $TCO publish") $(lg 'pnpm --filter x publish' "$TCO") $(lg "pnpm -C $T publish" "$TCO")"
 check "BLOCK: a publish whose -C after publish names a project file's repo; one whose -C there names a dir of no repo passes" "2 0" "$(lg "pnpm publish -C $TCO") $(lg "pnpm publish -C $T" "$TCO")"
+printf '{"name":"@o/pkg"}' > "$TCO/package.json"
+check "a publish asked for by its package's name passes; BLOCK: one asked for another package" "0 2" "$(said 'release @o/pkg'; lg 'npm publish' "$TCO") $(said 'release @o/other'; lg 'npm publish' "$TCO")"
+rm "$TCO/package.json"
 check "GitLab: BLOCK: glab mr merge, its alias accept, and glab release create unasked, naming the MR; asked, they pass" "2 1 2 2 0 0" \
   "$(said 'looks good'; lg 'glab mr merge 41 -R o/r') $(grep -c 'merging gitlab.com/o/r!41 lands on o/r' "$T/err") $(lg 'glab mr accept 41 -R o/r') $(lg 'glab release create v1.2.0 -R o/r') $(said 'merge it'; lg 'glab mr merge 41 -R o/r') $(said 'release it'; lg 'glab release create v1.2.0 -R o/r')"
-check "GitLab, BLOCK: an ask naming another MR as <path>!N or !N" "2 2 0" "$(said 'Merge o/r!40.'; lg 'glab mr merge 41 -R o/r') $(said 'merge !40'; lg 'glab mr merge 41 -R o/r') $(said 'merge !41'; lg 'glab mr merge 41 -R o/r')"
+check "a release asked for by its prerelease tag passes, on gh and glab" "0 0" "$(said 'Release v1.2.0-rc.1'; lg 'gh release create v1.2.0-rc.1 -R o/r') $(lg 'glab release create v1.2.0-rc.1 -R o/r')"
+check "a release asked for by its tag passes with a valued option first, on gh and glab" "0 0" "$(said 'Release v1.2.3.'; lg 'gh release create --target 1.2 v1.2.3 -R o/r') $(lg 'glab release create --ref 1.2 v1.2.3 -R o/r')"
+check "a release asked for by its tag passes after a title or notes option, on gh and glab" "0 0 0" "$(lg 'gh release create -t 1.2 v1.2.3 -R o/r') $(lg 'gh release create --notes 1.2 v1.2.3 -R o/r') $(lg 'glab release create -N 1.2 v1.2.3 -R o/r')"
 gql nitedani-agent nitedani-agent; mkdir -p "$HOME/.mergeworthy/projects/nitedani-agent"; echo '# notes' > "$HOME/.mergeworthy/projects/nitedani-agent/notes.md"; echo '{"default_branch":"main"}' > "$FX/repos_nitedani-agent_notes"
 said 'looks good'
-check "BLOCK: a push to the default branch unasked, naming it, or told of as past; to another branch, or asked, it passes" "2 1 2 2 2 0 0" \
-  "$(lg 'git push origin HEAD:main' "$OWN") $(grep -c 'this push to main lands on nitedani-agent/notes' "$T/err") $(said 'Released and pushed.'; lg 'git push origin HEAD:main' "$OWN") $(said 'Published and pushed to main.'; lg 'git push origin HEAD:main' "$OWN") \
-$(said 'Pushed to main.'; lg 'git push origin HEAD:main' "$OWN") $(lg 'git push origin HEAD:scratch' "$OWN") $(said 'push it to main'; lg 'git push origin HEAD:main' "$OWN")"
-check "BLOCK: a push to the default branch asked for as another branch's, or by its name in another case; asked for by its name, it passes, beside another branch held back" "2 2 2 0 0" \
-  "$(said 'Push the feature branch.'; lg 'git push origin HEAD:main' "$OWN") $(said 'Push to scratch.'; lg 'git push origin HEAD:main' "$OWN") $(said 'Push to MAIN.'; lg 'git push origin HEAD:main' "$OWN") $(said 'Push to branch main, and open the PR.'; lg 'git push origin HEAD:main' "$OWN") $(said "Don't push the scratch branch. Push to main."; lg 'git push origin HEAD:main' "$OWN")"
-check "BLOCK: a push to the default branch asked for as another branch's in inline code; asked for by its name, it passes" "2 2 2 0" \
-  "$(said 'Push to scratch.'; lg 'git push origin HEAD:main' "$OWN") $(said 'Push to `scratch`.'; lg 'git push origin HEAD:main' "$OWN") $(said 'Push to MAIN.'; lg 'git push origin HEAD:main' "$OWN") $(said 'Push to main.'; lg 'git push origin HEAD:main' "$OWN")"
+check "BLOCK: a push to the default branch unasked, naming it; to another branch, or asked, it passes" "2 1 0 0" \
+  "$(lg 'git push origin HEAD:main' "$OWN") $(grep -c 'this push to main lands on nitedani-agent/notes' "$T/err") $(lg 'git push origin HEAD:scratch' "$OWN") $(said 'push it to main'; lg 'git push origin HEAD:main' "$OWN")"
 said 'looks good'; git -C "$OWN" config remote.origin.push refs/heads/scratch:refs/heads/main
 check "BLOCK: a push whose remote.<name>.push sends it to the default branch, named or bare; a pattern there or push.default=matching, as untellable" "2 2 2 1 2 1" \
   "$(lg 'git push origin' "$OWN") $(lg 'git push' "$OWN") $(git -C "$OWN" config remote.origin.push 'refs/heads/*:refs/heads/*'; lg 'git push origin' "$OWN") $(grep -c "comes from git's config" "$T/err") \
 $(git -C "$OWN" config --unset remote.origin.push; git -C "$OWN" config push.default matching; lg 'git push' "$OWN") $(grep -c "comes from git's config" "$T/err")"
 git -C "$OWN" config --unset push.default
 said 'looks good'; printf '## Merging\n- Push to main once the gates pass\n' >> "$HOME/.mergeworthy/projects/nitedani-agent/notes.md"
-check "a push to the default branch under the project file's \`- Push to main\` order passes, with another branch held back as words or inline code; without a project file it is unchanged" "0 0 0 0" \
-  "$(lg 'git push origin HEAD:main' "$OWN") $(said "Don't push to scratch."; lg 'git push origin HEAD:main' "$OWN") $(said 'Don’t push to `scratch`.'; lg 'git push origin HEAD:main' "$OWN") $(said 'looks good'; rm "$HOME/.mergeworthy/projects/nitedani-agent/notes.md"; lg 'git push origin HEAD:main' "$OWN")"
+check "a push to the default branch under the project file's \`- Push to main\` order passes; without a project file it is unchanged" "0 0" \
+  "$(lg 'git push origin HEAD:main' "$OWN") $(rm "$HOME/.mergeworthy/projects/nitedani-agent/notes.md"; lg 'git push origin HEAD:main' "$OWN")"
 check "a push git's config can't tell, to a repo with no project file, passes as before: push.default=matching, a pattern in remote.<name>.push" "0 0" \
   "$(git -C "$OWN" config push.default matching; lg 'git push' "$OWN") $(git -C "$OWN" config --unset push.default; git -C "$OWN" config remote.origin.push 'refs/heads/*:refs/heads/*'; lg 'git push origin' "$OWN")"
 git -C "$OWN" config --unset remote.origin.push
@@ -5450,8 +5457,8 @@ printf 't3-update\nsystemctl --user (re)?start (t3code|t3-update)\n' > "$HOME/.m
 check "BLOCK: an ask-first command unasked, at any command position and inside ssh's remote command, naming the list; a mention passes" "2 1 2 2 2 0" \
   "$(lg "ssh collab@opensource 'export PATH=x; t3-update; echo \"exit \$?\"'") $(grep -c "is on this machine's ~/.mergeworthy/ask-first list.*ask the owner to reply \`update\`" "$T/err") \
 $(lg 't3-update 2>&1 | tail -5') $(lg 'systemctl --user restart t3code') $(lg 'ssh -p 22 h t3-update') $(lg 'echo t3-update')"
-check "an ask-first command the user's last message asks for passes, over ssh too; BLOCK: a question, a negation, a mention or a past 'updated'" "0 0 2 2 2 2" \
-  "$(said 'update t3'; lg "ssh collab@opensource 'export PATH=x; t3-update'") $(lg 't3-update') $(said 'should we update t3?'; lg 't3-update') $(said 'ne frissítsd még'; lg 't3-update') $(said 'Review the update plan.'; lg 't3-update') $(said $'Claude Code 2.1.319\nupdated 6 d ago'; lg 't3-update')"
+check "an ask-first command the typed message asks for passes, over ssh too; BLOCK: one asked for by another name" "0 0 2" \
+  "$(said 'update t3'; lg "ssh collab@opensource 'export PATH=x; t3-update'") $(lg 't3-update') $(said 'update the README'; lg 't3-update')"
 rt() { # command [cwd]: refused unasked, then passing once the user replies as the refusal says
   said 'looks good'; local a; a=$(lg "$@"); said "$(grep -o 'reply `[a-z]*`' "$T/err" | tr -d '`' | cut -d' ' -f2)"; echo "$a $(lg "$@")"; }
 mkdir -p "$HOME/.mergeworthy/projects/nitedani-agent"; echo '# notes' > "$HOME/.mergeworthy/projects/nitedani-agent/notes.md"

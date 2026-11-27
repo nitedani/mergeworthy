@@ -3,6 +3,7 @@
 and results (delegate_task, task_status, t3_thread_send) and T3's notices. A thread is all its tasks: the first, each message sent
 to it, each turn T3 continues on its own (provider-continuation)."""
 import json, os, re
+import shellcmd
 
 # T3's notice is `Delegated task <id>[ (<title>)][ in child thread <thread id>] [<status>]:` with its result, or
 # `Delegated task <id> reached a terminal state` for a task it no longer knows (its formatter, delegatedCompletionWakeDetail)
@@ -90,3 +91,15 @@ class Observer:
             m = re.search(r'%25253A([^%]+)%3Aordinal', i)  # a continuation's id holds its thread's, encoded twice
             return (m[1] if m else self.thread.get(i, i).rsplit('%3A', 1)[-1]).lower()
         return {i: tuple(s) for i, s in self.status.items()}, {i: name_of(i) for i in self.status}, self.seen, self.launched
+
+def last_typed(transcript_path):
+    """The message the user last typed in the session whose transcript is at transcript_path; '' with none."""
+    try:
+        for l in shellcmd.rlines(transcript_path or ''):
+            if b'"user"' not in l: continue
+            try: e = json.loads(l)
+            except ValueError: continue
+            if isinstance(e, dict) and e.get('type') == 'user' and not e.get('isSidechain') and not e.get('isMeta') and (t := typed((e.get('message') or {}).get('content'))):
+                return t
+    except OSError: pass
+    return ''
