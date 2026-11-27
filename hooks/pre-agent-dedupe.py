@@ -182,8 +182,9 @@ def codex_reset():
         return None
     return min(until) if until and min(until) > time.time() else None
 # T3 Code may keep instances of a driver that load no mergeworthy (the owner's A/B twins): a mergeworthy session's agent never
-# runs on one (a Neon session's agents ran on such a Claude instance with no skills or hooks, 2026-11-27)
-if req.t3 and (req.instance or req.kind) and (bad := t3_tasks.without_mergeworthy(req.instance, req.kind)):
+# runs on one (a Neon session's agents ran on such a Claude instance with no skills or hooks, 2026-11-27). A t3_thread_launch is a
+# top-level thread the user asks for, which may be such an A/B thread
+if req.t3 and str(req.tool).endswith('delegate_task') and (req.instance or req.kind) and (bad := t3_tasks.without_mergeworthy(req.instance, req.kind)):
     plain, use = bad
     what = f"T3's instance {req.instance}" if req.instance else f"driverKind {req.kind} alone may run on T3's instance {' or '.join(plain)}, which"
     sys.stderr.write(f"BLOCKED: {what} doesn't load mergeworthy, so this agent would run without its skills and hooks: "

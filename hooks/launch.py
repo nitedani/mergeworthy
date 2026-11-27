@@ -65,8 +65,7 @@ class Request:
         self.role, self.background = ti.get('role'), ti.get('run_in_background') is not False
         target = ti.get('target') or {}
         self.providers = {target.get('providerInstanceId'), target.get('driverKind')} - {None, ''}
-        # the T3 provider instance it names: delegate_task's target, t3_thread_launch's modelSelection
-        self.instance = str(target.get('providerInstanceId') or (ti.get('modelSelection') or {}).get('instanceId') or '')
+        self.instance = str(target.get('providerInstanceId') or '')  # the T3 provider instance delegate_task's target names
         # the drivers it runs on, as T3 Code picks them: the named instance's, else any instance of the driver it names
         self.kind = k = target.get('driverKind')
         self.drivers = {driver(i, k)} if (i := target.get('providerInstanceId')) else {k} if k else set()

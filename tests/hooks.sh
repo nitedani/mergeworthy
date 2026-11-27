@@ -1458,8 +1458,9 @@ tl() { # instance: a t3_thread_launch's exit code under T3
   python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__t3_thread_launch","tool_input":{"title":"tl","message":"Research the cache","modelSelection":{"instanceId":sys.argv[1],"model":"m"}}}))' "$1" \
     | T3CODE_THREAD_ID=th python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
 res() { impl "{\"providerInstanceId\":\"$1\"}" '' research 'Research the cache'; }
-check "BLOCK: a Claude instance whose inline --settings JSON or --settings= file disables the plugin, or whose config dir doesn't enable it, naming the enabled one that loads it; by delegate_task or t3_thread_launch" "2 1 2 1 2 1 2 1" \
-  "$(res myclaude) $(grep -c "^BLOCKED: T3's instance myclaude doesn't load mergeworthy.*set target.providerInstanceId to cm or cpdir\.$" "$T/err") $(res cfile) $(grep -c 'instance cfile.*providerInstanceId to cm or cpdir\.$' "$T/err") $(res cbare) $(grep -c 'instance cbare.*providerInstanceId to cm or cpdir\.$' "$T/err") $(tl myclaude) $(grep -c 'instance myclaude.*providerInstanceId to cm or cpdir\.$' "$T/err")"
+check "BLOCK: a Claude instance whose inline --settings JSON or --settings= file disables the plugin, or whose config dir doesn't enable it, naming the enabled ones that load it" "2 1 2 1 2 1" \
+  "$(res myclaude) $(grep -c "^BLOCKED: T3's instance myclaude doesn't load mergeworthy.*set target.providerInstanceId to cm or cpdir\.$" "$T/err") $(res cfile) $(grep -c 'instance cfile.*providerInstanceId to cm or cpdir\.$' "$T/err") $(res cbare) $(grep -c 'instance cbare.*providerInstanceId to cm or cpdir\.$' "$T/err")"
+check "a t3_thread_launch, a top-level thread the user asks for (perhaps the owner's plain A/B one), is never refused for its instance" "0 0" "$(tl myclaude) $(tl agy_x)"
 check "BLOCK: a Claude instance whose homePath doesn't enable the plugin while its environment's CLAUDE_CONFIG_DIR does: T3 takes homePath first" "2 1" \
   "$(res chome) $(grep -c 'instance chome.*providerInstanceId to cm or cpdir\.$' "$T/err")"
 check "a Claude instance loading the plugin by --plugin-dir passes; BLOCK: one whose --plugin-dir= holds another plugin" "0 2 1" \
@@ -1475,7 +1476,7 @@ check "a driverKind alone passes when every enabled instance of it loads mergewo
 echo '{"providerInstances":{"agy_x":{"driver":"antigravity"}}}' > "$HOME/.t3/userdata/settings.json"
 check "BLOCK: when no instance of the driver loads mergeworthy, the refusal says so" "2 1" "$(res agy_x) $(grep -c 'no instance of its driver loads it' "$T/err")"
 rm "$HOME/.t3/userdata/settings.json"
-check "with no settings file nothing is refused for its instance" "0 0" "$(res myclaude) $(tl agy_x)"
+check "with no settings file nothing is refused for its instance" "0 0" "$(res myclaude) $(res agy_x)"
 check "an exploring research agent on claudeAgent passes" 0 "$(rev '{"providerInstanceId":"claudeAgent"}' 'Explore it' research)"
 python3 -c 'import json; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":"Review it","role":"review","target":{"providerInstanceId":"claudeAgent"},"clientRequestId":"r-1"}}))' \
   | T3CODE_THREAD_ID=th python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"
