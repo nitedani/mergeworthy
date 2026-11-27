@@ -2956,6 +2956,9 @@ vsb() { printf 'Review %s at head %s; output to %s\n%s\nSeats: %s' "$GV" "$2" "$
 vv="$(fo vv-codex-r1 '{"providerInstanceId":"codex"}' "$(vsb vv-codex "$VH" 'codex, claude')") $(fo vv-claude-r1 '{"providerInstanceId":"claudeAgent"}' "$(vsb vv-claude "$VH" 'codex, claude')") $(fo vv-neon-r1 "$NEON" "$(vsb vv-neon "$VH" 'codex, neon')")"
 seq 81 > "$GV/a.py"; git -C "$GV" add a.py; git -C "$GV" -c user.name=t -c user.email=t@t commit -q -m 81; VH2=$(git -C "$GV" rev-parse HEAD)
 check "a stand-in's Seats: line holds on its version only: BLOCK a third seat there; 81 lines on, the seat it stood in for is no third seat" "0 0 2 0" "$vv $(fo vv-neon-r1 "$NEON" "$(vsb vv-neon2 "$VH2" 'codex, neon')")"
+fop() { python3 -c 'import json,sys; c,t,x=sys.argv[1:]; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":x,"role":"review","target":json.loads(t),"clientRequestId":c}}))' "$@" | T3CODE_THREAD_ID=th python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }  # fo's admission alone: a launch sent in the same message as others
+f5=$(for s in "f5-codex codex" "f5-claude claudeAgent" "f5-claude2 claudeAgent"; do set -- $s; fop "$1-r1" "{\"providerInstanceId\":\"$2\"}" "$(vsb "$1" "$VH2" 'codex, claude')"; done | xargs)
+check "three round-1 seats sent in one message, none registered yet: BLOCK the one its own Seats: line leaves out" "0 0 2 1" "$f5 $(grep -c 'f5-claude2-r1 would be a third seat of f5, whose round 1 declared claude, codex' "$T/err")"
 GF="$T/seats6"; git init -q -b main "$GF"; git -C "$GF" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; FH=$(git -C "$GF" rev-parse HEAD)
 for s in "fl-codex codex" "fl-claude2 claudeAgent"; do set -- $s; fo "$1-r1" "{\"providerInstanceId\":\"$2\"}" "Review $GF at head $FH; output to $T/$1.md
 $FO
