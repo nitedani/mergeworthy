@@ -835,22 +835,21 @@ check "BLOCK: a map older than the last proposal" 2 "$(pguard 3)"
 touch -d '+1 minute' "$AR/maps/o-r-9.md"; pposted 3; touch -d '-1 hour' "$AR/maps/o-r-9.md"
 check "BLOCK: a 4th proposal whose map predates the 3rd, with the same one text" "2 1 0 0" "$(pguard 4) $(one)"
 touch -d '+1 minute' "$AR/maps/o-r-9.md"; check "the 4th proposal passes once the map is newer than the 3rd" 0 "$(pguard 4)"
-pgc() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$T" | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?; }  # command -> pre-bash-guard's exit code
 prc() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"tool_response":{"stdout":"https://example.invalid/x"}}))' "$1" | python3 "$R/hooks/post-bash-register.py" 2>"$T/err"; echo $?; }
 rounds() { grep -c '^o/r#9 ' "$HOME/.claude/proposal-rounds.txt"; }
 gd() { # name lint-flags: a gated draft in $AR/drafts/r1 with that .lint
   printf 'Draft %s\n' "$1" > "$AR/drafts/r1/$1.md"; sha256sum "$AR/drafts/r1/$1.md" | cut -d' ' -f1 > "$AR/drafts/r1/$1.md.gate"; tcbind "$AR/drafts/r1/$1.md"; echo "$2" > "$AR/drafts/r1/$1.md.lint"; }
 touch -d '-1 hour' "$AR/maps/o-r-9.md"; gd w '--kind wip --repo o/r'; echo '{"issue_url":"https://api.github.com/repos/o/r/issues/9"}' > "$FX/repos_o_r_issues_comments_77"
 check "three rounds and a stale map: a WIP edit by comment id passes pre-bash-guard and post-bash-register, and counts no round" "0 0 3" \
-  "$(pgc "gh api -X PATCH repos/o/r/issues/comments/77 -F body=@$AR/drafts/r1/w.md") $(prc "gh api -X PATCH repos/o/r/issues/comments/77 -F body=@$AR/drafts/r1/w.md") $(rounds)"
+  "$(hk pre-bash-guard "gh api -X PATCH repos/o/r/issues/comments/77 -F body=@$AR/drafts/r1/w.md") $(prc "gh api -X PATCH repos/o/r/issues/comments/77 -F body=@$AR/drafts/r1/w.md") $(rounds)"
 gd nk '--repo o/r --parent none'
 check "a draft linted with no --kind is no proposal: posted to a thread with three rounds and a stale map, both hooks pass and count no round" "0 0 3" \
-  "$(pgc "gh issue comment 9 --repo o/r --body-file $AR/drafts/r1/nk.md") $(prc "gh issue comment 9 --repo o/r --body-file $AR/drafts/r1/nk.md") $(rounds)"
+  "$(hk pre-bash-guard "gh issue comment 9 --repo o/r --body-file $AR/drafts/r1/nk.md") $(prc "gh issue comment 9 --repo o/r --body-file $AR/drafts/r1/nk.md") $(rounds)"
 prop 5; touch -d '+1 minute' "$AR/maps/o-r-9.md"
 check "a proposal draft sent as an edit (--edit-last) counts no round" "0 3" "$(prc "gh issue comment 9 --repo o/r --edit-last --body-file $AR/drafts/r1/p5.md") $(rounds)"
 prc "gh issue comment 9 --repo o/r --body-file $AR/drafts/r1/p5.md" >/dev/null; touch -d '-1 hour' "$AR/maps/o-r-9.md"
 check "a posted proposal corrected with --edit-last, the map now stale: both hooks pass it and it counts no second round" "4 0 0 4" \
-  "$(rounds) $(pgc "gh issue comment 9 --repo o/r --edit-last --body-file $AR/drafts/r1/p5.md") $(prc "gh issue comment 9 --repo o/r --edit-last --body-file $AR/drafts/r1/p5.md") $(rounds)"
+  "$(rounds) $(hk pre-bash-guard "gh issue comment 9 --repo o/r --edit-last --body-file $AR/drafts/r1/p5.md") $(prc "gh issue comment 9 --repo o/r --edit-last --body-file $AR/drafts/r1/p5.md") $(rounds)"
 
 # ---------- post-lint --kind wip: a design thread's WIP comment (design §WIP comment) ----------
 wipd() { # sentences [section to drop] [line to add under TLDR] [line to add at the end]: $T/wip.md, 15 words plus 10 a sentence
