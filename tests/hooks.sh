@@ -1512,6 +1512,12 @@ check "agy-link links the plugin into the antigravity profile under T3CODE_HOME"
 mkdir -p "$T/t3s/userdata"; python3 -c 'import sqlite3, sys; c = sqlite3.connect(sys.argv[1]); c.execute("create table orchestration_v2_projection_provider_threads (provider_thread_id text, thread_id text, payload_json text)")
 c.execute("""insert into orchestration_v2_projection_provider_threads values ('"'p1', 'thr-s', '{\"nativeThreadRef\":{\"nativeId\":\"s-s\"}}'"')"""); c.commit()' "$T/t3s/userdata/statev2.sqlite"
 check "the steward's T3 reads (steward.threads) use T3's state under T3CODE_HOME" "['thr-s']" "$(T3CODE_HOME="$T/t3s" PYTHONPATH="$R/hooks" python3 -c 'import steward; print(steward.threads("s-s"))')"
+# a T3 home whose path holds URI characters (space, #, ?, %20) is opened as that file, not another one a raw URI names
+for d in 'T3 #2' 'T3?backup' 'T3%20b'; do mkdir -p "$T/$d/userdata"; cp "$T/t3s/userdata/statev2.sqlite" "$T/$d/userdata/"; done
+mkdir -p "$T/T3 b/userdata"; python3 -c 'import sqlite3, sys; c = sqlite3.connect(sys.argv[1]); c.execute("create table orchestration_v2_projection_provider_threads (provider_thread_id text, thread_id text, payload_json text)")
+c.execute("""insert into orchestration_v2_projection_provider_threads values ('"'p1', 'wrong-thr', '{\"nativeThreadRef\":{\"nativeId\":\"s-s\"}}'"')"""); c.commit()' "$T/T3 b/userdata/statev2.sqlite"
+check "the steward reads T3's state under a T3CODE_HOME with a space, # or ?, and under one spelled %20 next to one with a space" "['thr-s'] ['thr-s'] ['thr-s']" \
+  "$(for d in 'T3 #2' 'T3?backup' 'T3%20b'; do T3CODE_HOME="$T/$d" PYTHONPATH="$R/hooks" python3 -c 'import steward; print(steward.threads("s-s"))'; done | paste -sd' ')"
 # a project can turn an instance on or off for its threads (projectSettingsOverrides), as T3's resolveProjectProviderInstanceEnabled does
 python3 -c 'import sqlite3, sys; c = sqlite3.connect(sys.argv[1]); c.execute("create table orchestration_v2_projection_threads (thread_id text, project_id text)")
 c.execute("insert into orchestration_v2_projection_threads values (?, ?)", ("th", sys.argv[2])); c.commit()' "$HOME/.t3/userdata/statev2.sqlite" proj-a
