@@ -1646,8 +1646,67 @@ items = lambda k: ''.join(f'- **{k} item {i}** (2026-10-12 10:00Z). ' + 'A long 
 open(sys.argv[1], 'w').write('# Memory\n## Standing\n' + ''.join(f'### {h}\n' + items(h) for h in ('Rulings in force', 'Ruled out', 'Superseded', 'Still intended')) + '## Recent\n<!-- covered-until: 2099-01-01T00:00:00.000Z -->\n')
 EOF
 check "the digest of a huge memory stays under the aim, one line per item" "yes 0" "$(n=$(python3 "$R/bin/memory-prep" digest "$MR" | wc -c); [ "$n" -le 6400 ] && echo yes || echo "no $n") $(python3 "$R/bin/memory-prep" digest "$MR" | awk 'length > 240' | wc -l)"
+# memory_file.merge: the refresh's notes fold into memory.md, each Standing item known by its lead
+mmerge() { python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import memory_file as mf; mf.merge(sys.argv[2])' "$R/hooks" "$1"; }
+MM="$T/merge"; mkdir -p "$MM"
+printf '# Memory\n## Standing\n### Rulings in force\n- **No cron** (2026-11-20 09:00Z). Recurring work runs in the watcher.\n- **Opus reviews** (2026-11-21 09:00Z). Reviews run on Opus.\n### Ruled out\n### Superseded\n### Still intended\n- **Ship the CLI** (2026-11-22 09:00Z). Waits on the release.\n## Recent\n- 2026-11-25 10:00Z: an old line.\n<!-- covered-until: 2026-11-26T12:00:00.000Z -->\n' > "$MM/memory.md"
+cat > "$MM/memory-notes.txt" <<'EOF'
+# Notes on memory-new.txt
+read-through: 2026-11-26T12:00:00.000Z
+- Rulings in force: **Sonnet implements** (2026-11-27 08:00Z). Implementers run on Sonnet.
+- Rulings in force: **Codex reviews** (2026-11-27 09:00Z). Reviews go to Codex. [replaces Opus reviews]
+- Recent: 2026-11-27 10:00Z: the CLI shipped. [done **Ship the CLI**]
+- Rulings in force: **No cron** (2026-11-27 11:00Z). Recurring work runs in the steward pass.
+- Ruled out: **Haiku drafts** (2026-11-27 11:30Z). Drafts need Opus. [replaces Gemini drafts]
+read-through: 2026-11-27T12:00:00.000Z
+EOF
+cat > "$T/merged.md" <<'EOF'
+# Memory
+## Standing
+### Rulings in force
+- **No cron** (2026-11-27 11:00Z). Recurring work runs in the steward pass.
+- **Codex reviews** (2026-11-27 09:00Z). Reviews go to Codex.
+- **Sonnet implements** (2026-11-27 08:00Z). Implementers run on Sonnet.
+### Ruled out
+- **Haiku drafts** (2026-11-27 11:30Z). Drafts need Opus.
+### Superseded
+- **Opus reviews** (2026-11-21 09:00Z). Reviews run on Opus.
+- **No cron** (2026-11-20 09:00Z). Recurring work runs in the watcher.
+### Still intended
+## Recent
+- 2026-11-27 10:00Z: the CLI shipped.
+<!-- covered-until: 2026-11-27T12:00:00.000Z -->
+EOF
+nsum=$(md5sum < "$MM/memory-notes.txt"); mmerge "$MM"; msum=$(md5sum < "$MM/memory.md"); mmerge "$MM"
+check "merge adds a note, replaces the item a tag or a reused lead names (the old one under Superseded), takes done work out of Still intended, adds a note whose tag names no item, keeps Recent to 24 hours; a second merge changes nothing, and the notes are left as they were" "same same same" \
+  "$(diff "$T/merged.md" "$MM/memory.md" >/dev/null && echo same) $([ "$msum" = "$(md5sum < "$MM/memory.md")" ] && echo same) $([ "$nsum" = "$(md5sum < "$MM/memory-notes.txt")" ] && echo same)"
+MK="$T/merge-big"; mkdir -p "$MK"
+python3 - "$MK/memory.md" <<'EOF'
+import datetime as d, random, sys
+heads = ('Rulings in force', 'Ruled out', 'Superseded', 'Still intended')
+at = lambda i: (d.datetime(2026, 10, 1) + d.timedelta(minutes=50 * i)).strftime('%Y-%m-%d %H:%M')
+items = {h: [f'- **Item {i}** ({at(i)}Z). ' + 'A standing line about the work. ' * 8 for i in range(1500) if heads[i % 4] == h] for h in heads}
+for v in items.values(): random.Random(1).shuffle(v)
+open(sys.argv[1], 'w').write('# Memory\n## Standing\n' + ''.join(f'### {h}\n' + '\n'.join(items[h]) + '\n' for h in heads) + '## Recent\n<!-- covered-until: 2026-11-27T12:00:00.000Z -->\n')
+EOF
+cp -r "$MK" "$MK-crash"
+items() { cat "$1"/memory.md "$1"/memory-archive-*.md 2>/dev/null | grep -o '^- \*\*Item [0-9]*\*\*' | sort ${2:-} | wc -l; }
+mmerge "$MK"
+check "1500 items: memory.md keeps under 48,000 characters of Standing, every item is in it or its month's archive once, and the digest shows the newest first" "yes 1500 1500 2 - **Item 1496** (2026-11-21 22:40Z)." \
+  "$([ "$(sed -n '/^## Standing/,/^## Recent/p' "$MK/memory.md" | grep '^- ' | wc -c)" -le 48000 ] && echo yes) $(items "$MK") $(items "$MK" -u) $(ls "$MK"/memory-archive-2026-1[01].md | wc -l) $(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import memory_file as mf; print(mf.digest(sys.argv[2]).split("\n")[1].split(" A standing")[0])' "$R/hooks" "$MK")"
+printf '# Notes\nread-through: 2026-11-27T12:00:00.000Z\n- Ruled out: **Item 1 again** (2026-11-27 10:00Z). Ruled out once more. [replaces Item 1]\n' > "$MK/memory-notes.txt"; mmerge "$MK"
+check "a replacement also applies to an archived item: it moves under the archive's Superseded" "1 0" \
+  "$(sed -n '/^### Superseded/,/^###/p' "$MK/memory-archive-2026-10.md" | grep -c '^- \*\*Item 1\*\*') $(sed -n '/^### Ruled out/,/^###/p' "$MK/memory-archive-2026-10.md" | grep -c '^- \*\*Item 1\*\*')"
+python3 -c 'import os, sys; sys.path.insert(0, sys.argv[1]); import memory_file as mf
+r = os.replace
+def stop(a, b):
+    if b.endswith("/memory.md"): raise SystemExit("crashed")
+    r(a, b)
+os.replace = stop; mf.merge(sys.argv[2])' "$R/hooks" "$MK-crash" 2>/dev/null
+check "a merge that stops between the archive and memory.md writes leaves items in both, never lost; the next merge keeps each once" "yes 1500 1500 1500" \
+  "$([ "$(items "$MK-crash")" -gt 1500 ] && echo yes) $(items "$MK-crash" -u) $(mmerge "$MK-crash"; items "$MK-crash") $(items "$MK-crash" -u)"
 # Claude Code shows the model a 2 KB preview of a hook command's output over 10,000 characters: each SessionStart output stays under 9,000 bytes
-cp "$R/tests/fixtures/memory.md" "$MR/memory.md"; touch -d '3 hours ago' "$MR/memory.md"; mlog "$LD/a.jsonl" 0 "after the fixture"
+cp "$R/tests/fixtures/memory.md" "$MR/memory.md"; rm "$MR/memory-notes.txt"; mlog "$LD/a.jsonl" 0 "after the fixture"  # behind, with no notes to merge
 ss_all=$(CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" </dev/null 2>/dev/null | wc -c); ss_m=$(ss_mem "$OC" | tee "$T/ss.out" | wc -c)
 echo "measured with tests/fixtures/memory.md (a real memory.md, words hashed): session-start $ss_all bytes, session-memory $ss_m bytes"
 check "each SessionStart output with a real-sized memory.md stays under 9,000 bytes; the order comes first, the digest after" "yes yes 1 1" "$([ "$ss_all" -le 9000 ] && echo yes) $([ "$ss_m" -le 9000 ] && echo yes) $(head -1 "$T/ss.out" | grep -c 'is behind') $(grep -c '^### Still intended' "$T/ss.out")"

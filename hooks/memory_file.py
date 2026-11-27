@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 """The memory file (mergeworthy:task step 8): <work folder>/memory.md fills what the built-in compaction summary loses. Its Standing part
 (rulings in force, ruled out, superseded, still intended) is carried forward until replaced; its Recent part covers the
-last 24 hours. One Haiku merges new log lines into it (`memory-prep`), and it records the last log line it covered in
-`<!-- covered-until: <log timestamp> -->`. A root is listed in ~/.mergeworthy/memory-roots.txt and has memory.source
+last 24 hours. One Haiku notes what new log lines hold (`memory-prep`), merge() folds the notes in, and it records the last
+log line they covered in `<!-- covered-until: <log timestamp> -->`. A root is listed in ~/.mergeworthy/memory-roots.txt and has memory.source
 (`memory-prep init`): the main session's cwd, T3 thread id, session id and session-log dir."""
-import json, os, re, time
+import datetime as dt, fcntl, glob, json, os, re, time
 
 COVERED = re.compile(r'<!-- covered-until: (\S+) -->')
 READ = re.compile(r'read-through: (\S+)')
 TS = re.compile(rb'"timestamp":"([0-9T:.\-]+Z)"')
 STANDING = ('Rulings in force', 'Ruled out', 'Superseded', 'Still intended')
+LIVE = ('Rulings in force', 'Ruled out', 'Still intended')  # where an item's lead names one item; Superseded keeps every replaced one
+NOTE = re.compile(r'- \**(' + '|'.join(STANDING) + r'|Recent)\**:\** (.+?)(?: \[(replaces|done) (.+)\])?$', re.I)
+DATE = re.compile(r'(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2}))?')
+KEEP = 48_000  # Standing characters memory.md keeps; older items move to the archive of their month
 AIM, CAP = 6000, 7500  # digest characters: with the refresh order, under Claude Code's 10,000-character hook output limit
 REG = os.path.expanduser('~/.mergeworthy/memory-roots.txt')
 
@@ -38,10 +42,14 @@ def notes_path(root):
     return os.path.join(root, 'memory-notes.txt')
 
 def covered(root):
-    """What memory.md covers: its covered-until, never past the last chunk its run noted as read (delegate/memory-refresh.md)."""
-    m = COVERED.findall(open(path(root), errors='replace').read()) if os.path.isfile(path(root)) else []
+    """What memory.md covers once merge() folds the notes in: the last chunk the refresh noted as read (delegate/memory-refresh.md),
+    else its covered-until."""
     n = READ.findall(open(notes_path(root), errors='replace').read()) if os.path.isfile(notes_path(root)) else []
-    return min(m[-1], n[-1]) if m and n else (m[-1] if m else '')
+    m = COVERED.findall(open(path(root), errors='replace').read()) if os.path.isfile(path(root)) else []
+    return (n or m or [''])[-1]
+
+def stamp(ts):
+    return dt.datetime.fromisoformat(ts.replace('Z', '+00:00')).timestamp()
 
 def prompt(o):
     """A user turn's prompt as the log records it: typed by the user or sent through the SDK (T3 Code), never a skill body,
@@ -120,7 +128,7 @@ def last_ts(p):
 def behind(root):
     """True when the orchestrator's log has lines after what memory.md covers."""
     cov = covered(root)
-    since = os.path.getmtime(path(root)) - 60 if cov else time.time() - 86400  # the first run covers the last 24 hours
+    since = stamp(cov) - 60 if cov else time.time() - 86400  # the first run covers the last 24 hours
     return any(last_ts(p) > cov for p in thread_logs(root, since))
 
 def order(root, live=False):
@@ -139,8 +147,100 @@ def section(text, heading):
     m = re.search(r'^#+ *' + re.escape(heading) + r'[^\n]*\n(.*?)(?=^#+ |\Z)', text, re.M | re.S | re.I)
     return m.group(1).strip() if m else ''
 
+def lead(line):
+    """An item's identity: its bold lead, else its first 60 characters, lowercased, with punctuation as spaces."""
+    m = re.match(r'[-*] \*\*(.+?)\*\*', line) or re.match(r'(?:[-*] )?(.{0,60})', line)
+    return re.sub(r'\W+', ' ', m.group(1)).strip().lower()
+
+def when(line):
+    """An item's first date and time, '' when it names none."""
+    m = DATE.search(line)
+    return f'{m.group(1)} {m.group(2) or "00:00"}' if m else ''
+
+def newest_first(lines):
+    return sorted([l for l in lines if when(l)], key=when, reverse=True) + [l for l in lines if not when(l)]
+
+def parse(p):
+    """A memory file's lines by section; a line under any other heading counts as Recent."""
+    secs, cur = {s: [] for s in STANDING + ('Recent',)}, 'Recent'
+    for l in open(p, errors='replace').read().splitlines() if os.path.isfile(p) else ():
+        h = re.match(r'#+ *(.*)', l)
+        if h:
+            cur = next((s for s in secs if h.group(1).lower().startswith(s.lower())), 'Recent')
+        elif l.strip() and not COVERED.search(l):
+            secs[cur].append(l.rstrip())
+    return secs
+
+def render(secs, title, cov=None):
+    return (f'# {title}\n## Standing\n' + ''.join(f'### {s}\n' + ''.join(l + '\n' for l in secs[s]) for s in STANDING)
+            + '## Recent\n' + ''.join(l + '\n' for l in secs['Recent']) + (f'<!-- covered-until: {cov} -->\n' if cov else ''))
+
+def write(p, text):
+    if os.path.isfile(p) and open(p, errors='replace').read() == text:
+        return
+    with open(p + '.tmp', 'w') as f:
+        f.write(text)
+    os.replace(p + '.tmp', p)
+
+def merge(root):
+    """Folds the read-through notes into memory.md. A Standing item is known by its lead: a note with the lead of a live
+    item, or tagged `[replaces <lead>]`, replaces it, the old one going under Superseded, in whichever file holds it;
+    `[done <lead>]` takes a Still intended item out; a line already there is skipped, so merging again changes nothing.
+    Standing is kept newest first, Recent to the 24 hours up to covered-until, and Standing past KEEP characters moves,
+    oldest first, to memory-archive-<its month>.md, written before memory.md: a crash between leaves a line in both, which
+    the next merge keeps once. The notes are only read: the refresh may still be appending to them, and prep resets them."""
+    main, np = path(root), notes_path(root)
+    if not os.path.isfile(main) and not os.path.isfile(np):
+        return
+    with open(os.path.join(root, '.memory.lock'), 'a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        mem, seen = {}, set()
+        for f in [main] + sorted(glob.glob(os.path.join(root, 'memory-archive-*.md'))):
+            mem[f] = parse(f)
+            for s in STANDING:
+                mem[f][s] = [l for l in dict.fromkeys(mem[f][s]) if l not in seen]
+                seen.update(mem[f][s])
+        notes = open(np, errors='replace').read().split('\n')[:-1] if os.path.isfile(np) else []  # a last line without its newline is still being written
+        for l in notes:
+            m = NOTE.match(l.strip())
+            if not m:
+                if l.startswith('- '):  # a section the brief doesn't name: kept, under Recent
+                    m = NOTE.match('- Recent: ' + l[2:].strip())
+                else:
+                    continue
+            sec = next(s for s in STANDING + ('Recent',) if s.lower() == m.group(1).lower())
+            line, op, old = '- ' + m.group(2).strip(), (m.group(3) or '').lower(), m.group(4)
+            if any(line in ls for secs in mem.values() for ls in secs.values()):
+                continue
+            ends = ([(lead('- ' + old), op)] if old else []) + ([(lead(line), 'replaces')] if sec != 'Recent' else [])
+            for key, how in ends:
+                for secs in mem.values():
+                    for s in LIVE if how == 'replaces' else ('Still intended',):
+                        gone = [x for x in secs[s] if lead(x) == key]
+                        secs[s] = [x for x in secs[s] if lead(x) != key]
+                        secs['Superseded'] += gone if how == 'replaces' else []
+            mem[main][sec].append(line)
+        cov = covered(root)
+        if cov:
+            mem[main]['Recent'] = [l for l in mem[main]['Recent'] if not when(l) or stamp(when(l) + 'Z') >= stamp(cov) - 86400]
+        size, month = 0, (cov or time.strftime('%Y-%m', time.gmtime()))[:7]
+        for line, s in sorted(((l, s) for s in STANDING for l in mem[main][s]), key=lambda x: when(x[0]), reverse=True):
+            size += len(line) + 1
+            if size > KEEP:
+                mem[main][s].remove(line)
+                arch = os.path.join(root, f'memory-archive-{(when(line) or month)[:7]}.md')
+                if arch not in mem:
+                    mem[arch] = parse(arch)
+                mem[arch][s].append(line)
+        for f, secs in mem.items():
+            for s in STANDING:
+                secs[s] = newest_first(secs[s])
+        for f in sorted(mem, key=lambda f: f == main):
+            write(f, render(mem[f], 'Memory', cov) if f == main else render(mem[f], 'Memory archive'))
+
 def digest(root):
     """The Standing part, cut to the cap: one line per item, newest first, deduplicated by its lead. No model call."""
+    merge(root)
     text = open(path(root), errors='replace').read() if os.path.isfile(path(root)) else ''
     out, per = [], AIM // len(STANDING)
     for head in STANDING:
@@ -149,10 +249,10 @@ def digest(root):
             l = l.strip()
             if not re.match(r'[-*] ', l):
                 continue
-            lead = re.sub(r'\W+', ' ', (re.match(r'[-*] \*\*(.+?)\*\*', l) or re.match(r'[-*] (.{0,60})', l)).group(1)).strip().lower()
-            if lead in seen:
+            key = lead(l)
+            if key in seen:
                 continue
-            seen.add(lead); l = l if len(l) <= 240 else l[:237] + '...'
+            seen.add(key); l = l if len(l) <= 240 else l[:237] + '...'
             if len(body) + len(l) > per:
                 body += f'- ... more in {path(root)}\n'; break
             body += l + '\n'
