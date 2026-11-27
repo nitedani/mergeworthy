@@ -207,7 +207,8 @@ for line in s.splitlines():
     item = (cells[1] if re.fullmatch(r'\s*\d+\s*', cells[0]) and len(cells) > 1 else cells[0]) if line.lstrip().startswith('|') else line[:m.start()]
     if grouped(item):
         sys.exit(f"{path} rates several items in one row: give each file and function its own row and rating {ask}:\n{line.strip()}")
-sec = re.search(r'^## Root cause[ \t]*\n(.*?)(?=^## |\Z)', s, re.M | re.S)
+# the section is its bullets and the shims line: the first other line or heading ends it
+sec = re.search(r'^## Root cause[ \t]*\n((?:[ \t]*(?:[-*] .*|Pre-1\.0 shims:.*)?\n)*)', s + '\n', re.M)
 want = "'## Root cause' with one bullet per workaround for another project's bug, `path:line` and its upstream issue or PR link, or '- none', then a line 'Pre-1.0 shims: none'"
 if not sec:
     sys.exit(f"{path} has no {want} {ask}")
