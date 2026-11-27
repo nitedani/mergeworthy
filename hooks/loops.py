@@ -81,7 +81,7 @@ def directives(brief):
                       fb and fb[1], re.findall(r'^[ \t>*-]*Continues:[ \t]*(\S+)', brief, re.M), fan and fan[1], led and led[1])
 
 
-def register(loop, n, heads, thread=None, post=False, outs=(), seated=False, checkouts=(), led=None, step=None, seats=None, fills=None, company=None):
+def register(loop, n, heads, *, thread=None, post=False, outs=(), seated=False, checkouts=(), led=None, step=None, seats=None, fills=None, company=None):
     """Records round n of loop that ran: the thread it ran in, and, for a code review, the heads its brief pinned, the reports it
     writes (outs), in review-loops.json, and in the journal of each change its brief names (checkouts) with whether it is one of
     its step's seats (seated: its round 1 brief's `Fan-out:` line names SEATING), with the ledger it names (led), the step its `Review:` line declares
@@ -106,7 +106,7 @@ PENDING = os.path.expanduser('~/.claude/review-pending')  # a Bash command's adm
 
 
 def pend(key, rounds, launches):
-    """Holds, for the Bash command key (own_actions.key), the register() arguments of the review rounds it runs and the draft sha
+    """Holds, for the Bash command key (own_actions.key), the register() keywords of each review round it runs and the draft sha
     of each post review output it writes (review_launch.set_aside), until post-bash-register settles them."""
     if rounds or launches:
         os.makedirs(PENDING, exist_ok=True)
@@ -120,7 +120,7 @@ def settle(key, ran):
     except (OSError, ValueError): return
     if ran:
         for out, aside in held["launches"].items(): review_launch.launch(out, aside)
-        for r in held['rounds']: register(*r)
+        for r in held['rounds']: register(**r)
 
 
 STEPS = ('verify', 'reverify', 'shape', 'fresh', 'small', 'post', 'docs')  # what a loop checks (its brief's `Review: <step>`)

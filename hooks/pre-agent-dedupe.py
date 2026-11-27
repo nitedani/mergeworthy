@@ -169,8 +169,8 @@ def register_launch():
     for out, aside in rec.get('launches', {}).items(): review_launch.launch(out, aside)
     if k.review:
         loops.register(*k.round, None if k.post_review else rec['heads'] if 'heads' in rec else heads,
-                       review_transport.thread(ti, req.response), k.post_review, said_outs, D.fanout == loops.SEATING, tops, led, step, seats, fills,
-                       None if sent else 'claudeAgent' if not req.providers or 'claudeAgent' in req.providers else min(req.providers))
+                       thread=review_transport.thread(ti, req.response), post=k.post_review, outs=said_outs, seated=D.fanout == loops.SEATING,
+                       checkouts=tops, led=led, step=step, seats=seats, fills=fills, company=None if sent else 'claudeAgent' if not req.providers or 'claudeAgent' in req.providers else min(req.providers))
     if k.builds and (approach := rec['approach'] if 'approach' in rec else brief_approach(strict=False)):
         os.makedirs(agent_jobs.BUILT, exist_ok=True)
         open(os.path.join(agent_jobs.BUILT, os.path.basename(approach[0])), 'w').write(approach[1])

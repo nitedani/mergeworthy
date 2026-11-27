@@ -1348,7 +1348,8 @@ def check(t, has_cd):
             # the session it resumes ran the rounds of the loop whose prompt file began it: none, for another loop's or no reviewer's
             elif why := review_transport.fix_check(r[0][0], L.brief, f and os.path.getmtime(f), f and review_transport.started_on(f, r[2], r[0][1], int(r[0][2])) or set()): block(why)
             if why := (r[0][2] == '1' and not owners and loops.third_seat(r[0][1], L.checkouts, D)) or loops.admit(r[0][1], int(r[0][2]), *loops.pinned(L), D.ledger, owners, step=D.step): block(why)
-            rounds.append((r[0][1], int(r[0][2]), loops.pinned(L)[1], None, False, outs, loops.directives(r[1]).fanout == loops.SEATING, L.checkouts, D.ledger, D.step, D.seats, D.fills))
+            rounds.append({'loop': r[0][1], 'n': int(r[0][2]), 'heads': loops.pinned(L)[1], 'outs': outs, 'seated': loops.directives(r[1]).fanout == loops.SEATING,
+                           'checkouts': L.checkouts, 'led': D.ledger, 'step': D.step, 'seats': D.seats, 'fills': D.fills})
     written = [f for x, c in zip(targets, files) for f in known(c, x)]
     for x in dict.fromkeys(map(shellcmd.folder, written)):  # the instructions check runs git, once per folder
         if why := no_instructions_read(x, d):
