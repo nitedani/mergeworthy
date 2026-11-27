@@ -8,7 +8,7 @@ The main session starts the reviewer `delegate §Reviewers` names.
 - **FIX** (should)**:** an exact behavior-preserving change.
 - **FILL** (should)**:** a gap to fill (a missing test of a documented contract, a missing sibling case).
 - **DELETE-CAREFULLY** (should)**:** remove only after code §Removal gate's probe.
-- **OWNER-DECISION** (`listed:`)**:** owner code, a behavior or public-surface change, or anything the task doesn't authorize; in the PR body's decision blocks or the report to the user, with a recommendation.
+- **OWNER-DECISION** (should, ruled `listed:`; a blocker where the task can't go on without the owner, keeping the PR in draft)**:** owner code, a behavior or public-surface change, or anything the task doesn't authorize, with your recommendation; the main session puts it in the PR body's decision blocks or its report to the user.
 - **NIT:** a nit (`agent.md`): no code.
 - **KEEP:** checked and worth its price.
 
