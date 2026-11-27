@@ -34,7 +34,7 @@ A change of at most 60 lines outside tests, docs (any `.md`), lockfiles and buil
 
 ### Running the agents
 
-- **Loop A and Loop B get separate agents,** except a Tier S PR under ~300 lines, where each seat runs both.
+- **Loop A and Loop B get separate agents,** Loop B's started once Loop A closes, with its own `shape-<seat>-r1` briefs and records; a Tier S PR under ~300 lines keeps Loop A's seat companies.
 - **A long list of Loop B findings** goes to one implementer in its own worktree, slice by slice. Review its diff, cherry-pick it onto the PR branch and run the full gates and the lanes it touches there.
 - **Slices:** a diff over about 1500 lines is split (`delegate/verifier.md` §Slices); each slice, a file several use in each, gets its own seats; Loop B's cover the whole PR (step 2).
 - **What they read:** the head's code in full at the brief's pinned SHAs; a later round, its slot's scope. A finality graph is only an index.
