@@ -282,6 +282,10 @@ def digest(root):
     return '\n'.join(f'### {head}\n' + (newest(path(root), head, AIM // len(STANDING)) or 'none\n') for head in STANDING)[:CAP]
 
 def notes(root):
-    """What the guards grep: memory.md and every other .md under the root but drafts, briefs and the pre-merge copy."""
-    return sorted(os.path.join(dp, f) for dp, dn, fs in os.walk(root) if os.path.relpath(dp, root).split(os.sep)[0] != 'drafts'
-                  for f in fs if f.endswith('.md') and not f.startswith(('memory-brief', 'memory-premerge')))
+    """What the guards grep: memory.md and every other .md under the root but briefs, the pre-merge copy and what is not the session's
+    notes: drafts folders, node_modules, .git and the repositories' checkouts (a folder holding a .git)."""
+    found = []
+    for dp, dn, fs in os.walk(root):
+        dn[:] = [d for d in dn if d not in ('drafts', 'node_modules', '.git') and not os.path.lexists(os.path.join(dp, d, '.git'))]
+        found += [os.path.join(dp, f) for f in fs if f.endswith('.md') and not f.startswith(('memory-brief', 'memory-premerge'))]
+    return sorted(found)
