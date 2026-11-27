@@ -122,7 +122,7 @@ def asks(text, kind, target):
               (None, lambda m, q: FOLLOW_UP.match(m)),  # "then tell me if CI fails"
               ('holds', lambda m, q: HOLD.search(NO_WAIT.sub(' ', m))),  # "don't wait for me" holds nothing
               ('asks', lambda m, q: ask.fullmatch(m) and (not q or re.match(REQUEST, m, re.I))),
-              (None, lambda m, q: ask.fullmatch(m)),  # a question that asks nothing: "Merge #41?"
+              ('question', lambda m, q: ask.fullmatch(m)),  # a question that asks nothing: "Merge #41?"
               (None, lambda m, q: FILLER.fullmatch(NO_WAIT.sub(' ', m).strip())),  # "please", "don't wait for CI"
               (None, lambda m, q: '‹x›' in m and '‹t›' not in m),  # about another target: "#40 too"
               (None, lambda m, q: any(a.fullmatch(m) for k, a in ASK.items() if k != kind)),  # "… and release it"
@@ -139,9 +139,10 @@ def asks(text, kind, target):
             continue
         sts = [(o, next(st for st, test in STANCE if test(m, question)), m) for o, m in s]
         if any(st == 'holds' and on(m) for _, st, m in sts): return False
+        if any(o == 'or' for o, _, _ in sts) and any(st in ('asks', 'question') for _, st, _ in sts): return False  # "or should I?"
         reported = reported or any(st == 'reports' and on(m) for _, st, m in sts)
         if (a := next((i for i, (_, st, m) in enumerate(sts) if st == 'asks' and ('‹t›' in m or on(whole_text))), None)) is not None:
             later = next((i for i, (o, _, _) in enumerate(sts) if i > a and o in ('and', 'then', 'és')), len(sts))  # "… and open the PR": work after it
-            if any(st == 'unknown' and i < later or o == 'or' for i, (o, st, _) in enumerate(sts)): return False  # "merge it, unless CI fails", "or should I?"
+            if any(st == 'unknown' and i < later for i, (_, st, _) in enumerate(sts)): return False  # "merge it, unless CI fails"
             found = True
     return found or (False if reported else None)
