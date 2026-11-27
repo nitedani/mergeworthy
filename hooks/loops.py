@@ -3,7 +3,7 @@ review may run, and record a round that ran with register(); pr-steps and gate-p
 and pr-steps asks open_seats() whether a step's other reviewers closed. A round is refused once the heads its brief pins show the
 branch hasn't moved since four earlier rounds of its loop, after an earlier one there when the ledger its brief names doesn't show
 the last round brought a fixed blocker or should, and as a fresh reader's second or its first again."""
-import collections, glob, itertools, json, os, re, subprocess, sys
+import collections, glob, itertools, json, os, re, subprocess, sys, types
 import agent_jobs, drift, ledger, records, review_journal, testpaths
 
 # {loop: {'rounds': [[n, the heads its brief pinned, the reports it wrote]], 'threads': the T3 threads or Claude agents its rounds ran in}}
@@ -215,54 +215,85 @@ def third_seat(loop, tops, d):
             "or, when its launch failed, say so in a line `Fallback: <what failed>`; a seat taking over another's count names it, `Continues: <loop>` (mergeworthy:delegate §Review rounds).\n")
 
 
-def admit(loop, n, tops, heads, led, owners=(), here=(), step=None):
-    """Why round n of code review loop is refused, '' when it may run: tops are the checkouts its brief names, heads their heads
-    its pins equal, led the ledger path it names (None), owners the loops whose rounds count in its four (a routed round's seat
-    loop, the loop a `Continues:` line takes over), here the launcher's checkout, which holds the fixes of a brief naming none (a
-    docs reader's, handed rendered pages), step the step its brief declares (`Review: <step>`)."""
-    # a fresh read's seat (its brief's `Review: fresh`, else its round 1's) runs once: no round 2, nor its round 1 again on this head
+NUMBER = 'zero one two three four five six seven eight nine'.split()  # CAP in a refusal's words
+
+
+def fresh_once(loop, n, tops, heads, step):
+    """A fresh read's seat (its brief's `Review: fresh`, else its round 1's) runs once: no round 2, nor its round 1 again on this head."""
     fresh = (step or next((r['first'].get('step') for t in tops if (r := lineage(t).get(loop))), None)) == 'fresh'
     if fresh and (n >= 2 or on_head(loop, 2, tops, heads)):
         again = '' if n >= 2 else f", and this seat already ran on this head or one within {testpaths.STALE_LINES} changed lines of it"
         return (f"{loop}-r{n}: the fresh reader runs once (mergeworthy:converge step 4){again}; its findings go back to the loops that own them, "
                 "`<slice>-fresh` (mergeworthy:delegate §Review rounds).\n")
-    earlier = on_head(loop, n, tops, heads)
-    shared = [f"{o} r{m}" for o in owners for m in on_head(o, 10 ** 9, tops, heads)]
-    routed_cap = shared and len(earlier) + len(shared) >= CAP
-    if not earlier and not routed_cap: return ''
-    try: rows, _, last = ledger.read(led) if led and os.path.isfile(led) else ([], [], 0)
-    except OSError as e: return f"the ledger {led} can't be read ({e.strerror}), so no round of {loop} is admitted: fix it, or name the loop's ledger (mergeworthy:delegate §Review rounds).\n"
-    kept = ledger.owed(rows, last, lambda sha: any(desc(t, sha, 'HEAD') for t in tops or here))
-    finality = (f"The ledger {led} shows round {last} still brought a blocker or should fixed in a commit: the area keeps taking patches, so its next step is "
-                "the finality pass (mergeworthy:finality step 1, recorded by `pr-steps finality <file>`), not another round. " if kept else "")
-    if routed_cap:
-        return (f"{loop}-r{n} counts in the four rounds per head of {', '.join(owners)}, which already ran {', '.join(shared)}"
-                + (f" and {loop} {', '.join(f'r{m}' for m in earlier)}" if earlier else '')
-                + f" on this head or one within {testpaths.STALE_LINES} changed lines of it: a recheck or a fresh reader's findings go to their seat's loop "
-                "within its four (mergeworthy:delegate §Review rounds). " + finality + "List what is still open in the report or the PR body's notes and go on.\n")
-    close = f"Close the loop with `pr-steps <step> <file> --ledger {led or '<ledger>'}` on r{earlier[-1]}'s report when it isn't clean: the agent's own report is the record, never one the main session writes.\n" if earlier else ''
-    if len(earlier) >= CAP:
-        return (f"{loop} already ran {', '.join(f'r{m}' for m in earlier)} on this head or one within {testpaths.STALE_LINES} changed lines of it "
-                f"({', '.join(h[:12] for h in heads) or 'no head pinned'}): a loop gets four rounds per head, and a head past those lines is a new one "
-                "(mergeworthy:delegate §Review rounds). "
-                + finality + "List what is still open in the report or the PR body's notes and go on (push, ready, the next step) without waiting for an answer; "
-                "only an open blocker keeps the PR in draft. A maintainer's ask on a new head starts a new loop name. " + close)
-    if earlier and led and os.path.isfile(led) and last < earlier[-1]:
-        return (f"{loop}-r{n} follows r{earlier[-1]}, but the ledger {led} shows round {last} as its last: rule r{earlier[-1]}'s findings in it first "
-                f"(each `R{earlier[-1]}.<n> <label> <outcome>`, then `Round: {earlier[-1]}`), then send the round (mergeworthy:delegate §Review rounds).\n")
-    import review_launch
-    said = [o for m, _, outs in rounds_of(loop, tops) if m in earlier for o in outs if not review_launch.draft_of(o)]
-    if led and os.path.isfile(led) and (missing := unruled(rows, said)):
-        return (f"{loop}-r{n} follows r{earlier[-1]}, but the ledger {led} doesn't rule every finding of its loop's reports:\n" + '\n'.join(missing)
-                + "\nRule each (`R<round>.<n> <label> <outcome>`), then send the round (mergeworthy:delegate §Review rounds).\n")
-    if earlier and not kept:
-        return (f"{loop}-r{n} follows r{earlier[-1]} on this head or one within {testpaths.STALE_LINES} changed lines of it, and a loop gets its next round only "
-                "while its last round brought a blocker or should you kept and fixed (mergeworthy:delegate §Review rounds), but "
-                + ("the brief names no `<work folder>/drafts/<review>.ledger.md` to show it: name the loop's ledger in the brief, or end the loop. " if not led else
-                   f"{led} doesn't exist: name the loop's ledger, or end the loop. " if not os.path.isfile(led) else
-                   f"the ledger {led} shows round {last} brought none `fixed in <sha>`: the loop ends there. ")
-                + close)
     return ''
+
+
+def routed_cap(a):
+    """A routed round, or one taking over a loop, counts in its owners' four."""
+    if not a.routed: return ''
+    return (f"{a.loop}-r{a.n} counts in the {NUMBER[CAP]} rounds per head of {', '.join(a.owners)}, which already ran {', '.join(a.shared)}"
+            + (f" and {a.loop} {', '.join(f'r{m}' for m in a.earlier)}" if a.earlier else '')
+            + f" on this head or one within {testpaths.STALE_LINES} changed lines of it: a recheck or a fresh reader's findings go to their seat's loop "
+            "within its four (mergeworthy:delegate §Review rounds). " + a.finality + "List what is still open in the report or the PR body's notes and go on.\n")
+
+
+def cap(a):
+    """A loop gets CAP rounds per head."""
+    if len(a.earlier) < CAP: return ''
+    return (f"{a.loop} already ran {', '.join(f'r{m}' for m in a.earlier)} on this head or one within {testpaths.STALE_LINES} changed lines of it "
+            f"({', '.join(h[:12] for h in a.heads) or 'no head pinned'}): a loop gets {NUMBER[CAP]} rounds per head, and a head past those lines is a new one "
+            "(mergeworthy:delegate §Review rounds). "
+            + a.finality + "List what is still open in the report or the PR body's notes and go on (push, ready, the next step) without waiting for an answer; "
+            "only an open blocker keeps the PR in draft. A maintainer's ask on a new head starts a new loop name. " + a.closing)
+
+
+def ledger_current(a):
+    """The ledger rules the last round before the next is sent."""
+    if not (a.led and os.path.isfile(a.led) and a.last < a.earlier[-1]): return ''
+    return (f"{a.loop}-r{a.n} follows r{a.earlier[-1]}, but the ledger {a.led} shows round {a.last} as its last: rule r{a.earlier[-1]}'s findings in it first "
+            f"(each `R{a.earlier[-1]}.<n> <label> <outcome>`, then `Round: {a.earlier[-1]}`), then send the round (mergeworthy:delegate §Review rounds).\n")
+
+
+def findings_ruled(a):
+    """The ledger rules every finding of the loop's earlier reports on this head."""
+    import review_launch
+    said = [o for m, _, outs in rounds_of(a.loop, a.tops) if m in a.earlier for o in outs if not review_launch.draft_of(o)]
+    if not (a.led and os.path.isfile(a.led) and (missing := unruled(a.rows, said))): return ''
+    return (f"{a.loop}-r{a.n} follows r{a.earlier[-1]}, but the ledger {a.led} doesn't rule every finding of its loop's reports:\n" + '\n'.join(missing)
+            + "\nRule each (`R<round>.<n> <label> <outcome>`), then send the round (mergeworthy:delegate §Review rounds).\n")
+
+
+def earned(a):
+    """A loop gets its next round only while its last round brought a blocker or should kept and fixed."""
+    if a.kept: return ''
+    return (f"{a.loop}-r{a.n} follows r{a.earlier[-1]} on this head or one within {testpaths.STALE_LINES} changed lines of it, and a loop gets its next round only "
+            "while its last round brought a blocker or should you kept and fixed (mergeworthy:delegate §Review rounds), but "
+            + ("the brief names no `<work folder>/drafts/<review>.ledger.md` to show it: name the loop's ledger in the brief, or end the loop. " if not a.led else
+               f"{a.led} doesn't exist: name the loop's ledger, or end the loop. " if not os.path.isfile(a.led) else
+               f"the ledger {a.led} shows round {a.last} brought none `fixed in <sha>`: the loop ends there. ")
+            + a.closing)
+
+
+RULES = (routed_cap, cap, ledger_current, findings_ruled, earned)  # in the order a launch is told what to fix
+
+
+def admit(loop, n, tops, heads, led, owners=(), here=(), step=None):
+    """Why round n of code review loop is refused, '' when it may run: tops are the checkouts its brief names, heads their heads
+    its pins equal, led the ledger path it names (None), owners the loops whose rounds count in its four (a routed round's seat
+    loop, the loop a `Continues:` line takes over), here the launcher's checkout, which holds the fixes of a brief naming none (a
+    docs reader's, handed rendered pages), step the step its brief declares (`Review: <step>`)."""
+    if why := fresh_once(loop, n, tops, heads, step): return why
+    a = types.SimpleNamespace(loop=loop, n=n, tops=tops, heads=heads, led=led, owners=owners, earlier=on_head(loop, n, tops, heads),
+                              shared=[f"{o} r{m}" for o in owners for m in on_head(o, 10 ** 9, tops, heads)])
+    a.routed = bool(a.shared) and len(a.earlier) + len(a.shared) >= CAP
+    if not a.earlier and not a.routed: return ''
+    try: a.rows, _, a.last = ledger.read(led) if led and os.path.isfile(led) else ([], [], 0)
+    except OSError as e: return f"the ledger {led} can't be read ({e.strerror}), so no round of {loop} is admitted: fix it, or name the loop's ledger (mergeworthy:delegate §Review rounds).\n"
+    a.kept = ledger.owed(a.rows, a.last, lambda sha: any(desc(t, sha, 'HEAD') for t in tops or here))
+    a.finality = (f"The ledger {led} shows round {a.last} still brought a blocker or should fixed in a commit: the area keeps taking patches, so its next step is "
+                  "the finality pass (mergeworthy:finality step 1, recorded by `pr-steps finality <file>`), not another round. " if a.kept else "")
+    a.closing = f"Close the loop with `pr-steps <step> <file> --ledger {led or '<ledger>'}` on r{a.earlier[-1]}'s report when it isn't clean: the agent's own report is the record, never one the main session writes.\n" if a.earlier else ''
+    return next((why for rule in RULES if (why := rule(a))), '')
 
 
 def old_reports(loop, n, tops, paths, outs, brief):
