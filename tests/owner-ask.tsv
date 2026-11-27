@@ -282,3 +282,7 @@ push	main	True	Push to main – thanks
 merge	o/r#41	False	merge it, or should I?
 release	-	True	https://github.com/o/r/pull/41 merge and release
 push	main	True	https://github.com/o/r/pull/41 merge and release
+merge	o/r#41	False	merge it then tomorrow
+merge	o/r#41	False	merge it and later the docs
+merge	o/r#41	False	merge it, then on monday the docs
+merge	o/r#41	False	mergeld, és holnap a docs-ot

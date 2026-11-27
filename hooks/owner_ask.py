@@ -32,7 +32,7 @@ OPENERS = {'courtesy': r'please|pls|plz|kérlek|kerlek|légyszi|legyszi',
            'request': r"let['’]?s|let us|i want you to|i'd like you to|i need you to|(?:can|could|would|will) you|go ahead and|you can|feel free to"}
 # the words that hold the action back in a clause that names it
 HOLDS = {'negation': r"don'?t|\w+n['’]t|do not|never|not|no|ne|nem",
-         'deferral': r'majd|várj|varj|wait|later|after|until|miután',
+         'deferral': r'majd|várj|varj|wait|later|after|until|miután|tomorrow|tonight|eventually|next week|(?:mon|tues|wednes|thurs|fri|satur|sun)day|holnap|később',
          'condition': r'(?<!the )only|once|when|if|ha',
          'reversal': r'cancel\w*|abort\w*|revert\w*|undo|stop',
          'question': r'who|why'}
