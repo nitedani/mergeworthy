@@ -216,7 +216,7 @@ def third_seat(loop, tops, heads, d):
              for s in next((e for e in evs if on_version(e['heads'], tops, heads)), {}).get('seats') or ()}
     if not (left_out := next((x for x in (set(d.seats or ()), named) if x and seat not in x), None)): return ''
     return (f"{loop}-r1 would be a third seat of {stem}, whose round 1 declared {', '.join(sorted(left_out))}: continue a declared seat, "
-            "or, when its launch failed, say so in a line `Fallback: <what failed>`; a seat taking over another's count names it, `Continues: <loop>` (mergeworthy:delegate §Review rounds).\n")
+            "or, when its launch failed, say so in a line `Fallback: <failed seat tag> failed: <why>`; a seat taking over another's count names it, `Continues: <loop>` (mergeworthy:delegate §Review rounds).\n")
 
 
 NUMBER = 'zero one two three four five six seven eight nine'.split()  # CAP in a refusal's words
