@@ -83,19 +83,20 @@ def loads_mergeworthy(instance, config):
     return True
 
 
+def mergeworthy_instances(kind):
+    """The enabled instances of driver `kind` that load mergeworthy, from T3 Code's settings; [kind] when they list none of it, as
+    a built-in instance's id is its driver's."""
+    known = {i: o for i, o in instances().items() if isinstance(o, dict) and o.get('driver') == kind}
+    return [i for i, o in known.items() if o.get('enabled') is not False and loads_mergeworthy(i, o)] if known else [kind]
+
+
 def without_mergeworthy(instance, kind=None):
-    """None when what a launch names loads mergeworthy, or T3 Code's settings can't tell; else (the instances it may run on that
-    don't, the enabled instances of its driver that do). It names an instance id, or a driverKind alone, for which T3 may pick any
-    enabled instance of that driver (resolveTarget: the first healthy one when the parent's runs another driver)."""
+    """The instances a launch may run on that load no mergeworthy, or [] when it loads it or T3 Code's settings can't tell. It names
+    an instance id, or a driverKind alone, for which T3 may pick any enabled instance of that driver (resolveTarget: the first
+    healthy one when the parent's runs another driver)."""
     known = {i: o for i, o in instances().items() if isinstance(o, dict)}
-    on = lambda i: known[i].get('driver') == kind and known[i].get('enabled') is not False
-    if instance:
-        if instance not in known: return None
-        kind, picks = known[instance].get('driver'), [instance]
-    else:
-        picks = [i for i in known if on(i)]
-    plain = [i for i in picks if not loads_mergeworthy(i, known[i])]
-    return (plain, [i for i in known if on(i) and i not in plain and loads_mergeworthy(i, known[i])]) if plain else None
+    picks = [instance] if instance else [i for i, o in known.items() if o.get('driver') == kind and o.get('enabled') is not False]
+    return [i for i in picks if i in known and not loads_mergeworthy(i, known[i])]
 
 
 def result(content):

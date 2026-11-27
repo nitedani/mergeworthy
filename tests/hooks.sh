@@ -1413,7 +1413,8 @@ check "BLOCK: a review on claudeAgent whose task, or the brief file it names, on
 impl() { # target-JSON [host] [role] [task]: a delegate_task's exit code under T3
   python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"ag","tool_input":{"task":sys.argv[3],"title":"ag "+sys.argv[2],"role":sys.argv[2],"target":json.loads(sys.argv[1])}}))' "$1" "${3:-implementation}" "${4:-You implement the cache}" \
   | T3CODE_THREAD_ID=th MERGEWORTHY_HOST="${2:-}" python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
-mkdir -p "$HOME/.t3/userdata"; echo '{"providerInstances":{"antigravity_2":{"driver":"antigravity"},"claude_2":{"driver":"claudeAgent"}}}' > "$HOME/.t3/userdata/settings.json"
+mkdir -p "$HOME/.t3/userdata" "$T/mwon"; echo '{"enabledPlugins":{"mergeworthy@mergeworthy":true}}' > "$T/mwon/settings.json"
+printf '{"providerInstances":{"antigravity_2":{"driver":"antigravity"},"claude_2":{"driver":"claudeAgent"},"claudeAgent":{"driver":"claudeAgent","config":{"homePath":"%s"}}}}' "$T/mwon" > "$HOME/.t3/userdata/settings.json"
 check "BLOCK: under Antigravity an implementer with no target, naming claudeAgent; an implementer on an Antigravity target by instance or driver, under either host; an implementer brief in role general; role implementation with any task, refused as an implementer" "2 1 2 2 2 2 1 2 1" \
   "$(impl '{}' antigravity) $(grep -c 'no implementer runs on Antigravity.*with no target.*set target.providerInstanceId to claudeAgent' "$T/err") $(impl '{"providerInstanceId":"antigravity_2"}') $(impl '{"driverKind":"antigravity"}') $(impl '{"providerInstanceId":"antigravity"}' antigravity) $(impl '{"providerInstanceId":"antigravity"}' '' general 'You implement the cache') $(grep -c 'no implementer runs on Antigravity' "$T/err") $(impl '{"providerInstanceId":"antigravity"}' '' implementation 'Build the cache') $(grep -c 'no implementer runs on Antigravity' "$T/err")"
 check "on an Antigravity target a review, a design, research and a finality branch pass" "0 0 0 0" \
@@ -1495,6 +1496,19 @@ printf '{"a":{"until":%s}}' $((now + 3600)) > "$CX/profiles/limited.json"; r="$(
 lim $((now - 60)) $((now + 3600)); r="$r $(rev '{"providerInstanceId":"codex"}' 'Review it') $(rev '{"providerInstanceId":"claudeAgent"}' 'Review it')"
 rm "$CX/profiles/limited.json"; r="$r $(rev '{"providerInstanceId":"codex"}' 'Review it') $(rev '{"providerInstanceId":"claudeAgent"}' 'Review it')"
 check "a Codex account with room (none in limited.json, a reset past) or no limited.json: a review on codex passes, one on claudeAgent without a Fallback line is refused" "0 2 0 2 0 2" "$r"
+# a refusal names a target every check lets through: the instances that load mergeworthy of the driver it asks for
+mkdir -p "$HOME/.t3/userdata/providers/antigravity/$(printf agy_m | sha256sum | cut -d' ' -f1)/config/plugins/mergeworthy"
+printf '{"providerInstances":{"claude_x":{"driver":"claudeAgent","config":{"homePath":"%s"}},"claude_p":{"driver":"claudeAgent","config":{}},"agy_m":{"driver":"antigravity"},"agy_p":{"driver":"antigravity"},"cdx":{"driver":"codex"}}}' "$T/mwon" > "$HOME/.t3/userdata/settings.json"
+one() { echo "$(grep -c '^BLOCKED.*providerInstanceId' "$T/err") $(grep -c "$1" "$T/err")"; }  # the last message's refusals naming a target, and those naming $1
+# (this implementer brief names no approach, which another check refuses: the rows count the refusals naming a target)
+check "BLOCK: an implementer on agy_p or on driverKind antigravity alone is told one target, claude_x, which no target check then refuses" "2 1 1 2 1 1 0 0" \
+  "$(impl '{"providerInstanceId":"agy_p"}') $(one 'no implementer runs on Antigravity (mergeworthy:delegate §Model class): set target.providerInstanceId to claude_x\.$') $(impl '{"driverKind":"antigravity"}') $(one 'providerInstanceId to claude_x\.$') $(impl '{"providerInstanceId":"claude_x"}' >/dev/null; one 'claude_x')"
+lim $((now + 3600)) $((now + 3600))
+check "BLOCK: a review on claude_p while every Codex account is used up is told one target, claude_x, which then passes without a Fallback line; one on codex is told claude_x" "2 1 1 0 2 1 1" \
+  "$(rev '{"providerInstanceId":"claude_p"}' 'Review it') $(one "instance claude_p doesn't load mergeworthy.*providerInstanceId to claude_x\.$") $(rev '{"providerInstanceId":"claude_x"}' 'Review it') $(rev '{"providerInstanceId":"cdx"}' 'Review it') $(one 'target.providerInstanceId claude_x)')"
+rm "$CX/profiles/limited.json"
+check "BLOCK: a review on claude_p with codex free is told cdx alone, the settings' Codex instance" "2 1 1" "$(rev '{"providerInstanceId":"claude_p"}' 'Review it') $(one 'set target.providerInstanceId to cdx\. Only when that call failed, launch on Claude (claude_x)')"
+rm "$HOME/.t3/userdata/settings.json"
 unset CODEX_HOME
 agent_rnd() { # description prompt
   local j; j=$(python3 -c 'import json,sys; print(json.dumps({"tool_name":"Agent","tool_input":{"description":sys.argv[1],"prompt":sys.argv[2]}}))' "$1" "$2")
