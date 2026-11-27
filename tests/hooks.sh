@@ -8,6 +8,7 @@ R=$(readlink -f "${1:-$(dirname "$0")/..}")
 export MERGEWORTHY_PYDEPS=${MERGEWORTHY_PYDEPS:-$HOME/.mergeworthy/pydeps}  # the shell parser the hooks run, installed once outside the temp HOME
 unset T3CODE_THREAD_ID  # a run from a T3 session tests the same hooks as one outside it; the T3 cases set it
 T=$(mktemp -d); export HOME="$T/home"; mkdir -p "$HOME/.claude" "$T/bin" "$T/fx"
+unset T3CODE_HOME  # T3 Code's data directory, which a run under T3 inherits; the cases use $HOME/.t3
 cat > "$T/bin/gh" <<'EOF'
 #!/usr/bin/env bash
 # stub gh: answers `gh api <path>` from $FX/<path with / ? & = replaced by _>; exit 1 when the fixture is missing (a 404)
@@ -1494,6 +1495,11 @@ check "BLOCK: when no instance of the driver loads mergeworthy, the refusal says
 rm "$HOME/.t3/userdata/settings.json"
 check "with no settings file nothing is refused for its instance" "0 0" "$(res myclaude) $(res agy_x)"
 [ -z "$agm_made" ] || rmdir "$AGM"
+# T3 keeps its state under $T3CODE_HOME/userdata when that is set
+mkdir -p "$T/t3h/userdata/providers/antigravity/$(printf agy_h | sha256sum | cut -d' ' -f1)/config/plugins/mergeworthy"
+printf '{"providerInstances":{"c_h":{"driver":"claudeAgent","config":{"launchArgs":"--settings %s"}},"agy_h":{"driver":"antigravity","enabled":true},"agy_hp":{"driver":"antigravity","enabled":true}}}' "$T/mwc/off.json" > "$T/t3h/userdata/settings.json"
+check "BLOCK: under T3CODE_HOME its settings and Antigravity profiles count: c_h and agy_hp refused, agy_h, linked there, passes" "2 2 1 0" \
+  "$(T3CODE_HOME="$T/t3h" res c_h) $(T3CODE_HOME="$T/t3h" res agy_hp) $(grep -c 'instance agy_hp.*providerInstanceId to agy_h\.$' "$T/err") $(T3CODE_HOME="$T/t3h" res agy_h)"
 check "an exploring research agent on claudeAgent passes" 0 "$(rev '{"providerInstanceId":"claudeAgent"}' 'Explore it' research)"
 python3 -c 'import json; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":"Review it","role":"review","target":{"providerInstanceId":"claudeAgent"},"clientRequestId":"r-1"}}))' \
   | T3CODE_THREAD_ID=th python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"

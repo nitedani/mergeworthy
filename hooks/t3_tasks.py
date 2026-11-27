@@ -38,10 +38,15 @@ BUILT_IN = ('codex', 'claudeAgent', 'cursor', 'grok', 'fx', 'opencode', 'antigra
 OFF_BY_DEFAULT = {'cursor', 'grok', 'fx', 'kiro', 'muse', 'pi', 'opencode', 'antigravity'}
 
 
+def userdata(*path):
+    """A path in T3 Code's state folder: `userdata` in its data directory, T3CODE_HOME, else ~/.t3 (resolveBaseDir)."""
+    return os.path.join(os.path.expanduser((os.environ.get('T3CODE_HOME') or '').strip() or '~/.t3'), 'userdata', *path)
+
+
 def instances():
     """T3 Code's provider instances by id as T3 runs them: its settings' own, and the default instance of each built-in driver they
     leave out (deriveProviderInstanceConfigMap); None without its settings."""
-    try: listed = json.load(open(os.path.expanduser('~/.t3/userdata/settings.json'))).get('providerInstances') or {}
+    try: listed = json.load(open(userdata('settings.json'))).get('providerInstances') or {}
     except (OSError, ValueError, AttributeError): return None
     known = {i: o for i, o in listed.items() if isinstance(o, dict)} if isinstance(listed, dict) else {}
     for d in BUILT_IN: known.setdefault(d, {'driver': d})
@@ -114,7 +119,7 @@ def loads_mergeworthy(instance, config):
         return on
     if config.get('driver') == 'antigravity':
         profile = hashlib.sha256(instance.encode()).hexdigest()
-        return os.path.exists(os.path.expanduser(f'~/.t3/userdata/providers/antigravity/{profile}/config/plugins/mergeworthy'))
+        return os.path.exists(userdata('providers', 'antigravity', profile, 'config', 'plugins', 'mergeworthy'))
     return True
 
 
