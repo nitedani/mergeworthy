@@ -32,17 +32,33 @@ def under_t3():
     return bool(os.environ.get('T3CODE_THREAD_ID'))
 
 
+# T3's built-in drivers with a default instance, whose id is the driver's (src/provider/builtInDrivers.ts BUILT_IN_DRIVERS, all but
+# acpRegistry), and those its default leaves off (packages/contracts/src/settings.ts DEFAULT_DISABLED_PROVIDER_DRIVERS)
+BUILT_IN = ('codex', 'claudeAgent', 'cursor', 'grok', 'fx', 'opencode', 'antigravity', 'kiro', 'pi', 'muse')
+OFF_BY_DEFAULT = {'cursor', 'grok', 'fx', 'kiro', 'muse', 'pi', 'opencode', 'antigravity'}
+
+
 def instances():
-    """T3 Code's provider instances by id, from its settings, else {}."""
-    try: i = json.load(open(os.path.expanduser('~/.t3/userdata/settings.json')))['providerInstances']
-    except (OSError, ValueError, KeyError, TypeError): return {}
-    return i if isinstance(i, dict) else {}
+    """T3 Code's provider instances by id as T3 runs them: its settings' own, and the default instance of each built-in driver they
+    leave out (deriveProviderInstanceConfigMap); None without its settings."""
+    try: listed = json.load(open(os.path.expanduser('~/.t3/userdata/settings.json'))).get('providerInstances') or {}
+    except (OSError, ValueError, AttributeError): return None
+    known = {i: o for i, o in listed.items() if isinstance(o, dict)} if isinstance(listed, dict) else {}
+    for d in BUILT_IN: known.setdefault(d, {'driver': d})
+    return known
+
+
+def enabled(o):
+    """Whether T3 runs instance `o` (resolveProviderInstanceEnabled): its `enabled`, else its config's, else its driver's default."""
+    flag = (o.get('config') or {}).get('enabled') if isinstance(o.get('config'), dict) else None
+    if o.get('enabled') is False or flag is False: return False
+    return next((v for v in (o.get('enabled'), flag) if isinstance(v, bool)), o.get('driver') not in OFF_BY_DEFAULT)
 
 
 def driver(instance, kind=None):
     """The driver T3 Code runs provider instance `instance` with (claudeAgent, codex, antigravity), from its settings; else the driver
     `kind` the launch names, else the id itself, as a built-in instance's id is its driver's."""
-    try: return instances()[instance]['driver']
+    try: return (instances() or {})[instance]['driver']
     except (KeyError, TypeError): return kind or instance
 
 
@@ -84,18 +100,18 @@ def loads_mergeworthy(instance, config):
 
 
 def mergeworthy_instances(kind):
-    """The enabled instances of driver `kind` that load mergeworthy, from T3 Code's settings; [kind] when they list none of it, as
-    a built-in instance's id is its driver's."""
-    known = {i: o for i, o in instances().items() if isinstance(o, dict) and o.get('driver') == kind}
-    return [i for i, o in known.items() if o.get('enabled') is not False and loads_mergeworthy(i, o)] if known else [kind]
+    """The enabled instances of driver `kind` that load mergeworthy, as T3 Code runs them; [kind] without its settings, as a
+    built-in instance's id is its driver's."""
+    known = instances()
+    return [kind] if known is None else [i for i, o in known.items() if o.get('driver') == kind and enabled(o) and loads_mergeworthy(i, o)]
 
 
 def without_mergeworthy(instance, kind=None):
     """The instances a launch may run on that load no mergeworthy, or [] when it loads it or T3 Code's settings can't tell. It names
     an instance id, or a driverKind alone, for which T3 may pick any enabled instance of that driver (resolveTarget: the first
     healthy one when the parent's runs another driver)."""
-    known = {i: o for i, o in instances().items() if isinstance(o, dict)}
-    picks = [instance] if instance else [i for i, o in known.items() if o.get('driver') == kind and o.get('enabled') is not False]
+    known = instances() or {}
+    picks = [instance] if instance else [i for i, o in known.items() if o.get('driver') == kind and enabled(o)]
     return [i for i in picks if i in known and not loads_mergeworthy(i, known[i])]
 
 
