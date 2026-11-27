@@ -239,8 +239,8 @@ def merge(root):
         was = open(main, errors='replace').read() if os.path.isfile(main) else ''
         if notes and COVERED.findall(was)[-1:] == READ.findall('\n'.join(notes))[-1:] and os.path.getmtime(main) > os.path.getmtime(np):
             notes = []  # a refresh that wrote memory.md itself already merged them
+        cov = (READ.findall('\n'.join(notes)) or COVERED.findall(was) or [''])[-1]  # covered() from the notes read here, so a line appended since waits for the next merge
         apply(mem, main, notes)
-        cov = covered(root)
         if cov:
             mem[main]['Recent'] = [l for l in mem[main]['Recent'] if not when(l) or stamp(when(l) + 'Z') >= stamp(cov) - 86400]
         roll(mem, main, root, cov)
