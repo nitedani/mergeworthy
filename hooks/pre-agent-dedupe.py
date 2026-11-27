@@ -288,7 +288,7 @@ elif k.review:
             or not sent and (why := loops.old_reports(loop, n, tops, L.paths, said_outs, brief)):
         sys.stderr.write(f"BLOCKED: {why}")
         refused()
-    if why := (n == 1 and not sent and not owners and loops.third_seat(loop, tops, D)) or loops.admit(loop, n, tops, heads, led, owners, list(filter(None, [git_top(req.cwd or '/')])), step or (first or {}).get('step')):
+    if why := (n == 1 and not sent and not owners and loops.third_seat(loop, tops, heads, D)) or loops.admit(loop, n, tops, heads, led, owners, list(filter(None, [git_top(req.cwd or '/')])), step or (first or {}).get('step')):
         sys.stderr.write(f"BLOCKED: {why}")
         refused()
 # A brief that writes or reviews code, docs or a post (any role but research or test) for a repo whose maintainers' notes exist

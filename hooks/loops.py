@@ -206,11 +206,13 @@ def rounds_of(loop, tops):
     return [[m, old, []] for m, old, *_ in _json(OLD['rounds']).get(loop, [])]
 
 
-def third_seat(loop, tops, d):
-    """Why round 1 of the seat loop, launched fresh, is refused: its step's round 1 on this lineage declared other seats (`Seats:`)
-    and its brief's directives d neither say what failed (`Fallback:`) nor which loop it takes over (`Continues:`); '' otherwise."""
+def third_seat(loop, tops, heads, d):
+    """Why round 1 of the seat loop, launched fresh on heads (in the checkouts tops), is refused: its step's round 1 on this
+    version (each other seat's first round that counts on heads, on_version) declared other seats (`Seats:`) and its brief's
+    directives d neither say what failed (`Fallback:`) nor which loop it takes over (`Continues:`); '' otherwise."""
     stem, kind, seat = name(loop)
-    named = {s for t in tops for l, evs in lineage(t).items() if l != loop and name(l).subject == stem for s in evs[0].get('seats') or ()}
+    named = {s for t in tops for l, evs in lineage(t).items() if l != loop and name(l).subject == stem
+             for s in next((e for e in evs if on_version(e['heads'], tops, heads)), {}).get('seats') or ()}
     if kind != 'seat' or not named or seat in named or d.fills or any(c[:1] != '<' for c in d.continues): return ''
     return (f"{loop}-r1 would be a third seat of {stem}, whose round 1 declared {', '.join(sorted(named))}: continue a declared seat, "
             "or, when its launch failed, say so in a line `Fallback: <what failed>`; a seat taking over another's count names it, `Continues: <loop>` (mergeworthy:delegate §Review rounds).\n")

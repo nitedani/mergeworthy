@@ -2951,6 +2951,11 @@ GR="$T/rerun"; git init -q -b main "$GR"; git -C "$GR" -c user.name=t -c user.em
 rr="$(fo rr-codex-r1 '{"providerInstanceId":"codex"}' "Review $GR at head $RRH; output to $T/rr-a.md") $(fo rr-codex-r1-2026-11-27 '{"providerInstanceId":"codex"}' "Review $GR at head $RRH; output to $T/rr-b.md")"
 rr="$rr $(echo 'R1.1 should: the parser drops a field' > "$T/rr-b.md"; fo rr-codex-r1-2026-11-28 '{"providerInstanceId":"codex"}' "Review $GR at head $RRH; output to $T/rr-c.md") $(grep -c "rr-codex-r1 already ran on this head .* and wrote $T/rr-b.md: a round runs once" "$T/err")"
 check "a round runs once on a head: a retry of one that wrote no report passes; BLOCK it again once the report exists, naming it" "0 0 2 1" "$rr"
+GV="$T/version"; git init -q -b main "$GV"; git -C "$GV" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; VH=$(git -C "$GV" rev-parse HEAD)
+vsb() { printf 'Review %s at head %s; output to %s\n%s\nSeats: %s' "$GV" "$2" "$T/$1.md" "$FO" "$3"; }  # loop head seats: a round 1 brief of the step
+vv="$(fo vv-codex-r1 '{"providerInstanceId":"codex"}' "$(vsb vv-codex "$VH" 'codex, claude')") $(fo vv-claude-r1 '{"providerInstanceId":"claudeAgent"}' "$(vsb vv-claude "$VH" 'codex, claude')") $(fo vv-neon-r1 "$NEON" "$(vsb vv-neon "$VH" 'codex, neon')")"
+seq 81 > "$GV/a.py"; git -C "$GV" add a.py; git -C "$GV" -c user.name=t -c user.email=t@t commit -q -m 81; VH2=$(git -C "$GV" rev-parse HEAD)
+check "a stand-in's Seats: line holds on its version only: BLOCK a third seat there; 81 lines on, the seat it stood in for is no third seat" "0 0 2 0" "$vv $(fo vv-neon-r1 "$NEON" "$(vsb vv-neon2 "$VH2" 'codex, neon')")"
 GF="$T/seats6"; git init -q -b main "$GF"; git -C "$GF" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; FH=$(git -C "$GF" rev-parse HEAD)
 for s in "fl-codex codex" "fl-claude2 claudeAgent"; do set -- $s; fo "$1-r1" "{\"providerInstanceId\":\"$2\"}" "Review $GF at head $FH; output to $T/$1.md
 $FO
