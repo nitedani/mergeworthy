@@ -46,7 +46,7 @@ ACTIONS = {
     'editing a skill or rules file':  ('rules',),
 }
 TEXT = ('--body', '-b', '--body-file', '-F', '--title', '-t')  # an issue edit that changes what a person reads
-UNGATED = {'code', 'finality', 'docs'}  # code reaches agents by path in briefs; finality has pre-bash-guard's third-proposal block; no tool call tells docs apart
+UNGATED = {'code', 'finality', 'docs'}  # code reaches agents by path in briefs; finality is reached only from gated steps (design, converge, pull-request); no tool call tells docs apart
 
 
 def rows():
