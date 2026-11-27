@@ -2611,6 +2611,11 @@ sed 's/^✅ a$/| hooks\/guard.py | `proposal` | 6 ⇒ 7 | one |\n&/' "$T/rc4.md"
 check "a table row's item is every cell before its rating: a function cell after a File cell groups, bare names in a spaced cell group; a File cell and one function records" "1 1 0" "$(psn "$T/rc17.md") $(psn "$T/rc18.md") $(psn "$T/rc19.md")"
 sed 's/^✅ a$/- parse(), render() 6 ⇒ 8\n&/' "$T/rc4.md" > "$T/rc20.md"; sed 's/^✅ a$/- parse() 6 ⇒ 8\n- `loader` (3 lines) 6 ⇒ 8\n&/' "$T/rc4.md" > "$T/rc21.md"
 check "names written with () group ('parse(), render()'); one such name, or a name with a note in parentheses, records" "1 0" "$(psn "$T/rc20.md") $(psn "$T/rc21.md")"
+sed "s/^✅ a\$/> - Test callback 'a switch by hand records what the sessions re-read, as \`use\` and \`next\` make it; choosing the account in use records nothing': 7 ⇒ 8. Literal assertions.\n&/" "$T/rc4.md" > "$T/rc22.md"
+sed 's/^✅ a$/| [inlines the state as it is: `$'"'"'` and `$\&` stay as written, and a name like a placeholder stays a name](\/x\/web.test.ts:395) | 8 ⇒ 8 | KEEP |\n&/' "$T/rc4.md" > "$T/rc23.md"
+sed 's/^✅ a$/| [`a`, `b`](x.ts:3) | 8 ⇒ 8 | two |\n&/' "$T/rc4.md" > "$T/rc24.md"
+sed 's/^✅ a$/| `web.test.ts:394` it: inlines the names as written, `a` and `b` stay names | 8 ⇒ 8 | one |\n&/' "$T/rc4.md" > "$T/rc25.md"
+check "a quoted test title, one after 'it:' or a link whose text is a sentence names one item, its code spans and all; a link whose text is two code spans groups" "0 0 0 1" "$(psn "$T/rc22.md") $(psn "$T/rc23.md") $(psn "$T/rc25.md") $(psn "$T/rc24.md")"
 # a carry of a head with two passes (one before a maintainer's ask, one after it) carries the latest
 GC="$T/prsc"; mkdir -p "$GC"; git -C "$GC" init -q; git -C "$GC" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; GA=$(git -C "$GC" rev-parse HEAD)
 printf '| `a.ts` | 6 ⇒ 7 | x | one |\n✅ a.ts\nCLEAN\n' > "$T/two-old.md"; printf '| `a.ts` | 7 ⇒ 9 | y | two |\n✅ a.ts\nCLEAN\n' > "$T/two-new.md"

@@ -194,7 +194,10 @@ ask = '(mergeworthy delegate/shape.md)'
 count = re.compile(r'\(\s*\d+\s+(fns?|functions?|helpers?|methods?|files?)\b[^)]*\)', re.I)
 # a commit sha is a reference, never an item; a path, a file.ext or a :line locates the one item beside it
 kind = lambda span: 'sha' if re.fullmatch(r'`[0-9a-f]{7,40}`', span) else 'place' if re.search(r'/|\w\.\w+|:\d', span) else 'name'
+# a quoted title, a test title after 'it:' or a link whose text is a sentence (three words outside its code spans) names one item: its spans are words of it
+title = lambda m: m[0].replace('`', '') if len(re.findall(r"\b(?!and\b)[A-Za-z][\w'’-]*", re.sub(r'`[^`\n]+`', '', m[0]))) >= 3 else m[0]
 def grouped(item):
+    item = re.sub(r'''\[[^\]\n]+\](?=\()|(?<!\w)'[^'\n]+'(?!\w)|"[^"\n]+"|“[^”\n]+”|\bit: .+''', title, item)
     # the parentheses after an item describe it: their spans are no more items (an empty () is part of a name)
     item = re.sub(r'(?<=\S)\s*\([^()]+\)', '', re.sub(r'^\s*[-*]\s+|[\s:–—-]+$', '', item.strip())) if not count.search(item) else item
     spans = list(re.finditer(r'`[^`\n]+`', item))
