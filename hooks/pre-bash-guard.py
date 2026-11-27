@@ -7,7 +7,7 @@ import glob, itertools, json, re, sys, os, hashlib, shlex, subprocess, urllib.pa
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed, gh_common
 import shellcmd
-from shellcmd import parse, segments, prog, script, opt, api_call, field_name, TEXT_FREE, discussion_post, discussion_thread_of, names_discussion_mutation, env_of, origin, plain_create, PLAIN, new_post_drafts, no_instructions_read, by_agent, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Unseen, Where
+from shellcmd import parse, segments, prog, script, opt, api_call, field_name, TEXT_FREE, discussion_post, discussion_thread_of, names_discussion_mutation, env_of, origin, plain_create, PLAIN, new_post_drafts, proposal, no_instructions_read, by_agent, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Unseen, Where
 from records import branch_record, commit_file, DRIFT_REF, LIMIT, no_approach, no_preflight, STORE
 import drift, own_actions, review_launch, steward, post_words, threads_file, transcript_facts, work_folder
 from t3_tasks import under_t3, typed
@@ -490,13 +490,6 @@ def draft_path(f):
     """The file a posting command's draft argument (a path, @path or body=@path) names."""
     f = os.path.expanduser(where.expand(f[5:] if f.startswith('body=') else f)).lstrip('@')
     return f if os.path.isabs(f) else os.path.join(cwd, f)
-
-def proposal(path):
-    """Whether the draft at path was linted as `--kind proposal`."""
-    try: flags = open(path + '.lint').read().split()
-    except OSError: return False
-    return '--kind' in flags and flags[flags.index('--kind') + 1:][:1] == ['proposal']
-
 def check_finality(repo, num, files):
     """A design thread that has had two proposal rounds needs design step 7's thread map before the third (mergeworthy:design).
     post-bash-register counts posted `--kind proposal` drafts per thread in ~/.claude/proposal-rounds.txt; the map is

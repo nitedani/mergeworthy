@@ -1341,6 +1341,13 @@ def plain_create(cmd, cwd):
             return ok and where.dir and work_folder.task_of(where.dir) or None
     return None
 
+def proposal(path):
+    """Whether the draft at path was linted as `--kind proposal` (its <path>.lint)."""
+    try: flags = open(path + '.lint').read().split()
+    except OSError: return False
+    return '--kind' in flags and flags[flags.index('--kind') + 1:][:1] == ['proposal']
+
+
 def new_post_drafts(t):
     """Draft files a gh or discussion-post argv posts as something new (an issue, PR, comment or review): each draft is posted as new once, edits may repeat."""
     if (dp := discussion_post(t)) and dp[0] == 'add':
