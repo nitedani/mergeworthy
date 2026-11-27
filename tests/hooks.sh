@@ -1443,12 +1443,13 @@ rm "$HOME/.t3/userdata/settings.json"
 # the --settings layers in launchArgs, an Antigravity profile's plugins folder
 mkdir -p "$T/mwc" "$T/mwe" "$HOME/.t3/userdata/providers/antigravity/$(printf agy_y | sha256sum | cut -d' ' -f1)/config/plugins/mergeworthy"
 echo '{"enabledPlugins":{"mergeworthy@mergeworthy":true}}' > "$T/mwc/settings.json"; echo '{"enabledPlugins":{"mergeworthy@mergeworthy":false}}' > "$T/mwc/off.json"
-python3 -c 'import json,sys; t=sys.argv[1]; cc={"env":{"CLAUDE_CONFIG_DIR":t+"/mwc"}}; print(json.dumps({"providerInstances":{
-  "cm":{"driver":"claudeAgent","config":cc},
-  "myclaude":{"driver":"claudeAgent","config":dict(cc,launchArgs="--settings '"'"'{\"enabledPlugins\":{\"mergeworthy@mergeworthy\":false}}'"'"'")},
+python3 -c 'import json,sys; t=sys.argv[1]; ev=lambda d: [{"name":"CLAUDE_CONFIG_DIR","value":t+d,"sensitive":False}]; print(json.dumps({"providerInstances":{
+  "cm":{"driver":"claudeAgent","environment":ev("/mwc"),"config":{}},
+  "myclaude":{"driver":"claudeAgent","environment":ev("/mwc"),"config":{"launchArgs":"--settings '"'"'{\"enabledPlugins\":{\"mergeworthy@mergeworthy\":false}}'"'"'"}},
   "cfile":{"driver":"claudeAgent","config":{"homePath":t+"/mwc","launchArgs":["--settings="+t+"/mwc/off.json"]}},
-  "cbare":{"driver":"claudeAgent","config":{"env":{"CLAUDE_CONFIG_DIR":t+"/mwe"}}},
-  "cgone":{"driver":"claudeAgent","enabled":False,"config":cc},
+  "cbare":{"driver":"claudeAgent","environment":ev("/mwe"),"config":{}},
+  "chome":{"driver":"claudeAgent","environment":ev("/mwc"),"config":{"homePath":t+"/mwe"}},
+  "cgone":{"driver":"claudeAgent","enabled":False,"environment":ev("/mwc"),"config":{}},
   "agy_x":{"driver":"antigravity"},"agy_y":{"driver":"antigravity"},"cx":{"driver":"codex"}}}))' "$T" > "$HOME/.t3/userdata/settings.json"
 tl() { # instance: a t3_thread_launch's exit code under T3
   python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__t3_thread_launch","tool_input":{"title":"tl","message":"Research the cache","modelSelection":{"instanceId":sys.argv[1],"model":"m"}}}))' "$1" \
@@ -1456,6 +1457,8 @@ tl() { # instance: a t3_thread_launch's exit code under T3
 res() { impl "{\"providerInstanceId\":\"$1\"}" '' research 'Research the cache'; }
 check "BLOCK: a Claude instance whose inline --settings JSON or --settings= file disables the plugin, or whose config dir doesn't enable it, naming the enabled one that loads it; by delegate_task or t3_thread_launch" "2 1 2 1 2 1 2 1" \
   "$(res myclaude) $(grep -c "^BLOCKED: T3's instance myclaude doesn't load mergeworthy.*set the target to cm\.$" "$T/err") $(res cfile) $(grep -c 'instance cfile.*target to cm\.$' "$T/err") $(res cbare) $(grep -c 'instance cbare.*target to cm\.$' "$T/err") $(tl myclaude) $(grep -c 'instance myclaude.*target to cm\.$' "$T/err")"
+check "BLOCK: a Claude instance whose homePath doesn't enable the plugin while its environment's CLAUDE_CONFIG_DIR does: T3 takes homePath first" "2 1" \
+  "$(res chome) $(grep -c 'instance chome.*target to cm\.$' "$T/err")"
 check "BLOCK: an Antigravity instance with no mergeworthy in its profile's plugins, naming the one that has it" "2 1" \
   "$(res agy_x) $(grep -c "instance agy_x doesn't load mergeworthy.*set the target to agy_y\.$" "$T/err")"
 check "a launch on an instance that loads mergeworthy (cm, agy_y), on codex, an unlisted instance, a driverKind alone or no target passes" "0 0 0 0 0 0" \
