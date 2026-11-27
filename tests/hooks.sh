@@ -2791,6 +2791,8 @@ sed 's/^✅ a$/| [inlines the state as it is: `$'"'"'` and `$\&` stay as written
 sed 's/^✅ a$/| [`a`, `b`](x.ts:3) | 8 ⇒ 8 | two |\n&/' "$T/rc4.md" > "$T/rc24.md"
 sed 's/^✅ a$/| `web.test.ts:394` it: inlines the names as written, `a` and `b` stay names | 8 ⇒ 8 | one |\n&/' "$T/rc4.md" > "$T/rc25.md"
 check "a quoted test title, one after 'it:' or a link whose text is a sentence names one item, its code spans and all; a link whose text is two code spans groups" "0 0 0 1" "$(psn "$T/rc22.md") $(psn "$T/rc23.md") $(psn "$T/rc25.md") $(psn "$T/rc24.md")"
+sed 's/^✅ a$/Evidence: `loopA.md`, `review.md` and `reverify.md`. Overall shape **6\/10 ⇒ 7.5\/10**.\n&/' "$T/rc4.md" > "$T/rc26.md"; sed 's/^✅ a$/| `a`, `b` | 7\/10 ⇒ 9\/10 | two |\n&/' "$T/rc4.md" > "$T/rc27.md"
+check "a prose line rating out of ten is the overall score and records beside its code spans; a table row rating out of ten still groups" "0 1" "$(psn "$T/rc26.md") $(psn "$T/rc27.md")"
 # a carry of a head with two passes (one before a maintainer's ask, one after it) carries the latest
 GC="$T/prsc"; mkdir -p "$GC"; git -C "$GC" init -q; git -C "$GC" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; GA=$(git -C "$GC" rev-parse HEAD)
 printf '| `a.ts` | 6 ⇒ 7 | x | one |\n✅ a.ts\nCLEAN\n' > "$T/two-old.md"; printf '| `a.ts` | 7 ⇒ 9 | y | two |\n✅ a.ts\nCLEAN\n' > "$T/two-new.md"
