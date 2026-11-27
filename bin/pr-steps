@@ -186,7 +186,7 @@ fi
 # carries an earlier pass or small fix's review ("carries the pass of <sha>", carry_holds): a fix log or a note is not a shape pass
 # A pass rates every item afresh: a row whose rating is copied ("10 =", "=", "unchanged since") is a re-rating of a delta, not a pass
 is_pass() { grep -q '✅' "$1" && grep -Eq '([0-9]+|\bnew) *(⇒|=>) *([0-9]+|removed|new|n/a)' "$1" && ! grep -Eiq '\| *([0-9]+ *)?= *\||unchanged since' "$1"; }
-# A pass's report rates one item per rating row (its first table cell, the second after a number, or the text before the rating) and has the '## Root cause' of code §Root cause
+# A pass's report rates one item per rating row (each table cell before the rating, or the text before it) and has the '## Root cause' of code §Root cause
 one_per_row_root_cause() { python3 - "$1" <<'EOF' || exit 1
 import re, sys
 path = sys.argv[1]; s = open(path).read()
@@ -195,8 +195,8 @@ count = re.compile(r'\(\s*\d+\s+(fns?|functions?|helpers?|methods?|files?)\b[^)]
 # a commit sha is a reference, never an item; a path, a file.ext or a :line locates the one item beside it
 kind = lambda span: 'sha' if re.fullmatch(r'`[0-9a-f]{7,40}`', span) else 'place' if re.search(r'/|\w\.\w+|:\d', span) else 'name'
 def grouped(item):
-    # the parentheses after an item describe it: their spans are no more items
-    item = re.sub(r'(?<=\S)\s*\([^()]*\)', '', re.sub(r'^\s*[-*]\s+|[\s:–—-]+$', '', item)) if not count.search(item) else item
+    # the parentheses after an item describe it: their spans are no more items (an empty () is part of a name)
+    item = re.sub(r'(?<=\S)\s*\([^()]+\)', '', re.sub(r'^\s*[-*]\s+|[\s:–—-]+$', '', item.strip())) if not count.search(item) else item
     spans = list(re.finditer(r'`[^`\n]+`', item))
     words = [w for w in re.split(r'\s*(?:,|\band\b)\s*', item) if w]
     ident = lambda w: re.fullmatch(r'\w+(\(\))?', w) and (w.endswith('()') or '_' in w or re.search('[A-Z]', w[1:]))
@@ -207,8 +207,8 @@ for line in s.splitlines():
     if not m:
         continue  # only a rating row rates items; a census or findings row may name several
     cells = line.strip().strip('|').split('|')
-    item = (cells[1] if re.fullmatch(r'\s*\d+\s*', cells[0]) and len(cells) > 1 else cells[0]) if line.lstrip().startswith('|') else line[:m.start()]
-    if grouped(item):
+    items = cells[:min(i for i, c in enumerate(cells) if m[0] in c) or 1] if line.lstrip().startswith('|') else [line[:m.start()]]
+    if any(map(grouped, items)):
         sys.exit(f"{path} rates several items in one row: give each file and function its own row and rating {ask}:\n{line.strip()}")
 # the section is its bullets and the shims line: the first other line or heading ends it
 sec = re.search(r'^## Root cause[ \t]*\n((?:[ \t]*(?:[-*] .*|Pre-1\.0 shims:.*)?\n)*)', s + '\n', re.M)
