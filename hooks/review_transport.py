@@ -1,5 +1,5 @@
 """How a review round reaches its reviewer: a launch (Agent, Task, delegate_task, t3_thread_launch) is a round by its name; a send
-(T3's t3_thread_send, Claude Code's SendMessage) to a reviewer (loops.seat_loops) is a round `<loop>-r<N>` that continues it
+(T3's t3_thread_send, Claude Code's SendMessage) to a reviewer (loops.handle_loops) is a round `<loop>-r<N>` that continues it
 (loops.continues, delegate §Continue), its message the task and its round name the title, and refused naming none; a send to
 anyone else is no launch. A shell reviewer (`codex exec`, its `resume`, `claude -p`) is a round by its prompt file's name,
 `<loop>-r<N>.md`. A round that continues its reviewer is admitted only as a fix check of that reviewer's findings while it is
@@ -12,24 +12,24 @@ WINDOW = 50 * 60  # a provider's prompt cache is gone after about an hour, and t
 
 def as_launch(tool, ti):
     """(the tool input as the launch it is, whether it was sent to a running reviewer, the first round of its loop there or None,
-    the loops that reviewer runs (loops.seat_loops));
+    the loops that reviewer runs (loops.handle_loops));
     None for a send to no reviewer; a refusal (str) for a send to a reviewer that names no round of a loop it runs."""
     tool = str(tool or '')
     if tool.endswith('t3_thread_send'):
-        name, seat = str(ti.get('clientRequestId') or ''), str(ti.get('threadId') or '')
+        name, handle = str(ti.get('clientRequestId') or ''), str(ti.get('threadId') or '')
     elif tool == 'SendMessage':
-        name, seat = str(ti.get('summary') or ''), str(ti.get('to') or '')
+        name, handle = str(ti.get('summary') or ''), str(ti.get('to') or '')
     else:
         return ti, False, None, {}
     m = loops.round_of(name)
-    if not (here := loops.seat_loops(seat) if seat else {}):
+    if not (here := loops.handle_loops(handle) if handle else {}):
         return None
     if not (m and loops.continues(m[1], int(m[2]), here)):
-        return (f"{seat} runs the review loop {', '.join(sorted(here))}, and a message to it is that loop's next round: name it `<loop>-r<N>` "
+        return (f"{handle} runs the review loop {', '.join(sorted(here))}, and a message to it is that loop's next round: name it `<loop>-r<N>` "
                 f"({'clientRequestId' if tool.endswith('t3_thread_send') else 'summary'}), or `<loop>-ask<N>` for a maintainer's ask, "
                 f"not {name or 'nothing'} (mergeworthy:delegate §Review rounds)")
     first = here.get(m[1]) or next((e for l, e in here.items() if e and loops.follows(m[1], l)), None)
-    return {'task': str(ti.get('message') or ''), 'title': name, 'role': 'review', 'clientRequestId': name, 'threadId': seat}, True, first, here
+    return {'task': str(ti.get('message') or ''), 'title': name, 'role': 'review', 'clientRequestId': name, 'threadId': handle}, True, first, here
 
 
 def round_name(ti):
@@ -53,10 +53,10 @@ def shell_round(command):
     return None
 
 
-def seat_rounds(seat):
-    """The rounds that ran in the reviewer seat (a T3 thread, a Claude agent), by the journal."""
+def handle_rounds(handle):
+    """The rounds that ran in the reviewer handle (a T3 thread, a Claude agent), by the journal."""
     import review_journal
-    return {e['n'] for evs in review_journal.rounds(handle=seat).values() for e in evs}
+    return {e['n'] for evs in review_journal.rounds(handle=handle).values() for e in evs}
 
 
 def started_on(session, prompt, loop, n):
@@ -69,11 +69,11 @@ def started_on(session, prompt, loop, n):
     return found
 
 
-def last_active(tool, seat, launcher):
-    """When the reviewer seat a round is sent to was last active, in epoch seconds, None when unknown: a T3 thread's newest message
+def last_active(tool, handle, launcher):
+    """When the reviewer handle a round is sent to was last active, in epoch seconds, None when unknown: a T3 thread's newest message
     or run, a Claude Code agent's transcript (under launcher's session)."""
-    if str(tool or '').endswith('t3_thread_send'): return steward.active_at(seat)
-    p = agent_jobs.transcript({'handle': f'claude:{seat}', 'transcript': launcher})
+    if str(tool or '').endswith('t3_thread_send'): return steward.active_at(handle)
+    p = agent_jobs.transcript({'handle': f'claude:{handle}', 'transcript': launcher})
     return p and os.path.getmtime(p)
 
 

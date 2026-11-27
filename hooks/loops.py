@@ -1,8 +1,11 @@
-"""Review loops (delegate §Review rounds): pre-agent-dedupe and pre-bash-guard ask admit() whether round `<loop>-r<N>` of a code
-review may run, and record a round that ran with register(); pr-steps and gate-pass ask close() whether a loop's ledger closes it,
-and pr-steps asks open_seats() whether a step's other reviewers closed. A round is refused once the heads its brief pins show the
-branch hasn't moved since four earlier rounds of its loop, after an earlier one there when the ledger its brief names doesn't show
-the last round brought a fixed blocker or should, and as a fresh reader's second or its first again."""
+"""Review loops (delegate §Review rounds): pre-agent-dedupe and pre-bash-guard ask whether round `<loop>-r<N>` of a code review may
+run, and record a round that ran with register(); pr-steps and gate-pass ask close() whether a loop's ledger closes it, and
+pr-steps asks open_seats() whether a step's other seats closed. admit() refuses a fresh reader's second round, or its first again
+on this head (fresh_once), then, on a head within STALE_LINES of a loop's earlier rounds, the first of its RULES that objects: a
+round past the four of the loops it counts in (routed_cap) or of its own (cap), a ledger that doesn't rule the last round
+(ledger_current) or every finding of the loop's reports (findings_ruled), and a last round that brought no fixed blocker or
+should (earned). third_seat() refuses a fresh round 1 its step's declared seats leave out, and old_reports() a fresh later round
+handed an earlier round's report."""
 import collections, glob, json, os, re, subprocess, sys, types
 import agent_jobs, drift, ledger, records, review_journal, testpaths
 
@@ -25,12 +28,12 @@ def _json(path):
     return data if isinstance(data, dict) else {}
 
 
-def seat_loops(seat):
-    """The loops whose rounds ran in the reviewer seat: {loop: its first round's journal event, or None for a post review's
-    round, which review-loops.json holds, or one OLD holds}."""
+def handle_loops(handle):
+    """The loops whose rounds ran in the reviewer handle (a T3 thread, a Claude agent): {loop: its first round's journal event,
+    or None for a post review's round, which review-loops.json holds, or one OLD holds}."""
     data, old = _json(LOOPS), _json(OLD['threads'])  # read once: a message to a thread that never reviewed waits on nothing
-    here = {l: None for l in {*data, *old} if seat in (data[l].get('threads', []) if isinstance(data.get(l), dict) else old.get(l, []))}
-    return {**here, **{l: evs[0] for l, evs in review_journal.rounds(handle=seat).items()}}
+    here = {l: None for l in {*data, *old} if handle in (data[l].get('threads', []) if isinstance(data.get(l), dict) else old.get(l, []))}
+    return {**here, **{l: evs[0] for l, evs in review_journal.rounds(handle=handle).items()}}
 
 
 Name = collections.namedtuple('Name', 'subject kind seat')
@@ -53,7 +56,7 @@ def follows(loop, l):
 
 
 def continues(loop, n, here):
-    """Whether round n of loop continues one of the loops here (seat_loops) that ran in the seat it is sent to: a later round of
+    """Whether round n of loop continues one of the loops here (handle_loops) that ran in the reviewer it is sent to: a later round of
     one of them, or a round 1 that follows one (delegate §Review rounds)."""
     return loop in here if n >= 2 else any(follows(loop, l) for l in here)
 
@@ -263,10 +266,10 @@ def earned(a):
 RULES = (routed_cap, cap, ledger_current, findings_ruled, earned)  # in the order a launch is told what to fix
 
 
-def admit(loop, n, tops, heads, led, owners=(), here=(), step=None):
+def admit(loop, n, tops, heads, led, owners=(), launcher=(), step=None):
     """Why round n of code review loop is refused, '' when it may run: tops are the checkouts its brief names, heads their heads
     its pins equal, led the ledger path it names (None), owners the loops whose rounds count in its four (a routed round's seat
-    loop, the loop a `Continues:` line takes over), here the launcher's checkout, which holds the fixes of a brief naming none (a
+    loop, the loop a `Continues:` line takes over), launcher the launcher's checkout, which holds the fixes of a brief naming none (a
     docs reader's, handed rendered pages), step the step its brief declares (`Review: <step>`)."""
     if why := fresh_once(loop, n, tops, heads, step): return why
     a = types.SimpleNamespace(loop=loop, n=n, tops=tops, heads=heads, led=led, owners=owners, earlier=on_head(loop, n, tops, heads),
@@ -275,7 +278,7 @@ def admit(loop, n, tops, heads, led, owners=(), here=(), step=None):
     if not a.earlier and not a.routed: return ''
     try: a.rows, _, a.last = ledger.read(led) if led and os.path.isfile(led) else ([], [], 0)
     except OSError as e: return f"the ledger {led} can't be read ({e.strerror}), so no round of {loop} is admitted: fix it, or name the loop's ledger (mergeworthy:delegate §Review rounds).\n"
-    a.kept = ledger.owed(a.rows, a.last, lambda sha: any(desc(t, sha, 'HEAD') for t in tops or here))
+    a.kept = ledger.owed(a.rows, a.last, lambda sha: any(desc(t, sha, 'HEAD') for t in tops or launcher))
     a.finality = (f"The ledger {led} shows round {a.last} still brought a blocker or should fixed in a commit: the area keeps taking patches, so its next step is "
                   "the finality pass (mergeworthy:finality step 1, recorded by `pr-steps finality <file>`), not another round. " if a.kept else "")
     a.closing = f"Close the loop with `pr-steps <step> <file> --ledger {led or '<ledger>'}` on r{a.earlier[-1]}'s report when it isn't clean: the agent's own report is the record, never one the main session writes.\n" if a.earlier else ''

@@ -284,7 +284,7 @@ elif k.review:
     # a routed round counts in its seat's loop of its slice, a `Continues: <loop>` one in the loop it takes over
     routed = loops.name(loop)
     owners = [l for l in here if routed.kind in loops.ROUTED and loops.name(l).subject == routed.subject and loops.name(l).kind not in loops.ROUTED] + D.continues
-    if sent and (why := review_transport.fix_check(f'{loop}-r{n}', brief, review_transport.last_active(req.tool, ti['threadId'], req.transcript), review_transport.seat_rounds(ti['threadId']))) \
+    if sent and (why := review_transport.fix_check(f'{loop}-r{n}', brief, review_transport.last_active(req.tool, ti['threadId'], req.transcript), review_transport.handle_rounds(ti['threadId']))) \
             or not sent and (why := loops.old_reports(loop, n, tops, L.paths, said_outs, brief)):
         sys.stderr.write(f"BLOCKED: {why}")
         refused()
