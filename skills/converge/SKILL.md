@@ -38,7 +38,7 @@ A change of at most 60 lines outside tests, docs (any `.md`), lockfiles and buil
 - **A long list of Loop B findings** goes to one implementer in its own worktree, slice by slice. Review its diff and cherry-pick it onto the PR branch.
 - **Slices:** a diff over about 1500 lines is split (`delegate/verifier.md` §Slices); each slice, a file several use in each, gets its own seats; Loop B's cover the whole PR (step 2).
 - **What they read:** the head's code in full at the brief's pinned SHAs; a later round, its slot's scope. A finality graph is only an index.
-- **A seat past about 100k context tokens** (its harness's count) goes to a new agent of its company, same loop and rounds, given the last report and ledger. A changed decision in `decisions/*.md` goes to the running agent.
+- **A new loop agent,** given the last report, once its context passes about 100k tokens. A changed decision in `decisions/*.md` goes to the running agent.
 - **A maintainer's commits are owner code** (`code §Owner code and authority`).
 
 ### Stacked PRs
