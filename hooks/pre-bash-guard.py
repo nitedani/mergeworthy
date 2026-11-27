@@ -10,8 +10,8 @@ import shellcmd
 from shellcmd import parse, segments, prog, script, opt, api_call, field_name, TEXT_FREE, discussion_post, discussion_thread_of, names_discussion_mutation, env_of, origin, plain_create, PLAIN, new_post_drafts, no_instructions_read, by_agent, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Unseen, Where
 from records import branch_record, commit_file, DRIFT_REF, LIMIT, no_approach, no_preflight, STORE
 import drift, own_actions, review_launch, steward, post_words, threads_file, transcript_facts, work_folder
-from t3_tasks import under_t3
-from owner_ask import ASKED_FOR, asks, last_typed
+from t3_tasks import last_typed, under_t3
+from owner_ask import ACTIONS, Target, asks
 def missing_steps(d, head=None):
     """(head, the converge steps it lacks): head is a push's pushed commit, else HEAD."""
     head = head or subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
@@ -167,17 +167,17 @@ def project_file(repo):
     try: return open(os.path.expanduser(f'~/.mergeworthy/projects/{repo}.md'), errors='replace').read() if repo else None
     except OSError: return None
 
-def need_ask(kind, what, repo=None, num=None, branch=None, strict=False, subject=None, names=()):
-    """Blocks what (a landing on repo's default branch, or an ask-first command; subject, and names besides repo, as in owner_ask.asks)
-    unless the message the user last typed asks for it, or holds it back in no sentence while repo's project file holds kind's `## Merging`
-    order; a landing on a repo with no project file passes, unless strict (a merge past the base's rules)."""
-    repo = re.sub(r'^gitlab\.com/', '', repo or '') or None  # a GitLab project's project file is named by its path
-    _, order, reply = ASKED_FOR[kind]
+def need_ask(kind, what, target, strict=False):
+    """Blocks what (a landing on target's repo's default branch, or an ask-first command; target an owner_ask.Target) unless the message
+    the user last typed asks for it, or holds it back in no sentence while the repo's project file holds kind's `## Merging` order; a landing
+    on a repo with no project file passes, unless strict (a merge past the base's rules)."""
+    repo = re.sub(r'^gitlab\.com/', '', target.repo or '') or None  # a GitLab project's project file is named by its path
+    order, reply = ACTIONS[kind].order, ACTIONS[kind].reply
     text = project_file(repo)
     if text is None and kind != 'ask-first' and not strict: return
     sec = re.search(r'^## Merging\b[^\n]*\n(.*?)(?=^## |\Z)', text or '', re.M | re.S)
-    asked = asks(last_typed(d.get('transcript_path')), kind, repo, num, branch, subject, (repo, *names))
-    if asked or asked is None and order and sec and re.search(r'^[-*] +' + order.format(branch=re.escape(branch or '')), sec[1], re.M):
+    asked = asks(last_typed(d.get('transcript_path')), kind, target._replace(repo=repo, names=(repo, *target.names)))
+    if asked or asked is None and order and sec and re.search(r'^[-*] +' + order.format(branch=re.escape(target.branch or '')), sec[1], re.M):
         return
     if kind == 'ask-first':
         block(f"{what} is on this machine's ~/.mergeworthy/ask-first list: it runs only when the message the user last typed asks for it "
@@ -241,7 +241,7 @@ def ask_first(t):
         remote = [prog(x) for x in segments(' '.join(t[i + 1:]))] if t[i + 1:] else []
     for c in [t, *remote]:
         line = ' '.join([os.path.basename(c[0]), *c[1:]]) if c else ''
-        if line and any(re.match(rf'(?:{p})(?!\S)', line) for p in ASK_FIRST): need_ask('ask-first', f'`{line[:80]}`', subject=line)
+        if line and any(re.match(rf'(?:{p})(?!\S)', line) for p in ASK_FIRST): need_ask('ask-first', f'`{line[:80]}`', Target(subject=line))
 
 def setting(name, default):
     """MERGEWORTHY_<name> from the environment, else from ~/.mergeworthy/settings.env (written at session start from the plugin's options)."""
@@ -1131,15 +1131,15 @@ def check(t, has_cd):
     elif p == 'gh' and a and re.fullmatch(r'-R.+|--repo=.+', a[0]): a = a[1:] + a[:1]
     if ASK_FIRST: ask_first(t)
     if p in ('gh', 'glab') and a[:2] == ['release', 'create'] and '--help' not in a and '-h' not in a:
-        need_ask('release', f'`{p} release create`', gh_repo(a[2:], env, run_dir) if p == 'gh' else gitlab_repo(a[2:], run_dir),
-                 subject=next((x for i, x in enumerate(a[2:]) if not x.startswith('-') and a[1 + i] not in RELEASE_VALUED), None))
+        need_ask('release', f'`{p} release create`', Target(gh_repo(a[2:], env, run_dir) if p == 'gh' else gitlab_repo(a[2:], run_dir),
+                 subject=next((x for i, x in enumerate(a[2:]) if not x.startswith('-') and a[1 + i] not in RELEASE_VALUED), None)))
     if p == 'glab' and a[:1] == ['mr'] and a[1:2] in (['merge'], ['accept']) and '--help' not in a and '-h' not in a:
         mr = mr_target(a[2:], run_dir)
-        need_ask('merge', f"merging {mr[0]}!{mr[1] or mr[2]}", mr[0], mr[1])
+        need_ask('merge', f"merging {mr[0]}!{mr[1] or mr[2]}", Target(mr[0], mr[1]))
     if p in ('npm', 'pnpm') and (pkg := publish_dir(p, a)) and '--dry-run' not in a:
         try: name = json.load(open(os.path.join(pkg, 'package.json'))).get('name')
         except (OSError, ValueError, AttributeError): name = None
-        need_ask('release', f'`{p} publish`', (repo_of(origin(pkg)) or (None, None))[1], names=(name,))
+        need_ask('release', f'`{p} publish`', Target((repo_of(origin(pkg)) or (None, None))[1], names=(name,)))
     if p == 'codex' and ('exec' in a or a[:1] == ['e']) and under_t3():
         block("under T3 Code, start Codex through T3, where the user sees it: delegate_task with target {providerInstanceId: codex, "
               "model: <the review model from orchestrator_capabilities>}, the prompt file's path in the task, a new delegate_task per review round (mergeworthy:delegate §Reviewers)")
@@ -1218,7 +1218,7 @@ def check(t, has_cd):
             for host, path in filter(None, map(repo_of, urls)):
                 if not heads or project_file(path) is None: continue
                 if untold: block(untold)
-                if (main := default_branch(host, path)) in [b for _, b, _ in heads]: need_ask('push', f'this push to {main}', path, branch=main)
+                if (main := default_branch(host, path)) in [b for _, b, _ in heads]: need_ask('push', f'this push to {main}', Target(path, branch=main))
             why, prs = [sum(x, []) for x in zip(*[collaboration(repo, u, [h[:2] for h in heads]) for u in urls])] or ([], [])
             if why and not all(sha for sha, _, _ in heads):
                 block(f"this push ({'; '.join(why)}) publishes a commit computed when it runs, so its records can't be checked: push a branch or a sha written out")
@@ -1329,7 +1329,7 @@ def check(t, has_cd):
         admin = flag(rest, '--admin')
         if admin and (why := own_bypass(pr, run)):
             block(f"`gh pr merge --admin` bypasses {pr['baseRefName']}'s rules: only on the owner's own repo, where GitHub lets them always bypass every rule on it, and on their ask. Here {why}")
-        need_ask('merge', f"merging {pr['url']}" + (' past its base\'s rules (--admin)' if admin else ''), slug, pr['url'].rstrip('/').rsplit('/', 1)[1], strict=admin)
+        need_ask('merge', f"merging {pr['url']}" + (' past its base\'s rules (--admin)' if admin else ''), Target(slug, pr['url'].rstrip('/').rsplit('/', 1)[1]), strict=admin)
         if body[0].strip() and (bad := unproven_trailers(body[0], commits)):
             block(f"the squash body holds only `Co-authored-by: <name> <email>` lines naming human authors of the PR's commits, copied from `gh pr view <N> --json commits` "
                   f"(mergeworthy:merging step 4); not one: {bad[0]!r}")
