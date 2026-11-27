@@ -96,10 +96,14 @@ def resumed(argv):
 def fix_check(name, brief, at, ran):
     """Why round name, continuing the reviewer last active at at (None: unknown) that ran the rounds ran, is refused, '' when it
     may run: only a fix check (FIX_CHECK) of that reviewer's own findings, named by their ledger ids (R<round>.<n>, a round in
-    ran), continues it, within WINDOW."""
+    ran), or a `<slice>-reverify` round, continues it, within WINDOW."""
     declared, recent = re.search(FIX_CHECK, brief, re.M), at and time.time() - at <= WINDOW
     named = dict(re.findall(r'\b(R(\d+)\.\d+)\b', brief))
     others = sorted(i for i, m in named.items() if int(m) not in ran)
+    # a reverify continues the Loop A verifier on Loop B's commits, which fix none of its findings (converge step 3)
+    if re.fullmatch(r'.+-reverify-r\d+', name):
+        return '' if recent else (f"{name} continues its verifier, but " + (f"it was last active {int((time.time() - at) / 60)} minutes ago, past {WINDOW // 60}" if at else
+                                  "no record shows when it was last active") + ": launch it on a fresh verifier of that company with Loop B's commits (mergeworthy:converge step 3).\n")
     if declared and recent and named and not others: return ''
     why = ("its brief declares no fix check of that reviewer's own findings (a line `Review: <step> [<part>] fix-check`)" if not declared else
            f"that reviewer was last active {int((time.time() - at) / 60)} minutes ago, past {WINDOW // 60}" if at and not recent else
