@@ -29,7 +29,7 @@ def as_launch(tool, ti):
         return (f"{seat} runs the review loop {', '.join(sorted(here))}, and a message to it is that loop's next round: name it `<loop>-r<N>` "
                 f"({'clientRequestId' if tool.endswith('t3_thread_send') else 'summary'}), or `<loop>-ask<N>` for a maintainer's ask, "
                 f"not {name or 'nothing'} (mergeworthy:delegate §Review rounds)")
-    first = here.get(m[1]) or next((e for l, e in here.items() if e and l.startswith(m[1].rsplit('-', 1)[0])), None)
+    first = here.get(m[1]) or next((e for l, e in here.items() if e and loops.follows(m[1], l)), None)
     return {'task': str(ti.get('message') or ''), 'title': name, 'role': 'review', 'clientRequestId': name, 'threadId': seat}, True, first, here
 
 
@@ -101,7 +101,7 @@ def fix_check(name, brief, at, ran):
     named = dict(re.findall(r'\b(R(\d+)\.\d+)\b', brief))
     others = sorted(i for i, m in named.items() if int(m) not in ran)
     # a reverify continues the Loop A verifier on Loop B's commits, which fix none of its findings (converge step 3)
-    if re.fullmatch(r'.+-reverify-r\d+', name):
+    if (m := loops.round_of(name)) and loops.name(m[1]).kind == 'reverify':
         return '' if recent else (f"{name} continues its verifier, but " + (f"it was last active {int((time.time() - at) / 60)} minutes ago, past {WINDOW // 60}" if at else
                                   "no record shows when it was last active") + ": launch it on a fresh verifier of that company with Loop B's commits (mergeworthy:converge step 3).\n")
     if declared and recent and named and not others: return ''

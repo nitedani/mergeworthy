@@ -3,7 +3,7 @@ review may run, and record a round that ran with register(); pr-steps and gate-p
 and pr-steps asks open_seats() whether a step's other reviewers closed. A round is refused once the heads its brief pins show the
 branch hasn't moved since four earlier rounds of its loop, after an earlier one there when the ledger its brief names doesn't show
 the last round brought a fixed blocker or should, and as a fresh reader's second or its first again."""
-import glob, itertools, json, os, re, subprocess, sys
+import collections, glob, itertools, json, os, re, subprocess, sys
 import agent_jobs, drift, ledger, records, review_journal, testpaths
 
 # {loop: {'rounds': [[n, the heads its brief pinned, the reports it wrote]], 'threads': the T3 threads or Claude agents its rounds ran in}}
@@ -38,12 +38,29 @@ def seat_loops(seat):
     return {**here, **review_journal.seat_of(seat)}
 
 
+Name = collections.namedtuple('Name', 'subject kind seat')
+ROUTED = {'recheck', 'fresh'}  # the kinds of a round routed to a seat's loop of its subject (converge steps 2 and 4), counted in its four
+
+
+def name(loop):
+    """loop's (subject, kind, seat) (delegate §Review rounds): `<loop>-ask<N>` is kind ask of that loop, `<slice>-reverify`,
+    `-recheck` and `-fresh` that kind of the slice, with no seat; any other `<step-or-slice>-<seat>` is kind seat, as is a name
+    with no dash, its own subject with seat ''."""
+    if m := re.fullmatch(r'(.+)-(?:(reverify|recheck|fresh)|(ask)\d+)', loop): return Name(m[1], m[2] or m[3], '')
+    subject, _, seat = loop.rpartition('-')
+    return Name(subject, 'seat', seat) if subject else Name(loop, 'seat', '')
+
+
+def follows(loop, l):
+    """Whether round 1 of loop continues the loop l: an ask of l, or a reverify, recheck or fresh of l's subject."""
+    k = name(loop)
+    return k.kind == 'ask' and l == k.subject or k.kind in ('reverify', 'recheck', 'fresh') and name(l).subject == k.subject
+
+
 def continues(loop, n, here):
     """Whether round n of loop continues one of the loops here (seat_loops) that ran in the seat it is sent to: a later round of
-    one of them, or round 1 of `<slice>-reverify`, `-recheck` or `-fresh` of one's slice, or of `<loop>-ask<N>` of one (delegate §Review rounds)."""
-    if n >= 2: return loop in here
-    m = re.fullmatch(r'(.+)-(?:(reverify|recheck|fresh)|ask\d+)', loop)
-    return bool(m) and any((l.rsplit('-', 1)[0] if m[2] else l) == m[1] for l in here)
+    one of them, or a round 1 that follows one (delegate §Review rounds)."""
+    return loop in here if n >= 2 else any(follows(loop, l) for l in here)
 
 
 CAP = 4  # rounds per loop on one head (delegate §Review rounds)
@@ -122,7 +139,7 @@ def same_company_seat(loop, tops):
 
 def step_of(loop, first):
     """The step a loop checks: its round 1's `Review: <step>`, else its name's `<step-or-slice>` (a slice's: verify)."""
-    stem = loop.rsplit('-', 1)[0]
+    stem = name(loop).subject
     return first.get('step') or (stem if stem in STEPS else 'verify')
 
 
@@ -133,9 +150,9 @@ def open_seats(report, recorded, step, checkout='.'):
     A step closes only once every seat's loop did."""
     report, on = os.path.realpath(report), lineage(checkout)
     mine = [l for l, r in on.items() if any(report in outs for _, _, outs in r['rounds'])]
-    named = {f"{l.rsplit('-', 1)[0]}-{s}" for l in mine for s in on[l]['first'].get('seats') or ()}
+    named = {f"{name(l).subject}-{s}" for l in mine for s in on[l]['first'].get('seats') or ()}
     seats = {l for l, r in on.items() if (r['first'].get('seated') or r['first'].get('seats')) and step_of(l, r['first']) == step} | named
-    stem = lambda l: l.rsplit('-', 1)[0]
+    stem = lambda l: name(l).subject
     filled = {f if f.startswith(stem(l) + '-') else f"{stem(l)}-{f}": l for l, r in on.items() if (f := r['first'].get('fills'))}
     done = lambda l: l in mine or l in on and {o for _, _, outs in on[l]['rounds'] for o in outs} & set(recorded)
     return sorted(l for l in seats if not done(l) and not (l in filled and done(filled[l])))
@@ -188,15 +205,12 @@ def rounds_of(loop, tops):
     return found or record(loop)['rounds']
 
 
-ROUTED = r'(.+)-(?:recheck|fresh)'  # a round routed to a seat's loop (converge steps 2 and 4), counted in its four
-
-
 def third_seat(loop, tops, brief):
-    """Why round 1 of loop, launched fresh, is refused: its step's round 1 on this lineage declared other seats (`Seats:`) and
-    the brief neither says what failed (`Fallback:`) nor which loop it takes over (`Continues:`); '' otherwise."""
-    stem, seat = loop.rsplit('-', 1) if '-' in loop else (loop, '')
-    named = {s for t in tops for l, r in lineage(t).items() if l != loop and l.rsplit('-', 1)[0] == stem for s in r['first'].get('seats') or ()}
-    if not named or seat in named or re.search(r'^[ \t>*-]*(Fallback|Continues):[ \t]*[^\s<]', brief, re.M): return ''
+    """Why round 1 of the seat loop, launched fresh, is refused: its step's round 1 on this lineage declared other seats (`Seats:`)
+    and the brief neither says what failed (`Fallback:`) nor which loop it takes over (`Continues:`); '' otherwise."""
+    stem, kind, seat = name(loop)
+    named = {s for t in tops for l, r in lineage(t).items() if l != loop and name(l).subject == stem for s in r['first'].get('seats') or ()}
+    if kind != 'seat' or not named or seat in named or re.search(r'^[ \t>*-]*(Fallback|Continues):[ \t]*[^\s<]', brief, re.M): return ''
     return (f"{loop}-r1 would be a third seat of {stem}, whose round 1 declared {', '.join(sorted(named))}: continue a declared seat, "
             "or, when its launch failed, say so in a line `Fallback: <what failed>`; a seat taking over another's count names it, `Continues: <loop>` (mergeworthy:delegate §Review rounds).\n")
 

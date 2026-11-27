@@ -2949,6 +2949,7 @@ $2}"; }  # loop extra-line: a round 1 brief of the step whose seats are codex an
 ts="$(fo ts-codex-r1 '{"providerInstanceId":"codex"}' "$(tsb ts-codex)") $(fo ts-claude-r1 '{"providerInstanceId":"claudeAgent"}' "$(tsb ts-claude)") $(fo ts-claude2-r1 '{"providerInstanceId":"claudeAgent"}' "$(tsb ts-claude2)") $(grep -c 'would be a third seat of ts, whose round 1 declared claude, codex' "$T/err")"
 ts="$ts $(fo ts-claude3-r1 '{"providerInstanceId":"claudeAgent"}' "$(tsb ts-claude3 'Fallback: ts-claude stopped')") $(fo ts-claude4-r1 '{"providerInstanceId":"claudeAgent"}' "$(tsb ts-claude4 'Continues: ts-claude')")"
 check "BLOCK: a third fresh seat of a step whose round 1 declared two, naming the cure; with what failed (Fallback:) or the loop it takes over (Continues:) it passes" "0 0 2 1 0 0" "$ts"
+check "a fresh verifier's reverify, a fresh recheck and a fresh reader's finding of a slice whose round 1 declared two seats are no third seat" "0 0 0" "$(for l in ts-reverify ts-recheck ts-fresh; do fo "$l-r1" '{"providerInstanceId":"codex"}' "Review $GT at head $TH, Loop B's commits; output to $T/$l.md"; done | xargs)"
 GF="$T/seats6"; git init -q -b main "$GF"; git -C "$GF" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; FH=$(git -C "$GF" rev-parse HEAD)
 for s in "fl-codex codex" "fl-claude2 claudeAgent"; do set -- $s; fo "$1-r1" "{\"providerInstanceId\":\"$2\"}" "Review $GF at head $FH; output to $T/$1.md
 $FO
